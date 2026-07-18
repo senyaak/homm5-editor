@@ -126,6 +126,50 @@
     #pal-sel { color: #c9d1d9; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     #palette .pal-note { color: #6e7681; margin-top: 2px; }
 
+    /* object palette — same shell as the ground palette, so the two tabs of the
+       original's content browser read as one thing here too. */
+    #objpal { position: fixed; right: 0; top: 40px; bottom: 0; width: 250px; z-index: 12;
+      background: #0f141aee; border-left: 1px solid #21262d; backdrop-filter: blur(6px);
+      display: flex; flex-direction: column; }
+    #objpal .pal-head { padding: 8px; border-bottom: 1px solid #21262d; display: flex;
+      gap: 8px; align-items: center; }
+    #objpal .pal-title { color: #e6edf3; font-weight: 600; }
+    #obj-cat { flex: 1; min-width: 0; background: #0d1014; border: 1px solid #30363d;
+      border-radius: 6px; padding: 5px 26px 5px 8px; color: #c9d1d9; font-size: 12px;
+      appearance: none; cursor: pointer;
+      background-image: url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%238b949e'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right 9px center; }
+    #obj-cat:focus { outline: none; border-color: #1f6feb; }
+    #obj-cat option { background: #161b22; color: #c9d1d9; }
+    /* The ==== heading rows of the original's filter list are shown disabled:
+       they name a section and select nothing. */
+    #obj-cat option:disabled { color: #6e7681; }
+    #objpal .obj-tools { display: flex; gap: 8px; align-items: center; padding: 8px;
+      border-bottom: 1px solid #21262d; }
+    #obj-search { flex: 1; min-width: 0; background: #0d1014; border: 1px solid #30363d;
+      border-radius: 6px; padding: 5px 8px; color: #c9d1d9; font-size: 12px; }
+    #obj-search:focus { outline: none; border-color: #1f6feb; }
+    #objpal .obj-hidden { color: #8b949e; font-size: 11px; display: flex; align-items: center;
+      gap: 4px; white-space: nowrap; cursor: pointer; }
+    #obj-grid { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 8px; display: grid;
+      grid-template-columns: 1fr 1fr; gap: 8px; align-content: start; }
+    #obj-grid .obj { cursor: grab; border: 2px solid transparent; border-radius: 6px;
+      padding: 3px; background: #161b22; position: relative; }
+    #obj-grid .obj:hover { background: #21262d; }
+    #obj-grid .obj.on { border-color: #1f6feb; background: #1f6feb22; }
+    #obj-grid .obj .ic { width: 100%; aspect-ratio: 1; display: block; border-radius: 4px;
+      background: #0d1014; object-fit: contain; }
+    #obj-grid .obj .nm { font-size: 10px; color: #c9d1d9; margin-top: 3px; text-align: center;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    /* A "Random ..." entry resolves to one of a group at load, so it is marked:
+       what you place is not what you see. */
+    #obj-grid .obj .rnd { position: absolute; left: 6px; top: 6px; font-size: 9px;
+      background: #8957e5cc; color: #fff; border-radius: 3px; padding: 0 3px; }
+    #obj-grid .obj .hid { position: absolute; right: 6px; top: 6px; font-size: 9px;
+      background: #6e768199; color: #fff; border-radius: 3px; padding: 0 3px; }
+    #obj-grid .more { grid-column: 1 / -1; text-align: center; color: #6e7681; font-size: 11px;
+      padding: 6px; }
+
     /* object explorer sidebar (categories + object list for the loaded map) */
     #explorer { position: fixed; left: 0; top: 40px; bottom: 0; width: 284px; z-index: 12;
       background: #0f141aee; border-right: 1px solid #21262d; backdrop-filter: blur(6px);
@@ -209,6 +253,7 @@
     <button id="objects" style="display:none">Objects</button>
     <button id="showobj" style="display:none">Objects: on</button>
     <button id="palbtn" style="display:none">Ground</button>
+    <button id="objpalbtn" style="display:none" title="place objects from the game's catalogue">Objects+</button>
     <!-- Brush controls stay visible for the whole session once a map is open.
          The mode and size selectors must never hide behind the arm toggle:
          choosing Raise is how you arm a height brush in the first place. -->
@@ -303,6 +348,27 @@
     <div class="pal-foot">
       <div id="pal-sel">no tile selected</div>
       <div class="pal-note">green dot = already in this map</div>
+    </div>
+  </div>
+
+  <!-- object palette: the original editor's Objects tab -->
+  <div id="objpal" style="display:none">
+    <div class="pal-head">
+      <span class="pal-title">Objects</span>
+      <select id="obj-cat"></select>
+    </div>
+    <div class="obj-tools">
+      <input id="obj-search" type="text" placeholder="find object…" autocomplete="off">
+      <!-- 49 of the 1466 entries ask to be hidden: tests and dev props. They are
+           read either way, so showing them is a checkbox rather than a rebuild. -->
+      <label class="obj-hidden" title="show entries marked HideInEditor (tests, dev props)">
+        <input id="obj-hidden" type="checkbox"> hidden
+      </label>
+    </div>
+    <div id="obj-grid"></div>
+    <div class="pal-foot">
+      <div id="obj-sel">no object selected</div>
+      <div class="pal-note">drag onto the map to place</div>
     </div>
   </div>
 

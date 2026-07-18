@@ -140,10 +140,57 @@ interface LoadedTerrain {
 
 
 /**
+ * A shared-href -> mesh resolver with its own growing geom list.
+ *
+ * Split out of buildScene so a single object can be resolved after the scene is
+ * built: placing one from the palette must not mean decoding the whole map
+ * again. The cache is part of the resolver, so asking twice for the same model
+ * costs nothing and a newly placed copy of an existing object adds no geometry.
+ */
+export interface GeomResolver {
+  /** Meshes decoded so far; `resolve` appends to this. */
+  geoms: GeomData[];
+  /** Index into `geoms`, or -1 when the model cannot be decoded. */
+  resolve: (sharedHref: string) => number;
+}
+
+export function createGeomResolver(assetRoot: string, texSize = 128): GeomResolver {
+  const readXdb: ReadXdb = (href) => {
+    const p = join(assetRoot, href.split('#')[0]!);
+    return existsSync(p) ? readFileSync(p, 'utf8') : null;
+  };
+  const geoms: GeomData[] = [];
+  const geomIndex = new Map<string, number>();
+  const resolve = (sharedHref: string): number => {
+    const hit = geomIndex.get(sharedHref);
+    if (hit !== undefined) return hit;
+    let idx = -1;
+    try {
+      const shared = readXdb(sharedHref);
+      const modelHref = shared && shared.match(/<Model href="([^"]+)"/);
+      const model = modelHref && readXdb(modelHref[1]!);
+      const ref = model && readGeometryRefFromModelXdb(model);
+      if (ref) {
+        const binPath = join(assetRoot, 'bin', 'Geometries', ref.uid);
+        if (existsSync(binPath)) {
+          const meshes = extractMeshes(readFileSync(binPath), ref.bbox);
+          if (meshes.length) idx = addGeom(geoms, meshes, model, assetRoot, texSize);
+        }
+      }
+    } catch { idx = -1; }
+    geomIndex.set(sharedHref, idx);
+    return idx;
+  };
+  return { geoms, resolve };
+}
+
+/**
  * @param assetRoot absolute path to the unpacked data root (contains MapObjects/, bin/…)
  * @param mapXdbPath absolute path to the map's map.xdb (its folder holds GroundTerrain.bin)
  * @param opt.texSize downsample size for embedded textures (default 128)
- * @returns { map, scene, skipped }  — map is the HommMap model (kept for editing).
+ * @returns { map, scene, skipped, resolver } — map is the HommMap model (kept for
+ *   editing) and resolver stays alive so objects placed later can be meshed
+ *   without rebuilding the scene.
  *   scene = { geoms, floors:[{ name, V, heights, instances }] }. A map can have a
  *   surface floor and an underground floor; each has its OWN terrain (a separate
  *   *Terrain.bin at a different height range) and its own objects, split by the
@@ -152,7 +199,7 @@ interface LoadedTerrain {
  */
 export function buildScene(
   assetRoot: string, mapXdbPath: string, opt: BuildSceneOptions = {},
-): { map: HommMap; skipped: number; scene: Scene } {
+): { map: HommMap; skipped: number; scene: Scene; resolver: GeomResolver } {
   const texSize = opt.texSize || 128;
   const readXdb: ReadXdb = (href) => {
     const p = join(assetRoot, href.split('#')[0]);
@@ -202,27 +249,9 @@ export function buildScene(
   };
 
   // --- geometry/texture resolution (cached per Shared href) ---
-  const geoms: GeomData[] = [];
-  const geomIndex = new Map(); // shared href -> geoms index, or -1
-  const resolveGeom = (sharedHref: string): number => {
-    if (geomIndex.has(sharedHref)) return geomIndex.get(sharedHref);
-    let idx = -1;
-    try {
-      const shared = readXdb(sharedHref);
-      const modelHref = shared && shared.match(/<Model href="([^"]+)"/);
-      const model = modelHref && readXdb(modelHref[1]);
-      const ref = model && readGeometryRefFromModelXdb(model);
-      if (ref) {
-        const binPath = join(assetRoot, 'bin', 'Geometries', ref.uid);
-        if (existsSync(binPath)) {
-          const meshes = extractMeshes(readFileSync(binPath), ref.bbox);
-          if (meshes.length) idx = addGeom(geoms, meshes, model, assetRoot, texSize);
-        }
-      }
-    } catch { idx = -1; }
-    geomIndex.set(sharedHref, idx);
-    return idx;
-  };
+  const resolver = createGeomResolver(assetRoot, texSize);
+  const geoms = resolver.geoms;
+  const resolveGeom = resolver.resolve;
 
   // --- place objects onto their own floor's terrain ---
   const floorInstances: Instance[][] = [[], []];
@@ -259,7 +288,7 @@ export function buildScene(
     });
   }
 
-  return { map, skipped, scene: { geoms, floors } };
+  return { map, skipped, scene: { geoms, floors }, resolver };
 }
 
 // Per-vertex ground colour: blend each texture layer's representative colour
@@ -483,7 +512,7 @@ function addGeom(geoms: GeomData[], meshes: Mesh[], model: string, assetRoot: st
 // RGBA (colour type 6) so transparency survives; foliage cutouts need the alpha.
 const crcTab: number[] = (() => { const t: number[] = []; for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
 const crc = (b: Uint8Array | Buffer): number => { let c = 0xffffffff; for (const x of b) c = crcTab[(c ^ x) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
-function pngDataUri(w: number, h: number, rgba: Uint8Array): string {
+export function pngDataUri(w: number, h: number, rgba: Uint8Array): string {
   const raw = Buffer.alloc((w * 4 + 1) * h);
   for (let y = 0; y < h; y++) Buffer.from(rgba.buffer, rgba.byteOffset + y * w * 4, w * 4).copy(raw, y * (w * 4 + 1) + 1);
   const chunk = (t: string, d: Buffer): Buffer => { const l = Buffer.alloc(4); l.writeUInt32BE(d.length); const body = Buffer.concat([Buffer.from(t), d]); const cc = Buffer.alloc(4); cc.writeUInt32BE(crc(body)); return Buffer.concat([l, body, cc]); };

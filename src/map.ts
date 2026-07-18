@@ -20,8 +20,8 @@
 // are reached via the object's `el` DOM node and land as typed accessors in the
 // Phase 4 "parity" work; Phase 1's job is a faithful, enumerable, editable model.
 
-import { parse, serialize, find, findAll, children, text, childText, setText } from './xml.ts';
-import type { XmlElement } from './xml.ts';
+import { parse, serialize, find, findAll, children, text, childText, setText, setAttr, clearElement } from './xml.ts';
+import type { XmlElement, XmlNode } from './xml.ts';
 
 /** A map-space object position: tile coordinates plus height. */
 export interface MapPos {
@@ -159,6 +159,80 @@ export class MapObject {
   }
 }
 
+/** What addObject needs to place something. */
+export interface NewObject {
+  /** Element name, e.g. 'AdvMapStatic'. */
+  type: string;
+  /** Shared-definition href, straight from the palette entry. */
+  shared: string;
+  x: number;
+  y: number;
+  z?: number;
+  r?: number;
+  floor?: number;
+  /** Script name; blank unless the caller has one in mind. */
+  name?: string;
+}
+
+/** Deep copy of an element, so a clone shares no nodes with its donor. */
+function cloneElement(el: XmlElement): XmlElement {
+  return {
+    ...el,
+    attrs: { ...el.attrs },
+    children: el.children.map((c) => (c.type === 'element' ? cloneElement(c) : { ...c })),
+    // The copy is new, so nothing about it can be "unchanged since parsing".
+    _dirtyAttrs: true,
+  } as XmlElement;
+}
+
+/**
+ * A GUID in the shape the maps use: `item_` plus an upper-case hyphenated UUID.
+ *
+ * Version-4 random, matching what the original editor writes. It has to be
+ * unique rather than merely new-looking: the id is the handle the renderer and
+ * every edit path uses to find an object again.
+ */
+function uuid(): string {
+  const b = new Uint8Array(16);
+  for (let i = 0; i < 16; i++) b[i] = Math.floor(Math.random() * 256);
+  b[6] = (b[6]! & 0x0f) | 0x40;
+  b[8] = (b[8]! & 0x3f) | 0x80;
+  const h = [...b].map((x) => x.toString(16).padStart(2, '0').toUpperCase()).join('');
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+}
+
+/**
+ * The bare `<Item><AdvMapX>…</AdvMapX></Item>` every object type shares.
+ *
+ * Used only when the map has no object of this type to copy, which is the
+ * uncommon case. Deliberately minimal rather than guessed-at: writing fields we
+ * have not verified would be inventing data, whereas leaving them out is a
+ * visible gap. Type-specific defaults are Phase 4.
+ */
+function skeletonItem(type: string): XmlElement {
+  const el = (name: string, kids: XmlNode[] = [], attrs: Record<string, string> = {}): XmlElement =>
+    ({ type: 'element', name, attrs, children: kids, _dirtyAttrs: true } as XmlElement);
+  const nl = (indent: number): XmlNode => ({ type: 'text', text: '\n' + '\t'.repeat(indent) } as XmlNode);
+  const leaf = (name: string, value = '', indent = 4): XmlNode[] => [
+    nl(indent),
+    value
+      ? el(name, [{ type: 'text', text: value } as XmlNode])
+      : ({ ...el(name), selfClose: true } as XmlElement),
+  ];
+  const num = (name: string, v: number): XmlNode[] => leaf(name, String(v), 5);
+
+  const pos = el('Pos', [...num('x', 0), ...num('y', 0), ...num('z', 0), nl(4)]);
+  const body = el(type, [
+    nl(4), pos,
+    ...leaf('Rot', '0'),
+    ...leaf('Floor', '0'),
+    ...leaf('Name'),
+    nl(4), { ...el('Shared', [], { href: '' }), selfClose: true } as XmlElement,
+    nl(3),
+  ]);
+  return el('Item', [nl(3), body, nl(2)], { href: `#n:inline(${type})`, id: '' });
+}
+
 /** Fields with dedicated controls, kept out of the generic property list. */
 const POS_FIELDS = new Set(['Pos', 'Rot', 'Floor']);
 
@@ -294,6 +368,54 @@ export class HommMap {
     const c: TypeCounts = {};
     for (const o of this.objects) c[o.type] = (c[o.type] || 0) + 1;
     return c;
+  }
+
+  /**
+   * Place a new object on the map.
+   *
+   * The body is a CLONE of an existing object of the same type whenever the map
+   * has one, with only position, rotation, name and shared reference replaced.
+   * That is not laziness: an object's field set differs per type and per game
+   * version, a mod can add fields of its own, and the surest description of
+   * what a valid AdvMapMonster looks like in THIS map is an AdvMapMonster
+   * already in it. Cloning also inherits the file's own indentation.
+   *
+   * With no donor, a minimal skeleton is written instead — the fields every
+   * object type shares. That is enough for the editor to carry it and for it to
+   * round-trip, but it is NOT a complete object: type-specific fields (a
+   * monster's Amount and Mood, a town's buildings) are missing and their
+   * defaults are Phase 4 work. `complete` says which of the two you got.
+   */
+  addObject(spec: NewObject): { object: MapObject; complete: boolean } {
+    const objectsEl = this.objectsEl;
+    if (!objectsEl) throw new Error('this map has no <objects> list');
+    const donor = this.objects.find((o) => o.type === spec.type);
+    const item = donor ? cloneElement(donor.item) : skeletonItem(spec.type);
+    const body = children(item).find((c) => c.name === spec.type);
+    if (!body) throw new Error(`could not build a ${spec.type} body`);
+
+    // A fresh identity: reusing the donor's id would give two objects the same
+    // handle, and the renderer keys its meshes by it.
+    setAttr(item, 'id', `item_${uuid()}`);
+    const shared = find(body, 'Shared');
+    if (shared) setAttr(shared, 'href', spec.shared);
+    const obj = new MapObject(item, body, this);
+    obj.setPos(spec.x, spec.y, spec.z ?? 0);
+    obj.setRot(spec.r ?? 0);
+    obj.setFloor(spec.floor ?? 0);
+    // The donor's script name would otherwise be copied onto the new object,
+    // and two objects answering to one name is worse than none doing so.
+    const name = find(body, 'Name');
+    if (name) { if (spec.name) setText(name, spec.name); else clearElement(name); }
+
+    // Indent like the item before it, so the file keeps its shape.
+    const arr = objectsEl.children;
+    const last = arr[arr.length - 1];
+    if (last && last.type === 'text') arr.splice(arr.length - 1, 0, item, { type: 'text', text: last.text });
+    else arr.push(item);
+    this._objects = null;
+    this._containers = null;
+    return { object: obj, complete: !!donor };
   }
 
   // Remove an object (its whole <Item> wrapper) from the tree.

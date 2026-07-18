@@ -5,11 +5,13 @@
 // `window.editor`. Type-only module: nothing here emits, so both the ESM main
 // process and the CommonJS preload can import from it.
 
-import type { Scene, SplatData, TileInfo } from '../src/scene.ts';
+import type { Scene, SplatData, TileInfo, Instance, GeomData } from '../src/scene.ts';
 import type { ProjectStatus } from '../src/project.ts';
 import type { TypeCounts, ObjectProp } from '../src/map.ts';
 
 export type { ObjectProp } from '../src/map.ts';
+import type { PlaceableObject } from '../src/objects.ts';
+export type { PlaceableObject } from '../src/objects.ts';
 
 /** One openable map found under the game-data root (`maps:list`). */
 export interface MapListEntry {
@@ -242,6 +244,51 @@ export interface AddLayerResult {
   inMap: string[];
 }
 
+/** Result of `objects:list` — the palette's contents. */
+export interface ObjectCatalogResult {
+  objects: PlaceableObject[];
+  /** Group names in the order the original's Filter dropdown shows them. */
+  groups: { name: string; separator: boolean }[];
+  /** False when no Editor folder was found: no filters and no icons. */
+  hasEditor: boolean;
+}
+
+/** Payload of `objects:icon`. */
+export interface IconPayload {
+  /** Link-file path as it appears in the catalogue. */
+  path: string;
+}
+
+/** Result of `objects:icon`: a PNG data URI, or null when there is no picture. */
+export type IconResult = string | null;
+
+/** Payload of `object:add`. */
+export interface AddObjectPayload {
+  type: string;
+  shared: string;
+  x: number;
+  y: number;
+  floor: number;
+  r?: number;
+}
+
+/** Result of `object:add`. */
+export interface AddObjectResult {
+  /** The placed object, ready for the renderer's instance list. */
+  instance: Instance;
+  /**
+   * A newly decoded mesh and where it landed, when this object's model had not
+   * been seen before. Null when it reuses one the scene already has.
+   */
+  geom: { index: number; data: GeomData } | null;
+  /**
+   * False when the map had no object of this type to copy, so only the shared
+   * fields were written. The object is valid XML and round-trips, but its
+   * type-specific fields are missing.
+   */
+  complete: boolean;
+}
+
 /** Result of `map:status`: null when no map is loaded. */
 export type MapStatusResult = ProjectStatus | null;
 
@@ -258,6 +305,9 @@ export interface EditorApi {
   removeObject(id: string): Promise<ObjectEditResult>;
   objectProps(id: string): Promise<ObjectPropsResult>;
   setObjectProp(p: SetPropPayload): Promise<ObjectEditResult>;
+  listObjects(): Promise<ObjectCatalogResult>;
+  objectIcon(path: string): Promise<IconResult>;
+  addObject(p: AddObjectPayload): Promise<AddObjectResult>;
   save(): Promise<MapSaveResult>;
   pack(): Promise<MapPackResult>;
   status(): Promise<MapStatusResult>;

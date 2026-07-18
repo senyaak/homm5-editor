@@ -114,6 +114,47 @@ const STUB = `<script>
       ] };
     },
     setObjectProp: async (p) => { log('setObjectProp', p); return { ok: true }; },
+    // A catalogue with the shapes that matter: a normal entry, a hidden one, a
+    // random-group one, and one with no type (which must refuse to place).
+    listObjects: async () => {
+      log('listObjects');
+      const mk = (name, group, type, extra) => Object.assign({
+        path: 'MapObjects/_(AdvMapObjectLink)/' + group + '/' + name + '.xdb',
+        name, group, type,
+        shared: '/MapObjects/' + name + '.(' + type + 'Shared).xdb#xpointer(/' + type + 'Shared)',
+        hidden: false, random: false,
+      }, extra || {});
+      return {
+        objects: [
+          mk('Spruce', 'Objects-Grass', 'AdvMapStatic'),
+          mk('Anthill', 'Objects-Grass', 'AdvMapStatic'),
+          mk('Peasant', 'Monsters', 'AdvMapMonster'),
+          mk('TestProp', 'Objects-Grass', 'AdvMapStatic', { hidden: true }),
+          mk('RandomHero', 'GenericHeroes', 'AdvMapHero', { random: true }),
+          mk('Broken', 'Objects-Grass', '', {}),
+        ],
+        groups: [
+          { name: '==== Environment ====', separator: true },
+          { name: 'Objects-Grass', separator: false },
+          { name: 'Monsters', separator: false },
+          { name: 'GenericHeroes', separator: false },
+        ],
+        hasEditor: true,
+      };
+    },
+    objectIcon: async (path) => {
+      log('objectIcon', path);
+      return solid(16, 16, 120, 100, 160);
+    },
+    addObject: async (p) => {
+      log('addObject', p);
+      return {
+        instance: { id: 'item_new' + (window.__calls.length), type: p.type, g: 0,
+          shared: p.shared.split('#')[0], x: p.x, y: p.y, z: 0, r: p.r || 0 },
+        geom: null,
+        complete: p.type === 'AdvMapStatic',
+      };
+    },
     save: async () => { log('save'); return { ok: true, status }; },
     pack: async () => ({ canceled: true }),
     status: async () => status,

@@ -7,7 +7,7 @@
 //   4. Edit locality: moving one object changes only that object's bytes.
 //   5. Remove: dropping an object removes exactly its <Item>.
 
-import { parse, serialize } from '../src/xml.ts';
+import { parse, serialize, childText } from '../src/xml.ts';
 import { loadMap } from '../src/map.ts';
 import { readFileSync, existsSync } from 'node:fs';
 import { execSync } from 'node:child_process';
@@ -90,6 +90,36 @@ if (rich) {
     const d = countLineDiffs(readFileSync(rich, 'latin1'), m3.save());
     ok(d === 1, `setting one property changes exactly 1 line (got ${d})`);
   }
+
+  // --- placing new objects ---
+  const m4 = loadMap(readFileSync(rich, 'latin1'));
+  const n4 = m4.objects.length;
+  const SH = '/MapObjects/Grass/Tree/Spruce_01.(AdvMapStaticShared).xdb#xpointer(/AdvMapStaticShared)';
+  const added = m4.addObject({ type: 'AdvMapStatic', shared: SH, x: 11, y: 22, floor: 0 });
+  ok(m4.objects.length === n4 + 1, `placing adds one object (${n4} -> ${m4.objects.length})`);
+  ok(added.complete, 'a type the map already has is cloned, so it is complete');
+  ok(/^item_[0-9A-F-]{36}$/.test(added.object.id), `id looks like the map's own (${added.object.id})`);
+  ok(added.object.shared === SH, 'the shared reference is the one asked for');
+  const p4 = added.object.pos;
+  ok(p4.x === 11 && p4.y === 22, 'it lands where it was put');
+  // Cloning must not copy the donor's identity or script name.
+  const donor = m4.objects.find((o) => o.type === 'AdvMapStatic' && o.id !== added.object.id);
+  ok(donor && donor.id !== added.object.id, 'the clone gets its own id');
+  ok(childText(added.object.el, 'Name') === '', 'the clone does not inherit a script name');
+
+  // A type this map has none of falls back to the skeleton, and says so.
+  const sk = m4.addObject({ type: 'AdvMapSphinx', shared: '/x.xdb#xpointer(/AdvMapSphinxShared)', x: 1, y: 2 });
+  ok(!sk.complete, 'with no donor the caller is told the object is skeleton-only');
+
+  // The point of all of it: what we wrote has to be readable again.
+  const saved = m4.save();
+  const m5 = loadMap(saved);
+  ok(m5.objects.length === m4.objects.length, 'every placed object survives a save');
+  ok(m5.objects.some((o) => o.id === added.object.id), 'the placed object is found after reload');
+  ok(m5.save() === saved, 'a map with new objects round-trips');
+  ok(new Set(m5.objects.map((o) => o.id)).size === m5.objects.length, 'ids stay unique');
+  // Empty fields are written self-closed, the way the maps do it.
+  ok(saved.includes('<Name/>'), 'empty fields are written as <Name/>, not <Name></Name>');
 }
 
 function countLineDiffs(a, b) {

@@ -184,5 +184,15 @@ export function setText(el: XmlElement, value: string | number): void {
   el.selfClose = false;
 }
 
+// Empty an element and write it as `<Name/>`.
+//
+// Not the same as setText(el, ''), which leaves `<Name></Name>`. The maps write
+// every empty field self-closed, and matching that keeps a new object looking
+// like the ones beside it — and keeps diffs to what actually changed.
+export function clearElement(el: XmlElement): void {
+  el.children = [];
+  el.selfClose = true;
+}
+
 // Set an attribute and flag the element so serialize() rebuilds its attr segment.
 export function setAttr(el: XmlElement, key: string, value: string): void { el.attrs[key] = value; el._dirtyAttrs = true; }

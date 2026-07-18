@@ -16,16 +16,18 @@ import type { IpcMainInvokeEvent } from 'electron';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, basename, relative, sep } from 'node:path';
 import { readFileSync, writeFileSync, existsSync, readdirSync, statSync } from 'node:fs';
-import { buildScene, findAssetRoot, listTiles, splatFor } from '../src/scene.ts';
+import { buildScene, findAssetRoot, listTiles, splatFor, pngDataUri } from '../src/scene.ts';
+import { listPlaceable, findEditorRoot, iconPathFor, readIconFile } from '../src/objects.ts';
 import { initProject, packProject, status } from '../src/project.ts';
 import { watchMapDir } from '../src/watch.ts';
 import type { MapWatch } from '../src/watch.ts';
 import { TerrainDoc } from '../src/terrain-edit.ts';
-import type { TileInfo } from '../src/scene.ts';
+import type { TileInfo, GeomResolver } from '../src/scene.ts';
 import type { HommMap, MapObject } from '../src/map.ts';
 import type {
   MapsListResult, MapListEntry, MapLoadResult, MoveObjectPayload, MoveObjectResult,
   RotateObjectPayload, RemoveObjectPayload, ObjectEditResult, ObjectPropsResult, SetPropPayload,
+  ObjectCatalogResult, IconPayload, IconResult, AddObjectPayload, AddObjectResult,
   MapSaveResult, MapPackResult, TerrainTilesResult, MapStatusResult, OpenMapDialogResult,
   ExternalChange, PaintTilePayload, PaintTileResult, SculptPayload, SculptResult,
   AddLayerPayload, AddLayerResult, PaintRiverPayload, MaskPayload,
@@ -56,6 +58,8 @@ interface Session {
   watch: MapWatch;
   /** Editable terrain per floor, opened lazily on the first brush stroke. */
   terrain: Map<number, TerrainDoc>;
+  /** Kept alive so an object placed later can be meshed without a full rebuild. */
+  resolver: GeomResolver;
 }
 
 /** Terrain file backing each floor index. */
@@ -70,6 +74,19 @@ function terrainDoc(s: Session, floor: number): TerrainDoc {
   const doc = TerrainDoc.open(join(s.mapDir, file));
   s.terrain.set(floor, doc);
   return doc;
+}
+
+// Where the editor's own config lives: MapFilters.xml and IconCache. It sits
+// beside the game install rather than inside the paks, so it is found from the
+// data root's neighbourhood and can be pointed at explicitly when the data root
+// is an unpacked copy somewhere else entirely.
+const EDITOR_ROOT = process.env.HOMM5_EDITOR || findEditorRoot(GAME_DATA);
+
+/** The object catalogue, scanned once — 1466 small files is not a per-call cost. */
+let catalogCache: ReturnType<typeof listPlaceable> | null = null;
+function catalog(): ReturnType<typeof listPlaceable> {
+  if (!catalogCache) catalogCache = listPlaceable(GAME_DATA, EDITOR_ROOT || '');
+  return catalogCache;
 }
 
 // Current editing session (one map at a time for now).
@@ -108,7 +125,7 @@ async function runSmoke(mapPath: string): Promise<void> {
   try {
     const assetRoot = findAssetRoot(mapPath);
     if (!assetRoot) throw new Error(`asset root not found above ${mapPath}`);
-    const { map, scene, skipped } = buildScene(assetRoot, mapPath);
+    const { map, scene, skipped, resolver } = buildScene(assetRoot, mapPath);
     initProject(dirname(mapPath));
     const placed = scene.floors.reduce((a, f) => a + f.instances.length, 0);
     console.log(`SMOKE ok: ${map.tileX}x${map.tileY}, geoms ${scene.geoms.length}, floors ${scene.floors.length}, placed ${placed}, skipped ${skipped}`);
@@ -166,7 +183,7 @@ ipcMain.handle('map:load', async (_e: IpcMainInvokeEvent, mapPath: string): Prom
   if (!assetRoot) throw new Error('asset root not found (need MapObjects/ or bin/Geometries/ above the map, or set HOMM5_DATA)');
   lastDir = dirname(mapPath);
   const mapDir = dirname(mapPath);
-  const { map, scene, skipped } = buildScene(assetRoot, mapPath);
+  const { map, scene, skipped, resolver } = buildScene(assetRoot, mapPath);
   initProject(mapDir); // ensure a manifest so status/pack work
   // Tile paths this map's terrain actually has layers for (union over floors).
   const layerPaths = [...new Set(scene.floors.flatMap((f) => f.splat?.paths || []))];
@@ -183,7 +200,7 @@ ipcMain.handle('map:load', async (_e: IpcMainInvokeEvent, mapPath: string): Prom
     };
     win?.webContents.send('map:external-change', payload);
   });
-  session = { mapPath, mapDir, assetRoot, map, layerPaths, watch, terrain: new Map() };
+  session = { mapPath, mapDir, assetRoot, map, layerPaths, watch, terrain: new Map(), resolver };
   const placed = scene.floors.reduce((a, f) => a + f.instances.length, 0);
   return {
     scene,
@@ -224,6 +241,59 @@ ipcMain.handle('object:rotate', async (_e: IpcMainInvokeEvent, { id, r }: Rotate
   if (!session) throw new Error('no map loaded');
   findObject(session, id).setRot(r);
   return { ok: true };
+});
+
+// --- IPC: the placeable-object catalogue (the original's Objects tab) ---
+//
+// Two different roots, deliberately. The link files are game DATA, so they come
+// from the same unpacked root as every other asset; the filter list and icons
+// are editor CONFIG and live loose beside the game install, outside the paks.
+// A machine with the game installed but no unpacked data has icons and no
+// catalogue, and the other way round — so neither is assumed present.
+ipcMain.handle('objects:list', async (): Promise<ObjectCatalogResult> => {
+  const cat = catalog();
+  return {
+    objects: cat.objects,
+    groups: cat.groups.map((g) => ({ name: g.name, separator: g.separator })),
+    hasEditor: !!EDITOR_ROOT,
+  };
+});
+
+// --- IPC: one palette icon, decoded on demand ---
+// 1466 icons at 64x64 RGBA would be ~24 MB pushed across the bridge for a panel
+// showing a few dozen at a time, so they are fetched per tile as it scrolls in.
+ipcMain.handle('objects:icon', async (_e: IpcMainInvokeEvent, { path }: IconPayload): Promise<IconResult> => {
+  if (!EDITOR_ROOT) return null;
+  const file = iconPathFor(EDITOR_ROOT, path);
+  if (!file) return null;
+  try {
+    const icon = readIconFile(readFileSync(file));
+    // A few entries hold an image declared 0x0 — a placeholder with no picture.
+    return icon ? pngDataUri(icon.w, icon.h, icon.rgba) : null;
+  } catch { return null; }
+});
+
+// --- IPC: place a new object ---
+// The model writes the map side; the mesh is resolved here so the renderer can
+// show it at once. A model the scene has not seen before is sent along with the
+// instance, since the renderer's geometry list is built at load time.
+ipcMain.handle('object:add', async (_e: IpcMainInvokeEvent, p: AddObjectPayload): Promise<AddObjectResult> => {
+  if (!session) throw new Error('no map loaded');
+  const before = session.resolver.geoms.length;
+  const gi = session.resolver.resolve(p.shared);
+  if (gi < 0) throw new Error('this object has no model we can decode yet');
+  const { object, complete } = session.map.addObject({
+    type: p.type, shared: p.shared, x: p.x, y: p.y, floor: p.floor, r: p.r ?? 0,
+  });
+  const geomData = session.resolver.geoms[gi];
+  return {
+    instance: {
+      id: object.id, type: object.type, g: gi, shared: p.shared.split('#')[0]!,
+      x: p.x, y: p.y, z: 0, r: p.r ?? 0,
+    },
+    geom: gi >= before && geomData ? { index: gi, data: geomData } : null,
+    complete,
+  };
 });
 
 // --- IPC: an object's simple fields, for the property panel ---

@@ -16,8 +16,8 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-import type { Scene, Floor, Instance, SplatData, TileInfo } from '../src/scene.ts';
-import type { EditorApi, MapListEntry, ExternalChange } from '../electron/ipc.ts';
+import type { Scene, Floor, Instance, SplatData, TileInfo, GeomData } from '../src/scene.ts';
+import type { EditorApi, MapListEntry, ExternalChange, PlaceableObject } from '../electron/ipc.ts';
 
 type MapEntry = MapListEntry & { cat: string };
 /**
@@ -224,10 +224,32 @@ function clearWorld(): void {
   world = null; selected = null; updatePanel();
 }
 
+// The per-geom geometries and materials, shared across floors.
+//
+// Module-level rather than local to buildGeos because they outlive the load:
+// placing an object from the palette can bring a model the map never used, and
+// it is appended here at the index the main process assigned it.
+let worldGeos: THREE.BufferGeometry[] = [];
+let worldMats: THREE.Material[] = [];
+
+const texLoader = new THREE.TextureLoader();
+const greyMat = new THREE.MeshLambertMaterial({ color: 0x8a8f98, side: THREE.DoubleSide });
+
+/** Material for one decoded mesh: its texture, or grey when it has none. */
+function materialFor(g: GeomData): THREE.Material {
+  if (!g.tex) return greyMat;
+  const tx = texLoader.load(g.tex);
+  tx.wrapS = tx.wrapT = THREE.RepeatWrapping;
+  tx.flipY = false;
+  const m = new THREE.MeshLambertMaterial({ map: tx, side: THREE.DoubleSide });
+  // Cutout textures (foliage): discard transparent texels so leaves aren't
+  // opaque black cards. alphaTest avoids the sorting cost of full transparency.
+  if (g.alpha) { m.alphaTest = 0.5; m.transparent = false; }
+  return m;
+}
+
 // Build the shared per-geom geometries + materials (reused across floors).
 function buildGeos(S: Scene) {
-  const loader = new THREE.TextureLoader();
-  const grey = new THREE.MeshLambertMaterial({ color: 0x8a8f98, side: THREE.DoubleSide });
   const geos = S.geoms.map((g) => {
     const b = new THREE.BufferGeometry();
     b.setAttribute('position', new THREE.BufferAttribute(new Float32Array(g.pos), 3));
@@ -235,15 +257,9 @@ function buildGeos(S: Scene) {
     b.setIndex(g.idx); b.computeVertexNormals();
     return b;
   });
-  const mats = S.geoms.map((g) => {
-    if (!g.tex) return grey;
-    const tx = loader.load(g.tex); tx.wrapS = tx.wrapT = THREE.RepeatWrapping; tx.flipY = false;
-    const m = new THREE.MeshLambertMaterial({ map: tx, side: THREE.DoubleSide });
-    // Cutout textures (foliage): discard transparent texels so leaves aren't
-    // opaque black cards. alphaTest avoids the sorting cost of full transparency.
-    if (g.alpha) { m.alphaTest = 0.5; m.transparent = false; }
-    return m;
-  });
+  const mats = S.geoms.map(materialFor);
+  worldGeos = geos;
+  worldMats = mats;
   return { geos, mats };
 }
 
@@ -2105,6 +2121,221 @@ function setShowObjects(on: boolean): void {
 }
 $('showobj').onclick = () => setShowObjects(!showObjects);
 
+// --- object palette (the original editor's Objects tab) --------------------
+//
+// The catalogue is 1466 entries with an icon each, so two things are lazy: the
+// grid renders a page at a time, and an icon is fetched only when its tile is
+// actually built. Pushing every icon up front would be ~24 MB across the bridge
+// for a panel that shows two dozen at once.
+//
+// Placing is a drag from a tile onto the map, which is how the original works
+// and, more usefully, means the drop point is the position — no separate "now
+// click where you want it" mode to get stuck in.
+
+let catalog: PlaceableObject[] = [];
+let catGroups: { name: string; separator: boolean }[] = [];
+let objPalOpen = false;
+let objCat = ALL;
+let objSearch = '';
+let showHiddenObjects = false;
+/** The entry a drag is carrying, or null. */
+let dragObject: PlaceableObject | null = null;
+/** Icons already fetched, so scrolling back does not refetch. */
+const iconCache = new Map<string, string | null>();
+
+/** How many tiles to render before the "show more" row. */
+const OBJ_PAGE = 120;
+let objShown = OBJ_PAGE;
+
+function objMatches(o: PlaceableObject): boolean {
+  if (o.hidden && !showHiddenObjects) return false;
+  if (objCat !== ALL && o.group !== objCat) return false;
+  if (objSearch && !o.name.toLowerCase().includes(objSearch)) return false;
+  return true;
+}
+
+async function initObjectPalette(): Promise<void> {
+  if (catalog.length) return;
+  try {
+    const r = await window.editor.listObjects();
+    catalog = r.objects;
+    catGroups = r.groups;
+    if (!r.hasEditor) {
+      $('hud').textContent = 'no Editor folder found — objects are ungrouped and have no icons';
+    }
+    renderObjCats();
+    renderObjGrid();
+  } catch (e) {
+    $('obj-grid').innerHTML = `<div style="color:#f85149;font-size:11px">${
+      e instanceof Error ? e.message : String(e)}</div>`;
+  }
+}
+
+function renderObjCats(): void {
+  const sel = $select('obj-cat');
+  sel.innerHTML = '';
+  const all = document.createElement('option');
+  all.value = ALL;
+  all.textContent = `All (${catalog.length})`;
+  sel.appendChild(all);
+  const counts = new Map<string, number>();
+  for (const o of catalog) counts.set(o.group, (counts.get(o.group) || 0) + 1);
+  for (const g of catGroups) {
+    const opt = document.createElement('option');
+    if (g.separator) {
+      // Kept, and kept unselectable: the original shows these headings in the
+      // same list, and dropping them would lose the grouping they carry.
+      opt.textContent = g.name;
+      opt.disabled = true;
+    } else {
+      opt.value = g.name;
+      opt.textContent = `${g.name} (${counts.get(g.name) || 0})`;
+    }
+    sel.appendChild(opt);
+  }
+  // "Other" is ours, not the original's: entries no filter covers. A mod's own
+  // folder lands here rather than vanishing.
+  if (counts.get('Other')) {
+    const opt = document.createElement('option');
+    opt.value = 'Other';
+    opt.textContent = `Other (${counts.get('Other')})`;
+    sel.appendChild(opt);
+  }
+  sel.value = objCat;
+}
+
+function renderObjGrid(): void {
+  const grid = $('obj-grid');
+  grid.innerHTML = '';
+  const list = catalog.filter(objMatches);
+  for (const o of list.slice(0, objShown)) {
+    const el = document.createElement('div');
+    el.className = 'obj' + (dragObject?.path === o.path ? ' on' : '');
+    el.draggable = true;
+    el.title = `${o.name}\n${o.type || 'unknown type'}\n${o.group}`;
+    const img = document.createElement('img');
+    img.className = 'ic';
+    el.appendChild(img);
+    void setIcon(img, o.path);
+    if (o.random) { const b = document.createElement('span'); b.className = 'rnd'; b.textContent = 'rnd'; el.appendChild(b); }
+    if (o.hidden) { const b = document.createElement('span'); b.className = 'hid'; b.textContent = 'hid'; el.appendChild(b); }
+    const nm = document.createElement('div');
+    nm.className = 'nm';
+    nm.textContent = o.name;
+    el.appendChild(nm);
+    el.addEventListener('dragstart', (ev) => {
+      dragObject = o;
+      $('obj-sel').textContent = `${o.name} · ${o.type || '?'}`;
+      // Firefox and Chromium both need SOME payload or the drag never starts.
+      ev.dataTransfer?.setData('text/plain', o.path);
+      if (ev.dataTransfer) ev.dataTransfer.effectAllowed = 'copy';
+      renderObjGrid();
+    });
+    el.addEventListener('dragend', () => { dragObject = null; renderObjGrid(); });
+    grid.appendChild(el);
+  }
+  if (list.length > objShown) {
+    const more = document.createElement('div');
+    more.className = 'more';
+    more.textContent = `+${list.length - objShown} more — click to show`;
+    more.onclick = () => { objShown += OBJ_PAGE; renderObjGrid(); };
+    grid.appendChild(more);
+  }
+  if (!list.length) {
+    grid.innerHTML = '<div class="more">nothing matches</div>';
+  }
+}
+
+/** Fill an icon, fetching it once per catalogue entry. */
+async function setIcon(img: HTMLImageElement, path: string): Promise<void> {
+  if (iconCache.has(path)) {
+    const uri = iconCache.get(path);
+    if (uri) img.src = uri;
+    return;
+  }
+  try {
+    const uri = await window.editor.objectIcon(path);
+    iconCache.set(path, uri);
+    if (uri) img.src = uri;
+  } catch { iconCache.set(path, null); }
+}
+
+function setObjPalette(open: boolean): void {
+  objPalOpen = open;
+  $('objpal').style.display = open ? 'flex' : 'none';
+  $('objpalbtn').classList.toggle('on', open);
+  // Only one right-hand panel at a time; they occupy the same strip.
+  if (open && paletteOpen) setPalette(false);
+  $('help').style.right = open ? '262px' : '12px';
+  $('panel').style.right = open ? '262px' : '12px';
+  if (open) void initObjectPalette();
+}
+
+/**
+ * Drop an object onto the map.
+ *
+ * The tile under the cursor is found the same way the terrain brush finds it,
+ * so what lands is what the cursor was over.
+ */
+async function dropObject(ev: DragEvent): Promise<void> {
+  const o = dragObject;
+  dragObject = null;
+  if (!o || !world) return;
+  const tile = tileUnderCursor(ev as unknown as PointerEvent);
+  if (!tile) { $('hud').textContent = 'drop it on the terrain'; return; }
+  if (!o.type) { $('hud').textContent = `${o.name}: unknown object type, not placed`; return; }
+  try {
+    const res = await window.editor.addObject({
+      type: o.type, shared: o.shared, x: tile.x, y: tile.y, floor: world.active,
+    });
+    addInstanceToScene(res.instance, res.geom);
+    markDirty(true);
+    renderExplorer();
+    if (res.instance.id) selectById(res.instance.id);
+    $('hud').textContent = res.complete
+      ? `placed ${o.name} at ${tile.x}, ${tile.y}`
+      // Said out loud rather than silently: with no object of this type on the
+      // map to copy, only the shared fields were written.
+      : `placed ${o.name} at ${tile.x}, ${tile.y} — no ${o.type} on this map to copy, so type-specific fields are missing`;
+  } catch (e) {
+    $('hud').textContent = 'could not place: ' + (e instanceof Error ? e.message : String(e));
+  }
+}
+
+/** Add a freshly placed object to the live scene. */
+function addInstanceToScene(inst: Instance, geom: { index: number; data: GeomData } | null): void {
+  if (!world) return;
+  const fl = world.floors[world.active];
+  if (!fl) return;
+  // Every path that selects, moves, rotates or deletes an object finds it by
+  // id, so an object without one would be on screen and unreachable.
+  if (!inst.id) { $('hud').textContent = 'placed, but it came back without an id — reload'; return; }
+  // A model this scene has never drawn arrives with the instance; build its
+  // geometry and material now and park them at the index the main process used,
+  // so `inst.g` means the same thing on both sides.
+  if (geom) {
+    const b = new THREE.BufferGeometry();
+    b.setAttribute('position', new THREE.BufferAttribute(new Float32Array(geom.data.pos), 3));
+    if (geom.data.uv) b.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(geom.data.uv), 2));
+    b.setIndex(geom.data.idx);
+    b.computeVertexNormals();
+    worldGeos[geom.index] = b;
+    worldMats[geom.index] = materialFor(geom.data);
+  }
+  const g = worldGeos[inst.g], m = worldMats[inst.g];
+  if (!g || !m) { $('hud').textContent = 'placed, but its mesh is missing — reload to see it'; return; }
+  // Stand it on the ground: the main process does not have the height plane the
+  // renderer is drawing.
+  inst.z = heightAt(inst.x, inst.y);
+  const mesh = new THREE.Mesh(g, m);
+  mesh.position.set(inst.x, inst.y, inst.z);
+  mesh.rotation.z = inst.r;
+  mesh.userData.inst = inst;
+  fl.objGroup.add(mesh);
+  fl.meshes.set(inst.id, mesh);
+  fl.instances.push(inst);
+}
+
 // --- terrain palette (content browser) -------------------------------------
 // The ground tiles the game ships, grouped by their folder the way the original
 // editor's "Terra skin" list is. Selecting one arms it as the paint tile.
@@ -2220,6 +2451,39 @@ function setPalette(open: boolean): void {
   if (open) initPalette();
 }
 $('palbtn').onclick = () => setPalette(!paletteOpen);
+$('objpalbtn').onclick = () => setObjPalette(!objPalOpen);
+$select('obj-cat').addEventListener('change', (e) => {
+  objCat = (e.currentTarget as HTMLSelectElement).value;
+  objShown = OBJ_PAGE;
+  renderObjGrid();
+});
+$input('obj-search').addEventListener('input', (e) => {
+  objSearch = (e.currentTarget as HTMLInputElement).value.trim().toLowerCase();
+  objShown = OBJ_PAGE;
+  renderObjGrid();
+});
+$input('obj-hidden').addEventListener('change', (e) => {
+  showHiddenObjects = (e.currentTarget as HTMLInputElement).checked;
+  objShown = OBJ_PAGE;
+  renderObjGrid();
+});
+
+// Drag from the palette onto the scene. dragover must be cancelled or the drop
+// never fires — the browser's default is to reject.
+renderer.domElement.addEventListener('dragover', (ev) => {
+  if (!dragObject) return;
+  ev.preventDefault();
+  if (ev.dataTransfer) ev.dataTransfer.dropEffect = 'copy';
+  // Show the footprint under the cursor while dragging, the same gizmo the
+  // terrain brush uses, so the drop point is visible before letting go.
+  updateBrushCursor(tileUnderCursor(ev as unknown as PointerEvent));
+});
+renderer.domElement.addEventListener('drop', (ev) => {
+  if (!dragObject) return;
+  ev.preventDefault();
+  updateBrushCursor(null);
+  void dropObject(ev);
+});
 
 $('brushbtn').onclick = () => {
   // Arming the tile brush without a tile chosen would silently do nothing, so
@@ -2310,6 +2574,7 @@ async function loadMapPath(path: string | null): Promise<void> {
     $('seawrap').style.display = hasSea ? 'flex' : 'none';
     seaBase = S.floors.find((f) => f.water)?.water?.level ?? 1.5;
     $('palbtn').style.display = '';
+    $('objpalbtn').style.display = '';
     $('brushwrap').style.display = 'flex';
     setBrush(false); // a fresh map starts in camera mode
     $('cliffbtn').style.display = '';
