@@ -153,7 +153,7 @@
       gap: 4px; white-space: nowrap; cursor: pointer; }
     #obj-grid { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 8px; display: grid;
       grid-template-columns: 1fr 1fr; gap: 8px; align-content: start; }
-    #obj-grid .obj { cursor: grab; border: 2px solid transparent; border-radius: 6px;
+    #obj-grid .obj { cursor: pointer; border: 2px solid transparent; border-radius: 6px;
       padding: 3px; background: #161b22; position: relative; }
     #obj-grid .obj:hover { background: #21262d; }
     #obj-grid .obj.on { border-color: #1f6feb; background: #1f6feb22; }
@@ -368,7 +368,7 @@
     <div id="obj-grid"></div>
     <div class="pal-foot">
       <div id="obj-sel">no object selected</div>
-      <div class="pal-note">drag onto the map to place</div>
+      <div class="pal-note">click to arm, then click the map</div>
     </div>
   </div>
 

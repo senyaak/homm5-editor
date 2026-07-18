@@ -11,7 +11,7 @@
 // Everything file-format lives in ../src (shared with the CLI tools). This file
 // is only wiring: window creation + IPC handlers.
 
-import { app, BrowserWindow, ipcMain, dialog } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, screen } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, basename, relative, sep } from 'node:path';
@@ -104,8 +104,13 @@ let win: BrowserWindow | null = null;
 let lastDir = existsSync(join(GAME_DATA, 'Maps')) ? join(GAME_DATA, 'Maps') : GAME_DATA;
 
 function createWindow(): void {
+  // Fit the work area rather than insisting on 1400x900. On a smaller or scaled
+  // display that size hangs off the right edge, and what hangs off is the
+  // right-hand panel — the palettes — so a chunk of the UI is simply not there.
+  const area = screen.getPrimaryDisplay().workAreaSize;
   win = new BrowserWindow({
-    width: 1400, height: 900,
+    width: Math.min(1400, area.width), height: Math.min(900, area.height),
+    center: true,
     backgroundColor: '#0d1014',
     title: 'homm5-editor',
     webPreferences: {

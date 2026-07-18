@@ -1095,6 +1095,13 @@ renderer.domElement.addEventListener('pointerdown', (ev) => {
     applyBrush(ev);
     return;
   }
+  // With an object armed, a click places it — but a DRAG still orbits, so the
+  // camera stays usable without disarming. Which it was is only known on
+  // pointerup, so nothing is decided here beyond remembering where it started.
+  if (placeObject) {
+    down = { sx: ev.clientX, sy: ev.clientY, hitId: null };
+    return;
+  }
   const hit = pickObject(ev);
   down = { sx: ev.clientX, sy: ev.clientY, hitId: hit ? hit.userData.inst.id : null };
   // Grab-to-move only when pressing on the already-selected object.
@@ -1109,6 +1116,9 @@ renderer.domElement.addEventListener('pointermove', (ev) => {
   // Track the footprint on every move, painting or not -- the point of the
   // gizmo is to show where a stroke WOULD land before committing to one.
   if (brushOn) updateBrushCursor(tileUnderCursor(ev));
+  // The armed object borrows the brush's footprint gizmo, so where it will land
+  // is visible before committing — the same feedback painting gets.
+  else if (placeObject) updateBrushCursor(tileUnderCursor(ev));
   if (painting) { applyBrush(ev); return; }
   if (!dragging || !selected) return;
   // Project the cursor onto a horizontal plane at the object's height and snap
@@ -1143,6 +1153,15 @@ addEventListener('pointerup', async (ev) => {
   }
   if (!world || !down) return;
   const wasClick = Math.abs(ev.clientX - down.sx) < CLICK_SLOP && Math.abs(ev.clientY - down.sy) < CLICK_SLOP;
+
+  if (placeObject) {
+    down = null;
+    if (!wasClick) return; // that was an orbit
+    const tile = tileUnderCursor(ev);
+    if (!tile) { $('hud').textContent = 'click on the terrain to place'; return; }
+    await placeAt(tile);
+    return;
+  }
 
   if (dragging) {
     dragging = false; controls.enabled = true;
@@ -2067,6 +2086,14 @@ async function commitBrush(): Promise<void> {
 
 function setBrush(on: boolean): void {
   brushOn = on;
+  // The two are mutually exclusive, both being left-click on the terrain.
+  // armObject() disarms the brush; this is the same rule the other way round,
+  // and it must not call back into armObject or the two would bounce.
+  if (on && placeObject) {
+    placeObject = null;
+    $('obj-sel').textContent = 'no object selected';
+    renderObjGrid();
+  }
   const b = $button('brushbtn');
   b.classList.toggle('on', on);
   // The label says the state rather than the action: with the mode selector
@@ -2128,9 +2155,11 @@ $('showobj').onclick = () => setShowObjects(!showObjects);
 // actually built. Pushing every icon up front would be ~24 MB across the bridge
 // for a panel that shows two dozen at once.
 //
-// Placing is a drag from a tile onto the map, which is how the original works
-// and, more usefully, means the drop point is the position — no separate "now
-// click where you want it" mode to get stuck in.
+// Placing is click-to-arm, then click on the map — and the armed object STAYS
+// armed, so a row of ten gold piles is ten clicks. Dragging one tile per object
+// was the first attempt and it was wrong twice over: HTML5 drag-and-drop over
+// the WebGL canvas did not fire at all, and even working it would have made the
+// common case (many copies of the same thing) the most tiring one.
 
 let catalog: PlaceableObject[] = [];
 let catGroups: { name: string; separator: boolean }[] = [];
@@ -2138,8 +2167,8 @@ let objPalOpen = false;
 let objCat = ALL;
 let objSearch = '';
 let showHiddenObjects = false;
-/** The entry a drag is carrying, or null. */
-let dragObject: PlaceableObject | null = null;
+/** The catalogue entry armed for placing, or null. Stays set across placements. */
+let placeObject: PlaceableObject | null = null;
 /** Icons already fetched, so scrolling back does not refetch. */
 const iconCache = new Map<string, string | null>();
 
@@ -2210,8 +2239,7 @@ function renderObjGrid(): void {
   const list = catalog.filter(objMatches);
   for (const o of list.slice(0, objShown)) {
     const el = document.createElement('div');
-    el.className = 'obj' + (dragObject?.path === o.path ? ' on' : '');
-    el.draggable = true;
+    el.className = 'obj' + (placeObject?.path === o.path ? ' on' : '');
     el.title = `${o.name}\n${o.type || 'unknown type'}\n${o.group}`;
     const img = document.createElement('img');
     img.className = 'ic';
@@ -2223,15 +2251,8 @@ function renderObjGrid(): void {
     nm.className = 'nm';
     nm.textContent = o.name;
     el.appendChild(nm);
-    el.addEventListener('dragstart', (ev) => {
-      dragObject = o;
-      $('obj-sel').textContent = `${o.name} · ${o.type || '?'}`;
-      // Firefox and Chromium both need SOME payload or the drag never starts.
-      ev.dataTransfer?.setData('text/plain', o.path);
-      if (ev.dataTransfer) ev.dataTransfer.effectAllowed = 'copy';
-      renderObjGrid();
-    });
-    el.addEventListener('dragend', () => { dragObject = null; renderObjGrid(); });
+    // Clicking the armed one again disarms, so the palette is its own off switch.
+    el.onclick = () => armObject(placeObject?.path === o.path ? null : o);
     grid.appendChild(el);
   }
   if (list.length > objShown) {
@@ -2272,17 +2293,39 @@ function setObjPalette(open: boolean): void {
 }
 
 /**
- * Drop an object onto the map.
+ * Arm (or disarm) a catalogue entry for placing.
  *
- * The tile under the cursor is found the same way the terrain brush finds it,
- * so what lands is what the cursor was over.
+ * Arming takes the terrain brush down: both want the left button on the
+ * terrain, and leaving both live would mean painting ground every time you
+ * placed a tree.
  */
-async function dropObject(ev: DragEvent): Promise<void> {
-  const o = dragObject;
-  dragObject = null;
+function armObject(o: PlaceableObject | null): void {
+  placeObject = o;
+  if (o) {
+    if (brushOn) setBrush(false);
+    $('obj-sel').textContent = `placing: ${o.name} · ${o.type || '?'}`;
+    $('hud').textContent = o.type
+      ? `click the map to place ${o.name} — Esc or click it again to stop`
+      : `${o.name} has no object type we recognise, so it cannot be placed`;
+    renderer.domElement.style.cursor = 'none';
+  } else {
+    $('obj-sel').textContent = 'no object selected';
+    renderer.domElement.style.cursor = '';
+    updateBrushCursor(null);
+  }
+  renderObjGrid();
+}
+
+/**
+ * Place the armed object at a tile.
+ *
+ * Stays armed afterwards, and does NOT select what it just placed: selecting
+ * would fight the next click, which is meant to be the next copy. The explorer
+ * list is refreshed so the new object is findable there straight away.
+ */
+async function placeAt(tile: { x: number; y: number }): Promise<void> {
+  const o = placeObject;
   if (!o || !world) return;
-  const tile = tileUnderCursor(ev as unknown as PointerEvent);
-  if (!tile) { $('hud').textContent = 'drop it on the terrain'; return; }
   if (!o.type) { $('hud').textContent = `${o.name}: unknown object type, not placed`; return; }
   try {
     const res = await window.editor.addObject({
@@ -2291,7 +2334,6 @@ async function dropObject(ev: DragEvent): Promise<void> {
     addInstanceToScene(res.instance, res.geom);
     markDirty(true);
     renderExplorer();
-    if (res.instance.id) selectById(res.instance.id);
     $('hud').textContent = res.complete
       ? `placed ${o.name} at ${tile.x}, ${tile.y}`
       // Said out loud rather than silently: with no object of this type on the
@@ -2468,21 +2510,14 @@ $input('obj-hidden').addEventListener('change', (e) => {
   renderObjGrid();
 });
 
-// Drag from the palette onto the scene. dragover must be cancelled or the drop
-// never fires — the browser's default is to reject.
-renderer.domElement.addEventListener('dragover', (ev) => {
-  if (!dragObject) return;
-  ev.preventDefault();
-  if (ev.dataTransfer) ev.dataTransfer.dropEffect = 'copy';
-  // Show the footprint under the cursor while dragging, the same gizmo the
-  // terrain brush uses, so the drop point is visible before letting go.
-  updateBrushCursor(tileUnderCursor(ev as unknown as PointerEvent));
-});
-renderer.domElement.addEventListener('drop', (ev) => {
-  if (!dragObject) return;
-  ev.preventDefault();
-  updateBrushCursor(null);
-  void dropObject(ev);
+// Esc gives the armed object up. Without it the only way out is finding the
+// same tile in the palette again, which is a poor exit from a sticky mode.
+addEventListener('keydown', (e) => {
+  if (e.code === 'Escape' && placeObject && !isTyping(e.target)) {
+    armObject(null);
+    $('hud').textContent = 'stopped placing';
+    e.preventDefault();
+  }
 });
 
 $('brushbtn').onclick = () => {
