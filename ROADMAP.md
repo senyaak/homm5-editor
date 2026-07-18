@@ -109,7 +109,10 @@ every brush.
 - [x] Rotate and delete objects: a free-angle slider, ±15° buttons, `[` / `]`
       keys (Shift for 45°), and Delete — which confirms, since there is no undo ✅
 - [ ] ⬜ Undo/redo (command model), multi-select, copy/paste
-- [ ] ⬜ Property panel for the selected object (owner, army, resources, script name…)
+- [x] Property panel: every simple field of the selected object, read from the
+      object itself rather than a per-type table. Editors inferred from the
+      value (bool/number/enum/text); structures and asset refs are shown, not
+      edited. Typed per-type editors (army, buildings) remain Phase 4 ✅
 - [x] Terrain writing: masks, flags, heights and the river plane — `src/terrain.ts`
       `writeTerrain`, with `src/terrain-edit.ts` as the editable document ✅
 - [x] Tile brush: paint the selected ground tile, sizes 1/3/5/7. Applied to the
@@ -139,7 +142,17 @@ every brush.
       - Layout: the original keeps size, terraforming, the tile grid and those
         modifiers in ONE panel. Ours are split between the top toolbar and the
         Ground palette and should move into the panel.
-- [ ] ⬜ Object palette from assets (icons from `Editor/IconCache`) + drag and drop
+- [x] Object palette + drag and drop — `src/objects.ts`. Catalogue from the
+      1466 `_(AdvMapObjectLink)` files, groups from `Editor/MapFilters.xml`,
+      icons from `Editor/IconCache`. Placing clones an object of the same type
+      already on the map; with no donor a skeleton is written and the caller is
+      told ✅
+- [ ] ⬜ **Per-type defaults for new objects, written by hand** — a placed
+      monster currently inherits its donor's Amount/Mood rather than a sensible
+      default (a creature is "obviously 1"). Needed before placement is
+      trustworthy for gameplay objects; decor is fine today.
+- [ ] ⬜ A third of catalogue entries have no decodable mesh, so they cannot be
+      placed at all (see MESH_PLAN.md). Refused with a message today.
 - [ ] ⬜ Write edits back into `.h5m` (patch in place where possible)
 
 ## Phase 4 — Parity with the original (entities and rules)
