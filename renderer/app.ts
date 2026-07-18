@@ -2283,6 +2283,10 @@ async function setIcon(img: HTMLImageElement, path: string): Promise<void> {
 
 function setObjPalette(open: boolean): void {
   objPalOpen = open;
+  // Closing the panel puts the armed object down. The palette is the only place
+  // that shows what is armed, so leaving it live behind a closed panel means a
+  // click on the map plants something you can no longer see the name of.
+  if (!open && placeObject) armObject(null);
   $('objpal').style.display = open ? 'flex' : 'none';
   $('objpalbtn').classList.toggle('on', open);
   // Only one right-hand panel at a time; they occupy the same strip.
@@ -2486,6 +2490,9 @@ async function initPalette() {
 
 function setPalette(open: boolean): void {
   paletteOpen = open;
+  // The two palettes occupy the same strip, so opening this one closes the
+  // object panel — which also puts down whatever it had armed.
+  if (open && objPalOpen) setObjPalette(false);
   $('palette').style.display = open ? 'flex' : 'none';
   $('palbtn').classList.toggle('on', open);
   $('help').style.right = open ? '262px' : '12px';
@@ -2508,6 +2515,25 @@ $input('obj-hidden').addEventListener('change', (e) => {
   showHiddenObjects = (e.currentTarget as HTMLInputElement).checked;
   objShown = OBJ_PAGE;
   renderObjGrid();
+});
+
+// Right-click gives the armed object up — the hand is already on the mouse, so
+// this is the exit that costs nothing.
+//
+// A right DRAG still moves the camera, so this waits for pointerup and only
+// acts if the button did not travel. Registered separately from the left-button
+// handler, which returns early on any button but 0.
+let rdown: { sx: number; sy: number } | null = null;
+renderer.domElement.addEventListener('pointerdown', (ev) => {
+  if (ev.button === 2 && placeObject) rdown = { sx: ev.clientX, sy: ev.clientY };
+});
+addEventListener('pointerup', (ev) => {
+  if (ev.button !== 2 || !rdown) return;
+  const moved = Math.abs(ev.clientX - rdown.sx) >= CLICK_SLOP || Math.abs(ev.clientY - rdown.sy) >= CLICK_SLOP;
+  rdown = null;
+  if (moved || !placeObject) return; // that was a camera move
+  armObject(null);
+  $('hud').textContent = 'stopped placing';
 });
 
 // Esc gives the armed object up. Without it the only way out is finding the

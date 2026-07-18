@@ -85,6 +85,18 @@ M4 (placeholders in the editor).** M2 and M3 run as a loop. This whole track is
 standalone: the map editor (rotation, undo, adding objects, properties) moves in
 parallel and picks up the verdicts at M4.
 
+## First candidate: Abandoned Mine
+
+Placed from the object palette (2026-07-19) and it comes out as a flat sheet
+with a tangle of dark triangles across it — the texture maps onto a plane rather
+than onto the building, and part of the geometry collapses. It is a small,
+recognisable, single building, which makes it a better first subject than a
+sprawling town: whatever it is decoding wrong is visible in one glance.
+
+Worth checking first whether it is one of the interleaved-vertex-buffer cases or
+a multi-mesh building where only the first submesh survives — the two failure
+shapes are different and this one looks like the second.
+
 ## What already exists to build on
 
 - `src/geometry.js` — the decoder (planar positions + indices + UVs,
