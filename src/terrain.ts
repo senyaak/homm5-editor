@@ -200,7 +200,14 @@ export function groundFlagsPlane(t: Terrain): TerrainArray | null {
 
 /**
  * Read the passability plane: the THIRD vertex-sized u8 plane after height.
- * `0` marks a vertex you cannot walk onto, `1` one you can.
+ * `0` blocked, `1` walkable.
+ *
+ * ⚠️ Stored vertex-sized but addressed PER TILE: entry `y*V + x` describes tile
+ * (x, y), and the last row and column are filler. Across every shipped map the
+ * interior is 8.98% blocked while the last row and the last column are 0.00% —
+ * exactly zero over 2.3 million vertices, not merely rare. Reading it as four
+ * corners of a tile is wrong and visibly so: neighbouring tiles share corners,
+ * so one blocked tile reads as a 3x3 patch.
  *
  * Identified by what it correlates with across all 232 shipped maps, against a
  * 9.0% background rate of blocked vertices:

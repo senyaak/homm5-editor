@@ -978,20 +978,31 @@ const WATER_ORDER = 2;
  */
 const PASS_WALK = 0, PASS_BLOCKED = 1, PASS_NAVIGABLE = 2;
 
-/** Classify every tile of a floor. Index = y*(V-1) + x. */
+/**
+ * Classify every tile of a floor. Index = y*(V-1) + x.
+ *
+ * The passability plane is stored in a vertex-sized array but is really PER
+ * TILE: entry (x, y) describes tile (x, y), and the last row and column are
+ * filler. Measured across every shipped map, the interior is 8.98% blocked
+ * while the last row and last column are 0.00% — not "nearly", exactly zero
+ * over 2.3 million vertices.
+ *
+ * So a tile's state is one lookup, not four corners. Reading it as corners is
+ * what made a 1x1 mask stroke paint a 3x3 patch: neighbouring tiles share
+ * corners, so masking one tile's four corners marked all nine tiles around it.
+ *
+ * The ground flags ARE per vertex, so navigability still needs all four.
+ */
 function classifyTiles(fl: Floor3D): Uint8Array {
   const V = fl.V, T = V - 1;
   const out = new Uint8Array(T * T); // zero-filled, and PASS_WALK is 0
-  const masked = (v: number): boolean => fl.passable ? fl.passable[v] === 0 : false;
   const water = (v: number): boolean => fl.flags ? fl.flags[v] === 0 : false;
   for (let y = 0; y < T; y++) for (let x = 0; x < T; x++) {
-    const a = y * V + x, b = a + 1, c = a + V, d = c + 1;
-    // A tile is blocked if any corner is masked — a unit occupies the whole
-    // tile, so one bad corner is enough to keep it out.
-    if (masked(a) || masked(b) || masked(c) || masked(d)) { out[y * T + x] = PASS_BLOCKED; continue; }
+    if (fl.passable && fl.passable[y * V + x] === 0) { out[y * T + x] = PASS_BLOCKED; continue; }
     // Navigable only when the tile is water throughout. A shore tile has one
     // foot on land and stays walkable.
-    if (water(a) && water(b) && water(c) && water(d)) out[y * T + x] = PASS_NAVIGABLE;
+    const a = y * V + x;
+    if (water(a) && water(a + 1) && water(a + V) && water(a + V + 1)) out[y * T + x] = PASS_NAVIGABLE;
   }
   return out;
 }
@@ -1102,8 +1113,8 @@ function maskAt(ev: PointerEvent, walkable: boolean): void {
   if (!fl.passable) return;
   const at = tileUnderCursor(ev);
   if (!at) return;
-  const verts = brushVerts(fl.V, at.x, at.y, brushSize);
-  const fresh = verts.filter((v) => !strokeVerts.has(v));
+  const tiles = brushTiles(fl.V, at.x, at.y, brushSize);
+  const fresh = tiles.filter((v) => !strokeVerts.has(v));
   if (!fresh.length) return;
   for (const v of fresh) {
     strokeVerts.add(v);
@@ -1198,6 +1209,27 @@ function tileUnderCursor(ev: PointerEvent): { x: number; y: number } | null {
   const hit = raycaster.intersectObject(activeFloor().terrainMesh, false)[0];
   if (!hit) return null;
   return { x: Math.floor(hit.point.x), y: Math.floor(hit.point.y) };
+}
+
+/**
+ * Tiles a square brush of `size` covers, as indices into a vertex-sized plane.
+ *
+ * Separate from brushVerts because the two address different things: textures
+ * and heights are per vertex, so their brush takes the corners and spans one
+ * more than the tile count. Passability is per tile, so its brush must take the
+ * tiles themselves or a 1x1 stroke lands on 3x3.
+ */
+function brushTiles(V: number, cx: number, cy: number, size: number): number[] {
+  const k = Math.floor(Math.max(1, size) / 2);
+  const out: number[] = [];
+  for (let y = cy - k; y <= cy + k; y++) {
+    if (y < 0 || y >= V - 1) continue;
+    for (let x = cx - k; x <= cx + k; x++) {
+      if (x < 0 || x >= V - 1) continue;
+      out.push(y * V + x);
+    }
+  }
+  return out;
 }
 
 /** Vertices of a square brush of `size` tiles centred on tile (cx, cy). */

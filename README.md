@@ -141,6 +141,10 @@ Key points:
   **height** (`float32`), then **ground flags** (u8), a near-uniform reserved
   plane, **passability** (u8, `0` blocked / `1` walkable), and the **river
   plane** on a half-tile `(2V−1)²` grid.
+- **Passability is per TILE**, though stored in a vertex-sized array: entry
+  `y*V + x` is tile `(x, y)` and the last row and column are filler — the map
+  interior is 8.98% blocked while both are 0.00%, exactly, over 2.3M vertices.
+  Every other u8 plane in the file is per vertex, so this one is the exception.
 - **Passability is authored, not derived.** Against a 9.0% background rate of
   blocked vertices across all 232 maps: `Sand/Sand_Rock` 92.4%,
   `Grass/Rock_Floor_grass` 75.5%, a drop steeper than 2 units 25.0%,
