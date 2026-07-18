@@ -33,16 +33,32 @@ import type { Mesh } from './geometry.ts';
 /** Reads an asset .xdb by its href, or null when it is missing. */
 type ReadXdb = (href: string) => string | null;
 
+/**
+ * One submesh of a model, with the material it uses.
+ *
+ * A model's meshes are concatenated into a single vertex/index buffer, and each
+ * part names the slice of `idx` it owns. The renderer turns these into geometry
+ * groups with a material array, which is how a four-mesh building gets its four
+ * textures without four draw-call-sized objects in the scene graph.
+ */
+export interface GeomPart {
+  /** First index in `GeomData.idx` this part covers. */
+  start: number;
+  count: number;
+  /** Downsampled texture as a PNG data URI, or null if unresolved. */
+  tex: string | null;
+  /** True for cutout textures (foliage), so the renderer can alpha-test. */
+  alpha: boolean;
+}
+
 /** One decoded mesh, ready for the renderer. Arrays are plain JSON. */
 export interface GeomData {
   pos: number[];
   /** Null when the mesh has no usable texture coordinates. */
   uv: number[] | null;
   idx: number[];
-  /** Downsampled texture as a PNG data URI, or null if unresolved. */
-  tex: string | null;
-  /** True for cutout textures (foliage), so the renderer can alpha-test. */
-  alpha: boolean;
+  /** One entry per submesh, in index order; always covers all of `idx`. */
+  parts: GeomPart[];
 }
 
 /** A placed object: tile position, rotation about Z, and its mesh index. */
@@ -497,13 +513,31 @@ function addGeom(geoms: GeomData[], meshes: Mesh[], model: string, assetRoot: st
     vo += m.vertexCount; io += m.indices.length;
   }
   const idx = geoms.length;
-  const t = hasUV ? textureDataUri(model, assetRoot, texSize) : null;
+  // One part per mesh, each with its own material, so a building whose crag and
+  // crystals are separate meshes stops being painted entirely in the first
+  // texture the model happened to list.
+  const mats = modelMaterials(model, assetRoot);
+  const pick = meshMaterialIndex(model, meshes.length, mats.length);
+  const cache = new Map<number, { uri: string; hasAlpha: boolean } | null>();
+  const parts: GeomPart[] = [];
+  let start = 0;
+  for (let i = 0; i < meshes.length; i++) {
+    const count = meshes[i]!.indices.length;
+    const mi = pick[i] ?? 0;
+    if (!cache.has(mi)) {
+      // Without UVs a texture cannot be placed, so those parts stay untextured.
+      const href = mats[mi];
+      cache.set(mi, hasUV && href ? textureDataUri(model, assetRoot, texSize, href) : null);
+    }
+    const t = cache.get(mi) ?? null;
+    parts.push({ start, count, tex: t ? t.uri : null, alpha: t ? t.hasAlpha : false });
+    start += count;
+  }
   geoms.push({
     pos: Array.from(pos, (v) => +v.toFixed(3)),
     uv: hasUV ? Array.from(uv, (v) => +v.toFixed(4)) : null,
     idx: Array.from(idxs),
-    tex: t ? t.uri : null,
-    alpha: t ? t.hasAlpha : false, // cutout textures (foliage) -> alphaTest
+    parts,
   });
   return idx;
 }
@@ -520,9 +554,71 @@ export function pngDataUri(w: number, h: number, rgba: Uint8Array): string {
   const png = Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ihdr), chunk('IDAT', deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]);
   return 'data:image/png;base64,' + png.toString('base64');
 }
-function textureDataUri(model: string, assetRoot: string, size: number): { uri: string; hasAlpha: boolean } | null {
+// --- materials -------------------------------------------------------------
+//
+// A model carries a LIST of materials and a list of meshes, and the two are
+// joined by <MaterialQuantities>: mesh i uses the next MaterialQuantities[i]
+// materials, taken in order. Extra materials at the end are simply unused.
+//
+// Measured over the 1260 shipped models that have both: the rule holds for
+// 1259. The one exception (TerrainObjects/Grass/Mountains/MountainBig) asks for
+// 3 materials while listing 2, which is a defect in the data, so the index is
+// clamped to the list.
+//
+// Before this was decoded, every submesh was painted with the model's FIRST
+// texture. On a single-material model that is right by accident; on the
+// Abandoned Mine — four meshes, four materials — it put the gold-mine texture
+// on the crystals, the mound and the crag alike.
+
+/** Texture href of one material, following an external <Item href> if needed. */
+function materialTexture(itemXml: string, assetRoot: string): string | null {
+  const inline = itemXml.match(/<Texture href="([^"]*)"/);
+  if (inline && inline[1]) return inline[1];
+  // Not inline: the Item itself points at a (Material).xdb elsewhere.
+  const ext = itemXml.match(/^\s*href="([^"]+)"/);
+  if (!ext || !ext[1]) return null;
   try {
-    const t = model.match(/<Texture href="([^"]+?)(?:#[^"]*)?"/); if (!t) return null;
+    const p = join(assetRoot, ext[1].split('#')[0]!);
+    if (!existsSync(p)) return null;
+    const m = readFileSync(p, 'utf8').match(/<Texture href="([^"]*)"/);
+    return m && m[1] ? m[1] : null;
+  } catch { return null; }
+}
+
+/** Every material's texture href, in the order <Materials> lists them. */
+function modelMaterials(model: string, assetRoot: string): (string | null)[] {
+  const open = model.indexOf('<Materials>');
+  const close = model.indexOf('</Materials>');
+  if (open < 0 || close < 0) return [];
+  // A <Material> body has no nested <Item>, so splitting on <Item is safe here.
+  const parts = model.slice(open + 11, close).split(/<Item\b/).slice(1);
+  return parts.map((p) => materialTexture(p, assetRoot));
+}
+
+/**
+ * Which material each mesh uses, from <MaterialQuantities>.
+ *
+ * A mesh that consumes several materials is given the first of them: our
+ * decoder emits one mesh per <MeshNames> entry, so there is no finer split to
+ * hang the rest on. 407 of 2281 models have such a mesh, so this is a real
+ * approximation and not a corner case — but one texture chosen from the right
+ * group beats one texture chosen for the whole model.
+ */
+function meshMaterialIndex(model: string, meshCount: number, materialCount: number): number[] {
+  const mq = model.match(/<MaterialQuantities>([\s\S]*?)<\/MaterialQuantities>/);
+  const q = mq ? [...mq[1]!.matchAll(/<Item>(\d+)<\/Item>/g)].map((m) => +m[1]!) : [];
+  const out: number[] = [];
+  let at = 0;
+  for (let i = 0; i < meshCount; i++) {
+    out.push(Math.min(at, Math.max(0, materialCount - 1)));
+    at += q[i] ?? 1;
+  }
+  return out;
+}
+
+function textureDataUri(model: string, assetRoot: string, size: number, href?: string): { uri: string; hasAlpha: boolean } | null {
+  try {
+    const t = href ? [href, href] : model.match(/<Texture href="([^"]+?)(?:#[^"]*)?"/); if (!t) return null;
     const tx = readFileSync(join(assetRoot, t[1].split('#')[0]), 'utf8');
     const dest = tx.match(/<DestName href="([^"]+)"/); if (!dest) return null;
     const ddsPath = join(assetRoot, dirname(t[1].split('#')[0]), dest[1]);

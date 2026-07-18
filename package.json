@@ -14,6 +14,7 @@
     "test-pak": "node tools/test-pak.js",
     "test-map": "node tools/test-map.js",
     "test-watch": "node tools/test-watch.ts",
+    "mesh-audit": "node tools/mesh-audit.ts",
     "test-objects": "node tools/test-objects.ts",
     "pak": "node tools/pak-cli.js",
     "typecheck": "tsc --noEmit",

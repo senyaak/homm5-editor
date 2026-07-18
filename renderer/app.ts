@@ -16,7 +16,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-import type { Scene, Floor, Instance, SplatData, TileInfo, GeomData } from '../src/scene.ts';
+import type { Scene, Floor, Instance, SplatData, TileInfo, GeomData, GeomPart } from '../src/scene.ts';
 import type { EditorApi, MapListEntry, ExternalChange, PlaceableObject } from '../electron/ipc.ts';
 
 type MapEntry = MapListEntry & { cat: string };
@@ -230,34 +230,51 @@ function clearWorld(): void {
 // placing an object from the palette can bring a model the map never used, and
 // it is appended here at the index the main process assigned it.
 let worldGeos: THREE.BufferGeometry[] = [];
-let worldMats: THREE.Material[] = [];
+/** One material ARRAY per geom, lined up with that geometry's groups. */
+let worldMats: THREE.Material[][] = [];
 
 const texLoader = new THREE.TextureLoader();
 const greyMat = new THREE.MeshLambertMaterial({ color: 0x8a8f98, side: THREE.DoubleSide });
 
-/** Material for one decoded mesh: its texture, or grey when it has none. */
-function materialFor(g: GeomData): THREE.Material {
-  if (!g.tex) return greyMat;
-  const tx = texLoader.load(g.tex);
+/**
+ * Materials shared across every part that uses the same texture, so a model
+ * naming one material for several meshes uploads it once.
+ */
+const texCache = new Map<string, THREE.Material>();
+
+/** Material for one submesh: its own texture, or grey when it has none. */
+function materialFor(part: GeomPart): THREE.Material {
+  if (!part.tex) return greyMat;
+  const hit = texCache.get(part.tex);
+  if (hit) return hit;
+  const tx = texLoader.load(part.tex);
   tx.wrapS = tx.wrapT = THREE.RepeatWrapping;
   tx.flipY = false;
   const m = new THREE.MeshLambertMaterial({ map: tx, side: THREE.DoubleSide });
   // Cutout textures (foliage): discard transparent texels so leaves aren't
   // opaque black cards. alphaTest avoids the sorting cost of full transparency.
-  if (g.alpha) { m.alphaTest = 0.5; m.transparent = false; }
+  if (part.alpha) { m.alphaTest = 0.5; m.transparent = false; }
+  texCache.set(part.tex, m);
   return m;
+}
+
+/** Geometry for one decoded model, with a group per submesh. */
+function geometryFor(g: GeomData): THREE.BufferGeometry {
+  const b = new THREE.BufferGeometry();
+  b.setAttribute('position', new THREE.BufferAttribute(new Float32Array(g.pos), 3));
+  if (g.uv) b.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(g.uv), 2));
+  b.setIndex(g.idx);
+  // A group per submesh, indexed into the material array. Drawn as one group
+  // instead, every mesh of a building took whichever texture came first.
+  g.parts.forEach((p, i) => b.addGroup(p.start, p.count, i));
+  b.computeVertexNormals();
+  return b;
 }
 
 // Build the shared per-geom geometries + materials (reused across floors).
 function buildGeos(S: Scene) {
-  const geos = S.geoms.map((g) => {
-    const b = new THREE.BufferGeometry();
-    b.setAttribute('position', new THREE.BufferAttribute(new Float32Array(g.pos), 3));
-    if (g.uv) b.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(g.uv), 2));
-    b.setIndex(g.idx); b.computeVertexNormals();
-    return b;
-  });
-  const mats = S.geoms.map(materialFor);
+  const geos = S.geoms.map(geometryFor);
+  const mats = S.geoms.map((g) => g.parts.map(materialFor));
   worldGeos = geos;
   worldMats = mats;
   return { geos, mats };
@@ -665,7 +682,7 @@ function terrainGeometry(
   return tg;
 }
 
-function buildFloor(floor: Floor, geos: THREE.BufferGeometry[], mats: THREE.Material[]): Floor3D {
+function buildFloor(floor: Floor, geos: THREE.BufferGeometry[], mats: THREE.Material[][]): Floor3D {
   const group = new THREE.Group();
   const V = floor.V, heights = floor.heights;
 
@@ -2364,9 +2381,11 @@ function addInstanceToScene(inst: Instance, geom: { index: number; data: GeomDat
     b.setAttribute('position', new THREE.BufferAttribute(new Float32Array(geom.data.pos), 3));
     if (geom.data.uv) b.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(geom.data.uv), 2));
     b.setIndex(geom.data.idx);
+    // Same grouping as buildGeos: one group per submesh, one material each.
+    geom.data.parts.forEach((p, i) => b.addGroup(p.start, p.count, i));
     b.computeVertexNormals();
     worldGeos[geom.index] = b;
-    worldMats[geom.index] = materialFor(geom.data);
+    worldMats[geom.index] = geom.data.parts.map(materialFor);
   }
   const g = worldGeos[inst.g], m = worldMats[inst.g];
   if (!g || !m) { $('hud').textContent = 'placed, but its mesh is missing — reload to see it'; return; }

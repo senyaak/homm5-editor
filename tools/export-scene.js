@@ -148,7 +148,7 @@ scene.add(new THREE.Mesh(tg,new THREE.MeshLambertMaterial({color:0x5a6b45})));
 const loader=new THREE.TextureLoader();
 const grey=new THREE.MeshLambertMaterial({color:0x8a8f98,flatShading:true});
 const geos=S.geoms.map(g=>{const b=new THREE.BufferGeometry();b.setAttribute('position',new THREE.BufferAttribute(new Float32Array(g.pos),3));if(g.uv)b.setAttribute('uv',new THREE.BufferAttribute(new Float32Array(g.uv),2));b.setIndex(g.idx);b.computeVertexNormals();return b;});
-const mats=S.geoms.map(g=>{if(!g.tex)return grey;const tx=loader.load(g.tex);tx.wrapS=tx.wrapT=THREE.RepeatWrapping;tx.flipY=false;return new THREE.MeshLambertMaterial({map:tx});});
+const mats=S.geoms.map(g=>g.parts.map(p=>{if(!p.tex)return grey;const tx=loader.load(p.tex);tx.wrapS=tx.wrapT=THREE.RepeatWrapping;tx.flipY=false;return new THREE.MeshLambertMaterial({map:tx});}));
 for(const it of S.instances){const m=new THREE.Mesh(geos[it.g],mats[it.g]);m.position.set(it.x,it.y,it.z);m.rotation.z=it.r;scene.add(m);}
 
 // centre camera on map
