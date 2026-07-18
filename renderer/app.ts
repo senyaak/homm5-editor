@@ -2558,7 +2558,15 @@ function setPalette(open: boolean): void {
   if (open) initPalette();
 }
 $('palbtn').onclick = () => setPalette(!paletteOpen);
-$('objpalbtn').onclick = () => setObjPalette(!objPalOpen);
+$('objpalbtn').onclick = () => {
+  const open = !objPalOpen;
+  // Same reason as the object list: this panel exists to put objects ON the
+  // map, and placing one while objects are hidden drops it somewhere invisible.
+  // Worse here than in the list, because the object really was added — it just
+  // cannot be seen, so it reads as the placement having failed.
+  if (open && world && !showObjects) setShowObjects(true);
+  setObjPalette(open);
+};
 $select('obj-cat').addEventListener('change', (e) => {
   objCat = (e.currentTarget as HTMLSelectElement).value;
   objShown = OBJ_PAGE;
