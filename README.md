@@ -35,6 +35,10 @@ so a `.cts` preload dies on the first type annotation — silently, leaving
   over it. Editing an object rewrites exactly one line.
 - **Object editing**: a categorised, searchable list; click to select, drag to move
   on the grid; save; pack to `.h5m` with version tracking.
+- **External-change watcher** (`src/watch.ts`): the original Nival editor can be
+  open on the same map folder. When it saves, a banner offers to take its
+  version. Content hashes, not timestamps, so our own saves never trigger it and
+  a rewrite with identical bytes is not a change.
 - **Ground palette**: all 82 shipped tiles previewed from their own `.dds`,
   grouped by category. Brushes are not implemented yet — painting comes next.
 - **Mesh decoding** (`src/geometry.ts`): positions, indices, UVs and textures.
@@ -47,6 +51,7 @@ npm start                 # build the renderer, then launch the editor
 npm run typecheck         # tsc --noEmit across the whole project
 npm run test-terrain      # terrain parser round-trip on sample maps
 npm run test-map          # map.xdb model + loss-less XML round-trip
+npm run test-watch        # external-change watcher
 npm run test-pak          # ZIP reader/writer
 npm run inspect           # low-level dump of a .bin's structure
 ```

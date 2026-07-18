@@ -18,11 +18,14 @@ import { dirname, join, basename, relative, sep } from 'node:path';
 import { readFileSync, writeFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { buildScene, findAssetRoot, listTiles } from '../src/scene.ts';
 import { initProject, packProject, status } from '../src/project.ts';
+import { watchMapDir } from '../src/watch.ts';
+import type { MapWatch } from '../src/watch.ts';
 import type { TileInfo } from '../src/scene.ts';
 import type { HommMap } from '../src/map.ts';
 import type {
   MapsListResult, MapListEntry, MapLoadResult, MoveObjectPayload, MoveObjectResult,
   MapSaveResult, MapPackResult, TerrainTilesResult, MapStatusResult, OpenMapDialogResult,
+  ExternalChange,
 } from './ipc.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -46,6 +49,8 @@ interface Session {
   map: HommMap;
   /** Tile paths this map's terrain has splat layers for (union over floors). */
   layerPaths: string[];
+  /** Watches mapDir for edits made by another editor. */
+  watch: MapWatch;
 }
 
 // Current editing session (one map at a time for now).
@@ -92,6 +97,7 @@ async function runSmoke(mapPath: string): Promise<void> {
   } catch (e) { console.error('SMOKE fail:', e instanceof Error ? e.message : String(e)); app.exit(1); }
 }
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
+app.on('will-quit', () => { session?.watch.stop(); });
 
 // --- IPC: list openable maps under the game-data root ---
 // A map is "openable" when its folder has both map.xdb and GroundTerrain.bin.
@@ -145,7 +151,20 @@ ipcMain.handle('map:load', async (_e: IpcMainInvokeEvent, mapPath: string): Prom
   initProject(mapDir); // ensure a manifest so status/pack work
   // Tile paths this map's terrain actually has layers for (union over floors).
   const layerPaths = [...new Set(scene.floors.flatMap((f) => f.splat?.paths || []))];
-  session = { mapPath, mapDir, assetRoot, map, layerPaths };
+  // Reloading the same map replaces the session, so retire the previous watcher
+  // before starting one on the new folder.
+  session?.watch.stop();
+  const watch = watchMapDir(mapDir, (c) => {
+    const touched = [...c.changed, ...c.added, ...c.removed];
+    const payload: ExternalChange = {
+      mapPath,
+      changed: c.changed, added: c.added, removed: c.removed,
+      map: touched.some((f) => /(^|\/)map\.xdb$/i.test(f)),
+      terrain: touched.some((f) => /(^|\/)GroundTerrain\.bin$/i.test(f)),
+    };
+    win?.webContents.send('map:external-change', payload);
+  });
+  session = { mapPath, mapDir, assetRoot, map, layerPaths, watch };
   const placed = scene.floors.reduce((a, f) => a + f.instances.length, 0);
   return {
     scene,
@@ -175,6 +194,9 @@ ipcMain.handle('object:move', async (_e: IpcMainInvokeEvent, { id, x, y }: MoveO
 ipcMain.handle('map:save', async (): Promise<MapSaveResult> => {
   if (!session) throw new Error('no map loaded');
   writeFileSync(session.mapPath, session.map.save(), 'latin1');
+  // Our own write — fold it into the watcher's baseline so it isn't reported
+  // back to us as somebody else's edit.
+  session.watch.resync();
   return { ok: true, status: status(session.mapDir) };
 });
 
@@ -192,6 +214,7 @@ ipcMain.handle('map:pack', async (): Promise<MapPackResult> => {
   if (r.canceled) return { canceled: true };
   // Save pending edits first so the archive reflects them.
   writeFileSync(session.mapPath, session.map.save(), 'latin1');
+  session.watch.resync();
   const res = packProject(session.mapDir, r.filePath);
   return { ok: true, output: r.filePath, entries: res.entries, bytes: res.bytes, status: status(session.mapDir) };
 });

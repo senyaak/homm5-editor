@@ -17,7 +17,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 import type { Scene, Floor, Instance, SplatData, TileInfo } from '../src/scene.ts';
-import type { EditorApi, MapListEntry } from '../electron/ipc.ts';
+import type { EditorApi, MapListEntry, ExternalChange } from '../electron/ipc.ts';
 
 type MapEntry = MapListEntry & { cat: string };
 /**
@@ -973,6 +973,8 @@ $input('ex-search').addEventListener('input', renderExList);
 
 async function loadMapPath(path: string | null): Promise<void> {
   if (!path) return;
+  // Whatever the banner was offering is about to be on screen for real.
+  hideExternalChange();
   $('loading').classList.add('on');
   // Yield a frame so the overlay paints before the (blocking) decode starts.
   await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
@@ -1011,6 +1013,49 @@ async function loadMapPath(path: string | null): Promise<void> {
     $('loading').classList.remove('on');
   }
 }
+
+// --- external changes ---------------------------------------------------
+//
+// The original editor can be open on the same map folder. When it saves, the
+// main process notices and pushes here; we offer to take its version rather
+// than reloading behind the user's back, because reloading throws away whatever
+// they have done on our side since the last save.
+
+/** The change we are currently offering to take, or null when the banner is down. */
+let pendingChange: ExternalChange | null = null;
+
+function describeChange(c: ExternalChange): string {
+  const parts: string[] = [];
+  if (c.terrain) parts.push('terrain');
+  if (c.map) parts.push('objects');
+  const n = c.changed.length + c.added.length + c.removed.length;
+  const what = parts.length ? parts.join(' and ') : `${n} file${n === 1 ? '' : 's'}`;
+  return isDirty
+    ? `Another editor rewrote ${what}. Reloading discards your unsaved changes.`
+    : `Another editor rewrote ${what}.`;
+}
+
+function showExternalChange(c: ExternalChange): void {
+  pendingChange = c;
+  $('extchange-what').textContent = describeChange(c);
+  $('extchange').style.display = 'flex';
+}
+
+function hideExternalChange(): void {
+  pendingChange = null;
+  $('extchange').style.display = 'none';
+}
+
+window.editor.onExternalChange((c) => { showExternalChange(c); });
+
+$('extchange-reload').onclick = () => {
+  const c = pendingChange;
+  hideExternalChange();
+  if (c) loadMapPath(c.mapPath);
+};
+// Dismissing only hides the banner: the main process has already advanced its
+// baseline, so the next external save raises it again.
+$('extchange-ignore').onclick = hideExternalChange;
 
 async function openViaDialog() {
   const path = await window.editor.openMapDialog();

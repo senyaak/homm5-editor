@@ -143,6 +143,22 @@
     #maplist .m .name { color: #e6edf3; } #maplist .m .rel { color: #6e7681; font-size: 11px; }
     #maplist .empty { padding: 14px; color: #6e7681; text-align: center; }
     #picker .foot { padding: 8px 12px; border-top: 1px solid #21262d; color: #6e7681; font-size: 11px; }
+
+    /* external-change banner: top-centre, above the scene, below the toolbar */
+    #extchange {
+      position: absolute; top: 48px; left: 50%; transform: translateX(-50%);
+      z-index: 30; display: flex; align-items: center; gap: 10px;
+      padding: 8px 12px; border-radius: 6px;
+      background: #1c1408; border: 1px solid #9e6a03; color: #e3b341;
+      font-size: 12px; box-shadow: 0 4px 16px #0008;
+    }
+    #extchange .txt { color: #d9c48a; }
+    #extchange b { color: #e3b341; }
+    #extchange button {
+      background: #e3b341; border: 0; color: #1c1408; font-weight: 600;
+      padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 12px;
+    }
+    #extchange button.ghost { background: transparent; border: 1px solid #6b5320; color: #d9c48a; font-weight: 400; }
   </style>
 </head>
 <body>
@@ -214,6 +230,13 @@
   </div>
 
   <div id="help" style="display:none">WASD move (Shift faster) · middle-drag pan · left-drag orbit · wheel zoom</div>
+
+  <!-- shown when another editor writes to the open map folder -->
+  <div id="extchange" style="display:none">
+    <div class="txt"><b>Map changed on disk.</b> <span id="extchange-what"></span></div>
+    <button id="extchange-reload">Reload</button>
+    <button id="extchange-ignore" class="ghost">Keep mine</button>
+  </div>
 
   <div id="loading"><div class="box">loading map…</div></div>
   <div id="hud"></div>

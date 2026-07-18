@@ -100,6 +100,23 @@ export interface TerrainTilesResult {
   inMap: string[];
 }
 
+/**
+ * Pushed on `map:external-change` when the open map folder is edited by
+ * something else — typically the original Nival editor running alongside us.
+ */
+export interface ExternalChange {
+  /** The map this is about; pass it back to loadMap() to take the new version. */
+  mapPath: string;
+  /** Posix paths relative to the map folder. */
+  changed: string[];
+  added: string[];
+  removed: string[];
+  /** map.xdb changed — object placement and map properties are stale. */
+  map: boolean;
+  /** GroundTerrain.bin changed — heights, tiles or flags are stale. */
+  terrain: boolean;
+}
+
 /** Result of `map:status`: null when no map is loaded. */
 export type MapStatusResult = ProjectStatus | null;
 
@@ -116,4 +133,9 @@ export interface EditorApi {
   pack(): Promise<MapPackResult>;
   status(): Promise<MapStatusResult>;
   listTiles(): Promise<TerrainTilesResult>;
+  /**
+   * Subscribe to external edits of the open map folder. Fires once per settled
+   * burst of writes; our own saves never fire it.
+   */
+  onExternalChange(cb: (c: ExternalChange) => void): void;
 }

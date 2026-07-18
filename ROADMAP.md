@@ -167,6 +167,10 @@ x1/x3/x5/x7 and Rect.
       window, open `map.xdb` → live 3D scene, select and drag an object → edit
       through `map.js`, Save, Pack `.h5m`, dirty indicator. `npm start` ✅
       (the main pipeline is covered by an `HOMM5_SMOKE` smoke test) 🔨
+- [x] **External-change watcher** (`src/watch.ts`): the open map folder is
+      hashed and watched, so edits from the original editor raise a "reload?"
+      banner instead of being silently overwritten. Our own saves resync the
+      baseline, so they never self-trigger ✅
 - [ ] ⬜ Projects, recent maps, game path settings
 - [ ] ⬜ Auto-detect the game installation and unpack `.pak` into a project cache
 - [ ] ⬜ Performance (workers for parsing/packing, asset streaming)

@@ -11,6 +11,7 @@
     "test-terrain": "node tools/test-terrain.js",
     "test-pak": "node tools/test-pak.js",
     "test-map": "node tools/test-map.js",
+    "test-watch": "node tools/test-watch.ts",
     "pak": "node tools/pak-cli.js",
     "typecheck": "tsc --noEmit",
     "build:renderer": "esbuild renderer/app.ts --bundle --format=esm --target=chrome120 --outfile=renderer/app.js --sourcemap",
