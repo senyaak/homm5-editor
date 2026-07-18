@@ -55,6 +55,16 @@
 
     #hud { position: fixed; left: 12px; bottom: 12px; font-size: 12px; color: #8b949e;
       z-index: 10; pointer-events: none; transition: left .15s; }
+    /* passability legend, above the help line */
+    #passlegend { position: fixed; right: 12px; bottom: 34px; z-index: 10;
+      display: flex; gap: 14px; font-size: 11px; color: #8b949e; pointer-events: none; }
+    #passlegend span { display: flex; align-items: center; gap: 5px; }
+    #passlegend .sw { width: 11px; height: 11px; border-radius: 2px; display: inline-block;
+      border: 1px solid #ffffff30; }
+    #passlegend .blocked { background: #d63030b0; }
+    #passlegend .navigable { background: #3b82f6b0; }
+    #passlegend .walk { background: transparent; }
+
     #help { position: fixed; right: 12px; bottom: 12px; font-size: 11px; color: #6e7681;
       z-index: 10; pointer-events: none; }
 
@@ -194,7 +204,7 @@
       </select>
     </label>
     <button id="cliffbtn" style="display:none" title="rock texture on steep faces">Cliffs</button>
-    <button id="blockbtn" style="display:none" title="show the movement mask — where units cannot go">Blocked</button>
+    <button id="blockbtn" style="display:none" title="tile grid coloured by what can move where">Passability</button>
     <button id="floor" style="display:none"></button>
     <label id="scalewrap" style="display:none" title="ground texture repeats per tile">
       ground <input id="texscale" type="range" min="0.05" max="2" step="0.05" value="0.5">
@@ -251,6 +261,14 @@
       <div id="pal-sel">no tile selected</div>
       <div class="pal-note">green dot = already in this map</div>
     </div>
+  </div>
+
+  <!-- Legend for the passability grid: three states, because "blocked" and
+       "you cannot walk here" are not the same question. -->
+  <div id="passlegend" style="display:none">
+    <span><i class="sw blocked"></i>blocked</span>
+    <span><i class="sw navigable"></i>navigable (boat)</span>
+    <span><i class="sw walk"></i>walkable</span>
   </div>
 
   <div id="help" style="display:none">WASD move (Shift faster) · middle-drag pan · left-drag orbit · wheel zoom</div>

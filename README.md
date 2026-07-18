@@ -54,11 +54,13 @@ so a `.cts` preload dies on the first type annotation — silently, leaving
   paint at 1/3/5/7 tiles wide. The stroke goes into the mask texture on the GPU
   for immediate feedback and into the main process, which owns the bytes that
   get saved.
-- **Movement mask** (the original editor's Masks tab): a Blocked overlay plus
-  Mask/Erase brushes. The mask belongs to the ground, and water is a separate
-  sheet over it — so the overlay draws under the sea and lets it tint what shows
-  through, the way a masked pond reads in the original. Sea is never blocked
-  implicitly: flag `0` means navigable.
+- **Passability grid** and the movement mask (the original editor's Masks tab):
+  the tile grid drawn on the ground, coloured in three states — red blocked,
+  blue navigable, clear walkable — plus Mask/Erase brushes at 1/3/5/7 tiles.
+  Three states rather than two because *blocked* and *you cannot walk here* are
+  different questions: a lake stops a footman and carries a boat. The overlay
+  belongs to the ground and draws beneath the sea sheet, which thins out while
+  the view is up so a navigable lake is actually visible.
 - **River brushes**: Water, Bog and LavaFlow are not ordinary tiles. Painting
   one sinks the bed 0.4 below its banks with a 0.2 rim, and writes the half-tile
   river plane — which is what makes a river a river to the game rather than

@@ -123,8 +123,8 @@ Rect brush, and undo/redo, which the brushes make overdue.
       width flag was decoded to make this writable ✅
 - [x] River brushes (Water/Bog/LavaFlow): sink the bed below its banks and write
       the half-tile river plane ✅
-- [x] Movement mask: Blocked overlay + Mask/Erase brushes, drawn on the ground
-      beneath the water sheet ✅
+- [x] Passability grid (red blocked / blue navigable / clear walkable) + the
+      Mask/Erase brushes, drawn on the ground beneath the water sheet ✅
 - [ ] ⬜ Terrain brushes: flatten, ramps, plateaus
 - [ ] ⬜ Object palette from assets (icons from `Editor/IconCache`) + drag and drop
 - [ ] ⬜ Write edits back into `.h5m` (patch in place where possible)
