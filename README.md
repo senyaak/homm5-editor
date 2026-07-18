@@ -4,9 +4,14 @@ A map/campaign editor prototype for **Heroes of Might & Magic V: Tribes of the E
 built on Electron and Node with no native dependencies.
 
 TypeScript throughout. Node 24 — and the Node 24.18 inside Electron 43 — strip
-types natively, so ,  and  run their .ts straight off
-disk with no build step; only  is bundled (esbuild), because a
-browser cannot strip types.  is therefore type-check only.
+types natively, so `src/`, `electron/` and `tools/` run their `.ts` straight off
+disk with no build step; only `renderer/` is bundled (esbuild), because a browser
+cannot strip types. `tsconfig.json` is therefore type-check only.
+
+One exception worth knowing: `electron/preload.cjs` must stay JavaScript.
+Electron reads a preload verbatim and never applies Node's type-stripping hook,
+so a `.cts` preload dies on the first type annotation — silently, leaving
+`window.editor` undefined while the window loads as normal.
 
 > **No game content lives here.** This repository holds code and format notes only.
 > Running anything requires your own legal copy of the game: the tools read assets
