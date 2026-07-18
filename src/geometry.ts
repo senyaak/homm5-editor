@@ -263,6 +263,12 @@ function collectLeaves(tree: RecordTree, out: BlockRecord[] = []): BlockRecord[]
 const SHATTER_THRESHOLD = 0.06;
 
 export function extractMeshes(b: Buffer, bbox: BBox): Mesh[] {
+  // Read the container's structure when it matches: it states the mesh count,
+  // the triangles and the texture coordinates outright, and agrees with the
+  // models' own <NumMeshes> for 2071 of 2076 shipped models. The scan below is
+  // the fallback for the handful it cannot parse.
+  const structured = extractMeshesStructured(b);
+  if (structured) return structured;
   const posArrays = extractPositionArrays(b, bbox); // count × vec3, bbox-validated
   const leaves = collectLeaves(parseTree(b));
   const readU16Leaf = (r: BlockRecord): Uint16Array => {
@@ -457,6 +463,9 @@ export function readGeometryRefFromModelXdb(xml: string): { uid: string; bbox: B
 // That guessed 118 triangles for the Abandoned Mine's first mesh where the file
 // states 443, and found 2 meshes where the model declares 4.
 
+/** Texture coordinates are 16-bit fixed point with this denominator. */
+const UV_SCALE = 2048;
+
 /** Width-flagged size field: returns the byte length and where the data starts. */
 function sizeAt(b: Buffer, off: number): { len: number; at: number } {
   const s = b[off]!;
@@ -515,25 +524,43 @@ export function extractMeshesStructured(b: Buffer): Mesh[] | null {
       const r = parts.find((x) => x.tag === tag);
       return r ? countedArray(b, r.at, r.end) : null;
     };
-    const posA = of(2), remapA = of(5), triA = of(7);
-    if (!posA || !triA) continue;
+    const posA = of(2), vertA = of(3), remapA = of(5), triA = of(7);
+    if (!posA || !triA || !vertA || !remapA) continue;
     if (posA.len < posA.count * 12 || triA.len < triA.count * 6) continue;
+    if (remapA.count !== vertA.count) continue;
 
-    // Triangles index the REMAP; the remap indexes the positions. Without one,
-    // the triangles address the positions directly.
-    const remap = remapA && remapA.len >= remapA.count * 2
-      ? Array.from({ length: remapA.count }, (_, i) => b.readUInt16LE(remapA.at + i * 2))
-      : null;
-
-    const positions = new Float32Array(posA.count * 3);
-    for (let i = 0; i < posA.count * 3; i++) positions[i] = b.readFloatLE(posA.at + i * 4);
-
-    const indices = new Uint32Array(triA.count * 3);
+    // Positions are stored once per POSITION, but everything else - texture
+    // coordinates, normals - is stored once per RENDER VERTEX, and there are
+    // more of those: a corner shared by faces with different UVs appears once
+    // per distinct UV. tag 5 maps render vertex -> position.
+    //
+    // So the render vertices are the real vertex list. Expanding to them keeps
+    // the UVs that made the engine split them in the first place; collapsing
+    // back onto positions would have to throw one of each pair away.
+    const stride = vertA.len / vertA.count;
+    if (stride < 4) continue;
+    const n = vertA.count;
+    const positions = new Float32Array(n * 3);
+    const uvs = new Float32Array(n * 2);
     let bad = false;
+    for (let i = 0; i < n; i++) {
+      const src = b.readUInt16LE(remapA.at + i * 2);
+      if (src >= posA.count) { bad = true; break; }
+      for (let c = 0; c < 3; c++) positions[i * 3 + c] = b.readFloatLE(posA.at + src * 12 + c * 4);
+      // Texture coordinates are 16-bit fixed point over 2048, not floats:
+      // measured across the shipped models they land in [0, 1] this way, and
+      // values above 2048 are genuine tiling rather than garbage.
+      uvs[i * 2] = b.readUInt16LE(vertA.at + i * stride) / UV_SCALE;
+      uvs[i * 2 + 1] = b.readUInt16LE(vertA.at + i * stride + 2) / UV_SCALE;
+    }
+    if (bad) continue;
+
+    // Triangles address the render vertices directly - the remap is already
+    // folded into the expansion above.
+    const indices = new Uint32Array(triA.count * 3);
     for (let i = 0; i < triA.count * 3; i++) {
-      const raw = b.readUInt16LE(triA.at + i * 2);
-      const v = remap ? (remap[raw] ?? -1) : raw;
-      if (v < 0 || v >= posA.count) { bad = true; break; }
+      const v = b.readUInt16LE(triA.at + i * 2);
+      if (v >= n) { bad = true; break; }
       indices[i] = v;
     }
     if (bad) continue;
@@ -541,9 +568,9 @@ export function extractMeshesStructured(b: Buffer): Mesh[] | null {
     meshes.push({
       positions,
       normals: new Float32Array(0),
-      uvs: null,
+      uvs,
       indices,
-      vertexCount: posA.count,
+      vertexCount: n,
       triCount: triA.count,
     });
   }
