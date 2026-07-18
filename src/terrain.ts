@@ -128,13 +128,7 @@ export function readHeights(t: Terrain): Float32Array {
  * @param {Float32Array|number[]} heights length must equal t.height.count
  */
 export function writeHeights(t: Terrain, heights: Float32Array | number[]): Buffer {
-  if (!t.height) throw new Error('No height plane located');
-  if (heights.length !== t.height.count) {
-    throw new Error(`height length ${heights.length} != expected ${t.height.count}`);
-  }
-  const out = Buffer.from(t.raw); // full copy
-  for (let i = 0; i < heights.length; i++) out.writeFloatLE(heights[i], t.height.dataOff + i * 4);
-  return out;
+  return writeTerrain(t, { heights });
 }
 
 /** Convenience: height at tile-vertex (x,y). */
@@ -193,10 +187,15 @@ export function readMask(t: Terrain, layer: TextureLayer): Uint8Array {
  * @returns {Uint8Array|null} length t.N, indexed y*V + x
  */
 export function readGroundFlags(t: Terrain): Uint8Array | null {
+  const a = groundFlagsPlane(t);
+  return a ? t.raw.subarray(a.dataOff, a.dataOff + a.len) : null;
+}
+
+/** Locate the ground-flag plane without copying it — the write path needs its offset. */
+export function groundFlagsPlane(t: Terrain): TerrainArray | null {
   const height = t.height;
   if (!height) return null;
-  const a = t.arrays.find((x) => x.elem === 'u8' && x.count === t.N && x.dataOff > height.dataOff);
-  return a ? t.raw.subarray(a.dataOff, a.dataOff + a.len) : null;
+  return t.arrays.find((x) => x.elem === 'u8' && x.count === t.N && x.dataOff > height.dataOff) ?? null;
 }
 
 export const FLAG_WATER = 0;
@@ -218,6 +217,12 @@ export const FLAG_PLATEAU = 32;
  * @returns {{W:number, data:Uint8Array}|null}
  */
 export function readWaterPlane(t: Terrain): { W: number; data: Uint8Array } | null {
+  const p = waterPlane(t);
+  return p ? { W: p.W, data: t.raw.subarray(p.dataOff, p.dataOff + p.len) } : null;
+}
+
+/** Locate the half-tile river plane without copying it. */
+export function waterPlane(t: Terrain): { W: number; dataOff: number; len: number } | null {
   const b = t.raw;
   const W = 2 * t.V - 1;
   const core = Buffer.alloc(11);
@@ -228,9 +233,76 @@ export function readWaterPlane(t: Terrain): { W: number; data: Uint8Array } | nu
     const mark = idx + 11;
     if (b[mark] === 0x03) {
       const len = (u32(b, mark + 1) - 1) / 2;
-      if (len === W * W) return { W, data: b.subarray(mark + 5, mark + 5 + len) };
+      if (len === W * W) return { W, dataOff: mark + 5, len };
     }
     idx += 1;
   }
   return null;
+}
+
+// --- writing -------------------------------------------------------------
+//
+// Every plane in the container is fixed-size and self-describing, and editing
+// one never changes how many values it holds: a map is W×W vertices for its
+// whole life. So writing is a byte-for-byte overwrite in place — no records
+// move, no sizes are recomputed, and the output differs from the input only in
+// the ranges we touched.
+//
+// The one edit that does NOT fit this model is painting with a tile the map has
+// no layer for. That means inserting a new mask array plus its (AdvMapTile) path
+// into the stream, shifting everything after it. Not supported yet; the palette
+// marks which tiles a map already carries (`inMap`).
+
+/** A set of plane edits to apply in one pass. Omitted planes are left alone. */
+export interface TerrainEdit {
+  /** Vertex heights, length t.N. */
+  heights?: Float32Array | number[];
+  /** Ground-kind flags, length t.N. See FLAG_WATER / FLAG_GROUND / FLAG_PLATEAU. */
+  flags?: Uint8Array | number[];
+  /** Per-layer weight masks, each length t.N. Layers come from readTextureLayers(). */
+  masks?: { layer: TextureLayer; data: Uint8Array | number[] }[];
+  /** The half-tile river plane, length (2V-1)². */
+  water?: Uint8Array | number[];
+}
+
+function expect(name: string, got: number, want: number): void {
+  if (got !== want) throw new Error(`${name} length ${got} != expected ${want}`);
+}
+
+/**
+ * Apply `edit` to a parsed terrain and return a NEW buffer.
+ *
+ * Lengths are checked against what the file declares rather than trusted: a
+ * short mask would otherwise write into whatever record follows it, and the
+ * result would still parse — a corruption that only shows up in game.
+ */
+export function writeTerrain(t: Terrain, edit: TerrainEdit): Buffer {
+  const out = Buffer.from(t.raw); // full copy; every write below is in place
+
+  if (edit.heights) {
+    if (!t.height) throw new Error('No height plane located');
+    expect('heights', edit.heights.length, t.height.count);
+    for (let i = 0; i < edit.heights.length; i++) out.writeFloatLE(edit.heights[i]!, t.height.dataOff + i * 4);
+  }
+
+  if (edit.flags) {
+    const p = groundFlagsPlane(t);
+    if (!p) throw new Error('No ground-flag plane located');
+    expect('flags', edit.flags.length, p.count);
+    for (let i = 0; i < edit.flags.length; i++) out[p.dataOff + i] = edit.flags[i]!;
+  }
+
+  for (const { layer, data } of edit.masks ?? []) {
+    expect(`mask ${layer.path ?? '?'}`, data.length, layer.count);
+    for (let i = 0; i < data.length; i++) out[layer.maskOff + i] = data[i]!;
+  }
+
+  if (edit.water) {
+    const p = waterPlane(t);
+    if (!p) throw new Error('No river plane located');
+    expect('water', edit.water.length, p.len);
+    for (let i = 0; i < edit.water.length; i++) out[p.dataOff + i] = edit.water[i]!;
+  }
+
+  return out;
 }
