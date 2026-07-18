@@ -80,6 +80,31 @@ export class TerrainDoc {
     this.touched = true;
   }
 
+  /**
+   * Set the height (and ground flag) of specific vertices.
+   *
+   * The caller supplies final values rather than a delta. Height brushes apply
+   * a falloff, and duplicating that maths on both sides of the IPC boundary
+   * would be two chances to get it different; this way there is one answer.
+   *
+   * @param flags one per vertex, or null to leave the flag plane alone.
+   */
+  setVertices(verts: VertexList, heights: readonly number[], flags: readonly number[] | null): void {
+    if (heights.length !== verts.length) {
+      throw new Error(`heights length ${heights.length} != verts ${verts.length}`);
+    }
+    if (flags && flags.length !== verts.length) {
+      throw new Error(`flags length ${flags.length} != verts ${verts.length}`);
+    }
+    for (let k = 0; k < verts.length; k++) {
+      const v = verts[k]!;
+      if (v < 0 || v >= this.N) continue;
+      this.heights[v] = heights[k]!;
+      if (flags && this.flags) this.flags[v] = flags[k]!;
+    }
+    this.touched = true;
+  }
+
   /** Current mask for a layer, by tile path. Returns a copy. */
   maskOf(tilePath: string): Uint8Array | null {
     const i = this.layers.findIndex((l) => l.path === tilePath);

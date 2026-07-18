@@ -41,6 +41,10 @@ so a `.cts` preload dies on the first type annotation — silently, leaving
   open on the same map folder. When it saves, a banner offers to take its
   version. Content hashes, not timestamps, so our own saves never trigger it and
   a rewrite with identical bytes is not a change.
+- **Height brush**: raise and lower with a radial falloff, live remeshing, and
+  the flag transitions the format requires — digging a vertex to 0 floods it,
+  raising it off 0 drains it back to ground. A basin dug on a dry map raises its
+  sea immediately.
 - **Ground palette and tile brush**: all 82 shipped tiles previewed from their
   own `.dds`, grouped by category. Pick one, arm the brush, and left-drag to
   paint at 1/3/5/7 tiles wide. The stroke goes into the mask texture on the GPU

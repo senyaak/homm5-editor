@@ -26,7 +26,7 @@ import type { HommMap } from '../src/map.ts';
 import type {
   MapsListResult, MapListEntry, MapLoadResult, MoveObjectPayload, MoveObjectResult,
   MapSaveResult, MapPackResult, TerrainTilesResult, MapStatusResult, OpenMapDialogResult,
-  ExternalChange, PaintTilePayload, PaintTileResult,
+  ExternalChange, PaintTilePayload, PaintTileResult, SculptPayload, SculptResult,
 } from './ipc.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -214,6 +214,16 @@ ipcMain.handle('object:move', async (_e: IpcMainInvokeEvent, { id, x, y }: MoveO
 ipcMain.handle('terrain:paint', async (_e: IpcMainInvokeEvent, p: PaintTilePayload): Promise<PaintTileResult> => {
   if (!session) throw new Error('no map loaded');
   terrainDoc(session, p.floor).paintTile(p.tile, p.verts, p.strength ?? 255);
+  return { ok: true };
+});
+
+// --- IPC: raise/lower vertices ---
+// The payload carries final heights and flags, not an operation, so this is a
+// plain assignment. Flags travel with heights because the format ties them: a
+// bed dug to 0 is water, and raising it off 0 makes it ground again.
+ipcMain.handle('terrain:sculpt', async (_e: IpcMainInvokeEvent, p: SculptPayload): Promise<SculptResult> => {
+  if (!session) throw new Error('no map loaded');
+  terrainDoc(session, p.floor).setVertices(p.verts, p.heights, p.flags);
   return { ok: true };
 });
 

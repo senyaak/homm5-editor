@@ -532,7 +532,6 @@ function buildWater(t: Terrain, level: number, assetRoot: string): WaterData | n
   let wet = 0;
   const water = new Uint8Array(N);
   for (let i = 0; i < N; i++) if (flags[i] === FLAG_WATER) { water[i] = 1; wet++; }
-  if (!wet) return null;
 
   // Cover every cell that touches water, then let the terrain occlude the sheet:
   // the bed is at 0 and the shore climbs to the 2.0 default, so a flat sheet at
@@ -543,8 +542,9 @@ function buildWater(t: Terrain, level: number, assetRoot: string): WaterData | n
     const a = y * V + x;
     if (water[a] || water[a + 1] || water[a + V] || water[a + V + 1]) cells.push(a);
   }
-  if (!cells.length) return null;
-
+  // A dry map still gets its sheet description, with no cells. The editor needs
+  // the texture and level in hand so that digging a basin can raise a sea right
+  // away instead of only after a reload. Callers gate on cells.length.
   return { V, level, cells, wet, tex: seaTexture(assetRoot, 256) };
 }
 

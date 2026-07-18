@@ -176,7 +176,32 @@ function testDoc(path: string): void {
     doc2.save();
     check('a second save builds on the first', TerrainDoc.open(tmp).maskOf(tile)![0] === 255);
 
+    // --- height brush ---
+    const doc3 = TerrainDoc.open(tmp);
+    const h0 = doc3.heightsCopy();
+    const f0 = doc3.flagsCopy();
+    const hv = [100, 101, 102];
+    // Dig two vertices to the water level and raise one, the way lower/raise do.
+    doc3.setVertices(hv, [0, 0, 7.5], [0, 0, 16]);
+    const h1 = doc3.heightsCopy();
+    const f1 = doc3.flagsCopy();
+    check('heights are set', h1[100] === 0 && h1[101] === 0 && h1[102] === 7.5);
+    check('flags follow the heights', !!f1 && f1[100] === 0 && f1[102] === 16);
+    check('untouched heights survive sculpting', h1[500] === h0[500]);
+    check('untouched flags survive sculpting', !!f0 && !!f1 && f1[500] === f0[500]);
+
+    doc3.save();
+    const after = TerrainDoc.open(tmp);
+    check('sculpt survives a round trip', after.heightsCopy()[102] === 7.5
+      && after.flagsCopy()![100] === 0);
+    // A sculpt must not disturb the tile painting saved earlier.
+    check('sculpting leaves masks alone', after.maskOf(tile)![0] === 255);
+
     let threw = false;
+    try { doc3.setVertices([0, 1], [1], null); } catch { threw = true; }
+    check('mismatched sculpt arrays are rejected', threw);
+
+    threw = false;
     try { doc2.paintTile('/MapObjects/_(AdvMapTile)/NoSuchTile.xdb', [0]); } catch { threw = true; }
     check('painting an absent layer is rejected', threw);
   } finally {

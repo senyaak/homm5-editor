@@ -71,12 +71,19 @@ const setChild = (root: HTMLElement, sel: string, text: string): void => {
 interface Floor3D {
   name: string;
   V: number;
+  /** Live height plane; the sculpt brush edits it in place and remeshes. */
   heights: number[];
+  /** Live ground-kind flags, edited alongside heights (digging floods, raising drains). */
+  flags: number[] | null;
+  /** Ground colours for the fallback material, kept for remeshing. */
+  colors: number[] | null;
   group: THREE.Group;
   objGroup: THREE.Group;
   meshes: Map<string, THREE.Mesh>;
   terrainMesh: THREE.Mesh;
   waterMesh: THREE.Mesh | null;
+  /** The sea texture, kept so sculpting can raise a sheet on a map that began dry. */
+  waterTex: string | null;
   splat: SplatData | null;
   /** The packed layer masks on the GPU; the brush paints straight into it. */
   maskTex: THREE.DataArrayTexture | null;
@@ -371,10 +378,84 @@ async function upgradeToSplat(fl: Floor3D): Promise<void> {
 }
 
 // Build one floor: its coloured terrain heightmap + its placed object meshes.
-function buildFloor(floor: Floor, geos: THREE.BufferGeometry[], mats: THREE.Material[]): Floor3D {
-  const group = new THREE.Group();
-  const V = floor.V, heights = floor.heights;
+/**
+ * Build a floor's terrain geometry from its height and flag planes.
+ *
+ * Split out of buildFloor because the height brush has to rebuild it: sculpting
+ * moves vertices AND can flip a vertex between water and ground, which changes
+ * where cells are cut. Re-running the whole thing is far simpler than patching
+ * the affected cells in place, and on a 137x137 map it costs a few ms -- cheap
+ * enough to do once per brush tick.
+ */
+/** Cells (by their lower-left vertex) that touch a water-flagged vertex. */
+function waterCells(V: number, flags: number[] | null): number[] {
+  if (!flags) return [];
+  const cells: number[] = [];
+  for (let y = 0; y < V - 1; y++) for (let x = 0; x < V - 1; x++) {
+    const a = y * V + x;
+    // Cover every cell touching water and let the terrain occlude the sheet:
+    // the bed sits at 0 and the shore climbs to 2.0, so a flat sheet is cut
+    // exactly where the beach crosses it -- a real waterline for free.
+    if (!flags[a] || !flags[a + 1] || !flags[a + V] || !flags[a + V + 1]) cells.push(a);
+  }
+  return cells;
+}
 
+/** The flat sea sheet over those cells. Rebuilt whenever sculpting floods or drains one. */
+function waterGeometry(V: number, cells: number[], level: number): THREE.BufferGeometry {
+  const wpos: number[] = [], wuv: number[] = [], widx: number[] = [];
+  const vmap = new Map<number, number>();
+  const vert = (i: number): number => {
+    let v = vmap.get(i);
+    if (v === undefined) {
+      v = wpos.length / 3;
+      const x = i % V, y = (i / V) | 0;
+      wpos.push(x, y, level);
+      wuv.push(x / 8, y / 8); // gentle tiling; the sheet is mostly flat colour
+      vmap.set(i, v);
+    }
+    return v;
+  };
+  for (const a of cells) {
+    const A = vert(a), B = vert(a + 1), C = vert(a + V), D = vert(a + V + 1);
+    widx.push(A, B, C, B, D, C);
+  }
+  const wg = new THREE.BufferGeometry();
+  wg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(wpos), 3));
+  wg.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(wuv), 2));
+  wg.setIndex(widx);
+  wg.computeVertexNormals();
+  return wg;
+}
+
+/**
+ * The sea sheet over `cells`, with its own material.
+ *
+ * Built here rather than inline in buildFloor because sculpting can raise a sea
+ * on a map that started dry -- lowering ground to 0 floods it -- and that needs
+ * the same mesh, texture and all, without a reload.
+ */
+function makeWaterMesh(V: number, cells: number[], level: number, tex: string | null): THREE.Mesh {
+  const wg = waterGeometry(V, cells, level);
+  // The sea wears its own sheet -- dark by design. Rivers are a different thing
+  // entirely: painted tiles using the blue _TNL brush textures.
+  const wmat = new THREE.MeshPhongMaterial({
+    color: 0xffffff, transparent: true, opacity: 0.88,
+    shininess: 90, specular: 0x5f7f95, side: THREE.DoubleSide, depthWrite: false,
+  });
+  if (tex) {
+    const wt = new THREE.TextureLoader().load(tex);
+    wt.wrapS = wt.wrapT = THREE.RepeatWrapping;
+    wmat.map = wt;
+  } else {
+    wmat.color.setHex(0x0a2b2e); // fall back to the sheet's own dark tone
+  }
+  return new THREE.Mesh(wg, wmat);
+}
+
+function terrainGeometry(
+  V: number, heights: number[], flags: number[] | null, colors: number[] | null,
+): THREE.BufferGeometry {
   const tg = new THREE.BufferGeometry();
   const tp = new Float32Array(V * V * 3);
   const tc = new Float32Array(V * V * 3);
@@ -383,7 +464,7 @@ function buildFloor(floor: Floor, geos: THREE.BufferGeometry[], mats: THREE.Mate
   const tuv = new Float32Array(V * V * 2);
   // Prefer the real ground colours (blended tile textures incl. roads); fall
   // back to height-based colouring only when no texture layers resolved.
-  const gc = floor.colors;
+  const gc = colors;
   for (let y = 0; y < V; y++) for (let x = 0; x < V; x++) {
     const i = y * V + x, o = i * 3, h = heights[i];
     tp[o] = x; tp[o + 1] = y; tp[o + 2] = h;
@@ -417,7 +498,7 @@ function buildFloor(floor: Floor, geos: THREE.BufferGeometry[], mats: THREE.Mate
   // one kind is smooth however steep. Ramps (bit 3) are the deliberate walkable
   // inclines and stay smooth even across a boundary.
   const WATER = 0, GROUND = 1, PLATEAU = 2;
-  const fl = floor.flags;
+  const fl = flags;
   const kindOf = (i: number): number => { const f = fl![i]!; return f === 0 ? WATER : (f & 32) ? PLATEAU : GROUND; };
   const isRamp = (i: number): boolean => (fl![i]! & 8) !== 0;
   const MIN_STEP = 0.1; // a boundary with no real drop isn't worth a wall
@@ -519,6 +600,14 @@ function buildFloor(floor: Floor, geos: THREE.BufferGeometry[], mats: THREE.Mate
   tg.setAttribute('color', new THREE.BufferAttribute(col, 3));
   tg.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
   tg.setIndex(ti); tg.computeVertexNormals();
+  return tg;
+}
+
+function buildFloor(floor: Floor, geos: THREE.BufferGeometry[], mats: THREE.Material[]): Floor3D {
+  const group = new THREE.Group();
+  const V = floor.V, heights = floor.heights;
+
+  const tg = terrainGeometry(V, heights, floor.flags, floor.colors);
   // Start on the flat MinimapColor blend; the textured splat material replaces
   // it as soon as its textures finish decoding (see upgradeToSplat).
   const terrainMesh = new THREE.Mesh(tg, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }));
@@ -533,42 +622,7 @@ function buildFloor(floor: Floor, geos: THREE.BufferGeometry[], mats: THREE.Mate
   // itself clips the sheet and produces the waterline — no feathering needed.
   const wat = floor.water;
   if (wat && wat.cells.length) {
-    const wpos: number[] = [], wuv: number[] = [], widx: number[] = [];
-    const vmap = new Map();
-    const vert = (i: number): number => {
-      let v = vmap.get(i);
-      if (v === undefined) {
-        v = wpos.length / 3;
-        const x = i % V, y = (i / V) | 0;
-        wpos.push(x, y, wat.level);
-        wuv.push(x / 8, y / 8); // gentle tiling; the sheet is mostly flat colour
-        vmap.set(i, v);
-      }
-      return v;
-    };
-    for (const a of wat.cells) {
-      const A = vert(a), B = vert(a + 1), C = vert(a + V), D = vert(a + V + 1);
-      widx.push(A, B, C, B, D, C);
-    }
-    const wg = new THREE.BufferGeometry();
-    wg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(wpos), 3));
-    wg.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(wuv), 2));
-    wg.setIndex(widx);
-    wg.computeVertexNormals();
-    // The sea wears its own sheet — dark by design. Rivers are a different
-    // thing entirely: painted tiles using the blue _TNL brush textures.
-    const wmat = new THREE.MeshPhongMaterial({
-      color: 0xffffff, transparent: true, opacity: 0.88,
-      shininess: 90, specular: 0x5f7f95, side: THREE.DoubleSide, depthWrite: false,
-    });
-    if (wat.tex) {
-      const wt = new THREE.TextureLoader().load(wat.tex);
-      wt.wrapS = wt.wrapT = THREE.RepeatWrapping;
-      wmat.map = wt;
-    } else {
-      wmat.color.setHex(0x0a2b2e); // fall back to the sheet's own dark tone
-    }
-    waterMesh = new THREE.Mesh(wg, wmat);
+    waterMesh = makeWaterMesh(V, wat.cells, wat.level, wat.tex);
     group.add(waterMesh);
   }
 
@@ -587,7 +641,11 @@ function buildFloor(floor: Floor, geos: THREE.BufferGeometry[], mats: THREE.Mate
     objGroup.add(m);
     meshes.set(it.id, m);
   }
-  return { name: floor.name, V, heights, group, objGroup, meshes, terrainMesh, waterMesh, splat: floor.splat, maskTex: null, instances: floor.instances };
+  return {
+    name: floor.name, V, heights, flags: floor.flags, colors: floor.colors,
+    group, objGroup, meshes, terrainMesh, waterMesh, waterTex: floor.water?.tex ?? null,
+    splat: floor.splat, maskTex: null, instances: floor.instances,
+  };
 }
 
 function buildWorld(S: Scene): void {
@@ -783,7 +841,8 @@ renderer.domElement.addEventListener('pointerdown', (ev) => {
     painting = true;
     controls.enabled = false;
     strokeVerts.clear();
-    brushAt(ev);
+    lastTile = -1; lastTick = 0;   // a new stroke always applies its first tick
+    if (sculptDir === 0) brushAt(ev); else sculptTick(ev);
     return;
   }
   const hit = pickObject(ev);
@@ -797,7 +856,7 @@ renderer.domElement.addEventListener('pointerdown', (ev) => {
 });
 
 renderer.domElement.addEventListener('pointermove', (ev) => {
-  if (painting) { brushAt(ev); return; }
+  if (painting) { if (sculptDir === 0) brushAt(ev); else sculptTick(ev); return; }
   if (!dragging || !selected) return;
   // Project the cursor onto a horizontal plane at the object's height and snap
   // the resulting world position to the tile grid.
@@ -820,7 +879,7 @@ addEventListener('pointerup', async (ev) => {
   if (painting) {
     painting = false;
     controls.enabled = true;
-    await commitStroke();
+    await (sculptDir === 0 ? commitStroke() : commitSculpt());
     return;
   }
   if (!world || !down) return;
@@ -931,6 +990,127 @@ async function commitStroke(): Promise<void> {
     // The GPU already shows the stroke, so a failure here means the two copies
     // disagree. Say so plainly rather than leaving a lie on screen.
     $('hud').textContent = 'paint failed (reload to resync): '
+      + (e instanceof Error ? e.message : String(e));
+  }
+}
+
+// --- height brush ----------------------------------------------------------
+//
+// Raise and lower, with a linear falloff from the brush centre so a stroke
+// leaves a rounded mound rather than a stack of boxes.
+//
+// Heights and flags move together, because the format ties them. Ground sits at
+// the 2.0 default and a bed dug by `lower` is always exactly 0.0 and flagged
+// water. So: lower a vertex to 0 and it floods; raise a flooded vertex off 0 and
+// it drains back to ordinary ground. Flags matter beyond the water sheet — the
+// mesher cuts a cell wherever the ground KIND changes, so getting them wrong
+// puts cliffs in the middle of a hillside.
+//
+// Unlike the tile brush, this sends absolute values rather than an operation.
+// The falloff maths only runs here, so the main process cannot compute a
+// different answer and drift.
+
+const GROUND_LEVEL = 2.0;   // the format's default ground height
+const WATER_LEVEL = 0.0;    // what `lower` digs a bed to, exactly
+const STEP = 0.35;          // height change per brush tick at full strength
+const TICK_MS = 70;         // how often a held brush reapplies
+
+let sculptDir = 0;          // +1 raise, -1 lower, 0 = tile paint mode
+let lastTick = 0;
+let lastTile = -1;
+
+/** Rebuild the meshes a sculpt stroke invalidated. */
+function remeshFloor(fl: Floor3D): void {
+  const old = fl.terrainMesh.geometry;
+  fl.terrainMesh.geometry = terrainGeometry(fl.V, fl.heights, fl.flags, fl.colors);
+  old.dispose();
+  // Flooding or draining changes which cells the sheet covers. On a map that
+  // began dry there is no sheet yet, so digging the first basin creates one —
+  // otherwise the new sea would not appear until a reload.
+  const cells = waterCells(fl.V, fl.flags);
+  if (!cells.length) {
+    if (fl.waterMesh) {
+      fl.group.remove(fl.waterMesh);
+      fl.waterMesh.geometry.dispose();
+      fl.waterMesh = null;
+    }
+  } else if (fl.waterMesh) {
+    const prev = fl.waterMesh.geometry;
+    fl.waterMesh.geometry = waterGeometry(fl.V, cells, seaBase);
+    prev.dispose();
+  } else {
+    fl.waterMesh = makeWaterMesh(fl.V, cells, seaBase, fl.waterTex);
+    fl.group.add(fl.waterMesh);
+    $('seawrap').style.display = 'flex'; // the map has a sea now, so offer its level
+  }
+}
+
+/**
+ * Apply one tick of the height brush at tile (cx, cy).
+ * @returns the vertices it moved, or null if nothing changed.
+ */
+function sculptAt(fl: Floor3D, cx: number, cy: number): number[] | null {
+  const r = Math.max(1, brushSize) / 2;
+  const touched: number[] = [];
+  // Vertices within the brush radius, measured from the tile centre so the
+  // falloff is symmetric.
+  const ox = cx + 0.5, oy = cy + 0.5;
+  const lo = Math.floor(-r - 1), hi = Math.ceil(r + 1);
+  for (let dy = lo; dy <= hi; dy++) for (let dx = lo; dx <= hi; dx++) {
+    const x = cx + dx, y = cy + dy;
+    if (x < 0 || x >= fl.V || y < 0 || y >= fl.V) continue;
+    const d = Math.hypot(x - ox, y - oy);
+    if (d > r) continue;
+    const falloff = r <= 1 ? 1 : 1 - d / r;
+    const i = y * fl.V + x;
+    const next = Math.max(WATER_LEVEL, fl.heights[i]! + sculptDir * STEP * falloff);
+    if (next === fl.heights[i]) continue;
+    fl.heights[i] = next;
+    if (fl.flags) {
+      // A vertex at exactly 0 is a dug bed, which is what water is. Anything
+      // above it is ordinary ground. Plateau (32) and ramp (8) bits are
+      // deliberate authoring, so leave those vertices' kind alone.
+      const f = fl.flags[i]!;
+      if (!(f & 32) && !(f & 8)) fl.flags[i] = next <= WATER_LEVEL ? 0 : 16;
+    }
+    touched.push(i);
+  }
+  return touched.length ? touched : null;
+}
+
+/** Sculpt at the cursor, rate-limited so holding still is controllable. */
+function sculptTick(ev: PointerEvent): void {
+  const fl = activeFloor();
+  const at = tileUnderCursor(ev);
+  if (!at) return;
+  const tile = at.y * fl.V + at.x;
+  const now = performance.now();
+  // Reapply when the cursor moves to a new tile, or on a timer while held —
+  // otherwise a stroke that pauses would silently stop sculpting.
+  if (tile === lastTile && now - lastTick < TICK_MS) return;
+  lastTile = tile; lastTick = now;
+  const moved = sculptAt(fl, at.x, at.y);
+  if (!moved) return;
+  for (const v of moved) strokeVerts.add(v);
+  remeshFloor(fl);
+}
+
+/** Hand the finished sculpt to the main process as absolute values. */
+async function commitSculpt(): Promise<void> {
+  const fl = activeFloor();
+  if (!strokeVerts.size || !world) { strokeVerts.clear(); return; }
+  const verts = [...strokeVerts];
+  strokeVerts.clear();
+  try {
+    await window.editor.sculpt({
+      floor: world.active,
+      verts,
+      heights: verts.map((v) => fl.heights[v]!),
+      flags: fl.flags ? verts.map((v) => fl.flags![v]!) : null,
+    });
+    markDirty(true);
+  } catch (e) {
+    $('hud').textContent = 'sculpt failed (reload to resync): '
       + (e instanceof Error ? e.message : String(e));
   }
 }
@@ -1072,13 +1252,22 @@ function setPalette(open: boolean): void {
 $('palbtn').onclick = () => setPalette(!paletteOpen);
 
 $('brushbtn').onclick = () => {
-  // Arming the brush without a tile chosen would silently do nothing, so open
-  // the palette instead and let the user pick one.
-  if (!brushOn && !paintTile) { setPalette(true); $('hud').textContent = 'pick a ground tile first'; return; }
+  // Arming the tile brush without a tile chosen would silently do nothing, so
+  // open the palette instead and let the user pick one. Sculpting needs no tile.
+  if (!brushOn && sculptDir === 0 && !paintTile) {
+    setPalette(true);
+    $('hud').textContent = 'pick a ground tile first';
+    return;
+  }
   setBrush(!brushOn);
 };
 $select('brushsizesel').addEventListener('change', (e) => {
   brushSize = +(e.currentTarget as HTMLSelectElement).value;
+});
+$select('brushmode').addEventListener('change', (e) => {
+  const m = (e.currentTarget as HTMLSelectElement).value;
+  sculptDir = m === 'raise' ? 1 : m === 'lower' ? -1 : 0;
+  if (sculptDir === 0 && !paintTile) setPalette(true);
 });
 
 // Cliff shading on/off, so the rock blend can be compared against the raw

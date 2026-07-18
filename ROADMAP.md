@@ -96,13 +96,13 @@ project.json
 
 ## Phase 3 — Editing core
 
-**NEXT STEP — HEIGHT BRUSHES.** Writing is done for every plane (`writeTerrain`)
-and the tile brush is live. What remains is `lower`/`raise`/ramp, which edit
-heights **and** flags — otherwise cuts won't form, since a cut is a change of
-ground kind rather than steepness (see docs/TERRAIN_FORMAT.md). Those also have
-to remesh the affected cells, which the tile brush never has to do. After that:
-a Rect brush, and adding a layer for a tile the map does not carry yet (the one
-edit that changes the file's structure rather than its bytes).
+**NEXT STEP — RAMPS AND PLATEAUS.** Writing works for every plane, and the tile
+and raise/lower brushes are live. Raise/lower moves ground within its own kind
+and flips water/ground at height 0, but never writes the plateau (32) or ramp
+(8) bits — so the brushes that deliberately CREATE a cut are still missing, and
+those bits are read but never authored. After that: a Rect brush, and adding a
+layer for a tile the map does not carry yet (the one terrain edit that changes
+the file's structure rather than its bytes).
 
 - [x] Select and move objects, snapped to the grid ✅ (plus a categorised,
       searchable object list)
@@ -114,7 +114,10 @@ edit that changes the file's structure rather than its bytes).
 - [x] Tile brush: paint the selected ground tile, sizes 1/3/5/7. Applied to the
       GPU masks for feedback and to the authoritative bytes in one message per
       stroke ✅
-- [ ] ⬜ Terrain brushes: height (raise/lower/flatten), water, **passability**
+- [x] Height brush: raise/lower with a radial falloff, live remeshing, and the
+      water/ground flag transitions at height 0. Digging a basin raises a sea
+      without a reload ✅
+- [ ] ⬜ Terrain brushes: flatten, ramps, plateaus, **passability**
 - [ ] ⬜ Object palette from assets (icons from `Editor/IconCache`) + drag and drop
 - [ ] ⬜ Write edits back into `.h5m` (patch in place where possible)
 

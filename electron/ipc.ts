@@ -134,6 +134,29 @@ export interface PaintTileResult {
   ok: true;
 }
 
+/**
+ * Payload of `terrain:sculpt` — absolute values for the vertices a height
+ * stroke moved.
+ *
+ * Absolute, not a delta: the falloff maths lives in the renderer, so sending
+ * the operation would let the two copies compute different answers. Sending the
+ * result means they cannot disagree.
+ */
+export interface SculptPayload {
+  floor: number;
+  /** Vertex indices (y*V + x). */
+  verts: number[];
+  /** New height per vertex, parallel to `verts`. */
+  heights: number[];
+  /** New ground flag per vertex, or null on a terrain with no flag plane. */
+  flags: number[] | null;
+}
+
+/** Result of `terrain:sculpt`. */
+export interface SculptResult {
+  ok: true;
+}
+
 /** Result of `map:status`: null when no map is loaded. */
 export type MapStatusResult = ProjectStatus | null;
 
@@ -151,6 +174,7 @@ export interface EditorApi {
   status(): Promise<MapStatusResult>;
   listTiles(): Promise<TerrainTilesResult>;
   paintTile(p: PaintTilePayload): Promise<PaintTileResult>;
+  sculpt(p: SculptPayload): Promise<SculptResult>;
   /**
    * Subscribe to external edits of the open map folder. Fires once per settled
    * burst of writes; our own saves never fire it.
