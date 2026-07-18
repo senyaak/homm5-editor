@@ -119,6 +119,8 @@ Rect brush, and undo/redo, which the brushes make overdue.
 - [x] Adding a texture layer for a tile the map does not carry — `src/terrain-layer.ts`.
       Splices the record and grows every enclosing block; the size encoding's
       width flag was decoded to make this writable ✅
+- [x] River brushes (Water/Bog/LavaFlow): sink the bed below its banks and write
+      the half-tile river plane ✅
 - [ ] ⬜ Terrain brushes: flatten, ramps, plateaus, **passability**
 - [ ] ⬜ Object palette from assets (icons from `Editor/IconCache`) + drag and drop
 - [ ] ⬜ Write edits back into `.h5m` (patch in place where possible)

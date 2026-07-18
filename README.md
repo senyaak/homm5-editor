@@ -54,6 +54,11 @@ so a `.cts` preload dies on the first type annotation — silently, leaving
   paint at 1/3/5/7 tiles wide. The stroke goes into the mask texture on the GPU
   for immediate feedback and into the main process, which owns the bytes that
   get saved.
+- **River brushes**: Water, Bog and LavaFlow are not ordinary tiles. Painting
+  one sinks the bed 0.4 below its banks with a 0.2 rim, and writes the half-tile
+  river plane — which is what makes a river a river to the game rather than
+  paint. Sinking is idempotent per vertex and persists across strokes, seeded
+  from the map's own river plane.
 - **Adding a texture layer** (`src/terrain-layer.ts`): picking a tile the map
   does not carry splices a new mask array and its path into the container and
   grows every enclosing block's declared length. The only terrain edit that

@@ -22,7 +22,7 @@
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { deflateSync } from 'node:zlib';
-import { parseTerrain, readHeights, readTextureLayers, readMask, readGroundFlags, FLAG_WATER } from './terrain.ts';
+import { parseTerrain, readHeights, readTextureLayers, readMask, readGroundFlags, readWaterPlane, FLAG_WATER } from './terrain.ts';
 import { extractMeshes, readGeometryRefFromModelXdb } from './geometry.ts';
 import { decodeDDS } from './dds.ts';
 import { loadMap } from './map.ts';
@@ -86,6 +86,14 @@ export interface Floor {
   colors: number[] | null;
   /** Per-vertex ground kind; see readGroundFlags. Null if absent. */
   flags: number[] | null;
+  /**
+   * Vertices already marked in the half-tile river plane.
+   *
+   * The river brush sinks a bed exactly once. Without knowing what is already
+   * river, a second stroke over the same water digs it again and a few passes
+   * turn a stream into a canyon.
+   */
+  riverVerts: number[];
   water: WaterData | null;
   splat: SplatData | null;
   instances: Instance[];
@@ -117,6 +125,7 @@ interface LoadedTerrain {
   V: number;
   H: Float32Array;
   flags: number[] | null;
+  riverVerts: number[];
   water: WaterData | null;
   colors: number[] | null;
   splat: SplatData | null;
@@ -164,6 +173,7 @@ export function buildScene(
       // always (8: 100%, 24: 97.4%, 56: 100%) against 38% for plain ground, so
       // the renderer uses it to tell a designed incline from a cut edge.
       flags: flags ? Array.from(flags) : null,
+      riverVerts: riverVertices(t),
       water: buildWater(t, opt.seaLevel ?? SEA_LEVEL, assetRoot),
       colors: terrainColors(t, readXdb, tileColorCache),
       splat: buildSplat(t, readXdb, assetRoot, tileTexCache, tileColorCache, opt.tileSize || 256),
@@ -233,6 +243,7 @@ export function buildScene(
       heights: Array.from(t.H, (v) => +v.toFixed(3)),
       colors: t.colors,
       flags: t.flags,
+      riverVerts: t.riverVerts,
       water: t.water,
       splat: t.splat,
       instances: floorInstances[f] ?? [],
@@ -541,6 +552,17 @@ function seaTexture(assetRoot: string, size: number): string | null {
     }
     return pngDataUri(size, size, out);
   } catch { return null; }
+}
+
+/** Vertices whose half-tile river cell is set. */
+function riverVertices(t: Terrain): number[] {
+  const r = readWaterPlane(t);
+  if (!r) return [];
+  const out: number[] = [];
+  for (let y = 0; y < t.V; y++) for (let x = 0; x < t.V; x++) {
+    if (r.data[(2 * y) * r.W + 2 * x]!) out.push(y * t.V + x);
+  }
+  return out;
 }
 
 function buildWater(t: Terrain, level: number, assetRoot: string): WaterData | null {

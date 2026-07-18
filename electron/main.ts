@@ -27,7 +27,7 @@ import type {
   MapsListResult, MapListEntry, MapLoadResult, MoveObjectPayload, MoveObjectResult,
   MapSaveResult, MapPackResult, TerrainTilesResult, MapStatusResult, OpenMapDialogResult,
   ExternalChange, PaintTilePayload, PaintTileResult, SculptPayload, SculptResult,
-  AddLayerPayload, AddLayerResult,
+  AddLayerPayload, AddLayerResult, PaintRiverPayload,
 } from './ipc.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -225,6 +225,20 @@ ipcMain.handle('terrain:paint', async (_e: IpcMainInvokeEvent, p: PaintTilePaylo
 ipcMain.handle('terrain:sculpt', async (_e: IpcMainInvokeEvent, p: SculptPayload): Promise<SculptResult> => {
   if (!session) throw new Error('no map loaded');
   terrainDoc(session, p.floor).setVertices(p.verts, p.heights, p.flags);
+  return { ok: true };
+});
+
+// --- IPC: paint a river ---
+// Mask, river plane and heights in one message: a river whose plane is unset is
+// only paint as far as the game is concerned, and one whose bed was not sunk
+// sits on top of its own banks. Applying them separately would leave the file
+// briefly — or on a failure, permanently — inconsistent.
+ipcMain.handle('terrain:paint-river', async (_e: IpcMainInvokeEvent, p: PaintRiverPayload): Promise<PaintTileResult> => {
+  if (!session) throw new Error('no map loaded');
+  const doc = terrainDoc(session, p.floor);
+  doc.paintTile(p.tile, p.verts);
+  doc.setRiver(p.verts);
+  doc.setVertices(p.heightVerts, p.heights, null);
   return { ok: true };
 });
 

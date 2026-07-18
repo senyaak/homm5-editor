@@ -197,6 +197,23 @@ function testDoc(path: string): void {
     // A sculpt must not disturb the tile painting saved earlier.
     check('sculpting leaves masks alone', after.maskOf(tile)![0] === 255);
 
+    // --- river plane ---
+    const doc4 = TerrainDoc.open(tmp);
+    const rv = [20 * doc4.V + 20, 20 * doc4.V + 21, 21 * doc4.V + 20];
+    const wasRiver = rv.map((v) => doc4.isRiver(v));
+    doc4.setRiver(rv);
+    check('vertices become river', rv.every((v) => doc4.isRiver(v)),
+      `were ${wasRiver.join(',')}`);
+    check('a vertex off the stroke stays dry', !doc4.isRiver(40 * doc4.V + 40));
+    doc4.save();
+    const afterRiver = TerrainDoc.open(tmp);
+    check('the river plane survives a round trip', rv.every((v) => afterRiver.isRiver(v)));
+    // The river plane must not disturb what the other brushes wrote.
+    check('river marking leaves heights alone', afterRiver.heightsCopy()[102] === 7.5);
+    check('river marking leaves masks alone', afterRiver.maskOf(tile)![0] === 255);
+    doc4.setRiver(rv, false);
+    check('a river can be cleared again', rv.every((v) => !doc4.isRiver(v)));
+
     let threw = false;
     try { doc3.setVertices([0, 1], [1], null); } catch { threw = true; }
     check('mismatched sculpt arrays are rejected', threw);

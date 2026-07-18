@@ -39,15 +39,18 @@ const STUB = `<script>
   // Two layers packed into one mask group: red channel (layer 0) fully painted,
   // green (layer 1) empty. Without a splat the tile brush has nothing to write
   // into and silently does nothing, so the harness needs a real one.
+  // Realistic tile paths: the renderer decides what is a river brush by the
+  // path's folder, so a stub with made-up paths would never exercise that.
+  const T = '/MapObjects/_(AdvMapTile)/';
   const splat = {
     V, size: 8, layerCount: 2,
-    layerTex: [solid(8, 8, 110, 140, 80), solid(8, 8, 200, 180, 120)],
+    layerTex: [solid(8, 8, 110, 140, 80), solid(8, 8, 70, 90, 130)],
     maskGroups: [solid(V, V, 255, 0, 0)],
     rockTex: null,
-    paths: ['/t/Grass.xdb', '/t/Sand.xdb'],
+    paths: [T + 'Grass/Grass.xdb', T + 'Water/Bog.xdb'],
   };
   const floor = {
-    name: 'surface', V, heights, colors: null, flags,
+    name: 'surface', V, heights, colors: null, flags, riverVerts: [],
     water: { V, level: 1.5, cells: [], wet: 36, tex: null },
     splat, instances: [],
   };
@@ -82,12 +85,14 @@ const STUB = `<script>
     // Two tiles, one of them present in the map so it is paintable.
     listTiles: async () => ({
       tiles: [
-        { name: 'Grass', category: 'Grass', path: '/t/Grass.xdb', priority: 10, type: 'Grass', thumb: '' },
-        { name: 'Sand', category: 'Sand', path: '/t/Sand.xdb', priority: 20, type: 'Sand', thumb: '' },
+        { name: 'Grass', category: 'Grass', path: T + 'Grass/Grass.xdb', priority: 10, type: 'Grass', thumb: '' },
+        { name: 'Bog', category: 'Water', path: T + 'Water/Bog.xdb', priority: 277, type: 'Water', thumb: '' },
+        { name: 'Sand', category: 'Sand', path: T + 'Sand/Sand.xdb', priority: 20, type: 'Sand', thumb: '' },
       ],
-      inMap: ['/t/Grass.xdb'],
+      inMap: [T + 'Grass/Grass.xdb', T + 'Water/Bog.xdb'],
     }),
     paintTile: async (p) => { log('paintTile', p); return { ok: true }; },
+    paintRiver: async (p) => { log('paintRiver', p); return { ok: true }; },
     // Adding a layer grows the shader by one: hand back a splat with an extra
     // mask group and layer, the way the real one does.
     addLayer: async (p) => {

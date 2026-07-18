@@ -129,6 +129,25 @@ export interface PaintTilePayload {
   strength?: number;
 }
 
+/**
+ * Payload of `terrain:paint-river`.
+ *
+ * A river brush does three things at once, and they have to land together or
+ * the file is inconsistent: paint the tile, mark the half-tile river plane —
+ * which is what makes it a river to the game rather than paint — and sink the
+ * bed below its banks.
+ */
+export interface PaintRiverPayload {
+  floor: number;
+  tile: string;
+  /** Vertices of the riverbed itself. */
+  verts: number[];
+  /** Every vertex whose height changed: the bed plus its feathered rim. */
+  heightVerts: number[];
+  /** New height per entry of `heightVerts`. */
+  heights: number[];
+}
+
 /** Result of `terrain:paint`. */
 export interface PaintTileResult {
   ok: true;
@@ -193,6 +212,7 @@ export interface EditorApi {
   status(): Promise<MapStatusResult>;
   listTiles(): Promise<TerrainTilesResult>;
   paintTile(p: PaintTilePayload): Promise<PaintTileResult>;
+  paintRiver(p: PaintRiverPayload): Promise<PaintTileResult>;
   sculpt(p: SculptPayload): Promise<SculptResult>;
   addLayer(p: AddLayerPayload): Promise<AddLayerResult>;
   /**

@@ -75,6 +75,14 @@ interface Floor3D {
   heights: number[];
   /** Live ground-kind flags, edited alongside heights (digging floods, raising drains). */
   flags: number[] | null;
+  /**
+   * Vertices the river brush has already sunk — seeded from the map's own river
+   * plane and grown as strokes land. A river is a fixed depth below its banks,
+   * not a hole that deepens each time you paint over it, and this has to
+   * survive across strokes: clearing it per stroke turned four passes over one
+   * stream into a canyon (1.6, 1.2, 0.8, 0.4).
+   */
+  riverSunk: Set<number>;
   /** Ground colours for the fallback material, kept for remeshing. */
   colors: number[] | null;
   group: THREE.Group;
@@ -650,6 +658,7 @@ function buildFloor(floor: Floor, geos: THREE.BufferGeometry[], mats: THREE.Mate
   }
   return {
     name: floor.name, V, heights, flags: floor.flags, colors: floor.colors,
+    riverSunk: new Set(floor.riverVerts),
     group, objGroup, meshes, terrainMesh, waterMesh, waterTex: floor.water?.tex ?? null,
     splat: floor.splat, maskTex: null, instances: floor.instances,
   };
@@ -850,6 +859,7 @@ renderer.domElement.addEventListener('pointerdown', (ev) => {
     painting = true;
     controls.enabled = false;
     strokeVerts.clear();
+    riverHeights.clear();
     lastTile = -1; lastTick = 0;   // a new stroke always applies its first tick
     if (sculptDir === 0) brushAt(ev); else sculptTick(ev);
     return;
@@ -1031,6 +1041,65 @@ function paintMaskTexture(fl: Floor3D, layerIdx: number, verts: number[]): void 
   tex.needsUpdate = true;
 }
 
+// --- river brushes ---------------------------------------------------------
+//
+// Water, Bog and LavaFlow are not ordinary ground tiles. They are the original
+// editor's "river" brushes, and painting one sinks the bed below its banks —
+// measured against every shipped map, the painted bed sits below the
+// surrounding high ground 90% of the time for LavaFlow, 74% for Bog, 65% for
+// Water. Senya's map 12 shows the profile plainly: bank 2.0, one vertex at 1.8,
+// bed at 1.6.
+//
+// They also write the half-tile river plane, which is what actually makes a
+// river a river to the game. Painting one as a plain tile produced something
+// that looked like a river and was not one.
+
+/** Tiles that behave as river brushes. They live under the Water folder. */
+const isRiverTile = (path: string): boolean => /\/_\(AdvMapTile\)\/Water\//.test(path);
+
+const RIVER_DEPTH = 0.4;   // how far the bed drops below the bank
+const RIVER_FEATHER = 0.2; // the single rim vertex between bank and bed
+
+/** Height changes accumulated over the stroke, keyed by vertex. */
+const riverHeights = new Map<number, number>();
+
+/**
+ * Sink the bed under `verts` and feather its rim.
+ *
+ * Idempotent per vertex: a river is a fixed depth below its banks, not a hole
+ * that deepens the longer you hold the mouse down. Dragging back over the same
+ * bed must leave it where it is.
+ */
+function sinkRiver(fl: Floor3D, verts: number[]): void {
+  const sunk = fl.riverSunk;
+  const bed = new Set(verts);
+  for (const v of verts) {
+    if (sunk.has(v)) continue;
+    sunk.add(v);
+    const target = fl.heights[v]! - RIVER_DEPTH;
+    fl.heights[v] = target;
+    riverHeights.set(v, target);
+  }
+  // One ring of rim vertices, dropped half as far, so the bank does not fall
+  // away as a sheer step. Only pulled DOWN: a rim that is already lower is
+  // someone else's terrain and not ours to raise.
+  for (const v of verts) {
+    const x = v % fl.V, y = (v / fl.V) | 0;
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+      const nx = x + dx, ny = y + dy;
+      if (nx < 0 || nx >= fl.V || ny < 0 || ny >= fl.V) continue;
+      const n = ny * fl.V + nx;
+      if (bed.has(n) || sunk.has(n)) continue;
+      const target = fl.heights[n]! - RIVER_FEATHER;
+      if (target >= fl.heights[n]!) continue;
+      fl.heights[n] = target;
+      riverHeights.set(n, target);
+      sunk.add(n);
+    }
+  }
+  remeshFloor(fl);
+}
+
 /** Paint at the cursor, if the brush is armed and the tile is paintable. */
 function brushAt(ev: PointerEvent): void {
   const fl = activeFloor();
@@ -1048,6 +1117,7 @@ function brushAt(ev: PointerEvent): void {
   if (!fresh.length) return;
   for (const v of fresh) strokeVerts.add(v);
   paintMaskTexture(fl, layerIdx, fresh);
+  if (isRiverTile(tile.path)) sinkRiver(fl, fresh);
 }
 
 /** Hand the finished stroke to the main process in one message. */
@@ -1056,8 +1126,21 @@ async function commitStroke(): Promise<void> {
   if (!tile || !strokeVerts.size || !world) { strokeVerts.clear(); return; }
   const verts = [...strokeVerts];
   strokeVerts.clear();
+  const heightEdits = [...riverHeights];
+  riverHeights.clear();
   try {
-    await window.editor.paintTile({ floor: world.active, tile: tile.path, verts });
+    if (isRiverTile(tile.path)) {
+      // Mask, river plane and heights travel together: a river missing any one
+      // of the three is not a river, and a half-applied stroke would be worse
+      // than a rejected one.
+      await window.editor.paintRiver({
+        floor: world.active, tile: tile.path, verts,
+        heightVerts: heightEdits.map(([v]) => v),
+        heights: heightEdits.map(([, h]) => h),
+      });
+    } else {
+      await window.editor.paintTile({ floor: world.active, tile: tile.path, verts });
+    }
     markDirty(true);
   } catch (e) {
     // The GPU already shows the stroke, so a failure here means the two copies

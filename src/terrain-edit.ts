@@ -13,7 +13,8 @@
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import {
-  parseTerrain, readHeights, readGroundFlags, readTextureLayers, readMask, writeTerrain,
+  parseTerrain, readHeights, readGroundFlags, readTextureLayers, readMask, readWaterPlane,
+  writeTerrain,
 } from './terrain.ts';
 import { addTextureLayer } from './terrain-layer.ts';
 import type { Terrain, TextureLayer } from './terrain.ts';
@@ -31,6 +32,10 @@ export class TerrainDoc {
   private masks: Uint8Array[];
   private heights: Float32Array;
   private flags: Uint8Array | null;
+  /** The half-tile river plane, (2V-1)². Null on a terrain that has none. */
+  private river: Uint8Array | null;
+  /** Side of the river grid, 2V-1. */
+  private riverW = 0;
   private touched = false;
 
   private constructor(path: string, raw: Buffer) {
@@ -43,6 +48,7 @@ export class TerrainDoc {
     this.masks = [];
     this.heights = new Float32Array(0);
     this.flags = null;
+    this.river = null;
     this.load(raw);
   }
 
@@ -61,6 +67,45 @@ export class TerrainDoc {
     this.heights = Float32Array.from(readHeights(t));
     const f = readGroundFlags(t);
     this.flags = f ? Uint8Array.from(f) : null;
+    const r = readWaterPlane(t);
+    this.river = r ? Uint8Array.from(r.data) : null;
+    this.riverW = r ? r.W : 0;
+  }
+
+  /**
+   * Mark vertices as river in the half-tile plane.
+   *
+   * This plane is what makes a river a river to the game — the tile texture
+   * alone is just paint. It sits on a (2V-1)² grid, so a vertex (x,y) lands at
+   * (2y, 2x) and the cell between two river vertices gets the midpoint between
+   * them, which is what keeps a stroke connected rather than dotted.
+   */
+  setRiver(verts: VertexList, on = true): void {
+    const r = this.river;
+    if (!r) return;
+    const W = this.riverW, V = this.V;
+    const set = (hx: number, hy: number): void => {
+      if (hx < 0 || hx >= W || hy < 0 || hy >= W) return;
+      r[hy * W + hx] = on ? 255 : 0;
+    };
+    const wet = new Set(verts);
+    for (const v of verts) {
+      const x = v % V, y = (v / V) | 0;
+      set(2 * x, 2 * y);
+      // Bridge to river neighbours so the stroke reads as continuous.
+      if (wet.has(v + 1) && x + 1 < V) set(2 * x + 1, 2 * y);
+      if (wet.has(v - 1) && x > 0) set(2 * x - 1, 2 * y);
+      if (wet.has(v + V) && y + 1 < V) set(2 * x, 2 * y + 1);
+      if (wet.has(v - V) && y > 0) set(2 * x, 2 * y - 1);
+    }
+    this.touched = true;
+  }
+
+  /** True where the river plane is already set for this vertex. */
+  isRiver(vert: number): boolean {
+    if (!this.river) return false;
+    const x = vert % this.V, y = (vert / this.V) | 0;
+    return this.river[(2 * y) * this.riverW + 2 * x]! > 0;
   }
 
   /** True when there are edits not yet written to disk. */
@@ -142,6 +187,7 @@ export class TerrainDoc {
     return writeTerrain(this.t, {
       heights: this.heights,
       ...(this.flags ? { flags: this.flags } : {}),
+      ...(this.river ? { water: this.river } : {}),
       masks: this.layers.map((l, i) => ({ layer: l, data: this.masks[i]! })),
     });
   }
