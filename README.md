@@ -28,8 +28,10 @@ so a `.cts` preload dies on the first type annotation — silently, leaving
   painted river brushes, vertical cut faces where ground kinds meet, rock-textured
   cliffs, and both floors. Write-up: [docs/TERRAIN_FORMAT.md](docs/TERRAIN_FORMAT.md).
 - **`GroundTerrain.bin`** (`src/terrain.ts`): reads heights, texture layer masks,
-  ground flags and the river plane; writes heights back into a valid file.
-  Round-trip tested on real 96×96 and 136×136 maps (`npm run test-terrain`).
+  ground flags and the river plane, and writes every one of them back. Planes
+  are fixed-size, so a write is a byte-for-byte overwrite in place and the
+  output differs only where asked. Round-trip tested on real 96×96 and 136×136
+  maps (`npm run test-terrain`, `npm run test-terrain-write`).
 - **`map.xdb` model** (`src/map.ts`, `src/xml.ts`): loss-less XML DOM —
   `serialize(parse(x)) === x` on all 108 sample maps — with a typed object model
   over it. Editing an object rewrites exactly one line.
@@ -39,8 +41,12 @@ so a `.cts` preload dies on the first type annotation — silently, leaving
   open on the same map folder. When it saves, a banner offers to take its
   version. Content hashes, not timestamps, so our own saves never trigger it and
   a rewrite with identical bytes is not a change.
-- **Ground palette**: all 82 shipped tiles previewed from their own `.dds`,
-  grouped by category. Brushes are not implemented yet — painting comes next.
+- **Ground palette and tile brush**: all 82 shipped tiles previewed from their
+  own `.dds`, grouped by category. Pick one, arm the brush, and left-drag to
+  paint at 1/3/5/7 tiles wide. The stroke goes into the mask texture on the GPU
+  for immediate feedback and into the main process, which owns the bytes that
+  get saved. Only tiles the map already has a layer for (green dot) can be
+  painted — a new layer means restructuring the `.bin`.
 - **Mesh decoding** (`src/geometry.ts`): positions, indices, UVs and textures.
   See [docs/GEOMETRY_FORMAT.md](docs/GEOMETRY_FORMAT.md).
 
@@ -50,6 +56,7 @@ so a `.cts` preload dies on the first type annotation — silently, leaving
 npm start                 # build the renderer, then launch the editor
 npm run typecheck         # tsc --noEmit across the whole project
 npm run test-terrain      # terrain parser round-trip on sample maps
+npm run test-terrain-write # plane writes + the tile brush
 npm run test-map          # map.xdb model + loss-less XML round-trip
 npm run test-watch        # external-change watcher
 npm run test-pak          # ZIP reader/writer
@@ -133,11 +140,11 @@ Details in [docs/GEOMETRY_FORMAT.md](docs/GEOMETRY_FORMAT.md).
 
 ## Next
 
-- [ ] Write masks and flags back to `GroundTerrain.bin` — the brushes are blocked
-      on this. Painting tiles edits layer masks; `lower`/`raise`/ramp edit heights
-      **and** flags, or cuts won't form (a cut is a change of ground kind, not
-      steepness — see the terrain write-up).
-- [ ] Terrain brushes: tile painting, raise/lower, ramps, brush sizes.
+- [ ] Height brushes: `raise`/`lower`/ramp. These edit heights **and** flags, or
+      cuts won't form (a cut is a change of ground kind, not steepness — see the
+      terrain write-up), and they have to remesh the cells they touch.
+- [ ] Add a layer for a tile the map does not carry — the one terrain edit that
+      changes the file's structure rather than its bytes.
 - [ ] Object rotation, deletion, undo/redo, a property panel.
 - [ ] Fix the remaining undecoded models (see [MESH_PLAN.md](MESH_PLAN.md)).
 - [ ] Campaign editor (`*.(Campaign).xdb` is plain XML).

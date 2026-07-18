@@ -78,6 +78,8 @@ interface Floor3D {
   terrainMesh: THREE.Mesh;
   waterMesh: THREE.Mesh | null;
   splat: SplatData | null;
+  /** The packed layer masks on the GPU; the brush paints straight into it. */
+  maskTex: THREE.DataArrayTexture | null;
   instances: Instance[];
 }
 
@@ -361,6 +363,7 @@ async function upgradeToSplat(fl: Floor3D): Promise<void> {
     },
     side: THREE.DoubleSide,
   });
+  fl.maskTex = masks; // the brush writes into this and flips needsUpdate
   const old = fl.terrainMesh.material;
   fl.terrainMesh.material = mat;
   for (const m of Array.isArray(old) ? old : [old]) m.dispose();
@@ -584,7 +587,7 @@ function buildFloor(floor: Floor, geos: THREE.BufferGeometry[], mats: THREE.Mate
     objGroup.add(m);
     meshes.set(it.id, m);
   }
-  return { name: floor.name, V, heights, group, objGroup, meshes, terrainMesh, waterMesh, splat: floor.splat, instances: floor.instances };
+  return { name: floor.name, V, heights, group, objGroup, meshes, terrainMesh, waterMesh, splat: floor.splat, maskTex: null, instances: floor.instances };
 }
 
 function buildWorld(S: Scene): void {
@@ -774,6 +777,15 @@ function pickObject(ev: PointerEvent): THREE.Mesh | null {
 
 renderer.domElement.addEventListener('pointerdown', (ev) => {
   if (!world || ev.button !== 0) return;
+  // With the brush armed, left-drag paints instead of orbiting. Middle and
+  // right still move the camera, so the view stays reachable mid-stroke.
+  if (brushOn) {
+    painting = true;
+    controls.enabled = false;
+    strokeVerts.clear();
+    brushAt(ev);
+    return;
+  }
   const hit = pickObject(ev);
   down = { sx: ev.clientX, sy: ev.clientY, hitId: hit ? hit.userData.inst.id : null };
   // Grab-to-move only when pressing on the already-selected object.
@@ -785,6 +797,7 @@ renderer.domElement.addEventListener('pointerdown', (ev) => {
 });
 
 renderer.domElement.addEventListener('pointermove', (ev) => {
+  if (painting) { brushAt(ev); return; }
   if (!dragging || !selected) return;
   // Project the cursor onto a horizontal plane at the object's height and snap
   // the resulting world position to the tile grid.
@@ -804,6 +817,12 @@ renderer.domElement.addEventListener('pointermove', (ev) => {
 });
 
 addEventListener('pointerup', async (ev) => {
+  if (painting) {
+    painting = false;
+    controls.enabled = true;
+    await commitStroke();
+    return;
+  }
   if (!world || !down) return;
   const wasClick = Math.abs(ev.clientX - down.sx) < CLICK_SLOP && Math.abs(ev.clientY - down.sy) < CLICK_SLOP;
 
@@ -819,6 +838,110 @@ addEventListener('pointerup', async (ev) => {
   }
   down = null;
 });
+
+// --- terrain brush ---------------------------------------------------------
+//
+// Painting is applied twice: into the mask texture on the GPU, so the stroke
+// appears under the cursor with no round trip, and — on pointer-up — into the
+// main process, which owns the bytes that get saved. The two use the same rule
+// (target layer to full strength, every other layer cleared at that vertex),
+// because the shader composites by priority: raising the target alone would
+// leave any higher-priority layer sitting on top of the new paint.
+//
+// The renderer's copy is never read back. A reload always takes what the main
+// process wrote, so the GPU copy drifting would show up immediately rather than
+// corrupting anything.
+
+let brushOn = false;
+let brushSize = 1;         // in tiles: 1, 3, 5, 7
+let painting = false;
+/** Vertices touched by the stroke in progress, deduped. */
+const strokeVerts = new Set<number>();
+
+/** Tile under the cursor, from a ray against the terrain itself (so it follows hills). */
+function tileUnderCursor(ev: PointerEvent): { x: number; y: number } | null {
+  if (!world) return null;
+  ptr.x = (ev.clientX / innerWidth) * 2 - 1;
+  ptr.y = -(ev.clientY / innerHeight) * 2 + 1;
+  raycaster.setFromCamera(ptr, camera);
+  const hit = raycaster.intersectObject(activeFloor().terrainMesh, false)[0];
+  if (!hit) return null;
+  return { x: Math.floor(hit.point.x), y: Math.floor(hit.point.y) };
+}
+
+/** Vertices of a square brush of `size` tiles centred on tile (cx, cy). */
+function brushVerts(V: number, cx: number, cy: number, size: number): number[] {
+  const r = Math.floor(Math.max(1, size) / 2);
+  const out: number[] = [];
+  for (let y = cy - r; y <= cy + r + 1; y++) {
+    if (y < 0 || y >= V) continue;
+    for (let x = cx - r; x <= cx + r + 1; x++) {
+      if (x < 0 || x >= V) continue;
+      out.push(y * V + x);
+    }
+  }
+  return out;
+}
+
+/** Write the stroke into the GPU masks. Layer i lives in group i/3, channel i%3. */
+function paintMaskTexture(fl: Floor3D, layerIdx: number, verts: number[]): void {
+  const tex = fl.maskTex, s = fl.splat;
+  if (!tex || !s) return;
+  const data = tex.image.data;
+  if (!data) return; // the texture always carries its data; three's type says maybe
+  const n = fl.V * fl.V;
+  for (const v of verts) {
+    for (let i = 0; i < s.layerCount; i++) {
+      const off = ((i / 3 | 0) * n + v) * 4 + (i % 3);
+      data[off] = i === layerIdx ? 255 : 0;
+    }
+  }
+  tex.needsUpdate = true;
+}
+
+/** Paint at the cursor, if the brush is armed and the tile is paintable. */
+function brushAt(ev: PointerEvent): void {
+  const fl = activeFloor();
+  const tile = paintTile;
+  if (!tile || !fl.splat) return;
+  // Before upgradeToSplat finishes there is nothing to paint into. Refusing here
+  // matters: the stroke would otherwise reach the file but never the screen.
+  if (!fl.maskTex) { $('hud').textContent = 'ground textures still loading…'; return; }
+  const layerIdx = fl.splat.paths.indexOf(tile.path);
+  if (layerIdx < 0) return; // not a layer this map has — the palette shows which do
+  const at = tileUnderCursor(ev);
+  if (!at) return;
+  const verts = brushVerts(fl.V, at.x, at.y, brushSize);
+  const fresh = verts.filter((v) => !strokeVerts.has(v));
+  if (!fresh.length) return;
+  for (const v of fresh) strokeVerts.add(v);
+  paintMaskTexture(fl, layerIdx, fresh);
+}
+
+/** Hand the finished stroke to the main process in one message. */
+async function commitStroke(): Promise<void> {
+  const tile = paintTile;
+  if (!tile || !strokeVerts.size || !world) { strokeVerts.clear(); return; }
+  const verts = [...strokeVerts];
+  strokeVerts.clear();
+  try {
+    await window.editor.paintTile({ floor: world.active, tile: tile.path, verts });
+    markDirty(true);
+  } catch (e) {
+    // The GPU already shows the stroke, so a failure here means the two copies
+    // disagree. Say so plainly rather than leaving a lie on screen.
+    $('hud').textContent = 'paint failed (reload to resync): '
+      + (e instanceof Error ? e.message : String(e));
+  }
+}
+
+function setBrush(on: boolean): void {
+  brushOn = on;
+  $button('brushbtn').classList.toggle('on', on);
+  $('brushsize').style.display = on ? 'flex' : 'none';
+  renderer.domElement.style.cursor = on ? 'crosshair' : '';
+  if (!on && painting) { painting = false; controls.enabled = true; }
+}
 
 // --- toolbar ---
 let isDirty = false;
@@ -864,9 +987,9 @@ $('showobj').onclick = () => setShowObjects(!showObjects);
 
 // --- terrain palette (content browser) -------------------------------------
 // The ground tiles the game ships, grouped by their folder the way the original
-// editor's "Terra skin" list is. Selecting one arms it as the paint tile; the
-// brushes that consume it come next. A green dot marks tiles this map's terrain
-// already has a layer for — those paint without restructuring the .bin.
+// editor's "Terra skin" list is. Selecting one arms it as the paint tile.
+// A green dot marks tiles this map's terrain already has a layer for — only
+// those can be painted, since a new one means restructuring the .bin.
 let allTiles: TileInfo[] = [];
 let tilesInMap = new Set();
 let palCat: string | null = null;
@@ -894,7 +1017,12 @@ function renderPalette(): void {
     }
     el.onclick = () => {
       paintTile = t;
-      $('pal-sel').textContent = `${t.name} · priority ${t.priority}`;
+      // Tiles with no layer in this map cannot be painted yet — adding one means
+      // inserting an array into the .bin. Say so at selection time rather than
+      // letting the brush no-op silently.
+      $('pal-sel').textContent = used
+        ? `${t.name} · priority ${t.priority}`
+        : `${t.name} — not in this map, can't paint yet`;
       renderPalette();
     };
     grid.appendChild(el);
@@ -942,6 +1070,16 @@ function setPalette(open: boolean): void {
   if (open) initPalette();
 }
 $('palbtn').onclick = () => setPalette(!paletteOpen);
+
+$('brushbtn').onclick = () => {
+  // Arming the brush without a tile chosen would silently do nothing, so open
+  // the palette instead and let the user pick one.
+  if (!brushOn && !paintTile) { setPalette(true); $('hud').textContent = 'pick a ground tile first'; return; }
+  setBrush(!brushOn);
+};
+$select('brushsizesel').addEventListener('change', (e) => {
+  brushSize = +(e.currentTarget as HTMLSelectElement).value;
+});
 
 // Cliff shading on/off, so the rock blend can be compared against the raw
 // stretched-ground look it replaces.
@@ -992,6 +1130,8 @@ async function loadMapPath(path: string | null): Promise<void> {
     $('seawrap').style.display = hasSea ? 'flex' : 'none';
     seaBase = S.floors.find((f) => f.water)?.water?.level ?? 1.5;
     $('palbtn').style.display = '';
+    $('brushbtn').style.display = '';
+    setBrush(false); // a fresh map starts in camera mode
     $('cliffbtn').style.display = '';
     setCliffs(cliffAmount > 0);
     $('help').style.display = '';

@@ -20,12 +20,13 @@ import { buildScene, findAssetRoot, listTiles } from '../src/scene.ts';
 import { initProject, packProject, status } from '../src/project.ts';
 import { watchMapDir } from '../src/watch.ts';
 import type { MapWatch } from '../src/watch.ts';
+import { TerrainDoc } from '../src/terrain-edit.ts';
 import type { TileInfo } from '../src/scene.ts';
 import type { HommMap } from '../src/map.ts';
 import type {
   MapsListResult, MapListEntry, MapLoadResult, MoveObjectPayload, MoveObjectResult,
   MapSaveResult, MapPackResult, TerrainTilesResult, MapStatusResult, OpenMapDialogResult,
-  ExternalChange,
+  ExternalChange, PaintTilePayload, PaintTileResult,
 } from './ipc.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -51,6 +52,22 @@ interface Session {
   layerPaths: string[];
   /** Watches mapDir for edits made by another editor. */
   watch: MapWatch;
+  /** Editable terrain per floor, opened lazily on the first brush stroke. */
+  terrain: Map<number, TerrainDoc>;
+}
+
+/** Terrain file backing each floor index. */
+const TERRAIN_FILE = ['GroundTerrain.bin', 'UndergroundTerrain.bin'];
+
+/** The open terrain document for a floor, opened on first use. */
+function terrainDoc(s: Session, floor: number): TerrainDoc {
+  const cached = s.terrain.get(floor);
+  if (cached) return cached;
+  const file = TERRAIN_FILE[floor];
+  if (!file) throw new Error(`no terrain file for floor ${floor}`);
+  const doc = TerrainDoc.open(join(s.mapDir, file));
+  s.terrain.set(floor, doc);
+  return doc;
 }
 
 // Current editing session (one map at a time for now).
@@ -164,7 +181,7 @@ ipcMain.handle('map:load', async (_e: IpcMainInvokeEvent, mapPath: string): Prom
     };
     win?.webContents.send('map:external-change', payload);
   });
-  session = { mapPath, mapDir, assetRoot, map, layerPaths, watch };
+  session = { mapPath, mapDir, assetRoot, map, layerPaths, watch, terrain: new Map() };
   const placed = scene.floors.reduce((a, f) => a + f.instances.length, 0);
   return {
     scene,
@@ -190,10 +207,26 @@ ipcMain.handle('object:move', async (_e: IpcMainInvokeEvent, { id, x, y }: MoveO
   return { ok: true };
 });
 
+// --- IPC: paint a ground tile over a set of vertices ---
+// The renderer has already painted its own copy for immediate feedback; this is
+// the authoritative write. Only tiles the map has a layer for can be painted —
+// adding a layer means restructuring the .bin (see src/terrain.ts).
+ipcMain.handle('terrain:paint', async (_e: IpcMainInvokeEvent, p: PaintTilePayload): Promise<PaintTileResult> => {
+  if (!session) throw new Error('no map loaded');
+  terrainDoc(session, p.floor).paintTile(p.tile, p.verts, p.strength ?? 255);
+  return { ok: true };
+});
+
+/** Flush every terrain document that has unsaved brush work. */
+function saveTerrain(s: Session): void {
+  for (const doc of s.terrain.values()) if (doc.dirty) doc.save();
+}
+
 // --- IPC: save map.xdb (latin1 preserves the original bytes) ---
 ipcMain.handle('map:save', async (): Promise<MapSaveResult> => {
   if (!session) throw new Error('no map loaded');
   writeFileSync(session.mapPath, session.map.save(), 'latin1');
+  saveTerrain(session);
   // Our own write — fold it into the watcher's baseline so it isn't reported
   // back to us as somebody else's edit.
   session.watch.resync();
@@ -214,6 +247,7 @@ ipcMain.handle('map:pack', async (): Promise<MapPackResult> => {
   if (r.canceled) return { canceled: true };
   // Save pending edits first so the archive reflects them.
   writeFileSync(session.mapPath, session.map.save(), 'latin1');
+  saveTerrain(session);
   session.watch.resync();
   const res = packProject(session.mapDir, r.filePath);
   return { ok: true, output: r.filePath, entries: res.entries, bytes: res.bytes, status: status(session.mapDir) };

@@ -117,6 +117,23 @@ export interface ExternalChange {
   terrain: boolean;
 }
 
+/** Payload of `terrain:paint` — one brush stroke's worth of vertices. */
+export interface PaintTilePayload {
+  /** Floor index: 0 surface, 1 underground. */
+  floor: number;
+  /** The (AdvMapTile).xdb path to paint with; must be a layer the map already has. */
+  tile: string;
+  /** Vertex indices (y*V + x). */
+  verts: number[];
+  /** 0..255 opacity, default 255. */
+  strength?: number;
+}
+
+/** Result of `terrain:paint`. */
+export interface PaintTileResult {
+  ok: true;
+}
+
 /** Result of `map:status`: null when no map is loaded. */
 export type MapStatusResult = ProjectStatus | null;
 
@@ -133,6 +150,7 @@ export interface EditorApi {
   pack(): Promise<MapPackResult>;
   status(): Promise<MapStatusResult>;
   listTiles(): Promise<TerrainTilesResult>;
+  paintTile(p: PaintTilePayload): Promise<PaintTileResult>;
   /**
    * Subscribe to external edits of the open map folder. Fires once per settled
    * burst of writes; our own saves never fire it.

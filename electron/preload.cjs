@@ -19,6 +19,7 @@ const api = {
   pack: () => ipcRenderer.invoke('map:pack'),
   status: () => ipcRenderer.invoke('map:status'),
   listTiles: () => ipcRenderer.invoke('terrain:tiles'),
+  paintTile: (p) => ipcRenderer.invoke('terrain:paint', p),
   // Push channel, not invoke: the main process decides when the folder moved.
   // The listener is wrapped so the renderer never sees the IpcRendererEvent.
   onExternalChange: (cb) => { ipcRenderer.on('map:external-change', (_e, c) => cb(c)); },

@@ -170,6 +170,16 @@
     <button id="objects" style="display:none">Objects</button>
     <button id="showobj" style="display:none">Objects: on</button>
     <button id="palbtn" style="display:none">Ground</button>
+    <button id="brushbtn" style="display:none" title="left-drag paints the selected tile; middle/right still move the camera">Brush</button>
+    <label id="brushsize" style="display:none" title="brush width in tiles">
+      size
+      <select id="brushsizesel">
+        <option value="1">1×1</option>
+        <option value="3">3×3</option>
+        <option value="5">5×5</option>
+        <option value="7">7×7</option>
+      </select>
+    </label>
     <button id="cliffbtn" style="display:none" title="rock texture on steep faces">Cliffs</button>
     <button id="floor" style="display:none"></button>
     <label id="scalewrap" style="display:none" title="ground texture repeats per tile">
@@ -225,7 +235,7 @@
     <div id="pal-grid"></div>
     <div class="pal-foot">
       <div id="pal-sel">no tile selected</div>
-      <div class="pal-note">brushes come next</div>
+      <div class="pal-note">green dot = paintable in this map</div>
     </div>
   </div>
 

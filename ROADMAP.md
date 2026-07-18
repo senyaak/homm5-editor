@@ -96,21 +96,25 @@ project.json
 
 ## Phase 3 — Editing core
 
-**NEXT STEP — WRITING TO THE TERRAIN.** Reading is complete (heights, layer masks,
-flags, rivers); only heights are written (`writeHeights`). The brushes are blocked
-on exactly this: painting tiles edits layer masks, while `lower`/`raise`/ramp edit
+**NEXT STEP — HEIGHT BRUSHES.** Writing is done for every plane (`writeTerrain`)
+and the tile brush is live. What remains is `lower`/`raise`/ramp, which edit
 heights **and** flags — otherwise cuts won't form, since a cut is a change of
-ground kind rather than steepness (see docs/TERRAIN_FORMAT.md). Order: write masks
-and flags → tile brush (the palette is ready) → `lower`/`raise`/ramp → brush sizes
-x1/x3/x5/x7 and Rect.
+ground kind rather than steepness (see docs/TERRAIN_FORMAT.md). Those also have
+to remesh the affected cells, which the tile brush never has to do. After that:
+a Rect brush, and adding a layer for a tile the map does not carry yet (the one
+edit that changes the file's structure rather than its bytes).
 
 - [x] Select and move objects, snapped to the grid ✅ (plus a categorised,
       searchable object list)
 - [ ] ⬜ Rotate and delete objects
 - [ ] ⬜ Undo/redo (command model), multi-select, copy/paste
 - [ ] ⬜ Property panel for the selected object (owner, army, resources, script name…)
-- [ ] ⬜ Terrain brushes: height (raise/lower/flatten), tile painting, water,
-      **passability**
+- [x] Terrain writing: masks, flags, heights and the river plane — `src/terrain.ts`
+      `writeTerrain`, with `src/terrain-edit.ts` as the editable document ✅
+- [x] Tile brush: paint the selected ground tile, sizes 1/3/5/7. Applied to the
+      GPU masks for feedback and to the authoritative bytes in one message per
+      stroke ✅
+- [ ] ⬜ Terrain brushes: height (raise/lower/flatten), water, **passability**
 - [ ] ⬜ Object palette from assets (icons from `Editor/IconCache`) + drag and drop
 - [ ] ⬜ Write edits back into `.h5m` (patch in place where possible)
 

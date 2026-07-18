@@ -9,12 +9,15 @@
 // Needs sample terrain, which is game content and therefore not in the repo.
 // Pass paths, or drop files in samples/ and run with no arguments.
 
-import { existsSync, readFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
 import {
   parseTerrain, readHeights, readGroundFlags, readTextureLayers, readMask, readWaterPlane,
   writeTerrain, groundFlagsPlane, waterPlane,
 } from '../src/terrain.ts';
 import type { Terrain } from '../src/terrain.ts';
+import { TerrainDoc } from '../src/terrain-edit.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {
@@ -127,6 +130,60 @@ function testFile(path: string): void {
   check('empty edit round-trips byte-identically', writeTerrain(t, {}).equals(orig));
 }
 
+/** The brush path: TerrainDoc.paintTile -> save -> re-read from disk. */
+function testDoc(path: string): void {
+  console.log(`\nBRUSH ${path}`);
+  const tmp = join(mkdtempSync(join(tmpdir(), 'homm5-doc-')), 'GroundTerrain.bin');
+  copyFileSync(path, tmp);
+  try {
+    const doc = TerrainDoc.open(tmp);
+    const paths = doc.layerPaths().filter((p) => p);
+    check('doc exposes layer paths', paths.length > 0, `${paths.length}`);
+    const tile = paths[0]!;
+    const other = paths[1];
+
+    check('a fresh doc is clean', !doc.dirty);
+
+    // Paint a 3x3 patch of vertices with the first tile.
+    const verts: number[] = [];
+    for (let y = 10; y < 13; y++) for (let x = 10; x < 13; x++) verts.push(y * doc.V + x);
+    doc.paintTile(tile, verts);
+    check('painting marks the doc dirty', doc.dirty);
+
+    const m = doc.maskOf(tile)!;
+    check('target layer is at full strength', verts.every((v) => m[v] === 255));
+    if (other) {
+      const om = doc.maskOf(other)!;
+      // Paint replaces: a higher-priority layer left over the new tile would
+      // still cover it, so every other layer must be cleared there.
+      check('other layers are cleared under the brush', verts.every((v) => om[v] === 0));
+    }
+
+    // Untouched vertices keep whatever they had.
+    const before = TerrainDoc.open(path).maskOf(tile)!;
+    const far = 5 * doc.V + 5;
+    check('vertices outside the brush are untouched', m[far] === before[far]);
+
+    doc.save();
+    check('saving clears dirty', !doc.dirty);
+
+    const reread = TerrainDoc.open(tmp).maskOf(tile)!;
+    check('the stroke survives a round trip through disk', verts.every((v) => reread[v] === 255));
+
+    // A second stroke on the already-saved doc must still land.
+    const doc2 = TerrainDoc.open(tmp);
+    doc2.paintTile(tile, [0]);
+    doc2.save();
+    check('a second save builds on the first', TerrainDoc.open(tmp).maskOf(tile)![0] === 255);
+
+    let threw = false;
+    try { doc2.paintTile('/MapObjects/_(AdvMapTile)/NoSuchTile.xdb', [0]); } catch { threw = true; }
+    check('painting an absent layer is rejected', threw);
+  } finally {
+    rmSync(dirname(tmp), { recursive: true, force: true });
+  }
+}
+
 const args = process.argv.slice(2);
 const samples = args.length
   ? args
@@ -136,7 +193,7 @@ if (!samples.length) {
   console.log('no sample terrain found — pass GroundTerrain.bin paths as arguments');
   process.exit(0);
 }
-for (const p of samples) testFile(p);
+for (const p of samples) { testFile(p); testDoc(p); }
 
 console.log(failures ? `\n${failures} check(s) failed` : '\nall checks passed');
 process.exit(failures ? 1 : 0);
