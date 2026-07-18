@@ -1,0 +1,6 @@
+# Game assets extracted for testing — do not commit copyrighted content
+*.log
+node_modules/
+renderer/scene-view.html
+renderer/terrain-view.html
+samples/

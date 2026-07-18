@@ -1,0 +1,234 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf8">
+  <title>homm5-editor</title>
+  <!-- Import map lets the renderer use bare 'three' / 'three/addons' specifiers
+       against the locally installed package (no CDN, works offline in Electron). -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "../node_modules/three/build/three.module.js",
+      "three/addons/": "../node_modules/three/examples/jsm/"
+    }
+  }
+  </script>
+  <style>
+    html, body { margin: 0; height: 100%; overflow: hidden;
+      background: #0d1014; color: #c9d1d9; font: 13px/1.5 system-ui, sans-serif; }
+
+    /* Dark, thin scrollbars — the platform default is a wide light bar that
+       reads as broken chrome inside these panels. */
+    * { scrollbar-width: thin; scrollbar-color: #30363d transparent; }
+    ::-webkit-scrollbar { width: 10px; height: 10px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #30363d; border-radius: 6px;
+      border: 2px solid transparent; background-clip: content-box; }
+    ::-webkit-scrollbar-thumb:hover { background: #484f58; background-clip: content-box; }
+    ::-webkit-scrollbar-corner { background: transparent; }
+    #app { position: fixed; inset: 0; }
+    canvas { display: block; }
+
+    /* top toolbar */
+    #bar { position: fixed; left: 0; right: 0; top: 0; height: 40px; display: flex;
+      align-items: center; gap: 8px; padding: 0 12px; background: #161b22cc;
+      backdrop-filter: blur(6px); border-bottom: 1px solid #21262d; z-index: 10; }
+    #bar button { background: #21262d; color: #c9d1d9; border: 1px solid #30363d;
+      border-radius: 6px; padding: 5px 12px; cursor: pointer; font-size: 13px;
+      flex-shrink: 0; white-space: nowrap; }
+    #bar button:hover { background: #30363d; }
+    #bar button:disabled { opacity: .4; cursor: default; }
+    #bar button.on { background: #1f6feb33; border-color: #1f6feb; color: #cbe0ff; }
+    #scalewrap, #seawrap { display: flex; align-items: center; gap: 6px; font-size: 12px;
+      color: #8b949e; flex-shrink: 0; white-space: nowrap; }
+    #texscale, #sealevel { width: 110px; }
+    #texscaleval, #sealevelval { font-variant-numeric: tabular-nums; color: #c9d1d9; min-width: 30px; }
+    /* The map name can be long; let it ellipsize rather than push buttons out. */
+    #title { font-weight: 600; color: #e6edf3; margin-right: 6px; flex: 0 1 auto;
+      min-width: 70px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #dirty { margin-left: auto; font-size: 12px; color: #8b949e; flex-shrink: 0;
+      white-space: nowrap; }
+    #dirty.on { color: #e3b341; }
+
+    /* selection / info panel */
+    #panel { position: fixed; right: 12px; top: 52px; width: 260px;
+      background: #161b22ee; border: 1px solid #21262d; border-radius: 8px;
+      padding: 12px 14px; z-index: 10; display: none; }
+    #panel h3 { margin: 0 0 8px; font-size: 13px; color: #e6edf3; }
+    #panel .row { display: flex; justify-content: space-between; margin: 3px 0; }
+    #panel .k { color: #8b949e; } #panel .v { color: #c9d1d9; font-variant-numeric: tabular-nums; }
+    #panel .hint { margin-top: 10px; font-size: 11px; color: #6e7681; }
+
+    #hud { position: fixed; left: 12px; bottom: 12px; font-size: 12px; color: #8b949e;
+      z-index: 10; pointer-events: none; transition: left .15s; }
+    #help { position: fixed; right: 12px; bottom: 12px; font-size: 11px; color: #6e7681;
+      z-index: 10; pointer-events: none; }
+
+    /* terrain palette (content browser) */
+    #palette { position: fixed; right: 0; top: 40px; bottom: 0; width: 250px; z-index: 12;
+      background: #0f141aee; border-left: 1px solid #21262d; backdrop-filter: blur(6px);
+      display: flex; flex-direction: column; }
+    #palette .pal-head { padding: 8px; border-bottom: 1px solid #21262d; display: flex;
+      gap: 8px; align-items: center; }
+    #palette .pal-title { color: #e6edf3; font-weight: 600; }
+    /* Native selects render as a white Windows control; restyle it fully. */
+    #pal-cat { flex: 1; min-width: 0; background: #0d1014; border: 1px solid #30363d;
+      border-radius: 6px; padding: 5px 26px 5px 8px; color: #c9d1d9; font-size: 12px;
+      appearance: none; cursor: pointer;
+      background-image: url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%238b949e'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right 9px center; }
+    #pal-cat:focus { outline: none; border-color: #1f6feb; }
+    #pal-cat option { background: #161b22; color: #c9d1d9; }
+    #pal-grid { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 8px; display: grid;
+      grid-template-columns: 1fr 1fr; gap: 8px; align-content: start; }
+    #pal-grid .tile { cursor: pointer; border: 2px solid transparent; border-radius: 6px;
+      padding: 3px; background: #161b22; position: relative; }
+    #pal-grid .tile:hover { background: #21262d; }
+    #pal-grid .tile.on { border-color: #1f6feb; background: #1f6feb22; }
+    #pal-grid .tile img { width: 100%; aspect-ratio: 1; display: block; border-radius: 4px;
+      image-rendering: auto; }
+    #pal-grid .tile .nm { font-size: 10px; color: #c9d1d9; margin-top: 3px; text-align: center;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    /* Marks tiles this map already has a terrain layer for. A real element, not
+       a pseudo, so it can carry its own tooltip. */
+    #pal-grid .tile .dot { position: absolute; right: 7px; top: 7px; width: 8px; height: 8px;
+      border-radius: 50%; background: #3fb950; box-shadow: 0 0 0 2px #0f141a; cursor: help; }
+    #palette .pal-foot { padding: 7px 10px; border-top: 1px solid #21262d; font-size: 11px; }
+    #pal-sel { color: #c9d1d9; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #palette .pal-note { color: #6e7681; margin-top: 2px; }
+
+    /* object explorer sidebar (categories + object list for the loaded map) */
+    #explorer { position: fixed; left: 0; top: 40px; bottom: 0; width: 284px; z-index: 12;
+      background: #0f141aee; border-right: 1px solid #21262d; backdrop-filter: blur(6px);
+      display: flex; flex-direction: column; }
+    #explorer .ex-head { padding: 8px; border-bottom: 1px solid #21262d; }
+    #ex-search { width: 100%; box-sizing: border-box; background: #0d1014; border: 1px solid #30363d;
+      border-radius: 6px; padding: 7px 10px; color: #c9d1d9; font-size: 13px; }
+    /* No inner scrollbar here: a second scroll area nested in the sidebar reads
+       as broken. The chips wrap and the list below takes whatever is left. */
+    #ex-cats { display: flex; gap: 6px; padding: 8px; flex-wrap: wrap; flex-shrink: 0;
+      border-bottom: 1px solid #21262d; }
+    #ex-cats .chip { padding: 3px 9px; border: 1px solid #30363d; border-radius: 999px;
+      background: #0d1014; color: #8b949e; cursor: pointer; font-size: 11px; white-space: nowrap; }
+    #ex-cats .chip.on { background: #1f6feb33; border-color: #1f6feb; color: #cbe0ff; }
+    #ex-list { flex: 1; overflow-y: auto; }
+    #ex-list .exrow { padding: 5px 10px; cursor: pointer; display: flex; justify-content: space-between;
+      gap: 8px; border-bottom: 1px solid #161b22; font-size: 12px; }
+    #ex-list .exrow:hover { background: #1b2230; }
+    #ex-list .exrow.sel { background: #1f6feb44; }
+    #ex-list .exrow .nm { color: #e6edf3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #ex-list .exrow .co { color: #6e7681; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+    #ex-list .empty { padding: 12px; color: #6e7681; text-align: center; }
+    #explorer .ex-foot { padding: 6px 10px; border-top: 1px solid #21262d; color: #6e7681; font-size: 11px; }
+
+    /* loading overlay — blocks input while a map decodes */
+    #loading { position: fixed; inset: 0; z-index: 30; display: none;
+      align-items: center; justify-content: center; background: #0d1014cc; }
+    #loading.on { display: flex; }
+    #loading .box { padding: 14px 22px; background: #161b22; border: 1px solid #30363d;
+      border-radius: 8px; color: #e6edf3; font-size: 14px; }
+
+    /* category chips in the picker */
+    #cats { display: flex; gap: 6px; padding: 8px 12px 0; flex-wrap: wrap; }
+    #cats .chip { padding: 3px 10px; border: 1px solid #30363d; border-radius: 999px;
+      background: #0d1014; color: #8b949e; cursor: pointer; font-size: 12px; }
+    #cats .chip.on { background: #1f6feb33; border-color: #1f6feb; color: #cbe0ff; }
+    #maplist .m .cat { color: #6e7681; font-size: 10px; text-transform: uppercase; letter-spacing: .04em; }
+    #empty { position: fixed; inset: 40px 0 0 0; display: flex; align-items: center; justify-content: center;
+      flex-direction: column; gap: 12px; z-index: 5; padding: 24px; }
+    #empty h1 { font-weight: 600; color: #e6edf3; font-size: 20px; margin: 0; }
+    #empty p { color: #8b949e; margin: 0; }
+    #empty button { background: #238636; color: #fff; border: 0; border-radius: 6px;
+      padding: 9px 18px; font-size: 14px; cursor: pointer; }
+    /* in-window map picker */
+    #picker { width: min(560px, 90vw); background: #161b22; border: 1px solid #21262d;
+      border-radius: 10px; overflow: hidden; display: flex; flex-direction: column; max-height: 60vh; }
+    #picker .head { padding: 10px 12px; border-bottom: 1px solid #21262d; display: flex; gap: 8px; align-items: center; }
+    #search { flex: 1; background: #0d1014; border: 1px solid #30363d; border-radius: 6px;
+      padding: 7px 10px; color: #c9d1d9; font-size: 13px; }
+    #maplist { overflow-y: auto; }
+    #maplist .m { padding: 8px 14px; cursor: pointer; border-bottom: 1px solid #1b2027;
+      display: flex; justify-content: space-between; gap: 10px; }
+    #maplist .m:hover { background: #21262d; }
+    #maplist .m .name { color: #e6edf3; } #maplist .m .rel { color: #6e7681; font-size: 11px; }
+    #maplist .empty { padding: 14px; color: #6e7681; text-align: center; }
+    #picker .foot { padding: 8px 12px; border-top: 1px solid #21262d; color: #6e7681; font-size: 11px; }
+  </style>
+</head>
+<body>
+  <div id="bar">
+    <span id="title">homm5-editor</span>
+    <button id="open">Open map…</button>
+    <button id="save" disabled>Save</button>
+    <button id="pack" disabled>Pack .h5m…</button>
+    <button id="objects" style="display:none">Objects</button>
+    <button id="showobj" style="display:none">Objects: on</button>
+    <button id="palbtn" style="display:none">Ground</button>
+    <button id="cliffbtn" style="display:none" title="rock texture on steep faces">Cliffs</button>
+    <button id="floor" style="display:none"></button>
+    <label id="scalewrap" style="display:none" title="ground texture repeats per tile">
+      ground <input id="texscale" type="range" min="0.05" max="2" step="0.05" value="0.5">
+      <span id="texscaleval">0.50</span>
+    </label>
+    <label id="seawrap" style="display:none" title="sea level — the bed is dug to 0, ordinary ground sits at 2.0">
+      sea <input id="sealevel" type="range" min="0" max="2.4" step="0.05" value="1.5">
+      <span id="sealevelval">1.50</span>
+    </label>
+    <span id="dirty"></span>
+  </div>
+
+  <!-- object explorer: categories + searchable object list for the loaded map -->
+  <div id="explorer" style="display:none">
+    <div class="ex-head">
+      <input id="ex-search" type="text" placeholder="find object…" autocomplete="off">
+    </div>
+    <div id="ex-cats"></div>
+    <div id="ex-list"></div>
+    <div class="ex-foot"><span id="ex-count">0 / 0</span> objects</div>
+  </div>
+
+  <div id="panel">
+    <h3 id="p-type">—</h3>
+    <div class="row"><span class="k">id</span><span class="v" id="p-id">—</span></div>
+    <div class="row"><span class="k">x, y</span><span class="v" id="p-xy">—</span></div>
+    <div class="row"><span class="k">rot</span><span class="v" id="p-rot">—</span></div>
+    <div class="row"><span class="k">shared</span><span class="v" id="p-shared" style="font-size:11px">—</span></div>
+    <div class="hint">Drag a selected object to move it on the grid. Wheel / right-drag: camera.</div>
+  </div>
+
+  <div id="empty">
+    <h1>homm5-editor</h1>
+    <p>Pick a map from the list, or open a <code>map.xdb</code> yourself.</p>
+    <div id="picker">
+      <div class="head">
+        <input id="search" type="text" placeholder="find map…" autocomplete="off">
+        <button id="open2">Open file…</button>
+      </div>
+      <div id="cats"></div>
+      <div id="maplist"><div class="empty">loading…</div></div>
+      <div class="foot" id="picker-foot"></div>
+    </div>
+  </div>
+
+  <!-- terrain palette: the content browser's first tab — ground tiles to paint with -->
+  <div id="palette" style="display:none">
+    <div class="pal-head">
+      <span class="pal-title">Ground</span>
+      <select id="pal-cat"></select>
+    </div>
+    <div id="pal-grid"></div>
+    <div class="pal-foot">
+      <div id="pal-sel">no tile selected</div>
+      <div class="pal-note">brushes come next</div>
+    </div>
+  </div>
+
+  <div id="help" style="display:none">WASD move (Shift faster) · middle-drag pan · left-drag orbit · wheel zoom</div>
+
+  <div id="loading"><div class="box">loading map…</div></div>
+  <div id="hud"></div>
+  <div id="app"></div>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

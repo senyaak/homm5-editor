@@ -1,0 +1,22 @@
+{
+  "name": "homm5-editor",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Experimental map/campaign editor for Heroes of Might and Magic 5 (Tribes of the East)",
+  "main": "electron/main.js",
+  "scripts": {
+    "start": "electron .",
+    "inspect": "node tools/inspect-terrain.js",
+    "test-terrain": "node tools/test-terrain.js",
+    "test-pak": "node tools/test-pak.js",
+    "test-map": "node tools/test-map.js",
+    "pak": "node tools/pak-cli.js"
+  },
+  "dependencies": {
+    "three": "^0.160.0"
+  },
+  "devDependencies": {
+    "electron": "^43.1.1"
+  }
+}

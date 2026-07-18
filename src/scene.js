@@ -1,0 +1,505 @@
+// Scene builder — turn a map + its asset tree into renderable scene data.
+//
+// This is the bridge between the format layer (terrain, geometry, dds, map) and
+// the 3D view. It resolves each map object to a decoded mesh + texture and emits
+// a compact, JSON-serializable scene the renderer can consume directly:
+//
+//   { V, heights,            // terrain grid side (vertices) + height plane
+//     geoms: [{pos, uv, idx, tex}],   // unique decoded meshes (+ data-URI texture)
+//     instances: [{id, type, g, x, y, z, r}] }  // placed objects (g -> geoms index)
+//
+// `instances[].id` is the map object's Item id, so the renderer can map a picked
+// mesh back to a HommMap object and edits round-trip through the model.
+//
+// Asset resolution chain (all pure XML hrefs, absolute from the asset root):
+//   object <Shared> -> (AdvMap*Shared).xdb <Model> -> (Model).xdb (geometry uid +
+//   bbox + <Texture>) -> bin/Geometries/<uid> + .dds
+//
+// buildScene is deliberately tolerant: objects whose assets don't resolve are
+// skipped (counted in `.skipped`), never fatal — real maps reference thousands
+// of assets and a few always fail to decode.
+
+import { readFileSync, existsSync, readdirSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { deflateSync } from 'node:zlib';
+import { parseTerrain, readHeights, readTextureLayers, readMask, readGroundFlags, FLAG_WATER } from './terrain.js';
+import { extractMeshes, readGeometryRefFromModelXdb } from './geometry.js';
+import { decodeDDS } from './dds.js';
+import { loadMap } from './map.js';
+
+/**
+ * @param assetRoot absolute path to the unpacked data root (contains MapObjects/, bin/…)
+ * @param mapXdbPath absolute path to the map's map.xdb (its folder holds GroundTerrain.bin)
+ * @param opt.texSize downsample size for embedded textures (default 128)
+ * @returns { map, scene, skipped }  — map is the HommMap model (kept for editing).
+ *   scene = { geoms, floors:[{ name, V, heights, instances }] }. A map can have a
+ *   surface floor and an underground floor; each has its OWN terrain (a separate
+ *   *Terrain.bin at a different height range) and its own objects, split by the
+ *   object's <Floor> field. They are distinct layers — the editor shows one at a
+ *   time — so underground objects must not be dumped onto the surface terrain.
+ */
+export function buildScene(assetRoot, mapXdbPath, opt = {}) {
+  const texSize = opt.texSize || 128;
+  const readXdb = (href) => {
+    const p = join(assetRoot, href.split('#')[0]);
+    return existsSync(p) ? readFileSync(p, 'utf8') : null;
+  };
+
+  // --- map model ---
+  const map = loadMap(readFileSync(mapXdbPath, 'latin1'));
+
+  // --- terrains, one per floor (surface = 0, underground = 1) ---
+  const mapDir = dirname(mapXdbPath);
+  const tileColorCache = new Map();
+  const tileTexCache = new Map(); // tile path -> texture data URI (shared across floors)
+  const loadTerrain = (file) => {
+    const p = join(mapDir, file);
+    if (!existsSync(p)) return null;
+    const t = parseTerrain(readFileSync(p));
+    const H = readHeights(t);
+    const flags = readGroundFlags(t);
+    return {
+      V: t.V,
+      H,
+      // Bit 3 marks ramp vertices — the deliberate walkable slopes. Measured
+      // across every shipped map, flags carrying it sit on a slope essentially
+      // always (8: 100%, 24: 97.4%, 56: 100%) against 38% for plain ground, so
+      // the renderer uses it to tell a designed incline from a cut edge.
+      flags: flags ? Array.from(flags) : null,
+      water: buildWater(t, opt.seaLevel ?? SEA_LEVEL, assetRoot),
+      colors: terrainColors(t, readXdb, tileColorCache),
+      splat: buildSplat(t, readXdb, assetRoot, tileTexCache, tileColorCache, opt.tileSize || 256),
+    };
+  };
+  const terrains = [loadTerrain('GroundTerrain.bin')];
+  if (map.hasUnderground) { const u = loadTerrain('UndergroundTerrain.bin'); if (u) terrains[1] = u; }
+  const heightAt = (floor, x, y) => {
+    const t = terrains[floor] || terrains[0];
+    const V = t.V;
+    const ix = Math.max(0, Math.min(V - 1, Math.round(x)));
+    const iy = Math.max(0, Math.min(V - 1, Math.round(y)));
+    return t.H[iy * V + ix];
+  };
+
+  // --- geometry/texture resolution (cached per Shared href) ---
+  const geoms = [];
+  const geomIndex = new Map(); // shared href -> geoms index, or -1
+  const resolveGeom = (sharedHref) => {
+    if (geomIndex.has(sharedHref)) return geomIndex.get(sharedHref);
+    let idx = -1;
+    try {
+      const shared = readXdb(sharedHref);
+      const modelHref = shared && shared.match(/<Model href="([^"]+)"/);
+      const model = modelHref && readXdb(modelHref[1]);
+      const ref = model && readGeometryRefFromModelXdb(model);
+      if (ref) {
+        const binPath = join(assetRoot, 'bin', 'Geometries', ref.uid);
+        if (existsSync(binPath)) {
+          const meshes = extractMeshes(readFileSync(binPath), ref.bbox);
+          if (meshes.length) idx = addGeom(geoms, meshes, model, assetRoot, texSize);
+        }
+      }
+    } catch { idx = -1; }
+    geomIndex.set(sharedHref, idx);
+    return idx;
+  };
+
+  // --- place objects onto their own floor's terrain ---
+  const floorInstances = [[], []];
+  let skipped = 0;
+  for (const obj of map.objects) {
+    const shared = obj.shared;
+    const pos = obj.pos;
+    if (!shared || !pos) { skipped++; continue; }
+    const gi = resolveGeom(shared);
+    if (gi < 0) { skipped++; continue; }
+    const floor = obj.floor === 1 && terrains[1] ? 1 : 0;
+    floorInstances[floor].push({
+      id: obj.id, type: obj.type, g: gi, shared: shared.split('#')[0],
+      x: pos.x, y: pos.y, z: heightAt(floor, pos.x, pos.y), r: obj.rot || 0,
+    });
+  }
+
+  const floors = [];
+  const NAMES = ['surface', 'underground'];
+  for (let f = 0; f < terrains.length; f++) {
+    if (!terrains[f]) continue;
+    floors.push({
+      name: NAMES[f],
+      V: terrains[f].V,
+      heights: Array.from(terrains[f].H, (v) => +v.toFixed(3)),
+      colors: terrains[f].colors,
+      flags: terrains[f].flags,
+      water: terrains[f].water,
+      splat: terrains[f].splat,
+      instances: floorInstances[f],
+    });
+  }
+
+  return { map, skipped, scene: { geoms, floors } };
+}
+
+// Per-vertex ground colour: blend each texture layer's representative colour
+// (the AdvMapTile <MinimapColor>) weighted by its per-vertex opacity mask. This
+// paints grass/dirt/sand/water and, crucially, ROADS, in one cheap pass without
+// decoding any .dds. Returns [r,g,b,…] in 0..1, or null if no layers resolved.
+function terrainColors(t, readXdb, cache) {
+  const layers = readTextureLayers(t);
+  const N = t.N;
+  const acc = new Float32Array(N * 3);
+  const total = new Float32Array(N);
+  let any = false;
+  for (const layer of layers) {
+    if (!layer.path) continue;
+    const col = tileColor(layer.path, readXdb, cache);
+    if (!col) continue;
+    const mask = readMask(t, layer);
+    for (let i = 0; i < N; i++) {
+      const w = mask[i]; if (!w) continue;
+      acc[i * 3] += col[0] * w; acc[i * 3 + 1] += col[1] * w; acc[i * 3 + 2] += col[2] * w;
+      total[i] += w; any = true;
+    }
+  }
+  if (!any) return null;
+  const out = new Float32Array(N * 3);
+  for (let i = 0; i < N; i++) {
+    const tw = total[i];
+    if (tw > 0) { out[i * 3] = acc[i * 3] / tw; out[i * 3 + 1] = acc[i * 3 + 1] / tw; out[i * 3 + 2] = acc[i * 3 + 2] / tw; }
+    else { out[i * 3] = 0.30; out[i * 3 + 1] = 0.33; out[i * 3 + 2] = 0.24; } // bare default
+  }
+  return Array.from(out, (v) => +v.toFixed(3));
+}
+
+// ---- terrain texture splatting -------------------------------------------
+// The ground is painted by blending N tile textures, each weighted by a
+// per-vertex opacity mask. Flat MinimapColor blending (terrainColors above)
+// gets the hues right but loses ALL texture detail, so we also ship the real
+// thing: every layer's .dds downsampled to `size`, plus the masks packed into
+// RGB images. The renderer feeds both to a splat shader, which tiles each
+// texture across the map at full resolution — no giant baked atlas needed.
+//
+// Masks are packed 3-per-image (RGB) and alpha is pinned to 255 on purpose:
+// weights stored in an alpha channel get mangled by the canvas premultiply
+// round-trip the renderer uses to read pixels back.
+
+/**
+ * AdvMapTile.xdb -> its ground texture as `size`×`size` opaque RGBA, or null.
+ *
+ * Splat layers tile across the map, so a CLAMP texture is the wrong asset for
+ * one. The Water tile points at Water.dds — CLAMP, uncompressed, near-black
+ * ([0,15,15]) — which is the SEA sheet, not a brush; painting a river with it
+ * came out almost black. Its siblings show the convention: Bog and LavaFlow use
+ * Bog_TNL / Lava_TNL, WRAP DXT3 brush textures, and Water_TNL sits right beside
+ * them unused at [0,64,79] — the blue Senya sees on rivers in the original
+ * editor. So when a tile resolves to a CLAMP texture that has a _TNL sibling,
+ * take the sibling.
+ */
+function tileTexture(tilePath, readXdb, assetRoot, size) {
+  const xml = readXdb(tilePath); if (!xml) return null;
+  const t = xml.match(/<Texture href="([^"]+?)(?:#[^"]*)?"/);
+  if (!t || !t[1]) return null;                       // <Texture/> = no texture
+  let texXdb = t[1].split('#')[0];
+  let tx = readXdb(texXdb); if (!tx) return null;
+  if (/<AddrType>CLAMP<\/AddrType>/.test(tx)) {
+    const tnl = texXdb.replace(/\.xdb$/i, '_TNL.xdb');
+    const alt = readXdb(tnl);
+    if (alt) { texXdb = tnl; tx = alt; }
+  }
+  const dest = tx.match(/<DestName href="([^"]+)"/); if (!dest) return null;
+  const ddsPath = join(assetRoot, dirname(texXdb), dest[1]);
+  if (!existsSync(ddsPath)) return null;
+  const img = decodeDDS(ddsPath);
+  const out = new Uint8Array(size * size * 4);
+  // Box filter, not point sampling: these are 1024² textures shrunk to 256², so
+  // taking every 4th texel would throw away 15/16 of the image and turn grass
+  // and gravel into noise. Averaging the whole source block keeps them smooth.
+  const bw = Math.max(1, img.width / size | 0), bh = Math.max(1, img.height / size | 0);
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    const sx0 = x * img.width / size | 0, sy0 = y * img.height / size | 0;
+    let r = 0, g = 0, b = 0, n = 0;
+    for (let dy = 0; dy < bh; dy++) {
+      const sy = sy0 + dy; if (sy >= img.height) break;
+      for (let dx = 0; dx < bw; dx++) {
+        const sx = sx0 + dx; if (sx >= img.width) break;
+        const si = (sy * img.width + sx) * 4;
+        r += img.rgba[si]; g += img.rgba[si + 1]; b += img.rgba[si + 2]; n++;
+      }
+    }
+    const o = (y * size + x) * 4;
+    out[o] = r / n; out[o + 1] = g / n; out[o + 2] = b / n; out[o + 3] = 255;
+  }
+  return out;
+}
+
+/** AdvMapTile.xdb -> its <Priority> (the engine's paint order), cached by path. */
+function tilePriority(path, readXdb, cache) {
+  if (cache.has(path)) return cache.get(path);
+  const xml = readXdb(path);
+  const p = xml ? +(xml.match(/<Priority>(-?\d+)<\/Priority>/)?.[1] ?? 0) : 0;
+  cache.set(path, p);
+  return p;
+}
+
+function flatTexture(col, size) {
+  const px = new Uint8Array(size * size * 4);
+  const [r, g, b] = col.map((v) => Math.max(0, Math.min(255, v * 255 | 0)));
+  for (let i = 0; i < size * size; i++) { px[i * 4] = r; px[i * 4 + 1] = g; px[i * 4 + 2] = b; px[i * 4 + 3] = 255; }
+  return px;
+}
+
+function buildSplat(t, readXdb, assetRoot, texCache, colCache, size) {
+  let layers = readTextureLayers(t).filter((l) => l.path);
+  if (!layers.length) return null;
+  const V = t.V, N = t.N;
+
+  // Paint order. Each tile carries a <Priority> and it is a real layering order
+  // (grass 10-14, roads 111-113, rocks 193-210, river bed 277). Sorting by it
+  // lets the shader composite low-to-high — a road painted OVER grass — instead
+  // of averaging every layer together, which dilutes each one against the base
+  // and leaves the whole map washed out.
+  const priCache = new Map();
+  layers = layers
+    .map((l, ord) => ({ ...l, priority: tilePriority(l.path, readXdb, priCache), ord }))
+    .sort((a, b) => a.priority - b.priority || a.ord - b.ord);
+
+  const layerTex = layers.map((l) => {
+    if (texCache.has(l.path)) return texCache.get(l.path);
+    let px = tileTexture(l.path, readXdb, assetRoot, size);
+    if (!px) px = flatTexture(tileColor(l.path, readXdb, colCache) || [0.3, 0.33, 0.24], size);
+    const uri = pngDataUri(size, size, px);
+    texCache.set(l.path, uri);
+    return uri;
+  });
+
+  const maskGroups = [];
+  for (let g = 0; g * 3 < layers.length; g++) {
+    const rgba = new Uint8Array(N * 4);
+    for (let i = 0; i < N; i++) rgba[i * 4 + 3] = 255;
+    for (let c = 0; c < 3; c++) {
+      const li = g * 3 + c; if (li >= layers.length) continue;
+      const m = readMask(t, layers[li]);
+      for (let i = 0; i < N; i++) rgba[i * 4 + c] = m[i];
+    }
+    maskGroups.push(pngDataUri(V, V, rgba));
+  }
+
+  // Cliff face texture. Where the ground drops steeply (the `lower`/`plato`
+  // tools leave jumps of up to 11 units across a single tile) the engine shows
+  // rock, not stretched grass. One shared texture, projected vertically.
+  const rockPx = tileTexture(ROCK_TILE, readXdb, assetRoot, size);
+  const rockTex = rockPx ? pngDataUri(size, size, rockPx) : null;
+
+  return { V, size, layerCount: layers.length, layerTex, maskGroups, rockTex, paths: layers.map((l) => l.path) };
+}
+
+// AdvMapTile.xdb -> its representative RGB (0..1), cached by path.
+function tileColor(path, readXdb, cache) {
+  if (cache.has(path)) return cache.get(path);
+  let col = null;
+  const xml = readXdb(path);
+  if (xml) {
+    const m = xml.match(/<MinimapColor>\s*<x>([-\d.]+)<\/x>\s*<y>([-\d.]+)<\/y>\s*<z>([-\d.]+)<\/z>/);
+    if (m) col = [+m[1], +m[2], +m[3]];
+  }
+  cache.set(path, col);
+  return col;
+}
+
+// Merge a model's submeshes into one buffer and register it as a scene geom.
+function addGeom(geoms, meshes, model, assetRoot, texSize) {
+  let vc = 0, tc = 0;
+  for (const m of meshes) { vc += m.vertexCount; tc += m.indices.length; }
+  const pos = new Float32Array(vc * 3), uv = new Float32Array(vc * 2), idxs = new Uint32Array(tc);
+  let vo = 0, io = 0, hasUV = true;
+  for (const m of meshes) {
+    pos.set(m.positions, vo * 3);
+    if (m.uvs) uv.set(m.uvs, vo * 2); else hasUV = false;
+    for (let i = 0; i < m.indices.length; i++) idxs[io + i] = m.indices[i] + vo;
+    vo += m.vertexCount; io += m.indices.length;
+  }
+  const idx = geoms.length;
+  const t = hasUV ? textureDataUri(model, assetRoot, texSize) : null;
+  geoms.push({
+    pos: Array.from(pos, (v) => +v.toFixed(3)),
+    uv: hasUV ? Array.from(uv, (v) => +v.toFixed(4)) : null,
+    idx: Array.from(idxs),
+    tex: t ? t.uri : null,
+    alpha: t ? t.hasAlpha : false, // cutout textures (foliage) -> alphaTest
+  });
+  return idx;
+}
+
+// ---- texture -> downsampled RGBA PNG data URI (embeds in the scene JSON) ----
+// RGBA (colour type 6) so transparency survives; foliage cutouts need the alpha.
+const crcTab = (() => { const t = []; for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+const crc = (b) => { let c = 0xffffffff; for (const x of b) c = crcTab[(c ^ x) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
+function pngDataUri(w, h, rgba) {
+  const raw = Buffer.alloc((w * 4 + 1) * h);
+  for (let y = 0; y < h; y++) Buffer.from(rgba.buffer, rgba.byteOffset + y * w * 4, w * 4).copy(raw, y * (w * 4 + 1) + 1);
+  const chunk = (t, d) => { const l = Buffer.alloc(4); l.writeUInt32BE(d.length); const body = Buffer.concat([Buffer.from(t), d]); const cc = Buffer.alloc(4); cc.writeUInt32BE(crc(body)); return Buffer.concat([l, body, cc]); };
+  const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4); ihdr[8] = 8; ihdr[9] = 6; // 8-bit RGBA
+  const png = Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ihdr), chunk('IDAT', deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]);
+  return 'data:image/png;base64,' + png.toString('base64');
+}
+function textureDataUri(model, assetRoot, size) {
+  try {
+    const t = model.match(/<Texture href="([^"]+?)(?:#[^"]*)?"/); if (!t) return null;
+    const tx = readFileSync(join(assetRoot, t[1].split('#')[0]), 'utf8');
+    const dest = tx.match(/<DestName href="([^"]+)"/); if (!dest) return null;
+    const ddsPath = join(assetRoot, dirname(t[1].split('#')[0]), dest[1]);
+    if (!existsSync(ddsPath)) return null;
+    const img = decodeDDS(ddsPath);
+    const out = new Uint8Array(size * size * 4);
+    let hasAlpha = false;
+    for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+      const sx = x * img.width / size | 0, sy = y * img.height / size | 0, si = (sy * img.width + sx) * 4, o = (y * size + x) * 4;
+      out[o] = img.rgba[si]; out[o + 1] = img.rgba[si + 1]; out[o + 2] = img.rgba[si + 2];
+      const a = img.rgba[si + 3]; out[o + 3] = a;
+      if (a < 200) hasAlpha = true;
+    }
+    return { uri: pngDataUri(size, size, out), hasAlpha };
+  } catch { return null; }
+}
+
+// ---- water surface --------------------------------------------------------
+// There are two distinct kinds of water in this engine, and only one of them is
+// a texture. "Rivers" (Bog / LavaFlow / Water) are TILE BRUSHES painted onto
+// whatever the ground already is. The Terraforming `water` tool instead DIGS a
+// basin, which the engine then fills to a flat level.
+//
+// Evidence from the shipped maps: the floor of a dug basin often sits BELOW its
+// water level (heights of 0 and 1.6 under bodies whose level is 2.0), and 2.0
+// dominates by a wide margin (5334 vertices on A2C1M5, 2379 on A2C2M4) — that's
+// sea level. Elevated lakes exist too (5.92, 14.53, 15.32), so the level is
+// resolved per connected body rather than hard-coded.
+//
+// Rendering only the heightmap therefore leaves a dry pit where water should
+// be, and anything the game places at water level — boats, shipyards — appears
+// to hover over it.
+// Sea level. `lower` digs the bed to exactly 0 while ordinary ground stays at
+// the 2.0 default, and the editor lays a shore ring at exactly 1.6 between them
+// (90 vertices of it on map 12). That ring is the beach, so the surface has to
+// sit just UNDER it — at 1.6 the ring submerges and the brown rim the original
+// editor shows above the waterline disappears.
+// Not recorded anywhere in the format, so it stays tunable from the toolbar.
+const SEA_LEVEL = 1.5;
+
+// The sea's own sheet. Water.dds is CLAMP and near-black by design — the game's
+// sea reads dark, while rivers painted with the _TNL brushes read blue. Loaded
+// straight rather than through tileTexture, which deliberately swaps CLAMP
+// textures out for their tiling siblings.
+const SEA_TEXTURE = '/Textures/Terrain/Water/Water.dds';
+
+function seaTexture(assetRoot, size) {
+  try {
+    const p = join(assetRoot, SEA_TEXTURE);
+    if (!existsSync(p)) return null;
+    const img = decodeDDS(p);
+    const out = new Uint8Array(size * size * 4);
+    const bw = Math.max(1, img.width / size | 0), bh = Math.max(1, img.height / size | 0);
+    for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+      const sx0 = x * img.width / size | 0, sy0 = y * img.height / size | 0;
+      let r = 0, g = 0, b = 0, n = 0;
+      for (let dy = 0; dy < bh; dy++) for (let dx = 0; dx < bw; dx++) {
+        const sy = sy0 + dy, sx = sx0 + dx;
+        if (sy >= img.height || sx >= img.width) continue;
+        const si = (sy * img.width + sx) * 4;
+        r += img.rgba[si]; g += img.rgba[si + 1]; b += img.rgba[si + 2]; n++;
+      }
+      const o = (y * size + x) * 4;
+      out[o] = r / n; out[o + 1] = g / n; out[o + 2] = b / n; out[o + 3] = 255;
+    }
+    return pngDataUri(size, size, out);
+  } catch { return null; }
+}
+
+function buildWater(t, level, assetRoot) {
+  const flags = readGroundFlags(t);
+  if (!flags) return null;
+  const V = t.V, N = t.N;
+
+  let wet = 0;
+  const water = new Uint8Array(N);
+  for (let i = 0; i < N; i++) if (flags[i] === FLAG_WATER) { water[i] = 1; wet++; }
+  if (!wet) return null;
+
+  // Cover every cell that touches water, then let the terrain occlude the sheet:
+  // the bed is at 0 and the shore climbs to the 2.0 default, so a flat sheet at
+  // `level` is cut exactly where the beach crosses it. That gives a real
+  // waterline for free — no alpha feathering needed.
+  const cells = [];
+  for (let y = 0; y < V - 1; y++) for (let x = 0; x < V - 1; x++) {
+    const a = y * V + x;
+    if (water[a] || water[a + 1] || water[a + V] || water[a + V + 1]) cells.push(a);
+  }
+  if (!cells.length) return null;
+
+  return { V, level, cells, wet, tex: seaTexture(assetRoot, 256) };
+}
+
+// ---- terrain tile palette -------------------------------------------------
+// Every ground tile the game ships, for the editor's terrain brush palette —
+// the same set the original editor lists under "Terra skin". Categories come
+// from the folder layout under MapObjects/_(AdvMapTile) (Grass, Dirt, Sand,
+// Lava, Snow, Water, Orc_Terrain, SubTerrain…).
+//
+// `thumb` is the tile's own texture, so the palette shows what you're painting
+// with rather than a name. Tiles with no <Texture> fall back to a flat swatch
+// of their MinimapColor.
+const TILE_DIR = 'MapObjects/_(AdvMapTile)';
+const ROCK_TILE = '/MapObjects/_(AdvMapTile)/Rock.xdb';
+
+/**
+ * @param assetRoot unpacked data root
+ * @param thumbSize preview edge in px (default 64)
+ * @returns {{name, category, path, priority, type, thumb}[]} sorted by category, name
+ */
+export function listTiles(assetRoot, thumbSize = 64) {
+  const base = join(assetRoot, TILE_DIR);
+  if (!existsSync(base)) return [];
+  const readXdb = (href) => {
+    const p = join(assetRoot, href.split('#')[0]);
+    return existsSync(p) ? readFileSync(p, 'utf8') : null;
+  };
+  const colCache = new Map();
+  const out = [];
+
+  const walk = (dir, rel) => {
+    let ents;
+    try { ents = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const e of ents) {
+      const full = join(dir, e.name);
+      if (e.isDirectory()) { walk(full, rel ? `${rel}/${e.name}` : e.name); continue; }
+      if (!e.name.toLowerCase().endsWith('.xdb')) continue;
+      const href = `/${TILE_DIR}/${rel ? rel + '/' : ''}${e.name}`;
+      const xml = readXdb(href);
+      if (!xml) continue;
+      let px = tileTexture(href, readXdb, assetRoot, thumbSize);
+      if (!px) px = flatTexture(tileColor(href, readXdb, colCache) || [0.3, 0.33, 0.24], thumbSize);
+      out.push({
+        name: e.name.replace(/\.xdb$/i, ''),
+        category: rel || 'Other',
+        path: href,
+        priority: +(xml.match(/<Priority>(-?\d+)<\/Priority>/)?.[1] ?? 0),
+        type: xml.match(/<Type>(\w+)<\/Type>/)?.[1] || '',
+        thumb: pngDataUri(thumbSize, thumbSize, px),
+      });
+    }
+  };
+  walk(base, '');
+  out.sort((a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name));
+  return out;
+}
+
+// Find the asset root (folder holding MapObjects/ and bin/) by walking up from a
+// map.xdb path. Returns null if not found within a few levels.
+export function findAssetRoot(mapXdbPath) {
+  let dir = dirname(mapXdbPath);
+  for (let i = 0; i < 8; i++) {
+    if (existsSync(join(dir, 'MapObjects')) || existsSync(join(dir, 'bin', 'Geometries'))) return dir;
+    const up = dirname(dir);
+    if (up === dir) break;
+    dir = up;
+  }
+  return null;
+}
