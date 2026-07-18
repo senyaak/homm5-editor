@@ -76,13 +76,18 @@ interface Floor3D {
   /** Live ground-kind flags, edited alongside heights (digging floods, raising drains). */
   flags: number[] | null;
   /**
-   * Vertices the river brush has already sunk — seeded from the map's own river
-   * plane and grown as strokes land. A river is a fixed depth below its banks,
-   * not a hole that deepens each time you paint over it, and this has to
-   * survive across strokes: clearing it per stroke turned four passes over one
-   * stream into a canyon (1.6, 1.2, 0.8, 0.4).
+   * How far the river brush has already lowered each vertex, seeded from the
+   * map's own river plane. Two things depend on it being a depth rather than a
+   * flag:
+   *
+   *   * A river is a fixed depth below its banks, not a hole that deepens every
+   *     time you paint over it — so this survives across strokes. Clearing it
+   *     per stroke turned four passes over one stream into a canyon.
+   *   * A vertex feathered as rim by one part of a stroke often ends up under
+   *     the bed as the brush moves on. Recording only "touched" left it stuck
+   *     0.2 above the bed forever, which is what made a dragged river ragged.
    */
-  riverSunk: Set<number>;
+  riverDrop: Map<number, number>;
   /** Ground colours for the fallback material, kept for remeshing. */
   colors: number[] | null;
   group: THREE.Group;
@@ -658,7 +663,8 @@ function buildFloor(floor: Floor, geos: THREE.BufferGeometry[], mats: THREE.Mate
   }
   return {
     name: floor.name, V, heights, flags: floor.flags, colors: floor.colors,
-    riverSunk: new Set(floor.riverVerts),
+    // A river already in the map is at full depth: never dig it again.
+    riverDrop: new Map(floor.riverVerts.map((v) => [v, RIVER_DEPTH])),
     group, objGroup, meshes, terrainMesh, waterMesh, waterTex: floor.water?.tex ?? null,
     splat: floor.splat, maskTex: null, instances: floor.instances,
   };
@@ -1071,36 +1077,42 @@ const riverHeights = new Map<number, number>();
  * bed must leave it where it is.
  */
 function sinkRiver(fl: Floor3D, verts: number[]): void {
-  const sunk = fl.riverSunk;
-  const bed = new Set(verts);
+  const drop = fl.riverDrop;
   // Sea is not a river. Flag 0 means navigable water and it sits at exactly 0.0
   // in 100% of the 62,788 flagged vertices across 60 shipped maps, so digging it
   // another 0.4 because someone painted the water texture over it would break an
   // invariant the engine relies on. What makes water swimmable is that flag, not
   // its depth: Bog and LavaFlow never carry it, Water only where a basin was dug.
   const isSea = (v: number): boolean => fl.flags ? fl.flags[v] === 0 : false;
-  for (const v of verts) {
-    if (sunk.has(v) || isSea(v)) continue;
-    sunk.add(v);
-    const target = fl.heights[v]! - RIVER_DEPTH;
+
+  /**
+   * Lower `v` until it sits `want` below where the ground started.
+   *
+   * Expressed as a target depth rather than a step, so applying it twice is a
+   * no-op and promoting a rim vertex to bed digs only the remaining 0.2. Never
+   * raises: a vertex already deeper belongs to someone else's terrain.
+   */
+  const sink = (v: number, want: number): void => {
+    if (isSea(v)) return;
+    const had = drop.get(v) ?? 0;
+    if (want <= had) return;
+    const target = fl.heights[v]! - (want - had);
     fl.heights[v] = target;
+    drop.set(v, want);
     riverHeights.set(v, target);
-  }
+  };
+
+  for (const v of verts) sink(v, RIVER_DEPTH);
   // One ring of rim vertices, dropped half as far, so the bank does not fall
-  // away as a sheer step. Only pulled DOWN: a rim that is already lower is
-  // someone else's terrain and not ours to raise.
+  // away from the bed as a sheer step.
+  const bed = new Set(verts);
   for (const v of verts) {
     const x = v % fl.V, y = (v / fl.V) | 0;
     for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
       const nx = x + dx, ny = y + dy;
       if (nx < 0 || nx >= fl.V || ny < 0 || ny >= fl.V) continue;
       const n = ny * fl.V + nx;
-      if (bed.has(n) || sunk.has(n) || isSea(n)) continue;
-      const target = fl.heights[n]! - RIVER_FEATHER;
-      if (target >= fl.heights[n]!) continue;
-      fl.heights[n] = target;
-      riverHeights.set(n, target);
-      sunk.add(n);
+      if (!bed.has(n)) sink(n, RIVER_FEATHER);
     }
   }
   remeshFloor(fl);
