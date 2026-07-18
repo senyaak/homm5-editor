@@ -52,6 +52,9 @@ so a `.cts` preload dies on the first type annotation — silently, leaving
 
 ## Running
 
+On Windows, `start-editor.bat` does the same by double-click: it checks Node,
+installs dependencies on first run, and keeps its window open if anything fails.
+
 ```
 npm start                 # build the renderer, then launch the editor
 npm run typecheck         # tsc --noEmit across the whole project
