@@ -254,14 +254,11 @@ function buildGeos(S: Scene) {
 // weighted by its mask. Both texture sets are 2D array textures (WebGL2), which
 // keeps it to two samplers no matter how many layers a map uses.
 const SPLAT_VERT = `
-in float rim;     // 1 along the top edge of a cut face
-out float vRim;
 out vec2 vGrid;   // 0..1 across the map -> mask lookup
 out vec2 vWorld;  // tile coords -> tiled ground lookup
 out vec3 vNrm;    // world-space normal (lighting must not swim with the camera)
 out vec3 vPos;    // world position -> vertical projection for cliff faces
 void main() {
-  vRim = rim;
   vGrid = uv;
   vWorld = position.xy;
   vPos = (modelMatrix * vec4(position, 1.0)).xyz;
@@ -276,7 +273,7 @@ uniform sampler2DArray uMask;
 uniform sampler2D uRock;
 uniform float uScale;
 uniform float uCliff;   // 0 disables the rock blend entirely
-in vec2 vGrid; in vec2 vWorld; in vec3 vNrm; in vec3 vPos; in float vRim;
+in vec2 vGrid; in vec2 vWorld; in vec3 vNrm; in vec3 vPos;
 out vec4 outColor;
 void main() {
   // Layers arrive sorted by the tiles' <Priority>, so compositing them in order
@@ -317,13 +314,6 @@ void main() {
     vec3 rock = mix(ry, rx, wx / (wx + wy + 1e-4)) * 1.7;
     col = mix(col, rock, cliff * 0.85);
   }
-
-  // A cut face is not uniform rock: its upper third is the broken soil the turf
-  // sat on, and only below that does bare stone show. vRim runs 1 at the top of
-  // the wall to 0 at its foot, and is 0 everywhere else — including the surface
-  // above, whose grass runs unbroken to the lip.
-  float band = smoothstep(0.45, 1.0, vRim) * uCliff;
-  col = mix(col, vec3(0.46, 0.33, 0.19), band * 0.85);
 
   // abs(), not max(): the terrain is DoubleSide and a generated wall normal may
   // point into the cliff, which would otherwise pin the face at ambient.
@@ -554,15 +544,8 @@ function terrainGeometry(
     ti.push(...idx);
   };
   const extra: number[] = [];          // [x, y, z] triples appended after the grid vertices
-  // 1 on the vertices that sit along the TOP of a cut face, 0 everywhere else.
-  // The game bands the crown of every cliff in bare soil where the turf breaks
-  // off; carrying it as an attribute lets the shader draw that band without
-  // having to guess from the normal, which cannot tell the top of a face from
-  // the bottom.
-  const extraRim: number[] = [];
-  const addV = (x: number, y: number, z: number, rim = 0): number => {
+  const addV = (x: number, y: number, z: number): number => {
     extra.push(x, y, z);
-    extraRim.push(rim);
     return V * V + extra.length / 3 - 1;
   };
 
@@ -624,11 +607,6 @@ function terrainGeometry(
     }
     const cutHi = cuts.map((p) => addV(p.xy[0], p.xy[1], p.hz));
     const cutLo = cuts.map((p) => addV(p.xy[0], p.xy[1], p.lz));
-    // The wall gets its OWN copy of the top edge. It shares a position with
-    // cutHi but not the rim attribute: the soil band belongs to the wall, and
-    // reusing cutHi would bleed it across the flat surface above, where the
-    // turf is unbroken right up to the lip.
-    const wallHi = cuts.map((p) => addV(p.xy[0], p.xy[1], p.hz, 1));
 
     for (const arc of arcs) {
       const corners = arc.filter((p): p is RingCorner => !p.cut);
@@ -640,7 +618,7 @@ function terrainGeometry(
       for (let k = 1; k < poly.length - 1; k++) emit(poly[0], poly[k], poly[k + 1]);
     }
     // The wall, both faces (material is DoubleSide anyway).
-    emit(wallHi[0], wallHi[1], cutLo[0], wallHi[1], cutLo[1], cutLo[0]);
+    emit(cutHi[0], cutHi[1], cutLo[0], cutHi[1], cutLo[1], cutLo[0]);
   }
   // Cut cells contributed vertices beyond the regular grid; append them, taking
   // uv from their position and colour from the grid vertex they sit nearest.
@@ -648,8 +626,6 @@ function terrainGeometry(
   const pos = new Float32Array((V * V + nExtra) * 3);
   const col = new Float32Array((V * V + nExtra) * 3);
   const uvs = new Float32Array((V * V + nExtra) * 2);
-  const rim = new Float32Array(V * V + nExtra); // grid vertices stay 0
-  rim.set(extraRim, V * V);
   pos.set(tp); col.set(tc); uvs.set(tuv);
   for (let k = 0; k < nExtra; k++) {
     const x = extra[k * 3], y = extra[k * 3 + 1], z = extra[k * 3 + 2];
@@ -663,7 +639,6 @@ function terrainGeometry(
   tg.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   tg.setAttribute('color', new THREE.BufferAttribute(col, 3));
   tg.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
-  tg.setAttribute('rim', new THREE.BufferAttribute(rim, 1));
   tg.setIndex(ti); tg.computeVertexNormals();
   tg.userData.triTile = new Int32Array(triTile);
   return tg;
