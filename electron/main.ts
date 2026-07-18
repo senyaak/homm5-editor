@@ -76,11 +76,20 @@ function terrainDoc(s: Session, floor: number): TerrainDoc {
   return doc;
 }
 
-// Where the editor's own config lives: MapFilters.xml and IconCache. It sits
-// beside the game install rather than inside the paks, so it is found from the
-// data root's neighbourhood and can be pointed at explicitly when the data root
-// is an unpacked copy somewhere else entirely.
-const EDITOR_ROOT = process.env.HOMM5_EDITOR || findEditorRoot(GAME_DATA);
+// Where the editor's own config lives: MapFilters.xml and IconCache.
+//
+// This is NOT under the data root. The link files that make up the object
+// catalogue are game data and ship inside the paks, while the filter list and
+// the icon cache are loose beside the game install — so the two roots are
+// genuinely separate and neither implies the other.
+//
+// HOMM5_ROOT (the game folder) is the direct way to say where it is; the walk
+// upwards is the fallback for when nobody said. start-editor.bat sets it, since
+// the repo lives inside the game folder and therefore already knows.
+const GAME_ROOT = process.env.HOMM5_ROOT || null;
+const EDITOR_ROOT = process.env.HOMM5_EDITOR
+  || (GAME_ROOT ? findEditorRoot(GAME_ROOT) : null)
+  || findEditorRoot(GAME_DATA);
 
 /** The object catalogue, scanned once — 1466 small files is not a per-call cost. */
 let catalogCache: ReturnType<typeof listPlaceable> | null = null;

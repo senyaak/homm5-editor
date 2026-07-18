@@ -34,6 +34,14 @@ if "%HOMM5_DATA%"=="" (
   if exist "samples\paks\data\MapObjects" set "HOMM5_DATA=%~dp0samples\paks\data"
 )
 
+rem The game folder itself. This repo sits inside it, so the parent directory is
+rem it -- which is how the editor finds Editor\MapFilters.xml and Editor\IconCache
+rem for the object palette's groups and thumbnails. Those are loose beside the
+rem install, not inside the paks, so they are NOT under HOMM5_DATA.
+if "%HOMM5_ROOT%"=="" (
+  for %%d in ("%~dp0..") do set "HOMM5_ROOT=%%~fd"
+)
+
 rem npm is a .cmd shim, so without `call` this batch would end right here.
 call npm start
 if errorlevel 1 goto :fail

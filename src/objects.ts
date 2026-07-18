@@ -234,15 +234,28 @@ export function iconPathFor(editorRoot: string, linkPath: string): string | null
   return existsSync(p) ? p : null;
 }
 
-/** The editor-config folder that sits beside the data root, when there is one. */
-export function findEditorRoot(dataRoot: string): string | null {
-  let dir = dataRoot;
-  for (let i = 0; i < 4; i++) {
+/**
+ * Find the editor-config folder by walking up from `from`.
+ *
+ * Walks to the filesystem root rather than a fixed number of steps. A fixed
+ * limit is guesswork about how deep the caller happens to sit, and it was
+ * wrong: from the bundled `samples/paks/data` the game's Editor folder is four
+ * levels up, one past where a limit of four stopped looking, so the palette
+ * came up with no groups and no icons.
+ *
+ * The test is specific — a folder called Editor that actually contains
+ * MapFilters.xml or IconCache — so walking further does not risk matching some
+ * unrelated directory named Editor along the way.
+ *
+ * Prefer HOMM5_ROOT when the game folder is known; this is the fallback.
+ */
+export function findEditorRoot(from: string): string | null {
+  let dir = from;
+  for (;;) {
     const cand = join(dir, 'Editor');
     if (existsSync(join(cand, 'MapFilters.xml')) || existsSync(join(cand, 'IconCache'))) return cand;
     const up = dirname(dir);
-    if (up === dir) break;
+    if (up === dir) return null;
     dir = up;
   }
-  return null;
 }

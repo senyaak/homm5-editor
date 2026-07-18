@@ -54,6 +54,27 @@ if (existsSync(join(SAMPLES, 'MapObjects', '_(AdvMapObjectLink)'))) {
   skip('no bundled link files');
 }
 
+// Regression: the walk must succeed from the root the app ACTUALLY starts with.
+//
+// This shipped broken. findEditorRoot climbed a fixed four levels, and from the
+// bundled samples/paks/data the game's Editor folder is four levels up — one
+// past where it stopped. Every check here passed because they all began at the
+// install's data dir, which is one step away. The palette came up with a filter
+// dropdown holding nothing but All and Other, and no icons at all.
+//
+// So the check that matters is from the DEFAULT root, not from a convenient one.
+const DEFAULT_DATA = join(import.meta.dirname, '..', 'samples', 'paks', 'data');
+if (existsSync(join(DEFAULT_DATA, 'MapObjects'))) {
+  const found = findEditorRoot(DEFAULT_DATA);
+  // Only meaningful on a machine that has the game; elsewhere there is nothing
+  // to find and null is the right answer.
+  if (existsSync(join(DEFAULT_DATA, '..', '..', '..', '..', 'Editor', 'MapFilters.xml'))) {
+    ok(!!found, `Editor folder found from the default data root (${found})`);
+  } else {
+    skip('no game install above the samples folder');
+  }
+}
+
 // The Editor folder sits beside the game's data dir, so it is reachable from
 // the install path even when the catalogue itself comes from an unpacked root.
 const editorRoot = process.env.HOMM5_EDITOR || findEditorRoot(DATA);
