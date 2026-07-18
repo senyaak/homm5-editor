@@ -68,7 +68,14 @@ npm run test-map          # map.xdb model + loss-less XML round-trip
 npm run test-watch        # external-change watcher
 npm run test-pak          # ZIP reader/writer
 npm run inspect           # low-level dump of a .bin's structure
+npm run harness           # the renderer in a plain browser, on a stub bridge
 ```
+
+`npm run harness` serves `renderer/harness.html` on :8123 — the real
+`index.html` with a stubbed `window.editor` injected ahead of the app module.
+The renderer talks to Electron at module scope, so without this the UI can only
+be exercised by launching the whole app; the harness makes the brushes and the
+toolbar clickable in any browser, and records every IPC call on `window.__calls`.
 
 Point `HOMM5_DATA` at an unpacked game data folder, or unpack one into
 `samples/paks/data` (gitignored) — `.pak` archives are ordinary ZIPs, and

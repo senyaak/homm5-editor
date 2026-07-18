@@ -29,8 +29,12 @@
     #bar button:hover { background: #30363d; }
     #bar button:disabled { opacity: .4; cursor: default; }
     #bar button.on { background: #1f6feb33; border-color: #1f6feb; color: #cbe0ff; }
-    #scalewrap, #seawrap { display: flex; align-items: center; gap: 6px; font-size: 12px;
+    #scalewrap, #seawrap, #brushwrap { display: flex; align-items: center; gap: 6px; font-size: 12px;
       color: #8b949e; flex-shrink: 0; white-space: nowrap; }
+    /* The brush group reads as one control: arm toggle, then what and how big. */
+    #brushwrap { gap: 4px; }
+    #brushwrap select { background: #21262d; color: #c9d1d9; border: 1px solid #30363d;
+      border-radius: 6px; padding: 5px 6px; font-size: 12px; cursor: pointer; }
     #texscale, #sealevel { width: 110px; }
     #texscaleval, #sealevelval { font-variant-numeric: tabular-nums; color: #c9d1d9; min-width: 30px; }
     /* The map name can be long; let it ellipsize rather than push buttons out. */
@@ -170,15 +174,17 @@
     <button id="objects" style="display:none">Objects</button>
     <button id="showobj" style="display:none">Objects: on</button>
     <button id="palbtn" style="display:none">Ground</button>
-    <button id="brushbtn" style="display:none" title="left-drag paints the selected tile; middle/right still move the camera">Brush</button>
-    <label id="brushsize" style="display:none" title="brush width in tiles">
+    <!-- Brush controls stay visible for the whole session once a map is open.
+         The mode and size selectors must never hide behind the arm toggle:
+         choosing Raise is how you arm a height brush in the first place. -->
+    <label id="brushwrap" style="display:none">
+      <button id="brushbtn" title="left-drag edits the terrain; middle/right still move the camera">Brush: off</button>
       <select id="brushmode" title="what the brush does">
         <option value="paint">Paint tile</option>
         <option value="raise">Raise</option>
         <option value="lower">Lower</option>
       </select>
-      size
-      <select id="brushsizesel">
+      <select id="brushsizesel" title="brush width in tiles">
         <option value="1">1×1</option>
         <option value="3">3×3</option>
         <option value="5">5×5</option>

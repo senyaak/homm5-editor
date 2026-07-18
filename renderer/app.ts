@@ -1050,18 +1050,24 @@ function remeshFloor(fl: Floor3D): void {
  * @returns the vertices it moved, or null if nothing changed.
  */
 function sculptAt(fl: Floor3D, cx: number, cy: number): number[] | null {
-  const r = Math.max(1, brushSize) / 2;
-  const touched: number[] = [];
-  // Vertices within the brush radius, measured from the tile centre so the
-  // falloff is symmetric.
+  // Footprint: the same vertex box the tile brush paints, so both brushes cover
+  // what the cursor visibly highlights. A size-N brush spans tiles cx-k..cx+k,
+  // whose corners are vertices cx-k..cx+k+1.
+  //
+  // Distance is Chebyshev (square), not Euclidean. A radial test fails outright
+  // at size 1: the tile centre is 0.707 from each of its four corners, so a
+  // radius of 0.5 excludes every vertex and the brush silently does nothing.
+  const k = Math.floor(Math.max(1, brushSize) / 2);
+  const rad = k + 0.5;              // half-width in tiles, centre to outer vertices
   const ox = cx + 0.5, oy = cy + 0.5;
-  const lo = Math.floor(-r - 1), hi = Math.ceil(r + 1);
-  for (let dy = lo; dy <= hi; dy++) for (let dx = lo; dx <= hi; dx++) {
-    const x = cx + dx, y = cy + dy;
+  const touched: number[] = [];
+  for (let y = cy - k; y <= cy + k + 1; y++) for (let x = cx - k; x <= cx + k + 1; x++) {
     if (x < 0 || x >= fl.V || y < 0 || y >= fl.V) continue;
-    const d = Math.hypot(x - ox, y - oy);
-    if (d > r) continue;
-    const falloff = r <= 1 ? 1 : 1 - d / r;
+    const d = Math.max(Math.abs(x - ox), Math.abs(y - oy));
+    if (d > rad) continue;
+    // The innermost ring sits at 0.5, so subtracting it puts full strength
+    // there and tapers to a third at the rim. Size 1 is a flat 2x2 stamp.
+    const falloff = k === 0 ? 1 : 1 - (d - 0.5) / rad;
     const i = y * fl.V + x;
     const next = Math.max(WATER_LEVEL, fl.heights[i]! + sculptDir * STEP * falloff);
     if (next === fl.heights[i]) continue;
@@ -1117,8 +1123,11 @@ async function commitSculpt(): Promise<void> {
 
 function setBrush(on: boolean): void {
   brushOn = on;
-  $button('brushbtn').classList.toggle('on', on);
-  $('brushsize').style.display = on ? 'flex' : 'none';
+  const b = $button('brushbtn');
+  b.classList.toggle('on', on);
+  // The label says the state rather than the action: with the mode selector
+  // beside it, "Brush" alone gave no way to tell armed from not.
+  b.textContent = on ? 'Brush: on' : 'Brush: off';
   renderer.domElement.style.cursor = on ? 'crosshair' : '';
   if (!on && painting) { painting = false; controls.enabled = true; }
 }
@@ -1203,6 +1212,14 @@ function renderPalette(): void {
       $('pal-sel').textContent = used
         ? `${t.name} · priority ${t.priority}`
         : `${t.name} — not in this map, can't paint yet`;
+      // Choosing a paintable tile is the intent to paint with it: switch to
+      // paint mode and arm, so the click leads somewhere instead of just
+      // highlighting a swatch.
+      if (used) {
+        sculptDir = 0;
+        $select('brushmode').value = 'paint';
+        setBrush(true);
+      }
       renderPalette();
     };
     grid.appendChild(el);
@@ -1256,7 +1273,7 @@ $('brushbtn').onclick = () => {
   // open the palette instead and let the user pick one. Sculpting needs no tile.
   if (!brushOn && sculptDir === 0 && !paintTile) {
     setPalette(true);
-    $('hud').textContent = 'pick a ground tile first';
+    $('hud').textContent = 'pick a ground tile to paint with';
     return;
   }
   setBrush(!brushOn);
@@ -1267,7 +1284,11 @@ $select('brushsizesel').addEventListener('change', (e) => {
 $select('brushmode').addEventListener('change', (e) => {
   const m = (e.currentTarget as HTMLSelectElement).value;
   sculptDir = m === 'raise' ? 1 : m === 'lower' ? -1 : 0;
-  if (sculptDir === 0 && !paintTile) setPalette(true);
+  // Picking a mode is the intent to use it, so arm right away. Raise and lower
+  // need nothing else; paint needs a tile, so send the user to the palette.
+  if (sculptDir !== 0) { setBrush(true); $('hud').textContent = m === 'raise' ? 'raising' : 'lowering'; }
+  else if (paintTile) setBrush(true);
+  else { setBrush(false); setPalette(true); $('hud').textContent = 'pick a ground tile to paint with'; }
 });
 
 // Cliff shading on/off, so the rock blend can be compared against the raw
@@ -1319,7 +1340,7 @@ async function loadMapPath(path: string | null): Promise<void> {
     $('seawrap').style.display = hasSea ? 'flex' : 'none';
     seaBase = S.floors.find((f) => f.water)?.water?.level ?? 1.5;
     $('palbtn').style.display = '';
-    $('brushbtn').style.display = '';
+    $('brushwrap').style.display = 'flex';
     setBrush(false); // a fresh map starts in camera mode
     $('cliffbtn').style.display = '';
     setCliffs(cliffAmount > 0);

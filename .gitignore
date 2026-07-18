@@ -8,3 +8,4 @@ samples/
 # built from renderer/app.ts by esbuild
 renderer/app.js
 renderer/app.js.map
+renderer/harness.html
