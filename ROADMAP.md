@@ -98,12 +98,11 @@ project.json
 
 ## Phase 3 — Editing core
 
-**NEXT STEP — RAMPS AND PLATEAUS.** Writing works for every plane, layers can be
-added, and the tile and raise/lower brushes are live. Raise/lower moves ground
-within its own kind and flips water/ground at height 0, but never writes the
-plateau (32) or ramp (8) bits — so the brushes that deliberately CREATE a cut
-are still missing, and those bits are read but never authored. After that: a
-Rect brush, and undo/redo, which the brushes make overdue.
+**NEXT STEP — OBJECTS.** The terrain brushes are good enough to build a map
+with, so the remaining Tiles-tab parity (see the deferred item below) waits.
+Attention moves to objects: rotate and delete, then a property panel, then
+placing new ones from a palette. Undo/redo is overdue and gets more so with
+every brush.
 
 - [x] Select and move objects, snapped to the grid ✅ (plus a categorised,
       searchable object list)
@@ -128,6 +127,17 @@ Rect brush, and undo/redo, which the brushes make overdue.
 - [x] Raise (plateau, +2.0 with cut edges, flag 32) and Lower (pit to 0.0,
       flag 0, floods) beside the smooth Bulk and Dig ✅
 - [x] Plateau (level to the starting tier) and the Rect brush size ✅
+- [ ] ⬜ **Terrain parity, deferred** — the terrain is usable, so the rest of the
+      original's Tiles tab waits. Measured against its panel:
+      - Missing terraforming tools: `rnd`, `smth`, `zero`, `water`. We have
+        bulk/dig/raise/lower/ramp and plato.
+      - Missing tile modifiers: **Up / Down / ERASER** and **Strength**. Our
+        brush only ever writes a full-strength replace, so a layer's weight
+        cannot be nudged and a tile cannot be erased at all — which is why
+        there is no way to take a river back off the ground.
+      - Layout: the original keeps size, terraforming, the tile grid and those
+        modifiers in ONE panel. Ours are split between the top toolbar and the
+        Ground palette and should move into the panel.
 - [ ] ⬜ Object palette from assets (icons from `Editor/IconCache`) + drag and drop
 - [ ] ⬜ Write edits back into `.h5m` (patch in place where possible)
 
