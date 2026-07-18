@@ -90,6 +90,8 @@ interface Floor3D {
   riverDrop: Map<number, number>;
   /** Explicit passability mask: 0 blocked, 1 walkable. */
   passable: number[] | null;
+  /** River-bed vertices — the bed only, never the feathered rim. */
+  river: Set<number>;
   /** The passability view: blocked fill, navigable fill and the tile grid. */
   passMeshes: THREE.Mesh[];
   /** Ground colours for the fallback material, kept for remeshing. */
@@ -464,7 +466,7 @@ function makeWaterMesh(V: number, cells: number[], level: number, tex: string | 
   // The sea wears its own sheet -- dark by design. Rivers are a different thing
   // entirely: painted tiles using the blue _TNL brush textures.
   const wmat = new THREE.MeshPhongMaterial({
-    color: 0xffffff, transparent: true, opacity: WATER_OPACITY,
+    color: 0xffffff, transparent: true, opacity: 0.88,
     shininess: 90, specular: 0x5f7f95, side: THREE.DoubleSide, depthWrite: false,
   });
   if (tex) {
@@ -671,7 +673,7 @@ function buildFloor(floor: Floor, geos: THREE.BufferGeometry[], mats: THREE.Mate
     name: floor.name, V, heights, flags: floor.flags, colors: floor.colors,
     // A river already in the map is at full depth: never dig it again.
     riverDrop: new Map(floor.riverVerts.map((v) => [v, RIVER_DEPTH])),
-    passable: floor.passable, passMeshes: [],
+    passable: floor.passable, river: new Set(floor.riverVerts), passMeshes: [],
     group, objGroup, meshes, terrainMesh, waterMesh, waterTex: floor.water?.tex ?? null,
     splat: floor.splat, maskTex: null, instances: floor.instances,
   };
@@ -967,8 +969,18 @@ const strokeVerts = new Set<number>();
 
 let showBlocked = false;
 
-/** Draw order for the sea sheet; the ground mask has to land underneath it. */
+/** Draw order for the sea sheet; the ground overlay lands underneath it. */
 const WATER_ORDER = 2;
+
+/**
+ * A drop across one tile that a unit cannot climb.
+ *
+ * Every cell straddling a ground-kind boundary carries a step of 0.8 or more
+ * (200 of 200 on map 12, 216 of 216 on A1M5), which is the mesher's own signal
+ * for cutting a vertical face — so anything at or above it is a cliff edge.
+ * Ordinary slopes inside one kind stay well under.
+ */
+const CLIFF_STEP = 0.8;
 
 /**
  * How a tile reads for movement. Three states, because "can I walk here" and
@@ -981,28 +993,36 @@ const PASS_WALK = 0, PASS_BLOCKED = 1, PASS_NAVIGABLE = 2;
 /**
  * Classify every tile of a floor. Index = y*(V-1) + x.
  *
- * The passability plane is stored in a vertex-sized array but is really PER
- * TILE: entry (x, y) describes tile (x, y), and the last row and column are
- * filler. Measured across every shipped map, the interior is 8.98% blocked
- * while the last row and last column are 0.00% — not "nearly", exactly zero
- * over 2.3 million vertices.
+ * Blocking is a UNION, not just the mask. The mask records what a designer
+ * decided by hand, and on a map where nobody opened the Masks tab it is empty —
+ * Senya's map 12 has the plane at all ones despite being full of rivers and
+ * cliffs. The rest is inherent to the terrain and the engine derives it:
  *
- * So a tile's state is one lookup, not four corners. Reading it as corners is
- * what made a 1x1 mask stroke paint a 3x3 patch: neighbouring tiles share
- * corners, so masking one tile's four corners marked all nine tiles around it.
+ *   * the river plane — you do not wade a river, which is why bog and lava
+ *     flows stop you without anyone marking them,
+ *   * a step too tall to climb, i.e. a cut face between plateau and ground.
  *
- * The ground flags ARE per vertex, so navigability still needs all four.
+ * Navigable (sea) is not blocking: a boat crosses it.
+ *
+ * The passability plane is stored vertex-sized but addressed PER TILE — entry
+ * (x, y) is tile (x, y), last row and column filler. Reading it as four corners
+ * made a 1x1 mask stroke show up as 3x3.
  */
 function classifyTiles(fl: Floor3D): Uint8Array {
   const V = fl.V, T = V - 1;
   const out = new Uint8Array(T * T); // zero-filled, and PASS_WALK is 0
   const water = (v: number): boolean => fl.flags ? fl.flags[v] === 0 : false;
   for (let y = 0; y < T; y++) for (let x = 0; x < T; x++) {
-    if (fl.passable && fl.passable[y * V + x] === 0) { out[y * T + x] = PASS_BLOCKED; continue; }
-    // Navigable only when the tile is water throughout. A shore tile has one
-    // foot on land and stays walkable.
-    const a = y * V + x;
-    if (water(a) && water(a + 1) && water(a + V) && water(a + V + 1)) out[y * T + x] = PASS_NAVIGABLE;
+    const a = y * V + x, b = a + 1, c = a + V, d = c + 1;
+    // Sea first: it is crossed by boat, so it is neither walkable nor blocked.
+    if (water(a) && water(b) && water(c) && water(d)) { out[y * T + x] = PASS_NAVIGABLE; continue; }
+
+    if (fl.passable && fl.passable[a] === 0) { out[y * T + x] = PASS_BLOCKED; continue; }
+    if (fl.river.has(a) || fl.river.has(b) || fl.river.has(c) || fl.river.has(d)) {
+      out[y * T + x] = PASS_BLOCKED; continue;
+    }
+    const h = [fl.heights[a]!, fl.heights[b]!, fl.heights[c]!, fl.heights[d]!];
+    if (Math.max(...h) - Math.min(...h) > CLIFF_STEP) out[y * T + x] = PASS_BLOCKED;
   }
   return out;
 }
@@ -1024,6 +1044,26 @@ function tileFill(fl: Floor3D, cls: Uint8Array, want: number): THREE.BufferGeome
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pos), 3));
   g.setIndex(idx);
+  g.computeBoundingSphere();
+  return g;
+}
+
+/** Outline of every tile of one class. */
+function tileOutline(fl: Floor3D, cls: Uint8Array, want: number): THREE.BufferGeometry {
+  const V = fl.V, T = V - 1;
+  const pos: number[] = [];
+  const LIFT = 0.1;
+  const z = (x: number, y: number): number => fl.heights[y * V + x]! + LIFT;
+  for (let y = 0; y < T; y++) for (let x = 0; x < T; x++) {
+    if (cls[y * T + x] !== want) continue;
+    const c: [number, number][] = [[x, y], [x + 1, y], [x + 1, y + 1], [x, y + 1]];
+    for (let k = 0; k < 4; k++) {
+      const [ax, ay] = c[k]!, [bx, by] = c[(k + 1) % 4]!;
+      pos.push(ax, ay, z(ax, ay), bx, by, z(bx, by));
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pos), 3));
   g.computeBoundingSphere();
   return g;
 }
@@ -1080,28 +1120,26 @@ function refreshBlocked(fl: Floor3D): void {
     color: c, transparent: true, opacity: o, side: THREE.DoubleSide, depthWrite: false,
   });
   add(tileFill(fl, cls, PASS_BLOCKED), fill(0xd63030, 0.45));
-  // Blue, not red: a boat crosses this. Colouring it with the blocked tiles
-  // would restate the mistake the mask plane itself avoids.
-  add(tileFill(fl, cls, PASS_NAVIGABLE), fill(0x3b82f6, 0.30));
+  // Navigable water is outlined ON TOP of the sea rather than filled under it.
+  // A fill beneath the sheet is invisible; a fill above it hides the water
+  // texture, which is most of what makes a lake readable. An outline says "boat
+  // goes here" and leaves the water looking like water.
+  const navGrid = tileOutline(fl, cls, PASS_NAVIGABLE);
+  if (navGrid.getAttribute('position')?.count) {
+    const m = new THREE.LineSegments(navGrid, new THREE.LineBasicMaterial({
+      color: 0x6fb2ff, transparent: true, opacity: 0.85, depthWrite: false, depthTest: false,
+    }));
+    m.renderOrder = WATER_ORDER + 1;
+    fl.passMeshes.push(m as unknown as THREE.Mesh);
+    fl.group.add(m);
+  } else navGrid.dispose();
   add(tileGrid(fl), new THREE.LineBasicMaterial({
     color: 0xffffff, transparent: true, opacity: 0.13, depthWrite: false,
   }));
 }
 
-/** Sea opacity: solid normally, thinned while the passability view is up. */
-const WATER_OPACITY = 0.88, WATER_OPACITY_XRAY = 0.3;
-
 function setShowBlocked(on: boolean): void {
   showBlocked = on;
-  // The overlay lives on the bed, under the sheet — correct, but a sheet at 0.88
-  // hides it, and a navigable lake you cannot see is the one thing this view
-  // exists to show. So the water thins out while the view is up. It is a lens,
-  // not an edit: nothing about the map changes.
-  if (world) for (const fl of world.floors) {
-    const m = fl.waterMesh?.material;
-    const mats = Array.isArray(m) ? m : m ? [m] : [];
-    for (const mat of mats) if ('opacity' in mat) mat.opacity = on ? WATER_OPACITY_XRAY : WATER_OPACITY;
-  }
   $('blockbtn').classList.toggle('on', on);
   $('passlegend').style.display = on ? 'flex' : 'none';
   if (world) for (const fl of world.floors) refreshBlocked(fl);
@@ -1317,7 +1355,7 @@ function sinkRiver(fl: Floor3D, verts: number[]): void {
     riverHeights.set(v, target);
   };
 
-  for (const v of verts) sink(v, RIVER_DEPTH);
+  for (const v of verts) { sink(v, RIVER_DEPTH); fl.river.add(v); }
   // One ring of rim vertices, dropped half as far, so the bank does not fall
   // away from the bed as a sheer step.
   const bed = new Set(verts);

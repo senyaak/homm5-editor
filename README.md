@@ -58,9 +58,11 @@ so a `.cts` preload dies on the first type annotation — silently, leaving
   the tile grid drawn on the ground, coloured in three states — red blocked,
   blue navigable, clear walkable — plus Mask/Erase brushes at 1/3/5/7 tiles.
   Three states rather than two because *blocked* and *you cannot walk here* are
-  different questions: a lake stops a footman and carries a boat. The overlay
-  belongs to the ground and draws beneath the sea sheet, which thins out while
-  the view is up so a navigable lake is actually visible.
+  different questions: a lake stops a footman and carries a boat. Blocking is a
+  union — the mask plus what the terrain implies, namely the river plane and any
+  step over 0.8 across a tile — because the mask alone is empty on maps where
+  nobody opened the Masks tab. Navigable tiles are outlined over the sea rather
+  than filled under it, so the water still looks like water.
 - **River brushes**: Water, Bog and LavaFlow are not ordinary tiles. Painting
   one sinks the bed 0.4 below its banks with a 0.2 rim, and writes the half-tile
   river plane — which is what makes a river a river to the game rather than

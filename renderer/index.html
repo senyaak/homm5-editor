@@ -62,7 +62,8 @@
     #passlegend .sw { width: 11px; height: 11px; border-radius: 2px; display: inline-block;
       border: 1px solid #ffffff30; }
     #passlegend .blocked { background: #d63030b0; }
-    #passlegend .navigable { background: #3b82f6b0; }
+    /* Outlined, matching how it is drawn: the water texture stays visible. */
+    #passlegend .navigable { background: transparent; border: 2px solid #6fb2ff; }
     #passlegend .walk { background: transparent; }
 
     #help { position: fixed; right: 12px; bottom: 12px; font-size: 11px; color: #6e7681;
