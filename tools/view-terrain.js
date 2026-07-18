@@ -2,7 +2,7 @@
 // shader and same cliff-aware meshing as the editor, so what it shows is what
 // the editor shows. No objects, no dev server, no CDN.
 //
-// The shader sources are LIFTED OUT OF renderer/app.js at build time rather
+// The shader sources are LIFTED OUT OF renderer/app.ts at build time rather
 // than copied, so the viewer can't silently drift from the real thing. That
 // matters: this exists to measure what actually reaches the framebuffer when
 // the editor's own output looks wrong, instead of reasoning about it.
@@ -25,14 +25,16 @@ const here = dirname(fileURLToPath(import.meta.url));
 const threeSrc = readFileSync(join(here, '..', 'node_modules', 'three', 'build', 'three.min.js'), 'utf8');
 
 // --- lift the shaders straight from the renderer ---
-const appSrc = readFileSync(join(here, '..', 'renderer', 'app.js'), 'utf8');
+const appSrc = readFileSync(join(here, '..', 'renderer', 'app.ts'), 'utf8');
 const grab = (re, what) => {
   const m = appSrc.match(re);
-  if (!m) throw new Error(`could not lift ${what} out of renderer/app.js`);
+  if (!m) throw new Error(`could not lift ${what} out of renderer/app.ts`);
   return m[1];
 };
+// Tolerant of type annotations in the signature — app.ts is TypeScript now, and
+// the point of lifting these is that the viewer can't drift from the editor.
 const VERT = grab(/const SPLAT_VERT = `([\s\S]*?)`;/, 'SPLAT_VERT');
-const FRAG = grab(/const splatFrag = \(groups, layers\) => `([\s\S]*?)`;/, 'splatFrag');
+const FRAG = grab(/const splatFrag = \([^)]*\)[^=]*=> `([\s\S]*?)`;/, 'splatFrag');
 
 const { scene } = buildScene(findAssetRoot(mapPath), mapPath);
 const floors = scene.floors.map((f) => ({
@@ -74,7 +76,7 @@ async function arrayTex(uris,size){
   t.format=THREE.RGBAFormat;t.type=THREE.UnsignedByteType;t.needsUpdate=true;return t;
 }
 
-// --- cliff-aware meshing: mirrors renderer/app.js buildFloor ---
+// --- cliff-aware meshing: mirrors renderer/app.ts buildFloor ---
 let texScale=0.5, cliffAmount=1;
 const mats=[];
 function buildFloor(fl){

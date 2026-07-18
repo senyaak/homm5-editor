@@ -163,7 +163,7 @@ x1/x3/x5/x7 and Rect.
 
 ## Phase 9 — Shell and polish
 
-- [x] Electron shell running (`electron/main.js` + `preload.cjs` + `renderer/`):
+- [x] Electron shell running (`electron/main.ts` + `preload.cjs` + `renderer/`):
       window, open `map.xdb` → live 3D scene, select and drag an object → edit
       through `map.js`, Save, Pack `.h5m`, dirty indicator. `npm start` ✅
       (the main pipeline is covered by an `HOMM5_SMOKE` smoke test) 🔨

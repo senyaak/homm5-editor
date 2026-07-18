@@ -3,6 +3,11 @@
 A map/campaign editor prototype for **Heroes of Might & Magic V: Tribes of the East**,
 built on Electron and Node with no native dependencies.
 
+TypeScript throughout. Node 24 — and the Node 24.18 inside Electron 43 — strip
+types natively, so ,  and  run their .ts straight off
+disk with no build step; only  is bundled (esbuild), because a
+browser cannot strip types.  is therefore type-check only.
+
 > **No game content lives here.** This repository holds code and format notes only.
 > Running anything requires your own legal copy of the game: the tools read assets
 > from its folder (`HOMM5_DATA`, defaulting to `samples/paks/data`, which is
@@ -17,23 +22,24 @@ built on Electron and Node with no native dependencies.
   shader compositing by `<Priority>`, sea derived from the ground-flag plane,
   painted river brushes, vertical cut faces where ground kinds meet, rock-textured
   cliffs, and both floors. Write-up: [docs/TERRAIN_FORMAT.md](docs/TERRAIN_FORMAT.md).
-- **`GroundTerrain.bin`** (`src/terrain.js`): reads heights, texture layer masks,
+- **`GroundTerrain.bin`** (`src/terrain.ts`): reads heights, texture layer masks,
   ground flags and the river plane; writes heights back into a valid file.
   Round-trip tested on real 96×96 and 136×136 maps (`npm run test-terrain`).
-- **`map.xdb` model** (`src/map.js`, `src/xml.js`): loss-less XML DOM —
+- **`map.xdb` model** (`src/map.ts`, `src/xml.ts`): loss-less XML DOM —
   `serialize(parse(x)) === x` on all 108 sample maps — with a typed object model
   over it. Editing an object rewrites exactly one line.
 - **Object editing**: a categorised, searchable list; click to select, drag to move
   on the grid; save; pack to `.h5m` with version tracking.
 - **Ground palette**: all 82 shipped tiles previewed from their own `.dds`,
   grouped by category. Brushes are not implemented yet — painting comes next.
-- **Mesh decoding** (`src/geometry.js`): positions, indices, UVs and textures.
+- **Mesh decoding** (`src/geometry.ts`): positions, indices, UVs and textures.
   See [docs/GEOMETRY_FORMAT.md](docs/GEOMETRY_FORMAT.md).
 
 ## Running
 
 ```
-npm start                 # the editor
+npm start                 # build the renderer, then launch the editor
+npm run typecheck         # tsc --noEmit across the whole project
 npm run test-terrain      # terrain parser round-trip on sample maps
 npm run test-map          # map.xdb model + loss-less XML round-trip
 npm run test-pak          # ZIP reader/writer
@@ -110,7 +116,7 @@ edges** on reconstruction.
 - **UVs** are the first 4 bytes of the attribute stream (`tag3`): 2×int16 ÷ 2048
   (V ∈ [0,1], U tiles). Confirmed by UV continuity across shared edges.
 - **Normals** are computed from geometry — the packed ones are imprecise.
-- **Textures** are `.dds` (DXT1/3/5 and uncompressed), decoded by `src/dds.js`.
+- **Textures** are `.dds` (DXT1/3/5 and uncompressed), decoded by `src/dds.ts`.
 
 Still open: per-submesh material assignment, skeletons and animations.
 Details in [docs/GEOMETRY_FORMAT.md](docs/GEOMETRY_FORMAT.md).

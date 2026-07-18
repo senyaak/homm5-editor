@@ -16,7 +16,85 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-const $ = (id) => document.getElementById(id);
+import type { Scene, Floor, Instance, SplatData, TileInfo } from '../src/scene.ts';
+import type { EditorApi, MapListEntry } from '../electron/ipc.ts';
+
+type MapEntry = MapListEntry & { cat: string };
+/**
+ * The preload bridge. contextIsolation is on, so this is the entire surface the
+ * renderer has — the contract lives in electron/ipc.ts and both sides bind to it.
+ */
+declare global {
+  interface Window { editor: EditorApi }
+}
+
+
+/**
+ * Look up an element the page is known to contain. Throws rather than returning
+ * null: every id here is hard-coded in index.html, so a miss is a typo caught on
+ * first load, not a runtime condition worth handling at each call site.
+ */
+const $ = (id: string): HTMLElement => {
+  const el = document.getElementById(id);
+  if (!el) throw new Error(`no element #${id}`);
+  return el;
+};
+
+/** Same, for the one <select> we drive. */
+const $select = (id: string): HTMLSelectElement => {
+  const el = $(id);
+  if (!(el instanceof HTMLSelectElement)) throw new Error(`#${id} is not a select`);
+  return el;
+};
+
+/** Same, for the buttons whose .disabled we set. */
+const $button = (id: string): HTMLButtonElement => {
+  const el = $(id);
+  if (!(el instanceof HTMLButtonElement)) throw new Error(`#${id} is not a button`);
+  return el;
+};
+
+/** Same, for the inputs whose .value we read — checked, not cast. */
+const $input = (id: string): HTMLInputElement => {
+  const el = $(id);
+  if (!(el instanceof HTMLInputElement)) throw new Error(`#${id} is not an input`);
+  return el;
+};
+
+/** Set the text of a child the markup is known to contain. */
+const setChild = (root: HTMLElement, sel: string, text: string): void => {
+  const el = root.querySelector(sel);
+  if (el) el.textContent = text;
+};
+
+/** One floor as it exists in the scene graph, beside the data it came from. */
+interface Floor3D {
+  name: string;
+  V: number;
+  heights: number[];
+  group: THREE.Group;
+  objGroup: THREE.Group;
+  meshes: Map<string, THREE.Mesh>;
+  terrainMesh: THREE.Mesh;
+  waterMesh: THREE.Mesh | null;
+  splat: SplatData | null;
+  instances: Instance[];
+}
+
+/** The loaded map: one group per floor, exactly one of them visible. */
+interface World { floors: Floor3D[]; active: number }
+
+/**
+ * A point on a cut cell's boundary ring. Corners reuse their existing grid
+ * vertex; a cut sits at an edge midpoint and carries TWO heights, since the cut
+ * follows the terrain rather than sitting level.
+ */
+interface RingCorner { cut: false; up: boolean; gi: number }
+interface RingCut { cut: true; xy: [number, number]; hz: number; lz: number }
+type RingPoint = RingCorner | RingCut;
+
+/** The currently picked object, kept with its mesh so a drag can move it. */
+interface Selection { id: string; mesh: THREE.Mesh; inst: Instance }
 const ALL = 'All'; // category chip meaning 'no filter', used as both label and key
 
 // --- three.js boilerplate ---
@@ -48,13 +126,14 @@ controls.screenSpacePanning = false;
 // Held keys move the camera and its orbit target together across the ground.
 // Speed scales with zoom distance so it feels the same up close and far out.
 const keys = new Set();
-const isTyping = (el) => el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
+const isTyping = (el: EventTarget | null): boolean =>
+  el instanceof HTMLElement && el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
 addEventListener('keydown', (e) => { if (!isTyping(e.target)) keys.add(e.code); });
 addEventListener('keyup', (e) => keys.delete(e.code));
 addEventListener('blur', () => keys.clear()); // don't keep sliding if focus is lost
 
 const panVec = new THREE.Vector3(), fwdVec = new THREE.Vector3();
-function keyPan(dt) {
+function keyPan(dt: number): void {
   let f = 0, s = 0;
   if (keys.has('KeyW') || keys.has('ArrowUp')) f += 1;
   if (keys.has('KeyS') || keys.has('ArrowDown')) f -= 1;
@@ -82,17 +161,18 @@ addEventListener('resize', () => {
 // A map has one or two floors (surface + underground); each is its own terrain
 // and object set. We build a group per floor and show one at a time — mixing
 // them would dump underground objects onto the surface (wrong heights, chaos).
-let world = null; // { floors:[{ name, V, heights, group, objGroup, meshes:Map<id,mesh> }], active }
-let selected = null; // { id, mesh, inst }
+let world: World | null = null; // { floors:[{ name, V, heights, group, objGroup, meshes:Map<id,mesh> }], active }
+let selected: Selection | null = null; // { id, mesh, inst }
 let showObjects = false; // off by default: terrain work needs a clear ground view
-let boxHelper = null;
+let boxHelper: THREE.BoxHelper | null = null;
 
 const raycaster = new THREE.Raycaster();
 const ptr = new THREE.Vector2();
 
-const activeFloor = () => world.floors[world.active];
+// Only called while a map is loaded; every caller is gated on `world`.
+const activeFloor = (): Floor3D => world!.floors[world!.active]!;
 
-function heightAt(x, y) {
+function heightAt(x: number, y: number): number {
   const { V, heights } = activeFloor();
   const ix = Math.max(0, Math.min(V - 1, Math.round(x)));
   const iy = Math.max(0, Math.min(V - 1, Math.round(y)));
@@ -101,23 +181,23 @@ function heightAt(x, y) {
 
 // Height -> RGB (0..1). Below ~1 reads as water; above ramps green -> rocky tan,
 // mirroring the reference software render's palette.
-function terrainColor(h) {
+function terrainColor(h: number): [number, number, number] {
   if (h < 1) return [0.15, 0.28, 0.34];        // water
   const t = Math.max(0, Math.min(1, (h - 1) / 7));
   return [(70 + t * 70) / 255, (95 + t * 50) / 255, (60 + t * 30) / 255];
 }
 
-function clearWorld() {
+function clearWorld(): void {
   for (const m of splatMats.splice(0)) {
     m.uniforms.uGround.value?.dispose?.(); m.uniforms.uMask.value?.dispose?.(); m.dispose();
   }
-  if (world) for (const fl of world.floors) { scene.remove(fl.group); fl.group.traverse((o) => o.geometry?.dispose?.()); }
+  if (world) for (const fl of world.floors) { scene.remove(fl.group); fl.group.traverse((o) => { if (o instanceof THREE.Mesh) o.geometry.dispose(); }); }
   if (boxHelper) { scene.remove(boxHelper); boxHelper = null; }
   world = null; selected = null; updatePanel();
 }
 
 // Build the shared per-geom geometries + materials (reused across floors).
-function buildGeos(S) {
+function buildGeos(S: Scene) {
   const loader = new THREE.TextureLoader();
   const grey = new THREE.MeshLambertMaterial({ color: 0x8a8f98, side: THREE.DoubleSide });
   const geos = S.geoms.map((g) => {
@@ -158,7 +238,7 @@ void main() {
   gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
 }`;
 
-const splatFrag = (groups, layers) => `
+const splatFrag = (groups: number, layers: number): string => `
 precision highp sampler2DArray;
 uniform sampler2DArray uGround;
 uniform sampler2DArray uMask;
@@ -213,17 +293,18 @@ void main() {
   outColor = vec4(col * (0.62 + 0.5 * d), 1.0);
 }`;
 
-const loadImg = (src) => new Promise((res, rej) => {
+const loadImg = (src: string): Promise<HTMLImageElement> => new Promise((res, rej) => {
   const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('image decode failed')); i.src = src;
 });
 
 // Stack same-sized images into one DataArrayTexture via a canvas read-back.
-async function arrayTexture(uris, size) {
+async function arrayTexture(uris: string[], size: number): Promise<THREE.DataArrayTexture> {
   const data = new Uint8Array(uris.length * size * size * 4);
   const cv = document.createElement('canvas'); cv.width = cv.height = size;
   const cx = cv.getContext('2d', { willReadFrequently: true });
+  if (!cx) throw new Error('no 2d canvas context');
   for (let i = 0; i < uris.length; i++) {
-    const img = await loadImg(uris[i]);
+    const img = await loadImg(uris[i]!);
     cx.clearRect(0, 0, size, size);
     cx.drawImage(img, 0, 0, size, size);
     data.set(cx.getImageData(0, 0, size, size).data, i * size * size * 4);
@@ -236,10 +317,10 @@ async function arrayTexture(uris, size) {
 
 let texScale = 0.5;   // ground-texture repeats per map tile (tunable in the toolbar)
 let cliffAmount = 1;  // how strongly steep faces take the rock texture
-const splatMats = [];
+const splatMats: THREE.ShaderMaterial[] = [];
 
 // Swap a floor's flat-colour terrain material for the textured splat one.
-async function upgradeToSplat(fl) {
+async function upgradeToSplat(fl: Floor3D): Promise<void> {
   const s = fl.splat;
   if (!s || !s.layerCount) return;
   const [ground, masks] = await Promise.all([
@@ -282,12 +363,12 @@ async function upgradeToSplat(fl) {
   });
   const old = fl.terrainMesh.material;
   fl.terrainMesh.material = mat;
-  old.dispose?.();
+  for (const m of Array.isArray(old) ? old : [old]) m.dispose();
   splatMats.push(mat);
 }
 
 // Build one floor: its coloured terrain heightmap + its placed object meshes.
-function buildFloor(floor, geos, mats) {
+function buildFloor(floor: Floor, geos: THREE.BufferGeometry[], mats: THREE.Material[]): Floor3D {
   const group = new THREE.Group();
   const V = floor.V, heights = floor.heights;
 
@@ -334,13 +415,16 @@ function buildFloor(floor, geos, mats) {
   // inclines and stay smooth even across a boundary.
   const WATER = 0, GROUND = 1, PLATEAU = 2;
   const fl = floor.flags;
-  const kindOf = (i) => { const f = fl[i]; return f === 0 ? WATER : (f & 32) ? PLATEAU : GROUND; };
-  const isRamp = (i) => (fl[i] & 8) !== 0;
+  const kindOf = (i: number): number => { const f = fl![i]!; return f === 0 ? WATER : (f & 32) ? PLATEAU : GROUND; };
+  const isRamp = (i: number): boolean => (fl![i]! & 8) !== 0;
   const MIN_STEP = 0.1; // a boundary with no real drop isn't worth a wall
 
-  const ti = [];
-  const extra = [];          // [x, y, z] triples appended after the grid vertices
-  const addV = (x, y, z) => { extra.push(x, y, z); return V * V + extra.length / 3 - 1; };
+  const ti: number[] = [];
+  const extra: number[] = [];          // [x, y, z] triples appended after the grid vertices
+  const addV = (x: number, y: number, z: number): number => {
+    extra.push(x, y, z);
+    return V * V + extra.length / 3 - 1;
+  };
 
   for (let y = 0; y < V - 1; y++) for (let x = 0; x < V - 1; x++) {
     // corner indices, counter-clockwise from (x,y)
@@ -371,7 +455,7 @@ function buildFloor(floor, geos, mats) {
     // neighbours), and each break point carries two: the upper surface's height
     // and the lower one's, taken from the corners that edge spans.
     const cxy = [[x, y], [x + 1, y], [x + 1, y + 1], [x, y + 1]];
-    const ring = [];
+    const ring: RingPoint[] = [];
     for (let k = 0; k < 4; k++) {
       const n = (k + 1) % 4;
       ring.push({ cut: false, up: up[k], gi: ci[k] });
@@ -384,28 +468,28 @@ function buildFloor(floor, geos, mats) {
         });
       }
     }
-    const cuts = ring.filter((p) => p.cut);
+    const cuts = ring.filter((p): p is RingCut => p.cut);
     if (cuts.length !== 2) { smooth(); continue; }
 
     // Walk the ring from one cut to the other: one arc is the high side, the
     // other the low side.
     const start = ring.findIndex((p) => p.cut);
-    const arcs = [[], []];
+    const arcs: RingPoint[][] = [[], []];
     let side = 0;
     for (let k = 0; k <= ring.length; k++) {
-      const p = ring[(start + k) % ring.length];
-      arcs[side].push(p);
-      if (p.cut && k > 0 && k < ring.length) { side = 1; arcs[1].push(p); }
+      const p = ring[(start + k) % ring.length]!;
+      arcs[side]!.push(p);
+      if (p.cut && k > 0 && k < ring.length) { side = 1; arcs[1]!.push(p); }
     }
     const cutHi = cuts.map((p) => addV(p.xy[0], p.xy[1], p.hz));
     const cutLo = cuts.map((p) => addV(p.xy[0], p.xy[1], p.lz));
 
     for (const arc of arcs) {
-      const corners = arc.filter((p) => !p.cut);
+      const corners = arc.filter((p): p is RingCorner => !p.cut);
       if (!corners.length) continue;
       const top = corners[0].up;
-      const ends = [arc[0], arc[arc.length - 1]];
-      const edge = (p) => (top ? cutHi : cutLo)[cuts.indexOf(p)];
+      const ends = [arc[0], arc[arc.length - 1]] as [RingCut, RingCut];
+      const edge = (p: RingCut) => (top ? cutHi : cutLo)[cuts.indexOf(p)];
       const poly = [edge(ends[0]), ...corners.map((p) => p.gi), edge(ends[1])];
       for (let k = 1; k < poly.length - 1; k++) ti.push(poly[0], poly[k], poly[k + 1]);
     }
@@ -446,9 +530,9 @@ function buildFloor(floor, geos, mats) {
   // itself clips the sheet and produces the waterline — no feathering needed.
   const wat = floor.water;
   if (wat && wat.cells.length) {
-    const wpos = [], wuv = [], widx = [];
+    const wpos: number[] = [], wuv: number[] = [], widx: number[] = [];
     const vmap = new Map();
-    const vert = (i) => {
+    const vert = (i: number): number => {
       let v = vmap.get(i);
       if (v === undefined) {
         v = wpos.length / 3;
@@ -503,7 +587,7 @@ function buildFloor(floor, geos, mats) {
   return { name: floor.name, V, heights, group, objGroup, meshes, terrainMesh, waterMesh, splat: floor.splat, instances: floor.instances };
 }
 
-function buildWorld(S) {
+function buildWorld(S: Scene): void {
   clearWorld();
   const { geos, mats } = buildGeos(S);
   const floors = S.floors.map((f) => buildFloor(f, geos, mats));
@@ -513,12 +597,16 @@ function buildWorld(S) {
   updateFloorUI();
   // Textured ground arrives asynchronously; the flat blend shows meanwhile.
   for (const fl of floors) {
-    upgradeToSplat(fl).catch((e) => { console.error('splat failed', fl.name, e); $('hud').textContent = 'ground textures: ' + e.message; });
+    upgradeToSplat(fl).catch((e: unknown) => {
+      console.error('splat failed', fl.name, e);
+      $('hud').textContent = 'ground textures: ' + (e instanceof Error ? e.message : String(e));
+    });
   }
 }
 
 // Switch which floor is shown; only its group is visible and pickable.
-function setActiveFloor(i) {
+function setActiveFloor(i: number): void {
+  if (!world) return;
   world.active = i;
   world.floors.forEach((fl, idx) => { fl.group.visible = idx === i; });
   deselect();
@@ -534,7 +622,7 @@ function setActiveFloor(i) {
 }
 
 // --- selection ---
-function selectById(id) {
+function selectById(id: string): void {
   const mesh = activeFloor().meshes.get(id);
   if (!mesh) return;
   selected = { id, mesh, inst: mesh.userData.inst };
@@ -543,12 +631,12 @@ function selectById(id) {
   updatePanel();
   syncExplorerSel();
 }
-function deselect() { selected = null; if (boxHelper) boxHelper.visible = false; updatePanel(); syncExplorerSel(); }
+function deselect(): void { selected = null; if (boxHelper) boxHelper.visible = false; updatePanel(); syncExplorerSel(); }
 
 // Frame the camera on a mesh: keep the current view direction but recenter and
 // back off to a distance that fits the object — so clicking a list row actually
 // brings the (often tiny, often hidden) object into view.
-function frameObject(mesh) {
+function frameObject(mesh: THREE.Object3D): void {
   const box = new THREE.Box3().setFromObject(mesh);
   if (box.isEmpty()) return;
   const c = box.getCenter(new THREE.Vector3());
@@ -566,7 +654,7 @@ function frameObject(mesh) {
 // object you can't see in the 3D view. Gameplay objects (towns, monsters,
 // mines…) group by a friendly type name; decorative statics group by their
 // MapObjects/ folder (Grass, Dirt, Subterra…). Click a row -> select + frame.
-const TYPE_LABEL = {
+const TYPE_LABEL: Record<string, string> = {
   AdvMapStatic: 'Decor', AdvMapTreasure: 'Treasure', AdvMapMonster: 'Monsters',
   AdvMapBuilding: 'Buildings', AdvMapMine: 'Mines', AdvMapArtifact: 'Artifacts',
   AdvMapDwelling: 'Dwellings', AdvMapShrine: 'Shrines', AdvMapHero: 'Heroes',
@@ -576,11 +664,11 @@ const TYPE_LABEL = {
   AdvMapPrison: 'Prisons', AdvMapCartographer: 'Cartographers', AdvMapSphinx: 'Sphinxes',
 };
 
-function objName(it) {
+function objName(it: Instance): string {
   const base = (it.shared || '').split('/').pop() || it.type;
   return base.replace(/\.\(AdvMap\w+Shared\)\.xdb$/i, '').replace(/\.xdb$/i, '') || it.type;
 }
-function objCategory(it) {
+function objCategory(it: Instance): string {
   if (it.type !== 'AdvMapStatic') return TYPE_LABEL[it.type] || it.type;
   const m = (it.shared || '').match(/\/MapObjects\/([^/]+)\//i);
   return m ? m[1] : 'Decor';
@@ -589,15 +677,15 @@ function objCategory(it) {
 let exCat = ALL;
 const exInstances = () => (world ? activeFloor().instances : []);
 
-function renderExplorer() { renderExCats(); renderExList(); }
+function renderExplorer(): void { renderExCats(); renderExList(); }
 
-function renderExCats() {
+function renderExCats(): void {
   const insts = exInstances();
   const counts = new Map();
   for (const it of insts) { const c = objCategory(it); counts.set(c, (counts.get(c) || 0) + 1); }
   if (!counts.has(exCat) && exCat !== ALL) exCat = ALL;
   const el = $('ex-cats'); el.innerHTML = '';
-  const chip = (label, n, key) => {
+  const chip = (label: string, n: number, key: string): void => {
     const c = document.createElement('span');
     c.className = 'chip' + (key === exCat ? ' on' : '');
     c.textContent = `${label} (${n})`;
@@ -608,9 +696,9 @@ function renderExCats() {
   for (const [c, n] of [...counts].sort((a, b) => b[1] - a[1])) chip(c, n, c);
 }
 
-function renderExList() {
+function renderExList(): void {
   const list = $('ex-list');
-  const f = $('ex-search').value.trim().toLowerCase();
+  const f = $input('ex-search').value.trim().toLowerCase();
   let shown = exInstances();
   if (exCat !== ALL) shown = shown.filter((it) => objCategory(it) === exCat);
   if (f) shown = shown.filter((it) => (objName(it) + ' ' + it.type + ' ' + it.x + ',' + it.y).toLowerCase().includes(f));
@@ -622,13 +710,15 @@ function renderExList() {
   for (const it of shown.slice(0, 2000)) {
     const div = document.createElement('div');
     div.className = 'exrow' + (selected && selected.id === it.id ? ' sel' : '');
-    div.dataset.id = it.id;
+    div.dataset.id = it.id ?? undefined;
     div.innerHTML = `<span class="nm"></span><span class="co"></span>`;
-    div.querySelector('.nm').textContent = objName(it);
-    div.querySelector('.co').textContent = `${it.x},${it.y}`;
+    setChild(div, '.nm', objName(it));
+    setChild(div, '.co', `${it.x},${it.y}`);
     div.onclick = () => {
-      selectById(it.id);
-      const m = activeFloor().meshes.get(it.id);
+      const id = it.id;
+      if (!id) return;
+      selectById(id);
+      const m = activeFloor().meshes.get(id);
       if (m) frameObject(m);
     };
     frag.appendChild(div);
@@ -638,18 +728,18 @@ function renderExList() {
 }
 
 // Highlight the selected object's row (and scroll it into view when off-screen).
-function syncExplorerSel() {
+function syncExplorerSel(): void {
   const list = $('ex-list'); if (!list) return;
   let selRow = null;
-  for (const r of list.querySelectorAll('.exrow')) {
-    const on = selected && r.dataset.id === selected.id;
+  for (const r of list.querySelectorAll<HTMLElement>('.exrow')) {
+    const on = selected !== null && r.dataset.id === selected.id;
     r.classList.toggle('sel', on);
     if (on) selRow = r;
   }
   if (selRow) selRow.scrollIntoView({ block: 'nearest' });
 }
 
-function updatePanel() {
+function updatePanel(): void {
   const p = $('panel');
   if (!selected) { p.style.display = 'none'; return; }
   p.style.display = 'block';
@@ -670,16 +760,16 @@ function updatePanel() {
 //     that is already selected — that drag moves it. So: click to select, then
 //     drag it to move. Orbiting stays available everywhere else.
 const CLICK_SLOP = 5; // px; movement under this = a click, not a drag
-let down = null;      // { sx, sy, hitId }
+let down: { sx: number; sy: number; hitId: string | null } | null = null; // { sx, sy, hitId }
 let dragging = false, moved = false;
 
-function pickObject(ev) {
+function pickObject(ev: PointerEvent): THREE.Mesh | null {
   if (!showObjects) return null; // hidden objects must not swallow clicks
   ptr.x = (ev.clientX / innerWidth) * 2 - 1;
   ptr.y = -(ev.clientY / innerHeight) * 2 + 1;
   raycaster.setFromCamera(ptr, camera);
-  const hits = raycaster.intersectObjects([...activeFloor().meshes.values()], false);
-  return hits.length ? hits[0].object : null;
+  const hits = raycaster.intersectObjects<THREE.Mesh>([...activeFloor().meshes.values()], false);
+  return hits.length ? hits[0]!.object : null;
 }
 
 renderer.domElement.addEventListener('pointerdown', (ev) => {
@@ -708,7 +798,7 @@ renderer.domElement.addEventListener('pointermove', (ev) => {
   if (nx === selected.inst.x && ny === selected.inst.y) return;
   selected.inst.x = nx; selected.inst.y = ny;
   selected.mesh.position.set(nx, ny, heightAt(nx, ny));
-  boxHelper.setFromObject(selected.mesh);
+  boxHelper?.setFromObject(selected.mesh);
   moved = true;
   updatePanel();
 });
@@ -720,7 +810,7 @@ addEventListener('pointerup', async (ev) => {
   if (dragging) {
     dragging = false; controls.enabled = true;
     if (moved && selected) {
-      await window.editor.moveObject(selected.inst.id, selected.inst.x, selected.inst.y);
+      await window.editor.moveObject(selected.id, selected.inst.x, selected.inst.y);
       markDirty(true);
     }
   } else if (wasClick) {
@@ -732,17 +822,17 @@ addEventListener('pointerup', async (ev) => {
 
 // --- toolbar ---
 let isDirty = false;
-function markDirty(v) {
+function markDirty(v: boolean): void {
   isDirty = v;
   $('dirty').textContent = v ? '● unsaved changes' : '';
   $('dirty').className = v ? 'on' : '';
-  $('save').disabled = !v;
+  $button('save').disabled = !v;
 }
 
-const FLOOR_LABEL = { surface: 'Surface', underground: 'Underground' };
+const FLOOR_LABEL: Record<string, string> = { surface: 'Surface', underground: 'Underground' };
 // Floor button: shown only for two-floor maps; label names the OTHER floor it
 // switches to, and clicking cycles.
-function updateFloorUI() {
+function updateFloorUI(): void {
   const btn = $('floor');
   if (!world || world.floors.length < 2) { btn.style.display = 'none'; return; }
   btn.style.display = '';
@@ -754,7 +844,7 @@ $('floor').onclick = () => { if (world) setActiveFloor((world.active + 1) % worl
 
 // Explorer show/hide + search wiring.
 let explorerOpen = true;
-function setExplorer(open) {
+function setExplorer(open: boolean): void {
   explorerOpen = open;
   $('explorer').style.display = open ? 'flex' : 'none';
   $('hud').style.left = open ? '296px' : '12px';
@@ -763,7 +853,7 @@ function setExplorer(open) {
 $('objects').onclick = () => setExplorer(!explorerOpen);
 
 // Hide/show all placed objects — terrain work needs an unobstructed ground view.
-function setShowObjects(on) {
+function setShowObjects(on: boolean): void {
   showObjects = on;
   if (world) for (const fl of world.floors) fl.objGroup.visible = on;
   if (!on) deselect();
@@ -777,13 +867,13 @@ $('showobj').onclick = () => setShowObjects(!showObjects);
 // editor's "Terra skin" list is. Selecting one arms it as the paint tile; the
 // brushes that consume it come next. A green dot marks tiles this map's terrain
 // already has a layer for — those paint without restructuring the .bin.
-let allTiles = [];
+let allTiles: TileInfo[] = [];
 let tilesInMap = new Set();
-let palCat = null;
-let paintTile = null;
+let palCat: string | null = null;
+let paintTile: TileInfo | null = null;
 let paletteOpen = false;
 
-function renderPalette() {
+function renderPalette(): void {
   const grid = $('pal-grid');
   grid.innerHTML = '';
   const shown = allTiles.filter((t) => t.category === palCat);
@@ -811,9 +901,9 @@ function renderPalette() {
   }
 }
 
-function renderPalCats() {
+function renderPalCats(): void {
   const cats = [...new Set(allTiles.map((t) => t.category))].sort();
-  const sel = $('pal-cat');
+  const sel = $select('pal-cat');
   sel.innerHTML = '';
   for (const c of cats) {
     const o = document.createElement('option');
@@ -821,10 +911,13 @@ function renderPalCats() {
     o.textContent = `${c} (${allTiles.filter((t) => t.category === c).length})`;
     sel.appendChild(o);
   }
-  if (!cats.includes(palCat)) palCat = cats.includes('Grass') ? 'Grass' : cats[0];
-  sel.value = palCat;
+  if (palCat === null || !cats.includes(palCat)) palCat = cats.includes('Grass') ? 'Grass' : (cats[0] ?? null);
+  if (palCat !== null) sel.value = palCat;
 }
-$('pal-cat').addEventListener('change', (e) => { palCat = e.target.value; renderPalette(); });
+$select('pal-cat').addEventListener('change', (e) => {
+  palCat = (e.currentTarget as HTMLSelectElement).value;
+  renderPalette();
+});
 
 async function initPalette() {
   if (allTiles.length) return;
@@ -835,11 +928,12 @@ async function initPalette() {
     renderPalCats();
     renderPalette();
   } catch (e) {
-    $('pal-grid').innerHTML = `<div style="color:#f85149;font-size:11px">${e.message}</div>`;
+    const msg = e instanceof Error ? e.message : String(e);
+    $('pal-grid').innerHTML = `<div style="color:#f85149;font-size:11px">${msg}</div>`;
   }
 }
 
-function setPalette(open) {
+function setPalette(open: boolean): void {
   paletteOpen = open;
   $('palette').style.display = open ? 'flex' : 'none';
   $('palbtn').classList.toggle('on', open);
@@ -851,7 +945,7 @@ $('palbtn').onclick = () => setPalette(!paletteOpen);
 
 // Cliff shading on/off, so the rock blend can be compared against the raw
 // stretched-ground look it replaces.
-function setCliffs(on) {
+function setCliffs(on: boolean): void {
   cliffAmount = on ? 1 : 0;
   for (const m of splatMats) if (m.uniforms.uRock.value) m.uniforms.uCliff.value = cliffAmount;
   $('cliffbtn').classList.toggle('on', on);
@@ -862,22 +956,22 @@ $('cliffbtn').onclick = () => setCliffs(!cliffAmount);
 // level isn't recorded anywhere, so it's tuned by eye. The sheet is flat, so
 // moving the mesh is enough — no rebuild.
 let seaBase = 1.5;
-$('sealevel').addEventListener('input', (e) => {
-  const v = +e.target.value;
+$input('sealevel').addEventListener('input', (e) => {
+  const v = +(e.currentTarget as HTMLInputElement).value;
   $('sealevelval').textContent = v.toFixed(2);
   if (world) for (const fl of world.floors) if (fl.waterMesh) fl.waterMesh.position.z = v - seaBase;
 });
 
 // Ground texture tiling density. The format doesn't record it, so it's tuned by
 // eye against the game's own look and applied live to every splat material.
-$('texscale').addEventListener('input', (e) => {
-  texScale = +e.target.value;
+$input('texscale').addEventListener('input', (e) => {
+  texScale = +(e.currentTarget as HTMLInputElement).value;
   $('texscaleval').textContent = texScale.toFixed(2);
   for (const m of splatMats) m.uniforms.uScale.value = texScale;
 });
-$('ex-search').addEventListener('input', renderExList);
+$input('ex-search').addEventListener('input', renderExList);
 
-async function loadMapPath(path) {
+async function loadMapPath(path: string | null): Promise<void> {
   if (!path) return;
   $('loading').classList.add('on');
   // Yield a frame so the overlay paints before the (blocking) decode starts.
@@ -887,14 +981,14 @@ async function loadMapPath(path) {
     buildWorld(S);
     $('empty').style.display = 'none';
     $('title').textContent = `homm5-editor — ${info.name} (${info.tileX}×${info.tileY})`;
-    $('pack').disabled = false;
+    $button('pack').disabled = false;
     $('objects').style.display = '';
     $('showobj').style.display = '';
     $('scalewrap').style.display = 'flex';
     // Sea controls only matter on maps that actually have water-flagged ground.
     const hasSea = S.floors.some((f) => f.water && f.water.cells.length);
     $('seawrap').style.display = hasSea ? 'flex' : 'none';
-    if (hasSea) seaBase = S.floors.find((f) => f.water)?.water.level ?? 1.5;
+    seaBase = S.floors.find((f) => f.water)?.water?.level ?? 1.5;
     $('palbtn').style.display = '';
     $('cliffbtn').style.display = '';
     setCliffs(cliffAmount > 0);
@@ -911,7 +1005,7 @@ async function loadMapPath(path) {
       : '';
     $('hud').textContent = `${total} objects · placed ${info.placed}, no model ${info.skipped} · ${S.geoms.length} meshes${floorsTxt}`;
   } catch (e) {
-    $('hud').textContent = 'error: ' + e.message;
+    $('hud').textContent = 'error: ' + (e instanceof Error ? e.message : String(e));
     console.error(e);
   } finally {
     $('loading').classList.remove('on');
@@ -927,10 +1021,10 @@ async function openViaDialog() {
 // category (top folder under Maps) with search. Combat arenas / duel / test maps
 // are the bulk of the list but rarely what you want to edit, so real scenarios
 // (Single, Multiplayer, Campaign) sort first and get their own filter chips.
-let allMaps = [];
+let allMaps: MapEntry[] = [];
 let activeCat = ALL;
 
-const CATEGORY = (rel) => {
+const CATEGORY = (rel: string): string => {
   const top = rel.split('/')[0] || '';
   if (/^SingleMissions/i.test(top) || /Campaign/i.test(rel)) return 'Campaigns';
   if (/^Multiplayer/i.test(top)) return 'Multiplayer';
@@ -940,11 +1034,11 @@ const CATEGORY = (rel) => {
   return top || 'Other';
 };
 const CAT_ORDER = ['Campaigns', 'Multiplayer', 'Other', 'Duels', 'Arenas', 'Tests'];
-const catRank = (c) => { const i = CAT_ORDER.indexOf(c); return i === -1 ? 99 : i; };
+const catRank = (c: string): number => { const i = CAT_ORDER.indexOf(c); return i === -1 ? 99 : i; };
 
 function renderMapList() {
   const list = $('maplist');
-  const f = $('search').value.trim().toLowerCase();
+  const f = $input('search').value.trim().toLowerCase();
   let shown = allMaps.filter((m) => activeCat === ALL || m.cat === activeCat);
   if (f) shown = shown.filter((m) => (m.rel + ' ' + m.name).toLowerCase().includes(f));
   shown.sort((a, b) => catRank(a.cat) - catRank(b.cat) || a.rel.localeCompare(b.rel));
@@ -954,8 +1048,8 @@ function renderMapList() {
     const div = document.createElement('div');
     div.className = 'm';
     div.innerHTML = `<span class="name"></span><span class="rel"></span>`;
-    div.querySelector('.name').textContent = m.name;
-    div.querySelector('.rel').textContent = m.rel;
+    setChild(div, '.name', m.name);
+    setChild(div, '.rel', m.rel);
     div.onclick = () => loadMapPath(m.path);
     list.appendChild(div);
   }
@@ -985,20 +1079,21 @@ async function initPicker() {
     renderCats();
     renderMapList();
   } catch (e) {
-    $('maplist').innerHTML = `<div class="empty">could not load the list: ${e.message}</div>`;
+    const msg = e instanceof Error ? e.message : String(e);
+    $('maplist').innerHTML = `<div class="empty">could not load the list: ${msg}</div>`;
   }
 }
 
 $('open').onclick = openViaDialog;
 $('open2').onclick = openViaDialog;
-$('search').addEventListener('input', renderMapList);
+$input('search').addEventListener('input', renderMapList);
 initPicker();
 $('save').onclick = async () => { await window.editor.save(); markDirty(false); $('hud').textContent = 'saved'; };
 $('pack').onclick = async () => {
   const r = await window.editor.pack();
-  if (r?.canceled) return;
+  if ('canceled' in r) return;
   markDirty(false);
-  $('hud').textContent = r?.ok ? `packed → ${r.output} (${(r.bytes / 1024 | 0)} KB)` : 'pack failed';
+  $('hud').textContent = `packed → ${r.output} (${(r.bytes / 1024 | 0)} KB)`;
 };
 
 // --- render loop ---

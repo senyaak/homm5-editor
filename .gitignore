@@ -4,3 +4,7 @@ node_modules/
 renderer/scene-view.html
 renderer/terrain-view.html
 samples/
+
+# built from renderer/app.ts by esbuild
+renderer/app.js
+renderer/app.js.map

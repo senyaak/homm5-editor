@@ -1,9 +1,16 @@
 // Preload bridge — exposes a minimal, typed IPC surface to the renderer.
 // contextIsolation is on, so the renderer sees only `window.editor` with these
 // methods, never Node or the raw ipcRenderer.
+//
+// This file stays plain CommonJS JavaScript on purpose. Electron's preload
+// loader does not run Node's type-stripping hook — a `.cts` preload is read
+// verbatim, so even a bare `const n: number = 1` fails with "Missing
+// initializer in const declaration" and the bridge silently never installs.
+// The contract it implements is EditorApi in ./ipc.ts; keep the two in step.
 const { contextBridge, ipcRenderer } = require('electron');
 
-contextBridge.exposeInMainWorld('editor', {
+/** @type {import('./ipc.ts').EditorApi} */
+const api = {
   listMaps: () => ipcRenderer.invoke('maps:list'),
   openMapDialog: () => ipcRenderer.invoke('dialog:openMap'),
   loadMap: (path) => ipcRenderer.invoke('map:load', path),
@@ -12,4 +19,6 @@ contextBridge.exposeInMainWorld('editor', {
   pack: () => ipcRenderer.invoke('map:pack'),
   status: () => ipcRenderer.invoke('map:status'),
   listTiles: () => ipcRenderer.invoke('terrain:tiles'),
-});
+};
+
+contextBridge.exposeInMainWorld('editor', api);

@@ -4,15 +4,17 @@
   "private": true,
   "type": "module",
   "description": "Experimental map/campaign editor for Heroes of Might and Magic 5 (Tribes of the East)",
-  "main": "electron/main.js",
+  "main": "electron/main.ts",
   "scripts": {
-    "start": "electron .",
+    "start": "npm run build:renderer && electron .",
     "inspect": "node tools/inspect-terrain.js",
     "test-terrain": "node tools/test-terrain.js",
     "test-pak": "node tools/test-pak.js",
     "test-map": "node tools/test-map.js",
     "pak": "node tools/pak-cli.js",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build:renderer": "esbuild renderer/app.ts --bundle --format=esm --target=chrome120 --outfile=renderer/app.js --sourcemap",
+    "watch:renderer": "npm run build:renderer -- --watch"
   },
   "dependencies": {
     "three": "^0.160.0"
