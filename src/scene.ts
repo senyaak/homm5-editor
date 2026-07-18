@@ -351,6 +351,25 @@ function flatTexture(col: number[], size: number): Uint8Array {
   return px;
 }
 
+/**
+ * Rebuild just the splat for a terrain buffer.
+ *
+ * Adding a texture layer changes how many layers the shader composites, so the
+ * renderer needs fresh mask groups and tile textures. This goes through the
+ * same buildSplat the loader uses rather than a second construction path —
+ * the two drifting apart is exactly how a live edit ends up looking different
+ * from the same map reloaded.
+ *
+ * Caches are local: this runs on a deliberate one-off action, not per frame.
+ */
+export function splatFor(raw: Buffer, assetRoot: string, tileSize = 256): SplatData | null {
+  const readXdb: ReadXdb = (href) => {
+    const p = join(assetRoot, href.split('#')[0]);
+    return existsSync(p) ? readFileSync(p, 'utf8') : null;
+  };
+  return buildSplat(parseTerrain(raw), readXdb, assetRoot, new Map(), new Map(), tileSize);
+}
+
 function buildSplat(
   t: Terrain, readXdb: ReadXdb, assetRoot: string,
   texCache: Map<string, string>, colCache: Map<string, number[] | null>, size: number,

@@ -16,7 +16,7 @@ import type { IpcMainInvokeEvent } from 'electron';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, basename, relative, sep } from 'node:path';
 import { readFileSync, writeFileSync, existsSync, readdirSync, statSync } from 'node:fs';
-import { buildScene, findAssetRoot, listTiles } from '../src/scene.ts';
+import { buildScene, findAssetRoot, listTiles, splatFor } from '../src/scene.ts';
 import { initProject, packProject, status } from '../src/project.ts';
 import { watchMapDir } from '../src/watch.ts';
 import type { MapWatch } from '../src/watch.ts';
@@ -27,6 +27,7 @@ import type {
   MapsListResult, MapListEntry, MapLoadResult, MoveObjectPayload, MoveObjectResult,
   MapSaveResult, MapPackResult, TerrainTilesResult, MapStatusResult, OpenMapDialogResult,
   ExternalChange, PaintTilePayload, PaintTileResult, SculptPayload, SculptResult,
+  AddLayerPayload, AddLayerResult,
 } from './ipc.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -225,6 +226,21 @@ ipcMain.handle('terrain:sculpt', async (_e: IpcMainInvokeEvent, p: SculptPayload
   if (!session) throw new Error('no map loaded');
   terrainDoc(session, p.floor).setVertices(p.verts, p.heights, p.flags);
   return { ok: true };
+});
+
+// --- IPC: give this map a layer for a tile it does not carry ---
+// The only terrain edit that changes the file's structure rather than its
+// bytes, so it is a deliberate action rather than something a brush stroke
+// triggers. Returns a rebuilt splat: one more layer means a new shader and new
+// mask groups, which the renderer cannot patch in place.
+ipcMain.handle('terrain:add-layer', async (_e: IpcMainInvokeEvent, p: AddLayerPayload): Promise<AddLayerResult> => {
+  if (!session) throw new Error('no map loaded');
+  const doc = terrainDoc(session, p.floor);
+  doc.addLayer(p.tile);
+  const paths = doc.layerPaths().filter((x) => x);
+  // Keep the palette's "already in this map" markers in step for every floor.
+  session.layerPaths = [...new Set([...session.layerPaths, ...paths])];
+  return { ok: true, splat: splatFor(doc.buffer(), session.assetRoot), inMap: paths };
 });
 
 /** Flush every terrain document that has unsaved brush work. */

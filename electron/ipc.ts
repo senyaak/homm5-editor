@@ -5,7 +5,7 @@
 // `window.editor`. Type-only module: nothing here emits, so both the ESM main
 // process and the CommonJS preload can import from it.
 
-import type { Scene, TileInfo } from '../src/scene.ts';
+import type { Scene, SplatData, TileInfo } from '../src/scene.ts';
 import type { ProjectStatus } from '../src/project.ts';
 import type { TypeCounts } from '../src/map.ts';
 
@@ -157,6 +157,25 @@ export interface SculptResult {
   ok: true;
 }
 
+/** Payload of `terrain:add-layer`. */
+export interface AddLayerPayload {
+  floor: number;
+  /** The (AdvMapTile).xdb path to give this map a layer for. */
+  tile: string;
+}
+
+/**
+ * Result of `terrain:add-layer`. The splat is rebuilt because the shader
+ * composites a fixed number of layers: one more means new mask groups and a
+ * new material, not a texture the renderer can patch.
+ */
+export interface AddLayerResult {
+  ok: true;
+  splat: SplatData | null;
+  /** Every tile path this map now has a layer for. */
+  inMap: string[];
+}
+
 /** Result of `map:status`: null when no map is loaded. */
 export type MapStatusResult = ProjectStatus | null;
 
@@ -175,6 +194,7 @@ export interface EditorApi {
   listTiles(): Promise<TerrainTilesResult>;
   paintTile(p: PaintTilePayload): Promise<PaintTileResult>;
   sculpt(p: SculptPayload): Promise<SculptResult>;
+  addLayer(p: AddLayerPayload): Promise<AddLayerResult>;
   /**
    * Subscribe to external edits of the open map folder. Fires once per settled
    * burst of writes; our own saves never fire it.

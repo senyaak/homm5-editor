@@ -373,7 +373,14 @@ async function upgradeToSplat(fl: Floor3D): Promise<void> {
   fl.maskTex = masks; // the brush writes into this and flips needsUpdate
   const old = fl.terrainMesh.material;
   fl.terrainMesh.material = mat;
-  for (const m of Array.isArray(old) ? old : [old]) m.dispose();
+  for (const m of Array.isArray(old) ? old : [old]) {
+    // Adding a layer re-runs this on a floor that already had a splat, so the
+    // retired material has to leave the list too — the ground-scale slider
+    // walks it and would be writing uniforms into a disposed material.
+    const at = splatMats.indexOf(m as THREE.ShaderMaterial);
+    if (at >= 0) splatMats.splice(at, 1);
+    m.dispose();
+  }
   splatMats.push(mat);
 }
 
@@ -1254,6 +1261,31 @@ let palCat: string | null = null;
 let paintTile: TileInfo | null = null;
 let paletteOpen = false;
 
+/**
+ * Give this map a layer for `t`, so it can be painted with.
+ *
+ * This is the one terrain edit that changes the file's structure rather than
+ * overwriting bytes in place, so it is an explicit action on the tile rather
+ * than something a brush stroke does silently. The mask starts empty, so the
+ * map looks unchanged until the first stroke.
+ */
+async function addTileLayer(t: TileInfo): Promise<void> {
+  if (!world) return;
+  const fl = activeFloor();
+  $('hud').textContent = `adding ${t.name} to this map…`;
+  try {
+    const r = await window.editor.addLayer({ floor: world.active, tile: t.path });
+    // One more layer means a different shader, not a texture we can patch.
+    if (r.splat) { fl.splat = r.splat; await upgradeToSplat(fl); }
+    tilesInMap = new Set(r.inMap);
+    markDirty(true);
+    renderPalette();
+    $('hud').textContent = `${t.name} added — paint away`;
+  } catch (e) {
+    $('hud').textContent = 'could not add the tile: ' + (e instanceof Error ? e.message : String(e));
+  }
+}
+
 function renderPalette(): void {
   const grid = $('pal-grid');
   grid.innerHTML = '';
@@ -1270,7 +1302,7 @@ function renderPalette(): void {
     if (used) {
       const dot = document.createElement('span');
       dot.className = 'dot';
-      dot.title = 'This map already has a layer for this tile — paintable by editing the existing mask, no terrain.bin rebuild';
+      dot.title = 'This map already carries a layer for this tile. Tiles without a dot get one added when picked.';
       el.appendChild(dot);
     }
     el.onclick = () => {
@@ -1278,18 +1310,15 @@ function renderPalette(): void {
       // Tiles with no layer in this map cannot be painted yet — adding one means
       // inserting an array into the .bin. Say so at selection time rather than
       // letting the brush no-op silently.
-      $('pal-sel').textContent = used
-        ? `${t.name} · priority ${t.priority}`
-        : `${t.name} — not in this map, can't paint yet`;
-      // Choosing a paintable tile is the intent to paint with it: switch to
-      // paint mode and arm, so the click leads somewhere instead of just
-      // highlighting a swatch.
-      if (used) {
-        sculptDir = 0;
-        $select('brushmode').value = 'paint';
-        setBrush(true);
-      }
+      $('pal-sel').textContent = `${t.name} · priority ${t.priority}`;
+      // Choosing a tile is the intent to paint with it: switch to paint mode
+      // and arm, so the click leads somewhere instead of highlighting a swatch.
+      sculptDir = 0;
+      $select('brushmode').value = 'paint';
+      setBrush(true);
       renderPalette();
+      // A tile this map has no layer for gets one now, on the spot.
+      if (!used) addTileLayer(t);
     };
     grid.appendChild(el);
   }

@@ -53,8 +53,12 @@ so a `.cts` preload dies on the first type annotation — silently, leaving
   own `.dds`, grouped by category. Pick one, arm the brush, and left-drag to
   paint at 1/3/5/7 tiles wide. The stroke goes into the mask texture on the GPU
   for immediate feedback and into the main process, which owns the bytes that
-  get saved. Only tiles the map already has a layer for (green dot) can be
-  painted — a new layer means restructuring the `.bin`.
+  get saved.
+- **Adding a texture layer** (`src/terrain-layer.ts`): picking a tile the map
+  does not carry splices a new mask array and its path into the container and
+  grows every enclosing block's declared length. The only terrain edit that
+  moves bytes rather than overwriting them, so the tests compare every
+  pre-existing plane byte for byte (`npm run test-terrain-layer`).
 - **Mesh decoding** (`src/geometry.ts`): positions, indices, UVs and textures.
   See [docs/GEOMETRY_FORMAT.md](docs/GEOMETRY_FORMAT.md).
 
@@ -68,6 +72,7 @@ npm start                 # build the renderer, then launch the editor
 npm run typecheck         # tsc --noEmit across the whole project
 npm run test-terrain      # terrain parser round-trip on sample maps
 npm run test-terrain-write # plane writes + the tile brush
+npm run test-terrain-layer # splicing a new texture layer in
 npm run test-map          # map.xdb model + loss-less XML round-trip
 npm run test-watch        # external-change watcher
 npm run test-pak          # ZIP reader/writer
@@ -98,6 +103,20 @@ arrays, each introduced by a framing group:
 03 <u32 sizeB>         # sizeB = 2 * arrayByteLength + 1
 <array data>
 ```
+
+**The low bit of a size is a width flag**, which is why every size the array
+scan ever met looked "always odd":
+
+```
+odd  -> the size is a little-endian u32 there, len = (size - 1) / 2
+even -> the size IS that single byte,         len = size / 2
+```
+
+Arrays are big and always take the u32 form; path strings are short and always
+take the one-byte form. A tile path of length L is stored as
+`03 <2L+4> 03 <2L> <L bytes>`, an outer record wrapping the string record —
+identical across all 20 layer paths in the sample maps. Knowing this is what
+makes it possible to *write* a new layer rather than only read one.
 
 Key points:
 
@@ -161,8 +180,7 @@ Details in [docs/GEOMETRY_FORMAT.md](docs/GEOMETRY_FORMAT.md).
 - [ ] Height brushes: `raise`/`lower`/ramp. These edit heights **and** flags, or
       cuts won't form (a cut is a change of ground kind, not steepness — see the
       terrain write-up), and they have to remesh the cells they touch.
-- [ ] Add a layer for a tile the map does not carry — the one terrain edit that
-      changes the file's structure rather than its bytes.
+- [ ] Undo/redo — the brushes make it matter now.
 - [ ] Object rotation, deletion, undo/redo, a property panel.
 - [ ] Fix the remaining undecoded models (see [MESH_PLAN.md](MESH_PLAN.md)).
 - [ ] Campaign editor (`*.(Campaign).xdb` is plain XML).

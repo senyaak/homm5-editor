@@ -15,6 +15,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import {
   parseTerrain, readHeights, readGroundFlags, readTextureLayers, readMask, writeTerrain,
 } from './terrain.ts';
+import { addTextureLayer } from './terrain-layer.ts';
 import type { Terrain, TextureLayer } from './terrain.ts';
 
 /** Vertex indices (y*V + x) a brush touches. */
@@ -32,22 +33,34 @@ export class TerrainDoc {
   private flags: Uint8Array | null;
   private touched = false;
 
-  private constructor(path: string, t: Terrain) {
+  private constructor(path: string, raw: Buffer) {
     this.path = path;
+    // Assigned by load(); declared here so the checker sees them initialised.
+    this.t = parseTerrain(raw);
+    this.V = this.t.V;
+    this.N = this.t.N;
+    this.layers = [];
+    this.masks = [];
+    this.heights = new Float32Array(0);
+    this.flags = null;
+    this.load(raw);
+  }
+
+  static open(path: string): TerrainDoc {
+    return new TerrainDoc(path, readFileSync(path));
+  }
+
+  /** Parse `raw` and take fresh working copies of every plane. */
+  private load(raw: Buffer): void {
+    const t = parseTerrain(raw);
     this.t = t;
-    this.V = t.V;
-    this.N = t.N;
     this.layers = readTextureLayers(t);
-    // Copies, not views: the views alias t.raw, which must stay pristine so
+    // Copies, not views: a view aliases t.raw, which must stay pristine so
     // writeTerrain can use it as the untouched base for every other byte.
     this.masks = this.layers.map((l) => Uint8Array.from(readMask(t, l)));
     this.heights = Float32Array.from(readHeights(t));
     const f = readGroundFlags(t);
     this.flags = f ? Uint8Array.from(f) : null;
-  }
-
-  static open(path: string): TerrainDoc {
-    return new TerrainDoc(path, parseTerrain(readFileSync(path)));
   }
 
   /** True when there are edits not yet written to disk. */
@@ -105,6 +118,34 @@ export class TerrainDoc {
     this.touched = true;
   }
 
+  /**
+   * Add a texture layer for a tile this terrain does not carry, so it becomes
+   * paintable. The new mask starts empty, so nothing changes on screen until
+   * something paints with it.
+   *
+   * Unlike every other edit this changes the file's structure, so the working
+   * copies are rebuilt from the grown buffer rather than patched — offsets past
+   * the splice have all moved.
+   */
+  addLayer(tilePath: string): void {
+    // Fold pending edits in first: the insert works on bytes, and anything not
+    // yet written back would be dropped when the working copies are rebuilt.
+    this.load(addTextureLayer(this.compose(), tilePath));
+    this.touched = true;
+  }
+
+  /** The current state as a buffer, edits included. */
+  buffer(): Buffer { return this.compose(); }
+
+  /** The current state as a buffer — every working copy written back into the container. */
+  private compose(): Buffer {
+    return writeTerrain(this.t, {
+      heights: this.heights,
+      ...(this.flags ? { flags: this.flags } : {}),
+      masks: this.layers.map((l, i) => ({ layer: l, data: this.masks[i]! })),
+    });
+  }
+
   /** Current mask for a layer, by tile path. Returns a copy. */
   maskOf(tilePath: string): Uint8Array | null {
     const i = this.layers.findIndex((l) => l.path === tilePath);
@@ -116,11 +157,7 @@ export class TerrainDoc {
 
   /** Write every plane back to the file this was opened from. */
   save(): void {
-    const buf = writeTerrain(this.t, {
-      heights: this.heights,
-      ...(this.flags ? { flags: this.flags } : {}),
-      masks: this.layers.map((l, i) => ({ layer: l, data: this.masks[i]! })),
-    });
+    const buf = this.compose();
     writeFileSync(this.path, buf);
     // Re-parse from what we just wrote so subsequent saves build on it. Offsets
     // do not move, but this keeps `t.raw` and the file in step by construction

@@ -88,6 +88,16 @@ const STUB = `<script>
       inMap: ['/t/Grass.xdb'],
     }),
     paintTile: async (p) => { log('paintTile', p); return { ok: true }; },
+    // Adding a layer grows the shader by one: hand back a splat with an extra
+    // mask group and layer, the way the real one does.
+    addLayer: async (p) => {
+      log('addLayer', p);
+      splat.layerCount += 1;
+      splat.paths.push(p.tile);
+      splat.layerTex.push(solid(8, 8, 180, 90, 90));
+      splat.maskGroups.push(solid(V, V, 0, 0, 0));
+      return { ok: true, splat, inMap: splat.paths.slice() };
+    },
     sculpt: async (p) => { log('sculpt', p); return { ok: true }; },
     onExternalChange: (cb) => { window.__fireExternalChange = cb; },
   };

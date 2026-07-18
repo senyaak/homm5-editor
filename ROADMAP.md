@@ -96,13 +96,12 @@ project.json
 
 ## Phase 3 — Editing core
 
-**NEXT STEP — RAMPS AND PLATEAUS.** Writing works for every plane, and the tile
-and raise/lower brushes are live. Raise/lower moves ground within its own kind
-and flips water/ground at height 0, but never writes the plateau (32) or ramp
-(8) bits — so the brushes that deliberately CREATE a cut are still missing, and
-those bits are read but never authored. After that: a Rect brush, and adding a
-layer for a tile the map does not carry yet (the one terrain edit that changes
-the file's structure rather than its bytes).
+**NEXT STEP — RAMPS AND PLATEAUS.** Writing works for every plane, layers can be
+added, and the tile and raise/lower brushes are live. Raise/lower moves ground
+within its own kind and flips water/ground at height 0, but never writes the
+plateau (32) or ramp (8) bits — so the brushes that deliberately CREATE a cut
+are still missing, and those bits are read but never authored. After that: a
+Rect brush, and undo/redo, which the brushes make overdue.
 
 - [x] Select and move objects, snapped to the grid ✅ (plus a categorised,
       searchable object list)
@@ -117,6 +116,9 @@ the file's structure rather than its bytes).
 - [x] Height brush: raise/lower with a radial falloff, live remeshing, and the
       water/ground flag transitions at height 0. Digging a basin raises a sea
       without a reload ✅
+- [x] Adding a texture layer for a tile the map does not carry — `src/terrain-layer.ts`.
+      Splices the record and grows every enclosing block; the size encoding's
+      width flag was decoded to make this writable ✅
 - [ ] ⬜ Terrain brushes: flatten, ramps, plateaus, **passability**
 - [ ] ⬜ Object palette from assets (icons from `Editor/IconCache`) + drag and drop
 - [ ] ⬜ Write edits back into `.h5m` (patch in place where possible)
