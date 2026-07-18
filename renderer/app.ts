@@ -1553,6 +1553,20 @@ function sculptAt(fl: Floor3D, cx: number, cy: number): number[] | null {
 const PLATEAU_STEP = 2.0;
 
 /**
+ * How far from the stroke's starting level a vertex may sit and still count as
+ * the same tier.
+ *
+ * Half the step: tiers are 2.0 apart, so anything within 1.0 is the level you
+ * started on and anything beyond is a different one. It cannot be an exact
+ * match — only 25.6% of plateau vertices sit level with their neighbours, since
+ * a plateau keeps the relief of the ground it was raised from.
+ */
+const PLATEAU_TOL = PLATEAU_STEP / 2;
+
+/** The level a Raise stroke started on; NaN between strokes. */
+let plateauBase = NaN;
+
+/**
  * Raise a plateau, or dig a pit — the original editor's Raise and Lower, as
  * opposed to the smooth Bulk and Dig.
  *
@@ -1570,15 +1584,22 @@ function plateauAt(ev: PointerEvent, up: boolean): void {
   const fl = activeFloor();
   const at = tileUnderCursor(ev);
   if (!at) return;
+  // The first tick of a stroke fixes the tier being worked on. Dragging off it
+  // onto a step above or below must leave that ground alone: otherwise tracing
+  // along the rim of a tier quietly raises the one beneath it too, and one pass
+  // leaves a staircase of mixed heights.
+  if (!strokeVerts.size) plateauBase = fl.heights[at.y * fl.V + at.x]!;
   const verts = brushVerts(fl.V, at.x, at.y, brushSize);
-  const fresh = verts.filter((v) => !strokeVerts.has(v));
-  if (!fresh.length) return;
-  for (const v of fresh) {
+  let touched = false;
+  for (const v of verts) {
+    if (strokeVerts.has(v)) continue;
+    if (up && Math.abs(fl.heights[v]! - plateauBase) > PLATEAU_TOL) continue;
     strokeVerts.add(v);
     fl.heights[v] = up ? fl.heights[v]! + PLATEAU_STEP : 0;
     if (fl.flags) fl.flags[v] = up ? 32 : 0;
+    touched = true;
   }
-  remeshFloor(fl);
+  if (touched) remeshFloor(fl);
 }
 
 /** Sculpt at the cursor, rate-limited so holding still is controllable. */
