@@ -62,7 +62,9 @@ so a `.cts` preload dies on the first type annotation — silently, leaving
   union — the mask plus what the terrain implies, namely the river plane and any
   step over 0.8 across a tile — because the mask alone is empty on maps where
   nobody opened the Masks tab. Navigable tiles are outlined over the sea rather
-  than filled under it, so the water still looks like water.
+  than filled under it, so the water still looks like water. The blocked fill
+  reuses the terrain's own triangles rather than laying a quad per tile, so it
+  hugs cut faces and half-submerged cells the way the original editor does.
 - **River brushes**: Water, Bog and LavaFlow are not ordinary tiles. Painting
   one sinks the bed 0.4 below its banks with a 0.2 rim, and writes the half-tile
   river plane — which is what makes a river a river to the game rather than

@@ -532,6 +532,17 @@ function terrainGeometry(
   const MIN_STEP = 0.1; // a boundary with no real drop isn't worth a wall
 
   const ti: number[] = [];
+  // Which tile each triangle belongs to, so an overlay can follow the ground
+  // exactly instead of laying flat quads over it. Cut cells are split into
+  // several triangles at odd angles, and a quad drawn across one floats over
+  // the hole or pokes through the cliff.
+  const triTile: number[] = [];
+  let cell = 0;
+  /** Push triangles for the current cell, recording which cell they came from. */
+  const emit = (...idx: number[]): void => {
+    for (let i = 0; i < idx.length; i += 3) triTile.push(cell);
+    ti.push(...idx);
+  };
   const extra: number[] = [];          // [x, y, z] triples appended after the grid vertices
   const addV = (x: number, y: number, z: number): number => {
     extra.push(x, y, z);
@@ -539,10 +550,11 @@ function terrainGeometry(
   };
 
   for (let y = 0; y < V - 1; y++) for (let x = 0; x < V - 1; x++) {
+    cell = y * (V - 1) + x;
     // corner indices, counter-clockwise from (x,y)
     const ci = [y * V + x, y * V + x + 1, (y + 1) * V + x + 1, (y + 1) * V + x];
     const h = ci.map((i) => heights[i]);
-    const smooth = () => { const [a, b, c, d] = [ci[0], ci[1], ci[3], ci[2]]; ti.push(a, b, c, b, d, c); };
+    const smooth = () => { const [a, b, c, d] = [ci[0], ci[1], ci[3], ci[2]]; emit(a, b, c, b, d, c); };
     if (!fl) { smooth(); continue; }
     if (ci.some(isRamp)) { smooth(); continue; }
 
@@ -603,10 +615,10 @@ function terrainGeometry(
       const ends = [arc[0], arc[arc.length - 1]] as [RingCut, RingCut];
       const edge = (p: RingCut) => (top ? cutHi : cutLo)[cuts.indexOf(p)];
       const poly = [edge(ends[0]), ...corners.map((p) => p.gi), edge(ends[1])];
-      for (let k = 1; k < poly.length - 1; k++) ti.push(poly[0], poly[k], poly[k + 1]);
+      for (let k = 1; k < poly.length - 1; k++) emit(poly[0], poly[k], poly[k + 1]);
     }
     // The wall, both faces (material is DoubleSide anyway).
-    ti.push(cutHi[0], cutHi[1], cutLo[0], cutHi[1], cutLo[1], cutLo[0]);
+    emit(cutHi[0], cutHi[1], cutLo[0], cutHi[1], cutLo[1], cutLo[0]);
   }
   // Cut cells contributed vertices beyond the regular grid; append them, taking
   // uv from their position and colour from the grid vertex they sit nearest.
@@ -628,6 +640,7 @@ function terrainGeometry(
   tg.setAttribute('color', new THREE.BufferAttribute(col, 3));
   tg.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
   tg.setIndex(ti); tg.computeVertexNormals();
+  tg.userData.triTile = new Int32Array(triTile);
   return tg;
 }
 
@@ -1027,23 +1040,35 @@ function classifyTiles(fl: Floor3D): Uint8Array {
   return out;
 }
 
-/** Filled quads over every tile of one class. */
+/**
+ * The terrain's own triangles for every tile of one class, lifted a hair.
+ *
+ * Not a flat quad per tile: a cell straddling a cut is split marching-squares
+ * style into several triangles at different heights, and a quad laid across it
+ * floats over the hole or pokes through the cliff face. Reusing the ground's
+ * triangulation makes the overlay hug whatever the ground actually does — which
+ * is why a half-submerged tile at a lake edge shows up as a triangle, exactly
+ * as it does in the original editor.
+ */
 function tileFill(fl: Floor3D, cls: Uint8Array, want: number): THREE.BufferGeometry {
-  const V = fl.V, T = V - 1;
-  const pos: number[] = [], idx: number[] = [];
-  const LIFT = 0.08;
-  for (let y = 0; y < T; y++) for (let x = 0; x < T; x++) {
-    if (cls[y * T + x] !== want) continue;
-    const a = y * V + x, b = a + 1, c = a + V, d = c + 1;
-    const base = pos.length / 3;
-    for (const [vx, vy, vi] of [[x, y, a], [x + 1, y, b], [x, y + 1, c], [x + 1, y + 1, d]] as const) {
-      pos.push(vx, vy, fl.heights[vi]! + LIFT);
+  const src = fl.terrainMesh.geometry;
+  const pos = src.getAttribute('position');
+  const index = src.getIndex();
+  const triTile = src.userData.triTile as Int32Array | undefined;
+  const out: number[] = [];
+  const LIFT = 0.05;
+  if (pos && index && triTile) {
+    for (let t = 0; t < triTile.length; t++) {
+      const tile = triTile[t]!;
+      if (cls[tile] !== want) continue;
+      for (let k = 0; k < 3; k++) {
+        const v = index.getX(t * 3 + k);
+        out.push(pos.getX(v), pos.getY(v), pos.getZ(v) + LIFT);
+      }
     }
-    idx.push(base, base + 1, base + 2, base + 1, base + 3, base + 2);
   }
   const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pos), 3));
-  g.setIndex(idx);
+  g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(out), 3));
   g.computeBoundingSphere();
   return g;
 }
@@ -1104,9 +1129,9 @@ function refreshBlocked(fl: Floor3D): void {
   if (!showBlocked) return;
 
   const cls = classifyTiles(fl);
-  const add = (g: THREE.BufferGeometry, mat: THREE.Material): void => {
-    if (!g.getIndex()?.count && !g.getAttribute('position')?.count) { g.dispose(); mat.dispose(); return; }
-    const mesh = g.getIndex() ? new THREE.Mesh(g, mat) : new THREE.LineSegments(g, mat);
+  const add = (g: THREE.BufferGeometry, mat: THREE.Material, lines = false): void => {
+    if (!g.getAttribute('position')?.count) { g.dispose(); mat.dispose(); return; }
+    const mesh = lines ? new THREE.LineSegments(g, mat) : new THREE.Mesh(g, mat);
     // The mask belongs to the GROUND, and water is a separate sheet lying over
     // it. Drawing before the sheet lets the sea tint what shows through, the way
     // a masked pond reads in the original editor: the bed is red, not the water.
@@ -1135,7 +1160,7 @@ function refreshBlocked(fl: Floor3D): void {
   } else navGrid.dispose();
   add(tileGrid(fl), new THREE.LineBasicMaterial({
     color: 0xffffff, transparent: true, opacity: 0.13, depthWrite: false,
-  }));
+  }), true);
 }
 
 function setShowBlocked(on: boolean): void {
@@ -1474,6 +1499,9 @@ function remeshFloor(fl: Floor3D): void {
     fl.group.add(fl.waterMesh);
     $('seawrap').style.display = 'flex'; // the map has a sea now, so offer its level
   }
+  // The overlay is built from the terrain's triangles, which have just been
+  // replaced — and sculpting changes what counts as a cliff anyway.
+  refreshBlocked(fl);
 }
 
 /**
