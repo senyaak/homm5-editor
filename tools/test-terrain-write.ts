@@ -14,7 +14,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import {
   parseTerrain, readHeights, readGroundFlags, readTextureLayers, readMask, readWaterPlane,
-  writeTerrain, groundFlagsPlane, waterPlane,
+  writeTerrain, groundFlagsPlane, waterPlane, readPassability, passabilityPlane,
 } from '../src/terrain.ts';
 import type { Terrain } from '../src/terrain.ts';
 import { TerrainDoc } from '../src/terrain-edit.ts';
@@ -101,6 +101,26 @@ function testFile(path: string): void {
     check('river edit stays in the river plane', localized(orig, out, rp.dataOff, rp.len));
   } else {
     console.log('  --    no river plane in this map (skipped)');
+  }
+
+  // --- passability ---
+  const pass = readPassability(t);
+  const pp = passabilityPlane(t);
+  if (pass && pp) {
+    const blocked = [...pass].filter((v) => v === 0).length;
+    check('passability is binary', [...new Set(pass)].every((v) => v === 0 || v === 1),
+      `values ${[...new Set(pass)].join(',')}`);
+    check('passability is mostly walkable', blocked / pass.length < 0.6,
+      `${(100 * blocked / pass.length).toFixed(1)}% blocked`);
+    const edited = Uint8Array.from(pass, (v) => (v ? 0 : 1));
+    const out = writeTerrain(t, { passable: edited });
+    const back = readPassability(parseTerrain(out));
+    check('passability reads back', !!back && eq(back, edited));
+    check('passability edit stays in its plane', localized(orig, out, pp.dataOff, pp.len));
+    check('passability write leaves heights alone',
+      eq(readHeights(parseTerrain(out)), readHeights(t)));
+  } else {
+    check('passability plane located', false);
   }
 
   // --- several planes at once ---

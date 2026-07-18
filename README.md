@@ -131,8 +131,17 @@ Key points:
   so the parser hardcodes no sizes and works for any map. `V` comes from the file
   too.
 - Plane order: texture layers (u8 mask + a path to `(AdvMapTile).xdb`), then
-  **height** (`float32`), then **ground flags** (u8), a reserved plane, the
-  **river plane** on a half-tile `(2V−1)²` grid, and passability.
+  **height** (`float32`), then **ground flags** (u8), a near-uniform reserved
+  plane, **passability** (u8, `0` blocked / `1` walkable), and the **river
+  plane** on a half-tile `(2V−1)²` grid.
+- **Passability is authored, not derived.** Against a 9.0% background rate of
+  blocked vertices across all 232 maps: `Sand/Sand_Rock` 92.4%,
+  `Grass/Rock_Floor_grass` 75.5%, a drop steeper than 2 units 25.0%,
+  `Water/LavaFlow` 26.4%, `Water/Bog` 24.6%, and sea (flag `0`) 6.4% — *below*
+  background, because it is navigable rather than blocked. Depth explains
+  nothing: a bed level with its bank is 23.8% blocked and one more than 1.5
+  below it is 22.1%, with every bucket between within a point of those. Whether
+  a river can be waded is a decision recorded here.
 - ⚠️ WindBell's spec is inaccurate here. There are no separate Plateau / Ramp /
   WaterDepth planes — those are **bits of one flag plane**, established by
   measuring across all 232 shipped maps: `0` water, `16` ground, `32` plateau,

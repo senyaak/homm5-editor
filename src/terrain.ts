@@ -198,6 +198,44 @@ export function groundFlagsPlane(t: Terrain): TerrainArray | null {
   return t.arrays.find((x) => x.elem === 'u8' && x.count === t.N && x.dataOff > height.dataOff) ?? null;
 }
 
+/**
+ * Read the passability plane: the THIRD vertex-sized u8 plane after height.
+ * `0` marks a vertex you cannot walk onto, `1` one you can.
+ *
+ * Identified by what it correlates with across all 232 shipped maps, against a
+ * 9.0% background rate of blocked vertices:
+ *
+ *   Sand/Sand_Rock          92.4%      a rock tile is a wall
+ *   Grass/Rock_Floor_grass  75.5%
+ *   steep drop (> 2 units)  25.0%      cliffs block
+ *   Water/LavaFlow          26.4%      river brushes block 2-3x more than ground
+ *   Water/Bog               24.6%
+ *   sea (flag 0)             6.4%      BELOW background: navigable, not blocked
+ *
+ * It is authored, not derived. Depth explains nothing: the bed being flat with
+ * its bank or more than 1.5 below it gives 23.8% and 22.1% blocked, and every
+ * bucket between sits within a point of that. Whether you can wade a river is a
+ * decision the designer records here, not a consequence of how deep it looks.
+ *
+ * @returns {Uint8Array|null} length t.N, indexed y*V + x
+ */
+export function readPassability(t: Terrain): Uint8Array | null {
+  const p = passabilityPlane(t);
+  return p ? t.raw.subarray(p.dataOff, p.dataOff + p.len) : null;
+}
+
+/** Locate the passability plane without copying it. */
+export function passabilityPlane(t: Terrain): TerrainArray | null {
+  const height = t.height;
+  if (!height) return null;
+  const after = t.arrays.filter((x) => x.elem === 'u8' && x.count === t.N && x.dataOff > height.dataOff);
+  // [0] is the ground flags, [1] a plane that is near-uniformly 0, [2] passability.
+  return after[2] ?? null;
+}
+
+export const PASSABLE = 1;
+export const BLOCKED = 0;
+
 export const FLAG_WATER = 0;
 export const FLAG_GROUND = 16;
 export const FLAG_PLATEAU = 32;
@@ -263,6 +301,8 @@ export interface TerrainEdit {
   masks?: { layer: TextureLayer; data: Uint8Array | number[] }[];
   /** The half-tile river plane, length (2V-1)². */
   water?: Uint8Array | number[];
+  /** Passability, length t.N. See PASSABLE / BLOCKED. */
+  passable?: Uint8Array | number[];
 }
 
 function expect(name: string, got: number, want: number): void {
@@ -295,6 +335,13 @@ export function writeTerrain(t: Terrain, edit: TerrainEdit): Buffer {
   for (const { layer, data } of edit.masks ?? []) {
     expect(`mask ${layer.path ?? '?'}`, data.length, layer.count);
     for (let i = 0; i < data.length; i++) out[layer.maskOff + i] = data[i]!;
+  }
+
+  if (edit.passable) {
+    const p = passabilityPlane(t);
+    if (!p) throw new Error('No passability plane located');
+    expect('passable', edit.passable.length, p.count);
+    for (let i = 0; i < edit.passable.length; i++) out[p.dataOff + i] = edit.passable[i]!;
   }
 
   if (edit.water) {

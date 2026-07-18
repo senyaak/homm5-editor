@@ -60,7 +60,9 @@ project.json
 - [x] Terrain: ground flags, river plane, texture layer masks — `src/terrain.js` ✅
       Flags decoded: `0` water, `16` ground, `32` plateau, bit 3 ramp.
       See docs/TERRAIN_FORMAT.md.
-- [ ] ⬜ Passability plane — needed for editing
+- [x] Passability plane — the third vertex-sized u8 plane after height, `0`
+      blocked / `1` walkable. Identified by correlation across all 232 maps;
+      read and written by `src/terrain.ts` ✅
 - [x] `.pak`/`.h5m`/`.h5c`/`.h5u` — ZIP read **and write** — `src/pak.js` ✅
       (content-identical round trip, validated against Python's zipfile)
 
@@ -192,7 +194,6 @@ Rect brush, and undo/redo, which the brushes make overdue.
 
 ## Open research questions
 
-- 🔬 **Passability plane**: isolating it in `GroundTerrain.bin`.
 - 🔬 **Per-submesh materials**: when a model has more than one
   (`MaterialQuantities`).
 - 🔬 **Undecoded models**: roughly a third of placed objects still resolve to no
