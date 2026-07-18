@@ -58,6 +58,23 @@ const STUB = `<script>
     water: { V, level: 1.5, cells: [], wet: 36, tex: null },
     splat, instances: [],
   };
+  // A few objects, so selection, rotation and deletion have something to act on.
+  // One tall box mesh shared by every instance — the object tools care about
+  // transforms and identity, not about what the model looks like.
+  const box = (() => {
+    const p = [], i = [];
+    const c = [[-.4,-.4,0],[.4,-.4,0],[.4,.4,0],[-.4,.4,0],[-.4,-.4,2],[.4,-.4,2],[.4,.4,2],[-.4,.4,2]];
+    for (const v of c) p.push(v[0], v[1], v[2]);
+    const f = [0,1,2, 0,2,3, 4,6,5, 4,7,6, 0,4,5, 0,5,1, 1,5,6, 1,6,2, 2,6,7, 2,7,3, 3,7,4, 3,4,0];
+    for (const k of f) i.push(k);
+    return { pos: p, uv: null, idx: i, tex: null, alpha: false };
+  })();
+  const SH = '/MapObjects/Grass/Tree/Tree.(AdvMapStaticShared).xdb';
+  floor.instances = [
+    { id: 'item_a1', type: 'AdvMapStatic', g: 0, shared: SH, x: 5, y: 5, z: 2, r: 0 },
+    { id: 'item_b2', type: 'AdvMapStatic', g: 0, shared: SH, x: 7, y: 5, z: 2, r: 1 },
+    { id: 'item_c3', type: 'AdvMapMonster', g: 0, shared: SH, x: 5, y: 7, z: 2, r: 0 },
+  ];
   // Cells touching water, the same rule the renderer uses.
   for (let y = 0; y < V - 1; y++) for (let x = 0; x < V - 1; x++) {
     const a = y * V + x;
@@ -74,15 +91,17 @@ const STUB = `<script>
     loadMap: async (path) => {
       log('loadMap', path);
       return {
-        scene: { geoms: [], floors: [floor] },
+        scene: { geoms: [box], floors: [floor] },
         info: {
           name: 'harness', mapPath: path, tileX: V - 1, tileY: V - 1,
-          counts: {}, floors: [{ name: 'surface', objects: 0 }], placed: 0, skipped: 0,
+          counts: { AdvMapStatic: 2, AdvMapMonster: 1 }, floors: [{ name: 'surface', objects: 3 }], placed: 3, skipped: 0,
         },
         status,
       };
     },
     moveObject: async (...a) => { log('moveObject', a); return { ok: true }; },
+    rotateObject: async (...a) => { log('rotateObject', a); return { ok: true }; },
+    removeObject: async (...a) => { log('removeObject', a); return { ok: true }; },
     save: async () => { log('save'); return { ok: true, status }; },
     pack: async () => ({ canceled: true }),
     status: async () => status,

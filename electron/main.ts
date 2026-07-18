@@ -22,9 +22,10 @@ import { watchMapDir } from '../src/watch.ts';
 import type { MapWatch } from '../src/watch.ts';
 import { TerrainDoc } from '../src/terrain-edit.ts';
 import type { TileInfo } from '../src/scene.ts';
-import type { HommMap } from '../src/map.ts';
+import type { HommMap, MapObject } from '../src/map.ts';
 import type {
   MapsListResult, MapListEntry, MapLoadResult, MoveObjectPayload, MoveObjectResult,
+  RotateObjectPayload, RemoveObjectPayload, ObjectEditResult,
   MapSaveResult, MapPackResult, TerrainTilesResult, MapStatusResult, OpenMapDialogResult,
   ExternalChange, PaintTilePayload, PaintTileResult, SculptPayload, SculptResult,
   AddLayerPayload, AddLayerResult, PaintRiverPayload, MaskPayload,
@@ -205,6 +206,33 @@ ipcMain.handle('object:move', async (_e: IpcMainInvokeEvent, { id, x, y }: MoveO
   const obj = session.map.objects.find((o) => o.id === id);
   if (!obj) throw new Error(`object ${id} not found`);
   obj.setPos(x, y);
+  return { ok: true };
+});
+
+/** The object with this id, or a throw naming the id that was not found. */
+function findObject(s: Session, id: string): MapObject {
+  const obj = s.map.objects.find((o) => o.id === id);
+  if (!obj) throw new Error(`object ${id} not found`);
+  return obj;
+}
+
+// --- IPC: rotate an object ---
+// An absolute angle rather than a delta, for the same reason the height brush
+// sends absolute heights: the renderer already worked out the answer, and
+// recomputing it here would be a second place for it to come out different.
+ipcMain.handle('object:rotate', async (_e: IpcMainInvokeEvent, { id, r }: RotateObjectPayload): Promise<ObjectEditResult> => {
+  if (!session) throw new Error('no map loaded');
+  findObject(session, id).setRot(r);
+  return { ok: true };
+});
+
+// --- IPC: delete an object ---
+// `remove` takes out the whole <Item> wrapper and the blank line after it, so
+// the surrounding XML is left exactly as it was. There is no undo yet, so this
+// is only reversible by not saving.
+ipcMain.handle('object:remove', async (_e: IpcMainInvokeEvent, { id }: RemoveObjectPayload): Promise<ObjectEditResult> => {
+  if (!session) throw new Error('no map loaded');
+  if (!session.map.remove(findObject(session, id))) throw new Error(`could not remove ${id}`);
   return { ok: true };
 });
 

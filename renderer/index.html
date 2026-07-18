@@ -52,6 +52,14 @@
     #panel .row { display: flex; justify-content: space-between; margin: 3px 0; }
     #panel .k { color: #8b949e; } #panel .v { color: #c9d1d9; font-variant-numeric: tabular-nums; }
     #panel .hint { margin-top: 10px; font-size: 11px; color: #6e7681; }
+    #panel .prow { display: flex; gap: 6px; align-items: center; margin-top: 8px; }
+    #panel .prow input[type=range] { flex: 1; min-width: 0; }
+    #panel .prow button { background: #21262d; color: #c9d1d9; border: 1px solid #30363d;
+      border-radius: 6px; padding: 4px 9px; cursor: pointer; font-size: 12px; }
+    #panel .prow button:hover { background: #30363d; }
+    /* Deletion has no undo yet, so it does not look like the other buttons. */
+    #panel .prow button.danger { flex: 1; color: #f85149; border-color: #f8514955; }
+    #panel .prow button.danger:hover { background: #f8514922; border-color: #f85149; }
 
     #hud { position: fixed; left: 12px; bottom: 12px; font-size: 12px; color: #8b949e;
       z-index: 10; pointer-events: none; transition: left .15s; }
@@ -239,7 +247,17 @@
     <div class="row"><span class="k">x, y</span><span class="v" id="p-xy">—</span></div>
     <div class="row"><span class="k">rot</span><span class="v" id="p-rot">—</span></div>
     <div class="row"><span class="k">shared</span><span class="v" id="p-shared" style="font-size:11px">—</span></div>
-    <div class="hint">Drag a selected object to move it on the grid. Wheel / right-drag: camera.</div>
+    <!-- Free angle, not 45° steps: the shipped maps rotate decor to arbitrary
+         angles, and snapping would make an existing object jump the moment it
+         was touched. -->
+    <div class="prow">
+      <input id="p-rotslider" type="range" min="0" max="360" step="1" value="0"
+             title="rotate the selected object">
+      <button id="p-rotl" title="rotate 15° left">⟲</button>
+      <button id="p-rotr" title="rotate 15° right">⟳</button>
+    </div>
+    <div class="prow"><button id="p-del" class="danger" title="delete this object (Del)">Delete object</button></div>
+    <div class="hint">Drag a selected object to move it on the grid. <b>[</b> / <b>]</b> rotate, <b>Del</b> deletes. Wheel / right-drag: camera.</div>
   </div>
 
   <div id="empty">

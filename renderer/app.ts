@@ -857,9 +857,97 @@ function updatePanel(): void {
   $('p-type').textContent = it.type;
   $('p-id').textContent = it.id ? it.id.replace('item_', '').slice(0, 8) : '—';
   $('p-xy').textContent = `${it.x}, ${it.y}`;
-  $('p-rot').textContent = it.r.toFixed(3);
+  // Degrees on screen, radians in the file. Nobody thinks about placement in
+  // radians, and 3.142 tells you far less than 180°.
+  $('p-rot').textContent = `${degOf(it.r).toFixed(0)}°`;
+  $input('p-rotslider').value = String(degOf(it.r));
   $('p-shared').textContent = '—';
 }
+
+// --- rotate and delete ------------------------------------------------------
+//
+// Both write straight through: the mesh turns or disappears at once and the
+// main process is told afterwards. There is no undo yet, so deletion asks
+// first — and only the file on disk is safe, since nothing is written until
+// Save.
+
+/** An angle in radians as degrees in [0, 360). */
+const degOf = (r: number): number => ((r * 180 / Math.PI) % 360 + 360) % 360;
+
+/**
+ * Turn the selected object to an absolute angle in degrees.
+ *
+ * @param commit false while a slider is still being dragged — the mesh turns
+ *   live, but the map is written once on release rather than once per pixel.
+ */
+async function rotateSelected(deg: number, commit = true): Promise<void> {
+  if (!selected) return;
+  const r = (((deg % 360) + 360) % 360) * Math.PI / 180;
+  selected.inst.r = r;
+  selected.mesh.rotation.z = r;
+  boxHelper?.setFromObject(selected.mesh);
+  $('p-rot').textContent = `${degOf(r).toFixed(0)}°`;
+  // Skipped while the slider itself is the source, or dragging it would fight
+  // its own value being written back mid-gesture.
+  if (commit) $input('p-rotslider').value = String(degOf(r));
+  if (!commit) return;
+  try {
+    await window.editor.rotateObject(selected.id, r);
+    markDirty(true);
+  } catch (e) {
+    $('hud').textContent = 'rotate failed: ' + (e instanceof Error ? e.message : String(e));
+  }
+}
+
+/** Delete the selected object, from the scene and from the map. */
+async function deleteSelected(): Promise<void> {
+  if (!selected) return;
+  const { id, mesh, inst } = selected;
+  if (!confirm(`Delete this ${inst.type}? There is no undo yet.`)) return;
+  try {
+    await window.editor.removeObject(id);
+  } catch (e) {
+    $('hud').textContent = 'delete failed: ' + (e instanceof Error ? e.message : String(e));
+    return;
+  }
+  // Only take it off screen once the map has accepted it, so a failure leaves
+  // the two copies agreeing rather than showing a deletion that did not happen.
+  const fl = activeFloor();
+  fl.group.remove(mesh);
+  fl.meshes.delete(id);
+  // The geometry is shared between every instance of this model, so it is the
+  // scene's to dispose, not ours.
+  const i = fl.instances.indexOf(inst);
+  if (i >= 0) fl.instances.splice(i, 1);
+  deselect();
+  renderExplorer();
+  markDirty(true);
+  $('hud').textContent = `deleted ${objName(inst)}`;
+}
+
+$('p-del').onclick = () => { void deleteSelected(); };
+$('p-rotl').onclick = () => { if (selected) void rotateSelected(degOf(selected.inst.r) - 15); };
+$('p-rotr').onclick = () => { if (selected) void rotateSelected(degOf(selected.inst.r) + 15); };
+$input('p-rotslider').addEventListener('input', (e) => {
+  void rotateSelected(+(e.currentTarget as HTMLInputElement).value, false);
+});
+$input('p-rotslider').addEventListener('change', (e) => {
+  void rotateSelected(+(e.currentTarget as HTMLInputElement).value);
+});
+
+// Keyboard shortcuts for the selection. Registered separately from the WASD set
+// because those are held-key state and these are one-shot actions. The rotate
+// keys sit next to each other on the keyboard and are free: WASD pans and the
+// brush owns no keys.
+addEventListener('keydown', (e) => {
+  if (!selected || isTyping(e.target) || e.ctrlKey || e.altKey || e.metaKey) return;
+  const step = e.shiftKey ? 45 : 15;
+  if (e.code === 'BracketLeft') { void rotateSelected(degOf(selected.inst.r) - step); }
+  else if (e.code === 'BracketRight') { void rotateSelected(degOf(selected.inst.r) + step); }
+  else if (e.code === 'Delete') { void deleteSelected(); }
+  else return;
+  e.preventDefault();
+});
 
 // --- pointer: orbit / select / move ---
 //

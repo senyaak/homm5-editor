@@ -67,6 +67,23 @@ export interface MoveObjectResult {
   ok: true;
 }
 
+/** Payload of `object:rotate`. */
+export interface RotateObjectPayload {
+  id: string;
+  /** Absolute angle in radians, as the format stores it — not a delta. */
+  r: number;
+}
+
+/** Payload of `object:remove`. */
+export interface RemoveObjectPayload {
+  id: string;
+}
+
+/** Result of `object:rotate` and `object:remove`. */
+export interface ObjectEditResult {
+  ok: true;
+}
+
 /** Result of `map:save`. */
 export interface MapSaveResult {
   ok: true;
@@ -221,6 +238,8 @@ export interface EditorApi {
   openMapDialog(): Promise<OpenMapDialogResult>;
   loadMap(path: string): Promise<MapLoadResult>;
   moveObject(id: string, x: number, y: number): Promise<MoveObjectResult>;
+  rotateObject(id: string, r: number): Promise<ObjectEditResult>;
+  removeObject(id: string): Promise<ObjectEditResult>;
   save(): Promise<MapSaveResult>;
   pack(): Promise<MapPackResult>;
   status(): Promise<MapStatusResult>;
