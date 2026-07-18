@@ -4,7 +4,7 @@
 //  3. edit round-trip: raise every vertex by +1.0, write, re-parse, and confirm
 //     the values read back AND that only the height byte-range changed.
 import { readFileSync } from 'node:fs';
-import { parseTerrain, readHeights, writeHeights } from '../src/terrain.js';
+import { parseTerrain, readHeights, writeHeights } from '../src/terrain.ts';
 
 const samples = process.argv.slice(2);
 if (samples.length === 0) samples.push('samples/A2M3_GroundTerrain.bin', 'samples/A2M6_GroundTerrain.bin');

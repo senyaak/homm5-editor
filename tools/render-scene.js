@@ -6,9 +6,9 @@
 
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { deflateSync } from 'node:zlib';
-import { parseTerrain, readHeights } from '../src/terrain.js';
-import { extractMeshes, readGeometryRefFromModelXdb } from '../src/geometry.js';
-import { decodeDDS } from '../src/dds.js';
+import { parseTerrain, readHeights } from '../src/terrain.ts';
+import { extractMeshes, readGeometryRefFromModelXdb } from '../src/geometry.ts';
+import { decodeDDS } from '../src/dds.ts';
 
 const [mapXdb, out, Ws, Hs] = process.argv.slice(2);
 const W = +(Ws || 1000), Ht = +(Hs || 680);

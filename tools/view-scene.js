@@ -7,7 +7,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
-import { buildScene, findAssetRoot } from '../src/scene.js';
+import { buildScene, findAssetRoot } from '../src/scene.ts';
 
 const [mapArg, outArg] = process.argv.slice(2);
 const mapPath = resolve(mapArg);

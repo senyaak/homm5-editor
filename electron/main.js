@@ -15,8 +15,8 @@ import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, basename, relative, sep } from 'node:path';
 import { readFileSync, writeFileSync, existsSync, readdirSync, statSync } from 'node:fs';
-import { buildScene, findAssetRoot, listTiles } from '../src/scene.js';
-import { initProject, packProject, status } from '../src/project.js';
+import { buildScene, findAssetRoot, listTiles } from '../src/scene.ts';
+import { initProject, packProject, status } from '../src/project.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, '..');

@@ -10,8 +10,8 @@
 
 import { readFileSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
-import { extractMeshes, readGeometryRefFromModelXdb } from '../src/geometry.js';
-import { findAssetRoot } from '../src/scene.js';
+import { extractMeshes, readGeometryRefFromModelXdb } from '../src/geometry.ts';
+import { findAssetRoot } from '../src/scene.ts';
 
 const [mapPath, topNs] = process.argv.slice(2);
 const topN = +(topNs || 15);

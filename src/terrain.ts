@@ -20,14 +20,43 @@
 // plane WindBell notes is the only one with a *visual* effect on the map.
 
 /** Read a little-endian u32. */
-const u32 = (b, o) => b.readUInt32LE(o);
+const u32 = (b: Buffer, o: number): number => b.readUInt32LE(o);
+
+/** One self-describing array located in the container. */
+export interface TerrainArray {
+  tag: number;
+  dataOff: number;
+  len: number;
+  elem: 'u8' | 'f32';
+  count: number;
+}
+
+/** A texture layer: a per-vertex weight mask plus the tile it paints with. */
+export interface TextureLayer {
+  maskOff: number;
+  count: number;
+  path: string | null;
+}
+
+/** A parsed GroundTerrain.bin: every array located, nothing copied. */
+export interface Terrain {
+  /** Grid side in VERTICES (tiles + 1). */
+  V: number;
+  /** V * V — values per vertex-sized plane. */
+  N: number;
+  tiles: number;
+  arrays: TerrainArray[];
+  height: { dataOff: number; count: number } | null;
+  raw: Buffer;
+}
+
 
 /**
  * Derive the vertex dimension V from the first framing group, so we don't need
  * the map's TileX/TileY from map-tag.xdb. Looks for `08 <u32 V> 02 08 <u32 V>`.
  * @returns {number} V (vertices per side), or -1 if not found.
  */
-function detectVertexDim(b) {
+function detectVertexDim(b: Buffer): number {
   for (let o = 0; o + 12 <= b.length; o++) {
     if (b[o] !== 0x08) continue;
     const v = u32(b, o + 1);
@@ -48,7 +77,7 @@ function detectVertexDim(b) {
  *   raw: Buffer,
  * }}
  */
-export function parseTerrain(b) {
+export function parseTerrain(b: Buffer): Terrain {
   const V = detectVertexDim(b);
   if (V < 0) throw new Error('Could not detect vertex dimension — not a recognized GroundTerrain.bin');
   const N = V * V;
@@ -59,7 +88,7 @@ export function parseTerrain(b) {
   core[0] = 0x08; core.writeUInt32LE(V, 1);
   core[5] = 0x02; core[6] = 0x08; core.writeUInt32LE(V, 7);
 
-  const arrays = [];
+  const arrays: TerrainArray[] = [];
   let idx = 0;
   while ((idx = b.indexOf(core, idx)) >= 0) {
     // After the 11-byte core comes marker `03 <u32 sizeB>` then the array.
@@ -70,7 +99,7 @@ export function parseTerrain(b) {
     if (!Number.isInteger(byteLen) || byteLen <= 0) { idx += 1; continue; }
     const dataOff = mark03 + 5;
     const tag = b[idx - 12] ?? -1;                // blockTag sits before sizeA (approx)
-    let elem, count;
+    let elem: TerrainArray['elem'], count: number;
     if (byteLen === N * 4) { elem = 'f32'; count = N; }
     else if (byteLen === N) { elem = 'u8'; count = N; }
     else { elem = 'u8'; count = byteLen; }
@@ -84,7 +113,7 @@ export function parseTerrain(b) {
 }
 
 /** Read the height plane as a Float32Array (copy). Index = y*V + x. */
-export function readHeights(t) {
+export function readHeights(t: Terrain): Float32Array {
   if (!t.height) throw new Error('No height plane located');
   const out = new Float32Array(t.height.count);
   for (let i = 0; i < out.length; i++) out[i] = t.raw.readFloatLE(t.height.dataOff + i * 4);
@@ -98,7 +127,7 @@ export function readHeights(t) {
  * @param {ReturnType<typeof parseTerrain>} t
  * @param {Float32Array|number[]} heights length must equal t.height.count
  */
-export function writeHeights(t, heights) {
+export function writeHeights(t: Terrain, heights: Float32Array | number[]): Buffer {
   if (!t.height) throw new Error('No height plane located');
   if (heights.length !== t.height.count) {
     throw new Error(`height length ${heights.length} != expected ${t.height.count}`);
@@ -109,7 +138,7 @@ export function writeHeights(t, heights) {
 }
 
 /** Convenience: height at tile-vertex (x,y). */
-export const heightAt = (heights, V, x, y) => heights[y * V + x];
+export const heightAt = (heights: Float32Array | number[], V: number, x: number, y: number): number => heights[y * V + x]!;
 
 /**
  * Read the terrain's texture layers. Each layer is a per-vertex u8 weight mask
@@ -123,9 +152,9 @@ export const heightAt = (heights, V, x, y) => heights[y * V + x];
  *
  * @returns {{maskOff:number, count:number, path:string|null}[]}
  */
-export function readTextureLayers(t) {
+export function readTextureLayers(t: Terrain): TextureLayer[] {
   const heightOff = t.height ? t.height.dataOff : Infinity;
-  const layers = [];
+  const layers: TextureLayer[] = [];
   for (const a of t.arrays) {
     if (a.elem !== 'u8' || a.count !== t.N || a.dataOff >= heightOff) continue;
     // The AdvMapTile path is an ASCII run shortly after the mask data.
@@ -137,7 +166,7 @@ export function readTextureLayers(t) {
 }
 
 /** Read a layer's weight mask as a Uint8Array (view into the raw buffer). */
-export function readMask(t, layer) {
+export function readMask(t: Terrain, layer: TextureLayer): Uint8Array {
   return t.raw.subarray(layer.maskOff, layer.maskOff + layer.count);
 }
 
@@ -163,9 +192,10 @@ export function readMask(t, layer) {
  *
  * @returns {Uint8Array|null} length t.N, indexed y*V + x
  */
-export function readGroundFlags(t) {
-  if (!t.height) return null;
-  const a = t.arrays.find((x) => x.elem === 'u8' && x.count === t.N && x.dataOff > t.height.dataOff);
+export function readGroundFlags(t: Terrain): Uint8Array | null {
+  const height = t.height;
+  if (!height) return null;
+  const a = t.arrays.find((x) => x.elem === 'u8' && x.count === t.N && x.dataOff > height.dataOff);
   return a ? t.raw.subarray(a.dataOff, a.dataOff + a.len) : null;
 }
 
@@ -187,7 +217,7 @@ export const FLAG_PLATEAU = 32;
  *
  * @returns {{W:number, data:Uint8Array}|null}
  */
-export function readWaterPlane(t) {
+export function readWaterPlane(t: Terrain): { W: number; data: Uint8Array } | null {
   const b = t.raw;
   const W = 2 * t.V - 1;
   const core = Buffer.alloc(11);

@@ -1,0 +1,38 @@
+{
+  // Type checking only — nothing here emits. Node 24 (and the Node 24.18 inside
+  // Electron 43) strips types natively, so src/, electron/ and tools/ run their
+  // .ts straight off disk. Only renderer/ needs a build, because a browser
+  // can't strip types; esbuild handles that (see `npm run build:renderer`).
+  //
+  // Hence `verbatimModuleSyntax` and `allowImportingTsExtensions`: imports must
+  // carry the real .ts extension, since that is what the runtime resolves.
+  "compilerOptions": {
+    "target": "ES2023",
+    "module": "NodeNext",
+    "moduleResolution": "nodenext",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+
+    "strict": true,
+    "noUncheckedIndexedAccess": false,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "exactOptionalPropertyTypes": false,
+
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "erasableSyntaxOnly": true,
+    "isolatedModules": true,
+
+    "types": ["node"],
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+
+    // Left on while tools/ is still JavaScript; drop once it moves over.
+    "allowJs": true,
+    "checkJs": false
+  },
+  "include": ["src/**/*.ts", "electron/**/*.ts", "electron/**/*.cts", "renderer/**/*.ts", "tools/**/*.ts"],
+  "exclude": ["node_modules", "samples", "dist"]
+}

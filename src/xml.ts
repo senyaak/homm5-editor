@@ -22,12 +22,45 @@
 // Exports: parse, serialize, and small tree helpers (find, findAll, text, setText…).
 
 // ---------------------------------------------------------------------------
+// Node types
+// ---------------------------------------------------------------------------
+
+/** A tag. `rawAttrs` is the verbatim attribute segment; `attrs` is its parsed
+ *  form. Set `_dirtyAttrs` (via setAttr) to make serialize() rebuild the segment
+ *  from `attrs` instead of re-emitting `rawAttrs`. The parse root is an element
+ *  named '#document'. */
+export interface XmlElement {
+  type: 'element';
+  name: string;
+  rawAttrs: string;
+  attrs: Record<string, string>;
+  children: XmlNode[];
+  selfClose: boolean;
+  _dirtyAttrs?: boolean;
+}
+
+/** Character data between tags, kept verbatim (whitespace and newlines included). */
+export interface XmlText {
+  type: 'text';
+  text: string;
+}
+
+/** A verbatim construct re-emitted untouched: `<?...?>`, `<!--...-->`, `<!...>`. */
+export interface XmlRaw {
+  type: 'raw';
+  text: string;
+}
+
+/** Any node in the document tree, discriminated by `type`. */
+export type XmlNode = XmlElement | XmlText | XmlRaw;
+
+// ---------------------------------------------------------------------------
 // Parse
 // ---------------------------------------------------------------------------
 
-export function parse(input) {
-  const root = { type: 'element', name: '#document', rawAttrs: '', attrs: {}, children: [], selfClose: false };
-  const stack = [root];
+export function parse(input: string): XmlElement {
+  const root: XmlElement = { type: 'element', name: '#document', rawAttrs: '', attrs: {}, children: [], selfClose: false };
+  const stack: XmlElement[] = [root];
   let i = 0;
   const n = input.length;
 
@@ -61,9 +94,12 @@ export function parse(input) {
     // Split name from the raw attribute segment (everything after the name,
     // preserved verbatim, e.g. ` href="x" id="y"`).
     const m = /^([^\s/>]+)([\s\S]*)$/.exec(body);
+    // Only a malformed tag (no name, e.g. a bare `<` in character data) fails to
+    // match; the old code threw a TypeError on `m[1]` here.
+    if (!m) throw new Error(`xml: malformed tag at offset ${lt}: <${inner}>`);
     const name = m[1];
     const rawAttrs = m[2];
-    const el = { type: 'element', name, rawAttrs, attrs: parseAttrs(rawAttrs), children: [], selfClose };
+    const el: XmlElement = { type: 'element', name, rawAttrs, attrs: parseAttrs(rawAttrs), children: [], selfClose };
     stack[stack.length - 1].children.push(el);
     if (!selfClose) stack.push(el);
     i = gt + 1;
@@ -71,13 +107,13 @@ export function parse(input) {
   return root;
 }
 
-function pushText(stack, text) { if (text) stack[stack.length - 1].children.push({ type: 'text', text }); }
-function pushRaw(stack, text) { stack[stack.length - 1].children.push({ type: 'raw', text }); }
+function pushText(stack: XmlElement[], text: string): void { if (text) stack[stack.length - 1].children.push({ type: 'text', text }); }
+function pushRaw(stack: XmlElement[], text: string): void { stack[stack.length - 1].children.push({ type: 'raw', text }); }
 
-function parseAttrs(raw) {
-  const attrs = {};
+function parseAttrs(raw: string): Record<string, string> {
+  const attrs: Record<string, string> = {};
   const re = /([^\s=]+)\s*=\s*"([^"]*)"/g;
-  let m;
+  let m: RegExpExecArray | null;
   while ((m = re.exec(raw))) attrs[m[1]] = m[2];
   return attrs;
 }
@@ -86,7 +122,7 @@ function parseAttrs(raw) {
 // Serialize
 // ---------------------------------------------------------------------------
 
-export function serialize(node) {
+export function serialize(node: XmlNode): string {
   if (node.type === 'text' || node.type === 'raw') return node.text;
   let out = '';
   if (node.name !== '#document') {
@@ -101,7 +137,7 @@ export function serialize(node) {
 
 // Rebuild an attribute segment (used only when attrs were edited). Mirrors the
 // game's ` key="value"` style with single-space separators.
-function buildAttrs(attrs) {
+function buildAttrs(attrs: Record<string, string>): string {
   const keys = Object.keys(attrs);
   return keys.length ? ' ' + keys.map((k) => `${k}="${attrs[k]}"`).join(' ') : '';
 }
@@ -111,16 +147,18 @@ function buildAttrs(attrs) {
 // ---------------------------------------------------------------------------
 
 // Direct child elements (skips text/raw nodes).
-export function children(el) { return el.children.filter((c) => c.type === 'element'); }
+export function children(el: XmlElement): XmlElement[] {
+  return el.children.filter((c): c is XmlElement => c.type === 'element');
+}
 
 // First direct child element with the given name.
-export function find(el, name) {
+export function find(el: XmlElement, name: string): XmlElement | null {
   for (const c of el.children) if (c.type === 'element' && c.name === name) return c;
   return null;
 }
 
 // All descendant elements with the given name (depth-first).
-export function findAll(el, name, out = []) {
+export function findAll(el: XmlElement, name: string, out: XmlElement[] = []): XmlElement[] {
   for (const c of el.children) {
     if (c.type !== 'element') continue;
     if (c.name === name) out.push(c);
@@ -130,20 +168,21 @@ export function findAll(el, name, out = []) {
 }
 
 // Text content of an element (concatenated verbatim text children, trimmed).
-export function text(el) {
+// Accepts null/undefined so callers can chain find() results without a guard.
+export function text(el: XmlElement | null | undefined): string {
   if (!el) return '';
-  return el.children.filter((c) => c.type === 'text').map((c) => c.text).join('').trim();
+  return el.children.filter((c): c is XmlText => c.type === 'text').map((c) => c.text).join('').trim();
 }
 
 // Convenience: text of the first child element named `name`.
-export function childText(el, name) { return text(find(el, name)); }
+export function childText(el: XmlElement, name: string): string { return text(find(el, name)); }
 
 // Replace an element's text content with a single new value, preserving nothing
 // of the old text run (leaf value fields only, e.g. <x>40</x>).
-export function setText(el, value) {
+export function setText(el: XmlElement, value: string | number): void {
   el.children = [{ type: 'text', text: String(value) }];
   el.selfClose = false;
 }
 
 // Set an attribute and flag the element so serialize() rebuilds its attr segment.
-export function setAttr(el, key, value) { el.attrs[key] = value; el._dirtyAttrs = true; }
+export function setAttr(el: XmlElement, key: string, value: string): void { el.attrs[key] = value; el._dirtyAttrs = true; }

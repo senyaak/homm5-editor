@@ -6,7 +6,7 @@
 //   (paths point at the extracted sample tree under samples/paks/data)
 
 import { readFileSync } from 'node:fs';
-import { extractPositionArrays, readGeometryRefFromModelXdb } from '../src/geometry.js';
+import { extractPositionArrays, readGeometryRefFromModelXdb } from '../src/geometry.ts';
 
 const DATA = 'samples/paks/data';
 const modelXdb = `${DATA}/_(Model)/TerrainObjects/Grass/Mountains/Mounting12x12_1.(Model).xdb`;

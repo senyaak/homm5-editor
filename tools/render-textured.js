@@ -6,8 +6,8 @@
 // Usage: node tools/render-textured.js <modelXdb> <ddsPath> <out.svg>
 
 import { readFileSync, writeFileSync } from 'node:fs';
-import { extractMeshes, readGeometryRefFromModelXdb } from '../src/geometry.js';
-import { decodeDDS } from '../src/dds.js';
+import { extractMeshes, readGeometryRefFromModelXdb } from '../src/geometry.ts';
+import { decodeDDS } from '../src/dds.ts';
 
 const [modelXdb, ddsPath, out] = process.argv.slice(2);
 const DATA = 'samples/paks/data';

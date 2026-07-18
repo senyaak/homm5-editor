@@ -40,14 +40,65 @@
 // extract vertex POSITION arrays (validated against the mesh bounding box).
 // -----------------------------------------------------------------------------
 
-/** @typedef {{cx:number,cy:number,cz:number,sx:number,sy:number,sz:number}} BBox */
+/** Axis-aligned bounds from a .(Geometry).xdb: centre and full size. */
+export interface BBox { cx: number; cy: number; cz: number; sx: number; sy: number; sz: number }
+
+/** A scalar record: `tag 08 <u32>`. */
+export interface ScalarRecord { off: number; tag: number; int: number }
+
+/** A block record: `tag <u32 sizeB> <body>`, where len = (sizeB - 1) / 2. */
+export interface BlockRecord {
+  off: number;
+  tag: number;
+  byteLen: number;
+  body: number;
+  bodyEnd: number;
+  /** Set when the body itself parses as records. */
+  node?: RecordTree;
+  /** Set when the body is raw array data rather than nested records. */
+  leaf?: true;
+}
+
+export type ContainerRecord = ScalarRecord | BlockRecord;
+
+export interface RecordTree { records: ContainerRecord[]; tail: number }
+
+/** A block record carries a body; a scalar one does not. */
+const isBlock = (r: ContainerRecord): r is BlockRecord => !('int' in r);
+
+/** A located run of vertex positions, validated against the model's bbox. */
+export interface PositionArray { offset: number; count: number; positions: Float32Array }
+
+/**
+ * One interpretation of a mesh's bytes, scored by how shattered its topology
+ * comes out. Collected rather than folded incrementally so the winner is picked
+ * in plain control flow — a closure assigning to an outer `let` defeats the
+ * type checker's narrowing.
+ */
+interface Candidate {
+  positions: Float32Array;
+  indices: Uint32Array;
+  N2: number;
+  /** Fraction of edges longer than half the bbox diagonal; lower is cleaner. */
+  score: number;
+}
+
+/** A decoded, render-ready mesh. */
+export interface Mesh {
+  positions: Float32Array;
+  normals: Float32Array;
+  uvs: Float32Array | null;
+  indices: Uint32Array;
+  vertexCount: number;
+  triCount: number;
+}
 
 /**
  * Read a single record at offset `p`.
  * @returns {{next:number, rec:object}|null} the record and the offset just past
  *   it, or null if `p` is not a well-formed record start.
  */
-function readRecord(b, p, end) {
+function readRecord(b: Buffer, p: number, end: number): { next: number; rec: ContainerRecord } | null {
   if (p >= end) return null;
   const tag = b[p];
   if (tag < 0x01 || tag > 0x0f) return null;
@@ -71,7 +122,7 @@ function readRecord(b, p, end) {
  * @param {Buffer} b
  * @returns {{records:object[], stoppedAt:number}}
  */
-export function scanRecords(b, start = 0, end = b.length) {
+export function scanRecords(b: Buffer, start = 0, end: number = b.length): { records: ContainerRecord[]; stoppedAt: number } {
   const records = [];
   let p = start;
   for (;;) {
@@ -95,12 +146,12 @@ export function scanRecords(b, start = 0, end = b.length) {
  * @returns {{offset:number, count:number, positions:Float32Array}[]}
  *   one entry per position array found, each `positions` laid out [x,y,z, x,y,z…]
  */
-export function extractPositionArrays(b, bbox, margin = 0.25) {
+export function extractPositionArrays(b: Buffer, bbox: BBox, margin = 0.25): PositionArray[] {
   const C = [bbox.cx, bbox.cy, bbox.cz];
   const S = [bbox.sx, bbox.sy, bbox.sz];
   const lo = C.map((c, i) => c - S[i] / 2 - S[i] * margin);
   const hi = C.map((c, i) => c + S[i] / 2 + S[i] * margin);
-  const inBox = (x, y, z) =>
+  const inBox = (x: number, y: number, z: number): boolean =>
     x >= lo[0] && x <= hi[0] && y >= lo[1] && y <= hi[1] && z >= lo[2] && z <= hi[2];
 
   const out = [];
@@ -167,7 +218,7 @@ export function extractPositionArrays(b, bbox, margin = 0.25) {
  * @returns {{records:Array, tail:number}} records at this level (each is either
  *   `{tag,int}`, `{tag,body,byteLen,leaf:true}` or `{tag,body,byteLen,node}`)
  */
-export function parseTree(b, start = 0, end = b.length, depth = 0) {
+export function parseTree(b: Buffer, start = 0, end: number = b.length, depth = 0): RecordTree {
   const records = [];
   let p = start;
   while (p < end) {
@@ -187,8 +238,9 @@ export function parseTree(b, start = 0, end = b.length, depth = 0) {
 }
 
 /** Collect every leaf in the tree (depth-first) with its byte range. */
-function collectLeaves(tree, out = []) {
+function collectLeaves(tree: RecordTree, out: BlockRecord[] = []): BlockRecord[] {
   for (const r of tree.records) {
+    if (!isBlock(r)) continue;
     if (r.leaf) out.push(r);
     else if (r.node) collectLeaves(r.node, out);
   }
@@ -210,15 +262,15 @@ function collectLeaves(tree, out = []) {
 // buffer we don't parse). Tunable — lower drops more suspect models.
 const SHATTER_THRESHOLD = 0.06;
 
-export function extractMeshes(b, bbox) {
+export function extractMeshes(b: Buffer, bbox: BBox): Mesh[] {
   const posArrays = extractPositionArrays(b, bbox); // count × vec3, bbox-validated
   const leaves = collectLeaves(parseTree(b));
-  const readU16Leaf = (r) => {
+  const readU16Leaf = (r: BlockRecord): Uint16Array => {
     const n = r.byteLen / 2, a = new Uint16Array(n);
     for (let i = 0; i < n; i++) a[i] = b.readUInt16LE(r.body + i * 2);
     return a;
   };
-  const u16Max = (a) => { let mx = 0; for (const v of a) if (v > mx) mx = v; return mx; };
+  const u16Max = (a: Uint16Array): number => { let mx = 0; for (const v of a) if (v > mx) mx = v; return mx; };
 
   // Score a (positions, indices) pair by how "shattered" it is: the fraction of
   // triangle edges longer than half the model's bounding-box diagonal. Correct
@@ -226,7 +278,7 @@ export function extractMeshes(b, bbox) {
   // fraction. This lets us *verify by geometry* which interpretation is right
   // rather than guessing from byte layout alone.
   const diag = Math.hypot(bbox.sx, bbox.sy, bbox.sz) || 1;
-  const longFrac = (positions, indices) => {
+  const longFrac = (positions: Float32Array, indices: ArrayLike<number>): number => {
     let edges = 0, long = 0;
     for (let i = 0; i + 2 < indices.length; i += 3) {
       for (let e = 0; e < 3; e++) {
@@ -257,11 +309,10 @@ export function extractMeshes(b, bbox) {
     //           The engine's "vertex split": renderVertex[i] = positions[remap[i]].
     //
     // A candidate is {positions, indices, N2, score}. Lower score = cleaner.
-    let best = null;
-    const consider = (positions, indices, N2) => {
+    const candidates: Candidate[] = [];
+    const consider = (positions: Float32Array, indices: Uint32Array, N2: number): void => {
       if (!indices.length) return;
-      const score = longFrac(positions, indices);
-      if (!best || score < best.score) best = { positions, indices, N2, score };
+      candidates.push({ positions, indices, N2, score: longFrac(positions, indices) });
     };
 
     for (const r of leaves) {
@@ -293,6 +344,9 @@ export function extractMeshes(b, bbox) {
       }
     }
 
+    // Lowest score wins; ties keep the first seen, as the incremental form did.
+    let best: Candidate | null = null;
+    for (const c of candidates) if (!best || c.score < best.score) best = c;
     if (!best) continue;
     // Quality gate: if even the best interpretation is still shattered (a large
     // fraction of edges span the whole model), we haven't decoded this encoding
@@ -324,7 +378,7 @@ export function extractMeshes(b, bbox) {
   }
 
   // The file usually stores the payload twice (LOD/copy) — drop exact duplicates.
-  const seen = new Set();
+  const seen = new Set<string>();
   return meshes.filter((m) => {
     const sig = `${m.vertexCount}:${m.triCount}:${m.positions[0]},${m.positions[1]},${m.positions[2]}`;
     if (seen.has(sig)) return false;
@@ -333,7 +387,7 @@ export function extractMeshes(b, bbox) {
 }
 
 /** Compute smooth per-vertex normals by accumulating face normals. */
-function computeNormals(positions, indices) {
+function computeNormals(positions: Float32Array, indices: Uint32Array): Float32Array {
   const n = new Float32Array(positions.length);
   for (let i = 0; i < indices.length; i += 3) {
     const a = indices[i] * 3, b2 = indices[i + 1] * 3, c = indices[i + 2] * 3;
@@ -355,11 +409,11 @@ function computeNormals(positions, indices) {
  * @param {string} xml
  * @returns {{uid:string, bbox:BBox}|null}
  */
-export function readGeometryRefFromModelXdb(xml) {
+export function readGeometryRefFromModelXdb(xml: string): { uid: string; bbox: BBox } | null {
   const geom = xml.match(/<Geometry\b[\s\S]*?<uid>([0-9A-Fa-f-]{36})<\/uid>[\s\S]*?<\/Geometry>/);
   if (!geom) return null;
-  const uid = geom[1].toUpperCase();
-  const num = (tag, src) => {
+  const uid = geom[1]!.toUpperCase();
+  const num = (tag: string, src: string): [number, number, number] | null => {
     const m = src.match(new RegExp(`<${tag}>\\s*<x>([-\\d.]+)</x>\\s*<y>([-\\d.]+)</y>\\s*<z>([-\\d.]+)</z>`));
     return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
   };

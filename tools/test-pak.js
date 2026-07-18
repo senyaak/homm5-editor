@@ -6,8 +6,8 @@
 //   2. Project lifecycle: open -> pack -> status(clean) -> edit -> status(dirty).
 //   3. Version divergence: a manifest packed by an older editor version is flagged.
 
-import { readEntries, writeArchive } from '../src/pak.js';
-import { openProject, packProject, status, readManifest, writeManifest } from '../src/project.js';
+import { readEntries, writeArchive } from '../src/pak.ts';
+import { openProject, packProject, status, readManifest, writeManifest } from '../src/project.ts';
 import { readFileSync, appendFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';

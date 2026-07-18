@@ -7,7 +7,7 @@
 //   the same extracted sample tree.
 
 import { readFileSync, writeFileSync } from 'node:fs';
-import { extractMeshes, readGeometryRefFromModelXdb } from '../src/geometry.js';
+import { extractMeshes, readGeometryRefFromModelXdb } from '../src/geometry.ts';
 
 const [modelXdb, out] = process.argv.slice(2);
 const DATA = 'samples/paks/data';

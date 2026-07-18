@@ -11,12 +11,17 @@
     "test-terrain": "node tools/test-terrain.js",
     "test-pak": "node tools/test-pak.js",
     "test-map": "node tools/test-map.js",
-    "pak": "node tools/pak-cli.js"
+    "pak": "node tools/pak-cli.js",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "three": "^0.160.0"
   },
   "devDependencies": {
-    "electron": "^43.1.1"
+    "@types/node": "^26.1.1",
+    "@types/three": "^0.185.1",
+    "electron": "^43.1.1",
+    "esbuild": "^0.28.1",
+    "typescript": "^7.0.2"
   }
 }

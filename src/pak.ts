@@ -20,6 +20,30 @@ import { readFileSync, writeFileSync, mkdirSync, readdirSync, statSync } from 'n
 import { dirname, join, relative, sep } from 'node:path';
 import { deflateRawSync, inflateRawSync } from 'node:zlib';
 
+/** One archive member: a ZIP-style forward-slash path plus its raw bytes. */
+export interface ZipEntry {
+  name: string;
+  data: Buffer;
+}
+
+/** One extracted member as reported by `extract()`: path written and its byte size. */
+export interface ExtractedFile {
+  name: string;
+  size: number;
+}
+
+/** Options shared by `writeArchive()` and `pack()`. */
+export interface WriteOptions {
+  /** Force STORE (no compression) for the matching entry names. */
+  store?: Set<string> | ((name: string) => boolean);
+}
+
+/** Result of `pack()`: how many entries were written and the archive size in bytes. */
+export interface PackResult {
+  entries: number;
+  bytes: number;
+}
+
 // ---- CRC-32 (IEEE, as ZIP requires) ----
 const CRC_TABLE = (() => {
   const t = new Uint32Array(256);
@@ -30,7 +54,7 @@ const CRC_TABLE = (() => {
   }
   return t;
 })();
-function crc32(buf) {
+function crc32(buf: Buffer): number {
   let c = 0xffffffff;
   for (let i = 0; i < buf.length; i++) c = CRC_TABLE[(c ^ buf[i]) & 0xff] ^ (c >>> 8);
   return (c ^ 0xffffffff) >>> 0;
@@ -62,11 +86,11 @@ const DOS_DATE = 0x21; // (1980-1980)<<9 | 1<<5 | 1
  * We read the central directory (authoritative) rather than scanning local
  * headers, so we get the correct sizes and offsets even for odd archives.
  */
-export function readEntries(buf) {
+export function readEntries(buf: Buffer): ZipEntry[] {
   const eocd = findEOCD(buf);
   const count = buf.readUInt16LE(eocd + 10);
   let p = buf.readUInt32LE(eocd + 16); // offset of first central-directory entry
-  const out = [];
+  const out: ZipEntry[] = [];
   for (let i = 0; i < count; i++) {
     if (buf.readUInt32LE(p) !== SIG_CENTRAL) throw new Error(`bad central dir entry #${i} @${p}`);
     const method = buf.readUInt16LE(p + 10);
@@ -97,7 +121,7 @@ export function readEntries(buf) {
 
 // Locate the End Of Central Directory record by scanning backwards for its
 // signature (it sits near the end, after an optional variable-length comment).
-function findEOCD(buf) {
+function findEOCD(buf: Buffer): number {
   const min = Math.max(0, buf.length - 0xffff - 22);
   for (let i = buf.length - 22; i >= min; i--) {
     if (buf.readUInt32LE(i) === SIG_EOCD) return i;
@@ -109,9 +133,9 @@ function findEOCD(buf) {
  * Unpack an archive file into a directory tree on disk.
  * Returns the list of written files with their sizes.
  */
-export function extract(archivePath, destDir) {
+export function extract(archivePath: string, destDir: string): ExtractedFile[] {
   const entries = readEntries(readFileSync(archivePath));
-  const written = [];
+  const written: ExtractedFile[] = [];
   for (const e of entries) {
     const dest = join(destDir, e.name);
     mkdirSync(dirname(dest), { recursive: true });
@@ -135,13 +159,15 @@ export function extract(archivePath, destDir) {
  *          is faster and smaller than a failed deflate. By default we deflate and
  *          fall back to STORE whenever deflate wouldn't help.
  */
-export function writeArchive(entries, opt = {}) {
-  const forceStore = typeof opt.store === 'function' ? opt.store
-    : opt.store instanceof Set ? (n) => opt.store.has(n)
+export function writeArchive(entries: readonly ZipEntry[], opt: WriteOptions = {}): Buffer {
+  const store = opt.store;
+  const forceStore: (name: string) => boolean =
+    typeof store === 'function' ? store
+    : store instanceof Set ? (n: string) => store.has(n)
     : () => false;
 
-  const locals = [];   // local-header + data chunks, in file order
-  const centrals = []; // central-directory records
+  const locals: Buffer[] = [];   // local-header + data chunks, in file order
+  const centrals: Buffer[] = []; // central-directory records
   let offset = 0;
 
   for (const e of entries) {
@@ -204,9 +230,9 @@ export function writeArchive(entries, opt = {}) {
  * Pack a directory tree into an archive file on disk.
  * Returns { entries, bytes }. Entry order is sorted for reproducible output.
  */
-export function pack(srcDir, archivePath, opt = {}) {
+export function pack(srcDir: string, archivePath: string, opt: WriteOptions = {}): PackResult {
   const files = listDirFiles(srcDir).sort();
-  const entries = files.map((rel) => ({ name: rel, data: readFileSync(join(srcDir, rel)) }));
+  const entries: ZipEntry[] = files.map((rel) => ({ name: rel, data: readFileSync(join(srcDir, rel)) }));
   const buf = writeArchive(entries, opt);
   writeFileSync(archivePath, buf);
   return { entries: entries.length, bytes: buf.length };
@@ -216,9 +242,9 @@ export function pack(srcDir, archivePath, opt = {}) {
  * Recursively list every file under `dir`, returning paths relative to `dir`
  * with forward slashes (ZIP/posix convention regardless of host OS).
  */
-export function listDirFiles(dir) {
-  const out = [];
-  const walk = (d) => {
+export function listDirFiles(dir: string): string[] {
+  const out: string[] = [];
+  const walk = (d: string): void => {
     for (const name of readdirSync(d)) {
       const full = join(d, name);
       const st = statSync(full);

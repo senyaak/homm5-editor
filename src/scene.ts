@@ -22,10 +22,106 @@
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { deflateSync } from 'node:zlib';
-import { parseTerrain, readHeights, readTextureLayers, readMask, readGroundFlags, FLAG_WATER } from './terrain.js';
-import { extractMeshes, readGeometryRefFromModelXdb } from './geometry.js';
-import { decodeDDS } from './dds.js';
-import { loadMap } from './map.js';
+import { parseTerrain, readHeights, readTextureLayers, readMask, readGroundFlags, FLAG_WATER } from './terrain.ts';
+import { extractMeshes, readGeometryRefFromModelXdb } from './geometry.ts';
+import { decodeDDS } from './dds.ts';
+import { loadMap } from './map.ts';
+import type { HommMap } from './map.ts';
+import type { Terrain, TextureLayer } from './terrain.ts';
+import type { Mesh } from './geometry.ts';
+
+/** Reads an asset .xdb by its href, or null when it is missing. */
+type ReadXdb = (href: string) => string | null;
+
+/** One decoded mesh, ready for the renderer. Arrays are plain JSON. */
+export interface GeomData {
+  pos: number[];
+  /** Null when the mesh has no usable texture coordinates. */
+  uv: number[] | null;
+  idx: number[];
+  /** Downsampled texture as a PNG data URI, or null if unresolved. */
+  tex: string | null;
+  /** True for cutout textures (foliage), so the renderer can alpha-test. */
+  alpha: boolean;
+}
+
+/** A placed object: tile position, rotation about Z, and its mesh index. */
+export interface Instance {
+  id: string | null;
+  type: string;
+  /** Index into Scene.geoms. */
+  g: number;
+  shared: string;
+  x: number; y: number; z: number; r: number;
+}
+
+/** The sea: a flat sheet at  over every cell touching water-flagged ground. */
+export interface WaterData {
+  V: number;
+  level: number;
+  /** Vertex index of each covered cell corner (y*V + x). */
+  cells: number[];
+  wet: number;
+  tex: string | null;
+}
+
+/** Everything the splat shader needs: tile textures plus their weight masks. */
+export interface SplatData {
+  V: number;
+  size: number;
+  layerCount: number;
+  /** One PNG data URI per layer, sorted by the tile`s <Priority>. */
+  layerTex: string[];
+  /** Masks packed three per RGB image. */
+  maskGroups: string[];
+  rockTex: string | null;
+  paths: string[];
+}
+
+/** One floor of a map: its terrain and the objects standing on it. */
+export interface Floor {
+  name: string;
+  V: number;
+  heights: number[];
+  colors: number[] | null;
+  /** Per-vertex ground kind; see readGroundFlags. Null if absent. */
+  flags: number[] | null;
+  water: WaterData | null;
+  splat: SplatData | null;
+  instances: Instance[];
+}
+
+/** The renderable scene — this is the payload that crosses the IPC boundary. */
+export interface Scene { geoms: GeomData[]; floors: Floor[] }
+
+export interface BuildSceneOptions {
+  /** Edge length for embedded object textures. */
+  texSize?: number;
+  /** Edge length for ground tile textures. */
+  tileSize?: number;
+  seaLevel?: number;
+}
+
+/** A ground tile in the palette, previewed from its own .dds. */
+export interface TileInfo {
+  name: string;
+  category: string;
+  path: string;
+  priority: number;
+  type: string;
+  thumb: string;
+}
+
+/** Internal: a terrain plane set plus everything derived from it. */
+interface LoadedTerrain {
+  V: number;
+  H: Float32Array;
+  flags: number[] | null;
+  water: WaterData | null;
+  colors: number[] | null;
+  splat: SplatData | null;
+}
+
 
 /**
  * @param assetRoot absolute path to the unpacked data root (contains MapObjects/, bin/…)
@@ -38,9 +134,11 @@ import { loadMap } from './map.js';
  *   object's <Floor> field. They are distinct layers — the editor shows one at a
  *   time — so underground objects must not be dumped onto the surface terrain.
  */
-export function buildScene(assetRoot, mapXdbPath, opt = {}) {
+export function buildScene(
+  assetRoot: string, mapXdbPath: string, opt: BuildSceneOptions = {},
+): { map: HommMap; skipped: number; scene: Scene } {
   const texSize = opt.texSize || 128;
-  const readXdb = (href) => {
+  const readXdb: ReadXdb = (href) => {
     const p = join(assetRoot, href.split('#')[0]);
     return existsSync(p) ? readFileSync(p, 'utf8') : null;
   };
@@ -52,7 +150,7 @@ export function buildScene(assetRoot, mapXdbPath, opt = {}) {
   const mapDir = dirname(mapXdbPath);
   const tileColorCache = new Map();
   const tileTexCache = new Map(); // tile path -> texture data URI (shared across floors)
-  const loadTerrain = (file) => {
+  const loadTerrain = (file: string): LoadedTerrain | null => {
     const p = join(mapDir, file);
     if (!existsSync(p)) return null;
     const t = parseTerrain(readFileSync(p));
@@ -72,19 +170,23 @@ export function buildScene(assetRoot, mapXdbPath, opt = {}) {
     };
   };
   const terrains = [loadTerrain('GroundTerrain.bin')];
+  const ground = terrains[0];
+  // Every map has a ground plane; without it nothing below can place an object,
+  // and the failure used to surface as a null dereference deep in heightAt.
+  if (!ground) throw new Error('GroundTerrain.bin not found next to ' + mapXdbPath);
   if (map.hasUnderground) { const u = loadTerrain('UndergroundTerrain.bin'); if (u) terrains[1] = u; }
-  const heightAt = (floor, x, y) => {
-    const t = terrains[floor] || terrains[0];
+  const heightAt = (floor: number, x: number, y: number): number => {
+    const t = terrains[floor] ?? ground;
     const V = t.V;
     const ix = Math.max(0, Math.min(V - 1, Math.round(x)));
     const iy = Math.max(0, Math.min(V - 1, Math.round(y)));
-    return t.H[iy * V + ix];
+    return t.H[iy * V + ix]!;
   };
 
   // --- geometry/texture resolution (cached per Shared href) ---
-  const geoms = [];
+  const geoms: GeomData[] = [];
   const geomIndex = new Map(); // shared href -> geoms index, or -1
-  const resolveGeom = (sharedHref) => {
+  const resolveGeom = (sharedHref: string): number => {
     if (geomIndex.has(sharedHref)) return geomIndex.get(sharedHref);
     let idx = -1;
     try {
@@ -105,7 +207,7 @@ export function buildScene(assetRoot, mapXdbPath, opt = {}) {
   };
 
   // --- place objects onto their own floor's terrain ---
-  const floorInstances = [[], []];
+  const floorInstances: Instance[][] = [[], []];
   let skipped = 0;
   for (const obj of map.objects) {
     const shared = obj.shared;
@@ -120,19 +222,20 @@ export function buildScene(assetRoot, mapXdbPath, opt = {}) {
     });
   }
 
-  const floors = [];
+  const floors: Floor[] = [];
   const NAMES = ['surface', 'underground'];
   for (let f = 0; f < terrains.length; f++) {
-    if (!terrains[f]) continue;
+    const t = terrains[f];
+    if (!t) continue;
     floors.push({
-      name: NAMES[f],
-      V: terrains[f].V,
-      heights: Array.from(terrains[f].H, (v) => +v.toFixed(3)),
-      colors: terrains[f].colors,
-      flags: terrains[f].flags,
-      water: terrains[f].water,
-      splat: terrains[f].splat,
-      instances: floorInstances[f],
+      name: NAMES[f] ?? String(f),
+      V: t.V,
+      heights: Array.from(t.H, (v) => +v.toFixed(3)),
+      colors: t.colors,
+      flags: t.flags,
+      water: t.water,
+      splat: t.splat,
+      instances: floorInstances[f] ?? [],
     });
   }
 
@@ -143,7 +246,7 @@ export function buildScene(assetRoot, mapXdbPath, opt = {}) {
 // (the AdvMapTile <MinimapColor>) weighted by its per-vertex opacity mask. This
 // paints grass/dirt/sand/water and, crucially, ROADS, in one cheap pass without
 // decoding any .dds. Returns [r,g,b,…] in 0..1, or null if no layers resolved.
-function terrainColors(t, readXdb, cache) {
+function terrainColors(t: Terrain, readXdb: ReadXdb, cache: Map<string, number[] | null>): number[] | null {
   const layers = readTextureLayers(t);
   const N = t.N;
   const acc = new Float32Array(N * 3);
@@ -194,7 +297,7 @@ function terrainColors(t, readXdb, cache) {
  * editor. So when a tile resolves to a CLAMP texture that has a _TNL sibling,
  * take the sibling.
  */
-function tileTexture(tilePath, readXdb, assetRoot, size) {
+function tileTexture(tilePath: string, readXdb: ReadXdb, assetRoot: string, size: number): Uint8Array | null {
   const xml = readXdb(tilePath); if (!xml) return null;
   const t = xml.match(/<Texture href="([^"]+?)(?:#[^"]*)?"/);
   if (!t || !t[1]) return null;                       // <Texture/> = no texture
@@ -232,23 +335,29 @@ function tileTexture(tilePath, readXdb, assetRoot, size) {
 }
 
 /** AdvMapTile.xdb -> its <Priority> (the engine's paint order), cached by path. */
-function tilePriority(path, readXdb, cache) {
-  if (cache.has(path)) return cache.get(path);
+function tilePriority(path: string, readXdb: ReadXdb, cache: Map<string, number>): number {
+  const hit = cache.get(path);
+  if (hit !== undefined) return hit;
   const xml = readXdb(path);
   const p = xml ? +(xml.match(/<Priority>(-?\d+)<\/Priority>/)?.[1] ?? 0) : 0;
   cache.set(path, p);
   return p;
 }
 
-function flatTexture(col, size) {
+function flatTexture(col: number[], size: number): Uint8Array {
   const px = new Uint8Array(size * size * 4);
   const [r, g, b] = col.map((v) => Math.max(0, Math.min(255, v * 255 | 0)));
   for (let i = 0; i < size * size; i++) { px[i * 4] = r; px[i * 4 + 1] = g; px[i * 4 + 2] = b; px[i * 4 + 3] = 255; }
   return px;
 }
 
-function buildSplat(t, readXdb, assetRoot, texCache, colCache, size) {
-  let layers = readTextureLayers(t).filter((l) => l.path);
+function buildSplat(
+  t: Terrain, readXdb: ReadXdb, assetRoot: string,
+  texCache: Map<string, string>, colCache: Map<string, number[] | null>, size: number,
+): SplatData | null {
+  // A predicate, not a plain truthiness filter: only this tells the checker the
+  // surviving layers definitely carry a path.
+  let layers = readTextureLayers(t).filter((l): l is TextureLayer & { path: string } => l.path !== null);
   if (!layers.length) return null;
   const V = t.V, N = t.N;
 
@@ -257,13 +366,14 @@ function buildSplat(t, readXdb, assetRoot, texCache, colCache, size) {
   // lets the shader composite low-to-high — a road painted OVER grass — instead
   // of averaging every layer together, which dilutes each one against the base
   // and leaves the whole map washed out.
-  const priCache = new Map();
+  const priCache = new Map<string, number>();
   layers = layers
     .map((l, ord) => ({ ...l, priority: tilePriority(l.path, readXdb, priCache), ord }))
     .sort((a, b) => a.priority - b.priority || a.ord - b.ord);
 
-  const layerTex = layers.map((l) => {
-    if (texCache.has(l.path)) return texCache.get(l.path);
+  const layerTex = layers.map((l): string => {
+    const hit = texCache.get(l.path);
+    if (hit !== undefined) return hit;
     let px = tileTexture(l.path, readXdb, assetRoot, size);
     if (!px) px = flatTexture(tileColor(l.path, readXdb, colCache) || [0.3, 0.33, 0.24], size);
     const uri = pngDataUri(size, size, px);
@@ -293,9 +403,10 @@ function buildSplat(t, readXdb, assetRoot, texCache, colCache, size) {
 }
 
 // AdvMapTile.xdb -> its representative RGB (0..1), cached by path.
-function tileColor(path, readXdb, cache) {
-  if (cache.has(path)) return cache.get(path);
-  let col = null;
+function tileColor(path: string, readXdb: ReadXdb, cache: Map<string, number[] | null>): number[] | null {
+  const hit = cache.get(path);
+  if (hit !== undefined) return hit;
+  let col: number[] | null = null;
   const xml = readXdb(path);
   if (xml) {
     const m = xml.match(/<MinimapColor>\s*<x>([-\d.]+)<\/x>\s*<y>([-\d.]+)<\/y>\s*<z>([-\d.]+)<\/z>/);
@@ -306,7 +417,7 @@ function tileColor(path, readXdb, cache) {
 }
 
 // Merge a model's submeshes into one buffer and register it as a scene geom.
-function addGeom(geoms, meshes, model, assetRoot, texSize) {
+function addGeom(geoms: GeomData[], meshes: Mesh[], model: string, assetRoot: string, texSize: number): number {
   let vc = 0, tc = 0;
   for (const m of meshes) { vc += m.vertexCount; tc += m.indices.length; }
   const pos = new Float32Array(vc * 3), uv = new Float32Array(vc * 2), idxs = new Uint32Array(tc);
@@ -331,17 +442,17 @@ function addGeom(geoms, meshes, model, assetRoot, texSize) {
 
 // ---- texture -> downsampled RGBA PNG data URI (embeds in the scene JSON) ----
 // RGBA (colour type 6) so transparency survives; foliage cutouts need the alpha.
-const crcTab = (() => { const t = []; for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
-const crc = (b) => { let c = 0xffffffff; for (const x of b) c = crcTab[(c ^ x) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
-function pngDataUri(w, h, rgba) {
+const crcTab: number[] = (() => { const t: number[] = []; for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+const crc = (b: Uint8Array | Buffer): number => { let c = 0xffffffff; for (const x of b) c = crcTab[(c ^ x) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
+function pngDataUri(w: number, h: number, rgba: Uint8Array): string {
   const raw = Buffer.alloc((w * 4 + 1) * h);
   for (let y = 0; y < h; y++) Buffer.from(rgba.buffer, rgba.byteOffset + y * w * 4, w * 4).copy(raw, y * (w * 4 + 1) + 1);
-  const chunk = (t, d) => { const l = Buffer.alloc(4); l.writeUInt32BE(d.length); const body = Buffer.concat([Buffer.from(t), d]); const cc = Buffer.alloc(4); cc.writeUInt32BE(crc(body)); return Buffer.concat([l, body, cc]); };
+  const chunk = (t: string, d: Buffer): Buffer => { const l = Buffer.alloc(4); l.writeUInt32BE(d.length); const body = Buffer.concat([Buffer.from(t), d]); const cc = Buffer.alloc(4); cc.writeUInt32BE(crc(body)); return Buffer.concat([l, body, cc]); };
   const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4); ihdr[8] = 8; ihdr[9] = 6; // 8-bit RGBA
   const png = Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ihdr), chunk('IDAT', deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]);
   return 'data:image/png;base64,' + png.toString('base64');
 }
-function textureDataUri(model, assetRoot, size) {
+function textureDataUri(model: string, assetRoot: string, size: number): { uri: string; hasAlpha: boolean } | null {
   try {
     const t = model.match(/<Texture href="([^"]+?)(?:#[^"]*)?"/); if (!t) return null;
     const tx = readFileSync(join(assetRoot, t[1].split('#')[0]), 'utf8');
@@ -390,7 +501,7 @@ const SEA_LEVEL = 1.5;
 // textures out for their tiling siblings.
 const SEA_TEXTURE = '/Textures/Terrain/Water/Water.dds';
 
-function seaTexture(assetRoot, size) {
+function seaTexture(assetRoot: string, size: number): string | null {
   try {
     const p = join(assetRoot, SEA_TEXTURE);
     if (!existsSync(p)) return null;
@@ -413,7 +524,7 @@ function seaTexture(assetRoot, size) {
   } catch { return null; }
 }
 
-function buildWater(t, level, assetRoot) {
+function buildWater(t: Terrain, level: number, assetRoot: string): WaterData | null {
   const flags = readGroundFlags(t);
   if (!flags) return null;
   const V = t.V, N = t.N;
@@ -454,17 +565,17 @@ const ROCK_TILE = '/MapObjects/_(AdvMapTile)/Rock.xdb';
  * @param thumbSize preview edge in px (default 64)
  * @returns {{name, category, path, priority, type, thumb}[]} sorted by category, name
  */
-export function listTiles(assetRoot, thumbSize = 64) {
+export function listTiles(assetRoot: string, thumbSize = 64): TileInfo[] {
   const base = join(assetRoot, TILE_DIR);
   if (!existsSync(base)) return [];
-  const readXdb = (href) => {
+  const readXdb: ReadXdb = (href) => {
     const p = join(assetRoot, href.split('#')[0]);
     return existsSync(p) ? readFileSync(p, 'utf8') : null;
   };
-  const colCache = new Map();
-  const out = [];
+  const colCache = new Map<string, number[] | null>();
+  const out: TileInfo[] = [];
 
-  const walk = (dir, rel) => {
+  const walk = (dir: string, rel: string): void => {
     let ents;
     try { ents = readdirSync(dir, { withFileTypes: true }); } catch { return; }
     for (const e of ents) {
@@ -493,7 +604,7 @@ export function listTiles(assetRoot, thumbSize = 64) {
 
 // Find the asset root (folder holding MapObjects/ and bin/) by walking up from a
 // map.xdb path. Returns null if not found within a few levels.
-export function findAssetRoot(mapXdbPath) {
+export function findAssetRoot(mapXdbPath: string): string | null {
   let dir = dirname(mapXdbPath);
   for (let i = 0; i < 8; i++) {
     if (existsSync(join(dir, 'MapObjects')) || existsSync(join(dir, 'bin', 'Geometries'))) return dir;
