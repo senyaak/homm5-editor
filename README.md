@@ -54,7 +54,9 @@ so a `.cts` preload dies on the first type annotation — silently, leaving
   digs a pit to exactly 0.0 and flags it water, so it floods. *Ramp* cuts a
   walkable way up: half a step, flagged with bit 3, which is the only
   intermediate the format has — measured, `16→24` and `24→32` each step 1.00,
-  exactly half the 2.00 between tiers. All of them remesh
+  exactly half the 2.00 between tiers. It only applies at the foot of a cut,
+  because that is the only place a ramp exists: all 3,718 ramp vertices in the
+  shipped maps border a different tier, 100.0% of them. All of them remesh
   live, and a basin dug on a dry map raises its sea immediately.
 - **Ground palette and tile brush**: all 82 shipped tiles previewed from their
   own `.dds`, grouped by category. Pick one, arm the brush, and left-drag to

@@ -1640,18 +1640,43 @@ function plateauAt(ev: PointerEvent, up: boolean): void {
 function rampAt(ev: PointerEvent): void {
   const fl = activeFloor();
   const at = tileUnderCursor(ev);
-  if (!at) return;
+  const flags = fl.flags;
+  if (!at || !flags) return;
   if (!strokeVerts.size) plateauBase = fl.heights[at.y * fl.V + at.x]!;
-  let touched = false;
+
+  /** A ramp only exists where a cut does — and it is cut INTO the low side. */
+  const onLowSideOfCut = (v: number): boolean => {
+    const x = v % fl.V, y = (v / fl.V) | 0;
+    const me = flags[v]! >> 4;
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+      const nx = x + dx, ny = y + dy;
+      if (nx < 0 || nx >= fl.V || ny < 0 || ny >= fl.V) continue;
+      if ((flags[ny * fl.V + nx]! >> 4) > me) return true;
+    }
+    return false;
+  };
+
+  let touched = false, blocked = false;
   for (const v of brushVerts(fl.V, at.x, at.y, brushSize)) {
     if (strokeVerts.has(v)) continue;
     if (Math.abs(fl.heights[v]! - plateauBase) > PLATEAU_TOL) continue;
+    // Already a ramp: leave it. It still sits on the low tier and still borders
+    // the high one, so without this a second pass raises it another half step
+    // and a few clicks push it clean through the tier it was meant to reach.
+    if (flags[v]! & 8) continue;
+    // Nowhere but a cut. Every one of the 3,718 ramp vertices across the shipped
+    // maps has a neighbour on a different tier — 100.0%, not merely most — so a
+    // ramp in open ground is not a thing the format expresses. Refusing beats
+    // leaving half a step stranded in a field.
+    if (!onLowSideOfCut(v)) { blocked = true; continue; }
     strokeVerts.add(v);
     fl.heights[v] = fl.heights[v]! + PLATEAU_STEP / 2;
-    if (fl.flags) fl.flags[v] = (fl.flags[v]! & 0xf0) | 8;
+    flags[v] = (flags[v]! & 0xf0) | 8;
     touched = true;
   }
   if (touched) remeshFloor(fl);
+  // Say so rather than appearing broken: the brush is armed and nothing happens.
+  else if (blocked) $('hud').textContent = 'ramps go at the foot of a cut — aim at the low side of a step';
 }
 
 /** Sculpt at the cursor, rate-limited so holding still is controllable. */
