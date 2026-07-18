@@ -168,21 +168,33 @@ export function readMask(t: Terrain, layer: TextureLayer): Uint8Array {
  * Read the per-vertex ground-kind flags — the first vertex-sized u8 plane after
  * the height plane.
  *
- * Values seen across every shipped map: 0, 16, 32 (and rare combinations).
- * A map authored from scratch pins them down exactly — on Senya's map 12,
- * flag 0 covers precisely the 49 vertices at height 0, and flag 32 precisely
- * the 50 at height 5.05:
+ * The flag is the TIER NUMBER times 16, plus 8 for a ramp:
  *
- *   0  -> WATER. Terraforming's `lower` digs the ground to height 0 and marks
- *         it; the engine floods it. Confirmed across 59 of 232 shipped maps and
- *         corroborated by their names — BoatArena is 100% flag 0,
- *         SmallSpecialArena_Sea 66.7%, every Beach_* 43-53%.
- *   16 -> ordinary ground (the 2.0 default level).
- *   32 -> plateau, raised ground with cliff edges.
+ *     flag = 16 * tier + 8 * isRamp
+ *
+ * Median height per value across every shipped map: 0 -> 0.00, 16 -> 2.50,
+ * 32 -> 5.24, 48 -> 6.65, 64 -> 8.00, and 80 exists too. The step across each
+ * adjacent pair is exactly 2.00 at the median and 0.8 or more in 95-100% of
+ * cases: 0->16 (n=40337), 16->32 (32928), 32->48 (15804), 48->64 (4368),
+ * 64->80 (1011).
+ *
+ * The ramp bit falls out of the same arithmetic — 16->24 and 24->32 both step
+ * 1.00, exactly half — so a ramp vertex sits halfway between two tiers, which
+ * is what makes it a walkable incline instead of a wall.
+ *
+ *   tier 0 (flag 0)  -> WATER. `lower` digs to height 0 and the engine floods
+ *                       it. 59 of 232 shipped maps have some; BoatArena is 100%
+ *                       flag 0, SmallSpecialArena_Sea 66.7%, every Beach_* 43-53%.
+ *   tier 1 (flag 16) -> ordinary ground, the 2.0 default level.
+ *   tier 2+ (32, 48, 64, 80) -> stacked plateaus, each 2.0 above the last.
+ *
+ * ⚠️ Treating everything above ground as one "plateau" kind is wrong and shows:
+ * a cut forms wherever the TIER changes, so a plateau raised on a plateau cuts
+ * against it. Collapsing 32/48/64 into one kind smooths that edge away.
  *
  * This is what marks the SEA. The half-tile plane in readWaterPlane marks
- * painted RIVERS instead — the two are different features, and a map can have
- * either without the other (map 12 has sea and an entirely empty river plane).
+ * painted RIVERS instead — different features, and a map can have either
+ * without the other (map 12 has sea and an entirely empty river plane).
  *
  * @returns {Uint8Array|null} length t.N, indexed y*V + x
  */
@@ -247,6 +259,13 @@ export const BLOCKED = 0;
 export const FLAG_WATER = 0;
 export const FLAG_GROUND = 16;
 export const FLAG_PLATEAU = 32;
+
+/** One tier step in the flag plane. `flag = TIER_STEP * tier + RAMP_BIT * isRamp`. */
+export const TIER_STEP = 16;
+/** Bit 3: this vertex sits half a tier up, as a walkable incline. */
+export const RAMP_BIT = 8;
+/** Which tier a flag belongs to. 0 water, 1 ground, 2+ stacked plateaus. */
+export const tierOf = (flag: number): number => flag >> 4;
 
 /**
  * Locate the water plane — a u8 field on a HALF-TILE grid of (2V-1)², framed

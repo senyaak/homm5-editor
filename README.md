@@ -163,10 +163,18 @@ Key points:
   nothing: a bed level with its bank is 23.8% blocked and one more than 1.5
   below it is 22.1%, with every bucket between within a point of those. Whether
   a river can be waded is a decision recorded here.
+- **The ground flag is the tier number times 16**, plus 8 for a ramp:
+  `flag = 16 * tier + 8 * isRamp`. Median height per value across all 232 maps —
+  `0` → 0.00, `16` → 2.50, `32` → 5.24, `48` → 6.65, `64` → 8.00, and `80`
+  exists too. The step across each adjacent pair is exactly 2.00 at the median
+  and ≥0.8 in 95–100% of cases. The ramp bit falls out of the same arithmetic:
+  `16→24` and `24→32` each step 1.00, exactly half, so a ramp sits midway
+  between two tiers — which is what makes it walkable rather than a wall.
+  A cut therefore forms wherever the **tier** changes, so a plateau stacked on a
+  plateau cuts against it; treating everything above ground as one "plateau"
+  kind smooths that wall away.
 - ⚠️ WindBell's spec is inaccurate here. There are no separate Plateau / Ramp /
-  WaterDepth planes — those are **bits of one flag plane**, established by
-  measuring across all 232 shipped maps: `0` water, `16` ground, `32` plateau,
-  bit 3 ramp.
+  WaterDepth planes — those are **bits of one flag plane**.
 - ⚠️ Height is **not the only plane with a visual effect**. The flags decide where
   terrain breaks into a vertical cut and where it stays smooth, and the river
   plane carries painted water. Without them a map looks fundamentally different.

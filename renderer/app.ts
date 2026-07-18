@@ -522,12 +522,17 @@ function terrainGeometry(
   // A1M5, 16 of 16 on A2C2M3. Meanwhile cells wholly inside one kind reach 12.4
   // of relief on A2C2M3 while still being smooth hillside.
   //
-  // So: water meeting land, or a plateau meeting ground, is cut; anything within
-  // one kind is smooth however steep. Ramps (bit 3) are the deliberate walkable
-  // inclines and stay smooth even across a boundary.
-  const WATER = 0, GROUND = 1, PLATEAU = 2;
+  // So: any change of tier is cut — water to land, ground to plateau, plateau to
+  // the plateau stacked on it — while anything within one tier is smooth however
+  // steep. Ramps (bit 3) sit half a tier up and stay smooth across the boundary,
+  // which is what makes them walkable.
   const fl = flags;
-  const kindOf = (i: number): number => { const f = fl![i]!; return f === 0 ? WATER : (f & 32) ? PLATEAU : GROUND; };
+  // The flag is the tier number times 16 (plus 8 for a ramp), so a cut forms
+  // wherever the TIER changes — 0 water, 1 ground, 2+ stacked plateaus, each
+  // 2.0 above the last. Lumping everything above ground into one "plateau" kind
+  // smoothed away the edge between a plateau and the plateau raised on top of
+  // it, which is a wall in the game.
+  const tierOf = (i: number): number => fl![i]! >> 4;
   const isRamp = (i: number): boolean => (fl![i]! & 8) !== 0;
   const MIN_STEP = 0.1; // a boundary with no real drop isn't worth a wall
 
@@ -558,8 +563,8 @@ function terrainGeometry(
     if (!fl) { smooth(); continue; }
     if (ci.some(isRamp)) { smooth(); continue; }
 
-    const k0 = kindOf(ci[0]);
-    if (ci.every((i) => kindOf(i) === k0)) { smooth(); continue; } // inside one kind
+    const k0 = tierOf(ci[0]);
+    if (ci.every((i) => tierOf(i) === k0)) { smooth(); continue; } // all one tier
     if (Math.max(...h) - Math.min(...h) < MIN_STEP) { smooth(); continue; }
 
     // The boundary is authoritative; heights only say which side is up.
@@ -1597,7 +1602,13 @@ function plateauAt(ev: PointerEvent, up: boolean): void {
     if (Math.abs(fl.heights[v]! - plateauBase) > PLATEAU_TOL) continue;
     strokeVerts.add(v);
     fl.heights[v] = up ? fl.heights[v]! + PLATEAU_STEP : 0;
-    if (fl.flags) fl.flags[v] = up ? 32 : 0;
+    if (fl.flags) {
+      // Step to the NEXT tier, keeping the count rather than pinning everything
+      // to 32: tier 3 stacked on tier 2 must be a different kind or the mesher
+      // blends the wall between them into a slope. The ramp bit is dropped —
+      // this makes a wall, not an incline.
+      fl.flags[v] = up ? Math.min(240, (fl.flags[v]! & 0xf0) + 16) : 0;
+    }
     touched = true;
   }
   if (touched) remeshFloor(fl);
