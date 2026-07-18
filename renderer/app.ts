@@ -2153,7 +2153,19 @@ function setExplorer(open: boolean): void {
   $('hud').style.left = open ? '296px' : '12px';
   $('objects').classList.toggle('on', open);
 }
-$('objects').onclick = () => setExplorer(!explorerOpen);
+$('objects').onclick = () => {
+  const open = !explorerOpen;
+  // Opening the list while objects are hidden brings them back. The list exists
+  // to find an object and click through to it, and every one of those clicks
+  // would select something invisible — picking is disabled while they are
+  // hidden, so the 3D view would not even answer.
+  //
+  // Only on this click, not inside setExplorer: loading a map opens the list
+  // too, and doing it there would quietly undo a deliberate "objects off"
+  // every time a map was opened.
+  if (open && world && !showObjects) setShowObjects(true);
+  setExplorer(open);
+};
 
 // Hide/show all placed objects — terrain work needs an unobstructed ground view.
 function setShowObjects(on: boolean): void {
