@@ -833,6 +833,8 @@ function pickObject(ev: PointerEvent): THREE.Mesh | null {
   return hits.length ? hits[0]!.object : null;
 }
 
+renderer.domElement.addEventListener('pointerleave', () => updateBrushCursor(null));
+
 renderer.domElement.addEventListener('pointerdown', (ev) => {
   if (!world || ev.button !== 0) return;
   // With the brush armed, left-drag paints instead of orbiting. Middle and
@@ -856,6 +858,9 @@ renderer.domElement.addEventListener('pointerdown', (ev) => {
 });
 
 renderer.domElement.addEventListener('pointermove', (ev) => {
+  // Track the footprint on every move, painting or not -- the point of the
+  // gizmo is to show where a stroke WOULD land before committing to one.
+  if (brushOn) updateBrushCursor(tileUnderCursor(ev));
   if (painting) { if (sculptDir === 0) brushAt(ev); else sculptTick(ev); return; }
   if (!dragging || !selected) return;
   // Project the cursor onto a horizontal plane at the object's height and snap
@@ -916,6 +921,67 @@ let brushSize = 1;         // in tiles: 1, 3, 5, 7
 let painting = false;
 /** Vertices touched by the stroke in progress, deduped. */
 const strokeVerts = new Set<number>();
+
+// --- brush cursor ----------------------------------------------------------
+//
+// The system cursor says nothing about what a stroke will cover: the brush is
+// square, sized in tiles, and lands on the grid, none of which an arrow conveys.
+// So the arrow is hidden while the brush is armed and replaced by the footprint
+// drawn on the ground — every cell it will touch, following the terrain.
+//
+// Drawn with depthTest off so it stays readable inside a pit or behind a hill.
+// A gizmo that disappears exactly where the ground is interesting is worse than
+// none, and a depth offset large enough to survive a cliff would float visibly
+// over flat ground.
+
+let brushCursor: THREE.LineSegments | null = null;
+
+function ensureBrushCursor(): THREE.LineSegments {
+  if (brushCursor) return brushCursor;
+  const mat = new THREE.LineBasicMaterial({
+    color: 0xffd23f, transparent: true, opacity: 0.9, depthTest: false,
+  });
+  brushCursor = new THREE.LineSegments(new THREE.BufferGeometry(), mat);
+  brushCursor.renderOrder = 999;
+  brushCursor.visible = false;
+  scene.add(brushCursor);
+  return brushCursor;
+}
+
+/** Redraw the footprint outline over tile (cx, cy), or hide it when off-map. */
+function updateBrushCursor(at: { x: number; y: number } | null): void {
+  const c = ensureBrushCursor();
+  if (!at || !world) { c.visible = false; return; }
+  const fl = activeFloor();
+  const k = Math.floor(Math.max(1, brushSize) / 2);
+  const LIFT = 0.05; // just clear of the surface, so it reads as lying on it
+  const z = (x: number, y: number): number => {
+    const cx = Math.min(fl.V - 1, Math.max(0, x)), cy = Math.min(fl.V - 1, Math.max(0, y));
+    return fl.heights[cy * fl.V + cx]! + LIFT;
+  };
+  const pts: number[] = [];
+  const seg = (x0: number, y0: number, x1: number, y1: number): void => {
+    pts.push(x0, y0, z(x0, y0), x1, y1, z(x1, y1));
+  };
+  // Every cell edge in the footprint, so the grid reads as tiles rather than
+  // one box — the brush works per tile and should look like it.
+  for (let y = at.y - k; y <= at.y + k + 1; y++) {
+    for (let x = at.x - k; x <= at.x + k; x++) {
+      if (y < 0 || y >= fl.V || x < 0 || x + 1 >= fl.V) continue;
+      seg(x, y, x + 1, y);
+    }
+  }
+  for (let x = at.x - k; x <= at.x + k + 1; x++) {
+    for (let y = at.y - k; y <= at.y + k; y++) {
+      if (x < 0 || x >= fl.V || y < 0 || y + 1 >= fl.V) continue;
+      seg(x, y, x, y + 1);
+    }
+  }
+  const g = c.geometry;
+  g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pts), 3));
+  g.computeBoundingSphere();
+  c.visible = pts.length > 0;
+}
 
 /** Tile under the cursor, from a ray against the terrain itself (so it follows hills). */
 function tileUnderCursor(ev: PointerEvent): { x: number; y: number } | null {
@@ -1128,7 +1194,10 @@ function setBrush(on: boolean): void {
   // The label says the state rather than the action: with the mode selector
   // beside it, "Brush" alone gave no way to tell armed from not.
   b.textContent = on ? 'Brush: on' : 'Brush: off';
-  renderer.domElement.style.cursor = on ? 'crosshair' : '';
+  // The arrow is hidden, not restyled: the footprint gizmo IS the cursor, and
+  // an arrow on top of it only obscures the tile under the tip.
+  renderer.domElement.style.cursor = on ? 'none' : '';
+  if (!on) updateBrushCursor(null);
   if (!on && painting) { painting = false; controls.enabled = true; }
 }
 

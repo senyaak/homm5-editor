@@ -41,6 +41,10 @@ so a `.cts` preload dies on the first type annotation — silently, leaving
   open on the same map folder. When it saves, a banner offers to take its
   version. Content hashes, not timestamps, so our own saves never trigger it and
   a rewrite with identical bytes is not a change.
+- **Brush cursor**: the system arrow is hidden while a brush is armed and
+  replaced by its footprint drawn on the ground — every tile the stroke will
+  touch, following the terrain, so size and placement are visible before
+  committing.
 - **Height brush**: raise and lower with a radial falloff, live remeshing, and
   the flag transitions the format requires — digging a vertex to 0 floods it,
   raising it off 0 drains it back to ground. A basin dug on a dry map raises its
