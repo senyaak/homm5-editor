@@ -54,6 +54,11 @@ so a `.cts` preload dies on the first type annotation — silently, leaving
   paint at 1/3/5/7 tiles wide. The stroke goes into the mask texture on the GPU
   for immediate feedback and into the main process, which owns the bytes that
   get saved.
+- **Movement mask** (the original editor's Masks tab): a Blocked overlay plus
+  Mask/Erase brushes. The mask belongs to the ground, and water is a separate
+  sheet over it — so the overlay draws under the sea and lets it tint what shows
+  through, the way a masked pond reads in the original. Sea is never blocked
+  implicitly: flag `0` means navigable.
 - **River brushes**: Water, Bog and LavaFlow are not ordinary tiles. Painting
   one sinks the bed 0.4 below its banks with a 0.2 rim, and writes the half-tile
   river plane — which is what makes a river a river to the game rather than
@@ -138,7 +143,9 @@ Key points:
   blocked vertices across all 232 maps: `Sand/Sand_Rock` 92.4%,
   `Grass/Rock_Floor_grass` 75.5%, a drop steeper than 2 units 25.0%,
   `Water/LavaFlow` 26.4%, `Water/Bog` 24.6%, and sea (flag `0`) 6.4% — *below*
-  background, because it is navigable rather than blocked. Depth explains
+  background, because flag `0` means **navigable**: a boat crosses it, so there
+  is nothing to block. Water is not implicitly impassable, and an overlay that
+  paints it red is claiming the opposite of the truth. Depth explains
   nothing: a bed level with its bank is 23.8% blocked and one more than 1.5
   below it is 22.1%, with every bucket between within a point of those. Whether
   a river can be waded is a decision recorded here.

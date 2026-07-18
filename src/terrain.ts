@@ -210,7 +210,8 @@ export function groundFlagsPlane(t: Terrain): TerrainArray | null {
  *   steep drop (> 2 units)  25.0%      cliffs block
  *   Water/LavaFlow          26.4%      river brushes block 2-3x more than ground
  *   Water/Bog               24.6%
- *   sea (flag 0)             6.4%      BELOW background: navigable, not blocked
+ *   sea (flag 0)             6.4%      BELOW background — flag 0 means NAVIGABLE,
+ *                                       so there is nothing to block: boats cross it
  *
  * It is authored, not derived. Depth explains nothing: the bed being flat with
  * its bank or more than 1.5 below it gives 23.8% and 22.1% blocked, and every

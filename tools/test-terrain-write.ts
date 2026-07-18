@@ -234,6 +234,18 @@ function testDoc(path: string): void {
     doc4.setRiver(rv, false);
     check('a river can be cleared again', rv.every((v) => !doc4.isRiver(v)));
 
+    // --- movement mask ---
+    const doc5 = TerrainDoc.open(tmp);
+    const mv = [30 * doc5.V + 30, 30 * doc5.V + 31];
+    doc5.setPassable(mv, false);
+    check('vertices become blocked', mv.every((v) => doc5.isBlocked(v)));
+    doc5.setPassable([mv[0]!], true);
+    check('a blocked vertex can be freed again', !doc5.isBlocked(mv[0]!) && doc5.isBlocked(mv[1]!));
+    doc5.save();
+    const afterMask = TerrainDoc.open(tmp);
+    check('the mask survives a round trip', !afterMask.isBlocked(mv[0]!) && afterMask.isBlocked(mv[1]!));
+    check('masking leaves heights alone', afterMask.heightsCopy()[102] === 7.5);
+
     let threw = false;
     try { doc3.setVertices([0, 1], [1], null); } catch { threw = true; }
     check('mismatched sculpt arrays are rejected', threw);

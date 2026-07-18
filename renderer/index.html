@@ -183,6 +183,8 @@
         <option value="paint">Paint tile</option>
         <option value="raise">Raise</option>
         <option value="lower">Lower</option>
+        <option value="mask">Mask (block)</option>
+        <option value="erase">Erase (unblock)</option>
       </select>
       <select id="brushsizesel" title="brush width in tiles">
         <option value="1">1×1</option>
@@ -192,6 +194,7 @@
       </select>
     </label>
     <button id="cliffbtn" style="display:none" title="rock texture on steep faces">Cliffs</button>
+    <button id="blockbtn" style="display:none" title="show the movement mask — where units cannot go">Blocked</button>
     <button id="floor" style="display:none"></button>
     <label id="scalewrap" style="display:none" title="ground texture repeats per tile">
       ground <input id="texscale" type="range" min="0.05" max="2" step="0.05" value="0.5">

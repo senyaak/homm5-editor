@@ -27,7 +27,7 @@ import type {
   MapsListResult, MapListEntry, MapLoadResult, MoveObjectPayload, MoveObjectResult,
   MapSaveResult, MapPackResult, TerrainTilesResult, MapStatusResult, OpenMapDialogResult,
   ExternalChange, PaintTilePayload, PaintTileResult, SculptPayload, SculptResult,
-  AddLayerPayload, AddLayerResult, PaintRiverPayload,
+  AddLayerPayload, AddLayerResult, PaintRiverPayload, MaskPayload,
 } from './ipc.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -239,6 +239,13 @@ ipcMain.handle('terrain:paint-river', async (_e: IpcMainInvokeEvent, p: PaintRiv
   doc.paintTile(p.tile, p.verts);
   doc.setRiver(p.verts);
   doc.setVertices(p.heightVerts, p.heights, null);
+  return { ok: true };
+});
+
+// --- IPC: the passability mask (the original editor's Masks tab) ---
+ipcMain.handle('terrain:mask', async (_e: IpcMainInvokeEvent, p: MaskPayload): Promise<PaintTileResult> => {
+  if (!session) throw new Error('no map loaded');
+  terrainDoc(session, p.floor).setPassable(p.verts, p.walkable);
   return { ok: true };
 });
 

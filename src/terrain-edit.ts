@@ -14,7 +14,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import {
   parseTerrain, readHeights, readGroundFlags, readTextureLayers, readMask, readWaterPlane,
-  writeTerrain,
+  readPassability, writeTerrain,
 } from './terrain.ts';
 import { addTextureLayer } from './terrain-layer.ts';
 import type { Terrain, TextureLayer } from './terrain.ts';
@@ -32,6 +32,8 @@ export class TerrainDoc {
   private masks: Uint8Array[];
   private heights: Float32Array;
   private flags: Uint8Array | null;
+  /** Explicit passability mask: 0 blocked, 1 walkable. */
+  private passable: Uint8Array | null;
   /** The half-tile river plane, (2V-1)². Null on a terrain that has none. */
   private river: Uint8Array | null;
   /** Side of the river grid, 2V-1. */
@@ -49,6 +51,7 @@ export class TerrainDoc {
     this.heights = new Float32Array(0);
     this.flags = null;
     this.river = null;
+    this.passable = null;
     this.load(raw);
   }
 
@@ -67,6 +70,8 @@ export class TerrainDoc {
     this.heights = Float32Array.from(readHeights(t));
     const f = readGroundFlags(t);
     this.flags = f ? Uint8Array.from(f) : null;
+    const pa = readPassability(t);
+    this.passable = pa ? Uint8Array.from(pa) : null;
     const r = readWaterPlane(t);
     this.river = r ? Uint8Array.from(r.data) : null;
     this.riverW = r ? r.W : 0;
@@ -99,6 +104,32 @@ export class TerrainDoc {
       if (wet.has(v - V) && y > 0) set(2 * x, 2 * y - 1);
     }
     this.touched = true;
+  }
+
+  /**
+   * Mark vertices blocked or walkable in the explicit passability mask — the
+   * original editor's Masks tab.
+   *
+   * The mask is the whole truth about blocking. Sea is not in it and should not
+   * be: ground flag 0 means navigable, so a boat crosses it — which is why
+   * flag-0 vertices are masked only 6.4% of the time against a 9.0% background,
+   * less often than average rather than more. What goes here is what a designer
+   * decides by hand: an unfordable river, a rock field, a pond too small to
+   * sail, a scripted barrier.
+   */
+  setPassable(verts: VertexList, walkable: boolean): void {
+    const p = this.passable;
+    if (!p) return;
+    for (const v of verts) {
+      if (v < 0 || v >= this.N) continue;
+      p[v] = walkable ? 1 : 0;
+    }
+    this.touched = true;
+  }
+
+  /** True where the vertex is explicitly masked as blocked. */
+  isBlocked(vert: number): boolean {
+    return this.passable ? this.passable[vert] === 0 : false;
   }
 
   /** True where the river plane is already set for this vertex. */
@@ -188,6 +219,7 @@ export class TerrainDoc {
       heights: this.heights,
       ...(this.flags ? { flags: this.flags } : {}),
       ...(this.river ? { water: this.river } : {}),
+      ...(this.passable ? { passable: this.passable } : {}),
       masks: this.layers.map((l, i) => ({ layer: l, data: this.masks[i]! })),
     });
   }

@@ -53,6 +53,8 @@ const STUB = `<script>
   };
   const floor = {
     name: 'surface', V, heights, colors: null, flags, riverVerts: [],
+    // Everything walkable to start, so masking has a visible before and after.
+    passable: new Array(N).fill(1),
     water: { V, level: 1.5, cells: [], wet: 36, tex: null },
     splat, instances: [],
   };
@@ -106,6 +108,7 @@ const STUB = `<script>
       return { ok: true, splat, inMap: splat.paths.slice() };
     },
     sculpt: async (p) => { log('sculpt', p); return { ok: true }; },
+    setMask: async (p) => { log('setMask', p); return { ok: true }; },
     onExternalChange: (cb) => { window.__fireExternalChange = cb; },
   };
 })();

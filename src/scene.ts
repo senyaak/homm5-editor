@@ -22,7 +22,7 @@
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { deflateSync } from 'node:zlib';
-import { parseTerrain, readHeights, readTextureLayers, readMask, readGroundFlags, readWaterPlane, FLAG_WATER } from './terrain.ts';
+import { parseTerrain, readHeights, readTextureLayers, readMask, readGroundFlags, readWaterPlane, readPassability, FLAG_WATER } from './terrain.ts';
 import { extractMeshes, readGeometryRefFromModelXdb } from './geometry.ts';
 import { decodeDDS } from './dds.ts';
 import { loadMap } from './map.ts';
@@ -94,6 +94,12 @@ export interface Floor {
    * turn a stream into a canyon.
    */
   riverVerts: number[];
+  /**
+   * Explicit passability mask: 0 blocked, 1 walkable. The editor's Masks tab
+   * writes this. Water is blocked implicitly by its flag and is normally NOT
+   * recorded here, so anything showing "where can I walk" has to union the two.
+   */
+  passable: number[] | null;
   water: WaterData | null;
   splat: SplatData | null;
   instances: Instance[];
@@ -126,6 +132,7 @@ interface LoadedTerrain {
   H: Float32Array;
   flags: number[] | null;
   riverVerts: number[];
+  passable: number[] | null;
   water: WaterData | null;
   colors: number[] | null;
   splat: SplatData | null;
@@ -174,6 +181,7 @@ export function buildScene(
       // the renderer uses it to tell a designed incline from a cut edge.
       flags: flags ? Array.from(flags) : null,
       riverVerts: riverVertices(t),
+      passable: (() => { const p = readPassability(t); return p ? Array.from(p) : null; })(),
       water: buildWater(t, opt.seaLevel ?? SEA_LEVEL, assetRoot),
       colors: terrainColors(t, readXdb, tileColorCache),
       splat: buildSplat(t, readXdb, assetRoot, tileTexCache, tileColorCache, opt.tileSize || 256),
@@ -244,6 +252,7 @@ export function buildScene(
       colors: t.colors,
       flags: t.flags,
       riverVerts: t.riverVerts,
+      passable: t.passable,
       water: t.water,
       splat: t.splat,
       instances: floorInstances[f] ?? [],

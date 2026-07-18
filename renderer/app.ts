@@ -88,6 +88,10 @@ interface Floor3D {
    *     0.2 above the bed forever, which is what made a dragged river ragged.
    */
   riverDrop: Map<number, number>;
+  /** Explicit passability mask: 0 blocked, 1 walkable. */
+  passable: number[] | null;
+  /** The red "you cannot walk here" overlay, built on demand. */
+  blockMesh: THREE.Mesh | null;
   /** Ground colours for the fallback material, kept for remeshing. */
   colors: number[] | null;
   group: THREE.Group;
@@ -470,7 +474,9 @@ function makeWaterMesh(V: number, cells: number[], level: number, tex: string | 
   } else {
     wmat.color.setHex(0x0a2b2e); // fall back to the sheet's own dark tone
   }
-  return new THREE.Mesh(wg, wmat);
+  const mesh = new THREE.Mesh(wg, wmat);
+  mesh.renderOrder = WATER_ORDER;
+  return mesh;
 }
 
 function terrainGeometry(
@@ -665,6 +671,7 @@ function buildFloor(floor: Floor, geos: THREE.BufferGeometry[], mats: THREE.Mate
     name: floor.name, V, heights, flags: floor.flags, colors: floor.colors,
     // A river already in the map is at full depth: never dig it again.
     riverDrop: new Map(floor.riverVerts.map((v) => [v, RIVER_DEPTH])),
+    passable: floor.passable, blockMesh: null,
     group, objGroup, meshes, terrainMesh, waterMesh, waterTex: floor.water?.tex ?? null,
     splat: floor.splat, maskTex: null, instances: floor.instances,
   };
@@ -867,7 +874,7 @@ renderer.domElement.addEventListener('pointerdown', (ev) => {
     strokeVerts.clear();
     riverHeights.clear();
     lastTile = -1; lastTick = 0;   // a new stroke always applies its first tick
-    if (sculptDir === 0) brushAt(ev); else sculptTick(ev);
+    applyBrush(ev);
     return;
   }
   const hit = pickObject(ev);
@@ -884,7 +891,7 @@ renderer.domElement.addEventListener('pointermove', (ev) => {
   // Track the footprint on every move, painting or not -- the point of the
   // gizmo is to show where a stroke WOULD land before committing to one.
   if (brushOn) updateBrushCursor(tileUnderCursor(ev));
-  if (painting) { if (sculptDir === 0) brushAt(ev); else sculptTick(ev); return; }
+  if (painting) { applyBrush(ev); return; }
   if (!dragging || !selected) return;
   // Project the cursor onto a horizontal plane at the object's height and snap
   // the resulting world position to the tile grid.
@@ -907,7 +914,7 @@ addEventListener('pointerup', async (ev) => {
   if (painting) {
     painting = false;
     controls.enabled = true;
-    await (sculptDir === 0 ? commitStroke() : commitSculpt());
+    await commitBrush();
     return;
   }
   if (!world || !down) return;
@@ -944,6 +951,108 @@ let brushSize = 1;         // in tiles: 1, 3, 5, 7
 let painting = false;
 /** Vertices touched by the stroke in progress, deduped. */
 const strokeVerts = new Set<number>();
+
+// --- passability overlay ----------------------------------------------------
+//
+// The original editor's Masks tab paints impassable ground and shows it as a
+// red wash. This shows the same thing, and ONLY that: the mask plane is the
+// whole truth about blocking.
+//
+// It is tempting to also paint water red, on the grounds that you cannot walk
+// there. That is backwards. Sea carries ground flag 0, which means NAVIGABLE —
+// boats cross it — so it is not blocked at all, and the shipped maps agree:
+// flag-0 vertices are masked 6.4% of the time against a 9.0% background, i.e.
+// less often than average, precisely because there is nothing to block. A small
+// pond that a designer wants closed off gets masked by hand like anything else.
+
+let showBlocked = false;
+
+/** Draw order for the sea sheet; the ground mask has to land underneath it. */
+const WATER_ORDER = 2;
+
+/** Cells where at least one corner cannot be walked on. */
+function blockedGeometry(fl: Floor3D): THREE.BufferGeometry {
+  const V = fl.V;
+  const blocked = (v: number): boolean => fl.passable ? fl.passable[v] === 0 : false;
+  const pos: number[] = [], idx: number[] = [];
+  const LIFT = 0.08;
+  for (let y = 0; y < V - 1; y++) for (let x = 0; x < V - 1; x++) {
+    const a = y * V + x, b = a + 1, c = a + V, d = c + 1;
+    if (!blocked(a) && !blocked(b) && !blocked(c) && !blocked(d)) continue;
+    const base = pos.length / 3;
+    for (const [vx, vy, vi] of [[x, y, a], [x + 1, y, b], [x, y + 1, c], [x + 1, y + 1, d]] as const) {
+      pos.push(vx, vy, fl.heights[vi]! + LIFT);
+    }
+    idx.push(base, base + 1, base + 2, base + 1, base + 3, base + 2);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pos), 3));
+  g.setIndex(idx);
+  g.computeBoundingSphere();
+  return g;
+}
+
+/** Rebuild the overlay for a floor, or drop it when nothing is blocked. */
+function refreshBlocked(fl: Floor3D): void {
+  if (fl.blockMesh) {
+    fl.group.remove(fl.blockMesh);
+    fl.blockMesh.geometry.dispose();
+    fl.blockMesh = null;
+  }
+  if (!showBlocked) return;
+  const g = blockedGeometry(fl);
+  if (!g.getIndex()?.count) { g.dispose(); return; }
+  const mat = new THREE.MeshBasicMaterial({
+    color: 0xd63030, transparent: true, opacity: 0.45,
+    side: THREE.DoubleSide, depthWrite: false,
+  });
+  fl.blockMesh = new THREE.Mesh(g, mat);
+  // The mask belongs to the GROUND, and water is a separate sheet lying over it.
+  // So this draws before the sea and lets it tint what shows through, the way a
+  // masked pond reads in the original editor: the bed is red, the water is not.
+  // Drawing it last instead put a flat red film on top of the water, which looks
+  // like the water itself was masked.
+  fl.blockMesh.renderOrder = WATER_ORDER - 1;
+  fl.group.add(fl.blockMesh);
+}
+
+function setShowBlocked(on: boolean): void {
+  showBlocked = on;
+  $('blockbtn').classList.toggle('on', on);
+  if (world) for (const fl of world.floors) refreshBlocked(fl);
+}
+
+/** Paint or erase the mask under the brush. */
+function maskAt(ev: PointerEvent, walkable: boolean): void {
+  const fl = activeFloor();
+  if (!fl.passable) return;
+  const at = tileUnderCursor(ev);
+  if (!at) return;
+  const verts = brushVerts(fl.V, at.x, at.y, brushSize);
+  const fresh = verts.filter((v) => !strokeVerts.has(v));
+  if (!fresh.length) return;
+  for (const v of fresh) {
+    strokeVerts.add(v);
+    fl.passable[v] = walkable ? 1 : 0;
+  }
+  // The overlay is the only feedback this brush has, so force it on: masking
+  // blind would be indistinguishable from the tool not working.
+  if (!showBlocked) setShowBlocked(true); else refreshBlocked(fl);
+}
+
+/** Send the finished mask stroke. */
+async function commitMask(walkable: boolean): Promise<void> {
+  if (!strokeVerts.size || !world) { strokeVerts.clear(); return; }
+  const verts = [...strokeVerts];
+  strokeVerts.clear();
+  try {
+    await window.editor.setMask({ floor: world.active, verts, walkable });
+    markDirty(true);
+  } catch (e) {
+    $('hud').textContent = 'mask failed (reload to resync): '
+      + (e instanceof Error ? e.message : String(e));
+  }
+}
 
 // --- brush cursor ----------------------------------------------------------
 //
@@ -1189,7 +1298,11 @@ const WATER_LEVEL = 0.0;    // what `lower` digs a bed to, exactly
 const STEP = 0.35;          // height change per brush tick at full strength
 const TICK_MS = 70;         // how often a held brush reapplies
 
-let sculptDir = 0;          // +1 raise, -1 lower, 0 = tile paint mode
+/** What a left-drag does. Mirrors the mode selector in the toolbar. */
+type BrushMode = 'paint' | 'raise' | 'lower' | 'mask' | 'erase';
+let brushMode: BrushMode = 'paint';
+/** Height direction for the sculpt modes; 0 for the rest. */
+let sculptDir = 0;
 let lastTick = 0;
 let lastTile = -1;
 
@@ -1292,6 +1405,26 @@ async function commitSculpt(): Promise<void> {
   } catch (e) {
     $('hud').textContent = 'sculpt failed (reload to resync): '
       + (e instanceof Error ? e.message : String(e));
+  }
+}
+
+/** One tick of whichever brush is armed. */
+function applyBrush(ev: PointerEvent): void {
+  switch (brushMode) {
+    case 'paint': brushAt(ev); break;
+    case 'raise': case 'lower': sculptTick(ev); break;
+    case 'mask': maskAt(ev, false); break;
+    case 'erase': maskAt(ev, true); break;
+  }
+}
+
+/** Hand the finished stroke to the main process. */
+async function commitBrush(): Promise<void> {
+  switch (brushMode) {
+    case 'paint': await commitStroke(); break;
+    case 'raise': case 'lower': await commitSculpt(); break;
+    case 'mask': await commitMask(false); break;
+    case 'erase': await commitMask(true); break;
   }
 }
 
@@ -1414,7 +1547,7 @@ function renderPalette(): void {
       $('pal-sel').textContent = `${t.name} · priority ${t.priority}`;
       // Choosing a tile is the intent to paint with it: switch to paint mode
       // and arm, so the click leads somewhere instead of highlighting a swatch.
-      sculptDir = 0;
+      brushMode = 'paint'; sculptDir = 0;
       $select('brushmode').value = 'paint';
       setBrush(true);
       renderPalette();
@@ -1470,7 +1603,7 @@ $('palbtn').onclick = () => setPalette(!paletteOpen);
 $('brushbtn').onclick = () => {
   // Arming the tile brush without a tile chosen would silently do nothing, so
   // open the palette instead and let the user pick one. Sculpting needs no tile.
-  if (!brushOn && sculptDir === 0 && !paintTile) {
+  if (!brushOn && brushMode === 'paint' && !paintTile) {
     setPalette(true);
     $('hud').textContent = 'pick a ground tile to paint with';
     return;
@@ -1481,14 +1614,23 @@ $select('brushsizesel').addEventListener('change', (e) => {
   brushSize = +(e.currentTarget as HTMLSelectElement).value;
 });
 $select('brushmode').addEventListener('change', (e) => {
-  const m = (e.currentTarget as HTMLSelectElement).value;
-  sculptDir = m === 'raise' ? 1 : m === 'lower' ? -1 : 0;
-  // Picking a mode is the intent to use it, so arm right away. Raise and lower
-  // need nothing else; paint needs a tile, so send the user to the palette.
-  if (sculptDir !== 0) { setBrush(true); $('hud').textContent = m === 'raise' ? 'raising' : 'lowering'; }
-  else if (paintTile) setBrush(true);
-  else { setBrush(false); setPalette(true); $('hud').textContent = 'pick a ground tile to paint with'; }
+  brushMode = (e.currentTarget as HTMLSelectElement).value as BrushMode;
+  sculptDir = brushMode === 'raise' ? 1 : brushMode === 'lower' ? -1 : 0;
+  // Picking a mode is the intent to use it, so arm right away. Only paint needs
+  // something else chosen first, so that is the one case that redirects.
+  if (brushMode === 'paint' && !paintTile) {
+    setBrush(false); setPalette(true);
+    $('hud').textContent = 'pick a ground tile to paint with';
+    return;
+  }
+  setBrush(true);
+  const says: Record<BrushMode, string> = {
+    paint: 'painting', raise: 'raising', lower: 'lowering',
+    mask: 'masking: left-drag blocks movement', erase: 'erasing the movement mask',
+  };
+  $('hud').textContent = says[brushMode];
 });
+$('blockbtn').onclick = () => setShowBlocked(!showBlocked);
 
 // Cliff shading on/off, so the rock blend can be compared against the raw
 // stretched-ground look it replaces.
@@ -1542,6 +1684,7 @@ async function loadMapPath(path: string | null): Promise<void> {
     $('brushwrap').style.display = 'flex';
     setBrush(false); // a fresh map starts in camera mode
     $('cliffbtn').style.display = '';
+    $('blockbtn').style.display = '';
     setCliffs(cliffAmount > 0);
     $('help').style.display = '';
     // A newly loaded map has its own layer set; refresh the "used" markers.

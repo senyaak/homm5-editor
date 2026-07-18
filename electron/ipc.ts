@@ -148,6 +148,20 @@ export interface PaintRiverPayload {
   heights: number[];
 }
 
+/**
+ * Payload of `terrain:mask` — the original editor's Masks tab.
+ *
+ * Blocking is explicit and separate from everything else: water is impassable
+ * because of its ground flag, not because it is masked, so this only records
+ * decisions a designer makes by hand.
+ */
+export interface MaskPayload {
+  floor: number;
+  verts: number[];
+  /** true = Erase (walkable), false = Mask (blocked). */
+  walkable: boolean;
+}
+
 /** Result of `terrain:paint`. */
 export interface PaintTileResult {
   ok: true;
@@ -213,6 +227,7 @@ export interface EditorApi {
   listTiles(): Promise<TerrainTilesResult>;
   paintTile(p: PaintTilePayload): Promise<PaintTileResult>;
   paintRiver(p: PaintRiverPayload): Promise<PaintTileResult>;
+  setMask(p: MaskPayload): Promise<PaintTileResult>;
   sculpt(p: SculptPayload): Promise<SculptResult>;
   addLayer(p: AddLayerPayload): Promise<AddLayerResult>;
   /**
