@@ -34,6 +34,16 @@ import type { Mesh } from './geometry.ts';
 type ReadXdb = (href: string) => string | null;
 
 /**
+ * How a material blends, straight from its <AlphaMode>.
+ *
+ * Counted across the shipped materials: ALPHA_TEST 2375, OPAQUE 1591,
+ * TRANSPARENT 1049, OVERLAY 435, OVERLAY_ZWRITE 17, DECAL 4.
+ */
+export type AlphaMode =
+  | 'AM_OPAQUE' | 'AM_ALPHA_TEST' | 'AM_TRANSPARENT'
+  | 'AM_OVERLAY' | 'AM_OVERLAY_ZWRITE' | 'AM_DECAL';
+
+/**
  * One submesh of a model, with the material it uses.
  *
  * A model's meshes are concatenated into a single vertex/index buffer, and each
@@ -47,8 +57,8 @@ export interface GeomPart {
   count: number;
   /** Downsampled texture as a PNG data URI, or null if unresolved. */
   tex: string | null;
-  /** True for cutout textures (foliage), so the renderer can alpha-test. */
-  alpha: boolean;
+  /** How this part blends, as its material declares. */
+  alphaMode: AlphaMode;
 }
 
 /** One decoded mesh, ready for the renderer. Arrays are plain JSON. */
@@ -526,11 +536,14 @@ function addGeom(geoms: GeomData[], meshes: Mesh[], model: string, assetRoot: st
     const mi = pick[i] ?? 0;
     if (!cache.has(mi)) {
       // Without UVs a texture cannot be placed, so those parts stay untextured.
-      const href = mats[mi];
+      const href = mats[mi]?.tex;
       cache.set(mi, hasUV && href ? textureDataUri(model, assetRoot, texSize, href) : null);
     }
     const t = cache.get(mi) ?? null;
-    parts.push({ start, count, tex: t ? t.uri : null, alpha: t ? t.hasAlpha : false });
+    // How to blend is the material's own declaration, not a guess from the
+    // texels. Reading it off the image said "this has soft edges, alpha-test
+    // it", which is the wrong answer for a decal that is meant to be blended.
+    parts.push({ start, count, tex: t ? t.uri : null, alphaMode: mats[mi]?.alphaMode ?? 'AM_OPAQUE' });
     start += count;
   }
   geoms.push({
@@ -570,29 +583,40 @@ export function pngDataUri(w: number, h: number, rgba: Uint8Array): string {
 // Abandoned Mine — four meshes, four materials — it put the gold-mine texture
 // on the crystals, the mound and the crag alike.
 
-/** Texture href of one material, following an external <Item href> if needed. */
-function materialTexture(itemXml: string, assetRoot: string): string | null {
-  const inline = itemXml.match(/<Texture href="([^"]*)"/);
-  if (inline && inline[1]) return inline[1];
-  // Not inline: the Item itself points at a (Material).xdb elsewhere.
-  const ext = itemXml.match(/^\s*href="([^"]+)"/);
-  if (!ext || !ext[1]) return null;
-  try {
-    const p = join(assetRoot, ext[1].split('#')[0]!);
-    if (!existsSync(p)) return null;
-    const m = readFileSync(p, 'utf8').match(/<Texture href="([^"]*)"/);
-    return m && m[1] ? m[1] : null;
-  } catch { return null; }
+/** A material as the renderer needs it: what to draw and how to blend it. */
+interface MaterialInfo {
+  tex: string | null;
+  alphaMode: AlphaMode;
 }
 
-/** Every material's texture href, in the order <Materials> lists them. */
-function modelMaterials(model: string, assetRoot: string): (string | null)[] {
+const NO_MATERIAL: MaterialInfo = { tex: null, alphaMode: 'AM_OPAQUE' };
+
+/** Read one material, following an external <Item href> when it is not inline. */
+function materialInfo(itemXml: string, assetRoot: string): MaterialInfo {
+  const read = (xml: string): MaterialInfo => ({
+    tex: xml.match(/<Texture href="([^"]*)"/)?.[1] ?? null,
+    alphaMode: (xml.match(/<AlphaMode>([^<]*)<\/AlphaMode>/)?.[1] ?? 'AM_OPAQUE') as AlphaMode,
+  });
+  if (/<Material\b/.test(itemXml)) return read(itemXml);
+  // Not inline: the Item itself points at a (Material).xdb elsewhere. The
+  // Abandoned Mine's crag is one of these, and reading only inline materials
+  // missed it entirely.
+  const ext = itemXml.match(/^\s*href="([^"]+)"/);
+  if (!ext || !ext[1]) return NO_MATERIAL;
+  try {
+    const p = join(assetRoot, ext[1].split('#')[0]!);
+    return existsSync(p) ? read(readFileSync(p, 'utf8')) : NO_MATERIAL;
+  } catch { return NO_MATERIAL; }
+}
+
+/** Every material, in the order <Materials> lists them. */
+function modelMaterials(model: string, assetRoot: string): MaterialInfo[] {
   const open = model.indexOf('<Materials>');
   const close = model.indexOf('</Materials>');
   if (open < 0 || close < 0) return [];
   // A <Material> body has no nested <Item>, so splitting on <Item is safe here.
   const parts = model.slice(open + 11, close).split(/<Item\b/).slice(1);
-  return parts.map((p) => materialTexture(p, assetRoot));
+  return parts.map((p) => materialInfo(p, assetRoot));
 }
 
 /**

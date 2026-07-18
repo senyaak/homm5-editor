@@ -242,19 +242,46 @@ const greyMat = new THREE.MeshLambertMaterial({ color: 0x8a8f98, side: THREE.Dou
  */
 const texCache = new Map<string, THREE.Material>();
 
-/** Material for one submesh: its own texture, or grey when it has none. */
+/**
+ * Material for one submesh: its own texture, blended as its material says.
+ *
+ * The mode comes from the file's <AlphaMode>, not from inspecting the texels.
+ * Guessing from the image said "this has soft edges, so alpha-test it", which
+ * is exactly wrong for a decal meant to be blended: the Abandoned Mine's base
+ * plate is a nearly black texture at alpha 33/255, and drawn opaque it is the
+ * grey slab under the building instead of a soft shadow on the grass.
+ */
 function materialFor(part: GeomPart): THREE.Material {
   if (!part.tex) return greyMat;
-  const hit = texCache.get(part.tex);
+  // Cached per texture AND mode: the same image is used both ways in places.
+  const key = `${part.alphaMode}|${part.tex}`;
+  const hit = texCache.get(key);
   if (hit) return hit;
   const tx = texLoader.load(part.tex);
   tx.wrapS = tx.wrapT = THREE.RepeatWrapping;
   tx.flipY = false;
   const m = new THREE.MeshLambertMaterial({ map: tx, side: THREE.DoubleSide });
-  // Cutout textures (foliage): discard transparent texels so leaves aren't
-  // opaque black cards. alphaTest avoids the sorting cost of full transparency.
-  if (part.alpha) { m.alphaTest = 0.5; m.transparent = false; }
-  texCache.set(part.tex, m);
+  switch (part.alphaMode) {
+    case 'AM_ALPHA_TEST':
+      // Cutout (foliage): discard transparent texels so leaves aren't opaque
+      // black cards, without paying for sorted transparency.
+      m.alphaTest = 0.5;
+      break;
+    case 'AM_TRANSPARENT':
+    case 'AM_OVERLAY':
+    case 'AM_DECAL':
+      // Blended. depthWrite off so a decal does not carve a hole in whatever
+      // is drawn after it.
+      m.transparent = true;
+      m.depthWrite = false;
+      break;
+    case 'AM_OVERLAY_ZWRITE':
+      m.transparent = true;
+      break;
+    default: // AM_OPAQUE
+      break;
+  }
+  texCache.set(key, m);
   return m;
 }
 
