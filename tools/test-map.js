@@ -62,6 +62,34 @@ if (rich) {
   m2.remove(victim);
   ok(m2.objects.length === n0 - 1, `remove drops one object (${n0} -> ${m2.objects.length})`);
   ok(!m2.save().includes(removedBody), 'removed object no longer present in output');
+
+  // --- properties (the panel's data source) ---
+  const m3 = loadMap(readFileSync(rich, 'latin1'));
+  const mon = m3.objects.find((o) => o.type === 'AdvMapMonster');
+  if (mon) {
+    const props = mon.props();
+    const byName = new Map(props.map((p) => [p.name, p]));
+    ok(props.length > 0, `monster exposes properties (${props.length})`);
+    ok(!byName.has('Pos') && !byName.has('Rot') && !byName.has('Floor'),
+      'position and rotation stay out of the generic list');
+    // Structures must never be offered as text: writing into <pointLights/>
+    // would turn a list into a string.
+    for (const c of ['pointLights', 'Resources', 'AdditionalStacks']) {
+      ok(!byName.has(c), `${c} is not offered as a value`);
+    }
+    ok(byName.get('Amount')?.kind === 'number', 'Amount reads as a number');
+    ok(byName.get('Mood')?.kind === 'enum', 'Mood reads as an enum');
+    ok(byName.get('Shared')?.kind === 'href', 'Shared reads as a reference');
+    ok(byName.get('DoesNotGrow')?.kind === 'bool', 'DoesNotGrow reads as a bool');
+
+    ok(mon.setProp('Amount', '7') === true, 'a simple field can be set');
+    ok(mon.setProp('Pos', '1') === false, 'position is refused');
+    ok(mon.setProp('Shared', 'x') === false, 'a reference is refused');
+    ok(mon.setProp('pointLights', 'x') === false, 'a structure is refused');
+    ok(mon.setProp('NoSuchField', 'x') === false, 'an unknown field is refused');
+    const d = countLineDiffs(readFileSync(rich, 'latin1'), m3.save());
+    ok(d === 1, `setting one property changes exactly 1 line (got ${d})`);
+  }
 }
 
 function countLineDiffs(a, b) {

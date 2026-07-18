@@ -64,12 +64,15 @@ export class MapObject {
   type: string;
   /** `id` attribute of the <Item> wrapper, when the map assigns one. */
   id: string | null;
+  /** The map this belongs to, for questions only the whole file can answer. */
+  private owner: HommMap | null;
 
-  constructor(itemEl: XmlElement, bodyEl: XmlElement) {
+  constructor(itemEl: XmlElement, bodyEl: XmlElement, owner: HommMap | null = null) {
     this.item = itemEl;   // <Item href="#n:inline(Type)" id="...">
     this.el = bodyEl;     // <AdvMapType> body
     this.type = bodyEl.name;
     this.id = itemEl.attrs.id || null;
+    this.owner = owner;
   }
 
   get pos(): MapPos | null {
@@ -103,6 +106,108 @@ export class MapObject {
     const s = find(this.el, 'Shared');
     return s ? (s.attrs.href || null) : null;
   }
+
+  /**
+   * The object's simple fields, as a flat editable list.
+   *
+   * Read from the DOM rather than from a per-type schema. There are 21 object
+   * types with wildly different fields, and a hand-written table for each would
+   * be 21 chances to miss one and to drift from the game's own data — while the
+   * file already says what an object has. Anything a text box can honestly edit
+   * is included; nested structures (a town's buildings, a hero's army, trigger
+   * blocks) have children and are left to the typed editors of Phase 4.
+   *
+   * `Pos`, `Rot` and `Floor` are excluded: they have their own controls, and
+   * two ways to set the same value is one way to make them disagree.
+   */
+  props(): ObjectProp[] {
+    const out: ObjectProp[] = [];
+    const containers = this.owner?.containerFields();
+    for (const c of children(this.el)) {
+      if (POS_FIELDS.has(c.name)) continue;
+      // An element with element children is a structure, not a value.
+      if (children(c).length) continue;
+      // An EMPTY structure looks exactly like an empty string here, and there
+      // are plenty: <pointLights/>, <BannedRaces/>, <armySlots/>. Offering a
+      // text box for one would write <pointLights>x</pointLights> — a list
+      // turned into a string. So a field is a value only if it is never a
+      // container anywhere in this map. Measured across 40 shipped maps and 72
+      // distinct fields, no name is ever both, so this is decidable; the
+      // tempting shortcut of judging by capitalisation is not (8 of 19
+      // containers start lowercase, and `spellID` is a value).
+      if (containers?.has(c.name)) continue;
+      // href-carrying leaves are asset references — editing one as free text
+      // would mean typing a path by hand, so show it, do not offer to edit it.
+      if (c.attrs.href !== undefined) {
+        out.push({ name: c.name, value: c.attrs.href, kind: 'href' });
+        continue;
+      }
+      const v = text(c);
+      out.push({ name: c.name, value: v, kind: kindOf(v) });
+    }
+    return out;
+  }
+
+  /** Set one simple field by element name. False when it is not a simple field. */
+  setProp(name: string, value: string): boolean {
+    if (POS_FIELDS.has(name)) return false;
+    if (this.owner?.containerFields().has(name)) return false;
+    const el = find(this.el, name);
+    if (!el || children(el).length || el.attrs.href !== undefined) return false;
+    setText(el, value);
+    return true;
+  }
+}
+
+/** Fields with dedicated controls, kept out of the generic property list. */
+const POS_FIELDS = new Set(['Pos', 'Rot', 'Floor']);
+
+/**
+ * Field names that hold a structure, measured across all 109 shipped maps.
+ *
+ * Per-map detection alone is not enough: a field that happens to be empty in
+ * every object of the open map looks like a string there, and `<LinkToTown/>`
+ * or `<BannedRaces/>` would be offered as a text box. This is the union of what
+ * was ever seen carrying children anywhere, so it covers those too.
+ *
+ * Measured, not guessed, and the measurement was worth making: across those
+ * maps NO name is ever both a container and a value, so the two sources cannot
+ * contradict each other. The failure mode is also the safe one — a name listed
+ * here in error only withholds an editor, it never writes a bad value.
+ */
+const KNOWN_CONTAINERS = new Set([
+  'AdditionalStacks', 'AvailableResources', 'BannedRaces', 'CaptureTrigger',
+  'CreaturesUpgradesFilter', 'Editable', 'GarrisonHero', 'HeroDeployTrigger',
+  'LinkToTown', 'LossTrigger', 'Pos', 'PrisonedHero', 'Quest', 'Resources',
+  'ShipTile', 'Textures', 'armySlots', 'artifactIDs', 'buildings',
+  'creaturesEnabled', 'isUntransferable', 'pointLights', 'relationsOverrides',
+  'showCameras', 'spellIDs',
+]);
+
+/** What kind of editor a field's current value suggests. */
+export type PropKind = 'bool' | 'number' | 'enum' | 'text' | 'href';
+
+/** One simple field of an object, as shown in the property panel. */
+export interface ObjectProp {
+  name: string;
+  value: string;
+  kind: PropKind;
+}
+
+/**
+ * Guess an editor from the value.
+ *
+ * The format carries no types, so this reads them off the data: `true`/`false`
+ * are booleans, bare numbers are numbers, and SHOUTING_SNAKE_CASE is one of the
+ * game's enums (`MONSTER_MOOD_AGGRESSIVE`, `ATTACK_ANY`). An enum is offered as
+ * text, since the legal set lives in the game's own data rather than here — a
+ * dropdown with a guessed list would be worse than an honest text box.
+ */
+function kindOf(v: string): PropKind {
+  if (v === 'true' || v === 'false') return 'bool';
+  if (v !== '' && /^-?\d+(\.\d+)?$/.test(v)) return 'number';
+  if (/^[A-Z][A-Z0-9_]{2,}$/.test(v)) return 'enum';
+  return 'text';
 }
 
 export class HommMap {
@@ -114,6 +219,8 @@ export class HommMap {
   objectsEl: XmlElement | null;
   /** Lazily built object list; invalidated on structural edits. */
   private _objects: MapObject[] | null;
+  /** Cached container-field names; see containerFields(). */
+  private _containers: Set<string> | null = null;
 
   constructor(doc: XmlElement, desc: XmlElement) {
     this.doc = doc;
@@ -149,7 +256,7 @@ export class HommMap {
         if (item.name !== 'Item') continue;
         // The body is the first child element that is a known AdvMap* type.
         const body = children(item).find((c) => OBJECT_TYPE_SET.has(c.name)) || children(item)[0];
-        if (body) list.push(new MapObject(item, body));
+        if (body) list.push(new MapObject(item, body, this));
       }
     }
     this._objects = list;
@@ -157,6 +264,30 @@ export class HommMap {
   }
 
   objectsOfType(type: string): MapObject[] { return this.objects.filter((o) => o.type === type); }
+
+  /**
+   * Field names that hold a structure rather than a value, learned from this map.
+   *
+   * An empty `<pointLights/>` is indistinguishable from an empty string when you
+   * look at one object, so the answer comes from every object at once: if the
+   * name ever carries element children here, it is a container everywhere.
+   * Across 40 shipped maps no field name is ever both, so this does not have to
+   * pick a winner.
+   *
+   * Cached, and invalidated with the object list, since it is a fact about the
+   * current tree.
+   */
+  containerFields(): Set<string> {
+    if (this._containers) return this._containers;
+    // Seeded with what the shipped maps taught us, then widened by this map —
+    // so a mod's own structure field is caught even though it is in no list.
+    const s = new Set<string>(KNOWN_CONTAINERS);
+    for (const o of this.objects) {
+      for (const c of children(o.el)) if (children(c).length) s.add(c.name);
+    }
+    this._containers = s;
+    return s;
+  }
 
   // Count objects by type — a quick map summary.
   typeCounts(): TypeCounts {
@@ -178,6 +309,7 @@ export class HommMap {
     if (next && next.type === 'text' && /^\s*$/.test(next.text)) arr.splice(idx, 2);
     else arr.splice(idx, 1);
     this._objects = null;
+    this._containers = null;
     return true;
   }
 

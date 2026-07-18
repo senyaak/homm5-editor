@@ -7,7 +7,9 @@
 
 import type { Scene, SplatData, TileInfo } from '../src/scene.ts';
 import type { ProjectStatus } from '../src/project.ts';
-import type { TypeCounts } from '../src/map.ts';
+import type { TypeCounts, ObjectProp } from '../src/map.ts';
+
+export type { ObjectProp } from '../src/map.ts';
 
 /** One openable map found under the game-data root (`maps:list`). */
 export interface MapListEntry {
@@ -79,9 +81,23 @@ export interface RemoveObjectPayload {
   id: string;
 }
 
-/** Result of `object:rotate` and `object:remove`. */
+/** Result of `object:rotate`, `object:remove` and `object:set-prop`. */
 export interface ObjectEditResult {
   ok: true;
+}
+
+/** Result of `object:props`: the selected object's simple fields. */
+export interface ObjectPropsResult {
+  type: string;
+  props: ObjectProp[];
+}
+
+/** Payload of `object:set-prop`. */
+export interface SetPropPayload {
+  id: string;
+  /** Element name of the field, as it appears in the file. */
+  name: string;
+  value: string;
 }
 
 /** Result of `map:save`. */
@@ -240,6 +256,8 @@ export interface EditorApi {
   moveObject(id: string, x: number, y: number): Promise<MoveObjectResult>;
   rotateObject(id: string, r: number): Promise<ObjectEditResult>;
   removeObject(id: string): Promise<ObjectEditResult>;
+  objectProps(id: string): Promise<ObjectPropsResult>;
+  setObjectProp(p: SetPropPayload): Promise<ObjectEditResult>;
   save(): Promise<MapSaveResult>;
   pack(): Promise<MapPackResult>;
   status(): Promise<MapStatusResult>;

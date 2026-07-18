@@ -25,7 +25,7 @@ import type { TileInfo } from '../src/scene.ts';
 import type { HommMap, MapObject } from '../src/map.ts';
 import type {
   MapsListResult, MapListEntry, MapLoadResult, MoveObjectPayload, MoveObjectResult,
-  RotateObjectPayload, RemoveObjectPayload, ObjectEditResult,
+  RotateObjectPayload, RemoveObjectPayload, ObjectEditResult, ObjectPropsResult, SetPropPayload,
   MapSaveResult, MapPackResult, TerrainTilesResult, MapStatusResult, OpenMapDialogResult,
   ExternalChange, PaintTilePayload, PaintTileResult, SculptPayload, SculptResult,
   AddLayerPayload, AddLayerResult, PaintRiverPayload, MaskPayload,
@@ -223,6 +223,22 @@ function findObject(s: Session, id: string): MapObject {
 ipcMain.handle('object:rotate', async (_e: IpcMainInvokeEvent, { id, r }: RotateObjectPayload): Promise<ObjectEditResult> => {
   if (!session) throw new Error('no map loaded');
   findObject(session, id).setRot(r);
+  return { ok: true };
+});
+
+// --- IPC: an object's simple fields, for the property panel ---
+ipcMain.handle('object:props', async (_e: IpcMainInvokeEvent, { id }: RemoveObjectPayload): Promise<ObjectPropsResult> => {
+  if (!session) throw new Error('no map loaded');
+  const obj = findObject(session, id);
+  return { type: obj.type, props: obj.props() };
+});
+
+// --- IPC: set one simple field ---
+ipcMain.handle('object:set-prop', async (_e: IpcMainInvokeEvent, p: SetPropPayload): Promise<ObjectEditResult> => {
+  if (!session) throw new Error('no map loaded');
+  if (!findObject(session, p.id).setProp(p.name, p.value)) {
+    throw new Error(`${p.name} is not a simple field of this object`);
+  }
   return { ok: true };
 });
 

@@ -60,6 +60,22 @@
     /* Deletion has no undo yet, so it does not look like the other buttons. */
     #panel .prow button.danger { flex: 1; color: #f85149; border-color: #f8514955; }
     #panel .prow button.danger:hover { background: #f8514922; border-color: #f85149; }
+    /* Property list. Capped and scrollable: a monster carries ~20 fields and a
+       town far more, and a panel taller than the window cannot be reached. */
+    #p-props { margin-top: 10px; max-height: 40vh; overflow-y: auto; }
+    #p-props .ph { font-size: 11px; color: #6e7681; text-transform: uppercase;
+      letter-spacing: .04em; margin: 8px 0 4px; }
+    #p-props .pf { display: flex; align-items: center; gap: 6px; margin: 2px 0; }
+    #p-props .pf label { flex: 0 0 96px; color: #8b949e; font-size: 11px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #p-props .pf input[type=text], #p-props .pf input[type=number] { flex: 1; min-width: 0;
+      background: #0d1014; border: 1px solid #30363d; border-radius: 5px;
+      padding: 3px 6px; color: #c9d1d9; font-size: 11px; }
+    #p-props .pf input:focus { outline: none; border-color: #1f6feb; }
+    /* Asset references are shown, not edited: typing a path by hand is not an
+       honest editor for them. */
+    #p-props .pf .ro { flex: 1; min-width: 0; color: #6e7681; font-size: 10px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; }
 
     #hud { position: fixed; left: 12px; bottom: 12px; font-size: 12px; color: #8b949e;
       z-index: 10; pointer-events: none; transition: left .15s; }
@@ -257,6 +273,9 @@
       <button id="p-rotr" title="rotate 15° right">⟳</button>
     </div>
     <div class="prow"><button id="p-del" class="danger" title="delete this object (Del)">Delete object</button></div>
+    <!-- Simple fields read from the object itself, so every type shows what it
+         actually carries rather than what a hand-written table remembered. -->
+    <div id="p-props"></div>
     <div class="hint">Drag a selected object to move it on the grid. <b>[</b> / <b>]</b> rotate, <b>Del</b> deletes. Wheel / right-drag: camera.</div>
   </div>
 

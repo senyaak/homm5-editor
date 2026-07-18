@@ -102,6 +102,18 @@ const STUB = `<script>
     moveObject: async (...a) => { log('moveObject', a); return { ok: true }; },
     rotateObject: async (...a) => { log('rotateObject', a); return { ok: true }; },
     removeObject: async (...a) => { log('removeObject', a); return { ok: true }; },
+    // One field of every kind, so the panel's four editors are all exercised.
+    objectProps: async (id) => {
+      log('objectProps', id);
+      return { type: 'AdvMapStatic', props: [
+        { name: 'Name', value: '', kind: 'text' },
+        { name: 'Amount', value: '40', kind: 'number' },
+        { name: 'IsRemovable', value: 'false', kind: 'bool' },
+        { name: 'Mood', value: 'MONSTER_MOOD_AGGRESSIVE', kind: 'enum' },
+        { name: 'Shared', value: SH, kind: 'href' },
+      ] };
+    },
+    setObjectProp: async (p) => { log('setObjectProp', p); return { ok: true }; },
     save: async () => { log('save'); return { ok: true, status }; },
     pack: async () => ({ canceled: true }),
     status: async () => status,

@@ -739,9 +739,16 @@ function selectById(id: string): void {
   if (!boxHelper) { boxHelper = new THREE.BoxHelper(mesh, 0x4fd1c5); scene.add(boxHelper); }
   else { boxHelper.setFromObject(mesh); boxHelper.visible = true; }
   updatePanel();
+  void loadProps();
   syncExplorerSel();
 }
-function deselect(): void { selected = null; if (boxHelper) boxHelper.visible = false; updatePanel(); syncExplorerSel(); }
+function deselect(): void {
+  selected = null;
+  if (boxHelper) boxHelper.visible = false;
+  updatePanel();
+  void loadProps();
+  syncExplorerSel();
+}
 
 // Frame the camera on a mesh: keep the current view direction but recenter and
 // back off to a distance that fits the object — so clicking a list row actually
@@ -862,6 +869,10 @@ function updatePanel(): void {
   $('p-rot').textContent = `${degOf(it.r).toFixed(0)}°`;
   $input('p-rotslider').value = String(degOf(it.r));
   $('p-shared').textContent = '—';
+  // Deliberately NOT loading properties here: updatePanel runs on every
+  // pointermove of an object drag, and refetching a field list per mouse move
+  // would both flood the bridge and yank focus out of an input mid-edit.
+  // Properties follow the SELECTION, so they load in selectById.
 }
 
 // --- rotate and delete ------------------------------------------------------
@@ -923,6 +934,88 @@ async function deleteSelected(): Promise<void> {
   renderExplorer();
   markDirty(true);
   $('hud').textContent = `deleted ${objName(inst)}`;
+}
+
+// --- property panel ---------------------------------------------------------
+//
+// The fields come from the object itself rather than from a per-type table
+// here: 21 object types, and the file already says what each one carries. See
+// MapObject.props().
+//
+// Written on `change`, not on every keystroke, so a half-typed number never
+// reaches the map. The panel does not re-read afterwards — the map took the
+// value verbatim, so re-rendering would only risk showing something else.
+
+/** Which object the visible property list belongs to, so a stale reply is dropped. */
+let propsFor: string | null = null;
+
+async function loadProps(): Promise<void> {
+  const host = $('p-props');
+  host.innerHTML = '';
+  if (!selected) { propsFor = null; return; }
+  const id = selected.id;
+  propsFor = id;
+  let res;
+  try {
+    res = await window.editor.objectProps(id);
+  } catch (e) {
+    host.textContent = 'could not read properties: ' + (e instanceof Error ? e.message : String(e));
+    return;
+  }
+  // Selection can move while the reply is in flight; showing the old object's
+  // fields under the new object's heading would be a quiet lie.
+  if (propsFor !== id || !selected || selected.id !== id) return;
+  if (!res.props.length) { host.innerHTML = '<div class="ph">no simple fields</div>'; return; }
+
+  const head = document.createElement('div');
+  head.className = 'ph';
+  head.textContent = 'properties';
+  host.appendChild(head);
+
+  for (const p of res.props) {
+    const row = document.createElement('div');
+    row.className = 'pf';
+    const label = document.createElement('label');
+    label.textContent = p.name;
+    label.title = p.name;
+    row.appendChild(label);
+
+    if (p.kind === 'href') {
+      const ro = document.createElement('span');
+      ro.className = 'ro';
+      // Empty hrefs are common and mean "nothing referenced"; say so rather
+      // than showing a blank that reads as a rendering bug.
+      ro.textContent = p.value || '(none)';
+      ro.title = p.value;
+      row.appendChild(ro);
+    } else if (p.kind === 'bool') {
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = p.value === 'true';
+      cb.addEventListener('change', () => { void setProp(id, p.name, String(cb.checked)); });
+      row.appendChild(cb);
+    } else {
+      const inp = document.createElement('input');
+      inp.type = p.kind === 'number' ? 'number' : 'text';
+      inp.value = p.value;
+      // Enums are text: the legal set lives in the game's data, and a dropdown
+      // built from a guess would refuse values the game accepts.
+      if (p.kind === 'enum') inp.title = 'one of the game’s enum values';
+      inp.addEventListener('change', () => { void setProp(id, p.name, inp.value); });
+      row.appendChild(inp);
+    }
+    host.appendChild(row);
+  }
+}
+
+async function setProp(id: string, name: string, value: string): Promise<void> {
+  try {
+    await window.editor.setObjectProp({ id, name, value });
+    markDirty(true);
+    $('hud').textContent = `${name} = ${value || '(empty)'}`;
+  } catch (e) {
+    $('hud').textContent = `could not set ${name}: ` + (e instanceof Error ? e.message : String(e));
+  }
 }
 
 $('p-del').onclick = () => { void deleteSelected(); };
