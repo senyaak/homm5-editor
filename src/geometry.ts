@@ -422,3 +422,130 @@ export function readGeometryRefFromModelXdb(xml: string): { uid: string; bbox: B
   if (!size || !center) return null;
   return { uid, bbox: { cx: center[0], cy: center[1], cz: center[2], sx: size[0], sy: size[1], sz: size[2] } };
 }
+
+// --- structured mesh decoding ----------------------------------------------
+//
+// The geometry container is regular, and once its framing is read properly
+// there is nothing to guess. Layout, confirmed against the model files' own
+// <NumMeshes>:
+//
+//   tag 4  format version
+//   tag 1  root
+//     tag 2  outer
+//       tag 2  scalar
+//       tag 1  ONE PER MESH, in <MeshNames> order
+//         tag 2  scalar
+//         tag 1  mesh body
+//           tag 2   positions      count x 12   (float3)
+//           tag 3   render verts   count x 20
+//           tag 4   vertex extras  count x 24   (normals/tangents)
+//           tag 5   remap          count x u16  -> index into positions
+//           tag 6   remap copy     count x u16
+//           tag 7   TRIANGLES      count x 6    (3 x u16 into the remap)
+//           tag 9   triangle count
+//
+// Every array is framed as a count followed by the data:
+//
+//   01 08 <u32 count>  02 <size> <bytes>
+//
+// with the same width-flagged size the terrain and icon containers use: an odd
+// byte means a u32 sits there and the length is (v-1)/2, an even byte IS the
+// size and the length is v/2.
+//
+// This replaces a heuristic that scanned the file for any u16 array that could
+// plausibly be indices and kept whichever produced the least shattered mesh.
+// That guessed 118 triangles for the Abandoned Mine's first mesh where the file
+// states 443, and found 2 meshes where the model declares 4.
+
+/** Width-flagged size field: returns the byte length and where the data starts. */
+function sizeAt(b: Buffer, off: number): { len: number; at: number } {
+  const s = b[off]!;
+  if (s & 1) { const v = b.readUInt32LE(off); return { len: (v - 1) / 2, at: off + 4 }; }
+  return { len: s / 2, at: off + 1 };
+}
+
+/** One `tag <size> <payload>` record. */
+interface Rec { tag: number; at: number; len: number; end: number }
+
+/** Read the sequence of records filling [start, end). */
+function recordsIn(b: Buffer, start: number, end: number): Rec[] {
+  const out: Rec[] = [];
+  let p = start;
+  while (p + 1 < end) {
+    const tag = b[p]!;
+    const { len, at } = sizeAt(b, p + 1);
+    if (len < 0 || at + len > end) break;
+    out.push({ tag, at, len, end: at + len });
+    p = at + len;
+  }
+  return out;
+}
+
+/** A `01 08 <count> 02 <size> <data>` array: its element count and data span. */
+function countedArray(b: Buffer, start: number, end: number): { count: number; at: number; len: number } | null {
+  const recs = recordsIn(b, start, end);
+  const countRec = recs.find((r) => r.tag === 1 && r.len === 4);
+  const dataRec = recs.find((r) => r.tag === 2 && r.len > 4);
+  if (!countRec || !dataRec) return null;
+  return { count: b.readUInt32LE(countRec.at), at: dataRec.at, len: dataRec.len };
+}
+
+/**
+ * Decode every mesh in a geometry file from its structure.
+ *
+ * Returns null when the file does not match the layout, so the caller can fall
+ * back to the older heuristic rather than losing a model outright.
+ */
+export function extractMeshesStructured(b: Buffer): Mesh[] | null {
+  const top = recordsIn(b, 0, b.length);
+  const root = top.find((r) => r.tag === 1);
+  if (!root) return null;
+  const outer = recordsIn(b, root.at, root.end).find((r) => r.tag === 2);
+  if (!outer) return null;
+  // Mesh blocks are the tag-1 records of the outer block, in declaration order.
+  const blocks = recordsIn(b, outer.at, outer.end).filter((r) => r.tag === 1);
+  if (!blocks.length) return null;
+
+  const meshes: Mesh[] = [];
+  for (const block of blocks) {
+    const body = recordsIn(b, block.at, block.end).find((r) => r.tag === 1);
+    if (!body) continue;
+    const parts = recordsIn(b, body.at, body.end);
+    const of = (tag: number): { count: number; at: number; len: number } | null => {
+      const r = parts.find((x) => x.tag === tag);
+      return r ? countedArray(b, r.at, r.end) : null;
+    };
+    const posA = of(2), remapA = of(5), triA = of(7);
+    if (!posA || !triA) continue;
+    if (posA.len < posA.count * 12 || triA.len < triA.count * 6) continue;
+
+    // Triangles index the REMAP; the remap indexes the positions. Without one,
+    // the triangles address the positions directly.
+    const remap = remapA && remapA.len >= remapA.count * 2
+      ? Array.from({ length: remapA.count }, (_, i) => b.readUInt16LE(remapA.at + i * 2))
+      : null;
+
+    const positions = new Float32Array(posA.count * 3);
+    for (let i = 0; i < posA.count * 3; i++) positions[i] = b.readFloatLE(posA.at + i * 4);
+
+    const indices = new Uint32Array(triA.count * 3);
+    let bad = false;
+    for (let i = 0; i < triA.count * 3; i++) {
+      const raw = b.readUInt16LE(triA.at + i * 2);
+      const v = remap ? (remap[raw] ?? -1) : raw;
+      if (v < 0 || v >= posA.count) { bad = true; break; }
+      indices[i] = v;
+    }
+    if (bad) continue;
+
+    meshes.push({
+      positions,
+      normals: new Float32Array(0),
+      uvs: null,
+      indices,
+      vertexCount: posA.count,
+      triCount: triA.count,
+    });
+  }
+  return meshes.length ? meshes : null;
+}
