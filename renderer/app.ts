@@ -1563,7 +1563,7 @@ const PLATEAU_STEP = 2.0;
  */
 const PLATEAU_TOL = PLATEAU_STEP / 2;
 
-/** The level a Raise stroke started on; NaN between strokes. */
+/** The level a Raise or Lower stroke started on; NaN between strokes. */
 let plateauBase = NaN;
 
 /**
@@ -1587,13 +1587,14 @@ function plateauAt(ev: PointerEvent, up: boolean): void {
   // The first tick of a stroke fixes the tier being worked on. Dragging off it
   // onto a step above or below must leave that ground alone: otherwise tracing
   // along the rim of a tier quietly raises the one beneath it too, and one pass
-  // leaves a staircase of mixed heights.
+  // leaves a staircase of mixed heights. Lower is bound the same way — a pit
+  // traced along a plateau's edge should not swallow the plateau.
   if (!strokeVerts.size) plateauBase = fl.heights[at.y * fl.V + at.x]!;
   const verts = brushVerts(fl.V, at.x, at.y, brushSize);
   let touched = false;
   for (const v of verts) {
     if (strokeVerts.has(v)) continue;
-    if (up && Math.abs(fl.heights[v]! - plateauBase) > PLATEAU_TOL) continue;
+    if (Math.abs(fl.heights[v]! - plateauBase) > PLATEAU_TOL) continue;
     strokeVerts.add(v);
     fl.heights[v] = up ? fl.heights[v]! + PLATEAU_STEP : 0;
     if (fl.flags) fl.flags[v] = up ? 32 : 0;
