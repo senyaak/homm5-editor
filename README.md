@@ -140,12 +140,15 @@ Key points:
 - ⚠️ Height is **not the only plane with a visual effect**. The flags decide where
   terrain breaks into a vertical cut and where it stays smooth, and the river
   plane carries painted water. Without them a map looks fundamentally different.
-- **Navigability is the flag, not the depth.** Flag `0` marks swimmable water and
-  those vertices sit at exactly `0.0` in 100.0% of the 62,788 flagged vertices
-  across 60 shipped maps. Painted rivers keep flag `16` and stay walkable however
-  deep the bed: `Water.xdb` carries flag `0` on only 11% of its vertices (where a
-  basin was dug under it), and `Bog.xdb` and `LavaFlow.xdb` on 0.0% — which is
-  why you can swim in the sea but not in a bog or a lava flow.
+- **Navigability is the flag, and the water texture has nothing to do with it.**
+  Flag `0` marks swimmable water; those vertices sit at exactly `0.0` in 100.0%
+  of the 62,788 flagged vertices measured across 60 shipped maps. The engine
+  draws the surface itself — what is painted on a navigable bed is ordinary
+  ground: DarkGround 29%, Conquest/Dirt 27%, Grass 14%, and 56% of such vertices
+  carry no strong texture at all. `Water.xdb` does not appear in the top eight.
+  Conversely a painted river keeps flag `16` and stays walkable however deep its
+  bed. So a lake is dug with `lower`, not painted; `Water.xdb`, `Bog.xdb` and
+  `LavaFlow.xdb` are decorative shallows you walk through.
 - Height `2.0` is the **default ground level**, not water. A bed dug by `lower`
   is always exactly `0.0`.
 
