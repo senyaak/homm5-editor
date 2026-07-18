@@ -106,7 +106,8 @@ every brush.
 
 - [x] Select and move objects, snapped to the grid ✅ (plus a categorised,
       searchable object list)
-- [ ] ⬜ Rotate and delete objects
+- [x] Rotate and delete objects: a free-angle slider, ±15° buttons, `[` / `]`
+      keys (Shift for 45°), and Delete — which confirms, since there is no undo ✅
 - [ ] ⬜ Undo/redo (command model), multi-select, copy/paste
 - [ ] ⬜ Property panel for the selected object (owner, army, resources, script name…)
 - [x] Terrain writing: masks, flags, heights and the river plane — `src/terrain.ts`
