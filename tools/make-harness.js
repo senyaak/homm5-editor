@@ -48,7 +48,10 @@ const STUB = `<script>
     V, size: 8, layerCount: 2,
     layerTex: [solid(8, 8, 110, 140, 80), solid(8, 8, 70, 90, 130)],
     maskGroups: [solid(V, V, 255, 0, 0)],
-    rockTex: null,
+    // Required, or uCliff stays 0 and cliff shading is skipped entirely. Kept
+    // near the real Rock.dds's 26% grey: a light stand-in gets multiplied to
+    // white by the shader and hides everything drawn on the face.
+    rockTex: solid(8, 8, 66, 66, 70),
     paths: [T + 'Grass/Grass.xdb', T + 'Water/Bog.xdb'],
   };
   const floor = {

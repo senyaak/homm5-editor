@@ -26,7 +26,7 @@ so a `.cts` preload dies on the first type annotation — silently, leaving
 - **Terrain rendering, end to end** (`npm start`): tile textures through a splat
   shader compositing by `<Priority>`, sea derived from the ground-flag plane,
   painted river brushes, vertical cut faces where ground kinds meet, rock-textured
-  cliffs, and both floors. Write-up: [docs/TERRAIN_FORMAT.md](docs/TERRAIN_FORMAT.md).
+  cliffs with the broken-soil band along their crown, and both floors. Write-up: [docs/TERRAIN_FORMAT.md](docs/TERRAIN_FORMAT.md).
 - **`GroundTerrain.bin`** (`src/terrain.ts`): reads heights, texture layer masks,
   ground flags and the river plane, and writes every one of them back. Planes
   are fixed-size, so a write is a byte-for-byte overwrite in place and the

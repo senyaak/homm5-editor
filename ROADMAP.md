@@ -89,8 +89,7 @@ project.json
       Splat shader compositing by `<Priority>`, sea from the ground-flag plane,
       painted river brushes, vertical cut faces at ground-kind boundaries,
       rock-textured cliffs, both floors. Format write-up in docs/TERRAIN_FORMAT.md.
-      Cosmetic remainder: shoreline foam, a brown band along the top of a cliff,
-      water animation.
+      Cosmetic remainder: shoreline foam and water animation.
 - [ ] ⬜ Render ALL object types, not just static decor; for creatures/heroes on
       GR2 skeletons a static bind pose or billboard icon is enough
 - [ ] ⬜ RTS camera niceties: tile grid, minimap, hover highlight
