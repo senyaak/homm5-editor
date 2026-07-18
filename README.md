@@ -56,7 +56,11 @@ so a `.cts` preload dies on the first type annotation — silently, leaving
   intermediate the format has — measured, `16→24` and `24→32` each step 1.00,
   exactly half the 2.00 between tiers. It only applies at the foot of a cut,
   because that is the only place a ramp exists: all 3,718 ramp vertices in the
-  shipped maps border a different tier, 100.0% of them. All of them remesh
+  shipped maps border a different tier, 100.0% of them. *Plateau* levels
+  everything it touches to the tier the stroke started on — drag from an upper
+  tier and the ground around is pulled up to it.
+- **Rect** beside the 1/3/5/7 brush sizes: drag out a rectangle, which previews
+  as you go and applies once on release. It works with every tool. All of them remesh
   live, and a basin dug on a dry map raises its sea immediately.
 - **Ground palette and tile brush**: all 82 shipped tiles previewed from their
   own `.dds`, grouped by category. Pick one, arm the brush, and left-drag to

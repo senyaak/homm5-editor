@@ -894,6 +894,7 @@ renderer.domElement.addEventListener('pointerdown', (ev) => {
     strokeVerts.clear();
     riverHeights.clear();
     lastTile = -1; lastTick = 0;   // a new stroke always applies its first tick
+    rectAnchor = rectMode ? tileUnderCursor(ev) : null;
     applyBrush(ev);
     return;
   }
@@ -934,6 +935,12 @@ addEventListener('pointerup', async (ev) => {
   if (painting) {
     painting = false;
     controls.enabled = true;
+    // Rect did nothing while dragging: this is where the rectangle lands.
+    if (rectMode && rectAnchor) {
+      const r = currentRect(ev);
+      if (r) applyRect(r);
+      rectAnchor = null;
+    }
     await commitBrush();
     return;
   }
@@ -1186,12 +1193,9 @@ function setShowBlocked(on: boolean): void {
 }
 
 /** Paint or erase the mask under the brush. */
-function maskAt(ev: PointerEvent, walkable: boolean): void {
+function maskAt(tiles: number[], walkable: boolean): void {
   const fl = activeFloor();
   if (!fl.passable) return;
-  const at = tileUnderCursor(ev);
-  if (!at) return;
-  const tiles = brushTiles(fl.V, at.x, at.y, brushSize);
   const fresh = tiles.filter((v) => !strokeVerts.has(v));
   if (!fresh.length) return;
   for (const v of fresh) {
@@ -1248,7 +1252,13 @@ function updateBrushCursor(at: { x: number; y: number } | null): void {
   const c = ensureBrushCursor();
   if (!at || !world) { c.visible = false; return; }
   const fl = activeFloor();
-  const k = Math.floor(Math.max(1, brushSize) / 2);
+  // Mid-drag in Rect mode the footprint is the rectangle so far, not a square
+  // under the cursor — otherwise the one size whose shape you choose yourself is
+  // the one size you cannot see before committing to it.
+  const r = rectMode && rectAnchor
+    ? { x0: Math.min(rectAnchor.x, at.x), y0: Math.min(rectAnchor.y, at.y),
+        x1: Math.max(rectAnchor.x, at.x), y1: Math.max(rectAnchor.y, at.y) }
+    : squareRect(at.x, at.y, rectMode ? 1 : brushSize);
   const LIFT = 0.05; // just clear of the surface, so it reads as lying on it
   const z = (x: number, y: number): number => {
     const cx = Math.min(fl.V - 1, Math.max(0, x)), cy = Math.min(fl.V - 1, Math.max(0, y));
@@ -1260,14 +1270,14 @@ function updateBrushCursor(at: { x: number; y: number } | null): void {
   };
   // Every cell edge in the footprint, so the grid reads as tiles rather than
   // one box — the brush works per tile and should look like it.
-  for (let y = at.y - k; y <= at.y + k + 1; y++) {
-    for (let x = at.x - k; x <= at.x + k; x++) {
+  for (let y = r.y0; y <= r.y1 + 1; y++) {
+    for (let x = r.x0; x <= r.x1; x++) {
       if (y < 0 || y >= fl.V || x < 0 || x + 1 >= fl.V) continue;
       seg(x, y, x + 1, y);
     }
   }
-  for (let x = at.x - k; x <= at.x + k + 1; x++) {
-    for (let y = at.y - k; y <= at.y + k; y++) {
+  for (let x = r.x0; x <= r.x1 + 1; x++) {
+    for (let y = r.y0; y <= r.y1; y++) {
       if (x < 0 || x >= fl.V || y < 0 || y + 1 >= fl.V) continue;
       seg(x, y, x, y + 1);
     }
@@ -1297,6 +1307,40 @@ function tileUnderCursor(ev: PointerEvent): { x: number; y: number } | null {
  * more than the tile count. Passability is per tile, so its brush must take the
  * tiles themselves or a 1x1 stroke lands on 3x3.
  */
+/**
+ * A tile rectangle, inclusive, clamped to the map.
+ *
+ * Every brush works from one of these. A square brush is the rectangle around
+ * the cursor; the Rect size is the rectangle dragged out between two corners.
+ * Keeping "which cells" in one place is what let Rect be added withouteach brush
+ * growing its own copy of the geometry.
+ */
+export interface TileRect { x0: number; y0: number; x1: number; y1: number }
+
+/** The rectangle a square brush of `size` covers, centred on tile (cx, cy). */
+function squareRect(cx: number, cy: number, size: number): TileRect {
+  const k = Math.floor(Math.max(1, size) / 2);
+  return { x0: cx - k, y0: cy - k, x1: cx + k, y1: cy + k };
+}
+
+/** Tiles in a rectangle, as indices into a vertex-sized plane. */
+function rectTiles(V: number, r: TileRect): number[] {
+  const out: number[] = [];
+  for (let y = Math.max(0, r.y0); y <= Math.min(V - 2, r.y1); y++) {
+    for (let x = Math.max(0, r.x0); x <= Math.min(V - 2, r.x1); x++) out.push(y * V + x);
+  }
+  return out;
+}
+
+/** Corner vertices of every tile in a rectangle — one more along each axis. */
+function rectVerts(V: number, r: TileRect): number[] {
+  const out: number[] = [];
+  for (let y = Math.max(0, r.y0); y <= Math.min(V - 1, r.y1 + 1); y++) {
+    for (let x = Math.max(0, r.x0); x <= Math.min(V - 1, r.x1 + 1); x++) out.push(y * V + x);
+  }
+  return out;
+}
+
 function brushTiles(V: number, cx: number, cy: number, size: number): number[] {
   const k = Math.floor(Math.max(1, size) / 2);
   const out: number[] = [];
@@ -1412,7 +1456,7 @@ function sinkRiver(fl: Floor3D, verts: number[]): void {
 }
 
 /** Paint at the cursor, if the brush is armed and the tile is paintable. */
-function brushAt(ev: PointerEvent): void {
+function brushAt(verts: number[]): void {
   const fl = activeFloor();
   const tile = paintTile;
   if (!tile || !fl.splat) return;
@@ -1421,9 +1465,6 @@ function brushAt(ev: PointerEvent): void {
   if (!fl.maskTex) { $('hud').textContent = 'ground textures still loading…'; return; }
   const layerIdx = fl.splat.paths.indexOf(tile.path);
   if (layerIdx < 0) return; // not a layer this map has — the palette shows which do
-  const at = tileUnderCursor(ev);
-  if (!at) return;
-  const verts = brushVerts(fl.V, at.x, at.y, brushSize);
   const fresh = verts.filter((v) => !strokeVerts.has(v));
   if (!fresh.length) return;
   for (const v of fresh) strokeVerts.add(v);
@@ -1483,7 +1524,7 @@ const STEP = 0.35;          // height change per brush tick at full strength
 const TICK_MS = 70;         // how often a held brush reapplies
 
 /** What a left-drag does. Mirrors the mode selector in the toolbar. */
-type BrushMode = 'paint' | 'bulk' | 'dig' | 'raise' | 'lower' | 'ramp' | 'mask' | 'erase';
+type BrushMode = 'paint' | 'bulk' | 'dig' | 'raise' | 'lower' | 'ramp' | 'level' | 'mask' | 'erase';
 let brushMode: BrushMode = 'paint';
 /** Height direction for the sculpt modes; 0 for the rest. */
 let sculptDir = 0;
@@ -1578,8 +1619,14 @@ const PLATEAU_STEP = 2.0;
  */
 const PLATEAU_TOL = PLATEAU_STEP / 2;
 
-/** The level a Raise or Lower stroke started on; NaN between strokes. */
+/** The level a height stroke started on; NaN between strokes. */
 let plateauBase = NaN;
+/** The tier flag that goes with it, for the levelling tool. */
+let plateauBaseFlag = 16;
+/** True while the size selector is on Rect: drag out a rectangle, apply on release. */
+let rectMode = false;
+/** Where a Rect drag started. */
+let rectAnchor: { x: number; y: number } | null = null;
 
 /**
  * Raise a plateau, or dig a pit — the original editor's Raise and Lower, as
@@ -1595,17 +1642,14 @@ let plateauBase = NaN;
  * smooth ramp however tall it is. Lower digs to exactly 0.0 and flags water,
  * which is what makes the pit flood.
  */
-function plateauAt(ev: PointerEvent, up: boolean): void {
+function plateauAt(verts: number[], up: boolean, start: number): void {
   const fl = activeFloor();
-  const at = tileUnderCursor(ev);
-  if (!at) return;
   // The first tick of a stroke fixes the tier being worked on. Dragging off it
   // onto a step above or below must leave that ground alone: otherwise tracing
   // along the rim of a tier quietly raises the one beneath it too, and one pass
   // leaves a staircase of mixed heights. Lower is bound the same way — a pit
   // traced along a plateau's edge should not swallow the plateau.
-  if (!strokeVerts.size) plateauBase = fl.heights[at.y * fl.V + at.x]!;
-  const verts = brushVerts(fl.V, at.x, at.y, brushSize);
+  if (!strokeVerts.size) plateauBase = fl.heights[start]!;
   let touched = false;
   for (const v of verts) {
     if (strokeVerts.has(v)) continue;
@@ -1637,12 +1681,11 @@ function plateauAt(ev: PointerEvent, up: boolean): void {
  * Bound to its starting level like Raise and Lower: a ramp traced along a rim
  * must not chew into the tier above or below it.
  */
-function rampAt(ev: PointerEvent): void {
+function rampAt(verts: number[], start: number): void {
   const fl = activeFloor();
-  const at = tileUnderCursor(ev);
   const flags = fl.flags;
-  if (!at || !flags) return;
-  if (!strokeVerts.size) plateauBase = fl.heights[at.y * fl.V + at.x]!;
+  if (!flags) return;
+  if (!strokeVerts.size) plateauBase = fl.heights[start]!;
 
   /** A ramp only exists where a cut does — and it is cut INTO the low side. */
   const onLowSideOfCut = (v: number): boolean => {
@@ -1657,7 +1700,7 @@ function rampAt(ev: PointerEvent): void {
   };
 
   let touched = false, blocked = false;
-  for (const v of brushVerts(fl.V, at.x, at.y, brushSize)) {
+  for (const v of verts) {
     if (strokeVerts.has(v)) continue;
     if (Math.abs(fl.heights[v]! - plateauBase) > PLATEAU_TOL) continue;
     // Already a ramp: leave it. It still sits on the low tier and still borders
@@ -1716,24 +1759,109 @@ async function commitSculpt(): Promise<void> {
   }
 }
 
+/**
+ * Level everything under the brush to the tier the stroke started on.
+ *
+ * The plateau tool: drag on an upper tier and the ground around is pulled up to
+ * it, drag on a lower one and what stands above is cut down. Unlike Raise it
+ * sets an absolute height and tier rather than adding a step, which is the whole
+ * point — it is how you get a flat table at a chosen level out of uneven ground.
+ */
+function levelAt(verts: number[], start: number): void {
+  const fl = activeFloor();
+  if (!strokeVerts.size) {
+    plateauBase = fl.heights[start]!;
+    plateauBaseFlag = fl.flags ? fl.flags[start]! : 16;
+  }
+  let touched = false;
+  for (const v of verts) {
+    if (strokeVerts.has(v)) continue;
+    strokeVerts.add(v);
+    if (fl.heights[v] === plateauBase && (!fl.flags || fl.flags[v] === plateauBaseFlag)) continue;
+    fl.heights[v] = plateauBase;
+    // The tier travels with the height. Levelling the ground without it leaves
+    // a tier boundary with no step across it, which the mesher then cuts into a
+    // wall of zero height — a seam through the middle of a flat plateau.
+    if (fl.flags) fl.flags[v] = plateauBaseFlag;
+    touched = true;
+  }
+  if (touched) remeshFloor(fl);
+}
+
+/**
+ * The tiles a stroke acts on right now.
+ *
+ * Rect defers: while the button is down it only previews, and the whole
+ * rectangle is applied once on release. Every other size acts under the cursor
+ * as you move.
+ */
+function currentRect(ev: PointerEvent): TileRect | null {
+  const at = tileUnderCursor(ev);
+  if (!at) return null;
+  if (!rectMode) return squareRect(at.x, at.y, brushSize);
+  if (!rectAnchor) return squareRect(at.x, at.y, 1);
+  return {
+    x0: Math.min(rectAnchor.x, at.x), y0: Math.min(rectAnchor.y, at.y),
+    x1: Math.max(rectAnchor.x, at.x), y1: Math.max(rectAnchor.y, at.y),
+  };
+}
+
+/** One tick of whichever brush is armed, over `r`. */
+function applyRect(r: TileRect): void {
+  const fl = activeFloor();
+  const verts = rectVerts(fl.V, r);
+  const start = Math.max(0, Math.min(fl.V * fl.V - 1, r.y0 * fl.V + r.x0));
+  switch (brushMode) {
+    case 'paint': brushAt(verts); break;
+    case 'bulk': case 'dig': sculptRect(verts); break;
+    case 'raise': plateauAt(verts, true, start); break;
+    case 'lower': plateauAt(verts, false, start); break;
+    case 'ramp': rampAt(verts, start); break;
+    case 'level': levelAt(verts, start); break;
+    case 'mask': maskAt(rectTiles(fl.V, r), false); break;
+    case 'erase': maskAt(rectTiles(fl.V, r), true); break;
+  }
+}
+
+/**
+ * Bulk and Dig over a rectangle: one step at full strength, no falloff.
+ *
+ * The radial falloff exists to round a mound made by dragging. A rectangle is
+ * an explicit shape, so tapering its edges would fight what was asked for.
+ */
+function sculptRect(verts: number[]): void {
+  const fl = activeFloor();
+  let touched = false;
+  for (const v of verts) {
+    if (strokeVerts.has(v)) continue;
+    strokeVerts.add(v);
+    const next = Math.max(0, fl.heights[v]! + sculptDir * STEP);
+    if (next === fl.heights[v]) continue;
+    fl.heights[v] = next;
+    if (fl.flags) {
+      const f = fl.flags[v]!;
+      if (!(f & 32) && !(f & 8)) fl.flags[v] = next <= 0 ? 0 : 16;
+    }
+    touched = true;
+  }
+  if (touched) remeshFloor(fl);
+}
+
 /** One tick of whichever brush is armed. */
 function applyBrush(ev: PointerEvent): void {
-  switch (brushMode) {
-    case 'paint': brushAt(ev); break;
-    case 'bulk': case 'dig': sculptTick(ev); break;
-    case 'raise': plateauAt(ev, true); break;
-    case 'lower': plateauAt(ev, false); break;
-    case 'ramp': rampAt(ev); break;
-    case 'mask': maskAt(ev, false); break;
-    case 'erase': maskAt(ev, true); break;
-  }
+  // Rect only previews while dragging; the work happens on release.
+  if (rectMode) { updateBrushCursor(tileUnderCursor(ev)); return; }
+  // Bulk and Dig keep their own rate limiting and radial falloff.
+  if (brushMode === 'bulk' || brushMode === 'dig') { sculptTick(ev); return; }
+  const r = currentRect(ev);
+  if (r) applyRect(r);
 }
 
 /** Hand the finished stroke to the main process. */
 async function commitBrush(): Promise<void> {
   switch (brushMode) {
     case 'paint': await commitStroke(); break;
-    case 'bulk': case 'dig': case 'raise': case 'lower': case 'ramp':
+    case 'bulk': case 'dig': case 'raise': case 'lower': case 'ramp': case 'level':
       await commitSculpt(); break;
     case 'mask': await commitMask(false); break;
     case 'erase': await commitMask(true); break;
@@ -1923,7 +2051,10 @@ $('brushbtn').onclick = () => {
   setBrush(!brushOn);
 };
 $select('brushsizesel').addEventListener('change', (e) => {
-  brushSize = +(e.currentTarget as HTMLSelectElement).value;
+  const v = (e.currentTarget as HTMLSelectElement).value;
+  rectMode = v === 'rect';
+  if (!rectMode) brushSize = +v;
+  if (rectMode) $('hud').textContent = 'rect: drag out a rectangle, it applies on release';
 });
 $select('brushmode').addEventListener('change', (e) => {
   brushMode = (e.currentTarget as HTMLSelectElement).value as BrushMode;
@@ -1942,6 +2073,7 @@ $select('brushmode').addEventListener('change', (e) => {
     raise: 'raise: a plateau 2.0 up, with cut edges',
     lower: 'lower: a pit dug to 0, which floods',
     ramp: 'ramp: half a step up, walkable instead of a wall',
+    level: 'plateau: pull everything to the level you start on',
     mask: 'masking: left-drag blocks movement', erase: 'erasing the movement mask',
   };
   $('hud').textContent = says[brushMode];
