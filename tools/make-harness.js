@@ -23,8 +23,10 @@ const STUB = `<script>
   const V = 25, N = V * V;
   const heights = new Array(N).fill(2);
   const flags = new Array(N).fill(16);
-  // A basin in one corner, dug to 0 and flagged water.
-  for (let y = 2; y < 8; y++) for (let x = 2; x < 8; x++) {
+  // A dug basin near the middle, so it lands in the default camera view and a
+  // brush can actually be aimed at it: flagged water and pinned to 0.0, which is
+  // the invariant the sea holds in every shipped map.
+  for (let y = 9; y < 16; y++) for (let x = 9; x < 16; x++) {
     heights[y * V + x] = 0; flags[y * V + x] = 0;
   }
   // A PNG data URI of one flat colour, for stand-in tile textures.

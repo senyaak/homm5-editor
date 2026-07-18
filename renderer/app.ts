@@ -1073,8 +1073,14 @@ const riverHeights = new Map<number, number>();
 function sinkRiver(fl: Floor3D, verts: number[]): void {
   const sunk = fl.riverSunk;
   const bed = new Set(verts);
+  // Sea is not a river. Flag 0 means navigable water and it sits at exactly 0.0
+  // in 100% of the 62,788 flagged vertices across 60 shipped maps, so digging it
+  // another 0.4 because someone painted the water texture over it would break an
+  // invariant the engine relies on. What makes water swimmable is that flag, not
+  // its depth: Bog and LavaFlow never carry it, Water only where a basin was dug.
+  const isSea = (v: number): boolean => fl.flags ? fl.flags[v] === 0 : false;
   for (const v of verts) {
-    if (sunk.has(v)) continue;
+    if (sunk.has(v) || isSea(v)) continue;
     sunk.add(v);
     const target = fl.heights[v]! - RIVER_DEPTH;
     fl.heights[v] = target;
@@ -1089,7 +1095,7 @@ function sinkRiver(fl: Floor3D, verts: number[]): void {
       const nx = x + dx, ny = y + dy;
       if (nx < 0 || nx >= fl.V || ny < 0 || ny >= fl.V) continue;
       const n = ny * fl.V + nx;
-      if (bed.has(n) || sunk.has(n)) continue;
+      if (bed.has(n) || sunk.has(n) || isSea(n)) continue;
       const target = fl.heights[n]! - RIVER_FEATHER;
       if (target >= fl.heights[n]!) continue;
       fl.heights[n] = target;
