@@ -45,10 +45,14 @@ so a `.cts` preload dies on the first type annotation — silently, leaving
   replaced by its footprint drawn on the ground — every tile the stroke will
   touch, following the terrain, so size and placement are visible before
   committing.
-- **Height brush**: raise and lower with a radial falloff, live remeshing, and
-  the flag transitions the format requires — digging a vertex to 0 floods it,
-  raising it off 0 drains it back to ground. A basin dug on a dry map raises its
-  sea immediately.
+- **Height brushes**, four of them, named as the original editor names them.
+  *Bulk* and *Dig* sculpt smoothly with a radial falloff. *Raise* stands a
+  plateau 2.0 above the ground with sheer cut edges — 2.0 because that is the
+  step on 45% of the 23,539 plateau edges in the shipped maps, and it is added
+  rather than levelled to because only 25.6% of plateau vertices are level with
+  their neighbours: a plateau carries the relief it was raised from. *Lower*
+  digs a pit to exactly 0.0 and flags it water, so it floods. All of them remesh
+  live, and a basin dug on a dry map raises its sea immediately.
 - **Ground palette and tile brush**: all 82 shipped tiles previewed from their
   own `.dds`, grouped by category. Pick one, arm the brush, and left-drag to
   paint at 1/3/5/7 tiles wide. The stroke goes into the mask texture on the GPU
