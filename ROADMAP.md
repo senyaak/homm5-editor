@@ -127,7 +127,7 @@ Rect brush, and undo/redo, which the brushes make overdue.
       Mask/Erase brushes, drawn on the ground beneath the water sheet ✅
 - [x] Raise (plateau, +2.0 with cut edges, flag 32) and Lower (pit to 0.0,
       flag 0, floods) beside the smooth Bulk and Dig ✅
-- [ ] ⬜ Terrain brushes: flatten, ramps, Rect
+- [ ] ⬜ Terrain brushes: flatten, Rect
 - [ ] ⬜ Object palette from assets (icons from `Editor/IconCache`) + drag and drop
 - [ ] ⬜ Write edits back into `.h5m` (patch in place where possible)
 

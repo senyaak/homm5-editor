@@ -1039,6 +1039,14 @@ function classifyTiles(fl: Floor3D): Uint8Array {
     if (fl.river.has(a) || fl.river.has(b) || fl.river.has(c) || fl.river.has(d)) {
       out[y * T + x] = PASS_BLOCKED; continue;
     }
+    // A ramp is a deliberate walkable incline, and its half-step of 1.0 is taller
+    // than the cliff threshold — so the slope rule would mark the one thing on
+    // the map built to be climbed. The mesher skips ramp cells for the same
+    // reason; this has to agree with it or the view contradicts the geometry.
+    const ramp = fl.flags
+      ? ((fl.flags[a]! | fl.flags[b]! | fl.flags[c]! | fl.flags[d]!) & 8) !== 0
+      : false;
+    if (ramp) continue;
     const h = [fl.heights[a]!, fl.heights[b]!, fl.heights[c]!, fl.heights[d]!];
     if (Math.max(...h) - Math.min(...h) > CLIFF_STEP) out[y * T + x] = PASS_BLOCKED;
   }
@@ -1149,7 +1157,9 @@ function refreshBlocked(fl: Floor3D): void {
   const fill = (c: number, o: number): THREE.MeshBasicMaterial => new THREE.MeshBasicMaterial({
     color: c, transparent: true, opacity: o, side: THREE.DoubleSide, depthWrite: false,
   });
-  add(tileFill(fl, cls, PASS_BLOCKED), fill(0xd63030, 0.45));
+  // Bright and fairly opaque: this wash sits on ground that is already dark
+  // rock or dirt half the time, and at 0.45 of a muted red it vanished into it.
+  add(tileFill(fl, cls, PASS_BLOCKED), fill(0xff2020, 0.62));
   // Navigable water is outlined ON TOP of the sea rather than filled under it.
   // A fill beneath the sheet is invisible; a fill above it hides the water
   // texture, which is most of what makes a lake readable. An outline says "boat
@@ -1473,7 +1483,7 @@ const STEP = 0.35;          // height change per brush tick at full strength
 const TICK_MS = 70;         // how often a held brush reapplies
 
 /** What a left-drag does. Mirrors the mode selector in the toolbar. */
-type BrushMode = 'paint' | 'bulk' | 'dig' | 'raise' | 'lower' | 'mask' | 'erase';
+type BrushMode = 'paint' | 'bulk' | 'dig' | 'raise' | 'lower' | 'ramp' | 'mask' | 'erase';
 let brushMode: BrushMode = 'paint';
 /** Height direction for the sculpt modes; 0 for the rest. */
 let sculptDir = 0;
@@ -1614,6 +1624,36 @@ function plateauAt(ev: PointerEvent, up: boolean): void {
   if (touched) remeshFloor(fl);
 }
 
+/**
+ * Cut a walkable ramp into a tier boundary.
+ *
+ * A ramp is not a gentle slope the tool draws freehand: the format has exactly
+ * one intermediate value, bit 3, and a ramp vertex sits precisely half a tier
+ * up. Measured across every shipped map, 16->24 and 24->32 each step 1.00 —
+ * half of the 2.00 between tiers. So this raises the vertices it touches by half
+ * a step and flags them, turning one wall into two half-height steps that the
+ * mesher smooths, because it smooths any cell holding a ramp vertex.
+ *
+ * Bound to its starting level like Raise and Lower: a ramp traced along a rim
+ * must not chew into the tier above or below it.
+ */
+function rampAt(ev: PointerEvent): void {
+  const fl = activeFloor();
+  const at = tileUnderCursor(ev);
+  if (!at) return;
+  if (!strokeVerts.size) plateauBase = fl.heights[at.y * fl.V + at.x]!;
+  let touched = false;
+  for (const v of brushVerts(fl.V, at.x, at.y, brushSize)) {
+    if (strokeVerts.has(v)) continue;
+    if (Math.abs(fl.heights[v]! - plateauBase) > PLATEAU_TOL) continue;
+    strokeVerts.add(v);
+    fl.heights[v] = fl.heights[v]! + PLATEAU_STEP / 2;
+    if (fl.flags) fl.flags[v] = (fl.flags[v]! & 0xf0) | 8;
+    touched = true;
+  }
+  if (touched) remeshFloor(fl);
+}
+
 /** Sculpt at the cursor, rate-limited so holding still is controllable. */
 function sculptTick(ev: PointerEvent): void {
   const fl = activeFloor();
@@ -1658,6 +1698,7 @@ function applyBrush(ev: PointerEvent): void {
     case 'bulk': case 'dig': sculptTick(ev); break;
     case 'raise': plateauAt(ev, true); break;
     case 'lower': plateauAt(ev, false); break;
+    case 'ramp': rampAt(ev); break;
     case 'mask': maskAt(ev, false); break;
     case 'erase': maskAt(ev, true); break;
   }
@@ -1667,7 +1708,8 @@ function applyBrush(ev: PointerEvent): void {
 async function commitBrush(): Promise<void> {
   switch (brushMode) {
     case 'paint': await commitStroke(); break;
-    case 'bulk': case 'dig': case 'raise': case 'lower': await commitSculpt(); break;
+    case 'bulk': case 'dig': case 'raise': case 'lower': case 'ramp':
+      await commitSculpt(); break;
     case 'mask': await commitMask(false); break;
     case 'erase': await commitMask(true); break;
   }
@@ -1874,6 +1916,7 @@ $select('brushmode').addEventListener('change', (e) => {
     bulk: 'bulk: smooth raise', dig: 'dig: smooth lower',
     raise: 'raise: a plateau 2.0 up, with cut edges',
     lower: 'lower: a pit dug to 0, which floods',
+    ramp: 'ramp: half a step up, walkable instead of a wall',
     mask: 'masking: left-drag blocks movement', erase: 'erasing the movement mask',
   };
   $('hud').textContent = says[brushMode];

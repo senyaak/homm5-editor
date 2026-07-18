@@ -51,7 +51,10 @@ so a `.cts` preload dies on the first type annotation — silently, leaving
   step on 45% of the 23,539 plateau edges in the shipped maps, and it is added
   rather than levelled to because only 25.6% of plateau vertices are level with
   their neighbours: a plateau carries the relief it was raised from. *Lower*
-  digs a pit to exactly 0.0 and flags it water, so it floods. All of them remesh
+  digs a pit to exactly 0.0 and flags it water, so it floods. *Ramp* cuts a
+  walkable way up: half a step, flagged with bit 3, which is the only
+  intermediate the format has — measured, `16→24` and `24→32` each step 1.00,
+  exactly half the 2.00 between tiers. All of them remesh
   live, and a basin dug on a dry map raises its sea immediately.
 - **Ground palette and tile brush**: all 82 shipped tiles previewed from their
   own `.dds`, grouped by category. Pick one, arm the brush, and left-drag to
