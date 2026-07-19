@@ -222,6 +222,15 @@ function heightAt(x: number, y: number): number {
   return heightOn(activeFloor(), x, y);
 }
 
+/**
+ * World centre of a tile. An object's saved position is a CELL index (placement
+ * picks the tile with floor(worldX / U)), and a cell spans [x, x+1], so its
+ * centre is at (x + 0.5) · U. Rendering the model at x · U instead dropped it on
+ * the cell's corner — half a tile off the square it was placed in, sitting on
+ * the grid intersection. Kept out of the saved data: the file still stores x.
+ */
+const tileCenter = (t: number): number => (t + 0.5) * U;
+
 // Height -> RGB (0..1). Below ~1 reads as water; above ramps green -> rocky tan,
 // mirroring the reference software render's palette.
 function terrainColor(h: number): [number, number, number] {
@@ -504,7 +513,7 @@ function replaceInstances(fl: Floor3D, instances: Instance[]): void {
     // it — the same rule object:add follows.
     it.z = heightOn(fl, it.x, it.y);
     const m = new THREE.Mesh(geo, mat);
-    m.position.set(it.x * U, it.y * U, it.z);
+    m.position.set(tileCenter(it.x), tileCenter(it.y), it.z);
     m.rotation.z = it.r;
     m.userData.inst = it;
     m.updateMatrixWorld();
@@ -1140,7 +1149,7 @@ function buildFloor(floor: Floor, geos: THREE.BufferGeometry[], mats: THREE.Mate
   for (const it of floor.instances) {
     const m = new THREE.Mesh(geos[it.g], mats[it.g]);
     // Tile index out to where the tile actually is; z is already a world height.
-    m.position.set(it.x * U, it.y * U, it.z);
+    m.position.set(tileCenter(it.x), tileCenter(it.y), it.z);
     m.rotation.z = it.r;
     m.userData.inst = it;
     // NOT added to the scene: this mesh is the pick-and-edit handle, and the
@@ -1643,11 +1652,13 @@ renderer.domElement.addEventListener('pointermove', (ev) => {
   const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -selected.mesh.position.z);
   const hit = new THREE.Vector3();
   if (!raycaster.ray.intersectPlane(plane, hit)) return;
-  // The ray lands in world units; the object's position is a tile index.
-  const nx = Math.round(hit.x / U), ny = Math.round(hit.y / U);
+  // The ray lands in world units; the object's position is a CELL index, the
+  // same floor() convention placement uses, so a drag lands on the same square a
+  // fresh placement would rather than snapping half a tile across to the corner.
+  const nx = Math.floor(hit.x / U), ny = Math.floor(hit.y / U);
   if (nx === selected.inst.x && ny === selected.inst.y) return;
   selected.inst.x = nx; selected.inst.y = ny;
-  selected.mesh.position.set(nx * U, ny * U, heightAt(nx, ny));
+  selected.mesh.position.set(tileCenter(nx), tileCenter(ny), heightAt(nx, ny));
   syncInstance(activeFloor(), selected.inst);
   syncFootprints();
   boxHelper?.setFromObject(selected.mesh);
@@ -1879,6 +1890,10 @@ function refreshBlocked(fl: Floor3D): void {
     (Array.isArray(m.material) ? m.material : [m.material]).forEach((x) => x.dispose());
   }
   fl.passMeshes = [];
+  // Footprints ride with the grid: rebuilt when it is on, cleared when off.
+  // Done before the early return so turning the grid off actually removes them
+  // rather than leaving the last set on the ground.
+  refreshFootprints(fl);
   if (!showBlocked) return;
 
   const cls = classifyTiles(fl);
@@ -1916,7 +1931,6 @@ function refreshBlocked(fl: Floor3D): void {
   add(tileGrid(fl), new THREE.LineBasicMaterial({
     color: 0xffffff, transparent: true, opacity: 0.13, depthWrite: false,
   }), true);
-  refreshFootprints(fl);
 }
 
 // The roles a building declares tiles for, with the colour each is drawn in.
@@ -1938,11 +1952,16 @@ function footprintQuads(fl: Floor3D, role: keyof Footprint): THREE.BufferGeometr
     const tiles = geomFootprint.get(inst.g)?.[role];
     if (!tiles || !tiles.length) continue;
     const cos = Math.cos(inst.r), sin = Math.sin(inst.r);
+    // A tile (x, y) is the cell spanning grid [x, x+1] — its centre is at
+    // (x+0.5, y+0.5), the same convention classifyTiles/tileOutline use. The
+    // object sits at the cell's corner vertex, so anchor the footprint at the
+    // cell centre; without the half-tile the squares straddled the grid lines.
+    const ax = inst.x + 0.5, ay = inst.y + 0.5;
     for (const t of tiles) {
-      // The tile's centre: the object's own tile plus this offset, turned with
+      // The tile's centre: the object's own cell plus this offset, turned with
       // the object so a rotated building's footprint rotates with it.
-      const cx = inst.x + t.x * cos - t.y * sin;
-      const cy = inst.y + t.x * sin + t.y * cos;
+      const cx = ax + t.x * cos - t.y * sin;
+      const cy = ay + t.x * sin + t.y * cos;
       // Each corner is sampled against the ground it sits over, so the square
       // hugs a slope instead of floating flat above it.
       const corner = (ox: number, oy: number): number[] => {
@@ -3032,7 +3051,7 @@ function addInstanceToScene(inst: Instance, geom: { index: number; data: GeomDat
   // renderer is drawing.
   inst.z = heightAt(inst.x, inst.y);
   const mesh = new THREE.Mesh(g, m);
-  mesh.position.set(inst.x * U, inst.y * U, inst.z);
+  mesh.position.set(tileCenter(inst.x), tileCenter(inst.y), inst.z);
   mesh.rotation.z = inst.r;
   mesh.userData.inst = inst;
   // The handle stays out of the scene, as in buildFloor; the batch draws it.
