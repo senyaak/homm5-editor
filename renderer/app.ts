@@ -632,15 +632,124 @@ let texScale = 0.5;   // ground-texture repeats per map tile (tunable in the too
 let cliffAmount = 1;  // how strongly steep faces take the rock texture
 const splatMats: THREE.ShaderMaterial[] = [];
 
-// Note on <ProjectOnTerrain>: it does NOT mean "paint the ground onto this".
-// That reading once lived here as a shader that shaded such parts with the
-// terrain splat, and it was wrong: 393 shipped parts carry the flag and most of
-// them are solid bodies, up to three times taller than they are wide, so a
-// 10-unit mountain came out striped with smeared ground texels. Every part now
-// draws with its own texture, and AM_OVERLAY is what blends a mound into the
-// ground it sits on. What the flag means to the engine is still unknown; the
-// part still gets a depth nudge where the mesh is genuinely flat, so a decal
-// does not z-fight with the terrain it lies on.
+// --- terrain-projected parts ------------------------------------------------
+//
+// A part flagged `terrainProjected` (in scene.ts: <ProjectOnTerrain> AND a sheer
+// texture) takes the ground it stands on as its surface. The Abandoned Mine's
+// mound is the case: on grass the engine draws a grassy hump, the model
+// supplying only the dark ore patch, so the green has to come from the terrain
+// underneath — which is what Senya saw in the original editor, the map's texture
+// climbing the hill.
+//
+// So these parts are shaded with the SAME splat the ground uses, sampled at
+// their own world position, with their own texture laid on top as a darkening.
+// The sheer gate is load-bearing: this was tried once on EVERY <ProjectOnTerrain>
+// part and smeared a column of ground texels up Mountain10x10's cliffs, because
+// that mountain is a 96%-opaque proj body, not a decal. Opacity is what tells
+// the mound (11%) from the mountain (96%).
+
+const PROJ_VERT = `
+out vec2 vGrid;   // 0..1 across the map -> mask lookup
+out vec2 vWorld;  // tile coords -> tiled ground lookup
+out vec2 vUv;     // the part's own uv, for its darkening texture
+out vec3 vNrm;
+uniform float uMapSide;   // V - 1
+uniform float uUnits;     // world units per tile
+void main() {
+  // The mesh is batched, so the position has to come through the instance
+  // matrix exactly as the instanced draw sees it.
+  #ifdef USE_INSTANCING
+    vec4 world = modelMatrix * instanceMatrix * vec4(position, 1.0);
+    vNrm = normalize(mat3(modelMatrix) * mat3(instanceMatrix) * normal);
+  #else
+    vec4 world = modelMatrix * vec4(position, 1.0);
+    vNrm = normalize(mat3(modelMatrix) * normal);
+  #endif
+  // Objects live in world units; the splat composites in grid coords, so convert
+  // once here and the ground lines up with the terrain seamlessly.
+  vec2 grid = world.xy / uUnits;
+  vGrid = grid / uMapSide;
+  vWorld = grid;
+  vUv = uv;
+  gl_Position = projectionMatrix * viewMatrix * world;
+}`;
+
+const projFrag = (groups: number, layers: number): string => `
+precision highp sampler2DArray;
+uniform sampler2DArray uGround;
+uniform sampler2DArray uMask;
+uniform sampler2D uOverlay;
+uniform float uScale;
+uniform float uHasOverlay;
+in vec2 vGrid; in vec2 vWorld; in vec2 vUv; in vec3 vNrm;
+out vec4 outColor;
+void main() {
+  // Composited exactly as the ground is, so the seam between a projected part
+  // and the terrain around it is invisible.
+  vec3 col = vec3(0.30, 0.33, 0.24);
+  for (int g = 0; g < ${groups}; g++) {
+    vec3 m = texture(uMask, vec3(vGrid, float(g))).rgb;
+    for (int c = 0; c < 3; c++) {
+      int li = g * 3 + c;
+      if (li >= ${layers}) break;
+      float w = m[c];
+      if (w <= 0.002) continue;
+      col = mix(col, texture(uGround, vec3(vWorld * uScale, float(li))).rgb, w);
+    }
+  }
+  // The model's own texture darkens the ground rather than replacing it: for the
+  // mound it is a near-black ore patch at low alpha, which is all it contributes.
+  if (uHasOverlay > 0.5) {
+    vec4 o = texture(uOverlay, vUv);
+    col *= mix(vec3(1.0), o.rgb, o.a);
+  }
+  // A little shading so the hump reads as one. The terrain itself is unlit, so
+  // this stays gentle or the part would stand out against the flat ground.
+  float lit = 0.82 + 0.18 * clamp(normalize(vNrm).z, 0.0, 1.0);
+  outColor = vec4(col * lit, 1.0);
+}`;
+
+/**
+ * Give every terrain-projected part of this floor a material that samples the
+ * floor's ground. Runs after the splat exists, since it borrows its textures —
+ * and its uniform objects by reference, so the ground-scale slider reaches these
+ * materials through the same uScale it writes on the terrain.
+ */
+function applyProjectedMaterials(fl: Floor3D): void {
+  const s = fl.splat;
+  const splatMat = fl.terrainMesh.material as THREE.ShaderMaterial;
+  if (!s || !splatMat?.uniforms?.uGround) return;
+  const V = s.V;
+  for (const [g, batch] of fl.batches) {
+    const parts = geomParts.get(g);
+    if (!parts) continue;
+    const mats = batch.im.material;
+    const list = Array.isArray(mats) ? mats : [mats];
+    let changed = false;
+    parts.forEach((p, i) => {
+      if (!p.terrainProjected) return;
+      const overlay = p.tex ? texLoader.load(p.tex) : null;
+      if (overlay) { overlay.wrapS = overlay.wrapT = THREE.RepeatWrapping; overlay.flipY = false; }
+      list[i] = new THREE.ShaderMaterial({
+        glslVersion: THREE.GLSL3,
+        vertexShader: PROJ_VERT,
+        fragmentShader: projFrag(s.maskGroups.length, s.layerCount),
+        uniforms: {
+          uGround: splatMat.uniforms.uGround!,
+          uMask: splatMat.uniforms.uMask!,
+          uScale: splatMat.uniforms.uScale!,
+          uOverlay: { value: overlay },
+          uHasOverlay: { value: overlay ? 1 : 0 },
+          uMapSide: { value: V - 1 },
+          uUnits: { value: U },
+        },
+        side: THREE.DoubleSide,
+      });
+      changed = true;
+    });
+    if (changed) batch.im.material = list;
+  }
+}
 
 /** Submesh descriptions per geom index, so materials can be rebuilt later. */
 const geomParts = new Map<number, GeomPart[]>();
@@ -700,6 +809,9 @@ async function upgradeToSplat(fl: Floor3D): Promise<void> {
     m.dispose();
   }
   splatMats.push(mat);
+  // Parts that take their colour from the ground can only be built now: they
+  // borrow this material's textures.
+  applyProjectedMaterials(fl);
 }
 
 // Build one floor: its coloured terrain heightmap + its placed object meshes.

@@ -131,6 +131,36 @@ into a black slab, so it was removed rather than kept "just in case".
 Verified by rendering Mountain8x8, Mountain10x10 and the Abandoned Mine and
 looking at them. Senya confirmed 10x10 in the editor.
 
+## ProjectOnTerrain, for a sheer overlay, DOES take the ground — FIXED (2026-07-19)
+
+The keep-both note above got the mine solid but grey, and Senya pointed at the
+original editor: the map's own ground texture climbs up the mound, it is not a
+rock skin. So `<ProjectOnTerrain>` on the mine's `GoldMineHill` really does mean
+"take the terrain you stand on", and the projection shader deleted in `b259a75`
+was doing the right thing — it was only aimed wrong.
+
+What aimed it wrong: it ran on EVERY proj part, and 393 carry the flag including
+solid mountains, so projecting the ground onto Mountain10x10 smeared a column of
+texels up its cliffs. The missing discriminator is texture opacity, the same one
+that fixed depth-writing. The two proj `AM_OVERLAY` parts that look identical by
+shape:
+
+  Abandoned Mine  GoldMineHill    proj  11% opaque  -> take the ground (mound)
+  Mountain10x10   mounting12x12   proj  96% opaque  -> own rock (a body)
+
+So the shader is back, gated on `terrainProjected = <ProjectOnTerrain> AND the
+texture is sheer`. A projected part is shaded with the floor's ground splat
+(sampled at its own world XY, converted from world units to grid coords) with
+its own texture laid on top as a darkening — the mound's near-black ore patch.
+Because that projected shading is opaque and IS the body, its coincident
+SubTerrain twin goes back to being dropped: keep-both now only applies to a
+sheer overlay that is NOT projected. Verified by rendering the mine over a grass
+splat: the ground climbs the mound and the seam with the terrain is invisible.
+
+What is still unknown is what the flag means on the ~380 proj parts that are
+neither sheer overlays nor have a SubTerrain twin; those still draw with their
+own texture. This resolves the mine, not the flag in general.
+
 ## Everything was drawn at twice its size — FIXED (2026-07-19)
 
 Spotted by Senya: a random treasure that occupies 1x1 in the game was drawn 2x2

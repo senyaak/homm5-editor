@@ -92,6 +92,21 @@ export interface GeomPart {
    * the back showed through as if the earth were not there.
    */
   opaque: boolean;
+  /**
+   * This part takes the TERRAIN it stands on as its surface: the renderer
+   * shades it with the same ground splat the terrain uses, sampled at the
+   * part's own world position, with the part's own texture applied on top as a
+   * darkening. That is what the engine does for the Abandoned Mine's mound — the
+   * map's grass climbs up the hump — which Senya confirmed against the original.
+   *
+   * The signal is `<ProjectOnTerrain>` AND a sheer texture. The flag alone is
+   * not enough: 393 shipped parts carry it, most of them solid bodies, and
+   * projecting the ground onto Mountain10x10 (a 96%-opaque proj part) smeared
+   * one column of texels up its cliffs. But a proj part whose texture is a sheer
+   * overlay (the mound's GoldMineHill, 11% opaque) is exactly the take-the-
+   * ground case, and opacity separates the two with a wide margin.
+   */
+  terrainProjected: boolean;
 }
 
 /** One decoded mesh, ready for the renderer. Arrays are plain JSON. */
@@ -305,7 +320,7 @@ function effectGeom(
     uv: [0, 1, 1, 1, 1, 0, 0, 0],
     nrm: [0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0],
     idx: [0, 1, 2, 0, 2, 3],
-    parts: [{ start: 0, count: 6, tex: t.uri, alphaMode: 'AM_TRANSPARENT', projectOnTerrain: false, flat: false, opaque: false }],
+    parts: [{ start: 0, count: 6, tex: t.uri, alphaMode: 'AM_TRANSPARENT', projectOnTerrain: false, flat: false, opaque: false, terrainProjected: false }],
   };
 }
 
@@ -741,7 +756,7 @@ function isFlat(m: Mesh): boolean {
  * UVs, merely pushed out by up to one unit on a twenty-unit model, and the
  * dark grey copy swallowed the textured one whole.
  */
-function dropDuplicateMeshes(meshes: Mesh[], pick: number[], mats: MaterialInfo[], sheer: (i: number) => boolean): boolean[] {
+function dropDuplicateMeshes(meshes: Mesh[], pick: number[], mats: MaterialInfo[], sheer: (i: number) => boolean, projected: (i: number) => boolean): boolean[] {
   const keep = meshes.map(() => true);
   const tex = (i: number): string => mats[pick[i] ?? 0]?.tex ?? '';
   const isSub = (i: number): boolean => /SubTerrain/i.test(tex(i));
@@ -771,14 +786,16 @@ function dropDuplicateMeshes(meshes: Mesh[], pick: number[], mats: MaterialInfo[
       if (isSub(i) !== isSub(j)) {
         // A SubTerrain copy is usually the underground skin of the authored
         // surface — redundant on the surface, so the authored one wins (a
-        // mountain's rock beats its grey shell). But when the authored partner
-        // is a SHEER overlay — the Abandoned Mine's GoldMineHill, an AM_OVERLAY
-        // that is 11% opaque and blends gold-ore over the ground — it is NOT the
-        // body: it is detail painted over one. The SubTerrain copy IS the solid
-        // ground the mine stands on, so keep both. Senya asked for exactly this:
-        // the pad under the mine was being dropped and it looked like it floated.
+        // mountain's rock beats its grey shell). Two exceptions turn on what the
+        // authored partner is:
+        //  - a terrain-PROJECTED sheer overlay (the mine's GoldMineHill) becomes
+        //    an opaque grass mound in its own right, so its SubTerrain twin is
+        //    redundant again — drop it, exactly as for a solid body.
+        //  - a sheer overlay that is NOT projected has no body of its own, so the
+        //    SubTerrain copy IS the solid ground it is painted onto — keep both.
         const authored = isSub(i) ? j : i;
-        if (!sheer(authored)) keep[isSub(i) ? i : j] = false;      // authored beats underground rock
+        const sub = isSub(i) ? i : j;
+        if (projected(authored) || !sheer(authored)) keep[sub] = false;
       }
       else if (tex(i) === tex(j)) keep[j] = false;                 // one surface, two passes
       if (!keep[i]) break;
@@ -815,7 +832,12 @@ function addGeom(geoms: GeomData[], meshes: Mesh[], model: string, modelHref: st
     const info = infoFor(mi);
     return blended && !!info && !info.opaque;
   };
-  const keep = dropDuplicateMeshes(meshes, allPick, allMats, sheer);
+  // A part takes the terrain as its surface when its material declares
+  // <ProjectOnTerrain> AND its texture is a sheer overlay. The projected shading
+  // is opaque and IS the body, so its coincident SubTerrain twin is redundant.
+  const projected = (meshIdx: number): boolean =>
+    (allMats[allPick[meshIdx] ?? 0]?.projectOnTerrain ?? false) && sheer(meshIdx);
+  const keep = dropDuplicateMeshes(meshes, allPick, allMats, sheer, projected);
   const pick = allPick.filter((_, i) => keep[i]);
   meshes = meshes.filter((_, i) => keep[i]);
 
@@ -844,6 +866,8 @@ function addGeom(geoms: GeomData[], meshes: Mesh[], model: string, modelHref: st
     const t = infoFor(mi);
     const alphaMode: AlphaMode = mats[mi]?.alphaMode ?? 'AM_OPAQUE';
     const flat = isFlat(meshes[i]!);
+    const blended = alphaMode === 'AM_OVERLAY' || alphaMode === 'AM_TRANSPARENT' || alphaMode === 'AM_DECAL';
+    const isSheer = blended && !!t && !t.opaque;
     // How to blend is the material's own declaration, not a guess from the
     // texels. Reading it off the image said "this has soft edges, alpha-test
     // it", which is the wrong answer for a decal that is meant to be blended.
@@ -857,6 +881,7 @@ function addGeom(geoms: GeomData[], meshes: Mesh[], model: string, modelHref: st
       // No texture means nothing to read alpha from — an untextured body is
       // solid, so it occludes.
       opaque: t ? t.opaque : true,
+      terrainProjected: (mats[mi]?.projectOnTerrain ?? false) && isSheer,
     });
     start += count;
   }

@@ -71,9 +71,9 @@ const STUB = `<script>
     // shader is compiled here rather than failing for the first time in the app.
     const half = Math.floor(i.length / 6) * 3;
     return { pos: p, uv: new Array((p.length / 3) * 2).fill(0), nrm: null, idx: i, parts: [
-      { start: 0, count: half, tex: null, alphaMode: 'AM_OPAQUE', projectOnTerrain: false, flat: false, opaque: true },
+      { start: 0, count: half, tex: null, alphaMode: 'AM_OPAQUE', projectOnTerrain: false, flat: false, opaque: true, terrainProjected: false },
       // Flat, projected and sheer, so the no-depth-write overlay path is exercised.
-      { start: half, count: i.length - half, tex: null, alphaMode: 'AM_OVERLAY', projectOnTerrain: true, flat: true, opaque: false },
+      { start: half, count: i.length - half, tex: null, alphaMode: 'AM_OVERLAY', projectOnTerrain: true, flat: true, opaque: false, terrainProjected: true },
     ] };
   })();
   const SH = '/MapObjects/Grass/Tree/Tree.(AdvMapStaticShared).xdb';
