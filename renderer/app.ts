@@ -2526,7 +2526,9 @@ let objShown = OBJ_PAGE;
 function objMatches(o: PlaceableObject): boolean {
   if (o.hidden && !showHiddenObjects) return false;
   if (objCat !== ALL && o.group !== objCat) return false;
-  if (objSearch && !o.name.toLowerCase().includes(objSearch)) return false;
+  // Search both: the label is what is on screen, the file name is what someone
+  // who knows the assets will type.
+  if (objSearch && !(o.label + ' ' + o.name).toLowerCase().includes(objSearch)) return false;
   return true;
 }
 
@@ -2587,7 +2589,11 @@ function renderObjGrid(): void {
   for (const o of list.slice(0, objShown)) {
     const el = document.createElement('div');
     el.className = 'obj' + (placeObject?.path === o.path ? ' on' : '');
-    el.title = `${o.name}\n${o.type || 'unknown type'}\n${o.group}`;
+    // The original's tooltip is the object's own description. The file name is
+    // kept beside it because that is what the map and the assets are keyed on,
+    // and it is the only handle when something needs looking up on disk.
+    el.title = [o.label, o.description, `${o.name} · ${o.type || 'unknown type'} · ${o.group}`]
+      .filter(Boolean).join('\n\n');
     const img = document.createElement('img');
     img.className = 'ic';
     el.appendChild(img);
@@ -2596,7 +2602,7 @@ function renderObjGrid(): void {
     if (o.hidden) { const b = document.createElement('span'); b.className = 'hid'; b.textContent = 'hid'; el.appendChild(b); }
     const nm = document.createElement('div');
     nm.className = 'nm';
-    nm.textContent = o.name;
+    nm.textContent = o.label;
     el.appendChild(nm);
     // Clicking the armed one again disarms, so the palette is its own off switch.
     el.onclick = () => armObject(placeObject?.path === o.path ? null : o);
@@ -2654,7 +2660,7 @@ function armObject(o: PlaceableObject | null): void {
   placeObject = o;
   if (o) {
     if (brushOn) setBrush(false);
-    $('obj-sel').textContent = `placing: ${o.name} · ${o.type || '?'}`;
+    $('obj-sel').textContent = `placing: ${o.label} · ${o.type || '?'}`;
     $('hud').textContent = o.type
       ? `click the map to place ${o.name} — Esc or click it again to stop`
       : `${o.name} has no object type we recognise, so it cannot be placed`;

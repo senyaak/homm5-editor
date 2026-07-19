@@ -126,7 +126,7 @@ const STUB = `<script>
       log('listObjects');
       const mk = (name, group, type, extra) => Object.assign({
         path: 'MapObjects/_(AdvMapObjectLink)/' + group + '/' + name + '.xdb',
-        name, group, type,
+        name, label: name, description: null, group, type,
         shared: '/MapObjects/' + name + '.(' + type + 'Shared).xdb#xpointer(/' + type + 'Shared)',
         hidden: false, random: false,
       }, extra || {});

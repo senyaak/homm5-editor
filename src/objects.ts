@@ -26,6 +26,13 @@ export interface PlaceableObject {
   path: string;
   /** Leaf name, cleaned of the `.(AdvMapObjectLink)` suffix. */
   name: string;
+  /**
+   * What the original editor shows under the icon, from the icon cache.
+   * Falls back to `name` when there is no cache entry.
+   */
+  label: string;
+  /** The tooltip the original shows, when the cache carries one. */
+  description: string | null;
   /** Filter group this falls in, or 'Other'. */
   group: string;
   /** href of the shared definition a placed object points at. */
@@ -144,9 +151,17 @@ export function listPlaceable(dataRoot: string, editorRoot: string): {
       const link = readLink(xml);
       if (!link) continue;
       const rel = relative(dataRoot, full).split(sep).join('/');
+      const leaf = cleanName(e);
+      // The label lives in the icon cache, so read it while we are here rather
+      // than per-icon later: the palette sorts by it, so it is needed up front.
+      let meta: { name: string | null; description: string | null } = { name: null, description: null };
+      const icon = iconPathFor(editorRoot, rel);
+      if (icon) { try { meta = readIconMeta(readFileSync(icon)); } catch { /* keep the file name */ } }
       objects.push({
         path: rel,
-        name: cleanName(e),
+        name: leaf,
+        label: meta.name?.trim() || leaf,
+        description: meta.description?.trim() || null,
         group: groupOf(rel, groups),
         shared: link.shared,
         type: link.type,
@@ -156,7 +171,9 @@ export function listPlaceable(dataRoot: string, editorRoot: string): {
     }
   };
   walk(base);
-  objects.sort((a, b) => a.group.localeCompare(b.group) || a.name.localeCompare(b.name));
+  // Sorted by the label, which is what the original orders by — Arcane Library
+  // lands beside Alchemist Lab rather than under S for SpellShop.
+  objects.sort((a, b) => a.group.localeCompare(b.group) || a.label.localeCompare(b.label));
   return { objects, groups };
 }
 
@@ -184,6 +201,52 @@ function readSize(b: Buffer, off: number): { len: number; at: number } {
     return { len: (v - 1) / 2, at: off + 4 };
   }
   return { len: s / 2, at: off + 1 };
+}
+
+/**
+ * The label and tooltip the original editor shows, read from the icon cache.
+ *
+ * The cache is not only thumbnails: after the images it carries the object's
+ * display NAME (tag 3) and DESCRIPTION (tag 4). That is where "Arcane Library"
+ * comes from for the file named SpellShop — the link files and the shared
+ * definitions have no such name, and only 125 of 1634 shared files reference a
+ * text resource at all, so this is the sole source.
+ *
+ * It also settles the palette's ordering: the original sorts by this label,
+ * which is why Arcane Library sits just after Alchemist Lab while the file
+ * names would put SpellShop under S.
+ *
+ * The strings sit beside the images INSIDE the file's one big block, not at the
+ * top level, so this descends exactly one level. Scanning the whole file for a
+ * tag 3 instead would hit the pixel records first — inside an image, tag 3 is
+ * the BGRA.
+ */
+export function readIconMeta(buf: Buffer): { name: string | null; description: string | null } {
+  /** Records filling [start, end), without descending. */
+  const walk = (start: number, end: number): { tag: number; at: number; len: number }[] => {
+    const out: { tag: number; at: number; len: number }[] = [];
+    let p = start;
+    // Bounded: an icon holds a handful of images plus these two strings.
+    for (let guard = 0; guard < 64 && p + 1 < end; guard++) {
+      const tag = buf[p]!;
+      const { len, at } = readSize(buf, p + 1);
+      if (len < 0 || at + len > end) break;
+      out.push({ tag, at, len });
+      p = at + len;
+    }
+    return out;
+  };
+  const body = walk(0, buf.length).find((r) => r.tag === 1);
+  if (!body) return { name: null, description: null };
+  // Windows-1252, not UTF-8: the apostrophe in "Astrologer's Tower" is the
+  // single byte 0x92, which as UTF-8 is a broken sequence.
+  const dec = new TextDecoder('windows-1252');
+  const text = (r: { at: number; len: number } | undefined): string | null =>
+    r ? dec.decode(buf.subarray(r.at, r.at + r.len)) : null;
+  const inner = walk(body.at, body.at + body.len);
+  // Tag 4 also frames the format version at the very start of the file, which
+  // is why this looks inside the block rather than anywhere.
+  return { name: text(inner.find((r) => r.tag === 3)), description: text(inner.find((r) => r.tag === 4)) };
 }
 
 /** One decoded icon: RGBA pixels ready for a canvas. */
