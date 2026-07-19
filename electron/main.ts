@@ -278,7 +278,12 @@ ipcMain.handle('maps:list', async (): Promise<MapsListResult> => {
       try { if (statSync(full).isDirectory()) walk(full); } catch { /* skip */ }
     }
   };
+  // [perf] The first screen. This walks the whole Maps tree with a stat() per
+  // entry, so on a cold disk cache (first launch after a boot) it can run long
+  // and varies run to run — a prime suspect for the intermittent startup lag.
+  const tWalk = performance.now();
   walk(mapsDir);
+  console.log(`[perf] maps:list ${(performance.now() - tWalk) | 0}ms · ${maps.length} maps`);
   maps.sort((a, b) => a.rel.localeCompare(b.rel));
   return { root: GAME_DATA, maps };
 });
@@ -307,7 +312,12 @@ ipcMain.handle('map:load', async (_e: IpcMainInvokeEvent, mapPath: string): Prom
   if (!assetRoot) throw new Error('asset root not found (need MapObjects/ or bin/Geometries/ above the map, or set HOMM5_DATA)');
   lastDir = dirname(mapPath);
   const mapDir = dirname(mapPath);
+  // [perf] map:load is the heavy startup step (mesh + texture decode). Timed so
+  // an intermittent stall can be pinned to a phase rather than guessed at; grep
+  // the terminal for "[perf]".
+  const tStart = performance.now();
   const { map, scene, skipped, resolver } = buildScene(assetRoot, mapPath);
+  const tScene = performance.now();
   initProject(mapDir); // ensure a manifest so status/pack work
   // Tile paths this map's terrain actually has layers for (union over floors).
   const layerPaths = [...new Set(scene.floors.flatMap((f) => f.splat?.paths || []))];
@@ -332,6 +342,7 @@ ipcMain.handle('map:load', async (_e: IpcMainInvokeEvent, mapPath: string): Prom
   // to what they hashed when it was written.
   loadHistory(session);
   const placed = scene.floors.reduce((a, f) => a + f.instances.length, 0);
+  console.log(`[perf] map:load buildScene ${(tScene - tStart) | 0}ms · total ${(performance.now() - tStart) | 0}ms · geoms ${scene.geoms.length}, placed ${placed}, skipped ${skipped}`);
   return {
     scene,
     info: {
@@ -383,7 +394,13 @@ ipcMain.handle('object:rotate', async (_e: IpcMainInvokeEvent, { id, r }: Rotate
 // A machine with the game installed but no unpacked data has icons and no
 // catalogue, and the other way round — so neither is assumed present.
 ipcMain.handle('objects:list', async (): Promise<ObjectCatalogResult> => {
+  // [perf] First call scans the Editor folder from disk; warmed in the
+  // background after a map opens, so a slow scan here can steal main-process
+  // time from early edits. Timed to catch that.
+  const tCat = performance.now();
   const cat = catalog();
+  const dt = performance.now() - tCat;
+  if (dt > 5) console.log(`[perf] objects:list ${dt | 0}ms · ${cat.objects.length} entries`);
   return {
     objects: cat.objects,
     groups: cat.groups.map((g) => ({ name: g.name, separator: g.separator })),

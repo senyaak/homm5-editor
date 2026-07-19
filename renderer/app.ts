@@ -775,6 +775,9 @@ const geomParts = new Map<number, GeomPart[]>();
 async function upgradeToSplat(fl: Floor3D): Promise<void> {
   const s = fl.splat;
   if (!s || !s.layerCount) return;
+  // [perf] Ground textures decode off the critical path but still upload on the
+  // GPU thread; timed so a slow splat shows up next to the other phase logs.
+  const tSplat = performance.now();
   const [ground, masks] = await Promise.all([
     arrayTexture(s.layerTex, s.size),
     arrayTexture(s.maskGroups, s.V),
@@ -829,6 +832,7 @@ async function upgradeToSplat(fl: Floor3D): Promise<void> {
   // Parts that take their colour from the ground can only be built now: they
   // borrow this material's textures.
   applyProjectedMaterials(fl);
+  console.log(`[perf] splat ${fl.name} ${(performance.now() - tSplat) | 0}ms · ${s.layerCount} layers @ ${s.size}px`);
 }
 
 // Build one floor: its coloured terrain heightmap + its placed object meshes.
@@ -3214,11 +3218,16 @@ async function loadMapPath(path: string | null): Promise<void> {
   try {
     // The heavy lifting is in the main process (mesh/texture decode), so the
     // renderer's own thread is free to keep the spinner turning while it runs.
+    const tReq = performance.now();
     const { scene: S, info, history } = await window.editor.loadMap(path);
+    const tLoad = performance.now();
     // buildWorld DOES block this thread, so let the new message paint first —
     // the GPU-composited spinner keeps moving through the freeze regardless.
     await say('building scene…');
     buildWorld(S);
+    // [perf] The two halves of opening a map: the main-process decode (IPC) and
+    // the renderer-blocking scene build. Grep "[perf]" while chasing a stall.
+    console.log(`[perf] loadMap ${(tLoad - tReq) | 0}ms · buildWorld ${(performance.now() - tLoad) | 0}ms · ${S.geoms.length} geoms`);
     // A history kept from a previous run is adopted when the files still hash
     // the same, so opening a map is not always a blank slate.
     updateHistoryUI(history.canUndo, history.canRedo, history.undoLabel, history.redoLabel);
@@ -3394,11 +3403,19 @@ $('pack').onclick = async () => {
 };
 
 // --- render loop ---
+// [perf] A frame longer than this means the main thread was blocked between two
+// animation frames — the "поток забит" symptom. Logging each one with its
+// duration turns an intermittent stall into something you can see and time
+// against the phase logs above. 100ms ≈ six dropped frames, so ordinary work
+// stays quiet and only real stalls speak up.
+const JANK_MS = 100;
 let lastT = performance.now();
 (function loop() {
   requestAnimationFrame(loop);
   const now = performance.now();
-  const dt = Math.min((now - lastT) / 1000, 0.1); // clamp so a stall can't teleport
+  const frame = now - lastT;
+  if (frame > JANK_MS) console.warn(`[perf] jank: main thread blocked ${frame | 0}ms`);
+  const dt = Math.min(frame / 1000, 0.1); // clamp so a stall can't teleport
   lastT = now;
   keyPan(dt);
   controls.update();
