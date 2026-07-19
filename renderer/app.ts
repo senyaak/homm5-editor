@@ -1602,7 +1602,7 @@ function pickObject(ev: PointerEvent): THREE.Mesh | null {
   return hits.length ? hits[0]!.object : null;
 }
 
-renderer.domElement.addEventListener('pointerleave', () => updateBrushCursor(null));
+renderer.domElement.addEventListener('pointerleave', () => { updateBrushCursor(null); updateHoverCursor(null); });
 
 renderer.domElement.addEventListener('pointerdown', (ev) => {
   if (!world || ev.button !== 0) return;
@@ -1642,6 +1642,10 @@ renderer.domElement.addEventListener('pointermove', (ev) => {
   // The armed object borrows the brush's footprint gizmo, so where it will land
   // is visible before committing — the same feedback painting gets.
   else if (placeObject) updateBrushCursor(tileUnderCursor(ev));
+  // Otherwise show the plain one-tile marker, but not mid-drag: the object being
+  // dragged already says where it is, and a second square trailing it is noise.
+  if (!brushOn && !placeObject && !dragging) updateHoverCursor(tileUnderCursor(ev));
+  else updateHoverCursor(null);
   if (painting) { applyBrush(ev); return; }
   if (!dragging || !selected) return;
   // Project the cursor onto a horizontal plane at the object's height and snap
@@ -2113,6 +2117,46 @@ function updateBrushCursor(at: { x: number; y: number } | null): void {
   g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pts), 3));
   g.computeBoundingSphere();
   c.visible = pts.length > 0;
+}
+
+// A quiet one-tile marker that follows the mouse whenever no brush or object is
+// armed, so it is always clear which square a click would act on — the same job
+// the brush gizmo does while armed, kept up the rest of the time.
+let hoverCursor: THREE.LineSegments | null = null;
+
+function ensureHoverCursor(): THREE.LineSegments {
+  if (hoverCursor) return hoverCursor;
+  const mat = new THREE.LineBasicMaterial({
+    color: 0x66ccff, transparent: true, opacity: 0.7, depthTest: false,
+  });
+  hoverCursor = asTileSpace(new THREE.LineSegments(new THREE.BufferGeometry(), mat));
+  hoverCursor.renderOrder = 998; // just under the brush gizmo's 999
+  hoverCursor.visible = false;
+  scene.add(hoverCursor);
+  return hoverCursor;
+}
+
+/** Outline the single cell under the cursor, or hide it when off-map. */
+function updateHoverCursor(at: { x: number; y: number } | null): void {
+  const c = ensureHoverCursor();
+  const fl = world ? activeFloor() : null;
+  // A cell (x, y) needs its far corner (x+1, y+1) to exist, so stop one short.
+  if (!at || !fl || at.x < 0 || at.y < 0 || at.x + 1 >= fl.V || at.y + 1 >= fl.V) {
+    c.visible = false; return;
+  }
+  const LIFT = 0.05;
+  const z = (x: number, y: number): number => fl.heights[y * fl.V + x]! + LIFT;
+  const x = at.x, y = at.y;
+  const p: number[] = [];
+  const seg = (x0: number, y0: number, x1: number, y1: number): void => {
+    p.push(x0, y0, z(x0, y0), x1, y1, z(x1, y1));
+  };
+  seg(x, y, x + 1, y); seg(x + 1, y, x + 1, y + 1);
+  seg(x + 1, y + 1, x, y + 1); seg(x, y + 1, x, y);
+  const g = c.geometry;
+  g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(p), 3));
+  g.computeBoundingSphere();
+  c.visible = true;
 }
 
 /** Tile under the cursor, from a ray against the terrain itself (so it follows hills). */
