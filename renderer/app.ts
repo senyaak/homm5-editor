@@ -716,39 +716,49 @@ void main() {
  * materials through the same uScale it writes on the terrain.
  */
 function applyProjectedMaterials(fl: Floor3D): void {
+  for (const g of fl.batches.keys()) projectBatch(fl, g);
+}
+
+/**
+ * Give one batch's terrain-projected parts their ground-sampling material.
+ * Split out from applyProjectedMaterials so a freshly placed object gets the
+ * same treatment a loaded one does — otherwise a mine dropped from the palette
+ * kept the transparent overlay and its earth hood vanished.
+ */
+function projectBatch(fl: Floor3D, g: number): void {
   const s = fl.splat;
   const splatMat = fl.terrainMesh.material as THREE.ShaderMaterial;
   if (!s || !splatMat?.uniforms?.uGround) return;
-  const V = s.V;
-  for (const [g, batch] of fl.batches) {
-    const parts = geomParts.get(g);
-    if (!parts) continue;
-    const mats = batch.im.material;
-    const list = Array.isArray(mats) ? mats : [mats];
-    let changed = false;
-    parts.forEach((p, i) => {
-      if (!p.terrainProjected) return;
-      const overlay = p.tex ? texLoader.load(p.tex) : null;
-      if (overlay) { overlay.wrapS = overlay.wrapT = THREE.RepeatWrapping; overlay.flipY = false; }
-      list[i] = new THREE.ShaderMaterial({
-        glslVersion: THREE.GLSL3,
-        vertexShader: PROJ_VERT,
-        fragmentShader: projFrag(s.maskGroups.length, s.layerCount),
-        uniforms: {
-          uGround: splatMat.uniforms.uGround!,
-          uMask: splatMat.uniforms.uMask!,
-          uScale: splatMat.uniforms.uScale!,
-          uOverlay: { value: overlay },
-          uHasOverlay: { value: overlay ? 1 : 0 },
-          uMapSide: { value: V - 1 },
-          uUnits: { value: U },
-        },
-        side: THREE.DoubleSide,
-      });
-      changed = true;
+  const parts = geomParts.get(g);
+  const batch = fl.batches.get(g);
+  if (!parts || !batch) return;
+  const mats = batch.im.material;
+  const list = Array.isArray(mats) ? mats : [mats];
+  let changed = false;
+  parts.forEach((p, i) => {
+    if (!p.terrainProjected) return;
+    // Already projected (re-run on add, or an add-layer rebuild): leave it.
+    if ((list[i] as THREE.ShaderMaterial)?.uniforms?.uUnits) return;
+    const overlay = p.tex ? texLoader.load(p.tex) : null;
+    if (overlay) { overlay.wrapS = overlay.wrapT = THREE.RepeatWrapping; overlay.flipY = false; }
+    list[i] = new THREE.ShaderMaterial({
+      glslVersion: THREE.GLSL3,
+      vertexShader: PROJ_VERT,
+      fragmentShader: projFrag(s.maskGroups.length, s.layerCount),
+      uniforms: {
+        uGround: splatMat.uniforms.uGround!,
+        uMask: splatMat.uniforms.uMask!,
+        uScale: splatMat.uniforms.uScale!,
+        uOverlay: { value: overlay },
+        uHasOverlay: { value: overlay ? 1 : 0 },
+        uMapSide: { value: s.V - 1 },
+        uUnits: { value: U },
+      },
+      side: THREE.DoubleSide,
     });
-    if (changed) batch.im.material = list;
-  }
+    changed = true;
+  });
+  if (changed) batch.im.material = list;
 }
 
 /** Submesh descriptions per geom index, so materials can be rebuilt later. */
@@ -2914,6 +2924,10 @@ function addInstanceToScene(inst: Instance, geom: { index: number; data: GeomDat
     else b.computeVertexNormals();
     worldGeos[geom.index] = b;
     worldMats[geom.index] = geom.data.parts.map(materialFor);
+    // Rebuildable-materials registry, same as buildGeos — without this a newly
+    // placed terrain-projected model has no parts to project and its ground
+    // material is never built.
+    geomParts.set(geom.index, geom.data.parts);
   }
   const g = worldGeos[inst.g], m = worldMats[inst.g];
   if (!g || !m) { $('hud').textContent = 'placed, but its mesh is missing — reload to see it'; return; }
@@ -2928,6 +2942,9 @@ function addInstanceToScene(inst: Instance, geom: { index: number; data: GeomDat
   mesh.updateMatrixWorld();
   fl.meshes.set(inst.id, mesh);
   addToBatch(fl, inst, mesh);
+  // If this model takes the ground it stands on, give the batch its projection
+  // material now that it exists — the load path does this via upgradeToSplat.
+  if (geomParts.get(inst.g)?.some((p) => p.terrainProjected)) projectBatch(fl, inst.g);
   fl.instances.push(inst);
 }
 
