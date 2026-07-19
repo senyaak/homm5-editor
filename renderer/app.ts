@@ -276,7 +276,7 @@ function materialFor(part: GeomPart): THREE.Material {
   // Flatness is in the key because it changes the material: the same texture in
   // the same blend mode is a depth-writing body on one mesh and a decal on
   // another.
-  const key = `${part.alphaMode}|${part.projectOnTerrain ? 'proj' : 'own'}|${part.flat ? 'flat' : 'solid'}|${part.tex}`;
+  const key = `${part.alphaMode}|${part.projectOnTerrain ? 'proj' : 'own'}|${part.opaque ? 'body' : 'sheer'}|${part.tex}`;
   const hit = texCache.get(key);
   if (hit) return hit;
   const tx = texLoader.load(part.tex);
@@ -292,14 +292,17 @@ function materialFor(part: GeomPart): THREE.Material {
     case 'AM_TRANSPARENT':
     case 'AM_OVERLAY':
     case 'AM_DECAL':
-      // Blended. A decal skips the depth write so it does not carve a hole in
-      // whatever is drawn after it — but only a decal. Two thirds of the shipped
-      // AM_OVERLAY parts are solid bodies, and a solid body that writes no depth
-      // never occludes anything: Mountain10x10 went see-through and the
-      // Abandoned Mine drew its far side over its near one. So the skip is tied
-      // to the mesh actually being flat, not to the blend mode.
+      // Blended. Whether it writes depth turns on whether the texture is a solid
+      // skin, not on the blend mode or the mesh shape. A body with an opaque
+      // texture (Mountain10x10's rock, 96% opaque) must occlude or it goes
+      // see-through and draws its far side over its near one. A sheer overlay
+      // (the Abandoned Mine's hill, 11% opaque, projected onto and blended into
+      // the terrain) must NOT write depth: its near-invisible pixels would
+      // occlude the ground behind it, punching the hole Senya saw where the
+      // earth should be. Flatness cannot tell these two apart — both are
+      // non-flat AM_OVERLAY.
       m.transparent = true;
-      m.depthWrite = !part.flat;
+      m.depthWrite = part.opaque;
       break;
     case 'AM_OVERLAY_ZWRITE':
       m.transparent = true;

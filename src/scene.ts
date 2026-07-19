@@ -74,13 +74,24 @@ export interface GeomPart {
   /**
    * The mesh lies flat, whatever its material says about projecting.
    *
-   * Blending needs to know. AM_OVERLAY is drawn without writing depth, which is
-   * right for something lying on the ground: the ground is already there and
-   * the decal only tints it. On a solid body it means the object never occludes
-   * anything -- a mountain goes see-through and the far side of a building
-   * draws over the near side.
+   * Kept for the ProjectOnTerrain nudge only. It is NOT what decides depth
+   * writing: flatness fails to tell a solid mountain from a feathered mound —
+   * Mountain10x10 (h/span 0.505) and the Abandoned Mine's hill (0.284) are both
+   * non-flat AM_OVERLAY bodies, yet one must occlude and the other must not.
    */
   flat: boolean;
+  /**
+   * The texture is a solid skin: most of its texels are opaque.
+   *
+   * This, not flatness, is what decides whether a blended part writes depth.
+   * Measured on the two AM_OVERLAY cases that looked identical by every other
+   * signal: Mountain10x10's rock is 96% opaque — a body that must occlude — while
+   * the mine's GoldMineHill is 11% opaque and near-black, a layer meant to be
+   * blended over the terrain it is projected onto. Writing depth for the mound
+   * punched a hole: its near-invisible pixels occluded the ground behind it, so
+   * the back showed through as if the earth were not there.
+   */
+  opaque: boolean;
 }
 
 /** One decoded mesh, ready for the renderer. Arrays are plain JSON. */
@@ -294,7 +305,7 @@ function effectGeom(
     uv: [0, 1, 1, 1, 1, 0, 0, 0],
     nrm: [0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0],
     idx: [0, 1, 2, 0, 2, 3],
-    parts: [{ start: 0, count: 6, tex: t.uri, alphaMode: 'AM_TRANSPARENT', projectOnTerrain: false, flat: false }],
+    parts: [{ start: 0, count: 6, tex: t.uri, alphaMode: 'AM_TRANSPARENT', projectOnTerrain: false, flat: false, opaque: false }],
   };
 }
 
@@ -792,7 +803,7 @@ function addGeom(geoms: GeomData[], meshes: Mesh[], model: string, modelHref: st
   // crystals are separate meshes stops being painted entirely in the first
   // texture the model happened to list.
   const mats = allMats;
-  const cache = new Map<number, { uri: string; hasAlpha: boolean } | null>();
+  const cache = new Map<number, { uri: string; hasAlpha: boolean; opaque: boolean } | null>();
   const parts: GeomPart[] = [];
   let start = 0;
   for (let i = 0; i < meshes.length; i++) {
@@ -814,6 +825,9 @@ function addGeom(geoms: GeomData[], meshes: Mesh[], model: string, modelHref: st
       alphaMode,
       projectOnTerrain: (mats[mi]?.projectOnTerrain ?? false) && flat,
       flat,
+      // No texture means nothing to read alpha from — an untextured body is
+      // solid, so it occludes.
+      opaque: t ? t.opaque : true,
     });
     start += count;
   }
@@ -955,7 +969,7 @@ function meshMaterialIndex(model: string, meshCount: number, materialCount: numb
   return out;
 }
 
-function textureDataUri(model: string, assetRoot: string, size: number, href?: string): { uri: string; hasAlpha: boolean } | null {
+function textureDataUri(model: string, assetRoot: string, size: number, href?: string): { uri: string; hasAlpha: boolean; opaque: boolean } | null {
   try {
     const t = href ? [href, href] : model.match(/<Texture href="([^"]+?)(?:#[^"]*)?"/); if (!t) return null;
     const tx = readFileSync(join(assetRoot, t[1].split('#')[0]), 'utf8');
@@ -964,14 +978,18 @@ function textureDataUri(model: string, assetRoot: string, size: number, href?: s
     if (!existsSync(ddsPath)) return null;
     const img = decodeDDS(ddsPath);
     const out = new Uint8Array(size * size * 4);
-    let hasAlpha = false;
+    let hasAlpha = false, solidTexels = 0;
     for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
       const sx = x * img.width / size | 0, sy = y * img.height / size | 0, si = (sy * img.width + sx) * 4, o = (y * size + x) * 4;
       out[o] = img.rgba[si]; out[o + 1] = img.rgba[si + 1]; out[o + 2] = img.rgba[si + 2];
       const a = img.rgba[si + 3]; out[o + 3] = a;
       if (a < 200) hasAlpha = true;
+      if (a > 128) solidTexels++;
     }
-    return { uri: pngDataUri(size, size, out), hasAlpha };
+    // Half the texels opaque is far from either measured case (a solid rock
+    // skin sits at 96%, a feathered overlay at 11%), so where the line lands
+    // between them does not matter.
+    return { uri: pngDataUri(size, size, out), hasAlpha, opaque: solidTexels > size * size * 0.5 };
   } catch { return null; }
 }
 

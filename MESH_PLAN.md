@@ -206,6 +206,33 @@ Run `npm run mesh-audit` for the current numbers. Note that the audit selects
 models by `<NumMeshes>`, which for the ~1277 models that reference a separate
 `(Geometry).xdb` lives in that other file — so its percentage is not coverage.
 
+## What decides depth-writing is texture opacity, not mesh shape — FIXED (2026-07-19)
+
+Senya reported the Abandoned Mine's hill still see-through: the back, where the
+earth should be, showed through as if it were not there. The earlier fix keyed
+the depth write of a blended part to whether the mesh was *flat* — a solid body
+writes depth, a decal lying on the ground does not. That is the wrong axis.
+
+The mine's hill is `GoldMineHill.tga`, an `AM_OVERLAY` + `ProjectOnTerrain` mesh
+that is **not flat** (height/span 0.284), so it wrote depth — and its texture is
+only **11% opaque** (mean alpha 33/255, RGB near-black), a layer meant to be
+blended into the terrain it is projected onto. Writing depth for it made its
+near-invisible pixels occlude the ground behind: the hole Senya saw. Mountain-
+10x10 is the opposite — also non-flat `AM_OVERLAY`, but its rock texture is
+**96% opaque**, a real body that must occlude. Flatness (0.505 vs 0.284) cannot
+tell them apart; texture opacity (96% vs 11%) separates them with a wide margin.
+
+So a blended part now writes depth iff its texture is a solid skin (> half its
+texels opaque), carried on `GeomPart.opaque` measured in `textureDataUri`. This
+also fixes effect billboards, which are `opaque: false` and no longer punch a
+depth hole. Verified by rendering the mine front/back/side against a ground
+plane: the hill is solid from every angle, the plane does not show through.
+
+This supersedes the "forcing AM_OVERLAY opaque made a black slab" note above:
+that failed because it used the premultiplied-looking near-black RGB directly;
+the answer was never to force opacity but to stop the sheer overlay writing
+depth.
+
 ## Abandoned Mine — ACCEPTABLE, NOT DONE (2026-07-19)
 
 Closed as good enough to move on, not as matching the engine. Senya's verdict
