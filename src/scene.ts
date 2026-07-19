@@ -741,7 +741,7 @@ function isFlat(m: Mesh): boolean {
  * UVs, merely pushed out by up to one unit on a twenty-unit model, and the
  * dark grey copy swallowed the textured one whole.
  */
-function dropDuplicateMeshes(meshes: Mesh[], pick: number[], mats: MaterialInfo[]): boolean[] {
+function dropDuplicateMeshes(meshes: Mesh[], pick: number[], mats: MaterialInfo[], sheer: (i: number) => boolean): boolean[] {
   const keep = meshes.map(() => true);
   const tex = (i: number): string => mats[pick[i] ?? 0]?.tex ?? '';
   const isSub = (i: number): boolean => /SubTerrain/i.test(tex(i));
@@ -768,7 +768,18 @@ function dropDuplicateMeshes(meshes: Mesh[], pick: number[], mats: MaterialInfo[
     if (!keep[i]) continue;
     for (let j = i + 1; j < meshes.length; j++) {
       if (!keep[j] || !coincident(meshes[i]!, meshes[j]!)) continue;
-      if (isSub(i) !== isSub(j)) keep[isSub(i) ? i : j] = false;   // authored beats underground rock
+      if (isSub(i) !== isSub(j)) {
+        // A SubTerrain copy is usually the underground skin of the authored
+        // surface — redundant on the surface, so the authored one wins (a
+        // mountain's rock beats its grey shell). But when the authored partner
+        // is a SHEER overlay — the Abandoned Mine's GoldMineHill, an AM_OVERLAY
+        // that is 11% opaque and blends gold-ore over the ground — it is NOT the
+        // body: it is detail painted over one. The SubTerrain copy IS the solid
+        // ground the mine stands on, so keep both. Senya asked for exactly this:
+        // the pad under the mine was being dropped and it looked like it floated.
+        const authored = isSub(i) ? j : i;
+        if (!sheer(authored)) keep[isSub(i) ? i : j] = false;      // authored beats underground rock
+      }
       else if (tex(i) === tex(j)) keep[j] = false;                 // one surface, two passes
       if (!keep[i]) break;
     }
@@ -782,7 +793,29 @@ function addGeom(geoms: GeomData[], meshes: Mesh[], model: string, modelHref: st
   const modelDir = dirOf(resolveHref('', modelHref));
   const allMats = modelMaterials(model, assetRoot, modelDir);
   const allPick = meshMaterialIndex(model, meshes.length, allMats.length);
-  const keep = dropDuplicateMeshes(meshes, allPick, allMats);
+  // Decode each material's texture once, up front: the dedup needs to know how
+  // opaque the authored partner of a SubTerrain pair is (a sheer overlay is not
+  // a body, so its SubTerrain base survives), and the parts loop needs the same
+  // images afterwards. Opacity is a property of the texture, not the UVs, so it
+  // is read here whether or not the mesh ends up with usable UVs.
+  const texInfo = new Map<number, { uri: string; hasAlpha: boolean; opaque: boolean } | null>();
+  const infoFor = (mi: number): { uri: string; hasAlpha: boolean; opaque: boolean } | null => {
+    if (!texInfo.has(mi)) {
+      const href = allMats[mi]?.tex;
+      texInfo.set(mi, href ? textureDataUri(model, assetRoot, texSize, href) : null);
+    }
+    return texInfo.get(mi) ?? null;
+  };
+  // A part is a sheer overlay when its material blends AND its texture is mostly
+  // transparent — detail painted over a body, not the body itself.
+  const sheer = (meshIdx: number): boolean => {
+    const mi = allPick[meshIdx] ?? 0;
+    const mode = allMats[mi]?.alphaMode ?? 'AM_OPAQUE';
+    const blended = mode === 'AM_OVERLAY' || mode === 'AM_TRANSPARENT' || mode === 'AM_DECAL';
+    const info = infoFor(mi);
+    return blended && !!info && !info.opaque;
+  };
+  const keep = dropDuplicateMeshes(meshes, allPick, allMats, sheer);
   const pick = allPick.filter((_, i) => keep[i]);
   meshes = meshes.filter((_, i) => keep[i]);
 
@@ -803,25 +836,21 @@ function addGeom(geoms: GeomData[], meshes: Mesh[], model: string, modelHref: st
   // crystals are separate meshes stops being painted entirely in the first
   // texture the model happened to list.
   const mats = allMats;
-  const cache = new Map<number, { uri: string; hasAlpha: boolean; opaque: boolean } | null>();
   const parts: GeomPart[] = [];
   let start = 0;
   for (let i = 0; i < meshes.length; i++) {
     const count = meshes[i]!.indices.length;
     const mi = pick[i] ?? 0;
-    if (!cache.has(mi)) {
-      // Without UVs a texture cannot be placed, so those parts stay untextured.
-      const href = mats[mi]?.tex;
-      cache.set(mi, hasUV && href ? textureDataUri(model, assetRoot, texSize, href) : null);
-    }
-    const t = cache.get(mi) ?? null;
+    const t = infoFor(mi);
     const alphaMode: AlphaMode = mats[mi]?.alphaMode ?? 'AM_OPAQUE';
     const flat = isFlat(meshes[i]!);
     // How to blend is the material's own declaration, not a guess from the
     // texels. Reading it off the image said "this has soft edges, alpha-test
     // it", which is the wrong answer for a decal that is meant to be blended.
+    // Without UVs a texture cannot be placed, so those parts stay untextured —
+    // but the opacity read still stands, since it does not need UVs.
     parts.push({
-      start, count, tex: t ? t.uri : null,
+      start, count, tex: hasUV && t ? t.uri : null,
       alphaMode,
       projectOnTerrain: (mats[mi]?.projectOnTerrain ?? false) && flat,
       flat,

@@ -233,6 +233,27 @@ that failed because it used the premultiplied-looking near-black RGB directly;
 the answer was never to force opacity but to stop the sheer overlay writing
 depth.
 
+**The pad the mine stands on was being dropped too.** Senya then noted the
+ground the mine sits on should be drawn. The mine has four meshes on four
+materials, and two of them — `podShape` and `CragShape` — are coincident
+geometry with DIFFERENT materials: `GoldMineHill` (the sheer AM_OVERLAY) and
+`SubTerrain` (a plain AM_OPAQUE rock skin, the "CragTerrain" material). The
+duplicate-mesh test read them as the same surface drawn twice and kept the
+authored one, dropping the SubTerrain copy — which for this object is the solid
+ground body, so the mine ended up with only its 11%-opaque overlay and looked
+like it floated.
+
+The rule now: a SubTerrain copy is dropped as a redundant skin only when its
+authored partner is itself a body (Mountain10x10's 96%-opaque rock still drops
+its grey shell). When the authored partner is a SHEER overlay, the SubTerrain
+copy is the body the overlay is painted onto, so both are kept. `addGeom`
+decodes each material's texture once up front so the dedup can see opacity, and
+passes a `sheer(meshIndex)` predicate into `dropDuplicateMeshes`. Upper bound on
+affected objects (has a SubTerrain skin AND a sheer overlay): 20 of 1634 — mines,
+the arena, the black market, the dragon utopia, swamp crags, lakes, barracks,
+all things that stand on a rocky pad. Verified by rendering: the mine now sits
+on a solid rock pad instead of floating.
+
 ## Abandoned Mine — ACCEPTABLE, NOT DONE (2026-07-19)
 
 Closed as good enough to move on, not as matching the engine. Senya's verdict
