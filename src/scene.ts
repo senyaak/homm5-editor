@@ -374,7 +374,14 @@ export function createGeomResolver(assetRoot: string, texSize = 128): GeomResolv
       const shared = readXdb(sharedHref);
       const modelHref = shared && shared.match(/<Model href="([^"]+)"/);
       const model = modelHref && readXdb(modelHref[1]!);
-      const ref = model && readGeometryRefFromModelXdb(model, readXdb);
+      // The Model's <Geometry href> is written relative to the model's own
+      // folder as often as absolute (spell_shop.mb points at "SpellShop-geom.xdb"
+      // beside it), so resolve it against that folder, not the data root — read
+      // flat, a bare name misses and the object silently meshes to nothing.
+      const modelDir = modelHref ? dirOf(resolveHref('', modelHref[1]!)) : '';
+      const readRel: ReadXdb = (href) =>
+        readXdb(href.startsWith('/') || href.startsWith('#') ? href : resolveHref(modelDir, href));
+      const ref = model && readGeometryRefFromModelXdb(model, readRel);
       if (ref) {
         const binPath = join(assetRoot, 'bin', 'Geometries', ref.uid);
         if (existsSync(binPath)) {
