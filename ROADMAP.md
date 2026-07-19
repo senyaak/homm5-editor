@@ -101,14 +101,20 @@ project.json
 **NEXT STEP — OBJECTS.** The terrain brushes are good enough to build a map
 with, so the remaining Tiles-tab parity (see the deferred item below) waits.
 Attention moves to objects: rotate and delete, then a property panel, then
-placing new ones from a palette. Undo/redo is overdue and gets more so with
-every brush.
+placing new ones from a palette.
 
 - [x] Select and move objects, snapped to the grid ✅ (plus a categorised,
       searchable object list)
 - [x] Rotate and delete objects: a free-angle slider, ±15° buttons, `[` / `]`
-      keys (Shift for 45°), and Delete — which confirms, since there is no undo ✅
-- [ ] ⬜ Undo/redo (command model), multi-select, copy/paste
+      keys (Shift for 45°), and Delete ✅
+- [x] Undo/redo — Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y and toolbar buttons, covering
+      every edit including terrain brushes and adding a ground layer. NOT a
+      command model: an edit is recorded as the byte difference between the
+      documents before and after it, so an operation is undoable without anyone
+      writing its inverse, and one added later is undoable for free. Survives a
+      restart — the stack is stored under the app's data folder, keyed by a hash
+      of the documents, and adopted on open only if they still hash the same ✅
+- [ ] ⬜ Multi-select, copy/paste
 - [x] Property panel: every simple field of the selected object, read from the
       object itself rather than a per-type table. Editors inferred from the
       value (bool/number/enum/text); structures and asset refs are shown, not

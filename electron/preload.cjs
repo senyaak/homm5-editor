@@ -31,6 +31,8 @@ const api = {
   setMask: (p) => ipcRenderer.invoke('terrain:mask', p),
   sculpt: (p) => ipcRenderer.invoke('terrain:sculpt', p),
   addLayer: (p) => ipcRenderer.invoke('terrain:add-layer', p),
+  undo: () => ipcRenderer.invoke('history:undo'),
+  redo: () => ipcRenderer.invoke('history:redo'),
   // Push channel, not invoke: the main process decides when the folder moved.
   // The listener is wrapped so the renderer never sees the IpcRendererEvent.
   onExternalChange: (cb) => { ipcRenderer.on('map:external-change', (_e, c) => cb(c)); },

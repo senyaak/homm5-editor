@@ -16,6 +16,7 @@
     "test-watch": "node tools/test-watch.ts",
     "mesh-audit": "node tools/mesh-audit.ts",
     "test-objects": "node tools/test-objects.ts",
+    "test-history": "node tools/test-history.ts",
     "pak": "node tools/pak-cli.js",
     "typecheck": "tsc --noEmit",
     "build:renderer": "esbuild renderer/app.ts --bundle --format=esm --target=chrome120 --outfile=renderer/app.js --sourcemap",

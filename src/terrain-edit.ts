@@ -213,6 +213,18 @@ export class TerrainDoc {
   /** The current state as a buffer, edits included. */
   buffer(): Buffer { return this.compose(); }
 
+  /**
+   * Replace every plane with the contents of `raw`.
+   *
+   * For undo, which works on the bytes this document composes rather than on
+   * the meaning of any one edit. Marked dirty because the file on disk is now
+   * whatever the last save left there, which is not what is held here.
+   */
+  restore(raw: Buffer): void {
+    this.load(raw);
+    this.touched = true;
+  }
+
   /** The current state as a buffer — every working copy written back into the container. */
   private compose(): Buffer {
     return writeTerrain(this.t, {

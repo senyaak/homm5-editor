@@ -57,6 +57,22 @@ export interface MapLoadResult {
   scene: Scene;
   info: MapInfo;
   status: ProjectStatus;
+  /**
+   * What the undo stack looks like on open.
+   *
+   * Not always empty: a history saved by a previous run is adopted when the
+   * documents still hash to what they hashed when it was written, so a map
+   * closed and reopened untouched can still be stepped back through.
+   */
+  history: HistoryState;
+}
+
+/** How far the undo stack can go in each direction, and what is next. */
+export interface HistoryState {
+  canUndo: boolean;
+  canRedo: boolean;
+  undoLabel: string | null;
+  redoLabel: string | null;
 }
 
 /** Payload of `object:move`. */
@@ -295,6 +311,34 @@ export type MapStatusResult = ProjectStatus | null;
 /** Result of `dialog:openMap`: the chosen path, or null when canceled. */
 export type OpenMapDialogResult = string | null;
 
+/**
+ * Result of `history:undo` / `history:redo`.
+ *
+ * Carries only what the renderer cannot work out for itself. `instances` is
+ * present when the map document moved — the whole list, because the map was
+ * re-parsed and rebuilding the batches is cheaper and safer than reconciling
+ * ids one at a time. `terrain` is present per floor whose bytes moved, and
+ * includes a rebuilt splat since a repainted mask or a new layer changes it.
+ */
+export interface UndoResult {
+  ok: true;
+  /** False when there was nothing left to undo or redo. */
+  applied: boolean;
+  /** What the step was, for the status line. Null when nothing was applied. */
+  label: string | null;
+  instances: Instance[][] | null;
+  terrain: {
+    floor: number;
+    heights: number[];
+    flags: number[] | null;
+    splat: SplatData | null;
+  }[];
+  canUndo: boolean;
+  canRedo: boolean;
+  undoLabel: string | null;
+  redoLabel: string | null;
+}
+
 /** The surface preload puts on `window.editor`. */
 export interface EditorApi {
   listMaps(): Promise<MapsListResult>;
@@ -317,6 +361,8 @@ export interface EditorApi {
   setMask(p: MaskPayload): Promise<PaintTileResult>;
   sculpt(p: SculptPayload): Promise<SculptResult>;
   addLayer(p: AddLayerPayload): Promise<AddLayerResult>;
+  undo(): Promise<UndoResult>;
+  redo(): Promise<UndoResult>;
   /**
    * Subscribe to external edits of the open map folder. Fires once per settled
    * burst of writes; our own saves never fire it.

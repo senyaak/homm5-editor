@@ -89,6 +89,31 @@ const STUB = `<script>
   const status = { dirty: [], lastPack: null, editorVersion: '0.0.1', drift: false };
   window.__calls = [];
   const log = (name, arg) => { window.__calls.push({ name, arg }); };
+
+  // A pretend undo stack. The real patching lives in the main process and is
+  // covered by tools/test-history.ts; what the harness needs is a backend that
+  // reports plausible state, so the buttons, the keys and the renderer's
+  // rebuild path all get exercised.
+  const hist = {
+    done: 0, total: 0,
+    state() {
+      return {
+        canUndo: this.done > 0, canRedo: this.done < this.total,
+        undoLabel: this.done > 0 ? 'stub edit' : null,
+        redoLabel: this.done < this.total ? 'stub edit' : null,
+      };
+    },
+    note() { this.done++; this.total = this.done; },
+    step(dir) {
+      const applied = dir === 'undo' ? this.done > 0 : this.done < this.total;
+      if (applied) this.done += dir === 'undo' ? -1 : 1;
+      return {
+        ok: true, applied, label: applied ? 'stub edit' : null,
+        instances: applied ? [floor.instances, []] : null,
+        terrain: [], ...this.state(),
+      };
+    },
+  };
   window.editor = {
     listMaps: async () => ({ root: '(harness)', maps: [
       { name: 'harness', rel: 'Single/harness', path: '/harness/map.xdb' },
@@ -103,11 +128,12 @@ const STUB = `<script>
           counts: { AdvMapStatic: 2, AdvMapMonster: 1 }, floors: [{ name: 'surface', objects: 3 }], placed: 3, skipped: 0,
         },
         status,
+        history: hist.state(),
       };
     },
-    moveObject: async (...a) => { log('moveObject', a); return { ok: true }; },
-    rotateObject: async (...a) => { log('rotateObject', a); return { ok: true }; },
-    removeObject: async (...a) => { log('removeObject', a); return { ok: true }; },
+    moveObject: async (...a) => { log('moveObject', a); hist.note(); return { ok: true }; },
+    rotateObject: async (...a) => { log('rotateObject', a); hist.note(); return { ok: true }; },
+    removeObject: async (...a) => { log('removeObject', a); hist.note(); return { ok: true }; },
     // One field of every kind, so the panel's four editors are all exercised.
     objectProps: async (id) => {
       log('objectProps', id);
@@ -185,7 +211,12 @@ const STUB = `<script>
       splat.maskGroups.push(solid(V, V, 0, 0, 0));
       return { ok: true, splat, inMap: splat.paths.slice() };
     },
-    sculpt: async (p) => { log('sculpt', p); return { ok: true }; },
+    sculpt: async (p) => { log('sculpt', p); hist.note(); return { ok: true }; },
+    // Undo/redo far enough to drive the UI: the stub keeps a counter rather
+    // than real patches, and hands back the instance list so the renderer's
+    // rebuild path is exercised.
+    undo: async () => { log('undo'); return hist.step('undo'); },
+    redo: async () => { log('redo'); return hist.step('redo'); },
     setMask: async (p) => { log('setMask', p); return { ok: true }; },
     onExternalChange: (cb) => { window.__fireExternalChange = cb; },
   };

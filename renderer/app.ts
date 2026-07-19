@@ -208,11 +208,16 @@ const ptr = new THREE.Vector2();
 // Only called while a map is loaded; every caller is gated on `world`.
 const activeFloor = (): Floor3D => world!.floors[world!.active]!;
 
-function heightAt(x: number, y: number): number {
-  const { V, heights } = activeFloor();
+/** Ground height at a tile of a given floor. */
+function heightOn(fl: Floor3D, x: number, y: number): number {
+  const { V, heights } = fl;
   const ix = Math.max(0, Math.min(V - 1, Math.round(x)));
   const iy = Math.max(0, Math.min(V - 1, Math.round(y)));
-  return heights[iy * V + ix];
+  return heights[iy * V + ix]!;
+}
+
+function heightAt(x: number, y: number): number {
+  return heightOn(activeFloor(), x, y);
 }
 
 // Height -> RGB (0..1). Below ~1 reads as water; above ramps green -> rocky tan,
@@ -463,6 +468,38 @@ function buildBatches(
     batches.set(g, batch);
   }
   return batches;
+}
+
+/**
+ * Replace a floor's objects wholesale.
+ *
+ * Undo re-parses the map, so the instances that come back are a fresh list
+ * rather than the ones already on screen. Reconciling them by id would mean
+ * three cases (gone, new, moved) and a bug in any of them leaves the view
+ * disagreeing with the model — the one thing undo must never do. Rebuilding is
+ * a handful of milliseconds and cannot drift.
+ */
+function replaceInstances(fl: Floor3D, instances: Instance[]): void {
+  for (const b of fl.batches.values()) { fl.objGroup.remove(b.im); b.im.dispose(); }
+  fl.batches.clear();
+  fl.meshes.clear();
+  fl.instances = instances;
+  for (const it of instances) {
+    if (it.id === null) continue;
+    const geo = worldGeos[it.g], mat = worldMats[it.g];
+    if (!geo || !mat) continue;
+    // The map stores no height, so an object lands on whatever ground is under
+    // it — the same rule object:add follows.
+    it.z = heightOn(fl, it.x, it.y);
+    const m = new THREE.Mesh(geo, mat);
+    m.position.set(it.x * U, it.y * U, it.z);
+    m.rotation.z = it.r;
+    m.userData.inst = it;
+    m.updateMatrixWorld();
+    fl.meshes.set(it.id, m);
+  }
+  const batches = buildBatches(instances, fl.meshes, worldGeos, worldMats, fl.objGroup);
+  for (const [g, b] of batches) fl.batches.set(g, b);
 }
 
 // Build the shared per-geom geometries + materials (reused across floors).
@@ -1188,10 +1225,62 @@ async function rotateSelected(deg: number, commit = true): Promise<void> {
 }
 
 /** Delete the selected object, from the scene and from the map. */
+// --- undo / redo -----------------------------------------------------------
+//
+// The step itself is applied in the main process, against the documents it
+// owns; this only takes delivery of whatever the renderer cannot recompute.
+// Objects arrive as a whole list, terrain as its planes plus a rebuilt splat.
+async function stepHistory(dir: 'undo' | 'redo'): Promise<void> {
+  if (!world) return;
+  let r;
+  try {
+    r = dir === 'undo' ? await window.editor.undo() : await window.editor.redo();
+  } catch (e) {
+    $('hud').textContent = `${dir} failed: ` + (e instanceof Error ? e.message : String(e));
+    return;
+  }
+  if (!r.applied) {
+    $('hud').textContent = dir === 'undo' ? 'nothing to undo' : 'nothing to redo';
+    return;
+  }
+  // The selection may name an object this step removed, and its handle mesh is
+  // about to be discarded either way.
+  deselect();
+  if (r.instances) {
+    world.floors.forEach((fl, i) => replaceInstances(fl, r.instances![i] ?? []));
+  }
+  for (const t of r.terrain) {
+    const fl = world.floors[t.floor];
+    if (!fl) continue;
+    fl.heights = t.heights;
+    fl.flags = t.flags;
+    if (t.splat) fl.splat = t.splat;
+    remeshFloor(fl);
+    if (t.splat) {
+      await upgradeToSplat(fl).catch((e: unknown) => {
+        $('hud').textContent = 'ground textures: ' + (e instanceof Error ? e.message : String(e));
+      });
+    }
+  }
+  renderExplorer();
+  markDirty(true);
+  $('hud').textContent = `${dir === 'undo' ? 'undid' : 'redid'} ${r.label ?? 'edit'}`;
+  updateHistoryUI(r.canUndo, r.canRedo, r.undoLabel, r.redoLabel);
+}
+
+/** Reflect what is undoable in the toolbar buttons. */
+function updateHistoryUI(canUndo: boolean, canRedo: boolean, undoLabel: string | null, redoLabel: string | null): void {
+  const u = $button('undobtn'), rd = $button('redobtn');
+  u.disabled = !canUndo;
+  rd.disabled = !canRedo;
+  u.title = canUndo ? `Undo ${undoLabel} (Ctrl+Z)` : 'Nothing to undo';
+  rd.title = canRedo ? `Redo ${redoLabel} (Ctrl+Shift+Z)` : 'Nothing to redo';
+}
+
 async function deleteSelected(): Promise<void> {
   if (!selected) return;
   const { id, mesh, inst } = selected;
-  if (!confirm(`Delete this ${inst.type}? There is no undo yet.`)) return;
+  if (!confirm(`Delete this ${inst.type}?`)) return;
   try {
     await window.editor.removeObject(id);
   } catch (e) {
@@ -1310,6 +1399,17 @@ $input('p-rotslider').addEventListener('change', (e) => {
 // because those are held-key state and these are one-shot actions. The rotate
 // keys sit next to each other on the keyboard and are free: WASD pans and the
 // brush owns no keys.
+// Undo/redo are the one pair that must work while typing is NOT happening but
+// with a modifier held, so they are checked before the selection shortcuts —
+// which bail out on any modifier.
+addEventListener('keydown', (e) => {
+  if (isTyping(e.target) || !(e.ctrlKey || e.metaKey) || e.altKey) return;
+  const z = e.code === 'KeyZ', y = e.code === 'KeyY';
+  if (!z && !y) return;
+  e.preventDefault();
+  void stepHistory(y || e.shiftKey ? 'redo' : 'undo');
+});
+
 addEventListener('keydown', (e) => {
   if (!selected || isTyping(e.target) || e.ctrlKey || e.altKey || e.metaKey) return;
   const step = e.shiftKey ? 45 : 15;
@@ -2387,6 +2487,16 @@ function markDirty(v: boolean): void {
   $('dirty').textContent = v ? '● unsaved changes' : '';
   $('dirty').className = v ? 'on' : '';
   $button('save').disabled = !v;
+  // An edit just landed, so there is certainly something to undo and nothing
+  // left to redo — the stack discards its redo tail on any new edit. Cheaper
+  // and more immediate than asking the main process what it now holds; undo and
+  // redo report the authoritative state themselves.
+  if (v) {
+    $button('undobtn').disabled = false;
+    $button('undobtn').title = 'Undo (Ctrl+Z)';
+    $button('redobtn').disabled = true;
+    $button('redobtn').title = 'Nothing to redo';
+  }
 }
 
 const FLOOR_LABEL: Record<string, string> = { surface: 'Surface', underground: 'Underground' };
@@ -2930,8 +3040,11 @@ async function loadMapPath(path: string | null): Promise<void> {
   // Yield a frame so the overlay paints before the (blocking) decode starts.
   await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
   try {
-    const { scene: S, info } = await window.editor.loadMap(path);
+    const { scene: S, info, history } = await window.editor.loadMap(path);
     buildWorld(S);
+    // A history kept from a previous run is adopted when the files still hash
+    // the same, so opening a map is not always a blank slate.
+    updateHistoryUI(history.canUndo, history.canRedo, history.undoLabel, history.redoLabel);
     $('empty').style.display = 'none';
     $('title').textContent = `homm5-editor — ${info.name} (${info.tileX}×${info.tileY})`;
     $button('pack').disabled = false;
@@ -3089,6 +3202,8 @@ $('open2').onclick = openViaDialog;
 $input('search').addEventListener('input', renderMapList);
 initPicker();
 $('save').onclick = async () => { await window.editor.save(); markDirty(false); $('hud').textContent = 'saved'; };
+$('undobtn').onclick = () => { void stepHistory('undo'); };
+$('redobtn').onclick = () => { void stepHistory('redo'); };
 $('pack').onclick = async () => {
   const r = await window.editor.pack();
   if ('canceled' in r) return;

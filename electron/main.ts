@@ -15,7 +15,8 @@ import { app, BrowserWindow, ipcMain, dialog, screen } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, basename, relative, sep } from 'node:path';
-import { readFileSync, writeFileSync, existsSync, readdirSync, statSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, readdirSync, statSync, mkdirSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { buildScene, findAssetRoot, listTiles, splatFor, pngDataUri } from '../src/scene.ts';
 import { listPlaceable, findEditorRoot, iconPathFor, readIconFile } from '../src/objects.ts';
 import { initProject, packProject, status } from '../src/project.ts';
@@ -23,7 +24,10 @@ import { watchMapDir } from '../src/watch.ts';
 import { donorFor } from '../src/donors.ts';
 import type { MapWatch } from '../src/watch.ts';
 import { TerrainDoc } from '../src/terrain-edit.ts';
-import type { TileInfo, GeomResolver } from '../src/scene.ts';
+import { History, diff, apply } from '../src/history.ts';
+import { loadMap } from '../src/map.ts';
+import type { DocPatch, Step, StoredHistory } from '../src/history.ts';
+import type { TileInfo, GeomResolver, Instance as SceneInstance } from '../src/scene.ts';
 import type { HommMap, MapObject } from '../src/map.ts';
 import type {
   MapsListResult, MapListEntry, MapLoadResult, MoveObjectPayload, MoveObjectResult,
@@ -31,7 +35,7 @@ import type {
   ObjectCatalogResult, IconPayload, IconResult, AddObjectPayload, AddObjectResult,
   MapSaveResult, MapPackResult, TerrainTilesResult, MapStatusResult, OpenMapDialogResult,
   ExternalChange, PaintTilePayload, PaintTileResult, SculptPayload, SculptResult,
-  AddLayerPayload, AddLayerResult, PaintRiverPayload, MaskPayload,
+  AddLayerPayload, AddLayerResult, PaintRiverPayload, MaskPayload, UndoResult, HistoryState,
 } from './ipc.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -61,6 +65,111 @@ interface Session {
   terrain: Map<number, TerrainDoc>;
   /** Kept alive so an object placed later can be meshed without a full rebuild. */
   resolver: GeomResolver;
+  /** Undo/redo, as byte patches over the documents this session owns. */
+  history: History;
+  /** Where this map's history is kept between runs. */
+  historyPath: string;
+}
+
+/** Documents an edit may touch: the map, some floors' terrain, or both. */
+interface Touches { map?: boolean; floors?: number[] }
+
+/** The map document's key in a history step; floors use their index. */
+const MAP_DOC = '';
+
+/** Current bytes of every document an edit is about to touch. */
+function snapshot(s: Session, t: Touches): Record<string, Uint8Array> {
+  const out: Record<string, Uint8Array> = {};
+  if (t.map) out[MAP_DOC] = Buffer.from(s.map.save(), 'latin1');
+  // Opened here rather than inside the edit: a document created midway through
+  // would have no "before" to compare against, and its first edit would be
+  // silently unundoable.
+  for (const f of t.floors ?? []) out[String(f)] = terrainDoc(s, f).buffer();
+  return out;
+}
+
+/**
+ * Run an edit and record what it did to the documents.
+ *
+ * Snapshot, run, snapshot, diff. The edit itself needs no knowledge of undo,
+ * which is the point: an operation added later is undoable without anyone
+ * remembering to write its inverse.
+ */
+function record<T>(s: Session, label: string, touches: Touches, fn: () => T): T {
+  const before = snapshot(s, touches);
+  const out = fn();
+  const after = snapshot(s, touches);
+  const docs: Record<string, DocPatch> = {};
+  for (const key of Object.keys(before)) {
+    const p = diff(before[key]!, after[key]!);
+    if (p) docs[key] = p;
+  }
+  s.history.push({ label, docs });
+  return out;
+}
+
+/** Put a step's other side into the live documents. Returns what moved. */
+function applyStep(s: Session, step: Step, dir: 'undo' | 'redo'): Touches {
+  const floors: number[] = [];
+  let map = false;
+  for (const [key, patch] of Object.entries(step.docs)) {
+    if (key === MAP_DOC) {
+      const now = Buffer.from(s.map.save(), 'latin1');
+      s.map = loadMap(Buffer.from(apply(now, patch, dir)).toString('latin1'));
+      map = true;
+    } else {
+      const floor = Number(key);
+      const doc = terrainDoc(s, floor);
+      doc.restore(Buffer.from(apply(doc.buffer(), patch, dir)));
+      floors.push(floor);
+    }
+  }
+  return { map, floors };
+}
+
+/**
+ * Identity of the documents as they stand, for deciding whether a history saved
+ * by a previous run still describes them.
+ *
+ * Taken over the live in-memory state rather than the files, because that is
+ * what the patches were taken from — and on a clean open the two are the same
+ * bytes anyway.
+ */
+function docsHash(s: Session): string {
+  const h = createHash('sha1');
+  h.update(s.map.save(), 'latin1');
+  TERRAIN_FILE.forEach((file, floor) => {
+    // The live document when there is one, the file otherwise — unsaved brush
+    // work is part of the state the history describes.
+    const doc = s.terrain.get(floor);
+    if (doc) { h.update(doc.buffer()); return; }
+    const p = join(s.mapDir, file);
+    if (existsSync(p)) h.update(readFileSync(p));
+  });
+  return h.digest('hex');
+}
+
+/** Where a map's history lives: beside the app's own data, never in the map. */
+function historyPathFor(mapDir: string): string {
+  // NOT inside the map folder: packProject sweeps every file in there into the
+  // .h5m, and an editor's undo log has no business shipping inside a map.
+  const key = createHash('sha1').update(mapDir).digest('hex').slice(0, 16);
+  return join(app.getPath('userData'), 'history', `${key}.json`);
+}
+
+function saveHistory(s: Session): void {
+  try {
+    mkdirSync(dirname(s.historyPath), { recursive: true });
+    writeFileSync(s.historyPath, JSON.stringify(s.history.save(docsHash(s))));
+  } catch { /* a history that cannot be written is not a reason to fail an edit */ }
+}
+
+function loadHistory(s: Session): void {
+  try {
+    if (!existsSync(s.historyPath)) return;
+    const stored = JSON.parse(readFileSync(s.historyPath, 'utf8')) as StoredHistory;
+    s.history.restore(stored, docsHash(s));
+  } catch { /* an unreadable history is dropped, not repaired */ }
 }
 
 /** Terrain file backing each floor index. */
@@ -215,7 +324,13 @@ ipcMain.handle('map:load', async (_e: IpcMainInvokeEvent, mapPath: string): Prom
     };
     win?.webContents.send('map:external-change', payload);
   });
-  session = { mapPath, mapDir, assetRoot, map, layerPaths, watch, terrain: new Map(), resolver };
+  session = {
+    mapPath, mapDir, assetRoot, map, layerPaths, watch, terrain: new Map(), resolver,
+    history: new History(), historyPath: historyPathFor(mapDir),
+  };
+  // A history from a previous run is adopted only if the documents still hash
+  // to what they hashed when it was written.
+  loadHistory(session);
   const placed = scene.floors.reduce((a, f) => a + f.instances.length, 0);
   return {
     scene,
@@ -229,6 +344,7 @@ ipcMain.handle('map:load', async (_e: IpcMainInvokeEvent, mapPath: string): Prom
       skipped,
     },
     status: status(mapDir),
+    history: historyState(session),
   };
 });
 
@@ -237,7 +353,7 @@ ipcMain.handle('object:move', async (_e: IpcMainInvokeEvent, { id, x, y }: MoveO
   if (!session) throw new Error('no map loaded');
   const obj = session.map.objects.find((o) => o.id === id);
   if (!obj) throw new Error(`object ${id} not found`);
-  obj.setPos(x, y);
+  record(session, 'move object', { map: true }, () => obj.setPos(x, y));
   return { ok: true };
 });
 
@@ -254,7 +370,8 @@ function findObject(s: Session, id: string): MapObject {
 // recomputing it here would be a second place for it to come out different.
 ipcMain.handle('object:rotate', async (_e: IpcMainInvokeEvent, { id, r }: RotateObjectPayload): Promise<ObjectEditResult> => {
   if (!session) throw new Error('no map loaded');
-  findObject(session, id).setRot(r);
+  const obj = findObject(session, id);
+  record(session, 'rotate object', { map: true }, () => obj.setRot(r));
   return { ok: true };
 });
 
@@ -325,9 +442,9 @@ ipcMain.handle('object:props', async (_e: IpcMainInvokeEvent, { id }: RemoveObje
 // --- IPC: set one simple field ---
 ipcMain.handle('object:set-prop', async (_e: IpcMainInvokeEvent, p: SetPropPayload): Promise<ObjectEditResult> => {
   if (!session) throw new Error('no map loaded');
-  if (!findObject(session, p.id).setProp(p.name, p.value)) {
-    throw new Error(`${p.name} is not a simple field of this object`);
-  }
+  const obj = findObject(session, p.id);
+  const done = record(session, `set ${p.name}`, { map: true }, () => obj.setProp(p.name, p.value));
+  if (!done) throw new Error(`${p.name} is not a simple field of this object`);
   return { ok: true };
 });
 
@@ -337,7 +454,9 @@ ipcMain.handle('object:set-prop', async (_e: IpcMainInvokeEvent, p: SetPropPaylo
 // is only reversible by not saving.
 ipcMain.handle('object:remove', async (_e: IpcMainInvokeEvent, { id }: RemoveObjectPayload): Promise<ObjectEditResult> => {
   if (!session) throw new Error('no map loaded');
-  if (!session.map.remove(findObject(session, id))) throw new Error(`could not remove ${id}`);
+  const obj = findObject(session, id);
+  const gone = record(session, 'delete object', { map: true }, () => session!.map.remove(obj));
+  if (!gone) throw new Error(`could not remove ${id}`);
   return { ok: true };
 });
 
@@ -347,7 +466,8 @@ ipcMain.handle('object:remove', async (_e: IpcMainInvokeEvent, { id }: RemoveObj
 // adding a layer means restructuring the .bin (see src/terrain.ts).
 ipcMain.handle('terrain:paint', async (_e: IpcMainInvokeEvent, p: PaintTilePayload): Promise<PaintTileResult> => {
   if (!session) throw new Error('no map loaded');
-  terrainDoc(session, p.floor).paintTile(p.tile, p.verts, p.strength ?? 255);
+  record(session, 'paint ground', { floors: [p.floor] },
+    () => terrainDoc(session!, p.floor).paintTile(p.tile, p.verts, p.strength ?? 255));
   return { ok: true };
 });
 
@@ -357,7 +477,8 @@ ipcMain.handle('terrain:paint', async (_e: IpcMainInvokeEvent, p: PaintTilePaylo
 // bed dug to 0 is water, and raising it off 0 makes it ground again.
 ipcMain.handle('terrain:sculpt', async (_e: IpcMainInvokeEvent, p: SculptPayload): Promise<SculptResult> => {
   if (!session) throw new Error('no map loaded');
-  terrainDoc(session, p.floor).setVertices(p.verts, p.heights, p.flags);
+  record(session, 'sculpt terrain', { floors: [p.floor] },
+    () => terrainDoc(session!, p.floor).setVertices(p.verts, p.heights, p.flags));
   return { ok: true };
 });
 
@@ -368,17 +489,20 @@ ipcMain.handle('terrain:sculpt', async (_e: IpcMainInvokeEvent, p: SculptPayload
 // briefly — or on a failure, permanently — inconsistent.
 ipcMain.handle('terrain:paint-river', async (_e: IpcMainInvokeEvent, p: PaintRiverPayload): Promise<PaintTileResult> => {
   if (!session) throw new Error('no map loaded');
-  const doc = terrainDoc(session, p.floor);
-  doc.paintTile(p.tile, p.verts);
-  doc.setRiver(p.verts);
-  doc.setVertices(p.heightVerts, p.heights, null);
+  record(session, 'paint river', { floors: [p.floor] }, () => {
+    const doc = terrainDoc(session!, p.floor);
+    doc.paintTile(p.tile, p.verts);
+    doc.setRiver(p.verts);
+    doc.setVertices(p.heightVerts, p.heights, null);
+  });
   return { ok: true };
 });
 
 // --- IPC: the passability mask (the original editor's Masks tab) ---
 ipcMain.handle('terrain:mask', async (_e: IpcMainInvokeEvent, p: MaskPayload): Promise<PaintTileResult> => {
   if (!session) throw new Error('no map loaded');
-  terrainDoc(session, p.floor).setPassable(p.verts, p.walkable);
+  record(session, p.walkable ? 'unblock tiles' : 'block tiles', { floors: [p.floor] },
+    () => terrainDoc(session!, p.floor).setPassable(p.verts, p.walkable));
   return { ok: true };
 });
 
@@ -390,11 +514,84 @@ ipcMain.handle('terrain:mask', async (_e: IpcMainInvokeEvent, p: MaskPayload): P
 ipcMain.handle('terrain:add-layer', async (_e: IpcMainInvokeEvent, p: AddLayerPayload): Promise<AddLayerResult> => {
   if (!session) throw new Error('no map loaded');
   const doc = terrainDoc(session, p.floor);
-  doc.addLayer(p.tile);
+  record(session, 'add ground layer', { floors: [p.floor] }, () => doc.addLayer(p.tile));
   const paths = doc.layerPaths().filter((x) => x);
   // Keep the palette's "already in this map" markers in step for every floor.
   session.layerPaths = [...new Set([...session.layerPaths, ...paths])];
   return { ok: true, splat: splatFor(doc.buffer(), session.assetRoot), inMap: paths };
+});
+
+// --- IPC: undo / redo ---
+//
+// The step is applied to the documents here; what goes back to the renderer is
+// the state it cannot derive on its own. Objects come back as the whole
+// instance list — the map was re-parsed, so every id is new-ish and matching
+// them up one by one would be more work than rebuilding the batches. Terrain
+// comes back as its planes plus a rebuilt splat, which is what a repainted mask
+// or an added layer changes.
+function undoResult(s: Session, step: Step | null, dir: 'undo' | 'redo'): UndoResult {
+  const moved = step ? applyStep(s, step, dir) : {};
+  const terrain: UndoResult['terrain'] = [];
+  for (const floor of moved.floors ?? []) {
+    const doc = terrainDoc(s, floor);
+    terrain.push({
+      floor,
+      heights: [...doc.heightsCopy()],
+      flags: doc.flagsCopy() ? [...doc.flagsCopy()!] : null,
+      splat: splatFor(doc.buffer(), s.assetRoot),
+    });
+  }
+  // Deliberately NOT persisted here. The stored history is keyed by a hash of
+  // the documents, and it is only worth anything if that hash is one a later
+  // run will reproduce — which means the state that is on DISK. Writing it
+  // after an in-memory undo would key it to bytes nobody saved, and would
+  // overwrite the good copy written at the last save.
+  return {
+    ok: true,
+    applied: !!step,
+    label: step?.label ?? null,
+    instances: moved.map ? instancesOf(s) : null,
+    terrain,
+    canUndo: s.history.canUndo, canRedo: s.history.canRedo,
+    undoLabel: s.history.undoLabel, redoLabel: s.history.redoLabel,
+  };
+}
+
+/** Every placed object, per floor, meshed through the session's warm resolver. */
+function instancesOf(s: Session): SceneInstance[][] {
+  const floors: SceneInstance[][] = [[], []];
+  for (const obj of s.map.objects) {
+    const shared = obj.shared, pos = obj.pos;
+    if (!shared || !pos) continue;
+    const g = s.resolver.resolve(shared);
+    if (g < 0) continue;
+    const floor = obj.floor === 1 ? 1 : 0;
+    // z is left to the renderer, which drops an object onto its own terrain --
+    // the same thing object:add does.
+    floors[floor]!.push({
+      id: obj.id, type: obj.type, g, shared: shared.split('#')[0]!,
+      x: pos.x, y: pos.y, z: 0, r: obj.rot || 0,
+    });
+  }
+  return floors;
+}
+
+/** The undo stack's reach, for a UI that greys out what cannot be done. */
+function historyState(s: Session): HistoryState {
+  return {
+    canUndo: s.history.canUndo, canRedo: s.history.canRedo,
+    undoLabel: s.history.undoLabel, redoLabel: s.history.redoLabel,
+  };
+}
+
+ipcMain.handle('history:undo', async (): Promise<UndoResult> => {
+  if (!session) throw new Error('no map loaded');
+  return undoResult(session, session.history.takeUndo(), 'undo');
+});
+
+ipcMain.handle('history:redo', async (): Promise<UndoResult> => {
+  if (!session) throw new Error('no map loaded');
+  return undoResult(session, session.history.takeRedo(), 'redo');
 });
 
 /** Flush every terrain document that has unsaved brush work. */
@@ -410,6 +607,10 @@ ipcMain.handle('map:save', async (): Promise<MapSaveResult> => {
   // Our own write — fold it into the watcher's baseline so it isn't reported
   // back to us as somebody else's edit.
   session.watch.resync();
+  // The bytes just changed on disk, so the hash the history is keyed by has
+  // moved with them. Rewriting it here is what keeps undo usable across a
+  // save-and-quit, which is the case worth having.
+  saveHistory(session);
   return { ok: true, status: status(session.mapDir) };
 });
 
