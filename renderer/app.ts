@@ -2588,21 +2588,41 @@ function objMatches(o: PlaceableObject): boolean {
   return true;
 }
 
-async function initObjectPalette(): Promise<void> {
-  if (catalog.length) return;
-  try {
-    const r = await window.editor.listObjects();
-    catalog = r.objects;
-    catGroups = r.groups;
-    if (!r.hasEditor) {
-      $('hud').textContent = 'no Editor folder found — objects are ungrouped and have no icons';
+/**
+ * In flight while the catalogue is being fetched.
+ *
+ * The scan reads the Editor folder and decodes the icon cache — a second or two
+ * on disk — so it is kicked off in the background the moment a map opens, and
+ * the panel simply awaits it. This handle is what makes both safe: a click that
+ * arrives mid-scan waits on the same promise instead of starting a second scan,
+ * and the preload does not care whether the panel is even open yet.
+ */
+let catalogLoad: Promise<void> | null = null;
+
+/** Fetch the catalogue once, whoever asks first. Idempotent and re-entrant. */
+function initObjectPalette(): Promise<void> {
+  if (catalog.length) return Promise.resolve();
+  if (catalogLoad) return catalogLoad;
+  // Only speaks if the panel is already showing; a background preload leaves it
+  // blank until the data lands.
+  if (objPalOpen) $('obj-grid').innerHTML = '<div style="color:#8b949e;font-size:11px;padding:8px">loading objects…</div>';
+  catalogLoad = (async () => {
+    try {
+      const r = await window.editor.listObjects();
+      catalog = r.objects;
+      catGroups = r.groups;
+      if (!r.hasEditor) {
+        $('hud').textContent = 'no Editor folder found — objects are ungrouped and have no icons';
+      }
+      renderObjCats();
+      renderObjGrid();
+    } catch (e) {
+      catalogLoad = null; // let a later open retry a scan that failed
+      $('obj-grid').innerHTML = `<div style="color:#f85149;font-size:11px">${
+        e instanceof Error ? e.message : String(e)}</div>`;
     }
-    renderObjCats();
-    renderObjGrid();
-  } catch (e) {
-    $('obj-grid').innerHTML = `<div style="color:#f85149;font-size:11px">${
-      e instanceof Error ? e.message : String(e)}</div>`;
-  }
+  })();
+  return catalogLoad;
 }
 
 function renderObjCats(): void {
@@ -3043,11 +3063,22 @@ async function loadMapPath(path: string | null): Promise<void> {
   if (!path) return;
   // Whatever the banner was offering is about to be on screen for real.
   hideExternalChange();
+  const say = (m: string): Promise<void> => {
+    $('loadmsg').textContent = m;
+    // Two frames: one to run the style change, one to paint it — a single rAF
+    // fires before paint, so the message would not show before the blocking
+    // work that follows it.
+    return new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+  };
   $('loading').classList.add('on');
-  // Yield a frame so the overlay paints before the (blocking) decode starts.
-  await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  await say('decoding map…');
   try {
+    // The heavy lifting is in the main process (mesh/texture decode), so the
+    // renderer's own thread is free to keep the spinner turning while it runs.
     const { scene: S, info, history } = await window.editor.loadMap(path);
+    // buildWorld DOES block this thread, so let the new message paint first —
+    // the GPU-composited spinner keeps moving through the freeze regardless.
+    await say('building scene…');
     buildWorld(S);
     // A history kept from a previous run is adopted when the files still hash
     // the same, so opening a map is not always a blank slate.
@@ -3081,6 +3112,11 @@ async function loadMapPath(path: string | null): Promise<void> {
       ? ' · floors: ' + info.floors.map((f) => `${FLOOR_LABEL[f.name] || f.name} ${f.objects}`).join(', ')
       : '';
     $('hud').textContent = `${total} objects · placed ${info.placed}, no model ${info.skipped} · ${S.geoms.length} meshes${floorsTxt}`;
+    // Warm the object catalogue in the background, so opening the palette is
+    // instant rather than a disk scan on the first click. Kicked off only once
+    // the map itself is on screen and the loading overlay is down, so it never
+    // competes with the work the user is actually waiting for. Not awaited.
+    void initObjectPalette();
   } catch (e) {
     $('hud').textContent = 'error: ' + (e instanceof Error ? e.message : String(e));
     console.error(e);

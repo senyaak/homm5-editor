@@ -198,8 +198,17 @@
     #loading { position: fixed; inset: 0; z-index: 30; display: none;
       align-items: center; justify-content: center; background: #0d1014cc; }
     #loading.on { display: flex; }
-    #loading .box { padding: 14px 22px; background: #161b22; border: 1px solid #30363d;
-      border-radius: 8px; color: #e6edf3; font-size: 14px; }
+    #loading .box { padding: 16px 26px; background: #161b22; border: 1px solid #30363d;
+      border-radius: 8px; color: #e6edf3; font-size: 14px;
+      display: flex; align-items: center; gap: 14px; }
+    /* The spinner animates a compositor-only transform, so it keeps turning on
+       the GPU even while the main thread is blocked decoding a scene — which is
+       the whole point: a frozen "loading…" reads as a hang, a turning one does
+       not. */
+    #loading .spin { width: 20px; height: 20px; flex: none; border-radius: 50%;
+      border: 3px solid #30363d; border-top-color: #58a6ff;
+      animation: spin 0.8s linear infinite; will-change: transform; }
+    @keyframes spin { to { transform: rotate(360deg); } }
 
     /* category chips in the picker */
     #cats { display: flex; gap: 6px; padding: 8px 12px 0; flex-wrap: wrap; }
@@ -391,7 +400,7 @@
     <button id="extchange-ignore" class="ghost">Keep mine</button>
   </div>
 
-  <div id="loading"><div class="box">loading map…</div></div>
+  <div id="loading"><div class="box"><div class="spin"></div><span id="loadmsg">loading map…</span></div></div>
   <div id="hud"></div>
   <div id="app"></div>
 
