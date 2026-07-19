@@ -74,7 +74,15 @@ const STUB = `<script>
       { start: 0, count: half, tex: null, alphaMode: 'AM_OPAQUE', projectOnTerrain: false, flat: false, opaque: true, terrainProjected: false },
       // Flat, projected and sheer, so the no-depth-write overlay path is exercised.
       { start: half, count: i.length - half, tex: null, alphaMode: 'AM_OVERLAY', projectOnTerrain: true, flat: true, opaque: false, terrainProjected: true },
-    ] };
+    ],
+    // A building footprint with every role, so the grid's coloured tile squares
+    // (blocked/active/hole/passable) are exercised, not just a bare model.
+    footprint: {
+      blocked: [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 0, y: 1 }],
+      active: [{ x: 1, y: 1 }],
+      hole: [{ x: -1, y: 0 }],
+      passable: [{ x: -1, y: 1 }],
+    } };
   })();
   const SH = '/MapObjects/Grass/Tree/Tree.(AdvMapStaticShared).xdb';
   floor.instances = [

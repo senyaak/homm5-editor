@@ -126,6 +126,26 @@ export interface GeomData {
   idx: number[];
   /** One entry per submesh, in index order; always covers all of `idx`. */
   parts: GeomPart[];
+  /**
+   * The building's tile footprint, or null for objects that declare none
+   * (artifacts, monsters, plain statics). Offsets are tiles relative to the
+   * placed object's own tile; the renderer rotates them with the object and
+   * draws them as the coloured grid squares the original editor shows under a
+   * building — blocked (impassable), active (where the hero interacts), plus
+   * the hole and passable cells.
+   */
+  footprint?: Footprint | null;
+}
+
+/** A tile offset from an object's own tile, in grid axes; may be negative. */
+export interface TileOffset { x: number; y: number }
+
+/** A building's tile footprint, split by role. See AdvMapBuildingShared. */
+export interface Footprint {
+  blocked: TileOffset[];
+  active: TileOffset[];
+  hole: TileOffset[];
+  passable: TileOffset[];
 }
 
 /** A placed object: tile position, rotation about Z, and its mesh index. */
@@ -359,6 +379,29 @@ export interface GeomResolver {
   resolve: (sharedHref: string) => number;
 }
 
+/** Read one `<tag><Item><x>..</x><y>..</y></Item>…</tag>` list; `<tag/>` = none. */
+function parseTileList(xml: string, tag: string): TileOffset[] {
+  const block = xml.match(new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`));
+  if (!block) return [];
+  const out: TileOffset[] = [];
+  const re = /<x>(-?\d+)<\/x>\s*<y>(-?\d+)<\/y>/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(block[1]!))) out.push({ x: Number(m[1]), y: Number(m[2]) });
+  return out;
+}
+
+/** A building shared's tile footprint, or null when it declares none. */
+function parseFootprint(sharedXml: string): Footprint | null {
+  const fp: Footprint = {
+    blocked: parseTileList(sharedXml, 'blockedTiles'),
+    active: parseTileList(sharedXml, 'activeTiles'),
+    hole: parseTileList(sharedXml, 'holeTiles'),
+    passable: parseTileList(sharedXml, 'passableTiles'),
+  };
+  if (!fp.blocked.length && !fp.active.length && !fp.hole.length && !fp.passable.length) return null;
+  return fp;
+}
+
 export function createGeomResolver(assetRoot: string, texSize = 128): GeomResolver {
   const readXdb: ReadXdb = (href) => {
     const p = join(assetRoot, href.split('#')[0]!);
@@ -399,6 +442,10 @@ export function createGeomResolver(assetRoot: string, texSize = 128): GeomResolv
         if (card && idx < 0) { idx = geoms.length; geoms.push(card); }
         else if (card) appendCard(geoms[idx]!, card);
       }
+      // Only AdvMapBuildingShared declares a footprint, so this is null for
+      // everything else and the renderer skips it. Attached to the geom because
+      // the geom is 1:1 with the shared here (no cross-shared dedup).
+      if (shared && idx >= 0) geoms[idx]!.footprint = parseFootprint(shared);
     } catch { idx = -1; }
     geomIndex.set(sharedHref, idx);
     return idx;

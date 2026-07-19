@@ -17,7 +17,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 import { UNITS_PER_TILE as U } from '../src/units.ts';
-import type { Scene, Floor, Instance, SplatData, TileInfo, GeomData, GeomPart } from '../src/scene.ts';
+import type { Scene, Floor, Instance, SplatData, TileInfo, GeomData, GeomPart, Footprint } from '../src/scene.ts';
 import type { EditorApi, MapListEntry, ExternalChange, PlaceableObject } from '../electron/ipc.ts';
 
 type MapEntry = MapListEntry & { cat: string };
@@ -95,6 +95,8 @@ interface Floor3D {
   river: Set<number>;
   /** The passability view: blocked fill, navigable fill and the tile grid. */
   passMeshes: THREE.Mesh[];
+  /** Building footprint squares (blocked/active/hole/passable), shown with the grid. */
+  footMeshes: THREE.Mesh[];
   /** Ground colours for the fallback material, kept for remeshing. */
   colors: number[] | null;
   group: THREE.Group;
@@ -510,6 +512,7 @@ function replaceInstances(fl: Floor3D, instances: Instance[]): void {
   }
   const batches = buildBatches(instances, fl.meshes, worldGeos, worldMats, fl.objGroup);
   for (const [g, b] of batches) fl.batches.set(g, b);
+  syncFootprints(fl);
 }
 
 // Build the shared per-geom geometries + materials (reused across floors).
@@ -517,7 +520,8 @@ function buildGeos(S: Scene) {
   const geos = S.geoms.map(geometryFor);
   const mats = S.geoms.map((g) => g.parts.map(materialFor));
   geomParts.clear();
-  S.geoms.forEach((g, i) => geomParts.set(i, g.parts));
+  geomFootprint.clear();
+  S.geoms.forEach((g, i) => { geomParts.set(i, g.parts); geomFootprint.set(i, g.footprint ?? null); });
   worldGeos = geos;
   worldMats = mats;
   return { geos, mats };
@@ -770,6 +774,9 @@ function projectBatch(fl: Floor3D, g: number): void {
 
 /** Submesh descriptions per geom index, so materials can be rebuilt later. */
 const geomParts = new Map<number, GeomPart[]>();
+
+/** Building tile footprint per geom index (null for objects that declare none). */
+const geomFootprint = new Map<number, Footprint | null>();
 
 // Swap a floor's flat-colour terrain material for the textured splat one.
 async function upgradeToSplat(fl: Floor3D): Promise<void> {
@@ -1147,7 +1154,7 @@ function buildFloor(floor: Floor, geos: THREE.BufferGeometry[], mats: THREE.Mate
     name: floor.name, V, heights, flags: floor.flags, colors: floor.colors,
     // A river already in the map is at full depth: never dig it again.
     riverDrop: new Map(floor.riverVerts.map((v) => [v, RIVER_DEPTH])),
-    passable: floor.passable, river: new Set(floor.riverVerts), passMeshes: [],
+    passable: floor.passable, river: new Set(floor.riverVerts), passMeshes: [], footMeshes: [],
     group, objGroup, meshes, batches, terrainMesh, waterMesh, waterTex: floor.water?.tex ?? null,
     splat: floor.splat, maskTex: null, instances: floor.instances,
   };
@@ -1353,6 +1360,7 @@ async function rotateSelected(deg: number, commit = true): Promise<void> {
   selected.inst.r = r;
   selected.mesh.rotation.z = r;
   syncInstance(activeFloor(), selected.inst);
+  syncFootprints();
   boxHelper?.setFromObject(selected.mesh);
   $('p-rot').textContent = `${degOf(r).toFixed(0)}°`;
   // Skipped while the slider itself is the source, or dragging it would fight
@@ -1440,6 +1448,7 @@ async function deleteSelected(): Promise<void> {
   // scene's to dispose, not ours.
   const i = fl.instances.indexOf(inst);
   if (i >= 0) fl.instances.splice(i, 1);
+  syncFootprints(fl);
   deselect();
   renderExplorer();
   markDirty(true);
@@ -1640,6 +1649,7 @@ renderer.domElement.addEventListener('pointermove', (ev) => {
   selected.inst.x = nx; selected.inst.y = ny;
   selected.mesh.position.set(nx * U, ny * U, heightAt(nx, ny));
   syncInstance(activeFloor(), selected.inst);
+  syncFootprints();
   boxHelper?.setFromObject(selected.mesh);
   moved = true;
   updatePanel();
@@ -1906,6 +1916,81 @@ function refreshBlocked(fl: Floor3D): void {
   add(tileGrid(fl), new THREE.LineBasicMaterial({
     color: 0xffffff, transparent: true, opacity: 0.13, depthWrite: false,
   }), true);
+  refreshFootprints(fl);
+}
+
+// The roles a building declares tiles for, with the colour each is drawn in.
+// Ordered back-to-front: hole and passable first, then blocked, then the active
+// tile on top, so where they overlap the more important one wins. Red blocked
+// and green active are the pair Senya named; hole and passable get their own
+// colours rather than being folded into those.
+const FOOT_ROLES: [keyof Footprint, number, number][] = [
+  ['hole', 0x9b59ff, 0.32],
+  ['passable', 0xe8d23a, 0.32],
+  ['blocked', 0xff2020, 0.5],
+  ['active', 0x2ad04a, 0.62],
+];
+
+/** Merged footprint squares for one role across every building on the floor. */
+function footprintQuads(fl: Floor3D, role: keyof Footprint): THREE.BufferGeometry {
+  const pos: number[] = [];
+  for (const inst of fl.instances) {
+    const tiles = geomFootprint.get(inst.g)?.[role];
+    if (!tiles || !tiles.length) continue;
+    const cos = Math.cos(inst.r), sin = Math.sin(inst.r);
+    for (const t of tiles) {
+      // The tile's centre: the object's own tile plus this offset, turned with
+      // the object so a rotated building's footprint rotates with it.
+      const cx = inst.x + t.x * cos - t.y * sin;
+      const cy = inst.y + t.x * sin + t.y * cos;
+      // Each corner is sampled against the ground it sits over, so the square
+      // hugs a slope instead of floating flat above it.
+      const corner = (ox: number, oy: number): number[] => {
+        const gx = cx + ox * cos - oy * sin;
+        const gy = cy + ox * sin + oy * cos;
+        return [gx, gy, heightOn(fl, gx, gy) + 0.06];
+      };
+      const a = corner(-0.5, -0.5), b = corner(0.5, -0.5), c = corner(0.5, 0.5), d = corner(-0.5, 0.5);
+      pos.push(...a, ...b, ...c, ...a, ...c, ...d);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pos), 3));
+  return g;
+}
+
+/**
+ * Rebuild the building footprint squares. Kept apart from refreshBlocked's
+ * passability wash because it only walks the placed objects, not the whole
+ * V×V grid, so moving or rotating an object can refresh it cheaply.
+ *
+ * Drawn depth-test off, above the models: the original shows these as an
+ * overlay lying over the building, not tucked under it.
+ */
+function refreshFootprints(fl: Floor3D): void {
+  for (const m of fl.footMeshes) {
+    fl.group.remove(m);
+    m.geometry.dispose();
+    (m.material as THREE.Material).dispose();
+  }
+  fl.footMeshes = [];
+  if (!showBlocked) return;
+  for (const [role, color, opacity] of FOOT_ROLES) {
+    const g = footprintQuads(fl, role);
+    if (!g.getAttribute('position')?.count) { g.dispose(); continue; }
+    const mesh = asTileSpace(new THREE.Mesh(g, new THREE.MeshBasicMaterial({
+      color, transparent: true, opacity, side: THREE.DoubleSide,
+      depthWrite: false, depthTest: false,
+    })));
+    mesh.renderOrder = 900;
+    fl.footMeshes.push(mesh as THREE.Mesh);
+    fl.group.add(mesh);
+  }
+}
+
+/** Refresh a floor's footprints if the grid is showing; a no-op otherwise. */
+function syncFootprints(fl: Floor3D = activeFloor()): void {
+  if (showBlocked) refreshFootprints(fl);
 }
 
 function setShowBlocked(on: boolean): void {
@@ -2939,6 +3024,7 @@ function addInstanceToScene(inst: Instance, geom: { index: number; data: GeomDat
     // placed terrain-projected model has no parts to project and its ground
     // material is never built.
     geomParts.set(geom.index, geom.data.parts);
+    geomFootprint.set(geom.index, geom.data.footprint ?? null);
   }
   const g = worldGeos[inst.g], m = worldMats[inst.g];
   if (!g || !m) { $('hud').textContent = 'placed, but its mesh is missing — reload to see it'; return; }
@@ -2957,6 +3043,7 @@ function addInstanceToScene(inst: Instance, geom: { index: number; data: GeomDat
   // material now that it exists — the load path does this via upgradeToSplat.
   if (geomParts.get(inst.g)?.some((p) => p.terrainProjected)) projectBatch(fl, inst.g);
   fl.instances.push(inst);
+  syncFootprints(fl);
 }
 
 // --- terrain palette (content browser) -------------------------------------
