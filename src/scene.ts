@@ -525,7 +525,50 @@ function tileColor(path: string, readXdb: ReadXdb, cache: Map<string, number[] |
 }
 
 // Merge a model's submeshes into one buffer and register it as a scene geom.
+/**
+ * Drop a mesh that duplicates a terrain-projected one.
+ *
+ * A building's mound is in the file twice, as the same triangles: once opaque
+ * with a fixed texture, once with ProjectOnTerrain so it takes the ground it
+ * stands on. 92 of the shipped models carry such a pair — the Abandoned Mine's
+ * podShape and CragShape are byte-identical in positions, UVs, indices and
+ * normals, and the fixed one is textured with SubTerrain, the UNDERGROUND
+ * ground. Drawing both puts an opaque slab of underground rock on the grass.
+ *
+ * Only the projected copy is kept, because it is the one that is right on any
+ * floor: it takes whatever ground is under it, rock included. Matched on the
+ * geometry rather than on the mesh name, so a model that names them differently
+ * is handled the same.
+ */
+function dropProjectedDuplicates(meshes: Mesh[], pick: number[], mats: MaterialInfo[]): boolean[] {
+  const keep = meshes.map(() => true);
+  const key = (m: Mesh): string => `${m.vertexCount}:${m.triCount}:${m.indices.length}`;
+  for (let i = 0; i < meshes.length; i++) {
+    const projected = mats[pick[i] ?? 0]?.projectOnTerrain;
+    if (!projected) continue;
+    for (let j = 0; j < meshes.length; j++) {
+      if (j === i || !keep[j]) continue;
+      if (mats[pick[j] ?? 0]?.projectOnTerrain) continue;
+      if (key(meshes[i]!) !== key(meshes[j]!)) continue;
+      // Cheap key first, then confirm the positions really do coincide.
+      const a = meshes[i]!.positions, b = meshes[j]!.positions;
+      let same = a.length === b.length;
+      for (let k = 0; same && k < a.length; k++) if (Math.abs(a[k]! - b[k]!) > 1e-6) same = false;
+      if (same) keep[j] = false;
+    }
+  }
+  return keep;
+}
+
 function addGeom(geoms: GeomData[], meshes: Mesh[], model: string, assetRoot: string, texSize: number): number {
+  // Materials are resolved before the meshes are packed, because which meshes
+  // survive depends on them: a copy of a terrain-projected mesh is redundant.
+  const allMats = modelMaterials(model, assetRoot);
+  const allPick = meshMaterialIndex(model, meshes.length, allMats.length);
+  const keep = dropProjectedDuplicates(meshes, allPick, allMats);
+  const pick = allPick.filter((_, i) => keep[i]);
+  meshes = meshes.filter((_, i) => keep[i]);
+
   let vc = 0, tc = 0;
   for (const m of meshes) { vc += m.vertexCount; tc += m.indices.length; }
   const pos = new Float32Array(vc * 3), uv = new Float32Array(vc * 2), idxs = new Uint32Array(tc);
@@ -542,8 +585,7 @@ function addGeom(geoms: GeomData[], meshes: Mesh[], model: string, assetRoot: st
   // One part per mesh, each with its own material, so a building whose crag and
   // crystals are separate meshes stops being painted entirely in the first
   // texture the model happened to list.
-  const mats = modelMaterials(model, assetRoot);
-  const pick = meshMaterialIndex(model, meshes.length, mats.length);
+  const mats = allMats;
   const cache = new Map<number, { uri: string; hasAlpha: boolean } | null>();
   const parts: GeomPart[] = [];
   let start = 0;

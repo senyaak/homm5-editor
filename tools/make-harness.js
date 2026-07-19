@@ -67,7 +67,13 @@ const STUB = `<script>
     for (const v of c) p.push(v[0], v[1], v[2]);
     const f = [0,1,2, 0,2,3, 4,6,5, 4,7,6, 0,4,5, 0,5,1, 1,5,6, 1,6,2, 2,6,7, 2,7,3, 3,7,4, 3,4,0];
     for (const k of f) i.push(k);
-    return { pos: p, uv: null, nrm: null, idx: i, parts: [{ start: 0, count: i.length, tex: null, alphaMode: 'AM_OPAQUE', projectOnTerrain: false }] };
+    // Two parts, the second terrain-projected, so the projected material's
+    // shader is compiled here rather than failing for the first time in the app.
+    const half = Math.floor(i.length / 6) * 3;
+    return { pos: p, uv: new Array((p.length / 3) * 2).fill(0), nrm: null, idx: i, parts: [
+      { start: 0, count: half, tex: null, alphaMode: 'AM_OPAQUE', projectOnTerrain: false },
+      { start: half, count: i.length - half, tex: null, alphaMode: 'AM_OVERLAY', projectOnTerrain: true },
+    ] };
   })();
   const SH = '/MapObjects/Grass/Tree/Tree.(AdvMapStaticShared).xdb';
   floor.instances = [
