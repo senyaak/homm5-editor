@@ -90,16 +90,29 @@ parallel and picks up the verdicts at M4.
 The black wedges and stripes were two bugs, neither in the mesh decoder, and
 both of them general rather than specific to this model.
 
-**1. `<ProjectOnTerrain>` was read as "this is flat".** Parts carrying the flag
-went through the decal shader, which samples the ground by world XY and uses the
-part's own texture only to darken it. On a 10-unit-tall mountain that smears one
-column of ground texels up every cliff face (the stripes) and multiplies dark
-rock over it (the black wedges). Measured across the shipped models, 393 parts
-set the flag and they run from perfectly flat to **three times taller than they
-are wide** — so the flag does not mean flat. Projection is now gated on the mesh
-actually being flat, at a deliberately generous height/span < 0.35 so that only
-the clearly-tall cases change: the Abandoned Mine's hill (0.284) stays on the
-path it was on, Mountain10x10 (0.505) comes off it.
+**1. `<ProjectOnTerrain>` does NOT mean "paint the ground onto this".** It was
+read that way, and parts carrying the flag went through a shader that shaded
+them with the terrain splat sampled at their world XY, using their own texture
+only as a darkener. On a 10-unit-tall mountain that smears one column of ground
+texels up every cliff face (the stripes) and multiplies dark rock over it (the
+black wedges).
+
+The reading was inferred from one model — the Abandoned Mine's mound — and the
+corpus does not support it. 393 shipped parts set the flag and they run from
+perfectly flat to **three times taller than they are wide**. Two attempts to
+rescue it by finding which parts are "really" decals both failed on measurement:
+
+- *height/span*, tried at 0.35, cannot separate the mine's mound (0.284) from
+  Mountain8x8 (0.340) — 8x8 stayed dark for exactly this reason.
+- *"is this part the whole model or a skirt on it"* is no better: the 75 parts
+  that ARE their whole model have median 0.394, the 318 that are one of several
+  have median 0.300, and both groups are mostly tall.
+
+So the shader is gone. Every part draws with its own texture, and `AM_OVERLAY`
+is what blends a mound into the ground beneath it — which is what the mine's
+mound wanted all along. The flag now only earns a depth nudge, and only where
+the mesh really is flat (height/span < 0.15), so a decal does not z-fight with
+the terrain it lies on. **What the flag means to the engine remains unknown.**
 
 **2. The duplicate-mesh test demanded exact positions.** The model ships its
 geometry twice — once with the authored rock texture, once with `SubTerrain`,
@@ -115,10 +128,30 @@ on the theory that an overlay with nothing behind it renders see-through. It
 made no visible difference to the mountain and turned the Abandoned Mine's hill
 into a black slab, so it was removed rather than kept "just in case".
 
-Not established: what the engine actually does with `<ProjectOnTerrain>`. 0.35
-is a bound on the absurd, not a measurement. A frame diff against the engine
-would beat it, and that is still the right next move for any model that looks
-off — every format question measured so far has come out matching.
+Verified by rendering Mountain8x8, Mountain10x10 and the Abandoned Mine and
+looking at them. Senya confirmed 10x10 in the editor.
+
+## Everything is drawn at twice its size (2026-07-19, OPEN)
+
+Spotted by Senya: a random treasure that occupies 1x1 in the game is drawn 2x2
+in the editor. He is right, and it is not specific to treasure — **every model
+is drawn at exactly twice its proper size.**
+
+One map tile is **2 world units**, and the renderer puts geometry into a world
+where a tile is 1 unit, with no scale applied anywhere. Measured over the 396
+shared objects that declare both a `blockedTiles` footprint and a model
+`<Size>`: the ratio's 25th percentile, median and 75th percentile are 2.000,
+2.000 and 2.202, and 67% of the 792 samples are within 0.2 of exactly 2.0.
+(Ratios above 2 are expected — `<Size>` is a bounding box and a tree's canopy
+overhangs the tiles it blocks — which is why the upper tail is the loose one.)
+
+Mountain10x10 is the clean illustration: `<Size>` 20x20, `blockedTiles`
+spanning exactly 10x10.
+
+The fix is to scale model geometry by 0.5, but it has not been made yet: it
+changes every object on every map at once, and it touches placement and picking
+as well as drawing, so it wants its own pass rather than being smuggled in
+beside a mesh fix.
 
 ## Known bad: the audit's hard failures
 

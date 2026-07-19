@@ -667,18 +667,16 @@ function tileColor(path: string, readXdb: ReadXdb, cache: Map<string, number[] |
 /**
  * Is this mesh flat enough to be a decal lying on the ground?
  *
- * Height against the larger of its two footprint spans. Measured over every
- * part whose material sets ProjectOnTerrain, the ratios run from 0 (a quarter
- * are below 0.077) to past 3.0 — so the flag is on plenty of things that are
- * taller than they are wide, and cannot mean "flat" by itself.
+ * Height against the larger of its two footprint spans. Used for one thing: a
+ * surface lying ON the ground is coplanar with it and z-fights, so it wants a
+ * depth nudge, and a solid body does not.
  *
- * The threshold is deliberately generous. What is actually established is only
- * the extreme: something much taller than it is wide is not lying on the
- * ground. 0.35 keeps the Abandoned Mine's hill (0.284) on the projected path it
- * was already on and takes Mountain10x10 (0.505) off it, so nothing changes for
- * the shallow cases where projection was doing no harm. It is a bound, not a
- * measurement of what the engine does, and a frame diff against the engine
- * would beat it.
+ * Measured over every part whose material sets ProjectOnTerrain, the ratios run
+ * from 0 (a quarter are below 0.077) to past 3.0, so the flag alone says
+ * nothing about flatness. 0.15 keeps the nudge for things that really are
+ * coplanar; a mine's mound at 0.284 and an 8x8 mountain at 0.340 are both
+ * bodies sitting on the ground, not decals painted onto it, and neither needs
+ * it.
  */
 function isFlat(m: Mesh): boolean {
   const p = m.positions;
@@ -690,7 +688,7 @@ function isFlat(m: Mesh): boolean {
     zmin = Math.min(zmin, p[i + 2]!); zmax = Math.max(zmax, p[i + 2]!);
   }
   const span = Math.max(xmax - xmin, ymax - ymin);
-  return span > 1e-6 && (zmax - zmin) / span < 0.35;
+  return span > 1e-6 && (zmax - zmin) / span < 0.15;
 }
 
 /**
