@@ -85,6 +85,23 @@ M4 (placeholders in the editor).** M2 and M3 run as a loop. This whole track is
 standalone: the map editor (rotation, undo, adding objects, properties) moves in
 parallel and picks up the verdicts at M4.
 
+## Known bad: Mountain 10x10 (2026-07-19)
+
+Reported by Senya, to be fixed later. A 10x10 mountain shows hard black wedges
+and a striped, torn look across its faces — it reads as shading rather than as
+missing geometry, so the first things to check are whether its normals decoded
+(the byte triple at +12 of each render vertex) and whether it is one of the few
+models the mesh audit still scores as wrong.
+
+The audit's remaining hard failures are a short list and worth checking against
+this one: `TESTS/A-geom`, `DemonLord_Path/Cross02`,
+`SmallStone/SmallStone_1x1_01` decode to nothing, `Dwellings/archers_tower`
+comes out short (2 -> 1) and `Snowed/Elemental_Stockpile_Snow` long (2 -> 3).
+
+Run `npm run mesh-audit` for the current numbers. Note that the audit selects
+models by `<NumMeshes>`, which for the ~1277 models that reference a separate
+`(Geometry).xdb` lives in that other file — so its percentage is not coverage.
+
 ## Abandoned Mine — ACCEPTABLE, NOT DONE (2026-07-19)
 
 Closed as good enough to move on, not as matching the engine. Senya's verdict

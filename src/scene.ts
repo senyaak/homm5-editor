@@ -282,6 +282,26 @@ function effectGeom(
 }
 
 /**
+ * Append an effect card to a model that already has geometry.
+ *
+ * The card becomes one more part, so it keeps its own texture and its own
+ * blending without disturbing the mesh's.
+ */
+function appendCard(into: GeomData, card: GeomData): void {
+  const base = into.pos.length / 3;
+  into.pos.push(...card.pos);
+  // A geom is only textured if EVERY part has coordinates, so a card joining a
+  // model without them cannot introduce a half-filled array.
+  if (into.uv && card.uv) into.uv.push(...card.uv);
+  else into.uv = null;
+  if (into.nrm && card.nrm) into.nrm.push(...card.nrm);
+  else into.nrm = null;
+  const start = into.idx.length;
+  for (const i of card.idx) into.idx.push(i + base);
+  into.parts.push({ ...card.parts[0]!, start, count: card.idx.length });
+}
+
+/**
  * A shared-href -> mesh resolver with its own growing geom list.
  *
  * Split out of buildScene so a single object can be resolved after the scene is
@@ -319,11 +339,15 @@ export function createGeomResolver(assetRoot: string, texSize = 128): GeomResolv
           if (meshes.length) idx = addGeom(geoms, meshes, model, modelHref[1]!, assetRoot, texSize);
         }
       }
-      // No mesh, but the object may be an effect — 319 shipped ones are nothing
-      // else. Stand a textured card in for it so it can be seen and edited.
-      if (idx < 0 && shared) {
+      // An effect is worth a card whether or not there is also a mesh. 307
+      // shipped objects are nothing but an effect, and another 257 carry one
+      // ALONGSIDE a model — the anti-magic garrison wall is the second kind, so
+      // taking its mesh and stopping drew the flat sparkle patch on the ground
+      // and left out the glowing wall that is the whole point of it.
+      if (shared) {
         const card = effectGeom(shared, sharedHref, assetRoot, texSize);
-        if (card) { idx = geoms.length; geoms.push(card); }
+        if (card && idx < 0) { idx = geoms.length; geoms.push(card); }
+        else if (card) appendCard(geoms[idx]!, card);
       }
     } catch { idx = -1; }
     geomIndex.set(sharedHref, idx);
