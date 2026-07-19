@@ -85,18 +85,46 @@ M4 (placeholders in the editor).** M2 and M3 run as a loop. This whole track is
 standalone: the map editor (rotation, undo, adding objects, properties) moves in
 parallel and picks up the verdicts at M4.
 
-## Known bad: Mountain 10x10 (2026-07-19)
+## Mountain 10x10 — FIXED (2026-07-19)
 
-Reported by Senya, to be fixed later. A 10x10 mountain shows hard black wedges
-and a striped, torn look across its faces — it reads as shading rather than as
-missing geometry, so the first things to check are whether its normals decoded
-(the byte triple at +12 of each render vertex) and whether it is one of the few
-models the mesh audit still scores as wrong.
+The black wedges and stripes were two bugs, neither in the mesh decoder, and
+both of them general rather than specific to this model.
 
-The audit's remaining hard failures are a short list and worth checking against
-this one: `TESTS/A-geom`, `DemonLord_Path/Cross02`,
-`SmallStone/SmallStone_1x1_01` decode to nothing, `Dwellings/archers_tower`
-comes out short (2 -> 1) and `Snowed/Elemental_Stockpile_Snow` long (2 -> 3).
+**1. `<ProjectOnTerrain>` was read as "this is flat".** Parts carrying the flag
+went through the decal shader, which samples the ground by world XY and uses the
+part's own texture only to darken it. On a 10-unit-tall mountain that smears one
+column of ground texels up every cliff face (the stripes) and multiplies dark
+rock over it (the black wedges). Measured across the shipped models, 393 parts
+set the flag and they run from perfectly flat to **three times taller than they
+are wide** — so the flag does not mean flat. Projection is now gated on the mesh
+actually being flat, at a deliberately generous height/span < 0.35 so that only
+the clearly-tall cases change: the Abandoned Mine's hill (0.284) stays on the
+path it was on, Mountain10x10 (0.505) comes off it.
+
+**2. The duplicate-mesh test demanded exact positions.** The model ships its
+geometry twice — once with the authored rock texture, once with `SubTerrain`,
+the underground ground. The second copy is the same 448 vertices and 662
+triangles under identical indices and identical UVs, merely pushed outward by up
+to one unit on a twenty-unit model, so the exact-match test never fired and the
+dark grey shell swallowed the textured one whole. The test now matches on
+topology plus coincidence within a tenth of the model's diagonal, which caught
+two more models across the whole set (104 -> 106) — a small blast radius.
+
+Also tried and **reverted**: forcing `AM_OVERLAY` to opaque on non-flat parts,
+on the theory that an overlay with nothing behind it renders see-through. It
+made no visible difference to the mountain and turned the Abandoned Mine's hill
+into a black slab, so it was removed rather than kept "just in case".
+
+Not established: what the engine actually does with `<ProjectOnTerrain>`. 0.35
+is a bound on the absurd, not a measurement. A frame diff against the engine
+would beat it, and that is still the right next move for any model that looks
+off — every format question measured so far has come out matching.
+
+## Known bad: the audit's hard failures
+
+`TESTS/A-geom`, `DemonLord_Path/Cross02` and `SmallStone/SmallStone_1x1_01`
+decode to nothing; `Dwellings/archers_tower` comes out short (2 -> 1) and
+`Snowed/Elemental_Stockpile_Snow` long (2 -> 3).
 
 Run `npm run mesh-audit` for the current numbers. Note that the audit selects
 models by `<NumMeshes>`, which for the ~1277 models that reference a separate

@@ -60,8 +60,15 @@ export interface GeomPart {
   /** How this part blends, as its material declares. */
   alphaMode: AlphaMode;
   /**
-   * <ProjectOnTerrain>: the part is a decal laid onto the ground rather than a
-   * surface of its own. 918 of the shipped materials set it.
+   * The part is a decal lying ON the ground: its material sets
+   * <ProjectOnTerrain> AND the mesh is actually flat.
+   *
+   * The flatness test is not redundant. Measured over the shipped models, 393
+   * parts carry the flag and the extreme is three times TALLER than it is wide.
+   * So the flag alone does not mean "this lies on the ground", and treating it
+   * that way sent a 10-unit mountain through the decal path — which sampled the
+   * ground by world XY and smeared one column of texels up every cliff face,
+   * the stripes and black wedges Senya reported on Mountain10x10.
    */
   projectOnTerrain: boolean;
 }
@@ -658,35 +665,93 @@ function tileColor(path: string, readXdb: ReadXdb, cache: Map<string, number[] |
 
 // Merge a model's submeshes into one buffer and register it as a scene geom.
 /**
- * Drop a mesh that duplicates a terrain-projected one.
+ * Is this mesh flat enough to be a decal lying on the ground?
  *
- * A building's mound is in the file twice, as the same triangles: once opaque
- * with a fixed texture, once with ProjectOnTerrain so it takes the ground it
- * stands on. 92 of the shipped models carry such a pair — the Abandoned Mine's
- * podShape and CragShape are byte-identical in positions, UVs, indices and
- * normals, and the fixed one is textured with SubTerrain, the UNDERGROUND
- * ground. Drawing both puts an opaque slab of underground rock on the grass.
+ * Height against the larger of its two footprint spans. Measured over every
+ * part whose material sets ProjectOnTerrain, the ratios run from 0 (a quarter
+ * are below 0.077) to past 3.0 — so the flag is on plenty of things that are
+ * taller than they are wide, and cannot mean "flat" by itself.
  *
- * Only the projected copy is kept, because it is the one that is right on any
- * floor: it takes whatever ground is under it, rock included. Matched on the
- * geometry rather than on the mesh name, so a model that names them differently
- * is handled the same.
+ * The threshold is deliberately generous. What is actually established is only
+ * the extreme: something much taller than it is wide is not lying on the
+ * ground. 0.35 keeps the Abandoned Mine's hill (0.284) on the projected path it
+ * was already on and takes Mountain10x10 (0.505) off it, so nothing changes for
+ * the shallow cases where projection was doing no harm. It is a bound, not a
+ * measurement of what the engine does, and a frame diff against the engine
+ * would beat it.
  */
-function dropProjectedDuplicates(meshes: Mesh[], pick: number[], mats: MaterialInfo[]): boolean[] {
+function isFlat(m: Mesh): boolean {
+  const p = m.positions;
+  if (!p.length) return false;
+  let xmin = Infinity, xmax = -Infinity, ymin = Infinity, ymax = -Infinity, zmin = Infinity, zmax = -Infinity;
+  for (let i = 0; i < p.length; i += 3) {
+    xmin = Math.min(xmin, p[i]!); xmax = Math.max(xmax, p[i]!);
+    ymin = Math.min(ymin, p[i + 1]!); ymax = Math.max(ymax, p[i + 1]!);
+    zmin = Math.min(zmin, p[i + 2]!); zmax = Math.max(zmax, p[i + 2]!);
+  }
+  const span = Math.max(xmax - xmin, ymax - ymin);
+  return span > 1e-6 && (zmax - zmin) / span < 0.35;
+}
+
+/**
+ * Drop meshes that duplicate another one's geometry.
+ *
+ * 104 of the shipped models contain the same triangles twice, and drawing both
+ * copies means two coplanar surfaces fighting over every pixel. The pairs come
+ * in two shapes, and neither wants both copies drawn:
+ *
+ *  - 75 pairs are the model's own texture against `SubTerrain`, the UNDERGROUND
+ *    ground — the Abandoned Mine's podShape and CragShape, byte-identical in
+ *    positions, UVs, indices and normals. The authored texture is the visible
+ *    one; the SubTerrain copy is what the object looks like on the rock floor.
+ *  - 17 pairs carry the SAME texture twice under different alpha modes
+ *    (AM_OVERLAY plus AM_TRANSPARENT). That is one surface the engine draws in
+ *    two passes, not two surfaces.
+ *
+ * So: keep exactly one copy, preferring the one that is not textured with the
+ * shared SubTerrain image. Only those two shapes are dropped — coincident
+ * meshes carrying two DIFFERENT authored textures are left alone, because
+ * nothing measured says they are redundant rather than two blended layers.
+ *
+ * Matched on the geometry rather than on the mesh name, so a model that names
+ * them differently is handled the same. Two copies are "the same" when they
+ * share a topology — identical index arrays — and their vertices sit within a
+ * tenth of the model's diagonal of each other. Demanding EXACT positions was
+ * too strict and is what left Mountain10x10 broken: its underground shell is
+ * the same 448 vertices and 662 triangles under the same indices and the same
+ * UVs, merely pushed out by up to one unit on a twenty-unit model, and the
+ * dark grey copy swallowed the textured one whole.
+ */
+function dropDuplicateMeshes(meshes: Mesh[], pick: number[], mats: MaterialInfo[]): boolean[] {
   const keep = meshes.map(() => true);
-  const key = (m: Mesh): string => `${m.vertexCount}:${m.triCount}:${m.indices.length}`;
+  const tex = (i: number): string => mats[pick[i] ?? 0]?.tex ?? '';
+  const isSub = (i: number): boolean => /SubTerrain/i.test(tex(i));
+  const coincident = (a: Mesh, b: Mesh): boolean => {
+    if (a.positions.length !== b.positions.length || a.indices.length !== b.indices.length) return false;
+    for (let k = 0; k < a.indices.length; k++) if (a.indices[k] !== b.indices[k]) return false;
+    const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+    let far = 0;
+    for (let k = 0; k < a.positions.length; k += 3) {
+      for (let c = 0; c < 3; c++) {
+        lo[c] = Math.min(lo[c]!, a.positions[k + c]!);
+        hi[c] = Math.max(hi[c]!, a.positions[k + c]!);
+      }
+      far = Math.max(far, Math.hypot(
+        a.positions[k]! - b.positions[k]!,
+        a.positions[k + 1]! - b.positions[k + 1]!,
+        a.positions[k + 2]! - b.positions[k + 2]!,
+      ));
+    }
+    const diag = Math.hypot(hi[0]! - lo[0]!, hi[1]! - lo[1]!, hi[2]! - lo[2]!) || 1;
+    return far / diag <= 0.1;
+  };
   for (let i = 0; i < meshes.length; i++) {
-    const projected = mats[pick[i] ?? 0]?.projectOnTerrain;
-    if (!projected) continue;
-    for (let j = 0; j < meshes.length; j++) {
-      if (j === i || !keep[j]) continue;
-      if (mats[pick[j] ?? 0]?.projectOnTerrain) continue;
-      if (key(meshes[i]!) !== key(meshes[j]!)) continue;
-      // Cheap key first, then confirm the positions really do coincide.
-      const a = meshes[i]!.positions, b = meshes[j]!.positions;
-      let same = a.length === b.length;
-      for (let k = 0; same && k < a.length; k++) if (Math.abs(a[k]! - b[k]!) > 1e-6) same = false;
-      if (same) keep[j] = false;
+    if (!keep[i]) continue;
+    for (let j = i + 1; j < meshes.length; j++) {
+      if (!keep[j] || !coincident(meshes[i]!, meshes[j]!)) continue;
+      if (isSub(i) !== isSub(j)) keep[isSub(i) ? i : j] = false;   // authored beats underground rock
+      else if (tex(i) === tex(j)) keep[j] = false;                 // one surface, two passes
+      if (!keep[i]) break;
     }
   }
   return keep;
@@ -698,7 +763,7 @@ function addGeom(geoms: GeomData[], meshes: Mesh[], model: string, modelHref: st
   const modelDir = dirOf(resolveHref('', modelHref));
   const allMats = modelMaterials(model, assetRoot, modelDir);
   const allPick = meshMaterialIndex(model, meshes.length, allMats.length);
-  const keep = dropProjectedDuplicates(meshes, allPick, allMats);
+  const keep = dropDuplicateMeshes(meshes, allPick, allMats);
   const pick = allPick.filter((_, i) => keep[i]);
   meshes = meshes.filter((_, i) => keep[i]);
 
@@ -731,13 +796,15 @@ function addGeom(geoms: GeomData[], meshes: Mesh[], model: string, modelHref: st
       cache.set(mi, hasUV && href ? textureDataUri(model, assetRoot, texSize, href) : null);
     }
     const t = cache.get(mi) ?? null;
+    const alphaMode: AlphaMode = mats[mi]?.alphaMode ?? 'AM_OPAQUE';
+    const flat = isFlat(meshes[i]!);
     // How to blend is the material's own declaration, not a guess from the
     // texels. Reading it off the image said "this has soft edges, alpha-test
     // it", which is the wrong answer for a decal that is meant to be blended.
     parts.push({
       start, count, tex: t ? t.uri : null,
-      alphaMode: mats[mi]?.alphaMode ?? 'AM_OPAQUE',
-      projectOnTerrain: mats[mi]?.projectOnTerrain ?? false,
+      alphaMode,
+      projectOnTerrain: (mats[mi]?.projectOnTerrain ?? false) && flat,
     });
     start += count;
   }
