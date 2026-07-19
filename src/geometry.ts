@@ -542,6 +542,7 @@ export function extractMeshesStructured(b: Buffer): Mesh[] | null {
     const n = vertA.count;
     const positions = new Float32Array(n * 3);
     const uvs = new Float32Array(n * 2);
+    const normals = new Float32Array(n * 3);
     let bad = false;
     for (let i = 0; i < n; i++) {
       const src = b.readUInt16LE(remapA.at + i * 2);
@@ -552,6 +553,15 @@ export function extractMeshesStructured(b: Buffer): Mesh[] | null {
       // values above 2048 are genuine tiling rather than garbage.
       uvs[i * 2] = b.readUInt16LE(vertA.at + i * stride) / UV_SCALE;
       uvs[i * 2 + 1] = b.readUInt16LE(vertA.at + i * stride + 2) / UV_SCALE;
+      // Authored normals, packed as unsigned bytes with 128 for zero. Worth
+      // taking rather than recomputing: computeVertexNormals averages over the
+      // faces meeting at a vertex, which smooths every hard edge a modeller put
+      // there and leaves a building evenly lit and flat-looking.
+      if (stride >= 16) {
+        for (let c = 0; c < 3; c++) {
+          normals[i * 3 + c] = (b[vertA.at + i * stride + 12 + c]! - 128) / 127;
+        }
+      }
     }
     if (bad) continue;
 
@@ -565,9 +575,16 @@ export function extractMeshesStructured(b: Buffer): Mesh[] | null {
     }
     if (bad) continue;
 
+    // A zero normal would light the surface as pure black, so fall back to
+    // computed ones if this file did not carry them.
+    let hasNormals = false;
+    for (let i = 0; i < normals.length; i += 3) {
+      if (normals[i] || normals[i + 1] || normals[i + 2]) { hasNormals = true; break; }
+    }
+
     meshes.push({
       positions,
-      normals: new Float32Array(0),
+      normals: hasNormals ? normals : new Float32Array(0),
       uvs,
       indices,
       vertexCount: n,

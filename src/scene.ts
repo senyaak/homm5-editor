@@ -71,6 +71,15 @@ export interface GeomData {
   pos: number[];
   /** Null when the mesh has no usable texture coordinates. */
   uv: number[] | null;
+  /**
+   * Normals as the model authored them, or null to compute from the faces.
+   *
+   * Worth carrying: averaging face normals smooths every hard edge a modeller
+   * put in, which leaves a building evenly lit and flat — the shading is what
+   * separates its planks, stone and rails when they all share one greyscale
+   * texture, as the Abandoned Mine's do.
+   */
+  nrm: number[] | null;
   idx: number[];
   /** One entry per submesh, in index order; always covers all of `idx`. */
   parts: GeomPart[];
@@ -520,9 +529,11 @@ function addGeom(geoms: GeomData[], meshes: Mesh[], model: string, assetRoot: st
   let vc = 0, tc = 0;
   for (const m of meshes) { vc += m.vertexCount; tc += m.indices.length; }
   const pos = new Float32Array(vc * 3), uv = new Float32Array(vc * 2), idxs = new Uint32Array(tc);
-  let vo = 0, io = 0, hasUV = true;
+  const nrm = new Float32Array(vc * 3);
+  let vo = 0, io = 0, hasUV = true, hasNrm = true;
   for (const m of meshes) {
     pos.set(m.positions, vo * 3);
+    if (m.normals.length === m.positions.length) nrm.set(m.normals, vo * 3); else hasNrm = false;
     if (m.uvs) uv.set(m.uvs, vo * 2); else hasUV = false;
     for (let i = 0; i < m.indices.length; i++) idxs[io + i] = m.indices[i] + vo;
     vo += m.vertexCount; io += m.indices.length;
@@ -558,6 +569,7 @@ function addGeom(geoms: GeomData[], meshes: Mesh[], model: string, assetRoot: st
   geoms.push({
     pos: Array.from(pos, (v) => +v.toFixed(3)),
     uv: hasUV ? Array.from(uv, (v) => +v.toFixed(4)) : null,
+    nrm: hasNrm ? Array.from(nrm, (v) => +v.toFixed(4)) : null,
     idx: Array.from(idxs),
     parts,
   });

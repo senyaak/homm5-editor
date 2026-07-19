@@ -303,7 +303,10 @@ function geometryFor(g: GeomData): THREE.BufferGeometry {
   // A group per submesh, indexed into the material array. Drawn as one group
   // instead, every mesh of a building took whichever texture came first.
   g.parts.forEach((p, i) => b.addGroup(p.start, p.count, i));
-  b.computeVertexNormals();
+  // Prefer the authored normals; computing them averages across every face at a
+  // vertex and softens the hard edges that give a model its shape.
+  if (g.nrm) b.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(g.nrm), 3));
+  else b.computeVertexNormals();
   return b;
 }
 
@@ -2431,7 +2434,8 @@ function addInstanceToScene(inst: Instance, geom: { index: number; data: GeomDat
     b.setIndex(geom.data.idx);
     // Same grouping as buildGeos: one group per submesh, one material each.
     geom.data.parts.forEach((p, i) => b.addGroup(p.start, p.count, i));
-    b.computeVertexNormals();
+    if (geom.data.nrm) b.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(geom.data.nrm), 3));
+    else b.computeVertexNormals();
     worldGeos[geom.index] = b;
     worldMats[geom.index] = geom.data.parts.map(materialFor);
   }
