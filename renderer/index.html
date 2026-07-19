@@ -20,9 +20,15 @@
     canvas { display: block; }
 
     /* top toolbar */
+    /* The controls can outrun a narrow window; let the bar scroll sideways
+       rather than clip the buttons off the right edge with no way to reach them.
+       overflow-y hidden so the horizontal scrollbar never forces a vertical one. */
     #bar { position: fixed; left: 0; right: 0; top: 0; height: 40px; display: flex;
       align-items: center; gap: 8px; padding: 0 12px; background: #161b22cc;
-      backdrop-filter: blur(6px); border-bottom: 1px solid #21262d; z-index: 10; }
+      backdrop-filter: blur(6px); border-bottom: 1px solid #21262d; z-index: 10;
+      overflow-x: auto; overflow-y: hidden; }
+    /* A thin bar so the 10px default scrollbar does not eat into the button row. */
+    #bar::-webkit-scrollbar { height: 6px; }
     #bar button { background: #21262d; color: #c9d1d9; border: 1px solid #30363d;
       border-radius: 6px; padding: 5px 12px; cursor: pointer; font-size: 13px;
       flex-shrink: 0; white-space: nowrap; }
