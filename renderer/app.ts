@@ -16,6 +16,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
+import { UNITS_PER_TILE as U } from '../src/units.ts';
 import type { Scene, Floor, Instance, SplatData, TileInfo, GeomData, GeomPart } from '../src/scene.ts';
 import type { EditorApi, MapListEntry, ExternalChange, PlaceableObject } from '../electron/ipc.ts';
 
@@ -490,7 +491,13 @@ void main() {
   vGrid = uv;
   vWorld = position.xy;
   vPos = (modelMatrix * vec4(position, 1.0)).xyz;
-  vNrm = normalize(mat3(modelMatrix) * normal);
+  // The terrain mesh is built in grid space and stretched to the real tile
+  // spacing in X and Y only, so its model matrix is non-uniform. Normals do not
+  // survive that: scaling a surface wider without scaling its normals leaves
+  // every slope reading as steep as it was before the stretch, which is the
+  // whole artefact this scaling exists to remove. The inverse transpose is the
+  // transform that gets it right, and it costs one 3x3 inverse per vertex.
+  vNrm = normalize(transpose(inverse(mat3(modelMatrix))) * normal);
   gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
 }`;
 
@@ -500,6 +507,7 @@ uniform sampler2DArray uGround;
 uniform sampler2DArray uMask;
 uniform sampler2D uRock;
 uniform float uScale;
+uniform float uRockScale;
 uniform float uCliff;   // 0 disables the rock blend entirely
 in vec2 vGrid; in vec2 vWorld; in vec3 vNrm; in vec3 vPos;
 out vec4 outColor;
@@ -533,8 +541,10 @@ void main() {
   float cliff = uCliff * smoothstep(0.18, 0.45, steep);
   if (cliff > 0.001) {
     float wx = abs(n.x), wy = abs(n.y);
-    vec3 rx = texture(uRock, vec2(vPos.y, vPos.z) * uScale).rgb;
-    vec3 ry = texture(uRock, vec2(vPos.x, vPos.z) * uScale).rgb;
+    // uScale counts repeats per TILE and vPos is in world units, so the rock
+    // needs the world-unit rate or it would stretch along the face.
+    vec3 rx = texture(uRock, vec2(vPos.y, vPos.z) * uRockScale).rgb;
+    vec3 ry = texture(uRock, vec2(vPos.x, vPos.z) * uRockScale).rgb;
     // The rock texture averages 26% grey, so at minimum light a cut face landed
     // near rgb 35 — solid black against lit grass. Brightened, and mixed at 0.85
     // so the surrounding ground's hue still tints the face (brown by dirt, pale
@@ -627,6 +637,7 @@ async function upgradeToSplat(fl: Floor3D): Promise<void> {
       uGround: { value: ground }, uMask: { value: masks },
       uRock: { value: rock }, uCliff: { value: rock ? cliffAmount : 0 },
       uScale: { value: texScale },
+      uRockScale: { value: texScale / U },
     },
     side: THREE.DoubleSide,
   });
@@ -717,7 +728,7 @@ function makeWaterMesh(V: number, cells: number[], level: number, tex: string | 
   } else {
     wmat.color.setHex(0x0a2b2e); // fall back to the sheet's own dark tone
   }
-  const mesh = new THREE.Mesh(wg, wmat);
+  const mesh = asTileSpace(new THREE.Mesh(wg, wmat));
   mesh.renderOrder = WATER_ORDER;
   return mesh;
 }
@@ -890,6 +901,25 @@ function terrainGeometry(
   return tg;
 }
 
+/**
+ * Mark a mesh as built from GRID indices rather than world coordinates.
+ *
+ * The scene is handed over exactly as the files store it: terrain heights and
+ * model geometry in world units, terrain and object positions as tile indices.
+ * The renderer's world is the game's world, so anything laid out by walking the
+ * grid — the ground, the sea, the passability overlays, the brush cursor — is
+ * stretched to the real tile spacing here instead of every loop that builds one
+ * multiplying as it goes. Z is untouched: heights are already world units.
+ *
+ * Doing it with a transform rather than at the vertex writes also keeps those
+ * buffers in grid space, which the cut-cell meshing and the per-triangle tile
+ * map both rely on.
+ */
+function asTileSpace<T extends THREE.Object3D>(o: T): T {
+  o.scale.set(U, U, 1);
+  return o;
+}
+
 function buildFloor(floor: Floor, geos: THREE.BufferGeometry[], mats: THREE.Material[][]): Floor3D {
   const group = new THREE.Group();
   const V = floor.V, heights = floor.heights;
@@ -897,7 +927,7 @@ function buildFloor(floor: Floor, geos: THREE.BufferGeometry[], mats: THREE.Mate
   const tg = terrainGeometry(V, heights, floor.flags, floor.colors);
   // Start on the flat MinimapColor blend; the textured splat material replaces
   // it as soon as its textures finish decoding (see upgradeToSplat).
-  const terrainMesh = new THREE.Mesh(tg, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }));
+  const terrainMesh = asTileSpace(new THREE.Mesh(tg, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide })));
   group.add(terrainMesh);
   let waterMesh = null;
 
@@ -922,7 +952,8 @@ function buildFloor(floor: Floor, geos: THREE.BufferGeometry[], mats: THREE.Mate
   const meshes = new Map();
   for (const it of floor.instances) {
     const m = new THREE.Mesh(geos[it.g], mats[it.g]);
-    m.position.set(it.x, it.y, it.z);
+    // Tile index out to where the tile actually is; z is already a world height.
+    m.position.set(it.x * U, it.y * U, it.z);
     m.rotation.z = it.r;
     m.userData.inst = it;
     // NOT added to the scene: this mesh is the pick-and-edit handle, and the
@@ -968,9 +999,9 @@ function setActiveFloor(i: number): void {
   const { V, heights } = activeFloor();
   // Frame the camera on this floor (its terrain sits at its own height range).
   let sum = 0; for (const h of heights) sum += h;
-  const midZ = sum / heights.length, c = V / 2;
+  const midZ = sum / heights.length, c = (V / 2) * U;
   controls.target.set(c, c, midZ);
-  camera.position.set(c, -V * 0.5, midZ + V * 0.7);
+  camera.position.set(c, -V * 0.5 * U, midZ + V * 0.7 * U);
   controls.update();
   updateFloorUI();
   if (world) renderExplorer(); // floor switch -> its own object list
@@ -1002,7 +1033,7 @@ function frameObject(mesh: THREE.Object3D): void {
   const box = new THREE.Box3().setFromObject(mesh);
   if (box.isEmpty()) return;
   const c = box.getCenter(new THREE.Vector3());
-  const dist = Math.max(box.getSize(new THREE.Vector3()).length() * 2.0, 8);
+  const dist = Math.max(box.getSize(new THREE.Vector3()).length() * 2.0, 8 * U);
   let dir = new THREE.Vector3().subVectors(camera.position, controls.target);
   if (dir.lengthSq() < 1e-4) dir.set(0, -1, 0.7);
   dir.normalize();
@@ -1360,10 +1391,11 @@ renderer.domElement.addEventListener('pointermove', (ev) => {
   const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -selected.mesh.position.z);
   const hit = new THREE.Vector3();
   if (!raycaster.ray.intersectPlane(plane, hit)) return;
-  const nx = Math.round(hit.x), ny = Math.round(hit.y);
+  // The ray lands in world units; the object's position is a tile index.
+  const nx = Math.round(hit.x / U), ny = Math.round(hit.y / U);
   if (nx === selected.inst.x && ny === selected.inst.y) return;
   selected.inst.x = nx; selected.inst.y = ny;
-  selected.mesh.position.set(nx, ny, heightAt(nx, ny));
+  selected.mesh.position.set(nx * U, ny * U, heightAt(nx, ny));
   syncInstance(activeFloor(), selected.inst);
   boxHelper?.setFromObject(selected.mesh);
   moved = true;
@@ -1599,7 +1631,7 @@ function refreshBlocked(fl: Floor3D): void {
   const cls = classifyTiles(fl);
   const add = (g: THREE.BufferGeometry, mat: THREE.Material, lines = false): void => {
     if (!g.getAttribute('position')?.count) { g.dispose(); mat.dispose(); return; }
-    const mesh = lines ? new THREE.LineSegments(g, mat) : new THREE.Mesh(g, mat);
+    const mesh = asTileSpace(lines ? new THREE.LineSegments(g, mat) : new THREE.Mesh(g, mat));
     // The mask belongs to the GROUND, and water is a separate sheet lying over
     // it. Drawing before the sheet lets the sea tint what shows through, the way
     // a masked pond reads in the original editor: the bed is red, not the water.
@@ -1621,9 +1653,9 @@ function refreshBlocked(fl: Floor3D): void {
   // goes here" and leaves the water looking like water.
   const navGrid = tileOutline(fl, cls, PASS_NAVIGABLE);
   if (navGrid.getAttribute('position')?.count) {
-    const m = new THREE.LineSegments(navGrid, new THREE.LineBasicMaterial({
+    const m = asTileSpace(new THREE.LineSegments(navGrid, new THREE.LineBasicMaterial({
       color: 0x6fb2ff, transparent: true, opacity: 0.85, depthWrite: false, depthTest: false,
-    }));
+    })));
     m.renderOrder = WATER_ORDER + 1;
     fl.passMeshes.push(m as unknown as THREE.Mesh);
     fl.group.add(m);
@@ -1688,7 +1720,7 @@ function ensureBrushCursor(): THREE.LineSegments {
   const mat = new THREE.LineBasicMaterial({
     color: 0xffd23f, transparent: true, opacity: 0.9, depthTest: false,
   });
-  brushCursor = new THREE.LineSegments(new THREE.BufferGeometry(), mat);
+  brushCursor = asTileSpace(new THREE.LineSegments(new THREE.BufferGeometry(), mat));
   brushCursor.renderOrder = 999;
   brushCursor.visible = false;
   scene.add(brushCursor);
@@ -1742,9 +1774,19 @@ function tileUnderCursor(ev: PointerEvent): { x: number; y: number } | null {
   ptr.x = (ev.clientX / innerWidth) * 2 - 1;
   ptr.y = -(ev.clientY / innerHeight) * 2 + 1;
   raycaster.setFromCamera(ptr, camera);
-  const hit = raycaster.intersectObject(activeFloor().terrainMesh, false)[0];
+  const ground = activeFloor().terrainMesh;
+  // The raycaster tests against matrixWorld, and three.js only refreshes that
+  // while rendering. The ground carries a real transform now — it is built in
+  // grid space and stretched to tile spacing — so a stale matrix is no longer
+  // harmlessly the identity: it aims the ray at a map half the size and every
+  // pick misses. Cheap to make certain, and it removes the dependency on a
+  // frame having been drawn between the mesh appearing and the first click.
+  ground.updateMatrixWorld();
+  const hit = raycaster.intersectObject(ground, false)[0];
   if (!hit) return null;
-  return { x: Math.floor(hit.point.x), y: Math.floor(hit.point.y) };
+  // intersectObject reports the hit in world units, whatever the mesh's own
+  // transform; the caller wants a tile.
+  return { x: Math.floor(hit.point.x / U), y: Math.floor(hit.point.y / U) };
 }
 
 /**
@@ -2627,7 +2669,7 @@ function addInstanceToScene(inst: Instance, geom: { index: number; data: GeomDat
   // renderer is drawing.
   inst.z = heightAt(inst.x, inst.y);
   const mesh = new THREE.Mesh(g, m);
-  mesh.position.set(inst.x, inst.y, inst.z);
+  mesh.position.set(inst.x * U, inst.y * U, inst.z);
   mesh.rotation.z = inst.r;
   mesh.userData.inst = inst;
   // The handle stays out of the scene, as in buildFloor; the batch draws it.
@@ -2873,7 +2915,10 @@ $input('sealevel').addEventListener('input', (e) => {
 $input('texscale').addEventListener('input', (e) => {
   texScale = +(e.currentTarget as HTMLInputElement).value;
   $('texscaleval').textContent = texScale.toFixed(2);
-  for (const m of splatMats) m.uniforms.uScale.value = texScale;
+  for (const m of splatMats) {
+    m.uniforms.uScale.value = texScale;
+    m.uniforms.uRockScale.value = texScale / U;
+  }
 });
 $input('ex-search').addEventListener('input', renderExList);
 

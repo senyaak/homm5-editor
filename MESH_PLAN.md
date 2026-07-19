@@ -148,26 +148,53 @@ overhangs the tiles it blocks — which is why the upper tail is the loose one.)
 Mountain10x10 is the clean illustration: `<Size>` 20x20, `blockedTiles`
 spanning exactly 10x10.
 
-Object positions were never the problem — those are already in tiles (a 320x320
-map places objects at 1..318) and so is the terrain grid. Only the geometry was
-in the other unit. `UNITS_PER_TILE` in `src/scene.ts` now converts it, along
-with the effect cards, whose `<Bound>` is in the same world units.
+Terrain heights are in the same world units, so the ground was ALSO being drawn
+twice as steep — Senya had seen it and said so. Two attempts to settle the unit
+from statistics failed (the heights are continuous: 60 maps, 275k non-zero
+steps between neighbours, no mode at all, the commonest difference being 0.01 at
+3.5%). What settled it was his own map: `Maps/SingleMissions/12` is lightly
+sculpted, so the editor's raw steps survive in it. Base ground sits at 2.000
+(83% of vertices), water at 0.000, and every raise he made landed on 4.000,
+6.000, 8.000, 10.000. **One editor step is 2.000 — exactly one tile.** Shipped
+maps are smoothed past the point of showing this (1702 and 4446 distinct heights
+against map 12's 66), which is why only a hand-made map could answer it.
 
-Checked afterwards: the drawn footprint matches the declared `blockedTiles`
-exactly — Mountain10x10 draws 10.00x10.00 tiles, Mountain8x8 8.00x8.00, the
-Abandoned Mine 3.00x3.09 against a 3x3 block. A region of the 320x320 random map
-was also rendered with a one-line-per-tile grid, and chests and crystals now sit
-inside a single cell.
+### Where the conversion lives, and why
 
-### Still open: are terrain heights in the same unit?
+The first fix divided the geometry to suit a world where a tile was one unit.
+Senya pushed back — "shouldn't we show the data that is saved?" — and he was
+right: the data is entirely self-consistent, and it was the renderer mixing two
+coordinate systems. Dividing would also have meant multiplying back on save,
+putting a factor in the path that writes `GroundTerrain.bin`.
 
-`GroundTerrain.bin` heights are **untested**. If they are world units like the
-geometry was, the terrain is currently drawn twice as steep as it should be and
-wants the same halving; if they are already in tiles, halving would flatten every
-map. Two attempts to settle it failed: the heights are continuous, so there is no
-step size to read a unit off (60 maps, 275k non-zero steps, no mode — the most
-common difference is 0.01 at 3.5%), and nothing else in the data ties a height to
-a tile count. It needs an eye that knows how the game looks, or a frame diff.
+So the renderer now builds its world in the game's units instead. Nothing in the
+data layer is converted: `src/scene.ts` hands over heights, geometry and
+particle bounds exactly as stored, and positions as the tile indices they are.
+`src/units.ts` holds the one constant, and the renderer applies it — grid-built
+meshes (ground, sea, passability overlays, brush cursor) get a transform via
+`asTileSpace`, object instances are placed at `tile * UNITS_PER_TILE`, and the
+two places that turn a ray hit back into a tile divide. **The save path is
+untouched.**
+
+Two things that only bite once the ground carries a real transform:
+
+- **Raycasts read `matrixWorld`, which three.js only refreshes while rendering.**
+  With an identity transform a stale matrix was harmless; with a scaled one it
+  aims the ray at a map half the size and every pick silently misses.
+  `tileUnderCursor` now calls `updateMatrixWorld()` first.
+- **Normals do not survive a non-uniform scale.** Stretching a surface in X and
+  Y without transforming its normals leaves every slope shaded as steeply as
+  before — the exact artefact the scaling exists to remove. The splat shader
+  uses the inverse transpose. The cliff rock projection samples in world units
+  while `uScale` counts repeats per tile, so it gets its own `uRockScale`.
+
+Checked: the drawn footprint matches the declared `blockedTiles` exactly —
+Mountain10x10 draws 10x10 tiles, Mountain8x8 8x8, the Abandoned Mine 3x3. In the
+harness, a terrain brush stroke at the centre of a 24x24 map lands on tile
+(12,13), placing an object 120px right and 40px down puts it at (16,10), and
+clicking that spot afterwards selects it. A region of the 320x320 random map
+rendered with a per-tile grid shows chests and crystals inside one cell and the
+ground rolling at half its former steepness.
 
 ## Known bad: the audit's hard failures
 
