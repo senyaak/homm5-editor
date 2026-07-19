@@ -214,7 +214,7 @@ export function createGeomResolver(assetRoot: string, texSize = 128): GeomResolv
         const binPath = join(assetRoot, 'bin', 'Geometries', ref.uid);
         if (existsSync(binPath)) {
           const meshes = extractMeshes(readFileSync(binPath), ref.bbox);
-          if (meshes.length) idx = addGeom(geoms, meshes, model, assetRoot, texSize);
+          if (meshes.length) idx = addGeom(geoms, meshes, model, modelHref[1]!, assetRoot, texSize);
         }
       }
     } catch { idx = -1; }
@@ -560,10 +560,11 @@ function dropProjectedDuplicates(meshes: Mesh[], pick: number[], mats: MaterialI
   return keep;
 }
 
-function addGeom(geoms: GeomData[], meshes: Mesh[], model: string, assetRoot: string, texSize: number): number {
+function addGeom(geoms: GeomData[], meshes: Mesh[], model: string, modelHref: string, assetRoot: string, texSize: number): number {
   // Materials are resolved before the meshes are packed, because which meshes
   // survive depends on them: a copy of a terrain-projected mesh is redundant.
-  const allMats = modelMaterials(model, assetRoot);
+  const modelDir = dirOf(resolveHref('', modelHref));
+  const allMats = modelMaterials(model, assetRoot, modelDir);
   const allPick = meshMaterialIndex(model, meshes.length, allMats.length);
   const keep = dropProjectedDuplicates(meshes, allPick, allMats);
   const pick = allPick.filter((_, i) => keep[i]);
@@ -655,33 +656,72 @@ interface MaterialInfo {
 
 const NO_MATERIAL: MaterialInfo = { tex: null, alphaMode: 'AM_OPAQUE', projectOnTerrain: false };
 
-/** Read one material, following an external <Item href> when it is not inline. */
-function materialInfo(itemXml: string, assetRoot: string): MaterialInfo {
-  const read = (xml: string): MaterialInfo => ({
-    tex: xml.match(/<Texture href="([^"]*)"/)?.[1] ?? null,
-    alphaMode: (xml.match(/<AlphaMode>([^<]*)<\/AlphaMode>/)?.[1] ?? 'AM_OPAQUE') as AlphaMode,
-    projectOnTerrain: /<ProjectOnTerrain>\s*true\s*<\/ProjectOnTerrain>/.test(xml),
-  });
-  if (/<Material\b/.test(itemXml)) return read(itemXml);
+/**
+ * Resolve an asset href the way the game's own references are written.
+ *
+ * An href beginning with `/` is from the data root; anything else is relative to
+ * the file that wrote it. The split is not even: 5469 of the material
+ * references in the shipped models are relative against 2019 absolute, and 6009
+ * of the texture references inside materials against 3461. Reading a relative
+ * href as absolute finds nothing at all, which is how the Alchemist Lab came
+ * out as untextured grey.
+ *
+ * @param baseDir directory of the file the href was read from, data-root relative
+ */
+function resolveHref(baseDir: string, href: string): string {
+  const clean = href.split('#')[0]!;
+  if (clean.startsWith('/')) return clean.slice(1);
+  const out = baseDir ? baseDir.split('/').filter(Boolean) : [];
+  for (const seg of clean.split('/')) {
+    if (!seg || seg === '.') continue;
+    if (seg === '..') out.pop(); else out.push(seg);
+  }
+  return out.join('/');
+}
+
+/** Directory part of a data-root-relative path. */
+function dirOf(path: string): string {
+  const at = path.lastIndexOf('/');
+  return at < 0 ? '' : path.slice(0, at);
+}
+
+/**
+ * Read one material, following an external <Item href> when it is not inline.
+ *
+ * @param baseDir where the model lives, for hrefs written relative to it
+ */
+function materialInfo(itemXml: string, assetRoot: string, baseDir: string): MaterialInfo {
+  const read = (xml: string, from: string): MaterialInfo => {
+    const tex = xml.match(/<Texture href="([^"]*)"/)?.[1];
+    return {
+      // A texture href is relative to the MATERIAL, which is not always beside
+      // the model that named it.
+      tex: tex ? '/' + resolveHref(from, tex) : null,
+      alphaMode: (xml.match(/<AlphaMode>([^<]*)<\/AlphaMode>/)?.[1] ?? 'AM_OPAQUE') as AlphaMode,
+      projectOnTerrain: /<ProjectOnTerrain>\s*true\s*<\/ProjectOnTerrain>/.test(xml),
+    };
+  };
+  if (/<Material\b/.test(itemXml)) return read(itemXml, baseDir);
   // Not inline: the Item itself points at a (Material).xdb elsewhere. The
   // Abandoned Mine's crag is one of these, and reading only inline materials
   // missed it entirely.
   const ext = itemXml.match(/^\s*href="([^"]+)"/);
   if (!ext || !ext[1]) return NO_MATERIAL;
   try {
-    const p = join(assetRoot, ext[1].split('#')[0]!);
-    return existsSync(p) ? read(readFileSync(p, 'utf8')) : NO_MATERIAL;
+    const rel = resolveHref(baseDir, ext[1]);
+    const p = join(assetRoot, rel);
+    return existsSync(p) ? read(readFileSync(p, 'utf8'), dirOf(rel)) : NO_MATERIAL;
   } catch { return NO_MATERIAL; }
 }
 
 /** Every material, in the order <Materials> lists them. */
-function modelMaterials(model: string, assetRoot: string): MaterialInfo[] {
+function modelMaterials(model: string, assetRoot: string, baseDir: string): MaterialInfo[] {
   const open = model.indexOf('<Materials>');
   const close = model.indexOf('</Materials>');
   if (open < 0 || close < 0) return [];
   // A <Material> body has no nested <Item>, so splitting on <Item is safe here.
   const parts = model.slice(open + 11, close).split(/<Item\b/).slice(1);
-  return parts.map((p) => materialInfo(p, assetRoot));
+  return parts.map((p) => materialInfo(p, assetRoot, baseDir));
 }
 
 /**
