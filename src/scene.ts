@@ -59,6 +59,11 @@ export interface GeomPart {
   tex: string | null;
   /** How this part blends, as its material declares. */
   alphaMode: AlphaMode;
+  /**
+   * <ProjectOnTerrain>: the part is a decal laid onto the ground rather than a
+   * surface of its own. 918 of the shipped materials set it.
+   */
+  projectOnTerrain: boolean;
 }
 
 /** One decoded mesh, ready for the renderer. Arrays are plain JSON. */
@@ -543,7 +548,11 @@ function addGeom(geoms: GeomData[], meshes: Mesh[], model: string, assetRoot: st
     // How to blend is the material's own declaration, not a guess from the
     // texels. Reading it off the image said "this has soft edges, alpha-test
     // it", which is the wrong answer for a decal that is meant to be blended.
-    parts.push({ start, count, tex: t ? t.uri : null, alphaMode: mats[mi]?.alphaMode ?? 'AM_OPAQUE' });
+    parts.push({
+      start, count, tex: t ? t.uri : null,
+      alphaMode: mats[mi]?.alphaMode ?? 'AM_OPAQUE',
+      projectOnTerrain: mats[mi]?.projectOnTerrain ?? false,
+    });
     start += count;
   }
   geoms.push({
@@ -587,15 +596,17 @@ export function pngDataUri(w: number, h: number, rgba: Uint8Array): string {
 interface MaterialInfo {
   tex: string | null;
   alphaMode: AlphaMode;
+  projectOnTerrain: boolean;
 }
 
-const NO_MATERIAL: MaterialInfo = { tex: null, alphaMode: 'AM_OPAQUE' };
+const NO_MATERIAL: MaterialInfo = { tex: null, alphaMode: 'AM_OPAQUE', projectOnTerrain: false };
 
 /** Read one material, following an external <Item href> when it is not inline. */
 function materialInfo(itemXml: string, assetRoot: string): MaterialInfo {
   const read = (xml: string): MaterialInfo => ({
     tex: xml.match(/<Texture href="([^"]*)"/)?.[1] ?? null,
     alphaMode: (xml.match(/<AlphaMode>([^<]*)<\/AlphaMode>/)?.[1] ?? 'AM_OPAQUE') as AlphaMode,
+    projectOnTerrain: /<ProjectOnTerrain>\s*true\s*<\/ProjectOnTerrain>/.test(xml),
   });
   if (/<Material\b/.test(itemXml)) return read(itemXml);
   // Not inline: the Item itself points at a (Material).xdb elsewhere. The

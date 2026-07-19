@@ -254,7 +254,7 @@ const texCache = new Map<string, THREE.Material>();
 function materialFor(part: GeomPart): THREE.Material {
   if (!part.tex) return greyMat;
   // Cached per texture AND mode: the same image is used both ways in places.
-  const key = `${part.alphaMode}|${part.tex}`;
+  const key = `${part.alphaMode}|${part.projectOnTerrain ? 'proj' : 'own'}|${part.tex}`;
   const hit = texCache.get(key);
   if (hit) return hit;
   const tx = texLoader.load(part.tex);
@@ -280,6 +280,15 @@ function materialFor(part: GeomPart): THREE.Material {
       break;
     default: // AM_OPAQUE
       break;
+  }
+  // A part that declares ProjectOnTerrain lies ON the ground rather than above
+  // it, so it is coplanar with the terrain and z-fights with it. Push it toward
+  // the camera in depth only — the geometry does not move.
+  if (part.projectOnTerrain) {
+    m.polygonOffset = true;
+    m.polygonOffsetFactor = -1;
+    m.polygonOffsetUnits = -1;
+    m.depthWrite = false;
   }
   texCache.set(key, m);
   return m;
