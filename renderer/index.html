@@ -109,9 +109,9 @@
     #pal-cat:focus { outline: none; border-color: #1f6feb; }
     #pal-cat option { background: #161b22; color: #c9d1d9; }
     #pal-grid { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 8px; display: grid;
-      grid-template-columns: 1fr 1fr; gap: 8px; align-content: start; }
-    #pal-grid .tile { cursor: pointer; border: 2px solid transparent; border-radius: 6px;
-      padding: 3px; background: #161b22; position: relative; }
+      grid-template-columns: repeat(auto-fill, minmax(68px, 1fr)); gap: 6px; align-content: start; }
+    #pal-grid .tile { box-sizing: border-box; cursor: pointer; border: 2px solid transparent;
+      border-radius: 6px; padding: 3px; background: #161b22; position: relative; }
     #pal-grid .tile:hover { background: #21262d; }
     #pal-grid .tile.on { border-color: #1f6feb; background: #1f6feb22; }
     #pal-grid .tile img { width: 100%; aspect-ratio: 1; display: block; border-radius: 4px;
@@ -152,9 +152,9 @@
     #objpal .obj-hidden { color: #8b949e; font-size: 11px; display: flex; align-items: center;
       gap: 4px; white-space: nowrap; cursor: pointer; }
     #obj-grid { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 8px; display: grid;
-      grid-template-columns: 1fr 1fr; gap: 8px; align-content: start; }
-    #obj-grid .obj { cursor: pointer; border: 2px solid transparent; border-radius: 6px;
-      padding: 3px; background: #161b22; position: relative; }
+      grid-template-columns: repeat(auto-fill, minmax(68px, 1fr)); gap: 6px; align-content: start; }
+    #obj-grid .obj { box-sizing: border-box; cursor: pointer; border: 2px solid transparent;
+      border-radius: 6px; padding: 3px; background: #161b22; position: relative; }
     #obj-grid .obj:hover { background: #21262d; }
     #obj-grid .obj.on { border-color: #1f6feb; background: #1f6feb22; }
     #obj-grid .obj .ic { width: 100%; aspect-ratio: 1; display: block; border-radius: 4px;
