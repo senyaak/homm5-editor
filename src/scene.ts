@@ -209,7 +209,7 @@ export function createGeomResolver(assetRoot: string, texSize = 128): GeomResolv
       const shared = readXdb(sharedHref);
       const modelHref = shared && shared.match(/<Model href="([^"]+)"/);
       const model = modelHref && readXdb(modelHref[1]!);
-      const ref = model && readGeometryRefFromModelXdb(model);
+      const ref = model && readGeometryRefFromModelXdb(model, readXdb);
       if (ref) {
         const binPath = join(assetRoot, 'bin', 'Geometries', ref.uid);
         if (existsSync(binPath)) {

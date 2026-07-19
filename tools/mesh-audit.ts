@@ -44,7 +44,11 @@ for (const p of findModels(join(root, '_(Model)'))) {
   const xml = readFileSync(p, 'utf8');
   const declared = +(/<NumMeshes>(\d+)</.exec(xml)?.[1] ?? 0);
   if (!declared) continue; // not a mesh-bearing model
-  const ref = readGeometryRefFromModelXdb(xml);
+  // Models may point at a separate (Geometry).xdb instead of carrying the uid.
+  const ref = readGeometryRefFromModelXdb(xml, (href) => {
+    const f = join(root, href.split('#')[0]!);
+    return existsSync(f) ? readFileSync(f, 'utf8') : null;
+  });
   const bin = ref && join(root, 'bin', 'Geometries', ref.uid);
   if (!ref || !bin || !existsSync(bin)) {
     rows.push({ path: p, declared, found: 0, verdict: 'noGeometry' });

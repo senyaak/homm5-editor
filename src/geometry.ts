@@ -415,8 +415,20 @@ function computeNormals(positions: Float32Array, indices: Uint32Array): Float32A
  * @param {string} xml
  * @returns {{uid:string, bbox:BBox}|null}
  */
-export function readGeometryRefFromModelXdb(xml: string): { uid: string; bbox: BBox } | null {
-  const geom = xml.match(/<Geometry\b[\s\S]*?<uid>([0-9A-Fa-f-]{36})<\/uid>[\s\S]*?<\/Geometry>/);
+export function readGeometryRefFromModelXdb(
+  xml: string,
+  readXdb?: (href: string) => string | null,
+): { uid: string; bbox: BBox } | null {
+  let geom = xml.match(/<Geometry\b[\s\S]*?<uid>([0-9A-Fa-f-]{36})<\/uid>[\s\S]*?<\/Geometry>/);
+  if (!geom && readXdb) {
+    // The other layout: the model does not carry the geometry, it points at a
+    // (Geometry).xdb that does. 1277 of the shipped models are written this way
+    // against 2306 with it inline, and reading only the inline form meant every
+    // one of them resolved to no mesh at all — the Alchemist Lab among them.
+    const href = xml.match(/<Geometry href="([^"]+)"\s*\/>/)?.[1];
+    const doc = href ? readXdb(href) : null;
+    if (doc) geom = doc.match(/<Geometry\b[\s\S]*?<uid>([0-9A-Fa-f-]{36})<\/uid>[\s\S]*/);
+  }
   if (!geom) return null;
   const uid = geom[1]!.toUpperCase();
   const num = (tag: string, src: string): [number, number, number] | null => {
