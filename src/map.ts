@@ -172,6 +172,11 @@ export interface NewObject {
   floor?: number;
   /** Script name; blank unless the caller has one in mind. */
   name?: string;
+  /**
+   * An `<Item>` of the same type, as text, to use when this map has no object
+   * of that type to copy. See src/donors.ts — the shipped maps supply these.
+   */
+  donor?: string;
 }
 
 /** Deep copy of an element, so a clone shares no nodes with its donor. */
@@ -199,6 +204,24 @@ function uuid(): string {
   b[8] = (b[8]! & 0x3f) | 0x80;
   const h = [...b].map((x) => x.toString(16).padStart(2, '0').toUpperCase()).join('');
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+}
+
+/**
+/**
+ * Parse a donor `<Item>` taken from another map into a fresh element tree.
+ *
+ * Returns null rather than throwing on anything unexpected: a donor is a
+ * convenience, and failing to read one should fall back to the skeleton, not
+ * refuse the placement.
+ */
+function parseDonor(xml: string, type: string): XmlElement | null {
+  try {
+    const item = find(parse(xml), 'Item');
+    if (!item) return null;
+    // It has to actually contain the type asked for; a mismatched donor would
+    // write a monster where a building was wanted.
+    return children(item).some((c) => c.name === type) ? item : null;
+  } catch { return null; }
 }
 
 /**
@@ -389,8 +412,13 @@ export class HommMap {
   addObject(spec: NewObject): { object: MapObject; complete: boolean } {
     const objectsEl = this.objectsEl;
     if (!objectsEl) throw new Error('this map has no <objects> list');
-    const donor = this.objects.find((o) => o.type === spec.type);
-    const item = donor ? cloneElement(donor.item) : skeletonItem(spec.type);
+    // This map first: an object already here is the surest example of what a
+    // valid one looks like in THIS map's version. Then a donor from the game's
+    // own maps. The skeleton is the last resort and is knowingly incomplete.
+    const local = this.objects.find((o) => o.type === spec.type);
+    const external = !local && spec.donor ? parseDonor(spec.donor, spec.type) : null;
+    const item = local ? cloneElement(local.item) : external ?? skeletonItem(spec.type);
+    const complete = !!(local || external);
     const body = children(item).find((c) => c.name === spec.type);
     if (!body) throw new Error(`could not build a ${spec.type} body`);
 
@@ -415,7 +443,7 @@ export class HommMap {
     else arr.push(item);
     this._objects = null;
     this._containers = null;
-    return { object: obj, complete: !!donor };
+    return { object: obj, complete };
   }
 
   // Remove an object (its whole <Item> wrapper) from the tree.

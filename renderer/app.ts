@@ -2692,10 +2692,10 @@ async function placeAt(tile: { x: number; y: number }): Promise<void> {
     markDirty(true);
     renderExplorer();
     $('hud').textContent = res.complete
-      ? `placed ${o.name} at ${tile.x}, ${tile.y}`
+      ? `placed ${o.label} at ${tile.x}, ${tile.y}`
       // Said out loud rather than silently: with no object of this type on the
       // map to copy, only the shared fields were written.
-      : `placed ${o.name} at ${tile.x}, ${tile.y} — no ${o.type} on this map to copy, so type-specific fields are missing`;
+      : `placed ${o.label} at ${tile.x}, ${tile.y} — no ${o.type} to copy from this map or the game's, so type-specific fields are missing`;
   } catch (e) {
     $('hud').textContent = 'could not place: ' + (e instanceof Error ? e.message : String(e));
   }

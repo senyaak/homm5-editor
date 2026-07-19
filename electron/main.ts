@@ -20,6 +20,7 @@ import { buildScene, findAssetRoot, listTiles, splatFor, pngDataUri } from '../s
 import { listPlaceable, findEditorRoot, iconPathFor, readIconFile } from '../src/objects.ts';
 import { initProject, packProject, status } from '../src/project.ts';
 import { watchMapDir } from '../src/watch.ts';
+import { donorFor } from '../src/donors.ts';
 import type { MapWatch } from '../src/watch.ts';
 import { TerrainDoc } from '../src/terrain-edit.ts';
 import type { TileInfo, GeomResolver } from '../src/scene.ts';
@@ -296,8 +297,12 @@ ipcMain.handle('object:add', async (_e: IpcMainInvokeEvent, p: AddObjectPayload)
   const before = session.resolver.geoms.length;
   const gi = session.resolver.resolve(p.shared);
   if (gi < 0) throw new Error('this object has no model we can decode yet');
+  // When this map has no object of the type to copy, borrow one from the
+  // game's own maps rather than writing a half-empty skeleton.
+  const donor = donorFor(GAME_DATA, p.type);
   const { object, complete } = session.map.addObject({
     type: p.type, shared: p.shared, x: p.x, y: p.y, floor: p.floor, r: p.r ?? 0,
+    ...(donor ? { donor } : {}),
   });
   const geomData = session.resolver.geoms[gi];
   return {
