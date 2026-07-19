@@ -1,0 +1,192 @@
+// What every object type actually carries, measured across the shipped maps.
+//
+// The property panel needs to know more than "this object has a field called
+// Mood": it needs to know that Mood is one of a short list of values, that
+// Amount is a number, that AvailableResources is a structure and not a string.
+// None of that is written down anywhere in the game's data — but all of it is
+// observable, because 109 shipped maps contain tens of thousands of correct
+// examples.
+//
+// So the schema is measured, not hand-written. A hand-written table would be 21
+// types of guesswork that goes stale; this re-derives itself from whatever
+// installation is present, and says how sure it is by reporting how many
+// examples each field was seen in.
+//
+//   node tools/object-schema.ts [dataRoot] [--md] [--type=AdvMapMonster]
+//                               [--paks=<dir>] [--paks=<dir> …]
+//
+// Default output is a summary; --md emits docs/OBJECT_FIELDS.md.
+//
+// --paks reads maps straight out of .pak/.h5u archives, without unpacking them.
+// That matters for evidence: the All_campaigns mod carries the 15 original
+// HoMM5 campaign maps, which the extracted sample set does not have at all, and
+// they are a DIFFERENT game version — exactly where a field set is most likely
+// to differ. Nothing is copied to disk, so nothing copyrighted lands in the
+// repo; point it at the game folder and it reads what is installed.
+
+import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
+import { loadMap } from '../src/map.ts';
+import { children, text } from '../src/xml.ts';
+import { readEntries } from '../src/pak.ts';
+
+const args = process.argv.slice(2);
+const root = args.find((a) => !a.startsWith('--')) ?? 'samples/paks/data';
+const asMarkdown = args.includes('--md');
+const onlyType = /^--type=(\w+)$/.exec(args.find((a) => a.startsWith('--type=')) ?? '')?.[1];
+
+/** Every map.xdb under the data root. */
+function mapFiles(dir: string, out: string[] = []): string[] {
+  let ents: string[];
+  try { ents = readdirSync(dir); } catch { return out; }
+  for (const e of ents) {
+    const full = join(dir, e);
+    let st;
+    try { st = statSync(full); } catch { continue; }
+    if (st.isDirectory()) mapFiles(full, out);
+    else if (e === 'map.xdb') out.push(full);
+  }
+  return out;
+}
+
+/** What a field looks like across every example of it. */
+interface FieldStat {
+  /** How many objects carried it. */
+  seen: number;
+  /** Distinct values, capped — an enum has few, a name has thousands. */
+  values: Map<string, number>;
+  /** True where the field was ever seen holding elements rather than text. */
+  container: boolean;
+  /** True where the field was ever seen carrying an href. */
+  href: boolean;
+}
+
+const types = new Map<string, Map<string, FieldStat>>();
+/** Beyond this a field is free text, not an enum, and the values stop mattering. */
+const VALUE_CAP = 40;
+
+function stat(type: string, field: string): FieldStat {
+  let fields = types.get(type);
+  if (!fields) { fields = new Map(); types.set(type, fields); }
+  let s = fields.get(field);
+  if (!s) { s = { seen: 0, values: new Map(), container: false, href: false }; fields.set(field, s); }
+  return s;
+}
+
+/** Every map.xdb inside the archives under `dir`, as { where, xml }. */
+function mapsInPaks(dir: string): { where: string; xml: string }[] {
+  const out: { where: string; xml: string }[] = [];
+  let ents: string[];
+  try { ents = readdirSync(dir); } catch { return out; }
+  for (const e of ents) {
+    if (!/\.(pak|h5u|h5m|h5c)$/i.test(e)) continue;
+    const full = join(dir, e);
+    try {
+      for (const entry of readEntries(readFileSync(full))) {
+        if (!/(^|\/)map\.xdb$/i.test(entry.name)) continue;
+        out.push({ where: `${e}:${entry.name}`, xml: entry.data.toString('latin1') });
+      }
+    } catch { /* an archive we cannot read is not a reason to stop */ }
+  }
+  return out;
+}
+
+const sources: { where: string; xml: string }[] = [];
+for (const f of mapFiles(join(root, 'Maps'))) {
+  try { sources.push({ where: f, xml: readFileSync(f, 'latin1') }); } catch { /* skip */ }
+}
+for (const a of args.filter((x) => x.startsWith('--paks='))) {
+  sources.push(...mapsInPaks(a.slice('--paks='.length)));
+}
+
+const files = sources;
+for (const src of sources) {
+  const xml = src.xml;
+  let map;
+  // A map that will not parse is one map's worth of missing evidence, not a
+  // reason to abandon the scan.
+  try { map = loadMap(xml); } catch { continue; }
+  for (const obj of map.objects) {
+    if (onlyType && obj.type !== onlyType) continue;
+    // DIRECT children only: the <x> inside <Pos> is not a field of the object.
+    // Walking the parsed tree rather than matching tags is what makes that
+    // reliable — a regex has to track nesting and gets it wrong on the first
+    // object whose body contains another object's tag name.
+    for (const c of children(obj.el)) {
+      const st = stat(obj.type, c.name);
+      st.seen++;
+      if (c.attrs.href !== undefined) st.href = true;
+      if (children(c).length) st.container = true;
+      else if (st.values.size <= VALUE_CAP) {
+        const v = text(c);
+        st.values.set(v, (st.values.get(v) ?? 0) + 1);
+      }
+    }
+  }
+}
+
+/** Enum, number, bool or free text, decided by the values seen. */
+function kindOf(s: FieldStat): string {
+  if (s.container) return 'structure';
+  if (s.href) return 'reference';
+  const vals = [...s.values.keys()].filter((v) => v !== '');
+  if (!vals.length) return 'empty';
+  if (vals.every((v) => v === 'true' || v === 'false')) return 'bool';
+  if (vals.every((v) => /^-?\d+(\.\d+)?$/.test(v))) return 'number';
+  if (s.values.size <= VALUE_CAP && vals.every((v) => /^[A-Z][A-Z0-9_]{2,}$/.test(v))) return 'enum';
+  return 'text';
+}
+
+const sorted = [...types].sort((a, b) => b[1].size - a[1].size);
+
+if (asMarkdown) {
+  const out: string[] = [
+    '# Object fields, measured',
+    '',
+    `Generated by \`node tools/object-schema.ts --md\` from ${files.length} shipped maps.`,
+    'Do not edit by hand — re-run it instead.',
+    '',
+    'Kinds are inferred from the values seen: `enum` is a short closed set and is',
+    'listed in full, `structure` has element children, `reference` carries an href.',
+    '',
+  ];
+  for (const [type, fields] of sorted) {
+    out.push(`## ${type}`, '');
+    out.push('| field | kind | seen | values |', '| --- | --- | --- | --- |');
+    for (const [name, s] of [...fields].sort((a, b) => b[1].seen - a[1].seen)) {
+      const kind = kindOf(s);
+      const vals = kind === 'enum'
+        ? [...s.values.keys()].filter(Boolean).sort().join(', ')
+        : kind === 'number' || kind === 'bool'
+          ? `${s.values.size} distinct`
+          : '';
+      out.push(`| \`${name}\` | ${kind} | ${s.seen} | ${vals} |`);
+    }
+    out.push('');
+  }
+  process.stdout.write(out.join('\n'));
+} else {
+  console.log(`maps scanned: ${files.length}`);
+  console.log(`object types: ${types.size}`);
+  for (const [type, fields] of sorted) {
+    const enums = [...fields].filter(([, s]) => kindOf(s) === 'enum').length;
+    const structs = [...fields].filter(([, s]) => kindOf(s) === 'structure').length;
+    console.log(`  ${type.padEnd(22)} fields=${String(fields.size).padStart(3)}  enums=${enums}  structures=${structs}`);
+  }
+  if (onlyType) {
+    const fields = types.get(onlyType);
+    if (fields) {
+      console.log(`\n${onlyType}:`);
+      for (const [name, s] of [...fields].sort((a, b) => b[1].seen - a[1].seen)) {
+        const k = kindOf(s);
+        const vals = k === 'enum' ? '  ' + [...s.values.keys()].filter(Boolean).sort().join(', ') : '';
+        console.log(`  ${name.padEnd(22)} ${k.padEnd(10)} seen=${String(s.seen).padStart(6)}${vals}`);
+      }
+    }
+  }
+}
+
+if (!existsSync(join(root, 'Maps'))) {
+  console.error(`no Maps folder under ${root} — nothing to measure`);
+  process.exit(1);
+}
