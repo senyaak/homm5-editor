@@ -85,17 +85,26 @@ M4 (placeholders in the editor).** M2 and M3 run as a loop. This whole track is
 standalone: the map editor (rotation, undo, adding objects, properties) moves in
 parallel and picks up the verdicts at M4.
 
-## First candidate: Abandoned Mine
+## Abandoned Mine — ACCEPTABLE, NOT DONE (2026-07-19)
 
-Placed from the object palette (2026-07-19) and it comes out as a flat sheet
-with a tangle of dark triangles across it — the texture maps onto a plane rather
-than onto the building, and part of the geometry collapses. It is a small,
-recognisable, single building, which makes it a better first subject than a
-sprawling town: whatever it is decoding wrong is visible in one glance.
+Closed as good enough to move on, not as matching the engine. Senya's verdict
+after the terrain-projection work: still the same as before.
 
-Worth checking first whether it is one of the interleaved-vertex-buffer cases or
-a multi-mesh building where only the first submesh survives — the two failure
-shapes are different and this one looks like the second.
+Fixed and verified along the way, and these generalise far beyond this model:
+
+- the geometry container is read structurally instead of guessed at — mesh
+  count now matches the models' own `<NumMeshes>` for 2071 of 2076
+- texture coordinates (16-bit fixed point over 2048) and the authored normals
+  (bytes at +12, 128 for zero) are decoded
+- materials are per submesh via `<MaterialQuantities>`, blending follows
+  `<AlphaMode>`, and `<ProjectOnTerrain>` parts take the ground under them
+- the duplicate opaque copy of a projected mesh is dropped (92 models have one)
+
+What is still not right is unknown. The model reads as a mine and sits on grass
+rather than on a slab, but it does not look like the engine's, and no
+measurement so far says why. Anyone picking this up should start by diffing a
+frame against the engine rather than by re-reading the format: every remaining
+format question measured here came out matching.
 
 ## What already exists to build on
 
