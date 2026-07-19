@@ -98,7 +98,14 @@ interface Floor3D {
   colors: number[] | null;
   group: THREE.Group;
   objGroup: THREE.Group;
+  /**
+   * Per-object handles for picking and editing. Deliberately NOT in the scene:
+   * `batches` does the drawing, and these exist to be raycast, dragged and
+   * boxed. The raycaster gets them as an explicit list.
+   */
   meshes: Map<string, THREE.Mesh>;
+  /** One instanced draw per model. See buildBatches. */
+  batches: Map<number, GeomBatch>;
   terrainMesh: THREE.Mesh;
   waterMesh: THREE.Mesh | null;
   /** The sea texture, kept so sculpting can raise a sheet on a map that began dry. */
@@ -219,7 +226,13 @@ function clearWorld(): void {
   for (const m of splatMats.splice(0)) {
     m.uniforms.uGround.value?.dispose?.(); m.uniforms.uMask.value?.dispose?.(); m.dispose();
   }
-  if (world) for (const fl of world.floors) { scene.remove(fl.group); fl.group.traverse((o) => { if (o instanceof THREE.Mesh) o.geometry.dispose(); }); }
+  if (world) for (const fl of world.floors) {
+    scene.remove(fl.group);
+    // An InstancedMesh owns a GPU buffer of its own beyond the shared geometry;
+    // without this it survives every map load.
+    for (const b of fl.batches.values()) b.im.dispose();
+    fl.group.traverse((o) => { if (o instanceof THREE.Mesh) o.geometry.dispose(); });
+  }
   if (boxHelper) { scene.remove(boxHelper); boxHelper = null; }
   world = null; selected = null; updatePanel();
 }
@@ -308,6 +321,147 @@ function geometryFor(g: GeomData): THREE.BufferGeometry {
   if (g.nrm) b.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(g.nrm), 3));
   else b.computeVertexNormals();
   return b;
+}
+
+// --- instanced drawing ------------------------------------------------------
+//
+// A map draws the same few models over and over: 2258 placed objects on one
+// shipped map resolve to 120 distinct models, the commonest of which appears
+// 363 times. Drawn one mesh each that is 2729 draw calls, which is what made
+// the view stutter. Batched by model it is 229.
+//
+// Merging submeshes that share a material was measured first and is not worth
+// doing on its own: it takes 2729 to 2630.
+//
+// Each object keeps a THREE.Mesh as its handle, but that mesh is NOT added to
+// the scene — it exists to be picked, dragged and boxed, and the drawing is
+// done by the InstancedMesh. The raycaster is handed the handles explicitly, so
+// it still finds them; their world matrices just have to be kept current.
+
+/** Every copy of one model on one floor, drawn in a single call. */
+interface GeomBatch {
+  im: THREE.InstancedMesh;
+  /** Slot in the instance buffer for each object. */
+  slot: Map<Instance, number>;
+  /** What occupies each slot, so a removed one can be back-filled. */
+  at: (Instance | null)[];
+}
+
+/** Spare slots kept so placing a few objects does not reallocate every time. */
+const BATCH_HEADROOM = 8;
+
+/** Write an object's transform into its slot of the instance buffer. */
+function syncInstance(fl: Floor3D, inst: Instance): void {
+  const batch = fl.batches.get(inst.g);
+  const mesh = inst.id === null ? null : fl.meshes.get(inst.id);
+  if (!batch || !mesh) return;
+  const slot = batch.slot.get(inst);
+  if (slot === undefined) return;
+  mesh.updateMatrixWorld();
+  batch.im.setMatrixAt(slot, mesh.matrixWorld);
+  batch.im.instanceMatrix.needsUpdate = true;
+}
+
+/**
+ * Free an object's slot.
+ *
+ * The last live instance is moved into the freed slot and the count drops by
+ * one, so the buffer stays packed. Instances are unordered, so moving one costs
+ * nothing; leaving a hole would mean either drawing a stale copy or carrying a
+ * free list for no benefit.
+ */
+function removeFromBatch(fl: Floor3D, inst: Instance): void {
+  const batch = fl.batches.get(inst.g);
+  if (!batch) return;
+  const slot = batch.slot.get(inst);
+  if (slot === undefined) return;
+  const last = batch.im.count - 1;
+  if (slot !== last) {
+    const moved = batch.at[last];
+    const m = new THREE.Matrix4();
+    batch.im.getMatrixAt(last, m);
+    batch.im.setMatrixAt(slot, m);
+    batch.at[slot] = moved ?? null;
+    if (moved) batch.slot.set(moved, slot);
+  }
+  batch.at[last] = null;
+  batch.slot.delete(inst);
+  batch.im.count = last;
+  batch.im.instanceMatrix.needsUpdate = true;
+}
+
+/**
+ * Give a newly placed object a slot, growing the batch when it is full.
+ *
+ * A batch that has to grow is rebuilt at double capacity rather than one bigger,
+ * so placing a run of the same object does not reallocate on every click.
+ */
+function addToBatch(fl: Floor3D, inst: Instance, mesh: THREE.Mesh): void {
+  let batch = fl.batches.get(inst.g);
+  const geo = worldGeos[inst.g], mat = worldMats[inst.g];
+  if (!geo || !mat) return;
+  if (!batch) {
+    const im = new THREE.InstancedMesh(geo, mat, 1 + BATCH_HEADROOM);
+    im.count = 0;
+    im.frustumCulled = false;
+    batch = { im, slot: new Map(), at: [] };
+    fl.objGroup.add(im);
+    fl.batches.set(inst.g, batch);
+  }
+  if (batch.im.count >= batch.im.instanceMatrix.count) {
+    const bigger = new THREE.InstancedMesh(geo, mat, Math.max(4, batch.im.count * 2));
+    const m = new THREE.Matrix4();
+    for (let i = 0; i < batch.im.count; i++) { batch.im.getMatrixAt(i, m); bigger.setMatrixAt(i, m); }
+    bigger.count = batch.im.count;
+    bigger.frustumCulled = false;
+    fl.objGroup.remove(batch.im);
+    batch.im.dispose();
+    fl.objGroup.add(bigger);
+    batch.im = bigger;
+  }
+  const slot = batch.im.count;
+  mesh.updateMatrixWorld();
+  batch.im.setMatrixAt(slot, mesh.matrixWorld);
+  batch.slot.set(inst, slot);
+  batch.at[slot] = inst;
+  batch.im.count = slot + 1;
+  batch.im.instanceMatrix.needsUpdate = true;
+}
+
+/** Group a floor's objects by model and draw each group in one call. */
+function buildBatches(
+  instances: Instance[],
+  meshes: Map<string, THREE.Mesh>,
+  geos: THREE.BufferGeometry[],
+  mats: THREE.Material[][],
+  objGroup: THREE.Group,
+): Map<number, GeomBatch> {
+  const byGeom = new Map<number, Instance[]>();
+  for (const it of instances) {
+    const list = byGeom.get(it.g);
+    if (list) list.push(it); else byGeom.set(it.g, [it]);
+  }
+  const batches = new Map<number, GeomBatch>();
+  for (const [g, list] of byGeom) {
+    const geo = geos[g], mat = mats[g];
+    if (!geo || !mat) continue;
+    const im = new THREE.InstancedMesh(geo, mat, list.length + BATCH_HEADROOM);
+    im.count = list.length;
+    // Objects sit where the map puts them, which is nowhere near the origin the
+    // shared geometry is centred on, so let three.js work the bounds out.
+    im.frustumCulled = false;
+    const batch: GeomBatch = { im, slot: new Map(), at: [] };
+    list.forEach((it, i) => {
+      batch.slot.set(it, i);
+      batch.at[i] = it;
+      const mesh = it.id === null ? null : meshes.get(it.id);
+      if (mesh) im.setMatrixAt(i, mesh.matrixWorld);
+    });
+    im.instanceMatrix.needsUpdate = true;
+    objGroup.add(im);
+    batches.set(g, batch);
+  }
+  return batches;
 }
 
 // Build the shared per-geom geometries + materials (reused across floors).
@@ -756,15 +910,19 @@ function buildFloor(floor: Floor, geos: THREE.BufferGeometry[], mats: THREE.Mate
     m.position.set(it.x, it.y, it.z);
     m.rotation.z = it.r;
     m.userData.inst = it;
-    objGroup.add(m);
+    // NOT added to the scene: this mesh is the pick-and-edit handle, and the
+    // drawing is done by the instanced meshes below. Its world matrix still has
+    // to be current, because the raycaster and the selection box read it.
+    m.updateMatrixWorld();
     meshes.set(it.id, m);
   }
+  const batches = buildBatches(floor.instances, meshes, geos, mats, objGroup);
   return {
     name: floor.name, V, heights, flags: floor.flags, colors: floor.colors,
     // A river already in the map is at full depth: never dig it again.
     riverDrop: new Map(floor.riverVerts.map((v) => [v, RIVER_DEPTH])),
     passable: floor.passable, river: new Set(floor.riverVerts), passMeshes: [],
-    group, objGroup, meshes, terrainMesh, waterMesh, waterTex: floor.water?.tex ?? null,
+    group, objGroup, meshes, batches, terrainMesh, waterMesh, waterTex: floor.water?.tex ?? null,
     splat: floor.splat, maskTex: null, instances: floor.instances,
   };
 }
@@ -968,6 +1126,7 @@ async function rotateSelected(deg: number, commit = true): Promise<void> {
   const r = (((deg % 360) + 360) % 360) * Math.PI / 180;
   selected.inst.r = r;
   selected.mesh.rotation.z = r;
+  syncInstance(activeFloor(), selected.inst);
   boxHelper?.setFromObject(selected.mesh);
   $('p-rot').textContent = `${degOf(r).toFixed(0)}°`;
   // Skipped while the slider itself is the source, or dragging it would fight
@@ -998,6 +1157,7 @@ async function deleteSelected(): Promise<void> {
   const fl = activeFloor();
   fl.group.remove(mesh);
   fl.meshes.delete(id);
+  removeFromBatch(fl, inst);
   // The geometry is shared between every instance of this model, so it is the
   // scene's to dispose, not ours.
   const i = fl.instances.indexOf(inst);
@@ -1189,6 +1349,7 @@ renderer.domElement.addEventListener('pointermove', (ev) => {
   if (nx === selected.inst.x && ny === selected.inst.y) return;
   selected.inst.x = nx; selected.inst.y = ny;
   selected.mesh.position.set(nx, ny, heightAt(nx, ny));
+  syncInstance(activeFloor(), selected.inst);
   boxHelper?.setFromObject(selected.mesh);
   moved = true;
   updatePanel();
@@ -2448,8 +2609,10 @@ function addInstanceToScene(inst: Instance, geom: { index: number; data: GeomDat
   mesh.position.set(inst.x, inst.y, inst.z);
   mesh.rotation.z = inst.r;
   mesh.userData.inst = inst;
-  fl.objGroup.add(mesh);
+  // The handle stays out of the scene, as in buildFloor; the batch draws it.
+  mesh.updateMatrixWorld();
   fl.meshes.set(inst.id, mesh);
+  addToBatch(fl, inst, mesh);
   fl.instances.push(inst);
 }
 
