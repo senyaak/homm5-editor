@@ -179,6 +179,108 @@ interface LoadedTerrain {
 }
 
 
+// --- effects ---------------------------------------------------------------
+//
+// Some objects have no mesh at all: `<Model/>` is empty and everything visible
+// about them is a particle effect. The anti-magic garrison wall is one, and it
+// is not a corner case — 616 shipped objects reference an effect and 319 of
+// those have no model, so they were simply absent from the scene.
+//
+// A faithful particle system is a large piece of work and the wrong one for a
+// map editor: what an editor needs is for the thing to be visible, selectable
+// and movable. So an effect becomes a textured card, using the effect's OWN
+// texture at the size the particle declares — recognisable at a glance, and
+// honest about being a stand-in.
+//
+//   Shared -> Effect -> Instances[] -> ParticleInstance -> Textures[] + Particle
+//
+// The Particle's <Bound> is 28 bytes of hex: seven floats, centre then size
+// then radius, confirmed on all 1055 shipped particles (the radius matches the
+// half-diagonal of the size). Only the SIZE is used. The centre is in the
+// coordinates of whatever scene the effect was authored in — the siege effects
+// sit around (320, 284) — so honouring it would fling half the placeholders
+// across the map.
+
+/** Size of a particle's bounding box, from the hex-packed <Bound>. */
+function particleBound(xml: string): [number, number, number] | null {
+  const hex = xml.match(/<Bound>([0-9a-fA-F]{56})<\/Bound>/)?.[1];
+  if (!hex) return null;
+  const b = Buffer.from(hex, 'hex');
+  return [b.readFloatLE(12), b.readFloatLE(16), b.readFloatLE(20)];
+}
+
+/**
+ * A stand-in card for an object whose only content is an effect.
+ *
+ * Returns null when the chain does not lead to a texture, so the object stays
+ * skipped rather than becoming an untextured rectangle.
+ */
+function effectGeom(
+  sharedXml: string, sharedHref: string, assetRoot: string, texSize: number,
+): GeomData | null {
+  const read = (rel: string): string | null => {
+    try {
+      const p = join(assetRoot, rel);
+      return existsSync(p) ? readFileSync(p, 'utf8') : null;
+    } catch { return null; }
+  };
+  /**
+   * Follow one href from a file, honouring the inline form.
+   *
+   * `href="#n:inline(ParticleInstance)"` means the thing is written INSIDE the
+   * file that points at it — the same convention map.xdb uses for its objects.
+   * Treating that as a path is why most of these chains dead-ended: 249 of the
+   * 307 effect-only objects failed at exactly this step.
+   */
+  const follow = (xml: string, dir: string, href: string): { xml: string; dir: string } | null => {
+    if (href.startsWith('#')) return { xml, dir };
+    const rel = resolveHref(dir, href);
+    const doc = read(rel);
+    return doc ? { xml: doc, dir: dirOf(rel) } : null;
+  };
+
+  const effHref = sharedXml.match(/<Effect href="([^"]+)"/)?.[1];
+  if (!effHref) return null;
+  const sharedDir = dirOf(resolveHref('', sharedHref));
+  const effect = follow(sharedXml, sharedDir, effHref);
+  if (!effect) return null;
+
+  // The first instance is enough for a placeholder; effects that layer several
+  // are still one object on the map.
+  const instHref = effect.xml.match(/<Instances>[\s\S]*?<Item href="([^"]+)"/)?.[1];
+  if (!instHref) return null;
+  const instance = follow(effect.xml, effect.dir, instHref);
+  if (!instance) return null;
+  const inst = instance.xml;
+
+  const texHref = inst.match(/<Textures>[\s\S]*?<Item href="([^"]+)"/)?.[1];
+  if (!texHref) return null;
+  const texRel = resolveHref(instance.dir, texHref);
+  const t = textureDataUri('', assetRoot, texSize, '/' + texRel);
+  if (!t) return null;
+
+  const partHref = inst.match(/<Particle href="([^"]+)"/)?.[1];
+  const particle = partHref ? follow(inst, instance.dir, partHref) : null;
+  const part = particle?.xml ?? null;
+  const bound = part ? particleBound(part) : null;
+  const scale = +(inst.match(/<Scale>([\d.]+)<\/Scale>/)?.[1] ?? 1) || 1;
+  // A default that reads as "something is here" when the particle declares no
+  // useful extent.
+  const w = Math.max(0.5, Math.min(12, (bound ? Math.max(bound[0], bound[1]) : 2) * scale));
+  const h = Math.max(0.5, Math.min(12, (bound ? bound[2] : 2) * scale));
+
+  // A vertical card standing on the object's origin: most of these are glows
+  // and columns, and a card lying flat would be hidden by the ground.
+  const hw = w / 2;
+  return {
+    pos: [-hw, 0, 0, hw, 0, 0, hw, 0, h, -hw, 0, h],
+    uv: [0, 1, 1, 1, 1, 0, 0, 0],
+    nrm: [0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0],
+    idx: [0, 1, 2, 0, 2, 3],
+    parts: [{ start: 0, count: 6, tex: t.uri, alphaMode: 'AM_TRANSPARENT', projectOnTerrain: false }],
+  };
+}
+
 /**
  * A shared-href -> mesh resolver with its own growing geom list.
  *
@@ -216,6 +318,12 @@ export function createGeomResolver(assetRoot: string, texSize = 128): GeomResolv
           const meshes = extractMeshes(readFileSync(binPath), ref.bbox);
           if (meshes.length) idx = addGeom(geoms, meshes, model, modelHref[1]!, assetRoot, texSize);
         }
+      }
+      // No mesh, but the object may be an effect — 319 shipped ones are nothing
+      // else. Stand a textured card in for it so it can be seen and edited.
+      if (idx < 0 && shared) {
+        const card = effectGeom(shared, sharedHref, assetRoot, texSize);
+        if (card) { idx = geoms.length; geoms.push(card); }
       }
     } catch { idx = -1; }
     geomIndex.set(sharedHref, idx);
