@@ -71,6 +71,16 @@ export interface GeomPart {
    * the stripes and black wedges Senya reported on Mountain10x10.
    */
   projectOnTerrain: boolean;
+  /**
+   * The mesh lies flat, whatever its material says about projecting.
+   *
+   * Blending needs to know. AM_OVERLAY is drawn without writing depth, which is
+   * right for something lying on the ground: the ground is already there and
+   * the decal only tints it. On a solid body it means the object never occludes
+   * anything -- a mountain goes see-through and the far side of a building
+   * draws over the near side.
+   */
+  flat: boolean;
 }
 
 /** One decoded mesh, ready for the renderer. Arrays are plain JSON. */
@@ -284,7 +294,7 @@ function effectGeom(
     uv: [0, 1, 1, 1, 1, 0, 0, 0],
     nrm: [0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0],
     idx: [0, 1, 2, 0, 2, 3],
-    parts: [{ start: 0, count: 6, tex: t.uri, alphaMode: 'AM_TRANSPARENT', projectOnTerrain: false }],
+    parts: [{ start: 0, count: 6, tex: t.uri, alphaMode: 'AM_TRANSPARENT', projectOnTerrain: false, flat: false }],
   };
 }
 
@@ -803,6 +813,7 @@ function addGeom(geoms: GeomData[], meshes: Mesh[], model: string, modelHref: st
       start, count, tex: t ? t.uri : null,
       alphaMode,
       projectOnTerrain: (mats[mi]?.projectOnTerrain ?? false) && flat,
+      flat,
     });
     start += count;
   }

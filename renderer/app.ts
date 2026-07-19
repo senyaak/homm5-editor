@@ -273,7 +273,10 @@ const texCache = new Map<string, THREE.Material>();
 function materialFor(part: GeomPart): THREE.Material {
   if (!part.tex) return greyMat;
   // Cached per texture AND mode: the same image is used both ways in places.
-  const key = `${part.alphaMode}|${part.projectOnTerrain ? 'proj' : 'own'}|${part.tex}`;
+  // Flatness is in the key because it changes the material: the same texture in
+  // the same blend mode is a depth-writing body on one mesh and a decal on
+  // another.
+  const key = `${part.alphaMode}|${part.projectOnTerrain ? 'proj' : 'own'}|${part.flat ? 'flat' : 'solid'}|${part.tex}`;
   const hit = texCache.get(key);
   if (hit) return hit;
   const tx = texLoader.load(part.tex);
@@ -289,10 +292,14 @@ function materialFor(part: GeomPart): THREE.Material {
     case 'AM_TRANSPARENT':
     case 'AM_OVERLAY':
     case 'AM_DECAL':
-      // Blended. depthWrite off so a decal does not carve a hole in whatever
-      // is drawn after it.
+      // Blended. A decal skips the depth write so it does not carve a hole in
+      // whatever is drawn after it — but only a decal. Two thirds of the shipped
+      // AM_OVERLAY parts are solid bodies, and a solid body that writes no depth
+      // never occludes anything: Mountain10x10 went see-through and the
+      // Abandoned Mine drew its far side over its near one. So the skip is tied
+      // to the mesh actually being flat, not to the blend mode.
       m.transparent = true;
-      m.depthWrite = false;
+      m.depthWrite = !part.flat;
       break;
     case 'AM_OVERLAY_ZWRITE':
       m.transparent = true;
