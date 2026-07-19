@@ -34,6 +34,23 @@ import type { Mesh } from './geometry.ts';
 type ReadXdb = (href: string) => string | null;
 
 /**
+ * World units per map tile, in the coordinates model geometry is authored in.
+ *
+ * Object positions are in TILES (a 320x320 map places objects at 1..318) and so
+ * is the terrain grid, but the geometry files are not: they are in a world
+ * where one tile is two units. Mixing the two drew every object at exactly
+ * twice its size — Senya spotted a 1x1 treasure covering 2x2.
+ *
+ * Measured over the 396 shared objects that declare both a `blockedTiles`
+ * footprint and a model `<Size>`: across 792 samples the 25th percentile and
+ * the median are both exactly 2.000, and 67% land within 0.2 of 2.0. The upper
+ * tail (p75 = 2.202) is expected, since `<Size>` is a bounding box and a tree's
+ * canopy overhangs the tiles it blocks. Mountain10x10 is the clean case:
+ * `<Size>` 20x20 against a `blockedTiles` span of exactly 10x10.
+ */
+export const UNITS_PER_TILE = 2;
+
+/**
  * How a material blends, straight from its <AlphaMode>.
  *
  * Counted across the shipped materials: ALPHA_TEST 2375, OPAQUE 1591,
@@ -278,9 +295,12 @@ function effectGeom(
 
   // A vertical card standing on the object's origin: most of these are glows
   // and columns, and a card lying flat would be hidden by the ground.
-  const hw = w / 2;
+  // A particle's <Bound> is in the same world units as model geometry, so the
+  // card is converted to tiles alongside it; the clamps above stay in world
+  // units so the sizes they admit are unchanged.
+  const hw = w / 2 / UNITS_PER_TILE, hh = h / UNITS_PER_TILE;
   return {
-    pos: [-hw, 0, 0, hw, 0, 0, hw, 0, h, -hw, 0, h],
+    pos: [-hw, 0, 0, hw, 0, 0, hw, 0, hh, -hw, 0, hh],
     uv: [0, 1, 1, 1, 1, 0, 0, 0],
     nrm: [0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0],
     idx: [0, 1, 2, 0, 2, 3],
@@ -807,7 +827,10 @@ function addGeom(geoms: GeomData[], meshes: Mesh[], model: string, modelHref: st
     start += count;
   }
   geoms.push({
-    pos: Array.from(pos, (v) => +v.toFixed(3)),
+    // Into tile space, which is what the scene's positions and terrain grid are
+    // in. Rounded after the divide so the stored precision is of the value the
+    // renderer actually uses.
+    pos: Array.from(pos, (v) => +(v / UNITS_PER_TILE).toFixed(4)),
     uv: hasUV ? Array.from(uv, (v) => +v.toFixed(4)) : null,
     nrm: hasNrm ? Array.from(nrm, (v) => +v.toFixed(4)) : null,
     idx: Array.from(idxs),

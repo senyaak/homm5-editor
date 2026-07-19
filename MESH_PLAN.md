@@ -131,11 +131,11 @@ into a black slab, so it was removed rather than kept "just in case".
 Verified by rendering Mountain8x8, Mountain10x10 and the Abandoned Mine and
 looking at them. Senya confirmed 10x10 in the editor.
 
-## Everything is drawn at twice its size (2026-07-19, OPEN)
+## Everything was drawn at twice its size — FIXED (2026-07-19)
 
-Spotted by Senya: a random treasure that occupies 1x1 in the game is drawn 2x2
-in the editor. He is right, and it is not specific to treasure — **every model
-is drawn at exactly twice its proper size.**
+Spotted by Senya: a random treasure that occupies 1x1 in the game was drawn 2x2
+in the editor. He was right, and it was not specific to treasure — **every model
+was drawn at exactly twice its proper size.**
 
 One map tile is **2 world units**, and the renderer puts geometry into a world
 where a tile is 1 unit, with no scale applied anywhere. Measured over the 396
@@ -148,10 +148,26 @@ overhangs the tiles it blocks — which is why the upper tail is the loose one.)
 Mountain10x10 is the clean illustration: `<Size>` 20x20, `blockedTiles`
 spanning exactly 10x10.
 
-The fix is to scale model geometry by 0.5, but it has not been made yet: it
-changes every object on every map at once, and it touches placement and picking
-as well as drawing, so it wants its own pass rather than being smuggled in
-beside a mesh fix.
+Object positions were never the problem — those are already in tiles (a 320x320
+map places objects at 1..318) and so is the terrain grid. Only the geometry was
+in the other unit. `UNITS_PER_TILE` in `src/scene.ts` now converts it, along
+with the effect cards, whose `<Bound>` is in the same world units.
+
+Checked afterwards: the drawn footprint matches the declared `blockedTiles`
+exactly — Mountain10x10 draws 10.00x10.00 tiles, Mountain8x8 8.00x8.00, the
+Abandoned Mine 3.00x3.09 against a 3x3 block. A region of the 320x320 random map
+was also rendered with a one-line-per-tile grid, and chests and crystals now sit
+inside a single cell.
+
+### Still open: are terrain heights in the same unit?
+
+`GroundTerrain.bin` heights are **untested**. If they are world units like the
+geometry was, the terrain is currently drawn twice as steep as it should be and
+wants the same halving; if they are already in tiles, halving would flatten every
+map. Two attempts to settle it failed: the heights are continuous, so there is no
+step size to read a unit off (60 maps, 275k non-zero steps, no mode — the most
+common difference is 0.01 at 3.5%), and nothing else in the data ties a height to
+a tile count. It needs an eye that knows how the game looks, or a frame diff.
 
 ## Known bad: the audit's hard failures
 
