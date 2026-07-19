@@ -755,6 +755,13 @@ function projectBatch(fl: Floor3D, g: number): void {
         uUnits: { value: U },
       },
       side: THREE.DoubleSide,
+      // The mound IS the ground, and the building's entrance and floor sit ON
+      // it: where they are coplanar the two flickered green/dark as the camera
+      // moved. Push the ground surface back in depth so the solid parts on top
+      // of it always win — same trick the flat ProjectOnTerrain decals use.
+      polygonOffset: true,
+      polygonOffsetFactor: 1,
+      polygonOffsetUnits: 1,
     });
     changed = true;
   });
