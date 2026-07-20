@@ -2708,6 +2708,12 @@ addEventListener('keydown', (e) => {
 const CLICK_SLOP = 5; // px; movement under this = a click, not a drag
 let down: { sx: number; sy: number; hitId: string | null } | null = null; // { sx, sy, hitId }
 let dragging = false, moved = false;
+// [perf] The plain hover marker needs a full-terrain raycast, which is the most
+// expensive thing a pointermove can do (≈6ms on a 256² map — brute force, three
+// has no BVH). A high-poll mouse fires many moves per frame, so the raycast is
+// deferred: the latest move is stashed here and resolved once, in the render
+// loop, right before drawing. Many moves between frames now cost one raycast.
+let hoverEv: PointerEvent | null = null;
 
 function pickObject(ev: PointerEvent): THREE.Mesh | null {
   if (!showObjects) return null; // hidden objects must not swallow clicks
@@ -2718,7 +2724,7 @@ function pickObject(ev: PointerEvent): THREE.Mesh | null {
   return hits.length ? hits[0]!.object : null;
 }
 
-renderer.domElement.addEventListener('pointerleave', () => { updateBrushCursor(null); updateHoverCursor(null); });
+renderer.domElement.addEventListener('pointerleave', () => { updateBrushCursor(null); updateHoverCursor(null); hoverEv = null; });
 
 renderer.domElement.addEventListener('pointerdown', (ev) => {
   if (!world || ev.button !== 0) return;
@@ -2752,6 +2758,14 @@ renderer.domElement.addEventListener('pointerdown', (ev) => {
 });
 
 renderer.domElement.addEventListener('pointermove', (ev) => {
+  // [perf] While a mouse button is held and we are neither painting nor moving
+  // an object, the user is orbiting or panning the camera. That gesture wants no
+  // cursor gizmo, and running a terrain raycast on every one of its many moves is
+  // exactly what made dragging the map crawl. Bail before any raycast.
+  if (ev.buttons !== 0 && !painting && !dragging) {
+    updateBrushCursor(null); updateHoverCursor(null); hoverEv = null;
+    return;
+  }
   // Track the footprint on every move, painting or not -- the point of the
   // gizmo is to show where a stroke WOULD land before committing to one.
   if (brushOn) updateBrushCursor(tileUnderCursor(ev));
@@ -2760,8 +2774,10 @@ renderer.domElement.addEventListener('pointermove', (ev) => {
   else if (placeObject) updateBrushCursor(tileUnderCursor(ev));
   // Otherwise show the plain one-tile marker, but not mid-drag: the object being
   // dragged already says where it is, and a second square trailing it is noise.
-  if (!brushOn && !placeObject && !dragging) updateHoverCursor(tileUnderCursor(ev));
-  else updateHoverCursor(null);
+  // The raycast for it is deferred to the frame loop (see hoverEv) so a burst of
+  // moves between two frames resolves to a single pick.
+  if (!brushOn && !placeObject && !dragging) hoverEv = ev;
+  else { updateHoverCursor(null); hoverEv = null; }
   if (painting) { applyBrush(ev); return; }
   if (!dragging || !selected) return;
   // Project the cursor onto a horizontal plane at the object's height and snap
@@ -4700,6 +4716,8 @@ let lastT = performance.now();
   const dt = Math.min(frame / 1000, 0.1); // clamp so a stall can't teleport
   lastT = now;
   keyPan(dt);
+  // Resolve at most one deferred hover pick per frame (see hoverEv).
+  if (hoverEv) { updateHoverCursor(tileUnderCursor(hoverEv)); hoverEv = null; }
   controls.update();
   renderer.render(scene, camera);
 })();
