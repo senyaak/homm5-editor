@@ -18,8 +18,10 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 import { UNITS_PER_TILE as U } from '../src/units.ts';
 import type { Scene, Floor, Instance, SplatData, TileInfo, GeomData, GeomPart, Footprint } from '../src/scene.ts';
-import type { EditorApi, MapListEntry, ExternalChange, PlaceableObject } from '../electron/ipc.ts';
+import type { EditorApi, MapListEntry, ExternalChange, PlaceableObject, RosterEntryDTO } from '../electron/ipc.ts';
 import type { ObjectProp } from '../src/map.ts';
+import { objectProps, deref, controlOf, objectSchema } from '../src/schema.ts';
+import type { FieldSchema } from '../src/schema.ts';
 
 type MapEntry = MapListEntry & { cat: string };
 /**
@@ -1564,7 +1566,14 @@ async function loadProps(): Promise<void> {
   head.textContent = 'properties';
   host.appendChild(head);
 
-  for (const p of res.props) host.appendChild(propRow(p, (n, v) => void setProp(id, n, v)));
+  // Look up this object type's schema once; each field is typed by it, or falls
+  // back to inference when the schema does not describe it.
+  const typeFields = objectProps(res.type);
+  for (const p of res.props) {
+    const raw = typeFields[p.name];
+    const field = raw ? deref(objectSchema, raw) : null;
+    host.appendChild(fieldRow(p, field, (n, v) => void setProp(id, n, v)));
+  }
 }
 
 /**
@@ -1615,6 +1624,111 @@ function propRow(p: ObjectProp, commit: (name: string, value: string) => void, l
     row.appendChild(inp);
   }
   return row;
+}
+
+// --- typed rows (schema-driven) ----------------------------------------------
+//
+// The property panel upgrades each field to the control its schema declares
+// (src/schema.ts): an enum or registry-backed field becomes a dropdown, a
+// dimension read-only, a bounded number a spinner. Anything the schema does not
+// describe falls back to propRow()'s value-shape inference, so the panel is
+// always usable.
+
+/** Roster entries per name, fetched once from the main process and cached. */
+const rosterCache = new Map<string, Promise<RosterEntryDTO[]>>();
+function roster(name: string): Promise<RosterEntryDTO[]> {
+  let p = rosterCache.get(name);
+  if (!p) { p = window.editor.roster(name).then((r) => r.entries).catch(() => []); rosterCache.set(name, p); }
+  return p;
+}
+
+/** A label + its title/description tooltip — the left half every row shares. */
+function rowShell(field: FieldSchema | null, rawName: string): { row: HTMLElement } {
+  const row = document.createElement('div');
+  row.className = 'pf';
+  const label = document.createElement('label');
+  label.textContent = field?.title || rawName;
+  label.title = field?.description ? `${rawName} — ${field.description}` : rawName;
+  row.appendChild(label);
+  return { row };
+}
+
+/** A <select>, its current value guaranteed present even if outside the options. */
+function selectFrom(current: string, options: { value: string; label: string }[], onChange: (v: string) => void): HTMLSelectElement {
+  const sel = document.createElement('select');
+  const opts = options.some((o) => o.value === current)
+    ? options
+    : [{ value: current, label: current || '(none)' }, ...options];
+  for (const o of opts) {
+    const el = document.createElement('option');
+    el.value = o.value; el.textContent = o.label;
+    if (o.value === current) el.selected = true;
+    sel.appendChild(el);
+  }
+  sel.addEventListener('change', () => onChange(sel.value));
+  return sel;
+}
+
+/**
+ * One property row, typed by its schema when there is one. Handles the
+ * single-value controls (dropdowns, enums, read-only, bounded numbers); arrays
+ * and nested structures are a later pass, so those fall through to propRow.
+ */
+function fieldRow(p: ObjectProp, field: FieldSchema | null, commit: (name: string, value: string) => void): HTMLElement {
+  if (!field) return propRow(p, commit);
+  const control = controlOf(field);
+
+  if (control === 'dropdown' && field['x-registry']) {
+    const { row } = rowShell(field, p.name);
+    // Show the current value immediately; fill the options once the roster loads.
+    const sel = selectFrom(p.value, [], (v) => commit(p.name, v));
+    sel.disabled = true;
+    row.appendChild(sel);
+    void roster(field['x-registry']).then((entries) => {
+      const cur = sel.value;
+      sel.innerHTML = '';
+      const opts = entries.map((e) => ({ value: e.id, label: e.name || e.id }));
+      if (!opts.some((o) => o.value === cur)) opts.unshift({ value: cur, label: cur || '(none)' });
+      for (const o of opts) {
+        const el = document.createElement('option');
+        el.value = o.value; el.textContent = o.label;
+        if (o.value === cur) el.selected = true;
+        sel.appendChild(el);
+      }
+      sel.disabled = false;
+    });
+    return row;
+  }
+
+  if (control === 'enum' && field.enum) {
+    const { row } = rowShell(field, p.name);
+    row.appendChild(selectFrom(p.value, field.enum.map((v) => ({ value: v, label: v })), (v) => commit(p.name, v)));
+    return row;
+  }
+
+  if (control === 'number') {
+    const { row } = rowShell(field, p.name);
+    const inp = document.createElement('input');
+    inp.type = 'number'; inp.value = p.value;
+    if (field.minimum !== undefined) inp.min = String(field.minimum);
+    if (field.maximum !== undefined) inp.max = String(field.maximum);
+    inp.addEventListener('change', () => commit(p.name, inp.value));
+    row.appendChild(inp);
+    return row;
+  }
+
+  if (control === 'checkbox') {
+    const { row } = rowShell(field, p.name);
+    const cb = document.createElement('input');
+    cb.type = 'checkbox'; cb.checked = p.value === 'true';
+    cb.addEventListener('change', () => commit(p.name, String(cb.checked)));
+    row.appendChild(cb);
+    return row;
+  }
+
+  // readonly, refs, and anything structural: keep the schema's nicer label but
+  // let propRow render the value (it already shows href/readonly sensibly).
+  return propRow(field['x-readonly'] ? { ...p, readonly: true } : p, commit, field.title || p.name);
 }
 
 async function setProp(id: string, name: string, value: string): Promise<void> {

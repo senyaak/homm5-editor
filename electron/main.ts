@@ -26,13 +26,15 @@ import type { MapWatch } from '../src/watch.ts';
 import { TerrainDoc } from '../src/terrain-edit.ts';
 import { History, diff, apply } from '../src/history.ts';
 import { loadMap } from '../src/map.ts';
+import { Registry } from '../src/registry.ts';
+import type { RosterEntry } from '../src/registry.ts';
 import type { DocPatch, Step, StoredHistory } from '../src/history.ts';
 import type { TileInfo, GeomResolver, Instance as SceneInstance } from '../src/scene.ts';
 import type { HommMap, MapObject } from '../src/map.ts';
 import type {
   MapsListResult, MapListEntry, MapLoadResult, MoveObjectPayload, MoveObjectResult,
   RotateObjectPayload, RemoveObjectPayload, ObjectEditResult, ObjectPropsResult, SetPropPayload,
-  MapPropsResult, SetMapPropPayload,
+  MapPropsResult, SetMapPropPayload, RosterPayload, RosterResult,
   ObjectCatalogResult, IconPayload, IconResult, AddObjectPayload, AddObjectResult,
   MapSaveResult, MapPackResult, TerrainTilesResult, MapStatusResult, OpenMapDialogResult,
   ExternalChange, PaintTilePayload, PaintTileResult, SculptPayload, SculptResult,
@@ -70,6 +72,8 @@ interface Session {
   history: History;
   /** Where this map's history is kept between runs. */
   historyPath: string;
+  /** Game-data rosters for the typed-editing pickers, resolved against assetRoot. */
+  registry: Registry;
 }
 
 /** Documents an edit may touch: the map, some floors' terrain, or both. */
@@ -338,6 +342,7 @@ ipcMain.handle('map:load', async (_e: IpcMainInvokeEvent, mapPath: string): Prom
   session = {
     mapPath, mapDir, assetRoot, map, layerPaths, watch, terrain: new Map(), resolver,
     history: new History(), historyPath: historyPathFor(mapDir),
+    registry: new Registry(assetRoot),
   };
   // A history from a previous run is adopted only if the documents still hash
   // to what they hashed when it was written.
@@ -469,6 +474,25 @@ ipcMain.handle('object:set-prop', async (_e: IpcMainInvokeEvent, p: SetPropPaylo
   const done = record(session, `set ${p.name}`, { map: true }, () => obj.setProp(p.name, p.value));
   if (!done) throw new Error(`${p.name} is not a simple field of this object`);
   return { ok: true };
+});
+
+// --- IPC: a game-data roster for the typed-editing pickers ---
+// Discovered from the data tree (see src/registry.ts) and cached per session, so
+// the first request for a roster scans and the rest are instant.
+ipcMain.handle('registry:roster', async (_e: IpcMainInvokeEvent, { name }: RosterPayload): Promise<RosterResult> => {
+  if (!session) throw new Error('no map loaded');
+  const r = session.registry;
+  const roster =
+    name === 'spells' ? r.spells() :
+    name === 'artifacts' ? r.artifacts() :
+    name === 'creatures' ? r.creatures() :
+    name === 'skills' ? r.skills() :
+    name === 'heroes' ? r.heroes() :
+    name === 'ambientLights' ? r.ambientLights() :
+    name === 'races' ? r.races() :
+    null;
+  if (!roster) throw new Error(`unknown roster "${name}"`);
+  return { entries: roster };
 });
 
 // --- IPC: the map's own settings (the original's map-properties tree) ---

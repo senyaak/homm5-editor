@@ -21,6 +21,7 @@ const api = {
   setObjectProp: (p) => ipcRenderer.invoke('object:set-prop', p),
   mapProps: () => ipcRenderer.invoke('map:props'),
   setMapProp: (p) => ipcRenderer.invoke('map:set-prop', p),
+  roster: (name) => ipcRenderer.invoke('registry:roster', { name }),
   listObjects: () => ipcRenderer.invoke('objects:list'),
   objectIcon: (path) => ipcRenderer.invoke('objects:icon', { path }),
   addObject: (p) => ipcRenderer.invoke('object:add', p),

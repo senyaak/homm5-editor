@@ -79,6 +79,13 @@
       background: #0d1014; border: 1px solid #30363d; border-radius: 5px;
       padding: 3px 6px; color: #c9d1d9; font-size: 11px; }
     #p-props .pf input:focus, .mp-body .pf input:focus { outline: none; border-color: #1f6feb; }
+    /* Schema-driven dropdowns (enum / registry pickers). */
+    #p-props .pf select, .mp-body .pf select { flex: 1; min-width: 0; background: #0d1014;
+      border: 1px solid #30363d; border-radius: 5px; padding: 3px 6px; color: #c9d1d9;
+      font-size: 11px; cursor: pointer; }
+    #p-props .pf select:focus, .mp-body .pf select:focus { outline: none; border-color: #1f6feb; }
+    #p-props .pf select:disabled, .mp-body .pf select:disabled { opacity: .6; }
+    #p-props .pf select option, .mp-body .pf select option { background: #161b22; color: #c9d1d9; }
     /* Asset references are shown, not edited: typing a path by hand is not an
        honest editor for them. RTL so a long path shows its telling end. */
     #p-props .pf .ro, .mp-body .pf .ro { flex: 1; min-width: 0; color: #6e7681; font-size: 10px;

@@ -138,6 +138,25 @@ export interface SetMapPropPayload {
   value: string;
 }
 
+/** Payload of `registry:roster` — which roster to fetch. */
+export interface RosterPayload {
+  /** A RegistryName from src/schema.ts (spells, artifacts, creatures, …). */
+  name: string;
+}
+
+/** One roster entry (mirrors src/registry.ts RosterEntry). */
+export interface RosterEntryDTO {
+  id: string;
+  name?: string;
+  nameRef?: string;
+  group?: string;
+}
+
+/** Result of `registry:roster`. */
+export interface RosterResult {
+  entries: RosterEntryDTO[];
+}
+
 /** Result of `map:save`. */
 export interface MapSaveResult {
   ok: true;
@@ -371,6 +390,7 @@ export interface EditorApi {
   setObjectProp(p: SetPropPayload): Promise<ObjectEditResult>;
   mapProps(): Promise<MapPropsResult>;
   setMapProp(p: SetMapPropPayload): Promise<ObjectEditResult>;
+  roster(name: string): Promise<RosterResult>;
   listObjects(): Promise<ObjectCatalogResult>;
   objectIcon(path: string): Promise<IconResult>;
   addObject(p: AddObjectPayload): Promise<AddObjectResult>;
