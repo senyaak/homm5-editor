@@ -75,11 +75,11 @@
     "BanTransparency": { "type": "boolean", "title": "Ban transparency" },
 
     "sRMGProps": { "$ref": "#/$defs/sRMGProps", "title": "Random-map-generator settings", "x-advanced": true },
-    "dialogs": { "type": "array", "title": "Dialogs", "x-advanced": true, "items": { "type": "object" } },
+    "dialogs": { "type": "array", "title": "Dialogs", "x-advanced": true, "items": { "$ref": "#/$defs/Dialog" } },
     "RacesRandomGroups": { "type": "array", "title": "Races random groups", "x-advanced": true, "items": { "type": "object" } },
     "Resources": { "$ref": "#/$defs/Resources", "title": "Resources", "x-advanced": true },
     "tiles": { "type": "array", "title": "Terrain tile set", "x-advanced": true, "items": { "type": "string", "x-ref": true } },
-    "regions": { "type": "array", "title": "Regions", "x-advanced": true, "items": { "type": "object" } }
+    "regions": { "type": "array", "title": "Regions", "x-advanced": true, "items": { "$ref": "#/$defs/Region" } }
   },
   "$defs": {
     "Player": {
@@ -411,6 +411,57 @@
       "properties": {
         "Creature": { "type": "string", "x-registry": "creatures", "x-widget": "dropdown", "title": "Creature", "default": "CREATURE_UNKNOWN" },
         "Count": { "type": "integer", "title": "Count", "minimum": 0 }
+      }
+    },
+    "Region": {
+      "type": "object", "title": "Region",
+      "description": "A named map rectangle with enter triggers — used from scripts.",
+      "properties": {
+        "Floor": { "type": "integer", "title": "Floor", "minimum": 0, "maximum": 1 },
+        "Rect": { "$ref": "#/$defs/Rect", "title": "Rectangle" },
+        "Name": { "type": "string", "title": "Name", "x-nameOf": "region" },
+        "Color": { "$ref": "#/$defs/Vec3", "title": "Colour" },
+        "EnterAndStopTrigger": { "$ref": "#/$defs/Trigger", "title": "Enter-and-stop trigger" },
+        "EnterWithoutStopTrigger": { "$ref": "#/$defs/Trigger", "title": "Enter-without-stop trigger" }
+      }
+    },
+    "Rect": {
+      "type": "object", "title": "Rectangle",
+      "properties": {
+        "x1": { "type": "integer", "title": "X1" }, "y1": { "type": "integer", "title": "Y1" },
+        "x2": { "type": "integer", "title": "X2" }, "y2": { "type": "integer", "title": "Y2" }
+      }
+    },
+    "Dialog": {
+      "type": "object", "title": "Dialog",
+      "description": "An in-game dialogue: a camera setup and a list of spoken sentences.",
+      "properties": {
+        "Sentences": { "type": "array", "title": "Sentences", "items": { "$ref": "#/$defs/Sentence" } },
+        "Camera": { "$ref": "#/$defs/DialogCamera", "title": "Camera" },
+        "Floor": { "type": "integer", "title": "Floor", "minimum": 0, "maximum": 1 },
+        "BackgroundMusicVolume": { "type": "integer", "title": "Music volume" },
+        "BackgroundGeneralSoundVolume": { "type": "integer", "title": "Sound volume" },
+        "BackgroundAmbientVolume": { "type": "integer", "title": "Ambient volume" },
+        "SpeechVolume": { "type": "integer", "title": "Speech volume" }
+      }
+    },
+    "Sentence": {
+      "type": "object", "title": "Sentence",
+      "properties": {
+        "Text": { "type": "string", "x-ref": true, "x-file": true, "title": "Text" },
+        "Sound": { "type": "string", "x-ref": true, "title": "Sound" },
+        "Pause": { "type": "number", "title": "Pause" }
+      }
+    },
+    "DialogCamera": {
+      "type": "object", "title": "Camera",
+      "properties": {
+        "Rod": { "type": "number", "title": "Rod" }, "Pitch": { "type": "number", "title": "Pitch" },
+        "Yaw": { "type": "number", "title": "Yaw" }, "Roll": { "type": "number", "title": "Roll" },
+        "FOV": { "type": "number", "title": "FOV" },
+        "ClipDistanceMin": { "type": "number", "title": "Clip min", "x-advanced": true },
+        "ClipDistanceMax": { "type": "number", "title": "Clip max", "x-advanced": true },
+        "Anchor": { "$ref": "#/$defs/Vec3", "title": "Anchor" }
       }
     },
     "Objectives": {
