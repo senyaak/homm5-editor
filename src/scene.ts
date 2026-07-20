@@ -833,10 +833,36 @@ function dropDuplicateMeshes(meshes: Mesh[], pick: number[], mats: MaterialInfo[
     const diag = Math.hypot(hi[0]! - lo[0]!, hi[1]! - lo[1]!, hi[2]! - lo[2]!) || 1;
     return far / diag <= 0.1;
   };
+  // A looser match, for flat ground pads only. The SubTerrain pad and the
+  // authored surface can be the SAME quad welded differently: the mine's are
+  // byte-identical, but the Black Market's carry the same 16 triangles under 13
+  // and 18 vertices, so identical index arrays miss them and both draw — two
+  // coplanar pads on the terrain, the flicker Senya saw under the artifact
+  // merchant. When two flat meshes share a triangle count and a bounding box,
+  // they are the same pad. Safe next to `coincident` because the keep-decision
+  // below only drops a SubTerrain copy or a same-texture one; two DIFFERENT
+  // authored textures still keep both.
+  const bounds = (m: Mesh): [number[], number[]] => {
+    const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+    for (let k = 0; k < m.positions.length; k += 3) for (let c = 0; c < 3; c++) {
+      lo[c] = Math.min(lo[c]!, m.positions[k + c]!);
+      hi[c] = Math.max(hi[c]!, m.positions[k + c]!);
+    }
+    return [lo, hi];
+  };
+  const coincidentPad = (a: Mesh, b: Mesh): boolean => {
+    if (a.indices.length !== b.indices.length || !isFlat(a) || !isFlat(b)) return false;
+    const [la, ha] = bounds(a), [lb, hb] = bounds(b);
+    const diag = Math.hypot(ha[0]! - la[0]!, ha[1]! - la[1]!, ha[2]! - la[2]!) || 1;
+    for (let c = 0; c < 3; c++) {
+      if (Math.abs(la[c]! - lb[c]!) > 0.1 * diag || Math.abs(ha[c]! - hb[c]!) > 0.1 * diag) return false;
+    }
+    return true;
+  };
   for (let i = 0; i < meshes.length; i++) {
     if (!keep[i]) continue;
     for (let j = i + 1; j < meshes.length; j++) {
-      if (!keep[j] || !coincident(meshes[i]!, meshes[j]!)) continue;
+      if (!keep[j] || !(coincident(meshes[i]!, meshes[j]!) || coincidentPad(meshes[i]!, meshes[j]!))) continue;
       if (isSub(i) !== isSub(j)) {
         // A SubTerrain copy is usually the underground skin of the authored
         // surface — redundant on the surface, so the authored one wins (a
