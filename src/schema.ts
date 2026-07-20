@@ -59,6 +59,10 @@ export interface FieldSchema {
   /** This field REFERENCES a name defined elsewhere in the map — offer those as
    *  hints. The kind ('objective', 'object') says which names apply. */
   'x-nameRef'?: string;
+  /** The ref points at a document (library or map-local) whose contents follow
+   *  this $def — Birds→AdvMapBirds, Wind→Wind. The inline document editor reads
+   *  it to edit the referenced entity. */
+  'x-entity'?: string;
   'x-widget'?: WidgetKind;
   'x-tab'?: TabName;
   'x-mapObjects'?: 'town' | 'hero';

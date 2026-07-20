@@ -40,11 +40,11 @@
     "ScenarioInformation": { "type": "array", "title": "Scenario information (lobby goal)", "x-advanced": true, "description": "Up to 8 entries shown on the scenario-selection screen.", "items": { "$ref": "#/$defs/Objective" } },
     "Objectives": { "$ref": "#/$defs/Objectives", "title": "Victory / loss conditions", "x-advanced": true },
 
-    "Birds": { "type": "string", "x-ref": true, "x-registry": "birds", "x-widget": "dropdown", "title": "Birds", "description": "A bird flock — pick a shipped one, or reference a custom AdvMapBirds saved in the map folder." },
+    "Birds": { "type": "string", "x-ref": true, "x-registry": "birds", "x-entity": "AdvMapBirds", "x-widget": "dropdown", "title": "Birds", "description": "A bird flock — pick a shipped one, or reference a custom AdvMapBirds saved in the map folder." },
     "BirdsAmount": { "type": "integer", "title": "Birds amount", "minimum": 0 },
-    "Weather": { "type": "array", "x-registry": "weathers", "x-ref": true, "x-widget": "checklist", "title": "Weather", "description": "Weather layers (AdvMapWeather references).", "items": { "type": "string", "x-registry": "weathers", "x-ref": true } },
-    "Wind": { "type": "string", "x-ref": true, "x-registry": "winds", "x-widget": "dropdown", "title": "Wind" },
-    "PreLight": { "type": "string", "x-ref": true, "x-registry": "ambientLights", "x-widget": "dropdown", "title": "Prelight", "description": "A pre-lighting AmbientLight reference." },
+    "Weather": { "type": "array", "x-registry": "weathers", "x-ref": true, "x-widget": "checklist", "title": "Weather", "description": "Weather layers (AdvMapWeather references).", "items": { "type": "string", "x-registry": "weathers", "x-ref": true, "x-entity": "AdvMapWeather" } },
+    "Wind": { "type": "string", "x-ref": true, "x-registry": "winds", "x-entity": "Wind", "x-widget": "dropdown", "title": "Wind" },
+    "PreLight": { "type": "string", "x-ref": true, "x-registry": "ambientLights", "x-entity": "AmbientLight", "x-widget": "dropdown", "title": "Prelight", "description": "A pre-lighting AmbientLight reference." },
 
     "MapScript": { "type": "string", "x-ref": true, "x-widget": "script", "x-tab": "script", "title": "Map script", "description": "Reference to the Lua map script. Editing is Phase 5." },
     "NewDayTrigger": { "$ref": "#/$defs/Trigger", "title": "New-day trigger", "x-advanced": true },
@@ -63,14 +63,14 @@
 
     "MapRumours": { "type": "array", "x-tab": "rumours", "title": "Rumours", "items": { "$ref": "#/$defs/Rumour" } },
 
-    "Music": { "type": "string", "x-ref": true, "title": "Adventure music", "description": "Adventure-map music (not combat)." },
+    "Music": { "type": "string", "x-ref": true, "x-entity": "Music", "title": "Adventure music", "description": "Adventure-map music (not combat)." },
     "MoonCalendar": { "type": "string", "x-ref": true, "title": "Moon calendar", "x-advanced": true },
     "MoonCalendarModifications": { "$ref": "#/$defs/MoonCalendarModifications", "title": "Moon calendar modifications", "x-advanced": true },
     "ImportantArtifacts": { "$ref": "#/$defs/ImportantArtifacts", "title": "Important artifacts", "x-advanced": true },
 
     "thumbnailImages": { "type": "array", "title": "Thumbnail images", "x-advanced": true, "items": { "type": "string", "x-ref": true } },
-    "PWLPicture": { "type": "string", "x-ref": true, "title": "PWL picture", "x-advanced": true },
-    "LoadingScreenSound": { "type": "string", "x-ref": true, "title": "Loading-screen sound", "x-advanced": true },
+    "PWLPicture": { "type": "string", "x-ref": true, "x-entity": "Texture", "title": "PWL picture", "x-advanced": true },
+    "LoadingScreenSound": { "type": "string", "x-ref": true, "x-entity": "Sound", "title": "Loading-screen sound", "x-advanced": true },
     "StartScene": { "type": "string", "x-ref": true, "title": "Start scene", "x-advanced": true },
     "BanTransparency": { "type": "boolean", "title": "Ban transparency" },
 
@@ -223,6 +223,93 @@
         "DistanceFog": { "type": "string", "x-ref": true, "title": "Distance fog" },
         "SkyDome": { "type": "string", "x-ref": true, "title": "Sky dome (model)" },
         "DymanicLightsModifications": { "$ref": "#/$defs/Vec3", "title": "Dynamic lights modifications" }
+      }
+    },
+    "Wind": {
+      "type": "object", "title": "Wind",
+      "description": "Wind that sways foliage/particles. A shipped one (MapObjects/_(Wind)) or a custom copy in the map folder — same structure.",
+      "properties": {
+        "Angle": { "type": "number", "title": "Angle" },
+        "Mask": { "type": "string", "title": "Mask texture" },
+        "Speed": { "type": "number", "title": "Speed" },
+        "Power": { "type": "number", "title": "Power" },
+        "Scale": { "type": "number", "title": "Scale" }
+      }
+    },
+    "AdvMapBirds": {
+      "type": "object", "title": "Birds",
+      "description": "A bird flock (MapObjects/_(AdvMapBirds) or custom).",
+      "properties": {
+        "Speed": { "type": "number", "title": "Speed" },
+        "Height": { "type": "number", "title": "Height" },
+        "Model": { "type": "string", "x-ref": true, "title": "Model" },
+        "AnimSet": { "type": "string", "x-ref": true, "title": "Animation set" }
+      }
+    },
+    "AdvMapWeather": {
+      "type": "object", "title": "Weather",
+      "properties": {
+        "Effect": { "type": "string", "x-ref": true, "x-entity": "AdvMapEffect", "title": "Effect" },
+        "Height": { "type": "number", "title": "Height" }
+      }
+    },
+    "AdvMapEffect": {
+      "type": "object", "title": "Effect",
+      "properties": {
+        "Instances": { "type": "array", "title": "Instances", "x-advanced": true, "items": { "type": "object" } },
+        "Lights": { "type": "array", "title": "Lights", "x-advanced": true, "items": { "type": "object" } },
+        "Models": { "type": "array", "title": "Models", "x-advanced": true, "items": { "type": "object" } },
+        "WindAffected": { "type": "boolean", "title": "Wind affected" },
+        "WindPower": { "type": "number", "title": "Wind power" },
+        "Duration": { "type": "number", "title": "Duration (s)", "description": "Effect length in seconds (H5, entered by hand)." }
+      }
+    },
+    "Music": {
+      "type": "object", "title": "Music",
+      "description": "Adventure-map music track.",
+      "properties": {
+        "FileName": { "type": "string", "title": "File name" },
+        "FadeIn": { "type": "integer", "title": "Fade in (ms)" },
+        "FadeOut": { "type": "integer", "title": "Fade out (ms)" },
+        "MinPausedTime": { "type": "integer", "title": "Min pause (ms)" },
+        "MaxPausedTime": { "type": "integer", "title": "Max pause (ms)" }
+      }
+    },
+    "Texture": {
+      "type": "object", "title": "Texture",
+      "properties": {
+        "SrcName": { "type": "string", "title": "Source file" },
+        "Type": { "type": "string", "title": "Type", "enum": ["REGULAR", "TEXTURE_2D"] },
+        "ConversionType": { "type": "string", "title": "Conversion type" },
+        "AddrType": { "type": "string", "title": "Address type" },
+        "Format": { "type": "string", "title": "Format" },
+        "Width": { "type": "integer", "title": "Width" },
+        "Height": { "type": "integer", "title": "Height" },
+        "MappingSize": { "type": "integer", "title": "Mapping size", "x-advanced": true },
+        "NMips": { "type": "integer", "title": "Mip levels", "x-advanced": true },
+        "Gain": { "type": "number", "title": "Gain", "x-advanced": true },
+        "InstantLoad": { "type": "boolean", "title": "Instant load", "x-advanced": true },
+        "FlipY": { "type": "boolean", "title": "Flip Y", "x-advanced": true },
+        "UseS3TC": { "type": "boolean", "title": "Use S3TC", "x-advanced": true }
+      }
+    },
+    "Sound": {
+      "type": "object", "title": "Sound",
+      "properties": {
+        "SrcName": { "type": "string", "title": "Source file" },
+        "uid": { "type": "string", "title": "GUID", "x-readonly": true },
+        "Loop": { "type": "boolean", "title": "Loop" },
+        "Is3D": { "type": "boolean", "title": "3D" },
+        "MinDistance": { "type": "number", "title": "Min distance" },
+        "MaxDistance": { "type": "number", "title": "Max distance" },
+        "Priority": { "type": "integer", "title": "Priority" },
+        "EndingSamples": { "type": "integer", "title": "Ending samples", "x-advanced": true },
+        "StartSamples": { "type": "integer", "title": "Start samples", "x-advanced": true },
+        "FrequencyVar": { "type": "number", "title": "Frequency var", "x-advanced": true },
+        "VolumeBase": { "type": "number", "title": "Volume" },
+        "VolumeVar": { "type": "number", "title": "Volume var", "x-advanced": true },
+        "FinalSound": { "type": "string", "x-ref": true, "title": "Final sound", "x-advanced": true },
+        "NeedLocalization": { "type": "boolean", "title": "Need localization", "x-advanced": true }
       }
     },
     "Objective": {
