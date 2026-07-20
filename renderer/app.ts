@@ -195,13 +195,48 @@ addEventListener('resize', () => {
   renderer.setSize(innerWidth, innerHeight);
 });
 
+// --- persisted UI preferences ----------------------------------------------
+// The toolbar toggles and sliders are view state, not map data, so they live in
+// localStorage and a restart reopens the editor the way it was left. Declared
+// ahead of the state below because those globals initialise from it. showObjects
+// now defaults ON — the first thing a session usually wants is to see the map's
+// objects, and terrain-only work can still flip the toggle off (and it sticks).
+interface UiPrefs {
+  showObjects: boolean;
+  explorerOpen: boolean;
+  cliffs: boolean;
+  grid: boolean;
+  showHidden: boolean;
+  texScale: number;
+}
+const UI_PREFS_DEFAULT: UiPrefs = {
+  showObjects: true, explorerOpen: true, cliffs: true, grid: false, showHidden: false, texScale: 0.5,
+};
+const UI_PREFS_KEY = 'homm5-editor.ui';
+function loadUiPrefs(): UiPrefs {
+  try {
+    const raw = localStorage.getItem(UI_PREFS_KEY);
+    // Spread over the defaults so a prefs blob written by an older build (missing
+    // a key added since) still yields a complete object.
+    return raw ? { ...UI_PREFS_DEFAULT, ...JSON.parse(raw) } : { ...UI_PREFS_DEFAULT };
+  } catch { return { ...UI_PREFS_DEFAULT }; }
+}
+let uiPrefs = loadUiPrefs();
+// Merge one change in and write the whole blob back. Every toggle's setter calls
+// this, so the store always mirrors the live UI with no separate save step.
+function saveUiPrefs(patch: Partial<UiPrefs>): void {
+  uiPrefs = { ...uiPrefs, ...patch };
+  try { localStorage.setItem(UI_PREFS_KEY, JSON.stringify(uiPrefs)); }
+  catch { /* private mode or quota: the editor still runs, just without persistence */ }
+}
+
 // --- world state (rebuilt on each map load) ---
 // A map has one or two floors (surface + underground); each is its own terrain
 // and object set. We build a group per floor and show one at a time — mixing
 // them would dump underground objects onto the surface (wrong heights, chaos).
 let world: World | null = null; // { floors:[{ name, V, heights, group, objGroup, meshes:Map<id,mesh> }], active }
 let selected: Selection | null = null; // { id, mesh, inst }
-let showObjects = false; // off by default: terrain work needs a clear ground view
+let showObjects = uiPrefs.showObjects;
 let boxHelper: THREE.BoxHelper | null = null;
 
 const raycaster = new THREE.Raycaster();
@@ -647,8 +682,8 @@ async function arrayTexture(uris: string[], size: number): Promise<THREE.DataArr
   return tex;
 }
 
-let texScale = 0.5;   // ground-texture repeats per map tile (tunable in the toolbar)
-let cliffAmount = 1;  // how strongly steep faces take the rock texture
+let texScale = uiPrefs.texScale;   // ground-texture repeats per map tile (tunable in the toolbar)
+let cliffAmount = uiPrefs.cliffs ? 1 : 0;  // how strongly steep faces take the rock texture
 const splatMats: THREE.ShaderMaterial[] = [];
 
 // --- terrain-projected parts ------------------------------------------------
@@ -1746,7 +1781,7 @@ const strokeVerts = new Set<number>();
 // less often than average, precisely because there is nothing to block. A small
 // pond that a designer wants closed off gets masked by hand like anything else.
 
-let showBlocked = false;
+let showBlocked = uiPrefs.grid;
 
 /** Draw order for the sea sheet; the ground overlay lands underneath it. */
 const WATER_ORDER = 2;
@@ -2027,6 +2062,7 @@ function setShowBlocked(on: boolean): void {
   $('blockbtn').classList.toggle('on', on);
   $('passlegend').style.display = on ? 'flex' : 'none';
   if (world) for (const fl of world.floors) refreshBlocked(fl);
+  saveUiPrefs({ grid: on });
 }
 
 /** Paint or erase the mask under the brush. */
@@ -2810,12 +2846,13 @@ function updateFloorUI(): void {
 $('floor').onclick = () => { if (world) setActiveFloor((world.active + 1) % world.floors.length); };
 
 // Explorer show/hide + search wiring.
-let explorerOpen = true;
+let explorerOpen = uiPrefs.explorerOpen;
 function setExplorer(open: boolean): void {
   explorerOpen = open;
   $('explorer').style.display = open ? 'flex' : 'none';
   $('hud').style.left = open ? '296px' : '12px';
   $('objects').classList.toggle('on', open);
+  saveUiPrefs({ explorerOpen: open });
 }
 $('objects').onclick = () => {
   const open = !explorerOpen;
@@ -2838,6 +2875,7 @@ function setShowObjects(on: boolean): void {
   if (!on) deselect();
   $('showobj').classList.toggle('on', on);
   $('showobj').textContent = on ? 'Objects: on' : 'Objects: off';
+  saveUiPrefs({ showObjects: on });
 }
 $('showobj').onclick = () => setShowObjects(!showObjects);
 
@@ -2859,7 +2897,7 @@ let catGroups: { name: string; separator: boolean }[] = [];
 let objPalOpen = false;
 let objCat = ALL;
 let objSearch = '';
-let showHiddenObjects = false;
+let showHiddenObjects = uiPrefs.showHidden;
 /** The catalogue entry armed for placing, or null. Stays set across placements. */
 let placeObject: PlaceableObject | null = null;
 /** Icons already fetched, so scrolling back does not refetch. */
@@ -3252,8 +3290,10 @@ $input('obj-search').addEventListener('input', (e) => {
   objShown = OBJ_PAGE;
   renderObjGrid();
 });
+$input('obj-hidden').checked = showHiddenObjects; // match the restored pref
 $input('obj-hidden').addEventListener('change', (e) => {
   showHiddenObjects = (e.currentTarget as HTMLInputElement).checked;
+  saveUiPrefs({ showHidden: showHiddenObjects });
   objShown = OBJ_PAGE;
   renderObjGrid();
 });
@@ -3333,6 +3373,7 @@ function setCliffs(on: boolean): void {
   cliffAmount = on ? 1 : 0;
   for (const m of splatMats) if (m.uniforms.uRock.value) m.uniforms.uCliff.value = cliffAmount;
   $('cliffbtn').classList.toggle('on', on);
+  saveUiPrefs({ cliffs: on });
 }
 $('cliffbtn').onclick = () => setCliffs(!cliffAmount);
 
@@ -3355,6 +3396,7 @@ $input('texscale').addEventListener('input', (e) => {
     m.uniforms.uScale.value = texScale;
     m.uniforms.uRockScale.value = texScale / U;
   }
+  saveUiPrefs({ texScale });
 });
 $input('ex-search').addEventListener('input', renderExList);
 
@@ -3393,6 +3435,10 @@ async function loadMapPath(path: string | null): Promise<void> {
     $('objects').style.display = '';
     $('showobj').style.display = '';
     $('scalewrap').style.display = 'flex';
+    // Reflect the persisted ground-scale on the slider itself, or its thumb would
+    // sit at the HTML default while the terrain uses the restored value.
+    $input('texscale').value = String(texScale);
+    $('texscaleval').textContent = texScale.toFixed(2);
     // Sea controls only matter on maps that actually have water-flagged ground.
     const hasSea = S.floors.some((f) => f.water && f.water.cells.length);
     $('seawrap').style.display = hasSea ? 'flex' : 'none';
@@ -3404,11 +3450,14 @@ async function loadMapPath(path: string | null): Promise<void> {
     $('cliffbtn').style.display = '';
     $('blockbtn').style.display = '';
     setCliffs(cliffAmount > 0);
+    setShowBlocked(showBlocked);
     $('help').style.display = '';
     // A newly loaded map has its own layer set; refresh the "used" markers.
     tilesInMap = new Set((await window.editor.listTiles()).inMap);
     if (allTiles.length) renderPalette();
-    setExplorer(true);
+    // Restore the panels the way they were left rather than forcing them open —
+    // that is the whole point of persisting the toggles.
+    setExplorer(explorerOpen);
     setShowObjects(showObjects);
     markDirty(false);
     const total = Object.values(info.counts).reduce((a, b) => a + b, 0);
