@@ -69,19 +69,24 @@
     /* Property list. Capped and scrollable: a monster carries ~20 fields and a
        town far more, and a panel taller than the window cannot be reached. */
     #p-props { margin-top: 10px; max-height: 40vh; overflow-y: auto; }
-    #p-props .ph { font-size: 11px; color: #6e7681; text-transform: uppercase;
+    #p-props .ph, .mp-body .ph { font-size: 11px; color: #6e7681; text-transform: uppercase;
       letter-spacing: .04em; margin: 8px 0 4px; }
-    #p-props .pf { display: flex; align-items: center; gap: 6px; margin: 2px 0; }
-    #p-props .pf label { flex: 0 0 96px; color: #8b949e; font-size: 11px;
+    #p-props .pf, .mp-body .pf { display: flex; align-items: center; gap: 6px; margin: 2px 0; }
+    #p-props .pf label, .mp-body .pf label { flex: 0 0 96px; color: #8b949e; font-size: 11px;
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    #p-props .pf input[type=text], #p-props .pf input[type=number] { flex: 1; min-width: 0;
+    #p-props .pf input[type=text], #p-props .pf input[type=number],
+    .mp-body .pf input[type=text], .mp-body .pf input[type=number] { flex: 1; min-width: 0;
       background: #0d1014; border: 1px solid #30363d; border-radius: 5px;
       padding: 3px 6px; color: #c9d1d9; font-size: 11px; }
-    #p-props .pf input:focus { outline: none; border-color: #1f6feb; }
+    #p-props .pf input:focus, .mp-body .pf input:focus { outline: none; border-color: #1f6feb; }
     /* Asset references are shown, not edited: typing a path by hand is not an
-       honest editor for them. */
-    #p-props .pf .ro { flex: 1; min-width: 0; color: #6e7681; font-size: 10px;
+       honest editor for them. RTL so a long path shows its telling end. */
+    #p-props .pf .ro, .mp-body .pf .ro { flex: 1; min-width: 0; color: #6e7681; font-size: 10px;
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; }
+    /* A read-only plain value (a null ref, a dimension) — muted, but left to
+       right, unlike the path shown in .ro. */
+    .mp-body .pf .rov { flex: 1; min-width: 0; color: #6e7681; font-size: 11px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
     #hud { position: fixed; left: 12px; bottom: 12px; font-size: 12px; color: #8b949e;
       z-index: 10; pointer-events: none; transition: left .15s; }
@@ -263,6 +268,46 @@
       padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 12px;
     }
     #extchange button.ghost { background: transparent; border: 1px solid #6b5320; color: #d9c48a; font-weight: 400; }
+
+    /* map settings dialog — the original's Adventure Map Properties, as a modal.
+       The General tab is the curated view; "All fields" is the full property
+       tree the original's other form shows. */
+    #mapprops { position: fixed; inset: 0; z-index: 25; display: none;
+      align-items: center; justify-content: center; background: #0d1014cc; }
+    #mapprops.on { display: flex; }
+    .mp-card { width: min(460px, 92vw); max-height: 82vh; background: #161b22;
+      border: 1px solid #30363d; border-radius: 10px; display: flex; flex-direction: column;
+      box-shadow: 0 12px 40px #000a; overflow: hidden; }
+    .mp-head { display: flex; align-items: center; padding: 11px 14px; border-bottom: 1px solid #21262d; }
+    .mp-title { font-weight: 600; color: #e6edf3; flex: 1; }
+    #mp-close { background: transparent; border: 0; color: #8b949e; font-size: 15px; cursor: pointer;
+      padding: 2px 6px; border-radius: 5px; }
+    #mp-close:hover { background: #21262d; color: #e6edf3; }
+    .mp-tabs { display: flex; gap: 4px; padding: 8px 12px 0; border-bottom: 1px solid #21262d; }
+    .mp-tab { background: transparent; border: 0; border-bottom: 2px solid transparent; color: #8b949e;
+      padding: 5px 10px 7px; cursor: pointer; font-size: 12px; }
+    .mp-tab:hover { color: #c9d1d9; }
+    .mp-tab.on { color: #e6edf3; border-bottom-color: #1f6feb; }
+    .mp-body { padding: 12px 14px; overflow-y: auto; }
+    /* Name/description block at the top of General. Read-only for now — they live
+       in sibling text files, a separate document from map.xdb. */
+    .mp-name { margin-bottom: 10px; }
+    .mp-name .k { font-size: 11px; color: #6e7681; text-transform: uppercase; letter-spacing: .04em; }
+    .mp-name .nmv { color: #e6edf3; font-size: 15px; font-weight: 600; margin: 2px 0 8px;
+      word-break: break-word; }
+    .mp-name .dsc { color: #c9d1d9; font-size: 12px; white-space: pre-wrap; word-break: break-word;
+      max-height: 96px; overflow-y: auto; background: #0d1014; border: 1px solid #21262d;
+      border-radius: 5px; padding: 6px 8px; }
+    .mp-name .dsc.empty { color: #6e7681; font-style: italic; }
+    /* The "Restrict hero level" control: a checkbox that gates a number, matching
+       the original's General tab (0 = unrestricted). */
+    .mp-restrict { display: flex; align-items: center; gap: 8px; margin: 4px 0 10px; font-size: 12px; }
+    .mp-restrict label { color: #c9d1d9; display: flex; align-items: center; gap: 6px; cursor: pointer; }
+    .mp-restrict input[type=number] { width: 64px; background: #0d1014; border: 1px solid #30363d;
+      border-radius: 5px; padding: 3px 6px; color: #c9d1d9; font-size: 12px; }
+    .mp-restrict input[type=number]:disabled { opacity: .4; }
+    .mp-note { margin-top: 10px; padding-top: 10px; border-top: 1px solid #21262d;
+      font-size: 11px; color: #6e7681; }
   </style>
 </head>
 <body>
@@ -277,6 +322,7 @@
     <button id="showobj" style="display:none">Objects: on</button>
     <button id="palbtn" style="display:none">Ground</button>
     <button id="objpalbtn" style="display:none" title="place objects from the game's catalogue">Objects+</button>
+    <button id="mapbtn" style="display:none" title="map settings — name, size, rules">Map…</button>
     <!-- Brush controls stay visible for the whole session once a map is open.
          The mode and size selectors must never hide behind the arm toggle:
          choosing Raise is how you arm a height brush in the first place. -->
@@ -418,6 +464,22 @@
     <div class="txt"><b>Map changed on disk.</b> <span id="extchange-what"></span></div>
     <button id="extchange-reload">Reload</button>
     <button id="extchange-ignore" class="ghost">Keep mine</button>
+  </div>
+
+  <!-- map settings dialog: General (curated) + All fields (full property tree) -->
+  <div id="mapprops">
+    <div class="mp-card">
+      <div class="mp-head">
+        <span class="mp-title">Map Properties</span>
+        <button id="mp-close" title="close (Esc)">✕</button>
+      </div>
+      <div class="mp-tabs">
+        <button class="mp-tab on" data-tab="general">General</button>
+        <button class="mp-tab" data-tab="all">All fields</button>
+      </div>
+      <div id="mp-general" class="mp-body"></div>
+      <div id="mp-all" class="mp-body" style="display:none"></div>
+    </div>
   </div>
 
   <div id="loading"><div class="box"><div class="spin"></div><span id="loadmsg">loading map…</span></div></div>

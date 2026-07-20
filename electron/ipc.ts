@@ -118,6 +118,26 @@ export interface SetPropPayload {
   value: string;
 }
 
+/**
+ * Result of `map:props`: the map root's simple fields, plus the visible name and
+ * description resolved from the sibling text files they point at (read-only for
+ * now — editing those files is a separate document, not the in-memory map.xdb).
+ */
+export interface MapPropsResult {
+  props: ObjectProp[];
+  /** Contents of the file `NameFileRef` points at, or '' if absent. */
+  name: string;
+  /** Contents of the file `DescriptionFileRef` points at, or '' if absent. */
+  description: string;
+}
+
+/** Payload of `map:set-prop`. */
+export interface SetMapPropPayload {
+  /** Element name of the map-root field, as it appears in the file. */
+  name: string;
+  value: string;
+}
+
 /** Result of `map:save`. */
 export interface MapSaveResult {
   ok: true;
@@ -349,6 +369,8 @@ export interface EditorApi {
   removeObject(id: string): Promise<ObjectEditResult>;
   objectProps(id: string): Promise<ObjectPropsResult>;
   setObjectProp(p: SetPropPayload): Promise<ObjectEditResult>;
+  mapProps(): Promise<MapPropsResult>;
+  setMapProp(p: SetMapPropPayload): Promise<ObjectEditResult>;
   listObjects(): Promise<ObjectCatalogResult>;
   objectIcon(path: string): Promise<IconResult>;
   addObject(p: AddObjectPayload): Promise<AddObjectResult>;

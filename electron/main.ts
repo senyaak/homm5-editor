@@ -32,6 +32,7 @@ import type { HommMap, MapObject } from '../src/map.ts';
 import type {
   MapsListResult, MapListEntry, MapLoadResult, MoveObjectPayload, MoveObjectResult,
   RotateObjectPayload, RemoveObjectPayload, ObjectEditResult, ObjectPropsResult, SetPropPayload,
+  MapPropsResult, SetMapPropPayload,
   ObjectCatalogResult, IconPayload, IconResult, AddObjectPayload, AddObjectResult,
   MapSaveResult, MapPackResult, TerrainTilesResult, MapStatusResult, OpenMapDialogResult,
   ExternalChange, PaintTilePayload, PaintTileResult, SculptPayload, SculptResult,
@@ -469,6 +470,44 @@ ipcMain.handle('object:set-prop', async (_e: IpcMainInvokeEvent, p: SetPropPaylo
   if (!done) throw new Error(`${p.name} is not a simple field of this object`);
   return { ok: true };
 });
+
+// --- IPC: the map's own settings (the original's map-properties tree) ---
+// Read from map.desc, plus the visible name/description pulled from the sibling
+// text files they reference. Those files are shown read-only for now: they are a
+// separate document from the in-memory map.xdb, so editing them wants the same
+// undo/save plumbing terrain floors have, which is a later step.
+ipcMain.handle('map:props', async (): Promise<MapPropsResult> => {
+  if (!session) throw new Error('no map loaded');
+  return {
+    props: session.map.mapProps(),
+    name: readSidecarText(session, session.map.nameFileRef),
+    description: readSidecarText(session, session.map.descriptionFileRef),
+  };
+});
+
+// --- IPC: set one map-root simple field ---
+ipcMain.handle('map:set-prop', async (_e: IpcMainInvokeEvent, p: SetMapPropPayload): Promise<ObjectEditResult> => {
+  if (!session) throw new Error('no map loaded');
+  const done = record(session, `set ${p.name}`, { map: true }, () => session!.map.setMapProp(p.name, p.value));
+  if (!done) throw new Error(`${p.name} is not an editable map field`);
+  return { ok: true };
+});
+
+/**
+ * Read a text file the map references (name.txt, description.txt), decoding the
+ * BOM the game writes. Empty href or a missing file returns '' rather than
+ * throwing — a map with no name is a display gap, not an error.
+ */
+function readSidecarText(s: Session, href: string): string {
+  if (!href) return '';
+  // The refs are basenames beside map.xdb; strip any xpointer just in case.
+  const file = join(s.mapDir, basename(href.split('#')[0]!));
+  if (!existsSync(file)) return '';
+  const buf = readFileSync(file);
+  if (buf.length >= 2 && buf[0] === 0xff && buf[1] === 0xfe) return buf.toString('utf16le', 2);
+  if (buf.length >= 3 && buf[0] === 0xef && buf[1] === 0xbb && buf[2] === 0xbf) return buf.toString('utf8', 3);
+  return buf.toString('utf8');
+}
 
 // --- IPC: delete an object ---
 // `remove` takes out the whole <Item> wrapper and the blank line after it, so

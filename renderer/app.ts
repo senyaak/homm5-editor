@@ -19,6 +19,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { UNITS_PER_TILE as U } from '../src/units.ts';
 import type { Scene, Floor, Instance, SplatData, TileInfo, GeomData, GeomPart, Footprint } from '../src/scene.ts';
 import type { EditorApi, MapListEntry, ExternalChange, PlaceableObject } from '../electron/ipc.ts';
+import type { ObjectProp } from '../src/map.ts';
 
 type MapEntry = MapListEntry & { cat: string };
 /**
@@ -1563,40 +1564,57 @@ async function loadProps(): Promise<void> {
   head.textContent = 'properties';
   host.appendChild(head);
 
-  for (const p of res.props) {
-    const row = document.createElement('div');
-    row.className = 'pf';
-    const label = document.createElement('label');
-    label.textContent = p.name;
-    label.title = p.name;
-    row.appendChild(label);
+  for (const p of res.props) host.appendChild(propRow(p, (n, v) => void setProp(id, n, v)));
+}
 
-    if (p.kind === 'href') {
-      const ro = document.createElement('span');
-      ro.className = 'ro';
-      // Empty hrefs are common and mean "nothing referenced"; say so rather
-      // than showing a blank that reads as a rendering bug.
-      ro.textContent = p.value || '(none)';
-      ro.title = p.value;
-      row.appendChild(ro);
-    } else if (p.kind === 'bool') {
-      const cb = document.createElement('input');
-      cb.type = 'checkbox';
-      cb.checked = p.value === 'true';
-      cb.addEventListener('change', () => { void setProp(id, p.name, String(cb.checked)); });
-      row.appendChild(cb);
-    } else {
-      const inp = document.createElement('input');
-      inp.type = p.kind === 'number' ? 'number' : 'text';
-      inp.value = p.value;
-      // Enums are text: the legal set lives in the game's data, and a dropdown
-      // built from a guess would refuse values the game accepts.
-      if (p.kind === 'enum') inp.title = 'one of the game’s enum values';
-      inp.addEventListener('change', () => { void setProp(id, p.name, inp.value); });
-      row.appendChild(inp);
-    }
-    host.appendChild(row);
+/**
+ * One field row — a label and an editor chosen from the value's kind — shared by
+ * the object panel and the map-settings dialog. `commit(name, value)` runs on
+ * change. Read-only fields (href refs, and the map root's dimensions and empty
+ * placeholders) are shown, not edited. An optional `label` overrides the raw
+ * element name for the curated General tab.
+ */
+function propRow(p: ObjectProp, commit: (name: string, value: string) => void, label = p.name): HTMLElement {
+  const row = document.createElement('div');
+  row.className = 'pf';
+  const lab = document.createElement('label');
+  lab.textContent = label;
+  lab.title = p.name;
+  row.appendChild(lab);
+
+  if (p.kind === 'href') {
+    const ro = document.createElement('span');
+    ro.className = 'ro';
+    // Empty hrefs are common and mean "nothing referenced"; say so rather than
+    // showing a blank that reads as a rendering bug.
+    ro.textContent = p.value || '(none)';
+    ro.title = p.value;
+    row.appendChild(ro);
+  } else if (p.readonly) {
+    // A dimension or an empty asset/enum placeholder: shown, not edited. Empty
+    // reads as "null", the way the original's tree shows it.
+    const ro = document.createElement('span');
+    ro.className = 'rov';
+    ro.textContent = p.value || 'null';
+    ro.title = p.value;
+    row.appendChild(ro);
+  } else if (p.kind === 'bool') {
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = p.value === 'true';
+    cb.addEventListener('change', () => commit(p.name, String(cb.checked)));
+    row.appendChild(cb);
+  } else {
+    const inp = document.createElement('input');
+    inp.type = p.kind === 'number' ? 'number' : 'text';
+    inp.value = p.value;
+    // Enums are text: the legal set lives in the game's data, and a dropdown
+    // built from a guess would refuse values the game accepts.
+    if (p.kind === 'enum') inp.title = 'one of the game’s enum values';
+    inp.addEventListener('change', () => commit(p.name, inp.value));
+    row.appendChild(inp);
   }
+  return row;
 }
 
 async function setProp(id: string, name: string, value: string): Promise<void> {
@@ -1620,6 +1638,145 @@ $input('p-rotslider').addEventListener('input', (e) => {
 });
 $input('p-rotslider').addEventListener('change', (e) => {
   void rotateSelected(+(e.currentTarget as HTMLInputElement).value);
+});
+
+// --- map settings dialog ----------------------------------------------------
+//
+// The map's own properties — the original's map-properties form — read from the
+// <AdvMapDesc> root through map.mapProps(). Two views in one modal: a curated
+// General tab and the full field tree, mirroring the two forms the original
+// offers (a friendly dialog and a raw property tree). Opened from the toolbar,
+// since these are map-level and not tied to any selection.
+
+/**
+ * Fields surfaced on the General tab, in order, with friendlier labels; any a
+ * given map lacks are skipped. HeroMaxLevel is not here — it has its own
+ * "restrict hero level" control. TileX/TileY/Version are read-only and live on
+ * the All-fields tab, not among these editable rules.
+ */
+const GENERAL_FIELDS: { name: string; label: string }[] = [
+  { name: 'ReflectiveWater', label: 'Reflective water' },
+  { name: 'RandomMoons', label: 'Random moons' },
+  { name: 'CustomTeams', label: 'Custom teams' },
+  { name: 'CustomMapGoal', label: 'Custom map goal' },
+  { name: 'BanTransparency', label: 'Ban transparency' },
+  { name: 'BorderSize', label: 'Border size' },
+  { name: 'BirdsAmount', label: 'Birds amount' },
+  { name: 'HasSurface', label: 'Has surface' },
+  { name: 'HasUnderground', label: 'Has underground' },
+  { name: 'InitialFloor', label: 'Initial floor' },
+];
+
+const mapPropsOpen = (): boolean => $('mapprops').classList.contains('on');
+
+function openMapProps(): void {
+  $('mapprops').classList.add('on');
+  setMapTab('general');
+  void renderMapProps();
+}
+function closeMapProps(): void { $('mapprops').classList.remove('on'); }
+
+function setMapTab(tab: 'general' | 'all'): void {
+  for (const b of document.querySelectorAll('.mp-tab'))
+    b.classList.toggle('on', (b as HTMLElement).dataset.tab === tab);
+  $('mp-general').style.display = tab === 'general' ? '' : 'none';
+  $('mp-all').style.display = tab === 'all' ? '' : 'none';
+}
+
+/**
+ * Commit one map-root field, then reflect dirty. Like the object panel, the
+ * dialog does not re-read after: the map took the value verbatim, so
+ * re-rendering would only risk showing something else.
+ */
+async function commitMapProp(name: string, value: string): Promise<void> {
+  try {
+    await window.editor.setMapProp({ name, value });
+    markDirty(true);
+    $('hud').textContent = `${name} = ${value || '(empty)'}`;
+  } catch (e) {
+    $('hud').textContent = `could not set ${name}: ` + (e instanceof Error ? e.message : String(e));
+  }
+}
+
+async function renderMapProps(): Promise<void> {
+  const gen = $('mp-general'), all = $('mp-all');
+  gen.innerHTML = ''; all.innerHTML = '';
+  let res;
+  try {
+    res = await window.editor.mapProps();
+  } catch (e) {
+    gen.textContent = 'could not read map settings: ' + (e instanceof Error ? e.message : String(e));
+    return;
+  }
+  const byName = new Map(res.props.map((p) => [p.name, p] as const));
+  const commit = (n: string, v: string) => void commitMapProp(n, v);
+
+  // General: name/description, the hero-level restriction, then curated rules.
+  gen.appendChild(nameBlock(res.name, res.description));
+  gen.appendChild(restrictHeroLevel(byName.get('HeroMaxLevel')));
+  const head = document.createElement('div');
+  head.className = 'ph'; head.textContent = 'rules';
+  gen.appendChild(head);
+  for (const f of GENERAL_FIELDS) {
+    const p = byName.get(f.name);
+    if (p) gen.appendChild(propRow(p, commit, f.label));
+  }
+  const note = document.createElement('div');
+  note.className = 'mp-note';
+  note.textContent = 'Name and description are read-only here for now (they live in separate text files). Size and version are read-only too. “All fields” lists everything the map carries.';
+  gen.appendChild(note);
+
+  // All fields: the full property tree, editable where safe.
+  const ah = document.createElement('div');
+  ah.className = 'ph'; ah.textContent = `all fields (${res.props.length})`;
+  all.appendChild(ah);
+  for (const p of res.props) all.appendChild(propRow(p, commit));
+}
+
+/** The read-only name + description block at the top of General. */
+function nameBlock(name: string, description: string): HTMLElement {
+  const box = document.createElement('div');
+  box.className = 'mp-name';
+  const k1 = document.createElement('div'); k1.className = 'k'; k1.textContent = 'Map name';
+  const nm = document.createElement('div'); nm.className = 'nmv'; nm.textContent = name || '(unnamed)';
+  const k2 = document.createElement('div'); k2.className = 'k'; k2.textContent = 'Description';
+  const ds = document.createElement('div'); ds.className = 'dsc' + (description ? '' : ' empty');
+  ds.textContent = description || '(no description)';
+  box.append(k1, nm, k2, ds);
+  return box;
+}
+
+/**
+ * "Restrict hero level to N": a checkbox gating a number, 0 = unrestricted,
+ * matching the original's General tab. Off writes 0; on writes the number.
+ */
+function restrictHeroLevel(p: ObjectProp | undefined): HTMLElement {
+  const wrap = document.createElement('div');
+  wrap.className = 'mp-restrict';
+  const cur = p ? +p.value || 0 : 0;
+  const lab = document.createElement('label');
+  const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = cur > 0;
+  lab.append(cb, document.createTextNode('Restrict hero level to'));
+  const num = document.createElement('input');
+  num.type = 'number'; num.min = '1'; num.max = '999';
+  num.value = String(cur > 0 ? cur : 40); num.disabled = cur === 0;
+  wrap.append(lab, num);
+  if (!p) { cb.disabled = true; num.disabled = true; return wrap; }  // map lacks the field
+  const push = () => void commitMapProp('HeroMaxLevel', cb.checked ? String(Math.max(1, +num.value || 1)) : '0');
+  cb.addEventListener('change', () => { num.disabled = !cb.checked; if (cb.checked && !+num.value) num.value = '40'; push(); });
+  num.addEventListener('change', push);
+  return wrap;
+}
+
+$('mapbtn').onclick = () => { if (mapPropsOpen()) closeMapProps(); else openMapProps(); };
+$('mp-close').onclick = () => closeMapProps();
+for (const b of document.querySelectorAll('.mp-tab'))
+  b.addEventListener('click', () => setMapTab((b as HTMLElement).dataset.tab === 'all' ? 'all' : 'general'));
+// The dimmed backdrop dismisses; a click on the card itself does not.
+$('mapprops').addEventListener('click', (e) => { if (e.target === $('mapprops')) closeMapProps(); });
+// Esc closes the dialog first, ahead of the object-disarm Esc handler below.
+addEventListener('keydown', (e) => {
+  if (e.code === 'Escape' && mapPropsOpen()) { e.stopImmediatePropagation(); closeMapProps(); }
 });
 
 // Keyboard shortcuts for the selection. Registered separately from the WASD set
@@ -3470,6 +3627,7 @@ async function loadMapPath(path: string | null): Promise<void> {
     seaBase = S.floors.find((f) => f.water)?.water?.level ?? 1.5;
     $('palbtn').style.display = '';
     $('objpalbtn').style.display = '';
+    $('mapbtn').style.display = '';
     $('brushwrap').style.display = 'flex';
     setBrush(false); // a fresh map starts in camera mode
     $('cliffbtn').style.display = '';

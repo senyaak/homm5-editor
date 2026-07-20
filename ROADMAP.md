@@ -168,7 +168,16 @@ placing new ones from a palette.
 - [ ] ⬜ Creature stacks: type, count, mood, whether they guard
 - [ ] ⬜ Artifacts, resources, mines, dwellings, chests — properties
 - [ ] ⬜ Players/teams: colours, alliances, starting bonuses, available factions
-- [ ] ⬜ Victory/loss conditions, map properties (size, weather, fog)
+- [ ] 🔨 Map properties — a "Map Properties" dialog (toolbar) with two views,
+      mirroring the original's two forms: a curated **General** tab (name and
+      description read-only from the sibling txt files, "restrict hero level",
+      and the map-wide toggles) and an **All fields** tab, the full `<AdvMapDesc>`
+      property tree. Simple root fields read/written through the same generic
+      machinery as objects (`HommMap.mapProps`/`setMapProp`, `src/map.ts`), so
+      they flow through undo/dirty/save for free; TileX/TileY/Version and empty
+      asset/enum placeholders are read-only. Still ⬜: editing name/description
+      (needs the txt file as its own document), and typed editors for the
+      Players/Teams/Objectives lists. Victory/loss conditions, weather, fog.
 - [ ] ⬜ Events/triggers/quests, guarded zones, rivers and roads
 - [ ] ⬜ Map validation, as the original does: unreachable areas, duplicates,
       broken references

@@ -121,31 +121,14 @@ export class MapObject {
    * two ways to set the same value is one way to make them disagree.
    */
   props(): ObjectProp[] {
-    const out: ObjectProp[] = [];
+    // One rule, shared with the map root — see simpleFields(). An empty
+    // structure (`<pointLights/>`, `<armySlots/>`) looks exactly like an empty
+    // string, so a field is a value only if it is never a container anywhere in
+    // this map; measured across the shipped maps, no name is ever both, and the
+    // tempting shortcut of judging by capitalisation is not decidable (8 of 19
+    // containers start lowercase, and `spellID` is a value).
     const containers = this.owner?.containerFields();
-    for (const c of children(this.el)) {
-      if (POS_FIELDS.has(c.name)) continue;
-      // An element with element children is a structure, not a value.
-      if (children(c).length) continue;
-      // An EMPTY structure looks exactly like an empty string here, and there
-      // are plenty: <pointLights/>, <BannedRaces/>, <armySlots/>. Offering a
-      // text box for one would write <pointLights>x</pointLights> — a list
-      // turned into a string. So a field is a value only if it is never a
-      // container anywhere in this map. Measured across 40 shipped maps and 72
-      // distinct fields, no name is ever both, so this is decidable; the
-      // tempting shortcut of judging by capitalisation is not (8 of 19
-      // containers start lowercase, and `spellID` is a value).
-      if (containers?.has(c.name)) continue;
-      // href-carrying leaves are asset references — editing one as free text
-      // would mean typing a path by hand, so show it, do not offer to edit it.
-      if (c.attrs.href !== undefined) {
-        out.push({ name: c.name, value: c.attrs.href, kind: 'href' });
-        continue;
-      }
-      const v = text(c);
-      out.push({ name: c.name, value: v, kind: kindOf(v) });
-    }
-    return out;
+    return simpleFields(this.el, (n) => !!containers?.has(n), { skip: POS_FIELDS });
   }
 
   /** Set one simple field by element name. False when it is not a simple field. */
@@ -281,6 +264,30 @@ const KNOWN_CONTAINERS = new Set([
   'showCameras', 'spellIDs',
 ]);
 
+/**
+ * Direct children of `<AdvMapDesc>` that hold a structure or list, even when
+ * empty. Measured across the shipped SingleMission/Multiplayer maps: the ones
+ * that ever carried element children, plus the always-empty lists whose tree
+ * icon says "list" (`disabledArtifactSets`, `RacesRandomGroups`,
+ * `AdditionallyRollableHeroes`). Withholding an editor is the safe error — a
+ * text box for `<players/>` would turn a list into a string.
+ */
+const MAP_ROOT_CONTAINERS = new Set([
+  'AvailableHeroes', 'GroundAmbientLights', 'ImportantArtifacts', 'MapRumours',
+  'MoonCalendarModifications', 'NewDayTrigger', 'Objectives', 'Resources',
+  'ScenarioInformation', 'UndergroundAmbientLights', 'WarFogEnterTrigger',
+  'artifactIDs', 'dialogs', 'isUntransferable', 'moons', 'objects', 'players',
+  'regions', 'sRMGProps', 'spellIDs', 'thumbnailImages', 'tiles',
+  'disabledArtifactSets', 'RacesRandomGroups', 'AdditionallyRollableHeroes',
+]);
+
+/**
+ * Map-root fields shown but never edited here: the dimensions and format
+ * version. Changing TileX/TileY without resizing the terrain grid corrupts the
+ * map, and Version is the file format's, not the author's — both are read-only.
+ */
+const MAP_READONLY_FIELDS = new Set(['Version', 'TileX', 'TileY']);
+
 /** What kind of editor a field's current value suggests. */
 export type PropKind = 'bool' | 'number' | 'enum' | 'text' | 'href';
 
@@ -289,6 +296,12 @@ export interface ObjectProp {
   name: string;
   value: string;
   kind: PropKind;
+  /**
+   * Shown but not editable. `href` refs are always read-only (typing a path by
+   * hand is not an honest editor). The map root also marks its dimensions and
+   * empty asset/enum placeholders read-only — see HommMap.mapProps().
+   */
+  readonly?: boolean;
 }
 
 /**
@@ -305,6 +318,39 @@ function kindOf(v: string): PropKind {
   if (v !== '' && /^-?\d+(\.\d+)?$/.test(v)) return 'number';
   if (/^[A-Z][A-Z0-9_]{2,}$/.test(v)) return 'enum';
   return 'text';
+}
+
+/**
+ * The simple (editable-value) fields of an element, by one rule used everywhere:
+ * a direct child that is neither a populated structure, a known-but-empty
+ * container, nor an asset reference is a value; everything else is shown or
+ * skipped. Shared by an object's panel and the map root's, so both read fields
+ * from the file rather than from a per-type table.
+ *
+ * @param isContainer  names that hold a structure even when they are empty (an
+ *   empty `<players/>` looks exactly like an empty string otherwise).
+ * @param skip         names with their own dedicated controls (an object's Pos).
+ * @param readonly     extra "show, don't edit" rule on top of href — the map
+ *   root uses it for dimensions and empty ref/enum placeholders.
+ */
+function simpleFields(
+  el: XmlElement,
+  isContainer: (name: string) => boolean,
+  opts: { skip?: Set<string>; readonly?: (name: string, value: string) => boolean } = {},
+): ObjectProp[] {
+  const out: ObjectProp[] = [];
+  for (const c of children(el)) {
+    if (opts.skip?.has(c.name)) continue;
+    if (children(c).length) continue;
+    if (isContainer(c.name)) continue;
+    if (c.attrs.href !== undefined) {
+      out.push({ name: c.name, value: c.attrs.href, kind: 'href', readonly: true });
+      continue;
+    }
+    const v = text(c);
+    out.push({ name: c.name, value: v, kind: kindOf(v), readonly: opts.readonly?.(c.name, v) || false });
+  }
+  return out;
 }
 
 export class HommMap {
@@ -342,6 +388,33 @@ export class HommMap {
   get mapScript(): string | null {
     const el = find(this.desc, 'MapScript');
     return el ? (find(el, 'FileName')?.attrs.href || text(el) || null) : null;
+  }
+  // The visible name and description live in sibling text files the map points
+  // at, not in the XML. Return the href so the caller can resolve and read them.
+  get nameFileRef(): string { return find(this.desc, 'NameFileRef')?.attrs.href || ''; }
+  get descriptionFileRef(): string { return find(this.desc, 'DescriptionFileRef')?.attrs.href || ''; }
+
+  // --- map-root properties (the original's map settings tree) ---
+  /**
+   * The map's own simple fields — the direct leaves of `<AdvMapDesc>`, by the
+   * same rule as an object's ([[simpleFields]]). Its containers (players,
+   * Resources, Objectives…) are withheld by MAP_ROOT_CONTAINERS; dimensions and
+   * empty asset/enum placeholders come back read-only, since a free-text box
+   * would let one write a bad reference where the original offers a picker.
+   */
+  mapProps(): ObjectProp[] {
+    return simpleFields(this.desc, (n) => MAP_ROOT_CONTAINERS.has(n), {
+      readonly: (name, v) => MAP_READONLY_FIELDS.has(name) || v === '',
+    });
+  }
+
+  /** Set one map-root simple field. False when it is not an editable value. */
+  setMapProp(name: string, value: string): boolean {
+    if (MAP_READONLY_FIELDS.has(name) || MAP_ROOT_CONTAINERS.has(name)) return false;
+    const el = find(this.desc, name);
+    if (!el || children(el).length || el.attrs.href !== undefined) return false;
+    setText(el, value);
+    return true;
   }
 
   // --- objects ---
