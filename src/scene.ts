@@ -1092,6 +1092,12 @@ function modelMaterials(model: string, assetRoot: string, baseDir: string): Mate
  * group beats one texture chosen for the whole model.
  */
 function meshMaterialIndex(model: string, meshCount: number, materialCount: number): number[] {
+  // The structured decoder now emits one mesh per material group, so the meshes
+  // line up one-to-one with the model's material list and each takes the
+  // material at its own index — the crystal group finally gets the crystal
+  // material instead of the crate's. The MaterialQuantities walk below is the
+  // fallback for the heuristic decoder, which still emits one mesh per name.
+  if (meshCount === materialCount) return Array.from({ length: meshCount }, (_, i) => i);
   const mq = model.match(/<MaterialQuantities>([\s\S]*?)<\/MaterialQuantities>/);
   const q = mq ? [...mq[1]!.matchAll(/<Item>(\d+)<\/Item>/g)].map((m) => +m[1]!) : [];
   const out: number[] = [];

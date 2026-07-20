@@ -527,81 +527,91 @@ export function extractMeshesStructured(b: Buffer): Mesh[] | null {
   const blocks = recordsIn(b, outer.at, outer.end).filter((r) => r.tag === 1);
   if (!blocks.length) return null;
 
+  // A block is one named mesh, but a mesh split across several materials stores
+  // each material's slice as its OWN tag-1 group inside the block, so one block
+  // can hold more than one drawable group. The crystal cavern's crate and its
+  // crystals are two groups of a single mesh (and the mine building's walls and
+  // rails another such pair); reading only the first group dropped every extra
+  // slice — visibly, the crystals themselves. Emit one mesh per group, in order,
+  // which also lines the meshes up one-to-one with the model's material list.
   const meshes: Mesh[] = [];
   for (const block of blocks) {
-    const body = recordsIn(b, block.at, block.end).find((r) => r.tag === 1);
-    if (!body) continue;
-    const parts = recordsIn(b, body.at, body.end);
-    const of = (tag: number): { count: number; at: number; len: number } | null => {
-      const r = parts.find((x) => x.tag === tag);
-      return r ? countedArray(b, r.at, r.end) : null;
-    };
-    const posA = of(2), vertA = of(3), remapA = of(5), triA = of(7);
-    if (!posA || !triA || !vertA || !remapA) continue;
-    if (posA.len < posA.count * 12 || triA.len < triA.count * 6) continue;
-    if (remapA.count !== vertA.count) continue;
-
-    // Positions are stored once per POSITION, but everything else - texture
-    // coordinates, normals - is stored once per RENDER VERTEX, and there are
-    // more of those: a corner shared by faces with different UVs appears once
-    // per distinct UV. tag 5 maps render vertex -> position.
-    //
-    // So the render vertices are the real vertex list. Expanding to them keeps
-    // the UVs that made the engine split them in the first place; collapsing
-    // back onto positions would have to throw one of each pair away.
-    const stride = vertA.len / vertA.count;
-    if (stride < 4) continue;
-    const n = vertA.count;
-    const positions = new Float32Array(n * 3);
-    const uvs = new Float32Array(n * 2);
-    const normals = new Float32Array(n * 3);
-    let bad = false;
-    for (let i = 0; i < n; i++) {
-      const src = b.readUInt16LE(remapA.at + i * 2);
-      if (src >= posA.count) { bad = true; break; }
-      for (let c = 0; c < 3; c++) positions[i * 3 + c] = b.readFloatLE(posA.at + src * 12 + c * 4);
-      // Texture coordinates are 16-bit fixed point over 2048, not floats:
-      // measured across the shipped models they land in [0, 1] this way, and
-      // values above 2048 are genuine tiling rather than garbage.
-      uvs[i * 2] = b.readUInt16LE(vertA.at + i * stride) / UV_SCALE;
-      uvs[i * 2 + 1] = b.readUInt16LE(vertA.at + i * stride + 2) / UV_SCALE;
-      // Authored normals, packed as unsigned bytes with 128 for zero. Worth
-      // taking rather than recomputing: computeVertexNormals averages over the
-      // faces meeting at a vertex, which smooths every hard edge a modeller put
-      // there and leaves a building evenly lit and flat-looking.
-      if (stride >= 16) {
-        for (let c = 0; c < 3; c++) {
-          normals[i * 3 + c] = (b[vertA.at + i * stride + 12 + c]! - 128) / 127;
-        }
-      }
+    for (const group of recordsIn(b, block.at, block.end).filter((r) => r.tag === 1)) {
+      const m = decodeMeshGroup(b, group.at, group.end);
+      if (m) meshes.push(m);
     }
-    if (bad) continue;
-
-    // Triangles address the render vertices directly - the remap is already
-    // folded into the expansion above.
-    const indices = new Uint32Array(triA.count * 3);
-    for (let i = 0; i < triA.count * 3; i++) {
-      const v = b.readUInt16LE(triA.at + i * 2);
-      if (v >= n) { bad = true; break; }
-      indices[i] = v;
-    }
-    if (bad) continue;
-
-    // A zero normal would light the surface as pure black, so fall back to
-    // computed ones if this file did not carry them.
-    let hasNormals = false;
-    for (let i = 0; i < normals.length; i += 3) {
-      if (normals[i] || normals[i + 1] || normals[i + 2]) { hasNormals = true; break; }
-    }
-
-    meshes.push({
-      positions,
-      normals: hasNormals ? normals : new Float32Array(0),
-      uvs,
-      indices,
-      vertexCount: n,
-      triCount: triA.count,
-    });
   }
   return meshes.length ? meshes : null;
+}
+
+/** Decode one material group (a mesh block's tag-1 child) into a Mesh, or null. */
+function decodeMeshGroup(b: Buffer, start: number, end: number): Mesh | null {
+  const parts = recordsIn(b, start, end);
+  const of = (tag: number): { count: number; at: number; len: number } | null => {
+    const r = parts.find((x) => x.tag === tag);
+    return r ? countedArray(b, r.at, r.end) : null;
+  };
+  const posA = of(2), vertA = of(3), remapA = of(5), triA = of(7);
+  if (!posA || !triA || !vertA || !remapA) return null;
+  if (posA.len < posA.count * 12 || triA.len < triA.count * 6) return null;
+  if (remapA.count !== vertA.count) return null;
+
+  // Positions are stored once per POSITION, but everything else - texture
+  // coordinates, normals - is stored once per RENDER VERTEX, and there are
+  // more of those: a corner shared by faces with different UVs appears once
+  // per distinct UV. tag 5 maps render vertex -> position.
+  //
+  // So the render vertices are the real vertex list. Expanding to them keeps
+  // the UVs that made the engine split them in the first place; collapsing
+  // back onto positions would have to throw one of each pair away.
+  const stride = vertA.len / vertA.count;
+  if (stride < 4) return null;
+  const n = vertA.count;
+  const positions = new Float32Array(n * 3);
+  const uvs = new Float32Array(n * 2);
+  const normals = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    const src = b.readUInt16LE(remapA.at + i * 2);
+    if (src >= posA.count) return null;
+    for (let c = 0; c < 3; c++) positions[i * 3 + c] = b.readFloatLE(posA.at + src * 12 + c * 4);
+    // Texture coordinates are 16-bit fixed point over 2048, not floats:
+    // measured across the shipped models they land in [0, 1] this way, and
+    // values above 2048 are genuine tiling rather than garbage.
+    uvs[i * 2] = b.readUInt16LE(vertA.at + i * stride) / UV_SCALE;
+    uvs[i * 2 + 1] = b.readUInt16LE(vertA.at + i * stride + 2) / UV_SCALE;
+    // Authored normals, packed as unsigned bytes with 128 for zero. Worth
+    // taking rather than recomputing: computeVertexNormals averages over the
+    // faces meeting at a vertex, which smooths every hard edge a modeller put
+    // there and leaves a building evenly lit and flat-looking.
+    if (stride >= 16) {
+      for (let c = 0; c < 3; c++) {
+        normals[i * 3 + c] = (b[vertA.at + i * stride + 12 + c]! - 128) / 127;
+      }
+    }
+  }
+
+  // Triangles address the render vertices directly - the remap is already
+  // folded into the expansion above.
+  const indices = new Uint32Array(triA.count * 3);
+  for (let i = 0; i < triA.count * 3; i++) {
+    const v = b.readUInt16LE(triA.at + i * 2);
+    if (v >= n) return null;
+    indices[i] = v;
+  }
+
+  // A zero normal would light the surface as pure black, so fall back to
+  // computed ones if this file did not carry them.
+  let hasNormals = false;
+  for (let i = 0; i < normals.length; i += 3) {
+    if (normals[i] || normals[i + 1] || normals[i + 2]) { hasNormals = true; break; }
+  }
+
+  return {
+    positions,
+    normals: hasNormals ? normals : new Float32Array(0),
+    uvs,
+    indices,
+    vertexCount: n,
+    triCount: triA.count,
+  };
 }
