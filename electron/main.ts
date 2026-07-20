@@ -28,6 +28,7 @@ import { History, diff, apply } from '../src/history.ts';
 import { loadMap } from '../src/map.ts';
 import { Registry } from '../src/registry.ts';
 import type { RosterEntry } from '../src/registry.ts';
+import { readTree, setPath, addStringItem, removeItem } from '../src/tree.ts';
 import type { DocPatch, Step, StoredHistory } from '../src/history.ts';
 import type { TileInfo, GeomResolver, Instance as SceneInstance } from '../src/scene.ts';
 import type { HommMap, MapObject } from '../src/map.ts';
@@ -35,6 +36,7 @@ import type {
   MapsListResult, MapListEntry, MapLoadResult, MoveObjectPayload, MoveObjectResult,
   RotateObjectPayload, RemoveObjectPayload, ObjectEditResult, ObjectPropsResult, SetPropPayload,
   MapPropsResult, SetMapPropPayload, RosterPayload, RosterResult,
+  MapTreeResult, SetPathPayload, AddItemPayload, RemoveItemPayload2,
   ObjectCatalogResult, IconPayload, IconResult, AddObjectPayload, AddObjectResult,
   MapSaveResult, MapPackResult, TerrainTilesResult, MapStatusResult, OpenMapDialogResult,
   ExternalChange, PaintTilePayload, PaintTileResult, SculptPayload, SculptResult,
@@ -493,6 +495,33 @@ ipcMain.handle('registry:roster', async (_e: IpcMainInvokeEvent, { name }: Roste
     null;
   if (!roster) throw new Error(`unknown roster "${name}"`);
   return { entries: roster };
+});
+
+// --- IPC: the whole <AdvMapDesc> as a tree, and path-based edits on it ---
+// The tree editor reads the map's full shape once, then edits by path. Every
+// edit goes through record({map:true}), so the tree shares undo/dirty/save with
+// every other edit.
+ipcMain.handle('map:tree', async (): Promise<MapTreeResult> => {
+  if (!session) throw new Error('no map loaded');
+  return { tree: readTree(session.map.desc) };
+});
+ipcMain.handle('map:set-path', async (_e: IpcMainInvokeEvent, p: SetPathPayload): Promise<ObjectEditResult> => {
+  if (!session) throw new Error('no map loaded');
+  const done = record(session, `set ${p.path.join('.')}`, { map: true }, () => setPath(session!.map.desc, p.path, p.value));
+  if (!done) throw new Error(`cannot set ${p.path.join('.')}`);
+  return { ok: true };
+});
+ipcMain.handle('map:add-item', async (_e: IpcMainInvokeEvent, p: AddItemPayload): Promise<ObjectEditResult> => {
+  if (!session) throw new Error('no map loaded');
+  const done = record(session, `add ${p.path.join('.')}`, { map: true }, () => addStringItem(session!.map.desc, p.path, p.value));
+  if (!done) throw new Error(`cannot add to ${p.path.join('.')}`);
+  return { ok: true };
+});
+ipcMain.handle('map:remove-item', async (_e: IpcMainInvokeEvent, p: RemoveItemPayload2): Promise<ObjectEditResult> => {
+  if (!session) throw new Error('no map loaded');
+  const done = record(session, `remove ${p.path.join('.')}`, { map: true }, () => removeItem(session!.map.desc, p.path));
+  if (!done) throw new Error(`cannot remove ${p.path.join('.')}`);
+  return { ok: true };
 });
 
 // --- IPC: the map's own settings (the original's map-properties tree) ---

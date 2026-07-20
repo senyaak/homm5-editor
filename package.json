@@ -19,6 +19,7 @@
     "test-registry": "node tools/test-registry.ts",
     "test-schema": "node tools/test-schema.ts",
     "test-objects-schema": "node tools/test-objects-schema.ts",
+    "test-tree": "node tools/test-tree.ts",
     "test-history": "node tools/test-history.ts",
     "pak": "node tools/pak-cli.js",
     "typecheck": "tsc --noEmit",

@@ -157,6 +157,22 @@ export interface RosterResult {
   entries: RosterEntryDTO[];
 }
 
+/** A step into the map tree: a field name or a list index (mirrors src/tree.ts). */
+export type TreePath = (string | number)[];
+
+/** Result of `map:tree` — the whole <AdvMapDesc> as nested data. */
+export interface MapTreeResult {
+  /** Leaf string, list, or keyed object — see src/tree.ts TreeData. */
+  tree: unknown;
+}
+
+/** Payload of `map:set-path`. */
+export interface SetPathPayload { path: TreePath; value: string; }
+/** Payload of `map:add-item` — append a string item to a list. */
+export interface AddItemPayload { path: TreePath; value: string; }
+/** Payload of `map:remove-item` — the path's last step is the index. */
+export interface RemoveItemPayload2 { path: TreePath; }
+
 /** Result of `map:save`. */
 export interface MapSaveResult {
   ok: true;
@@ -391,6 +407,10 @@ export interface EditorApi {
   mapProps(): Promise<MapPropsResult>;
   setMapProp(p: SetMapPropPayload): Promise<ObjectEditResult>;
   roster(name: string): Promise<RosterResult>;
+  mapTree(): Promise<MapTreeResult>;
+  setMapPath(p: SetPathPayload): Promise<ObjectEditResult>;
+  addMapItem(p: AddItemPayload): Promise<ObjectEditResult>;
+  removeMapItem(p: RemoveItemPayload2): Promise<ObjectEditResult>;
   listObjects(): Promise<ObjectCatalogResult>;
   objectIcon(path: string): Promise<IconResult>;
   addObject(p: AddObjectPayload): Promise<AddObjectResult>;

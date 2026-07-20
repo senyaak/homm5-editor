@@ -20,8 +20,9 @@ import { UNITS_PER_TILE as U } from '../src/units.ts';
 import type { Scene, Floor, Instance, SplatData, TileInfo, GeomData, GeomPart, Footprint } from '../src/scene.ts';
 import type { EditorApi, MapListEntry, ExternalChange, PlaceableObject, RosterEntryDTO } from '../electron/ipc.ts';
 import type { ObjectProp } from '../src/map.ts';
-import { objectProps, deref, controlOf, objectSchema } from '../src/schema.ts';
+import { objectProps, deref, controlOf, objectSchema, mapSchema } from '../src/schema.ts';
 import type { FieldSchema } from '../src/schema.ts';
+import type { TreeData, Path as TreePath } from '../src/tree.ts';
 
 type MapEntry = MapListEntry & { cat: string };
 /**
@@ -1887,6 +1888,197 @@ function restrictHeroLevel(p: ObjectProp | undefined): HTMLElement {
   return wrap;
 }
 
+// --- map tree editor (left panel) -------------------------------------------
+//
+// The whole <AdvMapDesc> as an expandable, schema-typed tree — the raw, complete
+// counterpart to the curated dialog. It walks the schema (src/schema.ts) and the
+// map's data (map:tree) together: a field's control comes from its schema, its
+// value from the data. Where the schema stops (deep stubs, mod additions) it
+// recurses on the data itself, so nothing in the file is hidden.
+
+const mapTreeOpen = (): boolean => $('maptree').style.display !== 'none';
+let mtShowAdvanced = false;
+
+function openMapTree(): void {
+  $('maptree').style.display = 'flex';
+  $('maptreebtn').classList.add('on');
+  void refreshMapTree();
+}
+function closeMapTree(): void { $('maptree').style.display = 'none'; $('maptreebtn').classList.remove('on'); }
+
+async function refreshMapTree(): Promise<void> {
+  const body = $('maptree-body');
+  let data: TreeData;
+  try { data = (await window.editor.mapTree()).tree as TreeData; }
+  catch (e) { body.textContent = 'could not read map tree: ' + (e instanceof Error ? e.message : String(e)); return; }
+  body.innerHTML = '';
+  for (const [name, raw] of Object.entries(mapSchema.properties)) {
+    const field = deref(mapSchema, raw);
+    if (field['x-advanced'] && !mtShowAdvanced) continue;
+    body.appendChild(treeNode(name, field, dataAt(data, name), [name]));
+  }
+}
+
+/** A child of tree data by key/index, or undefined for a leaf. */
+function dataAt(data: TreeData | undefined, key: string | number): TreeData | undefined {
+  if (data && typeof data === 'object') return (data as Record<string | number, TreeData>)[key];
+  return undefined;
+}
+
+/** A minimal schema inferred from a data value, for fields the schema omits. */
+function inferField(v: TreeData | undefined): FieldSchema {
+  if (Array.isArray(v)) return { type: 'array' };
+  if (v && typeof v === 'object') return { type: 'object' };
+  if (v === 'true' || v === 'false') return { type: 'boolean' };
+  if (typeof v === 'string' && v !== '' && /^-?\d+(\.\d+)?$/.test(v)) return { type: 'number' };
+  return { type: 'string' };
+}
+
+/** One node: a leaf row, or an expandable group (object or list). */
+function treeNode(name: string, field: FieldSchema, data: TreeData | undefined, path: TreePath): HTMLElement {
+  return controlOf(field) === 'group' ? groupNode(name, field, data, path) : leafRow(name, field, data, path);
+}
+
+/** A labelled leaf row whose control is set by the field's schema. */
+function leafRow(name: string, field: FieldSchema, data: TreeData | undefined, path: TreePath): HTMLElement {
+  const row = document.createElement('div');
+  row.className = 'mt-row';
+  const label = document.createElement('label');
+  label.textContent = field.title || name;
+  label.title = field.description ? `${name} — ${field.description}` : name;
+  row.appendChild(label);
+  const value = typeof data === 'string' ? data : '';
+  row.appendChild(leafControl(field, value, (v) => { void setMapPath(path, v); }));
+  return row;
+}
+
+/** The control element for a leaf value (no label). */
+function leafControl(field: FieldSchema, value: string, commit: (v: string) => void): HTMLElement {
+  const c = controlOf(field);
+  if (c === 'readonly') {
+    const s = document.createElement('span'); s.className = 'ro';
+    s.textContent = value || 'null'; s.title = value; return s;
+  }
+  if (c === 'dropdown' && field['x-registry']) return regSelect(field['x-registry'], value, commit);
+  if (c === 'enum' && field.enum) return selectFrom(value, field.enum.map((v) => ({ value: v, label: v })), commit);
+  if (c === 'number') {
+    const i = document.createElement('input'); i.type = 'number'; i.value = value;
+    if (field.minimum !== undefined) i.min = String(field.minimum);
+    if (field.maximum !== undefined) i.max = String(field.maximum);
+    i.addEventListener('change', () => commit(i.value)); return i;
+  }
+  if (c === 'checkbox') {
+    const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = value === 'true';
+    cb.addEventListener('change', () => commit(String(cb.checked))); return cb;
+  }
+  // ref / textfile / script / text — editable raw in the tree.
+  const inp = document.createElement('input'); inp.type = 'text'; inp.value = value;
+  inp.addEventListener('change', () => commit(inp.value)); return inp;
+}
+
+/** A <select> filled from a registry roster once it loads; shows value meanwhile. */
+function regSelect(reg: string, value: string, commit: (v: string) => void): HTMLSelectElement {
+  const sel = selectFrom(value, value ? [] : [{ value: '', label: '—' }], commit);
+  sel.disabled = true;
+  void roster(reg).then((entries) => {
+    const cur = sel.value;
+    sel.innerHTML = '';
+    const opts = entries.map((e) => ({ value: e.id, label: e.name || e.id }));
+    if (!opts.some((o) => o.value === cur)) opts.unshift({ value: cur, label: cur || '—' });
+    for (const o of opts) {
+      const el = document.createElement('option');
+      el.value = o.value; el.textContent = o.label;
+      if (o.value === cur) el.selected = true;
+      sel.appendChild(el);
+    }
+    sel.disabled = false;
+  });
+  return sel;
+}
+
+/** An expandable group — an object's fields or a list's items, filled on expand. */
+function groupNode(name: string, field: FieldSchema, data: TreeData | undefined, path: TreePath): HTMLElement {
+  const grp = document.createElement('div');
+  grp.className = 'mt-grp';
+  const head = document.createElement('div');
+  head.className = 'mt-ghead';
+  const tw = document.createElement('span'); tw.className = 'tw'; tw.textContent = '▸';
+  const nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = field.title || name;
+  const co = document.createElement('span'); co.className = 'co';
+  const isArray = field.type === 'array';
+  const count = isArray && Array.isArray(data) ? data.length : 0;
+  if (isArray) co.textContent = ` (${count})`;
+  head.append(tw, nm, co);
+  const kids = document.createElement('div');
+  kids.className = 'mt-kids collapsed';
+  let filled = false;
+  head.addEventListener('click', () => {
+    const open = kids.classList.toggle('collapsed') === false;
+    tw.textContent = open ? '▾' : '▸';
+    if (open && !filled) { filled = true; (isArray ? fillArray : fillObject)(kids, field, data, path); }
+  });
+  grp.append(head, kids);
+  return grp;
+}
+
+/** Fill an object group with its child fields (schema first, then any extra data keys). */
+function fillObject(kids: HTMLElement, field: FieldSchema, data: TreeData | undefined, path: TreePath): void {
+  const props = field.properties ?? {};
+  const dataKeys = data && typeof data === 'object' && !Array.isArray(data) ? Object.keys(data) : [];
+  const seen = new Set<string>();
+  for (const k of [...Object.keys(props), ...dataKeys]) {
+    if (seen.has(k)) continue; seen.add(k);
+    const cf = props[k] ? deref(mapSchema, props[k]) : inferField(dataAt(data, k));
+    if (cf['x-advanced'] && !mtShowAdvanced) continue;
+    kids.appendChild(treeNode(k, cf, dataAt(data, k), [...path, k]));
+  }
+}
+
+/** Fill a list group: struct items recurse; value items get remove + an add row. */
+function fillArray(kids: HTMLElement, field: FieldSchema, data: TreeData | undefined, path: TreePath): void {
+  const items = Array.isArray(data) ? data : [];
+  const itemField = field.items ? deref(mapSchema, field.items) : inferField(items[0]);
+  const isStruct = itemField.type === 'object' || !!itemField.properties;
+  if (isStruct) {
+    items.forEach((it, i) => kids.appendChild(treeNode(`[${i}]`, itemField, it, [...path, i])));
+    return;
+  }
+  // A list of plain values: each removable, plus an add row.
+  const reg = field['x-registry'] || itemField['x-registry'];
+  items.forEach((it, i) => {
+    const row = document.createElement('div'); row.className = 'mt-item';
+    const iv = document.createElement('span'); iv.className = 'iv'; iv.textContent = String(it); iv.title = String(it);
+    const x = document.createElement('button'); x.className = 'mt-x'; x.textContent = '✕'; x.title = 'remove';
+    x.addEventListener('click', () => { void mutateList(() => window.editor.removeMapItem({ path: [...path, i] })); });
+    row.append(iv, x); kids.appendChild(row);
+  });
+  const add = document.createElement('div'); add.className = 'mt-add';
+  const input = reg ? regSelect(reg, '', () => {}) : Object.assign(document.createElement('input'), { type: 'text' });
+  add.appendChild(input);
+  const btn = document.createElement('button'); btn.textContent = '＋ add';
+  btn.addEventListener('click', () => {
+    const v = (input as HTMLInputElement | HTMLSelectElement).value;
+    if (v) void mutateList(() => window.editor.addMapItem({ path, value: v }));
+  });
+  add.appendChild(btn); kids.appendChild(add);
+}
+
+/** Run a structural list edit, then reflect dirty and rebuild the tree. */
+async function mutateList(op: () => Promise<unknown>): Promise<void> {
+  try { await op(); markDirty(true); await refreshMapTree(); }
+  catch (e) { $('hud').textContent = 'tree edit failed: ' + (e instanceof Error ? e.message : String(e)); }
+}
+
+/** Write one leaf by path, then reflect dirty (the input already shows the value). */
+async function setMapPath(path: TreePath, value: string): Promise<void> {
+  try { await window.editor.setMapPath({ path, value }); markDirty(true); $('hud').textContent = `${path.join('.')} = ${value || '(empty)'}`; }
+  catch (e) { $('hud').textContent = `could not set ${path.join('.')}: ` + (e instanceof Error ? e.message : String(e)); }
+}
+
+$('maptreebtn').onclick = () => { if (mapTreeOpen()) closeMapTree(); else openMapTree(); };
+$('mt-close').onclick = () => closeMapTree();
+$input('mt-adv').addEventListener('change', (e) => { mtShowAdvanced = (e.currentTarget as HTMLInputElement).checked; if (mapTreeOpen()) void refreshMapTree(); });
+
 $('mapbtn').onclick = () => { if (mapPropsOpen()) closeMapProps(); else openMapProps(); };
 $('mp-close').onclick = () => closeMapProps();
 for (const b of document.querySelectorAll('.mp-tab'))
@@ -3745,6 +3937,7 @@ async function loadMapPath(path: string | null): Promise<void> {
     $('palbtn').style.display = '';
     $('objpalbtn').style.display = '';
     $('mapbtn').style.display = '';
+    $('maptreebtn').style.display = '';
     $('brushwrap').style.display = 'flex';
     setBrush(false); // a fresh map starts in camera mode
     $('cliffbtn').style.display = '';
