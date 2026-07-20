@@ -1400,6 +1400,14 @@ function updatePanel(): void {
 const degOf = (r: number): number => ((r * 180 / Math.PI) % 360 + 360) % 360;
 
 /**
+ * Nearest quarter turn, in degrees [0, 360). The game only turns objects in 90°
+ * steps about their anchor tile, so every user-driven rotation lands on the
+ * grid. Applied on the rotate action only — a shipped object sitting at an odd
+ * angle keeps it until it is actually turned.
+ */
+const snap90 = (deg: number): number => (Math.round(deg / 90) * 90 % 360 + 360) % 360;
+
+/**
  * Turn the selected object to an absolute angle in degrees.
  *
  * @param commit false while a slider is still being dragged — the mesh turns
@@ -1407,7 +1415,7 @@ const degOf = (r: number): number => ((r * 180 / Math.PI) % 360 + 360) % 360;
  */
 async function rotateSelected(deg: number, commit = true): Promise<void> {
   if (!selected) return;
-  const r = (((deg % 360) + 360) % 360) * Math.PI / 180;
+  const r = snap90(deg) * Math.PI / 180;
   selected.inst.r = r;
   selected.mesh.rotation.z = r;
   syncInstance(activeFloor(), selected.inst);
@@ -1588,8 +1596,11 @@ async function setProp(id: string, name: string, value: string): Promise<void> {
 }
 
 $('p-del').onclick = () => { void deleteSelected(); };
-$('p-rotl').onclick = () => { if (selected) void rotateSelected(degOf(selected.inst.r) - 15); };
-$('p-rotr').onclick = () => { if (selected) void rotateSelected(degOf(selected.inst.r) + 15); };
+// A button is a quarter turn from the current heading. Snapping the current
+// angle first means an object at an odd shipped angle aligns to the grid on the
+// first press, then turns cleanly from there.
+$('p-rotl').onclick = () => { if (selected) void rotateSelected(snap90(degOf(selected.inst.r)) - 90); };
+$('p-rotr').onclick = () => { if (selected) void rotateSelected(snap90(degOf(selected.inst.r)) + 90); };
 $input('p-rotslider').addEventListener('input', (e) => {
   void rotateSelected(+(e.currentTarget as HTMLInputElement).value, false);
 });
@@ -1613,10 +1624,10 @@ addEventListener('keydown', (e) => {
 });
 
 addEventListener('keydown', (e) => {
-  if (!selected || isTyping(e.target) || e.ctrlKey || e.altKey || e.metaKey) return;
-  const step = e.shiftKey ? 45 : 15;
-  if (e.code === 'BracketLeft') { void rotateSelected(degOf(selected.inst.r) - step); }
-  else if (e.code === 'BracketRight') { void rotateSelected(degOf(selected.inst.r) + step); }
+  if (!selected || isTyping(e.target) || e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
+  const cur = snap90(degOf(selected.inst.r));
+  if (e.code === 'BracketLeft') { void rotateSelected(cur - 90); }
+  else if (e.code === 'BracketRight') { void rotateSelected(cur + 90); }
   else if (e.code === 'Delete') { void deleteSelected(); }
   else return;
   e.preventDefault();
