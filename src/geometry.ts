@@ -604,8 +604,18 @@ function decodeMeshGroup(b: Buffer, start: number, end: number): Mesh | null {
     indices[i] = v;
   }
 
-  // A zero normal would light the surface as pure black, so fall back to
-  // computed ones if this file did not carry them.
+  // A zero-length normal normalizes to NaN in the lighting shader, which paints
+  // every triangle touching that vertex pure black — the Fortuitous Sanctuary
+  // has one such vertex dead-centre on its floor (byte 128,128,128 -> 0,0,0),
+  // and the ten faces fanning off it drew as a black hourglass. Repair those
+  // vertices from the faces that use them rather than dropping the whole file's
+  // authored normals: only the broken vertex is recomputed, every hand-authored
+  // one is kept. A vertex no face references (or whose faces are degenerate)
+  // has no direction to recover, so it is pinned to +Z rather than left at zero.
+  repairZeroNormals(positions, normals, indices);
+
+  // If the file carried no normals at all, hand back an empty array so the
+  // caller computes them; a fully repaired set is real normals, so keep it.
   let hasNormals = false;
   for (let i = 0; i < normals.length; i += 3) {
     if (normals[i] || normals[i + 1] || normals[i + 2]) { hasNormals = true; break; }
@@ -619,4 +629,36 @@ function decodeMeshGroup(b: Buffer, start: number, end: number): Mesh | null {
     vertexCount: n,
     triCount: triA.count,
   };
+}
+
+/**
+ * Recompute only the vertex normals that came in zero-length, from the face
+ * normals of the triangles that reference them. Authored normals elsewhere are
+ * left untouched. Runs in place over `normals`.
+ */
+function repairZeroNormals(positions: Float32Array, normals: Float32Array, indices: Uint32Array): void {
+  const bad: number[] = [];
+  for (let v = 0; v < normals.length; v += 3) {
+    if (Math.hypot(normals[v]!, normals[v + 1]!, normals[v + 2]!) < 0.5) bad.push(v / 3);
+  }
+  if (!bad.length) return;
+  const badSet = new Set(bad);
+  for (const v of bad) { normals[v * 3] = 0; normals[v * 3 + 1] = 0; normals[v * 3 + 2] = 0; }
+  for (let i = 0; i < indices.length; i += 3) {
+    const a = indices[i]!, b2 = indices[i + 1]!, c = indices[i + 2]!;
+    if (!badSet.has(a) && !badSet.has(b2) && !badSet.has(c)) continue;
+    const ax = positions[a * 3]!, ay = positions[a * 3 + 1]!, az = positions[a * 3 + 2]!;
+    const ux = positions[b2 * 3]! - ax, uy = positions[b2 * 3 + 1]! - ay, uz = positions[b2 * 3 + 2]! - az;
+    const vx = positions[c * 3]! - ax, vy = positions[c * 3 + 1]! - ay, vz = positions[c * 3 + 2]! - az;
+    const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+    for (const t of [a, b2, c]) {
+      if (!badSet.has(t)) continue;
+      normals[t * 3]! += nx; normals[t * 3 + 1]! += ny; normals[t * 3 + 2]! += nz;
+    }
+  }
+  for (const v of bad) {
+    const l = Math.hypot(normals[v * 3]!, normals[v * 3 + 1]!, normals[v * 3 + 2]!);
+    if (l < 1e-6) { normals[v * 3] = 0; normals[v * 3 + 1] = 0; normals[v * 3 + 2] = 1; }
+    else { normals[v * 3]! /= l; normals[v * 3 + 1]! /= l; normals[v * 3 + 2]! /= l; }
+  }
 }
