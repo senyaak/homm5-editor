@@ -157,6 +157,11 @@ export interface RosterResult {
   entries: RosterEntryDTO[];
 }
 
+/** Payload of `map:names` — which kind of in-map name to gather. */
+export interface NamesPayload { kind: string; }
+/** Result of `map:names` — names defined in the map, for x-nameRef hints. */
+export interface NamesResult { names: string[]; }
+
 /** A step into the map tree: a field name or a list index (mirrors src/tree.ts). */
 export type TreePath = (string | number)[];
 
@@ -408,6 +413,7 @@ export interface EditorApi {
   mapProps(): Promise<MapPropsResult>;
   setMapProp(p: SetMapPropPayload): Promise<ObjectEditResult>;
   roster(name: string): Promise<RosterResult>;
+  names(kind: string): Promise<NamesResult>;
   mapTree(): Promise<MapTreeResult>;
   setMapPath(p: SetPathPayload): Promise<ObjectEditResult>;
   addMapItem(p: AddItemPayload): Promise<ObjectEditResult>;

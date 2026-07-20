@@ -31,6 +31,8 @@ import type { RosterEntry } from '../src/registry.ts';
 import { readTree, setPath, addStringItem, removeItem, appendItem, indentText, nodeAt } from '../src/tree.ts';
 import { mapSchema, resolveSchemaAtPath, deref } from '../src/schema.ts';
 import { buildItem, isBuildable } from '../src/skeleton.ts';
+import { children, find, text } from '../src/xml.ts';
+import type { XmlElement } from '../src/xml.ts';
 import type { DocPatch, Step, StoredHistory } from '../src/history.ts';
 import type { TileInfo, GeomResolver, Instance as SceneInstance } from '../src/scene.ts';
 import type { HommMap, MapObject } from '../src/map.ts';
@@ -38,7 +40,7 @@ import type {
   MapsListResult, MapListEntry, MapLoadResult, MoveObjectPayload, MoveObjectResult,
   RotateObjectPayload, RemoveObjectPayload, ObjectEditResult, ObjectPropsResult, SetPropPayload,
   MapPropsResult, SetMapPropPayload, RosterPayload, RosterResult,
-  MapTreeResult, SetPathPayload, AddItemPayload, RemoveItemPayload2,
+  MapTreeResult, SetPathPayload, AddItemPayload, RemoveItemPayload2, NamesPayload, NamesResult,
   ObjectCatalogResult, IconPayload, IconResult, AddObjectPayload, AddObjectResult,
   MapSaveResult, MapPackResult, TerrainTilesResult, MapStatusResult, OpenMapDialogResult,
   ExternalChange, PaintTilePayload, PaintTileResult, SculptPayload, SculptResult,
@@ -478,6 +480,29 @@ ipcMain.handle('object:set-prop', async (_e: IpcMainInvokeEvent, p: SetPropPaylo
   const done = record(session, `set ${p.name}`, { map: true }, () => obj.setProp(p.name, p.value));
   if (!done) throw new Error(`${p.name} is not a simple field of this object`);
   return { ok: true };
+});
+
+// --- IPC: names defined in this map, for x-nameRef autocomplete ---
+// A field can reference another entity by the name it was given (an objective's
+// Name, an object's Name). These are the names on offer, gathered from the map
+// itself so the hints are always current.
+ipcMain.handle('map:names', async (_e: IpcMainInvokeEvent, { kind }: NamesPayload): Promise<NamesResult> => {
+  if (!session) throw new Error('no map loaded');
+  const seen = new Set<string>();
+  if (kind === 'object') {
+    for (const o of session.map.objects) { const n = text(find(o.el, 'Name')); if (n) seen.add(n); }
+  } else {
+    // Objective names: the <Name> a list <Item> carries directly, under the two
+    // objective containers. Target.Name and the like sit deeper, so are skipped.
+    const collect = (el: XmlElement): void => {
+      for (const c of children(el)) {
+        if (c.name === 'Item') { const n = text(find(c, 'Name')); if (n) seen.add(n); }
+        collect(c);
+      }
+    };
+    for (const c of ['ScenarioInformation', 'Objectives']) { const el = find(session.map.desc, c); if (el) collect(el); }
+  }
+  return { names: [...seen].sort() };
 });
 
 // --- IPC: a game-data roster for the typed-editing pickers ---

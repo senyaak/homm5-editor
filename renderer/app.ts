@@ -1643,6 +1643,31 @@ function roster(name: string): Promise<RosterEntryDTO[]> {
   return p;
 }
 
+/** In-map names per kind (objective, object), for x-nameRef autocomplete. Not
+ *  cached across edits — names change as the map is edited — but per render pass
+ *  the same promise is reused. */
+function mapNames(kind: string): Promise<string[]> {
+  return window.editor.names(kind).then((r) => r.names).catch(() => []);
+}
+
+/** A text input with a <datalist> of names defined elsewhere in the map — a
+ *  reference hint, not a hard constraint (a value not yet defined is still
+ *  typeable). `display:contents` lets the input be the flex child, not the span. */
+let datalistSeq = 0;
+function nameRefInput(kind: string, value: string, commit: (v: string) => void): HTMLElement {
+  const wrap = document.createElement('span'); wrap.style.display = 'contents';
+  const inp = document.createElement('input'); inp.type = 'text'; inp.value = value;
+  const id = `nl${datalistSeq++}`;
+  const list = document.createElement('datalist'); list.id = id; inp.setAttribute('list', id);
+  inp.title = `references a ${kind} by name`;
+  inp.addEventListener('change', () => commit(inp.value));
+  void mapNames(kind).then((names) => {
+    for (const n of names) { const o = document.createElement('option'); o.value = n; list.appendChild(o); }
+  });
+  wrap.append(inp, list);
+  return wrap;
+}
+
 /** A label + its title/description tooltip — the left half every row shares. */
 function rowShell(field: FieldSchema | null, rawName: string): { row: HTMLElement } {
   const row = document.createElement('div');
@@ -1677,6 +1702,11 @@ function selectFrom(current: string, options: { value: string; label: string }[]
  */
 function fieldRow(p: ObjectProp, field: FieldSchema | null, commit: (name: string, value: string) => void): HTMLElement {
   if (!field) return propRow(p, commit);
+  if (field['x-nameRef']) {
+    const { row } = rowShell(field, p.name);
+    row.appendChild(nameRefInput(field['x-nameRef'], p.value, (v) => commit(p.name, v)));
+    return row;
+  }
   const control = controlOf(field);
 
   if (control === 'dropdown' && field['x-registry']) {
@@ -1954,6 +1984,7 @@ function leafRow(name: string, field: FieldSchema, data: TreeData | undefined, p
 
 /** The control element for a leaf value (no label). */
 function leafControl(field: FieldSchema, value: string, commit: (v: string) => void): HTMLElement {
+  if (field['x-nameRef']) return nameRefInput(field['x-nameRef'], value, commit);
   const c = controlOf(field);
   if (c === 'readonly') {
     const s = document.createElement('span'); s.className = 'ro';
