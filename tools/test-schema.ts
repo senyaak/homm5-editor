@@ -14,7 +14,7 @@ import { loadMap } from '../src/map.ts';
 import { children } from '../src/xml.ts';
 
 const dataRoot = process.argv[2] ?? 'samples/paks/data';
-const VALID_REGISTRIES: RegistryName[] = ['spells', 'artifacts', 'heroes', 'races', 'ambientLights'];
+const VALID_REGISTRIES: RegistryName[] = ['spells', 'artifacts', 'heroes', 'races', 'ambientLights', 'creatures', 'skills'];
 
 let problems = 0;
 const fail = (m: string) => { console.log('  ✗ ' + m); problems++; };

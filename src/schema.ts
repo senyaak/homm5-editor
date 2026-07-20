@@ -53,6 +53,11 @@ export interface FieldSchema {
   'x-file'?: boolean;
   /** The Shared identity ref — picked from the object catalogue for this type. */
   'x-shared'?: boolean;
+  /** This field DEFINES a name other entities reference (an objective's Name). */
+  'x-nameOf'?: string;
+  /** This field REFERENCES a name defined elsewhere in the map — offer those as
+   *  hints. The kind ('objective', 'object') says which names apply. */
+  'x-nameRef'?: string;
   'x-widget'?: WidgetKind;
   'x-tab'?: TabName;
   'x-mapObjects'?: 'town' | 'hero';

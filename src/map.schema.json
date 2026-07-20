@@ -172,14 +172,126 @@
     "Objective": {
       "type": "object",
       "title": "Objective",
-      "description": "A scenario/objective entry (Kind = OBJECTIVE_KIND_*, an Award, target glance, triggers). Deep structure; the tree edits it generically until a typed editor is written (Phase 4).",
-      "x-advanced": true
+      "description": "A scenario-info or victory/loss objective.",
+      "properties": {
+        "Name": { "type": "string", "title": "Name", "x-nameOf": "objective", "description": "A referenceable name — usable from scripts and from other objectives' Dependencies." },
+        "CaptionFileRef": { "type": "string", "x-ref": true, "x-file": true, "title": "Caption" },
+        "ObscureCaptionFileRef": { "type": "string", "x-ref": true, "x-file": true, "title": "Obscure caption", "x-advanced": true },
+        "DescriptionFileRef": { "type": "string", "x-ref": true, "x-file": true, "title": "Description" },
+        "ProgressCommentsFileRef": { "type": "string", "x-ref": true, "x-file": true, "title": "Progress comments", "x-advanced": true },
+        "Kind": { "type": "string", "title": "Kind", "enum": ["OBJECTIVE_KIND_MANUAL", "OBJECTIVE_KIND_SCENARIO_INFO", "OBJECTIVE_KIND_DEFEAT_ALL", "OBJECTIVE_KIND_CAPTURE_OBJECT", "OBJECTIVE_KIND_OBTAIN_ARTIFACT", "OBJECTIVE_KIND_COLLECT_RESOURCES", "OBJECTIVE_KIND_ASSEMBLE_ARMY", "OBJECTIVE_KIND_BUILD_GRAAL", "OBJECTIVE_KIND_HERO_MUST_SURVIVE", "OBJECTIVE_KIND_STAY_UNDEFEATED", "OBJECTIVE_KIND_STAY_WITH_HEROES", "OBJECTIVE_KIND_OPEN_BORDER_GUARD"] },
+        "Parameters": { "type": "object", "title": "Parameters", "x-advanced": true },
+        "Timeout": { "type": "integer", "title": "Timeout", "default": -1 },
+        "Holdout": { "type": "integer", "title": "Holdout", "default": -1 },
+        "CheckDelay": { "type": "integer", "title": "Check delay", "default": -1 },
+        "Dependencies": { "type": "array", "title": "Dependencies", "description": "Other objectives that must complete first, by Name.", "items": { "type": "string", "x-nameRef": "objective" } },
+        "InstantVictory": { "type": "boolean", "title": "Instant victory" },
+        "TargetGlance": { "$ref": "#/$defs/TargetGlance", "title": "Target glance", "x-advanced": true },
+        "Award": { "$ref": "#/$defs/Award", "title": "Award" },
+        "TakeContribution": { "type": "boolean", "title": "Take contribution" },
+        "CanUncomplete": { "type": "boolean", "title": "Can uncomplete" },
+        "IsInitialyActive": { "type": "boolean", "title": "Initially active", "default": true },
+        "IsInitialyVisible": { "type": "boolean", "title": "Initially visible", "default": true },
+        "IsHidden": { "type": "boolean", "title": "Hidden" },
+        "Ignore": { "type": "boolean", "title": "Ignore" },
+        "ShowCompleted": { "type": "boolean", "title": "Show completed", "default": true },
+        "NeedComplete": { "type": "boolean", "title": "Need complete", "default": true },
+        "AllowMultipleActivations": { "type": "boolean", "title": "Allow multiple activations" },
+        "AllowMultipleCompletions": { "type": "boolean", "title": "Allow multiple completions" },
+        "StateChangeTrigger": { "$ref": "#/$defs/Trigger", "title": "State-change trigger", "x-advanced": true },
+        "SoundActivated": { "type": "string", "x-ref": true, "title": "Sound: activated", "x-advanced": true },
+        "SoundComplete": { "type": "string", "x-ref": true, "title": "Sound: complete", "x-advanced": true },
+        "SoundFailed": { "type": "string", "x-ref": true, "title": "Sound: failed", "x-advanced": true }
+      }
+    },
+    "TargetGlance": {
+      "type": "object", "title": "Target glance", "x-advanced": true,
+      "description": "Camera glance toward a target when the objective activates.",
+      "properties": {
+        "Target": { "$ref": "#/$defs/Target", "title": "Target" },
+        "Radius": { "type": "integer", "title": "Radius", "default": 10 },
+        "Duration": { "type": "integer", "title": "Duration", "default": 5000 }
+      }
+    },
+    "Target": {
+      "type": "object", "title": "Target",
+      "properties": {
+        "Type": { "type": "string", "title": "Type", "enum": ["ADV_TARGET_NONE", "ADV_TARGET_COORDS", "ADV_TARGET_OBJECT"], "default": "ADV_TARGET_NONE" },
+        "Name": { "type": "string", "title": "Object", "x-nameRef": "object", "description": "The named object this targets (when Type is by object)." },
+        "Coords": { "$ref": "#/$defs/Coords", "title": "Coordinates" }
+      }
+    },
+    "Coords": {
+      "type": "object", "title": "Coordinates",
+      "properties": {
+        "FloorID": { "type": "integer", "title": "Floor", "minimum": 0, "maximum": 1 },
+        "cell": { "type": "object", "title": "Cell", "properties": { "x": { "type": "integer", "title": "X" }, "y": { "type": "integer", "title": "Y" } } }
+      }
+    },
+    "Award": {
+      "type": "object", "title": "Award",
+      "description": "What completing the objective grants.",
+      "properties": {
+        "Type": { "type": "string", "title": "Type", "enum": ["AWARD_NONE", "AWARD_EXPERIENCE", "AWARD_RESOURCE", "AWARD_ARTIFACT"], "default": "AWARD_NONE" },
+        "Experience": { "type": "integer", "title": "Experience" },
+        "Resources": { "$ref": "#/$defs/Resources7", "title": "Resources" },
+        "Attribute": { "type": "string", "title": "Attribute", "enum": ["HERO_ATTRIB_ATTACK", "HERO_ATTRIB_DEFENCE", "HERO_ATTRIB_SPELLPOWER", "HERO_ATTRIB_KNOWLEDGE"], "default": "HERO_ATTRIB_ATTACK" },
+        "AttributeAmount": { "type": "integer", "title": "Attribute amount" },
+        "ArtifactID": { "type": "string", "x-registry": "artifacts", "x-widget": "dropdown", "title": "Artifact", "default": "ARTIFACT_NONE" },
+        "SpellID": { "type": "string", "x-registry": "spells", "x-widget": "dropdown", "title": "Spell", "default": "SPELL_NONE" },
+        "ArmySlot": { "$ref": "#/$defs/ArmySlot", "title": "Army" },
+        "SpellPoints": { "type": "integer", "title": "Spell points" },
+        "Morale": { "type": "integer", "title": "Morale" },
+        "Luck": { "type": "integer", "title": "Luck" },
+        "SkillWithMastery": { "$ref": "#/$defs/SkillWithMastery", "title": "Skill" }
+      }
+    },
+    "SkillWithMastery": {
+      "type": "object", "title": "Skill with mastery",
+      "properties": {
+        "Mastery": { "$ref": "#/$defs/Mastery", "title": "Mastery" },
+        "SkillID": { "type": "string", "x-registry": "skills", "x-widget": "dropdown", "title": "Skill", "default": "HERO_SKILL_NONE" }
+      }
+    },
+    "Mastery": { "type": "string", "title": "Mastery", "enum": ["MASTERY_NONE", "MASTERY_BASIC", "MASTERY_ADVANCED", "MASTERY_EXPERT", "MASTERY_ULTIMATE"] },
+    "Resources7": {
+      "type": "object", "title": "Resources",
+      "properties": {
+        "Wood": { "type": "integer", "title": "Wood" }, "Ore": { "type": "integer", "title": "Ore" },
+        "Mercury": { "type": "integer", "title": "Mercury" }, "Crystal": { "type": "integer", "title": "Crystal" },
+        "Sulfur": { "type": "integer", "title": "Sulfur" }, "Gem": { "type": "integer", "title": "Gem" },
+        "Gold": { "type": "integer", "title": "Gold" }
+      }
+    },
+    "ArmySlot": {
+      "type": "object", "title": "Army stack",
+      "properties": {
+        "Creature": { "type": "string", "x-registry": "creatures", "x-widget": "dropdown", "title": "Creature", "default": "CREATURE_UNKNOWN" },
+        "Count": { "type": "integer", "title": "Count", "minimum": 0 }
+      }
     },
     "Objectives": {
       "type": "object",
       "title": "Objectives",
-      "description": "Victory/loss conditions: Primary and Secondary, each split Common vs PlayerSpecific[0..7]. Deep structure, tree-generic for now (Phase 4).",
-      "x-advanced": true
+      "description": "Victory/loss conditions: Primary and Secondary, each Common plus PlayerSpecific per player.",
+      "properties": {
+        "Primary": { "$ref": "#/$defs/ObjectiveGroup", "title": "Primary" },
+        "Secondary": { "$ref": "#/$defs/ObjectiveGroup", "title": "Secondary" }
+      }
+    },
+    "ObjectiveGroup": {
+      "type": "object",
+      "properties": {
+        "Common": { "$ref": "#/$defs/ObjectiveSet", "title": "Common" },
+        "PlayerSpecific": { "type": "array", "title": "Player-specific", "items": { "$ref": "#/$defs/ObjectiveSet" } }
+      }
+    },
+    "ObjectiveSet": {
+      "type": "object",
+      "properties": {
+        "Objectives": { "type": "array", "title": "Objectives", "items": { "$ref": "#/$defs/Objective" } },
+        "DieInWeekWithoutTowns": { "type": "boolean", "title": "Die in a week without towns", "default": true }
+      }
     },
     "sRMGProps": {
       "type": "object",
