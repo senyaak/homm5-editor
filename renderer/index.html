@@ -331,7 +331,7 @@
     #mapprops { padding: 0; border: 0; background: transparent; color: #c9d1d9;
       max-width: 92vw; max-height: 82vh; overflow: visible; }
     #mapprops::backdrop { background: #0d1014cc; }
-    .mp-card { width: min(460px, 92vw); max-height: 82vh; background: #161b22;
+    .mp-card { width: min(600px, 94vw); max-height: 82vh; background: #161b22;
       border: 1px solid #30363d; border-radius: 10px; display: flex; flex-direction: column;
       box-shadow: 0 12px 40px #000a; overflow: hidden; }
     .mp-head { display: flex; align-items: center; padding: 11px 14px; border-bottom: 1px solid #21262d; }
@@ -339,9 +339,9 @@
     #mp-close { background: transparent; border: 0; color: #8b949e; font-size: 15px; cursor: pointer;
       padding: 2px 6px; border-radius: 5px; }
     #mp-close:hover { background: #21262d; color: #e6edf3; }
-    .mp-tabs { display: flex; gap: 4px; padding: 8px 12px 0; border-bottom: 1px solid #21262d; }
+    .mp-tabs { display: flex; flex-wrap: wrap; gap: 2px 4px; padding: 8px 12px 0; border-bottom: 1px solid #21262d; }
     .mp-tab { background: transparent; border: 0; border-bottom: 2px solid transparent; color: #8b949e;
-      padding: 5px 10px 7px; cursor: pointer; font-size: 12px; }
+      padding: 5px 9px 7px; cursor: pointer; font-size: 12px; white-space: nowrap; flex: 0 0 auto; }
     .mp-tab:hover { color: #c9d1d9; }
     .mp-tab.on { color: #e6edf3; border-bottom-color: #1f6feb; }
     .mp-body { padding: 12px 14px; overflow-y: auto; }

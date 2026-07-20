@@ -2095,6 +2095,9 @@ function restrictHeroLevel(current: string): HTMLElement {
 
 const mapTreeOpen = (): boolean => $('maptree').style.display !== 'none';
 let mtShowAdvanced = false;
+/** Expanded group paths, so a rebuild (after add/remove) keeps them open. */
+const mtOpen = new Set<string>();
+const pathKey = (path: TreePath): string => path.join(' ');
 
 function openMapTree(): void {
   $('maptree').style.display = 'flex';
@@ -2227,11 +2230,18 @@ function groupNode(name: string, field: FieldSchema, data: TreeData | undefined,
   const kids = document.createElement('div');
   kids.className = 'mt-kids collapsed';
   let filled = false;
-  head.addEventListener('click', () => {
-    const open = kids.classList.toggle('collapsed') === false;
+  const k = pathKey(path);
+  const setOpen = (open: boolean): void => {
+    kids.classList.toggle('collapsed', !open);
     tw.textContent = open ? '▾' : '▸';
-    if (open && !filled) { filled = true; (isArray ? fillArray : fillObject)(kids, field, data, path); }
-  });
+    if (open) { mtOpen.add(k); if (!filled) { filled = true; (isArray ? fillArray : fillObject)(kids, field, data, path); } }
+    else mtOpen.delete(k);
+  };
+  head.addEventListener('click', () => setOpen(kids.classList.contains('collapsed')));
+  // Restore expansion across a rebuild: refreshMapTree recreates every node, so
+  // without this an add/remove (which reloads the tree) would collapse the group
+  // the edit happened in. Groups re-open recursively as their parents fill.
+  if (mtOpen.has(k)) setOpen(true);
   grp.append(head, kids);
   return grp;
 }
@@ -2416,11 +2426,12 @@ function renderPickList(q: string): void {
   const hits = pick.entries.filter((e) =>
     !needle || (e.name || e.id).toLowerCase().includes(needle) || e.id.toLowerCase().includes(needle));
   if (!hits.length) { list.innerHTML = '<div class="op-empty">nothing matches</div>'; return; }
-  let group = '\0';
+  let group: string | undefined;
   for (const e of hits) {
-    if ((e.group || '') !== group) {
-      group = e.group || '';
-      if (group) { const g = document.createElement('div'); g.className = 'op-grp'; g.textContent = group; list.appendChild(g); }
+    const g = e.group || '';
+    if (g !== (group ?? '')) {
+      group = g;
+      if (g) { const gh = document.createElement('div'); gh.className = 'op-grp'; gh.textContent = g; list.appendChild(gh); }
     }
     const opt = document.createElement('div');
     opt.className = 'op-opt' + (e.id === pick.sel ? ' sel' : '');

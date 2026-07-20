@@ -123,10 +123,39 @@ const STUB = `<script>
       };
     },
   };
+  // A small in-memory <AdvMapDesc> so the tree panel and map-properties dialog
+  // are exercisable in the harness (add/remove keeps the tree honest). Paths are
+  // (name|index) steps, matching src/tree.ts.
+  const mapTreeData = {
+    HeroMaxLevel: '0', CustomTeams: 'false',
+    NameFileRef: 'name.txt', DescriptionFileRef: 'desc.txt',
+    Birds: 'Pigeons.(AdvMapBirds).xdb#xpointer(/AdvMapBirds)',
+    MapRumours: [{ Text: 'r1.txt' }, { Text: 'r2.txt' }],
+    players: [{ Colour: 'PCOLOR_RED', Team: '0' }, { Colour: 'PCOLOR_BLUE', Team: '1' }],
+  };
+  const tget = (root, path) => path.reduce((n, s) => (n == null ? n : n[s]), root);
+  const tset = (root, path, v) => { const p = tget(root, path.slice(0, -1)); if (p) p[path[path.length - 1]] = v; };
   window.editor = {
     listMaps: async () => ({ root: '(harness)', maps: [
       { name: 'harness', rel: 'Single/harness', path: '/harness/map.xdb' },
     ] }),
+    mapTree: async () => ({ tree: JSON.parse(JSON.stringify(mapTreeData)) }),
+    mapProps: async () => ({ props: [], name: 'Harness Map', description: 'A test description.' }),
+    names: async () => ({ names: [] }),
+    roster: async () => ({ entries: [] }),
+    objectsOfClass: async () => ({ entries: [] }),
+    newEntity: async ({ className, name }) => ({ href: name + '.(' + className + ').xdb#xpointer(/' + className + ')' }),
+    readEntity: async () => ({ className: 'Wind', editable: true, tree: { Angle: '225', Speed: '10' } }),
+    setEntityPath: async (p) => { log('setEntityPath', p); return { ok: true }; },
+    pickText: async () => ({ href: '' }),
+    copyEntityToMap: async ({ href }) => ({ href }),
+    readFile: async () => ({ text: '' }),
+    writeFile: async (p) => { log('writeFile', p); return { ok: true }; },
+    setMapPath: async (p) => { log('setMapPath', p); tset(mapTreeData, p.path, p.value); return { ok: true }; },
+    setMapList: async (p) => { tset(mapTreeData, p.path, p.values.slice()); return { ok: true }; },
+    setMapProp: async (p) => { log('setMapProp', p); return { ok: true }; },
+    addMapItem: async (p) => { const a = tget(mapTreeData, p.path); if (Array.isArray(a)) a.push(p.value !== undefined ? p.value : {}); return { ok: true }; },
+    removeMapItem: async (p) => { const a = tget(mapTreeData, p.path.slice(0, -1)); if (Array.isArray(a)) a.splice(p.path[p.path.length - 1], 1); return { ok: true }; },
     openMapDialog: async () => null,
     loadMap: async (path) => {
       log('loadMap', path);
