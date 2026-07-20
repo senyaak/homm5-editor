@@ -271,10 +271,12 @@
 
     /* map settings dialog — the original's Adventure Map Properties, as a modal.
        The General tab is the curated view; "All fields" is the full property
-       tree the original's other form shows. */
-    #mapprops { position: fixed; inset: 0; z-index: 25; display: none;
-      align-items: center; justify-content: center; background: #0d1014cc; }
-    #mapprops.on { display: flex; }
+       tree the original's other form shows. A native <dialog>: the UA centres it
+       in the top layer and handles the backdrop, Esc and focus, so we only reset
+       its chrome and style the card within. */
+    #mapprops { padding: 0; border: 0; background: transparent; color: #c9d1d9;
+      max-width: 92vw; max-height: 82vh; overflow: visible; }
+    #mapprops::backdrop { background: #0d1014cc; }
     .mp-card { width: min(460px, 92vw); max-height: 82vh; background: #161b22;
       border: 1px solid #30363d; border-radius: 10px; display: flex; flex-direction: column;
       box-shadow: 0 12px 40px #000a; overflow: hidden; }
@@ -466,8 +468,10 @@
     <button id="extchange-ignore" class="ghost">Keep mine</button>
   </div>
 
-  <!-- map settings dialog: General (curated) + All fields (full property tree) -->
-  <div id="mapprops">
+  <!-- map settings dialog: General (curated) + All fields (full property tree).
+       A native <dialog>, so the modality, backdrop, Esc-to-close and focus
+       handling come from the platform rather than hand-rolled. -->
+  <dialog id="mapprops">
     <div class="mp-card">
       <div class="mp-head">
         <span class="mp-title">Map Properties</span>
@@ -480,7 +484,7 @@
       <div id="mp-general" class="mp-body"></div>
       <div id="mp-all" class="mp-body" style="display:none"></div>
     </div>
-  </div>
+  </dialog>
 
   <div id="loading"><div class="box"><div class="spin"></div><span id="loadmsg">loading map…</span></div></div>
   <div id="hud"></div>

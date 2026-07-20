@@ -1667,14 +1667,19 @@ const GENERAL_FIELDS: { name: string; label: string }[] = [
   { name: 'InitialFloor', label: 'Initial floor' },
 ];
 
-const mapPropsOpen = (): boolean => $('mapprops').classList.contains('on');
+const mapDialog = (): HTMLDialogElement => {
+  const el = $('mapprops');
+  if (!(el instanceof HTMLDialogElement)) throw new Error('#mapprops is not a <dialog>');
+  return el;
+};
+const mapPropsOpen = (): boolean => mapDialog().open;
 
 function openMapProps(): void {
-  $('mapprops').classList.add('on');
   setMapTab('general');
   void renderMapProps();
+  mapDialog().showModal();
 }
-function closeMapProps(): void { $('mapprops').classList.remove('on'); }
+function closeMapProps(): void { mapDialog().close(); }
 
 function setMapTab(tab: 'general' | 'all'): void {
   for (const b of document.querySelectorAll('.mp-tab'))
@@ -1772,12 +1777,10 @@ $('mapbtn').onclick = () => { if (mapPropsOpen()) closeMapProps(); else openMapP
 $('mp-close').onclick = () => closeMapProps();
 for (const b of document.querySelectorAll('.mp-tab'))
   b.addEventListener('click', () => setMapTab((b as HTMLElement).dataset.tab === 'all' ? 'all' : 'general'));
-// The dimmed backdrop dismisses; a click on the card itself does not.
-$('mapprops').addEventListener('click', (e) => { if (e.target === $('mapprops')) closeMapProps(); });
-// Esc closes the dialog first, ahead of the object-disarm Esc handler below.
-addEventListener('keydown', (e) => {
-  if (e.code === 'Escape' && mapPropsOpen()) { e.stopImmediatePropagation(); closeMapProps(); }
-});
+// A click on the backdrop lands on the dialog element itself (the card stops its
+// own clicks), so that dismisses — the one behaviour <dialog> leaves to us. Esc,
+// the backdrop paint and focus are the platform's.
+mapDialog().addEventListener('click', (e) => { if (e.target === mapDialog()) closeMapProps(); });
 
 // Keyboard shortcuts for the selection. Registered separately from the WASD set
 // because those are held-key state and these are one-shot actions. The rotate
