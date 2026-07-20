@@ -434,10 +434,15 @@ ipcMain.handle('object:add', async (_e: IpcMainInvokeEvent, p: AddObjectPayload)
   // When this map has no object of the type to copy, borrow one from the
   // game's own maps rather than writing a half-empty skeleton.
   const donor = donorFor(GAME_DATA, p.type);
-  const { object, complete } = session.map.addObject({
-    type: p.type, shared: p.shared, x: p.x, y: p.y, floor: p.floor, r: p.r ?? 0,
-    ...(donor ? { donor } : {}),
-  });
+  // Through record(), like every other edit: placing an object grows the map
+  // document, and if that growth is not captured as a step then the next undo
+  // finds the document a different size than its patch was taken from and throws
+  // "patch does not fit". This was the one mutating handler that skipped it.
+  const { object, complete } = record(session, 'add object', { map: true }, () =>
+    session!.map.addObject({
+      type: p.type, shared: p.shared, x: p.x, y: p.y, floor: p.floor, r: p.r ?? 0,
+      ...(donor ? { donor } : {}),
+    }));
   const geomData = session.resolver.geoms[gi];
   return {
     instance: {
