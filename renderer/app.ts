@@ -1350,9 +1350,9 @@ function updatePanel(): void {
 // --- rotate and delete ------------------------------------------------------
 //
 // Both write straight through: the mesh turns or disappears at once and the
-// main process is told afterwards. There is no undo yet, so deletion asks
-// first — and only the file on disk is safe, since nothing is written until
-// Save.
+// main process is told afterwards, where the edit is recorded so Ctrl+Z brings
+// it back. Deletion still confirms first — it is the one destructive-looking
+// action here — and nothing touches disk until Save regardless.
 
 /** An angle in radians as degrees in [0, 360). */
 const degOf = (r: number): number => ((r * 180 / Math.PI) % 360 + 360) % 360;

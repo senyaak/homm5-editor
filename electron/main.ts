@@ -472,8 +472,8 @@ ipcMain.handle('object:set-prop', async (_e: IpcMainInvokeEvent, p: SetPropPaylo
 
 // --- IPC: delete an object ---
 // `remove` takes out the whole <Item> wrapper and the blank line after it, so
-// the surrounding XML is left exactly as it was. There is no undo yet, so this
-// is only reversible by not saving.
+// the surrounding XML is left exactly as it was — which is also what lets the
+// recorded patch put it back byte for byte on undo.
 ipcMain.handle('object:remove', async (_e: IpcMainInvokeEvent, { id }: RemoveObjectPayload): Promise<ObjectEditResult> => {
   if (!session) throw new Error('no map loaded');
   const obj = findObject(session, id);
