@@ -490,18 +490,36 @@ function effectModelGeoms(
 }
 
 /**
- * A town's adventure-map appearance model, or null for anything else.
+ * A town's exterior document — the build-stage (Model, Effect) pairs that ARE
+ * its adventure-map appearance — or null for anything that is not a town.
  *
- * A town keeps its top-level `<Model>` empty; its building lives in
- * `<Exterior><AdvMapTownExterior><upgrades>`, a list of (Model, Effect) pairs by
- * build stage. The first pair is the basic town — what a freshly placed one
- * shows — and its href is written relative to the shared's own folder, unlike
- * the absolute hrefs elsewhere, which is why reading it flat found nothing and
- * left every town invisible.
+ * A town keeps its top-level `<Model>`/`<Effect>` empty and holds the real
+ * content in `<Exterior><AdvMapTownExterior>`. That exterior is inline for the
+ * original towns (`href="#n:inline(...)"`) but an external file for the
+ * Tribes-of-the-East ones (Orc_Stronghold), so it has to be followed either
+ * way. Its hrefs are written relative to the exterior's own folder, not the
+ * data root — reading them flat is why the stronghold refused to place at all.
  */
-function townModelHref(sharedXml: string): string | null {
-  const upgrades = sharedXml.match(/<AdvMapTownExterior\b[\s\S]*?<upgrades>([\s\S]*?)<\/upgrades>/);
-  return upgrades?.[1]?.match(/<Model href="([^"]+)"/)?.[1] ?? null;
+function townExterior(
+  sharedXml: string, sharedHref: string, assetRoot: string,
+): { xml: string; dir: string } | null {
+  if (!sharedXml.includes('<Exterior')) return null;
+  const sharedDir = dirOf(resolveHref('', sharedHref));
+  const extHref = sharedXml.match(/<Exterior href="([^"]+)"/)?.[1];
+  // External: a real path beside the shared. Inline (`#…`) or absent: the
+  // AdvMapTownExterior block sits in the shared itself.
+  if (extHref && !extHref.startsWith('#')) return followHref(assetRoot, sharedXml, sharedDir, extHref);
+  return { xml: sharedXml, dir: sharedDir };
+}
+
+/**
+ * The first build stage's model href — the basic town, what a freshly placed
+ * one shows — resolved against the exterior's folder, or null if it has none.
+ */
+function townModelHref(ext: { xml: string; dir: string }): string | null {
+  const upgrades = ext.xml.match(/<upgrades>([\s\S]*?)<\/upgrades>/);
+  const model = upgrades?.[1]?.match(/<Model href="([^"]+)"/)?.[1];
+  return model ? '/' + resolveHref(ext.dir, model) : null;
 }
 
 /**
@@ -555,14 +573,16 @@ export function createGeomResolver(assetRoot: string, texSize = 128): GeomResolv
     let idx = -1;
     try {
       const shared = readXdb(sharedHref);
-      // A town points at its building through the Exterior upgrades, relative to
-      // the shared's own folder; everything else through the top-level <Model>,
-      // whose href is written from the data root. Resolving the town href flat
-      // is what left every town invisible.
-      const townHref = shared ? townModelHref(shared) : null;
-      const modelRel = townHref
-        ? '/' + resolveHref(dirOf(resolveHref('', sharedHref)), townHref)
-        : (shared && shared.match(/<Model href="([^"]+)"/)?.[1]) || null;
+      // A town keeps its building (and its glow) in an Exterior document rather
+      // than the top-level <Model>/<Effect>: inline for the original towns, an
+      // external file for the Tribes-of-the-East ones. Its models and effects
+      // become the object's, so the effect chain reads from the exterior too.
+      const ext = shared ? townExterior(shared, sharedHref, assetRoot) : null;
+      const content = ext ? ext.xml : shared;
+      // The model href: a town's first build stage (resolved against the
+      // exterior's folder), otherwise the shared's top-level <Model>, written
+      // from the data root.
+      const modelRel = ext ? townModelHref(ext) : (shared && shared.match(/<Model href="([^"]+)"/)?.[1]) || null;
       const model = modelRel ? readXdb(modelRel) : null;
       // The object's own model. Its <Geometry href> is written relative to the
       // model's own folder as often as absolute (spell_shop.mb points at
@@ -573,8 +593,8 @@ export function createGeomResolver(assetRoot: string, texSize = 128): GeomResolv
       // The effect's own models come first: a teleporter's Spiral and Rune ARE
       // the object (its own model is a throwaway minimap quad), so they must land
       // even when there is no base mesh to hang them on.
-      if (shared) {
-        for (const em of effectModelGeoms(shared, sharedHref, assetRoot, readXdb, texSize)) {
+      if (content) {
+        for (const em of effectModelGeoms(content, sharedHref, assetRoot, readXdb, texSize)) {
           if (idx < 0) { idx = geoms.length; geoms.push(em); }
           else mergeGeom(geoms[idx]!, em);
         }
@@ -584,8 +604,8 @@ export function createGeomResolver(assetRoot: string, texSize = 128): GeomResolv
       // ALONGSIDE a model — the anti-magic garrison wall is the second kind, so
       // taking its mesh and stopping drew the flat sparkle patch on the ground
       // and left out the glowing wall that is the whole point of it.
-      if (shared) {
-        const card = effectGeom(shared, sharedHref, assetRoot, texSize);
+      if (content) {
+        const card = effectGeom(content, sharedHref, assetRoot, texSize);
         if (card && idx < 0) { idx = geoms.length; geoms.push(card); }
         else if (card) mergeGeom(geoms[idx]!, card);
       }
