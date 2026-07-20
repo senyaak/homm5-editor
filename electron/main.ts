@@ -30,8 +30,8 @@ import { Registry } from '../src/registry.ts';
 import type { RosterEntry } from '../src/registry.ts';
 import { readTree, setPath, addStringItem, removeItem, appendItem, indentText, nodeAt, setList } from '../src/tree.ts';
 import { mapSchema, resolveSchemaAtPath, deref } from '../src/schema.ts';
-import { buildItem, isBuildable } from '../src/skeleton.ts';
-import { children, find, text } from '../src/xml.ts';
+import { buildItem, isBuildable, buildEntity } from '../src/skeleton.ts';
+import { children, find, text, serialize } from '../src/xml.ts';
 import type { XmlElement } from '../src/xml.ts';
 import type { DocPatch, Step, StoredHistory } from '../src/history.ts';
 import type { TileInfo, GeomResolver, Instance as SceneInstance } from '../src/scene.ts';
@@ -39,7 +39,7 @@ import type { HommMap, MapObject } from '../src/map.ts';
 import type {
   MapsListResult, MapListEntry, MapLoadResult, MoveObjectPayload, MoveObjectResult,
   RotateObjectPayload, RemoveObjectPayload, ObjectEditResult, ObjectPropsResult, SetPropPayload,
-  MapPropsResult, SetMapPropPayload, RosterPayload, RosterResult,
+  MapPropsResult, SetMapPropPayload, RosterPayload, RosterResult, OfClassPayload, NewEntityPayload, NewEntityResult,
   MapTreeResult, SetPathPayload, AddItemPayload, RemoveItemPayload2, SetListPayload, NamesPayload, NamesResult,
   ReadFilePayload, ReadFileResult, WriteFilePayload,
   ObjectCatalogResult, IconPayload, IconResult, AddObjectPayload, AddObjectResult,
@@ -526,6 +526,35 @@ ipcMain.handle('registry:roster', async (_e: IpcMainInvokeEvent, { name }: Roste
     null;
   if (!roster) throw new Error(`unknown roster "${name}"`);
   return { entries: roster };
+});
+
+// Every object of an engine class — the type-constrained browse picker. Same
+// discovery as the class-based rosters, but for any class the schema names
+// (an object's ${type}Shared, or a header ref's entity class).
+ipcMain.handle('objects:of-class', async (_e: IpcMainInvokeEvent, { className }: OfClassPayload): Promise<RosterResult> => {
+  if (!session) throw new Error('no map loaded');
+  if (!/^[A-Za-z][A-Za-z0-9]*$/.test(className)) throw new Error(`bad class "${className}"`);
+  return { entries: session.registry.objectsOfClass(className) };
+});
+
+// Create a new referenced object beside the map (the original's "Create New
+// <Class> Object"). The body is built from the class's schema $def with default
+// values; it is written UTF-8 as `Name.(Class).xdb` in the map folder, and the
+// href the ref should store is returned. Only classes the schema can build a
+// template for are supported — others are picked, not authored here.
+ipcMain.handle('map:new-entity', async (_e: IpcMainInvokeEvent, { className, name }: NewEntityPayload): Promise<NewEntityResult> => {
+  if (!session) throw new Error('no map loaded');
+  if (!/^[A-Za-z][A-Za-z0-9]*$/.test(className)) throw new Error(`bad class "${className}"`);
+  const clean = name.trim().replace(/[\\/:*?"<>|]/g, '_');
+  if (!clean) throw new Error('name is empty');
+  const def = mapSchema.$defs?.[className];
+  const body = def ? buildEntity(mapSchema, className, deref(mapSchema, def)) : null;
+  if (!body) throw new Error(`no template for <${className}> — pick an existing one instead`);
+  const file = join(session.mapDir, `${clean}.(${className}).xdb`);
+  if (existsSync(file)) throw new Error(`${basename(file)} already exists`);
+  writeFileSync(file, `<?xml version="1.0" encoding="UTF-8"?>\n${serialize(body)}\n`, 'utf8');
+  session.watch.resync();
+  return { href: `${clean}.(${className}).xdb#xpointer(/${className})` };
 });
 
 // --- IPC: the whole <AdvMapDesc> as a tree, and path-based edits on it ---

@@ -40,6 +40,17 @@ export function buildItem(root: MapSchema, itemSchema: FieldSchema, indent: stri
   return buildStruct(root, 'Item', itemSchema, indent);
 }
 
+/**
+ * A fresh entity document body — a `<ClassName>` element with default fields,
+ * for "New" on a referenced object (a new AdvMapBirds/Wind/AmbientLight saved
+ * beside the map). The element is named for the class (also its root/xpointer),
+ * not `Item`. Returns null when the schema has no fields to build from.
+ */
+export function buildEntity(root: MapSchema, className: string, schema: FieldSchema, indent = ''): XmlElement | null {
+  if (!isBuildable(schema)) return null;
+  return buildStruct(root, className, schema, indent);
+}
+
 function buildStruct(root: MapSchema, name: string, schema: FieldSchema, indent: string): XmlElement {
   const inner = indent + '\t';
   const kids: XmlNode[] = [];

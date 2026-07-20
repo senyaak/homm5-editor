@@ -20,7 +20,7 @@ import { UNITS_PER_TILE as U } from '../src/units.ts';
 import type { Scene, Floor, Instance, SplatData, TileInfo, GeomData, GeomPart, Footprint } from '../src/scene.ts';
 import type { EditorApi, MapListEntry, ExternalChange, PlaceableObject, RosterEntryDTO } from '../electron/ipc.ts';
 import type { ObjectProp } from '../src/map.ts';
-import { objectProps, deref, controlOf, objectSchema, mapSchema, resolveSchemaAtPath } from '../src/schema.ts';
+import { objectProps, deref, controlOf, objectSchema, mapSchema, resolveSchemaAtPath, classOf } from '../src/schema.ts';
 import type { FieldSchema } from '../src/schema.ts';
 import type { TreeData, Path as TreePath } from '../src/tree.ts';
 
@@ -1573,7 +1573,7 @@ async function loadProps(): Promise<void> {
   for (const p of res.props) {
     const raw = typeFields[p.name];
     const field = raw ? deref(objectSchema, raw) : null;
-    host.appendChild(fieldRow(p, field, (n, v) => void setProp(id, n, v)));
+    host.appendChild(fieldRow(p, field, (n, v) => void setProp(id, n, v), res.type));
   }
 }
 
@@ -1643,6 +1643,22 @@ function roster(name: string): Promise<RosterEntryDTO[]> {
   return p;
 }
 
+/** Every object of an engine class (the "…" browse picker's universe), cached
+ *  per class for the session. A New entity invalidates its class's cache. */
+const classCache = new Map<string, Promise<RosterEntryDTO[]>>();
+function objectsOfClass(className: string): Promise<RosterEntryDTO[]> {
+  let p = classCache.get(className);
+  if (!p) { p = window.editor.objectsOfClass(className).then((r) => r.entries).catch(() => []); classCache.set(className, p); }
+  return p;
+}
+
+/** Whether "New" can author a class — the schema has a template ($def) for it.
+ *  Object Shared classes (AdvMapHeroShared…) have none, so those are pick-only. */
+function canCreateClass(className: string): boolean {
+  const def = mapSchema.$defs?.[className];
+  return !!def && !!deref(mapSchema, def).properties;
+}
+
 /** In-map names per kind (objective, object), for x-nameRef autocomplete. Not
  *  cached across edits — names change as the map is edited — but per render pass
  *  the same promise is reused. */
@@ -1700,12 +1716,22 @@ function selectFrom(current: string, options: { value: string; label: string }[]
  * single-value controls (dropdowns, enums, read-only, bounded numbers); arrays
  * and nested structures are a later pass, so those fall through to propRow.
  */
-function fieldRow(p: ObjectProp, field: FieldSchema | null, commit: (name: string, value: string) => void): HTMLElement {
+function fieldRow(p: ObjectProp, field: FieldSchema | null, commit: (name: string, value: string) => void, objectType?: string): HTMLElement {
   if (!field) return propRow(p, commit);
   if (field['x-nameRef']) {
     const { row } = rowShell(field, p.name);
     row.appendChild(nameRefInput(field['x-nameRef'], p.value, (v) => commit(p.name, v)));
     return row;
+  }
+  // A reference to a whole object — an object's Shared identity, or a single
+  // entity ref: the type-constrained picker + New, same as the tree's rows.
+  if (field.type !== 'array') {
+    const cls = classOf(field, objectType);
+    if (cls) {
+      const { row } = rowShell(field, p.name);
+      row.appendChild(entityRefControl(cls, p.value, (v) => commit(p.name, v)));
+      return row;
+    }
   }
   const control = controlOf(field);
 
@@ -2101,6 +2127,13 @@ function leafControl(field: FieldSchema, value: string, commit: (v: string) => v
   // A text-file reference: show the path, and an Edit button that opens the
   // referenced file in the text editor (the original's "Edit" on such a row).
   if (field['x-file']) return fileRefControl(value, field.title || '');
+  // A reference to a whole object (a single AdvMapBirds/Wind/AmbientLight…):
+  // show the ref, and offer the type-constrained picker + New. Arrays of refs
+  // stay checklists (handled by fillArray), so only single refs come here.
+  if (field.type !== 'array') {
+    const cls = classOf(field);
+    if (cls) return entityRefControl(cls, value, commit);
+  }
   const c = controlOf(field);
   if (c === 'readonly') {
     const s = document.createElement('span'); s.className = 'ro';
@@ -2290,6 +2323,154 @@ $('de-save').onclick = () => {
 $('de-close').onclick = () => docDialog().close();
 $('de-cancel').onclick = () => docDialog().close();
 docDialog().addEventListener('click', (e) => { if (e.target === docDialog()) docDialog().close(); });
+
+// --- structured object references (the "…" browse + "New" of the tree) -------
+//
+// A reference to a whole object (an AdvMapBirds flock, an AmbientLight, an
+// object's Shared identity) shows only the reference inline, with buttons:
+//   …    a type-constrained picker — the compatible class only, like the
+//        original's "Objects: <Class>" explorer;
+//   New  create a fresh object of that class beside the map (when the schema
+//        can build a template for it).
+// Both go through a native <dialog>; the entity's own field-form ("Edit") is a
+// later pass, so structured refs stay pick-or-create for now.
+
+const pickDialog = (): HTMLDialogElement => {
+  const el = $('objpick');
+  if (!(el instanceof HTMLDialogElement)) throw new Error('#objpick is not a <dialog>');
+  return el;
+};
+const newDialog = (): HTMLDialogElement => {
+  const el = $('objnew');
+  if (!(el instanceof HTMLDialogElement)) throw new Error('#objnew is not a <dialog>');
+  return el;
+};
+
+// A picker session, held while its <dialog> is open. `resolve` is called once,
+// with the chosen id or null (cancel), and cleared so late clicks are inert.
+let pick: { entries: RosterEntryDTO[]; sel: string; resolve: (v: string | null) => void } | null = null;
+
+/** Open the type-constrained picker for `className`, preselecting `current`.
+ *  Resolves the chosen ref id, or null if cancelled. */
+function pickFromClass(className: string, current: string): Promise<string | null> {
+  $('op-title').textContent = `Select ${className}`;
+  const search = $input('op-search');
+  search.value = '';
+  const list = $('op-list');
+  list.innerHTML = '<div class="op-empty">loading…</div>';
+  pickDialog().showModal();
+  search.focus();
+  return new Promise<string | null>((resolve) => {
+    const session = pick = { entries: [] as RosterEntryDTO[], sel: current, resolve };
+    void objectsOfClass(className).then((entries) => {
+      if (pick !== session) return; // closed, or another picker opened, before it loaded
+      pick.entries = entries;
+      renderPickList('');
+    });
+  });
+}
+
+/** (Re)build the picker list, filtered by `q`, grouped like the roster. */
+function renderPickList(q: string): void {
+  if (!pick) return;
+  const list = $('op-list');
+  list.innerHTML = '';
+  const needle = q.trim().toLowerCase();
+  const hits = pick.entries.filter((e) =>
+    !needle || (e.name || e.id).toLowerCase().includes(needle) || e.id.toLowerCase().includes(needle));
+  if (!hits.length) { list.innerHTML = '<div class="op-empty">nothing matches</div>'; return; }
+  let group = '\0';
+  for (const e of hits) {
+    if ((e.group || '') !== group) {
+      group = e.group || '';
+      if (group) { const g = document.createElement('div'); g.className = 'op-grp'; g.textContent = group; list.appendChild(g); }
+    }
+    const opt = document.createElement('div');
+    opt.className = 'op-opt' + (e.id === pick.sel ? ' sel' : '');
+    opt.textContent = e.name || e.id;
+    opt.title = e.id;
+    opt.addEventListener('click', () => {
+      if (!pick) return;
+      pick.sel = e.id;
+      for (const el of list.querySelectorAll('.op-opt.sel')) el.classList.remove('sel');
+      opt.classList.add('sel');
+    });
+    opt.addEventListener('dblclick', () => closePick(true));
+    list.appendChild(opt);
+    if (e.id === pick.sel) queueMicrotask(() => opt.scrollIntoView({ block: 'nearest' }));
+  }
+}
+
+/** Settle the picker: `ok` selects the highlighted id, else cancels (null). */
+function closePick(ok: boolean): void {
+  const p = pick; pick = null;
+  pickDialog().close();
+  if (p) p.resolve(ok ? (p.sel || null) : null);
+}
+
+$input('op-search').addEventListener('input', (e) => renderPickList((e.currentTarget as HTMLInputElement).value));
+$('op-ok').onclick = () => closePick(true);
+$('op-cancel').onclick = () => closePick(false);
+$('op-close').onclick = () => closePick(false);
+pickDialog().addEventListener('click', (e) => { if (e.target === pickDialog()) closePick(false); });
+pickDialog().addEventListener('cancel', () => closePick(false)); // Esc
+
+// A create session, mirroring the picker.
+let creating: { className: string; resolve: (v: string | null) => void } | null = null;
+
+/** Open "Create New <className> Object". Resolves the new ref href, or null. */
+function createEntity(className: string): Promise<string | null> {
+  $('on-title').textContent = `Create New <${className}> Object`;
+  $input('on-type').value = className;
+  const name = $input('on-name');
+  name.value = '';
+  $('on-err').textContent = '';
+  newDialog().showModal();
+  name.focus();
+  return new Promise<string | null>((resolve) => { creating = { className, resolve }; });
+}
+
+function submitNew(): void {
+  if (!creating) return;
+  const name = $input('on-name').value.trim();
+  if (!name) { $('on-err').textContent = 'name is required'; return; }
+  const { className, resolve } = creating;
+  void window.editor.newEntity({ className, name })
+    .then((r) => { classCache.delete(className); creating = null; newDialog().close(); resolve(r.href); })
+    .catch((err: unknown) => { $('on-err').textContent = err instanceof Error ? err.message : String(err); });
+}
+function cancelNew(): void { const c = creating; creating = null; newDialog().close(); if (c) c.resolve(null); }
+
+$('on-ok').onclick = () => submitNew();
+$('on-cancel').onclick = () => cancelNew();
+$('on-close').onclick = () => cancelNew();
+$input('on-name').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); submitNew(); } });
+newDialog().addEventListener('click', (e) => { if (e.target === newDialog()) cancelNew(); });
+newDialog().addEventListener('cancel', () => cancelNew()); // Esc
+
+/**
+ * A structured-reference control: the reference shown inline (read-only), then
+ * a "…" browse picker and, where the class is authorable, a "New" button. On a
+ * pick/create it commits the new href and updates the shown value in place.
+ */
+function entityRefControl(className: string, value: string, commit: (v: string) => void): HTMLElement {
+  const wrap = document.createElement('span'); wrap.style.display = 'contents';
+  const box = document.createElement('span'); box.className = 'mt-ref';
+  const rv = document.createElement('span'); rv.className = 'rv';
+  const show = (v: string): void => { rv.textContent = v || '(none)'; rv.title = v; };
+  show(value);
+  const set = (v: string | null): void => { if (v != null) { commit(v); show(v); } };
+  const browse = document.createElement('button'); browse.textContent = '…'; browse.title = `pick a ${className}`;
+  browse.addEventListener('click', () => { void pickFromClass(className, rv.title).then(set); });
+  box.append(rv, browse);
+  if (canCreateClass(className)) {
+    const nw = document.createElement('button'); nw.textContent = 'New'; nw.title = `create a new ${className}`;
+    nw.addEventListener('click', () => { void createEntity(className).then(set); });
+    box.appendChild(nw);
+  }
+  wrap.appendChild(box);
+  return wrap;
+}
 
 $('maptreebtn').onclick = () => { if (mapTreeOpen()) closeMapTree(); else openMapTree(); };
 $('mt-close').onclick = () => closeMapTree();

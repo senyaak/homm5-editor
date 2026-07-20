@@ -377,6 +377,41 @@
       padding: 6px 16px; cursor: pointer; font-size: 13px; }
     .de-foot button.ghost { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; }
     .de-foot button.ghost:hover { background: #30363d; }
+    /* type-constrained object picker + "create new" dialogs */
+    #objpick, #objnew { padding: 0; border: 0; background: transparent; max-width: 92vw; max-height: 86vh; overflow: visible; }
+    #objpick::backdrop, #objnew::backdrop { background: #0d1014cc; }
+    .op-card { width: min(560px, 92vw); }
+    .op-search { padding: 10px 14px 0; }
+    .op-search input { width: 100%; box-sizing: border-box; background: #0d1014; border: 1px solid #30363d;
+      border-radius: 6px; padding: 6px 10px; color: #c9d1d9; font-size: 13px; }
+    .op-search input:focus { outline: none; border-color: #1f6feb; }
+    .op-body { padding-top: 10px; }
+    .op-list { max-height: 52vh; overflow-y: auto; border: 1px solid #21262d; border-radius: 6px; }
+    .op-grp { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: #6e7681;
+      padding: 6px 10px 2px; background: #0d1014; position: sticky; top: 0; }
+    .op-opt { display: block; padding: 4px 10px; font-size: 12px; color: #c9d1d9; cursor: pointer;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .op-opt:hover { background: #161b22; }
+    .op-opt.sel { background: #1f6feb; color: #fff; }
+    .op-empty { padding: 14px; color: #6e7681; font-size: 12px; text-align: center; }
+    .on-card { width: min(460px, 92vw); }
+    .on-body { display: flex; flex-direction: column; gap: 10px; }
+    .on-row { display: flex; align-items: center; gap: 10px; font-size: 12px; color: #c9d1d9; }
+    .on-row span { flex: 0 0 46px; color: #8b949e; }
+    .on-row input { flex: 1; min-width: 0; background: #0d1014; border: 1px solid #30363d;
+      border-radius: 6px; padding: 6px 10px; color: #c9d1d9; font-size: 13px; }
+    .on-row input:read-only { color: #8b949e; background: #161b22; }
+    .on-row input:focus { outline: none; border-color: #1f6feb; }
+    .on-err { color: #f85149; font-size: 11px; min-height: 14px; }
+    /* a structured reference row: current value + …/New/Edit buttons */
+    .mt-ref { display: flex; align-items: center; gap: 4px; min-width: 0; flex: 1; }
+    .mt-ref .rv { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      background: #0d1014; border: 1px solid #30363d; border-radius: 6px; padding: 3px 8px;
+      color: #c9d1d9; font-size: 12px; }
+    .mt-ref button { flex: 0 0 auto; background: #21262d; border: 1px solid #30363d; color: #c9d1d9;
+      border-radius: 6px; padding: 3px 7px; cursor: pointer; font-size: 11px; }
+    .mt-ref button:hover:not(:disabled) { background: #30363d; }
+    .mt-ref button:disabled { opacity: .4; cursor: default; }
     /* checklist tab (Heroes / Spells / Artifacts): a search + bulk buttons, then
        a scrolling grid of checkboxes over the whole roster. */
     .mp-cl-tools { display: flex; gap: 6px; align-items: center; margin-bottom: 8px; }
@@ -597,6 +632,42 @@
       <div class="de-foot">
         <button id="de-cancel" class="ghost">Cancel</button>
         <button id="de-save">Save</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- type-constrained object picker (the original's "Objects: <Class>" list) -->
+  <dialog id="objpick">
+    <div class="mp-card op-card">
+      <div class="mp-head">
+        <span class="mp-title" id="op-title">Select object</span>
+        <button id="op-close" title="close (Esc)">✕</button>
+      </div>
+      <div class="op-search"><input id="op-search" type="text" placeholder="filter…" spellcheck="false" autocomplete="off"></div>
+      <div class="mp-body op-body"><div id="op-list" class="op-list"></div></div>
+      <div class="de-foot">
+        <button id="op-cancel" class="ghost">Cancel</button>
+        <button id="op-ok">Select</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- create a new referenced object of a fixed class (the original's
+       "Create New <Class> Object") -->
+  <dialog id="objnew">
+    <div class="mp-card on-card">
+      <div class="mp-head">
+        <span class="mp-title" id="on-title">Create New Object</span>
+        <button id="on-close" title="close (Esc)">✕</button>
+      </div>
+      <div class="mp-body on-body">
+        <label class="on-row"><span>Type</span><input id="on-type" type="text" readonly></label>
+        <label class="on-row"><span>Name</span><input id="on-name" type="text" spellcheck="false" autocomplete="off"></label>
+        <div id="on-err" class="on-err"></div>
+      </div>
+      <div class="de-foot">
+        <button id="on-cancel" class="ghost">Cancel</button>
+        <button id="on-ok">Create</button>
       </div>
     </div>
   </dialog>

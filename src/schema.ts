@@ -63,6 +63,10 @@ export interface FieldSchema {
    *  this $def — Birds→AdvMapBirds, Wind→Wind. The inline document editor reads
    *  it to edit the referenced entity. */
   'x-entity'?: string;
+  /** The object class this ref must point at (`AdvMapBirds`, `AmbientLight`).
+   *  Drives the type-constrained "…" browse picker and "New". Usually implied
+   *  (x-entity, or an object's Shared → `${type}Shared`); set only to override. */
+  'x-class'?: string;
   'x-widget'?: WidgetKind;
   'x-tab'?: TabName;
   'x-mapObjects'?: 'town' | 'hero';
@@ -146,6 +150,31 @@ export function objectProps(type: string): Record<string, FieldSchema> {
     if (d?.properties) Object.assign(out, d.properties);
   }
   return out;
+}
+
+/** Class-scan rosters, mirrored from registry.ts so the renderer can resolve a
+ *  ref field's object class without importing the Node-only registry module. */
+const REGISTRY_CLASS: Partial<Record<RegistryName, string>> = {
+  heroes: 'AdvMapHeroShared',
+  birds: 'AdvMapBirds',
+  winds: 'Wind',
+  weathers: 'AdvMapWeather',
+  ambientLights: 'AmbientLight',
+};
+
+/**
+ * The object class a ref field points at — what the type-constrained browse
+ * picker and "New" filter by — or null for a ref that is not a whole-object
+ * reference (a plain enum roster like spells, a free file ref). An object's
+ * Shared field takes its class from the object type (`AdvMapHero` →
+ * `AdvMapHeroShared`), so pass `objectType` when resolving one.
+ */
+export function classOf(f: FieldSchema, objectType?: string): string | null {
+  if (f['x-class']) return f['x-class'];
+  if (f['x-shared'] && objectType) return objectType + 'Shared';
+  if (f['x-entity']) return f['x-entity'];
+  const r = f['x-registry'];
+  return r ? REGISTRY_CLASS[r] ?? null : null;
 }
 
 /** The control a field wants — the one decision both surfaces share. */

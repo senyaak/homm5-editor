@@ -37,12 +37,24 @@ const SPELL_TABLE = 'GameMechanics/RefTables/UndividedSpells.xdb';
 const ARTIFACT_TABLE = 'GameMechanics/RefTables/Artifacts.xdb';
 const CREATURE_TABLE = 'GameMechanics/RefTables/Creatures.xdb';
 const SKILL_TABLE = 'GameMechanics/RefTables/Skills.xdb';
-/** Folders scanned for file-per-entry rosters, with the xpointer their refs use. */
-const HERO_DIR = 'MapObjects';
-const AMBIENT_DIR = join('Lights', '_(AmbientLight)');
-const BIRDS_DIR = join('MapObjects', '_(AdvMapBirds)');
-const WIND_DIR = join('MapObjects', '_(Wind)');
-const WEATHER_DIR = join('MapObjects', '_(AdvMapWeather)');
+/**
+ * Where object files live, scanned for the class rosters. Every serializable
+ * object is stored one of two ways, and objectsOfClass() catches both:
+ *   • a placed object — `Name.(ClassName).xdb` anywhere (heroes, monsters…);
+ *   • a library entity — a plain `Name.xdb` inside a `_(ClassName)/` folder
+ *     (birds, winds, weathers, ambient lights).
+ * The class is also the root element and the xpointer (`#xpointer(/ClassName)`).
+ */
+const OBJECT_DIRS = ['MapObjects', 'Lights'];
+
+/** Registry roster names that are really "every object of a class". */
+const CLASS_OF_ROSTER: Record<string, string> = {
+  heroes: 'AdvMapHeroShared',
+  birds: 'AdvMapBirds',
+  winds: 'Wind',
+  weathers: 'AdvMapWeather',
+  ambientLights: 'AmbientLight',
+};
 
 /**
  * Player races (`TOWN_*`). A closed engine enum, not a moddable file roster, so
@@ -101,36 +113,39 @@ export class Registry {
   races(): RosterEntry[] { return RACES; }
 
   /**
+   * Every object of a class — the type-constrained picker the original editor
+   * offers (its "Objects: AdvMapHeroShared" list). Scans both storage styles
+   * (`Name.(class).xdb` and `_(class)/Name.xdb`). This is the one primitive the
+   * class-based rosters below and the tree's "…" browse picker share.
+   */
+  objectsOfClass(className: string): RosterEntry[] {
+    return this.memo('class:' + className, () => scanClass(this.dataRoot, className));
+  }
+
+  /**
    * Every hero — one `*.(AdvMapHeroShared).xdb` under `MapObjects/`. The id is
    * the ref the map stores; the label is the file's base name, the race its
    * folder. Localized names are a later pass.
    */
-  heroes(): RosterEntry[] {
-    return this.memo('heroes', () => scanHeroes(this.dataRoot));
-  }
+  heroes(): RosterEntry[] { return this.objectsOfClass('AdvMapHeroShared'); }
 
   /**
    * Every ambient-light preset — `Lights/_(AmbientLight)/**` — as referenced by
    * `GroundAmbientLights`. The label is the preset's `<InternalName>`.
    */
-  ambientLights(): RosterEntry[] {
-    return this.memo('ambient', () => scanEntities(this.dataRoot, AMBIENT_DIR, '/AmbientLight'));
-  }
+  ambientLights(): RosterEntry[] { return this.objectsOfClass('AmbientLight'); }
 
   /** The shipped bird flocks — `MapObjects/_(AdvMapBirds)/` (Birds). */
-  birds(): RosterEntry[] {
-    return this.memo('birds', () => scanEntities(this.dataRoot, BIRDS_DIR, '/AdvMapBirds'));
-  }
+  birds(): RosterEntry[] { return this.objectsOfClass('AdvMapBirds'); }
 
   /** The shipped wind presets — `MapObjects/_(Wind)/` (Wind). */
-  winds(): RosterEntry[] {
-    return this.memo('winds', () => scanEntities(this.dataRoot, WIND_DIR, '/Wind'));
-  }
+  winds(): RosterEntry[] { return this.objectsOfClass('Wind'); }
 
   /** The shipped weather presets — `MapObjects/_(AdvMapWeather)/` (Weather items). */
-  weathers(): RosterEntry[] {
-    return this.memo('weathers', () => scanEntities(this.dataRoot, WEATHER_DIR, '/AdvMapWeather'));
-  }
+  weathers(): RosterEntry[] { return this.objectsOfClass('AdvMapWeather'); }
+
+  /** The class a named roster resolves to, if it is a class scan; else null. */
+  static classOfRoster(name: string): string | null { return CLASS_OF_ROSTER[name] ?? null; }
 }
 
 /**
@@ -185,39 +200,46 @@ function toHref(dataRoot: string, path: string, xpointer: string): string {
   return `/${rel}#xpointer(${xpointer})`;
 }
 
-/** Heroes: `*.(AdvMapHeroShared).xdb` under `MapObjects/`, race = its folder. */
-function scanHeroes(dataRoot: string): RosterEntry[] {
-  const base = join(dataRoot, HERO_DIR);
-  const files = walkFiles(base, (n) => n.endsWith('.(AdvMapHeroShared).xdb'));
+/**
+ * Every object of `className`, across both storage styles:
+ *   • placed objects — `Name.(className).xdb` anywhere under the object dirs;
+ *     the label is the base name, grouped by its top folder (a hero's race).
+ *   • library entities — plain `Name.xdb` inside a `_(className)/` folder;
+ *     labelled by `<InternalName>` when present, else the base name.
+ * A map can also point at a custom entity saved in its own folder; once that
+ * folder is layered onto the data root, this picks it up like any other.
+ */
+function scanClass(dataRoot: string, className: string): RosterEntry[] {
+  const suffix = `.(${className}).xdb`;
+  const libSeg = `_(${className})`;
+  const xpointer = '/' + className;
   const out: RosterEntry[] = [];
-  for (const f of files) {
-    const name = basename(f).replace(/\.\(AdvMapHeroShared\)\.xdb$/, '');
-    const race = relative(base, f).split(sep)[0];
-    out.push({
-      id: toHref(dataRoot, f, '/AdvMapHeroShared'),
-      name,
-      group: race && !race.endsWith('.xdb') ? race : undefined,
-    });
+  const seen = new Set<string>();
+  for (const dir of OBJECT_DIRS) {
+    const base = join(dataRoot, dir);
+    for (const f of walkFiles(base, (n) => n.endsWith('.xdb'))) {
+      if (seen.has(f)) continue;
+      const bn = basename(f);
+      const parts = relative(base, f).split(sep);
+      const bySuffix = bn.endsWith(suffix);
+      const inLib = parts.includes(libSeg);
+      if (!bySuffix && !inLib) continue;
+      seen.add(f);
+      let name: string;
+      let group: string | undefined;
+      if (bySuffix) {
+        // A placed-object definition: base name, grouped by its top folder.
+        name = bn.slice(0, -suffix.length);
+        group = parts[0] && !parts[0].endsWith('.xdb') ? parts[0] : undefined;
+      } else {
+        // A library entity: prefer its InternalName label.
+        let internal = '';
+        try { internal = childText(parse(readFileSync(f, 'utf8')), 'InternalName'); } catch { /* keep basename */ }
+        name = internal || bn.replace(/\.xdb$/, '');
+      }
+      out.push(group ? { id: toHref(dataRoot, f, xpointer), name, group } : { id: toHref(dataRoot, f, xpointer), name });
+    }
   }
   out.sort((a, b) => (a.group || '').localeCompare(b.group || '') || (a.name || '').localeCompare(b.name || ''));
-  return out;
-}
-
-/**
- * A file-per-entry roster from a library folder (ambient lights, birds, winds,
- * weathers): every `*.xdb` under `dir`, referenced with `xpointer`, labelled by
- * its `<InternalName>` when it carries one, else its base name. The map can also
- * point at a custom entity saved in its own folder; that is a free ref, not a
- * roster entry — these are the shipped library to pick from.
- */
-function scanEntities(dataRoot: string, dir: string, xpointer: string): RosterEntry[] {
-  const files = walkFiles(join(dataRoot, dir), (n) => n.endsWith('.xdb'));
-  const out: RosterEntry[] = [];
-  for (const f of files) {
-    let internal = '';
-    try { internal = childText(parse(readFileSync(f, 'utf8')), 'InternalName'); } catch { /* keep basename */ }
-    out.push({ id: toHref(dataRoot, f, xpointer), name: internal || basename(f).replace(/\.xdb$/, '') });
-  }
-  out.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
   return out;
 }

@@ -157,6 +157,16 @@ export interface RosterResult {
   entries: RosterEntryDTO[];
 }
 
+/** Payload of `objects:of-class` — every object of an engine class, for the
+ *  type-constrained browse picker (AdvMapHeroShared, AdvMapBirds, …). */
+export interface OfClassPayload { className: string; }
+
+/** Payload of `map:new-entity` — create a new object of `className` named
+ *  `name` in the map folder, and return the href the ref should store. */
+export interface NewEntityPayload { className: string; name: string; }
+/** Result of `map:new-entity` — the href of the file just created. */
+export interface NewEntityResult { href: string; }
+
 /** Payload of `map:names` — which kind of in-map name to gather. */
 export interface NamesPayload { kind: string; }
 /** Result of `map:names` — names defined in the map, for x-nameRef hints. */
@@ -421,6 +431,8 @@ export interface EditorApi {
   mapProps(): Promise<MapPropsResult>;
   setMapProp(p: SetMapPropPayload): Promise<ObjectEditResult>;
   roster(name: string): Promise<RosterResult>;
+  objectsOfClass(className: string): Promise<RosterResult>;
+  newEntity(p: NewEntityPayload): Promise<NewEntityResult>;
   names(kind: string): Promise<NamesResult>;
   mapTree(): Promise<MapTreeResult>;
   setMapPath(p: SetPathPayload): Promise<ObjectEditResult>;
