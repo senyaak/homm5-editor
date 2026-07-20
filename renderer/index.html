@@ -355,6 +355,14 @@
       max-height: 96px; overflow-y: auto; background: #0d1014; border: 1px solid #21262d;
       border-radius: 5px; padding: 6px 8px; }
     .mp-name .dsc.empty { color: #6e7681; font-style: italic; }
+    /* editable name/description on General (they write the referenced text files) */
+    .mp-name .k { margin-bottom: 2px; }
+    .mp-name-edit, .mp-desc-edit { width: 100%; box-sizing: border-box; background: #0d1014;
+      border: 1px solid #30363d; border-radius: 5px; padding: 6px 8px; color: #e6edf3;
+      font: inherit; font-size: 13px; margin-bottom: 8px; }
+    .mp-name-edit { font-weight: 600; }
+    .mp-desc-edit { font-size: 12px; min-height: 64px; resize: vertical; font-family: inherit; }
+    .mp-name-edit:focus, .mp-desc-edit:focus { outline: none; border-color: #1f6feb; }
     /* The "Restrict hero level" control: a checkbox that gates a number, matching
        the original's General tab (0 = unrestricted). */
     .mp-restrict { display: flex; align-items: center; gap: 8px; margin: 4px 0 10px; font-size: 12px; }

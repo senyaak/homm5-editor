@@ -1893,7 +1893,7 @@ const ph = (text: string): HTMLElement => { const d = document.createElement('di
 const mpNote = (text: string): HTMLElement => { const d = document.createElement('div'); d.className = 'mp-note'; d.textContent = text; return d; };
 
 function mpGeneral(body: HTMLElement): void {
-  body.appendChild(nameBlock(mpNameDesc.name, mpNameDesc.description));
+  body.appendChild(nameBlock());
   body.appendChild(restrictHeroLevel(mpVal(['HeroMaxLevel'])));
   body.appendChild(ph('rules'));
   const skip = new Set(['HeroMaxLevel', 'NameFileRef', 'DescriptionFileRef']);
@@ -1902,7 +1902,7 @@ function mpGeneral(body: HTMLElement): void {
     if (field['x-tab'] !== 'general' || skip.has(name)) continue;
     body.appendChild(leafRow(name, field, mpVal([name]), [name]));
   }
-  body.appendChild(mpNote('Name and description are read-only here for now (separate text files). Size and version are read-only. Use the Tree panel for every field.'));
+  body.appendChild(mpNote('Size and version are read-only. The Tree panel shows every field, including advanced ones this tab omits.'));
 }
 
 function mpPlayers(body: HTMLElement): void {
@@ -2023,16 +2023,44 @@ function mpRumours(body: HTMLElement): void {
   add.appendChild(btn); body.appendChild(add);
 }
 
-/** The read-only name + description block at the top of General. */
-function nameBlock(name: string, description: string): HTMLElement {
+/** The editable name + description block at the top of General. Each writes the
+ *  sibling text file it references (the same files the tree's ✎ edits). When no
+ *  file is referenced yet, a ref control lets one be created or picked. */
+function nameBlock(): HTMLElement {
   const box = document.createElement('div');
   box.className = 'mp-name';
-  const k1 = document.createElement('div'); k1.className = 'k'; k1.textContent = 'Map name';
-  const nm = document.createElement('div'); nm.className = 'nmv'; nm.textContent = name || '(unnamed)';
-  const k2 = document.createElement('div'); k2.className = 'k'; k2.textContent = 'Description';
-  const ds = document.createElement('div'); ds.className = 'dsc' + (description ? '' : ' empty');
-  ds.textContent = description || '(no description)';
-  box.append(k1, nm, k2, ds);
+  box.appendChild(nameFileRow('Map name', 'NameFileRef', 'name', false));
+  box.appendChild(nameFileRow('Description', 'DescriptionFileRef', 'description', true));
+  return box;
+}
+
+/** One editable name/description field bound to its referenced text file. */
+function nameFileRow(label: string, hrefField: string, which: 'name' | 'description', multiline: boolean): HTMLElement {
+  const box = document.createElement('div');
+  const k = document.createElement('div'); k.className = 'k'; k.textContent = label;
+  box.appendChild(k);
+  const href = mpVal([hrefField]);
+  if (!href) {
+    // No text file referenced — offer the …/New/✎ control to make or pick one.
+    const row = document.createElement('div'); row.className = 'mt-row';
+    row.appendChild(fileRefControl('', label, (v) => { void setMapPath([hrefField], v).then(mpReload); }));
+    box.appendChild(row);
+    return box;
+  }
+  const input = document.createElement(multiline ? 'textarea' : 'input') as HTMLInputElement | HTMLTextAreaElement;
+  if (!multiline) (input as HTMLInputElement).type = 'text';
+  input.className = multiline ? 'mp-desc-edit' : 'mp-name-edit';
+  input.value = which === 'name' ? mpNameDesc.name : mpNameDesc.description;
+  input.spellcheck = false;
+  input.addEventListener('change', () => {
+    const text = input.value;
+    void window.editor.writeFile({ href, text }).then(() => {
+      markDirty(true);
+      if (which === 'name') mpNameDesc.name = text; else mpNameDesc.description = text;
+      $('hud').textContent = `saved ${href}`;
+    }).catch((e: unknown) => { $('hud').textContent = 'save failed: ' + (e instanceof Error ? e.message : String(e)); });
+  });
+  box.appendChild(input);
   return box;
 }
 
