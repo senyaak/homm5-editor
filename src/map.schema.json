@@ -76,7 +76,7 @@
 
     "sRMGProps": { "$ref": "#/$defs/sRMGProps", "title": "Random-map-generator settings", "x-advanced": true },
     "dialogs": { "type": "array", "title": "Dialogs", "x-advanced": true, "items": { "$ref": "#/$defs/Dialog" } },
-    "RacesRandomGroups": { "type": "array", "title": "Races random groups", "x-advanced": true, "items": { "type": "object" } },
+    "RacesRandomGroups": { "type": "array", "title": "Random race groups", "x-advanced": true, "description": "Groups constraining which factions a random-race player may roll — each group bans a set of races.", "items": { "$ref": "#/$defs/RacesRandomGroup" } },
     "Resources": { "$ref": "#/$defs/Resources", "title": "Resources", "x-advanced": true },
     "tiles": { "type": "array", "title": "Terrain tile set", "x-advanced": true, "items": { "type": "string", "x-ref": true } },
     "regions": { "type": "array", "title": "Regions", "x-advanced": true, "items": { "$ref": "#/$defs/Region" } }
@@ -515,6 +515,12 @@
         "ResourceMultiplier": { "type": "string", "title": "Resource multiplier", "description": "RESOURCE_*" },
         "ExpMultiplier": { "type": "string", "title": "Experience multiplier", "description": "EXP_*" },
         "Grail": { "type": "boolean", "title": "Grail" }
+      }
+    },
+    "RacesRandomGroup": {
+      "type": "object", "title": "Random race group",
+      "properties": {
+        "BannedRaces": { "type": "array", "x-registry": "races", "x-widget": "checklist", "title": "Banned races", "items": { "type": "string", "x-registry": "races" } }
       }
     },
     "RMGPlayer": {
