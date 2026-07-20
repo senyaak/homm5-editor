@@ -2098,6 +2098,9 @@ function leafRow(name: string, field: FieldSchema, data: TreeData | undefined, p
 /** The control element for a leaf value (no label). */
 function leafControl(field: FieldSchema, value: string, commit: (v: string) => void): HTMLElement {
   if (field['x-nameRef']) return nameRefInput(field['x-nameRef'], value, commit);
+  // A text-file reference: show the path, and an Edit button that opens the
+  // referenced file in the text editor (the original's "Edit" on such a row).
+  if (field['x-file']) return fileRefControl(value, field.title || '');
   const c = controlOf(field);
   if (c === 'readonly') {
     const s = document.createElement('span'); s.className = 'ro';
@@ -2235,6 +2238,58 @@ async function setMapPath(path: TreePath, value: string): Promise<void> {
   try { await window.editor.setMapPath({ path, value }); markDirty(true); $('hud').textContent = `${path.join('.')} = ${value || '(empty)'}`; }
   catch (e) { $('hud').textContent = `could not set ${path.join('.')}: ` + (e instanceof Error ? e.message : String(e)); }
 }
+
+// --- text-file reference editing ("Edit" on a text ref) ---------------------
+//
+// A text reference (NameFileRef, a rumour's Text…) shows its path plus an Edit
+// button that opens the referenced file in a plain-text editor — the original's
+// behaviour. The file is its own document, written straight to disk on Save.
+
+/** A ref row's control: the path, then an ✎ button opening the text editor. */
+function fileRefControl(href: string, label: string): HTMLElement {
+  const wrap = document.createElement('span'); wrap.style.display = 'contents';
+  const ro = document.createElement('span'); ro.className = 'ro';
+  ro.textContent = href || '(none)'; ro.title = href;
+  const edit = document.createElement('button');
+  edit.className = 'mt-x'; edit.textContent = '✎'; edit.title = 'edit text'; edit.style.flex = '0 0 auto';
+  edit.disabled = !href;
+  edit.addEventListener('click', () => { if (href) void openTextEdit(href, label || href); });
+  wrap.append(ro, edit);
+  return wrap;
+}
+
+const docDialog = (): HTMLDialogElement => {
+  const el = $('docedit');
+  if (!(el instanceof HTMLDialogElement)) throw new Error('#docedit is not a <dialog>');
+  return el;
+};
+let deHref = '';
+
+async function openTextEdit(href: string, label: string): Promise<void> {
+  deHref = href;
+  $('de-title').textContent = label && label !== href ? `${label} — ${href}` : href;
+  const ta = $textarea('de-text');
+  ta.value = 'loading…'; ta.disabled = true;
+  docDialog().showModal();
+  try { ta.value = (await window.editor.readFile(href)).text; }
+  catch (e) { ta.value = ''; $('hud').textContent = 'could not read ' + href; }
+  ta.disabled = false; ta.focus();
+}
+
+const $textarea = (id: string): HTMLTextAreaElement => {
+  const el = $(id);
+  if (!(el instanceof HTMLTextAreaElement)) throw new Error(`#${id} is not a textarea`);
+  return el;
+};
+
+$('de-save').onclick = () => {
+  void window.editor.writeFile({ href: deHref, text: $textarea('de-text').value })
+    .then(() => { markDirty(true); $('hud').textContent = `saved ${deHref}`; docDialog().close(); if (mapTreeOpen()) void refreshMapTree(); })
+    .catch((e: unknown) => { $('hud').textContent = 'save failed: ' + (e instanceof Error ? e.message : String(e)); });
+};
+$('de-close').onclick = () => docDialog().close();
+$('de-cancel').onclick = () => docDialog().close();
+docDialog().addEventListener('click', (e) => { if (e.target === docDialog()) docDialog().close(); });
 
 $('maptreebtn').onclick = () => { if (mapTreeOpen()) closeMapTree(); else openMapTree(); };
 $('mt-close').onclick = () => closeMapTree();

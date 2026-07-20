@@ -180,6 +180,12 @@ export interface AddItemPayload { path: TreePath; value?: string; }
 export interface RemoveItemPayload2 { path: TreePath; }
 /** Payload of `map:set-list` — replace a value list's contents (checklists). */
 export interface SetListPayload { path: TreePath; values: string[]; }
+/** Payload of `map:read-file` — a referenced text file's href. */
+export interface ReadFilePayload { href: string; }
+/** Result of `map:read-file`. */
+export interface ReadFileResult { text: string; }
+/** Payload of `map:write-file`. */
+export interface WriteFilePayload { href: string; text: string; }
 
 /** Result of `map:save`. */
 export interface MapSaveResult {
@@ -421,6 +427,8 @@ export interface EditorApi {
   addMapItem(p: AddItemPayload): Promise<ObjectEditResult>;
   removeMapItem(p: RemoveItemPayload2): Promise<ObjectEditResult>;
   setMapList(p: SetListPayload): Promise<ObjectEditResult>;
+  readFile(href: string): Promise<ReadFileResult>;
+  writeFile(p: WriteFilePayload): Promise<ObjectEditResult>;
   listObjects(): Promise<ObjectCatalogResult>;
   objectIcon(path: string): Promise<IconResult>;
   addObject(p: AddObjectPayload): Promise<AddObjectResult>;

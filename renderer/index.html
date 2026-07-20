@@ -364,6 +364,19 @@
     .mp-restrict input[type=number]:disabled { opacity: .4; }
     .mp-note { margin-top: 10px; padding-top: 10px; border-top: 1px solid #21262d;
       font-size: 11px; color: #6e7681; }
+    /* text editor dialog — the "Edit" button on a text reference */
+    #docedit { padding: 0; border: 0; background: transparent; max-width: 92vw; max-height: 86vh; overflow: visible; }
+    #docedit::backdrop { background: #0d1014cc; }
+    .de-card { width: min(640px, 92vw); }
+    .de-text { width: 100%; box-sizing: border-box; min-height: 46vh; resize: vertical;
+      background: #0d1014; border: 1px solid #30363d; border-radius: 6px; padding: 8px 10px;
+      color: #c9d1d9; font: 13px/1.5 ui-monospace, monospace; }
+    .de-text:focus { outline: none; border-color: #1f6feb; }
+    .de-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 10px 14px; border-top: 1px solid #21262d; }
+    .de-foot button { background: #238636; color: #fff; border: 0; border-radius: 6px;
+      padding: 6px 16px; cursor: pointer; font-size: 13px; }
+    .de-foot button.ghost { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; }
+    .de-foot button.ghost:hover { background: #30363d; }
     /* checklist tab (Heroes / Spells / Artifacts): a search + bulk buttons, then
        a scrolling grid of checkboxes over the whole roster. */
     .mp-cl-tools { display: flex; gap: 6px; align-items: center; margin-bottom: 8px; }
@@ -570,6 +583,21 @@
       </div>
       <div class="mp-tabs" id="mp-tabs"></div>
       <div id="mp-body" class="mp-body"></div>
+    </div>
+  </dialog>
+
+  <!-- text editor for a referenced text file (name.txt, a rumour, …) -->
+  <dialog id="docedit">
+    <div class="mp-card de-card">
+      <div class="mp-head">
+        <span class="mp-title" id="de-title">Text</span>
+        <button id="de-close" title="close (Esc)">✕</button>
+      </div>
+      <div class="mp-body"><textarea id="de-text" class="de-text" spellcheck="false"></textarea></div>
+      <div class="de-foot">
+        <button id="de-cancel" class="ghost">Cancel</button>
+        <button id="de-save">Save</button>
+      </div>
     </div>
   </dialog>
 

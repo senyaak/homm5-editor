@@ -41,6 +41,7 @@ import type {
   RotateObjectPayload, RemoveObjectPayload, ObjectEditResult, ObjectPropsResult, SetPropPayload,
   MapPropsResult, SetMapPropPayload, RosterPayload, RosterResult,
   MapTreeResult, SetPathPayload, AddItemPayload, RemoveItemPayload2, SetListPayload, NamesPayload, NamesResult,
+  ReadFilePayload, ReadFileResult, WriteFilePayload,
   ObjectCatalogResult, IconPayload, IconResult, AddObjectPayload, AddObjectResult,
   MapSaveResult, MapPackResult, TerrainTilesResult, MapStatusResult, OpenMapDialogResult,
   ExternalChange, PaintTilePayload, PaintTileResult, SculptPayload, SculptResult,
@@ -594,6 +595,20 @@ ipcMain.handle('map:set-prop', async (_e: IpcMainInvokeEvent, p: SetMapPropPaylo
   return { ok: true };
 });
 
+// --- IPC: read/write a text file the map references (name.txt, a rumour…) ---
+// The original's "Edit" button on a text ref opens a plain-text editor on the
+// referenced file; these back that. Written straight to disk (the file is its
+// own document, not part of map.xdb), with the watcher resynced.
+ipcMain.handle('map:read-file', async (_e: IpcMainInvokeEvent, { href }: ReadFilePayload): Promise<ReadFileResult> => {
+  if (!session) throw new Error('no map loaded');
+  return { text: readSidecarText(session, href) };
+});
+ipcMain.handle('map:write-file', async (_e: IpcMainInvokeEvent, { href, text }: WriteFilePayload): Promise<ObjectEditResult> => {
+  if (!session) throw new Error('no map loaded');
+  if (!writeSidecarText(session, href, text)) throw new Error(`cannot write ${href}`);
+  return { ok: true };
+});
+
 /**
  * Read a text file the map references (name.txt, description.txt), decoding the
  * BOM the game writes. Empty href or a missing file returns '' rather than
@@ -608,6 +623,28 @@ function readSidecarText(s: Session, href: string): string {
   if (buf.length >= 2 && buf[0] === 0xff && buf[1] === 0xfe) return buf.toString('utf16le', 2);
   if (buf.length >= 3 && buf[0] === 0xef && buf[1] === 0xbb && buf[2] === 0xbf) return buf.toString('utf8', 3);
   return buf.toString('utf8');
+}
+
+/**
+ * Write a text file the map references, keeping its existing encoding (default
+ * UTF-16LE+BOM, which is what the game writes for name/description). Our own
+ * write is folded into the watcher baseline so it is not reported back as an
+ * external change.
+ */
+function writeSidecarText(s: Session, href: string, text: string): boolean {
+  if (!href) return false;
+  const file = join(s.mapDir, basename(href.split('#')[0]!));
+  let enc: 'utf16le' | 'utf8' = 'utf16le';
+  let bom = true;
+  if (existsSync(file)) {
+    const b = readFileSync(file);
+    if (b.length >= 3 && b[0] === 0xef && b[1] === 0xbb && b[2] === 0xbf) { enc = 'utf8'; bom = true; }
+    else if (!(b.length >= 2 && b[0] === 0xff && b[1] === 0xfe)) { enc = 'utf8'; bom = false; }
+  }
+  const head = enc === 'utf16le' ? Buffer.from([0xff, 0xfe]) : (bom ? Buffer.from([0xef, 0xbb, 0xbf]) : Buffer.alloc(0));
+  writeFileSync(file, Buffer.concat([head, Buffer.from(text, enc)]));
+  s.watch.resync();
+  return true;
 }
 
 // --- IPC: delete an object ---
