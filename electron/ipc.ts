@@ -168,8 +168,9 @@ export interface MapTreeResult {
 
 /** Payload of `map:set-path`. */
 export interface SetPathPayload { path: TreePath; value: string; }
-/** Payload of `map:add-item` — append a string item to a list. */
-export interface AddItemPayload { path: TreePath; value: string; }
+/** Payload of `map:add-item`. `value` is used for value lists; struct lists build
+ *  a default item from the schema and ignore it. */
+export interface AddItemPayload { path: TreePath; value?: string; }
 /** Payload of `map:remove-item` — the path's last step is the index. */
 export interface RemoveItemPayload2 { path: TreePath; }
 

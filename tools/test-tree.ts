@@ -6,7 +6,9 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { loadMap } from '../src/map.ts';
-import { readTree, nodeAt, setPath, addStringItem, removeItem } from '../src/tree.ts';
+import { readTree, nodeAt, setPath, addStringItem, removeItem, appendItem, indentText } from '../src/tree.ts';
+import { mapSchema, resolveSchemaAtPath, deref } from '../src/schema.ts';
+import { buildItem, isBuildable } from '../src/skeleton.ts';
 import { children, find } from '../src/xml.ts';
 
 const dataRoot = process.argv[2] ?? 'samples/paks/data';
@@ -50,6 +52,33 @@ ok(n2 === n0, `remove drops it again (${n1} -> ${n2})`);
 // add+remove round-trips to the original bytes (indentation preserved)
 const roundtrip = map.save();
 ok(roundtrip === after, 'add then remove leaves the file byte-identical');
+
+// --- struct item built from the schema ---
+console.log('\n=== struct item (schema-built) ===');
+const moonsBefore = children(find(map.desc, 'moons')!).length;
+{
+  const arrField = resolveSchemaAtPath(mapSchema, ['moons']);
+  const itemSchema = arrField?.items ? deref(mapSchema, arrField.items) : null;
+  ok(isBuildable(itemSchema), 'moons item schema is buildable');
+  const container = nodeAt(map.desc, ['moons'])!;
+  appendItem(map.desc, ['moons'], buildItem(mapSchema, itemSchema!, indentText(container)));
+}
+const moonsAfter = children(find(map.desc, 'moons')!).length;
+ok(moonsAfter === moonsBefore + 1, `moons grew by one (${moonsBefore} -> ${moonsAfter})`);
+const newMoon = readTree(nodeAt(map.desc, ['moons', moonsAfter - 1])!) as Record<string, string>;
+ok(newMoon.State === '0' && newMoon.RotationRate === '0', 'new moon has State=0, RotationRate=0');
+// a rumour carries its schema defaults (Weight 100, TownType default)
+{
+  const arrField = resolveSchemaAtPath(mapSchema, ['MapRumours']);
+  const itemSchema = arrField?.items ? deref(mapSchema, arrField.items) : null;
+  const container = nodeAt(map.desc, ['MapRumours'])!;
+  appendItem(map.desc, ['MapRumours'], buildItem(mapSchema, itemSchema!, indentText(container)));
+  const r = readTree(nodeAt(map.desc, ['MapRumours', 0])!) as Record<string, string>;
+  ok(r.Weight === '100' && r.TownType === 'TOWN_NO_TYPE', 'new rumour has Weight=100, TownType=TOWN_NO_TYPE');
+  ok(r.Text === '', 'new rumour Text is empty (a ref href)');
+}
+// the map still round-trips through a reload (structure is well-formed)
+ok(!!loadMap(map.save()), 'map with the new items reloads');
 
 console.log(`\n${bad === 0 ? 'PASS' : `FAIL (${bad})`}`);
 process.exit(bad === 0 ? 0 : 1);

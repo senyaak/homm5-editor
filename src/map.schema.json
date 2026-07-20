@@ -33,7 +33,7 @@
     "moons": { "type": "array", "title": "Moons", "x-advanced": true, "items": { "$ref": "#/$defs/Moon" } },
 
     "CustomTeams": { "type": "boolean", "title": "Custom teams", "x-tab": "teams", "description": "On: the per-player Team grid is honoured. Off: the engine assigns teams." },
-    "players": { "type": "array", "title": "Players", "x-tab": "players", "items": { "$ref": "#/$defs/Player" } },
+    "players": { "type": "array", "title": "Players", "x-tab": "players", "minItems": 1, "maxItems": 8, "items": { "$ref": "#/$defs/Player" } },
 
     "CustomMapGoal": { "type": "boolean", "title": "Custom map goal" },
     "CustomGoal": { "type": "string", "x-ref": true, "x-file": true, "title": "Custom goal text", "description": "Overrides the goal taken from the first common primary objective." },
@@ -86,7 +86,7 @@
       "type": "object",
       "title": "Player",
       "properties": {
-        "Race": { "type": "string", "x-registry": "races", "x-widget": "dropdown", "x-tab": "players", "title": "Race" },
+        "Race": { "type": "string", "x-registry": "races", "x-widget": "dropdown", "x-tab": "players", "title": "Race", "default": "TOWN_NO_TYPE" },
         "Colour": { "type": "string", "title": "Colour", "x-readonly": true, "description": "The slot's fixed player colour (PCOLOR_*)." },
         "MainTown": { "type": "string", "x-ref": true, "x-mapObjects": "town", "x-widget": "dropdown", "x-tab": "players", "title": "Main town" },
         "MainHero": { "type": "string", "x-ref": true, "x-mapObjects": "hero", "x-widget": "dropdown", "x-tab": "players", "title": "Main hero" },
@@ -125,8 +125,8 @@
       "title": "Rumour",
       "properties": {
         "Text": { "type": "string", "x-ref": true, "x-file": true, "title": "Text" },
-        "Weight": { "type": "integer", "title": "Weight", "minimum": 0, "description": "Relative frequency." },
-        "TownType": { "type": "string", "x-registry": "races", "x-widget": "dropdown", "title": "Town type" }
+        "Weight": { "type": "integer", "title": "Weight", "minimum": 0, "default": 100, "description": "Relative frequency." },
+        "TownType": { "type": "string", "x-registry": "races", "x-widget": "dropdown", "title": "Town type", "default": "TOWN_NO_TYPE" }
       }
     },
     "Moon": {

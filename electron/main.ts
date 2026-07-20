@@ -28,7 +28,9 @@ import { History, diff, apply } from '../src/history.ts';
 import { loadMap } from '../src/map.ts';
 import { Registry } from '../src/registry.ts';
 import type { RosterEntry } from '../src/registry.ts';
-import { readTree, setPath, addStringItem, removeItem } from '../src/tree.ts';
+import { readTree, setPath, addStringItem, removeItem, appendItem, indentText, nodeAt } from '../src/tree.ts';
+import { mapSchema, resolveSchemaAtPath, deref } from '../src/schema.ts';
+import { buildItem, isBuildable } from '../src/skeleton.ts';
 import type { DocPatch, Step, StoredHistory } from '../src/history.ts';
 import type { TileInfo, GeomResolver, Instance as SceneInstance } from '../src/scene.ts';
 import type { HommMap, MapObject } from '../src/map.ts';
@@ -513,7 +515,19 @@ ipcMain.handle('map:set-path', async (_e: IpcMainInvokeEvent, p: SetPathPayload)
 });
 ipcMain.handle('map:add-item', async (_e: IpcMainInvokeEvent, p: AddItemPayload): Promise<ObjectEditResult> => {
   if (!session) throw new Error('no map loaded');
-  const done = record(session, `add ${p.path.join('.')}`, { map: true }, () => addStringItem(session!.map.desc, p.path, p.value));
+  const desc = session.map.desc;
+  // A list of structures (rumours, players, army stacks) gets a full item built
+  // from its schema with default values; a list of plain values gets <Item>v</Item>.
+  const arrField = resolveSchemaAtPath(mapSchema, p.path);
+  const itemSchema = arrField?.items ? deref(mapSchema, arrField.items) : null;
+  const done = record(session, `add ${p.path.join('.')}`, { map: true }, () => {
+    if (isBuildable(itemSchema)) {
+      const container = nodeAt(desc, p.path);
+      if (!container) return false;
+      return appendItem(desc, p.path, buildItem(mapSchema, itemSchema!, indentText(container)));
+    }
+    return addStringItem(desc, p.path, p.value ?? '');
+  });
   if (!done) throw new Error(`cannot add to ${p.path.join('.')}`);
   return { ok: true };
 });

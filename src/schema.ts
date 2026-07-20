@@ -39,6 +39,11 @@ export interface FieldSchema {
   minimum?: number;
   maximum?: number;
   items?: FieldSchema;
+  /** Bounds on a list's length — gate add/remove; absent means unbounded. */
+  minItems?: number;
+  maxItems?: number;
+  /** Value a freshly-built item's field takes (JSON Schema default). */
+  default?: string | number | boolean;
   properties?: Record<string, FieldSchema>;
   $ref?: string;
   /** Composition: a base ($ref) plus type-specific properties. See objectProps(). */
@@ -97,6 +102,23 @@ export function deref(root: HasDefs, f: FieldSchema): FieldSchema {
 /** The schema for a top-level `<AdvMapDesc>` field, or null if undeclared. */
 export function fieldOf(root: MapSchema, name: string): FieldSchema | null {
   return root.properties[name] ?? null;
+}
+
+/**
+ * The schema at a data path, following properties (string steps) and array items
+ * (number steps), resolving $refs along the way. Lets the main process find the
+ * schema for a node it only knows by path — e.g. what a list's items look like.
+ */
+export function resolveSchemaAtPath(root: MapSchema, path: (string | number)[]): FieldSchema | null {
+  let cur: FieldSchema | null = { type: 'object', properties: root.properties };
+  for (const step of path) {
+    if (!cur) return null;
+    cur = deref(root, cur);
+    cur = typeof step === 'number'
+      ? (cur.items ? deref(root, cur.items) : null)
+      : (cur.properties?.[step] ? deref(root, cur.properties[step]!) : null);
+  }
+  return cur;
 }
 
 /**

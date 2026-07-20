@@ -1996,8 +1996,9 @@ function regSelect(reg: string, value: string, commit: (v: string) => void): HTM
   return sel;
 }
 
-/** An expandable group — an object's fields or a list's items, filled on expand. */
-function groupNode(name: string, field: FieldSchema, data: TreeData | undefined, path: TreePath): HTMLElement {
+/** An expandable group — an object's fields or a list's items, filled on expand.
+ *  `onRemove`, when given, adds a delete affordance (a struct item in a list). */
+function groupNode(name: string, field: FieldSchema, data: TreeData | undefined, path: TreePath, onRemove?: () => void): HTMLElement {
   const grp = document.createElement('div');
   grp.className = 'mt-grp';
   const head = document.createElement('div');
@@ -2009,6 +2010,12 @@ function groupNode(name: string, field: FieldSchema, data: TreeData | undefined,
   const count = isArray && Array.isArray(data) ? data.length : 0;
   if (isArray) co.textContent = ` (${count})`;
   head.append(tw, nm, co);
+  if (onRemove) {
+    const x = document.createElement('button'); x.className = 'mt-x'; x.textContent = '✕'; x.title = 'remove';
+    x.style.marginLeft = 'auto';
+    x.addEventListener('click', (e) => { e.stopPropagation(); onRemove(); });
+    head.appendChild(x);
+  }
   const kids = document.createElement('div');
   kids.className = 'mt-kids collapsed';
   let filled = false;
@@ -2040,7 +2047,17 @@ function fillArray(kids: HTMLElement, field: FieldSchema, data: TreeData | undef
   const itemField = field.items ? deref(mapSchema, field.items) : inferField(items[0]);
   const isStruct = itemField.type === 'object' || !!itemField.properties;
   if (isStruct) {
-    items.forEach((it, i) => kids.appendChild(treeNode(`[${i}]`, itemField, it, [...path, i])));
+    // Struct items: each expandable, removable down to minItems; add builds a
+    // default item from the schema (main side), allowed up to maxItems.
+    const canRemove = items.length > (field.minItems ?? 0);
+    items.forEach((it, i) => kids.appendChild(groupNode(`[${i}]`, itemField, it, [...path, i],
+      canRemove ? () => void mutateList(() => window.editor.removeMapItem({ path: [...path, i] })) : undefined)));
+    if (field.maxItems === undefined || items.length < field.maxItems) {
+      const add = document.createElement('div'); add.className = 'mt-add';
+      const btn = document.createElement('button'); btn.textContent = `＋ add ${itemField.title || 'item'}`;
+      btn.addEventListener('click', () => void mutateList(() => window.editor.addMapItem({ path })));
+      add.appendChild(btn); kids.appendChild(add);
+    }
     return;
   }
   // A list of plain values: each removable, plus an add row.

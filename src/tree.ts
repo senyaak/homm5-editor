@@ -76,17 +76,13 @@ function indentOf(container: XmlElement): XmlNode | null {
 }
 
 /**
- * Append `<Item>value</Item>` to a string list (spellIDs, artifactIDs, banned
- * races…). For lists of plain enum/ref values only — struct-item lists (players,
- * buildings) are cloned elsewhere. Returns false if the path is not a container.
+ * Append a prebuilt `<Item>` to the list at `containerPath`, indented like its
+ * siblings. Shared by the value-item and struct-item paths. False if the path is
+ * not a container.
  */
-export function addStringItem(root: XmlElement, containerPath: Path, value: string): boolean {
+export function appendItem(root: XmlElement, containerPath: Path, item: XmlElement): boolean {
   const container = nodeAt(root, containerPath);
   if (!container) return false;
-  const item: XmlElement = {
-    type: 'element', name: 'Item', attrs: {},
-    children: [{ type: 'text', text: value } as XmlNode], _dirtyAttrs: true,
-  } as XmlElement;
   const arr = container.children;
   const indent = indentOf(container);
   // Insert before the container's closing whitespace, indented like its siblings.
@@ -94,6 +90,25 @@ export function addStringItem(root: XmlElement, containerPath: Path, value: stri
   if (indent) arr.splice(last && last.type === 'text' ? arr.length - 1 : arr.length, 0, { ...indent }, item);
   else arr.push(item);
   return true;
+}
+
+/**
+ * Append `<Item>value</Item>` to a string list (spellIDs, artifactIDs, banned
+ * races…). For lists of plain enum/ref values; struct-item lists are built from
+ * the schema (src/skeleton.ts) and appended with appendItem directly.
+ */
+export function addStringItem(root: XmlElement, containerPath: Path, value: string): boolean {
+  const item: XmlElement = {
+    type: 'element', name: 'Item', attrs: {},
+    children: [{ type: 'text', text: value } as XmlNode], _dirtyAttrs: true,
+  } as XmlElement;
+  return appendItem(root, containerPath, item);
+}
+
+/** The whitespace that precedes an item in a list, as a string (for skeletons). */
+export function indentText(container: XmlElement): string {
+  const n = indentOf(container);
+  return n && n.type === 'text' ? n.text : '\n';
 }
 
 /**
