@@ -490,8 +490,39 @@
     "sRMGProps": {
       "type": "object",
       "title": "Random map generator settings",
-      "description": "RMGmap, InitialParams (MapSize, WaterAmount, MonsterLevel, per-player race, multipliers, ...). Tree-generic for now.",
-      "x-advanced": true
+      "x-advanced": true,
+      "properties": {
+        "RMGmap": { "type": "boolean", "title": "Is RMG map" },
+        "RMGversion": { "type": "integer", "title": "RMG version", "x-advanced": true },
+        "RMGstartseed": { "type": "integer", "title": "Start seed" },
+        "RMGguid": { "type": "string", "title": "GUID", "x-readonly": true, "x-advanced": true },
+        "InitialParams": { "$ref": "#/$defs/RMGParams", "title": "Initial params" }
+      }
+    },
+    "RMGParams": {
+      "type": "object", "title": "RMG parameters",
+      "properties": {
+        "MapSize": { "type": "string", "title": "Map size", "description": "MAP_SIZE_*" },
+        "Players": { "type": "integer", "title": "Players" },
+        "Template": { "type": "string", "x-ref": true, "title": "Template" },
+        "WaterAmount": { "type": "string", "title": "Water amount", "description": "WATER_*" },
+        "MonsterLevel": { "type": "string", "title": "Monster level", "description": "MONSTER_LEVEL_*" },
+        "HasUnderground": { "type": "boolean", "title": "Has underground" },
+        "PlayersInfo": { "type": "array", "title": "Players info", "items": { "$ref": "#/$defs/RMGPlayer" } },
+        "MapName": { "type": "string", "title": "Map name" },
+        "RandomTowns": { "type": "boolean", "title": "Random towns" },
+        "Minimap": { "type": "boolean", "title": "Minimap" },
+        "ResourceMultiplier": { "type": "string", "title": "Resource multiplier", "description": "RESOURCE_*" },
+        "ExpMultiplier": { "type": "string", "title": "Experience multiplier", "description": "EXP_*" },
+        "Grail": { "type": "boolean", "title": "Grail" }
+      }
+    },
+    "RMGPlayer": {
+      "type": "object", "title": "RMG player",
+      "properties": {
+        "Race": { "type": "string", "title": "Race" },
+        "StartHero": { "type": "string", "x-ref": true, "x-mapObjects": "hero", "title": "Start hero" }
+      }
     }
   }
 }
