@@ -35,6 +35,8 @@ export interface RosterEntry {
 /** Reference tables that back a roster, relative to the data root. */
 const SPELL_TABLE = 'GameMechanics/RefTables/UndividedSpells.xdb';
 const ARTIFACT_TABLE = 'GameMechanics/RefTables/Artifacts.xdb';
+const CREATURE_TABLE = 'GameMechanics/RefTables/Creatures.xdb';
+const SKILL_TABLE = 'GameMechanics/RefTables/Skills.xdb';
 /** Folders scanned for file-per-entry rosters. */
 const HERO_DIR = 'MapObjects';
 const AMBIENT_DIR = join('Lights', '_(AmbientLight)');
@@ -80,6 +82,16 @@ export class Registry {
   /** Every artifact (`Artifacts.xdb`), each with its localized name ref. */
   artifacts(): RosterEntry[] {
     return this.memo('artifacts', () => readRefTable(this.dataRoot, ARTIFACT_TABLE));
+  }
+
+  /** Every creature (`Creatures.xdb`) — army stacks, garrisons, dwellings. */
+  creatures(): RosterEntry[] {
+    return this.memo('creatures', () => readRefTable(this.dataRoot, CREATURE_TABLE));
+  }
+
+  /** Every hero skill and perk (`Skills.xdb`) — hero editing. */
+  skills(): RosterEntry[] {
+    return this.memo('skills', () => readRefTable(this.dataRoot, SKILL_TABLE));
   }
 
   /** Player races — the fixed `TOWN_*` enum. */

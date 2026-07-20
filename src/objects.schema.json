@@ -1,0 +1,244 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://homm5-editor/objects.schema.json",
+  "title": "Map objects",
+  "description": "Typed editing for the placed objects (AdvMap* types). Same vocabulary as map.schema.json (see src/schema.ts). Each object's identity — which monster, artifact, town faction — lives in its Shared reference, not a field. The seven fields every type shares (Pos, Rot, Floor, Name, CombatScript, pointLights, Shared) are declared once in $defs/CommonObject and composed into each type with allOf, so a type only lists what is its own.",
+  "$defs": {
+    "CommonObject": {
+      "type": "object",
+      "properties": {
+        "Pos": { "$ref": "#/$defs/Pos", "title": "Position" },
+        "Rot": { "type": "number", "title": "Rotation" },
+        "Floor": { "type": "integer", "minimum": 0, "maximum": 1, "title": "Floor" },
+        "Name": { "type": "string", "title": "Name", "description": "Script name of the object." },
+        "CombatScript": { "type": "string", "x-ref": true, "title": "Combat script", "x-advanced": true },
+        "pointLights": { "type": "array", "title": "Point lights", "x-advanced": true, "items": { "type": "object" } },
+        "Shared": { "type": "string", "x-ref": true, "x-shared": true, "title": "Definition", "description": "The object's identity — which monster/artifact/town/hero it is. Picked from the object catalogue for this type." }
+      }
+    },
+    "Pos": {
+      "type": "object", "title": "Position",
+      "properties": {
+        "x": { "type": "number", "title": "X" },
+        "y": { "type": "number", "title": "Y" },
+        "z": { "type": "number", "title": "Z" }
+      }
+    },
+    "Resources": {
+      "type": "object", "title": "Resources",
+      "properties": {
+        "Wood": { "type": "integer", "title": "Wood" },
+        "Ore": { "type": "integer", "title": "Ore" },
+        "Mercury": { "type": "integer", "title": "Mercury" },
+        "Crystal": { "type": "integer", "title": "Crystal" },
+        "Sulfur": { "type": "integer", "title": "Sulfur" },
+        "Gem": { "type": "integer", "title": "Gem" },
+        "Gold": { "type": "integer", "title": "Gold" }
+      }
+    },
+    "ArmySlot": {
+      "type": "object", "title": "Army stack",
+      "properties": {
+        "Creature": { "type": "string", "x-registry": "creatures", "x-widget": "dropdown", "title": "Creature" },
+        "Count": { "type": "integer", "minimum": 0, "title": "Count" }
+      }
+    },
+    "Skill": {
+      "type": "object", "title": "Skill",
+      "properties": {
+        "SkillID": { "type": "string", "x-registry": "skills", "x-widget": "dropdown", "title": "Skill" },
+        "Mastery": { "$ref": "#/$defs/Mastery", "title": "Mastery" }
+      }
+    },
+    "Mastery": { "type": "string", "title": "Mastery", "enum": ["MASTERY_NONE", "MASTERY_BASIC", "MASTERY_ADVANCED", "MASTERY_EXPERT", "MASTERY_ULTIMATE"] },
+    "PlayerId": { "type": "string", "title": "Owner", "x-widget": "dropdown", "enum": ["PLAYER_NONE", "PLAYER_1", "PLAYER_2", "PLAYER_3", "PLAYER_4", "PLAYER_5", "PLAYER_6", "PLAYER_7", "PLAYER_8"] },
+    "BuildingUpgrade": { "type": "string", "title": "Upgrade", "enum": ["BLD_UPG_NONE", "BLD_UPG_1", "BLD_UPG_2", "BLD_UPG_3", "BLD_UPG_4", "BLD_UPG_5"] },
+    "Building": {
+      "type": "object", "title": "Building",
+      "properties": {
+        "Type": { "type": "string", "title": "Type", "enum": ["TB_TOWN_HALL", "TB_FORT", "TB_TAVERN", "TB_MARKETPLACE", "TB_BLACKSMITH", "TB_MAGIC_GUILD", "TB_SHIPYARD", "TB_GRAIL", "TB_WONDER", "TB_DWELLING_1", "TB_DWELLING_2", "TB_DWELLING_3", "TB_DWELLING_4", "TB_DWELLING_5", "TB_DWELLING_6", "TB_DWELLING_7", "TB_SPECIAL_0", "TB_SPECIAL_1", "TB_SPECIAL_2", "TB_SPECIAL_3", "TB_SPECIAL_4", "TB_SPECIAL_5", "TB_SPECIAL_6"] },
+        "InitialUpgrade": { "$ref": "#/$defs/BuildingUpgrade", "title": "Initial upgrade" },
+        "MaxUpgrade": { "$ref": "#/$defs/BuildingUpgrade", "title": "Max upgrade" }
+      }
+    },
+    "Trigger": {
+      "type": "object", "title": "Trigger", "x-advanced": true,
+      "description": "A Lua hook: Action.FunctionName names the script function.",
+      "properties": { "Action": { "type": "object", "properties": { "FunctionName": { "type": "string", "title": "Function name" } } } }
+    },
+    "Textures": {
+      "type": "object", "title": "Textures", "x-advanced": true,
+      "properties": {
+        "Icon128x128": { "type": "string", "x-ref": true },
+        "Icon64x64": { "type": "string", "x-ref": true },
+        "RoundedFace": { "type": "string", "x-ref": true },
+        "LeftFace": { "type": "string", "x-ref": true },
+        "RightFace": { "type": "string", "x-ref": true }
+      }
+    },
+    "Editable": {
+      "type": "object", "title": "Hero editing",
+      "description": "Custom hero setup — overrides the shared hero definition.",
+      "properties": {
+        "NameFileRef": { "type": "string", "x-ref": true, "x-file": true, "title": "Name" },
+        "BiographyFileRef": { "type": "string", "x-ref": true, "x-file": true, "title": "Biography" },
+        "Offence": { "type": "integer", "title": "Attack" },
+        "Defence": { "type": "integer", "title": "Defence" },
+        "Spellpower": { "type": "integer", "title": "Spellpower" },
+        "Knowledge": { "type": "integer", "title": "Knowledge" },
+        "skills": { "type": "array", "title": "Skills", "items": { "$ref": "#/$defs/Skill" } },
+        "perkIDs": { "type": "array", "x-registry": "skills", "x-widget": "checklist", "title": "Perks", "items": { "type": "string", "x-registry": "skills" } },
+        "spellIDs": { "type": "array", "x-registry": "spells", "x-widget": "checklist", "title": "Spells", "items": { "type": "string", "x-registry": "spells" } },
+        "Ballista": { "type": "boolean", "title": "Ballista" },
+        "FirstAidTent": { "type": "boolean", "title": "First aid tent" },
+        "AmmoCart": { "type": "boolean", "title": "Ammo cart" },
+        "FavoriteEnemies": { "type": "array", "title": "Favorite enemies", "x-advanced": true, "items": { "type": "object" } },
+        "TalismanLevel": { "type": "integer", "title": "Talisman level" }
+      }
+    }
+  },
+  "types": {
+    "AdvMapStatic": { "allOf": [ { "$ref": "#/$defs/CommonObject" }, { "type": "object", "properties": {
+      "IsRemovable": { "type": "boolean", "title": "Removable" },
+      "TerrainAligned": { "type": "boolean", "title": "Terrain aligned" },
+      "ScalePercent": { "type": "integer", "title": "Scale %", "minimum": 1 }
+    } } ] },
+    "AdvMapTreasure": { "allOf": [ { "$ref": "#/$defs/CommonObject" }, { "type": "object", "properties": {
+      "IsCustom": { "type": "boolean", "title": "Custom amount" },
+      "Amount": { "type": "integer", "title": "Amount", "description": "0 = the definition's default." },
+      "MessageFileRef": { "type": "string", "x-ref": true, "x-file": true, "title": "Message" }
+    } } ] },
+    "AdvMapMonster": { "allOf": [ { "$ref": "#/$defs/CommonObject" }, { "type": "object", "properties": {
+      "Custom": { "type": "boolean", "title": "Custom" },
+      "Amount": { "type": "integer", "title": "Amount", "description": "0 = random by the map's difficulty." },
+      "Amount2": { "type": "integer", "title": "Amount (max)" },
+      "Mood": { "type": "string", "title": "Mood", "enum": ["MONSTER_MOOD_FRIENDLY", "MONSTER_MOOD_AGGRESSIVE", "MONSTER_MOOD_HOSTILE", "MONSTER_MOOD_WILD"] },
+      "Courage": { "type": "string", "title": "Courage", "enum": ["MONSTER_COURAGE_ALWAYS_JOIN", "MONSTER_COURAGE_ALWAYS_FIGHT", "MONSTER_COURAGE_CAN_FLEE_JOIN"] },
+      "ArtifactID": { "type": "string", "x-registry": "artifacts", "x-widget": "dropdown", "title": "Reward artifact" },
+      "Resources": { "$ref": "#/$defs/Resources", "title": "Reward resources" },
+      "AttackType": { "type": "string", "title": "Attack type" },
+      "MoveType": { "type": "string", "title": "Move type" },
+      "DoesNotGrow": { "type": "boolean", "title": "Does not grow" },
+      "AllowQuickCombat": { "type": "boolean", "title": "Allow quick combat" },
+      "DoesNotDependOnDifficulty": { "type": "boolean", "title": "Ignore difficulty" },
+      "RacesRandomGroupID": { "type": "integer", "title": "Random group id" },
+      "MessageFileRef": { "type": "string", "x-ref": true, "x-file": true, "title": "Message" },
+      "Script": { "type": "string", "x-ref": true, "title": "Script", "x-advanced": true },
+      "SingleMonsterNameFileRef": { "type": "string", "x-ref": true, "x-file": true, "title": "Name (single)", "x-advanced": true },
+      "MultipleMonstersNameFileRef": { "type": "string", "x-ref": true, "x-file": true, "title": "Name (multiple)", "x-advanced": true },
+      "AdditionalStacks": { "type": "array", "title": "Additional stacks", "x-advanced": true, "items": { "$ref": "#/$defs/ArmySlot" } },
+      "relationsOverrides": { "type": "array", "title": "Relations overrides", "x-advanced": true, "description": "Special relations toward some players.", "items": { "type": "object" } }
+    } } ] },
+    "AdvMapArtifact": { "allOf": [ { "$ref": "#/$defs/CommonObject" }, { "type": "object", "properties": {
+      "spellID": { "type": "string", "x-registry": "spells", "x-widget": "dropdown", "title": "Scroll spell", "description": "For a Scroll of Spell." },
+      "RandomShiftRadius": { "type": "integer", "title": "Random shift radius", "description": "For the Grail." },
+      "untransferable": { "type": "boolean", "title": "Untransferable" },
+      "armySlots": { "type": "array", "title": "Guardians", "items": { "$ref": "#/$defs/ArmySlot" } },
+      "MessageFileRef": { "type": "string", "x-ref": true, "x-file": true, "title": "Message" }
+    } } ] },
+    "AdvMapMine": { "allOf": [ { "$ref": "#/$defs/CommonObject" }, { "type": "object", "properties": {
+      "PlayerID": { "$ref": "#/$defs/PlayerId", "title": "Owner" },
+      "armySlots": { "type": "array", "title": "Guardians", "items": { "$ref": "#/$defs/ArmySlot" } },
+      "CaptureTrigger": { "$ref": "#/$defs/Trigger", "title": "Capture trigger" },
+      "CreatureSwapBlockedForAI": { "type": "boolean", "title": "Swap blocked for AI", "x-advanced": true }
+    } } ] },
+    "AdvMapDwelling": { "allOf": [ { "$ref": "#/$defs/CommonObject" }, { "type": "object", "properties": {
+      "PlayerID": { "$ref": "#/$defs/PlayerId", "title": "Owner" },
+      "RandomCreatures": { "type": "boolean", "title": "Random creatures" },
+      "creaturesEnabled": { "type": "array", "x-registry": "creatures", "x-widget": "checklist", "title": "Enabled creatures", "items": { "type": "string", "x-registry": "creatures" } },
+      "RndSource": { "type": "string", "title": "Random source", "enum": ["RND_NONE", "RND_PLAYER", "RND_TOWN", "RND_OWN"] },
+      "LinkToPlayer": { "$ref": "#/$defs/PlayerId", "title": "Link to player" },
+      "LinkToTown": { "type": "string", "x-ref": true, "x-mapObjects": "town", "x-widget": "dropdown", "title": "Link to town" },
+      "CaptureTrigger": { "$ref": "#/$defs/Trigger", "title": "Capture trigger" }
+    } } ] },
+    "AdvMapShrine": { "allOf": [ { "$ref": "#/$defs/CommonObject" }, { "type": "object", "properties": {
+      "SpellID": { "type": "string", "x-registry": "spells", "x-widget": "dropdown", "title": "Spell" }
+    } } ] },
+    "AdvMapBuilding": { "allOf": [ { "$ref": "#/$defs/CommonObject" }, { "type": "object", "properties": {
+      "PlayerID": { "$ref": "#/$defs/PlayerId", "title": "Owner" },
+      "GroupID": { "type": "integer", "title": "Group id" },
+      "CaptureTrigger": { "$ref": "#/$defs/Trigger", "title": "Capture trigger" },
+      "showCameras": { "type": "array", "title": "Show cameras", "x-advanced": true, "items": { "type": "object" } }
+    } } ] },
+    "AdvMapGarrison": { "allOf": [ { "$ref": "#/$defs/CommonObject" }, { "type": "object", "properties": {
+      "PlayerID": { "$ref": "#/$defs/PlayerId", "title": "Owner" },
+      "TownType": { "type": "string", "x-registry": "races", "x-widget": "dropdown", "title": "Town type" },
+      "armySlots": { "type": "array", "title": "Army", "items": { "$ref": "#/$defs/ArmySlot" } },
+      "CollectableArmy": { "type": "boolean", "title": "Collectable army", "description": "Can the army be taken away?" },
+      "AllowQuickCombat": { "type": "boolean", "title": "Allow quick combat" },
+      "CaptureTrigger": { "$ref": "#/$defs/Trigger", "title": "Capture trigger" }
+    } } ] },
+    "AdvMapTown": { "allOf": [ { "$ref": "#/$defs/CommonObject" }, { "type": "object", "properties": {
+      "PlayerID": { "$ref": "#/$defs/PlayerId", "title": "Owner" },
+      "Specialization": { "type": "string", "x-ref": true, "title": "Specialization" },
+      "buildings": { "type": "array", "title": "Buildings", "items": { "$ref": "#/$defs/Building" } },
+      "armySlots": { "type": "array", "title": "Garrison army", "items": { "$ref": "#/$defs/ArmySlot" } },
+      "spellIDs": { "type": "array", "x-registry": "spells", "x-widget": "checklist", "title": "Guild spells", "items": { "type": "string", "x-registry": "spells" } },
+      "GarrisonHero": { "type": "string", "x-ref": true, "x-mapObjects": "hero", "x-widget": "dropdown", "title": "Garrison hero" },
+      "RndSource": { "type": "string", "title": "Random source", "enum": ["RND_NONE", "RND_PLAYER", "RND_TOWN", "RND_OWN"] },
+      "LinkToPlayer": { "$ref": "#/$defs/PlayerId", "title": "Link to player" },
+      "LinkToTown": { "type": "string", "x-ref": true, "x-mapObjects": "town", "title": "Link to town" },
+      "BannedRaces": { "type": "array", "x-registry": "races", "x-widget": "checklist", "title": "Banned races", "description": "Random Town only.", "items": { "type": "string", "x-registry": "races" } },
+      "CanCaptureOnlyNotVisit": { "type": "boolean", "title": "Capture only, not visit" },
+      "AllowQuickCombat": { "type": "boolean", "title": "Allow quick combat" },
+      "GarrisonBlockedForAI": { "type": "boolean", "title": "Garrison blocked for AI", "x-advanced": true },
+      "Editable": { "$ref": "#/$defs/Editable", "title": "Editing", "x-advanced": true },
+      "CaptureTrigger": { "$ref": "#/$defs/Trigger", "title": "Capture trigger" },
+      "HeroDeployTrigger": { "$ref": "#/$defs/Trigger", "title": "Hero deploy trigger" },
+      "ShipTile": { "type": "object", "title": "Ship tile", "x-advanced": true },
+      "Script": { "type": "string", "x-ref": true, "title": "Script", "x-advanced": true },
+      "CaptionFileRef": { "type": "string", "x-ref": true, "x-file": true, "title": "Caption", "x-advanced": true },
+      "CreaturesUpgradesFilter": { "type": "object", "title": "Creature upgrades filter", "x-advanced": true }
+    } } ] },
+    "AdvMapHero": { "allOf": [ { "$ref": "#/$defs/CommonObject" }, { "type": "object", "properties": {
+      "PlayerID": { "$ref": "#/$defs/PlayerId", "title": "Owner" },
+      "Experience": { "type": "integer", "title": "Experience" },
+      "armySlots": { "type": "array", "title": "Army", "items": { "$ref": "#/$defs/ArmySlot" } },
+      "artifactIDs": { "type": "array", "x-registry": "artifacts", "x-widget": "checklist", "title": "Artifacts", "items": { "type": "string", "x-registry": "artifacts" } },
+      "isUntransferable": { "type": "array", "x-registry": "artifacts", "x-widget": "checklist", "title": "Untransferable artifacts", "items": { "type": "string", "x-registry": "artifacts" } },
+      "Editable": { "$ref": "#/$defs/Editable", "title": "Editing" },
+      "PrimarySkillMastery": { "$ref": "#/$defs/Mastery", "title": "Primary skill mastery" },
+      "AllowQuickCombat": { "type": "boolean", "title": "Allow quick combat" },
+      "PresetPrice": { "type": "integer", "title": "Preset price" },
+      "BannedRaces": { "type": "array", "x-registry": "races", "x-widget": "checklist", "title": "Banned races", "description": "Entry points only.", "items": { "type": "string", "x-registry": "races" } },
+      "OverrideMask": { "type": "integer", "title": "Override mask", "x-advanced": true },
+      "Textures": { "$ref": "#/$defs/Textures", "title": "Textures", "x-advanced": true },
+      "LossTrigger": { "$ref": "#/$defs/Trigger", "title": "Loss trigger" }
+    } } ] },
+    "AdvMapShipyard": { "allOf": [ { "$ref": "#/$defs/CommonObject" }, { "type": "object", "properties": {
+      "ShipTile": { "type": "object", "title": "Ship tile", "x-advanced": true }
+    } } ] },
+    "AdvMapAbanMine": { "allOf": [ { "$ref": "#/$defs/CommonObject" }, { "type": "object", "properties": {
+      "AvailableResources": { "type": "array", "title": "Available resources", "x-advanced": true, "items": { "type": "object" } },
+      "CaptureTrigger": { "$ref": "#/$defs/Trigger", "title": "Capture trigger" }
+    } } ] },
+    "AdvMapTent": { "allOf": [ { "$ref": "#/$defs/CommonObject" }, { "type": "object", "properties": {} } ] },
+    "AdvMapSign": { "allOf": [ { "$ref": "#/$defs/CommonObject" }, { "type": "object", "properties": {
+      "MessageFileRef": { "type": "string", "x-ref": true, "x-file": true, "title": "Message" }
+    } } ] },
+    "AdvMapCartographer": { "allOf": [ { "$ref": "#/$defs/CommonObject" }, { "type": "object", "properties": {
+      "Cost": { "type": "integer", "title": "Cost" },
+      "CaptureTrigger": { "$ref": "#/$defs/Trigger", "title": "Capture trigger" }
+    } } ] },
+    "AdvMapDwarvenWarren": { "allOf": [ { "$ref": "#/$defs/CommonObject" }, { "type": "object", "properties": {
+      "PlayerID": { "$ref": "#/$defs/PlayerId", "title": "Owner" },
+      "armySlots": { "type": "array", "title": "Guardians", "items": { "$ref": "#/$defs/ArmySlot" } },
+      "CaptureTrigger": { "$ref": "#/$defs/Trigger", "title": "Capture trigger" },
+      "CreatureSwapBlockedForAI": { "type": "boolean", "title": "Swap blocked for AI", "x-advanced": true }
+    } } ] },
+    "AdvMapHillFort": { "allOf": [ { "$ref": "#/$defs/CommonObject" }, { "type": "object", "properties": {
+      "CreaturesUpgradesFilter": { "type": "object", "title": "Creature upgrades filter", "x-advanced": true }
+    } } ] },
+    "AdvMapPrison": { "allOf": [ { "$ref": "#/$defs/CommonObject" }, { "type": "object", "properties": {
+      "PrisonedHero": { "type": "object", "title": "Prisoned hero", "x-advanced": true },
+      "RandomHero": { "type": "boolean", "title": "Random hero" }
+    } } ] },
+    "AdvMapSeerHut": { "allOf": [ { "$ref": "#/$defs/CommonObject" }, { "type": "object", "properties": {
+      "Quest": { "type": "object", "title": "Quest", "x-advanced": true }
+    } } ] },
+    "AdvMapSphinx": { "allOf": [ { "$ref": "#/$defs/CommonObject" }, { "type": "object", "properties": {
+      "Riddle": { "type": "object", "title": "Riddle", "x-advanced": true },
+      "RandomRiddle": { "type": "boolean", "title": "Random riddle" }
+    } } ] }
+  }
+}

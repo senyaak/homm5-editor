@@ -20,8 +20,10 @@
 // always usable while the schema fills in.
 
 import mapSchemaJson from './map.schema.json' with { type: 'json' };
+import objectsSchemaJson from './objects.schema.json' with { type: 'json' };
 
-export type RegistryName = 'spells' | 'artifacts' | 'heroes' | 'races' | 'ambientLights';
+export type RegistryName =
+  | 'spells' | 'artifacts' | 'heroes' | 'races' | 'ambientLights' | 'creatures' | 'skills';
 export type WidgetKind =
   | 'checklist' | 'dropdown' | 'teamgrid' | 'textfile' | 'script' | 'herolevel';
 export type TabName =
@@ -39,9 +41,13 @@ export interface FieldSchema {
   items?: FieldSchema;
   properties?: Record<string, FieldSchema>;
   $ref?: string;
+  /** Composition: a base ($ref) plus type-specific properties. See objectProps(). */
+  allOf?: FieldSchema[];
   'x-registry'?: RegistryName;
   'x-ref'?: boolean;
   'x-file'?: boolean;
+  /** The Shared identity ref — picked from the object catalogue for this type. */
+  'x-shared'?: boolean;
   'x-widget'?: WidgetKind;
   'x-tab'?: TabName;
   'x-mapObjects'?: 'town' | 'hero';
@@ -49,19 +55,28 @@ export interface FieldSchema {
   'x-advanced'?: boolean;
 }
 
+/** Anything carrying local `$defs` a `$ref` can resolve against. */
+export interface HasDefs { $defs?: Record<string, FieldSchema>; }
+
 export interface MapSchema extends FieldSchema {
   properties: Record<string, FieldSchema>;
   $defs?: Record<string, FieldSchema>;
 }
 
-/** The parsed schema, typed. */
+/** Object-type schemas, keyed by element name, sharing one $defs pool. */
+export interface ObjectsSchema extends HasDefs {
+  types: Record<string, FieldSchema>;
+}
+
+/** The parsed schemas, typed. */
 export const mapSchema = mapSchemaJson as unknown as MapSchema;
+export const objectSchema = objectsSchemaJson as unknown as ObjectsSchema;
 
 /**
- * Resolve a local `$ref` (`#/$defs/Player`) against the root. Returns null for
- * anything that is not a local $defs pointer — we author no remote refs.
+ * Resolve a local `$ref` (`#/$defs/Player`) against a root's `$defs`. Returns
+ * null for anything that is not a local $defs pointer — we author no remote refs.
  */
-export function resolveRef(root: MapSchema, ref: string): FieldSchema | null {
+export function resolveRef(root: HasDefs, ref: string): FieldSchema | null {
   const m = /^#\/\$defs\/(.+)$/.exec(ref);
   return m ? root.$defs?.[m[1]!] ?? null : null;
 }
@@ -71,7 +86,7 @@ export function resolveRef(root: MapSchema, ref: string): FieldSchema | null {
  * `x-advanced`) win over the referenced def, so a shared def can be reused under
  * a field-specific label. Non-$ref schemas are returned unchanged.
  */
-export function deref(root: MapSchema, f: FieldSchema): FieldSchema {
+export function deref(root: HasDefs, f: FieldSchema): FieldSchema {
   if (!f.$ref) return f;
   const target = resolveRef(root, f.$ref);
   if (!target) return f;
@@ -82,6 +97,23 @@ export function deref(root: MapSchema, f: FieldSchema): FieldSchema {
 /** The schema for a top-level `<AdvMapDesc>` field, or null if undeclared. */
 export function fieldOf(root: MapSchema, name: string): FieldSchema | null {
   return root.properties[name] ?? null;
+}
+
+/**
+ * The flattened property set of an object type — the shared CommonObject base
+ * (composed via allOf) merged with the type's own fields. Later branches win, so
+ * a type could refine a common field. Returns {} for an unknown type, so the
+ * panel falls back to generic inference.
+ */
+export function objectProps(type: string): Record<string, FieldSchema> {
+  const root = objectSchema.types[type];
+  if (!root) return {};
+  const out: Record<string, FieldSchema> = {};
+  for (const branch of root.allOf ?? [root]) {
+    const d = branch.$ref ? resolveRef(objectSchema, branch.$ref) : branch;
+    if (d?.properties) Object.assign(out, d.properties);
+  }
+  return out;
 }
 
 /** The control a field wants — the one decision both surfaces share. */
