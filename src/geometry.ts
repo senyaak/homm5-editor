@@ -431,8 +431,13 @@ export function readGeometryRefFromModelXdb(
   }
   if (!geom) return null;
   const uid = geom[1]!.toUpperCase();
+  // Coordinates can be in scientific notation — the Magic Well's Center is
+  // <x>9.65297e-005</x> — so the number class has to allow e/E and a sign, or
+  // the match fails, the bbox comes back null and the whole model is dropped to
+  // its effect card with no mesh.
   const num = (tag: string, src: string): [number, number, number] | null => {
-    const m = src.match(new RegExp(`<${tag}>\\s*<x>([-\\d.]+)</x>\\s*<y>([-\\d.]+)</y>\\s*<z>([-\\d.]+)</z>`));
+    const n = '([-+.\\deE]+)';
+    const m = src.match(new RegExp(`<${tag}>\\s*<x>${n}</x>\\s*<y>${n}</y>\\s*<z>${n}</z>`));
     return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
   };
   const size = num('Size', geom[0]);
