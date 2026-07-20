@@ -291,12 +291,16 @@ after the terrain-projection work: still the same as before.
 
 Fixed and verified along the way, and these generalise far beyond this model:
 
-- the geometry container is read structurally instead of guessed at — mesh
-  count now matches the models' own `<NumMeshes>` for 2071 of 2076
+- the geometry container is read structurally instead of guessed at — the block
+  count matched the models' own `<NumMeshes>` for 2071 of 2076; the decoder now
+  goes one level finer and emits a mesh per material GROUP (a block holds
+  `<MaterialQuantities>[i]` groups), so the mesh count equals the model's total
+  material-slot count and lines up one-to-one with `<Materials>`
 - texture coordinates (16-bit fixed point over 2048) and the authored normals
   (bytes at +12, 128 for zero) are decoded
-- materials are per submesh via `<MaterialQuantities>`, blending follows
-  `<AlphaMode>`, and `<ProjectOnTerrain>` parts take the ground under them
+- materials are genuinely per submesh via `<MaterialQuantities>` — each group
+  takes the material at its own index — blending follows `<AlphaMode>`, and
+  `<ProjectOnTerrain>` parts take the ground under them
 - the duplicate opaque copy of a projected mesh is dropped (92 models have one)
 
 What is still not right is unknown. The model reads as a mine and sits on grass

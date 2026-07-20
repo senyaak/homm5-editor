@@ -4,8 +4,11 @@ Status: **textured meshes decoded**. Container grammar, vertex positions, the
 vertex-split remap, the triangle index buffer and **UVs** are decoded and
 verified (0 stray edges; UV edge-continuity confirmed). Normals are computed
 from geometry (the packed stored normals are imprecise). Textures (`.dds`,
-DXT1/3/5) decode via `src/dds.js`. Per-submesh material split remains open.
-This document records exactly what is known so the work is resumable and auditable.
+DXT1/3/5) decode via `src/dds.ts`. The per-submesh material split is decoded
+too: a mesh that uses several materials stores each material's slice as its own
+group, and each group is emitted as its own mesh, one-to-one with the model's
+material list (see §4). This document records exactly what is known so the work
+is resumable and auditable.
 
 Confidence: **[OK]** = verified byte-exact on real assets · **[~]** = strong
 heuristic, not yet byte-exact.
@@ -92,8 +95,19 @@ triangles reference renderVertex indices (0..492)
 Selecting the correct remap is unambiguous: it is the `u16` leaf whose every
 value is `< positionCount`. Reconstructed this way the mountain has **0 stray
 edges** (max edge ≈ 4.8 on a 24-unit mesh); the bushes likewise. Implemented in
-`src/geometry.js → extractMeshes()`; `node tools/mesh-to-obj.js` writes OBJ and
-prints the edge-length check.
+`src/geometry.ts → extractMeshesStructured()`; `node tools/mesh-to-obj.js`
+writes OBJ and prints the edge-length check.
+
+**Material groups.** A named mesh (one `<MeshNames>` entry) is a tag-1 block of
+the outer record, but a mesh that uses more than one material stores each
+material's slice as its **own** tag-1 group inside that block — so one block can
+hold several groups, `MaterialQuantities[i]` of them for mesh `i`. Each group is
+a full mesh node (its own positions/remap/indices as above) and is emitted as a
+separate mesh, which lines the meshes up one-to-one with the model's `<Materials>`
+list in order. Reading only a block's first group drops every extra slice: the
+crystal cavern's crate is one group and its crystals a second on the same mesh,
+so the crystals went missing until the decoder walked all groups
+(`decodeMeshGroup` per group).
 
 The file stores the whole payload **twice** (identical halves — LOD/copy);
 `extractMeshes` returns the de-duplicated set.
@@ -119,8 +133,6 @@ Reference chain: `Model.xdb` → `Material` → `Texture` → `*.tga.xdb` → `.
 
 ## 6. Still open
 
-* Per-submesh material assignment (`MeshNames` / `MaterialQuantities` in the .xdb)
-  when a mesh has more than one material.
 * Exact UV2 / tangent-basis decode (only base UV is needed for texturing).
 * Skeletons (`bin/Skeletons/`) and animations (`bin/animations/`) — Tier D, not
   needed for a map editor (a static bind pose suffices).
