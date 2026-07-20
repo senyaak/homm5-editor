@@ -293,6 +293,12 @@ function materialFor(part: GeomPart): THREE.Material {
   const tx = texLoader.load(part.tex);
   tx.wrapS = tx.wrapT = THREE.RepeatWrapping;
   tx.flipY = false;
+  // A diffuse texture holds sRGB-encoded colour. Left unmarked, three samples it
+  // as linear, so the shader over-brightens every texel and the deep browns wash
+  // out to a flat pale grey -- the Garrison wall looked untextured for exactly
+  // this reason. Tagging it sRGB makes the sampler decode to linear before
+  // lighting, and the render finally shows the wood.
+  tx.colorSpace = THREE.SRGBColorSpace;
   const m = new THREE.MeshLambertMaterial({ map: tx, side: THREE.DoubleSide });
   switch (part.alphaMode) {
     case 'AM_ALPHA_TEST':
@@ -920,6 +926,7 @@ function makeWaterMesh(V: number, cells: number[], level: number, tex: string | 
   if (tex) {
     const wt = new THREE.TextureLoader().load(tex);
     wt.wrapS = wt.wrapT = THREE.RepeatWrapping;
+    wt.colorSpace = THREE.SRGBColorSpace; // diffuse sheet: decode sRGB, see above
     wmat.map = wt;
   } else {
     wmat.color.setHex(0x0a2b2e); // fall back to the sheet's own dark tone
