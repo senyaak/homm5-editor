@@ -1,0 +1,191 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://homm5-editor/map.schema.json",
+  "title": "AdvMapDesc",
+  "description": "The map header (<AdvMapDesc>) — the settings behind the original's Adventure Map Properties dialog. Engine-defined and fixed: a map carries a subset of these fields, never foreign ones. Standard JSON Schema plus x- keywords for the game-specific bits (see src/schema.ts): x-registry names a dynamic roster (src/registry.ts), x-ref marks an href/picker, x-widget the control, x-tab the dialog tab, x-mapObjects a pick from the map's own objects, x-readonly a shown-not-edited field, x-advanced a tree-only deep structure.",
+  "type": "object",
+  "x-root": "AdvMapDesc",
+  "properties": {
+    "TileX": { "type": "integer", "title": "Width (tiles)", "x-readonly": true, "description": "Map width. Read-only: resizing means regenerating the terrain grid." },
+    "TileY": { "type": "integer", "title": "Height (tiles)", "x-readonly": true, "description": "Map height. Read-only, like TileX." },
+    "Version": { "type": "integer", "title": "Format version", "x-readonly": true, "description": "Map file format version — the engine's, not the author's." },
+    "CustomGameMap": { "type": "boolean", "title": "Custom game map" },
+
+    "HasSurface": { "type": "boolean", "title": "Has surface", "x-tab": "general" },
+    "HasUnderground": { "type": "boolean", "title": "Has underground level", "x-tab": "general", "description": "A second floor. Toggling generates/removes a whole terrain floor, so the dialog treats it as read-only for now." },
+    "InitialFloor": { "type": "integer", "title": "Initial floor", "minimum": 0, "maximum": 1 },
+
+    "GroundTerrainFileName": { "type": "string", "x-ref": true, "x-readonly": true, "title": "Surface terrain file" },
+    "UndergroundTerrainFileName": { "type": "string", "x-ref": true, "x-readonly": true, "title": "Underground terrain file" },
+
+    "NameFileRef": { "type": "string", "x-ref": true, "x-file": true, "x-widget": "textfile", "x-tab": "general", "title": "Map name", "description": "The visible map name, stored in a sibling UTF-16LE text file this points at." },
+    "DescriptionFileRef": { "type": "string", "x-ref": true, "x-file": true, "x-widget": "textfile", "x-tab": "general", "title": "Map description", "description": "The map description, in a sibling text file." },
+
+    "HeroMaxLevel": { "type": "integer", "title": "Restrict hero level to", "minimum": 0, "maximum": 999, "x-tab": "general", "x-widget": "herolevel", "description": "Highest hero level allowed. 0 = unrestricted." },
+
+    "AmbientLight": { "$ref": "#/$defs/AmbientLight", "title": "Ambient light (inline override)", "x-advanced": true, "description": "An optional inline copy of the whole lighting definition, overriding the GroundAmbientLights preset. Empty on most maps." },
+    "UndergroundAmbientLight": { "$ref": "#/$defs/AmbientLight", "title": "Underground ambient light (inline override)", "x-advanced": true },
+    "GroundAmbientLights": { "type": "array", "x-registry": "ambientLights", "x-ref": true, "x-widget": "dropdown", "x-tab": "general", "title": "Ambient light", "description": "The surface lighting preset (a reference into data/Lights/_(AmbientLight)/). This is what the General-tab dropdown sets.", "items": { "type": "string", "x-registry": "ambientLights", "x-ref": true } },
+    "UndergroundAmbientLights": { "type": "array", "x-registry": "ambientLights", "x-ref": true, "x-widget": "dropdown", "x-tab": "general", "title": "Underground ambient light", "items": { "type": "string", "x-registry": "ambientLights", "x-ref": true } },
+
+    "ReflectiveWater": { "type": "boolean", "title": "Reflective water", "x-tab": "general" },
+    "RandomMoons": { "type": "boolean", "title": "Random moons", "x-tab": "general" },
+    "moons": { "type": "array", "title": "Moons", "x-advanced": true, "items": { "$ref": "#/$defs/Moon" } },
+
+    "CustomTeams": { "type": "boolean", "title": "Custom teams", "x-tab": "teams", "description": "On: the per-player Team grid is honoured. Off: the engine assigns teams." },
+    "players": { "type": "array", "title": "Players", "x-tab": "players", "items": { "$ref": "#/$defs/Player" } },
+
+    "CustomMapGoal": { "type": "boolean", "title": "Custom map goal" },
+    "CustomGoal": { "type": "string", "x-ref": true, "x-file": true, "title": "Custom goal text", "description": "Overrides the goal taken from the first common primary objective." },
+    "ScenarioInformation": { "type": "array", "title": "Scenario information (lobby goal)", "x-advanced": true, "description": "Up to 8 entries shown on the scenario-selection screen.", "items": { "$ref": "#/$defs/Objective" } },
+    "Objectives": { "$ref": "#/$defs/Objectives", "title": "Victory / loss conditions", "x-advanced": true },
+
+    "Birds": { "type": "string", "x-ref": true, "title": "Birds" },
+    "BirdsAmount": { "type": "integer", "title": "Birds amount", "minimum": 0 },
+    "Weather": { "type": "string", "x-ref": true, "title": "Weather", "x-advanced": true },
+    "Wind": { "type": "string", "x-ref": true, "title": "Wind", "x-advanced": true },
+    "PreLight": { "type": "string", "x-ref": true, "title": "Prelight", "x-advanced": true },
+
+    "MapScript": { "type": "string", "x-ref": true, "x-widget": "script", "x-tab": "script", "title": "Map script", "description": "Reference to the Lua map script. Editing is Phase 5." },
+    "NewDayTrigger": { "$ref": "#/$defs/Trigger", "title": "New-day trigger", "x-advanced": true },
+    "WarFogEnterTrigger": { "$ref": "#/$defs/Trigger", "title": "War-fog-enter trigger", "x-advanced": true },
+    "PWLTutorialHintTrigger": { "type": "string", "title": "PWL tutorial hint trigger", "x-advanced": true },
+
+    "BorderSize": { "type": "integer", "title": "Border size", "minimum": 0 },
+
+    "spellIDs": { "type": "array", "x-registry": "spells", "x-widget": "checklist", "x-tab": "spells", "title": "Enabled spells", "description": "The spells available on this map. Empty = none.", "items": { "type": "string", "x-registry": "spells" } },
+    "artifactIDs": { "type": "array", "x-registry": "artifacts", "x-widget": "checklist", "x-tab": "artifacts", "title": "Enabled artifacts", "items": { "type": "string", "x-registry": "artifacts" } },
+    "isUntransferable": { "type": "array", "x-registry": "artifacts", "x-widget": "checklist", "x-tab": "artifacts", "title": "Untransferable artifacts", "description": "Artifacts that cannot be carried between campaign missions.", "items": { "type": "string", "x-registry": "artifacts" } },
+    "disabledArtifactSets": { "type": "array", "x-tab": "artifacts", "title": "Disabled artifact sets", "description": "Artifact set bonuses turned off. Universe = the set roster (not yet a registry).", "items": { "type": "string" } },
+
+    "AvailableHeroes": { "type": "array", "x-registry": "heroes", "x-ref": true, "x-widget": "checklist", "x-tab": "heroes", "title": "Available heroes", "description": "Heroes that may appear. Empty = none checked.", "items": { "type": "string", "x-registry": "heroes", "x-ref": true } },
+    "AdditionallyRollableHeroes": { "type": "array", "x-registry": "heroes", "x-ref": true, "x-widget": "checklist", "title": "Additionally rollable heroes", "description": "Scenario heroes that should still be rollable.", "items": { "type": "string", "x-registry": "heroes", "x-ref": true } },
+
+    "MapRumours": { "type": "array", "x-tab": "rumours", "title": "Rumours", "items": { "$ref": "#/$defs/Rumour" } },
+
+    "Music": { "type": "string", "x-ref": true, "title": "Adventure music", "description": "Adventure-map music (not combat)." },
+    "MoonCalendar": { "type": "string", "x-ref": true, "title": "Moon calendar", "x-advanced": true },
+    "MoonCalendarModifications": { "$ref": "#/$defs/MoonCalendarModifications", "title": "Moon calendar modifications", "x-advanced": true },
+    "ImportantArtifacts": { "$ref": "#/$defs/ImportantArtifacts", "title": "Important artifacts", "x-advanced": true },
+
+    "thumbnailImages": { "type": "array", "title": "Thumbnail images", "x-advanced": true, "items": { "type": "string", "x-ref": true } },
+    "PWLPicture": { "type": "string", "x-ref": true, "title": "PWL picture", "x-advanced": true },
+    "LoadingScreenSound": { "type": "string", "x-ref": true, "title": "Loading-screen sound", "x-advanced": true },
+    "StartScene": { "type": "string", "x-ref": true, "title": "Start scene", "x-advanced": true },
+    "BanTransparency": { "type": "boolean", "title": "Ban transparency" },
+
+    "sRMGProps": { "$ref": "#/$defs/sRMGProps", "title": "Random-map-generator settings", "x-advanced": true },
+    "dialogs": { "type": "array", "title": "Dialogs", "x-advanced": true, "items": { "type": "object" } },
+    "RacesRandomGroups": { "type": "array", "title": "Races random groups", "x-advanced": true, "items": { "type": "object" } },
+    "Resources": { "$ref": "#/$defs/Resources", "title": "Resources", "x-advanced": true },
+    "tiles": { "type": "array", "title": "Terrain tile set", "x-advanced": true, "items": { "type": "string", "x-ref": true } },
+    "regions": { "type": "array", "title": "Regions", "x-advanced": true, "items": { "type": "object" } }
+  },
+  "$defs": {
+    "Player": {
+      "type": "object",
+      "title": "Player",
+      "properties": {
+        "Race": { "type": "string", "x-registry": "races", "x-widget": "dropdown", "x-tab": "players", "title": "Race" },
+        "Colour": { "type": "string", "title": "Colour", "x-readonly": true, "description": "The slot's fixed player colour (PCOLOR_*)." },
+        "MainTown": { "type": "string", "x-ref": true, "x-mapObjects": "town", "x-widget": "dropdown", "x-tab": "players", "title": "Main town" },
+        "MainHero": { "type": "string", "x-ref": true, "x-mapObjects": "hero", "x-widget": "dropdown", "x-tab": "players", "title": "Main hero" },
+        "StartHero": { "type": "string", "x-ref": true, "x-mapObjects": "hero", "x-widget": "dropdown", "title": "Start hero" },
+        "HeroInTown": { "type": "boolean", "x-tab": "players", "title": "Generate hero in town" },
+        "CanBeHumanPlayer": { "type": "boolean", "x-tab": "players", "title": "Human playable" },
+        "CanBeComputerPlayer": { "type": "boolean", "x-tab": "players", "title": "Computer playable" },
+        "ActivePlayer": { "type": "boolean", "title": "Active player" },
+        "Team": { "type": "integer", "minimum": 0, "maximum": 8, "x-tab": "teams", "title": "Team", "description": "0 = no team; 1-8 join that team when CustomTeams is on." },
+        "Behaviour": { "type": "string", "title": "AI behaviour", "description": "PB_* AI behaviour preset." },
+        "CaptureAbility": { "type": "integer", "title": "Capture ability" },
+        "DefaultBonus": { "type": "string", "title": "Default bonus", "description": "PLAYER_BONUS_* starting bonus." },
+        "CanChangeBonus": { "type": "boolean", "title": "Can change bonus" },
+        "CanBeDisabled": { "type": "boolean", "title": "Can be disabled" },
+        "ReserveHeroes": { "type": "array", "x-registry": "heroes", "x-ref": true, "x-widget": "checklist", "x-tab": "players", "title": "Reserve heroes", "items": { "type": "string", "x-registry": "heroes", "x-ref": true } },
+        "TavernFilter": { "$ref": "#/$defs/TavernFilter", "title": "Tavern filter" },
+        "VictoryMessageRef": { "type": "string", "x-ref": true, "x-file": true, "title": "Victory message" },
+        "DefeatMessageRef": { "type": "string", "x-ref": true, "x-file": true, "title": "Defeat message" },
+        "AddHeroTrigger": { "$ref": "#/$defs/Trigger", "title": "Add-hero trigger", "x-advanced": true },
+        "RemoveHeroTrigger": { "$ref": "#/$defs/Trigger", "title": "Remove-hero trigger", "x-advanced": true },
+        "Attractors": { "type": "array", "title": "Attractors", "x-advanced": true, "items": { "type": "object" } },
+        "DenyFogOfWarForAllies": { "type": "array", "title": "Deny fog of war for allies", "x-advanced": true, "items": { "type": "object" } }
+      }
+    },
+    "TavernFilter": {
+      "type": "object",
+      "title": "Tavern filter",
+      "properties": {
+        "BannedHeroesRaces": { "type": "array", "x-registry": "races", "x-widget": "checklist", "title": "Banned hero races", "items": { "type": "string", "x-registry": "races" } },
+        "BannedHeroes": { "type": "array", "x-registry": "heroes", "x-widget": "checklist", "title": "Banned heroes", "description": "Banned even by script name.", "items": { "type": "string", "x-registry": "heroes" } },
+        "AllowedHeroes": { "type": "array", "x-registry": "heroes", "x-ref": true, "x-widget": "checklist", "title": "Allowed heroes", "description": "Allowed even if their race is banned.", "items": { "type": "string", "x-registry": "heroes", "x-ref": true } }
+      }
+    },
+    "Rumour": {
+      "type": "object",
+      "title": "Rumour",
+      "properties": {
+        "Text": { "type": "string", "x-ref": true, "x-file": true, "title": "Text" },
+        "Weight": { "type": "integer", "title": "Weight", "minimum": 0, "description": "Relative frequency." },
+        "TownType": { "type": "string", "x-registry": "races", "x-widget": "dropdown", "title": "Town type" }
+      }
+    },
+    "Moon": {
+      "type": "object",
+      "title": "Moon",
+      "properties": {
+        "State": { "type": "integer", "title": "State" },
+        "RotationRate": { "type": "number", "title": "Rotation rate" }
+      }
+    },
+    "Trigger": {
+      "type": "object",
+      "title": "Trigger",
+      "description": "A Lua hook: Action.FunctionName names the script function.",
+      "x-advanced": true,
+      "properties": {
+        "Action": { "type": "object", "properties": { "FunctionName": { "type": "string", "title": "Function name" } } }
+      }
+    },
+    "MoonCalendarModifications": {
+      "type": "object",
+      "properties": { "BlockMonstersWeeks": { "type": "boolean", "title": "Block monster weeks" } }
+    },
+    "ImportantArtifacts": {
+      "type": "object",
+      "description": "PreservingArtifacts fall from a hero on a lost battle instead of being lost, so they stay on the map.",
+      "properties": { "PreservingArtifacts": { "type": "array", "x-registry": "artifacts", "x-widget": "checklist", "title": "Preserving artifacts", "items": { "type": "string", "x-registry": "artifacts" } } }
+    },
+    "Resources": {
+      "type": "object",
+      "x-advanced": true,
+      "properties": {
+        "PointLights": { "type": "array", "title": "Point lights", "items": { "type": "object" } },
+        "SavesFilenames": { "type": "array", "title": "Save filenames", "items": { "type": "string" } }
+      }
+    },
+    "AmbientLight": {
+      "type": "object",
+      "title": "Ambient light definition",
+      "description": "The full inline lighting struct (colors, sky, fog, sky dome). Rarely used as an override; normally a preset ref in GroundAmbientLights is used instead. Left generic; the tree edits its leaves.",
+      "x-advanced": true
+    },
+    "Objective": {
+      "type": "object",
+      "title": "Objective",
+      "description": "A scenario/objective entry (Kind = OBJECTIVE_KIND_*, an Award, target glance, triggers). Deep structure; the tree edits it generically until a typed editor is written (Phase 4).",
+      "x-advanced": true
+    },
+    "Objectives": {
+      "type": "object",
+      "title": "Objectives",
+      "description": "Victory/loss conditions: Primary and Secondary, each split Common vs PlayerSpecific[0..7]. Deep structure, tree-generic for now (Phase 4).",
+      "x-advanced": true
+    },
+    "sRMGProps": {
+      "type": "object",
+      "title": "Random map generator settings",
+      "description": "RMGmap, InitialParams (MapSize, WaterAmount, MonsterLevel, per-player race, multipliers, ...). Tree-generic for now.",
+      "x-advanced": true
+    }
+  }
+}
