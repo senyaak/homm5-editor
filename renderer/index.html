@@ -668,8 +668,8 @@
         <button id="on-close" title="close (Esc)">✕</button>
       </div>
       <div class="mp-body on-body">
-        <label class="on-row"><span>Type</span><input id="on-type" type="text" readonly></label>
-        <label class="on-row"><span>Name</span><input id="on-name" type="text" spellcheck="false" autocomplete="off"></label>
+        <label class="on-row" id="on-typerow"><span>Type</span><input id="on-type" type="text" readonly></label>
+        <label class="on-row"><span id="on-namelabel">Name</span><input id="on-name" type="text" spellcheck="false" autocomplete="off"></label>
         <div id="on-err" class="on-err"></div>
       </div>
       <div class="de-foot">
@@ -690,6 +690,7 @@
       <div id="ee-note" class="ee-note"></div>
       <div class="mp-body ee-body"><div id="ee-form"></div></div>
       <div class="de-foot">
+        <button id="ee-copy" class="ghost" style="margin-right:auto;display:none">Save a copy in map</button>
         <button id="ee-done">Done</button>
       </div>
     </div>

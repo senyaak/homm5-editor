@@ -2126,7 +2126,7 @@ function leafControl(field: FieldSchema, value: string, commit: (v: string) => v
   if (field['x-nameRef']) return nameRefInput(field['x-nameRef'], value, commit);
   // A text-file reference: show the path, and an Edit button that opens the
   // referenced file in the text editor (the original's "Edit" on such a row).
-  if (field['x-file']) return fileRefControl(value, field.title || '');
+  if (field['x-file']) return fileRefControl(value, field.title || '', commit);
   // A reference to a whole object (a single AdvMapBirds/Wind/AmbientLight…):
   // show the ref, and offer the type-constrained picker + New. Arrays of refs
   // stay checklists (handled by fillArray), so only single refs come here.
@@ -2279,15 +2279,24 @@ async function setMapPath(path: TreePath, value: string): Promise<void> {
 // behaviour. The file is its own document, written straight to disk on Save.
 
 /** A ref row's control: the path, then an ✎ button opening the text editor. */
-function fileRefControl(href: string, label: string): HTMLElement {
+function fileRefControl(href: string, label: string, commit: (v: string) => void): HTMLElement {
   const wrap = document.createElement('span'); wrap.style.display = 'contents';
-  const ro = document.createElement('span'); ro.className = 'ro';
-  ro.textContent = href || '(none)'; ro.title = href;
-  const edit = document.createElement('button');
-  edit.className = 'mt-x'; edit.textContent = '✎'; edit.title = 'edit text'; edit.style.flex = '0 0 auto';
-  edit.disabled = !href;
-  edit.addEventListener('click', () => { if (href) void openTextEdit(href, label || href); });
-  wrap.append(ro, edit);
+  const box = document.createElement('span'); box.className = 'mt-ref';
+  const rv = document.createElement('span'); rv.className = 'rv';
+  const edit = document.createElement('button'); edit.textContent = '✎'; edit.title = 'edit text';
+  const show = (v: string): void => { rv.textContent = v || '(none)'; rv.title = v; edit.disabled = !v; };
+  show(href);
+  const browse = document.createElement('button'); browse.textContent = '…'; browse.title = 'pick an existing text file';
+  browse.addEventListener('click', () => {
+    void window.editor.pickText().then((r) => { if (r.href) { commit(r.href); show(r.href); } });
+  });
+  const nw = document.createElement('button'); nw.textContent = 'New'; nw.title = 'create a new text file';
+  nw.addEventListener('click', () => {
+    void createText().then((v) => { if (v != null) { commit(v); show(v); void openTextEdit(v, label || v); } });
+  });
+  edit.addEventListener('click', () => { if (rv.title) void openTextEdit(rv.title, label || rv.title); });
+  box.append(rv, browse, nw, edit);
+  wrap.appendChild(box);
   return wrap;
 }
 
@@ -2415,28 +2424,49 @@ $('op-close').onclick = () => closePick(false);
 pickDialog().addEventListener('click', (e) => { if (e.target === pickDialog()) closePick(false); });
 pickDialog().addEventListener('cancel', () => closePick(false)); // Esc
 
-// A create session, mirroring the picker.
-let creating: { className: string; resolve: (v: string | null) => void } | null = null;
+// A create session. `submit` turns the entered name into the href the ref
+// should store (creating a file as a side effect); it throws to show an error
+// and keep the dialog open. The picker and this share the #objnew dialog.
+let creating: { submit: (name: string) => Promise<string>; resolve: (v: string | null) => void } | null = null;
 
-/** Open "Create New <className> Object". Resolves the new ref href, or null. */
-function createEntity(className: string): Promise<string | null> {
-  $('on-title').textContent = `Create New <${className}> Object`;
-  $input('on-type').value = className;
+/** Open the create dialog. `typeLabel` shows a fixed Type row (entities) or is
+ *  hidden (a plain file). Resolves the created href, or null if cancelled. */
+function openCreate(title: string, typeLabel: string | null, nameLabel: string, submit: (name: string) => Promise<string>): Promise<string | null> {
+  $('on-title').textContent = title;
+  $('on-typerow').style.display = typeLabel ? '' : 'none';
+  if (typeLabel) $input('on-type').value = typeLabel;
+  $('on-namelabel').textContent = nameLabel;
   const name = $input('on-name');
   name.value = '';
   $('on-err').textContent = '';
   newDialog().showModal();
   name.focus();
-  return new Promise<string | null>((resolve) => { creating = { className, resolve }; });
+  return new Promise<string | null>((resolve) => { creating = { submit, resolve }; });
+}
+
+/** Create a new entity object of a class (writes Name.(Class).xdb in the map). */
+function createEntity(className: string): Promise<string | null> {
+  return openCreate(`Create New <${className}> Object`, className, 'Name',
+    (name) => window.editor.newEntity({ className, name }).then((r) => { classCache.delete(className); return r.href; }));
+}
+
+/** Name a new text file for a text ref and create it empty at once (so the ref
+ *  is never left dangling), returning its basename href. The editor opens next
+ *  for content. */
+function createText(): Promise<string | null> {
+  return openCreate('New text file', null, 'File name', (name) => {
+    const href = /\.txt$/i.test(name) ? name : `${name}.txt`;
+    return window.editor.writeFile({ href, text: '' }).then(() => href);
+  });
 }
 
 function submitNew(): void {
   if (!creating) return;
   const name = $input('on-name').value.trim();
   if (!name) { $('on-err').textContent = 'name is required'; return; }
-  const { className, resolve } = creating;
-  void window.editor.newEntity({ className, name })
-    .then((r) => { classCache.delete(className); creating = null; newDialog().close(); resolve(r.href); })
+  const { submit, resolve } = creating;
+  void submit(name)
+    .then((href) => { creating = null; newDialog().close(); resolve(href); })
     .catch((err: unknown) => { $('on-err').textContent = err instanceof Error ? err.message : String(err); });
 }
 function cancelNew(): void { const c = creating; creating = null; newDialog().close(); if (c) c.resolve(null); }
@@ -2471,7 +2501,7 @@ function entityRefControl(className: string, value: string, commit: (v: string) 
     nw.addEventListener('click', () => { void createEntity(className).then(set); });
     box.appendChild(nw);
   }
-  edit.addEventListener('click', () => { if (rv.title) void openEntityEdit(rv.title, className); });
+  edit.addEventListener('click', () => { if (rv.title) void openEntityEdit(rv.title, className, set); });
   box.appendChild(edit);
   wrap.appendChild(box);
   return wrap;
@@ -2491,21 +2521,33 @@ const entDialog = (): HTMLDialogElement => {
   return el;
 };
 let eeHref = '';
+let eeRepoint: ((href: string) => void) | null = null;
+let eeClassName = '';
 const errMsg = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 
-async function openEntityEdit(href: string, className: string): Promise<void> {
+/** Open the entity editor for `href`. `onRepoint` (from the ref control) lets a
+ *  read-only library entity be copied into the map and the ref re-pointed. */
+async function openEntityEdit(href: string, className: string, onRepoint?: (href: string) => void): Promise<void> {
   // Only one entity dialog at a time — a nested ref's Edit would clash with the
   // single <dialog>. Such refs are rare inside these documents; ignore the nest.
   if (entDialog().open) return;
+  eeRepoint = onRepoint ?? null;
+  eeClassName = className;
+  entDialog().showModal();
+  await loadEntity(href);
+}
+
+/** Read `href` and (re)build the form; used on open and after copy-to-map. */
+async function loadEntity(href: string): Promise<void> {
   eeHref = href;
-  $('ee-title').textContent = `${className} — ${href.split('#')[0]}`;
+  $('ee-title').textContent = `${eeClassName} — ${href.split('#')[0]}`;
   const note = $('ee-note'); note.textContent = '';
   const host = $('ee-form'); host.innerHTML = '<div class="ph">loading…</div>';
-  entDialog().showModal();
+  $('ee-copy').style.display = 'none';
   let res;
   try { res = await window.editor.readEntity(href); }
   catch (e) { host.innerHTML = ''; note.textContent = 'could not read: ' + errMsg(e); return; }
-  if (eeHref !== href) return; // a later open won the race
+  if (eeHref !== href) return; // a later load won the race
   const def = mapSchema.$defs?.[res.className];
   const rootField = def ? deref(mapSchema, def) : inferField(res.tree as TreeData);
   const fs = document.createElement('fieldset');
@@ -2514,7 +2556,20 @@ async function openEntityEdit(href: string, className: string): Promise<void> {
   fs.disabled = !res.editable;
   fillEntity(fs, rootField, res.tree as TreeData, []);
   host.innerHTML = ''; host.appendChild(fs);
-  note.textContent = res.editable ? '' : 'Read-only — from the shipped library. Use “New” to make an editable copy in the map.';
+  // A library entity is read-only; offer to copy it into the map to edit — but
+  // only when the ref control gave us a way to re-point at the copy.
+  note.textContent = res.editable ? '' : 'Read-only — from the shipped library. Save a copy in the map to edit it.';
+  $('ee-copy').style.display = !res.editable && eeRepoint ? '' : 'none';
+}
+
+/** Copy the shipped-library entity into the map and switch to editing the copy. */
+async function copyEntityToMap(): Promise<void> {
+  try {
+    const r = await window.editor.copyEntityToMap(eeHref);
+    if (eeRepoint) eeRepoint(r.href);
+    markDirty(true);
+    await loadEntity(r.href);
+  } catch (e) { $('ee-note').textContent = 'copy failed: ' + errMsg(e); }
 }
 
 /** Commit one entity field to disk, then reflect dirty. */
@@ -2574,6 +2629,7 @@ function entNode(name: string, field: FieldSchema, data: TreeData | undefined, p
 
 $('ee-done').onclick = () => entDialog().close();
 $('ee-close').onclick = () => entDialog().close();
+$('ee-copy').onclick = () => void copyEntityToMap();
 entDialog().addEventListener('click', (e) => { if (e.target === entDialog()) entDialog().close(); });
 
 $('maptreebtn').onclick = () => { if (mapTreeOpen()) closeMapTree(); else openMapTree(); };

@@ -175,6 +175,14 @@ export interface EntityReadResult { className: string; editable: boolean; tree: 
 /** Payload of `entity:set-path` — set one field on a map-local entity document. */
 export interface EntitySetPathPayload { href: string; path: TreePath; value: string; }
 
+/** Result of `map:pick-text` — the basename href of the chosen (or copied-in)
+ *  text file, or '' if the OS picker was cancelled. */
+export interface PickTextResult { href: string; }
+/** Payload of `entity:copy-to-map` — the library entity href to copy. */
+export interface EntityCopyPayload { href: string; }
+/** Result of `entity:copy-to-map` — the href of the editable map-local copy. */
+export interface EntityCopyResult { href: string; }
+
 /** Payload of `map:names` — which kind of in-map name to gather. */
 export interface NamesPayload { kind: string; }
 /** Result of `map:names` — names defined in the map, for x-nameRef hints. */
@@ -443,6 +451,8 @@ export interface EditorApi {
   newEntity(p: NewEntityPayload): Promise<NewEntityResult>;
   readEntity(href: string): Promise<EntityReadResult>;
   setEntityPath(p: EntitySetPathPayload): Promise<ObjectEditResult>;
+  pickText(): Promise<PickTextResult>;
+  copyEntityToMap(href: string): Promise<EntityCopyResult>;
   names(kind: string): Promise<NamesResult>;
   mapTree(): Promise<MapTreeResult>;
   setMapPath(p: SetPathPayload): Promise<ObjectEditResult>;

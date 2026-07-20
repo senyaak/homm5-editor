@@ -15,7 +15,7 @@ import { app, BrowserWindow, ipcMain, dialog, screen } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, basename, relative, sep } from 'node:path';
-import { readFileSync, writeFileSync, existsSync, readdirSync, statSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, readdirSync, statSync, mkdirSync, copyFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { buildScene, findAssetRoot, listTiles, splatFor, pngDataUri } from '../src/scene.ts';
 import { listPlaceable, findEditorRoot, iconPathFor, readIconFile } from '../src/objects.ts';
@@ -40,7 +40,7 @@ import type {
   MapsListResult, MapListEntry, MapLoadResult, MoveObjectPayload, MoveObjectResult,
   RotateObjectPayload, RemoveObjectPayload, ObjectEditResult, ObjectPropsResult, SetPropPayload,
   MapPropsResult, SetMapPropPayload, RosterPayload, RosterResult, OfClassPayload, NewEntityPayload, NewEntityResult,
-  EntityReadPayload, EntityReadResult, EntitySetPathPayload,
+  EntityReadPayload, EntityReadResult, EntitySetPathPayload, PickTextResult, EntityCopyPayload, EntityCopyResult,
   MapTreeResult, SetPathPayload, AddItemPayload, RemoveItemPayload2, SetListPayload, NamesPayload, NamesResult,
   ReadFilePayload, ReadFileResult, WriteFilePayload,
   ObjectCatalogResult, IconPayload, IconResult, AddObjectPayload, AddObjectResult,
@@ -596,6 +596,42 @@ ipcMain.handle('entity:set-path', async (_e: IpcMainInvokeEvent, p: EntitySetPat
   writeFileSync(r.file, serialize(doc), 'utf8');
   session.watch.resync();
   return { ok: true };
+});
+
+// --- IPC: pick an existing text file for a text ref (the "…" on a txt row) ---
+// A native OS open-dialog, starting in the map folder. A file chosen from
+// elsewhere is copied in beside map.xdb, since a text ref stores a basename.
+ipcMain.handle('map:pick-text', async (): Promise<PickTextResult> => {
+  if (!session) throw new Error('no map loaded');
+  const opts = {
+    title: 'Select text file',
+    defaultPath: session.mapDir,
+    properties: ['openFile' as const],
+    filters: [{ name: 'Text', extensions: ['txt'] }, { name: 'All files', extensions: ['*'] }],
+  };
+  const r = await (win ? dialog.showOpenDialog(win, opts) : dialog.showOpenDialog(opts));
+  const src = r.canceled ? undefined : r.filePaths[0];
+  if (!src) return { href: '' };
+  const dest = join(session.mapDir, basename(src));
+  if (src !== dest) { copyFileSync(src, dest); session.watch.resync(); }
+  return { href: basename(src) };
+});
+
+// --- IPC: copy a shipped-library entity into the map so it can be edited ---
+// The library is read-only; this makes an editable map-local twin and hands
+// back the href the ref should now point at (keeping the original xpointer).
+ipcMain.handle('entity:copy-to-map', async (_e: IpcMainInvokeEvent, { href }: EntityCopyPayload): Promise<EntityCopyResult> => {
+  if (!session) throw new Error('no map loaded');
+  const r = resolveEntityFile(session, href);
+  if (!r || !existsSync(r.file)) throw new Error(`entity not found: ${href}`);
+  if (r.editable) return { href }; // already map-local
+  const base = basename(r.file);
+  const dest = join(session.mapDir, base);
+  if (existsSync(dest)) throw new Error(`${base} already exists in the map folder`);
+  copyFileSync(r.file, dest);
+  session.watch.resync();
+  const ptr = href.includes('#') ? href.slice(href.indexOf('#')) : '';
+  return { href: base + ptr };
 });
 
 // --- IPC: the whole <AdvMapDesc> as a tree, and path-based edits on it ---
