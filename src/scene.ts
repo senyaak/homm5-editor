@@ -107,6 +107,20 @@ export interface GeomPart {
    * ground case, and opacity separates the two with a wide margin.
    */
   terrainProjected: boolean;
+  /**
+   * Additive blending: the material sets `<AddPlaced>true`. Energy and glow
+   * effects — a portal's Spiral, spell auras — are drawn this way, their texels
+   * ADDED to the background so they read as light rather than paint. Blended
+   * with ordinary alpha they come out as dark muddy discs instead of glowing.
+   */
+  additive: boolean;
+  /**
+   * Self-illuminated: the material's `<LightingMode>` is `L_SELFILLUM`, so the
+   * part emits its own colour and scene lighting must not darken it. Effect
+   * models are full-bright; lighting a portal's runes drops them into shadow the
+   * game never shows.
+   */
+  selfIllum: boolean;
 }
 
 /** One decoded mesh, ready for the renderer. Arrays are plain JSON. */
@@ -272,6 +286,86 @@ function particleBound(xml: string): [number, number, number] | null {
   return [b.readFloatLE(12), b.readFloatLE(16), b.readFloatLE(20)];
 }
 
+/** Read a data-root-relative asset as text, or null if it is missing. */
+function readAsset(assetRoot: string, rel: string): string | null {
+  try {
+    const p = join(assetRoot, rel);
+    return existsSync(p) ? readFileSync(p, 'utf8') : null;
+  } catch { return null; }
+}
+
+/**
+ * Follow one href from a file, honouring the inline form.
+ *
+ * `href="#n:inline(ParticleInstance)"` means the thing is written INSIDE the
+ * file that points at it — the same convention map.xdb uses for its objects.
+ * Treating that as a path is why most of these chains dead-ended: 249 of the
+ * 307 effect-only objects failed at exactly this step. Returns the resolved
+ * document and the folder it lives in, for the next href down the chain.
+ */
+function followHref(
+  assetRoot: string, xml: string, dir: string, href: string,
+): { xml: string; dir: string } | null {
+  if (href.startsWith('#')) return { xml, dir };
+  const rel = resolveHref(dir, href);
+  const doc = readAsset(assetRoot, rel);
+  return doc ? { xml: doc, dir: dirOf(rel) } : null;
+}
+
+/** Parse a `<tag><x><y><z></tag>` vector; supports scientific notation. */
+function readVec3(xml: string, tag: string): [number, number, number] | null {
+  const n = '([-+.\\deE]+)';
+  const m = xml.match(new RegExp(`<${tag}>\\s*<x>${n}</x>\\s*<y>${n}</y>\\s*<z>${n}</z>`));
+  return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
+}
+
+/** Parse a `<tag><x><y><z><w></tag>` quaternion; supports scientific notation. */
+function readQuat(xml: string, tag: string): [number, number, number, number] | null {
+  const n = '([-+.\\deE]+)';
+  const m = xml.match(new RegExp(`<${tag}>\\s*<x>${n}</x>\\s*<y>${n}</y>\\s*<z>${n}</z>\\s*<w>${n}</w>`));
+  return m ? [Number(m[1]), Number(m[2]), Number(m[3]), Number(m[4])] : null;
+}
+
+/**
+ * Rotate, scale and translate a geom in place by a ModelInstance transform.
+ * Positions take the full transform; normals take only the rotation.
+ */
+function transformGeom(
+  g: GeomData, pos: [number, number, number], q: [number, number, number, number], scale: number,
+): void {
+  const [qx, qy, qz, qw] = q;
+  // v' = v + 2·qw·(q×v) + 2·(q×(q×v)) — the standard quaternion-rotates-vector form.
+  const rot = (x: number, y: number, z: number): [number, number, number] => {
+    const tx = 2 * (qy * z - qz * y), ty = 2 * (qz * x - qx * z), tz = 2 * (qx * y - qy * x);
+    return [
+      x + qw * tx + (qy * tz - qz * ty),
+      y + qw * ty + (qz * tx - qx * tz),
+      z + qw * tz + (qx * ty - qy * tx),
+    ];
+  };
+  for (let i = 0; i < g.pos.length; i += 3) {
+    const [x, y, z] = rot(g.pos[i]! * scale, g.pos[i + 1]! * scale, g.pos[i + 2]! * scale);
+    g.pos[i] = x + pos[0]; g.pos[i + 1] = y + pos[1]; g.pos[i + 2] = z + pos[2];
+  }
+  if (g.nrm) for (let i = 0; i < g.nrm.length; i += 3) {
+    const [x, y, z] = rot(g.nrm[i]!, g.nrm[i + 1]!, g.nrm[i + 2]!);
+    g.nrm[i] = x; g.nrm[i + 1] = y; g.nrm[i + 2] = z;
+  }
+}
+
+/** Append every part of `add` onto `into`, offsetting vertex indices. */
+function mergeGeom(into: GeomData, add: GeomData): void {
+  const base = into.pos.length / 3;
+  const idxBase = into.idx.length;
+  for (const v of add.pos) into.pos.push(v);
+  // A geom counts as textured only if EVERY part carries UVs, so a part without
+  // them drops the whole geom to untextured rather than leaving a ragged array.
+  if (into.uv && add.uv) for (const v of add.uv) into.uv.push(v); else into.uv = null;
+  if (into.nrm && add.nrm) for (const v of add.nrm) into.nrm.push(v); else into.nrm = null;
+  for (const i of add.idx) into.idx.push(i + base);
+  for (const p of add.parts) into.parts.push({ ...p, start: p.start + idxBase });
+}
+
 /**
  * A stand-in card for an object whose only content is an effect.
  *
@@ -281,26 +375,7 @@ function particleBound(xml: string): [number, number, number] | null {
 function effectGeom(
   sharedXml: string, sharedHref: string, assetRoot: string, texSize: number,
 ): GeomData | null {
-  const read = (rel: string): string | null => {
-    try {
-      const p = join(assetRoot, rel);
-      return existsSync(p) ? readFileSync(p, 'utf8') : null;
-    } catch { return null; }
-  };
-  /**
-   * Follow one href from a file, honouring the inline form.
-   *
-   * `href="#n:inline(ParticleInstance)"` means the thing is written INSIDE the
-   * file that points at it — the same convention map.xdb uses for its objects.
-   * Treating that as a path is why most of these chains dead-ended: 249 of the
-   * 307 effect-only objects failed at exactly this step.
-   */
-  const follow = (xml: string, dir: string, href: string): { xml: string; dir: string } | null => {
-    if (href.startsWith('#')) return { xml, dir };
-    const rel = resolveHref(dir, href);
-    const doc = read(rel);
-    return doc ? { xml: doc, dir: dirOf(rel) } : null;
-  };
+  const follow = (xml: string, dir: string, href: string) => followHref(assetRoot, xml, dir, href);
 
   const effHref = sharedXml.match(/<Effect href="([^"]+)"/)?.[1];
   if (!effHref) return null;
@@ -340,28 +415,78 @@ function effectGeom(
     uv: [0, 1, 1, 1, 1, 0, 0, 0],
     nrm: [0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0],
     idx: [0, 1, 2, 0, 2, 3],
-    parts: [{ start: 0, count: 6, tex: t.uri, alphaMode: 'AM_TRANSPARENT', projectOnTerrain: false, flat: false, opaque: false, terrainProjected: false }],
+    // A particle stand-in is a glow: draw it additive and full-bright so it
+    // reads as light, the way the game's particles do, not as a dark grey decal.
+    parts: [{ start: 0, count: 6, tex: t.uri, alphaMode: 'AM_TRANSPARENT', projectOnTerrain: false, flat: false, opaque: false, terrainProjected: false, additive: true, selfIllum: true }],
   };
 }
 
 /**
- * Append an effect card to a model that already has geometry.
+ * Decode a Model xdb into a standalone geom (its own meshes, materials and
+ * textures), or null when it has no usable geometry. Shared by an object's own
+ * model and by the models an effect layers on top of it — the same decode, just
+ * a different source of the href.
  *
- * The card becomes one more part, so it keeps its own texture and its own
- * blending without disturbing the mesh's.
+ * @param modelHref the model's data-root-relative href, for resolving the
+ *   geometry and material references written relative to the model's folder
  */
-function appendCard(into: GeomData, card: GeomData): void {
-  const base = into.pos.length / 3;
-  into.pos.push(...card.pos);
-  // A geom is only textured if EVERY part has coordinates, so a card joining a
-  // model without them cannot introduce a half-filled array.
-  if (into.uv && card.uv) into.uv.push(...card.uv);
-  else into.uv = null;
-  if (into.nrm && card.nrm) into.nrm.push(...card.nrm);
-  else into.nrm = null;
-  const start = into.idx.length;
-  for (const i of card.idx) into.idx.push(i + base);
-  into.parts.push({ ...card.parts[0]!, start, count: card.idx.length });
+function decodeModelGeom(
+  model: string, modelHref: string, assetRoot: string, readXdb: ReadXdb, texSize: number,
+): GeomData | null {
+  const modelDir = dirOf(resolveHref('', modelHref));
+  const readRel: ReadXdb = (href) =>
+    readXdb(href.startsWith('/') || href.startsWith('#') ? href : resolveHref(modelDir, href));
+  const ref = readGeometryRefFromModelXdb(model, readRel);
+  if (!ref) return null;
+  const binPath = join(assetRoot, 'bin', 'Geometries', ref.uid);
+  if (!existsSync(binPath)) return null;
+  const meshes = extractMeshes(readFileSync(binPath), ref.bbox);
+  if (!meshes.length) return null;
+  const tmp: GeomData[] = [];
+  const i = addGeom(tmp, meshes, model, modelHref, assetRoot, texSize);
+  return i >= 0 ? tmp[i]! : null;
+}
+
+/**
+ * The models an effect layers on the object, decoded and placed by their own
+ * ModelInstance transforms.
+ *
+ * An effect is not only particles: its `<Models>` list carries real geometry —
+ * the swirling Spiral and Rune ring that ARE a teleporter portal, the object's
+ * own model being a bare minimap-icon quad. Following only the particle card
+ * left those objects looking empty. Each `<Item>` points at a ModelInstance
+ * (Model href + Position/Rotation/Scale), which resolves to an ordinary model.
+ */
+function effectModelGeoms(
+  sharedXml: string, sharedHref: string, assetRoot: string, readXdb: ReadXdb, texSize: number,
+): GeomData[] {
+  const effHref = sharedXml.match(/<Effect href="([^"]+)"/)?.[1];
+  if (!effHref) return [];
+  const sharedDir = dirOf(resolveHref('', sharedHref));
+  const effect = followHref(assetRoot, sharedXml, sharedDir, effHref);
+  if (!effect) return [];
+  const block = effect.xml.match(/<Models>([\s\S]*?)<\/Models>/)?.[1];
+  if (!block) return [];
+  const out: GeomData[] = [];
+  for (const m of block.matchAll(/<Item href="([^"]+)"/g)) {
+    const inst = followHref(assetRoot, effect.xml, effect.dir, m[1]!);
+    if (!inst) continue;
+    const modelHref = inst.xml.match(/<Model href="([^"]+)"/)?.[1];
+    if (!modelHref) continue;
+    const modelRel = '/' + resolveHref(inst.dir, modelHref);
+    const model = readXdb(modelRel);
+    if (!model) continue;
+    const g = decodeModelGeom(model, modelRel, assetRoot, readXdb, texSize);
+    if (!g) continue;
+    transformGeom(
+      g,
+      readVec3(inst.xml, 'Position') ?? [0, 0, 0],
+      readQuat(inst.xml, 'Rotation') ?? [0, 0, 0, 1],
+      +(inst.xml.match(/<Scale>([-+.\deE]+)<\/Scale>/)?.[1] ?? 1) || 1,
+    );
+    out.push(g);
+  }
+  return out;
 }
 
 /**
@@ -417,22 +542,22 @@ export function createGeomResolver(assetRoot: string, texSize = 128): GeomResolv
       const shared = readXdb(sharedHref);
       const modelHref = shared && shared.match(/<Model href="([^"]+)"/);
       const model = modelHref && readXdb(modelHref[1]!);
-      // The Model's <Geometry href> is written relative to the model's own
-      // folder as often as absolute (spell_shop.mb points at "SpellShop-geom.xdb"
-      // beside it), so resolve it against that folder, not the data root — read
+      // The object's own model. Its <Geometry href> is written relative to the
+      // model's own folder as often as absolute (spell_shop.mb points at
+      // "SpellShop-geom.xdb" beside it), which decodeModelGeom handles — read
       // flat, a bare name misses and the object silently meshes to nothing.
-      const modelDir = modelHref ? dirOf(resolveHref('', modelHref[1]!)) : '';
-      const readRel: ReadXdb = (href) =>
-        readXdb(href.startsWith('/') || href.startsWith('#') ? href : resolveHref(modelDir, href));
-      const ref = model && readGeometryRefFromModelXdb(model, readRel);
-      if (ref) {
-        const binPath = join(assetRoot, 'bin', 'Geometries', ref.uid);
-        if (existsSync(binPath)) {
-          const meshes = extractMeshes(readFileSync(binPath), ref.bbox);
-          if (meshes.length) idx = addGeom(geoms, meshes, model, modelHref[1]!, assetRoot, texSize);
+      const own = model && modelHref ? decodeModelGeom(model, modelHref[1]!, assetRoot, readXdb, texSize) : null;
+      if (own) { idx = geoms.length; geoms.push(own); }
+      // The effect's own models come first: a teleporter's Spiral and Rune ARE
+      // the object (its own model is a throwaway minimap quad), so they must land
+      // even when there is no base mesh to hang them on.
+      if (shared) {
+        for (const em of effectModelGeoms(shared, sharedHref, assetRoot, readXdb, texSize)) {
+          if (idx < 0) { idx = geoms.length; geoms.push(em); }
+          else mergeGeom(geoms[idx]!, em);
         }
       }
-      // An effect is worth a card whether or not there is also a mesh. 307
+      // A particle card is worth adding whether or not there is a mesh. 307
       // shipped objects are nothing but an effect, and another 257 carry one
       // ALONGSIDE a model — the anti-magic garrison wall is the second kind, so
       // taking its mesh and stopping drew the flat sparkle patch on the ground
@@ -440,7 +565,7 @@ export function createGeomResolver(assetRoot: string, texSize = 128): GeomResolv
       if (shared) {
         const card = effectGeom(shared, sharedHref, assetRoot, texSize);
         if (card && idx < 0) { idx = geoms.length; geoms.push(card); }
-        else if (card) appendCard(geoms[idx]!, card);
+        else if (card) mergeGeom(geoms[idx]!, card);
       }
       // Only AdvMapBuildingShared declares a footprint, so this is null for
       // everything else and the renderer skips it. Attached to the geom because
@@ -918,8 +1043,18 @@ function addGeom(geoms: GeomData[], meshes: Mesh[], model: string, modelHref: st
   const projected = (meshIdx: number): boolean =>
     (allMats[allPick[meshIdx] ?? 0]?.projectOnTerrain ?? false) && sheer(meshIdx);
   const keep = dropDuplicateMeshes(meshes, allPick, allMats, sheer, projected);
+  // A world mesh textured with a minimap UI icon is a placeholder, not scene
+  // geometry: the One-Way Exit's own model is one such quad, the real portal
+  // living in its effect. Drop it so it neither draws nor bloats the bounds.
+  for (let i = 0; i < keep.length; i++) {
+    if (allMats[allPick[i] ?? 0]?.tex?.includes('/MinimapIcons/')) keep[i] = false;
+  }
   const pick = allPick.filter((_, i) => keep[i]);
   meshes = meshes.filter((_, i) => keep[i]);
+  // Everything was a duplicate or a placeholder: report no geom so the caller
+  // falls back to the effect (or skips the object) rather than adding a hollow
+  // one whose only trace is an empty bounding box.
+  if (!meshes.length) return -1;
 
   let vc = 0, tc = 0;
   for (const m of meshes) { vc += m.vertexCount; tc += m.indices.length; }
@@ -962,6 +1097,8 @@ function addGeom(geoms: GeomData[], meshes: Mesh[], model: string, modelHref: st
       // solid, so it occludes.
       opaque: t ? t.opaque : true,
       terrainProjected: (mats[mi]?.projectOnTerrain ?? false) && isSheer,
+      additive: mats[mi]?.additive ?? false,
+      selfIllum: mats[mi]?.selfIllum ?? false,
     });
     start += count;
   }
@@ -1010,9 +1147,11 @@ interface MaterialInfo {
   tex: string | null;
   alphaMode: AlphaMode;
   projectOnTerrain: boolean;
+  additive: boolean;
+  selfIllum: boolean;
 }
 
-const NO_MATERIAL: MaterialInfo = { tex: null, alphaMode: 'AM_OPAQUE', projectOnTerrain: false };
+const NO_MATERIAL: MaterialInfo = { tex: null, alphaMode: 'AM_OPAQUE', projectOnTerrain: false, additive: false, selfIllum: false };
 
 /**
  * Resolve an asset href the way the game's own references are written.
@@ -1057,6 +1196,8 @@ function materialInfo(itemXml: string, assetRoot: string, baseDir: string): Mate
       tex: tex ? '/' + resolveHref(from, tex) : null,
       alphaMode: (xml.match(/<AlphaMode>([^<]*)<\/AlphaMode>/)?.[1] ?? 'AM_OPAQUE') as AlphaMode,
       projectOnTerrain: /<ProjectOnTerrain>\s*true\s*<\/ProjectOnTerrain>/.test(xml),
+      additive: /<AddPlaced>\s*true\s*<\/AddPlaced>/.test(xml),
+      selfIllum: /<LightingMode>\s*L_SELFILLUM\s*<\/LightingMode>/.test(xml),
     };
   };
   if (/<Material\b/.test(itemXml)) return read(itemXml, baseDir);

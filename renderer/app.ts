@@ -322,7 +322,7 @@ function materialFor(part: GeomPart): THREE.Material {
   // Flatness is in the key because it changes the material: the same texture in
   // the same blend mode is a depth-writing body on one mesh and a decal on
   // another.
-  const key = `${part.alphaMode}|${part.projectOnTerrain ? 'proj' : 'own'}|${part.opaque ? 'body' : 'sheer'}|${part.tex}`;
+  const key = `${part.alphaMode}|${part.projectOnTerrain ? 'proj' : 'own'}|${part.opaque ? 'body' : 'sheer'}|${part.additive ? 'add' : ''}${part.selfIllum ? 'lit' : ''}|${part.tex}`;
   const hit = texCache.get(key);
   if (hit) return hit;
   const tx = texLoader.load(part.tex);
@@ -334,7 +334,12 @@ function materialFor(part: GeomPart): THREE.Material {
   // this reason. Tagging it sRGB makes the sampler decode to linear before
   // lighting, and the render finally shows the wood.
   tx.colorSpace = THREE.SRGBColorSpace;
-  const m = new THREE.MeshLambertMaterial({ map: tx, side: THREE.DoubleSide });
+  // A self-illuminated part (L_SELFILLUM: portal runes, spell auras) emits its
+  // own colour, so it uses an unlit material — a Lambert would drop it into
+  // shadow the game never shows.
+  const m: THREE.MeshBasicMaterial | THREE.MeshLambertMaterial = part.selfIllum
+    ? new THREE.MeshBasicMaterial({ map: tx, side: THREE.DoubleSide })
+    : new THREE.MeshLambertMaterial({ map: tx, side: THREE.DoubleSide });
   switch (part.alphaMode) {
     case 'AM_ALPHA_TEST':
       // Cutout (foliage): discard transparent texels so leaves aren't opaque
@@ -369,6 +374,15 @@ function materialFor(part: GeomPart): THREE.Material {
     m.polygonOffset = true;
     m.polygonOffsetFactor = -1;
     m.polygonOffsetUnits = -1;
+    m.depthWrite = false;
+  }
+  // Additive (AddPlaced): the texels are ADDED to the background, so the part
+  // reads as light — a portal's glow, a spell aura. Black adds nothing and
+  // bright core adds a lot. It must not write depth, or its own far side would
+  // occlude its near one and the glow would tear.
+  if (part.additive) {
+    m.blending = THREE.AdditiveBlending;
+    m.transparent = true;
     m.depthWrite = false;
   }
   texCache.set(key, m);
