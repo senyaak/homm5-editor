@@ -16,6 +16,7 @@
     "test-watch": "node tools/test-watch.ts",
     "mesh-audit": "node tools/mesh-audit.ts",
     "test-objects": "node tools/test-objects.ts",
+    "test-registry": "node tools/test-registry.ts",
     "test-history": "node tools/test-history.ts",
     "pak": "node tools/pak-cli.js",
     "typecheck": "tsc --noEmit",
