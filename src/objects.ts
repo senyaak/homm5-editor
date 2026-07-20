@@ -69,6 +69,17 @@ function cleanName(file: string): string {
  * the element name a placed object uses. A table would be a second opinion
  * about something the data already states.
  */
+/**
+ * The object type a shared href implies, from its xpointer: the file says
+ * `#xpointer(/AdvMapStaticShared)`, and dropping the `Shared` suffix gives the
+ * element name a placed object uses. Empty when the href names no `…Shared`
+ * (e.g. an `AdvMapSharedGroup`, which must be resolved to a member first).
+ */
+function typeFromShared(href: string): string {
+  const x = /#xpointer\(\/(\w+)Shared\)/i.exec(href);
+  return x ? `AdvMap${x[1]!.replace(/^AdvMap/i, '')}` : '';
+}
+
 function readLink(xml: string): { shared: string; type: string; random: boolean } | null {
   const direct = /<Link\s+href="([^"]*)"/i.exec(xml);
   // The "Random ..." entries carry an empty <Link/> and point at an
@@ -79,12 +90,25 @@ function readLink(xml: string): { shared: string; type: string; random: boolean 
   const rnd = /<RndGroup\s+href="([^"]*)"/i.exec(xml);
   const shared = direct?.[1] || rnd?.[1] || '';
   if (!shared) return null;
-  const x = /#xpointer\(\/(\w+)Shared\)/i.exec(shared);
-  return {
-    shared,
-    type: x ? `AdvMap${x[1]!.replace(/^AdvMap/i, '')}` : '',
-    random: !direct?.[1] && !!rnd?.[1],
-  };
+  return { shared, type: typeFromShared(shared), random: !direct?.[1] && !!rnd?.[1] };
+}
+
+/**
+ * Resolve a random group to a concrete member the editor can place.
+ *
+ * A random link points at an `AdvMapSharedGroup` — a list of interchangeable
+ * shareds the game chooses from at load (every generic hero is one of these).
+ * The group is not itself placeable: it has no type and no model, so placing it
+ * failed with "unknown object type". The editor stands in the first member, a
+ * real object with a type and a mesh; the game would have picked one anyway.
+ */
+function resolveGroupMember(dataRoot: string, groupHref: string): { shared: string; type: string } | null {
+  const rel = groupHref.split('#')[0]!.replace(/^\//, '');
+  let xml: string;
+  try { xml = readFileSync(join(dataRoot, rel), 'utf8'); } catch { return null; }
+  const first = xml.match(/<links>[\s\S]*?<Item href="([^"]+)"/)?.[1];
+  const type = first ? typeFromShared(first) : '';
+  return first && type ? { shared: first, type } : null;
 }
 
 /** Parse `Editor/MapFilters.xml` into the Objects tab's groups. */
@@ -150,6 +174,12 @@ export function listPlaceable(dataRoot: string, editorRoot: string): {
       try { xml = readFileSync(full, 'utf8'); } catch { continue; }
       const link = readLink(xml);
       if (!link) continue;
+      // A random group is not placeable as itself — stand in its first member,
+      // which carries the type and mesh the group only points to.
+      if (!link.type) {
+        const member = resolveGroupMember(dataRoot, link.shared);
+        if (member) { link.shared = member.shared; link.type = member.type; }
+      }
       const rel = relative(dataRoot, full).split(sep).join('/');
       const leaf = cleanName(e);
       // The label lives in the icon cache, so read it while we are here rather
