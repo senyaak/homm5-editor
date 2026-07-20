@@ -18,10 +18,11 @@ save the same way object edits do.
 
 Everything the map *currently* holds is in `map.xdb` and is already parsed. What
 is **not** in the map is the *universe* each picker chooses from — the full list
-of spells, artifacts, heroes, races, and ambient-light presets. Those come from
-game data (the ID lists in `Editor Documentation/HOMM5_A2_IDs_for_Scripts.pdf`,
-the `/MapObjects` hero files, and the light presets), plus optional localized
-display names from the text resources.
+of spells, artifacts, heroes, races, and ambient-light presets. Every one of
+those sources is now located: the ID lists in
+`Editor Documentation/HOMM5_A2_IDs_for_Scripts.pdf`, the `/MapObjects` hero
+files, and the light presets in `data/Lights/_(AmbientLight)/` — plus optional
+localized display names from the text resources.
 
 ## Storage model, shared by several tabs
 
@@ -51,9 +52,26 @@ which are on. In map 12: 353 spells and 97 artifacts enabled, 0 heroes.
 | Control | `map.xdb` | Notes / status |
 |---|---|---|
 | Restrict hero level to *N* | `HeroMaxLevel` | 0 = unrestricted. **Works today.** |
-| Ambient Light + Script Name | `AmbientLight` | Empty = engine default (the editor still labels it, e.g. "Haven Light (Grass)"). When set it is a **full inline lighting definition** (`LightColor`, `AmbientColor`, `ShadeColor`, `Sky`, `Fog*`, `SkyDome`, …), not just an enum. The dialog picks a **preset by name**; individual fields are editable in the tree. |
+| Ambient Light + Script Name | `GroundAmbientLights[0]` (ref) — **not** `AmbientLight` | See below: the dropdown picks a **preset** referenced by `GroundAmbientLights[0]`; the top-level `AmbientLight` is a rarely-used inline override. |
 | Has Underground Level | `HasUnderground` (+ a second terrain file) | Toggling generates/removes an entire floor — a terrain operation, not a simple flag. Read-only in the dialog for now. |
-| Ambient Light For Underground | `UndergroundAmbientLight` | Same shape as `AmbientLight`, for floor 1. |
+| Ambient Light For Underground | `UndergroundAmbientLights[0]` (ref) | The floor-1 equivalent; `UndergroundAmbientLight` is its inline override. |
+
+### Ambient Light, precisely (the one gap — now closed)
+
+There are two mechanisms and the dropdown uses the **reference**, not the inline
+block:
+
+- `GroundAmbientLights[0]` / `UndergroundAmbientLights[0]` — an `<Item href="/Lights/_(AmbientLight)/0_Default_AmbientLight.xdb#xpointer(/AmbientLight)"/>`
+  pointing at a **preset**. This is what the General-tab dropdown reads and writes.
+- `AmbientLight` / `UndergroundAmbientLight` (top level) — an optional **inline**
+  copy of the whole lighting definition (`LightColor`, `AmbientColor`, `Sky`,
+  `Fog*`, `SkyDome`, …), used when a map overrides a preset. Empty on most maps.
+
+**Preset roster** (the dropdown's universe): `data/Lights/_(AmbientLight)/*.xdb`
+— **297** presets. Each carries `<InternalName>` (e.g. `Default`) and a
+localized `<NameFileRef>` (e.g. `0_Default_name.txt`); the dropdown label
+"Haven Light (Grass)" is that name, with the bracketed terrain hint. So the
+dropdown = enumerate the folder, show the name, write the chosen preset's href.
 | Map Name | `NameFileRef` → `name.txt` | The visible name lives in a sibling text file (UTF-16LE + BOM), a **separate document** from `map.xdb`. Read-only until that document has its own undo/save path. |
 | Map Description | `DescriptionFileRef` → `description.txt` | As above. |
 
@@ -149,15 +167,16 @@ level, players and their every field, teams, the enabled spell/artifact/hero
 lists, ambient-light definitions, the script ref, rumours. The tree can edit all
 of it today through the generic reader.
 
-**Needed from game data before the dialog's pickers are complete:**
+**Needed from game data before the dialog's pickers are complete** — every
+source is now located:
 
 1. **Rosters (the checkbox/dropdown universes)** — none of these are in the map:
    - Spells, Artifacts, Artifact sets — harvest from a full map; cross-check vs.
      `HOMM5_A2_IDs_for_Scripts.pdf`.
-   - Heroes — enumerate `/MapObjects/*/*.(AdvMapHeroShared).xdb` (we have them).
+   - Heroes — enumerate `/MapObjects/*/*.(AdvMapHeroShared).xdb` (118 files).
    - Races / Players — `TOWN_*` / `PLAYER_*` enums from the same PDF.
-   - **Ambient-light presets** — the dialog's dropdown; the preset set is **not
-     yet located** in game data. The only open reverse-engineering item here.
+   - **Ambient-light presets** — `data/Lights/_(AmbientLight)/*.xdb` (297),
+     display name from each preset's `InternalName` / `NameFileRef`. **Found.**
 2. **Localized display names** (heroes/spells/artifacts/races) — from the text
    resources (`texts.pak`). Optional: the dialog works with raw IDs first, names
    are a polish pass.
@@ -166,7 +185,46 @@ of it today through the generic reader.
    plumbing the terrain floors already have.
 4. **Script editing** — Phase 5 (Lua).
 
-Everything except the ambient-light preset set is either in the map, in the
-shipped `MapObjects`, or in the ID PDF — so the honest answer is **almost
-everything is here**; the pickers need rosters wired in, and one preset list
-still has to be found.
+So the answer is **everything is here**: the map holds the state, and every
+picker universe is either in the map, the shipped `MapObjects`/`Lights` folders,
+or the ID PDF. Nothing is left to reverse-engineer for this dialog — it is
+wiring, plus two small text-document subsystems and (later) Lua.
+
+---
+
+## The rest of the tree (beyond the eight tabs)
+
+The original's dialog covers eight tabs, but `<AdvMapDesc>` carries more, and the
+**tree** surface exposes all of it. What the dialog does not reach, annotated:
+
+- `Resources` — `PointLights`, `SavesFilenames`.
+- `moons` — three `<Item>` (moon `State` + `RotationRate`); `RandomMoons` (bool)
+  overrides them.
+- `ScenarioInformation` — up to 8 entries, the **lobby goal text** shown on the
+  scenario-selection screen (`CaptionFileRef` / `DescriptionFileRef` per slot,
+  `Kind = OBJECTIVE_KIND_SCENARIO_INFO`). Full objective struct (Award, Target
+  glance, triggers) but used here only for display.
+- `Objectives` — the real **victory/loss conditions**: `Primary` / `Secondary`,
+  each split `Common` vs `PlayerSpecific[0..7]`. Each objective has a `Kind`
+  (`OBJECTIVE_KIND_DEFEAT_ALL`, …), `Award`, `TargetGlance`, `InstantVictory`,
+  `DieInWeekWithoutTowns`, etc. A whole editor of its own (Phase 4).
+- `CustomMapGoal` / `CustomGoal` — a custom goal overriding the first common
+  primary objective.
+- `NewDayTrigger`, `WarFogEnterTrigger`, per-player `AddHeroTrigger` /
+  `RemoveHeroTrigger`, `PWLTutorialHintTrigger` — Lua `FunctionName` hooks.
+- `TavernFilter` (per player): `BannedHeroesRaces` (banned hero races),
+  `BannedHeroes` (banned heroes, script names), `AllowedHeroes` (allowed even if
+  their race is banned).
+- `sRMGProps` — random-map-generator settings (`RMGmap`, `InitialParams`:
+  `MapSize`, `WaterAmount`, `MonsterLevel`, per-player race, multipliers, …).
+- `MoonCalendarModifications` — `BlockMonstersWeeks`.
+- `ImportantArtifacts.PreservingArtifacts` — artifacts that fall from a hero on a
+  lost battle (rather than being lost) so they stay on the map.
+- `AdditionallyRollableHeroes` — scenario heroes that should still be rollable.
+- `Music` (adventure music, not combat), `Weather`, `Wind`, `PreLight`, `Birds`
+  / `BirdsAmount`, `BorderSize`, `BanTransparency`, `StartScene`, `PWLPicture`,
+  `LoadingScreenSound`, `thumbnailImages`, `dialogs`, `tiles` (the map's terrain
+  tile set), `regions`.
+
+None of these block the eight-tab dialog; they are why the **tree** exists —
+so everything in the file is reachable, dialog or not.
