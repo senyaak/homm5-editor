@@ -178,6 +178,8 @@ export interface SetPathPayload { path: TreePath; value: string; }
 export interface AddItemPayload { path: TreePath; value?: string; }
 /** Payload of `map:remove-item` — the path's last step is the index. */
 export interface RemoveItemPayload2 { path: TreePath; }
+/** Payload of `map:set-list` — replace a value list's contents (checklists). */
+export interface SetListPayload { path: TreePath; values: string[]; }
 
 /** Result of `map:save`. */
 export interface MapSaveResult {
@@ -418,6 +420,7 @@ export interface EditorApi {
   setMapPath(p: SetPathPayload): Promise<ObjectEditResult>;
   addMapItem(p: AddItemPayload): Promise<ObjectEditResult>;
   removeMapItem(p: RemoveItemPayload2): Promise<ObjectEditResult>;
+  setMapList(p: SetListPayload): Promise<ObjectEditResult>;
   listObjects(): Promise<ObjectCatalogResult>;
   objectIcon(path: string): Promise<IconResult>;
   addObject(p: AddObjectPayload): Promise<AddObjectResult>;

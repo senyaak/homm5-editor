@@ -27,6 +27,7 @@ const api = {
   setMapPath: (p) => ipcRenderer.invoke('map:set-path', p),
   addMapItem: (p) => ipcRenderer.invoke('map:add-item', p),
   removeMapItem: (p) => ipcRenderer.invoke('map:remove-item', p),
+  setMapList: (p) => ipcRenderer.invoke('map:set-list', p),
   listObjects: () => ipcRenderer.invoke('objects:list'),
   objectIcon: (path) => ipcRenderer.invoke('objects:icon', { path }),
   addObject: (p) => ipcRenderer.invoke('object:add', p),

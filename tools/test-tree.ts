@@ -6,7 +6,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { loadMap } from '../src/map.ts';
-import { readTree, nodeAt, setPath, addStringItem, removeItem, appendItem, indentText } from '../src/tree.ts';
+import { readTree, nodeAt, setPath, addStringItem, removeItem, appendItem, indentText, setList } from '../src/tree.ts';
 import { mapSchema, resolveSchemaAtPath, deref } from '../src/schema.ts';
 import { buildItem, isBuildable } from '../src/skeleton.ts';
 import { children, find } from '../src/xml.ts';
@@ -79,6 +79,16 @@ ok(newMoon.State === '0' && newMoon.RotationRate === '0', 'new moon has State=0,
 }
 // the map still round-trips through a reload (structure is well-formed)
 ok(!!loadMap(map.save()), 'map with the new items reloads');
+
+// --- setList: rewrite a value list wholesale (the checklist primitive) ---
+console.log('\n=== setList ===');
+setList(map.desc, ['spellIDs'], ['SPELL_MAGIC_ARROW', 'SPELL_FIREBALL', 'SPELL_HASTE']);
+const sl = readTree(nodeAt(map.desc, ['spellIDs'])!);
+ok(Array.isArray(sl) && sl.length === 3 && sl[1] === 'SPELL_FIREBALL', 'setList replaced spellIDs with 3');
+setList(map.desc, ['spellIDs'], []);
+const empt = children(find(map.desc, 'spellIDs')!).length;
+ok(empt === 0, 'setList [] empties the list');
+ok(!!loadMap(map.save()), 'map reloads after setList');
 
 console.log(`\n${bad === 0 ? 'PASS' : `FAIL (${bad})`}`);
 process.exit(bad === 0 ? 0 : 1);

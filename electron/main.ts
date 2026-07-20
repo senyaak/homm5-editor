@@ -28,7 +28,7 @@ import { History, diff, apply } from '../src/history.ts';
 import { loadMap } from '../src/map.ts';
 import { Registry } from '../src/registry.ts';
 import type { RosterEntry } from '../src/registry.ts';
-import { readTree, setPath, addStringItem, removeItem, appendItem, indentText, nodeAt } from '../src/tree.ts';
+import { readTree, setPath, addStringItem, removeItem, appendItem, indentText, nodeAt, setList } from '../src/tree.ts';
 import { mapSchema, resolveSchemaAtPath, deref } from '../src/schema.ts';
 import { buildItem, isBuildable } from '../src/skeleton.ts';
 import { children, find, text } from '../src/xml.ts';
@@ -40,7 +40,7 @@ import type {
   MapsListResult, MapListEntry, MapLoadResult, MoveObjectPayload, MoveObjectResult,
   RotateObjectPayload, RemoveObjectPayload, ObjectEditResult, ObjectPropsResult, SetPropPayload,
   MapPropsResult, SetMapPropPayload, RosterPayload, RosterResult,
-  MapTreeResult, SetPathPayload, AddItemPayload, RemoveItemPayload2, NamesPayload, NamesResult,
+  MapTreeResult, SetPathPayload, AddItemPayload, RemoveItemPayload2, SetListPayload, NamesPayload, NamesResult,
   ObjectCatalogResult, IconPayload, IconResult, AddObjectPayload, AddObjectResult,
   MapSaveResult, MapPackResult, TerrainTilesResult, MapStatusResult, OpenMapDialogResult,
   ExternalChange, PaintTilePayload, PaintTileResult, SculptPayload, SculptResult,
@@ -563,6 +563,12 @@ ipcMain.handle('map:remove-item', async (_e: IpcMainInvokeEvent, p: RemoveItemPa
   if (!session) throw new Error('no map loaded');
   const done = record(session, `remove ${p.path.join('.')}`, { map: true }, () => removeItem(session!.map.desc, p.path));
   if (!done) throw new Error(`cannot remove ${p.path.join('.')}`);
+  return { ok: true };
+});
+ipcMain.handle('map:set-list', async (_e: IpcMainInvokeEvent, p: SetListPayload): Promise<ObjectEditResult> => {
+  if (!session) throw new Error('no map loaded');
+  const done = record(session, `set list ${p.path.join('.')}`, { map: true }, () => setList(session!.map.desc, p.path, p.values));
+  if (!done) throw new Error(`cannot set list ${p.path.join('.')}`);
   return { ok: true };
 });
 

@@ -364,6 +364,32 @@
     .mp-restrict input[type=number]:disabled { opacity: .4; }
     .mp-note { margin-top: 10px; padding-top: 10px; border-top: 1px solid #21262d;
       font-size: 11px; color: #6e7681; }
+    /* checklist tab (Heroes / Spells / Artifacts): a search + bulk buttons, then
+       a scrolling grid of checkboxes over the whole roster. */
+    .mp-cl-tools { display: flex; gap: 6px; align-items: center; margin-bottom: 8px; }
+    .mp-cl-tools input[type=text] { flex: 1; min-width: 0; background: #0d1014; border: 1px solid #30363d;
+      border-radius: 6px; padding: 4px 8px; color: #c9d1d9; font-size: 12px; }
+    .mp-cl-tools input:focus { outline: none; border-color: #1f6feb; }
+    .mp-cl-tools button { background: #21262d; border: 1px solid #30363d; color: #c9d1d9;
+      border-radius: 6px; padding: 4px 8px; cursor: pointer; font-size: 11px; white-space: nowrap; }
+    .mp-cl-tools button:hover { background: #30363d; }
+    .mp-cl-count { font-size: 11px; color: #6e7681; white-space: nowrap; }
+    .mp-checklist { max-height: 48vh; overflow-y: auto; display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 1px 12px; }
+    .mp-checklist label { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #c9d1d9;
+      padding: 2px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+    .mp-checklist label:hover { color: #e6edf3; }
+    /* players tab: a player picker above the selected player's fields */
+    .mp-picker { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+    .mp-picker label { color: #8b949e; font-size: 12px; }
+    .mp-picker select { flex: 1; min-width: 0; background: #0d1014; border: 1px solid #30363d;
+      border-radius: 6px; padding: 4px 8px; color: #c9d1d9; font-size: 12px; cursor: pointer; }
+    .mp-picker select option { background: #161b22; }
+    /* teams tab: a grid of radios, players down, teams across */
+    .mp-teams { border-collapse: collapse; font-size: 11px; color: #c9d1d9; }
+    .mp-teams th { color: #8b949e; font-weight: 500; padding: 3px 6px; text-align: center; }
+    .mp-teams td { padding: 2px 6px; text-align: center; }
+    .mp-teams td.pl { text-align: left; color: #c9d1d9; white-space: nowrap; }
   </style>
 </head>
 <body>
@@ -542,12 +568,8 @@
         <span class="mp-title">Map Properties</span>
         <button id="mp-close" title="close (Esc)">✕</button>
       </div>
-      <div class="mp-tabs">
-        <button class="mp-tab on" data-tab="general">General</button>
-        <button class="mp-tab" data-tab="all">All fields</button>
-      </div>
-      <div id="mp-general" class="mp-body"></div>
-      <div id="mp-all" class="mp-body" style="display:none"></div>
+      <div class="mp-tabs" id="mp-tabs"></div>
+      <div id="mp-body" class="mp-body"></div>
     </div>
   </dialog>
 

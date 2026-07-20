@@ -112,6 +112,30 @@ export function indentText(container: XmlElement): string {
 }
 
 /**
+ * Replace a value list's contents wholesale — the primitive a checklist writes
+ * (Check All, Uncheck All, or a single toggle recomputed). For lists of plain
+ * `<Item>value</Item>` strings only. The item indent is the closing indent plus
+ * one tab; an empty result self-closes the container. False if the path misses.
+ */
+export function setList(root: XmlElement, containerPath: Path, values: string[]): boolean {
+  const c = nodeAt(root, containerPath);
+  if (!c) return false;
+  const texts = c.children.filter((n): n is Extract<XmlNode, { type: 'text' }> => n.type === 'text');
+  const wsClose = texts.length ? texts[texts.length - 1]!.text : '\n';
+  const wsItem = wsClose + '\t';
+  if (!values.length) { c.children = []; (c as { selfClose?: boolean }).selfClose = true; return true; }
+  (c as { selfClose?: boolean }).selfClose = false;
+  const kids: XmlNode[] = [];
+  for (const v of values) {
+    kids.push({ type: 'text', text: wsItem } as XmlNode);
+    kids.push({ type: 'element', name: 'Item', attrs: {}, children: [{ type: 'text', text: v } as XmlNode], _dirtyAttrs: true } as XmlElement);
+  }
+  kids.push({ type: 'text', text: wsClose } as XmlNode);
+  c.children = kids;
+  return true;
+}
+
+/**
  * Remove the list item a path ends at (its last step is the index). Also drops
  * the indentation text node *before* it — the whitespace that belongs to this
  * item — so the container keeps its shape and an add followed by a remove is a
