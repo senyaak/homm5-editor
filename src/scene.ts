@@ -490,6 +490,21 @@ function effectModelGeoms(
 }
 
 /**
+ * A town's adventure-map appearance model, or null for anything else.
+ *
+ * A town keeps its top-level `<Model>` empty; its building lives in
+ * `<Exterior><AdvMapTownExterior><upgrades>`, a list of (Model, Effect) pairs by
+ * build stage. The first pair is the basic town — what a freshly placed one
+ * shows — and its href is written relative to the shared's own folder, unlike
+ * the absolute hrefs elsewhere, which is why reading it flat found nothing and
+ * left every town invisible.
+ */
+function townModelHref(sharedXml: string): string | null {
+  const upgrades = sharedXml.match(/<AdvMapTownExterior\b[\s\S]*?<upgrades>([\s\S]*?)<\/upgrades>/);
+  return upgrades?.[1]?.match(/<Model href="([^"]+)"/)?.[1] ?? null;
+}
+
+/**
  * A shared-href -> mesh resolver with its own growing geom list.
  *
  * Split out of buildScene so a single object can be resolved after the scene is
@@ -540,13 +555,20 @@ export function createGeomResolver(assetRoot: string, texSize = 128): GeomResolv
     let idx = -1;
     try {
       const shared = readXdb(sharedHref);
-      const modelHref = shared && shared.match(/<Model href="([^"]+)"/);
-      const model = modelHref && readXdb(modelHref[1]!);
+      // A town points at its building through the Exterior upgrades, relative to
+      // the shared's own folder; everything else through the top-level <Model>,
+      // whose href is written from the data root. Resolving the town href flat
+      // is what left every town invisible.
+      const townHref = shared ? townModelHref(shared) : null;
+      const modelRel = townHref
+        ? '/' + resolveHref(dirOf(resolveHref('', sharedHref)), townHref)
+        : (shared && shared.match(/<Model href="([^"]+)"/)?.[1]) || null;
+      const model = modelRel ? readXdb(modelRel) : null;
       // The object's own model. Its <Geometry href> is written relative to the
       // model's own folder as often as absolute (spell_shop.mb points at
       // "SpellShop-geom.xdb" beside it), which decodeModelGeom handles — read
       // flat, a bare name misses and the object silently meshes to nothing.
-      const own = model && modelHref ? decodeModelGeom(model, modelHref[1]!, assetRoot, readXdb, texSize) : null;
+      const own = model && modelRel ? decodeModelGeom(model, modelRel, assetRoot, readXdb, texSize) : null;
       if (own) { idx = geoms.length; geoms.push(own); }
       // The effect's own models come first: a teleporter's Spiral and Rune ARE
       // the object (its own model is a throwaway minimap quad), so they must land
