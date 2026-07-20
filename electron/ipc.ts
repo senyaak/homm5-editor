@@ -167,6 +167,14 @@ export interface NewEntityPayload { className: string; name: string; }
 /** Result of `map:new-entity` — the href of the file just created. */
 export interface NewEntityResult { href: string; }
 
+/** Payload of `entity:read` — the referenced entity document's href. */
+export interface EntityReadPayload { href: string; }
+/** Result of `entity:read` — the document as a tree, its class, and whether it
+ *  can be edited (map-local files are; the shipped library is read-only). */
+export interface EntityReadResult { className: string; editable: boolean; tree: unknown; }
+/** Payload of `entity:set-path` — set one field on a map-local entity document. */
+export interface EntitySetPathPayload { href: string; path: TreePath; value: string; }
+
 /** Payload of `map:names` — which kind of in-map name to gather. */
 export interface NamesPayload { kind: string; }
 /** Result of `map:names` — names defined in the map, for x-nameRef hints. */
@@ -433,6 +441,8 @@ export interface EditorApi {
   roster(name: string): Promise<RosterResult>;
   objectsOfClass(className: string): Promise<RosterResult>;
   newEntity(p: NewEntityPayload): Promise<NewEntityResult>;
+  readEntity(href: string): Promise<EntityReadResult>;
+  setEntityPath(p: EntitySetPathPayload): Promise<ObjectEditResult>;
   names(kind: string): Promise<NamesResult>;
   mapTree(): Promise<MapTreeResult>;
   setMapPath(p: SetPathPayload): Promise<ObjectEditResult>;

@@ -2457,7 +2457,10 @@ function entityRefControl(className: string, value: string, commit: (v: string) 
   const wrap = document.createElement('span'); wrap.style.display = 'contents';
   const box = document.createElement('span'); box.className = 'mt-ref';
   const rv = document.createElement('span'); rv.className = 'rv';
-  const show = (v: string): void => { rv.textContent = v || '(none)'; rv.title = v; };
+  // Edit the referenced object's own fields (map-local: editable; library:
+  // shown read-only). Enabled only when something is referenced.
+  const edit = document.createElement('button'); edit.textContent = '✎'; edit.title = 'edit the referenced object';
+  const show = (v: string): void => { rv.textContent = v || '(none)'; rv.title = v; edit.disabled = !v; };
   show(value);
   const set = (v: string | null): void => { if (v != null) { commit(v); show(v); } };
   const browse = document.createElement('button'); browse.textContent = '…'; browse.title = `pick a ${className}`;
@@ -2468,9 +2471,110 @@ function entityRefControl(className: string, value: string, commit: (v: string) 
     nw.addEventListener('click', () => { void createEntity(className).then(set); });
     box.appendChild(nw);
   }
+  edit.addEventListener('click', () => { if (rv.title) void openEntityEdit(rv.title, className); });
+  box.appendChild(edit);
   wrap.appendChild(box);
   return wrap;
 }
+
+// --- entity document editor (the "✎ Edit" on a structured ref) --------------
+//
+// Opens the referenced object's own typed fields — a Wind's Angle/Speed, an
+// AdvMapBirds' Model, an AmbientLight's colours — read from the document and
+// written back per field. Map-local documents are editable; the shipped library
+// is shown read-only (use "New" to make an editable copy). The form reuses the
+// tree's typed controls (leafControl), rooted at the entity's $def.
+
+const entDialog = (): HTMLDialogElement => {
+  const el = $('entedit');
+  if (!(el instanceof HTMLDialogElement)) throw new Error('#entedit is not a <dialog>');
+  return el;
+};
+let eeHref = '';
+const errMsg = (e: unknown): string => (e instanceof Error ? e.message : String(e));
+
+async function openEntityEdit(href: string, className: string): Promise<void> {
+  // Only one entity dialog at a time — a nested ref's Edit would clash with the
+  // single <dialog>. Such refs are rare inside these documents; ignore the nest.
+  if (entDialog().open) return;
+  eeHref = href;
+  $('ee-title').textContent = `${className} — ${href.split('#')[0]}`;
+  const note = $('ee-note'); note.textContent = '';
+  const host = $('ee-form'); host.innerHTML = '<div class="ph">loading…</div>';
+  entDialog().showModal();
+  let res;
+  try { res = await window.editor.readEntity(href); }
+  catch (e) { host.innerHTML = ''; note.textContent = 'could not read: ' + errMsg(e); return; }
+  if (eeHref !== href) return; // a later open won the race
+  const def = mapSchema.$defs?.[res.className];
+  const rootField = def ? deref(mapSchema, def) : inferField(res.tree as TreeData);
+  const fs = document.createElement('fieldset');
+  fs.className = 'ee-fs' + (res.editable ? '' : ' ee-form-ro');
+  fs.style.border = '0'; fs.style.padding = '0'; fs.style.margin = '0'; fs.style.minInlineSize = '0';
+  fs.disabled = !res.editable;
+  fillEntity(fs, rootField, res.tree as TreeData, []);
+  host.innerHTML = ''; host.appendChild(fs);
+  note.textContent = res.editable ? '' : 'Read-only — from the shipped library. Use “New” to make an editable copy in the map.';
+}
+
+/** Commit one entity field to disk, then reflect dirty. */
+async function entitySet(path: TreePath, value: string): Promise<void> {
+  try { await window.editor.setEntityPath({ href: eeHref, path, value }); markDirty(true); $('hud').textContent = `${path.join('.')} = ${value || '(empty)'}`; }
+  catch (e) { $('hud').textContent = 'entity edit failed: ' + errMsg(e); }
+}
+
+/** Fill a container with an entity object's fields, schema-typed, recursing into
+ *  nested objects. Arrays are shown read-only (rare in these documents). */
+function fillEntity(container: HTMLElement, field: FieldSchema, data: TreeData | undefined, path: TreePath): void {
+  const props = field.properties ?? {};
+  const dataKeys = data && typeof data === 'object' && !Array.isArray(data) ? Object.keys(data) : [];
+  const seen = new Set<string>();
+  const keys = [...Object.keys(props), ...dataKeys];
+  if (!keys.length) { const p = document.createElement('div'); p.className = 'ph'; p.textContent = 'no fields'; container.appendChild(p); return; }
+  for (const k of keys) {
+    if (seen.has(k)) continue; seen.add(k);
+    const cf = props[k] ? deref(mapSchema, props[k]) : inferField(dataAt(data, k));
+    container.appendChild(entNode(k, cf, dataAt(data, k), [...path, k]));
+  }
+}
+
+/** One entity field: a nested object becomes a collapsible group; everything
+ *  else a typed row (arrays are shown read-only). */
+function entNode(name: string, field: FieldSchema, data: TreeData | undefined, path: TreePath): HTMLElement {
+  const c = controlOf(field);
+  if (c === 'group' && field.type !== 'array') {
+    const grp = document.createElement('div'); grp.className = 'mt-grp';
+    const head = document.createElement('div'); head.className = 'mt-ghead';
+    const tw = document.createElement('span'); tw.className = 'tw'; tw.textContent = '▸';
+    const nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = field.title || name;
+    head.append(tw, nm);
+    const kids = document.createElement('div'); kids.className = 'mt-kids collapsed';
+    let filled = false;
+    head.addEventListener('click', () => {
+      const open = kids.classList.toggle('collapsed') === false;
+      tw.textContent = open ? '▾' : '▸';
+      if (open && !filled) { filled = true; fillEntity(kids, field, data, path); }
+    });
+    grp.append(head, kids);
+    return grp;
+  }
+  const row = document.createElement('div'); row.className = 'mt-row';
+  const label = document.createElement('label'); label.textContent = field.title || name; label.title = name;
+  row.appendChild(label);
+  if (c === 'group') { // an array — read-only summary for now
+    const ro = document.createElement('span'); ro.className = 'ro';
+    ro.textContent = Array.isArray(data) ? `[${data.length} items]` : '(list)';
+    row.appendChild(ro);
+  } else {
+    const value = typeof data === 'string' ? data : '';
+    row.appendChild(leafControl(field, value, (v) => void entitySet(path, v)));
+  }
+  return row;
+}
+
+$('ee-done').onclick = () => entDialog().close();
+$('ee-close').onclick = () => entDialog().close();
+entDialog().addEventListener('click', (e) => { if (e.target === entDialog()) entDialog().close(); });
 
 $('maptreebtn').onclick = () => { if (mapTreeOpen()) closeMapTree(); else openMapTree(); };
 $('mt-close').onclick = () => closeMapTree();

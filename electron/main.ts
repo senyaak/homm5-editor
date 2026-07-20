@@ -31,7 +31,7 @@ import type { RosterEntry } from '../src/registry.ts';
 import { readTree, setPath, addStringItem, removeItem, appendItem, indentText, nodeAt, setList } from '../src/tree.ts';
 import { mapSchema, resolveSchemaAtPath, deref } from '../src/schema.ts';
 import { buildItem, isBuildable, buildEntity } from '../src/skeleton.ts';
-import { children, find, text, serialize } from '../src/xml.ts';
+import { children, find, text, serialize, parse } from '../src/xml.ts';
 import type { XmlElement } from '../src/xml.ts';
 import type { DocPatch, Step, StoredHistory } from '../src/history.ts';
 import type { TileInfo, GeomResolver, Instance as SceneInstance } from '../src/scene.ts';
@@ -40,6 +40,7 @@ import type {
   MapsListResult, MapListEntry, MapLoadResult, MoveObjectPayload, MoveObjectResult,
   RotateObjectPayload, RemoveObjectPayload, ObjectEditResult, ObjectPropsResult, SetPropPayload,
   MapPropsResult, SetMapPropPayload, RosterPayload, RosterResult, OfClassPayload, NewEntityPayload, NewEntityResult,
+  EntityReadPayload, EntityReadResult, EntitySetPathPayload,
   MapTreeResult, SetPathPayload, AddItemPayload, RemoveItemPayload2, SetListPayload, NamesPayload, NamesResult,
   ReadFilePayload, ReadFileResult, WriteFilePayload,
   ObjectCatalogResult, IconPayload, IconResult, AddObjectPayload, AddObjectResult,
@@ -555,6 +556,46 @@ ipcMain.handle('map:new-entity', async (_e: IpcMainInvokeEvent, { className, nam
   writeFileSync(file, `<?xml version="1.0" encoding="UTF-8"?>\n${serialize(body)}\n`, 'utf8');
   session.watch.resync();
   return { href: `${clean}.(${className}).xdb#xpointer(/${className})` };
+});
+
+/**
+ * Resolve a referenced entity's href to a file, and say whether it can be
+ * edited. A library ref is absolute (`/MapObjects/…`, `/Lights/…`) and resolves
+ * under the asset root — shipped data, read-only. A map-local ref is a bare
+ * basename beside map.xdb — the map's own document, editable.
+ */
+function resolveEntityFile(s: Session, href: string): { file: string; editable: boolean } | null {
+  const noPtr = href.split('#')[0];
+  if (!noPtr) return null;
+  if (noPtr.startsWith('/')) return { file: join(s.assetRoot, noPtr.slice(1)), editable: false };
+  return { file: join(s.mapDir, basename(noPtr)), editable: true };
+}
+
+// --- IPC: read/edit a referenced entity document (Birds/Wind/AmbientLight…) ---
+// The original's "Edit" on a structured ref opens the referenced object's own
+// typed fields. These back that: read the document as a tree (like the map
+// tree), and — for a map-local document — set one field and write it back. The
+// shipped library is read-only; to change one you save a copy in the map folder.
+ipcMain.handle('entity:read', async (_e: IpcMainInvokeEvent, { href }: EntityReadPayload): Promise<EntityReadResult> => {
+  if (!session) throw new Error('no map loaded');
+  const r = resolveEntityFile(session, href);
+  if (!r || !existsSync(r.file)) throw new Error(`entity not found: ${href}`);
+  const root = children(parse(readFileSync(r.file, 'utf8')))[0];
+  if (!root) throw new Error(`empty entity document: ${href}`);
+  return { className: root.name, editable: r.editable, tree: readTree(root) };
+});
+ipcMain.handle('entity:set-path', async (_e: IpcMainInvokeEvent, p: EntitySetPathPayload): Promise<ObjectEditResult> => {
+  if (!session) throw new Error('no map loaded');
+  const r = resolveEntityFile(session, p.href);
+  if (!r) throw new Error(`bad entity href: ${p.href}`);
+  if (!r.editable) throw new Error('this entity is from the shipped library — save a copy in the map to edit it');
+  if (!existsSync(r.file)) throw new Error(`entity not found: ${p.href}`);
+  const doc = parse(readFileSync(r.file, 'utf8'));
+  const root = children(doc)[0];
+  if (!root || !setPath(root, p.path, p.value)) throw new Error(`cannot set ${p.path.join('.')}`);
+  writeFileSync(r.file, serialize(doc), 'utf8');
+  session.watch.resync();
+  return { ok: true };
 });
 
 // --- IPC: the whole <AdvMapDesc> as a tree, and path-based edits on it ---

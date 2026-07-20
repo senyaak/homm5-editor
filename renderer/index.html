@@ -403,6 +403,13 @@
     .on-row input:read-only { color: #8b949e; background: #161b22; }
     .on-row input:focus { outline: none; border-color: #1f6feb; }
     .on-err { color: #f85149; font-size: 11px; min-height: 14px; }
+    /* entity edit dialog — the referenced object's own typed fields */
+    #entedit { padding: 0; border: 0; background: transparent; max-width: 92vw; max-height: 86vh; overflow: visible; }
+    #entedit::backdrop { background: #0d1014cc; }
+    .ee-card { width: min(560px, 92vw); }
+    .ee-body { max-height: 60vh; overflow-y: auto; }
+    .ee-note { padding: 8px 14px 0; font-size: 11px; color: #d29922; }
+    .ee-form-ro { opacity: .75; }
     /* a structured reference row: current value + …/New/Edit buttons */
     .mt-ref { display: flex; align-items: center; gap: 4px; min-width: 0; flex: 1; }
     .mt-ref .rv { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -668,6 +675,22 @@
       <div class="de-foot">
         <button id="on-cancel" class="ghost">Cancel</button>
         <button id="on-ok">Create</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- edit a referenced entity's own typed fields (the original's "Edit" on a
+       structured ref: an AdvMapBirds flock, a Wind, an AmbientLight preset) -->
+  <dialog id="entedit">
+    <div class="mp-card ee-card">
+      <div class="mp-head">
+        <span class="mp-title" id="ee-title">Edit</span>
+        <button id="ee-close" title="close (Esc)">✕</button>
+      </div>
+      <div id="ee-note" class="ee-note"></div>
+      <div class="mp-body ee-body"><div id="ee-form"></div></div>
+      <div class="de-foot">
+        <button id="ee-done">Done</button>
       </div>
     </div>
   </dialog>
