@@ -519,6 +519,9 @@ ipcMain.handle('registry:roster', async (_e: IpcMainInvokeEvent, { name }: Roste
     name === 'heroes' ? r.heroes() :
     name === 'ambientLights' ? r.ambientLights() :
     name === 'races' ? r.races() :
+    name === 'birds' ? r.birds() :
+    name === 'winds' ? r.winds() :
+    name === 'weathers' ? r.weathers() :
     null;
   if (!roster) throw new Error(`unknown roster "${name}"`);
   return { entries: roster };

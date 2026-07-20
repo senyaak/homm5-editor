@@ -23,7 +23,8 @@ import mapSchemaJson from './map.schema.json' with { type: 'json' };
 import objectsSchemaJson from './objects.schema.json' with { type: 'json' };
 
 export type RegistryName =
-  | 'spells' | 'artifacts' | 'heroes' | 'races' | 'ambientLights' | 'creatures' | 'skills';
+  | 'spells' | 'artifacts' | 'heroes' | 'races' | 'ambientLights' | 'creatures' | 'skills'
+  | 'birds' | 'winds' | 'weathers';
 export type WidgetKind =
   | 'checklist' | 'dropdown' | 'teamgrid' | 'textfile' | 'script' | 'herolevel';
 export type TabName =

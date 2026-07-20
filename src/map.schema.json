@@ -40,11 +40,11 @@
     "ScenarioInformation": { "type": "array", "title": "Scenario information (lobby goal)", "x-advanced": true, "description": "Up to 8 entries shown on the scenario-selection screen.", "items": { "$ref": "#/$defs/Objective" } },
     "Objectives": { "$ref": "#/$defs/Objectives", "title": "Victory / loss conditions", "x-advanced": true },
 
-    "Birds": { "type": "string", "x-ref": true, "title": "Birds" },
+    "Birds": { "type": "string", "x-ref": true, "x-registry": "birds", "x-widget": "dropdown", "title": "Birds", "description": "A bird flock — pick a shipped one, or reference a custom AdvMapBirds saved in the map folder." },
     "BirdsAmount": { "type": "integer", "title": "Birds amount", "minimum": 0 },
-    "Weather": { "type": "string", "x-ref": true, "title": "Weather", "x-advanced": true },
-    "Wind": { "type": "string", "x-ref": true, "title": "Wind", "x-advanced": true },
-    "PreLight": { "type": "string", "x-ref": true, "title": "Prelight", "x-advanced": true },
+    "Weather": { "type": "array", "x-registry": "weathers", "x-ref": true, "x-widget": "checklist", "title": "Weather", "description": "Weather layers (AdvMapWeather references).", "items": { "type": "string", "x-registry": "weathers", "x-ref": true } },
+    "Wind": { "type": "string", "x-ref": true, "x-registry": "winds", "x-widget": "dropdown", "title": "Wind" },
+    "PreLight": { "type": "string", "x-ref": true, "x-registry": "ambientLights", "x-widget": "dropdown", "title": "Prelight", "description": "A pre-lighting AmbientLight reference." },
 
     "MapScript": { "type": "string", "x-ref": true, "x-widget": "script", "x-tab": "script", "title": "Map script", "description": "Reference to the Lua map script. Editing is Phase 5." },
     "NewDayTrigger": { "$ref": "#/$defs/Trigger", "title": "New-day trigger", "x-advanced": true },

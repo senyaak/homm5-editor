@@ -37,9 +37,12 @@ const SPELL_TABLE = 'GameMechanics/RefTables/UndividedSpells.xdb';
 const ARTIFACT_TABLE = 'GameMechanics/RefTables/Artifacts.xdb';
 const CREATURE_TABLE = 'GameMechanics/RefTables/Creatures.xdb';
 const SKILL_TABLE = 'GameMechanics/RefTables/Skills.xdb';
-/** Folders scanned for file-per-entry rosters. */
+/** Folders scanned for file-per-entry rosters, with the xpointer their refs use. */
 const HERO_DIR = 'MapObjects';
 const AMBIENT_DIR = join('Lights', '_(AmbientLight)');
+const BIRDS_DIR = join('MapObjects', '_(AdvMapBirds)');
+const WIND_DIR = join('MapObjects', '_(Wind)');
+const WEATHER_DIR = join('MapObjects', '_(AdvMapWeather)');
 
 /**
  * Player races (`TOWN_*`). A closed engine enum, not a moddable file roster, so
@@ -111,7 +114,22 @@ export class Registry {
    * `GroundAmbientLights`. The label is the preset's `<InternalName>`.
    */
   ambientLights(): RosterEntry[] {
-    return this.memo('ambient', () => scanAmbientLights(this.dataRoot));
+    return this.memo('ambient', () => scanEntities(this.dataRoot, AMBIENT_DIR, '/AmbientLight'));
+  }
+
+  /** The shipped bird flocks — `MapObjects/_(AdvMapBirds)/` (Birds). */
+  birds(): RosterEntry[] {
+    return this.memo('birds', () => scanEntities(this.dataRoot, BIRDS_DIR, '/AdvMapBirds'));
+  }
+
+  /** The shipped wind presets — `MapObjects/_(Wind)/` (Wind). */
+  winds(): RosterEntry[] {
+    return this.memo('winds', () => scanEntities(this.dataRoot, WIND_DIR, '/Wind'));
+  }
+
+  /** The shipped weather presets — `MapObjects/_(AdvMapWeather)/` (Weather items). */
+  weathers(): RosterEntry[] {
+    return this.memo('weathers', () => scanEntities(this.dataRoot, WEATHER_DIR, '/AdvMapWeather'));
   }
 }
 
@@ -185,16 +203,20 @@ function scanHeroes(dataRoot: string): RosterEntry[] {
   return out;
 }
 
-/** Ambient-light presets: every `*.xdb` under `Lights/_(AmbientLight)/`. */
-function scanAmbientLights(dataRoot: string): RosterEntry[] {
-  const base = join(dataRoot, AMBIENT_DIR);
-  const files = walkFiles(base, (n) => n.endsWith('.xdb'));
+/**
+ * A file-per-entry roster from a library folder (ambient lights, birds, winds,
+ * weathers): every `*.xdb` under `dir`, referenced with `xpointer`, labelled by
+ * its `<InternalName>` when it carries one, else its base name. The map can also
+ * point at a custom entity saved in its own folder; that is a free ref, not a
+ * roster entry — these are the shipped library to pick from.
+ */
+function scanEntities(dataRoot: string, dir: string, xpointer: string): RosterEntry[] {
+  const files = walkFiles(join(dataRoot, dir), (n) => n.endsWith('.xdb'));
   const out: RosterEntry[] = [];
   for (const f of files) {
     let internal = '';
     try { internal = childText(parse(readFileSync(f, 'utf8')), 'InternalName'); } catch { /* keep basename */ }
-    const label = internal || basename(f).replace(/\.xdb$/, '');
-    out.push({ id: toHref(dataRoot, f, '/AmbientLight'), name: label });
+    out.push({ id: toHref(dataRoot, f, xpointer), name: internal || basename(f).replace(/\.xdb$/, '') });
   }
   out.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
   return out;

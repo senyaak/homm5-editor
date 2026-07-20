@@ -25,6 +25,9 @@ console.log(`   with name refs: ${artifacts.filter((a) => a.nameRef).length}`);
 console.log(`heroes       ${heroes.length}   e.g. ${heroes.slice(0, 3).map((h) => `${h.group}/${h.name}`).join(', ')}`);
 console.log(`ambient      ${ambient.length}   e.g. ${ambient.slice(0, 3).map((a) => a.name).join(', ')}`);
 console.log(`races        ${races.length}   ${races.map((r) => r.name).join(', ')}`);
+console.log(`birds        ${reg.birds().length}   ${reg.birds().map((b) => b.name).join(', ')}`);
+console.log(`winds        ${reg.winds().length}   ${reg.winds().map((w) => w.name).join(', ')}`);
+console.log(`weathers     ${reg.weathers().length}   ${reg.weathers().map((w) => w.name).join(', ')}`);
 
 // Cross-check: every spell/artifact the map enables must exist in the roster —
 // proof the discovered universe is the one the game uses.
