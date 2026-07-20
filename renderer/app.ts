@@ -1351,8 +1351,8 @@ function updatePanel(): void {
 //
 // Both write straight through: the mesh turns or disappears at once and the
 // main process is told afterwards, where the edit is recorded so Ctrl+Z brings
-// it back. Deletion still confirms first — it is the one destructive-looking
-// action here — and nothing touches disk until Save regardless.
+// it back. Deletion does not prompt — undo is the safety net, the way Del works
+// in every editor — and nothing touches disk until Save regardless.
 
 /** An angle in radians as degrees in [0, 360). */
 const degOf = (r: number): number => ((r * 180 / Math.PI) % 360 + 360) % 360;
@@ -1440,7 +1440,6 @@ function updateHistoryUI(canUndo: boolean, canRedo: boolean, undoLabel: string |
 async function deleteSelected(): Promise<void> {
   if (!selected) return;
   const { id, mesh, inst } = selected;
-  if (!confirm(`Delete this ${inst.type}?`)) return;
   try {
     await window.editor.removeObject(id);
   } catch (e) {
