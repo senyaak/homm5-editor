@@ -52,6 +52,14 @@ import type {
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, '..');
 
+// [perf] Windows-only Chromium bug: the native occlusion calculator intermittently
+// decides a fully visible window is covered and throttles its compositor to a
+// crawl for the rest of the session — the "sometimes the whole editor goes
+// slow-motion, and alt-tab fixes it" symptom (a focus change resets the state).
+// Turning the feature off is the standard workaround and costs nothing here: we
+// only ever run one visible window. Must be set before app is ready.
+app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
+
 // The game-data root: where object models/textures (MapObjects/, bin/Geometries/)
 // live. A .h5m map archive does NOT contain these — they ship in the game's
 // data.pak — so we always resolve assets against this root, not against the map
@@ -241,6 +249,10 @@ function createWindow(): void {
       preload: join(__dirname, 'preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
+      // The render loop drives the whole editor; never let Chromium throttle its
+      // rAF/timers because it thinks the window is backgrounded. Pairs with the
+      // occlusion switch above.
+      backgroundThrottling: false,
     },
   });
   // Hoisted so the rest of the function sees a non-null window without
