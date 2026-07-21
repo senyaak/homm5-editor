@@ -71,17 +71,39 @@ not to place it.
 
 ## Where names are defined and where they are referenced
 
-The schema already marks both sides (`src/schema.ts`):
+The schema marks both sides with `x-nameOf` (this field *defines* a handle) and
+`x-nameRef` (this field *refers* to one, of a given kind). The editor offers a
+`<datalist>` of names defined elsewhere in the map (IPC `map:names`) as a hint —
+not a hard constraint, since a name not yet defined is still typeable.
 
-- **Defines a name** — `x-nameOf`: an objective's `<Name>`, an object's `<Name>`.
-- **References a name** — `x-nameRef`: `Dependencies` → an objective name,
-  `Target.Name` → an object name. The editor offers a `<datalist>` of names
-  defined elsewhere in the map (IPC `map:names`), as a hint, not a hard
-  constraint (a name not yet defined is still typeable).
+### Handles — fields that define a name (`x-nameOf`)
 
-The **Lua script** is the largest consumer of these names, but it is free text —
-nothing today connects the names in the map to the identifiers a script types.
-Closing that gap is Phase 5 (below).
+| Field | Kind | Where |
+|---|---|---|
+| object `<Name>` | `object` | every `AdvMap*` object — `$defs/CommonObject` (objects.schema.json) |
+| objective `<Name>` | `objective` | `Objectives.*` and `ScenarioInformation[]` items |
+| region `<Name>` | `region` | `regions[]` items |
+
+Standalone definition documents (a Main Town/Hero's `Name.(AdvMapTown).xdb`, a
+reserve hero) carry their own `<Name>` too — that is the handle a script uses
+(`DeployReserveHero(heroName, …)`), even though the file is referenced by href.
+
+### References — fields that name a handle (`x-nameRef`) or a script identifier
+
+| Field | → kind | Consumer |
+|---|---|---|
+| `Objective.Dependencies[]` | `objective` | engine — objective ordering |
+| `TargetGlance.Target.Name` | `object` | engine — the objective's target/camera |
+| trigger `…Trigger.Action.FunctionName` | *Lua function* | engine calls that Lua function (a **script-side** handle, not a map name — not in `map:names`) |
+| Lua args: `townName` / `objectName` / `heroName` / `regionName` | object / region | the map script (free text today) |
+
+The **Lua script** is the largest consumer of the `object`/`town`/`hero`/`region`
+handles, but the script is free text — nothing yet connects the map's names to
+the identifiers a script types. Closing that gap (name completion) is Phase 5.
+
+Note the two distinct namespaces a trigger touches: `FunctionName` is a **Lua
+function** to run; the arguments that function takes are the **map handles**
+above. Only the latter come from `map:names`.
 
 ## Enum handles used by name, for reference
 

@@ -10,7 +10,7 @@
         "Pos": { "$ref": "#/$defs/Pos", "title": "Position" },
         "Rot": { "type": "number", "title": "Rotation" },
         "Floor": { "type": "integer", "minimum": 0, "maximum": 1, "title": "Floor" },
-        "Name": { "type": "string", "title": "Name", "description": "Script name of the object." },
+        "Name": { "type": "string", "title": "Name", "x-nameOf": "object", "description": "The object's script handle — how Lua and other fields (Target.Name, a script's SetObjectOwner/TransformTown/…) refer to it. Should be unique on the map and not empty." },
         "CombatScript": { "type": "string", "x-ref": true, "title": "Combat script", "x-advanced": true },
         "pointLights": { "type": "array", "title": "Point lights", "x-advanced": true, "items": { "type": "object" } },
         "Shared": { "type": "string", "x-ref": true, "x-shared": true, "title": "Definition", "description": "The object's identity — which monster/artifact/town/hero it is. Picked from the object catalogue for this type." }
