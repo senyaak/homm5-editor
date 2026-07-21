@@ -164,6 +164,56 @@ controls.enableDamping = true;
 controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.PAN, RIGHT: THREE.MOUSE.PAN };
 controls.screenSpacePanning = false;
 
+// --- top-down (plan) camera -------------------------------------------------
+// A fixed orthographic view straight down the -Z axis. Perspective foreshortening
+// and terrain height both drop out, so world (x, y) maps to the screen by a plain
+// affine transform: a proper plan view for laying a map out, and — because that
+// mapping is exact and camera-independent — the stable coordinate frame the
+// click-driven reconstruction tests need to compute "where to click" for a tile.
+//
+// The orbit camera above still owns pan/target; this one just re-centres on that
+// same target every frame (see syncTopCamera). Rotation is disabled in plan view
+// so the affine mapping holds; pan (WASD / middle-drag) and zoom (wheel -> the
+// frustum half-height) still work.
+const topCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, -20000, 20000);
+topCamera.up.set(0, 1, 0); // world +Y is screen up, +X is screen right
+/** Half-height of the ortho frustum, in world units — the plan-view zoom level. */
+let topHalf = 40 * U;
+/** false = 3D perspective + orbit; true = 2D plan (orthographic top-down). */
+let topView = false;
+/** The camera the render loop, raycaster and resize all read; swapped by the toggle. */
+let activeCam: THREE.Camera = camera;
+
+/** Re-fit the ortho frustum to the viewport aspect and re-centre it over the orbit target. */
+function syncTopCamera(): void {
+  const aspect = innerWidth / innerHeight;
+  topCamera.top = topHalf; topCamera.bottom = -topHalf;
+  topCamera.left = -topHalf * aspect; topCamera.right = topHalf * aspect;
+  const t = controls.target;
+  topCamera.position.set(t.x, t.y, 10000); // height is arbitrary under ortho, just above all geometry
+  topCamera.lookAt(t.x, t.y, 0);
+  topCamera.updateProjectionMatrix();
+  topCamera.updateMatrixWorld();
+}
+
+/** Switch between the 3D orbit view and the 2D plan view. */
+function setTopView(on: boolean): void {
+  topView = on;
+  activeCam = on ? topCamera : camera;
+  controls.enableRotate = !on; // plan view keeps pan + zoom, drops orbit
+  if (on) syncTopCamera();
+  const b = document.getElementById('viewbtn');
+  if (b) { b.textContent = on ? 'View: 2D' : 'View: 3D'; b.classList.toggle('on', on); }
+  saveUiPrefs({ topView: on });
+}
+
+// Wheel zoom in plan view: OrbitControls dollies the (hidden) perspective camera,
+// which does nothing to the ortho frustum, so adjust its half-height here instead.
+addEventListener('wheel', (e) => {
+  if (!topView) return;
+  topHalf = Math.max(2 * U, Math.min(400 * U, topHalf * (e.deltaY > 0 ? 1.1 : 1 / 1.1)));
+}, { passive: true });
+
 // --- WASD panning ---
 // Held keys move the camera and its orbit target together across the ground.
 // Speed scales with zoom distance so it feels the same up close and far out.
@@ -197,6 +247,7 @@ function keyPan(dt: number): void {
 addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
+  syncTopCamera(); // keep the plan-view frustum matched to the new aspect
 });
 
 // --- persisted UI preferences ----------------------------------------------
@@ -212,9 +263,12 @@ interface UiPrefs {
   grid: boolean;
   showHidden: boolean;
   texScale: number;
+  /** Plan (top-down orthographic) view instead of the 3D orbit view. */
+  topView: boolean;
 }
 const UI_PREFS_DEFAULT: UiPrefs = {
   showObjects: true, explorerOpen: true, cliffs: true, grid: false, showHidden: false, texScale: 0.5,
+  topView: false,
 };
 const UI_PREFS_KEY = 'homm5-editor.ui';
 function loadUiPrefs(): UiPrefs {
@@ -1259,6 +1313,9 @@ function setActiveFloor(i: number): void {
   controls.target.set(c, c, midZ);
   camera.position.set(c, -V * 0.5 * U, midZ + V * 0.7 * U);
   controls.update();
+  // Fit the whole floor in the plan view too (a touch of margin past the edge).
+  topHalf = V * 0.55 * U;
+  syncTopCamera();
   updateFloorUI();
   if (world) renderExplorer(); // floor switch -> its own object list
 }
@@ -2743,7 +2800,7 @@ function pickObject(ev: PointerEvent): THREE.Mesh | null {
   if (!showObjects) return null; // hidden objects must not swallow clicks
   ptr.x = (ev.clientX / innerWidth) * 2 - 1;
   ptr.y = -(ev.clientY / innerHeight) * 2 + 1;
-  raycaster.setFromCamera(ptr, camera);
+  raycaster.setFromCamera(ptr, activeCam);
   const hits = raycaster.intersectObjects<THREE.Mesh>([...activeFloor().meshes.values()], false);
   return hits.length ? hits[0]!.object : null;
 }
@@ -2808,7 +2865,7 @@ renderer.domElement.addEventListener('pointermove', (ev) => {
   // the resulting world position to the tile grid.
   ptr.x = (ev.clientX / innerWidth) * 2 - 1;
   ptr.y = -(ev.clientY / innerHeight) * 2 + 1;
-  raycaster.setFromCamera(ptr, camera);
+  raycaster.setFromCamera(ptr, activeCam);
   const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -selected.mesh.position.z);
   const hit = new THREE.Vector3();
   if (!raycaster.ray.intersectPlane(plane, hit)) return;
@@ -3321,7 +3378,7 @@ function tileUnderCursor(ev: PointerEvent): { x: number; y: number } | null {
   if (!world) return null;
   ptr.x = (ev.clientX / innerWidth) * 2 - 1;
   ptr.y = -(ev.clientY / innerHeight) * 2 + 1;
-  raycaster.setFromCamera(ptr, camera);
+  raycaster.setFromCamera(ptr, activeCam);
   const ground = activeFloor().terrainMesh;
   // The raycaster tests against matrixWorld, and three.js only refreshes that
   // while rendering. The ground carries a real transform now — it is built in
@@ -3993,6 +4050,7 @@ function setShowObjects(on: boolean): void {
   saveUiPrefs({ showObjects: on });
 }
 $('showobj').onclick = () => setShowObjects(!showObjects);
+$('viewbtn').onclick = () => setTopView(!topView);
 
 // --- object palette (the original editor's Objects tab) --------------------
 //
@@ -4547,6 +4605,7 @@ async function loadMapPath(path: string | null): Promise<void> {
     $('empty').style.display = 'none';
     $('title').textContent = `homm5-editor — ${info.name} (${info.tileX}×${info.tileY})`;
     $button('pack').disabled = false;
+    $('viewbtn').style.display = '';
     $('objects').style.display = '';
     $('showobj').style.display = '';
     $('scalewrap').style.display = 'flex';
@@ -4576,6 +4635,7 @@ async function loadMapPath(path: string | null): Promise<void> {
     // that is the whole point of persisting the toggles.
     setExplorer(explorerOpen);
     setShowObjects(showObjects);
+    setTopView(uiPrefs.topView); // restore the plan/3D view choice
     markDirty(false);
     const total = Object.values(info.counts).reduce((a, b) => a + b, 0);
     const floorsTxt = info.floors.length > 1
@@ -4743,5 +4803,6 @@ let lastT = performance.now();
   // Resolve at most one deferred hover pick per frame (see hoverEv).
   if (hoverEv) { updateHoverCursor(tileUnderCursor(hoverEv)); hoverEv = null; }
   controls.update();
-  renderer.render(scene, camera);
+  if (topView) syncTopCamera(); // follow pan/zoom + the orbit target each frame
+  renderer.render(scene, activeCam);
 })();
