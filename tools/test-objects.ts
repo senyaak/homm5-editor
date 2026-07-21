@@ -33,12 +33,14 @@ if (existsSync(join(SAMPLES, 'MapObjects', '_(AdvMapObjectLink)'))) {
   // point a new map object at.
   ok(objects.every((o) => o.shared), 'every entry carries a shared reference');
 
-  // The "Random ..." entries have an empty <Link/> and a <RndGroup href>.
-  // Requiring a direct link silently dropped all 53 of them.
+  // The "Random ..." entries have an empty <Link/> and a <RndGroup href> in the
+  // data; requiring a direct link silently dropped all 53 of them. The catalogue
+  // resolves each random group to its first member so the entry is placeable, so
+  // its shared points at a concrete member's Shared — not at the group itself.
   const rnd = objects.filter((o) => o.random);
   ok(rnd.length > 40, `random-group entries are included (${rnd.length})`);
-  ok(rnd.every((o) => o.shared.includes('AdvMapSharedGroup')),
-    'random entries point at a shared group');
+  ok(rnd.every((o) => o.shared && !o.shared.includes('AdvMapSharedGroup')),
+    'random entries resolve to a concrete member Shared');
 
   // Hidden entries are kept, so the UI can offer to show them.
   ok(objects.some((o) => o.hidden), 'hidden entries are kept, not dropped');
