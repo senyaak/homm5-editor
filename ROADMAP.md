@@ -168,28 +168,48 @@ placing new ones from a palette.
 - [ ] ⬜ Creature stacks: type, count, mood, whether they guard
 - [ ] ⬜ Artifacts, resources, mines, dwellings, chests — properties
 - [ ] ⬜ Players/teams: colours, alliances, starting bonuses, available factions
-- [ ] 🔨 Map properties — a "Map Properties" dialog (toolbar) with two views,
-      mirroring the original's two forms: a curated **General** tab (name and
-      description read-only from the sibling txt files, "restrict hero level",
-      and the map-wide toggles) and an **All fields** tab, the full `<AdvMapDesc>`
-      property tree. Simple root fields read/written through the same generic
-      machinery as objects (`HommMap.mapProps`/`setMapProp`, `src/map.ts`), so
-      they flow through undo/dirty/save for free; TileX/TileY/Version and empty
-      asset/enum placeholders are read-only. Still ⬜: editing name/description
-      (needs the txt file as its own document), and typed editors for the
-      Players/Teams/Objectives lists. Victory/loss conditions, weather, fog.
+- [x] ✅ Map properties — a "Map Properties" dialog (toolbar) with two views,
+      mirroring the original's two forms: a curated **8-tab dialog** (General /
+      Players / Teams / Heroes / Spells / Artifacts / Script / Rumours) driven by
+      the schema (`x-tab`), and a full **tree** panel over the whole
+      `<AdvMapDesc>`. Both edit by path through one API, so dialog and tree stay
+      in sync and share undo/dirty/save. Name/description edit in place (writing
+      the sibling txt files); TileX/TileY/Version stay read-only. Structured refs
+      (Birds/Wind/AmbientLight, a player's Main Town/Hero) get a create / select /
+      edit control; text refs get New / browse / edit. See `docs/MAP_PROPERTIES.md`.
+- [ ] ⬜ Remaining dialog polish: `x-mapObjects` pickers for links to *placed*
+      objects; in-dialog checklists for the player sub-lists (ReserveHeroes,
+      TavernFilter). Victory/loss conditions, weather, fog.
 - [ ] ⬜ Events/triggers/quests, guarded zones, rivers and roads
 - [ ] ⬜ Map validation, as the original does: unreachable areas, duplicates,
       broken references
 
 ## Phase 5 — Lua, done properly
 
+The map–script contract is documented in `docs/NAMES_AND_SCRIPTING.md`: Lua
+addresses everything by its `<Name>` handle, and "main/reserve" heroes & towns
+are named *definitions* the script/engine materialises at run time
+(`DeployReserveHero`, `TransformTown`, …), which is why the editor never places
+them.
+
 - [ ] ⬜ Embed Monaco with Lua highlighting
 - [ ] ⬜ HoMM V API definitions (from `HOMM5_A2_Script_Functions.pdf` /
       `HOMM5_A2_IDs_for_Scripts.pdf`) → completion and signature help
+- [ ] ⬜ **Name completion in Lua** — offer the map's own names (objects, towns,
+      heroes, objectives, regions) as completions in argument positions that take
+      a name, driven by `map:names` (the same source the `x-nameRef` datalists
+      use). Makes "reference an entity from Lua" correct instead of hand-typed.
 - [ ] ⬜ Bind scripts to the map and to objects (map script, per-object triggers)
-- [ ] ⬜ Lint before saving: unknown functions, syntax errors
+- [ ] ⬜ Lint before saving: unknown functions, syntax errors, **names used in
+      script that no object defines**
 - [ ] ⬜ (optional) Embedded Lua interpreter for dry-run checks
+
+### Naming (prerequisite for reliable scripting)
+
+- [ ] ⬜ **Default, unique `<Name>` handles** — a new named object/entity gets a
+      non-empty default (`<TYPE>_001`, `_002`, …); refuse or auto-suffix
+      duplicates within the map. An empty or duplicate handle silently breaks the
+      script that refers to it (see `docs/NAMES_AND_SCRIPTING.md`).
 
 ## Phase 6 — Campaigns
 
