@@ -151,6 +151,7 @@ const STUB = `<script>
     setEntityPath: async (p) => { log('setEntityPath', p); return { ok: true }; },
     pickText: async () => ({ href: '' }),
     copyEntityToMap: async (href) => ({ href }),
+    suggestName: async (className) => ({ name: className + '_001' }),
     readFile: async () => ({ text: '' }),
     writeFile: async (p) => { log('writeFile', p); return { ok: true }; },
     setMapPath: async (p) => { log('setMapPath', p); tset(mapTreeData, p.path, p.value); return { ok: true }; },

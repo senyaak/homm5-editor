@@ -192,7 +192,8 @@ are named *definitions* the script/engine materialises at run time
 (`DeployReserveHero`, `TransformTown`, …), which is why the editor never places
 them.
 
-- [ ] ⬜ Embed Monaco with Lua highlighting
+- [ ] ⬜ Pick an editor component (Monaco / CodeMirror / other — TBD) with Lua
+      highlighting
 - [ ] ⬜ HoMM V API definitions (from `HOMM5_A2_Script_Functions.pdf` /
       `HOMM5_A2_IDs_for_Scripts.pdf`) → completion and signature help
 - [ ] ⬜ **Name completion in Lua** — offer the map's own names (objects, towns,

@@ -28,6 +28,7 @@ const api = {
   setEntityPath: (p) => ipcRenderer.invoke('entity:set-path', p),
   pickText: () => ipcRenderer.invoke('map:pick-text'),
   copyEntityToMap: (href) => ipcRenderer.invoke('entity:copy-to-map', { href }),
+  suggestName: (className) => ipcRenderer.invoke('map:suggest-name', { className }),
   names: (kind) => ipcRenderer.invoke('map:names', { kind }),
   mapTree: () => ipcRenderer.invoke('map:tree'),
   setMapPath: (p) => ipcRenderer.invoke('map:set-path', p),

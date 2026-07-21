@@ -183,6 +183,11 @@ export interface EntityCopyPayload { href: string; }
 /** Result of `entity:copy-to-map` — the href of the editable map-local copy. */
 export interface EntityCopyResult { href: string; }
 
+/** Payload of `map:suggest-name` — the class to name a new instance of. */
+export interface SuggestNamePayload { className: string; }
+/** Result of `map:suggest-name` — a free `Class_00N` handle for a new object. */
+export interface SuggestNameResult { name: string; }
+
 /** Payload of `map:names` — which kind of in-map name to gather. */
 export interface NamesPayload { kind: string; }
 /** Result of `map:names` — names defined in the map, for x-nameRef hints. */
@@ -453,6 +458,7 @@ export interface EditorApi {
   setEntityPath(p: EntitySetPathPayload): Promise<ObjectEditResult>;
   pickText(): Promise<PickTextResult>;
   copyEntityToMap(href: string): Promise<EntityCopyResult>;
+  suggestName(className: string): Promise<SuggestNameResult>;
   names(kind: string): Promise<NamesResult>;
   mapTree(): Promise<MapTreeResult>;
   setMapPath(p: SetPathPayload): Promise<ObjectEditResult>;

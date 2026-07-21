@@ -32,7 +32,7 @@ import { readTree, setPath, addStringItem, removeItem, appendItem, indentText, n
 import { mapSchema, resolveSchemaAtPath, deref, schemaForClass } from '../src/schema.ts';
 import { buildItem, isBuildable, buildEntity } from '../src/skeleton.ts';
 import { children, find, text, serialize, parse } from '../src/xml.ts';
-import type { XmlElement } from '../src/xml.ts';
+import type { XmlElement, XmlNode } from '../src/xml.ts';
 import type { DocPatch, Step, StoredHistory } from '../src/history.ts';
 import type { TileInfo, GeomResolver, Instance as SceneInstance } from '../src/scene.ts';
 import type { HommMap, MapObject } from '../src/map.ts';
@@ -41,6 +41,7 @@ import type {
   RotateObjectPayload, RemoveObjectPayload, ObjectEditResult, ObjectPropsResult, SetPropPayload,
   MapPropsResult, SetMapPropPayload, RosterPayload, RosterResult, OfClassPayload, NewEntityPayload, NewEntityResult,
   EntityReadPayload, EntityReadResult, EntitySetPathPayload, PickTextResult, EntityCopyPayload, EntityCopyResult,
+  SuggestNamePayload, SuggestNameResult,
   MapTreeResult, SetPathPayload, AddItemPayload, RemoveItemPayload2, SetListPayload, NamesPayload, NamesResult,
   ReadFilePayload, ReadFileResult, WriteFilePayload,
   ObjectCatalogResult, IconPayload, IconResult, AddObjectPayload, AddObjectResult,
@@ -563,11 +564,31 @@ ipcMain.handle('map:new-entity', async (_e: IpcMainInvokeEvent, { className, nam
   const sc = schemaForClass(className);
   const body = sc ? buildEntity(sc.root, className, deref(sc.root, sc.field), '\n') : null;
   if (!body) throw new Error(`no template for <${className}> — pick an existing one instead`);
+  // The new document's script handle: its <Name> (objects) or <InternalName>
+  // (library entities) = the given name, never left empty (scripts address
+  // objects by this handle — see docs/NAMES_AND_SCRIPTING.md).
+  const handle = find(body, 'Name') || find(body, 'InternalName');
+  if (handle) { handle.selfClose = false; handle.children = [{ type: 'text', text: clean } as XmlNode]; }
   const file = join(session.mapDir, `${clean}.(${className}).xdb`);
   if (existsSync(file)) throw new Error(`${basename(file)} already exists`);
   writeFileSync(file, `<?xml version="1.0" encoding="UTF-8"?>\n${serialize(body)}\n`, 'utf8');
   session.watch.resync();
   return { href: `${clean}.(${className}).xdb#xpointer(/${className})` };
+});
+
+// Suggest a free `Class_00N` handle for a new object of a class — the next
+// number not already taken by a `*.(Class).xdb` in the map folder, so New starts
+// with a non-empty, non-duplicate name (see docs/NAMES_AND_SCRIPTING.md).
+ipcMain.handle('map:suggest-name', async (_e: IpcMainInvokeEvent, { className }: SuggestNamePayload): Promise<SuggestNameResult> => {
+  if (!session) throw new Error('no map loaded');
+  if (!/^[A-Za-z][A-Za-z0-9]*$/.test(className)) throw new Error(`bad class "${className}"`);
+  const suffix = `.(${className}).xdb`;
+  const taken = new Set<string>();
+  try { for (const f of readdirSync(session.mapDir)) if (f.endsWith(suffix)) taken.add(f.slice(0, -suffix.length)); } catch { /* no dir yet */ }
+  let n = 1;
+  let name = `${className}_${String(n).padStart(3, '0')}`;
+  while (taken.has(name)) { n++; name = `${className}_${String(n).padStart(3, '0')}`; }
+  return { name };
 });
 
 /**

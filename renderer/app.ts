@@ -2469,23 +2469,26 @@ let creating: { submit: (name: string) => Promise<string>; resolve: (v: string |
 
 /** Open the create dialog. `typeLabel` shows a fixed Type row (entities) or is
  *  hidden (a plain file). Resolves the created href, or null if cancelled. */
-function openCreate(title: string, typeLabel: string | null, nameLabel: string, submit: (name: string) => Promise<string>): Promise<string | null> {
+function openCreate(title: string, typeLabel: string | null, nameLabel: string, submit: (name: string) => Promise<string>, defaultName = ''): Promise<string | null> {
   $('on-title').textContent = title;
   $('on-typerow').style.display = typeLabel ? '' : 'none';
   if (typeLabel) $input('on-type').value = typeLabel;
   $('on-namelabel').textContent = nameLabel;
   const name = $input('on-name');
-  name.value = '';
+  name.value = defaultName;
   $('on-err').textContent = '';
   newDialog().showModal();
-  name.focus();
+  name.focus(); name.select(); // pre-select the default so a keystroke replaces it
   return new Promise<string | null>((resolve) => { creating = { submit, resolve }; });
 }
 
-/** Create a new entity object of a class (writes Name.(Class).xdb in the map). */
-function createEntity(className: string): Promise<string | null> {
+/** Create a new entity object of a class (writes Name.(Class).xdb in the map).
+ *  Prefills a free `Class_00N` handle so it is never empty or a duplicate. */
+async function createEntity(className: string): Promise<string | null> {
+  let suggested = '';
+  try { suggested = (await window.editor.suggestName(className)).name; } catch { /* prefill is optional */ }
   return openCreate(`Create New <${className}> Object`, className, 'Name',
-    (name) => window.editor.newEntity({ className, name }).then((r) => { classCache.delete(className); return r.href; }));
+    (name) => window.editor.newEntity({ className, name }).then((r) => { classCache.delete(className); return r.href; }), suggested);
 }
 
 /** Name a new text file for a text ref and create it empty at once (so the ref
