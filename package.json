@@ -10,6 +10,7 @@
     "inspect": "node tools/inspect-terrain.js",
     "test-terrain": "node tools/test-terrain.js",
     "test-terrain-write": "node tools/test-terrain-write.ts",
+    "test-terrain-blank": "node tools/test-terrain-blank.ts",
     "test-terrain-layer": "node tools/test-terrain-layer.ts",
     "test-pak": "node tools/test-pak.js",
     "test-map": "node tools/test-map.js",
