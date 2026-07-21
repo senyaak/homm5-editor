@@ -4,7 +4,7 @@
 // and the defaults come from the schema (src/schema.ts); nothing is guessed.
 
 import type { XmlElement, XmlNode } from './xml.ts';
-import type { FieldSchema, MapSchema } from './schema.ts';
+import type { FieldSchema, HasDefs } from './schema.ts';
 import { deref } from './schema.ts';
 
 const textNode = (s: string): XmlNode => ({ type: 'text', text: s } as XmlNode);
@@ -36,7 +36,7 @@ export function isBuildable(itemSchema: FieldSchema | null): boolean {
  * whitespace that precedes an item in the target list (e.g. "\n\t\t\t"); nested
  * fields step one tab deeper.
  */
-export function buildItem(root: MapSchema, itemSchema: FieldSchema, indent: string): XmlElement {
+export function buildItem(root: HasDefs, itemSchema: FieldSchema, indent: string): XmlElement {
   return buildStruct(root, 'Item', itemSchema, indent);
 }
 
@@ -46,12 +46,12 @@ export function buildItem(root: MapSchema, itemSchema: FieldSchema, indent: stri
  * beside the map). The element is named for the class (also its root/xpointer),
  * not `Item`. Returns null when the schema has no fields to build from.
  */
-export function buildEntity(root: MapSchema, className: string, schema: FieldSchema, indent = ''): XmlElement | null {
+export function buildEntity(root: HasDefs, className: string, schema: FieldSchema, indent = ''): XmlElement | null {
   if (!isBuildable(schema)) return null;
   return buildStruct(root, className, schema, indent);
 }
 
-function buildStruct(root: MapSchema, name: string, schema: FieldSchema, indent: string): XmlElement {
+function buildStruct(root: HasDefs, name: string, schema: FieldSchema, indent: string): XmlElement {
   const inner = indent + '\t';
   const kids: XmlNode[] = [];
   for (const [k, raw] of Object.entries(schema.properties ?? {})) {
@@ -61,7 +61,7 @@ function buildStruct(root: MapSchema, name: string, schema: FieldSchema, indent:
   return elem(name, kids);
 }
 
-function buildField(root: MapSchema, name: string, f: FieldSchema, indent: string): XmlElement {
+function buildField(root: HasDefs, name: string, f: FieldSchema, indent: string): XmlElement {
   // A populated nested structure; an empty one self-closes.
   if (f.type === 'object' && f.properties && Object.keys(f.properties).length) {
     return buildStruct(root, name, f, indent);

@@ -20,8 +20,8 @@ import { UNITS_PER_TILE as U } from '../src/units.ts';
 import type { Scene, Floor, Instance, SplatData, TileInfo, GeomData, GeomPart, Footprint } from '../src/scene.ts';
 import type { EditorApi, MapListEntry, ExternalChange, PlaceableObject, RosterEntryDTO } from '../electron/ipc.ts';
 import type { ObjectProp } from '../src/map.ts';
-import { objectProps, deref, controlOf, objectSchema, mapSchema, resolveSchemaAtPath, classOf } from '../src/schema.ts';
-import type { FieldSchema } from '../src/schema.ts';
+import { objectProps, deref, controlOf, objectSchema, mapSchema, resolveSchemaAtPath, classOf, schemaForClass } from '../src/schema.ts';
+import type { FieldSchema, HasDefs } from '../src/schema.ts';
 import type { TreeData, Path as TreePath } from '../src/tree.ts';
 
 type MapEntry = MapListEntry & { cat: string };
@@ -1652,11 +1652,10 @@ function objectsOfClass(className: string): Promise<RosterEntryDTO[]> {
   return p;
 }
 
-/** Whether "New" can author a class — the schema has a template ($def) for it.
- *  Object Shared classes (AdvMapHeroShared…) have none, so those are pick-only. */
+/** Whether "New" can author a class — the schema has a template for it (a map
+ *  entity $def, or an object type). Shared identity classes have none. */
 function canCreateClass(className: string): boolean {
-  const def = mapSchema.$defs?.[className];
-  return !!def && !!deref(mapSchema, def).properties;
+  return schemaForClass(className) !== null;
 }
 
 /** In-map names per kind (objective, object), for x-nameRef autocomplete. Not
@@ -2562,6 +2561,11 @@ const entDialog = (): HTMLDialogElement => {
 let eeHref = '';
 let eeRepoint: ((href: string) => void) | null = null;
 let eeClassName = '';
+// The $defs root the open document's fields resolve against (map entities vs
+// object types), and — for an object type — its class, so a nested Shared field
+// resolves to `${type}Shared`.
+let eeRoot: HasDefs = mapSchema;
+let eeObjType = '';
 const errMsg = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 
 /** Open the entity editor for `href`. `onRepoint` (from the ref control) lets a
@@ -2587,8 +2591,10 @@ async function loadEntity(href: string): Promise<void> {
   try { res = await window.editor.readEntity(href); }
   catch (e) { host.innerHTML = ''; note.textContent = 'could not read: ' + errMsg(e); return; }
   if (eeHref !== href) return; // a later load won the race
-  const def = mapSchema.$defs?.[res.className];
-  const rootField = def ? deref(mapSchema, def) : inferField(res.tree as TreeData);
+  const sc = schemaForClass(res.className);
+  eeRoot = sc?.root ?? mapSchema;
+  eeObjType = sc && objectSchema.types[res.className] ? res.className : '';
+  const rootField = sc ? deref(eeRoot, sc.field) : inferField(res.tree as TreeData);
   const fs = document.createElement('fieldset');
   fs.className = 'ee-fs' + (res.editable ? '' : ' ee-form-ro');
   fs.style.border = '0'; fs.style.padding = '0'; fs.style.margin = '0'; fs.style.minInlineSize = '0';
@@ -2627,7 +2633,7 @@ function fillEntity(container: HTMLElement, field: FieldSchema, data: TreeData |
   if (!keys.length) { const p = document.createElement('div'); p.className = 'ph'; p.textContent = 'no fields'; container.appendChild(p); return; }
   for (const k of keys) {
     if (seen.has(k)) continue; seen.add(k);
-    const cf = props[k] ? deref(mapSchema, props[k]) : inferField(dataAt(data, k));
+    const cf = props[k] ? deref(eeRoot, props[k]) : inferField(dataAt(data, k));
     container.appendChild(entNode(k, cf, dataAt(data, k), [...path, k]));
   }
 }
@@ -2661,7 +2667,11 @@ function entNode(name: string, field: FieldSchema, data: TreeData | undefined, p
     row.appendChild(ro);
   } else {
     const value = typeof data === 'string' ? data : '';
-    row.appendChild(leafControl(field, value, (v) => void entitySet(path, v)));
+    const commit = (v: string): void => void entitySet(path, v);
+    // An object document's Shared identity resolves to `${type}Shared` — give it
+    // the type-constrained picker, which leafControl can't (it has no objType).
+    const cls = field['x-shared'] ? classOf(field, eeObjType) : null;
+    row.appendChild(cls ? entityRefControl(cls, value, commit) : leafControl(field, value, commit));
   }
   return row;
 }

@@ -131,7 +131,7 @@ const STUB = `<script>
     NameFileRef: 'name.txt', DescriptionFileRef: 'desc.txt',
     Birds: 'Pigeons.(AdvMapBirds).xdb#xpointer(/AdvMapBirds)',
     MapRumours: [{ Text: 'r1.txt' }, { Text: 'r2.txt' }],
-    players: [{ Colour: 'PCOLOR_RED', Team: '0' }, { Colour: 'PCOLOR_BLUE', Team: '1' }],
+    players: [{ Colour: 'PCOLOR_RED', Team: '0', MainTown: 'main_town_test.(AdvMapTown).xdb#xpointer(/AdvMapTown)' }, { Colour: 'PCOLOR_BLUE', Team: '1' }],
   };
   const tget = (root, path) => path.reduce((n, s) => (n == null ? n : n[s]), root);
   const tset = (root, path, v) => { const p = tget(root, path.slice(0, -1)); if (p) p[path[path.length - 1]] = v; };
@@ -145,10 +145,12 @@ const STUB = `<script>
     roster: async () => ({ entries: [] }),
     objectsOfClass: async () => ({ entries: [] }),
     newEntity: async ({ className, name }) => ({ href: name + '.(' + className + ').xdb#xpointer(/' + className + ')' }),
-    readEntity: async () => ({ className: 'Wind', editable: true, tree: { Angle: '225', Speed: '10' } }),
+    readEntity: async (href) => /AdvMapTown/.test(href)
+      ? { className: 'AdvMapTown', editable: true, tree: { Pos: { x: '11', y: '11', z: '0' }, PlayerID: 'PLAYER_NONE', Shared: '', AllowQuickCombat: 'true' } }
+      : { className: 'Wind', editable: true, tree: { Angle: '225', Speed: '10' } },
     setEntityPath: async (p) => { log('setEntityPath', p); return { ok: true }; },
     pickText: async () => ({ href: '' }),
-    copyEntityToMap: async ({ href }) => ({ href }),
+    copyEntityToMap: async (href) => ({ href }),
     readFile: async () => ({ text: '' }),
     writeFile: async (p) => { log('writeFile', p); return { ok: true }; },
     setMapPath: async (p) => { log('setMapPath', p); tset(mapTreeData, p.path, p.value); return { ok: true }; },

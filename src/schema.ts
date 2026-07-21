@@ -177,6 +177,23 @@ export function classOf(f: FieldSchema, objectType?: string): string | null {
   return r ? REGISTRY_CLASS[r] ?? null : null;
 }
 
+/**
+ * The template + its `$defs` root for a class — what "New" builds from and the
+ * entity editor types its form by. A class lives in one of two schemas: the
+ * map's own entity `$defs` (AdvMapBirds, Wind…) or the object types
+ * (AdvMapTown, AdvMapHero…, flattened from allOf). Returns null for a class we
+ * cannot describe, so the caller falls back to raw editing / disables New.
+ */
+export function schemaForClass(className: string): { root: HasDefs; field: FieldSchema } | null {
+  const md = mapSchema.$defs?.[className];
+  if (md) return { root: mapSchema, field: md };
+  if (objectSchema.types[className]) {
+    const props = objectProps(className);
+    if (Object.keys(props).length) return { root: objectSchema, field: { type: 'object', properties: props } };
+  }
+  return null;
+}
+
 /** The control a field wants — the one decision both surfaces share. */
 export type Control =
   | 'checkbox' | 'number' | 'text' | 'enum'   // simple values
