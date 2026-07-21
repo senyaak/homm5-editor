@@ -254,6 +254,19 @@ them.
 - [ ] ⬜ Round-trip tests across the shipped map set (saving must not break them)
 - [ ] ⬜ User documentation and examples
 
+## Testing strategy — reconstruction (see `docs/E2E_RECONSTRUCTION.md`)
+
+The primary e2e is **rebuilding the shipped campaign missions from scratch**, one
+at a time in order (C1M1 → C6M5), diffing each reconstruction against the
+original to surface — and then close — whatever the editor can't yet express. A
+mission's reconstruction script is its e2e test and re-runs on every change.
+Round-trip (load→save→identical) is the cheap complementary net.
+
+- [ ] ⬜ **Milestone 0 — New Map**: write a blank, valid map project (map.xdb
+      from the schema skeleton + flat GroundTerrain.bin + sibling txt), validated
+      by load-back / round-trip / pack, then iterated until the game loads it.
+      Everything else in the reconstruction plan builds on this.
+
 ---
 
 ## Open research questions
