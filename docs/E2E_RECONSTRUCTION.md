@@ -58,20 +58,41 @@ fresh GUIDs, element ordering and float formatting differ. So the comparison is
 A gap = something in the original that the editor cannot yet produce. Each gap is
 logged with the mission it was found in.
 
+## Stage 2 — assemble the campaign (not just the maps)
+
+Individual maps passing is necessary but not sufficient: the campaign layer has
+its own content the maps don't carry. **After a campaign's five missions are
+reconstructed, assemble them into a campaign and verify that too.** Per campaign:
+
+1. Build the `*.(Campaign).xdb` — mission list and order, unlock/dependency
+   rules, per-mission start bonuses, intro/outro text, map bindings.
+2. Wire the cross-mission carry-over the campaign relies on — migrated
+   heroes/armies/artifacts, entry points on the destination maps
+   (see `docs/NAMES_AND_SCRIPTING.md`).
+3. Pack the `.h5c` and confirm in the game: missions unlock in order, bonuses are
+   offered, a hero carries into the next mission as in the original.
+4. Diff the reconstructed `*.(Campaign).xdb` against the original (semantic).
+
+This is what exercises Phase 6, and it's where the whole set finally comes
+together into something playable end to end — the real proof.
+
 ## Order and tracker
 
 6 campaigns × 5 missions = 30, in campaign order. Start at **C1M1** (first
 mission, simplest). Mark `✅ done` / `🔨 in progress` / `⬜ todo`; only one
-`🔨` at a time.
+`🔨` at a time. After each campaign's five missions, do its **Stage 2**
+assembly (`⬜ .h5c`) before moving to the next campaign.
 
 ```
-C1: [ ] C1M1  [ ] C1M2  [ ] C1M3  [ ] C1M4  [ ] C1M5
-C2: [ ] C2M1  [ ] C2M2  [ ] C2M3  [ ] C2M4  [ ] C2M5
-C3: [ ] C3M1  [ ] C3M2  [ ] C3M3  [ ] C3M4  [ ] C3M5
-C4: [ ] C4M1  [ ] C4M2  [ ] C4M3  [ ] C4M4  [ ] C4M5
-C5: [ ] C5M1  [ ] C5M2  [ ] C5M3  [ ] C5M4  [ ] C5M5
-C6: [ ] C6M1  [ ] C6M2  [ ] C6M3  [ ] C6M4  [ ] C6M5
+C1: [ ] C1M1  [ ] C1M2  [ ] C1M3  [ ] C1M4  [ ] C1M5   → [ ] C1.h5c
+C2: [ ] C2M1  [ ] C2M2  [ ] C2M3  [ ] C2M4  [ ] C2M5   → [ ] C2.h5c
+C3: [ ] C3M1  [ ] C3M2  [ ] C3M3  [ ] C3M4  [ ] C3M5   → [ ] C3.h5c
+C4: [ ] C4M1  [ ] C4M2  [ ] C4M3  [ ] C4M4  [ ] C4M5   → [ ] C4.h5c
+C5: [ ] C5M1  [ ] C5M2  [ ] C5M3  [ ] C5M4  [ ] C5M5   → [ ] C5.h5c
+C6: [ ] C6M1  [ ] C6M2  [ ] C6M3  [ ] C6M4  [ ] C6M5   → [ ] C6.h5c
 ```
+
+Final checkpoint: all six campaigns assembled and playable — parity reached.
 
 ## Milestone 0 — the one missing primitive: New Map
 
@@ -98,8 +119,10 @@ until the engine accepts it. **This is the first e2e goal; C1M1 builds on it.**
 ## Why this is the whole product, not just a test
 
 The reconstruction script *is* the authoring workflow, start to finish. If it
-passes for a mission, the editor can build that mission. When it passes for all
-30, the editor is at parity with the original on real content — which is the
-goal in `ROADMAP.md`. Lua (`MapScript`) is the last step of the path and the
-last subsystem, where the cutscene/API documentation and the Lua editor
-(highlighting + name completion) come together (Phase 5).
+passes for a mission, the editor can build that mission; when all five of a
+campaign pass and its `.h5c` assembles and plays, the editor can build that
+campaign. When all six campaigns come together, the editor is at parity with the
+original on real content, maps *and* campaigns — the goal in `ROADMAP.md`. Lua
+(`MapScript`) is the last step of the map path and the last subsystem, where the
+cutscene/API documentation and the Lua editor (highlighting + name completion)
+come together (Phase 5).
