@@ -26,6 +26,7 @@
     "test-history": "node tools/test-history.ts",
     "pak": "node tools/pak-cli.js",
     "typecheck": "tsc --noEmit",
+    "test": "node tools/test-all.ts",
     "test-e2e": "playwright test",
     "build:renderer": "esbuild renderer/app.ts --bundle --format=esm --target=chrome120 --outfile=renderer/app.js --sourcemap",
     "harness": "npm run build:renderer && node tools/make-harness.js && node tools/serve-harness.js",
