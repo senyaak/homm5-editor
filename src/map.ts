@@ -381,13 +381,14 @@ export class HommMap {
   get heroMaxLevel(): number { return +childText(this.desc, 'HeroMaxLevel') || 0; }
   get terrainFile(): string | null {
     const el = find(this.desc, 'GroundTerrainFileName');
-    // Terrain filename is stored as a <FileName href="..."> or plain text ref.
-    return el ? (find(el, 'FileName')?.attrs.href || text(el)) : null;
+    // The ref is an href on the element itself (`<GroundTerrainFileName href=…/>`),
+    // with a nested `<FileName href>` or plain text as older/alternate forms.
+    return el ? (el.attrs.href || find(el, 'FileName')?.attrs.href || text(el)) : null;
   }
   // Lua map script binding (Phase 5 builds on this).
   get mapScript(): string | null {
     const el = find(this.desc, 'MapScript');
-    return el ? (find(el, 'FileName')?.attrs.href || text(el) || null) : null;
+    return el ? (el.attrs.href || find(el, 'FileName')?.attrs.href || text(el) || null) : null;
   }
   // The visible name and description live in sibling text files the map points
   // at, not in the XML. Return the href so the caller can resolve and read them.
