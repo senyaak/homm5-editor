@@ -9,3 +9,8 @@ samples/
 renderer/app.js
 renderer/app.js.map
 renderer/harness.html
+
+# Playwright e2e artifacts (screenshots, traces, reports)
+test-results/
+playwright-report/
+.playwright/

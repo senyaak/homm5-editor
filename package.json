@@ -23,6 +23,7 @@
     "test-history": "node tools/test-history.ts",
     "pak": "node tools/pak-cli.js",
     "typecheck": "tsc --noEmit",
+    "test-e2e": "playwright test",
     "build:renderer": "esbuild renderer/app.ts --bundle --format=esm --target=chrome120 --outfile=renderer/app.js --sourcemap",
     "harness": "npm run build:renderer && node tools/make-harness.js && node tools/serve-harness.js",
     "watch:renderer": "npm run build:renderer -- --watch",
@@ -32,6 +33,7 @@
     "three": "^0.160.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@types/node": "^26.1.1",
     "@types/three": "^0.185.1",
     "electron": "^43.1.1",
