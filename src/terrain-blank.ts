@@ -23,9 +23,14 @@
 // closed forms in N — nothing guessed, and buildBlankTerrain(t) reproduces the
 // editor's output for tile size t byte-for-byte (see tools/test-terrain-blank.ts).
 
-// The single ground texture a blank map paints everywhere: Grass at full weight.
-// Its (AdvMapTile) href, exactly as the container stores it (63 bytes, latin1).
-const GRASS_TILE_HREF = '/MapObjects/_(AdvMapTile)/Grass/Grass.xdb#xpointer(/AdvMapTile)';
+// The single texture a blank floor paints everywhere, at full weight, plus its
+// flat height and ground-tier flag. The surface is grass at the default ground
+// level; a second (underground) floor is subterranean rock, one tier up.
+const SURFACE = { tile: '/MapObjects/_(AdvMapTile)/Grass/Grass.xdb#xpointer(/AdvMapTile)', height: 2.0, flag: 16 };
+const UNDERGROUND = { tile: '/MapObjects/_(AdvMapTile)/SubTerrain/SubTerrain.xdb#xpointer(/AdvMapTile)', height: 36.0, flag: 32 };
+
+/** Which floor a blank terrain is for — picks the default tile, height and flag. */
+export type BlankFloor = 'surface' | 'underground';
 
 // The trailer — a small fixed epilogue (three empty framed sub-blocks + a 6-byte
 // end marker). Identical, byte-for-byte, in every blank regardless of size.
@@ -51,24 +56,30 @@ function wrapper(tag: number, byteLen: number): Buffer {
 }
 
 /**
- * Build a blank GroundTerrain.bin for a map of `tiles`×`tiles` tiles (72, 96,
- * 136, 176, 216, 256, 320 — the sizes the New Map dialog offers). Flat ground at
- * height 2.0, a single Grass layer, everything passable, no water. Returns the
- * exact bytes the original editor writes for a fresh map of that size.
+ * Build a blank terrain file for a map of `tiles`×`tiles` tiles (72, 96, 136,
+ * 176, 216, 256, 320 — the New Map sizes). Flat, a single layer, everything
+ * passable, no water. `floor` picks the surface (grass, height 2.0, tier 1) or
+ * the underground (subterranean rock, height 36.0, tier 2) — the two blanks the
+ * original editor writes for a fresh map. Returns those exact bytes.
  */
-export function buildBlankTerrain(tiles: number): Buffer {
+export function buildBlankTerrain(tiles: number, floor: BlankFloor = 'surface'): Buffer {
+  const f = floor === 'underground' ? UNDERGROUND : SURFACE;
+  const tileLen = f.tile.length; // latin1: the path is ASCII, so bytes === chars
   const V = tiles + 1;         // vertices per side
   const N = V * V;             // per-vertex plane length
   const W = 2 * V - 1;         // half-tile water grid side
   const WN = W * W;
   const H4 = 4 * N;            // height plane is N little-endian float32s
 
-  const fileLen = 272 + 7 * N + WN;
+  // 209 fixed bytes + the tile-path string block (path + its 10 framing bytes).
+  const fileLen = 209 + tileLen + 7 * N + WN;
   const A = 2 * fileLen - 33;  // whole-file running size
   const B = A - 10;
-  const D = 2 * N + 201;       // three header counters, keyed off N
-  const E = 2 * N + 179;
-  const F = 2 * N + 35;        // == a u8 plane's block-wrapper size
+  // Header counters. D and E are cumulative sizes that scope the tile-path
+  // string, so they carry a 2·tileLen term (grass: 2·63+75=201, 2·63+53=179).
+  const D = 2 * N + 2 * tileLen + 75;
+  const E = 2 * N + 2 * tileLen + 53;
+  const F = 2 * N + 35;        // a u8 plane's block wrapper — independent of the path
 
   // Header (50 bytes): format/dimension counters and the layer count (1).
   const header = Buffer.concat([
@@ -84,26 +95,28 @@ export function buildBlankTerrain(tiles: number): Buffer {
     byte(0x01),
   ]);
 
-  // The Grass mask, then its tile-path string and the height block's wrapper.
+  // The layer mask (full weight), then its tile-path string and the height
+  // block's wrapper. The string prefix is `03 2·(len+2) 03 2·len` (single bytes;
+  // the two blank tiles are well under 128 chars).
   const maskData = Buffer.alloc(N, 0xff);
-  const grassPath = Buffer.concat([
-    byte(0x03), byte(0x82), byte(0x03), byte(0x7e), // string framing (len 63, fixed)
-    Buffer.from(GRASS_TILE_HREF, 'latin1'),
+  const tilePath = Buffer.concat([
+    byte(0x03), byte(2 * (tileLen + 2)), byte(0x03), byte(2 * tileLen),
+    Buffer.from(f.tile, 'latin1'),
     byte(0x05), u32(2 * H4 + 35), byte(0x01),       // height block wrapper
   ]);
 
-  // Height: N float32s of 2.0.
+  // Height: N float32s at the floor's flat level.
   const heightData = Buffer.alloc(H4);
-  for (let i = 0; i < N; i++) heightData.writeFloatLE(2.0, i * 4);
+  for (let i = 0; i < N; i++) heightData.writeFloatLE(f.height, i * 4);
 
   return Buffer.concat([
     header,
     anchor(V, N), maskData,
-    grassPath,
+    tilePath,
     anchor(V, H4), heightData,
-    wrapper(0x07, N), anchor(V, N), Buffer.alloc(N, 16),   // ground flags = 16 (tier 1)
-    wrapper(0x08, N), anchor(V, N), Buffer.alloc(N, 0),    // second u8 plane = 0
-    wrapper(0x0a, WN), anchor(W, WN), Buffer.alloc(WN, 0), // water = 0
+    wrapper(0x07, N), anchor(V, N), Buffer.alloc(N, f.flag), // ground flags (tier)
+    wrapper(0x08, N), anchor(V, N), Buffer.alloc(N, 0),      // second u8 plane = 0
+    wrapper(0x0a, WN), anchor(W, WN), Buffer.alloc(WN, 0),   // water = 0
     TRAILER,
   ]);
 }
