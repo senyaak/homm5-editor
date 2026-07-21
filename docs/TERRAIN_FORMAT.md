@@ -5,7 +5,8 @@ in the original editor specifically to isolate one mechanic at a time. Every
 claim below is backed by a measurement, and the numbers are quoted so they can
 be re-checked.
 
-Reader: `src/terrain.js`. Consumer: `src/scene.js`.
+Reader: `src/terrain.ts`. Writer: `src/terrain-blank.ts` (from scratch),
+`writeTerrain` in `src/terrain.ts` (in-place edits). Consumer: `src/scene.ts`.
 
 ---
 
@@ -24,6 +25,56 @@ A stream of self-describing arrays. Each is introduced by a framing group:
 `V = T + 1`, but **not every plane lives on it** — see the river plane, which is
 `W = 2V − 1`. A parser that only looks for `V²`-sized arrays silently skips data;
 that cost a lot of time here.
+
+### Exact byte layout (framing, header, sizes)
+
+The reader above only needs to *locate* planes, so it ignores the bytes between
+them. Writing a file from nothing needs all of it. Decoded from pristine blanks
+the original editor exports at every size, cross-checked to be byte-identical:
+
+**Anchor + size prefix.** Each array's size prefix is `sizeB = 2·byteLen + 1`
+(`03 <sizeB:u32>`). Immediately before most arrays sits a **block wrapper** that
+scopes the array *and* its framing:
+
+```
+<tag:u8> <2·byteLen + 35 : u32> 01
+```
+
+`+35 = 2·17 + 1` — it wraps the 17 framing bytes (16-byte anchor + the trailing
+`01`) around `byteLen` of data. The `<tag>` bytes run in a fixed order for a
+given structure (`02` first mask, `05` height, `07`/`08` the u8 planes, `0a`
+water, `0d`/`0e`/`0f`/`10` in the trailer) — field indices, in effect. A texture
+mask is additionally followed by its tile-path string:
+`03 <2·(len+2):u8> 03 <2·len:u8> <path>`.
+
+**Header (50 bytes).**
+
+```
+04 08 <04000000>      format tag + layer-format marker (=4)
+01 <A:u32>            A = 2·fileLen − 33   (whole-file running size)
+01 <B:u32>            B = A − 10
+02 08 <tiles:u32>     TileX
+03 08 <tiles:u32>     TileY
+04 <D:u32>            D
+02 08 <numLayers:u32> count of texture-mask layers
+01 <E:u32>            E
+02 <F:u32>            F = 2·N + 35
+01
+```
+
+`A`/`B` count bytes to the file end; `D`/`E`/`F` are counters keyed off `N`. For
+the fixed **blank** structure they close to `D = 2N + 201`, `E = 2N + 179`,
+`F = 2N + 35` (fitted and verified across all seven sizes). In a general map
+`D`/`E`/`F` are cumulative sub-tree sizes, so they also depend on layer count and
+string lengths.
+
+**The trailer.** After the last plane comes a trailer. In an *edited* map it is
+another framed array on a **coarse `d × d` grid**, `d = round((V−1)/3) + 1`
+(73→25, 97→33, 137→46 …), whose data is **content-independent** — an identical
+synthetic ramp (`i·67 mod 256`) in every map, blank or shipped — so it reads as a
+default LOD layer the engine fills, not authored data. A **fresh blank** instead
+carries a fixed **51-byte** trailer (three empty framed sub-blocks + the end
+marker `00 00 02 00 05 00`).
 
 ## Planes, in order
 
@@ -167,8 +218,41 @@ Caveat: the viewer lifts the shader but **not the material setup** — which is
 exactly the gap the `colorSpace` bug hid in. Worth pulling material creation in
 as well.
 
+## Synthesizing a file from scratch (New Map)
+
+`src/terrain-blank.ts` (`buildBlankTerrain(tiles)`) writes a complete blank
+`GroundTerrain.bin` for any New Map size (72…320), byte-for-byte identical to the
+editor's own output. A fresh map is the **simplest** instance of the container:
+
+```
+header(50)
+  Grass mask   (u8,  N)   all 0xFF   + Grass tile path        (a single layer)
+  height       (f32, N)   all 2.0
+  ground flags (u8,  N)   all 16     (tier 1, ordinary ground)
+  zero plane   (u8,  N)   all 0
+  water        (u8,  W²)  all 0
+trailer(51)
+```
+
+Only `N`, `4N` and `W²` scale, so the whole file is exactly `fileLen = 272 + 7·N
++ W²`. The editor's output is **byte-deterministic** (two same-size blanks are
+equal), which is what makes a byte-exact generator possible. `npm run
+test-terrain-blank` checks each size is a well-formed, flat container and — given
+pristine blanks via `HOMM5_BLANKS` or a dir arg — that all seven are identical.
+
+> **Open question.** One early two-level Tiny "blank" carried the *full*
+> multi-layer form (a `Dirt/DarkGround` base under Grass and the big coarse
+> trailer) though it was never painted; every other fresh blank has the simple
+> structure above. The trigger for the richer form isn't pinned down (it is not
+> the paint brush). The **simple structure is the canonical New Map output** and
+> the one we generate.
+
 ## Not implemented
 
-Writing. `writeHeights` exists; layer masks and flags do not. That is the first
-step towards brushes: painting tiles edits masks, while `lower`/`raise`/ramp edit
-heights **and** flags — otherwise cuts won't form.
+- **Adding a texture layer to an existing map** — inserting a new mask array plus
+  its tile-path string into the stream and recomputing the cumulative header
+  counters. Editing an existing layer's mask, heights and flags is done
+  (`writeTerrain`), and creating a whole blank file is done
+  (`buildBlankTerrain`), but growing the layer set of an authored map is not.
+- **`UndergroundTerrain.bin` for a from-scratch second floor** — same container,
+  wired up when New Map's "two level" option is built.
