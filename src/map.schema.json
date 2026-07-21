@@ -87,7 +87,7 @@
       "title": "Player",
       "properties": {
         "Race": { "type": "string", "x-registry": "races", "x-widget": "dropdown", "x-tab": "players", "title": "Race", "default": "TOWN_NO_TYPE" },
-        "Colour": { "type": "string", "title": "Colour", "x-readonly": true, "description": "The slot's fixed player colour (PCOLOR_*)." },
+        "Colour": { "type": "string", "title": "Colour", "x-tab": "players", "enum": ["PCOLOR_RED", "PCOLOR_BLUE", "PCOLOR_BROWN", "PCOLOR_GREEN", "PCOLOR_ORANGE", "PCOLOR_PURPLE", "PCOLOR_TEAL", "PCOLOR_NEUTRAL"], "default": "PCOLOR_NEUTRAL", "description": "The player slot's colour. PCOLOR_NEUTRAL makes it a neutral (non-competing) slot." },
         "MainTown": { "type": "string", "x-ref": true, "x-mapObjects": "town", "x-widget": "dropdown", "x-tab": "players", "title": "Main town" },
         "MainHero": { "type": "string", "x-ref": true, "x-mapObjects": "hero", "x-widget": "dropdown", "x-tab": "players", "title": "Main hero" },
         "StartHero": { "type": "string", "x-ref": true, "x-mapObjects": "hero", "x-widget": "dropdown", "title": "Start hero" },
