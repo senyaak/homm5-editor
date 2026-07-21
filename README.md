@@ -245,3 +245,11 @@ Details in [docs/GEOMETRY_FORMAT.md](docs/GEOMETRY_FORMAT.md).
 - [ ] Object rotation, deletion, undo/redo, a property panel.
 - [ ] Fix the remaining undecoded models (see [MESH_PLAN.md](MESH_PLAN.md)).
 - [ ] Campaign editor (`*.(Campaign).xdb` is plain XML).
+
+## Contributing
+
+Contributions welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for the
+conventions (byte-faithful formats, schema-driven editing, TS strip-mode
+gotchas) and [ROADMAP.md](ROADMAP.md) for open work. One hard rule: **no game
+content in commits** — `samples/` is gitignored; bring your own copy via
+`HOMM5_DATA`.
