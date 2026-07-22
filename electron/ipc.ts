@@ -52,6 +52,28 @@ export interface MapInfo {
   skipped: number;
 }
 
+/**
+ * Payload of `map:new` — the original's Create New Map dialog.
+ *
+ * There is no map-type field in map.xdb (a shipped multiplayer map carries no
+ * marker a single-player one lacks), so `multiplayer` only decides where the
+ * folder lands: Maps/Multiplayer/<name> rather than Maps/<name>.
+ */
+export interface NewMapPayload {
+  name: string;
+  /** TileX = TileY: one of the New Map sizes (72, 96, 136, 176, 216, 256, 320). */
+  tiles: number;
+  twoLevel: boolean;
+  multiplayer: boolean;
+}
+
+/** Result of `map:new` — the map.xdb just written, ready to pass to loadMap. */
+export interface NewMapResult {
+  mapPath: string;
+  /** Folder the project was created in. */
+  mapDir: string;
+}
+
 /** Result of `map:load`. */
 export interface MapLoadResult {
   scene: Scene;
@@ -443,6 +465,7 @@ export interface UndoResult {
 export interface EditorApi {
   listMaps(): Promise<MapsListResult>;
   openMapDialog(): Promise<OpenMapDialogResult>;
+  newMap(p: NewMapPayload): Promise<NewMapResult>;
   loadMap(path: string): Promise<MapLoadResult>;
   moveObject(id: string, x: number, y: number): Promise<MoveObjectResult>;
   rotateObject(id: string, r: number): Promise<ObjectEditResult>;

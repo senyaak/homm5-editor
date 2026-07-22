@@ -13,6 +13,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 const api = {
   listMaps: () => ipcRenderer.invoke('maps:list'),
   openMapDialog: () => ipcRenderer.invoke('dialog:openMap'),
+  newMap: (p) => ipcRenderer.invoke('map:new', p),
   loadMap: (path) => ipcRenderer.invoke('map:load', path),
   moveObject: (id, x, y) => ipcRenderer.invoke('object:move', { id, x, y }),
   rotateObject: (id, r) => ipcRenderer.invoke('object:rotate', { id, r }),

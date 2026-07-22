@@ -160,6 +160,9 @@ const STUB = `<script>
     addMapItem: async (p) => { const a = tget(mapTreeData, p.path); if (Array.isArray(a)) a.push(p.value !== undefined ? p.value : {}); return { ok: true }; },
     removeMapItem: async (p) => { const a = tget(mapTreeData, p.path.slice(0, -1)); if (Array.isArray(a)) a.splice(p.path[p.path.length - 1], 1); return { ok: true }; },
     openMapDialog: async () => null,
+    // The harness has no filesystem; report where it would have gone so the
+    // dialog's success path (close + load) still runs.
+    newMap: async (p) => { log('newMap', p); return { mapPath: '/harness/new/map.xdb', mapDir: '/harness/new' }; },
     loadMap: async (path) => {
       log('loadMap', path);
       return {

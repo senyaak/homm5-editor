@@ -411,6 +411,14 @@
     .on-row input:read-only { color: #8b949e; background: #161b22; }
     .on-row input:focus { outline: none; border-color: #1f6feb; }
     .on-err { color: #f85149; font-size: 11px; min-height: 14px; }
+    .on-row select { flex: 1; min-width: 0; background: #0d1014; border: 1px solid #30363d;
+      border-radius: 6px; padding: 6px 10px; color: #c9d1d9; font-size: 13px; }
+    /* New Map dialog: the two-level toggle and the "where it lands" hint */
+    #newmap { padding: 0; border: 0; background: transparent; max-width: 92vw; overflow: visible; }
+    #newmap::backdrop { background: #0d1014cc; }
+    .nm-check { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #c9d1d9;
+      cursor: pointer; }
+    .nm-where { font-size: 11px; color: #6e7681; word-break: break-all; }
     /* entity edit dialog — the referenced object's own typed fields */
     #entedit { padding: 0; border: 0; background: transparent; max-width: 92vw; max-height: 86vh; overflow: visible; }
     #entedit::backdrop { background: #0d1014cc; }
@@ -458,6 +466,7 @@
 <body>
   <div id="bar">
     <span id="title">homm5-editor</span>
+    <button id="newmapbtn" title="create a blank map from scratch">New map…</button>
     <button id="open">Open map…</button>
     <button id="undobtn" disabled title="Nothing to undo">↶ Undo</button>
     <button id="redobtn" disabled title="Nothing to redo">↷ Redo</button>
@@ -558,6 +567,7 @@
     <div id="picker">
       <div class="head">
         <input id="search" type="text" placeholder="find map…" autocomplete="off">
+        <button id="newmap2">New map…</button>
         <button id="open2">Open file…</button>
       </div>
       <div id="cats"></div>
@@ -684,6 +694,46 @@
       <div class="de-foot">
         <button id="on-cancel" class="ghost">Cancel</button>
         <button id="on-ok">Create</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Create New Map — the original's startup dialog, field for field: a name, a
+       two-level toggle, the map type and the seven fixed sizes. The type is the
+       one thing map.xdb does not record, so it only decides which folder under
+       Maps the project lands in. -->
+  <dialog id="newmap">
+    <div class="mp-card on-card">
+      <div class="mp-head">
+        <span class="mp-title">Create New Map</span>
+        <button id="nm-close" title="close (Esc)">✕</button>
+      </div>
+      <div class="mp-body on-body">
+        <label class="on-row"><span>Name</span><input id="nm-name" type="text" spellcheck="false" autocomplete="off" value="New Map"></label>
+        <label class="nm-check"><input id="nm-two" type="checkbox"> Two Level Map</label>
+        <label class="on-row"><span>Type</span>
+          <select id="nm-type">
+            <option value="single">Single Scenario</option>
+            <option value="multi">Multiplayer Arena</option>
+          </select>
+        </label>
+        <label class="on-row"><span>Size</span>
+          <select id="nm-size">
+            <option value="72">Tiny (72×72)</option>
+            <option value="96" selected>Small (96×96)</option>
+            <option value="136">Medium (136×136)</option>
+            <option value="176">Large (176×176)</option>
+            <option value="216">Extra Large (216×216)</option>
+            <option value="256">Huge (256×256)</option>
+            <option value="320">Impossible (320×320)</option>
+          </select>
+        </label>
+        <div id="nm-where" class="nm-where"></div>
+        <div id="nm-err" class="on-err"></div>
+      </div>
+      <div class="de-foot">
+        <button id="nm-cancel" class="ghost">Cancel</button>
+        <button id="nm-ok">Create</button>
       </div>
     </div>
   </dialog>

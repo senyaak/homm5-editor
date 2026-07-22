@@ -26,6 +26,8 @@ import type { MapWatch } from '../src/watch.ts';
 import { TerrainDoc } from '../src/terrain-edit.ts';
 import { History, diff, apply } from '../src/history.ts';
 import { loadMap } from '../src/map.ts';
+import { buildNewMapProject } from '../src/new-map.ts';
+import { MAP_SIZES } from '../src/terrain-blank.ts';
 import { Registry } from '../src/registry.ts';
 import type { RosterEntry } from '../src/registry.ts';
 import { readTree, setPath, addStringItem, removeItem, appendItem, indentText, nodeAt, setList } from '../src/tree.ts';
@@ -46,6 +48,7 @@ import type {
   ReadFilePayload, ReadFileResult, WriteFilePayload,
   ObjectCatalogResult, IconPayload, IconResult, AddObjectPayload, AddObjectResult,
   MapSaveResult, MapPackResult, TerrainTilesResult, MapStatusResult, OpenMapDialogResult,
+  NewMapPayload, NewMapResult,
   ExternalChange, PaintTilePayload, PaintTileResult, SculptPayload, SculptResult,
   AddLayerPayload, AddLayerResult, PaintRiverPayload, MaskPayload, UndoResult, HistoryState,
 } from './ipc.ts';
@@ -326,6 +329,41 @@ ipcMain.handle('dialog:openMap', async (): Promise<OpenMapDialogResult> => {
   const parent = win;
   const r = await (parent ? dialog.showOpenDialog(parent, opts) : dialog.showOpenDialog(opts));
   return r.canceled ? null : r.filePaths[0];
+});
+
+// --- IPC: create a blank map from scratch (the original's New Map) ---
+//
+// Writes a complete project folder under <data>/Maps — where both the original
+// editor and our own Pack put maps — and hands back its map.xdb so the renderer
+// can open it like any other. The bytes are generated, not copied from a
+// template: buildNewMapProject reproduces the original editor's own blank
+// export exactly (see tools/test-new-map.ts).
+ipcMain.handle('map:new', async (_e: IpcMainInvokeEvent, p: NewMapPayload): Promise<NewMapResult> => {
+  const name = p.name.trim();
+  if (!name) throw new Error('the map needs a name');
+  // The name doubles as a folder name, so it must survive being one.
+  if (/[\\/:*?"<>|]/.test(name)) throw new Error('the name cannot contain \\ / : * ? " < > |');
+  if (!MAP_SIZES.includes(p.tiles)) throw new Error(`unknown map size ${p.tiles}`);
+
+  const mapsDir = join(GAME_DATA, 'Maps');
+  const mapDir = p.multiplayer ? join(mapsDir, 'Multiplayer', name) : join(mapsDir, name);
+  if (existsSync(mapDir)) throw new Error(`${mapDir} already exists`);
+
+  // The enabled-spell and artifact lists are the game's own, so they follow the
+  // installed data (and any mod) rather than a list frozen into the source.
+  const registry = new Registry(GAME_DATA);
+  const files = buildNewMapProject({
+    name,
+    tiles: p.tiles,
+    twoLevel: p.twoLevel,
+    spells: registry.spells().map((s) => s.id),
+    artifacts: registry.artifacts().map((a) => a.id),
+  });
+  mkdirSync(mapDir, { recursive: true });
+  for (const f of files) writeFileSync(join(mapDir, f.path), f.data);
+  initProject(mapDir); // a manifest, so status/pack work on it immediately
+  console.log(`[new] ${mapDir} · ${p.tiles}×${p.tiles}${p.twoLevel ? ' two-level' : ''} · ${files.length} files`);
+  return { mapPath: join(mapDir, 'map.xdb'), mapDir };
 });
 
 // --- IPC: load a map -> decode into a renderable scene ---

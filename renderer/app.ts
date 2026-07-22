@@ -4770,6 +4770,68 @@ async function initPicker() {
   }
 }
 
+// --- New Map -------------------------------------------------------------
+//
+// The original's startup dialog. Everything it asks for goes into the generated
+// files; the map is written under the game's Maps folder — where the original
+// editor keeps its own maps and where our Pack writes .h5m — and then opened
+// like any other, so there is no separate "unsaved new map" state to get wrong.
+
+function newMapDialog(): HTMLDialogElement {
+  const el = $('newmap');
+  if (!(el instanceof HTMLDialogElement)) throw new Error('#newmap is not a <dialog>');
+  return el;
+}
+
+/** Show where the map will land, so the folder is never a surprise. */
+function updateNewMapWhere(): void {
+  const name = $input('nm-name').value.trim() || 'New Map';
+  const sub = $select('nm-type').value === 'multi' ? 'Maps/Multiplayer/' : 'Maps/';
+  $('nm-where').textContent = `→ <game data>/${sub}${name}`;
+}
+
+function openNewMap(): void {
+  $('nm-err').textContent = '';
+  updateNewMapWhere();
+  newMapDialog().showModal();
+  $input('nm-name').select();
+}
+
+async function submitNewMap(): Promise<void> {
+  const ok = $button('nm-ok');
+  ok.disabled = true;
+  $('nm-err').textContent = '';
+  try {
+    const { mapPath } = await window.editor.newMap({
+      name: $input('nm-name').value.trim(),
+      tiles: Number($select('nm-size').value),
+      twoLevel: $input('nm-two').checked,
+      multiplayer: $select('nm-type').value === 'multi',
+    });
+    newMapDialog().close();
+    await loadMapPath(mapPath);
+    // The picker's list is now one map out of date.
+    void initPicker();
+  } catch (e) {
+    // Stay open on failure — a name clash is fixed by editing the name.
+    $('nm-err').textContent = e instanceof Error ? e.message : String(e);
+  } finally {
+    ok.disabled = false;
+  }
+}
+
+$('newmapbtn').onclick = openNewMap;
+$('newmap2').onclick = openNewMap;
+$('nm-close').onclick = () => newMapDialog().close();
+$('nm-cancel').onclick = () => newMapDialog().close();
+$('nm-ok').onclick = () => { void submitNewMap(); };
+$input('nm-name').addEventListener('input', updateNewMapWhere);
+$select('nm-type').addEventListener('change', updateNewMapWhere);
+// Enter in the name field creates, matching the original's default button.
+$input('nm-name').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); void submitNewMap(); }
+});
+
 $('open').onclick = openViaDialog;
 $('open2').onclick = openViaDialog;
 $input('search').addEventListener('input', renderMapList);
