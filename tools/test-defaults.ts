@@ -7,14 +7,20 @@
 //      rule that a field the donor does not have is never invented.
 //   2. Naming: handles are unique, numbered per type, and a requested name that
 //      is taken gets suffixed rather than silently replaced.
-//   3. Against the real thing (needs HOMM5_DEFAULTS_MAP): place one object of
-//      every type and diff it field by field against the map the defaults were
-//      measured from. This is the check that would catch the schema drifting
-//      from the game — the other two only prove the machinery works.
+//   3. Against the measurement (always runs): place one object of every type
+//      and diff it field by field against what the ORIGINAL editor wrote. This
+//      is the check that catches the schema drifting from the game — the other
+//      two only prove the machinery works.
 //
-//      HOMM5_DEFAULTS_MAP=../Maps/12.h5m npm run test-defaults
+//      The reference is tools/fixtures/object-defaults.json, generated from a
+//      map made in the original editor for the purpose. It is committed on
+//      purpose: keeping the reference in a .h5m on one machine meant this
+//      check silently did nothing everywhere else. Re-measure with
+//      `npm run object-defaults -- <map.h5m> --fixture`; pass a .h5m here to
+//      diff against it directly instead.
 
 import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { loadMap } from '../src/map.ts';
 import type { HommMap } from '../src/map.ts';
 import { applyDefaults, undefaulted } from '../src/defaults.ts';
@@ -118,7 +124,20 @@ function testNaming(): void {
   check('a deleted object’s handle is reused (known limit)', place('AdvMapMonster') === 'MONSTER_002');
 }
 
-/** The bodies of each type on a reference map, keyed by type. */
+/** The committed measurement: one default body per type. */
+function fixtureBodies(): Map<string, XmlElement> {
+  const file = join(import.meta.dirname, 'fixtures', 'object-defaults.json');
+  const { types } = JSON.parse(readFileSync(file, 'utf8')) as { types: Record<string, string> };
+  const out = new Map<string, XmlElement>();
+  // Stored as the body's CONTENTS, so it reads as a diff of fields rather than
+  // of one long line; the element around it is the type, as on a real map.
+  for (const [type, body] of Object.entries(types)) {
+    out.set(type, find(parse(`<${type}>${body}</${type}>`), type)!);
+  }
+  return out;
+}
+
+/** The same, read straight from a map the original editor saved. */
 function referenceBodies(archive: string): Map<string, XmlElement> {
   const entries = readEntries(readFileSync(archive));
   const rel = pickMapRel(entries.map((e) => e.name));
@@ -140,12 +159,13 @@ function referenceBodies(archive: string): Map<string, XmlElement> {
  * Only the fields the schema declares are compared, and only as text: the point
  * is whether our defaults match the original's, not whether our XML is its XML.
  */
-function testAgainstReference(archive: string): void {
-  console.log(`\nAGAINST ${archive}`);
-  const ref = referenceBodies(archive);
-  check('the reference map has objects to compare', ref.size > 0, `${ref.size} types`);
+function testAgainstReference(ref: Map<string, XmlElement>, what: string): void {
+  console.log(`\nAGAINST ${what}`);
+  check('there are objects to compare', ref.size > 0, `${ref.size} types`);
 
-  const skip = new Set(['Pos', 'Rot', 'Floor', 'Name', 'Shared']); // placement, not defaults
+  // Placement, not defaults. spellIDs is the installation's roster (x-defaultAll)
+  // and is not in the fixture; the app resolves it from the registry.
+  const skip = new Set(['Pos', 'Rot', 'Floor', 'Name', 'Shared', 'spellIDs']);
   for (const [type, refBody] of [...ref].sort()) {
     const map = blankMap();
     const donor = `<Item href="#n:inline(${type})">${serialize(refBody)}</Item>`;
@@ -170,9 +190,11 @@ function testAgainstReference(archive: string): void {
 testOverDonor();
 testNaming();
 
+// The committed measurement always; a live map too, when one is pointed at —
+// which is how a drift between the fixture and the map that made it would show.
+testAgainstReference(fixtureBodies(), 'the measured fixture');
 const refMap = process.env.HOMM5_DEFAULTS_MAP || process.argv[2];
-if (refMap && existsSync(refMap)) testAgainstReference(refMap);
-else console.log('\n(set HOMM5_DEFAULTS_MAP to a .h5m saved by the original editor for the reference check)');
+if (refMap && existsSync(refMap)) testAgainstReference(referenceBodies(refMap), refMap);
 
 console.log(failures ? `\n${failures} check(s) failed` : '\nall checks passed');
 process.exit(failures ? 1 : 0);

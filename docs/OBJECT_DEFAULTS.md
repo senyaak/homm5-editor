@@ -394,5 +394,14 @@ Two things could not be constants and so are not `default`s:
   which depends on the install and any mod. Marked `x-defaultAll`; the app
   resolves it from the registry.
 
-`npm run test-defaults -- ../Maps/12.h5m` places one object of every type and
-diffs it against this map, field by field. All 21 match.
+`npm run test-defaults` places one object of every type and diffs it, field by
+field, against `tools/fixtures/object-defaults.json` — the measurement, kept in
+the repository so the check runs everywhere rather than only on the machine that
+has the map. All 21 match.
+
+Re-measure with `npm run object-defaults -- <map.h5m> --fixture`, and pass a
+`.h5m` to the test to diff against a live map as well as the fixture. The
+fixture holds the SHAPE the editor writes, not game content: `Pos`/`Rot`/`Shared`
+are blanked as placement rather than default, and the town's spell list is
+emptied — it is the installation's roster, resolved from the registry at
+placement time.
