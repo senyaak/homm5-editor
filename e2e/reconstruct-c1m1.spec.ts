@@ -120,6 +120,20 @@ test('the shape of C1M1, rebuilt by clicking', async () => {
   }
   console.log(`${done} strokes in ${((Date.now() - started) / 1000).toFixed(0)}s`);
 
+  // What the app believes right now, before anything else touches it. A stroke
+  // that lands twice and one that never lands are the same "wrong height" in the
+  // file but different bugs, and the pass that caused it is only obvious here.
+  const afterHeights = await page.evaluate(() => window.view.heights());
+  const drifted = afterHeights
+    .map((h, i) => ({ i, h }))
+    .filter(({ i, h }) => Math.abs(h - target[i]!) > 1e-4);
+  if (drifted.length) {
+    console.log(`  ${drifted.length} vertices already wrong IN THE APP after the height pass:`);
+    for (const { i, h } of drifted.slice(0, 10)) {
+      console.log(`    (${i % V},${(i / V) | 0}) app ${h.toFixed(3)} vs ${target[i]!.toFixed(3)}`);
+    }
+  }
+
   // --- the tiers -----------------------------------------------------------
   //
   // The kinds go on AFTER the heights, and the order is not arbitrary: the kind

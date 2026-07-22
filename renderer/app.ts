@@ -2933,6 +2933,18 @@ renderer.domElement.addEventListener('pointermove', (ev) => {
   // moves between two frames resolves to a single pick.
   if (!brushOn && !placeObject && !dragging) hoverEv = ev;
   else { updateHoverCursor(null); hoverEv = null; }
+  // A move with no button held cannot belong to a stroke. If `painting` survived
+  // one, the pointerup was lost — the window took focus elsewhere, or the event
+  // was swallowed — and the brush would go on painting under a released button.
+  // For a person that is a brush stuck on; while rebuilding C1M1 it showed up as
+  // a handful of vertices out of 9409 carrying a stroke twice, a different
+  // handful each run. End the stroke here instead, and flush what it did.
+  if (painting && ev.buttons === 0) {
+    painting = false;
+    controls.enabled = true;
+    void commitBrush();
+    return;
+  }
   if (painting) { applyBrush(ev); return; }
   if (!dragging || !selected) return;
   // Project the cursor onto a horizontal plane at the object's height and snap
@@ -3566,6 +3578,9 @@ interface ViewApi {
   cellAt(clientX: number, clientY: number): { x: number; y: number } | null;
   /** Cells per side of the river plane, or 0 when no map is open. */
   cells(): number;
+  /** The active floor's live heights and ground kinds — what the app believes. */
+  heights(): number[];
+  kinds(): number[];
   /** Tiles per side of the active floor, or 0 when no map is open. */
   size(): number;
 }
@@ -3625,6 +3640,10 @@ const view: ViewApi = {
   },
   cellAt(clientX, clientY) { return riverCellAtClient(clientX, clientY); },
   cells() { return world ? riverSide(activeFloor().V) : 0; },
+  // Reading the live planes separates "the stroke never landed" from "it landed
+  // and did not reach the file", which otherwise look identical in the diff.
+  heights() { return world ? Array.from(activeFloor().heights) : []; },
+  kinds() { return world && activeFloor().flags ? Array.from(activeFloor().flags!) : []; },
   size() { return world ? activeFloor().V - 1 : 0; },
 };
 window.view = view;

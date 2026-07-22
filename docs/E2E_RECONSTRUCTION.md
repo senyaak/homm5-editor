@@ -190,6 +190,14 @@ The river plane needed its own addressing before any of it was reachable: it
 lives on a (2V-1)² grid and is graded, and of C1M1's 2317 wet cells **1815 sit
 between vertices**, carrying **134 distinct values**. All 2317 now match.
 
+A second bug surfaced only at this scale, and it is a real one for people too:
+**a lost pointerup left the brush painting**. `painting` stayed set, and the next
+mouse move — button released — went on applying the stroke. For a user that is a
+brush stuck on; here it put a stroke twice on a handful of vertices out of 9409,
+a different handful each run (15, then 2). A move with no button held now ends
+the stroke and flushes it. Runs are exact and, with the stray strokes gone,
+roughly twice as fast (340s against 737s for the height pass).
+
 What the first full run cost, and is worth remembering: 18 of those 9409
 vertices came out wrong, every one beside a tall step. The pick asked the
 raycast what it hit, and a cut face between two tiers stands vertical — edge-on

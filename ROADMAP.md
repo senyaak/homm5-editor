@@ -138,6 +138,10 @@ placing new ones from a palette.
 - [x] Raise (plateau, +2.0 with cut edges, flag 32) and Lower (pit to 0.0,
       flag 0, floods) beside the smooth Bulk and Dig ✅
 - [x] Plateau (level to the starting tier) and the Rect brush size ✅
+- [x] **A lost pointerup no longer leaves the brush painting** (2026-07-22): a
+      move with no button held ends the stroke and flushes it. Before, a
+      swallowed pointerup (focus change, event lost under load) left `painting`
+      set and the brush kept applying as the mouse moved — a stuck brush ✅
 - [x] **River-plane brush** (2026-07-22): paints the half-tile water plane on
       its own grid, at a chosen strength, with carving optional. The tile-driven
       river brush writes full strength at vertex positions, which draws a river
