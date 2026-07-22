@@ -160,9 +160,10 @@ placing new ones from a palette.
       editor for the purpose (`npm run object-defaults`, see
       docs/OBJECT_DEFAULTS.md), which is how we learned that a new creature
       stack is `Amount` **0**, not the "obviously 1" this item used to assume —
-      0 means the game sizes it by difficulty. Monster/Static/Town are recorded;
-      the rest need a sample map that places them. What remains is applying them
-      over the donor in `src/donors.ts`.
+      0 means the game sizes it by difficulty. Recorded so far:
+      Monster/Static/Town/Hero/Mine/AbanMine/Artifact; the rest need a sample map
+      that places them. What remains is applying them over the donor in
+      `src/donors.ts`.
 - [ ] ⬜ A third of catalogue entries have no decodable mesh, so they cannot be
       placed at all (see MESH_PLAN.md). Refused with a message today.
 - [x] ✅ Write edits back into `.h5m` — Save repacks the archive it was opened

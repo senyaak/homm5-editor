@@ -17,8 +17,16 @@ default**. That is the signal the tool reports. Two variants mean something was
 edited afterwards, and the diff says what.
 
 Source so far: `Maps/12.h5m` — a map made in the original editor specifically to
-harvest these, 93 statics, 19 monsters, 2 towns. Other types need a map that
-places them; re-run the tool and add a section.
+harvest these: 93 statics, 19 monsters, 9 artifacts, 6 mines, 4 heroes, 2 towns,
+1 abandoned mine. Every one of those types collapses to a single variant. Types
+not yet covered (dwellings, shrines, garrisons, treasures, quests…) need a map
+that places them; re-run the tool and add a section.
+
+**Owner defaults to `PLAYER_1`, and nothing auto-increments.** The four heroes
+are all `PLAYER_1`, which settles the question the two towns raised — they are
+`PLAYER_1` and `PLAYER_2` because someone set the second, not because the editor
+hands out the next free player. A mine is the exception: `PLAYER_NONE`, i.e.
+unowned until captured.
 
 ## AdvMapMonster
 
@@ -97,6 +105,75 @@ Three things a template would have got wrong:
   specialisation to keep quiet.
 
 The two towns differ only in `Pos`, `Shared` and `PlayerID` (`PLAYER_1`,
-`PLAYER_2`). Whether the editor assigns the next free player automatically or
-the user set them is not established by one map — worth checking on the next
-sample before we copy the behaviour.
+`PLAYER_2`) — the second was set by hand, see the note on owners above.
+
+## AdvMapHero
+
+```xml
+<PlayerID>PLAYER_1</PlayerID>
+<Experience>0</Experience>
+<armySlots/>
+<artifactIDs/>
+<isUntransferable/>
+<Editable>
+  <NameFileRef href=""/><BiographyFileRef href=""/>
+  <Offence>0</Offence><Defence>0</Defence><Spellpower>0</Spellpower><Knowledge>0</Knowledge>
+  <skills/><perkIDs/><spellIDs/>
+  <Ballista>false</Ballista><FirstAidTent>false</FirstAidTent><AmmoCart>false</AmmoCart>
+  <FavoriteEnemies/><TalismanLevel>0</TalismanLevel>
+</Editable>
+<OverrideMask>0</OverrideMask>
+<PrimarySkillMastery>MASTERY_NONE</PrimarySkillMastery>
+<LossTrigger><Action><FunctionName/></Action></LossTrigger>
+<AllowQuickCombat>true</AllowQuickCombat>
+<Textures><Icon128x128/><Icon64x64/><RoundedFace/><LeftFace/><RightFace/></Textures>
+<PresetPrice>0</PresetPrice>
+<BannedRaces/>
+```
+
+Everything zero and every list empty, gated by `OverrideMask` 0: the hero is
+whatever its `Shared` definition says. `Editable` is not a set of starting stats
+but a set of **overrides**, and the mask says which of them count — so writing
+stats into a new hero without touching the mask would change nothing, and
+clearing the mask on an edited hero silently reverts them. Worth confirming
+which bit means which field before the hero property panel is built.
+
+`armySlots` empty means the hero comes with its class's default army, not with
+no army — same shape as the monster's `Custom` false.
+
+## AdvMapMine
+
+```xml
+<PlayerID>PLAYER_NONE</PlayerID>
+<CaptureTrigger><Action><FunctionName/></Action></CaptureTrigger>
+<armySlots/>
+<CreatureSwapBlockedForAI>false</CreatureSwapBlockedForAI>
+```
+
+## AdvMapAbanMine
+
+```xml
+<AvailableResources>
+  <Item>0</Item><Item>0</Item><Item>1</Item><Item>1</Item><Item>1</Item><Item>1</Item><Item>1</Item>
+</AvailableResources>
+<CaptureTrigger><Action><FunctionName/></Action></CaptureTrigger>
+```
+
+Seven flags in the resource order used by `<Resources>` (wood, ore, mercury,
+crystal, sulfur, gem, gold) — so wood and ore are off and the five precious ones
+are on. That matches the game: an abandoned mine turns out to be a precious-
+resource mine, never a sawmill. A positional flag list with no names in it, which
+is exactly the kind of field a hand-written template gets wrong.
+
+## AdvMapArtifact
+
+```xml
+<armySlots/>
+<MessageFileRef href=""/>
+<spellID>SPELL_NONE</spellID>
+<RandomShiftRadius>0</RandomShiftRadius>
+<untransferable>false</untransferable>
+```
+
+`armySlots` on an artifact is the guard standing on it — empty, so a placed
+artifact is unguarded by default.
