@@ -19,7 +19,7 @@ import { readFileSync, writeFileSync, existsSync, readdirSync, statSync, mkdirSy
 import { createHash } from 'node:crypto';
 import { buildScene, findAssetRoot, listTiles, splatFor, pngDataUri } from '../src/scene.ts';
 import { listPlaceable, findEditorRoot, iconPathFor, readIconFile } from '../src/objects.ts';
-import { initProject, openProject, packProject, readManifest, writeManifest, status, MANIFEST_NAME } from '../src/project.ts';
+import { initProject, openProject, packProject, readManifest, writeManifest, status, pickMapRel, MANIFEST_NAME } from '../src/project.ts';
 import { listDirFiles } from '../src/pak.ts';
 import { watchMapDir } from '../src/watch.ts';
 import { donorFor } from '../src/donors.ts';
@@ -416,9 +416,9 @@ function sourceMatches(dir: string, archivePath: string): boolean {
   } catch { return false; }
 }
 
-/** The folder holding map.xdb inside an unpacked workspace, at any depth. */
+/** The folder holding the map inside an unpacked workspace, at any depth. */
 function findMapDir(root: string): string | null {
-  const rel = listDirFiles(root).find((r) => /(^|\/)map\.xdb$/i.test(r));
+  const rel = pickMapRel(listDirFiles(root));
   return rel ? join(root, ...rel.split('/').slice(0, -1)) : null;
 }
 
@@ -1125,7 +1125,10 @@ ipcMain.handle('map:save', async (): Promise<MapSaveResult> => {
   // them is the whole of it.
   const src = readManifest(session.mapDir).source;
   if (src && existsSync(src.path)) {
-    const res = packProject(session.mapDir, src.path, { prefix: archivePrefixFor(session.mapDir) });
+    // preserveFrom: the archive can hold more than the map (the original packs
+    // its scene-property template along), and the project is only the map folder.
+    const res = packProject(session.mapDir, src.path,
+      { prefix: archivePrefixFor(session.mapDir), preserveFrom: src.path });
     console.log(`[save] ${session.mapDir} → ${src.path} · ${res.entries} entries`);
     // The archive just changed, so the workspace's record of what it was opened
     // from has to move with it, or the next open would call the workspace stale
@@ -1175,7 +1178,11 @@ ipcMain.handle('map:pack', async (): Promise<MapPackResult> => {
   writeFileSync(session.mapPath, session.map.save(), 'latin1');
   saveTerrain(session);
   session.watch.resync();
-  const res = packProject(session.mapDir, r.filePath, { prefix: archivePrefixFor(session.mapDir) });
+  // A copy of the map should be as complete as the original it came from, so it
+  // carries over whatever the source archive held outside the map folder too.
+  const from = readManifest(session.mapDir).source?.path;
+  const res = packProject(session.mapDir, r.filePath,
+    { prefix: archivePrefixFor(session.mapDir), preserveFrom: from });
   return { ok: true, output: r.filePath, entries: res.entries, bytes: res.bytes, status: status(session.mapDir) };
 });
 

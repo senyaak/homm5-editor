@@ -32,10 +32,30 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
-import { extract, writeArchive, listDirFiles } from './pak.ts';
+import { extract, writeArchive, listDirFiles, readEntries } from './pak.ts';
 import type { ExtractedFile, PackResult, WriteOptions, ZipEntry } from './pak.ts';
 
 export const MANIFEST_NAME = 'project.json';
+
+/**
+ * Which of an archive's files is THE map.
+ *
+ * An `.h5m` saved by the original editor can carry more than one `map.xdb`: a
+ * map built through the scene-property builder ships a copy of the builder's
+ * own template under `Editor/Builder/…`. Taking the first one found opened a
+ * 42 KB stub instead of the user's 136 KB map — and, worse, made that stub the
+ * project, so Save would have packed the stub over the map.
+ *
+ * The map the game loads is the one under `Maps/`, which is also what the
+ * archive's entry names mean (see archivePrefix). Among several, the shallowest
+ * wins; anything else is an asset that came along for the ride.
+ */
+export function pickMapRel(names: string[]): string | undefined {
+  const maps = names.filter((n) => /(^|\/)map\.xdb$/i.test(n));
+  const inMaps = maps.filter((n) => /^maps\//i.test(n));
+  const pool = inMaps.length ? inMaps : maps;
+  return pool.sort((a, b) => a.split('/').length - b.split('/').length || a.localeCompare(b))[0];
+}
 
 /** One file in a pack-time snapshot: its sha1 and byte size. */
 export interface FileStamp {
@@ -133,6 +153,13 @@ export interface PackProjectOptions extends WriteOptions, ProjectOptions {
    * 'Maps/SingleMissions/foo'. '' packs at the archive root.
    */
   prefix?: string;
+  /**
+   * Archive to carry non-project entries over from — the one being written over,
+   * when the project is only part of it. Without this, packing a map project
+   * back into its `.h5m` drops everything the archive held outside the map
+   * folder.
+   */
+  preserveFrom?: string;
 }
 
 /** What openProject() returns: the fresh manifest and the files unpacked. */
@@ -204,8 +231,8 @@ export function openProject(archivePath: string, projectDir: string, opt: Projec
   // A map archive holds its files under the path the game reads them from
   // ('Maps/SingleMissions/foo/map.xdb'), so the project is that inner folder and
   // the prefix is what has to go back on when it is packed again.
-  const inner = opt.mapProject ? files.find((f) => /(^|\/)map\.xdb$/i.test(f.name)) : undefined;
-  const prefix = inner ? inner.name.split('/').slice(0, -1).join('/') : '';
+  const inner = opt.mapProject ? pickMapRel(files.map((f) => f.name)) : undefined;
+  const prefix = inner ? inner.split('/').slice(0, -1).join('/') : '';
   const dir = prefix ? join(projectDir, ...prefix.split('/')) : projectDir;
   const manifest: ProjectManifest = {
     editorVersion: editorVersion(),
@@ -267,6 +294,22 @@ export function packProject(projectDir: string, outPath: string, opt: PackProjec
     name: prefix ? `${prefix}/${rel}` : rel,
     data: readFileSync(join(projectDir, rel)),
   }));
+  // The project is the map folder, but the archive may hold more than the map:
+  // the original editor packs its scene-property template alongside. Those files
+  // are below no project we opened, so packing only the project would quietly
+  // drop them from the archive it is written over. Carry them across untouched.
+  if (opt.preserveFrom && existsSync(opt.preserveFrom)) {
+    const own = new Set(entries.map((e) => e.name));
+    const here = prefix ? `${prefix}/` : null;
+    for (const e of readEntries(readFileSync(opt.preserveFrom))) {
+      if (own.has(e.name)) continue;
+      // Anything under our prefix IS the project: gone from the tree means deleted.
+      if (here && e.name.startsWith(here)) continue;
+      if (!here) continue; // packing at the root — the project is the whole archive
+      entries.push({ name: e.name, data: e.data });
+    }
+    entries.sort((a, b) => a.name.localeCompare(b.name));
+  }
   const buf = writeArchive(entries, opt);
   writeFileSync(outPath, buf);
 

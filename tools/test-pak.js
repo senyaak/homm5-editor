@@ -93,5 +93,41 @@ try { packProject(emptyDir, victim, { now }); } catch { refused = true; }
 ok(refused, 'packing a project with no files throws');
 ok(statSync(victim).size === sizeBefore, 'the archive it would have overwritten is untouched');
 
+// --- 6. An archive with more than one map.xdb, and more than the map ---
+//
+// A .h5m saved by the original editor can carry a second map.xdb: a map built
+// through the scene-property builder ships the builder's own template under
+// Editor/Builder/. Found in a real map of the user's. Two things must hold:
+// the project is the map under Maps/ (taking the first match opened a 42 KB
+// stub and would have packed it over the 136 KB map), and packing back does not
+// drop the entries that live outside the project.
+const decoyDir = join(tmpdir(), 'homm5_test_decoy_project');
+rmSync(decoyDir, { recursive: true, force: true });
+const decoyArchive = join(tmpdir(), 'homm5_test_decoy.h5m');
+writeFileSync(decoyArchive, writeArchive([
+  // Deliberately first, and shallower — the order and depth a naive pick falls for.
+  { name: 'Editor/Builder/Template/map.xdb', data: Buffer.from('<decoy/>') },
+  { name: 'Editor/Builder/DialogSceneBuilder.xdb', data: Buffer.from('<builder/>') },
+  { name: 'Maps/SingleMissions/Real/map.xdb', data: Buffer.from('<AdvMapDesc/>') },
+  { name: 'Maps/SingleMissions/Real/name.txt', data: Buffer.from('Real') },
+]));
+const decoy = openProject(decoyArchive, decoyDir, { now, mapProject: true });
+ok(decoy.manifest.archivePrefix === 'Maps/SingleMissions/Real',
+   `the map under Maps/ is the project, not the Editor/Builder copy (${decoy.manifest.archivePrefix})`);
+ok(readFileSync(join(decoy.projectDir, 'map.xdb'), 'utf8') === '<AdvMapDesc/>', 'and it is the real map.xdb');
+
+packProject(decoy.projectDir, decoyArchive, { now, preserveFrom: decoyArchive });
+const kept = readEntries(readFileSync(decoyArchive)).map((e) => e.name).sort();
+ok(kept.includes('Editor/Builder/Template/map.xdb') && kept.includes('Editor/Builder/DialogSceneBuilder.xdb'),
+   'packing the map back keeps what the archive held outside it');
+ok(kept.length === 4, `and adds nothing (${kept.length} entries)`);
+
+// Deleting a file from the project still removes it: preserveFrom carries over
+// what is outside the project, never what is inside it.
+rmSync(join(decoy.projectDir, 'name.txt'));
+packProject(decoy.projectDir, decoyArchive, { now, preserveFrom: decoyArchive });
+const after = readEntries(readFileSync(decoyArchive)).map((e) => e.name);
+ok(!after.includes('Maps/SingleMissions/Real/name.txt'), 'a file deleted from the project is not resurrected');
+
 console.log(failures ? `\n${failures} FAILURE(S)` : '\nall pak/project tests passed');
 process.exit(failures ? 1 : 0);

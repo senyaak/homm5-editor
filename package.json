@@ -33,7 +33,8 @@
     "build:renderer": "esbuild renderer/app.ts --bundle --format=esm --target=chrome120 --outfile=renderer/app.js --sourcemap",
     "harness": "npm run build:renderer && node tools/make-harness.js && node tools/serve-harness.js",
     "watch:renderer": "npm run build:renderer -- --watch",
-    "object-schema": "node tools/object-schema.ts"
+    "object-schema": "node tools/object-schema.ts",
+    "object-defaults": "node tools/object-defaults.ts"
   },
   "dependencies": {
     "three": "^0.160.0"
