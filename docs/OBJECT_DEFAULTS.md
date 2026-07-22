@@ -17,24 +17,22 @@ default**. That is the signal the tool reports. Two variants mean something was
 edited afterwards, and the diff says what.
 
 Source so far: `Maps/12.h5m` — a map made in the original editor specifically to
-harvest these: 93 statics, 19 monsters, 9 artifacts, 8 treasures, 6 mines, 5
-heroes, 5 dwellings, 3 garrisons, 2 towns, 2 seer huts, 1 abandoned mine. Every
-one of those types collapses to a single variant.
+harvest these: 93 statics, 19 monsters, 9 artifacts, 9 treasures, 7 buildings, 6
+mines, 5 heroes, 5 dwellings, 4 shrines, 3 garrisons, 2 towns, 2 seer huts, 2
+tents, and one each of abandoned mine, prison, sphinx, sign, hill fort and
+dwarven warren. Every one of those types collapses to a single variant.
 
-Still to place, by the name to look for in the original's palette:
+19 of the 21 types are covered. Still to place: **`AdvMapCartographer`** and
+**`AdvMapShipyard`** — both need the coast, which is why a test map inland does
+not produce them.
 
-| type | in the palette |
-| --- | --- |
-| `AdvMapBuilding` | the visitable buildings — Sanctuary, Observatory, Windmill, Fountain of Fortune… one type behind many icons, so it is the big one |
-| `AdvMapShrine` | Shrine of Magic Incantation / Gesture / Thought — the spell teachers |
-| `AdvMapPrison` | Prison |
-| `AdvMapSphinx` | Sphinx (the riddle) |
-| `AdvMapCartographer` | Cartographer |
-| `AdvMapShipyard` | Shipyard |
-| `AdvMapSign` | Sign, and the Ocean Bottle |
-| `AdvMapHillFort` | Hill Fort |
-| `AdvMapTent` | Border Guard / Keymaster's tent |
-| `AdvMapDwarvenWarren` | Dwarven Warren (ToE) |
+**One type is many objects.** `AdvMapBuilding` alone covered Sanctuary, Redwood
+Observatory, Windmill, Fountain of Fortune, Dwarven Treasury **and the
+Whirlpool** — a teleport is not its own map type, it is a building whose
+`Shared` says so. That is the general shape here: the map object carries
+placement and overrides, the `Shared` definition carries what the thing *is*.
+Which is also why one measured default per type is enough, and why a palette
+entry cannot be guessed from the type name.
 
 **Owner defaults to `PLAYER_1`, and nothing auto-increments.** The four heroes
 are all `PLAYER_1`, which settles the question the two towns raised — they are
@@ -257,8 +255,79 @@ naming:
 </Quest>
 ```
 
-`-1` is "no limit" for the three timers. The `Award` block carries **every**
+`-1` is "no limit" for the three timers, and `IsInitialy…` is their spelling, not
+a typo of ours — it has to be written back exactly. The `Award` block carries **every**
 award kind at once — resources, attribute, artifact, spell, army slot, spell
 points, morale, luck, skill — with `Type` selecting which one is read. So a new
 quest is a full award record set to nothing, and the editor's job is to write
 `Type` plus the one field it names, not to prune the rest.
+
+## AdvMapBuilding
+
+```xml
+<PlayerID>PLAYER_NONE</PlayerID>
+<CaptureTrigger><Action><FunctionName/></Action></CaptureTrigger>
+<GroupID>0</GroupID>
+<showCameras/>
+```
+
+Four fields for the widest type on the map — everything a visitable building
+does lives in its `Shared`. `GroupID` is what pairs teleports: two whirlpools
+with the same id are the same whirlpool. Worth confirming before we expose it,
+because `0` on every new one means a map full of buildings is also, by default,
+one big teleport group.
+
+## AdvMapShrine
+
+```xml
+<SpellID>SPELL_NONE</SpellID>
+```
+
+`SPELL_NONE` is "roll a spell of this shrine's circle", the circle being the
+`Shared` (Shrine_Of_Magic_1/2/3). Setting it is how a shrine is made to teach a
+specific spell.
+
+## AdvMapPrison / AdvMapSphinx
+
+```xml
+<PrisonedHero/> <RandomHero>true</RandomHero>
+<Riddle/>       <RandomRiddle>true</RandomRiddle>
+```
+
+The same pattern as the dwelling: an empty slot plus a `Random…` flag that is
+**true**, so a placed object is complete and random until someone fills it in.
+
+## AdvMapSign
+
+```xml
+<MessageFileRef href=""/>
+```
+
+## AdvMapHillFort
+
+```xml
+<CreaturesUpgradesFilter>
+  <ForbiddenBasicUpgradeTiers/><ForbiddenAlterUpgradeTiers/><NotUpgradeable/><ForbiddenUpgrades/>
+</CreaturesUpgradesFilter>
+```
+
+All four lists empty, i.e. nothing forbidden — a fort that upgrades everything.
+The same block a town carries.
+
+## AdvMapTent
+
+Nothing beyond the fields every object has. A Border Guard and a Keymaster's
+Tent differ only by `Shared` (`Border_Guard_5`, `Keymaster_Tent_5` — the number
+is the barrier colour), so there is no default to get wrong.
+
+## AdvMapDwarvenWarren
+
+```xml
+<PlayerID>PLAYER_NONE</PlayerID>
+<CaptureTrigger><Action><FunctionName/></Action></CaptureTrigger>
+<armySlots/>
+<CreatureSwapBlockedForAI>false</CreatureSwapBlockedForAI>
+```
+
+Identical to `AdvMapMine`, field for field — the ToE warren is a mine with its
+own type.
