@@ -35,13 +35,16 @@ export interface MapPos {
 /** Object-type name -> number of objects of that type (see typeCounts()). */
 export type TypeCounts = Record<string, number>;
 
-// Every advanced-map object type seen across the game's maps, by frequency.
+// Every advanced-map object type, by frequency across the game's maps.
+// AdvMapStand is the tail: one object (Tieru's Hut) in two ToE campaign maps,
+// which is why it went unnoticed until the catalogue offered it. Confirmed
+// against the game's own type spec — see src/typespec.ts.
 export const OBJECT_TYPES: string[] = [
   'AdvMapStatic', 'AdvMapTreasure', 'AdvMapMonster', 'AdvMapBuilding', 'AdvMapMine',
   'AdvMapArtifact', 'AdvMapDwelling', 'AdvMapShrine', 'AdvMapHero', 'AdvMapTown',
   'AdvMapGarrison', 'AdvMapAbanMine', 'AdvMapShipyard', 'AdvMapSign', 'AdvMapTent',
   'AdvMapHillFort', 'AdvMapDwarvenWarren', 'AdvMapSeerHut', 'AdvMapPrison',
-  'AdvMapCartographer', 'AdvMapSphinx',
+  'AdvMapCartographer', 'AdvMapSphinx', 'AdvMapStand',
 ];
 const OBJECT_TYPE_SET = new Set<string>(OBJECT_TYPES);
 
@@ -117,9 +120,9 @@ export class MapObject {
   /**
    * The object's simple fields, as a flat editable list.
    *
-   * Read from the DOM rather than from a per-type schema. There are 21 object
+   * Read from the DOM rather than from a per-type schema. There are 22 object
    * types with wildly different fields, and a hand-written table for each would
-   * be 21 chances to miss one and to drift from the game's own data — while the
+   * be 22 chances to miss one and to drift from the game's own data — while the
    * file already says what an object has. Anything a text box can honestly edit
    * is included; nested structures (a town's buildings, a hero's army, trigger
    * blocks) have children and are left to the typed editors of Phase 4.
@@ -188,6 +191,13 @@ function uniqueName(wanted: string, taken: Set<string>): string {
   let n = 2;
   while (taken.has(`${wanted}_${n}`)) n++;
   return `${wanted}_${n}`;
+}
+
+/** The whitespace on the line an element sits on, read from its parent. */
+function indentBefore(parent: XmlElement, el: XmlElement): string | null {
+  const i = parent.children.indexOf(el);
+  const prev = i > 0 ? parent.children[i - 1] : null;
+  return prev && prev.type === 'text' && /^\s*$/.test(prev.text) ? prev.text : null;
 }
 
 /** Deep copy of an element, so a clone shares no nodes with its donor. */
@@ -595,9 +605,18 @@ export class HommMap {
 
     // Indent like the item before it, so the file keeps its shape.
     const arr = objectsEl.children;
-    const last = arr[arr.length - 1];
-    if (last && last.type === 'text') arr.splice(arr.length - 1, 0, item, { type: 'text', text: last.text });
-    else arr.push(item);
+    if (!arr.length) {
+      // The first object on a map that has none: `<objects/>` has to become a
+      // pair of tags, and there is no sibling to copy the indentation from, so
+      // it is taken from the line `<objects>` itself sits on.
+      const close = indentBefore(this.desc, objectsEl) ?? '\n\t';
+      objectsEl.selfClose = false;
+      arr.push({ type: 'text', text: close + '\t' }, item, { type: 'text', text: close });
+    } else {
+      const last = arr[arr.length - 1];
+      if (last && last.type === 'text') arr.splice(arr.length - 1, 0, item, { type: 'text', text: last.text });
+      else arr.push(item);
+    }
     this._objects = null;
     this._containers = null;
     return { object: obj, complete };

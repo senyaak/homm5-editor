@@ -127,7 +127,12 @@ export function serialize(node: XmlNode): string {
   let out = '';
   if (node.name !== '#document') {
     const rawAttrs = node._dirtyAttrs ? buildAttrs(node.attrs) : node.rawAttrs;
-    if (node.selfClose) return `<${node.name}${rawAttrs}/>`;
+    // Children win over the flag. `<objects/>` parsed as self-closing and then
+    // given an item used to serialise back as `<objects/>` — the item silently
+    // dropped, which is exactly what happened to every object placed on a map
+    // our own New Map had just written. Trusting the flag over the content is
+    // never right: content is the thing being serialised.
+    if (node.selfClose && !node.children.length) return `<${node.name}${rawAttrs}/>`;
     out += `<${node.name}${rawAttrs}>`;
   }
   for (const c of node.children) out += serialize(c);

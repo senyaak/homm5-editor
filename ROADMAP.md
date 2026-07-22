@@ -181,12 +181,22 @@ placing new ones from a palette.
       replace the measurement — the defaults that make a new object usable are
       not in it — but it is authoritative about SHAPE, which is more than
       docs/OBJECT_FIELDS.md (inferred from maps) can claim.
+- [x] ✅ **End-to-end: place in the app, save, compare the file** —
+      `e2e/place-objects.spec.ts` creates a map through the New Map dialog,
+      places one object of every type the catalogue offers, saves, then reads
+      the `map.xdb` off disk and compares every object element by element
+      against the measurement. It found two real bugs on its first run, neither
+      of which any unit test could see (see below), which is the argument for
+      testing the product rather than the parts.
 - [ ] ⬜ **Use the spec for field sets, not just defaults** — it would answer
       "what fields does this type have here" without a donor, and it is what a
       property panel needs to offer a field the object does not carry yet (today
       the panel can only edit what is already in the DOM, so a field the donor
       lacked cannot be set at all). Inheritance through `BaseType` has to be
       resolved for that.
+- [ ] ⬜ **Naming for entities that are not placed objects** — a seer hut's
+      quest carries a `<Name>` of its own, and a new one is left empty (matching
+      the original). Same hazard as an object with no handle.
 - [ ] ⬜ **The 59 defaults the spec declares and our schema does not** — printed
       by name at the end of `npm run test-defaults`. Mostly map-level
       (`AdvMapDesc.BirdsAmount` 10, `BorderSize` 1) and the entity `$defs`

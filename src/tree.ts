@@ -84,6 +84,11 @@ export function appendItem(root: XmlElement, containerPath: Path, item: XmlEleme
   const container = nodeAt(root, containerPath);
   if (!container) return false;
   const arr = container.children;
+  // An empty list is written `<rumours/>`, and a self-closing element used to
+  // serialise without its children — so the first item added to one vanished on
+  // save. serialize() no longer trusts the flag over the content, and the flag
+  // is cleared here too, so the tree stays honest about what it holds.
+  container.selfClose = false;
   const indent = indentOf(container);
   // Insert before the container's closing whitespace, indented like its siblings.
   const last = arr[arr.length - 1];

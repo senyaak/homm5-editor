@@ -97,10 +97,17 @@
       "type": "object", "title": "Quest", "x-advanced": true,
       "description": "The seer hut's whole body, and the same structure the map's own objectives use — so one editor serves both. Award carries EVERY award kind at once and Type selects which is read, which is why a new quest is a full award record set to nothing: editing one means writing Type plus the field it names, never pruning the rest. `IsInitialy…` is the game's spelling.",
       "default": {
+        "Name": null,
+        "CaptionFileRef": "", "ObscureCaptionFileRef": "", "DescriptionFileRef": "",
+        "ProgressCommentsFileRef": null,
         "Kind": "OBJECTIVE_KIND_MANUAL",
+        "Parameters": [], "Dependencies": [],
         "Timeout": -1, "Holdout": -1, "CheckDelay": -1,
         "InstantVictory": false,
-        "TargetGlance": { "Target": { "Type": "ADV_TARGET_NONE", "Name": "" }, "Radius": 10, "Duration": 5000 },
+        "TargetGlance": {
+          "Target": { "Type": "ADV_TARGET_NONE", "Name": null, "Coords": { "FloorID": 0, "cell": { "x": 0, "y": 0 } } },
+          "Radius": 10, "Duration": 5000
+        },
         "Award": {
           "Type": "AWARD_NONE", "Experience": 0,
           "Resources": { "Wood": 0, "Ore": 0, "Mercury": 0, "Crystal": 0, "Sulfur": 0, "Gem": 0, "Gold": 0 },
@@ -114,6 +121,8 @@
         "IsInitialyActive": true, "IsInitialyVisible": true,
         "IsHidden": false, "Ignore": false,
         "ShowCompleted": true, "NeedComplete": true,
+        "StateChangeTrigger": { "Action": { "FunctionName": "" } },
+        "SoundActivated": null, "SoundComplete": null, "SoundFailed": null,
         "AllowMultipleActivations": true, "AllowMultipleCompletions": true
       },
       "properties": {
@@ -279,6 +288,7 @@
       "CaptureTrigger": { "$ref": "#/$defs/Trigger", "title": "Capture trigger" }
     } } ] },
     "AdvMapTent": { "allOf": [ { "$ref": "#/$defs/CommonObject" }, { "type": "object", "properties": {} } ] },
+    "AdvMapStand": { "allOf": [ { "$ref": "#/$defs/CommonObject" }, { "type": "object", "properties": {} } ] },
     "AdvMapSign": { "allOf": [ { "$ref": "#/$defs/CommonObject" }, { "type": "object", "properties": {
       "MessageFileRef": { "type": "string", "x-ref": true, "x-file": true, "title": "Message", "default": "" }
     } } ] },
