@@ -278,6 +278,17 @@ Round-trip (load→save→identical) is the cheap complementary net.
 - 🔬 **GR2 skeletons/animations** (Granny) — NOT needed for the editor; a static
   pose suffices. Only worth it for an animated preview.
 
+## Known nits (cosmetic, not blocking)
+
+- 🐛 **Effect models stand slightly wrong.** The Mystical Garden's gnome — an
+  animated model inside the object's `<Effect>` — is now the right SIZE (it used
+  to inherit a particle's `<Scale>` of 10 and tower over the map), but it sits a
+  little off: raised above its spot and leaning. The ModelInstance's Position and
+  Rotation are applied; what is not is the model's own bind pose, which for a
+  skinned mesh lives in the GR2 skeleton we deliberately do not read. Everything
+  is recognisable and placeable, so this waits. Same suspicion for any other
+  animated effect model.
+
 ## Order and priorities
 
 Critical path to a working map editor: **Phase 0 (finish) → 1 → 3 → 2 (live scene)
