@@ -106,3 +106,28 @@ it: 29 confirmed, no conflicts, against a measurement taken independently.
   the file).
 
 Both skip themselves when there is no game data to read.
+
+## A third source: the shipped PDFs — a different vocabulary, not a wrong one
+
+`<game>/Editor Documentation/HOMM5_A2_IDs_for_Scripts.pdf` lists the script IDs
+by name and number (`pdftotext -layout` reads it). It is the reference for what
+**Lua** can say, and it covers ground the data does not surface as neatly:
+creatures, spells, artifacts, skills, perks and class feats, town buildings,
+border-guard key colours, trigger types.
+
+**It is not interchangeable with the type system, and `weekIDs` shows why.**
+114 of the 126 moon weeks match; in the other 12 slots the PDF has the
+Hammers-of-Fate/Tribes-of-the-East faction weeks — `WEEK_OF_WYVERN` (4),
+`WEEK_OF_SHAMAN` (7), `WEEK_OF_THANE` (19), `WEEK_OF_ORC` (21) — while
+`types.xml` and the shipped maps have the older animal weeks in the same
+positions. This is not inference: `Maps/CombatArenas/Beach_Snow_01/map.xdb`,
+which the addon's own `a2p1-data.pak` carries, writes
+`<Item>WEEK_OF_FIREFLY</Item>` and `<Item>WEEK_OF_RAT</Item>`, and
+`WEEK_OF_ORC` appears in no data file at all.
+
+The numbers are beside the point for us: a map stores the **name**, so what a
+select needs is the name list the map may contain. That comes from `types.xml`,
+which is what the maps use. The PDF's list is what a script may name.
+
+Rule of thumb: **map files → `types.xml`; Lua → the PDF.** Equating them is the
+bug, not either source.

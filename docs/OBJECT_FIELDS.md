@@ -31,175 +31,175 @@ from the spec, in the position the spec puts it. See `docs/TYPE_SPEC.md`.
 
 | field | kind | seen | values |
 | --- | --- | --- | --- |
-| `Pos` | structure | 229 |  |
-| `Rot` | text | 229 |  |
-| `Floor` | number | 229 | 2 distinct |
-| `Name` | text | 229 |  |
-| `CombatScript` | empty | 229 |  |
-| `pointLights` | structure | 229 |  |
-| `Shared` | reference | 229 |  |
-| `PlayerID` | enum | 229 | PLAYER_1, PLAYER_2, PLAYER_3, PLAYER_4, PLAYER_5, PLAYER_6, PLAYER_7, PLAYER_8, PLAYER_NONE |
-| `CaptureTrigger` | structure | 229 |  |
-| `HeroDeployTrigger` | structure | 229 |  |
-| `ShipTile` | structure | 229 |  |
-| `Specialization` | reference | 229 |  |
-| `buildings` | structure | 229 |  |
-| `Editable` | structure | 229 |  |
-| `armySlots` | structure | 229 |  |
-| `spellIDs` | structure | 229 |  |
-| `CaptionFileRef` | reference | 229 |  |
-| `GarrisonHero` | structure | 229 |  |
-| `Script` | reference | 229 |  |
-| `RndSource` | enum | 229 | RND_NONE, RND_OWN, RND_PLAYER |
-| `LinkToPlayer` | enum | 229 | PLAYER_1, PLAYER_2, PLAYER_NONE |
-| `LinkToTown` | empty | 229 |  |
-| `CanCaptureOnlyNotVisit` | bool | 229 | 2 distinct |
-| `AllowQuickCombat` | bool | 229 | 2 distinct |
-| `CreaturesUpgradesFilter` | structure | 188 |  |
-| `GarrisonBlockedForAI` | bool | 188 | 2 distinct |
-| `BannedRaces` | structure | 188 |  |
+| `Pos` | structure | 224 |  |
+| `Rot` | text | 224 |  |
+| `Floor` | number | 224 | 2 distinct |
+| `Name` | text | 224 |  |
+| `CombatScript` | empty | 224 |  |
+| `pointLights` | structure | 224 |  |
+| `Shared` | reference | 224 |  |
+| `PlayerID` | enum | 224 | PLAYER_1, PLAYER_2, PLAYER_3, PLAYER_4, PLAYER_5, PLAYER_6, PLAYER_7, PLAYER_8, PLAYER_NONE |
+| `CaptureTrigger` | structure | 224 |  |
+| `HeroDeployTrigger` | structure | 224 |  |
+| `ShipTile` | structure | 224 |  |
+| `Specialization` | reference | 224 |  |
+| `buildings` | structure | 224 |  |
+| `Editable` | structure | 224 |  |
+| `armySlots` | structure | 224 |  |
+| `spellIDs` | structure | 224 |  |
+| `CaptionFileRef` | reference | 224 |  |
+| `GarrisonHero` | structure | 224 |  |
+| `Script` | reference | 224 |  |
+| `RndSource` | enum | 224 | RND_NONE, RND_OWN, RND_PLAYER |
+| `LinkToPlayer` | enum | 224 | PLAYER_1, PLAYER_2, PLAYER_3, PLAYER_4, PLAYER_NONE |
+| `LinkToTown` | empty | 224 |  |
+| `CanCaptureOnlyNotVisit` | bool | 224 | 2 distinct |
+| `AllowQuickCombat` | bool | 224 | 2 distinct |
+| `CreaturesUpgradesFilter` | structure | 183 |  |
+| `GarrisonBlockedForAI` | bool | 183 | 2 distinct |
+| `BannedRaces` | structure | 183 |  |
 
 ## AdvMapMonster
 
 | field | kind | seen | values |
 | --- | --- | --- | --- |
-| `Pos` | structure | 6377 |  |
-| `Rot` | text | 6377 |  |
-| `Floor` | number | 6377 | 2 distinct |
-| `Name` | text | 6377 |  |
-| `CombatScript` | reference | 6377 |  |
-| `pointLights` | structure | 6377 |  |
-| `Shared` | reference | 6377 |  |
-| `Custom` | bool | 6377 | 2 distinct |
-| `Amount` | number | 6377 | 41 distinct |
-| `Amount2` | number | 6377 | 41 distinct |
-| `AttackType` | enum | 6377 | ATTACK_ANY |
-| `MoveType` | enum | 6377 | MOVE_ANY |
-| `DoesNotGrow` | bool | 6377 | 2 distinct |
-| `MessageFileRef` | reference | 6377 |  |
-| `Script` | empty | 6377 |  |
-| `Resources` | structure | 6377 |  |
-| `ArtifactID` | enum | 6377 | ARTIFACT_NONE, DRAGON_FLAME_TONGUE |
-| `Mood` | enum | 6377 | MONSTER_MOOD_AGGRESSIVE, MONSTER_MOOD_FRIENDLY, MONSTER_MOOD_HOSTILE, MONSTER_MOOD_WILD |
-| `Courage` | enum | 6377 | MONSTER_COURAGE_ALWAYS_FIGHT, MONSTER_COURAGE_ALWAYS_JOIN, MONSTER_COURAGE_CAN_FLEE_JOIN |
-| `AllowQuickCombat` | bool | 6377 | 2 distinct |
-| `DoesNotDependOnDifficulty` | bool | 5376 | 2 distinct |
-| `AdditionalStacks` | structure | 5376 |  |
-| `SingleMonsterNameFileRef` | reference | 5376 |  |
-| `MultipleMonstersNameFileRef` | reference | 5376 |  |
-| `RacesRandomGroupID` | number | 5376 | 1 distinct |
-| `relationsOverrides` | structure | 5376 |  |
+| `Pos` | structure | 5470 |  |
+| `Rot` | text | 5470 |  |
+| `Floor` | number | 5470 | 2 distinct |
+| `Name` | text | 5470 |  |
+| `CombatScript` | reference | 5470 |  |
+| `pointLights` | structure | 5470 |  |
+| `Shared` | reference | 5470 |  |
+| `Custom` | bool | 5470 | 2 distinct |
+| `Amount` | number | 5470 | 41 distinct |
+| `Amount2` | number | 5470 | 41 distinct |
+| `AttackType` | enum | 5470 | ATTACK_ANY |
+| `MoveType` | enum | 5470 | MOVE_ANY |
+| `DoesNotGrow` | bool | 5470 | 2 distinct |
+| `MessageFileRef` | reference | 5470 |  |
+| `Script` | empty | 5470 |  |
+| `Resources` | structure | 5470 |  |
+| `ArtifactID` | enum | 5470 | ARTIFACT_NONE, DRAGON_FLAME_TONGUE |
+| `Mood` | enum | 5470 | MONSTER_MOOD_AGGRESSIVE, MONSTER_MOOD_FRIENDLY, MONSTER_MOOD_HOSTILE, MONSTER_MOOD_WILD |
+| `Courage` | enum | 5470 | MONSTER_COURAGE_ALWAYS_FIGHT, MONSTER_COURAGE_ALWAYS_JOIN, MONSTER_COURAGE_CAN_FLEE_JOIN |
+| `AllowQuickCombat` | bool | 5470 | 2 distinct |
+| `DoesNotDependOnDifficulty` | bool | 4469 | 2 distinct |
+| `AdditionalStacks` | structure | 4469 |  |
+| `SingleMonsterNameFileRef` | reference | 4469 |  |
+| `MultipleMonstersNameFileRef` | reference | 4469 |  |
+| `RacesRandomGroupID` | number | 4469 | 1 distinct |
+| `relationsOverrides` | structure | 4469 |  |
 
 ## AdvMapHero
 
 | field | kind | seen | values |
 | --- | --- | --- | --- |
-| `Pos` | structure | 124 |  |
-| `Rot` | text | 124 |  |
-| `Floor` | number | 124 | 2 distinct |
-| `Name` | text | 124 |  |
-| `CombatScript` | reference | 124 |  |
-| `pointLights` | structure | 124 |  |
-| `Shared` | reference | 124 |  |
-| `PlayerID` | enum | 124 | PLAYER_1, PLAYER_2, PLAYER_3, PLAYER_4, PLAYER_5, PLAYER_6, PLAYER_8 |
-| `Experience` | number | 124 | 41 distinct |
-| `armySlots` | structure | 124 |  |
-| `artifactIDs` | structure | 124 |  |
-| `isUntransferable` | structure | 124 |  |
-| `Editable` | structure | 124 |  |
-| `OverrideMask` | number | 124 | 17 distinct |
-| `PrimarySkillMastery` | enum | 124 | MASTERY_ADVANCED, MASTERY_BASIC, MASTERY_EXPERT, MASTERY_NONE |
-| `LossTrigger` | structure | 124 |  |
-| `AllowQuickCombat` | bool | 124 | 2 distinct |
-| `Textures` | structure | 124 |  |
-| `PresetPrice` | number | 84 | 2 distinct |
-| `BannedRaces` | empty | 84 |  |
+| `Pos` | structure | 131 |  |
+| `Rot` | text | 131 |  |
+| `Floor` | number | 131 | 2 distinct |
+| `Name` | text | 131 |  |
+| `CombatScript` | reference | 131 |  |
+| `pointLights` | structure | 131 |  |
+| `Shared` | reference | 131 |  |
+| `PlayerID` | enum | 131 | PLAYER_1, PLAYER_2, PLAYER_3, PLAYER_4, PLAYER_5, PLAYER_6, PLAYER_7, PLAYER_8 |
+| `Experience` | number | 131 | 41 distinct |
+| `armySlots` | structure | 131 |  |
+| `artifactIDs` | structure | 131 |  |
+| `isUntransferable` | structure | 131 |  |
+| `Editable` | structure | 131 |  |
+| `OverrideMask` | number | 131 | 18 distinct |
+| `PrimarySkillMastery` | enum | 131 | MASTERY_ADVANCED, MASTERY_BASIC, MASTERY_EXPERT, MASTERY_NONE |
+| `LossTrigger` | structure | 131 |  |
+| `AllowQuickCombat` | bool | 131 | 2 distinct |
+| `Textures` | structure | 131 |  |
+| `PresetPrice` | number | 91 | 2 distinct |
+| `BannedRaces` | empty | 91 |  |
 
 ## AdvMapDwelling
 
 | field | kind | seen | values |
 | --- | --- | --- | --- |
-| `Pos` | structure | 912 |  |
-| `Rot` | text | 912 |  |
-| `Floor` | number | 912 | 2 distinct |
-| `Name` | text | 912 |  |
-| `CombatScript` | empty | 912 |  |
-| `pointLights` | structure | 912 |  |
-| `Shared` | reference | 912 |  |
-| `PlayerID` | enum | 912 | PLAYER_1, PLAYER_2, PLAYER_3, PLAYER_4, PLAYER_5, PLAYER_NONE |
-| `CaptureTrigger` | structure | 912 |  |
-| `RandomCreatures` | bool | 912 | 2 distinct |
-| `creaturesEnabled` | structure | 912 |  |
-| `RndSource` | enum | 912 | RND_NONE, RND_PLAYER, RND_TOWN |
-| `LinkToPlayer` | enum | 912 | PLAYER_1, PLAYER_2, PLAYER_3, PLAYER_4, PLAYER_5, PLAYER_6, PLAYER_7, PLAYER_8, PLAYER_NONE |
-| `LinkToTown` | structure | 912 |  |
+| `Pos` | structure | 867 |  |
+| `Rot` | text | 867 |  |
+| `Floor` | number | 867 | 2 distinct |
+| `Name` | text | 867 |  |
+| `CombatScript` | empty | 867 |  |
+| `pointLights` | structure | 867 |  |
+| `Shared` | reference | 867 |  |
+| `PlayerID` | enum | 867 | PLAYER_1, PLAYER_2, PLAYER_3, PLAYER_4, PLAYER_5, PLAYER_NONE |
+| `CaptureTrigger` | structure | 867 |  |
+| `RandomCreatures` | bool | 867 | 2 distinct |
+| `creaturesEnabled` | structure | 867 |  |
+| `RndSource` | enum | 867 | RND_NONE, RND_PLAYER, RND_TOWN |
+| `LinkToPlayer` | enum | 867 | PLAYER_1, PLAYER_2, PLAYER_3, PLAYER_4, PLAYER_5, PLAYER_6, PLAYER_7, PLAYER_8, PLAYER_NONE |
+| `LinkToTown` | structure | 867 |  |
 
 ## AdvMapGarrison
 
 | field | kind | seen | values |
 | --- | --- | --- | --- |
-| `Pos` | structure | 90 |  |
-| `Rot` | number | 90 | 6 distinct |
-| `Floor` | number | 90 | 2 distinct |
-| `Name` | text | 90 |  |
-| `CombatScript` | reference | 90 |  |
-| `pointLights` | structure | 90 |  |
-| `Shared` | reference | 90 |  |
-| `PlayerID` | enum | 90 | PLAYER_1, PLAYER_2, PLAYER_3, PLAYER_4, PLAYER_5, PLAYER_NONE |
-| `CaptureTrigger` | structure | 90 |  |
-| `armySlots` | structure | 90 |  |
-| `CollectableArmy` | bool | 90 | 2 distinct |
-| `AllowQuickCombat` | bool | 90 | 2 distinct |
-| `TownType` | enum | 53 | TOWN_HEAVEN |
+| `Pos` | structure | 94 |  |
+| `Rot` | number | 94 | 6 distinct |
+| `Floor` | number | 94 | 2 distinct |
+| `Name` | text | 94 |  |
+| `CombatScript` | reference | 94 |  |
+| `pointLights` | structure | 94 |  |
+| `Shared` | reference | 94 |  |
+| `PlayerID` | enum | 94 | PLAYER_1, PLAYER_2, PLAYER_3, PLAYER_4, PLAYER_5, PLAYER_NONE |
+| `CaptureTrigger` | structure | 94 |  |
+| `armySlots` | structure | 94 |  |
+| `CollectableArmy` | bool | 94 | 2 distinct |
+| `AllowQuickCombat` | bool | 94 | 2 distinct |
+| `TownType` | enum | 57 | TOWN_HEAVEN |
 
 ## AdvMapArtifact
 
 | field | kind | seen | values |
 | --- | --- | --- | --- |
-| `Pos` | structure | 2196 |  |
-| `Rot` | text | 2196 |  |
-| `Floor` | number | 2196 | 2 distinct |
-| `Name` | text | 2196 |  |
-| `CombatScript` | empty | 2196 |  |
-| `pointLights` | structure | 2196 |  |
-| `Shared` | reference | 2196 |  |
-| `armySlots` | structure | 2196 |  |
-| `MessageFileRef` | reference | 2196 |  |
-| `spellID` | enum | 2196 | SPELL_ANTI_MAGIC, SPELL_METEOR_SHOWER, SPELL_NONE, SPELL_RESURRECT, SPELL_SUMMON_CREATURES, SPELL_TOWN_PORTAL |
-| `RandomShiftRadius` | number | 2196 | 2 distinct |
-| `untransferable` | bool | 2196 | 1 distinct |
+| `Pos` | structure | 1554 |  |
+| `Rot` | text | 1554 |  |
+| `Floor` | number | 1554 | 2 distinct |
+| `Name` | text | 1554 |  |
+| `CombatScript` | empty | 1554 |  |
+| `pointLights` | structure | 1554 |  |
+| `Shared` | reference | 1554 |  |
+| `armySlots` | structure | 1554 |  |
+| `MessageFileRef` | reference | 1554 |  |
+| `spellID` | enum | 1554 | SPELL_ANTI_MAGIC, SPELL_METEOR_SHOWER, SPELL_NONE, SPELL_RESURRECT, SPELL_SUMMON_CREATURES, SPELL_TOWN_PORTAL |
+| `RandomShiftRadius` | number | 1554 | 2 distinct |
+| `untransferable` | bool | 1554 | 1 distinct |
 
 ## AdvMapBuilding
 
 | field | kind | seen | values |
 | --- | --- | --- | --- |
-| `Pos` | structure | 5281 |  |
-| `Rot` | text | 5281 |  |
-| `Floor` | number | 5281 | 2 distinct |
-| `Name` | text | 5281 |  |
-| `CombatScript` | empty | 5281 |  |
-| `pointLights` | structure | 5281 |  |
-| `Shared` | reference | 5281 |  |
-| `PlayerID` | enum | 5281 | PLAYER_1, PLAYER_2, PLAYER_3, PLAYER_4, PLAYER_5, PLAYER_8, PLAYER_NONE |
-| `CaptureTrigger` | structure | 5281 |  |
-| `GroupID` | number | 5281 | 33 distinct |
-| `showCameras` | structure | 5281 |  |
+| `Pos` | structure | 4548 |  |
+| `Rot` | text | 4548 |  |
+| `Floor` | number | 4548 | 2 distinct |
+| `Name` | text | 4548 |  |
+| `CombatScript` | empty | 4548 |  |
+| `pointLights` | structure | 4548 |  |
+| `Shared` | reference | 4548 |  |
+| `PlayerID` | enum | 4548 | PLAYER_1, PLAYER_2, PLAYER_3, PLAYER_4, PLAYER_5, PLAYER_8, PLAYER_NONE |
+| `CaptureTrigger` | structure | 4548 |  |
+| `GroupID` | number | 4548 | 32 distinct |
+| `showCameras` | structure | 4548 |  |
 
 ## AdvMapMine
 
 | field | kind | seen | values |
 | --- | --- | --- | --- |
-| `Pos` | structure | 1152 |  |
-| `Rot` | text | 1152 |  |
-| `Floor` | number | 1152 | 2 distinct |
-| `Name` | text | 1152 |  |
-| `CombatScript` | empty | 1152 |  |
-| `pointLights` | structure | 1152 |  |
-| `Shared` | reference | 1152 |  |
-| `PlayerID` | enum | 1152 | PLAYER_1, PLAYER_2, PLAYER_3, PLAYER_4, PLAYER_5, PLAYER_NONE |
-| `CaptureTrigger` | structure | 1152 |  |
-| `armySlots` | structure | 1152 |  |
-| `CreatureSwapBlockedForAI` | bool | 957 | 2 distinct |
+| `Pos` | structure | 1096 |  |
+| `Rot` | text | 1096 |  |
+| `Floor` | number | 1096 | 2 distinct |
+| `Name` | text | 1096 |  |
+| `CombatScript` | empty | 1096 |  |
+| `pointLights` | structure | 1096 |  |
+| `Shared` | reference | 1096 |  |
+| `PlayerID` | enum | 1096 | PLAYER_1, PLAYER_2, PLAYER_3, PLAYER_4, PLAYER_5, PLAYER_NONE |
+| `CaptureTrigger` | structure | 1096 |  |
+| `armySlots` | structure | 1096 |  |
+| `CreatureSwapBlockedForAI` | bool | 901 | 2 distinct |
 
 ## AdvMapDwarvenWarren
 
@@ -221,59 +221,59 @@ from the spec, in the position the spec puts it. See `docs/TYPE_SPEC.md`.
 
 | field | kind | seen | values |
 | --- | --- | --- | --- |
-| `Pos` | structure | 170216 |  |
-| `Rot` | text | 170216 |  |
-| `Floor` | number | 170216 | 2 distinct |
-| `Name` | text | 170216 |  |
-| `CombatScript` | empty | 170216 |  |
-| `pointLights` | structure | 170216 |  |
-| `Shared` | reference | 170216 |  |
-| `IsRemovable` | bool | 170216 | 2 distinct |
-| `TerrainAligned` | bool | 136484 | 2 distinct |
-| `ScalePercent` | number | 136183 | 41 distinct |
+| `Pos` | structure | 157789 |  |
+| `Rot` | text | 157789 |  |
+| `Floor` | number | 157789 | 2 distinct |
+| `Name` | text | 157789 |  |
+| `CombatScript` | empty | 157789 |  |
+| `pointLights` | structure | 157789 |  |
+| `Shared` | reference | 157789 |  |
+| `IsRemovable` | bool | 157789 | 2 distinct |
+| `TerrainAligned` | bool | 124057 | 2 distinct |
+| `ScalePercent` | number | 123756 | 41 distinct |
 
 ## AdvMapTreasure
 
 | field | kind | seen | values |
 | --- | --- | --- | --- |
-| `Pos` | structure | 15441 |  |
-| `Rot` | number | 15441 | 41 distinct |
-| `Floor` | number | 15441 | 2 distinct |
-| `Name` | text | 15441 |  |
-| `CombatScript` | empty | 15441 |  |
-| `pointLights` | structure | 15441 |  |
-| `Shared` | reference | 15441 |  |
-| `IsCustom` | bool | 15441 | 2 distinct |
-| `Amount` | number | 15441 | 19 distinct |
-| `MessageFileRef` | reference | 15441 |  |
+| `Pos` | structure | 12425 |  |
+| `Rot` | number | 12425 | 41 distinct |
+| `Floor` | number | 12425 | 2 distinct |
+| `Name` | text | 12425 |  |
+| `CombatScript` | empty | 12425 |  |
+| `pointLights` | structure | 12425 |  |
+| `Shared` | reference | 12425 |  |
+| `IsCustom` | bool | 12425 | 2 distinct |
+| `Amount` | number | 12425 | 19 distinct |
+| `MessageFileRef` | reference | 12425 |  |
 
 ## AdvMapAbanMine
 
 | field | kind | seen | values |
 | --- | --- | --- | --- |
-| `Pos` | structure | 114 |  |
-| `Rot` | text | 114 |  |
-| `Floor` | number | 114 | 2 distinct |
-| `Name` | text | 114 |  |
-| `CombatScript` | empty | 114 |  |
-| `pointLights` | structure | 114 |  |
-| `Shared` | reference | 114 |  |
-| `AvailableResources` | structure | 114 |  |
-| `CaptureTrigger` | structure | 114 |  |
+| `Pos` | structure | 98 |  |
+| `Rot` | text | 98 |  |
+| `Floor` | number | 98 | 2 distinct |
+| `Name` | text | 98 |  |
+| `CombatScript` | empty | 98 |  |
+| `pointLights` | structure | 98 |  |
+| `Shared` | reference | 98 |  |
+| `AvailableResources` | structure | 98 |  |
+| `CaptureTrigger` | structure | 98 |  |
 
 ## AdvMapPrison
 
 | field | kind | seen | values |
 | --- | --- | --- | --- |
-| `Pos` | structure | 33 |  |
-| `Rot` | number | 33 | 6 distinct |
-| `Floor` | number | 33 | 2 distinct |
-| `Name` | text | 33 |  |
-| `CombatScript` | empty | 33 |  |
-| `pointLights` | empty | 33 |  |
-| `Shared` | reference | 33 |  |
-| `PrisonedHero` | structure | 33 |  |
-| `RandomHero` | bool | 33 | 2 distinct |
+| `Pos` | structure | 25 |  |
+| `Rot` | number | 25 | 6 distinct |
+| `Floor` | number | 25 | 2 distinct |
+| `Name` | text | 25 |  |
+| `CombatScript` | empty | 25 |  |
+| `pointLights` | empty | 25 |  |
+| `Shared` | reference | 25 |  |
+| `PrisonedHero` | structure | 25 |  |
+| `RandomHero` | bool | 25 | 2 distinct |
 
 ## AdvMapSphinx
 
@@ -307,27 +307,27 @@ from the spec, in the position the spec puts it. See `docs/TYPE_SPEC.md`.
 
 | field | kind | seen | values |
 | --- | --- | --- | --- |
-| `Pos` | structure | 65 |  |
-| `Rot` | text | 65 |  |
-| `Floor` | number | 65 | 2 distinct |
-| `Name` | text | 65 |  |
-| `CombatScript` | empty | 65 |  |
-| `pointLights` | structure | 65 |  |
-| `Shared` | reference | 65 |  |
-| `ShipTile` | structure | 65 |  |
+| `Pos` | structure | 57 |  |
+| `Rot` | text | 57 |  |
+| `Floor` | number | 57 | 2 distinct |
+| `Name` | text | 57 |  |
+| `CombatScript` | empty | 57 |  |
+| `pointLights` | structure | 57 |  |
+| `Shared` | reference | 57 |  |
+| `ShipTile` | structure | 57 |  |
 
 ## AdvMapShrine
 
 | field | kind | seen | values |
 | --- | --- | --- | --- |
-| `Pos` | structure | 375 |  |
-| `Rot` | text | 375 |  |
-| `Floor` | number | 375 | 2 distinct |
-| `Name` | text | 375 |  |
-| `CombatScript` | empty | 375 |  |
-| `pointLights` | structure | 375 |  |
-| `Shared` | reference | 375 |  |
-| `SpellID` | enum | 375 | SPELL_ARCANE_CRYSTAL, SPELL_DIMENSION_DOOR, SPELL_DISRUPTING_RAY, SPELL_EARTHQUAKE, SPELL_HASTE, SPELL_NONE, SPELL_SUMMON_CREATURES |
+| `Pos` | structure | 338 |  |
+| `Rot` | text | 338 |  |
+| `Floor` | number | 338 | 2 distinct |
+| `Name` | text | 338 |  |
+| `CombatScript` | empty | 338 |  |
+| `pointLights` | structure | 338 |  |
+| `Shared` | reference | 338 |  |
+| `SpellID` | enum | 338 | SPELL_ARCANE_CRYSTAL, SPELL_DIMENSION_DOOR, SPELL_DISRUPTING_RAY, SPELL_EARTHQUAKE, SPELL_HASTE, SPELL_NONE, SPELL_SUMMON_CREATURES |
 
 ## AdvMapSign
 

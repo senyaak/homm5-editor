@@ -3,7 +3,7 @@
 //
 //   node tools/test-tree.ts [dataRoot]
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { loadMap } from '../src/map.ts';
 import { readTree, nodeAt, setPath, addStringItem, removeItem, appendItem, indentText, setList } from '../src/tree.ts';
@@ -11,8 +11,41 @@ import { mapSchema, resolveSchemaAtPath, deref } from '../src/schema.ts';
 import { buildItem, isBuildable } from '../src/skeleton.ts';
 import { children, find } from '../src/xml.ts';
 
-const dataRoot = process.argv[2] ?? 'samples/paks/data';
-const path = join(dataRoot, 'Maps/SingleMissions/12/map.xdb');
+const dataRoot = process.argv[2] ?? 'data-unpacked';
+
+/**
+ * Any map the data root has, preferring a rich one.
+ *
+ * NOT a named map. These tests used to open `Maps/SingleMissions/12` — a map
+ * someone made by hand on one machine — so they broke the moment that folder
+ * was cleaned up, and until then they were asserting against a personal
+ * artifact rather than the game's own content.
+ */
+function anyMap(root: string): string | null {
+  const roots = ['Maps/Scenario', 'Maps/SingleMissions', 'Maps/Multiplayer', 'Maps'];
+  const walk = (d: string, out: string[] = []): string[] => {
+    let ents: string[];
+    try { ents = readdirSync(d); } catch { return out; }
+    for (const e of ents) {
+      const p = join(d, e);
+      let st; try { st = statSync(p); } catch { continue; }
+      if (st.isDirectory()) walk(p, out);
+      else if (e === 'map.xdb') out.push(p);
+    }
+    return out;
+  };
+  for (const r of roots) {
+    const found = walk(join(root, r)).sort((a, b) => statSync(a).size - statSync(b).size);
+    if (!found.length) continue;
+    // The first map big enough to carry players and a spell list, not the
+    // biggest: an RMG map runs to 13 MB and turns a fast check into a slow one.
+    return found.find((f) => statSync(f).size >= 100_000) ?? found[found.length - 1]!;
+  }
+  return null;
+}
+
+const path = anyMap(dataRoot);
+if (!path) { console.log('  (no maps under ' + dataRoot + ' — skipping)'); process.exit(0); }
 let bad = 0;
 const ok = (c: boolean, m: string) => { console.log(`  ${c ? '✓' : '✗'} ${m}`); if (!c) bad++; };
 
@@ -22,10 +55,19 @@ const map = loadMap(readFileSync(path, 'utf8'));
 console.log('=== read ===');
 const players = readTree(nodeAt(map.desc, ['players'])!);
 ok(Array.isArray(players) && players.length === 8, 'players reads as a list of 8');
+// What is asserted here is the SHAPE the tree reads, not a particular map's
+// content: these lines used to pin `Race === 'TOWN_NO_TYPE'` and exactly 353
+// spells, which is the content of one hand-made map and says nothing about
+// readTree. Checked against the document itself instead, so any map works.
 const p0 = readTree(nodeAt(map.desc, ['players', 0])!);
-ok(typeof p0 === 'object' && !Array.isArray(p0) && (p0 as Record<string, unknown>).Race === 'TOWN_NO_TYPE', 'players[0].Race = TOWN_NO_TYPE');
+const race = typeof p0 === 'object' && !Array.isArray(p0) ? String((p0 as Record<string, unknown>).Race) : '';
+ok(/^TOWN_[A-Z_]+$/.test(race), `players[0].Race reads as a race (${race})`);
 const spells = readTree(nodeAt(map.desc, ['spellIDs'])!);
-ok(Array.isArray(spells) && spells.length === 353 && spells[1] === 'SPELL_MAGIC_ARROW', 'spellIDs reads as 353 strings');
+const spellItems = children(nodeAt(map.desc, ['spellIDs'])!).length;
+ok(spellItems === 0
+    ? !Array.isArray(spells) || spells.length === 0
+    : Array.isArray(spells) && spells.length === spellItems && spells.every((s) => typeof s === 'string' && s.startsWith('SPELL_')),
+   `spellIDs reads as ${spellItems} strings, matching the document`);
 
 // --- set a nested leaf, surgically ---
 console.log('\n=== set path ===');
@@ -73,7 +115,9 @@ ok(newMoon.State === '0' && newMoon.RotationRate === '0', 'new moon has State=0,
   const itemSchema = arrField?.items ? deref(mapSchema, arrField.items) : null;
   const container = nodeAt(map.desc, ['MapRumours'])!;
   appendItem(map.desc, ['MapRumours'], buildItem(mapSchema, itemSchema!, indentText(container)));
-  const r = readTree(nodeAt(map.desc, ['MapRumours', 0])!) as Record<string, string>;
+  // The one just added, not index 0: a shipped map may already carry rumours.
+  const last = children(find(map.desc, 'MapRumours')!).length - 1;
+  const r = readTree(nodeAt(map.desc, ['MapRumours', last])!) as Record<string, string>;
   ok(r.Weight === '100' && r.TownType === 'TOWN_NO_TYPE', 'new rumour has Weight=100, TownType=TOWN_NO_TYPE');
   ok(r.Text === '', 'new rumour Text is empty (a ref href)');
 }

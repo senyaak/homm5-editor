@@ -47,7 +47,7 @@ const positional = args.filter((a, i) => !a.startsWith('--') && !(i > 0 && args[
 // launcher finds the game.
 const gameDir = resolve(positional[0] || join(import.meta.dirname, '..', '..'));
 const dataDir = join(gameDir, 'data');
-const outDir = resolve(value('--out') || join(import.meta.dirname, '..', 'samples', 'paks', 'data'));
+const outDir = resolve(value('--out') || join(import.meta.dirname, '..', 'data-unpacked'));
 const dry = flag('--dry');
 const force = flag('--force');
 

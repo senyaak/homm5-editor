@@ -15,7 +15,7 @@ import { execSync } from 'node:child_process';
 let failures = 0;
 const ok = (cond, msg) => { console.log(`${cond ? 'ok  ' : 'FAIL'} ${msg}`); if (!cond) failures++; };
 
-const mapFiles = execSync('find samples/paks/data/Maps -name map.xdb', { encoding: 'utf8' })
+const mapFiles = execSync('find data-unpacked/Maps -name map.xdb', { encoding: 'utf8' })
   .trim().split('\n').filter(Boolean);
 ok(mapFiles.length > 0, `found ${mapFiles.length} sample maps`);
 

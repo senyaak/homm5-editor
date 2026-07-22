@@ -72,8 +72,8 @@ app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
 // The game-data root: where object models/textures (MapObjects/, bin/Geometries/)
 // live. A .h5m map archive does NOT contain these — they ship in the game's
 // data.pak — so we always resolve assets against this root, not against the map
-// folder. Defaults to the unpacked samples; overridable via HOMM5_DATA.
-const GAME_DATA = process.env.HOMM5_DATA || join(REPO_ROOT, 'samples', 'paks', 'data');
+// folder. Defaults to the unpacked data tree; overridable via HOMM5_DATA.
+const GAME_DATA = process.env.HOMM5_DATA || join(REPO_ROOT, 'data-unpacked');
 
 // Scratch space: unpacked archives, undo history — everything the editor keeps
 // for itself. In the editor's own folder rather than the OS's app-data corner,

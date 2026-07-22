@@ -26,7 +26,7 @@ let ed: Launched;
 
 const NAME = 'e2e Pack';
 const EDITED = 'e2e Pack, edited';
-const DATA = process.env.HOMM5_DATA || join(REPO_ROOT, 'samples', 'paks', 'data');
+const DATA = process.env.HOMM5_DATA || join(REPO_ROOT, 'data-unpacked');
 const MAPS = join(DATA, 'Maps');
 // A map's path under the data root is also its path inside the archive.
 const PREFIX = `Maps/SingleMissions/${NAME}`;
@@ -76,7 +76,7 @@ test('packs a new map, opens the .h5m back, and gets the same bytes', async () =
   // The stubbed save dialog answers with the path it would have suggested,
   // which is what a user pressing Save without retyping anything gets.
   await page.locator('#pack').click();
-  await expect(page.locator('#hud')).toContainText('packed →', { timeout: 30_000 });
+  await expect(page.locator('#hud')).toContainText(/^packed → /, { timeout: 30_000 });
   expect(existsSync(ARCHIVE)).toBe(true);
   // A zip, by its local-file-header signature — the game will not read anything else.
   expect(readFileSync(ARCHIVE).subarray(0, 4)).toEqual(Buffer.from('PK\x03\x04', 'latin1'));
@@ -95,7 +95,10 @@ test('packs a new map, opens the .h5m back, and gets the same bytes', async () =
 
   // --- open the archive back --------------------------------------------
   await page.locator('#open').click();
-  await expect(page.locator('#hud')).toContainText('unpacked', { timeout: 60_000 });
+  // The exact message, not the word: the data root is called `data-unpacked`,
+  // so "unpacked" matches the PACK line's path too and the wait passed on the
+  // wrong status entirely.
+  await expect(page.locator('#hud')).toContainText(/unpacked \d+ files → /, { timeout: 60_000 });
   const reopened = unpackedDir((await page.locator('#hud').textContent()) ?? '');
   workspaces.add(reopened);
   await expect(page.locator('#title')).toHaveText(`homm5-editor — ${NAME} (72×72)`, { timeout: 60_000 });
@@ -147,7 +150,10 @@ test('reopening the same archive returns to the same workspace', async () => {
   const first = [...workspaces][0]!;
 
   await page.locator('#open').click();
-  await expect(page.locator('#hud')).toContainText('unpacked', { timeout: 60_000 });
+  // The exact message, not the word: the data root is called `data-unpacked`,
+  // so "unpacked" matches the PACK line's path too and the wait passed on the
+  // wrong status entirely.
+  await expect(page.locator('#hud')).toContainText(/unpacked \d+ files → /, { timeout: 60_000 });
   const again = unpackedDir((await page.locator('#hud').textContent()) ?? '');
   workspaces.add(again);
 

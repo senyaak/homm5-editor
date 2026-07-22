@@ -7,7 +7,7 @@
 // only misbehaves in game.
 //
 // Needs sample terrain, which is game content and therefore not in the repo.
-// Pass paths, or drop files in samples/ and run with no arguments.
+// Pass paths, or drop files in _tmp/probes/ and run with no arguments.
 
 import { copyFileSync, existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -261,7 +261,7 @@ function testDoc(path: string): void {
 const args = process.argv.slice(2);
 const samples = args.length
   ? args
-  : ['samples/A2M3_GroundTerrain.bin', 'samples/A2M6_GroundTerrain.bin'].filter((p) => existsSync(p));
+  : ['_tmp/probes/A2M3_GroundTerrain.bin', '_tmp/probes/A2M6_GroundTerrain.bin'].filter((p) => existsSync(p));
 
 if (!samples.length) {
   console.log('no sample terrain found — pass GroundTerrain.bin paths as arguments');

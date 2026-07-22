@@ -3,7 +3,7 @@
 node_modules/
 renderer/scene-view.html
 renderer/terrain-view.html
-samples/
+data-unpacked/
 
 # built from renderer/app.ts by esbuild
 renderer/app.js

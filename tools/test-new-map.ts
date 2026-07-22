@@ -6,7 +6,7 @@
 //   2. Against the real thing (optional): for each pristine blank project found,
 //      rebuild it from its own name/size/level plus the registry rosters and
 //      compare every file byte-for-byte. Pass a dir (argv[2] / HOMM5_BLANKS);
-//      game data via HOMM5_DATA or samples/paks/data.
+//      game data via HOMM5_DATA or data-unpacked.
 
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -86,7 +86,7 @@ function testAgainstOracles(dir: string, dataRoot: string): void {
 testSelfContained();
 
 const dir = process.argv[2] || process.env.HOMM5_BLANKS;
-const dataRoot = process.env.HOMM5_DATA || join(import.meta.dirname, '..', 'samples', 'paks', 'data');
+const dataRoot = process.env.HOMM5_DATA || join(import.meta.dirname, '..', 'data-unpacked');
 if (dir && existsSync(dir) && existsSync(join(dataRoot, 'GameMechanics'))) testAgainstOracles(dir, dataRoot);
 else console.log('\n(no blank projects + game data — pass a dir and set HOMM5_DATA for the byte-exact check)');
 

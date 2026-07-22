@@ -10,7 +10,7 @@ import { extractMeshes, readGeometryRefFromModelXdb } from '../src/geometry.ts';
 import { decodeDDS } from '../src/dds.ts';
 
 const [modelXdb, ddsPath, out] = process.argv.slice(2);
-const DATA = 'samples/paks/data';
+const DATA = 'data-unpacked';
 
 const ref = readGeometryRefFromModelXdb(readFileSync(modelXdb, 'utf8'));
 const bin = readFileSync(`${DATA}/bin/Geometries/${ref.uid}`);

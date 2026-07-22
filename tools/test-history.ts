@@ -81,10 +81,10 @@ function mapFiles(dir: string, out: string[] = [], cap = 6): string[] {
   return out;
 }
 
-const root = 'samples/paks/data/Maps';
+const root = 'data-unpacked/Maps';
 const maps = existsSync(root) ? mapFiles(root) : [];
 if (!maps.length) {
-  console.log('  (no sample maps unpacked — skipping; unpack under samples/paks/data to run these)');
+  console.log('  (no sample maps unpacked — skipping; unpack under data-unpacked to run these)');
 } else {
   for (const f of maps) {
     const orig = new Uint8Array(readFileSync(f));
@@ -217,7 +217,7 @@ if (!maps.length) {
 
     // Add: the reverse shape, and the one whose donor XML is largest.
     const type = 'AdvMapStatic';
-    const donor = donorFor('samples/paks/data', type);
+    const donor = donorFor('data-unpacked', type);
     edit('add object', () => {
       map.addObject({
         type, shared: '/MapObjects/Spruce.(AdvMapStaticShared).xdb#xpointer(/AdvMapStaticShared)',

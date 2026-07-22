@@ -31,6 +31,7 @@
     "ReflectiveWater": { "type": "boolean", "title": "Reflective water", "x-tab": "general" },
     "RandomMoons": { "type": "boolean", "title": "Random moons", "x-tab": "general" },
     "moons": { "type": "array", "title": "Moons", "x-advanced": true, "items": { "$ref": "#/$defs/Moon" } },
+    "weekIDs": { "type": "array", "title": "Weeks", "x-advanced": true, "description": "Which 'Week of the …' events the map may roll. 74 of the 126 shipped maps carry it; it went undeclared until the schema test stopped reading one hand-picked map. The game's own MoonWeekID enum has 126 members and matches the maps exactly; the A2 PDF's list of the same size does NOT — see docs/TYPE_SPEC.md.", "items": { "type": "string" } },
 
     "CustomTeams": { "type": "boolean", "title": "Custom teams", "x-tab": "teams", "description": "On: the per-player Team grid is honoured. Off: the engine assigns teams." },
     "players": { "type": "array", "title": "Players", "x-tab": "players", "minItems": 1, "maxItems": 8, "items": { "$ref": "#/$defs/Player" } },

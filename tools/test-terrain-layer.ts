@@ -105,7 +105,7 @@ function testFile(path: string): void {
 const args = process.argv.slice(2);
 const samples = args.length
   ? args
-  : ['samples/A2M3_GroundTerrain.bin', 'samples/A2M6_GroundTerrain.bin'].filter((p) => existsSync(p));
+  : ['_tmp/probes/A2M3_GroundTerrain.bin', '_tmp/probes/A2M6_GroundTerrain.bin'].filter((p) => existsSync(p));
 
 if (!samples.length) {
   console.log('no sample terrain found — pass GroundTerrain.bin paths as arguments');

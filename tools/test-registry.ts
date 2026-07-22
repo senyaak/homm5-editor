@@ -9,7 +9,7 @@ import { Registry } from '../src/registry.ts';
 import { loadMap } from '../src/map.ts';
 import { find, children, text } from '../src/xml.ts';
 
-const dataRoot = process.argv[2] ?? 'samples/paks/data';
+const dataRoot = process.argv[2] ?? 'data-unpacked';
 const reg = new Registry(dataRoot);
 
 const spells = reg.spells();

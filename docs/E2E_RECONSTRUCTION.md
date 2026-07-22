@@ -21,7 +21,7 @@ down, not silently skipped.
 ## The loop (per mission)
 
 1. **Extract** the original mission from `UserMODs/All_campaigns.data.h5u`
-   (`Maps/Scenario/<CxMy>/…`) into `samples/fixtures/<CxMy>/` — the reference.
+   (`Maps/Scenario/<CxMy>/…`) into `_tmp/fixtures/<CxMy>/` — the reference.
 2. **Reconstruct from scratch** by driving the *real* handler pipeline headless
    (the same code the UI calls), as a script:
    `New Map → paint/sculpt terrain → place & rotate objects → set params (by
@@ -110,7 +110,7 @@ until the engine accepts it. **This is the first e2e goal; C1M1 builds on it.**
 
 ## Deliverables per mission
 
-- `samples/fixtures/<CxMy>/` — the extracted original (git-ignored if large; a
+- `_tmp/fixtures/<CxMy>/` — the extracted original (git-ignored if large; a
   small extractor script regenerates it).
 - `tools/reconstruct-<CxMy>.ts` — the headless reconstruction/e2e script.
 - A gap report folded into `ROADMAP.md` (new capabilities) and the format docs.

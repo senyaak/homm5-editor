@@ -16,7 +16,7 @@ import { extractMeshes, readGeometryRefFromModelXdb } from '../src/geometry.ts';
 import { decodeDDS } from '../src/dds.ts';
 
 const [mapXdb, out] = process.argv.slice(2);
-const DATA = 'samples/paks/data';
+const DATA = 'data-unpacked';
 const readXdb = (href) => { const p = DATA + href.split('#')[0]; return existsSync(p) ? readFileSync(p, 'utf8') : null; };
 
 // --- terrain ---

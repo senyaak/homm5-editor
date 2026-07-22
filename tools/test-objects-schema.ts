@@ -10,7 +10,7 @@ import { Registry } from '../src/registry.ts';
 import { loadMap } from '../src/map.ts';
 import { children } from '../src/xml.ts';
 
-const dataRoot = process.argv[2] ?? 'samples/paks/data';
+const dataRoot = process.argv[2] ?? 'data-unpacked';
 const VALID_REGISTRIES: RegistryName[] = ['spells', 'artifacts', 'heroes', 'races', 'ambientLights', 'creatures', 'skills', 'birds', 'winds', 'weathers'];
 
 let problems = 0;
@@ -41,7 +41,7 @@ if (skills.length < 50) fail('skills roster too small');
 
 // --- 3. coverage: every field each object type carries should be declared ---
 console.log('\n=== coverage across all maps ===');
-const files = execSync('find samples -path "*/SingleMissions/*/map.xdb" -o -path "*/Multiplayer/*/map.xdb"', { encoding: 'utf8', maxBuffer: 1e8 }).trim().split('\n').filter(Boolean);
+const files = execSync('find data-unpacked -path "*/SingleMissions/*/map.xdb" -o -path "*/Multiplayer/*/map.xdb"', { encoding: 'utf8', maxBuffer: 1e8 }).trim().split('\n').filter(Boolean);
 const byType = new Map<string, Set<string>>();
 let maps = 0;
 for (const f of files) {

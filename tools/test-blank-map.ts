@@ -6,7 +6,7 @@
 //   2. Against the real thing (optional): with a registry (game data) to supply
 //      the spell/artifact rosters, the output is compared byte-for-byte to the
 //      original editor's pristine blanks. Pass a dir of blanks as argv[2] (or set
-//      HOMM5_BLANKS); the registry uses HOMM5_DATA or samples/paks/data.
+//      HOMM5_BLANKS); the registry uses HOMM5_DATA or data-unpacked.
 
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
@@ -90,7 +90,7 @@ function testAgainstOracles(dir: string, dataRoot: string): void {
 testSelfContained();
 
 const dir = process.argv[2] || process.env.HOMM5_BLANKS;
-const dataRoot = process.env.HOMM5_DATA || join(import.meta.dirname, '..', 'samples', 'paks', 'data');
+const dataRoot = process.env.HOMM5_DATA || join(import.meta.dirname, '..', 'data-unpacked');
 if (dir && existsSync(dir) && existsSync(join(dataRoot, 'GameMechanics'))) testAgainstOracles(dir, dataRoot);
 else console.log('\n(no blank oracles + game data — pass a blanks dir and set HOMM5_DATA for the byte-exact check)');
 

@@ -6,14 +6,45 @@
 //
 //   node tools/test-schema.ts [dataRoot]
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { mapSchema, deref, controlOf, resolveRef } from '../src/schema.ts';
 import type { FieldSchema, RegistryName } from '../src/schema.ts';
 import { loadMap } from '../src/map.ts';
 import { children } from '../src/xml.ts';
 
-const dataRoot = process.argv[2] ?? 'samples/paks/data';
+const dataRoot = process.argv[2] ?? 'data-unpacked';
+
+/**
+ * Any map the data root has, preferring a rich one.
+ *
+ * NOT a named map. These tests used to open `Maps/SingleMissions/12` — a map
+ * someone made by hand on one machine — so they broke the moment that folder
+ * was cleaned up, and until then they were asserting against a personal
+ * artifact rather than the game's own content.
+ */
+function anyMap(root: string): string | null {
+  const roots = ['Maps/Scenario', 'Maps/SingleMissions', 'Maps/Multiplayer', 'Maps'];
+  const walk = (d: string, out: string[] = []): string[] => {
+    let ents: string[];
+    try { ents = readdirSync(d); } catch { return out; }
+    for (const e of ents) {
+      const p = join(d, e);
+      let st; try { st = statSync(p); } catch { continue; }
+      if (st.isDirectory()) walk(p, out);
+      else if (e === 'map.xdb') out.push(p);
+    }
+    return out;
+  };
+  for (const r of roots) {
+    const found = walk(join(root, r)).sort((a, b) => statSync(a).size - statSync(b).size);
+    if (!found.length) continue;
+    // The first map big enough to carry players and a spell list, not the
+    // biggest: an RMG map runs to 13 MB and turns a fast check into a slow one.
+    return found.find((f) => statSync(f).size >= 100_000) ?? found[found.length - 1]!;
+  }
+  return null;
+}
 const VALID_REGISTRIES: RegistryName[] = ['spells', 'artifacts', 'heroes', 'races', 'ambientLights', 'creatures', 'skills', 'birds', 'winds', 'weathers'];
 
 let problems = 0;
@@ -35,9 +66,15 @@ for (const [k, v] of Object.entries(mapSchema.properties)) walk(v, k);
 for (const [k, v] of Object.entries(mapSchema.$defs ?? {})) walk(v, `$defs.${k}`);
 console.log(problems ? `  ${problems} problem(s)` : '  ✓ all $refs resolve, all x-registry names valid');
 
-// --- 2. coverage: every field map 12 carries should be described ---
-console.log('\n=== coverage vs map 12 ===');
-const map = loadMap(readFileSync(join(dataRoot, 'Maps/SingleMissions/12/map.xdb'), 'utf8'));
+// --- 2. coverage: every field a real map carries should be described ---
+//
+// Any map the tree has, not a named one: this used to open
+// `Maps/SingleMissions/12`, a map made by hand on one machine, so the check
+// was hostage to a personal artifact and broke when it was cleaned up.
+const sample = anyMap(dataRoot);
+console.log(`\n=== coverage vs ${sample ?? '(no map found)'} ===`);
+if (!sample) { console.log('  (no maps under the data root — skipping)'); process.exit(problems ? 1 : 0); }
+const map = loadMap(readFileSync(sample, 'utf8'));
 // `objects` is the map's placed content, not a setting — it has its own editor,
 // so it is deliberately outside the properties schema.
 const present = children(map.desc).map((c) => c.name).filter((n) => n !== 'objects');

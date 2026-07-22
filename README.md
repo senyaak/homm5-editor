@@ -15,7 +15,7 @@ so a `.cts` preload dies on the first type annotation — silently, leaving
 
 > **No game content lives here.** This repository holds code and format notes only.
 > Running anything requires your own legal copy of the game: the tools read assets
-> from its folder (`HOMM5_DATA`, defaulting to `samples/paks/data`, which is
+> from its folder (`HOMM5_DATA`, defaulting to `data-unpacked`, which is
 > gitignored). Nival/Ubisoft models, textures and maps are neither distributed nor
 > to be committed here.
 >
@@ -121,7 +121,7 @@ Point `HOMM5_DATA` at an unpacked game data folder, or build one with
 npm run unpack-data
 ```
 
-which unpacks every `.pak` in the install's `data/` into `samples/paks/data`
+which unpacks every `.pak` in the install's `data/` into `data-unpacked`
 (gitignored) in the game's own overlay order — the addon's files (`a2p1-*`) last,
 so they win, exactly as the game loads them. It skips files already current, so
 re-running after a patch only writes what changed. A partial unpack is the usual

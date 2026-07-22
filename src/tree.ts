@@ -158,5 +158,11 @@ export function removeItem(root: XmlElement, itemPath: Path): boolean {
   const prev = arr[idx - 1];
   if (prev && prev.type === 'text' && /^\s*$/.test(prev.text)) arr.splice(idx - 1, 2);
   else arr.splice(idx, 1);
+  // A list that is empty again is written `<spellIDs/>`, the way it arrived.
+  // appendItem opens the tag; without closing it here, adding an item to an
+  // empty list and removing it left `<spellIDs></spellIDs>` — a file that no
+  // longer matches itself byte for byte, which is the one promise this layer
+  // makes.
+  if (!arr.some((n) => n.type === 'element')) { container.children = []; container.selfClose = true; }
   return true;
 }

@@ -4,7 +4,7 @@
 // assembled from three things that ship with the game and not with the repo:
 // the link files, Editor/MapFilters.xml and Editor/IconCache. Without an
 // install the checks that need it are skipped rather than failed — the repo's
-// bundled samples deliberately carry no Editor folder.
+// unpacked data deliberately carries no Editor folder.
 
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -21,9 +21,9 @@ function skip(msg: string): void { console.log(`skip  ${msg}`); }
 
 const DATA = process.env.HOMM5_DATA
   || 'C:/Games/Steam/steamapps/common/Heroes of Might and Magic 5 Tribes of the East/data';
-const SAMPLES = join(import.meta.dirname, '..', 'samples', 'paks', 'data');
+const SAMPLES = join(import.meta.dirname, '..', 'data-unpacked');
 
-// The link files ship in the paks, so the bundled samples have them even
+// The link files ship in the paks, so the unpacked tree has them even
 // though they have no Editor folder.
 if (existsSync(join(SAMPLES, 'MapObjects', '_(AdvMapObjectLink)'))) {
   const { objects } = listPlaceable(SAMPLES, '');
@@ -59,13 +59,13 @@ if (existsSync(join(SAMPLES, 'MapObjects', '_(AdvMapObjectLink)'))) {
 // Regression: the walk must succeed from the root the app ACTUALLY starts with.
 //
 // This shipped broken. findEditorRoot climbed a fixed four levels, and from the
-// bundled samples/paks/data the game's Editor folder is four levels up — one
+// bundled data-unpacked the game's Editor folder is four levels up — one
 // past where it stopped. Every check here passed because they all began at the
 // install's data dir, which is one step away. The palette came up with a filter
 // dropdown holding nothing but All and Other, and no icons at all.
 //
 // So the check that matters is from the DEFAULT root, not from a convenient one.
-const DEFAULT_DATA = join(import.meta.dirname, '..', 'samples', 'paks', 'data');
+const DEFAULT_DATA = join(import.meta.dirname, '..', 'data-unpacked');
 if (existsSync(join(DEFAULT_DATA, 'MapObjects'))) {
   const found = findEditorRoot(DEFAULT_DATA);
   // Only meaningful on a machine that has the game; elsewhere there is nothing
@@ -73,7 +73,7 @@ if (existsSync(join(DEFAULT_DATA, 'MapObjects'))) {
   if (existsSync(join(DEFAULT_DATA, '..', '..', '..', '..', 'Editor', 'MapFilters.xml'))) {
     ok(!!found, `Editor folder found from the default data root (${found})`);
   } else {
-    skip('no game install above the samples folder');
+    skip('no game install above the unpacked data folder');
   }
 }
 

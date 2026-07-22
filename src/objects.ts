@@ -332,7 +332,7 @@ export function iconPathFor(editorRoot: string, linkPath: string): string | null
  *
  * Walks to the filesystem root rather than a fixed number of steps. A fixed
  * limit is guesswork about how deep the caller happens to sit, and it was
- * wrong: from the bundled `samples/paks/data` the game's Editor folder is four
+ * wrong: from the bundled `data-unpacked` the game's Editor folder is four
  * levels up, one past where a limit of four stopped looking, so the palette
  * came up with no groups and no icons.
  *

@@ -8,7 +8,7 @@
 // looks for maps, and that the app can open what it just wrote.
 //
 // The map is created under the data root's Maps folder (the default is the
-// gitignored samples tree) and removed afterwards, so a run leaves nothing
+// gitignored data-unpacked tree) and removed afterwards, so a run leaves nothing
 // behind.
 
 import { test, expect } from '@playwright/test';
@@ -21,7 +21,7 @@ let ed: Launched;
 
 // A name no real map would have, so the cleanup can never hit a user's map.
 const NAME = 'e2e New Map';
-const DATA = process.env.HOMM5_DATA || join(REPO_ROOT, 'samples', 'paks', 'data');
+const DATA = process.env.HOMM5_DATA || join(REPO_ROOT, 'data-unpacked');
 // Where the original editor keeps single-scenario maps — and where a map's
 // path under the data root becomes its path inside the .h5m.
 const MAP_DIR = join(DATA, 'Maps', 'SingleMissions', NAME);

@@ -7,7 +7,7 @@
 //
 // Oracle byte-exact checks (the blank generators vs the editor's own output) run
 // when HOMM5_BLANKS points at a folder of pristine blanks and HOMM5_DATA (or
-// samples/paks/data) has the game data; otherwise those checks are skipped, not
+// data-unpacked) has the game data; otherwise those checks are skipped, not
 // failed. Usage: `npm test`  (add HOMM5_BLANKS=… to include the oracle checks).
 
 import { spawnSync } from 'node:child_process';

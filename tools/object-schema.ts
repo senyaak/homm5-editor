@@ -13,7 +13,7 @@
 // examples each field was seen in.
 //
 //   node tools/object-schema.ts [dataRoot] [--md] [--type=AdvMapMonster]
-//                               [--paks=<dir>] [--paks=<dir> …]
+//                               [--paks=<dir>] [--only-shipped]
 //
 // Default output is a summary; --md emits docs/OBJECT_FIELDS.md.
 //
@@ -24,14 +24,14 @@
 // to differ. Nothing is copied to disk, so nothing copyrighted lands in the
 // repo; point it at the game folder and it reads what is installed.
 
-import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync, existsSync, openSync, closeSync } from 'node:fs';
 import { join } from 'node:path';
 import { loadMap } from '../src/map.ts';
 import { children, text } from '../src/xml.ts';
-import { readEntries } from '../src/pak.ts';
+import { readEntries, readIndex } from '../src/pak.ts';
 
 const args = process.argv.slice(2);
-const root = args.find((a) => !a.startsWith('--')) ?? 'samples/paks/data';
+const root = args.find((a) => !a.startsWith('--')) ?? 'data-unpacked';
 const asMarkdown = args.includes('--md');
 const onlyType = /^--type=(\w+)$/.exec(args.find((a) => a.startsWith('--type=')) ?? '')?.[1];
 
@@ -91,10 +91,61 @@ function mapsInPaks(dir: string): { where: string; xml: string }[] {
   return out;
 }
 
+/**
+ * The map paths the game's archives carry, read from their indexes.
+ *
+ * The unpacked tree is a WORKING folder: the editor creates maps in it and
+ * unpacks archives there, so "every map.xdb under the data root" quietly grows
+ * to include our own output — and a document headed "measured across the
+ * shipped maps" would then be measuring us. That happened: a hand-made test map
+ * and an RMG probe had joined the count.
+ *
+ * Two filters were tried and rejected as defaults:
+ *
+ *   * "skip folders carrying our project.json" — wrong, because opening a map
+ *     is what writes that file, and eight SHIPPED maps have one.
+ *   * membership in an archive, on by default — wrong here for a different
+ *     reason: in this install only 43 of the 126 unpacked maps are in any
+ *     `.pak`/`.h5u`. The combat arenas, campaign and single missions came from
+ *     somewhere no longer present. Filtering on it discards real evidence.
+ *
+ * So it is `--only-shipped`, opt-in, for when the tree's provenance is in
+ * doubt: it says how many it dropped, and the count in the generated document
+ * says what the measurement actually covered.
+ */
+function shippedMapPaths(dir: string): Set<string> | null {
+  let ents: string[];
+  try { ents = readdirSync(dir); } catch { return null; }
+  const paks = ents.filter((e) => /\.(pak|h5u|h5c)$/i.test(e));
+  if (!paks.length) return null;
+  const out = new Set<string>();
+  for (const e of paks) {
+    const fd = openSync(join(dir, e), 'r');
+    try {
+      for (const entry of readIndex(fd, statSync(join(dir, e)).size)) {
+        if (/(^|\/)map\.xdb$/i.test(entry.name)) out.add(entry.name.replace(/\\/g, '/').toLowerCase());
+      }
+    } catch { /* an unreadable archive is not a reason to stop */ } finally { closeSync(fd); }
+  }
+  return out.size ? out : null;
+}
+
+// The game install is the folder above the editor, unless told otherwise.
+const onlyShipped = args.includes('--only-shipped');
+const paksDir = process.env.HOMM5_PAKS
+  || (args.find((a) => a.startsWith('--paks='))?.slice('--paks='.length) ?? join(import.meta.dirname, '..', '..', 'data'));
+const shipped = onlyShipped ? shippedMapPaths(paksDir) : null;
+
 const sources: { where: string; xml: string }[] = [];
+let skipped = 0;
 for (const f of mapFiles(join(root, 'Maps'))) {
+  if (shipped) {
+    const rel = f.slice(root.length + 1).replace(/\\/g, '/').toLowerCase();
+    if (!shipped.has(rel)) { skipped++; continue; }
+  }
   try { sources.push({ where: f, xml: readFileSync(f, 'latin1') }); } catch { /* skip */ }
 }
+if (skipped) console.error(`skipped ${skipped} map(s) under ${root} that no .pak carries — not shipped content`);
 for (const a of args.filter((x) => x.startsWith('--paks='))) {
   sources.push(...mapsInPaks(a.slice('--paks='.length)));
 }

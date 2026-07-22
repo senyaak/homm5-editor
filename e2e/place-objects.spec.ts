@@ -30,7 +30,7 @@ import type { XmlElement } from '../src/xml.ts';
 let ed: Launched;
 
 const NAME = 'e2e Place Objects';
-const DATA = process.env.HOMM5_DATA || join(REPO_ROOT, 'samples', 'paks', 'data');
+const DATA = process.env.HOMM5_DATA || join(REPO_ROOT, 'data-unpacked');
 const MAP_DIR = join(DATA, 'Maps', 'SingleMissions', NAME);
 const FIXTURE = join(REPO_ROOT, 'tools', 'fixtures', 'object-defaults.json');
 

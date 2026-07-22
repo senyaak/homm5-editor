@@ -12,7 +12,7 @@ import { decodeDDS } from '../src/dds.ts';
 
 const [mapXdb, out, Ws, Hs] = process.argv.slice(2);
 const W = +(Ws || 1000), Ht = +(Hs || 680);
-const DATA = 'samples/paks/data';
+const DATA = 'data-unpacked';
 const readXdb = (h) => { const p = DATA + h.split('#')[0]; return existsSync(p) ? readFileSync(p, 'utf8') : null; };
 
 // ---- gather scene (world-space triangles) ----

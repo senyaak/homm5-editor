@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs';
 import { parseTerrain, readHeights, writeHeights, readTextureLayers, tilePathAt } from '../src/terrain.ts';
 
 const samples = process.argv.slice(2);
-if (samples.length === 0) samples.push('samples/A2M3_GroundTerrain.bin', 'samples/A2M6_GroundTerrain.bin');
+if (samples.length === 0) samples.push('_tmp/probes/A2M3_GroundTerrain.bin', '_tmp/probes/A2M6_GroundTerrain.bin');
 
 let failures = 0;
 for (const path of samples) {

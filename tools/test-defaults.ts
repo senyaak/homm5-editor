@@ -247,7 +247,7 @@ function testAgainstSpec(dataRoot: string): void {
 // The committed measurement always; a live map too, when one is pointed at —
 // which is how a drift between the fixture and the map that made it would show.
 testAgainstReference(fixtureBodies(), 'the measured fixture');
-testAgainstSpec(process.env.HOMM5_DATA || join(import.meta.dirname, '..', 'samples', 'paks', 'data'));
+testAgainstSpec(process.env.HOMM5_DATA || join(import.meta.dirname, '..', 'data-unpacked'));
 const refMap = process.env.HOMM5_DEFAULTS_MAP || process.argv[2];
 if (refMap && existsSync(refMap)) testAgainstReference(referenceBodies(refMap), refMap);
 

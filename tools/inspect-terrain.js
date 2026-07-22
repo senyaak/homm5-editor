@@ -6,11 +6,11 @@
 //   Head, Texture[], Height(float32), Plateau(u8), Ramp(u8), WaterDepth(u8),
 //   Passable(u8), End.
 //
-// Usage: node tools/inspect-terrain.js samples/A2M3_GroundTerrain.bin 96
+// Usage: node tools/inspect-terrain.js _tmp/probes/A2M3_GroundTerrain.bin 96
 
 import { readFileSync } from 'node:fs';
 
-const path = process.argv[2] ?? 'samples/A2M3_GroundTerrain.bin';
+const path = process.argv[2] ?? '_tmp/probes/A2M3_GroundTerrain.bin';
 const tiles = Number(process.argv[3] ?? 96);
 const V = tiles + 1;            // vertices per side
 const N = V * V;                // vertices total

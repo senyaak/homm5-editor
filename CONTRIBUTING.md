@@ -14,7 +14,7 @@ The game's assets — models, textures, maps, `.pak`/`.h5m` archives, unpacked
 `data/` — are **copyrighted (Nival / Ubisoft) and must never be committed.**
 `samples/` is `.gitignore`d for exactly this reason. You need your own legal copy
 of the game to run and test; point `HOMM5_DATA` at an unpacked data folder (or run
-`npm run unpack-data` to build one in `samples/paks/data`, which stays
+`npm run unpack-data` to build one in `data-unpacked`, which stays
 untracked). This repo is **code
 and format notes only.** A PR that adds game bytes will be rejected.
 

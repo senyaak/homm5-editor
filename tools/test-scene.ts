@@ -80,7 +80,7 @@ function testEffectModelScale(root: string, mapPath: string): void {
 
 testListItems();
 
-const root = process.env.HOMM5_DATA || join(import.meta.dirname, '..', 'samples', 'paks', 'data');
+const root = process.env.HOMM5_DATA || join(import.meta.dirname, '..', 'data-unpacked');
 const mapPath = process.argv[2] || process.env.HOMM5_SCENE_MAP;
 if (mapPath && existsSync(mapPath) && existsSync(join(root, 'MapObjects'))) testEffectModelScale(root, mapPath);
 else console.log('\n(pass a map.xdb with a Mystical Garden on it, plus game data, for the effect-model check)');

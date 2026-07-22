@@ -2,7 +2,7 @@
 // printing every inter-segment gap byte-for-byte. Ground-truth for the grammar.
 import { readFileSync } from 'node:fs';
 
-const path = process.argv[2] ?? 'samples/A2M3_GroundTerrain.bin';
+const path = process.argv[2] ?? '_tmp/probes/A2M3_GroundTerrain.bin';
 const tiles = Number(process.argv[3] ?? 96);
 const V = tiles + 1, N = V * V;
 const b = readFileSync(path);

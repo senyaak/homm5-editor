@@ -3,12 +3,12 @@
 // bounding box. Exercises the reliable, documented capability end to end.
 //
 // Usage: node tools/demo-geometry.js
-//   (paths point at the extracted sample tree under samples/paks/data)
+//   (paths point at the extracted sample tree under data-unpacked)
 
 import { readFileSync } from 'node:fs';
 import { extractPositionArrays, readGeometryRefFromModelXdb } from '../src/geometry.ts';
 
-const DATA = 'samples/paks/data';
+const DATA = 'data-unpacked';
 const modelXdb = `${DATA}/_(Model)/TerrainObjects/Grass/Mountains/Mounting12x12_1.(Model).xdb`;
 
 const ref = readGeometryRefFromModelXdb(readFileSync(modelXdb, 'utf8'));

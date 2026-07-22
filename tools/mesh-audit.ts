@@ -17,7 +17,7 @@ import { join } from 'node:path';
 import { extractMeshes, readGeometryRefFromModelXdb } from '../src/geometry.ts';
 
 const args = process.argv.slice(2);
-const root = args.find((a) => !a.startsWith('--')) ?? 'samples/paks/data';
+const root = args.find((a) => !a.startsWith('--')) ?? 'data-unpacked';
 const listWhat = /^--list=(\w+)$/.exec(args.find((a) => a.startsWith('--list=')) ?? '')?.[1] ?? '';
 const limit = +(/^--limit=(\d+)$/.exec(args.find((a) => a.startsWith('--limit=')) ?? '')?.[1] ?? 25);
 

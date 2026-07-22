@@ -248,7 +248,7 @@ export function openProject(archivePath: string, projectDir: string, opt: Projec
 /**
  * Adopt an already-unpacked directory as a project: write a fresh manifest if
  * one isn't there yet, otherwise leave the existing one untouched. Used when the
- * editor opens a loose map folder (samples, or a hand-extracted map) rather than
+ * editor opens a loose map folder (unpacked data, or a hand-extracted map) rather than
  * an archive. Returns the manifest.
  */
 export function initProject(projectDir: string, opt: ProjectOptions = {}): ProjectManifest {

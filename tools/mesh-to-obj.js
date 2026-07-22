@@ -10,7 +10,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { extractMeshes, readGeometryRefFromModelXdb } from '../src/geometry.ts';
 
 const [modelXdb, out] = process.argv.slice(2);
-const DATA = 'samples/paks/data';
+const DATA = 'data-unpacked';
 
 const ref = readGeometryRefFromModelXdb(readFileSync(modelXdb, 'utf8'));
 if (!ref) { console.log('no geometry ref in', modelXdb); process.exit(1); }
