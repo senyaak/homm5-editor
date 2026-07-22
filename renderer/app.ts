@@ -4811,7 +4811,7 @@ function newMapDialog(): HTMLDialogElement {
 /** Show where the map will land, so the folder is never a surprise. */
 function updateNewMapWhere(): void {
   const name = $input('nm-name').value.trim() || 'New Map';
-  const sub = $select('nm-type').value === 'multi' ? 'Maps/Multiplayer/' : 'Maps/';
+  const sub = $select('nm-type').value === 'multi' ? 'Maps/Multiplayer/' : 'Maps/SingleMissions/';
   $('nm-where').textContent = `→ <game data>/${sub}${name}`;
 }
 

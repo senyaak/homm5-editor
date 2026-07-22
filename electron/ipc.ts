@@ -70,8 +70,10 @@ export interface MapInfo {
  * Payload of `map:new` — the original's Create New Map dialog.
  *
  * There is no map-type field in map.xdb (a shipped multiplayer map carries no
- * marker a single-player one lacks), so `multiplayer` only decides where the
- * folder lands: Maps/Multiplayer/<name> rather than Maps/<name>.
+ * marker a single-player one lacks) — the type is expressed as the folder the
+ * map lives in, which is also its path inside the packed .h5m: the original
+ * editor's own blanks come out under Maps/SingleMissions/<name>, so that is
+ * where a single scenario goes and Maps/Multiplayer/<name> where an arena does.
  */
 export interface NewMapPayload {
   name: string;

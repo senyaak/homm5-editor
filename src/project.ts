@@ -22,7 +22,7 @@
 // re-hashes the tree on demand (hashing is cheap next to (de)compression).
 //
 // Exports:
-//   openProject(archivePath, projectDir)      -> { manifest, files }
+//   openProject(archivePath, projectDir)      -> { manifest, files, projectDir }
 //   packProject(projectDir, outPath, opt)     -> { entries, bytes, manifest }
 //   status(projectDir)                        -> { dirty, added, removed, modified,
 //                                                  versionMismatch, neverPacked }
@@ -76,6 +76,18 @@ export interface ProjectManifest {
   createdAt: string;
   /** Last pack record, or null when nothing has been built yet. */
   lastPack: LastPack | null;
+  /**
+   * Folder the map sits at INSIDE the archive, posix-style and without a
+   * trailing slash — 'Maps/SingleMissions/foo' for a map the original editor
+   * packed from <data>/Maps/SingleMissions/foo.
+   *
+   * Archive members are paths relative to the game's data root, not to the map
+   * folder: that is how the game finds a map inside a .h5m at all. Packing a
+   * project without putting the prefix back produces an archive the game cannot
+   * see. Absent on manifests written before this was understood, and '' for a
+   * project whose archive genuinely had the map at its root.
+   */
+  archivePrefix?: string | null;
 }
 
 /** Result of comparing the working tree against the last pack. */
@@ -102,15 +114,37 @@ export interface ProjectStatus {
 export interface ProjectOptions {
   /** Fixed timestamp source, so tests get reproducible manifests. */
   now?: Date;
+  /**
+   * The archive holds one map at its in-game path — treat the folder containing
+   * map.xdb as the project, and remember the path above it as archivePrefix.
+   *
+   * Off by default, because an archive is not necessarily one map: unpacking a
+   * data pak that happens to carry several would otherwise pick one of them at
+   * random and call it the project.
+   */
+  mapProject?: boolean;
 }
 
 /** Options accepted by packProject(): pak's write options plus the clock. */
-export interface PackProjectOptions extends WriteOptions, ProjectOptions {}
+export interface PackProjectOptions extends WriteOptions, ProjectOptions {
+  /**
+   * Folder to place the map at inside the archive, overriding what the manifest
+   * remembers — the map's path relative to the game's data root, e.g.
+   * 'Maps/SingleMissions/foo'. '' packs at the archive root.
+   */
+  prefix?: string;
+}
 
 /** What openProject() returns: the fresh manifest and the files unpacked. */
 export interface OpenProjectResult {
   manifest: ProjectManifest;
   files: ExtractedFile[];
+  /**
+   * Where the project actually is. Usually the dir passed in, but deeper when
+   * the archive carried the map at its in-game path — that inner folder is what
+   * holds map.xdb and the manifest, and what packProject() takes back.
+   */
+  projectDir: string;
 }
 
 /** What packProject() returns: pak's counters plus the updated manifest. */
@@ -167,14 +201,21 @@ export function writeManifest(projectDir: string, manifest: ProjectManifest): vo
 export function openProject(archivePath: string, projectDir: string, opt: ProjectOptions = {}): OpenProjectResult {
   mkdirSync(projectDir, { recursive: true });
   const files = extract(archivePath, projectDir);
+  // A map archive holds its files under the path the game reads them from
+  // ('Maps/SingleMissions/foo/map.xdb'), so the project is that inner folder and
+  // the prefix is what has to go back on when it is packed again.
+  const inner = opt.mapProject ? files.find((f) => /(^|\/)map\.xdb$/i.test(f.name)) : undefined;
+  const prefix = inner ? inner.name.split('/').slice(0, -1).join('/') : '';
+  const dir = prefix ? join(projectDir, ...prefix.split('/')) : projectDir;
   const manifest: ProjectManifest = {
     editorVersion: editorVersion(),
     source: { path: archivePath, hash: sha1File(archivePath) },
     createdAt: nowISO(opt.now),
     lastPack: null,
+    archivePrefix: prefix,
   };
-  writeManifest(projectDir, manifest);
-  return { manifest, files };
+  writeManifest(dir, manifest);
+  return { manifest, files, projectDir: dir };
 }
 
 /**
@@ -191,6 +232,10 @@ export function initProject(projectDir: string, opt: ProjectOptions = {}): Proje
     source: null,
     createdAt: nowISO(opt.now),
     lastPack: null,
+    // Unknown until it is packed: a loose folder carries no record of where it
+    // would sit inside an archive. The caller works it out from the folder's
+    // place under the game's data root.
+    archivePrefix: null,
   };
   writeManifest(projectDir, manifest);
   return manifest;
@@ -205,12 +250,21 @@ export function initProject(projectDir: string, opt: ProjectOptions = {}): Proje
  * game archive — we build from an explicit file list that omits it.
  */
 export function packProject(projectDir: string, outPath: string, opt: PackProjectOptions = {}): PackProjectResult {
+  const manifest = readManifest(projectDir);
+  // Entries are named by where the game expects the files, not by where we keep
+  // them: an archive whose map.xdb sits at the root is a map the game cannot
+  // find. `prefix` overrides what the manifest remembers, for a project whose
+  // folder has moved since it was opened.
+  const prefix = (opt.prefix ?? manifest.archivePrefix ?? '').replace(/^\/+|\/+$/g, '');
   const rels = listDirFiles(projectDir).filter((r) => r !== MANIFEST_NAME).sort();
-  const entries: ZipEntry[] = rels.map((rel) => ({ name: rel, data: readFileSync(join(projectDir, rel)) }));
+  const entries: ZipEntry[] = rels.map((rel) => ({
+    name: prefix ? `${prefix}/${rel}` : rel,
+    data: readFileSync(join(projectDir, rel)),
+  }));
   const buf = writeArchive(entries, opt);
   writeFileSync(outPath, buf);
 
-  const manifest = readManifest(projectDir);
+  manifest.archivePrefix = prefix;
   manifest.editorVersion = editorVersion();
   manifest.lastPack = {
     time: nowISO(opt.now),

@@ -22,7 +22,9 @@ let ed: Launched;
 // A name no real map would have, so the cleanup can never hit a user's map.
 const NAME = 'e2e New Map';
 const DATA = process.env.HOMM5_DATA || join(REPO_ROOT, 'samples', 'paks', 'data');
-const MAP_DIR = join(DATA, 'Maps', NAME);
+// Where the original editor keeps single-scenario maps — and where a map's
+// path under the data root becomes its path inside the .h5m.
+const MAP_DIR = join(DATA, 'Maps', 'SingleMissions', NAME);
 
 function cleanup(): void {
   if (existsSync(MAP_DIR)) rmSync(MAP_DIR, { recursive: true, force: true });
@@ -41,7 +43,7 @@ test('creates a blank map through the dialog and opens it', async () => {
   await page.locator('#nm-size').selectOption('72'); // Tiny — the fastest to build
   await page.locator('#nm-two').check();
   // The dialog says where it will land before you commit to it.
-  await expect(page.locator('#nm-where')).toContainText(`Maps/${NAME}`);
+  await expect(page.locator('#nm-where')).toContainText(`Maps/SingleMissions/${NAME}`);
 
   await page.locator('#nm-ok').click();
 

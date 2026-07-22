@@ -52,5 +52,28 @@ m.lastPack.editorVersion = '0.0.0';
 writeManifest(dir, m);
 ok(status(dir).versionMismatch === true, 'status: flags editor-version divergence');
 
+// --- 4. A map archive keeps the map at its in-game path ---
+//
+// Archive members are named by their path under the game's data root, which is
+// how the game finds a map inside a .h5m at all. Packing a project without
+// putting that path back produces an archive the game cannot see — this shipped
+// broken, and the map.xdb at the root of our own .h5m was the symptom.
+const mdir = join(tmpdir(), 'homm5_test_map_project');
+rmSync(mdir, { recursive: true, force: true });
+const asMap = openProject(PAK, mdir, { now, mapProject: true });
+ok(asMap.projectDir !== mdir, `mapProject reports the inner folder (${asMap.projectDir.slice(mdir.length)})`);
+ok(asMap.manifest.archivePrefix === 'Maps/Multiplayer/A2M3',
+   `archivePrefix records the in-game path (${asMap.manifest.archivePrefix})`);
+
+const mout = join(tmpdir(), 'homm5_test_map.h5m');
+packProject(asMap.projectDir, mout, { now });
+const repacked = readEntries(readFileSync(mout)).map((e) => e.name).sort();
+// Same names the archive came with — that is the whole claim.
+ok(repacked.every((n) => n.startsWith('Maps/Multiplayer/A2M3/')), 'repacked entries keep the prefix');
+ok(repacked.includes('Maps/Multiplayer/A2M3/map.xdb'), 'map.xdb is at its in-game path, not the root');
+const origMapNames = orig.map((e) => e.name).filter((n) => n.startsWith('Maps/Multiplayer/A2M3/')).sort();
+ok(JSON.stringify(repacked) === JSON.stringify(origMapNames),
+   `every entry name survives the round trip (${repacked.length})`);
+
 console.log(failures ? `\n${failures} FAILURE(S)` : '\nall pak/project tests passed');
 process.exit(failures ? 1 : 0);

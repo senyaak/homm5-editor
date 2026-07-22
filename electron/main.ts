@@ -14,12 +14,12 @@
 import { app, BrowserWindow, ipcMain, dialog, screen } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
 import { fileURLToPath } from 'node:url';
-import { dirname, join, basename, relative, sep } from 'node:path';
+import { dirname, join, basename, relative, sep, isAbsolute } from 'node:path';
 import { readFileSync, writeFileSync, existsSync, readdirSync, statSync, mkdirSync, copyFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { buildScene, findAssetRoot, listTiles, splatFor, pngDataUri } from '../src/scene.ts';
 import { listPlaceable, findEditorRoot, iconPathFor, readIconFile } from '../src/objects.ts';
-import { initProject, openProject, packProject, status } from '../src/project.ts';
+import { initProject, openProject, packProject, readManifest, status } from '../src/project.ts';
 import { watchMapDir } from '../src/watch.ts';
 import { donorFor } from '../src/donors.ts';
 import type { MapWatch } from '../src/watch.ts';
@@ -359,8 +359,10 @@ ipcMain.handle('map:new', async (_e: IpcMainInvokeEvent, p: NewMapPayload): Prom
   if (/[\\/:*?"<>|]/.test(name)) throw new Error('the name cannot contain \\ / : * ? " < > |');
   if (!MAP_SIZES.includes(p.tiles)) throw new Error(`unknown map size ${p.tiles}`);
 
-  const mapsDir = join(GAME_DATA, 'Maps');
-  const mapDir = p.multiplayer ? join(mapsDir, 'Multiplayer', name) : join(mapsDir, name);
+  // Where the original editor puts them, and where the game looks: a map's path
+  // under the data root is also its path inside the .h5m, so getting this right
+  // is what makes the packed map findable.
+  const mapDir = join(GAME_DATA, 'Maps', p.multiplayer ? 'Multiplayer' : 'SingleMissions', name);
   if (existsSync(mapDir)) throw new Error(`${mapDir} already exists`);
 
   // The enabled-spell and artifact lists are the game's own, so they follow the
@@ -399,11 +401,15 @@ ipcMain.handle('map:open-archive', async (_e: IpcMainInvokeEvent, p: OpenArchive
   let mapDir = join(parent, base);
   for (let n = 2; existsSync(mapDir); n++) mapDir = join(parent, `${base} (${n})`);
 
-  const { files } = openProject(archive, mapDir);
-  const mapPath = join(mapDir, 'map.xdb');
+  // The map is usually NOT at the archive root: members are named by their path
+  // under the game's data root ('Maps/SingleMissions/foo/map.xdb'), which is how
+  // the game finds them. openProject unpacks that tree as it stands and reports
+  // the inner folder holding map.xdb as the project.
+  const { files, projectDir } = openProject(archive, mapDir, { mapProject: true });
+  const mapPath = join(projectDir, 'map.xdb');
   if (!existsSync(mapPath)) throw new Error(`${basename(archive)} holds no map.xdb (${files.length} files)`);
-  console.log(`[open] ${archive} → ${mapDir} · ${files.length} files`);
-  return { mapPath, mapDir, files: files.length };
+  console.log(`[open] ${archive} → ${projectDir} · ${files.length} files`);
+  return { mapPath, mapDir: projectDir, files: files.length };
 });
 
 // --- IPC: load a map -> decode into a renderable scene ---
@@ -1030,6 +1036,27 @@ ipcMain.handle('map:save', async (): Promise<MapSaveResult> => {
   return { ok: true, status: status(session.mapDir) };
 });
 
+/**
+ * Where this map has to sit inside its .h5m.
+ *
+ * The game addresses files in an archive by their path under its data root, so
+ * a map packed at the archive root is a map the game never finds. A project
+ * opened from an archive remembers the path it came with; anything else — a
+ * map we created, or a loose folder someone points us at — is placed by where
+ * it sits under the data root, which is the same thing said another way.
+ */
+function archivePrefixFor(mapDir: string): string {
+  const stored = readManifest(mapDir).archivePrefix;
+  if (stored != null) return stored; // '' is a real answer: packed at the root
+  const rel = relative(GAME_DATA, mapDir);
+  if (rel && !rel.startsWith('..') && !isAbsolute(rel)) return rel.split(sep).join('/');
+  // Outside the data root. Take everything from the last Maps/ segment on, and
+  // failing that assume a single-scenario map of that folder's name.
+  const parts = mapDir.split(sep);
+  const i = parts.lastIndexOf('Maps');
+  return i >= 0 ? parts.slice(i).join('/') : `Maps/SingleMissions/${basename(mapDir)}`;
+}
+
 // --- IPC: pack the map folder into a .h5m ---
 ipcMain.handle('map:pack', async (): Promise<MapPackResult> => {
   if (!session) throw new Error('no map loaded');
@@ -1046,7 +1073,7 @@ ipcMain.handle('map:pack', async (): Promise<MapPackResult> => {
   writeFileSync(session.mapPath, session.map.save(), 'latin1');
   saveTerrain(session);
   session.watch.resync();
-  const res = packProject(session.mapDir, r.filePath);
+  const res = packProject(session.mapDir, r.filePath, { prefix: archivePrefixFor(session.mapDir) });
   return { ok: true, output: r.filePath, entries: res.entries, bytes: res.bytes, status: status(session.mapDir) };
 });
 
