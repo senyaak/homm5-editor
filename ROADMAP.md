@@ -184,8 +184,24 @@ placing new ones from a palette.
       objects; in-dialog checklists for the player sub-lists (ReserveHeroes,
       TavernFilter). Victory/loss conditions, weather, fog.
 - [ ] ⬜ Events/triggers/quests, guarded zones, rivers and roads
-- [ ] ⬜ Map validation, as the original does: unreachable areas, duplicates,
-      broken references
+- [ ] ⬜ **Map validation, as the original does** — it runs a check on save and
+      reports into a dialog. Observed messages, which is the checklist to
+      implement (verbatim, "craig" is theirs):
+
+      ```
+      Map has no restrictions for Max Hero Level
+      Map has no rumours!
+      Object and craig intersection: 23:57, ground floor.
+      There are towns without specialization! It's coordinates are: 27:37 21:58
+      ```
+
+      So: map-level settings left unset (hero level cap, rumours), objects
+      overlapping cliff/crag tiles — which needs the object's footprint against
+      the terrain's ground kind, the same data the Grid overlay already draws —
+      and per-type required fields (a town with no specialisation). Plus the
+      ones we know it does: unreachable areas, duplicates, broken references.
+      Ours should report the same way — a list you can click to fly to the
+      coordinate, rather than a wall of text.
 
 ## Phase 5 — Lua, done properly
 
