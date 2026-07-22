@@ -30,7 +30,11 @@ type MapEntry = MapListEntry & { cat: string };
  * renderer has — the contract lives in electron/ipc.ts and both sides bind to it.
  */
 declare global {
-  interface Window { editor: EditorApi }
+  interface Window {
+    editor: EditorApi;
+    /** Plan-view geometry for click-driven tests — see "automation hook" below. */
+    view: ViewApi;
+  }
 }
 
 
@@ -3441,9 +3445,14 @@ function updateHoverCursor(at: { x: number; y: number } | null): void {
 
 /** Tile under the cursor, from a ray against the terrain itself (so it follows hills). */
 function tileUnderCursor(ev: PointerEvent): { x: number; y: number } | null {
+  return tileAtClient(ev.clientX, ev.clientY);
+}
+
+/** Same, from bare client coordinates — what the automation hook picks with. */
+function tileAtClient(clientX: number, clientY: number): { x: number; y: number } | null {
   if (!world) return null;
-  ptr.x = (ev.clientX / innerWidth) * 2 - 1;
-  ptr.y = -(ev.clientY / innerHeight) * 2 + 1;
+  ptr.x = (clientX / innerWidth) * 2 - 1;
+  ptr.y = -(clientY / innerHeight) * 2 + 1;
   raycaster.setFromCamera(ptr, activeCam);
   const ground = activeFloor().terrainMesh;
   // The raycaster tests against matrixWorld, and three.js only refreshes that
@@ -3459,6 +3468,73 @@ function tileUnderCursor(ev: PointerEvent): { x: number; y: number } | null {
   // transform; the caller wants a tile.
   return { x: Math.floor(hit.point.x / U), y: Math.floor(hit.point.y / U) };
 }
+
+// --- automation hook: where to click for a tile ------------------------------
+//
+// Rebuilding a shipped mission means driving this editor the way a person does —
+// real clicks on real tiles (docs/E2E_RECONSTRUCTION.md) — and a click needs a
+// pixel. Under the plan camera that mapping is exact and height-independent (see
+// the top-down camera above), so it is published here, next to the camera it
+// depends on, rather than reimplemented inside the tests: if the view changes,
+// one function moves and every test follows.
+//
+// This is deliberately only about WHERE to click. Which tool is armed, what is
+// painted and what gets saved all go through the ordinary UI, because that is
+// what the reconstruction is meant to prove.
+
+/** Screen position of a tile, and whether it is actually in the viewport. */
+interface TilePoint { x: number; y: number; onScreen: boolean }
+
+interface ViewApi {
+  /** Switch the plan (2D) view on or off — the same call the toolbar makes. */
+  plan(on: boolean): void;
+  /** Fit the whole active floor in the plan view. */
+  fit(): void;
+  /** Centre the plan view on a tile, so tiles near it are clickable. */
+  focus(x: number, y: number): void;
+  /** Plan-view zoom, as the number of tiles spanned from the centre to the top edge. */
+  zoom(halfTiles: number): void;
+  /** Where to click for the centre of tile (x, y), in CSS pixels. */
+  tileToScreen(x: number, y: number): TilePoint;
+  /** Which tile a click at these CSS pixels lands on — the app's own picking. */
+  tileAt(clientX: number, clientY: number): { x: number; y: number } | null;
+  /** Tiles per side of the active floor, or 0 when no map is open. */
+  size(): number;
+}
+
+const view: ViewApi = {
+  plan(on) { setTopView(on); },
+  fit() {
+    if (!world) return;
+    const V = activeFloor().V, c = (V / 2) * U;
+    controls.target.set(c, c, controls.target.z);
+    topHalf = V * 0.55 * U;
+    syncTopCamera();
+  },
+  focus(x, y) {
+    if (!world) return;
+    controls.target.set((x + 0.5) * U, (y + 0.5) * U, controls.target.z);
+    syncTopCamera();
+  },
+  zoom(halfTiles) {
+    topHalf = Math.max(2 * U, Math.min(400 * U, halfTiles * U));
+    syncTopCamera();
+  },
+  tileToScreen(x, y) {
+    // The camera is re-synced first: its frustum follows the orbit target and
+    // the viewport, and both can have moved since the last frame was drawn.
+    syncTopCamera();
+    const aspect = innerWidth / innerHeight;
+    const wx = (x + 0.5) * U, wy = (y + 0.5) * U;
+    const ndcX = (wx - topCamera.position.x) / (topHalf * aspect);
+    const ndcY = (wy - topCamera.position.y) / topHalf;
+    const px = ((ndcX + 1) / 2) * innerWidth, py = ((1 - ndcY) / 2) * innerHeight;
+    return { x: px, y: py, onScreen: px >= 0 && py >= 0 && px < innerWidth && py < innerHeight };
+  },
+  tileAt(clientX, clientY) { return tileAtClient(clientX, clientY); },
+  size() { return world ? activeFloor().V - 1 : 0; },
+};
+window.view = view;
 
 /**
  * Tiles a square brush of `size` covers, as indices into a vertex-sized plane.

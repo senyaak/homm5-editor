@@ -12,6 +12,9 @@ import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
   testDir: 'e2e',
+  // The app loads a BUILT renderer bundle; without this the suite tests
+  // whatever app.js was last left on disk. See e2e/build.ts.
+  globalSetup: './e2e/build.ts',
   fullyParallel: false,
   workers: 1,
   // A cold Electron launch plus a map load is well over the default 30s on a
