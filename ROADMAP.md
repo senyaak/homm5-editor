@@ -205,6 +205,13 @@ placing new ones from a palette.
 - [ ] ⬜ **Naming for entities that are not placed objects** — a seer hut's
       quest carries a `<Name>` of its own, and a new one is left empty (matching
       the original). Same hazard as an object with no handle.
+- [ ] ⬜ **Enum members from the spec** — `data/types.xml` declares 97 enum types
+      with every member, and an object's enum field points at one, so a dropdown
+      could offer what is LEGAL instead of what shipped maps happen to use
+      (`AttackType` is `ATTACK_ANY` on all 6377 monsters ever shipped; the type
+      also has `ATTACK_RANGE` and `ATTACK_MELEE`). Mind the sentinels —
+      `MONSTER_MOODS_COUNT` closes the enum and is not a mood. See
+      docs/TYPE_SPEC.md.
 - [ ] ⬜ **The 59 defaults the spec declares and our schema does not** — printed
       by name at the end of `npm run test-defaults`. Mostly map-level
       (`AdvMapDesc.BirdsAmount` 10, `BorderSize` 1) and the entity `$defs`

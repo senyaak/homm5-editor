@@ -149,6 +149,29 @@ if (asMarkdown) {
     'Kinds are inferred from the values seen: `enum` is a short closed set and is',
     'listed in full, `structure` has element children, `reference` carries an href.',
     '',
+    // The caveats live here, not in the .md: the file says "do not edit by hand"
+    // and a regeneration would silently drop anything added there.
+    '**The enum lists are a lower bound, not the legal set**, and more maps do not',
+    'fix it. The sample grew three ways — the 15 original-campaign maps from the',
+    "All_campaigns mod, the maps inside the game's own paks, and two 320x320 maps",
+    'from the random generator, which places objects designers never chose. That',
+    'took the monster sample from 3247 to 6377 and produced **not one new enum**',
+    '**value**.',
+    '',
+    '**Where the real lists are.** That caveat used to end with "those would have',
+    "to come from the game's own definitions\". They exist: `data/types.xml`",
+    'declares 97 enum types with all their members, and an object\'s enum field',
+    'points at one — see `docs/TYPE_SPEC.md`. `AttackType` is `ATTACK_ANY` on all',
+    '6377 monsters ever shipped; the type also has `ATTACK_RANGE` and',
+    '`ATTACK_MELEE`. Treat the lists below as what designers used, and the spec as',
+    'what is legal.',
+    '',
+    '**Field sets vary within a type.** `DoesNotDependOnDifficulty` is missing from',
+    'the oldest monsters, which predate it. A new object is still built by cloning',
+    'a real one (`src/donors.ts`) — a donor carries the file\'s own formatting and',
+    'is correct by construction — but a field the donor predates is now added back',
+    'from the spec, in the position the spec puts it. See `docs/TYPE_SPEC.md`.',
+    '',
   ];
   for (const [type, fields] of sorted) {
     out.push(`## ${type}`, '');
