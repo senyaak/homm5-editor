@@ -18,7 +18,7 @@
 // itself when there is none.
 
 import { test, expect } from '@playwright/test';
-import { existsSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync, cpSync } from 'node:fs';
 import { join } from 'node:path';
 import { launchEditor, REPO_ROOT } from './launch.ts';
 import type { Launched } from './launch.ts';
@@ -37,8 +37,18 @@ const FIXTURE = join(REPO_ROOT, 'tools', 'fixtures', 'object-defaults.json');
 /** Placement, not defaults; spellIDs is the installation's roster. */
 const SKIP = new Set(['Pos', 'Rot', 'Floor', 'Name', 'Shared', 'spellIDs']);
 
+/** A shipped map whose statics predate TerrainAligned/ScalePercent. */
+const SOURCE_MAP = join(DATA, 'Maps', 'CombatArenas', 'BoatArena');
+/** Where it is copied to, so the test never writes into the game's own tree. */
+const OLD_DIR = join(DATA, 'Maps', 'SingleMissions', 'e2e Absent Field');
+
 function cleanup(): void {
   if (existsSync(MAP_DIR)) rmSync(MAP_DIR, { recursive: true, force: true });
+  cleanupOld();
+}
+
+function cleanupOld(): void {
+  if (existsSync(OLD_DIR)) rmSync(OLD_DIR, { recursive: true, force: true });
 }
 
 /** The measured default body for each type, as an element to look fields up in. */
@@ -190,4 +200,55 @@ test('objects placed in the app are saved at the measured defaults', async () =>
 
   // Handles are unique across the whole map, not merely per type.
   expect(saved.namesInUse().size).toBe(saved.objects.length);
+});
+
+test('a field the object does not carry can still be set, and lands in the file', async () => {
+  test.skip(!existsSync(join(DATA, 'types.xml')), 'needs the game type spec');
+  test.skip(!existsSync(SOURCE_MAP), 'needs a shipped map whose objects predate a field');
+  const { page } = ed;
+
+  // A map from the game whose statics have no TerrainAligned or ScalePercent —
+  // those fields postdate the objects. This is the case the panel could not
+  // touch: it only ever showed what was in the DOM, so a field the object never
+  // had could not be set at all. It is offered now because two independent
+  // sources agree it belongs — the game's own type spec and our schema.
+  cleanupOld();
+  cpSync(SOURCE_MAP, OLD_DIR, { recursive: true });
+
+  await page.evaluate((path) => window.editor.loadMap(path), join(OLD_DIR, 'map.xdb'));
+
+  // Which object, and which field, decided on this side — the page only has to
+  // set it. Reading the file is how we know what to look for.
+  const before = loadMap(readFileSync(join(OLD_DIR, 'map.xdb'), 'latin1'));
+  const target = before.objects.find((o) => o.type === 'AdvMapStatic' && !find(o.el, 'ScalePercent'));
+  expect(target, 'the copied map has an object missing a declared field').toBeTruthy();
+  const id = target!.id!;
+
+  const seen = await page.evaluate(async (objId) => {
+    const list = await window.editor.objectProps(objId);
+    const absent = list.props.filter((p) => p.absent).map((p) => p.name);
+    if (!absent.includes('ScalePercent')) return { absent, set: false, after: null };
+    await window.editor.setObjectProp({ id: objId, name: 'ScalePercent', value: '80' });
+    const after = await window.editor.objectProps(objId);
+    return { absent, set: true, after: after.props.find((p) => p.name === 'ScalePercent') ?? null };
+  }, id);
+
+  console.log(`  offered ${seen.absent.join(', ')} on an object that had none of them`);
+  expect(seen.absent, 'the panel offers the fields the object lacks').toContain('ScalePercent');
+  expect(seen.set).toBe(true);
+  // It is a real field now, not an offer.
+  expect(seen.after?.absent).toBeFalsy();
+  expect(seen.after?.value).toBe('80');
+
+  await page.evaluate(() => window.editor.save());
+  const saved = loadMap(readFileSync(join(OLD_DIR, 'map.xdb'), 'latin1'));
+  const obj = saved.objects.find((o) => o.id === id)!;
+  const el = find(obj.el, 'ScalePercent');
+  expect(el, 'the new field is in the saved file').not.toBeNull();
+  expect(el && el.children.map((c) => (c.type === 'text' ? c.text : '')).join('')).toBe('80');
+
+  // In the place the spec puts it — after IsRemovable and TerrainAligned, not
+  // appended where nobody reading a diff would look.
+  const names = obj.el.children.filter((c) => c.type === 'element').map((c) => (c as XmlElement).name);
+  expect(names.indexOf('ScalePercent')).toBeGreaterThan(names.indexOf('Shared'));
 });

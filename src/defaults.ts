@@ -32,6 +32,7 @@ import { find, setText, setAttr, clearElement } from './xml.ts';
 import type { XmlElement, XmlNode } from './xml.ts';
 import { objectSchema, objectProps, deref } from './schema.ts';
 import type { FieldSchema, RegistryName } from './schema.ts';
+import type { FieldOrder } from './typespec.ts';
 
 /**
  * A measured default, as written in the schema.
@@ -52,6 +53,17 @@ export interface DefaultsOptions {
    * cannot live in the schema. Without it those fields are left alone.
    */
   roster?: (name: RegistryName) => string[];
+  /**
+   * The fields this type has, in file order and at every depth, from the GAME'S
+   * OWN spec (`data/types.xml` via src/typespec.ts). With it, a field the
+   * donor's version predates is CREATED in its proper place instead of being
+   * left out — a seer hut cloned from a campaign map arrives without
+   * Quest/CheckDelay and its three sound refs, which a default one has.
+   *
+   * Without it nothing is created: guessing that a type has a field, when the
+   * only evidence is our own schema, is how a map stops loading.
+   */
+  order?: FieldOrder;
 }
 
 const textNode = (s: string): XmlNode => ({ type: 'text', text: s } as XmlNode);
@@ -94,7 +106,7 @@ function structItem(v: Record<string, DefaultValue>, indent: string): XmlElement
  * Empty — '', [], {} — is written as a self-closing tag, which is how the game
  * writes an unset field and what our round trip expects back.
  */
-function writeInto(el: XmlElement, value: DefaultValue): void {
+function writeInto(el: XmlElement, value: DefaultValue, order?: FieldOrder): void {
   // Empty AND attribute-less — the `<Specialization/>` form. Dropping the href
   // is the whole point, so it happens before the ref branch below.
   if (value === null) { delete el.attrs.href; el._dirtyAttrs = true; clearElement(el); return; }
@@ -115,10 +127,14 @@ function writeInto(el: XmlElement, value: DefaultValue): void {
   if (value !== null && typeof value === 'object') {
     const keys = Object.keys(value);
     if (!keys.length) { clearElement(el); return; }
-    // Only fields the object already has — see the header.
     for (const k of keys) {
-      const child = find(el, k);
-      if (child) writeInto(child, value[k]!);
+      const v = value[k]!;
+      // A field the donor lacks is created only where the spec says it belongs
+      // — here that is the nested order, since the seer hut's missing fields
+      // are inside its Quest, not beside it.
+      const child = find(el, k)
+        ?? (order ? createField(el, k, order.names, v === '') : null);
+      if (child) writeInto(child, v, order?.children[k]);
     }
     return;
   }
@@ -126,6 +142,42 @@ function writeInto(el: XmlElement, value: DefaultValue): void {
   if (el.attrs.href !== undefined) { setAttr(el, 'href', String(value)); el.children = []; el.selfClose = true; return; }
   if (value === '') clearElement(el);
   else setText(el, String(value));
+}
+
+/**
+ * Add a field the object does not carry, in the place the spec puts it.
+ *
+ * Position matters: the engine reads these files by chunk id, but the editor
+ * and every diff read them by eye, and a field appended at the end of a monster
+ * is a field nobody will find. It goes before the first field that follows it
+ * in the spec's order, indented like its new siblings.
+ */
+export function createField(body: XmlElement, name: string, order: string[], asRef: boolean): XmlElement | null {
+  const rank = order.indexOf(name);
+  if (rank < 0) return null;
+  // A ref carries its value in an attribute, so it has to be born with one.
+  const el = elem(name);
+  if (asRef) el.attrs.href = '';
+  el.selfClose = true;
+
+  const kids = body.children;
+  let insertAt = -1;
+  for (let i = 0; i < kids.length; i++) {
+    const k = kids[i];
+    if (k?.type !== 'element') continue;
+    const r = order.indexOf(k.name);
+    if (r >= 0 && r > rank) { insertAt = i; break; }
+  }
+  const { inner, close } = indentsOf(body);
+  if (insertAt < 0) {
+    // Last field: before the whitespace that closes the element.
+    const tail = kids[kids.length - 1];
+    if (tail?.type === 'text') kids.splice(kids.length - 1, 0, textNode(inner), el);
+    else { kids.push(textNode(inner), el, textNode(close)); body.selfClose = false; }
+  } else {
+    kids.splice(insertAt, 0, el, textNode(inner));
+  }
+  return el;
 }
 
 /** The default declared for a field, resolving `x-defaultAll` against a roster. */
@@ -154,9 +206,12 @@ export function applyDefaults(body: XmlElement, type: string, opt: DefaultsOptio
     if (f['x-nameOf']) continue;
     const value = defaultOf(f, opt);
     if (value === undefined) continue;
-    const el = find(body, name);
+    // Missing from the donor: create it only if the game's own spec says the
+    // type has it. Never on our schema's word alone.
+    const el = find(body, name)
+      ?? (opt.order ? createField(body, name, opt.order.names, !!f['x-ref'] || value === '') : null);
     if (!el) continue;
-    writeInto(el, value);
+    writeInto(el, value, opt.order?.children[name]);
     written.push(name);
   }
   return written;

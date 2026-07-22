@@ -1627,10 +1627,29 @@ async function loadProps(): Promise<void> {
   // Look up this object type's schema once; each field is typed by it, or falls
   // back to inference when the schema does not describe it.
   const typeFields = objectProps(res.type);
-  for (const p of res.props) {
+  const rowFor = (p: ObjectProp): HTMLElement => {
     const raw = typeFields[p.name];
     const field = raw ? deref(objectSchema, raw) : null;
-    host.appendChild(fieldRow(p, field, (n, v) => void setProp(id, n, v), res.type));
+    const row = fieldRow(p, field, (n, v) => void setProp(id, n, v), res.type);
+    if (p.absent) {
+      row.classList.add('absent');
+      row.title = `${p.name} is not in this object yet — the game's type spec says it belongs, so setting it adds it`;
+    }
+    return row;
+  };
+  for (const p of res.props) if (!p.absent) host.appendChild(rowFor(p));
+
+  // Fields the type has that this object does not carry, under their own
+  // heading — they are a different thing from a field with an empty value, and
+  // mixing them into the list would read as "set to nothing".
+  const absent = res.props.filter((p) => p.absent);
+  if (absent.length) {
+    const h2 = document.createElement('div');
+    h2.className = 'ph';
+    h2.textContent = 'not set on this object';
+    h2.title = 'This object was built from one the game shipped, whose version had no such field. Setting one adds it.';
+    host.appendChild(h2);
+    for (const p of absent) host.appendChild(rowFor(p));
   }
 }
 

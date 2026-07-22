@@ -27,19 +27,22 @@ import type { MapWatch } from '../src/watch.ts';
 import { TerrainDoc } from '../src/terrain-edit.ts';
 import { History, diff, apply } from '../src/history.ts';
 import { loadMap } from '../src/map.ts';
+import { createField } from '../src/defaults.ts';
 import { buildNewMapProject } from '../src/new-map.ts';
 import { MAP_SIZES } from '../src/terrain-blank.ts';
 import { Registry } from '../src/registry.ts';
 import type { RosterEntry } from '../src/registry.ts';
-import type { RegistryName } from '../src/schema.ts';
+import type { RegistryName, FieldSchema } from '../src/schema.ts';
+import { readTypeSpec, fieldOrder, typesXmlPath } from '../src/typespec.ts';
+import type { FieldOrder, SpecType } from '../src/typespec.ts';
 import { readTree, setPath, addStringItem, removeItem, appendItem, indentText, nodeAt, setList } from '../src/tree.ts';
-import { mapSchema, resolveSchemaAtPath, deref, schemaForClass } from '../src/schema.ts';
+import { mapSchema, resolveSchemaAtPath, deref, schemaForClass, objectProps, objectSchema, controlOf } from '../src/schema.ts';
 import { buildItem, isBuildable, buildEntity } from '../src/skeleton.ts';
 import { children, find, text, serialize, parse } from '../src/xml.ts';
 import type { XmlElement, XmlNode } from '../src/xml.ts';
 import type { DocPatch, Step, StoredHistory } from '../src/history.ts';
 import type { TileInfo, GeomResolver, Instance as SceneInstance } from '../src/scene.ts';
-import type { HommMap, MapObject } from '../src/map.ts';
+import type { HommMap, MapObject, ObjectProp } from '../src/map.ts';
 import type {
   MapsListResult, MapListEntry, MapLoadResult, MoveObjectPayload, MoveObjectResult,
   RotateObjectPayload, RemoveObjectPayload, ObjectEditResult, ObjectPropsResult, SetPropPayload,
@@ -613,6 +616,27 @@ ipcMain.handle('objects:icon', async (_e: IpcMainInvokeEvent, { path }: IconPayl
 });
 
 /**
+ * The game's own type spec, read once per run.
+ *
+ * 2.4 MB of XML, so it is parsed on first use rather than at startup, and only
+ * when the data folder actually has it — a data root without types.xml simply
+ * means no field can be created, which is the old behaviour.
+ */
+let typeSpec: Map<string, SpecType> | null | undefined;
+const orderCache = new Map<string, FieldOrder | null>();
+function orderFor(type: string): FieldOrder | undefined {
+  if (typeSpec === undefined) {
+    const p = typesXmlPath(GAME_DATA);
+    const t0 = performance.now();
+    typeSpec = p ? readTypeSpec(p) : null;
+    if (p) console.log(`[spec] types.xml ${(performance.now() - t0) | 0}ms · ${typeSpec!.size} types`);
+  }
+  if (!typeSpec) return undefined;
+  if (!orderCache.has(type)) orderCache.set(type, fieldOrder(typeSpec, type));
+  return orderCache.get(type) ?? undefined;
+}
+
+/**
  * The session's rosters, for the defaults that mean "everything the game has"
  * — a new town's guild-spell filter. Read from the installed data, so a mod's
  * spells are in it and a list frozen into the source would not be.
@@ -650,6 +674,7 @@ ipcMain.handle('object:add', async (_e: IpcMainInvokeEvent, p: AddObjectPayload)
     session!.map.addObject({
       type: p.type, shared: p.shared, x: p.x, y: p.y, floor: p.floor, r: p.r ?? 0,
       roster: rosterFor(session!),
+      order: orderFor(p.type),
       ...(donor ? { donor } : {}),
     }));
   const geomData = session.resolver.geoms[gi];
@@ -664,17 +689,67 @@ ipcMain.handle('object:add', async (_e: IpcMainInvokeEvent, p: AddObjectPayload)
 });
 
 // --- IPC: an object's simple fields, for the property panel ---
+/** The editor kind for a field we are describing from the schema alone. */
+function kindOf(f: FieldSchema): ObjectProp['kind'] {
+  switch (controlOf(f)) {
+    case 'checkbox': return 'bool';
+    case 'number': return 'number';
+    case 'ref': return 'href';
+    case 'enum':
+    case 'dropdown': return 'enum';
+    default: return 'text';
+  }
+}
+
+/**
+ * Fields the type HAS but this object does not carry.
+ *
+ * An object is built by cloning a real one, so it has whatever field set that
+ * donor's game version had — a seer hut from a campaign map has no CheckDelay.
+ * The panel could only ever edit what was in the DOM, so such a field could not
+ * be set at all. Offering it needs two independent yeses: the GAME'S spec says
+ * the type has it (so we are not inventing a field), and our schema describes
+ * it (so we know what shape to write).
+ */
+function absentProps(obj: MapObject): ObjectProp[] {
+  const order = orderFor(obj.type);
+  if (!order) return [];
+  const declared = objectProps(obj.type);
+  const out: ObjectProp[] = [];
+  for (const name of order.names) {
+    if (find(obj.el, name)) continue;
+    const raw = declared[name];
+    if (!raw) continue;
+    const f = deref(objectSchema, raw);
+    // Structures are not editable as a value here, in the DOM or out of it.
+    if (f.type === 'object' || f.type === 'array') continue;
+    out.push({ name, value: '', kind: kindOf(f), absent: true });
+  }
+  return out;
+}
+
 ipcMain.handle('object:props', async (_e: IpcMainInvokeEvent, { id }: RemoveObjectPayload): Promise<ObjectPropsResult> => {
   if (!session) throw new Error('no map loaded');
   const obj = findObject(session, id);
-  return { type: obj.type, props: obj.props() };
+  return { type: obj.type, props: [...obj.props(), ...absentProps(obj)] };
 });
 
 // --- IPC: set one simple field ---
 ipcMain.handle('object:set-prop', async (_e: IpcMainInvokeEvent, p: SetPropPayload): Promise<ObjectEditResult> => {
   if (!session) throw new Error('no map loaded');
   const obj = findObject(session, p.id);
-  const done = record(session, `set ${p.name}`, { map: true }, () => obj.setProp(p.name, p.value));
+  const done = record(session, `set ${p.name}`, { map: true }, () => {
+    // Filling in a field the object never had: create it where the spec puts
+    // it, then set it like any other. Recorded inside the same step, so undo
+    // takes the field away again rather than leaving an empty one behind.
+    if (!find(obj.el, p.name)) {
+      const order = orderFor(obj.type);
+      const raw = order ? objectProps(obj.type)[p.name] : undefined;
+      if (!order || !raw) return false;
+      if (!createField(obj.el, p.name, order.names, deref(objectSchema, raw)['x-ref'] === true)) return false;
+    }
+    return obj.setProp(p.name, p.value);
+  });
   if (!done) throw new Error(`${p.name} is not a simple field of this object`);
   return { ok: true };
 });

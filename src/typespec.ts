@@ -32,13 +32,23 @@ export interface SpecField {
   name: string;
   /** The engine's default, verbatim, or null when it declares none. */
   default: string | null;
+  /** Id of the field's own type — another type's `__ServerPtr` for a structure,
+   *  a small primitive id (`01000000` = int, `04000000` = bool) otherwise. */
+  type?: string;
 }
 
 export interface SpecType {
   name: string;
   fields: SpecField[];
-  /** Type id of the base this inherits from, when it has one. */
+  /**
+   * The base's id, or absent at the root of a chain. The id it names is the
+   * base type's `__ServerPtr` — NOT its `TypeID`, which is a different number
+   * entirely. `AdvMapMonster` points at `0b064c32`, which is the `__ServerPtr`
+   * of `AdvMapObjectBase`, the type that declares Pos/Rot/Floor/Name/Shared.
+   */
   baseType?: string;
+  /** This type's own id, as `BaseType` elsewhere refers to it. */
+  ptr?: string;
   typeId?: string;
 }
 
@@ -77,22 +87,100 @@ export function readTypeSpec(path: string): Map<string, SpecType> {
     const fields: SpecField[] = [];
     // A field is <Name>…</Name> followed by its metadata up to the
     // <ComplexDefaultValue> that closes it.
-    for (const f of fieldsBlock.matchAll(/<Name>([^<]*)<\/Name>([\s\S]*?)<ComplexDefaultValue>/g)) {
-      const meta = f[2]!;
+    for (const f of fieldsBlock.matchAll(/<Type>([0-9a-f]{8})<\/Type>\s*<Name>([^<]*)<\/Name>([\s\S]*?)<ComplexDefaultValue>/g)) {
+      const meta = f[3]!;
       const dv = between(meta, '<DefaultValue>', '</DefaultValue>') ?? '';
       // Type 00000000 is "no default declared", not "default of type 0".
       const has = dv && !dv.includes('<Type>00000000</Type>');
       const data = has ? between(dv, '<Data>', '</Data>') : null;
-      fields.push({ name: f[1]!, default: has ? (data ?? '').trim() : null });
+      fields.push({ name: f[2]!, default: has ? (data ?? '').trim() : null, type: f[1]! });
     }
+    const base = between(body, '<BaseType>', '</BaseType>');
+    const typeId = between(body, '<TypeID>', '</TypeID>');
+    // The id is BEFORE the name in the item, so it comes from the text ahead of
+    // this type's declaration — the tail of the previous slice.
+    // TYPE_TYPE_CLASS for an object, TYPE_TYPE_STRUCT for a value structure
+    // (Vec3, CommonObjective) — both are types a field can point at.
+    const ptr = /<__ServerPtr>([0-9a-f]+)<\/__ServerPtr>\s*<Type>TYPE_TYPE_(?:CLASS|STRUCT)<\/Type>\s*$/
+      .exec(xml.slice(Math.max(0, from - 200), from))?.[1];
     out.set(name, {
       name,
       fields,
-      ...(between(body, '<BaseType>', '</BaseType>') ? { baseType: between(body, '<BaseType>', '</BaseType>')! } : {}),
-      ...(between(body, '<TypeID>', '</TypeID>') ? { typeId: between(body, '<TypeID>', '</TypeID>')! } : {}),
+      // 00000000 is "no base", not a type whose id is zero.
+      ...(base && base !== '00000000' ? { baseType: base } : {}),
+      ...(ptr ? { ptr } : {}),
+      ...(typeId ? { typeId } : {}),
     });
   }
   return out;
+}
+
+/**
+ * Every field of a type INCLUDING the ones it inherits, base first — which is
+ * also the order they are written in a file.
+ *
+ * `AdvMapMonster` declares twenty fields; an actual monster carries those plus
+ * the five from `AdvMapObjectBase`. Reading the type alone and concluding a
+ * monster has no `Pos` would be a plausible way to get this exactly wrong.
+ */
+export function allFields(spec: Map<string, SpecType>, typeName: string): SpecField[] {
+  const t = spec.get(typeName);
+  return t ? inherited(t, byPtr(spec)) : [];
+}
+
+/**
+ * The field names a type carries, in order, with the same for each of its
+ * structured fields — everything needed to add a missing field IN ITS PLACE,
+ * at any depth. A seer hut's missing `CheckDelay` lives inside `Quest`, so a
+ * flat list of the object's own fields would not have found it.
+ */
+export interface FieldOrder {
+  names: string[];
+  children: Record<string, FieldOrder>;
+}
+
+/** Index of every type by the id other types refer to it with. */
+function byPtr(spec: Map<string, SpecType>): Map<string, SpecType> {
+  const out = new Map<string, SpecType>();
+  for (const t of spec.values()) if (t.ptr) out.set(t.ptr, t);
+  return out;
+}
+
+/**
+ * Build the order tree for a type.
+ *
+ * `depth` stops the walk before a type that contains itself (an objective's
+ * dependencies are objectives) turns into an infinite structure; six levels is
+ * deeper than anything a map object actually nests.
+ */
+export function fieldOrder(spec: Map<string, SpecType>, typeName: string, depth = 6): FieldOrder | null {
+  const index = byPtr(spec);
+  const build = (t: SpecType | undefined, left: number, seen: Set<string>): FieldOrder | null => {
+    if (!t || left <= 0 || seen.has(t.name)) return null;
+    const fields = inherited(t, index);
+    const children: Record<string, FieldOrder> = {};
+    for (const f of fields) {
+      const sub = f.type ? index.get(f.type) : undefined;
+      if (!sub) continue;
+      const kid = build(sub, left - 1, new Set([...seen, t.name]));
+      if (kid) children[f.name] = kid;
+    }
+    return { names: fields.map((f) => f.name), children };
+  };
+  return build(spec.get(typeName), depth, new Set());
+}
+
+/** A type's fields plus everything it inherits, base first. */
+function inherited(t: SpecType, index: Map<string, SpecType>): SpecField[] {
+  const chain: SpecType[] = [];
+  const seen = new Set<string>();
+  let cur: SpecType | undefined = t;
+  while (cur && !seen.has(cur.name)) {
+    seen.add(cur.name);
+    chain.unshift(cur);
+    cur = cur.baseType ? index.get(cur.baseType) : undefined;
+  }
+  return chain.flatMap((x) => x.fields);
 }
 
 /** Just the fields the spec gives a default for, as name -> value. */

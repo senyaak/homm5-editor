@@ -177,6 +177,12 @@ export interface NewObject {
    * src/defaults.ts; omitted, that field keeps whatever the donor had.
    */
   roster?: DefaultsOptions['roster'];
+  /**
+   * The type's field list from the game's own spec, so a field the donor's
+   * version predates can be added rather than silently skipped. See
+   * src/typespec.ts; without it nothing is created.
+   */
+  order?: DefaultsOptions['order'];
 }
 
 /**
@@ -340,6 +346,13 @@ export interface ObjectProp {
    * empty asset/enum placeholders read-only — see HommMap.mapProps().
    */
   readonly?: boolean;
+  /**
+   * The type HAS this field, per the game's own spec, but this object does not
+   * carry it — the object was built from a donor whose game version predates it
+   * (see src/defaults.ts). Shown by the panel so it can be filled in; setting it
+   * creates the element.
+   */
+  absent?: boolean;
 }
 
 /**
@@ -582,7 +595,7 @@ export class HommMap {
     // The donor gave the field SET; the schema gives the values. Without this a
     // new town would arrive with the donor designer's 21 buildings and a new
     // monster with their stack of 4 — see src/defaults.ts.
-    applyDefaults(body, spec.type, { roster: spec.roster });
+    applyDefaults(body, spec.type, { roster: spec.roster, order: spec.order });
 
     // A fresh identity: reusing the donor's id would give two objects the same
     // handle, and the renderer keys its meshes by it.

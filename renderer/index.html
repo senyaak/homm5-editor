@@ -90,6 +90,10 @@
        honest editor for them. RTL so a long path shows its telling end. */
     #p-props .pf .ro, .mp-body .pf .ro { flex: 1; min-width: 0; color: #6e7681; font-size: 10px;
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; }
+    /* A field the type has but this object does not carry yet: shown dimmed
+       until it is set, so it does not read as a field whose value is empty. */
+    #p-props .pf.absent label { color: #6e7681; font-style: italic; }
+    #p-props .pf.absent input { border-style: dashed; }
     /* A read-only plain value (a null ref, a dimension) — muted, but left to
        right, unlike the path shown in .ro. */
     .mp-body .pf .rov { flex: 1; min-width: 0; color: #6e7681; font-size: 11px;

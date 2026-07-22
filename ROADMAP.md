@@ -188,12 +188,20 @@ placing new ones from a palette.
       against the measurement. It found two real bugs on its first run, neither
       of which any unit test could see (see below), which is the argument for
       testing the product rather than the parts.
-- [ ] ⬜ **Use the spec for field sets, not just defaults** — it would answer
-      "what fields does this type have here" without a donor, and it is what a
-      property panel needs to offer a field the object does not carry yet (today
-      the panel can only edit what is already in the DOM, so a field the donor
-      lacked cannot be set at all). Inheritance through `BaseType` has to be
-      resolved for that.
+- [x] ✅ **Field sets from the spec** (2026-07-22) — `src/typespec.ts` resolves
+      inheritance (`BaseType` names a type's `__ServerPtr`, not its `TypeID`) and
+      returns the ordered field list at every depth, so:
+      - a placed object gets a field its DONOR's game version predates, written
+        in the place the spec puts it. A seer hut cloned from a campaign map used
+        to arrive without `Quest/CheckDelay` and three sound refs; it does not
+        now.
+      - the **property panel offers fields the object does not carry**, under
+        their own heading, and setting one creates the element. Two independent
+        yeses are required — the game's spec says the type has the field, our
+        schema says what shape to write — so nothing is ever invented.
+      Covered end to end: `e2e/place-objects.spec.ts` opens a shipped map whose
+      statics predate `TerrainAligned`/`ScalePercent`, sets one through the same
+      IPC the panel uses, and finds it in the saved file, in order.
 - [ ] ⬜ **Naming for entities that are not placed objects** — a seer hut's
       quest carries a `<Name>` of its own, and a new one is left empty (matching
       the original). Same hazard as an object with no handle.
