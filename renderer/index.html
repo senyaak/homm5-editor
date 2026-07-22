@@ -95,11 +95,18 @@
     .mp-body .pf .rov { flex: 1; min-width: 0; color: #6e7681; font-size: 11px;
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-    #hud { position: fixed; left: 12px; bottom: 12px; font-size: 12px; color: #8b949e;
+    /* The readouts float straight on the 3D view, so their background is
+       whatever the map happens to be — snow made them invisible. Outline them:
+       stroke painted under the fill keeps the glyphs their own weight, unlike a
+       plain text-stroke, which eats them from the inside. */
+    #hud, #passlegend, #help { paint-order: stroke fill;
+      -webkit-text-stroke: 3px #06090ce0; }
+
+    #hud { position: fixed; left: 12px; bottom: 12px; font-size: 12px; color: #c9d1d9;
       z-index: 10; pointer-events: none; transition: left .15s; }
     /* passability legend, above the help line */
     #passlegend { position: fixed; right: 12px; bottom: 34px; z-index: 10;
-      display: flex; gap: 14px; font-size: 11px; color: #8b949e; pointer-events: none; }
+      display: flex; gap: 14px; font-size: 11px; color: #c9d1d9; pointer-events: none; }
     #passlegend span { display: flex; align-items: center; gap: 5px; }
     #passlegend .sw { width: 11px; height: 11px; border-radius: 2px; display: inline-block;
       border: 1px solid #ffffff30; }
@@ -114,7 +121,7 @@
     #passlegend .fp-pass { background: #e8d23acc; }
     #passlegend .sep { width: 1px; height: 12px; background: #ffffff22; margin: 0 2px; }
 
-    #help { position: fixed; right: 12px; bottom: 12px; font-size: 11px; color: #6e7681;
+    #help { position: fixed; right: 12px; bottom: 12px; font-size: 11px; color: #adb6c0;
       z-index: 10; pointer-events: none; }
 
     /* terrain palette (content browser) */

@@ -78,7 +78,8 @@ project.json
 - [ ] ⬜ Adding new objects + `map-tag.xdb`
 - [ ] ⬜ Asset registry: one href → file resolver, cache, reverse lookups
       (which objects use a given Shared/Model/Texture)
-- [ ] ⬜ Whole-`.h5m` load/save (unpack → edit → repack)
+- [x] ✅ Whole-`.h5m` load/save (unpack → edit → repack), through a workspace that
+      is reused per archive; Save repacks over the source. See Milestone 0 below.
 - [ ] 🔬 Shared definitions for every type (blockedTiles, passability, actions)
 
 ## Phase 2 — 3D view
@@ -159,7 +160,9 @@ placing new ones from a palette.
       trustworthy for gameplay objects; decor is fine today.
 - [ ] ⬜ A third of catalogue entries have no decodable mesh, so they cannot be
       placed at all (see MESH_PLAN.md). Refused with a message today.
-- [ ] ⬜ Write edits back into `.h5m` (patch in place where possible)
+- [x] ✅ Write edits back into `.h5m` — Save repacks the archive it was opened
+      from. Not a patch in place; the whole archive is rewritten, which is fast
+      enough for a map and keeps one code path.
 
 ## Phase 4 — Parity with the original (entities and rules)
 
@@ -262,10 +265,26 @@ original to surface — and then close — whatever the editor can't yet express
 mission's reconstruction script is its e2e test and re-runs on every change.
 Round-trip (load→save→identical) is the cheap complementary net.
 
-- [ ] ⬜ **Milestone 0 — New Map**: write a blank, valid map project (map.xdb
-      from the schema skeleton + flat GroundTerrain.bin + sibling txt), validated
-      by load-back / round-trip / pack, then iterated until the game loads it.
-      Everything else in the reconstruction plan builds on this.
+- [x] ✅ **Milestone 0 — New Map** (2026-07-22): a "New map…" dialog mirroring the
+      original's (Name / Two Level Map / Type / Size) writes a blank project —
+      map.xdb from the schema skeleton, flat GroundTerrain.bin, sibling txt — and
+      the acceptance criterion is met: **the game loads and plays a map created
+      here from scratch and packed by us**. Everything else in the reconstruction
+      plan builds on this.
+
+      What it took beyond writing the files:
+      - **The archive is the working unit.** Open `.h5m` unpacks it into a
+        workspace under `_tmp/workspaces/`, keyed by a hash of the archive path,
+        and reused on the next open so undo and unsaved work survive. **Save**
+        means "put it back where it came from" — repack over the source archive
+        (Pack still writes a copy elsewhere).
+      - **Archive members are named by their in-game path** (`Maps/…/map.xdb`),
+        not relative to the map folder. Packing to the root produced `.h5m` files
+        the game could not see — `archivePrefix` in the manifest records it.
+      - **A pack that would write an empty archive is refused**, and Save refuses
+        a project dir that is gone. Both cost a real map once.
+      - `npm run unpack-data` unpacks every `.pak` (addon last) so assets resolve
+        from one tree — `RMG/Tiles/*` ships only in `a2p1-data.pak`.
 
 ---
 
