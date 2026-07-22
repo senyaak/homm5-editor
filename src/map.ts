@@ -20,8 +20,10 @@
 // are reached via the object's `el` DOM node and land as typed accessors in the
 // Phase 4 "parity" work; Phase 1's job is a faithful, enumerable, editable model.
 
-import { parse, serialize, find, findAll, children, text, childText, setText, setAttr, clearElement } from './xml.ts';
+import { parse, serialize, find, findAll, children, text, childText, setText, setAttr } from './xml.ts';
 import type { XmlElement, XmlNode } from './xml.ts';
+import { applyDefaults } from './defaults.ts';
+import type { DefaultsOptions } from './defaults.ts';
 
 /** A map-space object position: tile coordinates plus height. */
 export interface MapPos {
@@ -97,6 +99,11 @@ export class MapObject {
   get floor(): number { return +childText(this.el, 'Floor') || 0; }
   setFloor(v: number): boolean { const f = find(this.el, 'Floor'); if (f) setText(f, v); return !!f; }
 
+  /** The script handle Lua and other fields address this object by. Empty on
+   *  the objects the original editor placed; never empty on ours — see
+   *  HommMap.nextName(). */
+  get name(): string { return childText(this.el, 'Name'); }
+
   // Owning player, where the object has one (towns, heroes, mines…).
   get player(): string | null { return childText(this.el, 'PlayerID') || null; }
 
@@ -153,13 +160,34 @@ export interface NewObject {
   z?: number;
   r?: number;
   floor?: number;
-  /** Script name; blank unless the caller has one in mind. */
+  /** Script handle. Generated (`MONSTER_001`) when absent, and auto-suffixed
+   *  when the one asked for is already in use — never left empty. */
   name?: string;
   /**
    * An `<Item>` of the same type, as text, to use when this map has no object
    * of that type to copy. See src/donors.ts — the shipped maps supply these.
    */
   donor?: string;
+  /**
+   * The full roster behind an x-registry name, for the one default that is
+   * "everything the installation has" (a town's guild spells). See
+   * src/defaults.ts; omitted, that field keeps whatever the donor had.
+   */
+  roster?: DefaultsOptions['roster'];
+}
+
+/**
+ * `wanted`, or the first `wanted_2`, `wanted_3`… that nobody holds.
+ *
+ * Suffixing rather than refusing: the caller asked for a name, and the useful
+ * answer to "that one is taken" is a name it can have, not an error in the
+ * middle of placing an object.
+ */
+function uniqueName(wanted: string, taken: Set<string>): string {
+  if (!taken.has(wanted)) return wanted;
+  let n = 2;
+  while (taken.has(`${wanted}_${n}`)) n++;
+  return `${wanted}_${n}`;
 }
 
 /** Deep copy of an element, so a clone shares no nodes with its donor. */
@@ -436,6 +464,45 @@ export class HommMap {
 
   objectsOfType(type: string): MapObject[] { return this.objects.filter((o) => o.type === type); }
 
+  /** Every script handle in use on the map, so a new one can avoid them. */
+  namesInUse(): Set<string> {
+    const out = new Set<string>();
+    for (const o of this.objects) { const n = o.name; if (n) out.add(n); }
+    return out;
+  }
+
+  /**
+   * A free script handle for a new object of `type`: `MONSTER_001`, `SEER_HUT_002`.
+   *
+   * The original editor leaves a new object's `<Name>` empty, and we
+   * deliberately do not. The handle is how Lua and half the map's own fields
+   * (a quest target, a town's LinkToTown, SetObjectOwner) address the object;
+   * an empty one cannot be referenced at all and a duplicate silently makes two
+   * objects answer to one reference — the failure lands in the script, far from
+   * the placement that caused it. See docs/NAMES_AND_SCRIPTING.md.
+   *
+   * Numbering continues from the highest suffix IN USE, which means a handle
+   * freed by a deletion is handed out again. The map is the only state there
+   * is — a high-water mark would have to be stored somewhere the original
+   * editor would not preserve — so this is a limit, not a design: a script that
+   * still names the deleted `MONSTER_002` will address the next one placed.
+   * Catching that is the script lint's job (Phase 5), where both directions of
+   * the question live: names used but not defined, and names silently reused.
+   */
+  nextName(type: string, taken: Set<string> = this.namesInUse()): string {
+    // AdvMapSeerHut -> SEER_HUT: the type without the prefix, in the same
+    // upper-snake shape as the game's own identifiers.
+    const prefix = type.replace(/^AdvMap/, '').replace(/([a-z0-9])([A-Z])/g, '$1_$2').toUpperCase();
+    let max = 0;
+    const re = new RegExp(`^${prefix}_(\\d+)$`);
+    for (const n of taken) { const m = re.exec(n); if (m) max = Math.max(max, +m[1]!); }
+    let n = max + 1;
+    // A hand-typed name can collide with the pattern without matching it above
+    // (different padding, say), so the result is still checked.
+    while (taken.has(`${prefix}_${String(n).padStart(3, '0')}`)) n++;
+    return `${prefix}_${String(n).padStart(3, '0')}`;
+  }
+
   /**
    * Field names that hold a structure rather than a value, learned from this map.
    *
@@ -477,11 +544,17 @@ export class HommMap {
    * what a valid AdvMapMonster looks like in THIS map is an AdvMapMonster
    * already in it. Cloning also inherits the file's own indentation.
    *
+   * The clone is then put into the state the ORIGINAL editor writes a new
+   * object in — a donor is an object somebody designed, so cloning it and
+   * stopping there would hand on their monster count and their town's
+   * buildings. The values come from the schema, measured off a map the original
+   * saved (src/defaults.ts, docs/OBJECT_DEFAULTS.md).
+   *
    * With no donor, a minimal skeleton is written instead — the fields every
    * object type shares. That is enough for the editor to carry it and for it to
-   * round-trip, but it is NOT a complete object: type-specific fields (a
-   * monster's Amount and Mood, a town's buildings) are missing and their
-   * defaults are Phase 4 work. `complete` says which of the two you got.
+   * round-trip, but it is NOT a complete object: the type-specific fields are
+   * missing, so there is nothing for the defaults to be written into either.
+   * `complete` says which of the two you got.
    */
   addObject(spec: NewObject): { object: MapObject; complete: boolean } {
     const objectsEl = this.objectsEl;
@@ -496,6 +569,11 @@ export class HommMap {
     const body = children(item).find((c) => c.name === spec.type);
     if (!body) throw new Error(`could not build a ${spec.type} body`);
 
+    // The donor gave the field SET; the schema gives the values. Without this a
+    // new town would arrive with the donor designer's 21 buildings and a new
+    // monster with their stack of 4 — see src/defaults.ts.
+    applyDefaults(body, spec.type, { roster: spec.roster });
+
     // A fresh identity: reusing the donor's id would give two objects the same
     // handle, and the renderer keys its meshes by it.
     setAttr(item, 'id', `item_${uuid()}`);
@@ -505,10 +583,15 @@ export class HommMap {
     obj.setPos(spec.x, spec.y, spec.z ?? 0);
     obj.setRot(spec.r ?? 0);
     obj.setFloor(spec.floor ?? 0);
-    // The donor's script name would otherwise be copied onto the new object,
-    // and two objects answering to one name is worse than none doing so.
+    // A handle of its own. The donor's would otherwise be copied over, and two
+    // objects answering to one name is worse than none doing so — but so is the
+    // empty name the original leaves behind, which no script can address. A
+    // caller-supplied name is honoured, and only auto-suffixed if it is taken.
     const name = find(body, 'Name');
-    if (name) { if (spec.name) setText(name, spec.name); else clearElement(name); }
+    if (name) {
+      const taken = this.namesInUse();
+      setText(name, spec.name ? uniqueName(spec.name, taken) : this.nextName(spec.type, taken));
+    }
 
     // Indent like the item before it, so the file keeps its shape.
     const arr = objectsEl.children;

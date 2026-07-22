@@ -43,8 +43,13 @@ export interface FieldSchema {
   /** Bounds on a list's length — gate add/remove; absent means unbounded. */
   minItems?: number;
   maxItems?: number;
-  /** Value a freshly-built item's field takes (JSON Schema default). */
-  default?: string | number | boolean;
+  /** Value a freshly-built item's field takes (JSON Schema default). Structured
+   *  values (a town's buildings, a quest) are declared too — see src/defaults.ts. */
+  default?: string | number | boolean | unknown[] | Record<string, unknown>;
+  /** The default is the WHOLE roster named by x-registry, not a constant: a new
+   *  town's guild-spell filter is every spell the installation has. Resolved by
+   *  the caller, which is the only side that can see the rosters. */
+  'x-defaultAll'?: boolean;
   properties?: Record<string, FieldSchema>;
   $ref?: string;
   /** Composition: a base ($ref) plus type-specific properties. See objectProps(). */

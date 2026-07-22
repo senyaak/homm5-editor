@@ -363,3 +363,36 @@ one of them was edited.
 Where the ship appears, as an offset from the shipyard — not `0,0` like the
 town's `ShipTile`, but four tiles along. A default a template would have
 zeroed, putting the boat inside the building.
+
+---
+
+## Where these live now
+
+Not in this file — it is the explanation, not the source. The values are JSON
+Schema `default` keywords in `src/objects.schema.json`, beside the `title` and
+`x-widget` of the field they belong to, and `src/defaults.ts` applies them to a
+newly placed object. One place, read by both the placement code and the property
+panel.
+
+The split that makes it work: the **donor** (a real object of the same type,
+from this map or a shipped one — `src/donors.ts`) supplies the FIELD SET, which
+differs per type, per game version and per mod; the **schema** supplies the
+VALUES. Hence two rules in `src/defaults.ts`:
+
+- a field the donor does not have is never created — the donor is the authority
+  on what this type carries here, and it is also why one `Editable` default
+  serves both the hero's fourteen fields and the town's two;
+- a field with no measured default keeps what the donor wrote, and
+  `tools/test-defaults.ts` prints those by name rather than letting them pass
+  unnoticed.
+
+Two things could not be constants and so are not `default`s:
+
+- **`<Name>`** — generated per placement (`MONSTER_001`), because ours are never
+  empty even though the original's are. See `HommMap.nextName()`.
+- **A town's `spellIDs`** — the default is *every spell the installation has*,
+  which depends on the install and any mod. Marked `x-defaultAll`; the app
+  resolves it from the registry.
+
+`npm run test-defaults -- ../Maps/12.h5m` places one object of every type and
+diffs it against this map, field by field. All 21 match.

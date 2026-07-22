@@ -102,10 +102,15 @@ if (rich) {
   ok(added.object.shared === SH, 'the shared reference is the one asked for');
   const p4 = added.object.pos;
   ok(p4.x === 11 && p4.y === 22, 'it lands where it was put');
-  // Cloning must not copy the donor's identity or script name.
+  // Cloning must not copy the donor's identity or script name. The name is not
+  // merely cleared, though: an object with no handle cannot be addressed from
+  // Lua at all, so it gets a generated one — see HommMap.nextName.
   const donor = m4.objects.find((o) => o.type === 'AdvMapStatic' && o.id !== added.object.id);
   ok(donor && donor.id !== added.object.id, 'the clone gets its own id');
-  ok(childText(added.object.el, 'Name') === '', 'the clone does not inherit a script name');
+  const cloneName = childText(added.object.el, 'Name');
+  ok(cloneName !== '' && cloneName !== childText(donor.el, 'Name'),
+     `the clone gets a handle of its own, not the donor's (${cloneName})`);
+  ok(/^STATIC_\d{3}$/.test(cloneName), `and it is numbered per type (${cloneName})`);
 
   // A type this map has none of falls back to the skeleton, and says so.
   const sk = m4.addObject({ type: 'AdvMapSphinx', shared: '/x.xdb#xpointer(/AdvMapSphinxShared)', x: 1, y: 2 });

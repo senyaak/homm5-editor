@@ -31,6 +31,7 @@ import { buildNewMapProject } from '../src/new-map.ts';
 import { MAP_SIZES } from '../src/terrain-blank.ts';
 import { Registry } from '../src/registry.ts';
 import type { RosterEntry } from '../src/registry.ts';
+import type { RegistryName } from '../src/schema.ts';
 import { readTree, setPath, addStringItem, removeItem, appendItem, indentText, nodeAt, setList } from '../src/tree.ts';
 import { mapSchema, resolveSchemaAtPath, deref, schemaForClass } from '../src/schema.ts';
 import { buildItem, isBuildable, buildEntity } from '../src/skeleton.ts';
@@ -611,6 +612,24 @@ ipcMain.handle('objects:icon', async (_e: IpcMainInvokeEvent, { path }: IconPayl
   } catch { return null; }
 });
 
+/**
+ * The session's rosters, for the defaults that mean "everything the game has"
+ * — a new town's guild-spell filter. Read from the installed data, so a mod's
+ * spells are in it and a list frozen into the source would not be.
+ */
+function rosterFor(s: Session): (name: RegistryName) => string[] {
+  return (name) => {
+    switch (name) {
+      case 'spells': return s.registry.spells().map((e) => e.id);
+      case 'artifacts': return s.registry.artifacts().map((e) => e.id);
+      case 'creatures': return s.registry.creatures().map((e) => e.id);
+      case 'skills': return s.registry.skills().map((e) => e.id);
+      case 'races': return s.registry.races().map((e) => e.id);
+      default: return [];
+    }
+  };
+}
+
 // --- IPC: place a new object ---
 // The model writes the map side; the mesh is resolved here so the renderer can
 // show it at once. A model the scene has not seen before is sent along with the
@@ -630,6 +649,7 @@ ipcMain.handle('object:add', async (_e: IpcMainInvokeEvent, p: AddObjectPayload)
   const { object, complete } = record(session, 'add object', { map: true }, () =>
     session!.map.addObject({
       type: p.type, shared: p.shared, x: p.x, y: p.y, floor: p.floor, r: p.r ?? 0,
+      roster: rosterFor(session!),
       ...(donor ? { donor } : {}),
     }));
   const geomData = session.resolver.geoms[gi];

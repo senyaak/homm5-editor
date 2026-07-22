@@ -19,7 +19,9 @@ const selfClose = (name: string, attrs: Record<string, string> = {}): XmlElement
  * or empty. Empty is written as a self-closing tag, so it round-trips cleanly.
  */
 export function defaultFor(f: FieldSchema): string {
-  if (f.default !== undefined) return String(f.default);
+  // Structured defaults (a town's buildings, a quest) are a whole subtree and
+  // belong to src/defaults.ts; here only a scalar can be written as text.
+  if (f.default !== undefined && typeof f.default !== 'object') return String(f.default);
   if (f.enum && f.enum.length) return f.enum.find((v) => /_(NONE|UNKNOWN)$/.test(v)) ?? f.enum[0]!;
   if (f.type === 'boolean') return 'false';
   if (f.type === 'integer' || f.type === 'number') return '0';

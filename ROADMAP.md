@@ -154,16 +154,25 @@ placing new ones from a palette.
       icons from `Editor/IconCache`. Placing clones an object of the same type
       already on the map; with no donor a skeleton is written and the caller is
       told ✅
-- [ ] ⬜ **Per-type defaults for new objects** — a placed monster still inherits
-      its donor's Amount/Mood instead of a default. The defaults themselves are
-      no longer a guess: they are **measured** from a map made in the original
-      editor for the purpose (`npm run object-defaults`, see
-      docs/OBJECT_DEFAULTS.md), which is how we learned that a new creature
-      stack is `Amount` **0**, not the "obviously 1" this item used to assume —
-      0 means the game sizes it by difficulty. Recorded so far:
-      all 21 types (docs/OBJECT_DEFAULTS.md); what is left
-      that places them. What remains is applying them over the donor in
-      `src/donors.ts`.
+- [x] ✅ **Per-type defaults for new objects** (2026-07-22) — a placed object now
+      arrives in the state the ORIGINAL editor writes it in, instead of carrying
+      the tuning of whatever object it was cloned from (the game's own town
+      donor has 21 buildings and no guild spells; its monster has a stack of 4).
+      The split: the **donor gives the field set** — correct by construction
+      across types, game versions and mods — and the **schema gives the values**.
+      They are not guesses: measured with `npm run object-defaults` off a map
+      made in the original for the purpose, all 21 types, written as JSON Schema
+      `default` in `src/objects.schema.json` and applied by `src/defaults.ts`.
+      See docs/OBJECT_DEFAULTS.md. What that turned up: a new creature stack is
+      `Amount` **0**, not the "obviously 1" this item used to assume (0 = sized
+      by difficulty); a town's guild-spell list defaults to EVERY spell, an
+      empty one meaning "no spells"; a shipyard's boat sits 4 tiles out; and the
+      game writes two different empty refs (`href=""` vs no attribute), which is
+      per field and measured. `tools/test-defaults.ts` places one of every type
+      and diffs it against the reference map field by field.
+      Two fields still keep the donor's value: a town's `spellIDs` needs the
+      installation's roster (supplied by the app, absent in a bare test), and
+      anything the schema does not declare.
 - [ ] ⬜ A third of catalogue entries have no decodable mesh, so they cannot be
       placed at all (see MESH_PLAN.md). Refused with a message today.
 - [x] ✅ Write edits back into `.h5m` — Save repacks the archive it was opened
@@ -232,10 +241,18 @@ them.
 
 ### Naming (prerequisite for reliable scripting)
 
-- [ ] ⬜ **Default, unique `<Name>` handles** — a new named object/entity gets a
-      non-empty default (`<TYPE>_001`, `_002`, …); refuse or auto-suffix
-      duplicates within the map. An empty or duplicate handle silently breaks the
-      script that refers to it (see `docs/NAMES_AND_SCRIPTING.md`).
+- [x] ✅ **Default, unique `<Name>` handles** for placed objects (2026-07-22) —
+      `HommMap.nextName()` gives a new object `MONSTER_001`, `SEER_HUT_002`…,
+      numbered per type, and a name asked for by the caller is auto-suffixed
+      (`boss`, `boss_2`) rather than refused mid-placement. A deliberate
+      divergence: the original leaves `<Name>` empty, and an empty handle cannot
+      be addressed from Lua at all (see `docs/NAMES_AND_SCRIPTING.md`).
+      **Known limit**: numbering counts the handles IN USE, so deleting
+      `MONSTER_002` puts that name back in circulation and a script still using
+      it would then address a different object. The map is the only state we
+      have; catching it belongs to the lint below.
+- [ ] ⬜ The same for named entities that are not placed objects (objectives,
+      the map's own lists) — only objects are covered so far.
 
 ## Phase 6 — Campaigns
 
