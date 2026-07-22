@@ -35,7 +35,8 @@
     "watch:renderer": "npm run build:renderer -- --watch",
     "object-schema": "node tools/object-schema.ts",
     "object-defaults": "node tools/object-defaults.ts",
-    "test-defaults": "node tools/test-defaults.ts"
+    "test-defaults": "node tools/test-defaults.ts",
+    "test-typespec": "node tools/test-typespec.ts"
   },
   "dependencies": {
     "three": "^0.160.0"

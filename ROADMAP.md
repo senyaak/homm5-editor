@@ -205,7 +205,23 @@ placing new ones from a palette.
 - [ ] ⬜ **Naming for entities that are not placed objects** — a seer hut's
       quest carries a `<Name>` of its own, and a new one is left empty (matching
       the original). Same hazard as an object with no handle.
-- [ ] ⬜ **Enum members from the spec** — `data/types.xml` declares 97 enum types
+- [x] ✅ **Enum members from the spec** (2026-07-22) — a field whose values the
+      game closes is now a dropdown over the FULL legal set, not a text box and
+      not a list guessed from what shipped maps happen to use. 24 object fields,
+      1393 options, resolved through `src/typespec.ts` (`fieldValues`), served
+      by `spec:values` and cached per type. Lists resolve too: `spellIDs` points
+      at an anonymous `TYPE_TYPE_ARRAY` whose element is `SpellID`, 353 members.
+      The dropdown keeps a value the spec does not list rather than dropping it
+      — a modded install is a real thing, and silently rewriting a map on save
+      is worse than an extra choice. `tools/test-typespec.ts` asserts the claim
+      that earns the feature: **every value the 126 shipped maps use is
+      offered**. It also caught our own schema inventing `MASTERY_ULTIMATE`; the
+      game calls that level `MASTERY_EXTRA_EXPERT`.
+- [ ] ⬜ **The rest of the PDF's rosters** — perks and class feats by class,
+      town-building IDs, border-guard key colours, trigger types are all in
+      `HOMM5_A2_IDs_for_Scripts.pdf` and mostly in types.xml too. Useful for
+      Phase 5 (Lua completion) and for the typed panels of Phase 4.
+- [ ] ⬜ **The 59 defaults the spec declares and our schema does not** — `data/types.xml` declares 97 enum types
       with every member, and an object's enum field points at one, so a dropdown
       could offer what is LEGAL instead of what shipped maps happen to use
       (`AttackType` is `ATTACK_ANY` on all 6377 monsters ever shipped; the type

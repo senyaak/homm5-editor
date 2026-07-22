@@ -1627,10 +1627,14 @@ async function loadProps(): Promise<void> {
   // Look up this object type's schema once; each field is typed by it, or falls
   // back to inference when the schema does not describe it.
   const typeFields = objectProps(res.type);
+  // And what the GAME's type spec says a field may hold — the closed sets our
+  // schema does not spell out. Awaited here so a row is built once, complete.
+  const allowed = await loadSpecValues(res.type);
+  if (propsFor !== id || !selected || selected.id !== id) return;
   const rowFor = (p: ObjectProp): HTMLElement => {
     const raw = typeFields[p.name];
     const field = raw ? deref(objectSchema, raw) : null;
-    const row = fieldRow(p, field, (n, v) => void setProp(id, n, v), res.type);
+    const row = fieldRow(p, field, (n, v) => void setProp(id, n, v), res.type, allowed[p.name]);
     if (p.absent) {
       row.classList.add('absent');
       row.title = `${p.name} is not in this object yet — the game's type spec says it belongs, so setting it adds it`;
@@ -1694,13 +1698,47 @@ function propRow(p: ObjectProp, commit: (name: string, value: string) => void, l
     const inp = document.createElement('input');
     inp.type = p.kind === 'number' ? 'number' : 'text';
     inp.value = p.value;
-    // Enums are text: the legal set lives in the game's data, and a dropdown
-    // built from a guess would refuse values the game accepts.
-    if (p.kind === 'enum') inp.title = 'one of the game’s enum values';
+    // A text box only when nobody could tell us the legal set: the game's type
+    // spec closes most enum fields and fieldRow() turns those into dropdowns
+    // before reaching here (see loadSpecValues). Without types.xml — no game
+    // data — this is still the honest control, since a guessed list would
+    // refuse values the game accepts.
+    if (p.kind === 'enum') inp.title = 'one of the game’s enum values (no type spec loaded)';
     inp.addEventListener('change', () => commit(p.name, inp.value));
     row.appendChild(inp);
   }
   return row;
+}
+
+/**
+ * The values the game's own type spec allows for a field, by object type.
+ *
+ * Fetched once per type and kept: it never changes for an installation, and the
+ * panel needs it while building rows rather than after. Empty when there is no
+ * types.xml to read, which leaves every control exactly as it was.
+ */
+const specValuesByType = new Map<string, Record<string, string[]>>();
+async function loadSpecValues(type: string): Promise<Record<string, string[]>> {
+  const hit = specValuesByType.get(type);
+  if (hit) return hit;
+  let values: Record<string, string[]> = {};
+  try { values = (await window.editor.specValues(type)).values; } catch { /* no spec, no dropdowns */ }
+  specValuesByType.set(type, values);
+  return values;
+}
+
+/**
+ * A dropdown over a closed set that still accepts what is already there.
+ *
+ * The current value is prepended when the set does not contain it, because a
+ * control that silently drops a value the file holds is worse than one offering
+ * an extra choice — and a modded install can carry values this build's spec
+ * does not know.
+ */
+function specSelect(value: string, allowed: string[], commit: (v: string) => void): HTMLElement {
+  const opts = allowed.map((v) => ({ value: v, label: v }));
+  if (value && !allowed.includes(value)) opts.unshift({ value, label: `${value} (not in the game's list)` });
+  return selectFrom(value, opts, commit);
 }
 
 // --- typed rows (schema-driven) ----------------------------------------------
@@ -1791,7 +1829,16 @@ function selectFrom(current: string, options: { value: string; label: string }[]
  * single-value controls (dropdowns, enums, read-only, bounded numbers); arrays
  * and nested structures are a later pass, so those fall through to propRow.
  */
-function fieldRow(p: ObjectProp, field: FieldSchema | null, commit: (name: string, value: string) => void, objectType?: string): HTMLElement {
+function fieldRow(p: ObjectProp, field: FieldSchema | null, commit: (name: string, value: string) => void, objectType?: string, allowed?: string[]): HTMLElement {
+  // What the GAME allows here beats both the schema's own enum list and the
+  // value-shape guess: it is the closed set the engine defines, and it is the
+  // difference between typing ATTACK_MELEE from memory and picking it.
+  // Registry-backed fields keep their roster — it carries display names.
+  if (allowed?.length && field?.['x-registry'] === undefined) {
+    const { row } = field ? rowShell(field, p.name) : rowShell({ title: p.name }, p.name);
+    row.appendChild(specSelect(p.value, allowed, (v) => commit(p.name, v)));
+    return row;
+  }
   if (!field) return propRow(p, commit);
   if (field['x-nameRef']) {
     const { row } = rowShell(field, p.name);

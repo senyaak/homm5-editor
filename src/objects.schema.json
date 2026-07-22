@@ -65,7 +65,7 @@
         "Mastery": { "$ref": "#/$defs/Mastery", "title": "Mastery" }
       }
     },
-    "Mastery": { "type": "string", "title": "Mastery", "enum": ["MASTERY_NONE", "MASTERY_BASIC", "MASTERY_ADVANCED", "MASTERY_EXPERT", "MASTERY_ULTIMATE"] },
+    "Mastery": { "type": "string", "title": "Mastery", "description": "Four real levels plus none. The fourth is called MASTERY_EXTRA_EXPERT, not the MASTERY_ULTIMATE this schema had invented — the same level players know as ultimate, which the game grants through an artifact rather than through training, so ordinary play has three. Confirmed in GameMechanics/RefTables/Mastery.xdb and used by the C2M1/C3M3 campaign maps; the invented name was caught by tools/test-typespec.ts against data/types.xml.", "enum": ["MASTERY_NONE", "MASTERY_BASIC", "MASTERY_ADVANCED", "MASTERY_EXPERT", "MASTERY_EXTRA_EXPERT"] },
     "PlayerId": { "type": "string", "title": "Owner", "x-widget": "dropdown", "enum": ["PLAYER_NONE", "PLAYER_1", "PLAYER_2", "PLAYER_3", "PLAYER_4", "PLAYER_5", "PLAYER_6", "PLAYER_7", "PLAYER_8"] },
     "BuildingUpgrade": { "type": "string", "title": "Upgrade", "enum": ["BLD_UPG_NONE", "BLD_UPG_1", "BLD_UPG_2", "BLD_UPG_3", "BLD_UPG_4", "BLD_UPG_5"] },
     "Building": {

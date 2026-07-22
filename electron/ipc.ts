@@ -176,6 +176,23 @@ export interface SetMapPropPayload {
   value: string;
 }
 
+/** Payload of `spec:values` — the object type whose enum fields to describe. */
+export interface SpecValuesPayload {
+  /** Element name, e.g. 'AdvMapMonster'. */
+  type: string;
+}
+
+/**
+ * Result of `spec:values`: for each field of the type whose values the game's
+ * own type spec closes, the full legal set — see docs/TYPE_SPEC.md. Empty when
+ * there is no spec to read (no game data), which leaves the panel's text boxes
+ * as they were.
+ */
+export interface SpecValuesResult {
+  /** Field name -> every value the game accepts there, in declaration order. */
+  values: Record<string, string[]>;
+}
+
 /** Payload of `registry:roster` — which roster to fetch. */
 export interface RosterPayload {
   /** A RegistryName from src/schema.ts (spells, artifacts, creatures, …). */
@@ -493,6 +510,7 @@ export interface EditorApi {
   rotateObject(id: string, r: number): Promise<ObjectEditResult>;
   removeObject(id: string): Promise<ObjectEditResult>;
   objectProps(id: string): Promise<ObjectPropsResult>;
+  specValues(type: string): Promise<SpecValuesResult>;
   setObjectProp(p: SetPropPayload): Promise<ObjectEditResult>;
   mapProps(): Promise<MapPropsResult>;
   setMapProp(p: SetMapPropPayload): Promise<ObjectEditResult>;

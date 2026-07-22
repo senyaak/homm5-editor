@@ -33,7 +33,7 @@ import { MAP_SIZES } from '../src/terrain-blank.ts';
 import { Registry } from '../src/registry.ts';
 import type { RosterEntry } from '../src/registry.ts';
 import type { RegistryName, FieldSchema } from '../src/schema.ts';
-import { readTypeSpec, fieldOrder, typesXmlPath } from '../src/typespec.ts';
+import { readTypeSpec, fieldOrder, typesXmlPath, fieldValues } from '../src/typespec.ts';
 import type { FieldOrder, SpecType } from '../src/typespec.ts';
 import { readTree, setPath, addStringItem, removeItem, appendItem, indentText, nodeAt, setList } from '../src/tree.ts';
 import { mapSchema, resolveSchemaAtPath, deref, schemaForClass, objectProps, objectSchema, controlOf } from '../src/schema.ts';
@@ -46,6 +46,7 @@ import type { HommMap, MapObject, ObjectProp } from '../src/map.ts';
 import type {
   MapsListResult, MapListEntry, MapLoadResult, MoveObjectPayload, MoveObjectResult,
   RotateObjectPayload, RemoveObjectPayload, ObjectEditResult, ObjectPropsResult, SetPropPayload,
+  SpecValuesPayload, SpecValuesResult,
   MapPropsResult, SetMapPropPayload, RosterPayload, RosterResult, OfClassPayload, NewEntityPayload, NewEntityResult,
   EntityReadPayload, EntityReadResult, EntitySetPathPayload, PickTextResult, EntityCopyPayload, EntityCopyResult,
   SuggestNamePayload, SuggestNameResult,
@@ -637,6 +638,36 @@ function orderFor(type: string): FieldOrder | undefined {
 }
 
 /**
+ * Every field of a type whose values the spec closes, with the full legal set.
+ *
+ * This is what turns a text box into a dropdown honestly. The panel used to
+ * show enum fields as free text, with a comment saying the legal set lives in
+ * the game's data and a guessed list would refuse values the game accepts —
+ * true then, and the spec is that data. `AttackType` is `ATTACK_ANY` on all
+ * 6377 monsters ever shipped, and the type also has `ATTACK_RANGE` and
+ * `ATTACK_MELEE`.
+ *
+ * Cached per type: the parse is 2.4 MB and the answer never changes.
+ */
+const valuesCache = new Map<string, Record<string, string[]>>();
+function valuesFor(type: string): Record<string, string[]> {
+  const hit = valuesCache.get(type);
+  if (hit) return hit;
+  orderFor(type); // parses types.xml on first use
+  const out: Record<string, string[]> = {};
+  if (typeSpec) {
+    // Only the fields our own schema knows about: an option list for a field
+    // the editor never shows is payload for nothing.
+    for (const name of Object.keys(objectProps(type))) {
+      const v = fieldValues(typeSpec, type, name);
+      if (v && v.length) out[name] = v;
+    }
+  }
+  valuesCache.set(type, out);
+  return out;
+}
+
+/**
  * The session's rosters, for the defaults that mean "everything the game has"
  * — a new town's guild-spell filter. Read from the installed data, so a mod's
  * spells are in it and a list frozen into the source would not be.
@@ -732,6 +763,11 @@ ipcMain.handle('object:props', async (_e: IpcMainInvokeEvent, { id }: RemoveObje
   if (!session) throw new Error('no map loaded');
   const obj = findObject(session, id);
   return { type: obj.type, props: [...obj.props(), ...absentProps(obj)] };
+});
+
+// --- IPC: the legal values of a type's enum fields, from the game's spec ---
+ipcMain.handle('spec:values', async (_e: IpcMainInvokeEvent, { type }: SpecValuesPayload): Promise<SpecValuesResult> => {
+  return { values: valuesFor(type) };
 });
 
 // --- IPC: set one simple field ---

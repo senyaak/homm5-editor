@@ -50,6 +50,13 @@ export interface SpecType {
   /** This type's own id, as `BaseType` elsewhere refers to it. */
   ptr?: string;
   typeId?: string;
+  /** What the declaration is: a class, a value structure, an enum, or the
+   *  anonymous array type a list field points at. */
+  kind?: 'class' | 'struct' | 'enum' | 'array';
+  /** For an array, the id of its ELEMENT type. */
+  elem?: string;
+  /** An enum's members, in declaration order. Absent for the other kinds. */
+  members?: string[];
 }
 
 /** Where types.xml lives under a data root, if it is there at all. */
@@ -77,6 +84,13 @@ const between = (s: string, open: string, close: string): string | null => {
 export function readTypeSpec(path: string): Map<string, SpecType> {
   const xml = readFileSync(path, 'utf8');
   const out = new Map<string, SpecType>();
+  // Arrays are declared ANONYMOUSLY — no <TypeName>, so the split below never
+  // sees them. They are what a list field points at, and the element type
+  // inside is what a list's values must come from, so they are collected
+  // separately and stored under a synthetic name.
+  for (const a of xml.matchAll(/<__ServerPtr>([0-9a-f]+)<\/__ServerPtr>\s*<Type>TYPE_TYPE_ARRAY<\/Type>[\s\S]*?<Field>\s*<Type>([0-9a-f]+)<\/Type>/g)) {
+    out.set(`array:${a[1]}`, { name: `array:${a[1]}`, fields: [], ptr: a[1]!, kind: 'array', elem: a[2]! });
+  }
   const names = [...xml.matchAll(/<TypeName>([^<]+)<\/TypeName>/g)];
   for (let i = 0; i < names.length; i++) {
     const name = names[i]![1]!;
@@ -100,9 +114,18 @@ export function readTypeSpec(path: string): Map<string, SpecType> {
     // The id is BEFORE the name in the item, so it comes from the text ahead of
     // this type's declaration — the tail of the previous slice.
     // TYPE_TYPE_CLASS for an object, TYPE_TYPE_STRUCT for a value structure
-    // (Vec3, CommonObjective) — both are types a field can point at.
-    const ptr = /<__ServerPtr>([0-9a-f]+)<\/__ServerPtr>\s*<Type>TYPE_TYPE_(?:CLASS|STRUCT)<\/Type>\s*$/
-      .exec(xml.slice(Math.max(0, from - 200), from))?.[1];
+    // (Vec3, CommonObjective), TYPE_TYPE_ENUM for a closed value set — all three
+    // are types a field can point at, and all three are keyed by __ServerPtr.
+    const head = /<__ServerPtr>([0-9a-f]+)<\/__ServerPtr>\s*<Type>TYPE_TYPE_(CLASS|STRUCT|ENUM)<\/Type>\s*$/
+      .exec(xml.slice(Math.max(0, from - 200), from));
+    const ptr = head?.[1];
+    const kind = head?.[2];
+    // An enum's members live in <Entries>, bounded to THIS declaration — the
+    // slice above is what keeps a type with no entries from borrowing the next
+    // one's, which is how the first read of MoonWeekID came out wrong.
+    const entries = kind === 'ENUM'
+      ? [...(between(body, '<Entries>', '</Entries>') ?? '').matchAll(/<Name>([^<]*)<\/Name>/g)].map((m) => m[1]!)
+      : undefined;
     out.set(name, {
       name,
       fields,
@@ -110,6 +133,8 @@ export function readTypeSpec(path: string): Map<string, SpecType> {
       ...(base && base !== '00000000' ? { baseType: base } : {}),
       ...(ptr ? { ptr } : {}),
       ...(typeId ? { typeId } : {}),
+      ...(kind ? { kind: kind.toLowerCase() as SpecType['kind'] } : {}),
+      ...(entries ? { members: entries } : {}),
     });
   }
   return out;
@@ -187,5 +212,75 @@ function inherited(t: SpecType, index: Map<string, SpecType>): SpecField[] {
 export function declaredDefaults(t: SpecType): Map<string, string> {
   const out = new Map<string, string>();
   for (const f of t.fields) if (f.default !== null) out.set(f.name, f.default);
+  return out;
+}
+
+/**
+ * The values a field may hold, when its type is an enum — the full legal set,
+ * not the values that happen to occur in shipped maps.
+ *
+ * This is the point of reading the spec for the UI: `AttackType` is
+ * `ATTACK_ANY` on all 6377 monsters ever shipped, so a list inferred from maps
+ * offers exactly one choice, while the type has three. A map stores the NAME,
+ * so the name list is the whole of what a dropdown needs; the numeric values
+ * the enum also carries are for Lua, not for us.
+ *
+ * Sentinels are dropped. Most enums close with a count member —
+ * `MONSTER_COURAGES_COUNT`, `CREATURES_COUNT` — which is the size of the enum
+ * and not a value anything may hold; offering it would be a bug.
+ */
+export function fieldValues(spec: Map<string, SpecType>, typeName: string, fieldName: string): string[] | null {
+  const index = byPtr(spec);
+  const t = spec.get(typeName);
+  if (!t) return null;
+  const field = inherited(t, index).find((f) => f.name === fieldName);
+  return membersOf(index, field?.type);
+}
+
+/**
+ * The enum members behind a type id, following a list to its element type.
+ *
+ * A checklist field (`spellIDs`) points at an anonymous array whose element is
+ * the enum — so "what may this list contain" and "what may this field be" are
+ * the same question one hop apart.
+ */
+function membersOf(index: Map<string, SpecType>, typeId: string | undefined): string[] | null {
+  let target = typeId ? index.get(typeId) : undefined;
+  if (target?.kind === 'array' && target.elem) target = index.get(target.elem);
+  return target?.kind === 'enum' && target.members ? withoutSentinels(target.members) : null;
+}
+
+/** The same, for a field of a nested structure (`AdvMapSeerHut`, `Quest/Kind`). */
+export function valuesAtPath(spec: Map<string, SpecType>, typeName: string, path: string[]): string[] | null {
+  const index = byPtr(spec);
+  let cur = spec.get(typeName);
+  for (let i = 0; i < path.length; i++) {
+    if (!cur) return null;
+    const field = inherited(cur, index).find((f) => f.name === path[i]);
+    if (i === path.length - 1) return membersOf(index, field?.type);
+    let target = field?.type ? index.get(field.type) : undefined;
+    if (target?.kind === 'array' && target.elem) target = index.get(target.elem);
+    cur = target;
+  }
+  return null;
+}
+
+/** Every enum the spec declares, by name — for the fields we resolve by hand. */
+export function enums(spec: Map<string, SpecType>): Map<string, string[]> {
+  const out = new Map<string, string[]>();
+  for (const t of spec.values()) if (t.kind === 'enum' && t.members) out.set(t.name, withoutSentinels(t.members));
+  return out;
+}
+
+/**
+ * Drop the trailing count sentinel.
+ *
+ * Only at the end, and only when it looks like one: `MONSTER_MOODS_COUNT`,
+ * `CREATURES_COUNT`, `SPELLS_COUNT`. A member called `..._COUNT` in the middle
+ * of a list would be a real value with an unfortunate name, and this leaves it.
+ */
+function withoutSentinels(members: string[]): string[] {
+  const out = [...members];
+  while (out.length && /_COUNT$/.test(out[out.length - 1]!)) out.pop();
   return out;
 }
