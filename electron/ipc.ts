@@ -338,6 +338,11 @@ export interface PaintTilePayload {
   verts: number[];
   /** 0..255 opacity, default 255. */
   strength?: number;
+  /**
+   * false = write only this layer, leaving the others at those vertices alone.
+   * Default true: a brush stroke replaces what was there.
+   */
+  exclusive?: boolean;
 }
 
 /**

@@ -3344,7 +3344,7 @@ async function commitMask(walkable: boolean): Promise<void> {
   const verts = [...strokeVerts];
   strokeVerts.clear();
   try {
-    await window.editor.setMask({ floor: world.active, verts, walkable });
+    await committing(window.editor.setMask({ floor: world.active, verts, walkable }));
     markDirty(true);
   } catch (e) {
     $('hud').textContent = 'mask failed (reload to resync): '
@@ -3581,6 +3581,10 @@ interface ViewApi {
   /** The active floor's live heights and ground kinds — what the app believes. */
   heights(): number[];
   kinds(): number[];
+  /** True once the ground textures are decoded and a stroke would land. */
+  paintReady(): boolean;
+  /** Edits sent to the main process and not yet acknowledged. */
+  pending(): number;
   /** Tiles per side of the active floor, or 0 when no map is open. */
   size(): number;
 }
@@ -3642,6 +3646,10 @@ const view: ViewApi = {
   cells() { return world ? riverSide(activeFloor().V) : 0; },
   // Reading the live planes separates "the stroke never landed" from "it landed
   // and did not reach the file", which otherwise look identical in the diff.
+  // Painting refuses until the splat textures are decoded, and a refused stroke
+  // looks exactly like a brush that did nothing — so the state is published.
+  paintReady() { const fl = world ? activeFloor() : null; return !!(fl && fl.splat && fl.maskTex); },
+  pending() { return pendingCommits; },
   heights() { return world ? Array.from(activeFloor().heights) : []; },
   kinds() { return world && activeFloor().flags ? Array.from(activeFloor().flags!) : []; },
   size() { return world ? activeFloor().V - 1 : 0; },
@@ -3718,17 +3726,16 @@ function brushVerts(V: number, cx: number, cy: number, size: number): number[] {
 }
 
 /** Write the stroke into the GPU masks. Layer i lives in group i/3, channel i%3. */
-function paintMaskTexture(fl: Floor3D, layerIdx: number, verts: number[]): void {
+function paintMaskTexture(fl: Floor3D, layerIdx: number, verts: number[], strength = 255, exclusive = true): void {
   const tex = fl.maskTex, s = fl.splat;
   if (!tex || !s) return;
   const data = tex.image.data;
   if (!data) return; // the texture always carries its data; three's type says maybe
   const n = fl.V * fl.V;
+  const at = (i: number, v: number): number => ((i / 3 | 0) * n + v) * 4 + (i % 3);
   for (const v of verts) {
-    for (let i = 0; i < s.layerCount; i++) {
-      const off = ((i / 3 | 0) * n + v) * 4 + (i % 3);
-      data[off] = i === layerIdx ? 255 : 0;
-    }
+    if (!exclusive) { data[at(layerIdx, v)] = strength; continue; }
+    for (let i = 0; i < s.layerCount; i++) data[at(i, v)] = i === layerIdx ? strength : 0;
   }
   tex.needsUpdate = true;
 }
@@ -3804,6 +3811,28 @@ function sinkRiver(fl: Floor3D, verts: number[]): void {
   remeshFloor(fl);
 }
 
+/**
+ * Commits sent to the main process and not yet acknowledged.
+ *
+ * A stroke hands its edit over and does not wait — that is what keeps painting
+ * responsive. It also means the file can lag behind the screen, and at
+ * reconstruction scale (a hundred thousand vertex writes) the backlog outlives
+ * a Save: the save runs, then the queue drains and marks the map dirty again.
+ * Publishing the count lets a caller wait for quiet; nothing else depends on it.
+ */
+let pendingCommits = 0;
+async function committing<T>(work: Promise<T>): Promise<T> {
+  pendingCommits++;
+  try { return await work; } finally { pendingCommits--; }
+}
+
+/** Weight the tile brush writes, from the toolbar. */
+const tileStrength = (): number => Math.max(0, Math.min(255, +$input('tilestrength').value || 0));
+/** Blend mode: write this layer only, leaving the others under it alone. */
+const tileBlend = (): boolean => ($('tilesolo') as HTMLInputElement).checked;
+/** Whether painting water also sinks the bed under it. */
+const riverCarve = (): boolean => ($('rivercarve') as HTMLInputElement).checked;
+
 /** Paint at the cursor, if the brush is armed and the tile is paintable. */
 function brushAt(verts: number[]): void {
   const fl = activeFloor();
@@ -3817,8 +3846,11 @@ function brushAt(verts: number[]): void {
   const fresh = verts.filter((v) => !strokeVerts.has(v));
   if (!fresh.length) return;
   for (const v of fresh) strokeVerts.add(v);
-  paintMaskTexture(fl, layerIdx, fresh);
-  if (isRiverTile(tile.path)) sinkRiver(fl, fresh);
+  const strength = tileStrength();
+  paintMaskTexture(fl, layerIdx, fresh, strength, !tileBlend());
+  // Water carves its bed — unless there is no water being painted (strength 0
+  // erases) or carving is off because the ground is already at its final shape.
+  if (isRiverTile(tile.path) && strength > 0 && riverCarve()) sinkRiver(fl, fresh);
 }
 
 /** Hand the finished stroke to the main process in one message. */
@@ -3830,17 +3862,24 @@ async function commitStroke(): Promise<void> {
   const heightEdits = [...riverHeights];
   riverHeights.clear();
   try {
-    if (isRiverTile(tile.path)) {
+    // Water is a river only if it carries the plane and a bed; "carve" says
+    // whether this stroke does that physical part or is paint alone. Off, the
+    // stroke is an ordinary tile — which is what you want when the plane is
+    // already authored and the ground is at its final height.
+    if (isRiverTile(tile.path) && riverCarve()) {
       // Mask, river plane and heights travel together: a river missing any one
       // of the three is not a river, and a half-applied stroke would be worse
       // than a rejected one.
-      await window.editor.paintRiver({
+      await committing(window.editor.paintRiver({
         floor: world.active, tile: tile.path, verts,
         heightVerts: heightEdits.map(([v]) => v),
         heights: heightEdits.map(([, h]) => h),
-      });
+      }));
     } else {
-      await window.editor.paintTile({ floor: world.active, tile: tile.path, verts });
+      await committing(window.editor.paintTile({
+        floor: world.active, tile: tile.path, verts,
+        strength: tileStrength(), exclusive: !tileBlend(),
+      }));
     }
     markDirty(true);
   } catch (e) {
@@ -3974,7 +4013,7 @@ function riverAt(cells: { x: number; y: number }[]): void {
   const fl = activeFloor();
   const W = riverSide(fl.V);
   const value = Math.max(0, Math.min(255, +$input('riverstrength').value || 0));
-  const carve = ($('rivercarve') as HTMLInputElement).checked;
+  const carve = riverCarve();
   const bed: number[] = [];
   for (const c of cells) {
     const idx = c.y * W + c.x;
@@ -3998,7 +4037,7 @@ async function commitRiver(): Promise<void> {
   strokeCells.clear();
   const value = Math.max(0, Math.min(255, +$input('riverstrength').value || 0));
   try {
-    await window.editor.setRiverCells({ floor: world.active, cells, value });
+    await committing(window.editor.setRiverCells({ floor: world.active, cells, value }));
     // Carving moved ground, and those heights travel by the sculpt path.
     if (strokeVerts.size) await commitSculpt(); else strokeVerts.clear();
     markDirty(true);
@@ -4240,8 +4279,10 @@ function sculptTick(ev: PointerEvent): void {
   // otherwise a stroke that pauses would silently stop sculpting.
   if (tile === lastTile && now - lastTick < TICK_MS) return;
   lastTile = tile; lastTick = now;
+  const idx = at.y * fl.V + at.x;
+  if (brushMode === 'paint') { brushAt([idx]); return; }
   const moved = brushMode === 'kind'
-    ? kindAt([at.y * fl.V + at.x], true)
+    ? kindAt([idx], true)
     : vertexMode ? sculptVertex(fl, at.x, at.y) : sculptAt(fl, at.x, at.y);
   if (!moved) return;
   for (const v of moved) strokeVerts.add(v);
@@ -4255,12 +4296,12 @@ async function commitSculpt(): Promise<void> {
   const verts = [...strokeVerts];
   strokeVerts.clear();
   try {
-    await window.editor.sculpt({
+    await committing(window.editor.sculpt({
       floor: world.active,
       verts,
       heights: verts.map((v) => fl.heights[v]!),
       flags: fl.flags ? verts.map((v) => fl.flags![v]!) : null,
-    });
+    }));
     markDirty(true);
   } catch (e) {
     $('hud').textContent = 'sculpt failed (reload to resync): '
@@ -4363,7 +4404,8 @@ function applyBrush(ev: PointerEvent): void {
   if (rectMode) { updateBrushCursor(tileUnderCursor(ev)); return; }
   // Bulk and Dig keep their own rate limiting and radial falloff; the kind
   // brush borrows that path when it is painting one vertex at a time.
-  if (brushMode === 'bulk' || brushMode === 'dig' || (vertexMode && brushMode === 'kind')) { sculptTick(ev); return; }
+  if (brushMode === 'bulk' || brushMode === 'dig'
+      || (vertexMode && (brushMode === 'kind' || brushMode === 'paint'))) { sculptTick(ev); return; }
   if (brushMode === 'river') {
     const c = riverCellAtClient(ev.clientX, ev.clientY);
     if (c) riverAt([c]);

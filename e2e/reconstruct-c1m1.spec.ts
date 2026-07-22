@@ -23,8 +23,13 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { join } from 'node:path';
 import { launchEditor, REPO_ROOT } from './launch.ts';
 import type { Launched } from './launch.ts';
-import { armBrush, dragTiles, newMap, planView, setGroundKind, setRiverStrength } from './tiles.ts';
-import { parseTerrain, readHeights, readGroundFlags, readWaterPlane, tierOf, RAMP_BIT, TIER_STEP } from '../src/terrain.ts';
+import {
+  armBrush, dragTiles, newMap, pickTile, planView, settle, setGroundKind, setRiverStrength, setTileStrength,
+} from './tiles.ts';
+import {
+  parseTerrain, readHeights, readGroundFlags, readWaterPlane, readTextureLayers, readMask,
+  tierOf, RAMP_BIT, TIER_STEP,
+} from '../src/terrain.ts';
 
 let ed: Launched;
 
@@ -56,6 +61,8 @@ test('the shape of C1M1, rebuilt by clicking', async () => {
   const target = readHeights(fixture);
   const targetFlags = readGroundFlags(fixture)!;
   const targetRiver = readWaterPlane(fixture)!;
+  const targetLayers = readTextureLayers(fixture)
+    .map((l) => ({ path: l.path!, mask: Array.from(readMask(fixture, l)) }));
 
   await newMap(page, NAME, '96');
   await planView(page);
@@ -218,6 +225,55 @@ test('the shape of C1M1, rebuilt by clicking', async () => {
   }
   console.log(`  ${cells} river cells painted`);
 
+  // --- the textures --------------------------------------------------------
+  //
+  // One layer per tile the map uses, and a weight per vertex in each. Picking a
+  // tile the map has no layer for adds one, which is the editor's only
+  // structural terrain edit; painting is done in blend mode so a layer does not
+  // wipe the ones under it — a shipped map holds several at one vertex.
+  //
+  // Per layer: the value most of the map shares goes on as one rectangle, and
+  // the rest vertex by vertex. Same shape as the tiers, same reason.
+  // No arming up front: the editor refuses to arm the paint brush until a tile
+  // is chosen, and choosing one in the palette arms it. So the tile comes first.
+  // Painting a Water tile carves its bed; the ground here is already final.
+  await page.locator('#rivercarve').setChecked(false);
+  let tileStrokes = 0;
+  for (const layer of targetLayers) {
+    await pickTile(page, layer.path);
+    await expect.poll(() => page.evaluate(() => window.view.paintReady()), { timeout: 120_000 }).toBe(true);
+
+    const byValue = new Map<number, number[]>();
+    for (let i = 0; i < layer.mask.length; i++) {
+      const v = layer.mask[i]!;
+      if (!byValue.has(v)) byValue.set(v, []);
+      byValue.get(v)!.push(i);
+    }
+    const groups = [...byValue].sort((a, b) => b[1].length - a[1].length);
+    const [wholeValue, wholeVerts] = groups[0]!;
+
+    await setTileStrength(page, wholeValue, true);
+    await armBrush(page, 'paint', 'rect');
+    await dragTiles(page, [0, 0], [tiles - 1, tiles - 1], 12);
+    tileStrokes += wholeVerts.length;
+
+    await armBrush(page, 'paint', 'vertex');
+    for (const [value, verts] of groups.slice(1)) {
+      await setTileStrength(page, value, true);
+      for (const v of verts) {
+        const [px, py] = pixels[v]!;
+        await page.mouse.move(px, py);
+        await page.mouse.down();
+        await page.mouse.up();
+        tileStrokes++;
+      }
+    }
+    const name = layer.path.replace('/mapobjects/_(advmaptile)/', '');
+    console.log(`  ${name}: rect at ${wholeValue} (${wholeVerts.length}) + ${layer.mask.length - wholeVerts.length} vertices`);
+  }
+  console.log(`textures: ${targetLayers.length} layers, ${tileStrokes} vertex writes`);
+
+  await settle(page);
   await page.locator('#save').click();
   await expect(page.locator('#save')).toBeDisabled({ timeout: 120_000 });
 
@@ -266,5 +322,21 @@ test('the shape of C1M1, rebuilt by clicking', async () => {
     }
   }
   expect(wrongRiver, 'river cells that differ').toEqual([]);
+
+  const builtLayers = readTextureLayers(parseTerrain(builtBin));
+  const wrongLayer: string[] = [];
+  for (const layer of targetLayers) {
+    const mate = builtLayers.find((l) => (l.path ?? '').toLowerCase() === layer.path.toLowerCase());
+    if (!mate) { wrongLayer.push(`no layer for ${layer.path}`); continue; }
+    const mask = readMask(parseTerrain(builtBin), mate);
+    let bad = 0, first = '';
+    for (let i = 0; i < layer.mask.length; i++) {
+      if (mask[i] === layer.mask[i]) continue;
+      if (!bad) first = `(${i % V},${(i / V) | 0}) built ${mask[i]} vs ${layer.mask[i]}`;
+      bad++;
+    }
+    if (bad) wrongLayer.push(`${layer.path}: ${bad} weights differ, first ${first}`);
+  }
+  expect(wrongLayer, 'texture layers that differ').toEqual([]);
   expect(TIER_STEP).toBe(16); // the encoding the plan above assumes
 });

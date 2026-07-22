@@ -78,14 +78,6 @@ export class TerrainDoc {
   }
 
   /**
-   * Mark vertices as river in the half-tile plane.
-   *
-   * This plane is what makes a river a river to the game — the tile texture
-   * alone is just paint. It sits on a (2V-1)² grid, so a vertex (x,y) lands at
-   * (2y, 2x) and the cell between two river vertices gets the midpoint between
-   * them, which is what keeps a stroke connected rather than dotted.
-   */
-  /**
    * Write the river plane directly, cell by cell, at a chosen strength.
    *
    * The plane is finer than the vertex grid and graded rather than binary, and
@@ -108,6 +100,14 @@ export class TerrainDoc {
     this.touched = true;
   }
 
+  /**
+   * Mark vertices as river in the half-tile plane.
+   *
+   * This plane is what makes a river a river to the game — the tile texture
+   * alone is just paint. It sits on a (2V-1)² grid, so a vertex (x,y) lands at
+   * (2y, 2x) and the cell between two river vertices gets the midpoint between
+   * them, which is what keeps a stroke connected rather than dotted.
+   */
   setRiver(verts: VertexList, on = true): void {
     const r = this.river;
     if (!r) return;
@@ -171,20 +171,25 @@ export class TerrainDoc {
   }
 
   /**
-   * Paint `tilePath` over `verts`.
+   * Paint a tile into the layer masks.
    *
    * The shader composites layers by priority, so raising the target layer alone
    * would leave any higher-priority layer painted on top of it. A hard brush
    * therefore clears every other layer at those vertices — paint replaces.
    *
-   * @param strength 0..255 opacity written into the target layer.
+   * `exclusive` is how a brush stroke normally behaves: this tile now, the
+   * others gone from those vertices. Real ground is not like that — a shipped
+   * map blends layers at one vertex, and C1M1's weights sum to 510 there as
+   * often as not — so `exclusive: false` writes this layer's weight and leaves
+   * its neighbours' alone, which is the only way to build a blend.
    */
-  paintTile(tilePath: string, verts: VertexList, strength = 255): void {
+  paintTile(tilePath: string, verts: VertexList, strength = 255, exclusive = true): void {
     const target = this.layers.findIndex((l) => l.path === tilePath);
     if (target < 0) throw new Error(`this map has no layer for ${tilePath}`);
     const s = Math.max(0, Math.min(255, Math.round(strength)));
     for (const v of verts) {
       if (v < 0 || v >= this.N) continue;
+      if (!exclusive) { this.masks[target]![v] = s; continue; }
       for (let i = 0; i < this.masks.length; i++) {
         this.masks[i]![v] = i === target ? s : 0;
       }

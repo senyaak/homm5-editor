@@ -1098,7 +1098,7 @@ ipcMain.handle('object:remove', async (_e: IpcMainInvokeEvent, { id }: RemoveObj
 ipcMain.handle('terrain:paint', async (_e: IpcMainInvokeEvent, p: PaintTilePayload): Promise<PaintTileResult> => {
   if (!session) throw new Error('no map loaded');
   record(session, 'paint ground', { floors: [p.floor] },
-    () => terrainDoc(session!, p.floor).paintTile(p.tile, p.verts, p.strength ?? 255));
+    () => terrainDoc(session!, p.floor).paintTile(p.tile, p.verts, p.strength ?? 255, p.exclusive ?? true));
   return { ok: true };
 });
 

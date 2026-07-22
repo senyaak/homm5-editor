@@ -171,7 +171,7 @@ bed — right when drawing a river by hand, wrong on a surface already at its
 final height, hence the carve toggle. C1M1 barely digs its bed anyway: only
 49.8% of wet vertices sit below their four neighbours, by 0.058 on average.
 
-### Heights, tiers and rivers: done ✅
+### Heights, tiers, rivers and textures: done ✅
 
 `e2e/reconstruct-c1m1.spec.ts` rebuilds the shape by clicking — a blank 96×96
 through the New Map dialog, then one Vertex-brush stroke per vertex with the
@@ -197,6 +197,22 @@ brush stuck on; here it put a stroke twice on a handful of vertices out of 9409,
 a different handful each run (15, then 2). A move with no button held now ends
 the stroke and flushes it. Runs are exact and, with the stray strokes gone,
 roughly twice as fast (340s against 737s for the height pass).
+
+Textures needed three things the brush did not have. A **weight**, because the
+masks are graded (grass alone holds 78 distinct values); a **blend** mode,
+because a stroke replaced every other layer at the vertex while a real map keeps
+several — C1M1's weights sum to 510 at a vertex as often as not; and
+**vertex-sized** painting, for the same reason heights needed it. Layers are
+added by picking a tile the map does not carry, which is the editor's one
+structural terrain edit. 12 layers, 112 908 vertex writes, all matching.
+
+Two things bit on the way, both real bugs rather than test scaffolding. Painting
+a Water tile **carved its bed and marked the river plane even at strength 0**, so
+erasing water dug a trench — both are the physical half of a water stroke and now
+follow the carve toggle. And a stroke hands its edit to the main process without
+waiting, so at this scale **the backlog outlived the Save**: the file was written,
+then thousands of queued commits marked the map dirty again. The renderer now
+publishes how many commits are in flight, and the harness waits for quiet.
 
 What the first full run cost, and is worth remembering: 18 of those 9409
 vertices came out wrong, every one beside a tall step. The pick asked the

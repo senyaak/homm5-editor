@@ -154,6 +154,57 @@ export async function clickCell(page: Page, x: number, y: number): Promise<void>
   await page.mouse.up();
 }
 
+/** Set what the tile brush writes: a weight, and whether it blends or replaces. */
+export async function setTileStrength(page: Page, value: number, blend = true): Promise<void> {
+  await page.locator('#tilestrength').fill(String(value));
+  await page.locator('#tilestrength').dispatchEvent('input');
+  await page.locator('#tilesolo').setChecked(blend);
+}
+
+/**
+ * Pick a ground tile in the palette, by its (AdvMapTile) path.
+ *
+ * Selecting a tile the map has no layer for adds one on the spot, which is how
+ * the editor exposes the only structural terrain edit there is — so this is also
+ * how a reconstruction gets its layers. The catalogue is consulted to learn
+ * which category the tile lives in and what it is called; the clicking is real.
+ */
+export async function pickTile(page: Page, path: string): Promise<void> {
+  const info = await page.evaluate(async (want) => {
+    const { tiles } = await window.editor.listTiles();
+    const t = tiles.find((x) => x.path.toLowerCase() === want.toLowerCase());
+    return t ? { name: t.name, category: t.category } : null;
+  }, path);
+  if (!info) throw new Error(`no tile in the catalogue for ${path}`);
+
+  if (!(await page.locator('#palette').isVisible())) await page.locator('#palbtn').click();
+  await expect(page.locator('#palette')).toBeVisible();
+  await page.locator('#pal-cat').selectOption({ value: info.category });
+  // Exact text, not a substring: "Ground" is inside "DarkGround" and "Grass"
+  // inside "Dark_Grass", so a loose match silently picks a neighbouring tile and
+  // every later layer lands in the wrong plane.
+  const swatch = page.locator('#pal-grid .tile')
+    .filter({ has: page.getByText(info.name, { exact: true }) })
+    .first();
+  await swatch.click();
+  // The readout is "<name> · priority N", so the name must be its first field —
+  // "contains" would accept the neighbour this whole dance exists to avoid.
+  await expect
+    .poll(() => page.locator('#pal-sel').textContent(), { timeout: 30_000 })
+    .toMatch(new RegExp('^' + info.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ' · '));
+}
+
+/**
+ * Wait until every stroke has reached the main process.
+ *
+ * Strokes hand their edit over without waiting, so the file lags the screen. At
+ * a few clicks that is invisible; at a hundred thousand the backlog outlives a
+ * Save, which then runs against a map that is dirtied again a moment later.
+ */
+export async function settle(page: Page, timeout = 300_000): Promise<void> {
+  await expect.poll(() => page.evaluate(() => window.view.pending()), { timeout }).toBe(0);
+}
+
 /** Create a blank map through the New Map dialog, as a person would. */
 export async function newMap(page: Page, name: string, size: string): Promise<void> {
   await page.locator('#newmapbtn').click();

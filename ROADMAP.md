@@ -138,6 +138,16 @@ placing new ones from a palette.
 - [x] Raise (plateau, +2.0 with cut edges, flag 32) and Lower (pit to 0.0,
       flag 0, floods) beside the smooth Bulk and Dig ✅
 - [x] Plateau (level to the starting tier) and the Rect brush size ✅
+- [x] **Tile paint weight and blend mode** (2026-07-22): a stroke can write a
+      chosen weight into one layer and leave the layers under it alone. Paint
+      used to mean "this tile at full strength, the others gone" — real ground
+      blends, and C1M1's weights sum to 510 at a vertex as often as not. Vertex
+      size works for painting too, and picking a tile the map lacks still adds
+      its layer ✅
+- [x] **Painting water carves only when asked** (2026-07-22): marking the river
+      plane and sinking the bed are the physical half of a water stroke, now
+      tied to the same "carve" toggle and skipped at strength 0. Erasing water
+      used to dig anyway, and a stroke at zero weight still marked the plane ✅
 - [x] **A lost pointerup no longer leaves the brush painting** (2026-07-22): a
       move with no button held ends the stroke and flushes it. Before, a
       swallowed pointerup (focus change, event lost under load) left `painting`
