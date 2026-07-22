@@ -20,18 +20,33 @@ down, not silently skipped.
 
 ## The loop (per mission)
 
+A mission is rebuilt and accepted **in stages, in this order — terrain, objects,
+map settings, Lua** — each with its own comparison, because a stage that is not
+yet reproduced would otherwise drown the next one's report. Whatever a stage
+cannot express is a tool we have not built; we build it and re-run, rather than
+lowering the bar. Everything learned on the way is written down as we go, and the
+whole set ends in `docs/RECIPES.md` — how to actually do each thing.
+
 1. **Extract** the original mission from `UserMODs/All_campaigns.data.h5u`
-   (`Maps/Scenario/<CxMy>/…`) into `_tmp/fixtures/<CxMy>/` — the reference.
-2. **Reconstruct from scratch** by driving the *real* handler pipeline headless
-   (the same code the UI calls), as a script:
-   `New Map → paint/sculpt terrain → place & rotate objects → set params (by
-   schema path) → create referenced entities (+names) → write Lua → Pack .h5m`.
-3. **Diff** the reconstruction against the original (semantic, normalized — see
-   below) → a **gap report**: what is missing, wrong, or not yet expressible.
-4. **Close the gaps** — implement the missing editor capability, re-run, until
-   the diff is empty or every remaining item is on the deferred list.
-5. **Pack** `.h5m`; **load in the real game** (manual — the maintainer does this)
-   and confirm it plays and matches the original mission.
+   (`Maps/Scenario/<CxMy>/…`) into `_tmp/fixtures/<CxMy>/` — the reference:
+   `npm run extract-fixture C1M1`.
+2. **Reconstruct from scratch through the app itself**, driven by Playwright —
+   the same clicks a person makes, in the running editor:
+   `New Map → paint/sculpt terrain → place & rotate objects → set params →
+   create referenced entities (+names) → write Lua → Pack .h5m`. Driving the
+   handlers headless would prove the writers work; driving the UI proves the
+   *editor* works, which is the claim being tested. It also means the harness
+   needs tile-level addressing (tile → screen, scrolling, tool selection) — one
+   layer, reused by all thirty missions.
+3. **Diff** the reconstruction against the original, per stage → a **gap report**:
+   what is missing, wrong, or not yet expressible.
+   Terrain: `npm run diff-terrain _tmp/fixtures/C1M1 <workspace>`.
+4. **Close the gaps** — implement or fix the missing editor capability, re-run,
+   until the diff is empty. A difference we cannot reproduce means the tools are
+   wrong or missing, not that the difference is acceptable.
+5. **Pack** `.h5m`. Loading in the real game comes at the end of a *campaign*,
+   not per mission: rebuilding a map that already works proves nothing on its
+   own — the point is that the editor can produce it.
 6. **Document** everything new: format details into the relevant `docs/*.md`,
    editor capabilities into `ROADMAP.md`, and cross-check the fixture into the
    round-trip suite.
@@ -39,15 +54,19 @@ down, not silently skipped.
 The reconstruction script for a mission is itself the e2e test: it re-runs on
 every change and must keep passing, so later missions can't regress earlier ones.
 
-## What "match" means (semantic, not byte)
+## What "match" means
 
-A from-scratch map can never be byte-identical to the original — object ids are
-fresh GUIDs, element ordering and float formatting differ. So the comparison is
-**normalized and semantic**, per subsystem:
+The target is **1:1 in content**. Identity of the *bytes* is not reachable for
+the XML — object ids are fresh GUIDs, element order and float formatting differ —
+so the map document is compared normalized and semantically. `GroundTerrain.bin`
+has no such excuse: it is a fixed grid of values, and every value should end up
+the same. Per subsystem:
 
 - **Map params** — the whole `<AdvMapDesc>` scalar/enum/ref set (our schema
   already enumerates it): equal after normalizing whitespace and numeric form.
-- **Terrain** — dimensions, per-tile texture/layer and height, rivers/roads.
+- **Terrain** — every plane equal value for value: layer set and each weight
+  mask, heights, ground flags, passability, the river plane
+  (`tools/diff-terrain.ts`).
 - **Objects** — matched by a normalized identity (type + Shared + position +
   rotation + the type's key params), **not** by GUID or file order.
 - **Players / teams / objectives / rumours** — structural equality.
@@ -84,7 +103,7 @@ mission, simplest). Mark `✅ done` / `🔨 in progress` / `⬜ todo`; only one
 assembly (`⬜ .h5c`) before moving to the next campaign.
 
 ```
-C1: [ ] C1M1  [ ] C1M2  [ ] C1M3  [ ] C1M4  [ ] C1M5   → [ ] C1.h5c
+C1: [🔨] C1M1  [ ] C1M2  [ ] C1M3  [ ] C1M4  [ ] C1M5   → [ ] C1.h5c
 C2: [ ] C2M1  [ ] C2M2  [ ] C2M3  [ ] C2M4  [ ] C2M5   → [ ] C2.h5c
 C3: [ ] C3M1  [ ] C3M2  [ ] C3M3  [ ] C3M4  [ ] C3M5   → [ ] C3.h5c
 C4: [ ] C4M1  [ ] C4M2  [ ] C4M3  [ ] C4M4  [ ] C4M5   → [ ] C4.h5c
@@ -93,6 +112,29 @@ C6: [ ] C6M1  [ ] C6M2  [ ] C6M3  [ ] C6M4  [ ] C6M5   → [ ] C6.h5c
 ```
 
 Final checkpoint: all six campaigns assembled and playable — parity reached.
+
+## C1M1 — what it is made of
+
+96×96, one floor, no underground. The map document is `C1M1.xdb`, not `map.xdb`
+(the name is free; `map-tag.xdb` binds it by href), and the `name.txt` /
+`description.txt` it references are **not in the archive** — a campaign mission
+takes its texts from `All_campaigns.texts_en.h5u`. Parity here is by
+functionality, not by filename.
+
+| | |
+|---|---|
+| objects | 2645 — 2603 `AdvMapStatic`, 15 monsters, 13 treasures, 5 dwellings, 4 signs, 3 buildings, 1 hero, 1 garrison |
+| terrain | 12 tile layers (Grass ×5, Dirt ×2, Sand, Water, Road ×2), rivers on 6.2% of the half-tile plane |
+| the rest | 4 Lua scripts + their `.xdb` wrappers, `PWL.(Texture).dds`, regions with triggers, ambient light ref, moons/weather/wind/birds, objectives, rumours, start scene |
+
+**Terrain gap report** (blank 96×96 vs the original — `npm run diff-terrain`):
+
+- 11 tile layers to add (`addTextureLayer` exists — the count should close), and
+  the original spells tile paths lowercase where our blank does not.
+- Every height differs, up to 16.8 — expected, that is the sculpting.
+- Ground flags: the map is tiered (48 = tier 3) where a blank is flat 16.
+- **Passability plane absent from a blank entirely** — inserting a plane is not
+  implemented (`docs/TERRAIN_FORMAT.md`). First real tool gap of this stage.
 
 ## Milestone 0 — the one missing primitive: New Map
 

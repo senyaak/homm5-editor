@@ -26,6 +26,8 @@
     "test-tree": "node tools/test-tree.ts",
     "test-history": "node tools/test-history.ts",
     "pak": "node tools/pak-cli.js",
+    "extract-fixture": "node tools/extract-fixture.ts",
+    "diff-terrain": "node tools/diff-terrain.ts",
     "unpack-data": "node tools/unpack-data.ts",
     "typecheck": "tsc --noEmit",
     "test": "node tools/test-all.ts",

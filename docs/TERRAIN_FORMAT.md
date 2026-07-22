@@ -247,12 +247,34 @@ pristine blanks via `HOMM5_BLANKS` or a dir arg — that all seven are identical
 > the paint brush). The **simple structure is the canonical New Map output** and
 > the one we generate.
 
+## What a blank does NOT carry (found reconstructing C1M1)
+
+A shipped mission's file holds more planes than a fresh one, so "New Map then
+paint it" cannot reach an authored map by overwriting alone:
+
+| | blank 96×96 | C1M1 (96×96) |
+|---|---|---|
+| framed arrays | 4 | 16 |
+| texture layers | 1 (Grass) | 12 |
+| u8 planes after height | 2 — ground flags, zero | 3 — **plus passability** |
+| file length | 103 384 | 217 340 |
+
+Layers can be added (`addTextureLayer`), so the layer count closes. The
+**passability plane does not exist in a blank at all** and inserting a whole
+plane is not implemented — `writeTerrain` only overwrites planes that are already
+there. Until it is, a from-scratch map cannot express "this tile is blocked",
+which the reference records explicitly (it is authored, not derived — see above).
+
+**Tile paths differ in case between maps and the engine takes either.** C1M1
+stores them lowercased (`/mapobjects/_(advmaptile)/grass/grass.xdb`) while the
+editor's own blank stores the asset's own spelling
+(`/MapObjects/_(AdvMapTile)/Grass/Grass.xdb`). Compare tile references
+case-insensitively; `tools/diff-terrain.ts` reports a case-only difference on its
+own line rather than as a missing tile.
+
 ## Not implemented
 
-- **Adding a texture layer to an existing map** — inserting a new mask array plus
-  its tile-path string into the stream and recomputing the cumulative header
-  counters. Editing an existing layer's mask, heights and flags is done
-  (`writeTerrain`), and creating a whole blank file is done
-  (`buildBlankTerrain`), but growing the layer set of an authored map is not.
+- **Inserting a plane into an existing file** — see above: needed for
+  passability on a from-scratch map.
 - **`UndergroundTerrain.bin` for a from-scratch second floor** — same container,
   wired up when New Map's "two level" option is built.
