@@ -28,6 +28,7 @@
     "pak": "node tools/pak-cli.js",
     "extract-fixture": "node tools/extract-fixture.ts",
     "diff-terrain": "node tools/diff-terrain.ts",
+    "terrain-shape": "node tools/terrain-shape.ts",
     "unpack-data": "node tools/unpack-data.ts",
     "typecheck": "tsc --noEmit",
     "test": "node tools/test-all.ts",
