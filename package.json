@@ -19,6 +19,7 @@
     "test-watch": "node tools/test-watch.ts",
     "mesh-audit": "node tools/mesh-audit.ts",
     "test-objects": "node tools/test-objects.ts",
+    "test-scene": "node tools/test-scene.ts",
     "test-registry": "node tools/test-registry.ts",
     "test-schema": "node tools/test-schema.ts",
     "test-objects-schema": "node tools/test-objects-schema.ts",

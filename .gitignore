@@ -10,6 +10,10 @@ renderer/app.js
 renderer/app.js.map
 renderer/harness.html
 
+# The editor's own scratch space: unpacked archives, undo history. Rebuildable,
+# and it holds game content, so it must never be committed.
+_tmp/
+
 # Playwright e2e artifacts (screenshots, traces, reports)
 test-results/
 playwright-report/

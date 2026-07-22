@@ -71,6 +71,15 @@ app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
 // folder. Defaults to the unpacked samples; overridable via HOMM5_DATA.
 const GAME_DATA = process.env.HOMM5_DATA || join(REPO_ROOT, 'samples', 'paks', 'data');
 
+// Scratch space: unpacked archives, undo history — everything the editor keeps
+// for itself. In the editor's own folder rather than the OS's app-data corner,
+// so it is findable, inspectable, and deletable without hunting for it. Nothing
+// in here is precious: it is all rebuildable from the archives it came from.
+const TMP_ROOT = join(REPO_ROOT, '_tmp');
+
+/** Unpacked archives, one folder per archive. */
+const WORKSPACES = join(TMP_ROOT, 'workspaces');
+
 /** The map currently open for editing, with everything derived at load time. */
 interface Session {
   /** Absolute path to the open map.xdb. */
@@ -175,12 +184,12 @@ function docsHash(s: Session): string {
   return h.digest('hex');
 }
 
-/** Where a map's history lives: beside the app's own data, never in the map. */
+/** Where a map's history lives: in the editor's own scratch dir, never in the map. */
 function historyPathFor(mapDir: string): string {
   // NOT inside the map folder: packProject sweeps every file in there into the
   // .h5m, and an editor's undo log has no business shipping inside a map.
   const key = createHash('sha1').update(mapDir).digest('hex').slice(0, 16);
-  return join(app.getPath('userData'), 'history', `${key}.json`);
+  return join(TMP_ROOT, 'history', `${key}.json`);
 }
 
 function saveHistory(s: Session): void {
@@ -384,7 +393,7 @@ ipcMain.handle('map:new', async (_e: IpcMainInvokeEvent, p: NewMapPayload): Prom
 });
 
 /**
- * The working folder for an archive: one per archive, beside the app's own data.
+ * The working folder for an archive: one per archive, under the editor's _tmp.
  *
  * NOT beside the archive. A map is normally opened from the game's Maps folder,
  * and unpacking into it drops a folder the game then tries to read as a second
@@ -395,7 +404,7 @@ ipcMain.handle('map:new', async (_e: IpcMainInvokeEvent, p: NewMapPayload): Prom
  */
 function workspaceFor(archivePath: string): string {
   const key = createHash('sha1').update(resolve(archivePath).toLowerCase()).digest('hex').slice(0, 16);
-  return join(app.getPath('userData'), 'workspaces', `${basename(archivePath).replace(/[^\w.-]+/g, '_')}-${key}`);
+  return join(WORKSPACES, `${basename(archivePath).replace(/[^\w.-]+/g, '_')}-${key}`);
 }
 
 /** Is this workspace still the unpacking of THIS archive, as it stands now? */
@@ -425,10 +434,9 @@ const KEEP_WORKSPACES = 8;
  * the work away.
  */
 function pruneWorkspaces(keep: string): void {
-  const root = join(app.getPath('userData'), 'workspaces');
-  if (!existsSync(root)) return;
-  const dirs = readdirSync(root)
-    .map((n) => join(root, n))
+  if (!existsSync(WORKSPACES)) return;
+  const dirs = readdirSync(WORKSPACES)
+    .map((n) => join(WORKSPACES, n))
     .filter((d) => d !== keep && statSync(d).isDirectory())
     .map((d) => ({ d, at: statSync(d).mtimeMs }))
     .sort((a, b) => b.at - a.at);

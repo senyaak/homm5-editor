@@ -312,6 +312,32 @@ function followHref(
   return doc ? { xml: doc, dir: dirOf(rel) } : null;
 }
 
+/**
+ * Split a list block into its top-level `<Item>` elements, attributes and body
+ * apart.
+ *
+ * Needed wherever an item can be inline: the href only says "it is in here",
+ * and the "here" that matters is the item, not the file. Depth-counted rather
+ * than matched non-greedily, since an item's body can hold `<Item>` lists of
+ * its own.
+ */
+export function listItems(block: string): { attrs: string; body: string }[] {
+  const out: { attrs: string; body: string }[] = [];
+  const re = /<Item\b([^>]*?)(\/?)>|<\/Item>/g;
+  let m: RegExpExecArray | null, depth = 0, start = 0, attrs = '';
+  while ((m = re.exec(block))) {
+    if (m[0] === '</Item>') {
+      if (depth > 0 && --depth === 0) out.push({ attrs, body: block.slice(start, m.index) });
+    } else if (m[2] === '/') {
+      if (depth === 0) out.push({ attrs: m[1] ?? '', body: '' }); // <Item …/>
+    } else if (depth++ === 0) {
+      attrs = m[1] ?? '';
+      start = re.lastIndex;
+    }
+  }
+  return out;
+}
+
 /** Parse a `<tag><x><y><z></tag>` vector; supports scientific notation. */
 function readVec3(xml: string, tag: string): [number, number, number] | null {
   const n = '([-+.\\deE]+)';
@@ -385,9 +411,15 @@ function effectGeom(
 
   // The first instance is enough for a placeholder; effects that layer several
   // are still one object on the map.
-  const instHref = effect.xml.match(/<Instances>[\s\S]*?<Item href="([^"]+)"/)?.[1];
+  const block = effect.xml.match(/<Instances>([\s\S]*?)<\/Instances>/)?.[1];
+  const item = block ? listItems(block)[0] : undefined;
+  const instHref = item?.attrs.match(/href="([^"]+)"/)?.[1];
   if (!instHref) return null;
-  const instance = follow(effect.xml, effect.dir, instHref);
+  // Inline instances live in this item, not in the file: reading the file works
+  // out for the FIRST instance by luck and picks the wrong one for any other.
+  const instance = instHref.startsWith('#')
+    ? { xml: item!.body, dir: effect.dir }
+    : follow(effect.xml, effect.dir, instHref);
   if (!instance) return null;
   const inst = instance.xml;
 
@@ -468,8 +500,17 @@ function effectModelGeoms(
   const block = effect.xml.match(/<Models>([\s\S]*?)<\/Models>/)?.[1];
   if (!block) return [];
   const out: GeomData[] = [];
-  for (const m of block.matchAll(/<Item href="([^"]+)"/g)) {
-    const inst = followHref(assetRoot, effect.xml, effect.dir, m[1]!);
+  for (const item of listItems(block)) {
+    const href = item.attrs.match(/href="([^"]+)"/)?.[1];
+    if (!href) continue;
+    // An inline ModelInstance is written INSIDE this <Item>, so the item's own
+    // body is the document to read the transform from — NOT the whole effect
+    // file. Reading the file instead took the first <Scale> in it, which in an
+    // effect is a particle's: the Mystical Garden's gnome came out at the
+    // particle halo's scale of 10 and stood over half the map.
+    const inst = href.startsWith('#')
+      ? { xml: item.body, dir: effect.dir }
+      : followHref(assetRoot, effect.xml, effect.dir, href);
     if (!inst) continue;
     const modelHref = inst.xml.match(/<Model href="([^"]+)"/)?.[1];
     if (!modelHref) continue;
