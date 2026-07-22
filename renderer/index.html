@@ -504,6 +504,7 @@
         <option value="ramp">Ramp (walkable step)</option>
         <option value="level">Plateau (level to here)</option>
         <option value="kind">Ground kind (tier)</option>
+        <option value="river">River plane</option>
         <option value="mask">Mask (block)</option>
         <option value="erase">Erase (unblock)</option>
       </select>
@@ -534,6 +535,14 @@
       </select>
       <label id="kindrampwrap" title="ramp: walkable half-step instead of a wall">
         <input id="kindramp" type="checkbox"> ramp
+      </label>
+      <!-- The river plane is finer than the tile grid and graded, so it gets its
+           own strength; carving the bed is optional because ground that is
+           already at its final height must not be dug. -->
+      <input id="riverstrength" type="number" min="0" max="255" step="5" value="255"
+             title="river strength 0..255; 0 erases">
+      <label id="rivercarvewrap" title="also sink the bed under the painted cells">
+        <input id="rivercarve" type="checkbox"> carve
       </label>
       <label id="brushtensionwrap" title="tension: 1 tapers to the rim, 0 lifts the whole brush evenly">
         pull <input id="brushtension" type="range" min="0" max="1" step="0.05" value="1">

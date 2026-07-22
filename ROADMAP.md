@@ -138,6 +138,14 @@ placing new ones from a palette.
 - [x] Raise (plateau, +2.0 with cut edges, flag 32) and Lower (pit to 0.0,
       flag 0, floods) beside the smooth Bulk and Dig ✅
 - [x] Plateau (level to the starting tier) and the Rect brush size ✅
+- [x] **River-plane brush** (2026-07-22): paints the half-tile water plane on
+      its own grid, at a chosen strength, with carving optional. The tile-driven
+      river brush writes full strength at vertex positions, which draws a river
+      and cannot reproduce one: of C1M1's 2317 wet cells 1815 sit BETWEEN
+      vertices and they carry 134 distinct values. Carving is a toggle because
+      ground already at its final height must not be dug — and in C1M1 the bed
+      is barely dug at all (49.8% of wet vertices below their neighbours, mean
+      0.058) ✅
 - [x] **Ground-kind brush** (2026-07-22): paints the tier (and the ramp bit)
       without moving the ground. Every other tool changes a tier by moving it —
       Raise adds a step and takes the tier along, Lower digs to 0 and calls it

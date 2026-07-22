@@ -163,12 +163,15 @@ the reconstruction can compute its strokes instead of guessing them.
 
 ### Order within the terrain stage
 
-Heights → **kinds** → rivers → textures → passability, and the first two are in
-that order for a reason: every sculpting tool rewrites the flag of the ground it
-moves, while the ground-kind brush leaves the height alone. Kinds first would
-undo themselves.
+Heights → **kinds** → **rivers** → textures → passability, and the order is not
+arbitrary. Every sculpting tool rewrites the flag of the ground it moves, while
+the ground-kind brush leaves the height alone, so kinds first would undo
+themselves. Rivers come after both because painting one normally *carves* its
+bed — right when drawing a river by hand, wrong on a surface already at its
+final height, hence the carve toggle. C1M1 barely digs its bed anyway: only
+49.8% of wet vertices sit below their four neighbours, by 0.058 on average.
 
-### Heights and tiers: done ✅
+### Heights, tiers and rivers: done ✅
 
 `e2e/reconstruct-c1m1.spec.ts` rebuilds the shape by clicking — a blank 96×96
 through the New Map dialog, then one Vertex-brush stroke per vertex with the
@@ -182,6 +185,10 @@ plus 8 ramp vertices on each of tiers 2 and 3 — so one rectangle stroke lays t
 kind that 87% of the map shares and 1214 vertices are painted one at a time.
 All 9409 kinds match, and the heights are re-checked afterwards, which is also
 what proves the kind brush moved nothing.
+
+The river plane needed its own addressing before any of it was reachable: it
+lives on a (2V-1)² grid and is graded, and of C1M1's 2317 wet cells **1815 sit
+between vertices**, carrying **134 distinct values**. All 2317 now match.
 
 What the first full run cost, and is worth remembering: 18 of those 9409
 vertices came out wrong, every one beside a tall step. The pick asked the

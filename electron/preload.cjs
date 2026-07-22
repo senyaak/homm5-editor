@@ -49,6 +49,7 @@ const api = {
   listTiles: () => ipcRenderer.invoke('terrain:tiles'),
   paintTile: (p) => ipcRenderer.invoke('terrain:paint', p),
   paintRiver: (p) => ipcRenderer.invoke('terrain:paint-river', p),
+  setRiverCells: (p) => ipcRenderer.invoke('terrain:river-cells', p),
   setMask: (p) => ipcRenderer.invoke('terrain:mask', p),
   sculpt: (p) => ipcRenderer.invoke('terrain:sculpt', p),
   addLayer: (p) => ipcRenderer.invoke('terrain:add-layer', p),

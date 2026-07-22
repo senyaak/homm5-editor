@@ -23,8 +23,8 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { join } from 'node:path';
 import { launchEditor, REPO_ROOT } from './launch.ts';
 import type { Launched } from './launch.ts';
-import { armBrush, dragTiles, newMap, planView, setGroundKind } from './tiles.ts';
-import { parseTerrain, readHeights, readGroundFlags, tierOf, RAMP_BIT, TIER_STEP } from '../src/terrain.ts';
+import { armBrush, dragTiles, newMap, planView, setGroundKind, setRiverStrength } from './tiles.ts';
+import { parseTerrain, readHeights, readGroundFlags, readWaterPlane, tierOf, RAMP_BIT, TIER_STEP } from '../src/terrain.ts';
 
 let ed: Launched;
 
@@ -55,6 +55,7 @@ test('the shape of C1M1, rebuilt by clicking', async () => {
   const fixture = parseTerrain(readFileSync(FIXTURE));
   const target = readHeights(fixture);
   const targetFlags = readGroundFlags(fixture)!;
+  const targetRiver = readWaterPlane(fixture)!;
 
   await newMap(page, NAME, '96');
   await planView(page);
@@ -162,6 +163,47 @@ test('the shape of C1M1, rebuilt by clicking', async () => {
   }
   console.log(`  ${painted} vertices painted one at a time`);
 
+  // --- the rivers ----------------------------------------------------------
+  //
+  // The river plane is half-tile and graded, so it is painted on its own grid at
+  // its own strength, grouped by value the way the height forces were. Carving
+  // is off: this map's bed is barely dug (only half its wet vertices sit below
+  // their neighbours, by 0.058 on average) and the ground is already final.
+  const byStrength = new Map<number, number[]>();
+  for (let i = 0; i < targetRiver.data.length; i++) {
+    const v = targetRiver.data[i]!;
+    if (!v) continue;
+    if (!byStrength.has(v)) byStrength.set(v, []);
+    byStrength.get(v)!.push(i);
+  }
+  const wet = [...byStrength.values()].reduce((n, a) => n + a.length, 0);
+  console.log(`rivers: ${wet} cells, ${byStrength.size} distinct strengths`);
+
+  const W = targetRiver.W;
+  const cellPixels = await page.evaluate((n) => {
+    window.view.fit();
+    const out: [number, number][] = [];
+    for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+      const at = window.view.cellToScreen(x, y);
+      out.push([at.x, at.y]);
+    }
+    return out;
+  }, W);
+
+  await armBrush(page, 'river', '1');
+  let cells = 0;
+  for (const [value, list] of byStrength) {
+    await setRiverStrength(page, value, false);
+    for (const c of list) {
+      const [px, py] = cellPixels[c]!;
+      await page.mouse.move(px, py);
+      await page.mouse.down();
+      await page.mouse.up();
+      cells++;
+    }
+  }
+  console.log(`  ${cells} river cells painted`);
+
   await page.locator('#save').click();
   await expect(page.locator('#save')).toBeDisabled({ timeout: 120_000 });
 
@@ -201,5 +243,14 @@ test('the shape of C1M1, rebuilt by clicking', async () => {
     }
   }
   expect(wrongKind, 'vertices whose ground kind differs').toEqual([]);
+
+  const builtRiver = readWaterPlane(parseTerrain(builtBin))!;
+  const wrongRiver: string[] = [];
+  for (let i = 0; i < targetRiver.data.length && wrongRiver.length < 20; i++) {
+    if (builtRiver.data[i] !== targetRiver.data[i]) {
+      wrongRiver.push(`cell (${i % W},${(i / W) | 0}) built ${builtRiver.data[i]} vs ${targetRiver.data[i]}`);
+    }
+  }
+  expect(wrongRiver, 'river cells that differ').toEqual([]);
   expect(TIER_STEP).toBe(16); // the encoding the plan above assumes
 });

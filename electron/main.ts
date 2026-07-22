@@ -56,7 +56,7 @@ import type {
   MapSaveResult, MapPackResult, TerrainTilesResult, MapStatusResult, OpenMapDialogResult,
   NewMapPayload, NewMapResult, OpenArchivePayload, OpenArchiveResult,
   ExternalChange, PaintTilePayload, PaintTileResult, SculptPayload, SculptResult,
-  AddLayerPayload, AddLayerResult, PaintRiverPayload, MaskPayload, UndoResult, HistoryState,
+  AddLayerPayload, AddLayerResult, PaintRiverPayload, RiverCellsPayload, MaskPayload, UndoResult, HistoryState,
 } from './ipc.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -1126,6 +1126,14 @@ ipcMain.handle('terrain:paint-river', async (_e: IpcMainInvokeEvent, p: PaintRiv
     doc.setRiver(p.verts);
     doc.setVertices(p.heightVerts, p.heights, null);
   });
+  return { ok: true };
+});
+
+// --- IPC: the river plane on its own, at a chosen strength ---
+ipcMain.handle('terrain:river-cells', async (_e: IpcMainInvokeEvent, p: RiverCellsPayload): Promise<PaintTileResult> => {
+  if (!session) throw new Error('no map loaded');
+  record(session, p.value ? 'paint river' : 'erase river', { floors: [p.floor] },
+    () => terrainDoc(session!, p.floor).setRiverCells(p.cells, p.value));
   return { ok: true };
 });
 

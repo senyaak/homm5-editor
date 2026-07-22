@@ -131,6 +131,29 @@ export async function setGroundKind(page: Page, tier: number, ramp = false): Pro
   await page.locator('#kindramp').setChecked(ramp);
 }
 
+/** Set what the River-plane brush writes: 0..255, where 0 erases. */
+export async function setRiverStrength(page: Page, value: number, carve = false): Promise<void> {
+  await page.locator('#riverstrength').fill(String(value));
+  await page.locator('#riverstrength').dispatchEvent('input');
+  await page.locator('#rivercarve').setChecked(carve);
+}
+
+/** Click one cell of the river plane — the half-tile grid. */
+export async function clickCell(page: Page, x: number, y: number): Promise<void> {
+  const p = await page.evaluate(([cx, cy, zoom]) => {
+    let at = window.view.cellToScreen(cx!, cy!);
+    if (!at.onScreen) {
+      window.view.zoom(zoom!);
+      window.view.focus(cx! / 2, cy! / 2);
+      at = window.view.cellToScreen(cx!, cy!);
+    }
+    return at;
+  }, [x, y, ZOOM_HALF_TILES]);
+  await page.mouse.move(p.x, p.y);
+  await page.mouse.down();
+  await page.mouse.up();
+}
+
 /** Create a blank map through the New Map dialog, as a person would. */
 export async function newMap(page: Page, name: string, size: string): Promise<void> {
   await page.locator('#newmapbtn').click();

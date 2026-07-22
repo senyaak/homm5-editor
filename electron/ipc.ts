@@ -360,6 +360,23 @@ export interface PaintRiverPayload {
 }
 
 /**
+ * Payload of `terrain:river-cells` — the river plane on its own.
+ *
+ * The river brush above bundles tile, plane and bed because drawing a river by
+ * hand wants all three. This one writes the plane and nothing else, at its own
+ * grid and its own strength: the plane is (2V-1)² and graded, so most of a real
+ * river neither lands on a vertex nor is fully opaque, and a surface already at
+ * its final height must not be dug.
+ */
+export interface RiverCellsPayload {
+  floor: number;
+  /** Indices into the (2V-1)² river plane. */
+  cells: number[];
+  /** 0..255, where 0 erases. */
+  value: number;
+}
+
+/**
  * Payload of `terrain:mask` — the original editor's Masks tab.
  *
  * Blocking is explicit and separate from everything else: water is impassable
@@ -539,6 +556,7 @@ export interface EditorApi {
   listTiles(): Promise<TerrainTilesResult>;
   paintTile(p: PaintTilePayload): Promise<PaintTileResult>;
   paintRiver(p: PaintRiverPayload): Promise<PaintTileResult>;
+  setRiverCells(p: RiverCellsPayload): Promise<PaintTileResult>;
   setMask(p: MaskPayload): Promise<PaintTileResult>;
   sculpt(p: SculptPayload): Promise<SculptResult>;
   addLayer(p: AddLayerPayload): Promise<AddLayerResult>;

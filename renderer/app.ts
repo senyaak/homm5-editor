@@ -3560,6 +3560,12 @@ interface ViewApi {
   vertexToScreen(x: number, y: number): TilePoint;
   /** Which vertex a click at these CSS pixels lands on — the app's own picking. */
   vertexAt(clientX: number, clientY: number): { x: number; y: number } | null;
+  /** Where to click for river-plane cell (x, y) — the half-tile grid. */
+  cellToScreen(x: number, y: number): TilePoint;
+  /** Which river cell a click at these CSS pixels lands on. */
+  cellAt(clientX: number, clientY: number): { x: number; y: number } | null;
+  /** Cells per side of the river plane, or 0 when no map is open. */
+  cells(): number;
   /** Tiles per side of the active floor, or 0 when no map is open. */
   size(): number;
 }
@@ -3610,6 +3616,15 @@ const view: ViewApi = {
     return worldToScreen((x + inset(x)) * U, (y + inset(y)) * U);
   },
   vertexAt(clientX, clientY) { return vertexAtClient(clientX, clientY); },
+  // Cells sit every half tile, and the outermost ring gets the same inward nudge
+  // as the vertices: on the boundary a ray can pass beside the mesh entirely.
+  cellToScreen(x, y) {
+    const last = world ? riverSide(activeFloor().V) - 1 : 0;
+    const inset = (v: number): number => (v === 0 ? 0.5 : v === last ? -0.5 : 0);
+    return worldToScreen((x + inset(x)) * (U / 2), (y + inset(y)) * (U / 2));
+  },
+  cellAt(clientX, clientY) { return riverCellAtClient(clientX, clientY); },
+  cells() { return world ? riverSide(activeFloor().V) : 0; },
   size() { return world ? activeFloor().V - 1 : 0; },
 };
 window.view = view;
@@ -3874,7 +3889,7 @@ let vertexMode = false;
 const keepsGroundKind = (flag: number): boolean => tierOf(flag) >= 2 || (flag & RAMP_BIT) !== 0;
 
 /** What a left-drag does. Mirrors the mode selector in the toolbar. */
-type BrushMode = 'paint' | 'bulk' | 'dig' | 'raise' | 'lower' | 'ramp' | 'level' | 'kind' | 'mask' | 'erase';
+type BrushMode = 'paint' | 'bulk' | 'dig' | 'raise' | 'lower' | 'ramp' | 'level' | 'kind' | 'river' | 'mask' | 'erase';
 let brushMode: BrushMode = 'paint';
 /** Height direction for the sculpt modes; 0 for the rest. */
 let sculptDir = 0;
@@ -3908,6 +3923,72 @@ function remeshFloor(fl: Floor3D): void {
   // The overlay is built from the terrain's triangles, which have just been
   // replaced — and sculpting changes what counts as a cliff anyway.
   refreshBlocked(fl);
+}
+
+// --- the river plane, painted directly --------------------------------------
+//
+// The plane lives on a (2V-1)² grid — twice the resolution of the vertices — and
+// its values are graded. The tile-driven river brush above writes full strength
+// at vertex positions, which draws a river fine and cannot reproduce one: of
+// C1M1's 2317 wet cells, 1815 sit between vertices and they hold 134 distinct
+// values. This mode addresses the plane on its own terms.
+
+/** Cells painted in the current stroke, as indices into the (2V-1)² plane. */
+const strokeCells = new Set<number>();
+
+/** Cells per side of the river plane for a V-vertex map. */
+const riverSide = (V: number): number => 2 * V - 1;
+
+/** The river cell nearest these client coordinates, or null when off the map. */
+function riverCellAtClient(clientX: number, clientY: number): { x: number; y: number } | null {
+  const p = groundPointAtClient(clientX, clientY);
+  if (!p) return null;
+  const W = riverSide(activeFloor().V);
+  // Cells sit every half tile, so the grid step is U/2.
+  const x = Math.round(p.x / (U / 2)), y = Math.round(p.y / (U / 2));
+  if (x < 0 || y < 0 || x >= W || y >= W) return null;
+  return { x, y };
+}
+
+/** Paint the river plane under the cursor at the chosen strength. */
+function riverAt(cells: { x: number; y: number }[]): void {
+  const fl = activeFloor();
+  const W = riverSide(fl.V);
+  const value = Math.max(0, Math.min(255, +$input('riverstrength').value || 0));
+  const carve = ($('rivercarve') as HTMLInputElement).checked;
+  const bed: number[] = [];
+  for (const c of cells) {
+    const idx = c.y * W + c.x;
+    if (strokeCells.has(idx)) continue;
+    strokeCells.add(idx);
+    // A cell that lands on a vertex is the only one with ground under it to
+    // sink; the ones between vertices have no height of their own.
+    if (carve && value > 0 && c.x % 2 === 0 && c.y % 2 === 0) bed.push((c.y / 2) * fl.V + (c.x / 2));
+  }
+  if (bed.length) {
+    sinkRiver(fl, bed);
+    for (const v of bed) strokeVerts.add(v);
+  }
+}
+
+/** Send the finished river stroke. */
+async function commitRiver(): Promise<void> {
+  const fl = activeFloor();
+  if (!strokeCells.size || !world) { strokeCells.clear(); strokeVerts.clear(); return; }
+  const cells = [...strokeCells];
+  strokeCells.clear();
+  const value = Math.max(0, Math.min(255, +$input('riverstrength').value || 0));
+  try {
+    await window.editor.setRiverCells({ floor: world.active, cells, value });
+    // Carving moved ground, and those heights travel by the sculpt path.
+    if (strokeVerts.size) await commitSculpt(); else strokeVerts.clear();
+    markDirty(true);
+  } catch (e) {
+    strokeVerts.clear();
+    $('hud').textContent = 'river failed (reload to resync): '
+      + (e instanceof Error ? e.message : String(e));
+  }
+  void fl;
 }
 
 /**
@@ -4264,6 +4345,11 @@ function applyBrush(ev: PointerEvent): void {
   // Bulk and Dig keep their own rate limiting and radial falloff; the kind
   // brush borrows that path when it is painting one vertex at a time.
   if (brushMode === 'bulk' || brushMode === 'dig' || (vertexMode && brushMode === 'kind')) { sculptTick(ev); return; }
+  if (brushMode === 'river') {
+    const c = riverCellAtClient(ev.clientX, ev.clientY);
+    if (c) riverAt([c]);
+    return;
+  }
   const r = currentRect(ev);
   if (r) applyRect(r);
 }
@@ -4274,6 +4360,7 @@ async function commitBrush(): Promise<void> {
     case 'paint': await commitStroke(); break;
     case 'bulk': case 'dig': case 'raise': case 'lower': case 'ramp': case 'level': case 'kind':
       await commitSculpt(); break;
+    case 'river': await commitRiver(); break;
     case 'mask': await commitMask(false); break;
     case 'erase': await commitMask(true); break;
   }
@@ -4865,6 +4952,7 @@ $select('brushmode').addEventListener('change', (e) => {
     ramp: 'ramp: half a step up, walkable instead of a wall',
     level: 'plateau: pull everything to the level you start on',
     kind: 'ground kind: paints the tier (and ramp) without moving the ground',
+    river: 'river plane: half-tile cells at the chosen strength; carve is optional',
     mask: 'masking: left-drag blocks movement', erase: 'erasing the movement mask',
   };
   $('hud').textContent = says[brushMode];

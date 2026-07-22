@@ -85,6 +85,29 @@ export class TerrainDoc {
    * (2y, 2x) and the cell between two river vertices gets the midpoint between
    * them, which is what keeps a stroke connected rather than dotted.
    */
+  /**
+   * Write the river plane directly, cell by cell, at a chosen strength.
+   *
+   * The plane is finer than the vertex grid and graded rather than binary, and
+   * shipped maps use both: of C1M1's 2317 wet cells only 502 sit on a vertex,
+   * and they carry 134 distinct values. `setRiver` below — vertex footprints at
+   * full strength — cannot express either, which is fine for drawing a river by
+   * hand and not enough to reproduce one.
+   *
+   * @param cells indices into the (2V-1)² plane
+   * @param value 0..255; 0 erases
+   */
+  setRiverCells(cells: readonly number[], value: number): void {
+    const r = this.river;
+    if (!r) return;
+    const v = Math.max(0, Math.min(255, Math.round(value)));
+    for (const c of cells) {
+      if (c < 0 || c >= r.length) continue;
+      r[c] = v;
+    }
+    this.touched = true;
+  }
+
   setRiver(verts: VertexList, on = true): void {
     const r = this.river;
     if (!r) return;
