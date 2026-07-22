@@ -64,6 +64,27 @@ export async function clickTile(page: Page, x: number, y: number): Promise<void>
   await page.mouse.up();
 }
 
+/**
+ * Click a grid VERTEX — what the brush's Vertex size addresses.
+ *
+ * Heights live on vertices, and there is one more of them per side than there
+ * are tiles, so this is the only way to reach the outer row and column.
+ */
+export async function clickVertex(page: Page, x: number, y: number): Promise<void> {
+  const p = await page.evaluate(([vx, vy, zoom]) => {
+    let at = window.view.vertexToScreen(vx!, vy!);
+    if (!at.onScreen) {
+      window.view.zoom(zoom!);
+      window.view.focus(vx!, vy!);
+      at = window.view.vertexToScreen(vx!, vy!);
+    }
+    return at;
+  }, [x, y, ZOOM_HALF_TILES]);
+  await page.mouse.move(p.x, p.y);
+  await page.mouse.down();
+  await page.mouse.up();
+}
+
 /** Drag from one tile to another — one continuous brush stroke. */
 export async function dragTiles(page: Page, from: [number, number], to: [number, number], steps = 8): Promise<void> {
   const a = await screenOf(page, from[0], from[1]);
@@ -79,7 +100,7 @@ export async function dragTiles(page: Page, from: [number, number], to: [number,
 }
 
 /** Arm the terrain brush in a given mode and size, through the toolbar. */
-export async function armBrush(page: Page, mode: string, size: '1' | '3' | '5' | '7' | 'rect' = '1'): Promise<void> {
+export async function armBrush(page: Page, mode: string, size: '1' | '3' | '5' | '7' | 'vertex' | 'rect' = '1'): Promise<void> {
   await page.locator('#brushmode').selectOption(mode);
   await page.locator('#brushsizesel').selectOption(size);
   const btn = page.locator('#brushbtn');

@@ -17,6 +17,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 import { UNITS_PER_TILE as U } from '../src/units.ts';
+import { tierOf, RAMP_BIT } from '../src/terrain.ts';
 import type { Scene, Floor, Instance, SplatData, TileInfo, GeomData, GeomPart, Footprint } from '../src/scene.ts';
 import type { EditorApi, MapListEntry, ExternalChange, PlaceableObject, RosterEntryDTO } from '../electron/ipc.ts';
 import type { ObjectProp } from '../src/map.ts';
@@ -3451,8 +3452,63 @@ function tileUnderCursor(ev: PointerEvent): { x: number; y: number } | null {
   return tileAtClient(ev.clientX, ev.clientY);
 }
 
+/**
+ * The VERTEX nearest the cursor — the grid corner, not the tile.
+ *
+ * Heights live on vertices, and a map has one more of them per side than it has
+ * tiles, so the outermost row and column can only be addressed this way. It
+ * rounds where the tile pick floors, off the same ray.
+ */
+function vertexAtClient(clientX: number, clientY: number): { x: number; y: number } | null {
+  const p = groundPointAtClient(clientX, clientY);
+  if (!p) return null;
+  const V = activeFloor().V;
+  const x = Math.round(p.x / U), y = Math.round(p.y / U);
+  if (x < 0 || y < 0 || x >= V || y >= V) return null;
+  return { x, y };
+}
+
 /** Same, from bare client coordinates — what the automation hook picks with. */
 function tileAtClient(clientX: number, clientY: number): { x: number; y: number } | null {
+  const p = groundPointAtClient(clientX, clientY);
+  if (!p) return null;
+  const T = activeFloor().V - 1;
+  const x = Math.floor(p.x / U), y = Math.floor(p.y / U);
+  if (x < 0 || y < 0 || x >= T || y >= T) return null;
+  return { x, y };
+}
+
+/**
+ * The ground position under the pointer, in world units.
+ *
+ * In the plan view the ray is vertical, so where it lands on the ground plane
+ * follows from the camera alone — and taking it from the camera is not just
+ * cheaper but MORE correct than asking what the ray hit. A cut face between two
+ * tiers stands vertical, edge-on to this camera, and a ray grazing one reports a
+ * hit sitting exactly on the grid line between two vertices; rounding that
+ * lands on the neighbour. Rebuilding C1M1 that way put 18 of 9409 vertices on
+ * the wrong side of a steep step, every one of them beside a tall spike.
+ *
+ * The 3D view has no such shortcut: there the ray is oblique and the ground's
+ * height is what decides where it meets, so it still asks the geometry.
+ */
+function groundPointAtClient(clientX: number, clientY: number): { x: number; y: number } | null {
+  if (!world) return null;
+  if (topView) {
+    syncTopCamera();
+    const aspect = innerWidth / innerHeight;
+    const ndcX = (clientX / innerWidth) * 2 - 1, ndcY = -(clientY / innerHeight) * 2 + 1;
+    return {
+      x: topCamera.position.x + ndcX * topHalf * aspect,
+      y: topCamera.position.y + ndcY * topHalf,
+    };
+  }
+  const p = hitPointAtClient(clientX, clientY);
+  return p ? { x: p.x, y: p.y } : null;
+}
+
+/** Where a ray through these client coordinates meets the ground, in world units. */
+function hitPointAtClient(clientX: number, clientY: number): THREE.Vector3 | null {
   if (!world) return null;
   ptr.x = (clientX / innerWidth) * 2 - 1;
   ptr.y = -(clientY / innerHeight) * 2 + 1;
@@ -3466,10 +3522,9 @@ function tileAtClient(clientX: number, clientY: number): { x: number; y: number 
   // frame having been drawn between the mesh appearing and the first click.
   ground.updateMatrixWorld();
   const hit = raycaster.intersectObject(ground, false)[0];
-  if (!hit) return null;
   // intersectObject reports the hit in world units, whatever the mesh's own
-  // transform; the caller wants a tile.
-  return { x: Math.floor(hit.point.x / U), y: Math.floor(hit.point.y / U) };
+  // transform; the callers divide by U to get grid coordinates.
+  return hit ? hit.point : null;
 }
 
 // --- automation hook: where to click for a tile ------------------------------
@@ -3501,8 +3556,24 @@ interface ViewApi {
   tileToScreen(x: number, y: number): TilePoint;
   /** Which tile a click at these CSS pixels lands on — the app's own picking. */
   tileAt(clientX: number, clientY: number): { x: number; y: number } | null;
+  /** Where to click for grid VERTEX (x, y) — what the vertex brush addresses. */
+  vertexToScreen(x: number, y: number): TilePoint;
+  /** Which vertex a click at these CSS pixels lands on — the app's own picking. */
+  vertexAt(clientX: number, clientY: number): { x: number; y: number } | null;
   /** Tiles per side of the active floor, or 0 when no map is open. */
   size(): number;
+}
+
+/** A world point under the plan camera, in CSS pixels. */
+function worldToScreen(wx: number, wy: number): TilePoint {
+  // The camera is re-synced first: its frustum follows the orbit target and the
+  // viewport, and both can have moved since the last frame was drawn.
+  syncTopCamera();
+  const aspect = innerWidth / innerHeight;
+  const ndcX = (wx - topCamera.position.x) / (topHalf * aspect);
+  const ndcY = (wy - topCamera.position.y) / topHalf;
+  const px = ((ndcX + 1) / 2) * innerWidth, py = ((1 - ndcY) / 2) * innerHeight;
+  return { x: px, y: py, onScreen: px >= 0 && py >= 0 && px < innerWidth && py < innerHeight };
 }
 
 const view: ViewApi = {
@@ -3523,18 +3594,22 @@ const view: ViewApi = {
     topHalf = Math.max(2 * U, Math.min(400 * U, halfTiles * U));
     syncTopCamera();
   },
-  tileToScreen(x, y) {
-    // The camera is re-synced first: its frustum follows the orbit target and
-    // the viewport, and both can have moved since the last frame was drawn.
-    syncTopCamera();
-    const aspect = innerWidth / innerHeight;
-    const wx = (x + 0.5) * U, wy = (y + 0.5) * U;
-    const ndcX = (wx - topCamera.position.x) / (topHalf * aspect);
-    const ndcY = (wy - topCamera.position.y) / topHalf;
-    const px = ((ndcX + 1) / 2) * innerWidth, py = ((1 - ndcY) / 2) * innerHeight;
-    return { x: px, y: py, onScreen: px >= 0 && py >= 0 && px < innerWidth && py < innerHeight };
-  },
+  tileToScreen(x, y) { return worldToScreen((x + 0.5) * U, (y + 0.5) * U); },
   tileAt(clientX, clientY) { return tileAtClient(clientX, clientY); },
+  // A vertex sits ON the grid line, at a whole multiple of the tile spacing —
+  // which is why the outermost row and column exist at all.
+  //
+  // A vertex on the map's edge sits exactly on the boundary of the terrain
+  // mesh, and a ray aimed there is as likely to pass beside it as to hit it, so
+  // the point is pulled a quarter tile inwards. The pick rounds to the nearest
+  // vertex, so it still resolves to the same one — but it now lands on ground.
+  // Without this, every click along the outer ring silently does nothing.
+  vertexToScreen(x, y) {
+    const last = world ? activeFloor().V - 1 : 0;
+    const inset = (v: number): number => (v === 0 ? 0.25 : v === last ? -0.25 : 0);
+    return worldToScreen((x + inset(x)) * U, (y + inset(y)) * U);
+  },
+  vertexAt(clientX, clientY) { return vertexAtClient(clientX, clientY); },
   size() { return world ? activeFloor().V - 1 : 0; },
 };
 window.view = view;
@@ -3778,6 +3853,25 @@ const TICK_MS = 70;         // how often a held brush reapplies
 let brushForce = uiPrefs.brushForce;
 /** 1 = taper to a third at the rim (what it always did); 0 = flat stamp. */
 let brushTension = uiPrefs.brushTension;
+/**
+ * Vertex mode: Bulk/Dig moves the single grid corner nearest the cursor.
+ *
+ * The smallest square brush is still four vertices — a tile's corners — and
+ * four vertices moved together cannot express a surface whose corners differ,
+ * which every real map's does. It is also the only way to reach the outermost
+ * row and column, of which there is one more than there are tiles.
+ */
+let vertexMode = false;
+
+/**
+ * Does this flag record a deliberate ground kind that sculpting must not undo?
+ *
+ * Plateau tiers and ramps are authored, so a height change leaves them alone.
+ * The test used to be `flag & 32`, which is only true for tiers 2 and 3: tier 4
+ * (64) has no bit in common with it, so sculpting anywhere on a tier-4 plateau
+ * silently reset it to ordinary ground — and C1M1 has 623 such vertices.
+ */
+const keepsGroundKind = (flag: number): boolean => tierOf(flag) >= 2 || (flag & RAMP_BIT) !== 0;
 
 /** What a left-drag does. Mirrors the mode selector in the toolbar. */
 type BrushMode = 'paint' | 'bulk' | 'dig' | 'raise' | 'lower' | 'ramp' | 'level' | 'mask' | 'erase';
@@ -3817,6 +3911,22 @@ function remeshFloor(fl: Floor3D): void {
 }
 
 /**
+ * Move one vertex by the brush force. Nothing tapers, nothing else moves.
+ * @returns the vertex it moved, or null if the force changed nothing.
+ */
+function sculptVertex(fl: Floor3D, x: number, y: number): number[] | null {
+  const i = y * fl.V + x;
+  const next = Math.max(WATER_LEVEL, fl.heights[i]! + sculptDir * brushForce);
+  if (next === fl.heights[i]) return null;
+  fl.heights[i] = next;
+  if (fl.flags) {
+    const f = fl.flags[i]!;
+    if (!keepsGroundKind(f)) fl.flags[i] = next <= WATER_LEVEL ? 0 : 16;
+  }
+  return [i];
+}
+
+/**
  * Apply one tick of the height brush at tile (cx, cy).
  * @returns the vertices it moved, or null if nothing changed.
  */
@@ -3850,7 +3960,7 @@ function sculptAt(fl: Floor3D, cx: number, cy: number): number[] | null {
       // above it is ordinary ground. Plateau (32) and ramp (8) bits are
       // deliberate authoring, so leave those vertices' kind alone.
       const f = fl.flags[i]!;
-      if (!(f & 32) && !(f & 8)) fl.flags[i] = next <= WATER_LEVEL ? 0 : 16;
+      if (!keepsGroundKind(f)) fl.flags[i] = next <= WATER_LEVEL ? 0 : 16;
     }
     touched.push(i);
   }
@@ -3983,7 +4093,7 @@ function rampAt(verts: number[], start: number): void {
 /** Sculpt at the cursor, rate-limited so holding still is controllable. */
 function sculptTick(ev: PointerEvent): void {
   const fl = activeFloor();
-  const at = tileUnderCursor(ev);
+  const at = vertexMode ? vertexAtClient(ev.clientX, ev.clientY) : tileUnderCursor(ev);
   if (!at) return;
   const tile = at.y * fl.V + at.x;
   const now = performance.now();
@@ -3991,7 +4101,7 @@ function sculptTick(ev: PointerEvent): void {
   // otherwise a stroke that pauses would silently stop sculpting.
   if (tile === lastTile && now - lastTick < TICK_MS) return;
   lastTile = tile; lastTick = now;
-  const moved = sculptAt(fl, at.x, at.y);
+  const moved = vertexMode ? sculptVertex(fl, at.x, at.y) : sculptAt(fl, at.x, at.y);
   if (!moved) return;
   for (const v of moved) strokeVerts.add(v);
   remeshFloor(fl);
@@ -4093,12 +4203,12 @@ function sculptRect(verts: number[]): void {
   for (const v of verts) {
     if (strokeVerts.has(v)) continue;
     strokeVerts.add(v);
-    const next = Math.max(0, fl.heights[v]! + sculptDir * STEP);
+    const next = Math.max(WATER_LEVEL, fl.heights[v]! + sculptDir * brushForce);
     if (next === fl.heights[v]) continue;
     fl.heights[v] = next;
     if (fl.flags) {
       const f = fl.flags[v]!;
-      if (!(f & 32) && !(f & 8)) fl.flags[v] = next <= 0 ? 0 : 16;
+      if (!keepsGroundKind(f)) fl.flags[v] = next <= WATER_LEVEL ? 0 : 16;
     }
     touched = true;
   }
@@ -4676,8 +4786,10 @@ $('brushbtn').onclick = () => {
 $select('brushsizesel').addEventListener('change', (e) => {
   const v = (e.currentTarget as HTMLSelectElement).value;
   rectMode = v === 'rect';
-  if (!rectMode) brushSize = +v;
+  vertexMode = v === 'vertex';
+  if (!rectMode && !vertexMode) brushSize = +v;
   if (rectMode) $('hud').textContent = 'rect: drag out a rectangle, it applies on release';
+  if (vertexMode) $('hud').textContent = 'vertex: Bulk/Dig moves the single corner nearest the cursor';
 });
 $input('brushforce').addEventListener('input', (e) => {
   const v = +(e.currentTarget as HTMLInputElement).value;

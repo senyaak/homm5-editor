@@ -161,6 +161,24 @@ toolbar. With force set and tension 0, a 1×1 stroke moves its four vertices by
 exactly that much, all the way into the file (`e2e/click-terrain.spec.ts`), so
 the reconstruction can compute its strokes instead of guessing them.
 
+### Heights: done ✅
+
+`e2e/reconstruct-c1m1.spec.ts` rebuilds the shape by clicking — a blank 96×96
+through the New Map dialog, then one Vertex-brush stroke per vertex with the
+force that vertex needs. **All 9409 heights match the original**, in about 6½
+minutes of real clicks (9409 strokes, ~24/s). The result is left in
+`_tmp/recon/C1M1/` so `npm run diff-terrain _tmp/fixtures/C1M1
+_tmp/recon/C1M1` can show what the other planes still owe.
+
+What the first full run cost, and is worth remembering: 18 of those 9409
+vertices came out wrong, every one beside a tall step. The pick asked the
+raycast what it hit, and a cut face between two tiers stands vertical — edge-on
+to the plan camera — so a grazing ray reports a point sitting exactly on the
+grid line between two vertices, which rounds to the neighbour. Under that camera
+the ray is vertical, so the ground position follows from the camera alone; it is
+taken from there now, and picking no longer depends on what geometry happens to
+be in the way.
+
 ## Milestone 0 — the one missing primitive: New Map
 
 Everything above needs a starting point the editor does not have yet: a **blank,

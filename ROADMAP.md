@@ -138,6 +138,23 @@ placing new ones from a palette.
 - [x] Raise (plateau, +2.0 with cut edges, flag 32) and Lower (pit to 0.0,
       flag 0, floods) beside the smooth Bulk and Dig ✅
 - [x] Plateau (level to the starting tier) and the Rect brush size ✅
+- [x] **Plan-view picking comes from the camera** (2026-07-22): under the
+      top-down orthographic camera the ray is vertical, so where it meets the
+      ground follows from the camera alone. Asking the raycast instead put a
+      click on the wrong side of a steep step — a cut face is edge-on to that
+      camera and a grazing hit lands exactly on the grid line between two
+      vertices. 18 of C1M1's 9409 vertices, all beside tall spikes ✅
+- [x] **Vertex brush size** (2026-07-22): Bulk/Dig moves the single grid corner
+      nearest the cursor. The smallest square brush is four vertices — a tile's
+      corners — which cannot express a surface whose corners differ, and it can
+      never reach the outermost row and column, of which there is one more than
+      there are tiles. Clicks on that outer ring are aimed a quarter tile inward
+      (`window.view.vertexToScreen`), or the ray passes beside the mesh and the
+      stroke silently does nothing ✅
+- [x] **Sculpting no longer demotes a tier-4 plateau** (2026-07-22): the guard
+      that protects authored ground kinds tested `flag & 32`, true for tiers 2
+      and 3 only, so any height change on tier 4 (flag 64) reset it to ordinary
+      ground — 623 vertices of C1M1. It now asks for the tier ✅
 - [x] **Brush force and tension** (2026-07-22): how much height one Bulk/Dig
       stroke adds, and how much of it reaches the vertices around the centre.
       Both were constants, which put every height the brush could produce on one

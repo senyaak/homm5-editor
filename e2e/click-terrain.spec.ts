@@ -22,7 +22,7 @@ import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { launchEditor, REPO_ROOT } from './launch.ts';
 import type { Launched } from './launch.ts';
-import { armBrush, clickTile, mapSize, newMap, planView, setBrushForce } from './tiles.ts';
+import { armBrush, clickTile, clickVertex, mapSize, newMap, planView, setBrushForce } from './tiles.ts';
 import { parseTerrain, readHeights, readGroundFlags, tierOf } from '../src/terrain.ts';
 
 let ed: Launched;
@@ -156,6 +156,58 @@ test('the brush force is the height one stroke adds, exactly', async () => {
     for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
       const v = (y + dy!) * V + (x + dx!);
       expect(heights[v], `force ${force} at vertex ${x + dx!},${y + dy!}`).toBeCloseTo(want, 5);
+    }
+  }
+});
+
+test('the Vertex brush moves one corner, including the outermost row', async () => {
+  const { page } = ed;
+  test.setTimeout(180_000);
+
+  // (72, 72) is the far corner of a 72-tile map: a vertex no tile-sized brush
+  // can single out, because tiles only reach 71.
+  // The outer ring is the awkward part: those vertices sit exactly on the edge
+  // of the terrain mesh, where a ray aimed straight at them can pass beside it.
+  // All four sides are covered here, because a click that silently misses looks
+  // exactly like a brush that did nothing.
+  const strokes: { vertex: [number, number]; force: number }[] = [
+    { vertex: [30, 30], force: 0.9 },
+    { vertex: [72, 72], force: 2.5 },
+    { vertex: [0, 60], force: 1.75 },
+    { vertex: [40, 0], force: 0.6 },
+    { vertex: [72, 20], force: 1.1 },
+    { vertex: [15, 72], force: 0.8 },
+    { vertex: [0, 0], force: 3.2 },
+  ];
+
+  await planView(page);
+  await page.evaluate(() => window.view.fit());
+  await armBrush(page, 'bulk', 'vertex');
+
+  for (const s of strokes) {
+    await setBrushForce(page, s.force);
+    await clickVertex(page, s.vertex[0], s.vertex[1]);
+  }
+
+  await page.locator('#save').click();
+  await expect(page.locator('#save')).toBeDisabled({ timeout: 60_000 });
+
+  const t = parseTerrain(readFileSync(join(MAP_DIR, 'GroundTerrain.bin')));
+  const heights = readHeights(t), V = t.V;
+  const touched = new Set(strokes.map(({ vertex: [x, y] }) => y * V + x));
+
+  for (const { vertex: [x, y], force } of strokes) {
+    expect(heights[y * V + x], `vertex ${x},${y}`).toBeCloseTo(Math.fround(FLAT + force), 5);
+  }
+  // Nothing else on the four neighbouring vertices moved — the whole point of
+  // the mode is that it does not drag the corners around it along.
+  for (const { vertex: [x, y] } of strokes) {
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = x + dx!, ny = y + dy!;
+      if (nx < 0 || ny < 0 || nx >= V || ny >= V) continue;
+      const v = ny * V + nx;
+      if (touched.has(v)) continue;
+      expect(heights[v], `neighbour ${nx},${ny} of ${x},${y}`).toBeCloseTo(FLAT, 5);
     }
   }
 });

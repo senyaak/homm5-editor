@@ -511,13 +511,14 @@
         <option value="3">3×3</option>
         <option value="5">5×5</option>
         <option value="7">7×7</option>
+        <option value="vertex">Vertex</option>
         <option value="rect">Rect</option>
       </select>
       <!-- Bulk/Dig only: how much one stroke moves the ground, and how far that
            movement carries to the vertices around it. Without these the height
            brush had one fixed step and one fixed taper, so most heights a real
            map holds were simply not reachable. -->
-      <input id="brushforce" type="number" min="0.01" max="8" step="0.05" value="0.35"
+      <input id="brushforce" type="number" min="0.001" max="32" step="0.05" value="0.35"
              title="force: units of height one stroke adds at the centre">
       <label id="brushtensionwrap" title="tension: 1 tapers to the rim, 0 lifts the whole brush evenly">
         pull <input id="brushtension" type="range" min="0" max="1" step="0.05" value="1">
