@@ -16,20 +16,20 @@ and `Shared`, so **a type whose bodies collapse to one variant is an untouched
 default**. That is the signal the tool reports. Two variants mean something was
 edited afterwards, and the diff says what.
 
-Source so far: `Maps/12.h5m` — a map made in the original editor specifically to
-harvest these: 93 statics, 19 monsters, 9 artifacts, 9 treasures, 7 buildings, 6
-mines, 5 heroes, 5 dwellings, 4 shrines, 3 garrisons, 2 towns, 2 seer huts, 2
-tents, and one each of abandoned mine, prison, sphinx, sign, hill fort and
-dwarven warren. Every one of those types collapses to a single variant.
+Source: `Maps/12.h5m` — a map made in the original editor specifically to harvest
+these: 93 statics, 19 monsters, 13 buildings, 9 artifacts, 9 treasures, 6 mines,
+5 heroes, 5 dwellings, 4 shrines, 3 garrisons, 2 towns, 2 seer huts, 2 tents, 2
+cartographers, and one each of abandoned mine, prison, sphinx, sign, hill fort,
+dwarven warren and shipyard. Every type collapses to a single variant — the
+buildings only split because their `<Name>` was typed in by hand.
 
-19 of the 21 types are covered. Still to place: **`AdvMapCartographer`** and
-**`AdvMapShipyard`** — both need the coast, which is why a test map inland does
-not produce them.
+**All 21 types are covered.**
 
-**One type is many objects.** `AdvMapBuilding` alone covered Sanctuary, Redwood
-Observatory, Windmill, Fountain of Fortune, Dwarven Treasury **and the
-Whirlpool** — a teleport is not its own map type, it is a building whose
-`Shared` says so. That is the general shape here: the map object carries
+**One type is many objects.** `AdvMapBuilding` alone covers Sanctuary, Redwood
+Observatory, Windmill, Fountain of Fortune, Dwarven Treasury — **and every
+teleport**: Whirlpool, Monolith One Way Entrance/Exit, Monolith Two Way,
+Subterranean Gate In/Out. A teleport is not its own map type, it is a building
+whose `Shared` says so. That is the general shape here: the map object carries
 placement and overrides, the `Shared` definition carries what the thing *is*.
 Which is also why one measured default per type is enough, and why a palette
 entry cannot be guessed from the type name.
@@ -272,10 +272,20 @@ quest is a full award record set to nothing, and the editor's job is to write
 ```
 
 Four fields for the widest type on the map — everything a visitable building
-does lives in its `Shared`. `GroupID` is what pairs teleports: two whirlpools
-with the same id are the same whirlpool. Worth confirming before we expose it,
-because `0` on every new one means a map full of buildings is also, by default,
-one big teleport group.
+does lives in its `Shared`.
+
+**`GroupID` does not pair teleports, or at least the editor never sets it.**
+Placed side by side, two whirlpools, a monolith entrance and its exit, a
+two-way monolith pair and a subterranean gate in/out all came out `GroupID` 0.
+So a pair is a pair by *kind* — both ends share the monolith colour or the gate
+type — and `GroupID` is what would separate a second, independent pair of the
+same kind. That reading is not yet confirmed; what is confirmed is that placing
+teleports needs no id from us, and that writing one would be a change, not a
+default.
+
+The user labelled them by hand (`enter`, `exit`, `two-way-one`…) — that is the
+`<Name>` handle Lua addresses, see docs/NAMES_AND_SCRIPTING.md, and it is empty
+by default on every type.
 
 ## AdvMapShrine
 
@@ -331,3 +341,25 @@ is the barrier colour), so there is no default to get wrong.
 
 Identical to `AdvMapMine`, field for field — the ToE warren is a mine with its
 own type.
+
+## AdvMapCartographer
+
+```xml
+<CaptureTrigger><Action><FunctionName/></Action></CaptureTrigger>
+<Cost>4000</Cost>
+```
+
+The one default on any type that is a **price**, and it is the same 4000 for
+both the land cartographer and the water one — so the price lives on the placed
+object, not in `Shared`, and a map with cheap cartographers is a map where every
+one of them was edited.
+
+## AdvMapShipyard
+
+```xml
+<ShipTile><x>4</x><y>0</y></ShipTile>
+```
+
+Where the ship appears, as an offset from the shipyard — not `0,0` like the
+town's `ShipTile`, but four tiles along. A default a template would have
+zeroed, putting the boat inside the building.

@@ -161,7 +161,7 @@ placing new ones from a palette.
       docs/OBJECT_DEFAULTS.md), which is how we learned that a new creature
       stack is `Amount` **0**, not the "obviously 1" this item used to assume —
       0 means the game sizes it by difficulty. Recorded so far:
-      19 of the 21 types — all but Cartographer and Shipyard, which need a coast; the rest need a sample map
+      all 21 types (docs/OBJECT_DEFAULTS.md); what is left
       that places them. What remains is applying them over the donor in
       `src/donors.ts`.
 - [ ] ⬜ A third of catalogue entries have no decodable mesh, so they cannot be
