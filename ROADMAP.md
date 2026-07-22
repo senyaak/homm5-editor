@@ -138,14 +138,22 @@ placing new ones from a palette.
 - [x] Raise (plateau, +2.0 with cut edges, flag 32) and Lower (pit to 0.0,
       flag 0, floods) beside the smooth Bulk and Dig ✅
 - [x] Plateau (level to the starting tier) and the Rect brush size ✅
+- [x] **Brush force and tension** (2026-07-22): how much height one Bulk/Dig
+      stroke adds, and how much of it reaches the vertices around the centre.
+      Both were constants, which put every height the brush could produce on one
+      lattice — and C1M1's field is 87.7% off any such grid, so most of a real
+      map was unreachable. Now a stroke lands on a chosen value exactly, which
+      is what lets a reconstruction compute its strokes
+      (`docs/E2E_RECONSTRUCTION.md`, `e2e/click-terrain.spec.ts`) ✅
 - [ ] ⬜ **Terrain parity, deferred** — the terrain is usable, so the rest of the
       original's Tiles tab waits. Measured against its panel:
       - Missing terraforming tools: `rnd`, `smth`, `zero`, `water`. We have
         bulk/dig/raise/lower/ramp and plato.
-      - Missing tile modifiers: **Up / Down / ERASER** and **Strength**. Our
-        brush only ever writes a full-strength replace, so a layer's weight
-        cannot be nudged and a tile cannot be erased at all — which is why
-        there is no way to take a river back off the ground.
+      - Missing tile modifiers: **Up / Down / ERASER** and **Strength** — the
+        TEXTURE ones. The height brush has its force and tension now, but the
+        tile brush still only writes a full-strength replace, so a layer's
+        weight cannot be nudged and a tile cannot be erased at all — which is
+        why there is no way to take a river back off the ground.
       - Layout: the original keeps size, terraforming, the tile grid and those
         modifiers in ONE panel. Ours are split between the top toolbar and the
         Ground palette and should move into the panel.

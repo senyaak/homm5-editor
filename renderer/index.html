@@ -513,6 +513,16 @@
         <option value="7">7×7</option>
         <option value="rect">Rect</option>
       </select>
+      <!-- Bulk/Dig only: how much one stroke moves the ground, and how far that
+           movement carries to the vertices around it. Without these the height
+           brush had one fixed step and one fixed taper, so most heights a real
+           map holds were simply not reachable. -->
+      <input id="brushforce" type="number" min="0.01" max="8" step="0.05" value="0.35"
+             title="force: units of height one stroke adds at the centre">
+      <label id="brushtensionwrap" title="tension: 1 tapers to the rim, 0 lifts the whole brush evenly">
+        pull <input id="brushtension" type="range" min="0" max="1" step="0.05" value="1">
+        <span id="brushtensionval">1.00</span>
+      </label>
     </label>
     <button id="cliffbtn" style="display:none" title="rock texture on steep faces">Cliffs</button>
     <button id="blockbtn" style="display:none" title="tile grid: passability wash plus building footprints">Grid</button>

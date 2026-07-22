@@ -87,6 +87,21 @@ export async function armBrush(page: Page, mode: string, size: '1' | '3' | '5' |
   await expect(btn).toHaveText('Brush: on');
 }
 
+/**
+ * Set how far one Bulk/Dig stroke moves the ground, and how much of that
+ * reaches the vertices around it.
+ *
+ * `tension: 0` makes the footprint move as one, which is what a reconstruction
+ * wants: the stroke then lands on a value it can predict exactly instead of a
+ * taper spread over neighbours.
+ */
+export async function setBrushForce(page: Page, force: number, tension = 0): Promise<void> {
+  await page.locator('#brushforce').fill(String(force));
+  await page.locator('#brushforce').dispatchEvent('input');
+  await page.locator('#brushtension').fill(String(tension));
+  await page.locator('#brushtension').dispatchEvent('input');
+}
+
 /** Create a blank map through the New Map dialog, as a person would. */
 export async function newMap(page: Page, name: string, size: string): Promise<void> {
   await page.locator('#newmapbtn').click();

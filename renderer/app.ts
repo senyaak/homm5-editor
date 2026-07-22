@@ -269,10 +269,13 @@ interface UiPrefs {
   texScale: number;
   /** Plan (top-down orthographic) view instead of the 3D orbit view. */
   topView: boolean;
+  /** Height the Bulk/Dig brush moves per stroke, and how far it tapers. */
+  brushForce: number;
+  brushTension: number;
 }
 const UI_PREFS_DEFAULT: UiPrefs = {
   showObjects: true, explorerOpen: true, cliffs: true, grid: false, showHidden: false, texScale: 0.5,
-  topView: false,
+  topView: false, brushForce: 0.35, brushTension: 1,
 };
 const UI_PREFS_KEY = 'homm5-editor.ui';
 function loadUiPrefs(): UiPrefs {
@@ -3757,8 +3760,24 @@ async function commitStroke(): Promise<void> {
 
 const GROUND_LEVEL = 2.0;   // the format's default ground height
 const WATER_LEVEL = 0.0;    // what `lower` digs a bed to, exactly
-const STEP = 0.35;          // height change per brush tick at full strength
+const STEP = 0.35;          // default height change per brush tick at full strength
 const TICK_MS = 70;         // how often a held brush reapplies
+
+/**
+ * How much one Bulk/Dig tick moves the ground at the centre of the brush, and
+ * how sharply that movement tapers towards the rim.
+ *
+ * Both were constants, and that made most of a real map unreachable: a fixed
+ * 0.35 per tick with a fixed taper puts every height the brush can produce on
+ * one lattice, and C1M1's field — 7420 distinct values, 87.7% of them off any
+ * step grid — is nowhere near it (docs/E2E_RECONSTRUCTION.md). With a force you
+ * can set, a stroke can land on a chosen value exactly; with a tension you can
+ * choose between a sharp spike and a flat lift, which is the difference between
+ * carving a gully and raising a field.
+ */
+let brushForce = uiPrefs.brushForce;
+/** 1 = taper to a third at the rim (what it always did); 0 = flat stamp. */
+let brushTension = uiPrefs.brushTension;
 
 /** What a left-drag does. Mirrors the mode selector in the toolbar. */
 type BrushMode = 'paint' | 'bulk' | 'dig' | 'raise' | 'lower' | 'ramp' | 'level' | 'mask' | 'erase';
@@ -3818,10 +3837,12 @@ function sculptAt(fl: Floor3D, cx: number, cy: number): number[] | null {
     const d = Math.max(Math.abs(x - ox), Math.abs(y - oy));
     if (d > rad) continue;
     // The innermost ring sits at 0.5, so subtracting it puts full strength
-    // there and tapers to a third at the rim. Size 1 is a flat 2x2 stamp.
-    const falloff = k === 0 ? 1 : 1 - (d - 0.5) / rad;
+    // there and tapers towards the rim. Size 1 is a flat 2x2 stamp. Tension
+    // scales how much of that taper applies: at 0 the whole footprint moves
+    // together, at 1 the rim gets a third of the centre, as it always did.
+    const falloff = k === 0 ? 1 : 1 - brushTension * ((d - 0.5) / rad);
     const i = y * fl.V + x;
-    const next = Math.max(WATER_LEVEL, fl.heights[i]! + sculptDir * STEP * falloff);
+    const next = Math.max(WATER_LEVEL, fl.heights[i]! + sculptDir * brushForce * falloff);
     if (next === fl.heights[i]) continue;
     fl.heights[i] = next;
     if (fl.flags) {
@@ -4658,6 +4679,18 @@ $select('brushsizesel').addEventListener('change', (e) => {
   if (!rectMode) brushSize = +v;
   if (rectMode) $('hud').textContent = 'rect: drag out a rectangle, it applies on release';
 });
+$input('brushforce').addEventListener('input', (e) => {
+  const v = +(e.currentTarget as HTMLInputElement).value;
+  // A force of zero is a brush that does nothing; ignore rather than arm it.
+  if (!Number.isFinite(v) || v <= 0) return;
+  brushForce = v;
+  saveUiPrefs({ brushForce });
+});
+$input('brushtension').addEventListener('input', (e) => {
+  brushTension = +(e.currentTarget as HTMLInputElement).value;
+  $('brushtensionval').textContent = brushTension.toFixed(2);
+  saveUiPrefs({ brushTension });
+});
 $select('brushmode').addEventListener('change', (e) => {
   brushMode = (e.currentTarget as HTMLSelectElement).value as BrushMode;
   sculptDir = brushMode === 'bulk' ? 1 : brushMode === 'dig' ? -1 : 0;
@@ -4764,6 +4797,11 @@ async function loadMapPath(path: string | null): Promise<void> {
     $('mapbtn').style.display = '';
     $('maptreebtn').style.display = '';
     $('brushwrap').style.display = 'flex';
+    // Same reason as the ground-scale slider: show the restored force and
+    // tension, not the HTML defaults the brush is not using.
+    $input('brushforce').value = String(brushForce);
+    $input('brushtension').value = String(brushTension);
+    $('brushtensionval').textContent = brushTension.toFixed(2);
     setBrush(false); // a fresh map starts in camera mode
     $('cliffbtn').style.display = '';
     $('blockbtn').style.display = '';

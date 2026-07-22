@@ -22,7 +22,7 @@ import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { launchEditor, REPO_ROOT } from './launch.ts';
 import type { Launched } from './launch.ts';
-import { armBrush, clickTile, mapSize, newMap, planView } from './tiles.ts';
+import { armBrush, clickTile, mapSize, newMap, planView, setBrushForce } from './tiles.ts';
 import { parseTerrain, readHeights, readGroundFlags, tierOf } from '../src/terrain.ts';
 
 let ed: Launched;
@@ -118,5 +118,44 @@ test('clicking with the Raise brush moves exactly those vertices, into the file'
   for (const v of expected) {
     expect(heights[v], `height at vertex ${v % V},${(v / V) | 0}`).toBeGreaterThan(FLAT);
     expect(tierOf(flags[v]!), `tier at vertex ${v % V},${(v / V) | 0}`).toBeGreaterThan(1);
+  }
+});
+
+test('the brush force is the height one stroke adds, exactly', async () => {
+  const { page } = ed;
+  test.setTimeout(180_000);
+
+  // The point of the control: a chosen height, not a fixed step. Values off any
+  // step grid on purpose — that is what a real map is made of, and what the
+  // brush could not reach before.
+  const strokes: { tile: [number, number]; force: number }[] = [
+    { tile: [8, 40], force: 1.234 },
+    { tile: [12, 44], force: 0.05 },
+    { tile: [16, 48], force: 4.367 },
+  ];
+
+  await planView(page);
+  await page.evaluate(() => window.view.fit());
+  await armBrush(page, 'bulk', '1');
+
+  for (const s of strokes) {
+    await setBrushForce(page, s.force);
+    await clickTile(page, s.tile[0], s.tile[1]);
+  }
+
+  await page.locator('#save').click();
+  await expect(page.locator('#save')).toBeDisabled({ timeout: 60_000 });
+
+  const t = parseTerrain(readFileSync(join(MAP_DIR, 'GroundTerrain.bin')));
+  const heights = readHeights(t), V = t.V;
+  for (const { tile: [x, y], force } of strokes) {
+    // A 1x1 stroke is a flat stamp over the tile's four corners, so every one
+    // moved by the full force. Rounded through float32, which is how the file
+    // stores it — comparing against the double would fail on the last bits.
+    const want = Math.fround(FLAT + force);
+    for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
+      const v = (y + dy!) * V + (x + dx!);
+      expect(heights[v], `force ${force} at vertex ${x + dx!},${y + dy!}`).toBeCloseTo(want, 5);
+    }
   }
 });

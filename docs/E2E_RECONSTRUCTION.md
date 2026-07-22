@@ -136,6 +136,31 @@ functionality, not by filename.
 - **Passability plane absent from a blank entirely** — inserting a plane is not
   implemented (`docs/TERRAIN_FORMAT.md`). First real tool gap of this stage.
 
+### The shape cannot be recovered as a formula (measured)
+
+`npm run terrain-shape` on the fixture: **7420 distinct heights over 9409
+vertices**, not one still at the blank's 2.0, **87.7% off any 2.0 step grid**,
+field level 8.0 on tier 3. The shipped single mission A2S1, for contrast, is
+70.6% on-step with 10.6% untouched.
+
+Two hypotheses for reproducing that surface by rule, both tested and both
+rejected:
+
+- **Relaxation** (smooth until it settles, with the stepped vertices pinned) —
+  the field is not harmonic: median `|h − mean of its 4 neighbours|` is 0.100,
+  p90 0.41. Only 9.4% of smoothed vertices sit within 0.01 of that mean.
+- **Blur of the stepped field** — quantise every height to the nearest 2.0 and
+  blur 3×3: best fit is one pass at rms **0.396** against a height sd of 3.014,
+  and more passes only make it worse (0.45, 0.52, 0.59…).
+
+So the surface is the trace of a particular sequence of human strokes, not the
+output of a filter, and there is nothing to invert. Reaching it needs a brush
+whose stroke lands on a *chosen* value — hence **force** (units of height per
+stroke) and **tension** (how much of that reaches the vertices around it) in the
+toolbar. With force set and tension 0, a 1×1 stroke moves its four vertices by
+exactly that much, all the way into the file (`e2e/click-terrain.spec.ts`), so
+the reconstruction can compute its strokes instead of guessing them.
+
 ## Milestone 0 — the one missing primitive: New Map
 
 Everything above needs a starting point the editor does not have yet: a **blank,
