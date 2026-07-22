@@ -115,9 +115,19 @@ The renderer talks to Electron at module scope, so without this the UI can only
 be exercised by launching the whole app; the harness makes the brushes and the
 toolbar clickable in any browser, and records every IPC call on `window.__calls`.
 
-Point `HOMM5_DATA` at an unpacked game data folder, or unpack one into
-`samples/paks/data` (gitignored) — `.pak` archives are ordinary ZIPs, and
-`tools/pak-cli.js` handles them.
+Point `HOMM5_DATA` at an unpacked game data folder, or build one with
+
+```bash
+npm run unpack-data
+```
+
+which unpacks every `.pak` in the install's `data/` into `samples/paks/data`
+(gitignored) in the game's own overlay order — the addon's files (`a2p1-*`) last,
+so they win, exactly as the game loads them. It skips files already current, so
+re-running after a patch only writes what changed. A partial unpack is the usual
+cause of untextured ground: the random-map generator's tiles, for one, ship only
+in the addon pak. Individual archives are ordinary ZIPs and `tools/pak-cli.js`
+handles them one at a time.
 
 ## `GroundTerrain.bin`
 

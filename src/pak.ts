@@ -15,8 +15,10 @@
 //   pack(dir, archivePath, opt) -> {entries, bytes}            pack a directory into an archive
 //   writeArchive(entries, opt)  -> Buffer                       build a ZIP from {name,data} list
 //   listDirFiles(dir)           -> [relPathPosix]              recursively list a tree (posix paths)
+//   readIndex(fd, size)         -> [{name, localOff, ...}]     an archive's directory, contents unread
+//   readEntryFrom(fd, entry)    -> Buffer                       one member, decompressed on demand
 
-import { readFileSync, writeFileSync, mkdirSync, readdirSync, statSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, readdirSync, statSync, readSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
 import { deflateRawSync, inflateRawSync } from 'node:zlib';
 
@@ -117,6 +119,74 @@ export function readEntries(buf: Buffer): ZipEntry[] {
     out.push({ name, data });
   }
   return out;
+}
+
+/** One member's location in an archive, without its contents. */
+export interface ZipIndexEntry {
+  name: string;
+  /** Offset of the local file header. */
+  localOff: number;
+  /** Bytes on disk (compressed). */
+  compSize: number;
+  /** Uncompressed byte length. */
+  size: number;
+  method: number;
+}
+
+/**
+ * Read an archive's central directory through a file descriptor, without
+ * loading the archive.
+ *
+ * data.pak is 1.4 GB, and readEntries() decompresses every member up front —
+ * fine for a map, hopeless for the game's own paks. This plus readEntryFrom()
+ * walks an archive one member at a time.
+ */
+export function readIndex(fd: number, fileSize: number): ZipIndexEntry[] {
+  // The EOCD sits within the last 64 KB + 22 bytes, after an optional comment.
+  const tailLen = Math.min(fileSize, 0xffff + 22);
+  const tail = Buffer.alloc(tailLen);
+  readSync(fd, tail, 0, tailLen, fileSize - tailLen);
+  const eocdInTail = findEOCD(tail);
+  const eocdOff = fileSize - tailLen + eocdInTail;
+  const count = tail.readUInt16LE(eocdInTail + 10);
+  const cdOff = tail.readUInt32LE(eocdInTail + 16);
+  const cdSize = tail.readUInt32LE(eocdInTail + 12);
+
+  const cd = Buffer.alloc(cdSize);
+  readSync(fd, cd, 0, cdSize, cdOff);
+
+  const out: ZipIndexEntry[] = [];
+  let p = 0;
+  for (let i = 0; i < count; i++) {
+    if (cd.readUInt32LE(p) !== SIG_CENTRAL) throw new Error(`bad central dir entry #${i} @${p} (eocd @${eocdOff})`);
+    const method = cd.readUInt16LE(p + 10);
+    const compSize = cd.readUInt32LE(p + 20);
+    const size = cd.readUInt32LE(p + 24);
+    const nameLen = cd.readUInt16LE(p + 28);
+    const extraLen = cd.readUInt16LE(p + 30);
+    const commentLen = cd.readUInt16LE(p + 32);
+    const localOff = cd.readUInt32LE(p + 42);
+    const name = cd.toString('utf8', p + 46, p + 46 + nameLen);
+    p += 46 + nameLen + extraLen + commentLen;
+    if (name.endsWith('/')) continue; // directory marker
+    out.push({ name, localOff, compSize, size, method });
+  }
+  return out;
+}
+
+/** Read and decompress one indexed member. */
+export function readEntryFrom(fd: number, e: ZipIndexEntry): Buffer {
+  // The local header's extra field can differ in length from the central one,
+  // so the data offset has to come from the local header itself.
+  const head = Buffer.alloc(30);
+  readSync(fd, head, 0, 30, e.localOff);
+  if (head.readUInt32LE(0) !== SIG_LOCAL) throw new Error(`bad local header for ${e.name}`);
+  const dataStart = e.localOff + 30 + head.readUInt16LE(26) + head.readUInt16LE(28);
+  const raw = Buffer.alloc(e.compSize);
+  if (e.compSize) readSync(fd, raw, 0, e.compSize, dataStart);
+  if (e.method === METHOD_DEFLATE) return inflateRawSync(raw);
+  if (e.method === METHOD_STORE) return raw;
+  throw new Error(`${e.name}: unsupported ZIP method ${e.method}`);
 }
 
 // Locate the End Of Central Directory record by scanning backwards for its

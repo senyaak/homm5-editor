@@ -135,6 +135,40 @@ export function writeHeights(t: Terrain, heights: Float32Array | number[]): Buff
 export const heightAt = (heights: Float32Array | number[], V: number, x: number, y: number): number => heights[y * V + x]!;
 
 /**
+ * The (AdvMapTile) reference stored after a mask, or null when there is none.
+ *
+ * A tile ref is '<path>.xdb#xpointer(/AdvMapTile)', and the path can live
+ * anywhere in the data root — the editor's own tiles are under
+ * /MapObjects/_(AdvMapTile)/, but a random-map generator's are under /RMG/Tiles/
+ * and a mod's are wherever it put them. So the anchor is the xpointer, which is
+ * what makes the ref a tile at all; the path is then whatever printable run
+ * leads up to it, back to the framing byte that ends the previous field.
+ *
+ * Matching on the folder instead is what shipped, and it silently returned null
+ * for every layer of an RMG map: no tile paths meant no splat, and the ground
+ * came out flat and untextured.
+ */
+export function tilePathAt(raw: Buffer, from: number, to: number): string | null {
+  const s = raw.toString('latin1', from, to);
+  const XP = '.xdb#xpointer(/AdvMapTile)';
+  const j = s.indexOf(XP);
+  if (j < 0) return null;
+  let i = j;
+  while (i > 0) {
+    const c = s.charCodeAt(i - 1);
+    if (c < 0x20 || c > 0x7e) break;
+    i--;
+  }
+  // The run can start one byte early: the string's framing length byte is
+  // printable whenever the path happens to be the right length ('j' == 0x6a is
+  // 2*53). Both framing bytes are even by construction (2*len and 2*(len+2)),
+  // and '/' is odd, so the first slash in the run is always the path's own.
+  while (i < j && s[i] !== '/') i++;
+  const path = s.slice(i, j + 4); // through '.xdb'
+  return path.startsWith('/') ? path : null;
+}
+
+/**
  * Read the terrain's texture layers. Each layer is a per-vertex u8 weight mask
  * (0..255 opacity) followed by the path to an `(AdvMapTile).xdb` that names the
  * ground texture (Grass, Dirt, StoneRoad, Sand, Water, …). The engine splats
@@ -153,8 +187,7 @@ export function readTextureLayers(t: Terrain): TextureLayer[] {
     if (a.elem !== 'u8' || a.count !== t.N || a.dataOff >= heightOff) continue;
     // The AdvMapTile path is an ASCII run shortly after the mask data.
     const from = a.dataOff + a.len, to = Math.min(t.raw.length, from + 400);
-    const m = t.raw.toString('latin1', from, to).match(/\/MapObjects\/_\(AdvMapTile\)\/[\x20-\x7e]+?\.xdb/);
-    layers.push({ maskOff: a.dataOff, count: a.count, path: m ? m[0] : null });
+    layers.push({ maskOff: a.dataOff, count: a.count, path: tilePathAt(t.raw, from, to) });
   }
   return layers;
 }

@@ -37,11 +37,22 @@ function cleanup(): void {
   for (const p of [MAP_DIR, ARCHIVE, UNPACK_ROOT]) if (existsSync(p)) rmSync(p, { recursive: true, force: true });
 }
 
-test.beforeAll(async () => { cleanup(); ed = await launchEditor(); });
+test.beforeAll(async () => {
+  cleanup();
+  ed = await launchEditor();
+  // Both OS dialogs are answered for the whole session, before anything else
+  // runs. Patching them mid-test raced with the app's own start-up work in the
+  // main process often enough to fail one run in three, and there is nothing to
+  // gain from the later timing: the answers are fixed either way.
+  await ed.app.evaluate(({ dialog }, { save, open }) => {
+    dialog.showSaveDialog = (async () => ({ canceled: false, filePath: save })) as typeof dialog.showSaveDialog;
+    dialog.showOpenDialog = (async () => ({ canceled: false, filePaths: [open] })) as typeof dialog.showOpenDialog;
+  }, { save: ARCHIVE, open: ARCHIVE });
+});
 test.afterAll(async () => { await ed?.app.close(); cleanup(); });
 
 test('packs a new map, opens the .h5m back, and gets the same bytes', async () => {
-  const { app, page } = ed;
+  const { page } = ed;
 
   // --- create -----------------------------------------------------------
   await page.locator('#newmapbtn').click();
@@ -52,12 +63,8 @@ test('packs a new map, opens the .h5m back, and gets the same bytes', async () =
   await expect(page.locator('#title')).toHaveText(`homm5-editor — ${NAME} (72×72)`, { timeout: 60_000 });
 
   // --- pack -------------------------------------------------------------
-  // Answer the native save dialog with the path it would have suggested, which
-  // is what a user pressing Save without retyping anything gets.
-  await app.evaluate(({ dialog }, filePath) => {
-    dialog.showSaveDialog = (async () => ({ canceled: false, filePath })) as typeof dialog.showSaveDialog;
-  }, ARCHIVE);
-
+  // The stubbed save dialog answers with the path it would have suggested,
+  // which is what a user pressing Save without retyping anything gets.
   await page.locator('#pack').click();
   await expect(page.locator('#hud')).toContainText('packed →', { timeout: 30_000 });
   expect(existsSync(ARCHIVE)).toBe(true);
@@ -77,10 +84,6 @@ test('packs a new map, opens the .h5m back, and gets the same bytes', async () =
   expect(before).toHaveLength(22); // map.xdb + GroundTerrain.bin + 20 text files
 
   // --- open the archive back --------------------------------------------
-  await app.evaluate(({ dialog }, filePaths) => {
-    dialog.showOpenDialog = (async () => ({ canceled: false, filePaths })) as typeof dialog.showOpenDialog;
-  }, [ARCHIVE]);
-
   await page.locator('#open').click();
   await expect(page.locator('#hud')).toContainText('unpacked', { timeout: 60_000 });
   // The map on screen is the unpacked copy — same folder name, new location.

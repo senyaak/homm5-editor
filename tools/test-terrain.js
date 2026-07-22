@@ -4,7 +4,7 @@
 //  3. edit round-trip: raise every vertex by +1.0, write, re-parse, and confirm
 //     the values read back AND that only the height byte-range changed.
 import { readFileSync } from 'node:fs';
-import { parseTerrain, readHeights, writeHeights } from '../src/terrain.ts';
+import { parseTerrain, readHeights, writeHeights, readTextureLayers, tilePathAt } from '../src/terrain.ts';
 
 const samples = process.argv.slice(2);
 if (samples.length === 0) samples.push('samples/A2M3_GroundTerrain.bin', 'samples/A2M6_GroundTerrain.bin');
@@ -56,6 +56,48 @@ for (const path of samples) {
   console.log(`  changed bytes: ${diffs} (range ${firstDiff}..${lastDiff}); height range ${hStart}..${hEnd}`);
   console.log(`  edit localized to height plane only: ${localized ? 'OK' : 'FAIL'}`);
   if (!localized) failures++;
+}
+
+// --- tile references: any folder, and framing bytes that read as text ---
+//
+// A tile ref is '<path>.xdb#xpointer(/AdvMapTile)', and the path can be anywhere
+// in the data root: the editor's own tiles are under /MapObjects/_(AdvMapTile)/,
+// a random map's under /RMG/Tiles/, a mod's wherever it likes. Matching on the
+// folder is what shipped, and every layer of an RMG map came back without a
+// path — no tile paths, no splat, flat untextured ground.
+//
+// The second trap is the framing: a string is preceded by two length bytes, and
+// those are ordinary bytes that can read as letters ('j' is 2*53). Walking back
+// over printable characters therefore overshoots the path's leading slash.
+const framed = (path) => Buffer.concat([
+  // 03 <2*(len+2)> 03 <2*len> <string>, as the container frames it.
+  Buffer.from([0x03, (2 * (path.length + 2)) & 0xff, 0x03, (2 * path.length) & 0xff]),
+  Buffer.from(path + '#xpointer(/AdvMapTile)', 'latin1'),
+]);
+const refCases = [
+  ['/MapObjects/_(AdvMapTile)/Grass/Grass.xdb', "the editor's own tiles"],
+  ['/RMG/Tiles/Haven/Dark_Grass.xdb', 'a random map’s tiles (length byte reads as "j")'],
+  ['/RMG/Tiles/Haven/Orc_Dirt_Sec_Road.(AdvMapTile).xdb', 'the .(AdvMapTile).xdb spelling'],
+  ['/Mods/Anything/At/All.xdb', 'a folder nobody has seen before'],
+];
+console.log('\n============================================================');
+for (const [path, what] of refCases) {
+  const got = tilePathAt(framed(path), 0, 400);
+  const ok = got === path;
+  console.log(`  tile ref — ${what}: ${ok ? 'OK' : `FAIL (got ${got})`}`);
+  if (!ok) failures++;
+}
+// A mask with no tile after it is a real thing; it must not borrow a neighbour's.
+const none = tilePathAt(Buffer.from('\x00\x01/not/a/tile/ref.xdb\x00', 'latin1'), 0, 400);
+console.log(`  tile ref — no xpointer means no path: ${none === null ? 'OK' : `FAIL (got ${none})`}`);
+if (none !== null) failures++;
+
+// And every layer of every sample resolves to an absolute path or to nothing.
+for (const path of samples) {
+  const ls = readTextureLayers(parseTerrain(readFileSync(path)));
+  const bad = ls.filter((l) => l.path !== null && !l.path.startsWith('/'));
+  console.log(`  ${path}: ${ls.length} layers, ${ls.filter((l) => l.path).length} with a tile, ${bad.length} malformed`);
+  if (bad.length) failures++;
 }
 
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED ✅' : `${failures} CHECK(S) FAILED ❌`}`);
