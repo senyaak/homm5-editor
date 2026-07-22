@@ -123,6 +123,14 @@ export async function setBrushForce(page: Page, force: number, tension = 0): Pro
   await page.locator('#brushtension').dispatchEvent('input');
 }
 
+/**
+ * Choose what the Ground-kind brush paints: the tier, and whether it is a ramp.
+ */
+export async function setGroundKind(page: Page, tier: number, ramp = false): Promise<void> {
+  await page.locator('#kindtier').selectOption(String(tier));
+  await page.locator('#kindramp').setChecked(ramp);
+}
+
 /** Create a blank map through the New Map dialog, as a person would. */
 export async function newMap(page: Page, name: string, size: string): Promise<void> {
   await page.locator('#newmapbtn').click();

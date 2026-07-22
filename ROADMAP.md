@@ -138,6 +138,12 @@ placing new ones from a palette.
 - [x] Raise (plateau, +2.0 with cut edges, flag 32) and Lower (pit to 0.0,
       flag 0, floods) beside the smooth Bulk and Dig ✅
 - [x] Plateau (level to the starting tier) and the Rect brush size ✅
+- [x] **Ground-kind brush** (2026-07-22): paints the tier (and the ramp bit)
+      without moving the ground. Every other tool changes a tier by moving it —
+      Raise adds a step and takes the tier along, Lower digs to 0 and calls it
+      water — which is right for sculpting and useless on a surface already at
+      its final height. Rect covers a whole map in one stroke, Vertex sets a
+      single corner ✅
 - [x] **Plan-view picking comes from the camera** (2026-07-22): under the
       top-down orthographic camera the ray is vertical, so where it meets the
       ground follows from the camera alone. Asking the raycast instead put a

@@ -503,6 +503,7 @@
         <option value="lower">Lower (pit)</option>
         <option value="ramp">Ramp (walkable step)</option>
         <option value="level">Plateau (level to here)</option>
+        <option value="kind">Ground kind (tier)</option>
         <option value="mask">Mask (block)</option>
         <option value="erase">Erase (unblock)</option>
       </select>
@@ -520,6 +521,20 @@
            map holds were simply not reachable. -->
       <input id="brushforce" type="number" min="0.001" max="32" step="0.05" value="0.35"
              title="force: units of height one stroke adds at the centre">
+      <!-- Ground kind: the tier a vertex belongs to, and whether it is a ramp.
+           Painted on its own because every other tool moves the ground to change
+           it, and a surface already at its final height must not be moved. -->
+      <select id="kindtier" title="ground kind the Tier brush paints">
+        <option value="0">water</option>
+        <option value="1">ground</option>
+        <option value="2" selected>plateau 2</option>
+        <option value="3">plateau 3</option>
+        <option value="4">plateau 4</option>
+        <option value="5">plateau 5</option>
+      </select>
+      <label id="kindrampwrap" title="ramp: walkable half-step instead of a wall">
+        <input id="kindramp" type="checkbox"> ramp
+      </label>
       <label id="brushtensionwrap" title="tension: 1 tapers to the rim, 0 lifts the whole brush evenly">
         pull <input id="brushtension" type="range" min="0" max="1" step="0.05" value="1">
         <span id="brushtensionval">1.00</span>

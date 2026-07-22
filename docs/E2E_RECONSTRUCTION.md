@@ -161,7 +161,14 @@ toolbar. With force set and tension 0, a 1×1 stroke moves its four vertices by
 exactly that much, all the way into the file (`e2e/click-terrain.spec.ts`), so
 the reconstruction can compute its strokes instead of guessing them.
 
-### Heights: done ✅
+### Order within the terrain stage
+
+Heights → **kinds** → rivers → textures → passability, and the first two are in
+that order for a reason: every sculpting tool rewrites the flag of the ground it
+moves, while the ground-kind brush leaves the height alone. Kinds first would
+undo themselves.
+
+### Heights and tiers: done ✅
 
 `e2e/reconstruct-c1m1.spec.ts` rebuilds the shape by clicking — a blank 96×96
 through the New Map dialog, then one Vertex-brush stroke per vertex with the
@@ -169,6 +176,12 @@ force that vertex needs. **All 9409 heights match the original**, in about 6½
 minutes of real clicks (9409 strokes, ~24/s). The result is left in
 `_tmp/recon/C1M1/` so `npm run diff-terrain _tmp/fixtures/C1M1
 _tmp/recon/C1M1` can show what the other planes still owe.
+
+The tiers went on the same way. C1M1 is 48 (tier 3) ×8195, 64 ×623, 32 ×575,
+plus 8 ramp vertices on each of tiers 2 and 3 — so one rectangle stroke lays the
+kind that 87% of the map shares and 1214 vertices are painted one at a time.
+All 9409 kinds match, and the heights are re-checked afterwards, which is also
+what proves the kind brush moved nothing.
 
 What the first full run cost, and is worth remembering: 18 of those 9409
 vertices came out wrong, every one beside a tall step. The pick asked the

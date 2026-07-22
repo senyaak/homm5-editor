@@ -23,8 +23,8 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { join } from 'node:path';
 import { launchEditor, REPO_ROOT } from './launch.ts';
 import type { Launched } from './launch.ts';
-import { armBrush, newMap, planView } from './tiles.ts';
-import { parseTerrain, readHeights } from '../src/terrain.ts';
+import { armBrush, dragTiles, newMap, planView, setGroundKind } from './tiles.ts';
+import { parseTerrain, readHeights, readGroundFlags, tierOf, RAMP_BIT, TIER_STEP } from '../src/terrain.ts';
 
 let ed: Launched;
 
@@ -52,7 +52,9 @@ test('the shape of C1M1, rebuilt by clicking', async () => {
   test.setTimeout(3 * 60 * 60_000);
   const { page } = ed;
 
-  const target = readHeights(parseTerrain(readFileSync(FIXTURE)));
+  const fixture = parseTerrain(readFileSync(FIXTURE));
+  const target = readHeights(fixture);
+  const targetFlags = readGroundFlags(fixture)!;
 
   await newMap(page, NAME, '96');
   await planView(page);
@@ -117,6 +119,49 @@ test('the shape of C1M1, rebuilt by clicking', async () => {
   }
   console.log(`${done} strokes in ${((Date.now() - started) / 1000).toFixed(0)}s`);
 
+  // --- the tiers -----------------------------------------------------------
+  //
+  // The kinds go on AFTER the heights, and the order is not arbitrary: the kind
+  // brush leaves the ground where it is, while every sculpting tool rewrites the
+  // flag of what it moves. Doing it the other way round would undo itself.
+  //
+  // One rectangle over the whole map lays down the kind most of it shares —
+  // 8195 of 9409 vertices here — and the rest is painted vertex by vertex, which
+  // is how a person would do it too.
+  const byKind = new Map<number, number[]>();
+  for (let i = 0; i < targetFlags.length; i++) {
+    const k = targetFlags[i]!;
+    if (!byKind.has(k)) byKind.set(k, []);
+    byKind.get(k)!.push(i);
+  }
+  const kinds = [...byKind].sort((a, b) => b[1].length - a[1].length);
+  const [bulkKind, bulkVerts] = kinds[0]!;
+  console.log(`kinds: ${kinds.map(([k, v]) => `${k}×${v.length}`).join(' ')}`);
+
+  const paintKind = async (kind: number): Promise<void> => {
+    await setGroundKind(page, tierOf(kind), (kind & RAMP_BIT) !== 0);
+  };
+
+  const tiles = V - 1;
+  await armBrush(page, 'kind', 'rect');
+  await paintKind(bulkKind);
+  await dragTiles(page, [0, 0], [tiles - 1, tiles - 1], 12);
+  console.log(`  one rect stroke: kind ${bulkKind} over ${bulkVerts.length} vertices`);
+
+  await armBrush(page, 'kind', 'vertex');
+  let painted = 0;
+  for (const [kind, verts] of kinds.slice(1)) {
+    await paintKind(kind);
+    for (const v of verts) {
+      const [px, py] = pixels[v]!;
+      await page.mouse.move(px, py);
+      await page.mouse.down();
+      await page.mouse.up();
+      painted++;
+    }
+  }
+  console.log(`  ${painted} vertices painted one at a time`);
+
   await page.locator('#save').click();
   await expect(page.locator('#save')).toBeDisabled({ timeout: 120_000 });
 
@@ -144,4 +189,17 @@ test('the shape of C1M1, rebuilt by clicking', async () => {
   }
   console.log(`checked ${checked} vertices`);
   expect(wrong, 'vertices that did not reach the original height').toEqual([]);
+
+  // Tiers and ramps, every vertex — and the heights are re-checked above rather
+  // than before the kind pass, so this also proves painting a kind moved
+  // nothing: a tool that nudged the ground would show up as a wrong height.
+  const builtFlags = readGroundFlags(parseTerrain(builtBin))!;
+  const wrongKind: string[] = [];
+  for (let i = 0; i < targetFlags.length && wrongKind.length < 20; i++) {
+    if (builtFlags[i] !== targetFlags[i]) {
+      wrongKind.push(`(${i % V},${(i / V) | 0}) built ${builtFlags[i]} vs ${targetFlags[i]}`);
+    }
+  }
+  expect(wrongKind, 'vertices whose ground kind differs').toEqual([]);
+  expect(TIER_STEP).toBe(16); // the encoding the plan above assumes
 });

@@ -17,7 +17,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 import { UNITS_PER_TILE as U } from '../src/units.ts';
-import { tierOf, RAMP_BIT } from '../src/terrain.ts';
+import { tierOf, RAMP_BIT, TIER_STEP } from '../src/terrain.ts';
 import type { Scene, Floor, Instance, SplatData, TileInfo, GeomData, GeomPart, Footprint } from '../src/scene.ts';
 import type { EditorApi, MapListEntry, ExternalChange, PlaceableObject, RosterEntryDTO } from '../electron/ipc.ts';
 import type { ObjectProp } from '../src/map.ts';
@@ -3874,7 +3874,7 @@ let vertexMode = false;
 const keepsGroundKind = (flag: number): boolean => tierOf(flag) >= 2 || (flag & RAMP_BIT) !== 0;
 
 /** What a left-drag does. Mirrors the mode selector in the toolbar. */
-type BrushMode = 'paint' | 'bulk' | 'dig' | 'raise' | 'lower' | 'ramp' | 'level' | 'mask' | 'erase';
+type BrushMode = 'paint' | 'bulk' | 'dig' | 'raise' | 'lower' | 'ramp' | 'level' | 'kind' | 'mask' | 'erase';
 let brushMode: BrushMode = 'paint';
 /** Height direction for the sculpt modes; 0 for the rest. */
 let sculptDir = 0;
@@ -3908,6 +3908,45 @@ function remeshFloor(fl: Floor3D): void {
   // The overlay is built from the terrain's triangles, which have just been
   // replaced — and sculpting changes what counts as a cliff anyway.
   refreshBlocked(fl);
+}
+
+/**
+ * The ground kind the Tier brush paints: `16 × tier`, plus 8 for a ramp.
+ * Read from the toolbar at the moment of the stroke.
+ */
+function selectedKind(): number {
+  const tier = +$select('kindtier').value;
+  return tier * TIER_STEP + (($('kindramp') as HTMLInputElement).checked ? RAMP_BIT : 0);
+}
+
+/**
+ * Paint the ground kind, leaving the height exactly where it is.
+ *
+ * Every other tool changes a tier by MOVING the ground: Raise adds a step and
+ * takes the tier with it, Lower digs to 0 and calls it water. That is right for
+ * sculpting and useless once the surface is already at its final height — which
+ * is exactly the state a reconstruction is in when it comes to set the tiers
+ * (docs/E2E_RECONSTRUCTION.md), and the state you are in whenever a hill is
+ * shaped the way you want but reads as the wrong kind of ground.
+ *
+ * @returns the vertices it changed, or null if they already held that kind.
+ */
+function kindAt(verts: number[], vertexOnly = false): number[] | null {
+  const fl = activeFloor();
+  if (!fl.flags) return null;
+  const kind = selectedKind();
+  const moved: number[] = [];
+  for (const v of verts) {
+    if (!vertexOnly && strokeVerts.has(v)) continue;
+    if (fl.flags[v] === kind) continue;
+    fl.flags[v] = kind;
+    moved.push(v);
+  }
+  if (!moved.length) return null;
+  // The mesher reads flags: tier boundaries become cut walls, ramps are smoothed
+  // and flag 0 is where the sea sheet goes, so the view is stale until it runs.
+  remeshFloor(fl);
+  return moved;
 }
 
 /**
@@ -4101,7 +4140,9 @@ function sculptTick(ev: PointerEvent): void {
   // otherwise a stroke that pauses would silently stop sculpting.
   if (tile === lastTile && now - lastTick < TICK_MS) return;
   lastTile = tile; lastTick = now;
-  const moved = vertexMode ? sculptVertex(fl, at.x, at.y) : sculptAt(fl, at.x, at.y);
+  const moved = brushMode === 'kind'
+    ? kindAt([at.y * fl.V + at.x], true)
+    : vertexMode ? sculptVertex(fl, at.x, at.y) : sculptAt(fl, at.x, at.y);
   if (!moved) return;
   for (const v of moved) strokeVerts.add(v);
   remeshFloor(fl);
@@ -4186,6 +4227,7 @@ function applyRect(r: TileRect): void {
     case 'lower': plateauAt(verts, false, start); break;
     case 'ramp': rampAt(verts, start); break;
     case 'level': levelAt(verts, start); break;
+    case 'kind': { const moved = kindAt(verts); if (moved) for (const v of moved) strokeVerts.add(v); break; }
     case 'mask': maskAt(rectTiles(fl.V, r), false); break;
     case 'erase': maskAt(rectTiles(fl.V, r), true); break;
   }
@@ -4219,8 +4261,9 @@ function sculptRect(verts: number[]): void {
 function applyBrush(ev: PointerEvent): void {
   // Rect only previews while dragging; the work happens on release.
   if (rectMode) { updateBrushCursor(tileUnderCursor(ev)); return; }
-  // Bulk and Dig keep their own rate limiting and radial falloff.
-  if (brushMode === 'bulk' || brushMode === 'dig') { sculptTick(ev); return; }
+  // Bulk and Dig keep their own rate limiting and radial falloff; the kind
+  // brush borrows that path when it is painting one vertex at a time.
+  if (brushMode === 'bulk' || brushMode === 'dig' || (vertexMode && brushMode === 'kind')) { sculptTick(ev); return; }
   const r = currentRect(ev);
   if (r) applyRect(r);
 }
@@ -4229,7 +4272,7 @@ function applyBrush(ev: PointerEvent): void {
 async function commitBrush(): Promise<void> {
   switch (brushMode) {
     case 'paint': await commitStroke(); break;
-    case 'bulk': case 'dig': case 'raise': case 'lower': case 'ramp': case 'level':
+    case 'bulk': case 'dig': case 'raise': case 'lower': case 'ramp': case 'level': case 'kind':
       await commitSculpt(); break;
     case 'mask': await commitMask(false); break;
     case 'erase': await commitMask(true); break;
@@ -4821,6 +4864,7 @@ $select('brushmode').addEventListener('change', (e) => {
     lower: 'lower: a pit dug to 0, which floods',
     ramp: 'ramp: half a step up, walkable instead of a wall',
     level: 'plateau: pull everything to the level you start on',
+    kind: 'ground kind: paints the tier (and ramp) without moving the ground',
     mask: 'masking: left-drag blocks movement', erase: 'erasing the movement mask',
   };
   $('hud').textContent = says[brushMode];
