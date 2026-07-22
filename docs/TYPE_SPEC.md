@@ -44,9 +44,19 @@ field's `<Type>` may point at either, and skipping structs loses exactly the
 nested types worth having — `CommonObjective` (a seer hut's `Quest`), `Vec3`,
 `Rect`. There are also `TYPE_TYPE_ENUM` entries; see below.
 
+**Array types are ANONYMOUS.** A list field (`spellIDs`, `weekIDs`) points at a
+`TYPE_TYPE_ARRAY` declaration that has no `<TypeName>` at all — only a
+`__ServerPtr`, a `<BoundTo>` naming the field it belongs to, and a `<Field>`
+whose `<Type>` is the ELEMENT type. A parser that walks type NAMES never sees
+them, and every list field then looks like it has no type. They are collected
+separately and stored under a synthetic `array:<ptr>` key, which is what lets
+"what may this list contain" resolve to `SpellID` and its 353 members.
+
 The parser splits on `<TypeName>` rather than on the enclosing `<Item>`: items
 nest several levels deep (fields, constraints, entries), so matching the wrapper
-means counting brackets for no gain.
+means counting brackets for no gain. The same bounding matters for enums: read
+`<Entries>` past the end of a declaration and a type with none borrows the next
+one's, which is exactly how the first reading of `MoonWeekID` came out wrong.
 
 ## What it is authoritative about
 
@@ -100,6 +110,24 @@ it: 29 confirmed, no conflicts, against a measurement taken independently.
   are offered as "not set on this object"; setting one creates the element.
   Two independent yeses are required — the spec that the type has the field, our
   own schema for what shape it is.
+- **Select boxes** (`spec:values` → `fieldValues`): a field whose values the
+  spec closes becomes a dropdown over the FULL legal set — 24 object fields,
+  1393 options. This is the part nothing else could supply: `AttackType` is
+  `ATTACK_ANY` on all 6377 monsters in every shipped map, so a list measured
+  from maps offers one choice while the type has three.
+
+  The list is **offered, not enforced**. A value already in the file that the
+  spec does not list is kept as a choice, labelled: a modded install is a real
+  thing, and silently rewriting someone's map on the next save is a worse
+  failure than an extra entry in a menu. Fields backed by a roster
+  (`x-registry`: spells, artifacts, creatures, skills) keep it — the roster
+  carries display names, which the spec does not.
+
+  It also checks us: `tools/test-typespec.ts` compares our schema's own hand-
+  written enums against the game's, and found the panel offering
+  `MASTERY_ULTIMATE` — a name the game does not have. The fourth mastery is
+  `MASTERY_EXTRA_EXPERT` (the artifact-granted level; training gives three),
+  and it is in `GameMechanics/RefTables/Mastery.xdb` and two campaign maps.
 - **Tests**: `tools/test-defaults.ts` (defaults vs the spec) and
   `e2e/place-objects.spec.ts` (a shipped map whose statics predate
   `TerrainAligned`/`ScalePercent`, both offered, one set, saved, and checked in

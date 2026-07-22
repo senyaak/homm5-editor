@@ -90,6 +90,13 @@ so a `.cts` preload dies on the first type annotation — silently, leaving
   pre-existing plane byte for byte (`npm run test-terrain-layer`).
 - **Mesh decoding** (`src/geometry.ts`): positions, indices, UVs and textures.
   See [docs/GEOMETRY_FORMAT.md](docs/GEOMETRY_FORMAT.md).
+- **The game's own type system** (`src/typespec.ts`): `data/types.xml` declares
+  every type's fields, their order, their constraints and its enums' members.
+  The editor uses it to add a field an old object predates, to offer the fields
+  an object does not carry, and to fill select boxes with the full legal set
+  rather than with what shipped maps happen to use. See
+  [docs/TYPE_SPEC.md](docs/TYPE_SPEC.md) — including where it and the shipped
+  PDFs disagree, and which one a map file follows.
 
 ## Running
 
