@@ -4698,9 +4698,32 @@ $('extchange-reload').onclick = () => {
 // baseline, so the next external save raises it again.
 $('extchange-ignore').onclick = hideExternalChange;
 
+/**
+ * Open whatever the user picked: an unpacked folder's map.xdb, or a packed
+ * archive — which is unpacked beside itself first, so what gets edited is always
+ * a working folder and the archive stays as the game got it.
+ */
+async function openAny(path: string | null): Promise<void> {
+  if (!path) return;
+  if (!/\.(h5m|h5c|h5u|pak)$/i.test(path)) { await loadMapPath(path); return; }
+  $('loading').classList.add('on');
+  $('loadmsg').textContent = 'unpacking…';
+  try {
+    const { mapPath, mapDir, files } = await window.editor.openArchive(path);
+    await loadMapPath(mapPath);
+    $('hud').textContent = `unpacked ${files} files → ${mapDir}`;
+    // The folder that just appeared belongs in the picker's list.
+    void initPicker();
+  } catch (e) {
+    $('hud').textContent = 'error: ' + (e instanceof Error ? e.message : String(e));
+    console.error(e);
+  } finally {
+    $('loading').classList.remove('on');
+  }
+}
+
 async function openViaDialog() {
-  const path = await window.editor.openMapDialog();
-  if (path) loadMapPath(path);
+  await openAny(await window.editor.openMapDialog());
 }
 
 // In-window map picker: list openable maps under the game-data root, grouped by
@@ -4735,8 +4758,10 @@ function renderMapList() {
     div.className = 'm';
     div.innerHTML = `<span class="name"></span><span class="rel"></span>`;
     setChild(div, '.name', m.name);
-    setChild(div, '.rel', m.rel);
-    div.onclick = () => loadMapPath(m.path);
+    // Packed maps are opened by unpacking, which creates a folder — worth saying
+    // so before the click rather than after.
+    setChild(div, '.rel', m.archive ? `${m.rel} · unpacks` : m.rel);
+    div.onclick = () => { void openAny(m.path); };
     list.appendChild(div);
   }
 }

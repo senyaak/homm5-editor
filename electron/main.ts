@@ -19,7 +19,7 @@ import { readFileSync, writeFileSync, existsSync, readdirSync, statSync, mkdirSy
 import { createHash } from 'node:crypto';
 import { buildScene, findAssetRoot, listTiles, splatFor, pngDataUri } from '../src/scene.ts';
 import { listPlaceable, findEditorRoot, iconPathFor, readIconFile } from '../src/objects.ts';
-import { initProject, packProject, status } from '../src/project.ts';
+import { initProject, openProject, packProject, status } from '../src/project.ts';
 import { watchMapDir } from '../src/watch.ts';
 import { donorFor } from '../src/donors.ts';
 import type { MapWatch } from '../src/watch.ts';
@@ -48,7 +48,7 @@ import type {
   ReadFilePayload, ReadFileResult, WriteFilePayload,
   ObjectCatalogResult, IconPayload, IconResult, AddObjectPayload, AddObjectResult,
   MapSaveResult, MapPackResult, TerrainTilesResult, MapStatusResult, OpenMapDialogResult,
-  NewMapPayload, NewMapResult,
+  NewMapPayload, NewMapResult, OpenArchivePayload, OpenArchiveResult,
   ExternalChange, PaintTilePayload, PaintTileResult, SculptPayload, SculptResult,
   AddLayerPayload, AddLayerResult, PaintRiverPayload, MaskPayload, UndoResult, HistoryState,
 } from './ipc.ts';
@@ -304,6 +304,14 @@ ipcMain.handle('maps:list', async (): Promise<MapsListResult> => {
     }
     for (const e of ents) {
       const full = join(dir, e);
+      // Packed maps count as openable too — the game reads .h5m, so a map that
+      // has been packed and its folder tidied away is often the only copy left.
+      // Opening one unpacks it first (map:open-archive).
+      if (/\.h5m$/i.test(e)) {
+        const rel = relative(mapsDir, dir).split(sep).join('/');
+        maps.push({ name: e, rel: rel ? `${rel}/${e}` : e, path: full, archive: true });
+        continue;
+      }
       try { if (statSync(full).isDirectory()) walk(full); } catch { /* skip */ }
     }
   };
@@ -320,10 +328,16 @@ ipcMain.handle('maps:list', async (): Promise<MapsListResult> => {
 // --- IPC: open a map file via the OS dialog (starts in the last-used folder) ---
 ipcMain.handle('dialog:openMap', async (): Promise<OpenMapDialogResult> => {
   const opts = {
-    title: 'Open map.xdb',
+    title: 'Open a map',
     defaultPath: lastDir,
     properties: ['openFile' as const],
-    filters: [{ name: 'HoMM5 map', extensions: ['xdb'] }],
+    // Both halves of the round trip: an unpacked folder's map.xdb, or the .h5m
+    // Pack produced from one.
+    filters: [
+      { name: 'HoMM5 map', extensions: ['xdb', 'h5m', 'h5c', 'h5u'] },
+      { name: 'Map folder', extensions: ['xdb'] },
+      { name: 'Packed map', extensions: ['h5m', 'h5c', 'h5u'] },
+    ],
   };
   // Electron treats a null parent as "no parent"; pick the overload to match.
   const parent = win;
@@ -364,6 +378,32 @@ ipcMain.handle('map:new', async (_e: IpcMainInvokeEvent, p: NewMapPayload): Prom
   initProject(mapDir); // a manifest, so status/pack work on it immediately
   console.log(`[new] ${mapDir} · ${p.tiles}×${p.tiles}${p.twoLevel ? ' two-level' : ''} · ${files.length} files`);
   return { mapPath: join(mapDir, 'map.xdb'), mapDir };
+});
+
+// --- IPC: open a packed .h5m as an editable project ---
+//
+// The other half of Pack. A .h5m is a zip of the map folder, so opening one is
+// unpacking it beside the archive and then loading the map.xdb that comes out.
+// Unpacked, never edited in place: the archive stays exactly as the game got it
+// until the user packs again.
+//
+// The folder is never reused. Packing "Foo" writes Foo.h5m beside the Foo it was
+// built from, so unpacking into the name the archive suggests would land on the
+// working folder it came from and quietly overwrite whatever is in it; a free
+// "Foo (2)" instead keeps both, and which one you are editing stays obvious.
+ipcMain.handle('map:open-archive', async (_e: IpcMainInvokeEvent, p: OpenArchivePayload): Promise<OpenArchiveResult> => {
+  const archive = p.path;
+  if (!existsSync(archive)) throw new Error(`${archive} not found`);
+  const base = basename(archive).replace(/\.(h5m|h5c|h5u|pak)$/i, '');
+  const parent = dirname(archive);
+  let mapDir = join(parent, base);
+  for (let n = 2; existsSync(mapDir); n++) mapDir = join(parent, `${base} (${n})`);
+
+  const { files } = openProject(archive, mapDir);
+  const mapPath = join(mapDir, 'map.xdb');
+  if (!existsSync(mapPath)) throw new Error(`${basename(archive)} holds no map.xdb (${files.length} files)`);
+  console.log(`[open] ${archive} → ${mapDir} · ${files.length} files`);
+  return { mapPath, mapDir, files: files.length };
 });
 
 // --- IPC: load a map -> decode into a renderable scene ---

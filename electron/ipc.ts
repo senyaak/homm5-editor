@@ -19,8 +19,22 @@ export interface MapListEntry {
   name: string;
   /** Posix-style path relative to <data>/Maps. */
   rel: string;
-  /** Absolute path to the map's map.xdb. */
+  /** Absolute path to the map's map.xdb, or to the .h5m when `archive`. */
   path: string;
+  /** A packed .h5m rather than an unpacked folder: opening it unpacks first. */
+  archive?: boolean;
+}
+
+/** Payload of `map:open-archive` — the .h5m (or .h5c/.h5u) to unpack. */
+export interface OpenArchivePayload { path: string }
+
+/** Result of `map:open-archive` — the unpacked project, ready for `map:load`. */
+export interface OpenArchiveResult {
+  mapPath: string;
+  /** Folder the archive was unpacked into. */
+  mapDir: string;
+  /** Number of files taken out of the archive. */
+  files: number;
 }
 
 /** Result of `maps:list`. */
@@ -466,6 +480,7 @@ export interface EditorApi {
   listMaps(): Promise<MapsListResult>;
   openMapDialog(): Promise<OpenMapDialogResult>;
   newMap(p: NewMapPayload): Promise<NewMapResult>;
+  openArchive(path: string): Promise<OpenArchiveResult>;
   loadMap(path: string): Promise<MapLoadResult>;
   moveObject(id: string, x: number, y: number): Promise<MoveObjectResult>;
   rotateObject(id: string, r: number): Promise<ObjectEditResult>;

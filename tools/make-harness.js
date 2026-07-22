@@ -163,6 +163,7 @@ const STUB = `<script>
     // The harness has no filesystem; report where it would have gone so the
     // dialog's success path (close + load) still runs.
     newMap: async (p) => { log('newMap', p); return { mapPath: '/harness/new/map.xdb', mapDir: '/harness/new' }; },
+    openArchive: async (path) => { log('openArchive', path); return { mapPath: '/harness/map.xdb', mapDir: '/harness', files: 23 }; },
     loadMap: async (path) => {
       log('loadMap', path);
       return {
