@@ -405,3 +405,37 @@ fixture holds the SHAPE the editor writes, not game content: `Pos`/`Rot`/`Shared
 are blanked as placement rather than default, and the town's spell list is
 emptied — it is the installation's roster, resolved from the registry at
 placement time.
+
+---
+
+## The game ships its own spec — and it agrees
+
+`<game>/data/types.xml` is the engine's type system: 739 types, 3293 fields,
+each with its type id, chunk id, constraints — and for 1092 of them a
+`DefaultValue`. It is read by `src/typespec.ts` at test time (never copied into
+the repository) and checked by `tools/test-defaults.ts`.
+
+**Where the spec speaks, it confirms the measurement — 29 defaults, no
+conflicts.** `AdvMapCartographer.Cost` 4000, `AdvMapGarrison.TownType`
+TOWN_HEAVEN, `AdvMapStatic.ScalePercent` 100, an objective's `-1` timeouts, a
+player's `PCOLOR_NEUTRAL`. Two independent sources, one saying what the ENGINE
+expects and the other what the EDITOR writes, and they have never disagreed.
+
+**But the spec is not a replacement for the measurement.** Only 17 of the 21
+object types' fields carry a declared default; the ones that make a new object
+usable — a town's town hall, a shipyard's boat four tiles out, a dwelling's
+`RandomCreatures` true, a monster's `Amount` 0 — are not in it. Those are the
+EDITOR's behaviour, not the type system's, and only a map the editor saved can
+testify to them. The two sources cover different questions:
+
+| question | source |
+| --- | --- |
+| which fields does this type have, in what order, with what constraints | `types.xml` (authoritative, includes inheritance via `BaseType`) |
+| what does the ENGINE default a field to | `types.xml`, for the fields it declares |
+| what does the EDITOR write into a NEW object | a map it saved — this document |
+
+The test also prints every default the spec declares that our schema does not
+(59 at the time of writing, mostly `AdvMapDesc` and the entity `$defs`:
+`BirdsAmount` 10, `BorderSize` 1, a wind's `Angle` 45…). That list is the work
+queue for map-level defaults, and it is printed rather than counted so it can be
+worked through.

@@ -173,6 +173,24 @@ placing new ones from a palette.
       Two fields still keep the donor's value: a town's `spellIDs` needs the
       installation's roster (supplied by the app, absent in a bare test), and
       anything the schema does not declare.
+- [x] ✅ **The game ships its own type spec** — `<data>/types.xml`: 739 types,
+      3293 fields with type ids, chunk ids and constraints, and 1092 declared
+      DefaultValues. Read by `src/typespec.ts` at test time. It **confirms 29 of
+      our defaults with no conflicts**, an independent source saying what the
+      ENGINE expects against a map saying what the EDITOR writes. It does not
+      replace the measurement — the defaults that make a new object usable are
+      not in it — but it is authoritative about SHAPE, which is more than
+      docs/OBJECT_FIELDS.md (inferred from maps) can claim.
+- [ ] ⬜ **Use the spec for field sets, not just defaults** — it would answer
+      "what fields does this type have here" without a donor, and it is what a
+      property panel needs to offer a field the object does not carry yet (today
+      the panel can only edit what is already in the DOM, so a field the donor
+      lacked cannot be set at all). Inheritance through `BaseType` has to be
+      resolved for that.
+- [ ] ⬜ **The 59 defaults the spec declares and our schema does not** — printed
+      by name at the end of `npm run test-defaults`. Mostly map-level
+      (`AdvMapDesc.BirdsAmount` 10, `BorderSize` 1) and the entity `$defs`
+      (a wind's `Angle` 45, an ambient light's fog distances).
 - [ ] ⬜ A third of catalogue entries have no decodable mesh, so they cannot be
       placed at all (see MESH_PLAN.md). Refused with a message today.
 - [x] ✅ Write edits back into `.h5m` — Save repacks the archive it was opened

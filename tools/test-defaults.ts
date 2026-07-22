@@ -18,6 +18,13 @@
 //      check silently did nothing everywhere else. Re-measure with
 //      `npm run object-defaults -- <map.h5m> --fixture`; pass a .h5m here to
 //      diff against it directly instead.
+//   4. Against the GAME'S OWN SPEC (needs game data): `<data>/types.xml`
+//      declares every type's fields and, for some of them, the engine's default
+//      value. Two independent sources — one says what the ENGINE expects, the
+//      other what the EDITOR writes — and where they overlap they must agree.
+//      They never have. The spec covers only a fraction of the fields, which is
+//      why it does not replace the measurement; what it declares and our schema
+//      does not is listed at the end as work, not as a failure.
 
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -27,7 +34,9 @@ import { applyDefaults, undefaulted } from '../src/defaults.ts';
 import { readEntries } from '../src/pak.ts';
 import { pickMapRel } from '../src/project.ts';
 import { parse, find, childText, serialize } from '../src/xml.ts';
-import { objectProps } from '../src/schema.ts';
+import { objectProps, objectSchema, mapSchema } from '../src/schema.ts';
+import type { FieldSchema } from '../src/schema.ts';
+import { readTypeSpec, declaredDefaults, typesXmlPath } from '../src/typespec.ts';
 import type { XmlElement } from '../src/xml.ts';
 
 let failures = 0;
@@ -190,9 +199,55 @@ function testAgainstReference(ref: Map<string, XmlElement>, what: string): void 
 testOverDonor();
 testNaming();
 
+/**
+ * Against the GAME'S OWN SPEC — `<data>/types.xml`, which declares every type's
+ * fields and, for some of them, the engine's default value.
+ *
+ * This is the check that does not depend on a map at all. It covers only the 17
+ * fields the spec gives a default for, which is why it does not replace the
+ * measurement — but where the two overlap they must agree, and a schema default
+ * that contradicts the engine is a bug however good the map it came from.
+ */
+function testAgainstSpec(dataRoot: string): void {
+  const path = typesXmlPath(dataRoot);
+  if (!path) { console.log(`\n(no types.xml under ${dataRoot} — skipping the spec check)`); return; }
+  console.log(`\nAGAINST THE GAME'S SPEC ${path}`);
+  const spec = readTypeSpec(path);
+  let checked = 0;
+  const missing: string[] = [];
+
+  const compare = (specName: string, ours: Record<string, FieldSchema>, label = specName): void => {
+    const t = spec.get(specName);
+    if (!t) { check(`${label} is in the spec`, false); return; }
+    for (const [name, value] of declaredDefaults(t)) {
+      const mine = ours[name]?.default;
+      if (mine === undefined) { missing.push(`${label}.${name} = ${value}`); continue; }
+      checked++;
+      check(`${label}.${name}`, String(mine).toLowerCase() === value.toLowerCase(),
+        `spec ${value}, ours ${String(mine)}`);
+    }
+  };
+
+  for (const type of Object.keys(objectSchema.types)) compare(type, objectProps(type));
+  // The map header and the entities it embeds are described by the same spec.
+  compare('AdvMapDesc', mapSchema.properties);
+  for (const [name, def] of Object.entries(mapSchema.$defs ?? {})) {
+    if (spec.has(name) && def.properties) compare(name, def.properties);
+  }
+
+  check(`the spec confirms ${checked} of our defaults`, checked > 0, `${checked} confirmed`);
+  // Not a failure: a default we have not declared yet is work, not a wrong
+  // answer. Listed by name so it is a list to work through rather than a count.
+  if (missing.length) {
+    console.log(`\n  ${missing.length} default(s) the spec declares and our schema does not:`);
+    for (const m of missing) console.log(`      ${m}`);
+  }
+}
+
 // The committed measurement always; a live map too, when one is pointed at —
 // which is how a drift between the fixture and the map that made it would show.
 testAgainstReference(fixtureBodies(), 'the measured fixture');
+testAgainstSpec(process.env.HOMM5_DATA || join(import.meta.dirname, '..', 'samples', 'paks', 'data'));
 const refMap = process.env.HOMM5_DEFAULTS_MAP || process.argv[2];
 if (refMap && existsSync(refMap)) testAgainstReference(referenceBodies(refMap), refMap);
 
