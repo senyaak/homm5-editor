@@ -260,6 +260,11 @@ export interface WriteFilePayload { href: string; text: string; }
 export interface MapSaveResult {
   ok: true;
   status: ProjectStatus;
+  /**
+   * The archive the work went back into, when the map came from one. Absent for
+   * a loose map folder, where saving is just the files.
+   */
+  output?: string;
 }
 
 /** `map:pack` when the user dismissed the save dialog. */

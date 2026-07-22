@@ -4861,7 +4861,14 @@ $('open').onclick = openViaDialog;
 $('open2').onclick = openViaDialog;
 $input('search').addEventListener('input', renderMapList);
 initPicker();
-$('save').onclick = async () => { await window.editor.save(); markDirty(false); $('hud').textContent = 'saved'; };
+// Save puts the work back where the map came from. For a map opened from a
+// .h5m that is the archive itself — the working folder is ours, not something
+// the user picked, so writing only there would look like nothing happened.
+$('save').onclick = async () => {
+  const r = await window.editor.save();
+  markDirty(false);
+  $('hud').textContent = r.output ? `saved → ${r.output}` : 'saved';
+};
 $('undobtn').onclick = () => { void stepHistory('undo'); };
 $('redobtn').onclick = () => { void stepHistory('redo'); };
 $('pack').onclick = async () => {

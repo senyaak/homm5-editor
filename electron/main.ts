@@ -14,12 +14,13 @@
 import { app, BrowserWindow, ipcMain, dialog, screen } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
 import { fileURLToPath } from 'node:url';
-import { dirname, join, basename, relative, sep, isAbsolute } from 'node:path';
-import { readFileSync, writeFileSync, existsSync, readdirSync, statSync, mkdirSync, copyFileSync } from 'node:fs';
+import { dirname, join, basename, relative, resolve, sep, isAbsolute } from 'node:path';
+import { readFileSync, writeFileSync, existsSync, readdirSync, statSync, mkdirSync, copyFileSync, rmSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { buildScene, findAssetRoot, listTiles, splatFor, pngDataUri } from '../src/scene.ts';
 import { listPlaceable, findEditorRoot, iconPathFor, readIconFile } from '../src/objects.ts';
-import { initProject, openProject, packProject, readManifest, status } from '../src/project.ts';
+import { initProject, openProject, packProject, readManifest, writeManifest, status, MANIFEST_NAME } from '../src/project.ts';
+import { listDirFiles } from '../src/pak.ts';
 import { watchMapDir } from '../src/watch.ts';
 import { donorFor } from '../src/donors.ts';
 import type { MapWatch } from '../src/watch.ts';
@@ -382,6 +383,61 @@ ipcMain.handle('map:new', async (_e: IpcMainInvokeEvent, p: NewMapPayload): Prom
   return { mapPath: join(mapDir, 'map.xdb'), mapDir };
 });
 
+/**
+ * The working folder for an archive: one per archive, beside the app's own data.
+ *
+ * NOT beside the archive. A map is normally opened from the game's Maps folder,
+ * and unpacking into it drops a folder the game then tries to read as a second
+ * copy of the map; worse, the obvious name is the folder the archive was packed
+ * FROM, so it would overwrite it. Keyed by the archive's path, so reopening the
+ * same map returns to the same workspace — with its unsaved edits and its undo
+ * history — instead of accumulating "foo (2)", "foo (3)".
+ */
+function workspaceFor(archivePath: string): string {
+  const key = createHash('sha1').update(resolve(archivePath).toLowerCase()).digest('hex').slice(0, 16);
+  return join(app.getPath('userData'), 'workspaces', `${basename(archivePath).replace(/[^\w.-]+/g, '_')}-${key}`);
+}
+
+/** Is this workspace still the unpacking of THIS archive, as it stands now? */
+function sourceMatches(dir: string, archivePath: string): boolean {
+  try {
+    const src = readManifest(dir).source;
+    if (!src) return false;
+    return src.hash === createHash('sha1').update(readFileSync(archivePath)).digest('hex');
+  } catch { return false; }
+}
+
+/** The folder holding map.xdb inside an unpacked workspace, at any depth. */
+function findMapDir(root: string): string | null {
+  const rel = listDirFiles(root).find((r) => /(^|\/)map\.xdb$/i.test(r));
+  return rel ? join(root, ...rel.split('/').slice(0, -1)) : null;
+}
+
+/** How many workspaces to keep. Old ones are unpacked copies of archives that
+ *  still exist, so losing one costs nothing but the time to unpack it again. */
+const KEEP_WORKSPACES = 8;
+
+/**
+ * Drop the least recently used workspaces, so the folder does not grow forever.
+ *
+ * A workspace with unsaved work is never touched, however old: the whole point
+ * of keeping the folder is that closing the editor is not the same as throwing
+ * the work away.
+ */
+function pruneWorkspaces(keep: string): void {
+  const root = join(app.getPath('userData'), 'workspaces');
+  if (!existsSync(root)) return;
+  const dirs = readdirSync(root)
+    .map((n) => join(root, n))
+    .filter((d) => d !== keep && statSync(d).isDirectory())
+    .map((d) => ({ d, at: statSync(d).mtimeMs }))
+    .sort((a, b) => b.at - a.at);
+  for (const { d } of dirs.slice(KEEP_WORKSPACES)) {
+    try { if (status(findMapDir(d) ?? d).dirty) continue; } catch { /* unreadable — let it go */ }
+    rmSync(d, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  }
+}
+
 // --- IPC: open a packed .h5m as an editable project ---
 //
 // The other half of Pack. A .h5m is a zip of the map folder, so opening one is
@@ -396,10 +452,24 @@ ipcMain.handle('map:new', async (_e: IpcMainInvokeEvent, p: NewMapPayload): Prom
 ipcMain.handle('map:open-archive', async (_e: IpcMainInvokeEvent, p: OpenArchivePayload): Promise<OpenArchiveResult> => {
   const archive = p.path;
   if (!existsSync(archive)) throw new Error(`${archive} not found`);
-  const base = basename(archive).replace(/\.(h5m|h5c|h5u|pak)$/i, '');
-  const parent = dirname(archive);
-  let mapDir = join(parent, base);
-  for (let n = 2; existsSync(mapDir); n++) mapDir = join(parent, `${base} (${n})`);
+  const mapDir = workspaceFor(archive);
+
+  // Reopening the same archive returns to the same workspace rather than
+  // unpacking a second copy beside the first: unsaved work and the undo history
+  // are keyed to that folder, so a new one every time would silently drop both.
+  // Only when the archive itself has moved on is the workspace rebuilt.
+  // The manifest lives with map.xdb, which is usually deeper than the workspace
+  // root — the archive's own folder structure is kept as it stands.
+  const existing = existsSync(mapDir) ? findMapDir(mapDir) : null;
+  if (existing && existsSync(join(existing, MANIFEST_NAME)) && sourceMatches(existing, archive)) {
+    console.log(`[open] ${archive} → ${existing} (workspace reused)`);
+    return { mapPath: join(existing, 'map.xdb'), mapDir: existing, files: listDirFiles(mapDir).length };
+  }
+  // Rebuilding: the watcher has the old copy of this very folder open, and on
+  // Windows an open handle is enough to make the delete fail.
+  if (session && session.mapDir.startsWith(mapDir)) { session.watch.stop(); session = null; }
+  rmSync(mapDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  pruneWorkspaces(mapDir);
 
   // The map is usually NOT at the archive root: members are named by their path
   // under the game's data root ('Maps/SingleMissions/foo/map.xdb'), which is how
@@ -1033,6 +1103,26 @@ ipcMain.handle('map:save', async (): Promise<MapSaveResult> => {
   // moved with them. Rewriting it here is what keeps undo usable across a
   // save-and-quit, which is the case worth having.
   saveHistory(session);
+
+  // A map opened from an archive is edited in a workspace the user never chose
+  // and will never look in, so writing the files there is not saving in any
+  // sense they would recognise. Save means "put my work back where I got it":
+  // for an archive-backed project that is the archive itself, repacked at the
+  // path the map has to sit at inside it. For a loose map folder — one we
+  // created, or one someone points us at — the files ARE the map, and writing
+  // them is the whole of it.
+  const src = readManifest(session.mapDir).source;
+  if (src && existsSync(src.path)) {
+    const res = packProject(session.mapDir, src.path, { prefix: archivePrefixFor(session.mapDir) });
+    console.log(`[save] ${session.mapDir} → ${src.path} · ${res.entries} entries`);
+    // The archive just changed, so the workspace's record of what it was opened
+    // from has to move with it, or the next open would call the workspace stale
+    // and unpack over the work still sitting in it.
+    const m = readManifest(session.mapDir);
+    m.source = { path: src.path, hash: createHash('sha1').update(readFileSync(src.path)).digest('hex') };
+    writeManifest(session.mapDir, m);
+    return { ok: true, output: src.path, status: status(session.mapDir) };
+  }
   return { ok: true, status: status(session.mapDir) };
 });
 
