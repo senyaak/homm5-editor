@@ -171,6 +171,45 @@ bed — right when drawing a river by hand, wrong on a surface already at its
 final height, hence the carve toggle. C1M1 barely digs its bed anyway: only
 49.8% of wet vertices sit below their four neighbours, by 0.058 on average.
 
+### One spec per stage
+
+The stages are separate spec files, numbered so the suite runs them in order:
+
+```
+e2e/c1m1-1-heights.spec.ts     ~5 min    9409 strokes
+e2e/c1m1-2-kinds.spec.ts       ~25 s     1 rect + 1214 strokes
+e2e/c1m1-3-rivers.spec.ts      ~30 s     2317 cells
+e2e/c1m1-4-textures.spec.ts    ~6 min    12 layers, 112 908 writes
+```
+
+Each opens the map the previous one left (`e2e/c1m1.ts`), does its own pass,
+saves, and checks its own plane — plus that it did not disturb the planes before
+it. Every stage is idempotent: heights are planned against what the map
+currently holds rather than against a blank, kinds/rivers/textures write
+absolute values. So a stage can be re-run alone while you work on it, and the
+whole chain in order rebuilds the mission from nothing.
+
+The map is not cleaned up afterwards. It is the artefact:
+`<data root>/Maps/SingleMissions/e2e Reconstruct C1M1/`.
+
+### Accepted deviations (the result matches; the bytes do not)
+
+Two differences remain in the terrain file and both are deliberate:
+
+- **Layer order.** Ours starts with the blank's Grass layer and appends the
+  other eleven; the original has Grass fifth. The engine composites layers by
+  the tile's `<Priority>`, not by their order in the file, so the ground renders
+  the same. Matching it would mean rebuilding the container to reorder planes
+  the engine ignores.
+- **Tile path spelling.** The original writes
+  `/mapobjects/_(advmaptile)/road/road.xdb`, we write the asset's own
+  `/MapObjects/_(AdvMapTile)/Road/Road.xdb`. The engine takes either — and this
+  is not authored at all: a blank map from the *same* original editor carries
+  the mixed-case form, so the spelling changed between editor versions.
+
+The rule is 1:1 in the RESULT. Filenames and record order that the engine does
+not read are not the result.
+
 ### Heights, tiers, rivers and textures: done ✅
 
 `e2e/reconstruct-c1m1.spec.ts` rebuilds the shape by clicking — a blank 96×96

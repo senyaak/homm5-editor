@@ -3585,6 +3585,14 @@ interface ViewApi {
   paintReady(): boolean;
   /** Edits sent to the main process and not yet acknowledged. */
   pending(): number;
+  /**
+   * Open a map by path, the way the Open dialog does.
+   *
+   * `window.editor.loadMap` is only the main-process half; the scene, the title
+   * and the toolbar all come from the renderer's own open path, which the file
+   * dialog normally drives and a test cannot.
+   */
+  open(path: string): Promise<void>;
   /** Tiles per side of the active floor, or 0 when no map is open. */
   size(): number;
 }
@@ -3650,6 +3658,7 @@ const view: ViewApi = {
   // looks exactly like a brush that did nothing — so the state is published.
   paintReady() { const fl = world ? activeFloor() : null; return !!(fl && fl.splat && fl.maskTex); },
   pending() { return pendingCommits; },
+  open(path) { return loadMapPath(path); },
   heights() { return world ? Array.from(activeFloor().heights) : []; },
   kinds() { return world && activeFloor().flags ? Array.from(activeFloor().flags!) : []; },
   size() { return world ? activeFloor().V - 1 : 0; },
