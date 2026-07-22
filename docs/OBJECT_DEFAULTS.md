@@ -17,10 +17,24 @@ default**. That is the signal the tool reports. Two variants mean something was
 edited afterwards, and the diff says what.
 
 Source so far: `Maps/12.h5m` — a map made in the original editor specifically to
-harvest these: 93 statics, 19 monsters, 9 artifacts, 6 mines, 4 heroes, 2 towns,
-1 abandoned mine. Every one of those types collapses to a single variant. Types
-not yet covered (dwellings, shrines, garrisons, treasures, quests…) need a map
-that places them; re-run the tool and add a section.
+harvest these: 93 statics, 19 monsters, 9 artifacts, 8 treasures, 6 mines, 5
+heroes, 5 dwellings, 3 garrisons, 2 towns, 2 seer huts, 1 abandoned mine. Every
+one of those types collapses to a single variant.
+
+Still to place, by the name to look for in the original's palette:
+
+| type | in the palette |
+| --- | --- |
+| `AdvMapBuilding` | the visitable buildings — Sanctuary, Observatory, Windmill, Fountain of Fortune… one type behind many icons, so it is the big one |
+| `AdvMapShrine` | Shrine of Magic Incantation / Gesture / Thought — the spell teachers |
+| `AdvMapPrison` | Prison |
+| `AdvMapSphinx` | Sphinx (the riddle) |
+| `AdvMapCartographer` | Cartographer |
+| `AdvMapShipyard` | Shipyard |
+| `AdvMapSign` | Sign, and the Ocean Bottle |
+| `AdvMapHillFort` | Hill Fort |
+| `AdvMapTent` | Border Guard / Keymaster's tent |
+| `AdvMapDwarvenWarren` | Dwarven Warren (ToE) |
 
 **Owner defaults to `PLAYER_1`, and nothing auto-increments.** The four heroes
 are all `PLAYER_1`, which settles the question the two towns raised — they are
@@ -177,3 +191,74 @@ is exactly the kind of field a hand-written template gets wrong.
 
 `armySlots` on an artifact is the guard standing on it — empty, so a placed
 artifact is unguarded by default.
+
+## AdvMapTreasure
+
+```xml
+<IsCustom>false</IsCustom>
+<Amount>0</Amount>
+<MessageFileRef href=""/>
+```
+
+Same shape as the monster: `Amount` 0 with `IsCustom` false means the game
+decides the pile, not that the pile is empty.
+
+## AdvMapDwelling
+
+```xml
+<PlayerID>PLAYER_NONE</PlayerID>
+<CaptureTrigger><Action><FunctionName/></Action></CaptureTrigger>
+<RandomCreatures>true</RandomCreatures>
+<creaturesEnabled/>
+<RndSource>RND_NONE</RndSource>
+<LinkToPlayer>PLAYER_NONE</LinkToPlayer>
+<LinkToTown/>
+```
+
+`RandomCreatures` **true** with `creaturesEnabled` empty: a new dwelling rolls
+its creature. Empty here is not "nothing" again — the same trap as the town's
+spell list, in the opposite direction.
+
+## AdvMapGarrison
+
+```xml
+<PlayerID>PLAYER_NONE</PlayerID>
+<CaptureTrigger><Action><FunctionName/></Action></CaptureTrigger>
+<armySlots/>
+<CollectableArmy>false</CollectableArmy>
+<AllowQuickCombat>true</AllowQuickCombat>
+<TownType>TOWN_HEAVEN</TownType>
+```
+
+`TownType` decides which faction's garrison art and creatures apply, and it
+defaults to `TOWN_HEAVEN` — the first of the enum, not a neutral value. A
+garrison placed and forgotten is a Haven garrison.
+
+## AdvMapSeerHut
+
+Almost all of it is one `<Quest>` block, which is the same structure the map's
+objectives use — so whatever we build for quests serves both. The defaults worth
+naming:
+
+```xml
+<Kind>OBJECTIVE_KIND_MANUAL</Kind>
+<Timeout>-1</Timeout> <Holdout>-1</Holdout> <CheckDelay>-1</CheckDelay>
+<InstantVictory>false</InstantVictory>
+<TargetGlance><Target><Type>ADV_TARGET_NONE</Type>…</Target><Radius>10</Radius><Duration>5000</Duration></TargetGlance>
+<Award><Type>AWARD_NONE</Type>… every award field present and zero …</Award>
+<TakeContribution>false</TakeContribution>
+<CanUncomplete>false</CanUncomplete>
+<IsInitialyActive>true</IsInitialyActive>   <!-- their spelling -->
+<IsInitialyVisible>true</IsInitialyVisible>
+<IsHidden>false</IsHidden> <Ignore>false</Ignore>
+<ShowCompleted>true</ShowCompleted> <NeedComplete>true</NeedComplete>
+<AllowMultipleActivations>true</AllowMultipleActivations>
+<AllowMultipleCompletions>true</AllowMultipleCompletions>
+</Quest>
+```
+
+`-1` is "no limit" for the three timers. The `Award` block carries **every**
+award kind at once — resources, attribute, artifact, spell, army slot, spell
+points, morale, luck, skill — with `Type` selecting which one is read. So a new
+quest is a full award record set to nothing, and the editor's job is to write
+`Type` plus the one field it names, not to prune the rest.
