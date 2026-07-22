@@ -8,7 +8,7 @@
 
 import { readEntries, writeArchive } from '../src/pak.ts';
 import { openProject, packProject, status, readManifest, writeManifest } from '../src/project.ts';
-import { readFileSync, appendFileSync, rmSync } from 'node:fs';
+import { readFileSync, writeFileSync, appendFileSync, mkdirSync, statSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
@@ -74,6 +74,24 @@ ok(repacked.includes('Maps/Multiplayer/A2M3/map.xdb'), 'map.xdb is at its in-gam
 const origMapNames = orig.map((e) => e.name).filter((n) => n.startsWith('Maps/Multiplayer/A2M3/')).sort();
 ok(JSON.stringify(repacked) === JSON.stringify(origMapNames),
    `every entry name survives the round trip (${repacked.length})`);
+
+// --- 5. Packing an empty tree is refused ---
+//
+// This one cost a real map. Save repacks the archive the project came from, so
+// a project dir that has lost its files writes a 22-byte archive over the map
+// it was made from. An empty pack is never what anyone meant, and the archive
+// being overwritten is often the only copy — so it fails loudly instead.
+const emptyDir = join(tmpdir(), 'homm5_test_empty_project');
+rmSync(emptyDir, { recursive: true, force: true });
+mkdirSync(emptyDir, { recursive: true });
+writeManifest(emptyDir, { editorVersion: '0.0.1', source: null, createdAt: now.toISOString(), lastPack: null });
+const victim = join(tmpdir(), 'homm5_test_victim.h5m');
+writeFileSync(victim, readFileSync(PAK));
+const sizeBefore = statSync(victim).size;
+let refused = false;
+try { packProject(emptyDir, victim, { now }); } catch { refused = true; }
+ok(refused, 'packing a project with no files throws');
+ok(statSync(victim).size === sizeBefore, 'the archive it would have overwritten is untouched');
 
 console.log(failures ? `\n${failures} FAILURE(S)` : '\nall pak/project tests passed');
 process.exit(failures ? 1 : 0);

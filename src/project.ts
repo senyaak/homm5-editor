@@ -257,6 +257,12 @@ export function packProject(projectDir: string, outPath: string, opt: PackProjec
   // folder has moved since it was opened.
   const prefix = (opt.prefix ?? manifest.archivePrefix ?? '').replace(/^\/+|\/+$/g, '');
   const rels = listDirFiles(projectDir).filter((r) => r !== MANIFEST_NAME).sort();
+  // An empty pack is never something anyone meant, and packing over the archive
+  // the project came from is normal — so the two together silently destroy the
+  // map. It happened: a project dir holding nothing but its manifest wrote a
+  // 22-byte archive over a 300 KB one. Whatever left the tree empty is a bug of
+  // its own; this makes sure the damage stops at the tree.
+  if (!rels.length) throw new Error(`refusing to pack an empty archive: ${projectDir} holds no files`);
   const entries: ZipEntry[] = rels.map((rel) => ({
     name: prefix ? `${prefix}/${rel}` : rel,
     data: readFileSync(join(projectDir, rel)),

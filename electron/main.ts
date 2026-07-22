@@ -1102,6 +1102,10 @@ function saveTerrain(s: Session): void {
 // --- IPC: save map.xdb (latin1 preserves the original bytes) ---
 ipcMain.handle('map:save', async (): Promise<MapSaveResult> => {
   if (!session) throw new Error('no map loaded');
+  // The folder the session points at must still be a map. If it is not — it was
+  // deleted, or the session outlived a workspace rebuild — then writing and
+  // repacking would put a stub where the user's map was.
+  if (!existsSync(dirname(session.mapPath))) throw new Error(`${session.mapDir} is gone — reopen the map before saving`);
   writeFileSync(session.mapPath, session.map.save(), 'latin1');
   saveTerrain(session);
   // Our own write — fold it into the watcher's baseline so it isn't reported
