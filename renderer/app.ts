@@ -19,7 +19,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { UNITS_PER_TILE as U } from '../src/units.ts';
 import { tierOf, RAMP_BIT, TIER_STEP } from '../src/terrain.ts';
 import type { Scene, Floor, Instance, SplatData, TileInfo, GeomData, GeomPart, Footprint } from '../src/scene.ts';
-import type { EditorApi, MapListEntry, ExternalChange, PlaceableObject, RosterEntryDTO } from '../electron/ipc.ts';
+import type { EditorApi, MapListEntry, ExternalChange, PlaceableObject, RosterEntryDTO, LocResult } from '../electron/ipc.ts';
 import type { ObjectProp } from '../src/map.ts';
 import { objectProps, deref, controlOf, objectSchema, mapSchema, resolveSchemaAtPath, classOf, schemaForClass } from '../src/schema.ts';
 import type { FieldSchema, HasDefs } from '../src/schema.ts';
@@ -2677,34 +2677,133 @@ let deLoaded = '';
 /** Which language a file is, from its name. Only Lua has a mode here. */
 const langOf = (href: string): 'lua' | 'text' => (/\.lua$/i.test(href) ? 'lua' : 'text');
 
+// --- localization: author every language, edit the active one in the tabs ----
+//
+// A text ref names the plain `name.txt`, but with localization on that file is an
+// export artefact — the sources are TAGGED (`name.en.txt`, `name.ru.txt`). So the
+// editor resolves the ref to the active language's tagged file, works on that, and
+// the tabs switch which language is active. See electron/main.ts for the model.
+
+interface LocLangDef { code: string; name: string }
+const LOC_LANGS: LocLangDef[] = [
+  { code: 'en', name: 'English' }, { code: 'ru', name: 'Russian' }, { code: 'de', name: 'German' },
+  { code: 'fr', name: 'French' }, { code: 'es', name: 'Spanish' }, { code: 'it', name: 'Italian' },
+  { code: 'pl', name: 'Polish' }, { code: 'cz', name: 'Czech' }, { code: 'hu', name: 'Hungarian' },
+];
+const LOC_KNOWN = new Set(LOC_LANGS.map((l) => l.code));
+const langName = (code: string): string => LOC_LANGS.find((l) => l.code === code)?.name ?? code.toUpperCase();
+const LOC_TAG_RE = /\.([a-z]{2})\.txt$/i;
+const locTagOf = (href: string): string => { const t = LOC_TAG_RE.exec(href)?.[1]?.toLowerCase(); return t && LOC_KNOWN.has(t) ? t : ''; };
+const locBareOf = (href: string): string => (locTagOf(href) ? href.replace(LOC_TAG_RE, '.txt') : href);
+const locVariant = (bare: string, lang: string): string => bare.replace(/\.txt$/i, `.${lang}.txt`);
+
+let locState: LocResult = { enabled: false, base: '', languages: [] };
+let locActive = '';           // which language tab is being edited
+let deRef = '';               // the ref the map stores (bare) — for the title/tabs
+let deLabel = '';             // the label to keep across a tab switch
+
+/** Fetch the map's localization state (called when a map opens). */
+async function loadLocState(): Promise<void> {
+  try { locState = await window.editor.locGet(); }
+  catch { locState = { enabled: false, base: '', languages: [] }; }
+  if (!locState.languages.includes(locActive)) locActive = locState.base;
+}
+
 /**
  * Open a file of the map folder in the editor.
  *
  * The same window for a one-line name.txt and for a 700-line mission script:
  * both are files the map carries, and the difference — highlighting, completion
- * and the room to read — follows from the name.
+ * and the room to read — follows from the name. With localization on, a text ref
+ * resolves to the active language's tagged file.
  */
 async function openTextEdit(href: string, label: string): Promise<void> {
-  deHref = href;
   const lang = langOf(href);
-  $('de-title').textContent = label && label !== href ? `${label} — ${href}` : href;
+  deLabel = label;
+  const localized = lang === 'text' && locState.enabled;
+  deRef = localized ? locBareOf(href) : href;
+  if (localized && !locState.languages.includes(locActive)) locActive = locState.base;
+  const file = localized ? locVariant(deRef, locActive) : href;
+  deHref = file;
+  $('de-title').textContent = label && label !== deRef ? `${label} — ${deRef}` : deRef;
   docDialog().querySelector('.de-card')?.classList.toggle('wide', lang === 'lua');
   const ed = ensureCodeEditor();
   ed.setDoc('loading…', lang);
   docDialog().showModal();
   let text = '';
-  try { text = (await window.editor.readFile(href)).text; }
-  catch { $('hud').textContent = 'could not read ' + href; }
+  try { text = (await window.editor.readFile(file)).text; }
+  catch { $('hud').textContent = 'could not read ' + file; }
   ed.setDoc(text, lang);
   // The baseline is what the editor NOW holds, not the raw bytes: CodeMirror
   // normalises line endings (a CRLF script becomes LF), so comparing against the
   // disk text would flag an untouched file as edited and prompt on every close.
   deLoaded = ed.getDoc();
   $('de-info').textContent = lang === 'lua' ? scriptContextNote() : '';
+  renderLocTabs();
+  await showLocRef();
   ed.focus();
   // The completion sources are per map, and the map may have moved on since the
   // last script was opened — a region drawn, an object named.
   if (lang === 'lua') void loadScriptContext();
+}
+
+/** The language tabs above the editor — one per project language, plus "＋ add". */
+function renderLocTabs(): void {
+  const bar = $('de-langs');
+  const show = locState.enabled && langOf(deRef) === 'text';
+  bar.hidden = !show;
+  if (!show) { bar.innerHTML = ''; return; }
+  bar.innerHTML = '';
+  for (const code of locState.languages) {
+    const b = document.createElement('button');
+    b.textContent = langName(code) + (code === locState.base ? ' · base' : '');
+    b.dataset.lang = code;
+    if (code === locActive) b.className = 'active';
+    b.addEventListener('click', () => void switchLocTab(code));
+    bar.appendChild(b);
+  }
+  const missing = LOC_LANGS.filter((l) => !locState.languages.includes(l.code));
+  if (missing.length) {
+    const sel = document.createElement('select');
+    sel.className = 'de-addlang';
+    sel.appendChild(new Option('＋ add language', ''));
+    for (const l of missing) sel.appendChild(new Option(l.name, l.code));
+    sel.addEventListener('change', () => { if (sel.value) void addLocLanguage(sel.value); });
+    bar.appendChild(sel);
+  }
+}
+
+/** While translating a non-base language, show the base text so the source is in view. */
+async function showLocRef(): Promise<void> {
+  const ref = $('de-ref');
+  if (!locState.enabled || langOf(deRef) !== 'text' || locActive === locState.base) { ref.hidden = true; return; }
+  let base = '';
+  try { base = (await window.editor.readFile(locVariant(deRef, locState.base))).text; }
+  catch { /* the base may not exist yet */ }
+  ref.hidden = false;
+  ref.innerHTML = '';
+  const b = document.createElement('b');
+  b.textContent = `${langName(locState.base)}: `;
+  ref.append(b, document.createTextNode(base || '(empty)'));
+}
+
+/** Switch the editor to another language, guarding unsaved work. */
+async function switchLocTab(code: string): Promise<void> {
+  if (code === locActive) return;
+  if (docEdited() && !confirm(`${deHref} has unsaved changes. Switch language anyway?`)) {
+    renderLocTabs();   // keep the visual on the language still open
+    return;
+  }
+  locActive = code;
+  await openTextEdit(deRef, deLabel);
+}
+
+/** Add a language: provisions a copy of every base text, then edits it. */
+async function addLocLanguage(code: string): Promise<void> {
+  try { locState = await window.editor.locAddLanguage({ lang: code }); markDirty(true); }
+  catch (e) { $('hud').textContent = 'could not add language: ' + (e instanceof Error ? e.message : String(e)); return; }
+  locActive = code;
+  await openTextEdit(deRef, deLabel);
 }
 
 function ensureCodeEditor(): CodeEditor {
@@ -2760,7 +2859,9 @@ function saveDoc(): void {
       deLoaded = text;
       markDirty(true);
       $('hud').textContent = `saved ${deHref}`;
-      docDialog().close();
+      // The editor STAYS open: a text may have several languages to save in turn,
+      // and a script is often saved mid-edit. Closing is Cancel/✕, or Esc.
+      if (locState.enabled) renderLocTabs();
       if (mapTreeOpen()) void refreshMapTree();
     })
     .catch((e: unknown) => { $('hud').textContent = 'save failed: ' + (e instanceof Error ? e.message : String(e)); });
@@ -2828,6 +2929,99 @@ async function openScriptList(): Promise<void> {
 $('scriptbtn').onclick = () => void openScriptList();
 $('sp-close').onclick = () => scriptDialog().close();
 scriptDialog().addEventListener('click', (e) => { if (e.target === scriptDialog()) scriptDialog().close(); });
+
+// --- the Localization dialog -------------------------------------------------
+//
+// Turn localization on for the map, declare what language the existing texts are
+// in, and add or remove target languages. Everything else (editing each language,
+// exporting one) happens elsewhere — this is where the set of languages lives.
+
+const locDialog = (): HTMLDialogElement => {
+  const el = $('localize');
+  if (!(el instanceof HTMLDialogElement)) throw new Error('#localize is not a <dialog>');
+  return el;
+};
+
+async function openLocDialog(): Promise<void> {
+  await loadLocState();
+  renderLocDialog();
+  locDialog().showModal();
+}
+
+/** Build the dialog body from the current state — enable, or manage languages. */
+function renderLocDialog(): void {
+  const body = $('lz-body');
+  body.innerHTML = '';
+  if (!locState.enabled) {
+    // Not yet localized: pick the language the existing texts are in and enable.
+    const p = document.createElement('div'); p.className = 'lz-note';
+    p.textContent = 'Author the map\'s texts in several languages side by side, and export one language at a time. '
+      + 'The existing texts are tagged with the base language you pick here.';
+    const row = document.createElement('div'); row.className = 'lz-row';
+    const lab = document.createElement('span'); lab.textContent = 'Base language:';
+    const sel = document.createElement('select');
+    for (const l of LOC_LANGS) sel.appendChild(new Option(l.name, l.code));
+    sel.value = 'en';
+    const btn = document.createElement('button'); btn.textContent = 'Enable localization';
+    btn.addEventListener('click', () => void enableLoc(sel.value));
+    row.append(lab, sel, btn);
+    body.append(p, row);
+    return;
+  }
+  // Enabled: list the languages, add a target, remove a target.
+  const note = document.createElement('div'); note.className = 'lz-note';
+  note.textContent = `Texts are authored in ${locState.languages.length} language(s). `
+    + 'Edit each in the text window\'s tabs; export one at a time.';
+  const list = document.createElement('div'); list.className = 'lz-langs';
+  for (const code of locState.languages) {
+    const row = document.createElement('div'); row.className = 'lz-lang';
+    const name = document.createElement('span'); name.textContent = langName(code);
+    row.appendChild(name);
+    if (code === locState.base) {
+      const b = document.createElement('span'); b.className = 'lz-base'; b.textContent = 'base'; row.appendChild(b);
+    } else {
+      const rm = document.createElement('button'); rm.className = 'lz-rm'; rm.textContent = 'remove'; rm.title = `delete every ${code}.txt`;
+      rm.addEventListener('click', () => void removeLoc(code));
+      row.appendChild(rm);
+    }
+    list.appendChild(row);
+  }
+  const addRow = document.createElement('div'); addRow.className = 'lz-row';
+  const missing = LOC_LANGS.filter((l) => !locState.languages.includes(l.code));
+  if (missing.length) {
+    const sel = document.createElement('select');
+    sel.appendChild(new Option('＋ add a language…', ''));
+    for (const l of missing) sel.appendChild(new Option(l.name, l.code));
+    sel.addEventListener('change', () => { if (sel.value) void addLocFromDialog(sel.value); });
+    addRow.appendChild(sel);
+  }
+  body.append(note, list, addRow);
+}
+
+async function enableLoc(base: string): Promise<void> {
+  try { locState = await window.editor.locEnable({ base }); markDirty(true); $('hud').textContent = `localization on · base ${base}`; }
+  catch (e) { $('hud').textContent = 'could not enable: ' + (e instanceof Error ? e.message : String(e)); return; }
+  locActive = locState.base;
+  renderLocDialog();
+}
+
+async function addLocFromDialog(code: string): Promise<void> {
+  try { locState = await window.editor.locAddLanguage({ lang: code }); markDirty(true); }
+  catch (e) { $('hud').textContent = 'could not add language: ' + (e instanceof Error ? e.message : String(e)); return; }
+  renderLocDialog();
+}
+
+async function removeLoc(code: string): Promise<void> {
+  if (!confirm(`Remove ${langName(code)}? Every ${code}.txt is deleted.`)) return;
+  try { locState = await window.editor.locRemoveLanguage({ lang: code }); markDirty(true); }
+  catch (e) { $('hud').textContent = 'could not remove: ' + (e instanceof Error ? e.message : String(e)); return; }
+  if (locActive === code) locActive = locState.base;
+  renderLocDialog();
+}
+
+$('locbtn').onclick = () => void openLocDialog();
+$('lz-close').onclick = () => locDialog().close();
+locDialog().addEventListener('click', (e) => { if (e.target === locDialog()) locDialog().close(); });
 
 // --- structured object references (the "…" browse + "New" of the tree) -------
 //
@@ -2964,8 +3158,13 @@ function createText(): Promise<string | null> {
     // file answers '' (a map with no name is a gap, not an error), so "did that
     // throw?" said yes-it-exists about every file, and "New" pointed the ref at
     // a file it never created.
-    const { exists } = await window.editor.readFile(href);
-    if (!exists) await window.editor.writeFile({ href, text: '' });
+    // With localization on the ref still names the plain foo.txt, but the file
+    // created is the base-tagged foo.<base>.txt — the source the editor edits and
+    // the export bakes back into foo.txt. Other languages are made when first
+    // opened, and fall back to the base until then.
+    const file = locState.enabled ? locVariant(locBareOf(href), locState.base) : href;
+    const { exists } = await window.editor.readFile(file);
+    if (!exists) await window.editor.writeFile({ href: file, text: '' });
     return href;
   });
 }
@@ -3982,6 +4181,8 @@ interface ViewApi {
    * dialog normally drives and a test cannot.
    */
   open(path: string): Promise<void>;
+  /** Open a text/script file in the doc editor, the way an Edit button does. */
+  editText(href: string): Promise<void>;
   /** Tiles per side of the active floor, or 0 when no map is open. */
   size(): number;
   /**
@@ -4094,6 +4295,7 @@ const view: ViewApi = {
   paintReady() { const fl = world ? activeFloor() : null; return !!(fl && fl.splat && fl.maskTex); },
   pending() { return pendingCommits; },
   open(path) { return loadMapPath(path); },
+  editText(href) { return openTextEdit(href, href); },
   heights() { return world ? Array.from(activeFloor().heights) : []; },
   kinds() { return world && activeFloor().flags ? Array.from(activeFloor().flags!) : []; },
   size() { return world ? activeFloor().V - 1 : 0; },
@@ -5914,9 +6116,13 @@ async function loadMapPath(path: string | null): Promise<void> {
     $('maptreebtn').style.display = '';
     $('regionbtn').style.display = '';
     $('scriptbtn').style.display = '';
+    $('locbtn').style.display = '';
     // The map changed, so the names a script completes from did too.
     scriptCtx = null;
     void loadScriptContext();
+    // …and its localization state (which languages this map is authored in).
+    locActive = '';
+    void loadLocState();
     // A map just opened has whatever regions it shipped with; the panel may
     // still be open from the last one, and it must not show those.
     void loadRegions();

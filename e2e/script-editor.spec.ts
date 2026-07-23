@@ -88,12 +88,15 @@ local r = "${region.slice(0, 2)}`);
   await popup.locator('li', { hasText: region }).first().click();
   await expect(content).toContainText(`"${region}`);
 
-  // --- saving ---
+  // --- saving --- (Save keeps the editor open; the file lands on disk)
   await page.locator('#de-save').click();
+  await expect(async () => {
+    const onDisk = readFileSync(join(MAP_DIR, FILE), 'utf8');
+    expect(onDisk, 'what landed in the file').toContain('GetObjectPosition(');
+    expect(onDisk, 'the text it was opened with is still there').toContain('function onStart()');
+  }).toPass({ timeout: 10_000 });
+  await page.locator('#de-close').click();
   await expect(page.locator('#docedit')).toBeHidden();
-  const onDisk = readFileSync(join(MAP_DIR, FILE), 'utf8');
-  expect(onDisk, 'what landed in the file').toContain('GetObjectPosition(');
-  expect(onDisk, 'the text it was opened with is still there').toContain('function onStart()');
 });
 
 test.afterAll(() => {

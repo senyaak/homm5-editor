@@ -343,6 +343,22 @@ export interface ScriptResolvePayload { href: string }
 /** Result of `script:resolve` — the `.lua` the wrapper names, relative to the map. */
 export interface ScriptResolveResult { lua: string }
 
+/**
+ * The project's localization state.
+ *
+ * `enabled` is false until localization is turned on for the map. `base` is the
+ * language the original texts are in (the reference); `languages` is every
+ * language the project carries, base first — each kept as tagged `.txt` files
+ * side by side, exported one at a time. Editor-only: the game never sees this.
+ */
+export interface LocResult { enabled: boolean; base: string; languages: string[] }
+/** Payload of `loc:enable` — the language the existing texts are declared to be in. */
+export interface LocEnablePayload { base: string }
+/** Payload of `loc:add-language` / `loc:remove-language`. */
+export interface LocLangPayload { lang: string }
+/** Payload of `loc:export` — the language to bake into a single-language build. */
+export interface LocExportPayload { lang: string }
+
 /** Result of `map:save`. */
 export interface MapSaveResult {
   ok: true;
@@ -630,6 +646,10 @@ export interface EditorApi {
   writeFile(p: WriteFilePayload): Promise<ObjectEditResult>;
   newScript(p: ScriptNewPayload): Promise<ScriptNewResult>;
   resolveScript(p: ScriptResolvePayload): Promise<ScriptResolveResult>;
+  locGet(): Promise<LocResult>;
+  locEnable(p: LocEnablePayload): Promise<LocResult>;
+  locAddLanguage(p: LocLangPayload): Promise<LocResult>;
+  locRemoveLanguage(p: LocLangPayload): Promise<LocResult>;
   listObjects(): Promise<ObjectCatalogResult>;
   objectIcon(path: string): Promise<IconResult>;
   addObject(p: AddObjectPayload): Promise<AddObjectResult>;

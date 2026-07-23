@@ -549,11 +549,27 @@ the text editor; the two kinds of file call each other by function name.
 - [ ] ⬜ Importing custom assets into a project (models/textures/texts)
 - [ ] ⬜ Mod integrity check before building
 
-## Phase 8 — Localisation tool (LOW priority)
+## Phase 8 — Localisation tool
 
-- [ ] ⬜ Parse text resources (`texts.pak`, `/Text*`, per language)
-- [ ] ⬜ Click a string to replace a translation with the default/original
-- [ ] ⬜ Build a language-specific version (collect the right `.txt` set + pack)
+The game reads ONE language — the ref names a plain `name.txt` and the engine
+reads whatever bytes are there; you cannot switch language in play, it is the
+install's. So localization is the EDITOR's: a map is authored in every language
+side by side, and exported one language at a time as an ordinary single-language
+map. Design in `docs/NAMES_AND_SCRIPTING.md`.
+
+- [x] ✅ **Author every language in-project** (2026-07-23) — a per-map toggle
+      (**Localize**) declares the base language and tags the existing texts
+      (`name.txt` → `name.en.txt`); adding a language copies every base text so a
+      translator edits in place; the text window grows language **tabs** that
+      resolve the ref to the active language's tagged file, with the base text
+      shown as the source while translating. Editor-only state in a
+      `localization.json` sidecar the game never sees. `loc:*` in
+      `electron/main.ts`, `e2e/localization.spec.ts`.
+- [ ] 🔨 **Export as `<language>`** — pack a single-language `.h5m` where each
+      `name.txt` holds that language's text (falling back to the base when a
+      translation is missing); the tagged files and the sidecar never ship. NEXT.
+- [ ] ⬜ Import the game's own text archives (`All_campaigns.texts_*.h5u`) to pull
+      original strings into a reconstruction.
 
 ## Phase 9 — Shell and polish
 
