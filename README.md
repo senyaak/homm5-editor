@@ -1,7 +1,11 @@
-# homm5-editor (experiment)
+# homm5-editor
 
-A map/campaign editor prototype for **Heroes of Might & Magic V: Tribes of the East**,
-built on Electron and Node with no native dependencies.
+A from-scratch map & campaign editor for **Heroes of Might & Magic V: Tribes of
+the East**, built on Electron and Node with no native dependencies. It reverse-
+engineers the game's own formats and rebuilds the editor on top of them — and it
+already builds maps the game loads and plays: a mission created here from
+scratch, packed by us, runs. The proving ground is rebuilding a shipped campaign
+mission click by click (see *Testing* below).
 
 TypeScript throughout. Node 24 — and the Node 24.18 inside Electron 43 — strip
 types natively, so `src/`, `electron/` and `tools/` run their `.ts` straight off
@@ -23,81 +27,128 @@ so a `.cts` preload dies on the first type annotation — silently, leaving
 
 ## What works
 
-- **Terrain rendering, end to end** (`npm start`): tile textures through a splat
-  shader compositing by `<Priority>`, sea derived from the ground-flag plane,
-  painted river brushes, vertical cut faces where ground kinds meet, rock-textured
-  cliffs, and both floors. Write-up: [docs/TERRAIN_FORMAT.md](docs/TERRAIN_FORMAT.md).
+Launch with `npm start`. Open a `.h5m` (or make one with **New map…**) and you
+get a live 3D scene you sculpt, paint, populate, script and pack.
+
+### Terrain
+
+- **Rendering, end to end**: tile textures through a splat shader compositing by
+  `<Priority>`, sea derived from the ground-flag plane, painted river brushes,
+  vertical cut faces where ground kinds meet, rock-textured cliffs, and both
+  floors. Write-up: [docs/TERRAIN_FORMAT.md](docs/TERRAIN_FORMAT.md).
 - **`GroundTerrain.bin`** (`src/terrain.ts`): reads heights, texture layer masks,
-  ground flags and the river plane, and writes every one of them back. Planes
-  are fixed-size, so a write is a byte-for-byte overwrite in place and the
-  output differs only where asked. Round-trip tested on real 96×96 and 136×136
-  maps (`npm run test-terrain`, `npm run test-terrain-write`).
+  ground flags, passability and the river plane, and writes every one of them
+  back. Planes are fixed-size, so a write is a byte-for-byte overwrite in place
+  and the output differs only where asked. Round-trip tested on real maps
+  (`npm run test-terrain`, `test-terrain-write`).
+- **Height brushes**, named as the original editor names them. *Bulk* and *Dig*
+  sculpt smoothly with a radial falloff, on a chosen force and tension so a stroke
+  lands on an exact value (C1M1's field is 87.7% off any fixed lattice — constants
+  couldn't reach it). *Raise* stands a plateau 2.0 above the ground with sheer cut
+  edges, carrying the relief it was raised from. *Lower* digs a pit to exactly 0.0
+  and flags it water, so it floods. *Ramp* cuts a walkable half-step (flag bit 3),
+  and only at the foot of a cut — all 3,718 ramp vertices in the shipped maps
+  border a different tier. *Plateau* levels everything it touches to the tier the
+  stroke started on. A **Ground-kind** brush sets the tier (and ramp bit) without
+  moving the ground — for a surface already at its final height.
+- **Tile painting**: all shipped tiles previewed from their own `.dds`, grouped by
+  category. Arm a brush and left-drag at 1/3/5/7 tiles, or *Rect*, or *Vertex*. A
+  stroke writes a chosen **weight** into one layer and leaves the layers under it
+  alone (real ground blends — C1M1's weights sum to 510 at a vertex as often as
+  not), goes onto the GPU masks for immediate feedback and into the main process,
+  which owns the bytes that get saved. Picking a tile the map lacks splices in a
+  new layer (`src/terrain-layer.ts`) — the one terrain edit that moves bytes
+  rather than overwriting them.
+- **River brushes** (Water, Bog, LavaFlow): these are not ordinary tiles. A stroke
+  writes the half-tile river plane — which is what makes a river a river to the
+  game rather than paint — and optionally carves the bed below its banks. Carving
+  is a toggle because ground already at its final height must not be dug.
+- **Passability grid** and the movement mask (the original's Masks tab): the tile
+  grid coloured in three states — red blocked, blue navigable, clear walkable —
+  plus Mask/Erase brushes. Three states because *blocked* and *you cannot walk
+  here* are different questions: a lake stops a footman and carries a boat.
+- **Brush cursor**: the system arrow is hidden while a brush is armed and replaced
+  by its footprint drawn on the ground, following the terrain, so size and
+  placement are visible before committing.
+
+### Objects
+
+- **Placement that reaches a shipped map**: an object palette catalogued from the
+  1466 `_(AdvMapObjectLink)` files, grouped by `Editor/MapFilters.xml`, with icons
+  from `Editor/IconCache`. It also places the **559 shared definitions no link
+  points at** — the 434 statics an `_(AdvMapSharedGroup)` picks from at random and
+  the 83 named heroes the original reaches only through "Random hero". A position
+  can be a **fraction of a tile** and a facing **any angle** (C1M1 uses 80 distinct
+  ones); Alt-drag/Alt-click and the panel's x/y/degrees boxes set exact values.
+- **New objects arrive correctly**: the donor gives the field *set* (right across
+  types, versions and mods), the schema gives the *values* — measured against a map
+  made in the original for the purpose (`docs/OBJECT_DEFAULTS.md`), all 21 types.
+  The **game's own type spec** (`data/types.xml`, 739 types) then supplies a field
+  a donor's version predates and confirms 29 defaults independently.
+- **Select, move (grid-snapped), rotate and delete** — a free-angle slider, ±15°
+  and quarter-turn buttons, `[` / `]` keys, Delete.
+- **Property panel**: every simple field of the selected object, read from the
+  object itself rather than a per-type table, with editors inferred from the value
+  (bool/number/enum/text). A field an object doesn't carry is offered under its own
+  heading when *both* the game's spec and our schema agree it exists. Enum fields
+  are dropdowns over the **full legal set** from the spec — every value the shipped
+  maps use is offered, and an unlisted (modded) value is kept rather than dropped.
+- **Object tree** ("Tree…"): the structures a text box can't honestly hold — a
+  hero's army, a capture trigger, a monster's reward — rendered from `$defs`
+  declared once in `src/objects.schema.json`, wherever they appear.
+- Every object edit runs through the same path-addressed, recorded API, so it
+  shares undo / dirty / save.
+
+### Map properties, model & scripting
+
 - **`map.xdb` model** (`src/map.ts`, `src/xml.ts`): loss-less XML DOM —
-  `serialize(parse(x)) === x` on all 108 sample maps — with a typed object model
-  over it. Editing an object rewrites exactly one line.
-- **Object editing**: a categorised, searchable list; click to select, drag to move
-  on the grid; save; pack to `.h5m` with version tracking.
+  `serialize(parse(x)) === x` on every sample map — with a typed object model over
+  it. Editing an object rewrites exactly one line; deletion is surgical.
+- **Undo/redo** (`Ctrl+Z` / `Ctrl+Shift+Z` / `Ctrl+Y`): not a command model — an
+  edit is recorded as the byte difference between the documents before and after
+  it, so anything is undoable without writing its inverse, and a feature added
+  later is undoable for free. It covers terrain brushes, object edits and adding a
+  ground layer alike, and survives a restart (the stack is stored keyed by a hash
+  of the documents and re-adopted only if they still match).
+- **Map Properties** dialog: two synchronised views over `<AdvMapDesc>` — a curated
+  8-tab dialog (General / Players / Teams / Heroes / Spells / Artifacts / Script /
+  Rumours) and a full tree, both schema-driven (`x-tab`, `x-file`, refs), both
+  editing by path through one API so they share undo/dirty/save. Structured refs
+  (Birds/Wind/AmbientLight, a player's main town/hero) get create/select/edit
+  controls. See [docs/MAP_PROPERTIES.md](docs/MAP_PROPERTIES.md).
+- **Regions**: named rectangles dragged out on the map and coloured in a panel —
+  because four coordinates are not how a person describes a box they can see.
+- **Script editor** (CodeMirror 6, in the document window): Lua highlighting
+  (legacy stream mode, so the game's 4.0-shaped Lua isn't painted red), the app's
+  dark theme, and completion from the engine API (204 functions from the shipped
+  manuals, `npm run script-api`), the game's own scripts, and *this* map's names —
+  objects, regions, objectives — offered inside string literals where the API takes
+  them. **New** on the map's `MapScript` row creates the `.lua` + its `.xdb` wrapper
+  and binds it. A **structural linter** (`src/lua-lint.ts`) marks what the engine's
+  parser rejects — unbalanced `end`/brackets, unterminated strings — live in the
+  gutter; it deliberately does *not* flag unknown names (our API list is partial;
+  completion prevents mistyped names instead).
+- **Default, unique `<Name>` handles** for placed objects (`MONSTER_001`, …),
+  numbered per type — an empty handle can't be addressed from Lua at all. See
+  [docs/NAMES_AND_SCRIPTING.md](docs/NAMES_AND_SCRIPTING.md).
+
+### Project, packing, localization
+
+- **Project model**: the editor edits *unpacked* files (a project is a tree of
+  files, the way the game sees `data/…`), not a ZIP in place. Opening a `.h5m`
+  unpacks it into a reused workspace; **Save** repacks over the source; **Pack** is
+  a separate explicit build to `.h5m`/`.h5c`/`.h5u`/`.pak`. A `project.json`
+  manifest tracks file hashes at pack time for `git status`-style dirty detection
+  and editor-version drift. Archive members are named by their in-game path
+  (`Maps/…/map.xdb`) — pack to the root and the game can't see the map.
 - **External-change watcher** (`src/watch.ts`): the original Nival editor can be
-  open on the same map folder. When it saves, a banner offers to take its
-  version. Content hashes, not timestamps, so our own saves never trigger it and
-  a rewrite with identical bytes is not a change.
-- **Brush cursor**: the system arrow is hidden while a brush is armed and
-  replaced by its footprint drawn on the ground — every tile the stroke will
-  touch, following the terrain, so size and placement are visible before
-  committing.
-- **Height brushes**, four of them, named as the original editor names them.
-  *Bulk* and *Dig* sculpt smoothly with a radial falloff. *Raise* stands a
-  plateau 2.0 above the ground with sheer cut edges — 2.0 because that is the
-  step on 45% of the 23,539 plateau edges in the shipped maps, and it is added
-  rather than levelled to because only 25.6% of plateau vertices are level with
-  their neighbours: a plateau carries the relief it was raised from. *Lower*
-  digs a pit to exactly 0.0 and flags it water, so it floods. *Ramp* cuts a
-  walkable way up: half a step, flagged with bit 3, which is the only
-  intermediate the format has — measured, `16→24` and `24→32` each step 1.00,
-  exactly half the 2.00 between tiers. It only applies at the foot of a cut,
-  because that is the only place a ramp exists: all 3,718 ramp vertices in the
-  shipped maps border a different tier, 100.0% of them. *Plateau* levels
-  everything it touches to the tier the stroke started on — drag from an upper
-  tier and the ground around is pulled up to it.
-- **Rect** beside the 1/3/5/7 brush sizes: drag out a rectangle, which previews
-  as you go and applies once on release. It works with every tool. All of them remesh
-  live, and a basin dug on a dry map raises its sea immediately.
-- **Terrain panel**: one strip holding the brush (tool, size, and the settings
-  that tool actually has) above the tile browser — all 82 shipped tiles
-  previewed from their own `.dds`, grouped by category. Pick one, arm the brush,
-  and left-drag to paint at 1/3/5/7 tiles wide. The stroke goes into the mask texture on the GPU
-  for immediate feedback and into the main process, which owns the bytes that
-  get saved.
-- **Passability grid** and the movement mask (the original editor's Masks tab):
-  the tile grid drawn on the ground, coloured in three states — red blocked,
-  blue navigable, clear walkable — plus Mask/Erase brushes at 1/3/5/7 tiles.
-  Three states rather than two because *blocked* and *you cannot walk here* are
-  different questions: a lake stops a footman and carries a boat. Blocking is a
-  union — the mask plus what the terrain implies, namely the river plane and any
-  step over 0.8 across a tile — because the mask alone is empty on maps where
-  nobody opened the Masks tab. Navigable tiles are outlined over the sea rather
-  than filled under it, so the water still looks like water. The blocked fill
-  reuses the terrain's own triangles rather than laying a quad per tile, so it
-  hugs cut faces and half-submerged cells the way the original editor does.
-- **River brushes**: Water, Bog and LavaFlow are not ordinary tiles. Painting
-  one sinks the bed 0.4 below its banks with a 0.2 rim, and writes the half-tile
-  river plane — which is what makes a river a river to the game rather than
-  paint. Sinking is idempotent per vertex and persists across strokes, seeded
-  from the map's own river plane.
-- **Adding a texture layer** (`src/terrain-layer.ts`): picking a tile the map
-  does not carry splices a new mask array and its path into the container and
-  grows every enclosing block's declared length. The only terrain edit that
-  moves bytes rather than overwriting them, so the tests compare every
-  pre-existing plane byte for byte (`npm run test-terrain-layer`).
-- **Mesh decoding** (`src/geometry.ts`): positions, indices, UVs and textures.
-  See [docs/GEOMETRY_FORMAT.md](docs/GEOMETRY_FORMAT.md).
-- **The game's own type system** (`src/typespec.ts`): `data/types.xml` declares
-  every type's fields, their order, their constraints and its enums' members.
-  The editor uses it to add a field an old object predates, to offer the fields
-  an object does not carry, and to fill select boxes with the full legal set
-  rather than with what shipped maps happen to use. See
-  [docs/TYPE_SPEC.md](docs/TYPE_SPEC.md) — including where it and the shipped
-  PDFs disagree, and which one a map file follows.
+  open on the same folder. When it saves, a banner offers to take its version.
+  Content hashes, not timestamps, so our own saves never self-trigger.
+- **Localization** (`docs/LOCALIZATION.md`): the game reads *one* language (the ref
+  names a plain `name.txt`), so localization is the editor's job. A per-map
+  **Localize** toggle authors every language side by side in tagged files
+  (`name.en.txt`) behind a `localization.json` sidecar the game never sees;
+  **Export as `<language>`** packs an ordinary single-language `.h5m`.
 
 ## Running
 
@@ -105,23 +156,26 @@ On Windows, `start-editor.bat` does the same by double-click: it checks Node,
 installs dependencies on first run, and keeps its window open if anything fails.
 
 ```
-npm start                 # build the renderer, then launch the editor
-npm run typecheck         # tsc --noEmit across the whole project
-npm run test-terrain      # terrain parser round-trip on sample maps
-npm run test-terrain-write # plane writes + the tile brush
-npm run test-terrain-layer # splicing a new texture layer in
-npm run test-map          # map.xdb model + loss-less XML round-trip
-npm run test-watch        # external-change watcher
-npm run test-pak          # ZIP reader/writer
-npm run inspect           # low-level dump of a .bin's structure
-npm run harness           # the renderer in a plain browser, on a stub bridge
+npm start            # build the renderer, then launch the editor
+npm run typecheck    # tsc --noEmit across the whole project
+npm test             # every unit test-* in one run (tools/test-all.ts)
+npm run test-e2e     # Playwright: New Map, placement, scripts, the C1M1 rebuild
+npm run harness      # the renderer in a plain browser, on a stub bridge
+npm run unpack-data  # unpack the install's .pak into data-unpacked
+npm run inspect      # low-level dump of a .bin's structure
+npm run pak          # ZIP (.pak/.h5m/.h5c) read/write CLI
 ```
 
-`npm run harness` serves `renderer/harness.html` on :8123 — the real
-`index.html` with a stubbed `window.editor` injected ahead of the app module.
-The renderer talks to Electron at module scope, so without this the UI can only
-be exercised by launching the whole app; the harness makes the brushes and the
-toolbar clickable in any browser, and records every IPC call on `window.__calls`.
+The individual unit tests (`test-terrain`, `test-terrain-write`,
+`test-terrain-layer`, `test-map`, `test-watch`, `test-pak`, `test-objects`,
+`test-schema`, `test-history`, `test-lua-lint`, `test-typespec`, …) run one at a
+time from `package.json`; `npm test` runs them all.
+
+`npm run harness` serves `renderer/harness.html` on :8123 — the real `index.html`
+with a stubbed `window.editor` injected ahead of the app module. The renderer
+talks to Electron at module scope, so without this the UI can only be exercised by
+launching the whole app; the harness makes the brushes and the toolbar clickable
+in any browser, and records every IPC call on `window.__calls`.
 
 Point `HOMM5_DATA` at an unpacked game data folder, or build one with
 
@@ -251,18 +305,50 @@ edges** on reconstruction.
 - **Normals** are computed from geometry — the packed ones are imprecise.
 - **Textures** are `.dds` (DXT1/3/5 and uncompressed), decoded by `src/dds.ts`.
 
-Still open: per-submesh material assignment, skeletons and animations.
-Details in [docs/GEOMETRY_FORMAT.md](docs/GEOMETRY_FORMAT.md).
+Still open: per-submesh material assignment, skeletons and animations, and the
+roughly one-third of catalogue meshes still undecoded (interleaved vertex buffers,
+multi-mesh buildings) — refused with a message when placed. Details in
+[docs/GEOMETRY_FORMAT.md](docs/GEOMETRY_FORMAT.md) and
+[MESH_PLAN.md](MESH_PLAN.md).
+
+## Testing
+
+The unit `test-*` scripts guard the format layer (byte-faithful round trips) and
+the model. The north-star e2e, though, is **rebuilding the shipped campaign
+missions from scratch** — one at a time in order, driving the real app through
+Playwright and diffing each reconstruction against the original to surface, and
+then close, whatever the editor can't yet express. See
+[docs/E2E_RECONSTRUCTION.md](docs/E2E_RECONSTRUCTION.md).
+
+The first mission, **C1M1**, is rebuilt end to end: its whole `GroundTerrain.bin`
+(heights, ground kinds, rivers, twelve texture layers, passability), all 2645
+objects placed by clicking with their fractional positions and 80 facings, their
+fields, the map settings, the 17 regions, the tile list, the objectives, the
+localized texts, and the mission Lua — each a staged spec under `e2e/`
+(`c1m1-1-heights` … `c1m1-13-texts`). `npm run diff-terrain`, `diff-objects` and
+`diff-map` are down to a handful of accepted deviations the engine doesn't read.
+Every gap it hit became a feature above.
 
 ## Next
 
-- [ ] Height brushes: `raise`/`lower`/ramp. These edit heights **and** flags, or
-      cuts won't form (a cut is a change of ground kind, not steepness — see the
-      terrain write-up), and they have to remesh the cells they touch.
-- [ ] Undo/redo — the brushes make it matter now.
-- [ ] Object rotation, deletion, undo/redo, a property panel.
-- [ ] Fix the remaining undecoded models (see [MESH_PLAN.md](MESH_PLAN.md)).
+The terrain and object tooling is enough to build a map by hand; attention is on
+**typed entity editing** and reaching the next reconstructed mission.
+
+- [ ] Typed per-type editors (Phase 4): towns (faction, buildings, garrison),
+      heroes (class, army, artifacts, skills), creature stacks, players/teams —
+      beyond the generic property panel.
+- [ ] Multi-select, copy/paste.
+- [ ] Terrain-tab parity, deferred: the texture `Up`/`Down`/`Eraser` + `Strength`
+      modifiers (so a layer's weight nudges and a tile can be erased) and the
+      `rnd`/`smth`/`zero`/`water` terraforming tools.
+- [ ] Map validation on save, as the original does (overlaps, unset settings,
+      towns with no specialisation), reported as a click-to-fly list.
+- [ ] Dialog-scene editor + player, which needs skeletal animation playback first
+      (Phase 5b).
 - [ ] Campaign editor (`*.(Campaign).xdb` is plain XML).
+- [ ] Fix the remaining undecoded meshes (see [MESH_PLAN.md](MESH_PLAN.md)).
+
+See [ROADMAP.md](ROADMAP.md) for the full plan.
 
 ## Contributing
 
