@@ -39,6 +39,7 @@ import type { FieldOrder, SpecType } from '../src/typespec.ts';
 import { readTree, setPath, addStringItem, addRefItem, removeItem, appendItem, indentText, nodeAt, setList } from '../src/tree.ts';
 import { mapSchema, resolveSchemaAtPath, resolveObjectPath, deref, schemaForClass, objectProps, objectSchema, controlOf } from '../src/schema.ts';
 import { buildItem, isBuildable, buildEntity } from '../src/skeleton.ts';
+import { TOWN_BONUS_IDS } from '../src/town-bonuses.ts';
 import { children, find, text, serialize, parse } from '../src/xml.ts';
 import type { XmlElement, XmlNode } from '../src/xml.ts';
 import type { DocPatch, Step, StoredHistory } from '../src/history.ts';
@@ -56,6 +57,7 @@ import type {
   ReadFilePayload, ReadFileResult, WriteFilePayload,
   ScriptContextResult, ApiFn, MapFilesPayload, MapFilesResult,
   ScriptNewPayload, ScriptNewResult, ScriptResolvePayload, ScriptResolveResult,
+  SpecNewPayload, SpecNewResult,
   LocResult, LocEnablePayload, LocLangPayload, LocExportPayload,
   ObjectCatalogResult, IconPayload, IconResult, AddObjectPayload, AddObjectResult,
   MapSaveResult, MapPackResult, TerrainTilesResult, MapStatusResult, OpenMapDialogResult,
@@ -785,17 +787,21 @@ ipcMain.handle('spec:values', async (_e: IpcMainInvokeEvent, { type }: SpecValue
 ipcMain.handle('object:set-prop', async (_e: IpcMainInvokeEvent, p: SetPropPayload): Promise<ObjectEditResult> => {
   if (!session) throw new Error('no map loaded');
   const obj = findObject(session, p.id);
+  // A reference field (`x-ref`) is written as an href, even into a bare element
+  // that has no attribute yet — a town's `<Specialization/>` set for the first
+  // time. Text there would not resolve in the game.
+  const raw = objectProps(obj.type)[p.name];
+  const isRef = raw ? deref(objectSchema, raw)['x-ref'] === true : false;
   const done = record(session, `set ${p.name}`, { map: true }, () => {
     // Filling in a field the object never had: create it where the spec puts
     // it, then set it like any other. Recorded inside the same step, so undo
     // takes the field away again rather than leaving an empty one behind.
     if (!find(obj.el, p.name)) {
       const order = orderFor(obj.type);
-      const raw = order ? objectProps(obj.type)[p.name] : undefined;
       if (!order || !raw) return false;
-      if (!createField(obj.el, p.name, order.names, deref(objectSchema, raw)['x-ref'] === true)) return false;
+      if (!createField(obj.el, p.name, order.names, isRef)) return false;
     }
-    return obj.setProp(p.name, p.value);
+    return obj.setProp(p.name, p.value, isRef);
   });
   if (!done) throw new Error(`${p.name} is not a simple field of this object`);
   return { ok: true };
@@ -1243,6 +1249,38 @@ ipcMain.handle('script:resolve', async (_e: IpcMainInvokeEvent, { href }: Script
   const lua = readScriptFileName(readSidecarText(session, href));
   if (!lua) throw new Error(`${href} names no script file`);
   return { lua };
+});
+
+// --- IPC: create a map-local town specialization and return its ref ---
+// A specialization is a named town bonus. The shipped ones live in the game's
+// GameMechanics/, but there is nothing special about that folder — a map can
+// carry its own, packed beside map.xdb and referenced by a relative href, the
+// same way scripts and texts are. RandomTown is TOWN_SCRIPT_ONLY: this is a
+// named specialization for a placed town, not a member of the random pool.
+ipcMain.handle('spec:new', async (_e: IpcMainInvokeEvent, { base, bonus, townType, name }: SpecNewPayload): Promise<SpecNewResult> => {
+  if (!session) throw new Error('no map loaded');
+  const clean = base.trim().replace(/\.xdb$/i, '');
+  if (!clean || /[/\\]/.test(clean)) throw new Error('a specialization name has no path or extension');
+  if (!TOWN_BONUS_IDS.has(bonus)) throw new Error(`unknown bonus ${bonus}`);
+  const file = `${clean}.xdb`;
+  // A display name, when given, is a sibling text file the spec points at — a
+  // localizable ref like every other name in the map.
+  let nameRef = '';
+  if (name && name.trim()) {
+    const nameFile = `${clean}-name.txt`;
+    if (!writeSidecarText(session, nameFile, name.trim())) throw new Error(`cannot write ${nameFile}`);
+    nameRef = nameFile;
+  }
+  const xml = '<?xml version="1.0" encoding="UTF-8"?>\n<TownSpecialization>\n'
+    + `\t<NameFileRef href="${nameRef}"/>\n`
+    + '\t<BiographyFileRef href=""/>\n'
+    + `\t<Bonus>${bonus}</Bonus>\n`
+    + '\t<BonusDescriptionFileRef href=""/>\n'
+    + `\t<TownType>${townType}</TownType>\n`
+    + '\t<RandomTown>TOWN_SCRIPT_ONLY</RandomTown>\n'
+    + '</TownSpecialization>\n';
+  if (!writeSidecarText(session, file, xml)) throw new Error(`cannot write ${file}`);
+  return { href: `${file}#xpointer(/TownSpecialization)`, file };
 });
 
 /** The `href` of a Script wrapper's `<FileName>` — the `.lua` it runs. */

@@ -26,7 +26,7 @@ export type RegistryName =
   | 'spells' | 'artifacts' | 'heroes' | 'races' | 'ambientLights' | 'creatures' | 'skills'
   | 'birds' | 'winds' | 'weathers';
 export type WidgetKind =
-  | 'checklist' | 'dropdown' | 'teamgrid' | 'textfile' | 'script' | 'herolevel';
+  | 'checklist' | 'dropdown' | 'teamgrid' | 'textfile' | 'script' | 'herolevel' | 'specialization';
 export type TabName =
   | 'general' | 'players' | 'teams' | 'heroes' | 'spells' | 'artifacts' | 'script' | 'rumours';
 export type JsonType = 'boolean' | 'integer' | 'number' | 'string' | 'array' | 'object';

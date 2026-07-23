@@ -245,7 +245,7 @@
     } } ] },
     "AdvMapTown": { "allOf": [ { "$ref": "#/$defs/CommonObject" }, { "type": "object", "properties": {
       "PlayerID": { "$ref": "#/$defs/PlayerId", "title": "Owner", "default": "PLAYER_1" },
-      "Specialization": { "type": "string", "x-ref": true, "title": "Specialization", "description": "Empty by default — and the original's own save-time check then reports the town as unspecialised. Ours defaults the same way and says the same thing rather than inventing one.", "default": null },
+      "Specialization": { "type": "string", "x-ref": true, "x-widget": "specialization", "title": "Specialization", "description": "A named town bonus. Empty by default. Pick a shipped one or create a map-local specialization (a bonus, packed with the map).", "default": null },
       "buildings": { "type": "array", "title": "Buildings", "description": "A new town starts with a town hall, not bare.", "default": [ { "Type": "TB_TOWN_HALL", "InitialUpgrade": "BLD_UPG_1", "MaxUpgrade": "BLD_UPG_4" } ], "items": { "$ref": "#/$defs/Building" } },
       "armySlots": { "type": "array", "title": "Garrison army", "default": [], "items": { "$ref": "#/$defs/ArmySlot" } },
       "spellIDs": { "type": "array", "x-registry": "spells", "x-widget": "checklist", "title": "Guild spells", "x-defaultAll": true, "description": "A FILTER on what the mage guild may offer, and a new town's is every spell in the game — an empty list is 'no spells', not 'no restriction'. Too long and too installation-dependent to write out, so x-defaultAll says 'the whole roster'.", "items": { "type": "string", "x-registry": "spells" } },

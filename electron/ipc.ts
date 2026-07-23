@@ -344,6 +344,20 @@ export interface ScriptResolvePayload { href: string }
 export interface ScriptResolveResult { lua: string }
 
 /**
+ * Payload of `spec:new` — create a TownSpecialization file inside the map.
+ *
+ * A specialization is a named town bonus; the shipped ones live in the game's
+ * `GameMechanics/`, but a map can carry its OWN, packed beside `map.xdb` and
+ * referenced by a relative href — the same map-local pattern as scripts and
+ * texts. `base` is the file name (no path/extension), `bonus` a TOWN_BONUS_* id,
+ * `townType` a TOWN_* faction, `name` an optional display name (written to a
+ * sibling text file when given).
+ */
+export interface SpecNewPayload { base: string; bonus: string; townType: string; name?: string }
+/** Result of `spec:new` — the ref to store, and the file written, both map-relative. */
+export interface SpecNewResult { href: string; file: string }
+
+/**
  * The project's localization state.
  *
  * `enabled` is false until localization is turned on for the map. `base` is the
@@ -650,6 +664,7 @@ export interface EditorApi {
   mapFiles(p: MapFilesPayload): Promise<MapFilesResult>;
   writeFile(p: WriteFilePayload): Promise<ObjectEditResult>;
   newScript(p: ScriptNewPayload): Promise<ScriptNewResult>;
+  newSpecialization(p: SpecNewPayload): Promise<SpecNewResult>;
   resolveScript(p: ScriptResolvePayload): Promise<ScriptResolveResult>;
   locGet(): Promise<LocResult>;
   locEnable(p: LocEnablePayload): Promise<LocResult>;

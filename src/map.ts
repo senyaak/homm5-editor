@@ -142,7 +142,7 @@ export class MapObject {
   }
 
   /** Set one simple field by element name. False when it is not a simple field. */
-  setProp(name: string, value: string): boolean {
+  setProp(name: string, value: string, asHref = false): boolean {
     if (POS_FIELDS.has(name)) return false;
     if (this.owner?.containerFields().has(name)) return false;
     const el = find(this.el, name);
@@ -150,8 +150,11 @@ export class MapObject {
     // A reference field holds its value in the href attribute, not as text —
     // `<MessageFileRef href="…"/>`. Refusing those made a sign's message
     // readable and unwritable, which is most of what a sign is. Same rule the
-    // tree already writes by (src/tree.ts setPath).
-    if (el.attrs.href !== undefined) setAttr(el, 'href', value);
+    // tree already writes by (src/tree.ts setPath). `asHref` forces the href
+    // form even when the element is a bare `<Specialization/>` with no attribute
+    // yet — otherwise a first-time ref would be written as text and the game
+    // would not read it.
+    if (asHref || el.attrs.href !== undefined) setAttr(el, 'href', value);
     else setText(el, value);
     return true;
   }

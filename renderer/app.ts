@@ -23,6 +23,7 @@ import type { EditorApi, MapListEntry, ExternalChange, PlaceableObject, RosterEn
 import type { ObjectProp } from '../src/map.ts';
 import { objectProps, deref, controlOf, objectSchema, mapSchema, resolveSchemaAtPath, classOf, schemaForClass } from '../src/schema.ts';
 import type { FieldSchema, HasDefs } from '../src/schema.ts';
+import { TOWN_BONUSES } from '../src/town-bonuses.ts';
 import type { TreeData, Path as TreePath } from '../src/tree.ts';
 import { mountCodeEditor, setScriptContext } from './code-editor.ts';
 import type { CodeEditor, ScriptContext } from './code-editor.ts';
@@ -1935,6 +1936,13 @@ function selectFrom(current: string, options: { value: string; label: string }[]
  * and nested structures are a later pass, so those fall through to propRow.
  */
 function fieldRow(p: ObjectProp, field: FieldSchema | null, commit: (name: string, value: string) => void, objectType?: string, allowed?: string[]): HTMLElement {
+  // A town specialization: its own pick-or-create control, in the panel too —
+  // otherwise it falls to the read-only href row and can never be set.
+  if (field?.['x-widget'] === 'specialization') {
+    const { row } = rowShell(field, p.name);
+    row.appendChild(specRefControl(p.value, (v) => commit(p.name, v)));
+    return row;
+  }
   // What the GAME allows here beats both the schema's own enum list and the
   // value-shape guess: it is the closed set the engine defines, and it is the
   // difference between typing ATTACK_MELEE from memory and picking it.
@@ -2526,6 +2534,8 @@ function leafControl(field: FieldSchema, value: string, commit: (v: string) => v
   // A script reference (MapScript): the wrapper's xpointer, with New/Edit that
   // create the .lua+.xdb pair and open the code — not an href typed by hand.
   if (field['x-widget'] === 'script') return scriptRefControl(value, commit);
+  // A town specialization: a named bonus, pick-or-create map-local.
+  if (field['x-widget'] === 'specialization') return specRefControl(value, commit);
   // A text-file reference: show the path, and an Edit button that opens the
   // referenced file in the text editor (the original's "Edit" on such a row).
   if (field['x-file']) return fileRefControl(value, field.title || '', commit);
@@ -2760,6 +2770,73 @@ function scriptRefControl(value: string, commit: (v: string) => void): HTMLEleme
   box.append(rv, nw, edit);
   wrap.appendChild(box);
   return wrap;
+}
+
+/**
+ * The Specialization control — a named town bonus. Shows the current ref and a
+ * New button that creates a map-local TownSpecialization (a bonus packed beside
+ * map.xdb) and links it by a relative href, the same map-local pattern scripts
+ * and texts use; ✕ clears it. A shipped specialization is still a plain href, so
+ * one can also be typed/pasted, but the point here is authoring your own.
+ */
+function specRefControl(value: string, commit: (v: string) => void): HTMLElement {
+  const wrap = document.createElement('span'); wrap.style.display = 'contents';
+  const box = document.createElement('span'); box.className = 'mt-ref';
+  const rv = document.createElement('span'); rv.className = 'rv';
+  const clear = document.createElement('button'); clear.textContent = '✕'; clear.title = 'clear';
+  const show = (v: string): void => { rv.textContent = v || '(none)'; rv.title = v; clear.disabled = !v; };
+  show(value);
+  const nw = document.createElement('button'); nw.textContent = 'New'; nw.title = 'create a map-local specialization';
+  nw.addEventListener('click', () => {
+    void openSpecCreate().then((choice) => {
+      if (!choice) return undefined;
+      return window.editor.newSpecialization(choice).then((r) => { commit(r.href); show(r.href); });
+    }).catch((e: unknown) => { $('hud').textContent = 'cannot create specialization: ' + (e instanceof Error ? e.message : String(e)); });
+  });
+  clear.addEventListener('click', () => { commit(''); show(''); });
+  box.append(rv, nw, clear);
+  wrap.appendChild(box);
+  return wrap;
+}
+
+interface SpecChoice { base: string; bonus: string; townType: string; name: string }
+/** The New-specialization dialog: a bonus, a faction, an optional display name. */
+function openSpecCreate(): Promise<SpecChoice | null> {
+  const dlg = $('specnew') as HTMLDialogElement;
+  const bonus = $('sn-bonus') as HTMLSelectElement;
+  const faction = $('sn-faction') as HTMLSelectElement;
+  const name = $('sn-name') as HTMLInputElement;
+  bonus.innerHTML = '';
+  for (const b of TOWN_BONUSES) {
+    const o = document.createElement('option'); o.value = b.id; o.textContent = b.label; bonus.appendChild(o);
+  }
+  faction.innerHTML = '';
+  void roster('races').then((entries) => {
+    faction.innerHTML = '';
+    for (const e of entries) {
+      const o = document.createElement('option'); o.value = e.id; o.textContent = e.name || e.id; faction.appendChild(o);
+    }
+    faction.value = 'TOWN_HEAVEN';
+  });
+  name.value = ''; $('sn-err').textContent = '';
+  return new Promise((resolve) => {
+    const done = (v: SpecChoice | null): void => { cleanup(); dlg.close(); resolve(v); };
+    const onOk = (): void => {
+      const nm = name.value.trim();
+      const base = (nm.replace(/[^A-Za-z0-9_-]+/g, '') || 'TownSpec').slice(0, 40);
+      done({ base, bonus: bonus.value, townType: faction.value, name: nm });
+    };
+    const onCancel = (): void => done(null);
+    const cleanup = (): void => {
+      $('sn-ok').removeEventListener('click', onOk);
+      $('sn-cancel').removeEventListener('click', onCancel);
+      $('sn-close').removeEventListener('click', onCancel);
+    };
+    $('sn-ok').addEventListener('click', onOk);
+    $('sn-cancel').addEventListener('click', onCancel);
+    $('sn-close').addEventListener('click', onCancel);
+    dlg.showModal();
+  });
 }
 
 const docDialog = (): HTMLDialogElement => {

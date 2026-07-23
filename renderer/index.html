@@ -989,6 +989,26 @@
     </div>
   </dialog>
 
+  <!-- New town specialization: a map-local named bonus, packed with the map -->
+  <dialog id="specnew">
+    <div class="mp-card on-card">
+      <div class="mp-head">
+        <span class="mp-title">New town specialization</span>
+        <button id="sn-close" title="close (Esc)">✕</button>
+      </div>
+      <div class="mp-body on-body">
+        <label class="on-row"><span>Name</span><input id="sn-name" type="text" spellcheck="false" autocomplete="off" placeholder="shown in game (optional)"></label>
+        <label class="on-row"><span>Bonus</span><select id="sn-bonus"></select></label>
+        <label class="on-row"><span>Faction</span><select id="sn-faction"></select></label>
+        <div id="sn-err" class="on-err"></div>
+      </div>
+      <div class="de-foot">
+        <button id="sn-cancel" class="ghost">Cancel</button>
+        <button id="sn-ok">Create &amp; link</button>
+      </div>
+    </div>
+  </dialog>
+
   <!-- Create New Map — the original's startup dialog, field for field: a name, a
        two-level toggle, the map type and the seven fixed sizes. The type is the
        one thing map.xdb does not record, so it only decides which folder under

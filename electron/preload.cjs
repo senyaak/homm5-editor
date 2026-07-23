@@ -49,6 +49,7 @@ const api = {
   mapFiles: (p) => ipcRenderer.invoke('map:files', p),
   writeFile: (p) => ipcRenderer.invoke('map:write-file', p),
   newScript: (p) => ipcRenderer.invoke('script:new', p),
+  newSpecialization: (p) => ipcRenderer.invoke('spec:new', p),
   resolveScript: (p) => ipcRenderer.invoke('script:resolve', p),
   locGet: () => ipcRenderer.invoke('loc:get'),
   locEnable: (p) => ipcRenderer.invoke('loc:enable', p),
