@@ -325,9 +325,10 @@ The first mission, **C1M1**, is rebuilt end to end: its whole `GroundTerrain.bin
 objects placed by clicking with their fractional positions and 80 facings, their
 fields, the map settings, the 17 regions, the tile list, the objectives, the
 localized texts, and the mission Lua — each a staged spec under `e2e/`
-(`c1m1-1-heights` … `c1m1-13-texts`). `npm run diff-terrain`, `diff-objects` and
-`diff-map` are down to a handful of accepted deviations the engine doesn't read.
-Every gap it hit became a feature above.
+(`c1m1-1-heights` … `c1m1-13-texts`), closed by a capstone (`c1m1-14-pack`) that
+verifies the whole map and packs it into a **playable `.h5m`**. `npm run
+diff-terrain`, `diff-objects` and `diff-map` are down to a handful of accepted
+deviations the engine doesn't read. Every gap it hit became a feature above.
 
 ## Next
 
