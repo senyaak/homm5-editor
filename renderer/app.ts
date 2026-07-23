@@ -2308,6 +2308,8 @@ interface TreeTarget {
   set: (path: TreePath, value: string) => Promise<unknown>;
   add: (path: TreePath, value?: string) => Promise<unknown>;
   remove: (path: TreePath) => Promise<unknown>;
+  /** Replace a value list wholesale — how a one-of-many list is written. */
+  setList?: (path: TreePath, values: string[]) => Promise<unknown>;
 }
 
 const MAP_TREE: TreeTarget = {
@@ -2318,6 +2320,7 @@ const MAP_TREE: TreeTarget = {
   set: (path, value) => window.editor.setMapPath({ path, value }),
   add: (path, value) => window.editor.addMapItem(value === undefined ? { path } : { path, value }),
   remove: (path) => window.editor.removeMapItem({ path }),
+  setList: (path, values) => window.editor.setMapList({ path, values }),
 };
 
 /** The tree rooted at one object — same renderer, same edit primitives. */
@@ -2390,12 +2393,24 @@ function treeNode(name: string, field: FieldSchema, data: TreeData | undefined, 
 function leafRow(name: string, field: FieldSchema, data: TreeData | undefined, path: TreePath): HTMLElement {
   const row = document.createElement('div');
   row.className = 'mt-row';
+  // The row's own path, on the element. The label shows the schema's title and
+  // its tooltip carries the description, so neither says where the value lives —
+  // and "where" is what automation, and anyone reading the DOM, needs.
+  row.dataset.path = JSON.stringify(path);
   const label = document.createElement('label');
   label.textContent = field.title || name;
   label.title = field.description ? `${name} — ${field.description}` : name;
+  label.dataset.field = name;
   row.appendChild(label);
-  const value = typeof data === 'string' ? data : '';
-  row.appendChild(leafControl(field, value, (v) => { void treeSet(path, v); }));
+  // A list rendered as ONE control — the map's ambient light is a list in the
+  // file and a single choice in the editor — shows its first entry and is
+  // written as a whole list, since a list node has no text to set.
+  const isList = field.type === 'array';
+  const value = typeof data === 'string' ? data
+    : (isList && Array.isArray(data) && typeof data[0] === 'string' ? data[0] : '');
+  row.appendChild(leafControl(field, value, (v) => {
+    void (isList ? treeSetList(path, v ? [v] : []) : treeSet(path, v));
+  }));
   return row;
 }
 
@@ -2489,6 +2504,9 @@ function groupNode(name: string, field: FieldSchema, data: TreeData | undefined,
   // without this an add/remove (which reloads the tree) would collapse the group
   // the edit happened in. Groups re-open recursively as their parents fill.
   if (mtOpen.has(k)) setOpen(true);
+  // JSON rather than the internal key: that one joins on NUL, which a CSS
+  // attribute selector cannot carry (the parser turns it into U+FFFD).
+  grp.dataset.path = JSON.stringify(path);
   grp.append(head, kids);
   return grp;
 }
@@ -2549,6 +2567,13 @@ function fillArray(kids: HTMLElement, field: FieldSchema, data: TreeData | undef
 async function mutateList(op: () => Promise<unknown>): Promise<void> {
   try { await op(); markDirty(true); await refreshMapTree(); }
   catch (e) { $('hud').textContent = 'tree edit failed: ' + (e instanceof Error ? e.message : String(e)); }
+}
+
+/** Replace a value list — what a single-choice list row commits through. */
+async function treeSetList(path: TreePath, values: string[]): Promise<void> {
+  if (!treeTarget.setList) { $('hud').textContent = `${path.join('.')} is not a list this view can write`; return; }
+  try { await treeTarget.setList(path, values); markDirty(true); $('hud').textContent = `${path.join('.')} = ${values.join(', ') || '(empty)'}`; }
+  catch (e) { $('hud').textContent = `could not set ${path.join('.')}: ` + (e instanceof Error ? e.message : String(e)); }
 }
 
 /** The same, for whatever the tree is currently editing. */
@@ -2749,9 +2774,18 @@ async function createEntity(className: string): Promise<string | null> {
  *  is never left dangling), returning its basename href. The editor opens next
  *  for content. */
 function createText(): Promise<string | null> {
-  return openCreate('New text file', null, 'File name', (name) => {
+  return openCreate('New text file', null, 'File name', async (name) => {
     const href = /\.txt$/i.test(name) ? name : `${name}.txt`;
-    return window.editor.writeFile({ href, text: '' }).then(() => href);
+    // A file of that name may already be there — the map's own name.txt, a
+    // message written earlier. Referencing it is what was meant; writing an
+    // empty one over it would quietly destroy the text it holds.
+    try {
+      await window.editor.readFile(href);
+      return href;
+    } catch {
+      await window.editor.writeFile({ href, text: '' });
+      return href;
+    }
   });
 }
 

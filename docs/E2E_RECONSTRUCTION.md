@@ -188,6 +188,7 @@ e2e/c1m1-4-textures.spec.ts    ~6 min    12 layers, 112 908 writes
 e2e/c1m1-5-passability.spec.ts ~20 s     4939 tiles in 424 strokes
 e2e/c1m1-6-objects.spec.ts     ~8 min    2645 objects, 118 palette picks
 e2e/c1m1-7-fields.spec.ts      ~90 s     26 values, 4 text refs, 6 army stacks
+e2e/c1m1-8-settings.spec.ts    ~15 s     rules, players, goals, lights, picture
 ```
 
 Each opens the map the previous one left (`e2e/c1m1.ts`), does its own pass,
@@ -377,6 +378,41 @@ wants: the same size and the same format, encoded to DXT3 here rather than by a
 tool we do not have. Stick horse, stick rider with long hair and a raised sword,
 stick griffins, sunset. Crude on purpose: what is being reproduced is the FILE
 and the reference to it, not the picture.
+
+### Map settings: done ✅
+
+`npm run diff-map` reports the whole `<AdvMapDesc>` except the objects, and it
+compares THREE ways: the original, ours, and a **fresh map of the same size**.
+Without the third side C1M1 looks wrong in fifteen subsystems, and most of it is
+noise — a blank carries `Version`, `HasSurface`, the RMG block and eight
+scenario-information slots, and the mission simply predates them. What was left
+after that was eleven real differences, and the stage sets every one of them:
+hero level cap, border size, reflective water, four players' colours and towns,
+the loss condition in all four objective buckets, the moon calendar, the surface
+lighting and the prelight, the splash picture, and trimming the eight scenario
+slots back to the one the mission keeps.
+
+All of it through the **tree**, because it addresses by path — and so does the
+gap report, so a report line turns into an edit without a translation table. The
+tree is also the only editor that reaches everything: the curated tabs show what
+a mapmaker usually wants, and a mission uses more.
+
+Four gaps closed on the way, every one of them a thing a person would hit:
+
+- **A list shown as one control could not be written.** The map's ambient light
+  is a list in the file and a single choice in the editor; committing it as a
+  leaf failed, because a list node has no text to set. It writes the list now.
+- **The picker offered only the game's own entities.** A mission carries its
+  own beside the map — C1M1's splash picture is `PWL.(Texture).xdb` in the map
+  folder — so those are listed first, under "This map". Without it "New" could
+  write a document that then could not be referenced.
+- **"New text file" emptied a file that already existed.** Creating `name.txt`
+  when the map has one truncated it; it adopts the existing file now.
+- **A tree node could only be found by reading English.** Every node carries its
+  path (`data-path`), which is also what makes the harness address rows at all.
+
+The one difference left is `MapScript` — the Lua binding, which belongs to the
+script stage and is set there.
 
 ## Milestone 0 — the one missing primitive: New Map
 

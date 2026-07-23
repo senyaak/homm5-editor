@@ -842,8 +842,37 @@ ipcMain.handle('registry:roster', async (_e: IpcMainInvokeEvent, { name }: Roste
 ipcMain.handle('objects:of-class', async (_e: IpcMainInvokeEvent, { className }: OfClassPayload): Promise<RosterResult> => {
   if (!session) throw new Error('no map loaded');
   if (!/^[A-Za-z][A-Za-z0-9]*$/.test(className)) throw new Error(`bad class "${className}"`);
-  return { entries: session.registry.objectsOfClass(className) };
+  return { entries: [...mapLocalEntities(session, className), ...session.registry.objectsOfClass(className)] };
 });
+
+/**
+ * Entities that live BESIDE the map, listed first.
+ *
+ * A mission carries its own: C1M1's splash picture is `PWL.(Texture).xdb` in the
+ * map folder, referenced relatively, and the same goes for a script wrapper or a
+ * light made for one map. The registry scans the data root, so without this the
+ * picker offered every texture the game ships and not the one the map is about
+ * to point at — and "New" wrote a document that could then only be referenced
+ * by hand.
+ */
+function mapLocalEntities(s: Session, className: string): RosterEntry[] {
+  const out: RosterEntry[] = [];
+  let files: string[];
+  try { files = readdirSync(s.mapDir); } catch { return out; }
+  for (const f of files.sort()) {
+    if (!f.toLowerCase().endsWith('.xdb')) continue;
+    let head: string;
+    try { head = readFileSync(join(s.mapDir, f), 'latin1').slice(0, 400); } catch { continue; }
+    // The root element IS the class, which is also what the xpointer names.
+    if (!new RegExp(`<${className}[\s>]`).test(head)) continue;
+    out.push({
+      id: `${f}#xpointer(/${className})`,
+      name: f.replace(/\.xdb$/i, ''),
+      group: 'This map',
+    });
+  }
+  return out;
+}
 
 // Create a new referenced object beside the map (the original's "Create New
 // <Class> Object"). The body is built from the class's schema $def with default

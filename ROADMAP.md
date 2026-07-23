@@ -139,6 +139,12 @@ placing new ones from a palette.
       minutes. `npm run diff-objects` matches every object, position and facing.
       Their FIELDS are the next stage — and they are to be edited through the
       JSON schema (`$ref` for what repeats), not per-type tables in the UI.
+- [x] ✅ **C1M1's map settings** (2026-07-23) — `e2e/c1m1-8-settings.spec.ts`:
+      rules, players, objectives, the moon calendar, the lighting refs and the
+      splash picture, all through the schema-typed tree. `npm run diff-map` is
+      down to `MapScript`, which the Lua stage sets. Fixed on the way: a list
+      shown as one control could not be written, the entity picker ignored the
+      map's own documents, and "New text file" truncated an existing one.
 - [x] ✅ **C1M1's object fields** (2026-07-23) — `e2e/c1m1-7-fields.spec.ts`:
       26 values through the property panel, 4 sign messages, and 6 army stacks
       through the object tree. `npm run diff-objects` reports 0 differences.
