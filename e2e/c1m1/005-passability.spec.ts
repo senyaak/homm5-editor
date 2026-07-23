@@ -25,6 +25,7 @@ import {
   readGroundFlags, readHeights, readMask, readPassability, readTextureLayers, readWaterPlane,
   BLOCKED,
 } from '../../src/terrain.ts';
+import type { Terrain } from '../../src/terrain.ts';
 
 let ed: Launched;
 
@@ -74,19 +75,33 @@ test('C1M1 passability, masked run by run', async () => {
   console.log(`passability: ${blocked} blocked tiles in ${runs.length} runs (filler row/col blocked: ${filler})`);
 
   await armBrush(page, 'mask', 'rect');
-  const started = Date.now();
-  let done = 0;
-  for (const [y, x0, x1] of runs) {
-    await dragAt(page, pixels[y * T + x0]!, pixels[y * T + x1]!);
-    if (++done % 100 === 0) {
-      console.log(`  ${done}/${runs.length} runs (${(done / ((Date.now() - started) / 1000)).toFixed(0)}/s)`);
+  // A dense sweep of rect strokes can drop one, and the mask brush only ever
+  // SETS a tile blocked, never clears it — so repainting just the runs that
+  // still hold an unblocked target tile converges without touching the rest.
+  const MAX_PASSES = 6;
+  let built: Terrain = before;
+  let got = readPassability(before);
+  let pending = runs;
+  for (let pass = 1; pass <= MAX_PASSES && pending.length; pass++) {
+    const started = Date.now();
+    let done = 0;
+    for (const [y, x0, x1] of pending) {
+      await dragAt(page, pixels[y * T + x0]!, pixels[y * T + x1]!);
+      if (++done % 100 === 0) {
+        console.log(`  ${done}/${pending.length} runs (${(done / ((Date.now() - started) / 1000)).toFixed(0)}/s)`);
+      }
     }
-  }
-  console.log(`  ${runs.length} strokes in ${((Date.now() - started) / 1000).toFixed(0)}s`);
+    console.log(`  pass ${pass}: ${pending.length} strokes in ${((Date.now() - started) / 1000).toFixed(0)}s`);
 
-  const built = await saveTerrain(page);
-  const got = readPassability(built);
-  expect(got, 'the rebuilt map has a passability plane').toBeTruthy();
+    built = await saveTerrain(page);
+    got = readPassability(built);
+    expect(got, 'the rebuilt map has a passability plane').toBeTruthy();
+    pending = runs.filter(([y, x0, x1]) => {
+      for (let x = x0; x <= x1; x++) if (got![y * V + x] !== BLOCKED) return true;
+      return false;
+    });
+    if (pending.length) console.log(`  ${pending.length} run(s) still short — repainting`);
+  }
   expect(mismatches(got!, target!, V, 'tile'), 'passability entries that differ').toEqual([]);
 
   // Filling in the plane rewrites the container, so the rest of it is the real
