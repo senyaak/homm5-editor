@@ -433,9 +433,21 @@ them.
 - [x] ✅ **Name completion in Lua** — the map's own objects, regions and
       objectives, offered inside string literals where the API takes them
       (all three: see "The script editor" above)
-- [ ] ⬜ Bind scripts to the map and to objects (map script, per-object triggers)
-- [ ] ⬜ Lint before saving: unknown functions, syntax errors, **names used in
-      script that no object defines**
+- [x] ✅ **Bind a script to the map** (2026-07-23) — the map tree's `MapScript`
+      row is a script control: **New** creates the `.lua` + its `.xdb` wrapper and
+      binds the ref, **✎** opens the code (`script:new` / `script:resolve`). Same
+      shape reaches a hero's `CombatScript`. Closed the last `diff-map` difference
+      on C1M1. Per-object trigger UI (beyond the field) is still to come.
+- [x] ✅ **Lint the script** (2026-07-23) — `src/lua-lint.ts`, live in the editor
+      with the count beside the file name and gutter marks. Errors are what the
+      engine's parser rejects (unbalanced `end`/brackets, unterminated strings) —
+      structural only, because our API list is partial and flagging an unknown
+      name as an error would redden working code (the three C1M1 scripts must lint
+      clean, and `tools/test-lua-lint.ts` guards that). A mistyped name is a
+      *warning* on a near miss only. **Not** done, and deliberately: a wrong
+      string name (an object the map doesn't define) is indistinguishable from a
+      file path or a tutorial id — completion prevents those instead. `e2e/c1m1-12-scripts.spec.ts`.
+- [ ] ⬜ Per-object trigger editing in the UI (the fields exist; a nicer surface)
 - [ ] ⬜ (optional) Embedded Lua interpreter for dry-run checks
 
 ### Naming (prerequisite for reliable scripting)

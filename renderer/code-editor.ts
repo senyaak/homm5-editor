@@ -21,9 +21,12 @@ import { searchKeymap, highlightSelectionMatches } from '@codemirror/search';
 import { acceptCompletion, autocompletion, completionKeymap, closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete';
 import type { Completion, CompletionContext, CompletionResult } from '@codemirror/autocomplete';
 import { bracketMatching, foldGutter, foldKeymap, indentOnInput, StreamLanguage, syntaxHighlighting, defaultHighlightStyle } from '@codemirror/language';
-import { lintKeymap } from '@codemirror/lint';
+import { lintKeymap, linter, lintGutter } from '@codemirror/lint';
+import type { Diagnostic } from '@codemirror/lint';
 import { lua } from '@codemirror/legacy-modes/mode/lua';
 import { oneDark } from '@codemirror/theme-one-dark';
+import { luaDiagnostics, luaNameWarnings } from '../src/lua-lint.ts';
+import type { LuaDiagnostic } from '../src/lua-lint.ts';
 
 /** One engine function, as tools/script-api.ts extracts it from the manuals. */
 export interface ApiFn { name: string; params: string; group: string }
@@ -137,20 +140,52 @@ function localCompletions(context: CompletionContext): CompletionResult | null {
 
 const language = new Compartment();
 
+/**
+ * Which language the open document is, for the linter to gate on.
+ *
+ * A name.txt is free text — there is nothing to lint — so the linter has to know
+ * it is looking at Lua before it says a word. Set by `setDoc`, read by the lint
+ * source below; module-level because the linter extension is built once, before
+ * any document is loaded.
+ */
+let lintLang: 'lua' | 'text' = 'text';
+
+/** Every name the editor considers "defined" — the API, the helpers, the constants. */
+function knownNames(): string[] {
+  return [...ctx.api.map((f) => f.name), ...ctx.helpers, ...ctx.constants];
+}
+
+/**
+ * The linter: the errors the engine's Lua parser would reject, plus a "did you
+ * mean" on a mistyped call. See src/lua-lint.ts for why it is structural only.
+ * A short delay so it settles a beat after typing rather than on every keystroke.
+ */
+const luaLinter = linter((view): Diagnostic[] => computeLint(view.state.doc.toString()), { delay: 250 });
+
 /** A mounted editor, and the handful of things the dialog around it needs. */
 export interface CodeEditor {
   view: EditorView;
   /** Replace the whole document, and say which language it is. */
   setDoc(text: string, lang: 'lua' | 'text'): void;
   getDoc(): string;
+  /** The diagnostics for the current document, computed on demand (no debounce). */
+  lint(): LuaDiagnostic[];
   focus(): void;
+}
+
+/** The diagnostics for a document, or none when it is not Lua. */
+function computeLint(src: string): LuaDiagnostic[] {
+  if (lintLang !== 'lua') return [];
+  return [...luaDiagnostics(src), ...luaNameWarnings(src, knownNames())];
 }
 
 /**
  * Mount an editor into `host`. `onSave` is bound to Ctrl/Cmd-S, because a
- * modal with a Save button still wants the shortcut every editor has.
+ * modal with a Save button still wants the shortcut every editor has. `onStatus`
+ * is called with the current diagnostics whenever the document changes, so the
+ * dialog can show "2 errors" beside the file's name as they are typed.
  */
-export function mountCodeEditor(host: HTMLElement, onSave: () => void): CodeEditor {
+export function mountCodeEditor(host: HTMLElement, onSave: () => void, onStatus?: (d: LuaDiagnostic[]) => void): CodeEditor {
   const view = new EditorView({
     parent: host,
     state: EditorState.create({
@@ -173,6 +208,8 @@ export function mountCodeEditor(host: HTMLElement, onSave: () => void): CodeEdit
         // It falls through to that newline whenever no completion is open.
         Prec.highest(keymap.of([{ key: 'Enter', run: acceptCompletion }])),
         language.of([]),
+        luaLinter, lintGutter(),
+        EditorView.updateListener.of((u) => { if (onStatus && u.docChanged) onStatus(computeLint(u.state.doc.toString())); }),
         oneDark,
         EditorView.theme({ '&': { height: '100%', fontSize: '13px' }, '.cm-scroller': { fontFamily: 'ui-monospace, monospace' } }),
       ],
@@ -181,12 +218,15 @@ export function mountCodeEditor(host: HTMLElement, onSave: () => void): CodeEdit
   return {
     view,
     setDoc(text, lang) {
+      lintLang = lang;
       view.dispatch({
         changes: { from: 0, to: view.state.doc.length, insert: text },
         effects: language.reconfigure(lang === 'lua' ? StreamLanguage.define(lua) : []),
       });
+      onStatus?.(computeLint(text));
     },
     getDoc: () => view.state.doc.toString(),
+    lint: () => computeLint(view.state.doc.toString()),
     focus: () => view.focus(),
   };
 }

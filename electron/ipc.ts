@@ -327,6 +327,22 @@ export interface ReadFileResult { text: string; exists: boolean }
 /** Payload of `map:write-file`. */
 export interface WriteFilePayload { href: string; text: string; }
 
+/** Payload of `script:new` — the base name a script and its wrapper take. */
+export interface ScriptNewPayload { base: string }
+/**
+ * Result of `script:new`.
+ *
+ * A map script is TWO files: the `.lua` the engine runs, and a `.xdb` wrapper
+ * that names it and is what the map's `MapScript` (and a hero's CombatScript)
+ * actually reference. `href` is the wrapper's xpointer — what goes in the ref —
+ * and `lua` is the file to open for editing.
+ */
+export interface ScriptNewResult { href: string; lua: string }
+/** Payload of `script:resolve` — a wrapper's ref (`foo.xdb#xpointer(/Script)`). */
+export interface ScriptResolvePayload { href: string }
+/** Result of `script:resolve` — the `.lua` the wrapper names, relative to the map. */
+export interface ScriptResolveResult { lua: string }
+
 /** Result of `map:save`. */
 export interface MapSaveResult {
   ok: true;
@@ -612,6 +628,8 @@ export interface EditorApi {
   scriptContext(): Promise<ScriptContextResult>;
   mapFiles(p: MapFilesPayload): Promise<MapFilesResult>;
   writeFile(p: WriteFilePayload): Promise<ObjectEditResult>;
+  newScript(p: ScriptNewPayload): Promise<ScriptNewResult>;
+  resolveScript(p: ScriptResolvePayload): Promise<ScriptResolveResult>;
   listObjects(): Promise<ObjectCatalogResult>;
   objectIcon(path: string): Promise<IconResult>;
   addObject(p: AddObjectPayload): Promise<AddObjectResult>;

@@ -25,6 +25,7 @@
     "test-schema": "node tools/test-schema.ts",
     "test-objects-schema": "node tools/test-objects-schema.ts",
     "test-tree": "node tools/test-tree.ts",
+    "test-lua-lint": "node tools/test-lua-lint.ts",
     "test-history": "node tools/test-history.ts",
     "pak": "node tools/pak-cli.js",
     "extract-fixture": "node tools/extract-fixture.ts",

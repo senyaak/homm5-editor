@@ -26,6 +26,7 @@ import type { FieldSchema, HasDefs } from '../src/schema.ts';
 import type { TreeData, Path as TreePath } from '../src/tree.ts';
 import { mountCodeEditor, setScriptContext } from './code-editor.ts';
 import type { CodeEditor, ScriptContext } from './code-editor.ts';
+import type { LuaDiagnostic } from '../src/lua-lint.ts';
 
 type MapEntry = MapListEntry & { cat: string };
 /**
@@ -2423,6 +2424,9 @@ function leafRow(name: string, field: FieldSchema, data: TreeData | undefined, p
 /** The control element for a leaf value (no label). */
 function leafControl(field: FieldSchema, value: string, commit: (v: string) => void): HTMLElement {
   if (field['x-nameRef']) return nameRefInput(field['x-nameRef'], value, commit);
+  // A script reference (MapScript): the wrapper's xpointer, with New/Edit that
+  // create the .lua+.xdb pair and open the code — not an href typed by hand.
+  if (field['x-widget'] === 'script') return scriptRefControl(value, commit);
   // A text-file reference: show the path, and an Edit button that opens the
   // referenced file in the text editor (the original's "Edit" on such a row).
   if (field['x-file']) return fileRefControl(value, field.title || '', commit);
@@ -2622,6 +2626,43 @@ function fileRefControl(href: string, label: string, commit: (v: string) => void
   return wrap;
 }
 
+/**
+ * A script reference — the map's `MapScript`, a hero's `CombatScript`.
+ *
+ * The value stored is the WRAPPER's xpointer (`MapScript.xdb#xpointer(/Script)`),
+ * never the `.lua`: the engine references a Script document, and the document
+ * names the file. So "New" creates both — the wrapper and an empty `.lua` — binds
+ * the ref to the wrapper, and opens the code; "Edit" follows the wrapper to its
+ * `.lua` and opens that. Typing the name of a script that already exists re-binds
+ * to it without touching its contents (the handler adopts rather than overwrites),
+ * which is also how an existing mission script gets pointed at.
+ */
+function scriptRefControl(value: string, commit: (v: string) => void): HTMLElement {
+  const wrap = document.createElement('span'); wrap.style.display = 'contents';
+  const box = document.createElement('span'); box.className = 'mt-ref';
+  const rv = document.createElement('span'); rv.className = 'rv';
+  const edit = document.createElement('button'); edit.textContent = '✎'; edit.title = 'edit the script';
+  const show = (v: string): void => { rv.textContent = v || '(none)'; rv.title = v; edit.disabled = !v; };
+  show(value);
+  const nw = document.createElement('button'); nw.textContent = 'New'; nw.title = 'create or bind a script';
+  nw.addEventListener('click', () => {
+    void openCreate('New map script', null, 'Script name', async (name) => {
+      const r = await window.editor.newScript({ base: name });
+      queueMicrotask(() => void openTextEdit(r.lua, r.lua));
+      return r.href;
+    }, 'MapScript').then((href) => { if (href != null) { commit(href); show(href); } });
+  });
+  edit.addEventListener('click', () => {
+    if (!rv.title) return;
+    void window.editor.resolveScript({ href: rv.title })
+      .then((r) => openTextEdit(r.lua, r.lua))
+      .catch((e: unknown) => { $('hud').textContent = 'cannot open script: ' + (e instanceof Error ? e.message : String(e)); });
+  });
+  box.append(rv, nw, edit);
+  wrap.appendChild(box);
+  return wrap;
+}
+
 const docDialog = (): HTMLDialogElement => {
   const el = $('docedit');
   if (!(el instanceof HTMLDialogElement)) throw new Error('#docedit is not a <dialog>');
@@ -2654,8 +2695,11 @@ async function openTextEdit(href: string, label: string): Promise<void> {
   let text = '';
   try { text = (await window.editor.readFile(href)).text; }
   catch { $('hud').textContent = 'could not read ' + href; }
-  deLoaded = text;
   ed.setDoc(text, lang);
+  // The baseline is what the editor NOW holds, not the raw bytes: CodeMirror
+  // normalises line endings (a CRLF script becomes LF), so comparing against the
+  // disk text would flag an untouched file as edited and prompt on every close.
+  deLoaded = ed.getDoc();
   $('de-info').textContent = lang === 'lua' ? scriptContextNote() : '';
   ed.focus();
   // The completion sources are per map, and the map may have moved on since the
@@ -2664,8 +2708,27 @@ async function openTextEdit(href: string, label: string): Promise<void> {
 }
 
 function ensureCodeEditor(): CodeEditor {
-  if (!codeEditor) codeEditor = mountCodeEditor($('de-text'), () => saveDoc());
+  if (!codeEditor) codeEditor = mountCodeEditor($('de-text'), () => saveDoc(), showLintStatus);
   return codeEditor;
+}
+
+/**
+ * Reflect the linter's verdict beside the file's name.
+ *
+ * The count is what a person reads before saving — a script with a missing `end`
+ * is one the engine refuses to load, and the editor is the only place that ever
+ * says so, since there is no compiler to run. A `.txt` reports nothing.
+ */
+function showLintStatus(diags: LuaDiagnostic[]): void {
+  const el = $('de-lint');
+  const errors = diags.filter((d) => d.severity === 'error').length;
+  const warns = diags.length - errors;
+  el.className = 'de-lint ' + (errors ? 'err' : warns ? 'warn' : 'ok');
+  if (langOf(deHref) !== 'lua') { el.textContent = ''; el.className = 'de-lint'; return; }
+  const parts: string[] = [];
+  if (errors) parts.push(`${errors} error${errors === 1 ? '' : 's'}`);
+  if (warns) parts.push(`${warns} warning${warns === 1 ? '' : 's'}`);
+  el.textContent = parts.length ? `⚠ ${parts.join(' · ')}` : '✓ no errors';
 }
 
 /** What the editor knows, in a few words — an empty completion list should say so. */

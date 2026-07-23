@@ -55,6 +55,7 @@ import type {
   ObjectTreePayload, ObjectTreeResult, ObjectSetPathPayload, ObjectAddItemPayload, ObjectRemoveItemPayload,
   ReadFilePayload, ReadFileResult, WriteFilePayload,
   ScriptContextResult, ApiFn, MapFilesPayload, MapFilesResult,
+  ScriptNewPayload, ScriptNewResult, ScriptResolvePayload, ScriptResolveResult,
   ObjectCatalogResult, IconPayload, IconResult, AddObjectPayload, AddObjectResult,
   MapSaveResult, MapPackResult, TerrainTilesResult, MapStatusResult, OpenMapDialogResult,
   NewMapPayload, NewMapResult, OpenArchivePayload, OpenArchiveResult,
@@ -1199,6 +1200,54 @@ ipcMain.handle('map:write-file', async (_e: IpcMainInvokeEvent, { href, text }: 
   if (!writeSidecarText(session, href, text)) throw new Error(`cannot write ${href}`);
   return { ok: true };
 });
+
+/**
+ * Create a script and its wrapper, or adopt them if they are already there.
+ *
+ * A map script is two files: the `.lua` the engine runs, and a `.xdb` wrapper
+ * that names it — the wrapper is what `MapScript` and a hero's `CombatScript`
+ * reference, never the `.lua` directly. "New script" therefore makes both and
+ * hands back the wrapper's xpointer to store in the ref.
+ *
+ * If a wrapper of that name exists it is adopted, not overwritten: it may name a
+ * `.lua` that already holds a mission's script, and pointing at it is the intent.
+ * The `.lua` is only created when missing, for the same reason `map:write-file`
+ * does not clobber an existing text.
+ */
+ipcMain.handle('script:new', async (_e: IpcMainInvokeEvent, { base }: ScriptNewPayload): Promise<ScriptNewResult> => {
+  if (!session) throw new Error('no map loaded');
+  const clean = base.trim().replace(/\.(lua|xdb)$/i, '');
+  if (!clean || /[/\\]/.test(clean)) throw new Error('a script name has no path or extension');
+  const luaName = `${clean}.lua`;
+  const wrapper = `${clean}.xdb`;
+  const wrapperPath = sidecarPath(session, wrapper);
+  if (!wrapperPath) throw new Error(`cannot create ${wrapper}`);
+  let lua = luaName;
+  if (existsSync(wrapperPath)) {
+    // Adopt: keep whatever .lua the existing wrapper already names.
+    lua = readScriptFileName(readSidecarText(session, wrapper)) ?? luaName;
+  } else {
+    const xml = '<?xml version="1.0" encoding="UTF-8"?>\n<Script>\n'
+      + `\t<FileName href="${luaName}"/>\n\t<ScriptText/>\n</Script>\n`;
+    if (!writeSidecarText(session, wrapper, xml)) throw new Error(`cannot write ${wrapper}`);
+  }
+  const luaPath = sidecarPath(session, lua);
+  if (luaPath && !existsSync(luaPath)) writeSidecarText(session, lua, '');
+  return { href: `${wrapper}#xpointer(/Script)`, lua };
+});
+
+/** The `.lua` a Script wrapper names — so "Edit" opens the script, not the wrapper. */
+ipcMain.handle('script:resolve', async (_e: IpcMainInvokeEvent, { href }: ScriptResolvePayload): Promise<ScriptResolveResult> => {
+  if (!session) throw new Error('no map loaded');
+  const lua = readScriptFileName(readSidecarText(session, href));
+  if (!lua) throw new Error(`${href} names no script file`);
+  return { lua };
+});
+
+/** The `href` of a Script wrapper's `<FileName>` — the `.lua` it runs. */
+function readScriptFileName(xml: string): string | null {
+  return /<FileName\s+href="([^"]*)"/i.exec(xml)?.[1] ?? null;
+}
 
 /**
  * Where a text reference lands inside the map folder.

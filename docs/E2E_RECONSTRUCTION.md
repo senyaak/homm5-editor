@@ -192,6 +192,7 @@ e2e/c1m1-8-settings.spec.ts    ~15 s     rules, players, goals, lights, picture
 e2e/c1m1-9-regions.spec.ts     ~20 s     17 regions, dragged out on the map
 e2e/c1m1-10-tiles.spec.ts      ~6 s      the derived tile set, repaired on open
 e2e/c1m1-11-objectives.spec.ts ~4 min    4 objectives + the save name, in the tree
+e2e/c1m1-12-scripts.spec.ts    ~15 s     bind MapScript, write the 4 Lua, lint them
 ```
 
 Each opens the map the previous one left (`e2e/c1m1.ts`), does its own pass,
@@ -416,6 +417,41 @@ Four gaps closed on the way, every one of them a thing a person would hit:
 
 The one difference left is `MapScript` — the Lua binding, which belongs to the
 script stage and is set there.
+
+### The script stage: done ✅ — `diff-map` is empty
+
+The mission's Lua is the last subsystem, and it closes the map path. Through the
+app: the map tree's `MapScript` row **New** creates the wrapper + the `.lua` and
+binds the ref (`script:new`), then the four scripts' text — the original's,
+byte-for-byte — is written into the map folder, and the map is saved. `npm run
+diff-map` is now **0 differences**: the whole `<AdvMapDesc>` reproduced.
+
+The stage doubles as the proof of the editor's own reason to exist. There is no
+compiler to run a script through, so the editor lints it live (`src/lua-lint.ts`):
+the count sits beside the file name, gutter marks on the broken lines. The spec
+opens the real 500-line `MapScript.lua` (lints clean — the load-bearing case,
+since a linter that reddens working code is worse than none), then appends two
+mistakes on purpose — an unterminated string and a function with no `end` — and
+checks the editor shows **2 errors**; fixes them and checks it clears; and types a
+stray `end` to prove it updates on every keystroke, not only on open.
+
+Two real issues fixed on the way, both things a person would hit:
+
+- **The linter can't hard-error on an unknown function.** Our API list (199 from
+  the manuals) is partial — C1M1 calls a dozen engine functions we never
+  extracted — so "not in the list" cannot mean "wrong". Errors are structural
+  only (what the parser rejects); a mistyped name is a warning on a near miss.
+  And with the API not yet loaded there is no vocabulary at all, so the name
+  check stays silent rather than "correcting" `sleep` to a same-file `tsleep`.
+- **Opening a CRLF script prompted "unsaved changes" on close.** CodeMirror
+  normalises line endings, so the buffer never equalled the raw bytes; the
+  edited-since-open baseline is taken from the editor's own text now, not the
+  disk.
+
+**Accepted deviation:** the `.xdb` wrappers carry no `ObjectRecordID` — an engine
+bookkeeping id, like the object GUIDs, that `diff-map` does not read. The map
+script's combat-script paths are absolute into the shipped mission's folder,
+reproduced verbatim; rehoming them to a rebuilt map is the author's call.
 
 ## Milestone 0 — the one missing primitive: New Map
 

@@ -482,6 +482,12 @@
     #de-info { color: #6e7681; font-size: 11px; margin: 0 10px 0 auto; white-space: nowrap;
       overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 0 1 auto; }
     #docedit .mp-head > button { flex: none; }
+    /* the linter's verdict, beside the file's name: red for errors a parser
+       would reject, amber for a "did you mean", dim green when the script is clean */
+    .de-lint { font-size: 11px; margin-left: 10px; white-space: nowrap; flex: none; }
+    .de-lint.err { color: #f85149; }
+    .de-lint.warn { color: #d29922; }
+    .de-lint.ok { color: #3fb950; opacity: .7; }
 
     /* the script list: every .lua the map folder carries */
     #scriptpick .sp-list { display: flex; flex-direction: column; gap: 2px; padding: 6px; }
@@ -863,6 +869,7 @@
     <div class="mp-card de-card">
       <div class="mp-head">
         <span class="mp-title" id="de-title">Text</span>
+        <span id="de-lint" class="de-lint"></span>
         <span id="de-info"></span>
         <button id="de-close" title="close (Esc)">✕</button>
       </div>

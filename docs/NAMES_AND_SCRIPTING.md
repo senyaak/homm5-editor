@@ -39,6 +39,72 @@ A `.lua` is written as plain UTF-8 — the engine's parser reads it byte by byte
 Only the display texts (`name.txt`, an objective's caption) get the UTF-16LE the
 game writes for them.
 
+## The linter — the errors the engine won't tell you about
+
+A map script is never compiled anywhere we can watch. The engine loads the chunk
+at run time and, if it is malformed, silently refuses it — no message, no line
+number, the mission just does not script. So the editor lints as you type
+(`src/lua-lint.ts`), and the verdict sits beside the file's name: **✓ no errors**,
+or **⚠ 2 errors**, with a red mark in the gutter on each offending line.
+
+What it flags as an **error** is exactly what the parser rejects, and nothing
+else:
+
+- an unbalanced block — a `function`, `if` or `do` with no matching `end` (or one
+  `end` too many; `repeat` is closed by `until`);
+- an unclosed or mismatched bracket — `(`, `{`, `[`;
+- an unterminated string.
+
+The block rule is tuned to the game's dialect and measured against the shipped
+scripts: `for`/`while` take no `end` of their own — their `do` does — so the
+opener count is `function + if + do`, and every one of the three C1M1 scripts
+balances to zero. That is the load-bearing test (`tools/test-lua-lint.ts`): a
+linter that reddens working code is worse than none, so the thing that must stay
+true is that a real mission script lints clean.
+
+What it deliberately does **not** treat as an error is an unknown function name.
+Our API list (199 functions from the manuals) is admittedly partial — C1M1 alone
+calls a dozen engine functions we never extracted (`GiveExp`, `SetControlMode`,
+`StartCombat`…) — so "not in the list" cannot mean "wrong". The one name check is
+a **warning**, and only on a *near* miss: an unknown that sits one or two edits
+from a name we do know (`SetObjectvieState` beside `SetObjectiveState`) is a typo
+far more often than not. An unknown with no near match is left alone.
+
+A misspelt *string* — a wrong object or region name — is not caught at all,
+because it cannot be told from a file path or a tutorial id. That is what the
+completion is for: offer the right names so they are never typed wrong (above).
+
+## Binding a script: the `.lua` and its `.xdb` wrapper
+
+A map does not reference a `.lua` directly. Every script is **two files**:
+
+- `MapScript.lua` — the code the engine runs;
+- `MapScript.xdb` — a tiny `<Script>` wrapper that names it
+  (`<FileName href="MapScript.lua"/>`).
+
+The map's `<MapScript>` (and a hero's `<CombatScript>`, and the `StartCombat`
+call's script argument) all point at the **wrapper**, by xpointer:
+`MapScript.xdb#xpointer(/Script)`. In the map tree, the `MapScript` row's **New**
+button makes both files, binds the ref, and opens the code; **✎** follows the
+wrapper to its `.lua`. Typing the name of a script that already exists re-binds to
+it without touching its contents, which is also how you point the map at a script
+you wrote earlier. (`script:new` / `script:resolve` in `electron/main.ts`.)
+
+A mission usually has more than one:
+
+- **the map script** — bound as `<MapScript>`, runs from the top when the map
+  loads; C1M1's sets up objectives, tutorial triggers and the opening dialog.
+- **a combat script** — referenced from Lua by path
+  (`StartCombat("Isabell", …, "…/C1M1-CombatScript.xdb#xpointer(/Script)", …)`)
+  or bound to a hero (`SetHeroCombatScript`); its `Prepare`/`Start` and any
+  threads run during a battle.
+
+These cross-references are stored as the original wrote them. C1M1's map script
+names its combat scripts by **absolute** path into the shipped mission's folder
+(`/Maps/Scenario/C1M1/…`); reproduced verbatim, that points at the original's
+location, not a rebuilt map's. Rehoming those paths is a separate concern from
+authoring the script and is left to the mission author.
+
 ## The `<Name>` is the script handle
 
 Lua addresses everything on the map by a **string name**, not by file path or
