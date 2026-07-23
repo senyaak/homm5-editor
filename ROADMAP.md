@@ -139,6 +139,15 @@ placing new ones from a palette.
       minutes. `npm run diff-objects` matches every object, position and facing.
       Their FIELDS are the next stage — and they are to be edited through the
       JSON schema (`$ref` for what repeats), not per-type tables in the UI.
+- [x] ✅ **The script editor** (2026-07-23) — CodeMirror 6 in the document
+      window: Lua highlighting (legacy stream mode, so the game's 4.0-shaped
+      Lua is not painted red), the app's dark theme, and completion from the
+      engine API (199 functions with parameters, extracted from the shipped
+      manuals by `npm run script-api`), the game's own scripts, and THIS map's
+      names — objects, regions, objectives, offered inside string literals
+      where the API takes them. `Scripts` in the toolbar lists the map's `.lua`.
+      `e2e/script-editor.spec.ts`. Fixed on the way: a new `.lua` was written as
+      UTF-16LE, which the engine's parser cannot read at all.
 - [x] ✅ **C1M1's objectives and its save name** (2026-07-23) —
       `e2e/c1m1-11-objectives.spec.ts`: the four primary objectives with their
       caption and description texts under `objectives/`, and the mission's

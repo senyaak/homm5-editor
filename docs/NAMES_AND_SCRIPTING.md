@@ -8,6 +8,37 @@ Sources: `Editor Documentation/HOMM5_A2_Script_Functions.pdf`,
 `HOMM5_Users_Campaign_Editor.pdf`, and the shipped campaign scripts in
 `UserMODs/All_campaigns.data.h5u` (`Maps/Scenario/C*/MapScript.lua`).
 
+## The script editor
+
+`Scripts` in the toolbar lists every `.lua` the map folder carries; opening one
+gives a CodeMirror editor with Lua highlighting and completion from three
+sources:
+
+- **The engine API** — `src/script-api.json`, 199 functions with their parameter
+  lists, extracted from the two manuals the game ships by `npm run script-api`
+  (it needs `pdftotext`). These functions are implemented in the engine, so
+  nothing in the game's own Lua declares them: scanning the scripts would find
+  only the ones a mission happens to call.
+- **The game's own scripts** — `<data>/scripts/*.lua`: the helpers a mission is
+  expected to call (`startThreadOnce`) and the constants they define, read at
+  run time from the installation.
+- **This map** — every object `<Name>`, region and objective, plus the ID
+  rosters (`CREATURE_*`, `SPELL_*`). Offered INSIDE a string literal, because
+  that is how every one of them is passed:
+  `SetObjectiveState( "prim1", OBJECTIVE_ACTIVE )`.
+
+The last is the one that matters. A misspelt name is not a syntax error — it is
+a call that does nothing, at run time, inside the game, with no message. The
+editor cannot check a name after the fact, so it offers the right ones instead.
+
+Highlighting uses the legacy **stream** mode rather than a strict Lua grammar,
+because the game's Lua is 4.0-shaped: `%upvalue` inside a nested function, `f{}`
+calls, no `#` operator. A modern parser paints half of the shipped missions red.
+
+A `.lua` is written as plain UTF-8 — the engine's parser reads it byte by byte.
+Only the display texts (`name.txt`, an objective's caption) get the UTF-16LE the
+game writes for them.
+
 ## The `<Name>` is the script handle
 
 Lua addresses everything on the map by a **string name**, not by file path or

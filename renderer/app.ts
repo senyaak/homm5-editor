@@ -24,6 +24,8 @@ import type { ObjectProp } from '../src/map.ts';
 import { objectProps, deref, controlOf, objectSchema, mapSchema, resolveSchemaAtPath, classOf, schemaForClass } from '../src/schema.ts';
 import type { FieldSchema, HasDefs } from '../src/schema.ts';
 import type { TreeData, Path as TreePath } from '../src/tree.ts';
+import { mountCodeEditor, setScriptContext } from './code-editor.ts';
+import type { CodeEditor, ScriptContext } from './code-editor.ts';
 
 type MapEntry = MapListEntry & { cat: string };
 /**
@@ -2626,32 +2628,143 @@ const docDialog = (): HTMLDialogElement => {
   return el;
 };
 let deHref = '';
+/** The editor, mounted on first use — CodeMirror is not needed to open a map. */
+let codeEditor: CodeEditor | null = null;
+/** The text as it was loaded, so closing can tell edited from untouched. */
+let deLoaded = '';
 
+/** Which language a file is, from its name. Only Lua has a mode here. */
+const langOf = (href: string): 'lua' | 'text' => (/\.lua$/i.test(href) ? 'lua' : 'text');
+
+/**
+ * Open a file of the map folder in the editor.
+ *
+ * The same window for a one-line name.txt and for a 700-line mission script:
+ * both are files the map carries, and the difference — highlighting, completion
+ * and the room to read — follows from the name.
+ */
 async function openTextEdit(href: string, label: string): Promise<void> {
   deHref = href;
+  const lang = langOf(href);
   $('de-title').textContent = label && label !== href ? `${label} — ${href}` : href;
-  const ta = $textarea('de-text');
-  ta.value = 'loading…'; ta.disabled = true;
+  docDialog().querySelector('.de-card')?.classList.toggle('wide', lang === 'lua');
+  const ed = ensureCodeEditor();
+  ed.setDoc('loading…', lang);
   docDialog().showModal();
-  try { ta.value = (await window.editor.readFile(href)).text; }
-  catch (e) { ta.value = ''; $('hud').textContent = 'could not read ' + href; }
-  ta.disabled = false; ta.focus();
+  let text = '';
+  try { text = (await window.editor.readFile(href)).text; }
+  catch { $('hud').textContent = 'could not read ' + href; }
+  deLoaded = text;
+  ed.setDoc(text, lang);
+  $('de-info').textContent = lang === 'lua' ? scriptContextNote() : '';
+  ed.focus();
+  // The completion sources are per map, and the map may have moved on since the
+  // last script was opened — a region drawn, an object named.
+  if (lang === 'lua') void loadScriptContext();
 }
 
-const $textarea = (id: string): HTMLTextAreaElement => {
-  const el = $(id);
-  if (!(el instanceof HTMLTextAreaElement)) throw new Error(`#${id} is not a textarea`);
+function ensureCodeEditor(): CodeEditor {
+  if (!codeEditor) codeEditor = mountCodeEditor($('de-text'), () => saveDoc());
+  return codeEditor;
+}
+
+/** What the editor knows, in a few words — an empty completion list should say so. */
+let scriptCtx: ScriptContext | null = null;
+function scriptContextNote(): string {
+  if (!scriptCtx) return 'loading names…';
+  const n = scriptCtx.names;
+  return `${scriptCtx.api.length} engine fns · ${n.object.length} objects · `
+    + `${n.region.length} regions · ${n.objective.length} objectives`;
+}
+
+/** Fetch the completion sources for the loaded map. */
+async function loadScriptContext(): Promise<void> {
+  try {
+    scriptCtx = await window.editor.scriptContext();
+    setScriptContext(scriptCtx);
+    if (docDialog().open && langOf(deHref) === 'lua') $('de-info').textContent = scriptContextNote();
+  } catch (e) {
+    $('de-info').textContent = 'no completion: ' + (e instanceof Error ? e.message : String(e));
+  }
+}
+
+function saveDoc(): void {
+  const ed = codeEditor;
+  if (!ed || !deHref) return;
+  const text = ed.getDoc();
+  void window.editor.writeFile({ href: deHref, text })
+    .then(() => {
+      deLoaded = text;
+      markDirty(true);
+      $('hud').textContent = `saved ${deHref}`;
+      docDialog().close();
+      if (mapTreeOpen()) void refreshMapTree();
+    })
+    .catch((e: unknown) => { $('hud').textContent = 'save failed: ' + (e instanceof Error ? e.message : String(e)); });
+}
+
+/** True when the buffer differs from what was loaded. */
+const docEdited = (): boolean => !!codeEditor && codeEditor.getDoc() !== deLoaded;
+
+/** Close, asking first when there is unsaved work — a script is worth a prompt. */
+function closeDoc(): void {
+  if (docEdited() && !confirm(`${deHref} has unsaved changes. Close anyway?`)) return;
+  docDialog().close();
+}
+
+$('de-save').onclick = () => saveDoc();
+$('de-close').onclick = () => closeDoc();
+$('de-cancel').onclick = () => closeDoc();
+docDialog().addEventListener('click', (e) => { if (e.target === docDialog()) closeDoc(); });
+// Esc reaches the dialog itself rather than our buttons, so the same guard has
+// to sit here too — or one stray keypress throws an afternoon's script away.
+docDialog().addEventListener('cancel', (e) => {
+  if (docEdited() && !confirm(`${deHref} has unsaved changes. Close anyway?`)) e.preventDefault();
+});
+
+// --- the map's scripts ------------------------------------------------------
+//
+// A mission's Lua sits beside its map.xdb, and there is otherwise no way in: the
+// tree only reaches a file something REFERENCES, and a mission's scripts are
+// referenced from a wrapper document rather than from the map.
+
+const scriptDialog = (): HTMLDialogElement => {
+  const el = $('scriptpick');
+  if (!(el instanceof HTMLDialogElement)) throw new Error('#scriptpick is not a <dialog>');
   return el;
 };
 
-$('de-save').onclick = () => {
-  void window.editor.writeFile({ href: deHref, text: $textarea('de-text').value })
-    .then(() => { markDirty(true); $('hud').textContent = `saved ${deHref}`; docDialog().close(); if (mapTreeOpen()) void refreshMapTree(); })
-    .catch((e: unknown) => { $('hud').textContent = 'save failed: ' + (e instanceof Error ? e.message : String(e)); });
-};
-$('de-close').onclick = () => docDialog().close();
-$('de-cancel').onclick = () => docDialog().close();
-docDialog().addEventListener('click', (e) => { if (e.target === docDialog()) docDialog().close(); });
+async function openScriptList(): Promise<void> {
+  const list = $('sp-list');
+  list.innerHTML = '';
+  const note = document.createElement('div');
+  note.className = 'sp-empty';
+  note.textContent = 'reading the map folder…';
+  list.appendChild(note);
+  scriptDialog().showModal();
+  let files: string[] = [];
+  try { files = (await window.editor.mapFiles({ exts: ['.lua'] })).files; }
+  catch (e) { note.textContent = 'could not list: ' + (e instanceof Error ? e.message : String(e)); return; }
+  list.innerHTML = '';
+  if (!files.length) {
+    const d = document.createElement('div');
+    d.className = 'sp-empty';
+    d.textContent = 'This map carries no .lua files yet.';
+    list.appendChild(d);
+    return;
+  }
+  for (const f of files) {
+    const b = document.createElement('button');
+    b.textContent = f;
+    b.dataset.file = f;
+    b.addEventListener('click', () => { scriptDialog().close(); void openTextEdit(f, f); });
+    list.appendChild(b);
+  }
+}
+
+$('scriptbtn').onclick = () => void openScriptList();
+$('sp-close').onclick = () => scriptDialog().close();
+scriptDialog().addEventListener('click', (e) => { if (e.target === scriptDialog()) scriptDialog().close(); });
 
 // --- structured object references (the "…" browse + "New" of the tree) -------
 //
@@ -5737,6 +5850,10 @@ async function loadMapPath(path: string | null): Promise<void> {
     $('mapbtn').style.display = '';
     $('maptreebtn').style.display = '';
     $('regionbtn').style.display = '';
+    $('scriptbtn').style.display = '';
+    // The map changed, so the names a script completes from did too.
+    scriptCtx = null;
+    void loadScriptContext();
     // A map just opened has whatever regions it shipped with; the panel may
     // still be open from the last one, and it must not show those.
     void loadRegions();

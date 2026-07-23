@@ -21,6 +21,7 @@ import { buildScene, findAssetRoot, listTiles, splatFor, pngDataUri } from '../s
 import { listPlaceable, findEditorRoot, iconPathFor, readIconFile } from '../src/objects.ts';
 import { initProject, openProject, packProject, readManifest, writeManifest, status, pickMapRel, MANIFEST_NAME } from '../src/project.ts';
 import { listDirFiles } from '../src/pak.ts';
+import scriptApi from '../src/script-api.json' with { type: 'json' };
 import { watchMapDir } from '../src/watch.ts';
 import { donorFor } from '../src/donors.ts';
 import type { MapWatch } from '../src/watch.ts';
@@ -53,6 +54,7 @@ import type {
   MapTreeResult, SetPathPayload, AddItemPayload, RemoveItemPayload2, SetListPayload, NamesPayload, NamesResult,
   ObjectTreePayload, ObjectTreeResult, ObjectSetPathPayload, ObjectAddItemPayload, ObjectRemoveItemPayload,
   ReadFilePayload, ReadFileResult, WriteFilePayload,
+  ScriptContextResult, ApiFn, MapFilesPayload, MapFilesResult,
   ObjectCatalogResult, IconPayload, IconResult, AddObjectPayload, AddObjectResult,
   MapSaveResult, MapPackResult, TerrainTilesResult, MapStatusResult, OpenMapDialogResult,
   NewMapPayload, NewMapResult, OpenArchivePayload, OpenArchiveResult,
@@ -806,6 +808,14 @@ ipcMain.handle('map:names', async (_e: IpcMainInvokeEvent, { kind }: NamesPayloa
   const seen = new Set<string>();
   if (kind === 'object') {
     for (const o of session.map.objects) { const n = text(find(o.el, 'Name')); if (n) seen.add(n); }
+  } else if (kind === 'region') {
+    // A region's name is what a script addresses it by, and the only place it
+    // is written; the objective walk below would not find it.
+    const regions = find(session.map.desc, 'regions');
+    for (const item of regions ? children(regions) : []) {
+      const n = text(find(item, 'Name'));
+      if (n) seen.add(n);
+    }
   } else {
     // Objective names: the <Name> a list <Item> carries directly, under the two
     // objective containers. Target.Name and the like sit deeper, so are skipped.
@@ -818,6 +828,71 @@ ipcMain.handle('map:names', async (_e: IpcMainInvokeEvent, { kind }: NamesPayloa
     for (const c of ['ScenarioInformation', 'Objectives']) { const el = find(session.map.desc, c); if (el) collect(el); }
   }
   return { names: [...seen].sort() };
+});
+
+// --- IPC: everything the script editor completes from ---
+//
+// Three sources, and none of them is "the words already in the buffer": the
+// engine's API (extracted from the manuals the game ships — src/script-api.json,
+// see tools/script-api.ts), the functions and constants the game's own scripts
+// declare, and the names THIS map defines. The last is the one that matters
+// most: `GetObjectPosition("Isabel")` for a hero called `Isabell` fails silently
+// inside the game, and a list of the map's actual names is the fix.
+ipcMain.handle('script:context', async (): Promise<ScriptContextResult> => {
+  const api = scriptApi as ApiFn[];
+  const helpers = new Set<string>();
+  const constants = new Set<string>();
+  // The game's own Lua: helpers a mission is expected to call, and the constants
+  // they define. Read from the data root, so it follows the installation.
+  const scripts = session ? join(session.assetRoot, 'scripts') : null;
+  if (scripts && existsSync(scripts)) {
+    for (const f of readdirSync(scripts)) {
+      if (!/\.lua$/i.test(f)) continue;
+      let src: string;
+      try { src = readFileSync(join(scripts, f), 'latin1'); } catch { continue; }
+      for (const m of src.matchAll(/^\s*function\s+([A-Za-z_]\w*)/gm)) helpers.add(m[1]!);
+      for (const m of src.matchAll(/^([A-Z][A-Z0-9_]{2,})\s*=/gm)) constants.add(m[1]!);
+    }
+  }
+  // The ID rosters: a script says CREATURE_PEASANT and SPELL_MAGIC_ARROW, and
+  // those come from the installation rather than from any document.
+  if (session) {
+    for (const e of [...session.registry.creatures(), ...session.registry.spells(),
+      ...session.registry.artifacts(), ...session.registry.skills()]) {
+      if (/^[A-Z][A-Z0-9_]*$/.test(e.id)) constants.add(e.id);
+    }
+  }
+  const names = { object: [] as string[], region: [] as string[], objective: [] as string[] };
+  if (session) {
+    for (const o of session.map.objects) { const n = text(find(o.el, 'Name')); if (n && !names.object.includes(n)) names.object.push(n); }
+    const regions = find(session.map.desc, 'regions');
+    for (const item of regions ? children(regions) : []) { const n = text(find(item, 'Name')); if (n) names.region.push(n); }
+    const collect = (el: XmlElement): void => {
+      for (const c of children(el)) {
+        if (c.name === 'Item') { const n = text(find(c, 'Name')); if (n && !names.objective.includes(n)) names.objective.push(n); }
+        collect(c);
+      }
+    };
+    for (const c of ['ScenarioInformation', 'Objectives']) { const el = find(session.map.desc, c); if (el) collect(el); }
+  }
+  return {
+    api,
+    helpers: [...helpers].sort(),
+    constants: [...constants].sort(),
+    names: {
+      object: names.object.sort(), region: names.region.sort(), objective: names.objective.sort(),
+    },
+  };
+});
+
+/** Every file in the map folder the script editor can open — its Lua and texts. */
+ipcMain.handle('map:files', async (_e: IpcMainInvokeEvent, { exts }: MapFilesPayload): Promise<MapFilesResult> => {
+  if (!session) throw new Error('no map loaded');
+  const want = exts.map((e) => e.toLowerCase());
+  const files = listDirFiles(session.mapDir)
+    .filter((rel) => want.some((e) => rel.toLowerCase().endsWith(e)))
+    .sort();
+  return { files };
 });
 
 // --- IPC: a game-data roster for the typed-editing pickers ---
@@ -1162,10 +1237,16 @@ function readSidecarText(s: Session, href: string): string {
 }
 
 /**
- * Write a text file the map references, keeping its existing encoding (default
- * UTF-16LE+BOM, which is what the game writes for name/description). Our own
- * write is folded into the watcher baseline so it is not reported back as an
- * external change.
+ * Write a text file of the map, keeping the encoding it already has.
+ *
+ * A NEW file's encoding follows what it is for: the game writes its display
+ * texts (name.txt, an objective's caption) as UTF-16LE with a BOM, and reads
+ * them back that way — but a .lua is source the engine's parser reads byte by
+ * byte, and a UTF-16 script is a script it cannot run at all. So anything that
+ * is not a .txt is written as plain UTF-8.
+ *
+ * Our own write is folded into the watcher baseline so it is not reported back
+ * as somebody else's edit.
  */
 function writeSidecarText(s: Session, href: string, text: string): boolean {
   const file = sidecarPath(s, href);
@@ -1173,8 +1254,9 @@ function writeSidecarText(s: Session, href: string, text: string): boolean {
   // A ref into a subfolder the map does not have yet is how the folder gets
   // made — the original's objective texts live in one.
   mkdirSync(dirname(file), { recursive: true });
-  let enc: 'utf16le' | 'utf8' = 'utf16le';
-  let bom = true;
+  const isText = /\.txt$/i.test(file);
+  let enc: 'utf16le' | 'utf8' = isText ? 'utf16le' : 'utf8';
+  let bom = isText;
   if (existsSync(file)) {
     const b = readFileSync(file);
     if (b.length >= 3 && b[0] === 0xef && b[1] === 0xbb && b[2] === 0xbf) { enc = 'utf8'; bom = true; }

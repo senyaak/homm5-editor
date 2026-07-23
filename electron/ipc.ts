@@ -288,6 +288,31 @@ export interface AddItemPayload { path: TreePath; value?: string; }
 export interface RemoveItemPayload2 { path: TreePath; }
 /** Payload of `map:set-list` — replace a value list's contents (checklists). */
 export interface SetListPayload { path: TreePath; values: string[]; }
+/** One engine function the map script may call (src/script-api.json). */
+export interface ApiFn { name: string; params: string; group: string }
+
+/**
+ * Result of `script:context` — everything the script editor completes from.
+ *
+ * Gathered per map rather than per keystroke: the API list is fixed, the game's
+ * scripts do not change while the editor runs, and the map's own names change
+ * only when the map does.
+ */
+export interface ScriptContextResult {
+  api: ApiFn[];
+  /** Functions the game's shipped Lua declares. */
+  helpers: string[];
+  /** ALL_CAPS constants: the shipped scripts' own, plus the ID rosters. */
+  constants: string[];
+  /** Names defined in this map, by kind. */
+  names: { object: string[]; region: string[]; objective: string[] };
+}
+
+/** Payload of `map:files` — which extensions to list, e.g. ['.lua', '.txt']. */
+export interface MapFilesPayload { exts: string[] }
+/** Result of `map:files` — posix-style paths relative to the map folder. */
+export interface MapFilesResult { files: string[] }
+
 /** Payload of `map:read-file` — a referenced text file's href. */
 export interface ReadFilePayload { href: string; }
 /**
@@ -584,6 +609,8 @@ export interface EditorApi {
   removeMapItem(p: RemoveItemPayload2): Promise<ObjectEditResult>;
   setMapList(p: SetListPayload): Promise<ObjectEditResult>;
   readFile(href: string): Promise<ReadFileResult>;
+  scriptContext(): Promise<ScriptContextResult>;
+  mapFiles(p: MapFilesPayload): Promise<MapFilesResult>;
   writeFile(p: WriteFilePayload): Promise<ObjectEditResult>;
   listObjects(): Promise<ObjectCatalogResult>;
   objectIcon(path: string): Promise<IconResult>;

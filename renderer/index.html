@@ -462,10 +462,34 @@
     #docedit { padding: 0; border: 0; background: transparent; max-width: 92vw; max-height: 86vh; overflow: visible; }
     #docedit::backdrop { background: #0d1014cc; }
     .de-card { width: min(640px, 92vw); }
-    .de-text { width: 100%; box-sizing: border-box; min-height: 46vh; resize: vertical;
-      background: #0d1014; border: 1px solid #30363d; border-radius: 6px; padding: 8px 10px;
-      color: #c9d1d9; font: 13px/1.5 ui-monospace, monospace; }
-    .de-text:focus { outline: none; border-color: #1f6feb; }
+    /* A script is read as a whole, not through a letterbox: an editor opened on
+       one takes the room a file of code needs. A one-line name.txt keeps the
+       narrow card. */
+    .de-card.wide { width: min(1100px, 94vw); }
+    .de-body { padding: 0; }
+    .de-text { height: 46vh; overflow: hidden; background: #0d1014;
+      border-top: 1px solid #21262d; border-bottom: 1px solid #21262d; }
+    .de-card.wide .de-text { height: 70vh; }
+    /* CodeMirror brings its own dark theme (one-dark); these only make it sit
+       flush in the card and match the app's own background. */
+    .de-text .cm-editor { height: 100%; }
+    .de-text .cm-editor.cm-focused { outline: none; }
+    .de-text .cm-scroller { overflow: auto; }
+    .de-text .cm-gutters { background: #0d1014; border-right: 1px solid #21262d; }
+    .de-text .cm-content, .de-text .cm-gutter { background: #0d1014; }
+    /* Which file, and what the editor is completing from — shown in the head so
+       "no completion" is never a silent state. */
+    #de-info { color: #6e7681; font-size: 11px; margin: 0 10px 0 auto; white-space: nowrap;
+      overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 0 1 auto; }
+    #docedit .mp-head > button { flex: none; }
+
+    /* the script list: every .lua the map folder carries */
+    #scriptpick .sp-list { display: flex; flex-direction: column; gap: 2px; padding: 6px; }
+    #scriptpick .sp-list button { text-align: left; background: #161b22; color: #c9d1d9;
+      border: 1px solid #21262d; border-radius: 6px; padding: 6px 9px; cursor: pointer;
+      font: 12px/1.4 ui-monospace, monospace; }
+    #scriptpick .sp-list button:hover { background: #21262d; border-color: #30363d; }
+    #scriptpick .sp-empty { color: #6e7681; font-size: 12px; padding: 10px 12px; line-height: 1.4; }
     .de-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 10px 14px; border-top: 1px solid #21262d; }
     .de-foot button { background: #238636; color: #fff; border: 0; border-radius: 6px;
       padding: 6px 16px; cursor: pointer; font-size: 13px; }
@@ -567,6 +591,7 @@
     <button id="palbtn" style="display:none" title="terrain brushes and the ground tiles">Terrain</button>
     <button id="objpalbtn" style="display:none" title="place objects from the game's catalogue">Objects+</button>
     <button id="regionbtn" style="display:none" title="named map rectangles the scripts address">Regions</button>
+    <button id="scriptbtn" style="display:none" title="the map's Lua scripts">Scripts</button>
     <button id="mapbtn" style="display:none" title="map settings — name, size, rules">Map…</button>
     <button id="maptreebtn" style="display:none" title="edit every map setting as a tree">Tree</button>
     <button id="cliffbtn" style="display:none" title="rock texture on steep faces">Cliffs</button>
@@ -838,13 +863,27 @@
     <div class="mp-card de-card">
       <div class="mp-head">
         <span class="mp-title" id="de-title">Text</span>
+        <span id="de-info"></span>
         <button id="de-close" title="close (Esc)">✕</button>
       </div>
-      <div class="mp-body"><textarea id="de-text" class="de-text" spellcheck="false"></textarea></div>
+      <!-- The editor mounts here (renderer/code-editor.ts): CodeMirror, with Lua
+           highlighting and completion when the file is a script. -->
+      <div class="mp-body de-body"><div id="de-text" class="de-text"></div></div>
       <div class="de-foot">
         <button id="de-cancel" class="ghost">Cancel</button>
         <button id="de-save">Save</button>
       </div>
+    </div>
+  </dialog>
+
+  <!-- the map's own Lua: what a mission's script stage works on -->
+  <dialog id="scriptpick">
+    <div class="mp-card de-card">
+      <div class="mp-head">
+        <span class="mp-title">Scripts</span>
+        <button id="sp-close" title="close (Esc)">✕</button>
+      </div>
+      <div class="mp-body" style="padding:0"><div id="sp-list" class="sp-list"></div></div>
     </div>
   </dialog>
 

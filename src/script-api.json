@@ -1,0 +1,997 @@
+[
+ {
+  "name": "AddCreature",
+  "params": "side, type, number, x = -1, y = -1",
+  "group": "COMBAT"
+ },
+ {
+  "name": "AddHeroCreatures",
+  "params": "heroname, creatureID, quantity",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "AddObjectCreatures",
+  "params": "objectName, creatureID, quantity",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "AllowHeroHiringByRaceForAI",
+  "params": "playerID, townTypeID, allow",
+  "group": "PLAYERS"
+ },
+ {
+  "name": "AllowHeroHiringByRaceInTown",
+  "params": "townName, townTypeID, allow",
+  "group": "PLAYERS"
+ },
+ {
+  "name": "AllowHiringOfHeroForAI",
+  "params": "playerID, heroName, allow",
+  "group": "PLAYERS"
+ },
+ {
+  "name": "AllowHiringOfHeroInTown",
+  "params": "townName, heroName, allow",
+  "group": "PLAYERS"
+ },
+ {
+  "name": "AllowOpenFogOfWarForAlly",
+  "params": "actingPlayer, fogSeeAllyPlayer, allow=1/0",
+  "group": "PLAYERS"
+ },
+ {
+  "name": "AllowPlayerTavernHero",
+  "params": "playerID, heroName, allow",
+  "group": "PLAYERS"
+ },
+ {
+  "name": "AllowPlayerTavernRace",
+  "params": "playerID, townTypeID, allow",
+  "group": "PLAYERS"
+ },
+ {
+  "name": "BlockGame",
+  "params": "",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "BlockTownGarrisonForAI",
+  "params": "townName, isBlocked",
+  "group": "PLAYERS"
+ },
+ {
+  "name": "CalcHeroMoveCost",
+  "params": "heroName, x, y, floorID = -1",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "CanMoveHero",
+  "params": "heroName, x, y, floorID = -1",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "ChangeHeroStat",
+  "params": "heroName, statID, delta",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "ControlHeroCustomAbility",
+  "params": "heroName, customAbilityID, customAbilityMode",
+  "group": "HEROES"
+ },
+ {
+  "name": "CreateCaravan",
+  "params": "caravanName, caravanPlayer, floorID, x, y, destFloorID, destX, destY",
+  "group": "TOWN"
+ },
+ {
+  "name": "CreateDwelling",
+  "params": "scriptName, townType, creaturesTier, ownerPlayer, x, y, floorID, rotation = 0",
+  "group": "OBJECTS"
+ },
+ {
+  "name": "CreateMonster",
+  "params": "monsterName, creatureType, creaturesCount, x, y, floorID, mood= MONSTER_MOOD_AGGRESSIVE, courage= MONSTER_COURAGE_CAN_FLEE_JOIN, rotation= 0",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "CreatureHired",
+  "params": "type, number",
+  "group": "TOWN"
+ },
+ {
+  "name": "DenyAIHeroesFlee",
+  "params": "PlayerID, isDenied, enemyHeroName = \"\"",
+  "group": "TOWN"
+ },
+ {
+  "name": "DenyAIHeroFlee",
+  "params": "heroName, isDenied, enemyHeroName = \"\"",
+  "group": "TOWN"
+ },
+ {
+  "name": "DenyGarrisonCreaturesTakeAway",
+  "params": "garrisonName, deny = 1/0",
+  "group": "OBJECTS"
+ },
+ {
+  "name": "DeployReserveHero",
+  "params": "heroName, x, y, floor",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "DestroyTownBuildingToLevel",
+  "params": "townName, buildingID, level, canRebuild = 1",
+  "group": "TOWNS"
+ },
+ {
+  "name": "DisableAutoEnterTown",
+  "params": "townName, disable",
+  "group": "TOWNS"
+ },
+ {
+  "name": "DoNotGiveTurnToPlayerAIIfNoTownsAndActiveHeroes",
+  "params": "playerID, enable",
+  "group": "PLAYERS"
+ },
+ {
+  "name": "EnableAIHeroHiring",
+  "params": "playerID, townName, enable",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "EnableAutoFinish",
+  "params": "enable",
+  "group": "COMBAT"
+ },
+ {
+  "name": "EnableCinematicCamera",
+  "params": "enable",
+  "group": "COMBAT"
+ },
+ {
+  "name": "EnableHeroAI",
+  "params": "heroName, enable",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "Finish",
+  "params": "winnerSide",
+  "group": "COMBAT"
+ },
+ {
+  "name": "GenerateMonsters",
+  "params": "monsterTypeID , countGroupsMin , countGroupsMax , countInGroupMin, countInGroupMax",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "GetAllNames",
+  "params": "filter = 0",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "GetArtifactSetItemsCount",
+  "params": "heroName, artifactSetID, onlyCombined=1",
+  "group": "HEROES"
+ },
+ {
+  "name": "GetAttackerCreatures",
+  "params": "",
+  "group": "COMBAT"
+ },
+ {
+  "name": "GetAttackerHero",
+  "params": "",
+  "group": "COMBAT"
+ },
+ {
+  "name": "GetAttackerWarMachine",
+  "params": "type",
+  "group": "COMBAT"
+ },
+ {
+  "name": "GetAttackerWarMachines",
+  "params": "",
+  "group": "COMBAT"
+ },
+ {
+  "name": "GetBuildingType",
+  "params": "unitName",
+  "group": "COMBAT"
+ },
+ {
+  "name": "GetCreatureNumber",
+  "params": "unitName",
+  "group": "COMBAT"
+ },
+ {
+  "name": "GetCreatureType",
+  "params": "unitName",
+  "group": "COMBAT"
+ },
+ {
+  "name": "GetCurrentMoonWeek",
+  "params": "",
+  "group": "GAME"
+ },
+ {
+  "name": "GetCurrentPlayer",
+  "params": "",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "GetDate",
+  "params": "dateTypeID",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "GetDefenderBuilding",
+  "params": "type",
+  "group": "COMBAT"
+ },
+ {
+  "name": "GetDefenderBuildings",
+  "params": "",
+  "group": "COMBAT"
+ },
+ {
+  "name": "GetDefenderCreatures",
+  "params": "",
+  "group": "COMBAT"
+ },
+ {
+  "name": "GetDefenderHero",
+  "params": "",
+  "group": "COMBAT"
+ },
+ {
+  "name": "GetDefenderWarMachine",
+  "params": "type",
+  "group": "COMBAT"
+ },
+ {
+  "name": "GetDefenderWarMachines",
+  "params": "",
+  "group": "COMBAT"
+ },
+ {
+  "name": "GetDifficulty",
+  "params": "",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "GetGameVar",
+  "params": "name",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "GetHeroCreatures",
+  "params": "heroName, creatureID",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "GetHeroCreaturesTypes",
+  "params": "heroName",
+  "group": "ARMIES"
+ },
+ {
+  "name": "GetHeroLevel",
+  "params": "heroname",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "GetHeroName",
+  "params": "unitName",
+  "group": "COMBAT"
+ },
+ {
+  "name": "GetHeroSkillMastery",
+  "params": "heroName, skillID",
+  "group": "TOWN"
+ },
+ {
+  "name": "GetHeroStat",
+  "params": "heroName, statID",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "GetObjectCreature",
+  "params": "objectName, creatureID",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "GetObjectCreaturesTypes",
+  "params": "objectName",
+  "group": "ARMIES"
+ },
+ {
+  "name": "GetObjectiveProgress",
+  "params": "objectiveName, playerID = PLAYER_1",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "GetObjectiveState",
+  "params": "objectiveName, playerID = PLAYER_1",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "GetObjectOwner",
+  "params": "objectName",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "GetObjectPosition",
+  "params": "objectName",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "GetObjectsInRegion",
+  "params": "regionName, objectType",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "GetPlayerHeroes",
+  "params": "playerID",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "GetPlayerResource",
+  "params": "player, resourceKind",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "GetPlayerSelectedCampaignBonusIndex",
+  "params": "playerID",
+  "group": "PLAYERS"
+ },
+ {
+  "name": "GetSavedCombatArmyCreatureInfo",
+  "params": "combatIndex, forWinner, creatureIndex",
+  "group": "COMBATS"
+ },
+ {
+  "name": "GetSavedCombatArmyCreaturesCount",
+  "params": "combatIndex, forWinner",
+  "group": "COMBATS"
+ },
+ {
+  "name": "GetSavedCombatArmyHero",
+  "params": "combatIndex, forWinner",
+  "group": "COMBATS"
+ },
+ {
+  "name": "GetSavedCombatArmyPlayer",
+  "params": "combatIndex, forWinner",
+  "group": "COMBATS"
+ },
+ {
+  "name": "GetSavedCombatResult",
+  "params": "combatIndex",
+  "group": "COMBATS"
+ },
+ {
+  "name": "GetTownBuildingLevel",
+  "params": "townName, buildingID",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "GetTownBuildingLimitLevel",
+  "params": "townName, buildingID",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "GetTownBuildingMaxLevel",
+  "params": "townName, buildingID",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "GetTownHero",
+  "params": "townName",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "GetUnitPosition",
+  "params": "unitName",
+  "group": "COMBAT"
+ },
+ {
+  "name": "GetWarMachineType",
+  "params": "unitName",
+  "group": "COMBAT"
+ },
+ {
+  "name": "GiveArtefact",
+  "params": "heroname, artefactID, [bindToHero = 0]",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "GiveHeroSkill",
+  "params": "heroName, skillID",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "GiveHeroWarMachine",
+  "params": "heroName, warMachineType",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "HasArtefact",
+  "params": "heroname, artefactID",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "HasBorderguardKey",
+  "params": "player, color",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "HasHeroSkill",
+  "params": "heroName, skillID",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "HasHeroWarMachine",
+  "params": "heroName, warMachineType",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "HeroHired",
+  "params": "name",
+  "group": "TOWN"
+ },
+ {
+  "name": "IsAttacker",
+  "params": "unitName",
+  "group": "COMBAT"
+ },
+ {
+  "name": "IsBuilding",
+  "params": "unitName",
+  "group": "COMBAT"
+ },
+ {
+  "name": "IsComputer",
+  "params": "side",
+  "group": "COMBAT"
+ },
+ {
+  "name": "IsCreature",
+  "params": "unitName",
+  "group": "COMBAT"
+ },
+ {
+  "name": "IsDefender",
+  "params": "unitName",
+  "group": "COMBAT"
+ },
+ {
+  "name": "IsHero",
+  "params": "unitName",
+  "group": "COMBAT"
+ },
+ {
+  "name": "IsHeroAlive",
+  "params": "heroname",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "IsHeroInBoat",
+  "params": "heroName",
+  "group": "HEROES"
+ },
+ {
+  "name": "IsHeroInTown",
+  "params": "heroName, townName, checkGate=1, checkGarrison=1",
+  "group": "HEROES"
+ },
+ {
+  "name": "IsHeroLootable",
+  "params": "heroName",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "IsHuman",
+  "params": "side",
+  "group": "COMBAT"
+ },
+ {
+  "name": "IsObjectEnabled",
+  "params": "objectName",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "IsObjectExists",
+  "params": "objectName",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "IsObjectInRegion",
+  "params": "objectName, regionName",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "IsObjectiveVisible",
+  "params": "objectiveName, playerID = PLAYER_1",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "IsObjectVisible",
+  "params": "playerID, objectName",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "IsRegionBlocked",
+  "params": "regionName, playerID",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "IsTutorialItemEnabled",
+  "params": "name",
+  "group": "TUTORIAL"
+ },
+ {
+  "name": "IsTutorialMessageBoxOpen",
+  "params": "",
+  "group": "TUTORIAL"
+ },
+ {
+  "name": "IsWarMachine",
+  "params": "unitName",
+  "group": "COMBAT"
+ },
+ {
+  "name": "KnowHeroSpell",
+  "params": "heroName, spell",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "length",
+  "params": "array",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "LevelUpHero",
+  "params": "heroName",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "Load",
+  "params": "fileName",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "LockMinHeroSkillsAndAttributes",
+  "params": "heroName",
+  "group": "HEROES"
+ },
+ {
+  "name": "Loose",
+  "params": "",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "MakeHeroInteractWithObject",
+  "params": "heroName, objectName",
+  "group": "HEROES"
+ },
+ {
+  "name": "MakeHeroNecromancer",
+  "params": "heroName, necromancyLevel",
+  "group": "HEROES"
+ },
+ {
+  "name": "MakeHeroReturnToTavernAfterDeath",
+  "params": "heroName, enable, heroShouldStayAtTavernUntilHired = 0",
+  "group": "HEROES"
+ },
+ {
+  "name": "MakeTownMovable",
+  "params": "townName",
+  "group": "TOWNS"
+ },
+ {
+  "name": "MarkObjectAsVisited",
+  "params": "objectName, heroName",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "MessageBox",
+  "params": "messageName, callback = \"\"",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "mod",
+  "params": "x, y",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "MoveCamera",
+  "params": "x, y, floorID, zoom = 50, pitch = pi/2, yaw = 0, noZoom = 0, noRotate = 0",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "MoveHero",
+  "params": "heroName, x, y, floorID = -1",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "MoveHeroRealTime",
+  "params": "heroName, x, y, floorID = -1",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "OpenCircleFog",
+  "params": "x, y, floorID, range, playerID",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "OpenPuzzleMap",
+  "params": "player, numObelisks",
+  "group": "TOWN"
+ },
+ {
+  "name": "OpenRegionFog",
+  "params": "player, regionName",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "OverrideObjectTooltipNameAndDescription",
+  "params": "objectName, name, desc",
+  "group": "OBJECTS"
+ },
+ {
+  "name": "Play2DSound",
+  "params": "soundName",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "Play3DSound",
+  "params": "soundName, x, y, floor",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "PlayObjectAnimation",
+  "params": "objectName, animName, action",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "PlayVisualEffect",
+  "params": "effectName, objectName=\"\", tagName=\"\", x=0,y=0,z=0, rot=0, floor=0",
+  "group": "TOWN"
+ },
+ {
+  "name": "Prepare",
+  "params": "",
+  "group": "COMBAT"
+ },
+ {
+  "name": "print",
+  "params": "...",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "QuestionBox",
+  "params": "messageName, callbackYes = \"\", callbackNo = \"\"",
+  "group": "TOWN"
+ },
+ {
+  "name": "random",
+  "params": "top",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "RazeBuilding",
+  "params": "objectName",
+  "group": "TOWN"
+ },
+ {
+  "name": "RazeTown",
+  "params": "townName",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "RegionToPoint",
+  "params": "regionName",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "RemoveArtefact",
+  "params": "heroname, artefactID",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "RemoveHeroCreatures",
+  "params": "heroname, creatureID, quantity",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "RemoveHeroWarMachine",
+  "params": "heroName, warMachineType",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "RemoveObject",
+  "params": "objectName",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "RemoveObjectCreatures",
+  "params": "objectName, creatureID, quantity",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "ReplaceDwelling",
+  "params": "name, newTownType, [creatureId1, [creatureId2, [creatureId3, [creatureId4] ] ] ]",
+  "group": "OBJECTS"
+ },
+ {
+  "name": "ResetHeroCombatScript",
+  "params": "heroName",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "ResetObjectFlashlight",
+  "params": "objectName",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "Save",
+  "params": "fileName",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "SetAIHeroAttractor",
+  "params": "objectName, heroName, priority",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "SetAIHeroFleeControl",
+  "params": "heroName, isUnique",
+  "group": "TOWN"
+ },
+ {
+  "name": "SetAIPlayerAttractor",
+  "params": "objectName, playerID, priority",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "SetAmbientLight",
+  "params": "floorID, lightName, fade = false, time = 1",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "SetCombatLight",
+  "params": "lightName",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "SetDisabledObjectMode",
+  "params": "objectName, disabledMode",
+  "group": "OBJECTS"
+ },
+ {
+  "name": "SetGameVar",
+  "params": "name, value",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "SetHeroBiography",
+  "params": "heroName, newBioTextFileRef",
+  "group": "HEROES"
+ },
+ {
+  "name": "SetHeroCombatScript",
+  "params": "heroName, scriptName",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "SetHeroesExpCoef",
+  "params": "fCoef",
+  "group": "HEROES"
+ },
+ {
+  "name": "SetHeroLootable",
+  "params": "heroName, enable",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "SetHeroRoleMode",
+  "params": "heroName, roleMode",
+  "group": "HEROES"
+ },
+ {
+  "name": "SetMonsterCourageAndMood",
+  "params": "monsterName, playerID, courage, mood",
+  "group": "MONSTERS"
+ },
+ {
+  "name": "SetMonsterNames",
+  "params": "monsterName, monsterNamesFilter, nameFileRef",
+  "group": "MONSTERS"
+ },
+ {
+  "name": "SetMonsterSelectionType",
+  "params": "monsterName, selectionType",
+  "group": "MONSTERS"
+ },
+ {
+  "name": "SetObjectEnabled",
+  "params": "objectName, enable",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "SetObjectFlashlight",
+  "params": "objectName, lightName",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "SetObjectiveProgress",
+  "params": "objectiveName, step, playerID = PLAYER_1",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "SetObjectiveState",
+  "params": "objectiveName, state, playerID = PLAYER_1",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "SetObjectiveVisible",
+  "params": "objectiveName, enable, playerID = PLAYER_1",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "SetObjectOwner",
+  "params": "objectName, playerID",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "SetObjectPosition",
+  "params": "objectName, x, y, floor = -1",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "SetObjectRotation",
+  "params": "objectName, rotation",
+  "group": "TOWN"
+ },
+ {
+  "name": "SetPlayerResource",
+  "params": "player, resourceKind, quantity",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "SetPlayerStartResources",
+  "params": "player, wood, ore, mercury, crystal, sulfur, gem, gold",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "SetPlayerTeam",
+  "params": "player, team",
+  "group": "PLAYERS"
+ },
+ {
+  "name": "SetRegionAutoObjectEnable",
+  "params": "regionName, autoMode,heroTownType, heroPlayerID, heroName, objectName, enableType",
+  "group": "OBJECTS"
+ },
+ {
+  "name": "SetRegionBlocked",
+  "params": "regionName, status, playerID = -1",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "SetTownBuildingLimitLevel",
+  "params": "townName, buildingID, limit",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "SetWarfogBehaviour",
+  "params": "onLand, onSea",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "ShowFlyingSign",
+  "params": "messageName, objectName, targetPlayerID = -1, time = 1.0",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "SiegeTown",
+  "params": "heroName, townName, arenaName = \"\"",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "SinkHero",
+  "params": "heroName",
+  "group": "HEROES"
+ },
+ {
+  "name": "sleep",
+  "params": "number-of-segments",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "sqrt",
+  "params": "x",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "Start",
+  "params": "",
+  "group": "COMBAT"
+ },
+ {
+  "name": "StartAdvMapDialog",
+  "params": "dialogIndex, callback",
+  "group": "TOWN"
+ },
+ {
+  "name": "StartDialogScene",
+  "params": "dialogSceneName, callback = \"\", saveName = \"\"",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "startThread",
+  "params": "func",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "StopPlaySound",
+  "params": "loopingSoundID",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "StopVisualEffects",
+  "params": "tagName=\"\"",
+  "group": "TOWN"
+ },
+ {
+  "name": "TakeAwayHeroExp",
+  "params": "heroName, exp",
+  "group": "HEROES"
+ },
+ {
+  "name": "TeachHeroSpell",
+  "params": "heroName, spell",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "TransformTown",
+  "params": "townName, type",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "Trigger",
+  "params": "triggerType, ..., functionName",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "TutorialActivateHint",
+  "params": "stringID",
+  "group": "TUTORIAL"
+ },
+ {
+  "name": "TutorialMessageBox",
+  "params": "stringID",
+  "group": "TUTORIAL"
+ },
+ {
+  "name": "TutorialSetBlink",
+  "params": "stringID, turnOn",
+  "group": "TUTORIAL"
+ },
+ {
+  "name": "UnblockGame",
+  "params": "",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "UnreserveHero",
+  "params": "heroName",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "Win",
+  "params": "",
+  "group": "ADVMAP"
+ }
+]
