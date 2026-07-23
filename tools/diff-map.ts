@@ -15,6 +15,7 @@
 
 import { readFileSync } from 'node:fs';
 import { loadMap } from '../src/map.ts';
+import type { HommMap } from '../src/map.ts';
 import { readTree } from '../src/tree.ts';
 import type { TreeData } from '../src/tree.ts';
 import { buildBlankMap } from '../src/blank-map.ts';
@@ -71,10 +72,20 @@ const found: Report[] = [];
  * defaults — so the blank itself is the reference (`src/blank-map.ts`, whose
  * output is byte-identical to the original editor's own blank).
  */
-// The rosters are left empty: what the blank is consulted about is which fields
-// a fresh map HAS, and the spell/artifact lists are compared on their own.
+// The rosters come from OURS, because that is what a fresh map is given: New Map
+// enables every spell and artifact the installation has. Passing empty lists
+// made those 450 entries look authored, when they are exactly what the blank
+// wrote — while a spell we actually disabled would still show up, since then
+// ours would no longer match the roster it was built from.
+const listOf = (m: HommMap, name: string): string[] => {
+  const v = (readTree(m.desc) as Record<string, TreeData>)[name];
+  return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
+};
 const blank = loadMap(buildBlankMap({
-  tiles: A.tileX, twoLevel: A.hasUnderground, spells: [], artifacts: [],
+  tiles: A.tileX,
+  twoLevel: A.hasUnderground,
+  spells: listOf(B, 'spellIDs'),
+  artifacts: listOf(B, 'artifactIDs'),
 }));
 let untouched = 0;
 const untouchedFields = new Set<string>();
@@ -82,17 +93,10 @@ const untouchedFields = new Set<string>();
 /** Walk the three trees together, collecting differences by path. */
 function walk(a: TreeData | undefined, b: TreeData | undefined, c: TreeData | undefined, path: string): void {
   if (empty(a) && empty(b)) return;
-  if (typeof a === 'string' || typeof b === 'string') {
-    const av = typeof a === 'string' ? a : '', bv = typeof b === 'string' ? b : '';
-    if (sameScalar(av, bv)) return;
-    // Absent from the original, and exactly as a fresh map has it: not authored.
-    if (empty(a) && typeof c === 'string' && sameScalar(c, bv)) {
-      untouched++; untouchedFields.add(path.replace(/\[\d+\]/g, '[]'));
-      return;
-    }
-    found.push({ path, ref: av, ours: bv });
-    return;
-  }
+  // Lists FIRST, and an empty element counts as an empty list. A list nobody
+  // touched is written `<regions/>`, which reads back as the empty string — so
+  // comparing strings first made "seventeen regions against none" look like two
+  // empty values agreeing, and hid the whole regions subsystem from the report.
   if (Array.isArray(a) || Array.isArray(b)) {
     const al = Array.isArray(a) ? a : [], bl = Array.isArray(b) ? b : [];
     const cl = Array.isArray(c) ? c : [];
@@ -106,6 +110,17 @@ function walk(a: TreeData | undefined, b: TreeData | undefined, c: TreeData | un
       }
     }
     for (let i = 0; i < Math.max(al.length, bl.length); i++) walk(al[i], bl[i], cl[i], `${path}[${i}]`);
+    return;
+  }
+  if (typeof a === 'string' || typeof b === 'string') {
+    const av = typeof a === 'string' ? a : '', bv = typeof b === 'string' ? b : '';
+    if (sameScalar(av, bv)) return;
+    // Absent from the original, and exactly as a fresh map has it: not authored.
+    if (empty(a) && typeof c === 'string' && sameScalar(c, bv)) {
+      untouched++; untouchedFields.add(path.replace(/\[\d+\]/g, '[]'));
+      return;
+    }
+    found.push({ path, ref: av, ours: bv });
     return;
   }
   const ao = (a ?? {}) as Record<string, TreeData>, bo = (b ?? {}) as Record<string, TreeData>;
