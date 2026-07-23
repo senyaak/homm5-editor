@@ -201,10 +201,72 @@ export function listPlaceable(dataRoot: string, editorRoot: string): {
     }
   };
   walk(base);
+  for (const o of unlinkedShared(dataRoot, new Set(objects.map((x) => sharedKey(x.shared))))) {
+    objects.push(o);
+  }
   // Sorted by the label, which is what the original orders by — Arcane Library
   // lands beside Alchemist Lab rather than under S for SpellShop.
   objects.sort((a, b) => a.group.localeCompare(b.group) || a.label.localeCompare(b.label));
   return { objects, groups };
+}
+
+/** Compare shared references by what they point at: case and leading slash vary. */
+const sharedKey = (href: string): string => href.toLowerCase().replace(/^\/+/, '').split('#')[0]!;
+
+/** Group name for a shared definition no filter covers — its own top folder. */
+const sharedGroup = (rel: string): string => {
+  const parts = rel.split('/');
+  return `Shared: ${parts[1] ?? 'MapObjects'}`;
+};
+
+/**
+ * Placeable definitions no object link points at.
+ *
+ * 559 of the 1634 shared definitions are like this, and they are not leftovers:
+ * they are the members of the `_(AdvMapSharedGroup)` lists an editor places one
+ * of at random (434 statics — fences, mushrooms, flowers) and the 83 NAMED
+ * heroes, reachable in the original only through a "Random hero" entry. C1M1
+ * alone uses 24 of them, for 713 of its 2645 objects, so a catalogue built from
+ * links only cannot rebuild a shipped map — and a person cannot place a
+ * particular fence or put Cyrus on the map at all.
+ *
+ * They carry no icon (the cache is keyed by link path) and no filter group, so
+ * they land in a "Shared: …" group of their own rather than pretending to be
+ * catalogue entries of the same kind.
+ */
+function unlinkedShared(dataRoot: string, linked: Set<string>): PlaceableObject[] {
+  const root = join(dataRoot, 'MapObjects');
+  const out: PlaceableObject[] = [];
+  if (!existsSync(root)) return out;
+  const walk = (dir: string): void => {
+    let ents: string[];
+    try { ents = readdirSync(dir); } catch { return; }
+    for (const e of ents) {
+      const full = join(dir, e);
+      let st;
+      try { st = statSync(full); } catch { continue; }
+      // The link and group folders hold references, not definitions.
+      if (st.isDirectory()) { if (!e.startsWith('_(')) walk(full); continue; }
+      const m = /^(.*)\.\((AdvMap\w+Shared)\)\.xdb$/i.exec(e);
+      if (!m) continue;
+      const rel = relative(dataRoot, full).split(sep).join('/');
+      const href = `/${rel}#xpointer(/${m[2]})`;
+      if (linked.has(sharedKey(href))) continue;
+      out.push({
+        path: rel,
+        name: m[1]!,
+        label: m[1]!,
+        description: null,
+        group: sharedGroup(rel),
+        shared: href,
+        type: typeFromShared(href),
+        hidden: false,
+        random: false,
+      });
+    }
+  };
+  walk(root);
+  return out;
 }
 
 // --- icons ------------------------------------------------------------------

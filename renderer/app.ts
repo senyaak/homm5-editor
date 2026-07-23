@@ -1463,11 +1463,14 @@ function updatePanel(): void {
   const it = selected.inst;
   $('p-type').textContent = it.type;
   $('p-id').textContent = it.id ? it.id.replace('item_', '').slice(0, 8) : '—';
-  $('p-xy').textContent = `${it.x}, ${it.y}`;
+  // Not while the box is being typed into: writing the field back on every
+  // pointermove would fight the caret.
+  if (document.activeElement !== $('p-x')) $input('p-x').value = String(+it.x.toFixed(3));
+  if (document.activeElement !== $('p-y')) $input('p-y').value = String(+it.y.toFixed(3));
   // Degrees on screen, radians in the file. Nobody thinks about placement in
   // radians, and 3.142 tells you far less than 180°.
-  $('p-rot').textContent = `${degOf(it.r).toFixed(0)}°`;
-  $input('p-rotslider').value = String(degOf(it.r));
+  if (document.activeElement !== $('p-rot')) $input('p-rot').value = String(+degOf(it.r).toFixed(3));
+  $input('p-rotslider').value = String(Math.round(degOf(it.r)));
   $('p-shared').textContent = '—';
   // Deliberately NOT loading properties here: updatePanel runs on every
   // pointermove of an object drag, and refetching a field list per mouse move
@@ -1501,16 +1504,20 @@ const snap90 = (deg: number): number => (Math.round(deg / 90) * 90 % 360 + 360) 
  */
 async function rotateSelected(deg: number, commit = true): Promise<void> {
   if (!selected) return;
-  const r = snap90(deg) * Math.PI / 180;
+  // Not snapped here. The quarter-turn buttons snap their own argument, which
+  // is where "the game turns objects in 90° steps" belongs; the file does not
+  // agree with it anyway — C1M1 alone holds 80 distinct angles across 368
+  // objects, and a reconstruction that could only turn by 90° would lose them.
+  const r = ((deg % 360) + 360) % 360 * Math.PI / 180;
   selected.inst.r = r;
   selected.mesh.rotation.z = r;
   syncInstance(activeFloor(), selected.inst);
   syncFootprints();
   boxHelper?.setFromObject(selected.mesh);
-  $('p-rot').textContent = `${degOf(r).toFixed(0)}°`;
+  $input('p-rot').value = String(+degOf(r).toFixed(3));
   // Skipped while the slider itself is the source, or dragging it would fight
   // its own value being written back mid-gesture.
-  if (commit) $input('p-rotslider').value = String(degOf(r));
+  if (commit) $input('p-rotslider').value = String(Math.round(degOf(r)));
   if (!commit) return;
   try {
     await window.editor.rotateObject(selected.id, r);
@@ -1930,6 +1937,40 @@ async function setProp(id: string, name: string, value: string): Promise<void> {
     $('hud').textContent = `could not set ${name}: ` + (e instanceof Error ? e.message : String(e));
   }
 }
+
+/**
+ * Put the selected object at an exact position, in tiles.
+ *
+ * Dragging rounds to the grid, which is how a map is laid out by hand; this is
+ * the way to say 42.494 — the fraction a shipped mission has and a drag cannot
+ * express (218 of C1M1's objects, none of them on a half tile either).
+ */
+async function moveSelectedTo(x: number, y: number): Promise<void> {
+  if (!selected || !world) return;
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+  selected.inst.x = x; selected.inst.y = y;
+  selected.mesh.position.set(tileCenter(x), tileCenter(y), heightAt(Math.floor(x), Math.floor(y)));
+  syncInstance(activeFloor(), selected.inst);
+  syncFootprints();
+  boxHelper?.setFromObject(selected.mesh);
+  updatePanel();
+  try {
+    await window.editor.moveObject(selected.id, x, y);
+    markDirty(true);
+  } catch (e) {
+    $('hud').textContent = 'move failed: ' + (e instanceof Error ? e.message : String(e));
+  }
+}
+
+for (const axis of ['x', 'y'] as const) {
+  $input(`p-${axis}`).addEventListener('change', () => {
+    if (!selected) return;
+    void moveSelectedTo(+$input('p-x').value, +$input('p-y').value);
+  });
+}
+$input('p-rot').addEventListener('change', (e) => {
+  void rotateSelected(+(e.currentTarget as HTMLInputElement).value);
+});
 
 $('p-del').onclick = () => { void deleteSelected(); };
 // A button is a quarter turn from the current heading. Snapping the current
@@ -2961,10 +3002,14 @@ renderer.domElement.addEventListener('pointermove', (ev) => {
   // The ray lands in world units; the object's position is a CELL index, the
   // same floor() convention placement uses, so a drag lands on the same square a
   // fresh placement would rather than snapping half a tile across to the corner.
-  const nx = Math.floor(hit.x / U), ny = Math.floor(hit.y / U);
+  // Alt drops the grid: shipped maps place decoration at a fraction of a tile,
+  // and a snapped drag cannot put it back.
+  const free = ev.altKey;
+  const nx = free ? +(hit.x / U).toFixed(3) : Math.floor(hit.x / U);
+  const ny = free ? +(hit.y / U).toFixed(3) : Math.floor(hit.y / U);
   if (nx === selected.inst.x && ny === selected.inst.y) return;
   selected.inst.x = nx; selected.inst.y = ny;
-  selected.mesh.position.set(tileCenter(nx), tileCenter(ny), heightAt(nx, ny));
+  selected.mesh.position.set(tileCenter(nx), tileCenter(ny), heightAt(Math.floor(nx), Math.floor(ny)));
   syncInstance(activeFloor(), selected.inst);
   syncFootprints();
   boxHelper?.setFromObject(selected.mesh);
@@ -2991,7 +3036,8 @@ addEventListener('pointerup', async (ev) => {
   if (placeObject) {
     down = null;
     if (!wasClick) return; // that was an orbit
-    const tile = tileUnderCursor(ev);
+    // Alt places where the cursor actually is instead of on the tile it is over.
+    const tile = ev.altKey ? freeTileAtClient(ev.clientX, ev.clientY) : tileUnderCursor(ev);
     if (!tile) { $('hud').textContent = 'click on the terrain to place'; return; }
     await placeAt(tile);
     return;
@@ -3484,6 +3530,22 @@ function vertexAtClient(clientX: number, clientY: number): { x: number; y: numbe
   const x = Math.round(p.x / U), y = Math.round(p.y / U);
   if (x < 0 || y < 0 || x >= V || y >= V) return null;
   return { x, y };
+}
+
+/**
+ * The position under the cursor WITHOUT rounding it to a tile, in tiles.
+ *
+ * What Alt-placement and Alt-drag use. A shipped mission is not laid out on the
+ * grid alone: C1M1 puts 218 of its 2645 objects at an arbitrary fraction of a
+ * tile — not halves, so no finer grid would catch them either.
+ */
+function freeTileAtClient(clientX: number, clientY: number): { x: number; y: number } | null {
+  const p = groundPointAtClient(clientX, clientY);
+  if (!p) return null;
+  const T = activeFloor().V - 1;
+  const x = p.x / U, y = p.y / U;
+  if (x < 0 || y < 0 || x >= T || y >= T) return null;
+  return { x: +x.toFixed(3), y: +y.toFixed(3) };
 }
 
 /** Same, from bare client coordinates — what the automation hook picks with. */
@@ -4679,12 +4741,18 @@ function renderObjCats(): void {
     }
     sel.appendChild(opt);
   }
-  // "Other" is ours, not the original's: entries no filter covers. A mod's own
-  // folder lands here rather than vanishing.
-  if (counts.get('Other')) {
+  // Groups of ours, not the original's, listed after its own: "Other" for
+  // entries no filter covers (a mod's folder lands there rather than
+  // vanishing), and the "Shared: …" groups for definitions no object link
+  // points at — 559 of them, including every named hero.
+  const ours = [...counts.keys()]
+    .filter((g) => g === 'Other' || g.startsWith('Shared: '))
+    .filter((g) => !catGroups.some((c) => c.name === g))
+    .sort();
+  for (const g of ours) {
     const opt = document.createElement('option');
-    opt.value = 'Other';
-    opt.textContent = `Other (${counts.get('Other')})`;
+    opt.value = g;
+    opt.textContent = `${g} (${counts.get(g)})`;
     sel.appendChild(opt);
   }
   sel.value = objCat;

@@ -100,6 +100,19 @@ if (editorRoot) {
   // would make a mod's own folder invisible.
   ok(objects.some((o) => o.group === 'Other'), 'unmatched entries survive as Other');
 
+  // Shared definitions no link points at are placeable too — 434 statics and
+  // the 83 named heroes among them, and C1M1 needs 24 of them for 713 of its
+  // objects. They are grouped apart, since they carry no icon and no filter.
+  const bare = objects.filter((o) => o.group.startsWith('Shared: '));
+  ok(bare.length > 400, `unlinked shared definitions are placeable (${bare.length})`);
+  ok(bare.every((o) => o.type && o.shared.includes('#xpointer(/')),
+    'every unlinked entry carries a type and an xpointer');
+  const linkedKeys = new Set(objects.filter((o) => o.path.includes('_(AdvMapObjectLink)'))
+    .map((o) => o.shared.toLowerCase().replace(/^\/+/, '').split('#')[0]));
+  ok(!bare.some((o) => linkedKeys.has(o.shared.toLowerCase().replace(/^\/+/, '').split('#')[0]!)),
+    'none of them duplicates a catalogue entry that already exists');
+  ok(bare.some((o) => /cyrus/i.test(o.name)), 'a named hero can be placed (Cyrus)');
+
   // Icons: the same container the terrain uses, BGRA, several sizes per file.
   //
   // A few entries carry a real file whose image is declared 0x0 — a placeholder

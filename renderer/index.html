@@ -53,6 +53,12 @@
     #panel h3 { margin: 0 0 8px; font-size: 13px; color: #e6edf3; }
     #panel .row { display: flex; justify-content: space-between; margin: 3px 0; }
     #panel .k { color: #8b949e; } #panel .v { color: #c9d1d9; font-variant-numeric: tabular-nums; }
+    /* Position and facing are typed in, so they are inputs sitting where the
+       readout used to be — narrow enough that x and y still share the row. */
+    #panel .v input[type=number] { width: 64px; background: #0d1014; border: 1px solid #30363d;
+      border-radius: 5px; padding: 2px 4px; color: #c9d1d9; font-size: 11px;
+      font-variant-numeric: tabular-nums; }
+    #panel .v input:focus { outline: none; border-color: #1f6feb; }
     #panel .hint { margin-top: 10px; font-size: 11px; color: #6e7681; }
     #panel .prow { display: flex; gap: 6px; align-items: center; margin-top: 8px; }
     #panel .prow input[type=range] { flex: 1; min-width: 0; }
@@ -563,8 +569,22 @@
   <div id="panel">
     <h3 id="p-type">—</h3>
     <div class="row"><span class="k">id</span><span class="v" id="p-id">—</span></div>
-    <div class="row"><span class="k">x, y</span><span class="v" id="p-xy">—</span></div>
-    <div class="row"><span class="k">rot</span><span class="v" id="p-rot">—</span></div>
+    <!-- Position and facing are EDITABLE, not just reported. Dragging lands on
+         the tile grid and the buttons turn in quarter steps, which is how a map
+         is built by hand — but a shipped mission is not all on the grid: C1M1
+         puts 218 of its 2645 objects at a fraction of a tile and 368 at one of
+         80 free angles. Alt-drag places freely; these boxes are how an exact
+         value is set. -->
+    <div class="row"><span class="k">x, y</span>
+      <span class="v">
+        <input id="p-x" type="number" step="0.001" title="tile position, fractions allowed">
+        <input id="p-y" type="number" step="0.001" title="tile position, fractions allowed">
+      </span>
+    </div>
+    <div class="row"><span class="k">rot</span>
+      <span class="v"><input id="p-rot" type="number" step="0.001" min="0" max="360"
+             title="facing in degrees; the file keeps radians">°</span>
+    </div>
     <div class="row"><span class="k">shared</span><span class="v" id="p-shared" style="font-size:11px">—</span></div>
     <!-- Quarter turns only, matching the game: an object rotates in 90° steps
          about its anchor tile, so it stays put. A shipped object placed at an
@@ -572,8 +592,8 @@
          the rotate action, never on mere selection, so nothing jumps when
          clicked. -->
     <div class="prow">
-      <input id="p-rotslider" type="range" min="0" max="270" step="90" value="0"
-             title="rotate the selected object in 90° steps">
+      <input id="p-rotslider" type="range" min="0" max="359" step="1" value="0"
+             title="turn the selected object; the buttons snap to quarter turns">
       <button id="p-rotl" title="rotate 90° left">⟲</button>
       <button id="p-rotr" title="rotate 90° right">⟳</button>
     </div>
@@ -581,7 +601,7 @@
     <!-- Simple fields read from the object itself, so every type shows what it
          actually carries rather than what a hand-written table remembered. -->
     <div id="p-props"></div>
-    <div class="hint">Drag a selected object to move it on the grid. <b>[</b> / <b>]</b> rotate, <b>Del</b> deletes. Wheel / right-drag: camera.</div>
+    <div class="hint">Drag a selected object to move it on the grid, <b>Alt</b>-drag to place it freely. <b>[</b> / <b>]</b> rotate, <b>Del</b> deletes. Wheel / right-drag: camera.</div>
   </div>
 
   <div id="empty">

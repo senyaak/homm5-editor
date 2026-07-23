@@ -115,6 +115,24 @@ placing new ones from a palette.
       writing its inverse, and one added later is undoable for free. Survives a
       restart — the stack is stored under the app's data folder, keyed by a hash
       of the documents, and adopted on open only if they still hash the same ✅
+- [x] **Placement that can reach a shipped map** (2026-07-23), measured against
+      C1M1 with `npm run object-shape`:
+      - **559 shared definitions no object link points at are placeable now.**
+        They are not leftovers — 434 statics (the fences, mushrooms and flowers
+        an `_(AdvMapSharedGroup)` picks from at random) and the 83 NAMED heroes,
+        which the original reaches only through a "Random hero" entry. C1M1
+        needs 24 of them for 713 of its 2645 objects. They land in their own
+        "Shared: …" palette groups, carrying no icon, since the icon cache is
+        keyed by link path.
+      - **A position can be a fraction of a tile** — 218 of C1M1's objects are,
+        and none on a half tile, so no finer grid would do. Alt-drag and
+        Alt-click place freely; the panel's x/y boxes set an exact value.
+      - **A facing can be any angle** — C1M1 holds 80 distinct ones across 368
+        objects. The slider turns freely and the panel takes degrees; the ⟲/⟳
+        buttons still snap to quarter turns, which is what building by hand
+        wants.
+      `e2e/place-precise.spec.ts` proves all three through the palette and the
+      panel, in the file that lands on disk.
 - [ ] ⬜ Multi-select, copy/paste
 - [x] Property panel: every simple field of the selected object, read from the
       object itself rather than a per-type table. Editors inferred from the
