@@ -356,8 +356,13 @@ export interface LocResult { enabled: boolean; base: string; languages: string[]
 export interface LocEnablePayload { base: string }
 /** Payload of `loc:add-language` / `loc:remove-language`. */
 export interface LocLangPayload { lang: string }
-/** Payload of `loc:export` — the language to bake into a single-language build. */
-export interface LocExportPayload { lang: string }
+/**
+ * Payload of `loc:export` — the language to bake into a single-language build.
+ *
+ * `output` skips the save dialog (a test drives it, or a caller already knows the
+ * path); without it the main process asks where to write the `.h5m`.
+ */
+export interface LocExportPayload { lang: string; output?: string }
 
 /** Result of `map:save`. */
 export interface MapSaveResult {
@@ -650,6 +655,7 @@ export interface EditorApi {
   locEnable(p: LocEnablePayload): Promise<LocResult>;
   locAddLanguage(p: LocLangPayload): Promise<LocResult>;
   locRemoveLanguage(p: LocLangPayload): Promise<LocResult>;
+  locExport(p: LocExportPayload): Promise<MapPackResult>;
   listObjects(): Promise<ObjectCatalogResult>;
   objectIcon(path: string): Promise<IconResult>;
   addObject(p: AddObjectPayload): Promise<AddObjectResult>;

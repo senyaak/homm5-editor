@@ -2968,10 +2968,10 @@ function renderLocDialog(): void {
     body.append(p, row);
     return;
   }
-  // Enabled: list the languages, add a target, remove a target.
+  // Enabled: list the languages, export each, add a target, remove a target.
   const note = document.createElement('div'); note.className = 'lz-note';
   note.textContent = `Texts are authored in ${locState.languages.length} language(s). `
-    + 'Edit each in the text window\'s tabs; export one at a time.';
+    + 'Edit each in the text window\'s tabs; export one at a time as an ordinary map.';
   const list = document.createElement('div'); list.className = 'lz-langs';
   for (const code of locState.languages) {
     const row = document.createElement('div'); row.className = 'lz-lang';
@@ -2979,7 +2979,12 @@ function renderLocDialog(): void {
     row.appendChild(name);
     if (code === locState.base) {
       const b = document.createElement('span'); b.className = 'lz-base'; b.textContent = 'base'; row.appendChild(b);
-    } else {
+    }
+    const exp = document.createElement('button'); exp.className = 'lz-export'; exp.textContent = 'export .h5m';
+    exp.title = `pack a single-language ${code} map`;
+    exp.addEventListener('click', () => void exportLoc(code));
+    row.appendChild(exp);
+    if (code !== locState.base) {
       const rm = document.createElement('button'); rm.className = 'lz-rm'; rm.textContent = 'remove'; rm.title = `delete every ${code}.txt`;
       rm.addEventListener('click', () => void removeLoc(code));
       row.appendChild(rm);
@@ -3009,6 +3014,15 @@ async function addLocFromDialog(code: string): Promise<void> {
   try { locState = await window.editor.locAddLanguage({ lang: code }); markDirty(true); }
   catch (e) { $('hud').textContent = 'could not add language: ' + (e instanceof Error ? e.message : String(e)); return; }
   renderLocDialog();
+}
+
+async function exportLoc(code: string): Promise<void> {
+  $('hud').textContent = `exporting ${code}…`;
+  try {
+    const r = await window.editor.locExport({ lang: code });
+    if ('ok' in r) $('hud').textContent = `exported ${langName(code)} → ${r.output} (${r.entries} files)`;
+    else $('hud').textContent = 'export cancelled';
+  } catch (e) { $('hud').textContent = 'export failed: ' + (e instanceof Error ? e.message : String(e)); }
 }
 
 async function removeLoc(code: string): Promise<void> {

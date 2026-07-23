@@ -555,7 +555,7 @@ The game reads ONE language — the ref names a plain `name.txt` and the engine
 reads whatever bytes are there; you cannot switch language in play, it is the
 install's. So localization is the EDITOR's: a map is authored in every language
 side by side, and exported one language at a time as an ordinary single-language
-map. Design in `docs/NAMES_AND_SCRIPTING.md`.
+map. See `docs/LOCALIZATION.md`.
 
 - [x] ✅ **Author every language in-project** (2026-07-23) — a per-map toggle
       (**Localize**) declares the base language and tags the existing texts
@@ -565,9 +565,12 @@ map. Design in `docs/NAMES_AND_SCRIPTING.md`.
       shown as the source while translating. Editor-only state in a
       `localization.json` sidecar the game never sees. `loc:*` in
       `electron/main.ts`, `e2e/localization.spec.ts`.
-- [ ] 🔨 **Export as `<language>`** — pack a single-language `.h5m` where each
-      `name.txt` holds that language's text (falling back to the base when a
-      translation is missing); the tagged files and the sidecar never ship. NEXT.
+- [x] ✅ **Export as `<language>`** (2026-07-23) — packs a single-language `.h5m`
+      where each `name.txt` holds that language's text (falling back to the base
+      when a translation is missing); the tagged files and the sidecar never ship.
+      `exportLocalized` in `src/project.ts`, `loc:export`, a button per language in
+      the Localize dialog. Normal Pack is refused on a localized map (it would ship
+      no plain text). `e2e/localization.spec.ts` reads the archive back.
 - [ ] ⬜ Import the game's own text archives (`All_campaigns.texts_*.h5u`) to pull
       original strings into a reconstruction.
 

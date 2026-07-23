@@ -19,7 +19,7 @@ import { readFileSync, writeFileSync, existsSync, readdirSync, statSync, mkdirSy
 import { createHash } from 'node:crypto';
 import { buildScene, findAssetRoot, listTiles, splatFor, pngDataUri } from '../src/scene.ts';
 import { listPlaceable, findEditorRoot, iconPathFor, readIconFile } from '../src/objects.ts';
-import { initProject, openProject, packProject, readManifest, writeManifest, status, pickMapRel, MANIFEST_NAME } from '../src/project.ts';
+import { initProject, openProject, packProject, exportLocalized, readManifest, writeManifest, status, pickMapRel, MANIFEST_NAME } from '../src/project.ts';
 import { listDirFiles } from '../src/pak.ts';
 import scriptApi from '../src/script-api.json' with { type: 'json' };
 import { watchMapDir } from '../src/watch.ts';
@@ -56,7 +56,7 @@ import type {
   ReadFilePayload, ReadFileResult, WriteFilePayload,
   ScriptContextResult, ApiFn, MapFilesPayload, MapFilesResult,
   ScriptNewPayload, ScriptNewResult, ScriptResolvePayload, ScriptResolveResult,
-  LocResult, LocEnablePayload, LocLangPayload,
+  LocResult, LocEnablePayload, LocLangPayload, LocExportPayload,
   ObjectCatalogResult, IconPayload, IconResult, AddObjectPayload, AddObjectResult,
   MapSaveResult, MapPackResult, TerrainTilesResult, MapStatusResult, OpenMapDialogResult,
   NewMapPayload, NewMapResult, OpenArchivePayload, OpenArchiveResult,
@@ -1699,6 +1699,9 @@ function archivePrefixFor(mapDir: string): string {
 // --- IPC: pack the map folder into a .h5m ---
 ipcMain.handle('map:pack', async (): Promise<MapPackResult> => {
   if (!session) throw new Error('no map loaded');
+  // A localized map has no plain name.txt on disk — the game would find tagged
+  // files and the sidecar and no text at all. Export bakes one language in.
+  if (readLoc(session)) throw new Error('this map is localized — use Localize → “export .h5m” to pack a single language');
   const opts = {
     title: 'Pack map to .h5m',
     defaultPath: session.mapDir + '.h5m',
@@ -1718,6 +1721,35 @@ ipcMain.handle('map:pack', async (): Promise<MapPackResult> => {
   const res = packProject(session.mapDir, r.filePath,
     { prefix: archivePrefixFor(session.mapDir), preserveFrom: from });
   return { ok: true, output: r.filePath, entries: res.entries, bytes: res.bytes, status: status(session.mapDir) };
+});
+
+/**
+ * Export a single-language `.h5m` from a localized map.
+ *
+ * The game reads one language: this bakes the chosen one into the plain `.txt`
+ * files the map references (falling back to the base where a translation is
+ * missing) and packs an ordinary map — the tagged sources and the sidecar do not
+ * ship. `output` skips the dialog (a test, or a caller that knows the path).
+ */
+ipcMain.handle('loc:export', async (_e: IpcMainInvokeEvent, { lang, output }: LocExportPayload): Promise<MapPackResult> => {
+  if (!session) throw new Error('no map loaded');
+  const cfg = readLoc(session);
+  if (!cfg) throw new Error('localization is not enabled for this map');
+  if (!cfg.languages.includes(lang)) throw new Error(`the map has no ${lang} texts`);
+  let out = output;
+  if (!out) {
+    const r = await (win
+      ? dialog.showSaveDialog(win, { title: `Export ${lang} map to .h5m`, defaultPath: `${session.mapDir}.${lang}.h5m`, filters: [{ name: 'HoMM5 map', extensions: ['h5m'] }] })
+      : dialog.showSaveDialog({ title: `Export ${lang} map to .h5m`, defaultPath: `${session.mapDir}.${lang}.h5m`, filters: [{ name: 'HoMM5 map', extensions: ['h5m'] }] }));
+    if (r.canceled || !r.filePath) return { canceled: true };
+    out = r.filePath;
+  }
+  // Save pending edits so the export reflects them.
+  writeFileSync(session.mapPath, session.map.save(), 'latin1');
+  saveTerrain(session);
+  session.watch.resync();
+  const res = exportLocalized(session.mapDir, out, lang, cfg.base, { prefix: archivePrefixFor(session.mapDir) });
+  return { ok: true, output: out, entries: res.entries, bytes: res.bytes, status: status(session.mapDir) };
 });
 
 // --- IPC: the ground-tile palette (terrain brushes) ---

@@ -326,6 +326,57 @@ export function packProject(projectDir: string, outPath: string, opt: PackProjec
   return { entries: entries.length, bytes: buf.length, manifest };
 }
 
+/** The languages the localizer knows — the codes the game's text archives use. */
+const LOC_KNOWN = new Set(['en', 'ru', 'de', 'fr', 'es', 'it', 'pl', 'cz', 'hu']);
+const LOC_TAG = /\.([a-z]{2})\.txt$/i;
+const locTagOf = (rel: string): string => {
+  const t = LOC_TAG.exec(rel)?.[1]?.toLowerCase();
+  return t && LOC_KNOWN.has(t) ? t : '';
+};
+
+/**
+ * Pack a single-language `.h5m` from a localized project.
+ *
+ * The game reads ONE language: it looks for the plain `name.txt` a ref points at.
+ * The project keeps every language as a TAGGED file (`name.en.txt`, `name.ru.txt`)
+ * and the plain name never exists on disk — so export MATERIALISES it: every base
+ * text becomes `name.txt` carrying the chosen language's bytes, or the base's when
+ * that language has no translation. The tagged files and the `localization.json`
+ * sidecar are the editor's bookkeeping and never ship.
+ *
+ * Deliberately does NOT touch the manifest's `lastPack`: a language build is an
+ * extra artefact, not the canonical pack of the working tree.
+ */
+export function exportLocalized(
+  projectDir: string, outPath: string, lang: string, base: string, opt: PackProjectOptions = {},
+): PackProjectResult {
+  const manifest = readManifest(projectDir);
+  const prefix = (opt.prefix ?? manifest.archivePrefix ?? '').replace(/^\/+|\/+$/g, '');
+  const name = (rel: string): string => (prefix ? `${prefix}/${rel}` : rel);
+  const rels = listDirFiles(projectDir)
+    .filter((r) => r !== MANIFEST_NAME && r !== 'localization.json')
+    .sort();
+
+  const entries: ZipEntry[] = [];
+  for (const rel of rels) {
+    const tag = locTagOf(rel);
+    if (!tag) { entries.push({ name: name(rel), data: readFileSync(join(projectDir, rel)) }); continue; }
+    // A tagged text. The base-tagged one materialises the plain file; the others
+    // are dropped. Content is the requested language's, falling back to the base.
+    if (tag !== base) continue;
+    const plain = rel.replace(LOC_TAG, '.txt');
+    const wanted = plain.replace(/\.txt$/i, `.${lang}.txt`);
+    const src = existsSync(join(projectDir, wanted)) ? wanted : rel;
+    entries.push({ name: name(plain), data: readFileSync(join(projectDir, src)) });
+  }
+  if (!entries.length) throw new Error(`refusing to export an empty archive: ${projectDir} holds no files`);
+  entries.sort((a, b) => a.name.localeCompare(b.name));
+
+  const buf = writeArchive(entries, opt);
+  writeFileSync(outPath, buf);
+  return { entries: entries.length, bytes: buf.length, manifest };
+}
+
 /**
  * Compare the working tree against the last pack.
  * Returns which files drifted and whether the editor version changed since then.

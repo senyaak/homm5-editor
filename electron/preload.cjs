@@ -54,6 +54,7 @@ const api = {
   locEnable: (p) => ipcRenderer.invoke('loc:enable', p),
   locAddLanguage: (p) => ipcRenderer.invoke('loc:add-language', p),
   locRemoveLanguage: (p) => ipcRenderer.invoke('loc:remove-language', p),
+  locExport: (p) => ipcRenderer.invoke('loc:export', p),
   listObjects: () => ipcRenderer.invoke('objects:list'),
   objectIcon: (path) => ipcRenderer.invoke('objects:icon', { path }),
   addObject: (p) => ipcRenderer.invoke('object:add', p),

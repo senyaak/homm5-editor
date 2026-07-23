@@ -15,8 +15,10 @@ import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { launchEditor } from './launch.ts';
 import type { Launched } from './launch.ts';
+import { tmpdir } from 'node:os';
 import { newMap } from './tiles.ts';
 import { DATA } from './c1m1.ts';
+import { readEntries } from '../src/pak.ts';
 
 let ed: Launched;
 const NAME = 'e2e Localize';
@@ -104,6 +106,29 @@ test('localize a map: enable tags the texts, a language copies them, tabs edit e
   await tabs.locator('button[data-lang="en"]').click();
   await expect(content).toContainText('Siege of Whitecap');
   await page.locator('#de-close').click();
+
+  // --- export: one language baked into an ordinary single-language map --------
+  // The plain name.txt the game reads carries the chosen language, and neither the
+  // tagged sources nor the sidecar ship.
+  const nameOf = (rel: string): string => rel.split('/').pop() ?? rel;
+  for (const [lang, want] of [['ru', 'Осада'], ['en', 'Siege of Whitecap']] as const) {
+    const out = join(tmpdir(), `e2e-loc-${lang}.h5m`);
+    if (existsSync(out)) rmSync(out);
+    const r = await page.evaluate(([l, o]) => window.editor.locExport({ lang: l!, output: o! }), [lang, out]);
+    expect('ok' in r && r.ok, `export ${lang} succeeded`).toBeTruthy();
+    const entries = readEntries(readFileSync(out));
+    const texts = entries.map((e) => nameOf(e.name));
+    // The name.txt in the archive holds this language's text…
+    const nameEntry = entries.find((e) => nameOf(e.name) === 'name.txt');
+    expect(nameEntry, 'the export has a plain name.txt').toBeTruthy();
+    const buf = nameEntry!.data;
+    const text = buf.length >= 2 && buf[0] === 0xff && buf[1] === 0xfe ? buf.toString('utf16le', 2) : buf.toString('utf8');
+    expect(text, `name.txt is the ${lang} text`).toContain(want);
+    // …and the tagged sources and sidecar are NOT in the shipped map.
+    expect(texts.some((n) => /\.(en|ru)\.txt$/.test(n)), 'no tagged files shipped').toBe(false);
+    expect(texts.includes('localization.json'), 'no sidecar shipped').toBe(false);
+    rmSync(out, { force: true });
+  }
 
   // --- remove Russian: its files go --------------------------------------------
   await page.locator('#locbtn').click();
