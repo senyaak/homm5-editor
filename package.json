@@ -32,6 +32,7 @@
     "diff-terrain": "node tools/diff-terrain.ts",
     "diff-objects": "node tools/diff-objects.ts",
     "diff-map": "node tools/diff-map.ts",
+    "pack-c1m1": "node tools/pack-c1m1.ts",
     "make-pwl": "node tools/make-pwl.ts",
     "script-api": "node tools/script-api.ts",
     "build-api": "node tools/build-api.ts",

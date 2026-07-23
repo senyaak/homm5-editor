@@ -217,6 +217,7 @@ e2e/c1m1-10-tiles.spec.ts      ~6 s      the derived tile set, repaired on open
 e2e/c1m1-11-objectives.spec.ts ~4 min    4 objectives + the save name, in the tree
 e2e/c1m1-12-scripts.spec.ts    ~15 s     bind MapScript, write the 4 Lua, lint them
 e2e/c1m1-13-texts.spec.ts      ~12 s     the 44 original text strings, byte-matched
+e2e/c1m1-14-pack.spec.ts       ~8 s      capstone: 3-way diff = 0, then pack a .h5m
 ```
 
 Each opens the map the previous one left (`e2e/c1m1.ts`), does its own pass,
@@ -495,6 +496,40 @@ Written through the app's file API — the write the editor's Save performs — 
 same way the Lua was written; the editor's own typing/Save path is covered
 separately by `e2e/text-authoring.spec.ts`. The strings are the game's, so they
 stay in the git-ignored fixture and are never embedded in the suite.
+
+### The capstone: prove the whole map, then pack it ✅
+
+The per-stage specs each check one subsystem; `e2e/c1m1-14-pack.spec.ts` stands
+back and asks the whole question. It runs the three gap-report tools over the
+finished map on disk and then packs it into a `.h5m` the game loads:
+
+- **`diff-map`** (settings) — **0 differences**.
+- **`diff-objects`** — **0 differences**.
+- **`diff-terrain`** — every **value** plane matches: heights, the twelve masks
+  (9409 values each), ground flags, passability, the half-tile river plane. What
+  it still reports is engine-irrelevant: the texture-layer **list order** (the app
+  writes `grass` first on save), the tile-path **case** (`/mapobjects/…` vs the
+  original's `/MapObjects/…` — the engine folds case), and the **byte-length**
+  that follows. See *Known cosmetic* below.
+
+Pack has two modes, fronted by `npm run pack-c1m1`:
+
+```bash
+npm run pack-c1m1                    # pack under the test root, verify, delete
+npm run pack-c1m1 -- --noRemoveMap   # pack into the game's Maps/ and keep it
+```
+
+`--noRemoveMap` leaves `<game>/Maps/<map>.h5m` in place so it can be opened in the
+game straight after; the default touches only the test data root. In a full suite
+run the stage runs last, in the default (clean-up) mode.
+
+**Known cosmetic (follow-up).** On save the editor does not preserve the original
+`GroundTerrain.bin`'s texture-layer list order or path casing. Nothing the engine
+reads changes — every per-vertex value is byte-identical and paths are matched
+case-insensitively — so the packed map plays as the original; but a true
+byte-for-byte `GroundTerrain.bin` needs the terrain serializer to round-trip layer
+order and casing. The capstone tolerates exactly these three and fails on any
+value-level terrain difference.
 
 ## Milestone 0 — the one missing primitive: New Map
 
