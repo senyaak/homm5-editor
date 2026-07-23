@@ -193,6 +193,7 @@ e2e/c1m1-9-regions.spec.ts     ~20 s     17 regions, dragged out on the map
 e2e/c1m1-10-tiles.spec.ts      ~6 s      the derived tile set, repaired on open
 e2e/c1m1-11-objectives.spec.ts ~4 min    4 objectives + the save name, in the tree
 e2e/c1m1-12-scripts.spec.ts    ~15 s     bind MapScript, write the 4 Lua, lint them
+e2e/c1m1-13-texts.spec.ts      ~12 s     the 44 original text strings, byte-matched
 ```
 
 Each opens the map the previous one left (`e2e/c1m1.ts`), does its own pass,
@@ -454,6 +455,23 @@ Two real issues fixed on the way, both things a person would hit:
 bookkeeping id, like the object GUIDs, that `diff-map` does not read. The map
 script's combat-script paths are absolute into the shipped mission's folder,
 reproduced verbatim; rehoming them to a rebuilt map is the author's call.
+
+### The texts: done ✅
+
+C1M1's visible strings — its name, description, the four objectives' captions and
+descriptions, the sign messages, the save name, and the tutorial lines — do not
+live in the map folder: a campaign takes them from `All_campaigns.texts_en.h5u`,
+so every other stage carried empty placeholders where they belong. `npm run
+extract-fixture C1M1` now also pulls those originals into the fixture's `texts/`,
+and `e2e/c1m1-13-texts.spec.ts` authors all **44** of them into the map and checks
+each one matches the original **byte for byte**, in the UTF-16LE the game reads.
+The rebuilt map is a self-contained single-language mission: unlike the shipped
+campaign, it carries its own texts, so it needs no text archive to read.
+
+Written through the app's file API — the write the editor's Save performs — the
+same way the Lua was written; the editor's own typing/Save path is covered
+separately by `e2e/text-authoring.spec.ts`. The strings are the game's, so they
+stay in the git-ignored fixture and are never embedded in the suite.
 
 ## Milestone 0 — the one missing primitive: New Map
 

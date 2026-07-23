@@ -55,3 +55,27 @@ try {
 } finally {
   closeSync(fd);
 }
+
+// The mission's TEXTS live in a different archive — a campaign takes its visible
+// strings from the localized text pack, not from the map folder — so the data
+// archive above carries none. Pull them into texts/ so the reconstruction has a
+// reference for what the name, description and objectives actually say. Like the
+// rest of the fixture, they are the game's own content: regenerable, not in git.
+const textArchive = join(gameDir, 'UserMODs', 'All_campaigns.texts_en.h5u');
+if (existsSync(textArchive)) {
+  const tfd = openSync(textArchive, 'r');
+  try {
+    const tindex = readIndex(tfd, statSync(textArchive).size)
+      .filter((e) => e.name.startsWith(prefix) && !e.name.endsWith('/'));
+    for (const e of tindex) {
+      const dest = join(outDir, 'texts', e.name.slice(prefix.length));
+      mkdirSync(dirname(dest), { recursive: true });
+      writeFileSync(dest, readEntryFrom(tfd, e));
+    }
+    console.log(`${mission}: ${tindex.length} text files → ${join(outDir, 'texts')}`);
+  } finally {
+    closeSync(tfd);
+  }
+} else {
+  console.warn(`(no text archive at ${textArchive} — texts not extracted)`);
+}
