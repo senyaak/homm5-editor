@@ -77,6 +77,9 @@ export interface FieldSchema {
   'x-mapObjects'?: 'town' | 'hero';
   'x-readonly'?: boolean;
   'x-advanced'?: boolean;
+  /** Name of a sibling boolean field that gates this one: the control is
+   *  disabled while that field is off (a monster's Amount needs Custom on). */
+  'x-enabledBy'?: string;
 }
 
 /** Anything carrying local `$defs` a `$ref` can resolve against. */

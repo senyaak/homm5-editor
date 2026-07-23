@@ -1701,6 +1701,40 @@ async function loadProps(): Promise<void> {
     if (propsFor !== id || !selected || selected.id !== id) return;
     for (const [name, f] of structured) host.appendChild(structRow(id, res.type, name, f, dataAt(data, name)));
   }
+
+  enforceEnabledBy(host, typeFields);
+}
+
+/**
+ * Grey out fields a sibling boolean gates (`x-enabledBy`): a monster's Amount is
+ * meaningless unless Custom is on, and the original disables it the same way.
+ * Enforced after render and re-checked whenever the controlling box changes, so
+ * the panel stays honest without a full rebuild.
+ */
+function enforceEnabledBy(host: HTMLElement, typeFields: Record<string, FieldSchema>): void {
+  const ctrl = (name: string): HTMLInputElement | HTMLSelectElement | null =>
+    host.querySelector(`.pf label[data-field="${CSS.escape(name)}"]`)?.parentElement
+      ?.querySelector('input, select') as HTMLInputElement | HTMLSelectElement | null;
+  const deps = new Map<string, string[]>();
+  for (const [name, raw] of Object.entries(typeFields)) {
+    const by = deref(objectSchema, raw)['x-enabledBy'];
+    if (by) { (deps.get(by) ?? deps.set(by, []).get(by)!).push(name); }
+  }
+  for (const [gate, names] of deps) {
+    const box = ctrl(gate);
+    if (!box) continue;
+    const apply = (): void => {
+      const on = box instanceof HTMLInputElement && box.type === 'checkbox' ? box.checked : box.value === 'true';
+      for (const n of names) {
+        const el = ctrl(n);
+        if (!el) continue;
+        el.disabled = !on;
+        el.title = on ? '' : `enabled only when ${gate} is on`;
+      }
+    };
+    apply();
+    box.addEventListener('change', apply);
+  }
 }
 
 /** A panel row for a structured field: title, a count, and Edit → the tree. */

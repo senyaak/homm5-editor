@@ -184,9 +184,9 @@
       "MessageFileRef": { "type": "string", "x-ref": true, "x-file": true, "title": "Message", "default": "" }
     } } ] },
     "AdvMapMonster": { "allOf": [ { "$ref": "#/$defs/CommonObject" }, { "type": "object", "properties": {
-      "Custom": { "type": "boolean", "title": "Custom", "default": false },
-      "Amount": { "type": "integer", "title": "Amount", "description": "0 = random by the map's difficulty — which is the default, NOT 1.", "default": 0 },
-      "Amount2": { "type": "integer", "title": "Amount (max)", "default": 0 },
+      "Custom": { "type": "boolean", "title": "Custom", "description": "Off = the stack's size is chosen by the map's difficulty. On = you set the amount.", "default": false },
+      "Amount": { "type": "integer", "title": "Amount", "x-enabledBy": "Custom", "description": "0 = random by the map's difficulty — which is the default, NOT 1. Editable only with Custom on.", "default": 0 },
+      "Amount2": { "type": "integer", "title": "Amount (max)", "x-enabledBy": "Custom", "default": 0 },
       "Mood": { "type": "string", "title": "Mood", "default": "MONSTER_MOOD_AGGRESSIVE", "enum": ["MONSTER_MOOD_FRIENDLY", "MONSTER_MOOD_AGGRESSIVE", "MONSTER_MOOD_HOSTILE", "MONSTER_MOOD_WILD"] },
       "Courage": { "type": "string", "title": "Courage", "default": "MONSTER_COURAGE_CAN_FLEE_JOIN", "enum": ["MONSTER_COURAGE_ALWAYS_JOIN", "MONSTER_COURAGE_ALWAYS_FIGHT", "MONSTER_COURAGE_CAN_FLEE_JOIN"] },
       "ArtifactID": { "type": "string", "x-registry": "artifacts", "x-widget": "dropdown", "title": "Reward artifact", "default": "ARTIFACT_NONE" },
