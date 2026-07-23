@@ -34,6 +34,7 @@
     "diff-map": "node tools/diff-map.ts",
     "make-pwl": "node tools/make-pwl.ts",
     "script-api": "node tools/script-api.ts",
+    "build-api": "node tools/build-api.ts",
     "object-shape": "node tools/object-shape.ts",
     "terrain-shape": "node tools/terrain-shape.ts",
     "unpack-data": "node tools/unpack-data.ts",

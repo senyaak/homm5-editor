@@ -142,7 +142,7 @@ placing new ones from a palette.
 - [x] ✅ **The script editor** (2026-07-23) — CodeMirror 6 in the document
       window: Lua highlighting (legacy stream mode, so the game's 4.0-shaped
       Lua is not painted red), the app's dark theme, and completion from the
-      engine API (203 functions with parameters, extracted from the shipped
+      engine API (203 functions extracted; now 204 merged with our curated reference, from the shipped
       manuals by `npm run script-api`), the game's own scripts, and THIS map's
       names — objects, regions, objectives, offered inside string literals
       where the API takes them. `Scripts` in the toolbar lists the map's `.lua`.
@@ -428,7 +428,7 @@ them.
 
 - [x] ✅ Editor component — CodeMirror 6, Lua via the legacy stream mode
 - [x] ✅ HoMM V API definitions (from `HOMM5_A2_Script_Functions.pdf` /
-      `HOMM5_A2_IDs_for_Scripts.pdf`) → 203 functions with parameters,
+      `HOMM5_A2_IDs_for_Scripts.pdf`) → 204 functions (203 extracted + our curated),
       `npm run script-api` → `src/script-api.json`
 - [x] ✅ **Name completion in Lua** — the map's own objects, regions and
       objectives, offered inside string literals where the API takes them
@@ -522,7 +522,7 @@ and full of loops and closures a graph cannot show. Hand-written scripts stay in
 the text editor; the two kinds of file call each other by function name.
 
 - [ ] ⬜ Node/graph document (our own JSON sidecar) + codegen to `.lua`
-- [ ] ⬜ Node set from what already exists: the 203 engine functions as call
+- [ ] ⬜ Node set from what already exists: the 204 engine functions as call
       nodes (parameters are the pins), the triggers as entry nodes, the map's
       names as pin values — the same registries the completion uses
 - [ ] ⬜ A raw-Lua node, so nothing is ever unexpressible

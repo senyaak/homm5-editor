@@ -289,7 +289,7 @@ export interface RemoveItemPayload2 { path: TreePath; }
 /** Payload of `map:set-list` — replace a value list's contents (checklists). */
 export interface SetListPayload { path: TreePath; values: string[]; }
 /** One engine function the map script may call (src/script-api.json). */
-export interface ApiFn { name: string; params: string; group: string }
+export interface ApiFn { name: string; params: string; group: string; summary?: string }
 
 /**
  * Result of `script:context` — everything the script editor completes from.

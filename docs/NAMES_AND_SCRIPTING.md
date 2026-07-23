@@ -14,12 +14,14 @@ Sources: `Editor Documentation/HOMM5_A2_Script_Functions.pdf`,
 gives a CodeMirror editor with Lua highlighting and completion from three
 sources:
 
-- **The engine API** — `src/script-api.json`, 203 functions with their parameter
-  lists, extracted from the two manuals the game ships by `npm run script-api`
-  (it needs `pdftotext`); the same run writes the readable catalogue
-  `docs/SCRIPT_API.md`. These functions are implemented in the engine, so nothing
-  in the game's own Lua declares them: scanning the scripts would find only the
-  ones a mission happens to call.
+- **The engine API** — `src/script-api.json`, 204 functions with their parameter
+  lists. It is MERGED (`npm run build-api`) from two sources: our own hand-written
+  reference `src/script-api-curated.ts` (24 functions so far, with real
+  descriptions — the popup shows them) and, as a fallback, the raw signatures
+  pulled from the shipped manuals by `npm run script-api` (needs `pdftotext`).
+  The readable form is `docs/SCRIPT_API.md`. These functions are implemented in
+  the engine, so nothing in the game's own Lua declares them: scanning the scripts
+  would find only the ones a mission happens to call.
 - **The game's own scripts** — `<data>/scripts/*.lua`: the helpers a mission is
   expected to call (`startThreadOnce`) and the constants they define, read at
   run time from the installation.

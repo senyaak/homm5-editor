@@ -30,7 +30,10 @@ export interface ApiFn {
 const ROOT = join(import.meta.dirname, '..');
 const DOCS = process.argv[2]
   ?? join(ROOT, '..', 'Editor Documentation');
-const OUT = join(ROOT, 'src', 'script-api.json');
+// The RAW extraction — signatures only, a reference the merge falls back on. The
+// completion source and the readable doc are built from this plus our own curated
+// reference by tools/build-api.ts.
+const OUT = join(ROOT, 'src', 'script-api-extracted.json');
 const TMP = join(ROOT, '_tmp', 'script-api');
 
 /** The two manuals, base game first — the supplement's version of a shared
@@ -130,42 +133,4 @@ for (const pdf of PDFS) {
 const api = [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));
 writeFileSync(OUT, JSON.stringify(api, null, 1) + '\n');
 console.log(`${OUT}: ${api.length} function(s), ${new Set(api.map((f) => f.group)).size} section(s)`);
-
-// A human-readable catalogue, grouped by the manual's own sections — a "which
-// call for what" index. Signatures only, no descriptions: those stay in the
-// user's own copy of the PDF, which this points at rather than reproduces.
-const DOC = join(ROOT, 'docs', 'SCRIPT_API.md');
-const bySection = new Map<string, ApiFn[]>();
-for (const fn of api) (bySection.get(fn.group) ?? bySection.set(fn.group, []).get(fn.group)!).push(fn);
-const sections = [...bySection.keys()].sort();
-const lines: string[] = [
-  '# Script API — the engine functions, by section',
-  '',
-  '**Generated** by `npm run script-api` from the manuals the game ships',
-  `(\`${PDFS.join('`, `')}\`). Do not edit by hand.`,
-  '',
-  `${api.length} functions the engine exposes to a map script, across ${sections.length}`,
-  "sections. This is the *catalogue* — the name and parameter list of each call, so",
-  'you know what exists and how to call it. For what each one *does*, the',
-  '`HOMM5_A2_Script_Functions.pdf` supplement in the game\'s `Editor Documentation`',
-  'is the authority; this deliberately does not copy its descriptions.',
-  '',
-  'For the *task* view — which calls to reach for when writing objectives, triggers,',
-  'dialog or combat — see [RECIPES.md](RECIPES.md#script-a-mission). Not every',
-  'function a mission calls is here: some the campaigns use (`GiveExp`, the combat',
-  'runtime `combatReadyPerson`/`setATB`, the tutorial `WaitForTutorialMessageBox`)',
-  'are engine built-ins the manuals never documented — see',
-  '[NAMES_AND_SCRIPTING.md](NAMES_AND_SCRIPTING.md#the-linter--the-errors-the-engine-wont-tell-you-about).',
-  '',
-  '## Sections',
-  '',
-  ...sections.map((s) => `- [${s}](#${s.toLowerCase().replace(/[^a-z0-9]+/g, '-')}) — ${bySection.get(s)!.length}`),
-  '',
-];
-for (const s of sections) {
-  lines.push(`## ${s}`, '');
-  for (const fn of bySection.get(s)!) lines.push(`- \`${fn.name}(${fn.params})\``);
-  lines.push('');
-}
-writeFileSync(DOC, lines.join('\n'));
-console.log(`${DOC}: catalogue of ${api.length} functions`);
+console.log('run `npm run build-api` to merge with the curated reference and write the doc');

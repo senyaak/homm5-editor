@@ -28,8 +28,9 @@ import { oneDark } from '@codemirror/theme-one-dark';
 import { luaDiagnostics, luaNameWarnings } from '../src/lua-lint.ts';
 import type { LuaDiagnostic } from '../src/lua-lint.ts';
 
-/** One engine function, as tools/script-api.ts extracts it from the manuals. */
-export interface ApiFn { name: string; params: string; group: string }
+/** One engine function the editor completes from — merged from our curated
+ *  reference (`summary` present) and the PDF extraction (signature only). */
+export interface ApiFn { name: string; params: string; group: string; summary?: string }
 
 /**
  * Everything the editor completes from, gathered once per map.
@@ -97,7 +98,9 @@ function codeCompletions(context: CompletionContext): CompletionResult | null {
       label: f.name,
       type: 'function',
       detail: `(${f.params})`,
-      info: f.group,
+      // Our own one-line description when we have written the function up;
+      // otherwise the section it came from — better than nothing beside the name.
+      info: f.summary ?? f.group,
       // The call is completed with its brackets and the cursor between them —
       // the parameters are in `detail`, right there to be read while typing.
       apply: (view, _c, from, to) => {

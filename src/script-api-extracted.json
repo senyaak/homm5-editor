@@ -261,15 +261,13 @@
  },
  {
   "name": "GetGameVar",
-  "params": "name, default",
-  "group": "Flow",
-  "summary": "Read a persistent script variable, with a default if unset."
+  "params": "name",
+  "group": "ADVMAP"
  },
  {
   "name": "GetHeroCreatures",
   "params": "heroName, creatureID",
-  "group": "Heroes",
-  "summary": "Count how many of a creature are in a hero's army."
+  "group": "ADVMAP"
  },
  {
   "name": "GetHeroCreaturesTypes",
@@ -294,8 +292,7 @@
  {
   "name": "GetHeroStat",
   "params": "heroName, statID",
-  "group": "Heroes",
-  "summary": "Read one of a hero's stats."
+  "group": "ADVMAP"
  },
  {
   "name": "GetObjectCreature",
@@ -315,8 +312,7 @@
  {
   "name": "GetObjectiveState",
   "params": "objectiveName, playerID = PLAYER_1",
-  "group": "Objectives",
-  "summary": "Read a quest objective's current state."
+  "group": "ADVMAP"
  },
  {
   "name": "GetObjectOwner",
@@ -326,8 +322,7 @@
  {
   "name": "GetObjectPosition",
   "params": "objectName",
-  "group": "Objects",
-  "summary": "Find an object's position on the map."
+  "group": "ADVMAP"
  },
  {
   "name": "GetObjectsInRegion",
@@ -410,12 +405,6 @@
   "group": "ADVMAP"
  },
  {
-  "name": "GiveExp",
-  "params": "heroName, amount",
-  "group": "Heroes",
-  "summary": "Grant experience points to a hero."
- },
- {
   "name": "GiveHeroSkill",
   "params": "heroName, skillID",
   "group": "ADVMAP"
@@ -482,9 +471,8 @@
  },
  {
   "name": "IsHeroAlive",
-  "params": "heroName",
-  "group": "Heroes",
-  "summary": "Whether a hero is still alive."
+  "params": "heroname",
+  "group": "ADVMAP"
  },
  {
   "name": "IsHeroInBoat",
@@ -514,8 +502,7 @@
  {
   "name": "IsObjectExists",
   "params": "objectName",
-  "group": "Objects",
-  "summary": "Whether a named object is still on the map."
+  "group": "ADVMAP"
  },
  {
   "name": "IsObjectInRegion",
@@ -580,8 +567,7 @@
  {
   "name": "Loose",
   "params": "",
-  "group": "Flow",
-  "summary": "End the mission as a defeat for the human player."
+  "group": "ADVMAP"
  },
  {
   "name": "MakeHeroInteractWithObject",
@@ -610,9 +596,8 @@
  },
  {
   "name": "MessageBox",
-  "params": "textRef",
-  "group": "Flow",
-  "summary": "Show a text popup to the player."
+  "params": "messageName, callback = \"\"",
+  "group": "ADVMAP"
  },
  {
   "name": "mod",
@@ -647,8 +632,7 @@
  {
   "name": "OpenCircleFog",
   "params": "x, y, floorID, range, playerID",
-  "group": "Fog of war",
-  "summary": "Reveal the fog of war within a circle for a player."
+  "group": "ADVMAP"
  },
  {
   "name": "OpenPuzzleMap",
@@ -738,8 +722,7 @@
  {
   "name": "RemoveObject",
   "params": "objectName",
-  "group": "Objects",
-  "summary": "Remove a placed object from the map for good."
+  "group": "ADVMAP"
  },
  {
   "name": "RemoveObjectCreatures",
@@ -794,8 +777,7 @@
  {
   "name": "SetControlMode",
   "params": "side, mode",
-  "group": "Combat",
-  "summary": "Set a combat side's control to manual or automatic."
+  "group": "COMBAT"
  },
  {
   "name": "SetDisabledObjectMode",
@@ -805,8 +787,7 @@
  {
   "name": "SetGameVar",
   "params": "name, value",
-  "group": "Flow",
-  "summary": "Store a persistent script variable (survives save/load)."
+  "group": "ADVMAP"
  },
  {
   "name": "SetHeroBiography",
@@ -816,8 +797,7 @@
  {
   "name": "SetHeroCombatScript",
   "params": "heroName, scriptName",
-  "group": "Heroes",
-  "summary": "Attach a combat script to a hero, run when that hero fights."
+  "group": "ADVMAP"
  },
  {
   "name": "SetHeroesExpCoef",
@@ -852,8 +832,7 @@
  {
   "name": "SetObjectEnabled",
   "params": "objectName, enable",
-  "group": "Objects",
-  "summary": "Show or hide a placed object (a disabled object is not on the map for the player)."
+  "group": "ADVMAP"
  },
  {
   "name": "SetObjectFlashlight",
@@ -868,8 +847,7 @@
  {
   "name": "SetObjectiveState",
   "params": "objectiveName, state, playerID = PLAYER_1",
-  "group": "Objectives",
-  "summary": "Change a quest objective's state (active, completed, failed)."
+  "group": "ADVMAP"
  },
  {
   "name": "SetObjectiveVisible",
@@ -894,8 +872,7 @@
  {
   "name": "SetPlayerResource",
   "params": "player, resourceKind, quantity",
-  "group": "Players",
-  "summary": "Set the amount of one of a player's resources."
+  "group": "ADVMAP"
  },
  {
   "name": "SetPlayerStartResources",
@@ -944,9 +921,8 @@
  },
  {
   "name": "sleep",
-  "params": "segments",
-  "group": "Flow",
-  "summary": "Pause the current thread for a number of turn segments."
+  "params": "number-of-segments",
+  "group": "ADVMAP"
  },
  {
   "name": "sqrt",
@@ -965,21 +941,18 @@
  },
  {
   "name": "StartCombat",
-  "params": "heroName, enemyHeroName, creaturesCount, creatureType/Amount…, combatScriptName, combatFinishTrigger, arenaName = \"\", allowQuickCombat",
-  "group": "Combat",
-  "summary": "Start a scripted battle against a hero or a stack of creatures."
+  "params": "heroName, enemyHeroName, enemyHeroName, creaturesCount, creatureType[1], creatureAmount[1], ..., creatureType[Count], creatureAmount[Count], combatScriptName, combatFinishTrigger, arenaName, allowQuickCombat",
+  "group": "ADVMAP"
  },
  {
   "name": "StartDialogScene",
   "params": "dialogSceneName, callback = \"\", saveName = \"\"",
-  "group": "Dialog",
-  "summary": "Play a dialogue cutscene, optionally calling back when it ends."
+  "group": "ADVMAP"
  },
  {
   "name": "startThread",
   "params": "func",
-  "group": "Flow",
-  "summary": "Run a function concurrently, as its own thread."
+  "group": "ADVMAP"
  },
  {
   "name": "StopPlaySound",
@@ -1008,9 +981,8 @@
  },
  {
   "name": "Trigger",
-  "params": "triggerType, target, functionName",
-  "group": "Triggers",
-  "summary": "Bind (or clear) a handler for a world event. Pass nil as the function to unbind."
+  "params": "triggerType, ..., functionName",
+  "group": "ADVMAP"
  },
  {
   "name": "TutorialActivateHint",
@@ -1040,7 +1012,6 @@
  {
   "name": "Win",
   "params": "",
-  "group": "Flow",
-  "summary": "End the mission as a victory for the human player."
+  "group": "ADVMAP"
  }
 ]
