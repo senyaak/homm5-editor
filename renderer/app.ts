@@ -1329,6 +1329,10 @@ function setActiveFloor(i: number): void {
   syncTopCamera();
   updateFloorUI();
   if (world) renderExplorer(); // floor switch -> its own object list
+  // Regions belong to a floor too: the outlines and the list's dimming both
+  // follow which one is shown.
+  renderRegionList();
+  drawRegionOverlay();
 }
 
 // --- selection ---
@@ -3040,6 +3044,15 @@ renderer.domElement.addEventListener('pointerleave', () => { updateBrushCursor(n
 
 renderer.domElement.addEventListener('pointerdown', (ev) => {
   if (!world || ev.button !== 0) return;
+  // The region tool drags out a rectangle: the press is one corner, the release
+  // the other. Like the brush it takes the left button off the camera, which
+  // middle and right still move.
+  if (regionDraw) {
+    regionAnchor = tileUnderCursor(ev);
+    controls.enabled = false;
+    updateBrushCursor(regionAnchor);
+    return;
+  }
   // With the brush armed, left-drag paints instead of orbiting. Middle and
   // right still move the camera, so the view stays reachable mid-stroke.
   if (brushOn) {
@@ -3070,6 +3083,9 @@ renderer.domElement.addEventListener('pointerdown', (ev) => {
 });
 
 renderer.domElement.addEventListener('pointermove', (ev) => {
+  // Ahead of the held-button bail below: dragging out a region IS a gesture with
+  // the button down, and its whole feedback is the footprint growing under it.
+  if (regionDraw) { updateBrushCursor(tileUnderCursor(ev)); return; }
   // [perf] While a mouse button is held and we are neither painting nor moving
   // an object, the user is orbiting or panning the camera. That gesture wants no
   // cursor gizmo, and running a terrain raycast on every one of its many moves is
@@ -3131,6 +3147,18 @@ renderer.domElement.addEventListener('pointermove', (ev) => {
 });
 
 addEventListener('pointerup', async (ev) => {
+  // A region lands on release, from the two corners of the drag. A press that
+  // never moved is a one-tile region, which is a real thing — C1M1 has several.
+  if (regionAnchor) {
+    const a = regionAnchor, b = tileUnderCursor(ev) ?? a;
+    regionAnchor = null;
+    controls.enabled = true;
+    await addRegion({
+      x0: Math.min(a.x, b.x), y0: Math.min(a.y, b.y),
+      x1: Math.max(a.x, b.x), y1: Math.max(a.y, b.y),
+    });
+    return;
+  }
   if (painting) {
     painting = false;
     controls.enabled = true;
@@ -3551,10 +3579,13 @@ function updateBrushCursor(at: { x: number; y: number } | null): void {
   // Mid-drag in Rect mode the footprint is the rectangle so far, not a square
   // under the cursor — otherwise the one size whose shape you choose yourself is
   // the one size you cannot see before committing to it.
-  const r = rectMode && rectAnchor
-    ? { x0: Math.min(rectAnchor.x, at.x), y0: Math.min(rectAnchor.y, at.y),
-        x1: Math.max(rectAnchor.x, at.x), y1: Math.max(rectAnchor.y, at.y) }
-    : squareRect(at.x, at.y, rectMode ? 1 : brushSize);
+  // The region tool drags out a rectangle the same way, and wants the same
+  // preview: which tiles the region will cover, before it exists.
+  const anchor = regionDraw ? regionAnchor : rectMode ? rectAnchor : null;
+  const r = anchor
+    ? { x0: Math.min(anchor.x, at.x), y0: Math.min(anchor.y, at.y),
+        x1: Math.max(anchor.x, at.x), y1: Math.max(anchor.y, at.y) }
+    : squareRect(at.x, at.y, rectMode || regionDraw ? 1 : brushSize);
   const LIFT = 0.05; // just clear of the surface, so it reads as lying on it
   const z = (x: number, y: number): number => {
     const cx = Math.min(fl.V - 1, Math.max(0, x)), cy = Math.min(fl.V - 1, Math.max(0, y));
@@ -3787,6 +3818,23 @@ interface ViewApi {
   objects(): { id: string; type: string; shared: string; x: number; y: number; r: number }[];
   /** Select an object by id — what clicking its row in the object list does. */
   select(id: string): void;
+  /**
+   * The regions the panel is showing.
+   *
+   * Drawn ones cannot be addressed any other way: a rectangle dragged on the map
+   * has no id, and which item of `<regions>` it became is only knowable from the
+   * list the panel keeps.
+   */
+  regions(): { i: number; name: string; floor: number; x1: number; y1: number; x2: number; y2: number }[];
+  /**
+   * Line segments the region outlines are drawn with, or 0 when nothing is
+   * drawn.
+   *
+   * The outline is the only thing on screen that says where a region is, and
+   * every other check would pass with it silently drawing nothing: the data is
+   * in the file either way.
+   */
+  regionOutline(): number;
 }
 
 /** A world point under the plan camera, in CSS pixels. */
@@ -3827,6 +3875,16 @@ const view: ViewApi = {
       .map((i) => ({ id: i.id!, type: i.type, shared: i.shared, x: i.x, y: i.y, r: i.r }));
   },
   select(id) { selectById(id); },
+  regions() {
+    return regionList.map((r) => ({
+      i: r.i, name: r.name, floor: r.floor, x1: r.x1, y1: r.y1, x2: r.x2, y2: r.y2,
+    }));
+  },
+  regionOutline() {
+    const o = regionOverlay;
+    if (!o || !o.visible) return 0;
+    return (o.geometry.getAttribute('position')?.count ?? 0) / 2;
+  },
   tileToScreen(x, y) { return worldToScreen((x + 0.5) * U, (y + 0.5) * U); },
   tileAt(clientX, clientY) { return tileAtClient(clientX, clientY); },
   // A vertex sits ON the grid line, at a whole multiple of the tile spacing —
@@ -4692,6 +4750,9 @@ function setBrush(on: boolean): void {
     $('obj-sel').textContent = 'no object selected';
     renderObjGrid();
   }
+  // The region tool is a third claimant on the same left-drag; arming the brush
+  // puts it down. setRegionDraw does not call back here, so this cannot bounce.
+  if (on && regionDraw) setRegionDraw(false);
   const b = $button('brushbtn');
   b.classList.toggle('on', on);
   // The label says the state rather than the action: with the mode selector
@@ -4952,6 +5013,7 @@ function setObjPalette(open: boolean): void {
   $('objpalbtn').classList.toggle('on', open);
   // Only one right-hand panel at a time; they occupy the same strip.
   if (open && paletteOpen) setPalette(false);
+  if (open && regionsOpen) setRegionsPanel(false);
   $('help').style.right = open ? '262px' : '12px';
   $('panel').style.right = open ? '262px' : '12px';
   if (open) void initObjectPalette();
@@ -5169,6 +5231,7 @@ function setPalette(open: boolean): void {
   // The two palettes occupy the same strip, so opening this one closes the
   // object panel — which also puts down whatever it had armed.
   if (open && objPalOpen) setObjPalette(false);
+  if (open && regionsOpen) setRegionsPanel(false);
   $('palette').style.display = open ? 'flex' : 'none';
   $('help').style.right = open ? '280px' : '12px';
   $('panel').style.right = open ? '280px' : '12px'; // keep the object panel clear of it
@@ -5188,6 +5251,309 @@ $('objpalbtn').onclick = () => {
   if (open && world && !showObjects) setShowObjects(true);
   setObjPalette(open);
 };
+// --- regions ---------------------------------------------------------------
+//
+// A region is a named rectangle of tiles with two script hooks. Nothing in the
+// game draws one: they exist so a mission can say "when the hero enters the
+// pass", and C1M1 has seventeen of them, addressed from Lua by name.
+//
+// Which makes them the one map structure that is BOTH spatial and textual. The
+// tree can already author every field of one — it is a schema `$def` like any
+// other — but typing four tile coordinates for a rectangle you can see is not
+// how a person draws a box. So the rectangle is dragged out on the map, and the
+// rest (its triggers, its floor) stays in the tree, where it belongs.
+
+/** One region, as the panel and the overlay need it. */
+interface RegionInfo {
+  /** Its index in `<regions>` — the path every edit is written through. */
+  i: number;
+  floor: number;
+  /** Inclusive tile bounds, in the file's own order. */
+  x1: number; y1: number; x2: number; y2: number;
+  name: string;
+  /** Its colour, 0..1 per channel, as the file keeps it. */
+  color: [number, number, number];
+}
+
+let regionList: RegionInfo[] = [];
+let regionsOpen = false;
+/** True while the region tool is armed: a left-drag draws a rectangle. */
+let regionDraw = false;
+/** Where the current region drag started. */
+let regionAnchor: { x: number; y: number } | null = null;
+let regionOverlay: THREE.LineSegments | null = null;
+
+/**
+ * Colours a fresh region cycles through.
+ *
+ * Not random: two regions of the same colour on the same ground are two
+ * rectangles you cannot tell apart, and random would hand out the same colour
+ * twice sooner or later. The shipped missions use flat primaries, so these are
+ * the primaries, in an order that keeps neighbours distinct.
+ */
+const REGION_COLOURS: [number, number, number][] = [
+  [1, 0, 0], [0, 1, 0], [0, 0.6, 1], [1, 1, 0], [1, 0, 1], [0, 1, 1], [1, 1, 1], [1, 0.5, 0],
+];
+
+const num = (v: TreeData | undefined, d = 0): number => {
+  const n = Number(typeof v === 'string' ? v : NaN);
+  return Number.isFinite(n) ? n : d;
+};
+/**
+ * A colour channel as the file writes it.
+ *
+ * Six decimals, because the picker is 8-bit and the original's was too: C1M1's
+ * purple regions carry 0.501961, which is 128/255 to exactly this many places.
+ * Rounding shorter would make a colour we set differ from the same colour the
+ * original set.
+ */
+const chan = (v: number): string => String(+v.toFixed(6));
+const hexOf = (c: [number, number, number]): string =>
+  '#' + c.map((v) => Math.round(Math.min(1, Math.max(0, v)) * 255).toString(16).padStart(2, '0')).join('');
+const fromHex = (hex: string): [number, number, number] => [
+  parseInt(hex.slice(1, 3), 16) / 255, parseInt(hex.slice(3, 5), 16) / 255, parseInt(hex.slice(5, 7), 16) / 255,
+];
+
+/** Re-read the regions from the map and redraw both the list and the overlay. */
+async function loadRegions(): Promise<void> {
+  if (!world) { regionList = []; renderRegionList(); drawRegionOverlay(); return; }
+  let tree: TreeData;
+  try { tree = (await window.editor.mapTree()).tree as TreeData; }
+  catch { return; }
+  const raw = dataAt(tree, 'regions');
+  regionList = (Array.isArray(raw) ? raw : []).map((it, i): RegionInfo => {
+    const rect = dataAt(it, 'Rect'), col = dataAt(it, 'Color');
+    const name = dataAt(it, 'Name');
+    return {
+      i,
+      floor: num(dataAt(it, 'Floor')),
+      x1: num(dataAt(rect, 'x1')), y1: num(dataAt(rect, 'y1')),
+      x2: num(dataAt(rect, 'x2')), y2: num(dataAt(rect, 'y2')),
+      name: typeof name === 'string' ? name : '',
+      color: [num(dataAt(col, 'x'), 1), num(dataAt(col, 'y'), 1), num(dataAt(col, 'z'), 1)],
+    };
+  });
+  renderRegionList();
+  drawRegionOverlay();
+}
+
+/** Write one field of one region, by path. */
+async function setRegionField(i: number, path: TreePath, value: string): Promise<void> {
+  try {
+    await window.editor.setMapPath({ path: ['regions', i, ...path], value });
+    markDirty(true);
+  } catch (e) {
+    $('hud').textContent = 'region: ' + (e instanceof Error ? e.message : String(e));
+  }
+}
+
+/** A name no region has yet — region1, region2, … */
+function freshRegionName(): string {
+  const taken = new Set(regionList.map((r) => r.name));
+  for (let n = 1; ; n++) if (!taken.has(`region${n}`)) return `region${n}`;
+}
+
+/**
+ * Add a region covering a dragged rectangle.
+ *
+ * The item itself is built from the schema — the same "+ add" the tree offers,
+ * so a region drawn here and one added there are the same element — and this
+ * only fills in what the drag knows: where it is, which floor it is on, and a
+ * name and colour to tell it apart by. Everything else stays at its default,
+ * which for the two triggers is an empty function name.
+ */
+async function addRegion(r: TileRect): Promise<void> {
+  if (!world) return;
+  const i = regionList.length;
+  const name = freshRegionName();
+  const c = REGION_COLOURS[i % REGION_COLOURS.length]!;
+  try {
+    await window.editor.addMapItem({ path: ['regions'] });
+    const set = (path: TreePath, value: string): Promise<unknown> =>
+      window.editor.setMapPath({ path: ['regions', i, ...path], value });
+    await set(['Floor'], String(world.active));
+    await set(['Rect', 'x1'], String(r.x0));
+    await set(['Rect', 'y1'], String(r.y0));
+    await set(['Rect', 'x2'], String(r.x1));
+    await set(['Rect', 'y2'], String(r.y1));
+    await set(['Name'], name);
+    await set(['Color', 'x'], chan(c[0]));
+    await set(['Color', 'y'], chan(c[1]));
+    await set(['Color', 'z'], chan(c[2]));
+    markDirty(true);
+    $('hud').textContent = `region ${name}: ${r.x0}, ${r.y0} — ${r.x1}, ${r.y1}`;
+  } catch (e) {
+    $('hud').textContent = 'could not add region: ' + (e instanceof Error ? e.message : String(e));
+  }
+  await loadRegions();
+  if (mapTreeOpen() && treeTarget === MAP_TREE) await refreshMapTree();
+}
+
+/** Delete a region, by index. */
+async function removeRegion(i: number): Promise<void> {
+  try {
+    await window.editor.removeMapItem({ path: ['regions', i] });
+    markDirty(true);
+  } catch (e) {
+    $('hud').textContent = 'could not remove region: ' + (e instanceof Error ? e.message : String(e));
+  }
+  await loadRegions();
+  if (mapTreeOpen() && treeTarget === MAP_TREE) await refreshMapTree();
+}
+
+function renderRegionList(): void {
+  const list = $('rg-list');
+  list.innerHTML = '';
+  for (const r of regionList) {
+    const row = document.createElement('div');
+    row.className = 'rg' + (world && r.floor !== world.active ? ' other' : '');
+    row.dataset.region = String(r.i);
+    const top = document.createElement('div');
+    top.className = 'top';
+    const col = document.createElement('input');
+    col.type = 'color';
+    col.value = hexOf(r.color);
+    col.title = 'the colour this region is outlined in';
+    col.addEventListener('change', () => {
+      const [x, y, z] = fromHex(col.value);
+      void (async () => {
+        await setRegionField(r.i, ['Color', 'x'], chan(x));
+        await setRegionField(r.i, ['Color', 'y'], chan(y));
+        await setRegionField(r.i, ['Color', 'z'], chan(z));
+        await loadRegions();
+      })();
+    });
+    const name = document.createElement('input');
+    name.type = 'text';
+    name.value = r.name;
+    name.title = 'the name scripts address this region by';
+    name.addEventListener('change', () => {
+      void (async () => { await setRegionField(r.i, ['Name'], name.value); await loadRegions(); })();
+    });
+    top.append(col, name);
+    const rect = document.createElement('div');
+    rect.className = 'rect';
+    const span = document.createElement('span');
+    span.textContent = `${r.x1}, ${r.y1} — ${r.x2}, ${r.y2}` + (r.floor ? ' · underground' : '');
+    const sp = document.createElement('span');
+    sp.className = 'sp';
+    const tree = document.createElement('button');
+    tree.textContent = 'Tree…';
+    tree.title = 'its floor, its rectangle and its two script triggers';
+    tree.addEventListener('click', () => {
+      // Opened AT this region rather than at the top of a tree with a hundred
+      // fields: regions are an advanced field, so the switch has to be on too,
+      // or the group the button points at is not rendered at all.
+      mtShowAdvanced = true;
+      $input('mt-adv').checked = true;
+      mtOpen.add(pathKey(['regions']));
+      mtOpen.add(pathKey(['regions', r.i]));
+      openMapTree(MAP_TREE);
+      void refreshMapTree().then(() => {
+        $('maptree-body')
+          .querySelector(`[data-path='${JSON.stringify(['regions', r.i])}']`)
+          ?.scrollIntoView({ block: 'center' });
+      });
+    });
+    const del = document.createElement('button');
+    del.className = 'danger';
+    del.textContent = '✕';
+    del.title = 'delete this region';
+    del.addEventListener('click', () => { void removeRegion(r.i); });
+    rect.append(span, sp, tree, del);
+    row.append(top, rect);
+    list.appendChild(row);
+  }
+  $('rg-count').textContent = world
+    ? `${regionList.length} region(s)`
+    : 'no map';
+}
+
+function ensureRegionOverlay(): THREE.LineSegments {
+  if (regionOverlay) return regionOverlay;
+  const mat = new THREE.LineBasicMaterial({
+    vertexColors: true, transparent: true, opacity: 0.95, depthTest: false,
+  });
+  regionOverlay = asTileSpace(new THREE.LineSegments(new THREE.BufferGeometry(), mat));
+  regionOverlay.renderOrder = 997; // under both cursors, over the ground
+  regionOverlay.visible = false;
+  scene.add(regionOverlay);
+  return regionOverlay;
+}
+
+/**
+ * Outline every region of the active floor, in its own colour.
+ *
+ * Traced tile by tile rather than as four long lines: a region can span a hill,
+ * and a straight segment between two corners would cut through it.
+ */
+function drawRegionOverlay(): void {
+  const o = ensureRegionOverlay();
+  if (!world || !regionsOpen || !regionList.length) { o.visible = false; return; }
+  const fl = activeFloor();
+  const LIFT = 0.07; // above the brush gizmo's 0.05, so an outline never z-fights it
+  const z = (x: number, y: number): number => {
+    const cx = Math.min(fl.V - 1, Math.max(0, x)), cy = Math.min(fl.V - 1, Math.max(0, y));
+    return fl.heights[cy * fl.V + cx]! + LIFT;
+  };
+  const pts: number[] = [], cols: number[] = [];
+  for (const r of regionList) {
+    if (r.floor !== world.active) continue;
+    // The file keeps inclusive TILE bounds; the outline runs along the outer
+    // grid lines, so the far edge is one past the last tile.
+    const x0 = Math.max(0, Math.min(r.x1, r.x2)), y0 = Math.max(0, Math.min(r.y1, r.y2));
+    const x1 = Math.min(fl.V - 1, Math.max(r.x1, r.x2) + 1), y1 = Math.min(fl.V - 1, Math.max(r.y1, r.y2) + 1);
+    if (x1 <= x0 || y1 <= y0) continue;
+    const seg = (ax: number, ay: number, bx: number, by: number): void => {
+      pts.push(ax, ay, z(ax, ay), bx, by, z(bx, by));
+      cols.push(...r.color, ...r.color);
+    };
+    for (let x = x0; x < x1; x++) { seg(x, y0, x + 1, y0); seg(x, y1, x + 1, y1); }
+    for (let y = y0; y < y1; y++) { seg(x0, y, x0, y + 1); seg(x1, y, x1, y + 1); }
+  }
+  const g = o.geometry;
+  g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pts), 3));
+  g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(cols), 3));
+  g.computeBoundingSphere();
+  o.visible = pts.length > 0;
+}
+
+function setRegionsPanel(open: boolean): void {
+  regionsOpen = open;
+  // One right-hand panel at a time; they share the strip.
+  if (open && paletteOpen) setPalette(false);
+  if (open && objPalOpen) setObjPalette(false);
+  $('regions').style.display = open ? 'flex' : 'none';
+  $('regionbtn').classList.toggle('on', open);
+  const clear = open || paletteOpen || objPalOpen ? '280px' : '12px';
+  $('help').style.right = clear;
+  $('panel').style.right = clear; // keep the object panel clear of the strip
+  // Closing puts the tool down: the outlines go with the panel, and a tool armed
+  // behind a closed panel draws rectangles nothing on screen explains.
+  if (!open) setRegionDraw(false);
+  if (open) void loadRegions(); else drawRegionOverlay();
+}
+
+function setRegionDraw(on: boolean): void {
+  regionDraw = on && regionsOpen;
+  if (regionDraw) {
+    if (brushOn) setBrush(false);
+    if (placeObject) armObject(null);
+    $('hud').textContent = 'drag out a rectangle on the map — it becomes a region';
+    renderer.domElement.style.cursor = 'none';
+  } else {
+    regionAnchor = null;
+    renderer.domElement.style.cursor = '';
+    updateBrushCursor(null);
+  }
+  $('rg-draw').classList.toggle('on', regionDraw);
+  $('rg-draw').textContent = regionDraw ? 'draw: on' : 'draw: off';
+}
+
+$('regionbtn').onclick = () => setRegionsPanel(!regionsOpen);
+$('rg-close').onclick = () => setRegionsPanel(false);
+$('rg-draw').onclick = () => setRegionDraw(!regionDraw);
+
 $select('obj-cat').addEventListener('change', (e) => {
   objCat = (e.currentTarget as HTMLSelectElement).value;
   objShown = OBJ_PAGE;
@@ -5231,6 +5597,13 @@ addEventListener('keydown', (e) => {
   if (e.code === 'Escape' && placeObject && !isTyping(e.target)) {
     armObject(null);
     $('hud').textContent = 'stopped placing';
+    e.preventDefault();
+  }
+  // Same exit for the region tool, for the same reason: a sticky mode needs a
+  // key that always ends it.
+  if (e.code === 'Escape' && regionDraw && !isTyping(e.target)) {
+    setRegionDraw(false);
+    $('hud').textContent = 'stopped drawing regions';
     e.preventDefault();
   }
 });
@@ -5362,6 +5735,10 @@ async function loadMapPath(path: string | null): Promise<void> {
     $('objpalbtn').style.display = '';
     $('mapbtn').style.display = '';
     $('maptreebtn').style.display = '';
+    $('regionbtn').style.display = '';
+    // A map just opened has whatever regions it shipped with; the panel may
+    // still be open from the last one, and it must not show those.
+    void loadRegions();
     // Same reason as the ground-scale slider: show the restored force and
     // tension, not the HTML defaults the brush is not using.
     $input('brushforce').value = String(brushForce);

@@ -200,6 +200,42 @@
     #pal-sel { color: #c9d1d9; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     #palette .pal-note { color: #6e7681; margin-top: 2px; }
 
+    /* regions — the same right-hand shell as the palettes, because it is the
+       same kind of thing: a tool armed at the top, what it made listed below. */
+    #regions { position: fixed; right: 0; top: 40px; bottom: 0; width: 268px; z-index: 12;
+      background: #0f141aee; border-left: 1px solid #21262d; backdrop-filter: blur(6px);
+      display: flex; flex-direction: column; }
+    #regions .pal-head { padding: 8px; border-bottom: 1px solid #21262d; display: flex;
+      gap: 8px; align-items: center; }
+    #regions .pal-title { color: #e6edf3; font-weight: 600; flex: 1; }
+    #regions .pal-head button { background: #21262d; color: #c9d1d9; border: 1px solid #30363d;
+      border-radius: 6px; padding: 4px 10px; cursor: pointer; font-size: 12px; white-space: nowrap; }
+    #regions .pal-head button:hover { background: #30363d; }
+    #regions .pal-head button.on { background: #1f6feb33; border-color: #1f6feb; color: #cbe0ff; }
+    #rg-list { flex: 1; overflow-y: auto; padding: 6px; display: flex; flex-direction: column;
+      gap: 4px; align-content: start; }
+    #rg-list .rg { background: #161b22; border: 1px solid #21262d; border-radius: 6px;
+      padding: 5px 6px; display: flex; flex-direction: column; gap: 4px; }
+    #rg-list .rg.other { opacity: .5; } /* a region on the floor you are not on */
+    #rg-list .rg .top { display: flex; align-items: center; gap: 6px; }
+    /* The colour is the region's own, from the file — it is what tells two
+       overlapping rectangles apart on the map. */
+    #rg-list .rg input[type=color] { width: 22px; height: 22px; flex: none; padding: 0;
+      background: none; border: 1px solid #30363d; border-radius: 5px; cursor: pointer; }
+    #rg-list .rg input[type=text] { flex: 1; min-width: 0; background: #0d1014;
+      border: 1px solid #30363d; border-radius: 5px; padding: 3px 6px; color: #c9d1d9;
+      font-size: 12px; }
+    #rg-list .rg input[type=text]:focus { outline: none; border-color: #1f6feb; }
+    #rg-list .rg .rect { color: #8b949e; font-size: 11px; font-variant-numeric: tabular-nums;
+      display: flex; align-items: center; gap: 6px; }
+    #rg-list .rg .rect .sp { flex: 1; }
+    #rg-list .rg button { background: #21262d; color: #c9d1d9; border: 1px solid #30363d;
+      border-radius: 5px; padding: 2px 7px; cursor: pointer; font-size: 11px; }
+    #rg-list .rg button:hover { background: #30363d; }
+    #rg-list .rg button.danger:hover { background: #6e2531; border-color: #f85149; }
+    #regions .pal-foot { padding: 7px 10px; border-top: 1px solid #21262d; font-size: 11px;
+      color: #6e7681; line-height: 1.35; }
+
     /* object palette — same shell as the ground palette, so the two tabs of the
        original's content browser read as one thing here too. */
     #objpal { position: fixed; right: 0; top: 40px; bottom: 0; width: 250px; z-index: 12;
@@ -530,6 +566,7 @@
          armed, since the panel can be closed while the brush is live. -->
     <button id="palbtn" style="display:none" title="terrain brushes and the ground tiles">Terrain</button>
     <button id="objpalbtn" style="display:none" title="place objects from the game's catalogue">Objects+</button>
+    <button id="regionbtn" style="display:none" title="named map rectangles the scripts address">Regions</button>
     <button id="mapbtn" style="display:none" title="map settings — name, size, rules">Map…</button>
     <button id="maptreebtn" style="display:none" title="edit every map setting as a tree">Tree</button>
     <button id="cliffbtn" style="display:none" title="rock texture on steep faces">Cliffs</button>
@@ -623,6 +660,23 @@
       <div id="cats"></div>
       <div id="maplist"><div class="empty">loading…</div></div>
       <div class="foot" id="picker-foot"></div>
+    </div>
+  </div>
+
+  <!-- regions: named rectangles a script addresses (a mission's "the hero
+       reached the pass"). Dragged out on the map like the original's own region
+       tool; every field of one is editable in the tree, which is where the
+       triggers live. -->
+  <div id="regions" style="display:none">
+    <div class="pal-head">
+      <span class="pal-title">Regions</span>
+      <button id="rg-draw" title="drag out a rectangle on the map to add a region">draw: off</button>
+      <button id="rg-close" title="close">✕</button>
+    </div>
+    <div id="rg-list"></div>
+    <div class="pal-foot">
+      <div id="rg-count">no map</div>
+      <div>Drag on the map to add one. <b>Tree…</b> opens its triggers and floor.</div>
     </div>
   </div>
 

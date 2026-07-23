@@ -189,6 +189,7 @@ e2e/c1m1-5-passability.spec.ts ~20 s     4939 tiles in 424 strokes
 e2e/c1m1-6-objects.spec.ts     ~8 min    2645 objects, 118 palette picks
 e2e/c1m1-7-fields.spec.ts      ~90 s     26 values, 4 text refs, 6 army stacks
 e2e/c1m1-8-settings.spec.ts    ~15 s     rules, players, goals, lights, picture
+e2e/c1m1-9-regions.spec.ts     ~20 s     17 regions, dragged out on the map
 ```
 
 Each opens the map the previous one left (`e2e/c1m1.ts`), does its own pass,

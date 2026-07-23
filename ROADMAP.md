@@ -139,12 +139,23 @@ placing new ones from a palette.
       minutes. `npm run diff-objects` matches every object, position and facing.
       Their FIELDS are the next stage — and they are to be edited through the
       JSON schema (`$ref` for what repeats), not per-type tables in the UI.
+- [x] ✅ **C1M1's regions** (2026-07-23) — `e2e/c1m1-9-regions.spec.ts`: the 17
+      named rectangles the mission's Lua addresses, dragged out on the map with
+      the new region tool and named and coloured in its panel. Every other field
+      of one — its floor, its two triggers — stays in the tree, which is where a
+      `$def` belongs; the rectangle is drawn because four coordinates are not how
+      a person describes a box they are looking at.
 - [x] ✅ **C1M1's map settings** (2026-07-23) — `e2e/c1m1-8-settings.spec.ts`:
       rules, players, objectives, the moon calendar, the lighting refs and the
-      splash picture, all through the schema-typed tree. `npm run diff-map` is
-      down to `MapScript`, which the Lua stage sets. Fixed on the way: a list
+      splash picture, all through the schema-typed tree. Fixed on the way: a list
       shown as one control could not be written, the entity picker ignored the
-      map's own documents, and "New text file" truncated an existing one.
+      map's own documents, and "New text file" truncated an existing one — and
+      the gap report itself, which compared an untouched `<regions/>` as a STRING
+      and so read "seventeen against none" as two empty values agreeing. Four
+      subsystems were hiding behind that: the tile list, the regions, the start
+      scene and the per-player objectives. What is left after the regions: the
+      tile list (12 refs the editor never writes when a layer is added), the
+      start scene, the objectives, and `MapScript`, which the Lua stage sets.
 - [x] ✅ **C1M1's object fields** (2026-07-23) — `e2e/c1m1-7-fields.spec.ts`:
       26 values through the property panel, 4 sign messages, and 6 army stacks
       through the object tree. `npm run diff-objects` reports 0 differences.
