@@ -13,9 +13,10 @@
 // Idempotent like every other stage: each value is read before it is written.
 
 import { test, expect } from '@playwright/test';
-import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { launchEditor } from '../launch.ts';
+import { launchEditor, REPO_ROOT } from '../launch.ts';
 import type { Launched } from '../launch.ts';
 import { settle } from '../tiles.ts';
 import { MAP_DIR, FIXTURE, openMap, requireFixture } from './shared.ts';
@@ -86,6 +87,14 @@ test('C1M1 map settings, set in the tree', async () => {
   const want = readTree(original.desc) as Record<string, TreeData>;
   const players = Array.isArray(want.players) ? want.players.length : 0;
   expect(players, 'the original declares its players').toBeGreaterThan(0);
+
+  // The splash picture is a map-local texture the picker can only offer once the
+  // file is beside the map. The original ships `PWL.(Texture).dds`; `make-pwl`
+  // draws ours (docs/E2E_RECONSTRUCTION.md). Drawn before the map is opened so
+  // the picker lists it from the start, and skipped if it is already there.
+  if (!existsSync(join(MAP_DIR, 'PWL.(Texture).xdb'))) {
+    execFileSync('node', [join(REPO_ROOT, 'tools', 'make-pwl.ts'), MAP_DIR], { cwd: REPO_ROOT, stdio: 'inherit' });
+  }
 
   await openMap(page);
   await openTree(page);
