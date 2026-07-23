@@ -273,10 +273,13 @@ interface UiPrefs {
   /** Height the Bulk/Dig brush moves per stroke, and how far it tapers. */
   brushForce: number;
   brushTension: number;
+  /** The terrain strip (brushes + tiles) — open by default, since the bar no
+   *  longer holds the tools. */
+  terrainPanel: boolean;
 }
 const UI_PREFS_DEFAULT: UiPrefs = {
   showObjects: true, explorerOpen: true, cliffs: true, grid: false, showHidden: false, texScale: 0.5,
-  topView: false, brushForce: 0.35, brushTension: 1,
+  topView: false, brushForce: 0.35, brushTension: 1, terrainPanel: true,
 };
 const UI_PREFS_KEY = 'homm5-editor.ui';
 function loadUiPrefs(): UiPrefs {
@@ -3958,9 +3961,55 @@ let vertexMode = false;
  */
 const keepsGroundKind = (flag: number): boolean => tierOf(flag) >= 2 || (flag & RAMP_BIT) !== 0;
 
-/** What a left-drag does. Mirrors the mode selector in the toolbar. */
+/** What a left-drag does. Mirrors the mode selector in the brush panel. */
 type BrushMode = 'paint' | 'bulk' | 'dig' | 'raise' | 'lower' | 'ramp' | 'level' | 'kind' | 'river' | 'mask' | 'erase';
 let brushMode: BrushMode = 'paint';
+
+/** What the armed tool does, said in full — for the hud and the panel. */
+const BRUSH_SAYS: Record<BrushMode, string> = {
+  paint: 'painting',
+  bulk: 'bulk: smooth raise', dig: 'dig: smooth lower',
+  raise: 'raise: a plateau 2.0 up, with cut edges',
+  lower: 'lower: a pit dug to 0, which floods',
+  ramp: 'ramp: half a step up, walkable instead of a wall',
+  level: 'plateau: pull everything to the level you start on',
+  kind: 'ground kind: paints the tier (and ramp) without moving the ground',
+  river: 'river plane: half-tile cells at the chosen strength; carve is optional',
+  mask: 'masking: left-drag blocks movement', erase: 'erasing the movement mask',
+};
+
+/** The same in two words, for the bar button while the panel is closed. */
+const BRUSH_LABEL: Record<BrushMode, string> = {
+  paint: 'paint', bulk: 'bulk', dig: 'dig', raise: 'raise', lower: 'lower', ramp: 'ramp',
+  level: 'plateau', kind: 'kind', river: 'river', mask: 'mask', erase: 'erase',
+};
+
+/**
+ * Which settings each mode actually has.
+ *
+ * All of them used to be in the toolbar at once, so the tier picker sat there
+ * while you painted textures and the river strength never went away. A mode
+ * whose row list is empty has nothing to set beyond its size — Raise steps a
+ * fixed 2.0, and a mask stroke is on or off.
+ */
+const BRUSH_ROWS: Record<BrushMode, readonly string[]> = {
+  // Carve belongs to a water stroke wherever it comes from, and painting a
+  // Water tile is one — hence the carve row on the tile brush as well.
+  paint: ['bp-weight', 'bp-carve'],
+  bulk: ['bp-force', 'bp-tension'], dig: ['bp-force', 'bp-tension'],
+  raise: [], lower: [], ramp: [], level: [],
+  kind: ['bp-tier'],
+  river: ['bp-river', 'bp-carve'],
+  mask: [], erase: [],
+};
+const BRUSH_ROW_IDS = ['bp-force', 'bp-tension', 'bp-tier', 'bp-weight', 'bp-river', 'bp-carve'] as const;
+
+/** Show the rows the current mode uses, and say what it does. */
+function syncBrushPanel(): void {
+  const rows = BRUSH_ROWS[brushMode];
+  for (const id of BRUSH_ROW_IDS) $(id).style.display = rows.includes(id) ? 'flex' : 'none';
+  $('bp-note').textContent = BRUSH_SAYS[brushMode];
+}
 /** Height direction for the sculpt modes; 0 for the rest. */
 let sculptDir = 0;
 let lastTick = 0;
@@ -4453,7 +4502,13 @@ function setBrush(on: boolean): void {
   b.classList.toggle('on', on);
   // The label says the state rather than the action: with the mode selector
   // beside it, "Brush" alone gave no way to tell armed from not.
-  b.textContent = on ? 'Brush: on' : 'Brush: off';
+  b.textContent = on ? 'on' : 'off';
+  // The panel can be closed while the brush is live, so the bar button carries
+  // the armed state — otherwise a left-drag edits the terrain with nothing on
+  // screen saying why. Open/closed needs no light of its own: a 268px strip
+  // either occupies the right edge or it does not.
+  $('palbtn').classList.toggle('on', on);
+  $('palbtn').textContent = on ? `Terrain: ${BRUSH_LABEL[brushMode]}` : 'Terrain';
   // The arrow is hidden, not restyled: the footprint gizmo IS the cursor, and
   // an arrow on top of it only obscures the tile under the tip.
   renderer.domElement.style.cursor = on ? 'none' : '';
@@ -4867,6 +4922,7 @@ function renderPalette(): void {
       // and arm, so the click leads somewhere instead of highlighting a swatch.
       brushMode = 'paint'; sculptDir = 0;
       $select('brushmode').value = 'paint';
+      syncBrushPanel();
       setBrush(true);
       renderPalette();
       // A tile this map has no layer for gets one now, on the spot.
@@ -4914,12 +4970,15 @@ function setPalette(open: boolean): void {
   // object panel — which also puts down whatever it had armed.
   if (open && objPalOpen) setObjPalette(false);
   $('palette').style.display = open ? 'flex' : 'none';
-  $('palbtn').classList.toggle('on', open);
-  $('help').style.right = open ? '262px' : '12px';
-  $('panel').style.right = open ? '262px' : '12px'; // keep the object panel clear of it
+  $('help').style.right = open ? '280px' : '12px';
+  $('panel').style.right = open ? '280px' : '12px'; // keep the object panel clear of it
+  // The panel holds the terrain tools now, so whether it is open is worth
+  // remembering across sessions — a session spent shaping ground wants it open.
+  saveUiPrefs({ terrainPanel: open });
   if (open) initPalette();
 }
 $('palbtn').onclick = () => setPalette(!paletteOpen);
+$('pal-close').onclick = () => setPalette(false);
 $('objpalbtn').onclick = () => {
   const open = !objPalOpen;
   // Same reason as the object list: this panel exists to put objects ON the
@@ -5009,6 +5068,7 @@ $input('brushtension').addEventListener('input', (e) => {
 $select('brushmode').addEventListener('change', (e) => {
   brushMode = (e.currentTarget as HTMLSelectElement).value as BrushMode;
   sculptDir = brushMode === 'bulk' ? 1 : brushMode === 'dig' ? -1 : 0;
+  syncBrushPanel();
   // Picking a mode is the intent to use it, so arm right away. Only paint needs
   // something else chosen first, so that is the one case that redirects.
   if (brushMode === 'paint' && !paintTile) {
@@ -5017,18 +5077,7 @@ $select('brushmode').addEventListener('change', (e) => {
     return;
   }
   setBrush(true);
-  const says: Record<BrushMode, string> = {
-    paint: 'painting',
-    bulk: 'bulk: smooth raise', dig: 'dig: smooth lower',
-    raise: 'raise: a plateau 2.0 up, with cut edges',
-    lower: 'lower: a pit dug to 0, which floods',
-    ramp: 'ramp: half a step up, walkable instead of a wall',
-    level: 'plateau: pull everything to the level you start on',
-    kind: 'ground kind: paints the tier (and ramp) without moving the ground',
-    river: 'river plane: half-tile cells at the chosen strength; carve is optional',
-    mask: 'masking: left-drag blocks movement', erase: 'erasing the movement mask',
-  };
-  $('hud').textContent = says[brushMode];
+  $('hud').textContent = BRUSH_SAYS[brushMode];
 });
 $('blockbtn').onclick = () => setShowBlocked(!showBlocked);
 
@@ -5113,12 +5162,12 @@ async function loadMapPath(path: string | null): Promise<void> {
     $('objpalbtn').style.display = '';
     $('mapbtn').style.display = '';
     $('maptreebtn').style.display = '';
-    $('brushwrap').style.display = 'flex';
     // Same reason as the ground-scale slider: show the restored force and
     // tension, not the HTML defaults the brush is not using.
     $input('brushforce').value = String(brushForce);
     $input('brushtension').value = String(brushTension);
     $('brushtensionval').textContent = brushTension.toFixed(2);
+    syncBrushPanel();
     setBrush(false); // a fresh map starts in camera mode
     $('cliffbtn').style.display = '';
     $('blockbtn').style.display = '';
@@ -5131,6 +5180,7 @@ async function loadMapPath(path: string | null): Promise<void> {
     // Restore the panels the way they were left rather than forcing them open —
     // that is the whole point of persisting the toggles.
     setExplorer(explorerOpen);
+    setPalette(uiPrefs.terrainPanel);
     setShowObjects(showObjects);
     setTopView(uiPrefs.topView); // restore the plan/3D view choice
     markDirty(false);

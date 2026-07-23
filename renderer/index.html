@@ -35,12 +35,8 @@
     #bar button:hover { background: #30363d; }
     #bar button:disabled { opacity: .4; cursor: default; }
     #bar button.on { background: #1f6feb33; border-color: #1f6feb; color: #cbe0ff; }
-    #scalewrap, #seawrap, #brushwrap { display: flex; align-items: center; gap: 6px; font-size: 12px;
+    #scalewrap, #seawrap { display: flex; align-items: center; gap: 6px; font-size: 12px;
       color: #8b949e; flex-shrink: 0; white-space: nowrap; }
-    /* The brush group reads as one control: arm toggle, then what and how big. */
-    #brushwrap { gap: 4px; }
-    #brushwrap select { background: #21262d; color: #c9d1d9; border: 1px solid #30363d;
-      border-radius: 6px; padding: 5px 6px; font-size: 12px; cursor: pointer; }
     #texscale, #sealevel { width: 110px; }
     #texscaleval, #sealevelval { font-variant-numeric: tabular-nums; color: #c9d1d9; min-width: 30px; }
     /* The map name can be long; let it ellipsize rather than push buttons out. */
@@ -128,13 +124,50 @@
     #help { position: fixed; right: 12px; bottom: 12px; font-size: 11px; color: #adb6c0;
       z-index: 10; pointer-events: none; }
 
+    /* The terrain panel: the tools at the top, the tiles they paint with filling
+       the rest of the strip.
+
+       Both used to be somewhere else — the brush controls in the header, nine of
+       them in a row, most belonging to a mode other than the selected one; the
+       tiles in a palette of their own. They are one job (shape the ground, paint
+       it), so they are one panel: pick a tool, set it, pick a tile, work. Only
+       the current mode's settings are shown, and each gets a label rather than
+       being a bare number box. */
+    #palette .bp-body { padding: 8px; display: flex; flex-direction: column; gap: 7px;
+      border-bottom: 1px solid #21262d; }
+    #palette .bp-row { display: flex; align-items: center; gap: 6px; font-size: 12px;
+      color: #8b949e; }
+    #palette .bp-row > .k { width: 46px; flex: none; }
+    #palette .bp-row select, #palette .bp-row input[type=number] { flex: 1; min-width: 0;
+      background: #0d1014; border: 1px solid #30363d; border-radius: 6px; padding: 4px 8px;
+      color: #c9d1d9; font-size: 12px; cursor: pointer; }
+    #palette .bp-row select:focus, #palette .bp-row input:focus { outline: none;
+      border-color: #1f6feb; }
+    #palette .bp-row option { background: #161b22; color: #c9d1d9; }
+    #palette .bp-check { display: flex; align-items: center; gap: 4px; flex: none;
+      font-size: 11px; cursor: pointer; }
+    #palette .bp-row input[type=range] { flex: 1; min-width: 0; }
+    #palette .bp-val { font-variant-numeric: tabular-nums; color: #c9d1d9; font-size: 11px;
+      min-width: 30px; text-align: right; }
+    /* What the armed tool does, in a sentence — the modes are terse by
+       necessity and "Bulk" says nothing on its own. */
+    #palette .bp-note { color: #6e7681; font-size: 11px; line-height: 1.35; }
+    #palette .pal-head button { background: #21262d; color: #c9d1d9; border: 1px solid #30363d;
+      border-radius: 6px; padding: 4px 10px; cursor: pointer; font-size: 12px; white-space: nowrap; }
+    #palette .pal-head button:hover { background: #30363d; }
+    #palette .pal-head button.on { background: #1f6feb33; border-color: #1f6feb; color: #cbe0ff; }
+    /* Section heading over the tile browser: the panel has two halves and the
+       lower one needs to say what it is. */
+    #palette .pal-sect { padding: 8px 8px 0; display: flex; gap: 8px; align-items: center;
+      font-size: 11px; color: #6e7681; text-transform: uppercase; letter-spacing: .04em; }
+
     /* terrain palette (content browser) */
-    #palette { position: fixed; right: 0; top: 40px; bottom: 0; width: 250px; z-index: 12;
+    #palette { position: fixed; right: 0; top: 40px; bottom: 0; width: 268px; z-index: 12;
       background: #0f141aee; border-left: 1px solid #21262d; backdrop-filter: blur(6px);
       display: flex; flex-direction: column; }
     #palette .pal-head { padding: 8px; border-bottom: 1px solid #21262d; display: flex;
       gap: 8px; align-items: center; }
-    #palette .pal-title { color: #e6edf3; font-weight: 600; }
+    #palette .pal-title { color: #e6edf3; font-weight: 600; flex: 1; }
     /* Native selects render as a white Windows control; restyle it fully. */
     #pal-cat { flex: 1; min-width: 0; background: #0d1014; border: 1px solid #30363d;
       border-radius: 6px; padding: 5px 26px 5px 8px; color: #c9d1d9; font-size: 12px;
@@ -486,77 +519,13 @@
     <button id="viewbtn" style="display:none" title="switch between the 3D orbit view and a 2D top-down plan view">View: 3D</button>
     <button id="objects" style="display:none">Objects</button>
     <button id="showobj" style="display:none">Objects: on</button>
-    <button id="palbtn" style="display:none">Ground</button>
+    <!-- The terrain tools and the tiles they paint with live in #palette; the
+         bar keeps the one button that opens it, which also reads as what is
+         armed, since the panel can be closed while the brush is live. -->
+    <button id="palbtn" style="display:none" title="terrain brushes and the ground tiles">Terrain</button>
     <button id="objpalbtn" style="display:none" title="place objects from the game's catalogue">Objects+</button>
     <button id="mapbtn" style="display:none" title="map settings — name, size, rules">Map…</button>
     <button id="maptreebtn" style="display:none" title="edit every map setting as a tree">Tree</button>
-    <!-- Brush controls stay visible for the whole session once a map is open.
-         The mode and size selectors must never hide behind the arm toggle:
-         choosing Raise is how you arm a height brush in the first place. -->
-    <label id="brushwrap" style="display:none">
-      <button id="brushbtn" title="left-drag edits the terrain; middle/right still move the camera">Brush: off</button>
-      <select id="brushmode" title="what the brush does">
-        <option value="paint">Paint tile</option>
-        <option value="bulk">Bulk (smooth up)</option>
-        <option value="dig">Dig (smooth down)</option>
-        <option value="raise">Raise (plateau)</option>
-        <option value="lower">Lower (pit)</option>
-        <option value="ramp">Ramp (walkable step)</option>
-        <option value="level">Plateau (level to here)</option>
-        <option value="kind">Ground kind (tier)</option>
-        <option value="river">River plane</option>
-        <option value="mask">Mask (block)</option>
-        <option value="erase">Erase (unblock)</option>
-      </select>
-      <select id="brushsizesel" title="brush width in tiles">
-        <option value="1">1×1</option>
-        <option value="3">3×3</option>
-        <option value="5">5×5</option>
-        <option value="7">7×7</option>
-        <option value="vertex">Vertex</option>
-        <option value="rect">Rect</option>
-      </select>
-      <!-- Bulk/Dig only: how much one stroke moves the ground, and how far that
-           movement carries to the vertices around it. Without these the height
-           brush had one fixed step and one fixed taper, so most heights a real
-           map holds were simply not reachable. -->
-      <input id="brushforce" type="number" min="0.001" max="32" step="0.05" value="0.35"
-             title="force: units of height one stroke adds at the centre">
-      <!-- Ground kind: the tier a vertex belongs to, and whether it is a ramp.
-           Painted on its own because every other tool moves the ground to change
-           it, and a surface already at its final height must not be moved. -->
-      <select id="kindtier" title="ground kind the Tier brush paints">
-        <option value="0">water</option>
-        <option value="1">ground</option>
-        <option value="2" selected>plateau 2</option>
-        <option value="3">plateau 3</option>
-        <option value="4">plateau 4</option>
-        <option value="5">plateau 5</option>
-      </select>
-      <label id="kindrampwrap" title="ramp: walkable half-step instead of a wall">
-        <input id="kindramp" type="checkbox"> ramp
-      </label>
-      <!-- Paint strength, and whether a stroke replaces the other layers under
-           it. Real ground blends several tiles at one vertex, which a replacing
-           brush at full strength cannot produce. -->
-      <input id="tilestrength" type="number" min="0" max="255" step="5" value="255"
-             title="paint weight 0..255 for the selected tile">
-      <label id="tilesolowrap" title="write only this layer, leaving the others under it alone">
-        <input id="tilesolo" type="checkbox"> blend
-      </label>
-      <!-- The river plane is finer than the tile grid and graded, so it gets its
-           own strength; carving the bed is optional because ground that is
-           already at its final height must not be dug. -->
-      <input id="riverstrength" type="number" min="0" max="255" step="5" value="255"
-             title="river strength 0..255; 0 erases">
-      <label id="rivercarvewrap" title="also sink the bed under painted water — for the river brush and for painting a Water tile">
-        <input id="rivercarve" type="checkbox" checked> carve
-      </label>
-      <label id="brushtensionwrap" title="tension: 1 tapers to the rim, 0 lifts the whole brush evenly">
-        pull <input id="brushtension" type="range" min="0" max="1" step="0.05" value="1">
-        <span id="brushtensionval">1.00</span>
-      </label>
-    </label>
     <button id="cliffbtn" style="display:none" title="rock texture on steep faces">Cliffs</button>
     <button id="blockbtn" style="display:none" title="tile grid: passability wash plus building footprints">Grid</button>
     <button id="floor" style="display:none"></button>
@@ -633,9 +602,91 @@
   <!-- terrain palette: the content browser's first tab — ground tiles to paint with -->
   <div id="palette" style="display:none">
     <div class="pal-head">
-      <span class="pal-title">Ground</span>
-      <select id="pal-cat"></select>
+      <span class="pal-title">Terrain</span>
+      <button id="brushbtn" title="left-drag edits the terrain; middle/right still move the camera">off</button>
+      <button id="pal-close" title="close">✕</button>
     </div>
+    <div class="bp-body">
+      <label class="bp-row"><span class="k">tool</span>
+        <select id="brushmode" title="what the brush does">
+          <option value="paint">Paint tile</option>
+          <option value="bulk">Bulk (smooth up)</option>
+          <option value="dig">Dig (smooth down)</option>
+          <option value="raise">Raise (plateau)</option>
+          <option value="lower">Lower (pit)</option>
+          <option value="ramp">Ramp (walkable step)</option>
+          <option value="level">Plateau (level to here)</option>
+          <option value="kind">Ground kind (tier)</option>
+          <option value="river">River plane</option>
+          <option value="mask">Mask (block)</option>
+          <option value="erase">Erase (unblock)</option>
+        </select>
+      </label>
+      <label class="bp-row"><span class="k">size</span>
+        <select id="brushsizesel" title="brush width in tiles">
+          <option value="1">1×1</option>
+          <option value="3">3×3</option>
+          <option value="5">5×5</option>
+          <option value="7">7×7</option>
+          <option value="vertex">Vertex (one corner)</option>
+          <option value="rect">Rect (drag it out)</option>
+        </select>
+      </label>
+      <!-- Bulk/Dig only: how much one stroke moves the ground, and how far that
+           movement carries to the vertices around it. Without these the height
+           brush had one fixed step and one fixed taper, so most heights a real
+           map holds were simply not reachable. -->
+      <label class="bp-row" id="bp-force"><span class="k">force</span>
+        <input id="brushforce" type="number" min="0.001" max="32" step="0.05" value="0.35"
+               title="units of height one stroke adds at the centre">
+      </label>
+      <label class="bp-row" id="bp-tension" title="1 tapers to the rim, 0 lifts the whole brush evenly">
+        <span class="k">pull</span>
+        <input id="brushtension" type="range" min="0" max="1" step="0.05" value="1">
+        <span class="bp-val" id="brushtensionval">1.00</span>
+      </label>
+      <!-- Ground kind: the tier a vertex belongs to, and whether it is a ramp.
+           Painted on its own because every other tool moves the ground to change
+           it, and a surface already at its final height must not be moved. -->
+      <label class="bp-row" id="bp-tier"><span class="k">kind</span>
+        <select id="kindtier" title="ground kind the Tier brush paints">
+          <option value="0">water</option>
+          <option value="1">ground</option>
+          <option value="2" selected>plateau 2</option>
+          <option value="3">plateau 3</option>
+          <option value="4">plateau 4</option>
+          <option value="5">plateau 5</option>
+        </select>
+        <span class="bp-check" title="ramp: walkable half-step instead of a wall">
+          <input id="kindramp" type="checkbox"> ramp
+        </span>
+      </label>
+      <!-- Paint strength, and whether a stroke replaces the other layers under
+           it. Real ground blends several tiles at one vertex, which a replacing
+           brush at full strength cannot produce. -->
+      <label class="bp-row" id="bp-weight"><span class="k">weight</span>
+        <input id="tilestrength" type="number" min="0" max="255" step="5" value="255"
+               title="paint weight 0..255 for the selected tile">
+        <span class="bp-check" title="write only this layer, leaving the others under it alone">
+          <input id="tilesolo" type="checkbox"> blend
+        </span>
+      </label>
+      <!-- The river plane is finer than the tile grid and graded, so it gets its
+           own strength; carving the bed is optional because ground that is
+           already at its final height must not be dug. -->
+      <label class="bp-row" id="bp-river"><span class="k">water</span>
+        <input id="riverstrength" type="number" min="0" max="255" step="5" value="255"
+               title="river strength 0..255; 0 erases">
+      </label>
+      <!-- Carving belongs to a water stroke wherever it comes from, so it shows
+           for the tile brush too: painting a Water tile is one. -->
+      <label class="bp-row" id="bp-carve" title="also sink the bed under painted water">
+        <span class="k">bed</span>
+        <span class="bp-check"><input id="rivercarve" type="checkbox" checked> carve it down</span>
+      </label>
+      <div class="bp-note" id="bp-note"></div>
+    </div>
+    <div class="pal-sect">tiles<select id="pal-cat"></select></div>
     <div id="pal-grid"></div>
     <div class="pal-foot">
       <div id="pal-sel">no tile selected</div>

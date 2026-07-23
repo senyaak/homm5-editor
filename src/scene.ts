@@ -754,7 +754,13 @@ export function buildScene(
     floors.push({
       name: NAMES[f] ?? String(f),
       V: t.V,
-      heights: Array.from(t.H, (v) => +v.toFixed(3)),
+      // Full precision, deliberately. Rounding these to 3 decimals shrank the
+      // payload and quietly became an EDIT: a brush stroke works from this copy
+      // (`fl.heights[v] + force`) and sends the result back, so every vertex a
+      // stroke touched landed up to 0.0005 off what the file held — invisible in
+      // the game, fatal to a reconstruction, and it made "the app's heights" and
+      // "the file's heights" two different answers.
+      heights: Array.from(t.H),
       colors: t.colors,
       flags: t.flags,
       riverVerts: t.riverVerts,

@@ -91,12 +91,25 @@ const V = A.V, N = A.N;
  * corner is a different problem from one that is wrong everywhere, and the
  * bounding box plus a few sample vertices says which without dumping 9216 rows.
  */
+/**
+ * How far apart two values may be and still count as equal.
+ *
+ * Zero for the u8 planes — a weight is a weight. Heights are float32 written
+ * from a double the brush computed, so the last bits are not reproducible and
+ * are not worth reproducing: the original stores 1.7999998 where a stroke lands
+ * on the nearest float32 to 1.8, a difference of one ULP and about a
+ * ten-millionth of a tile's height. The threshold is the same 1e-4 the
+ * reconstruction specs hold themselves to.
+ */
+const HEIGHT_EPS = 1e-4;
+
 function comparePlane(
   name: string,
   a: ArrayLike<number> | null,
   b: ArrayLike<number> | null,
   side: number,
   fmt: (v: number) => string = String,
+  eps = 0,
 ): void {
   if (!a && !b) { ok(`${name}`, 'absent in both'); return; }
   if (!a || !b) { fail(name, a ? 'missing in ours' : 'present in ours, absent in the original'); return; }
@@ -105,9 +118,9 @@ function comparePlane(
   const bad: number[] = [];
   let maxDelta = 0;
   for (let i = 0; i < a.length; i++) {
-    if (a[i] === b[i]) continue;
-    bad.push(i);
     const d = Math.abs(a[i]! - b[i]!);
+    if (d <= eps) continue;
+    bad.push(i);
     if (d > maxDelta) maxDelta = d;
   }
   if (!bad.length) { ok(name, `${a.length} values`); return; }
@@ -198,7 +211,8 @@ for (const layer of la) {
 
 console.log('\nHEIGHTS');
 const f2 = (v: number): string => v.toFixed(3);
-comparePlane('height', A.height ? readHeights(A) : null, B.height ? readHeights(B) : null, V, f2);
+comparePlane('height', A.height ? readHeights(A) : null, B.height ? readHeights(B) : null, V, f2,
+  HEIGHT_EPS);
 
 // --- movement planes -------------------------------------------------------
 

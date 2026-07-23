@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "harness",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["tools/serve-harness.js"],
+      "port": 8123,
+      "url": "http://localhost:8123/harness.html"
+    }
+  ]
+}

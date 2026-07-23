@@ -11,7 +11,7 @@
 import { test, expect } from '@playwright/test';
 import { launchEditor } from './launch.ts';
 import type { Launched } from './launch.ts';
-import { armBrush, dragTiles, pickTile, setTileStrength } from './tiles.ts';
+import { armBrush, dragTiles, openBrushPanel, pickTile, setTileStrength } from './tiles.ts';
 import {
   NEED_FIXTURE, clickAt, fixture, hasFixture, mismatches, openMap, saveTerrain, vertexPixels,
 } from './c1m1.ts';
@@ -36,7 +36,10 @@ test('C1M1 ground textures, layer by layer', async () => {
   const pixels = await vertexPixels(page, V);
 
   // Painting a Water tile carves its bed and marks the river plane; both are
-  // already authored, and the ground is at its final height.
+  // already authored, and the ground is at its final height. The toggle lives in
+  // the brush panel, which is opened first because whether it was left open is a
+  // persisted preference.
+  await openBrushPanel(page);
   await page.locator('#rivercarve').setChecked(false);
 
   let writes = 0;

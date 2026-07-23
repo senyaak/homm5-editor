@@ -99,13 +99,26 @@ export async function dragTiles(page: Page, from: [number, number], to: [number,
   await page.mouse.up();
 }
 
-/** Arm the terrain brush in a given mode and size, through the toolbar. */
+/**
+ * Arm the terrain brush in a given mode and size, through the terrain panel.
+ *
+ * The panel is opened first: the brush controls live there rather than in the
+ * bar, and whether it was left open is a persisted preference — a test must not
+ * depend on how the last session closed.
+ */
 export async function armBrush(page: Page, mode: string, size: '1' | '3' | '5' | '7' | 'vertex' | 'rect' = '1'): Promise<void> {
+  await openBrushPanel(page);
   await page.locator('#brushmode').selectOption(mode);
   await page.locator('#brushsizesel').selectOption(size);
   const btn = page.locator('#brushbtn');
   if ((await btn.textContent())?.includes('off')) await btn.click();
-  await expect(btn).toHaveText('Brush: on');
+  await expect(btn).toHaveText('on');
+}
+
+/** Show the terrain panel — brushes on top, ground tiles below — if it is closed. */
+export async function openBrushPanel(page: Page): Promise<void> {
+  if (!(await page.locator('#palette').isVisible())) await page.locator('#palbtn').click();
+  await expect(page.locator('#palette')).toBeVisible();
 }
 
 /**
@@ -177,8 +190,7 @@ export async function pickTile(page: Page, path: string): Promise<void> {
   }, path);
   if (!info) throw new Error(`no tile in the catalogue for ${path}`);
 
-  if (!(await page.locator('#palette').isVisible())) await page.locator('#palbtn').click();
-  await expect(page.locator('#palette')).toBeVisible();
+  await openBrushPanel(page);
   await page.locator('#pal-cat').selectOption({ value: info.category });
   // Exact text, not a substring: "Ground" is inside "DarkGround" and "Grass"
   // inside "Dark_Grass", so a loose match silently picks a neighbouring tile and

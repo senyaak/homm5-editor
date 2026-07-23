@@ -204,8 +204,11 @@ placing new ones from a palette.
         weight cannot be nudged and a tile cannot be erased at all — which is
         why there is no way to take a river back off the ground.
       - Layout: the original keeps size, terraforming, the tile grid and those
-        modifiers in ONE panel. Ours are split between the top toolbar and the
-        Ground palette and should move into the panel.
+        modifiers in ONE panel. **Done** (2026-07-23) — the Terrain panel is one
+        strip: tool, size and that tool's settings on top, the tile browser
+        filling the rest. The bar keeps a single button, which reads as what is
+        armed. Only the current mode's settings are shown; the header used to
+        carry all nine at once, tier picker and river strength included.
 - [x] Object palette + drag and drop — `src/objects.ts`. Catalogue from the
       1466 `_(AdvMapObjectLink)` files, groups from `Editor/MapFilters.xml`,
       icons from `Editor/IconCache`. Placing clones an object of the same type

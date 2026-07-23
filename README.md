@@ -62,9 +62,10 @@ so a `.cts` preload dies on the first type annotation — silently, leaving
 - **Rect** beside the 1/3/5/7 brush sizes: drag out a rectangle, which previews
   as you go and applies once on release. It works with every tool. All of them remesh
   live, and a basin dug on a dry map raises its sea immediately.
-- **Ground palette and tile brush**: all 82 shipped tiles previewed from their
-  own `.dds`, grouped by category. Pick one, arm the brush, and left-drag to
-  paint at 1/3/5/7 tiles wide. The stroke goes into the mask texture on the GPU
+- **Terrain panel**: one strip holding the brush (tool, size, and the settings
+  that tool actually has) above the tile browser — all 82 shipped tiles
+  previewed from their own `.dds`, grouped by category. Pick one, arm the brush,
+  and left-drag to paint at 1/3/5/7 tiles wide. The stroke goes into the mask texture on the GPU
   for immediate feedback and into the main process, which owns the bytes that
   get saved.
 - **Passability grid** and the movement mask (the original editor's Masks tab):

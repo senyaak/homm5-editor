@@ -60,7 +60,10 @@ The target is **1:1 in content**. Identity of the *bytes* is not reachable for
 the XML — object ids are fresh GUIDs, element order and float formatting differ —
 so the map document is compared normalized and semantically. `GroundTerrain.bin`
 has no such excuse: it is a fixed grid of values, and every value should end up
-the same. Per subsystem:
+the same. The one allowance is float32 noise in the heights — a stroke computes
+a double and stores the nearest float32, so where the original holds 1.7999998
+we land on 1.8 exactly, an ULP apart — and heights are therefore compared to
+1e-4, the same threshold the specs use. Per subsystem:
 
 - **Map params** — the whole `<AdvMapDesc>` scalar/enum/ref set (our schema
   already enumerates it): equal after normalizing whitespace and numeric form.
