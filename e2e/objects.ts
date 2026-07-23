@@ -102,6 +102,62 @@ export async function setPlacement(
   }
 }
 
+/**
+ * Set one of the selected object's simple fields, in the property panel.
+ *
+ * The row is found by the field's own name — the label carries it as its title,
+ * whatever the curated label says — and the control is whatever the schema chose
+ * for it: a dropdown for an enum or a registry, a checkbox for a boolean, a box
+ * for the rest. So this drives exactly what a person clicks, and it keeps
+ * working when a field's control changes, because it never assumes one.
+ */
+export async function setObjectProp(page: Page, name: string, value: string): Promise<void> {
+  const row = page.locator('#p-props .pf').filter({ has: page.locator(`label[data-field="${name}"]`) }).first();
+  await expect(row, `the panel offers ${name}`).toBeVisible();
+  const control = row.locator('select, input[type=text], input[type=number], input[type=checkbox]').first();
+  const kind = await control.evaluate((el) => `${el.tagName}:${(el as HTMLInputElement).type ?? ''}`);
+  if (kind.startsWith('SELECT')) { await control.selectOption(value); return; }
+  if (kind === 'INPUT:checkbox') { await control.setChecked(value === 'true'); return; }
+  await control.fill(value);
+  await control.dispatchEvent('change');
+}
+
+/** The simple fields the panel currently shows, by name. */
+export async function objectPropValues(page: Page): Promise<Record<string, string>> {
+  return page.evaluate(() => {
+    const out: Record<string, string> = {};
+    for (const row of document.querySelectorAll('#p-props .pf')) {
+      const label = row.querySelector('label');
+      const c = row.querySelector('select, input') as HTMLInputElement | HTMLSelectElement | null;
+      const name = label?.dataset.field;
+      if (!name || !c) continue;
+      out[name] = c instanceof HTMLInputElement && c.type === 'checkbox' ? String(c.checked) : c.value;
+    }
+    return out;
+  });
+}
+
+/**
+ * Point a text-file reference (a sign's message, a biography) at a file of this
+ * name, creating it — the panel's "New" button and the dialog it opens.
+ *
+ * A campaign mission's texts live in the campaign's own text archive, not beside
+ * the map, so what a reconstruction reproduces is the REFERENCE; the file it
+ * creates here is the local, empty counterpart the archive supplies at runtime.
+ */
+export async function setTextRef(page: Page, field: string, name: string): Promise<void> {
+  const row = page.locator('#p-props .pf').filter({ has: page.locator(`label[data-field="${field}"]`) }).first();
+  await expect(row, `the panel offers ${field}`).toBeVisible();
+  await row.locator('button', { hasText: 'New' }).first().click();
+  await expect(page.locator('#objnew')).toBeVisible();
+  await page.locator('#on-name').fill(name);
+  await page.locator('#on-ok').click();
+  await expect(page.locator('#objnew')).toBeHidden();
+  // Creating one opens its text editor; the reconstruction has no text to type.
+  const doc = page.locator('#docedit');
+  if (await doc.isVisible()) await page.locator('#de-close').click();
+}
+
 /** Radians as the degrees the panel takes. */
 export const degOf = (rad: number): number => ((rad * 180 / Math.PI) % 360 + 360) % 360;
 

@@ -549,7 +549,7 @@
   <!-- map tree: the whole <AdvMapDesc> as a schema-typed, editable tree -->
   <div id="maptree" style="display:none">
     <div class="mt-head">
-      <span class="mt-title">Map tree</span>
+      <span class="mt-title" id="mt-title">Map tree</span>
       <label class="mt-adv" title="show deep/rare structures"><input id="mt-adv" type="checkbox"> advanced</label>
       <button id="mt-close" title="close">✕</button>
     </div>
@@ -597,7 +597,14 @@
       <button id="p-rotl" title="rotate 90° left">⟲</button>
       <button id="p-rotr" title="rotate 90° right">⟳</button>
     </div>
-    <div class="prow"><button id="p-del" class="danger" title="delete this object (Del)">Delete object</button></div>
+    <!-- Everything this object carries, not only the fields a text box can
+         hold: a hero's army, a capture trigger, a monster's reward resources
+         are structures, and they open in the same schema-typed tree the map's
+         own settings use. -->
+    <div class="prow">
+      <button id="p-tree" title="edit every field of this object as a tree">Tree…</button>
+      <button id="p-del" class="danger" title="delete this object (Del)">Delete object</button>
+    </div>
     <!-- Simple fields read from the object itself, so every type shows what it
          actually carries rather than what a hand-written table remembered. -->
     <div id="p-props"></div>

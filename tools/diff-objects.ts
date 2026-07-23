@@ -15,6 +15,7 @@
 import { readFileSync } from 'node:fs';
 import { loadMap } from '../src/map.ts';
 import type { HommMap, MapObject } from '../src/map.ts';
+import { objectProps, deref, objectSchema } from '../src/schema.ts';
 
 const [refPath, ourPath] = process.argv.slice(2);
 if (!refPath || !ourPath) {
@@ -141,7 +142,21 @@ else if (pairs.length) ok('rotations', `${pairs.length} matched`);
 // because "13 monsters have the wrong Amount" is one gap, not thirteen.
 console.log('\nFIELDS');
 const fieldDiffs = new Map<string, { n: number; sample: string }>();
-let named = 0;
+let named = 0, newer = 0;
+const newerFields = new Set<string>();
+
+/**
+ * The value a freshly placed object of this type carries for a field, per the
+ * schema. A field the ORIGINAL does not have at all, which ours carries at
+ * exactly this value, is a version difference and not a gap: our objects are
+ * built from a donor the game shipped later, whose type had the field.
+ */
+function schemaDefault(type: string, name: string): string | null {
+  const raw = objectProps(type)[name];
+  if (!raw) return null;
+  const f = deref(objectSchema, raw);
+  return f.default === undefined || typeof f.default === 'object' ? null : String(f.default);
+}
 for (const [a, b] of pairs) {
   const av = new Map(a.obj.props().map((p) => [p.name, p.value]));
   const bv = new Map(b.obj.props().map((p) => [p.name, p.value]));
@@ -165,12 +180,22 @@ for (const [a, b] of pairs) {
   }
   for (const name of bv.keys()) {
     if (av.has(name)) continue;
+    const def = schemaDefault(a.obj.type, name);
+    if (def !== null && bv.get(name) === def) {
+      newer++; newerFields.add(`${a.obj.type}.${name}`);
+      continue;
+    }
     const key = `${a.obj.type}.${name}`;
     const cur = fieldDiffs.get(key);
     fieldDiffs.set(key, { n: (cur?.n ?? 0) + 1, sample: cur?.sample ?? `(absent) vs "${bv.get(name)}"` });
   }
 }
 if (named) ok('names we add where the original leaves none', `${named} object(s) — deliberate`);
+if (newer) {
+  ok('fields the original version did not have, at their defaults',
+    `${newer} on ${newerFields.size} field(s): ${[...newerFields].slice(0, 4).join(', ')}`
+    + (newerFields.size > 4 ? ' …' : ''));
+}
 if (!fieldDiffs.size && pairs.length) ok('every field of every matched object');
 for (const [key, d] of [...fieldDiffs].sort((a, b) => b[1].n - a[1].n)) {
   fail(key, `${d.n} object(s), e.g. ${d.sample}`);

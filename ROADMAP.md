@@ -139,6 +139,17 @@ placing new ones from a palette.
       minutes. `npm run diff-objects` matches every object, position and facing.
       Their FIELDS are the next stage — and they are to be edited through the
       JSON schema (`$ref` for what repeats), not per-type tables in the UI.
+- [x] ✅ **C1M1's object fields** (2026-07-23) — `e2e/c1m1-7-fields.spec.ts`:
+      26 values through the property panel, 4 sign messages, and 6 army stacks
+      through the object tree. `npm run diff-objects` reports 0 differences.
+- [x] **The object tree** (2026-07-23): the map-settings tree pointed at one
+      object, opened with "Tree…" in the object panel. Structures — a hero's
+      army, a capture trigger, a monster's reward resources — have no honest
+      text box, and the answer is not a panel per type: `ArmySlot`, `Resources`
+      and `Trigger` are declared once in `src/objects.schema.json` `$defs`, and
+      one renderer reads them wherever they appear. Also fixed on the way: a
+      reference field (`href`) could be read and never written, and the panel
+      ignored `x-file` where the tree honoured it ✅
 - [ ] ⬜ Multi-select, copy/paste
 - [x] Property panel: every simple field of the selected object, read from the
       object itself rather than a per-type table. Editors inferred from the

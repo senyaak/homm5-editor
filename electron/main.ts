@@ -36,7 +36,7 @@ import type { RegistryName, FieldSchema } from '../src/schema.ts';
 import { readTypeSpec, fieldOrder, typesXmlPath, fieldValues } from '../src/typespec.ts';
 import type { FieldOrder, SpecType } from '../src/typespec.ts';
 import { readTree, setPath, addStringItem, removeItem, appendItem, indentText, nodeAt, setList } from '../src/tree.ts';
-import { mapSchema, resolveSchemaAtPath, deref, schemaForClass, objectProps, objectSchema, controlOf } from '../src/schema.ts';
+import { mapSchema, resolveSchemaAtPath, resolveObjectPath, deref, schemaForClass, objectProps, objectSchema, controlOf } from '../src/schema.ts';
 import { buildItem, isBuildable, buildEntity } from '../src/skeleton.ts';
 import { children, find, text, serialize, parse } from '../src/xml.ts';
 import type { XmlElement, XmlNode } from '../src/xml.ts';
@@ -51,6 +51,7 @@ import type {
   EntityReadPayload, EntityReadResult, EntitySetPathPayload, PickTextResult, EntityCopyPayload, EntityCopyResult,
   SuggestNamePayload, SuggestNameResult,
   MapTreeResult, SetPathPayload, AddItemPayload, RemoveItemPayload2, SetListPayload, NamesPayload, NamesResult,
+  ObjectTreePayload, ObjectTreeResult, ObjectSetPathPayload, ObjectAddItemPayload, ObjectRemoveItemPayload,
   ReadFilePayload, ReadFileResult, WriteFilePayload,
   ObjectCatalogResult, IconPayload, IconResult, AddObjectPayload, AddObjectResult,
   MapSaveResult, MapPackResult, TerrainTilesResult, MapStatusResult, OpenMapDialogResult,
@@ -998,6 +999,51 @@ ipcMain.handle('map:remove-item', async (_e: IpcMainInvokeEvent, p: RemoveItemPa
   if (!done) throw new Error(`cannot remove ${p.path.join('.')}`);
   return { ok: true };
 });
+// --- IPC: one object as a tree ---
+//
+// The property panel edits an object's simple fields; its STRUCTURES — a hero's
+// army, a capture trigger, a monster's reward resources — have children and no
+// honest text box. They are declared in the object schema's `$defs` and reached
+// with the same tree the map's own settings use: one renderer, one set of edit
+// primitives (src/tree.ts), rooted at the object's element instead of the map's.
+ipcMain.handle('object:tree', async (_e: IpcMainInvokeEvent, p: ObjectTreePayload): Promise<ObjectTreeResult> => {
+  if (!session) throw new Error('no map loaded');
+  const obj = findObject(session, p.id);
+  return { type: obj.type, tree: readTree(obj.el) };
+});
+ipcMain.handle('object:set-path', async (_e: IpcMainInvokeEvent, p: ObjectSetPathPayload): Promise<ObjectEditResult> => {
+  if (!session) throw new Error('no map loaded');
+  const obj = findObject(session, p.id);
+  const done = record(session, `set ${p.path.join('.')}`, { map: true }, () => setPath(obj.el, p.path, p.value));
+  if (!done) throw new Error(`cannot set ${p.path.join('.')}`);
+  return { ok: true };
+});
+ipcMain.handle('object:add-item', async (_e: IpcMainInvokeEvent, p: ObjectAddItemPayload): Promise<ObjectEditResult> => {
+  if (!session) throw new Error('no map loaded');
+  const obj = findObject(session, p.id);
+  // A list of structures (army stacks) gets an item built from its schema with
+  // the declared defaults; a list of plain values gets <Item>v</Item>.
+  const arrField = resolveObjectPath(obj.type, p.path);
+  const itemSchema = arrField?.items ? deref(objectSchema, arrField.items) : null;
+  const done = record(session, `add ${p.path.join('.')}`, { map: true }, () => {
+    if (isBuildable(itemSchema)) {
+      const container = nodeAt(obj.el, p.path);
+      if (!container) return false;
+      return appendItem(obj.el, p.path, buildItem(objectSchema, itemSchema!, indentText(container)));
+    }
+    return addStringItem(obj.el, p.path, p.value ?? '');
+  });
+  if (!done) throw new Error(`cannot add to ${p.path.join('.')}`);
+  return { ok: true };
+});
+ipcMain.handle('object:remove-item', async (_e: IpcMainInvokeEvent, p: ObjectRemoveItemPayload): Promise<ObjectEditResult> => {
+  if (!session) throw new Error('no map loaded');
+  const obj = findObject(session, p.id);
+  const done = record(session, `remove ${p.path.join('.')}`, { map: true }, () => removeItem(obj.el, p.path));
+  if (!done) throw new Error(`cannot remove ${p.path.join('.')}`);
+  return { ok: true };
+});
+
 ipcMain.handle('map:set-list', async (_e: IpcMainInvokeEvent, p: SetListPayload): Promise<ObjectEditResult> => {
   if (!session) throw new Error('no map loaded');
   const done = record(session, `set list ${p.path.join('.')}`, { map: true }, () => setList(session!.map.desc, p.path, p.values));

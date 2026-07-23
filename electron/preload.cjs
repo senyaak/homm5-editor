@@ -34,6 +34,12 @@ const api = {
   suggestName: (className) => ipcRenderer.invoke('map:suggest-name', { className }),
   names: (kind) => ipcRenderer.invoke('map:names', { kind }),
   mapTree: () => ipcRenderer.invoke('map:tree'),
+  // The same tree, rooted at one object — structures a flat property list
+  // cannot reach (a hero's army, a capture trigger).
+  objectTree: (p) => ipcRenderer.invoke('object:tree', p),
+  setObjectPath: (p) => ipcRenderer.invoke('object:set-path', p),
+  addObjectItem: (p) => ipcRenderer.invoke('object:add-item', p),
+  removeObjectItem: (p) => ipcRenderer.invoke('object:remove-item', p),
   setMapPath: (p) => ipcRenderer.invoke('map:set-path', p),
   addMapItem: (p) => ipcRenderer.invoke('map:add-item', p),
   removeMapItem: (p) => ipcRenderer.invoke('map:remove-item', p),

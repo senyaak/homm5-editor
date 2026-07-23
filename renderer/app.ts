@@ -1688,6 +1688,7 @@ function propRow(p: ObjectProp, commit: (name: string, value: string) => void, l
   const lab = document.createElement('label');
   lab.textContent = label;
   lab.title = p.name;
+  lab.dataset.field = p.name;
   row.appendChild(lab);
 
   if (p.kind === 'href') {
@@ -1822,6 +1823,10 @@ function rowShell(field: FieldSchema | null, rawName: string): { row: HTMLElemen
   const label = document.createElement('label');
   label.textContent = field?.title || rawName;
   label.title = field?.description ? `${rawName} — ${field.description}` : rawName;
+  // The field's own name, on the element rather than only inside a tooltip that
+  // also carries its description. Automation addresses rows by it, and so does
+  // anything else that needs to find "the Amount row" without parsing English.
+  label.dataset.field = rawName;
   row.appendChild(label);
   return { row };
 }
@@ -1858,6 +1863,16 @@ function fieldRow(p: ObjectProp, field: FieldSchema | null, commit: (name: strin
     return row;
   }
   if (!field) return propRow(p, commit);
+  // A text-file reference (a sign's message, a hero's biography): the same
+  // control the tree gives it — show the file, edit its text, pick another, or
+  // create one. The panel used to fall through to the read-only href row, so a
+  // sign's message could be read and never written, which is most of what a
+  // sign IS. One schema flag, one control, both places.
+  if (field['x-file']) {
+    const { row } = rowShell(field, p.name);
+    row.appendChild(fileRefControl(p.value, field.title || p.name, (v) => commit(p.name, v)));
+    return row;
+  }
   if (field['x-nameRef']) {
     const { row } = rowShell(field, p.name);
     row.appendChild(nameRefInput(field['x-nameRef'], p.value, (v) => commit(p.name, v)));
@@ -1972,6 +1987,10 @@ $input('p-rot').addEventListener('change', (e) => {
   void rotateSelected(+(e.currentTarget as HTMLInputElement).value);
 });
 
+$('p-tree').onclick = () => {
+  if (!selected) return;
+  openMapTree(objectTree(selected.id, selected.inst.type));
+};
 $('p-del').onclick = () => { void deleteSelected(); };
 // A button is a quarter turn from the current heading. Snapping the current
 // angle first means an object at an odd shipped angle aligns to the grid on the
@@ -2267,27 +2286,81 @@ function restrictHeroLevel(current: string): HTMLElement {
 // value from the data. Where the schema stops (deep stubs, mod additions) it
 // recurses on the data itself, so nothing in the file is hidden.
 
+/**
+ * What the tree is currently editing.
+ *
+ * The panel started as the map's own settings and is now pointed at objects too:
+ * a hero's army, a capture trigger, a monster's reward resources are structures
+ * with children, and a flat property list has no honest control for them. Rather
+ * than a second editor — or a hand-written panel per type, which is what the
+ * schema exists to avoid — the same renderer takes a different root: which
+ * fields to start from, which `$defs` a `$ref` resolves against, and where an
+ * edit is written.
+ */
+interface TreeTarget {
+  /** Shown in the panel's title bar. */
+  label: string;
+  /** Schema root a `$ref` resolves against. */
+  root: HasDefs;
+  /** The top-level fields to render. */
+  fields: () => Record<string, FieldSchema>;
+  read: () => Promise<TreeData>;
+  set: (path: TreePath, value: string) => Promise<unknown>;
+  add: (path: TreePath, value?: string) => Promise<unknown>;
+  remove: (path: TreePath) => Promise<unknown>;
+}
+
+const MAP_TREE: TreeTarget = {
+  label: 'Map tree',
+  root: mapSchema,
+  fields: () => mapSchema.properties,
+  read: async () => (await window.editor.mapTree()).tree as TreeData,
+  set: (path, value) => window.editor.setMapPath({ path, value }),
+  add: (path, value) => window.editor.addMapItem(value === undefined ? { path } : { path, value }),
+  remove: (path) => window.editor.removeMapItem({ path }),
+};
+
+/** The tree rooted at one object — same renderer, same edit primitives. */
+function objectTree(id: string, type: string): TreeTarget {
+  return {
+    label: `${type} · ${id.replace('item_', '').slice(0, 8)}`,
+    root: objectSchema,
+    fields: () => objectProps(type),
+    read: async () => (await window.editor.objectTree({ id })).tree as TreeData,
+    set: (path, value) => window.editor.setObjectPath({ id, path, value }),
+    add: (path, value) => window.editor.addObjectItem(value === undefined ? { id, path } : { id, path, value }),
+    remove: (path) => window.editor.removeObjectItem({ id, path }),
+  };
+}
+
+let treeTarget: TreeTarget = MAP_TREE;
+
 const mapTreeOpen = (): boolean => $('maptree').style.display !== 'none';
 let mtShowAdvanced = false;
 /** Expanded group paths, so a rebuild (after add/remove) keeps them open. */
 const mtOpen = new Set<string>();
 const pathKey = (path: TreePath): string => path.join(' ');
 
-function openMapTree(): void {
+function openMapTree(target: TreeTarget = MAP_TREE): void {
+  // Switching what the tree shows starts it collapsed: an expansion remembered
+  // from the map's players means nothing inside a monster.
+  if (target !== treeTarget) mtOpen.clear();
+  treeTarget = target;
   $('maptree').style.display = 'flex';
-  $('maptreebtn').classList.add('on');
+  $('maptreebtn').classList.toggle('on', target === MAP_TREE);
   void refreshMapTree();
 }
 function closeMapTree(): void { $('maptree').style.display = 'none'; $('maptreebtn').classList.remove('on'); }
 
 async function refreshMapTree(): Promise<void> {
   const body = $('maptree-body');
+  $('mt-title').textContent = treeTarget.label;
   let data: TreeData;
-  try { data = (await window.editor.mapTree()).tree as TreeData; }
-  catch (e) { body.textContent = 'could not read map tree: ' + (e instanceof Error ? e.message : String(e)); return; }
+  try { data = await treeTarget.read(); }
+  catch (e) { body.textContent = 'could not read tree: ' + (e instanceof Error ? e.message : String(e)); return; }
   body.innerHTML = '';
-  for (const [name, raw] of Object.entries(mapSchema.properties)) {
-    const field = deref(mapSchema, raw);
+  for (const [name, raw] of Object.entries(treeTarget.fields())) {
+    const field = deref(treeTarget.root, raw);
     if (field['x-advanced'] && !mtShowAdvanced) continue;
     body.appendChild(treeNode(name, field, dataAt(data, name), [name]));
   }
@@ -2322,7 +2395,7 @@ function leafRow(name: string, field: FieldSchema, data: TreeData | undefined, p
   label.title = field.description ? `${name} — ${field.description}` : name;
   row.appendChild(label);
   const value = typeof data === 'string' ? data : '';
-  row.appendChild(leafControl(field, value, (v) => { void setMapPath(path, v); }));
+  row.appendChild(leafControl(field, value, (v) => { void treeSet(path, v); }));
   return row;
 }
 
@@ -2427,7 +2500,7 @@ function fillObject(kids: HTMLElement, field: FieldSchema, data: TreeData | unde
   const seen = new Set<string>();
   for (const k of [...Object.keys(props), ...dataKeys]) {
     if (seen.has(k)) continue; seen.add(k);
-    const cf = props[k] ? deref(mapSchema, props[k]) : inferField(dataAt(data, k));
+    const cf = props[k] ? deref(treeTarget.root, props[k]) : inferField(dataAt(data, k));
     if (cf['x-advanced'] && !mtShowAdvanced) continue;
     kids.appendChild(treeNode(k, cf, dataAt(data, k), [...path, k]));
   }
@@ -2436,18 +2509,18 @@ function fillObject(kids: HTMLElement, field: FieldSchema, data: TreeData | unde
 /** Fill a list group: struct items recurse; value items get remove + an add row. */
 function fillArray(kids: HTMLElement, field: FieldSchema, data: TreeData | undefined, path: TreePath): void {
   const items = Array.isArray(data) ? data : [];
-  const itemField = field.items ? deref(mapSchema, field.items) : inferField(items[0]);
+  const itemField = field.items ? deref(treeTarget.root, field.items) : inferField(items[0]);
   const isStruct = itemField.type === 'object' || !!itemField.properties;
   if (isStruct) {
     // Struct items: each expandable, removable down to minItems; add builds a
     // default item from the schema (main side), allowed up to maxItems.
     const canRemove = items.length > (field.minItems ?? 0);
     items.forEach((it, i) => kids.appendChild(groupNode(`[${i}]`, itemField, it, [...path, i],
-      canRemove ? () => void mutateList(() => window.editor.removeMapItem({ path: [...path, i] })) : undefined)));
+      canRemove ? () => void mutateList(() => treeTarget.remove([...path, i])) : undefined)));
     if (field.maxItems === undefined || items.length < field.maxItems) {
       const add = document.createElement('div'); add.className = 'mt-add';
       const btn = document.createElement('button'); btn.textContent = `＋ add ${itemField.title || 'item'}`;
-      btn.addEventListener('click', () => void mutateList(() => window.editor.addMapItem({ path })));
+      btn.addEventListener('click', () => void mutateList(() => treeTarget.add(path)));
       add.appendChild(btn); kids.appendChild(add);
     }
     return;
@@ -2458,7 +2531,7 @@ function fillArray(kids: HTMLElement, field: FieldSchema, data: TreeData | undef
     const row = document.createElement('div'); row.className = 'mt-item';
     const iv = document.createElement('span'); iv.className = 'iv'; iv.textContent = String(it); iv.title = String(it);
     const x = document.createElement('button'); x.className = 'mt-x'; x.textContent = '✕'; x.title = 'remove';
-    x.addEventListener('click', () => { void mutateList(() => window.editor.removeMapItem({ path: [...path, i] })); });
+    x.addEventListener('click', () => { void mutateList(() => treeTarget.remove([...path, i])); });
     row.append(iv, x); kids.appendChild(row);
   });
   const add = document.createElement('div'); add.className = 'mt-add';
@@ -2467,7 +2540,7 @@ function fillArray(kids: HTMLElement, field: FieldSchema, data: TreeData | undef
   const btn = document.createElement('button'); btn.textContent = '＋ add';
   btn.addEventListener('click', () => {
     const v = (input as HTMLInputElement | HTMLSelectElement).value;
-    if (v) void mutateList(() => window.editor.addMapItem({ path, value: v }));
+    if (v) void mutateList(() => treeTarget.add(path, v));
   });
   add.appendChild(btn); kids.appendChild(add);
 }
@@ -2476,6 +2549,12 @@ function fillArray(kids: HTMLElement, field: FieldSchema, data: TreeData | undef
 async function mutateList(op: () => Promise<unknown>): Promise<void> {
   try { await op(); markDirty(true); await refreshMapTree(); }
   catch (e) { $('hud').textContent = 'tree edit failed: ' + (e instanceof Error ? e.message : String(e)); }
+}
+
+/** The same, for whatever the tree is currently editing. */
+async function treeSet(path: TreePath, value: string): Promise<void> {
+  try { await treeTarget.set(path, value); markDirty(true); $('hud').textContent = `${path.join('.')} = ${value || '(empty)'}`; }
+  catch (e) { $('hud').textContent = `could not set ${path.join('.')}: ` + (e instanceof Error ? e.message : String(e)); }
 }
 
 /** Write one leaf by path, then reflect dirty (the input already shows the value). */

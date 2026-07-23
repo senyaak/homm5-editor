@@ -187,6 +187,7 @@ e2e/c1m1-3-rivers.spec.ts      ~30 s     2317 cells
 e2e/c1m1-4-textures.spec.ts    ~6 min    12 layers, 112 908 writes
 e2e/c1m1-5-passability.spec.ts ~20 s     4939 tiles in 424 strokes
 e2e/c1m1-6-objects.spec.ts     ~8 min    2645 objects, 118 palette picks
+e2e/c1m1-7-fields.spec.ts      ~90 s     26 values, 4 text refs, 6 army stacks
 ```
 
 Each opens the map the previous one left (`e2e/c1m1.ts`), does its own pass,
@@ -326,6 +327,42 @@ turn now, in the spec and in `diff-objects`.
 its 2645 without one. The name is the handle Lua and the editor's own panels
 address an object by, so we keep writing it; `diff-objects` reports the count and
 does not count it as a difference.
+
+### Object fields: done ✅
+
+Only 26 values on 26 of the 2645 objects differ from what their type is placed
+with — how many peasants guard the bridge, whether they will join you, whether a
+treasure is custom. Plus four sign messages and six army stacks. `npm run
+diff-objects` is clean: every object matched, every field equal.
+
+The fields go in through the property panel and the panel's controls come from
+the schema (`src/objects.schema.json`) — an enum becomes a dropdown of what the
+game's own spec allows, a boolean a checkbox, a creature a roster picker. What
+the panel could not express was structures, and the answer is not a hand-written
+hero panel: the **object tree** is the map-settings tree pointed at one object,
+so `ArmySlot`, `Resources` and `Trigger` are declared once in `$defs` and reached
+the same way wherever they appear. Opened with "Tree…" in the object panel.
+
+Three real gaps closed on the way, all of them things a person would hit:
+
+- **A reference field could be read and not written.** `MapObject.setProp`
+  refused anything carrying an `href`, so a sign's message — which is most of
+  what a sign is — was uneditable. It writes the attribute now, the same rule
+  `src/tree.ts` already used.
+- **The panel ignored `x-file`,** falling through to a read-only row, while the
+  tree gave the same field a New/browse/edit control. One schema flag, one
+  control, both places.
+- **A field row could only be found by reading English.** The label's tooltip
+  carries the field's description, so the name is now on the element itself
+  (`data-field`) — which is also what let the reconstruction address rows at all.
+
+**Accepted deviation:** our objects carry eight fields the original's version did
+not have (`TerrainAligned`, `ScalePercent`, a monster's `RacesRandomGroupID` …),
+each at the default the schema declares, because they are built from a donor the
+game shipped later. `diff-objects` checks the value against that default and
+reports them as a version difference rather than a gap. A sign's message file is
+created locally where the original's lives in the campaign's text archive — the
+same case as `name.txt` and `description.txt` above.
 
 ## Milestone 0 — the one missing primitive: New Map
 

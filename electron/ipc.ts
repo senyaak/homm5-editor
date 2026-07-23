@@ -257,6 +257,20 @@ export interface MapTreeResult {
   tree: unknown;
 }
 
+/**
+ * An object's whole content as a tree — the same shape `map:tree` returns, for
+ * the same renderer. Structures a flat property list cannot express (a hero's
+ * army, a capture trigger, a monster's reward resources) are only reachable
+ * this way, and they are declared once in the object schema's `$defs`.
+ */
+export interface ObjectTreePayload { id: string }
+export interface ObjectTreeResult { type: string; tree: unknown }
+/** Payload of `object:set-path` — a path INSIDE one object. */
+export interface ObjectSetPathPayload { id: string; path: TreePath; value: string }
+/** Payload of `object:add-item` / `object:remove-item`. */
+export interface ObjectAddItemPayload { id: string; path: TreePath; value?: string }
+export interface ObjectRemoveItemPayload { id: string; path: TreePath }
+
 /** Payload of `map:set-path`. */
 export interface SetPathPayload { path: TreePath; value: string; }
 /** Payload of `map:add-item`. `value` is used for value lists; struct lists build
@@ -546,6 +560,10 @@ export interface EditorApi {
   suggestName(className: string): Promise<SuggestNameResult>;
   names(kind: string): Promise<NamesResult>;
   mapTree(): Promise<MapTreeResult>;
+  objectTree(p: ObjectTreePayload): Promise<ObjectTreeResult>;
+  setObjectPath(p: ObjectSetPathPayload): Promise<ObjectEditResult>;
+  addObjectItem(p: ObjectAddItemPayload): Promise<ObjectEditResult>;
+  removeObjectItem(p: ObjectRemoveItemPayload): Promise<ObjectEditResult>;
   setMapPath(p: SetPathPayload): Promise<ObjectEditResult>;
   addMapItem(p: AddItemPayload): Promise<ObjectEditResult>;
   removeMapItem(p: RemoveItemPayload2): Promise<ObjectEditResult>;

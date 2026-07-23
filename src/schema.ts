@@ -141,6 +141,27 @@ export function resolveSchemaAtPath(root: MapSchema, path: (string | number)[]):
 }
 
 /**
+ * The schema at a path INSIDE an object, the same walk as above but rooted at an
+ * object type rather than at the map.
+ *
+ * One walk, two roots: an object's fields come from `objectProps` (the type's
+ * own plus the composed CommonObject base) and its `$ref`s resolve against the
+ * object schema's `$defs`, where `Resources`, `ArmySlot`, `Trigger` and the rest
+ * are declared once and reused by every type that has them.
+ */
+export function resolveObjectPath(type: string, path: (string | number)[]): FieldSchema | null {
+  let cur: FieldSchema | null = { type: 'object', properties: objectProps(type) };
+  for (const step of path) {
+    if (!cur) return null;
+    cur = deref(objectSchema, cur);
+    cur = typeof step === 'number'
+      ? (cur.items ? deref(objectSchema, cur.items) : null)
+      : (cur.properties?.[step] ? deref(objectSchema, cur.properties[step]!) : null);
+  }
+  return cur;
+}
+
+/**
  * The flattened property set of an object type — the shared CommonObject base
  * (composed via allOf) merged with the type's own fields. Later branches win, so
  * a type could refine a common field. Returns {} for an unknown type, so the

@@ -84,11 +84,21 @@ if (rich) {
 
     ok(mon.setProp('Amount', '7') === true, 'a simple field can be set');
     ok(mon.setProp('Pos', '1') === false, 'position is refused');
-    ok(mon.setProp('Shared', 'x') === false, 'a reference is refused');
     ok(mon.setProp('pointLights', 'x') === false, 'a structure is refused');
     ok(mon.setProp('NoSuchField', 'x') === false, 'an unknown field is refused');
     const d = countLineDiffs(readFileSync(rich, 'latin1'), m3.save());
     ok(d === 1, `setting one property changes exactly 1 line (got ${d})`);
+
+    // A reference field keeps its value in the href attribute, and it IS
+    // writable: a sign's message names a text file, and refusing to set it made
+    // the sign readable and unwritable. Checked on its own copy so the
+    // one-line-diff claim above stays about a single edit.
+    const m3b = loadMap(readFileSync(rich, 'latin1'));
+    const mon2 = m3b.objects.find((o) => o.type === 'AdvMapMonster');
+    ok(mon2.setProp('MessageFileRef', 'Hint.txt') === true, 'a reference can be set');
+    ok(loadMap(m3b.save()).objects.find((o) => o.type === 'AdvMapMonster')
+      .props().find((p) => p.name === 'MessageFileRef')?.value === 'Hint.txt',
+      'the reference survives a save');
   }
 
   // --- placing new objects ---

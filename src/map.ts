@@ -146,8 +146,13 @@ export class MapObject {
     if (POS_FIELDS.has(name)) return false;
     if (this.owner?.containerFields().has(name)) return false;
     const el = find(this.el, name);
-    if (!el || children(el).length || el.attrs.href !== undefined) return false;
-    setText(el, value);
+    if (!el || children(el).length) return false;
+    // A reference field holds its value in the href attribute, not as text —
+    // `<MessageFileRef href="…"/>`. Refusing those made a sign's message
+    // readable and unwritable, which is most of what a sign is. Same rule the
+    // tree already writes by (src/tree.ts setPath).
+    if (el.attrs.href !== undefined) setAttr(el, 'href', value);
+    else setText(el, value);
     return true;
   }
 }
