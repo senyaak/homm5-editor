@@ -2360,7 +2360,31 @@ function openMapTree(target: TreeTarget = MAP_TREE): void {
   $('maptreebtn').classList.toggle('on', target === MAP_TREE);
   void refreshMapTree();
 }
-function closeMapTree(): void { $('maptree').style.display = 'none'; $('maptreebtn').classList.remove('on'); }
+function closeMapTree(): void { collapseTree(); $('maptree').style.display = 'none'; $('maptreebtn').classList.remove('on'); }
+
+// The tree docks left at 360px — fine for a monster, tight for a town's dozens
+// of fields. "Expand" moves the WHOLE #maptree element into a roomy modal
+// <dialog> and back again, so the same nodes (and every test selector) are
+// reused untouched; only their box changes. Tests never expand, so #maptree
+// stays docked for them.
+let mtExpanded = false;
+const mtDialog = (): HTMLDialogElement => $('mt-dialog') as HTMLDialogElement;
+function expandTree(): void {
+  if (mtExpanded) return;
+  mtDialog().appendChild($('maptree'));
+  mtExpanded = true;
+  $('mt-expand').textContent = '⤡';
+  $('mt-expand').title = 'dock to the side';
+  if (!mtDialog().open) mtDialog().showModal();
+}
+function collapseTree(): void {
+  if (!mtExpanded) return;
+  document.body.appendChild($('maptree'));
+  mtExpanded = false;
+  $('mt-expand').textContent = '⤢';
+  $('mt-expand').title = 'expand to a window';
+  if (mtDialog().open) mtDialog().close();
+}
 
 async function refreshMapTree(): Promise<void> {
   const body = $('maptree-body');
@@ -3370,6 +3394,11 @@ entDialog().addEventListener('click', (e) => { if (e.target === entDialog()) ent
 
 $('maptreebtn').onclick = () => { if (mapTreeOpen()) closeMapTree(); else openMapTree(); };
 $('mt-close').onclick = () => closeMapTree();
+$('mt-expand').onclick = () => { if (mtExpanded) collapseTree(); else expandTree(); };
+// Esc or a backdrop close docks the tree back rather than losing it — the tree
+// stays open, just to the side again.
+mtDialog().addEventListener('close', () => collapseTree());
+mtDialog().addEventListener('click', (e) => { if (e.target === mtDialog()) collapseTree(); });
 $input('mt-adv').addEventListener('change', (e) => { mtShowAdvanced = (e.currentTarget as HTMLInputElement).checked; if (mapTreeOpen()) void refreshMapTree(); });
 
 $('mapbtn').onclick = () => { if (mapPropsOpen()) closeMapProps(); else openMapProps(); };
