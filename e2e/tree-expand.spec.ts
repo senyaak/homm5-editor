@@ -7,19 +7,28 @@
 // and that the tree stays usable inside the dialog.
 
 import { test, expect } from '@playwright/test';
+import { existsSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
 import { launchEditor } from './launch.ts';
 import type { Launched } from './launch.ts';
 import { newMap } from './tiles.ts';
+import { DATA } from './c1m1/shared.ts';
 import { openObjectPalette, pickObject, placeAtTile } from './objects.ts';
 
 let ed: Launched;
+const NAME = 'e2e tree expand';
+const MAP_DIR = join(DATA, 'Maps', 'SingleMissions', NAME);
 test.beforeAll(async () => { ed = await launchEditor(); });
-test.afterAll(async () => { await ed?.app.close(); });
+test.afterAll(async () => {
+  await ed?.app.close();
+  if (existsSync(MAP_DIR)) rmSync(MAP_DIR, { recursive: true, force: true });
+});
 
 test('the object tree expands into a dialog and docks back', async () => {
   test.setTimeout(3 * 60_000);
   const { page } = ed;
-  await newMap(page, 'e2e tree expand', '72');
+  if (existsSync(MAP_DIR)) rmSync(MAP_DIR, { recursive: true, force: true });
+  await newMap(page, NAME, '72');
 
   // Place any object through the palette (which builds its mesh), then select it.
   await openObjectPalette(page);

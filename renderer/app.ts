@@ -1680,6 +1680,47 @@ async function loadProps(): Promise<void> {
     host.appendChild(h2);
     for (const p of absent) host.appendChild(rowFor(p));
   }
+
+  // Structured fields — army, buildings, capture triggers, extra stacks — are
+  // lists and sub-objects the flat panel cannot hold, so `simpleFields` drops
+  // them and they used to be reachable only through "Tree…". That is why a
+  // garrison's or town's army looked missing here. Surface them as their own
+  // rows: the count, and Edit → the (expandable) tree where they are edited.
+  const structured = Object.entries(typeFields)
+    .filter(([name]) => name !== 'Pos') // Pos has its own x/y controls above
+    .map(([name, raw]) => [name, deref(objectSchema, raw)] as const)
+    .filter(([, f]) => controlOf(f) === 'group');
+  if (structured.length) {
+    const h3 = document.createElement('div');
+    h3.className = 'ph';
+    h3.textContent = 'structures';
+    h3.title = 'Lists and sub-objects — army, buildings, triggers. Edited in the tree.';
+    host.appendChild(h3);
+    let data: TreeData | undefined;
+    try { data = (await window.editor.objectTree({ id })).tree as TreeData; } catch { /* count is a nicety */ }
+    if (propsFor !== id || !selected || selected.id !== id) return;
+    for (const [name, f] of structured) host.appendChild(structRow(id, res.type, name, f, dataAt(data, name)));
+  }
+}
+
+/** A panel row for a structured field: title, a count, and Edit → the tree. */
+function structRow(id: string, type: string, name: string, field: FieldSchema, data: TreeData | undefined): HTMLElement {
+  const { row } = rowShell(field, name);
+  const co = document.createElement('span');
+  co.className = 'rov';
+  if (field.type === 'array') {
+    const n = Array.isArray(data) ? data.length : 0;
+    co.textContent = n ? `${n} item${n === 1 ? '' : 's'}` : 'empty';
+  } else {
+    co.textContent = data && typeof data === 'object' && Object.keys(data).length ? 'set' : 'empty';
+  }
+  const btn = document.createElement('button');
+  btn.className = 'struct-edit';
+  btn.textContent = 'Edit…';
+  btn.title = `edit ${field.title || name} in the tree`;
+  btn.onclick = () => { openMapTree(objectTree(id, type)); expandTree(); };
+  row.append(co, btn);
+  return row;
 }
 
 /**
