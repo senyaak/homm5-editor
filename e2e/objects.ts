@@ -104,3 +104,16 @@ export async function setPlacement(
 
 /** Radians as the degrees the panel takes. */
 export const degOf = (rad: number): number => ((rad * 180 / Math.PI) % 360 + 360) % 360;
+
+/**
+ * How far apart two facings are, in radians, the short way round.
+ *
+ * Rotation is an angle, so 0 and 6.28319 are the same way up — and the original
+ * writes both: C1M1 stores a full turn on two of its objects where the editor
+ * normalises to zero. Comparing the raw numbers calls that a difference, and a
+ * pass that tries to "fix" it never converges.
+ */
+export function rotDelta(a: number, b: number): number {
+  const TAU = Math.PI * 2;
+  return Math.abs((((a - b) % TAU) + TAU + Math.PI) % TAU - Math.PI);
+}

@@ -186,6 +186,7 @@ e2e/c1m1-2-kinds.spec.ts       ~25 s     1 rect + 1214 strokes
 e2e/c1m1-3-rivers.spec.ts      ~30 s     2317 cells
 e2e/c1m1-4-textures.spec.ts    ~6 min    12 layers, 112 908 writes
 e2e/c1m1-5-passability.spec.ts ~20 s     4939 tiles in 424 strokes
+e2e/c1m1-6-objects.spec.ts     ~8 min    2645 objects, 118 palette picks
 ```
 
 Each opens the map the previous one left (`e2e/c1m1.ts`), does its own pass,
@@ -285,6 +286,46 @@ by rebuilding blanks at three sizes.
 **All five planes now match the original**: heights, ground kinds, rivers, the
 twelve texture layers, and passability — `npm run diff-terrain` is down to the
 three accepted deviations above.
+
+### Objects: placed ✅ (their fields are the next stage)
+
+Measuring first again (`npm run object-shape`) turned up three things the editor
+could not do, and the count of objects was not among them:
+
+- **559 of the 1634 shipped shared definitions had no catalogue entry**, because
+  the catalogue was built from `_(AdvMapObjectLink)` files alone. They are the
+  members an `_(AdvMapSharedGroup)` picks from at random — 434 statics — plus
+  the 83 named heroes. C1M1 needs 24 of them for 713 of its objects.
+- **218 objects sit at an arbitrary fraction of a tile**, none on a half tile,
+  where placement snapped to whole tiles.
+- **368 face one of 80 distinct angles**, where rotation moved in 90° steps.
+
+With those closed, the stage is one pick per definition (118), one click per
+object (2645), and a pass through the panel for the exact fractions and angles.
+`npm run diff-objects` reports every object matched, every position within a
+hundredth of a tile, every facing equal.
+
+Two things the pass had to learn, both real:
+
+- **Which object did that click make?** Nearest-after-the-fact is ambiguous
+  exactly where the map is busiest — two bushes of the same kind on one tile are
+  equidistant from both targets, so a fraction meant for one landed on the other
+  and the facing followed it. The stage now reads the object list before and
+  after a group and pairs by creation order.
+- **Re-running has to converge, not merely stop adding.** An interrupted pass
+  leaves objects that stand in the right place facing the wrong way, and matching
+  on position alone calls them done forever. The stage re-turns those, and
+  deletes what no target claims — which is also how the debris of a capped run
+  gets cleaned up.
+
+A rotation of `6.28319` in the original is a full turn, i.e. zero. Comparing the
+raw numbers made two objects "wrong" on every run; angles are compared modulo a
+turn now, in the spec and in `diff-objects`.
+
+**Accepted deviation:** our objects carry a `<Name>`, the original leaves 2640 of
+its 2645 without one. The name is the handle Lua and the editor's own panels
+address an object by, so we keep writing it; `diff-objects` reports the count and
+does not count it as a difference.
 
 ## Milestone 0 — the one missing primitive: New Map
 

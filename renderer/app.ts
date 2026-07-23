@@ -3663,6 +3663,17 @@ interface ViewApi {
   open(path: string): Promise<void>;
   /** Tiles per side of the active floor, or 0 when no map is open. */
   size(): number;
+  /**
+   * Every object on the active floor: what it is and where it stands.
+   *
+   * Placement is a click on the map, but "which of the 373 bushes did that
+   * click create" has no answer on screen — they overlap, and picking one by
+   * raycast is exactly the ambiguity this avoids. So the harness places, then
+   * reads, then addresses by id.
+   */
+  objects(): { id: string; type: string; shared: string; x: number; y: number; r: number }[];
+  /** Select an object by id — what clicking its row in the object list does. */
+  select(id: string): void;
 }
 
 /** A world point under the plan camera, in CSS pixels. */
@@ -3695,6 +3706,14 @@ const view: ViewApi = {
     topHalf = Math.max(2 * U, Math.min(400 * U, halfTiles * U));
     syncTopCamera();
   },
+  objects() {
+    if (!world) return [];
+    return [...activeFloor().meshes.values()]
+      .map((m) => m.userData.inst as Instance)
+      .filter((i) => i && i.id)
+      .map((i) => ({ id: i.id!, type: i.type, shared: i.shared, x: i.x, y: i.y, r: i.r }));
+  },
+  select(id) { selectById(id); },
   tileToScreen(x, y) { return worldToScreen((x + 0.5) * U, (y + 0.5) * U); },
   tileAt(clientX, clientY) { return tileAtClient(clientX, clientY); },
   // A vertex sits ON the grid line, at a whole multiple of the tile spacing —

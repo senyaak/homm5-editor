@@ -135,7 +135,8 @@ export function currentTerrain(): Terrain {
  */
 export async function saveTerrain(page: Page): Promise<Terrain> {
   await settle(page);
-  await page.locator('#save').click();
+  // Re-running a finished stage changes nothing, and Save is disabled then.
+  if (await page.locator('#save').isEnabled()) await page.locator('#save').click();
   await expect(page.locator('#save')).toBeDisabled({ timeout: 120_000 });
   const bin = readFileSync(join(MAP_DIR, 'GroundTerrain.bin'));
   mkdirSync(RECON_DIR, { recursive: true });

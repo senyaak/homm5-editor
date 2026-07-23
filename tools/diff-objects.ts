@@ -141,9 +141,15 @@ else if (pairs.length) ok('rotations', `${pairs.length} matched`);
 // because "13 monsters have the wrong Amount" is one gap, not thirteen.
 console.log('\nFIELDS');
 const fieldDiffs = new Map<string, { n: number; sample: string }>();
+let named = 0;
 for (const [a, b] of pairs) {
   const av = new Map(a.obj.props().map((p) => [p.name, p.value]));
   const bv = new Map(b.obj.props().map((p) => [p.name, p.value]));
+  // A name we give an object the original left nameless is a deliberate
+  // difference, not a gap: <Name> is the handle Lua and our own panels address
+  // an object by, and the original leaves 2640 of C1M1's 2645 without one, so
+  // nothing in a script can reach them. Counted and reported, never failed.
+  if (!av.get('Name') && bv.get('Name')) { named++; av.delete('Name'); bv.delete('Name'); }
   for (const [name, v] of av) {
     const w = bv.get(name);
     const same = name.toLowerCase().includes('ref') || name === 'Shared'
@@ -164,6 +170,7 @@ for (const [a, b] of pairs) {
     fieldDiffs.set(key, { n: (cur?.n ?? 0) + 1, sample: cur?.sample ?? `(absent) vs "${bv.get(name)}"` });
   }
 }
+if (named) ok('names we add where the original leaves none', `${named} object(s) — deliberate`);
 if (!fieldDiffs.size && pairs.length) ok('every field of every matched object');
 for (const [key, d] of [...fieldDiffs].sort((a, b) => b[1].n - a[1].n)) {
   fail(key, `${d.n} object(s), e.g. ${d.sample}`);

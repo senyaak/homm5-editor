@@ -133,6 +133,12 @@ placing new ones from a palette.
         wants.
       `e2e/place-precise.spec.ts` proves all three through the palette and the
       panel, in the file that lands on disk.
+- [x] ✅ **C1M1's 2645 objects placed by clicking** (2026-07-23) —
+      `e2e/c1m1-6-objects.spec.ts`: 118 palette picks, one click per object, and
+      a pass through the panel for the 218 fractions and 368 angles, in about 8
+      minutes. `npm run diff-objects` matches every object, position and facing.
+      Their FIELDS are the next stage — and they are to be edited through the
+      JSON schema (`$ref` for what repeats), not per-type tables in the UI.
 - [ ] ⬜ Multi-select, copy/paste
 - [x] Property panel: every simple field of the selected object, read from the
       object itself rather than a per-type table. Editors inferred from the
