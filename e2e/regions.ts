@@ -12,7 +12,7 @@
 
 import { expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
-import { dragAt } from './c1m1.ts';
+import { dragAt } from './c1m1/shared.ts';
 
 /** A region as the original keeps it — inclusive tile bounds. */
 export interface RegionSpec {

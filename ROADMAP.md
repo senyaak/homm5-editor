@@ -134,7 +134,7 @@ placing new ones from a palette.
       `e2e/place-precise.spec.ts` proves all three through the palette and the
       panel, in the file that lands on disk.
 - [x] ✅ **C1M1's 2645 objects placed by clicking** (2026-07-23) —
-      `e2e/c1m1-6-objects.spec.ts`: 118 palette picks, one click per object, and
+      `e2e/c1m1/006-objects.spec.ts`: 118 palette picks, one click per object, and
       a pass through the panel for the 218 fractions and 368 angles, in about 8
       minutes. `npm run diff-objects` matches every object, position and facing.
       Their FIELDS are the next stage — and they are to be edited through the
@@ -149,7 +149,7 @@ placing new ones from a palette.
       `e2e/script-editor.spec.ts`. Fixed on the way: a new `.lua` was written as
       UTF-16LE, which the engine's parser cannot read at all.
 - [x] ✅ **C1M1's objectives and its save name** (2026-07-23) —
-      `e2e/c1m1-11-objectives.spec.ts`: the four primary objectives with their
+      `e2e/c1m1/011-objectives.spec.ts`: the four primary objectives with their
       caption and description texts under `objectives/`, and the mission's
       `scene1` save. Both are lists of structures built with the tree's "+ add",
       so what the stage sets is only what a fresh item does not already carry.
@@ -165,16 +165,16 @@ placing new ones from a palette.
       AdvMapTile documents the terrain paints with, and it is derived: the same
       set the ground layers use. Adding a layer now names the tile as well, and
       a map whose list fell behind is repaired on open (visibly, as unsaved
-      work) rather than quietly at save. `e2e/c1m1-10-tiles.spec.ts`. A list of
+      work) rather than quietly at save. `e2e/c1m1/010-tiles.spec.ts`. A list of
       REFERENCES could not be written at all before this: `<Item>value</Item>`
       is not a reference, so `addRefItem` writes the href.
-- [x] ✅ **C1M1's regions** (2026-07-23) — `e2e/c1m1-9-regions.spec.ts`: the 17
+- [x] ✅ **C1M1's regions** (2026-07-23) — `e2e/c1m1/009-regions.spec.ts`: the 17
       named rectangles the mission's Lua addresses, dragged out on the map with
       the new region tool and named and coloured in its panel. Every other field
       of one — its floor, its two triggers — stays in the tree, which is where a
       `$def` belongs; the rectangle is drawn because four coordinates are not how
       a person describes a box they are looking at.
-- [x] ✅ **C1M1's map settings** (2026-07-23) — `e2e/c1m1-8-settings.spec.ts`:
+- [x] ✅ **C1M1's map settings** (2026-07-23) — `e2e/c1m1/008-settings.spec.ts`:
       rules, players, objectives, the moon calendar, the lighting refs and the
       splash picture, all through the schema-typed tree. Fixed on the way: a list
       shown as one control could not be written, the entity picker ignored the
@@ -185,7 +185,7 @@ placing new ones from a palette.
       scene and the per-player objectives. What is left after the regions: the
       tile list (12 refs the editor never writes when a layer is added), the
       start scene, the objectives, and `MapScript`, which the Lua stage sets.
-- [x] ✅ **C1M1's object fields** (2026-07-23) — `e2e/c1m1-7-fields.spec.ts`:
+- [x] ✅ **C1M1's object fields** (2026-07-23) — `e2e/c1m1/007-fields.spec.ts`:
       26 values through the property panel, 4 sign messages, and 6 army stacks
       through the object tree. `npm run diff-objects` reports 0 differences.
 - [x] **The object tree** (2026-07-23): the map-settings tree pointed at one
@@ -446,7 +446,7 @@ them.
       clean, and `tools/test-lua-lint.ts` guards that). A mistyped name is a
       *warning* on a near miss only. **Not** done, and deliberately: a wrong
       string name (an object the map doesn't define) is indistinguishable from a
-      file path or a tutorial id — completion prevents those instead. `e2e/c1m1-12-scripts.spec.ts`.
+      file path or a tutorial id — completion prevents those instead. `e2e/c1m1/012-scripts.spec.ts`.
 - [ ] ⬜ Per-object trigger editing in the UI (the fields exist; a nicer surface)
 - [ ] ⬜ (optional) Embedded Lua interpreter for dry-run checks
 
@@ -621,7 +621,7 @@ Round-trip (load→save→identical) is the cheap complementary net.
 
 - [x] ✅ **C1M1 terrain — all five planes** (2026-07-23): the mission's whole
       `GroundTerrain.bin` is rebuilt by clicking, in five staged specs
-      (`e2e/c1m1-{1..5}-*.spec.ts`) — heights, ground kinds, rivers, twelve
+      (`e2e/c1m1/00{1..5}-*.spec.ts`) — heights, ground kinds, rivers, twelve
       texture layers, passability. `npm run diff-terrain` is down to three
       accepted deviations (layer order, tile-path case, 14 trailer bytes), all
       things the engine does not read. Objects, map settings and Lua are next.

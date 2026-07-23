@@ -61,7 +61,7 @@ suite never opens the mod archives itself. A reconstruction stage reads the
 unpacked `_tmp/fixtures/C1M1/` tree and nothing else, so without it a stage
 cannot mean anything — and a *silent* skip there reads as a pass and hides that
 the reconstruction never ran. So by default a missing fixture **fails** those
-stages loudly (`requireFixture()` in `e2e/c1m1.ts`), with a message naming the
+stages loudly (`requireFixture()` in `e2e/c1m1/shared.ts`), with a message naming the
 `npm run extract-fixture C1M1` that fixes it. The self-contained specs (smoke,
 new-map, text-authoring, localization, …) are unaffected — they carry their own
 data and run regardless.
@@ -204,23 +204,23 @@ final height, hence the carve toggle. C1M1 barely digs its bed anyway: only
 The stages are separate spec files, numbered so the suite runs them in order:
 
 ```
-e2e/c1m1-1-heights.spec.ts     ~5 min    9409 strokes
-e2e/c1m1-2-kinds.spec.ts       ~25 s     1 rect + 1214 strokes
-e2e/c1m1-3-rivers.spec.ts      ~30 s     2317 cells
-e2e/c1m1-4-textures.spec.ts    ~6 min    12 layers, 112 908 writes
-e2e/c1m1-5-passability.spec.ts ~20 s     4939 tiles in 424 strokes
-e2e/c1m1-6-objects.spec.ts     ~8 min    2645 objects, 118 palette picks
-e2e/c1m1-7-fields.spec.ts      ~90 s     26 values, 4 text refs, 6 army stacks
-e2e/c1m1-8-settings.spec.ts    ~15 s     rules, players, goals, lights, picture
-e2e/c1m1-9-regions.spec.ts     ~20 s     17 regions, dragged out on the map
-e2e/c1m1-10-tiles.spec.ts      ~6 s      the derived tile set, repaired on open
-e2e/c1m1-11-objectives.spec.ts ~4 min    4 objectives + the save name, in the tree
-e2e/c1m1-12-scripts.spec.ts    ~15 s     bind MapScript, write the 4 Lua, lint them
-e2e/c1m1-13-texts.spec.ts      ~12 s     the 44 original text strings, byte-matched
-e2e/c1m1-14-pack.spec.ts       ~8 s      capstone: 3-way diff = 0, then pack a .h5m
+e2e/c1m1/001-heights.spec.ts     ~5 min    9409 strokes
+e2e/c1m1/002-kinds.spec.ts       ~25 s     1 rect + 1214 strokes
+e2e/c1m1/003-rivers.spec.ts      ~30 s     2317 cells
+e2e/c1m1/004-textures.spec.ts    ~6 min    12 layers, 112 908 writes
+e2e/c1m1/005-passability.spec.ts ~20 s     4939 tiles in 424 strokes
+e2e/c1m1/006-objects.spec.ts     ~8 min    2645 objects, 118 palette picks
+e2e/c1m1/007-fields.spec.ts      ~90 s     26 values, 4 text refs, 6 army stacks
+e2e/c1m1/008-settings.spec.ts    ~15 s     rules, players, goals, lights, picture
+e2e/c1m1/009-regions.spec.ts     ~20 s     17 regions, dragged out on the map
+e2e/c1m1/010-tiles.spec.ts       ~6 s      the derived tile set, repaired on open
+e2e/c1m1/011-objectives.spec.ts  ~4 min    4 objectives + the save name, in the tree
+e2e/c1m1/012-scripts.spec.ts     ~15 s     bind MapScript, write the 4 Lua, lint them
+e2e/c1m1/013-texts.spec.ts       ~12 s     the 44 original text strings, byte-matched
+e2e/c1m1/014-pack.spec.ts        ~8 s      capstone: 3-way diff = 0, then pack a .h5m
 ```
 
-Each opens the map the previous one left (`e2e/c1m1.ts`), does its own pass,
+Each opens the map the previous one left (`e2e/c1m1/shared.ts`), does its own pass,
 saves, and checks its own plane — plus that it did not disturb the planes before
 it. Every stage is idempotent: heights are planned against what the map
 currently holds rather than against a blank, kinds/rivers/textures write
@@ -487,7 +487,7 @@ descriptions, the sign messages, the save name, and the tutorial lines — do no
 live in the map folder: a campaign takes them from `All_campaigns.texts_en.h5u`,
 so every other stage carried empty placeholders where they belong. `npm run
 extract-fixture C1M1` now also pulls those originals into the fixture's `texts/`,
-and `e2e/c1m1-13-texts.spec.ts` authors all **44** of them into the map and checks
+and `e2e/c1m1/013-texts.spec.ts` authors all **44** of them into the map and checks
 each one matches the original **byte for byte**, in the UTF-16LE the game reads.
 The rebuilt map is a self-contained single-language mission: unlike the shipped
 campaign, it carries its own texts, so it needs no text archive to read.
@@ -499,7 +499,7 @@ stay in the git-ignored fixture and are never embedded in the suite.
 
 ### The capstone: prove the whole map, then pack it ✅
 
-The per-stage specs each check one subsystem; `e2e/c1m1-14-pack.spec.ts` stands
+The per-stage specs each check one subsystem; `e2e/c1m1/014-pack.spec.ts` stands
 back and asks the whole question. It runs the three gap-report tools over the
 finished map on disk and then packs it into a `.h5m` the game loads:
 

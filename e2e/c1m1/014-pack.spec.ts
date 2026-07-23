@@ -29,10 +29,10 @@ import { test, expect } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { readEntries } from '../src/pak.ts';
-import { launchEditor, REPO_ROOT } from './launch.ts';
-import type { Launched } from './launch.ts';
-import { DATA, MAP_DIR, NAME, NEED_FIXTURE, requireFixture } from './c1m1.ts';
+import { readEntries } from '../../src/pak.ts';
+import { launchEditor, REPO_ROOT } from '../launch.ts';
+import type { Launched } from '../launch.ts';
+import { DATA, MAP_DIR, NAME, NEED_FIXTURE, requireFixture } from './shared.ts';
 
 const KEEP = !!process.env.HOMM5_NO_REMOVE_MAP;
 const MAP_XDB = join(MAP_DIR, 'map.xdb');

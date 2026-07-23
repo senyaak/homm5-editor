@@ -9,13 +9,13 @@
 // rest vertex by vertex — the same shape as the tiers, for the same reason.
 
 import { test, expect } from '@playwright/test';
-import { launchEditor } from './launch.ts';
-import type { Launched } from './launch.ts';
-import { armBrush, dragTiles, openBrushPanel, pickTile, setTileStrength } from './tiles.ts';
+import { launchEditor } from '../launch.ts';
+import type { Launched } from '../launch.ts';
+import { armBrush, dragTiles, openBrushPanel, pickTile, setTileStrength } from '../tiles.ts';
 import {
   clickAt, fixture, mismatches, openMap, requireFixture, saveTerrain, vertexPixels,
-} from './c1m1.ts';
-import { readHeights, readMask, readTextureLayers } from '../src/terrain.ts';
+} from './shared.ts';
+import { readHeights, readMask, readTextureLayers } from '../../src/terrain.ts';
 
 let ed: Launched;
 

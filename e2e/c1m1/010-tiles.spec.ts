@@ -16,14 +16,14 @@
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { launchEditor } from './launch.ts';
-import type { Launched } from './launch.ts';
-import { settle } from './tiles.ts';
-import { MAP_DIR, FIXTURE, openMap, requireFixture } from './c1m1.ts';
-import { loadMap } from '../src/map.ts';
-import { readTree } from '../src/tree.ts';
-import type { TreeData } from '../src/tree.ts';
-import { parseTerrain, readTextureLayers } from '../src/terrain.ts';
+import { launchEditor } from '../launch.ts';
+import type { Launched } from '../launch.ts';
+import { settle } from '../tiles.ts';
+import { MAP_DIR, FIXTURE, openMap, requireFixture } from './shared.ts';
+import { loadMap } from '../../src/map.ts';
+import { readTree } from '../../src/tree.ts';
+import type { TreeData } from '../../src/tree.ts';
+import { parseTerrain, readTextureLayers } from '../../src/terrain.ts';
 
 let ed: Launched;
 

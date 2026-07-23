@@ -18,10 +18,10 @@ import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { REPO_ROOT } from './launch.ts';
-import { newMap, settle } from './tiles.ts';
-import { parseTerrain } from '../src/terrain.ts';
-import type { Terrain } from '../src/terrain.ts';
+import { REPO_ROOT } from '../launch.ts';
+import { newMap, settle } from '../tiles.ts';
+import { parseTerrain } from '../../src/terrain.ts';
+import type { Terrain } from '../../src/terrain.ts';
 
 export const NAME = 'e2e Reconstruct C1M1';
 export const DATA = process.env.HOMM5_DATA || join(REPO_ROOT, 'data-unpacked');

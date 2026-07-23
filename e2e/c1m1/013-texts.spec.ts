@@ -19,9 +19,9 @@
 import { test, expect } from '@playwright/test';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { launchEditor } from './launch.ts';
-import type { Launched } from './launch.ts';
-import { MAP_DIR, FIXTURE, NEED_FIXTURE, openMap, requireFixture } from './c1m1.ts';
+import { launchEditor } from '../launch.ts';
+import type { Launched } from '../launch.ts';
+import { MAP_DIR, FIXTURE, NEED_FIXTURE, openMap, requireFixture } from './shared.ts';
 
 let ed: Launched;
 const TEXTS = join(FIXTURE, '..', 'texts');

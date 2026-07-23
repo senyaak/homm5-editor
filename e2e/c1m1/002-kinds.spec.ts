@@ -9,13 +9,13 @@
 // would do it too.
 
 import { test, expect } from '@playwright/test';
-import { launchEditor } from './launch.ts';
-import type { Launched } from './launch.ts';
-import { armBrush, dragTiles, setGroundKind } from './tiles.ts';
+import { launchEditor } from '../launch.ts';
+import type { Launched } from '../launch.ts';
+import { armBrush, dragTiles, setGroundKind } from '../tiles.ts';
 import {
   clickAt, fixture, mismatches, openMap, requireFixture, saveTerrain, vertexPixels,
-} from './c1m1.ts';
-import { readGroundFlags, readHeights, tierOf, RAMP_BIT } from '../src/terrain.ts';
+} from './shared.ts';
+import { readGroundFlags, readHeights, tierOf, RAMP_BIT } from '../../src/terrain.ts';
 
 let ed: Launched;
 

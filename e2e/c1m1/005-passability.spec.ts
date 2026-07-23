@@ -14,17 +14,17 @@
 // which is both faster and what a person actually does with a mask.
 
 import { test, expect } from '@playwright/test';
-import { launchEditor } from './launch.ts';
-import type { Launched } from './launch.ts';
-import { armBrush } from './tiles.ts';
+import { launchEditor } from '../launch.ts';
+import type { Launched } from '../launch.ts';
+import { armBrush } from '../tiles.ts';
 import {
   currentTerrain, dragAt, fixture, mismatches, openMap, requireFixture, saveTerrain,
   tilePixels,
-} from './c1m1.ts';
+} from './shared.ts';
 import {
   readGroundFlags, readHeights, readMask, readPassability, readTextureLayers, readWaterPlane,
   BLOCKED,
-} from '../src/terrain.ts';
+} from '../../src/terrain.ts';
 
 let ed: Launched;
 

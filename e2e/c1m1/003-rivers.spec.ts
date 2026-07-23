@@ -9,13 +9,13 @@
 // anyway: 49.8% of its wet vertices sit below their four neighbours, by 0.058.
 
 import { test, expect } from '@playwright/test';
-import { launchEditor } from './launch.ts';
-import type { Launched } from './launch.ts';
-import { armBrush, setRiverStrength } from './tiles.ts';
+import { launchEditor } from '../launch.ts';
+import type { Launched } from '../launch.ts';
+import { armBrush, setRiverStrength } from '../tiles.ts';
 import {
   cellPixels, clickAt, fixture, mismatches, openMap, requireFixture, saveTerrain,
-} from './c1m1.ts';
-import { readHeights, readWaterPlane } from '../src/terrain.ts';
+} from './shared.ts';
+import { readHeights, readWaterPlane } from '../../src/terrain.ts';
 
 let ed: Launched;
 

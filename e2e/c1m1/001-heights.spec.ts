@@ -10,13 +10,13 @@
 // blur of the stepped field reproduces it (measured, see the doc).
 
 import { test, expect } from '@playwright/test';
-import { launchEditor } from './launch.ts';
-import type { Launched } from './launch.ts';
-import { armBrush, setBrushForce } from './tiles.ts';
+import { launchEditor } from '../launch.ts';
+import type { Launched } from '../launch.ts';
+import { armBrush, setBrushForce } from '../tiles.ts';
 import {
   clickAt, fixture, mismatches, openMap, requireFixture, saveTerrain, vertexPixels,
-} from './c1m1.ts';
-import { readHeights } from '../src/terrain.ts';
+} from './shared.ts';
+import { readHeights } from '../../src/terrain.ts';
 
 let ed: Launched;
 

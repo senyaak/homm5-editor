@@ -12,7 +12,7 @@ import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { launchEditor } from './launch.ts';
 import type { Launched } from './launch.ts';
-import { MAP_DIR, openMap, requireFixture } from './c1m1.ts';
+import { MAP_DIR, openMap, requireFixture } from './c1m1/shared.ts';
 
 let ed: Launched;
 

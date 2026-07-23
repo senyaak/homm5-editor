@@ -17,7 +17,7 @@ import { launchEditor } from './launch.ts';
 import type { Launched } from './launch.ts';
 import { tmpdir } from 'node:os';
 import { newMap } from './tiles.ts';
-import { DATA } from './c1m1.ts';
+import { DATA } from './c1m1/shared.ts';
 import { readEntries } from '../src/pak.ts';
 
 let ed: Launched;

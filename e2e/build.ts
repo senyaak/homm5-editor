@@ -7,7 +7,7 @@
 // the code being tested. Cost is a fraction of a second per run.
 
 import { buildRenderer } from '../tools/build-renderer.ts';
-import { hasFixture, NEED_FIXTURE, ALLOW_NO_FIXTURE } from './c1m1.ts';
+import { hasFixture, NEED_FIXTURE, ALLOW_NO_FIXTURE } from './c1m1/shared.ts';
 
 export default async function build(): Promise<void> {
   await buildRenderer();

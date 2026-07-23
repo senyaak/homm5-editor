@@ -19,7 +19,7 @@ import type { Page } from '@playwright/test';
 import { launchEditor } from './launch.ts';
 import type { Launched } from './launch.ts';
 import { newMap } from './tiles.ts';
-import { DATA } from './c1m1.ts';
+import { DATA } from './c1m1/shared.ts';
 import { openTree, reveal, treeValue } from './tree.ts';
 
 let ed: Launched;
