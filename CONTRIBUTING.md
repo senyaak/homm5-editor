@@ -1,8 +1,8 @@
 # Contributing
 
-Thanks for looking! This is an experimental, from-scratch map & campaign editor
-for **Heroes of Might & Magic V: Tribes of the East**. It reverse-engineers the
-game's formats and rebuilds the editor on Electron + TypeScript, no native deps.
+Thanks for looking! This is a from-scratch map & campaign editor for **Heroes of
+Might & Magic V: Tribes of the East**. It reverse-engineers the game's formats and
+rebuilds the editor on Electron + TypeScript, no native deps.
 
 If you're here to hack on it, this file covers the conventions that keep the
 project honest. Read [README.md](README.md) for what works and how to run it, and
