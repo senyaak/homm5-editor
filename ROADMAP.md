@@ -426,14 +426,13 @@ are named *definitions* the script/engine materialises at run time
 (`DeployReserveHero`, `TransformTown`, …), which is why the editor never places
 them.
 
-- [ ] ⬜ Pick an editor component (Monaco / CodeMirror / other — TBD) with Lua
-      highlighting
-- [ ] ⬜ HoMM V API definitions (from `HOMM5_A2_Script_Functions.pdf` /
-      `HOMM5_A2_IDs_for_Scripts.pdf`) → completion and signature help
-- [ ] ⬜ **Name completion in Lua** — offer the map's own names (objects, towns,
-      heroes, objectives, regions) as completions in argument positions that take
-      a name, driven by `map:names` (the same source the `x-nameRef` datalists
-      use). Makes "reference an entity from Lua" correct instead of hand-typed.
+- [x] ✅ Editor component — CodeMirror 6, Lua via the legacy stream mode
+- [x] ✅ HoMM V API definitions (from `HOMM5_A2_Script_Functions.pdf` /
+      `HOMM5_A2_IDs_for_Scripts.pdf`) → 199 functions with parameters,
+      `npm run script-api` → `src/script-api.json`
+- [x] ✅ **Name completion in Lua** — the map's own objects, regions and
+      objectives, offered inside string literals where the API takes them
+      (all three: see "The script editor" above)
 - [ ] ⬜ Bind scripts to the map and to objects (map script, per-object triggers)
 - [ ] ⬜ Lint before saving: unknown functions, syntax errors, **names used in
       script that no object defines**
@@ -453,6 +452,70 @@ them.
       have; catching it belongs to the lint below.
 - [ ] ⬜ The same for named entities that are not placed objects (objectives,
       the map's own lists) — only objects are covered so far.
+
+## Phase 5b — Animation, dialog scenes, node graph
+
+Three features in a deliberate order: each one is what makes the next worth
+having.
+
+### Animation (prerequisite)
+
+Everything below is currently rendered as static meshes. A scene is mostly
+actors *moving* — `AnimName` (`move`, `idle`, …), `AnimationIndex`,
+`MovePoints`, `MovementSpeed` — so without playback a scene editor can place
+things but never show what it built.
+
+- [ ] 🔬 Skeletal animation in the model format — `*-skel.xdb` / `*-geom.xdb`
+      carry the bones; what plays them is not decoded yet
+- [ ] ⬜ Skinned playback in the Three.js scene, with the clip list per model
+      (which also gives `AnimName` a real completion source rather than a guess)
+
+### Dialog-scene editor and player
+
+Format (surveyed 2026-07-23, 250 scenes shipped under `DialogScenes/`):
+
+- `DialogScene.xdb` — `<Map>` is an ordinary `AdvMapDesc` used as the stage
+  (`/Maps/SmallSpecialArenas/…`, about a dozen of them), so our existing
+  viewport already draws it; plus `SoundSet`, `Music`, `MusicVolume`,
+  `<objects>` (the set dressing — 78 statics and 8 monsters in A1C1/M1/S1),
+  `ModelsLOD`, `CameraShiftZ`.
+- `<sentences>` is the timeline. One Item = one shot: a `.txt` line, a sound, an
+  actor inlined as a full `AdvMapHero` (`Pos`/`Rot`, `Shared` →
+  `/MapObjects/DialogScenes/<Character>_DSU.xdb`), a camera set, `duration`,
+  `StopAmbient`/`StopMusic`, `DynamicCamera`, an animation — and
+  `CustomAnimations`, one per other actor on screen, each with its own
+  `AnimName`, `MovePoints`, `FinalAngle`, speed and delay (a negative delay
+  starts the move before the line).
+- `DSceneCamera` is an ORBIT camera — `Rod`/`Pitch`/`Yaw`/`Roll`/`FOV` plus an
+  `Anchor` — which is exactly what our view already is, so "use what I am
+  looking at" is a straight copy. `DSceneCameraSet` pairs a start and a finish
+  camera (with diffs, `Circles`, `Direction`): a shot is the interpolation.
+- Played from Lua: `StartDialogScene("/DialogScenes/…/DialogScene.xdb#xpointer(/DialogScene)", callback, saveName)`.
+
+- [ ] ⬜ `docs/DIALOG_SCENES.md` — written from the 250 shipped scenes, so the
+      editor's UI follows what is actually used rather than what exists
+- [ ] ⬜ Scene editor: actors and props placed by clicking, the camera captured
+      from the current view, move paths drawn on the ground (the region tool's
+      gesture), lines and durations in a timeline
+- [ ] ⬜ **Player** — play the scene inside the app: camera interpolation,
+      moves, animations, the line timings. The point of the animation work
+      above; until then the editor can only be verified by launching the game
+
+### Visual scripting (node graph)
+
+Blueprint-shaped, and deliberately NOT a view over Lua: the graph is its own
+document, and a `.lua` is generated from it. Round-tripping arbitrary Lua into
+nodes is where such tools die — the 113 shipped mission scripts are hand-written
+and full of loops and closures a graph cannot show. Hand-written scripts stay in
+the text editor; the two kinds of file call each other by function name.
+
+- [ ] ⬜ Node/graph document (our own JSON sidecar) + codegen to `.lua`
+- [ ] ⬜ Node set from what already exists: the 199 engine functions as call
+      nodes (parameters are the pins), the triggers as entry nodes, the map's
+      names as pin values — the same registries the completion uses
+- [ ] ⬜ A raw-Lua node, so nothing is ever unexpressible
+- [ ] ⬜ Best done AFTER a mission's scripts are written by hand (C1M1), so the
+      node set follows real usage instead of a guess
 
 ## Phase 6 — Campaigns
 
