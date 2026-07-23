@@ -139,6 +139,13 @@ placing new ones from a palette.
       minutes. `npm run diff-objects` matches every object, position and facing.
       Their FIELDS are the next stage — and they are to be edited through the
       JSON schema (`$ref` for what repeats), not per-type tables in the UI.
+- [x] ✅ **The map's tile set, kept in step** (2026-07-23) — `<tiles>` names the
+      AdvMapTile documents the terrain paints with, and it is derived: the same
+      set the ground layers use. Adding a layer now names the tile as well, and
+      a map whose list fell behind is repaired on open (visibly, as unsaved
+      work) rather than quietly at save. `e2e/c1m1-10-tiles.spec.ts`. A list of
+      REFERENCES could not be written at all before this: `<Item>value</Item>`
+      is not a reference, so `addRefItem` writes the href.
 - [x] ✅ **C1M1's regions** (2026-07-23) — `e2e/c1m1-9-regions.spec.ts`: the 17
       named rectangles the mission's Lua addresses, dragged out on the map with
       the new region tool and named and coloured in its panel. Every other field

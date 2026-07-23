@@ -6,7 +6,7 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { loadMap } from '../src/map.ts';
-import { readTree, nodeAt, setPath, addStringItem, removeItem, appendItem, indentText, setList } from '../src/tree.ts';
+import { readTree, nodeAt, setPath, addStringItem, addRefItem, removeItem, appendItem, indentText, setList } from '../src/tree.ts';
 import { mapSchema, resolveSchemaAtPath, deref } from '../src/schema.ts';
 import { buildItem, isBuildable } from '../src/skeleton.ts';
 import { children, find } from '../src/xml.ts';
@@ -94,6 +94,23 @@ ok(n2 === n0, `remove drops it again (${n1} -> ${n2})`);
 // add+remove round-trips to the original bytes (indentation preserved)
 const roundtrip = map.save();
 ok(roundtrip === after, 'add then remove leaves the file byte-identical');
+
+// --- a reference item goes in the attribute, not the text ---
+// The map's tile set is a list of refs. Written as a value it would be an item
+// with a stray string in it, which is not a reference to anything.
+console.log('\n=== reference item ===');
+const tilesBefore = children(find(map.desc, 'tiles')!).length;
+ok(addRefItem(map.desc, ['tiles'], '/MapObjects/_(AdvMapTile)/Grass/Grass.xdb#xpointer(/AdvMapTile)'),
+  'add a tile reference');
+const tilesTree = readTree(map.desc) as Record<string, unknown>;
+const tileList = Array.isArray(tilesTree.tiles) ? tilesTree.tiles : [];
+ok(tileList.length === tilesBefore + 1, `tiles grew by one (${tilesBefore} -> ${tileList.length})`);
+ok(tileList[tileList.length - 1] === '/MapObjects/_(AdvMapTile)/Grass/Grass.xdb#xpointer(/AdvMapTile)',
+  'the ref reads back as the href');
+ok(map.save().includes('<Item href="/MapObjects/_(AdvMapTile)/Grass/Grass.xdb#xpointer(/AdvMapTile)"/>'),
+  'written as an href attribute on a self-closing Item');
+removeItem(map.desc, ['tiles', tileList.length - 1]);
+ok(map.save() === roundtrip, 'add then remove leaves the file byte-identical');
 
 // --- struct item built from the schema ---
 console.log('\n=== struct item (schema-built) ===');

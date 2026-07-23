@@ -5766,6 +5766,13 @@ async function loadMapPath(path: string | null): Promise<void> {
       ? ' · floors: ' + info.floors.map((f) => `${FLOOR_LABEL[f.name] || f.name} ${f.objects}`).join(', ')
       : '';
     $('hud').textContent = `${total} objects · placed ${info.placed}, no model ${info.skipped} · ${S.geoms.length} meshes${floorsTxt}`;
+    // The map's tile set is derived from the terrain's layers, and opening a map
+    // whose list had fallen behind repairs it. That is a real change to the
+    // document, so it counts as unsaved work rather than vanishing quietly.
+    if (info.tilesNamed) {
+      markDirty(true);
+      $('hud').textContent += ` · named ${info.tilesNamed} ground tile(s) this map paints with but did not list`;
+    }
     // Warm the object catalogue in the background, so opening the palette is
     // instant rather than a disk scan on the first click. Kicked off only once
     // the map itself is on screen and the loading overlay is down, so it never

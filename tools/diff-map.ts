@@ -157,13 +157,29 @@ const covered = new Set<string>(SECTIONS.flatMap(([, keys]) => keys));
 const rest = [...new Set([...Object.keys(treeA), ...Object.keys(treeB)])]
   .filter((k) => !covered.has(k) && !SKIP.has(k));
 
+/**
+ * The tile set is a SET, not a sequence.
+ *
+ * `<tiles>` names the AdvMapTile documents the terrain paints with. The engine
+ * looks a tile up in it; nothing indexes it — the original's own order matches
+ * neither its terrain's layer order nor anything else, so it is that editor
+ * session's history and not a property of the map. Compared sorted, so "the
+ * same twelve tiles in a different order" is not twelve differences.
+ */
+const setLike = (k: string, v: TreeData | undefined): TreeData | undefined =>
+  k === 'tiles' && Array.isArray(v)
+    // Sorted the way they are COMPARED — case and leading slash folded — or two
+    // spellings of the same path would sort into different places.
+    ? [...v].sort((a, b) => norm(String(a)).localeCompare(norm(String(b))))
+    : v;
+
 for (const [title, keys] of [...SECTIONS, ['EVERYTHING ELSE', rest] as [string, string[]]]) {
   const present = keys.filter((k) => k in treeA || k in treeB);
   if (!present.length) continue;
   console.log(title);
   for (const k of present) {
     found.length = 0;
-    walk(treeA[k], treeB[k], treeBlank[k], k);
+    walk(setLike(k, treeA[k]), setLike(k, treeB[k]), setLike(k, treeBlank[k]), k);
     if (!found.length) { ok(k); continue; }
     fail(k, `${found.length} difference(s)`);
     for (const f of found.slice(0, 6)) {

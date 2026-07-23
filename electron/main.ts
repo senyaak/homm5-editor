@@ -35,7 +35,7 @@ import type { RosterEntry } from '../src/registry.ts';
 import type { RegistryName, FieldSchema } from '../src/schema.ts';
 import { readTypeSpec, fieldOrder, typesXmlPath, fieldValues } from '../src/typespec.ts';
 import type { FieldOrder, SpecType } from '../src/typespec.ts';
-import { readTree, setPath, addStringItem, removeItem, appendItem, indentText, nodeAt, setList } from '../src/tree.ts';
+import { readTree, setPath, addStringItem, addRefItem, removeItem, appendItem, indentText, nodeAt, setList } from '../src/tree.ts';
 import { mapSchema, resolveSchemaAtPath, resolveObjectPath, deref, schemaForClass, objectProps, objectSchema, controlOf } from '../src/schema.ts';
 import { buildItem, isBuildable, buildEntity } from '../src/skeleton.ts';
 import { children, find, text, serialize, parse } from '../src/xml.ts';
@@ -536,6 +536,11 @@ ipcMain.handle('map:load', async (_e: IpcMainInvokeEvent, mapPath: string): Prom
   // A history from a previous run is adopted only if the documents still hash
   // to what they hashed when it was written.
   loadHistory(session);
+  // The map's tile set is derived from the terrain's layers, and a map built
+  // before the editor kept the two in step carries a stale one. Fixed on open
+  // rather than quietly at save, so it is a change the user can see and undo.
+  const tilesNamed = syncMapTiles(session, layerPaths);
+  if (tilesNamed) console.log(`[load] tile set: named ${tilesNamed} tile(s) the terrain paints with`);
   const placed = scene.floors.reduce((a, f) => a + f.instances.length, 0);
   console.log(`[perf] map:load buildScene ${(tScene - tStart) | 0}ms · total ${(performance.now() - tStart) | 0}ms · geoms ${scene.geoms.length}, placed ${placed}, skipped ${skipped}`);
   return {
@@ -548,6 +553,7 @@ ipcMain.handle('map:load', async (_e: IpcMainInvokeEvent, mapPath: string): Prom
       floors: scene.floors.map((f) => ({ name: f.name, objects: f.instances.length })),
       placed,
       skipped,
+      tilesNamed,
     },
     status: status(mapDir),
     history: historyState(session),
@@ -1008,7 +1014,8 @@ ipcMain.handle('map:add-item', async (_e: IpcMainInvokeEvent, p: AddItemPayload)
   if (!session) throw new Error('no map loaded');
   const desc = session.map.desc;
   // A list of structures (rumours, players, army stacks) gets a full item built
-  // from its schema with default values; a list of plain values gets <Item>v</Item>.
+  // from its schema with default values; a list of plain values gets <Item>v</Item>;
+  // a list of references gets the href, which is where a reference lives.
   const arrField = resolveSchemaAtPath(mapSchema, p.path);
   const itemSchema = arrField?.items ? deref(mapSchema, arrField.items) : null;
   const done = record(session, `add ${p.path.join('.')}`, { map: true }, () => {
@@ -1017,6 +1024,7 @@ ipcMain.handle('map:add-item', async (_e: IpcMainInvokeEvent, p: AddItemPayload)
       if (!container) return false;
       return appendItem(desc, p.path, buildItem(mapSchema, itemSchema!, indentText(container)));
     }
+    if (itemSchema?.['x-ref']) return addRefItem(desc, p.path, p.value ?? '');
     return addStringItem(desc, p.path, p.value ?? '');
   });
   if (!done) throw new Error(`cannot add to ${p.path.join('.')}`);
@@ -1220,6 +1228,40 @@ ipcMain.handle('terrain:mask', async (_e: IpcMainInvokeEvent, p: MaskPayload): P
   return { ok: true };
 });
 
+/**
+ * Name every tile the terrain paints with in the map's own `<tiles>` list.
+ *
+ * The list is derived data — the same set of `AdvMapTile` documents the terrain
+ * layers use, pointed at from the map instead of from the terrain — and the
+ * editor is what keeps the two in step. Ours did not: the reconstruction added
+ * twelve layers and left `<tiles>` empty, which the original never does.
+ *
+ * Add-only, and matched case-insensitively: a map's own list carries the game's
+ * spelling (`/MapObjects/…/Field.xdb`) while the terrain keeps a lowercased one,
+ * so comparing literally would append a second entry for a tile already there.
+ * Nothing is ever removed — a layer cannot be taken away, and an entry we did
+ * not put there is not ours to judge.
+ *
+ * @returns how many entries it added.
+ */
+function syncMapTiles(s: Session, layerPaths: string[]): number {
+  const desc = s.map.desc;
+  const key = (v: string): string => v.toLowerCase().replace(/^\/+/, '').split('#')[0]!;
+  const tree = readTree(desc) as Record<string, unknown>;
+  const have = new Set((Array.isArray(tree.tiles) ? tree.tiles : [])
+    .filter((v): v is string => typeof v === 'string').map(key));
+  let added = 0;
+  for (const path of layerPaths) {
+    if (!path || have.has(key(path))) continue;
+    // The map points INTO the tile document, the way every other reference in
+    // the file does; the terrain stores the plain file path.
+    if (!addRefItem(desc, ['tiles'], `${path}#xpointer(/AdvMapTile)`)) break;
+    have.add(key(path));
+    added++;
+  }
+  return added;
+}
+
 // --- IPC: give this map a layer for a tile it does not carry ---
 // The only terrain edit that changes the file's structure rather than its
 // bytes, so it is a deliberate action rather than something a brush stroke
@@ -1228,7 +1270,13 @@ ipcMain.handle('terrain:mask', async (_e: IpcMainInvokeEvent, p: MaskPayload): P
 ipcMain.handle('terrain:add-layer', async (_e: IpcMainInvokeEvent, p: AddLayerPayload): Promise<AddLayerResult> => {
   if (!session) throw new Error('no map loaded');
   const doc = terrainDoc(session, p.floor);
-  record(session, 'add ground layer', { floors: [p.floor] }, () => doc.addLayer(p.tile));
+  // Two documents, one edit: the layer goes into the terrain, and the map's own
+  // tile set has to name the tile as well (see syncMapTiles). Recorded together
+  // so undo takes both back.
+  record(session, 'add ground layer', { map: true, floors: [p.floor] }, () => {
+    doc.addLayer(p.tile);
+    syncMapTiles(session!, doc.layerPaths().filter((x): x is string => !!x));
+  });
   const paths = doc.layerPaths().filter((x) => x);
   // Keep the palette's "already in this map" markers in step for every floor.
   session.layerPaths = [...new Set([...session.layerPaths, ...paths])];
@@ -1320,6 +1368,11 @@ ipcMain.handle('map:save', async (): Promise<MapSaveResult> => {
   // deleted, or the session outlived a workspace rebuild — then writing and
   // repacking would put a stub where the user's map was.
   if (!existsSync(dirname(session.mapPath))) throw new Error(`${session.mapDir} is gone — reopen the map before saving`);
+  // Last chance to keep the derived tile set honest. add-layer already does it,
+  // but a map whose layers predate that — ours did — would otherwise carry an
+  // empty <tiles> forever, and nothing else would ever notice.
+  const tilesAdded = syncMapTiles(session, session.layerPaths);
+  if (tilesAdded) console.log(`[save] tile set: named ${tilesAdded} tile(s) the terrain paints with`);
   writeFileSync(session.mapPath, session.map.save(), 'latin1');
   saveTerrain(session);
   // Our own write — fold it into the watcher's baseline so it isn't reported

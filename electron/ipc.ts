@@ -64,6 +64,14 @@ export interface MapInfo {
   placed: number;
   /** Objects the scene builder could not resolve a mesh for. */
   skipped: number;
+  /**
+   * Tiles added to the map's `<tiles>` list on open, because its terrain paints
+   * with them and the list did not name them.
+   *
+   * Non-zero means the document changed while merely opening it, which the
+   * renderer has to show as unsaved work — otherwise the fix is silently lost.
+   */
+  tilesNamed: number;
 }
 
 /**

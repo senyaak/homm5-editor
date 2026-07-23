@@ -110,6 +110,22 @@ export function addStringItem(root: XmlElement, containerPath: Path, value: stri
   return appendItem(root, containerPath, item);
 }
 
+/**
+ * Append `<Item href="…"/>` to a list of REFERENCES (the map's tile set, and
+ * any other list whose schema marks its items `x-ref`).
+ *
+ * A reference lives in an attribute, not in the element's text, so the value
+ * list above writes the wrong shape for one: `<Item>/path.xdb</Item>` is an
+ * item with a stray string in it as far as the engine is concerned.
+ */
+export function addRefItem(root: XmlElement, containerPath: Path, href: string): boolean {
+  const item: XmlElement = {
+    type: 'element', name: 'Item', rawAttrs: '', attrs: { href },
+    children: [], selfClose: true, _dirtyAttrs: true,
+  };
+  return appendItem(root, containerPath, item);
+}
+
 /** The whitespace that precedes an item in a list, as a string (for skeletons). */
 export function indentText(container: XmlElement): string {
   const n = indentOf(container);
