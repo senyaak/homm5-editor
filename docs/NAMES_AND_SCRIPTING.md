@@ -14,11 +14,12 @@ Sources: `Editor Documentation/HOMM5_A2_Script_Functions.pdf`,
 gives a CodeMirror editor with Lua highlighting and completion from three
 sources:
 
-- **The engine API** — `src/script-api.json`, 199 functions with their parameter
+- **The engine API** — `src/script-api.json`, 203 functions with their parameter
   lists, extracted from the two manuals the game ships by `npm run script-api`
-  (it needs `pdftotext`). These functions are implemented in the engine, so
-  nothing in the game's own Lua declares them: scanning the scripts would find
-  only the ones a mission happens to call.
+  (it needs `pdftotext`); the same run writes the readable catalogue
+  `docs/SCRIPT_API.md`. These functions are implemented in the engine, so nothing
+  in the game's own Lua declares them: scanning the scripts would find only the
+  ones a mission happens to call.
 - **The game's own scripts** — `<data>/scripts/*.lua`: the helpers a mission is
   expected to call (`startThreadOnce`) and the constants they define, read at
   run time from the installation.
@@ -63,12 +64,14 @@ linter that reddens working code is worse than none, so the thing that must stay
 true is that a real mission script lints clean.
 
 What it deliberately does **not** treat as an error is an unknown function name.
-Our API list (199 functions from the manuals) is admittedly partial — C1M1 alone
-calls a dozen engine functions we never extracted (`GiveExp`, `SetControlMode`,
-`StartCombat`…) — so "not in the list" cannot mean "wrong". The one name check is
-a **warning**, and only on a *near* miss: an unknown that sits one or two edits
-from a name we do know (`SetObjectvieState` beside `SetObjectiveState`) is a typo
-far more often than not. An unknown with no near match is left alone.
+The API list (`docs/SCRIPT_API.md`, from the manuals) does not cover every call a
+mission makes: some the campaigns use are engine built-ins the manuals never
+documented — `GiveExp`, the combat-runtime `combatReadyPerson`/`setATB`, the
+tutorial `WaitForTutorialMessageBox`/`IsTutorialEnabled` — so "not in the list"
+cannot mean "wrong". The one name check is a **warning**, and only on a *near*
+miss: an unknown that sits one or two edits from a name we do know
+(`SetObjectvieState` beside `SetObjectiveState`) is a typo far more often than
+not. An unknown with no near match is left alone.
 
 A misspelt *string* — a wrong object or region name — is not caught at all,
 because it cannot be told from a file path or a tutorial id. That is what the

@@ -41,7 +41,7 @@ The editor completes from three places, so you rarely type a name in full:
   the one that matters: a wrong name is not an error, it is a call that silently
   does nothing in the game. Let the completion spell it.
 
-The header shows what the editor knows (`199 engine fns · … regions · …
+The header shows what the editor knows (`203 engine fns · … regions · …
 objectives`) so an empty list is never a silent one.
 
 ### 3. Watch the linter
@@ -80,6 +80,34 @@ editor is where you give it that name:
 
 Draw the regions and add the objectives **before** you write the script that names
 them, and the completion will have them ready.
+
+### Which call for what
+
+The full catalogue — every engine function by section, with its parameters — is
+[SCRIPT_API.md](SCRIPT_API.md), generated from the manuals; the game's own
+`HOMM5_A2_Script_Functions.pdf` is where each one's behaviour is written out. The
+calls you reach for most, drawn from C1M1's own script:
+
+| you want to… | calls | example (C1M1) |
+|---|---|---|
+| set / read an objective | `SetObjectiveState`, `GetObjectiveState` | `SetObjectiveState("prim1", OBJECTIVE_ACTIVE)` |
+| react to the hero entering a region | `Trigger(REGION_ENTER_AND_STOP_TRIGGER, region, fn)` | `Trigger(REGION_ENTER_AND_STOP_TRIGGER, "d2", "Dialog2")` |
+| react to an object being touched / taken | `Trigger(OBJECT_TOUCH_TRIGGER \| OBJECT_CAPTURE_TRIGGER, obj, fn)` | `Trigger(OBJECT_CAPTURE_TRIGGER, "zastava", "CompleteObjective3")` |
+| show / hide a placed object | `SetObjectEnabled`, `RemoveObject` | `SetObjectEnabled("zastava", 1)` |
+| where is an object / hero | `GetObjectPosition` | `x, y, fl = GetObjectPosition("zastava")` |
+| count a hero's creatures | `GetHeroCreatures` | `GetHeroCreatures(HERO_NAME, CREATURE_FOOTMAN)` |
+| grant experience / resources | `GiveExp`*, `SetPlayerResource` | `SetPlayerResource(PLAYER_1, GOLD, 0)` |
+| play a cutscene | `StartDialogScene` | `StartDialogScene("/DialogScenes/…/DialogScene.xdb#xpointer(/DialogScene)")` |
+| start a scripted battle | `StartCombat` | `StartCombat("Isabell", nil, 1, CREATURE_PEASANT, 13, "…CombatScript.xdb#xpointer(/Script)", "AfterCombat")` |
+| run something in parallel | `startThread`, `startThreadOnce` | `startThread(PObjective1)` |
+| pause a thread | `sleep(seconds)` | `sleep(5)` |
+| win / lose | `Win`, `Loose` | `Win()` |
+
+\* `GiveExp` and the tutorial/combat-runtime calls (`WaitForTutorialMessageBox`,
+`combatReadyPerson`, `setATB`, …) are engine built-ins the manuals never
+documented, so they are **not** in `SCRIPT_API.md` and the editor cannot complete
+them — the campaigns use them all the same. Type them by hand; the linter will not
+flag them, because a name it does not know is not the same as a name that is wrong.
 
 ### Checking your work
 

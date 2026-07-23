@@ -161,7 +161,7 @@
  },
  {
   "name": "GenerateMonsters",
-  "params": "monsterTypeID , countGroupsMin , countGroupsMax , countInGroupMin, countInGroupMax",
+  "params": "monsterTypeID, countGroupsMin, countGroupsMax, countInGroupMin, countInGroupMax",
   "group": "ADVMAP"
  },
  {
@@ -620,6 +620,16 @@
   "group": "ADVMAP"
  },
  {
+  "name": "onLand",
+  "params": "1/0",
+  "group": "ADVMAP"
+ },
+ {
+  "name": "onSea",
+  "params": "1/0",
+  "group": "ADVMAP"
+ },
+ {
   "name": "OpenCircleFog",
   "params": "x, y, floorID, range, playerID",
   "group": "ADVMAP"
@@ -656,7 +666,7 @@
  },
  {
   "name": "PlayVisualEffect",
-  "params": "effectName, objectName=\"\", tagName=\"\", x=0,y=0,z=0, rot=0, floor=0",
+  "params": "effectName, objectName=\"\", tagName=\"\", x=0, y=0, z=0, rot=0, floor=0",
   "group": "TOWN"
  },
  {
@@ -765,6 +775,11 @@
   "group": "ADVMAP"
  },
  {
+  "name": "SetControlMode",
+  "params": "side, mode",
+  "group": "COMBAT"
+ },
+ {
   "name": "SetDisabledObjectMode",
   "params": "objectName, disabledMode",
   "group": "OBJECTS"
@@ -871,7 +886,7 @@
  },
  {
   "name": "SetRegionAutoObjectEnable",
-  "params": "regionName, autoMode,heroTownType, heroPlayerID, heroName, objectName, enableType",
+  "params": "regionName, autoMode, heroTownType, heroPlayerID, heroName, objectName, enableType",
   "group": "OBJECTS"
  },
  {
@@ -923,6 +938,11 @@
   "name": "StartAdvMapDialog",
   "params": "dialogIndex, callback",
   "group": "TOWN"
+ },
+ {
+  "name": "StartCombat",
+  "params": "heroName, enemyHeroName, enemyHeroName, creaturesCount, creatureType[1], creatureAmount[1], ..., creatureType[Count], creatureAmount[Count], combatScriptName, combatFinishTrigger, arenaName, allowQuickCombat",
+  "group": "ADVMAP"
  },
  {
   "name": "StartDialogScene",

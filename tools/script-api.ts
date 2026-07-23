@@ -40,39 +40,66 @@ const PDFS = ['HOMM5_Script_Functions.pdf', 'HOMM5_A2_Script_Functions.pdf'];
 /** A section heading: a bare all-caps line, which is how the manual sets them. */
 const HEADING = /^ {0,4}([A-Z][A-Z ]{3,30})\s*$/;
 
+/** A dash the manual uses to separate an entry's name from its blurb (an en/em
+ *  dash, often mis-decoded to the replacement char), spaced on both sides. */
+const DASH = /\s(?:[‒–—―−�]|-)\s/;
+
+/** Fold a raw parameter list onto one line the way the completion shows it. */
+function tidyParams(raw: string): string {
+  const p = raw.replace(/\s+/g, ' ').replace(/\s*,\s*/g, ', ').trim();
+  return p === 'void' ? '' : p;
+}
+
 /**
  * Signatures, in document order, with the section each sits under.
  *
- * A signature is the line under "Syntax" (or "Synopsis" — the manual uses both)
- * and can run over several lines when the call has many parameters, so the
- * parameter list is read up to its closing bracket and then squeezed back onto
- * one line.
+ * The manual writes a signature two ways, and both have to be read or a working
+ * function is dropped as if it did not exist:
+ *
+ *  - on the entry's TITLE line, `Name(params) — description` (an empty or prose
+ *    "Syntax" section follows). `SetControlMode(side, mode)` is one of these.
+ *  - under a "Syntax"/"Synopsis" heading, and there it can run over many lines
+ *    when the call has a dozen parameters — `StartCombat` spans fifteen — so the
+ *    list is read until its brackets balance, not for a fixed number of lines.
  */
 function parse(text: string): ApiFn[] {
   const out: ApiFn[] = [];
   const lines = text.split(/\r?\n/);
   let group = '';
   for (let i = 0; i < lines.length; i++) {
-    const h = HEADING.exec(lines[i]!);
+    const line = lines[i]!;
+    const h = HEADING.exec(line);
     // A heading in the table of contents is followed by dots and a page number;
     // those lines never match, because the dots are part of the line.
     if (h) { group = h[1]!.trim(); continue; }
-    if (!/^\s*(Syntax|Synopsis)\s*$/.test(lines[i]!)) continue;
-    // The ToE supplement fences its examples wiki-style; drop the fences (and
-    // blank lines) so the signature is the first thing left. Without this every
-    // fenced entry — a fifth of the supplement — was skipped.
-    const rest = lines.slice(i + 1, i + 14)
-      .filter((l) => !/^\s*[{}]{3}\s*$/.test(l) && l.trim() !== '')
-      .join('\n');
-    const m = /^\s*([A-Za-z_]\w*)\s*\(([^)]*)\)/.exec(rest);
-    if (!m) continue;
-    const params = m[2]!.replace(/\s+/g, ' ').trim();
-    out.push({
-      name: m[1]!,
-      // `f(void)` is the manual's way of writing "takes nothing".
-      params: params === 'void' ? '' : params,
-      group,
-    });
+
+    // (a) The title form: a bare `Name(params) — blurb` at the line's start. The
+    // dash (spaced, an en/em dash) is what tells an entry title from prose that
+    // merely mentions a call, together with the name being the very first token.
+    const t = /^ {0,4}([A-Za-z_]\w*)\s*\(([^)]*)\)/.exec(line);
+    if (t && DASH.test(line.slice(t[0].length))) {
+      out.push({ name: t[1]!, params: tidyParams(t[2]!), group });
+      continue;
+    }
+
+    // (b) The signature under Syntax/Synopsis, read until the brackets balance.
+    if (!/^\s*(Syntax|Synopsis)\s*$/.test(line)) continue;
+    let sig = '';
+    let depth = 0, started = false;
+    for (let j = i + 1; j < lines.length && j < i + 60; j++) {
+      const l = lines[j]!;
+      // The ToE supplement fences its examples wiki-style; drop the fences and
+      // blank padding so the signature is contiguous.
+      if (/^\s*[{}]{3}\s*$/.test(l) || l.trim() === '') continue;
+      // An empty Syntax section (the signature was on the title line) is followed
+      // by prose, not a call — stop before mistaking a sentence for one.
+      if (!started && !/^\s*[A-Za-z_]\w*\s*\(/.test(l)) break;
+      sig += (sig ? ' ' : '') + l.trim();
+      for (const ch of l) { if (ch === '(') { depth++; started = true; } else if (ch === ')') depth--; }
+      if (started && depth <= 0) break;
+    }
+    const m = /^([A-Za-z_]\w*)\s*\(([\s\S]*)\)/.exec(sig);
+    if (m) out.push({ name: m[1]!, params: tidyParams(m[2]!), group });
   }
   return out;
 }
@@ -103,3 +130,42 @@ for (const pdf of PDFS) {
 const api = [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));
 writeFileSync(OUT, JSON.stringify(api, null, 1) + '\n');
 console.log(`${OUT}: ${api.length} function(s), ${new Set(api.map((f) => f.group)).size} section(s)`);
+
+// A human-readable catalogue, grouped by the manual's own sections — a "which
+// call for what" index. Signatures only, no descriptions: those stay in the
+// user's own copy of the PDF, which this points at rather than reproduces.
+const DOC = join(ROOT, 'docs', 'SCRIPT_API.md');
+const bySection = new Map<string, ApiFn[]>();
+for (const fn of api) (bySection.get(fn.group) ?? bySection.set(fn.group, []).get(fn.group)!).push(fn);
+const sections = [...bySection.keys()].sort();
+const lines: string[] = [
+  '# Script API — the engine functions, by section',
+  '',
+  '**Generated** by `npm run script-api` from the manuals the game ships',
+  `(\`${PDFS.join('`, `')}\`). Do not edit by hand.`,
+  '',
+  `${api.length} functions the engine exposes to a map script, across ${sections.length}`,
+  "sections. This is the *catalogue* — the name and parameter list of each call, so",
+  'you know what exists and how to call it. For what each one *does*, the',
+  '`HOMM5_A2_Script_Functions.pdf` supplement in the game\'s `Editor Documentation`',
+  'is the authority; this deliberately does not copy its descriptions.',
+  '',
+  'For the *task* view — which calls to reach for when writing objectives, triggers,',
+  'dialog or combat — see [RECIPES.md](RECIPES.md#script-a-mission). Not every',
+  'function a mission calls is here: some the campaigns use (`GiveExp`, the combat',
+  'runtime `combatReadyPerson`/`setATB`, the tutorial `WaitForTutorialMessageBox`)',
+  'are engine built-ins the manuals never documented — see',
+  '[NAMES_AND_SCRIPTING.md](NAMES_AND_SCRIPTING.md#the-linter--the-errors-the-engine-wont-tell-you-about).',
+  '',
+  '## Sections',
+  '',
+  ...sections.map((s) => `- [${s}](#${s.toLowerCase().replace(/[^a-z0-9]+/g, '-')}) — ${bySection.get(s)!.length}`),
+  '',
+];
+for (const s of sections) {
+  lines.push(`## ${s}`, '');
+  for (const fn of bySection.get(s)!) lines.push(`- \`${fn.name}(${fn.params})\``);
+  lines.push('');
+}
+writeFileSync(DOC, lines.join('\n'));
+console.log(`${DOC}: catalogue of ${api.length} functions`);

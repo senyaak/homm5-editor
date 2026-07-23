@@ -437,9 +437,11 @@ stray `end` to prove it updates on every keystroke, not only on open.
 
 Two real issues fixed on the way, both things a person would hit:
 
-- **The linter can't hard-error on an unknown function.** Our API list (199 from
-  the manuals) is partial — C1M1 calls a dozen engine functions we never
-  extracted — so "not in the list" cannot mean "wrong". Errors are structural
+- **The linter can't hard-error on an unknown function.** The API list (from the
+  manuals — `docs/SCRIPT_API.md`) does not cover every call: some C1M1 makes are
+  engine built-ins the manuals never documented (`GiveExp`, the combat-runtime
+  `combatReadyPerson`/`setATB`) — so "not in the list" cannot mean "wrong".
+  Errors are structural
   only (what the parser rejects); a mistyped name is a warning on a near miss.
   And with the API not yet loaded there is no vocabulary at all, so the name
   check stays silent rather than "correcting" `sleep` to a same-file `tsleep`.
