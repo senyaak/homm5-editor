@@ -31,6 +31,7 @@
     "diff-terrain": "node tools/diff-terrain.ts",
     "diff-objects": "node tools/diff-objects.ts",
     "diff-map": "node tools/diff-map.ts",
+    "make-pwl": "node tools/make-pwl.ts",
     "object-shape": "node tools/object-shape.ts",
     "terrain-shape": "node tools/terrain-shape.ts",
     "unpack-data": "node tools/unpack-data.ts",

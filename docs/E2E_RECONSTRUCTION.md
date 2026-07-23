@@ -364,6 +364,20 @@ reports them as a version difference rather than a gap. A sign's message file is
 created locally where the original's lives in the campaign's text archive — the
 same case as `name.txt` and `description.txt` above.
 
+### The mission's own art
+
+C1M1 ships `PWL.(Texture).dds` — the splash the campaign shows before the map
+loads: Isabel on horseback with her sword up, griffins behind her, a sunset over
+the woods, 1024×1024 DXT3 with the picture in the top 768 rows and a black band
+under it.
+
+A reconstruction cannot copy the original's art, and the editor does not paint —
+so `npm run make-pwl` draws a stand-in of its own and writes the pair the game
+wants: the same size and the same format, encoded to DXT3 here rather than by a
+tool we do not have. Stick horse, stick rider with long hair and a raised sword,
+stick griffins, sunset. Crude on purpose: what is being reproduced is the FILE
+and the reference to it, not the picture.
+
 ## Milestone 0 — the one missing primitive: New Map
 
 Everything above needs a starting point the editor does not have yet: a **blank,
