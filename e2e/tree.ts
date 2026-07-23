@@ -144,6 +144,46 @@ export async function listLength(page: Page, path: (string | number)[]): Promise
   return grp.locator('> .mt-kids > .mt-grp, > .mt-kids > .mt-item').count();
 }
 
+/**
+ * Add one item to a list of STRUCTURES, through its "+ add" row.
+ *
+ * The item is built from the schema with its declared defaults, so this is the
+ * whole of adding an objective, a player or a rumour — what follows is editing
+ * the fields that differ from a fresh one.
+ */
+export async function addItem(page: Page, path: (string | number)[]): Promise<void> {
+  const grp = await reveal(page, path);
+  await expand(grp);
+  const before = await listLength(page, path);
+  await grp.locator('> .mt-kids > .mt-add > button').first().click();
+  await expect.poll(async () => listLength(page, path), { timeout: 20_000 }).toBe(before + 1);
+}
+
+/**
+ * Add one item to a list of plain VALUES, through its add row.
+ *
+ * The row is a text box (or a roster dropdown) and a button, because a value
+ * item has nothing to build from a schema — the value IS the item.
+ */
+export async function addValueItem(page: Page, path: (string | number)[], value: string): Promise<void> {
+  const grp = await reveal(page, path);
+  await expand(grp);
+  const before = await listLength(page, path);
+  const add = grp.locator('> .mt-kids > .mt-add').first();
+  const box = add.locator('input, select').first();
+  if ((await box.evaluate((el) => el.tagName)) === 'SELECT') await box.selectOption(value);
+  else await box.fill(value);
+  await add.locator('button').first().click();
+  await expect.poll(async () => listLength(page, path), { timeout: 20_000 }).toBe(before + 1);
+}
+
+/** The values a plain-value list currently holds. */
+export async function listValues(page: Page, path: (string | number)[]): Promise<string[]> {
+  const grp = await reveal(page, path);
+  await expand(grp);
+  return grp.locator('> .mt-kids > .mt-item > .iv').allTextContents();
+}
+
 /** Remove one item from a list, by index. */
 export async function removeItem(page: Page, path: (string | number)[], index: number): Promise<void> {
   const grp = await reveal(page, path);

@@ -139,6 +139,19 @@ placing new ones from a palette.
       minutes. `npm run diff-objects` matches every object, position and facing.
       Their FIELDS are the next stage — and they are to be edited through the
       JSON schema (`$ref` for what repeats), not per-type tables in the UI.
+- [x] ✅ **C1M1's objectives and its save name** (2026-07-23) —
+      `e2e/c1m1-11-objectives.spec.ts`: the four primary objectives with their
+      caption and description texts under `objectives/`, and the mission's
+      `scene1` save. Both are lists of structures built with the tree's "+ add",
+      so what the stage sets is only what a fresh item does not already carry.
+      `npm run diff-map` is down to `MapScript`, which the Lua stage sets.
+      Fixed on the way: a text ref could not point into a SUBFOLDER (the href
+      was flattened to a basename, so the file landed beside map.xdb while the
+      ref went on pointing into a folder that did not exist); "New text file"
+      never created the file at all, because a missing file reads as empty
+      rather than throwing; `SavesFilenames` and `Parameters` were declared
+      wrongly in the schema; and the diff now judges an item WE added against
+      the schema's own defaults, since a blank map has no counterpart for it.
 - [x] ✅ **The map's tile set, kept in step** (2026-07-23) — `<tiles>` names the
       AdvMapTile documents the terrain paints with, and it is derived: the same
       set the ground layers use. Adding a layer now names the tile as well, and

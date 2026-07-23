@@ -2783,13 +2783,14 @@ function createText(): Promise<string | null> {
     // A file of that name may already be there — the map's own name.txt, a
     // message written earlier. Referencing it is what was meant; writing an
     // empty one over it would quietly destroy the text it holds.
-    try {
-      await window.editor.readFile(href);
-      return href;
-    } catch {
-      await window.editor.writeFile({ href, text: '' });
-      return href;
-    }
+    //
+    // Asked outright rather than inferred from a failed read: reading a missing
+    // file answers '' (a map with no name is a gap, not an error), so "did that
+    // throw?" said yes-it-exists about every file, and "New" pointed the ref at
+    // a file it never created.
+    const { exists } = await window.editor.readFile(href);
+    if (!exists) await window.editor.writeFile({ href, text: '' });
+    return href;
   });
 }
 

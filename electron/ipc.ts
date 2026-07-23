@@ -290,8 +290,15 @@ export interface RemoveItemPayload2 { path: TreePath; }
 export interface SetListPayload { path: TreePath; values: string[]; }
 /** Payload of `map:read-file` — a referenced text file's href. */
 export interface ReadFilePayload { href: string; }
-/** Result of `map:read-file`. */
-export interface ReadFileResult { text: string; }
+/**
+ * Result of `map:read-file`.
+ *
+ * `exists` is separate from an empty `text`, because the two mean different
+ * things to the one caller that has to tell them apart: "New text file" adopts a
+ * file that is already there and creates one that is not, and a map's name.txt
+ * can legitimately be empty.
+ */
+export interface ReadFileResult { text: string; exists: boolean }
 /** Payload of `map:write-file`. */
 export interface WriteFilePayload { href: string; text: string; }
 

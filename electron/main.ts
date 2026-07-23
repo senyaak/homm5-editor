@@ -1116,7 +1116,8 @@ ipcMain.handle('map:set-prop', async (_e: IpcMainInvokeEvent, p: SetMapPropPaylo
 // own document, not part of map.xdb), with the watcher resynced.
 ipcMain.handle('map:read-file', async (_e: IpcMainInvokeEvent, { href }: ReadFilePayload): Promise<ReadFileResult> => {
   if (!session) throw new Error('no map loaded');
-  return { text: readSidecarText(session, href) };
+  const file = sidecarPath(session, href);
+  return { text: readSidecarText(session, href), exists: !!file && existsSync(file) };
 });
 ipcMain.handle('map:write-file', async (_e: IpcMainInvokeEvent, { href, text }: WriteFilePayload): Promise<ObjectEditResult> => {
   if (!session) throw new Error('no map loaded');
@@ -1125,15 +1126,35 @@ ipcMain.handle('map:write-file', async (_e: IpcMainInvokeEvent, { href, text }: 
 });
 
 /**
+ * Where a text reference lands inside the map folder.
+ *
+ * A ref is relative to the map document, and it is not always a bare name: a
+ * mission keeps its objective texts in a subfolder (`objectives/prim1_name.txt`
+ * on C1M1), and flattening that to the basename wrote the file next to map.xdb
+ * while the ref went on pointing into a folder that did not exist — a reference
+ * to nothing, which is worse than refusing.
+ *
+ * Refuses to leave the map folder: a `..` in a ref would otherwise write
+ * anywhere on disk, and no legitimate map has one.
+ */
+function sidecarPath(s: Session, href: string): string | null {
+  if (!href) return null;
+  const rel = href.split('#')[0]!.replace(/^[/\\]+/, '');
+  if (!rel) return null;
+  const file = resolve(s.mapDir, rel);
+  const root = resolve(s.mapDir);
+  if (file !== root && !file.startsWith(root + sep)) return null;
+  return file;
+}
+
+/**
  * Read a text file the map references (name.txt, description.txt), decoding the
  * BOM the game writes. Empty href or a missing file returns '' rather than
  * throwing — a map with no name is a display gap, not an error.
  */
 function readSidecarText(s: Session, href: string): string {
-  if (!href) return '';
-  // The refs are basenames beside map.xdb; strip any xpointer just in case.
-  const file = join(s.mapDir, basename(href.split('#')[0]!));
-  if (!existsSync(file)) return '';
+  const file = sidecarPath(s, href);
+  if (!file || !existsSync(file)) return '';
   const buf = readFileSync(file);
   if (buf.length >= 2 && buf[0] === 0xff && buf[1] === 0xfe) return buf.toString('utf16le', 2);
   if (buf.length >= 3 && buf[0] === 0xef && buf[1] === 0xbb && buf[2] === 0xbf) return buf.toString('utf8', 3);
@@ -1147,8 +1168,11 @@ function readSidecarText(s: Session, href: string): string {
  * external change.
  */
 function writeSidecarText(s: Session, href: string, text: string): boolean {
-  if (!href) return false;
-  const file = join(s.mapDir, basename(href.split('#')[0]!));
+  const file = sidecarPath(s, href);
+  if (!file) return false;
+  // A ref into a subfolder the map does not have yet is how the folder gets
+  // made — the original's objective texts live in one.
+  mkdirSync(dirname(file), { recursive: true });
   let enc: 'utf16le' | 'utf8' = 'utf16le';
   let bom = true;
   if (existsSync(file)) {

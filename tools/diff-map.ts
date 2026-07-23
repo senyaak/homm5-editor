@@ -19,6 +19,8 @@ import type { HommMap } from '../src/map.ts';
 import { readTree } from '../src/tree.ts';
 import type { TreeData } from '../src/tree.ts';
 import { buildBlankMap } from '../src/blank-map.ts';
+import { mapSchema, resolveSchemaAtPath } from '../src/schema.ts';
+import { defaultFor } from '../src/skeleton.ts';
 
 const [refPath, ourPath] = process.argv.slice(2);
 if (!refPath || !ourPath) {
@@ -90,8 +92,24 @@ const blank = loadMap(buildBlankMap({
 let untouched = 0;
 const untouchedFields = new Set<string>();
 
+/**
+ * What a freshly built item carries at this path, per the schema.
+ *
+ * The blank map is the first answer to "did we author this or is it just what
+ * the editor writes", but it can only answer for things a blank HAS. An
+ * objective we added ourselves has no counterpart in a blank at all, so its
+ * fields — `CheckDelay`, `AllowMultipleActivations` — looked authored, when they
+ * are exactly what the schema says a new item is born with (src/skeleton.ts,
+ * which is also what built it).
+ */
+function builtDefault(steps: (string | number)[]): string | null {
+  const f = resolveSchemaAtPath(mapSchema, steps);
+  if (!f || f.type === 'object' || f.type === 'array') return null;
+  return defaultFor(f);
+}
+
 /** Walk the three trees together, collecting differences by path. */
-function walk(a: TreeData | undefined, b: TreeData | undefined, c: TreeData | undefined, path: string): void {
+function walk(a: TreeData | undefined, b: TreeData | undefined, c: TreeData | undefined, path: string, steps: (string | number)[] = []): void {
   if (empty(a) && empty(b)) return;
   // Lists FIRST, and an empty element counts as an empty list. A list nobody
   // touched is written `<regions/>`, which reads back as the empty string — so
@@ -109,14 +127,18 @@ function walk(a: TreeData | undefined, b: TreeData | undefined, c: TreeData | un
         found.push({ path, ref: `${al.length} item(s)`, ours: `${bl.length} item(s)` });
       }
     }
-    for (let i = 0; i < Math.max(al.length, bl.length); i++) walk(al[i], bl[i], cl[i], `${path}[${i}]`);
+    for (let i = 0; i < Math.max(al.length, bl.length); i++) {
+      walk(al[i], bl[i], cl[i], `${path}[${i}]`, [...steps, i]);
+    }
     return;
   }
   if (typeof a === 'string' || typeof b === 'string') {
     const av = typeof a === 'string' ? a : '', bv = typeof b === 'string' ? b : '';
     if (sameScalar(av, bv)) return;
-    // Absent from the original, and exactly as a fresh map has it: not authored.
-    if (empty(a) && typeof c === 'string' && sameScalar(c, bv)) {
+    // Absent from the original, and exactly as a fresh map — or a freshly built
+    // item — has it: not authored.
+    const fresh = typeof c === 'string' ? c : builtDefault(steps);
+    if (empty(a) && fresh !== null && sameScalar(fresh, bv)) {
       untouched++; untouchedFields.add(path.replace(/\[\d+\]/g, '[]'));
       return;
     }
@@ -126,7 +148,7 @@ function walk(a: TreeData | undefined, b: TreeData | undefined, c: TreeData | un
   const ao = (a ?? {}) as Record<string, TreeData>, bo = (b ?? {}) as Record<string, TreeData>;
   const co = (c ?? {}) as Record<string, TreeData>;
   for (const k of new Set([...Object.keys(ao), ...Object.keys(bo)])) {
-    walk(ao[k], bo[k], co[k], path ? `${path}.${k}` : k);
+    walk(ao[k], bo[k], co[k], path ? `${path}.${k}` : k, [...steps, k]);
   }
 }
 
@@ -179,7 +201,7 @@ for (const [title, keys] of [...SECTIONS, ['EVERYTHING ELSE', rest] as [string, 
   console.log(title);
   for (const k of present) {
     found.length = 0;
-    walk(setLike(k, treeA[k]), setLike(k, treeB[k]), setLike(k, treeBlank[k]), k);
+    walk(setLike(k, treeA[k]), setLike(k, treeB[k]), setLike(k, treeBlank[k]), k, [k]);
     if (!found.length) { ok(k); continue; }
     fail(k, `${found.length} difference(s)`);
     for (const f of found.slice(0, 6)) {

@@ -161,7 +161,15 @@
       "x-advanced": true,
       "properties": {
         "PointLights": { "type": "array", "title": "Point lights", "items": { "type": "object" } },
-        "SavesFilenames": { "type": "array", "title": "Save filenames", "items": { "type": "string" } }
+        "SavesFilenames": { "type": "array", "title": "Save names", "items": { "$ref": "#/$defs/SaveFilename" } }
+      }
+    },
+    "SaveFilename": {
+      "type": "object", "title": "Save name",
+      "description": "A save this map makes — the campaign's autosave, or one a script asks for — and the text file holding the name the player sees for it.",
+      "properties": {
+        "Name": { "type": "string", "title": "Key", "description": "What the engine or a script calls this save by: `autosave` on the campaign missions, `scene1` on C1M1." },
+        "SaveFilenameFileRef": { "type": "string", "x-ref": true, "x-file": true, "title": "Displayed name" }
       }
     },
     "Vec3": {
@@ -324,7 +332,7 @@
         "DescriptionFileRef": { "type": "string", "x-ref": true, "x-file": true, "title": "Description" },
         "ProgressCommentsFileRef": { "type": "string", "x-ref": true, "x-file": true, "title": "Progress comments", "x-advanced": true },
         "Kind": { "type": "string", "title": "Kind", "enum": ["OBJECTIVE_KIND_MANUAL", "OBJECTIVE_KIND_SCENARIO_INFO", "OBJECTIVE_KIND_DEFEAT_ALL", "OBJECTIVE_KIND_CAPTURE_OBJECT", "OBJECTIVE_KIND_OBTAIN_ARTIFACT", "OBJECTIVE_KIND_COLLECT_RESOURCES", "OBJECTIVE_KIND_ASSEMBLE_ARMY", "OBJECTIVE_KIND_BUILD_GRAAL", "OBJECTIVE_KIND_HERO_MUST_SURVIVE", "OBJECTIVE_KIND_STAY_UNDEFEATED", "OBJECTIVE_KIND_STAY_WITH_HEROES", "OBJECTIVE_KIND_OPEN_BORDER_GUARD"] },
-        "Parameters": { "type": "object", "title": "Parameters", "x-advanced": true },
+        "Parameters": { "type": "array", "title": "Parameters", "x-advanced": true, "description": "Arguments for the objective's Kind: the name of the object to capture, the number of creatures to assemble. What they mean depends on Kind — the shipped missions put object names (`zastava`, `Isabell`) and plain numbers here.", "items": { "type": "string" } },
         "Timeout": { "type": "integer", "title": "Timeout", "default": -1 },
         "Holdout": { "type": "integer", "title": "Holdout", "default": -1 },
         "CheckDelay": { "type": "integer", "title": "Check delay", "default": -1 },
@@ -379,7 +387,7 @@
         "Type": { "type": "string", "title": "Type", "enum": ["AWARD_NONE", "AWARD_EXPERIENCE", "AWARD_RESOURCE", "AWARD_ARTIFACT"], "default": "AWARD_NONE" },
         "Experience": { "type": "integer", "title": "Experience" },
         "Resources": { "$ref": "#/$defs/Resources7", "title": "Resources" },
-        "Attribute": { "type": "string", "title": "Attribute", "enum": ["HERO_ATTRIB_ATTACK", "HERO_ATTRIB_DEFENCE", "HERO_ATTRIB_SPELLPOWER", "HERO_ATTRIB_KNOWLEDGE"], "default": "HERO_ATTRIB_ATTACK" },
+        "Attribute": { "type": "string", "title": "Attribute", "enum": ["HERO_ATTRIB_ATTACK", "HERO_ATTRIB_DEFENCE", "HERO_ATTRIB_SPELLPOWER", "HERO_ATTRIB_KNOWLEDGE"], "default": "HERO_ATTRIB_DEFENCE", "description": "Which attribute an AWARD_EXPERIENCE-style award raises. The default is the original editor's own: 2586 of the 2593 awards across the shipped maps carry DEFENCE, whatever the award is." },
         "AttributeAmount": { "type": "integer", "title": "Attribute amount" },
         "ArtifactID": { "type": "string", "x-registry": "artifacts", "x-widget": "dropdown", "title": "Artifact", "default": "ARTIFACT_NONE" },
         "SpellID": { "type": "string", "x-registry": "spells", "x-widget": "dropdown", "title": "Spell", "default": "SPELL_NONE" },
