@@ -9,10 +9,11 @@ REM  map against the original and packs it; because HOMM5_NO_REMOVE_MAP is set
 REM  below, it LEAVES the .h5m in the game's Maps\ folder so you can open it in
 REM  the game straight after.
 REM
-REM  Fresh every run: the stages are idempotent -- stage 1 OPENS an existing map
-REM  if one is on disk and only builds a blank when none is, so a leftover map
-REM  would be re-applied over instead of rebuilt. So the previous reconstruction
-REM  is deleted first, and the chain truly starts from an empty New Map.
+REM  Fresh only: the stages are idempotent -- stage 1 OPENS an existing map if
+REM  one is on disk and only builds a blank when none is, so a leftover map is
+REM  re-applied over instead of rebuilt. If a reconstruction already exists this
+REM  script WARNS and asks to delete it; decline and it exits without running,
+REM  so the chain never runs over an old map by accident.
 REM  (Assumes the default data root, data-unpacked; not a custom HOMM5_DATA.)
 REM
 REM  Prerequisite (run once, from your own copy of the mod):
@@ -23,9 +24,28 @@ REM ===========================================================================
 setlocal
 cd /d "%~dp0"
 
-echo Cleaning the previous reconstruction (fresh from-scratch build)...
-if exist "data-unpacked\Maps\SingleMissions\e2e Reconstruct C1M1" rmdir /s /q "data-unpacked\Maps\SingleMissions\e2e Reconstruct C1M1"
-if exist "_tmp\recon\C1M1" rmdir /s /q "_tmp\recon\C1M1"
+set "MAPDIR=data-unpacked\Maps\SingleMissions\e2e Reconstruct C1M1"
+set "RECONDIR=_tmp\recon\C1M1"
+
+if exist "%MAPDIR%" (
+  echo.
+  echo  WARNING: a reconstruction map already exists:
+  echo    %MAPDIR%
+  echo.
+  echo  It must be removed to rebuild from scratch. Kept, the stages re-apply
+  echo  over the OLD map instead of building it anew -- not a from-scratch run.
+  echo.
+  choice /c YN /m "Delete it and rebuild from nothing?  N cancels"
+  if errorlevel 2 (
+    echo.
+    echo  Cancelled -- nothing was deleted or run.
+    pause
+    exit /b 1
+  )
+  rmdir /s /q "%MAPDIR%"
+)
+
+if exist "%RECONDIR%" rmdir /s /q "%RECONDIR%"
 
 set HOMM5_NO_REMOVE_MAP=1
 call npx playwright test c1m1
