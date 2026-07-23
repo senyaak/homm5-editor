@@ -17,6 +17,7 @@ import {
   readPassability, writeTerrain,
 } from './terrain.ts';
 import { addTextureLayer } from './terrain-layer.ts';
+import { addPassabilityPlane } from './terrain-plane.ts';
 import type { Terrain, TextureLayer } from './terrain.ts';
 
 /** Vertex indices (y*V + x) a brush touches. */
@@ -139,8 +140,14 @@ export class TerrainDoc {
    * less often than average rather than more. What goes here is what a designer
    * decides by hand: an unfordable river, a rock field, a pond too small to
    * sail, a scripted barrier.
+   *
+   * A map made by New Map has no plane to write into — the format reserves the
+   * slot and leaves it empty — so the first stroke fills it in. Doing that here
+   * rather than at New Map keeps a blank byte-identical to the original
+   * editor's, and a map nobody masked stays exactly as it was.
    */
   setPassable(verts: VertexList, walkable: boolean): void {
+    if (!this.passable) this.load(addPassabilityPlane(this.compose()));
     const p = this.passable;
     if (!p) return;
     for (const v of verts) {

@@ -322,6 +322,31 @@ console.log('\n--- against the real terrain document ---');
       ok('redoing a layer grows it again', same(grown, new Uint8Array(doc.buffer())));
     }
   }
+
+  // The first mask stroke on a FRESH map is the other length-changing edit: the
+  // plane does not exist yet and gets filled in, so undo has to walk back over
+  // a file that grew — the case a run-diff of equal-length buffers cannot do.
+  {
+    const { buildBlankTerrain } = await import('../src/terrain-blank.ts');
+    const { writeFileSync } = await import('node:fs');
+    const dir = mkdtempSync(join(tmpdir(), 'homm5-hist-blank-'));
+    const path = join(dir, 'GroundTerrain.bin');
+    writeFileSync(path, buildBlankTerrain(72));
+    const doc = TerrainDoc.open(path);
+    const blank = new Uint8Array(doc.buffer());
+    const h = new History();
+    const before = new Uint8Array(doc.buffer());
+    doc.setPassable([10, 11, 12], false);
+    const masked = new Uint8Array(doc.buffer());
+    const p = diff(before, masked);
+    h.push({ label: 'block tiles', docs: p ? { '0': p } : {} });
+    ok('a mask stroke on a blank map adds the plane', masked.length > blank.length,
+      `${blank.length} -> ${masked.length}`);
+    ok('the mask reached the plane', doc.isBlocked(11));
+    const s = h.takeUndo();
+    if (s) doc.restore(Buffer.from(apply(new Uint8Array(doc.buffer()), s.docs['0']!, 'undo')));
+    ok('undoing it restores the blank byte for byte', same(blank, new Uint8Array(doc.buffer())));
+  }
 }
 
 console.log(failures ? `\n${failures} FAILED` : '\nall history tests passed');

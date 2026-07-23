@@ -133,8 +133,10 @@ functionality, not by filename.
   the original spells tile paths lowercase where our blank does not.
 - Every height differs, up to 16.8 — expected, that is the sculpting.
 - Ground flags: the map is tiered (48 = tier 3) where a blank is flat 16.
-- **Passability plane absent from a blank entirely** — inserting a plane is not
-  implemented (`docs/TERRAIN_FORMAT.md`). First real tool gap of this stage.
+- **Passability plane absent from a blank entirely** — inserting a plane was not
+  implemented (`docs/TERRAIN_FORMAT.md`). First real tool gap of this stage, and
+  it turned out to be a slot the format already reserves rather than an insert:
+  closed by `src/terrain-plane.ts` (stage 5 below).
 
 ### The shape cannot be recovered as a formula (measured)
 
@@ -180,6 +182,7 @@ e2e/c1m1-1-heights.spec.ts     ~5 min    9409 strokes
 e2e/c1m1-2-kinds.spec.ts       ~25 s     1 rect + 1214 strokes
 e2e/c1m1-3-rivers.spec.ts      ~30 s     2317 cells
 e2e/c1m1-4-textures.spec.ts    ~6 min    12 layers, 112 908 writes
+e2e/c1m1-5-passability.spec.ts ~20 s     4939 tiles in 424 strokes
 ```
 
 Each opens the map the previous one left (`e2e/c1m1.ts`), does its own pass,
@@ -194,7 +197,7 @@ The map is not cleaned up afterwards. It is the artefact:
 
 ### Accepted deviations (the result matches; the bytes do not)
 
-Two differences remain in the terrain file and both are deliberate:
+Three differences remain in the terrain file and all are deliberate:
 
 - **Layer order.** Ours starts with the blank's Grass layer and appends the
   other eleven; the original has Grass fifth. The engine composites layers by
@@ -206,11 +209,15 @@ Two differences remain in the terrain file and both are deliberate:
   `/MapObjects/_(AdvMapTile)/Road/Road.xdb`. The engine takes either — and this
   is not authored at all: a blank map from the *same* original editor carries
   the mixed-case form, so the spelling changed between editor versions.
+- **14 bytes of trailer.** Our map keeps the empty `10` block a New Map blank is
+  born with; C1M1 has none. It holds a coarse LOD grid the engine fills, 134 of
+  the 282 shipped maps carry it and the rest do not
+  (`docs/TERRAIN_FORMAT.md`) — the file length is the only place it shows.
 
 The rule is 1:1 in the RESULT. Filenames and record order that the engine does
 not read are not the result.
 
-### Heights, tiers, rivers and textures: done ✅
+### The terrain stage: done ✅
 
 `e2e/reconstruct-c1m1.spec.ts` rebuilds the shape by clicking — a blank 96×96
 through the New Map dialog, then one Vertex-brush stroke per vertex with the
@@ -261,6 +268,20 @@ grid line between two vertices, which rounds to the neighbour. Under that camera
 the ray is vertical, so the ground position follows from the camera alone; it is
 taken from there now, and picking no longer depends on what geometry happens to
 be in the way.
+
+Passability came last and closed the one gap this mission opened with. C1M1
+blocks **4939 of its 9409 tiles** — a campaign map is a corridor, and the
+mountains around it are masked rather than merely steep — laid down as 424
+horizontal runs with the Rect brush, in 18 seconds. The gap was never an insert:
+comparing a blank's trailer against the mission's, the plane is a slot the format
+already reserves and a new map leaves declared `0 × 0`, so the first mask stroke
+fills it in (`src/terrain-plane.ts`). Nothing else in the file moves, which the
+stage checks by re-comparing every earlier plane and `tools/test-terrain-plane.ts`
+by rebuilding blanks at three sizes.
+
+**All five planes now match the original**: heights, ground kinds, rivers, the
+twelve texture layers, and passability — `npm run diff-terrain` is down to the
+three accepted deviations above.
 
 ## Milestone 0 — the one missing primitive: New Map
 

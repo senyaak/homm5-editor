@@ -3326,7 +3326,10 @@ function setShowBlocked(on: boolean): void {
 /** Paint or erase the mask under the brush. */
 function maskAt(tiles: number[], walkable: boolean): void {
   const fl = activeFloor();
-  if (!fl.passable) return;
+  // A map made by New Map has no mask plane yet: the format leaves the slot
+  // empty and the main process fills it in on the first stroke. Start one here
+  // too, all walkable, or the brush would do nothing on a fresh map.
+  if (!fl.passable) fl.passable = new Array<number>(fl.V * fl.V).fill(1);
   const fresh = tiles.filter((v) => !strokeVerts.has(v));
   if (!fresh.length) return;
   for (const v of fresh) {

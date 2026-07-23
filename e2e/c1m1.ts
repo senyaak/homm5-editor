@@ -73,6 +73,19 @@ export async function vertexPixels(page: Page, V: number): Promise<[number, numb
   }, V);
 }
 
+/** The same for tile centres — what the mask brush addresses. */
+export async function tilePixels(page: Page, T: number): Promise<[number, number][]> {
+  return page.evaluate((n) => {
+    window.view.fit();
+    const out: [number, number][] = [];
+    for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+      const at = window.view.tileToScreen(x, y);
+      out.push([at.x, at.y]);
+    }
+    return out;
+  }, T);
+}
+
 /** The same for the half-tile river grid. */
 export async function cellPixels(page: Page, W: number): Promise<[number, number][]> {
   return page.evaluate((n) => {
@@ -91,6 +104,29 @@ export async function clickAt(page: Page, at: [number, number]): Promise<void> {
   await page.mouse.move(at[0], at[1]);
   await page.mouse.down();
   await page.mouse.up();
+}
+
+/**
+ * Drag between two precomputed pixels — one continuous stroke.
+ *
+ * The intermediate moves are not decoration: a rect stroke reads the tile under
+ * the cursor on press and on release, and a brush that acts per move would
+ * otherwise paint the ends and nothing between them.
+ */
+export async function dragAt(
+  page: Page, from: [number, number], to: [number, number], steps = 4,
+): Promise<void> {
+  await page.mouse.move(from[0], from[1]);
+  await page.mouse.down();
+  for (let i = 1; i <= steps; i++) {
+    await page.mouse.move(from[0] + ((to[0] - from[0]) * i) / steps, from[1] + ((to[1] - from[1]) * i) / steps);
+  }
+  await page.mouse.up();
+}
+
+/** The terrain as it currently stands on disk — the state a stage starts from. */
+export function currentTerrain(): Terrain {
+  return parseTerrain(readFileSync(join(MAP_DIR, 'GroundTerrain.bin')));
 }
 
 /**

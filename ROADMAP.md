@@ -131,6 +131,10 @@ placing new ones from a palette.
 - [x] Adding a texture layer for a tile the map does not carry — `src/terrain-layer.ts`.
       Splices the record and grows every enclosing block; the size encoding's
       width flag was decoded to make this writable ✅
+- [x] Giving a from-scratch map its passability plane — `src/terrain-plane.ts`.
+      A blank declares the slot `0 × 0` and leaves it empty, so the first mask
+      stroke fills it in; the record walk is shared with the layer splice
+      (`src/terrain-records.ts`) ✅
 - [x] River brushes (Water/Bog/LavaFlow): sink the bed below its banks and write
       the half-tile river plane ✅
 - [x] Passability grid (red blocked / blue navigable / clear walkable) + the
@@ -436,6 +440,20 @@ Round-trip (load→save→identical) is the cheap complementary net.
         a project dir that is gone. Both cost a real map once.
       - `npm run unpack-data` unpacks every `.pak` (addon last) so assets resolve
         from one tree — `RMG/Tiles/*` ships only in `a2p1-data.pak`.
+
+- [x] ✅ **C1M1 terrain — all five planes** (2026-07-23): the mission's whole
+      `GroundTerrain.bin` is rebuilt by clicking, in five staged specs
+      (`e2e/c1m1-{1..5}-*.spec.ts`) — heights, ground kinds, rivers, twelve
+      texture layers, passability. `npm run diff-terrain` is down to three
+      accepted deviations (layer order, tile-path case, 14 trailer bytes), all
+      things the engine does not read. Objects, map settings and Lua are next.
+
+      The last stage closed the tool gap this mission opened with: a map made by
+      New Map had **nowhere to record "this tile is blocked"**. It turned out not
+      to need an insert — the format reserves the slot and a blank leaves it
+      declared `0 × 0` — so the first mask stroke fills it in
+      (`src/terrain-plane.ts`, `npm run test-terrain-plane`). C1M1 blocks 4939 of
+      its 9409 tiles, painted as 424 Rect runs in 18 seconds.
 
 ---
 

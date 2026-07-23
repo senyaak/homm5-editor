@@ -14,6 +14,7 @@
     "test-blank-map": "node tools/test-blank-map.ts",
     "test-new-map": "node tools/test-new-map.ts",
     "test-terrain-layer": "node tools/test-terrain-layer.ts",
+    "test-terrain-plane": "node tools/test-terrain-plane.ts",
     "test-pak": "node tools/test-pak.js",
     "test-map": "node tools/test-map.js",
     "test-watch": "node tools/test-watch.ts",

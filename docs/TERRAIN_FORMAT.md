@@ -68,13 +68,28 @@ the fixed **blank** structure they close to `D = 2N + 201`, `E = 2N + 179`,
 `D`/`E`/`F` are cumulative sub-tree sizes, so they also depend on layer count and
 string lengths.
 
-**The trailer.** After the last plane comes a trailer. In an *edited* map it is
-another framed array on a **coarse `d × d` grid**, `d = round((V−1)/3) + 1`
-(73→25, 97→33, 137→46 …), whose data is **content-independent** — an identical
-synthetic ramp (`i·67 mod 256`) in every map, blank or shipped — so it reads as a
-default LOD layer the engine fills, not authored data. A **fresh blank** instead
-carries a fixed **51-byte** trailer (three empty framed sub-blocks + the end
-marker `00 00 02 00 05 00`).
+**The trailer.** After the river plane come four more tagged blocks and the end
+marker `00 00 02 00 05 00`. Measured across all 282 shipped `GroundTerrain.bin`:
+
+| tag | what |
+|---|---|
+| `0d` | empty on every map but three (two dimension scalars at 0) |
+| `0e` | a single byte — see below |
+| `0f` | **the passability plane**, `V²` u8 — filled on 278 of 282 maps |
+| `10` | a **coarse `d × d` grid**, `d = round((V−1)/3) + 1` (73→25, 97→33, 137→46), of ~8-byte records rather than plain bytes; present on 134 maps, absent on the rest, so the engine fills it rather than reading it as authored data |
+
+A **fresh blank** carries `0d`, `0e`, `0f` and `10` all empty — 51 bytes in
+total. So the passability plane is not missing from a new map so much as left
+declared `0 × 0`; filling in that slot is what `src/terrain-plane.ts` does.
+
+The one byte in `0e` is 0 on a blank and varies across shipped maps (0, 1, 8, 9,
+24 … 248). Its **low bit tracks whether the `10` block follows** — 279 of 282
+maps agree, and every map with the bit set has the block. The other bits
+correlate with nothing the file holds, including whether the passability plane is
+there: 46 maps carry the plane with bit 3 clear and 46 more the other way. The
+editor leaves the byte alone, which is also what the original editor does — its
+own blanks write 0 while carrying a `10` block, and three shipped maps disagree
+the same way.
 
 ## Planes, in order
 
@@ -259,11 +274,17 @@ paint it" cannot reach an authored map by overwriting alone:
 | u8 planes after height | 2 — ground flags, zero | 3 — **plus passability** |
 | file length | 103 384 | 217 340 |
 
-Layers can be added (`addTextureLayer`), so the layer count closes. The
-**passability plane does not exist in a blank at all** and inserting a whole
-plane is not implemented — `writeTerrain` only overwrites planes that are already
-there. Until it is, a from-scratch map cannot express "this tile is blocked",
-which the reference records explicitly (it is authored, not derived — see above).
+Both close now. Layers are added by `addTextureLayer`; the passability plane by
+`addPassabilityPlane` (`src/terrain-plane.ts`), which fills in the empty `0f`
+slot the blank leaves — see the trailer above. `writeTerrain` still only
+overwrites planes that are already there, so the plane is created once, on the
+first mask stroke (`TerrainDoc.setPassable`), and overwritten in place after
+that. A blank stays byte-identical to the original editor's until then, and a
+map nobody masked keeps its trailer untouched.
+
+The one remaining length difference against C1M1 is 14 bytes: our blank carries
+an empty `10` block that C1M1 does not have. Half the shipped maps carry it, half
+do not.
 
 **Tile paths differ in case between maps and the engine takes either.** C1M1
 stores them lowercased (`/mapobjects/_(advmaptile)/grass/grass.xdb`) while the
@@ -274,7 +295,5 @@ own line rather than as a missing tile.
 
 ## Not implemented
 
-- **Inserting a plane into an existing file** — see above: needed for
-  passability on a from-scratch map.
 - **`UndergroundTerrain.bin` for a from-scratch second floor** — same container,
   wired up when New Map's "two level" option is built.
