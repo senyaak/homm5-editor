@@ -21,7 +21,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { launchEditor } from './launch.ts';
 import type { Launched } from './launch.ts';
-import { MAP_DIR, FIXTURE, NEED_FIXTURE, hasFixture, openMap } from './c1m1.ts';
+import { MAP_DIR, FIXTURE, NEED_FIXTURE, openMap, requireFixture } from './c1m1.ts';
 
 let ed: Launched;
 const TEXTS = join(FIXTURE, '..', 'texts');
@@ -48,7 +48,7 @@ function allTexts(dir: string, rel = ''): string[] {
 }
 
 test('C1M1 texts: the original strings, authored into the map and matching', async () => {
-  test.skip(!hasFixture() || !existsSync(TEXTS), `${NEED_FIXTURE} (texts too)`);
+  requireFixture({ ok: existsSync(TEXTS), need: `${NEED_FIXTURE} (texts too)` });
   test.setTimeout(5 * 60_000);
   const { page } = ed;
 

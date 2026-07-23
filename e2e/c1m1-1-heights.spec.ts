@@ -14,7 +14,7 @@ import { launchEditor } from './launch.ts';
 import type { Launched } from './launch.ts';
 import { armBrush, setBrushForce } from './tiles.ts';
 import {
-  NEED_FIXTURE, clickAt, fixture, hasFixture, mismatches, openMap, saveTerrain, vertexPixels,
+  clickAt, fixture, mismatches, openMap, requireFixture, saveTerrain, vertexPixels,
 } from './c1m1.ts';
 import { readHeights } from '../src/terrain.ts';
 
@@ -27,7 +27,7 @@ test.beforeAll(async () => { ed = await launchEditor(); });
 test.afterAll(async () => { await ed?.app.close(); });
 
 test('C1M1 heights, clicked one vertex at a time', async () => {
-  test.skip(!hasFixture(), NEED_FIXTURE);
+  requireFixture();
   test.setTimeout(60 * 60_000);
   const { page } = ed;
 

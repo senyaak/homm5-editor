@@ -25,7 +25,7 @@ import { join } from 'node:path';
 import { launchEditor } from './launch.ts';
 import type { Launched } from './launch.ts';
 import { settle } from './tiles.ts';
-import { MAP_DIR, FIXTURE, NEED_FIXTURE, hasFixture, openMap } from './c1m1.ts';
+import { MAP_DIR, FIXTURE, openMap, requireFixture } from './c1m1.ts';
 import { openTree, reveal, treeValue } from './tree.ts';
 import { loadMap } from '../src/map.ts';
 import { readTree } from '../src/tree.ts';
@@ -48,7 +48,7 @@ const errorMarkers = (page: import('@playwright/test').Page) =>
   page.locator('#docedit .cm-lint-marker-error');
 
 test('C1M1 scripts: bind the map script, write the Lua, and the linter catches a broken one', async () => {
-  test.skip(!hasFixture(), NEED_FIXTURE);
+  requireFixture();
   test.setTimeout(10 * 60_000);
   const { page } = ed;
   // Accept any "unsaved changes?" prompt — a close in this test is always meant.

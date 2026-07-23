@@ -13,7 +13,7 @@ import { launchEditor } from './launch.ts';
 import type { Launched } from './launch.ts';
 import { armBrush, setRiverStrength } from './tiles.ts';
 import {
-  NEED_FIXTURE, cellPixels, clickAt, fixture, hasFixture, mismatches, openMap, saveTerrain,
+  cellPixels, clickAt, fixture, mismatches, openMap, requireFixture, saveTerrain,
 } from './c1m1.ts';
 import { readHeights, readWaterPlane } from '../src/terrain.ts';
 
@@ -23,7 +23,7 @@ test.beforeAll(async () => { ed = await launchEditor(); });
 test.afterAll(async () => { await ed?.app.close(); });
 
 test('C1M1 rivers, on the half-tile grid', async () => {
-  test.skip(!hasFixture(), NEED_FIXTURE);
+  requireFixture();
   test.setTimeout(60 * 60_000);
   const { page } = ed;
 

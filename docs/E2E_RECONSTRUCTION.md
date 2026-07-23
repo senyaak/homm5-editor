@@ -54,6 +54,29 @@ whole set ends in `docs/RECIPES.md` — how to actually do each thing.
 The reconstruction script for a mission is itself the e2e test: it re-runs on
 every change and must keep passing, so later missions can't regress earlier ones.
 
+### The fixture is a prerequisite, not a download
+
+Step 1 is something **you** run once, from your own copy of the game/mod; the
+suite never opens the mod archives itself. A reconstruction stage reads the
+unpacked `_tmp/fixtures/C1M1/` tree and nothing else, so without it a stage
+cannot mean anything — and a *silent* skip there reads as a pass and hides that
+the reconstruction never ran. So by default a missing fixture **fails** those
+stages loudly (`requireFixture()` in `e2e/c1m1.ts`), with a message naming the
+`npm run extract-fixture C1M1` that fixes it. The self-contained specs (smoke,
+new-map, text-authoring, localization, …) are unaffected — they carry their own
+data and run regardless.
+
+On a machine that simply doesn't have the mod, set `HOMM5_ALLOW_NO_FIXTURE=1` to
+turn that failure into a quiet skip instead:
+
+```bash
+HOMM5_ALLOW_NO_FIXTURE=1 npx playwright test
+```
+
+Either way, `e2e/build.ts` prints a one-line heads-up at the start of the run
+when the fixture is absent, so the reason is stated once up front rather than
+inferred from a wall of failures.
+
 ## What "match" means
 
 The target is **1:1 in content**. Identity of the *bytes* is not reachable for

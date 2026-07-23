@@ -20,7 +20,7 @@ import { launchEditor } from './launch.ts';
 import type { Launched } from './launch.ts';
 import { settle } from './tiles.ts';
 import { setObjectProp, setTextRef, sharedKey } from './objects.ts';
-import { MAP_DIR, NEED_FIXTURE, FIXTURE, hasFixture, openMap } from './c1m1.ts';
+import { MAP_DIR, FIXTURE, openMap, requireFixture } from './c1m1.ts';
 import { loadMap } from '../src/map.ts';
 import type { MapObject } from '../src/map.ts';
 import { children, find, text } from '../src/xml.ts';
@@ -53,7 +53,7 @@ function armyOf(o: MapObject): [string, string][] {
 }
 
 test('C1M1 object fields, set in the panel and the object tree', async () => {
-  test.skip(!hasFixture(), NEED_FIXTURE);
+  requireFixture();
   test.setTimeout(60 * 60_000);
   const { page } = ed;
 

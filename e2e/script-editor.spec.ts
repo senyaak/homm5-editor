@@ -12,7 +12,7 @@ import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { launchEditor } from './launch.ts';
 import type { Launched } from './launch.ts';
-import { MAP_DIR, NEED_FIXTURE, hasFixture, openMap } from './c1m1.ts';
+import { MAP_DIR, openMap, requireFixture } from './c1m1.ts';
 
 let ed: Launched;
 
@@ -24,7 +24,7 @@ const FILE = 'e2e-editor-scratch.lua';
 const SEED = 'function onStart()\n\t-- a comment\n\tlocal n = 1\nend\n';
 
 test('the Lua editor highlights, completes from the map, and saves', async () => {
-  test.skip(!hasFixture(), NEED_FIXTURE);
+  requireFixture();
   test.setTimeout(10 * 60_000);
   const { page } = ed;
 

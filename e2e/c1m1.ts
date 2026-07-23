@@ -14,7 +14,7 @@
 // The map is deliberately NOT cleaned up: it is the artefact the whole exercise
 // is for. It lives under the data root, where the game looks for maps.
 
-import { expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -39,6 +39,30 @@ export const hasFixture = (): boolean => existsSync(FIXTURE);
 
 /** Skip note for a stage that cannot run without the extracted original. */
 export const NEED_FIXTURE = 'needs the fixture — npm run extract-fixture C1M1';
+
+/** The parameter that turns a missing fixture from a failure into a quiet skip. */
+export const ALLOW_NO_FIXTURE = 'HOMM5_ALLOW_NO_FIXTURE';
+
+/**
+ * Gate a reconstruction stage on the extracted fixture.
+ *
+ * The fixture is the game/mod's OWN files, unpacked once by
+ * `npm run extract-fixture C1M1` (tools/extract-fixture.ts); the specs read that
+ * unpacked tree but never open the mod archives themselves. Without it a stage
+ * cannot mean anything — so by default this FAILS the stage loudly, because a
+ * silent skip reads as a pass and hides that the reconstruction never ran.
+ *
+ * On a machine that simply does not have the mod, set HOMM5_ALLOW_NO_FIXTURE=1
+ * to turn that failure into a quiet skip instead. `extra` lets a stage fold its
+ * own precondition (the texts stage also needs the texts/ tree) under the same
+ * gate and the same parameter.
+ */
+export function requireFixture(extra?: { ok: boolean; need: string }): void {
+  const ok = hasFixture() && (extra?.ok ?? true);
+  const need = extra && !extra.ok ? extra.need : NEED_FIXTURE;
+  if (process.env[ALLOW_NO_FIXTURE]) { test.skip(!ok, need); return; }
+  expect(ok, `${need}  —  or set ${ALLOW_NO_FIXTURE}=1 to skip instead of fail`).toBe(true);
+}
 
 /**
  * Open the reconstruction map, creating a blank one if this is the first stage

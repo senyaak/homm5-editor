@@ -18,7 +18,7 @@ import { launchEditor } from './launch.ts';
 import type { Launched } from './launch.ts';
 import { armBrush } from './tiles.ts';
 import {
-  NEED_FIXTURE, currentTerrain, dragAt, fixture, hasFixture, mismatches, openMap, saveTerrain,
+  currentTerrain, dragAt, fixture, mismatches, openMap, requireFixture, saveTerrain,
   tilePixels,
 } from './c1m1.ts';
 import {
@@ -32,7 +32,7 @@ test.beforeAll(async () => { ed = await launchEditor(); });
 test.afterAll(async () => { await ed?.app.close(); });
 
 test('C1M1 passability, masked run by run', async () => {
-  test.skip(!hasFixture(), NEED_FIXTURE);
+  requireFixture();
   test.setTimeout(60 * 60_000);
   const { page } = ed;
 

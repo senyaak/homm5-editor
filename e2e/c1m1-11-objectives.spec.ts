@@ -20,7 +20,7 @@ import { join } from 'node:path';
 import { launchEditor } from './launch.ts';
 import type { Launched } from './launch.ts';
 import { settle } from './tiles.ts';
-import { MAP_DIR, NEED_FIXTURE, FIXTURE, hasFixture, openMap } from './c1m1.ts';
+import { MAP_DIR, FIXTURE, openMap, requireFixture } from './c1m1.ts';
 import {
   addItem, addValueItem, listLength, listValues, openTree, setTreeTextRef, setTreeValue, treeValue,
 } from './tree.ts';
@@ -71,7 +71,7 @@ const at = (tree: TreeData | undefined, path: (string | number)[]): TreeData | u
 };
 
 test('C1M1 objectives and its save name, built in the tree', async () => {
-  test.skip(!hasFixture(), NEED_FIXTURE);
+  requireFixture();
   test.setTimeout(60 * 60_000);
   const { page } = ed;
 

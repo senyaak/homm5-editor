@@ -13,7 +13,7 @@ import { launchEditor } from './launch.ts';
 import type { Launched } from './launch.ts';
 import { armBrush, dragTiles, setGroundKind } from './tiles.ts';
 import {
-  NEED_FIXTURE, clickAt, fixture, hasFixture, mismatches, openMap, saveTerrain, vertexPixels,
+  clickAt, fixture, mismatches, openMap, requireFixture, saveTerrain, vertexPixels,
 } from './c1m1.ts';
 import { readGroundFlags, readHeights, tierOf, RAMP_BIT } from '../src/terrain.ts';
 
@@ -23,7 +23,7 @@ test.beforeAll(async () => { ed = await launchEditor(); });
 test.afterAll(async () => { await ed?.app.close(); });
 
 test('C1M1 tiers and ramps, painted without moving the ground', async () => {
-  test.skip(!hasFixture(), NEED_FIXTURE);
+  requireFixture();
   test.setTimeout(60 * 60_000);
   const { page } = ed;
 

@@ -24,7 +24,7 @@ import { launchEditor } from './launch.ts';
 import type { Launched } from './launch.ts';
 import { settle } from './tiles.ts';
 import { degOf, pickObject, placeAtTile, rotDelta, setPlacement, sharedKey } from './objects.ts';
-import { MAP_DIR, NEED_FIXTURE, FIXTURE, hasFixture, openMap } from './c1m1.ts';
+import { MAP_DIR, FIXTURE, openMap, requireFixture } from './c1m1.ts';
 import { loadMap } from '../src/map.ts';
 
 let ed: Launched;
@@ -42,7 +42,7 @@ const ROT_EPS = 1e-3;
 interface Target { shared: string; type: string; x: number; y: number; rot: number }
 
 test('C1M1 objects, placed one click at a time', async () => {
-  test.skip(!hasFixture(), NEED_FIXTURE);
+  requireFixture();
   test.setTimeout(2 * 60 * 60_000);
   const { page } = ed;
 
