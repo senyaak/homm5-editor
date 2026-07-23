@@ -2859,9 +2859,11 @@ function saveDoc(): void {
       deLoaded = text;
       markDirty(true);
       $('hud').textContent = `saved ${deHref}`;
-      // The editor STAYS open: a text may have several languages to save in turn,
-      // and a script is often saved mid-edit. Closing is Cancel/✕, or Esc.
-      if (locState.enabled) renderLocTabs();
+      // Save closes the editor, as it always has — EXCEPT for a localized text,
+      // whose several languages are saved in turn through the tabs, so there the
+      // window stays open. A script and a plain text still close on save.
+      if (locState.enabled && langOf(deRef) === 'text') renderLocTabs();
+      else docDialog().close();
       if (mapTreeOpen()) void refreshMapTree();
     })
     .catch((e: unknown) => { $('hud').textContent = 'save failed: ' + (e instanceof Error ? e.message : String(e)); });
