@@ -77,13 +77,14 @@ test('a hero carried across three missions, and the campaign packed for play', a
         && !/Utility\/EntryPoint/i.test(o.shared));
       const note: string[] = [];
 
-      /** Place one and return its id, or '' when the catalogue refuses it. */
-      const place = async (shared: string, x: number, y: number): Promise<string> => {
+      /** Place one and return its id, or '' when the map refuses it there. */
+      const placeOf = async (type: string, shared: string, x: number, y: number): Promise<string> => {
         try {
-          const r = await window.editor.addObject({ type: 'AdvMapHero', shared, x, y, floor: 0, r: 0 });
+          const r = await window.editor.addObject({ type, shared, x, y, floor: 0, r: 0 });
           return String((r.instance as { id?: string }).id ?? '');
-        } catch (e) { note.push(`${shared}: ${(e as Error).message}`); return ''; }
+        } catch (e) { note.push(`${shared} @${x},${y}: ${(e as Error).message}`); return ''; }
       };
+      const place = (shared: string, x: number, y: number): Promise<string> => placeOf('AdvMapHero', shared, x, y);
 
       // Ours. Every mission places him — including the ones he ARRIVES on: a
       // map has to hold a hero for the player it starts, or it has no start
@@ -119,6 +120,21 @@ test('a hero carried across three missions, and the campaign packed for play', a
           await set(mine, ['armySlots', 0, 'Count'], '1');
         }
       }
+      // Five Learning Stones beside him, so a mission ends with him visibly
+      // levelled. An Obelisk would not do it — that one uncovers the puzzle
+      // map; the Learning Stone is what grants experience. The level he shows
+      // up with on the next mission is the proof the handover carried him and
+      // not just a fresh copy of the same hero.
+      const stone = objects.find((o) => /\/Learning_Stone\./i.test(o.shared));
+      const stones: string[] = [];
+      if (stone) {
+        for (const [x, y] of [[6, 14], [9, 14], [12, 14], [6, 17], [9, 17], [12, 17], [15, 14], [15, 17]] as [number, number][]) {
+          if (stones.length >= 5) break;
+          const id = await placeOf('AdvMapBuilding', stone.shared, x, y);
+          if (id) stones.push(id);
+        }
+      }
+
       if (theirs) {
         await set(theirs, ['Name'], 'Rival');
         await set(theirs, ['PlayerID'], 'PLAYER_2');
@@ -139,12 +155,13 @@ test('a hero carried across three missions, and the campaign packed for play', a
         await window.editor.setMapPath({ path: ['players', slot, 'Colour'], value: colour });
       }
       await window.editor.save();
-      return { mine, theirs, mineShared, theirsShared, note };
+      return { mine, theirs, mineShared, theirsShared, stones: stones.length, note };
     }, { first: i === 0, hero: HERO });
 
     expect(built.theirs, `${name}: an opponent was placed — ${built.note.join('; ')}`).not.toBe('');
     expect(built.mine, `${name}: our side was placed — ${built.note.join('; ')}`).not.toBe('');
-    console.log(`${name}: ${HERO}${i === 0 ? ' + Archangel' : ' (arrives)'} vs Rival`);
+    expect(built.stones, `${name}: five Learning Stones — ${built.note.join('; ')}`).toBe(5);
+    console.log(`${name}: ${HERO}${i === 0 ? ' + Archangel' : ' (arrives)'} vs Rival, ${built.stones} learning stones`);
   }
 
   // --- what actually landed on disk ---
