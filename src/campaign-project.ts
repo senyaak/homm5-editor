@@ -13,7 +13,7 @@
 
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { newCampaignBody, newMission, newPoolHero, loadCampaign, saveCampaign } from './campaign.ts';
+import { newCampaignBody, newMission, newPoolHero, newBonus, loadCampaign, saveCampaign } from './campaign.ts';
 import { loadMap } from './map.ts';
 import { find, children, setAttr, setText, childText, clearElement } from './xml.ts';
 import type { XmlElement } from './xml.ts';
@@ -218,6 +218,76 @@ export function writeHeroesPool(mission: XmlElement, heroes: PoolHero[]): void {
     if (target && h.targetCampaign) setAttr(target, 'href', h.targetCampaign);
     const to = find(item, 'TargetMission');
     if (to) setText(to, h.targetMission);
+    appendItem(list, item);
+  }
+}
+
+/** One of a mission's three start-bonus slots. */
+export interface Bonus {
+  /** E_BONUS_NONE, or what the slot grants. */
+  type: string;
+  /** The artifact/creature/spell/building id — or, for a resource, its name. */
+  value: string;
+  /** How many: creatures and resources use it. */
+  count: number;
+}
+
+/** The seven resources, in the order the format lists them. */
+export const RESOURCES = ['Wood', 'Ore', 'Mercury', 'Crystal', 'Sulfur', 'Gem', 'Gold'];
+
+/** Read a mission's bonus slots. */
+export function readBonuses(mission: XmlElement): Bonus[] {
+  const list = find(mission, 'Bonuses');
+  if (!list) return [];
+  return children(list).filter((c) => c.name === 'Item').map((b) => {
+    const type = childText(b, 'Type');
+    const army = find(b, 'BonusArmy');
+    const res = find(b, 'BonusResources');
+    if (type === 'E_BONUS_CREATURE') {
+      return { type, value: army ? childText(army, 'Creature') : '', count: Number(army ? childText(army, 'Count') : 0) };
+    }
+    if (type === 'E_BONUS_RESOURCE') {
+      // Exactly one resource carries the amount; which one IS the choice.
+      const kind = res ? RESOURCES.find((r) => Number(childText(res, r)) > 0) : undefined;
+      return { type, value: kind ?? RESOURCES[0]!, count: Number(res && kind ? childText(res, kind) : 0) };
+    }
+    if (type === 'E_BONUS_ARTIFACT') return { type, value: childText(b, 'BonusArtifactID'), count: 1 };
+    if (type === 'E_BONUS_SPELL') return { type, value: childText(b, 'BonusSpellID'), count: 1 };
+    if (type === 'E_BONUS_BUILDING') return { type, value: childText(b, 'Building'), count: 1 };
+    return { type: type || 'E_BONUS_NONE', value: '', count: 0 };
+  });
+}
+
+/**
+ * Replace them. A mission offers three slots or none at all — that is what the
+ * shipped campaigns hold — so an all-empty set is written as no list.
+ */
+export function writeBonuses(mission: XmlElement, bonuses: Bonus[]): void {
+  const list = find(mission, 'Bonuses');
+  if (!list) throw new Error('the mission has no <Bonuses>');
+  clearElement(list);
+  const used = bonuses.filter((b) => b.type && b.type !== 'E_BONUS_NONE');
+  if (!used.length) return;
+
+  const slots = bonuses.slice(0, 3);
+  while (slots.length < 3) slots.push({ type: 'E_BONUS_NONE', value: '', count: 0 });
+  for (const b of slots) {
+    const item = newBonus();
+    const set = (name: string, v: string | number): void => {
+      const el = find(item, name);
+      if (el) setText(el, v);
+    };
+    set('Type', b.type || 'E_BONUS_NONE');
+    if (b.type === 'E_BONUS_CREATURE') {
+      const army = find(item, 'BonusArmy');
+      if (army) { setText(find(army, 'Creature')!, b.value); setText(find(army, 'Count')!, b.count); }
+    } else if (b.type === 'E_BONUS_RESOURCE') {
+      const res = find(item, 'BonusResources');
+      const kind = RESOURCES.includes(b.value) ? b.value : RESOURCES[0]!;
+      if (res) setText(find(res, kind)!, b.count);
+    } else if (b.type === 'E_BONUS_ARTIFACT') set('BonusArtifactID', b.value);
+    else if (b.type === 'E_BONUS_SPELL') set('BonusSpellID', b.value);
+    else if (b.type === 'E_BONUS_BUILDING') set('Building', b.value);
     appendItem(list, item);
   }
 }

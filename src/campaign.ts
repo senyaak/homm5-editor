@@ -40,6 +40,18 @@ export function newMission(indent = '\n\t\t'): XmlElement {
   return buildItem(campaignSchema, missionSchema(), indent);
 }
 
+/** The `<Bonus>` item schema — one of a mission's start-bonus slots. */
+export function bonusSchema(): FieldSchema {
+  const def = campaignSchema.$defs?.Bonus;
+  if (!def) throw new Error('campaign schema has no Bonus');
+  return deref(campaignSchema, def);
+}
+
+/** A fresh `<Item>` for a mission's Bonuses list. */
+export function newBonus(indent = '\n\t\t\t\t'): XmlElement {
+  return buildItem(campaignSchema, bonusSchema(), indent);
+}
+
 /** The `<PoolHero>` item schema — one hero a mission hands on. */
 export function poolHeroSchema(): FieldSchema {
   const def = campaignSchema.$defs?.PoolHero;
