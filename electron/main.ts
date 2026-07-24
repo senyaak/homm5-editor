@@ -28,6 +28,7 @@ import type { MapWatch } from '../src/watch.ts';
 import { TerrainDoc } from '../src/terrain-edit.ts';
 import { History, diff, apply } from '../src/history.ts';
 import { loadMap } from '../src/map.ts';
+import { buildMapTag } from '../src/map-tag.ts';
 import { createField } from '../src/defaults.ts';
 import { buildNewMapProject } from '../src/new-map.ts';
 import { MAP_SIZES } from '../src/terrain-blank.ts';
@@ -1734,6 +1735,16 @@ function archivePrefixFor(mapDir: string): string {
   return i >= 0 ? parts.slice(i).join('/') : `Maps/SingleMissions/${basename(mapDir)}`;
 }
 
+/**
+ * Write the map's `map-tag.xdb` — the lobby index — into the map folder, fresh
+ * from the current map.xdb, so the pack that follows includes it. Without this
+ * tag the game never lists the map in its single-scenario / custom-game menus:
+ * the browser indexes tags, not maps (see src/map-tag.ts).
+ */
+function writeMapTag(s: Session): void {
+  writeFileSync(join(s.mapDir, 'map-tag.xdb'), buildMapTag(s.map.desc), 'latin1');
+}
+
 // --- IPC: pack the map folder into a .h5m ---
 ipcMain.handle('map:pack', async (): Promise<MapPackResult> => {
   if (!session) throw new Error('no map loaded');
@@ -1752,6 +1763,7 @@ ipcMain.handle('map:pack', async (): Promise<MapPackResult> => {
   // Save pending edits first so the archive reflects them.
   writeFileSync(session.mapPath, session.map.save(), 'latin1');
   saveTerrain(session);
+  writeMapTag(session);
   session.watch.resync();
   // A copy of the map should be as complete as the original it came from, so it
   // carries over whatever the source archive held outside the map folder too.
@@ -1785,6 +1797,7 @@ ipcMain.handle('loc:export', async (_e: IpcMainInvokeEvent, { lang, output }: Lo
   // Save pending edits so the export reflects them.
   writeFileSync(session.mapPath, session.map.save(), 'latin1');
   saveTerrain(session);
+  writeMapTag(session);
   session.watch.resync();
   const res = exportLocalized(session.mapDir, out, lang, cfg.base, { prefix: archivePrefixFor(session.mapDir) });
   return { ok: true, output: out, entries: res.entries, bytes: res.bytes, status: status(session.mapDir) };

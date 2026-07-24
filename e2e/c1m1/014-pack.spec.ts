@@ -110,8 +110,20 @@ test('C1M1 capstone: the whole map matches the original, and packs to a playable
   // A zip the game will read (local-file-header signature), with the map at its
   // in-game path inside the archive.
   expect(readFileSync(ARCHIVE).subarray(0, 4)).toEqual(Buffer.from('PK\x03\x04', 'latin1'));
-  const names = readEntries(readFileSync(ARCHIVE)).map((e) => e.name);
+  const packed = readEntries(readFileSync(ARCHIVE));
+  const names = packed.map((e) => e.name);
   expect(names).toContain(`Maps/SingleMissions/${NAME}/map.xdb`);
+
+  // The lobby index the game reads to LIST a map. A .h5m without it loads fine
+  // by direct reference but never shows in the single-scenario / custom-game
+  // menu — the browser indexes tags, not maps (src/map-tag.ts). Present beside
+  // map.xdb, an AdvMapDescTag pointing back at it.
+  const tagName = `Maps/SingleMissions/${NAME}/map-tag.xdb`;
+  expect(names, 'the pack carries the lobby tag so the game lists it').toContain(tagName);
+  const tag = packed.find((e) => e.name === tagName)!.data.toString('latin1');
+  expect(tag, 'the tag is an AdvMapDescTag pointing at this map').toMatch(
+    /<AdvMapDescTag>[\s\S]*<AdvMapDesc href="map\.xdb#xpointer\(\/AdvMapDesc\)"\/>[\s\S]*<TileX>96<\/TileX>/,
+  );
 
   console.log(`\npacked → ${ARCHIVE}${KEEP ? '   (kept — open it in the game)' : '   (removed after the run)'}`);
 });
