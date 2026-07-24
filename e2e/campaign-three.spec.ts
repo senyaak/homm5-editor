@@ -1,11 +1,15 @@
 // A three-mission campaign that carries a hero, built end to end in the app.
 //
 // The point is the handover. Each mission is the same tiny fight — our hero
-// with an Archangel against theirs with a Peasant — so the mission is winnable
-// and the campaign moves on. Missions 2 and 3 have NO hero of ours: where he
-// would stand there is an EntryPoint, the utility object that marks where a
-// transported hero arrives. If the handover works, the same hero (and whatever
-// he picked up) shows up there.
+// against theirs with a Peasant — so the mission is winnable and the campaign
+// moves on. Only the first mission gives him an Archangel; if the handover
+// works, he walks onto missions 2 and 3 with whatever he survived with.
+//
+// Every mission places him, under the same name. A map has to hold a hero for
+// the player it starts, or the game refuses it with "Start player does not
+// exist"; an EntryPoint does not stand in for one, and not one of the 93 maps
+// in the shipped campaigns uses an EntryPoint at all — C1M2 simply places the
+// Isabell it is about to receive.
 //
 // The one piece of setup that is deliberate rather than incidental: player 2 is
 // switched ON. A fresh map ships one active player and the editor's default
@@ -65,12 +69,12 @@ test('a hero carried across three missions, and the campaign packed for play', a
     await expect(page.locator('#newmap')).toBeHidden({ timeout: 60_000 });
     await expect(page.locator('#title')).toContainText(name, { timeout: 90_000 });
 
-    const built = await page.evaluate(async ({ ours, hero, entryPoint }) => {
+    const built = await page.evaluate(async ({ first, hero }) => {
       const { objects } = await window.editor.listObjects();
-      const heroes = objects.filter((o) => o.type === 'AdvMapHero' && !o.hidden && !o.random);
-      // The EntryPoint is a hero by shape; find it by path, not by name.
-      const entry = objects.find((o) => /Utility\/EntryPoint/i.test(o.shared));
-      const pick = heroes.filter((o) => !/EntryPoint/i.test(o.shared));
+      // Two DIFFERENT heroes: the catalogue's first two placeable ones. The
+      // EntryPoint is a hero by shape, so keep it out of that pick.
+      const pick = objects.filter((o) => o.type === 'AdvMapHero' && !o.hidden && !o.random
+        && !/Utility\/EntryPoint/i.test(o.shared));
       const note: string[] = [];
 
       /** Place one and return its id, or '' when the catalogue refuses it. */
@@ -81,29 +85,39 @@ test('a hero carried across three missions, and the campaign packed for play', a
         } catch (e) { note.push(`${shared}: ${(e as Error).message}`); return ''; }
       };
 
-      // Ours (mission 1) or the arrival point (missions 2 and 3).
-      let mine = '';
-      if (ours) {
-        for (const h of pick.slice(0, 8)) { mine = await place(h.shared, 10, 10); if (mine) break; }
-      } else if (entry) {
-        mine = await place(entry.shared, 10, 10);
+      // Ours. Every mission places him — including the ones he ARRIVES on: a
+      // map has to hold a hero for the player it starts, or it has no start
+      // player at all and refuses to load. That is how the shipped campaigns do
+      // it (C1M2 places Isabell again, unnamed, to receive her from C1M1); not
+      // one of their 93 maps uses an EntryPoint for this.
+      let mine = '', mineShared = '';
+      for (const h of pick.slice(0, 8)) { mine = await place(h.shared, 10, 10); if (mine) { mineShared = h.shared; break; } }
+      // Theirs, always: something to beat. A different hero, so the two sides
+      // are telling apart on screen.
+      let theirs = '', theirsShared = '';
+      for (const h of pick.slice(0, 8)) {
+        if (h.shared === mineShared) continue;
+        theirs = await place(h.shared, 14, 10);
+        if (theirs) { theirsShared = h.shared; break; }
       }
-      // Theirs, always: something to beat.
-      let theirs = '';
-      for (const h of pick.slice(0, 8)) { theirs = await place(h.shared, 14, 10); if (theirs) break; }
 
       const set = async (id: string, path: (string | number)[], value: string): Promise<void> => {
         if (id) await window.editor.setObjectPath({ id, path, value });
       };
-      if (ours && mine) {
-        // The name is the campaign's handle on him; the army is what he carries.
+      if (mine) {
+        await set(mine, ['PlayerID'], 'PLAYER_1');
+        // He carries the SAME name on every map. That name is the handle the
+        // campaign hands on, and every mission of the shipped C1 names the same
+        // one (HeroScriptName=Isabell throughout) — so a mission that receives
+        // him has to know him by it too.
         await set(mine, ['Name'], hero);
-        await set(mine, ['PlayerID'], 'PLAYER_1');
-        await window.editor.addObjectItem({ id: mine, path: ['armySlots'] });
-        await set(mine, ['armySlots', 0, 'Creature'], 'CREATURE_ARCHANGEL');
-        await set(mine, ['armySlots', 0, 'Count'], '1');
-      } else if (mine) {
-        await set(mine, ['PlayerID'], 'PLAYER_1');
+        if (first) {
+          // The army is only placed where he starts; afterwards he brings
+          // whatever he survived the last mission with.
+          await window.editor.addObjectItem({ id: mine, path: ['armySlots'] });
+          await set(mine, ['armySlots', 0, 'Creature'], 'CREATURE_ARCHANGEL');
+          await set(mine, ['armySlots', 0, 'Count'], '1');
+        }
       }
       if (theirs) {
         await set(theirs, ['Name'], 'Rival');
@@ -125,12 +139,12 @@ test('a hero carried across three missions, and the campaign packed for play', a
         await window.editor.setMapPath({ path: ['players', slot, 'Colour'], value: colour });
       }
       await window.editor.save();
-      return { mine, theirs, entryPoint: !!entry && !ours, note };
-    }, { ours: i === 0, hero: HERO, entryPoint: i > 0 });
+      return { mine, theirs, mineShared, theirsShared, note };
+    }, { first: i === 0, hero: HERO });
 
     expect(built.theirs, `${name}: an opponent was placed — ${built.note.join('; ')}`).not.toBe('');
     expect(built.mine, `${name}: our side was placed — ${built.note.join('; ')}`).not.toBe('');
-    console.log(`${name}: ${i === 0 ? `${HERO} + Rival` : `EntryPoint + Rival`}`);
+    console.log(`${name}: ${HERO}${i === 0 ? ' + Archangel' : ' (arrives)'} vs Rival`);
   }
 
   // --- what actually landed on disk ---
@@ -138,13 +152,14 @@ test('a hero carried across three missions, and the campaign packed for play', a
     const map = loadMap(readFileSync(join(mapDir(name), 'map.xdb'), 'latin1'));
     const heroes = map.objects.filter((o) => o.type === 'AdvMapHero');
     expect(heroes.length, `${name} holds two hero-shaped objects`).toBe(2);
+    // No EntryPoint anywhere: the shipped campaigns place the hero himself on
+    // the map he arrives on, and a map with no hero for its player has no start
+    // player to begin with.
     const entry = heroes.filter((o) => /Utility\/EntryPoint/i.test(find(o.el, 'Shared')?.attrs.href ?? ''));
-    expect(entry.length, `${name}: an EntryPoint only where a hero arrives`).toBe(i === 0 ? 0 : 1);
-    if (i === 0) {
-      const ours = heroes.find((o) => childText(o.el, 'Name') === HERO);
-      expect(ours, 'the travelling hero is named, or nothing can hand him on').toBeTruthy();
-      expect(serializeArmy(ours!), 'and he carries the Archangel').toContain('CREATURE_ARCHANGEL');
-    }
+    expect(entry.length, `${name}: no EntryPoint stands in for a hero`).toBe(0);
+    const named = heroes.filter((o) => childText(o.el, 'Name') === HERO);
+    expect(named.length, `${name}: the travelling hero is there, under the name the campaign hands on`).toBe(1);
+    if (i === 0) expect(serializeArmy(named[0]!), 'and he starts with the Archangel').toContain('CREATURE_ARCHANGEL');
     // Both sides have to be live AND coloured: a neutral or inactive slot is
     // not a player the game can start as, whatever heroes point at it.
     const players = find(map.desc, 'players');
@@ -173,10 +188,9 @@ test('a hero carried across three missions, and the campaign packed for play', a
     if (i < 2) {
       await page.locator('#ms-hcount').fill('1');
       await page.locator('#ms-hcount').dispatchEvent('change');
-      // Only mission 1 has a named hero to offer; 2 relays whoever arrived.
       const who = page.locator('#ms-heroes select').first();
       await expect(who).toBeVisible();
-      if (i === 0) await who.selectOption(HERO);
+      await who.selectOption(HERO);
     }
     await page.locator('#ms-ok').click();
     await expect(page.locator('#mission')).toBeHidden();
