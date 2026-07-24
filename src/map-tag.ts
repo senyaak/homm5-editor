@@ -10,10 +10,15 @@
 //
 // The `<teams>` block is the one non-obvious part. Measured against the game's
 // own maps (Maps/Scenario/*, Maps/Multiplayer/*): it carries one <Item> per
-// player that occupies a lobby SLOT — a coloured player, PCOLOR_NEUTRAL excluded
-// — and the value is the player's team, one-based (Team 0 -> 1, Team 1 -> 2).
-// A2C1M1's two coloured players on teams 0 and 1 give <Item>1</Item><Item>2</Item>;
-// a seven-player free-for-all gives seven <Item>1</Item>.
+// player that occupies a lobby SLOT — an ACTIVE, coloured player (ActivePlayer
+// true and not PCOLOR_NEUTRAL) — and the value is the player's team, one-based
+// (Team 0 -> 1, Team 1 -> 2). This is the map's player count as the lobby sees
+// it, so it has to be exact: a solo mission whose only playable side is player 0
+// is a one-player map, and listing it as two never starts. A2C1M1's two active
+// coloured players on teams 0 and 1 give <Item>1</Item><Item>2</Item> (its third,
+// neutral-coloured player is a scripted side, not a slot); a seven-player
+// free-for-all gives seven <Item>1</Item>. An inactive coloured player — a fixed
+// AI enemy the mission places but the lobby cannot pick — is NOT a slot.
 
 import type { XmlElement } from './xml.ts';
 import { readTree } from './tree.ts';
@@ -37,11 +42,12 @@ function scalar(desc: Record<string, TreeData>, key: string, fallback = ''): str
 export function buildMapTag(desc: XmlElement): string {
   const t = readTree(desc) as Record<string, TreeData>;
 
-  // One team entry per coloured (lobby-occupying) player, team one-based.
+  // One team entry per active, coloured (lobby-occupying) player, team one-based.
   const players = Array.isArray(t.players) ? t.players : [];
   const teams: string[] = [];
   for (const p of players) {
     if (typeof p !== 'object' || Array.isArray(p)) continue;
+    if (p.ActivePlayer !== 'true') continue;
     const colour = typeof p.Colour === 'string' ? p.Colour : '';
     if (!colour || colour === 'PCOLOR_NEUTRAL') continue;
     const team = parseInt(typeof p.Team === 'string' ? p.Team : '0', 10);

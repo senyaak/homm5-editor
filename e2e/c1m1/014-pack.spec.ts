@@ -124,6 +124,11 @@ test('C1M1 capstone: the whole map matches the original, and packs to a playable
   expect(tag, 'the tag is an AdvMapDescTag pointing at this map').toMatch(
     /<AdvMapDescTag>[\s\S]*<AdvMapDesc href="map\.xdb#xpointer\(\/AdvMapDesc\)"\/>[\s\S]*<TileX>96<\/TileX>/,
   );
+  // C1M1 is a one-player mission: only Isabel is a lobby slot, the enemy is a
+  // fixed inactive side. The tag's team count IS the player count the lobby
+  // shows, so listing two would refuse to start (the map has one human slot).
+  const teamCount = (tag.match(/<teams>([\s\S]*?)<\/teams>/)?.[1]?.match(/<Item>/g) ?? []).length;
+  expect(teamCount, 'the tag declares C1M1 as a one-player map').toBe(1);
 
   console.log(`\npacked → ${ARCHIVE}${KEEP ? '   (kept — open it in the game)' : '   (removed after the run)'}`);
 });
