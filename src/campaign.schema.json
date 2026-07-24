@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://homm5-editor/campaign.schema.json",
   "title": "Campaign",
-  "description": "A campaign (<Campaign>) — the descriptor that binds a sequence of missions into a story, as read from the game's own Campaigns/*.(Campaign).xdb. A campaign does NOT contain its maps; each mission POINTS at a map through that map's map-tag.xdb (see src/map-tag.ts), and the maps travel beside the descriptor in the .h5c. Same x- keywords as the map schema (src/schema.ts): x-ref an href/picker, x-file + x-widget textfile a sibling text file, x-registry a dynamic roster (src/registry.ts), x-widget the control, x-advanced a tree-only deep structure. A user-made campaign sets UserCampaign true, which is what lists it under the game's Custom Campaigns.",
+  "description": "A campaign (<Campaign>) — the descriptor that binds a sequence of missions into a story, as read from the game's own Campaigns/*.(Campaign).xdb. A campaign contains NEITHER its maps nor a copy of them: each mission POINTS at a map through that map's map-tag.xdb (see src/map-tag.ts) by an absolute data-root path, and the game's VFS resolves it into whatever .h5m ships that map. Same x- keywords as the map schema (src/schema.ts): x-ref an href/picker, x-file + x-widget textfile a sibling text file, x-registry a dynamic roster (src/registry.ts), x-widget the control, x-advanced a tree-only deep structure. A user-made campaign sets UserCampaign true, which is what lists it under the game's Custom Campaigns. PROPERTY ORDER IS SIGNIFICANT — these documents are serialized structs, so this mirrors the order a campaign made by the game's own editor uses; see src/campaign-pack.ts.",
   "type": "object",
   "x-root": "Campaign",
   "properties": {
@@ -10,20 +10,24 @@
 
     "NameFileRef": { "type": "string", "x-ref": true, "x-file": true, "x-widget": "textfile", "title": "Name", "description": "The campaign's short name, in a sibling text file." },
     "FullNameFileRef": { "type": "string", "x-ref": true, "x-file": true, "x-widget": "textfile", "title": "Full name", "description": "The long/title-screen name." },
-    "NameCommentFileRef": { "type": "string", "x-ref": true, "x-file": true, "x-widget": "textfile", "title": "Name comment", "description": "A short subtitle shown beside the name." },
-    "DescriptionFileRef": { "type": "string", "x-ref": true, "x-file": true, "x-widget": "textfile", "title": "Description", "description": "The campaign blurb on the selection screen." },
-
-    "UserCampaign": { "type": "boolean", "title": "User campaign", "description": "Custom campaigns set this true — it is what makes the game list a packed .h5c under Custom Campaigns. The shipped campaigns leave it false." },
-
-    "Missions": { "type": "array", "title": "Missions", "minItems": 1, "description": "The missions in play order. Each points at a map by its map-tag; every referenced map is packed into the same .h5c.", "items": { "$ref": "#/$defs/Mission" } },
+    "NameCommentFileRef": { "type": "string", "x-ref": true, "x-file": true, "x-widget": "textfile", "title": "Name comment", "description": "A short subtitle shown beside the name — the campaign summary." },
 
     "DependentCampaigns": { "type": "array", "title": "Prerequisite campaigns", "x-advanced": true, "description": "Campaigns that must be finished before this one unlocks (references to other Campaign documents). Empty for a standalone user campaign.", "items": { "type": "string", "x-ref": true } },
+
+    "Missions": { "type": "array", "title": "Missions", "minItems": 1, "description": "The missions in play order. Each points at a map by that map's map-tag; the maps themselves ship separately as .h5m files.", "items": { "$ref": "#/$defs/Mission" } },
 
     "AdventureMusic": { "type": "string", "x-ref": true, "x-registry": "music", "x-entity": "Music", "x-widget": "dropdown", "title": "Adventure music", "description": "The campaign-wide adventure-map theme — pick a shipped Music, or reference a custom one carried in the campaign." },
     "WinMissionMusic": { "type": "string", "x-ref": true, "x-registry": "music", "x-entity": "Music", "x-widget": "dropdown", "title": "Win music" },
     "LoseMissionMusic": { "type": "string", "x-ref": true, "x-registry": "music", "x-entity": "Music", "x-widget": "dropdown", "title": "Lose music" },
 
-    "Icon": { "type": "string", "x-ref": true, "x-advanced": true, "title": "Icon", "description": "The campaign's menu icon (a Texture reference). Optional." }
+    "DescriptionFileRef": { "type": "string", "x-ref": true, "x-file": true, "x-widget": "textfile", "title": "Description", "description": "The campaign blurb on the selection screen." },
+
+    "Icon": { "type": "string", "x-ref": true, "x-advanced": true, "title": "Icon", "description": "The campaign's menu icon (a Texture reference). A user campaign can point at a shipped one, e.g. /UI/MainMenu2/SelectCampaign/GriffonBack.(Texture).xdb#xpointer(/Texture)." },
+
+    "UserCampaign": { "type": "boolean", "title": "User campaign", "description": "Custom campaigns set this true — it is what makes the game list a packed .h5c under Custom Campaigns. The shipped campaigns leave it false." },
+
+    "UseCustomHallOfFameResults": { "type": "boolean", "x-advanced": true, "title": "Custom hall of fame", "description": "Whether the campaign scores its own Hall of Fame results instead of the standard ones." },
+    "CustomHallOfFameResults": { "type": "array", "x-advanced": true, "title": "Hall of fame results", "description": "The custom results, when the flag above is set. Empty otherwise.", "items": { "type": "string", "x-ref": true } }
   },
   "$defs": {
     "Mission": {
@@ -32,13 +36,13 @@
       "properties": {
         "NameFileRef": { "type": "string", "x-ref": true, "x-file": true, "x-widget": "textfile", "title": "Mission name" },
         "NameCommentFileRef": { "type": "string", "x-ref": true, "x-file": true, "x-widget": "textfile", "title": "Mission comment" },
-        "MissionTag": { "type": "string", "x-ref": true, "x-widget": "mission-map", "title": "Map", "description": "The mission's map, referenced through its map-tag.xdb (map-tag.xdb#xpointer(/AdvMapDescTag)). Picked from the map projects on disk; the chosen map's whole folder is bundled into the .h5c beside the campaign. This is the one link between a campaign and a map." },
-        "Bonuses": { "type": "array", "title": "Starting bonuses", "x-advanced": true, "description": "The bonuses offered at mission start; the player picks one. Up to three, each an artifact, some creatures, resources, a spell or a building.", "items": { "$ref": "#/$defs/Bonus" } },
+        "MissionTag": { "type": "string", "x-ref": true, "x-widget": "mission-map", "title": "Map", "description": "The mission's map, referenced through its map-tag.xdb by an ABSOLUTE data-root path — /Maps/SingleMissions/<map>/map-tag.xdb#xpointer(/AdvMapDescTag). The map is NOT copied into the .h5c: it ships as its own .h5m, and the game's VFS merges the two archives by path. This is the one link between a campaign and a map." },
+        "Bonuses": { "type": "array", "title": "Starting bonuses", "x-advanced": true, "maxItems": 3, "description": "The bonuses offered at mission start; the player picks one. Up to three, each an artifact, some creatures, resources, a spell or a building.", "items": { "$ref": "#/$defs/Bonus" } },
         "HeroesPool": { "$ref": "#/$defs/HeroesPool", "title": "Carried-over heroes", "x-advanced": true },
         "startMusics": { "type": "array", "title": "Start musics", "x-advanced": true, "items": { "type": "string", "x-ref": true, "x-entity": "Music" } },
         "additionalAdventureMusics": { "type": "array", "title": "Extra adventure musics", "x-advanced": true, "items": { "type": "string", "x-ref": true, "x-entity": "Music" } },
-        "additionalCombatMusics": { "type": "array", "title": "Extra combat musics", "x-advanced": true, "items": { "type": "string", "x-ref": true, "x-entity": "Music" } },
-        "additionalWaitMusics": { "type": "array", "title": "Extra wait musics", "x-advanced": true, "items": { "type": "string", "x-ref": true, "x-entity": "Music" } }
+        "additionalWaitMusics": { "type": "array", "title": "Extra wait musics", "x-advanced": true, "items": { "type": "string", "x-ref": true, "x-entity": "Music" } },
+        "additionalCombatMusics": { "type": "array", "title": "Extra combat musics", "x-advanced": true, "items": { "type": "string", "x-ref": true, "x-entity": "Music" } }
       }
     },
     "Bonus": {

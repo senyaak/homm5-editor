@@ -23,6 +23,7 @@
     "test-scene": "node tools/test-scene.ts",
     "test-registry": "node tools/test-registry.ts",
     "test-schema": "node tools/test-schema.ts",
+    "test-campaign": "node tools/test-campaign.ts",
     "test-objects-schema": "node tools/test-objects-schema.ts",
     "test-tree": "node tools/test-tree.ts",
     "test-lua-lint": "node tools/test-lua-lint.ts",

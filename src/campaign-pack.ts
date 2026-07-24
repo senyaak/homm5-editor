@@ -1,20 +1,35 @@
 // Pack a campaign project into a .h5c — the campaign's counterpart of
-// packProject (src/project.ts). A .h5c mirrors the game's data root: the
-// descriptor and its texts sit under Campaigns/, and every mission's whole map
-// folder sits under its own Maps/... path, exactly where the mission's
-// MissionTag points. That tag IS the locator: `/Maps/SingleMissions/Foo/
-// map-tag.xdb#xpointer(/AdvMapDescTag)` says both where the map lives inside
-// the archive and where its folder is found under the data root. Each map's
-// map-tag.xdb is regenerated fresh (src/map-tag.ts) so it never ships stale.
+// packProject (src/project.ts).
+//
+// The shape below is not a guess: it is what the game's own editor produces,
+// and what the game's Modifications menu loads. A user campaign is
+//
+//   UserCampaigns/<name>/campaign.xdb   <- the descriptor, named exactly that
+//   UserCampaigns/<name>/*.txt          <- its texts, flat beside it
+//
+// where <name> is the .h5c's own base name. Two things are easy to get wrong:
+//
+//   * The archive holds NO map. A mission names its map by an absolute
+//     data-root path (/Maps/SingleMissions/Foo/map-tag.xdb#xpointer(...)), and
+//     the game's VFS merges every archive by path — so the map travels in its
+//     own .h5m (packProject writes one, map-tag included) and the two meet at
+//     load time. Bundling the map here produces an archive the game ignores.
+//   * The text refs stay relative and flat, because they resolve beside the
+//     descriptor inside UserCampaigns/<name>/.
+//
+// Texts are UTF-16LE with a BOM (the game's text format); they are copied
+// byte-for-byte, so whoever wrote them owns that.
 
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { basename, join } from 'node:path';
 import { writeArchive, listDirFiles } from './pak.ts';
 import type { ZipEntry, PackResult } from './pak.ts';
-import { loadMap } from './map.ts';
-import { buildMapTag } from './map-tag.ts';
 import { loadCampaign } from './campaign.ts';
 import { find, children } from './xml.ts';
+import type { XmlElement } from './xml.ts';
+
+/** The descriptor's name inside the archive — the game looks for this exactly. */
+const DESCRIPTOR = 'campaign.xdb';
 
 /** The map folder a MissionTag points at, relative to the data root (posix). */
 export function missionMapDir(missionTagHref: string): string {
@@ -25,47 +40,61 @@ export function missionMapDir(missionTagHref: string): string {
 }
 
 /**
- * Pack `campaignDir` (the descriptor + its texts) plus every mission's map into
- * `outPath`. `dataRoot` is where the mission map folders are found — the same
- * unpacked data root the maps were built under.
+ * Every map a campaign's missions reference, data-root relative, in play order.
+ *
+ * The packer does not ship these — this is for the caller that has to pack (or
+ * check) the matching .h5m files.
  */
-export function packCampaign(campaignDir: string, dataRoot: string, outPath: string): PackResult {
-  const files = listDirFiles(campaignDir).filter((r) => r !== 'project.json');
-  const xdbRel = files.find((r) => /\.\(campaign\)\.xdb$/i.test(r));
-  if (!xdbRel) throw new Error(`no *.(Campaign).xdb in ${campaignDir}`);
-  const root = loadCampaign(readFileSync(join(campaignDir, xdbRel), 'latin1'));
+export function campaignMaps(campaignDir: string): string[] {
+  return missionTags(loadDescriptor(campaignDir).root).map(missionMapDir);
+}
+
+/**
+ * Pack `campaignDir` — the descriptor plus its text files — into `outPath`.
+ *
+ * The maps are NOT packed: each one ships as its own .h5m (see packProject).
+ * Returns the entry/byte count, as packProject does.
+ */
+export function packCampaign(campaignDir: string, outPath: string): PackResult {
+  const { root, file } = loadDescriptor(campaignDir);
+
+  // Every mission must actually name a map, or the campaign lists but cannot start.
+  const tags = missionTags(root);
+  if (!tags.length) throw new Error('the campaign has no missions');
+  const blank = tags.findIndex((href) => !missionMapDir(href));
+  if (blank >= 0) throw new Error(`mission ${blank + 1} has no map (its MissionTag is empty)`);
+
+  // <name> comes from the .h5c itself, mirroring the editor-made archives.
+  const name = basename(outPath).replace(/\.h5c$/i, '');
+  const prefix = `UserCampaigns/${name}/`;
 
   const entries: ZipEntry[] = [];
-  const seen = new Set<string>();
-  const add = (name: string, data: Buffer): void => {
-    if (seen.has(name)) return;
-    seen.add(name);
-    entries.push({ name, data });
-  };
-
-  // The descriptor and its texts, under Campaigns/.
-  for (const rel of files) add(`Campaigns/${rel}`, readFileSync(join(campaignDir, rel)));
-
-  // Each mission's map, under the path its MissionTag names.
-  const missions = find(root, 'Missions');
-  const items = missions ? children(missions).filter((c) => c.name === 'Item') : [];
-  if (!items.length) throw new Error('the campaign has no missions');
-  for (const m of items) {
-    const href = find(m, 'MissionTag')?.attrs.href ?? '';
-    const rel = missionMapDir(href);
-    if (!rel) throw new Error('a mission has no MissionTag map');
-    const src = join(dataRoot, rel);
-    if (!existsSync(join(src, 'map.xdb'))) throw new Error(`mission map not found under the data root: ${rel}`);
-    // A fresh tag, then the map folder itself (its own stale tag, if any, skipped).
-    add(`${rel}/map-tag.xdb`, Buffer.from(buildMapTag(loadMap(readFileSync(join(src, 'map.xdb'), 'utf8')).desc), 'latin1'));
-    for (const f of listDirFiles(src)) {
-      if (f === 'project.json' || f === 'map-tag.xdb') continue;
-      add(`${rel}/${f}`, readFileSync(join(src, f)));
-    }
+  for (const rel of listDirFiles(campaignDir)) {
+    if (rel === 'project.json') continue;
+    // The descriptor is renamed on the way in; everything else keeps its name,
+    // which is what the descriptor's relative text refs expect.
+    const at = rel === file ? DESCRIPTOR : rel;
+    entries.push({ name: prefix + at, data: readFileSync(join(campaignDir, rel)) });
   }
 
   entries.sort((a, b) => a.name.localeCompare(b.name));
   const buf = writeArchive(entries);
   writeFileSync(outPath, buf);
   return { entries: entries.length, bytes: buf.length };
+}
+
+/** The campaign document in `campaignDir`, with the file name it was read from. */
+function loadDescriptor(campaignDir: string): { root: XmlElement; file: string } {
+  const files = listDirFiles(campaignDir);
+  // Either name works on disk: what a project holds, or what a packed one is called.
+  const file = files.find((r) => r === DESCRIPTOR) ?? files.find((r) => /\.\(campaign\)\.xdb$/i.test(r));
+  if (!file) throw new Error(`no ${DESCRIPTOR} or *.(Campaign).xdb in ${campaignDir}`);
+  return { root: loadCampaign(readFileSync(join(campaignDir, file), 'latin1')), file };
+}
+
+/** Each mission's MissionTag href, in order. */
+function missionTags(root: XmlElement): string[] {
+  const missions = find(root, 'Missions');
+  const items = missions ? children(missions).filter((c) => c.name === 'Item') : [];
+  return items.map((m) => find(m, 'MissionTag')?.attrs.href ?? '');
 }
