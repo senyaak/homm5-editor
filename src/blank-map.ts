@@ -167,46 +167,6 @@ const scenarioItem = (i: number): string[] => {
   ];
 };
 
-// The single primary objective — "defeat all" — inside Objectives/Primary/Common.
-const PRIMARY_OBJECTIVE = [
-  '\t\t\t\t\t<Item>',
-  '\t\t\t\t\t\t<Name/>',
-  '\t\t\t\t\t\t<CaptionFileRef href="objective-caption-text.txt"/>',
-  '\t\t\t\t\t\t<ObscureCaptionFileRef href=""/>',
-  '\t\t\t\t\t\t<DescriptionFileRef href="objective-desc-text.txt"/>',
-  '\t\t\t\t\t\t<ProgressCommentsFileRef/>',
-  '\t\t\t\t\t\t<Kind>OBJECTIVE_KIND_DEFEAT_ALL</Kind>',
-  '\t\t\t\t\t\t<Parameters/>',
-  '\t\t\t\t\t\t<Timeout>-1</Timeout>',
-  '\t\t\t\t\t\t<Holdout>-1</Holdout>',
-  '\t\t\t\t\t\t<CheckDelay>0</CheckDelay>',
-  '\t\t\t\t\t\t<Dependencies/>',
-  '\t\t\t\t\t\t<InstantVictory>true</InstantVictory>',
-  // the objective sits three levels deeper than a scenario item, so its shared
-  // glance/award bodies are indented three extra tabs.
-  ...targetGlance(0, 0).map((l) => '\t\t\t' + l),
-  ...AWARD.map((l) => '\t\t\t' + l),
-  '\t\t\t\t\t\t<TakeContribution>false</TakeContribution>',
-  '\t\t\t\t\t\t<CanUncomplete>false</CanUncomplete>',
-  '\t\t\t\t\t\t<IsInitialyActive>true</IsInitialyActive>',
-  '\t\t\t\t\t\t<IsInitialyVisible>true</IsInitialyVisible>',
-  '\t\t\t\t\t\t<IsHidden>false</IsHidden>',
-  '\t\t\t\t\t\t<Ignore>false</Ignore>',
-  '\t\t\t\t\t\t<ShowCompleted>true</ShowCompleted>',
-  '\t\t\t\t\t\t<NeedComplete>true</NeedComplete>',
-  '\t\t\t\t\t\t<StateChangeTrigger>',
-  '\t\t\t\t\t\t\t<Action>',
-  '\t\t\t\t\t\t\t\t<FunctionName/>',
-  '\t\t\t\t\t\t\t</Action>',
-  '\t\t\t\t\t\t</StateChangeTrigger>',
-  '\t\t\t\t\t\t<SoundActivated/>',
-  '\t\t\t\t\t\t<SoundComplete/>',
-  '\t\t\t\t\t\t<SoundFailed/>',
-  '\t\t\t\t\t\t<AllowMultipleActivations>false</AllowMultipleActivations>',
-  '\t\t\t\t\t\t<AllowMultipleCompletions>false</AllowMultipleCompletions>',
-  '\t\t\t\t\t</Item>',
-];
-
 // A per-player empty objective bucket (eight of them, twice — primary/secondary).
 const PS_ITEM = [
   '\t\t\t\t<Item>',
@@ -278,9 +238,11 @@ export function buildBlankMap(opt: BlankMapOptions): string {
     '\t<Objectives>',
     '\t\t<Primary>',
     '\t\t\t<Common>',
-    '\t\t\t\t<Objectives>',
-    ...PRIMARY_OBJECTIVE,
-    '\t\t\t\t</Objectives>',
+    // No baked victory objective: an explicit DEFEAT_ALL with InstantVictory wins
+    // the instant a map has no live opponents (the engine then drops the winning
+    // player, and loading fails with "start player does not exist"). The real
+    // editor leaves this empty; victory conditions are authored per map instead.
+    '\t\t\t\t<Objectives/>',
     '\t\t\t\t<DieInWeekWithoutTowns>true</DieInWeekWithoutTowns>',
     '\t\t\t</Common>',
     '\t\t\t<PlayerSpecific>',
