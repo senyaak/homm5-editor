@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://homm5-editor/campaign.schema.json",
+  "title": "Campaign",
+  "description": "A campaign (<Campaign>) — the descriptor that binds a sequence of missions into a story, as read from the game's own Campaigns/*.(Campaign).xdb. A campaign does NOT contain its maps; each mission POINTS at a map through that map's map-tag.xdb (see src/map-tag.ts), and the maps travel beside the descriptor in the .h5c. Same x- keywords as the map schema (src/schema.ts): x-ref an href/picker, x-file + x-widget textfile a sibling text file, x-registry a dynamic roster (src/registry.ts), x-widget the control, x-advanced a tree-only deep structure. A user-made campaign sets UserCampaign true, which is what lists it under the game's Custom Campaigns.",
+  "type": "object",
+  "x-root": "Campaign",
+  "properties": {
+    "InternalName": { "type": "string", "title": "Internal name", "description": "The campaign's script handle — how missions and the campaign set address it. Not shown to the player." },
+
+    "NameFileRef": { "type": "string", "x-ref": true, "x-file": true, "x-widget": "textfile", "title": "Name", "description": "The campaign's short name, in a sibling text file." },
+    "FullNameFileRef": { "type": "string", "x-ref": true, "x-file": true, "x-widget": "textfile", "title": "Full name", "description": "The long/title-screen name." },
+    "NameCommentFileRef": { "type": "string", "x-ref": true, "x-file": true, "x-widget": "textfile", "title": "Name comment", "description": "A short subtitle shown beside the name." },
+    "DescriptionFileRef": { "type": "string", "x-ref": true, "x-file": true, "x-widget": "textfile", "title": "Description", "description": "The campaign blurb on the selection screen." },
+
+    "UserCampaign": { "type": "boolean", "title": "User campaign", "description": "Custom campaigns set this true — it is what makes the game list a packed .h5c under Custom Campaigns. The shipped campaigns leave it false." },
+
+    "Missions": { "type": "array", "title": "Missions", "minItems": 1, "description": "The missions in play order. Each points at a map by its map-tag; every referenced map is packed into the same .h5c.", "items": { "$ref": "#/$defs/Mission" } },
+
+    "DependentCampaigns": { "type": "array", "title": "Prerequisite campaigns", "x-advanced": true, "description": "Campaigns that must be finished before this one unlocks (references to other Campaign documents). Empty for a standalone user campaign.", "items": { "type": "string", "x-ref": true } },
+
+    "AdventureMusic": { "type": "string", "x-ref": true, "x-registry": "music", "x-entity": "Music", "x-widget": "dropdown", "title": "Adventure music", "description": "The campaign-wide adventure-map theme — pick a shipped Music, or reference a custom one carried in the campaign." },
+    "WinMissionMusic": { "type": "string", "x-ref": true, "x-registry": "music", "x-entity": "Music", "x-widget": "dropdown", "title": "Win music" },
+    "LoseMissionMusic": { "type": "string", "x-ref": true, "x-registry": "music", "x-entity": "Music", "x-widget": "dropdown", "title": "Lose music" },
+
+    "Icon": { "type": "string", "x-ref": true, "x-advanced": true, "title": "Icon", "description": "The campaign's menu icon (a Texture reference). Optional." }
+  },
+  "$defs": {
+    "Mission": {
+      "type": "object",
+      "title": "Mission",
+      "properties": {
+        "NameFileRef": { "type": "string", "x-ref": true, "x-file": true, "x-widget": "textfile", "title": "Mission name" },
+        "NameCommentFileRef": { "type": "string", "x-ref": true, "x-file": true, "x-widget": "textfile", "title": "Mission comment" },
+        "MissionTag": { "type": "string", "x-ref": true, "x-widget": "mission-map", "title": "Map", "description": "The mission's map, referenced through its map-tag.xdb (map-tag.xdb#xpointer(/AdvMapDescTag)). Picked from the map projects on disk; the chosen map's whole folder is bundled into the .h5c beside the campaign. This is the one link between a campaign and a map." },
+        "Bonuses": { "type": "array", "title": "Starting bonuses", "x-advanced": true, "description": "The bonuses offered at mission start; the player picks one. Up to three, each an artifact, some creatures, resources, a spell or a building.", "items": { "$ref": "#/$defs/Bonus" } },
+        "HeroesPool": { "$ref": "#/$defs/HeroesPool", "title": "Carried-over heroes", "x-advanced": true },
+        "startMusics": { "type": "array", "title": "Start musics", "x-advanced": true, "items": { "type": "string", "x-ref": true, "x-entity": "Music" } },
+        "additionalAdventureMusics": { "type": "array", "title": "Extra adventure musics", "x-advanced": true, "items": { "type": "string", "x-ref": true, "x-entity": "Music" } },
+        "additionalCombatMusics": { "type": "array", "title": "Extra combat musics", "x-advanced": true, "items": { "type": "string", "x-ref": true, "x-entity": "Music" } },
+        "additionalWaitMusics": { "type": "array", "title": "Extra wait musics", "x-advanced": true, "items": { "type": "string", "x-ref": true, "x-entity": "Music" } }
+      }
+    },
+    "Bonus": {
+      "type": "object",
+      "title": "Bonus",
+      "description": "One of the mission-start choices. Only the fields the Type uses matter; the rest sit at their neutral defaults.",
+      "properties": {
+        "Target": { "$ref": "#/$defs/BonusTarget", "title": "Target" },
+        "Type": { "type": "string", "title": "Type", "x-widget": "dropdown", "enum": [ "E_BONUS_ARTIFACT", "E_BONUS_CREATURE", "E_BONUS_SPELL", "E_BONUS_RESOURCE", "E_BONUS_BUILDING" ], "description": "Which field below the bonus grants." },
+        "BonusArmy": { "$ref": "#/$defs/BonusArmy", "title": "Creatures" },
+        "BonusArtifactID": { "type": "string", "x-registry": "artifacts", "x-widget": "dropdown", "title": "Artifact" },
+        "BonusResources": { "$ref": "#/$defs/Resources", "title": "Resources" },
+        "BonusSpellID": { "type": "string", "x-registry": "spells", "x-widget": "dropdown", "title": "Spell" },
+        "Building": { "type": "string", "title": "Building", "description": "A town-building id (e.g. TB_TOWN_HALL) granted built." }
+      }
+    },
+    "BonusTarget": {
+      "type": "object",
+      "title": "Target",
+      "description": "What the bonus is applied to — the starting hero for every shipped campaign bonus.",
+      "properties": {
+        "Hero": { "type": "string", "title": "Hero", "description": "Present (empty) to target the starting hero." }
+      }
+    },
+    "BonusArmy": {
+      "type": "object",
+      "title": "Army",
+      "properties": {
+        "Creature": { "type": "string", "x-registry": "creatures", "x-widget": "dropdown", "title": "Creature" },
+        "Count": { "type": "integer", "title": "Count", "minimum": 0 }
+      }
+    },
+    "Resources": {
+      "type": "object",
+      "title": "Resources",
+      "properties": {
+        "Wood": { "type": "integer", "title": "Wood", "minimum": 0 },
+        "Ore": { "type": "integer", "title": "Ore", "minimum": 0 },
+        "Mercury": { "type": "integer", "title": "Mercury", "minimum": 0 },
+        "Crystal": { "type": "integer", "title": "Crystal", "minimum": 0 },
+        "Sulfur": { "type": "integer", "title": "Sulfur", "minimum": 0 },
+        "Gem": { "type": "integer", "title": "Gems", "minimum": 0 },
+        "Gold": { "type": "integer", "title": "Gold", "minimum": 0 }
+      }
+    },
+    "HeroesPool": {
+      "type": "object",
+      "title": "Heroes pool",
+      "description": "Heroes carried into a later mission — how a campaign keeps your hero between chapters.",
+      "properties": {
+        "Count": { "type": "integer", "title": "Count", "minimum": 0 },
+        "Heroes": { "type": "array", "title": "Heroes", "items": { "$ref": "#/$defs/PoolHero" } }
+      }
+    },
+    "PoolHero": {
+      "type": "object",
+      "title": "Pool hero",
+      "properties": {
+        "HeroScriptName": { "type": "string", "title": "Hero script name", "description": "The hero's script handle on the source mission's map." },
+        "TargetCampaign": { "type": "string", "x-ref": true, "title": "Target campaign", "description": "Empty for this campaign." },
+        "TargetMission": { "type": "integer", "title": "Target mission", "minimum": 0, "description": "The 1-based mission this hero is carried INTO." }
+      }
+    }
+  }
+}
