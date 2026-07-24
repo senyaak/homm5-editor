@@ -17,6 +17,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { newCampaignBody, newMission, saveCampaign, loadCampaign } from '../src/campaign.ts';
 import { packCampaign, missionMapDir, campaignMaps } from '../src/campaign-pack.ts';
+import {
+  addMission, buildNewCampaignProject, hasEntryPoint, loadCampaignProject, missions,
+  moveMission, readHeroesPool, readProjectText, removeMission, saveCampaignProject,
+  transportableHeroes, writeHeroesPool,
+} from '../src/campaign-project.ts';
 import { readEntries } from '../src/pak.ts';
 import { find, setAttr } from '../src/xml.ts';
 import type { XmlElement } from '../src/xml.ts';
@@ -133,9 +138,80 @@ function testAgainstTheRealThing(): void {
   check('its MissionTag resolves to a map folder', missionMapDir(tag).startsWith('Maps/'), missionMapDir(tag));
 }
 
+function testProject(): void {
+  console.log('\nTHE PROJECT');
+  const tmp = mkdtempSync(join(tmpdir(), 'homm5-campproj-'));
+  try {
+    const dir = join(tmp, 'My Campaign');
+    mkdirSync(dir, { recursive: true });
+    const files = buildNewCampaignProject('My Campaign');
+    for (const f of files) writeFileSync(join(dir, f.path), f.data);
+    check('a fresh project is the descriptor plus its texts', files.length === 5, `${files.length}`);
+    const name = files.find((f) => f.path === 'CampaignName.txt')!.data;
+    check('texts are UTF-16 LE with a BOM', name[0] === 0xff && name[1] === 0xfe && name.toString('utf16le', 2) === 'My Campaign');
+    check('reads its own texts back', readProjectText(dir, 'CampaignName.txt') === 'My Campaign');
+
+    // Three missions, each handing a hero to the next.
+    const root = loadCampaignProject(dir);
+    for (const map of ['A', 'B', 'C']) {
+      const m = addMission(root, `/Maps/SingleMissions/${map}/map-tag.xdb#xpointer(/AdvMapDescTag)`);
+      writeHeroesPool(m, [{ scriptName: `Hero${map}`, targetMission: 0 }]);
+    }
+    check('three missions', missions(root).length === 3);
+    const tagOf = (i: number): string => find(missions(root)[i]!, 'MissionTag')?.attrs.href ?? '';
+    const nameRefOf = (i: number): string => find(missions(root)[i]!, 'NameFileRef')?.attrs.href ?? '';
+    check('a mission\'s texts follow its position', nameRefOf(1) === 'Mission2Name.txt', nameRefOf(1));
+
+    // Handovers point at the NEXT mission, and the last one hands on to nobody.
+    const handovers = (): string => missions(root).map((m) => readHeroesPool(m).map((h) => h.targetMission).join('|') || '-').join(' ');
+    writeHeroesPool(missions(root)[0]!, [{ scriptName: 'HeroA', targetMission: 0 }]);
+    addMission(root, '/Maps/SingleMissions/D/map-tag.xdb#xpointer(/AdvMapDescTag)');
+    check('heroes travel to the next mission', handovers().startsWith('1 '), handovers());
+    check('the last mission hands on to nobody', handovers().endsWith('-'), handovers());
+
+    // Reordering rewrites those indices — a hero must not follow a stale one.
+    moveMission(root, 0, 1);
+    check('a move keeps handovers pointing at the next mission', /^(-|\d) /.test(handovers()) && !handovers().includes('0'), handovers());
+    check('a move re-points the texts too', nameRefOf(0) === 'Mission1Name.txt' && tagOf(0).includes('/B/'), `${nameRefOf(0)} ${tagOf(0)}`);
+
+    removeMission(root, 3);
+    check('a mission can be removed', missions(root).length === 3);
+
+    saveCampaignProject(dir, root);
+    check('the saved descriptor reloads', missions(loadCampaignProject(dir)).length === 3);
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
+// Which heroes a mission can hand on is read off its map, so check that against
+// real maps when they are around: map 12 carries an EntryPoint (it receives
+// heroes), the reconstructed C1M1 does not (it is a first mission).
+function testHeroesAgainstMaps(): void {
+  const c1m1 = join('data-unpacked', 'Maps', 'SingleMissions', 'e2e Reconstruct C1M1', 'map.xdb');
+  if (existsSync(c1m1)) {
+    console.log('\nAGAINST A REAL MAP');
+    const xml = readFileSync(c1m1, 'latin1');
+    check('C1M1 offers its named hero', transportableHeroes(xml).includes('Isabell'), transportableHeroes(xml).join());
+    check('C1M1 has no EntryPoint (nothing arrives there)', !hasEntryPoint(xml));
+  }
+  const twelve = join('..', 'Maps', '12.h5m');
+  if (existsSync(twelve)) {
+    const entry = readEntries(readFileSync(twelve)).find((e) => e.name === 'Maps/SingleMissions/12/map.xdb');
+    if (entry) {
+      const xml = entry.data.toString('latin1');
+      check('map 12 has an EntryPoint (heroes arrive there)', hasEntryPoint(xml));
+      // Its heroes are unnamed, so none of them can travel — the EntryPoint is
+      // never offered as one either.
+      check('an EntryPoint is never offered as a hero', !transportableHeroes(xml).some((h) => /entry/i.test(h)), transportableHeroes(xml).join());
+    }
+  }
+}
+
 testDocument();
 testPack();
-testAgainstTheRealThing();
+testProject();
+testHeroesAgainstMaps();
 
 console.log(failures ? `\n${failures} check(s) failed` : '\nall checks passed');
 process.exit(failures ? 1 : 0);

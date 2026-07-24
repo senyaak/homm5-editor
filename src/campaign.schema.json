@@ -51,7 +51,7 @@
       "description": "One of the mission-start choices. Only the fields the Type uses matter; the rest sit at their neutral defaults.",
       "properties": {
         "Target": { "$ref": "#/$defs/BonusTarget", "title": "Target" },
-        "Type": { "type": "string", "title": "Type", "x-widget": "dropdown", "enum": [ "E_BONUS_ARTIFACT", "E_BONUS_CREATURE", "E_BONUS_SPELL", "E_BONUS_RESOURCE", "E_BONUS_BUILDING" ], "description": "Which field below the bonus grants." },
+        "Type": { "type": "string", "title": "Type", "x-widget": "dropdown", "enum": [ "E_BONUS_NONE", "E_BONUS_ARTIFACT", "E_BONUS_CREATURE", "E_BONUS_SPELL", "E_BONUS_RESOURCE", "E_BONUS_BUILDING" ], "description": "Which field below the bonus grants. E_BONUS_NONE is an offered-but-empty slot — the shipped campaigns use it, and a mission's bonus list is always either absent or exactly three items." },
         "BonusArmy": { "$ref": "#/$defs/BonusArmy", "title": "Creatures" },
         "BonusArtifactID": { "type": "string", "x-registry": "artifacts", "x-widget": "dropdown", "title": "Artifact" },
         "BonusResources": { "$ref": "#/$defs/Resources", "title": "Resources" },
@@ -91,19 +91,19 @@
     "HeroesPool": {
       "type": "object",
       "title": "Heroes pool",
-      "description": "Heroes carried into a later mission — how a campaign keeps your hero between chapters.",
+      "description": "Heroes this mission hands on — how a campaign keeps your hero between chapters. The receiving map marks where they arrive with an EntryPoint object (/MapObjects/Utility/EntryPoint.xdb).",
       "properties": {
-        "Count": { "type": "integer", "title": "Count", "minimum": 0 },
-        "Heroes": { "type": "array", "title": "Heroes", "items": { "$ref": "#/$defs/PoolHero" } }
+        "Count": { "type": "integer", "title": "Count", "minimum": 0, "maximum": 4, "description": "How many heroes travel — always the length of the list below (the game's editor offers four slots)." },
+        "Heroes": { "type": "array", "title": "Heroes", "maxItems": 4, "items": { "$ref": "#/$defs/PoolHero" } }
       }
     },
     "PoolHero": {
       "type": "object",
       "title": "Pool hero",
       "properties": {
-        "HeroScriptName": { "type": "string", "title": "Hero script name", "description": "The hero's script handle on the source mission's map." },
-        "TargetCampaign": { "type": "string", "x-ref": true, "title": "Target campaign", "description": "Empty for this campaign." },
-        "TargetMission": { "type": "integer", "title": "Target mission", "minimum": 0, "description": "The 1-based mission this hero is carried INTO." }
+        "HeroScriptName": { "type": "string", "title": "Hero script name", "description": "The hero's script handle on THIS mission's map — the <Name> of its AdvMapHero, the same handle the Lua uses (Isabell, Godric, Agrael, … in the shipped campaigns). Empty means the mission's default hero." },
+        "TargetCampaign": { "type": "string", "x-ref": true, "title": "Target campaign", "description": "Empty to stay in this campaign; set to send the hero into another one (the editor's Custom Destination)." },
+        "TargetMission": { "type": "integer", "title": "Target mission", "minimum": 0, "description": "Which mission the hero is carried INTO, as a 0-based index. The shipped campaigns hand on to the next one, so mission i writes i+1." }
       }
     }
   }

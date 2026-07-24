@@ -40,6 +40,18 @@ export function newMission(indent = '\n\t\t'): XmlElement {
   return buildItem(campaignSchema, missionSchema(), indent);
 }
 
+/** The `<PoolHero>` item schema — one hero a mission hands on. */
+export function poolHeroSchema(): FieldSchema {
+  const def = campaignSchema.$defs?.PoolHero;
+  if (!def) throw new Error('campaign schema has no PoolHero');
+  return deref(campaignSchema, def);
+}
+
+/** A fresh `<Item>` for a mission's HeroesPool.Heroes list. */
+export function newPoolHero(indent = '\n\t\t\t\t\t'): XmlElement {
+  return buildItem(campaignSchema, poolHeroSchema(), indent);
+}
+
 /** Parse a Campaign document, returning its `<Campaign>` root element. */
 export function loadCampaign(xmlText: string): XmlElement {
   const doc = parse(xmlText);
