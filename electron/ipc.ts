@@ -686,9 +686,106 @@ export interface EditorApi {
   addLayer(p: AddLayerPayload): Promise<AddLayerResult>;
   undo(): Promise<UndoResult>;
   redo(): Promise<UndoResult>;
+  /** Campaign projects on disk, for the open list. */
+  listCampaigns(): Promise<CampaignListResult>;
+  /** Create one and return it, ready to edit. */
+  newCampaign(name: string): Promise<CampaignDoc>;
+  openCampaign(dir: string): Promise<CampaignDoc>;
+  /** Write the whole document back; returns it as re-read from disk. */
+  saveCampaign(doc: CampaignDoc): Promise<CampaignDoc>;
+  packCampaign(dir: string): Promise<CampaignPackResult>;
+  /** The heroes a mission on this map can hand on, and whether it can receive. */
+  mapHeroes(mapRel: string): Promise<MapHeroesResult>;
   /**
    * Subscribe to external edits of the open map folder. Fires once per settled
    * burst of writes; our own saves never fire it.
    */
   onExternalChange(cb: (c: ExternalChange) => void): void;
+}
+
+// --- campaigns ---------------------------------------------------------------
+//
+// A campaign is edited as a whole document rather than field by field: the
+// dialogs are modal, so the renderer reads one CampaignDoc, edits it, and hands
+// the whole thing back. That keeps the descriptor's own shape (order, the
+// fields nobody edits) in main, where src/campaign-project.ts owns it.
+
+/** One hero a mission hands on to a later one. */
+export interface PoolHeroDto {
+  /** The hero's script name on THIS mission's map; empty = the default hero. */
+  scriptName: string;
+  /** Another campaign to send the hero to; empty stays in this one. */
+  targetCampaign?: string;
+  /** Destination mission, 0-based. Left alone unless targetCampaign is set. */
+  targetMission?: number;
+}
+
+/** One of a mission's three start-bonus slots. */
+export interface BonusDto {
+  /** E_BONUS_NONE | _ARTIFACT | _CREATURE | _SPELL | _RESOURCE | _BUILDING. */
+  type: string;
+  /** The chosen artifact/creature/spell/building id, or the resource's name. */
+  value: string;
+  /** How many — creatures and resources use it. */
+  count: number;
+}
+
+/** A mission as the Mission dialog edits it. */
+export interface CampaignMissionDto {
+  /** The map's path under Maps, e.g. "SingleMissions/My Map". */
+  mapRel: string;
+  name: string;
+  description: string;
+  heroes: PoolHeroDto[];
+  bonuses: BonusDto[];
+}
+
+/** A campaign as the Campaign dialog edits it. */
+export interface CampaignDoc {
+  /** The project folder — the handle for save/pack. */
+  dir: string;
+  /** Its file name, which is also the folder name inside the .h5c. */
+  name: string;
+  internalName: string;
+  /** The short line under the name (NameComment). */
+  summary: string;
+  description: string;
+  missions: CampaignMissionDto[];
+}
+
+/** A campaign project on disk, for the open list. */
+export interface CampaignListEntry {
+  name: string;
+  dir: string;
+  missions: number;
+}
+
+/** Result of `campaign:list`. */
+export interface CampaignListResult { campaigns: CampaignListEntry[] }
+
+/** Payload of `campaign:new`. */
+export interface NewCampaignPayload { name: string }
+
+/** Payload of `campaign:open` / `campaign:pack`. */
+export interface CampaignDirPayload { dir: string }
+
+/** Payload of `campaign:save`. */
+export interface SaveCampaignPayload { doc: CampaignDoc }
+
+/** Payload of `campaign:map-heroes` — which map to read heroes off. */
+export interface MapHeroesPayload { mapRel: string }
+
+/**
+ * Result of `campaign:map-heroes`. `heroes` are the script names a mission on
+ * this map can hand on; `entryPoint` says whether the map can RECEIVE heroes.
+ */
+export interface MapHeroesResult { heroes: string[]; entryPoint: boolean }
+
+/** Result of `campaign:pack`. */
+export interface CampaignPackResult {
+  canceled?: boolean;
+  ok?: boolean;
+  output?: string;
+  entries?: number;
+  bytes?: number;
 }

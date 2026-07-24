@@ -41,7 +41,19 @@ import { readTree, setPath, addStringItem, addRefItem, removeItem, appendItem, i
 import { mapSchema, resolveSchemaAtPath, resolveObjectPath, deref, schemaForClass, objectProps, objectSchema, controlOf } from '../src/schema.ts';
 import { buildItem, isBuildable, buildEntity } from '../src/skeleton.ts';
 import { TOWN_BONUS_IDS } from '../src/town-bonuses.ts';
-import { children, find, text, serialize, parse } from '../src/xml.ts';
+import { children, find, text, childText, setText, serialize, parse } from '../src/xml.ts';
+import {
+  CAMPAIGN_TEXTS, addMission, buildNewCampaignProject, handOnTo, hasEntryPoint,
+  loadCampaignProject, missionTexts, missions, readBonuses, readHeroesPool,
+  readProjectText, removeMission, saveCampaignProject, transportableHeroes,
+  writeBonuses, writeHeroesPool, writeProjectText,
+} from '../src/campaign-project.ts';
+import { packCampaign, missionMapDir } from '../src/campaign-pack.ts';
+import type {
+  CampaignDirPayload, CampaignDoc, CampaignListEntry, CampaignListResult,
+  CampaignPackResult, MapHeroesPayload, MapHeroesResult, NewCampaignPayload,
+  SaveCampaignPayload,
+} from './ipc.ts';
 import type { XmlElement, XmlNode } from '../src/xml.ts';
 import type { DocPatch, Step, StoredHistory } from '../src/history.ts';
 import type { TileInfo, GeomResolver, Instance as SceneInstance } from '../src/scene.ts';
@@ -1822,4 +1834,143 @@ ipcMain.handle('terrain:tiles', async (): Promise<TerrainTilesResult> => {
 ipcMain.handle('map:status', async (): Promise<MapStatusResult> => {
   if (!session) return null;
   return status(session.mapDir);
+});
+
+// --- IPC: campaigns ---------------------------------------------------------
+//
+// A campaign project is a folder under <data>/Campaigns holding campaign.xdb
+// and its texts — the same layout that goes into UserCampaigns/<name>/ inside
+// the .h5c, so packing is a copy. The maps are NOT part of it: a mission names
+// its map by an absolute data-root path and the game's VFS finds it in whatever
+// .h5m ships it, which is why picking a map here only records a path.
+
+/** Where campaign projects live, mirroring <data>/Maps for map projects. */
+const CAMPAIGNS_DIR = join(GAME_DATA, 'Campaigns');
+
+/** The map-tag href a mission uses to name the map at `rel` under Maps. */
+const missionTagFor = (mapRel: string): string =>
+  mapRel ? `/Maps/${mapRel}/map-tag.xdb#xpointer(/AdvMapDescTag)` : '';
+
+/** And back: the path under Maps a mission's tag names. */
+const mapRelOf = (href: string): string => {
+  const dir = missionMapDir(href);           // Maps/SingleMissions/Foo
+  return dir.replace(/^Maps\//i, '');
+};
+
+/** Read a campaign project into the document the dialogs edit. */
+function readCampaignDoc(dir: string): CampaignDoc {
+  const root = loadCampaignProject(dir);
+  const doc: CampaignDoc = {
+    dir,
+    name: basename(dir),
+    internalName: childText(root, 'InternalName'),
+    summary: readProjectText(dir, CAMPAIGN_TEXTS.NameCommentFileRef!),
+    description: readProjectText(dir, CAMPAIGN_TEXTS.DescriptionFileRef!),
+    missions: [],
+  };
+  missions(root).forEach((m, i) => {
+    const texts = missionTexts(i);
+    doc.missions.push({
+      mapRel: mapRelOf(find(m, 'MissionTag')?.attrs.href ?? ''),
+      name: readProjectText(dir, texts.NameFileRef!),
+      description: readProjectText(dir, texts.NameCommentFileRef!),
+      heroes: readHeroesPool(m).map((h) => ({
+        scriptName: h.scriptName, targetCampaign: h.targetCampaign, targetMission: h.targetMission,
+      })),
+      bonuses: readBonuses(m),
+    });
+  });
+  return doc;
+}
+
+/** Write one back: the descriptor's missions, then every text file it names. */
+function writeCampaignDoc(doc: CampaignDoc): void {
+  const root = loadCampaignProject(doc.dir);
+
+  // The mission list is rebuilt to match the document, so a reorder in the UI
+  // lands as a reorder here — and campaign-project renumbers the handovers.
+  while (missions(root).length) removeMission(root, 0);
+  for (const m of doc.missions) addMission(root, missionTagFor(m.mapRel));
+
+  missions(root).forEach((el, i) => {
+    const m = doc.missions[i]!;
+    writeHeroesPool(el, m.heroes.map((h) => ({
+      scriptName: h.scriptName,
+      targetCampaign: h.targetCampaign || '',
+      // Only an explicit destination survives; the rest follow the play order.
+      targetMission: h.targetCampaign ? (h.targetMission ?? 0) : handOnTo(i),
+    })));
+    writeBonuses(el, m.bonuses);
+    const texts = missionTexts(i);
+    writeProjectText(doc.dir, texts.NameFileRef!, m.name);
+    writeProjectText(doc.dir, texts.NameCommentFileRef!, m.description);
+  });
+
+  const internal = find(root, 'InternalName');
+  if (internal) setText(internal, doc.internalName || doc.name);
+  saveCampaignProject(doc.dir, root);
+
+  writeProjectText(doc.dir, CAMPAIGN_TEXTS.NameFileRef!, doc.name);
+  writeProjectText(doc.dir, CAMPAIGN_TEXTS.FullNameFileRef!, doc.name);
+  writeProjectText(doc.dir, CAMPAIGN_TEXTS.NameCommentFileRef!, doc.summary);
+  writeProjectText(doc.dir, CAMPAIGN_TEXTS.DescriptionFileRef!, doc.description);
+}
+
+ipcMain.handle('campaign:list', async (): Promise<CampaignListResult> => {
+  if (!existsSync(CAMPAIGNS_DIR)) return { campaigns: [] };
+  const campaigns: CampaignListEntry[] = [];
+  for (const e of readdirSync(CAMPAIGNS_DIR)) {
+    const dir = join(CAMPAIGNS_DIR, e);
+    if (!existsSync(join(dir, 'campaign.xdb'))) continue;
+    try {
+      campaigns.push({ name: e, dir, missions: missions(loadCampaignProject(dir)).length });
+    } catch { /* not a campaign we can read — leave it out of the list */ }
+  }
+  return { campaigns };
+});
+
+ipcMain.handle('campaign:new', async (_e: IpcMainInvokeEvent, p: NewCampaignPayload): Promise<CampaignDoc> => {
+  const name = p.name.trim();
+  if (!name) throw new Error('the campaign needs a name');
+  if (/[\/:*?"<>|]/.test(name)) throw new Error('the name cannot contain \ / : * ? " < > |');
+  const dir = join(CAMPAIGNS_DIR, name);
+  if (existsSync(dir)) throw new Error(`${dir} already exists`);
+  mkdirSync(dir, { recursive: true });
+  for (const f of buildNewCampaignProject(name)) writeFileSync(join(dir, f.path), f.data);
+  return readCampaignDoc(dir);
+});
+
+ipcMain.handle('campaign:open', async (_e: IpcMainInvokeEvent, p: CampaignDirPayload): Promise<CampaignDoc> =>
+  readCampaignDoc(p.dir));
+
+ipcMain.handle('campaign:save', async (_e: IpcMainInvokeEvent, p: SaveCampaignPayload): Promise<CampaignDoc> => {
+  writeCampaignDoc(p.doc);
+  return readCampaignDoc(p.doc.dir);
+});
+
+// Which heroes a mission on this map can hand on, and whether the map can
+// receive any — a map with no EntryPoint has nowhere for arrivals to land.
+ipcMain.handle('campaign:map-heroes', async (_e: IpcMainInvokeEvent, p: MapHeroesPayload): Promise<MapHeroesResult> => {
+  const xdb = join(GAME_DATA, 'Maps', ...p.mapRel.split('/'), 'map.xdb');
+  if (!existsSync(xdb)) return { heroes: [], entryPoint: false };
+  const xml = readFileSync(xdb, 'latin1');
+  return { heroes: transportableHeroes(xml), entryPoint: hasEntryPoint(xml) };
+});
+
+ipcMain.handle('campaign:pack', async (_e: IpcMainInvokeEvent, p: CampaignDirPayload): Promise<CampaignPackResult> => {
+  // The game reads user campaigns from <game>/UserCampaigns, so offer that when
+  // it is there. The game folder is the one holding this checkout, NOT the
+  // parent of the data root — data-unpacked lives inside the checkout.
+  const userCampaigns = join(GAME_ROOT ?? join(REPO_ROOT, '..'), 'UserCampaigns');
+  const name = basename(p.dir);
+  const opts = {
+    title: 'Pack campaign to .h5c',
+    defaultPath: join(existsSync(userCampaigns) ? userCampaigns : p.dir, `${name}.h5c`),
+    filters: [{ name: 'HoMM5 campaign', extensions: ['h5c'] }],
+  };
+  const parent = win;
+  const r = await (parent ? dialog.showSaveDialog(parent, opts) : dialog.showSaveDialog(opts));
+  if (r.canceled || !r.filePath) return { canceled: true };
+  const res = packCampaign(p.dir, r.filePath);
+  return { ok: true, output: r.filePath, entries: res.entries, bytes: res.bytes };
 });

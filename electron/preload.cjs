@@ -71,6 +71,14 @@ const api = {
   addLayer: (p) => ipcRenderer.invoke('terrain:add-layer', p),
   undo: () => ipcRenderer.invoke('history:undo'),
   redo: () => ipcRenderer.invoke('history:redo'),
+  // Campaigns. A campaign is edited as a whole document (see EditorApi), so
+  // these carry one CampaignDoc rather than a field at a time.
+  listCampaigns: () => ipcRenderer.invoke('campaign:list'),
+  newCampaign: (name) => ipcRenderer.invoke('campaign:new', { name }),
+  openCampaign: (dir) => ipcRenderer.invoke('campaign:open', { dir }),
+  saveCampaign: (doc) => ipcRenderer.invoke('campaign:save', { doc }),
+  packCampaign: (dir) => ipcRenderer.invoke('campaign:pack', { dir }),
+  mapHeroes: (mapRel) => ipcRenderer.invoke('campaign:map-heroes', { mapRel }),
   // Push channel, not invoke: the main process decides when the folder moved.
   // The listener is wrapped so the renderer never sees the IpcRendererEvent.
   onExternalChange: (cb) => { ipcRenderer.on('map:external-change', (_e, c) => cb(c)); },

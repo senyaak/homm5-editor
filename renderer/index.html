@@ -563,6 +563,49 @@
     .on-row input:read-only { color: #8b949e; background: #161b22; }
     .on-row input:focus { outline: none; border-color: #1f6feb; }
     .on-err { color: #f85149; font-size: 11px; min-height: 14px; }
+    /* campaigns: the open list, the campaign itself, one mission */
+    .cl-card { width: min(520px, 92vw); }
+    .cl-body { padding: 0; }
+    .cl-list { max-height: 46vh; overflow: auto; }
+    .cl-row { display: flex; justify-content: space-between; gap: 10px; padding: 8px 14px;
+      font-size: 12px; color: #c9d1d9; cursor: pointer; border-bottom: 1px solid #21262d; }
+    .cl-row:hover { background: #1f6feb; color: #fff; }
+    .cl-row i { color: #8b949e; font-style: normal; }
+    .cl-row:hover i { color: #cfe1ff; }
+    .cl-empty { padding: 14px; color: #6e7681; font-size: 12px; text-align: center; }
+    #cl-name { flex: 1; background: #0d1014; border: 1px solid #30363d; border-radius: 6px;
+      padding: 6px 10px; color: #c9d1d9; font-size: 13px; }
+    .cp-card { width: min(720px, 94vw); }
+    .cp-body, .ms-body { display: flex; flex-direction: column; gap: 10px; }
+    .cp-body .on-row span, .ms-body .on-row span { flex: 0 0 150px; }
+    .cp-desc { align-items: flex-start; }
+    .cp-desc textarea { flex: 1; background: #0d1014; border: 1px solid #30363d; border-radius: 6px;
+      padding: 6px 10px; color: #c9d1d9; font: inherit; font-size: 13px; resize: vertical; }
+    fieldset { border: 1px solid #30363d; border-radius: 6px; padding: 8px 10px; }
+    legend { color: #8b949e; font-size: 11px; padding: 0 4px; }
+    .cp-grid { display: flex; gap: 10px; }
+    .cp-table { flex: 1; border-collapse: collapse; font-size: 12px; color: #c9d1d9; }
+    .cp-table th { color: #8b949e; font-weight: 500; text-align: left; padding: 3px 6px;
+      border-bottom: 1px solid #30363d; }
+    .cp-table th:first-child, .cp-table td:first-child { width: 34px; color: #8b949e; }
+    .cp-table td { padding: 4px 6px; cursor: pointer; }
+    .cp-table tr.sel td { background: #1f6feb; color: #fff; }
+    .cp-table td.none { color: #f85149; }
+    .cp-side { display: flex; flex-direction: column; gap: 6px; flex: 0 0 92px; }
+    .ms-card { width: min(620px, 94vw); }
+    .ms-heroes { display: flex; flex-direction: column; gap: 6px; }
+    .ms-hero { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #c9d1d9; }
+    .ms-hero select, .ms-hero input { background: #0d1014; border: 1px solid #30363d;
+      border-radius: 6px; padding: 5px 8px; color: #c9d1d9; font-size: 12px; }
+    .ms-hero .who { flex: 1; min-width: 0; }
+    .ms-note { color: #d29922; font-size: 11px; min-height: 14px; margin-top: 6px; }
+    .ms-bonuses { display: flex; flex-direction: column; gap: 6px; }
+    .ms-bonus { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #c9d1d9; }
+    .ms-bonus > label { flex: 0 0 46px; color: #8b949e; }
+    .ms-bonus select { flex: 1; min-width: 0; background: #0d1014; border: 1px solid #30363d;
+      border-radius: 6px; padding: 5px 8px; color: #c9d1d9; font-size: 12px; }
+    .ms-bonus input { width: 74px; background: #0d1014; border: 1px solid #30363d;
+      border-radius: 6px; padding: 5px 8px; color: #c9d1d9; font-size: 12px; }
     .on-row select { flex: 1; min-width: 0; background: #0d1014; border: 1px solid #30363d;
       border-radius: 6px; padding: 6px 10px; color: #c9d1d9; font-size: 13px; }
     /* New Map dialog: the two-level toggle and the "where it lands" hint */
@@ -620,6 +663,7 @@
     <span id="title">homm5-editor</span>
     <button id="newmapbtn" title="create a blank map from scratch">New map…</button>
     <button id="open">Open map…</button>
+    <button id="campaignbtn" title="build a campaign out of maps and pack it to .h5c">Campaigns…</button>
     <button id="undobtn" disabled title="Nothing to undo">↶ Undo</button>
     <button id="redobtn" disabled title="Nothing to redo">↷ Redo</button>
     <button id="save" disabled title="write the work back where the map came from — into its .h5m when it was opened from one">Save</button>
@@ -1062,6 +1106,86 @@
       <div class="de-foot">
         <button id="ee-copy" class="ghost" style="margin-right:auto;display:none">Save a copy in map</button>
         <button id="ee-done">Done</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Campaigns — the original editor's three steps, which is why there are
+       three dialogs: pick/create a campaign, edit it, edit one mission. Unlike
+       the original, an existing campaign can be reopened and edited. -->
+  <dialog id="camplist">
+    <div class="mp-card cl-card">
+      <div class="mp-head">
+        <span class="mp-title">Campaigns</span>
+        <button id="cl-close" title="close (Esc)">✕</button>
+      </div>
+      <div class="mp-body cl-body"><div id="cl-list" class="cl-list"></div></div>
+      <div class="de-foot">
+        <input id="cl-name" type="text" spellcheck="false" autocomplete="off" placeholder="new campaign name…">
+        <button id="cl-new">Create</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="campaign">
+    <div class="mp-card cp-card">
+      <div class="mp-head">
+        <span class="mp-title" id="cp-title">Campaign</span>
+        <button id="cp-close" title="close (Esc)">✕</button>
+      </div>
+      <div class="mp-body cp-body">
+        <label class="on-row"><span>Name</span><input id="cp-name" type="text" spellcheck="false" autocomplete="off"></label>
+        <label class="on-row"><span>Short description</span><input id="cp-summary" type="text" spellcheck="false" autocomplete="off"></label>
+        <label class="on-row cp-desc"><span>Description</span><textarea id="cp-description" rows="4" spellcheck="false"></textarea></label>
+        <fieldset class="cp-missions">
+          <legend>Missions</legend>
+          <div class="cp-grid">
+            <table class="cp-table"><thead><tr><th>##</th><th>Map name</th></tr></thead><tbody id="cp-rows"></tbody></table>
+            <div class="cp-side">
+              <button id="cp-add">Add</button>
+              <button id="cp-edit" disabled>Edit</button>
+              <button id="cp-remove" disabled>Remove</button>
+              <button id="cp-up" disabled>Up</button>
+              <button id="cp-down" disabled>Down</button>
+            </div>
+          </div>
+        </fieldset>
+        <div id="cp-err" class="on-err"></div>
+      </div>
+      <div class="de-foot">
+        <button id="cp-pack" class="ghost" style="margin-right:auto">Pack .h5c…</button>
+        <button id="cp-cancel" class="ghost">Cancel</button>
+        <button id="cp-ok">Save</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="mission">
+    <div class="mp-card ms-card">
+      <div class="mp-head">
+        <span class="mp-title">Mission</span>
+        <button id="ms-close" title="close (Esc)">✕</button>
+      </div>
+      <div class="mp-body ms-body">
+        <label class="on-row"><span>Map</span><select id="ms-map"></select></label>
+        <label class="on-row"><span>Mission name</span><input id="ms-name" type="text" spellcheck="false" autocomplete="off"></label>
+        <label class="on-row"><span>Mission description</span><input id="ms-description" type="text" spellcheck="false" autocomplete="off"></label>
+        <fieldset>
+          <legend>Transported heroes</legend>
+          <!-- A hero travels to the NEXT mission unless a custom destination
+               says otherwise, and arrives at the receiving map's EntryPoint. -->
+          <label class="on-row"><span>Heroes, moved to next missions</span><input id="ms-hcount" type="number" min="0" max="4" value="0"></label>
+          <div id="ms-heroes" class="ms-heroes"></div>
+          <div id="ms-entry" class="ms-note"></div>
+        </fieldset>
+        <fieldset>
+          <legend>Start bonuses</legend>
+          <div id="ms-bonuses" class="ms-bonuses"></div>
+        </fieldset>
+      </div>
+      <div class="de-foot">
+        <button id="ms-cancel" class="ghost">Cancel</button>
+        <button id="ms-ok">OK</button>
       </div>
     </div>
   </dialog>
