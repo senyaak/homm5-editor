@@ -18,9 +18,9 @@ import { join } from 'node:path';
 import { newCampaignBody, newMission, saveCampaign, loadCampaign } from '../src/campaign.ts';
 import { packCampaign, missionMapDir, campaignMaps } from '../src/campaign-pack.ts';
 import {
-  addMission, buildNewCampaignProject, hasEntryPoint, loadCampaignProject, missions,
-  moveMission, readHeroesPool, readProjectText, removeMission, saveCampaignProject,
-  transportableHeroes, writeHeroesPool,
+  addMission, buildNewCampaignProject, hasEntryPoint, heroScriptName, loadCampaignProject,
+  missions, moveMission, placedHeroes, readHeroesPool, readProjectText, removeMission,
+  saveCampaignProject, writeHeroesPool,
 } from '../src/campaign-project.ts';
 import { readEntries } from '../src/pak.ts';
 import { find, setAttr } from '../src/xml.ts';
@@ -187,20 +187,27 @@ function testProject(): void {
   }
 }
 
-// Which heroes a mission can hand on is read off its map, so check that against
-// real maps when they are around: map 12 carries an EntryPoint (it receives
-// heroes), the reconstructed C1M1 does not (it is a first mission).
+// A hero travels under his CHARACTER's name, so check that against the real
+// data when it is there: the reconstructed C1M1 holds Isabell, and the game's
+// own Isabell document is what says she is called "Isabell".
 function testHeroesAgainstMaps(): void {
-  const c1m1 = join('data-unpacked', 'Maps', 'SingleMissions', 'e2e Reconstruct C1M1', 'map.xdb');
+  const data = process.env.HOMM5_DATA || 'data-unpacked';
+  const isabell = join(data, 'MapObjects', 'Haven', 'Isabell.(AdvMapHeroShared).xdb');
+  if (existsSync(isabell)) {
+    console.log('\nAGAINST THE GAME DATA');
+    check('a hero travels under his character\'s InternalName',
+      heroScriptName(readFileSync(isabell, 'latin1')) === 'Isabell',
+      heroScriptName(readFileSync(isabell, 'latin1')));
+  }
+
+  const c1m1 = join(data, 'Maps', 'SingleMissions', 'e2e Reconstruct C1M1', 'map.xdb');
   // Only meaningful once the reconstruction has built the map: a run stopped
-  // part-way leaves a blank one behind, with no heroes to offer yet.
+  // part-way leaves a blank one behind, with no heroes on it yet.
   if (existsSync(c1m1)) {
-    const xml = readFileSync(c1m1, 'latin1');
-    const heroes = transportableHeroes(xml);
-    if (heroes.length) {
-      console.log('\nAGAINST A REAL MAP');
-      check('C1M1 offers its named hero', heroes.includes('Isabell'), heroes.join());
-      check('C1M1 has no EntryPoint (nothing arrives there)', !hasEntryPoint(xml));
+    const placed = placedHeroes(readFileSync(c1m1, 'latin1'));
+    if (placed.length) {
+      check('C1M1 holds Isabell', placed.some((h) => /Isabell/i.test(h.shared)), placed.map((h) => h.shared).join());
+      check('C1M1 has no EntryPoint (nothing arrives there)', !hasEntryPoint(readFileSync(c1m1, 'latin1')));
     }
   }
   const twelve = join('..', 'Maps', '12.h5m');
@@ -209,9 +216,9 @@ function testHeroesAgainstMaps(): void {
     if (entry) {
       const xml = entry.data.toString('latin1');
       check('map 12 has an EntryPoint (heroes arrive there)', hasEntryPoint(xml));
-      // Its heroes are unnamed, so none of them can travel — the EntryPoint is
-      // never offered as one either.
-      check('an EntryPoint is never offered as a hero', !transportableHeroes(xml).some((h) => /entry/i.test(h)), transportableHeroes(xml).join());
+      // The EntryPoint is a hero by shape, so it must not be offered as one.
+      check('an EntryPoint is never listed as a placed hero',
+        !placedHeroes(xml).some((h) => /EntryPoint/i.test(h.shared)), placedHeroes(xml).map((h) => h.shared).join());
     }
   }
 }

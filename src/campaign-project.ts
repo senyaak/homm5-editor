@@ -15,7 +15,7 @@ import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { newCampaignBody, newMission, newPoolHero, newBonus, loadCampaign, saveCampaign } from './campaign.ts';
 import { loadMap } from './map.ts';
-import { find, children, setAttr, setText, childText, clearElement } from './xml.ts';
+import { find, children, parse, setAttr, setText, childText, clearElement } from './xml.ts';
 import type { XmlElement } from './xml.ts';
 import type { ProjectFile } from './new-map.ts';
 
@@ -154,23 +154,48 @@ export function handOnTo(index: number): number {
   return index + 1;
 }
 
+/** A hero standing on a map: which character it is, and its script name. */
+export interface PlacedHero {
+  /** The AdvMapHeroShared this hero is an instance of. */
+  shared: string;
+  /** The object's own <Name> — the handle the map's Lua uses. May be empty. */
+  name: string;
+  /** Which player owns it. */
+  player: string;
+}
+
 /**
- * The heroes a map can hand on: the script names of its placed heroes.
+ * The heroes standing on a map.
  *
  * The map's EntryPoint is skipped — it is an AdvMapHero by shape, but it marks
- * where ARRIVING heroes land rather than being a hero itself. A hero with no
- * <Name> has no script handle to travel under, so it cannot be transported and
- * is left out too.
+ * where ARRIVING heroes land rather than being a hero itself.
  */
-export function transportableHeroes(mapXdbText: string): string[] {
-  const out: string[] = [];
+export function placedHeroes(mapXdbText: string): PlacedHero[] {
+  const out: PlacedHero[] = [];
   for (const o of loadMap(mapXdbText).objects) {
     if (o.type !== 'AdvMapHero') continue;
-    if ((find(o.el, 'Shared')?.attrs.href ?? '').startsWith(ENTRY_POINT)) continue;
-    const name = childText(o.el, 'Name').trim();
-    if (name) out.push(name);
+    const shared = find(o.el, 'Shared')?.attrs.href ?? '';
+    if (shared.startsWith(ENTRY_POINT)) continue;
+    out.push({ shared, name: childText(o.el, 'Name').trim(), player: childText(o.el, 'PlayerID') });
   }
   return out;
+}
+
+/**
+ * The name a hero travels under — the CHARACTER's, read from its shared
+ * document's <InternalName> (Isabell, Godric, Agrael …).
+ *
+ * This is not the placed object's <Name>, which is the handle the map's Lua
+ * uses and is often empty. The distinction is the whole mechanism: C1M2
+ * receives Isabell from C1M1 while the Isabell it holds has no <Name> at all,
+ * so the game matches the campaign's HeroScriptName against the character, not
+ * against whatever the object on the map was called. A made-up name matches no
+ * character, and the hero is silently never handed on.
+ */
+export function heroScriptName(sharedXdbText: string): string {
+  const doc = parse(sharedXdbText);
+  const root = doc.name === 'AdvMapHeroShared' ? doc : find(doc, 'AdvMapHeroShared');
+  return root ? childText(root, 'InternalName').trim() : '';
 }
 
 /** Whether a map carries an EntryPoint — where transported heroes arrive. */

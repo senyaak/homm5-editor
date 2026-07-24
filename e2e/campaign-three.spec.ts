@@ -56,6 +56,10 @@ test('a hero carried across three missions, and the campaign packed for play', a
   test.skip(!existsSync(join(DATA, 'MapObjects')), 'needs the game data');
   test.setTimeout(600_000);
   const { page } = ed;
+  /** The character our hero is — the same on every map, and what travels. */
+  let carriedShared = '';
+  /** And the name he travels under: his character's, read off the dropdown. */
+  let carriedName = '';
   await ed.app.evaluate(({ dialog }, save) => {
     dialog.showSaveDialog = (async () => ({ canceled: false, filePath: save })) as typeof dialog.showSaveDialog;
   }, OUT);
@@ -161,6 +165,8 @@ test('a hero carried across three missions, and the campaign packed for play', a
     expect(built.theirs, `${name}: an opponent was placed — ${built.note.join('; ')}`).not.toBe('');
     expect(built.mine, `${name}: our side was placed — ${built.note.join('; ')}`).not.toBe('');
     expect(built.stones, `${name}: five Learning Stones — ${built.note.join('; ')}`).toBe(5);
+    carriedShared ||= built.mineShared;
+    expect(built.mineShared, `${name}: the same character as the other missions`).toBe(carriedShared);
     console.log(`${name}: ${HERO}${i === 0 ? ' + Archangel' : ' (arrives)'} vs Rival, ${built.stones} learning stones`);
   }
 
@@ -174,9 +180,13 @@ test('a hero carried across three missions, and the campaign packed for play', a
     // player to begin with.
     const entry = heroes.filter((o) => /Utility\/EntryPoint/i.test(find(o.el, 'Shared')?.attrs.href ?? ''));
     expect(entry.length, `${name}: no EntryPoint stands in for a hero`).toBe(0);
-    const named = heroes.filter((o) => childText(o.el, 'Name') === HERO);
-    expect(named.length, `${name}: the travelling hero is there, under the name the campaign hands on`).toBe(1);
-    if (i === 0) expect(serializeArmy(named[0]!), 'and he starts with the Archangel').toContain('CREATURE_ARCHANGEL');
+    // The SAME character stands on every map — that is what the handover
+    // matches on, not the object's own name.
+    const ours = heroes.find((o) => childText(o.el, 'Name') === HERO);
+    expect(ours, `${name}: our hero is there`).toBeTruthy();
+    expect(find(ours!.el, 'Shared')?.attrs.href, `${name}: and he is the same character throughout`)
+      .toBe(carriedShared);
+    if (i === 0) expect(serializeArmy(ours!), 'and he starts with the Archangel').toContain('CREATURE_ARCHANGEL');
     // Both sides have to be live AND coloured: a neutral or inactive slot is
     // not a player the game can start as, whatever heroes point at it.
     const players = find(map.desc, 'players');
@@ -207,7 +217,15 @@ test('a hero carried across three missions, and the campaign packed for play', a
       await page.locator('#ms-hcount').dispatchEvent('change');
       const who = page.locator('#ms-heroes select').first();
       await expect(who).toBeVisible();
-      await who.selectOption(HERO);
+      // The list offers "(default hero)" plus the CHARACTERS standing on this
+      // map — the hero travels under his character's name, so take that rather
+      // than assuming what it is called.
+      const offered = await who.locator('option').count();
+      expect(offered, `${name}: a hero to hand on`).toBeGreaterThan(1);
+      await who.selectOption({ index: 1 });
+      const picked = await who.inputValue();
+      carriedName ||= picked;
+      expect(picked, 'the same character travels the whole way').toBe(carriedName);
     }
     await page.locator('#ms-ok').click();
     await expect(page.locator('#mission')).toBeHidden();
@@ -222,7 +240,11 @@ test('a hero carried across three missions, and the campaign packed for play', a
   for (const name of MAPS) {
     expect(xdb, `mission for ${name}`).toContain(`<MissionTag href="/Maps/SingleMissions/${name}/map-tag.xdb#xpointer(/AdvMapDescTag)"/>`);
   }
-  expect(xdb, 'the travelling hero is named in the pool').toContain(`<HeroScriptName>${HERO}</HeroScriptName>`);
+  // The pool names the CHARACTER (Isabell, Godric, …) — the shared document's
+  // InternalName. A made-up name matches no character and travels nowhere.
+  expect(carriedName, 'the dropdown offered a character, not a blank').not.toBe('');
+  expect(xdb, 'the travelling character is named in the pool').toContain(`<HeroScriptName>${carriedName}</HeroScriptName>`);
+  expect(xdb, 'and nothing else is').not.toContain(`<HeroScriptName>${HERO}</HeroScriptName>`);
   // Mission 1 hands to 2, mission 2 to 3 — 0-based, as the shipped campaigns do.
   expect([...xdb.matchAll(/<TargetMission>(\d+)<\/TargetMission>/g)].map((m) => m[1]), 'handovers point at the next mission')
     .toEqual(['1', '2']);

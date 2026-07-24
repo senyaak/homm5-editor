@@ -44,8 +44,8 @@ import { TOWN_BONUS_IDS } from '../src/town-bonuses.ts';
 import { children, find, text, childText, setText, serialize, parse } from '../src/xml.ts';
 import {
   CAMPAIGN_TEXTS, addMission, buildNewCampaignProject, handOnTo, hasEntryPoint,
-  loadCampaignProject, missionTexts, missions, readBonuses, readHeroesPool,
-  readProjectText, removeMission, saveCampaignProject, transportableHeroes,
+  heroScriptName, loadCampaignProject, missionTexts, missions, placedHeroes,
+  readBonuses, readHeroesPool, readProjectText, removeMission, saveCampaignProject,
   writeBonuses, writeHeroesPool, writeProjectText,
 } from '../src/campaign-project.ts';
 import { packCampaign, missionMapDir } from '../src/campaign-pack.ts';
@@ -1948,13 +1948,25 @@ ipcMain.handle('campaign:save', async (_e: IpcMainInvokeEvent, p: SaveCampaignPa
   return readCampaignDoc(p.doc.dir);
 });
 
-// Which heroes a mission on this map can hand on, and whether the map can
-// receive any — a map with no EntryPoint has nowhere for arrivals to land.
+// Which heroes a mission on this map can hand on.
+//
+// A hero travels under his CHARACTER's name — the <InternalName> of the
+// AdvMapHeroShared he is an instance of — not under whatever the object on the
+// map is called. So each placed hero is resolved through its shared document;
+// one that cannot be read offers nothing rather than a name that would match no
+// character and silently never travel.
 ipcMain.handle('campaign:map-heroes', async (_e: IpcMainInvokeEvent, p: MapHeroesPayload): Promise<MapHeroesResult> => {
   const xdb = join(GAME_DATA, 'Maps', ...p.mapRel.split('/'), 'map.xdb');
   if (!existsSync(xdb)) return { heroes: [], entryPoint: false };
   const xml = readFileSync(xdb, 'latin1');
-  return { heroes: transportableHeroes(xml), entryPoint: hasEntryPoint(xml) };
+  const heroes: string[] = [];
+  for (const h of placedHeroes(xml)) {
+    const file = join(GAME_DATA, ...h.shared.replace(/#.*$/, '').replace(/^\/+/, '').split('/'));
+    if (!existsSync(file)) continue;
+    const name = heroScriptName(readFileSync(file, 'latin1'));
+    if (name && !heroes.includes(name)) heroes.push(name);
+  }
+  return { heroes, entryPoint: hasEntryPoint(xml) };
 });
 
 ipcMain.handle('campaign:pack', async (_e: IpcMainInvokeEvent, p: CampaignDirPayload): Promise<CampaignPackResult> => {
