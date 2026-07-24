@@ -531,11 +531,21 @@ the text editor; the two kinds of file call each other by function name.
 
 ## Phase 6 — Campaigns
 
-- [ ] ⬜ Parser/editor for `*.(Campaign).xdb` (XML: missions, bonuses, dependencies)
-- [ ] ⬜ Mission list, ordering, unlocks, carried-over heroes/armies/artifacts
-- [ ] ⬜ Mission start bonuses (army/artifact/resources/building/spell)
-- [ ] ⬜ Intro/outro text, briefings, map bindings
-- [ ] ⬜ Building `.h5c`
+Done 2026-07-24, verified in game: a campaign built here loads from Modifications
+and carries a levelled hero from mission to mission. See `docs/CAMPAIGNS.md`.
+
+- [x] ✅ Parser/editor for `*.(Campaign).xdb` — `src/campaign.ts` +
+      `src/campaign.schema.json` (field order mirrors an editor-made campaign,
+      which the unit suite asserts), project model in `src/campaign-project.ts`
+- [x] ✅ Mission list, ordering, unlocks, carried-over heroes — the campaign and
+      mission dialogs in `renderer/app.ts`; reordering renumbers the handovers
+- [x] ✅ Mission start bonuses (army/artifact/resources/building/spell) — 0 or
+      exactly 3 slots, `E_BONUS_NONE` included
+- [x] ✅ Intro/outro text, briefings, map bindings — flat UTF-16LE texts; the
+      mission names its map by data-root path, no map inside the archive
+- [x] ✅ Building `.h5c` — `src/campaign-pack.ts` → `<game>/UserCampaigns/`
+- [ ] ⬜ Custom Hall of Fame results, dependent campaigns (fields exist in the
+      schema, no UI)
 
 ## Phase 7 — Mods and packing
 
