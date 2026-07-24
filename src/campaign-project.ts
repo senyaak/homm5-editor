@@ -238,7 +238,11 @@ export function writeHeroesPool(mission: XmlElement, heroes: PoolHero[]): void {
     // in order — hand-rolled elements miss rawAttrs and serialize wrong.
     const item = newPoolHero();
     const name = find(item, 'HeroScriptName');
-    if (name) setText(name, h.scriptName);
+    // An unnamed slot — the editor's "(default hero)" — is a BARE element, the
+    // way the game's own editor writes it. <HeroScriptName></HeroScriptName> is
+    // a different thing to these documents, the same way href="" is.
+    if (name && h.scriptName) setText(name, h.scriptName);
+    else if (name) { clearElement(name); name.selfClose = true; }
     const target = find(item, 'TargetCampaign');
     if (target && h.targetCampaign) setAttr(target, 'href', h.targetCampaign);
     const to = find(item, 'TargetMission');

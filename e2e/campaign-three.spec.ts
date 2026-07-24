@@ -257,10 +257,17 @@ test('a hero carried across three missions, and the campaign packed for play', a
     await page.locator('#ms-map').selectOption(`SingleMissions/${name}`);
     await page.locator('#ms-name').fill(`Fight ${i + 1}`);
     await page.locator('#ms-description').fill(`Defeat the rival on ${name}.`);
-    // The first two missions hand the hero on; the last has nowhere to send him.
+    // The first two missions hand heroes on; the last has nowhere to send them.
+    //
+    // Four slots, not one. The first names our character; the other three are
+    // left at "(default hero)" — an empty HeroScriptName, which is what the
+    // game's own editor wrote for the single slot in the campaign it built. A
+    // HIRED hero has no name we could know in advance, so if anything carries
+    // one, an unnamed slot is what would.
     if (i < 2) {
-      await page.locator('#ms-hcount').fill('1');
+      await page.locator('#ms-hcount').fill('4');
       await page.locator('#ms-hcount').dispatchEvent('change');
+      await expect(page.locator('#ms-heroes select')).toHaveCount(4);
       const who = page.locator('#ms-heroes select').first();
       await expect(who).toBeVisible();
       // The list offers "(default hero)" plus the CHARACTERS standing on this
@@ -292,8 +299,15 @@ test('a hero carried across three missions, and the campaign packed for play', a
   expect(xdb, 'the travelling character is named in the pool').toContain(`<HeroScriptName>${carriedName}</HeroScriptName>`);
   expect(xdb, 'and nothing else is').not.toContain(`<HeroScriptName>${HERO}</HeroScriptName>`);
   // Mission 1 hands to 2, mission 2 to 3 — 0-based, as the shipped campaigns do.
-  expect([...xdb.matchAll(/<TargetMission>(\d+)<\/TargetMission>/g)].map((m) => m[1]), 'handovers point at the next mission')
-    .toEqual(['1', '2']);
+  // Four slots on each of the two missions that hand on, every one aimed at the
+  // mission after its own — 0-based, as the shipped campaigns write them.
+  const targets = [...xdb.matchAll(/<TargetMission>(\d+)<\/TargetMission>/g)].map((m) => m[1]);
+  expect(targets.length, 'four slots on each of the first two missions').toBe(8);
+  expect([...new Set(targets)], 'handovers point at the next mission').toEqual(['1', '2']);
+  expect([...xdb.matchAll(/<Count>(\d+)<\/Count>/g)].map((m) => m[1]).slice(0, 2), 'and the count matches the list')
+    .toEqual(['4', '4']);
+  // Three of each four are unnamed: "(default hero)" is an empty element.
+  expect((xdb.match(/<HeroScriptName\/>/g) ?? []).length, 'the unnamed slots are bare elements').toBe(6);
 
   // --- leave it playable ---
   //

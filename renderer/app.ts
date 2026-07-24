@@ -6737,6 +6737,7 @@ async function editMission(index: number): Promise<void> {
   if (!m) return;
   missionAt = index;
   missionDraft = JSON.parse(JSON.stringify(m)) as CampaignMissionDto;
+  heroSlotsShown = '';
 
   fillSelect($sel('ms-map'), campMaps.map((x) => ({ id: x.rel, label: x.rel })), missionDraft.mapRel);
   $input('ms-name').value = missionDraft.name;
@@ -6751,11 +6752,22 @@ async function editMission(index: number): Promise<void> {
  * The heroes this mission hands on. The list comes off the mission's own map —
  * its named heroes — because a hero travels under its script name.
  */
+let heroSlotsShown = '';
+
 async function renderHeroSlots(): Promise<void> {
   if (!missionDraft) return;
+  const want = Math.max(0, Math.min(4, Number($input('ms-hcount').value) || 0));
+  // Redrawing when nothing changed is not merely wasted work. This runs on the
+  // count field's `change`, which fires when the field loses focus — including
+  // to a click on OK. Rebuilding the rows then resizes the dialog between that
+  // click's mousedown and mouseup, the button moves out from under the cursor,
+  // no click event is ever produced, and the dialog looks frozen.
+  const key = `${missionDraft.mapRel}|${want}`;
+  if (key === heroSlotsShown) return;
+  heroSlotsShown = key;
+
   const host = $('ms-heroes');
   host.replaceChildren();
-  const want = Math.max(0, Math.min(4, Number($input('ms-hcount').value) || 0));
   while (missionDraft.heroes.length < want) missionDraft.heroes.push({ scriptName: '' });
   missionDraft.heroes.length = want;
 
@@ -6777,18 +6789,21 @@ async function renderHeroSlots(): Promise<void> {
     host.appendChild(row);
   });
 
-  // Where they arrive: the RECEIVING map needs an EntryPoint. Warn about the
-  // map this mission hands on TO, not this one.
+  // Where they go: the mission after this one. Said plainly rather than warned
+  // about — while a campaign is being built one mission at a time, whichever is
+  // being edited is the last one there is, and a warning about that is noise.
+  //
+  // The receiving map needs no EntryPoint: the hero arrives on the copy of
+  // himself that map places, which is how the shipped campaigns do it and why
+  // none of their 93 maps carries an EntryPoint at all.
   const next = campDoc?.missions[missionAt + 1];
   let note = '';
-  if (want && !next) note = 'this is the last mission — heroes have nowhere to travel to';
-  else if (want && next?.mapRel) {
-    try {
-      const r = await window.editor.mapHeroes(next.mapRel);
-      if (!r.entryPoint) note = `${next.mapRel} has no EntryPoint — arriving heroes have nowhere to land`;
-    } catch { /* leave the note empty */ }
+  if (want) {
+    const where = next?.mapRel ? ` (${next.mapRel.split('/').pop()})` : '';
+    note = next
+      ? `handed on to mission ${missionAt + 2}${where} — that map must place these heroes too`
+      : 'nothing follows this mission yet; heroes handed on here are dropped unless one does';
   }
-  if (!want && entryPoint) note = 'this map has an EntryPoint, so it expects heroes from an earlier mission';
   $('ms-entry').textContent = note;
 }
 
