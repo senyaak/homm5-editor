@@ -11,8 +11,9 @@
 // taken from the original rather than written out here, so there is no second
 // copy of the mission to keep in step.
 //
-// Idempotent: every value is read before it is written, and the lists are grown
-// to the length the original has rather than appended to blindly.
+// Idempotent: every value is read before it is written, and each list is brought
+// to the length the original has — grown or shortened — rather than appended to
+// blindly.
 
 import { test, expect } from '@playwright/test';
 import { existsSync, readFileSync } from 'node:fs';
@@ -22,7 +23,8 @@ import type { Launched } from '../launch.ts';
 import { settle } from '../tiles.ts';
 import { MAP_DIR, FIXTURE, openMap, requireFixture } from './shared.ts';
 import {
-  addItem, addValueItem, listLength, listValues, openTree, setTreeTextRef, setTreeValue, treeValue,
+  addItem, addValueItem, listLength, listValues, openTree, removeItem, setTreeTextRef, setTreeValue,
+  treeValue,
 } from '../tree.ts';
 import { loadMap } from '../../src/map.ts';
 import { readTree } from '../../src/tree.ts';
@@ -33,10 +35,18 @@ let ed: Launched;
 test.beforeAll(async () => { ed = await launchEditor(); });
 test.afterAll(async () => { await ed?.app.close(); });
 
-/** The two lists this stage fills, and where the original keeps them. */
+/** The lists this stage brings to the original's, and where it keeps them. */
 const LISTS: (string | number)[][] = [
   ['Resources', 'SavesFilenames'],
   ['Objectives', 'Primary', 'PlayerSpecific', 0, 'Objectives'],
+  // A fresh map comes with the editor's default victory condition — "defeat
+  // all", won instantly. C1M1 is a campaign mission and keeps this EMPTY: its
+  // objectives are the four player-specific quests above, and the campaign
+  // decides when the mission ends. Leaving the default in is not cosmetic —
+  // on a map whose only opponents are inactive it is satisfied at load, the
+  // game wins the mission, drops the winning player, and the mission then
+  // fails to start with "Start player does not exist on map".
+  ['Objectives', 'Primary', 'Common', 'Objectives'],
 ];
 
 /** A field whose value is a text FILE, not a string — set through "New". */
@@ -85,10 +95,13 @@ test('C1M1 objectives and its save name, built in the tree', async () => {
   for (const list of LISTS) {
     const items = at(want, list);
     const wanted = Array.isArray(items) ? items : [];
-    // Grow the list to length first: an item is appended, so every index has to
-    // exist before anything can be written into one.
+    // Bring the list to length first: an item is appended, so every index has to
+    // exist before anything can be written into one — and a list the original
+    // keeps SHORTER than a fresh map's has to give items back, or a default the
+    // map should not carry survives the reconstruction.
     let have = await listLength(page, list);
     for (; have < wanted.length; have++) await addItem(page, list);
+    for (; have > wanted.length; have--) await removeItem(page, list, have - 1);
     console.log(`${list.join('.')}: ${wanted.length} item(s)`);
 
     for (let i = 0; i < wanted.length; i++) {
