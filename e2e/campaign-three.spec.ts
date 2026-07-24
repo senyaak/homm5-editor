@@ -158,11 +158,19 @@ test('a hero carried across three missions, and the campaign packed for play', a
           await window.editor.setObjectPath({ id: hall, path: ['PlayerID'], value: 'PLAYER_1' });
           // A fresh town is a Town Hall and nothing else, and heroes are hired
           // in a TAVERN — so without this there is no hiring to test.
+          //
+          // Listing a building is not building it: a new entry comes out
+          // InitialUpgrade=BLD_UPG_NONE, which is "not there at the start".
+          // BLD_UPG_1 with room to grow (max BLD_UPG_5) is what a shipped map
+          // writes for a building that stands from turn one — 49 of the
+          // campaigns' taverns look exactly like this.
           for (const b of ['TB_TAVERN', 'TB_FORT', 'TB_MARKETPLACE']) {
             await window.editor.addObjectItem({ id: hall, path: ['buildings'] });
             const at = (await window.editor.objectTree({ id: hall })) as { tree: { buildings?: unknown[] } };
             const last = (at.tree.buildings?.length ?? 1) - 1;
             await window.editor.setObjectPath({ id: hall, path: ['buildings', last, 'Type'], value: b });
+            await window.editor.setObjectPath({ id: hall, path: ['buildings', last, 'InitialUpgrade'], value: 'BLD_UPG_1' });
+            await window.editor.setObjectPath({ id: hall, path: ['buildings', last, 'MaxUpgrade'], value: 'BLD_UPG_5' });
           }
         }
       }
