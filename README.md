@@ -149,6 +149,14 @@ get a live 3D scene you sculpt, paint, populate, script and pack.
   **Localize** toggle authors every language side by side in tagged files
   (`name.en.txt`) behind a `localization.json` sidecar the game never sees;
   **Export as `<language>`** packs an ordinary single-language `.h5m`.
+- **Campaigns** ([docs/CAMPAIGNS.md](docs/CAMPAIGNS.md)): bind maps into a story and
+  pack a `.h5c` the game's Modifications menu loads. Three dialogs, following the
+  original editor — campaign, mission list, mission — plus the thing the original
+  cannot do: reopen a campaign and edit it. A campaign carries **no** maps; each
+  mission names one by path and the game's VFS finds it in whatever `.h5m` ships
+  it. Heroes travel between missions under their *character's* name, which is the
+  one detail that decides whether a handover works at all; the doc lists that and
+  the other traps that fail silently.
 
 ## Running
 

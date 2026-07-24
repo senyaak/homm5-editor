@@ -5,11 +5,17 @@
 // moves on. Only the first mission gives him an Archangel; if the handover
 // works, he walks onto missions 2 and 3 with whatever he survived with.
 //
-// Every mission places him, under the same name. A map has to hold a hero for
-// the player it starts, or the game refuses it with "Start player does not
-// exist"; an EntryPoint does not stand in for one, and not one of the 93 maps
-// in the shipped campaigns uses an EntryPoint at all — C1M2 simply places the
-// Isabell it is about to receive.
+// Every mission places him. A map has to hold a hero for the player it starts,
+// or the game refuses it with "Start player does not exist"; an EntryPoint does
+// not stand in for one, and not one of the 93 maps in the shipped campaigns
+// uses an EntryPoint at all — C1M2 simply places the Isabell it is about to
+// receive. What travels is the CHARACTER, matched by the <InternalName> of his
+// shared document, not by whatever the object on the map is called.
+//
+// Each map also gets a town of our own with a Tavern, and two EntryPoints. That
+// part is an open question rather than a settled one: a HIRED hero has no
+// placed copy waiting on the next map, so if an EntryPoint is where such a hero
+// arrives, this is the setup that would show it.
 //
 // The one piece of setup that is deliberate rather than incidental: player 2 is
 // switched ON. A fresh map ships one active player and the editor's default
@@ -139,6 +145,36 @@ test('a hero carried across three missions, and the campaign packed for play', a
         }
       }
 
+      // A town of our own, so heroes can be HIRED — and EntryPoints beside it.
+      // Nothing in the shipped campaigns uses an EntryPoint, and the hero the
+      // campaign hands on does not need one (he lands on his own placed copy),
+      // so what these are for is still open: a hired hero has no copy waiting
+      // on the next map, and an arrival point is the obvious candidate.
+      const town = objects.find((o) => o.type === 'AdvMapTown' && /Heaven\.\(AdvMapTownShared\)/i.test(o.shared));
+      let hall = '';
+      if (town) {
+        hall = await placeOf('AdvMapTown', town.shared, 22, 10);
+        if (hall) {
+          await window.editor.setObjectPath({ id: hall, path: ['PlayerID'], value: 'PLAYER_1' });
+          // A fresh town is a Town Hall and nothing else, and heroes are hired
+          // in a TAVERN — so without this there is no hiring to test.
+          for (const b of ['TB_TAVERN', 'TB_FORT', 'TB_MARKETPLACE']) {
+            await window.editor.addObjectItem({ id: hall, path: ['buildings'] });
+            const at = (await window.editor.objectTree({ id: hall })) as { tree: { buildings?: unknown[] } };
+            const last = (at.tree.buildings?.length ?? 1) - 1;
+            await window.editor.setObjectPath({ id: hall, path: ['buildings', last, 'Type'], value: b });
+          }
+        }
+      }
+      const entry = objects.find((o) => /Utility\/EntryPoint/i.test(o.shared));
+      const entries: string[] = [];
+      if (entry) {
+        for (const [x, y] of [[18, 6], [20, 6]] as [number, number][]) {
+          const id = await placeOf('AdvMapHero', entry.shared, x, y);
+          if (id) entries.push(id);
+        }
+      }
+
       if (theirs) {
         await set(theirs, ['Name'], 'Rival');
         await set(theirs, ['PlayerID'], 'PLAYER_2');
@@ -159,27 +195,29 @@ test('a hero carried across three missions, and the campaign packed for play', a
         await window.editor.setMapPath({ path: ['players', slot, 'Colour'], value: colour });
       }
       await window.editor.save();
-      return { mine, theirs, mineShared, theirsShared, stones: stones.length, note };
+      return { mine, theirs, mineShared, theirsShared, stones: stones.length, town: hall, entries: entries.length, note };
     }, { first: i === 0, hero: HERO });
 
     expect(built.theirs, `${name}: an opponent was placed — ${built.note.join('; ')}`).not.toBe('');
     expect(built.mine, `${name}: our side was placed — ${built.note.join('; ')}`).not.toBe('');
     expect(built.stones, `${name}: five Learning Stones — ${built.note.join('; ')}`).toBe(5);
+    expect(built.town, `${name}: a town of our own to hire from — ${built.note.join('; ')}`).not.toBe('');
+    expect(built.entries, `${name}: two arrival points — ${built.note.join('; ')}`).toBe(2);
     carriedShared ||= built.mineShared;
     expect(built.mineShared, `${name}: the same character as the other missions`).toBe(carriedShared);
-    console.log(`${name}: ${HERO}${i === 0 ? ' + Archangel' : ' (arrives)'} vs Rival, ${built.stones} learning stones`);
+    console.log(`${name}: ${HERO}${i === 0 ? ' + Archangel' : ' (arrives)'} vs Rival, ${built.stones} stones, town, ${built.entries} entry points`);
   }
 
   // --- what actually landed on disk ---
   for (const [i, name] of MAPS.entries()) {
     const map = loadMap(readFileSync(join(mapDir(name), 'map.xdb'), 'latin1'));
-    const heroes = map.objects.filter((o) => o.type === 'AdvMapHero');
-    expect(heroes.length, `${name} holds two hero-shaped objects`).toBe(2);
-    // No EntryPoint anywhere: the shipped campaigns place the hero himself on
-    // the map he arrives on, and a map with no hero for its player has no start
-    // player to begin with.
-    const entry = heroes.filter((o) => /Utility\/EntryPoint/i.test(find(o.el, 'Shared')?.attrs.href ?? ''));
-    expect(entry.length, `${name}: no EntryPoint stands in for a hero`).toBe(0);
+    const shaped = map.objects.filter((o) => o.type === 'AdvMapHero');
+    const entry = shaped.filter((o) => /Utility\/EntryPoint/i.test(find(o.el, 'Shared')?.attrs.href ?? ''));
+    const heroes = shaped.filter((o) => !entry.includes(o));
+    // Two real heroes — ours and theirs. The EntryPoints are extra, and they do
+    // NOT stand in for our hero: he is placed on every map he arrives on.
+    expect(heroes.length, `${name} holds our hero and theirs`).toBe(2);
+    expect(entry.length, `${name}: the arrival points are there too`).toBe(2);
     // The SAME character stands on every map — that is what the handover
     // matches on, not the object's own name.
     const ours = heroes.find((o) => childText(o.el, 'Name') === HERO);
