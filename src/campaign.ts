@@ -72,9 +72,27 @@ export function loadCampaign(xmlText: string): XmlElement {
   return root;
 }
 
-/** Serialize a `<Campaign>` root back to an .xdb document. */
+/**
+ * Serialize a `<Campaign>` root back to an .xdb document.
+ *
+ * An empty reference is written as a bare element — `<TargetCampaign/>`, never
+ * `href=""`. That is not cosmetic: no campaign the game ships or its own editor
+ * writes contains a single `href=""`, and a hero whose TargetCampaign carried
+ * one was not handed on to the next mission at all. The schema builds refs with
+ * an empty href (which is right for a map), so they are dropped here.
+ */
 export function saveCampaign(root: XmlElement): string {
+  dropEmptyHrefs(root);
   return `<?xml version="1.0" encoding="UTF-8"?>\n${serialize(root)}\n`;
+}
+
+/** Strip `href=""` from an element and everything under it. */
+function dropEmptyHrefs(el: XmlElement): void {
+  if (el.attrs.href === '') {
+    delete el.attrs.href;
+    el._dirtyAttrs = true;
+  }
+  for (const child of el.children) if (child.type === 'element') dropEmptyHrefs(child);
 }
 
 /** Set a scalar child's text — used for the fields New forces non-empty. */
