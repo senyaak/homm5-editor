@@ -113,10 +113,17 @@ test('a hero carried across three missions, and the campaign packed for play', a
         await set(theirs, ['armySlots', 0, 'Count'], '1');
       }
 
-      // A second live player: a fresh map ships one, and the "defeat all"
-      // victory condition it comes with needs somebody to defeat — with no live
-      // opponent it is satisfied at load and the mission ends before it starts.
-      await window.editor.setMapPath({ path: ['players', 1, 'ActivePlayer'], value: 'true' });
+      // Two live, COLOURED players. A fresh map's eight slots are all inactive
+      // and PCOLOR_NEUTRAL, so both have to be switched on: players[0] is
+      // PLAYER_1 (the human) and players[1] is PLAYER_2, matching the heroes
+      // placed above. A neutral or inactive slot is not a player the game can
+      // start as — and with nobody live to defeat, the "defeat all" condition a
+      // fresh map carries holds at load and the mission ends before it starts.
+      // The colours and team are the ones a working scenario uses.
+      for (const [slot, colour] of [[0, 'PCOLOR_ORANGE'], [1, 'PCOLOR_TEAL']] as [number, string][]) {
+        await window.editor.setMapPath({ path: ['players', slot, 'ActivePlayer'], value: 'true' });
+        await window.editor.setMapPath({ path: ['players', slot, 'Colour'], value: colour });
+      }
       await window.editor.save();
       return { mine, theirs, entryPoint: !!entry && !ours, note };
     }, { ours: i === 0, hero: HERO, entryPoint: i > 0 });
@@ -138,9 +145,14 @@ test('a hero carried across three missions, and the campaign packed for play', a
       expect(ours, 'the travelling hero is named, or nothing can hand him on').toBeTruthy();
       expect(serializeArmy(ours!), 'and he carries the Archangel').toContain('CREATURE_ARCHANGEL');
     }
+    // Both sides have to be live AND coloured: a neutral or inactive slot is
+    // not a player the game can start as, whatever heroes point at it.
     const players = find(map.desc, 'players');
-    const second = players ? players.children.filter((c) => c.type === 'element' && c.name === 'Item')[1] : null;
-    expect(second && childText(second as never, 'ActivePlayer'), `${name}: the opponent is a live player`).toBe('true');
+    const slots = players ? players.children.filter((c): c is typeof map.desc => c.type === 'element' && c.name === 'Item') : [];
+    const live = slots
+      .map((p, n) => ({ n, active: childText(p, 'ActivePlayer'), colour: childText(p, 'Colour') }))
+      .filter((p) => p.active === 'true' && p.colour !== 'PCOLOR_NEUTRAL');
+    expect(live.map((p) => p.n), `${name}: players 1 and 2 are live and coloured`).toEqual([0, 1]);
   }
 
   // --- the campaign, through the dialogs ---
