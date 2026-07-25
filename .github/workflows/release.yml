@@ -60,10 +60,26 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # --notes-file rather than an inline string: the notes are prose, and
-          # the SmartScreen paragraph is the part users most need to read.
-          @'
-          A standalone build of the editor. No installer — unzip anywhere and run `homm5-editor.exe`.
+          # What changed comes from CHANGELOG.md — one place to write it, and it
+          # is already the file anyone reading the repo would look in. The
+          # section is the one whose heading starts with this tag's version.
+          $version = $env:TAG -replace '^v', ''
+          # Explicit encoding: the prose has em dashes, and a reader that guesses
+          # the codepage turns them into rubbish in the release notes.
+          $lines = Get-Content CHANGELOG.md -Encoding utf8
+          $start = ($lines | Select-String -Pattern "^## $([regex]::Escape($version))\b" | Select-Object -First 1).LineNumber
+          if (-not $start) { throw "CHANGELOG.md has no section for $version — add one before tagging." }
+          $rest = $lines[$start..($lines.Count - 1)]
+          $next = ($rest | Select-String -Pattern '^## ' | Select-Object -First 1).LineNumber
+          $body = if ($next) { $rest[0..($next - 2)] } else { $rest }
+
+          # The standing part: true of every build, and the SmartScreen
+          # paragraph is what a first-time downloader most needs to read.
+          $standing = @'
+
+          ---
+
+          A standalone build. No installer — unzip anywhere and run `homm5-editor.exe`.
 
           **First run asks two questions**: where Heroes V is installed, and where to put the unpacked
           game data (about 3 GB). It unpacks the archives itself; the answers are remembered, and
@@ -74,5 +90,7 @@ jobs:
           this project does not have.
 
           Needs the game itself — it reads its models, textures and rosters. It ships none of them.
-          '@ | Out-File -FilePath notes.md -Encoding utf8
+          '@
+
+          ($body -join "`n") + "`n" + $standing | Out-File -FilePath notes.md -Encoding utf8
           gh release create "$env:TAG" "homm5-editor-$env:TAG-win-x64.zip" --title "homm5-editor $env:TAG" --notes-file notes.md
