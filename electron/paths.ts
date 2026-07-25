@@ -7,9 +7,17 @@
 // an environment variable in. So the answers come from three places, in order:
 //
 //   1. the environment — HOMM5_ROOT / HOMM5_DATA / HOMM5_EDITOR. Explicit beats
-//      remembered, and the e2e suite and the CLI tools rely on it.
-//   2. settings.json in the user's app-data folder, written by the setup window.
-//   3. the repo layout — only when running unpackaged, where it is a fact.
+//      everything, and the e2e suite and the CLI tools rely on it.
+//   2. the checkout's own data-unpacked, when running unpackaged and it is
+//      really there.
+//   3. settings.json in the user's app-data folder, written by the setup window.
+//
+// The checkout outranks the settings on purpose. Both worlds share one settings
+// file (same app name, same app-data folder), so with the order the other way
+// round a packaged build's setup silently redefined where the checkout reads
+// from — and pointing that build at a folder that was later deleted left the
+// whole e2e suite opening the setup window instead of the editor. Inside a
+// checkout, the checkout is the answer.
 //
 // Everything is resolved lazily and cached, because setup writes the settings
 // after the process has started; reload() drops the cache once it has.
@@ -80,12 +88,16 @@ function resolveRoots(): Roots {
   const s = readSettings();
   const dev = !app.isPackaged;
 
-  const gameRoot = process.env.HOMM5_ROOT || s.gameRoot || (dev ? join(APP_ROOT, '..') : null);
+  // The checkout's own tree, when there is a checkout and it holds one.
+  const inRepo = dev && looksLikeDataRoot(join(APP_ROOT, 'data-unpacked')) ? join(APP_ROOT, 'data-unpacked') : '';
+
+  const gameRoot = process.env.HOMM5_ROOT || (inRepo ? join(APP_ROOT, '..') : null) || s.gameRoot
+    || (dev ? join(APP_ROOT, '..') : null);
 
   // The data root: what models, textures, tiles and rosters resolve against. A
   // .h5m map archive does NOT contain these — they ship in the game's paks — so
   // assets always resolve here, never against the map folder.
-  const gameData = process.env.HOMM5_DATA || s.dataRoot || (dev ? join(APP_ROOT, 'data-unpacked') : '');
+  const gameData = process.env.HOMM5_DATA || inRepo || s.dataRoot || (dev ? join(APP_ROOT, 'data-unpacked') : '');
 
   // The editor's own config — MapFilters.xml and IconCache — is NOT under the
   // data root: those files are loose beside the game install while the object

@@ -8,7 +8,7 @@ import { _electron as electron } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
-import { dirname } from 'node:path';
+import { dirname, join } from 'node:path';
 
 /** Repo root — the folder holding package.json (main: electron/main.ts). */
 export const REPO_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -27,7 +27,16 @@ export async function launchEditor(env: Record<string, string> = {}): Promise<La
   const app = await electron.launch({
     args: ['.'],
     cwd: REPO_ROOT,
-    env: { ...process.env, ...env } as Record<string, string>,
+    env: {
+      ...process.env,
+      // Say it rather than let the app work it out. The app also remembers a
+      // data root in the user's app-data folder, shared with a packaged build,
+      // so without this a test run inherits wherever someone last pointed the
+      // installed editor — which is how a whole suite came to open the setup
+      // window instead of the editor, after that folder was deleted.
+      HOMM5_DATA: process.env.HOMM5_DATA || join(REPO_ROOT, 'data-unpacked'),
+      ...env,
+    } as Record<string, string>,
   });
   const page = await app.firstWindow();
   await page.waitForLoadState('domcontentloaded');

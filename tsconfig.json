@@ -33,6 +33,9 @@
     "allowJs": true,
     "checkJs": false
   },
-  "include": ["src/**/*.ts", "electron/**/*.ts", "electron/**/*.cts", "renderer/**/*.ts", "tools/**/*.ts"],
+  // e2e/ is in here too: it is TypeScript that drives the real app, and left
+  // out, a missing import or a renamed export only surfaced as a test failing
+  // for a reason that had nothing to do with what it was testing.
+  "include": ["src/**/*.ts", "electron/**/*.ts", "electron/**/*.cts", "renderer/**/*.ts", "tools/**/*.ts", "e2e/**/*.ts"],
   "exclude": ["node_modules", "samples", "dist"]
 }
