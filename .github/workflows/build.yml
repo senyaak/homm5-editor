@@ -1,0 +1,36 @@
+# Does it still compile and package? That is all CI can honestly ask here.
+#
+# The test suites read the game's own data — 3 GB of unpacked archives that are
+# copyrighted and quite rightly not in this repository — so they stay local.
+# What CI can do is catch the breakages that need no assets: a type error, and a
+# bundle that no longer builds. Both are exactly what a packaging change breaks.
+
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Node 24 or newer: the tools and the Electron entry point are TypeScript
+      # run straight off disk, which needs native type stripping.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run typecheck
+
+      # The app bundle, not the exe: it is the step that would fail on a bad
+      # import, and it takes seconds where packaging takes minutes.
+      - run: npm run build:app
