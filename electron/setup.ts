@@ -49,6 +49,25 @@ export interface SetupProgress {
  */
 const SLICE_MS = 100;
 
+/** Kept alive after setup succeeds, until the editor's window exists. */
+let setupWin: BrowserWindow | null = null;
+
+/**
+ * Close the setup window, now that something else is on screen.
+ *
+ * Setup cannot close itself. Destroying its window leaves the app with no
+ * windows open, and Electron reads that as the app being finished — with no
+ * `window-all-closed` listener the default is to quit, and with one it fires
+ * before the editor's window exists either way. The editor was created and the
+ * process went out from under it, so setup looked like it did nothing and the
+ * answers only took effect on the next launch. So the window stays, hidden,
+ * until the caller has a window of its own and calls this.
+ */
+export function closeSetup(): void {
+  if (setupWin && !setupWin.isDestroyed()) setupWin.destroy();
+  setupWin = null;
+}
+
 const state = (): SetupState => {
   const g = gameRoot() || '';
   const d = gameData() || defaultDataRoot();
@@ -70,6 +89,7 @@ export function runSetup(): Promise<boolean> {
       webPreferences: { preload: preloadPath('setup-preload.cjs'), contextIsolation: true, nodeIntegration: false },
     });
     win.setMenuBarVisibility(false);
+    setupWin = win;
 
     let done = false;
     const channels = ['setup:state', 'setup:check', 'setup:pick-game', 'setup:pick-data', 'setup:unpack', 'setup:finish'];
@@ -77,8 +97,12 @@ export function runSetup(): Promise<boolean> {
       if (done) return;
       done = true;
       for (const c of channels) ipcMain.removeHandler(c);
+      // Out of sight, still open: the app must never be windowless between here
+      // and the editor's window. closeSetup() finishes the job from the other
+      // side. On the way out (ok === false) the window is already gone and the
+      // caller is quitting, so there is nothing to hold on to.
+      if (ok && !win.isDestroyed()) win.hide(); else setupWin = null;
       resolve(ok);
-      if (!win.isDestroyed()) win.destroy();
     };
 
     ipcMain.handle('setup:state', async (): Promise<SetupState> => state());

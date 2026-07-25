@@ -70,3 +70,35 @@ test('with nothing configured it asks where the game is', async () => {
     rmSync(userData, { recursive: true, force: true });
   }
 });
+
+test('and finishing setup opens the editor, without a second launch', async () => {
+  test.setTimeout(120_000);
+  const { app, userData } = await launchPackaged({});
+  try {
+    const setup = await app.firstWindow();
+    await setup.waitForLoadState('domcontentloaded');
+    await expect(setup.locator('#pick-game')).toBeVisible({ timeout: 60_000 });
+
+    // Answer setup the way its own buttons do — the folder pickers are native
+    // dialogs, which is the one thing that cannot be clicked from here.
+    //
+    // Not awaited: finishing closes this very window, so the call it is waiting
+    // on dies with the page. Awaiting it fails whatever the app then does, which
+    // makes the check meaningless.
+    void setup.evaluate(({ game, data }) => {
+      const w = window as unknown as { setup: { finish: (g: string, d: string) => Promise<boolean> } };
+      void w.setup.finish(game, data);
+    }, { game: join(REPO_ROOT, '..'), data: DATA }).catch(() => { /* the page is gone; that is the point */ });
+
+    // The editor window, in this run. Destroying the setup window left the app
+    // with no windows open for an instant, and it took that as its cue to quit:
+    // setup appeared to do nothing and the answers only took effect the next
+    // time the exe was started.
+    const editor = await app.waitForEvent('window', { timeout: 30_000 });
+    await editor.waitForLoadState('domcontentloaded');
+    await expect(editor.locator('#maplist .m').first()).toBeVisible({ timeout: 60_000 });
+  } finally {
+    await app.close();
+    rmSync(userData, { recursive: true, force: true });
+  }
+});

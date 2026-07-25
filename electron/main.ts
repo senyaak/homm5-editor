@@ -19,7 +19,7 @@ import { createHash } from 'node:crypto';
 import { buildScene, findAssetRoot, listTiles, splatFor, pngDataUri } from '../src/scene.ts';
 import { listPlaceable, iconPathFor, readIconFile } from '../src/objects.ts';
 import { editorRoot, gameData, gameRoot, isConfigured, preloadPath, rendererFile, tmpRoot } from './paths.ts';
-import { runSetup } from './setup.ts';
+import { closeSetup, runSetup } from './setup.ts';
 import { initProject, openProject, packProject, exportLocalized, readManifest, writeManifest, status, pickMapRel, MANIFEST_NAME } from '../src/project.ts';
 import { listDirFiles } from '../src/pak.ts';
 import scriptApi from '../src/script-api.json' with { type: 'json' };
@@ -291,6 +291,9 @@ app.whenReady().then(async () => {
     if (!ok) { app.quit(); return; }
   }
   createWindow();
+  // Only now is setup's window redundant. It stays open (hidden) until here so
+  // that the app is never windowless, which Electron takes as its cue to quit.
+  closeSetup();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
   // Dev smoke test: HOMM5_SMOKE=<map.xdb> loads a map through the real pipeline
   // and exits, so CI/headless can verify the backend without clicking.
