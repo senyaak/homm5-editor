@@ -52,9 +52,7 @@
     "object-schema": "node tools/object-schema.ts",
     "object-defaults": "node tools/object-defaults.ts",
     "test-defaults": "node tools/test-defaults.ts",
-    "test-typespec": "node tools/test-typespec.ts",
-    "test-h3c": "node tools/test-h3c.ts",
-    "h3-dump": "node tools/h3-dump.ts"
+    "test-typespec": "node tools/test-typespec.ts"
   },
   "dependencies": {
     "@codemirror/legacy-modes": "^6.5.3",

@@ -5,9 +5,6 @@ renderer/scene-view.html
 renderer/terrain-view.html
 data-unpacked/
 
-# Heroes III campaigns used as porting input. Someone else's game content.
-герои 3/
-
 # built from renderer/app.ts by esbuild
 renderer/app.js
 renderer/app.js.map
