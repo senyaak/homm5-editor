@@ -6,9 +6,9 @@
 //   2. Project lifecycle: open -> pack -> status(clean) -> edit -> status(dirty).
 //   3. Version divergence: a manifest packed by an older editor version is flagged.
 
-import { readEntries, writeArchive } from '../src/pak.ts';
+import { readEntries, readIndex, writeArchive } from '../src/pak.ts';
 import { openProject, packProject, status, readManifest, writeManifest } from '../src/project.ts';
-import { readFileSync, writeFileSync, appendFileSync, mkdirSync, statSync, rmSync } from 'node:fs';
+import { readFileSync, writeFileSync, appendFileSync, mkdirSync, statSync, rmSync, openSync, closeSync } from 'node:fs';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
@@ -128,6 +128,37 @@ rmSync(join(decoy.projectDir, 'name.txt'));
 packProject(decoy.projectDir, decoyArchive, { now, preserveFrom: decoyArchive });
 const after = readEntries(readFileSync(decoyArchive)).map((e) => e.name);
 ok(!after.includes('Maps/SingleMissions/Real/name.txt'), 'a file deleted from the project is not resurrected');
+
+// --- 7. More members than the ZIP header can count ---
+//
+// The end-of-central-directory record counts entries in sixteen bits, and the
+// game's data.pak holds 84,312 of them: it says 18,776, the same number modulo
+// 65536, with no ZIP64 record anywhere. Trusting that count read a third of the
+// game and reported success — an unpacked data root with the geometry present
+// and almost every object definition missing, which looks like a broken editor
+// rather than a broken reader.
+//
+// Built here rather than measured on data.pak, because the archive that
+// exposed it cannot be committed.
+const many = Array.from({ length: 70_000 }, (_, i) => ({
+  name: `m/${i}.txt`,
+  data: Buffer.from(String(i)),
+}));
+const bigArchive = writeArchive(many);
+const eocdAt = bigArchive.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
+ok(bigArchive.readUInt16LE(eocdAt + 10) === 0xffff,
+  `the header cannot state the real count (${bigArchive.readUInt16LE(eocdAt + 10)} for ${many.length})`);
+const readBack = readEntries(bigArchive);
+ok(readBack.length === many.length, `every member is read back (${readBack.length})`);
+ok(readBack.at(-1)?.name === 'm/69999.txt', 'including the ones past the count');
+
+const bigPath = join(tmpdir(), 'homm5_test_many.zip');
+writeFileSync(bigPath, bigArchive);
+const bigFd = openSync(bigPath, 'r');
+const indexed = readIndex(bigFd, statSync(bigPath).size);
+closeSync(bigFd);
+rmSync(bigPath, { force: true });
+ok(indexed.length === many.length, `and the streaming index agrees (${indexed.length})`);
 
 console.log(failures ? `\n${failures} FAILURE(S)` : '\nall pak/project tests passed');
 process.exit(failures ? 1 : 0);

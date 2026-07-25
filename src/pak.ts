@@ -70,6 +70,23 @@ const SIG_EOCD = 0x06054b50;    // PK\x05\x06  end of central directory
 const METHOD_STORE = 0;
 const METHOD_DEFLATE = 8;
 
+/**
+ * How many entries the central directory really holds.
+ *
+ * The end-of-central-directory record counts them in sixteen bits, and the
+ * game's own archives overflow it: data.pak has 84,312 members and its EOCD
+ * says 18,776 — the same number modulo 65536. There is no ZIP64 record to fall
+ * back on (the archives predate the tools that write one), so the count is not
+ * usable at all, and reading only what it claims silently returns a third of
+ * the game. What IS reliable is the directory's own byte length, so the walk
+ * runs to the end of it and the count is not consulted.
+ *
+ * Every reader below shares this: `while (moreEntries(cd, p, cdSize))`.
+ */
+function moreEntries(cd: Buffer, p: number, end: number): boolean {
+  return p + 46 <= end && cd.readUInt32LE(p) === SIG_CENTRAL;
+}
+
 // A fixed DOS timestamp keeps packing reproducible (same tree -> same bytes ->
 // stable content hash). 1980-01-01 00:00:00, the ZIP epoch. Callers that want
 // real mtimes can pass them through the entry list (not needed by the editor).
@@ -90,11 +107,11 @@ const DOS_DATE = 0x21; // (1980-1980)<<9 | 1<<5 | 1
  */
 export function readEntries(buf: Buffer): ZipEntry[] {
   const eocd = findEOCD(buf);
-  const count = buf.readUInt16LE(eocd + 10);
+  const cdSize = buf.readUInt32LE(eocd + 12);
   let p = buf.readUInt32LE(eocd + 16); // offset of first central-directory entry
+  const cdEnd = p + cdSize;
   const out: ZipEntry[] = [];
-  for (let i = 0; i < count; i++) {
-    if (buf.readUInt32LE(p) !== SIG_CENTRAL) throw new Error(`bad central dir entry #${i} @${p}`);
+  while (moreEntries(buf, p, cdEnd)) {
     const method = buf.readUInt16LE(p + 10);
     const compSize = buf.readUInt32LE(p + 20);
     const nameLen = buf.readUInt16LE(p + 28);
@@ -147,8 +164,6 @@ export function readIndex(fd: number, fileSize: number): ZipIndexEntry[] {
   const tail = Buffer.alloc(tailLen);
   readSync(fd, tail, 0, tailLen, fileSize - tailLen);
   const eocdInTail = findEOCD(tail);
-  const eocdOff = fileSize - tailLen + eocdInTail;
-  const count = tail.readUInt16LE(eocdInTail + 10);
   const cdOff = tail.readUInt32LE(eocdInTail + 16);
   const cdSize = tail.readUInt32LE(eocdInTail + 12);
 
@@ -157,8 +172,7 @@ export function readIndex(fd: number, fileSize: number): ZipIndexEntry[] {
 
   const out: ZipIndexEntry[] = [];
   let p = 0;
-  for (let i = 0; i < count; i++) {
-    if (cd.readUInt32LE(p) !== SIG_CENTRAL) throw new Error(`bad central dir entry #${i} @${p} (eocd @${eocdOff})`);
+  while (moreEntries(cd, p, cdSize)) {
     const method = cd.readUInt16LE(p + 10);
     const compSize = cd.readUInt32LE(p + 20);
     const size = cd.readUInt32LE(p + 24);
@@ -289,8 +303,14 @@ export function writeArchive(entries: readonly ZipEntry[], opt: WriteOptions = {
   const centralBlock = Buffer.concat(centrals);
   const eocd = Buffer.alloc(22);
   eocd.writeUInt32LE(SIG_EOCD, 0);
-  eocd.writeUInt16LE(entries.length, 8);   // entries on this disk
-  eocd.writeUInt16LE(entries.length, 10);  // total entries
+  // Sixteen bits for the count, so past 65535 the field cannot hold the truth.
+  // Saturating is what ZIP readers expect (and better than the game's own
+  // archives, which wrap: data.pak says 18,776 for 84,312 members). Ours read
+  // the directory to its end and never consult this, which is the only way to
+  // be right about either.
+  const stated = Math.min(entries.length, 0xffff);
+  eocd.writeUInt16LE(stated, 8);   // entries on this disk
+  eocd.writeUInt16LE(stated, 10);  // total entries
   eocd.writeUInt32LE(centralBlock.length, 12);
   eocd.writeUInt32LE(offset, 16);          // central dir offset
   return Buffer.concat([...locals, centralBlock, eocd]);
