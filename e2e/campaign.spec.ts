@@ -16,7 +16,10 @@ import { buildNewMapProject } from '../src/new-map.ts';
 
 let ed: Launched;
 
-const DATA = join(REPO_ROOT, 'data-unpacked');
+// Same root the app under test reads, which HOMM5_DATA can move. Hard-coding
+// the checkout's copy meant the map was prepared in one data root and looked
+// for in another, and the mission dialog simply had no map to offer.
+const DATA = process.env.HOMM5_DATA || join(REPO_ROOT, 'data-unpacked');
 const NAME = 'e2e Campaign';
 const MAP = 'e2e Campaign Map';
 const MAP_DIR = join(DATA, 'Maps', 'SingleMissions', MAP);
@@ -38,7 +41,7 @@ test.beforeAll(async () => {
 });
 test.afterAll(async () => { await ed?.app.close(); });
 
-test('a one-mission campaign, built in the app and packed to .h5c', async () => {
+test('a one-mission campaign, built in the app and packed to .h5c', { tag: '@nodata' }, async () => {
   const { page } = ed;
   await ed.app.evaluate(({ dialog }, save) => {
     dialog.showSaveDialog = (async () => ({ canceled: false, filePath: save })) as typeof dialog.showSaveDialog;

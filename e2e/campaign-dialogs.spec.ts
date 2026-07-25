@@ -32,7 +32,7 @@ test.beforeAll(async () => {
 });
 test.afterAll(async () => { await ed?.app.close(); });
 
-test('the campaign dialogs stay alive through a normal edit', async () => {
+test('the campaign dialogs stay alive through a normal edit', { tag: '@nodata' }, async () => {
   test.setTimeout(300_000);
   const { page } = ed;
 

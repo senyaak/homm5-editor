@@ -47,7 +47,7 @@ test.afterAll(async () => {
   if (existsSync(MAP_DIR)) rmSync(MAP_DIR, { recursive: true, force: true });
 });
 
-test('write a map\'s texts through the editor: name, description, a new custom goal', async () => {
+test('write a map\'s texts through the editor: name, description, a new custom goal', { tag: '@nodata' }, async () => {
   test.setTimeout(5 * 60_000);
   const { page } = ed;
 

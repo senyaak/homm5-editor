@@ -1,9 +1,11 @@
-# Does it still compile and package? That is all CI can honestly ask here.
+# Does it still compile, package, and work?
 #
-# The test suites read the game's own data — 3 GB of unpacked archives that are
-# copyrighted and quite rightly not in this repository — so they stay local.
-# What CI can do is catch the breakages that need no assets: a type error, and a
-# bundle that no longer builds. Both are exactly what a packaging change breaks.
+# Most of the suite reads the game's own data — 3 GB of unpacked archives that
+# are copyrighted and quite rightly not in this repository — so those tests stay
+# local. But a real slice of the app never touches it: creating a blank map,
+# packing and reopening a .h5m, the texts, localisation, and building a campaign
+# are all our own file formats end to end. Those carry @nodata and run here,
+# against a data root that is two empty folders.
 
 name: build
 
@@ -34,3 +36,25 @@ jobs:
       # The app bundle, not the exe: it is the step that would fail on a bad
       # import, and it takes seconds where packaging takes minutes.
       - run: npm run build:app
+
+      # A data root the editor accepts as configured. MapObjects/ is the marker
+      # it looks for — empty is fine, because these tests only ever create their
+      # own maps. Without it the app opens its setup window instead, which is
+      # correct behaviour and would fail every test for the wrong reason.
+      - name: Stub data root
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force stub-data/MapObjects, stub-data/Maps | Out-Null
+          "HOMM5_DATA=$PWD/stub-data" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      # Electron drives a real window here; the Windows runner has a desktop
+      # session, so nothing like Xvfb is needed.
+      - run: npm run test-e2e-nodata
+
+      - name: Keep the failure artefacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-failures
+          path: test-results/
+          retention-days: 7

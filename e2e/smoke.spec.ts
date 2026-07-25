@@ -13,7 +13,7 @@ let ed: Launched;
 test.beforeAll(async () => { ed = await launchEditor(); });
 test.afterAll(async () => { await ed?.app.close(); });
 
-test('launches to the empty state with its toolbar', async () => {
+test('launches to the empty state with its toolbar', { tag: '@nodata' }, async () => {
   const { page } = ed;
   await expect(page.locator('#title')).toHaveText('homm5-editor');
   await expect(page.locator('#open')).toBeVisible();

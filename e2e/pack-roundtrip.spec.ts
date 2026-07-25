@@ -61,7 +61,7 @@ test.beforeAll(async () => {
 });
 test.afterAll(async () => { await ed?.app.close(); cleanup(); });
 
-test('packs a new map, opens the .h5m back, and gets the same bytes', async () => {
+test('packs a new map, opens the .h5m back, and gets the same bytes', { tag: '@nodata' }, async () => {
   const { page } = ed;
 
   // --- create -----------------------------------------------------------
@@ -123,7 +123,7 @@ test('packs a new map, opens the .h5m back, and gets the same bytes', async () =
   }
 });
 
-test('Save writes the work back into the .h5m it came from', async () => {
+test('Save writes the work back into the .h5m it came from', { tag: '@nodata' }, async () => {
   const { page } = ed;
   const packedBefore = readFileSync(ARCHIVE);
 
@@ -148,7 +148,7 @@ test('Save writes the work back into the .h5m it came from', async () => {
   expect(name!.data.toString('utf16le', 2)).toBe(EDITED);
 });
 
-test('reopening the same archive returns to the same workspace', async () => {
+test('reopening the same archive returns to the same workspace', { tag: '@nodata' }, async () => {
   const { page } = ed;
   const first = [...workspaces][0]!;
 

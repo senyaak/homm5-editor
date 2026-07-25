@@ -33,7 +33,7 @@ function cleanup(): void {
 test.beforeAll(async () => { cleanup(); ed = await launchEditor(); });
 test.afterAll(async () => { await ed?.app.close(); cleanup(); });
 
-test('creates a blank map through the dialog and opens it', async () => {
+test('creates a blank map through the dialog and opens it', { tag: '@nodata' }, async () => {
   const { page } = ed;
 
   await page.locator('#newmapbtn').click();
@@ -73,7 +73,7 @@ test('creates a blank map through the dialog and opens it', async () => {
   expect(name.toString('utf16le', 2)).toBe(NAME);
 });
 
-test('refuses to overwrite a map that already exists', async () => {
+test('refuses to overwrite a map that already exists', { tag: '@nodata' }, async () => {
   const { page } = ed;
   await page.locator('#newmapbtn').click();
   await page.locator('#nm-name').fill(NAME); // still on disk from the test above

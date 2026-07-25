@@ -38,7 +38,7 @@ test.afterAll(async () => {
   if (existsSync(MAP_DIR)) rmSync(MAP_DIR, { recursive: true, force: true });
 });
 
-test('localize a map: enable tags the texts, a language copies them, tabs edit each', async () => {
+test('localize a map: enable tags the texts, a language copies them, tabs edit each', { tag: '@nodata' }, async () => {
   test.setTimeout(5 * 60_000);
   const { page } = ed;
   page.on('dialog', (d) => void d.accept());   // accept the "remove language?" confirm
