@@ -360,6 +360,17 @@ verifies the whole map and packs it into a **playable `.h5m`**. `npm run
 diff-terrain`, `diff-objects` and `diff-map` are down to a handful of accepted
 deviations the engine doesn't read. Every gap it hit became a feature above.
 
+Most of that needs the game's data, which cannot be published, so it runs on a
+machine that has the game. What does not need it is tagged `@nodata` and runs on
+every push (`.github/workflows/build.yml`): ten tests that create a blank map,
+pack and reopen a `.h5m`, write and localise its texts, and build a campaign —
+our own formats, end to end through the real app, against a data root that is
+two empty folders.
+
+```bash
+npm run test-e2e-nodata
+```
+
 ## Next
 
 The terrain and object tooling is enough to build a map by hand; attention is on
