@@ -1,0 +1,141 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf8">
+  <title>homm5-editor — setup</title>
+  <style>
+    /* Standalone on purpose: this screen runs before the editor's bundle exists
+       in the process, so it carries its own (small) copy of the editor's look. */
+    html, body { margin: 0; height: 100%; background: #0d1014; color: #c9d1d9;
+      font: 13px/1.5 system-ui, sans-serif; }
+    body { display: flex; flex-direction: column; padding: 22px 24px; box-sizing: border-box; gap: 14px; }
+    h1 { margin: 0; font-size: 16px; color: #e6edf3; font-weight: 600; }
+    p { margin: 0; color: #8b949e; }
+    .step { border: 1px solid #21262d; border-radius: 8px; padding: 12px 14px;
+      background: #161b22; display: flex; flex-direction: column; gap: 8px; }
+    .step h2 { margin: 0; font-size: 13px; color: #e6edf3; font-weight: 600; }
+    .row { display: flex; gap: 8px; align-items: center; }
+    .path { flex: 1; min-width: 0; background: #0d1014; border: 1px solid #30363d;
+      border-radius: 6px; padding: 5px 8px; color: #c9d1d9; font-size: 12px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
+    .path.empty { color: #6e7681; }
+    button { background: #21262d; color: #c9d1d9; border: 1px solid #30363d;
+      border-radius: 6px; padding: 5px 12px; cursor: pointer; font-size: 13px; white-space: nowrap; }
+    button:hover:not(:disabled) { background: #30363d; }
+    button:disabled { opacity: .4; cursor: default; }
+    button.go { background: #1f6feb33; border-color: #1f6feb; color: #cbe0ff; }
+    button.go:hover:not(:disabled) { background: #1f6feb55; }
+    .bad { color: #f85149; font-size: 12px; }
+    .ok { color: #3fb950; font-size: 12px; }
+    .hint { font-size: 11px; color: #6e7681; }
+    progress { width: 100%; height: 6px; accent-color: #1f6feb; }
+    #foot { margin-top: auto; display: flex; align-items: center; gap: 10px; }
+    #status { flex: 1; font-size: 12px; color: #8b949e;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  </style>
+</head>
+<body>
+  <h1>Point the editor at Heroes V</h1>
+  <p>It reads the game's own models, textures and rosters, so it needs to know where the game is —
+     and it reads them unpacked, so the archives have to be laid out once.</p>
+
+  <div class="step">
+    <h2>1 · The game folder</h2>
+    <div class="row">
+      <div class="path empty" id="game">not chosen</div>
+      <button id="pick-game">Choose…</button>
+    </div>
+    <div class="hint" id="game-note">The folder holding <code>data\</code> with the .pak archives.</div>
+  </div>
+
+  <div class="step">
+    <h2>2 · Where the unpacked data goes</h2>
+    <div class="row">
+      <div class="path empty" id="data">not chosen</div>
+      <button id="pick-data">Choose…</button>
+    </div>
+    <div class="hint">About 3 GB. Keep it — the editor reads from here every run, and it is what you diff your mods against.</div>
+    <progress id="bar" value="0" max="1" hidden></progress>
+    <div class="row">
+      <button id="unpack" class="go" disabled>Unpack now</button>
+      <div class="hint" id="unpack-note"></div>
+    </div>
+  </div>
+
+  <div id="foot">
+    <div id="status"></div>
+    <button id="start" class="go" disabled>Open the editor</button>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    let gameRoot = '', dataRoot = '', dataReady = false, gameOk = false, busy = false;
+
+    function show(el, path) {
+      el.textContent = path || 'not chosen';
+      el.classList.toggle('empty', !path);
+      // A long Windows path is more useful from its tail; RTL keeps the end visible.
+      el.title = path || '';
+    }
+
+    function render() {
+      show($('game'), gameRoot);
+      show($('data'), dataRoot);
+      $('game-note').className = gameOk ? 'ok' : (gameRoot ? 'bad' : 'hint');
+      $('game-note').textContent = !gameRoot ? 'The folder holding data\\ with the .pak archives.'
+        : gameOk ? 'Archives found.'
+        : 'No .pak archives in that folder\'s data\\ — is this the game folder?';
+      $('unpack').disabled = busy || !gameOk || !dataRoot;
+      $('pick-game').disabled = busy;
+      $('pick-data').disabled = busy;
+      $('start').disabled = busy || !dataReady;
+      $('unpack-note').textContent = dataReady && !busy ? 'Data is already there — unpacking again only fills in what changed.' : '';
+    }
+
+    $('pick-game').onclick = async () => {
+      const r = await window.setup.pickGame();
+      if (!r.path) return;
+      gameRoot = r.path; gameOk = r.ok;
+      render();
+    };
+
+    $('pick-data').onclick = async () => {
+      const r = await window.setup.pickData();
+      if (!r.path) return;
+      dataRoot = r.path;
+      // A folder chosen by hand may already hold a tree from an earlier run, so
+      // ask rather than assume — that is the difference between "unpack 3 GB
+      // again" and "open the editor now".
+      dataReady = await window.setup.check(dataRoot);
+      render();
+    };
+
+    $('unpack').onclick = async () => {
+      busy = true; $('bar').hidden = false; render();
+      $('status').textContent = 'reading archives…';
+      try {
+        const r = await window.setup.unpack(gameRoot, dataRoot);
+        dataReady = await window.setup.check(dataRoot);
+        $('status').textContent = `${r.written} new, ${r.replaced} replaced, ${r.unchanged} already current`
+          + (r.failed ? ` — ${r.failed} failed` : '');
+      } catch (e) {
+        $('status').textContent = String(e && e.message || e);
+      } finally {
+        busy = false; $('bar').hidden = true; render();
+      }
+    };
+
+    $('start').onclick = () => window.setup.finish(gameRoot, dataRoot);
+
+    window.setup.onProgress((p) => {
+      $('bar').value = p.done; $('bar').max = p.total;
+      $('status').textContent = `${p.pak} (${p.pakIndex}/${p.pakCount}) — ${p.done} of ${p.total}`;
+    });
+
+    window.setup.state().then((s) => {
+      gameRoot = s.gameRoot; dataRoot = s.dataRoot; dataReady = s.dataReady; gameOk = s.gameOk;
+      render();
+    });
+  </script>
+</body>
+</html>

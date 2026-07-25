@@ -169,6 +169,7 @@ npm run typecheck    # tsc --noEmit across the whole project
 npm test             # every unit test-* in one run (tools/test-all.ts)
 npm run test-e2e     # Playwright: New Map, placement, scripts, the C1M1 rebuild
 npm run harness      # the renderer in a plain browser, on a stub bridge
+npm run dist         # bundle and package into dist/homm5-editor-win32-x64/
 npm run unpack-data  # unpack the install's .pak into data-unpacked
 npm run inspect      # low-level dump of a .bin's structure
 npm run pak          # ZIP (.pak/.h5m/.h5c) read/write CLI
@@ -198,6 +199,27 @@ re-running after a patch only writes what changed. A partial unpack is the usual
 cause of untextured ground: the random-map generator's tiles, for one, ship only
 in the addon pak. Individual archives are ordinary ZIPs and `tools/pak-cli.js`
 handles them one at a time.
+
+### A standalone build
+
+```bash
+npm run dist
+```
+
+bundles the app into `build/` (main process, preloads, renderer — no
+`node_modules`, no type stripping at runtime) and packages that into
+`dist/homm5-editor-win32-x64/`, about 350 MB, most of it Chromium. Copy the
+folder anywhere and run `homm5-editor.exe`; there is no installer, on purpose.
+
+A packaged editor has no checkout to take its bearings from, so on first run it
+asks: where the game is installed, and where to put the unpacked data. Both
+answers go in `settings.json` under the user's app-data folder, and the setup
+screen unpacks the archives itself. `HOMM5_ROOT` / `HOMM5_DATA` still win over
+what was remembered, and `homm5-editor.exe --setup` reopens the screen when the
+answers go stale.
+
+The build is unsigned, so on another machine SmartScreen will warn about an
+unknown publisher — that needs a code-signing certificate, not a packaging flag.
 
 ## `GroundTerrain.bin`
 

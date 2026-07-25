@@ -13,12 +13,13 @@
 
 import { app, BrowserWindow, ipcMain, dialog, screen } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
-import { fileURLToPath } from 'node:url';
 import { dirname, join, basename, relative, resolve, sep, isAbsolute } from 'node:path';
 import { readFileSync, writeFileSync, existsSync, readdirSync, statSync, mkdirSync, copyFileSync, rmSync, renameSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { buildScene, findAssetRoot, listTiles, splatFor, pngDataUri } from '../src/scene.ts';
-import { listPlaceable, findEditorRoot, iconPathFor, readIconFile } from '../src/objects.ts';
+import { listPlaceable, iconPathFor, readIconFile } from '../src/objects.ts';
+import { editorRoot, gameData, gameRoot, isConfigured, preloadPath, rendererFile, tmpRoot } from './paths.ts';
+import { runSetup } from './setup.ts';
 import { initProject, openProject, packProject, exportLocalized, readManifest, writeManifest, status, pickMapRel, MANIFEST_NAME } from '../src/project.ts';
 import { listDirFiles } from '../src/pak.ts';
 import scriptApi from '../src/script-api.json' with { type: 'json' };
@@ -79,9 +80,6 @@ import type {
   AddLayerPayload, AddLayerResult, PaintRiverPayload, RiverCellsPayload, MaskPayload, UndoResult, HistoryState,
 } from './ipc.ts';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = join(__dirname, '..');
-
 // [perf] Windows-only Chromium bug: the native occlusion calculator intermittently
 // decides a fully visible window is covered and throttles its compositor to a
 // crawl for the rest of the session — the "sometimes the whole editor goes
@@ -90,20 +88,8 @@ const REPO_ROOT = join(__dirname, '..');
 // only ever run one visible window. Must be set before app is ready.
 app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
 
-// The game-data root: where object models/textures (MapObjects/, bin/Geometries/)
-// live. A .h5m map archive does NOT contain these — they ship in the game's
-// data.pak — so we always resolve assets against this root, not against the map
-// folder. Defaults to the unpacked data tree; overridable via HOMM5_DATA.
-const GAME_DATA = process.env.HOMM5_DATA || join(REPO_ROOT, 'data-unpacked');
-
-// Scratch space: unpacked archives, undo history — everything the editor keeps
-// for itself. In the editor's own folder rather than the OS's app-data corner,
-// so it is findable, inspectable, and deletable without hunting for it. Nothing
-// in here is precious: it is all rebuildable from the archives it came from.
-const TMP_ROOT = join(REPO_ROOT, '_tmp');
-
 /** Unpacked archives, one folder per archive. */
-const WORKSPACES = join(TMP_ROOT, 'workspaces');
+const workspaces = (): string => join(tmpRoot(), 'workspaces');
 
 /** The map currently open for editing, with everything derived at load time. */
 interface Session {
@@ -214,7 +200,7 @@ function historyPathFor(mapDir: string): string {
   // NOT inside the map folder: packProject sweeps every file in there into the
   // .h5m, and an editor's undo log has no business shipping inside a map.
   const key = createHash('sha1').update(mapDir).digest('hex').slice(0, 16);
-  return join(TMP_ROOT, 'history', `${key}.json`);
+  return join(tmpRoot(), 'history', `${key}.json`);
 }
 
 function saveHistory(s: Session): void {
@@ -246,32 +232,26 @@ function terrainDoc(s: Session, floor: number): TerrainDoc {
   return doc;
 }
 
-// Where the editor's own config lives: MapFilters.xml and IconCache.
-//
-// This is NOT under the data root. The link files that make up the object
-// catalogue are game data and ship inside the paks, while the filter list and
-// the icon cache are loose beside the game install — so the two roots are
-// genuinely separate and neither implies the other.
-//
-// HOMM5_ROOT (the game folder) is the direct way to say where it is; the walk
-// upwards is the fallback for when nobody said. start-editor.bat sets it, since
-// the repo lives inside the game folder and therefore already knows.
-const GAME_ROOT = process.env.HOMM5_ROOT || null;
-const EDITOR_ROOT = process.env.HOMM5_EDITOR
-  || (GAME_ROOT ? findEditorRoot(GAME_ROOT) : null)
-  || findEditorRoot(GAME_DATA);
-
 /** The object catalogue, scanned once — 1466 small files is not a per-call cost. */
 let catalogCache: ReturnType<typeof listPlaceable> | null = null;
 function catalog(): ReturnType<typeof listPlaceable> {
-  if (!catalogCache) catalogCache = listPlaceable(GAME_DATA, EDITOR_ROOT || '');
+  if (!catalogCache) catalogCache = listPlaceable(gameData(), editorRoot() || '');
   return catalogCache;
 }
 
 // Current editing session (one map at a time for now).
 let session: Session | null = null;
 let win: BrowserWindow | null = null;
-let lastDir = existsSync(join(GAME_DATA, 'Maps')) ? join(GAME_DATA, 'Maps') : GAME_DATA;
+
+/** Where the file dialog opens. Follows the last map opened; starts at Maps. */
+let lastDir = '';
+function openDialogDir(): string {
+  if (lastDir) return lastDir;
+  const root = gameData();
+  if (!root) return '';
+  const maps = join(root, 'Maps');
+  return existsSync(maps) ? maps : root;
+}
 
 function createWindow(): void {
   // Fit the work area rather than insisting on 1400x900. On a smaller or scaled
@@ -285,7 +265,7 @@ function createWindow(): void {
     title: 'homm5-editor',
     webPreferences: {
       // Stays .cjs: Electron's preload loader does not strip types (see preload.cjs).
-      preload: join(__dirname, 'preload.cjs'),
+      preload: preloadPath('preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
       // The render loop drives the whole editor; never let Chromium throttle its
@@ -298,10 +278,18 @@ function createWindow(): void {
   // re-narrowing the mutable module-level `win` after every call.
   const w = win;
   w.setMenuBarVisibility(false);
-  w.loadFile(join(__dirname, '..', 'renderer', 'index.html'));
+  w.loadFile(rendererFile('index.html'));
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  // Nothing to read means nothing to edit, so setup comes first: it asks where
+  // the game is and unpacks its archives. `--setup` forces it, which is the way
+  // back in once the answers are wrong (the game moved, the data root was
+  // deleted) and the editor would otherwise open onto an empty map list.
+  if (!isConfigured() || process.argv.includes('--setup')) {
+    const ok = await runSetup();
+    if (!ok) { app.quit(); return; }
+  }
   createWindow();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
   // Dev smoke test: HOMM5_SMOKE=<map.xdb> loads a map through the real pipeline
@@ -327,8 +315,13 @@ app.on('will-quit', () => { session?.watch.stop(); });
 // A map is "openable" when its folder has both map.xdb and GroundTerrain.bin.
 // This powers the in-window picker so users don't have to hunt for files.
 ipcMain.handle('maps:list', async (): Promise<MapsListResult> => {
-  const mapsDir = join(GAME_DATA, 'Maps');
-  if (!existsSync(mapsDir)) return { root: GAME_DATA, maps: [] };
+  const root = gameData();
+  // No data root means no answer to give. Guarded rather than joined blindly:
+  // join('', 'Maps') is the relative path "Maps", which would quietly search
+  // whatever folder the app happens to have been started from.
+  if (!root) return { root, maps: [] };
+  const mapsDir = join(root, 'Maps');
+  if (!existsSync(mapsDir)) return { root, maps: [] };
   const maps: MapListEntry[] = [];
   const walk = (dir: string): void => {
     let ents: string[];
@@ -357,14 +350,14 @@ ipcMain.handle('maps:list', async (): Promise<MapsListResult> => {
   walk(mapsDir);
   console.log(`[perf] maps:list ${(performance.now() - tWalk) | 0}ms · ${maps.length} maps`);
   maps.sort((a, b) => a.rel.localeCompare(b.rel));
-  return { root: GAME_DATA, maps };
+  return { root: gameData(), maps };
 });
 
 // --- IPC: open a map file via the OS dialog (starts in the last-used folder) ---
 ipcMain.handle('dialog:openMap', async (): Promise<OpenMapDialogResult> => {
   const opts = {
     title: 'Open a map',
-    defaultPath: lastDir,
+    defaultPath: openDialogDir(),
     properties: ['openFile' as const],
     // Both halves of the round trip: an unpacked folder's map.xdb, or the .h5m
     // Pack produced from one.
@@ -397,12 +390,12 @@ ipcMain.handle('map:new', async (_e: IpcMainInvokeEvent, p: NewMapPayload): Prom
   // Where the original editor puts them, and where the game looks: a map's path
   // under the data root is also its path inside the .h5m, so getting this right
   // is what makes the packed map findable.
-  const mapDir = join(GAME_DATA, 'Maps', p.multiplayer ? 'Multiplayer' : 'SingleMissions', name);
+  const mapDir = join(gameData(), 'Maps', p.multiplayer ? 'Multiplayer' : 'SingleMissions', name);
   if (existsSync(mapDir)) throw new Error(`${mapDir} already exists`);
 
   // The enabled-spell and artifact lists are the game's own, so they follow the
   // installed data (and any mod) rather than a list frozen into the source.
-  const registry = new Registry(GAME_DATA);
+  const registry = new Registry(gameData());
   const files = buildNewMapProject({
     name,
     tiles: p.tiles,
@@ -429,7 +422,7 @@ ipcMain.handle('map:new', async (_e: IpcMainInvokeEvent, p: NewMapPayload): Prom
  */
 function workspaceFor(archivePath: string): string {
   const key = createHash('sha1').update(resolve(archivePath).toLowerCase()).digest('hex').slice(0, 16);
-  return join(WORKSPACES, `${basename(archivePath).replace(/[^\w.-]+/g, '_')}-${key}`);
+  return join(workspaces(), `${basename(archivePath).replace(/[^\w.-]+/g, '_')}-${key}`);
 }
 
 /** Is this workspace still the unpacking of THIS archive, as it stands now? */
@@ -459,9 +452,9 @@ const KEEP_WORKSPACES = 8;
  * the work away.
  */
 function pruneWorkspaces(keep: string): void {
-  if (!existsSync(WORKSPACES)) return;
-  const dirs = readdirSync(WORKSPACES)
-    .map((n) => join(WORKSPACES, n))
+  if (!existsSync(workspaces())) return;
+  const dirs = readdirSync(workspaces())
+    .map((n) => join(workspaces(), n))
     .filter((d) => d !== keep && statSync(d).isDirectory())
     .map((d) => ({ d, at: statSync(d).mtimeMs }))
     .sort((a, b) => b.at - a.at);
@@ -520,8 +513,8 @@ ipcMain.handle('map:load', async (_e: IpcMainInvokeEvent, mapPath: string): Prom
   // Assets normally sit above the map; if not (e.g. a map extracted on its own),
   // fall back to the configured game-data root.
   let assetRoot = findAssetRoot(mapPath);
-  if (!assetRoot && (existsSync(join(GAME_DATA, 'MapObjects')) || existsSync(join(GAME_DATA, 'bin', 'Geometries'))))
-    assetRoot = GAME_DATA;
+  if (!assetRoot && (existsSync(join(gameData(), 'MapObjects')) || existsSync(join(gameData(), 'bin', 'Geometries'))))
+    assetRoot = gameData();
   if (!assetRoot) throw new Error('asset root not found (need MapObjects/ or bin/Geometries/ above the map, or set HOMM5_DATA)');
   lastDir = dirname(mapPath);
   const mapDir = dirname(mapPath);
@@ -624,7 +617,7 @@ ipcMain.handle('objects:list', async (): Promise<ObjectCatalogResult> => {
   return {
     objects: cat.objects,
     groups: cat.groups.map((g) => ({ name: g.name, separator: g.separator })),
-    hasEditor: !!EDITOR_ROOT,
+    hasEditor: !!editorRoot(),
   };
 });
 
@@ -632,8 +625,9 @@ ipcMain.handle('objects:list', async (): Promise<ObjectCatalogResult> => {
 // 1466 icons at 64x64 RGBA would be ~24 MB pushed across the bridge for a panel
 // showing a few dozen at a time, so they are fetched per tile as it scrolls in.
 ipcMain.handle('objects:icon', async (_e: IpcMainInvokeEvent, { path }: IconPayload): Promise<IconResult> => {
-  if (!EDITOR_ROOT) return null;
-  const file = iconPathFor(EDITOR_ROOT, path);
+  const root = editorRoot();
+  if (!root) return null;
+  const file = iconPathFor(root, path);
   if (!file) return null;
   try {
     const icon = readIconFile(readFileSync(file));
@@ -653,7 +647,7 @@ let typeSpec: Map<string, SpecType> | null | undefined;
 const orderCache = new Map<string, FieldOrder | null>();
 function orderFor(type: string): FieldOrder | undefined {
   if (typeSpec === undefined) {
-    const p = typesXmlPath(GAME_DATA);
+    const p = typesXmlPath(gameData());
     const t0 = performance.now();
     typeSpec = p ? readTypeSpec(p) : null;
     if (p) console.log(`[spec] types.xml ${(performance.now() - t0) | 0}ms · ${typeSpec!.size} types`);
@@ -722,7 +716,7 @@ ipcMain.handle('object:add', async (_e: IpcMainInvokeEvent, p: AddObjectPayload)
   if (gi < 0) throw new Error('this object has no model we can decode yet');
   // When this map has no object of the type to copy, borrow one from the
   // game's own maps rather than writing a half-empty skeleton.
-  const donor = donorFor(GAME_DATA, p.type);
+  const donor = donorFor(gameData(), p.type);
   // Through record(), like every other edit: placing an object grows the map
   // document, and if that growth is not captured as a step then the next undo
   // finds the document a different size than its patch was taken from and throws
@@ -1738,7 +1732,7 @@ ipcMain.handle('map:save', async (): Promise<MapSaveResult> => {
 function archivePrefixFor(mapDir: string): string {
   const stored = readManifest(mapDir).archivePrefix;
   if (stored != null) return stored; // '' is a real answer: packed at the root
-  const rel = relative(GAME_DATA, mapDir);
+  const rel = relative(gameData(), mapDir);
   if (rel && !rel.startsWith('..') && !isAbsolute(rel)) return rel.split(sep).join('/');
   // Outside the data root. Take everything from the last Maps/ segment on, and
   // failing that assume a single-scenario map of that folder's name.
@@ -1823,7 +1817,7 @@ ipcMain.handle('loc:export', async (_e: IpcMainInvokeEvent, { lang, output }: Lo
 let tileCache: { root: string; tiles: TileInfo[] } | null = null;
 ipcMain.handle('terrain:tiles', async (): Promise<TerrainTilesResult> => {
   const root = session?.assetRoot
-    || (existsSync(join(GAME_DATA, 'MapObjects')) ? GAME_DATA : null);
+    || (existsSync(join(gameData(), 'MapObjects')) ? gameData() : null);
   if (!root) return { tiles: [], inMap: [] };
   if (!tileCache || tileCache.root !== root) tileCache = { root, tiles: listTiles(root) };
   const inMap = session?.layerPaths || [];
@@ -1845,7 +1839,7 @@ ipcMain.handle('map:status', async (): Promise<MapStatusResult> => {
 // .h5m ships it, which is why picking a map here only records a path.
 
 /** Where campaign projects live, mirroring <data>/Maps for map projects. */
-const CAMPAIGNS_DIR = join(GAME_DATA, 'Campaigns');
+const campaignsDir = (): string => join(gameData(), 'Campaigns');
 
 /** The map-tag href a mission uses to name the map at `rel` under Maps. */
 const missionTagFor = (mapRel: string): string =>
@@ -1917,10 +1911,10 @@ function writeCampaignDoc(doc: CampaignDoc): void {
 }
 
 ipcMain.handle('campaign:list', async (): Promise<CampaignListResult> => {
-  if (!existsSync(CAMPAIGNS_DIR)) return { campaigns: [] };
+  if (!existsSync(campaignsDir())) return { campaigns: [] };
   const campaigns: CampaignListEntry[] = [];
-  for (const e of readdirSync(CAMPAIGNS_DIR)) {
-    const dir = join(CAMPAIGNS_DIR, e);
+  for (const e of readdirSync(campaignsDir())) {
+    const dir = join(campaignsDir(), e);
     if (!existsSync(join(dir, 'campaign.xdb'))) continue;
     try {
       campaigns.push({ name: e, dir, missions: missions(loadCampaignProject(dir)).length });
@@ -1933,7 +1927,7 @@ ipcMain.handle('campaign:new', async (_e: IpcMainInvokeEvent, p: NewCampaignPayl
   const name = p.name.trim();
   if (!name) throw new Error('the campaign needs a name');
   if (/[\/:*?"<>|]/.test(name)) throw new Error('the name cannot contain \ / : * ? " < > |');
-  const dir = join(CAMPAIGNS_DIR, name);
+  const dir = join(campaignsDir(), name);
   if (existsSync(dir)) throw new Error(`${dir} already exists`);
   mkdirSync(dir, { recursive: true });
   for (const f of buildNewCampaignProject(name)) writeFileSync(join(dir, f.path), f.data);
@@ -1956,12 +1950,12 @@ ipcMain.handle('campaign:save', async (_e: IpcMainInvokeEvent, p: SaveCampaignPa
 // one that cannot be read offers nothing rather than a name that would match no
 // character and silently never travel.
 ipcMain.handle('campaign:map-heroes', async (_e: IpcMainInvokeEvent, p: MapHeroesPayload): Promise<MapHeroesResult> => {
-  const xdb = join(GAME_DATA, 'Maps', ...p.mapRel.split('/'), 'map.xdb');
+  const xdb = join(gameData(), 'Maps', ...p.mapRel.split('/'), 'map.xdb');
   if (!existsSync(xdb)) return { heroes: [], entryPoint: false };
   const xml = readFileSync(xdb, 'latin1');
   const heroes: string[] = [];
   for (const h of placedHeroes(xml)) {
-    const file = join(GAME_DATA, ...h.shared.replace(/#.*$/, '').replace(/^\/+/, '').split('/'));
+    const file = join(gameData(), ...h.shared.replace(/#.*$/, '').replace(/^\/+/, '').split('/'));
     if (!existsSync(file)) continue;
     const name = heroScriptName(readFileSync(file, 'latin1'));
     if (name && !heroes.includes(name)) heroes.push(name);
@@ -1971,9 +1965,10 @@ ipcMain.handle('campaign:map-heroes', async (_e: IpcMainInvokeEvent, p: MapHeroe
 
 ipcMain.handle('campaign:pack', async (_e: IpcMainInvokeEvent, p: CampaignDirPayload): Promise<CampaignPackResult> => {
   // The game reads user campaigns from <game>/UserCampaigns, so offer that when
-  // it is there. The game folder is the one holding this checkout, NOT the
-  // parent of the data root — data-unpacked lives inside the checkout.
-  const userCampaigns = join(GAME_ROOT ?? join(REPO_ROOT, '..'), 'UserCampaigns');
+  // it is there. That is the game folder, NOT the parent of the data root —
+  // an unpacked tree can live anywhere, including inside this checkout.
+  const root = gameRoot();
+  const userCampaigns = root ? join(root, 'UserCampaigns') : '';
   const name = basename(p.dir);
   const opts = {
     title: 'Pack campaign to .h5c',

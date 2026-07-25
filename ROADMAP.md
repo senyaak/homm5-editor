@@ -594,8 +594,19 @@ map. See `docs/LOCALIZATION.md`.
       hashed and watched, so edits from the original editor raise a "reload?"
       banner instead of being silently overwritten. Our own saves resync the
       baseline, so they never self-trigger ✅
-- [ ] ⬜ Projects, recent maps, game path settings
-- [ ] ⬜ Auto-detect the game installation and unpack `.pak` into a project cache
+- [x] **Packaged build** (`npm run dist`): `tools/build-app.ts` bundles the main
+      process, the preloads and the renderer into `build/` — no `node_modules`
+      and no runtime type stripping — and `tools/package-app.ts` turns that into
+      `dist/homm5-editor-win32-x64/homm5-editor.exe`. The layout mirrors the repo
+      so every runtime path is the same string either way (`electron/paths.ts`).
+      Covered by `e2e/packaged.spec.ts`, which drives the exe itself ✅
+- [x] **Game path settings** (`electron/paths.ts` + `electron/setup.ts`): env >
+      `settings.json` in the user's app-data > the repo layout. A packaged app
+      with nothing configured opens the setup screen instead of an empty map
+      list, and `--setup` reopens it ✅
+- [ ] ⬜ Projects and recent maps
+- [ ] ⬜ Auto-detect the install (Steam/Uplay/registry) — setup asks for now,
+      and unpacks into a folder of the user's choosing (`src/unpack.ts`)
 - [ ] ⬜ Performance (workers for parsing/packing, asset streaming)
 - [ ] ⬜ Round-trip tests across the shipped map set (saving must not break them)
 - [ ] ⬜ User documentation and examples
