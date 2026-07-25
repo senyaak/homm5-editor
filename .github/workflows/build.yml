@@ -9,9 +9,12 @@
 
 name: build
 
+# Not on every push: the work here lands as a stream of small commits from a
+# machine that has the game and has already run the whole suite, so a run per
+# commit would only re-check what was checked better locally. The release
+# workflow runs these same steps before it packages anything, which is the
+# moment they actually decide something.
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
   workflow_dispatch:

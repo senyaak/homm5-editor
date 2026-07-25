@@ -33,6 +33,19 @@ jobs:
 
       - run: npm ci
       - run: npm run typecheck
+
+      # The same checks build.yml runs, before anything is packaged: a release
+      # is the one moment where shipping something broken actually costs
+      # someone else's time. The stub is a data root the editor accepts as
+      # configured — empty is fine, these tests only use maps they create.
+      - name: Stub data root
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force stub-data/MapObjects, stub-data/Maps | Out-Null
+          "HOMM5_DATA=$PWD/stub-data" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - run: npm run test-e2e-nodata
+
       - run: npm run dist
 
       - name: Zip the packaged folder
