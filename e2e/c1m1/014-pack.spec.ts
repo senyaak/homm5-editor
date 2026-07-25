@@ -30,7 +30,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { readEntries } from '../../src/pak.ts';
-import { launchEditor, REPO_ROOT } from '../launch.ts';
+import { hudSays, launchEditor, REPO_ROOT } from '../launch.ts';
 import type { Launched } from '../launch.ts';
 import { DATA, MAP_DIR, NAME, NEED_FIXTURE, requireFixture } from './shared.ts';
 
@@ -104,7 +104,7 @@ test('C1M1 capstone: the whole map matches the original, and packs to a playable
   await expect(page.locator('#title')).toContainText(NAME, { timeout: 120_000 });
 
   await page.locator('#pack').click();
-  await expect(page.locator('#hud')).toContainText(/^packed → /, { timeout: 60_000 });
+  await hudSays(page, /^packed → /);
   expect(existsSync(ARCHIVE), 'the archive was written').toBe(true);
 
   // A zip the game will read (local-file-header signature), with the map at its

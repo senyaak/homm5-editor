@@ -19,7 +19,7 @@ import { test, expect } from '@playwright/test';
 import { existsSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { readEntries } from '../src/pak.ts';
-import { launchEditor, REPO_ROOT } from './launch.ts';
+import { hudSays, launchEditor, REPO_ROOT } from './launch.ts';
 import type { Launched } from './launch.ts';
 
 let ed: Launched;
@@ -76,7 +76,7 @@ test('packs a new map, opens the .h5m back, and gets the same bytes', async () =
   // The stubbed save dialog answers with the path it would have suggested,
   // which is what a user pressing Save without retyping anything gets.
   await page.locator('#pack').click();
-  await expect(page.locator('#hud')).toContainText(/^packed → /, { timeout: 30_000 });
+  await hudSays(page, /^packed → /, 30_000);
   expect(existsSync(ARCHIVE)).toBe(true);
   // A zip, by its local-file-header signature — the game will not read anything else.
   expect(readFileSync(ARCHIVE).subarray(0, 4)).toEqual(Buffer.from('PK\x03\x04', 'latin1'));
@@ -90,16 +90,19 @@ test('packs a new map, opens the .h5m back, and gets the same bytes', async () =
 
   // The working folder's files, before anything reopens them.
   const before = readdirSync(MAP_DIR).filter((f) => f !== 'project.json').sort();
-  // Named, so an empty comparison below can never read as a pass.
-  expect(before).toHaveLength(22); // map.xdb + GroundTerrain.bin + 20 text files
+  // Named rather than counted, so an empty comparison below can never read as a
+  // pass — and so that adding a file to the map (map-tag.xdb was added by the
+  // work that made packed maps appear in the lobby) does not fail a test that
+  // has no opinion about how many files a map has.
+  expect(before).toEqual(expect.arrayContaining(['map.xdb', 'GroundTerrain.bin', 'map-tag.xdb']));
+  expect(before.filter((f) => f.endsWith('.txt'))).toHaveLength(20);
 
   // --- open the archive back --------------------------------------------
   await page.locator('#open').click();
   // The exact message, not the word: the data root is called `data-unpacked`,
   // so "unpacked" matches the PACK line's path too and the wait passed on the
   // wrong status entirely.
-  await expect(page.locator('#hud')).toContainText(/unpacked \d+ files → /, { timeout: 60_000 });
-  const reopened = unpackedDir((await page.locator('#hud').textContent()) ?? '');
+  const reopened = unpackedDir(await hudSays(page, /unpacked \d+ files → /));
   workspaces.add(reopened);
   await expect(page.locator('#title')).toHaveText(`homm5-editor — ${NAME} (72×72)`, { timeout: 60_000 });
 
@@ -134,7 +137,7 @@ test('Save writes the work back into the .h5m it came from', async () => {
 
   await page.locator('#save').click();
   // Saving an archive-backed map says where the work went, and it is the .h5m.
-  await expect(page.locator('#hud')).toContainText(`saved → ${ARCHIVE}`, { timeout: 60_000 });
+  await hudSays(page, `saved → ${ARCHIVE}`);
   await expect(page.locator('#save')).toBeDisabled();
 
   // The archive really moved, and it carries the edit.
@@ -153,8 +156,7 @@ test('reopening the same archive returns to the same workspace', async () => {
   // The exact message, not the word: the data root is called `data-unpacked`,
   // so "unpacked" matches the PACK line's path too and the wait passed on the
   // wrong status entirely.
-  await expect(page.locator('#hud')).toContainText(/unpacked \d+ files → /, { timeout: 60_000 });
-  const again = unpackedDir((await page.locator('#hud').textContent()) ?? '');
+  const again = unpackedDir(await hudSays(page, /unpacked \d+ files → /));
   workspaces.add(again);
 
   // Same folder, not a second copy — which is what keeps the undo history and
