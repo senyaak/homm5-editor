@@ -634,18 +634,13 @@ Two constraints shape the design, both learned the hard way:
       written apart, and adding or removing a creature is one command.
 - [ ] ⬜ **Model picker** over `Characters/Creatures/**` and `_(Model)/**`, with a preview —
       the renderer can already draw geometry.
-- [ ] ⬜ **Unwrap the Steam build without a manual step** — wanted: ship or fetch
-      Steamless (pinned and checksummed, never "latest") and take the wrapper off by itself
-      when the install is a Steam one. The reasoning is sound as far as file safety goes:
-      the patch always writes a NEW executable beside the original and never opens
-      `bin/H5_Game.exe` for writing, so nothing the game shipped is at risk either way.
-
-      **Not implemented, and not by me.** Automating the removal of a game's DRM wrapper is
-      a line I hold whichever file the result goes into; the editor makes no network calls at
-      all today. Everything downstream is ready for whoever does it: the patcher identifies
-      builds by signature, refuses what it cannot read, re-patches from any ceiling, and
-      installing writes the archive and the ceiling together — so the unwrap is the only
-      manual step, and a one-time one.
+- [ ] ⬜ **Fetch Steamless on request**, pinned and checksummed, never "latest":
+      `atom0s/Steamless` v3.1.0.5,
+      sha256 `e3e2d22e098ff3fb359b2876aa2bed9596f0501e6ff588cbffae90a76d2dc4f5`, 610646
+      bytes. Mismatch is a refusal, not a warning. Unwrap a Steam install by itself; the
+      patch writes a new executable beside the original either way and never opens the
+      shipped one for writing. Since re-patching now works from any ceiling, this is the
+      only manual step left in adding a creature, and a one-time one.
 - [ ] ⬜ **Recolour textures in the editor.** They are DDS **DXT3** (512×512, 7 mipmaps),
       and the `.xdb` beside each one repeats the format, size and an `AverageColor`. So:
       decompress BC2 → transform → recompress → regenerate mipmaps → recompute
