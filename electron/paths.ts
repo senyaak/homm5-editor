@@ -141,9 +141,10 @@ export const reload = (): void => { cache = null; };
  * The MOUNTED asset chain — what the game will read, not what one folder holds.
  *
  * The unpacked data with the installed creature mods layered over it, so a
- * creature a mod adds is in the army picker and a map that places one shows the
- * stack instead of dropping it. Nothing else in `UserMODs` is mounted: see
- * `mountCreatureMods`, and docs/ARCHIVES.md for the rule this mirrors.
+ * creature a mod adds is in the army picker, a dwelling it adds is in the object
+ * palette, and a map that places one shows it instead of dropping it. Nothing
+ * else in `UserMODs` is mounted: see `mountCreatureMods`, and docs/ARCHIVES.md
+ * for the rule this mirrors.
  *
  * Deliberately NOT cached across calls. The expensive part — unpacking — is
  * cached per archive by its size and date, so re-scanning costs a directory
@@ -158,7 +159,8 @@ export function mountedAssets(base: string): Assets {
     try {
       for (const m of mountCreatureMods(g, join(tmpRoot(), 'mods'))) {
         over.push(m.root);
-        console.log(`[mods] ${basename(m.path)} · ${m.mod.creatures.length} creature(s), ceiling ${m.limit}`);
+        console.log(`[mods] ${basename(m.path)} · ${m.mod.creatures.length} creature(s)`
+          + `, ${m.mod.dwellings.length} dwelling(s), ceiling ${m.limit}`);
       }
     } catch (e) {
       // A mod we cannot read must not stop the editor opening a map.

@@ -66,7 +66,8 @@ ignored, so an archive can be mounted, correct and completely without effect.
   creature's own files and art (`src/creature-mod.ts`) — can go **inside** the
   `.h5c` or the `.h5m` instead of a separate `.h5u` the player has to install.
   One file to hand over. A raised creature ceiling still needs a patched
-  executable; that part is not data and no archive can carry it.
+  executable; that part is not data and no archive can carry it, which is why
+  installing a mod writes both at once (`src/creature-limit.ts`).
 - **A stray file breaks every map, not its own.** Anything that ends up in an
   `.h5m` outside `Maps/…` overrides the game globally for the whole session. Pack
   exactly the map's own tree.

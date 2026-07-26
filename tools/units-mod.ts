@@ -1,23 +1,32 @@
 // The units mod from the command line — build one, or say what is installed.
 //
-//   node tools/units-mod.ts list [game]              what UserMODs adds, and the
-//                                                    ceiling the exe then needs
+//   node tools/units-mod.ts list [game]              what UserMODs adds, and what
+//                                                    the executable is set to
 //   node tools/units-mod.ts show <archive.h5u>       one mod's creatures
 //   node tools/units-mod.ts build <project> [--install <game>]
 //
 // A project is a folder holding units.json — the registry. `build` reads it,
 // generates the mod's tree beside it in `packed/` and packs the .h5u.
 //
-// The editor's own UI does the same through src/creature-mod.ts; this exists so
-// the mechanism is usable and testable without it.
+// `--install` also sets the creature ceiling in `bin/H5_Game_NCF.exe`, because the
+// ceiling has to equal the mod's creature count exactly and a mod installed
+// without it is read and ignored. Adding or removing a creature and re-installing
+// is all there is to it — see src/creature-limit.ts.
+//
+// This is the ONLY way to build a mod: the window has no creature or dwelling
+// editor. What the UI does with a mod is read it — mountedAssets() layers every
+// installed .h5u over the data, so a mod's creatures are in the army picker and
+// its dwellings in the object palette. Building is here and in a project's own
+// script (see the port's Maps/sod/tools/build-creature-slots.ts).
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import {
-  buildCreatureMod, creatureLimit, dataReader, findCreatureMods, MOD_MANIFEST,
+  buildCreatureMod, creatureLimit, dataReader, findCreatureMods, installCreatureMod, MOD_MANIFEST,
   packCreatureMod, readCreatureMod, writeCreatureMod,
 } from '../src/creature-mod.ts';
 import type { CreatureMod } from '../src/creature-mod.ts';
+import { PATCHED_EXE, readExe } from '../src/creature-limit.ts';
 import { SHIPPED_CREATURES } from '../src/creatures.ts';
 
 const args = process.argv.slice(2);
@@ -67,8 +76,22 @@ if (command === 'list') {
   if (found.length > 1) {
     console.log(`\n${found.length} creature mods installed. They CONFLICT: each carries its own copy of`);
     console.log('types.xml and the creature table, so whichever the game reads last wins outright.');
+  }
+
+  // What the executable actually says, rather than what it ought to. The two
+  // drift only if something was installed by hand, and this is where that shows.
+  const needed = found.length === 1 ? found[0]!.limit : null;
+  const exe = join(game, PATCHED_EXE);
+  if (!existsSync(exe)) {
+    console.log(`\n${PATCHED_EXE} is not there, so no ceiling is raised and every mod creature is ignored.`);
+    if (needed) console.log(`build with --install to create it at ${needed}.`);
   } else {
-    console.log(`\npatch the executable's creature ceiling to ${found[0]!.limit}`);
+    const r = readExe(readFileSync(exe));
+    console.log(`\n${PATCHED_EXE}  ${r.build?.name ?? '?'}  ceiling ${r.limit ?? '?'}`);
+    for (const p of r.problems) console.log(`  ${p}`);
+    if (needed && r.limit !== null && r.limit !== needed) {
+      console.log(`  MISMATCH: the mod needs ${needed}. Re-run build --install, or creature-limit.ts --set ${needed}.`);
+    }
   }
   process.exit(0);
 }
@@ -83,7 +106,7 @@ if (command === 'show') {
   }
   console.log(path);
   report(found.mod, found.reconstructed);
-  console.log(`\npatch the executable's creature ceiling to ${found.limit}`);
+  console.log(`\nthis mod needs the executable's creature ceiling at ${found.limit}`);
   process.exit(0);
 }
 
@@ -124,14 +147,30 @@ if (command === 'build') {
   writeFileSync(manifest, `${JSON.stringify(mod, null, 2)}\n`);
 
   const game = flag('install');
-  if (game) {
-    const target = join(game, 'UserMODs', `${mod.stem}.h5u`);
-    writeFileSync(target, readFileSync(archive));
-    console.log(`\ninstalled  ${target}`);
-  } else {
+  if (!game) {
     console.log(`\nbuilt  ${archive}`);
+    console.log(`--install <game> to put it in UserMODs and set the ceiling to ${report_.limit}`);
+    process.exit(0);
   }
-  console.log(`then patch the executable to ${report_.limit} creatures — the two must agree exactly`);
+
+  // The ceiling goes with it. Installing the archive alone would leave the game
+  // reading a mod it then ignores, which looks exactly like a broken mod.
+  let done;
+  try {
+    done = installCreatureMod(game, mod, readFileSync(archive));
+  } catch (e) {
+    console.error(`\nnot installed — the creature ceiling could not be set:\n${e instanceof Error ? e.message : String(e)}`);
+    process.exit(1);
+  }
+  console.log(`\ninstalled  ${done.archive}`);
+  if (done.exe) {
+    const how = done.exe.created ? `created and patched to ${done.exe.to}`
+      : done.exe.changed ? `ceiling ${done.exe.from} → ${done.exe.to}` : `ceiling already ${done.exe.to}`;
+    console.log(`           ${done.exe.path} — ${how}`);
+    console.log(`\nlaunch that executable: ids ${SHIPPED_CREATURES}..${done.exe.to - 1} exist only there.`);
+  } else {
+    console.log('           the executable is untouched — this mod adds no creature');
+  }
   process.exit(0);
 }
 

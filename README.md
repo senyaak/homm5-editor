@@ -146,6 +146,18 @@ get a live 3D scene you sculpt, paint, populate, script and pack.
   rather than for its own mission — so a campaign can ship its mod inside itself,
   and a stray file in a map overrides the game for every other map. Which copy of
   a path wins is decided by member date, which is why packing stamps a real one.
+- **New creatures and new dwellings** (`src/creature-mod.ts`, `src/dwellings.ts`) —
+  command line only, `npm run units-mod`; the window mounts installed mods but has
+  no editor for them yet. A creature the game never had ships as a `.h5u` carrying
+  its own copy of the three files a mod must edit, its five own files and its art;
+  a dwelling is an object and costs the game nothing global. What a mod cannot
+  carry is the **creature ceiling**: 180 is compiled into the executable, and an id
+  above it is read and silently ignored. So installing sets it — one action writes
+  the archive and the ceiling, they have to agree exactly, and a `bin/H5_Game_NCF.exe`
+  already patched to any number goes to any other in place (`src/creature-limit.ts`,
+  `npm run creature-limit` to look). Steam's own executable is DRM-wrapped and is
+  identified and refused rather than mangled: removing that wrapper is the owner's
+  business, done once, outside this editor.
 - **External-change watcher** (`src/watch.ts`): the original Nival editor can be
   open on the same folder. When it saves, a banner offers to take its version.
   Content hashes, not timestamps, so our own saves never self-trigger.

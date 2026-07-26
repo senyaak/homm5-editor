@@ -54,6 +54,8 @@ import { extractMeshesStructured, placeGeometry, positionsBox, wideBase } from '
 import type { BBox } from './geometry.ts';
 import type { DwellingPaths, DwellingSpec, Footprint } from './dwellings.ts';
 import { parseTypeSpec } from './typespec.ts';
+import { setCreatureLimit } from './creature-limit.ts';
+import type { ExeResult } from './creature-limit.ts';
 
 /** The mod's file name stem — `homm5-units.h5u` in UserMODs. */
 export const MOD_STEM = 'homm5-units';
@@ -664,6 +666,37 @@ export function writeCreatureMod(dir: string, report: BuildReport): void {
 export function packCreatureMod(report: BuildReport, when = new Date()): Buffer {
   const entries: ZipEntry[] = report.files.map((f) => ({ name: f.path.replace(/\\/g, '/'), data: f.data }));
   return writeArchive(entries, { mtime: when });
+}
+
+/** Where an installed mod went, and what the executable now says. */
+export interface Installed {
+  archive: string;
+  /**
+   * The ceiling that was set — or null when the mod adds no creature and the
+   * executable is none of its business. Dwellings and other objects are data.
+   */
+  exe: ExeResult | null;
+}
+
+/**
+ * Install a built mod: the archive into `UserMODs`, and the ceiling into the
+ * executable, as ONE action.
+ *
+ * They cannot be separate. A mod whose creatures sit above the ceiling is read
+ * and silently ignored, and a ceiling above the mod's last creature stops the
+ * game at launch, so an install that writes one and forgets the other leaves the
+ * game in one of those two states. Adding or removing a creature therefore
+ * re-patches by itself; nothing has to be remembered.
+ *
+ * Throws with the reason if the ceiling cannot be set — and then the archive is
+ * NOT installed either, because a mod the game will ignore is worse than no mod:
+ * it looks installed.
+ */
+export function installCreatureMod(gameRoot: string, mod: CreatureMod, archive: Buffer): Installed {
+  const exe = mod.creatures.length ? setCreatureLimit(gameRoot, creatureLimit(mod)) : null;
+  const target = join(gameRoot, 'UserMODs', `${mod.stem}.h5u`);
+  writeFileSync(target, archive);
+  return { archive: target, exe };
 }
 
 // --- reading a built mod back -------------------------------------------------
