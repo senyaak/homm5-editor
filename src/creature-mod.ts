@@ -49,6 +49,11 @@ import type { CreatureStats } from './creatures.ts';
 import { serialize, setAttr } from './xml.ts';
 import { extract, readEntries, readEntryFrom, readIndex, writeArchive } from './pak.ts';
 import type { ZipEntry, ZipIndexEntry } from './pak.ts';
+import { MESSAGE_SLOTS, dwellingDoc, dwellingLink, dwellingPaths, footprintOf, isRef, refPath } from './dwellings.ts';
+import { extractMeshesStructured, placeGeometry, positionsBox } from './geometry.ts';
+import type { BBox } from './geometry.ts';
+import type { DwellingPaths, DwellingSpec } from './dwellings.ts';
+import { parseTypeSpec } from './typespec.ts';
 
 /** The mod's file name stem — `homm5-units.h5u` in UserMODs. */
 export const MOD_STEM = 'homm5-units';
@@ -164,11 +169,28 @@ export interface CreatureMod {
   /** The id the mod's creatures start at — the shipped count when it was made. */
   first: number;
   creatures: ModCreature[];
+  /**
+   * Buildings that hire creatures. In the same mod because they are the same
+   * delivery — one archive, one install — but they cost the game nothing global:
+   * no reference table, no ceiling, no patched executable. A mod of nothing but
+   * dwellings needs no patched game at all. See src/dwellings.ts.
+   */
+  dwellings: DwellingSpec[];
 }
 
 /** A fresh, empty mod. */
 export function newCreatureMod(stem = MOD_STEM): CreatureMod {
-  return { version: 1, stem, first: SHIPPED_CREATURES, creatures: [] };
+  return { version: 1, stem, first: SHIPPED_CREATURES, creatures: [], dwellings: [] };
+}
+
+/** Append a dwelling. Unlike a creature it holds no id, so order is cosmetic. */
+export function addDwelling(mod: CreatureMod, spec: DwellingSpec): DwellingSpec {
+  if (!spec.creatures.length) throw new Error(`${spec.file}: a dwelling with no creatures hires nothing`);
+  if (mod.dwellings.some((d) => d.file === spec.file)) {
+    throw new Error(`two dwellings cannot both be "${spec.file}"`);
+  }
+  mod.dwellings.push(spec);
+  return spec;
 }
 
 /**
@@ -278,7 +300,7 @@ export interface BuildReport {
  * a test.
  */
 export function buildCreatureMod(mod: CreatureMod, read: DataReader): BuildReport {
-  if (!mod.creatures.length) throw new Error('the mod has no creatures, so there is no slot to open');
+  if (!mod.creatures.length && !mod.dwellings.length) throw new Error('the mod is empty');
   const limit = creatureLimit(mod);
   const files: ModFile[] = [];
   const art: Record<string, number> = {};
@@ -330,14 +352,268 @@ export function buildCreatureMod(mod: CreatureMod, read: DataReader): BuildRepor
     files.push({ path: p.abilities, data: utf16(c.abilitiesText) });
   }
 
-  files.push({ path: TYPES, data: Buffer.from(patchTypes(mustRead(read, TYPES), mod, limit), 'latin1') });
-  files.push({ path: REF_TABLE, data: Buffer.from(patchRefTable(mustRead(read, REF_TABLE), mod, read), 'latin1') });
-  files.push({ path: UI_ROOT, data: Buffer.from(patchUiRoot(mustRead(read, UI_ROOT), mod), 'latin1') });
+  files.push(...buildDwellings(mod.dwellings, read));
+
+  // Only creatures need the game's own files touched: the enum and the id→number
+  // map in types.xml, the reference table the ceiling indexes, and the hire
+  // screen. A mod of nothing but dwellings edits nothing of the game's and needs
+  // no patched executable — so it must not carry these at all.
+  if (mod.creatures.length) {
+    files.push({ path: TYPES, data: Buffer.from(patchTypes(mustRead(read, TYPES), mod, limit), 'latin1') });
+    files.push({ path: REF_TABLE, data: Buffer.from(patchRefTable(mustRead(read, REF_TABLE), mod, read), 'latin1') });
+    files.push({ path: UI_ROOT, data: Buffer.from(patchUiRoot(mustRead(read, UI_ROOT), mod), 'latin1') });
+  }
 
   // Last, so it records the art each slot actually resolved to.
   files.unshift({ path: MOD_MANIFEST, data: Buffer.from(`${JSON.stringify(mod, null, 2)}\n`, 'utf8') });
 
   return { files, limit, art, missing };
+}
+
+/**
+ * The files every dwelling in the mod contributes: its document, its palette
+ * entry, and a text file for each message given as text rather than a reference.
+ *
+ * The model is REFERENCED, not copied — the opposite of a creature's art, and for
+ * a reason: a creature's art is copied so the mod can recolour or replace it
+ * without touching the original, while a dwelling stands on a shipped building
+ * every install already has. Copying one would add megabytes for nothing. A
+ * dwelling that wants art of its own can point at a model the mod carries; the
+ * href is the href either way.
+ */
+function buildDwellings(dwellings: readonly DwellingSpec[], read: DataReader): ModFile[] {
+  if (!dwellings.length) return [];
+  const files: ModFile[] = [];
+  // Once for all of them: the field order every document is written in.
+  const types = parseTypeSpec(mustRead(read, TYPES));
+  const text = (rel: string): string | null => {
+    const b = read(rel);
+    return b ? b.toString('latin1') : null;
+  };
+  for (const d of dwellings) {
+    const p = dwellingPaths(d);
+    if (!text(refPath(d.model))) throw new Error(`${d.file}: no model at ${d.model}`);
+
+    // A town building has to be copied and resized before it is a map object;
+    // anything already at map scale is referenced where it lies.
+    let model = d.model;
+    let ground = d.ground;
+    const own = new Map<string, Buffer>();
+    if (d.bake) {
+      const baked = bakeModel(d, p, read);
+      for (const f of baked.files) { files.push(f); own.set(f.path, f.data); }
+      model = baked.model;
+      // Its pedestal is under the map; cutting a hole would show the hole.
+      if (baked.sunk && ground === undefined) ground = null;
+    }
+    // Read from the mod first, then the game: a baked model is only in the mod.
+    const readEither = (rel: string): string | null => {
+      const mine = own.get(rel);
+      return mine ? mine.toString('latin1') : text(rel);
+    };
+    // Measured off the art; the spec overrides either area if it wants to.
+    const measured = d.footprint && ground ? ground : footprintOf(model, readEither);
+    if (!measured) {
+      throw new Error(`${d.file}: cannot measure ${model} — give footprint and ground in the spec instead`);
+    }
+    files.push({ path: p.shared, data: Buffer.from(dwellingDoc({ ...d, model, ground }, p, types, measured), 'latin1') });
+    // The palette tile. The editor's thumbnail cache is keyed by link path and
+    // only the game's installer writes it, so the link names a texture instead —
+    // the dwelling's own icon, which is a shipped one unless the mod says else.
+    files.push({ path: p.link, data: Buffer.from(dwellingLink(p, refPath(d.icon ?? '')), 'latin1') });
+    for (const slot of MESSAGE_SLOTS) {
+      const message = d[slot];
+      if (message && !isRef(message)) files.push({ path: p.text[slot], data: utf16(message) });
+    }
+  }
+  return files;
+}
+
+/**
+ * Copy a town-screen building into the mod as an adventure-map model.
+ *
+ * Two things are wrong with a town building as it ships, and both are in the
+ * geometry rather than in any field: it is 2 to 3 times map scale, and its
+ * positions are where it stands in the town scene rather than around the origin.
+ * So the whole art closure is copied (fresh uids, exactly as a creature's is) and
+ * then the copied POSITIONS are moved to the origin and scaled — the only array
+ * in the file that holds a coordinate, see placeGeometry.
+ *
+ * What follows the positions is the geometry document's own bounding box, which
+ * the engine and the editor both take at face value, and the AI geometry beside
+ * it, which is the same container and gets the same treatment.
+ */
+function bakeModel(d: DwellingSpec, p: DwellingPaths, read: DataReader): {
+  files: ModFile[]; model: string; sunk: boolean;
+} {
+  let pedestalSunk = false;
+  const source = dataPath(d.model);
+  const copied = copyArt([source], p.art, read, `dwelling:${d.file}`);
+  const modelPath = copied.at.get(source);
+  if (!modelPath) throw new Error(`${d.file}: ${d.model} is not in the game's data`);
+
+  const tiles = d.bake!.tiles;
+  if (!(tiles > 0)) throw new Error(`${d.file}: bake needs a size in tiles`);
+  // The first geometry is the model's own; the AI geometry hanging off it follows
+  // by the same transform so the two do not disagree about where the walls are.
+  const target = tiles * 2;
+  let placement: { scale: number; shift: [number, number, number] } | null = null;
+
+  const geometryOf = (docPath: string): { path: string; text: string; uid: string; bin: string } | null => {
+    const doc = copied.files.get(docPath)?.toString('latin1');
+    if (!doc) return null;
+    const uid = /<uid>([0-9A-Fa-f-]{36})<\/uid>/.exec(doc)?.[1];
+    if (!uid) return null;
+    const bin = doc.startsWith('<?xml version="1.0" encoding="UTF-8"?>\r\n<AIGeometry')
+      || /<AIGeometry\b/.test(doc.slice(0, 200))
+      ? `bin/AIGeometries/${uid.toUpperCase()}`
+      : `bin/Geometries/${uid.toUpperCase()}`;
+    return { path: docPath, text: doc, uid, bin };
+  };
+
+  /** Every geometry document the copy holds, model's own first. */
+  const geometries: string[] = [];
+  const modelDoc = copied.files.get(modelPath)!.toString('latin1');
+  const first = hrefOf(modelDoc, 'Geometry');
+  if (!first) throw new Error(`${d.file}: ${d.model} names no geometry`);
+  const at = resolve(modelPath, first);
+  if (at) geometries.push(at);
+  for (const g of [...geometries]) {
+    const doc = copied.files.get(g)?.toString('latin1');
+    const ai = doc ? hrefOf(doc, 'AIGeometry') : null;
+    const aiAt = ai ? resolve(g, ai) : null;
+    if (aiAt && copied.files.has(aiAt)) geometries.push(aiAt);
+  }
+
+  for (const [i, g] of geometries.entries()) {
+    const geom = geometryOf(g);
+    if (!geom) continue;
+    const bytes = copied.files.get(geom.bin);
+    if (!bytes) continue;
+    if (!placement) {
+      const box = positionsBox(bytes);
+      if (!box) throw new Error(`${d.file}: cannot read the positions of ${geom.bin}`);
+      const widest = Math.max(box.sx, box.sy);
+      if (!(widest > 0)) throw new Error(`${d.file}: ${d.model} has no size`);
+      // Where the ground is. A town building does not stand on its own base: the
+      // Sylvan town is built up in terraces, so every one of its buildings sits
+      // on a PEDESTAL — a column the town's landscape hides — and a model placed
+      // by its lowest point is a building on a stalk. The pedestal mesh is named
+      // in the geometry document (`…Pod_O`, the game's word for a base, the same
+      // one its materials use), so the ground is the TOP of that column and the
+      // column goes below the map. The terrain then hides it, which is why a baked
+      // dwelling cuts no hole in the ground.
+      const found = d.bake!.ground ?? groundLevel(geom.text, bytes);
+      pedestalSunk = found !== null;
+      const floor = found ?? box.cz - box.sz / 2;
+      placement = { scale: target / widest, shift: [-box.cx, -box.cy, -floor] };
+    }
+    const placed = placeGeometry(bytes, placement);
+    if (placed) {
+      copied.files.set(geom.bin, placed.data);
+      copied.files.set(geom.path, Buffer.from(retuneBox(geom.text, placed.bbox, placement), 'latin1'));
+      continue;
+    }
+    // The model's own geometry must be placeable — that is the mesh on screen.
+    if (i === 0) throw new Error(`${d.file}: cannot place ${geom.bin}`);
+    // The AI's copy of it is a different container, and a mesh the AI thinks is
+    // three times the size is worse than none: 598 shipped models carry no AI
+    // geometry at all, so the reference goes and its files with it.
+    copied.files.delete(geom.path);
+    copied.files.delete(geom.bin);
+    const owner = geometries[i - 1]!;
+    const doc = copied.files.get(owner)?.toString('latin1');
+    if (doc) copied.files.set(owner, Buffer.from(doc.replace(/<AIGeometry href="[^"]*"\s*\/>/, '<AIGeometry/>'), 'latin1'));
+  }
+
+  return {
+    files: [...copied.files].map(([path, data]) => ({ path, data })),
+    model: `/${modelPath}#xpointer(/Model)`,
+    sunk: pedestalSunk,
+  };
+}
+
+/**
+ * Where the GROUND is in a town building, in its own coordinates.
+ *
+ * A town is built in terraces and every building stands on one, on a column of
+ * rock the town's own landscape hides. Place such a model by its lowest point and
+ * you get a building on a stalk. So the terrace has to be found, and the model
+ * says where it is if you ask the right mesh: **the decoration stands on it**. No
+ * modeller hangs grass off the underside of a cliff, so the lowest leaf, plant or
+ * tree in the file is the ground — and across the four Sylvan tier-4-to-7
+ * buildings that agrees with the top of the pedestal mesh where there is one
+ * (the Unicorn Glade: pedestal ends at 41.6, its trees start at 41.5).
+ *
+ * Asking the pedestal directly is the fallback rather than the rule because the
+ * naming does not hold: the Unicorn Glade and the Forest Nest have a `…Pod_O`,
+ * while Stonehenge's column is part of its main mesh and the Treant Arches' is
+ * too. Nothing to key on there — but all four have decoration.
+ *
+ * The geometry document names its meshes and says how many material groups each
+ * splits into; the decoder returns those groups in the same order, so a group
+ * belongs to whichever mesh's run it falls in.
+ */
+function groundLevel(doc: string, bin: Buffer): number | null {
+  const list = (tag: string): string[] => {
+    const body = new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`).exec(doc)?.[1] ?? '';
+    return [...body.matchAll(/<Item>([^<]*)<\/Item>/g)].map((m) => m[1]!);
+  };
+  const names = list('MeshNames');
+  const quantities = list('MaterialQuantities').map(Number);
+  if (!names.length || names.length !== quantities.length) return null;
+  const groups = extractMeshesStructured(bin);
+  if (!groups) return null;
+
+  const zRange = (from: number, runs: number): { lo: number; hi: number } | null => {
+    let lo = Infinity, hi = -Infinity;
+    for (const g of groups.slice(from, from + runs)) {
+      for (let v = 2; v < g.positions.length; v += 3) {
+        const z = g.positions[v]!;
+        if (z < lo) lo = z;
+        if (z > hi) hi = z;
+      }
+    }
+    return lo === Infinity ? null : { lo, hi };
+  };
+
+  let decoration: number | null = null;
+  let pedestal: number | null = null;
+  let at = 0;
+  for (let i = 0; i < names.length; i++) {
+    const runs = quantities[i]! || 1;
+    const z = zRange(at, runs);
+    at += runs;
+    if (!z) continue;
+    if (/plant|tree|grass|flower|leaf|bush/i.test(names[i]!)) {
+      if (decoration === null || z.lo < decoration) decoration = z.lo;
+    } else if (/pod/i.test(names[i]!)) {
+      if (pedestal === null || z.hi > pedestal) pedestal = z.hi;
+    }
+  }
+  return decoration ?? pedestal;
+}
+
+/** Rewrite a geometry document's box and its best-fit point to match the mesh. */
+function retuneBox(doc: string, box: BBox, p: { scale: number; shift: [number, number, number] }): string {
+  const vec = (tag: string, x: number, y: number, z: number): [RegExp, string] => [
+    new RegExp(`(<${tag}>\\s*<x>)[^<]*(</x>\\s*<y>)[^<]*(</y>\\s*<z>)[^<]*(</z>)`),
+    `$1${x.toFixed(4)}$2${y.toFixed(4)}$3${z.toFixed(4)}$4`,
+  ];
+  let out = doc;
+  for (const [re, to] of [
+    vec('Size', box.sx, box.sy, box.sz),
+    vec('Center', box.cx, box.cy, box.cz),
+  ]) out = out.replace(re, to);
+  // The best-fit point is a position too — where the object's label and its
+  // selection marker hang — so it follows the same transform rather than a box.
+  const fit = /(<BestFitPoint>\s*<x>)([^<]*)(<\/x>\s*<y>)([^<]*)(<\/y>\s*<z>)([^<]*)(<\/z>)/.exec(out);
+  if (fit) {
+    const moved = [Number(fit[2]), Number(fit[4]), Number(fit[6])]
+      .map((v, i) => (v + p.shift[i]!) * p.scale);
+    out = out.replace(fit[0], `${fit[1]}${moved[0]!.toFixed(4)}${fit[3]}${moved[1]!.toFixed(4)}${fit[5]}${moved[2]!.toFixed(4)}${fit[7]}`);
+  }
+  return out;
 }
 
 /** Write a built mod out as a project folder — the editable form. */
@@ -403,13 +679,13 @@ export function readCreatureMod(archivePath: string): FoundMod | null {
 
     const manifest = member(MOD_MANIFEST);
     if (manifest) {
-      const mod = JSON.parse(manifest.toString('utf8')) as CreatureMod;
-      if (mod.version === 1 && Array.isArray(mod.creatures)) {
-        return { path: archivePath, mod, limit: creatureLimit(mod) };
-      }
+      const mod = readManifest(manifest);
+      if (mod) return { path: archivePath, mod, limit: creatureLimit(mod) };
     }
 
     // No manifest — but a creature mod is recognisable from what it must carry.
+    // A dwelling leaves no such trace: it edits nothing of the game's, so an
+    // archive without a manifest is only ever read for its creatures.
     const types = member(TYPES);
     const table = member(REF_TABLE);
     if (!types || !table) return null;
@@ -426,11 +702,29 @@ export function readCreatureModBuffer(archive: Buffer): CreatureMod | null {
   const members = new Map<string, Buffer>();
   for (const e of readEntries(archive)) members.set(e.name.replace(/\\/g, '/'), e.data);
   const manifest = members.get(MOD_MANIFEST);
-  if (manifest) return JSON.parse(manifest.toString('utf8')) as CreatureMod;
+  if (manifest) return readManifest(manifest);
   const types = members.get(TYPES);
   const table = members.get(REF_TABLE);
   if (!types || !table) return null;
   return reconstruct(types.toString('latin1'), table.toString('latin1'));
+}
+
+/**
+ * Our manifest, or null when the bytes are not one.
+ *
+ * `dwellings` is filled in when it is absent: every mod built before dwellings
+ * existed has a manifest without it, and the rest of the code reads the field.
+ */
+function readManifest(bytes: Buffer): CreatureMod | null {
+  let mod: CreatureMod;
+  try {
+    mod = JSON.parse(bytes.toString('utf8')) as CreatureMod;
+  } catch {
+    return null;
+  }
+  if (mod.version !== 1 || !Array.isArray(mod.creatures)) return null;
+  if (!Array.isArray(mod.dwellings)) mod.dwellings = [];
+  return mod;
 }
 
 /**
@@ -542,6 +836,9 @@ function reconstruct(types: string, table: string): CreatureMod {
     version: 1, stem: MOD_STEM,
     first: creatures[0]?.number ?? SHIPPED_CREATURES,
     creatures,
+    // Nothing to reconstruct them from: a dwelling is an ordinary object file
+    // among a mod's other files, with no registry to enumerate.
+    dwellings: [],
   };
 }
 

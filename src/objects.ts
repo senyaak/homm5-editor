@@ -35,10 +35,10 @@ export interface PlaceableObject {
   /**
    * What the palette shows under the icon.
    *
-   * A monster's own creature name comes first — that is the name the game and
-   * the army picker use, and it is the ONLY source for a creature a mod added,
-   * whose file name is a file name and not a name. Otherwise the icon cache's,
-   * and `name` when there is neither.
+   * The object's OWN name comes first, where its type has one: a monster's
+   * creature, a dwelling's first message. That is the name the game shows, and
+   * the only source for anything a mod added, whose file name is a file name and
+   * not a name. Otherwise the icon cache's, and `name` when there is neither.
    */
   label: string;
   /** The tooltip the original shows, when the cache carries one. */
@@ -185,7 +185,7 @@ export function listPlaceable(root: string | Assets, editorRoot: string): {
   const bases = data.dirs(LINK_ROOT);
   if (!bases.length) return { objects, groups };
   const seen = new Set<string>();
-  const creatureName = creatureLabeller(data);
+  const nameOf = sharedLabeller(data);
 
   let base = bases[0]!;
   const walk = (dir: string): void => {
@@ -219,7 +219,7 @@ export function listPlaceable(root: string | Assets, editorRoot: string): {
       objects.push({
         path: rel,
         name: leaf,
-        label: creatureName(link.type, link.shared) || meta.name?.trim() || leaf,
+        label: nameOf(link.type, link.shared) || meta.name?.trim() || leaf,
         description: meta.description?.trim() || null,
         group: groupOf(rel, groups),
         shared: link.shared,
@@ -232,7 +232,7 @@ export function listPlaceable(root: string | Assets, editorRoot: string): {
   };
   for (const b of bases) { base = b; walk(b); }
   const linked = new Set(objects.map((x) => sharedKey(x.shared)));
-  for (const o of unlinkedShared(data, linked, creatureName)) objects.push(o);
+  for (const o of unlinkedShared(data, linked, nameOf)) objects.push(o);
   // Sorted by the label, which is what the original orders by — Arcane Library
   // lands beside Alchemist Lab rather than under S for SpellShop.
   objects.sort((a, b) => a.group.localeCompare(b.group) || a.label.localeCompare(b.label));
@@ -246,26 +246,36 @@ const sharedKey = (href: string): string => href.toLowerCase().replace(/^\/+/, '
 const hrefPath = (href: string): string => href.split('#')[0]!.replace(/^\/+/, '');
 
 /**
- * Names a monster entry by its creature, the way the roster does.
+ * Names an entry from its own data, when the object type carries a name at all.
  *
  * The palette's own name source is the icon cache, which only the game's
  * installer writes: it has nothing for anything a mod adds, so such an entry
  * fell back to the LINK FILE'S NAME. That is a path, not a name — and the way to
- * change it was to rename a file, which is backwards. The creature's name is in
- * the mod already, under the same id the map stores, so it is read from there.
+ * change it was to rename a file, which is backwards.
  *
- * 49 of the 187 shipped monsters have no cache name either and gain one here.
- * The roster is built lazily and once: a catalogue with no monsters in it (a
- * synthetic data root in a test) never pays for it.
+ * Two types do carry one, each somewhere else:
+ *
+ *   a MONSTER names a creature, and the creature's name is what the roster and
+ *     the game show. 49 of the 187 shipped monsters have no cache name either
+ *     and gain one here.
+ *   a DWELLING's first message IS its name — true of all 42 shipped dwellings,
+ *     so the "Поляна единорогов" a captured building calls itself is on its tile.
+ *
+ * Gated on the type because the alternative is reading all 1467 shared
+ * definitions for the handful that say anything. The creature roster is built
+ * lazily and once, so a catalogue with no monsters never pays for it.
  */
-function creatureLabeller(data: Assets): (type: string, shared: string) => string {
+function sharedLabeller(data: Assets): (type: string, shared: string) => string {
   let names: Map<string, string> | null = null;
   return (type, shared) => {
-    // Only monsters name a creature, and reading 1467 shared definitions to
-    // learn that is 1467 file reads the catalogue does not otherwise need.
-    if (type !== 'AdvMapMonster') return '';
+    if (type !== 'AdvMapMonster' && type !== 'AdvMapDwelling') return '';
     const xml = data.text(hrefPath(shared));
-    const id = xml ? /<Creature>\s*([A-Za-z0-9_]+)\s*<\/Creature>/.exec(xml)?.[1] : undefined;
+    if (!xml) return '';
+    if (type === 'AdvMapDwelling') {
+      const first = /<messagesFileRef>\s*<Item href="([^"]+)"/.exec(xml)?.[1];
+      return first ? gameText(data, first) : '';
+    }
+    const id = /<Creature>\s*([A-Za-z0-9_]+)\s*<\/Creature>/.exec(xml)?.[1];
     if (!id) return '';
     if (!names) {
       names = new Map();
@@ -273,6 +283,14 @@ function creatureLabeller(data: Assets): (type: string, shared: string) => strin
     }
     return names.get(id) ?? '';
   };
+}
+
+/** A HoMM5 text file's contents: UTF-16 LE with a byte-order mark. */
+function gameText(data: Assets, href: string): string {
+  const b = data.bytes(hrefPath(href));
+  if (!b || !b.length) return '';
+  const s = b.length >= 2 && b[0] === 0xff && b[1] === 0xfe ? b.toString('utf16le', 2) : b.toString('utf8');
+  return s.replace(/\0+$/, '').trim();
 }
 
 /** Group name for a shared definition no filter covers — its own top folder. */
@@ -299,7 +317,7 @@ const sharedGroup = (rel: string): string => {
 function unlinkedShared(
   data: Assets,
   linked: Set<string>,
-  creatureName: (type: string, shared: string) => string,
+  nameOf: (type: string, shared: string) => string,
 ): PlaceableObject[] {
   const out: PlaceableObject[] = [];
   const roots = data.dirs('MapObjects');
@@ -328,7 +346,7 @@ function unlinkedShared(
         name: m[1]!,
         // A creature a mod ships without a link file lands here, and this is the
         // only chance it gets to be named.
-        label: creatureName(type, href) || m[1]!,
+        label: nameOf(type, href) || m[1]!,
         description: null,
         group: sharedGroup(rel),
         shared: href,

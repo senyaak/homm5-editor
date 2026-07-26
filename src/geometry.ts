@@ -662,3 +662,81 @@ function repairZeroNormals(positions: Float32Array, normals: Float32Array, indic
     else { normals[v * 3]! /= l; normals[v * 3 + 1]! /= l; normals[v * 3 + 2]! /= l; }
   }
 }
+
+// --- moving and resizing a mesh ----------------------------------------------
+//
+// Why this is safe, and it is worth being explicit because it is a binary the
+// game reads: of the arrays a mesh group holds, exactly ONE carries coordinates.
+//
+//   tag 2  positions      float3 per position       <- transformed
+//   tag 3  render verts   u16 UV over 2048, then packed normals as bytes
+//   tag 4  vertex extras  normals and tangents, packed
+//   tag 5/6 remap         u16 indices into tag 2
+//   tag 7  triangles      u16 indices into the remap
+//
+// A uniform scale leaves normals, tangents and texture coordinates exactly as
+// they were, and a translation leaves them alone too, so nothing but tag 2 needs
+// touching — and every record keeps its length, so the container's framing is
+// untouched as well. What DOES have to follow is the bounding box in the geometry
+// document, which the engine and our own reader take at face value.
+
+/** A position transform: same for every vertex of the file. */
+export interface Placement {
+  /** Uniform scale, applied about the origin after the shift. */
+  scale: number;
+  /** Added to every position BEFORE scaling — usually minus the old centre. */
+  shift: [number, number, number];
+}
+
+/**
+ * Rewrite every position in a geometry binary, and report the box they end in.
+ *
+ * The buffer is copied rather than edited in place: the caller's copy is often
+ * the one still needed for comparison, and the file is a few hundred kilobytes.
+ */
+export function placeGeometry(b: Buffer, p: Placement): { data: Buffer; bbox: BBox } | null {
+  const out = Buffer.from(b);
+  const top = recordsIn(out, 0, out.length);
+  const root = top.find((r) => r.tag === 1);
+  if (!root) return null;
+  const outer = recordsIn(out, root.at, root.end).find((r) => r.tag === 2);
+  if (!outer) return null;
+  const blocks = recordsIn(out, outer.at, outer.end).filter((r) => r.tag === 1);
+  if (!blocks.length) return null;
+
+  let lo = [Infinity, Infinity, Infinity];
+  let hi = [-Infinity, -Infinity, -Infinity];
+  let moved = 0;
+  for (const block of blocks) {
+    for (const group of recordsIn(out, block.at, block.end).filter((r) => r.tag === 1)) {
+      const parts = recordsIn(out, group.at, group.end);
+      const rec = parts.find((x) => x.tag === 2);
+      const arr = rec ? countedArray(out, rec.at, rec.end) : null;
+      if (!arr || arr.len < arr.count * 12) continue;
+      for (let i = 0; i < arr.count; i++) {
+        for (let c = 0; c < 3; c++) {
+          const at = arr.at + i * 12 + c * 4;
+          const v = (out.readFloatLE(at) + p.shift[c]!) * p.scale;
+          out.writeFloatLE(v, at);
+          if (v < lo[c]!) lo[c] = v;
+          if (v > hi[c]!) hi[c] = v;
+        }
+      }
+      moved += arr.count;
+    }
+  }
+  if (!moved) return null;
+  return {
+    data: out,
+    bbox: {
+      cx: (lo[0]! + hi[0]!) / 2, cy: (lo[1]! + hi[1]!) / 2, cz: (lo[2]! + hi[2]!) / 2,
+      sx: hi[0]! - lo[0]!, sy: hi[1]! - lo[1]!, sz: hi[2]! - lo[2]!,
+    },
+  };
+}
+
+/** Read the positions' own extent, which is what a bounding box should say. */
+export function positionsBox(b: Buffer): BBox | null {
+  const got = placeGeometry(b, { scale: 1, shift: [0, 0, 0] });
+  return got ? got.bbox : null;
+}

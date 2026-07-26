@@ -82,7 +82,14 @@ const between = (s: string, open: string, close: string): string | null => {
  * type simply becomes an entry of its own.
  */
 export function readTypeSpec(path: string): Map<string, SpecType> {
-  const xml = readFileSync(path, 'utf8');
+  return parseTypeSpec(readFileSync(path, 'utf8'));
+}
+
+/**
+ * The same, from the text — for a types.xml that is not a file on disk yet: the
+ * one a mod carries, read out of an archive or through the mounted chain.
+ */
+export function parseTypeSpec(xml: string): Map<string, SpecType> {
   const out = new Map<string, SpecType>();
   // Arrays are declared ANONYMOUSLY — no <TypeName>, so the split below never
   // sees them. They are what a list field points at, and the element type
