@@ -74,6 +74,15 @@ ignored, so an archive can be mounted, correct and completely without effect.
   archive replaces files rather than merging them, so two maps in `Maps/` that
   each carry their own `Creatures.xdb` do not compose — one wins outright. The
   unit of a creature set is the project, not the map.
+- **The editor has to mount them too, or it shows a different game.** Reading one
+  unpacked data root is reading the shipped game, not the installed one. With the
+  creature mod installed and the editor reading only `data-unpacked`, the army
+  picker offered 180 of 181 creatures and a map that placed the 181st **dropped
+  the object from the scene** — no error, just an absent unit. So the editor
+  resolves through a CHAIN of roots (`src/assets.ts`), the mounted mods over the
+  data, which is the same "topmost wins" rule one file at a time. Folder scans
+  walk every root and dedupe, because a mod adding an object does not replace the
+  folder it sits in.
 
 ## What this does not establish
 
@@ -90,4 +99,8 @@ ignored, so an archive can be mounted, correct and completely without effect.
 
 - `src/pak.ts` — `writeArchive`, member naming and the timestamp rule.
 - `src/project.ts` — `packProject`, which decides what goes into an archive.
-- `src/creature-mod.ts` — what a units mod carries and why.
+- `src/creature-mod.ts` — what a units mod carries and why, and
+  `mountCreatureMods`, which unpacks the installed ones for the editor to read.
+- `src/assets.ts` — the root chain the editor resolves through, so it sees the
+  installed game rather than the shipped one.
+- `electron/paths.ts` — `mountedAssets`, where the chain is assembled per map.

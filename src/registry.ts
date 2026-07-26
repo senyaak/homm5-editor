@@ -10,15 +10,17 @@
 // under MapObjects) shows up on its own. The PDF ID lists in
 // `Editor Documentation/` are a human cross-check, not the source here.
 //
-// `dataRoot` is the resolved asset root: the unpacked game data with the open
-// project's own files layered on top, so a project that overrides a table is
-// seen. Layering *several* roots (base game + separate mod paks) is the natural
-// extension — the readers below take one root today; widening them to a resolver
-// chain is where that goes.
+// The rosters read the MOUNTED asset chain (src/assets.ts), not one folder: the
+// unpacked game data with the installed mods and the open project layered over
+// it. That is what makes a creature a mod adds show up in the army picker —
+// `Creatures.xdb` is not one file, it is whichever copy wins, and the mod's copy
+// is the one with 181 entries in it.
 
-import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, basename, relative, sep } from 'node:path';
 import { parse, find, children, childText } from './xml.ts';
+import { toAssets } from './assets.ts';
+import type { Assets } from './assets.ts';
 
 /** One choice in a picker: an engine id (or a ref href) and a display label. */
 export interface RosterEntry {
@@ -75,9 +77,9 @@ const RACES: RosterEntry[] = [
 
 export class Registry {
   private cache = new Map<string, RosterEntry[]>();
-  private dataRoot: string;
+  private data: Assets;
 
-  constructor(dataRoot: string) { this.dataRoot = dataRoot; }
+  constructor(root: string | Assets) { this.data = toAssets(root); }
 
   /** Compute a roster once, then serve it from cache. */
   private memo(key: string, build: () => RosterEntry[]): RosterEntry[] {
@@ -91,22 +93,22 @@ export class Registry {
 
   /** Every spell (`UndividedSpells.xdb`) — 353 in stock Tribes of the East. */
   spells(): RosterEntry[] {
-    return this.memo('spells', () => readRefTable(this.dataRoot, SPELL_TABLE));
+    return this.memo('spells', () => readRefTable(this.data, SPELL_TABLE));
   }
 
   /** Every artifact (`Artifacts.xdb`), each with its localized name ref. */
   artifacts(): RosterEntry[] {
-    return this.memo('artifacts', () => readRefTable(this.dataRoot, ARTIFACT_TABLE));
+    return this.memo('artifacts', () => readRefTable(this.data, ARTIFACT_TABLE));
   }
 
   /** Every creature (`Creatures.xdb`) — army stacks, garrisons, dwellings. */
   creatures(): RosterEntry[] {
-    return this.memo('creatures', () => readRefTable(this.dataRoot, CREATURE_TABLE));
+    return this.memo('creatures', () => readRefTable(this.data, CREATURE_TABLE));
   }
 
   /** Every hero skill and perk (`Skills.xdb`) — hero editing. */
   skills(): RosterEntry[] {
-    return this.memo('skills', () => readRefTable(this.dataRoot, SKILL_TABLE));
+    return this.memo('skills', () => readRefTable(this.data, SKILL_TABLE));
   }
 
   /** Player races — the fixed `TOWN_*` enum. */
@@ -119,7 +121,7 @@ export class Registry {
    * class-based rosters below and the tree's "…" browse picker share.
    */
   objectsOfClass(className: string): RosterEntry[] {
-    return this.memo('class:' + className, () => scanClass(this.dataRoot, className));
+    return this.memo('class:' + className, () => scanClass(this.data, className));
   }
 
   /**
@@ -154,10 +156,10 @@ export class Registry {
  * definition ref and an optional `<NameFileRef>`. `ARTIFACT_NONE` / `SPELL_NONE`
  * are kept: they are legal values the map uses.
  */
-function readRefTable(dataRoot: string, rel: string): RosterEntry[] {
-  const path = join(dataRoot, rel);
-  if (!existsSync(path)) return [];
-  const doc = parse(readFileSync(path, 'utf8'));
+function readRefTable(data: Assets, rel: string): RosterEntry[] {
+  const text = data.text(rel);
+  if (text === null) return [];
+  const doc = parse(text);
   // The table's root element name varies (Table_Spell_SpellID,
   // Table_DBArtifact_ArtifactEffect), so reach <objects> under the root rather
   // than by a fixed path. find() is direct-children only.
@@ -194,9 +196,13 @@ function walkFiles(dir: string, test: (name: string) => boolean, out: string[] =
   return out;
 }
 
-/** A data-root-relative fs path as a leading-slash href the map uses. */
-function toHref(dataRoot: string, path: string, xpointer: string): string {
-  const rel = relative(dataRoot, path).split(sep).join('/');
+/**
+ * An fs path as the leading-slash href the map stores. Relative to the ROOT, so
+ * two mounted roots holding the same definition produce the same href — which is
+ * how the scan dedupes them.
+ */
+function toHref(root: string, path: string, xpointer: string): string {
+  const rel = relative(root, path).split(sep).join('/');
   return `/${rel}#xpointer(${xpointer})`;
 }
 
@@ -209,35 +215,41 @@ function toHref(dataRoot: string, path: string, xpointer: string): string {
  * A map can also point at a custom entity saved in its own folder; once that
  * folder is layered onto the data root, this picks it up like any other.
  */
-function scanClass(dataRoot: string, className: string): RosterEntry[] {
+function scanClass(data: Assets, className: string): RosterEntry[] {
   const suffix = `.(${className}).xdb`;
   const libSeg = `_(${className})`;
   const xpointer = '/' + className;
   const out: RosterEntry[] = [];
   const seen = new Set<string>();
-  for (const dir of OBJECT_DIRS) {
-    const base = join(dataRoot, dir);
-    for (const f of walkFiles(base, (n) => n.endsWith('.xdb'))) {
-      if (seen.has(f)) continue;
-      const bn = basename(f);
-      const parts = relative(base, f).split(sep);
-      const bySuffix = bn.endsWith(suffix);
-      const inLib = parts.includes(libSeg);
-      if (!bySuffix && !inLib) continue;
-      seen.add(f);
-      let name: string;
-      let group: string | undefined;
-      if (bySuffix) {
-        // A placed-object definition: base name, grouped by its top folder.
-        name = bn.slice(0, -suffix.length);
-        group = parts[0] && !parts[0].endsWith('.xdb') ? parts[0] : undefined;
-      } else {
-        // A library entity: prefer its InternalName label.
-        let internal = '';
-        try { internal = childText(parse(readFileSync(f, 'utf8')), 'InternalName'); } catch { /* keep basename */ }
-        name = internal || bn.replace(/\.xdb$/, '');
+  // Every mounted root, and each object folder inside it. Keyed by the HREF, so
+  // a definition a mod overrides is listed once — under the topmost root, which
+  // is the copy the game will read.
+  for (const root of data.roots) {
+    for (const dir of OBJECT_DIRS) {
+      const base = join(root, dir);
+      for (const f of walkFiles(base, (n) => n.endsWith('.xdb'))) {
+        const href = toHref(root, f, xpointer);
+        if (seen.has(href)) continue;
+        const bn = basename(f);
+        const parts = relative(base, f).split(sep);
+        const bySuffix = bn.endsWith(suffix);
+        const inLib = parts.includes(libSeg);
+        if (!bySuffix && !inLib) continue;
+        seen.add(href);
+        let name: string;
+        let group: string | undefined;
+        if (bySuffix) {
+          // A placed-object definition: base name, grouped by its top folder.
+          name = bn.slice(0, -suffix.length);
+          group = parts[0] && !parts[0].endsWith('.xdb') ? parts[0] : undefined;
+        } else {
+          // A library entity: prefer its InternalName label.
+          let internal = '';
+          try { internal = childText(parse(readFileSync(f, 'utf8')), 'InternalName'); } catch { /* keep basename */ }
+          name = internal || bn.replace(/\.xdb$/, '');
+        }
+        out.push(group ? { id: href, name, group } : { id: href, name });
       }
-      out.push(group ? { id: toHref(dataRoot, f, xpointer), name, group } : { id: toHref(dataRoot, f, xpointer), name });
     }
   }
   out.sort((a, b) => (a.group || '').localeCompare(b.group || '') || (a.name || '').localeCompare(b.name || ''));

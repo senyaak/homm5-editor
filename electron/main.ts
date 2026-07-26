@@ -18,7 +18,8 @@ import { readFileSync, writeFileSync, existsSync, readdirSync, statSync, mkdirSy
 import { createHash } from 'node:crypto';
 import { buildScene, findAssetRoot, listTiles, splatFor, pngDataUri } from '../src/scene.ts';
 import { listPlaceable, iconPathFor, readIconFile } from '../src/objects.ts';
-import { editorRoot, gameData, gameRoot, isConfigured, preloadPath, rendererFile, tmpRoot } from './paths.ts';
+import { editorRoot, gameData, gameRoot, isConfigured, mountedAssets, preloadPath, rendererFile, tmpRoot } from './paths.ts';
+import type { Assets } from '../src/assets.ts';
 import { closeSetup, runSetup } from './setup.ts';
 import { initProject, openProject, packProject, exportLocalized, readManifest, writeManifest, status, pickMapRel, MANIFEST_NAME } from '../src/project.ts';
 import { listDirFiles } from '../src/pak.ts';
@@ -97,8 +98,14 @@ interface Session {
   mapPath: string;
   /** Folder holding map.xdb — the project dir for status()/packProject(). */
   mapDir: string;
-  /** Unpacked data root the meshes and textures were resolved against. */
+  /** Unpacked data root — the base of the chain, for the plain-path uses. */
   assetRoot: string;
+  /**
+   * What the meshes, textures and rosters actually resolve against: the data
+   * root with the installed creature mods layered over it, the way the game
+   * mounts them. A creature a mod adds exists only here.
+   */
+  assets: Assets;
   /** Authoritative in-memory model; edits go through it and save() re-emits it. */
   map: HommMap;
   /** Tile paths this map's terrain has splat layers for (union over floors). */
@@ -300,11 +307,25 @@ app.whenReady().then(async () => {
   if (process.env.HOMM5_SMOKE) runSmoke(process.env.HOMM5_SMOKE);
 });
 
+/**
+ * The base asset root for a map: the tree above it when the map sits inside one,
+ * else the configured game data.
+ *
+ * A map opened from a `.h5m` is extracted on its own and has no data above it,
+ * which is the ordinary case — the archive holds the map, never the models. The
+ * smoke test used to insist on the walk alone and so could not load any map the
+ * editor itself can.
+ */
+function assetRootFor(mapPath: string): string {
+  const above = findAssetRoot(mapPath);
+  if (above) return above;
+  if (existsSync(join(gameData(), 'MapObjects')) || existsSync(join(gameData(), 'bin', 'Geometries'))) return gameData();
+  throw new Error('asset root not found (need MapObjects/ or bin/Geometries/ above the map, or set HOMM5_DATA)');
+}
+
 async function runSmoke(mapPath: string): Promise<void> {
   try {
-    const assetRoot = findAssetRoot(mapPath);
-    if (!assetRoot) throw new Error(`asset root not found above ${mapPath}`);
-    const { map, scene, skipped, resolver } = buildScene(assetRoot, mapPath);
+    const { map, scene, skipped, resolver } = buildScene(mountedAssets(assetRootFor(mapPath)), mapPath);
     initProject(dirname(mapPath));
     const placed = scene.floors.reduce((a, f) => a + f.instances.length, 0);
     console.log(`SMOKE ok: ${map.tileX}x${map.tileY}, geoms ${scene.geoms.length}, floors ${scene.floors.length}, placed ${placed}, skipped ${skipped}`);
@@ -513,19 +534,15 @@ ipcMain.handle('map:open-archive', async (_e: IpcMainInvokeEvent, p: OpenArchive
 
 // --- IPC: load a map -> decode into a renderable scene ---
 ipcMain.handle('map:load', async (_e: IpcMainInvokeEvent, mapPath: string): Promise<MapLoadResult> => {
-  // Assets normally sit above the map; if not (e.g. a map extracted on its own),
-  // fall back to the configured game-data root.
-  let assetRoot = findAssetRoot(mapPath);
-  if (!assetRoot && (existsSync(join(gameData(), 'MapObjects')) || existsSync(join(gameData(), 'bin', 'Geometries'))))
-    assetRoot = gameData();
-  if (!assetRoot) throw new Error('asset root not found (need MapObjects/ or bin/Geometries/ above the map, or set HOMM5_DATA)');
+  const assetRoot = assetRootFor(mapPath);
   lastDir = dirname(mapPath);
   const mapDir = dirname(mapPath);
   // [perf] map:load is the heavy startup step (mesh + texture decode). Timed so
   // an intermittent stall can be pinned to a phase rather than guessed at; grep
   // the terminal for "[perf]".
   const tStart = performance.now();
-  const { map, scene, skipped, resolver } = buildScene(assetRoot, mapPath);
+  const data = mountedAssets(assetRoot);
+  const { map, scene, skipped, resolver } = buildScene(data, mapPath);
   const tScene = performance.now();
   initProject(mapDir); // ensure a manifest so status/pack work
   // Tile paths this map's terrain actually has layers for (union over floors).
@@ -544,9 +561,9 @@ ipcMain.handle('map:load', async (_e: IpcMainInvokeEvent, mapPath: string): Prom
     win?.webContents.send('map:external-change', payload);
   });
   session = {
-    mapPath, mapDir, assetRoot, map, layerPaths, watch, terrain: new Map(), resolver,
+    mapPath, mapDir, assetRoot, assets: data, map, layerPaths, watch, terrain: new Map(), resolver,
     history: new History(), historyPath: historyPathFor(mapDir),
-    registry: new Registry(assetRoot),
+    registry: new Registry(data),
   };
   // A history from a previous run is adopted only if the documents still hash
   // to what they hashed when it was written.
@@ -1022,7 +1039,9 @@ ipcMain.handle('map:suggest-name', async (_e: IpcMainInvokeEvent, { className }:
 function resolveEntityFile(s: Session, href: string): { file: string; editable: boolean } | null {
   const noPtr = href.split('#')[0];
   if (!noPtr) return null;
-  if (noPtr.startsWith('/')) return { file: join(s.assetRoot, noPtr.slice(1)), editable: false };
+  // Through the chain, so a definition that lives in a mounted mod opens too —
+  // read-only either way, since it is not the map's own document.
+  if (noPtr.startsWith('/')) return { file: s.assets.path(noPtr.slice(1)), editable: false };
   return { file: join(s.mapDir, basename(noPtr)), editable: true };
 }
 
@@ -1595,7 +1614,7 @@ ipcMain.handle('terrain:add-layer', async (_e: IpcMainInvokeEvent, p: AddLayerPa
   const paths = doc.layerPaths().filter((x) => x);
   // Keep the palette's "already in this map" markers in step for every floor.
   session.layerPaths = [...new Set([...session.layerPaths, ...paths])];
-  return { ok: true, splat: splatFor(doc.buffer(), session.assetRoot), inMap: paths };
+  return { ok: true, splat: splatFor(doc.buffer(), session.assets), inMap: paths };
 });
 
 // --- IPC: undo / redo ---
@@ -1615,7 +1634,7 @@ function undoResult(s: Session, step: Step | null, dir: 'undo' | 'redo'): UndoRe
       floor,
       heights: [...doc.heightsCopy()],
       flags: doc.flagsCopy() ? [...doc.flagsCopy()!] : null,
-      splat: splatFor(doc.buffer(), s.assetRoot),
+      splat: splatFor(doc.buffer(), s.assets),
     });
   }
   // Deliberately NOT persisted here. The stored history is keyed by a hash of
@@ -1822,7 +1841,7 @@ ipcMain.handle('terrain:tiles', async (): Promise<TerrainTilesResult> => {
   const root = session?.assetRoot
     || (existsSync(join(gameData(), 'MapObjects')) ? gameData() : null);
   if (!root) return { tiles: [], inMap: [] };
-  if (!tileCache || tileCache.root !== root) tileCache = { root, tiles: listTiles(root) };
+  if (!tileCache || tileCache.root !== root) tileCache = { root, tiles: listTiles(session?.assets ?? mountedAssets(root)) };
   const inMap = session?.layerPaths || [];
   return { tiles: tileCache.tiles, inMap };
 });

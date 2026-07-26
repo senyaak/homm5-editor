@@ -607,6 +607,20 @@ Two constraints shape the design, both learned the hard way:
       copy that kept its uid would share that file with the creature it was copied from —
       so editing our mesh would edit theirs. Copies get a fresh uid, derived from what they
       are so a rebuild stays byte-identical.
+- [x] ✅ **Read the installed game, not the shipped one** (2026-07-26) — the editor
+      resolved assets against one unpacked data root, so with the creature mod installed it
+      still showed a game without it: the army picker offered 180 of 181, and a map that
+      placed the new creature **dropped the object from the scene** with no error at all.
+      Assets now resolve through a chain of roots (`src/assets.ts`) — the mounted creature
+      mods over the data, topmost wins, which is the game's own rule one file at a time.
+      Folder scans walk every root and dedupe, since a mod adding an object does not replace
+      the folder it sits in. `mountCreatureMods` unpacks the installed ones on demand, cached
+      per archive by size and date, and the chain is *not* held across map loads so a mod
+      rebuilt while the editor is open is seen on the next open.
+
+      Only mods that add creatures are mounted. Closer to the game would be all of
+      `UserMODs/`, but a stock install keeps a 284 MB cutscene archive in there and a mod
+      that only replaces a texture changes nothing the editor has to resolve.
 - [ ] ⬜ **Patch the executable from the editor.** `patch-creature-limit.ts` already
       identifies the build by signature, refuses unless every site reads what it should, and
       writes a new file beside the original. Steam's build is DRM-wrapped and cannot be

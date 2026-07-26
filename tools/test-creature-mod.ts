@@ -16,12 +16,15 @@
 // file, down to the nesting that made `ref_table_num_objs` hard to splice (its
 // number sits in a <Data> inside a <Data>).
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join, posix } from 'node:path';
 import {
   addCreature, buildCreatureMod, creatureLimit, creaturePaths, dataPath, dataReader,
-  MOD_MANIFEST, newCreatureMod, packCreatureMod, readCreatureModBuffer,
+  MOD_MANIFEST, newCreatureMod, packCreatureMod, readCreatureModBuffer, writeCreatureMod,
 } from '../src/creature-mod.ts';
+import { assets } from '../src/assets.ts';
+import { Registry } from '../src/registry.ts';
 import type { CreatureMod, DataReader, ModFile } from '../src/creature-mod.ts';
 import { blankStats, creatureRoot, readStats, SHIPPED_CREATURES } from '../src/creatures.ts';
 import { readEntries } from '../src/pak.ts';
@@ -431,6 +434,33 @@ if (!existsSync(join(dataRoot, 'types.xml'))) {
   // A creature with no icon is the one thing the startup check will not forgive.
   const realVisual = asText(realFiles, creaturePaths(rc).visual);
   check('the creature has an icon', /<Icon128 href="[^"]+"/.test(realVisual));
+
+  // What the editor sees. Building the mod is not enough: until the editor reads
+  // the mod the way the GAME does — layered over the data — the creature does not
+  // exist for it. The army picker offered the shipped 180 and a map that placed
+  // one of ours dropped the object from the scene, which is how this was found.
+  console.log('\nmounted over the game data');
+  const mounted = mkdtempSync(join(tmpdir(), 'homm5-units-'));
+  try {
+    writeCreatureMod(mounted, realBuilt);
+    const chain = assets([mounted, dataRoot]);
+    const roster = new Registry(chain).creatures();
+    check('the roster grew by the mod\'s creatures', roster.length === SHIPPED_CREATURES + 1, `${roster.length}`);
+    check('and it lists ours', roster.some((r) => r.id === rc.id));
+    check('the shipped roster is unchanged without the mod',
+      new Registry(dataRoot).creatures().length === SHIPPED_CREATURES);
+    check('the map-stack definition resolves through the chain',
+      chain.text(creaturePaths(rc).monster)?.includes(`<Creature>${rc.id}</Creature>`) === true);
+    check('so does the art it points at',
+      chain.exists(dataPath(hrefIn(asText(realFiles, creaturePaths(rc).monster), 'Model'))));
+  } finally {
+    rmSync(mounted, { recursive: true, force: true });
+  }
+}
+
+/** An element's href in a document, for following one in a test. */
+function hrefIn(text: string, field: string): string {
+  return new RegExp(`<${field}\\s+href="([^"]*)"`).exec(text)?.[1] ?? '';
 }
 
 function throws(fn: () => unknown): boolean {

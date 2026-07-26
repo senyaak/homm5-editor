@@ -25,6 +25,8 @@ import { deflateSync } from 'node:zlib';
 import { parseTerrain, readHeights, readTextureLayers, readMask, readGroundFlags, readWaterPlane, readPassability, FLAG_WATER } from './terrain.ts';
 import { extractMeshes, readGeometryRefFromModelXdb } from './geometry.ts';
 import { decodeDDS } from './dds.ts';
+import { toAssets } from './assets.ts';
+import type { Assets } from './assets.ts';
 import { loadMap } from './map.ts';
 import type { HommMap } from './map.ts';
 import type { Terrain, TextureLayer } from './terrain.ts';
@@ -287,9 +289,9 @@ function particleBound(xml: string): [number, number, number] | null {
 }
 
 /** Read a data-root-relative asset as text, or null if it is missing. */
-function readAsset(assetRoot: string, rel: string): string | null {
+function readAsset(data: Assets, rel: string): string | null {
   try {
-    const p = join(assetRoot, rel);
+    const p = data.path(rel);
     return existsSync(p) ? readFileSync(p, 'utf8') : null;
   } catch { return null; }
 }
@@ -304,11 +306,11 @@ function readAsset(assetRoot: string, rel: string): string | null {
  * document and the folder it lives in, for the next href down the chain.
  */
 function followHref(
-  assetRoot: string, xml: string, dir: string, href: string,
+  data: Assets, xml: string, dir: string, href: string,
 ): { xml: string; dir: string } | null {
   if (href.startsWith('#')) return { xml, dir };
   const rel = resolveHref(dir, href);
-  const doc = readAsset(assetRoot, rel);
+  const doc = readAsset(data, rel);
   return doc ? { xml: doc, dir: dirOf(rel) } : null;
 }
 
@@ -399,9 +401,9 @@ function mergeGeom(into: GeomData, add: GeomData): void {
  * skipped rather than becoming an untextured rectangle.
  */
 function effectGeom(
-  sharedXml: string, sharedHref: string, assetRoot: string, texSize: number,
+  sharedXml: string, sharedHref: string, data: Assets, texSize: number,
 ): GeomData | null {
-  const follow = (xml: string, dir: string, href: string) => followHref(assetRoot, xml, dir, href);
+  const follow = (xml: string, dir: string, href: string) => followHref(data, xml, dir, href);
 
   const effHref = sharedXml.match(/<Effect href="([^"]+)"/)?.[1];
   if (!effHref) return null;
@@ -426,7 +428,7 @@ function effectGeom(
   const texHref = inst.match(/<Textures>[\s\S]*?<Item href="([^"]+)"/)?.[1];
   if (!texHref) return null;
   const texRel = resolveHref(instance.dir, texHref);
-  const t = textureDataUri('', assetRoot, texSize, '/' + texRel);
+  const t = textureDataUri('', data, texSize, '/' + texRel);
   if (!t) return null;
 
   const partHref = inst.match(/<Particle href="([^"]+)"/)?.[1];
@@ -463,19 +465,19 @@ function effectGeom(
  *   geometry and material references written relative to the model's folder
  */
 function decodeModelGeom(
-  model: string, modelHref: string, assetRoot: string, readXdb: ReadXdb, texSize: number,
+  model: string, modelHref: string, data: Assets, readXdb: ReadXdb, texSize: number,
 ): GeomData | null {
   const modelDir = dirOf(resolveHref('', modelHref));
   const readRel: ReadXdb = (href) =>
     readXdb(href.startsWith('/') || href.startsWith('#') ? href : resolveHref(modelDir, href));
   const ref = readGeometryRefFromModelXdb(model, readRel);
   if (!ref) return null;
-  const binPath = join(assetRoot, 'bin', 'Geometries', ref.uid);
+  const binPath = data.path(join('bin', 'Geometries', ref.uid));
   if (!existsSync(binPath)) return null;
   const meshes = extractMeshes(readFileSync(binPath), ref.bbox);
   if (!meshes.length) return null;
   const tmp: GeomData[] = [];
-  const i = addGeom(tmp, meshes, model, modelHref, assetRoot, texSize);
+  const i = addGeom(tmp, meshes, model, modelHref, data, texSize);
   return i >= 0 ? tmp[i]! : null;
 }
 
@@ -490,12 +492,12 @@ function decodeModelGeom(
  * (Model href + Position/Rotation/Scale), which resolves to an ordinary model.
  */
 function effectModelGeoms(
-  sharedXml: string, sharedHref: string, assetRoot: string, readXdb: ReadXdb, texSize: number,
+  sharedXml: string, sharedHref: string, data: Assets, readXdb: ReadXdb, texSize: number,
 ): GeomData[] {
   const effHref = sharedXml.match(/<Effect href="([^"]+)"/)?.[1];
   if (!effHref) return [];
   const sharedDir = dirOf(resolveHref('', sharedHref));
-  const effect = followHref(assetRoot, sharedXml, sharedDir, effHref);
+  const effect = followHref(data, sharedXml, sharedDir, effHref);
   if (!effect) return [];
   const block = effect.xml.match(/<Models>([\s\S]*?)<\/Models>/)?.[1];
   if (!block) return [];
@@ -510,14 +512,14 @@ function effectModelGeoms(
     // particle halo's scale of 10 and stood over half the map.
     const inst = href.startsWith('#')
       ? { xml: item.body, dir: effect.dir }
-      : followHref(assetRoot, effect.xml, effect.dir, href);
+      : followHref(data, effect.xml, effect.dir, href);
     if (!inst) continue;
     const modelHref = inst.xml.match(/<Model href="([^"]+)"/)?.[1];
     if (!modelHref) continue;
     const modelRel = '/' + resolveHref(inst.dir, modelHref);
     const model = readXdb(modelRel);
     if (!model) continue;
-    const g = decodeModelGeom(model, modelRel, assetRoot, readXdb, texSize);
+    const g = decodeModelGeom(model, modelRel, data, readXdb, texSize);
     if (!g) continue;
     transformGeom(
       g,
@@ -542,14 +544,14 @@ function effectModelGeoms(
  * data root — reading them flat is why the stronghold refused to place at all.
  */
 function townExterior(
-  sharedXml: string, sharedHref: string, assetRoot: string,
+  sharedXml: string, sharedHref: string, data: Assets,
 ): { xml: string; dir: string } | null {
   if (!sharedXml.includes('<Exterior')) return null;
   const sharedDir = dirOf(resolveHref('', sharedHref));
   const extHref = sharedXml.match(/<Exterior href="([^"]+)"/)?.[1];
   // External: a real path beside the shared. Inline (`#…`) or absent: the
   // AdvMapTownExterior block sits in the shared itself.
-  if (extHref && !extHref.startsWith('#')) return followHref(assetRoot, sharedXml, sharedDir, extHref);
+  if (extHref && !extHref.startsWith('#')) return followHref(data, sharedXml, sharedDir, extHref);
   return { xml: sharedXml, dir: sharedDir };
 }
 
@@ -601,9 +603,10 @@ function parseFootprint(sharedXml: string): Footprint | null {
   return fp;
 }
 
-export function createGeomResolver(assetRoot: string, texSize = 128): GeomResolver {
+export function createGeomResolver(root: string | Assets, texSize = 128): GeomResolver {
+  const data = toAssets(root);
   const readXdb: ReadXdb = (href) => {
-    const p = join(assetRoot, href.split('#')[0]!);
+    const p = data.path(href.split('#')[0]!);
     return existsSync(p) ? readFileSync(p, 'utf8') : null;
   };
   const geoms: GeomData[] = [];
@@ -618,7 +621,7 @@ export function createGeomResolver(assetRoot: string, texSize = 128): GeomResolv
       // than the top-level <Model>/<Effect>: inline for the original towns, an
       // external file for the Tribes-of-the-East ones. Its models and effects
       // become the object's, so the effect chain reads from the exterior too.
-      const ext = shared ? townExterior(shared, sharedHref, assetRoot) : null;
+      const ext = shared ? townExterior(shared, sharedHref, data) : null;
       const content = ext ? ext.xml : shared;
       // The model href: a town's first build stage (resolved against the
       // exterior's folder), otherwise the shared's top-level <Model>, written
@@ -629,13 +632,13 @@ export function createGeomResolver(assetRoot: string, texSize = 128): GeomResolv
       // model's own folder as often as absolute (spell_shop.mb points at
       // "SpellShop-geom.xdb" beside it), which decodeModelGeom handles — read
       // flat, a bare name misses and the object silently meshes to nothing.
-      const own = model && modelRel ? decodeModelGeom(model, modelRel, assetRoot, readXdb, texSize) : null;
+      const own = model && modelRel ? decodeModelGeom(model, modelRel, data, readXdb, texSize) : null;
       if (own) { idx = geoms.length; geoms.push(own); }
       // The effect's own models come first: a teleporter's Spiral and Rune ARE
       // the object (its own model is a throwaway minimap quad), so they must land
       // even when there is no base mesh to hang them on.
       if (content) {
-        for (const em of effectModelGeoms(content, sharedHref, assetRoot, readXdb, texSize)) {
+        for (const em of effectModelGeoms(content, sharedHref, data, readXdb, texSize)) {
           if (idx < 0) { idx = geoms.length; geoms.push(em); }
           else mergeGeom(geoms[idx]!, em);
         }
@@ -646,7 +649,7 @@ export function createGeomResolver(assetRoot: string, texSize = 128): GeomResolv
       // taking its mesh and stopping drew the flat sparkle patch on the ground
       // and left out the glowing wall that is the whole point of it.
       if (content) {
-        const card = effectGeom(content, sharedHref, assetRoot, texSize);
+        const card = effectGeom(content, sharedHref, data, texSize);
         if (card && idx < 0) { idx = geoms.length; geoms.push(card); }
         else if (card) mergeGeom(geoms[idx]!, card);
       }
@@ -662,7 +665,7 @@ export function createGeomResolver(assetRoot: string, texSize = 128): GeomResolv
 }
 
 /**
- * @param assetRoot absolute path to the unpacked data root (contains MapObjects/, bin/…)
+ * @param root the mounted asset chain, or one unpacked data root (MapObjects/, bin/…)
  * @param mapXdbPath absolute path to the map's map.xdb (its folder holds GroundTerrain.bin)
  * @param opt.texSize downsample size for embedded textures (default 128)
  * @returns { map, scene, skipped, resolver } — map is the HommMap model (kept for
@@ -675,11 +678,12 @@ export function createGeomResolver(assetRoot: string, texSize = 128): GeomResolv
  *   time — so underground objects must not be dumped onto the surface terrain.
  */
 export function buildScene(
-  assetRoot: string, mapXdbPath: string, opt: BuildSceneOptions = {},
+  root: string | Assets, mapXdbPath: string, opt: BuildSceneOptions = {},
 ): { map: HommMap; skipped: number; scene: Scene; resolver: GeomResolver } {
+  const data = toAssets(root);
   const texSize = opt.texSize || 128;
   const readXdb: ReadXdb = (href) => {
-    const p = join(assetRoot, href.split('#')[0]);
+    const p = data.path(href.split('#')[0]);
     return existsSync(p) ? readFileSync(p, 'utf8') : null;
   };
 
@@ -706,9 +710,9 @@ export function buildScene(
       flags: flags ? Array.from(flags) : null,
       riverVerts: riverVertices(t),
       passable: (() => { const p = readPassability(t); return p ? Array.from(p) : null; })(),
-      water: buildWater(t, opt.seaLevel ?? SEA_LEVEL, assetRoot),
+      water: buildWater(t, opt.seaLevel ?? SEA_LEVEL, data),
       colors: terrainColors(t, readXdb, tileColorCache),
-      splat: buildSplat(t, readXdb, assetRoot, tileTexCache, tileColorCache, opt.tileSize || 256),
+      splat: buildSplat(t, readXdb, data, tileTexCache, tileColorCache, opt.tileSize || 256),
     };
   };
   const terrains = [loadTerrain('GroundTerrain.bin')];
@@ -726,7 +730,7 @@ export function buildScene(
   };
 
   // --- geometry/texture resolution (cached per Shared href) ---
-  const resolver = createGeomResolver(assetRoot, texSize);
+  const resolver = createGeomResolver(data, texSize);
   const geoms = resolver.geoms;
   const resolveGeom = resolver.resolve;
 
@@ -829,7 +833,7 @@ function terrainColors(t: Terrain, readXdb: ReadXdb, cache: Map<string, number[]
  * editor. So when a tile resolves to a CLAMP texture that has a _TNL sibling,
  * take the sibling.
  */
-function tileTexture(tilePath: string, readXdb: ReadXdb, assetRoot: string, size: number): Uint8Array | null {
+function tileTexture(tilePath: string, readXdb: ReadXdb, data: Assets, size: number): Uint8Array | null {
   const xml = readXdb(tilePath); if (!xml) return null;
   const t = xml.match(/<Texture href="([^"]+?)(?:#[^"]*)?"/);
   if (!t || !t[1]) return null;                       // <Texture/> = no texture
@@ -841,7 +845,7 @@ function tileTexture(tilePath: string, readXdb: ReadXdb, assetRoot: string, size
     if (alt) { texXdb = tnl; tx = alt; }
   }
   const dest = tx.match(/<DestName href="([^"]+)"/); if (!dest) return null;
-  const ddsPath = join(assetRoot, dirname(texXdb), dest[1]);
+  const ddsPath = data.path(join(dirname(texXdb), dest[1]));
   if (!existsSync(ddsPath)) return null;
   const img = decodeDDS(ddsPath);
   const out = new Uint8Array(size * size * 4);
@@ -894,16 +898,17 @@ function flatTexture(col: number[], size: number): Uint8Array {
  *
  * Caches are local: this runs on a deliberate one-off action, not per frame.
  */
-export function splatFor(raw: Buffer, assetRoot: string, tileSize = 256): SplatData | null {
+export function splatFor(raw: Buffer, root: string | Assets, tileSize = 256): SplatData | null {
+  const data = toAssets(root);
   const readXdb: ReadXdb = (href) => {
-    const p = join(assetRoot, href.split('#')[0]);
+    const p = data.path(href.split('#')[0]);
     return existsSync(p) ? readFileSync(p, 'utf8') : null;
   };
-  return buildSplat(parseTerrain(raw), readXdb, assetRoot, new Map(), new Map(), tileSize);
+  return buildSplat(parseTerrain(raw), readXdb, data, new Map(), new Map(), tileSize);
 }
 
 function buildSplat(
-  t: Terrain, readXdb: ReadXdb, assetRoot: string,
+  t: Terrain, readXdb: ReadXdb, data: Assets,
   texCache: Map<string, string>, colCache: Map<string, number[] | null>, size: number,
 ): SplatData | null {
   // A predicate, not a plain truthiness filter: only this tells the checker the
@@ -925,7 +930,7 @@ function buildSplat(
   const layerTex = layers.map((l): string => {
     const hit = texCache.get(l.path);
     if (hit !== undefined) return hit;
-    let px = tileTexture(l.path, readXdb, assetRoot, size);
+    let px = tileTexture(l.path, readXdb, data, size);
     if (!px) px = flatTexture(tileColor(l.path, readXdb, colCache) || [0.3, 0.33, 0.24], size);
     const uri = pngDataUri(size, size, px);
     texCache.set(l.path, uri);
@@ -947,7 +952,7 @@ function buildSplat(
   // Cliff face texture. Where the ground drops steeply (the `lower`/`plato`
   // tools leave jumps of up to 11 units across a single tile) the engine shows
   // rock, not stretched grass. One shared texture, projected vertically.
-  const rockPx = tileTexture(ROCK_TILE, readXdb, assetRoot, size);
+  const rockPx = tileTexture(ROCK_TILE, readXdb, data, size);
   const rockTex = rockPx ? pngDataUri(size, size, rockPx) : null;
 
   return { V, size, layerCount: layers.length, layerTex, maskGroups, rockTex, paths: layers.map((l) => l.path) };
@@ -1098,11 +1103,11 @@ function dropDuplicateMeshes(meshes: Mesh[], pick: number[], mats: MaterialInfo[
   return keep;
 }
 
-function addGeom(geoms: GeomData[], meshes: Mesh[], model: string, modelHref: string, assetRoot: string, texSize: number): number {
+function addGeom(geoms: GeomData[], meshes: Mesh[], model: string, modelHref: string, data: Assets, texSize: number): number {
   // Materials are resolved before the meshes are packed, because which meshes
   // survive depends on them: a copy of a terrain-projected mesh is redundant.
   const modelDir = dirOf(resolveHref('', modelHref));
-  const allMats = modelMaterials(model, assetRoot, modelDir);
+  const allMats = modelMaterials(model, data, modelDir);
   const allPick = meshMaterialIndex(model, meshes.length, allMats.length);
   // Decode each material's texture once, up front: the dedup needs to know how
   // opaque the authored partner of a SubTerrain pair is (a sheer overlay is not
@@ -1113,7 +1118,7 @@ function addGeom(geoms: GeomData[], meshes: Mesh[], model: string, modelHref: st
   const infoFor = (mi: number): { uri: string; hasAlpha: boolean; opaque: boolean } | null => {
     if (!texInfo.has(mi)) {
       const href = allMats[mi]?.tex;
-      texInfo.set(mi, href ? textureDataUri(model, assetRoot, texSize, href) : null);
+      texInfo.set(mi, href ? textureDataUri(model, data, texSize, href) : null);
     }
     return texInfo.get(mi) ?? null;
   };
@@ -1276,7 +1281,7 @@ function dirOf(path: string): string {
  *
  * @param baseDir where the model lives, for hrefs written relative to it
  */
-function materialInfo(itemXml: string, assetRoot: string, baseDir: string): MaterialInfo {
+function materialInfo(itemXml: string, data: Assets, baseDir: string): MaterialInfo {
   const read = (xml: string, from: string): MaterialInfo => {
     const tex = xml.match(/<Texture href="([^"]*)"/)?.[1];
     return {
@@ -1297,19 +1302,19 @@ function materialInfo(itemXml: string, assetRoot: string, baseDir: string): Mate
   if (!ext || !ext[1]) return NO_MATERIAL;
   try {
     const rel = resolveHref(baseDir, ext[1]);
-    const p = join(assetRoot, rel);
+    const p = data.path(rel);
     return existsSync(p) ? read(readFileSync(p, 'utf8'), dirOf(rel)) : NO_MATERIAL;
   } catch { return NO_MATERIAL; }
 }
 
 /** Every material, in the order <Materials> lists them. */
-function modelMaterials(model: string, assetRoot: string, baseDir: string): MaterialInfo[] {
+function modelMaterials(model: string, data: Assets, baseDir: string): MaterialInfo[] {
   const open = model.indexOf('<Materials>');
   const close = model.indexOf('</Materials>');
   if (open < 0 || close < 0) return [];
   // A <Material> body has no nested <Item>, so splitting on <Item is safe here.
   const parts = model.slice(open + 11, close).split(/<Item\b/).slice(1);
-  return parts.map((p) => materialInfo(p, assetRoot, baseDir));
+  return parts.map((p) => materialInfo(p, data, baseDir));
 }
 
 /**
@@ -1339,12 +1344,12 @@ function meshMaterialIndex(model: string, meshCount: number, materialCount: numb
   return out;
 }
 
-function textureDataUri(model: string, assetRoot: string, size: number, href?: string): { uri: string; hasAlpha: boolean; opaque: boolean } | null {
+function textureDataUri(model: string, data: Assets, size: number, href?: string): { uri: string; hasAlpha: boolean; opaque: boolean } | null {
   try {
     const t = href ? [href, href] : model.match(/<Texture href="([^"]+?)(?:#[^"]*)?"/); if (!t) return null;
-    const tx = readFileSync(join(assetRoot, t[1].split('#')[0]), 'utf8');
+    const tx = readFileSync(data.path(t[1].split('#')[0]), 'utf8');
     const dest = tx.match(/<DestName href="([^"]+)"/); if (!dest) return null;
-    const ddsPath = join(assetRoot, dirname(t[1].split('#')[0]), dest[1]);
+    const ddsPath = data.path(join(dirname(t[1].split('#')[0]), dest[1]));
     if (!existsSync(ddsPath)) return null;
     const img = decodeDDS(ddsPath);
     const out = new Uint8Array(size * size * 4);
@@ -1392,9 +1397,9 @@ const SEA_LEVEL = 1.5;
 // textures out for their tiling siblings.
 const SEA_TEXTURE = '/Textures/Terrain/Water/Water.dds';
 
-function seaTexture(assetRoot: string, size: number): string | null {
+function seaTexture(data: Assets, size: number): string | null {
   try {
-    const p = join(assetRoot, SEA_TEXTURE);
+    const p = data.path(SEA_TEXTURE);
     if (!existsSync(p)) return null;
     const img = decodeDDS(p);
     const out = new Uint8Array(size * size * 4);
@@ -1426,7 +1431,7 @@ function riverVertices(t: Terrain): number[] {
   return out;
 }
 
-function buildWater(t: Terrain, level: number, assetRoot: string): WaterData | null {
+function buildWater(t: Terrain, level: number, data: Assets): WaterData | null {
   const flags = readGroundFlags(t);
   if (!flags) return null;
   const V = t.V, N = t.N;
@@ -1447,7 +1452,7 @@ function buildWater(t: Terrain, level: number, assetRoot: string): WaterData | n
   // A dry map still gets its sheet description, with no cells. The editor needs
   // the texture and level in hand so that digging a basin can raise a sea right
   // away instead of only after a reload. Callers gate on cells.length.
-  return { V, level, cells, wet, tex: seaTexture(assetRoot, 256) };
+  return { V, level, cells, wet, tex: seaTexture(data, 256) };
 }
 
 // ---- terrain tile palette -------------------------------------------------
@@ -1463,18 +1468,23 @@ const TILE_DIR = 'MapObjects/_(AdvMapTile)';
 const ROCK_TILE = '/MapObjects/_(AdvMapTile)/Rock.xdb';
 
 /**
- * @param assetRoot unpacked data root
+ * @param root the mounted asset chain, or one unpacked data root
  * @param thumbSize preview edge in px (default 64)
  * @returns {{name, category, path, priority, type, thumb}[]} sorted by category, name
  */
-export function listTiles(assetRoot: string, thumbSize = 64): TileInfo[] {
-  const base = join(assetRoot, TILE_DIR);
-  if (!existsSync(base)) return [];
+export function listTiles(root: string | Assets, thumbSize = 64): TileInfo[] {
+  const data = toAssets(root);
+  // Every mounted root's copy of the folder, so a mod's own tiles are listed
+  // beside the shipped ones. A tile the topmost root also has is skipped when
+  // the deeper root reaches it, which is the same rule the readers follow.
+  const bases = data.dirs(TILE_DIR);
+  if (!bases.length) return [];
   const readXdb: ReadXdb = (href) => {
-    const p = join(assetRoot, href.split('#')[0]);
+    const p = data.path(href.split('#')[0]);
     return existsSync(p) ? readFileSync(p, 'utf8') : null;
   };
   const colCache = new Map<string, number[] | null>();
+  const seen = new Set<string>();
   const out: TileInfo[] = [];
 
   const walk = (dir: string, rel: string): void => {
@@ -1485,9 +1495,11 @@ export function listTiles(assetRoot: string, thumbSize = 64): TileInfo[] {
       if (e.isDirectory()) { walk(full, rel ? `${rel}/${e.name}` : e.name); continue; }
       if (!e.name.toLowerCase().endsWith('.xdb')) continue;
       const href = `/${TILE_DIR}/${rel ? rel + '/' : ''}${e.name}`;
+      if (seen.has(href)) continue;
+      seen.add(href);
       const xml = readXdb(href);
       if (!xml) continue;
-      let px = tileTexture(href, readXdb, assetRoot, thumbSize);
+      let px = tileTexture(href, readXdb, data, thumbSize);
       if (!px) px = flatTexture(tileColor(href, readXdb, colCache) || [0.3, 0.33, 0.24], thumbSize);
       out.push({
         name: e.name.replace(/\.xdb$/i, ''),
@@ -1499,7 +1511,7 @@ export function listTiles(assetRoot: string, thumbSize = 64): TileInfo[] {
       });
     }
   };
-  walk(base, '');
+  for (const base of bases) walk(base, '');
   out.sort((a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name));
   return out;
 }

@@ -43,11 +43,11 @@
 
 import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { dirname, join, posix } from 'node:path';
+import { basename, dirname, join, posix } from 'node:path';
 import { SHIPPED_CREATURES, NULL_CREATURE, blankStats, creatureRoot, readStats, setCreatureRefs, writeStats } from './creatures.ts';
 import type { CreatureStats } from './creatures.ts';
 import { serialize, setAttr } from './xml.ts';
-import { readEntries, readEntryFrom, readIndex, writeArchive } from './pak.ts';
+import { extract, readEntries, readEntryFrom, readIndex, writeArchive } from './pak.ts';
 import type { ZipEntry, ZipIndexEntry } from './pak.ts';
 
 /** The mod's file name stem — `homm5-units.h5u` in UserMODs. */
@@ -437,6 +437,52 @@ export function findCreatureMods(gameRoot: string): FoundMod[] {
     } catch {
       // Not a readable archive. Not our business to complain about it here.
     }
+  }
+  return out;
+}
+
+/** An installed mod, unpacked so the editor can read it like any other root. */
+export interface MountedMod extends FoundMod {
+  /** The folder its members were extracted to — an asset root to layer on. */
+  root: string;
+}
+
+/**
+ * Unpack the installed creature mods so the editor resolves what the GAME will.
+ *
+ * Without this the editor reads only the unpacked data and a creature a mod adds
+ * does not exist for it: the army picker offers the shipped 180, and a map that
+ * places one of ours drops the object from the scene because its
+ * `AdvMapMonsterShared` is in the mod and nowhere else.
+ *
+ * Only mods that add creatures are unpacked. Mounting everything in `UserMODs`
+ * would be closer to the game still, but a stock install has a 284 MB cutscene
+ * archive in there and no reason to pay for it — a mod that only replaces a
+ * texture changes nothing the editor has to resolve.
+ *
+ * Extraction is cached per archive: re-run after a rebuild and only what changed
+ * is unpacked again. Returns the roots most-specific-first, ready to hand to
+ * `assets()` ahead of the data root.
+ */
+export function mountCreatureMods(gameRoot: string, cacheDir: string): MountedMod[] {
+  const out: MountedMod[] = [];
+  for (const found of findCreatureMods(gameRoot)) {
+    const stem = basename(found.path).replace(/\.[^.]+$/, '');
+    const root = join(cacheDir, stem);
+    const stamp = join(cacheDir, `${stem}.mounted.json`);
+    const now = statSync(found.path);
+    const want = `${now.size}:${Math.round(now.mtimeMs)}`;
+    let have = '';
+    try {
+      have = (JSON.parse(readFileSync(stamp, 'utf8')) as { of: string }).of;
+    } catch { /* never unpacked, or the stamp is unreadable */ }
+    if (have !== want) {
+      rmSync(root, { recursive: true, force: true });
+      mkdirSync(root, { recursive: true });
+      extract(found.path, root);
+      writeFileSync(stamp, `${JSON.stringify({ of: want, from: found.path }, null, 2)}\n`);
+    }
+    out.push({ ...found, root });
   }
   return out;
 }

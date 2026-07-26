@@ -24,10 +24,13 @@
 
 import { app } from 'electron';
 import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { findEditorRoot } from '../src/objects.ts';
 import { looksLikeDataRoot } from '../src/unpack.ts';
+import { assets } from '../src/assets.ts';
+import type { Assets } from '../src/assets.ts';
+import { mountCreatureMods } from '../src/creature-mod.ts';
 
 /**
  * The folder holding `electron/` and `renderer/`.
@@ -123,6 +126,37 @@ function roots(): Roots {
 
 /** Forget the resolved roots — call after settings change. */
 export const reload = (): void => { cache = null; };
+
+/**
+ * The MOUNTED asset chain — what the game will read, not what one folder holds.
+ *
+ * The unpacked data with the installed creature mods layered over it, so a
+ * creature a mod adds is in the army picker and a map that places one shows the
+ * stack instead of dropping it. Nothing else in `UserMODs` is mounted: see
+ * `mountCreatureMods`, and docs/ARCHIVES.md for the rule this mirrors.
+ *
+ * Deliberately NOT cached across calls. The expensive part — unpacking — is
+ * cached per archive by its size and date, so re-scanning costs a directory
+ * listing and one seek per archive. Holding the chain instead would mean a mod
+ * rebuilt while the editor is open stayed invisible until a restart, which is
+ * exactly what happens while a creature is being worked on.
+ */
+export function mountedAssets(base: string): Assets {
+  const g = gameRoot();
+  const over: string[] = [];
+  if (g) {
+    try {
+      for (const m of mountCreatureMods(g, join(tmpRoot(), 'mods'))) {
+        over.push(m.root);
+        console.log(`[mods] ${basename(m.path)} · ${m.mod.creatures.length} creature(s), ceiling ${m.limit}`);
+      }
+    } catch (e) {
+      // A mod we cannot read must not stop the editor opening a map.
+      console.warn('[mods] not mounted:', e instanceof Error ? e.message : String(e));
+    }
+  }
+  return assets([...over, base]);
+}
 
 /** The Heroes 5 install, when it is known. */
 export const gameRoot = (): string | null => roots().gameRoot;
