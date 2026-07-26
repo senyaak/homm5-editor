@@ -244,6 +244,21 @@ console.log('\nbaking a town building down to the map');
   const original = asText('Arenas/Town/Rampart/UnicornGlade_u1r0-geom.xdb') ?? '';
   check('the game\'s own geometry is untouched', /<Center>\s*<x>280/.test(original));
 
+  // A second dwelling may stand on art the first one baked — the same building
+  // hiring something else, or an upgraded name over the same model — and baking it
+  // twice would put the same megabyte in the mod twice.
+  {
+    const shared = newCreatureMod('test-share');
+    addDwelling(shared, spec);
+    addDwelling(shared, { ...spec, file: 'TestSameArt', bake: undefined, model, creatures: ['CREATURE_WAR_UNICORN'] });
+    const both = buildCreatureMod(shared, read);
+    const geometries = both.files.filter((f) => f.path.startsWith('bin/Geometries/')).length;
+    const second = both.files.find((f) => f.path === dwellingPaths({ ...spec, file: 'TestSameArt' }).shared);
+    check('a second dwelling can stand on the first one\'s baked model',
+      Boolean(second) && second!.data.toString('latin1').includes(refPath(model)) && geometries === 1,
+      `${geometries} geometry binar${geometries === 1 ? 'y' : 'ies'} for two dwellings`);
+  }
+
   const dangling: string[] = [];
   for (const m of sharedDoc.matchAll(/href="([^"]+)"/g)) {
     const r = refPath(m[1]!);

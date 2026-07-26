@@ -390,40 +390,51 @@ function buildDwellings(dwellings: readonly DwellingSpec[], read: DataReader): M
     const b = read(rel);
     return b ? b.toString('latin1') : null;
   };
+  // What earlier dwellings put in the mod. A second dwelling may point at a model
+  // the first one baked — two buildings that look alike and hire differently — and
+  // baking the same town art twice would double a megabyte for nothing.
+  const produced = new Map<string, Buffer>();
+  const readAny = (rel: string): string | null => {
+    const mine = produced.get(rel);
+    return mine ? mine.toString('latin1') : text(rel);
+  };
+  const emit = (path: string, data: Buffer): void => {
+    files.push({ path, data });
+    produced.set(path, data);
+  };
+
   for (const d of dwellings) {
     const p = dwellingPaths(d);
-    if (!text(refPath(d.model))) throw new Error(`${d.file}: no model at ${d.model}`);
+    if (!readAny(refPath(d.model))) throw new Error(`${d.file}: no model at ${d.model}`);
 
     // A town building has to be copied and resized before it is a map object;
     // anything already at map scale is referenced where it lies.
     let model = d.model;
     let ground = d.ground;
-    const own = new Map<string, Buffer>();
     if (d.bake) {
       const baked = bakeModel(d, p, read);
-      for (const f of baked.files) { files.push(f); own.set(f.path, f.data); }
+      for (const f of baked.files) emit(f.path, f.data);
       model = baked.model;
       // Its pedestal is under the map; cutting a hole would show the hole.
       if (baked.sunk && ground === undefined) ground = null;
+    } else if (produced.has(refPath(model)) && ground === undefined) {
+      // Pointing at a model another dwelling baked: its pedestal is under the map
+      // too, so this one must not cut a hole either.
+      ground = null;
     }
-    // Read from the mod first, then the game: a baked model is only in the mod.
-    const readEither = (rel: string): string | null => {
-      const mine = own.get(rel);
-      return mine ? mine.toString('latin1') : text(rel);
-    };
     // Measured off the art; the spec overrides either area if it wants to.
-    const measured = d.footprint && ground ? ground : footprintOf(model, readEither);
+    const measured = d.footprint && ground ? ground : footprintOf(model, readAny);
     if (!measured) {
       throw new Error(`${d.file}: cannot measure ${model} — give footprint and ground in the spec instead`);
     }
-    files.push({ path: p.shared, data: Buffer.from(dwellingDoc({ ...d, model, ground }, p, types, measured), 'latin1') });
+    emit(p.shared, Buffer.from(dwellingDoc({ ...d, model, ground }, p, types, measured), 'latin1'));
     // The palette tile. The editor's thumbnail cache is keyed by link path and
     // only the game's installer writes it, so the link names a texture instead —
     // the dwelling's own icon, which is a shipped one unless the mod says else.
-    files.push({ path: p.link, data: Buffer.from(dwellingLink(p, refPath(d.icon ?? '')), 'latin1') });
+    emit(p.link, Buffer.from(dwellingLink(p, refPath(d.icon ?? '')), 'latin1'));
     for (const slot of MESSAGE_SLOTS) {
       const message = d[slot];
-      if (message && !isRef(message)) files.push({ path: p.text[slot], data: utf16(message) });
+      if (message && !isRef(message)) emit(p.text[slot], utf16(message));
     }
   }
   return files;
