@@ -559,6 +559,55 @@ and carries a levelled hero from mission to mission. See `docs/CAMPAIGNS.md`.
 - [ ] ⬜ Importing custom assets into a project (models/textures/texts)
 - [ ] ⬜ Mod integrity check before building
 
+### Adding creatures — the units mod
+
+Proved end to end outside the editor first: a creature the game never shipped with now
+exists, stands on a map and fights. The recipe, every dead end, and both traps that cost a
+launch are written up in `<game>/Maps/sod/docs/NEW_CREATURES.md`; the working
+implementation is `Maps/sod/tools/build-creature-slots.ts` and
+`tools/patch-creature-limit.ts`. What moves here is the **mechanism** — Heroes V's own
+format work. What stays in `Maps/sod` is which creatures the Heroes III port needs and what
+their numbers are.
+
+Two constraints shape the design, both learned the hard way:
+
+- **The executable's creature ceiling and the installed mod must agree exactly.** The
+  ceiling says how many creatures exist and the startup check walks every id below it, so a
+  patched executable without its mod refuses to start. Never raise the ceiling for headroom:
+  spare ids have to be filled with creatures that exist only to stop the game complaining.
+- **A creature set belongs to a project, not to a map.** Ids are global, the ref table is
+  one file, and a mod replaces files rather than merging them — so two mods each adding one
+  creature do not compose.
+
+- [ ] ⬜ **Creature registry in the project** + build `homm5-units.h5u`. The mod is a
+      project like any other: unpacked tree plus manifest, packed on demand. The registry
+      is recoverable from the mod itself — ids from `types.xml`'s name→number map (anything
+      ≥ 180), stats from the inline objects in `Creatures.xdb` — so the editor can open a
+      mod somebody else built and list what is in it. Our own manifest records where each
+      creature's art came from, which the game's formats do not.
+- [ ] ⬜ **Copy the art into the mod by default**, not by reference. ~530 KB per creature,
+      mostly two textures. Not for portability — for a *stable shape*: replacing a model or
+      a texture later is then editing a file that is already there, instead of changing the
+      mod's structure. Keep the source filenames inside the creature's own folder and the
+      relative hrefs between model, skeleton, geometry and materials keep resolving
+      untouched.
+- [ ] ⬜ **Patch the executable from the editor.** `patch-creature-limit.ts` already
+      identifies the build by signature, refuses unless every site reads what it should, and
+      writes a new file beside the original. Steam's build is DRM-wrapped and cannot be
+      patched until unwrapped, which the editor should detect and explain rather than
+      attempt.
+- [ ] ⬜ **Model picker** over `Characters/Creatures/**` and `_(Model)/**`, with a preview —
+      the renderer can already draw geometry.
+- [ ] ⬜ **Fetch Steamless on request**, pinned and checksummed, never "latest":
+      `atom0s/Steamless` v3.1.0.5,
+      sha256 `e3e2d22e098ff3fb359b2876aa2bed9596f0501e6ff588cbffae90a76d2dc4f5`, 610646
+      bytes. Mismatch is a refusal, not a warning.
+- [ ] ⬜ **Recolour textures in the editor.** They are DDS **DXT3** (512×512, 7 mipmaps),
+      and the `.xdb` beside each one repeats the format, size and an `AverageColor`. So:
+      decompress BC2 → transform → recompress → regenerate mipmaps → recompute
+      `AverageColor`, leaving format, size and the `.xdb` untouched. BC2 keeps alpha
+      uncompressed, so only colour is lossy and only once.
+
 ## Phase 8 — Localisation tool
 
 The game reads ONE language — the ref names a plain `name.txt` and the engine
