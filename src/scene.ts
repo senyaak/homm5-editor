@@ -581,7 +581,7 @@ export interface GeomResolver {
 }
 
 /** Read one `<tag><Item><x>..</x><y>..</y></Item>…</tag>` list; `<tag/>` = none. */
-function parseTileList(xml: string, tag: string): TileOffset[] {
+export function parseTileList(xml: string, tag: string): TileOffset[] {
   const block = xml.match(new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`));
   if (!block) return [];
   const out: TileOffset[] = [];
@@ -591,8 +591,14 @@ function parseTileList(xml: string, tag: string): TileOffset[] {
   return out;
 }
 
-/** A building shared's tile footprint, or null when it declares none. */
-function parseFootprint(sharedXml: string): Footprint | null {
+/**
+ * A building shared's tile footprint, or null when it declares none.
+ *
+ * Exported because the footprint is what an object COSTS in ground, and that is
+ * a question outside the renderer too: the Heroes III port places objects by
+ * priority and has to know how much room each one wants before it puts it down.
+ */
+export function parseFootprint(sharedXml: string): Footprint | null {
   const fp: Footprint = {
     blocked: parseTileList(sharedXml, 'blockedTiles'),
     active: parseTileList(sharedXml, 'activeTiles'),
