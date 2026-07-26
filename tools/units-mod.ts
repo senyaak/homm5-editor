@@ -1,0 +1,138 @@
+// The units mod from the command line — build one, or say what is installed.
+//
+//   node tools/units-mod.ts list [game]              what UserMODs adds, and the
+//                                                    ceiling the exe then needs
+//   node tools/units-mod.ts show <archive.h5u>       one mod's creatures
+//   node tools/units-mod.ts build <project> [--install <game>]
+//
+// A project is a folder holding units.json — the registry. `build` reads it,
+// generates the mod's tree beside it in `packed/` and packs the .h5u.
+//
+// The editor's own UI does the same through src/creature-mod.ts; this exists so
+// the mechanism is usable and testable without it.
+
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
+import {
+  buildCreatureMod, creatureLimit, dataReader, findCreatureMods, MOD_MANIFEST,
+  packCreatureMod, readCreatureMod, writeCreatureMod,
+} from '../src/creature-mod.ts';
+import type { CreatureMod } from '../src/creature-mod.ts';
+import { SHIPPED_CREATURES } from '../src/creatures.ts';
+
+const args = process.argv.slice(2);
+const command = args[0];
+const flag = (name: string): string | undefined => {
+  const i = args.indexOf(`--${name}`);
+  return i >= 0 ? args[i + 1] : undefined;
+};
+const positional = args.slice(1).filter((a, i, all) => !a.startsWith('--') && !all[i - 1]?.startsWith('--'));
+
+const here = resolve(import.meta.dirname, '..');
+/** The install this editor sits in, when it sits in one. */
+const defaultGame = resolve(here, '..');
+
+function usage(): never {
+  console.error(`usage:
+  units-mod list [game]
+  units-mod show <archive.h5u>
+  units-mod build <project> [--install <game>] [--data <unpacked data root>]`);
+  process.exit(2);
+}
+
+/** Print a mod's creatures, one line each. */
+function report(mod: CreatureMod, reconstructed = false): void {
+  console.log(`  ${mod.creatures.length} creature(s), ids ${mod.first}..${creatureLimit(mod) - 1}`);
+  if (reconstructed) console.log('  (no manifest — read back from types.xml and the ref table)');
+  for (const c of mod.creatures) {
+    const s = c.stats;
+    console.log(`    ${String(c.number).padStart(3)}  ${c.id.padEnd(28)} ${c.name || '—'}`);
+    console.log(`         tier ${s.tier}, ${s.gold} gold, ${s.attack}/${s.defence}, ${s.minDamage}-${s.maxDamage} dmg, ${s.health} hp, speed ${s.speed}, init ${s.initiative}`);
+  }
+}
+
+if (command === 'list') {
+  const game = positional[0] ?? defaultGame;
+  const found = findCreatureMods(game);
+  if (!found.length) {
+    console.log(`no creature mods in ${join(game, 'UserMODs')} — the game holds its shipped ${SHIPPED_CREATURES}`);
+    process.exit(0);
+  }
+  for (const f of found) {
+    console.log(`\n${f.path}`);
+    report(f.mod, f.reconstructed);
+  }
+  // Ids are global and each mod carries a whole copy of the registry, so two of
+  // them do not add up — the game reads one and the other's creatures vanish.
+  if (found.length > 1) {
+    console.log(`\n${found.length} creature mods installed. They CONFLICT: each carries its own copy of`);
+    console.log('types.xml and the creature table, so whichever the game reads last wins outright.');
+  } else {
+    console.log(`\npatch the executable's creature ceiling to ${found[0]!.limit}`);
+  }
+  process.exit(0);
+}
+
+if (command === 'show') {
+  const path = positional[0];
+  if (!path) usage();
+  const found = readCreatureMod(resolve(path));
+  if (!found) {
+    console.log(`${path} says nothing about creatures`);
+    process.exit(1);
+  }
+  console.log(path);
+  report(found.mod, found.reconstructed);
+  console.log(`\npatch the executable's creature ceiling to ${found.limit}`);
+  process.exit(0);
+}
+
+if (command === 'build') {
+  const project = positional[0] ? resolve(positional[0]) : usage();
+  const manifest = join(project, MOD_MANIFEST);
+  if (!existsSync(manifest)) {
+    console.error(`${manifest} is not there — a units-mod project is a folder holding ${MOD_MANIFEST}`);
+    process.exit(1);
+  }
+  const mod = JSON.parse(readFileSync(manifest, 'utf8')) as CreatureMod;
+  const data = flag('data') ?? process.env.HOMM5_DATA ?? join(here, 'data-unpacked');
+  if (!existsSync(data)) {
+    console.error(`no unpacked game data at ${data} — point at one with --data or HOMM5_DATA`);
+    process.exit(1);
+  }
+
+  const report_ = buildCreatureMod(mod, dataReader(data));
+  const out = join(project, 'packed');
+  mkdirSync(out, { recursive: true });
+  writeCreatureMod(join(out, mod.stem), report_);
+  const archive = join(out, `${mod.stem}.h5u`);
+  writeFileSync(archive, packCreatureMod(report_));
+
+  console.log(`${report_.files.length} files, ceiling ${mod.first} → ${report_.limit}`);
+  for (const [id, n] of Object.entries(report_.art)) console.log(`  ${id}: ${n} art files copied`);
+  if (report_.missing.length) {
+    // Authoring sources, almost always — .mb scenes and .tga originals that were
+    // never shipped. Listed rather than hidden, because a missing texture would
+    // look exactly the same here.
+    console.log(`  ${report_.missing.length} reference(s) resolved to nothing:`);
+    for (const m of report_.missing.slice(0, 8)) console.log(`    ${m}`);
+    if (report_.missing.length > 8) console.log(`    … and ${report_.missing.length - 8} more`);
+  }
+
+  // The manifest the build wrote records the art each slot resolved to; keep it,
+  // so the project and the shipped mod say the same thing.
+  writeFileSync(manifest, `${JSON.stringify(mod, null, 2)}\n`);
+
+  const game = flag('install');
+  if (game) {
+    const target = join(game, 'UserMODs', `${mod.stem}.h5u`);
+    writeFileSync(target, readFileSync(archive));
+    console.log(`\ninstalled  ${target}`);
+  } else {
+    console.log(`\nbuilt  ${archive}`);
+  }
+  console.log(`then patch the executable to ${report_.limit} creatures — the two must agree exactly`);
+  process.exit(0);
+}
+
+usage();

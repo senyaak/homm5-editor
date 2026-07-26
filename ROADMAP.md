@@ -579,18 +579,34 @@ Two constraints shape the design, both learned the hard way:
   one file, and a mod replaces files rather than merging them — so two mods each adding one
   creature do not compose.
 
-- [ ] ⬜ **Creature registry in the project** + build `homm5-units.h5u`. The mod is a
-      project like any other: unpacked tree plus manifest, packed on demand. The registry
-      is recoverable from the mod itself — ids from `types.xml`'s name→number map (anything
-      ≥ 180), stats from the inline objects in `Creatures.xdb` — so the editor can open a
-      mod somebody else built and list what is in it. Our own manifest records where each
-      creature's art came from, which the game's formats do not.
-- [ ] ⬜ **Copy the art into the mod by default**, not by reference. ~530 KB per creature,
-      mostly two textures. Not for portability — for a *stable shape*: replacing a model or
-      a texture later is then editing a file that is already there, instead of changing the
-      mod's structure. Keep the source filenames inside the creature's own folder and the
-      relative hrefs between model, skeleton, geometry and materials keep resolving
-      untouched.
+- [x] ✅ **Creature registry in the project** (2026-07-26) — `src/creatures.ts` is the
+      record (stats written over the game's null creature, and read back out), and
+      `src/creature-mod.ts` is the mod: the three shipped files it edits, the five files and
+      the art each creature gets, and the pack. A project is a folder holding `units.json`;
+      `tools/units-mod.ts` builds one and reports what is installed. Ids are assigned on the
+      way in and the list is append-only, because a creature's NUMBER is what maps and saves
+      store.
+
+      Reading a mod back does not need our manifest, and the discriminator turned out to be
+      better than "ids ≥ 180": **all 180 shipped entries point at a file and an added one
+      carries its object inline**, so the inline entries are the mod's whatever its ceiling
+      — no version number to know. `units.json` is still shipped inside the archive, because
+      art provenance is the one thing the game's formats do not record. Reading one archive
+      does not inflate it either: a stock install has a 284 MB mod sitting next to ours.
+- [x] ✅ **Copy the art into the mod by default** (2026-07-26) — the whole closure reachable
+      from the four art refs (`AnimCharacter`, `Model`, `AnimSet`, `Icon128`), which for the
+      Sharpshooter is 45 files and 1.2 MB: geometry, skeleton, seven animations, materials,
+      textures, the creature's own sounds, and the `bin/…` binaries behind them. The source
+      directory structure is preserved under the creature's folder, so every relative href
+      inside the copy resolves untouched; absolute hrefs are repointed, but only when the
+      target was actually copied, since plenty of them name authoring sources that were
+      never shipped.
+
+      One thing the plan missed: **geometry, skeletons and animations are keyed by a `uid`
+      inside the document**, and their data lives at `bin/Geometries/<uid>` and the like. A
+      copy that kept its uid would share that file with the creature it was copied from —
+      so editing our mesh would edit theirs. Copies get a fresh uid, derived from what they
+      are so a rebuild stays byte-identical.
 - [ ] ⬜ **Patch the executable from the editor.** `patch-creature-limit.ts` already
       identifies the build by signature, refuses unless every site reads what it should, and
       writes a new file beside the original. Steam's build is DRM-wrapped and cannot be
