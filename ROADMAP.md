@@ -621,17 +621,32 @@ Two constraints shape the design, both learned the hard way:
       Only mods that add creatures are mounted. Closer to the game would be all of
       `UserMODs/`, but a stock install keeps a 284 MB cutscene archive in there and a mod
       that only replaces a texture changes nothing the editor has to resolve.
-- [ ] ⬜ **Patch the executable from the editor.** `patch-creature-limit.ts` already
-      identifies the build by signature, refuses unless every site reads what it should, and
-      writes a new file beside the original. Steam's build is DRM-wrapped and cannot be
-      patched until unwrapped, which the editor should detect and explain rather than
-      attempt.
+- [x] ✅ **Patch the executable from the editor** (2026-07-26) — `src/creature-limit.ts`,
+      moved here from the port so the offsets have one home. It identifies the build by
+      signature, refuses unless every site reads what it should, and writes a copy beside the
+      original. A DRM-wrapped build is detected and explained rather than attempted.
+
+      Beyond the plan, and the thing that actually made it usable: **an already-patched
+      executable is a starting state**, so any ceiling goes to any other in place. The
+      one-shot script could only start from the shipped 180, which meant every change to the
+      creature list needed a freshly unwrapped copy. Now `installCreatureMod` writes the
+      archive and the ceiling as ONE action — they have to agree exactly, so they are never
+      written apart, and adding or removing a creature is one command.
 - [ ] ⬜ **Model picker** over `Characters/Creatures/**` and `_(Model)/**`, with a preview —
       the renderer can already draw geometry.
-- [ ] ⬜ **Fetch Steamless on request**, pinned and checksummed, never "latest":
-      `atom0s/Steamless` v3.1.0.5,
-      sha256 `e3e2d22e098ff3fb359b2876aa2bed9596f0501e6ff588cbffae90a76d2dc4f5`, 610646
-      bytes. Mismatch is a refusal, not a warning.
+- [ ] ⛔ **Fetch and run Steamless from the editor — not doing this.** The plan was a
+      pinned, checksummed download, and pinning was the right instinct for the risk it
+      addresses: you get the binary you meant to get rather than something tampered with. It
+      does not change what the binary does. Removing a game's DRM wrapper is the owner's own
+      business, done deliberately, outside this editor — which automates none of it and makes
+      no network calls at all.
+
+      Nor does it need to. The wrapper comes off **once**: re-patching works from any
+      ceiling, so a working `bin/H5_Game_NCF.exe` is written once and then kept current by
+      installing a mod. What the editor does do is tell the truth about the files — it names
+      a wrapped executable as wrapped and says why it cannot be read, identifies which build
+      a file is, refuses a half-patched one, and reports when the ceiling and the installed
+      mod disagree.
 - [ ] ⬜ **Recolour textures in the editor.** They are DDS **DXT3** (512×512, 7 mipmaps),
       and the `.xdb` beside each one repeats the format, size and an `AverageColor`. So:
       decompress BC2 → transform → recompress → regenerate mipmaps → recompute
