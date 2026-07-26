@@ -17,15 +17,26 @@ export const REPO_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 export interface Launched {
   app: ElectronApplication;
   page: Page;
+  /**
+   * Uncaught renderer errors, in the order they happened.
+   *
+   * Collected for every launch because the listener has to be attached before
+   * the bundle runs, and the errors worth catching are the ones thrown at its
+   * top level — by which time any test could only find the wreckage. A dead
+   * renderer keeps the whole static page, so a test asserting on markup passes
+   * happily; this array is what tells the difference.
+   */
+  errors: string[];
 }
 
 /**
  * Launch the editor and wait for its window to render.
  * @param env extra environment (e.g. HOMM5_DATA) merged over the current one.
+ * @param args extra Chromium/Electron switches, appended after the app path.
  */
-export async function launchEditor(env: Record<string, string> = {}): Promise<Launched> {
+export async function launchEditor(env: Record<string, string> = {}, args: string[] = []): Promise<Launched> {
   const app = await electron.launch({
-    args: ['.'],
+    args: ['.', ...args],
     cwd: REPO_ROOT,
     env: {
       ...process.env,
@@ -39,8 +50,10 @@ export async function launchEditor(env: Record<string, string> = {}): Promise<La
     } as Record<string, string>,
   });
   const page = await app.firstWindow();
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
   await page.waitForLoadState('domcontentloaded');
-  return { app, page };
+  return { app, page, errors };
 }
 
 /**

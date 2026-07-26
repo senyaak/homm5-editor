@@ -21,3 +21,25 @@ test('launches to the empty state with its toolbar', { tag: '@nodata' }, async (
   await expect(page.locator('#viewbtn')).toBeHidden();
   await expect(page.locator('#pack')).toBeDisabled();
 });
+
+test('the renderer bundle ran, not just the markup', { tag: '@nodata' }, async () => {
+  const { page, errors } = ed;
+  // Every assertion above is also true of an app whose renderer died on its
+  // first line: the title, the buttons, the hidden view toggle and the disabled
+  // Pack are all written into index.html. A missing WebGL context once shipped
+  // exactly that — a window that looked open and answered no clicks — and this
+  // suite was green for it. These three say the bundle reached its end.
+  await expect(page.locator('#fatal')).toBeHidden();
+  await expect.poll(() => page.evaluate(() => window.__booted === true)).toBe(true);
+  expect(errors).toEqual([]);
+});
+
+test('the picker fills itself in', { tag: '@nodata' }, async () => {
+  const { page } = ed;
+  // The map list is the first thing boot does with the main process, so it
+  // covers the renderer, preload, IPC and main in one look. Its footer is
+  // written only by a resolved maps:list — the count can be 0 here, because CI
+  // runs this against an empty stub data root.
+  await expect(page.locator('#picker-foot')).toContainText('maps ·');
+  await expect(page.locator('#maplist')).not.toContainText('loading');
+});

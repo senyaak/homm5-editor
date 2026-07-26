@@ -19,7 +19,7 @@ import { createHash } from 'node:crypto';
 import { buildScene, findAssetRoot, listTiles, splatFor, pngDataUri } from '../src/scene.ts';
 import { listPlaceable, iconPathFor, readIconFile } from '../src/objects.ts';
 import { decodeDDS } from '../src/dds.ts';
-import { editorRoot, gameData, gameRoot, isConfigured, mountedAssets, preloadPath, rendererFile, tmpRoot } from './paths.ts';
+import { editorRoot, gameData, gameRoot, isConfigured, mountedAssets, preloadPath, readSettings, rendererFile, saveSettings, tmpRoot } from './paths.ts';
 import type { Assets } from '../src/assets.ts';
 import { closeSetup, runSetup } from './setup.ts';
 import { initProject, openProject, packProject, exportLocalized, readManifest, writeManifest, status, pickMapRel, MANIFEST_NAME } from '../src/project.ts';
@@ -89,6 +89,21 @@ import type {
 // Turning the feature off is the standard workaround and costs nothing here: we
 // only ever run one visible window. Must be set before app is ready.
 app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
+
+// Software rendering, if a previous run was told to remember it. Chromium picks
+// its GL backend while coming up, so this has to be said here and cannot be a
+// setting the running editor applies. It exists because a driver that gives no
+// WebGL leaves the editor with nothing to draw on, and someone running a
+// packaged build has no command line to pass the switch on — see
+// Settings.softwareRendering.
+if (readSettings().softwareRendering) {
+  app.commandLine.appendSwitch('use-angle', 'swiftshader');
+  // Paired on purpose: if the driver was merely blocklisted, ANGLE's software
+  // path is a heavy price for a machine that could have run on the GPU, and
+  // whoever turned this on has already seen the editor fail to start.
+  app.commandLine.appendSwitch('ignore-gpu-blocklist');
+  console.log('[gpu] software rendering, remembered from a previous run');
+}
 
 /** Unpacked archives, one folder per archive. */
 const workspaces = (): string => join(tmpRoot(), 'workspaces');
@@ -287,8 +302,57 @@ function createWindow(): void {
   // re-narrowing the mutable module-level `win` after every call.
   const w = win;
   w.setMenuBarVisibility(false);
+  // Renderer failures, in the terminal that launched the app. Until this was
+  // here, a renderer that died on its first line left no trace anywhere the
+  // person hitting it would look: DevTools is closed, and start-editor.bat keeps
+  // its window open for exactly this and had nothing to show.
+  w.webContents.on('console-message', (e) => {
+    if (e.level === 'error') console.error(`[renderer] ${e.message} (${e.sourceId}:${e.lineNumber})`);
+  });
+  w.webContents.on('preload-error', (_e, path, err) => {
+    console.error(`[preload] ${path} failed to load: ${err.message}`);
+  });
+  w.webContents.on('render-process-gone', (_e, d) => {
+    console.error(`[renderer gone] ${d.reason} (exit ${d.exitCode})`);
+  });
   w.loadFile(rendererFile('index.html'));
 }
+
+/** The graphics answer behind `gpuReport` — see EditorApi. */
+async function gpuReport(): Promise<string> {
+  const lines: string[] = [`electron ${process.versions.electron} · chrome ${process.versions.chrome} · ${process.platform}`];
+  // Only the features Chromium turned off. The enabled ones are noise here, and
+  // this block is meant to be pasted into a message by someone with a problem.
+  const status = app.getGPUFeatureStatus() as unknown as Record<string, string>;
+  const off = Object.entries(status).filter(([, v]) => !v.startsWith('enabled'));
+  lines.push(off.length ? `disabled GPU features:\n  ${off.map(([k, v]) => `${k}: ${v}`).join('\n  ')}`
+    : 'GPU features: all enabled');
+  try {
+    // 'basic' rather than 'complete': the complete report is hundreds of lines
+    // of driver detail, and the adapter's identity is what actually names the
+    // cause. A blocked driver and a session with no GPU at all read differently
+    // here even though both end as "no WebGL".
+    const info = await app.getGPUInfo('basic') as Record<string, unknown>;
+    lines.push(`gpu: ${JSON.stringify(info)}`);
+  } catch (e) {
+    lines.push(`gpu: unavailable (${e instanceof Error ? e.message : String(e)})`);
+  }
+  const switches = process.argv.filter((a) => a.startsWith('--'));
+  if (switches.length) lines.push(`switches: ${switches.join(' ')}`);
+  return lines.join('\n');
+}
+
+ipcMain.handle('app:gpu-report', gpuReport);
+ipcMain.handle('app:open-devtools', () => { win?.webContents.openDevTools({ mode: 'detach' }); });
+ipcMain.handle('app:gpu-software', (): boolean => !!readSettings().softwareRendering);
+// Remember, then come back up with the switches applied. A restart is the whole
+// mechanism, not an inconvenience of it: the backend is chosen before the app is
+// ready, so this is the only moment the choice can be made.
+ipcMain.handle('app:set-gpu-software', (_e: IpcMainInvokeEvent, { on }: { on: boolean }) => {
+  saveSettings({ softwareRendering: on });
+  app.relaunch();
+  app.exit(0);
+});
 
 app.whenReady().then(async () => {
   // Nothing to read means nothing to edit, so setup comes first: it asks where

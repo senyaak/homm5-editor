@@ -363,6 +363,38 @@
     .mt-add button:hover { background: #30363d; }
     .mt-adv-hide { display: none; }
 
+    /* The fatal-error screen (see the trap at the bottom of this file). Above
+       every other layer, including the dialogs: if it is showing, nothing else
+       on the page works, so nothing else should be reachable. */
+    #fatal { position: fixed; inset: 0; z-index: 100; overflow: auto;
+      background: #0d1014; padding: 8vh 10vw; }
+    #fatal h2 { margin: 0 0 10px; font-size: 20px; color: #ff7b72; font-weight: 600; }
+    /* pre-wrap: these messages are written as a paragraph and then a numbered
+       list of things to try, and a <p> collapsing those newlines runs the list
+       into one line — the least readable form of the one text here that has to
+       be read. */
+    #fatal p { margin: 0 0 14px; font-size: 14px; color: #e6edf3; max-width: 78ch;
+      white-space: pre-wrap; }
+    #fatal pre { margin: 0 0 16px; padding: 12px 14px; background: #161b22;
+      border: 1px solid #30363d; border-radius: 8px; color: #8b949e;
+      font: 11px/1.5 ui-monospace, monospace; white-space: pre-wrap; }
+    #fatal .row { display: flex; gap: 8px; }
+    #fatal button { background: #21262d; border: 1px solid #30363d; color: #c9d1d9;
+      border-radius: 6px; cursor: pointer; font-size: 12px; padding: 5px 12px; }
+    #fatal button:hover { background: #30363d; }
+
+    /* The software-rendering notice. Top centre, under the toolbar: a standing
+       condition rather than a passing message, so it does not belong in #hud
+       where the next status line would wipe it. */
+    #gpunote { position: fixed; top: 46px; left: 50%; transform: translateX(-50%);
+      z-index: 20; display: flex; align-items: center; gap: 10px;
+      padding: 5px 10px; border-radius: 7px; font-size: 12px;
+      background: #2d2410; border: 1px solid #6b5420; color: #e3d3a8; }
+    #gpunote[hidden] { display: none; }
+    #gpunote button { background: #3a2f14; border: 1px solid #6b5420; color: #f0e2bb;
+      border-radius: 5px; cursor: pointer; font-size: 11px; padding: 2px 8px; }
+    #gpunote button:hover { background: #4a3c19; }
+
     /* loading overlay — blocks input while a map decodes */
     #loading { position: fixed; inset: 0; z-index: 30; display: none;
       align-items: center; justify-content: center; background: #0d1014cc; }
@@ -1190,10 +1222,120 @@
     </div>
   </dialog>
 
+  <!-- Shown only while software rendering is on. The way back out: the mode is
+       remembered across restarts, and it is chosen on a machine that could not
+       start at all, so nothing else would ever tell the user it is still costing
+       them the GPU. -->
+  <div id="gpunote" hidden>
+    <span>Drawing in software — slower than the GPU. Turned on because this machine gave no 3D context.</span>
+    <button id="gpunote-off">Try the GPU again</button>
+  </div>
   <div id="loading"><div class="box"><div class="spin"></div><span id="loadmsg">loading map…</span></div></div>
   <div id="hud"></div>
   <div id="app"></div>
 
+  <!-- The failure trap, armed before the bundle it watches.
+       app.js is one ES module: anything thrown at its top level stops the rest
+       of the file. Everything visible above is static markup, so the window
+       still looks alive — a toolbar wired to nothing and a map list stuck on
+       "loading…" forever. That is the shape this reached a user in: "I click
+       and nothing happens." A message beats a dead window, and the trap has to
+       be plain inline script, because the module that would have handled the
+       error is the thing that died. -->
+  <script>
+    (function () {
+      var shown = false;
+      function fatal(what, detail) {
+        if (shown) return; // the first error is the cause; the rest are echoes
+        shown = true;
+        var el = document.createElement('div');
+        el.id = 'fatal';
+        el.innerHTML = '<h2>The editor did not start</h2><p></p>'
+          + '<div class="row"><button id="fatal-soft" hidden></button></div>'
+          + '<pre></pre>'
+          + '<div class="row"><button id="fatal-copy">Copy the details</button>'
+          + '<button id="fatal-dev">Open DevTools</button></div>';
+        el.querySelector('p').textContent = what;
+        el.querySelector('pre').textContent = detail || '';
+        (document.body || document.documentElement).appendChild(el);
+        el.querySelector('#fatal-copy').onclick = function () {
+          navigator.clipboard.writeText(el.querySelector('p').textContent
+            + '\n\n' + el.querySelector('pre').textContent);
+        };
+        // Both of these still work with the renderer dead: preload runs in its
+        // own context, so window.editor is there even now.
+        el.querySelector('#fatal-dev').onclick = function () {
+          if (window.editor && window.editor.openDevTools) window.editor.openDevTools();
+        };
+        // What Chromium made of this machine's graphics, appended as it arrives.
+        // Guessing is the alternative: "no WebGL" has a dozen causes (a driver
+        // on the blocklist, a remote-desktop session, a VM, a laptop's idle
+        // second GPU) and they are indistinguishable from the message alone.
+        // This puts the answer in the copyable block, so a report from someone
+        // else's machine says which one it was.
+        if (window.editor && window.editor.gpuReport) {
+          window.editor.gpuReport().then(function (report) {
+            var pre = el.querySelector('pre');
+            pre.textContent = (pre.textContent ? pre.textContent + '\n\n' : '') + report;
+          }, function () { /* diagnostics are a bonus; never hide the error */ });
+        }
+        // The one repair a user can actually make here, and the reason this is a
+        // button rather than a line of advice: the editor is normally started by
+        // double-clicking a packaged build, where there is no command line to put
+        // --use-angle=swiftshader on. Offered only when the failure is about the
+        // 3D context, and not when software rendering is already what failed.
+        var soft = el.querySelector('#fatal-soft');
+        if (/WebGL|3D/.test(what) && window.editor && window.editor.gpuSoftware) {
+          window.editor.gpuSoftware().then(function (already) {
+            if (already) {
+              var p = el.querySelector('p');
+              p.textContent = p.textContent
+                + '\n\nSoftware rendering is already on, and it did not help — so this is not a '
+                + 'driver Chromium mistrusts, but a machine giving it no 3D at all.';
+              return;
+            }
+            soft.textContent = 'Restart with software rendering (slow, but works anywhere)';
+            soft.hidden = false;
+            soft.onclick = function () {
+              soft.disabled = true;
+              soft.textContent = 'restarting…';
+              window.editor.setGpuSoftware(true);
+            };
+          }, function () { /* leave the button hidden */ });
+        }
+      }
+      // A stack starts with the message it belongs to, and the message is
+      // already the headline here — kept whole, it would be printed twice, with
+      // the frames that matter pushed below the fold.
+      function frames(err) {
+        var stack = (err && err.stack) || '';
+        return err && err.message && stack.indexOf(err.message) !== -1
+          ? stack.slice(stack.indexOf(err.message) + err.message.length).replace(/^\s*\n/, '')
+          : stack;
+      }
+      // Capture phase: a <script> that fails to load fires its error event on the
+      // element and never reaches window.onerror, so listening on the way down is
+      // what catches "the bundle is not there at all".
+      window.addEventListener('error', function (e) {
+        if (e.error) fatal(e.error.message || String(e.error), frames(e.error));
+        else if (e.target && e.target.src) fatal('Could not load ' + e.target.src, '');
+      }, true);
+      window.addEventListener('unhandledrejection', function (e) {
+        var r = e.reason;
+        fatal(r && r.message ? r.message : String(r), frames(r));
+      });
+      // The silent variant: nothing throws, but boot never finishes — an await
+      // that never settles. There is no event for that, so watch for the finish
+      // line instead. Boot is milliseconds when it works, so this only ever
+      // fires on a genuine hang.
+      setTimeout(function () {
+        if (!window.__booted) {
+          fatal('The renderer loaded but never finished starting up.',
+            'Nothing was thrown, so this is something the app is still waiting for.');
+        }
+      }, 15000);
+    })();
+  </script>
   <script type="module" src="./app.js"></script>
 </body>
 </html>

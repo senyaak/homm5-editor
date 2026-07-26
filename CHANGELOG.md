@@ -7,6 +7,24 @@ section into the release notes, so this file is what people read on GitHub.
 Written for someone deciding whether to update: what was wrong, and what they
 would have seen.
 
+## Unreleased
+
+### Fixed
+
+- **The editor opened and then did nothing.** The window came up with its
+  toolbar, the map list said "loading…" and never stopped, and no button did
+  anything — including Open map and New map. On a machine whose graphics driver
+  gives Chromium no 3D context, the first thing the editor sets up failed, and
+  that stopped everything after it from loading: every button, and the map list
+  itself. The window still looked fine, because the toolbar and that "loading…"
+  are part of the page rather than signs of a working editor.
+
+  It now says what happened, alongside what this machine's graphics report, and
+  offers to restart drawing in software instead — several times slower, but it
+  needs nothing from the driver. While that is on, the editor says so and offers
+  the GPU back in one click. Any other failure this early gets the same
+  treatment: a message you can copy, rather than a window that ignores you.
+
 ## 0.1.1 — 2026-07-25
 
 ### Fixed

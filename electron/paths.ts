@@ -54,6 +54,16 @@ export interface Settings {
   gameRoot?: string;
   /** The unpacked union of those archives — the tree the editor reads. */
   dataRoot?: string;
+  /**
+   * Render through SwiftShader instead of the GPU.
+   *
+   * Remembered rather than passed as a switch because the machines that need it
+   * are the ones running a packaged build, where there is no command line to put
+   * a switch on — the editor is started by double-clicking it. The fatal-error
+   * screen sets this and restarts; the editor says so while it is on, and offers
+   * the way back, since it costs a lot of speed.
+   */
+  softwareRendering?: boolean;
 }
 
 /** Where settings live. Same file in dev and packaged, on purpose: one setup. */

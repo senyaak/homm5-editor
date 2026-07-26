@@ -40,6 +40,12 @@ declare global {
     editor: EditorApi;
     /** Plan-view geometry for click-driven tests — see "automation hook" below. */
     view: ViewApi;
+    /**
+     * Set once, by the last line of this module. Absent means the module never
+     * reached its end — index.html's trap watches for that, since a boot that
+     * hangs rather than throws raises no event to catch.
+     */
+    __booted?: true;
   }
 }
 
@@ -150,7 +156,35 @@ interface Selection { id: string; mesh: THREE.Mesh; inst: Instance }
 const ALL = 'All'; // category chip meaning 'no filter', used as both label and key
 
 // --- three.js boilerplate ---
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+
+/**
+ * The 3D context, or a failure that says what to do about it.
+ *
+ * three.js throws a bare "Error creating WebGL context." here, and this is a
+ * top-level `const`: the throw stops the rest of this module, which is every
+ * event handler the window has. The page keeps its static markup, so the editor
+ * looks open and does nothing at all — the map list stays on its "loading…"
+ * placeholder for good. That is how this shipped, and the message a user got was
+ * nothing. The context is genuinely required (the whole editor is the 3D view),
+ * so this does not try to carry on without one; it just makes the failure name
+ * itself, and index.html's trap puts it on screen.
+ */
+function makeRenderer(): THREE.WebGLRenderer {
+  try {
+    return new THREE.WebGLRenderer({ antialias: true });
+  } catch (e) {
+    throw new Error(
+      'This machine did not give the editor a 3D (WebGL) context, so the map view cannot start. '
+      + 'The usual causes are a graphics driver too old for Chromium to trust, a remote-desktop '
+      + 'or virtual-machine session with no GPU, or a laptop running this on its idle GPU.\n\n'
+      + 'Updating the graphics driver is the fix worth having. Failing that, the button below '
+      + 'restarts the editor drawing in software — several times slower, but it does not need a '
+      + 'driver to cooperate, and it can be turned off again from inside the editor.\n\n'
+      + `(three.js said: ${e instanceof Error ? e.message : String(e)})`,
+    );
+  }
+}
+const renderer = makeRenderer();
 renderer.setSize(innerWidth, innerHeight);
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 $('app').appendChild(renderer.domElement);
@@ -6577,6 +6611,16 @@ $('open').onclick = openViaDialog;
 $('open2').onclick = openViaDialog;
 $input('search').addEventListener('input', renderMapList);
 initPicker();
+
+// Say so while the editor is drawing in software, and offer the way back. The
+// mode survives restarts, so without this a machine that had one bad driver day
+// would keep paying for it silently — and the person who turned it on did so from
+// a window that could not start, which is not where they will look to undo it.
+void (async () => {
+  if (!await window.editor.gpuSoftware()) return;
+  $('gpunote').hidden = false;
+  $('gpunote-off').onclick = () => { void window.editor.setGpuSoftware(false); };
+})();
 // Save puts the work back where the map came from. For a map opened from a
 // .h5m that is the archive itself — the working folder is ours, not something
 // the user picked, so writing only there would look like nothing happened.
@@ -6981,3 +7025,8 @@ let lastT = performance.now();
   if (topView) syncTopCamera(); // follow pan/zoom + the orbit target each frame
   renderer.render(scene, activeCam);
 })();
+
+// The finish line. Everything above ran, so the window is wired and the render
+// loop is turning; index.html's watchdog stands down. Keep this last — moved
+// earlier, it would vouch for handlers that had not been attached yet.
+window.__booted = true;

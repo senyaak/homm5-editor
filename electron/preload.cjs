@@ -79,6 +79,13 @@ const api = {
   saveCampaign: (doc) => ipcRenderer.invoke('campaign:save', { doc }),
   packCampaign: (dir) => ipcRenderer.invoke('campaign:pack', { dir }),
   mapHeroes: (mapRel) => ipcRenderer.invoke('campaign:map-heroes', { mapRel }),
+  // Diagnostics for the fatal-error screen in index.html. That screen shows up
+  // when the renderer module died, so these two are all it can still call —
+  // preload has its own context and survives.
+  gpuReport: () => ipcRenderer.invoke('app:gpu-report'),
+  openDevTools: () => ipcRenderer.invoke('app:open-devtools'),
+  gpuSoftware: () => ipcRenderer.invoke('app:gpu-software'),
+  setGpuSoftware: (on) => ipcRenderer.invoke('app:set-gpu-software', { on }),
   // Push channel, not invoke: the main process decides when the folder moved.
   // The listener is wrapped so the renderer never sees the IpcRendererEvent.
   onExternalChange: (cb) => { ipcRenderer.on('map:external-change', (_e, c) => cb(c)); },

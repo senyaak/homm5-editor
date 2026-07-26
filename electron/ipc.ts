@@ -697,6 +697,23 @@ export interface EditorApi {
   /** The heroes a mission on this map can hand on, and whether it can receive. */
   mapHeroes(mapRel: string): Promise<MapHeroesResult>;
   /**
+   * A human-readable dump of what Chromium decided about this machine's
+   * graphics: which GPU features it turned off, and the adapter behind them.
+   * Feeds the fatal-error screen, whose commonest cause is a WebGL context the
+   * driver would not give — and which of the many reasons for that only this
+   * answers.
+   */
+  gpuReport(): Promise<string>;
+  /** Open DevTools on the editor window (the fatal screen's escape hatch). */
+  openDevTools(): Promise<void>;
+  /** Is this run rendering through SwiftShader? See Settings.softwareRendering. */
+  gpuSoftware(): Promise<boolean>;
+  /**
+   * Remember the rendering mode and restart into it. Never returns — the app is
+   * on its way down by the time the call would resolve.
+   */
+  setGpuSoftware(on: boolean): Promise<void>;
+  /**
    * Subscribe to external edits of the open map folder. Fires once per settled
    * burst of writes; our own saves never fire it.
    */
