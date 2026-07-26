@@ -9,6 +9,8 @@ import type { FieldSchema, RegistryName } from '../src/schema.ts';
 import { Registry } from '../src/registry.ts';
 import { loadMap } from '../src/map.ts';
 import { children } from '../src/xml.ts';
+import { readTypeSpec, typesXmlPath } from '../src/typespec.ts';
+import type { SpecField, SpecType } from '../src/typespec.ts';
 
 const dataRoot = process.argv[2] ?? 'data-unpacked';
 const VALID_REGISTRIES: RegistryName[] = ['spells', 'artifacts', 'heroes', 'races', 'ambientLights', 'creatures', 'skills', 'birds', 'winds', 'weathers'];
@@ -70,6 +72,55 @@ for (const name of ['Shared', 'Amount', 'Mood', 'ArtifactID', 'Resources', 'Allo
   console.log(`  ${name.padEnd(18)} -> ${controlOf(d)}${d['x-registry'] ? ` (${d['x-registry']})` : ''}${d['x-shared'] ? ' (shared)' : ''}`);
 }
 
+// --- 5. list ELEMENT shapes, against the game's own type system ---
+//
+// Section 3 checks the fields an object carries, and never looks inside a list.
+// That gap shipped a real bug: `AdditionalStacks` was declared as an army slot
+// (Creature + Count) when the engine's element type is `MonstersStack`
+// (Creature + CustomAmount + Amount + Amount2). The editor duly wrote a Count
+// the type has no field for and left out CustomAmount, whose declared default is
+// false — "roll the size yourself" — so a stack asked to be 1 creature came out
+// a dozen, and a different dozen each time.
+//
+// types.xml is authoritative about shape, so this is a direct comparison rather
+// than an inference from maps. Skipped when the game data is not around.
+console.log('\n=== list element shapes vs types.xml ===');
+const specPath = typesXmlPath(dataRoot);
+if (!specPath) {
+  console.log(`  (skipped — no types.xml under ${dataRoot})`);
+} else {
+  const spec = readTypeSpec(specPath);
+  const byPtr = new Map<string, SpecType>();
+  for (const t of spec.values()) if (t.ptr) byPtr.set(t.ptr, t);
+
+  let checked = 0;
+  for (const [type, node] of Object.entries(objectSchema.types)) {
+    const st = spec.get(type);
+    if (!st) continue; // a type the spec does not name is section 3's business
+    for (const [field, raw] of Object.entries(objectProps(type))) {
+      const sf = st.fields.find((x: SpecField) => x.name === field);
+      const f = deref(objectSchema, raw);
+      if (!sf || f.type !== 'array' || !f.items) continue;
+      const arr = sf.type ? byPtr.get(sf.type) : undefined;
+      const el = arr?.elem ? byPtr.get(arr.elem) : undefined;
+      if (!el || el.kind === 'enum' || !el.fields.length) continue;
+      const ours = Object.keys(deref(objectSchema, f.items).properties ?? {});
+      if (!ours.length) continue; // an untyped list claims no shape, so none to check
+      checked++;
+      const want = el.fields.map((x: SpecField) => x.name);
+      const extra = ours.filter((p) => !want.includes(p));
+      const absent = want.filter((p) => !ours.includes(p));
+      if (extra.length || absent.length) {
+        fail(`${type}.${field} items are ${el.name} [${want.join(', ')}], we declare [${ours.join(', ')}]`
+          + `${extra.length ? ` — EXTRA ${extra.join(',')}` : ''}${absent.length ? ` — MISSING ${absent.join(',')}` : ''}`);
+      } else {
+        console.log(`  ✓ ${type}.${field} → ${el.name} (${want.length} fields)`);
+      }
+    }
+  }
+  console.log(`  ${checked} typed list(s) checked against the spec`);
+}
+
 const ok = problems === 0 && uncovered === 0;
-console.log(`\n${ok ? 'PASS' : `FAIL (${uncovered} uncovered fields)`}`);
+console.log(`\n${ok ? 'PASS' : `FAIL (${problems} problem(s), ${uncovered} uncovered fields)`}`);
 process.exit(ok ? 0 : 1);

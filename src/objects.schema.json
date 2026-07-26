@@ -53,9 +53,20 @@
     },
     "ArmySlot": {
       "type": "object", "title": "Army stack",
+      "description": "A guard standing on something — an exact creature and an exact count. NOT what a wandering monster's extra stacks are; those are MonstersStack.",
       "properties": {
         "Creature": { "type": "string", "x-registry": "creatures", "x-widget": "dropdown", "title": "Creature" },
         "Count": { "type": "integer", "minimum": 0, "title": "Count" }
+      }
+    },
+    "MonstersStack": {
+      "type": "object", "title": "Monster stack",
+      "description": "An extra stack on a wandering monster. It is NOT an army slot: the size is a switch plus a range, and there is no Count field at all. With `CustomAmount` off the engine ROLLS the size and ignores Amount — and off is its declared default, so a stack written without the field comes out as a dozen creatures instead of the one that was asked for. All 1719 extra stacks in the shipped maps spell the field out.",
+      "properties": {
+        "Creature": { "type": "string", "x-registry": "creatures", "x-widget": "dropdown", "title": "Creature" },
+        "CustomAmount": { "type": "boolean", "title": "Exact amount", "description": "On: the stack is exactly Amount. Off: the game rolls it from the map's difficulty and the week, and Amount is ignored.", "default": true },
+        "Amount": { "type": "integer", "minimum": 0, "title": "Amount", "default": 1 },
+        "Amount2": { "type": "integer", "minimum": 0, "title": "Amount (upper bound)", "description": "Non-zero turns the size into a range rolled between the two. Every shipped map leaves it 0.", "default": 0 }
       }
     },
     "Skill": {
@@ -201,7 +212,7 @@
       "Script": { "type": "string", "x-ref": true, "title": "Script", "x-advanced": true, "default": null },
       "SingleMonsterNameFileRef": { "type": "string", "x-ref": true, "x-file": true, "title": "Name (single)", "x-advanced": true, "default": "" },
       "MultipleMonstersNameFileRef": { "type": "string", "x-ref": true, "x-file": true, "title": "Name (multiple)", "x-advanced": true, "default": "" },
-      "AdditionalStacks": { "type": "array", "title": "Additional stacks", "x-advanced": true, "default": [], "items": { "$ref": "#/$defs/ArmySlot" } },
+      "AdditionalStacks": { "type": "array", "title": "Additional stacks", "description": "Extra stacks fighting beside the main one. Each carries its own amount switch — see MonstersStack.", "x-advanced": true, "default": [], "items": { "$ref": "#/$defs/MonstersStack" } },
       "relationsOverrides": { "type": "array", "title": "Relations overrides", "x-advanced": true, "description": "Special relations toward some players.", "default": [], "items": { "type": "object" } }
     } } ] },
     "AdvMapArtifact": { "allOf": [ { "$ref": "#/$defs/CommonObject" }, { "type": "object", "properties": {

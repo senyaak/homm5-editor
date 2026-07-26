@@ -52,6 +52,25 @@ them, and every list field then looks like it has no type. They are collected
 separately and stored under a synthetic `array:<ptr>` key, which is what lets
 "what may this list contain" resolve to `SpellID` and its 353 members.
 
+**A list's element type is not the one its name suggests, and guessing costs
+more than an afternoon.** Two lists of creatures-with-a-number exist and they
+are different types:
+
+| field | element type | fields |
+| --- | --- | --- |
+| `armySlots` (heroes, towns, mines, garrisons, artifacts) | `ArmySlot` | `Creature`, `Count` |
+| `AdvMapMonster.AdditionalStacks` | `MonstersStack` | `Creature`, `CustomAmount`, `Amount`, `Amount2` |
+
+Our schema declared `AdditionalStacks` as an army slot. The editor then wrote a
+`<Count>` the type has no field for and omitted `CustomAmount`, whose declared
+default is **false** — "roll the size from difficulty and week, ignore Amount".
+So a stack asked to be one creature came out a dozen, and a different dozen each
+time, with nothing in the file looking wrong. All 1719 extra stacks across the
+135 shipped maps spell `CustomAmount` out; 1493 set it true.
+
+`tools/test-objects-schema.ts` now compares every typed list's element fields
+against the spec, which is a two-line check that would have caught it.
+
 The parser splits on `<TypeName>` rather than on the enclosing `<Item>`: items
 nest several levels deep (fields, constraints, entries), so matching the wrapper
 means counting brackets for no gain. The same bounding matters for enums: read
