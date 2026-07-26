@@ -139,8 +139,20 @@ check('the abilities are left alone', /<Name>ABILITY_NONE<\/Name>\s*<Value>0<\/V
 const table = file('GameMechanics/RefTables/Artifacts.xdb')!;
 check('the table holds the shipped ones and ours',
   (table.match(/<ID>\w+<\/ID>/g) ?? []).length === SHIPPED_ARTIFACTS + ids.length);
-check('each carries an inline record', ids.every((id) =>
-  new RegExp(`<ID>${id}</ID>\\s*<obj href="#n:inline\\(DBArtifact\\)"`).test(table)));
+// The SHAPE the shipped entries use, read off them rather than asserted from
+// memory. This is the check that would have caught writing them the creature
+// table's way — an `<obj href="#n:inline(DBArtifact)">` the game cannot
+// resolve, which leaves the record empty and the artifact unpickable while
+// everything else about it looks right.
+{
+  // `<obj>` exactly, or `<obj …>` with attributes — but not `<objects>`.
+  const shipped = new Set((table.match(/<obj(?:\s[^>]*)?>/g) ?? []).slice(0, SHIPPED_ARTIFACTS));
+  check('the shipped entries all use one shape', shipped.size === 1, [...shipped].join(' '));
+  const shape = [...shipped][0]!;
+  check('and ours use the same one', ids.every((id) =>
+    new RegExp(`<ID>${id}</ID>\\s*${shape.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`).test(table)),
+    `shipped write ${shape}`);
+}
 // The line that decides which artifact is lying on the ground.
 const shared = file('TestArtifact1.(AdvMapArtifactShared).xdb')!;
 check('the map object names its own artifact', shared.includes(`<ArtifactID>${ids[0]}</ArtifactID>`));

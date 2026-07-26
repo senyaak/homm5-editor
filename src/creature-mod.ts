@@ -597,12 +597,18 @@ function patchArtifactTable(
   const had = count(table, /<ID>\w+<\/ID>/g);
   if (had !== SHIPPED_ARTIFACTS) throw new Error(`${ARTIFACT_TABLE}: ${had} entries, expected ${SHIPPED_ARTIFACTS}`);
   const close = once(table, '</objects>', `${ARTIFACT_TABLE} objects`);
-  return insertBeforeLine(table, close, artifacts.flatMap((a, i) => {
+  return insertBeforeLine(table, close, artifacts.flatMap((a) => {
     const p = artifactPaths(a);
     return [
       '<Item>',
       `\t<ID>${a.id}</ID>`,
-      `\t<obj href="#n:inline(${ARTIFACT_RECORD_TYPE})" id="item_${uidFor(`artifact:${a.id}`).toLowerCase()}">`,
+      // A BARE `<obj>`, which is what all 97 shipped entries are. The creature
+      // table looks similar and is not: there the object is a reference, either
+      // to a file or with `#n:inline(Creature)` as the marker for one written in
+      // place. Carrying that marker over here gives an href the game cannot
+      // resolve, and the record comes out EMPTY — the artifact exists by name,
+      // has no data behind it, and the game says it cannot be picked up.
+      '\t<obj>',
       ...artifactRecord(a, p, types).map((l) => `\t\t${l}`),
       '\t</obj>',
       '</Item>',
