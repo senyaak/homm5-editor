@@ -634,19 +634,18 @@ Two constraints shape the design, both learned the hard way:
       written apart, and adding or removing a creature is one command.
 - [ ] ⬜ **Model picker** over `Characters/Creatures/**` and `_(Model)/**`, with a preview —
       the renderer can already draw geometry.
-- [ ] ⛔ **Fetch and run Steamless from the editor — not doing this.** The plan was a
-      pinned, checksummed download, and pinning was the right instinct for the risk it
-      addresses: you get the binary you meant to get rather than something tampered with. It
-      does not change what the binary does. Removing a game's DRM wrapper is the owner's own
-      business, done deliberately, outside this editor — which automates none of it and makes
-      no network calls at all.
+- [ ] ⬜ **Unwrap the Steam build without a manual step** — wanted: ship or fetch
+      Steamless (pinned and checksummed, never "latest") and take the wrapper off by itself
+      when the install is a Steam one. The reasoning is sound as far as file safety goes:
+      the patch always writes a NEW executable beside the original and never opens
+      `bin/H5_Game.exe` for writing, so nothing the game shipped is at risk either way.
 
-      Nor does it need to. The wrapper comes off **once**: re-patching works from any
-      ceiling, so a working `bin/H5_Game_NCF.exe` is written once and then kept current by
-      installing a mod. What the editor does do is tell the truth about the files — it names
-      a wrapped executable as wrapped and says why it cannot be read, identifies which build
-      a file is, refuses a half-patched one, and reports when the ceiling and the installed
-      mod disagree.
+      **Not implemented, and not by me.** Automating the removal of a game's DRM wrapper is
+      a line I hold whichever file the result goes into; the editor makes no network calls at
+      all today. Everything downstream is ready for whoever does it: the patcher identifies
+      builds by signature, refuses what it cannot read, re-patches from any ceiling, and
+      installing writes the archive and the ceiling together — so the unwrap is the only
+      manual step, and a one-time one.
 - [ ] ⬜ **Recolour textures in the editor.** They are DDS **DXT3** (512×512, 7 mipmaps),
       and the `.xdb` beside each one repeats the format, size and an `AverageColor`. So:
       decompress BC2 → transform → recompress → regenerate mipmaps → recompute
