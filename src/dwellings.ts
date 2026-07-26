@@ -53,7 +53,15 @@ export interface DwellingSpec {
   file: string;
   /** What it hires. One creature is a per-tier dwelling; four is a post. */
   creatures: readonly string[];
-  /** Who guards it, if anybody. The engine decides how many — see above. */
+  /**
+   * Who guards it, if anybody. One entry is one STACK, and the engine decides
+   * how big each stack is: the field holds ids and nothing else.
+   *
+   * Which is why the same creature may be listed more than once — that is the
+   * only way the format can say "more guard". The shipped military posts list
+   * four different creatures and are guarded by four stacks; three of one
+   * creature asks for three stacks of it.
+   */
   guards?: readonly string[];
   /** href of the `(Model)` that stands on the map. Adventure-map art only. */
   model: string;

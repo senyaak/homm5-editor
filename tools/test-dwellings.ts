@@ -273,6 +273,19 @@ check('needs no ceiling — the shipped count stands', built.limit === SHIPPED_C
 for (const owned of ['types.xml', 'GameMechanics/RefTables/Creatures.xdb', 'UI/UIGameRoot.(UIGameRoot).xdb']) {
   check(`does not carry the game's ${owned}`, !files.has(owned));
 }
+// One entry is one stack, so a repeat is how the format asks for more guard —
+// it must survive into the document rather than being tidied away.
+{
+  const many = newCreatureMod('test-guards');
+  addDwelling(many, { ...SPEC, file: 'TestGuarded', guards: ['CREATURE_UNICORN', 'CREATURE_UNICORN', 'CREATURE_UNICORN'] });
+  const doc = buildCreatureMod(many, read).files
+    .find((f) => f.path === dwellingPaths({ ...SPEC, file: 'TestGuarded' }).shared)!.data.toString('latin1');
+  const guards = /<guards>([\s\S]*?)<\/guards>/.exec(doc)?.[1] ?? '';
+  const items = [...guards.matchAll(/<Item>([^<]*)<\/Item>/g)].map((m) => m[1]);
+  check('a creature named three times is written three times', items.length === 3
+    && items.every((c) => c === 'CREATURE_UNICORN'), items.join(', '));
+}
+
 check('two dwellings cannot share a file name', (() => {
   try {
     addDwelling(mod, { ...SPEC });
