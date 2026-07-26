@@ -19,6 +19,7 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, basename, relative, sep } from 'node:path';
 import { parse, find, children, childText } from './xml.ts';
+import type { XmlElement } from './xml.ts';
 import { toAssets } from './assets.ts';
 import type { Assets } from './assets.ts';
 
@@ -93,22 +94,22 @@ export class Registry {
 
   /** Every spell (`UndividedSpells.xdb`) — 353 in stock Tribes of the East. */
   spells(): RosterEntry[] {
-    return this.memo('spells', () => readRefTable(this.data, SPELL_TABLE));
+    return this.memo('spells', () => byLabel(readRefTable(this.data, SPELL_TABLE)));
   }
 
   /** Every artifact (`Artifacts.xdb`), each with its localized name ref. */
   artifacts(): RosterEntry[] {
-    return this.memo('artifacts', () => readRefTable(this.data, ARTIFACT_TABLE));
+    return this.memo('artifacts', () => byLabel(readRefTable(this.data, ARTIFACT_TABLE)));
   }
 
   /** Every creature (`Creatures.xdb`) — army stacks, garrisons, dwellings. */
   creatures(): RosterEntry[] {
-    return this.memo('creatures', () => readRefTable(this.data, CREATURE_TABLE));
+    return this.memo('creatures', () => byLabel(creatureRoster(this.data)));
   }
 
   /** Every hero skill and perk (`Skills.xdb`) — hero editing. */
   skills(): RosterEntry[] {
-    return this.memo('skills', () => readRefTable(this.data, SKILL_TABLE));
+    return this.memo('skills', () => byLabel(readRefTable(this.data, SKILL_TABLE)));
   }
 
   /** Player races — the fixed `TOWN_*` enum. */
@@ -155,6 +156,11 @@ export class Registry {
  * an `<ID>` and, nested under `<Obj>` (spells) or `<obj>` (artifacts), the
  * definition ref and an optional `<NameFileRef>`. `ARTIFACT_NONE` / `SPELL_NONE`
  * are kept: they are legal values the map uses.
+ *
+ * Where the table names a text file the name is READ, because a picker showing
+ * `ARTIFACT_SKULL_HELMET` is a picker you have to translate in your head. The
+ * spell table names none, so spells stay on their ids until their own objects
+ * are followed the way creatureRoster follows a creature's.
  */
 function readRefTable(data: Assets, rel: string): RosterEntry[] {
   const text = data.text(rel);
@@ -177,9 +183,96 @@ function readRefTable(data: Assets, rel: string): RosterEntry[] {
     // wrapper differs by table: <Obj> (spells) vs <obj> (artifacts).
     const obj = find(item, 'Obj') || find(item, 'obj');
     const nameRef = obj ? find(obj, 'NameFileRef')?.attrs.href : undefined;
-    out.push(nameRef ? { id, nameRef } : { id });
+    const name = nameRef ? gameText(data, nameRef) : '';
+    out.push({ id, ...(name ? { name } : {}), ...(nameRef ? { nameRef } : {}) });
   }
   return out;
+}
+
+/**
+ * The creature roster, with each creature's real name.
+ *
+ * The name is not in the table and not in the creature's record either: the
+ * record points at a `CreatureVisual` and the VISUAL points at the text file.
+ * Three hops per creature, 228 ms for all 181, paid once per session — and the
+ * picker is barely usable without it, because a list of raw ids reads
+ * `CREATURE_SHARP_SHOOTER` where the player knows "Лесные стрелки", and a
+ * creature a mod adds is just one more id at the bottom of an unsorted 181.
+ *
+ * A creature the mod added carries its record INLINE in the table while the
+ * shipped ones point at a file; both are followed here, which is the only reason
+ * this cannot reuse readRefTable.
+ */
+function creatureRoster(data: Assets): RosterEntry[] {
+  const text = data.text(CREATURE_TABLE);
+  if (text === null) return [];
+  const root = children(parse(text))[0];
+  const objects = root ? find(root, 'objects') : null;
+  if (!objects) return [];
+  const out: RosterEntry[] = [];
+  for (const item of children(objects)) {
+    if (item.name !== 'Item') continue;
+    const id = childText(item, 'ID');
+    if (!id) continue;
+    const name = creatureName(data, find(item, 'Obj'));
+    out.push(name ? { id, name } : { id });
+  }
+  return out;
+}
+
+/** Follow a table entry to its creature record, then to its visual's name. */
+function creatureName(data: Assets, obj: XmlElement | null): string {
+  if (!obj) return '';
+  let record = find(obj, 'Creature');
+  const href = obj.attrs.href;
+  if (!record && href && !href.startsWith('#')) {
+    const body = data.text(refPath(href));
+    if (!body) return '';
+    const doc = parse(body);
+    record = doc.name === 'Creature' ? doc : find(doc, 'Creature');
+  }
+  const visual = record ? find(record, 'Visual')?.attrs.href : undefined;
+  if (!visual) return '';
+  const vx = data.text(refPath(visual));
+  if (!vx) return '';
+  const vdoc = parse(vx);
+  const vroot = vdoc.name === 'CreatureVisual' ? vdoc : find(vdoc, 'CreatureVisual');
+  const nameRef = vroot ? find(vroot, 'CreatureNameFileRef')?.attrs.href : undefined;
+  return nameRef ? gameText(data, nameRef) : '';
+}
+
+/** The data path an href names: no fragment, no leading slash. */
+function refPath(href: string): string {
+  return href.split('#')[0]!.replace(/^\/+/, '');
+}
+
+/**
+ * A HoMM5 text file's contents — UTF-16 LE with a byte-order mark. Read through
+ * the chain, so a mod's own text wins the way the game reads it. Missing or
+ * unreadable is '' rather than an error: a roster entry without a name still
+ * shows, under its id.
+ */
+function gameText(data: Assets, href: string): string {
+  const b = data.bytes(refPath(href));
+  if (!b || !b.length) return '';
+  const s = b.length >= 2 && b[0] === 0xff && b[1] === 0xfe ? b.toString('utf16le', 2) : b.toString('utf8');
+  return s.replace(/\0+$/, '').trim();
+}
+
+/**
+ * Sort a roster the way a picker has to show it: by what the user READS.
+ *
+ * Table order is the id order, which is chronological — the addon's creatures
+ * after the original's, and a mod's after those. Fine for the engine, useless
+ * for finding "Снайперы" in a dropdown of 181.
+ */
+function byLabel(entries: RosterEntry[]): RosterEntry[] {
+  // The "unset" member stays on top — it is a legal value and the one a picker
+  // is opened to choose about as often as any other, so alphabetising it into
+  // the middle would be a small cruelty.
+  const unset = (e: RosterEntry): number => (/_(NONE|UNKNOWN)$/.test(e.id) ? 0 : 1);
+  return entries.sort((a, b) => unset(a) - unset(b)
+    || (a.name || a.id).localeCompare(b.name || b.id, undefined, { numeric: true }));
 }
 
 /** Walk a directory tree, yielding files whose name matches `test`. */

@@ -447,6 +447,11 @@ if (!existsSync(join(dataRoot, 'types.xml'))) {
     const roster = new Registry(chain).creatures();
     check('the roster grew by the mod\'s creatures', roster.length === SHIPPED_CREATURES + 1, `${roster.length}`);
     check('and it lists ours', roster.some((r) => r.id === rc.id));
+    // Under its NAME, not its id. Being in the roster is not being findable: the
+    // picker showed engine ids in table order, so this creature was the 181st of
+    // 181 and spelled CREATURE_TEST_H3_SHARPSHOOTER.
+    check('with the name the mod gives it', roster.find((r) => r.id === rc.id)?.name === rc.name,
+      roster.find((r) => r.id === rc.id)?.name ?? '(none)');
     check('the shipped roster is unchanged without the mod',
       new Registry(dataRoot).creatures().length === SHIPPED_CREATURES);
     check('the map-stack definition resolves through the chain',

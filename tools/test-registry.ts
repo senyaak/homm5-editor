@@ -52,6 +52,38 @@ try {
   console.log('map cross-check skipped:', e instanceof Error ? e.message : String(e));
 }
 
-const sane = spells.length > 300 && artifacts.length > 90 && heroes.length > 100 && ambient.length > 100;
-console.log(`\n${ok && sane ? 'PASS' : 'FAIL'}`);
-process.exit(ok && sane ? 0 : 1);
+// --- what a picker actually shows -------------------------------------------
+//
+// A roster is a list a person reads, and for a long time it was a list of engine
+// ids in table order. That is how a creature added by a mod could be present and
+// still unfindable: 181st of 181, spelled CREATURE_H3_SHARPSHOOTER, in a
+// dropdown where the shipped Sharp Shooter reads CREATURE_SHARP_SHOOTER and not
+// "Лесные стрелки".
+console.log('\n=== labels and order ===');
+const creatures = reg.creatures();
+const label = (e: { name?: string; id: string }): string => e.name || e.id;
+const namedCreatures = creatures.filter((c) => c.name).length;
+console.log(`creatures    ${creatures.length}   named: ${namedCreatures}   e.g. ${creatures.slice(1, 5).map(label).join(', ')}`);
+console.log(`artifacts    named: ${artifacts.filter((a) => a.name).length}   e.g. ${artifacts.slice(1, 4).map(label).join(', ')}`);
+
+let labelled = true;
+// CREATURE_UNKNOWN is the one creature with no name of its own — it is the
+// engine's null, and its visual leaves every text ref empty.
+if (namedCreatures < creatures.length - 1) {
+  console.log(`  ✗ ${creatures.length - namedCreatures} creature(s) without a name`);
+  labelled = false;
+}
+const sorted = creatures.every((c, i) => i === 0
+  || /_(NONE|UNKNOWN)$/.test(creatures[i - 1]!.id)
+  || label(creatures[i - 1]!).localeCompare(label(c), undefined, { numeric: true }) <= 0);
+if (!sorted) { console.log('  ✗ the creature roster is not in label order'); labelled = false; }
+if (!/_(NONE|UNKNOWN)$/.test(creatures[0]!.id)) {
+  console.log(`  ✗ the unset member is not first (${creatures[0]!.id})`);
+  labelled = false;
+}
+if (labelled) console.log('  ✓ every creature but the engine\'s null has a name, and the list is in label order');
+
+const sane = spells.length > 300 && artifacts.length > 90 && heroes.length > 100 && ambient.length > 100
+  && creatures.length >= 180;
+console.log(`\n${ok && sane && labelled ? 'PASS' : 'FAIL'}`);
+process.exit(ok && sane && labelled ? 0 : 1);
