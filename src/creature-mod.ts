@@ -54,8 +54,16 @@ import { extractMeshesStructured, placeGeometry, positionsBox, wideBase } from '
 import type { BBox } from './geometry.ts';
 import type { DwellingPaths, DwellingSpec, Footprint } from './dwellings.ts';
 import { parseTypeSpec } from './typespec.ts';
+import type { SpecType } from './typespec.ts';
 import { setCreatureLimit } from './creature-limit.ts';
 import type { ExeResult } from './creature-limit.ts';
+import {
+  ARTIFACT_CLASS, SHIPPED_ARTIFACTS, artifactLink, artifactPaths, artifactRecord, artifactSharedDoc,
+  boardMaterial, boardModel,
+} from './artifacts.ts';
+import type { ArtifactSpec } from './artifacts.ts';
+import { readGif } from './gif.ts';
+import { fitSquare, textureDoc, writeDDS } from './texture.ts';
 
 /** The mod's file name stem — `homm5-units.h5u` in UserMODs. */
 export const MOD_STEM = 'homm5-units';
@@ -74,9 +82,33 @@ export const MOD_MANIFEST = 'units.json';
 const TYPES = 'types.xml';
 const REF_TABLE = 'GameMechanics/RefTables/Creatures.xdb';
 const UI_ROOT = 'UI/UIGameRoot.(UIGameRoot).xdb';
+/** And the two an artifact adds. */
+const ARTIFACT_TABLE = 'GameMechanics/RefTables/Artifacts.xdb';
+/**
+ * The script the game loads on every adventure map, and where the `ARTIFACT_*`
+ * numbers Lua addresses artifacts by are declared. A mod that adds an artifact
+ * and not its constant leaves it unnameable from a script.
+ */
+const STARTUP_SCRIPT = 'scripts/advmap-startup.lua';
 
 /** The last creature the shipped enum lists — our anchor for appending to it. */
 const LAST_SHIPPED = 'CREATURE_CYCLOP_BLOODEYED';
+
+/**
+ * The same anchor for artifacts, and the two type names their table goes by.
+ *
+ * `ARTIFACT_PRINCESS` is number 96 and the enum runs straight on into
+ * `ABILITY_NONE` — which looks alarming, because inserting into a POSITIONAL
+ * enum would renumber every ability after it. It is not positional: both
+ * `ARTIFACT_NONE` and `ABILITY_NONE` are 0 in the name→number map, so the list
+ * is one set of allowed strings covering two independent numberings, and
+ * inserting after the last artifact disturbs nothing.
+ */
+const LAST_SHIPPED_ARTIFACT = 'ARTIFACT_PRINCESS';
+const ARTIFACT_TABLE_TYPE = 'Table_DBArtifact_ArtifactEffect';
+const ARTIFACT_RECORD_TYPE = 'DBArtifact';
+/** And the Lua constant that says how many there are. */
+const ARTIFACT_COUNT_CONST = 'ARTIFACT_ARTIFACT_EFFECT_COUNT';
 
 /** The camera the hire dialog uses. CREATURE_UNKNOWN already sits on this one. */
 const HIRE_CAMERA = '/Cameras/Interface/HireCreatures.(Camera).xdb#xpointer(/Camera)';
@@ -178,11 +210,42 @@ export interface CreatureMod {
    * dwellings needs no patched game at all. See src/dwellings.ts.
    */
   dwellings: DwellingSpec[];
+  /**
+   * Things a hero wears. Like creatures they hold a NUMBER and extend a
+   * reference table, so the list is append-only for the same reason — but
+   * unlike creatures the table's size is declared only in types.xml and not in
+   * the executable, so artifacts need no patched game either.
+   */
+  artifacts: ModArtifact[];
+}
+
+/** One in a mod: a spec plus the id number it holds. */
+export interface ModArtifact extends ArtifactSpec {
+  /** Its id number, assigned on the way in and never changed. */
+  number: number;
 }
 
 /** A fresh, empty mod. */
 export function newCreatureMod(stem = MOD_STEM): CreatureMod {
-  return { version: 1, stem, first: SHIPPED_CREATURES, creatures: [], dwellings: [] };
+  return { version: 1, stem, first: SHIPPED_CREATURES, creatures: [], dwellings: [], artifacts: [] };
+}
+
+/**
+ * Append an artifact and give it the next id number.
+ *
+ * APPEND-ONLY, exactly like creatures: the number is what a map, a save and a
+ * script store — never the name — so inserting or reordering silently repoints
+ * every artifact after it.
+ */
+export function addArtifact(mod: CreatureMod, spec: ArtifactSpec): ModArtifact {
+  if (!mod.artifacts) mod.artifacts = [];
+  if (mod.artifacts.some((a) => a.id === spec.id)) throw new Error(`${spec.id} is already in the mod`);
+  if (!/^ARTIFACT_[A-Z0-9_]+$/.test(spec.id)) throw new Error(`${spec.id} is not a usable artifact id`);
+  if (mod.artifacts.some((a) => a.file === spec.file)) throw new Error(`two artifacts cannot both be "${spec.file}"`);
+  if (!spec.icon && !spec.picture) throw new Error(`${spec.id}: needs either an icon href or a picture to build one from`);
+  const a: ModArtifact = { ...spec, number: SHIPPED_ARTIFACTS + mod.artifacts.length };
+  mod.artifacts.push(a);
+  return a;
 }
 
 /** Append a dwelling. Unlike a creature it holds no id, so order is cosmetic. */
@@ -302,7 +365,9 @@ export interface BuildReport {
  * a test.
  */
 export function buildCreatureMod(mod: CreatureMod, read: DataReader): BuildReport {
-  if (!mod.creatures.length && !mod.dwellings.length) throw new Error('the mod is empty');
+  if (!mod.creatures.length && !mod.dwellings.length && !mod.artifacts?.length) {
+    throw new Error('the mod is empty');
+  }
   const limit = creatureLimit(mod);
   const files: ModFile[] = [];
   const art: Record<string, number> = {};
@@ -355,21 +420,220 @@ export function buildCreatureMod(mod: CreatureMod, read: DataReader): BuildRepor
   }
 
   files.push(...buildDwellings(mod.dwellings, read));
+  files.push(...buildArtifacts(mod.artifacts ?? [], read));
 
   // Only creatures need the game's own files touched: the enum and the id→number
   // map in types.xml, the reference table the ceiling indexes, and the hire
   // screen. A mod of nothing but dwellings edits nothing of the game's and needs
   // no patched executable — so it must not carry these at all.
+  //
+  // Artifacts extend a reference table too, so they touch types.xml as well —
+  // but only the artifact half of it, and never the executable. The two patches
+  // are applied to the SAME text, in one pass, because a mod that carried both
+  // would otherwise ship two types.xml and the second would win whole.
+  const artifacts = mod.artifacts ?? [];
+  if (mod.creatures.length || artifacts.length) {
+    let types = mustRead(read, TYPES);
+    if (mod.creatures.length) types = patchTypes(types, mod, limit);
+    if (artifacts.length) types = patchArtifactTypes(types, artifacts);
+    files.push({ path: TYPES, data: Buffer.from(types, 'latin1') });
+  }
   if (mod.creatures.length) {
-    files.push({ path: TYPES, data: Buffer.from(patchTypes(mustRead(read, TYPES), mod, limit), 'latin1') });
     files.push({ path: REF_TABLE, data: Buffer.from(patchRefTable(mustRead(read, REF_TABLE), mod, read), 'latin1') });
     files.push({ path: UI_ROOT, data: Buffer.from(patchUiRoot(mustRead(read, UI_ROOT), mod), 'latin1') });
+  }
+  if (artifacts.length) {
+    const spec = parseTypeSpec(mustRead(read, TYPES));
+    files.push({
+      path: ARTIFACT_TABLE,
+      data: Buffer.from(patchArtifactTable(mustRead(read, ARTIFACT_TABLE), artifacts, spec), 'latin1'),
+    });
+    files.push({
+      path: STARTUP_SCRIPT,
+      data: Buffer.from(patchStartupScript(mustRead(read, STARTUP_SCRIPT), artifacts), 'latin1'),
+    });
   }
 
   // Last, so it records the art each slot actually resolved to.
   files.unshift({ path: MOD_MANIFEST, data: Buffer.from(`${JSON.stringify(mod, null, 2)}\n`, 'utf8') });
 
   return { files, limit, art, missing };
+}
+
+/**
+ * The geometry a board borrows: one of the game's developer posters.
+ *
+ * A poster is the only thing shipped that is a bare quad — `Size` 1.43 x 0 x
+ * 1.43, one mesh, one material — so a board can reference it and carry nothing
+ * of its own but a material and a texture. Which poster does not matter; this
+ * one is a rectangle like the rest.
+ */
+const BOARD_GEOMETRY = '_(Model)/Buildings/Posters/Gudkov-geom.xdb';
+
+/**
+ * The files every artifact contributes.
+ *
+ * Four always — the map object, the palette entry and its two texts — plus the
+ * icon when the mod builds one from a picture, plus a board when the artifact
+ * has no model of its own.
+ */
+function buildArtifacts(artifacts: readonly ModArtifact[], read: DataReader): ModFile[] {
+  if (!artifacts.length) return [];
+  const files: ModFile[] = [];
+  const types = parseTypeSpec(mustRead(read, TYPES));
+
+  for (const a of artifacts) {
+    const p = artifactPaths(a);
+
+    // The icon first: a board is made OF it, so it has to exist by then.
+    if (a.picture) {
+      const source = readFileSync(a.picture);
+      const image = fitSquare(readGif(source), 64);
+      files.push({ path: p.iconDDS, data: writeDDS(image) });
+      files.push({
+        path: p.icon,
+        data: Buffer.from(textureDoc({
+          dds: basename(p.iconDDS),
+          width: image.width,
+          height: image.height,
+          // The NAME of the picture, not the path to it. `SrcName` is where a
+          // texture came from and nothing reads it at run time; writing the
+          // author's own filesystem into a shipped file helps nobody, and the
+          // manifest keeps the full path where it belongs.
+          source: basename(a.picture),
+        }), 'latin1'),
+      });
+    }
+
+    if (!a.model) {
+      const geometry = mustRead(read, BOARD_GEOMETRY);
+      const uid = /<uid>([0-9A-Fa-f-]{36})<\/uid>/.exec(geometry)?.[1];
+      if (!uid) throw new Error(`${a.file}: ${BOARD_GEOMETRY} names no uid`);
+      const bin = mustReadBytes(read, `bin/Geometries/${uid.toUpperCase()}`);
+
+      // The poster hangs in the air where it stood on its post; an artifact lies
+      // on the tile it is on. So the mesh is MOVED — its own centre to the
+      // origin, its foot to the ground — and scaled to the width asked for.
+      // A copy needs a fresh uid as well: the binaries are keyed by it, so a
+      // copy that kept the poster's would edit the poster's mesh.
+      const box = positionsBox(bin);
+      if (!box) throw new Error(`${a.file}: cannot read the board geometry's extent`);
+      const tiles = a.board?.tiles ?? 1;
+      const scale = (tiles * 2) / Math.max(box.sx, box.sz, 1e-6);
+      // The shift is in the SOURCE's units, not the result's: placeGeometry adds
+      // it BEFORE scaling. Scaling it too puts the board a long way underground,
+      // and further the bigger it is.
+      const placed = placeGeometry(bin, {
+        scale,
+        shift: [-box.cx, -box.cy, -(box.cz - box.sz / 2)],
+      });
+      if (!placed) throw new Error(`${a.file}: the board geometry could not be moved`);
+
+      const ownUid = uidFor(`board:${a.id}`);
+      const doc = retuneBox(geometry, placed.bbox, { scale, shift: [0, 0, 0] })
+        .replace(/<uid>[0-9A-Fa-f-]{36}<\/uid>/, `<uid>${ownUid}</uid>`)
+        // The AI geometry describes where the walls are for pathing. A flat
+        // board has none worth keeping, and a stale one would disagree with the
+        // mesh we just moved.
+        .replace(/<AIGeometry[^>]*\/>/, '<AIGeometry/>')
+        .replace(/<AIGeometry[^>]*>[\s\S]*?<\/AIGeometry>/, '<AIGeometry/>');
+      const geomPath = `${p.dir}/${a.file}_Board-geom.xdb`;
+      files.push({ path: geomPath, data: Buffer.from(doc, 'latin1') });
+      files.push({ path: `bin/Geometries/${ownUid}`, data: placed.data });
+      files.push({
+        path: p.boardMaterial,
+        data: Buffer.from(boardMaterial(`/${a.icon ? refPath(a.icon) : p.icon}`), 'latin1'),
+      });
+      files.push({
+        path: p.board,
+        data: Buffer.from(boardModel(`/${p.boardMaterial}`, `/${geomPath}`), 'latin1'),
+      });
+    }
+
+    files.push({ path: p.shared, data: Buffer.from(artifactSharedDoc(a, p, types), 'latin1') });
+    files.push({ path: p.link, data: Buffer.from(artifactLink(p, `/${a.icon ? refPath(a.icon) : p.icon}`), 'latin1') });
+    files.push({ path: p.name, data: utf16(a.name) });
+    files.push({ path: p.description, data: utf16(a.description) });
+  }
+  return files;
+}
+
+/**
+ * types.xml, the artifact half: the enum, the name→number map, and the size the
+ * table is declared to hold.
+ *
+ * The size is where artifacts differ from creatures, and the difference is easy
+ * to carry over wrongly. A creature table declares `ref_table_num_objs` and a
+ * `MaxElements`, with `MinElements` left alone because it is a floor the new
+ * count clears. The artifact table declares no `ref_table_num_objs` at all, and
+ * its `MinElements` EQUALS its `MaxElements` — so both have to move, and a mod
+ * that raises only the maximum leaves the table declaring it holds exactly 97
+ * while carrying 100.
+ */
+function patchArtifactTypes(types: string, artifacts: readonly ModArtifact[]): string {
+  let t = types;
+  const last = LAST_SHIPPED_ARTIFACT;
+
+  const enumAt = once(t, `<Item>${last}</Item>`, 'types.xml artifact enum');
+  t = insertAfterLine(t, enumAt, artifacts.map((a) => `<Item>${a.id}</Item>`));
+
+  const mapAt = once(t, `<Name>${last}</Name>`, 'types.xml artifact name→number map');
+  const itemEnd = t.indexOf('</Item>', mapAt);
+  if (itemEnd < 0) throw new Error('types.xml artifact map: the last entry has no </Item>');
+  t = insertAfterLine(t, itemEnd, artifacts.flatMap((a) => [
+    '<Item>', `\t<Name>${a.id}</Name>`, `\t<Value>${a.number}</Value>`, '</Item>',
+  ]));
+
+  const table = once(t, `<TypeName>${ARTIFACT_TABLE_TYPE}</TypeName>`, 'types.xml artifact table');
+  const to = SHIPPED_ARTIFACTS + artifacts.length;
+  t = retune(t, table, 'MaxElements', SHIPPED_ARTIFACTS, to, 'types.xml artifact MaxElements');
+  return retune(t, table, 'MinElements', SHIPPED_ARTIFACTS, to, 'types.xml artifact MinElements');
+}
+
+/** Artifacts.xdb: one `<Item>` per artifact, each carrying its inline object. */
+function patchArtifactTable(
+  table: string, artifacts: readonly ModArtifact[], types: Map<string, SpecType>,
+): string {
+  const had = count(table, /<ID>\w+<\/ID>/g);
+  if (had !== SHIPPED_ARTIFACTS) throw new Error(`${ARTIFACT_TABLE}: ${had} entries, expected ${SHIPPED_ARTIFACTS}`);
+  const close = once(table, '</objects>', `${ARTIFACT_TABLE} objects`);
+  return insertBeforeLine(table, close, artifacts.flatMap((a, i) => {
+    const p = artifactPaths(a);
+    return [
+      '<Item>',
+      `\t<ID>${a.id}</ID>`,
+      `\t<obj href="#n:inline(${ARTIFACT_RECORD_TYPE})" id="item_${uidFor(`artifact:${a.id}`).toLowerCase()}">`,
+      ...artifactRecord(a, p, types).map((l) => `\t\t${l}`),
+      '\t</obj>',
+      '</Item>',
+    ];
+  }));
+}
+
+/**
+ * The Lua constants a script names our artifacts by, and the count beside them.
+ *
+ * The count is not decoration: `ARTIFACT_ARTIFACT_EFFECT_COUNT` sits right
+ * after the last artifact and is what a script loops to. Left at 97 it stops
+ * one short of every artifact the mod added, which is the kind of miss that
+ * shows up as "the set never completes" rather than as an error.
+ */
+function patchStartupScript(script: string, artifacts: readonly ModArtifact[]): string {
+  const anchor = once(script, `${LAST_SHIPPED_ARTIFACT} = `, 'advmap-startup.lua artifact constants');
+  const eol = script.indexOf('\n', anchor);
+  if (eol < 0) throw new Error('advmap-startup.lua: the last artifact constant is on the last line');
+  const indent = indentOf(script, anchor);
+  const lines = artifacts.map((a) => `${indent}${a.id} = ${a.number}`);
+  const withIds = `${script.slice(0, eol + 1)}${lines.join(EOL)}${EOL}${script.slice(eol + 1)}`;
+
+  const countAt = once(withIds, `${ARTIFACT_COUNT_CONST} = `, 'advmap-startup.lua artifact count');
+  const to = SHIPPED_ARTIFACTS + artifacts.length;
+  const line = /^(.*=\s*)(\d+)(.*)$/m.exec(withIds.slice(countAt + ARTIFACT_COUNT_CONST.length));
+  if (!line) throw new Error('advmap-startup.lua: the artifact count has no number');
+  const from = countAt + ARTIFACT_COUNT_CONST.length;
+  return withIds.slice(0, from) + withIds.slice(from).replace(
+    new RegExp(`^(\\s*=\\s*)${SHIPPED_ARTIFACTS}\\b`), `$1${to}`,
+  );
 }
 
 /**
@@ -897,8 +1161,11 @@ function reconstruct(types: string, table: string): CreatureMod {
     first: creatures[0]?.number ?? SHIPPED_CREATURES,
     creatures,
     // Nothing to reconstruct them from: a dwelling is an ordinary object file
-    // among a mod's other files, with no registry to enumerate.
+    // among a mod's other files, with no registry to enumerate. An artifact
+    // could be read back out of the table it extends, but only its numbers —
+    // which picture it was built from is in the manifest or nowhere.
     dwellings: [],
+    artifacts: [],
   };
 }
 
@@ -1236,9 +1503,14 @@ function setHref(text: string, field: string, value: string, what: string): stri
 
 /** Read a data file that has to be there. */
 function mustRead(read: DataReader, rel: string): string {
+  return mustReadBytes(read, rel).toString('latin1');
+}
+
+/** The same, for the files that are not text — a geometry's binary. */
+function mustReadBytes(read: DataReader, rel: string): Buffer {
   const data = read(rel);
   if (!data) throw new Error(`the game's data has no ${rel} — is the data root unpacked?`);
-  return data.toString('latin1');
+  return data;
 }
 
 /** The game's text files: UTF-16 LE with a byte-order mark and no trailing newline. */

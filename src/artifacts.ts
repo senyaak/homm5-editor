@@ -25,6 +25,17 @@
 import { allFields } from './typespec.ts';
 import type { SpecType } from './typespec.ts';
 
+/**
+ * How many artifacts the game ships with — the number a mod's own start after.
+ *
+ * Counted in `GameMechanics/RefTables/Artifacts.xdb`, and the same number is
+ * declared twice in types.xml as the table's `MinElements` AND `MaxElements`.
+ * Unlike the creature ceiling this one is NOT in the executable: the twelve
+ * compiled ref-table sizes are 7, 126, 5, 180, 5, 11, 1, 5, 9, 10, 5 and 23,
+ * and 97 is not among them. So artifacts need no patched game.
+ */
+export const SHIPPED_ARTIFACTS = 97;
+
 /** The document that puts an artifact on the ground. */
 export const ARTIFACT_CLASS = 'AdvMapArtifactShared';
 
@@ -89,18 +100,44 @@ export interface ArtifactSpec {
   canBeGeneratedToSell?: boolean;
   /** The six stats it moves. Anything omitted is zero. */
   stats?: Partial<HeroStats>;
-  /** href of its 64x64 icon — the hero screen's, and the only picture it has. */
-  icon: string;
+  /**
+   * href of its 64x64 icon — the hero screen's, and the only picture it has.
+   * Omitted, the mod builds one from `picture`.
+   */
+  icon?: string;
   /**
    * href of the `(Model)` lying on the map.
    *
    * Referenced, not copied — the same rule dwellings follow. Every install has
    * the shipped artifact models, and an artifact that wants its own can point
    * at one the mod carries; the href is the href either way.
+   *
+   * Omitted, the mod builds a board from the artifact's own icon — see `board`.
    */
-  model: string;
+  model?: string;
   /** href of the glow. Omitted: the green one the shipped relics use. */
   effect?: string;
+  /**
+   * A picture on disk to build the icon from — a `.gif`, which is what artwork
+   * ported from an older game survives as.
+   *
+   * Given, the mod carries its own 64x64 texture made from it and `icon` may be
+   * left out. Omitted, `icon` has to name a texture that already exists.
+   */
+  picture?: string;
+  /**
+   * Stand the artifact on the map as a FLAT BOARD showing its own icon, instead
+   * of borrowing a shipped artifact's model.
+   *
+   * The game's developer posters are exactly this — a quad with one material —
+   * so the board references their geometry and carries a material of its own.
+   * Nothing artistic is borrowed: a rectangle is a rectangle. Set `model` and
+   * this is ignored.
+   *
+   * How wide, in tiles. The quad is moved so its centre is the tile's centre and
+   * it stands on the ground rather than floating where the poster hung.
+   */
+  board?: { tiles: number };
 }
 
 /** Where an artifact's files sit inside a mod. */
@@ -112,6 +149,12 @@ export interface ArtifactPaths {
   link: string;
   name: string;
   description: string;
+  /** The 64x64 the hero screen shows, and its `.dds` beside it. */
+  icon: string;
+  iconDDS: string;
+  /** Where a board's own model and material go, when the mod builds one. */
+  board: string;
+  boardMaterial: string;
 }
 
 /**
@@ -129,7 +172,71 @@ export function artifactPaths(spec: Pick<ArtifactSpec, 'file'>): ArtifactPaths {
     link: `${LINK_DIR}/${spec.file}.xdb`,
     name: `${dir}/${spec.file}_Name.txt`,
     description: `${dir}/${spec.file}_Description.txt`,
+    // Beside the shipped icons rather than in our own folder: the hero screen
+    // finds one by the href in the record, so either works, and sitting where
+    // the other 97 sit is what someone looking for it will expect.
+    icon: `Textures/HeroScreen/Artifacts/${spec.file}.(Texture).xdb`,
+    iconDDS: `Textures/HeroScreen/Artifacts/${spec.file}.(Texture).dds`,
+    board: `${dir}/${spec.file}_Board.(Model).xdb`,
+    boardMaterial: `${dir}/${spec.file}_Board.(Material).xdb`,
   };
+}
+
+/**
+ * The material a board wears: our texture, and two-sided.
+ *
+ * Two-sided because the shipped posters are not, and an artifact spins on the
+ * adventure map — a one-sided board would vanish for half of every turn. The
+ * alpha test is what the posters already use, so a picture with transparency
+ * lies on the ground as a silhouette rather than a card.
+ */
+export function boardMaterial(texture: string): string {
+  return [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<Material>',
+    `\t<Texture href="${texture}#xpointer(/Texture)"/>`,
+    '\t<Bump/>',
+    '\t<SpecFactor>0</SpecFactor>',
+    '\t<SpecColor>', '\t\t<x>0</x>', '\t\t<y>0</y>', '\t\t<z>0</z>', '\t</SpecColor>',
+    '\t<Gloss/>',
+    '\t<MetalMirror>0</MetalMirror>',
+    '\t<DielMirror>0</DielMirror>',
+    '\t<Mirror/>',
+    '\t<CastShadow>false</CastShadow>',
+    '\t<ReceiveShadow>false</ReceiveShadow>',
+    '\t<Priority>0</Priority>',
+    '\t<TranslucentColor>', '\t\t<x>0</x>', '\t\t<y>0</y>', '\t\t<z>0</z>', '\t</TranslucentColor>',
+    '\t<FloatParam>0</FloatParam>',
+    '\t<DetailTexture/>',
+    '\t<DetailScale>5</DetailScale>',
+    '\t<ProjectOnTerrain>false</ProjectOnTerrain>',
+    // Unlit: an icon is a picture, not a surface, and shading it makes it muddy
+    // at the times of day the adventure map goes dark.
+    '\t<LightingMode>L_SELFILLUM</LightingMode>',
+    '\t<DynamicMode>DM_DONT_CARE</DynamicMode>',
+    '\t<Is2Sided>true</Is2Sided>',
+    '\t<Effect>M_GENERIC</Effect>',
+    '\t<AlphaMode>AM_ALPHA_TEST</AlphaMode>',
+    '\t<AffectedByFog>true</AffectedByFog>',
+    '\t<AddPlaced>false</AddPlaced>',
+    '\t<IgnoreZBuffer>false</IgnoreZBuffer>',
+    '\t<BackFaceCastShadow>false</BackFaceCastShadow>',
+  ].join(EOL) + `${EOL}</Material>${EOL}`;
+}
+
+/** The model that hangs that material on a geometry. */
+export function boardModel(material: string, geometry: string): string {
+  return [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<Model>',
+    '\t<Materials>',
+    `\t\t<Item href="${material}#xpointer(/Material)"/>`,
+    '\t</Materials>',
+    '\t<Skeleton/>',
+    `\t<Geometry href="${geometry}#xpointer(/Geometry)"/>`,
+    '\t<Animations/>',
+    '\t<WindPower>0</WindPower>',
+  ].join(EOL) + `${EOL}</Model>${EOL}`;
 }
 
 /** `<Field href="…"/>`, or an empty field when there is nothing to point at. */
@@ -153,7 +260,7 @@ function href(field: string, value: string | undefined, type: string): string {
  */
 export function artifactSharedDoc(spec: ArtifactSpec, p: ArtifactPaths, types: Map<string, SpecType>): string {
   const values: Record<string, string> = {
-    Model: href('Model', spec.model, 'Model'),
+    Model: href('Model', spec.model ?? `/${p.board}`, 'Model'),
     AnimSet: `<AnimSet href="${ANIM_SET}"/>`,
     activeTiles: [
       '<activeTiles>', '\t\t<Item>', '\t\t\t<x>0</x>', '\t\t\t<y>0</y>', '\t\t</Item>', '\t</activeTiles>',
@@ -209,7 +316,7 @@ export function artifactRecord(spec: ArtifactSpec, p: ArtifactPaths, types: Map<
     Model: ['<Model/>'],
     Type: [`<Type>${spec.rank ?? 'ARTF_CLASS_RELIC'}</Type>`],
     Slot: [`<Slot>${spec.slot}</Slot>`],
-    Icon: [href('Icon', spec.icon, 'Texture')],
+    Icon: [href('Icon', spec.icon ?? `/${p.icon}`, 'Texture')],
     CostOfGold: [`<CostOfGold>${spec.cost}</CostOfGold>`],
     AIValue: [`<AIValue>${spec.aiValue ?? 500}</AIValue>`],
     CanBeGeneratedToSell: [`<CanBeGeneratedToSell>${spec.canBeGeneratedToSell ?? false}</CanBeGeneratedToSell>`],
