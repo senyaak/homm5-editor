@@ -38,6 +38,12 @@ export interface ExtractedFile {
 export interface WriteOptions {
   /** Force STORE (no compression) for the matching entry names. */
   store?: Set<string> | ((name: string) => boolean);
+  /**
+   * Modification time stamped on every member. Defaults to now, which is what makes
+   * the game prefer this archive's files over the ones it shipped — see `dosStamp`.
+   * Pin it only when byte-identical output matters more than that.
+   */
+  mtime?: Date;
 }
 
 /** Result of `pack()`: how many entries were written and the archive size in bytes. */
@@ -87,11 +93,26 @@ function moreEntries(cd: Buffer, p: number, end: number): boolean {
   return p + 46 <= end && cd.readUInt32LE(p) === SIG_CENTRAL;
 }
 
-// A fixed DOS timestamp keeps packing reproducible (same tree -> same bytes ->
-// stable content hash). 1980-01-01 00:00:00, the ZIP epoch. Callers that want
-// real mtimes can pass them through the entry list (not needed by the editor).
-const DOS_TIME = 0;
-const DOS_DATE = 0x21; // (1980-1980)<<9 | 1<<5 | 1
+/**
+ * DOS date and time for a member, as ZIP stores them: date is
+ * `(year-1980)<<9 | month<<5 | day`, time is `hour<<11 | minute<<5 | second/2`.
+ *
+ * **The game reads these.** Given the same path in more than one mounted archive it
+ * takes the newest member, so an archive stamped 1980-01-01 — the ZIP epoch, and what
+ * this file used to write for everything — loses to the shipped `data.pak` on every
+ * path it tries to override. A mod packed that way is read and then ignored, silently.
+ * Proved on a mod that changed one creature: identical bytes, 1980 had no effect at
+ * all, a real date took effect immediately.
+ *
+ * So members are stamped with the current time by default. `mtime` pins it for callers
+ * that would rather have byte-identical output from an unchanged tree.
+ */
+function dosStamp(when: Date): { time: number; date: number } {
+  return {
+    time: ((when.getHours() << 11) | (when.getMinutes() << 5) | (when.getSeconds() >> 1)) & 0xffff,
+    date: (((when.getFullYear() - 1980) << 9) | ((when.getMonth() + 1) << 5) | when.getDate()) & 0xffff,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Reading
@@ -250,6 +271,8 @@ export function writeArchive(entries: readonly ZipEntry[], opt: WriteOptions = {
     : store instanceof Set ? (n: string) => store.has(n)
     : () => false;
 
+  const { time: dosTime, date: dosDate } = dosStamp(opt.mtime ?? new Date());
+
   const locals: Buffer[] = [];   // local-header + data chunks, in file order
   const centrals: Buffer[] = []; // central-directory records
   let offset = 0;
@@ -272,8 +295,8 @@ export function writeArchive(entries: readonly ZipEntry[], opt: WriteOptions = {
     local.writeUInt16LE(20, 4);        // version needed
     local.writeUInt16LE(0, 6);         // flags
     local.writeUInt16LE(method, 8);
-    local.writeUInt16LE(DOS_TIME, 10);
-    local.writeUInt16LE(DOS_DATE, 12);
+    local.writeUInt16LE(dosTime, 10);
+    local.writeUInt16LE(dosDate, 12);
     local.writeUInt32LE(crc, 14);
     local.writeUInt32LE(cSize, 18);
     local.writeUInt32LE(uSize, 22);
@@ -287,8 +310,8 @@ export function writeArchive(entries: readonly ZipEntry[], opt: WriteOptions = {
     central.writeUInt16LE(20, 6);      // version needed
     central.writeUInt16LE(0, 8);       // flags
     central.writeUInt16LE(method, 10);
-    central.writeUInt16LE(DOS_TIME, 12);
-    central.writeUInt16LE(DOS_DATE, 14);
+    central.writeUInt16LE(dosTime, 12);
+    central.writeUInt16LE(dosDate, 14);
     central.writeUInt32LE(crc, 16);
     central.writeUInt32LE(cSize, 20);
     central.writeUInt32LE(uSize, 24);
