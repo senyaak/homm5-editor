@@ -87,6 +87,14 @@ ignored, so an archive can be mounted, correct and completely without effect.
   `MapObjects/_(AdvMapObjectLink)/`), the creature **roster** (the ref table), and
   the placed object's own **model** (the shared definition). A creature can be in
   one and missing from the others, and was.
+- **Nor can a mod write the editor's name and thumbnail cache.** `Editor/IconCache`
+  is loose beside the install, only the game's own installer fills it, and it is
+  where the palette gets both the label under a tile and its picture. So a mod's
+  entry has neither, and the fallback was the LINK FILE'S NAME — a path standing
+  in for a name, changeable only by renaming a file. A monster is named by its
+  creature instead, read through the chain under the id the map stores, which is
+  the same name the roster and the game show; the picture comes from the
+  creature's own 128px texture, which the mod already carries.
 
 ## What this does not establish
 

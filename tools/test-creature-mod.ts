@@ -476,6 +476,12 @@ if (!existsSync(join(dataRoot, 'types.xml'))) {
       console.log(`  --    filed with the monsters — skipped, no MapFilters.xml near ${dataRoot}`);
     }
     check('pointing at our map-stack definition', entry?.shared.startsWith(`/${creaturePaths(rc).monster}`) === true);
+    // Named by the CREATURE, out of the mod. The palette's own name source is the
+    // icon cache, which only the game's installer writes, so a mod entry fell
+    // back to the link file's name — a path standing in for a name, changeable
+    // only by renaming a file.
+    check('labelled with the name the mod gives it, not the file name',
+      entry?.label === rc.name && entry?.name === rc.file, `${entry?.label} / ${entry?.name}`);
     // The editor's thumbnail cache is keyed by link path and only the game's own
     // installer writes it, so a mod's tile would be blank. Ours names its own.
     check('naming an icon that is really in the mod',

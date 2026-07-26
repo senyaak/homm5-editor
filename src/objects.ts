@@ -24,6 +24,7 @@ import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { join, dirname, relative, sep } from 'node:path';
 import { toAssets } from './assets.ts';
 import type { Assets } from './assets.ts';
+import { Registry } from './registry.ts';
 
 /** One entry of the object palette. */
 export interface PlaceableObject {
@@ -32,8 +33,12 @@ export interface PlaceableObject {
   /** Leaf name, cleaned of the `.(AdvMapObjectLink)` suffix. */
   name: string;
   /**
-   * What the original editor shows under the icon, from the icon cache.
-   * Falls back to `name` when there is no cache entry.
+   * What the palette shows under the icon.
+   *
+   * A monster's own creature name comes first — that is the name the game and
+   * the army picker use, and it is the ONLY source for a creature a mod added,
+   * whose file name is a file name and not a name. Otherwise the icon cache's,
+   * and `name` when there is neither.
    */
   label: string;
   /** The tooltip the original shows, when the cache carries one. */
@@ -180,6 +185,7 @@ export function listPlaceable(root: string | Assets, editorRoot: string): {
   const bases = data.dirs(LINK_ROOT);
   if (!bases.length) return { objects, groups };
   const seen = new Set<string>();
+  const creatureName = creatureLabeller(data);
 
   let base = bases[0]!;
   const walk = (dir: string): void => {
@@ -213,7 +219,7 @@ export function listPlaceable(root: string | Assets, editorRoot: string): {
       objects.push({
         path: rel,
         name: leaf,
-        label: meta.name?.trim() || leaf,
+        label: creatureName(link.type, link.shared) || meta.name?.trim() || leaf,
         description: meta.description?.trim() || null,
         group: groupOf(rel, groups),
         shared: link.shared,
@@ -225,9 +231,8 @@ export function listPlaceable(root: string | Assets, editorRoot: string): {
     }
   };
   for (const b of bases) { base = b; walk(b); }
-  for (const o of unlinkedShared(data, new Set(objects.map((x) => sharedKey(x.shared))))) {
-    objects.push(o);
-  }
+  const linked = new Set(objects.map((x) => sharedKey(x.shared)));
+  for (const o of unlinkedShared(data, linked, creatureName)) objects.push(o);
   // Sorted by the label, which is what the original orders by — Arcane Library
   // lands beside Alchemist Lab rather than under S for SpellShop.
   objects.sort((a, b) => a.group.localeCompare(b.group) || a.label.localeCompare(b.label));
@@ -236,6 +241,39 @@ export function listPlaceable(root: string | Assets, editorRoot: string): {
 
 /** Compare shared references by what they point at: case and leading slash vary. */
 const sharedKey = (href: string): string => href.toLowerCase().replace(/^\/+/, '').split('#')[0]!;
+
+/** The data path an href names: no fragment, no leading slash. */
+const hrefPath = (href: string): string => href.split('#')[0]!.replace(/^\/+/, '');
+
+/**
+ * Names a monster entry by its creature, the way the roster does.
+ *
+ * The palette's own name source is the icon cache, which only the game's
+ * installer writes: it has nothing for anything a mod adds, so such an entry
+ * fell back to the LINK FILE'S NAME. That is a path, not a name — and the way to
+ * change it was to rename a file, which is backwards. The creature's name is in
+ * the mod already, under the same id the map stores, so it is read from there.
+ *
+ * 49 of the 187 shipped monsters have no cache name either and gain one here.
+ * The roster is built lazily and once: a catalogue with no monsters in it (a
+ * synthetic data root in a test) never pays for it.
+ */
+function creatureLabeller(data: Assets): (type: string, shared: string) => string {
+  let names: Map<string, string> | null = null;
+  return (type, shared) => {
+    // Only monsters name a creature, and reading 1467 shared definitions to
+    // learn that is 1467 file reads the catalogue does not otherwise need.
+    if (type !== 'AdvMapMonster') return '';
+    const xml = data.text(hrefPath(shared));
+    const id = xml ? /<Creature>\s*([A-Za-z0-9_]+)\s*<\/Creature>/.exec(xml)?.[1] : undefined;
+    if (!id) return '';
+    if (!names) {
+      names = new Map();
+      for (const c of new Registry(data).creatures()) if (c.name) names.set(c.id, c.name);
+    }
+    return names.get(id) ?? '';
+  };
+}
 
 /** Group name for a shared definition no filter covers — its own top folder. */
 const sharedGroup = (rel: string): string => {
@@ -258,7 +296,11 @@ const sharedGroup = (rel: string): string => {
  * they land in a "Shared: …" group of their own rather than pretending to be
  * catalogue entries of the same kind.
  */
-function unlinkedShared(data: Assets, linked: Set<string>): PlaceableObject[] {
+function unlinkedShared(
+  data: Assets,
+  linked: Set<string>,
+  creatureName: (type: string, shared: string) => string,
+): PlaceableObject[] {
   const out: PlaceableObject[] = [];
   const roots = data.dirs('MapObjects');
   if (!roots.length) return out;
@@ -280,14 +322,17 @@ function unlinkedShared(data: Assets, linked: Set<string>): PlaceableObject[] {
       seen.add(rel.toLowerCase());
       const href = `/${rel}#xpointer(/${m[2]})`;
       if (linked.has(sharedKey(href))) continue;
+      const type = typeFromShared(href);
       out.push({
         path: rel,
         name: m[1]!,
-        label: m[1]!,
+        // A creature a mod ships without a link file lands here, and this is the
+        // only chance it gets to be named.
+        label: creatureName(type, href) || m[1]!,
         description: null,
         group: sharedGroup(rel),
         shared: href,
-        type: typeFromShared(href),
+        type,
         hidden: false,
         random: false,
       });
