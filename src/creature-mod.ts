@@ -56,6 +56,8 @@ import type { DwellingPaths, DwellingSpec, Footprint } from './dwellings.ts';
 import { parseTypeSpec } from './typespec.ts';
 import type { SpecType } from './typespec.ts';
 import { setCreatureLimit } from './creature-limit.ts';
+import { ORIGINAL_ARTIFACTS, setArtifactLimit } from './artifact-limit.ts';
+import type { ArtifactExeResult } from './artifact-limit.ts';
 import type { ExeResult } from './creature-limit.ts';
 import {
   ARTIFACT_CLASS, SHIPPED_ARTIFACTS, artifactLink, artifactPaths, artifactRecord, artifactSharedDoc,
@@ -946,6 +948,11 @@ export interface Installed {
    * executable is none of its business. Dwellings and other objects are data.
    */
   exe: ExeResult | null;
+  /**
+   * And the artifact ceiling, which is also in the executable — a thing the
+   * format gives every appearance of deciding by itself and does not.
+   */
+  artifacts: ArtifactExeResult | null;
 }
 
 /**
@@ -964,9 +971,26 @@ export interface Installed {
  */
 export function installCreatureMod(gameRoot: string, mod: CreatureMod, archive: Buffer): Installed {
   const exe = mod.creatures.length ? setCreatureLimit(gameRoot, creatureLimit(mod)) : null;
+  // Artifacts have a ceiling in the executable too, and finding that out cost
+  // three wrong answers: raising the table's declared size in types.xml is
+  // enough for the game to READ a hundred artifacts and not enough for it to use
+  // the ones past 97. See src/artifact-limit.ts.
+  const artifacts = mod.artifacts?.length
+    ? setArtifactLimit(gameRoot, artifactLimit(mod))
+    : null;
   const target = join(gameRoot, 'UserMODs', `${mod.stem}.h5u`);
   writeFileSync(target, archive);
-  return { archive: target, exe };
+  return { archive: target, exe, artifacts };
+}
+
+/**
+ * What the executable's artifact ceiling has to be for this mod.
+ *
+ * The same exact-agreement rule the creature ceiling follows: the number is how
+ * many the game believes exist, and the table has to hold precisely that many.
+ */
+export function artifactLimit(mod: CreatureMod): number {
+  return ORIGINAL_ARTIFACTS + (mod.artifacts?.length ?? 0);
 }
 
 // --- reading a built mod back -------------------------------------------------
