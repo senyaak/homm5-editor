@@ -7,7 +7,7 @@ section into the release notes, so this file is what people read on GitHub.
 Written for someone deciding whether to update: what was wrong, and what they
 would have seen.
 
-## Unreleased
+## 0.1.2 — 2026-07-26
 
 ### Fixed
 
