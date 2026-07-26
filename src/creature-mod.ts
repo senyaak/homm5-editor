@@ -50,9 +50,9 @@ import { serialize, setAttr } from './xml.ts';
 import { extract, readEntries, readEntryFrom, readIndex, writeArchive } from './pak.ts';
 import type { ZipEntry, ZipIndexEntry } from './pak.ts';
 import { MESSAGE_SLOTS, dwellingDoc, dwellingLink, dwellingPaths, footprintOf, isRef, refPath } from './dwellings.ts';
-import { extractMeshesStructured, placeGeometry, positionsBox } from './geometry.ts';
+import { extractMeshesStructured, placeGeometry, positionsBox, wideBase } from './geometry.ts';
 import type { BBox } from './geometry.ts';
-import type { DwellingPaths, DwellingSpec } from './dwellings.ts';
+import type { DwellingPaths, DwellingSpec, Footprint } from './dwellings.ts';
 import { parseTypeSpec } from './typespec.ts';
 
 /** The mod's file name stem — `homm5-units.h5u` in UserMODs. */
@@ -411,19 +411,21 @@ function buildDwellings(dwellings: readonly DwellingSpec[], read: DataReader): M
     // anything already at map scale is referenced where it lies.
     let model = d.model;
     let ground = d.ground;
+    let baked: Footprint | null = null;
     if (d.bake) {
-      const baked = bakeModel(d, p, read);
-      for (const f of baked.files) emit(f.path, f.data);
-      model = baked.model;
+      const made = bakeModel(d, p, read);
+      for (const f of made.files) emit(f.path, f.data);
+      model = made.model;
+      baked = made.visible;
       // Its pedestal is under the map; cutting a hole would show the hole.
-      if (baked.sunk && ground === undefined) ground = null;
+      if (made.sunk && ground === undefined) ground = null;
     } else if (produced.has(refPath(model)) && ground === undefined) {
       // Pointing at a model another dwelling baked: its pedestal is under the map
       // too, so this one must not cut a hole either.
       ground = null;
     }
     // Measured off the art; the spec overrides either area if it wants to.
-    const measured = d.footprint && ground ? ground : footprintOf(model, readAny);
+    const measured = d.footprint && ground ? ground : baked ?? footprintOf(model, readAny);
     if (!measured) {
       throw new Error(`${d.file}: cannot measure ${model} — give footprint and ground in the spec instead`);
     }
@@ -455,9 +457,10 @@ function buildDwellings(dwellings: readonly DwellingSpec[], read: DataReader): M
  * it, which is the same container and gets the same treatment.
  */
 function bakeModel(d: DwellingSpec, p: DwellingPaths, read: DataReader): {
-  files: ModFile[]; model: string; sunk: boolean;
+  files: ModFile[]; model: string; sunk: boolean; visible: Footprint;
 } {
   let pedestalSunk = false;
+  let visible: Footprint = { w: 1, h: 1 };
   const source = dataPath(d.model);
   const copied = copyArt([source], p.art, read, `dwelling:${d.file}`);
   const modelPath = copied.at.get(source);
@@ -514,10 +517,22 @@ function bakeModel(d: DwellingSpec, p: DwellingPaths, read: DataReader): {
       // one its materials use), so the ground is the TOP of that column and the
       // column goes below the map. The terrain then hides it, which is why a baked
       // dwelling cuts no hole in the ground.
-      const found = d.bake!.ground ?? groundLevel(geom.text, bytes);
+      const found = d.bake!.ground ?? groundLevel(geom.text, bytes) ?? wideBase(bytes);
       pedestalSunk = found !== null;
       const floor = found ?? box.cz - box.sz / 2;
-      placement = { scale: target / widest, shift: [-box.cx, -box.cy, -floor] };
+      // Sized and centred on what will be ABOVE the ground, not on the whole
+      // model: a town building's art keeps going below its terrace, and the
+      // Necropolis Estate's buried rock makes the file half again as wide as the
+      // manor on top of it. Scaling by that shrank the manor to a doormat.
+      const seen = positionsBox(bytes, floor) ?? box;
+      const across = Math.max(seen.sx, seen.sy);
+      const scale = target / (across > 0 ? across : widest);
+      placement = { scale, shift: [-seen.cx, -seen.cy, -floor] };
+      // The footprint follows what will be SEEN, not the whole file: a buried base
+      // is wider than the building on it often enough (the Hall of Darkness) that
+      // measuring the finished bounding box asks for tiles nothing stands on.
+      const tiles = (size: number): number => Math.max(1, Math.round((size * scale) / 2));
+      visible = { w: tiles(seen.sx), h: tiles(seen.sy) };
     }
     const placed = placeGeometry(bytes, placement);
     if (placed) {
@@ -541,6 +556,7 @@ function bakeModel(d: DwellingSpec, p: DwellingPaths, read: DataReader): {
     files: [...copied.files].map(([path, data]) => ({ path, data })),
     model: `/${modelPath}#xpointer(/Model)`,
     sunk: pedestalSunk,
+    visible,
   };
 }
 

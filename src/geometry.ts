@@ -696,47 +696,113 @@ export interface Placement {
  */
 export function placeGeometry(b: Buffer, p: Placement): { data: Buffer; bbox: BBox } | null {
   const out = Buffer.from(b);
-  const top = recordsIn(out, 0, out.length);
-  const root = top.find((r) => r.tag === 1);
-  if (!root) return null;
-  const outer = recordsIn(out, root.at, root.end).find((r) => r.tag === 2);
-  if (!outer) return null;
-  const blocks = recordsIn(out, outer.at, outer.end).filter((r) => r.tag === 1);
-  if (!blocks.length) return null;
-
   let lo = [Infinity, Infinity, Infinity];
   let hi = [-Infinity, -Infinity, -Infinity];
-  let moved = 0;
-  for (const block of blocks) {
-    for (const group of recordsIn(out, block.at, block.end).filter((r) => r.tag === 1)) {
-      const parts = recordsIn(out, group.at, group.end);
-      const rec = parts.find((x) => x.tag === 2);
-      const arr = rec ? countedArray(out, rec.at, rec.end) : null;
-      if (!arr || arr.len < arr.count * 12) continue;
-      for (let i = 0; i < arr.count; i++) {
-        for (let c = 0; c < 3; c++) {
-          const at = arr.at + i * 12 + c * 4;
-          const v = (out.readFloatLE(at) + p.shift[c]!) * p.scale;
-          out.writeFloatLE(v, at);
-          if (v < lo[c]!) lo[c] = v;
-          if (v > hi[c]!) hi[c] = v;
-        }
-      }
-      moved += arr.count;
+  const moved = eachPosition(out, (at) => {
+    for (let c = 0; c < 3; c++) {
+      const v = (out.readFloatLE(at + c * 4) + p.shift[c]!) * p.scale;
+      out.writeFloatLE(v, at + c * 4);
+      if (v < lo[c]!) lo[c] = v;
+      if (v > hi[c]!) hi[c] = v;
     }
-  }
+  });
   if (!moved) return null;
-  return {
-    data: out,
-    bbox: {
-      cx: (lo[0]! + hi[0]!) / 2, cy: (lo[1]! + hi[1]!) / 2, cz: (lo[2]! + hi[2]!) / 2,
-      sx: hi[0]! - lo[0]!, sy: hi[1]! - lo[1]!, sz: hi[2]! - lo[2]!,
-    },
-  };
+  return { data: out, bbox: boxOf(lo, hi) };
 }
 
-/** Read the positions' own extent, which is what a bounding box should say. */
-export function positionsBox(b: Buffer): BBox | null {
-  const got = placeGeometry(b, { scale: 1, shift: [0, 0, 0] });
-  return got ? got.bbox : null;
+/**
+ * The extent of the positions, optionally only those at or above a height.
+ *
+ * `above` is what makes a town building scale correctly. Its art keeps going below
+ * the terrace it stands on — the Necropolis Estate's rock reaches 30 units down and
+ * makes the model half again as wide as the manor on top of it — and scaling by the
+ * whole model then shrinks the part anyone sees. Measure what will be visible.
+ */
+export function positionsBox(b: Buffer, above = -Infinity): BBox | null {
+  let lo = [Infinity, Infinity, Infinity];
+  let hi = [-Infinity, -Infinity, -Infinity];
+  let seen = 0;
+  eachPosition(b, (at) => {
+    const z = b.readFloatLE(at + 8);
+    if (z < above) return;
+    seen++;
+    for (let c = 0; c < 3; c++) {
+      const v = b.readFloatLE(at + c * 4);
+      if (v < lo[c]!) lo[c] = v;
+      if (v > hi[c]!) hi[c] = v;
+    }
+  });
+  return seen ? boxOf(lo, hi) : null;
+}
+
+const boxOf = (lo: number[], hi: number[]): BBox => ({
+  cx: (lo[0]! + hi[0]!) / 2, cy: (lo[1]! + hi[1]!) / 2, cz: (lo[2]! + hi[2]!) / 2,
+  sx: hi[0]! - lo[0]!, sy: hi[1]! - lo[1]!, sz: hi[2]! - lo[2]!,
+});
+
+/**
+ * Visit every position in the file, by byte offset. Returns how many there were,
+ * or 0 when the container does not match the layout.
+ */
+function eachPosition(b: Buffer, fn: (at: number) => void): number {
+  const top = recordsIn(b, 0, b.length);
+  const root = top.find((r) => r.tag === 1);
+  if (!root) return 0;
+  const outer = recordsIn(b, root.at, root.end).find((r) => r.tag === 2);
+  if (!outer) return 0;
+  const blocks = recordsIn(b, outer.at, outer.end).filter((r) => r.tag === 1);
+  let seen = 0;
+  for (const block of blocks) {
+    for (const group of recordsIn(b, block.at, block.end).filter((r) => r.tag === 1)) {
+      const rec = recordsIn(b, group.at, group.end).find((x) => x.tag === 2);
+      const arr = rec ? countedArray(b, rec.at, rec.end) : null;
+      if (!arr || arr.len < arr.count * 12) continue;
+      for (let i = 0; i < arr.count; i++) fn(arr.at + i * 12);
+      seen += arr.count;
+    }
+  }
+  return seen;
+}
+
+
+/**
+ * The height at which a model becomes WIDE, or null when it is wide all the way
+ * down.
+ *
+ * The last resort for finding the ground under a town building. Some of them are
+ * mounted on nothing a name can identify: the Necropolis Mausoleum's file is
+ * eleven meshes called `polySurfaceShape*`, of which the wide one — the mausoleum
+ * itself, 13.6 units across — sits at z 54 and upwards while thin columns hold it
+ * up from z 39. Placed by its lowest point that building is a dome on stilts.
+ *
+ * So the shape is measured instead: the vertices are sliced by height, each slice's
+ * horizontal extent taken, and the lowest slice that is still at least `fraction`
+ * of the widest is where the building proper starts. A model that is genuinely
+ * wide at the bottom returns null rather than a height, so nothing moves.
+ */
+export function wideBase(b: Buffer, fraction = 0.5, slices = 64): number | null {
+  const whole = positionsBox(b);
+  if (!whole || whole.sz <= 0) return null;
+  const bottom = whole.cz - whole.sz / 2;
+  const band = whole.sz / slices;
+  const lo: Array<[number, number]> = Array.from({ length: slices }, () => [Infinity, Infinity]);
+  const hi: Array<[number, number]> = Array.from({ length: slices }, () => [-Infinity, -Infinity]);
+  eachPosition(b, (at) => {
+    const z = b.readFloatLE(at + 8);
+    const i = Math.min(slices - 1, Math.max(0, Math.floor((z - bottom) / band)));
+    for (let c = 0; c < 2; c++) {
+      const v = b.readFloatLE(at + c * 4);
+      if (v < lo[i]![c]!) lo[i]![c] = v;
+      if (v > hi[i]![c]!) hi[i]![c] = v;
+    }
+  });
+  const extent = lo.map((l, i) => Math.max(hi[i]![0]! - l[0]!, hi[i]![1]! - l[1]!));
+  const widest = Math.max(...extent.filter(Number.isFinite));
+  if (!(widest > 0)) return null;
+  // Downwards from the widest slice, so a lone wide thing at the bottom — a buried
+  // slab — does not count as the building.
+  const top = extent.indexOf(widest);
+  let base = top;
+  while (base > 0 && extent[base - 1]! >= widest * fraction) base--;
+  return base === 0 ? null : bottom + base * band;
 }
