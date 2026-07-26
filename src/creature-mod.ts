@@ -4,6 +4,11 @@
 // container a pak is, applied after everything in `data/` including the addon's
 // own `a2p1-*`. Nothing goes into `data/` and no `index.bin` is needed.
 //
+// `UserMODs/` is not the only place it can sit. A `.h5m` or a `.h5c` is mounted
+// the same way and for the whole session, so these files can travel inside a
+// campaign instead of beside it — see docs/ARCHIVES.md, which also covers why two
+// maps that each carry a creature set collide exactly as two mods would.
+//
 // WHAT A MOD HAS TO CARRY. Three of the game's own files, edited:
 //
 //   types.xml                          the CREATURE_ enum, the name→number map,

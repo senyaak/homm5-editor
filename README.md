@@ -141,6 +141,11 @@ get a live 3D scene you sculpt, paint, populate, script and pack.
   manifest tracks file hashes at pack time for `git status`-style dirty detection
   and editor-version drift. Archive members are named by their in-game path
   (`Maps/…/map.xdb`) — pack to the root and the game can't see the map.
+- **Archives** ([docs/ARCHIVES.md](docs/ARCHIVES.md)): a map, a campaign and a mod
+  are one thing to the engine, and a `.h5m` is mounted for the whole session
+  rather than for its own mission — so a campaign can ship its mod inside itself,
+  and a stray file in a map overrides the game for every other map. Which copy of
+  a path wins is decided by member date, which is why packing stamps a real one.
 - **External-change watcher** (`src/watch.ts`): the original Nival editor can be
   open on the same folder. When it saves, a banner offers to take its version.
   Content hashes, not timestamps, so our own saves never self-trigger.

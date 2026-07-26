@@ -106,6 +106,9 @@ function moreEntries(cd: Buffer, p: number, end: number): boolean {
  *
  * So members are stamped with the current time by default. `mtime` pins it for callers
  * that would rather have byte-identical output from an unchanged tree.
+ *
+ * Which archives are mounted, and why this rule reaches maps and not just mods:
+ * docs/ARCHIVES.md.
  */
 function dosStamp(when: Date): { time: number; date: number } {
   return {
