@@ -5,7 +5,10 @@
 //   * `MapObjects/_(AdvMapObjectLink)/**.xdb` — one tiny file per palette entry,
 //     pointing at the shared definition an actual map object would reference.
 //     This is the catalogue. It ships in the paks, so a mod that drops files
-//     here gains palette entries for free — the expansion does exactly that.
+//     here gains palette entries for free — the expansion does exactly that,
+//     and so does our units mod. Which is why the scans below go through the
+//     MOUNTED chain (src/assets.ts): walking one root shows the game as shipped,
+//     and a creature a mod adds was simply not in the palette.
 //   * `Editor/MapFilters.xml` — the Filter dropdown: named groups, each a union
 //     of folder prefixes. Loose on disk, NOT in any pak, so a mod cannot add a
 //     group by shipping one.
@@ -19,6 +22,8 @@
 
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { join, dirname, relative, sep } from 'node:path';
+import { toAssets } from './assets.ts';
+import type { Assets } from './assets.ts';
 
 /** One entry of the object palette. */
 export interface PlaceableObject {
@@ -43,6 +48,15 @@ export interface PlaceableObject {
   hidden: boolean;
   /** True for the "Random ..." entries, which resolve to a group at load. */
   random: boolean;
+  /**
+   * The link's own `<IconFile>`, verbatim.
+   *
+   * The shipped ones name a `.tga` under an authoring tree that was never
+   * shipped — it is what BUILT the icon cache, not something to read. A mod has
+   * no cache entry at all, so ours names a texture that really is in the mod and
+   * the icon handler falls back to it.
+   */
+  iconFile?: string;
 }
 
 /** A group in the Filter dropdown. Separator rows carry no prefixes. */
@@ -80,7 +94,7 @@ function typeFromShared(href: string): string {
   return x ? `AdvMap${x[1]!.replace(/^AdvMap/i, '')}` : '';
 }
 
-function readLink(xml: string): { shared: string; type: string; random: boolean } | null {
+function readLink(xml: string): { shared: string; type: string; random: boolean; iconFile: string } | null {
   const direct = /<Link\s+href="([^"]*)"/i.exec(xml);
   // The "Random ..." entries carry an empty <Link/> and point at an
   // AdvMapSharedGroup instead — one of which the game picks at load. There are
@@ -90,7 +104,8 @@ function readLink(xml: string): { shared: string; type: string; random: boolean 
   const rnd = /<RndGroup\s+href="([^"]*)"/i.exec(xml);
   const shared = direct?.[1] || rnd?.[1] || '';
   if (!shared) return null;
-  return { shared, type: typeFromShared(shared), random: !direct?.[1] && !!rnd?.[1] };
+  const iconFile = /<IconFile>([^<]*)<\/IconFile>/i.exec(xml)?.[1]?.trim() ?? '';
+  return { shared, type: typeFromShared(shared), random: !direct?.[1] && !!rnd?.[1], iconFile };
 }
 
 /**
@@ -102,10 +117,10 @@ function readLink(xml: string): { shared: string; type: string; random: boolean 
  * failed with "unknown object type". The editor stands in the first member, a
  * real object with a type and a mesh; the game would have picked one anyway.
  */
-function resolveGroupMember(dataRoot: string, groupHref: string): { shared: string; type: string } | null {
+function resolveGroupMember(data: Assets, groupHref: string): { shared: string; type: string } | null {
   const rel = groupHref.split('#')[0]!.replace(/^\//, '');
-  let xml: string;
-  try { xml = readFileSync(join(dataRoot, rel), 'utf8'); } catch { return null; }
+  const xml = data.text(rel);
+  if (xml === null) return null;
   const first = xml.match(/<links>[\s\S]*?<Item href="([^"]+)"/)?.[1];
   const type = first ? typeFromShared(first) : '';
   return first && type ? { shared: first, type } : null;
@@ -152,15 +167,21 @@ function groupOf(path: string, groups: ObjectGroup[]): string {
  * them: 51 of the 1469 shipped links are marked, and they are exactly the test
  * and developer objects someone poking at the game may want.
  */
-export function listPlaceable(dataRoot: string, editorRoot: string): {
+export function listPlaceable(root: string | Assets, editorRoot: string): {
   objects: PlaceableObject[];
   groups: ObjectGroup[];
 } {
+  const data = toAssets(root);
   const groups = readObjectGroups(editorRoot);
-  const base = join(dataRoot, LINK_ROOT);
   const objects: PlaceableObject[] = [];
-  if (!existsSync(base)) return { objects, groups };
+  // Every mounted root's copy of the catalogue folder. A mod ADDS entries rather
+  // than replacing the folder, so all of them are walked and the first root to
+  // reach a path keeps it — the same "topmost wins" a file read follows.
+  const bases = data.dirs(LINK_ROOT);
+  if (!bases.length) return { objects, groups };
+  const seen = new Set<string>();
 
+  let base = bases[0]!;
   const walk = (dir: string): void => {
     let ents: string[];
     try { ents = readdirSync(dir); } catch { return; }
@@ -177,10 +198,12 @@ export function listPlaceable(dataRoot: string, editorRoot: string): {
       // A random group is not placeable as itself — stand in its first member,
       // which carries the type and mesh the group only points to.
       if (!link.type) {
-        const member = resolveGroupMember(dataRoot, link.shared);
+        const member = resolveGroupMember(data, link.shared);
         if (member) { link.shared = member.shared; link.type = member.type; }
       }
-      const rel = relative(dataRoot, full).split(sep).join('/');
+      const rel = `${LINK_ROOT}/${relative(base, full).split(sep).join('/')}`;
+      if (seen.has(rel.toLowerCase())) continue;
+      seen.add(rel.toLowerCase());
       const leaf = cleanName(e);
       // The label lives in the icon cache, so read it while we are here rather
       // than per-icon later: the palette sorts by it, so it is needed up front.
@@ -197,11 +220,12 @@ export function listPlaceable(dataRoot: string, editorRoot: string): {
         type: link.type,
         hidden: /<HideInEditor>\s*true\s*<\/HideInEditor>/i.test(xml),
         random: link.random,
+        ...(link.iconFile ? { iconFile: link.iconFile } : {}),
       });
     }
   };
-  walk(base);
-  for (const o of unlinkedShared(dataRoot, new Set(objects.map((x) => sharedKey(x.shared))))) {
+  for (const b of bases) { base = b; walk(b); }
+  for (const o of unlinkedShared(data, new Set(objects.map((x) => sharedKey(x.shared))))) {
     objects.push(o);
   }
   // Sorted by the label, which is what the original orders by — Arcane Library
@@ -234,10 +258,12 @@ const sharedGroup = (rel: string): string => {
  * they land in a "Shared: …" group of their own rather than pretending to be
  * catalogue entries of the same kind.
  */
-function unlinkedShared(dataRoot: string, linked: Set<string>): PlaceableObject[] {
-  const root = join(dataRoot, 'MapObjects');
+function unlinkedShared(data: Assets, linked: Set<string>): PlaceableObject[] {
   const out: PlaceableObject[] = [];
-  if (!existsSync(root)) return out;
+  const roots = data.dirs('MapObjects');
+  if (!roots.length) return out;
+  const seen = new Set<string>();
+  let root = roots[0]!;
   const walk = (dir: string): void => {
     let ents: string[];
     try { ents = readdirSync(dir); } catch { return; }
@@ -249,7 +275,9 @@ function unlinkedShared(dataRoot: string, linked: Set<string>): PlaceableObject[
       if (st.isDirectory()) { if (!e.startsWith('_(')) walk(full); continue; }
       const m = /^(.*)\.\((AdvMap\w+Shared)\)\.xdb$/i.exec(e);
       if (!m) continue;
-      const rel = relative(dataRoot, full).split(sep).join('/');
+      const rel = `MapObjects/${relative(root, full).split(sep).join('/')}`;
+      if (seen.has(rel.toLowerCase())) continue;
+      seen.add(rel.toLowerCase());
       const href = `/${rel}#xpointer(/${m[2]})`;
       if (linked.has(sharedKey(href))) continue;
       out.push({
@@ -265,7 +293,7 @@ function unlinkedShared(dataRoot: string, linked: Set<string>): PlaceableObject[
       });
     }
   };
-  walk(root);
+  for (const r of roots) { root = r; walk(r); }
   return out;
 }
 

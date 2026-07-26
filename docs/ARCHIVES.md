@@ -82,7 +82,11 @@ ignored, so an archive can be mounted, correct and completely without effect.
   resolves through a CHAIN of roots (`src/assets.ts`), the mounted mods over the
   data, which is the same "topmost wins" rule one file at a time. Folder scans
   walk every root and dedupe, because a mod adding an object does not replace the
-  folder it sits in.
+  folder it sits in — and there are three separate lists to get right, each with
+  its own source: the object **palette** (link files under
+  `MapObjects/_(AdvMapObjectLink)/`), the creature **roster** (the ref table), and
+  the placed object's own **model** (the shared definition). A creature can be in
+  one and missing from the others, and was.
 
 ## What this does not establish
 

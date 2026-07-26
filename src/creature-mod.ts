@@ -202,14 +202,26 @@ export function addCreature(mod: CreatureMod, spec: CreatureSpec): ModCreature {
   return c;
 }
 
+/**
+ * Where the editor's object palette looks for its entries.
+ *
+ * One tiny file per entry, and it ships in the paks — so a mod that drops one
+ * here gains a palette entry, which is how the expansion added its own monsters.
+ * Under `Monsters/` because the Filter dropdown's groups are folder prefixes read
+ * from `Editor/MapFilters.xml`, a loose file no mod can add to: land outside a
+ * known prefix and the entry is filed under "Other" instead of with the monsters.
+ */
+const LINK_DIR = 'MapObjects/_(AdvMapObjectLink)/Monsters/Units';
+
 /** Where a creature's own files sit inside the mod. */
 export function creaturePaths(c: CreatureSpec): {
-  dir: string; art: string;
+  dir: string; art: string; link: string;
   visual: string; monster: string; name: string; description: string; abilities: string;
 } {
   const dir = `Units/${c.file}`;
   return {
     dir,
+    link: `${LINK_DIR}/${c.file}.xdb`,
     // The art keeps its original directory structure under here, so every
     // relative href inside it resolves exactly as it did in the game's data.
     art: `${dir}/art`,
@@ -308,6 +320,11 @@ export function buildCreatureMod(mod: CreatureMod, read: DataReader): BuildRepor
 
     files.push({ path: p.visual, data: Buffer.from(creatureVisual(visual, p, c.visualSource), 'latin1') });
     files.push({ path: p.monster, data: Buffer.from(monsterShared(monster, p, c), 'latin1') });
+    // The palette entry. Its icon names the creature's own 128px texture, which
+    // the art copy already put in the mod: the editor's thumbnail cache is keyed
+    // by link path and a mod has no entry in it, so without this the tile is
+    // blank among 185 that are not.
+    files.push({ path: p.link, data: Buffer.from(objectLink(p, copied.at.get(sources.icon!) ?? ''), 'latin1') });
     files.push({ path: p.name, data: utf16(c.name) });
     files.push({ path: p.description, data: utf16(c.description) });
     files.push({ path: p.abilities, data: utf16(c.abilitiesText) });
@@ -687,6 +704,27 @@ function creatureVisual(visual: string, p: ReturnType<typeof creaturePaths>, sou
     t = setHref(t, field, `/${path}`, source);
   }
   return t;
+}
+
+/**
+ * The palette entry: a link file pointing at our map-stack definition.
+ *
+ * `IconFile` is where this departs from the shipped links. Theirs name a `.tga`
+ * under an authoring tree that was never shipped — that file BUILT
+ * `Editor/IconCache`, and the editor reads the cache, keyed by link path. A mod
+ * cannot add to the cache, so ours names the creature's own 128px texture, which
+ * the art copy already placed in the mod, and the icon handler falls back to it.
+ */
+function objectLink(p: ReturnType<typeof creaturePaths>, icon: string): string {
+  return [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<AdvMapObjectLink>',
+    `\t<Link href="/${p.monster}#xpointer(/AdvMapMonsterShared)"/>`,
+    '\t<RndGroup/>',
+    `\t<IconFile>${icon}</IconFile>`,
+    '\t<HideInEditor>false</HideInEditor>',
+    '</AdvMapObjectLink>',
+  ].join(EOL) + EOL;
 }
 
 /**

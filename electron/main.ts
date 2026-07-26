@@ -18,6 +18,7 @@ import { readFileSync, writeFileSync, existsSync, readdirSync, statSync, mkdirSy
 import { createHash } from 'node:crypto';
 import { buildScene, findAssetRoot, listTiles, splatFor, pngDataUri } from '../src/scene.ts';
 import { listPlaceable, iconPathFor, readIconFile } from '../src/objects.ts';
+import { decodeDDS } from '../src/dds.ts';
 import { editorRoot, gameData, gameRoot, isConfigured, mountedAssets, preloadPath, rendererFile, tmpRoot } from './paths.ts';
 import type { Assets } from '../src/assets.ts';
 import { closeSetup, runSetup } from './setup.ts';
@@ -242,7 +243,8 @@ function terrainDoc(s: Session, floor: number): TerrainDoc {
 /** The object catalogue, scanned once — 1466 small files is not a per-call cost. */
 let catalogCache: ReturnType<typeof listPlaceable> | null = null;
 function catalog(): ReturnType<typeof listPlaceable> {
-  if (!catalogCache) catalogCache = listPlaceable(gameData(), editorRoot() || '');
+  // Through the mounted chain, so a mod's palette entries are in the catalogue.
+  if (!catalogCache) catalogCache = listPlaceable(mountedAssets(gameData()), editorRoot() || '');
   return catalogCache;
 }
 
@@ -646,15 +648,42 @@ ipcMain.handle('objects:list', async (): Promise<ObjectCatalogResult> => {
 // showing a few dozen at a time, so they are fetched per tile as it scrolls in.
 ipcMain.handle('objects:icon', async (_e: IpcMainInvokeEvent, { path }: IconPayload): Promise<IconResult> => {
   const root = editorRoot();
-  if (!root) return null;
-  const file = iconPathFor(root, path);
-  if (!file) return null;
-  try {
-    const icon = readIconFile(readFileSync(file));
-    // A few entries hold an image declared 0x0 — a placeholder with no picture.
-    return icon ? pngDataUri(icon.w, icon.h, icon.rgba) : null;
-  } catch { return null; }
+  const file = root ? iconPathFor(root, path) : null;
+  if (file) {
+    try {
+      const icon = readIconFile(readFileSync(file));
+      // A few entries hold an image declared 0x0 — a placeholder with no picture.
+      if (icon) return pngDataUri(icon.w, icon.h, icon.rgba);
+    } catch { /* fall through to the entry's own texture */ }
+  }
+  // No cache entry. The cache is keyed by link path and only the game's own
+  // installer writes it, so everything a MOD adds lands here — a blank tile
+  // among 185 that have pictures. A link may name a texture instead, and a
+  // creature's 128px icon is already in the mod beside its model.
+  return linkTexture(catalog().objects.find((o) => o.path === path)?.iconFile);
 });
+
+/**
+ * Decode a texture a palette entry names, as a data URI.
+ *
+ * The href is a `.(Texture).xdb`, which is a description; the pixels are in the
+ * `.dds` its `DestName` names, beside it. Anything that does not resolve — the
+ * shipped links' authoring `.tga` paths, above all — is simply no icon.
+ */
+function linkTexture(href: string | undefined): IconResult {
+  if (!href || !/\.xdb$/i.test(href)) return null;
+  const data = mountedAssets(gameData());
+  const rel = href.replace(/\\/g, '/').replace(/^\/+/, '');
+  const xml = data.text(rel);
+  if (!xml) return null;
+  const dest = /<DestName href="([^"]+)"/.exec(xml)?.[1];
+  if (!dest) return null;
+  const dds = data.path(join(dirname(rel), dest).split(sep).join('/'));
+  try {
+    const img = decodeDDS(dds);
+    return pngDataUri(img.width, img.height, img.rgba);
+  } catch { return null; }
+}
 
 /**
  * The game's own type spec, read once per run.

@@ -25,6 +25,7 @@ import {
 } from '../src/creature-mod.ts';
 import { assets } from '../src/assets.ts';
 import { Registry } from '../src/registry.ts';
+import { findEditorRoot, listPlaceable } from '../src/objects.ts';
 import type { CreatureMod, DataReader, ModFile } from '../src/creature-mod.ts';
 import { blankStats, creatureRoot, readStats, SHIPPED_CREATURES } from '../src/creatures.ts';
 import { readEntries } from '../src/pak.ts';
@@ -458,6 +459,33 @@ if (!existsSync(join(dataRoot, 'types.xml'))) {
       chain.text(creaturePaths(rc).monster)?.includes(`<Creature>${rc.id}</Creature>`) === true);
     check('so does the art it points at',
       chain.exists(dataPath(hrefIn(asText(realFiles, creaturePaths(rc).monster), 'Model'))));
+
+    // The OBJECT PALETTE is a third list, and being in the roster does not put a
+    // creature in it: the palette is a folder of link files, and a monster with
+    // no link cannot be put on a map at all.
+    // The filter groups are loose beside the INSTALL, not under the data root.
+    const editorDir = findEditorRoot(dataRoot) ?? '';
+    const palette = listPlaceable(chain, editorDir);
+    const entry = palette.objects.find((o) => o.path === creaturePaths(rc).link);
+    check('the mod ships a palette entry', Boolean(entry), entry?.path ?? '(none)');
+    // Without the game's Editor folder there are no filter groups at all, and
+    // everything lands in "Other" — not a failure, just nothing to check.
+    if (palette.groups.length) {
+      check('filed with the monsters', entry?.group === '. Monsters', entry?.group ?? '');
+    } else {
+      console.log(`  --    filed with the monsters — skipped, no MapFilters.xml near ${dataRoot}`);
+    }
+    check('pointing at our map-stack definition', entry?.shared.startsWith(`/${creaturePaths(rc).monster}`) === true);
+    // The editor's thumbnail cache is keyed by link path and only the game's own
+    // installer writes it, so a mod's tile would be blank. Ours names its own.
+    check('naming an icon that is really in the mod',
+      Boolean(entry?.iconFile) && chain.exists(entry!.iconFile!), entry?.iconFile ?? '(none)');
+    // And nothing shipped may vanish because a root was mounted over it.
+    const shipped = listPlaceable(dataRoot, editorDir);
+    const after = new Set(palette.objects.map((o) => o.path));
+    check('mounting adds entries and removes none',
+      palette.objects.length === shipped.objects.length + 1 && shipped.objects.every((o) => after.has(o.path)),
+      `${shipped.objects.length} → ${palette.objects.length}`);
   } finally {
     rmSync(mounted, { recursive: true, force: true });
   }
