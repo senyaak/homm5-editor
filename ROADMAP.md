@@ -637,10 +637,7 @@ Two constraints shape the design, both learned the hard way:
 - [ ] ⬜ **Fetch Steamless on request**, pinned and checksummed, never "latest":
       `atom0s/Steamless` v3.1.0.5,
       sha256 `e3e2d22e098ff3fb359b2876aa2bed9596f0501e6ff588cbffae90a76d2dc4f5`, 610646
-      bytes. Mismatch is a refusal, not a warning. Unwrap a Steam install by itself; the
-      patch writes a new executable beside the original either way and never opens the
-      shipped one for writing. Since re-patching now works from any ceiling, this is the
-      only manual step left in adding a creature, and a one-time one.
+      bytes. Mismatch is a refusal, not a warning.
 - [ ] ⬜ **Recolour textures in the editor.** They are DDS **DXT3** (512×512, 7 mipmaps),
       and the `.xdb` beside each one repeats the format, size and an `AverageColor`. So:
       decompress BC2 → transform → recompress → regenerate mipmaps → recompute
