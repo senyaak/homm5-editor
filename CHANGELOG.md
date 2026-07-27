@@ -11,7 +11,7 @@ would have seen.
 its section by version number, so this heading is inert until it is renamed to
 one.
 
-## Unreleased
+## 0.3.0 — 2026-07-27
 
 ### Added
 
