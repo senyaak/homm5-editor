@@ -11,6 +11,31 @@ would have seen.
 its section by version number, so this heading is inert until it is renamed to
 one.
 
+## Unreleased
+
+### Added
+
+- **Every map lights like itself.** The editor used to light every map with one
+  built-in daylight; now it reads the map's own `AmbientLight` preset — sun
+  colour and direction, ambient and shade — and applies it per floor, so a
+  night map opens dark, an underground floor stops looking like noon, and the
+  burnt Griffin Empire opens under the sombre light its designers chose. The
+  ground and the building mounds on it are lit with the game's own formula in
+  the game's own colour space; two things had to be learned for the picture to
+  come out right rather than as a permanent dusk: the game multiplies colours
+  in gamma space (so its ×2 is three.js's ×4.6), and the preset's sun angle
+  counts from the zenith, not the horizon. Written up in docs/LIGHTING.md,
+  including why the preset's "Sky" is a set of reflection blobs and not a sky.
+
+### Fixed
+
+- **`npm start` ran a stale renderer.** The build script's am-I-being-run-
+  directly check compared a file URL (spaces as `%20`) against a plain path
+  (spaces literal), never matched under this repo's path, and quietly built
+  nothing — every `npm start` since the bundle was last built by the test
+  suite ran old renderer code. Developer-facing only; releases were built by
+  CI and unaffected.
+
 ## 0.2.0 — 2026-07-27
 
 ### Added

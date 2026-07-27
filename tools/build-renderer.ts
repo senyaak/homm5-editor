@@ -9,6 +9,7 @@
 
 import { build, context } from 'esbuild';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 const root = join(import.meta.dirname, '..');
 
@@ -27,7 +28,10 @@ export async function buildRenderer(): Promise<void> {
   await build(options);
 }
 
-if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '/'))) {
+// pathToFileURL, not string surgery: the repo lives under a path with spaces,
+// and import.meta.url carries them as %20 while argv[1] has them literal — the
+// old endsWith never matched, so `npm start` quietly ran a STALE bundle.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   if (process.argv.includes('--watch')) {
     const ctx = await context(options);
     await ctx.watch();

@@ -251,7 +251,28 @@ export interface Floor {
   passable: number[] | null;
   water: WaterData | null;
   splat: SplatData | null;
+  /** The floor's lighting preset, or null when none could be read. */
+  ambient: AmbientData | null;
   instances: Instance[];
+}
+
+/**
+ * A map's AmbientLight preset — most of what makes the game's picture: sun
+ * colour and direction, the two non-sun colours, and the sky behind everything.
+ * Colours are the preset's own 0..1 sRGB floats, untouched; how bright to draw
+ * them is the renderer's call.
+ */
+export interface AmbientData {
+  /** Sunlit-side colour (`LightColor`). */
+  light: number[];
+  /** Indirect colour every surface receives (`AmbientColor`). */
+  ambient: number[];
+  /** Colour of surfaces facing away from the sun (`ShadeColor`). */
+  shade: number[];
+  /** Sun elevation above the horizon, degrees. */
+  pitch: number;
+  /** Sun heading around +Z, degrees. */
+  yaw: number;
 }
 
 /** The renderable scene — this is the payload that crosses the IPC boundary. */
@@ -1003,6 +1024,7 @@ export function buildScene(
       passable: t.passable,
       water: t.water,
       splat: t.splat,
+      ambient: loadAmbient(data, map.ambientLightRef(f)),
       instances: floorInstances[f] ?? [],
     });
   }
@@ -1616,6 +1638,46 @@ function textureDataUri(model: string, data: Assets, size: number, href?: string
     // skin sits at 96%, a feathered overlay at 11%), so where the line lands
     // between them does not matter.
     return { uri: pngDataUri(size, size, out), hasAlpha, opaque: solidTexels > size * size * 0.5 };
+  } catch { return null; }
+}
+
+// ---- ambient light --------------------------------------------------------
+// The preset is plain XML under `Lights/_(AmbientLight)/`; the map names one
+// per floor (HommMap.ambientLightRef). Only what the renderer draws with is
+// lifted out — the preset also carries fog, vapour and bloom settings the
+// editor does not attempt.
+
+const DEFAULT_AMBIENT = '/Lights/_(AmbientLight)/0_Default_AmbientLight.xdb';
+
+const ambientVec3 = (xml: string, tag: string): number[] | null => {
+  const m = xml.match(new RegExp(`<${tag}>\\s*<x>([^<]*)</x>\\s*<y>([^<]*)</y>\\s*<z>([^<]*)</z>`));
+  return m ? [+m[1]!, +m[2]!, +m[3]!] : null;
+};
+
+function loadAmbient(data: Assets, href: string | null): AmbientData | null {
+  try {
+    const p = data.path((href ?? DEFAULT_AMBIENT).split('#')[0]!);
+    if (!existsSync(p)) {
+      // A named preset that is missing falls back to the stock default — the
+      // floor should still light like a map, just not like THIS map.
+      return href ? loadAmbient(data, null) : null;
+    }
+    const xml = readFileSync(p, 'utf8');
+    const light = ambientVec3(xml, 'LightColor');
+    const ambient = ambientVec3(xml, 'AmbientColor');
+    const shade = ambientVec3(xml, 'ShadeColor');
+    if (!light || !ambient || !shade) return null;
+
+    // NOT read: the preset's <Sky> cubemap. Every adventure-map preset points
+    // at the same /Textures/RefMaps set, and those are blurred highlight blobs
+    // for glossy REFLECTIONS, not a drawable backdrop — the game's adventure
+    // camera never shows a sky. Drawn as a background they look like lens
+    // flares pasted on the void.
+    return {
+      light, ambient, shade,
+      pitch: +(xml.match(/<Pitch>([^<]*)/)?.[1] ?? 45),
+      yaw: +(xml.match(/<Yaw>([^<]*)/)?.[1] ?? 0),
+    };
   } catch { return null; }
 }
 

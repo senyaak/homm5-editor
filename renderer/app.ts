@@ -18,7 +18,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 import { UNITS_PER_TILE as U } from '../src/units.ts';
 import { tierOf, RAMP_BIT, TIER_STEP } from '../src/terrain.ts';
-import type { Scene, Floor, Instance, SplatData, TileInfo, GeomData, GeomPart, Footprint, SkinnedGeom } from '../src/scene.ts';
+import type { Scene, Floor, Instance, SplatData, TileInfo, GeomData, GeomPart, Footprint, SkinnedGeom, AmbientData } from '../src/scene.ts';
 import type { EditorApi, MapListEntry, ExternalChange, PlaceableObject, RosterEntryDTO, LocResult,
   CampaignDoc, CampaignListEntry, CampaignMissionDto } from '../electron/ipc.ts';
 import type { ObjectProp } from '../src/map.ts';
@@ -144,6 +144,8 @@ interface Floor3D {
   splat: SplatData | null;
   /** The packed layer masks on the GPU; the brush paints straight into it. */
   maskTex: THREE.DataArrayTexture | null;
+  /** The floor's lighting preset; applied whenever this floor is shown. */
+  ambient: AmbientData | null;
   instances: Instance[];
 }
 
@@ -198,15 +200,79 @@ renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 $('app').appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x0d1014);
+const DEFAULT_BG = new THREE.Color(0x0d1014);
+scene.background = DEFAULT_BG;
 const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.5, 6000);
 camera.up.set(0, 0, 1); // Z-up
-// Bright, wraparound lighting so back-facing / normal-less meshes never go pure
-// black (a lot of decoded props have imperfect normals).
-scene.add(new THREE.HemisphereLight(0xdfeaff, 0x555044, 1.15));
-scene.add(new THREE.AmbientLight(0xffffff, 0.35));
+// The three lights a map's AmbientLight preset drives (applyAmbient). Their
+// initial values are the fallback look for a map with no readable preset:
+// bright, wraparound lighting so back-facing / normal-less meshes never go
+// pure black (a lot of decoded props have imperfect normals).
+const hemi = new THREE.HemisphereLight(0xdfeaff, 0x555044, 1.15);
+const amb = new THREE.AmbientLight(0xffffff, 0.35);
 const sun = new THREE.DirectionalLight(0xfff0d8, 0.9);
-sun.position.set(0.6, 0.4, 1); scene.add(sun);
+sun.position.set(0.6, 0.4, 1);
+scene.add(hemi, amb, sun);
+
+// The floor's lighting preset, applied on load and floor switch.
+//
+// Mapping the game's four-colour model onto three lights: the sun carries
+// LightColor from its Pitch/Yaw; the hemisphere spans AmbientColor (sky side)
+// down to ShadeColor (the colour the game paints surfaces facing away from the
+// sun — three.js has no shade term, but a hemisphere's underside reaches the
+// same faces); a small constant floor stays so decoded props with broken
+// normals never go black.
+//
+// GAIN, and why it is ~4.6 and not 2: the game's fixed-function pipeline
+// multiplies colours in GAMMA space (its `Whitening` is the era's modulate-×2),
+// while three.js lights in linear. Multiplication commutes with a pure power
+// transfer, so a gamma-space ×2 is a linear-space ×2^2.2 — with the honest
+// factor 2 the same preset renders a dusk. Whether Yaw counts from +X and
+// which way it turns is not written down anywhere reachable — this mapping is
+// the one that matched the game's picture on the maps checked visually.
+const AMBIENT_GAIN = Math.pow(2, 2.2);
+
+// The terrain and the terrain-projected parts draw with custom shaders outside
+// three.js's lighting, so the preset reaches them as uniforms — these three
+// objects are shared by reference across every such material, and applyAmbient
+// mutates the values in place. They hold GAMMA-space colours (the splat works
+// on raw texture values, like the game did); the defaults reproduce the old
+// hard-coded look, `0.62 + 0.5·d = 2·(0.31 + 0.25·d)`.
+const uSunDir = { value: new THREE.Vector3(0.45, 0.35, 0.82) };
+const uSunCol = { value: new THREE.Color(0.25, 0.25, 0.25) };
+const uAmbCol = { value: new THREE.Color(0.31, 0.31, 0.31) };
+
+function applyAmbient(a: AmbientData | null): void {
+  scene.background = DEFAULT_BG;
+  if (!a) {
+    hemi.color.set(0xdfeaff); hemi.groundColor.set(0x555044); hemi.intensity = 1.15;
+    amb.color.set(0xffffff); amb.intensity = 0.35;
+    sun.color.set(0xfff0d8); sun.intensity = 0.9;
+    sun.position.set(0.6, 0.4, 1);
+    uSunDir.value.set(0.45, 0.35, 0.82);
+    uSunCol.value.setRGB(0.25, 0.25, 0.25);
+    uAmbCol.value.setRGB(0.31, 0.31, 0.31);
+    return;
+  }
+  const [lr, lg, lb] = a.light as [number, number, number];
+  const [ar, ag, ab] = a.ambient as [number, number, number];
+  const [sr, sg, sb] = a.shade as [number, number, number];
+  sun.color.setRGB(lr, lg, lb, THREE.SRGBColorSpace);
+  sun.intensity = AMBIENT_GAIN;
+  // Pitch counts from the ZENITH, not the horizon: presets carry 35-50, and
+  // read as elevation those made flat ground catch barely half the sun and
+  // every shipped day map rendered as dusk (the engine's own PWL preview of
+  // the same maps shows bright noon grass).
+  const p = a.pitch * Math.PI / 180, yw = a.yaw * Math.PI / 180;
+  sun.position.set(Math.sin(p) * Math.cos(yw), Math.sin(p) * Math.sin(yw), Math.cos(p));
+  hemi.color.setRGB(ar, ag, ab, THREE.SRGBColorSpace);
+  hemi.groundColor.setRGB(sr, sg, sb, THREE.SRGBColorSpace);
+  hemi.intensity = AMBIENT_GAIN;
+  amb.color.set(0xffffff); amb.intensity = 0.12;
+  uSunDir.value.copy(sun.position);
+  uSunCol.value.setRGB(lr, lg, lb); // raw, no conversion: gamma-space shader
+  uAmbCol.value.setRGB(ar, ag, ab);
+}
 
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
@@ -403,6 +469,7 @@ function clearWorld(): void {
   }
   if (boxHelper) { scene.remove(boxHelper); boxHelper = null; }
   world = null; selected = null; updatePanel();
+  applyAmbient(null);
 }
 
 // The per-geom geometries and materials, shared across floors.
@@ -869,6 +936,7 @@ uniform sampler2D uRock;
 uniform float uScale;
 uniform float uRockScale;
 uniform float uCliff;   // 0 disables the rock blend entirely
+uniform vec3 uSunDir; uniform vec3 uSunCol; uniform vec3 uAmb;
 in vec2 vGrid; in vec2 vWorld; in vec3 vNrm; in vec3 vPos;
 out vec4 outColor;
 void main() {
@@ -913,10 +981,13 @@ void main() {
     col = mix(col, rock, cliff * 0.85);
   }
 
+  // The game's own fixed-function sum, in the same gamma space it ran in:
+  // albedo · (ambient + sun·NdotL) · 2 — the ×2 is the era's modulate-×2 (the
+  // preset's colours are authored around 0.2-0.55 with it in mind).
   // abs(), not max(): the terrain is DoubleSide and a generated wall normal may
   // point into the cliff, which would otherwise pin the face at ambient.
-  float d = abs(dot(n, normalize(vec3(0.45, 0.35, 0.82))));
-  outColor = vec4(col * (0.62 + 0.5 * d), 1.0);
+  float d = abs(dot(n, normalize(uSunDir)));
+  outColor = vec4(col * (uAmb + uSunCol * d) * 2.0, 1.0);
 }`;
 
 const loadImg = (src: string): Promise<HTMLImageElement> => new Promise((res, rej) => {
@@ -994,6 +1065,7 @@ uniform sampler2DArray uMask;
 uniform sampler2D uOverlay;
 uniform float uScale;
 uniform float uHasOverlay;
+uniform vec3 uSunDir; uniform vec3 uSunCol; uniform vec3 uAmb;
 in vec2 vGrid; in vec2 vWorld; in vec2 vUv; in vec3 vNrm;
 out vec4 outColor;
 void main() {
@@ -1016,10 +1088,10 @@ void main() {
     vec4 o = texture(uOverlay, vUv);
     col *= mix(vec3(1.0), o.rgb, o.a);
   }
-  // A little shading so the hump reads as one. The terrain itself is unlit, so
-  // this stays gentle or the part would stand out against the flat ground.
-  float lit = 0.82 + 0.18 * clamp(normalize(vNrm).z, 0.0, 1.0);
-  outColor = vec4(col * lit, 1.0);
+  // Lit with the terrain's own sun formula: the part IS ground, and a mound
+  // shaded differently from the flat around it reads as a decal, not a hump.
+  float d = abs(dot(normalize(vNrm), normalize(uSunDir)));
+  outColor = vec4(col * (uAmb + uSunCol * d) * 2.0, 1.0);
 }`;
 
 /**
@@ -1066,6 +1138,7 @@ function projectBatch(fl: Floor3D, g: number): void {
         uHasOverlay: { value: overlay ? 1 : 0 },
         uMapSide: { value: s.V - 1 },
         uUnits: { value: U },
+        uSunDir, uSunCol, uAmb: uAmbCol,
       },
       side: THREE.DoubleSide,
       // The mound IS the ground, and the building's entrance and floor sit ON
@@ -1130,6 +1203,7 @@ async function upgradeToSplat(fl: Floor3D): Promise<void> {
       uRock: { value: rock }, uCliff: { value: rock ? cliffAmount : 0 },
       uScale: { value: texScale },
       uRockScale: { value: texScale / U },
+      uSunDir, uSunCol, uAmb: uAmbCol,
     },
     side: THREE.DoubleSide,
   });
@@ -1474,7 +1548,7 @@ function buildFloor(floor: Floor, geos: THREE.BufferGeometry[], mats: THREE.Mate
     riverDrop: new Map(floor.riverVerts.map((v) => [v, RIVER_DEPTH])),
     passable: floor.passable, river: new Set(floor.riverVerts), passMeshes: [], footMeshes: [],
     group, objGroup, meshes, batches, idle, terrainMesh, waterMesh, waterTex: floor.water?.tex ?? null,
-    splat: floor.splat, maskTex: null, instances: floor.instances,
+    splat: floor.splat, maskTex: null, ambient: floor.ambient, instances: floor.instances,
   };
 }
 
@@ -1500,6 +1574,8 @@ function setActiveFloor(i: number): void {
   if (!world) return;
   world.active = i;
   world.floors.forEach((fl, idx) => { fl.group.visible = idx === i; });
+  // Each floor lights like its own preset says — surface day, underground dark.
+  applyAmbient(world.floors[i]?.ambient ?? null);
   deselect();
   const { V, heights } = activeFloor();
   // Frame the camera on this floor (its terrain sits at its own height range).
@@ -4554,6 +4630,13 @@ interface ViewApi {
    * a skeleton that is built but never stepped looks identical from outside.
    */
   idle(): { mode: IdleMode; animated: number; time: number; geoms: number[]; skinned: number[] };
+  /**
+   * The lighting actually applied to the scene right now — preset or fallback,
+   * and whether the background is the map's sky. Lighting has no other
+   * observable surface: a preset that fails to load just leaves the fallback
+   * look, which a screenshot alone cannot tell apart from a dim preset.
+   */
+  ambientState(): { preset: boolean; sun: number[]; sunPos: number[]; terrain: { amb: number[]; sun: number[] } };
   /** True once the ground textures are decoded and a stroke would land. */
   paintReady(): boolean;
   /** Edits sent to the main process and not yet acknowledged. */
@@ -4689,6 +4772,17 @@ const view: ViewApi = {
       // stands still" to a geom without reaching into the scene.
       geoms: [...new Set(fl?.idle.map((o) => (o.mesh.userData.inst as Instance).g) ?? [])].sort((a, b) => a - b),
       skinned: [...geomSkin.keys()].sort((a, b) => a - b),
+    };
+  },
+  ambientState() {
+    return {
+      preset: !!(world && world.floors[world.active]?.ambient),
+      sun: [+sun.color.r.toFixed(3), +sun.color.g.toFixed(3), +sun.color.b.toFixed(3)],
+      sunPos: [+sun.position.x.toFixed(3), +sun.position.y.toFixed(3), +sun.position.z.toFixed(3)],
+      terrain: {
+        amb: uAmbCol.value.toArray().map((v) => +v.toFixed(3)),
+        sun: uSunCol.value.toArray().map((v) => +v.toFixed(3)),
+      },
     };
   },
   pending() { return pendingCommits; },

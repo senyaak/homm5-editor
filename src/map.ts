@@ -437,6 +437,19 @@ export class HommMap {
   get version(): number { return +childText(this.desc, 'Version'); }
   get hasUnderground(): boolean { return childText(this.desc, 'HasUnderground') === 'true'; }
   get hasSurface(): boolean { return childText(this.desc, 'HasSurface') === 'true'; }
+  /**
+   * The AmbientLight preset lighting a floor: `GroundAmbientLights` for the
+   * surface, `UndergroundAmbientLights` below. Each is a list, but every
+   * shipped map carries at most one usable entry, so the first item with an
+   * href is the answer; null means the map names none (underground lists are
+   * often a single empty `<Item/>`).
+   */
+  ambientLightRef(floor: number): string | null {
+    const list = find(this.desc, floor ? 'UndergroundAmbientLights' : 'GroundAmbientLights');
+    if (!list) return null;
+    for (const it of findAll(list, 'Item')) if (it.attrs.href) return it.attrs.href;
+    return null;
+  }
   get heroMaxLevel(): number { return +childText(this.desc, 'HeroMaxLevel') || 0; }
   get terrainFile(): string | null {
     const el = find(this.desc, 'GroundTerrainFileName');
