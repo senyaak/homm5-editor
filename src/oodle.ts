@@ -319,7 +319,9 @@ const ONE_BYTE_ALPHABET = 4;
  *
  * @returns how far into the input the reader has got.
  */
-export function decompressStream(bits: BitStream, header: OodleHeader, out: Uint8Array): number {
+export function decompressStream(
+  bits: BitStream, header: OodleHeader, out: Uint8Array, start: number, length: number,
+): number {
   const { literalAlphabetSize: literals, windowSize, uniqueLiterals, uniqueRepeatLengths } = header;
 
   // Literals are coded by output position mod 4 — a cheap stand-in for the
@@ -344,13 +346,23 @@ export function decompressStream(bits: BitStream, header: OodleHeader, out: Uint
   // Measured — counting across the section decodes 40 of 68 sampled sections
   // and leaves the last stream as noise; counting per stream decodes 58 and
   // leaves readable text in 25 of them.
-  const end = out.length;
+  // Counted from the start of THIS stream, not of the section: Granny builds a
+  // fresh compressor per data-width run, so the counter that picks the literal
+  // coder and bounds the offset alphabets starts at zero for each.
+  //
+  // The output buffer, though, is SHARED, and a match may reach back over the
+  // boundary into the run before it. That is not a curiosity: it is how the
+  // last run starts at all, since with its own counter at zero every offset
+  // alphabet is one symbol wide and the only encodable offsets are 1 to 4 —
+  // the last few bytes of the previous run. Twenty-two files in the library
+  // open on exactly that match and decoded to noise until it was allowed.
+  const end = length;
   let produced = 0;
   let lengthCode = 0;
   while (produced < end) {
     lengthCode = lengthCoders[lengthCode]!.decode(bits, 65);
     if (lengthCode === 0) {
-      out[produced] = literalCoders[produced & 3]!.decode(bits, literals);
+      out[start + produced] = literalCoders[produced & 3]!.decode(bits, literals);
       produced++;
       continue;
     }
@@ -363,13 +375,16 @@ export function decompressStream(bits: BitStream, header: OodleHeader, out: Uint
     const kilo = kiloOffsetCoder.decode(bits, Math.floor(reach / 1024) + 1);
     const quad = quadOffsetCoders[kilo]!.decode(bits, Math.min(256, Math.floor(reach / 4) + 1));
     const offset = kilo * 1024 + quad * 4 + byte;
-    if (offset > produced) throw new Error(`oodle: match at ${produced} reaches ${offset} back, before the start`);
+    // Against the SECTION's start, not the stream's — see above.
+    if (offset > start + produced) {
+      throw new Error(`oodle: match at ${start + produced} reaches ${offset} back, before the section`);
+    }
     // Copied one byte at a time on purpose: a match may overlap its own tail
     // (offset 1 repeating a byte is how runs are coded), so this cannot be a
     // block copy.
-    let from = produced - offset;
+    let from = start + produced - offset;
     const stop = Math.min(produced + matchLength, end);
-    for (let i = produced; i < stop; i++) out[i] = out[from++]!;
+    for (let i = produced; i < stop; i++) out[start + i] = out[from++]!;
     produced = stop;
   }
   return bits.position;
@@ -403,9 +418,8 @@ export function decompressSection(
   for (let i = 0; i < 3; i++) {
     const length = lengths[i]!;
     if (length === 0) continue;
-    // Each stream gets its own view of the output, which is also what stops a
-    // match reaching back into the previous run.
-    decompressStream(bits, headers[i]!, out.subarray(written, written + length));
+    // One buffer for all three, so a run can quote the one before it.
+    decompressStream(bits, headers[i]!, out, written, length);
     written += length;
     if (bits.position > offset + compressedSize + 8) {
       throw new Error(`oodle: stream ${i} read past the end of the section`);

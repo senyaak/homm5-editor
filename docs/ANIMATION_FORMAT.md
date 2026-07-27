@@ -77,35 +77,43 @@ pseudocode and names HoMM5 as an example. `GrannyFile` decompresses on the way
 in; `isUnreadable` is what a caller checks, and it means "there is data here we
 cannot see", not "this file is compressed".
 
-**It decodes the library: 99.9% of skeletons, 95.7% of packed animations, and
-every one of the adventure-map idle clips.** Both halves of that are measured
-(`npm run test-oodle`):
+**It decodes the library.** Of 2839 packed files, 2837 come apart; of the 106
+idle clips an animation set actually names, 105 do. The two holdouts are one
+building idle (`ShamanOfNommads`) and one animation nothing references.
 
-* Correct, because the game ships the same skeleton twice — packed under
-  `bin/Skeletons/`, and again plain inside the animation that plays on it.
+* Correct, not merely quiet: the game ships the same skeleton twice — packed
+  under `bin/Skeletons/`, and again plain inside the animation that plays on it.
   Decompressed, the two agree bone for bone, name for name, parent for parent,
-  and the floats reproduce each file's own inverse bind matrices to 4e-7. One
-  wrong bit in an arithmetic decoder turns everything after it into noise, so
-  agreement at that level is not something a nearly-right decoder reaches.
-* About five files in the whole library still fail, in the same way (a match at
-  the first token of a stream). Left as is: a section that fails leaves `data`
-  null and the object falls back to its still mesh, exactly as before the port.
+  and the floats reproduce each file's own inverse bind matrices to 1e-4.
+* A section that fails leaves `data` null and the object falls back to its still
+  mesh, exactly as before the port existed.
 
-**The bug that cost the most, recorded so nobody pays for it twice.** The
-renormalisation interval is `max(128, min((alphabetSize - 1) * 2, decayThreshold
-/ 2 - 32))`, which is NOT a clamp: the two differ precisely when the upper bound
-falls below 128. That happens for exactly one coder — the four-symbol one that
-codes the low two bits of a match offset, whose decay threshold of 256 puts its
-upper bound at 96. Written as a clamp it renormalises every 96 symbols instead
-of every 128, drifts out of step with the encoder after a hundred matches, and
-the stream then decodes *plausibly* for thousands of bytes before an offset
-finally lands before the start of the data. Everything else in the port was
-right; this one line was the whole difference between 80% and 99%.
+**Three rules were settled by measurement, not by reading.** All three are the
+kind that leave a decoder producing plausible output for thousands of bytes
+before it collapses:
 
-Two more format facts were settled by measurement rather than by reading: the
-three streams of a section share ONE bit reader (they are not byte-aligned
-blocks — the coder never flushes between them), while their LZ state — byte
-counter, match window, literal-coder choice — restarts for each.
+1. The renormalisation interval is `max(128, min((alphabetSize - 1) * 2,
+   decayThreshold / 2 - 32))`, which is NOT a clamp — the two differ exactly
+   when the upper bound falls below 128, and that happens for one coder in the
+   scheme: the four-symbol one coding the low two bits of an offset. As a clamp
+   it renormalises every 96 symbols where the encoder used 128. This alone was
+   the difference between 80% of sections and 99%.
+2. The three streams of a section share ONE bit reader (they are not
+   byte-aligned blocks — the coder never flushes between them), while their LZ
+   state — byte counter, match window, literal-coder choice — restarts for each.
+3. But the OUTPUT buffer is shared, and a match may reach back across a stream
+   boundary. That is how the last stream starts at all: its own counter is zero,
+   so every offset alphabet is one symbol wide and the only encodable offsets
+   are 1 to 4 — the tail of the previous stream. Twenty-two files open on
+   exactly that match.
+
+**A warning about how to test this.** "The section decoded without throwing" is
+not a measure of correctness, and optimising for it actively misleads. Bounding
+the offset digits by the room the window leaves — which is what the arithmetic
+plainly implies — takes the library from 2 failures to 0 and *silently corrupts
+every skeleton it touches*: bone names come out as runs of `gggg`. That was
+caught only by going back to the duplicate-skeleton oracle. Judge changes here
+by `npm run test-oodle`, never by a failure count.
 
 The other route, if the residual proves stubborn: `bin/granny2.dll` exports
 `GrannyDecompressData`, but it is 32-bit and the editor's Node is 64-bit — a
