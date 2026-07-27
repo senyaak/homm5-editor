@@ -98,6 +98,12 @@ get a live 3D scene you sculpt, paint, populate, script and pack.
   declared once in `src/objects.schema.json`, wherever they appear.
 - Every object edit runs through the same path-addressed, recorded API, so it
   shares undo / dirty / save.
+- **Idle animation**, off by default. The **Idle stance** button cycles
+  `off / visible / all`: creatures and buildings play the clip the game plays
+  when nothing is happening. `off` is not a paused loop — the scene is built
+  without bones at all, so a map being edited pays nothing for it. Reading it
+  meant decoding Granny GR2 and porting its Oodle1 compression
+  ([docs/ANIMATION_FORMAT.md](docs/ANIMATION_FORMAT.md)).
 
 ### Map properties, model & scripting
 
@@ -352,9 +358,14 @@ edges** on reconstruction.
 - **Normals** are computed from geometry — the packed ones are imprecise.
 - **Textures** are `.dds` (DXT1/3/5 and uncompressed), decoded by `src/dds.ts`.
 
-Still open: per-submesh material assignment, skeletons and animations, and the
-roughly one-third of catalogue meshes still undecoded (interleaved vertex buffers,
-multi-mesh buildings) — refused with a message when placed. Details in
+- **Skeletons and animations** are a different format — RAD's Granny **GR2**,
+  packed with Oodle1, both decoded (`src/gr2.ts`, `src/oodle.ts`). Creatures and
+  buildings play their idle on the map behind the **Idle stance** setting, which
+  is off by default. Write-up: [docs/ANIMATION_FORMAT.md](docs/ANIMATION_FORMAT.md).
+
+Still open: per-submesh material assignment, and the roughly one-third of
+catalogue meshes still undecoded (interleaved vertex buffers, multi-mesh
+buildings) — refused with a message when placed. Details in
 [docs/GEOMETRY_FORMAT.md](docs/GEOMETRY_FORMAT.md) and
 [MESH_PLAN.md](MESH_PLAN.md).
 
@@ -402,8 +413,8 @@ The terrain and object tooling is enough to build a map by hand; attention is on
       `rnd`/`smth`/`zero`/`water` terraforming tools.
 - [ ] Map validation on save, as the original does (overlaps, unset settings,
       towns with no specialisation), reported as a click-to-fly list.
-- [ ] Dialog-scene editor + player, which needs skeletal animation playback first
-      (Phase 5b).
+- [ ] Dialog-scene editor + player (Phase 5b). The skeletal playback it needed
+      is done; what is missing is driving clips other than idle.
 - [ ] Campaign editor (`*.(Campaign).xdb` is plain XML).
 - [ ] Fix the remaining undecoded meshes (see [MESH_PLAN.md](MESH_PLAN.md)).
 

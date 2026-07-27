@@ -61,7 +61,7 @@ member: kind, name pointer, element-type pointer, array width — so structures 
 read *by field name* (`Bones`, `ParentIndex`, `InverseWorldTransform`) instead of
 by guessed offsets, which is how the mesh container had to be done.
 
-## 3. Compression: the Oodle1 tail **[OK]**
+## 3. Compression: Oodle1 **[OK]**
 
 Census over the whole shipped library:
 
@@ -213,9 +213,15 @@ arrays are identical. Transposing "into three.js's convention" threw vertices
 
 ## 8. Verification
 
-Three layers, each checking what the one below cannot see. All skip themselves
+Four layers, each checking what the one below cannot see. All skip themselves
 when the game data is not unpacked.
 
+* `npm run test-oodle` — the decompressor, against the game's own duplicate: a
+  skeleton stored packed under `bin/Skeletons/` and again plain inside the
+  animation that plays on it must come out identical, bone for bone. **This is
+  the one that decides whether a change to `src/oodle.ts` is right** — a failure
+  count is not a measure of correctness here, and optimising for one has already
+  produced a decoder that threw nothing and corrupted everything (§3).
 * `npm run test-gr2` — the format, against redundancies the data itself carries:
   header arithmetic, one bind frame per skeleton (median error 4e-7; the deep
   cloth chains reach 7e-4 through float32 accumulation), curve widths, knots
@@ -229,8 +235,13 @@ when the game data is not unpacked.
 
 ## 9. Still open
 
-* The Oodle1 tail (§3).
+* Two packed sections in the whole library (§3): the idle of the
+  `ShamanOfNommads` building, and one animation nothing references. Both fail
+  mid-stream, the same shape of failure the renormalisation bug had but not the
+  same cause.
 * Exact degree-2/3 B-spline evaluation against the engine's own (§5).
+* Only `idle00` is ever played. Every clip an AnimSet names is read, including
+  the combat sets, but nothing surfaces or plays them.
 * `bin/effects/*` is a **different, still-unknown format** — not GR2, and not the
   Nival record container either (a leading size word and then floats). Unrelated
   to skeletal animation; effect *models* already render as static geometry.

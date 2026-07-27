@@ -472,15 +472,28 @@ having.
 
 ### Animation (prerequisite)
 
-Everything below is currently rendered as static meshes. A scene is mostly
-actors *moving* — `AnimName` (`move`, `idle`, …), `AnimationIndex`,
-`MovePoints`, `MovementSpeed` — so without playback a scene editor can place
-things but never show what it built.
+A scene is mostly actors *moving* — `AnimName` (`move`, `idle`, …),
+`AnimationIndex`, `MovePoints`, `MovementSpeed` — so without playback a scene
+editor can place things but never show what it built.
 
-- [ ] 🔬 Skeletal animation in the model format — `*-skel.xdb` / `*-geom.xdb`
-      carry the bones; what plays them is not decoded yet
-- [ ] ⬜ Skinned playback in the Three.js scene, with the clip list per model
-      (which also gives `AnimName` a real completion source rather than a guess)
+Done 2026-07-27, on the adventure map: creatures and buildings play their idle,
+behind the **Idle stance** setting (off by default). Details in
+docs/ANIMATION_FORMAT.md.
+
+- [x] ✅ Skeletal animation decoded — it is RAD's Granny **GR2**, not our own
+      container, and the skeleton travels *inside* the animation file rather
+      than in `bin/Skeletons/`. The vertex-to-bone binding was in our mesh
+      container all along (`src/gr2.ts`, `src/animation.ts`)
+- [x] ✅ Oodle1, the compression the rest of the library hides behind, ported
+      (`src/oodle.ts`) — 2837 of 2839 packed files, 105 of the 106 idle clips
+- [x] ✅ Skinned playback in the Three.js scene (`renderer/skinning.ts`), one
+      SkinnedMesh per animated object, `off / visible / all`
+- [ ] ⬜ The clip list per model, which is what would give `AnimName` a real
+      completion source rather than a guess. The reader already returns every
+      clip an AnimSet names; nothing surfaces them yet
+- [ ] ⬜ Anything other than idle. Combat sets (`-arena`) carry
+      attack/move/hit/death and are read by the same code, but the map only
+      ever plays `idle00`
 
 ### Dialog-scene editor and player
 
