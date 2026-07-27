@@ -88,6 +88,7 @@ const api = {
   setGpuSoftware: (on) => ipcRenderer.invoke('app:set-gpu-software', { on }),
   idleAnimation: () => ipcRenderer.invoke('app:idle-animation'),
   setIdleAnimation: (mode) => ipcRenderer.invoke('app:set-idle-animation', { mode }),
+  idleSkins: () => ipcRenderer.invoke('map:idle-skins'),
   // Push channel, not invoke: the main process decides when the folder moved.
   // The listener is wrapped so the renderer never sees the IpcRendererEvent.
   onExternalChange: (cb) => { ipcRenderer.on('map:external-change', (_e, c) => cb(c)); },

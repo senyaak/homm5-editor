@@ -724,11 +724,15 @@ export interface EditorApi {
   setGpuSoftware(on: boolean): Promise<void>;
   /** Which idle-animation mode is remembered. See Settings.idleAnimation. */
   idleAnimation(): Promise<'off' | 'visible' | 'all'>;
+  /** Remember an idle-animation mode. What the open scene does about it is the renderer's move (see idleSkins). */
+  setIdleAnimation(mode: 'off' | 'visible' | 'all'): Promise<Record<string, never>>;
   /**
-   * Remember an idle-animation mode. `reloadNeeded` says a map is open and was
-   * built under the previous mode, so it will not change until it is reopened.
+   * Animation payloads for the open map's models, keyed by the geom indices the
+   * scene already uses — what lets a scene built with idles off start moving
+   * without being reopened. Only geoms that both animate and line up with what
+   * the renderer holds are present.
    */
-  setIdleAnimation(mode: 'off' | 'visible' | 'all'): Promise<{ reloadNeeded: boolean }>;
+  idleSkins(): Promise<Record<number, NonNullable<GeomData['skin']>>>;
   /**
    * Subscribe to external edits of the open map folder. Fires once per settled
    * burst of writes; our own saves never fire it.

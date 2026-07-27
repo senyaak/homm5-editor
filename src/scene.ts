@@ -635,6 +635,13 @@ function townModelHref(ext: { xml: string; dir: string }): string | null {
 export interface GeomResolver {
   /** Meshes decoded so far; `resolve` appends to this. */
   geoms: GeomData[];
+  /**
+   * Every shared href ever asked for, in first-ask order, with the index it
+   * resolved to (-1 = undecodable). Resolution is deterministic, so replaying
+   * this map through a fresh resolver reproduces the same `geoms` indices —
+   * which is what lets animation data be built for a scene after the fact.
+   */
+  index: Map<string, number>;
   /** Index into `geoms`, or -1 when the model cannot be decoded. */
   resolve: (sharedHref: string) => number;
 }
@@ -799,7 +806,7 @@ export function createGeomResolver(root: string | Assets, texSize = 128, options
     geomIndex.set(sharedHref, idx);
     return idx;
   };
-  return { geoms, resolve };
+  return { geoms, index: geomIndex, resolve };
 }
 
 /**

@@ -29,9 +29,10 @@ one.
   object also stops sharing a draw call with its identical neighbours, which is
   why there is a middle setting at all.
 
-  Turning it on needs the map reopened — the scene it decides has to be built
-  differently, not redrawn — and the button says so rather than appearing to do
-  nothing. Between **visible** and **all** it switches at once.
+  Every switch takes effect on the spot. Turning it on for a map that was opened
+  without it briefly says *loading animations…* while the missing data is
+  fetched and grafted onto the open scene; nothing is reopened and nothing else
+  moves.
 
   Reading the animations meant working out two formats the editor had never
   touched: the animation files are not the game's own container but RAD's Granny

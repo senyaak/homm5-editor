@@ -5613,10 +5613,12 @@ $('viewbtn').onclick = () => setTopView(!topView);
 // --- idle stance ------------------------------------------------------------
 //
 // Three states rather than a checkbox, because the two costs are different
-// things: `off` is decided in the main process and decides what the scene is
-// built out of, while `visible` and `all` only decide how much of it keeps
-// moving. So the middle one can be reached without reopening the map, and `off`
-// cannot be left without doing so.
+// things: `off` decides what the scene is BUILT out of, while `visible` and
+// `all` only decide how much of it keeps moving. A scene built with it off
+// carries no bones anywhere — that is what makes `off` free — so leaving `off`
+// tops the open scene up in place: the main process replays this map's models
+// with animation on (map:idle-skins) and the payloads are grafted onto the
+// geometries already on the GPU. No reopen, nothing else moves.
 
 const IDLE_MODES: IdleMode[] = ['off', 'visible', 'all'];
 
@@ -5625,15 +5627,37 @@ function updateIdleButton(): void {
   $('idlebtn').classList.toggle('on', idleMode !== 'off');
 }
 
+/** Fetch and graft the animation payloads a built-without-bones scene lacks. */
+async function loadIdleSkins(): Promise<void> {
+  const skins = await window.editor.idleSkins();
+  for (const [key, skin] of Object.entries(skins)) {
+    const g = Number(key);
+    const geo = worldGeos[g];
+    if (!geo || !skin.clip) continue;
+    // The main process only sends payloads that line up, but a mismatched
+    // binding would tear a model apart, so the vertex count is checked again
+    // where the geometry actually lives.
+    if (skin.index.length !== geo.getAttribute('position').count * 4) continue;
+    if (!geo.getAttribute('skinIndex')) {
+      geo.setAttribute('skinIndex', new THREE.BufferAttribute(new Uint8Array(skin.index), 4));
+      geo.setAttribute('skinWeight', new THREE.BufferAttribute(new Float32Array(skin.weight), 4));
+    }
+    geomSkin.set(g, skin);
+  }
+}
+
 $('idlebtn').onclick = async () => {
   const next = IDLE_MODES[(IDLE_MODES.indexOf(idleMode) + 1) % IDLE_MODES.length]!;
   await window.editor.setIdleAnimation(next);
-  // A scene built with animation off carries no bones at all, so turning it on
-  // is a reopen, not a redraw. Said plainly rather than silently doing nothing —
-  // and the setting is already remembered, so the next open will have them.
   if (next !== 'off' && !geomSkin.size && world) {
-    $('hud').textContent = `idle stance: ${next} — open the map again to load the animations`;
-    return;
+    $('hud').textContent = `idle stance: ${next} — loading animations…`;
+    try {
+      await loadIdleSkins();
+    } catch (err) {
+      console.error('idle skins', err);
+      $('hud').textContent = 'idle stance: loading animations failed — open the map again';
+      return;
+    }
   }
   idleMode = next;
   updateIdleButton();
@@ -5899,6 +5923,13 @@ function addInstanceToScene(inst: Instance, geom: { index: number; data: GeomDat
     geom.data.parts.forEach((p, i) => b.addGroup(p.start, p.count, i));
     if (geom.data.nrm) b.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(geom.data.nrm), 3));
     else b.computeVertexNormals();
+    // Same skin wiring as buildGeos/geometryFor, or a brand-new model placed
+    // with idles on would stand frozen while its loaded twins move.
+    if (geom.data.skin?.clip) {
+      b.setAttribute('skinIndex', new THREE.BufferAttribute(new Uint8Array(geom.data.skin.index), 4));
+      b.setAttribute('skinWeight', new THREE.BufferAttribute(new Float32Array(geom.data.skin.weight), 4));
+      geomSkin.set(geom.index, geom.data.skin);
+    }
     worldGeos[geom.index] = b;
     worldMats[geom.index] = geom.data.parts.map(materialFor);
     // Rebuildable-materials registry, same as buildGeos — without this a newly

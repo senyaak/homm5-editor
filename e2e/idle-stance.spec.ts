@@ -59,13 +59,21 @@ test('creatures take an animated body and the loop turns', async () => {
   await page.evaluate((path) => window.view.open(path), MAP!);
   expect(await page.evaluate(() => window.view.idle())).toMatchObject({ mode: 'off', animated: 0 });
 
-  // Now with it on. The setting decides what map:load BUILDS, so the map has to
-  // be opened again — which is exactly what the button tells the user.
+  // Now the user's actual gesture: ONE click, off -> visible, on the scene that
+  // was built without bones. The animations are fetched and grafted in place —
+  // no reopen. The click itself is what is under test, so no evaluate here.
+  await page.locator('#idlebtn').click();
+  await expect(page.locator('#idlebtn')).toHaveText('Idle stance: visible');
+  const grafted = await page.evaluate(() => window.view.idle());
+  expect(grafted.mode).toBe('visible');
+  expect(grafted.animated).toBeGreaterThan(0);
+
+  // And a scene BUILT with the setting on must come out the same way.
   await page.evaluate(() => window.editor.setIdleAnimation('all'));
   await page.evaluate((path) => window.view.open(path), MAP!);
   const on = await page.evaluate(() => window.view.idle());
   expect(on.mode).toBe('all');
-  expect(on.animated).toBeGreaterThan(0);
+  expect(on.animated).toBe(grafted.animated);
 
   // The clock turns. A skeleton that is built and never stepped draws a
   // creature frozen in its bind pose, which looks like a still map — the bug

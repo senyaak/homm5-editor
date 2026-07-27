@@ -16,7 +16,8 @@ import type { IpcMainInvokeEvent } from 'electron';
 import { dirname, join, basename, relative, resolve, sep, isAbsolute } from 'node:path';
 import { readFileSync, writeFileSync, existsSync, readdirSync, statSync, mkdirSync, copyFileSync, rmSync, renameSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { buildScene, findAssetRoot, listTiles, splatFor, pngDataUri } from '../src/scene.ts';
+import { buildScene, createGeomResolver, findAssetRoot, listTiles, splatFor, pngDataUri } from '../src/scene.ts';
+import type { GeomData } from '../src/scene.ts';
 import { listPlaceable, iconPathFor, readIconFile } from '../src/objects.ts';
 import { decodeDDS } from '../src/dds.ts';
 import { editorRoot, gameData, gameRoot, isConfigured, mountedAssets, preloadPath, readSettings, rendererFile, saveSettings, tmpRoot } from './paths.ts';
@@ -666,14 +667,42 @@ ipcMain.handle('map:load', async (_e: IpcMainInvokeEvent, mapPath: string): Prom
 // --- IPC: the idle-animation setting ---
 // Read and written here rather than in the renderer, because it decides what
 // map:load builds; the renderer only learns which mode the scene it was handed
-// was built for. Changing it takes effect on the next open, which the caller is
-// told so it can offer the reload rather than leave the map looking unchanged.
+// was built for. A scene built with it off can be topped up in place through
+// map:idle-skins below, so changing the setting never needs a reload.
 ipcMain.handle('app:idle-animation', (): 'off' | 'visible' | 'all' => readSettings().idleAnimation ?? 'off');
 ipcMain.handle('app:set-idle-animation', (_e: IpcMainInvokeEvent, { mode }: { mode: 'off' | 'visible' | 'all' }) => {
   saveSettings({ idleAnimation: mode });
-  // A map already open was built under the old mode, so it keeps whatever it
-  // has until it is loaded again.
-  return { reloadNeeded: !!session };
+  return {};
+});
+
+// --- IPC: animation data for a scene that was built without it ---
+// A map opened with idles off carries no bones anywhere in its payload — that
+// is what makes `off` free. Turning the setting on used to mean reopening the
+// map; instead, this replays the open map's models through a fresh resolver
+// with animation on and returns just the skin payloads, keyed by the geom
+// indices the renderer already holds. Resolution is deterministic (same hrefs,
+// same order, same dedup), so the indices line up; anything that does not is
+// dropped here rather than handed over misaligned.
+ipcMain.handle('map:idle-skins', async (): Promise<Record<number, NonNullable<GeomData['skin']>>> => {
+  if (!session) throw new Error('no map loaded');
+  const t0 = performance.now();
+  const fresh = createGeomResolver(session.assets, undefined, { animate: true });
+  const skins: Record<number, NonNullable<GeomData['skin']>> = {};
+  let misaligned = 0;
+  for (const [href, idx] of session.resolver.index) {
+    const j = fresh.resolve(href);
+    if (j !== idx) { misaligned++; continue; }
+    if (idx < 0) continue;
+    const skin = fresh.geoms[j]?.skin;
+    const have = session.resolver.geoms[idx];
+    // Same model, same vertex order — or no skin at all for this geom.
+    if (skin?.clip && have && skin.index.length === (have.pos.length / 3) * 4) skins[idx] = skin;
+  }
+  if (misaligned) console.warn(`[idle-skins] ${misaligned} model(s) resolved to a different index and were skipped`);
+  // Placements from here on should carry their skins too.
+  session.resolver = fresh;
+  console.log(`[perf] map:idle-skins ${(performance.now() - t0) | 0}ms · ${Object.keys(skins).length} animated geom(s)`);
+  return skins;
 });
 
 // --- IPC: move an object (x,y tiles); z stays the object's stored value ---

@@ -74,8 +74,8 @@ export interface Settings {
    * advances only what the camera can see. `all` keeps every creature moving,
    * on screen or not.
    *
-   * Changing it takes effect when a map is next opened, because it decides what
-   * the scene is built out of.
+   * It decides what map:load builds; a map already open when it turns on gets
+   * its animation data grafted in place through map:idle-skins.
    */
   idleAnimation?: 'off' | 'visible' | 'all';
 }
