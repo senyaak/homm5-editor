@@ -181,6 +181,33 @@ export interface GeomData {
   footprint?: Footprint | null;
   /** Bones, binding and idle clip — present only when animation is asked for. */
   skin?: SkinnedGeom;
+  /**
+   * The object's particle effect, baked and ready to play — one entry per
+   * ParticleInstance of its `<Effect>`. Present whenever the chain resolves;
+   * the static glow card in `parts` stays as the fallback and the pick target.
+   */
+  fx?: FxInstancePayload[];
+}
+
+/**
+ * One particle instance of an object's effect (docs/EFFECTS_FORMAT.md): its
+ * placement inside the object's frame and the texture frame table. The baked
+ * keys themselves are NOT here — 45k particles of one map JSON-doubled the
+ * scene payload — the renderer fetches them by `uid` over `map:fx`, which
+ * ships typed arrays through structured clone instead of JSON.
+ */
+export interface FxInstancePayload {
+  /** bin/effects file name; the key for map:fx. */
+  uid: string;
+  pos: number[];
+  quat: number[];
+  scale: number;
+  /** Playback rate multiplier, from the instance's <Speed>. */
+  speed: number;
+  /** Frame table the baked texture indices point into; null = empty slot. */
+  textures: (string | null)[];
+  /** Additive (glows, fire) vs normal alpha — see the blending note. */
+  additive: boolean;
 }
 
 /** A tile offset from an object's own tile, in grid axes; may be negative. */
@@ -568,6 +595,76 @@ function decodeModelGeom(
  * An effect is not only particles: its `<Models>` list carries real geometry —
  * the swirling Spiral and Rune ring that ARE a teleporter portal, the object's
  * own model being a bare minimap-icon quad. Following only the particle card
+ * The object's full particle effect, baked (docs/EFFECTS_FORMAT.md): one
+ * payload per ParticleInstance whose chain resolves end to end. Returns []
+ * rather than throwing for every kind of miss — an effect that cannot be read
+ * leaves the static glow card, never an unopenable map.
+ */
+function effectParticles(
+  sharedXml: string, sharedHref: string, data: Assets, texSize: number,
+): FxInstancePayload[] {
+  const follow = (xml: string, dir: string, href: string) => followHref(data, xml, dir, href);
+  const effHref = sharedXml.match(/<Effect href="([^"]+)"/)?.[1];
+  if (!effHref) return [];
+  const sharedDir = dirOf(resolveHref('', sharedHref));
+  const effect = follow(sharedXml, sharedDir, effHref);
+  if (!effect) return [];
+
+  const out: FxInstancePayload[] = [];
+  const block = effect.xml.match(/<Instances>([\s\S]*?)<\/Instances>/)?.[1];
+  for (const item of block ? listItems(block) : []) {
+    try {
+      const instHref = item.attrs.match(/href="([^"]+)"/)?.[1];
+      if (!instHref) continue;
+      const instance = instHref.startsWith('#')
+        ? { xml: item.body, dir: effect.dir }
+        : follow(effect.xml, effect.dir, instHref);
+      if (!instance) continue;
+      const inst = instance.xml;
+
+      const partHref = inst.match(/<Particle href="([^"]+)"/)?.[1];
+      const particle = partHref ? follow(inst, instance.dir, partHref) : null;
+      const uid = particle?.xml.match(/<uid>([0-9A-Fa-f-]{36})<\/uid>/)?.[1];
+      if (!uid) continue;
+      const binPath = data.path(join('bin', 'effects', uid.toUpperCase()));
+      if (!existsSync(binPath)) continue;
+
+      // The frame table, order preserved — the baked indices point into it.
+      // Empty <Item/> slots stay as nulls so the numbering holds.
+      const texBlock = inst.match(/<Textures>([\s\S]*?)<\/Textures>/)?.[1] ?? '';
+      let hasAlpha = false;
+      const textures = listItems(texBlock).map((t) => {
+        const href = t.attrs.match(/href="([^"]+)"/)?.[1];
+        if (!href) return null;
+        const tex = textureDataUri('', data, texSize, '/' + resolveHref(instance.dir, href));
+        if (tex?.hasAlpha) hasAlpha = true;
+        return tex?.uri ?? null;
+      });
+      if (!textures.some(Boolean)) continue;
+
+      const vec = (tag: string, d: number[]): number[] => {
+        const m = inst.match(new RegExp(`<${tag}>\\s*<x>([^<]*)</x>\\s*<y>([^<]*)</y>\\s*<z>([^<]*)</z>(?:\\s*<w>([^<]*)</w>)?`));
+        return m ? [+m[1]!, +m[2]!, +m[3]!, ...(m[4] !== undefined ? [+m[4]!] : [])] : d;
+      };
+
+      out.push({
+        uid: uid.toUpperCase(),
+        pos: vec('Position', [0, 0, 0]).slice(0, 3),
+        quat: vec('Rotation', [0, 0, 0, 1]),
+        scale: +(inst.match(/<Scale>([-\d.eE]+)</)?.[1] ?? 1) || 1,
+        speed: +(inst.match(/<Speed>([-\d.eE]+)</)?.[1] ?? 1) || 1,
+        textures,
+        // The era's convention the art is drawn for: a fire frame is painted on
+        // black with no alpha and adds; a smoke frame carries real alpha and
+        // blends. One mode per instance, from whether any frame has alpha.
+        additive: !hasAlpha,
+      });
+    } catch { /* one broken instance must not take the object's other instances down */ }
+  }
+  return out;
+}
+
+/**
  * left those objects looking empty. Each `<Item>` points at a ModelInstance
  * (Model href + Position/Rotation/Scale), which resolves to an ordinary model.
  */
@@ -899,6 +996,13 @@ export function createGeomResolver(root: string | Assets, texSize = 128, options
         const card = effectGeom(content, sharedHref, data, texSize);
         if (card && idx < 0) { idx = geoms.length; geoms.push(card); }
         else if (card) mergeGeom(geoms[idx]!, card);
+      }
+      // The living version of the same effect: the baked particles. Attached
+      // alongside the card rather than instead of it — the card is what a
+      // raycast hits for the 307 objects that are nothing but an effect.
+      if (content && idx >= 0) {
+        const fx = effectParticles(content, sharedHref, data, texSize);
+        if (fx.length) geoms[idx]!.fx = fx;
       }
       // Only AdvMapBuildingShared declares a footprint, so this is null for
       // everything else and the renderer skips it. Attached to the geom because

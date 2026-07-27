@@ -18,7 +18,9 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 import { UNITS_PER_TILE as U } from '../src/units.ts';
 import { tierOf, RAMP_BIT, TIER_STEP } from '../src/terrain.ts';
-import type { Scene, Floor, Instance, SplatData, TileInfo, GeomData, GeomPart, Footprint, SkinnedGeom, AmbientData } from '../src/scene.ts';
+import type { Scene, Floor, Instance, SplatData, TileInfo, GeomData, GeomPart, Footprint, SkinnedGeom, AmbientData, FxInstancePayload } from '../src/scene.ts';
+import { createFxSystem } from './particles.ts';
+import type { FxSystem } from './particles.ts';
 import type { EditorApi, MapListEntry, ExternalChange, PlaceableObject, RosterEntryDTO, LocResult,
   CampaignDoc, CampaignListEntry, CampaignMissionDto } from '../electron/ipc.ts';
 import type { ObjectProp } from '../src/map.ts';
@@ -137,6 +139,12 @@ interface Floor3D {
    * or it would be drawn twice, once moving and once frozen.
    */
   idle: IdleObject[];
+  /**
+   * Playing particle effects, one system per (placed object x its effect's
+   * ParticleInstance). Built asynchronously after the floor (the baked keys
+   * arrive over their own IPC); empty until then and on maps without effects.
+   */
+  fx: FxSystem[];
   terrainMesh: THREE.Mesh;
   waterMesh: THREE.Mesh | null;
   /** The sea texture, kept so sculpting can raise a sheet on a map that began dry. */
@@ -465,6 +473,8 @@ function clearWorld(): void {
     // An InstancedMesh owns a GPU buffer of its own beyond the shared geometry;
     // without this it survives every map load.
     for (const b of fl.batches.values()) b.im.dispose();
+    for (const s of fl.fx) s.dispose();
+    fl.fx.length = 0;
     fl.group.traverse((o) => { if (o instanceof THREE.Mesh) o.geometry.dispose(); });
   }
   if (boxHelper) { scene.remove(boxHelper); boxHelper = null; }
@@ -614,6 +624,8 @@ type IdleMode = 'off' | 'visible' | 'all';
 let idleMode: IdleMode = 'off';
 /** Skin payloads by geom index, kept from the scene for building skeletons. */
 const geomSkin = new Map<number, SkinnedGeom>();
+/** Effect instances per geom — every placement of the geom plays them. */
+const geomFx = new Map<number, FxInstancePayload[]>();
 const idleFrustum = new THREE.Frustum();
 const idleViewProjection = new THREE.Matrix4();
 const _idlePoint = new THREE.Vector3();
@@ -735,6 +747,11 @@ function syncInstance(fl: Floor3D, inst: Instance): void {
       idle.mesh.rotation.copy(mesh.rotation);
       idle.mesh.updateMatrixWorld();
     }
+  }
+  // The object's effects ride along wherever it goes.
+  if (mesh && fl.fx.length) {
+    mesh.updateMatrixWorld();
+    for (const s of fl.fx) if (s.mesh.userData.inst === inst) s.setObjectMatrix(mesh.matrixWorld);
   }
   if (!batch || !mesh) return;
   const slot = batch.slot.get(inst);
@@ -891,12 +908,14 @@ function buildGeos(S: Scene) {
   geomParts.clear();
   geomFootprint.clear();
   geomSkin.clear();
+  geomFx.clear();
   S.geoms.forEach((g, i) => {
     geomParts.set(i, g.parts);
     geomFootprint.set(i, g.footprint ?? null);
     // Only a model with a clip is worth remembering: the binding alone poses
     // nothing, and every other geom would just sit in the map unused.
     if (g.skin?.clip) geomSkin.set(i, g.skin);
+    if (g.fx?.length) geomFx.set(i, g.fx);
   });
   worldGeos = geos;
   worldMats = mats;
@@ -1547,7 +1566,7 @@ function buildFloor(floor: Floor, geos: THREE.BufferGeometry[], mats: THREE.Mate
     // A river already in the map is at full depth: never dig it again.
     riverDrop: new Map(floor.riverVerts.map((v) => [v, RIVER_DEPTH])),
     passable: floor.passable, river: new Set(floor.riverVerts), passMeshes: [], footMeshes: [],
-    group, objGroup, meshes, batches, idle, terrainMesh, waterMesh, waterTex: floor.water?.tex ?? null,
+    group, objGroup, meshes, batches, idle, fx: [], terrainMesh, waterMesh, waterTex: floor.water?.tex ?? null,
     splat: floor.splat, maskTex: null, ambient: floor.ambient, instances: floor.instances,
   };
 }
@@ -1557,6 +1576,9 @@ function buildWorld(S: Scene): void {
   const { geos, mats } = buildGeos(S);
   const floors = S.floors.map((f) => buildFloor(f, geos, mats));
   for (const fl of floors) scene.add(fl.group);
+  // Particle effects arrive over their own IPC (typed arrays, not scene JSON);
+  // the map is fully usable while they stream in.
+  loadFx(floors).catch((e: unknown) => console.error('effects failed', e));
   world = { floors, active: 0 };
   setActiveFloor(0); // frames the floor + builds its explorer list
   updateFloorUI();
@@ -1566,6 +1588,62 @@ function buildWorld(S: Scene): void {
       console.error('splat failed', fl.name, e);
       $('hud').textContent = 'ground textures: ' + (e instanceof Error ? e.message : String(e));
     });
+  }
+}
+
+/**
+ * Give every placed object its playing particle effects.
+ *
+ * The scene payload carries only each effect's placement, textures and uid;
+ * the baked keys come from `map:fx` here, once per unique uid, as typed
+ * arrays. One system per (placement x ParticleInstance); phases are spread by
+ * placement so thirty campfires don't flicker in lockstep.
+ */
+async function loadFx(floors: Floor3D[]): Promise<void> {
+  if (!geomFx.size) return;
+  const uids = [...new Set([...geomFx.values()].flat().map((f) => f.uid))];
+  const bank = await window.editor.fx(uids);
+  const m4 = new THREE.Matrix4();
+  let built = 0;
+  for (const fl of floors) {
+    let at = 0;
+    for (const inst of fl.instances) {
+      const list = geomFx.get(inst.g);
+      if (!list) continue;
+      at++;
+      for (const f of list) {
+        const baked = bank[f.uid];
+        if (!baked?.particles.length) continue;
+        m4.makeRotationZ(inst.r).setPosition(tileCenter(inst.x), tileCenter(inst.y), inst.z);
+        const { system } = createFxSystem(f, baked, m4, (at * 0.37) % 3);
+        system.mesh.userData.inst = inst;
+        fl.fx.push(system);
+        fl.objGroup.add(system.mesh);
+        built++;
+      }
+    }
+  }
+  if (built) console.log(`[perf] effects: ${built} system(s) over ${uids.length} unique effect(s)`);
+}
+
+/** The one clock every effect follows (phase offsets are per system). */
+let fxClock = 0;
+function advanceFx(dt: number): void {
+  if (!world) return;
+  fxClock += dt;
+  const fl = world.floors[world.active];
+  if (!fl?.fx.length || !fl.objGroup.visible) return;
+  for (const s of fl.fx) s.update(fxClock);
+}
+
+/** Drop one object's effect systems, e.g. when it is deleted. */
+function removeFx(fl: Floor3D, inst: Instance): void {
+  for (let i = fl.fx.length - 1; i >= 0; i--) {
+    const s = fl.fx[i]!;
+    if (s.mesh.userData.inst !== inst) continue;
+    fl.objGroup.remove(s.mesh);
+    s.dispose();
+    fl.fx.splice(i, 1);
   }
 }
 
@@ -1860,6 +1938,7 @@ async function deleteSelected(): Promise<void> {
   fl.meshes.delete(id);
   removeFromBatch(fl, inst);
   removeIdle(fl, inst);
+  removeFx(fl, inst);
   // The geometry is shared between every instance of this model, so it is the
   // scene's to dispose, not ours.
   const i = fl.instances.indexOf(inst);
@@ -4629,7 +4708,7 @@ interface ViewApi {
    * the furthest of them has run. The clock is what says the loop is turning —
    * a skeleton that is built but never stepped looks identical from outside.
    */
-  idle(): { mode: IdleMode; animated: number; time: number; geoms: number[]; skinned: number[] };
+  idle(): { mode: IdleMode; animated: number; time: number; geoms: number[]; skinned: number[]; fx: number };
   /**
    * The lighting actually applied to the scene right now — preset or fallback,
    * and whether the background is the map's sky. Lighting has no other
@@ -4772,6 +4851,7 @@ const view: ViewApi = {
       // stands still" to a geom without reaching into the scene.
       geoms: [...new Set(fl?.idle.map((o) => (o.mesh.userData.inst as Instance).g) ?? [])].sort((a, b) => a - b),
       skinned: [...geomSkin.keys()].sort((a, b) => a - b),
+      fx: fl?.fx.length ?? 0,
     };
   },
   ambientState() {
@@ -7358,6 +7438,7 @@ let lastT = performance.now();
   controls.update();
   if (topView) syncTopCamera(); // follow pan/zoom + the orbit target each frame
   advanceIdle(dt);
+  advanceFx(dt);
   renderer.render(scene, activeCam);
 })();
 

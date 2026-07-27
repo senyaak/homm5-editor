@@ -18,6 +18,8 @@ import { readFileSync, writeFileSync, existsSync, readdirSync, statSync, mkdirSy
 import { createHash } from 'node:crypto';
 import { buildScene, createGeomResolver, findAssetRoot, listTiles, splatFor, pngDataUri } from '../src/scene.ts';
 import type { GeomData } from '../src/scene.ts';
+import { transferEffect } from '../src/effects.ts';
+import type { FxTransfer } from '../src/effects.ts';
 import { listPlaceable, iconPathFor, readIconFile } from '../src/objects.ts';
 import { decodeDDS } from '../src/dds.ts';
 import { editorRoot, gameData, gameRoot, isConfigured, mountedAssets, preloadPath, readSettings, rendererFile, saveSettings, tmpRoot } from './paths.ts';
@@ -63,7 +65,7 @@ import type { DocPatch, Step, StoredHistory } from '../src/history.ts';
 import type { TileInfo, GeomResolver, Instance as SceneInstance } from '../src/scene.ts';
 import type { HommMap, MapObject, ObjectProp } from '../src/map.ts';
 import type {
-  MapsListResult, MapListEntry, MapLoadResult, MoveObjectPayload, MoveObjectResult,
+  MapsListResult, MapListEntry, MapLoadResult, MoveObjectPayload, MoveObjectResult, FxPayload,
   RotateObjectPayload, RemoveObjectPayload, ObjectEditResult, ObjectPropsResult, SetPropPayload,
   SpecValuesPayload, SpecValuesResult,
   MapPropsResult, SetMapPropPayload, RosterPayload, RosterResult, OfClassPayload, NewEntityPayload, NewEntityResult,
@@ -703,6 +705,27 @@ ipcMain.handle('map:idle-skins', async (): Promise<Record<number, NonNullable<Ge
   session.resolver = fresh;
   console.log(`[perf] map:idle-skins ${(performance.now() - t0) | 0}ms · ${Object.keys(skins).length} animated geom(s)`);
   return skins;
+});
+
+// --- IPC: baked particle keys, by bin/effects uid ---
+// Separate from the scene payload on purpose: these are tens of MB as JSON and
+// a few MB as typed arrays, and structured clone ships typed arrays binary.
+// The renderer asks once per unique uid after the scene is up.
+ipcMain.handle('map:fx', async (_e: IpcMainInvokeEvent, { uids }: FxPayload): Promise<Record<string, FxTransfer>> => {
+  if (!session) throw new Error('no map loaded');
+  const t0 = performance.now();
+  const out: Record<string, FxTransfer> = {};
+  for (const uid of uids) {
+    // The uid names a file; nothing else is accepted (it lands in a path).
+    if (!/^[0-9A-F-]{36}$/.test(uid)) continue;
+    try {
+      const p = session.assets.path(join('bin', 'effects', uid));
+      if (!existsSync(p)) continue;
+      out[uid] = transferEffect(readFileSync(p));
+    } catch { /* an unreadable effect stays a static card */ }
+  }
+  console.log(`[perf] map:fx ${(performance.now() - t0) | 0}ms · ${Object.keys(out).length}/${uids.length} effect(s)`);
+  return out;
 });
 
 // --- IPC: move an object (x,y tiles); z stays the object's stored value ---

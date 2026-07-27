@@ -130,6 +130,12 @@ export interface HistoryState {
   redoLabel: string | null;
 }
 
+/** Payload of `map:fx`. */
+export interface FxPayload {
+  /** bin/effects uids, as the scene's FxInstancePayload names them. */
+  uids: string[];
+}
+
 /** Payload of `object:move`. */
 export interface MoveObjectPayload {
   id: string;
@@ -733,6 +739,12 @@ export interface EditorApi {
    * the renderer holds are present.
    */
   idleSkins(): Promise<Record<number, NonNullable<GeomData['skin']>>>;
+  /**
+   * Baked particle keys for the open map's effects, keyed by bin/effects uid.
+   * Typed arrays, shipped binary via structured clone — never part of the
+   * scene JSON. Unresolvable uids are simply absent.
+   */
+  fx(uids: string[]): Promise<Record<string, import('../src/effects.ts').FxTransfer>>;
   /**
    * Subscribe to external edits of the open map folder. Fires once per settled
    * burst of writes; our own saves never fire it.

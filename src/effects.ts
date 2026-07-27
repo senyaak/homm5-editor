@@ -61,6 +61,50 @@ export interface FxData {
   particles: FxParticle[];
 }
 
+/**
+ * The renderer-facing form: flat `[frame, ...values]` runs per channel, in
+ * typed arrays so Electron's structured clone ships them binary — the same
+ * data as JSON doubled a map's whole scene payload.
+ */
+export interface FxTransfer {
+  duration: number;
+  rate: number;
+  /** Most particles alive on any single frame — the renderer's buffer size. */
+  maxAlive: number;
+  particles: {
+    birth: number; death: number;
+    /** [frame,x,y,z]* */ pos: Float32Array;
+    /** [frame,radians]* */ rot: Float32Array;
+    /** [frame,w,h]* */ size: Float32Array;
+    /** [frame,r,g,b,a]* (0-255) */ color: Float32Array;
+    /** [frame,index]* (-1 = hidden) */ tex: Float32Array;
+  }[];
+}
+
+/** Parse and flatten in one go — what the `map:fx` IPC hands the renderer. */
+export function transferEffect(b: Buffer): FxTransfer {
+  const fx = parseEffect(b);
+  const flat = (keys: FxKey[], width: number): Float32Array => {
+    const out = new Float32Array(keys.length * (width + 1));
+    let o = 0;
+    for (const k of keys) { out[o++] = k.frame; for (let i = 0; i < width; i++) out[o++] = k.v[i]!; }
+    return out;
+  };
+  const events: [number, number][] = [];
+  for (const p of fx.particles) events.push([p.birth, 1], [p.death + 1, -1]);
+  events.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  let alive = 0, maxAlive = 0;
+  for (const [, d] of events) { alive += d; if (alive > maxAlive) maxAlive = alive; }
+  return {
+    duration: fx.duration, rate: fx.rate, maxAlive,
+    particles: fx.particles.map((p) => ({
+      birth: p.birth, death: p.death,
+      pos: flat(p.pos, 3), rot: flat(p.rot, 1), size: flat(p.size, 2),
+      color: flat(p.color, 4), tex: flat(p.tex, 1),
+    })),
+  };
+}
+
 /** Bytes per key, per channel, in directory order. */
 const KEY_BYTES = [14, 6, 10, 6, 4];
 

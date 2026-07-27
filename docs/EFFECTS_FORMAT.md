@@ -1,8 +1,9 @@
 # Particle effects (`bin/effects`) — the baked-simulation format
 
-Status: **format decoded, structurally verified over the whole library**
-(1922/1924 files; the other two are empty headers). Not yet rendered — that is
-the next step, and everything a renderer needs is already in readable form.
+Status: **decoded and playing.** The format is structurally verified over the
+whole library (1922/1924 files; the other two are empty headers), and the
+editor plays every effect a placed object references — campfires burn, mana
+crystals spark, portals shimmer. §5 lists what the playback still simplifies.
 
 ## 1. The discovery that makes this easy
 
@@ -92,13 +93,28 @@ its particle's `[birth, death]`.
   of a plausible frame number — read as `index & 0x3ff` until proven
   otherwise. **[~]**
 
-## 5. Still open
+## 5. How the editor plays it, and what is still simplified
 
-* Rendering: billboards per particle (position/rotation/size/colour/texture
-  from the keys, linear interpolation between them), textures resolved through
-  the instance's list, additive vs normal blending per the instance's
-  `AddPlaced`-style flags, instance `<Speed>` as a time scale and `<Offset>`
-  as a phase. `EndCycle`/`CycleCount` presumably control looping windows.
-* Whether position space is the instance's local frame before its
-  Position/Rotation/Scale (expected, matches how `<Models>` instances work).
+The scene payload carries only each instance's placement, texture table (data
+URIs) and uid (`FxInstancePayload`); the keys go over their own IPC (`map:fx`)
+as typed arrays — as JSON they doubled the scene payload of one map. The
+renderer (renderer/particles.ts) packs the texture table into one atlas and
+draws each instance as instanced camera-facing quads; a frame update lerps the
+alive particles' channels at the loop time and rewrites the attributes. One
+shared clock, phases spread per placement so identical objects don't flicker
+in lockstep. The static glow card (§2 of the scene resolver) stays underneath
+as the pick target and the fallback for anything that fails to decode.
+
+Still simplified, in the order they would matter:
+
+* Blending is guessed from the art: any frame with real alpha → normal
+  blending, none → additive (fire on black adds; smoke with alpha blends).
+  One mode per instance, though a table mixes both kinds. **[~]**
+* The instance's `<Offset>`, `<EndCycle>`/`<CycleCount>` (loop windows) and
+  `<WindAffected>` are ignored; `<Speed>` is applied as a time scale.
+* Position space is taken as the instance's local frame before its
+  Position/Rotation/Scale (matches how `<Models>` instances behave). **[~]**
+* Particles are unlit sprites; the game's `L_LIT` instances (163 of 2723)
+  would be tinted by scene light, and `ParticlesColor` of the ambient preset
+  is not applied.
 * `bin/Lights` (AnimLight flicker curves) — parked, see §2.

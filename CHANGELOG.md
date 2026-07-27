@@ -27,14 +27,19 @@ one.
   counts from the zenith, not the horizon. Written up in docs/LIGHTING.md,
   including why the preset's "Sky" is a set of reflection blobs and not a sky.
 
-- **The particle-effect format is decoded.** `bin/effects` — the last unknown
-  format between the editor and the game's full picture — turned out to be a
-  baked simulation: the effects were authored as Maya particle systems, and
-  what shipped is the recording, 1.69 million particles with 41.8 million
-  keyframes for position, rotation, size, colour and texture frame. Nothing to
-  simulate, only keys to play back. The parser reads the entire library with
-  every byte accounted for (docs/EFFECTS_FORMAT.md, `npm run test-effects`);
-  nothing is drawn yet — that is the next release's work.
+- **Particle effects play.** Campfires burn, mana crystals spark, portals
+  shimmer — every effect a placed object references is drawn and moving, not
+  as an approximation but as the game's own frames: `bin/effects` — the last
+  unknown format between the editor and the game's full picture — turned out
+  to be a baked simulation. The effects were authored as Maya particle
+  systems, and what shipped is the recording: 1.69 million particles with 41.8
+  million keyframes for position, rotation, size, colour and texture frame.
+  Nothing to simulate, only keys to interpolate, so playback is exact by
+  construction. The parser reads the entire library with every byte accounted
+  for (docs/EFFECTS_FORMAT.md, `npm run test-effects`); the static glow cards
+  that used to stand in stay as fallbacks. Known simplifications (blending is
+  inferred from the art, loop windows and wind are ignored) are written up in
+  the format doc.
 
 ### Fixed
 
