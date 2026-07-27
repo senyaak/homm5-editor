@@ -1667,6 +1667,7 @@ async function loadFx(floors: Floor3D[]): Promise<void> {
         m4.makeRotationZ(inst.r).setPosition(tileCenter(inst.x), tileCenter(inst.y), inst.z);
         const { system } = createFxSystem(f, baked, m4, (at * 0.37) % 3);
         system.mesh.userData.inst = inst;
+        system.mesh.userData.uid = f.uid; // for fxSystems() debugging
         system.mesh.visible = showFx; // effects arrive async; respect the toggle they land under
         fl.fx.push(system);
         fl.objGroup.add(system.mesh);
@@ -4851,6 +4852,8 @@ interface ViewApi {
    * with where the pools land (the texel count scales with radius²).
    */
   pointLights(): { count: number; litTexels: number };
+  /** Per-system particle state on the active floor — which effects are actually alive. */
+  fxSystems(): { uid: string; shared: string; at: number[]; alive: number; visible: boolean }[];
   /** True once the ground textures are decoded and a stroke would land. */
   paintReady(): boolean;
   /** Edits sent to the main process and not yet acknowledged. */
@@ -4999,6 +5002,21 @@ const view: ViewApi = {
         sun: uSunCol.value.toArray().map((v) => +v.toFixed(3)),
       },
     };
+  },
+  fxSystems() {
+    const fl = world ? activeFloor() : null;
+    if (!fl) return [];
+    return fl.fx.map((s) => {
+      const g = (s.mesh as unknown as { geometry: THREE.InstancedBufferGeometry }).geometry;
+      const inst = s.mesh.userData.inst as Instance;
+      return {
+        uid: String(s.mesh.userData.uid ?? ''),
+        shared: inst?.shared ?? '',
+        at: [inst?.x ?? -1, inst?.y ?? -1],
+        alive: g.instanceCount,
+        visible: s.mesh.visible,
+      };
+    });
   },
   pointLights() {
     const fl = world ? activeFloor() : null;

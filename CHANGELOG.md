@@ -52,6 +52,20 @@ one.
   inferred from the art, loop windows and wind are ignored) are written up in
   the format doc.
 
+- **Creatures play their own effects.** The ghost dragon stands in its swirling
+  cloud mist with glowing eyes, the fire elemental burns, the water elemental
+  churns. These effects were invisible to the editor because they hang off a
+  different hook than an object's: every monster's own effect slot is empty,
+  and the real one rides the idle animation clip. Two discoveries along the
+  way: an instance can be glued to a skeleton bone (the eyes are two particles
+  around the head bone's origin — the bone's rest pose, read from the
+  animation file, is folded in; a bone that can't be found drops the instance
+  rather than drawing it at the creature's feet), and the baked particle
+  colours are authored around 128-is-full-brightness — the same era's
+  modulate-×2 the terrain lighting uses — so the mist rendered near-black
+  until the colour stage doubled it. The doubling clamps where effects were
+  already saturated, so campfires stay campfires.
+
 - **Effects and Light join the view toggles.** Next to Idle stance the bar now
   carries **Effects: on/off** (stop the particles moving and drawing) and
   **Light: map/flat** — the floor lit as the game lights it, or the editor's

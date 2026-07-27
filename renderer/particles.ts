@@ -86,7 +86,12 @@ void main() {
   // Canvas row 0 is the TOP; the texture is flipY'd, so v counts from the
   // bottom — a tile on canvas row r spans v rows [rows-1-r, rows-r].
   vec2 uv = vec2(col + vUv.x, (uGrid.y - 1.0 - row) + vUv.y) / uGrid;
-  outColor = texture(uAtlas, uv) * vColor;
+  vec4 s = texture(uAtlas, uv);
+  // The era's modulate-x2 colour stage, same as the terrain's Whitening: the
+  // baked colours are authored around 128 = full brightness. Without it the
+  // ghost dragon's mist (colour bytes <=57) renders near-black instead of the
+  // pale smoke the game shows. Alpha stays a plain modulate.
+  outColor = vec4(s.rgb * vColor.rgb * 2.0, s.a * vColor.a);
   if (outColor.a < 0.003) discard;
 }`;
 

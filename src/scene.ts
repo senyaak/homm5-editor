@@ -610,13 +610,40 @@ function decodeModelGeom(
 function effectParticles(
   sharedXml: string, sharedHref: string, data: Assets, texSize: number,
 ): FxInstancePayload[] {
-  const follow = (xml: string, dir: string, href: string) => followHref(data, xml, dir, href);
   const effHref = sharedXml.match(/<Effect href="([^"]+)"/)?.[1];
   if (!effHref) return [];
   const sharedDir = dirOf(resolveHref('', sharedHref));
-  const effect = follow(sharedXml, sharedDir, effHref);
+  const effect = followHref(data, sharedXml, sharedDir, effHref);
   if (!effect) return [];
+  return particlesOfEffect(effect, data, texSize);
+}
 
+/** A bone's rest-pose world transform, looked up by name (or numeric index as a string). */
+type BoneWorld = (bone: string) => { pos: number[]; quat: number[] } | null;
+
+const qmul = (a: number[], b: number[]): number[] => [
+  a[3]! * b[0]! + a[0]! * b[3]! + a[1]! * b[2]! - a[2]! * b[1]!,
+  a[3]! * b[1]! - a[0]! * b[2]! + a[1]! * b[3]! + a[2]! * b[0]!,
+  a[3]! * b[2]! + a[0]! * b[1]! - a[1]! * b[0]! + a[2]! * b[3]!,
+  a[3]! * b[3]! - a[0]! * b[0]! - a[1]! * b[1]! - a[2]! * b[2]!,
+];
+const qrot = (q: number[], v: number[]): number[] => {
+  // v' = v + 2·qw·(q×v) + 2·(q×(q×v)) — same form transformGeom uses.
+  const [qx, qy, qz, qw] = q as [number, number, number, number];
+  const [x, y, z] = v as [number, number, number];
+  const tx = 2 * (qy * z - qz * y), ty = 2 * (qz * x - qx * z), tz = 2 * (qx * y - qy * x);
+  return [
+    x + qw * tx + (qy * tz - qz * ty),
+    y + qw * ty + (qz * tx - qx * tz),
+    z + qw * tz + (qx * ty - qy * tx),
+  ];
+};
+
+/** The particle payloads of one resolved Effect document. See effectParticles. */
+function particlesOfEffect(
+  effect: { xml: string; dir: string }, data: Assets, texSize: number, boneWorld?: BoneWorld,
+): FxInstancePayload[] {
+  const follow = (xml: string, dir: string, href: string) => followHref(data, xml, dir, href);
   const out: FxInstancePayload[] = [];
   const block = effect.xml.match(/<Instances>([\s\S]*?)<\/Instances>/)?.[1];
   for (const item of block ? listItems(block) : []) {
@@ -653,11 +680,30 @@ function effectParticles(
         const m = inst.match(new RegExp(`<${tag}>\\s*<x>([^<]*)</x>\\s*<y>([^<]*)</y>\\s*<z>([^<]*)</z>(?:\\s*<w>([^<]*)</w>)?`));
         return m ? [+m[1]!, +m[2]!, +m[3]!, ...(m[4] !== undefined ? [+m[4]!] : [])] : d;
       };
+      let pos = vec('Position', [0, 0, 0]).slice(0, 3);
+      let quat = vec('Rotation', [0, 0, 0, 1]);
+
+      // A glued instance lives in a BONE's frame — the ghost dragon's eye glow
+      // is two particles 0.3 apart around the Head bone's origin, and played in
+      // object space they'd hover at its feet. The baked keys stay bone-local
+      // (the bake does not fold the bone in), so the bone's rest transform is
+      // composed here. Glued somewhere unresolvable → the instance is dropped:
+      // absent beats at-the-feet.
+      const glueName = inst.match(/<GlueToNamedBone>([^<]+)<\/GlueToNamedBone>/)?.[1]?.trim();
+      const glueIdx = +(inst.match(/<GlueToBone>([-\d]+)<\/GlueToBone>/)?.[1] ?? 0);
+      const glue = glueName || (glueIdx > 0 ? String(glueIdx) : null);
+      if (glue) {
+        const bone = boneWorld?.(glue);
+        if (!bone) continue;
+        const r = qrot(bone.quat, pos);
+        pos = [bone.pos[0]! + r[0]!, bone.pos[1]! + r[1]!, bone.pos[2]! + r[2]!];
+        quat = qmul(bone.quat, quat);
+      }
 
       out.push({
         uid: uid.toUpperCase(),
-        pos: vec('Position', [0, 0, 0]).slice(0, 3),
-        quat: vec('Rotation', [0, 0, 0, 1]),
+        pos,
+        quat,
         scale: +(inst.match(/<Scale>([-\d.eE]+)</)?.[1] ?? 1) || 1,
         speed: +(inst.match(/<Speed>([-\d.eE]+)</)?.[1] ?? 1) || 1,
         textures,
@@ -669,6 +715,79 @@ function effectParticles(
     } catch { /* one broken instance must not take the object's other instances down */ }
   }
   return out;
+}
+
+/**
+ * The creature's own idle effect — the ghost dragon's mist and eye glow, the
+ * fire elemental's flames. It does NOT hang off the shared's `<Effect>` (empty
+ * on every monster) but off the ANIMATION CLIP: AnimSet → idle00 →
+ * BasicSkelAnim `<Effect href>`. Played whether or not the idle animation
+ * itself is on — the original editor shows the mist on a frozen dragon too.
+ *
+ * The clip's GR2 is opened (once per shared, and only then) when an instance
+ * is glued to a bone: the skeleton lives inside the animation file, and the
+ * glued instance needs that bone's rest-pose world transform.
+ */
+function clipEffectParticles(
+  sharedXml: string, sharedHref: string, data: Assets, texSize: number,
+): FxInstancePayload[] {
+  const setHref = sharedXml.match(/<AnimSet href="([^"]+)"/)?.[1];
+  if (!setHref) return [];
+  const sharedDir = dirOf(resolveHref('', sharedHref));
+  const set = followHref(data, sharedXml, sharedDir, setHref);
+  if (!set) return [];
+  const items = listItems(set.xml.match(/<animations>([\s\S]*?)<\/animations>/)?.[1] ?? '');
+  const idle = items.find((i) => /<Kind>idle00<\/Kind>/.test(i.body))
+    ?? items.find((i) => /<Kind>idle/.test(i.body));
+  const animHref = idle?.body.match(/<Anim href="([^"]+)"/)?.[1];
+  const anim = animHref ? followHref(data, set.xml, set.dir, animHref) : null;
+  if (!anim) return [];
+  const effHref = anim.xml.match(/<Effect href="([^"]+)"/)?.[1];
+  const effect = effHref ? followHref(data, anim.xml, anim.dir, effHref) : null;
+  if (!effect) return [];
+  let bones: Map<string, { pos: number[]; quat: number[] }> | null | undefined;
+  const boneWorld: BoneWorld = (bone) => {
+    if (bones === undefined) bones = clipRestBones(anim.xml, data);
+    return bones?.get(bone) ?? null;
+  };
+  return particlesOfEffect(effect, data, texSize, boneWorld);
+}
+
+/**
+ * Every bone's rest-pose WORLD transform from a clip's GR2, keyed by name and
+ * by index-as-string (`<GlueToBone>` addresses bones numerically). Null when
+ * the file is missing or unreadable — the caller then drops glued instances.
+ */
+function clipRestBones(
+  animXml: string, data: Assets,
+): Map<string, { pos: number[]; quat: number[] }> | null {
+  try {
+    const uid = animXml.match(/<uid>([0-9A-Fa-f-]{36})<\/uid>/)?.[1];
+    if (!uid) return null;
+    const binPath = data.path(join('bin', 'animations', uid.toUpperCase()));
+    if (!existsSync(binPath)) return null;
+    const file = GrannyFile.open(readFileSync(binPath));
+    if (!file || file.isUnreadable) return null;
+    const sk = readSkeletons(file)[0];
+    if (!sk?.bones.length) return null;
+    const world: ({ pos: number[]; quat: number[] } | undefined)[] = new Array(sk.bones.length);
+    const at = (i: number): { pos: number[]; quat: number[] } => {
+      const hit = world[i];
+      if (hit) return hit;
+      const b = sk.bones[i]!;
+      const lp = Array.from(b.rest.position), lq = Array.from(b.rest.orientation);
+      const p = b.parentIndex >= 0 && b.parentIndex !== i ? at(b.parentIndex) : null;
+      const r = qrot(p?.quat ?? [0, 0, 0, 1], lp);
+      const w = p
+        ? { pos: [p.pos[0]! + r[0]!, p.pos[1]! + r[1]!, p.pos[2]! + r[2]!], quat: qmul(p.quat, lq) }
+        : { pos: lp, quat: lq };
+      world[i] = w;
+      return w;
+    };
+    const out = new Map<string, { pos: number[]; quat: number[] }>();
+    sk.bones.forEach((b, i) => { const w = at(i); out.set(b.name, w); out.set(String(i), w); });
+    return out;
+  } catch { return null; }
 }
 
 /**
@@ -1010,6 +1129,13 @@ export function createGeomResolver(root: string | Assets, texSize = 128, options
       if (content && idx >= 0) {
         const fx = effectParticles(content, sharedHref, data, texSize);
         if (fx.length) geoms[idx]!.fx = fx;
+      }
+      // The idle CLIP's effect on top — a creature's mist, flames, eye glow
+      // (empty <Effect/> on every monster shared; the real one hangs off the
+      // animation). Appended so an object carrying both keeps both.
+      if (shared && idx >= 0) {
+        const cfx = clipEffectParticles(shared, sharedHref, data, texSize);
+        if (cfx.length) geoms[idx]!.fx = [...(geoms[idx]!.fx ?? []), ...cfx];
       }
       // Only AdvMapBuildingShared declares a footprint, so this is null for
       // everything else and the renderer skips it. Attached to the geom because

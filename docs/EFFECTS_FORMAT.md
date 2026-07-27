@@ -36,6 +36,32 @@ indices point into (a campfire's is 11 fire frames + glow + sparks + smoke).
 The same particle file can be instanced several times with different textures,
 placements and speeds.
 
+**Creatures reach their effects a different way.** Every monster shared's
+`<Effect/>` is empty; the ghost dragon's mist and eye glow hang off the
+ANIMATION CLIP instead:
+
+```
+Shared → <AnimSet href> → idle00 → BasicSkelAnim → <Effect href="…idle00.xdb">
+```
+
+Same Effect format from there, played whether or not the idle animation is on
+(the original editor shows the mist on a frozen dragon too). Two extras appear
+on these instances:
+
+* `<GlueToNamedBone>` (or a numeric `<GlueToBone>`): the instance lives in a
+  BONE's frame — the eye glow is two particles 0.3 apart around the Head
+  bone's origin, and played in object space they'd hover at the feet. The
+  baked keys stay bone-local, so the bone's rest-pose world transform (from
+  the clip's own GR2 — the skeleton lives inside the animation file) is
+  composed in. A glued instance whose bone can't be resolved is dropped:
+  absent beats at-the-feet. The composition is the REST pose — with the idle
+  animation playing the glow does not ride the swaying head. **[~]**
+* Colour bytes are authored around **128 = full brightness** (the era's
+  modulate-×2 stage, the same one the terrain lighting has): the ghost
+  dragon's mist peaks at 57 and rendered near-black under a plain modulate.
+  The renderer doubles the colour term (not alpha); saturated effects
+  (campfires at 255) just clamp where they already clamped.
+
 `<Lights>` (`LightInstance` → `AnimLight` → `bin/Lights/<uid>`, the Nival
 container, 98 files) is deliberately parked: of the 532 effects reachable from
 adventure-map objects only 8 carry lights, and most of those are combat spell
@@ -114,6 +140,8 @@ Still simplified, in the order they would matter:
   `<WindAffected>` are ignored; `<Speed>` is applied as a time scale.
 * Position space is taken as the instance's local frame before its
   Position/Rotation/Scale (matches how `<Models>` instances behave). **[~]**
+* Bone-glued instances sit at the bone's REST pose; they do not follow the
+  playing idle animation. **[~]**
 * Particles are unlit sprites; the game's `L_LIT` instances (163 of 2723)
   would be tinted by scene light, and `ParticlesColor` of the ambient preset
   is not applied.

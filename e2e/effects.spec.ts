@@ -35,5 +35,16 @@ test('placed objects grow playing particle systems', async () => {
   const fx = await page.evaluate(() => window.view.idle().fx);
   expect(fx).toBeGreaterThan(10);
 
+  // Creature effects ride the idle CLIP, not the shared (whose <Effect/> is
+  // empty on every monster) — a separate resolver path. The map's ghost
+  // dragon carries cloud mist and bone-glued eye glow; after a moment on the
+  // clock its systems must have live particles, and the eyes specifically
+  // prove the bone-rest composition (unresolvable glue drops them instead).
+  await page.waitForTimeout(1500);
+  const dragon = await page.evaluate(() =>
+    window.view.fxSystems().filter((s) => s.shared.includes('Horror_Dragon')));
+  expect(dragon.length).toBeGreaterThanOrEqual(3); // mist + two eye instances
+  expect(dragon.some((s) => s.alive > 0)).toBe(true);
+
   expect(errors).toEqual([]);
 });
