@@ -103,10 +103,35 @@ project.json
 - [x] ✅ Particle effects play — `bin/effects` decoded as a BAKED Maya
       simulation (birth/death + 30fps keys per particle; 1.69M particles,
       whole library byte-complete) and drawn as instanced billboards fed over
-      their own typed-array IPC. Campfires burn, portals shimmer. Blending
-      inferred from the art; loop windows/wind ignored — docs/EFFECTS_FORMAT.md
-      §5 (2026-07-27). AnimLight (`bin/Lights`) parked: ~1 adventure object
-      uses it
+      their own typed-array IPC. Campfires burn, portals shimmer.
+      docs/EFFECTS_FORMAT.md (2026-07-27). AnimLight (`bin/Lights`) parked:
+      ~1 adventure object uses it
+- [x] ✅ Designer point lights (`map.xdb <pointLights>`, ~10,800 across the
+      shipped maps) baked into a per-floor lightmap the terrain shaders add —
+      the violet pool under an underground crystal. docs/LIGHTING.md §3a
+      (2026-07-27)
+- [x] ✅ Creature idle-clip effects + display scale + true colours
+      (2026-07-27): a creature's effect hangs off its idle CLIP (ghost
+      dragon's mist, bone-glued eye glow, elemental fire/water); the clip
+      skeleton's root carries the display scale (Phoenix 0.37); colour bytes
+      are B,G,R,A; ONE blend mode (ONE/INV_SRC_ALPHA, straight colour) covers
+      fire and smoke both, with colour/alpha shipped as separate images past
+      the canvas's premultiply. Effects & Light view toggles beside Idle
+      stance. docs/EFFECTS_FORMAT.md §2/§5
+- [ ] ⬜ **The undecoded remainder — FIX NEXT.** Measured 2026-07-27: only
+      20 of 1572 non-TESTS shareds fail to mesh (the "one-third" this list
+      used to claim is long stale). The 20: Autumn_Trees (7), Mnt3x25 pieces,
+      MountainBig, Sunflowers, Grass_01, Mosstree01, Alchemist_Lab_Snow,
+      Hill_Castle (a TOWN), two heroes (GhostFSLord, Aberrar),
+      RazedMilitaryPost, RazedWindmill, Rail_coner_faza0_5. Plus whatever
+      resolves but draws WRONG — collected by eyeballing against the original
+      editor (`_tmp/scan-undecoded.mjs` prints the list)
+- [ ] ⬜ **Effects tail — FIX NEXT** (docs/EFFECTS_FORMAT.md §5): loop
+      windows (`Offset`/`EndCycle`/`CycleCount` — effects that should play
+      once or with pauses currently loop flat), `WindAffected`, L_LIT
+      particles tinted by scene light + the preset's `ParticlesColor`,
+      bone-glued instances following the playing idle (now rest-pose),
+      AnimLight (`bin/Lights`, 98 files) decode
 - [ ] ⬜ RTS camera niceties: tile grid, minimap, hover highlight
 - [ ] ⬜ Instancing for repeated props + LOD
 
@@ -511,6 +536,14 @@ structures mean and how they are played).
 - [ ] ⬜ Anything other than idle. Combat sets (`-arena`) carry
       attack/move/hit/death and are read by the same code, but the map only
       ever plays `idle00`
+- [ ] ⬜ **Animation player dialog** (Сеня, 2026-07-27): a viewer that takes
+      any model + any clip from any AnimSet and plays it — attack, move,
+      death, the lot — likely living where a new unit is authored, so an
+      archer can be given the swordsman's move set and previewed on the spot.
+      The clip-list item above is its data source
+- [ ] ⬜ **Unit texture tinting** (asked long ago, still not done): recolour
+      a creature's texture when authoring a unit variant, preview in the same
+      dialog
 
 ### Dialog-scene editor and player
 
@@ -542,6 +575,21 @@ Format (surveyed 2026-07-23, 250 scenes shipped under `DialogScenes/`):
 - [ ] ⬜ **Player** — play the scene inside the app: camera interpolation,
       moves, animations, the line timings. The point of the animation work
       above; until then the editor can only be verified by launching the game
+- [ ] ⬜ **Shipped scenes as the proving ground** (Сеня, 2026-07-27): open a
+      scene a campaign actually plays — Isabell's first mission — inside the
+      editor, watch it, edit it, watch again. The 250 scenes under
+      `DialogScenes/` are both the test corpus and the reason to build this
+
+### Model editing (far future, smallest step first)
+
+Full model editing is a long ladder, but each rung is real (Сеня, 2026-07-27):
+
+- [ ] ⬜ Skeleton swap — point a model at another model's skeleton/AnimSet
+      (the archer-moves-like-a-swordsman case, made permanent)
+- [ ] ⬜ Material edits — texture reference, tint, the material flags this
+      project already understands (L_SELFILLUM, AddPlaced, AlphaMode)
+- [ ] ⬜ Mesh-level surgery last: geometry import/export against
+      `bin/Geometries` (the writer half of a format we already read)
 
 ### Visual scripting (node graph)
 

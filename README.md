@@ -382,9 +382,10 @@ edges** on reconstruction.
   needed two discoveries — the game multiplies colours in gamma space, and the
   sun's Pitch counts from the zenith: [docs/LIGHTING.md](docs/LIGHTING.md).
 
-Still open: per-submesh material assignment, and the roughly one-third of
-catalogue meshes still undecoded (interleaved vertex buffers, multi-mesh
-buildings) — refused with a message when placed. Details in
+Still open: per-submesh material assignment, and 20 of 1572 shareds that
+still refuse to mesh (autumn trees, a few mountains, one town — measured
+2026-07-27; the "one third" this paragraph used to claim is long gone) —
+refused with a message when placed. Details in
 [docs/GEOMETRY_FORMAT.md](docs/GEOMETRY_FORMAT.md) and
 [MESH_PLAN.md](MESH_PLAN.md).
 
