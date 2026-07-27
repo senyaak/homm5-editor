@@ -28,28 +28,38 @@ export interface FxSystem {
 const loadImg = (src: string): Promise<HTMLImageElement | null> =>
   new Promise((res) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => res(null); i.src = src; });
 
-/** The instance's frame table as one square-ish atlas + its grid shape. */
-async function buildAtlas(textures: (string | null)[], cell = 128): Promise<{ tex: THREE.Texture; cols: number; rows: number }> {
+/**
+ * The instance's frame table as two square-ish atlases (colour + alpha) and
+ * their grid shape. Two, because the frames travel as separate colour/alpha
+ * images: a browser canvas premultiplies, so colour under alpha 0 — which is
+ * exactly what fire IS in this art — would arrive black in a single image.
+ */
+async function buildAtlas(
+  textures: ({ c: string; a: string } | null)[], cell = 128,
+): Promise<{ tex: THREE.Texture; alpha: THREE.Texture; cols: number; rows: number }> {
   const cols = Math.max(1, Math.ceil(Math.sqrt(textures.length)));
   const rows = Math.max(1, Math.ceil(textures.length / cols));
-  const cv = document.createElement('canvas');
-  cv.width = cols * cell; cv.height = rows * cell;
-  const cx = cv.getContext('2d');
-  if (cx) {
-    for (let i = 0; i < textures.length; i++) {
-      const uri = textures[i];
-      if (!uri) continue; // empty slot stays transparent
-      const img = await loadImg(uri);
-      if (img) cx.drawImage(img, (i % cols) * cell, Math.floor(i / cols) * cell, cell, cell);
+  const make = async (pick: (t: { c: string; a: string }) => string, srgb: boolean): Promise<THREE.Texture> => {
+    const cv = document.createElement('canvas');
+    cv.width = cols * cell; cv.height = rows * cell;
+    const cx = cv.getContext('2d');
+    if (cx) {
+      for (let i = 0; i < textures.length; i++) {
+        const t = textures[i];
+        if (!t) continue; // empty slot stays transparent
+        const img = await loadImg(pick(t));
+        if (img) cx.drawImage(img, (i % cols) * cell, Math.floor(i / cols) * cell, cell, cell);
+      }
     }
-  }
-  const tex = new THREE.CanvasTexture(cv);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  // The atlas is sampled per tile; letting mips blend neighbouring tiles in
-  // smears every frame with its neighbours at distance.
-  tex.generateMipmaps = false;
-  tex.minFilter = THREE.LinearFilter;
-  return { tex, cols, rows };
+    const tex = new THREE.CanvasTexture(cv);
+    if (srgb) tex.colorSpace = THREE.SRGBColorSpace;
+    // The atlas is sampled per tile; letting mips blend neighbouring tiles in
+    // smears every frame with its neighbours at distance.
+    tex.generateMipmaps = false;
+    tex.minFilter = THREE.LinearFilter;
+    return tex;
+  };
+  return { tex: await make((t) => t.c, true), alpha: await make((t) => t.a, false), cols, rows };
 }
 
 const VERT = `
@@ -73,9 +83,9 @@ void main() {
 
 const FRAG = `
 precision highp float;
-uniform sampler2D uAtlas;
+uniform sampler2D uAtlas;  // frame colour, opaque
+uniform sampler2D uAlpha;  // frame alpha, as gray
 uniform vec2 uGrid; // cols, rows
-uniform float uAdd; // 1 = this instance blends additively
 in vec2 vUv;
 in vec4 vColor;
 in float vTex;
@@ -87,26 +97,19 @@ void main() {
   // Canvas row 0 is the TOP; the texture is flipY'd, so v counts from the
   // bottom — a tile on canvas row r spans v rows [rows-1-r, rows-r].
   vec2 uv = vec2(col + vUv.x, (uGrid.y - 1.0 - row) + vUv.y) / uGrid;
-  vec4 s = texture(uAtlas, uv);
-  // The era's modulate-x2 colour stage, same as the terrain's Whitening: the
-  // baked colours are authored around 128 = full brightness. Without it the
-  // ghost dragon's mist (colour bytes <=57) renders near-black instead of the
-  // pale smoke the game shows.
-  vec3 rgb = s.rgb * vColor.rgb * 2.0;
-  if (uAdd > 0.5) {
-    // Additive art often ships NO alpha channel at all (the phoenix's fire
-    // sequence is all-zero alpha) — under ONE/ONE blending only rgb matters,
-    // so alpha must neither gate the fragment nor reach the blender. The
-    // baked alpha keys are the particle's fade curve; for additive that fade
-    // can only happen through the colour.
-    rgb *= vColor.a;
-    if (max(rgb.r, max(rgb.g, rgb.b)) < 0.004) discard;
-    outColor = vec4(rgb, 1.0);
-  } else {
-    float a = s.a * vColor.a;
-    if (a < 0.003) discard;
-    outColor = vec4(rgb, a);
-  }
+  vec4 s = vec4(texture(uAtlas, uv).rgb, texture(uAlpha, uv).r);
+  // The era's particle pipeline in two lines. Colour: modulate-x2 (baked
+  // colours are authored around 128 = full brightness — the ghost dragon's
+  // mist peaks at 57), faded by the baked alpha curve. Blend (see the
+  // material): ONE / ONE_MINUS_SRC_ALPHA with STRAIGHT colour, so rgb is
+  // what a texel ADDS and alpha is what it OCCLUDES — fire painted on black
+  // with a zero alpha channel is purely additive, smoke with real alpha
+  // covers, and one instance can mix both kinds of frame. No blending
+  // heuristic; this is the art's own convention.
+  vec3 rgb = s.rgb * vColor.rgb * 2.0 * vColor.a;
+  float a = s.a * vColor.a;
+  if (a < 0.003 && max(rgb.r, max(rgb.g, rgb.b)) < 0.004) discard;
+  outColor = vec4(rgb, a);
 }`;
 
 /** Strides of the flat [frame, ...values] channel arrays. */
@@ -155,12 +158,17 @@ export function createFxSystem(
     fragmentShader: FRAG,
     uniforms: {
       uAtlas: { value: null },
+      uAlpha: { value: null },
       uGrid: { value: new THREE.Vector2(1, 1) },
-      uAdd: { value: fx.additive ? 1 : 0 },
     },
     transparent: true,
     depthWrite: false,
-    blending: fx.additive ? THREE.AdditiveBlending : THREE.NormalBlending,
+    // ONE / ONE_MINUS_SRC_ALPHA with straight colour — the FRAG explains why
+    // this single mode covers both the additive fire and the covering smoke.
+    blending: THREE.CustomBlending,
+    blendEquation: THREE.AddEquation,
+    blendSrc: THREE.OneFactor,
+    blendDst: THREE.OneMinusSrcAlphaFactor,
   });
 
   const mesh = new THREE.Mesh(geo, mat);
@@ -177,8 +185,9 @@ export function createFxSystem(
   mesh.matrix.multiplyMatrices(objectMatrix, local);
   mesh.renderOrder = 3; // over the water sheet and the ground overlay
 
-  const ready = buildAtlas(fx.textures).then(({ tex, cols, rows }) => {
+  const ready = buildAtlas(fx.textures).then(({ tex, alpha, cols, rows }) => {
     mat.uniforms.uAtlas!.value = tex;
+    mat.uniforms.uAlpha!.value = alpha;
     (mat.uniforms.uGrid!.value as THREE.Vector2).set(cols, rows);
   });
 
@@ -226,6 +235,7 @@ export function createFxSystem(
       geo.dispose();
       mat.dispose();
       (mat.uniforms.uAtlas!.value as THREE.Texture | null)?.dispose();
+      (mat.uniforms.uAlpha!.value as THREE.Texture | null)?.dispose();
     },
   };
   return { system, ready };

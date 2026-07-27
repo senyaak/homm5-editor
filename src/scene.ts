@@ -212,10 +212,16 @@ export interface FxInstancePayload {
   scale: number;
   /** Playback rate multiplier, from the instance's <Speed>. */
   speed: number;
-  /** Frame table the baked texture indices point into; null = empty slot. */
-  textures: (string | null)[];
-  /** Additive (glows, fire) vs normal alpha — see the blending note. */
-  additive: boolean;
+  /**
+   * Frame table the baked texture indices point into; null = empty slot.
+   * Each frame ships as TWO data URIs — colour (alpha forced opaque) and the
+   * real alpha as a grayscale image — because a browser canvas premultiplies:
+   * a PNG texel with alpha 0 loses its colour on the way to the atlas, and
+   * zero-alpha colour is exactly what fire IS in this art (rgb adds, alpha
+   * occludes; the renderer blends ONE/ONE_MINUS_SRC_ALPHA with straight
+   * colour, so one instance mixes additive fire and covering smoke frames).
+   */
+  textures: ({ c: string; a: string } | null)[];
 }
 
 /** A tile offset from an object's own tile, in grid axes; may be negative. */
@@ -674,13 +680,10 @@ function particlesOfEffect(
       // The frame table, order preserved — the baked indices point into it.
       // Empty <Item/> slots stay as nulls so the numbering holds.
       const texBlock = inst.match(/<Textures>([\s\S]*?)<\/Textures>/)?.[1] ?? '';
-      let hasAlpha = false;
       const textures = listItems(texBlock).map((t) => {
         const href = t.attrs.match(/href="([^"]+)"/)?.[1];
         if (!href) return null;
-        const tex = textureDataUri('', data, texSize, '/' + resolveHref(instance.dir, href));
-        if (tex?.hasAlpha) hasAlpha = true;
-        return tex?.uri ?? null;
+        return particleTextureUris(data, texSize, '/' + resolveHref(instance.dir, href));
       });
       if (!textures.some(Boolean)) continue;
 
@@ -720,10 +723,6 @@ function particlesOfEffect(
         scale: instScale,
         speed: +(inst.match(/<Speed>([-\d.eE]+)</)?.[1] ?? 1) || 1,
         textures,
-        // The era's convention the art is drawn for: a fire frame is painted on
-        // black with no alpha and adds; a smoke frame carries real alpha and
-        // blends. One mode per instance, from whether any frame has alpha.
-        additive: !hasAlpha,
       });
     } catch { /* one broken instance must not take the object's other instances down */ }
   }
@@ -1967,6 +1966,33 @@ function textureDataUri(model: string, data: Assets, size: number, href?: string
     // skin sits at 96%, a feathered overlay at 11%), so where the line lands
     // between them does not matter.
     return { uri: pngDataUri(size, size, out), hasAlpha, opaque: solidTexels > size * size * 0.5 };
+  } catch { return null; }
+}
+
+/**
+ * A particle frame's texture as the TWO images FxInstancePayload.textures
+ * documents: colour with alpha forced opaque, and the real alpha as gray.
+ * A single straight-alpha PNG cannot make the trip — the renderer's canvas
+ * premultiplies and a fire texel (colour under alpha 0) comes out black.
+ */
+function particleTextureUris(data: Assets, size: number, href: string): { c: string; a: string } | null {
+  try {
+    const tx = readFileSync(data.path(href.split('#')[0]!), 'utf8');
+    const dest = tx.match(/<DestName href="([^"]+)"/);
+    if (!dest) return null;
+    const ddsPath = data.path(join(dirname(href.split('#')[0]!), dest[1]!));
+    if (!existsSync(ddsPath)) return null;
+    const img = decodeDDS(ddsPath);
+    const c = new Uint8Array(size * size * 4);
+    const a = new Uint8Array(size * size * 4);
+    for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+      const sx = x * img.width / size | 0, sy = y * img.height / size | 0;
+      const si = (sy * img.width + sx) * 4, o = (y * size + x) * 4;
+      c[o] = img.rgba[si]!; c[o + 1] = img.rgba[si + 1]!; c[o + 2] = img.rgba[si + 2]!; c[o + 3] = 255;
+      const av = img.rgba[si + 3]!;
+      a[o] = av; a[o + 1] = av; a[o + 2] = av; a[o + 3] = 255;
+    }
+    return { c: pngDataUri(size, size, c), a: pngDataUri(size, size, a) };
   } catch { return null; }
 }
 

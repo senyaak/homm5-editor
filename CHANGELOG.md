@@ -72,18 +72,21 @@ one.
   skeleton carries a display scale on its root bone (the phoenix is shown at
   0.37 of its authored mesh, the devil at 0.7) — the editor now applies it to
   the placed model while the effect stays full-size, which is the game's own
-  look: a small bird inside towering fire. The missing fire: additive effect
-  art often ships with no alpha channel at all, and the particle shader was
-  discarding every zero-alpha fragment — 986 living flame particles drew
-  nothing. Additive instances now ignore texture alpha and play their baked
-  fade curves through the colour instead. And the colour itself: the baked
-  colour bytes are stored in the era's B,G,R,A order, so every flame in the
-  editor was quietly tinted BLUE and every water swirl beige — the campfire
-  got away with it only because its tint is nearly white. Swapped, the
-  phoenix, the arch devil, the infernal succubus and the fire elemental burn
-  orange, and the water elemental churns in blue. (The base devil, base
-  succubus and the earth elemental carry no idle effect in the game's data —
-  the fire belongs to the upgrades.)
+  look: a small bird inside towering fire. The missing fire: fire art ships
+  with NO alpha channel — that IS the era's blend convention (a texel's
+  colour adds, its alpha occludes, one mode: ONE/ONE_MINUS_SRC_ALPHA with
+  straight colour) — and it hit two traps at once: a blend-guessing heuristic
+  classified zero-alpha fire as smoke and discarded every flame fragment,
+  and the browser canvas the atlas is built through premultiplies, turning
+  colour-under-zero-alpha black in transit, so each frame now travels as a
+  colour image plus its alpha as a separate grayscale. And the colour itself:
+  the baked colour bytes are stored in the era's B,G,R,A order, so every
+  flame in the editor was quietly tinted BLUE and every water swirl beige —
+  the campfire got away with it only because its tint is nearly white. With
+  all three fixed, the phoenix, the arch devil, the infernal succubus and
+  the fire elemental burn orange, and the water elemental churns in blue.
+  (The base devil, base succubus and the earth elemental carry no idle
+  effect in the game's data — the fire belongs to the upgrades.)
 
 - **Effects and Light join the view toggles.** Next to Idle stance the bar now
   carries **Effects: on/off** (stop the particles moving and drawing) and

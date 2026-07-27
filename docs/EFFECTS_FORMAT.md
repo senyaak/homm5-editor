@@ -61,12 +61,10 @@ on these instances:
   dragon's mist peaks at 57 and rendered near-black under a plain modulate.
   The renderer doubles the colour term (not alpha); saturated effects
   (campfires at 255) just clamp where they already clamped.
-* **Additive art can ship with NO alpha channel at all** — the phoenix's
-  entire fire sequence is zero-alpha (only the `NoADD/` variants carry one).
-  Under ONE/ONE blending only the colour matters, so an additive instance
-  must not gate fragments on alpha (986 alive flame particles rendered as
-  nothing), and the baked alpha keys — the particle's fade curve — reach the
-  screen by multiplying the colour instead.
+* **Fire art ships with NO alpha channel at all** — the phoenix's entire
+  fire sequence is zero-alpha (only the `NoADD/` variants carry one). That is
+  not an omission but the blend convention itself: rgb adds, alpha occludes —
+  see §5 for the single blend mode this implies and the two traps it set.
 * **The clip skeleton's root bone carries the creature's display scale**
   (Phoenix 0.37, Devil/ArchDevil 0.7, Griffin 1.5): the mesh is authored
   full-size and the game shows it through the rig. The editor applies it to
@@ -140,18 +138,30 @@ its particle's `[birth, death]`.
 The scene payload carries only each instance's placement, texture table (data
 URIs) and uid (`FxInstancePayload`); the keys go over their own IPC (`map:fx`)
 as typed arrays — as JSON they doubled the scene payload of one map. The
-renderer (renderer/particles.ts) packs the texture table into one atlas and
+renderer (renderer/particles.ts) packs the texture table into atlases and
 draws each instance as instanced camera-facing quads; a frame update lerps the
 alive particles' channels at the loop time and rewrites the attributes. One
 shared clock, phases spread per placement so identical objects don't flicker
 in lockstep. The static glow card (§2 of the scene resolver) stays underneath
 as the pick target and the fallback for anything that fails to decode.
 
-Still simplified, in the order they would matter:
+**Blending is NOT guessed — the art has one convention.** Every instance
+draws `ONE / ONE_MINUS_SRC_ALPHA` with STRAIGHT colour: a texel's rgb is what
+it ADDS and its alpha is what it OCCLUDES. Fire is painted on black with a
+zero alpha channel (purely additive), smoke carries real alpha (covers), and
+one frame table freely mixes both — the phoenix's fire frames sit next to its
+smoke frames in the same instance. Two consequences worth knowing:
 
-* Blending is guessed from the art: any frame with real alpha → normal
-  blending, none → additive (fire on black adds; smoke with alpha blends).
-  One mode per instance, though a table mixes both kinds. **[~]**
+* An early blend-per-instance heuristic ("any frame with alpha → normal")
+  classified zero-alpha fire as smoke and the alpha gate discarded every
+  flame fragment — the fire elemental stood bare while 350 flame particles
+  drew nothing.
+* Colour under alpha 0 cannot ride a normal PNG through the renderer: a
+  browser canvas premultiplies, so the atlas received black where the fire
+  was. Each frame therefore ships as TWO images — colour with alpha forced
+  opaque, and the real alpha as a grayscale — recombined in the shader.
+
+Still simplified, in the order they would matter:
 * The instance's `<Offset>`, `<EndCycle>`/`<CycleCount>` (loop windows) and
   `<WindAffected>` are ignored; `<Speed>` is applied as a time scale.
 * Position space is taken as the instance's local frame before its
