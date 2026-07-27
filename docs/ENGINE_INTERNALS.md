@@ -250,6 +250,47 @@ no script API can do), and it is the natural home for stat contributions from
 new artifacts. Finding it is the next reverse-engineering job, and it matters
 more than anything else on this list.
 
+## Hunting the equipment aggregator
+
+Not found yet. This is what the search established, so the next attempt starts
+here rather than at the beginning.
+
+**An artifact record's stats, in memory.** The loader names each field as it
+parses it, which gives the layout directly: `CostOfGold` at +0x34, `AIValue`
++0x38, `CanBeGeneratedToSell` +0x3c, and `HeroStatsModif` at **+0x40** (the
+parser does `add ecx, 0x40` before calling the sub-parser at `0xb1a1b0`).
+Inside that struct: Attack +4, Defence +8, Knowledge +0xc, SpellPower +0x10,
+Morale +0x14, Luck +0x18.
+
+**How a hero's effective stats are read.** `GetHeroStat` dispatches through a
+table of three-dword entries at `0x108db8c` — {thunk, this-adjustment, virtual
+base displacement} per `STAT_*` id — and each thunk jumps to a vtable slot:
+
+| stat | slot | | stat | slot |
+|---|---|---|---|---|
+| Experience | `+0x1a4` | | Knowledge | `+0x1c` |
+| Attack | `+0x10` | | Luck | `+0x13c` |
+| Defence | `+0x14` | | Morale | `+0x140` |
+| SpellPower | `+0x18` | | | |
+
+The dispatch adjusts `this` through a **virtual base**, so those slots belong
+to a base class of `CAdvMapHero` rather than to its primary vtable — which is
+why reading `CAdvMapHero`'s own vtable at `+0x10` lands somewhere unrelated.
+Resolving that base is the next step. `tools/reverse/vtable.py` turns any RTTI
+class name into its vtables and the functions in any slot.
+
+**Two searches that came back empty**, worth not repeating: no code reads
+several of the six stat offsets close together, and none reads them
+index-scaled either (`tools/reverse/findagg.py`). So the sum does not walk the
+record's fields the obvious way — it goes through accessors, or copies the
+struct first.
+
+**The promising thread.** `CSwapMoveArtifactCmd` is the command behind moving
+an artifact in the hero screen — putting one on, taking one off, the very
+"click in the artifact window" a hook would want. Its execute method is
+`0x7623c0`; the calls worth following out of it are `0x764670`, `0x7646c0` and
+`0x763fd0`.
+
 ## Open threads
 
 - **Dark energy.** `GetPlayerNecroEnergy` exists with no setter, as known. The
@@ -260,7 +301,7 @@ more than anything else on this list.
   approach (probably the town/day-tick code, or watching the field offset the
   getter reads). Since the plan is "just restore it every day", finding the
   write site is enough; no new mechanic is needed.
-- **The equipment aggregator** (see above) — the most valuable unfound thing.
+- **The equipment aggregator** — see the section above for where the hunt got to.
 - Whether an eleventh artifact set has a compiled ceiling. No accessor
   returning 11 has a caller and the container is dynamic, but that is an
   absence of evidence.
