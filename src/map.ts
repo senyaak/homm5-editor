@@ -32,6 +32,19 @@ export interface MapPos {
   z: number;
 }
 
+/**
+ * One designer-placed point light on a map object. World units throughout;
+ * the offset is in map axes relative to the object (see MapObject.pointLights).
+ * Colour is the game's 0..1 sRGB floats, untouched.
+ */
+export interface PointLightDef {
+  x: number;
+  y: number;
+  z: number;
+  color: [number, number, number];
+  radius: number;
+}
+
 /** Object-type name -> number of objects of that type (see typeCounts()). */
 export type TypeCounts = Record<string, number>;
 
@@ -115,6 +128,39 @@ export class MapObject {
   get shared(): string | null {
     const s = find(this.el, 'Shared');
     return s ? (s.attrs.href || null) : null;
+  }
+
+  /**
+   * Designer-placed point lights riding on this object — the violet pool under
+   * an underground crystal, the torch glow on a mine. ~10,800 of these across
+   * the shipped maps, so this is where most of a map's lighting lives (the
+   * AmbientLight preset is the rest; effect-borne AnimLights barely exist on
+   * the adventure map).
+   *
+   * Everything is in world units. The offset is relative to the object's
+   * anchor but in MAP axes, not the object's: the same mine placed at Rot 0
+   * and Rot 3π/2 stores offsets that differ by exactly that rotation, so the
+   * editor that wrote them baked the rotation in and the engine adds them
+   * as-is. z is height above the object's ground.
+   */
+  get pointLights(): PointLightDef[] {
+    const pl = find(this.el, 'pointLights');
+    if (!pl) return [];
+    const out: PointLightDef[] = [];
+    for (const item of children(pl)) {
+      if (item.name !== 'Item') continue;
+      const pos = find(item, 'Pos');
+      const col = find(item, 'Color');
+      if (!pos || !col) continue;
+      out.push({
+        x: +childText(pos, 'x') || 0,
+        y: +childText(pos, 'y') || 0,
+        z: +childText(pos, 'z') || 0,
+        color: [+childText(col, 'x') || 0, +childText(col, 'y') || 0, +childText(col, 'z') || 0],
+        radius: +childText(item, 'Radius') || 0,
+      });
+    }
+    return out;
   }
 
   /**

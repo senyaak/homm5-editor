@@ -27,6 +27,17 @@ one.
   counts from the zenith, not the horizon. Written up in docs/LIGHTING.md,
   including why the preset's "Sky" is a set of reflection blobs and not a sky.
 
+- **The designers' point lights pool on the ground.** The violet glow under an
+  underground crystal, the torch light on a mine wall, the red wash of a lava
+  chamber — that light was never in the lighting preset or the effects: every
+  placed object in a map file can carry its own point lights, and the shipped
+  maps carry about ten thousand eight hundred of them. The editor bakes each
+  floor's lights into a lightmap the ground is lit through, in the same colour
+  space as the rest of the game's formula, so an underground floor now looks
+  like the cave the designers lit rather than a uniformly dark room. The pools
+  follow their object when it is dragged and die with it when it is deleted.
+  Objects standing in a pool are not yet tinted by it — the ground is.
+
 - **Particle effects play.** Campfires burn, mana crystals spark, portals
   shimmer — every effect a placed object references is drawn and moving, not
   as an approximation but as the game's own frames: `bin/effects` — the last

@@ -1,10 +1,12 @@
-# Map lighting (`Lights/_(AmbientLight)`, `bin/Lights`) — notes
+# Map lighting (`Lights/_(AmbientLight)`, map `pointLights`, `bin/Lights`) — notes
 
-Status: **the per-map ambient preset is read and applied.** The editor lights a
-map with the map's own preset — sun colour and direction, ambient and shade —
-instead of one hard-coded look for every map. Point lights inside effects
+Status: **the per-map ambient preset is read and applied, and the designers'
+point lights pool on the ground.** The editor lights a map with the map's own
+preset — sun colour and direction, ambient and shade — and bakes the ~hundreds
+of per-object point lights a map carries (the violet glow under an underground
+crystal) into a lightmap the terrain adds on top. Point lights inside effects
 (`AnimLight` → `bin/Lights`) are located but not yet decoded; they are part of
-the effects work.
+the effects work — and they are the SMALL mechanism (§4), not this one.
 
 Confidence: **[OK]** = verified against a redundancy in the data · **[~]** =
 strong heuristic, not yet proven.
@@ -74,6 +76,64 @@ counter-clockwise. The pitch reading is backed by the brightness arithmetic
 (§2); which axis yaw counts from, and which way it turns, has no reachable
 ground truth yet — judged by eye against the game.
 
+## 3a. Designer point lights (`<pointLights>` on placed objects) **[OK]**
+
+Where the light a player actually notices lives. Every placed object in
+`map.xdb` may carry a `<pointLights>` list:
+
+```
+<AdvMapStatic>
+  <pointLights>
+    <Item>
+      <Pos><x>0</x><y>0</y><z>6</z></Pos>       world units, see below
+      <Color><x>0.78</x><y>0.26</y><z>1</z></Color>
+      <Radius>20</Radius>
+    </Item>
+  </pointLights>
+  <Shared href=".../Subterra/Crystal03.(AdvMapStaticShared).xdb ..."/>
+```
+
+That Item is the violet pool under an underground crystal. Counted across the
+shipped maps: **~10,800** of these (A2C3M1 alone has 546; C5M5 401) — against
+8-of-532 effects with an `AnimLight`. While reverse-engineering "light" we
+stared at presets and effects; the designers' light was sitting in the map
+file itself.
+
+Readings, and what backs them:
+
+* **Everything is world units.** The z values (3–6 over crystals and mine
+  torches) match the models' world-unit heights, and a single `<Pos>` vector
+  does not mix units.
+* **The offset is in MAP axes, not the object's.** The same mine placed at
+  Rot 0 and Rot 3π/2 stores offsets differing by exactly that rotation — the
+  original editor baked the rotation in when the designer dragged the light,
+  and the engine adds the vector as-is. So does ours.
+* **Falloff [~]:** the game's own attenuation curve is unmeasured; the editor
+  uses `(1 − d/r)²`, which reads as a soft pool with no hard rim. `d` is true
+  3D distance to the ground (the light's height narrows its pool).
+
+How the editor draws them (renderer/app.ts, `bakeLightMap`): hundreds of
+lights per map is beyond what three.js light objects can carry, and they only
+move when their object does — so each floor bakes its lights into one RGBA
+texture over the ground plane (4 texels per tile side), and the terrain and
+projected-mound shaders add the sample to the game's own sum:
+`col · (uAmb + uSunCol·|N·L| + lightmap) · 2` — the baked colours join in the
+same gamma space the rest of the formula runs in. Moving or deleting a
+light-carrying object marks the floor dirty and the render loop re-bakes,
+throttled to 4 Hz so a drag stays smooth.
+
+Still simplified:
+
+* **Objects standing in a pool are not tinted by it** — the pool on the
+  ground is what reads as "the crystal glows"; the game also brightens the
+  props around it.
+* Map-level `<PointLights>` (named, e.g. `undead_light2`) exist in 5 maps and
+  are script-driven — their stored positions are placeholders, so drawing
+  them would light the wrong place. Ignored.
+* New objects placed from the palette carry no lights yet (the palette's
+  Shared templates have none — the shipped maps' designers added them by
+  hand); a lights editor is Phase 4 property-panel work.
+
 ## 4. Not the map view's problem
 
 * `PWLpic.dds` next to a map is its **loading screen**, a staged cinematic —
@@ -92,6 +152,10 @@ ground truth yet — judged by eye against the game.
   three.js sun converted), with the sun unit-length at the pitch/yaw the
   preset names; before any map, the fallback look. Skips itself without the
   game data.
+* `npx playwright test point-lights` — opening A2C1M2 and switching to the
+  underground bakes its 68 lights; asserted on the LIT AREA, not just a flag,
+  because the texel count scales with radius² and a misread unit would move
+  it 4× — `view.pointLights()`.
 * The gamma reasoning and the zenith reading of Pitch are checked by
   arithmetic against measured pixels (§2), not by a test — a change to either
   shows up as every day map rendering dark, which is exactly what both bugs

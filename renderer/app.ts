@@ -145,6 +145,13 @@ interface Floor3D {
    * arrive over their own IPC); empty until then and on maps without effects.
    */
   fx: FxSystem[];
+  /**
+   * The floor's designer point lights (map.xdb <pointLights>), baked into one
+   * texture the terrain shaders add to the preset's light. See bakeLightMap.
+   */
+  lightMap: THREE.DataTexture;
+  /** A light-carrying object moved or died; the render loop rebakes soon. */
+  lightsDirty: boolean;
   terrainMesh: THREE.Mesh;
   waterMesh: THREE.Mesh | null;
   /** The sea texture, kept so sculpting can raise a sheet on a map that began dry. */
@@ -475,6 +482,7 @@ function clearWorld(): void {
     for (const b of fl.batches.values()) b.im.dispose();
     for (const s of fl.fx) s.dispose();
     fl.fx.length = 0;
+    fl.lightMap.dispose();
     fl.group.traverse((o) => { if (o instanceof THREE.Mesh) o.geometry.dispose(); });
   }
   if (boxHelper) { scene.remove(boxHelper); boxHelper = null; }
@@ -736,6 +744,9 @@ const BATCH_HEADROOM = 8;
 function syncInstance(fl: Floor3D, inst: Instance): void {
   const batch = fl.batches.get(inst.g);
   const mesh = inst.id === null ? null : fl.meshes.get(inst.id);
+  // If the object carries designer point lights, its pool follows it (rebaked
+  // by the render loop, throttled, so a drag doesn't bake per mousemove).
+  markLightsDirty(fl, inst);
   // An animated object is drawn by its own skinned mesh rather than a slot in
   // the batch, so a drag has to move that instead — and it may be the only
   // thing to move, since an animated instance is not in the batch at all.
@@ -956,6 +967,8 @@ uniform float uScale;
 uniform float uRockScale;
 uniform float uCliff;   // 0 disables the rock blend entirely
 uniform vec3 uSunDir; uniform vec3 uSunCol; uniform vec3 uAmb;
+uniform sampler2D uLm;  // baked designer point lights (bakeLightMap)
+uniform float uInvTiles;
 in vec2 vGrid; in vec2 vWorld; in vec3 vNrm; in vec3 vPos;
 out vec4 outColor;
 void main() {
@@ -1001,12 +1014,18 @@ void main() {
   }
 
   // The game's own fixed-function sum, in the same gamma space it ran in:
-  // albedo · (ambient + sun·NdotL) · 2 — the ×2 is the era's modulate-×2 (the
-  // preset's colours are authored around 0.2-0.55 with it in mind).
+  // albedo · (ambient + sun·NdotL + pointLights) · 2 — the ×2 is the era's
+  // modulate-×2 (the preset's colours are authored around 0.2-0.55 with it in
+  // mind), and the baked designer lights join the sum before it, like the
+  // engine's own vertex lights would.
   // abs(), not max(): the terrain is DoubleSide and a generated wall normal may
   // point into the cliff, which would otherwise pin the face at ambient.
+  // The lightmap spans the TILES (vWorld/tiles), not vGrid: vGrid is nudged
+  // half a texel to hit the V-wide mask's texel centers and would smear the
+  // pools half a tile off their objects.
   float d = abs(dot(n, normalize(uSunDir)));
-  outColor = vec4(col * (uAmb + uSunCol * d) * 2.0, 1.0);
+  vec3 pl = texture(uLm, vWorld * uInvTiles).rgb;
+  outColor = vec4(col * (uAmb + uSunCol * d + pl) * 2.0, 1.0);
 }`;
 
 const loadImg = (src: string): Promise<HTMLImageElement> => new Promise((res, rej) => {
@@ -1085,6 +1104,7 @@ uniform sampler2D uOverlay;
 uniform float uScale;
 uniform float uHasOverlay;
 uniform vec3 uSunDir; uniform vec3 uSunCol; uniform vec3 uAmb;
+uniform sampler2D uLm;
 in vec2 vGrid; in vec2 vWorld; in vec2 vUv; in vec3 vNrm;
 out vec4 outColor;
 void main() {
@@ -1109,8 +1129,11 @@ void main() {
   }
   // Lit with the terrain's own sun formula: the part IS ground, and a mound
   // shaded differently from the flat around it reads as a decal, not a hump.
+  // Here vGrid is exactly grid/tiles (see PROJ_VERT), which is the lightmap's
+  // own mapping, so the pools land where the terrain draws them.
   float d = abs(dot(normalize(vNrm), normalize(uSunDir)));
-  outColor = vec4(col * (uAmb + uSunCol * d) * 2.0, 1.0);
+  vec3 pl = texture(uLm, vGrid).rgb;
+  outColor = vec4(col * (uAmb + uSunCol * d + pl) * 2.0, 1.0);
 }`;
 
 /**
@@ -1157,6 +1180,7 @@ function projectBatch(fl: Floor3D, g: number): void {
         uHasOverlay: { value: overlay ? 1 : 0 },
         uMapSide: { value: s.V - 1 },
         uUnits: { value: U },
+        uLm: { value: fl.lightMap },
         uSunDir, uSunCol, uAmb: uAmbCol,
       },
       side: THREE.DoubleSide,
@@ -1222,6 +1246,7 @@ async function upgradeToSplat(fl: Floor3D): Promise<void> {
       uRock: { value: rock }, uCliff: { value: rock ? cliffAmount : 0 },
       uScale: { value: texScale },
       uRockScale: { value: texScale / U },
+      uLm: { value: fl.lightMap }, uInvTiles: { value: 1 / (s.V - 1) },
       uSunDir, uSunCol, uAmb: uAmbCol,
     },
     side: THREE.DoubleSide,
@@ -1561,14 +1586,17 @@ function buildFloor(floor: Floor, geos: THREE.BufferGeometry[], mats: THREE.Mate
     return !(handle && addIdle(objGroup, idle, it, handle, i * 0.37));
   });
   const batches = buildBatches(still, meshes, geos, mats, objGroup);
-  return {
+  const fl: Floor3D = {
     name: floor.name, V, heights, flags: floor.flags, colors: floor.colors,
     // A river already in the map is at full depth: never dig it again.
     riverDrop: new Map(floor.riverVerts.map((v) => [v, RIVER_DEPTH])),
     passable: floor.passable, river: new Set(floor.riverVerts), passMeshes: [], footMeshes: [],
     group, objGroup, meshes, batches, idle, fx: [], terrainMesh, waterMesh, waterTex: floor.water?.tex ?? null,
     splat: floor.splat, maskTex: null, ambient: floor.ambient, instances: floor.instances,
+    lightMap: makeLightMap(V), lightsDirty: false,
   };
+  bakeLightMap(fl); // cheap when nothing on the floor carries lights
+  return fl;
 }
 
 function buildWorld(S: Scene): void {
@@ -1645,6 +1673,81 @@ function removeFx(fl: Floor3D, inst: Instance): void {
     s.dispose();
     fl.fx.splice(i, 1);
   }
+}
+
+// --- designer point lights ---------------------------------------------------
+//
+// Most of the light a map designer actually placed is here: ~10,800 point
+// lights across the shipped maps ride on placed objects (map.xdb
+// <pointLights>) — the violet pool under an underground crystal, the torch
+// glow on a mine. Hundreds per map is far beyond what three.js light objects
+// can carry, and they only move when their object does, so each floor bakes
+// them into one texture over the ground plane; the terrain shaders add that
+// sample to the preset's ambient+sun sum, in the same gamma space. Objects
+// standing in a pool are NOT tinted by it yet — the pool on the ground is
+// what reads as "the crystal glows".
+
+/** Lightmap texels per tile side. 4 keeps the common torch pool (radius 8 = 4 tiles) 32 texels wide. */
+const LM_T = 4;
+
+function makeLightMap(V: number): THREE.DataTexture {
+  const side = Math.max(1, (V - 1) * LM_T);
+  const tex = new THREE.DataTexture(new Uint8Array(side * side * 4), side, side, THREE.RGBAFormat);
+  tex.magFilter = tex.minFilter = THREE.LinearFilter;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+/** Re-accumulate every light on the floor into its lightmap. */
+function bakeLightMap(fl: Floor3D): void {
+  fl.lightsDirty = false;
+  const img = fl.lightMap.image as unknown as { data: Uint8Array; width: number };
+  const side = img.width, data = img.data;
+  data.fill(0);
+  const { V, heights } = fl;
+  const texelW = U / LM_T; // texel p sits at world (p + 0.5) * texelW
+  for (const inst of fl.instances) {
+    if (!inst.lights) continue;
+    for (const l of inst.lights) {
+      const r = l.radius;
+      if (r <= 0) continue;
+      // The offset is world units in MAP axes — the editor that wrote it baked
+      // the object's rotation in (see MapObject.pointLights) — so it is added
+      // as-is, and z is height above the object's ground.
+      const wx = tileCenter(inst.x) + l.x;
+      const wy = tileCenter(inst.y) + l.y;
+      const wz = inst.z + l.z;
+      const x0 = Math.max(0, Math.floor((wx - r) / texelW)), x1 = Math.min(side - 1, Math.ceil((wx + r) / texelW));
+      const y0 = Math.max(0, Math.floor((wy - r) / texelW)), y1 = Math.min(side - 1, Math.ceil((wy + r) / texelW));
+      for (let py = y0; py <= y1; py++) {
+        const ty = (py + 0.5) * texelW;
+        const rowH = Math.max(0, Math.min(V - 1, Math.round(ty / U))) * V;
+        for (let px = x0; px <= x1; px++) {
+          const tx = (px + 0.5) * texelW;
+          const dx = tx - wx, dy = ty - wy;
+          const dz = wz - heights[rowH + Math.max(0, Math.min(V - 1, Math.round(tx / U)))]!;
+          const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+          if (d >= r) continue;
+          // Falloff [~]: the game's own curve is unmeasured; quadratic reads as
+          // a soft pool without the hard rim a linear cone leaves.
+          const t = 1 - d / r;
+          const a = t * t * 255;
+          const at = (py * side + px) * 4;
+          // Saturating add by hand — a Uint8Array otherwise wraps at 256 and a
+          // spot where two torches overlap would go DARK.
+          data[at] = Math.min(255, data[at]! + a * l.color[0]);
+          data[at + 1] = Math.min(255, data[at + 1]! + a * l.color[1]);
+          data[at + 2] = Math.min(255, data[at + 2]! + a * l.color[2]);
+        }
+      }
+    }
+  }
+  fl.lightMap.needsUpdate = true;
+}
+
+/** Note that this object's pools must be re-baked — cheap no-op for the 99% without lights. */
+function markLightsDirty(fl: Floor3D, inst: Instance): void {
+  if (inst.lights?.length) fl.lightsDirty = true;
 }
 
 // Switch which floor is shown; only its group is visible and pickable.
@@ -1939,6 +2042,7 @@ async function deleteSelected(): Promise<void> {
   removeFromBatch(fl, inst);
   removeIdle(fl, inst);
   removeFx(fl, inst);
+  markLightsDirty(fl, inst); // its pools die with it, on the next bake
   // The geometry is shared between every instance of this model, so it is the
   // scene's to dispose, not ours.
   const i = fl.instances.indexOf(inst);
@@ -4716,6 +4820,13 @@ interface ViewApi {
    * look, which a screenshot alone cannot tell apart from a dim preset.
    */
   ambientState(): { preset: boolean; sun: number[]; sunPos: number[]; terrain: { amb: number[]; sun: number[] } };
+  /**
+   * The active floor's designer point lights: how many the floor carries and
+   * how many lightmap texels their bake actually lit. A wrong offset/radius
+   * reading would still light SOMETHING, so tests assert on both together
+   * with where the pools land (the texel count scales with radius²).
+   */
+  pointLights(): { count: number; litTexels: number };
   /** True once the ground textures are decoded and a stroke would land. */
   paintReady(): boolean;
   /** Edits sent to the main process and not yet acknowledged. */
@@ -4864,6 +4975,16 @@ const view: ViewApi = {
         sun: uSunCol.value.toArray().map((v) => +v.toFixed(3)),
       },
     };
+  },
+  pointLights() {
+    const fl = world ? activeFloor() : null;
+    if (!fl) return { count: 0, litTexels: 0 };
+    if (fl.lightsDirty) bakeLightMap(fl); // a test asks right after an edit
+    const count = fl.instances.reduce((a, i) => a + (i.lights?.length ?? 0), 0);
+    const data = (fl.lightMap.image as unknown as { data: Uint8Array }).data;
+    let lit = 0;
+    for (let i = 0; i < data.length; i += 4) if (data[i]! | data[i + 1]! | data[i + 2]!) lit++;
+    return { count, litTexels: lit };
   },
   pending() { return pendingCommits; },
   open(path) { return loadMapPath(path); },
@@ -7425,6 +7546,15 @@ $('ms-ok').onclick = () => {
 // stays quiet and only real stalls speak up.
 const JANK_MS = 100;
 let lastT = performance.now();
+let lastLightBake = 0;
+
+// A moved/deleted light-carrier re-bakes its floor's lightmap here, at most
+// four times a second — a full bake is a few ms, a drag fires per mousemove.
+function bakePendingLights(now: number): void {
+  if (!world) return;
+  const fl = world.floors[world.active];
+  if (fl?.lightsDirty && now - lastLightBake > 250) { lastLightBake = now; bakeLightMap(fl); }
+}
 (function loop() {
   requestAnimationFrame(loop);
   const now = performance.now();
@@ -7439,6 +7569,7 @@ let lastT = performance.now();
   if (topView) syncTopCamera(); // follow pan/zoom + the orbit target each frame
   advanceIdle(dt);
   advanceFx(dt);
+  bakePendingLights(now);
   renderer.render(scene, activeCam);
 })();
 

@@ -106,7 +106,9 @@ get a live 3D scene you sculpt, paint, populate, script and pack.
   notes, linked under *Assets and 3D models* below.
 - **The map's own lighting.** Each floor lights like its `AmbientLight` preset
   says — sun colour and direction, ambient and shade, a dark underground —
-  instead of one built-in daylight ([docs/LIGHTING.md](docs/LIGHTING.md)).
+  instead of one built-in daylight; and the ~10,800 point lights the designers
+  hung on placed objects (crystal glow, torch pools) are baked into each
+  floor's ground ([docs/LIGHTING.md](docs/LIGHTING.md)).
 - **Particle effects play.** Campfires burn, mana crystals spark, portals
   shimmer — the game's own frames, not an approximation
   ([docs/EFFECTS_FORMAT.md](docs/EFFECTS_FORMAT.md)).

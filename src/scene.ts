@@ -28,7 +28,7 @@ import { decodeDDS } from './dds.ts';
 import { toAssets } from './assets.ts';
 import type { Assets } from './assets.ts';
 import { loadMap } from './map.ts';
-import type { HommMap } from './map.ts';
+import type { HommMap, PointLightDef } from './map.ts';
 import type { Terrain, TextureLayer } from './terrain.ts';
 import type { Mesh, MeshOptions } from './geometry.ts';
 import { GrannyFile } from './gr2.ts';
@@ -229,6 +229,13 @@ export interface Instance {
   g: number;
   shared: string;
   x: number; y: number; z: number; r: number;
+  /**
+   * Designer-placed point lights riding on this object (map.ts PointLightDef:
+   * world-unit map-axis offset + colour + radius). Absent on the vast majority
+   * of objects; the renderer bakes the ones that exist into the floor's
+   * lightmap, and moving the object moves its pool on the next bake.
+   */
+  lights?: PointLightDef[];
 }
 
 /** The sea: a flat sheet at  over every cell touching water-flagged ground. */
@@ -1101,9 +1108,11 @@ export function buildScene(
     const gi = resolveGeom(shared);
     if (gi < 0) { skipped++; continue; }
     const floor = obj.floor === 1 && terrains[1] ? 1 : 0;
+    const lights = obj.pointLights;
     floorInstances[floor].push({
       id: obj.id, type: obj.type, g: gi, shared: shared.split('#')[0],
       x: pos.x, y: pos.y, z: heightAt(floor, pos.x, pos.y), r: obj.rot || 0,
+      ...(lights.length ? { lights } : {}),
     });
   }
 
