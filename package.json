@@ -65,7 +65,9 @@
     "test-idle": "node tools/test-idle.ts",
     "test-artifact-mod": "node tools/test-artifact-mod.ts",
     "test-artifact-limit": "node tools/test-artifact-limit.ts",
-    "test-typespec": "node tools/test-typespec.ts"
+    "test-typespec": "node tools/test-typespec.ts",
+    "unwrap-exe": "node tools/unwrap-exe.ts",
+    "test-exe-unwrap": "node tools/test-exe-unwrap.ts"
   },
   "dependencies": {
     "@codemirror/legacy-modes": "^6.5.3",

@@ -23,3 +23,8 @@ dist/
 test-results/
 playwright-report/
 .playwright/
+
+# Steamless, downloaded on demand by `npm run unwrap-exe` — somebody else's tool,
+# not ours to redistribute.
+tools/vendor/
+__pycache__/

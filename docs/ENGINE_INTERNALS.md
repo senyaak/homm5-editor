@@ -19,13 +19,20 @@ entropy 7.98 across the section, an extra `.bind` section, and a disassembler
 produces nonsense. This is not a Heroes fact, it is a Steam fact — a GOG or
 retail install ships the code in the clear and needs none of this.
 
-`bin/H5_Game_NCF.exe` here is **ours**: `setCreatureLimit` copies the shipped
-executable aside under that name (the `_NCF` convention the modding scene
-already uses) and patches the copy, never the original. The editor **does not
-unwrap anything** — `readExe` detects a wrapped file and fails with a message
-saying so, and unwrapping is a one-off done outside the editor. The copy in
-this install is clean because it was made from an already-unwrapped
-executable; entropy 5.2, ordinary prologues, disassembles fine.
+`bin/H5_Game_NCF.exe` is **ours**: the shipped executable copied aside under
+that name (the `_NCF` convention the modding scene already uses) and patched
+there, never the original. Entropy 5.2, ordinary prologues, disassembles fine.
+
+```bash
+npm run unwrap-exe
+```
+
+makes that file: it copies the shipped executable when it is already clean —
+the GOG and retail case, where nothing else is needed — and unwraps it with
+Steamless (pinned to `v3.1.0.5`, downloaded once into `tools/vendor/`) when it
+is not. An existing copy is never overwritten, because it is probably already
+carrying a patched ceiling. `--check` says what each file is and writes
+nothing. See `src/exe-unwrap.ts`.
 
 So the rule for reverse engineering is "read an unwrapped build", and on this
 machine that file happens to be the NCF copy. `.rdata` and `.data` are
@@ -35,10 +42,11 @@ compilation, **every address in this document is a landmark for a pattern
 search, never a constant to hardcode** — the same discipline the creature and
 artifact ceiling patchers already follow.
 
-Tooling: capstone via the system Python. `scratchpad/pe.py` (section map,
-VA↔offset, string reader, xref and call scanners, annotated disassembly) and
-`scratchpad/sigs.py` (signature extraction) are throwaway helpers — if this
-work continues they belong in `tools/`.
+Tooling: `tools/reverse/` — `pe.py` (section map, VA↔offset, string reader,
+xref and call scanners, annotated disassembly), `sigs.py` (signature
+extraction) and `gendoc.py`, which regenerates
+[EXE_LUA_REGISTRY.md](EXE_LUA_REGISTRY.md) from the binary. Python because
+capstone is there and not in Node; see that folder's README.
 
 ## How Lua functions are registered
 
