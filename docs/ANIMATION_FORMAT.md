@@ -75,6 +75,14 @@ came apart into chunks). Tracks address bones by name, so a clip plays on
 either copy. When a model names no readable skeleton, the animation's copy is
 the only one there is, and the clip-start pose stands in for bind.
 
+The two rigs need not even be the same size: a Footman's arena clip carries 45
+bones against the model's 39, a Steel Golem's 53 against 46 — the surplus is
+combat props. The clip covers every model bone by name and the extras are
+simply never asked for; requiring identical rigs left both creatures posing as
+the T of their bind skeleton while the clip played on the wrong copy. The one
+guard kept is coverage — a clip that tracks under half of a rig's bones is
+addressing some other naming scheme.
+
 **A model with an empty `<Skeleton/>` is not skinned at all**, whatever its
 AnimSet says: the Gold Mine ships a seven-bone `idle00` AND an empty skeleton
 element (its `<MeshAnimated/>` list is empty too), and skinning its meshes

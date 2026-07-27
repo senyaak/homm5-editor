@@ -33,7 +33,7 @@ import type { Terrain, TextureLayer } from './terrain.ts';
 import type { Mesh, MeshOptions } from './geometry.ts';
 import { GrannyFile } from './gr2.ts';
 import { bakeClip, inverseBindMatrices, readAnimations, readSkeletons } from './animation.ts';
-import type { BakedClip, Skeleton } from './animation.ts';
+import type { Animation, BakedClip, Skeleton } from './animation.ts';
 
 /** Reads an asset .xdb by its href, or null when it is missing. */
 type ReadXdb = (href: string) => string | null;
@@ -704,12 +704,19 @@ function worstSampleStep(clip: BakedClip): number {
  * geometry, so that is the copy to skin against; tracks bind by name, so the
  * clip plays on it all the same.
  *
- * Null when the model declares no skeleton, the file is absent, or the rig
- * differs from the animation's — every case falls back to the animation's copy,
+ * The two rigs do NOT have to be the same: a Footman's arena clip carries 45
+ * bones against the model's 39 — the extras are combat props — and tracks bind
+ * by name, so the clip plays on the model's rig with the surplus ignored. What
+ * IS required is that the clip actually addresses this rig: with under half
+ * the bones tracked the naming schemes clearly differ, everything would freeze
+ * at rest, and the animation's own copy is the safer bet.
+ *
+ * Null when the model declares no skeleton, the file is absent or unreadable,
+ * or the coverage test fails — every case falls back to the animation's copy,
  * which is what all of this behaved like before.
  */
 function modelBindSkeleton(
-  model: { xml: string; rel: string } | null, data: Assets, animSkeleton: Skeleton,
+  model: { xml: string; rel: string } | null, data: Assets, animation: Animation,
 ): Skeleton | null {
   if (!model) return null;
   try {
@@ -727,9 +734,9 @@ function modelBindSkeleton(
     if (!file || file.isUnreadable) return null;
     const skeleton = readSkeletons(file)[0];
     if (!skeleton?.bones.length) return null;
-    // Same rig or nothing: the mesh's indices and the clip's tracks assume it.
-    if (skeleton.bones.length !== animSkeleton.bones.length) return null;
-    if (skeleton.bones.some((b, i) => b.name !== animSkeleton.bones[i]!.name)) return null;
+    const tracked = new Set(animation.groups.flatMap((g) => g.tracks.map((t) => t.name)));
+    const covered = skeleton.bones.filter((b) => tracked.has(b.name)).length;
+    if (covered * 2 < skeleton.bones.length) return null;
     return skeleton;
   } catch { return null; }
 }
@@ -782,7 +789,7 @@ function attachAnimation(
     const animSkeleton = readSkeletons(file)[0];
     if (!animSkeleton?.bones.length || !animation) return drop();
     // The BIND pose, preferably the model's own — see modelBindSkeleton.
-    const skeleton = modelBindSkeleton(model, data, animSkeleton) ?? animSkeleton;
+    const skeleton = modelBindSkeleton(model, data, animation) ?? animSkeleton;
     // The mesh's bone indices only mean anything against THIS bone list. They
     // are checked rather than trusted: a mismatch would not look like a subtle
     // error, it would tear the model apart.
