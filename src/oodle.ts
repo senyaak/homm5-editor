@@ -24,7 +24,10 @@
 //
 // Nothing here is guessed, and nothing is approximate: an arithmetic decoder is
 // bit-exact or it is noise. tools/test-oodle.ts checks the output against the
-// same skeleton stored uncompressed elsewhere in the game data.
+// same skeleton stored uncompressed elsewhere in the game data — and a failure
+// count is NOT a measure of correctness here, a mistake this port has already
+// made once. Full notes, including what has been ruled out and at what cost:
+// docs/OODLE1_FORMAT.md.
 
 /** The parameters the compressor used, stored in 12 bytes ahead of each stream. */
 export interface OodleHeader {

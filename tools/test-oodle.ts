@@ -9,7 +9,7 @@
 // in the arithmetic decoder turns the rest of the stream into noise.
 //
 // The second check is coverage: how much of the library decodes at all. A
-// residual slice does not (see docs/ANIMATION_FORMAT.md §3); it is measured
+// residual slice does not (see docs/OODLE1_FORMAT.md); it is measured
 // here rather than hidden, so a fix shows up as the number going up and a
 // regression as it going down.
 //

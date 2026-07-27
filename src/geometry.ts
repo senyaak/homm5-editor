@@ -110,7 +110,7 @@ export interface Mesh {
 /** What to decode beyond the drawable mesh itself. */
 export interface MeshOptions {
   /**
-   * Read the skin binding (§6 of docs/ANIMATION_FORMAT.md). Off by default:
+   * Read the skin binding (§4 of docs/ANIMATION_FORMAT.md). Off by default:
    * the editor draws a still map, every object would pay two more arrays per
    * mesh for data only an animated one uses, and the setting that turns idle
    * animation on is what turns this on with it.
@@ -605,7 +605,7 @@ function decodeMeshGroup(b: Buffer, start: number, end: number, options: MeshOpt
   // The skin binding sits in the tag-4 array, stored once per POSITION exactly
   // like the positions are, so it expands through the same remap. Its 24 bytes
   // are four float weights, then those same weights quantized to bytes, then
-  // the four bone indices — see docs/ANIMATION_FORMAT.md §6. A mesh whose tag-4
+  // the four bone indices — see docs/ANIMATION_FORMAT.md §4. A mesh whose tag-4
   // array is a different width is not skinned and simply comes back unbound.
   const skinStride = skinA && skinA.count === posA.count && skinA.count > 0 ? skinA.len / skinA.count : 0;
   const skin: SkinBinding | null = skinStride === 24

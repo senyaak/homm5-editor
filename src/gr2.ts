@@ -9,9 +9,10 @@
 // the mesh container had to be. We read the type tree, then read objects through
 // it — `Bones`, `ParentIndex`, `InverseWorldTransform` come out by name.
 //
-// Sections compressed with Oodle1 — every file under bin/Skeletons, and a sixth
-// of bin/animations — are decompressed on the way in by src/oodle.ts, so a
-// caller never sees the difference.
+// Format notes: docs/GR2_FORMAT.md. Sections compressed with Oodle1 — every
+// file under bin/Skeletons, and a sixth of bin/animations — are decompressed on
+// the way in by src/oodle.ts (docs/OODLE1_FORMAT.md), so a caller never sees
+// the difference.
 //
 // One limit is deliberate: only the 32-bit little-endian flavour is read. It is
 // the only one the game ships (checked across all 5656 files), and pointer size

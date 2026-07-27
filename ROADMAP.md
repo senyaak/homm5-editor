@@ -477,8 +477,10 @@ A scene is mostly actors *moving* — `AnimName` (`move`, `idle`, …),
 editor can place things but never show what it built.
 
 Done 2026-07-27, on the adventure map: creatures and buildings play their idle,
-behind the **Idle stance** setting (off by default). Details in
-docs/ANIMATION_FORMAT.md.
+behind the **Idle stance** setting (off by default). Written up as three notes,
+one per format in the stack: docs/GR2_FORMAT.md (the container),
+docs/OODLE1_FORMAT.md (its compression) and docs/ANIMATION_FORMAT.md (what the
+structures mean and how they are played).
 
 - [x] ✅ Skeletal animation decoded — it is RAD's Granny **GR2**, not our own
       container, and the skeleton travels *inside* the animation file rather

@@ -102,8 +102,8 @@ get a live 3D scene you sculpt, paint, populate, script and pack.
   `off / visible / all`: creatures and buildings play the clip the game plays
   when nothing is happening. `off` is not a paused loop — the scene is built
   without bones at all, so a map being edited pays nothing for it. Reading it
-  meant decoding Granny GR2 and porting its Oodle1 compression
-  ([docs/ANIMATION_FORMAT.md](docs/ANIMATION_FORMAT.md)).
+  meant decoding Granny GR2 and porting its Oodle1 compression — three format
+  notes, linked under *Assets and 3D models* below.
 
 ### Map properties, model & scripting
 
@@ -358,10 +358,12 @@ edges** on reconstruction.
 - **Normals** are computed from geometry — the packed ones are imprecise.
 - **Textures** are `.dds` (DXT1/3/5 and uncompressed), decoded by `src/dds.ts`.
 
-- **Skeletons and animations** are a different format — RAD's Granny **GR2**,
-  packed with Oodle1, both decoded (`src/gr2.ts`, `src/oodle.ts`). Creatures and
-  buildings play their idle on the map behind the **Idle stance** setting, which
-  is off by default. Write-up: [docs/ANIMATION_FORMAT.md](docs/ANIMATION_FORMAT.md).
+- **Skeletons and animations** are a different format altogether — RAD's Granny
+  **GR2** ([docs/GR2_FORMAT.md](docs/GR2_FORMAT.md)), a self-describing container
+  packed with RAD's **Oodle1** codec, ported here rather than shelled out to the
+  game's 32-bit DLL ([docs/OODLE1_FORMAT.md](docs/OODLE1_FORMAT.md)). What the
+  decoded structures mean, and how the map plays them:
+  [docs/ANIMATION_FORMAT.md](docs/ANIMATION_FORMAT.md).
 
 Still open: per-submesh material assignment, and the roughly one-third of
 catalogue meshes still undecoded (interleaved vertex buffers, multi-mesh

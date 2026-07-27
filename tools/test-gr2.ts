@@ -102,7 +102,7 @@ check('every sampled file is a Granny GR2', notGranny === 0, `${notGranny} rejec
 check('headers line up on all of them', opened === sample.length - notGranny, `${opened} opened`);
 // The invariant is about the path that does not need Oodle: a plain file must
 // always read. How much of the COMPRESSED library decodes is a coverage number,
-// tracked in test-oodle.ts, and today it is partial — see ANIMATION_FORMAT.md §3.
+// tracked in test-oodle.ts, and today it is partial — see OODLE1_FORMAT.md.
 check('every file that needs no decompression reads', plainUnreadable === 0,
   `${plainUnreadable} plain files unreadable`);
 console.log(`  (${compressed} of ${opened} carry Oodle1 sections; ${unreadable} of those did not decode)`);
