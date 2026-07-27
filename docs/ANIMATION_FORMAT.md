@@ -193,6 +193,6 @@ when the game data is not unpacked.
   OODLE1_FORMAT.md §4.4.)
 * Only `idle00` is ever played. Every clip an AnimSet names is read, including
   the combat sets, but nothing surfaces or plays them.
-* `bin/effects/*` is a **different, still-unknown format** — not GR2, and not the
-  Nival record container either (a leading size word and then floats). Unrelated
-  to skeletal animation; effect *models* already render as static geometry.
+* `bin/effects/*` turned out to be a **baked particle simulation** and is now
+  decoded — see EFFECTS_FORMAT.md. Unrelated to skeletal animation; effect
+  *models* already render as static geometry.
