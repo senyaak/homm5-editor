@@ -118,14 +118,18 @@ project.json
       fire and smoke both, with colour/alpha shipped as separate images past
       the canvas's premultiply. Effects & Light view toggles beside Idle
       stance. docs/EFFECTS_FORMAT.md §2/§5
-- [ ] ⬜ **The undecoded remainder — FIX NEXT.** Measured 2026-07-27: only
-      20 of 1572 non-TESTS shareds fail to mesh (the "one-third" this list
-      used to claim is long stale). The 20: Autumn_Trees (7), Mnt3x25 pieces,
-      MountainBig, Sunflowers, Grass_01, Mosstree01, Alchemist_Lab_Snow,
-      Hill_Castle (a TOWN), two heroes (GhostFSLord, Aberrar),
-      RazedMilitaryPost, RazedWindmill, Rail_coner_faza0_5. Plus whatever
-      resolves but draws WRONG — collected by eyeballing against the original
-      editor (`_tmp/scan-undecoded.mjs` prints the list)
+- [x] ✅ **The undecoded remainder — CLOSED** (2026-07-27, verified against
+      the original editor on a showcase map, `Maps/Sharpshooter Test 2.h5m`).
+      Three were real and are FIXED: Hill_Castle (empty `<Exterior/>` starved
+      the town path of its top-level `<Model>`), GhostFSLord (the ghost-mode
+      hero — body wired through GameMechanics/RefTables/GhostMode, not the
+      shared), Fire_glow (a pure AnimLight — stands in as a procedural glow
+      card, its bin/Lights flicker still parked). The other 17 are the game's
+      own dead stubs: empty `<Model/>` documents nothing in the original's
+      palette links to — the working Sunflowers/snow-lab/rails entries point
+      at DIFFERENT shareds (Sunflowers_1..5 group, the Mine-shared lab,
+      Rail_coner_faza). MountainBig draws as a hole in the original too.
+      `_tmp/scan-undecoded.mjs` prints the 17
 - [x] ✅ **Effects tail** (2026-07-27, docs/EFFECTS_FORMAT.md §5). The big
       one: the baked recording is a ONE-SHOT and the game loops it as a
       TRIGGER TRAIN — a fresh copy every `EndCycle` (seconds, despite the
@@ -642,6 +646,13 @@ and carries a levelled hero from mission to mission. See `docs/CAMPAIGNS.md`.
 - [ ] ⬜ Mod structure for `.h5u`/`.pak`, managing overrides
 - [ ] ⬜ Importing custom assets into a project (models/textures/texts)
 - [ ] ⬜ Mod integrity check before building
+- [ ] ⬜ **Ghost-mode mod (Senya, 2026-07-27): play the GHOST in single
+      player.** The multiplayer-only ghost (the roaming spirit you steer
+      while waiting out the opponent's turn — `GhostFSLord` is its hero
+      object) as a single-player mechanic; optionally the AI steers the
+      ghosts of AI players too. Likely engine-extension territory (the mode
+      is gated in the exe, not in data) — see the native/proxy-DLL notes in
+      docs/EXE_LUA_REGISTRY.md for the entry points.
 
 ### Adding creatures — the units mod
 

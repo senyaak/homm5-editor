@@ -551,6 +551,34 @@ function mergeGeom(into: GeomData, add: GeomData): void {
 }
 
 /**
+ * The warm radial card standing in for a light-only effect (see the Lights
+ * branch in effectGeom). Painted procedurally — there is no particle texture
+ * to borrow — and drawn additive, like every particle stand-in.
+ */
+function lightGlowCard(): GeomData {
+  const S = 32;
+  const px = new Uint8Array(S * S * 4);
+  for (let y = 0; y < S; y++) {
+    for (let x = 0; x < S; x++) {
+      const dx = (x + 0.5) / S - 0.5, dy = (y + 0.5) / S - 0.5;
+      const d = Math.min(1, Math.hypot(dx, dy) * 2);
+      const a = (1 - d) * (1 - d); // the same falloff the baked pools use
+      const at = (y * S + x) * 4;
+      px[at] = 255; px[at + 1] = 190; px[at + 2] = 90; px[at + 3] = Math.round(a * 255);
+    }
+  }
+  const t = pngDataUri(S, S, px);
+  const hw = 1.5, h = 3; // reads as a small fire glow, about a tile wide
+  return {
+    pos: [-hw, 0, 0, hw, 0, 0, hw, 0, h, -hw, 0, h],
+    uv: [0, 1, 1, 1, 1, 0, 0, 0],
+    nrm: [0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0],
+    idx: [0, 1, 2, 0, 2, 3],
+    parts: [{ start: 0, count: 6, tex: t, alphaMode: 'AM_TRANSPARENT', projectOnTerrain: false, flat: false, opaque: false, terrainProjected: false, additive: true, selfIllum: true }],
+  };
+}
+
+/**
  * A stand-in card for an object whose only content is an effect.
  *
  * Returns null when the chain does not lead to a texture, so the object stays
@@ -572,7 +600,12 @@ function effectGeom(
   const block = effect.xml.match(/<Instances>([\s\S]*?)<\/Instances>/)?.[1];
   const item = block ? listItems(block)[0] : undefined;
   const instHref = item?.attrs.match(/href="([^"]+)"/)?.[1];
-  if (!instHref) return null;
+  // No particles at all, but a light: Fire_glow (the palette's one pure
+  // AnimLight object — an invisible fire light the original editor draws as
+  // a warm glow decal) would otherwise vanish entirely. A procedural radial
+  // glow card stands in; the light's own colour/flicker (bin/Lights) stays
+  // parked. [~]
+  if (!instHref) return /<Lights>\s*<Item/.test(effect.xml) ? lightGlowCard() : null;
   // Inline instances live in this item, not in the file: reading the file works
   // out for the FIRST instance by luck and picks the wrong one for any other.
   const instance = instHref.startsWith('#')
@@ -1172,8 +1205,22 @@ export function createGeomResolver(root: string | Assets, texSize = 128, options
       const content = ext ? ext.xml : shared;
       // The model href: a town's first build stage (resolved against the
       // exterior's folder), otherwise the shared's top-level <Model>, written
-      // from the data root.
-      const modelRel = ext ? townModelHref(ext) : (shared && shared.match(/<Model href="([^"]+)"/)?.[1]) || null;
+      // from the data root. A town whose exterior is EMPTY — `<Exterior/>`,
+      // the unshipped Hill_Castle — has no build stages and falls back to its
+      // top-level <Model> like any other object.
+      let modelRel = ext ? townModelHref(ext) : null;
+      if (!modelRel) modelRel = (shared && shared.match(/<Model href="([^"]+)"/)?.[1]) || null;
+      // The ghost-mode hero: GhostFSLord ships with an EMPTY <Model/> and
+      // <AnimSet/> — its body is wired per class in GameMechanics/RefTables/
+      // GhostMode/Classes.xdb, and every class points at the same Ghost
+      // character. Resolved through that character, so the palette's ghost
+      // shows the wisp the original editor shows.
+      if (!modelRel && shared && /<AdvMapHeroShared/.test(shared)
+        && /<Model\/>/.test(shared) && /<AnimSet\/>/.test(shared)) {
+        const ch = readXdb('/Characters/Heroes/Ghost.(Character).xdb');
+        const m = ch?.match(/<Model href="([^"]+)"/)?.[1];
+        if (m) modelRel = '/' + resolveHref('Characters/Heroes', m);
+      }
       const model = modelRel ? readXdb(modelRel) : null;
       // The object's own model. Its <Geometry href> is written relative to the
       // model's own folder as often as absolute (spell_shop.mb points at

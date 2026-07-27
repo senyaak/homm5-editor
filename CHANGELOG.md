@@ -39,6 +39,20 @@ one.
 
 ### Added
 
+- **The last three real "cannot decode" objects decode.** Of the objects that
+  refused to mesh, three turned out to be real and each hid a different
+  mechanism: the unshipped Hill_Castle town declares an EMPTY exterior, which
+  starved the town path of the plain `<Model>` it actually has; the
+  ghost-mode hero (the wisp you steer in multiplayer while waiting out a
+  turn) carries no model in its own document — its body is wired per class in
+  the GhostMode tables, every class pointing at the same Ghost character; and
+  Fire_glow is the palette's one pure light — no particles, no model, just an
+  animated fire light — which now stands in as a warm glow card. The
+  seventeen still refused are the game's own dead stubs: empty `<Model/>`
+  documents that nothing in the original editor's palette links to (its
+  working Sunflowers, snow Alchemist Lab and subterranean rails are different
+  documents), verified against the original editor on a showcase map.
+
 - **Scene light reaches the particles marked for it.** Effect instances are
   authored `L_LIT` (lit by the scene — mostly the falling leaves of oaks and
   pines) or `L_NORMAL` (self-lit — fire, glows). Lit instances now darken
