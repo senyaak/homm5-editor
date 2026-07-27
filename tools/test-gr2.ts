@@ -158,7 +158,8 @@ let skinned = 0, unbound = 0, worstWeightSum = 0, badIndex = 0;
 let worstRestDrift = 0, worstRestModel = '';
 let worstGrowth = 0, worstGrowthModel = '';
 let bestMotion = 0, bestMotionModel = '';
-const stillModels: string[] = [];
+/** Largest displacement any one mesh of a model reaches, in world units. */
+const modelMotion = new Map<string, number>();
 
 for (const idle of idles.slice(0, 24)) {
   const base = idle.slice(0, -'-adv-idle00.xdb'.length);
@@ -215,13 +216,18 @@ for (const idle of idles.slice(0, 24)) {
     // And it has to MOVE. Every check above passes just as happily on a clip
     // read as all-constant curves, which is exactly the failure a quiet bug in
     // knot or control handling would produce: a creature standing frozen.
+    //
+    // Measured per MODEL, not per mesh: a building is several meshes and only
+    // some of them animate — the Inferno dwelling has five, of which two swing
+    // and three are walls pinned to a bone that never moves. Demanding motion
+    // from each mesh would fail on a model that is behaving perfectly.
     let motion = 0;
     for (const frame of frames.slice(1)) {
       for (let i = 0; i < frame.length; i++) motion = Math.max(motion, Math.abs(frame[i]! - frames[0]![i]!));
     }
+    modelMotion.set(base, Math.max(modelMotion.get(base) ?? 0, motion));
     const relative = motion / size;
     if (relative > bestMotion) { bestMotion = relative; bestMotionModel = base; }
-    if (relative < 1e-3) stillModels.push(base);
   }
 }
 
@@ -233,9 +239,10 @@ check('the rest pose skins to itself exactly', worstRestDrift < 1e-3,
   `worst ${worstRestDrift.toExponential(2)} on ${worstRestModel || 'n/a'}`);
 check('the idle stays inside its own bounding box', worstGrowth < 2,
   `worst reach ${worstGrowth.toFixed(2)}× model size on ${worstGrowthModel || 'n/a'}`);
-check('and the idle actually moves the mesh', stillModels.length === 0,
-  `largest motion ${(bestMotion * 100).toFixed(1)}% of model size on ${bestMotionModel || 'n/a'}` +
-  (stillModels.length ? `; still: ${stillModels.slice(0, 4).join(', ')}` : ''));
+const frozen = [...modelMotion].filter(([, m]) => m < 1e-3).map(([name]) => name);
+check('and the idle actually moves the model', modelMotion.size > 0 && frozen.length === 0,
+  `${modelMotion.size} models, largest motion ${(bestMotion * 100).toFixed(0)}% of model size on ${bestMotionModel || 'n/a'}` +
+  (frozen.length ? `; frozen: ${frozen.slice(0, 4).join(', ')}` : ''));
 
 // --- what the scene hands the renderer ---------------------------------------
 //

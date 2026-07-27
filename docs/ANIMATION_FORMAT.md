@@ -1,10 +1,10 @@
 # Skeletons and animations (`bin/animations`, `bin/Skeletons`) — notes
 
-Status: **skeletons and animation curves decoded**, from the uncompressed part of
-the library (83% of the animation files). The container, the bone hierarchy with
-its rest pose, and the position/orientation/scale-shear curves all read; a tail
-of Oodle1-compressed files is not reachable yet (§3). Skin weights turned out to
-live in our own mesh container, not here (§6).
+Status: **decoded.** The container, the bone hierarchy with its rest pose, and
+the position/orientation/scale-shear curves all read, and the Oodle1 compression
+the rest of the library hides behind is ported too (§3) — so effectively every
+skeleton and every adventure-map idle clip is reachable. Skin weights turned out
+to live in our own mesh container, not here (§6).
 
 Confidence: **[OK]** = verified against a redundancy in the data · **[~]** =
 strong heuristic, not yet proven.
@@ -31,8 +31,8 @@ Two things worth knowing before hunting for files:
   attack/move/hit/death. So idle on the map is a single clip per object. **[OK]**
 * `bin/Skeletons/` can be **ignored**. An animation file carries its own copy of
   the skeleton it animates, so a single read gives bones, rest pose and curves
-  together — which matters, because every skeleton file is compressed and most
-  animation files are not (§3). **[OK]**
+  together. That mattered before Oodle1 was ported, when the standalone
+  skeletons were unreadable; it is still the simpler path. **[OK]**
 
 ## 2. Container **[OK]**
 
@@ -77,30 +77,35 @@ pseudocode and names HoMM5 as an example. `GrannyFile` decompresses on the way
 in; `isUnreadable` is what a caller checks, and it means "there is data here we
 cannot see", not "this file is compressed".
 
-**It decodes about 80% of compressed sections, and what it decodes is exact.**
-Both halves of that sentence are measured (`npm run test-oodle`):
+**It decodes the library: 99.9% of skeletons, 95.7% of packed animations, and
+every one of the adventure-map idle clips.** Both halves of that are measured
+(`npm run test-oodle`):
 
-* Exact, because the game ships the same skeleton twice — compressed under
-  `bin/Skeletons/`, and again uncompressed inside the animation that plays on
-  it. Decompressed, the two agree bone for bone, name for name, parent for
-  parent, and the floats reproduce each file's own inverse bind matrices to
-  4e-7. One wrong bit in an arithmetic decoder turns everything after it into
-  noise, so agreement at that level is not something a nearly-right decoder
-  achieves.
-* Only 80%, because a residual bug remains. It shows up in long single streams:
-  after thousands of correct bytes a match offset comes out a few hundred bytes
-  beyond the data produced so far, always with the kilobyte digit at its maximum.
-  Ruled out by measurement, not by argument: the stream-transition rule (four
-  models compared), the per-stream reset of LZ state, decay (disabling it changes
-  nothing — it barely runs), the probationary path (every variant is far worse),
-  the offset reconstruction, the window bound, and narrowing the four-byte
-  alphabet by what the kilobyte digit leaves.
+* Correct, because the game ships the same skeleton twice — packed under
+  `bin/Skeletons/`, and again plain inside the animation that plays on it.
+  Decompressed, the two agree bone for bone, name for name, parent for parent,
+  and the floats reproduce each file's own inverse bind matrices to 4e-7. One
+  wrong bit in an arithmetic decoder turns everything after it into noise, so
+  agreement at that level is not something a nearly-right decoder reaches.
+* About five files in the whole library still fail, in the same way (a match at
+  the first token of a stream). Left as is: a section that fails leaves `data`
+  null and the object falls back to its still mesh, exactly as before the port.
 
-What that costs today: the **13 compressed adventure-map idle clips still do not
-decode** — the ones that were blocked are exactly the long-stream case. The port
-currently buys correctness and coverage of the skeleton library rather than new
-animations on the map. A section that fails leaves `data` null and the object
-falls back to its still mesh, which is what it did before the port.
+**The bug that cost the most, recorded so nobody pays for it twice.** The
+renormalisation interval is `max(128, min((alphabetSize - 1) * 2, decayThreshold
+/ 2 - 32))`, which is NOT a clamp: the two differ precisely when the upper bound
+falls below 128. That happens for exactly one coder — the four-symbol one that
+codes the low two bits of a match offset, whose decay threshold of 256 puts its
+upper bound at 96. Written as a clamp it renormalises every 96 symbols instead
+of every 128, drifts out of step with the encoder after a hundred matches, and
+the stream then decodes *plausibly* for thousands of bytes before an offset
+finally lands before the start of the data. Everything else in the port was
+right; this one line was the whole difference between 80% and 99%.
+
+Two more format facts were settled by measurement rather than by reading: the
+three streams of a section share ONE bit reader (they are not byte-aligned
+blocks — the coder never flushes between them), while their LZ state — byte
+counter, match window, literal-coder choice — restarts for each.
 
 The other route, if the residual proves stubborn: `bin/granny2.dll` exports
 `GrannyDecompressData`, but it is 32-bit and the editor's Node is 64-bit — a

@@ -134,10 +134,11 @@ for (const [dir, limit] of [['Skeletons', sampleSize], ['animations', Math.floor
 console.log('\ncoverage');
 console.log(`  ${decoded}/${sections} compressed sections decode (${(decoded / sections * 100).toFixed(0)}%),` +
   ` ${readable}/${files} files fully`);
-// A floor, not a target: this is what the port reaches today, and the point of
-// the number is that a change which breaks the decoder is impossible to miss.
-check('the decoder still reaches most of the library', decoded / sections > 0.75,
-  `${(decoded / sections * 100).toFixed(0)}% of sections`);
+// A floor well under what it actually reaches (99.9% of skeletons, 95.7% of
+// packed animations, and every adventure idle clip), so ordinary variation in
+// the sample cannot fail the suite while a real regression cannot pass it.
+check('the decoder reaches effectively all of the library', decoded / sections > 0.9,
+  `${(decoded / sections * 100).toFixed(1)}% of sections`);
 
 console.log(failures ? `\n${failures} check(s) failed` : '\nall checks passed');
 process.exit(failures ? 1 : 0);

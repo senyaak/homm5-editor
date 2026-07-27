@@ -176,8 +176,14 @@ class SymbolCoder {
     this.spans = new Int32Array(size).fill(ONE);
     this.spans[0] = 0;
     this.weights[0] = 4;
-    this.decayThreshold = clamp((alphabetSize - 1) * 32, 256, 15160);
-    this.renormalizeInterval = clamp((alphabetSize - 1) * 2, 128, this.decayThreshold / 2 - 32);
+    this.decayThreshold = Math.max(256, Math.min((alphabetSize - 1) * 32, 15160));
+    // max(128, min(...)) and NOT a clamp: the two differ exactly when the upper
+    // bound falls below 128, which happens for the four-symbol byte-offset
+    // coder — decayThreshold 256 puts its upper bound at 96, so a clamp yields
+    // 96 where this yields 128. That coder runs on every match, so renormalizing
+    // it a third too often drifts out of step with the encoder after a hundred
+    // matches or so, and the stream decodes plausibly right up until it doesn't.
+    this.renormalizeInterval = Math.max(128, Math.min((alphabetSize - 1) * 2, this.decayThreshold / 2 - 32));
   }
 
   /**
