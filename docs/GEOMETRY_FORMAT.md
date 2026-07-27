@@ -78,7 +78,7 @@ The tree makes the mesh structure explicit. Each mesh node holds a sequence of
 |---|---|---|---|
 | tag2 | 307 | 307×vec3<f32> | **positions** — unique XYZ, fit the bbox |
 | tag3 | 493 | 493×20 B | interleaved attribute stream (not plain XYZ) |
-| tag4 | 307 | 307×24 B | per-position normals / uv block |
+| tag4 | 307 | 307×24 B | **skin binding** — 4 float weights, then 4 quantized weights and 4 bone indices as bytes (see ANIMATION_FORMAT.md §6) |
 | tag5 | 493 | 493×u16 (all < 307) | **remap**: render-vertex → position index |
 | tag6 | 493 | 493×u16 | second remap (different attribute set) |
 | tag7 | 564 | 564×3×u16 (all < 493) | **indices** — triangle list |
@@ -134,8 +134,10 @@ Reference chain: `Model.xdb` → `Material` → `Texture` → `*.tga.xdb` → `.
 ## 6. Still open
 
 * Exact UV2 / tangent-basis decode (only base UV is needed for texturing).
-* Skeletons (`bin/Skeletons/`) and animations (`bin/animations/`) — Tier D, not
-  needed for a map editor (a static bind pose suffices).
+* Skeletons (`bin/Skeletons/`) and animations (`bin/animations/`) are a separate
+  format — RAD's Granny GR2, decoded in `src/gr2.ts`; see
+  **docs/ANIMATION_FORMAT.md**. The vertex-to-bone binding they need, though,
+  lives in this container: it is the tag-4 block above.
 
 ## 7. Tools
 
