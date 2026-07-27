@@ -62,6 +62,25 @@ binds from the same rest pose it animates (`inverseBindMatrices`), which is what
 it does — so the invariant that is actually tested is "every bone agrees on ONE
 frame", not "the frame is the identity".
 
+**Which copy of the skeleton is the BIND pose.** The same rig is stored in two
+places and they are NOT the same pose: the standalone file under
+`bin/Skeletons/<uid>` (named by the Model's `<Skeleton>`) holds the pose the
+mesh was skinned in, while the copy inside an animation file holds the pose
+that clip **starts from**. Same bones, same names, same order — only the rest
+transforms differ. Inverse binds must come from the model's own copy: built
+from the animation's, they look right exactly as long as the clip happens to
+start near the bind pose — most adventure idles do — and shred the mesh when it
+does not (the addon Combat Mage's stance sits 167° from bind; the Air Elemental
+came apart into chunks). Tracks address bones by name, so a clip plays on
+either copy. When a model names no readable skeleton, the animation's copy is
+the only one there is, and the clip-start pose stands in for bind.
+
+**A model with an empty `<Skeleton/>` is not skinned at all**, whatever its
+AnimSet says: the Gold Mine ships a seven-bone `idle00` AND an empty skeleton
+element (its `<MeshAnimated/>` list is empty too), and skinning its meshes
+against the clip's own skeleton scattered the gold across the hill. The
+declaration is the contract; the AnimSet's existence is not.
+
 ## 3. Animation **[OK]**
 
 `Animations[] → TrackGroups[] → TransformTracks[]`. An animation has `Duration`
@@ -82,6 +101,12 @@ controls are *not* points the curve passes through; `sampleCurve` evaluates it
 over a knot vector clamped at both ends, and quaternions are renormalized after
 blending. **[~]** — this is the one place where "looks right" is currently the
 only check.
+
+**Fast bones outrun the default sample rate.** The bake grid is 15 fps, and the
+Air Elemental's vortex bone turns ~171° between two such samples — slerp then
+takes the short way each frame and the creature reads as jerking. `bakeClip`
+callers re-bake at doubled rates (up to 60 fps) while any bone still steps more
+than 45° between samples; only the clips that need it grow.
 
 Adventure-map idles are long and slow: the earth elemental's is 5.167 s over 29
 bones, ~130 quaternion keys per bone.
@@ -107,9 +132,12 @@ to exactly 1.000, with no exceptions, and every index falls inside 0..28 for a
 Off by default — `Settings.idleAnimation` is `off`/`visible`/`all`, and the
 toolbar's **Idle stance** button cycles it. `off` is decided in the main process
 and decides what the scene is built out of (no bones, no binding, no clip: an
-animated model's payload roughly halves), so leaving `off` needs the map
-reopened; `visible` and `all` only decide how much of it keeps moving and switch
-live.
+animated model's payload roughly halves). Leaving `off` does not reopen the
+map: the main process replays the open map's models through a fresh resolver
+with animation on (`map:idle-skins`) and the renderer grafts the payloads onto
+the geometries already on the GPU — deterministic resolution keeps the geom
+indices aligned, and both ends check vertex counts before trusting a payload.
+`visible` and `all` only decide how much of it keeps moving.
 
 An animated object cannot ride the instanced batches — those draw one model many
 times from a single matrix buffer, and every copy poses independently — so it

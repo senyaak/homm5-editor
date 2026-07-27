@@ -4553,7 +4553,7 @@ interface ViewApi {
    * the furthest of them has run. The clock is what says the loop is turning —
    * a skeleton that is built but never stepped looks identical from outside.
    */
-  idle(): { mode: IdleMode; animated: number; time: number };
+  idle(): { mode: IdleMode; animated: number; time: number; geoms: number[]; skinned: number[] };
   /** True once the ground textures are decoded and a stroke would land. */
   paintReady(): boolean;
   /** Edits sent to the main process and not yet acknowledged. */
@@ -4684,6 +4684,11 @@ const view: ViewApi = {
       mode: idleMode,
       animated: fl?.idle.length ?? 0,
       time: fl?.idle.reduce((a, o) => Math.max(a, o.time), 0) ?? 0,
+      // Which geoms took an animated body, and which stayed batched despite
+      // having a skin on record — the two lists that localize "this creature
+      // stands still" to a geom without reaching into the scene.
+      geoms: [...new Set(fl?.idle.map((o) => (o.mesh.userData.inst as Instance).g) ?? [])].sort((a, b) => a - b),
+      skinned: [...geomSkin.keys()].sort((a, b) => a - b),
     };
   },
   pending() { return pendingCommits; },

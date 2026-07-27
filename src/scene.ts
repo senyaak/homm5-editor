@@ -33,7 +33,7 @@ import type { Terrain, TextureLayer } from './terrain.ts';
 import type { Mesh, MeshOptions } from './geometry.ts';
 import { GrannyFile } from './gr2.ts';
 import { bakeClip, inverseBindMatrices, readAnimations, readSkeletons } from './animation.ts';
-import type { BakedClip } from './animation.ts';
+import type { BakedClip, Skeleton } from './animation.ts';
 
 /** Reads an asset .xdb by its href, or null when it is missing. */
 type ReadXdb = (href: string) => string | null;
@@ -675,6 +675,65 @@ export function parseFootprint(sharedXml: string): Footprint | null {
   return fp;
 }
 
+/** Worst bone rotation between consecutive baked samples, in degrees. */
+function worstSampleStep(clip: BakedClip): number {
+  const n = clip.times.length;
+  let worst = 0;
+  for (const r of clip.rotations) {
+    if (!r.length) continue;
+    for (let k = 0; k + 1 < n; k++) {
+      const dot = Math.abs(
+        r[k * 4]! * r[k * 4 + 4]! + r[k * 4 + 1]! * r[k * 4 + 5]!
+        + r[k * 4 + 2]! * r[k * 4 + 6]! + r[k * 4 + 3]! * r[k * 4 + 7]!);
+      const angle = 2 * Math.acos(Math.min(1, dot)) * 180 / Math.PI;
+      if (angle > worst) worst = angle;
+    }
+  }
+  return worst;
+}
+
+/**
+ * The model's OWN skeleton — the bind pose — from `bin/Skeletons`.
+ *
+ * The skeleton inside an animation file holds the pose its clip STARTS from,
+ * not the pose the mesh was skinned in. Inverse binds built from it look right
+ * exactly as long as the clip starts near the bind pose — most adventure idles
+ * do — and tear the mesh apart when it does not: the addon creatures' stances
+ * sit up to 167 degrees away (Combat Mage), which shredded the Air Elemental
+ * into loose chunks. The model names its true bind skeleton right beside its
+ * geometry, so that is the copy to skin against; tracks bind by name, so the
+ * clip plays on it all the same.
+ *
+ * Null when the model declares no skeleton, the file is absent, or the rig
+ * differs from the animation's — every case falls back to the animation's copy,
+ * which is what all of this behaved like before.
+ */
+function modelBindSkeleton(
+  model: { xml: string; rel: string } | null, data: Assets, animSkeleton: Skeleton,
+): Skeleton | null {
+  if (!model) return null;
+  try {
+    // The uid is inline in some models and behind a <Skeleton href> in others.
+    let uid = model.xml.match(/<Skeleton\b[\s\S]*?<uid>([0-9A-Fa-f-]{36})<\/uid>[\s\S]*?<\/Skeleton>/)?.[1];
+    if (!uid) {
+      const href = model.xml.match(/<Skeleton href="([^"]+)"/)?.[1];
+      const doc = href ? followHref(data, model.xml, dirOf(resolveHref('', model.rel)), href) : null;
+      uid = doc?.xml.match(/<uid>([0-9A-Fa-f-]{36})<\/uid>/)?.[1];
+    }
+    if (!uid) return null;
+    const path = data.path(join('bin', 'Skeletons', uid.toUpperCase()));
+    if (!existsSync(path)) return null;
+    const file = GrannyFile.open(readFileSync(path));
+    if (!file || file.isUnreadable) return null;
+    const skeleton = readSkeletons(file)[0];
+    if (!skeleton?.bones.length) return null;
+    // Same rig or nothing: the mesh's indices and the clip's tracks assume it.
+    if (skeleton.bones.length !== animSkeleton.bones.length) return null;
+    if (skeleton.bones.some((b, i) => b.name !== animSkeleton.bones[i]!.name)) return null;
+    return skeleton;
+  } catch { return null; }
+}
+
 /**
  * Fill in a skinned geom's bones and clip, or drop the binding when there is no
  * animation to play.
@@ -689,10 +748,20 @@ export function parseFootprint(sharedXml: string): Footprint | null {
  */
 function attachAnimation(
   geom: GeomData, sharedXml: string, sharedHref: string, data: Assets, readXdb: ReadXdb, fps: number,
+  model: { xml: string; rel: string } | null = null,
 ): void {
   const drop = (): void => { delete geom.skin; };
   if (!geom.skin) return;
   try {
+    // A model that declares NO skeleton is not skinned, whatever its AnimSet
+    // says: the Gold Mine ships a seven-bone idle clip AND an empty
+    // <Skeleton/>, and skinning its meshes against the clip's own skeleton
+    // scattered the gold across the hill. Declared-but-unreadable is different
+    // and falls back below.
+    if (model) {
+      const decl = model.xml.match(/<Skeleton\b[^>]*>/)?.[0];
+      if (!decl || (decl.endsWith('/>') && !decl.includes('href'))) return drop();
+    }
     const setHref = sharedXml.match(/<AnimSet href="([^"]+)"/)?.[1];
     const sharedDir = dirOf(resolveHref('', sharedHref));
     const set = setHref ? followHref(data, sharedXml, sharedDir, setHref) : null;
@@ -709,9 +778,11 @@ function attachAnimation(
     if (!existsSync(binPath)) return drop();
     const file = GrannyFile.open(readFileSync(binPath));
     if (!file || file.isUnreadable) return drop();
-    const skeleton = readSkeletons(file)[0];
     const animation = readAnimations(file)[0];
-    if (!skeleton?.bones.length || !animation) return drop();
+    const animSkeleton = readSkeletons(file)[0];
+    if (!animSkeleton?.bones.length || !animation) return drop();
+    // The BIND pose, preferably the model's own — see modelBindSkeleton.
+    const skeleton = modelBindSkeleton(model, data, animSkeleton) ?? animSkeleton;
     // The mesh's bone indices only mean anything against THIS bone list. They
     // are checked rather than trusted: a mismatch would not look like a subtle
     // error, it would tear the model apart.
@@ -731,7 +802,15 @@ function attachAnimation(
     // reasoned: transposing here put the translation in the wrong column and
     // threw vertices 1100 units off a 4-unit model (tools/test-idle.ts).
     geom.skin.bind = inverseBindMatrices(skeleton).map((m) => m.map((v) => +v.toFixed(6)));
-    const clip = bakeClip(skeleton, animation, fps);
+    // A fast bone can turn most of the way round between two samples at the
+    // default rate — the Air Elemental's vortex does 171° per 15fps step, and
+    // slerp between such samples takes the short way each time, which reads as
+    // jerking. Resample faster until steps are sane; the payload only grows
+    // for the clips that need it.
+    let clip = bakeClip(skeleton, animation, fps);
+    for (let f = fps * 2; f <= 60 && worstSampleStep(clip) > 45; f *= 2) {
+      clip = bakeClip(skeleton, animation, f);
+    }
     geom.skin.clip = {
       duration: clip.duration,
       times: clip.times.map((v) => +v.toFixed(4)),
@@ -800,7 +879,8 @@ export function createGeomResolver(root: string | Assets, texSize = 128, options
       // Bones and the idle clip last: the geom is complete by now, so the
       // binding it carries covers every vertex the renderer will draw.
       if (options.animate && shared && idx >= 0) {
-        attachAnimation(geoms[idx]!, shared, sharedHref, data, readXdb, options.animationFps ?? 15);
+        attachAnimation(geoms[idx]!, shared, sharedHref, data, readXdb, options.animationFps ?? 15,
+          model && modelRel ? { xml: model, rel: modelRel } : null);
       }
     } catch { idx = -1; }
     geomIndex.set(sharedHref, idx);

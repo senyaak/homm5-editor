@@ -44,15 +44,27 @@ one.
   out of the DLL itself. Anything that ever fails to read falls back to the
   frozen mesh rather than disappearing.
 
+  Three kinds of object needed their own rule before they looked right. A model
+  is skinned against its OWN skeleton — the one inside an animation file holds
+  the pose that clip starts from, not the pose the mesh was bound in, and the
+  addon creatures' stances sit far enough from bind (167° for the Combat Mage)
+  that the Air Elemental came apart into chunks. A model that declares no
+  skeleton stays still no matter what its animation set says — the Gold Mine
+  ships an idle clip it never uses, and playing it scattered the gold across
+  the hill. And a clip whose bones outrun the sampling grid (the Air
+  Elemental's vortex turns 171° between two default samples) is resampled
+  faster until it moves smoothly instead of stuttering.
+
 ### Known limitations
 
 - Only the idle clip is played. Creatures also ship combat animations (attack,
   move, hit, death) and those are read correctly, but nothing on the adventure
   map has a reason to play them yet.
 - Rotations are sampled from their curves rather than evaluated exactly as the
-  engine does. On an idle loop seen from the map camera there is nothing to see;
-  it is written down as the one place in the chain that is close rather than
-  measured.
+  engine does — fast bones are sampled densely enough to stay smooth, but it is
+  still a sampling. On an idle loop seen from the map camera there is nothing to
+  see; it is written down as the one place in the chain that is close rather
+  than measured.
 
 ## 0.1.2 — 2026-07-26
 
