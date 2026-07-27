@@ -42,11 +42,14 @@ compilation, **every address in this document is a landmark for a pattern
 search, never a constant to hardcode** — the same discipline the creature and
 artifact ceiling patchers already follow.
 
-Tooling: `tools/reverse/` — `pe.py` (section map, VA↔offset, string reader,
-xref and call scanners, annotated disassembly), `sigs.py` (signature
-extraction) and `gendoc.py`, which regenerates
-[EXE_LUA_REGISTRY.md](EXE_LUA_REGISTRY.md) from the binary. Python because
-capstone is there and not in Node; see that folder's README.
+Tooling, all TypeScript: `src/pe.ts` (sections, addresses, strings,
+references), `src/disasm.ts` (iced-x86), `src/lua-registry.ts`, and the
+commands in `tools/reverse/` — `lua-registry.ts` regenerates
+[EXE_LUA_REGISTRY.md](EXE_LUA_REGISTRY.md) from the binary and
+`npm run test-lua-registry` fails if the two have drifted apart; `vtable.ts`
+goes from an RTTI class name to its vtables; `trace.ts` disassembles, finds
+callers, and intersects what several functions reach. See that folder's README
+for why iced-x86 and not capstone.
 
 ## How Lua functions are registered
 
@@ -279,11 +282,18 @@ why reading `CAdvMapHero`'s own vtable at `+0x10` lands somewhere unrelated.
 Resolving that base is the next step. `tools/reverse/vtable.py` turns any RTTI
 class name into its vtables and the functions in any slot.
 
-**Two searches that came back empty**, worth not repeating: no code reads
-several of the six stat offsets close together, and none reads them
-index-scaled either (`tools/reverse/findagg.py`). So the sum does not walk the
-record's fields the obvious way — it goes through accessors, or copies the
-struct first.
+**A scan that proved nothing, and why it looked like it did.** Searching `.text`
+for code reading several of the six stat offsets close together first came back
+empty, which read as "the sum does not walk these fields". That conclusion was
+an artefact of the tool: capstone stops decoding at the first byte it cannot
+make sense of, and a whole `.text` is full of them, so the scan quietly covered
+a fraction of the section. Re-run with a decoder that keeps going
+(`node tools/reverse/trace.ts field 0x44 0x48 0x4c 0x50 0x54 0x58`) it finds
+55 772 reads and 5 723 neighbourhoods touching three or more — far too many to
+point anywhere, since `+0x44` is also every other structure and stack frame.
+
+So the honest state is: this approach says nothing either way, and the result
+that matters came from the command layer below.
 
 **The artifact table, resolved.** `0xb1ef70` is the record getter, and it is
 four instructions:

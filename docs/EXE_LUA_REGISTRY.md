@@ -1,13 +1,14 @@
 # The executable's Lua registration tables
 
-Read out of `bin/H5_Game_NCF.exe` on 2026-07-27. **Use the NCF binary for any
-reverse engineering** — `H5_Game.exe` ships with its `.text` encrypted by the
-Steam wrapper (entropy 7.98, an extra `.bind` section); the NCF build is the
-same program in the clear, and it is the one our patchers already edit.
-Data sections are identical between the two, so addresses found here line up.
+Read out of `bin/H5_Game_NCF.exe` on 2026-07-27. **Use an unwrapped binary**
+— a Steam install ships `H5_Game.exe` with its `.text` encrypted (entropy
+7.98, an extra `.bind` section) and it disassembles to nonsense. `npm run
+unwrap-exe` produces the clean copy; GOG and retail builds need no such step.
+Data sections are identical either way, so string and pointer addresses
+transfer; only code needs the clean build.
 
 Seven `{name pointer, function pointer}` arrays sit in `.data`. Together they
-expose **298 functions to Lua** — against the 204 signatures the shipped
+expose **306 functions to Lua** — against the 204 signatures the shipped
 manuals admit to. Everything marked ·undoc is absent from those manuals.
 
 ## Signatures come from the binary
@@ -26,6 +27,8 @@ see `HasArtefact`, which really takes a third argument
 
 Function addresses belong to this build only. Patch by pattern, never by
 address — the same rule the creature and artifact ceilings follow.
+
+Regenerate with `node tools/reverse/lua-registry.ts`.
 
 
 ## Table 1 — `0xc8c258` (99 entries)
@@ -132,7 +135,7 @@ address — the same rule the creature and artifact ceilings follow.
 | `GetPlayerTeam` | `(number)` | `0x5e2aa0` | ·undoc |
 | `GetPlayerNecroEnergy` | `(number)` | `0x5e2ce0` | ·undoc |
 
-## Table 2 — `0xc8c608` (106 entries)
+## Table 2 — `0xc8c608` (113 entries)
 
 | function | arguments | code | |
 |---|---|---|---|
@@ -158,7 +161,11 @@ address — the same rule the creature and artifact ceilings follow.
 | `SetObjectFlashlight` | `(string, string = ?)` | `0x5f0120` |  |
 | `MessageBoxInt` | `?` | `0x5f04e0` | ·undoc |
 | `QuestionBoxInt` | `?` | `0x5f0760` | ·undoc |
+| `MessageBox` | `?` | `0x5f04e0` |  |
 | `QuestionBox` | `?` | `0x5f0760` |  |
+| `ShowFlyingSign` | `?` | `0x5f1630` |  |
+| `Play2DSound` | `(string, number = 0)` | `0x5f1b00` |  |
+| `Play3DSound` | `(string, number, number, number)` | `0x5f1d30` |  |
 | `SetTrigger` | `?` | `0x5f2640` | ·undoc |
 | `Trigger` | `?` | `0x5f2640` |  |
 | `StopTrigger` | `?` | `0x5f2fe0` | ·undoc |
@@ -166,10 +173,13 @@ address — the same rule the creature and artifact ceilings follow.
 | `StartCutSceneInt` | `(string, string = ?, string = ?)` | `0x5f33f0` | ·undoc |
 | `StartDialogScene` | `(string, string = ?, string = ?)` | `0x5f3160` |  |
 | `StartCutScene` | `(string, string = ?, string = ?)` | `0x5f33f0` | ·undoc |
+| `GetGameVar` | `(string)` | `0x5f3c00` |  |
+| `SetGameVar` | `(string, string)` | `0x5f3e10` |  |
 | `BlockGame` | `(number = 0)` | `0x5f4000` |  |
 | `UnblockGame` | `(number = 0)` | `0x5f41a0` |  |
 | `MoveCamera` | `?` | `0x5f4340` |  |
 | `DisableCameraFollowHeroes` | `(number, number = 0, number = 0)` | `0x5f48f0` | ·undoc |
+| `random` | `(number)` | `0x5f4f00` |  |
 | `SetWarfogBehaviour` | `(number, number, number = -1)` | `0x5f4c80` |  |
 | `EnableHeroAI` | `(string, bool)` | `0x5ef6a0` |  |
 | `SetAIHeroAttractor` | `(string, string, number)` | `0x5f50e0` |  |
@@ -247,12 +257,6 @@ address — the same rule the creature and artifact ceilings follow.
 
 | function | arguments | code | |
 |---|---|---|---|
-| `MessageBox` | `?` | `0x609880` |  |
-| `ShowFlyingSign` | `?` | `0x609ab0` |  |
-| `Play2DSound` | `(string)` | `0x609eb0` |  |
-| `Play3DSound` | `(string, number, number)` | `0x60a0a0` |  |
-| `GetGameVar` | `(string)` | `0x604e40` |  |
-| `SetGameVar` | `(string, string)` | `0x605090` |  |
 | `EnableDynamicBattleMode` | `(bool)` | `0x6014b0` | ·undoc |
 | `SetControlMode` | `(number, number)` | `0x601700` |  |
 | `GetHost` | `(number)` | `0x601980` | ·undoc |
@@ -279,6 +283,8 @@ address — the same rule the creature and artifact ceilings follow.
 | `UnitCastAreaSpell` | `(string, number, number, number)` | `0x604870` | ·undoc |
 | `UnitCastAimedSpell` | `(string, number, string)` | `0x604ab0` | ·undoc |
 | `postEvent` | `(string, number = -1, number = -1)` | `0x604d10` | ·undoc |
+| `GetGameVar` | `(string)` | `0x604e40` |  |
+| `SetGameVar` | `(string, string)` | `0x605090` |  |
 | `showHighlighting` | `(object, float, float)` | `0x6052b0` | ·undoc |
 | `addUnit` | `(number, number, number, number, number, string)` | `0x605440` | ·undoc |
 | `exist` | `(string)` | `0x6058c0` | ·undoc |
@@ -300,6 +306,10 @@ address — the same rule the creature and artifact ceilings follow.
 | `playAnimation` | `(string, string, number = 3)` | `0x607dd0` | ·undoc |
 | `GetRagePoints` | `(string)` | `0x609340` | ·undoc |
 | `GetRageLevel` | `(string)` | `0x6095d0` | ·undoc |
+| `MessageBox` | `?` | `0x609880` |  |
+| `ShowFlyingSign` | `?` | `0x609ab0` |  |
+| `Play2DSound` | `(string)` | `0x609eb0` |  |
+| `Play3DSound` | `(string, number, number)` | `0x60a0a0` |  |
 
 ## Table 4 — `0xc8cb60` (7 entries)
 
@@ -324,14 +334,15 @@ address — the same rule the creature and artifact ceilings follow.
 | `IsTutorialMessageBoxOpen` | `?` | `0x60bf40` |  |
 | `IsTutorialEnabled` | `?` | `0x60c100` | ·undoc |
 
-## Table 6 — `0xc8f138` (11 entries)
+## Table 6 — `0xc8f138` (12 entries)
 
 | function | arguments | code | |
 |---|---|---|---|
-| `random` | `?` | `0xa38b30` |  |
+| `_ERRORMESSAGE` | `?` | `0xa3fb80` | ·undoc |
 | `out` | `?` | `0xa388c0` | ·undoc |
 | `Sleep` | `?` | `0xa2f340` | ·undoc |
 | `StartThread` | `?` | `0xa2f200` | ·undoc |
+| `random` | `?` | `0xa38b30` |  |
 | `Ptr` | `?` | `0xa3fd50` | ·undoc |
 | `ObjPtr` | `?` | `0xa3fe50` | ·undoc |
 | `IsValid` | `?` | `0xa40000` | ·undoc |
@@ -344,11 +355,11 @@ address — the same rule the creature and artifact ceilings follow.
 
 | function | arguments | code | |
 |---|---|---|---|
-| `_ERRORMESSAGE` | `(string)` | `0xa42f10` | ·undoc |
 | `sleep` | `?` | `0xa2f340` |  |
 | `startThread` | `?` | `0xa2f200` |  |
 | `errorHook` | `?` | `0xa2f3c0` | ·undoc |
 | `isEqual` | `?` | `0xa38c70` | ·undoc |
+| `_ERRORMESSAGE` | `(string)` | `0xa42f10` | ·undoc |
 | `parse` | `(string)` | `0xa43070` | ·undoc |
 | `print` | `?` | `0xa43f30` |  |
 | `consoleCmd` | `(string)` | `0xa431a0` | ·undoc |
