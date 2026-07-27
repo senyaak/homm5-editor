@@ -8,10 +8,10 @@
 // Nothing about that agreement can happen by accident: one wrong bit anywhere
 // in the arithmetic decoder turns the rest of the stream into noise.
 //
-// The second check is coverage: how much of the library decodes at all. A
-// residual slice does not (see docs/OODLE1_FORMAT.md); it is measured
-// here rather than hidden, so a fix shows up as the number going up and a
-// regression as it going down.
+// The second check is coverage: how much of the library decodes at all. All of
+// it does — the port is byte-exact against the game's own granny2.dll on every
+// packed section (docs/OODLE1_FORMAT.md §5) — so any section failing here is a
+// regression, and the check demands every sampled one.
 //
 // Skipped without game data. Usage: `node tools/test-oodle.ts [sampleSize]`.
 
@@ -134,11 +134,10 @@ for (const [dir, limit] of [['Skeletons', sampleSize], ['animations', Math.floor
 console.log('\ncoverage');
 console.log(`  ${decoded}/${sections} compressed sections decode (${(decoded / sections * 100).toFixed(0)}%),` +
   ` ${readable}/${files} files fully`);
-// A floor well under what it actually reaches (99.9% of skeletons, 95.7% of
-// packed animations, and every adventure idle clip), so ordinary variation in
-// the sample cannot fail the suite while a real regression cannot pass it.
-check('the decoder reaches effectively all of the library', decoded / sections > 0.9,
-  `${(decoded / sections * 100).toFixed(1)}% of sections`);
+// Everything decodes since the decay-gate fix (the library is byte-exact
+// against granny2.dll), so one failing section is one regression.
+check('every sampled section decodes', sections > 0 && decoded === sections,
+  `${decoded}/${sections}`);
 
 console.log(failures ? `\n${failures} check(s) failed` : '\nall checks passed');
 process.exit(failures ? 1 : 0);

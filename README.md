@@ -361,7 +361,8 @@ edges** on reconstruction.
 - **Skeletons and animations** are a different format altogether — RAD's Granny
   **GR2** ([docs/GR2_FORMAT.md](docs/GR2_FORMAT.md)), a self-describing container
   packed with RAD's **Oodle1** codec, ported here rather than shelled out to the
-  game's 32-bit DLL ([docs/OODLE1_FORMAT.md](docs/OODLE1_FORMAT.md)). What the
+  game's 32-bit DLL — and byte-exact against that DLL on every packed file
+  ([docs/OODLE1_FORMAT.md](docs/OODLE1_FORMAT.md)). What the
   decoded structures mean, and how the map plays them:
   [docs/ANIMATION_FORMAT.md](docs/ANIMATION_FORMAT.md).
 

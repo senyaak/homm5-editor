@@ -487,7 +487,9 @@ structures mean and how they are played).
       than in `bin/Skeletons/`. The vertex-to-bone binding was in our mesh
       container all along (`src/gr2.ts`, `src/animation.ts`)
 - [x] ✅ Oodle1, the compression the rest of the library hides behind, ported
-      (`src/oodle.ts`) — 2837 of 2839 packed files, 105 of the 106 idle clips
+      (`src/oodle.ts`) — byte-exact against the game's own granny2.dll on all
+      2839 packed files and every idle clip, after the decay-gate rule was read
+      out of the DLL's disassembly (docs/OODLE1_FORMAT.md §4.4)
 - [x] ✅ Skinned playback in the Three.js scene (`renderer/skinning.ts`), one
       SkinnedMesh per animated object, `off / visible / all`
 - [ ] ⬜ The clip list per model, which is what would give `AnimName` a real

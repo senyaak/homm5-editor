@@ -151,11 +151,10 @@ when the game data is not unpacked.
 
 ## 7. Still open
 
-* Two packed sections in the whole library (OODLE1_FORMAT.md): the idle of the
-  `ShamanOfNommads` building, and one animation nothing references. Both fail
-  mid-stream, the same shape of failure the renormalisation bug had but not the
-  same cause.
-* Exact degree-2/3 B-spline evaluation against the engine's own (§3).
+* Exact degree-2/3 B-spline evaluation against the engine's own (§3). (The two
+  packed sections that used to fail — the `ShamanOfNommads` idle among them —
+  decode since the decay-gate fix; the whole library is now byte-exact,
+  OODLE1_FORMAT.md §4.4.)
 * Only `idle00` is ever played. Every clip an AnimSet names is read, including
   the combat sets, but nothing surfaces or plays them.
 * `bin/effects/*` is a **different, still-unknown format** — not GR2, and not the

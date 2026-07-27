@@ -36,14 +36,15 @@ one.
   Reading the animations meant working out two formats the editor had never
   touched: the animation files are not the game's own container but RAD's Granny
   GR2, and most of them are packed with RAD's Oodle1 codec, which is now decoded
-  here rather than handed to the 32-bit DLL the game ships. 2837 of the 2839
-  packed files come apart, and 105 of the 106 idle clips the game references.
+  here rather than handed to the 32-bit DLL the game ships. The port is
+  byte-for-byte identical to that DLL on every packed file in the game — checked
+  against all 2839 — so every idle the game references plays, including the one
+  Orc building (`ShamanOfNommads`) whose idle resisted until its quirk was read
+  out of the DLL itself. Anything that ever fails to read falls back to the
+  frozen mesh rather than disappearing.
 
 ### Known limitations
 
-- One building's idle — the Orc `ShamanOfNommads` — is among the two files that
-  still do not decompress, so it stands as still as before. Anything that fails
-  to read falls back to the frozen mesh rather than disappearing.
 - Only the idle clip is played. Creatures also ship combat animations (attack,
   move, hit, death) and those are read correctly, but nothing on the adventure
   map has a reason to play them yet.

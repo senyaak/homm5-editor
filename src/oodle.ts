@@ -259,7 +259,15 @@ class SymbolCoder {
    */
   decode(bits: BitStream, effectiveAlphabet: number): number {
     if (this.total >= this.nextRenormalize) {
-      if (this.total >= this.decayThreshold) this.decay();
+      // Decay is gated on the RENORMALIZATION THRESHOLD, not on the live total.
+      // The open spec says `total >= decayThreshold`; granny2.dll (disassembly
+      // at 0x50046540, `cmp ax, [esi+8]` with ax = nextRenormalize) compares
+      // the threshold instead. They differ only when the threshold sits within
+      // two units below decayThreshold and the total overshoots both — once in
+      // tens of thousands of decodes — and each such decay fired one cycle
+      // early, silently desynchronizing the model. Every animation over ~85 KB
+      // decoded plausible garbage past ~54 KB until this matched the DLL.
+      if (this.nextRenormalize >= this.decayThreshold) this.decay();
       this.renormalize();
     }
     const z = bits.peek(ONE);
