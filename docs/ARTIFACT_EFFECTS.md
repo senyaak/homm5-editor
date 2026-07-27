@@ -274,12 +274,21 @@ irreversible ones (skills, spells).
 ### Combat
 
 A combat script (`SetHeroCombatScript(hero, ref)`, or per-arena) sees the
-battle through the COMBAT API: `GetAttackerHero`/`GetDefenderHero`,
-`Get*Creatures`, `AddCreature`, `Finish`, control-mode calls. It can stage a
-fight, add stacks, react to who is present. **It cannot touch damage
-formulas, elemental modifiers, initiative or ATB** — there is no damage hook
-in the API at all. NAF adds from experience: combat-script tricks break in
-multiplayer (tactical scripting is prohibited there) — single-player only.
+battle through the COMBAT API — and the exe registers far more of it than the
+manual admits ([EXE_LUA_REGISTRY.md](EXE_LUA_REGISTRY.md)): beside the
+documented `GetAttackerHero`/`Get*Creatures`/`AddCreature`/`Finish` there are
+undocumented `setATB`, `UnitCastAimedSpell`/`UnitCastAreaSpell`/
+`UnitCastGlobalSpell`, `commandDoSpell`, `SummonCreature`,
+`SetUnitManaPoints`, `displace`, `addUnit`/`removeUnit`. So a combat script
+*can* move ATB, cast any spell through a unit, summon and reposition stacks —
+an artifact's combat effect can be "on combat start, cast X / shift ATB by Y"
+(signatures need in-game probing; none of this is in the manuals). What
+remains out of reach is the damage formula itself — there is no damage hook,
+so a literal "+50% fire damage" stays exe-only. On the adventure side,
+undocumented `GetLastSavedCombatIndex` makes post-combat detection clean
+(poll it, then read the combat through the `GetSavedCombat*` family). NAF
+adds from experience: combat-script tricks break in multiplayer (tactical
+scripting is prohibited there) — single-player only.
 
 ### Possible vs impossible, in one place
 
@@ -290,7 +299,8 @@ multiplayer (tactical scripting is prohibited there) — single-player only.
 | +% necromancy on a new artifact | approximate: `MakeHeroNecromancer` for non-necromancers, post-combat `AddHeroCreatures` for the rest. The real modifier is exe-only (`NecroPendantBonus` is data but chained to the Pendant's id) |
 | grant a spell / skill while worn | one-way only — no removal calls; treat as permanent (NAF's compromise) |
 | activated artifact power | `ControlHeroCustomAbility` + `CUSTOM_ABILITY_TRIGGER` |
-| +% fire (or any element) damage, ATB/initiative riders | **impossible for a new id.** Exe-only (the Trident/Icicle/Cape family); no script access to combat numbers |
+| +% fire (or any element) damage | **impossible for a new id.** Exe-only (the Trident/Icicle/Cape family); no damage hook in any script API |
+| ATB/initiative effects, combat-start spell casts | combat script, via undocumented `setATB` / `UnitCast*` (single-player; signatures to be probed) |
 | new set with own thresholds/behaviour | UI and membership as data; behaviour scripted (thresholds are then whatever the script checks) |
 | dark energy grants | **impossible** — getter exists, setter does not (full exe function table checked); raise creatures directly instead |
 | backpack-passive artifact | trivially scriptable — poll `HasArtefact` and skip the worn check (NAF ships this as a feature) |
