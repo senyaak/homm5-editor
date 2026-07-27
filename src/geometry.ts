@@ -105,6 +105,13 @@ export interface Mesh {
   triCount: number;
   /** Present only when decoding was asked to read it and the mesh carries it. */
   skin?: SkinBinding;
+  /**
+   * Which named mesh (block) of the container this group came from — set by the
+   * structured decoder, absent from the heuristic one. The model's
+   * <MaterialQuantities> counts groups PER BLOCK, so material assignment (and
+   * the engine's decision to draw a group at all) needs this.
+   */
+  block?: number;
 }
 
 /** What to decode beyond the drawable mesh itself. */
@@ -437,13 +444,19 @@ function computeNormals(positions: Float32Array, indices: Uint32Array): Float32A
 /**
  * Parse a `Model.(Model).xdb` string enough to resolve the geometry binary and
  * its bounding box. Returns null if the fields aren't present.
+ *
+ * `doc` is the `<Geometry>` element the uid and bbox were read from — the
+ * model's own for the inline layout, the external file's for the href one.
+ * That element is also where <MaterialQuantities> lives, and for an external
+ * geometry it is NOWHERE in the model xml, so callers that need the declared
+ * group counts must read them from here.
  * @param {string} xml
- * @returns {{uid:string, bbox:BBox}|null}
+ * @returns {{uid:string, bbox:BBox, doc:string}|null}
  */
 export function readGeometryRefFromModelXdb(
   xml: string,
   readXdb?: (href: string) => string | null,
-): { uid: string; bbox: BBox } | null {
+): { uid: string; bbox: BBox; doc: string } | null {
   let geom = xml.match(/<Geometry\b[\s\S]*?<uid>([0-9A-Fa-f-]{36})<\/uid>[\s\S]*?<\/Geometry>/);
   if (!geom && readXdb) {
     // The other layout: the model does not carry the geometry, it points at a
@@ -468,7 +481,7 @@ export function readGeometryRefFromModelXdb(
   const size = num('Size', geom[0]);
   const center = num('Center', geom[0]);
   if (!size || !center) return null;
-  return { uid, bbox: { cx: center[0], cy: center[1], cz: center[2], sx: size[0], sy: size[1], sz: size[2] } };
+  return { uid, bbox: { cx: center[0], cy: center[1], cz: center[2], sx: size[0], sy: size[1], sz: size[2] }, doc: geom[0]! };
 }
 
 // --- structured mesh decoding ----------------------------------------------
@@ -565,10 +578,10 @@ export function extractMeshesStructured(b: Buffer, options: MeshOptions = {}): M
   // slice — visibly, the crystals themselves. Emit one mesh per group, in order,
   // which also lines the meshes up one-to-one with the model's material list.
   const meshes: Mesh[] = [];
-  for (const block of blocks) {
+  for (const [bi, block] of blocks.entries()) {
     for (const group of recordsIn(b, block.at, block.end).filter((r) => r.tag === 1)) {
       const m = decodeMeshGroup(b, group.at, group.end, options);
-      if (m) meshes.push(m);
+      if (m) meshes.push({ ...m, block: bi });
     }
   }
   return meshes.length ? meshes : null;

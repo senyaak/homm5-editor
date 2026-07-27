@@ -557,7 +557,7 @@ function decodeModelGeom(
   const meshes = extractMeshes(readFileSync(binPath), ref.bbox, meshOptions);
   if (!meshes.length) return null;
   const tmp: GeomData[] = [];
-  const i = addGeom(tmp, meshes, model, modelHref, data, texSize);
+  const i = addGeom(tmp, meshes, model, modelHref, data, texSize, ref.doc);
   return i >= 0 ? tmp[i]! : null;
 }
 
@@ -1357,12 +1357,20 @@ function dropDuplicateMeshes(meshes: Mesh[], pick: number[], mats: MaterialInfo[
   return keep;
 }
 
-function addGeom(geoms: GeomData[], meshes: Mesh[], model: string, modelHref: string, data: Assets, texSize: number): number {
+/**
+ * @param geomDoc the `<Geometry>` element the meshes were resolved from — the
+ *   home of <MaterialQuantities>, which for an external geometry is absent
+ *   from the model xml itself. Defaults to the model for callers that predate
+ *   the split.
+ */
+function addGeom(geoms: GeomData[], meshes: Mesh[], model: string, modelHref: string, data: Assets, texSize: number, geomDoc: string = model): number {
   // Materials are resolved before the meshes are packed, because which meshes
   // survive depends on them: a copy of a terrain-projected mesh is redundant.
   const modelDir = dirOf(resolveHref('', modelHref));
   const allMats = modelMaterials(model, data, modelDir);
-  const allPick = meshMaterialIndex(model, meshes.length, allMats.length);
+  const declared = declaredGroups(geomDoc, meshes, allMats.length);
+  meshes = declared.meshes;
+  const allPick = declared.pick;
   // Decode each material's texture once, up front: the dedup needs to know how
   // opaque the authored partner of a SubTerrain pair is (a sheer overlay is not
   // a body, so its SubTerrain base survives), and the parts loop needs the same
@@ -1591,20 +1599,75 @@ function modelMaterials(model: string, data: Assets, baseDir: string): MaterialI
 }
 
 /**
- * Which material each mesh uses, from <MaterialQuantities>.
+ * Drop the groups the game itself never draws, and give each survivor its
+ * material.
  *
- * A mesh that consumes several materials is given the first of them: our
- * decoder emits one mesh per <MeshNames> entry, so there is no finer split to
- * hang the rest on. 407 of 2281 models have such a mesh, so this is a real
- * approximation and not a corner case — but one texture chosen from the right
- * group beats one texture chosen for the whole model.
+ * <MaterialQuantities> counts DRAWN groups per named mesh (block), and the
+ * binary can hold more groups than that: the bare Dirt trees share their
+ * geometry container with the Mossy variants, whose branch cards are a second
+ * group. The bare model declares one material, so the game draws only the
+ * trunk — but drawing every group painted those cards with the bark texture,
+ * and every dead tree grew wooden planks. Measured over the shipped models:
+ * of 1250 with inline geometry, 1240 declare exactly as many groups as the
+ * binary holds, 9 hold extras within a declared block (the eight bare Dirt
+ * trees and the interface Spellbook), and 1 declares more than it holds
+ * (MountainBig's known defect, absorbed by the material-index clamp).
+ *
+ * A binary can also hold extra whole BLOCKS (5 models, all with external
+ * (Geometry).xdb declarations — hence the geomDoc parameter, since the model
+ * xml carries no <MaterialQuantities> in that layout). Which blocks the
+ * engine then draws is a name-matching question this code cannot answer from
+ * order alone, so the block-count guard keeps everything: four are battle
+ * effects no map places, and the one building (the snowed Elemental
+ * Stockpile) holds an extra that is a byte-exact copy of a block it draws, so
+ * keeping it changes nothing visible.
+ *
+ * Group j of block i takes material sum(MQ[0..i)) + j — the walk the engine
+ * itself must be doing, since the Mossy cards land on the moss material this
+ * way. Needs the block tags the structured decoder writes; heuristic meshes
+ * carry none and fall back to the name-level walk (meshMaterialIndex).
+ */
+function declaredGroups(geomDoc: string, meshes: Mesh[], materialCount: number): { meshes: Mesh[]; pick: number[] } {
+  const mq = geomDoc.match(/<MaterialQuantities>([\s\S]*?)<\/MaterialQuantities>/);
+  const q = mq ? [...mq[1]!.matchAll(/<Item>(\d+)<\/Item>/g)].map((m) => +m[1]!) : [];
+  const blocks = meshes.length && meshes.every((m) => m.block !== undefined)
+    ? meshes.reduce((mx, m) => Math.max(mx, m.block!), -1) + 1
+    : 0;
+  // A declaration that does not match the binary's block count is not the
+  // binary's declaration — keep everything rather than drop by a wrong map.
+  if (!q.length || q.length !== blocks) {
+    return { meshes, pick: meshMaterialIndex(geomDoc, meshes.length, materialCount) };
+  }
+  const offset: number[] = [];
+  let at = 0;
+  for (const n of q) { offset.push(at); at += n; }
+  const kept: Mesh[] = [], pick: number[] = [];
+  const seen = Array<number>(blocks).fill(0);
+  for (const m of meshes) {
+    const j = seen[m.block!]++;
+    // A zero quantity would drop the block outright; no shipped model declares
+    // one, so draw a group rather than trust it if it ever appears.
+    if (j >= Math.max(1, q[m.block!]!)) continue;
+    kept.push(m);
+    pick.push(Math.min(offset[m.block!]! + j, Math.max(0, materialCount - 1)));
+  }
+  return { meshes: kept, pick };
+}
+
+/**
+ * Which material each mesh uses, from <MaterialQuantities> — the fallback for
+ * meshes without block tags (the heuristic decoder's, one per <MeshNames>
+ * entry).
+ *
+ * A mesh that consumes several materials is given the first of them: with no
+ * group split there is no finer place to hang the rest on. 407 of 2281 models
+ * have such a mesh, so this is a real approximation and not a corner case —
+ * but one texture chosen from the right group beats one texture chosen for
+ * the whole model.
  */
 function meshMaterialIndex(model: string, meshCount: number, materialCount: number): number[] {
-  // The structured decoder now emits one mesh per material group, so the meshes
-  // line up one-to-one with the model's material list and each takes the
-  // material at its own index — the crystal group finally gets the crystal
-  // material instead of the crate's. The MaterialQuantities walk below is the
-  // fallback for the heuristic decoder, which still emits one mesh per name.
+  // Meshes that line up one-to-one with the material list take the material at
+  // their own index — right whenever the counts agree, whatever decoder ran.
   if (meshCount === materialCount) return Array.from({ length: meshCount }, (_, i) => i);
   const mq = model.match(/<MaterialQuantities>([\s\S]*?)<\/MaterialQuantities>/);
   const q = mq ? [...mq[1]!.matchAll(/<Item>(\d+)<\/Item>/g)].map((m) => +m[1]!) : [];
