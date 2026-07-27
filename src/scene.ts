@@ -30,7 +30,10 @@ import type { Assets } from './assets.ts';
 import { loadMap } from './map.ts';
 import type { HommMap } from './map.ts';
 import type { Terrain, TextureLayer } from './terrain.ts';
-import type { Mesh } from './geometry.ts';
+import type { Mesh, MeshOptions } from './geometry.ts';
+import { GrannyFile } from './gr2.ts';
+import { bakeClip, inverseBindMatrices, readAnimations, readSkeletons } from './animation.ts';
+import type { BakedClip } from './animation.ts';
 
 /** Reads an asset .xdb by its href, or null when it is missing. */
 type ReadXdb = (href: string) => string | null;
@@ -125,6 +128,31 @@ export interface GeomPart {
   selfIllum: boolean;
 }
 
+/**
+ * What an animated model needs beyond its mesh: the bones, the binding and one
+ * baked idle clip. Everything is plain JSON and already in the renderer's own
+ * conventions, so the renderer builds a skinned mesh without knowing anything
+ * about Granny — see docs/ANIMATION_FORMAT.md.
+ *
+ * Only filled when the editor is asked for it (`SceneOptions.animate`); a still
+ * map never pays for it.
+ */
+export interface SkinnedGeom {
+  /** 4 bone indices per vertex, in `pos` order. */
+  index: number[];
+  /** 4 weights per vertex, summing to 1. */
+  weight: number[];
+  /** Bones in skeleton order; `parent` is -1 for a root. */
+  bones: { name: string; parent: number; pos: number[]; quat: number[] }[];
+  /**
+   * Inverse bind matrices, 16 floats per bone, **column-major** — transposed on
+   * the way out, because the files are row-vector and three.js is not.
+   */
+  bind: number[][];
+  /** The idle, sampled onto an even grid; null when the object has no clip. */
+  clip: BakedClip | null;
+}
+
 /** One decoded mesh, ready for the renderer. Arrays are plain JSON. */
 export interface GeomData {
   pos: number[];
@@ -151,6 +179,8 @@ export interface GeomData {
    * the hole and passable cells.
    */
   footprint?: Footprint | null;
+  /** Bones, binding and idle clip — present only when animation is asked for. */
+  skin?: SkinnedGeom;
 }
 
 /** A tile offset from an object's own tile, in grid axes; may be negative. */
@@ -227,7 +257,22 @@ export interface Floor {
 /** The renderable scene — this is the payload that crosses the IPC boundary. */
 export interface Scene { geoms: GeomData[]; floors: Floor[] }
 
-export interface BuildSceneOptions {
+/** Whether to decode bones and idle clips at all, and how finely to sample them. */
+export interface SceneAnimationOptions {
+  /**
+   * Read the skin binding and the object's idle clip.
+   *
+   * Off by default, and meant to stay off unless the setting asks for it: it
+   * costs two more vertex arrays per model, an extra Granny file read per
+   * animated object, and a baked clip in the scene payload. A map that is only
+   * being edited does not need any of it.
+   */
+  animate?: boolean;
+  /** Samples per second when baking a clip (default 15). */
+  animationFps?: number;
+}
+
+export interface BuildSceneOptions extends SceneAnimationOptions {
   /** Edge length for embedded object textures. */
   texSize?: number;
   /** Edge length for ground tile textures. */
@@ -392,6 +437,19 @@ function mergeGeom(into: GeomData, add: GeomData): void {
   if (into.nrm && add.nrm) for (const v of add.nrm) into.nrm.push(v); else into.nrm = null;
   for (const i of add.idx) into.idx.push(i + base);
   for (const p of add.parts) into.parts.push({ ...p, start: p.start + idxBase });
+  // The skin arrays run one entry per vertex, so anything appended has to be
+  // bound too or the buffers no longer line up with the positions. What gets
+  // merged in is an effect's own geometry — a brazier's flame, a portal's glow —
+  // which has no bones of its own, so it is pinned to the root bone: it then
+  // rides the object as a whole, which is what an effect attached to a creature
+  // does anyway. Weight 1 on bone 0, the rest zero.
+  if (into.skin) {
+    const added = add.pos.length / 3;
+    for (let v = 0; v < added; v++) {
+      into.skin.index.push(0, 0, 0, 0);
+      into.skin.weight.push(1, 0, 0, 0);
+    }
+  }
 }
 
 /**
@@ -466,6 +524,7 @@ function effectGeom(
  */
 function decodeModelGeom(
   model: string, modelHref: string, data: Assets, readXdb: ReadXdb, texSize: number,
+  meshOptions: MeshOptions = {},
 ): GeomData | null {
   const modelDir = dirOf(resolveHref('', modelHref));
   const readRel: ReadXdb = (href) =>
@@ -474,7 +533,7 @@ function decodeModelGeom(
   if (!ref) return null;
   const binPath = data.path(join('bin', 'Geometries', ref.uid));
   if (!existsSync(binPath)) return null;
-  const meshes = extractMeshes(readFileSync(binPath), ref.bbox);
+  const meshes = extractMeshes(readFileSync(binPath), ref.bbox, meshOptions);
   if (!meshes.length) return null;
   const tmp: GeomData[] = [];
   const i = addGeom(tmp, meshes, model, modelHref, data, texSize);
@@ -609,7 +668,72 @@ export function parseFootprint(sharedXml: string): Footprint | null {
   return fp;
 }
 
-export function createGeomResolver(root: string | Assets, texSize = 128): GeomResolver {
+/**
+ * Fill in a skinned geom's bones and clip, or drop the binding when there is no
+ * animation to play.
+ *
+ * The link is declared, not guessed: a shared that animates names its
+ * `<AnimSet href>` right beside its `<Model href>`. The set lists clips by kind,
+ * and an adventure-map set normally holds exactly one — `idle00`.
+ *
+ * Anything missing along the way (no set, a compressed animation file, a bone
+ * index the skeleton does not have) drops `skin` entirely, so the object falls
+ * back to the still mesh it has always drawn rather than to a broken one.
+ */
+function attachAnimation(
+  geom: GeomData, sharedXml: string, sharedHref: string, data: Assets, readXdb: ReadXdb, fps: number,
+): void {
+  const drop = (): void => { delete geom.skin; };
+  if (!geom.skin) return;
+  try {
+    const setHref = sharedXml.match(/<AnimSet href="([^"]+)"/)?.[1];
+    const sharedDir = dirOf(resolveHref('', sharedHref));
+    const set = setHref ? followHref(data, sharedXml, sharedDir, setHref) : null;
+    if (!set) return drop();
+    // Prefer idle00; take any idle if a set names them differently.
+    const items = listItems(set.xml.match(/<animations>([\s\S]*?)<\/animations>/)?.[1] ?? '');
+    const idle = items.find((i) => /<Kind>idle00<\/Kind>/.test(i.body))
+      ?? items.find((i) => /<Kind>idle/.test(i.body));
+    const animHref = idle?.body.match(/<Anim href="([^"]+)"/)?.[1];
+    const anim = animHref ? followHref(data, set.xml, set.dir, animHref) : null;
+    const uid = anim?.xml.match(/<uid>([0-9A-Fa-f-]{36})<\/uid>/)?.[1];
+    if (!uid) return drop();
+    const binPath = data.path(join('bin', 'animations', uid.toUpperCase()));
+    if (!existsSync(binPath)) return drop();
+    const file = GrannyFile.open(readFileSync(binPath));
+    // A compressed animation is one of the Oodle1 tail; nothing reads those yet.
+    if (!file || file.isCompressed) return drop();
+    const skeleton = readSkeletons(file)[0];
+    const animation = readAnimations(file)[0];
+    if (!skeleton?.bones.length || !animation) return drop();
+    // The mesh's bone indices only mean anything against THIS bone list. They
+    // are checked rather than trusted: a mismatch would not look like a subtle
+    // error, it would tear the model apart.
+    if (geom.skin.index.some((b) => b >= skeleton.bones.length)) return drop();
+
+    geom.skin.bones = skeleton.bones.map((b) => ({
+      name: b.name,
+      parent: b.parentIndex,
+      pos: b.rest.position.map((v) => +v.toFixed(5)),
+      quat: b.rest.orientation.map((v) => +v.toFixed(6)),
+    }));
+    // Row-vector on disk, column-vector in the renderer: transpose on the way out.
+    geom.skin.bind = inverseBindMatrices(skeleton).map((m) => {
+      const t: number[] = [];
+      for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) t.push(+m[r * 4 + c]!.toFixed(5));
+      return t;
+    });
+    const clip = bakeClip(skeleton, animation, fps);
+    geom.skin.clip = {
+      duration: clip.duration,
+      times: clip.times.map((v) => +v.toFixed(4)),
+      rotations: clip.rotations.map((r) => r.map((v) => +v.toFixed(5))),
+      positions: clip.positions.map((p) => p.map((v) => +v.toFixed(4))),
+    };
+  } catch { drop(); }
+}
+
+export function createGeomResolver(root: string | Assets, texSize = 128, options: SceneAnimationOptions = {}): GeomResolver {
   const data = toAssets(root);
   const readXdb: ReadXdb = (href) => {
     const p = data.path(href.split('#')[0]!);
@@ -638,7 +762,9 @@ export function createGeomResolver(root: string | Assets, texSize = 128): GeomRe
       // model's own folder as often as absolute (spell_shop.mb points at
       // "SpellShop-geom.xdb" beside it), which decodeModelGeom handles — read
       // flat, a bare name misses and the object silently meshes to nothing.
-      const own = model && modelRel ? decodeModelGeom(model, modelRel, data, readXdb, texSize) : null;
+      const own = model && modelRel
+        ? decodeModelGeom(model, modelRel, data, readXdb, texSize, { skin: !!options.animate })
+        : null;
       if (own) { idx = geoms.length; geoms.push(own); }
       // The effect's own models come first: a teleporter's Spiral and Rune ARE
       // the object (its own model is a throwaway minimap quad), so they must land
@@ -663,6 +789,11 @@ export function createGeomResolver(root: string | Assets, texSize = 128): GeomRe
       // everything else and the renderer skips it. Attached to the geom because
       // the geom is 1:1 with the shared here (no cross-shared dedup).
       if (shared && idx >= 0) geoms[idx]!.footprint = parseFootprint(shared);
+      // Bones and the idle clip last: the geom is complete by now, so the
+      // binding it carries covers every vertex the renderer will draw.
+      if (options.animate && shared && idx >= 0) {
+        attachAnimation(geoms[idx]!, shared, sharedHref, data, readXdb, options.animationFps ?? 15);
+      }
     } catch { idx = -1; }
     geomIndex.set(sharedHref, idx);
     return idx;
@@ -736,7 +867,7 @@ export function buildScene(
   };
 
   // --- geometry/texture resolution (cached per Shared href) ---
-  const resolver = createGeomResolver(data, texSize);
+  const resolver = createGeomResolver(data, texSize, { animate: opt.animate, animationFps: opt.animationFps });
   const geoms = resolver.geoms;
   const resolveGeom = resolver.resolve;
 
@@ -1160,11 +1291,23 @@ function addGeom(geoms: GeomData[], meshes: Mesh[], model: string, modelHref: st
   for (const m of meshes) { vc += m.vertexCount; tc += m.indices.length; }
   const pos = new Float32Array(vc * 3), uv = new Float32Array(vc * 2), idxs = new Uint32Array(tc);
   const nrm = new Float32Array(vc * 3);
+  // The binding is packed alongside the positions and in the same order, so it
+  // survives the concatenation of several meshes into one buffer. It is only
+  // usable if EVERY kept mesh carries one — a model with a bound body and an
+  // unbound prop would otherwise leave the prop weighted to bone 0 and drag it
+  // along with the creature's hip.
+  const skinned = meshes.every((m) => m.skin);
+  const skinIndex = skinned ? new Uint8Array(vc * 4) : null;
+  const skinWeight = skinned ? new Float32Array(vc * 4) : null;
   let vo = 0, io = 0, hasUV = true, hasNrm = true;
   for (const m of meshes) {
     pos.set(m.positions, vo * 3);
     if (m.normals.length === m.positions.length) nrm.set(m.normals, vo * 3); else hasNrm = false;
     if (m.uvs) uv.set(m.uvs, vo * 2); else hasUV = false;
+    if (skinIndex && skinWeight && m.skin) {
+      skinIndex.set(m.skin.indices, vo * 4);
+      skinWeight.set(m.skin.weights, vo * 4);
+    }
     for (let i = 0; i < m.indices.length; i++) idxs[io + i] = m.indices[i] + vo;
     vo += m.vertexCount; io += m.indices.length;
   }
@@ -1210,6 +1353,13 @@ function addGeom(geoms: GeomData[], meshes: Mesh[], model: string, modelHref: st
     nrm: hasNrm ? Array.from(nrm, (v) => +v.toFixed(4)) : null,
     idx: Array.from(idxs),
     parts,
+    // The bones themselves are not known here — the model file has the binding,
+    // the animation set has the skeleton and the clip, and only the caller knows
+    // the shared that names it. So the binding is packed now and the resolver
+    // fills the rest in (or drops `skin` outright when there is no clip to play).
+    ...(skinIndex && skinWeight
+      ? { skin: { index: Array.from(skinIndex), weight: Array.from(skinWeight, (v) => +v.toFixed(4)), bones: [], bind: [], clip: null } }
+      : {}),
   });
   return idx;
 }

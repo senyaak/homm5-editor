@@ -287,12 +287,12 @@ function collectLeaves(tree: RecordTree, out: BlockRecord[] = []): BlockRecord[]
 // buffer we don't parse). Tunable — lower drops more suspect models.
 const SHATTER_THRESHOLD = 0.06;
 
-export function extractMeshes(b: Buffer, bbox: BBox): Mesh[] {
+export function extractMeshes(b: Buffer, bbox: BBox, options: MeshOptions = {}): Mesh[] {
   // Read the container's structure when it matches: it states the mesh count,
   // the triangles and the texture coordinates outright, and agrees with the
   // models' own <NumMeshes> for 2071 of 2076 shipped models. The scan below is
   // the fallback for the handful it cannot parse.
-  const structured = extractMeshesStructured(b);
+  const structured = extractMeshesStructured(b, options);
   if (structured) return structured;
   const posArrays = extractPositionArrays(b, bbox); // count × vec3, bbox-validated
   const leaves = collectLeaves(parseTree(b));

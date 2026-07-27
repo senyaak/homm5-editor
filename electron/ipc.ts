@@ -111,6 +111,15 @@ export interface MapLoadResult {
    * closed and reopened untouched can still be stepped back through.
    */
   history: HistoryState;
+  /**
+   * Which idle-animation mode this scene was built for.
+   *
+   * Sent with the scene rather than read separately, because it describes THIS
+   * payload: `off` means the geoms carry no bones at all, so the renderer must
+   * not go looking for them, and a setting changed mid-session does not apply
+   * until the next open.
+   */
+  idleAnimation: 'off' | 'visible' | 'all';
 }
 
 /** How far the undo stack can go in each direction, and what is next. */
@@ -713,6 +722,13 @@ export interface EditorApi {
    * on its way down by the time the call would resolve.
    */
   setGpuSoftware(on: boolean): Promise<void>;
+  /** Which idle-animation mode is remembered. See Settings.idleAnimation. */
+  idleAnimation(): Promise<'off' | 'visible' | 'all'>;
+  /**
+   * Remember an idle-animation mode. `reloadNeeded` says a map is open and was
+   * built under the previous mode, so it will not change until it is reopened.
+   */
+  setIdleAnimation(mode: 'off' | 'visible' | 'all'): Promise<{ reloadNeeded: boolean }>;
   /**
    * Subscribe to external edits of the open map folder. Fires once per settled
    * burst of writes; our own saves never fire it.

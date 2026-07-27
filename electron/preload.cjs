@@ -86,6 +86,8 @@ const api = {
   openDevTools: () => ipcRenderer.invoke('app:open-devtools'),
   gpuSoftware: () => ipcRenderer.invoke('app:gpu-software'),
   setGpuSoftware: (on) => ipcRenderer.invoke('app:set-gpu-software', { on }),
+  idleAnimation: () => ipcRenderer.invoke('app:idle-animation'),
+  setIdleAnimation: (mode) => ipcRenderer.invoke('app:set-idle-animation', { mode }),
   // Push channel, not invoke: the main process decides when the folder moved.
   // The listener is wrapped so the renderer never sees the IpcRendererEvent.
   onExternalChange: (cb) => { ipcRenderer.on('map:external-change', (_e, c) => cb(c)); },

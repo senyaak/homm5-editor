@@ -22,6 +22,7 @@ import {
   checkSkeleton, isIdentityFrame, readAnimations, readSkeletons, skinMatrices, skinPositions,
 } from '../src/animation.ts';
 import { extractMeshesStructured, readGeometryRefFromModelXdb } from '../src/geometry.ts';
+import { createGeomResolver } from '../src/scene.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {
@@ -225,6 +226,34 @@ check('the idle stays inside its own bounding box', worstGrowth < 2,
 check('and the idle actually moves the mesh', stillModels.length === 0,
   `largest motion ${(bestMotion * 100).toFixed(1)}% of model size on ${bestMotionModel || 'n/a'}` +
   (stillModels.length ? `; still: ${stillModels.slice(0, 4).join(', ')}` : ''));
+
+// --- what the scene hands the renderer ---------------------------------------
+//
+// The last link: a map object names its own AnimSet, so resolving one shared
+// should come back with the mesh, the binding, the bones and a baked clip — and
+// with none of it when animation is off, which is the promise the setting makes.
+
+const MONSTER = '/MapObjects/Neutral/Earth_Elemental.(AdvMapMonsterShared).xdb';
+if (existsSync(join(dataRoot, 'MapObjects', 'Neutral'))) {
+  const still = createGeomResolver(dataRoot, 64, { animate: false });
+  const stillGeom = still.geoms[still.resolve(MONSTER)];
+  const moving = createGeomResolver(dataRoot, 64, { animate: true });
+  const movingGeom = moving.geoms[moving.resolve(MONSTER)];
+
+  console.log('\nscene payload');
+  check('animation off leaves no trace on the geom', !!stillGeom && !stillGeom.skin);
+  const skin = movingGeom?.skin;
+  check('animation on attaches bones and a clip',
+    !!skin?.bones.length && !!skin?.clip, `${skin?.bones.length ?? 0} bones, ${skin?.clip?.times.length ?? 0} samples`);
+  check('the binding covers every vertex',
+    !!skin && !!movingGeom && skin.index.length === movingGeom.pos.length / 3 * 4 && skin.weight.length === skin.index.length,
+    `${skin?.index.length ?? 0} entries for ${(movingGeom?.pos.length ?? 0) / 3} vertices`);
+  check('one inverse bind matrix per bone, 16 floats each',
+    !!skin && skin.bind.length === skin.bones.length && skin.bind.every((m) => m.length === 16));
+  check('the clip is as long as the animation says',
+    !!skin?.clip && skin.clip.duration > 0 && Math.abs(skin.clip.times[skin.clip.times.length - 1]! - skin.clip.duration) < 0.01,
+    `${skin?.clip?.duration.toFixed(2)}s`);
+}
 
 console.log(failures ? `\n${failures} check(s) failed` : '\nall checks passed');
 process.exit(failures ? 1 : 0);

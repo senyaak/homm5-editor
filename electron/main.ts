@@ -608,7 +608,11 @@ ipcMain.handle('map:load', async (_e: IpcMainInvokeEvent, mapPath: string): Prom
   // the terminal for "[perf]".
   const tStart = performance.now();
   const data = mountedAssets(assetRoot);
-  const { map, scene, skipped, resolver } = buildScene(data, mapPath);
+  // Whether the scene carries bones and clips at all is decided here, once, from
+  // the setting — an animated model's payload roughly doubles, so a map opened
+  // with idles off must not pay for them anywhere down the chain.
+  const idleAnimation = readSettings().idleAnimation ?? 'off';
+  const { map, scene, skipped, resolver } = buildScene(data, mapPath, { animate: idleAnimation !== 'off' });
   const tScene = performance.now();
   initProject(mapDir); // ensure a manifest so status/pack work
   // Tile paths this map's terrain actually has layers for (union over floors).
@@ -655,7 +659,21 @@ ipcMain.handle('map:load', async (_e: IpcMainInvokeEvent, mapPath: string): Prom
     },
     status: status(mapDir),
     history: historyState(session),
+    idleAnimation,
   };
+});
+
+// --- IPC: the idle-animation setting ---
+// Read and written here rather than in the renderer, because it decides what
+// map:load builds; the renderer only learns which mode the scene it was handed
+// was built for. Changing it takes effect on the next open, which the caller is
+// told so it can offer the reload rather than leave the map looking unchanged.
+ipcMain.handle('app:idle-animation', (): 'off' | 'visible' | 'all' => readSettings().idleAnimation ?? 'off');
+ipcMain.handle('app:set-idle-animation', (_e: IpcMainInvokeEvent, { mode }: { mode: 'off' | 'visible' | 'all' }) => {
+  saveSettings({ idleAnimation: mode });
+  // A map already open was built under the old mode, so it keeps whatever it
+  // has until it is loaded again.
+  return { reloadNeeded: !!session };
 });
 
 // --- IPC: move an object (x,y tiles); z stays the object's stored value ---

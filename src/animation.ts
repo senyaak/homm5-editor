@@ -426,6 +426,64 @@ export function skinPositions(positions: Float32Array, skin: SkinBinding, matric
   return out;
 }
 
+/** A clip flattened to even samples, ready to hand a renderer as plain JSON. */
+export interface BakedClip {
+  /** Seconds. */
+  duration: number;
+  /** Sample times, evenly spaced, starting at 0. */
+  times: number[];
+  /** Per bone, in skeleton order: 4 floats per sample (x, y, z, w). */
+  rotations: number[][];
+  /** Per bone: 3 floats per sample. */
+  positions: number[][];
+}
+
+/**
+ * Sample an animation onto an even grid.
+ *
+ * The curves are B-splines with uneven knots, which no renderer wants to
+ * evaluate; baking them here keeps that arithmetic in one place, next to the
+ * format notes, and leaves the renderer with nothing but linear interpolation
+ * between samples. 15 per second is deliberate and not the clip's own rate:
+ * these are idle loops on a map seen from above, the curves carry ~25 keys a
+ * second, and sampling at the authored 60 fps quadruples the payload for
+ * motion nobody can see at that distance.
+ *
+ * Untracked bones are baked too, holding their rest value, so the renderer can
+ * drive every bone from one clip rather than special-casing the gaps.
+ */
+export function bakeClip(skeleton: Skeleton, animation: Animation, fps = 15): BakedClip {
+  const tracks = new Map<string, TransformTrack>();
+  for (const group of animation.groups) {
+    for (const track of group.tracks) tracks.set(track.name, track);
+  }
+  const count = Math.max(2, Math.ceil(animation.duration * fps) + 1);
+  const times: number[] = [];
+  for (let i = 0; i < count; i++) times.push(animation.duration * i / (count - 1));
+
+  const scratch: number[] = [];
+  const rotations: number[][] = [];
+  const positions: number[][] = [];
+  for (const bone of skeleton.bones) {
+    const track = tracks.get(bone.name);
+    const rot: number[] = [];
+    const pos: number[] = [];
+    for (const t of times) {
+      if (track && track.orientation.dim === 4) {
+        sampleQuaternion(track.orientation, t, scratch);
+        rot.push(scratch[0]!, scratch[1]!, scratch[2]!, scratch[3]!);
+      } else rot.push(...bone.rest.orientation);
+      if (track && track.position.dim === 3) {
+        sampleCurve(track.position, t, scratch);
+        pos.push(scratch[0]!, scratch[1]!, scratch[2]!);
+      } else pos.push(...bone.rest.position);
+    }
+    rotations.push(rot);
+    positions.push(pos);
+  }
+  return { duration: animation.duration, times, rotations, positions };
+}
+
 /** Whether a frame matrix is the identity, within float32 noise. */
 export function isIdentityFrame(frame: number[] | null, tolerance = 1e-4): boolean {
   if (!frame) return true;

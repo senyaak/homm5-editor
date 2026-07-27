@@ -64,6 +64,20 @@ export interface Settings {
    * the way back, since it costs a lot of speed.
    */
   softwareRendering?: boolean;
+  /**
+   * Play the objects' idle animations on the map.
+   *
+   * Off by default, and the default is not timidity: a still map is what the
+   * editor is for, and animation is not free at any layer. `off` means the
+   * scene carries no bones, no binding and no clips at all — the payload of an
+   * animated model roughly doubles when it does. `visible` builds them but
+   * advances only what the camera can see. `all` keeps every creature moving,
+   * on screen or not.
+   *
+   * Changing it takes effect when a map is next opened, because it decides what
+   * the scene is built out of.
+   */
+  idleAnimation?: 'off' | 'visible' | 'all';
 }
 
 /** Where settings live. Same file in dev and packaged, on purpose: one setup. */
