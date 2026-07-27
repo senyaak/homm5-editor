@@ -70,23 +70,42 @@ Census over the whole shipped library:
 | `bin/Skeletons` | 2247 | **2247** | 0 |
 | `bin/animations` | 3409 | 592 | **2817** |
 
-Compression type 2 is **Oodle1** (RAD's own LZ + adaptive arithmetic coder).
-Nothing in the editor decodes it today; `GrannyFile.isCompressed` reports it and
-the reader returns null section data rather than guessing.
+Compression type 2 is **Oodle1** (RAD's own LZ + adaptive arithmetic coder),
+ported in `src/oodle.ts` from the open specification at
+`LunaticInAHat/liboodle` (Unlicense), which documents the format down to
+pseudocode and names HoMM5 as an example. `GrannyFile` decompresses on the way
+in; `isUnreadable` is what a caller checks, and it means "there is data here we
+cannot see", not "this file is compressed".
 
-Reaching the tail, if it is ever worth it, has two routes:
+**It decodes about 80% of compressed sections, and what it decodes is exact.**
+Both halves of that sentence are measured (`npm run test-oodle`):
 
-* **Port the algorithm.** It is publicly specified — `LunaticInAHat/liboodle`
-  (Unlicense) documents the bitstream, the adaptive symbol coder and the LZ
-  layer, and names HoMM5 as an example. Roughly 400–600 lines. Verification is
-  binary: output must be exactly `decompressedSize` bytes and the type tree must
-  parse.
-* **Call the game's own DLL.** `bin/granny2.dll` exports `GrannyDecompressData`,
-  but it is 32-bit and the editor's Node is 64-bit — a process cannot load a DLL
-  of the other bitness, so this needs a small 32-bit sidecar talking over stdio.
+* Exact, because the game ships the same skeleton twice — compressed under
+  `bin/Skeletons/`, and again uncompressed inside the animation that plays on
+  it. Decompressed, the two agree bone for bone, name for name, parent for
+  parent, and the floats reproduce each file's own inverse bind matrices to
+  4e-7. One wrong bit in an arithmetic decoder turns everything after it into
+  noise, so agreement at that level is not something a nearly-right decoder
+  achieves.
+* Only 80%, because a residual bug remains. It shows up in long single streams:
+  after thousands of correct bytes a match offset comes out a few hundred bytes
+  beyond the data produced so far, always with the kilobyte digit at its maximum.
+  Ruled out by measurement, not by argument: the stream-transition rule (four
+  models compared), the per-stream reset of LZ state, decay (disabling it changes
+  nothing — it barely runs), the probationary path (every variant is far worse),
+  the offset reconstruction, the window bound, and narrowing the four-byte
+  alphabet by what the kilobyte digit leaves.
 
-Of a sample of adventure-map animations, 24 were plain and 14 compressed, so the
-tail is real but not the majority.
+What that costs today: the **13 compressed adventure-map idle clips still do not
+decode** — the ones that were blocked are exactly the long-stream case. The port
+currently buys correctness and coverage of the skeleton library rather than new
+animations on the map. A section that fails leaves `data` null and the object
+falls back to its still mesh, which is what it did before the port.
+
+The other route, if the residual proves stubborn: `bin/granny2.dll` exports
+`GrannyDecompressData`, but it is 32-bit and the editor's Node is 64-bit — a
+process cannot load a DLL of the other bitness, so it would need a small 32-bit
+sidecar over stdio. It would also make the editor depend on the game install.
 
 ## 4. Skeleton **[OK]**
 

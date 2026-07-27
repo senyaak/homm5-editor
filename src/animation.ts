@@ -1,11 +1,11 @@
 // Skeletons and animations, read out of the Granny files in bin/animations.
 //
 // Where the pieces live is worth stating once, because it is not where the
-// folder names suggest. `bin/Skeletons/*` is compressed with Oodle1 — all 2247
-// files — but we do not need it: an animation file carries its OWN copy of the
-// skeleton it animates, and those are stored uncompressed for the bulk of the
-// library. So the editor reads one file per animation and gets bones, rest pose
-// and curves together.
+// folder names suggest: `bin/Skeletons/*` is not read at all. An animation file
+// carries its OWN copy of the skeleton it animates, so one file gives bones,
+// rest pose and curves together — and the bulk of them are stored uncompressed,
+// while every standalone skeleton is Oodle1-packed (src/oodle.ts decodes most,
+// but not all, of that).
 //
 // The link from a map object to this data runs through XML: an object's Model
 // holds an inline <Skeleton> with a uid, and an .(AnimSet).xdb lists animations
@@ -87,20 +87,23 @@ export function readSkeletons(file: GrannyFile): Skeleton[] {
   if (!member) return [];
   const out: Skeleton[] = [];
   for (const skelRef of file.refArray(file.field(rootType, file.rootObject, 'Skeletons'))) {
-    const skelType = file.type(member.refType!);
+    const skelType = file.type(member.refType);
     const bonesMember = file.member(skelType, 'Bones');
     if (!bonesMember) continue;
-    const boneType = file.type(bonesMember.refType!);
+    const boneType = file.type(bonesMember.refType);
     const bones: Bone[] = [];
     for (const boneRef of file.array(file.field(skelType, skelRef, 'Bones'), bonesMember.refType)) {
       bones.push({
-        name: file.string(file.field(boneType, boneRef, 'Name')!) ?? '',
+        name: file.string(file.field(boneType, boneRef, 'Name')) ?? '',
         parentIndex: file.int32(file.field(boneType, boneRef, 'ParentIndex')) ?? -1,
-        rest: file.transform(file.field(boneType, boneRef, 'Transform'))!,
+        // A bone with no readable Transform stands at the origin rather than
+        // taking the whole skeleton down with it.
+        rest: file.transform(file.field(boneType, boneRef, 'Transform'))
+          ?? { flags: 0, position: [0, 0, 0], orientation: [0, 0, 0, 1], scaleShear: [1, 0, 0, 0, 1, 0, 0, 0, 1] },
         inverseWorld: file.reals(file.field(boneType, boneRef, 'InverseWorldTransform'), 16) ?? [],
       });
     }
-    out.push({ name: file.string(file.field(skelType, skelRef, 'Name')!) ?? '', bones });
+    out.push({ name: file.string(file.field(skelType, skelRef, 'Name')) ?? '', bones });
   }
   return out;
 }
@@ -119,13 +122,13 @@ export function readAnimations(file: GrannyFile): Animation[] {
   const rootType = file.type(file.rootType);
   const animMember = file.member(rootType, 'Animations');
   if (!animMember) return [];
-  const animType = file.type(animMember.refType!);
+  const animType = file.type(animMember.refType);
   const groupMember = file.member(animType, 'TrackGroups');
-  const groupType = groupMember ? file.type(groupMember.refType!) : [];
+  const groupType = groupMember ? file.type(groupMember.refType) : [];
   const trackMember = groupMember ? file.member(groupType, 'TransformTracks') : null;
-  const trackType = trackMember ? file.type(trackMember.refType!) : [];
+  const trackType = trackMember ? file.type(trackMember.refType) : [];
   const curveMember = trackMember ? file.member(trackType, 'PositionCurve') : null;
-  const curveType = curveMember ? file.type(curveMember.refType!) : [];
+  const curveType = curveMember ? file.type(curveMember.refType) : [];
 
   const out: Animation[] = [];
   for (const animRef of file.refArray(file.field(rootType, file.rootObject, 'Animations'))) {
@@ -138,17 +141,17 @@ export function readAnimations(file: GrannyFile): Animation[] {
           return at ? readCurve(file, curveType, at) : EMPTY_CURVE;
         };
         tracks.push({
-          name: file.string(file.field(trackType, trackRef, 'Name')!) ?? '',
+          name: file.string(file.field(trackType, trackRef, 'Name')) ?? '',
           position: curve('PositionCurve'),
           orientation: curve('OrientationCurve'),
           scaleShear: curve('ScaleShearCurve'),
         });
       }
       tracks.sort((a, b) => a.name.localeCompare(b.name));
-      groups.push({ name: file.string(file.field(groupType, groupRef, 'Name')!) ?? '', tracks });
+      groups.push({ name: file.string(file.field(groupType, groupRef, 'Name')) ?? '', tracks });
     }
     out.push({
-      name: file.string(file.field(animType, animRef, 'Name')!) ?? '',
+      name: file.string(file.field(animType, animRef, 'Name')) ?? '',
       duration: file.real32(file.field(animType, animRef, 'Duration')) ?? 0,
       timeStep: file.real32(file.field(animType, animRef, 'TimeStep')) ?? 0,
       groups,

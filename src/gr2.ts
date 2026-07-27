@@ -9,20 +9,21 @@
 // the mesh container had to be. We read the type tree, then read objects through
 // it — `Bones`, `ParentIndex`, `InverseWorldTransform` come out by name.
 //
-// Two limits are deliberate:
-//   * Sections compressed with Oodle1 are exposed but not decoded (`data` is
-//     null). Every file under bin/Skeletons is compressed this way; almost all
-//     of bin/animations is not, and an animation carries its own copy of the
-//     skeleton, so the editor gets what it needs without an Oodle decompressor.
-//     See docs/ANIMATION_FORMAT.md for what the remaining tail would cost.
-//   * Only the 32-bit little-endian flavour is read. It is the only one the game
-//     ships (checked across all 5656 files), and pointer size is baked into
-//     every structure size, so a second flavour would be a second layout table.
+// Sections compressed with Oodle1 — every file under bin/Skeletons, and a sixth
+// of bin/animations — are decompressed on the way in by src/oodle.ts, so a
+// caller never sees the difference.
+//
+// One limit is deliberate: only the 32-bit little-endian flavour is read. It is
+// the only one the game ships (checked across all 5656 files), and pointer size
+// is baked into every structure size, so a second flavour would be a second
+// layout table.
+
+import { decompressSection } from './oodle.ts';
 
 /** A location inside the file: which section, and the byte offset within it. */
 export interface GR2Ref { sec: number; off: number }
 
-/** One section of the file. `data` is null when the section is compressed. */
+/** One section of the file. `data` is null only when it could not be read. */
 export interface GR2Section {
   index: number;
   /** 0 = stored, 1 = Oodle0, 2 = Oodle1. */
@@ -125,9 +126,25 @@ export class GrannyFile {
       const offset = buf.readUInt32LE(s + 4);
       const size = buf.readUInt32LE(s + 8);
       const rawSize = buf.readUInt32LE(s + 12);
+      // Where the 32-bit run of the section ends and the 16-bit one does: Granny
+      // splits a section by field width and compresses each run as its own
+      // stream, and these are the only record of how long each one is.
+      const stop0 = buf.readUInt32LE(s + 20);
+      const stop1 = buf.readUInt32LE(s + 24);
       const relocOffset = buf.readUInt32LE(s + 28);
       const relocCount = buf.readUInt32LE(s + 32);
-      const stored = compression === 0 && offset + size <= buf.length;
+      let data: Buffer | null = null;
+      if (compression === 0 && offset + size <= buf.length) {
+        data = buf.subarray(offset, offset + size);
+      } else if (rawSize > 0 && offset + size <= buf.length) {
+        // Oodle1. Decoded rather than skipped since the port landed; a failure
+        // leaves the section null, exactly as an unreadable one used to be, so
+        // a file we cannot unpack degrades instead of taking the editor down.
+        try {
+          data = Buffer.from(decompressSection(buf, offset, size, rawSize, stop0, stop1));
+        } catch { data = null; }
+      }
+      const stored = data !== null;
       const reloc = new Map<number, GR2Ref>();
       if (stored) {
         for (let r = 0; r < relocCount; r++) {
@@ -136,11 +153,7 @@ export class GrannyFile {
           reloc.set(buf.readUInt32LE(o), { sec: buf.readUInt32LE(o + 4), off: buf.readUInt32LE(o + 8) });
         }
       }
-      this.sections.push({
-        index: i, compression, offset, size, rawSize,
-        data: stored ? buf.subarray(offset, offset + size) : null,
-        reloc,
-      });
+      this.sections.push({ index: i, compression, offset, size, rawSize, data, reloc });
     }
   }
 
@@ -157,9 +170,15 @@ export class GrannyFile {
     return file;
   }
 
-  /** Whether any section carrying bytes is compressed (i.e. needs Oodle). */
-  get isCompressed(): boolean {
-    return this.sections.some((s) => s.compression !== 0 && s.rawSize > 0);
+  /**
+   * Whether any section that carries bytes could NOT be read.
+   *
+   * Compression alone no longer means that: Oodle1 sections are decoded on the
+   * way in (src/oodle.ts). This is the honest question — is there data in this
+   * file we cannot see — and it is what callers should branch on.
+   */
+  get isUnreadable(): boolean {
+    return this.sections.some((s) => s.rawSize > 0 && !s.data);
   }
 
   /** The bytes of a ref's section, or null when that section is compressed. */
@@ -167,13 +186,22 @@ export class GrannyFile {
     return this.sections[ref.sec]?.data ?? null;
   }
 
-  /** Follow the pointer stored AT `ref`; null when it is a null pointer. */
-  pointer(ref: GR2Ref): GR2Ref | null {
+  /**
+   * Follow the pointer stored AT `ref`; null when it is a null pointer.
+   *
+   * Takes a null `ref` too, and says null back. Callers walk a type tree that
+   * may not hold the field they asked for — which became a real case, not a
+   * theoretical one, once Oodle sections started being decoded: a file whose
+   * last stream failed still parses, and its structures can name fields that
+   * are not there.
+   */
+  pointer(ref: GR2Ref | null): GR2Ref | null {
+    if (!ref) return null;
     return this.sections[ref.sec]?.reloc.get(ref.off) ?? null;
   }
 
   /** Read the C string a `String` member at `ref` points to. */
-  string(ref: GR2Ref): string | null {
+  string(ref: GR2Ref | null): string | null {
     const target = this.pointer(ref);
     if (!target) return null;
     const d = this.data(target);
@@ -187,7 +215,8 @@ export class GrannyFile {
    * The members of the structure type defined at `ref`, with each member's
    * offset inside the structure already accumulated.
    */
-  type(ref: GR2Ref): TypeMember[] {
+  type(ref: GR2Ref | null): TypeMember[] {
+    if (!ref) return [];
     const key = `${ref.sec}:${ref.off}`;
     const cached = this.typeCache.get(key);
     if (cached) return cached;

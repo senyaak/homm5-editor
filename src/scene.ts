@@ -701,8 +701,7 @@ function attachAnimation(
     const binPath = data.path(join('bin', 'animations', uid.toUpperCase()));
     if (!existsSync(binPath)) return drop();
     const file = GrannyFile.open(readFileSync(binPath));
-    // A compressed animation is one of the Oodle1 tail; nothing reads those yet.
-    if (!file || file.isCompressed) return drop();
+    if (!file || file.isUnreadable) return drop();
     const skeleton = readSkeletons(file)[0];
     const animation = readAnimations(file)[0];
     if (!skeleton?.bones.length || !animation) return drop();

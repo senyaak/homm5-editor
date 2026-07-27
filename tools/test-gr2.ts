@@ -47,9 +47,9 @@ const sample = all.filter((_, i) => i % stride === 0).slice(0, sampleSize);
 
 console.log(`\nreading ${sample.length} of ${all.length} animation files`);
 
-let opened = 0, compressed = 0, notGranny = 0;
+let opened = 0, compressed = 0, unreadable = 0, notGranny = 0;
 let withSkeleton = 0, withAnimation = 0;
-let worstSkeletonError = 0, worstSkeletonFile = '', rotatedBindFrame = 0;
+let worstSkeletonError = 0, worstSkeletonFile = '', rotatedBindFrame = 0, plainUnreadable = 0;
 const skeletonErrors: number[] = [];
 let knotOutOfRange = 0, emptyDim = 0, totalBones = 0, totalTracks = 0;
 const degrees = new Map<number, number>();
@@ -60,7 +60,12 @@ for (const name of sample) {
   const file = GrannyFile.open(readFileSync(path));
   if (!file) { notGranny++; continue; }
   opened++;
-  if (file.isCompressed) { compressed++; continue; }
+  // Compressed sections are decompressed by the reader now (src/oodle.ts), but
+  // not all of them succeed — so what is counted is which files needed Oodle at
+  // all, and which came out unreadable.
+  const packed = file.sections.some((s) => s.compression !== 0 && s.rawSize > 0);
+  if (packed) compressed++;
+  if (file.isUnreadable) { unreadable++; if (!packed) plainUnreadable++; continue; }
 
   const skeletons = readSkeletons(file);
   for (const skeleton of skeletons) {
@@ -95,7 +100,12 @@ for (const name of sample) {
 console.log('\ncontainer');
 check('every sampled file is a Granny GR2', notGranny === 0, `${notGranny} rejected`);
 check('headers line up on all of them', opened === sample.length - notGranny, `${opened} opened`);
-console.log(`  (${compressed} of ${opened} carry Oodle-compressed sections and were skipped)`);
+// The invariant is about the path that does not need Oodle: a plain file must
+// always read. How much of the COMPRESSED library decodes is a coverage number,
+// tracked in test-oodle.ts, and today it is partial — see ANIMATION_FORMAT.md §3.
+check('every file that needs no decompression reads', plainUnreadable === 0,
+  `${plainUnreadable} plain files unreadable`);
+console.log(`  (${compressed} of ${opened} carry Oodle1 sections; ${unreadable} of those did not decode)`);
 
 console.log('\nskeletons');
 check('files carry a skeleton', withSkeleton > 0, `${withSkeleton} skeletons, ${totalBones} bones`);
@@ -158,7 +168,7 @@ for (const idle of idles.slice(0, 24)) {
   const animPath = animUid && join(dataRoot, 'bin', 'animations', animUid.toUpperCase());
   if (!animPath || !existsSync(animPath)) continue;
   const granny = GrannyFile.open(readFileSync(animPath));
-  if (!granny || granny.isCompressed) continue;
+  if (!granny || granny.isUnreadable) continue;
   const skeleton = readSkeletons(granny)[0];
   const animation = readAnimations(granny)[0] ?? null;
   if (!skeleton?.bones.length) continue;
