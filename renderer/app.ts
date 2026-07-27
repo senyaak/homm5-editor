@@ -256,6 +256,9 @@ const AMBIENT_GAIN = Math.pow(2, 2.2);
 const uSunDir = { value: new THREE.Vector3(0.45, 0.35, 0.82) };
 const uSunCol = { value: new THREE.Color(0.25, 0.25, 0.25) };
 const uAmbCol = { value: new THREE.Color(0.31, 0.31, 0.31) };
+// The Light toggle's reach into the terrain: 1 = the baked designer point
+// lights add in, 0 = they don't (flat editing light keeps pools off too).
+const uLmGain = { value: 1 };
 
 function applyAmbient(a: AmbientData | null): void {
   scene.background = DEFAULT_BG;
@@ -404,10 +407,14 @@ interface UiPrefs {
   /** The terrain strip (brushes + tiles) — open by default, since the bar no
    *  longer holds the tools. */
   terrainPanel: boolean;
+  /** Particle effects playing, and the map's own light vs flat editing light. */
+  showFx: boolean;
+  mapLight: boolean;
 }
 const UI_PREFS_DEFAULT: UiPrefs = {
   showObjects: true, explorerOpen: true, cliffs: true, grid: false, showHidden: false, texScale: 0.5,
   topView: false, brushForce: 0.35, brushTension: 1, terrainPanel: true,
+  showFx: true, mapLight: true,
 };
 const UI_PREFS_KEY = 'homm5-editor.ui';
 function loadUiPrefs(): UiPrefs {
@@ -434,7 +441,20 @@ function saveUiPrefs(patch: Partial<UiPrefs>): void {
 let world: World | null = null; // { floors:[{ name, V, heights, group, objGroup, meshes:Map<id,mesh> }], active }
 let selected: Selection | null = null; // { id, mesh, inst }
 let showObjects = uiPrefs.showObjects;
+let showFx = uiPrefs.showFx;
+let mapLight = uiPrefs.mapLight;
 let boxHelper: THREE.BoxHelper | null = null;
+
+/**
+ * Point the lighting at what the Light toggle says: the active floor's own
+ * preset + its baked point-light pools, or the flat neutral look (the same one
+ * a preset-less map gets) for editing a dark underground without squinting.
+ */
+function refreshLighting(): void {
+  const fl = world ? world.floors[world.active] : null;
+  applyAmbient(mapLight ? fl?.ambient ?? null : null);
+  uLmGain.value = mapLight ? 1 : 0;
+}
 
 const raycaster = new THREE.Raycaster();
 const ptr = new THREE.Vector2();
@@ -969,6 +989,7 @@ uniform float uCliff;   // 0 disables the rock blend entirely
 uniform vec3 uSunDir; uniform vec3 uSunCol; uniform vec3 uAmb;
 uniform sampler2D uLm;  // baked designer point lights (bakeLightMap)
 uniform float uInvTiles;
+uniform float uLmGain;  // the Light toggle: 0 turns the pools off
 in vec2 vGrid; in vec2 vWorld; in vec3 vNrm; in vec3 vPos;
 out vec4 outColor;
 void main() {
@@ -1024,7 +1045,7 @@ void main() {
   // half a texel to hit the V-wide mask's texel centers and would smear the
   // pools half a tile off their objects.
   float d = abs(dot(n, normalize(uSunDir)));
-  vec3 pl = texture(uLm, vWorld * uInvTiles).rgb;
+  vec3 pl = texture(uLm, vWorld * uInvTiles).rgb * uLmGain;
   outColor = vec4(col * (uAmb + uSunCol * d + pl) * 2.0, 1.0);
 }`;
 
@@ -1105,6 +1126,7 @@ uniform float uScale;
 uniform float uHasOverlay;
 uniform vec3 uSunDir; uniform vec3 uSunCol; uniform vec3 uAmb;
 uniform sampler2D uLm;
+uniform float uLmGain;
 in vec2 vGrid; in vec2 vWorld; in vec2 vUv; in vec3 vNrm;
 out vec4 outColor;
 void main() {
@@ -1132,7 +1154,7 @@ void main() {
   // Here vGrid is exactly grid/tiles (see PROJ_VERT), which is the lightmap's
   // own mapping, so the pools land where the terrain draws them.
   float d = abs(dot(normalize(vNrm), normalize(uSunDir)));
-  vec3 pl = texture(uLm, vGrid).rgb;
+  vec3 pl = texture(uLm, vGrid).rgb * uLmGain;
   outColor = vec4(col * (uAmb + uSunCol * d + pl) * 2.0, 1.0);
 }`;
 
@@ -1180,7 +1202,7 @@ function projectBatch(fl: Floor3D, g: number): void {
         uHasOverlay: { value: overlay ? 1 : 0 },
         uMapSide: { value: s.V - 1 },
         uUnits: { value: U },
-        uLm: { value: fl.lightMap },
+        uLm: { value: fl.lightMap }, uLmGain,
         uSunDir, uSunCol, uAmb: uAmbCol,
       },
       side: THREE.DoubleSide,
@@ -1246,7 +1268,7 @@ async function upgradeToSplat(fl: Floor3D): Promise<void> {
       uRock: { value: rock }, uCliff: { value: rock ? cliffAmount : 0 },
       uScale: { value: texScale },
       uRockScale: { value: texScale / U },
-      uLm: { value: fl.lightMap }, uInvTiles: { value: 1 / (s.V - 1) },
+      uLm: { value: fl.lightMap }, uInvTiles: { value: 1 / (s.V - 1) }, uLmGain,
       uSunDir, uSunCol, uAmb: uAmbCol,
     },
     side: THREE.DoubleSide,
@@ -1645,6 +1667,7 @@ async function loadFx(floors: Floor3D[]): Promise<void> {
         m4.makeRotationZ(inst.r).setPosition(tileCenter(inst.x), tileCenter(inst.y), inst.z);
         const { system } = createFxSystem(f, baked, m4, (at * 0.37) % 3);
         system.mesh.userData.inst = inst;
+        system.mesh.visible = showFx; // effects arrive async; respect the toggle they land under
         fl.fx.push(system);
         fl.objGroup.add(system.mesh);
         built++;
@@ -1657,7 +1680,7 @@ async function loadFx(floors: Floor3D[]): Promise<void> {
 /** The one clock every effect follows (phase offsets are per system). */
 let fxClock = 0;
 function advanceFx(dt: number): void {
-  if (!world) return;
+  if (!world || !showFx) return;
   fxClock += dt;
   const fl = world.floors[world.active];
   if (!fl?.fx.length || !fl.objGroup.visible) return;
@@ -1755,8 +1778,9 @@ function setActiveFloor(i: number): void {
   if (!world) return;
   world.active = i;
   world.floors.forEach((fl, idx) => { fl.group.visible = idx === i; });
-  // Each floor lights like its own preset says — surface day, underground dark.
-  applyAmbient(world.floors[i]?.ambient ?? null);
+  // Each floor lights like its own preset says — surface day, underground dark
+  // (unless the Light toggle asks for the flat editing look).
+  refreshLighting();
   deselect();
   const { V, heights } = activeFloor();
   // Frame the camera on this floor (its terrain sits at its own height range).
@@ -5970,6 +5994,36 @@ $('idlebtn').onclick = async () => {
   $('hud').textContent = `idle stance: ${next}`;
 };
 
+// --- effects & light toggles ------------------------------------------------
+//
+// Both are view choices, not scene choices — unlike the idle button's `off`,
+// nothing is built differently, so flipping them costs nothing and they can
+// sit in uiPrefs like the other view toggles. Effects off just stops drawing
+// and advancing the systems (they keep arriving and keep following their
+// objects); Light `flat` swaps the floor's preset for the neutral built-in
+// look AND zeroes the point-light pools, because the reason to want it is
+// "let me actually see this dark underground while I edit".
+
+function setShowFx(on: boolean): void {
+  showFx = on;
+  if (world) for (const fl of world.floors) for (const s of fl.fx) s.mesh.visible = on;
+  $('fxbtn').textContent = on ? 'Effects: on' : 'Effects: off';
+  $('fxbtn').classList.toggle('on', on);
+  saveUiPrefs({ showFx: on });
+}
+$('fxbtn').onclick = () => setShowFx(!showFx);
+setShowFx(showFx); // reflect the persisted choice in the label
+
+function setMapLight(on: boolean): void {
+  mapLight = on;
+  refreshLighting();
+  $('lightbtn').textContent = on ? 'Light: map' : 'Light: flat';
+  $('lightbtn').classList.toggle('on', on);
+  saveUiPrefs({ mapLight: on });
+}
+$('lightbtn').onclick = () => setMapLight(!mapLight);
+setMapLight(mapLight);
+
 // --- object palette (the original editor's Objects tab) --------------------
 //
 // The catalogue is 1466 entries with an icon each, so two things are lazy: the
@@ -6868,6 +6922,8 @@ async function loadMapPath(path: string | null): Promise<void> {
     $('objects').style.display = '';
     $('showobj').style.display = '';
     $('idlebtn').style.display = '';
+    $('fxbtn').style.display = '';
+    $('lightbtn').style.display = '';
     $('scalewrap').style.display = 'flex';
     // Reflect the persisted ground-scale on the slider itself, or its thumb would
     // sit at the HTML default while the terrain uses the restored value.

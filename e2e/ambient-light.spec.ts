@@ -34,6 +34,13 @@ test('opening a map applies its AmbientLight preset', async () => {
   await page.evaluate((p) => window.view.open(p), MAP);
   await page.waitForFunction(() => window.view.size() > 0);
 
+  // The Light toggle persists in uiPrefs; a profile left on "flat" would show
+  // the fallback here and fail the preset asserts for the wrong reason.
+  await page.evaluate(() => {
+    const b = document.getElementById('lightbtn');
+    if (b?.textContent?.includes('flat')) (b as HTMLButtonElement).click();
+  });
+
   const after = await page.evaluate(() => window.view.ambientState());
   // A1C1M1 names /Lights/_(AmbientLight)/AdvMap/C1M1.xdb: LightColor
   // (0.545, 0.459, 0.38), Pitch 35, Yaw 40. The terrain uniforms carry the

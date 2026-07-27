@@ -52,6 +52,14 @@ one.
   inferred from the art, loop windows and wind are ignored) are written up in
   the format doc.
 
+- **Effects and Light join the view toggles.** Next to Idle stance the bar now
+  carries **Effects: on/off** (stop the particles moving and drawing) and
+  **Light: map/flat** — the floor lit as the game lights it, or the editor's
+  flat neutral look, because a designer-lit underground is atmospheric and
+  nearly black, and editing it means wanting the lights off. Both choices
+  stick between sessions, cost nothing to flip, and touch nothing but the
+  view: effects keep arriving and keep following their objects while hidden.
+
 ### Fixed
 
 - **`npm start` ran a stale renderer.** The build script's am-I-being-run-
