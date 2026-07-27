@@ -11,6 +11,12 @@ script manuals (`Editor Documentation/HOMM5_*.pdf`), strings pulled out of
 
 ## The three layers
 
+A fourth layer — patching or hooking the engine itself — is where the port is
+headed, so that a new artifact is indistinguishable from a shipped one rather
+than emulated from outside. What that costs, and where the engine's own
+artifact code can be cut into, is in
+[ENGINE_INTERNALS.md](ENGINE_INTERNALS.md).
+
 | layer | controls | ceiling |
 |---|---|---|
 | **data** (`.xdb` in the mod archive) | identity, price, slot, the six hero stats, set *membership*, every set effect's *numbers*, a handful of named constants (the Necromancer's Pendant among them) | cannot invent new *behaviour* |
@@ -197,12 +203,13 @@ tooltips, per-count texts and icons all work from the entry alone. Its
 - **borrow a shipped enum** — the new set behaves exactly like that set
   (same thresholds, same constants — retuning a constant changes the donor
   set too, they share it);
-- **`ARTFSET_EFFECT_CUSTOM`** — an eleventh enum value that exists in the
-  exe's string table but is used by no shipped set. The name reads as
-  "no built-in behaviour": the natural fit for a scripted set — the game
-  draws the set UI, the script does the work. **Untested — needs an in-game
-  probe before we rely on it** (does the parser accept it, does the tooltip
-  render, does nothing else fire).
+- **`ARTFSET_EFFECT_CUSTOM`** — enum value **0**, used by no shipped set.
+  Confirmed from the code: the set counter is called from 25 sites and their
+  indices run 1–10, so **nothing in the executable implements index 0**. It is
+  a set the engine parses, counts and draws, whose effect is ours to supply —
+  from Lua via `GetArtifactSetItemsCount(hero, 0, 1)`, or from a native hook.
+  (Still to confirm in game: that the data parser accepts the name, and what
+  happens if two sets share one enum.)
 
 Either way the real bonuses of a scripted set come from the script, and the
 script has first-class support for exactly this (next section).
@@ -218,13 +225,15 @@ handler slot per trigger kind; a map's own script would take it).
 
 | call | gives |
 |---|---|
-| `HasArtefact(hero, id)` | possession — worn *or* in the backpack, no distinction |
-| `GetArtifactSetItemsCount(hero, setID, onlyCombined=1)` | **worn count** of a set's members; `onlyCombined=0` counts the backpack too. The only API that sees the difference — one more reason to declare a custom set even for a scripted bonus |
+| `HasArtefact(hero, id, onlyEquipped=0)` | possession. **The third argument is real but undocumented** — with 1 the engine checks only the equipped slots and never opens the backpack (read out of the code, [ENGINE_INTERNALS.md](ENGINE_INTERNALS.md#hasartefact-has-a-third-argument-worn-versus-carried)). Worn-state detection therefore needs no set at all |
+| `GetArtifactSetItemsCount(hero, setID, onlyCombined=1)` | **worn count** of a set's members; `onlyCombined=0` counts the backpack too. Useful for tiered set bonuses |
 | `GiveArtefact(hero, id, bindToHero=0)` | grant; `bindToHero=1` makes it untransferable |
 | `RemoveArtefact(hero, id)` | take away (errors if absent — guard with `HasArtefact`) |
 
-`setID` for a custom set is presumably its index in the `<Sets>` list —
-verify in game when the first custom set goes in.
+`setID` is the **`ARTFSET_EFFECT_*` enum value**, not a position in the
+`<Sets>` list — the engine's own necromancy code calls it with 5 for the
+Necromancer set, and 5 is where `NECROMANCERS` sits in the enum. A custom set
+is therefore index 0.
 
 ### What a script can change on a hero
 
@@ -296,7 +305,7 @@ scripting is prohibited there) — single-player only.
 |---|---|
 | ±primary stats, luck, morale while worn | script (poll + `ChangeHeroStat`), fully reversible |
 | +movement, +mana, daily gold/resources | script, natural fits (`STAT_MOVE_POINTS`, `SetPlayerResource` on new day) |
-| +% necromancy on a new artifact | approximate: `MakeHeroNecromancer` for non-necromancers, post-combat `AddHeroCreatures` for the rest. The real modifier is exe-only (`NecroPendantBonus` is data but chained to the Pendant's id) |
+| +% necromancy on a new artifact | **natively, and cheaper than expected.** The raise percentage is one sum ([ENGINE_INTERNALS.md](ENGINE_INTERNALS.md#the-necromancy-percentage-in-full)) whose last term already is "worn pieces of a set ≥ threshold → add a constant from data". Putting the Cloak in the shipped Necromancer set gets +20% with no patch at all; a hook adds a term of our own. Script fallback for a hero *without* the skill: `MakeHeroNecromancer` (the engine consults it only when the skill is 0) |
 | grant a spell / skill while worn | one-way only — no removal calls; treat as permanent (NAF's compromise) |
 | activated artifact power | `ControlHeroCustomAbility` + `CUSTOM_ABILITY_TRIGGER` |
 | +% fire (or any element) damage | **impossible for a new id.** Exe-only (the Trident/Icicle/Cape family); no damage hook in any script API |
