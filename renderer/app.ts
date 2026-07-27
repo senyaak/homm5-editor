@@ -724,6 +724,7 @@ function addIdle(
   if (!idle) return false;
   idle.mesh.position.copy(handle.position);
   idle.mesh.rotation.copy(handle.rotation);
+  idle.mesh.scale.copy(handle.scale); // creature display scale rides the handle
   idle.mesh.userData.inst = inst;
   idle.time = phase;
   poseIdle(idle, idle.time);
@@ -776,6 +777,7 @@ function syncInstance(fl: Floor3D, inst: Instance): void {
       mesh.updateMatrixWorld();
       idle.mesh.position.copy(mesh.position);
       idle.mesh.rotation.copy(mesh.rotation);
+      idle.mesh.scale.copy(mesh.scale);
       idle.mesh.updateMatrixWorld();
     }
   }
@@ -940,6 +942,7 @@ function buildGeos(S: Scene) {
   geomFootprint.clear();
   geomSkin.clear();
   geomFx.clear();
+  geomScale.clear();
   S.geoms.forEach((g, i) => {
     geomParts.set(i, g.parts);
     geomFootprint.set(i, g.footprint ?? null);
@@ -947,6 +950,7 @@ function buildGeos(S: Scene) {
     // nothing, and every other geom would just sit in the map unused.
     if (g.skin?.clip) geomSkin.set(i, g.skin);
     if (g.fx?.length) geomFx.set(i, g.fx);
+    if (g.scale && g.scale !== 1) geomScale.set(i, g.scale);
   });
   worldGeos = geos;
   worldMats = mats;
@@ -1221,6 +1225,14 @@ function projectBatch(fl: Floor3D, g: number): void {
 
 /** Submesh descriptions per geom index, so materials can be rebuilt later. */
 const geomParts = new Map<number, GeomPart[]>();
+
+/**
+ * Creature display scale per geom index (GeomData.scale: the idle clip
+ * skeleton's root — Phoenix 0.37, Devil 0.7). Applied on the pick-handle mesh
+ * so it flows into the batch, the selection box and the idle body alike;
+ * absent means 1. Effects deliberately do NOT take it.
+ */
+const geomScale = new Map<number, number>();
 
 /** Building tile footprint per geom index (null for objects that declare none). */
 const geomFootprint = new Map<number, Footprint | null>();
@@ -1592,6 +1604,7 @@ function buildFloor(floor: Floor, geos: THREE.BufferGeometry[], mats: THREE.Mate
     // Tile index out to where the tile actually is; z is already a world height.
     m.position.set(tileCenter(it.x), tileCenter(it.y), it.z);
     m.rotation.z = it.r;
+    m.scale.setScalar(geomScale.get(it.g) ?? 1);
     m.userData.inst = it;
     // NOT added to the scene: this mesh is the pick-and-edit handle, and the
     // drawing is done by the instanced meshes below. Its world matrix still has
@@ -6309,6 +6322,7 @@ function addInstanceToScene(inst: Instance, geom: { index: number; data: GeomDat
     // material is never built.
     geomParts.set(geom.index, geom.data.parts);
     geomFootprint.set(geom.index, geom.data.footprint ?? null);
+    if (geom.data.scale && geom.data.scale !== 1) geomScale.set(geom.index, geom.data.scale);
   }
   const g = worldGeos[inst.g], m = worldMats[inst.g];
   if (!g || !m) { $('hud').textContent = 'placed, but its mesh is missing — reload to see it'; return; }
@@ -6318,6 +6332,7 @@ function addInstanceToScene(inst: Instance, geom: { index: number; data: GeomDat
   const mesh = new THREE.Mesh(g, m);
   mesh.position.set(tileCenter(inst.x), tileCenter(inst.y), inst.z);
   mesh.rotation.z = inst.r;
+  mesh.scale.setScalar(geomScale.get(inst.g) ?? 1);
   mesh.userData.inst = inst;
   // The handle stays out of the scene, as in buildFloor; the batch draws it.
   mesh.updateMatrixWorld();

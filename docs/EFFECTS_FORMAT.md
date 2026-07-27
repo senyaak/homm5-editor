@@ -61,6 +61,19 @@ on these instances:
   dragon's mist peaks at 57 and rendered near-black under a plain modulate.
   The renderer doubles the colour term (not alpha); saturated effects
   (campfires at 255) just clamp where they already clamped.
+* **Additive art can ship with NO alpha channel at all** — the phoenix's
+  entire fire sequence is zero-alpha (only the `NoADD/` variants carry one).
+  Under ONE/ONE blending only the colour matters, so an additive instance
+  must not gate fragments on alpha (986 alive flame particles rendered as
+  nothing), and the baked alpha keys — the particle's fade curve — reach the
+  screen by multiplying the colour instead.
+* **The clip skeleton's root bone carries the creature's display scale**
+  (Phoenix 0.37, Devil/ArchDevil 0.7, Griffin 1.5): the mesh is authored
+  full-size and the game shows it through the rig. The editor applies it to
+  the placed mesh; the effect stays unscaled — the phoenix's flames are baked
+  full-size around the 0.37 bird, which is the game's own look (small bird,
+  towering fire). Bone-glued instances compose the scale through the bone
+  chain, so the eye glow of a scaled head stays on the head.
 
 `<Lights>` (`LightInstance` → `AnimLight` → `bin/Lights/<uid>`, the Nival
 container, 98 files) is deliberately parked: of the 532 effects reachable from
@@ -86,7 +99,7 @@ then the key blocks, contiguous, in directory order:
   pos      14B  [i16 frame][f32 x][f32 y][f32 z]
   rot       6B  [i16 frame][f32 radians]
   size     10B  [i16 frame][f32 w][f32 h]
-  color     6B  [i16 frame][u8 r][u8 g][u8 b][u8 a]
+  color     6B  [i16 frame][u8 b][u8 g][u8 r][u8 a]    D3DCOLOR order — see below
   texframe  4B  [i16 frame][u16 index]      0xffff = hidden
 ```
 
@@ -100,8 +113,11 @@ What pinned each piece down:
 * **Channel shapes**: 90-byte single-particle files are the rosetta — five
   directory entries with keyCount 1, and the blocks between the offsets have
   exactly the widths above. Rotation keys carry π/4 and π/180-scaled values;
-  size keys are w/h pairs; colour keys are RGBA bytes (a fire effect's are
-  orange).
+  size keys are w/h pairs; colour keys are bytes in **B,G,R,A** order — the
+  era's little-endian D3DCOLOR. Read as RGBA every flame in the library tints
+  BLUE (campfire averages (215,229,255), the phoenix's bone flames (0,160,255));
+  swapped they are the warm oranges fire actually has. The parser presents
+  them as RGBA.
 * **texframe = index into the instance's `<Textures>`**: across every file
   whose particle doc is referenced by exactly resolvable instances, the
   maximum baked index stays below the instance's texture count (1079 of 1152;

@@ -75,6 +75,7 @@ const FRAG = `
 precision highp float;
 uniform sampler2D uAtlas;
 uniform vec2 uGrid; // cols, rows
+uniform float uAdd; // 1 = this instance blends additively
 in vec2 vUv;
 in vec4 vColor;
 in float vTex;
@@ -90,9 +91,22 @@ void main() {
   // The era's modulate-x2 colour stage, same as the terrain's Whitening: the
   // baked colours are authored around 128 = full brightness. Without it the
   // ghost dragon's mist (colour bytes <=57) renders near-black instead of the
-  // pale smoke the game shows. Alpha stays a plain modulate.
-  outColor = vec4(s.rgb * vColor.rgb * 2.0, s.a * vColor.a);
-  if (outColor.a < 0.003) discard;
+  // pale smoke the game shows.
+  vec3 rgb = s.rgb * vColor.rgb * 2.0;
+  if (uAdd > 0.5) {
+    // Additive art often ships NO alpha channel at all (the phoenix's fire
+    // sequence is all-zero alpha) — under ONE/ONE blending only rgb matters,
+    // so alpha must neither gate the fragment nor reach the blender. The
+    // baked alpha keys are the particle's fade curve; for additive that fade
+    // can only happen through the colour.
+    rgb *= vColor.a;
+    if (max(rgb.r, max(rgb.g, rgb.b)) < 0.004) discard;
+    outColor = vec4(rgb, 1.0);
+  } else {
+    float a = s.a * vColor.a;
+    if (a < 0.003) discard;
+    outColor = vec4(rgb, a);
+  }
 }`;
 
 /** Strides of the flat [frame, ...values] channel arrays. */
@@ -139,7 +153,11 @@ export function createFxSystem(
     glslVersion: THREE.GLSL3,
     vertexShader: VERT,
     fragmentShader: FRAG,
-    uniforms: { uAtlas: { value: null }, uGrid: { value: new THREE.Vector2(1, 1) } },
+    uniforms: {
+      uAtlas: { value: null },
+      uGrid: { value: new THREE.Vector2(1, 1) },
+      uAdd: { value: fx.additive ? 1 : 0 },
+    },
     transparent: true,
     depthWrite: false,
     blending: fx.additive ? THREE.AdditiveBlending : THREE.NormalBlending,

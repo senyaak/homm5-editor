@@ -187,6 +187,14 @@ export interface GeomData {
    * the static glow card in `parts` stays as the fallback and the pick target.
    */
   fx?: FxInstancePayload[];
+  /**
+   * Display scale from the idle clip skeleton's root bone (Phoenix 0.37,
+   * Devil 0.7, Griffin 1.5) — the game draws a creature through its rig, and
+   * the rig shrinks or grows the authored mesh. Applied to the placed MESH
+   * only; effects play unscaled (the phoenix's flames tower over the small
+   * bird, which is the game's own picture). Absent = 1.
+   */
+  scale?: number;
 }
 
 /**
@@ -619,7 +627,7 @@ function effectParticles(
 }
 
 /** A bone's rest-pose world transform, looked up by name (or numeric index as a string). */
-type BoneWorld = (bone: string) => { pos: number[]; quat: number[] } | null;
+type BoneWorld = (bone: string) => BoneRest | null;
 
 const qmul = (a: number[], b: number[]): number[] => [
   a[3]! * b[0]! + a[0]! * b[3]! + a[1]! * b[2]! - a[2]! * b[1]!,
@@ -692,19 +700,24 @@ function particlesOfEffect(
       const glueName = inst.match(/<GlueToNamedBone>([^<]+)<\/GlueToNamedBone>/)?.[1]?.trim();
       const glueIdx = +(inst.match(/<GlueToBone>([-\d]+)<\/GlueToBone>/)?.[1] ?? 0);
       const glue = glueName || (glueIdx > 0 ? String(glueIdx) : null);
+      let instScale = +(inst.match(/<Scale>([-\d.eE]+)</)?.[1] ?? 1) || 1;
       if (glue) {
         const bone = boneWorld?.(glue);
         if (!bone) continue;
-        const r = qrot(bone.quat, pos);
+        const bs = bone.scale || 1;
+        const r = qrot(bone.quat, [pos[0]! * bs, pos[1]! * bs, pos[2]! * bs]);
         pos = [bone.pos[0]! + r[0]!, bone.pos[1]! + r[1]!, bone.pos[2]! + r[2]!];
         quat = qmul(bone.quat, quat);
+        // The bone's accumulated scale reaches the baked keys through the
+        // instance scale, so eye glow on a 0.37-scaled head stays ON the head.
+        instScale *= bs;
       }
 
       out.push({
         uid: uid.toUpperCase(),
         pos,
         quat,
-        scale: +(inst.match(/<Scale>([-\d.eE]+)</)?.[1] ?? 1) || 1,
+        scale: instScale,
         speed: +(inst.match(/<Speed>([-\d.eE]+)</)?.[1] ?? 1) || 1,
         textures,
         // The era's convention the art is drawn for: a fire frame is painted on
@@ -730,37 +743,43 @@ function particlesOfEffect(
  */
 function clipEffectParticles(
   sharedXml: string, sharedHref: string, data: Assets, texSize: number,
-): FxInstancePayload[] {
+): { fx: FxInstancePayload[]; scale: number } {
+  const none = { fx: [] as FxInstancePayload[], scale: 1 };
   const setHref = sharedXml.match(/<AnimSet href="([^"]+)"/)?.[1];
-  if (!setHref) return [];
+  if (!setHref) return none;
   const sharedDir = dirOf(resolveHref('', sharedHref));
   const set = followHref(data, sharedXml, sharedDir, setHref);
-  if (!set) return [];
+  if (!set) return none;
   const items = listItems(set.xml.match(/<animations>([\s\S]*?)<\/animations>/)?.[1] ?? '');
   const idle = items.find((i) => /<Kind>idle00<\/Kind>/.test(i.body))
     ?? items.find((i) => /<Kind>idle/.test(i.body));
   const animHref = idle?.body.match(/<Anim href="([^"]+)"/)?.[1];
   const anim = animHref ? followHref(data, set.xml, set.dir, animHref) : null;
-  if (!anim) return [];
+  if (!anim) return none;
+  // The clip's skeleton carries the creature's DISPLAY SCALE on its root bone
+  // (Phoenix 0.37, Devil 0.7, Griffin 1.5): the mesh is authored full-size and
+  // the game shows it through this rig. The effect is NOT scaled with it — the
+  // phoenix's flames are baked full-size around a 0.37 bird, which is exactly
+  // the game's picture (small bird, towering fire).
+  const bones = clipRestBones(anim.xml, data);
+  const scale = bones?.get('__rootScale__')?.scale ?? 1;
   const effHref = anim.xml.match(/<Effect href="([^"]+)"/)?.[1];
   const effect = effHref ? followHref(data, anim.xml, anim.dir, effHref) : null;
-  if (!effect) return [];
-  let bones: Map<string, { pos: number[]; quat: number[] }> | null | undefined;
-  const boneWorld: BoneWorld = (bone) => {
-    if (bones === undefined) bones = clipRestBones(anim.xml, data);
-    return bones?.get(bone) ?? null;
-  };
-  return particlesOfEffect(effect, data, texSize, boneWorld);
+  if (!effect) return { fx: [], scale };
+  const boneWorld: BoneWorld = (bone) => bones?.get(bone) ?? null;
+  return { fx: particlesOfEffect(effect, data, texSize, boneWorld), scale };
 }
 
 /**
  * Every bone's rest-pose WORLD transform from a clip's GR2, keyed by name and
- * by index-as-string (`<GlueToBone>` addresses bones numerically). Null when
- * the file is missing or unreadable — the caller then drops glued instances.
+ * by index-as-string (`<GlueToBone>` addresses bones numerically). The root's
+ * scaleShear — the display scale above — accumulates down the chain, so a
+ * glued instance lands where the SCALED skeleton has the bone. Null when the
+ * file is missing or unreadable — the caller then drops glued instances.
+ * The root scale itself rides out under the reserved key `__rootScale__`.
  */
-function clipRestBones(
-  animXml: string, data: Assets,
-): Map<string, { pos: number[]; quat: number[] }> | null {
+interface BoneRest { pos: number[]; quat: number[]; scale: number }
+function clipRestBones(animXml: string, data: Assets): Map<string, BoneRest> | null {
   try {
     const uid = animXml.match(/<uid>([0-9A-Fa-f-]{36})<\/uid>/)?.[1];
     if (!uid) return null;
@@ -770,22 +789,28 @@ function clipRestBones(
     if (!file || file.isUnreadable) return null;
     const sk = readSkeletons(file)[0];
     if (!sk?.bones.length) return null;
-    const world: ({ pos: number[]; quat: number[] } | undefined)[] = new Array(sk.bones.length);
-    const at = (i: number): { pos: number[]; quat: number[] } => {
+    const world: (BoneRest | undefined)[] = new Array(sk.bones.length);
+    const at = (i: number): BoneRest => {
       const hit = world[i];
       if (hit) return hit;
       const b = sk.bones[i]!;
       const lp = Array.from(b.rest.position), lq = Array.from(b.rest.orientation);
+      const ls = Number(b.rest.scaleShear?.[0] ?? 1) || 1; // uniform approx of the 3x3
       const p = b.parentIndex >= 0 && b.parentIndex !== i ? at(b.parentIndex) : null;
-      const r = qrot(p?.quat ?? [0, 0, 0, 1], lp);
-      const w = p
-        ? { pos: [p.pos[0]! + r[0]!, p.pos[1]! + r[1]!, p.pos[2]! + r[2]!], quat: qmul(p.quat, lq) }
-        : { pos: lp, quat: lq };
+      if (!p) { const w = { pos: lp, quat: lq, scale: ls }; world[i] = w; return w; }
+      const r = qrot(p.quat, [lp[0]! * p.scale, lp[1]! * p.scale, lp[2]! * p.scale]);
+      const w = {
+        pos: [p.pos[0]! + r[0]!, p.pos[1]! + r[1]!, p.pos[2]! + r[2]!],
+        quat: qmul(p.quat, lq),
+        scale: p.scale * ls,
+      };
       world[i] = w;
       return w;
     };
-    const out = new Map<string, { pos: number[]; quat: number[] }>();
+    const out = new Map<string, BoneRest>();
     sk.bones.forEach((b, i) => { const w = at(i); out.set(b.name, w); out.set(String(i), w); });
+    const root = at(0);
+    out.set('__rootScale__', { pos: [0, 0, 0], quat: [0, 0, 0, 1], scale: root.scale });
     return out;
   } catch { return null; }
 }
@@ -1132,10 +1157,12 @@ export function createGeomResolver(root: string | Assets, texSize = 128, options
       }
       // The idle CLIP's effect on top — a creature's mist, flames, eye glow
       // (empty <Effect/> on every monster shared; the real one hangs off the
-      // animation). Appended so an object carrying both keeps both.
+      // animation). Appended so an object carrying both keeps both. The same
+      // clip's skeleton root carries the creature's display scale.
       if (shared && idx >= 0) {
         const cfx = clipEffectParticles(shared, sharedHref, data, texSize);
-        if (cfx.length) geoms[idx]!.fx = [...(geoms[idx]!.fx ?? []), ...cfx];
+        if (cfx.fx.length) geoms[idx]!.fx = [...(geoms[idx]!.fx ?? []), ...cfx.fx];
+        if (cfx.scale !== 1) geoms[idx]!.scale = cfx.scale;
       }
       // Only AdvMapBuildingShared declares a footprint, so this is null for
       // everything else and the renderer skips it. Attached to the geom because

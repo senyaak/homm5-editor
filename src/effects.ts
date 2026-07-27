@@ -23,7 +23,7 @@
 //     pos      14B  [i16 frame][f32 x][f32 y][f32 z]
 //     rot       6B  [i16 frame][f32 radians]
 //     size     10B  [i16 frame][f32 w][f32 h]
-//     color     6B  [i16 frame][u8 r][u8 g][u8 b][u8 a]
+//     color     6B  [i16 frame][u8 b][u8 g][u8 r][u8 a]   (D3DCOLOR order; presented as RGBA)
 //     texframe  4B  [i16 frame][u16 textureIndex]   (0xffff = hidden)
 //
 // Validated structurally against the whole shipped library (1922/1924 files;
@@ -144,7 +144,11 @@ export function parseEffect(b: Buffer): FxData {
       pos: read(0, (o) => [b.readFloatLE(o), b.readFloatLE(o + 4), b.readFloatLE(o + 8)]),
       rot: read(1, (o) => [b.readFloatLE(o)]),
       size: read(2, (o) => [b.readFloatLE(o), b.readFloatLE(o + 4)]),
-      color: read(3, (o) => [b[o]!, b[o + 1]!, b[o + 2]!, b[o + 3]!]),
+      // Stored B,G,R,A (the era's D3DCOLOR little-endian order), presented as
+      // RGBA. Read as RGBA every fire in the library tints BLUE — the campfire
+      // and phoenix flame colours average (215..255 in the LAST byte-but-one)
+      // and orange only comes out with the swap.
+      color: read(3, (o) => [b[o + 2]!, b[o + 1]!, b[o]!, b[o + 3]!]),
       tex: read(4, (o) => { const v = b.readUInt16LE(o); return [v === 0xffff ? -1 : v]; }),
     });
   }
