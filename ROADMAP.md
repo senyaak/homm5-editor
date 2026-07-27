@@ -94,6 +94,19 @@ project.json
       water animation.
 - [ ] ⬜ Render ALL object types, not just static decor; for creatures/heroes on
       GR2 skeletons a static bind pose or billboard icon is enough
+- [x] ✅ Map lighting from the map's OWN `AmbientLight` preset, per floor —
+      sun colour/direction, ambient, shade, a dark underground. Two findings
+      the picture depended on: the game multiplies colours in gamma space
+      (its ×2 = three.js's ×4.6), and Pitch counts from the zenith. The
+      preset's `<Sky>` is reflection blobs, not a sky — the adventure map has
+      none. docs/LIGHTING.md (2026-07-27)
+- [x] ✅ Particle effects play — `bin/effects` decoded as a BAKED Maya
+      simulation (birth/death + 30fps keys per particle; 1.69M particles,
+      whole library byte-complete) and drawn as instanced billboards fed over
+      their own typed-array IPC. Campfires burn, portals shimmer. Blending
+      inferred from the art; loop windows/wind ignored — docs/EFFECTS_FORMAT.md
+      §5 (2026-07-27). AnimLight (`bin/Lights`) parked: ~1 adventure object
+      uses it
 - [ ] ⬜ RTS camera niceties: tile grid, minimap, hover highlight
 - [ ] ⬜ Instancing for repeated props + LOD
 

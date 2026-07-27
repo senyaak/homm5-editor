@@ -104,6 +104,12 @@ get a live 3D scene you sculpt, paint, populate, script and pack.
   without bones at all, so a map being edited pays nothing for it. Reading it
   meant decoding Granny GR2 and porting its Oodle1 compression — three format
   notes, linked under *Assets and 3D models* below.
+- **The map's own lighting.** Each floor lights like its `AmbientLight` preset
+  says — sun colour and direction, ambient and shade, a dark underground —
+  instead of one built-in daylight ([docs/LIGHTING.md](docs/LIGHTING.md)).
+- **Particle effects play.** Campfires burn, mana crystals spark, portals
+  shimmer — the game's own frames, not an approximation
+  ([docs/EFFECTS_FORMAT.md](docs/EFFECTS_FORMAT.md)).
 
 ### Map properties, model & scripting
 
@@ -365,6 +371,14 @@ edges** on reconstruction.
   ([docs/OODLE1_FORMAT.md](docs/OODLE1_FORMAT.md)). What the
   decoded structures mean, and how the map plays them:
   [docs/ANIMATION_FORMAT.md](docs/ANIMATION_FORMAT.md).
+- **Particle effects** (`bin/effects`) are a **baked Maya simulation** — not
+  emitter parameters but a recording: per particle a birth/death frame and
+  30 fps keys for position, rotation, size, colour and texture frame, so
+  playback is interpolation and exact by construction. Verified byte-complete
+  over the whole shipped library: [docs/EFFECTS_FORMAT.md](docs/EFFECTS_FORMAT.md).
+- **Lighting** is plain XML (`Lights/_(AmbientLight)`), but drawing it right
+  needed two discoveries — the game multiplies colours in gamma space, and the
+  sun's Pitch counts from the zenith: [docs/LIGHTING.md](docs/LIGHTING.md).
 
 Still open: per-submesh material assignment, and the roughly one-third of
 catalogue meshes still undecoded (interleaved vertex buffers, multi-mesh
