@@ -285,11 +285,61 @@ index-scaled either (`tools/reverse/findagg.py`). So the sum does not walk the
 record's fields the obvious way — it goes through accessors, or copies the
 struct first.
 
-**The promising thread.** `CSwapMoveArtifactCmd` is the command behind moving
-an artifact in the hero screen — putting one on, taking one off, the very
-"click in the artifact window" a hook would want. Its execute method is
-`0x7623c0`; the calls worth following out of it are `0x764670`, `0x7646c0` and
-`0x763fd0`.
+**The artifact table, resolved.** `0xb1ef70` is the record getter, and it is
+four instructions:
+
+```
+mov  eax, [0x1205ac8]   ; the loaded artifact table
+imul ecx, ecx, 0x74     ; a record is 0x74 bytes
+add  eax, 8             ; records start past the header
+add  eax, ecx
+ret
+```
+
+So a record is **0x74 bytes**, the table hangs off a single global, and 26
+places call this getter. Every one of them bounds-checks the id against
+`0xb1ef60` first — the ceiling accessor our patcher already edits, which is
+why raising it is what makes new ids reachable at all.
+
+### Every artifact change is a command
+
+This is the part that matters for hooking, and it answers the question of
+whether one hook can cover every route an artifact takes.
+
+`GiveArtefact` from Lua does not modify the hero. It allocates a 0x1c-byte
+object, writes a vtable into it, and posts it: `CGiveArtefactCmd`. Its
+siblings, by RTTI: **`CRemoveArtefactCmd`**, **`CSwapMoveArtifactCmd`** (the
+hero screen putting one on or taking one off), `CCreateArtifactCmd`,
+`CBuyBlackMarketArtifactCmd`, `CSellArtifactInTownMarket`,
+`CSacrificeArtifactOnAltar`, and the micro-artifact family.
+
+The engine has no separate "script path" and "UI path" — the script *is* a
+command, the same as the click. A command's vtable has a small wrapper at
+`+0xc` and the real work at `+0x1c` (`0xb2d030` for give, `0xb2a790` for
+swap), and those two apply methods share three helpers directly, one of which
+— `0xb4a560` — carries the string `spell_name`. That is almost certainly the
+scroll mechanism: the artifact's spell going into or out of the hero's book,
+which is the effect no script API can reproduce.
+
+**A hook belongs at that shared level, not on the UI command.** Anything
+attached to `CSwapMoveArtifactCmd` would miss a script removal, a quest taking
+an item away, and a hero dying; anything below the commands sees all of them.
+
+**Ruled out along the way**, so the next pass does not re-walk them:
+`0xed427c` and `0xed4dfa` read the stats but compare `CostOfGold` against
+10000 — that is the AI valuing an artifact. `0xb4a3d7` and `0xb4aa0f` read the
+record after the getter but build tooltips (`ARTIFACT_NAME_MINOR`, per-id
+special text).
+
+**The working hypothesis** for why no code reads the six stat fields together:
+the stats are applied to the hero **when the artifact is equipped**, not summed
+each time a stat is read. If that holds, there is no aggregator to find — there
+is an apply-and-undo pair inside the command layer, which is a better hook
+anyway, and `0xb4a560` is one end of it.
+
+Next: identify the equipped-collection class behind hero vtable `+0x74` (its
+`contains` is `0xb4c270`, `0xb4cbe0` for the backpack), and read `0xb4a560`
+through.
 
 ## Open threads
 
