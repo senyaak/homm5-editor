@@ -154,15 +154,48 @@ The oracle: across all 546 positions of the earth elemental the four floats sum
 to exactly 1.000, with no exceptions, and every index falls inside 0..28 for a
 29-bone skeleton. Unused slots carry weight 0 and repeat a filler index.
 
-## 7. Verification
+## 7. How the editor plays it
 
-`node tools/test-gr2.ts [sampleSize]` (also `npm test`). It reads a stride-spread
-sample of the library and checks only redundancies the data itself carries:
-header arithmetic, one bind frame per skeleton (median error 4e-7; the deep
-cloth chains reach 7e-4 through float32 accumulation), curve widths, and knots
-inside the clip. It skips itself when the game data is not unpacked.
+Off by default — `Settings.idleAnimation` is `off`/`visible`/`all`, and the
+toolbar's **Idle stance** button cycles it. `off` is decided in the main process
+and decides what the scene is built out of (no bones, no binding, no clip: an
+animated model's payload roughly halves), so leaving `off` needs the map
+reopened; `visible` and `all` only decide how much of it keeps moving and switch
+live.
 
-## 8. Still open
+An animated object cannot ride the instanced batches — those draw one model many
+times from a single matrix buffer, and every copy poses independently — so it
+leaves its batch and becomes its own `SkinnedMesh` (`renderer/skinning.ts`).
+One draw call each, which is why the middle mode exists.
+
+**The bind-matrix trap, since it cost a debugging round.** three.js's shader
+computes `bindMatrixInverse * Σ w (bone.matrixWorld * boneInverse) * bindMatrix *
+p` and then applies `modelViewMatrix`. The bones are children of the mesh, so
+their world matrices already carry the object's placement — which means
+`bindMatrix` must be the **identity**, or the placement is applied twice. And the
+inverse binds are handed over **element for element, not transposed**: ours are
+row-vector matrices stored row-major, three.js wants the column-vector form
+stored column-major, and those two differ by a transpose twice over, so the
+arrays are identical. Transposing "into three.js's convention" threw vertices
+1100 units off a 4-unit model.
+
+## 8. Verification
+
+Three layers, each checking what the one below cannot see. All skip themselves
+when the game data is not unpacked.
+
+* `npm run test-gr2` — the format, against redundancies the data itself carries:
+  header arithmetic, one bind frame per skeleton (median error 4e-7; the deep
+  cloth chains reach 7e-4 through float32 accumulation), curve widths, knots
+  inside the clip, and the rest pose skinning to itself.
+* `npm run test-idle` — the maths the GPU will run, by driving the renderer's own
+  `renderer/skinning.ts` and comparing against three.js's `applyBoneTransform`,
+  the CPU twin of the skinning shader. This is what caught the transposed binds.
+* `npx playwright test idle-stance` — the real app: that objects take an animated
+  body, leave the batched draw, and that the clock actually turns. A skeleton
+  built and never stepped draws a frozen creature and passes everything else.
+
+## 9. Still open
 
 * The Oodle1 tail (§3).
 * Exact degree-2/3 B-spline evaluation against the engine's own (§5).

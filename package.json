@@ -60,6 +60,7 @@
     "test-defaults": "node tools/test-defaults.ts",
     "test-gif": "node tools/test-gif.ts",
     "test-gr2": "node tools/test-gr2.ts",
+    "test-idle": "node tools/test-idle.ts",
     "test-artifact-mod": "node tools/test-artifact-mod.ts",
     "test-artifact-limit": "node tools/test-artifact-limit.ts",
     "test-typespec": "node tools/test-typespec.ts"

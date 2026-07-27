@@ -18,7 +18,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 import { UNITS_PER_TILE as U } from '../src/units.ts';
 import { tierOf, RAMP_BIT, TIER_STEP } from '../src/terrain.ts';
-import type { Scene, Floor, Instance, SplatData, TileInfo, GeomData, GeomPart, Footprint } from '../src/scene.ts';
+import type { Scene, Floor, Instance, SplatData, TileInfo, GeomData, GeomPart, Footprint, SkinnedGeom } from '../src/scene.ts';
 import type { EditorApi, MapListEntry, ExternalChange, PlaceableObject, RosterEntryDTO, LocResult,
   CampaignDoc, CampaignListEntry, CampaignMissionDto } from '../electron/ipc.ts';
 import type { ObjectProp } from '../src/map.ts';
@@ -26,6 +26,8 @@ import { objectProps, deref, controlOf, objectSchema, mapSchema, resolveSchemaAt
 import type { FieldSchema, HasDefs } from '../src/schema.ts';
 import { TOWN_BONUSES } from '../src/town-bonuses.ts';
 import type { TreeData, Path as TreePath } from '../src/tree.ts';
+import { makeIdle, poseIdle } from './skinning.ts';
+import type { IdleObject } from './skinning.ts';
 import { mountCodeEditor, setScriptContext } from './code-editor.ts';
 import type { CodeEditor, ScriptContext } from './code-editor.ts';
 import type { LuaDiagnostic } from '../src/lua-lint.ts';
@@ -129,6 +131,12 @@ interface Floor3D {
   meshes: Map<string, THREE.Mesh>;
   /** One instanced draw per model. See buildBatches. */
   batches: Map<number, GeomBatch>;
+  /**
+   * Objects playing their idle clip, each its own skinned draw. Empty unless
+   * the idle-stance setting is on — and an object in here is NOT in `batches`,
+   * or it would be drawn twice, once moving and once frozen.
+   */
+  idle: IdleObject[];
   terrainMesh: THREE.Mesh;
   waterMesh: THREE.Mesh | null;
   /** The sea texture, kept so sculpting can raise a sheet on a map that began dry. */
@@ -510,7 +518,112 @@ function geometryFor(g: GeomData): THREE.BufferGeometry {
   // vertex and softens the hard edges that give a model its shape.
   if (g.nrm) b.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(g.nrm), 3));
   else b.computeVertexNormals();
+  // The binding rides along on the shared geometry: it is the same for every
+  // copy of a model, only the skeleton differs per object. Harmless on the
+  // instanced draws, which never look at it.
+  if (g.skin?.clip) {
+    b.setAttribute('skinIndex', new THREE.BufferAttribute(new Uint8Array(g.skin.index), 4));
+    b.setAttribute('skinWeight', new THREE.BufferAttribute(new Float32Array(g.skin.weight), 4));
+  }
   return b;
+}
+
+// --- idle stance -------------------------------------------------------------
+//
+// Creatures on the adventure map have one clip, an idle loop, and playing it is
+// off by default (Settings.idleAnimation). It cannot ride the instanced batches:
+// those draw one model many times from a single matrix buffer, and every copy
+// of a creature poses independently. So an animated object leaves its batch and
+// becomes its own SkinnedMesh — one draw call each, which is the whole reason
+// the setting has a middle setting rather than being a checkbox.
+//
+// Building and posing one lives in ./skinning.ts, where the bind-matrix maths
+// is written out; what is here is only which objects get one and when they are
+// stepped.
+
+type IdleMode = 'off' | 'visible' | 'all';
+
+/** Which mode the CURRENT scene was built for; `off` means it has no bones. */
+let idleMode: IdleMode = 'off';
+/** Skin payloads by geom index, kept from the scene for building skeletons. */
+const geomSkin = new Map<number, SkinnedGeom>();
+const idleFrustum = new THREE.Frustum();
+const idleViewProjection = new THREE.Matrix4();
+const _idlePoint = new THREE.Vector3();
+
+/**
+ * Advance every animated object on the visible floor by `dt`.
+ *
+ * In `visible` mode an object off screen still holds its pose but stops being
+ * re-posed, which is where the saving is: the skinning itself is the cost, not
+ * the clock. What counts as on screen is the object's own origin against the
+ * camera frustum — a point test, so a creature straddling the edge can stop
+ * moving while a sliver of it still shows. That is the trade the middle mode
+ * is for; `all` does not make it.
+ */
+function advanceIdle(dt: number): void {
+  if (idleMode === 'off' || !world) return;
+  const fl = world.floors[world.active];
+  if (!fl?.idle.length || !fl.objGroup.visible) return;
+  if (idleMode === 'visible') {
+    idleViewProjection.multiplyMatrices(activeCam.projectionMatrix, activeCam.matrixWorldInverse);
+    idleFrustum.setFromProjectionMatrix(idleViewProjection);
+  }
+  for (const idle of fl.idle) {
+    idle.time += dt;
+    if (idleMode === 'visible') {
+      _idlePoint.setFromMatrixPosition(idle.mesh.matrixWorld);
+      if (!idleFrustum.containsPoint(_idlePoint)) continue;
+    }
+    poseIdle(idle, idle.time);
+  }
+}
+
+/** Drop animated objects and their skeletons. */
+function clearIdle(objGroup: THREE.Group, list: IdleObject[]): void {
+  for (const idle of list) {
+    objGroup.remove(idle.mesh);
+    idle.mesh.skeleton.dispose();
+  }
+  list.length = 0;
+}
+
+/** Remove one object's animated body, if it had one. */
+function removeIdle(fl: Floor3D, inst: Instance): void {
+  const i = fl.idle.findIndex((a) => a.mesh.userData.inst === inst);
+  if (i < 0) return;
+  const [idle] = fl.idle.splice(i, 1);
+  if (!idle) return;
+  fl.objGroup.remove(idle.mesh);
+  idle.mesh.skeleton.dispose();
+}
+
+/**
+ * Give an instance its animated body, if it has one, and take it out of the
+ * batched draw so the model is not rendered twice.
+ *
+ * Phase is spread by index rather than left at zero: a row of identical
+ * gremlins breathing in perfect unison reads as a mistake, and the clip is a
+ * loop, so any offset into it is as valid a starting pose as another.
+ */
+function addIdle(
+  objGroup: THREE.Group, list: IdleObject[], inst: Instance, handle: THREE.Mesh, phase: number,
+): boolean {
+  if (idleMode === 'off') return false;
+  const skin = geomSkin.get(inst.g);
+  const geo = worldGeos[inst.g], mat = worldMats[inst.g];
+  if (!skin || !geo || !mat) return false;
+  const idle = makeIdle(skin, geo, mat);
+  if (!idle) return false;
+  idle.mesh.position.copy(handle.position);
+  idle.mesh.rotation.copy(handle.rotation);
+  idle.mesh.userData.inst = inst;
+  idle.time = phase;
+  poseIdle(idle, idle.time);
+  idle.mesh.updateMatrixWorld();
+  objGroup.add(idle.mesh);
+  list.push(idle);
+  return true;
 }
 
 // --- instanced drawing ------------------------------------------------------
@@ -544,6 +657,18 @@ const BATCH_HEADROOM = 8;
 function syncInstance(fl: Floor3D, inst: Instance): void {
   const batch = fl.batches.get(inst.g);
   const mesh = inst.id === null ? null : fl.meshes.get(inst.id);
+  // An animated object is drawn by its own skinned mesh rather than a slot in
+  // the batch, so a drag has to move that instead — and it may be the only
+  // thing to move, since an animated instance is not in the batch at all.
+  if (mesh) {
+    const idle = fl.idle.find((a) => a.mesh.userData.inst === inst);
+    if (idle) {
+      mesh.updateMatrixWorld();
+      idle.mesh.position.copy(mesh.position);
+      idle.mesh.rotation.copy(mesh.rotation);
+      idle.mesh.updateMatrixWorld();
+    }
+  }
   if (!batch || !mesh) return;
   const slot = batch.slot.get(inst);
   if (slot === undefined) return;
@@ -667,6 +792,7 @@ function replaceInstances(fl: Floor3D, instances: Instance[]): void {
   for (const b of fl.batches.values()) { fl.objGroup.remove(b.im); b.im.dispose(); }
   fl.batches.clear();
   fl.meshes.clear();
+  clearIdle(fl.objGroup, fl.idle);
   fl.instances = instances;
   for (const it of instances) {
     if (it.id === null) continue;
@@ -682,7 +808,11 @@ function replaceInstances(fl: Floor3D, instances: Instance[]): void {
     m.updateMatrixWorld();
     fl.meshes.set(it.id, m);
   }
-  const batches = buildBatches(instances, fl.meshes, worldGeos, worldMats, fl.objGroup);
+  const still = instances.filter((it, i) => {
+    const handle = it.id === null ? null : fl.meshes.get(it.id);
+    return !(handle && addIdle(fl.objGroup, fl.idle, it, handle, i * 0.37));
+  });
+  const batches = buildBatches(still, fl.meshes, worldGeos, worldMats, fl.objGroup);
   for (const [g, b] of batches) fl.batches.set(g, b);
   syncFootprints(fl);
 }
@@ -693,7 +823,14 @@ function buildGeos(S: Scene) {
   const mats = S.geoms.map((g) => g.parts.map(materialFor));
   geomParts.clear();
   geomFootprint.clear();
-  S.geoms.forEach((g, i) => { geomParts.set(i, g.parts); geomFootprint.set(i, g.footprint ?? null); });
+  geomSkin.clear();
+  S.geoms.forEach((g, i) => {
+    geomParts.set(i, g.parts);
+    geomFootprint.set(i, g.footprint ?? null);
+    // Only a model with a clip is worth remembering: the binding alone poses
+    // nothing, and every other geom would just sit in the map unused.
+    if (g.skin?.clip) geomSkin.set(i, g.skin);
+  });
   worldGeos = geos;
   worldMats = mats;
   return { geos, mats };
@@ -1322,13 +1459,21 @@ function buildFloor(floor: Floor, geos: THREE.BufferGeometry[], mats: THREE.Mate
     m.updateMatrixWorld();
     meshes.set(it.id, m);
   }
-  const batches = buildBatches(floor.instances, meshes, geos, mats, objGroup);
+  // Whatever takes an animated body drops out of the batched list: the two draw
+  // the same model, and left in both an object would show its idle and its bind
+  // pose at once, in the same place.
+  const idle: IdleObject[] = [];
+  const still = floor.instances.filter((it, i) => {
+    const handle = it.id === null ? null : meshes.get(it.id);
+    return !(handle && addIdle(objGroup, idle, it, handle, i * 0.37));
+  });
+  const batches = buildBatches(still, meshes, geos, mats, objGroup);
   return {
     name: floor.name, V, heights, flags: floor.flags, colors: floor.colors,
     // A river already in the map is at full depth: never dig it again.
     riverDrop: new Map(floor.riverVerts.map((v) => [v, RIVER_DEPTH])),
     passable: floor.passable, river: new Set(floor.riverVerts), passMeshes: [], footMeshes: [],
-    group, objGroup, meshes, batches, terrainMesh, waterMesh, waterTex: floor.water?.tex ?? null,
+    group, objGroup, meshes, batches, idle, terrainMesh, waterMesh, waterTex: floor.water?.tex ?? null,
     splat: floor.splat, maskTex: null, instances: floor.instances,
   };
 }
@@ -1638,6 +1783,7 @@ async function deleteSelected(): Promise<void> {
   fl.group.remove(mesh);
   fl.meshes.delete(id);
   removeFromBatch(fl, inst);
+  removeIdle(fl, inst);
   // The geometry is shared between every instance of this model, so it is the
   // scene's to dispose, not ours.
   const i = fl.instances.indexOf(inst);
@@ -4401,6 +4547,13 @@ interface ViewApi {
   /** The active floor's live heights and ground kinds — what the app believes. */
   heights(): number[];
   kinds(): number[];
+  /**
+   * What the idle stance is doing: the mode the open scene was BUILT for, how
+   * many objects on the visible floor have their own animated body, and how far
+   * the furthest of them has run. The clock is what says the loop is turning —
+   * a skeleton that is built but never stepped looks identical from outside.
+   */
+  idle(): { mode: IdleMode; animated: number; time: number };
   /** True once the ground textures are decoded and a stroke would land. */
   paintReady(): boolean;
   /** Edits sent to the main process and not yet acknowledged. */
@@ -4525,6 +4678,14 @@ const view: ViewApi = {
   // Painting refuses until the splat textures are decoded, and a refused stroke
   // looks exactly like a brush that did nothing — so the state is published.
   paintReady() { const fl = world ? activeFloor() : null; return !!(fl && fl.splat && fl.maskTex); },
+  idle() {
+    const fl = world ? activeFloor() : null;
+    return {
+      mode: idleMode,
+      animated: fl?.idle.length ?? 0,
+      time: fl?.idle.reduce((a, o) => Math.max(a, o.time), 0) ?? 0,
+    };
+  },
   pending() { return pendingCommits; },
   open(path) { return loadMapPath(path); },
   editText(href) { return openTextEdit(href, href); },
@@ -5449,6 +5610,42 @@ function setShowObjects(on: boolean): void {
 $('showobj').onclick = () => setShowObjects(!showObjects);
 $('viewbtn').onclick = () => setTopView(!topView);
 
+// --- idle stance ------------------------------------------------------------
+//
+// Three states rather than a checkbox, because the two costs are different
+// things: `off` is decided in the main process and decides what the scene is
+// built out of, while `visible` and `all` only decide how much of it keeps
+// moving. So the middle one can be reached without reopening the map, and `off`
+// cannot be left without doing so.
+
+const IDLE_MODES: IdleMode[] = ['off', 'visible', 'all'];
+
+function updateIdleButton(): void {
+  $('idlebtn').textContent = `Idle stance: ${idleMode}`;
+  $('idlebtn').classList.toggle('on', idleMode !== 'off');
+}
+
+$('idlebtn').onclick = async () => {
+  const next = IDLE_MODES[(IDLE_MODES.indexOf(idleMode) + 1) % IDLE_MODES.length]!;
+  await window.editor.setIdleAnimation(next);
+  // A scene built with animation off carries no bones at all, so turning it on
+  // is a reopen, not a redraw. Said plainly rather than silently doing nothing —
+  // and the setting is already remembered, so the next open will have them.
+  if (next !== 'off' && !geomSkin.size && world) {
+    $('hud').textContent = `idle stance: ${next} — open the map again to load the animations`;
+    return;
+  }
+  idleMode = next;
+  updateIdleButton();
+  if (world) {
+    // Handles are rebuilt, so anything selected is about to point at a mesh
+    // that no longer exists.
+    deselect();
+    for (const fl of world.floors) replaceInstances(fl, fl.instances);
+  }
+  $('hud').textContent = `idle stance: ${next}`;
+};
+
 // --- object palette (the original editor's Objects tab) --------------------
 //
 // The catalogue is 1466 entries with an icon each, so two things are lazy: the
@@ -5722,7 +5919,9 @@ function addInstanceToScene(inst: Instance, geom: { index: number; data: GeomDat
   // The handle stays out of the scene, as in buildFloor; the batch draws it.
   mesh.updateMatrixWorld();
   fl.meshes.set(inst.id, mesh);
-  addToBatch(fl, inst, mesh);
+  // An object placed now animates as readily as one loaded with the map, and
+  // only joins the batch when it does not.
+  if (!addIdle(fl.objGroup, fl.idle, inst, mesh, fl.idle.length * 0.37)) addToBatch(fl, inst, mesh);
   // If this model takes the ground it stands on, give the batch its projection
   // material now that it exists — the load path does this via upgradeToSplat.
   if (geomParts.get(inst.g)?.some((p) => p.terrainProjected)) projectBatch(fl, inst.g);
@@ -6315,8 +6514,12 @@ async function loadMapPath(path: string | null): Promise<void> {
     // The heavy lifting is in the main process (mesh/texture decode), so the
     // renderer's own thread is free to keep the spinner turning while it runs.
     const tReq = performance.now();
-    const { scene: S, info, history } = await window.editor.loadMap(path);
+    const { scene: S, info, history, idleAnimation } = await window.editor.loadMap(path);
     const tLoad = performance.now();
+    // The scene says which mode it was BUILT for, and that is what the view
+    // follows: a map built without bones cannot be animated by asking nicely.
+    idleMode = idleAnimation;
+    updateIdleButton();
     // buildWorld DOES block this thread, so let the new message paint first —
     // the GPU-composited spinner keeps moving through the freeze regardless.
     await say('building scene…');
@@ -6333,6 +6536,7 @@ async function loadMapPath(path: string | null): Promise<void> {
     $('viewbtn').style.display = '';
     $('objects').style.display = '';
     $('showobj').style.display = '';
+    $('idlebtn').style.display = '';
     $('scalewrap').style.display = 'flex';
     // Reflect the persisted ground-scale on the slider itself, or its thumb would
     // sit at the HTML default while the terrain uses the restored value.
@@ -7023,6 +7227,7 @@ let lastT = performance.now();
   if (hoverEv) { updateHoverCursor(tileUnderCursor(hoverEv)); hoverEv = null; }
   controls.update();
   if (topView) syncTopCamera(); // follow pan/zoom + the orbit target each frame
+  advanceIdle(dt);
   renderer.render(scene, activeCam);
 })();
 

@@ -717,12 +717,14 @@ function attachAnimation(
       pos: b.rest.position.map((v) => +v.toFixed(5)),
       quat: b.rest.orientation.map((v) => +v.toFixed(6)),
     }));
-    // Row-vector on disk, column-vector in the renderer: transpose on the way out.
-    geom.skin.bind = inverseBindMatrices(skeleton).map((m) => {
-      const t: number[] = [];
-      for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) t.push(+m[r * 4 + c]!.toFixed(5));
-      return t;
-    });
+    // Handed over element for element, deliberately. Ours are row-vector
+    // matrices stored row-major (translation in the last row); three.js wants
+    // the column-vector form stored COLUMN-major, and the two differ by a
+    // transpose twice over — so the arrays are byte-identical and transposing
+    // "into three.js's convention" transposes it out of it. Measured, not
+    // reasoned: transposing here put the translation in the wrong column and
+    // threw vertices 1100 units off a 4-unit model (tools/test-idle.ts).
+    geom.skin.bind = inverseBindMatrices(skeleton).map((m) => m.map((v) => +v.toFixed(6)));
     const clip = bakeClip(skeleton, animation, fps);
     geom.skin.clip = {
       duration: clip.duration,
