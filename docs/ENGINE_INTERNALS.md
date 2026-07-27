@@ -12,15 +12,28 @@ be one. That means finding the code the shipped artifacts run through, and it
 turned out to be short, readable, and already parameterised by data in most
 of the places that matter.
 
-## Read the NCF binary, not the Steam one
+## Read an unwrapped binary — on this machine, `H5_Game_NCF.exe`
 
-`bin/` ships four executables. `H5_Game.exe` has its `.text` encrypted by the
-Steam wrapper — entropy 7.98 across the whole section, an extra `.bind`
-section, and a disassembler produces nonsense. **`H5_Game_NCF.exe` is the same
-program in the clear** (entropy 5.2, ordinary prologues) and it is what our
-ceiling patchers already edit. `.rdata` and `.data` are identical in both, so
-string and pointer addresses found in one apply to the other; only code can be
-read from the NCF build.
+`H5_Game.exe` in a Steam install has its `.text` encrypted by the wrapper:
+entropy 7.98 across the section, an extra `.bind` section, and a disassembler
+produces nonsense. This is not a Heroes fact, it is a Steam fact — a GOG or
+retail install ships the code in the clear and needs none of this.
+
+`bin/H5_Game_NCF.exe` here is **ours**: `setCreatureLimit` copies the shipped
+executable aside under that name (the `_NCF` convention the modding scene
+already uses) and patches the copy, never the original. The editor **does not
+unwrap anything** — `readExe` detects a wrapped file and fails with a message
+saying so, and unwrapping is a one-off done outside the editor. The copy in
+this install is clean because it was made from an already-unwrapped
+executable; entropy 5.2, ordinary prologues, disassembles fine.
+
+So the rule for reverse engineering is "read an unwrapped build", and on this
+machine that file happens to be the NCF copy. `.rdata` and `.data` are
+identical wrapped or not, so string and pointer addresses transfer either way;
+only code needs the clean build. And since a GOG build is a different
+compilation, **every address in this document is a landmark for a pattern
+search, never a constant to hardcode** — the same discipline the creature and
+artifact ceiling patchers already follow.
 
 Tooling: capstone via the system Python. `scratchpad/pe.py` (section map,
 VA↔offset, string reader, xref and call scanners, annotated disassembly) and
@@ -87,18 +100,29 @@ the `Necromancy` block of `DefaultStats.xdb`, i.e. **the numbers are data**.
 | 6 | **Necromancer's Pendant** | `equipped.contains(0x47)` — artifact id **71**, a literal in the code | `NecroPendantBonus` (10) |
 | 7 | **the Necromancer set** | `GetArtifactSetItemsCount(5) >= 4` | `Necromancers_4Necromancer_NecromancyBonusPercents` (20) |
 
+The **raise cost** is a second, near-identical function at `0xc77270`, and the
+two are easy to confuse. It sums a discount the same way — Pendant by the same
+literal id 71 (`NecroPendant_CreatureCostDisountPercents`, 10) plus the same
+set at ≥ 4 pieces (`…CreatureCostDisountPercents`, 25) — caps it at 100, and
+folds it into `(100 − discount) × power / (CreaturePowerPointsForOneEnergy ×
+100)`. The two set constants sit in adjacent fields (`+0x119c` raise,
+`+0x11a0` cost), which is how they were told apart.
+
+So four worn pieces give **both**: +20% to the raise *and* −25% off the cost.
+An in-game description that mentions only the discount is describing one of
+the two.
+
 Two things fall out of this.
 
 **`MakeHeroNecromancer` is exactly what it looked like.** The scripted level is
 consulted *only* when the hero's own Necromancy skill is zero — so it fits a
-knight in a cloak and does nothing for a necromancer. That was the right
-instinct.
+knight in a cloak and does nothing for a necromancer.
 
-**Term 7 is a worked example of what we want.** The Necromancer set's
-+20% is not special-cased anywhere else: it is twenty bytes at the end of this
-function that count worn set pieces, compare against a threshold, and add a
-constant read from data. Anything we add for the Cloak has the same shape and
-sits in the same place.
+**Term 7 is the shape our own bonus should take.** It is twenty bytes: count
+worn pieces of a set, compare against a threshold, add a number that came from
+data. Nothing about it is special-cased elsewhere in the engine. A term for
+our own set is the same twenty bytes reading our own number — which is the
+whole design, and the reason the next section is short.
 
 ## Artifact sets are addressed by enum value
 
@@ -115,49 +139,108 @@ called from **25 sites**, and their set indices are 1–10 — every shipped set
 several of them more than once (the necromancy sum uses index 5 twice: the
 raise bonus and the raise-cost discount).
 
-**Index 0 — `ARTFSET_EFFECT_CUSTOM` — appears at no call site at all.** That
-settles what it is: a set the engine will parse, count, name, and draw, and
-whose effect nothing in the executable implements. It is the slot the
-designers left for exactly our case. The Lua side can read it directly —
-`GetArtifactSetItemsCount(hero, 0, 1)` counts our worn pieces — and a native
-hook can read it the same way through vtable `0x328`.
+**Index 0 — `ARTFSET_EFFECT_CUSTOM` — appears at no call site at all**, and the
+developers say why. `types.xml` documents the field in their own words:
 
-(Still to confirm in game: that the data parser accepts `CUSTOM` in a `<Sets>`
-entry, and how the counter behaves if two sets declare the same enum.)
+> один из предопределённых эффектов сетов (ARTFSET_EFFECT_CUSTOM — нет
+> предопределённого эффекта, но можно добавить скриптами)
 
-## Where a mod can cut in
+So `CUSTOM` is not an unused leftover; it is the designers' own hook for a set
+whose effect comes from outside the engine.
 
-Ranked by cost, cheapest first. Nothing here is implemented yet.
+### The enum itself is data
 
-**1. Pure data, no code.** The Cloak joins the shipped Necromancer set: set
-membership is data, the threshold and the constant are data. The hero gets
-+20% necromancy through term 7 with no patch of any kind — the engine cannot
-tell our artifact from Ubisoft's. The cost is that it *is* the Necromancer
-set: the name, the other three pieces and the threshold come with it. Worth
-trying first because it is an afternoon, not a project.
+`ArtifactSetEffect` is declared in **`types.xml`** as an ordinary enum — the
+same `<Name>`/`<Value>` pairs as the artifact list we already extend:
 
-**2. One constant, patched by pattern.** `push 0x47` in the pendant term names
-artifact id 71. Repointing it to our id moves the pendant's bonus to our item;
-duplicating the four-instruction block would add a term. Both are small, and
-both need free bytes — see the ceiling notes for how the patcher already finds
-sites by pattern rather than address.
+```xml
+<Type>TYPE_TYPE_ENUM</Type>
+<TypeName>ArtifactSetEffect</TypeName>
+<Entries>
+    <Item><Name>ARTFSET_EFFECT_CUSTOM</Name><Value>0</Value></Item>
+    <Item><Name>ARTFSET_EFFECT_DRAGONISH</Name><Value>1</Value></Item>
+    …
+    <Item><Name>ARTFSET_EFFECT_DEMONIC</Name><Value>10</Value></Item>
+</Entries>
+```
 
-**3. A detour on `0xc77850`.** Call the original, add our own terms with the
-hero object in hand. This is the general form of term 7 and it scales to any
-number of artifacts without touching the shipped logic.
+**A mod can therefore declare its own effect** — `ARTFSET_EFFECT_<OURS>` with
+value 11 — instead of borrowing `CUSTOM` or overwriting a shipped one. Same
+append-only discipline as artifact ids: values are what saves and maps store.
 
-**4. A proxy DLL.** The game imports a local `zlib1.dll` (also `granny2.dll`,
-`fmod.dll`) — a forwarding stub gets our code into the process with no patched
-byte in the executable at all. From there: register new Lua functions in the
-live state, install the detours above, and read a **config the map editor
-generates** — which artifact ids contribute what, which sets exist, what each
-threshold gives. That is the shape that lets the editor add and remove effects
-without recompiling anything, and it is the honest answer to "make it work
-like the original".
+Unlike the artifact table, the sets are parsed into a **dynamic container**
+(`ArtifactSets` → `[ebx+0x111c]`, alongside `MonstersArmy` and
+`ArtifactsSetsEffectsConsts` → `[ebx+0x1148]`), and no accessor returning a
+set count of 11 has any caller — so there may be no compiled ceiling here at
+all. That is a hopeful reading of an absence, not a proof; the eleventh set is
+a probe to run, not a fact to rely on.
 
-The pieces that make (4) tractable are all present: a documented registration
-convention, a signature grammar the parser already enforces, an unclaimed set
-enum, and a necromancy sum whose terms are twenty bytes each.
+The engine will still do **nothing** for a new enum value — no shipped code
+branches on it. That is the point: the count and the UI come free from data,
+the behaviour is ours to write, and nothing shipped is displaced.
+
+(To confirm in game: that the parser accepts an added enum entry, that an
+eleventh set draws its tooltip, and how the counter behaves if two sets
+declare one enum.)
+
+## The shape of our own extension
+
+The goal is a Cloak of the Undead King that the engine treats as its own, with
+**our** set, **our** effect id and **our** numbers — not our artifact wearing
+Ubisoft's set, and not a shipped enum quietly repurposed. Everything above says
+that is affordable, because the engine's own bonuses are already
+data-parameterised and the seams are named.
+
+Three layers, and each is useful before the next exists.
+
+**Data — declares that our set exists.** `types.xml` gains
+`ARTFSET_EFFECT_<OURS> = 11`; `DefaultStats.xdb` gains a `<Sets>` entry using
+it, with members, per-count texts and icons. From here the game already counts
+worn pieces, names the set and draws its tooltip, and
+`GetArtifactSetItemsCount(hero, 11, 1)` answers from Lua. No shipped byte
+changed, nothing borrowed.
+
+**Native code — makes the effect real.** A proxy DLL is the way in: the game
+imports a local `zlib1.dll` (also `granny2.dll`, `fmod.dll`), so a forwarding
+stub loads our code with no patched executable at all. It then installs
+detours where the engine sums its own bonuses — `0xc77850` for the necromancy
+percentage, `0xc77270` for the raise cost, and the equipment aggregator for
+plain stats once it is found. Each detour calls the original and adds our
+terms: exactly term 7's twenty bytes, in our own code, reading our own
+numbers. The result goes through the engine's own arithmetic, its own caps and
+its own display — which is what "indistinguishable from a shipped artifact"
+actually means.
+
+**A config the editor writes — makes it editable.** The DLL should hardcode
+nothing: it reads a table saying *which set id, which threshold, which kind of
+bonus, how much*, and the map editor generates that table. Add an artifact,
+change a percentage, drop an effect — all of it is editing data in the editor,
+not rebuilding a DLL. This is the requirement that decides the DLL's design,
+so it belongs in the first version, not a later one.
+
+New Lua functions (registered by the same DLL, following the convention above)
+are the third face of the same table: useful for a map or campaign to
+read and adjust bonuses at runtime. But they should not be how the *artifact*
+works — an artifact whose bonus depends on a script running is exactly the
+seam we are trying not to have.
+
+**Two cheap experiments worth running first**, because each answers a question
+the design rests on:
+
+- *Does an added enum work?* Declare set 11 with one artifact, load a map, see
+  whether the parser accepts it and the tooltip draws. This is the whole "own
+  enum" premise, and it is an afternoon.
+- *Does a set bonus reach the engine's arithmetic?* Temporarily put the Cloak
+  in the shipped Necromancer set and confirm the raise percentage moves. Not a
+  design — a control, the kind that would have saved four wrong answers last
+  time (`Maps/sod/docs/ARTIFACTS.md`). Then take it back out.
+
+**And the piece still missing:** the equipment aggregator — the code that
+rebuilds a hero's stats and spellbook from what is worn. Its existence is not
+in doubt (a Scroll grants a spell and loses it the moment it comes off, which
+no script API can do), and it is the natural home for stat contributions from
+new artifacts. Finding it is the next reverse-engineering job, and it matters
+more than anything else on this list.
 
 ## Open threads
 
@@ -169,6 +252,10 @@ enum, and a necromancy sum whose terms are twenty bytes each.
   approach (probably the town/day-tick code, or watching the field offset the
   getter reads). Since the plan is "just restore it every day", finding the
   write site is enough; no new mechanic is needed.
+- **The equipment aggregator** (see above) — the most valuable unfound thing.
+- Whether an eleventh artifact set has a compiled ceiling. No accessor
+  returning 11 has a caller and the container is dynamic, but that is an
+  absence of evidence.
 - `GiveHeroBattleBonus(string, number, number)` and
   `WarpHeroExp(string, number)` are undocumented and their names suggest
   campaign plumbing; their bodies follow the standard preamble but were not

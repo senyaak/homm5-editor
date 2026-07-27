@@ -198,21 +198,21 @@ number, you cannot add a constant or a new effect kind.
 
 A new `<Item>` in `<Sets>` is data, so a new set *exists* — membership,
 tooltips, per-count texts and icons all work from the entry alone. Its
-*mechanics* come from `<Effect>`, and there the choice is:
+*mechanics* follow `<Effect>`, and there are three ways to fill that in:
 
-- **borrow a shipped enum** — the new set behaves exactly like that set
-  (same thresholds, same constants — retuning a constant changes the donor
-  set too, they share it);
-- **`ARTFSET_EFFECT_CUSTOM`** — enum value **0**, used by no shipped set.
-  Confirmed from the code: the set counter is called from 25 sites and their
-  indices run 1–10, so **nothing in the executable implements index 0**. It is
-  a set the engine parses, counts and draws, whose effect is ours to supply —
-  from Lua via `GetArtifactSetItemsCount(hero, 0, 1)`, or from a native hook.
-  (Still to confirm in game: that the data parser accepts the name, and what
-  happens if two sets share one enum.)
-
-Either way the real bonuses of a scripted set come from the script, and the
-script has first-class support for exactly this (next section).
+- **declare our own effect id.** `ArtifactSetEffect` is an ordinary enum in
+  `types.xml`, so a mod appends `ARTFSET_EFFECT_<OURS> = 11` exactly the way
+  it appends an artifact id. Nothing shipped is displaced and nothing borrowed;
+  the engine counts and draws the set and implements no behaviour, which is
+  what we want since the behaviour will be ours. **This is the route the port
+  takes** — see [ENGINE_INTERNALS.md](ENGINE_INTERNALS.md#the-shape-of-our-own-extension).
+- **`ARTFSET_EFFECT_CUSTOM`** (value 0) — the developers' own slot for "no
+  predefined effect, add it with scripts", per the field's description in
+  `types.xml`, and confirmed unused by the 25 call sites in code. Fine for a
+  quick experiment; still someone else's name for our thing.
+- **borrow a shipped enum** — the set then behaves as that set, thresholds and
+  shared constants included (retuning one changes the donor too). Useful as a
+  *control* to prove a bonus reaches the engine's arithmetic, not as a design.
 
 ## The script toolbox
 
@@ -305,7 +305,7 @@ scripting is prohibited there) — single-player only.
 |---|---|
 | ±primary stats, luck, morale while worn | script (poll + `ChangeHeroStat`), fully reversible |
 | +movement, +mana, daily gold/resources | script, natural fits (`STAT_MOVE_POINTS`, `SetPlayerResource` on new day) |
-| +% necromancy on a new artifact | **natively, and cheaper than expected.** The raise percentage is one sum ([ENGINE_INTERNALS.md](ENGINE_INTERNALS.md#the-necromancy-percentage-in-full)) whose last term already is "worn pieces of a set ≥ threshold → add a constant from data". Putting the Cloak in the shipped Necromancer set gets +20% with no patch at all; a hook adds a term of our own. Script fallback for a hero *without* the skill: `MakeHeroNecromancer` (the engine consults it only when the skill is 0) |
+| +% necromancy on a new artifact | **natively, via our own set and a hook.** The raise percentage is one sum ([ENGINE_INTERNALS.md](ENGINE_INTERNALS.md#the-necromancy-percentage-in-full)) whose last term is already "worn pieces of a set ≥ threshold → add a number from data"; our own term is the same twenty bytes with our own set id and number. Script fallback for a hero *without* the skill: `MakeHeroNecromancer` (the engine consults it only when the skill is 0) |
 | grant a spell / skill while worn | one-way only — no removal calls; treat as permanent (NAF's compromise) |
 | activated artifact power | `ControlHeroCustomAbility` + `CUSTOM_ABILITY_TRIGGER` |
 | +% fire (or any element) damage | **impossible for a new id.** Exe-only (the Trident/Icicle/Cape family); no damage hook in any script API |
@@ -340,14 +340,17 @@ Sources: [NAF thread](https://forum.heroesworld.ru/showthread.php?t=12252),
 **A new set** (e.g. the King of the Dead cloak set):
 
 1. Add the artifacts (base recipe in the maps repo).
-2. Append an `<Item>` to `<ArtifactSets><Sets>` in our override of
-   `DefaultStats.xdb`: members, texts, per-count icons.
-   `Effect`: `ARTFSET_EFFECT_CUSTOM` once verified, else the closest shipped
-   enum (knowing its thresholds and shared constants come with it).
-3. Script the bonuses in `advmap-common.lua`: a thread polls
-   `GetArtifactSetItemsCount(hero, setIndex, 1)` per player hero, diffs
-   against the remembered count, applies tiered `ChangeHeroStat` deltas.
-4. Remember: one archive for everything — a second archive touching
+2. Append `ARTFSET_EFFECT_<OURS>` to the `ArtifactSetEffect` enum in
+   `types.xml` — append only, the value is what saves and maps store.
+3. Append an `<Item>` to `<ArtifactSets><Sets>` in our override of
+   `DefaultStats.xdb` using that effect: members, texts, per-count icons.
+4. Supply the behaviour. Natively via a hook is the target
+   ([ENGINE_INTERNALS.md](ENGINE_INTERNALS.md#the-shape-of-our-own-extension));
+   a Lua thread polling `GetArtifactSetItemsCount(hero, ourId, 1)` and
+   applying `ChangeHeroStat` deltas is the stopgap that needs no native code,
+   with the seams listed above (no equip event, script must undo its own
+   deltas).
+5. Remember: one archive for everything — a second archive touching
    `types.xml` or `DefaultStats.xdb` silently loses (mods replace files,
    never merge).
 
