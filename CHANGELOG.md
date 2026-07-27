@@ -7,6 +7,51 @@ section into the release notes, so this file is what people read on GitHub.
 Written for someone deciding whether to update: what was wrong, and what they
 would have seen.
 
+`## Unreleased` collects what has landed since the last tag. `release.yml` finds
+its section by version number, so this heading is inert until it is renamed to
+one.
+
+## Unreleased
+
+### Added
+
+- **Creatures and buildings can move.** The map has always drawn every object
+  frozen in the pose its model was exported in — the pose the original editor
+  shows too. The new **Idle stance** button plays what the game plays when
+  nothing is happening: a gremlin fidgets, a dwelling's chains swing, a phoenix
+  works its wings.
+
+  It cycles three states, and starts at **off**, which is not a paused loop:
+  with it off the scene is built without any of the animation data, so a map you
+  are only editing costs exactly what it did before — the payload of an animated
+  creature is otherwise about twice the size. **Visible** re-poses only what the
+  camera can see; **all** keeps everything moving, on screen or not. An animated
+  object also stops sharing a draw call with its identical neighbours, which is
+  why there is a middle setting at all.
+
+  Turning it on needs the map reopened — the scene it decides has to be built
+  differently, not redrawn — and the button says so rather than appearing to do
+  nothing. Between **visible** and **all** it switches at once.
+
+  Reading the animations meant working out two formats the editor had never
+  touched: the animation files are not the game's own container but RAD's Granny
+  GR2, and most of them are packed with RAD's Oodle1 codec, which is now decoded
+  here rather than handed to the 32-bit DLL the game ships. 2837 of the 2839
+  packed files come apart, and 105 of the 106 idle clips the game references.
+
+### Known limitations
+
+- One building's idle — the Orc `ShamanOfNommads` — is among the two files that
+  still do not decompress, so it stands as still as before. Anything that fails
+  to read falls back to the frozen mesh rather than disappearing.
+- Only the idle clip is played. Creatures also ship combat animations (attack,
+  move, hit, death) and those are read correctly, but nothing on the adventure
+  map has a reason to play them yet.
+- Rotations are sampled from their curves rather than evaluated exactly as the
+  engine does. On an idle loop seen from the map camera there is nothing to see;
+  it is written down as the one place in the chain that is close rather than
+  measured.
+
 ## 0.1.2 — 2026-07-26
 
 ### Fixed
