@@ -259,6 +259,12 @@ const uAmbCol = { value: new THREE.Color(0.31, 0.31, 0.31) };
 // The Light toggle's reach into the terrain: 1 = the baked designer point
 // lights add in, 0 = they don't (flat editing light keeps pools off too).
 const uLmGain = { value: 1 };
+// Scene light on L_LIT particle instances (docs/EFFECTS_FORMAT.md §5): the
+// terrain's own gamma-space sum at full incidence, 2·(amb + sun) clamped to
+// 1 — daylight leaves lit smoke alone, a night preset darkens it while the
+// self-lit (L_NORMAL) fire beside it keeps burning. Shared by reference into
+// every fx system; flat editing light resets it to white.
+const uFxTint = { value: new THREE.Color(1, 1, 1) };
 
 function applyAmbient(a: AmbientData | null): void {
   scene.background = DEFAULT_BG;
@@ -270,6 +276,7 @@ function applyAmbient(a: AmbientData | null): void {
     uSunDir.value.set(0.45, 0.35, 0.82);
     uSunCol.value.setRGB(0.25, 0.25, 0.25);
     uAmbCol.value.setRGB(0.31, 0.31, 0.31);
+    uFxTint.value.setRGB(1, 1, 1);
     return;
   }
   const [lr, lg, lb] = a.light as [number, number, number];
@@ -290,6 +297,8 @@ function applyAmbient(a: AmbientData | null): void {
   uSunDir.value.copy(sun.position);
   uSunCol.value.setRGB(lr, lg, lb); // raw, no conversion: gamma-space shader
   uAmbCol.value.setRGB(ar, ag, ab);
+  uFxTint.value.setRGB(
+    Math.min(1, 2 * (ar + lr)), Math.min(1, 2 * (ag + lg)), Math.min(1, 2 * (ab + lb)));
 }
 
 const controls = new OrbitControls(camera, renderer.domElement);
@@ -1678,7 +1687,7 @@ async function loadFx(floors: Floor3D[]): Promise<void> {
         const baked = bank[f.uid];
         if (!baked?.particles.length) continue;
         m4.makeRotationZ(inst.r).setPosition(tileCenter(inst.x), tileCenter(inst.y), inst.z);
-        const { system } = createFxSystem(f, baked, m4, (at * 0.37) % 3);
+        const { system } = createFxSystem(f, baked, m4, (at * 0.37) % 3, uFxTint);
         system.mesh.userData.inst = inst;
         system.mesh.userData.uid = f.uid; // for fxSystems() debugging
         system.mesh.visible = showFx; // effects arrive async; respect the toggle they land under
@@ -1699,6 +1708,29 @@ function advanceFx(dt: number): void {
   const fl = world.floors[world.active];
   if (!fl?.fx.length || !fl.objGroup.visible) return;
   for (const s of fl.fx) s.update(fxClock);
+}
+
+/**
+ * Build one placed instance's effect systems — the palette-add path, where
+ * loadFx has already run. Without this a campfire dropped from the palette
+ * stood cold until the map was saved and reopened.
+ */
+async function spawnFx(fl: Floor3D, inst: Instance): Promise<void> {
+  const list = geomFx.get(inst.g);
+  if (!list?.length) return;
+  const bank = await window.editor.fx([...new Set(list.map((f) => f.uid))]);
+  const m4 = new THREE.Matrix4();
+  for (const f of list) {
+    const baked = bank[f.uid];
+    if (!baked?.particles.length) continue;
+    m4.makeRotationZ(inst.r).setPosition(tileCenter(inst.x), tileCenter(inst.y), inst.z);
+    const { system } = createFxSystem(f, baked, m4, (fl.fx.length * 0.37) % 3, uFxTint);
+    system.mesh.userData.inst = inst;
+    system.mesh.userData.uid = f.uid;
+    system.mesh.visible = showFx;
+    fl.fx.push(system);
+    fl.objGroup.add(system.mesh);
+  }
 }
 
 /** Drop one object's effect systems, e.g. when it is deleted. */
@@ -4866,7 +4898,14 @@ interface ViewApi {
    */
   pointLights(): { count: number; litTexels: number };
   /** Per-system particle state on the active floor — which effects are actually alive. */
-  fxSystems(): { uid: string; shared: string; at: number[]; alive: number; visible: boolean }[];
+  fxSystems(): { uid: string; shared: string; at: number[]; alive: number; visible: boolean; tint: number[] }[];
+  /**
+   * Place an object through the renderer's own palette path — the one that
+   * grafts the new instance onto the LIVE scene (idle, effects, batch).
+   * `window.editor.addObject` alone is only the main-process half; a test
+   * driving it directly would assert on a scene the placement never touched.
+   */
+  place(o: { type: string; shared: string; x: number; y: number }): Promise<void>;
   /** True once the ground textures are decoded and a stroke would land. */
   paintReady(): boolean;
   /** Edits sent to the main process and not yet acknowledged. */
@@ -5022,14 +5061,25 @@ const view: ViewApi = {
     return fl.fx.map((s) => {
       const g = (s.mesh as unknown as { geometry: THREE.InstancedBufferGeometry }).geometry;
       const inst = s.mesh.userData.inst as Instance;
+      const tint = ((s.mesh.material as THREE.ShaderMaterial).uniforms.uTint?.value ?? null) as THREE.Color | null;
       return {
         uid: String(s.mesh.userData.uid ?? ''),
         shared: inst?.shared ?? '',
         at: [inst?.x ?? -1, inst?.y ?? -1],
         alive: g.instanceCount,
         visible: s.mesh.visible,
+        tint: tint ? [tint.r, tint.g, tint.b] : [1, 1, 1],
       };
     });
+  },
+  async place(o) {
+    if (!world) throw new Error('no map open');
+    const res = await window.editor.addObject({
+      type: o.type, shared: o.shared, x: o.x, y: o.y, floor: world.active,
+    });
+    addInstanceToScene(res.instance, res.geom);
+    markDirty(true);
+    renderExplorer();
   },
   pointLights() {
     const fl = world ? activeFloor() : null;
@@ -6323,6 +6373,7 @@ function addInstanceToScene(inst: Instance, geom: { index: number; data: GeomDat
     geomParts.set(geom.index, geom.data.parts);
     geomFootprint.set(geom.index, geom.data.footprint ?? null);
     if (geom.data.scale && geom.data.scale !== 1) geomScale.set(geom.index, geom.data.scale);
+    if (geom.data.fx?.length) geomFx.set(geom.index, geom.data.fx);
   }
   const g = worldGeos[inst.g], m = worldMats[inst.g];
   if (!g || !m) { $('hud').textContent = 'placed, but its mesh is missing — reload to see it'; return; }
@@ -6344,6 +6395,9 @@ function addInstanceToScene(inst: Instance, geom: { index: number; data: GeomDat
   // material now that it exists — the load path does this via upgradeToSplat.
   if (geomParts.get(inst.g)?.some((p) => p.terrainProjected)) projectBatch(fl, inst.g);
   fl.instances.push(inst);
+  // Its effects light up on the spot — the campfire burns where it lands,
+  // not after a save and reopen. Async: the baked keys may need fetching.
+  void spawnFx(fl, inst);
   syncFootprints(fl);
 }
 

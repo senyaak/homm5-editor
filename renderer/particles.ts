@@ -7,6 +7,16 @@
 // particles, lerps their channels at the current loop time and rewrites the
 // instance attributes.
 //
+// The recording is a ONE-SHOT, not a loop: in 1911 of 1921 files the
+// population ramps from zero and dies back to zero. What keeps a campfire
+// burning is the TRIGGER TRAIN — the engine starts a fresh copy of the
+// recording every `endCycle` playback seconds (offset by `offset`,
+// `cycleCount` copies in total, 0 = forever), and the die-out of one copy
+// overlaps the ramp-in of the next. Looping a single copy instead makes the
+// fire visibly die and relight (population 1..40 where the train holds
+// 35..45), and a "puff every 7 seconds" instance (recording 1.1s, period 7s)
+// puffs six times too often.
+//
 // Textures: the instance's frame table is packed into one atlas (the baked
 // texture index picks the tile), because switching textures per particle would
 // break the single draw call.
@@ -86,6 +96,7 @@ precision highp float;
 uniform sampler2D uAtlas;  // frame colour, opaque
 uniform sampler2D uAlpha;  // frame alpha, as gray
 uniform vec2 uGrid; // cols, rows
+uniform vec3 uTint; // scene light on an L_LIT instance; white when unlit
 in vec2 vUv;
 in vec4 vColor;
 in float vTex;
@@ -106,7 +117,7 @@ void main() {
   // with a zero alpha channel is purely additive, smoke with real alpha
   // covers, and one instance can mix both kinds of frame. No blending
   // heuristic; this is the art's own convention.
-  vec3 rgb = s.rgb * vColor.rgb * 2.0 * vColor.a;
+  vec3 rgb = s.rgb * vColor.rgb * 2.0 * vColor.a * uTint;
   float a = s.a * vColor.a;
   if (a < 0.003 && max(rgb.r, max(rgb.g, rgb.b)) < 0.004) discard;
   outColor = vec4(rgb, a);
@@ -132,10 +143,23 @@ function sample(a: Float32Array, stride: number, cur: number, f: number, out: nu
   return cur;
 }
 
+/** The unlit instances' fixed tint — one shared object, never mutated. */
+const WHITE_TINT = { value: new THREE.Color(1, 1, 1) };
+
 export function createFxSystem(
   fx: FxInstancePayload, baked: FxTransfer, objectMatrix: THREE.Matrix4, phase: number,
+  litTint: { value: THREE.Color } = WHITE_TINT,
 ): { system: FxSystem; ready: Promise<void> } {
-  const n = Math.min(baked.maxAlive, 4096);
+  const recFrames = Math.max(1, baked.duration * baked.rate);
+  // One copy's length in real (playback) seconds; the train fires a copy
+  // every `period` of those. endCycle 0 (rare, one-shots) → back-to-back.
+  const recPlaySec = recFrames / baked.rate / fx.speed;
+  const period = fx.endCycle > 0 ? fx.endCycle : recPlaySec;
+  const copies = fx.cycleCount > 0 ? fx.cycleCount : Infinity;
+  // Copies alive at once. The library maxes out at 6 (adventure-reachable);
+  // 8 caps a hypothetical pathological file, not anything observed.
+  const overlap = Math.max(1, Math.min(8, Math.ceil(recPlaySec / period - 1e-6), copies === Infinity ? 8 : copies));
+  const n = Math.min(baked.maxAlive * overlap, 4096);
   const geo = new THREE.InstancedBufferGeometry();
   const quad = new THREE.PlaneGeometry(1, 1);
   geo.index = quad.index;
@@ -160,6 +184,9 @@ export function createFxSystem(
       uAtlas: { value: null },
       uAlpha: { value: null },
       uGrid: { value: new THREE.Vector2(1, 1) },
+      // Shared by reference: the app mutates the lit tint in place when the
+      // preset (or the Light toggle) changes, like the terrain uniforms.
+      uTint: fx.lit ? litTint : WHITE_TINT,
     },
     transparent: true,
     depthWrite: false,
@@ -191,39 +218,59 @@ export function createFxSystem(
     (mat.uniforms.uGrid!.value as THREE.Vector2).set(cols, rows);
   });
 
-  const totalFrames = Math.max(1, baked.duration * baked.rate);
   const parts = baked.particles;
-  // One cursor per channel per particle; reset when the loop wraps.
-  const cursors = { pos: new Int32Array(parts.length), rot: new Int32Array(parts.length), size: new Int32Array(parts.length), color: new Int32Array(parts.length), tex: new Int32Array(parts.length) };
-  let lastF = -1;
+  // One playback slot per concurrently-alive copy: which trigger (k) it is
+  // playing, its last frame, and a channel cursor per particle. A slot is
+  // recycled (cursors reset) when its trigger number moves on.
+  const slots = Array.from({ length: overlap }, () => ({
+    k: -1, lastF: -1,
+    cursors: { pos: new Int32Array(parts.length), rot: new Int32Array(parts.length), size: new Int32Array(parts.length), color: new Int32Array(parts.length), tex: new Int32Array(parts.length) },
+  }));
+  // A finite train fires its copies once. On a clip-hung effect the engine
+  // replays the whole effect every animation cycle — `retrigger` carries the
+  // clip length — so the phoenix's one-burst wing whoosh repeats per flap.
+  // An object effect's finite train really does play only once (7 instances
+  // map-wide): a birth flash the editor shows at map open, then quiet. [~]
+  const retrigger = copies !== Infinity && fx.retrigger ? fx.retrigger : 0;
   const v: number[] = [0, 0, 0, 0];
 
   const system: FxSystem = {
     mesh,
     update(seconds: number) {
-      const f = ((seconds * fx.speed + phase) * baked.rate) % totalFrames;
-      if (f < lastF) for (const c of Object.values(cursors)) c.fill(0);
-      lastF = f;
+      let t = seconds + phase - fx.offset;
+      if (retrigger > 0) t = ((t % retrigger) + retrigger) % retrigger;
+      const kMax = Math.min(Math.floor(t / period), copies - 1);
+      const kMin = Math.max(0, Math.ceil((t - recPlaySec) / period));
       let w = 0;
-      for (let i = 0; i < parts.length && w < n; i++) {
-        const p = parts[i]!;
-        if (f < p.birth || f > p.death) continue;
-        const ch = (name: Chan, arr: Float32Array, lerp: boolean): void => {
-          cursors[name][i] = sample(arr, STRIDE[name], cursors[name][i]!, f, v, lerp);
-        };
-        ch('tex', p.tex, false);
-        if (v[0]! < 0) continue; // hidden this frame
-        aTex.array[w] = v[0]!;
-        ch('pos', p.pos, true);
-        aCenter.array[w * 3] = v[0]!; aCenter.array[w * 3 + 1] = v[1]!; aCenter.array[w * 3 + 2] = v[2]!;
-        ch('size', p.size, true);
-        aSizeRot.array[w * 3] = Math.abs(v[0]!); aSizeRot.array[w * 3 + 1] = Math.abs(v[1]!);
-        ch('rot', p.rot, true);
-        aSizeRot.array[w * 3 + 2] = v[0]!;
-        ch('color', p.color, true);
-        aColor.array[w * 4] = v[0]! / 255; aColor.array[w * 4 + 1] = v[1]! / 255;
-        aColor.array[w * 4 + 2] = v[2]! / 255; aColor.array[w * 4 + 3] = v[3]! / 255;
-        w++;
+      for (let k = kMin; k <= kMax && w < n; k++) {
+        const f = (t - k * period) * fx.speed * baked.rate;
+        const slot = slots[k % overlap]!;
+        if (slot.k !== k || f < slot.lastF) {
+          slot.k = k;
+          for (const c of Object.values(slot.cursors)) c.fill(0);
+        }
+        slot.lastF = f;
+        const cursors = slot.cursors;
+        for (let i = 0; i < parts.length && w < n; i++) {
+          const p = parts[i]!;
+          if (f < p.birth || f > p.death) continue;
+          const ch = (name: Chan, arr: Float32Array, lerp: boolean): void => {
+            cursors[name][i] = sample(arr, STRIDE[name], cursors[name][i]!, f, v, lerp);
+          };
+          ch('tex', p.tex, false);
+          if (v[0]! < 0) continue; // hidden this frame
+          aTex.array[w] = v[0]!;
+          ch('pos', p.pos, true);
+          aCenter.array[w * 3] = v[0]!; aCenter.array[w * 3 + 1] = v[1]!; aCenter.array[w * 3 + 2] = v[2]!;
+          ch('size', p.size, true);
+          aSizeRot.array[w * 3] = Math.abs(v[0]!); aSizeRot.array[w * 3 + 1] = Math.abs(v[1]!);
+          ch('rot', p.rot, true);
+          aSizeRot.array[w * 3 + 2] = v[0]!;
+          ch('color', p.color, true);
+          aColor.array[w * 4] = v[0]! / 255; aColor.array[w * 4 + 1] = v[1]! / 255;
+          aColor.array[w * 4 + 2] = v[2]! / 255; aColor.array[w * 4 + 3] = v[3]! / 255;
+          w++;
+        }
       }
       geo.instanceCount = w;
       for (const a of [aCenter, aSizeRot, aColor, aTex]) a.needsUpdate = true;

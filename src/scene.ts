@@ -213,6 +213,35 @@ export interface FxInstancePayload {
   /** Playback rate multiplier, from the instance's <Speed>. */
   speed: number;
   /**
+   * The trigger train (docs/EFFECTS_FORMAT.md §5): the recording is NOT a
+   * loop — it is a one-shot (population ramps from zero and dies back), and
+   * the engine RETRIGGERS it every `endCycle` playback seconds, overlapping
+   * copies summing to the steady flame. `offset` delays the train's first
+   * trigger; `cycleCount` bounds how many triggers fire (0 = forever).
+   */
+  offset: number;
+  endCycle: number;
+  cycleCount: number;
+  /**
+   * Outer restart period, seconds — set on CLIP-hung instances to the idle
+   * clip's length: the engine replays the whole effect with every animation
+   * cycle, which is what makes a finite train (the phoenix's one-burst wing
+   * whoosh, cycleCount 1) fire once per flap rather than once ever. Looping
+   * instances of the same effects are authored with EndCycle == clip length
+   * (Phoenix: 3.16666 == the clip's 3.1666667s), which is what confirmed the
+   * mechanism. Absent on object effects — their trains run free.
+   */
+  retrigger?: number;
+  /**
+   * `<Light>L_LIT</Light>` — the instance is lit by the scene (163 of the 396
+   * adventure-reachable instances; the rest are L_NORMAL, self-lit). A lit
+   * smoke column darkens with a night map's preset; the fire next to it
+   * doesn't. (The presets' ParticlesColor is 0.25,0.25,0.25 in every preset
+   * that has one — an engine constant, not a per-map knob — so scene light is
+   * the only thing that actually varies.)
+   */
+  lit: boolean;
+  /**
    * Frame table the baked texture indices point into; null = empty slot.
    * Each frame ships as TWO data URIs — colour (alpha forced opaque) and the
    * real alpha as a grayscale image — because a browser canvas premultiplies:
@@ -722,6 +751,10 @@ function particlesOfEffect(
         quat,
         scale: instScale,
         speed: +(inst.match(/<Speed>([-\d.eE]+)</)?.[1] ?? 1) || 1,
+        offset: +(inst.match(/<Offset>([-\d.eE]+)</)?.[1] ?? 0) || 0,
+        endCycle: +(inst.match(/<EndCycle>([-\d.eE]+)</)?.[1] ?? 0) || 0,
+        cycleCount: +(inst.match(/<CycleCount>([-\d.eE]+)</)?.[1] ?? 0) || 0,
+        lit: /<Light>L_LIT<\/Light>/.test(inst),
         textures,
       });
     } catch { /* one broken instance must not take the object's other instances down */ }
@@ -766,7 +799,16 @@ function clipEffectParticles(
   const effect = effHref ? followHref(data, anim.xml, anim.dir, effHref) : null;
   if (!effect) return { fx: [], scale };
   const boneWorld: BoneWorld = (bone) => bones?.get(bone) ?? null;
-  return { fx: particlesOfEffect(effect, data, texSize, boneWorld), scale };
+  const fx = particlesOfEffect(effect, data, texSize, boneWorld);
+  // The engine replays a clip's effect with every animation cycle. Only a
+  // finite train (cycleCount > 0) can tell the difference — a one-burst
+  // instance fires once per cycle, not once ever — so the clip is only
+  // opened for its duration when such an instance exists.
+  if (fx.some((i) => i.cycleCount > 0)) {
+    const dur = clipDurationSeconds(anim.xml, data);
+    if (dur) for (const i of fx) i.retrigger = dur;
+  }
+  return { fx, scale };
 }
 
 /**
@@ -812,6 +854,19 @@ function clipRestBones(animXml: string, data: Assets): Map<string, BoneRest> | n
     out.set('__rootScale__', { pos: [0, 0, 0], quat: [0, 0, 0, 1], scale: root.scale });
     return out;
   } catch { return null; }
+}
+
+/** The clip's length in seconds, from its GR2; 0 when unreadable. */
+function clipDurationSeconds(animXml: string, data: Assets): number {
+  try {
+    const uid = animXml.match(/<uid>([0-9A-Fa-f-]{36})<\/uid>/)?.[1];
+    if (!uid) return 0;
+    const binPath = data.path(join('bin', 'animations', uid.toUpperCase()));
+    if (!existsSync(binPath)) return 0;
+    const file = GrannyFile.open(readFileSync(binPath));
+    if (!file || file.isUnreadable) return 0;
+    return readAnimations(file)[0]?.duration ?? 0;
+  } catch { return 0; }
 }
 
 /**

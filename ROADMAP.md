@@ -126,12 +126,18 @@ project.json
       RazedMilitaryPost, RazedWindmill, Rail_coner_faza0_5. Plus whatever
       resolves but draws WRONG — collected by eyeballing against the original
       editor (`_tmp/scan-undecoded.mjs` prints the list)
-- [ ] ⬜ **Effects tail — FIX NEXT** (docs/EFFECTS_FORMAT.md §5): loop
-      windows (`Offset`/`EndCycle`/`CycleCount` — effects that should play
-      once or with pauses currently loop flat), `WindAffected`, L_LIT
-      particles tinted by scene light + the preset's `ParticlesColor`,
-      bone-glued instances following the playing idle (now rest-pose),
-      AnimLight (`bin/Lights`, 98 files) decode
+- [x] ✅ **Effects tail** (2026-07-27, docs/EFFECTS_FORMAT.md §5). The big
+      one: the baked recording is a ONE-SHOT and the game loops it as a
+      TRIGGER TRAIN — a fresh copy every `EndCycle` (seconds, despite the
+      name) with copies overlapping; campfires now hold steady instead of
+      dying and relighting, puffs puff on their authored rhythm, one-burst
+      clip instances (`CycleCount 1`) fire once per idle cycle. L_LIT
+      instances (falling leaves) tint by scene light — dark on night maps.
+      Palette-added objects get their effects immediately (was: save+reopen).
+      Dead ends measured, not skipped: `WindAffected` false on every effect
+      in the game; `ParticlesColor` 0.25-constant in every preset.
+      Remaining [~]: bone glue at rest pose (invisible unless idles are on),
+      AnimLight (`bin/Lights`, 98 files; ~1 adventure-map object)
 - [ ] ⬜ RTS camera niceties: tile grid, minimap, hover highlight
 - [ ] ⬜ Instancing for repeated props + LOD
 

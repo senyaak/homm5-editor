@@ -161,14 +161,53 @@ smoke frames in the same instance. Two consequences worth knowing:
   was. Each frame therefore ships as TWO images — colour with alpha forced
   opaque, and the real alpha as a grayscale — recombined in the shader.
 
+**The recording is a one-shot, and the loop is a TRIGGER TRAIN.** In 1911 of
+1921 files the population ramps from zero and dies back to zero (only 10 have
+the pre-warmed negative births) — the baked file is not a loop, it is one
+run of the emitter. What keeps a campfire burning is retriggering:
+
+* `<EndCycle>` — the retrigger PERIOD, in playback (real, post-`<Speed>`)
+  seconds. A fresh copy of the recording starts every period; the die-out of
+  one copy overlaps the ramp-in of the next. The campfire (5.0s recording,
+  period 3): a single looping copy dips to ONE alive particle every cycle —
+  a fire that dies and relights — where the train holds a steady 35–45. The
+  name says "cycle" but the values are seconds — 3.1, 1.83333 — and a period
+  LONGER than the recording is meaningful: recording 1.1s, period 7 is a
+  puff of smoke every seven seconds, not a loop at all.
+* `<CycleCount>` — how many triggers fire; 0 = forever. Adventure-reachable
+  instances are 389× `0`, 7× `1`.
+* `<Offset>` — delays the train's first trigger (relative timing of the
+  instances inside one effect: the splash, then the drips).
+* A CLIP-hung effect (a creature's idle) is replayed by the engine with
+  every ANIMATION CYCLE, which is what a finite train means there: the
+  phoenix's 1118-particle wing whoosh is `CycleCount 1` and fires once per
+  flap — and the same effect's looping instance is authored with
+  `EndCycle 3.16666`, exactly the idle clip's 3.1666667s, which is what gave
+  the mechanism away. The editor restarts a clip effect's finite trains at
+  the clip length (`retrigger` on the payload); an OBJECT effect's finite
+  train really does play once — a birth flash at map open, then quiet. **[~]**
+* Copies alive at once max out at 6 across the adventure-reachable library;
+  the renderer keeps one playback slot per concurrent copy (buffers scale by
+  the same factor) and caps at 8.
+
+`<WindAffected>` needs no implementing: it is `false` on every effect in the
+game's data — there is not one `true` anywhere. Likewise the presets'
+`<ParticlesColor>` is `0.25 0.25 0.25` in every preset that has one — an
+engine constant already absorbed by the colour stage, not a per-map knob.
+
+`<Light>` on an instance is the one lighting split that varies: `L_LIT`
+(163 of the 396 adventure-reachable instances — mostly the falling leaves of
+oaks and pines) is tinted by the scene light — the terrain's own gamma-space
+sum at full incidence, `2·(amb + sun)` clamped to 1, shared into every system
+as a uniform — so leaves darken on a night map while the self-lit (`L_NORMAL`)
+fire beside them keeps burning. Daylight presets clamp to white, which is why
+nothing changes on a noon map.
+
 Still simplified, in the order they would matter:
-* The instance's `<Offset>`, `<EndCycle>`/`<CycleCount>` (loop windows) and
-  `<WindAffected>` are ignored; `<Speed>` is applied as a time scale.
 * Position space is taken as the instance's local frame before its
   Position/Rotation/Scale (matches how `<Models>` instances behave). **[~]**
 * Bone-glued instances sit at the bone's REST pose; they do not follow the
-  playing idle animation. **[~]**
-* Particles are unlit sprites; the game's `L_LIT` instances (163 of 2723)
-  would be tinted by scene light, and `ParticlesColor` of the ambient preset
-  is not applied.
+  playing idle animation. (With idles off — the default — the rest pose IS
+  the shown pose, so this only shades into view when a creature is moving.)
+  **[~]**
 * `bin/Lights` (AnimLight flicker curves) — parked, see §2.

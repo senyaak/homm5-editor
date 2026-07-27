@@ -11,7 +11,43 @@ would have seen.
 its section by version number, so this heading is inert until it is renamed to
 one.
 
-## 0.3.0 — 2026-07-27
+## Unreleased
+
+### Fixed
+
+- **Fires no longer die and relight — the effect loop was the wrong model.**
+  The baked effect files turned out to be one-shots, not loops: the particle
+  population ramps up from nothing and dies back to nothing (1911 of the 1921
+  files). Playing one copy on repeat — what 0.3.0 shipped — makes every
+  campfire visibly gutter to a single ember and flare up again every few
+  seconds. The game instead RETRIGGERS the recording on a fixed period
+  (`EndCycle`, misleadingly named — the value is seconds), overlapping copies
+  so the die-out of one hides under the ramp-in of the next: the campfire
+  now holds a steady 35–45 particles where a single loop dipped to one. The
+  same reading fixes rhythm the other way round: a 1.1-second wisp with a
+  7-second period is a puff of smoke every seven seconds, which used to
+  replay six times too often. One-burst instances (`CycleCount 1` — the
+  phoenix's wing-whoosh of 1118 particles) fire once per idle-animation
+  cycle, the way the game times them, rather than looping continuously —
+  the clip length gave the mechanism away: the phoenix's looping fire is
+  authored with period 3.16666 and its idle clip is 3.1666667 seconds long.
+
+- **An object placed from the palette now gets its effects on the spot.** The
+  campfire used to land cold and only start burning after a save and reopen;
+  the palette path grafted the mesh and the idle animation onto the live
+  scene but never the particle systems.
+
+### Added
+
+- **Scene light reaches the particles marked for it.** Effect instances are
+  authored `L_LIT` (lit by the scene — mostly the falling leaves of oaks and
+  pines) or `L_NORMAL` (self-lit — fire, glows). Lit instances now darken
+  under the map's lighting preset: on a night map the leaves dim into the
+  scene while the campfire beside them keeps burning. Daylight presets leave
+  everything as it was. (Two neighbouring fields turned out to be dead ends,
+  written up in the format doc: `WindAffected` is false on every effect the
+  game ships, and the presets' `ParticlesColor` is the same 0.25 grey in all
+  of them — an engine constant, not a per-map knob.)
 
 ### Added
 
