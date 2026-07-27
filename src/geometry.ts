@@ -83,6 +83,18 @@ interface Candidate {
   score: number;
 }
 
+/**
+ * The vertex-to-bone binding: four weights and four bone indices per render
+ * vertex, ready to hand to a skinned mesh. Only decoded when asked for — see
+ * `MeshOptions.skin`.
+ */
+export interface SkinBinding {
+  /** 4 per vertex, summing to 1. */
+  weights: Float32Array;
+  /** 4 per vertex, indices into the skeleton's bone list. */
+  indices: Uint8Array;
+}
+
 /** A decoded, render-ready mesh. */
 export interface Mesh {
   positions: Float32Array;
@@ -91,6 +103,19 @@ export interface Mesh {
   indices: Uint32Array;
   vertexCount: number;
   triCount: number;
+  /** Present only when decoding was asked to read it and the mesh carries it. */
+  skin?: SkinBinding;
+}
+
+/** What to decode beyond the drawable mesh itself. */
+export interface MeshOptions {
+  /**
+   * Read the skin binding (§6 of docs/ANIMATION_FORMAT.md). Off by default:
+   * the editor draws a still map, every object would pay two more arrays per
+   * mesh for data only an animated one uses, and the setting that turns idle
+   * animation on is what turns this on with it.
+   */
+  skin?: boolean;
 }
 
 /**
@@ -461,7 +486,7 @@ export function readGeometryRefFromModelXdb(
 //         tag 1  mesh body
 //           tag 2   positions      count x 12   (float3)
 //           tag 3   render verts   count x 20
-//           tag 4   vertex extras  count x 24   (normals/tangents)
+//           tag 4   skin binding   count x 24   (4 float weights + 4 bone ids)
 //           tag 5   remap          count x u16  -> index into positions
 //           tag 6   remap copy     count x u16
 //           tag 7   TRIANGLES      count x 6    (3 x u16 into the remap)
@@ -522,7 +547,7 @@ function countedArray(b: Buffer, start: number, end: number): { count: number; a
  * Returns null when the file does not match the layout, so the caller can fall
  * back to the older heuristic rather than losing a model outright.
  */
-export function extractMeshesStructured(b: Buffer): Mesh[] | null {
+export function extractMeshesStructured(b: Buffer, options: MeshOptions = {}): Mesh[] | null {
   const top = recordsIn(b, 0, b.length);
   const root = top.find((r) => r.tag === 1);
   if (!root) return null;
@@ -542,7 +567,7 @@ export function extractMeshesStructured(b: Buffer): Mesh[] | null {
   const meshes: Mesh[] = [];
   for (const block of blocks) {
     for (const group of recordsIn(b, block.at, block.end).filter((r) => r.tag === 1)) {
-      const m = decodeMeshGroup(b, group.at, group.end);
+      const m = decodeMeshGroup(b, group.at, group.end, options);
       if (m) meshes.push(m);
     }
   }
@@ -550,13 +575,14 @@ export function extractMeshesStructured(b: Buffer): Mesh[] | null {
 }
 
 /** Decode one material group (a mesh block's tag-1 child) into a Mesh, or null. */
-function decodeMeshGroup(b: Buffer, start: number, end: number): Mesh | null {
+function decodeMeshGroup(b: Buffer, start: number, end: number, options: MeshOptions = {}): Mesh | null {
   const parts = recordsIn(b, start, end);
   const of = (tag: number): { count: number; at: number; len: number } | null => {
     const r = parts.find((x) => x.tag === tag);
     return r ? countedArray(b, r.at, r.end) : null;
   };
   const posA = of(2), vertA = of(3), remapA = of(5), triA = of(7);
+  const skinA = options.skin ? of(4) : null;
   if (!posA || !triA || !vertA || !remapA) return null;
   if (posA.len < posA.count * 12 || triA.len < triA.count * 6) return null;
   if (remapA.count !== vertA.count) return null;
@@ -575,6 +601,16 @@ function decodeMeshGroup(b: Buffer, start: number, end: number): Mesh | null {
   const positions = new Float32Array(n * 3);
   const uvs = new Float32Array(n * 2);
   const normals = new Float32Array(n * 3);
+
+  // The skin binding sits in the tag-4 array, stored once per POSITION exactly
+  // like the positions are, so it expands through the same remap. Its 24 bytes
+  // are four float weights, then those same weights quantized to bytes, then
+  // the four bone indices — see docs/ANIMATION_FORMAT.md §6. A mesh whose tag-4
+  // array is a different width is not skinned and simply comes back unbound.
+  const skinStride = skinA && skinA.count === posA.count && skinA.count > 0 ? skinA.len / skinA.count : 0;
+  const skin: SkinBinding | null = skinStride === 24
+    ? { weights: new Float32Array(n * 4), indices: new Uint8Array(n * 4) }
+    : null;
   for (let i = 0; i < n; i++) {
     const src = b.readUInt16LE(remapA.at + i * 2);
     if (src >= posA.count) return null;
@@ -591,6 +627,13 @@ function decodeMeshGroup(b: Buffer, start: number, end: number): Mesh | null {
     if (stride >= 16) {
       for (let c = 0; c < 3; c++) {
         normals[i * 3 + c] = (b[vertA.at + i * stride + 12 + c]! - 128) / 127;
+      }
+    }
+    if (skin) {
+      const at = skinA!.at + src * 24;
+      for (let c = 0; c < 4; c++) {
+        skin.weights[i * 4 + c] = b.readFloatLE(at + c * 4);
+        skin.indices[i * 4 + c] = b[at + 20 + c]!;
       }
     }
   }
@@ -628,6 +671,7 @@ function decodeMeshGroup(b: Buffer, start: number, end: number): Mesh | null {
     indices,
     vertexCount: n,
     triCount: triA.count,
+    ...(skin ? { skin } : {}),
   };
 }
 
@@ -670,13 +714,13 @@ function repairZeroNormals(positions: Float32Array, normals: Float32Array, indic
 //
 //   tag 2  positions      float3 per position       <- transformed
 //   tag 3  render verts   u16 UV over 2048, then packed normals as bytes
-//   tag 4  vertex extras  normals and tangents, packed
+//   tag 4  skin binding   float weights and bone indices per position
 //   tag 5/6 remap         u16 indices into tag 2
 //   tag 7  triangles      u16 indices into the remap
 //
-// A uniform scale leaves normals, tangents and texture coordinates exactly as
-// they were, and a translation leaves them alone too, so nothing but tag 2 needs
-// touching — and every record keeps its length, so the container's framing is
+// A uniform scale leaves normals, texture coordinates and the bone weights
+// exactly as they were, and a translation leaves them alone too, so nothing but
+// tag 2 needs touching — and every record keeps its length, so the container's framing is
 // untouched as well. What DOES have to follow is the bounding box in the geometry
 // document, which the engine and our own reader take at face value.
 

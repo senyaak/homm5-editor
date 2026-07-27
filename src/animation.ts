@@ -14,6 +14,7 @@
 
 import { GrannyFile } from './gr2.ts';
 import type { GR2Ref, GrannyTransform, TypeMember } from './gr2.ts';
+import type { SkinBinding } from './geometry.ts';
 
 /** One bone: its rest transform, and its parent's index (-1 for the root). */
 export interface Bone {
@@ -346,6 +347,83 @@ export function checkSkeleton(skeleton: Skeleton): { worst: number; frame: numbe
     for (let k = 0; k < 16; k++) worst = Math.max(worst, Math.abs(f[k]! - frame[k]!));
   });
   return { worst, frame };
+}
+
+/**
+ * Every bone's world matrix at `time`, animated.
+ *
+ * A track drives a bone BY NAME, and it does not have to drive all three
+ * channels: an idle usually animates rotation only, and a bone with no track at
+ * all (a prop, a weapon) still has to be placed. So each channel falls back to
+ * the bone's own rest value rather than to an identity, which would collapse
+ * the untracked half of the skeleton onto the origin.
+ */
+export function poseWorldMatrices(skeleton: Skeleton, animation: Animation | null, time: number): number[][] {
+  const tracks = new Map<string, TransformTrack>();
+  for (const group of animation?.groups ?? []) {
+    for (const track of group.tracks) tracks.set(track.name, track);
+  }
+  const scratch: number[] = [];
+  const world: number[][] = [];
+  skeleton.bones.forEach((bone, i) => {
+    const track = tracks.get(bone.name);
+    const rest = bone.rest;
+    const local = transformToMatrix(track
+      ? {
+        flags: rest.flags,
+        position: track.position.dim === 3
+          ? (sampleCurve(track.position, time, scratch).slice(0, 3) as [number, number, number])
+          : rest.position,
+        orientation: track.orientation.dim === 4
+          ? (sampleQuaternion(track.orientation, time, scratch).slice(0, 4) as [number, number, number, number])
+          : rest.orientation,
+        scaleShear: track.scaleShear.dim === 9 ? sampleCurve(track.scaleShear, time, scratch).slice(0, 9) : rest.scaleShear,
+      }
+      : rest);
+    // Parents come first in the bone list (checked across the library), so the
+    // parent's world matrix is already built by the time a child needs it.
+    const parent = bone.parentIndex >= 0 && bone.parentIndex < i ? world[bone.parentIndex] : null;
+    world.push(parent ? multiplyMatrix(local, parent) : local);
+  });
+  return world;
+}
+
+/**
+ * The matrices to skin with at `time`: each bone's inverse bind times its posed
+ * world matrix. At the rest pose these are exactly the identity, which is the
+ * property the skinning test leans on.
+ */
+export function skinMatrices(skeleton: Skeleton, animation: Animation | null, time: number): number[][] {
+  const inverseBind = inverseBindMatrices(skeleton);
+  const posed = poseWorldMatrices(skeleton, animation, time);
+  return posed.map((world, i) => multiplyMatrix(inverseBind[i]!, world));
+}
+
+/**
+ * Skin positions on the CPU: four weighted bone matrices per vertex.
+ *
+ * The renderer does this on the GPU; this exists for tests and for measuring,
+ * because a skinned mesh that is subtly wrong still renders something.
+ */
+export function skinPositions(positions: Float32Array, skin: SkinBinding, matrices: number[][]): Float32Array {
+  const out = new Float32Array(positions.length);
+  const count = positions.length / 3;
+  for (let v = 0; v < count; v++) {
+    const x = positions[v * 3]!, y = positions[v * 3 + 1]!, z = positions[v * 3 + 2]!;
+    let ox = 0, oy = 0, oz = 0;
+    for (let k = 0; k < 4; k++) {
+      const w = skin.weights[v * 4 + k]!;
+      if (!w) continue;
+      const m = matrices[skin.indices[v * 4 + k]!];
+      if (!m) continue;
+      // Row-vector convention: the point is a row, so translation is row 3.
+      ox += w * (x * m[0]! + y * m[4]! + z * m[8]! + m[12]!);
+      oy += w * (x * m[1]! + y * m[5]! + z * m[9]! + m[13]!);
+      oz += w * (x * m[2]! + y * m[6]! + z * m[10]! + m[14]!);
+    }
+    out[v * 3] = ox; out[v * 3 + 1] = oy; out[v * 3 + 2] = oz;
+  }
+  return out;
 }
 
 /** Whether a frame matrix is the identity, within float32 noise. */
