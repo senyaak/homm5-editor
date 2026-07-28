@@ -15,6 +15,15 @@ one.
 
 ### Fixed
 
+- **Effects that were slowed down no longer play twice over.** The retrigger
+  period turned out to be measured in the instance's own clock — the one
+  `<Speed>` scales — and not in wall seconds. Read the wrong way, any effect
+  authored slow retriggered far too often: the Fountain of Fortune grew a
+  second rainbow arcing over the first while it was still at full strength
+  (208 alive particles against the recording's own peak of 131, now 136), and
+  the shipped library asked for up to 36 copies of a single fog recording at
+  once. It shows on the 154 instances whose `<Speed>` is not 1 — fog, forge
+  smoke, tavern flames, the town splashes.
 - **A creature's glued effects follow the animation.** The shadow dragon's eye
   glow hangs off its Head bone; it was placed against the bind pose when the
   scene was built and then never moved again, so the head turned through its

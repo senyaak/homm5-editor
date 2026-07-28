@@ -161,10 +161,21 @@ export function createFxSystem(
   litTint: { value: THREE.Color } = WHITE_TINT,
 ): { system: FxSystem; ready: Promise<void> } {
   const recFrames = Math.max(1, baked.duration * baked.rate);
-  // One copy's length in real (playback) seconds; the train fires a copy
-  // every `period` of those. endCycle 0 (rare, one-shots) → back-to-back.
+  // One copy's length in real (playback) seconds: `<Speed>` scales the
+  // instance's clock, so 0.8 plays the recording at 0.8× and it lasts longer.
   const recPlaySec = recFrames / baked.rate / fx.speed;
-  const period = fx.endCycle > 0 ? fx.endCycle : recPlaySec;
+  // The retrigger period is in that SAME scaled clock, not in real seconds —
+  // slowing an instance down slows its retriggering with it. Read as real
+  // seconds instead, a slowed instance retriggers far too often: the shipped
+  // library then wants up to 36 copies of one fog bake alive at once (period 3
+  // against a 16-second recording at Speed 0.15), and the Fountain of Fortune
+  // grows a second rainbow over the first while it is still at full strength —
+  // which is what sent us looking. Measured over all 625 instances that carry
+  // a period, this reading needs at most 6 copies and one for 56% of them,
+  // against a maximum of 36 the other way. endCycle 0 (rare, one-shots) →
+  // back-to-back copies.
+  const recSec = recFrames / baked.rate;
+  const period = (fx.endCycle > 0 ? fx.endCycle : recSec) / fx.speed;
   const copies = fx.cycleCount > 0 ? fx.cycleCount : Infinity;
   // Copies alive at once. The library maxes out at 6 (adventure-reachable);
   // 8 caps a hypothetical pathological file, not anything observed.

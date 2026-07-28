@@ -173,14 +173,28 @@ smoke frames in the same instance. Two consequences worth knowing:
 the pre-warmed negative births) — the baked file is not a loop, it is one
 run of the emitter. What keeps a campfire burning is retriggering:
 
-* `<EndCycle>` — the retrigger PERIOD, in playback (real, post-`<Speed>`)
-  seconds. A fresh copy of the recording starts every period; the die-out of
-  one copy overlaps the ramp-in of the next. The campfire (5.0s recording,
-  period 3): a single looping copy dips to ONE alive particle every cycle —
-  a fire that dies and relights — where the train holds a steady 35–45. The
-  name says "cycle" but the values are seconds — 3.1, 1.83333 — and a period
-  LONGER than the recording is meaningful: recording 1.1s, period 7 is a
-  puff of smoke every seven seconds, not a loop at all.
+* `<EndCycle>` — the retrigger PERIOD, in the instance's OWN clock: the same
+  one `<Speed>` scales, the one the recording plays in. A fresh copy starts
+  every period; the die-out of one copy overlaps the ramp-in of the next. The
+  campfire (5.0s recording, period 3): a single looping copy dips to ONE alive
+  particle every cycle — a fire that dies and relights — where the train holds
+  a steady 35–45. The name says "cycle" but the values are seconds — 3.1,
+  1.83333 — and a period LONGER than the recording is meaningful: recording
+  1.1s, period 7 is a puff of smoke every seven seconds, not a loop at all.
+
+  **The clock is the instance's, not the wall's**, and reading it as real
+  seconds is wrong in a way that only shows on the 154 instances whose
+  `<Speed>` is not 1. Slowing an instance down slows its retriggering with it;
+  read as wall seconds, a slowed instance fires far too often. Over all 625
+  instances that carry a period, wall-seconds asks for **up to 36 copies** of
+  one recording alive at once (a 15.9s fog bake at Speed 0.15 with period 3),
+  the instance's own clock for at most 6 — and 56% of them then run a single
+  copy, which is what a period at or above the recording's length means. The
+  visible case that sent us looking: the Fountain of Fortune (5s recording,
+  Speed 0.8, period 3.5) grew a SECOND rainbow arcing over the first while it
+  was still at full strength, its spray peaking at 208 alive particles against
+  the recording's own 131. In the instance's clock it peaks at 136 — one copy,
+  with the tail of the last one fading under it (`e2e/effect-timing.spec.ts`).
 * `<CycleCount>` — how many triggers fire; 0 = forever. Adventure-reachable
   instances are 389× `0`, 7× `1`.
 * `<Offset>` — delays the train's first trigger (relative timing of the
