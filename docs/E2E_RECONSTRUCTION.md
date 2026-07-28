@@ -230,6 +230,48 @@ whole chain in order rebuilds the mission from nothing.
 The map is not cleaned up afterwards. It is the artefact:
 `<data root>/Maps/SingleMissions/e2e Reconstruct C1M1/`.
 
+### The second reconstruction: a map of our own
+
+`e2e/sharpshooter-map.spec.ts` rebuilds `<game>/Maps/Sharpshooter Test.h5m` —
+the hand-made showcase for the Heroes III port's Sharpshooter — the same way and
+against the same gap reports, but small enough to run in seconds. The original
+is unpacked into `_tmp` as the reference and never written to; the map is built
+from a blank through the ordinary gestures (place, type the exact tile, set the
+fields, edit armies and artifacts in the tree, check the spells and artifacts on,
+author the texts), then held against the reference with `diff-objects`,
+`diff-map`, `diff-terrain` and a byte compare of every text file.
+
+It is the cheap regression the C1M1 chain cannot be: one minute, no fixture
+extraction, and it exercises the parts of the editor a shipped mission does not —
+a map that depends on a **mod**, whose creature, dwellings and artifacts only
+exist because a `.h5u` is installed. The mod is a fixture copied into the run's
+own game root; authoring one through the window is `e2e/units-mod.spec.ts`
+(docs/UNITS_AND_ARTIFACTS.md).
+
+One accepted deviation: the terrain **container is 5003 bytes shorter** than the
+original's. Every data plane matches — heights, ground flags, passability,
+rivers, and the same five-plane array — so the difference is trailer padding the
+original editor's template carries and our blank does not. The check filters that
+one line and holds everything else exactly.
+
+### A failed test restarts the worker — plan for it
+
+Playwright restarts its worker after **any** failed test, and the restart runs
+`beforeAll` again for the file. In a spec whose tests form a chain — build the
+map, then diff it, then pack it — the usual `cleanup()` in `beforeAll`/`afterAll`
+then deletes the very artefact the remaining tests need, and the failure that
+follows describes the cleanup rather than the bug.
+
+So in a chained spec: `beforeAll` only **ensures** fixtures, idempotently and
+without deleting anything; the clean slate belongs to the first test, which owns
+the rebuild; the sweep belongs to the end of the last test, so a red run leaves
+its artefacts for reading. `afterAll` closes the app and nothing else.
+
+`launchEditor` also collects the app's own stdout/stderr into `ed.log`, because a
+renderer that dies mid-suite leaves the window on the start screen with no page
+error — and `[renderer gone] …` from the main process is the only thing that says
+why.
+
 ### Accepted deviations (the result matches; the bytes do not)
 
 Three differences remain in the terrain file and all are deliberate:

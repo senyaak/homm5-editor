@@ -13,11 +13,16 @@
 // without it is read and ignored. Adding or removing a creature and re-installing
 // is all there is to it — see src/creature-limit.ts.
 //
-// This is the ONLY way to build a mod: the window has no creature or dwelling
-// editor. What the UI does with a mod is read it — mountedAssets() layers every
+// Not the only way any more: the window's **Units…** and **Artifacts…** dialogs
+// build and install through the same functions (docs/UNITS_AND_ARTIFACTS.md).
+// This stays because a batch belongs on a command line — a project's units.json
+// declares a whole creature set at once, which is how the Heroes III port ships
+// its own (Maps/sod/tools/build-creature-slots.ts), and `list` answers "what is
+// installed" without opening the editor. Dwellings are still CLI-only.
+//
+// Either way the UI READS what is installed: mountedAssets() layers every
 // installed .h5u over the data, so a mod's creatures are in the army picker and
-// its dwellings in the object palette. Building is here and in a project's own
-// script (see the port's Maps/sod/tools/build-creature-slots.ts).
+// its dwellings in the object palette.
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';

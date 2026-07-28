@@ -39,6 +39,29 @@ one.
 
 ### Added
 
+- **New creatures and new artifacts, from the window.** Two toolbar buttons —
+  **Units…** and **Artifacts…** — build and install a mod without the command
+  line. Pick a shipped creature or artifact as a **preset** and its every field
+  loads: stats, name, description, the hire dialog's ability line, the engine
+  abilities, the home town, the four art documents; or for an artifact its slot,
+  rank, prices, the six hero stats and its icon. Then edit the difference. The
+  ids spell themselves from the file name, every enum is a select, and the four
+  art rows are the copy handles — point one at another file and only that piece
+  changes. The mod is always the one in `UserMODs`, found rather than asked
+  about, because two creature mods conflict outright. Installing writes the
+  archive and the executable's ceiling as one action, as it must. Dwellings and
+  whole creature sets stay on the command line.
+  See [docs/UNITS_AND_ARTIFACTS.md](docs/UNITS_AND_ARTIFACTS.md).
+- **Recolour a mod creature's textures, by palette.** A **Recolor** button per
+  creature opens its textures with their dominant colours as swatches — each
+  remappable on its own, so the cloak goes grey and the skin stays skin. A pixel
+  keeps its own lightness, which is where the drawing lives; alpha is never
+  touched, being the silhouette. Global hue/saturation/lightness/tint apply on
+  top, with a one-click Grey. The previews are not an approximation: preview and
+  rewrite run the same arithmetic. It repaints the mod's own copies, so nothing
+  shipped is touched. **First cut**, with two costs stated in the doc: the
+  recoloured surface is written uncompressed, which drops the mipmap chain and
+  quadruples the file — and it has not yet been seen in the running game.
 - **The last three real "cannot decode" objects decode.** Of the objects that
   refused to mesh, three turned out to be real and each hid a different
   mechanism: the unshipped Hill_Castle town declares an EMPTY exterior, which

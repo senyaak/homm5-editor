@@ -727,17 +727,69 @@ Two constraints shape the design, both learned the hard way:
       creature list needed a freshly unwrapped copy. Now `installCreatureMod` writes the
       archive and the ceiling as ONE action — they have to agree exactly, so they are never
       written apart, and adding or removing a creature is one command.
+- [x] ✅ **Author a creature and an artifact from the window** (2026-07-28) —
+      **Units…** and **Artifacts…**, session-free dialogs over the same functions the CLI
+      drives (`mods:*` in `electron/main.ts`, docs/UNITS_AND_ARTIFACTS.md). The donor is a
+      **preset**, not a costume: picking one reads its record, its visual's text refs and
+      both source documents whole, and fills every field — stats, name, description, the
+      hire dialog's ability line, the engine abilities, the home town, and the four art
+      hrefs, which sit in the form as the copy handles. Every enum is a select (199
+      `ABILITY_…` from types.xml, the races roster, slot and rank), and the id spells itself
+      from the file stem. The mod is always OURS — the one manifest-carrying archive in
+      UserMODs, found rather than asked about, because two creature mods conflict outright.
+
+      The artifact table keeps everything inline (slot, rank, prices, the six stats, the
+      icon href), so an artifact preset is one lookup; no map model means a flat board of
+      the artifact's own icon. `e2e/units-mod.spec.ts` rebuilds the port's Sharpshooter and
+      its Undertaker's Amulet through the forms against an isolated game root, and checks
+      both ceilings in the executable.
+- [x] 🔨 **Recolour textures in the editor** (2026-07-28, first cut) — a **Recolor** button
+      per creature in the Units dialog: the mod's own textures, live canvas previews, and a
+      **palette** — the dominant colours found as runs around the peaks of a hue histogram
+      (plus a neutral cluster for the greys), each a swatch with a picker for what it
+      becomes. A pixel belongs to the nearest cluster and only remapped clusters change; the
+      target gives hue and saturation, the pixel keeps its own lightness, which is where the
+      drawing lives. Global hue/saturation/lightness/tint apply on top. Preview and rewrite
+      run the same arithmetic (`src/recolor.ts`), so what the canvases show is what lands in
+      the archive; alpha is never touched, being the silhouette cut-out.
+
+      **What it does NOT do yet, and it matters:** the plan below was decompress BC2 →
+      transform → **recompress → regenerate mipmaps → recompute `AverageColor`**. This cut
+      writes the recoloured surface **uncompressed** (`TF_8888`, one surface) and updates the
+      paired `.(Texture).xdb` to say so. That is a format the game demonstrably reads — every
+      shipped artifact icon is one — but on a 512×512 creature body it costs 1 MB instead of
+      256 KB and, more importantly, **drops the mipmap chain**, so a recoloured creature seen
+      small may shimmer where the original does not. **Not yet verified in the running
+      game.** The finish is below.
+- [ ] ⬜ **The recolour editor, properly** — what the first cut deferred, roughly in order of
+      how much each is missed:
+      - **DXT3 recompression and mipmaps.** Write back in the format the file already had
+        (BC2 keeps alpha uncompressed, so only colour is lossy and only once), regenerate the
+        7-level chain by box filter, recompute `AverageColor`, and leave the `.xdb` alone —
+        then a recolour is invisible to everything except the eye.
+      - **Verify in the running game** — a recoloured creature hired, walked and fought.
+        Until then the pipeline is proved only against our own decoder.
+      - **Split a cluster by lightness**, not only by hue: black leather and white fur are
+        one neutral swatch today, and telling them apart is what a person wants next.
+      - **Paint by region** — a brush over the texture (or over the model, projected), for
+        the shoulder patch that no colour cluster isolates.
+      - **Per-material targeting**: the two body materials and the icon are one set now;
+        recolouring the map icon separately from the arena skin is a real want.
+      - **Undo, and a revert to the donor's art** — cheap, since the mod records where every
+        art file came from (`from` in the manifest).
+      - **Import an image** as a texture outright, for art made elsewhere.
+      - **Team colour**: creatures carry none (checked — the two materials are plain diffuse
+        maps), but flags and banners do, and those are the objects where a player-colour
+        layer is real.
 - [ ] ⬜ **Model picker** over `Characters/Creatures/**` and `_(Model)/**`, with a preview —
       the renderer can already draw geometry.
 - [ ] ⬜ **Fetch Steamless on request**, pinned and checksummed, never "latest":
       `atom0s/Steamless` v3.1.0.5,
       sha256 `e3e2d22e098ff3fb359b2876aa2bed9596f0501e6ff588cbffae90a76d2dc4f5`, 610646
       bytes. Mismatch is a refusal, not a warning.
-- [ ] ⬜ **Recolour textures in the editor.** They are DDS **DXT3** (512×512, 7 mipmaps),
-      and the `.xdb` beside each one repeats the format, size and an `AverageColor`. So:
-      decompress BC2 → transform → recompress → regenerate mipmaps → recompute
-      `AverageColor`, leaving format, size and the `.xdb` untouched. BC2 keeps alpha
-      uncompressed, so only colour is lossy and only once.
+      The texture facts the finish needs, measured: they are DDS **DXT3**, 512×512 with a
+      7-level mipmap chain (349 632 bytes for the Sharpshooter's body), and the `.xdb`
+      beside each one repeats the format, the size and an `AverageColor`.
 
 ## Phase 8 — Localisation tool
 

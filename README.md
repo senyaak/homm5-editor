@@ -160,9 +160,16 @@ get a live 3D scene you sculpt, paint, populate, script and pack.
   rather than for its own mission — so a campaign can ship its mod inside itself,
   and a stray file in a map overrides the game for every other map. Which copy of
   a path wins is decided by member date, which is why packing stamps a real one.
-- **New creatures and new dwellings** (`src/creature-mod.ts`, `src/dwellings.ts`) —
-  command line only, `npm run units-mod`; the window mounts installed mods but has
-  no editor for them yet. A creature the game never had ships as a `.h5u` carrying
+- **New creatures, artifacts and dwellings** (`src/creature-mod.ts`,
+  `src/artifacts.ts`, `src/dwellings.ts`, [docs/UNITS_AND_ARTIFACTS.md](docs/UNITS_AND_ARTIFACTS.md)) —
+  **Units…** and **Artifacts…** in the toolbar build and install one from the
+  window: pick a shipped creature or artifact as a **preset** and its every field
+  loads (stats, texts, abilities, the four art documents / slot, rank, prices,
+  icon), then edit the difference. **Recolor** repaints a mod creature's textures
+  by **palette** — the textures' dominant colours as swatches, each remappable on
+  its own, so the cloak goes grey and the skin stays skin. Dwellings and whole
+  creature sets stay on the command line (`npm run units-mod`, a project's
+  `units.json`). A creature the game never had ships as a `.h5u` carrying
   its own copy of the three files a mod must edit, its five own files and its art;
   a dwelling is an object and costs the game nothing global. What a mod cannot
   carry is the **creature ceiling**: 180 is compiled into the executable, and an id
@@ -408,6 +415,14 @@ localized texts, and the mission Lua — each a staged spec under `e2e/`
 verifies the whole map and packs it into a **playable `.h5m`**. `npm run
 diff-terrain`, `diff-objects` and `diff-map` are down to a handful of accepted
 deviations the engine doesn't read. Every gap it hit became a feature above.
+
+A second, one-minute reconstruction (`e2e/sharpshooter-map.spec.ts`) rebuilds a
+map of our own — the showcase for the Heroes III port's Sharpshooter — against
+the same three gap reports. It is the cheap regression the C1M1 chain cannot be,
+and it covers what a shipped mission does not: a map whose creature, dwellings
+and artifacts exist only because a **mod** is installed. Authoring that mod
+through the window is `e2e/units-mod.spec.ts`, against an isolated game root so
+the real install is never touched.
 
 Most of that needs the game's data, which cannot be published, so it runs on a
 machine that has the game. What does not need it is tagged `@nodata` and runs on
