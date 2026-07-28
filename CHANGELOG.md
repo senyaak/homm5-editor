@@ -13,6 +13,8 @@ one.
 
 ## Unreleased
 
+## 0.5.0 — 2026-07-28
+
 ### Changed
 
 - **Our build reads one folder, `<game>/H5E/`, and nothing anyone else
@@ -40,6 +42,16 @@ one.
   copy to start from and never writes to the archive it came from. The old list
   walked the whole unpacked `Maps` tree, stat-ing every file of every shipped
   map, and was the standing suspect for the lag on the first screen.
+- **Open… starts in our folder** — where the maps are files — and then follows
+  the last map opened, as before.
+
+### Upgrading
+
+Everything of yours moves into `<game>/H5E/`: maps as `.mod` (the archives
+themselves are unchanged — rename or repack), campaigns as `.h5c`, and the
+editor's mod, which **Units…**/**Artifacts…** reinstall there in one press.
+Nothing is migrated for you, and nothing is deleted: `bin/H5_Game.exe` still
+reads the old folders, so the game as it was is one launch away.
 
 ### Fixed
 
