@@ -28,6 +28,7 @@ import { addItem, reveal, setTreeValue } from './tree.ts';
 import { readCreatureMod } from '../src/creature-mod.ts';
 import { readEntries } from '../src/pak.ts';
 import { decodeDDSBuffer } from '../src/dds.ts';
+import { extractPalette } from '../src/recolor.ts';
 import { patchExe, readExe } from '../src/creature-limit.ts';
 import { ORIGINAL_ARTIFACTS, patchArtifactLimit, readArtifactLimit, SITES_FILE } from '../src/artifact-limit.ts';
 import type { Site } from '../src/artifact-limit.ts';
@@ -225,6 +226,60 @@ test('the Artifacts dialog builds the amulet into the same mod', async () => {
 
   await page.locator('#am-cancel').click();
   await expect(page.locator('#artsmod')).toBeHidden();
+});
+
+/** The creature's textures out of the mod archive, decoded. */
+function modCreaturePixels(): Uint8Array[] {
+  const out: Uint8Array[] = [];
+  for (const e of readEntries(readFileSync(join(GAME, 'UserMODs', `${MOD}.h5u`)))) {
+    const name = e.name.replace(/\\/g, '/');
+    if (name.startsWith('Units/H3Sharpshooter/') && name.toLowerCase().endsWith('.dds')) {
+      out.push(decodeDDSBuffer(e.data).rgba);
+    }
+  }
+  return out;
+}
+
+test('the palette remaps one colour and leaves the rest', async () => {
+  test.setTimeout(3 * 60_000);
+  const { page } = ed;
+
+  if (!(await page.locator('#unitsmod').isVisible())) await page.locator('#unitsbtn').click();
+  const paint = page.locator('.um-recolor', { hasText: 'Снайперы' });
+  await expect(paint).toBeVisible({ timeout: 30_000 });
+  await paint.click();
+  await expect(page.locator('#recolor')).toBeVisible();
+  await expect(page.locator('#rc-previews canvas')).toHaveCount(3, { timeout: 60_000 });
+
+  // The swatches are the textures' dominant colours; more than the grey one.
+  const swatches = page.locator('#rc-palette .rc-swatch');
+  await expect(swatches.first()).toBeVisible();
+  expect(await swatches.count()).toBeGreaterThan(2);
+
+  // What the palette is before: the top cluster's hue, and the others'.
+  const before = extractPalette(modCreaturePixels());
+  const top = before[0]!;
+  expect(top.hue).toBeGreaterThanOrEqual(0);
+  const kept = before.filter((p) => p.hue >= 0 && p !== top);
+  expect(kept.length).toBeGreaterThan(0);
+
+  // Remap ONLY the top swatch to grey and save.
+  await swatches.first().locator('input[type=color]').fill('#808080');
+  await page.locator('#rc-ok').click();
+  await expect(page.locator('#rc-note')).toContainText('repainted 3 texture(s)', { timeout: 120_000 });
+
+  // After: the top cluster's hue is gone from the palette — its pixels went
+  // neutral — while every other cluster survived where it was.
+  const after = extractPalette(modCreaturePixels());
+  const hueDist = (a: number, b: number): number => { const d = Math.abs(a - b) % 360; return d > 180 ? 360 - d : d; };
+  expect(after.some((p) => p.hue >= 0 && hueDist(p.hue, top.hue) < 20),
+    `the remapped hue ${Math.round(top.hue)}° is still in the palette`).toBe(false);
+  for (const k of kept) {
+    expect(after.some((p) => p.hue >= 0 && hueDist(p.hue, k.hue) < 25),
+      `cluster at ${Math.round(k.hue)}° should have survived`).toBe(true);
+  }
+
+  await page.locator('#rc-cancel').click();
 });
 
 test('the Recolor dialog paints the Sharpshooter grey', async () => {

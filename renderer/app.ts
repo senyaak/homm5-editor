@@ -22,7 +22,7 @@ import type { Scene, Floor, Instance, SplatData, TileInfo, GeomData, GeomPart, F
 import { createFxSystem } from './particles.ts';
 import type { FxSystem } from './particles.ts';
 import type { EditorApi, MapListEntry, ExternalChange, PlaceableObject, RosterEntryDTO, LocResult,
-  CampaignDoc, CampaignListEntry, CampaignMissionDto, CreatureStats, RecolorOps } from '../electron/ipc.ts';
+  CampaignDoc, CampaignListEntry, CampaignMissionDto, CreatureStats, PaletteEntry, RecolorOps } from '../electron/ipc.ts';
 import { recolorPixels } from '../src/recolor.ts';
 import type { ObjectProp } from '../src/map.ts';
 import { objectProps, deref, controlOf, objectSchema, mapSchema, resolveSchemaAtPath, classOf, schemaForClass } from '../src/schema.ts';
@@ -7538,6 +7538,8 @@ async function submitArtifactMod(): Promise<void> {
 
 let rcCreature = '';
 let rcTextures: { path: string; width: number; height: number; img: HTMLImageElement }[] = [];
+/** The textures' dominant colours, each with its swatch's colour input. */
+let rcPalette: { entry: PaletteEntry; input: HTMLInputElement; original: string }[] = [];
 
 const loadImage = (src: string): Promise<HTMLImageElement> => new Promise((res, rej) => {
   const img = new Image();
@@ -7551,13 +7553,51 @@ function hexToRgb(hex: string): { r: number; g: number; b: number } {
   return { r: (n >> 16) & 0xff, g: (n >> 8) & 0xff, b: n & 0xff };
 }
 
+const rgbToHex = (r: number, g: number, b: number): string =>
+  `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')}`;
+
 function currentRecolorOps(): RecolorOps {
+  // Only the swatches moved away from their own colour take part.
+  const to: Record<number, { r: number; g: number; b: number }> = {};
+  rcPalette.forEach((s, i) => {
+    if (s.input.value.toLowerCase() !== s.original) to[i] = hexToRgb(s.input.value);
+  });
   return {
+    ...(Object.keys(to).length ? { palette: { centres: rcPalette.map((s) => s.entry.hue), to } } : {}),
     hue: Number($input('rc-hue').value) || 0,
     saturation: (Number($input('rc-sat').value) || 0) / 100,
     lightness: (Number($input('rc-light').value) || 0) / 100,
     tint: { ...hexToRgb($input('rc-tint').value), strength: (Number($input('rc-tintk').value) || 0) / 100 },
   };
+}
+
+/** Build the swatch row: the colour as it is, and a picker for what it becomes. */
+function renderRecolorPalette(palette: PaletteEntry[]): void {
+  const box = $('rc-palette');
+  box.innerHTML = '';
+  rcPalette = [];
+  for (const entry of palette) {
+    const wrap = document.createElement('div');
+    wrap.className = 'rc-swatch';
+    const from = document.createElement('span');
+    from.className = 'from';
+    from.style.background = rgbToHex(entry.r, entry.g, entry.b);
+    from.title = entry.hue < 0
+      ? `neutral / grey — ${(entry.weight * 100).toFixed(0)}% of the pixels`
+      : `hue ${Math.round(entry.hue)}° — ${(entry.weight * 100).toFixed(0)}% of the pixels`;
+    const arrow = document.createElement('span');
+    arrow.textContent = '→';
+    const input = document.createElement('input');
+    input.type = 'color';
+    const original = rgbToHex(entry.r, entry.g, entry.b).toLowerCase();
+    input.value = original;
+    input.title = 'what this colour becomes — leave it to leave the cluster alone';
+    input.addEventListener('input', renderRecolorPreviews);
+    wrap.append(from, arrow, input);
+    box.appendChild(wrap);
+    rcPalette.push({ entry, input, original });
+  }
+  if (!palette.length) box.innerHTML = '<span class="um-empty">no visible colours found</span>';
 }
 
 function renderRecolorPreviews(): void {
@@ -7585,10 +7625,11 @@ async function openRecolor(creature: string, label: string): Promise<void> {
   $('rc-note').textContent = '';
   $('rc-previews').textContent = 'reading the mod\'s textures…';
   modDialog('recolor').showModal();
-  const { textures } = await window.editor.modTextures(creature);
+  const { textures, palette } = await window.editor.modTextures(creature);
   rcTextures = await Promise.all(textures.map(async (t) => ({
     path: t.path, width: t.width, height: t.height, img: await loadImage(t.png),
   })));
+  renderRecolorPalette(palette);
   renderRecolorPreviews();
 }
 
@@ -7602,7 +7643,7 @@ async function submitRecolor(): Promise<void> {
     $('rc-note').textContent = `repainted ${res.textures} texture(s) → ${res.archive}`;
     // The previews now show the archive's new bytes, and the controls return
     // to neutral — a second pass starts from what is really there.
-    const { textures } = await window.editor.modTextures(rcCreature);
+    const { textures, palette } = await window.editor.modTextures(rcCreature);
     rcTextures = await Promise.all(textures.map(async (t) => ({
       path: t.path, width: t.width, height: t.height, img: await loadImage(t.png),
     })));
@@ -7610,6 +7651,7 @@ async function submitRecolor(): Promise<void> {
     $input('rc-sat').value = '100';
     $input('rc-light').value = '0';
     $input('rc-tintk').value = '0';
+    renderRecolorPalette(palette);
     renderRecolorPreviews();
   } catch (e) {
     $('rc-err').textContent = e instanceof Error ? e.message : String(e);

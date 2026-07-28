@@ -48,7 +48,7 @@ import {
 import type { BuildReport, CreatureMod, Installed, ModCreature } from '../src/creature-mod.ts';
 import { decodeDDSBuffer } from '../src/dds.ts';
 import { writeDDS } from '../src/texture.ts';
-import { isIdentity, recolorPixels } from '../src/recolor.ts';
+import { extractPalette, isIdentity, recolorPixels } from '../src/recolor.ts';
 import { readEntries, writeArchive } from '../src/pak.ts';
 import type { ArtifactRank, ArtifactSlot, HeroStats } from '../src/artifacts.ts';
 import type { ArtifactExeResult } from '../src/artifact-limit.ts';
@@ -2338,13 +2338,15 @@ ipcMain.handle('mods:textures', async (_e: IpcMainInvokeEvent, { creature }: Mod
   const found = modCreatureArchive(g, creature);
   const prefix = `Units/${found.creature.file}/`;
   const textures: ModsTexturesResult['textures'] = [];
+  const pixels: Uint8Array[] = [];
   for (const e of readEntries(readFileSync(found.path))) {
     const name = e.name.replace(/\\/g, '/');
     if (!name.startsWith(prefix) || !name.toLowerCase().endsWith('.dds')) continue;
     const img = decodeDDSBuffer(e.data);
+    pixels.push(img.rgba);
     textures.push({ path: name, width: img.width, height: img.height, png: pngDataUri(img.width, img.height, img.rgba) });
   }
-  return { textures };
+  return { textures, palette: extractPalette(pixels) };
 });
 
 // Recolouring REWRITES the archive in place: the mod's textures are its own

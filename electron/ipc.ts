@@ -9,11 +9,11 @@ import type { Scene, SplatData, TileInfo, Instance, GeomData } from '../src/scen
 import type { ProjectStatus } from '../src/project.ts';
 import type { TypeCounts, ObjectProp } from '../src/map.ts';
 import type { CreatureStats } from '../src/creatures.ts';
-import type { RecolorOps } from '../src/recolor.ts';
+import type { PaletteEntry, RecolorOps } from '../src/recolor.ts';
 
 export type { ObjectProp } from '../src/map.ts';
 export type { CreatureStats } from '../src/creatures.ts';
-export type { RecolorOps } from '../src/recolor.ts';
+export type { PaletteEntry, RecolorOps } from '../src/recolor.ts';
 import type { PlaceableObject } from '../src/objects.ts';
 export type { PlaceableObject } from '../src/objects.ts';
 
@@ -794,7 +794,11 @@ export interface ModTextureDTO {
 }
 
 /** Result of `mods:textures`. */
-export interface ModsTexturesResult { textures: ModTextureDTO[] }
+export interface ModsTexturesResult {
+  textures: ModTextureDTO[];
+  /** The dominant colours across all of them — the remap's swatches. */
+  palette: PaletteEntry[];
+}
 
 /** Payload of `mods:recolor` — recolour every texture of one mod creature. */
 export interface ModsRecolorPayload {
