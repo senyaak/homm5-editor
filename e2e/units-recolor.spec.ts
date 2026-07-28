@@ -17,6 +17,7 @@ import {
   creatureTextures, hueDist, installCreatureHeadless, prepareGameRoot, removeGameRoot,
 } from './mods.ts';
 import { readEntries } from '../src/pak.ts';
+import { modFile } from '../src/mod-paths.ts';
 import { readFileSync } from 'node:fs';
 import { MOD, SHARPSHOOTER } from './mods.ts';
 import { extractPalette } from '../src/recolor.ts';
@@ -109,7 +110,7 @@ test('the Grey preset paints the whole creature, and the bytes say so', async ()
   // And each paired document describes the format the new bytes are in: a dds
   // its .xdb misdescribes is present and invisible.
   let xdb = 0;
-  for (const e of readEntries(readFileSync(join(GAME, 'UserMODs', `${MOD}.h5u`)))) {
+  for (const e of readEntries(readFileSync(modFile(GAME, 'mod', MOD)))) {
     const name = e.name.split('\\').join('/');
     if (!name.startsWith(`Units/${SHARPSHOOTER.file}/`) || !name.toLowerCase().endsWith('.(texture).xdb')) continue;
     xdb++;

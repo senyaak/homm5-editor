@@ -46,6 +46,7 @@ import {
   updateArtifact, updateArtifactSet, artifactLimit, buildCreatureMod, dataReader, findCreatureMods,
   installCreatureMod, MOD_STEM, newCreatureMod, packCreatureMod,
 } from '../src/creature-mod.ts';
+import { MOD_DIR, MOD_EXT, modFile } from '../src/mod-paths.ts';
 import { builtDll, extensionState, installExtension, writeEffectsFile } from '../src/extension.ts';
 import { describeUses, findArtifactUses, findCreatureUses } from '../src/artifact-usage.ts';
 import { EFFECT_STATS, effectsOf } from '../src/artifact-effects.ts';
@@ -1984,16 +1985,29 @@ function writeMapTag(s: Session): void {
   writeFileSync(join(s.mapDir, 'map-tag.xdb'), buildMapTag(s.map.desc), 'latin1');
 }
 
-// --- IPC: pack the map folder into a .h5m ---
+/**
+ * Where the Pack dialog opens: our folder in the install, under this name.
+ *
+ * The game our build is — the patched executable — reads `H5E/*.mod` and nothing
+ * in `Maps/`, so a map packed anywhere else is a map it will not list
+ * (src/mod-paths.ts). Without an install configured there is nowhere to offer,
+ * and the map's own folder is the honest fallback.
+ */
+function packDefault(name: string, mapDir: string): string {
+  const root = gameRoot();
+  return root ? modFile(root, 'map', name) : `${mapDir}.${MOD_EXT.map}`;
+}
+
+// --- IPC: pack the map folder into a .mod ---
 ipcMain.handle('map:pack', async (): Promise<MapPackResult> => {
   if (!session) throw new Error('no map loaded');
   // A localized map has no plain name.txt on disk — the game would find tagged
   // files and the sidecar and no text at all. Export bakes one language in.
-  if (readLoc(session)) throw new Error('this map is localized — use Localize → “export .h5m” to pack a single language');
+  if (readLoc(session)) throw new Error('this map is localized — use Localize → “export .mod” to pack a single language');
   const opts = {
-    title: 'Pack map to .h5m',
-    defaultPath: session.mapDir + '.h5m',
-    filters: [{ name: 'HoMM5 map', extensions: ['h5m'] }],
+    title: 'Pack map to .mod',
+    defaultPath: packDefault(basename(session.mapDir), session.mapDir),
+    filters: [{ name: 'HoMM5 map', extensions: ['mod', 'h5m'] }],
   };
   // Electron treats a null parent as "no parent"; pick the overload to match.
   const parent = win;
@@ -2007,6 +2021,9 @@ ipcMain.handle('map:pack', async (): Promise<MapPackResult> => {
   // A copy of the map should be as complete as the original it came from, so it
   // carries over whatever the source archive held outside the map folder too.
   const from = readManifest(session.mapDir).source?.path;
+  // Our folder may not be there yet on a fresh install, and the dialog does not
+  // make one for a path it only suggested.
+  mkdirSync(dirname(r.filePath), { recursive: true });
   const res = packProject(session.mapDir, r.filePath,
     { prefix: archivePrefixFor(session.mapDir), preserveFrom: from });
   return { ok: true, output: r.filePath, entries: res.entries, bytes: res.bytes, status: status(session.mapDir) };
@@ -2027,9 +2044,12 @@ ipcMain.handle('loc:export', async (_e: IpcMainInvokeEvent, { lang, output }: Lo
   if (!cfg.languages.includes(lang)) throw new Error(`the map has no ${lang} texts`);
   let out = output;
   if (!out) {
-    const r = await (win
-      ? dialog.showSaveDialog(win, { title: `Export ${lang} map to .h5m`, defaultPath: `${session.mapDir}.${lang}.h5m`, filters: [{ name: 'HoMM5 map', extensions: ['h5m'] }] })
-      : dialog.showSaveDialog({ title: `Export ${lang} map to .h5m`, defaultPath: `${session.mapDir}.${lang}.h5m`, filters: [{ name: 'HoMM5 map', extensions: ['h5m'] }] }));
+    const opts = {
+      title: `Export ${lang} map to .mod`,
+      defaultPath: packDefault(`${basename(session.mapDir)}.${lang}`, `${session.mapDir}.${lang}`),
+      filters: [{ name: 'HoMM5 map', extensions: ['mod', 'h5m'] }],
+    };
+    const r = await (win ? dialog.showSaveDialog(win, opts) : dialog.showSaveDialog(opts));
     if (r.canceled || !r.filePath) return { canceled: true };
     out = r.filePath;
   }
@@ -2038,6 +2058,7 @@ ipcMain.handle('loc:export', async (_e: IpcMainInvokeEvent, { lang, output }: Lo
   saveTerrain(session);
   writeMapTag(session);
   session.watch.resync();
+  mkdirSync(dirname(out), { recursive: true });
   const res = exportLocalized(session.mapDir, out, lang, cfg.base, { prefix: archivePrefixFor(session.mapDir) });
   return { ok: true, output: out, entries: res.entries, bytes: res.bytes, status: status(session.mapDir) };
 });
@@ -2197,27 +2218,28 @@ ipcMain.handle('campaign:map-heroes', async (_e: IpcMainInvokeEvent, p: MapHeroe
 });
 
 ipcMain.handle('campaign:pack', async (_e: IpcMainInvokeEvent, p: CampaignDirPayload): Promise<CampaignPackResult> => {
-  // The game reads user campaigns from <game>/UserCampaigns, so offer that when
-  // it is there. That is the game folder, NOT the parent of the data root —
-  // an unpacked tree can live anywhere, including inside this checkout.
+  // Our build reads campaigns out of our own folder, not <game>/UserCampaigns,
+  // so offer that when there is an install to offer it in. That is the game
+  // folder, NOT the parent of the data root — an unpacked tree can live
+  // anywhere, including inside this checkout.
   const root = gameRoot();
-  const userCampaigns = root ? join(root, 'UserCampaigns') : '';
   const name = basename(p.dir);
   const opts = {
     title: 'Pack campaign to .h5c',
-    defaultPath: join(existsSync(userCampaigns) ? userCampaigns : p.dir, `${name}.h5c`),
+    defaultPath: root ? modFile(root, 'campaign', name) : join(p.dir, `${name}.h5c`),
     filters: [{ name: 'HoMM5 campaign', extensions: ['h5c'] }],
   };
   const parent = win;
   const r = await (parent ? dialog.showSaveDialog(parent, opts) : dialog.showSaveDialog(opts));
   if (r.canceled || !r.filePath) return { canceled: true };
+  mkdirSync(dirname(r.filePath), { recursive: true });
   const res = packCampaign(p.dir, r.filePath);
   return { ok: true, output: r.filePath, entries: res.entries, bytes: res.bytes };
 });
 
 // --- units mod ----------------------------------------------------------------
 //
-// Game-global and session-free: a creature mod is an archive in UserMODs plus a
+// Game-global and session-free: a creature mod is an archive in our folder plus a
 // ceiling in the executable, nothing of the open map — so the dialog works with
 // no map loaded. The building blocks are the same ones tools/units-mod.ts uses.
 
@@ -2274,14 +2296,14 @@ ipcMain.handle('mods:artifact-preset', async (_e: IpcMainInvokeEvent, { donor }:
 });
 
 /**
- * OUR mod: the one manifest-carrying archive in UserMODs, or a fresh one under
+ * OUR mod: the one manifest-carrying archive in our folder, or a fresh one under
  * the default stem. The dialog never picks the archive — two creature mods
  * conflict outright, so the only sane target is the one that exists.
  */
 function ourMod(g: string): CreatureMod {
   const ours = findCreatureMods(g).filter((f) => !f.reconstructed);
   if (ours.length > 1) {
-    throw new Error(`more than one creature mod in UserMODs (${ours.map((f) => basename(f.path)).join(', ')}) — they conflict; remove one first`);
+    throw new Error(`more than one creature mod in ${MOD_DIR} (${ours.map((f) => basename(f.path)).join(', ')}) — they conflict; remove one first`);
   }
   return ours[0]?.mod ?? newCreatureMod(MOD_STEM);
 }
@@ -2290,7 +2312,6 @@ function ourMod(g: string): CreatureMod {
 function buildAndInstall(g: string, mod: CreatureMod): { installed: Installed; report: BuildReport } {
   const report = buildCreatureMod(mod, dataReader(gameData()));
   const archive = packCreatureMod(report);
-  mkdirSync(join(g, 'UserMODs'), { recursive: true });
   return { installed: installCreatureMod(g, mod, archive), report };
 }
 
@@ -2299,7 +2320,7 @@ const exeWords = (r: ExeResult | ArtifactExeResult | null): string =>
 
 ipcMain.handle('mods:install', async (_e: IpcMainInvokeEvent, p: ModsInstallPayload): Promise<ModsInstallResult> => {
   const g = gameRoot();
-  if (!g) throw new Error('no game install configured — a mod needs UserMODs and the executable');
+  if (!g) throw new Error('no game install configured — a mod needs a folder to install into and the executable');
   if (!isConfigured()) throw new Error('no data root configured');
   if (!p.file.trim()) throw new Error('the file stem is required');
 
@@ -2328,7 +2349,7 @@ ipcMain.handle('mods:install', async (_e: IpcMainInvokeEvent, p: ModsInstallPayl
 
 ipcMain.handle('mods:install-artifact', async (_e: IpcMainInvokeEvent, p: ModsInstallArtifactPayload): Promise<ModsInstallArtifactResult> => {
   const g = gameRoot();
-  if (!g) throw new Error('no game install configured — a mod needs UserMODs and the executable');
+  if (!g) throw new Error('no game install configured — a mod needs a folder to install into and the executable');
   if (!isConfigured()) throw new Error('no data root configured');
   if (!p.file.trim()) throw new Error('the file stem is required');
   if (!p.icon.trim()) throw new Error('an icon href is required — take the donor\'s');
@@ -2490,7 +2511,7 @@ ipcMain.handle('mods:install-extension', async (): Promise<ExtensionStatus> => {
 // may name the mod's own artifacts: by then they are in the same file.
 ipcMain.handle('mods:install-set', async (_e: IpcMainInvokeEvent, p: ModsInstallSetPayload): Promise<ModsInstallSetResult> => {
   const g = gameRoot();
-  if (!g) throw new Error('no game install configured — a mod needs UserMODs and the executable');
+  if (!g) throw new Error('no game install configured — a mod needs a folder to install into and the executable');
   if (!isConfigured()) throw new Error('no data root configured');
   if (!p.file.trim()) throw new Error('the file stem is required');
 
@@ -2525,7 +2546,7 @@ function modCreatureArchive(g: string, creatureId: string): { path: string; crea
     const creature = f.mod.creatures.find((c) => c.id === creatureId);
     if (creature) return { path: f.path, creature };
   }
-  throw new Error(`${creatureId} is not in any manifest-carrying mod in UserMODs`);
+  throw new Error(`${creatureId} is not in any manifest-carrying mod in ${MOD_DIR}`);
 }
 
 ipcMain.handle('mods:textures', async (_e: IpcMainInvokeEvent, { creature }: ModsTexturesPayload): Promise<ModsTexturesResult> => {

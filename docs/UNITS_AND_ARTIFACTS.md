@@ -12,13 +12,14 @@ This file is about the editor.
 
 ## One mod, always ours
 
-A creature mod is a `.h5u` in `<game>/UserMODs` plus a ceiling in
+A creature mod is a `.h5u` in `<game>/H5E` — the folder our build reads instead
+of `UserMODs`, see [ENGINE_INTERNALS.md](ENGINE_INTERNALS.md) — plus a ceiling in
 `bin/H5_Game_H5E.exe`, and the two must agree exactly. It carries its own whole
 copy of the game's creature registry, so **two creature mods do not compose**:
 the game reads one and the other's creatures do not exist.
 
 That is why the dialogs never ask which archive to write. They find the one
-manifest-carrying mod in `UserMODs` and extend it; with none, they create
+manifest-carrying mod in that folder and extend it; with none, they create
 `homm5-editor.h5u` — named after the editor rather than after any one project,
 because there can only be one of it and everything global the editor adds goes
 in. Two of ours is an error with the reason, not a choice.
@@ -59,7 +60,7 @@ Point one at another file and only that piece changes; the rest stays the
 donor's. A creature without an icon stops the game at startup, so that row is
 never allowed to be empty.
 
-**Build & install** packs the archive into `UserMODs` and sets the creature
+**Build & install** packs the archive into `<game>/H5E` and sets the creature
 ceiling in one action (`installCreatureMod`). They are never written apart: a mod
 above the ceiling is read and silently ignored, a ceiling above the mod stops the
 game at launch.
@@ -174,7 +175,7 @@ creature art.
 
 **One spec per thing, each runnable alone.** Every one builds its OWN game
 install — a temp folder with a copy of the unwrapped executable, both ceilings
-reset to their shipped values, an empty `UserMODs` and the artifact sites note —
+reset to their shipped values, an empty mod folder and the artifact sites note —
 so the real install is never touched and no spec depends on another having run.
 The shared setup is `e2e/mods.ts`.
 

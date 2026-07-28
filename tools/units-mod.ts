@@ -1,6 +1,6 @@
 // The units mod from the command line — build one, or say what is installed.
 //
-//   node tools/units-mod.ts list [game]              what UserMODs adds, and what
+//   node tools/units-mod.ts list [game]              what our mod folder adds, and what
 //                                                    the executable is set to
 //   node tools/units-mod.ts show <archive.h5u>       one mod's creatures
 //   node tools/units-mod.ts build <project> [--install <game>]
@@ -26,6 +26,7 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { MOD_DIR, modDir } from '../src/mod-paths.ts';
 import {
   buildCreatureMod, creatureLimit, dataReader, findCreatureMods, installCreatureMod, MOD_MANIFEST,
   packCreatureMod, readCreatureMod, writeCreatureMod,
@@ -69,7 +70,7 @@ if (command === 'list') {
   const game = positional[0] ?? defaultGame;
   const found = findCreatureMods(game);
   if (!found.length) {
-    console.log(`no creature mods in ${join(game, 'UserMODs')} — the game holds its shipped ${SHIPPED_CREATURES}`);
+    console.log(`no creature mods in ${modDir(game)} — the game holds its shipped ${SHIPPED_CREATURES}`);
     process.exit(0);
   }
   for (const f of found) {
@@ -154,7 +155,7 @@ if (command === 'build') {
   const game = flag('install');
   if (!game) {
     console.log(`\nbuilt  ${archive}`);
-    console.log(`--install <game> to put it in UserMODs and set the ceiling to ${report_.limit}`);
+    console.log(`--install <game> to put it in ${MOD_DIR} and set the ceiling to ${report_.limit}`);
     process.exit(0);
   }
 

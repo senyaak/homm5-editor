@@ -20,6 +20,7 @@ import { openObjectPalette, pickObject, placeAtTile } from './objects.ts';
 import { addItem, reveal, setTreeValue } from './tree.ts';
 import { DATA, MOD, SHARPSHOOTER, prepareGameRoot, readInstalledMod, removeGameRoot } from './mods.ts';
 import { readExe } from '../src/creature-limit.ts';
+import { modFile } from '../src/mod-paths.ts';
 
 let ed: Launched;
 
@@ -118,7 +119,7 @@ test('a fresh map offers the new creature in the army picker', async () => {
   const { page } = ed;
 
   // Self-sufficient: the creature is installed here if this test is run alone.
-  if (!existsSync(join(GAME, 'UserMODs', `${MOD}.h5u`))) {
+  if (!existsSync(modFile(GAME, 'mod', MOD))) {
     const { installCreatureHeadless } = await import('./mods.ts');
     installCreatureHeadless(GAME);
   }

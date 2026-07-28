@@ -34,6 +34,7 @@ import { launchEditor, REPO_ROOT } from './launch.ts';
 import type { Launched } from './launch.ts';
 import { loadMap } from '../src/map.ts';
 import { readEntries } from '../src/pak.ts';
+import { modFile } from '../src/mod-paths.ts';
 import { find, childText } from '../src/xml.ts';
 
 let ed: Launched;
@@ -45,8 +46,9 @@ const CAMP = 'e2e Carry';
 /** The hero who travels — his <Name> IS the handle the campaign hands on. */
 const HERO = 'Traveller';
 const MAPS = ['e2e Carry M1', 'e2e Carry M2', 'e2e Carry M3'];
-const OUT_DIR = existsSync(join(GAME, 'UserCampaigns')) ? join(GAME, 'UserCampaigns') : join(REPO_ROOT, 'test-results');
-const OUT = join(OUT_DIR, `${CAMP}.h5c`);
+// Our build reads campaigns out of our own folder; without a game to install
+// into, the result stays with the run's other artefacts.
+const OUT = existsSync(GAME) ? modFile(GAME, 'campaign', CAMP) : join(REPO_ROOT, 'test-results', `${CAMP}.h5c`);
 
 const mapDir = (name: string): string => join(DATA, 'Maps', 'SingleMissions', name);
 
@@ -311,14 +313,13 @@ test('a hero carried across three missions, and the campaign packed for play', a
 
   // --- leave it playable ---
   //
-  // The campaign carries no maps, so pack each one to its own .h5m beside the
-  // game's other maps; the VFS is what brings the two together at load.
+  // The campaign carries no maps, so pack each one to its own archive beside the
+  // campaign in our folder; the VFS is what brings the two together at load.
   await page.locator('#cp-close').click();
   await expect(page.locator('#campaign')).toBeHidden();
   const packed: string[] = [];
   for (const name of MAPS) {
-    const to = join(GAME, 'Maps', `${name}.h5m`);
-    mkdirSync(join(GAME, 'Maps'), { recursive: true });
+    const to = modFile(GAME, 'map', name);
     await ed.app.evaluate(({ dialog }, save) => {
       dialog.showSaveDialog = (async () => ({ canceled: false, filePath: save })) as typeof dialog.showSaveDialog;
     }, to);

@@ -23,6 +23,12 @@ search paths to game file system". A map, a duel preset, a campaign and a mod ar
 one thing to the engine: an archive it attaches, whose name and description come
 from `name.txt`/`desc.txt` at its root.
 
+**In our build those five read `H5E/*` instead** — `*.mod` for maps, and the
+kinds keep their extensions — so nothing installed for anybody else's mod is
+mounted. What is patched, and where the map browser gets its list from, is in
+[ENGINE_INTERNALS.md](ENGINE_INTERNALS.md); everything below is about the
+mechanism itself and holds either way.
+
 That grouping is where the static evidence stops. The executable has a `.bind`
 section — the publisher's protector — so `.text` is encrypted on disk and the
 absolute references to those strings are not visible. The rest was measured.

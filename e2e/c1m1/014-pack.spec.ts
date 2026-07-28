@@ -30,6 +30,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { readEntries } from '../../src/pak.ts';
+import { modFile } from '../../src/mod-paths.ts';
 import { hudSays, launchEditor, REPO_ROOT } from '../launch.ts';
 import type { Launched } from '../launch.ts';
 import { DATA, MAP_DIR, NAME, NEED_FIXTURE, requireFixture } from './shared.ts';
@@ -39,12 +40,12 @@ const MAP_XDB = join(MAP_DIR, 'map.xdb');
 const FIXTURE_DIR = join(REPO_ROOT, '_tmp', 'fixtures', 'C1M1');
 const FIXTURE_XDB = join(FIXTURE_DIR, 'C1M1.xdb');
 
-// Where the .h5m lands. Keeping it means the game should find it, so it goes in
-// the game's own Maps/ (a folder the game scans). The throwaway default stays
-// under the test data root, beside where every other spec packs.
-const GAME_MAPS = join(REPO_ROOT, '..', 'Maps');
+// Where the archive lands. Keeping it means the game should find it, so it goes
+// into the folder our build scans — H5E/<name>.mod, see src/mod-paths.ts. The
+// throwaway default stays under the test data root, beside where every other
+// spec packs.
 const ARCHIVE = KEEP
-  ? join(GAME_MAPS, `${NAME}.h5m`)
+  ? modFile(join(REPO_ROOT, '..'), 'map', NAME)
   : join(DATA, 'Maps', 'SingleMissions', `${NAME}.h5m`);
 
 let ed: Launched;

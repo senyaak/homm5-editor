@@ -27,22 +27,30 @@ import { armBrush, clickTile, newMap, planView } from './tiles.ts';
 import { openObjectPalette, pickObject, placeAtTile, setObjectProp, setPlacement } from './objects.ts';
 import { addItem, addValueItem, openTree, setTreeValue } from './tree.ts';
 import { readEntries } from '../src/pak.ts';
+import { ensureModDir, modFile } from '../src/mod-paths.ts';
 
 let ed: Launched;
 
 const DATA = process.env.HOMM5_DATA || join(REPO_ROOT, 'data-unpacked');
-/** This run's own game install: the fixture mod goes here, the .h5m comes out here. */
+/** This run's own game install: the fixture mod goes here, the archive comes out here. */
 const GAME = join(REPO_ROOT, '_tmp', 'e2e-sharp-game');
 /** The real install the checkout sits in — the source of the mod and the original. */
 const REAL_GAME = join(REPO_ROOT, '..');
-const ORIGINAL = join(REAL_GAME, 'Maps', 'Sharpshooter Test.h5m');
+/**
+ * The hand-made map this spec rebuilds — in our folder, where our build reads
+ * it. An install that still has it only under its old name is taken as it is:
+ * the map is somebody's file, not a fixture in the repo.
+ */
+const ORIGINAL = existsSync(modFile(REAL_GAME, 'map', 'Sharpshooter Test'))
+  ? modFile(REAL_GAME, 'map', 'Sharpshooter Test')
+  : join(REAL_GAME, 'Maps', 'Sharpshooter Test.h5m');
 /** The original, unpacked as the reference. Read-only after beforeAll. */
 const REF_ROOT = join(REPO_ROOT, '_tmp', 'e2e-sharp-ref');
 const REF = join(REF_ROOT, 'Maps', 'SingleMissions', 'Sharpshooter Test');
 
 const NAME = 'Sharpshooter Test';
 const MAP_DIR = join(DATA, 'Maps', 'SingleMissions', NAME);
-const ARCHIVE = join(GAME, 'Maps', `${NAME}.h5m`);
+const ARCHIVE = modFile(GAME, 'map', NAME);
 
 const SHARPSHOOTER = 'CREATURE_H3_SHARPSHOOTER';
 
@@ -80,6 +88,12 @@ const PLACES = {
   ],
 };
 
+/** The creature mod this map needs, wherever the real install keeps it. */
+function fixtureMod(): string {
+  const ours = modFile(REAL_GAME, 'mod', 'sod-creatures');
+  return existsSync(ours) ? ours : join(REAL_GAME, 'UserMODs', 'sod-creatures.h5u');
+}
+
 function cleanup(): void {
   for (const p of [GAME, REF_ROOT, MAP_DIR]) if (existsSync(p)) rmSync(p, { recursive: true, force: true });
 }
@@ -105,9 +119,8 @@ test.beforeAll(async () => {
   }
 
   // The fixture mod, into this run's own install.
-  mkdirSync(join(GAME, 'UserMODs'), { recursive: true });
-  mkdirSync(join(GAME, 'Maps'), { recursive: true });
-  copyFileSync(join(REAL_GAME, 'UserMODs', 'sod-creatures.h5u'), join(GAME, 'UserMODs', 'sod-creatures.h5u'));
+  ensureModDir(GAME);
+  copyFileSync(fixtureMod(), modFile(GAME, 'mod', 'sod-creatures'));
 
   ed = await launchEditor({ HOMM5_ROOT: GAME });
   // The one thing Playwright cannot click is the OS save dialog; Pack's answer

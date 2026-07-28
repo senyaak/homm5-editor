@@ -6,10 +6,13 @@
 // old names left in it, that it goes back byte for byte, and that a build without
 // them is refused rather than half-written.
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
-import { MASKS, MOD_DIR, findMaskSites, patchModPaths, readModPaths } from '../src/mod-paths.ts';
+import { MASKS, MOD_DIR, findMaskSites, modFile, patchModPaths, readModPaths } from '../src/mod-paths.ts';
+import { MOD_MANIFEST, findCreatureMods, installCreatureMod, newCreatureMod } from '../src/creature-mod.ts';
+import { writeArchive } from '../src/pak.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {
@@ -80,6 +83,35 @@ function fakeRdata(): Buffer {
   ]);
   check('a pattern that occurs twice is not written',
     !findMaskSites(twice).some((s) => s.mask === MASKS[0]));
+}
+
+// --- and that everything that installs goes there ------------------------------
+//
+// The patch is only half of it: a build that reads `H5E/` and an editor that
+// still writes into `UserMODs` is a mod that silently stops being installed.
+// This is that half, headless — the window's own path through the same
+// functions is e2e's business.
+
+{
+  const dir = mkdtempSync(join(tmpdir(), 'modpaths-'));
+  try {
+    const mod = newCreatureMod('test-mod');
+    const archive = writeArchive([{ name: MOD_MANIFEST, data: Buffer.from(JSON.stringify(mod)) }]);
+    // No creatures in it, so no ceiling has to agree and no executable is needed.
+    const installed = installCreatureMod(dir, mod, archive);
+    check('an installed mod lands in our folder',
+      installed.archive === join(dir, MOD_DIR, 'test-mod.h5u'), installed.archive);
+    check('...and nothing was put in UserMODs', !existsSync(join(dir, 'UserMODs')));
+    check('...and the folder was made rather than assumed', existsSync(join(dir, MOD_DIR)));
+    check('the editor finds it where it put it',
+      findCreatureMods(dir).map((f) => f.path).join() === installed.archive);
+    check('a map of ours is a .mod beside it',
+      modFile(dir, 'map', 'My Map') === join(dir, MOD_DIR, 'My Map.mod'));
+    check('and a campaign keeps its own extension',
+      modFile(dir, 'campaign', 'My Campaign') === join(dir, MOD_DIR, 'My Campaign.h5c'));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 // --- the real thing, read only ------------------------------------------------

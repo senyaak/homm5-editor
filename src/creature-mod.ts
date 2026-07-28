@@ -56,6 +56,7 @@ import type { DwellingPaths, DwellingSpec, Footprint } from './dwellings.ts';
 import { parseTypeSpec } from './typespec.ts';
 import type { SpecType } from './typespec.ts';
 import { setCreatureLimit } from './creature-limit.ts';
+import { MOD_DIR, ensureModDir, modFile } from './mod-paths.ts';
 import { ORIGINAL_ARTIFACTS, setArtifactLimit } from './artifact-limit.ts';
 import type { ArtifactExeResult } from './artifact-limit.ts';
 import type { ExeResult } from './creature-limit.ts';
@@ -1242,7 +1243,7 @@ export interface Installed {
 }
 
 /**
- * Install a built mod: the archive into `UserMODs`, and the ceiling into the
+ * Install a built mod: the archive into our folder, and the ceiling into the
  * executable, as ONE action.
  *
  * They cannot be separate. A mod whose creatures sit above the ceiling is read
@@ -1264,7 +1265,8 @@ export function installCreatureMod(gameRoot: string, mod: CreatureMod, archive: 
   const artifacts = mod.artifacts?.length
     ? setArtifactLimit(gameRoot, artifactLimit(mod))
     : null;
-  const target = join(gameRoot, 'UserMODs', `${mod.stem}.h5u`);
+  ensureModDir(gameRoot);
+  const target = modFile(gameRoot, 'mod', mod.stem);
   writeFileSync(target, archive);
   return { archive: target, exe, artifacts };
 }
@@ -1368,7 +1370,11 @@ function readManifest(bytes: Buffer): CreatureMod | null {
 }
 
 /**
- * Every mod in `<game>/UserMODs` that adds creatures.
+ * Every mod in our folder that adds creatures.
+ *
+ * Our folder and not `UserMODs`, because that is the one our build reads: the
+ * patched executable scans `H5E/` alone, so a mod anywhere else is not installed
+ * as far as the game is concerned (src/mod-paths.ts).
  *
  * More than one is a conflict, not a set: creature ids are global and each mod
  * carries its own whole copy of types.xml and the ref table, so the last one the
@@ -1377,7 +1383,7 @@ function readManifest(bytes: Buffer): CreatureMod | null {
  * keep is not ours to guess.
  */
 export function findCreatureMods(gameRoot: string): FoundMod[] {
-  const dir = join(gameRoot, 'UserMODs');
+  const dir = join(gameRoot, MOD_DIR);
   if (!existsSync(dir)) return [];
   const out: FoundMod[] = [];
   for (const name of readdirSync(dir).sort()) {

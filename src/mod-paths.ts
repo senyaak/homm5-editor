@@ -58,6 +58,36 @@ export const MASKS: readonly Mask[] = [
   { shipped: 'UserMODs/*.zip', ours: `${MOD_DIR}/*.zip`, what: 'mods, zipped' },
 ];
 
+/** What a file of ours is, which is what its extension says. */
+export type ModKind = 'map' | 'duel' | 'campaign' | 'mod';
+
+/** The extension each kind gets in our folder. */
+export const MOD_EXT: Readonly<Record<ModKind, string>> = {
+  map: 'mod', duel: 'h5p', campaign: 'h5c', mod: 'h5u',
+};
+
+/** Our folder in an install. Asking where it is does not make it. */
+export function modDir(gameRoot: string): string {
+  return join(gameRoot, MOD_DIR);
+}
+
+/** The same folder, made if it is not there — for anything about to write. */
+export function ensureModDir(gameRoot: string): string {
+  const dir = modDir(gameRoot);
+  mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+/**
+ * Where a map, campaign or mod of ours goes in an install.
+ *
+ * One place answers this for the editor, the tools and the tests alike, so
+ * nothing writes into a folder our build stopped reading.
+ */
+export function modFile(gameRoot: string, kind: ModKind, stem: string): string {
+  return join(modDir(gameRoot), `${stem}.${MOD_EXT[kind]}`);
+}
+
 /** Which set of patterns an executable is scanning. */
 export type ModPathState = 'shipped' | 'ours' | 'mixed' | 'unknown';
 
@@ -180,8 +210,7 @@ export function setModPaths(gameRoot: string, to: 'ours' | 'shipped'): ModPathsR
     throw new Error(`no ${PATCHED_EXE} — run "npm run unwrap-exe" to make one from ${SHIPPED_EXE}`);
   }
   const patch = patchModPaths(readFileSync(target), to);
-  const dir = join(gameRoot, MOD_DIR);
-  if (to === 'ours') mkdirSync(dir, { recursive: true });
+  const dir = to === 'ours' ? ensureModDir(gameRoot) : modDir(gameRoot);
   if (!patch.written) return { path: target, state: to, changed: false, dir };
 
   const temp = `${target}.new`;

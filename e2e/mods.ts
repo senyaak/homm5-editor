@@ -1,7 +1,7 @@
 // Shared ground for the mod specs — units, artifacts and recolour.
 //
 // Each of those specs owns its OWN game install: a temp folder with a copy of
-// the unwrapped executable and an empty UserMODs, handed to the app through
+// the unwrapped executable and an empty mod folder, handed to the app through
 // HOMM5_ROOT. That is what lets them run alone, in any order, without the real
 // install ever being touched — and why the setup lives here instead of being
 // copied three times.
@@ -18,6 +18,7 @@ import { ORIGINAL_LIMIT, patchExe } from '../src/creature-limit.ts';
 import { ORIGINAL_ARTIFACTS, patchArtifactLimit, SITES_FILE } from '../src/artifact-limit.ts';
 import type { Site } from '../src/artifact-limit.ts';
 import { readEntries } from '../src/pak.ts';
+import { ensureModDir, modFile } from '../src/mod-paths.ts';
 import { decodeDDSBuffer } from '../src/dds.ts';
 
 /** The unpacked data root the app reads (never written by these specs). */
@@ -84,8 +85,7 @@ export const UNDEAD_KING = {
 export function prepareGameRoot(dir: string): void {
   rmSync(dir, { recursive: true, force: true });
   mkdirSync(join(dir, 'bin'), { recursive: true });
-  mkdirSync(join(dir, 'UserMODs'), { recursive: true });
-  mkdirSync(join(dir, 'Maps'), { recursive: true });
+  ensureModDir(dir);
   const real = readFileSync(join(REAL_GAME, 'bin', 'H5_Game_H5E.exe'));
   const noted = JSON.parse(readFileSync(join(REAL_GAME, SITES_FILE), 'utf8')) as Site[];
   writeFileSync(join(dir, 'bin', 'H5_Game_H5E.exe'),
@@ -124,15 +124,15 @@ export function installCreatureHeadless(gameRoot: string): CreatureMod {
 
 /** Our mod, read back off the install. */
 export function readInstalledMod(gameRoot: string): CreatureMod {
-  const found = readCreatureMod(join(gameRoot, 'UserMODs', `${MOD}.h5u`));
-  if (!found) throw new Error(`no mod at ${join(gameRoot, 'UserMODs', `${MOD}.h5u`)}`);
+  const found = readCreatureMod(modFile(gameRoot, 'mod', MOD));
+  if (!found) throw new Error(`no mod at ${modFile(gameRoot, 'mod', MOD)}`);
   return found.mod;
 }
 
 /** Every texture the creature carries in the installed mod, decoded. */
 export function creatureTextures(gameRoot: string, fileStem = SHARPSHOOTER.file): { name: string; rgba: Uint8Array }[] {
   const out: { name: string; rgba: Uint8Array }[] = [];
-  for (const e of readEntries(readFileSync(join(gameRoot, 'UserMODs', `${MOD}.h5u`)))) {
+  for (const e of readEntries(readFileSync(modFile(gameRoot, 'mod', MOD)))) {
     const name = e.name.split('\\').join('/');
     if (name.startsWith(`Units/${fileStem}/`) && name.toLowerCase().endsWith('.dds')) {
       out.push({ name, rgba: decodeDDSBuffer(e.data).rgba });
