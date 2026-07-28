@@ -214,6 +214,26 @@ tooltips, per-count texts and icons all work from the entry alone. Its
   shared constants included (retuning one changes the donor too). Useful as a
   *control* to prove a bonus reaches the engine's arithmetic, not as a design.
 
+**The editor writes the first of those.** `addArtifactSet` puts the enum entry
+in `types.xml` and the row in `DefaultStats.xdb`, in the same single pass that
+already patches types.xml for creatures and artifacts — a mod that shipped two
+copies of that file would have the second win whole. It refuses a shipped
+effect id outright, since taking one over is silent in the build and shows up
+in play as the game's own set having quietly stopped.
+
+One thing to get right, because the file format invites the opposite reading:
+`CombinedDescriptionsFileRefs` holds **one entry per member, indexed from one
+piece worn**. Every shipped set leaves the first blank, which looks like a
+"nothing worn" slot and is not — read that way, every description arrives a
+piece early and the set appears to combine sooner than it does. A bonus that
+persists is repeated rather than left blank: the Dragonish set names its
+two-piece text at both two and three pieces.
+
+`probes/artifact-set/` is a mod that declares one set of our own and nothing
+else — three shipped Necromancer artifacts as members, so nothing but the set
+can be what worked or broke. It is the cheapest answer to whether the parser
+accepts a twelfth effect value at all.
+
 ## The script toolbox
 
 Global hook: `scripts/advmap-startup.lua` runs on every adventure map and ends

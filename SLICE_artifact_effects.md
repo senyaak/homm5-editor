@@ -28,11 +28,15 @@ and script can express), [docs/ENGINE_INTERNALS.md](docs/ENGINE_INTERNALS.md)
   Still open, and only for §1.1(д): the write site for dark energy, and
   whatever grants a Scroll's spell (it is not `0xb4a560`, which turned out to
   be a property-bag writer).
-- б) **Prove the data premises in game, before any code.** Declare our own
-  `ARTFSET_EFFECT_<ours> = 11` in `types.xml` plus a set in `DefaultStats`
-  using it, and see whether the parser accepts it, whether the tooltip draws,
-  and whether `GetArtifactSetItemsCount` counts our worn pieces. Separately:
-  does an eleventh set hit a compiled ceiling.
+- б) **Prove the data premises in game, before any code.** *Built:*
+  `addArtifactSet` emits our own `ARTFSET_EFFECT_… = 11` into `types.xml` and
+  the matching row into `DefaultStats.xdb`, refusing a shipped effect id;
+  `npm run test-artifact-set` holds it, including that the shipped eleven come
+  out unmoved. `probes/artifact-set/` is the mod to install — one set, three
+  shipped artifacts as members, nothing else, so nothing else can be what
+  worked. *Left, and it needs the game running:* does the parser accept a
+  twelfth value, does the tooltip draw, does `GetArtifactSetItemsCount` count
+  our worn pieces, does an eleventh set hit a compiled ceiling.
 - в) **Prove the native path.** A proxy DLL forwarding `zlib1.dll` — no patched
   byte in the executable — carrying two proofs on top: one new Lua function
   callable from a map script, and **one detour on the necromancy sum
@@ -109,8 +113,10 @@ an artifact depends on.
 
 | File | Change |
 | ---- | ------ |
-| `types.xml` (in the mod archive) | Append `ARTFSET_EFFECT_<ours> = 11` to the `ArtifactSetEffect` enum. Append-only: the value is what saves and maps store. |
-| `GameMechanics/RPGStats/DefaultStats.xdb` | A `<Sets>` entry using that effect — members, per-count texts and icons. |
+| `types.xml` (in the mod archive) | ✅ Append `ARTFSET_EFFECT_<ours> = 11` to the `ArtifactSetEffect` enum. Append-only: the value is what saves and maps store. |
+| `GameMechanics/RPGStats/DefaultStats.xdb` | ✅ A `<Sets>` entry using that effect — members, per-count texts and icons. |
+| [src/creature-mod.ts](src/creature-mod.ts) | ✅ `addArtifactSet` and the two patches above, in the existing single pass over types.xml. |
+| [probes/artifact-set/](probes/artifact-set/) | ✅ The mod that answers §1.1(б) — install, look, delete. |
 | new: the proxy DLL | Forwards `zlib1.dll`, registers Lua functions, installs detours, reads the config. Built outside this repo; the editor ships and configures it. |
 | new: `src/artifact-effects.ts` | The config model + writer — what the DLL reads. |
 | [src/artifacts.ts](src/artifacts.ts) | Emit the enum entry and the set alongside the existing artifact records. |
