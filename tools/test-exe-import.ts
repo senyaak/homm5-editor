@@ -7,7 +7,10 @@
 // would look like it worked.
 //
 // Runs against the game's own `H5_Game_NCF.exe` when there is one, because a
-// synthetic PE proves the code agrees with itself and nothing more.
+// synthetic PE proves the code agrees with itself and nothing more. It names a
+// library of its own rather than the real one, so it says the same thing
+// whether or not the extension happens to be installed — a test that only
+// passes before the first install is a test that stops being run.
 
 import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -27,18 +30,21 @@ if (!existsSync(exe)) {
   process.exit(0);
 }
 
+/** Never installed, so the test reads the same on a patched executable. */
+const TEST_DLL = 'homm5-editor-selftest.dll';
+
 const original = readFileSync(exe);
 const before = imports(original);
 check('the shipped executable names its imports', before.length > 5, `${before.length}: ${before.slice(0, 4).join(', ')}…`);
-check('and does not name ours yet', !before.includes('homm5-editor.dll'));
+check('and does not name the test one', !before.includes(TEST_DLL));
 
-const first = addImport(original, 'homm5-editor.dll', 'homm5_editor_present');
+const first = addImport(original, TEST_DLL, 'homm5_editor_present');
 check('adding it reports a change', first.added);
 check('it lands past the old image', (first.rva ?? 0) >= original.readUInt32LE(original.readUInt32LE(0x3c) + 24 + 56),
   `rva 0x${(first.rva ?? 0).toString(16)}`);
 
 const after = imports(first.buf);
-check('ours is now imported', after.includes('homm5-editor.dll'));
+check('ours is now imported', after.includes(TEST_DLL));
 // The point of copying the descriptors rather than editing in place: every
 // library the game already needed has to still be there, in order.
 check('and every library it already imported still is',
@@ -58,7 +64,7 @@ const sectionAlignment = first.buf.readUInt32LE(opt + 32);
 check('and is a whole number of pages', first.buf.readUInt32LE(opt + 56) % sectionAlignment === 0);
 
 // Idempotent. Running the installer twice is a thing people do.
-const second = addImport(first.buf, 'homm5-editor.dll', 'homm5_editor_present');
+const second = addImport(first.buf, TEST_DLL, 'homm5_editor_present');
 check('a second run adds nothing', !second.added);
 check('and returns the same bytes', second.buf.equals(first.buf), `${second.buf.length} vs ${first.buf.length}`);
 
