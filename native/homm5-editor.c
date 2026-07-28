@@ -64,7 +64,7 @@ typedef int(__thiscall *SetCountFn)(void *hero, int effect);
 typedef void *(__thiscall *WornFn)(void *hero);
 typedef int(__thiscall *CountEquippedFn)(void *worn, int artifactId);
 typedef int(__fastcall *RaiseFn)(void *hero);
-typedef int(__fastcall *CostFn)(void *hero, int power);
+typedef int(__fastcall *CostFn)(void *hero, void *what);
 
 static CountEquippedFn g_countEquipped = NULL;
 
@@ -276,20 +276,27 @@ static int __fastcall raise_percent_hook(void *hero) {
 }
 
 /**
- * What one creature costs in dark energy. Watched, not changed.
+ * Dark energy for a raise. Watched, not changed.
  *
- * Logged because "the percentage went up and the number raised did not" has
- * more than one explanation, and they are indistinguishable from outside the
- * process. Here they are three numbers.
+ * It is called several times per battle and answers two different questions,
+ * which the numbers make obvious once they are beside each other: a `2` is what
+ * ONE skeleton costs, and the large value is the WHOLE offered raise. Divide
+ * and you have the count — and against the percentage we add, that count came
+ * out as `floor(0.75 x percent)` across four battles, which is a percentage
+ * behaving like one.
+ *
+ * The second argument is a pointer, not a number: it reads as ~0x1a40_0000,
+ * which is a heap address rather than any creature's power. Named `what`
+ * because what it points AT is not established, and a wrong name in a log is
+ * worse than no name.
  */
 static int g_costTraceLeft = 24;
 
-static int __fastcall raise_cost_hook(void *hero, int power) {
-  int cost = g_originalCost(hero, power);
+static int __fastcall raise_cost_hook(void *hero, void *what) {
+  int cost = g_originalCost(hero, what);
   if (g_costTraceLeft > 0) {
     g_costTraceLeft--;
-    log_num("cost: creature power ", power);
-    log_num("      energy per one ", cost);
+    log_num("cost: dark energy ", cost);
   }
   return cost;
 }
