@@ -7351,6 +7351,18 @@ async function submitNewMap(): Promise<void> {
 // are the copy handles: point one at another file (a recolour, another model)
 // and only that piece changes.
 
+/**
+ * Show a form dialog, whether or not it is already up.
+ *
+ * `showModal()` on an open dialog throws, and the throw lands in a click
+ * handler where nothing catches it — the form then stays as it was and looks
+ * like a button that does nothing.
+ */
+function openOnTop(id: string): void {
+  const dialog = modDialog(id);
+  if (!dialog.open) dialog.showModal();
+}
+
 function modDialog(id: string): HTMLDialogElement {
   const el = $(id);
   if (!(el instanceof HTMLDialogElement)) throw new Error(`#${id} is not a <dialog>`);
@@ -7699,11 +7711,12 @@ async function editArtifact(id: string): Promise<void> {
   $select('am-slot').value = a.slot;
   $input('am-id').disabled = true;
   $input('am-file').disabled = true;
-  $('am-legend').textContent = 'Editing artifact';
   $('am-editing').textContent = `${a.name || a.id} — id and files are fixed; everything else can move`;
   $button('am-ok').textContent = 'Save & install';
-  $button('am-cancel-edit').hidden = false;
   $('am-note').textContent = '';
+  openOnTop('artedit');
+  $('artedit-title').textContent = 'Editing artifact';
+  void showExtensionState().catch(() => {});
 }
 
 /** Back to making a new one. */
@@ -7711,10 +7724,11 @@ function newArtifact(): void {
   editingArtifact = '';
   $input('am-id').disabled = false;
   $input('am-file').disabled = false;
-  $('am-legend').textContent = 'New artifact';
   $('am-editing').textContent = '';
   $button('am-ok').textContent = 'Build & install';
-  $button('am-cancel-edit').hidden = true;
+  openOnTop('artedit');
+  $('artedit-title').textContent = 'New artifact';
+  void showExtensionState().catch(() => {});
 }
 
 async function editCreature(id: string): Promise<void> {
@@ -7726,21 +7740,21 @@ async function editCreature(id: string): Promise<void> {
   $input('um-name').value = c.name;
   $input('um-id').disabled = true;
   $input('um-file').disabled = true;
-  $('um-legend').textContent = 'Editing creature';
   $('um-editing').textContent = `${c.name || c.id} — id and files are fixed; everything else can move`;
   $button('um-ok').textContent = 'Save & install';
-  $button('um-cancel-edit').hidden = false;
   $('um-note').textContent = '';
+  openOnTop('unitedit');
+  $('unitedit-title').textContent = 'Editing creature';
 }
 
 function newCreature(): void {
   editingCreature = '';
   $input('um-id').disabled = false;
   $input('um-file').disabled = false;
-  $('um-legend').textContent = 'New creature';
   $('um-editing').textContent = '';
   $button('um-ok').textContent = 'Build & install';
-  $button('um-cancel-edit').hidden = true;
+  openOnTop('unitedit');
+  $('unitedit-title').textContent = 'New creature';
 }
 
 /**
@@ -7884,7 +7898,8 @@ async function submitArtifactSet(): Promise<void> {
       description: $input('as-desc').value,
       perCount: [...$('as-counts').querySelectorAll<HTMLInputElement>('input')].map((i) => i.value),
     });
-    $('as-note').textContent = `installed ${res.archive}\nset effect ${res.number}`
+    modDialog('setedit').close();
+    $('am-note').textContent = `installed ${res.archive}\nset effect ${res.number}`
       + ' — the game will count its pieces; the bonus itself is native code';
     await refreshModLists();
   } catch (e) {
@@ -7919,6 +7934,10 @@ async function submitArtifactMod(): Promise<void> {
       model: $input('am-model').value,
       boardTiles: Number($input('am-board').value) || 1,
     });
+    // The form is done with: it closes, and the note lands on the list behind
+    // it where the result belongs.
+    modDialog('artedit').close();
+    editingArtifact = '';
     $('am-note').textContent = `installed ${res.archive}\nartifact ${res.exe}`;
     await refreshModLists();
     // The artifact just added is a member a set can be built from, and the
@@ -8093,21 +8112,27 @@ $input('as-file').addEventListener('input', () => {
 $('as-members').addEventListener('change', renderSetCounts);
 $('as-ok').onclick = () => { void submitArtifactSet(); };
 
-$('unitsbtn').onclick = () => { umIdTouched = false; newCreature(); openModDialog('unitsmod'); };
+$('unitsbtn').onclick = () => { umIdTouched = false; openModDialog('unitsmod'); };
 $('am-effect-add').onclick = () => addEffectRow();
-$('am-cancel-edit').onclick = newArtifact;
-$('um-cancel-edit').onclick = newCreature;
+$('am-new').onclick = () => { amIdTouched = false; newArtifact(); };
+$('um-new').onclick = () => { umIdTouched = false; newCreature(); };
+$('as-new').onclick = () => {
+  asIdTouched = false;
+  openOnTop('setedit');
+  void fillSetMembers().catch(() => {});
+};
+for (const [dlg, back] of [['artedit', 'am'], ['unitedit', 'um'], ['setedit', 'as']] as const) {
+  $(`${dlg}-x`).onclick = () => modDialog(dlg).close();
+  $(`${dlg}-cancel`).onclick = () => modDialog(dlg).close();
+  void back;
+}
 $('artsbtn').onclick = () => {
   amIdTouched = false;
   asIdTouched = false;
-  newArtifact();
   // Ours, not the donor's: a shipped artifact has no effects of this kind, so
   // carrying them over from a preset would invent them.
   $('am-effects').innerHTML = '';
   openModDialog('artsmod');
-  void fillSetMembers().catch((e: unknown) => {
-    $('as-err').textContent = e instanceof Error ? e.message : String(e);
-  });
   void showExtensionState().catch(() => {});
 };
 $select('um-donor').addEventListener('change', () => { void loadUnitPreset().catch(() => {}); });
@@ -8117,6 +8142,8 @@ $('um-cancel').onclick = () => modDialog('unitsmod').close();
 $('um-ok').onclick = () => { void submitUnitsMod(); };
 $('am-close').onclick = () => modDialog('artsmod').close();
 $('am-cancel').onclick = () => modDialog('artsmod').close();
+$('am-close2').onclick = () => modDialog('artsmod').close();
+$('um-close2').onclick = () => modDialog('unitsmod').close();
 $('am-ok').onclick = () => { void submitArtifactMod(); };
 
 $('newmapbtn').onclick = openNewMap;

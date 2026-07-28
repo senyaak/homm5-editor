@@ -1208,62 +1208,14 @@
           <div id="um-list" class="um-mods"></div>
           <div id="um-conflict" class="um-warn"></div>
         </fieldset>
-        <fieldset>
-          <legend id="um-legend">New creature</legend>
-          <div id="um-editing" class="um-editing"></div>
-          <div class="on-body um-form">
-            <!-- The donor IS the preset: picking one loads its every field —
-                 stats, texts, abilities, the four art documents — and the form
-                 then edits the difference. The mod is always OURS (the one
-                 manifest-carrying archive in UserMODs); there is nothing to
-                 choose about where a creature goes. -->
-            <label class="on-row um-span"><span>Preset</span><select id="um-donor" title="a creature to start from — every field below loads from it"></select></label>
-            <label class="on-row"><span>Files</span><input id="um-file" type="text" spellcheck="false" autocomplete="off" placeholder="file stem, e.g. Sharpshooter" title="the stem of every file generated for the creature; the ID fills itself from it"></label>
-            <label class="on-row"><span>ID</span><input id="um-id" type="text" spellcheck="false" autocomplete="off" placeholder="CREATURE_…" title="what maps, saves and scripts store — pick once, never reuse"></label>
-            <label class="on-row"><span>Name</span><input id="um-name" type="text" autocomplete="off"></label>
-            <label class="on-row"><span>Town</span><select id="um-town" title="the creature's home town — TOWN_NO_TYPE for a neutral"></select></label>
-            <label class="on-row um-span"><span>Description</span><input id="um-desc" type="text" autocomplete="off"></label>
-            <label class="on-row um-span"><span>Abilities</span><input id="um-abil" type="text" autocomplete="off" title="the ability line the hire dialog prints, in words"></label>
-            <label class="on-row um-span"><span>Ability ids</span><select id="um-abids" multiple size="6" title="the engine abilities the creature actually has — the line above is only what the dialog prints"></select></label>
-            <div class="um-stats">
-              <label>Attack<input id="um-attack" type="number" value="1"></label>
-              <label>Defence<input id="um-defence" type="number" value="1"></label>
-              <label>Min dmg<input id="um-mindmg" type="number" value="1"></label>
-              <label>Max dmg<input id="um-maxdmg" type="number" value="1"></label>
-              <label>Health<input id="um-health" type="number" value="1"></label>
-              <label>Speed<input id="um-speed" type="number" value="4"></label>
-              <label>Initiative<input id="um-init" type="number" value="10"></label>
-              <label>Shots<input id="um-shots" type="number" value="0" title="0 for a melee creature"></label>
-              <label>Range<input id="um-range" type="number" value="0" title="0 = ordinary ranged; -1 = no distance penalty (the Sharp Shooter's)"></label>
-              <label>Growth/week<input id="um-growth" type="number" value="1"></label>
-              <label>Gold<input id="um-gold" type="number" value="100"></label>
-              <label>Tier<input id="um-tier" type="number" value="1" min="1" max="7"></label>
-              <label>Exp<input id="um-exp" type="number" value="1"></label>
-              <label>Power<input id="um-power" type="number" value="1" title="what the AI values one at"></label>
-              <label>Size<input id="um-size" type="number" value="1" min="1" max="2" title="1 small, 2 large (two tiles square in combat)"></label>
-              <label>Command<input id="um-command" type="number" value="10" title="how long the hire dialog waits before it will command them; shipped 7–10"></label>
-              <label class="nm-check" style="align-self:end"><input id="um-fly" type="checkbox"> Flying</label>
-            </div>
-          </div>
-        </fieldset>
-        <fieldset>
-          <legend>Art — the donor's files, swappable one by one</legend>
-          <div class="on-body">
-            <!-- These are COPIED into the mod, so pointing one at another file
-                 (a recolour, another model) changes just that piece. -->
-            <label class="on-row um-art"><span>Character</span><input id="um-art-character" type="text" spellcheck="false" autocomplete="off" title="what fights: the combat model with its arena animations"></label>
-            <label class="on-row um-art"><span>Model</span><input id="um-art-model" type="text" spellcheck="false" autocomplete="off" title="what stands on the adventure map"></label>
-            <label class="on-row um-art"><span>Anim set</span><input id="um-art-animset" type="text" spellcheck="false" autocomplete="off" title="the adventure-map animations"></label>
-            <label class="on-row um-art"><span>Icon</span><input id="um-art-icon" type="text" spellcheck="false" autocomplete="off" title="the hire and army icon — a creature without one stops the game"></label>
-          </div>
-        </fieldset>
-        <div id="um-note" class="um-note"></div>
+        <div class="de-foot" style="padding:0;justify-content:flex-start">
+          <button id="um-new">New creature…</button>
+        </div>
         <div id="um-err" class="on-err"></div>
       </div>
       <div class="de-foot">
         <button id="um-cancel" class="ghost">Close</button>
-        <button id="um-cancel-edit" class="ghost" hidden>Cancel edit</button>
-        <button id="um-ok">Build &amp; install</button>
+        <button id="um-close2" class="ghost">Close</button>
       </div>
     </div>
   </dialog>
@@ -1319,6 +1271,103 @@
           <legend>Installed</legend>
           <div id="am-list" class="um-mods"></div>
         </fieldset>
+        <div class="de-foot" style="padding:0;justify-content:flex-start;gap:8px">
+          <button id="am-new">New artifact…</button>
+          <button id="as-new" class="ghost">New set…</button>
+        </div>
+        <!-- Sets live inside this dialog, not beside it: they belong to the same
+             archive, and their members are the artifacts listed above. What a set
+             gives a hero is NOT here — that is native code, and no arrangement of
+             data can express it (docs/ARTIFACT_EFFECTS.md). -->
+        <div id="am-err" class="on-err"></div>
+      </div>
+      <div class="de-foot">
+        <button id="am-cancel" class="ghost">Close</button>
+        <button id="am-close2" class="ghost">Close</button>
+      </div>
+    </div>
+  </dialog>
+
+
+  <!-- A form of its own, opened ON TOP of the list it belongs to. The list is a
+       list; making and changing things happens here, where Cancel means what it
+       says and closing loses nothing else. -->
+  <dialog id="unitedit">
+    <div class="mp-card um-card">
+      <div class="mp-head">
+        <span class="mp-title" id="unitedit-title">New creature</span>
+        <button id="unitedit-x" title="close (Esc)">✕</button>
+      </div>
+      <div class="mp-body on-body um-body">
+        <fieldset>
+          <legend id="um-legend">New creature</legend>
+          <div id="um-editing" class="um-editing"></div>
+          <div class="on-body um-form">
+            <!-- The donor IS the preset: picking one loads its every field —
+                 stats, texts, abilities, the four art documents — and the form
+                 then edits the difference. The mod is always OURS (the one
+                 manifest-carrying archive in UserMODs); there is nothing to
+                 choose about where a creature goes. -->
+            <label class="on-row um-span"><span>Preset</span><select id="um-donor" title="a creature to start from — every field below loads from it"></select></label>
+            <label class="on-row"><span>Files</span><input id="um-file" type="text" spellcheck="false" autocomplete="off" placeholder="file stem, e.g. Sharpshooter" title="the stem of every file generated for the creature; the ID fills itself from it"></label>
+            <label class="on-row"><span>ID</span><input id="um-id" type="text" spellcheck="false" autocomplete="off" placeholder="CREATURE_…" title="what maps, saves and scripts store — pick once, never reuse"></label>
+            <label class="on-row"><span>Name</span><input id="um-name" type="text" autocomplete="off"></label>
+            <label class="on-row"><span>Town</span><select id="um-town" title="the creature's home town — TOWN_NO_TYPE for a neutral"></select></label>
+            <label class="on-row um-span"><span>Description</span><input id="um-desc" type="text" autocomplete="off"></label>
+            <label class="on-row um-span"><span>Abilities</span><input id="um-abil" type="text" autocomplete="off" title="the ability line the hire dialog prints, in words"></label>
+            <label class="on-row um-span"><span>Ability ids</span><select id="um-abids" multiple size="6" title="the engine abilities the creature actually has — the line above is only what the dialog prints"></select></label>
+            <div class="um-stats">
+              <label>Attack<input id="um-attack" type="number" value="1"></label>
+              <label>Defence<input id="um-defence" type="number" value="1"></label>
+              <label>Min dmg<input id="um-mindmg" type="number" value="1"></label>
+              <label>Max dmg<input id="um-maxdmg" type="number" value="1"></label>
+              <label>Health<input id="um-health" type="number" value="1"></label>
+              <label>Speed<input id="um-speed" type="number" value="4"></label>
+              <label>Initiative<input id="um-init" type="number" value="10"></label>
+              <label>Shots<input id="um-shots" type="number" value="0" title="0 for a melee creature"></label>
+              <label>Range<input id="um-range" type="number" value="0" title="0 = ordinary ranged; -1 = no distance penalty (the Sharp Shooter's)"></label>
+              <label>Growth/week<input id="um-growth" type="number" value="1"></label>
+              <label>Gold<input id="um-gold" type="number" value="100"></label>
+              <label>Tier<input id="um-tier" type="number" value="1" min="1" max="7"></label>
+              <label>Exp<input id="um-exp" type="number" value="1"></label>
+              <label>Power<input id="um-power" type="number" value="1" title="what the AI values one at"></label>
+              <label>Size<input id="um-size" type="number" value="1" min="1" max="2" title="1 small, 2 large (two tiles square in combat)"></label>
+              <label>Command<input id="um-command" type="number" value="10" title="how long the hire dialog waits before it will command them; shipped 7–10"></label>
+              <label class="nm-check" style="align-self:end"><input id="um-fly" type="checkbox"> Flying</label>
+            </div>
+          </div>
+        </fieldset>
+        <fieldset>
+          <legend>Art — the donor's files, swappable one by one</legend>
+          <div class="on-body">
+            <!-- These are COPIED into the mod, so pointing one at another file
+                 (a recolour, another model) changes just that piece. -->
+            <label class="on-row um-art"><span>Character</span><input id="um-art-character" type="text" spellcheck="false" autocomplete="off" title="what fights: the combat model with its arena animations"></label>
+            <label class="on-row um-art"><span>Model</span><input id="um-art-model" type="text" spellcheck="false" autocomplete="off" title="what stands on the adventure map"></label>
+            <label class="on-row um-art"><span>Anim set</span><input id="um-art-animset" type="text" spellcheck="false" autocomplete="off" title="the adventure-map animations"></label>
+            <label class="on-row um-art"><span>Icon</span><input id="um-art-icon" type="text" spellcheck="false" autocomplete="off" title="the hire and army icon — a creature without one stops the game"></label>
+          </div>
+        </fieldset>
+        <div id="um-note" class="um-note"></div>
+        <div id="um-err" class="on-err"></div>
+      </div>
+      <div class="de-foot">
+        <button id="unitedit-cancel" class="ghost">Cancel</button>
+        <button id="um-ok">Build &amp; install</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- A form of its own, opened ON TOP of the list it belongs to. The list is a
+       list; making and changing things happens here, where Cancel means what it
+       says and closing loses nothing else. -->
+  <dialog id="artedit">
+    <div class="mp-card um-card">
+      <div class="mp-head">
+        <span class="mp-title" id="artedit-title">New artifact</span>
+        <button id="artedit-x" title="close (Esc)">✕</button>
+      </div>
+      <div class="mp-body on-body um-body">
         <fieldset>
           <legend id="am-legend">New artifact</legend>
           <div id="am-editing" class="um-editing"></div>
@@ -1370,10 +1419,26 @@
             <label class="on-row um-art um-span"><span>Map model</span><input id="am-model" type="text" spellcheck="false" autocomplete="off" placeholder="empty → a flat board of the icon" title="href of the model lying on the map; referenced, not copied"></label>
           </div>
         </fieldset>
-        <!-- Sets live inside this dialog, not beside it: they belong to the same
-             archive, and their members are the artifacts listed above. What a set
-             gives a hero is NOT here — that is native code, and no arrangement of
-             data can express it (docs/ARTIFACT_EFFECTS.md). -->
+        <div id="am-note" class="um-note"></div>
+        <div id="am-err" class="on-err"></div>
+      </div>
+      <div class="de-foot">
+        <button id="artedit-cancel" class="ghost">Cancel</button>
+        <button id="am-ok">Build &amp; install</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- A form of its own, opened ON TOP of the list it belongs to. The list is a
+       list; making and changing things happens here, where Cancel means what it
+       says and closing loses nothing else. -->
+  <dialog id="setedit">
+    <div class="mp-card um-card">
+      <div class="mp-head">
+        <span class="mp-title" id="setedit-title">New set</span>
+        <button id="setedit-x" title="close (Esc)">✕</button>
+      </div>
+      <div class="mp-body on-body um-body">
         <fieldset>
           <legend>New set</legend>
           <div class="on-body um-form">
@@ -1388,23 +1453,16 @@
               <div id="as-counts" class="as-counts" title="what the tooltip says at each number of pieces worn; one piece is not a set, so the first is normally blank"></div>
             </label>
           </div>
-          <div id="as-note" class="um-note"></div>
-          <div id="as-err" class="on-err"></div>
-          <div style="display:flex;justify-content:flex-end;margin-top:8px">
-            <button id="as-ok">Add set &amp; install</button>
-          </div>
         </fieldset>
-        <div id="am-note" class="um-note"></div>
-        <div id="am-err" class="on-err"></div>
+        <div id="as-note" class="um-note"></div>
+        <div id="as-err" class="on-err"></div>
       </div>
       <div class="de-foot">
-        <button id="am-cancel" class="ghost">Close</button>
-        <button id="am-cancel-edit" class="ghost" hidden>Cancel edit</button>
-        <button id="am-ok">Build &amp; install</button>
+        <button id="setedit-cancel" class="ghost">Cancel</button>
+        <button id="as-ok">Build &amp; install</button>
       </div>
     </div>
   </dialog>
-
   <!-- edit a referenced entity's own typed fields (the original's "Edit" on a
        structured ref: an AdvMapBirds flock, a Wind, an AmbientLight preset) -->
   <dialog id="entedit">

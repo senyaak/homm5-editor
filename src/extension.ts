@@ -39,11 +39,32 @@ export function builtDll(editorRoot: string): string {
   return join(editorRoot, 'native', 'build', EXTENSION_DLL);
 }
 
+/**
+ * Answering "is it imported" means reading the executable, and the executable
+ * is fourteen megabytes.
+ *
+ * The dialog asks every time it opens, and the main process is single-threaded:
+ * reading and parsing that much on each open stops the whole window while it
+ * happens. So the answer is kept, keyed on the file's size and mtime — patching
+ * the import changes both, and nothing else can change the answer.
+ */
+const importedCache = new Map<string, { key: string; imported: boolean }>();
+
+function namesUs(exe: string): boolean {
+  if (!existsSync(exe)) return false;
+  const stat = statSync(exe);
+  const key = `${stat.size}:${stat.mtimeMs}`;
+  const seen = importedCache.get(exe);
+  if (seen?.key === key) return seen.imported;
+  const imported = imports(readFileSync(exe)).includes(EXTENSION_DLL.toLowerCase());
+  importedCache.set(exe, { key, imported });
+  return imported;
+}
+
 export function extensionState(gameRoot: string): ExtensionState {
   const dll = join(gameRoot, 'bin', EXTENSION_DLL);
-  const exe = join(gameRoot, PATCHED_EXE);
   const present = existsSync(dll);
-  const imported = existsSync(exe) && imports(readFileSync(exe)).includes(EXTENSION_DLL.toLowerCase());
+  const imported = namesUs(join(gameRoot, PATCHED_EXE));
   return { present, imported, installed: present && imported, ...(present ? { size: statSync(dll).size } : {}) };
 }
 

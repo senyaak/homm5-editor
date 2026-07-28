@@ -33,7 +33,9 @@ test.afterAll(async () => { await ed?.app.close(); removeGameRoot(GAME); });
 
 /** Open Artifacts… with the donor loaded. */
 async function openWithDonor(page: Launched['page']): Promise<void> {
+  // The list is a list; the form is a dialog on top of it.
   if (!(await page.locator('#artsmod').isVisible())) await page.locator('#artsbtn').click();
+  if (!(await page.locator('#artedit').isVisible())) await page.locator('#am-new').click();
   await expect(page.locator(`#am-donor option[value="${AMULET.donor}"]`)).toHaveCount(1, { timeout: 30_000 });
   await page.locator('#am-donor').selectOption(AMULET.donor);
   await expect(page.locator('#am-cost')).toHaveValue('7000'); // the preset settled
@@ -94,8 +96,7 @@ test('edits the difference and installs the artifact', async () => {
   const reading = readArtifactLimit(readFileSync(join(GAME, 'bin', 'H5_Game_NCF.exe')), noted);
   expect(reading.limit).toBe(ORIGINAL_ARTIFACTS + 1);
 
-  await page.locator('#am-cancel').click();
-  await expect(page.locator('#artsmod')).toBeHidden();
+  await expect(page.locator('#artedit')).toBeHidden(); // a build closes the form
 });
 
 test('a second piece, so there is a set to make', async () => {
@@ -134,7 +135,7 @@ test('a second piece, so there is a set to make', async () => {
 
 test('says the extension is missing rather than letting the effect look live', async () => {
   const { page } = ed;
-  if (!(await page.locator('#artsmod').isVisible())) await page.locator('#artsbtn').click();
+  await openWithDonor(page);
   // This install has no extension: the effect is written and does nothing, and
   // "it does not work" and "it is not installed" look identical in game.
   await expect(page.locator('#am-ext')).toContainText('not installed', { timeout: 30_000 });
@@ -143,7 +144,9 @@ test('says the extension is missing rather than letting the effect look live', a
 test('makes a set of the two, with an effect of our own', async () => {
   test.setTimeout(3 * 60_000);
   const { page } = ed;
+  if (await page.locator('#artedit').isVisible()) await page.locator('#artedit-cancel').click();
   if (!(await page.locator('#artsmod').isVisible())) await page.locator('#artsbtn').click();
+  await page.locator('#as-new').click();
 
   // Members are ticked, not typed: a misspelt id builds cleanly and produces a
   // set that never combines. The list offers this mod's own artifacts first.
@@ -164,10 +167,10 @@ test('makes a set of the two, with an effect of our own', async () => {
   await counts.nth(1).fill(UNDEAD_KING.perCount[1]!);
 
   await page.locator('#as-ok').click();
-  await expect(page.locator('#as-note')).toContainText('installed', { timeout: 120_000 });
+  await expect(page.locator('#am-note')).toContainText('installed', { timeout: 120_000 });
   // 11 — after the game's own eleven, 0..10. Taking one of theirs would build
   // just as cleanly and stop their set working.
-  await expect(page.locator('#as-note')).toContainText('set effect 11');
+  await expect(page.locator('#am-note')).toContainText('set effect 11');
   await expect(page.locator('#am-list')).toContainText(`set 11 — ${UNDEAD_KING.name}`);
 
   const mod = readInstalledMod(GAME);
@@ -183,7 +186,11 @@ test('makes a set of the two, with an effect of our own', async () => {
 
 test('refuses one of the game\'s own set effects', async () => {
   const { page } = ed;
+  // The previous test's install closed the form; open a fresh one and wait
+  // for it, rather than assuming it is still up.
   if (!(await page.locator('#artsmod').isVisible())) await page.locator('#artsbtn').click();
+  if (!(await page.locator('#setedit').isVisible())) await page.locator('#as-new').click();
+  await expect(page.locator('#as-file')).toBeVisible({ timeout: 30_000 });
 
   const members = page.locator('#as-members');
   await members.locator(`input[value="${AMULET.id}"]`).check();

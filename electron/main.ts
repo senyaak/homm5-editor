@@ -369,6 +369,30 @@ async function gpuReport(): Promise<string> {
   return lines.join('\n');
 }
 
+// Every channel says how long it took, and says so again while it is still
+// going. The main process is single-threaded: one slow handler stops the
+// window, and from outside that is indistinguishable from a crash — which cost
+// an afternoon of guessing at which call it was. Now it names itself.
+{
+  const raw = ipcMain.handle.bind(ipcMain);
+  type Listener = (e: IpcMainInvokeEvent, ...args: unknown[]) => unknown;
+  ipcMain.handle = ((channel: string, listener: Listener) => raw(channel, async (e, ...args) => {
+    const started = Date.now();
+    const stuck = setInterval(
+      () => console.error(`[ipc] ${channel} still running after ${Math.round((Date.now() - started) / 1000)}s`),
+      2000,
+    );
+    try {
+      return await listener(e, ...args);
+    } finally {
+      clearInterval(stuck);
+      const ms = Date.now() - started;
+      // Only the slow ones: a line per call would bury them.
+      if (ms > 200) console.error(`[ipc] ${channel} ${ms}ms`);
+    }
+  })) as typeof ipcMain.handle;
+}
+
 ipcMain.handle('app:gpu-report', gpuReport);
 ipcMain.handle('app:open-devtools', () => { win?.webContents.openDevTools({ mode: 'detach' }); });
 ipcMain.handle('app:gpu-software', (): boolean => !!readSettings().softwareRendering);
