@@ -341,6 +341,69 @@ export function addArtifactSet(mod: CreatureMod, spec: ArtifactSetSpec): ModArti
   return s;
 }
 
+/**
+ * Change an artifact already in the mod, keeping its number.
+ *
+ * Everything except `id` may move. The id may not: it is how a map, a script
+ * and this manifest name the same thing, and renaming it here would leave every
+ * reference pointing at nothing.
+ */
+export function updateArtifact(mod: CreatureMod, id: string, spec: ArtifactSpec): ModArtifact {
+  const at = (mod.artifacts ?? []).findIndex((a) => a.id === id);
+  if (at < 0) throw new Error(`${id} is not in the mod`);
+  if (spec.id !== id) throw new Error(`an artifact cannot be renamed — ${id} is what maps and scripts store`);
+  const kept = mod.artifacts[at]!;
+  if (mod.artifacts.some((a, i) => i !== at && a.file === spec.file)) {
+    throw new Error(`two artifacts cannot both be "${spec.file}"`);
+  }
+  const updated: ModArtifact = { ...spec, number: kept.number };
+  mod.artifacts[at] = updated;
+  return updated;
+}
+
+/**
+ * Take an artifact out of the mod.
+ *
+ * A plain removal, and the numbers behind it close up. That is safe for MAPS,
+ * which name an artifact by its enum name and never by its number — checked in
+ * a shipped map rather than assumed, because the assumption ran the other way
+ * for a while and produced a design that quietly broke the thing it protected.
+ *
+ * What removing one DOES break is any map that names it, and that is found
+ * exactly by searching for the name — src/artifact-usage.ts, which the caller
+ * is expected to run first so the person deciding can see the list.
+ *
+ * A saved game in progress stores numbers and will not survive the renumbering.
+ * Nothing here can see inside one, so it is said rather than detected.
+ */
+export function removeArtifact(mod: CreatureMod, id: string): ModArtifact {
+  const list = mod.artifacts ?? [];
+  const at = list.findIndex((a) => a.id === id);
+  if (at < 0) throw new Error(`${id} is not in the mod`);
+  const removed = list.splice(at, 1)[0]!;
+  // Close the gap. The numbers are ours and run from the shipped count.
+  list.forEach((a, i) => { a.number = SHIPPED_ARTIFACTS + i; });
+  return removed;
+}
+
+/**
+ * Take a set out of the mod.
+ *
+ * Freer than an artifact: a set's effect value is named by `DefaultStats` and
+ * by our effects file, and neither a map nor a save stores it — so removing one
+ * from the middle costs nothing but the renumbering of our own later sets,
+ * which the next build writes out anyway.
+ */
+export function removeArtifactSet(mod: CreatureMod, effect: string): ModArtifactSet {
+  const list = mod.sets ?? [];
+  const at = list.findIndex((s) => s.effect === effect);
+  if (at < 0) throw new Error(`${effect} is not in the mod`);
+  const gone = list.splice(at, 1)[0]!;
+  // Close the gap: the values are ours and contiguous from the shipped count.
+  list.forEach((s, i) => { s.number = SHIPPED_SET_EFFECTS + i; });
+  return gone;
+}
+
 /** Append a dwelling. Unlike a creature it holds no id, so order is cosmetic. */
 export function addDwelling(mod: CreatureMod, spec: DwellingSpec): DwellingSpec {
   if (!spec.creatures.length) throw new Error(`${spec.file}: a dwelling with no creatures hires nothing`);

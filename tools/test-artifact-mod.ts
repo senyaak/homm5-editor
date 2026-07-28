@@ -22,7 +22,8 @@
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { addArtifact, buildCreatureMod, dataReader, newCreatureMod } from '../src/creature-mod.ts';
+import { addArtifact, buildCreatureMod, dataReader, newCreatureMod, removeArtifact } from '../src/creature-mod.ts';
+import { findArtifactUses } from '../src/artifact-usage.ts';
 import { artifactPaths, SHIPPED_ARTIFACTS } from '../src/artifacts.ts';
 import { positionsBox } from '../src/geometry.ts';
 
@@ -212,5 +213,41 @@ check('with an xdb beside it', !!built.files.find((x) => x.path === p.icon));
 }
 
 rmSync(scratch, { recursive: true, force: true });
+// --- taking one out again ----------------------------------------------------
+//
+// A map names an artifact by its enum NAME, never by its number — checked in a
+// shipped map.xdb, not assumed. So the numbers may close up; what a removal
+// breaks is a map that names the artifact, which is found by searching for it.
+
+{
+  const mod = newCreatureMod('x');
+  const one = { name: 'a', description: 'd', slot: 'FEET', cost: 1, icon: '/x.xdb' } as const;
+  for (const id of ['ARTIFACT_A', 'ARTIFACT_B', 'ARTIFACT_C']) {
+    addArtifact(mod, { ...one, id, file: id.slice(-1) });
+  }
+  const first = mod.artifacts[0]!.number;
+
+  removeArtifact(mod, 'ARTIFACT_A');
+  check('it is gone', mod.artifacts.map((a) => a.id).join() === 'ARTIFACT_B,ARTIFACT_C');
+  // The point of closing the gap rather than leaving a dead entry: the table has
+  // no holes, and nothing pretends to be an artifact that is not one.
+  check('the numbers close up', mod.artifacts.map((a) => a.number).join() === `${first},${first + 1}`,
+    mod.artifacts.map((a) => a.number).join());
+
+  try { removeArtifact(mod, 'ARTIFACT_NOPE'); check('removing what is not there is refused', false); }
+  catch { check('removing what is not there is refused', true); }
+}
+
+// What a removal would break, found by name.
+{
+  const uses = findArtifactUses(join(dataRoot, 'Maps'), ['UNICORN_HORN_BOW', 'ARTIFACT_NEVER_SHIPPED']);
+  check('a shipped artifact is found in the maps that name it', (uses.get('UNICORN_HORN_BOW') ?? []).length > 0,
+    `${(uses.get('UNICORN_HORN_BOW') ?? []).length} map(s)`);
+  check('one nothing names is found nowhere', !uses.has('ARTIFACT_NEVER_SHIPPED'));
+  // `ARTIFACT_RING` is a prefix of `ARTIFACT_RING_OF_DEATH`; a warning naming
+  // the wrong artifact is worse than no warning.
+  check('a prefix is not a match', !findArtifactUses(join(dataRoot, 'Maps'), ['ARTIFACT_RING']).has('ARTIFACT_RING'));
+}
+
 console.log(failures ? `\n${failures} failure(s)` : '\nall good');
 process.exit(failures ? 1 : 0);

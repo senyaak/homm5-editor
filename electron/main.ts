@@ -42,10 +42,11 @@ import { MAP_SIZES } from '../src/terrain-blank.ts';
 import { Registry, artifactPreset, creatureAbilities, creaturePreset, creatureSources } from '../src/registry.ts';
 import type { RosterEntry } from '../src/registry.ts';
 import {
-  addArtifact, addArtifactSet, addCreature, artifactLimit, buildCreatureMod, dataReader, findCreatureMods,
+  addArtifact, addArtifactSet, addCreature, removeArtifact, removeArtifactSet, updateArtifact, artifactLimit, buildCreatureMod, dataReader, findCreatureMods,
   installCreatureMod, MOD_STEM, newCreatureMod, packCreatureMod,
 } from '../src/creature-mod.ts';
 import { builtDll, extensionState, installExtension, writeEffectsFile } from '../src/extension.ts';
+import { describeUses, findArtifactUses } from '../src/artifact-usage.ts';
 import { EFFECT_STATS, effectsOf } from '../src/artifact-effects.ts';
 import type { EffectStat } from '../src/artifact-effects.ts';
 import type { BuildReport, CreatureMod, Installed, ModCreature } from '../src/creature-mod.ts';
@@ -53,7 +54,7 @@ import { decodeDDSBuffer } from '../src/dds.ts';
 import { writeDDS } from '../src/texture.ts';
 import { extractPalette, isIdentity, recolorPixels } from '../src/recolor.ts';
 import { readEntries, writeArchive } from '../src/pak.ts';
-import type { ArtifactRank, ArtifactSlot, HeroStats } from '../src/artifacts.ts';
+import type { ArtifactRank, ArtifactSlot, ArtifactSpec, HeroStats } from '../src/artifacts.ts';
 import type { ArtifactExeResult } from '../src/artifact-limit.ts';
 import type { ExeResult } from '../src/creature-limit.ts';
 import { blankStats } from '../src/creatures.ts';
@@ -103,6 +104,7 @@ import type {
   ModsListResult, ModsInstallPayload, ModsInstallResult, ModsFormDataResult, ModsPresetPayload,
   CreaturePresetDTO, ArtifactPresetDTO, ModsInstallArtifactPayload, ModsInstallArtifactResult,
   ModsInstallSetPayload, ModsInstallSetResult, ExtensionStatus,
+  ModsRemovePayload, ModsRemoveResult, ModsUsesResult,
   ModsTexturesPayload, ModsTexturesResult, ModsRecolorPayload, ModsRecolorResult,
 } from './ipc.ts';
 
@@ -2347,6 +2349,69 @@ function effectsFrom(raw: Record<string, number> | undefined): Partial<Record<Ef
   }
   return Object.keys(out).length ? out : null;
 }
+
+/** The spec an artifact payload describes, shared by install and update. */
+function artifactSpecOf(p: ModsInstallArtifactPayload): ArtifactSpec {
+  const stats: Partial<HeroStats> = {};
+  for (const k of ['Attack', 'Defence', 'Knowledge', 'SpellPower', 'Morale', 'Luck'] as const) {
+    const v = Number(p.stats?.[k] ?? 0);
+    if (v) stats[k] = v;
+  }
+  const effects = effectsFrom(p.effects);
+  return {
+    id: p.id.trim(), file: p.file.trim(),
+    name: p.name, description: p.description,
+    slot: p.slot as ArtifactSlot, rank: p.rank as ArtifactRank,
+    cost: Number(p.cost) || 0, aiValue: Number(p.aiValue) || 0,
+    canBeGeneratedToSell: !!p.canBeGeneratedToSell,
+    ...(Object.keys(stats).length ? { stats } : {}),
+    ...(effects ? { effects } : {}),
+    icon: p.icon.trim(),
+    ...(p.model?.trim() ? { model: p.model.trim() } : { board: { tiles: p.boardTiles || 1 } }),
+  };
+}
+
+ipcMain.handle('mods:update-artifact', async (_e: IpcMainInvokeEvent, p: ModsInstallArtifactPayload): Promise<ModsInstallArtifactResult> => {
+  const g = gameRoot();
+  if (!g) throw new Error('no game install configured');
+  if (!isConfigured()) throw new Error('no data root configured');
+  const mod = ourMod(g);
+  updateArtifact(mod, p.id.trim(), artifactSpecOf(p));
+  const { installed } = buildAndInstall(g, mod);
+  writeEffectsFile(g, effectsOf(mod.artifacts ?? []));
+  return { archive: installed.archive, limit: artifactLimit(mod), exe: exeWords(installed.artifacts) };
+});
+
+ipcMain.handle('mods:remove-artifact', async (_e: IpcMainInvokeEvent, { id }: ModsRemovePayload): Promise<ModsRemoveResult> => {
+  const g = gameRoot();
+  if (!g) throw new Error('no game install configured');
+  if (!isConfigured()) throw new Error('no data root configured');
+  const mod = ourMod(g);
+  const gone = removeArtifact(mod, id);
+  // Rebuilt and reinstalled, ceiling and all: the executable's artifact count
+  // has to come back down with it or the game reads a table shorter than it
+  // was told to expect.
+  const { installed } = buildAndInstall(g, mod);
+  writeEffectsFile(g, effectsOf(mod.artifacts ?? []));
+  return { archive: installed.archive, removed: gone.id };
+});
+
+// Looked up BEFORE anything is removed, so the person deciding sees the list.
+// A map names an artifact by name, so this is exact rather than a guess.
+ipcMain.handle('mods:artifact-uses', async (_e: IpcMainInvokeEvent, { id }: ModsRemovePayload): Promise<ModsUsesResult> => {
+  const uses = findArtifactUses(join(gameData(), 'Maps'), [id]).get(id) ?? [];
+  return { uses: describeUses(uses) };
+});
+
+ipcMain.handle('mods:remove-set', async (_e: IpcMainInvokeEvent, { id }: ModsRemovePayload): Promise<ModsRemoveResult> => {
+  const g = gameRoot();
+  if (!g) throw new Error('no game install configured');
+  if (!isConfigured()) throw new Error('no data root configured');
+  const mod = ourMod(g);
+  const gone = removeArtifactSet(mod, id);
+  const { installed } = buildAndInstall(g, mod);
+  return { archive: installed.archive, removed: gone.effect };
+});
 
 ipcMain.handle('mods:extension-status', async (): Promise<ExtensionStatus> => {
   const g = gameRoot();

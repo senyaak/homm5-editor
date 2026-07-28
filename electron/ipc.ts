@@ -831,6 +831,15 @@ export interface ModsInstallSetPayload {
   perCount?: string[];
 }
 
+/** Payload of `mods:remove-artifact` / `mods:remove-set` — which one to drop. */
+export interface ModsRemovePayload { id: string }
+
+/** Result of `mods:artifact-uses` — one readable line per map that names it. */
+export interface ModsUsesResult { uses: string[] }
+
+/** Result of a removal: the mod as it is now, rebuilt and reinstalled. */
+export interface ModsRemoveResult { archive: string; removed: string }
+
 /** Whether the native extension is in place, and what it would take. */
 export interface ExtensionStatus {
   present: boolean;
@@ -977,6 +986,14 @@ export interface EditorApi {
   installArtifact(p: ModsInstallArtifactPayload): Promise<ModsInstallArtifactResult>;
   /** Add an artifact set to OUR mod, build it, install it. No ceiling moves. */
   installArtifactSet(p: ModsInstallSetPayload): Promise<ModsInstallSetResult>;
+  /** Change an artifact already in the mod. Its id and number do not move. */
+  updateArtifact(p: ModsInstallArtifactPayload): Promise<ModsInstallArtifactResult>;
+  /** Which maps name this artifact — ask BEFORE removing it. */
+  artifactUses(p: ModsRemovePayload): Promise<ModsUsesResult>;
+  /** Drop an artifact. Maps that name it stop resolving; see artifactUses. */
+  removeArtifact(p: ModsRemovePayload): Promise<ModsRemoveResult>;
+  /** Drop an artifact set. */
+  removeArtifactSet(p: ModsRemovePayload): Promise<ModsRemoveResult>;
   /** Whether the native extension is installed — effects need it. */
   extensionStatus(): Promise<ExtensionStatus>;
   /** Put the extension in place: the DLL, and the import that loads it. */
