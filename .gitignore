@@ -29,3 +29,4 @@ playwright-report/
 tools/vendor/
 __pycache__/
 
+native/build/
