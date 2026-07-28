@@ -21,6 +21,13 @@ export default defineConfig({
   // first run; give each test room without hiding a genuine hang.
   timeout: 120_000,
   expect: { timeout: 15_000 },
+  // STOP AT THE FIRST FAILURE. The suite is serial and every test drives the
+  // same app over the same on-disk state, so once one has failed the rest are
+  // running against a world nobody planned: what they report afterwards is
+  // noise, and a person watching has to sit through it to reach the one message
+  // that mattered. `PW_ALL=1` runs the whole thing anyway, for the sweep after a
+  // fix; `--max-failures=N` on the command line beats both.
+  maxFailures: process.env.PW_ALL ? 0 : 1,
   reporter: [['list']],
   // Artifacts (screenshots, traces) land under test-results/, which is ignored.
   outputDir: 'test-results',

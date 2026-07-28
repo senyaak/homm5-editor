@@ -6,11 +6,24 @@
 // test written against it would fail for a reason that has nothing to do with
 // the code being tested. Cost is a fraction of a second per run.
 
+import { rmSync } from 'node:fs';
+import { join } from 'node:path';
+
 import { buildRenderer } from '../tools/build-renderer.ts';
+import { modDir } from '../src/mod-paths.ts';
 import { hasFixture, NEED_FIXTURE, ALLOW_NO_FIXTURE } from './c1m1/shared.ts';
+import { E2E_GAME, REPO_ROOT } from './launch.ts';
 
 export default async function build(): Promise<void> {
   await buildRenderer();
+
+  // A run starts with an empty install. A map is a file now, and the app refuses
+  // to write over one — so an archive left by the last run makes New Map fail in
+  // the next, in a spec that has nothing to do with it. Only ever the suite's
+  // own throwaway install: a real one handed over in HOMM5_ROOT is left alone.
+  if (E2E_GAME.startsWith(join(REPO_ROOT, '_tmp'))) {
+    rmSync(modDir(E2E_GAME), { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  }
 
   // One place that says it out loud: the C1M1 reconstruction stages read files
   // the mod ships, unpacked once by `npm run extract-fixture C1M1`. Without that

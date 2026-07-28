@@ -12,7 +12,7 @@ import { join } from 'node:path';
 import { launchEditor, REPO_ROOT } from './launch.ts';
 import type { Launched } from './launch.ts';
 import { readEntries } from '../src/pak.ts';
-import { buildNewMapProject } from '../src/new-map.ts';
+import { buildMapFixture } from './map-fixture.ts';
 
 let ed: Launched;
 
@@ -27,14 +27,10 @@ const CAMP_DIR = join(DATA, 'Campaigns', NAME);
 const OUT = join(REPO_ROOT, 'test-results', `${NAME}.h5c`);
 
 test.beforeAll(async () => {
-  // A campaign needs a map to point at. Build a blank one rather than leaning on
-  // the reconstruction, so this test stands on its own.
-  if (!existsSync(join(MAP_DIR, 'map.xdb'))) {
-    mkdirSync(MAP_DIR, { recursive: true });
-    for (const f of buildNewMapProject({ name: MAP, tiles: 96, twoLevel: false, spells: ['SPELL_NONE'], artifacts: ['ARTIFACT_NONE'] })) {
-      writeFileSync(join(MAP_DIR, f.path), f.data);
-    }
-  }
+  // A campaign needs a map to point at, and what a mission can point at is a map
+  // the game will have: a packed one in our folder. Built here rather than
+  // leaning on the reconstruction, so this test stands on its own.
+  buildMapFixture(MAP_DIR, MAP);
   rmSync(CAMP_DIR, { recursive: true, force: true });
   rmSync(OUT, { force: true });
   ed = await launchEditor();

@@ -321,10 +321,10 @@ test('packs to a .h5m holding the same members', async () => {
     expect(existsSync(join(MAP_DIR, 'map.xdb')), 'the rebuilt map is still on disk').toBe(true);
     // Reopen through the picker, the way a person would — and check every
     // step. The search filters WITHIN the active category chip, so pick All
-    // first or a SingleMissions map is invisible under "Campaigns".
+    // first. What the picker lists is the packed map in our folder.
     await page.locator('#cats .chip', { hasText: 'All' }).click();
     await page.locator('#search').fill(NAME);
-    const row = page.locator('#maplist .m', { hasText: `SingleMissions/${NAME}` }).first();
+    const row = page.locator('#maplist .m', { hasText: `${NAME}.mod` }).first();
     await expect(row, 'the picker lists the rebuilt map').toBeVisible();
     await row.click();
     await expect(page.locator('#title')).toContainText(NAME, { timeout: 120_000 });

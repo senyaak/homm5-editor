@@ -11,7 +11,7 @@ import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { launchEditor, REPO_ROOT } from './launch.ts';
 import type { Launched } from './launch.ts';
-import { buildNewMapProject } from '../src/new-map.ts';
+import { buildMapFixture } from './map-fixture.ts';
 
 let ed: Launched;
 
@@ -21,12 +21,8 @@ const MAP = 'e2e Dialogs Map';
 const MAP_DIR = join(DATA, 'Maps', 'SingleMissions', MAP);
 
 test.beforeAll(async () => {
-  if (!existsSync(join(MAP_DIR, 'map.xdb'))) {
-    mkdirSync(MAP_DIR, { recursive: true });
-    for (const f of buildNewMapProject({ name: MAP, tiles: 72, twoLevel: false, spells: ['SPELL_NONE'], artifacts: ['ARTIFACT_NONE'] })) {
-      writeFileSync(join(MAP_DIR, f.path), f.data);
-    }
-  }
+  // A mission can only name a map the game will have — packed, in our folder.
+  buildMapFixture(MAP_DIR, MAP, 72);
   rmSync(join(DATA, 'Campaigns', CAMP), { recursive: true, force: true });
   ed = await launchEditor();
 });

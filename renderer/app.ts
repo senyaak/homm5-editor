@@ -7312,7 +7312,7 @@ async function submitNewMap(): Promise<void> {
   ok.disabled = true;
   $('nm-err').textContent = '';
   try {
-    const { mapPath } = await window.editor.newMap({
+    const { mapPath, mapDir, archive } = await window.editor.newMap({
       name: $input('nm-name').value.trim(),
       tiles: Number($select('nm-size').value),
       twoLevel: $input('nm-two').checked,
@@ -7320,6 +7320,9 @@ async function submitNewMap(): Promise<void> {
     });
     newMapDialog().close();
     await loadMapPath(mapPath);
+    // Where it went — a map is a file in the install now, and the folder it is
+    // worked on in moves with HOMM5_UNPACK_TO, so neither is guessable.
+    $('hud').textContent = `new map → ${archive} · working folder ${mapDir}`;
     // The picker's list is now one map out of date.
     void initPicker();
   } catch (e) {

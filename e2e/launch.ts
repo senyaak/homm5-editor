@@ -13,6 +13,15 @@ import { dirname, join } from 'node:path';
 /** Repo root — the folder holding package.json (main: electron/main.ts). */
 export const REPO_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 
+/**
+ * The install the suite runs against, unless a spec brings its own.
+ *
+ * A map is a file in an install now (`<game>/H5E/<name>.mod`), so the specs need
+ * one — and it must not be the real game folder, or every run would leave `e2e …`
+ * maps in it.
+ */
+export const E2E_GAME = process.env.HOMM5_ROOT || join(REPO_ROOT, '_tmp', 'e2e-install');
+
 /** A launched app plus its first (only) window, ready for interaction. */
 export interface Launched {
   app: ElectronApplication;
@@ -52,6 +61,19 @@ export async function launchEditor(env: Record<string, string> = {}, args: strin
       // installed editor — which is how a whole suite came to open the setup
       // window instead of the editor, after that folder was deleted.
       HOMM5_DATA: process.env.HOMM5_DATA || join(REPO_ROOT, 'data-unpacked'),
+      // An install of its own, unless the spec brings one. A new map is a file
+      // in the install now — `<game>/H5E/<name>.mod` — so without this every
+      // spec that creates one would leave an archive in the real game folder,
+      // and the picker would fill up with `e2e …` maps nobody asked for.
+      HOMM5_ROOT: E2E_GAME,
+      // Unpack maps where the specs can find them. Every map the editor opens
+      // lives in an archive and is unpacked to work in; left to itself the app
+      // puts that copy in a workspace under _tmp, keyed by a hash of the
+      // archive's path, which is a fine place for a person and no place for a
+      // test to read `GroundTerrain.bin` from. Pointed at the data root, a map
+      // lands at its in-game path — `<data>/Maps/SingleMissions/<name>` — which
+      // is what every spec here computes for itself.
+      HOMM5_UNPACK_TO: process.env.HOMM5_UNPACK_TO || process.env.HOMM5_DATA || join(REPO_ROOT, 'data-unpacked'),
       ...env,
     } as Record<string, string>,
   });

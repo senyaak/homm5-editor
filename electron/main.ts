@@ -47,7 +47,7 @@ import {
   installCreatureMod, MOD_STEM, newCreatureMod, packCreatureMod,
 } from '../src/creature-mod.ts';
 import { MOD_DIR, MOD_EXT, ensureModDir, modFile } from '../src/mod-paths.ts';
-import { extractMapFolder, gameArchives, listOurMaps, listStockMaps } from '../src/map-source.ts';
+import { extractMapFolder, gameArchives, listOurMaps, listStockMaps, mapFolderIn } from '../src/map-source.ts';
 import type { MapSource } from '../src/map-source.ts';
 import { builtDll, extensionState, installExtension, writeEffectsFile } from '../src/extension.ts';
 import { describeUses, findArtifactUses, findCreatureUses } from '../src/artifact-usage.ts';
@@ -508,17 +508,19 @@ ipcMain.handle('map:new', async (_e: IpcMainInvokeEvent, p: NewMapPayload): Prom
   if (!MAP_SIZES.includes(p.tiles)) throw new Error(`unknown map size ${p.tiles}`);
 
   // A new map is a FILE from the moment it exists: `<game>/H5E/<name>.mod`, the
-  // one our build reads and the only place the picker looks. The working folder
-  // still goes under the data root — a map's path there is its path inside the
-  // archive, which is how the game addresses it — and is packed straight away,
+  // one our build reads and the only place the picker looks. It is written into
+  // a working folder like any other map (unpackRoot) and packed straight away,
   // so Save goes back into the .mod and there is never a map that exists only as
   // a folder nothing ships from.
-  const mapDir = join(gameData(), 'Maps', p.multiplayer ? 'Multiplayer' : 'SingleMissions', name);
-  if (existsSync(mapDir)) throw new Error(`${mapDir} already exists`);
   const g = gameRoot();
   if (!g) throw new Error('no game install configured — a new map needs somewhere to be a file');
   const archive = modFile(g, 'map', name);
   if (existsSync(archive)) throw new Error(`${archive} already exists`);
+  // Its path inside the archive is how the game addresses it, and the working
+  // folder keeps the same shape, so packing is a copy.
+  const prefix = `Maps/${p.multiplayer ? 'Multiplayer' : 'SingleMissions'}/${name}`;
+  const mapDir = join(unpackRoot(archive).root, prefix);
+  if (existsSync(mapDir)) throw new Error(`${mapDir} already exists`);
 
   // The enabled-spell and artifact lists are the game's own, so they follow the
   // installed data (and any mod) rather than a list frozen into the source.
@@ -534,14 +536,18 @@ ipcMain.handle('map:new', async (_e: IpcMainInvokeEvent, p: NewMapPayload): Prom
   for (const f of files) writeFileSync(join(mapDir, f.path), f.data);
   initProject(mapDir); // a manifest, so status/pack work on it immediately
   ensureModDir(g);
-  packProject(mapDir, archive, { prefix: archivePrefixFor(mapDir) });
+  packProject(mapDir, archive, { prefix });
   // From here it is a map opened from an archive, like any other, and Save
   // already knows what that means.
   const m = readManifest(mapDir);
   m.source = { path: archive, hash: createHash('sha1').update(readFileSync(archive)).digest('hex') };
+  // Written down rather than worked out from where the folder happens to be:
+  // that folder moves with HOMM5_UNPACK_TO, and the path inside the archive
+  // must not.
+  m.archivePrefix = prefix;
   writeManifest(mapDir, m);
   console.log(`[new] ${archive} · ${p.tiles}×${p.tiles}${p.twoLevel ? ' two-level' : ''} · ${files.length} files`);
-  return { mapPath: join(mapDir, 'map.xdb'), mapDir };
+  return { mapPath: join(mapDir, 'map.xdb'), mapDir, archive };
 });
 
 /**
@@ -557,6 +563,29 @@ ipcMain.handle('map:new', async (_e: IpcMainInvokeEvent, p: NewMapPayload): Prom
 function workspaceFor(archivePath: string): string {
   const key = createHash('sha1').update(resolve(archivePath).toLowerCase()).digest('hex').slice(0, 16);
   return join(workspaces(), `${basename(archivePath).replace(/[^\w.-]+/g, '_')}-${key}`);
+}
+
+/**
+ * WHERE MAPS ARE UNPACKED TO WORK IN — one answer for every kind of map.
+ *
+ * Every map the editor opens is inside an archive now (ours in `H5E/`, the
+ * game's in its paks), so every one of them is unpacked somewhere first. By
+ * default that is a workspace per archive under `_tmp`, which nobody has to look
+ * at or clean up.
+ *
+ * `HOMM5_UNPACK_TO` puts them in a folder of your choosing instead, at their
+ * in-game path: with it pointed at the data root, `Foo.mod` unpacks to
+ * `<data>/Maps/SingleMissions/Foo` — a fixed, predictable place, which is what
+ * the e2e suite reads after driving the window, and how the editor behaved
+ * before maps became files.
+ *
+ * `shared` says which it is, because it decides what may be deleted: a workspace
+ * is ours alone and is thrown away whole, while a shared root holds other maps
+ * (and everything else) and only the map's own folder may go.
+ */
+function unpackRoot(archive: string, key = archive): { root: string; shared: boolean } {
+  const to = process.env.HOMM5_UNPACK_TO;
+  return to ? { root: resolve(to), shared: true } : { root: workspaceFor(key), shared: false };
 }
 
 /** Is this workspace still the unpacking of THIS archive, as it stands now? */
@@ -608,7 +637,7 @@ function pruneWorkspaces(keep: string): void {
  * is exactly what must not be overwritten.
  */
 function openStockMap(archive: string, inner: string): OpenArchiveResult {
-  const root = workspaceFor(`${archive}#${inner}`);
+  const { root } = unpackRoot(archive, `${archive}#${inner}`);
   const mapDir = join(root, inner);
   if (existsSync(join(mapDir, 'map.xdb'))) {
     console.log(`[open] ${inner} of ${basename(archive)} → ${mapDir} (workspace reused)`);
@@ -652,30 +681,37 @@ ipcMain.handle('map:open-archive', async (_e: IpcMainInvokeEvent, p: OpenArchive
   // no source: saving a shipped map means saving the copy, and packing it offers
   // our folder. Opening one is starting FROM it.
   if (p.inner) return openStockMap(archive, p.inner);
-  const mapDir = workspaceFor(archive);
+  const { root, shared } = unpackRoot(archive);
+  // Where this archive's map will land, so a shared root can be cleared of THIS
+  // map without touching whatever else is in it.
+  const inner = mapFolderIn(archive);
 
-  // Reopening the same archive returns to the same workspace rather than
-  // unpacking a second copy beside the first: unsaved work and the undo history
-  // are keyed to that folder, so a new one every time would silently drop both.
-  // Only when the archive itself has moved on is the workspace rebuilt.
-  // The manifest lives with map.xdb, which is usually deeper than the workspace
-  // root — the archive's own folder structure is kept as it stands.
-  const existing = existsSync(mapDir) ? findMapDir(mapDir) : null;
+  // Reopening the same archive returns to the same folder rather than unpacking
+  // a second copy beside the first: unsaved work and the undo history are keyed
+  // to it, so a new one every time would silently drop both. Only when the
+  // archive itself has moved on is it rebuilt. The manifest lives with map.xdb,
+  // which is usually deeper — the archive's own folder structure is kept as it
+  // stands.
+  const guess = inner ? join(root, inner) : null;
+  const existing = guess && existsSync(guess) ? guess : (existsSync(root) ? findMapDir(root) : null);
   if (existing && existsSync(join(existing, MANIFEST_NAME)) && sourceMatches(existing, archive)) {
-    console.log(`[open] ${archive} → ${existing} (workspace reused)`);
-    return { mapPath: join(existing, 'map.xdb'), mapDir: existing, files: listDirFiles(mapDir).length };
+    console.log(`[open] ${archive} → ${existing} (unpacked copy reused)`);
+    return { mapPath: join(existing, 'map.xdb'), mapDir: existing, files: listDirFiles(existing).length };
   }
   // Rebuilding: the watcher has the old copy of this very folder open, and on
   // Windows an open handle is enough to make the delete fail.
-  if (session && session.mapDir.startsWith(mapDir)) { session.watch.stop(); session = null; }
-  rmSync(mapDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
-  pruneWorkspaces(mapDir);
+  const stale = shared ? (guess ?? '') : root;
+  if (stale) {
+    if (session && session.mapDir.startsWith(stale)) { session.watch.stop(); session = null; }
+    rmSync(stale, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  }
+  if (!shared) pruneWorkspaces(root);
 
   // The map is usually NOT at the archive root: members are named by their path
   // under the game's data root ('Maps/SingleMissions/foo/map.xdb'), which is how
   // the game finds them. openProject unpacks that tree as it stands and reports
   // the inner folder holding map.xdb as the project.
-  const { files, projectDir } = openProject(archive, mapDir, { mapProject: true });
+  const { files, projectDir } = openProject(archive, root, { mapProject: true });
   const mapPath = join(projectDir, 'map.xdb');
   if (!existsSync(mapPath)) throw new Error(`${basename(archive)} holds no map.xdb (${files.length} files)`);
   console.log(`[open] ${archive} → ${projectDir} · ${files.length} files`);

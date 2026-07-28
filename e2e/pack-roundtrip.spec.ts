@@ -14,12 +14,20 @@
 // native windows, not page content. They are stubbed in the MAIN process, so
 // everything on this side of them — the button, the IPC, the packing, the
 // unpacking, the reload — is the real thing.
+//
+// THIS ONE RUNS WITHOUT `HOMM5_UNPACK_TO`, alone in the suite. That variable
+// pins unpacked maps to a folder of the runner's choosing (e2e/launch.ts points
+// it at the data root so the other specs can read what the window wrote), and
+// pinning them is the opposite of what is under test here: the default is a
+// workspace per archive, and "not beside the archive, not a second copy" is the
+// claim. So the working folder is learned from the app rather than computed.
 
 import { test, expect } from '@playwright/test';
 import { existsSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { readEntries } from '../src/pak.ts';
-import { hudSays, launchEditor, REPO_ROOT } from './launch.ts';
+import { E2E_GAME, hudSays, launchEditor, REPO_ROOT } from './launch.ts';
+import { modFile } from '../src/mod-paths.ts';
 import type { Launched } from './launch.ts';
 
 let ed: Launched;
@@ -30,14 +38,19 @@ const DATA = process.env.HOMM5_DATA || join(REPO_ROOT, 'data-unpacked');
 const MAPS = join(DATA, 'Maps');
 // A map's path under the data root is also its path inside the archive.
 const PREFIX = `Maps/SingleMissions/${NAME}`;
-const MAP_DIR = join(MAPS, 'SingleMissions', NAME);
 const ARCHIVE = join(MAPS, 'SingleMissions', `${NAME}.h5m`);
 
+/** The working folder the app made for the new map — it says where. */
+let MAP_DIR = '';
+/** And the one the archive was unpacked into, which the last test reopens. */
+let REOPENED = '';
 /** Workspaces live under the app's own data dir; collected as the test learns them. */
 const workspaces = new Set<string>();
 
 function cleanup(): void {
-  for (const p of [MAP_DIR, ARCHIVE, ...workspaces]) if (existsSync(p)) rmSync(p, { recursive: true, force: true });
+  for (const p of [MAP_DIR, ARCHIVE, modFile(E2E_GAME, 'map', NAME), ...workspaces]) {
+    if (p && existsSync(p)) rmSync(p, { recursive: true, force: true });
+  }
 }
 
 /** The folder the app says it unpacked into, from the status line. */
@@ -49,7 +62,9 @@ function unpackedDir(hud: string): string {
 
 test.beforeAll(async () => {
   cleanup();
-  ed = await launchEditor();
+  // Empty, not absent: the app treats it as unset and goes back to a workspace
+  // per archive, which is what this spec is about.
+  ed = await launchEditor({ HOMM5_UNPACK_TO: '' });
   // Both OS dialogs are answered for the whole session, before anything else
   // runs. Patching them mid-test raced with the app's own start-up work in the
   // main process often enough to fail one run in three, and there is nothing to
@@ -71,6 +86,14 @@ test('packs a new map, opens the .h5m back, and gets the same bytes', { tag: '@n
   await page.locator('#nm-ok').click();
   await expect(page.locator('#newmap')).toBeHidden({ timeout: 30_000 });
   await expect(page.locator('#title')).toHaveText(`homm5-editor — ${NAME} (72×72)`, { timeout: 60_000 });
+  // The app says where the map went: a `.mod` in the install, and the folder it
+  // is worked on in. Neither is guessable from here, and the folder is what the
+  // comparison below reads.
+  const created = await hudSays(page, /^new map → /);
+  MAP_DIR = created.replace(/^.*· working folder /, '');
+  workspaces.add(MAP_DIR);
+  expect(existsSync(join(MAP_DIR, 'map.xdb')), `the working folder is ${MAP_DIR}`).toBe(true);
+  expect(existsSync(modFile(E2E_GAME, 'map', NAME)), 'a new map is a file in the install').toBe(true);
 
   // --- pack -------------------------------------------------------------
   // The stubbed save dialog answers with the path it would have suggested,
@@ -104,6 +127,7 @@ test('packs a new map, opens the .h5m back, and gets the same bytes', { tag: '@n
   // wrong status entirely.
   const reopened = unpackedDir(await hudSays(page, /unpacked \d+ files → /));
   workspaces.add(reopened);
+  REOPENED = reopened;
   await expect(page.locator('#title')).toHaveText(`homm5-editor — ${NAME} (72×72)`, { timeout: 60_000 });
 
   // Unpacked into a workspace of ours, NOT beside the archive: the archive sits
@@ -150,7 +174,9 @@ test('Save writes the work back into the .h5m it came from', { tag: '@nodata' },
 
 test('reopening the same archive returns to the same workspace', { tag: '@nodata' }, async () => {
   const { page } = ed;
-  const first = [...workspaces][0]!;
+  // The workspace the archive was unpacked into the first time — NOT the folder
+  // the map was created in, which is its own and stays as it is.
+  const first = REOPENED;
 
   await page.locator('#open').click();
   // The exact message, not the word: the data root is called `data-unpacked`,
