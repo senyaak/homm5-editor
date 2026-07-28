@@ -25,10 +25,11 @@
 // The literals are unique in the file, so a search for them holds on any build
 // where they survive.
 
-import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { PATCHED_EXE, SHIPPED_EXE } from './creature-limit.ts';
+import { MANIFEST_NAME as PROJECT_MANIFEST } from './project.ts';
 
 /** The folder our build reads, relative to the game root. */
 export const MOD_DIR = 'H5E';
@@ -86,6 +87,72 @@ export function ensureModDir(gameRoot: string): string {
  */
 export function modFile(gameRoot: string, kind: ModKind, stem: string): string {
   return join(modDir(gameRoot), `${stem}.${MOD_EXT[kind]}`);
+}
+
+/** A map of ours, as the picker shows it. */
+export interface OurMap {
+  /** The archive's file name, or the working folder's. */
+  name: string;
+  /** What it is called in the list: the file name, or its path under `Maps/`. */
+  rel: string;
+  /** The archive, or the working folder's `map.xdb`. */
+  path: string;
+  /** Packed: opening it unpacks first. */
+  archive?: boolean;
+}
+
+/** The subfolders, or files, of `dir` — nothing at all when it is not there. */
+function entriesIn(dir: string, kind: 'dir' | 'file'): string[] {
+  try {
+    return readdirSync(dir, { withFileTypes: true })
+      .filter((e) => (kind === 'dir' ? e.isDirectory() : e.isFile()))
+      .map((e) => e.name);
+  } catch { return []; }
+}
+
+/**
+ * Every map that is OURS, and none of the game's.
+ *
+ * Two places hold them: `<game>/H5E/*.mod`, packed, where our build reads them;
+ * and working folders under `<data>/Maps`, which is the same tree the game's own
+ * maps unpack into. Nothing in a path tells the two apart — but ours have been a
+ * project, and so carry the editor's `project.json`, and theirs never have.
+ *
+ * That is also what makes this quick. Listing everything meant walking the whole
+ * `Maps` tree and stat-ing every file of every shipped map; ours sit at
+ * `<data>/Maps/<tree>/<name>`, so two levels of folder names is the whole
+ * search.
+ */
+export function listOurMaps(gameRoot: string | null, dataRoot: string | null): OurMap[] {
+  const maps: OurMap[] = [];
+
+  if (gameRoot) {
+    const dir = modDir(gameRoot);
+    for (const name of entriesIn(dir, 'file')) {
+      if (name.toLowerCase().endsWith(`.${MOD_EXT.map}`)) {
+        maps.push({ name, rel: name, path: join(dir, name), archive: true });
+      }
+    }
+  }
+
+  // Guarded rather than joined blindly: join('', 'Maps') is the relative path
+  // "Maps", which would quietly search whatever folder we were started from.
+  if (dataRoot) {
+    const mapsDir = join(dataRoot, 'Maps');
+    const take = (dir: string, rel: string, name: string): void => {
+      if (existsSync(join(dir, PROJECT_MANIFEST)) && existsSync(join(dir, 'map.xdb'))) {
+        maps.push({ name, rel, path: join(dir, 'map.xdb') });
+      }
+    };
+    for (const tree of entriesIn(mapsDir, 'dir')) {
+      take(join(mapsDir, tree), tree, tree);
+      for (const name of entriesIn(join(mapsDir, tree), 'dir')) {
+        take(join(mapsDir, tree, name), `${tree}/${name}`, name);
+      }
+    }
+  }
+
+  return maps.sort((a, b) => a.rel.localeCompare(b.rel));
 }
 
 /** Which set of patterns an executable is scanning. */

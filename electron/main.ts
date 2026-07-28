@@ -46,7 +46,7 @@ import {
   updateArtifact, updateArtifactSet, artifactLimit, buildCreatureMod, dataReader, findCreatureMods,
   installCreatureMod, MOD_STEM, newCreatureMod, packCreatureMod,
 } from '../src/creature-mod.ts';
-import { MOD_DIR, MOD_EXT, modFile } from '../src/mod-paths.ts';
+import { MOD_DIR, MOD_EXT, listOurMaps, modFile } from '../src/mod-paths.ts';
 import { builtDll, extensionState, installExtension, writeEffectsFile } from '../src/extension.ts';
 import { describeUses, findArtifactUses, findCreatureUses } from '../src/artifact-usage.ts';
 import { EFFECT_STATS, effectsOf } from '../src/artifact-effects.ts';
@@ -453,46 +453,15 @@ async function runSmoke(mapPath: string): Promise<void> {
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 app.on('will-quit', () => { session?.watch.stop(); });
 
-// --- IPC: list openable maps under the game-data root ---
-// A map is "openable" when its folder has both map.xdb and GroundTerrain.bin.
-// This powers the in-window picker so users don't have to hunt for files.
+// --- IPC: list OUR maps ---
+// Which maps those are, and how they are told from the game's own, is
+// listOurMaps in src/mod-paths.ts — where it can be tested without a window.
 ipcMain.handle('maps:list', async (): Promise<MapsListResult> => {
   const root = gameData();
-  // No data root means no answer to give. Guarded rather than joined blindly:
-  // join('', 'Maps') is the relative path "Maps", which would quietly search
-  // whatever folder the app happens to have been started from.
-  if (!root) return { root, maps: [] };
-  const mapsDir = join(root, 'Maps');
-  if (!existsSync(mapsDir)) return { root, maps: [] };
-  const maps: MapListEntry[] = [];
-  const walk = (dir: string): void => {
-    let ents: string[];
-    try { ents = readdirSync(dir); } catch { return; }
-    if (ents.includes('map.xdb') && ents.includes('GroundTerrain.bin')) {
-      const rel = relative(mapsDir, dir).split(sep).join('/');
-      maps.push({ name: basename(dir), rel, path: join(dir, 'map.xdb') });
-    }
-    for (const e of ents) {
-      const full = join(dir, e);
-      // Packed maps count as openable too — the game reads .h5m, so a map that
-      // has been packed and its folder tidied away is often the only copy left.
-      // Opening one unpacks it first (map:open-archive).
-      if (/\.h5m$/i.test(e)) {
-        const rel = relative(mapsDir, dir).split(sep).join('/');
-        maps.push({ name: e, rel: rel ? `${rel}/${e}` : e, path: full, archive: true });
-        continue;
-      }
-      try { if (statSync(full).isDirectory()) walk(full); } catch { /* skip */ }
-    }
-  };
-  // [perf] The first screen. This walks the whole Maps tree with a stat() per
-  // entry, so on a cold disk cache (first launch after a boot) it can run long
-  // and varies run to run — a prime suspect for the intermittent startup lag.
-  const tWalk = performance.now();
-  walk(mapsDir);
-  console.log(`[perf] maps:list ${(performance.now() - tWalk) | 0}ms · ${maps.length} maps`);
-  maps.sort((a, b) => a.rel.localeCompare(b.rel));
-  return { root: gameData(), maps };
+  const started = performance.now();
+  const maps: MapListEntry[] = listOurMaps(gameRoot(), root || null);
+  console.log(`[perf] maps:list ${(performance.now() - started) | 0}ms · ${maps.length} maps`);
+  return { root, maps };
 });
 
 // --- IPC: open a map file via the OS dialog (starts in the last-used folder) ---
@@ -504,9 +473,9 @@ ipcMain.handle('dialog:openMap', async (): Promise<OpenMapDialogResult> => {
     // Both halves of the round trip: an unpacked folder's map.xdb, or the .h5m
     // Pack produced from one.
     filters: [
-      { name: 'HoMM5 map', extensions: ['xdb', 'h5m', 'h5c', 'h5u'] },
+      { name: 'HoMM5 map', extensions: ['xdb', 'mod', 'h5m', 'h5c', 'h5u'] },
       { name: 'Map folder', extensions: ['xdb'] },
-      { name: 'Packed map', extensions: ['h5m', 'h5c', 'h5u'] },
+      { name: 'Packed map', extensions: ['mod', 'h5m', 'h5c', 'h5u'] },
     ],
   };
   // Electron treats a null parent as "no parent"; pick the overload to match.

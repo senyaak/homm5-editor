@@ -3719,7 +3719,7 @@ function renderLocDialog(): void {
     if (code === locState.base) {
       const b = document.createElement('span'); b.className = 'lz-base'; b.textContent = 'base'; row.appendChild(b);
     }
-    const exp = document.createElement('button'); exp.className = 'lz-export'; exp.textContent = 'export .h5m';
+    const exp = document.createElement('button'); exp.className = 'lz-export'; exp.textContent = 'export .mod';
     exp.title = `pack a single-language ${code} map`;
     exp.addEventListener('click', () => void exportLoc(code));
     row.appendChild(exp);
@@ -7197,7 +7197,7 @@ $('extchange-ignore').onclick = hideExternalChange;
  */
 async function openAny(path: string | null): Promise<void> {
   if (!path) return;
-  if (!/\.(h5m|h5c|h5u|pak)$/i.test(path)) { await loadMapPath(path); return; }
+  if (!/\.(mod|h5m|h5c|h5u|pak)$/i.test(path)) { await loadMapPath(path); return; }
   $('loading').classList.add('on');
   $('loadmsg').textContent = 'unpacking…';
   try {
@@ -7290,8 +7290,9 @@ async function initPicker() {
 // --- New Map -------------------------------------------------------------
 //
 // The original's startup dialog. Everything it asks for goes into the generated
-// files; the map is written under the game's Maps folder — where the original
-// editor keeps its own maps and where our Pack writes .h5m — and then opened
+// files; the map is written under the data root's Maps folder — where the
+// original editor keeps its own maps, and where ours are told apart by the
+// project manifest — and then opened
 // like any other, so there is no separate "unsaved new map" state to get wrong.
 
 function newMapDialog(): HTMLDialogElement {
