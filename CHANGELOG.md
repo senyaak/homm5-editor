@@ -11,7 +11,7 @@ would have seen.
 its section by version number, so this heading is inert until it is renamed to
 one.
 
-## Unreleased
+## 0.4.0 — 2026-07-28
 
 ### Fixed
 
@@ -88,6 +88,20 @@ one.
   written up in the format doc: `WindAffected` is false on every effect the
   game ships, and the presets' `ParticlesColor` is the same 0.25 grey in all
   of them — an engine constant, not a per-map knob.)
+
+### Known limitations
+
+- **A recoloured texture is written uncompressed.** The shipped creature
+  textures are DXT3 with a mipmap chain; a repaint writes the surface back as
+  plain 32-bit with a single level, which the game reads (a recoloured
+  Sharpshooter was checked in play) but which costs four times the VRAM and
+  leaves nothing to fall back to when the creature is drawn small.
+  Recompressing is the next thing in the plan.
+- **Dwellings and whole creature sets are still command-line only** — the
+  dialogs author one creature or one artifact at a time (`npm run units-mod`
+  builds a set from a project's `units.json`).
+
+## 0.3.0 — 2026-07-27
 
 ### Added
 

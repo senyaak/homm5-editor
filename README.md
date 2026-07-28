@@ -436,6 +436,15 @@ two empty folders.
 npm run test-e2e-nodata
 ```
 
+The C1M1 chain is half an hour and rebuilds a map it leaves on disk, so it is
+not the check to run before every commit — and running it *over* the map a
+previous run built proves little, since idempotent stages find nothing to do.
+Delete that map when the reconstruction is what you mean to test; otherwise:
+
+```bash
+npm run test-e2e-fast
+```
+
 ## Next
 
 The terrain and object tooling is enough to build a map by hand; attention is on

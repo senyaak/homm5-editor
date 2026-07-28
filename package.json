@@ -1,6 +1,6 @@
 {
   "name": "homm5-editor",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
   "description": "Experimental map/campaign editor for Heroes of Might and Magic 5 (Tribes of the East)",
@@ -49,6 +49,7 @@
     "typecheck": "tsc --noEmit",
     "test": "node tools/test-all.ts",
     "test-e2e": "playwright test",
+    "test-e2e-fast": "playwright test \"e2e/[^/]+\\.spec\\.ts$\"",
     "test-e2e-nodata": "playwright test --grep @nodata",
     "build:renderer": "node tools/build-renderer.ts",
     "build:app": "node tools/build-app.ts",

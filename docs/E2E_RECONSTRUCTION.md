@@ -227,8 +227,31 @@ currently holds rather than against a blank, kinds/rivers/textures write
 absolute values. So a stage can be re-run alone while you work on it, and the
 whole chain in order rebuilds the mission from nothing.
 
-The map is not cleaned up afterwards. It is the artefact:
-`<data root>/Maps/SingleMissions/e2e Reconstruct C1M1/`.
+The map is not cleaned up afterwards — it is left for reading:
+`<data root>/Maps/SingleMissions/e2e Reconstruct C1M1/`. But it is **disposable
+test output, not an asset**, and that matters for how the suite is run.
+
+**Delete it before a run that is meant to prove something.** The stages are
+idempotent, so over a map a previous run already built they mostly find nothing
+to do and pass in seconds — green, and having rebuilt nothing. The claim this
+suite exists to make is "the editor builds C1M1 from a blank", and only a clean
+slate makes it:
+
+```bash
+rm -rf "<data root>/Maps/SingleMissions/e2e Reconstruct C1M1"
+npx playwright test          # ~35–45 min, the whole chain from nothing
+```
+
+For the ordinary check before a commit, the chain is not what you want:
+
+```bash
+npm run test-e2e-fast        # every spec except e2e/c1m1/** (~2 min)
+```
+
+An interrupted run is survivable either way: a stage's strokes live in the main
+process until it saves at the end, so killing one mid-pass leaves the map
+exactly as it was — measured after one such interruption, with all three gap
+reports still where the last complete run left them.
 
 ### The second reconstruction: a map of our own
 
