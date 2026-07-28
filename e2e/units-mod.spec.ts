@@ -1,16 +1,21 @@
-// Adding a new unit to the game, end to end through the window.
+// Adding a new unit — and a new artifact — to the game, end to end through the
+// window.
 //
-// The Units dialog is game-global: it builds a .h5u into UserMODs and patches
-// the executable's creature ceiling. So the test hands the app its OWN game
-// install — a temp folder holding a copy of the shipped executable and an empty
-// UserMODs — via HOMM5_ROOT, and the real install is never touched. The data
-// root stays the ordinary checkout tree; a mod build only reads it.
+// The Units and Artifacts dialogs are game-global: they build a .h5u into
+// UserMODs and patch the executable's ceilings. So the test hands the app its
+// OWN game install — a temp folder holding a copy of the shipped executable and
+// an empty UserMODs — via HOMM5_ROOT, and the real install is never touched.
+// The data root stays the ordinary checkout tree; a mod build only reads it.
 //
-// The creature added is the Heroes 3 Sharpshooter, with exactly the numbers the
-// shipped sod-creatures mod gives it (Maps/sod/packed/sod-creatures/units.json)
-// — the known-good unit this reproduces through the UI instead of the CLI. The
-// last test then proves the loop closes: a fresh map's monster offers the new
-// creature in its picker, because the editor mounts what it just installed.
+// The forms work from PRESETS: picking a donor loads its every field (stats,
+// texts, abilities, the art documents), and the person edits the difference.
+// The mod is always OURS — there is no field for choosing an archive.
+//
+// What gets added reproduces the SoD port's Sharpshooter and its Undertaker's
+// Amulet, exactly as the shipped sod-creatures/sod-artifacts mods define them
+// (Maps/sod/packed/*/units.json) — the known-good things this suite rebuilds
+// through the UI instead of the CLI. The last test proves the loop closes: a
+// fresh map's garrison offers the new creature in its army picker.
 
 import { test, expect } from '@playwright/test';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -22,6 +27,8 @@ import { openObjectPalette, pickObject, placeAtTile } from './objects.ts';
 import { addItem, reveal, setTreeValue } from './tree.ts';
 import { readCreatureMod } from '../src/creature-mod.ts';
 import { patchExe, readExe } from '../src/creature-limit.ts';
+import { ORIGINAL_ARTIFACTS, patchArtifactLimit, readArtifactLimit, SITES_FILE } from '../src/artifact-limit.ts';
+import type { Site } from '../src/artifact-limit.ts';
 
 let ed: Launched;
 
@@ -30,18 +37,19 @@ const DATA = process.env.HOMM5_DATA || join(REPO_ROOT, 'data-unpacked');
 const GAME = join(REPO_ROOT, '_tmp', 'e2e-units-game');
 /** The real install the checkout sits in — the source of a shipped executable. */
 const REAL_GAME = join(REPO_ROOT, '..');
-const MOD = 'e2e-units';
+/** The archive the dialogs create: always OUR mod, never a choice. */
+const MOD = 'homm5-units';
 const MAP_NAME = 'e2e Units Map';
 const MAP_DIR = join(DATA, 'Maps', 'SingleMissions', MAP_NAME);
 
-/** What the form gets filled with — the sod-creatures Sharpshooter, verbatim. */
+/** What the form gets edited to — the sod-creatures Sharpshooter, verbatim.
+ *  The rest of the fields come from the donor's preset and stay. */
 const SHARPSHOOTER = {
-  id: 'CREATURE_H3_SHARPSHOOTER',
   file: 'H3Sharpshooter',
+  id: 'CREATURE_H3_SHARPSHOOTER', // fills itself from the file stem
   name: 'Снайперы',
   description: 'Стрелки-наёмники, чьё мастерство не знает ни укрытий, ни расстояний.',
   abilitiesText: 'Стрелок, Без штрафа за дистанцию, Пробивающая стрела',
-  abilityIds: 'ABILITY_NO_RANGE_PENALTY ABILITY_PIERCING_ARROW',
   donor: 'CREATURE_SHARP_SHOOTER',
   stats: {
     'um-attack': '12', 'um-defence': '10', 'um-mindmg': '8', 'um-maxdmg': '10',
@@ -49,6 +57,15 @@ const SHARPSHOOTER = {
     'um-range': '-1', 'um-growth': '4', 'um-gold': '400', 'um-tier': '4',
     'um-exp': '82', 'um-power': '940', 'um-size': '1',
   } as Record<string, string>,
+};
+
+/** And the sod-artifacts amulet, built on a shipped neck-piece's preset. */
+const AMULET = {
+  file: 'H3UndertakersAmulet',
+  id: 'ARTIFACT_H3_UNDERTAKERS_AMULET',
+  name: 'Амулет гробовщика',
+  description: 'Увеличивает мастерство некромантии своего владельца.',
+  donor: 'ARTIFACT_NECROMANCER_PENDANT',
 };
 
 function cleanup(): void {
@@ -63,50 +80,70 @@ test.beforeAll(async () => {
   mkdirSync(join(GAME, 'UserMODs'), { recursive: true });
   // The shipped H5_Game.exe is wrapped in Steam's DRM, so its code cannot be
   // read — the unwrapped copy is the real install's H5_Game_NCF.exe. Take that
-  // one and put its ceiling back at the shipped 180, so this install starts as
-  // a game no mod has ever touched.
+  // one and put BOTH ceilings back at their shipped values, so this install
+  // starts as a game no mod has ever touched. The artifact sites cannot be
+  // re-found by search once the value is a round 100 (the accessor bytes stop
+  // being unique), so the sites note beside the real executable rides along —
+  // for the reset here, and for the install the test performs.
   const real = readFileSync(join(REAL_GAME, 'bin', 'H5_Game_NCF.exe'));
-  writeFileSync(join(GAME, 'bin', 'H5_Game_NCF.exe'), patchExe(real, 180).data);
+  const noted = JSON.parse(readFileSync(join(REAL_GAME, SITES_FILE), 'utf8')) as Site[];
+  const exe = patchArtifactLimit(patchExe(real, 180).data, ORIGINAL_ARTIFACTS, noted).data;
+  writeFileSync(join(GAME, 'bin', 'H5_Game_NCF.exe'), exe);
+  writeFileSync(join(GAME, SITES_FILE), `${JSON.stringify(noted, null, 2)}\n`);
   ed = await launchEditor({ HOMM5_ROOT: GAME });
 });
 test.afterAll(async () => { await ed?.app.close(); cleanup(); });
 
-test('the Units dialog opens with no map and reports a clean install', async () => {
+test('the Units dialog opens clean, and the donor loads as a preset', async () => {
   const { page } = ed;
   await page.locator('#unitsbtn').click();
   await expect(page.locator('#unitsmod')).toBeVisible();
   await expect(page.locator('#um-list')).toContainText('none — the game holds its shipped creatures only');
-  // The donor picker filled from the data root, with human labels.
+
+  // Picking the donor loads its EVERY field: texts, stats, abilities, art.
   await expect(page.locator('#um-donor option[value="CREATURE_SHARP_SHOOTER"]')).toHaveCount(1, { timeout: 30_000 });
-  const label = await page.locator('#um-donor option[value="CREATURE_SHARP_SHOOTER"]').textContent();
-  expect(label).toContain('Лесные стрелки');
+  await page.locator('#um-donor').selectOption(SHARPSHOOTER.donor);
+  await expect(page.locator('#um-name')).toHaveValue('Лесные стрелки');
+  await expect(page.locator('#um-attack')).toHaveValue('6');
+  await expect(page.locator('#um-shots')).toHaveValue('16');
+  await expect(page.locator('#um-town')).toHaveValue('TOWN_PRESERVE');
+  const abids = page.locator('#um-abids option:checked');
+  await expect(abids).toHaveCount(2);
+  await expect(page.locator('#um-abids option[value="ABILITY_NO_RANGE_PENALTY"]')).toHaveJSProperty('selected', true);
+  await expect(page.locator('#um-art-icon')).toHaveValue(/Sharpshooter\.\(Texture\)\.xdb/);
+  await expect(page.locator('#um-art-character')).toHaveValue(/T3_Elf_Sniper\.\(Character\)\.xdb/);
 });
 
-test('fills the form and installs the Sharpshooter', async () => {
+test('edits the difference and installs the Sharpshooter', async () => {
   test.setTimeout(3 * 60_000);
   const { page } = ed;
 
-  await page.locator('#um-stem').fill(MOD);
-  await page.locator('#um-id').fill(SHARPSHOOTER.id);
+  // Self-sufficient: a worker restart after an earlier failure relaunches the
+  // app, so the dialog and the donor are ensured rather than assumed.
+  if (!(await page.locator('#unitsmod').isVisible())) {
+    await page.locator('#unitsbtn').click();
+    await expect(page.locator('#um-donor option[value="CREATURE_SHARP_SHOOTER"]')).toHaveCount(1, { timeout: 30_000 });
+  }
+  await page.locator('#um-donor').selectOption(SHARPSHOOTER.donor);
+  await expect(page.locator('#um-attack')).toHaveValue('6'); // the preset settled
+
+  // The file stem spells the ID by itself.
   await page.locator('#um-file').fill(SHARPSHOOTER.file);
+  await expect(page.locator('#um-id')).toHaveValue(SHARPSHOOTER.id);
+
   await page.locator('#um-name').fill(SHARPSHOOTER.name);
   await page.locator('#um-desc').fill(SHARPSHOOTER.description);
   await page.locator('#um-abil').fill(SHARPSHOOTER.abilitiesText);
-  await page.locator('#um-abids').fill(SHARPSHOOTER.abilityIds);
-  await page.locator('#um-donor').selectOption(SHARPSHOOTER.donor);
   for (const [input, value] of Object.entries(SHARPSHOOTER.stats)) {
     await page.locator(`#${input}`).fill(value);
   }
+  // The sod unit is a neutral; the donor's home town is not wanted.
+  await page.locator('#um-town').selectOption('TOWN_NO_TYPE');
 
   await page.locator('#um-ok').click();
-  // Building copies the whole art closure (~45 files) and patches a 14 MB
-  // executable; well under a minute, but not instant.
   await expect(page.locator('#um-note')).toContainText('installed', { timeout: 120_000 });
   await expect(page.locator('#um-note')).toContainText('ceiling 181');
-
-  // The list refreshed to show what is now installed.
   await expect(page.locator('#um-list')).toContainText(`${MOD}.h5u`);
-  await expect(page.locator('#um-list')).toContainText('ceiling 181');
   await expect(page.locator('#um-list')).toContainText('180 Снайперы');
 
   // On disk: the archive reads back as the creature we described...
@@ -119,9 +156,14 @@ test('fills the form and installs the Sharpshooter', async () => {
   expect(c.stats.attack).toBe(12);
   expect(c.stats.shots).toBe(32);
   expect(c.stats.range).toBe(-1);
-  expect(c.stats.abilities).toEqual(['ABILITY_NO_RANGE_PENALTY', 'ABILITY_PIERCING_ARROW']);
+  expect(c.stats.town).toBe('TOWN_NO_TYPE');
+  // The abilities came from the donor's preset, untouched.
+  expect([...c.stats.abilities].sort()).toEqual(['ABILITY_NO_RANGE_PENALTY', 'ABILITY_PIERCING_ARROW']);
   expect(c.visualSource).toContain('SharpShooter.(CreatureVisual)');
   expect(c.monsterSource).toContain('Sharpshooter.(AdvMapMonsterShared)');
+  // And the art slots resolved to the donor's documents — the preset's copies.
+  expect(c.from.icon).toContain('Sharpshooter.(Texture)');
+  expect(c.from.character).toContain('T3_Elf_Sniper');
 
   // ...and the executable's ceiling agrees with it exactly.
   const exe = readExe(readFileSync(join(GAME, 'bin', 'H5_Game_NCF.exe')));
@@ -130,6 +172,57 @@ test('fills the form and installs the Sharpshooter', async () => {
 
   await page.locator('#um-cancel').click();
   await expect(page.locator('#unitsmod')).toBeHidden();
+});
+
+test('the Artifacts dialog builds the amulet into the same mod', async () => {
+  test.setTimeout(3 * 60_000);
+  const { page } = ed;
+
+  await page.locator('#artsbtn').click();
+  await expect(page.locator('#artsmod')).toBeVisible();
+
+  // The donor's preset fills the form: slot, rank, prices, stats, icon.
+  await expect(page.locator(`#am-donor option[value="${AMULET.donor}"]`)).toHaveCount(1, { timeout: 30_000 });
+  await page.locator('#am-donor').selectOption(AMULET.donor);
+  await expect(page.locator('#am-slot')).toHaveValue('NECK');
+  await expect(page.locator('#am-cost')).toHaveValue('7000');
+  await expect(page.locator('#am-icon')).toHaveValue(/Necromancer_Pendant/);
+
+  await page.locator('#am-file').fill(AMULET.file);
+  await expect(page.locator('#am-id')).toHaveValue(AMULET.id);
+  await page.locator('#am-name').fill(AMULET.name);
+  await page.locator('#am-desc').fill(AMULET.description);
+  // The sod amulet is a cheaper minor piece that moves Knowledge.
+  await page.locator('#am-rank').selectOption('ARTF_CLASS_MINOR');
+  await page.locator('#am-cost').fill('5000');
+  await page.locator('#am-ai').fill('700');
+  await page.locator('#am-knowledge').fill('2');
+
+  await page.locator('#am-ok').click();
+  await expect(page.locator('#am-note')).toContainText('installed', { timeout: 120_000 });
+  await expect(page.locator('#am-note')).toContainText('ceiling 98');
+  await expect(page.locator('#am-list')).toContainText('Амулет гробовщика (NECK)');
+
+  // One archive carries both: the creature from the previous test, this artifact.
+  const found = readCreatureMod(join(GAME, 'UserMODs', `${MOD}.h5u`));
+  expect(found!.mod.creatures).toHaveLength(1);
+  const a = found!.mod.artifacts[0]!;
+  expect(a.id).toBe(AMULET.id);
+  expect(a.number).toBe(97);
+  expect(a.slot).toBe('NECK');
+  expect(a.rank).toBe('ARTF_CLASS_MINOR');
+  expect(a.cost).toBe(5000);
+  expect(a.stats).toEqual({ Knowledge: 2 });
+  expect(a.icon).toContain('Necromancer_Pendant');
+  expect(a.board).toEqual({ tiles: 1 });
+
+  // And the executable's artifact ceiling agrees.
+  const noted = JSON.parse(readFileSync(join(GAME, SITES_FILE), 'utf8')) as Site[];
+  const reading = readArtifactLimit(readFileSync(join(GAME, 'bin', 'H5_Game_NCF.exe')), noted);
+  expect(reading.limit).toBe(ORIGINAL_ARTIFACTS + 1);
+
+  await page.locator('#am-cancel').click();
+  await expect(page.locator('#artsmod')).toBeHidden();
 });
 
 test('a fresh map offers the new creature in the army picker', async () => {
@@ -154,7 +247,7 @@ test('a fresh map offers the new creature in the army picker', async () => {
   await expect(page.locator('#mt-dialog')).toBeVisible();
 
   // Add a stack and pick our creature. The dropdown is the army picker: its
-  // roster is built over the mounted chain, so the creature the previous test
+  // roster is built over the mounted chain, so the creature the earlier test
   // installed is one of its options — under the name the mod gave it.
   await addItem(page, ['armySlots']);
   await setTreeValue(page, ['armySlots', 0, 'Creature'], SHARPSHOOTER.id);

@@ -22,6 +22,8 @@ import { parse, find, children, childText } from './xml.ts';
 import type { XmlElement } from './xml.ts';
 import { toAssets } from './assets.ts';
 import type { Assets } from './assets.ts';
+import { readStats } from './creatures.ts';
+import type { CreatureStats } from './creatures.ts';
 
 /** One choice in a picker: an engine id (or a ref href) and a display label. */
 export interface RosterEntry {
@@ -253,15 +255,8 @@ function refPath(href: string): string {
   return href.split('#')[0]!.replace(/^\/+/, '');
 }
 
-/**
- * A creature's two source documents — what a new creature's art starts from.
- *
- * The units mod takes a `visualSource` (CreatureVisual) and a `monsterSource`
- * (AdvMapMonsterShared); a person picking a donor knows the creature, not those
- * two paths. This follows the table entry to its record and reads both refs, so
- * the picker can offer creatures and the mod still gets documents.
- */
-export function creatureSources(data: Assets, id: string): { visual: string; monster: string } | null {
+/** A creature's `Creature` record, found through the reference table. */
+function creatureRecord(data: Assets, id: string): XmlElement | null {
   const text = data.text('GameMechanics/RefTables/Creatures.xdb');
   if (text === null) return null;
   const root = children(parse(text))[0];
@@ -271,21 +266,171 @@ export function creatureSources(data: Assets, id: string): { visual: string; mon
     if (item.name !== 'Item' || childText(item, 'ID') !== id) continue;
     const obj = find(item, 'Obj');
     if (!obj) return null;
-    let record = find(obj, 'Creature');
+    const record = find(obj, 'Creature');
+    if (record) return record;
     const href = obj.attrs.href;
-    if (!record && href && !href.startsWith('#')) {
-      const body = data.text(refPath(href));
-      if (!body) return null;
-      const doc = parse(body);
-      record = doc.name === 'Creature' ? doc : find(doc, 'Creature');
-    }
-    if (!record) return null;
-    const visual = find(record, 'Visual')?.attrs.href;
-    const monster = find(record, 'MonsterShared')?.attrs.href;
-    if (!visual || !monster) return null;
-    return { visual: refPath(visual), monster: refPath(monster) };
+    if (!href || href.startsWith('#')) return null;
+    const body = data.text(refPath(href));
+    if (!body) return null;
+    const doc = parse(body);
+    return doc.name === 'Creature' ? doc : find(doc, 'Creature');
   }
   return null;
+}
+
+/**
+ * A creature's two source documents — what a new creature's art starts from.
+ *
+ * The units mod takes a `visualSource` (CreatureVisual) and a `monsterSource`
+ * (AdvMapMonsterShared); a person picking a donor knows the creature, not those
+ * two paths. This follows the table entry to its record and reads both refs, so
+ * the picker can offer creatures and the mod still gets documents.
+ */
+export function creatureSources(data: Assets, id: string): { visual: string; monster: string } | null {
+  const record = creatureRecord(data, id);
+  if (!record) return null;
+  const visual = find(record, 'Visual')?.attrs.href;
+  const monster = find(record, 'MonsterShared')?.attrs.href;
+  if (!visual || !monster) return null;
+  return { visual: refPath(visual), monster: refPath(monster) };
+}
+
+/** Everything a donor creature can seed a new one with — the form's preset. */
+export interface CreaturePreset {
+  stats: CreatureStats;
+  name: string;
+  description: string;
+  abilitiesText: string;
+  visualSource: string;
+  monsterSource: string;
+  /**
+   * What each art slot resolves to in the game's data — the files the new
+   * creature will copy, and the handles for swapping one (a recolour, another
+   * model) without touching the rest.
+   */
+  art: Partial<Record<'character' | 'model' | 'animSet' | 'icon', string>>;
+}
+
+/**
+ * The donor, read whole: stats off its record, texts off its visual's refs, and
+ * the four art documents both source documents point at. This is what "make a
+ * creature that looks like X" starts from — the form shows every field and the
+ * person edits the difference.
+ */
+export function creaturePreset(data: Assets, id: string): CreaturePreset | null {
+  const record = creatureRecord(data, id);
+  if (!record) return null;
+  const visualHref = find(record, 'Visual')?.attrs.href;
+  const monsterHref = find(record, 'MonsterShared')?.attrs.href;
+  if (!visualHref || !monsterHref) return null;
+
+  const art: CreaturePreset['art'] = {};
+  let name = '', description = '', abilitiesText = '';
+  const vx = data.text(refPath(visualHref));
+  if (vx) {
+    const vdoc = parse(vx);
+    const vroot = vdoc.name === 'CreatureVisual' ? vdoc : find(vdoc, 'CreatureVisual');
+    if (vroot) {
+      const ref = (tag: string): string => find(vroot, tag)?.attrs.href ?? '';
+      name = ref('CreatureNameFileRef') ? gameText(data, ref('CreatureNameFileRef')) : '';
+      description = ref('DescriptionFileRef') ? gameText(data, ref('DescriptionFileRef')) : '';
+      abilitiesText = ref('CreatureAbilitiesFileRef') ? gameText(data, ref('CreatureAbilitiesFileRef')) : '';
+      if (ref('AnimCharacter')) art.character = refPath(ref('AnimCharacter'));
+      if (ref('Icon128')) art.icon = refPath(ref('Icon128'));
+    }
+  }
+  const mx = data.text(refPath(monsterHref));
+  if (mx) {
+    const mdoc = parse(mx);
+    const mroot = mdoc.name === 'AdvMapMonsterShared' ? mdoc : find(mdoc, 'AdvMapMonsterShared');
+    if (mroot) {
+      const model = find(mroot, 'Model')?.attrs.href;
+      const animSet = find(mroot, 'AnimSet')?.attrs.href;
+      if (model) art.model = refPath(model);
+      if (animSet) art.animSet = refPath(animSet);
+    }
+  }
+
+  return {
+    stats: readStats(record),
+    name, description, abilitiesText,
+    visualSource: refPath(visualHref), monsterSource: refPath(monsterHref),
+    art,
+  };
+}
+
+/** A donor artifact, read whole off the reference table — the form's preset. */
+export interface ArtifactPreset {
+  slot: string;
+  rank: string;
+  cost: number;
+  aiValue: number;
+  canBeGeneratedToSell: boolean;
+  /** The six numbers it moves: Attack, Defence, Knowledge, SpellPower, Morale, Luck. */
+  stats: Record<string, number>;
+  /** href of its 64x64 icon — reusable as-is by a new artifact. */
+  icon: string;
+  /** href of the model lying on the map (referenced, never copied). */
+  model: string;
+  name: string;
+  description: string;
+}
+
+/**
+ * The artifact table keeps everything INLINE in each `<Item>`, so a preset is
+ * one lookup: slot, rank, prices, the six stats, the icon and model hrefs, and
+ * the texts behind the name refs.
+ */
+export function artifactPreset(data: Assets, id: string): ArtifactPreset | null {
+  const text = data.text('GameMechanics/RefTables/Artifacts.xdb');
+  if (text === null) return null;
+  const root = children(parse(text))[0];
+  const objects = root ? find(root, 'objects') : null;
+  if (!objects) return null;
+  for (const item of children(objects)) {
+    if (item.name !== 'Item' || childText(item, 'ID') !== id) continue;
+    const obj = find(item, 'obj') ?? find(item, 'Obj');
+    if (!obj) return null;
+    const stats: Record<string, number> = {};
+    const mods = find(obj, 'HeroStatsModif');
+    if (mods) {
+      for (const s of ['Attack', 'Defence', 'Knowledge', 'SpellPower', 'Morale', 'Luck']) {
+        stats[s] = Number(childText(mods, s) || 0);
+      }
+    }
+    const href = (tag: string): string => {
+      const h = find(obj, tag)?.attrs.href ?? '';
+      return h ? refPath(h) : '';
+    };
+    const nameRef = find(obj, 'NameFileRef')?.attrs.href ?? '';
+    const descRef = find(obj, 'DescriptionFileRef')?.attrs.href ?? '';
+    return {
+      slot: childText(obj, 'Slot') || 'PRIMARY',
+      rank: childText(obj, 'Type') || 'ARTF_CLASS_MINOR',
+      cost: Number(childText(obj, 'CostOfGold') || 0),
+      aiValue: Number(childText(obj, 'AIValue') || 0),
+      canBeGeneratedToSell: childText(obj, 'CanBeGeneratedToSell') === 'true',
+      stats,
+      icon: href('Icon'),
+      model: href('Model'),
+      name: nameRef ? gameText(data, nameRef) : '',
+      description: descRef ? gameText(data, descRef) : '',
+    };
+  }
+  return null;
+}
+
+/**
+ * Every `ABILITY_…` the game's type registry names — the choices a creature's
+ * ability list can hold. Read off types.xml rather than curated: the enum is
+ * the engine's own, and a mod cannot add to it anyway.
+ */
+export function creatureAbilities(data: Assets): string[] {
+  const text = data.text('types.xml');
+  if (!text) return [];
+  const out = new Set<string>();
+  for (const m of text.matchAll(/ABILITY_[A-Z0-9_]+/g)) out.add(m[0]);
+  return [...out].sort();
 }
 
 /**

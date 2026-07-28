@@ -7283,16 +7283,23 @@ async function submitNewMap(): Promise<void> {
   }
 }
 
-// --- Units mod -----------------------------------------------------------
+// --- Units & Artifacts mod ------------------------------------------------
 //
-// The game-global creature mods: what UserMODs adds, and the window's way of
-// adding a creature without the CLI. Main does the building and installing
-// (mods:* channels); this is only the form over it. No map has to be open —
-// a mod is UserMODs plus the executable's ceiling, nothing of the map.
+// The game-global mod: what UserMODs adds, and the window's way of adding a
+// creature or an artifact without the CLI. Main does the building and
+// installing (mods:* channels); these are only the forms over it. No map has
+// to be open — a mod is UserMODs plus the executable's ceilings, nothing of
+// the map. The mod is always OURS (the one manifest-carrying archive); the
+// forms never ask where a thing goes.
+//
+// The donor select IS the preset: picking one loads every field — stats,
+// texts, abilities, art — and the person edits the difference. The art hrefs
+// are the copy handles: point one at another file (a recolour, another model)
+// and only that piece changes.
 
-function unitsDialog(): HTMLDialogElement {
-  const el = $('unitsmod');
-  if (!(el instanceof HTMLDialogElement)) throw new Error('#unitsmod is not a <dialog>');
+function modDialog(id: string): HTMLDialogElement {
+  const el = $(id);
+  if (!(el instanceof HTMLDialogElement)) throw new Error(`#${id} is not a <dialog>`);
   return el;
 }
 
@@ -7303,68 +7310,139 @@ const UM_STATS: ReadonlyArray<[string, keyof CreatureStats]> = [
   ['um-health', 'health'], ['um-speed', 'speed'], ['um-init', 'initiative'],
   ['um-shots', 'shots'], ['um-range', 'range'], ['um-growth', 'weeklyGrowth'],
   ['um-gold', 'gold'], ['um-tier', 'tier'], ['um-exp', 'exp'],
-  ['um-power', 'power'], ['um-size', 'combatSize'],
+  ['um-power', 'power'], ['um-size', 'combatSize'], ['um-command', 'timeToCommand'],
 ];
 
-async function refreshUnitsMods(): Promise<void> {
-  const list = $('um-list');
+/** Form input id → the artifact HeroStats field it fills. */
+const AM_STATS: ReadonlyArray<[string, string]> = [
+  ['am-attack', 'Attack'], ['am-defence', 'Defence'], ['am-knowledge', 'Knowledge'],
+  ['am-spellpower', 'SpellPower'], ['am-morale', 'Morale'], ['am-luck', 'Luck'],
+];
+
+const UM_ART: ReadonlyArray<[string, 'character' | 'model' | 'animSet' | 'icon']> = [
+  ['um-art-character', 'character'], ['um-art-model', 'model'],
+  ['um-art-animset', 'animSet'], ['um-art-icon', 'icon'],
+];
+
+/** An id stem typed as a file name, spelled the way the enums spell it. */
+const idFrom = (prefix: string, file: string): string =>
+  `${prefix}${file.trim().replace(/([a-z0-9])([A-Z])/g, '$1_$2').toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '')}`;
+
+/** The rosters and enums both forms are built from, fetched once. */
+let modForms: Promise<import('../electron/ipc.ts').ModsFormDataResult> | null = null;
+const modFormData = (): Promise<import('../electron/ipc.ts').ModsFormDataResult> =>
+  (modForms ??= window.editor.modFormData());
+
+function fillModSelect(sel: HTMLSelectElement, entries: { id: string; name?: string }[], skipUnset = false): void {
+  sel.innerHTML = '';
+  for (const e of entries) {
+    if (skipUnset && /_(NONE|UNKNOWN)$/.test(e.id)) continue;
+    const o = document.createElement('option');
+    o.value = e.id;
+    o.textContent = e.name ? `${e.name} (${e.id})` : e.id;
+    sel.appendChild(o);
+  }
+}
+
+async function fillModForms(): Promise<void> {
+  const data = await modFormData();
+  if (!$select('um-donor').options.length) {
+    fillModSelect($select('um-donor'), data.donors, true); // the null creature has no looks to donate
+    fillModSelect($select('um-abids'), data.abilities.map((id) => ({ id })));
+    fillModSelect($select('um-town'), data.towns);
+  }
+  if (!$select('am-donor').options.length) {
+    fillModSelect($select('am-donor'), data.artifactDonors, true);
+  }
+}
+
+async function refreshModLists(): Promise<void> {
   const { gameRoot, mods } = await window.editor.listMods();
-  list.innerHTML = '';
+  const empty = (msg: string): string => `<div class="um-empty">${msg}</div>`;
+  const units = $('um-list');
+  const arts = $('am-list');
+  units.innerHTML = '';
+  arts.innerHTML = '';
   if (!gameRoot) {
-    list.innerHTML = '<div class="um-empty">no game install configured — nowhere to install to</div>';
+    units.innerHTML = arts.innerHTML = empty('no game install configured — nowhere to install to');
     return;
   }
-  if (!mods.length) {
-    list.innerHTML = '<div class="um-empty">none — the game holds its shipped creatures only</div>';
-  }
+  if (!mods.length) units.innerHTML = empty('none — the game holds its shipped creatures only');
+  if (!mods.some((m) => m.artifacts.length)) arts.innerHTML = empty('none — the game holds its shipped artifacts only');
   for (const m of mods) {
-    const div = document.createElement('div');
-    div.append(`${m.stem}.h5u — ${m.creatures.length} creature(s), ceiling ${m.limit}`
+    const row = document.createElement('div');
+    row.append(`${m.stem}.h5u — ${m.creatures.length} creature(s), ceiling ${m.limit}`
       + (m.reconstructed ? ' (no manifest)' : ''));
     const who = m.creatures.map((c) => `${c.number} ${c.name || c.id}`).join(', ');
     if (who) {
       const i = document.createElement('i');
       i.textContent = ` · ${who}`;
-      div.appendChild(i);
+      row.appendChild(i);
     }
-    list.appendChild(div);
+    units.appendChild(row);
+    if (m.artifacts.length) {
+      const arow = document.createElement('div');
+      arow.append(`${m.stem}.h5u — ${m.artifacts.length} artifact(s)`);
+      const ai = document.createElement('i');
+      ai.textContent = ` · ${m.artifacts.map((a) => `${a.number} ${a.name || a.id} (${a.slot})`).join(', ')}`;
+      arow.appendChild(ai);
+      arts.appendChild(arow);
+    }
   }
   // More than one creature mod is a conflict, not a set — each carries a whole
   // copy of the registry, so the game reads one and the rest do not exist.
   $('um-conflict').textContent = mods.length > 1
     ? 'more than one creature mod: they conflict — the game reads one and ignores the others'
     : '';
-  // Extend the existing mod rather than fork a second, conflicting one.
-  const ours = mods.filter((m) => !m.reconstructed);
-  if (ours.length === 1) $input('um-stem').value = ours[0]!.stem;
 }
 
-let umDonorsLoaded = false;
-async function loadUnitDonors(): Promise<void> {
-  if (umDonorsLoaded) return;
-  const sel = $select('um-donor');
-  const { entries } = await window.editor.modDonors();
-  sel.innerHTML = '';
-  for (const e of entries) {
-    // The null creature has no looks to donate.
-    if (/_(NONE|UNKNOWN)$/.test(e.id)) continue;
-    const o = document.createElement('option');
-    o.value = e.id;
-    o.textContent = e.name ? `${e.name} (${e.id})` : e.id;
-    sel.appendChild(o);
-  }
-  umDonorsLoaded = true;
+/** Load the donor into every creature field — the form's "preset". */
+async function loadUnitPreset(): Promise<void> {
+  const donor = $select('um-donor').value;
+  if (!donor) return;
+  const p = await window.editor.modPreset(donor);
+  $input('um-name').value = p.name;
+  $input('um-desc').value = p.description;
+  $input('um-abil').value = p.abilitiesText;
+  for (const [input, key] of UM_STATS) $input(input).value = String(p.stats[key] ?? 0);
+  $input('um-fly').checked = p.stats.flying;
+  $select('um-town').value = p.stats.town;
+  const abids = new Set(p.stats.abilities);
+  const sel = $select('um-abids');
+  for (const o of sel.options) o.selected = abids.has(o.value);
+  // Bring the first selected ability into view — a list of 199 opens at the top.
+  const first = [...sel.options].find((o) => o.selected);
+  if (first) sel.scrollTop = Math.max(0, first.offsetTop - sel.clientHeight / 2);
+  for (const [input, slot] of UM_ART) $input(input).value = p.art[slot] ?? '';
 }
 
-function openUnitsMod(): void {
-  $('um-err').textContent = '';
-  $('um-note').textContent = '';
-  unitsDialog().showModal();
+/** Load the donor into every artifact field. */
+async function loadArtifactPreset(): Promise<void> {
+  const donor = $select('am-donor').value;
+  if (!donor) return;
+  const p = await window.editor.modArtifactPreset(donor);
+  $input('am-name').value = p.name;
+  $input('am-desc').value = p.description;
+  $select('am-slot').value = p.slot;
+  $select('am-rank').value = p.rank;
+  $input('am-cost').value = String(p.cost);
+  $input('am-ai').value = String(p.aiValue);
+  $input('am-sell').checked = p.canBeGeneratedToSell;
+  for (const [input, key] of AM_STATS) $input(input).value = String(p.stats[key] ?? 0);
+  $input('am-icon').value = p.icon;
+  $input('am-model').value = p.model;
+}
+
+function openModDialog(id: 'unitsmod' | 'artsmod'): void {
+  const p = id === 'unitsmod' ? 'um' : 'am';
+  $(`${p}-err`).textContent = '';
+  $(`${p}-note`).textContent = '';
+  modDialog(id).showModal();
   const report = (e: unknown): void => {
-    $('um-err').textContent = e instanceof Error ? e.message : String(e);
+    $(`${p}-err`).textContent = e instanceof Error ? e.message : String(e);
   };
-  void refreshUnitsMods().catch(report);
-  void loadUnitDonors().catch(report);
+  void refreshModLists().catch(report);
+  void fillModForms().then(() => (id === 'unitsmod' ? loadUnitPreset() : loadArtifactPreset())).catch(report);
 }
 
 async function submitUnitsMod(): Promise<void> {
@@ -7375,13 +7453,15 @@ async function submitUnitsMod(): Promise<void> {
   try {
     const stats: Partial<CreatureStats> = {
       flying: $input('um-fly').checked,
-      abilities: $input('um-abids').value.split(/[\s,]+/).filter(Boolean),
+      town: $select('um-town').value,
+      abilities: [...$select('um-abids').selectedOptions].map((o) => o.value),
     };
     for (const [input, key] of UM_STATS) {
-      (stats as Record<string, number | boolean>)[key] = Number($input(input).value) || 0;
+      (stats as Record<string, number | boolean | string>)[key] = Number($input(input).value) || 0;
     }
+    const art: Partial<Record<'character' | 'model' | 'animSet' | 'icon', string>> = {};
+    for (const [input, slot] of UM_ART) art[slot] = $input(input).value.trim();
     const res = await window.editor.installMod({
-      stem: $input('um-stem').value,
       id: $input('um-id').value,
       file: $input('um-file').value,
       name: $input('um-name').value,
@@ -7389,11 +7469,12 @@ async function submitUnitsMod(): Promise<void> {
       abilitiesText: $input('um-abil').value,
       donor: $select('um-donor').value,
       stats,
+      art,
     });
     // Stay open and say what happened: the natural next step is either another
     // creature or reading the refreshed list.
     $('um-note').textContent = `installed ${res.archive}\n${res.exe} · ${res.art} art file(s) copied`;
-    await refreshUnitsMods();
+    await refreshModLists();
   } catch (e) {
     $('um-err').textContent = e instanceof Error ? e.message : String(e);
   } finally {
@@ -7401,10 +7482,60 @@ async function submitUnitsMod(): Promise<void> {
   }
 }
 
-$('unitsbtn').onclick = openUnitsMod;
-$('um-close').onclick = () => unitsDialog().close();
-$('um-cancel').onclick = () => unitsDialog().close();
+async function submitArtifactMod(): Promise<void> {
+  const ok = $button('am-ok');
+  ok.disabled = true;
+  $('am-err').textContent = '';
+  $('am-note').textContent = '';
+  try {
+    const stats: Record<string, number> = {};
+    for (const [input, key] of AM_STATS) stats[key] = Number($input(input).value) || 0;
+    const res = await window.editor.installArtifact({
+      id: $input('am-id').value,
+      file: $input('am-file').value,
+      name: $input('am-name').value,
+      description: $input('am-desc').value,
+      slot: $select('am-slot').value,
+      rank: $select('am-rank').value,
+      cost: Number($input('am-cost').value) || 0,
+      aiValue: Number($input('am-ai').value) || 0,
+      canBeGeneratedToSell: $input('am-sell').checked,
+      stats,
+      icon: $input('am-icon').value,
+      model: $input('am-model').value,
+      boardTiles: Number($input('am-board').value) || 1,
+    });
+    $('am-note').textContent = `installed ${res.archive}\nartifact ${res.exe}`;
+    await refreshModLists();
+  } catch (e) {
+    $('am-err').textContent = e instanceof Error ? e.message : String(e);
+  } finally {
+    ok.disabled = false;
+  }
+}
+
+// The ID fills itself from the file stem until it is edited by hand.
+let umIdTouched = false;
+let amIdTouched = false;
+$input('um-id').addEventListener('input', () => { umIdTouched = true; });
+$input('am-id').addEventListener('input', () => { amIdTouched = true; });
+$input('um-file').addEventListener('input', () => {
+  if (!umIdTouched) $input('um-id').value = idFrom('CREATURE_', $input('um-file').value);
+});
+$input('am-file').addEventListener('input', () => {
+  if (!amIdTouched) $input('am-id').value = idFrom('ARTIFACT_', $input('am-file').value);
+});
+
+$('unitsbtn').onclick = () => { umIdTouched = false; openModDialog('unitsmod'); };
+$('artsbtn').onclick = () => { amIdTouched = false; openModDialog('artsmod'); };
+$select('um-donor').addEventListener('change', () => { void loadUnitPreset().catch(() => {}); });
+$select('am-donor').addEventListener('change', () => { void loadArtifactPreset().catch(() => {}); });
+$('um-close').onclick = () => modDialog('unitsmod').close();
+$('um-cancel').onclick = () => modDialog('unitsmod').close();
 $('um-ok').onclick = () => { void submitUnitsMod(); };
+$('am-close').onclick = () => modDialog('artsmod').close();
+$('am-cancel').onclick = () => modDialog('artsmod').close();
+$('am-ok').onclick = () => { void submitArtifactMod(); };
 
 $('newmapbtn').onclick = openNewMap;
 $('newmap2').onclick = openNewMap;

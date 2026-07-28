@@ -39,12 +39,16 @@ import { buildMapTag } from '../src/map-tag.ts';
 import { createField } from '../src/defaults.ts';
 import { buildNewMapProject } from '../src/new-map.ts';
 import { MAP_SIZES } from '../src/terrain-blank.ts';
-import { Registry, creatureSources } from '../src/registry.ts';
+import { Registry, artifactPreset, creatureAbilities, creaturePreset, creatureSources } from '../src/registry.ts';
 import type { RosterEntry } from '../src/registry.ts';
 import {
-  addCreature, buildCreatureMod, dataReader, findCreatureMods, installCreatureMod,
-  MOD_STEM, newCreatureMod, packCreatureMod, readCreatureMod,
+  addArtifact, addCreature, artifactLimit, buildCreatureMod, dataReader, findCreatureMods,
+  installCreatureMod, MOD_STEM, newCreatureMod, packCreatureMod,
 } from '../src/creature-mod.ts';
+import type { BuildReport, CreatureMod, Installed } from '../src/creature-mod.ts';
+import type { ArtifactRank, ArtifactSlot, HeroStats } from '../src/artifacts.ts';
+import type { ArtifactExeResult } from '../src/artifact-limit.ts';
+import type { ExeResult } from '../src/creature-limit.ts';
 import { blankStats } from '../src/creatures.ts';
 import type { RegistryName, FieldSchema } from '../src/schema.ts';
 import { readTypeSpec, fieldOrder, typesXmlPath, fieldValues } from '../src/typespec.ts';
@@ -89,7 +93,8 @@ import type {
   NewMapPayload, NewMapResult, OpenArchivePayload, OpenArchiveResult,
   ExternalChange, PaintTilePayload, PaintTileResult, SculptPayload, SculptResult,
   AddLayerPayload, AddLayerResult, PaintRiverPayload, RiverCellsPayload, MaskPayload, UndoResult, HistoryState,
-  ModsListResult, ModsInstallPayload, ModsInstallResult,
+  ModsListResult, ModsInstallPayload, ModsInstallResult, ModsFormDataResult, ModsPresetPayload,
+  CreaturePresetDTO, ArtifactPresetDTO, ModsInstallArtifactPayload, ModsInstallArtifactResult,
 } from './ipc.ts';
 
 // [perf] Windows-only Chromium bug: the native occlusion calculator intermittently
@@ -2191,17 +2196,64 @@ ipcMain.handle('mods:list', async (): Promise<ModsListResult> => {
     creatures: f.mod.creatures.map((c) => ({
       id: c.id, number: c.number, name: c.name, tier: c.stats.tier, gold: c.stats.gold,
     })),
+    artifacts: (f.mod.artifacts ?? []).map((a) => ({
+      id: a.id, number: a.number, name: a.name, slot: a.slot,
+    })),
   }));
   return { gameRoot: g, mods };
 });
 
-// Donors come from the plain data root, not the mounted chain: install resolves
-// the donor's documents there, so offering a mod's own creature would offer a
-// choice that then fails.
-ipcMain.handle('mods:donors', async (): Promise<RosterResult> => {
+// Rosters and presets come from the plain data root, not the mounted chain:
+// install resolves the donor's documents there, so offering a mod's own
+// creature would offer a choice that then fails.
+ipcMain.handle('mods:form-data', async (): Promise<ModsFormDataResult> => {
   if (!isConfigured()) throw new Error('no data root configured');
-  return { entries: new Registry(gameData()).creatures() };
+  const r = new Registry(gameData());
+  return {
+    donors: r.creatures(),
+    artifactDonors: r.artifacts(),
+    abilities: creatureAbilities(assets([gameData()])),
+    towns: r.races(),
+  };
 });
+
+ipcMain.handle('mods:preset', async (_e: IpcMainInvokeEvent, { donor }: ModsPresetPayload): Promise<CreaturePresetDTO> => {
+  if (!isConfigured()) throw new Error('no data root configured');
+  const preset = creaturePreset(assets([gameData()]), donor);
+  if (!preset) throw new Error(`cannot read the donor ${donor || '(none)'}`);
+  return preset;
+});
+
+ipcMain.handle('mods:artifact-preset', async (_e: IpcMainInvokeEvent, { donor }: ModsPresetPayload): Promise<ArtifactPresetDTO> => {
+  if (!isConfigured()) throw new Error('no data root configured');
+  const preset = artifactPreset(assets([gameData()]), donor);
+  if (!preset) throw new Error(`cannot read the donor ${donor || '(none)'}`);
+  return preset;
+});
+
+/**
+ * OUR mod: the one manifest-carrying archive in UserMODs, or a fresh one under
+ * the default stem. The dialog never picks the archive — two creature mods
+ * conflict outright, so the only sane target is the one that exists.
+ */
+function ourMod(g: string): CreatureMod {
+  const ours = findCreatureMods(g).filter((f) => !f.reconstructed);
+  if (ours.length > 1) {
+    throw new Error(`more than one creature mod in UserMODs (${ours.map((f) => basename(f.path)).join(', ')}) — they conflict; remove one first`);
+  }
+  return ours[0]?.mod ?? newCreatureMod(MOD_STEM);
+}
+
+/** Build the mod, pack it, install it — the shared tail of both installs. */
+function buildAndInstall(g: string, mod: CreatureMod): { installed: Installed; report: BuildReport } {
+  const report = buildCreatureMod(mod, dataReader(gameData()));
+  const archive = packCreatureMod(report);
+  mkdirSync(join(g, 'UserMODs'), { recursive: true });
+  return { installed: installCreatureMod(g, mod, archive), report };
+}
+
+const exeWords = (r: ExeResult | ArtifactExeResult | null): string =>
+  r ? `${basename(r.path)} → ceiling ${r.to}${'build' in r ? ` (${r.build})` : ''}` : 'executable not touched';
 
 ipcMain.handle('mods:install', async (_e: IpcMainInvokeEvent, p: ModsInstallPayload): Promise<ModsInstallResult> => {
   const g = gameRoot();
@@ -2209,31 +2261,58 @@ ipcMain.handle('mods:install', async (_e: IpcMainInvokeEvent, p: ModsInstallPayl
   if (!isConfigured()) throw new Error('no data root configured');
   if (!p.file.trim()) throw new Error('the file stem is required');
 
-  const stem = p.stem.trim() || MOD_STEM;
-  const archivePath = join(g, 'UserMODs', `${stem}.h5u`);
-  const existing = existsSync(archivePath) ? readCreatureMod(archivePath) : null;
-  if (existing?.reconstructed) {
-    throw new Error(`${stem}.h5u carries no manifest of ours — it can only be replaced, not extended`);
-  }
-  const mod = existing?.mod ?? newCreatureMod(stem);
-
+  const mod = ourMod(g);
   const sources = creatureSources(assets([gameData()]), p.donor);
   if (!sources) throw new Error(`cannot resolve the donor ${p.donor || '(none)'}`);
+
+  // Art overrides: only the slots the form actually changed away from empty.
+  const art: Partial<Record<'character' | 'model' | 'animSet' | 'icon', string>> = {};
+  for (const [slot, href] of Object.entries(p.art ?? {})) {
+    if (href && href.trim()) art[slot as keyof typeof art] = href.trim();
+  }
 
   addCreature(mod, {
     id: p.id.trim(), file: p.file.trim(),
     name: p.name, description: p.description, abilitiesText: p.abilitiesText,
     stats: { ...blankStats(), ...p.stats },
     visualSource: sources.visual, monsterSource: sources.monster,
+    ...(Object.keys(art).length ? { art } : {}),
   });
 
-  const report = buildCreatureMod(mod, dataReader(gameData()));
-  const archive = packCreatureMod(report);
-  mkdirSync(join(g, 'UserMODs'), { recursive: true });
-  const installed = installCreatureMod(g, mod, archive);
-  const exe = installed.exe
-    ? `${basename(installed.exe.path)} → ceiling ${installed.exe.to} (${installed.exe.build})`
-    : 'executable not touched';
+  const { installed, report } = buildAndInstall(g, mod);
   const added = mod.creatures[mod.creatures.length - 1]!;
-  return { archive: installed.archive, limit: report.limit, exe, art: report.art[added.id] ?? 0 };
+  return { archive: installed.archive, limit: report.limit, exe: exeWords(installed.exe), art: report.art[added.id] ?? 0 };
+});
+
+ipcMain.handle('mods:install-artifact', async (_e: IpcMainInvokeEvent, p: ModsInstallArtifactPayload): Promise<ModsInstallArtifactResult> => {
+  const g = gameRoot();
+  if (!g) throw new Error('no game install configured — a mod needs UserMODs and the executable');
+  if (!isConfigured()) throw new Error('no data root configured');
+  if (!p.file.trim()) throw new Error('the file stem is required');
+  if (!p.icon.trim()) throw new Error('an icon href is required — take the donor\'s');
+
+  const mod = ourMod(g);
+  const stats: Partial<HeroStats> = {};
+  for (const k of ['Attack', 'Defence', 'Knowledge', 'SpellPower', 'Morale', 'Luck'] as const) {
+    const v = Number(p.stats?.[k] ?? 0);
+    if (v) stats[k] = v;
+  }
+  addArtifact(mod, {
+    id: p.id.trim(), file: p.file.trim(),
+    name: p.name, description: p.description,
+    slot: p.slot as ArtifactSlot, rank: p.rank as ArtifactRank,
+    cost: Number(p.cost) || 0, aiValue: Number(p.aiValue) || 0,
+    canBeGeneratedToSell: !!p.canBeGeneratedToSell,
+    ...(Object.keys(stats).length ? { stats } : {}),
+    icon: p.icon.trim(),
+    // No model → a flat board of the artifact's own icon stands on the map.
+    ...(p.model?.trim() ? { model: p.model.trim() } : { board: { tiles: p.boardTiles || 1 } }),
+  });
+
+  const { installed } = buildAndInstall(g, mod);
+  return {
+    archive: installed.archive,
+    limit: artifactLimit(mod),
+    exe: exeWords(installed.artifacts),
+  };
 });

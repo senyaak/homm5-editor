@@ -660,6 +660,14 @@ export interface ModCreatureDTO {
   gold: number;
 }
 
+/** One artifact of an installed mod, as `mods:list` reports it. */
+export interface ModArtifactDTO {
+  id: string;
+  number: number;
+  name: string;
+  slot: string;
+}
+
 /** One installed creature mod. */
 export interface ModListEntry {
   /** Absolute path of the .h5u in UserMODs. */
@@ -671,6 +679,7 @@ export interface ModListEntry {
   /** Read back without our manifest — listable, but not extendable. */
   reconstructed: boolean;
   creatures: ModCreatureDTO[];
+  artifacts: ModArtifactDTO[];
 }
 
 /** Result of `mods:list`. */
@@ -680,10 +689,48 @@ export interface ModsListResult {
   mods: ModListEntry[];
 }
 
-/** Payload of `mods:install` — one creature to add, and to which archive. */
+/** The rosters and enums the Units/Artifacts forms are built from. */
+export interface ModsFormDataResult {
+  /** Every creature that can donate its looks (and preset) to a new one. */
+  donors: RosterEntryDTO[];
+  /** Every artifact a new one can start from. */
+  artifactDonors: RosterEntryDTO[];
+  /** Every ABILITY_… the engine's type registry names. */
+  abilities: string[];
+  /** The TOWN_… races, for a creature's home town. */
+  towns: RosterEntryDTO[];
+}
+
+/** Payload of `mods:preset` / `mods:artifact-preset` — which donor to read. */
+export interface ModsPresetPayload { donor: string }
+
+/** Result of `mods:preset` (mirrors src/registry.ts CreaturePreset). */
+export interface CreaturePresetDTO {
+  stats: CreatureStats;
+  name: string;
+  description: string;
+  abilitiesText: string;
+  visualSource: string;
+  monsterSource: string;
+  art: Partial<Record<'character' | 'model' | 'animSet' | 'icon', string>>;
+}
+
+/** Result of `mods:artifact-preset` (mirrors src/registry.ts ArtifactPreset). */
+export interface ArtifactPresetDTO {
+  slot: string;
+  rank: string;
+  cost: number;
+  aiValue: number;
+  canBeGeneratedToSell: boolean;
+  stats: Record<string, number>;
+  icon: string;
+  model: string;
+  name: string;
+  description: string;
+}
+
+/** Payload of `mods:install` — one creature to add to OUR mod. */
 export interface ModsInstallPayload {
-  /** Archive stem to create or extend (UserMODs/<stem>.h5u). */
-  stem: string;
   /** `CREATURE_…` — the id maps and scripts will use. */
   id: string;
   /** File stem of everything generated for the creature. */
@@ -695,6 +742,40 @@ export interface ModsInstallPayload {
   /** Donor creature id — its visual and its map stack are the starting point. */
   donor: string;
   stats: Partial<CreatureStats>;
+  /** Art overrides per slot; anything omitted keeps the donor's file. */
+  art?: Partial<Record<'character' | 'model' | 'animSet' | 'icon', string>>;
+}
+
+/** Payload of `mods:install-artifact` — one artifact to add to OUR mod. */
+export interface ModsInstallArtifactPayload {
+  /** `ARTIFACT_…` — the id maps, saves and scripts store. */
+  id: string;
+  /** File stem of everything generated for it. */
+  file: string;
+  name: string;
+  description: string;
+  slot: string;
+  rank: string;
+  cost: number;
+  aiValue: number;
+  canBeGeneratedToSell: boolean;
+  /** Attack / Defence / Knowledge / SpellPower / Morale / Luck. */
+  stats: Record<string, number>;
+  /** href of the 64x64 icon (usually the donor's). */
+  icon: string;
+  /** href of the map model; empty means a flat board of the icon. */
+  model?: string;
+  /** Board width in tiles, when there is no model. */
+  boardTiles?: number;
+}
+
+/** Result of `mods:install-artifact`. */
+export interface ModsInstallArtifactResult {
+  archive: string;
+  /** The artifact ceiling the executable was set to. */
+  limit: number;
+  /** What happened to the executable, in words. */
+  exe: string;
 }
 
 /** Result of `mods:install`. */
@@ -781,10 +862,16 @@ export interface EditorApi {
   mapHeroes(mapRel: string): Promise<MapHeroesResult>;
   /** Installed creature mods (units), game-global — no map needed. */
   listMods(): Promise<ModsListResult>;
-  /** Every creature that can donate its looks to a new one. */
-  modDonors(): Promise<RosterResult>;
-  /** Add a creature to a mod, build it, install it, patch the ceiling. */
+  /** The rosters and enums the Units/Artifacts forms are built from. */
+  modFormData(): Promise<ModsFormDataResult>;
+  /** A donor creature, read whole — the form's preset. */
+  modPreset(donor: string): Promise<CreaturePresetDTO>;
+  /** A donor artifact, read whole — the form's preset. */
+  modArtifactPreset(donor: string): Promise<ArtifactPresetDTO>;
+  /** Add a creature to OUR mod, build it, install it, patch the ceiling. */
   installMod(p: ModsInstallPayload): Promise<ModsInstallResult>;
+  /** Add an artifact to OUR mod, build it, install it, patch the ceiling. */
+  installArtifact(p: ModsInstallArtifactPayload): Promise<ModsInstallArtifactResult>;
   /**
    * A human-readable dump of what Chromium decided about this machine's
    * graphics: which GPU features it turned off, and the adapter behind them.

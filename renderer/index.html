@@ -643,16 +643,24 @@
     /* New Map dialog: the two-level toggle and the "where it lands" hint */
     #newmap { padding: 0; border: 0; background: transparent; max-width: 92vw; overflow: visible; }
     #newmap::backdrop { background: #0d1014cc; }
-    /* Units dialog: installed creature mods and the new-creature form */
-    #unitsmod { padding: 0; border: 0; background: transparent; max-width: 94vw; overflow: visible; }
-    #unitsmod::backdrop { background: #0d1014cc; }
-    .um-card { width: min(640px, 94vw); }
-    .um-body { max-height: 74vh; overflow: auto; }
+    /* Units/Artifacts dialogs: installed mod contents and the new-thing form */
+    #unitsmod, #artsmod { padding: 0; border: 0; background: transparent; max-width: 94vw; overflow: visible; }
+    #unitsmod::backdrop, #artsmod::backdrop { background: #0d1014cc; }
+    .um-body select[multiple] { flex: 1; min-width: 0; background: #0d1014; border: 1px solid #30363d;
+      border-radius: 6px; padding: 4px 6px; color: #c9d1d9; font-size: 12px; }
+    .um-art input { font-size: 11px; color: #8b949e; }
+    .um-art input:focus { color: #c9d1d9; }
+    /* Wide and stretchy: the forms hold a lot of fields and screens have the
+       room — two columns for the short rows, full width for the long ones. */
+    .um-card { width: min(1100px, 94vw); }
+    .um-body { max-height: 80vh; overflow: auto; }
     .um-body .on-row span { flex: 0 0 78px; }
+    .um-form { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 18px; }
+    .um-form > .um-span, .um-form > .um-stats { grid-column: 1 / -1; }
     .um-mods { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #c9d1d9; }
     .um-mods i { color: #8b949e; font-style: normal; }
     .um-empty { color: #6e7681; font-size: 12px; }
-    .um-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px 10px; }
+    .um-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 6px 10px; }
     .um-stats label { display: flex; flex-direction: column; gap: 2px; font-size: 11px; color: #8b949e; }
     .um-stats input { background: #0d1014; border: 1px solid #30363d; border-radius: 6px;
       padding: 5px 8px; color: #c9d1d9; font-size: 12px; width: 100%; box-sizing: border-box; }
@@ -713,6 +721,7 @@
     <button id="open">Open map…</button>
     <button id="campaignbtn" title="build a campaign out of maps and pack it to .h5c">Campaigns…</button>
     <button id="unitsbtn" title="creature mods — add new units to the game (an archive in UserMODs plus a patched executable)">Units…</button>
+    <button id="artsbtn" title="artifact mods — add new artifacts to the game (same archive, artifact ceiling patched)">Artifacts…</button>
     <button id="undobtn" disabled title="Nothing to undo">↶ Undo</button>
     <button id="redobtn" disabled title="Nothing to redo">↷ Redo</button>
     <button id="save" disabled title="write the work back where the map came from — into its .h5m when it was opened from one">Save</button>
@@ -1164,15 +1173,20 @@
         </fieldset>
         <fieldset>
           <legend>New creature</legend>
-          <div class="on-body">
-            <label class="on-row"><span>Mod</span><input id="um-stem" type="text" spellcheck="false" autocomplete="off" value="homm5-units" title="archive stem — UserMODs/(stem).h5u; an existing mod of ours is extended"></label>
+          <div class="on-body um-form">
+            <!-- The donor IS the preset: picking one loads its every field —
+                 stats, texts, abilities, the four art documents — and the form
+                 then edits the difference. The mod is always OURS (the one
+                 manifest-carrying archive in UserMODs); there is nothing to
+                 choose about where a creature goes. -->
+            <label class="on-row um-span"><span>Preset</span><select id="um-donor" title="a creature to start from — every field below loads from it"></select></label>
+            <label class="on-row"><span>Files</span><input id="um-file" type="text" spellcheck="false" autocomplete="off" placeholder="file stem, e.g. Sharpshooter" title="the stem of every file generated for the creature; the ID fills itself from it"></label>
             <label class="on-row"><span>ID</span><input id="um-id" type="text" spellcheck="false" autocomplete="off" placeholder="CREATURE_…" title="what maps, saves and scripts store — pick once, never reuse"></label>
-            <label class="on-row"><span>Files</span><input id="um-file" type="text" spellcheck="false" autocomplete="off" placeholder="file stem, e.g. Sharpshooter" title="the stem of every file generated for the creature"></label>
             <label class="on-row"><span>Name</span><input id="um-name" type="text" autocomplete="off"></label>
-            <label class="on-row"><span>Description</span><input id="um-desc" type="text" autocomplete="off"></label>
-            <label class="on-row"><span>Abilities</span><input id="um-abil" type="text" autocomplete="off" title="the ability line the hire dialog prints, in words"></label>
-            <label class="on-row"><span>Ability ids</span><input id="um-abids" type="text" spellcheck="false" autocomplete="off" placeholder="ABILITY_…, space or comma separated" title="the engine abilities the creature actually has — the line above is only what the dialog prints"></label>
-            <label class="on-row"><span>Looks like</span><select id="um-donor" title="the creature whose visual and map stack the new one starts from"></select></label>
+            <label class="on-row"><span>Town</span><select id="um-town" title="the creature's home town — TOWN_NO_TYPE for a neutral"></select></label>
+            <label class="on-row um-span"><span>Description</span><input id="um-desc" type="text" autocomplete="off"></label>
+            <label class="on-row um-span"><span>Abilities</span><input id="um-abil" type="text" autocomplete="off" title="the ability line the hire dialog prints, in words"></label>
+            <label class="on-row um-span"><span>Ability ids</span><select id="um-abids" multiple size="6" title="the engine abilities the creature actually has — the line above is only what the dialog prints"></select></label>
             <div class="um-stats">
               <label>Attack<input id="um-attack" type="number" value="1"></label>
               <label>Defence<input id="um-defence" type="number" value="1"></label>
@@ -1189,8 +1203,20 @@
               <label>Exp<input id="um-exp" type="number" value="1"></label>
               <label>Power<input id="um-power" type="number" value="1" title="what the AI values one at"></label>
               <label>Size<input id="um-size" type="number" value="1" min="1" max="2" title="1 small, 2 large (two tiles square in combat)"></label>
+              <label>Command<input id="um-command" type="number" value="10" title="how long the hire dialog waits before it will command them; shipped 7–10"></label>
               <label class="nm-check" style="align-self:end"><input id="um-fly" type="checkbox"> Flying</label>
             </div>
+          </div>
+        </fieldset>
+        <fieldset>
+          <legend>Art — the donor's files, swappable one by one</legend>
+          <div class="on-body">
+            <!-- These are COPIED into the mod, so pointing one at another file
+                 (a recolour, another model) changes just that piece. -->
+            <label class="on-row um-art"><span>Character</span><input id="um-art-character" type="text" spellcheck="false" autocomplete="off" title="what fights: the combat model with its arena animations"></label>
+            <label class="on-row um-art"><span>Model</span><input id="um-art-model" type="text" spellcheck="false" autocomplete="off" title="what stands on the adventure map"></label>
+            <label class="on-row um-art"><span>Anim set</span><input id="um-art-animset" type="text" spellcheck="false" autocomplete="off" title="the adventure-map animations"></label>
+            <label class="on-row um-art"><span>Icon</span><input id="um-art-icon" type="text" spellcheck="false" autocomplete="off" title="the hire and army icon — a creature without one stops the game"></label>
           </div>
         </fieldset>
         <div id="um-note" class="um-note"></div>
@@ -1199,6 +1225,66 @@
       <div class="de-foot">
         <button id="um-cancel" class="ghost">Close</button>
         <button id="um-ok">Build &amp; install</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- artifacts: the same mod, its artifact side — the Units dialog's sibling.
+       An artifact needs no patched creature ceiling, but it has its own in the
+       same executable (src/artifact-limit.ts); install handles both. -->
+  <dialog id="artsmod">
+    <div class="mp-card um-card">
+      <div class="mp-head">
+        <span class="mp-title">Artifacts</span>
+        <button id="am-close" title="close (Esc)">✕</button>
+      </div>
+      <div class="mp-body on-body um-body">
+        <fieldset>
+          <legend>Installed</legend>
+          <div id="am-list" class="um-mods"></div>
+        </fieldset>
+        <fieldset>
+          <legend>New artifact</legend>
+          <div class="on-body um-form">
+            <label class="on-row um-span"><span>Preset</span><select id="am-donor" title="an artifact to start from — every field below loads from it"></select></label>
+            <label class="on-row"><span>Files</span><input id="am-file" type="text" spellcheck="false" autocomplete="off" placeholder="file stem, e.g. UndertakersAmulet" title="the stem of every file generated for it; the ID fills itself from it"></label>
+            <label class="on-row"><span>ID</span><input id="am-id" type="text" spellcheck="false" autocomplete="off" placeholder="ARTIFACT_…" title="what maps, saves and scripts store — pick once, never reuse"></label>
+            <label class="on-row"><span>Name</span><input id="am-name" type="text" autocomplete="off"></label>
+            <label class="on-row um-span"><span>Description</span><input id="am-desc" type="text" autocomplete="off"></label>
+            <label class="on-row"><span>Slot</span>
+              <select id="am-slot" title="where a hero wears it; INVENTORY is the backpack">
+                <option>HEAD</option><option>NECK</option><option>SHOULDERS</option><option>CHEST</option>
+                <option>PRIMARY</option><option>SECONDARY</option><option>FINGER</option><option>FEET</option>
+                <option>MISCSLOT1</option><option>INVENTORY</option>
+              </select>
+            </label>
+            <label class="on-row"><span>Rank</span>
+              <select id="am-rank" title="which random-artifact rolls can produce it">
+                <option>ARTF_CLASS_MINOR</option><option>ARTF_CLASS_MAJOR</option><option>ARTF_CLASS_RELIC</option>
+              </select>
+            </label>
+            <div class="um-stats">
+              <label>Attack<input id="am-attack" type="number" value="0"></label>
+              <label>Defence<input id="am-defence" type="number" value="0"></label>
+              <label>Knowledge<input id="am-knowledge" type="number" value="0"></label>
+              <label>Spell power<input id="am-spellpower" type="number" value="0"></label>
+              <label>Morale<input id="am-morale" type="number" value="0"></label>
+              <label>Luck<input id="am-luck" type="number" value="0"></label>
+              <label>Cost<input id="am-cost" type="number" value="0" title="what a market sells it for"></label>
+              <label>AI value<input id="am-ai" type="number" value="0" title="how much an AI hero wants it; shipped relics sit around 500"></label>
+              <label>Board tiles<input id="am-board" type="number" value="1" min="1" title="with no map model, the artifact stands as a flat board of its icon this many tiles wide"></label>
+              <label class="nm-check" style="align-self:end" title="whether random-artifact rolls may produce it"><input id="am-sell" type="checkbox"> Rollable</label>
+            </div>
+            <label class="on-row um-art um-span"><span>Icon</span><input id="am-icon" type="text" spellcheck="false" autocomplete="off" title="href of the 64x64 hero-screen icon — usually the donor's"></label>
+            <label class="on-row um-art um-span"><span>Map model</span><input id="am-model" type="text" spellcheck="false" autocomplete="off" placeholder="empty → a flat board of the icon" title="href of the model lying on the map; referenced, not copied"></label>
+          </div>
+        </fieldset>
+        <div id="am-note" class="um-note"></div>
+        <div id="am-err" class="on-err"></div>
+      </div>
+      <div class="de-foot">
+        <button id="am-cancel" class="ghost">Close</button>
+        <button id="am-ok">Build &amp; install</button>
       </div>
     </div>
   </dialog>

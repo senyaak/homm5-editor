@@ -79,10 +79,13 @@ const api = {
   saveCampaign: (doc) => ipcRenderer.invoke('campaign:save', { doc }),
   packCampaign: (dir) => ipcRenderer.invoke('campaign:pack', { dir }),
   mapHeroes: (mapRel) => ipcRenderer.invoke('campaign:map-heroes', { mapRel }),
-  // Units mod — game-global creature mods, no map needed.
+  // Units/Artifacts mod — game-global, no map needed.
   listMods: () => ipcRenderer.invoke('mods:list'),
-  modDonors: () => ipcRenderer.invoke('mods:donors'),
+  modFormData: () => ipcRenderer.invoke('mods:form-data'),
+  modPreset: (donor) => ipcRenderer.invoke('mods:preset', { donor }),
+  modArtifactPreset: (donor) => ipcRenderer.invoke('mods:artifact-preset', { donor }),
   installMod: (p) => ipcRenderer.invoke('mods:install', p),
+  installArtifact: (p) => ipcRenderer.invoke('mods:install-artifact', p),
   // Diagnostics for the fatal-error screen in index.html. That screen shows up
   // when the renderer module died, so these two are all it can still call —
   // preload has its own context and survives.
