@@ -27,6 +27,12 @@ export interface Launched {
    * happily; this array is what tells the difference.
    */
   errors: string[];
+  /**
+   * The app's own terminal output, line by line. The main process reports
+   * renderer deaths here (`[renderer gone] …`) — the one trace a renderer that
+   * silently reloaded to the start screen leaves behind.
+   */
+  log: string[];
 }
 
 /**
@@ -52,8 +58,14 @@ export async function launchEditor(env: Record<string, string> = {}, args: strin
   const page = await app.firstWindow();
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
+  const log: string[] = [];
+  const collect = (chunk: Buffer | string): void => {
+    for (const line of String(chunk).split(/\r?\n/)) if (line.trim()) log.push(line);
+  };
+  app.process().stdout?.on('data', collect);
+  app.process().stderr?.on('data', collect);
   await page.waitForLoadState('domcontentloaded');
-  return { app, page, errors };
+  return { app, page, errors, log };
 }
 
 /**

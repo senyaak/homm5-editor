@@ -33,6 +33,13 @@ export interface RosterEntry {
   nameRef?: string;
   /** For file-based rosters, a grouping key (a hero's race folder). */
   group?: string;
+  /**
+   * The entry's place in the SOURCE — the reference table's id order. Rosters
+   * are served sorted by label because that is how a picker reads, but a list
+   * the map stores (enabled spells, enabled artifacts) is written in this
+   * order, the one the game's own files use.
+   */
+  order?: number;
 }
 
 /** Reference tables that back a roster, relative to the data root. */
@@ -302,6 +309,9 @@ function gameText(data: Assets, href: string): string {
  * for finding "Снайперы" in a dropdown of 181.
  */
 function byLabel(entries: RosterEntry[]): RosterEntry[] {
+  // The source order is about to be sorted away, and it is the order a stored
+  // list is written back in — so it rides along on each entry.
+  entries.forEach((e, i) => { e.order = i; });
   // The "unset" member stays on top — it is a legal value and the one a picker
   // is opened to choose about as often as any other, so alphabetising it into
   // the middle would be a small cruelty.

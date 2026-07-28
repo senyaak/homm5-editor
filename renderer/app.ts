@@ -2761,12 +2761,15 @@ function mpChecklist(body: HTMLElement, fieldName: string, regName: string): voi
   body.append(tools, grid);
   grid.textContent = 'loading…';
   void roster(regName).then((entries) => {
-    const ros = entries.map((e) => ({ id: e.id, name: e.name || e.id }));
+    const ros = entries.map((e, i) => ({ id: e.id, name: e.name || e.id, order: e.order ?? i }));
     const known = new Set(ros.map((e) => e.id));
-    for (const id of currentArr) if (!known.has(id)) ros.push({ id, name: id });  // keep custom entries
+    for (const id of currentArr) if (!known.has(id)) ros.push({ id, name: id, order: ros.length });  // keep custom entries
     const updateCount = (): void => { count.textContent = `${currentSet.size} / ${ros.length}`; };
     const commitList = (): void => {
-      const vals = ros.filter((e) => currentSet.has(e.id)).map((e) => e.id);
+      // Written in the SOURCE table's order, not the picker's alphabetical one:
+      // that is the order the game's own files keep these lists in.
+      const vals = ros.filter((e) => currentSet.has(e.id))
+        .sort((a, b) => a.order - b.order).map((e) => e.id);
       (mpData as Record<string, TreeData>)[fieldName] = vals;
       void window.editor.setMapList({ path: [fieldName], values: vals }).then(() => markDirty(true));
     };
@@ -3010,7 +3013,14 @@ function inferField(v: TreeData | undefined): FieldSchema {
 
 /** One node: a leaf row, or an expandable group (object or list). */
 function treeNode(name: string, field: FieldSchema, data: TreeData | undefined, path: TreePath): HTMLElement {
-  return controlOf(field) === 'group' ? groupNode(name, field, data, path) : leafRow(name, field, data, path);
+  // A checklist ARRAY is a real list here — items with remove, an add row with
+  // the roster dropdown (fillArray) — because the tree is where a hero's
+  // artifacts or perks get edited. Only the single-choice array stays a
+  // one-control leaf: x-widget "dropdown" on an array (the ambient-light
+  // preset) means "a list in the file, one choice in the editor".
+  const c = controlOf(field);
+  if (field.type === 'array' && c === 'checklist') return groupNode(name, field, data, path);
+  return c === 'group' ? groupNode(name, field, data, path) : leafRow(name, field, data, path);
 }
 
 /** A labelled leaf row whose control is set by the field's schema. */

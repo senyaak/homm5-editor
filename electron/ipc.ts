@@ -230,6 +230,8 @@ export interface RosterEntryDTO {
   name?: string;
   nameRef?: string;
   group?: string;
+  /** The entry's place in the source table — the order stored lists keep. */
+  order?: number;
 }
 
 /** Result of `registry:roster`. */
