@@ -69,7 +69,13 @@ const PLACES = {
       artifacts: ['ARTIFACT_TREEBORN_QUIVER', 'ARTIFACT_H3_UNDERTAKERS_AMULET', 'ARTIFACT_H3_VAMPIRES_CLOAK', 'ARTIFACT_H3_DEAD_MANS_BOOTS'],
     },
   ],
-  monster: { shared: '/Units/H3Sharpshooter/H3Sharpshooter.(AdvMapMonsterShared).xdb', x: 37, y: 40 },
+  // The neutral stacks: the mod's Sharpshooter between the heroes, and the two
+  // Peasant stacks the original also has south of them.
+  monsters: [
+    { shared: '/Units/H3Sharpshooter/H3Sharpshooter.(AdvMapMonsterShared).xdb', x: 37, y: 40, amount: 6 },
+    { shared: '/MapObjects/Haven/Peasant.(AdvMapMonsterShared).xdb', x: 36, y: 42, amount: 100 },
+    { shared: '/MapObjects/Haven/Peasant.(AdvMapMonsterShared).xdb', x: 38, y: 42, amount: 100 },
+  ],
   dwellings: [
     { shared: '/Dwellings/SylvanStonehenge/SylvanStonehenge.(AdvMapDwellingShared).xdb', x: 41, y: 37 },
     { shared: '/Dwellings/SylvanUnicornGlade/SylvanUnicornGlade.(AdvMapDwellingShared).xdb', x: 35, y: 44 },
@@ -181,8 +187,12 @@ test('the map, built the way a person would', async () => {
   test.setTimeout(15 * 60_000);
   const { page } = ed;
 
-  // The clean slate: this test owns the rebuild from nothing.
+  // The clean slate: this test owns the rebuild from nothing — the working
+  // folder AND the archive. A map is a file now, and New Map refuses to write
+  // over one, so a run that left its `.mod` behind (a failure, a kill) would
+  // stop the next one dead in the dialog.
   if (existsSync(MAP_DIR)) rmSync(MAP_DIR, { recursive: true, force: true });
+  rmSync(ARCHIVE, { force: true });
   await newMap(page, NAME, '72');
   await openObjectPalette(page);
 
@@ -211,13 +221,15 @@ test('the map, built the way a person would', async () => {
     await expect(page.locator('#mt-dialog')).toBeHidden();
   }
 
-  // --- the neutral stack between them -----------------------------------
-  await pickObject(page, PLACES.monster.shared);
-  await placeOne(page, PLACES.monster.shared, PLACES.monster.x, PLACES.monster.y);
-  await setObjectProp(page, 'Custom', 'true');
-  await setObjectProp(page, 'Amount', '6');
-  await setObjectProp(page, 'DoesNotGrow', 'true');
-  await setObjectProp(page, 'Courage', 'MONSTER_COURAGE_ALWAYS_FIGHT');
+  // --- the neutral stacks -----------------------------------------------
+  for (const m of PLACES.monsters) {
+    await pickObject(page, m.shared);
+    await placeOne(page, m.shared, m.x, m.y);
+    await setObjectProp(page, 'Custom', 'true');
+    await setObjectProp(page, 'Amount', String(m.amount));
+    await setObjectProp(page, 'DoesNotGrow', 'true');
+    await setObjectProp(page, 'Courage', 'MONSTER_COURAGE_ALWAYS_FIGHT');
+  }
 
   // --- the mod's ten dwellings and three artifacts ----------------------
   // The original names each after its definition's file stem; ours suggests
@@ -320,7 +332,14 @@ test('holds against the original: objects, settings, terrain, texts', async () =
     `the rebuilt map exists on disk (app log tail:\n${ed.log.slice(-15).join('\n')})`).toBe(true);
   const refXdb = join(REF, 'map.xdb');
   const ourXdb = join(MAP_DIR, 'map.xdb');
-  expect(gaps('diff-objects.ts', refXdb, ourXdb), 'object differences').toEqual([]);
+  // One difference is deliberate and stays: Diraya stands two tiles clear of
+  // the Stonehenge, where the original has her inside its footprint (see
+  // PLACES). Ours refuses to put a building over a hero, so the map cannot be
+  // reproduced there — and the report, which pairs objects by position, shows
+  // that as one unmatched on each side. Everything else must be nothing.
+  const DELIBERATE = /diraya|no counterpart — 1\/20|the original does not — 1$/i;
+  expect(gaps('diff-objects.ts', refXdb, ourXdb).filter((l) => !DELIBERATE.test(l)),
+    'object differences beyond the one placement ours will not reproduce').toEqual([]);
   expect(gaps('diff-map.ts', refXdb, ourXdb), 'setting differences').toEqual([]);
   // The terrain was never touched: the blank 72×72 the original started from.
   // Every DATA plane must match; the one allowed difference is the container's

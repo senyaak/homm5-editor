@@ -46,6 +46,12 @@ export async function catalogEntry(page: Page, shared: string): Promise<{
 export async function pickObject(page: Page, shared: string): Promise<void> {
   const entry = await catalogEntry(page, shared);
   if (!entry) throw new Error(`no catalogue entry places ${shared}`);
+  const armed = `placing: ${entry.label} · ${entry.type}`;
+  // A swatch TOGGLES: the app says so ("click it again to stop"), so arming what
+  // is already armed puts it down. Placing two of the same object in a row —
+  // two Peasant stacks, say — otherwise placed one and then clicked bare
+  // terrain with nothing in hand.
+  if ((await page.locator('#obj-sel').textContent()) === armed) return;
   await openObjectPalette(page);
   if (entry.hidden) await page.locator('#obj-hidden').setChecked(true);
   await page.locator('#obj-cat').selectOption({ value: entry.group });
@@ -55,7 +61,7 @@ export async function pickObject(page: Page, shared: string): Promise<void> {
   await swatch.click();
   // The readout is "placing: <label> · <type>"; anything else means the click
   // landed on a neighbour, which would put the wrong object on the map.
-  await expect(page.locator('#obj-sel')).toHaveText(`placing: ${entry.label} · ${entry.type}`);
+  await expect(page.locator('#obj-sel')).toHaveText(armed);
 }
 
 /** Click the map at tile (x, y) to place the armed object. */
