@@ -45,7 +45,11 @@ import {
   addArtifact, addCreature, artifactLimit, buildCreatureMod, dataReader, findCreatureMods,
   installCreatureMod, MOD_STEM, newCreatureMod, packCreatureMod,
 } from '../src/creature-mod.ts';
-import type { BuildReport, CreatureMod, Installed } from '../src/creature-mod.ts';
+import type { BuildReport, CreatureMod, Installed, ModCreature } from '../src/creature-mod.ts';
+import { decodeDDSBuffer } from '../src/dds.ts';
+import { writeDDS } from '../src/texture.ts';
+import { isIdentity, recolorPixels } from '../src/recolor.ts';
+import { readEntries, writeArchive } from '../src/pak.ts';
 import type { ArtifactRank, ArtifactSlot, HeroStats } from '../src/artifacts.ts';
 import type { ArtifactExeResult } from '../src/artifact-limit.ts';
 import type { ExeResult } from '../src/creature-limit.ts';
@@ -95,6 +99,7 @@ import type {
   AddLayerPayload, AddLayerResult, PaintRiverPayload, RiverCellsPayload, MaskPayload, UndoResult, HistoryState,
   ModsListResult, ModsInstallPayload, ModsInstallResult, ModsFormDataResult, ModsPresetPayload,
   CreaturePresetDTO, ArtifactPresetDTO, ModsInstallArtifactPayload, ModsInstallArtifactResult,
+  ModsTexturesPayload, ModsTexturesResult, ModsRecolorPayload, ModsRecolorResult,
 } from './ipc.ts';
 
 // [perf] Windows-only Chromium bug: the native occlusion calculator intermittently
@@ -2315,4 +2320,65 @@ ipcMain.handle('mods:install-artifact', async (_e: IpcMainInvokeEvent, p: ModsIn
     limit: artifactLimit(mod),
     exe: exeWords(installed.artifacts),
   };
+});
+
+/** Our mod's archive and the creature in it, for the texture channels. */
+function modCreatureArchive(g: string, creatureId: string): { path: string; creature: ModCreature } {
+  for (const f of findCreatureMods(g)) {
+    if (f.reconstructed) continue;
+    const creature = f.mod.creatures.find((c) => c.id === creatureId);
+    if (creature) return { path: f.path, creature };
+  }
+  throw new Error(`${creatureId} is not in any manifest-carrying mod in UserMODs`);
+}
+
+ipcMain.handle('mods:textures', async (_e: IpcMainInvokeEvent, { creature }: ModsTexturesPayload): Promise<ModsTexturesResult> => {
+  const g = gameRoot();
+  if (!g) throw new Error('no game install configured');
+  const found = modCreatureArchive(g, creature);
+  const prefix = `Units/${found.creature.file}/`;
+  const textures: ModsTexturesResult['textures'] = [];
+  for (const e of readEntries(readFileSync(found.path))) {
+    const name = e.name.replace(/\\/g, '/');
+    if (!name.startsWith(prefix) || !name.toLowerCase().endsWith('.dds')) continue;
+    const img = decodeDDSBuffer(e.data);
+    textures.push({ path: name, width: img.width, height: img.height, png: pngDataUri(img.width, img.height, img.rgba) });
+  }
+  return { textures };
+});
+
+// Recolouring REWRITES the archive in place: the mod's textures are its own
+// copies (that is what the art closure is for), so no shipped file is touched
+// and reverting is re-picking the donor. The ceilings do not move — no install,
+// just the new bytes where the old ones were.
+ipcMain.handle('mods:recolor', async (_e: IpcMainInvokeEvent, p: ModsRecolorPayload): Promise<ModsRecolorResult> => {
+  const g = gameRoot();
+  if (!g) throw new Error('no game install configured');
+  if (isIdentity(p.ops)) throw new Error('nothing to change — every control is at its neutral value');
+  const found = modCreatureArchive(g, p.creature);
+  const prefix = `Units/${found.creature.file}/`;
+  let textures = 0;
+  const out = readEntries(readFileSync(found.path)).map((e) => {
+    const name = e.name.replace(/\\/g, '/');
+    if (name.startsWith(prefix) && name.toLowerCase().endsWith('.dds')) {
+      const img = decodeDDSBuffer(e.data);
+      recolorPixels(img.rgba, p.ops);
+      textures++;
+      return { name, data: writeDDS(img) };
+    }
+    if (name.startsWith(prefix) && name.toLowerCase().endsWith('.(texture).xdb')) {
+      // The paired document has to agree with the new bytes: uncompressed
+      // 32-bit, one surface. A dds the xdb misdescribes is present and invisible.
+      const text = e.data.toString('latin1')
+        .replace(/<Format>[^<]*<\/Format>/, '<Format>TF_8888</Format>')
+        .replace(/<IsDXT>[^<]*<\/IsDXT>/, '<IsDXT>false</IsDXT>')
+        .replace(/<NMips>[^<]*<\/NMips>/, '<NMips>1</NMips>')
+        .replace(/<UseS3TC>[^<]*<\/UseS3TC>/, '<UseS3TC>false</UseS3TC>');
+      return { name, data: Buffer.from(text, 'latin1') };
+    }
+    return { name, data: e.data };
+  });
+  if (!textures) throw new Error(`${p.creature} carries no textures to recolour`);
+  writeFileSync(found.path, writeArchive(out));
+  return { archive: found.path, textures };
 });

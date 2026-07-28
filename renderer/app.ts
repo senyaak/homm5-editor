@@ -22,7 +22,8 @@ import type { Scene, Floor, Instance, SplatData, TileInfo, GeomData, GeomPart, F
 import { createFxSystem } from './particles.ts';
 import type { FxSystem } from './particles.ts';
 import type { EditorApi, MapListEntry, ExternalChange, PlaceableObject, RosterEntryDTO, LocResult,
-  CampaignDoc, CampaignListEntry, CampaignMissionDto, CreatureStats } from '../electron/ipc.ts';
+  CampaignDoc, CampaignListEntry, CampaignMissionDto, CreatureStats, RecolorOps } from '../electron/ipc.ts';
+import { recolorPixels } from '../src/recolor.ts';
 import type { ObjectProp } from '../src/map.ts';
 import { objectProps, deref, controlOf, objectSchema, mapSchema, resolveSchemaAtPath, classOf, schemaForClass } from '../src/schema.ts';
 import type { FieldSchema, HasDefs } from '../src/schema.ts';
@@ -7379,6 +7380,22 @@ async function refreshModLists(): Promise<void> {
       i.textContent = ` · ${who}`;
       row.appendChild(i);
     }
+    // Each creature of OUR mod can be repainted: its textures are the mod's
+    // own copies, so a recolour touches nothing shipped.
+    if (!m.reconstructed) {
+      for (const c of m.creatures) {
+        const b = document.createElement('button');
+        b.className = 'um-recolor';
+        b.textContent = `🎨 ${c.name || c.id}`;
+        b.title = `repaint ${c.id}'s textures`;
+        b.onclick = () => {
+          void openRecolor(c.id, c.name || c.id).catch((e: unknown) => {
+            $('um-err').textContent = e instanceof Error ? e.message : String(e);
+          });
+        };
+        row.appendChild(b);
+      }
+    }
     units.appendChild(row);
     if (m.artifacts.length) {
       const arow = document.createElement('div');
@@ -7513,6 +7530,107 @@ async function submitArtifactMod(): Promise<void> {
     ok.disabled = false;
   }
 }
+
+// --- Recolor ---------------------------------------------------------------
+//
+// Preview and rewrite share src/recolor.ts, so the canvases show exactly what
+// mods:recolor will write into the archive.
+
+let rcCreature = '';
+let rcTextures: { path: string; width: number; height: number; img: HTMLImageElement }[] = [];
+
+const loadImage = (src: string): Promise<HTMLImageElement> => new Promise((res, rej) => {
+  const img = new Image();
+  img.onload = () => res(img);
+  img.onerror = () => rej(new Error('could not decode a texture preview'));
+  img.src = src;
+});
+
+function hexToRgb(hex: string): { r: number; g: number; b: number } {
+  const n = parseInt(hex.replace('#', ''), 16);
+  return { r: (n >> 16) & 0xff, g: (n >> 8) & 0xff, b: n & 0xff };
+}
+
+function currentRecolorOps(): RecolorOps {
+  return {
+    hue: Number($input('rc-hue').value) || 0,
+    saturation: (Number($input('rc-sat').value) || 0) / 100,
+    lightness: (Number($input('rc-light').value) || 0) / 100,
+    tint: { ...hexToRgb($input('rc-tint').value), strength: (Number($input('rc-tintk').value) || 0) / 100 },
+  };
+}
+
+function renderRecolorPreviews(): void {
+  const box = $('rc-previews');
+  box.innerHTML = '';
+  const ops = currentRecolorOps();
+  for (const t of rcTextures) {
+    const canvas = document.createElement('canvas');
+    canvas.width = t.width;
+    canvas.height = t.height;
+    canvas.title = t.path;
+    const ctx = canvas.getContext('2d')!;
+    ctx.drawImage(t.img, 0, 0);
+    const data = ctx.getImageData(0, 0, t.width, t.height);
+    recolorPixels(data.data, ops);
+    ctx.putImageData(data, 0, 0);
+    box.appendChild(canvas);
+  }
+}
+
+async function openRecolor(creature: string, label: string): Promise<void> {
+  rcCreature = creature;
+  $('rc-title').textContent = `Recolor — ${label}`;
+  $('rc-err').textContent = '';
+  $('rc-note').textContent = '';
+  $('rc-previews').textContent = 'reading the mod\'s textures…';
+  modDialog('recolor').showModal();
+  const { textures } = await window.editor.modTextures(creature);
+  rcTextures = await Promise.all(textures.map(async (t) => ({
+    path: t.path, width: t.width, height: t.height, img: await loadImage(t.png),
+  })));
+  renderRecolorPreviews();
+}
+
+async function submitRecolor(): Promise<void> {
+  const ok = $button('rc-ok');
+  ok.disabled = true;
+  $('rc-err').textContent = '';
+  $('rc-note').textContent = '';
+  try {
+    const res = await window.editor.recolorMod({ creature: rcCreature, ops: currentRecolorOps() });
+    $('rc-note').textContent = `repainted ${res.textures} texture(s) → ${res.archive}`;
+    // The previews now show the archive's new bytes, and the controls return
+    // to neutral — a second pass starts from what is really there.
+    const { textures } = await window.editor.modTextures(rcCreature);
+    rcTextures = await Promise.all(textures.map(async (t) => ({
+      path: t.path, width: t.width, height: t.height, img: await loadImage(t.png),
+    })));
+    $input('rc-hue').value = '0';
+    $input('rc-sat').value = '100';
+    $input('rc-light').value = '0';
+    $input('rc-tintk').value = '0';
+    renderRecolorPreviews();
+  } catch (e) {
+    $('rc-err').textContent = e instanceof Error ? e.message : String(e);
+  } finally {
+    ok.disabled = false;
+  }
+}
+
+for (const id of ['rc-hue', 'rc-sat', 'rc-light', 'rc-tint', 'rc-tintk']) {
+  $input(id).addEventListener('input', renderRecolorPreviews);
+}
+$('rc-grey').onclick = () => {
+  $input('rc-sat').value = '0';
+  $input('rc-hue').value = '0';
+  $input('rc-light').value = '0';
+  $input('rc-tintk').value = '0';
+  renderRecolorPreviews();
+};
+$('rc-close').onclick = () => modDialog('recolor').close();
+$('rc-cancel').onclick = () => modDialog('recolor').close();
+$('rc-ok').onclick = () => { void submitRecolor(); };
 
 // The ID fills itself from the file stem until it is edited by hand.
 let umIdTouched = false;

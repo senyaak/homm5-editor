@@ -86,6 +86,8 @@ const api = {
   modArtifactPreset: (donor) => ipcRenderer.invoke('mods:artifact-preset', { donor }),
   installMod: (p) => ipcRenderer.invoke('mods:install', p),
   installArtifact: (p) => ipcRenderer.invoke('mods:install-artifact', p),
+  modTextures: (creature) => ipcRenderer.invoke('mods:textures', { creature }),
+  recolorMod: (p) => ipcRenderer.invoke('mods:recolor', p),
   // Diagnostics for the fatal-error screen in index.html. That screen shows up
   // when the renderer module died, so these two are all it can still call —
   // preload has its own context and survives.

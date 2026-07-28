@@ -92,7 +92,11 @@ function decodeUncompressed(
 }
 
 export function decodeDDS(path: string): Image {
-  const b = readFileSync(path);
+  return decodeDDSBuffer(readFileSync(path));
+}
+
+/** The same, from bytes already in hand — a texture read out of an archive. */
+export function decodeDDSBuffer(b: Buffer): Image {
   if (b.subarray(0, 4).toString() !== 'DDS ') throw new Error('not a DDS');
   const height = b.readUInt32LE(12), width = b.readUInt32LE(16);
   const pfFlags = b.readUInt32LE(80);

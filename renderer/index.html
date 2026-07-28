@@ -667,6 +667,20 @@
     .um-stats input:focus { outline: none; border-color: #1f6feb; }
     .um-note { color: #3fb950; font-size: 11px; min-height: 14px; white-space: pre-line; word-break: break-all; }
     .um-warn { color: #d29922; font-size: 11px; }
+    .um-recolor { margin-left: 8px; background: #21262d; color: #c9d1d9; border: 1px solid #30363d;
+      border-radius: 6px; padding: 2px 8px; font-size: 11px; cursor: pointer; }
+    .um-recolor:hover { background: #30363d; }
+    /* recolor dialog: texture previews and the colour controls */
+    #recolor { padding: 0; border: 0; background: transparent; max-width: 94vw; overflow: visible; }
+    #recolor::backdrop { background: #0d1014cc; }
+    .rc-previews { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-start; }
+    .rc-previews canvas { width: min(256px, 40vw); height: auto; border: 1px solid #30363d;
+      border-radius: 6px; background: #161b22; image-rendering: auto; }
+    .rc-controls button { background: #21262d; color: #c9d1d9; border: 1px solid #30363d;
+      border-radius: 6px; padding: 5px 10px; font-size: 12px; cursor: pointer; }
+    .rc-controls button:hover { background: #30363d; }
+    .rc-controls input[type=color] { width: 100%; height: 28px; padding: 0; border: 1px solid #30363d;
+      border-radius: 6px; background: #0d1014; }
     .nm-check { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #c9d1d9;
       cursor: pointer; }
     .nm-where { font-size: 11px; color: #6e7681; word-break: break-all; }
@@ -1225,6 +1239,36 @@
       <div class="de-foot">
         <button id="um-cancel" class="ghost">Close</button>
         <button id="um-ok">Build &amp; install</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- recolor: a mod creature's textures, repainted. The textures are the
+       MOD'S OWN copies (the art closure put them there), so nothing shipped is
+       touched and reverting is re-picking the donor. Preview and rewrite run
+       the same arithmetic — src/recolor.ts — so what you see is what lands. -->
+  <dialog id="recolor">
+    <div class="mp-card um-card">
+      <div class="mp-head">
+        <span class="mp-title" id="rc-title">Recolor</span>
+        <button id="rc-close" title="close (Esc)">✕</button>
+      </div>
+      <div class="mp-body on-body um-body">
+        <div id="rc-previews" class="rc-previews"></div>
+        <div class="um-stats rc-controls">
+          <label>Hue °<input id="rc-hue" type="number" value="0" min="-180" max="180" title="rotate every colour around the wheel"></label>
+          <label>Saturation %<input id="rc-sat" type="number" value="100" min="0" max="300" title="0 is grey, 100 leaves it, 300 triples it"></label>
+          <label>Lightness %<input id="rc-light" type="number" value="0" min="-100" max="100"></label>
+          <label>Tint<input id="rc-tint" type="color" value="#808080" title="blend every pixel toward this colour, keeping the shading"></label>
+          <label>Tint %<input id="rc-tintk" type="number" value="0" min="0" max="100" title="how far toward the tint colour"></label>
+          <label>Preset<button id="rc-grey" title="saturation to zero — the quick grey">Grey</button></label>
+        </div>
+        <div id="rc-note" class="um-note"></div>
+        <div id="rc-err" class="on-err"></div>
+      </div>
+      <div class="de-foot">
+        <button id="rc-cancel" class="ghost">Close</button>
+        <button id="rc-ok">Repaint &amp; save</button>
       </div>
     </div>
   </dialog>

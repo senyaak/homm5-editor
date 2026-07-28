@@ -9,9 +9,11 @@ import type { Scene, SplatData, TileInfo, Instance, GeomData } from '../src/scen
 import type { ProjectStatus } from '../src/project.ts';
 import type { TypeCounts, ObjectProp } from '../src/map.ts';
 import type { CreatureStats } from '../src/creatures.ts';
+import type { RecolorOps } from '../src/recolor.ts';
 
 export type { ObjectProp } from '../src/map.ts';
 export type { CreatureStats } from '../src/creatures.ts';
+export type { RecolorOps } from '../src/recolor.ts';
 import type { PlaceableObject } from '../src/objects.ts';
 export type { PlaceableObject } from '../src/objects.ts';
 
@@ -778,6 +780,35 @@ export interface ModsInstallArtifactResult {
   exe: string;
 }
 
+/** Payload of `mods:textures` — whose textures to show. */
+export interface ModsTexturesPayload { creature: string }
+
+/** One texture of a mod creature, ready for a preview canvas. */
+export interface ModTextureDTO {
+  /** Path inside the archive — what `mods:recolor` rewrites. */
+  path: string;
+  width: number;
+  height: number;
+  /** The decoded pixels as a PNG data URI. */
+  png: string;
+}
+
+/** Result of `mods:textures`. */
+export interface ModsTexturesResult { textures: ModTextureDTO[] }
+
+/** Payload of `mods:recolor` — recolour every texture of one mod creature. */
+export interface ModsRecolorPayload {
+  creature: string;
+  ops: RecolorOps;
+}
+
+/** Result of `mods:recolor`. */
+export interface ModsRecolorResult {
+  archive: string;
+  /** How many textures were rewritten. */
+  textures: number;
+}
+
 /** Result of `mods:install`. */
 export interface ModsInstallResult {
   /** Where the archive landed. */
@@ -872,6 +903,10 @@ export interface EditorApi {
   installMod(p: ModsInstallPayload): Promise<ModsInstallResult>;
   /** Add an artifact to OUR mod, build it, install it, patch the ceiling. */
   installArtifact(p: ModsInstallArtifactPayload): Promise<ModsInstallArtifactResult>;
+  /** A mod creature's textures, decoded for the Recolor preview. */
+  modTextures(creature: string): Promise<ModsTexturesResult>;
+  /** Recolour a mod creature's textures and rewrite the archive. */
+  recolorMod(p: ModsRecolorPayload): Promise<ModsRecolorResult>;
   /**
    * A human-readable dump of what Chromium decided about this machine's
    * graphics: which GPU features it turned off, and the adapter behind them.

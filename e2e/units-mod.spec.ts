@@ -26,6 +26,8 @@ import { newMap } from './tiles.ts';
 import { openObjectPalette, pickObject, placeAtTile } from './objects.ts';
 import { addItem, reveal, setTreeValue } from './tree.ts';
 import { readCreatureMod } from '../src/creature-mod.ts';
+import { readEntries } from '../src/pak.ts';
+import { decodeDDSBuffer } from '../src/dds.ts';
 import { patchExe, readExe } from '../src/creature-limit.ts';
 import { ORIGINAL_ARTIFACTS, patchArtifactLimit, readArtifactLimit, SITES_FILE } from '../src/artifact-limit.ts';
 import type { Site } from '../src/artifact-limit.ts';
@@ -223,6 +225,58 @@ test('the Artifacts dialog builds the amulet into the same mod', async () => {
 
   await page.locator('#am-cancel').click();
   await expect(page.locator('#artsmod')).toBeHidden();
+});
+
+test('the Recolor dialog paints the Sharpshooter grey', async () => {
+  test.setTimeout(3 * 60_000);
+  const { page } = ed;
+
+  // Self-sufficient: ensure the Units dialog is open and lists our creature.
+  if (!(await page.locator('#unitsmod').isVisible())) await page.locator('#unitsbtn').click();
+  const paint = page.locator('.um-recolor', { hasText: 'Снайперы' });
+  await expect(paint).toBeVisible({ timeout: 30_000 });
+  await paint.click();
+
+  await expect(page.locator('#recolor')).toBeVisible();
+  // The mod carries three textures for it: body, the add layer, the icon.
+  await expect(page.locator('#rc-previews canvas')).toHaveCount(3, { timeout: 60_000 });
+
+  await page.locator('#rc-grey').click();
+  await expect(page.locator('#rc-sat')).toHaveValue('0');
+  await page.locator('#rc-ok').click();
+  await expect(page.locator('#rc-note')).toContainText('repainted 3 texture(s)', { timeout: 120_000 });
+
+  // The archive's own bytes: every creature texture is now grey (r=g=b on
+  // every pixel), the alpha cut-out survived, and the paired texture documents
+  // describe the uncompressed format the new bytes are in.
+  const archive = readFileSync(join(GAME, 'UserMODs', `${MOD}.h5u`));
+  let dds = 0, xdb = 0, alpha = 0;
+  for (const e of readEntries(archive)) {
+    const name = e.name.replace(/\\/g, '/');
+    if (!name.startsWith('Units/H3Sharpshooter/')) continue;
+    if (name.toLowerCase().endsWith('.dds')) {
+      dds++;
+      const img = decodeDDSBuffer(e.data);
+      for (let i = 0; i < img.rgba.length; i += 4) {
+        if (img.rgba[i] !== img.rgba[i + 1] || img.rgba[i + 1] !== img.rgba[i + 2]) {
+          throw new Error(`${name}: pixel ${i / 4} is not grey`);
+        }
+        if (img.rgba[i + 3]! < 255) alpha++;
+      }
+    }
+    if (name.toLowerCase().endsWith('.(texture).xdb')) {
+      xdb++;
+      const text = e.data.toString('latin1');
+      expect(text, name).toContain('<Format>TF_8888</Format>');
+      expect(text, name).toContain('<IsDXT>false</IsDXT>');
+    }
+  }
+  expect(dds).toBe(3);
+  expect(xdb).toBe(3);
+  expect(alpha, 'the alpha cut-out survived the repaint').toBeGreaterThan(0);
+
+  await page.locator('#rc-cancel').click();
+  await page.locator('#um-cancel').click();
 });
 
 test('a fresh map offers the new creature in the army picker', async () => {
