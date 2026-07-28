@@ -66,7 +66,12 @@
     "test-idle": "node tools/test-idle.ts",
     "test-artifact-mod": "node tools/test-artifact-mod.ts",
     "test-artifact-limit": "node tools/test-artifact-limit.ts",
-    "test-typespec": "node tools/test-typespec.ts"
+    "test-artifact-set": "node tools/test-artifact-set.ts",
+    "test-typespec": "node tools/test-typespec.ts",
+    "unwrap-exe": "node tools/unwrap-exe.ts",
+    "test-exe-unwrap": "node tools/test-exe-unwrap.ts",
+    "lua-registry": "node tools/reverse/lua-registry.ts",
+    "test-lua-registry": "node tools/reverse/lua-registry.ts --check"
   },
   "dependencies": {
     "@codemirror/legacy-modes": "^6.5.3",
@@ -81,6 +86,7 @@
     "@types/three": "^0.185.1",
     "electron": "^43.1.1",
     "esbuild": "^0.28.1",
+    "iced-x86": "^1.21.0",
     "typescript": "^7.0.2"
   }
 }

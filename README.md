@@ -176,9 +176,20 @@ get a live 3D scene you sculpt, paint, populate, script and pack.
   above it is read and silently ignored. So installing sets it — one action writes
   the archive and the ceiling, they have to agree exactly, and a `bin/H5_Game_NCF.exe`
   already patched to any number goes to any other in place (`src/creature-limit.ts`,
-  `npm run creature-limit` to look). Steam's own executable is DRM-wrapped and is
-  identified and refused rather than mangled: removing that wrapper is the owner's
-  business, done once, outside this editor.
+  `npm run creature-limit` to look). Steam's own executable is DRM-wrapped, so its
+  code cannot be read or patched at all; `npm run unwrap-exe` makes the copy that
+  can — copying it when it is already clean (GOG, retail) and unwrapping it with
+  Steamless when it is not, never overwriting a copy that already carries a
+  ceiling (`src/exe-unwrap.ts`).
+- **New artifacts** carry no properties of their own: a record holds six hero
+  stats, and every special behaviour the shipped artifacts have is compiled
+  against a specific id. What data, script and the executable each control is in
+  [docs/ARTIFACT_EFFECTS.md](docs/ARTIFACT_EFFECTS.md); what the engine does with
+  those ids — the necromancy sum, artifact sets addressed by enum value, and the
+  command layer every change goes through — is in
+  [docs/ENGINE_INTERNALS.md](docs/ENGINE_INTERNALS.md), read out of the binary
+  with the tools in `tools/reverse/`. Giving our own artifacts real properties is
+  planned in [SLICE_artifact_effects.md](SLICE_artifact_effects.md).
 - **External-change watcher** (`src/watch.ts`): the original Nival editor can be
   open on the same folder. When it saves, a banner offers to take its version.
   Content hashes, not timestamps, so our own saves never self-trigger.

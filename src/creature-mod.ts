@@ -122,6 +122,28 @@ const ARTIFACT_RECORD_TYPE = 'DBArtifact';
 /** And the Lua constant that says how many there are. */
 const ARTIFACT_COUNT_CONST = 'ARTIFACT_ARTIFACT_EFFECT_COUNT';
 
+/**
+ * Artifact sets: the file they live in, the enum they extend, and its last
+ * shipped member.
+ *
+ * `ArtifactSetEffect` is an ordinary enum in types.xml — explicit `<Name>` and
+ * `<Value>` pairs — so appending to it is as cheap as appending an artifact,
+ * and it is why a set of ours can be OURS rather than a shipped one borrowed.
+ * `ARTFSET_EFFECT_CUSTOM` (0) is the developers' own "no predefined effect"
+ * slot; we leave it alone, along with everything else already there.
+ */
+const DEFAULT_STATS = 'GameMechanics/RPGStats/DefaultStats.xdb';
+const SET_EFFECT_TYPE = 'ArtifactSetEffect';
+const SET_TEXT_DIR = 'GameMechanics/RPGStats/ArtifactSets';
+const SHIPPED_SET_EFFECTS = 11;
+const SHIPPED_SET_EFFECTS_BY_NAME = [
+  'ARTFSET_EFFECT_CUSTOM', 'ARTFSET_EFFECT_DRAGONISH', 'ARTFSET_EFFECT_DWARVEN',
+  'ARTFSET_EFFECT_LIONS', 'ARTFSET_EFFECT_MAGIS', 'ARTFSET_EFFECT_NECROMANCERS',
+  'ARTFSET_EFFECT_EDUCATIONAL', 'ARTFSET_EFFECT_HUNTERS', 'ARTFSET_EFFECT_OGRES',
+  'ARTFSET_EFFECT_RUNIC', 'ARTFSET_EFFECT_DEMONIC',
+];
+const LAST_SHIPPED_SET_EFFECT = 'ARTFSET_EFFECT_DEMONIC';
+
 /** The camera the hire dialog uses. CREATURE_UNKNOWN already sits on this one. */
 const HIRE_CAMERA = '/Cameras/Interface/HireCreatures.(Camera).xdb#xpointer(/Camera)';
 
@@ -229,6 +251,15 @@ export interface CreatureMod {
    * the executable, so artifacts need no patched game either.
    */
   artifacts: ModArtifact[];
+  /**
+   * Artifact sets of our own. A set is pure data — an entry in the
+   * `ArtifactSetEffect` enum and a row in `DefaultStats.xdb` — so the game
+   * counts our worn pieces, names the set and draws its tooltip without any
+   * code. What it will not do is give the set an EFFECT: every shipped set's
+   * behaviour is compiled against its enum value, and ours is a value the
+   * executable has never heard of. See docs/ENGINE_INTERNALS.md.
+   */
+  sets: ModArtifactSet[];
 }
 
 /** One in a mod: a spec plus the id number it holds. */
@@ -237,9 +268,39 @@ export interface ModArtifact extends ArtifactSpec {
   number: number;
 }
 
+/** A set of artifacts that count together. */
+export interface ArtifactSetSpec {
+  /** Its enum name, ours, appended to `ArtifactSetEffect` — `ARTFSET_EFFECT_…`. */
+  effect: string;
+  /** Member artifact ids, shipped or ours. Two or more, or nothing combines. */
+  artifacts: string[];
+  /** File stem for the set's texts, under `GameMechanics/RPGStats/ArtifactSets/`. */
+  file: string;
+  name: string;
+  description: string;
+  /**
+   * What the tooltip says at each number of worn pieces: `perCount[0]` is one
+   * piece, `perCount[1]` is two, and so on, so the array is as long as
+   * `artifacts`. The first entry is blank in every shipped set, because one
+   * piece of a set is not a set — which is exactly why the array is indexed
+   * from one piece and not from none.
+   *
+   * A bonus that persists is repeated rather than left blank: the Dragonish
+   * set names its two-piece text at both two and three pieces, because the
+   * game shows the entry for the count worn and nothing accumulates for it.
+   */
+  perCount?: string[];
+}
+
+/** One in a mod: a spec plus the enum value it holds. */
+export interface ModArtifactSet extends ArtifactSetSpec {
+  /** Its enum value, assigned on the way in and never changed. */
+  number: number;
+}
+
 /** A fresh, empty mod. */
 export function newCreatureMod(stem = MOD_STEM): CreatureMod {
-  return { version: 1, stem, first: SHIPPED_CREATURES, creatures: [], dwellings: [], artifacts: [] };
+  return { version: 1, stem, first: SHIPPED_CREATURES, creatures: [], dwellings: [], artifacts: [], sets: [] };
 }
 
 /**
@@ -258,6 +319,26 @@ export function addArtifact(mod: CreatureMod, spec: ArtifactSpec): ModArtifact {
   const a: ModArtifact = { ...spec, number: SHIPPED_ARTIFACTS + mod.artifacts.length };
   mod.artifacts.push(a);
   return a;
+}
+
+/**
+ * Append an artifact set and give it the next effect value.
+ *
+ * APPEND-ONLY for the same reason artifacts are: `<Effect>` is written by name
+ * but stored as a number, so inserting ahead of a shipped set repoints every
+ * set after it — including the Necromancer set the necromancy sum asks for by
+ * the literal 5.
+ */
+export function addArtifactSet(mod: CreatureMod, spec: ArtifactSetSpec): ModArtifactSet {
+  if (!mod.sets) mod.sets = [];
+  if (!/^ARTFSET_EFFECT_[A-Z0-9_]+$/.test(spec.effect)) throw new Error(`${spec.effect} is not a usable set effect`);
+  if (mod.sets.some((s) => s.effect === spec.effect)) throw new Error(`${spec.effect} is already in the mod`);
+  if (SHIPPED_SET_EFFECTS_BY_NAME.includes(spec.effect)) throw new Error(`${spec.effect} is the game's own set`);
+  if (mod.sets.some((s) => s.file === spec.file)) throw new Error(`two sets cannot both be "${spec.file}"`);
+  if (spec.artifacts.length < 2) throw new Error(`${spec.effect}: a set of ${spec.artifacts.length} never combines`);
+  const s: ModArtifactSet = { ...spec, number: SHIPPED_SET_EFFECTS + mod.sets.length };
+  mod.sets.push(s);
+  return s;
 }
 
 /** Append a dwelling. Unlike a creature it holds no id, so order is cosmetic. */
@@ -377,7 +458,7 @@ export interface BuildReport {
  * a test.
  */
 export function buildCreatureMod(mod: CreatureMod, read: DataReader): BuildReport {
-  if (!mod.creatures.length && !mod.dwellings.length && !mod.artifacts?.length) {
+  if (!mod.creatures.length && !mod.dwellings.length && !mod.artifacts?.length && !mod.sets?.length) {
     throw new Error('the mod is empty');
   }
   const limit = creatureLimit(mod);
@@ -433,6 +514,7 @@ export function buildCreatureMod(mod: CreatureMod, read: DataReader): BuildRepor
 
   files.push(...buildDwellings(mod.dwellings, read));
   files.push(...buildArtifacts(mod.artifacts ?? [], read));
+  files.push(...buildArtifactSets(mod.sets ?? []));
 
   // Only creatures need the game's own files touched: the enum and the id→number
   // map in types.xml, the reference table the ceiling indexes, and the hire
@@ -444,10 +526,12 @@ export function buildCreatureMod(mod: CreatureMod, read: DataReader): BuildRepor
   // are applied to the SAME text, in one pass, because a mod that carried both
   // would otherwise ship two types.xml and the second would win whole.
   const artifacts = mod.artifacts ?? [];
-  if (mod.creatures.length || artifacts.length) {
+  const sets = mod.sets ?? [];
+  if (mod.creatures.length || artifacts.length || sets.length) {
     let types = mustRead(read, TYPES);
     if (mod.creatures.length) types = patchTypes(types, mod, limit);
     if (artifacts.length) types = patchArtifactTypes(types, artifacts);
+    if (sets.length) types = patchSetTypes(types, sets);
     files.push({ path: TYPES, data: Buffer.from(types, 'latin1') });
   }
   if (mod.creatures.length) {
@@ -463,6 +547,12 @@ export function buildCreatureMod(mod: CreatureMod, read: DataReader): BuildRepor
     files.push({
       path: STARTUP_SCRIPT,
       data: Buffer.from(patchStartupScript(mustRead(read, STARTUP_SCRIPT), artifacts), 'latin1'),
+    });
+  }
+  if (sets.length) {
+    files.push({
+      path: DEFAULT_STATS,
+      data: Buffer.from(patchDefaultStats(mustRead(read, DEFAULT_STATS), sets), 'latin1'),
     });
   }
 
@@ -568,6 +658,80 @@ function buildArtifacts(artifacts: readonly ModArtifact[], read: DataReader): Mo
     files.push({ path: p.description, data: utf16(a.description) });
   }
   return files;
+}
+
+/**
+ * The texts a set names: its own, and one per number of worn pieces.
+ *
+ * Both go where the shipped sets keep theirs, because `NameFileRef` and the
+ * rest are hrefs RELATIVE to `DefaultStats.xdb` — a mod that puts them under
+ * its own folder writes a path the game resolves against `RPGStats/` and does
+ * not find, and the tooltip comes out blank rather than wrong.
+ */
+function buildArtifactSets(sets: readonly ModArtifactSet[]): ModFile[] {
+  const files: ModFile[] = [];
+  for (const s of sets) {
+    files.push({ path: `${SET_TEXT_DIR}/${s.file}_Name.txt`, data: utf16(s.name) });
+    files.push({ path: `${SET_TEXT_DIR}/${s.file}_Desc.txt`, data: utf16(s.description) });
+    s.artifacts.forEach((_, i) => {
+      const text = s.perCount?.[i];
+      if (text) files.push({ path: `${SET_TEXT_DIR}/${s.file}_Desc${i + 1}.txt`, data: utf16(text) });
+    });
+  }
+  return files;
+}
+
+/** types.xml, the set half: one enum entry per set of ours, appended. */
+function patchSetTypes(types: string, sets: readonly ModArtifactSet[]): string {
+  const at = once(types, `<TypeName>${SET_EFFECT_TYPE}</TypeName>`, 'types.xml artifact-set enum');
+  const last = types.indexOf(`<Name>${LAST_SHIPPED_SET_EFFECT}</Name>`, at);
+  if (last < 0) throw new Error(`types.xml: ${SET_EFFECT_TYPE} does not end at ${LAST_SHIPPED_SET_EFFECT}`);
+  const itemEnd = types.indexOf('</Item>', last);
+  if (itemEnd < 0) throw new Error('types.xml artifact-set enum: the last entry has no </Item>');
+  return insertAfterLine(types, itemEnd, sets.flatMap((s) => [
+    '<Item>', `\t<Name>${s.effect}</Name>`, `\t<Value>${s.number}</Value>`, '</Item>',
+  ]));
+}
+
+/**
+ * DefaultStats.xdb: one `<Item>` per set, appended inside `<Sets>`.
+ *
+ * The per-count array is read POSITIONALLY and holds one entry per member,
+ * indexed from ONE piece worn — not from none. Every shipped set leaves that
+ * first entry blank, which makes it look like a "nothing worn" slot; it is not,
+ * and reading it that way shifts every description one piece early, so a set
+ * appears to combine sooner than it does.
+ */
+function patchDefaultStats(stats: string, sets: readonly ModArtifactSet[]): string {
+  const had = count(stats, /<Effect>ARTFSET_EFFECT_\w+<\/Effect>/g);
+  if (had !== SHIPPED_SET_EFFECTS - 1) {
+    throw new Error(`${DEFAULT_STATS}: ${had} sets, expected ${SHIPPED_SET_EFFECTS - 1}`);
+  }
+  const close = once(stats, '</Sets>', `${DEFAULT_STATS} sets`);
+  return insertBeforeLine(stats, close, sets.flatMap((s) => [
+    '<Item>',
+    `\t<Effect>${s.effect}</Effect>`,
+    '\t<Artifacts>',
+    ...s.artifacts.flatMap((id) => [
+      '\t\t<Item>',
+      `\t\t\t<Artifact>${id}</Artifact>`,
+      '\t\t\t<CombinesAtPuton>true</CombinesAtPuton>',
+      '\t\t\t<CombinesAtBackpack>false</CombinesAtBackpack>',
+      '\t\t</Item>',
+    ]),
+    '\t</Artifacts>',
+    `\t<NameFileRef href="ArtifactSets/${s.file}_Name.txt"/>`,
+    `\t<DescriptionFileRef href="ArtifactSets/${s.file}_Desc.txt"/>`,
+    '\t<CombinedDescriptionsFileRefs>',
+    ...s.artifacts.map((_, i) => {
+      const text = s.perCount?.[i];
+      return `\t\t<Item href="${text ? `ArtifactSets/${s.file}_Desc${i + 1}.txt` : ''}"/>`;
+    }),
+    '\t</CombinedDescriptionsFileRefs>',
+    '\t<CombinedHeroClassBonusesDescs/>',
+    '\t<CombinedIcons/>',
+    '</Item>',
+  ]));
 }
 
 /**
@@ -1203,9 +1367,11 @@ function reconstruct(types: string, table: string): CreatureMod {
     // Nothing to reconstruct them from: a dwelling is an ordinary object file
     // among a mod's other files, with no registry to enumerate. An artifact
     // could be read back out of the table it extends, but only its numbers —
-    // which picture it was built from is in the manifest or nowhere.
+    // which picture it was built from is in the manifest or nowhere. A set is
+    // the same: its members survive in DefaultStats, its texts do not.
     dwellings: [],
     artifacts: [],
+    sets: [],
   };
 }
 
