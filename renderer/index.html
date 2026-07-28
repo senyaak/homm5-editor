@@ -1343,11 +1343,18 @@
               <label>Board tiles<input id="am-board" type="number" value="1" min="1" title="with no map model, the artifact stands as a flat board of its icon this many tiles wide"></label>
               <label class="nm-check" style="align-self:end" title="whether random-artifact rolls may produce it"><input id="am-sell" type="checkbox"> Rollable</label>
             </div>
-            <!-- Beyond the six. An artifact record has nowhere to put this, so it
-                 goes to a file the native extension reads; without the extension
-                 installed it does nothing, which the line below says. -->
-            <div class="um-stats um-span">
-              <label title="percentage points added to the necromancy raise — needs the extension">Necromancy %<input id="am-necromancy" type="number" value="0"></label>
+            <!-- Beyond the six. An artifact record has nowhere to put these, so
+                 they go to a file the native extension reads; without the
+                 extension installed they do nothing, which the line below says.
+                 Added one at a time rather than laid out as a field per stat:
+                 the list of stats grows with the reverse engineering, and an
+                 artifact uses one or two of them. -->
+            <div class="on-row um-span" style="align-items:flex-start">
+              <span>Effects</span>
+              <div style="flex:1;min-width:0">
+                <div id="am-effects" class="as-counts"></div>
+                <button id="am-effect-add" class="um-recolor" style="margin:6px 0 0" title="a bonus the engine has no field for — needs the extension">+ effect</button>
+              </div>
             </div>
             <div id="am-ext" class="um-span um-warn"></div>
             <label class="on-row um-art um-span"><span>Icon</span><input id="am-icon" type="text" spellcheck="false" autocomplete="off" title="href of the 64x64 hero-screen icon — usually the donor's"></label>

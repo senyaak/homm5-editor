@@ -2226,6 +2226,7 @@ ipcMain.handle('mods:form-data', async (): Promise<ModsFormDataResult> => {
   return {
     donors: r.creatures(),
     artifactDonors: r.artifacts(),
+    effectStats: [...EFFECT_STATS],
     abilities: creatureAbilities(assets([gameData()])),
     towns: r.races(),
   };

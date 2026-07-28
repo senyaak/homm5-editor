@@ -7405,6 +7405,7 @@ async function fillModForms(): Promise<void> {
     fillModSelect($select('um-abids'), data.abilities.map((id) => ({ id })));
     fillModSelect($select('um-town'), data.towns);
   }
+  effectStats = data.effectStats;
   if (!$select('am-donor').options.length) {
     fillModSelect($select('am-donor'), data.artifactDonors, true);
   }
@@ -7560,6 +7561,52 @@ async function submitUnitsMod(): Promise<void> {
   } finally {
     ok.disabled = false;
   }
+}
+
+/**
+ * The effects rows in the artifact form: what the extension should add while
+ * this artifact is worn.
+ *
+ * A list you add to rather than a field per stat. The stats come from the main
+ * process because they are a property of the EXTENSION — each one is a place in
+ * the executable where we found where to append our term — and the form should
+ * not have to be edited every time another is found.
+ */
+let effectStats: string[] = [];
+
+function addEffectRow(stat = '', amount = ''): void {
+  const row = document.createElement('label');
+  const select = document.createElement('select');
+  for (const s of effectStats) {
+    const option = document.createElement('option');
+    option.value = option.textContent = s;
+    select.appendChild(option);
+  }
+  if (stat) select.value = stat;
+  select.className = 'am-effect-stat';
+  const value = document.createElement('input');
+  value.type = 'number';
+  value.value = amount || '0';
+  value.className = 'am-effect-amount';
+  value.title = 'percentage points; negative is a cursed item';
+  const drop = document.createElement('button');
+  drop.className = 'um-recolor';
+  drop.textContent = '×';
+  drop.title = 'remove this effect';
+  drop.onclick = () => row.remove();
+  row.append(select, value, drop);
+  $('am-effects').appendChild(row);
+}
+
+/** What the rows say, as the payload wants it. */
+function artifactEffects(): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const row of $('am-effects').querySelectorAll('label')) {
+    const stat = row.querySelector<HTMLSelectElement>('.am-effect-stat')?.value;
+    const amount = Number(row.querySelector<HTMLInputElement>('.am-effect-amount')?.value) || 0;
+    if (stat && amount) out[stat] = (out[stat] ?? 0) + amount;
+  }
+  return out;
 }
 
 /**
@@ -7732,7 +7779,7 @@ async function submitArtifactMod(): Promise<void> {
       aiValue: Number($input('am-ai').value) || 0,
       canBeGeneratedToSell: $input('am-sell').checked,
       stats,
-      effects: { necromancy: Number($input('am-necromancy').value) || 0 },
+      effects: artifactEffects(),
       icon: $input('am-icon').value,
       model: $input('am-model').value,
       boardTiles: Number($input('am-board').value) || 1,
@@ -7912,9 +7959,13 @@ $('as-members').addEventListener('change', renderSetCounts);
 $('as-ok').onclick = () => { void submitArtifactSet(); };
 
 $('unitsbtn').onclick = () => { umIdTouched = false; openModDialog('unitsmod'); };
+$('am-effect-add').onclick = () => addEffectRow();
 $('artsbtn').onclick = () => {
   amIdTouched = false;
   asIdTouched = false;
+  // Ours, not the donor's: a shipped artifact has no effects of this kind, so
+  // carrying them over from a preset would invent them.
+  $('am-effects').innerHTML = '';
   openModDialog('artsmod');
   void fillSetMembers().catch((e: unknown) => {
     $('as-err').textContent = e instanceof Error ? e.message : String(e);

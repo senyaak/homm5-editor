@@ -111,8 +111,13 @@ test('a second piece, so there is a set to make', async () => {
   await page.locator('#am-rank').selectOption('ARTF_CLASS_MINOR');
   await page.locator('#am-knowledge').fill('2');
   // The part no artifact record can hold: it goes to a file the native
-  // extension reads, and the artifact carries its six stats without it.
-  await page.locator('#am-necromancy').fill('10');
+  // extension reads, and the artifact carries its six stats without it. Added
+  // as a row rather than typed into a field of its own — the list of stats
+  // grows with the reverse engineering and the form should not.
+  await page.locator('#am-effect-add').click();
+  const effect = page.locator('#am-effects label').first();
+  await expect(effect.locator('select')).toHaveValue('necromancy');
+  await effect.locator('input').fill('10');
 
   await page.locator('#am-ok').click();
   await expect(page.locator('#am-note')).toContainText('installed', { timeout: 120_000 });

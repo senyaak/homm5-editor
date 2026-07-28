@@ -713,6 +713,14 @@ export interface ModsFormDataResult {
   donors: RosterEntryDTO[];
   /** Every artifact a new one can start from. */
   artifactDonors: RosterEntryDTO[];
+  /**
+   * The bonuses the native extension knows how to add, for the effect picker.
+   *
+   * A LIST rather than a field per stat in the form: this grows by reverse
+   * engineering, one entry per place in the executable where we have found
+   * where to append our term, and an artifact uses one or two of them.
+   */
+  effectStats: string[];
   /** Every ABILITY_… the engine's type registry names. */
   abilities: string[];
   /** The TOWN_… races, for a creature's home town. */
