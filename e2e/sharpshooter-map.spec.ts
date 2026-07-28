@@ -52,7 +52,9 @@ const PLACES = {
   town: { shared: '/MapObjects/Academy.(AdvMapTownShared).xdb', x: 45, y: 47 },
   heroes: [
     { shared: '/MapObjects/Academy/Sufi.(AdvMapHeroShared).xdb', x: 34, y: 37, player: 'PLAYER_1', count: 12, artifacts: [] as string[] },
-    { shared: '/MapObjects/Preserve/Diraya.(AdvMapHeroShared).xdb', x: 40, y: 37, player: 'PLAYER_2', count: 8, artifacts: [] as string[] },
+    // At 38: two tiles clear of SylvanStonehenge's footprint (anchor 41,37) —
+    // at the original 40 the hero stood inside the building.
+    { shared: '/MapObjects/Preserve/Diraya.(AdvMapHeroShared).xdb', x: 38, y: 37, player: 'PLAYER_2', count: 8, artifacts: [] as string[] },
     {
       shared: '/MapObjects/Necropolis/Straker.(AdvMapHeroShared).xdb', x: 34, y: 40, player: 'PLAYER_1', count: 12,
       artifacts: ['ARTIFACT_TREEBORN_QUIVER', 'ARTIFACT_H3_UNDERTAKERS_AMULET', 'ARTIFACT_H3_VAMPIRES_CLOAK', 'ARTIFACT_H3_DEAD_MANS_BOOTS'],
