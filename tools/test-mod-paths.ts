@@ -10,9 +10,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
-import {
-  MASKS, MOD_DIR, ensureModDir, findMaskSites, listOurMaps, modFile, patchModPaths, readModPaths,
-} from '../src/mod-paths.ts';
+import { MASKS, MOD_DIR, findMaskSites, modFile, patchModPaths, readModPaths } from '../src/mod-paths.ts';
 import { MOD_MANIFEST, findCreatureMods, installCreatureMod, newCreatureMod } from '../src/creature-mod.ts';
 import { writeArchive } from '../src/pak.ts';
 
@@ -111,45 +109,6 @@ function fakeRdata(): Buffer {
       modFile(dir, 'map', 'My Map') === join(dir, MOD_DIR, 'My Map.mod'));
     check('and a campaign keeps its own extension',
       modFile(dir, 'campaign', 'My Campaign') === join(dir, MOD_DIR, 'My Campaign.h5c'));
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-}
-
-// --- and that the editor lists ours, and only ours -----------------------------
-
-{
-  const dir = mkdtempSync(join(tmpdir(), 'modpaths-'));
-  try {
-    const data = join(dir, 'data');
-    const map = (where: string, manifest: boolean): void => {
-      mkdirSync(where, { recursive: true });
-      writeFileSync(join(where, 'map.xdb'), '<AdvMapDesc/>');
-      writeFileSync(join(where, 'GroundTerrain.bin'), '');
-      if (manifest) writeFileSync(join(where, 'project.json'), '{}');
-    };
-    // The game's own maps and ours land in the same tree; only ours have been a
-    // project. A shipped map with a deep folder under it is the case the old
-    // walk paid for.
-    map(join(data, 'Maps', 'SingleMissions', 'A2S1'), false);
-    mkdirSync(join(data, 'Maps', 'SingleMissions', 'A2S1', 'lightmaps'), { recursive: true });
-    map(join(data, 'Maps', 'SingleMissions', 'Ours'), true);
-    map(join(data, 'Maps', 'Scenario', 'A2C1M1'), false);
-    ensureModDir(dir);
-    writeFileSync(modFile(dir, 'map', 'Packed'), 'PK');
-    writeFileSync(modFile(dir, 'mod', 'homm5-editor'), 'PK');
-
-    const listed = listOurMaps(dir, data);
-    check('the picker lists our packed map and our working folder',
-      listed.map((m) => m.rel).join() === 'Packed.mod,SingleMissions/Ours', listed.map((m) => m.rel).join());
-    check('...the packed one marked as one', listed.find((m) => m.rel === 'Packed.mod')?.archive === true);
-    check('...the folder pointing at its map.xdb',
-      listed.find((m) => m.rel === 'SingleMissions/Ours')?.path === join(data, 'Maps', 'SingleMissions', 'Ours', 'map.xdb'));
-    check('...and no mod of ours mistaken for a map', !listed.some((m) => m.rel.endsWith('.h5u')));
-    check('without an install, the working folders still list',
-      listOurMaps(null, data).length === 1);
-    check('and without a data root, the packed ones do',
-      listOurMaps(dir, null).length === 1);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

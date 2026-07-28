@@ -76,6 +76,7 @@
     "test-exe-unwrap": "node tools/test-exe-unwrap.ts",
     "mod-paths": "node tools/mod-paths.ts",
     "test-mod-paths": "node tools/test-mod-paths.ts",
+    "test-map-source": "node tools/test-map-source.ts",
     "lua-registry": "node tools/reverse/lua-registry.ts",
     "test-lua-registry": "node tools/reverse/lua-registry.ts --check"
   },

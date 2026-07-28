@@ -172,6 +172,15 @@ export interface ZipIndexEntry {
   /** Uncompressed byte length. */
   size: number;
   method: number;
+  /**
+   * The member's own timestamp, as the DOS date and time it is stored as.
+   *
+   * Comparable as a number — bigger is newer — and that is what it is for: given
+   * one path in several mounted archives the game takes the NEWEST member, so
+   * anything gathering a file from more than one archive has to make the same
+   * choice (docs/ARCHIVES.md).
+   */
+  stamp: number;
 }
 
 /**
@@ -197,6 +206,7 @@ export function readIndex(fd: number, fileSize: number): ZipIndexEntry[] {
   const out: ZipIndexEntry[] = [];
   let p = 0;
   while (moreEntries(cd, p, cdSize)) {
+    const at = p;
     const method = cd.readUInt16LE(p + 10);
     const compSize = cd.readUInt32LE(p + 20);
     const size = cd.readUInt32LE(p + 24);
@@ -207,7 +217,9 @@ export function readIndex(fd: number, fileSize: number): ZipIndexEntry[] {
     const name = cd.toString('utf8', p + 46, p + 46 + nameLen);
     p += 46 + nameLen + extraLen + commentLen;
     if (name.endsWith('/')) continue; // directory marker
-    out.push({ name, localOff, compSize, size, method });
+    // Date in the high half, time in the low: one number that sorts by age.
+    const stamp = cd.readUInt16LE(at + 14) * 0x10000 + cd.readUInt16LE(at + 12);
+    out.push({ name, localOff, compSize, size, method, stamp });
   }
   return out;
 }

@@ -46,7 +46,9 @@ import {
   updateArtifact, updateArtifactSet, artifactLimit, buildCreatureMod, dataReader, findCreatureMods,
   installCreatureMod, MOD_STEM, newCreatureMod, packCreatureMod,
 } from '../src/creature-mod.ts';
-import { MOD_DIR, MOD_EXT, listOurMaps, modFile } from '../src/mod-paths.ts';
+import { MOD_DIR, MOD_EXT, ensureModDir, modFile } from '../src/mod-paths.ts';
+import { extractMapFolder, gameArchives, listOurMaps, listStockMaps } from '../src/map-source.ts';
+import type { MapSource } from '../src/map-source.ts';
 import { builtDll, extensionState, installExtension, writeEffectsFile } from '../src/extension.ts';
 import { describeUses, findArtifactUses, findCreatureUses } from '../src/artifact-usage.ts';
 import { EFFECT_STATS, effectsOf } from '../src/artifact-effects.ts';
@@ -453,15 +455,22 @@ async function runSmoke(mapPath: string): Promise<void> {
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 app.on('will-quit', () => { session?.watch.stop(); });
 
-// --- IPC: list OUR maps ---
-// Which maps those are, and how they are told from the game's own, is
-// listOurMaps in src/mod-paths.ts — where it can be tested without a window.
+// --- IPC: the maps on offer — ours, and the game's own ---
+//
+// Both come out of archives in the install, never out of the unpacked data:
+// `<game>/H5E/*.mod` are ours, `<game>/data/*.pak` hold the shipped ones. What
+// each list is and how it is read lives in src/map-source.ts, where it can be
+// tested without a window; the stock ones are cached because their archives do
+// not change while the editor runs.
+let stockMaps: { root: string; maps: MapSource[] } | null = null;
+
 ipcMain.handle('maps:list', async (): Promise<MapsListResult> => {
-  const root = gameData();
+  const g = gameRoot();
   const started = performance.now();
-  const maps: MapListEntry[] = listOurMaps(gameRoot(), root || null);
+  if (g && stockMaps?.root !== g) stockMaps = { root: g, maps: listStockMaps(g) };
+  const maps: MapListEntry[] = [...listOurMaps(g), ...(g ? stockMaps!.maps : [])];
   console.log(`[perf] maps:list ${(performance.now() - started) | 0}ms · ${maps.length} maps`);
-  return { root, maps };
+  return { root: g ?? gameData(), maps };
 });
 
 // --- IPC: open a map file via the OS dialog (starts in the last-used folder) ---
@@ -498,11 +507,18 @@ ipcMain.handle('map:new', async (_e: IpcMainInvokeEvent, p: NewMapPayload): Prom
   if (/[\\/:*?"<>|]/.test(name)) throw new Error('the name cannot contain \\ / : * ? " < > |');
   if (!MAP_SIZES.includes(p.tiles)) throw new Error(`unknown map size ${p.tiles}`);
 
-  // Where the original editor puts them, and where the game looks: a map's path
-  // under the data root is also its path inside the .h5m, so getting this right
-  // is what makes the packed map findable.
+  // A new map is a FILE from the moment it exists: `<game>/H5E/<name>.mod`, the
+  // one our build reads and the only place the picker looks. The working folder
+  // still goes under the data root — a map's path there is its path inside the
+  // archive, which is how the game addresses it — and is packed straight away,
+  // so Save goes back into the .mod and there is never a map that exists only as
+  // a folder nothing ships from.
   const mapDir = join(gameData(), 'Maps', p.multiplayer ? 'Multiplayer' : 'SingleMissions', name);
   if (existsSync(mapDir)) throw new Error(`${mapDir} already exists`);
+  const g = gameRoot();
+  if (!g) throw new Error('no game install configured — a new map needs somewhere to be a file');
+  const archive = modFile(g, 'map', name);
+  if (existsSync(archive)) throw new Error(`${archive} already exists`);
 
   // The enabled-spell and artifact lists are the game's own, so they follow the
   // installed data (and any mod) rather than a list frozen into the source.
@@ -517,7 +533,14 @@ ipcMain.handle('map:new', async (_e: IpcMainInvokeEvent, p: NewMapPayload): Prom
   mkdirSync(mapDir, { recursive: true });
   for (const f of files) writeFileSync(join(mapDir, f.path), f.data);
   initProject(mapDir); // a manifest, so status/pack work on it immediately
-  console.log(`[new] ${mapDir} · ${p.tiles}×${p.tiles}${p.twoLevel ? ' two-level' : ''} · ${files.length} files`);
+  ensureModDir(g);
+  packProject(mapDir, archive, { prefix: archivePrefixFor(mapDir) });
+  // From here it is a map opened from an archive, like any other, and Save
+  // already knows what that means.
+  const m = readManifest(mapDir);
+  m.source = { path: archive, hash: createHash('sha1').update(readFileSync(archive)).digest('hex') };
+  writeManifest(mapDir, m);
+  console.log(`[new] ${archive} · ${p.tiles}×${p.tiles}${p.twoLevel ? ' two-level' : ''} · ${files.length} files`);
   return { mapPath: join(mapDir, 'map.xdb'), mapDir };
 });
 
@@ -575,6 +598,41 @@ function pruneWorkspaces(keep: string): void {
   }
 }
 
+/**
+ * Take one shipped map out of the game's archives and open the copy.
+ *
+ * Keyed by archive AND folder, so two maps out of the same `.pak` get a
+ * workspace each. Rebuilt every time rather than reused: the game's archives do
+ * not change, so a workspace that is already there is either this map as it
+ * shipped — nothing to gain by unpacking it again — or work in progress, which
+ * is exactly what must not be overwritten.
+ */
+function openStockMap(archive: string, inner: string): OpenArchiveResult {
+  const root = workspaceFor(`${archive}#${inner}`);
+  const mapDir = join(root, inner);
+  if (existsSync(join(mapDir, 'map.xdb'))) {
+    console.log(`[open] ${inner} of ${basename(archive)} → ${mapDir} (workspace reused)`);
+    return { mapPath: join(mapDir, 'map.xdb'), mapDir, files: listDirFiles(root).length };
+  }
+  // Every archive the game mounts, not just the one the listing found it in: a
+  // shipped map is spread across them (A2S1's terrain and sounds are in
+  // data.pak, its patched map.xdb in the addon's, its texts in texts.pak), and
+  // the newest copy of each file is the one the game reads.
+  const g = gameRoot();
+  const files = extractMapFolder(g ? gameArchives(g) : [archive], inner, root);
+  if (!existsSync(join(mapDir, 'map.xdb'))) throw new Error(`${inner} in ${basename(archive)} holds no map.xdb`);
+  // No source: the workspace is a copy, and Save writes the copy. Nothing here
+  // may ever lead back to writing into the game's own archive. The prefix is
+  // written down rather than left to be guessed from the path, so packing this
+  // map puts it back exactly where it was addressed from.
+  initProject(mapDir);
+  const m = readManifest(mapDir);
+  m.archivePrefix = inner.replace(/\\/g, '/');
+  writeManifest(mapDir, m);
+  console.log(`[open] ${inner} of ${basename(archive)} → ${mapDir} · ${files} files`);
+  return { mapPath: join(mapDir, 'map.xdb'), mapDir, files };
+}
+
 // --- IPC: open a packed .h5m as an editable project ---
 //
 // The other half of Pack. A .h5m is a zip of the map folder, so opening one is
@@ -589,6 +647,11 @@ function pruneWorkspaces(keep: string): void {
 ipcMain.handle('map:open-archive', async (_e: IpcMainInvokeEvent, p: OpenArchivePayload): Promise<OpenArchiveResult> => {
   const archive = p.path;
   if (!existsSync(archive)) throw new Error(`${archive} not found`);
+  // One map out of an archive that holds many — the game's own `.pak`. Only that
+  // folder is taken, the archive is never written to, and the workspace records
+  // no source: saving a shipped map means saving the copy, and packing it offers
+  // our folder. Opening one is starting FROM it.
+  if (p.inner) return openStockMap(archive, p.inner);
   const mapDir = workspaceFor(archive);
 
   // Reopening the same archive returns to the same workspace rather than

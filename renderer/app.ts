@@ -7195,13 +7195,13 @@ $('extchange-ignore').onclick = hideExternalChange;
  * archive — which is unpacked beside itself first, so what gets edited is always
  * a working folder and the archive stays as the game got it.
  */
-async function openAny(path: string | null): Promise<void> {
+async function openAny(path: string | null, inner?: string): Promise<void> {
   if (!path) return;
-  if (!/\.(mod|h5m|h5c|h5u|pak)$/i.test(path)) { await loadMapPath(path); return; }
+  if (!inner && !/\.(mod|h5m|h5c|h5u|pak)$/i.test(path)) { await loadMapPath(path); return; }
   $('loading').classList.add('on');
   $('loadmsg').textContent = 'unpacking…';
   try {
-    const { mapPath, mapDir, files } = await window.editor.openArchive(path);
+    const { mapPath, mapDir, files } = await window.editor.openArchive(path, inner);
     await loadMapPath(mapPath);
     $('hud').textContent = `unpacked ${files} files → ${mapDir}`;
     // The folder that just appeared belongs in the picker's list.
@@ -7225,16 +7225,8 @@ async function openViaDialog() {
 let allMaps: MapEntry[] = [];
 let activeCat = ALL;
 
-const CATEGORY = (rel: string): string => {
-  const top = rel.split('/')[0] || '';
-  if (/^SingleMissions/i.test(top) || /Campaign/i.test(rel)) return 'Campaigns';
-  if (/^Multiplayer/i.test(top)) return 'Multiplayer';
-  if (/^CombatArenas/i.test(top)) return 'Arenas';
-  if (/^DuelMode/i.test(top)) return 'Duels';
-  if (/TEST/i.test(rel)) return 'Tests';
-  return top || 'Other';
-};
-const CAT_ORDER = ['Campaigns', 'Multiplayer', 'Other', 'Duels', 'Arenas', 'Tests'];
+const CATEGORY = (m: MapListEntry): string => (m.stock ? 'The game\'s' : 'Ours');
+const CAT_ORDER = ['Ours', 'The game\'s'];
 const catRank = (c: string): number => { const i = CAT_ORDER.indexOf(c); return i === -1 ? 99 : i; };
 
 function renderMapList() {
@@ -7250,10 +7242,10 @@ function renderMapList() {
     div.className = 'm';
     div.innerHTML = `<span class="name"></span><span class="rel"></span>`;
     setChild(div, '.name', m.name);
-    // Packed maps are opened by unpacking, which creates a folder — worth saying
-    // so before the click rather than after.
-    setChild(div, '.rel', m.archive ? `${m.rel} · unpacks` : m.rel);
-    div.onclick = () => { void openAny(m.path); };
+    // Every map lives in an archive now, and opening one unpacks a copy to work
+    // in. For the game's own that is the whole point, so it is worth saying.
+    setChild(div, '.rel', m.stock ? `${m.rel} · a copy to start from` : m.rel);
+    div.onclick = () => { void openAny(m.path, m.inner); };
     list.appendChild(div);
   }
 }
@@ -7275,9 +7267,9 @@ function renderCats() {
 async function initPicker() {
   try {
     const { root, maps } = await window.editor.listMaps();
-    allMaps = maps.map((m) => ({ ...m, cat: CATEGORY(m.rel) }));
-    // Default to the most useful non-empty category.
-    activeCat = ['Campaigns', 'Multiplayer', 'Other'].find((c) => allMaps.some((m) => m.cat === c)) || ALL;
+    allMaps = maps.map((m) => ({ ...m, cat: CATEGORY(m) }));
+    // Ours first — the game's own are there to start from, not to browse.
+    activeCat = allMaps.some((m) => m.cat === 'Ours') ? 'Ours' : ALL;
     $('picker-foot').textContent = `${maps.length} maps · ${root}`;
     renderCats();
     renderMapList();
@@ -7301,11 +7293,11 @@ function newMapDialog(): HTMLDialogElement {
   return el;
 }
 
-/** Show where the map will land, so the folder is never a surprise. */
+/** Show where the map will land, so neither the file nor the folder is a surprise. */
 function updateNewMapWhere(): void {
   const name = $input('nm-name').value.trim() || 'New Map';
   const sub = $select('nm-type').value === 'multi' ? 'Maps/Multiplayer/' : 'Maps/SingleMissions/';
-  $('nm-where').textContent = `→ <game data>/${sub}${name}`;
+  $('nm-where').textContent = `→ <game>/H5E/${name}.mod · working folder <game data>/${sub}${name}`;
 }
 
 function openNewMap(): void {
@@ -8262,8 +8254,14 @@ $('pack').onclick = async () => {
 /** The campaign being edited, and which mission row is selected. */
 let campDoc: CampaignDoc | null = null;
 let campSel = -1;
-/** Map projects a mission can point at. */
+/** Maps a mission can point at. */
 let campMaps: MapListEntry[] = [];
+
+/**
+ * What a mission calls a map: its path under `Maps/`, which is how the game
+ * addresses it — `SingleMissions/Foo` for an archive carrying `Maps/SingleMissions/Foo`.
+ */
+const missionMapRel = (m: MapListEntry): string => (m.inner ?? '').replace(/^Maps\//i, '');
 
 const dlg = (id: string): HTMLDialogElement => $(id) as HTMLDialogElement;
 const $sel = (id: string): HTMLSelectElement => $(id) as HTMLSelectElement;
@@ -8330,9 +8328,10 @@ async function openCampaign(dir: string): Promise<void> {
   dlg('camplist').close();
   campSel = -1;
   if (!campMaps.length) {
-    // Only unpacked map projects can be missions: a mission names a map folder,
-    // and a .h5m has no folder to name until it is opened.
-    try { campMaps = (await window.editor.listMaps()).maps.filter((m) => !m.archive); }
+    // A mission names the map's path in the game's file system, which is the
+    // folder the archive carries it at — so an archive that holds no map folder
+    // is not a mission's map.
+    try { campMaps = (await window.editor.listMaps()).maps.filter((m) => !!m.inner); }
     catch { campMaps = []; }
   }
   renderCampaign();
@@ -8392,7 +8391,7 @@ async function editMission(index: number): Promise<void> {
   missionDraft = JSON.parse(JSON.stringify(m)) as CampaignMissionDto;
   heroSlotsShown = '';
 
-  fillSelect($sel('ms-map'), campMaps.map((x) => ({ id: x.rel, label: x.rel })), missionDraft.mapRel);
+  fillSelect($sel('ms-map'), campMaps.map((x) => ({ id: missionMapRel(x), label: x.rel })), missionDraft.mapRel);
   $input('ms-name').value = missionDraft.name;
   $input('ms-description').value = missionDraft.description;
   $input('ms-hcount').value = String(missionDraft.heroes.length);
@@ -8543,7 +8542,7 @@ $('cp-cancel').onclick = () => dlg('campaign').close();
 $('cp-add').onclick = () => {
   if (!campDoc) return;
   readCampaignForm();
-  campDoc.missions.push({ mapRel: campMaps[0]?.rel ?? '', name: '', description: '', heroes: [], bonuses: [] });
+  campDoc.missions.push({ mapRel: campMaps[0] ? missionMapRel(campMaps[0]) : '', name: '', description: '', heroes: [], bonuses: [] });
   campSel = campDoc.missions.length - 1;
   renderCampaign();
   void editMission(campSel);

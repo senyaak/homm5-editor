@@ -17,20 +17,25 @@ export type { PaletteEntry, RecolorOps } from '../src/recolor.ts';
 import type { PlaceableObject } from '../src/objects.ts';
 export type { PlaceableObject } from '../src/objects.ts';
 
-/** One openable map found under the game-data root (`maps:list`). */
+/**
+ * One map on offer (`maps:list`) — ours out of `H5E/`, or the game's own out of
+ * its `.pak`. Every one is inside an archive: opening it unpacks first.
+ */
 export interface MapListEntry {
-  /** Folder name, e.g. '12'. */
+  /** The map's name, without the extension. */
   name: string;
-  /** Posix-style path relative to <data>/Maps. */
+  /** What is shown beside the name: the file name, or its path in the archive. */
   rel: string;
-  /** Absolute path to the map's map.xdb, or to the .h5m when `archive`. */
+  /** The archive holding it. */
   path: string;
-  /** A packed .h5m rather than an unpacked folder: opening it unpacks first. */
-  archive?: boolean;
+  /** The folder inside the archive, for an archive holding many maps. */
+  inner?: string;
+  /** The game's own map, which is read and never written. */
+  stock?: boolean;
 }
 
-/** Payload of `map:open-archive` — the .h5m (or .h5c/.h5u) to unpack. */
-export interface OpenArchivePayload { path: string }
+/** Payload of `map:open-archive` — the archive to unpack, and what to take out. */
+export interface OpenArchivePayload { path: string; inner?: string }
 
 /** Result of `map:open-archive` — the unpacked project, ready for `map:load`. */
 export interface OpenArchiveResult {
@@ -43,7 +48,7 @@ export interface OpenArchiveResult {
 
 /** Result of `maps:list`. */
 export interface MapsListResult {
-  /** The game-data root the listing was made against. */
+  /** The install the listing was made against. */
   root: string;
   maps: MapListEntry[];
 }
@@ -907,7 +912,8 @@ export interface EditorApi {
   listMaps(): Promise<MapsListResult>;
   openMapDialog(): Promise<OpenMapDialogResult>;
   newMap(p: NewMapPayload): Promise<NewMapResult>;
-  openArchive(path: string): Promise<OpenArchiveResult>;
+  /** `inner` takes ONE map out of an archive holding many — the game's own paks. */
+  openArchive(path: string, inner?: string): Promise<OpenArchiveResult>;
   loadMap(path: string): Promise<MapLoadResult>;
   moveObject(id: string, x: number, y: number): Promise<MoveObjectResult>;
   rotateObject(id: string, r: number): Promise<ObjectEditResult>;
