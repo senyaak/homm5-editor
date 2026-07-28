@@ -54,8 +54,15 @@ on these instances:
   baked keys stay bone-local, so the bone's rest-pose world transform (from
   the clip's own GR2 — the skeleton lives inside the animation file) is
   composed in. A glued instance whose bone can't be resolved is dropped:
-  absent beats at-the-feet. The composition is the REST pose — with the idle
-  animation playing the glow does not ride the swaying head. **[~]**
+  absent beats at-the-feet. The rest-pose composition is the *fallback* — the
+  instance also keeps its transform bone-LOCAL, and with the idle animation
+  playing the renderer re-hangs it off the live bone every frame, so the glow
+  rides the swaying head. (The bone's world matrix already carries the object's
+  placement and the creature's display scale, since the bones are children of
+  the skinned mesh, so only the bone-local part is composed then — and the
+  root's display scale is divided back out of it, or it would be counted
+  twice. The matrix has to be refreshed by hand: three.js updates world
+  matrices during render, which is after the effects advance.)
 * Colour bytes are authored around **128 = full brightness** (the era's
   modulate-×2 stage, the same one the terrain lighting has): the ghost
   dragon's mist peaks at 57 and rendered near-black under a plain modulate.
@@ -206,8 +213,9 @@ nothing changes on a noon map.
 Still simplified, in the order they would matter:
 * Position space is taken as the instance's local frame before its
   Position/Rotation/Scale (matches how `<Models>` instances behave). **[~]**
-* Bone-glued instances sit at the bone's REST pose; they do not follow the
-  playing idle animation. (With idles off — the default — the rest pose IS
-  the shown pose, so this only shades into view when a creature is moving.)
-  **[~]**
+* ~~Bone-glued instances sit at the bone's REST pose~~ — **done** (2026-07-28):
+  they follow the playing animation, checked by measurement rather than by eye
+  (`e2e/glued-effects.spec.ts`: over one beat of the shadow dragon's clip the
+  Head-glued glow moves ~0.35 world units while the unglued mist beside it
+  moves exactly zero).
 * `bin/Lights` (AnimLight flicker curves) — parked, see §2.

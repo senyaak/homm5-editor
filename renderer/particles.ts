@@ -32,6 +32,16 @@ export interface FxSystem {
   update(seconds: number): void;
   /** Re-place after the owning object moved or turned. */
   setObjectMatrix(m: THREE.Matrix4): void;
+  /**
+   * The bone this system is glued to, when it is — the ghost dragon's eyes on
+   * its head. The renderer re-hangs the system off that bone every frame; the
+   * matrix built at construction is the bind-pose fallback for a still object.
+   */
+  glue?: string;
+  /** Its transform INSIDE the bone's frame, for that per-frame re-hang. */
+  glueLocal?: THREE.Matrix4;
+  /** Where it sits with no animation — restored when the skeleton goes away. */
+  restMatrix?: THREE.Matrix4;
   dispose(): void;
 }
 
@@ -277,7 +287,17 @@ export function createFxSystem(
     },
     setObjectMatrix(m: THREE.Matrix4) {
       mesh.matrix.multiplyMatrices(m, local);
+      this.restMatrix?.copy(mesh.matrix);
     },
+    ...(fx.glue ? {
+      glue: fx.glue.bone,
+      glueLocal: new THREE.Matrix4().compose(
+        new THREE.Vector3(...(fx.glue.pos as [number, number, number])),
+        new THREE.Quaternion(fx.glue.quat[0], fx.glue.quat[1], fx.glue.quat[2], fx.glue.quat[3]),
+        new THREE.Vector3(fx.glue.scale, fx.glue.scale, fx.glue.scale),
+      ),
+      restMatrix: mesh.matrix.clone(),
+    } : {}),
     dispose() {
       geo.dispose();
       mat.dispose();

@@ -1708,7 +1708,47 @@ function advanceFx(dt: number): void {
   fxClock += dt;
   const fl = world.floors[world.active];
   if (!fl?.fx.length || !fl.objGroup.visible) return;
-  for (const s of fl.fx) s.update(fxClock);
+  /** Animated bodies by instance, built only when something is glued to one. */
+  let bodies: Map<unknown, IdleObject> | null = null;
+  for (const s of fl.fx) {
+    s.update(fxClock);
+    if (!s.glue || !s.glueLocal) continue;
+    bodies ??= new Map(fl.idle.map((i) => [i.mesh.userData.inst, i]));
+    followBone(s, bodies.get(s.mesh.userData.inst));
+  }
+}
+
+/**
+ * Hang a glued effect off the bone it names, where the bone is NOW.
+ *
+ * The ghost dragon's eye glow is two particles around its Head bone. Their
+ * placement was folded against the bind pose when the scene was built, which is
+ * right until the idle clip moves the skeleton — then the head turns and the
+ * eyes stay behind, hanging in the air where the head used to be.
+ *
+ * The bone's world matrix already carries the object's placement and the
+ * creature's display scale (the bones are children of the skinned mesh), so the
+ * object matrix must NOT be multiplied in again — only the bone-local transform.
+ * And it has to be refreshed by hand: three.js updates world matrices during
+ * render, which is after this, so reading it raw would follow the animation one
+ * frame late.
+ */
+function followBone(s: FxSystem, body: IdleObject | undefined): void {
+  const bone = body ? boneOf(body, s.glue!) : null;
+  if (!bone) {
+    // No animated body (idle stance off, or this object has no skeleton): the
+    // bind-pose placement is the right one.
+    if (s.restMatrix) s.mesh.matrix.copy(s.restMatrix);
+    return;
+  }
+  bone.updateWorldMatrix(true, false);
+  s.mesh.matrix.multiplyMatrices(bone.matrixWorld, s.glueLocal!);
+}
+
+/** The bone an effect names: `<GlueToNamedBone>` by name, `<GlueToBone>` by index. */
+function boneOf(body: IdleObject, glue: string): THREE.Bone | null {
+  const byIndex = /^\d+$/.test(glue) ? body.bones[Number(glue)] : undefined;
+  return byIndex ?? body.bones.find((b) => b.name === glue) ?? null;
 }
 
 /**
@@ -4909,7 +4949,14 @@ interface ViewApi {
    */
   pointLights(): { count: number; litTexels: number };
   /** Per-system particle state on the active floor — which effects are actually alive. */
-  fxSystems(): { uid: string; shared: string; at: number[]; alive: number; visible: boolean; tint: number[] }[];
+  fxSystems(): {
+    uid: string; shared: string; at: number[];
+    /** The system's own world position this frame — a glued one rides its bone. */
+    pos: number[];
+    /** The bone it is glued to, when it is. */
+    glue: string;
+    alive: number; visible: boolean; tint: number[];
+  }[];
   /**
    * Place an object through the renderer's own palette path — the one that
    * grafts the new instance onto the LIVE scene (idle, effects, batch).
@@ -5073,10 +5120,16 @@ const view: ViewApi = {
       const g = (s.mesh as unknown as { geometry: THREE.InstancedBufferGeometry }).geometry;
       const inst = s.mesh.userData.inst as Instance;
       const tint = ((s.mesh.material as THREE.ShaderMaterial).uniforms.uTint?.value ?? null) as THREE.Color | null;
+      // Where the system actually SITS this frame, not where its object stands:
+      // a glued instance rides an animated bone, and "did the eye glow follow
+      // the head" is a question only this answers.
+      const p = new THREE.Vector3().setFromMatrixPosition(s.mesh.matrix);
       return {
         uid: String(s.mesh.userData.uid ?? ''),
         shared: inst?.shared ?? '',
         at: [inst?.x ?? -1, inst?.y ?? -1],
+        pos: [p.x, p.y, p.z],
+        glue: s.glue ?? '',
         alive: g.instanceCount,
         visible: s.mesh.visible,
         tint: tint ? [tint.r, tint.g, tint.b] : [1, 1, 1],

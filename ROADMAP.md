@@ -140,8 +140,11 @@ project.json
       Palette-added objects get their effects immediately (was: save+reopen).
       Dead ends measured, not skipped: `WindAffected` false on every effect
       in the game; `ParticlesColor` 0.25-constant in every preset.
-      Remaining [~]: bone glue at rest pose (invisible unless idles are on),
-      AnimLight (`bin/Lights`, 98 files; ~1 adventure-map object)
+      Bone-glued instances follow the animation as of 2026-07-28: the shadow
+      dragon's eye glow rides its Head bone instead of hanging where the head
+      was in the bind pose (`e2e/glued-effects.spec.ts` measures it — the glow
+      moves, the mist beside it does not).
+      Remaining [~]: AnimLight (`bin/Lights`, 98 files; ~1 adventure-map object)
 - [ ] ⬜ RTS camera niceties: tile grid, minimap, hover highlight
 - [ ] ⬜ Instancing for repeated props + LOD
 

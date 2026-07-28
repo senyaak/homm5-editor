@@ -15,6 +15,14 @@ one.
 
 ### Fixed
 
+- **A creature's glued effects follow the animation.** The shadow dragon's eye
+  glow hangs off its Head bone; it was placed against the bind pose when the
+  scene was built and then never moved again, so the head turned through its
+  idle clip and the eyes stayed behind, floating where the head had been. The
+  glued instances now keep their transform in the BONE's frame and are re-hung
+  off the live bone each frame — measured, the glow travels a third of a unit
+  over a beat of the clip where the unglued mist around the same dragon moves
+  exactly zero.
 - **Fires no longer die and relight — the effect loop was the wrong model.**
   The baked effect files turned out to be one-shots, not loops: the particle
   population ramps up from nothing and dies back to nothing (1911 of the 1921

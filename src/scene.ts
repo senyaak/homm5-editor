@@ -210,6 +210,20 @@ export interface FxInstancePayload {
   pos: number[];
   quat: number[];
   scale: number;
+  /**
+   * Set when the instance is glued to a BONE — the ghost dragon's eye glow on
+   * its head. `pos`/`quat`/`scale` above carry the bone's REST transform folded
+   * in, which is right for a still object and wrong the moment the skeleton
+   * moves: the eyes would stay where the head was in the bind pose. So the
+   * transform is also kept bone-LOCAL here, and the renderer re-hangs it off
+   * the animated bone every frame (advanceFx). The bone is addressed the way
+   * the effect addresses it: by name, or by index as a string.
+   *
+   * `scale` here has the root's display scale divided back out, because at run
+   * time that scale is on the skinned mesh and so already inside the bone's
+   * world matrix — folding it in twice would shrink the eyes onto the nose.
+   */
+  glue?: { bone: string; pos: number[]; quat: number[]; scale: number };
   /** Playback rate multiplier, from the instance's <Speed>. */
   speed: number;
   /**
@@ -766,10 +780,22 @@ function particlesOfEffect(
       const glueIdx = +(inst.match(/<GlueToBone>([-\d]+)<\/GlueToBone>/)?.[1] ?? 0);
       const glue = glueName || (glueIdx > 0 ? String(glueIdx) : null);
       let instScale = +(inst.match(/<Scale>([-\d.eE]+)</)?.[1] ?? 1) || 1;
+      /** The bone-local transform, kept so the renderer can follow the animation. */
+      let glued: FxInstancePayload['glue'];
       if (glue) {
         const bone = boneWorld?.(glue);
         if (!bone) continue;
         const bs = bone.scale || 1;
+        // What is left of the bone's accumulated scale once the root's display
+        // scale is taken out: at run time that one rides on the skinned mesh.
+        const rootScale = boneWorld?.('__rootScale__')?.scale || 1;
+        const own = bs / rootScale;
+        glued = {
+          bone: glue,
+          pos: [pos[0]! * own, pos[1]! * own, pos[2]! * own],
+          quat: [...quat],
+          scale: instScale * own,
+        };
         const r = qrot(bone.quat, [pos[0]! * bs, pos[1]! * bs, pos[2]! * bs]);
         pos = [bone.pos[0]! + r[0]!, bone.pos[1]! + r[1]!, bone.pos[2]! + r[2]!];
         quat = qmul(bone.quat, quat);
@@ -783,6 +809,7 @@ function particlesOfEffect(
         pos,
         quat,
         scale: instScale,
+        ...(glued ? { glue: glued } : {}),
         speed: +(inst.match(/<Speed>([-\d.eE]+)</)?.[1] ?? 1) || 1,
         offset: +(inst.match(/<Offset>([-\d.eE]+)</)?.[1] ?? 0) || 0,
         endCycle: +(inst.match(/<EndCycle>([-\d.eE]+)</)?.[1] ?? 0) || 0,
