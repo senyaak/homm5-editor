@@ -117,8 +117,10 @@ an artifact depends on.
 | `types.xml` (in the mod archive) | ✅ Append `ARTFSET_EFFECT_<ours> = 11` to the `ArtifactSetEffect` enum. Append-only: the value is what saves and maps store. |
 | `GameMechanics/RPGStats/DefaultStats.xdb` | ✅ A `<Sets>` entry using that effect — members, per-count texts and icons. |
 | [src/creature-mod.ts](src/creature-mod.ts) | ✅ `addArtifactSet` and the two patches above, in the existing single pass over types.xml. |
-| `Maps/sod/tools/probe-artifact-set.ts` (port repo) | ✅ Adds the set to the port's own mod and installs it — §1.1(б). Undone by rebuilding the mod. |
-| the Artifacts dialog | A Sets pane inside it, not a dialog of its own: one mod, one install. Needs `sets` in `ModListEntry` first, or an installed set is invisible. Deferred — Сеня: «щас юай вообще не трогаем». |
+| `Maps/sod/src/new-artifacts.ts` (port repo) | ✅ `NEW_ARTIFACT_SETS` — the Cloak of the Undead King, ordinary data now that §1.1(б) is answered. The probe that proved it is retired. |
+| [renderer/index.html](renderer/index.html), [renderer/app.ts](renderer/app.ts) | ✅ A Sets pane inside the Artifacts dialog, not a dialog of its own: one mod, one install. Members are ticked from a list, never typed. |
+| [electron/main.ts](electron/main.ts), [electron/ipc.ts](electron/ipc.ts) | ✅ `mods:install-set`, and `sets` in `ModListEntry` so an installed set is visible. |
+| [e2e/artifacts-create.spec.ts](e2e/artifacts-create.spec.ts) | ✅ Builds two pieces and the set they belong to; checks that borrowing a shipped effect is refused. |
 | new: the proxy DLL | Forwards `zlib1.dll`, registers Lua functions, installs detours, reads the config. Built outside this repo; the editor ships and configures it. |
 | new: `src/artifact-effects.ts` | The config model + writer — what the DLL reads. |
 | [src/artifacts.ts](src/artifacts.ts) | Emit the enum entry and the set alongside the existing artifact records. |
