@@ -35,11 +35,10 @@ and script can express), [docs/ENGINE_INTERNALS.md](docs/ENGINE_INTERNALS.md)
   does an eleventh set hit a compiled ceiling.
 - в) **Prove the native path.** A proxy DLL forwarding `zlib1.dll` — no patched
   byte in the executable — carrying two proofs on top: one new Lua function
-  callable from a map script, and **one detour on `0xb4c270`** making a worn
-  artifact of ours answer to another id, so the necromancy percentage visibly
-  moves in game without touching the sum. That single detour is what buys all
-  fifty shipped behaviours; a detour per sum comes later and only for numbers
-  the engine does not already know.
+  callable from a map script, and **one detour on the necromancy sum
+  `0xc77850`** that calls the original and adds a term of ours — our set, our
+  threshold, our number — so the percentage visibly moves in game while every
+  shipped term still reads exactly as it did.
 - г) **Make it editable.** The DLL hardcodes nothing: it reads a table saying
   which set, which threshold, which kind of bonus, how much — and the editor
   generates and edits that table.
@@ -89,14 +88,15 @@ enum in `types.xml`, so we append our own value rather than borrowing
 overwriting a shipped one. From here the game counts worn pieces, names the set
 and draws its tooltip, and Lua can already read the count.
 
-3.2. **Native code makes the effect real, in two steps of very different
-price.** A proxy DLL detours `0xb4c270`, the one question the engine asks about
-worn artifacts, so ours can answer to any of the fifty ids the executable
-already reacts to — one hook, fifty behaviours, nothing shipped overwritten.
-Where we want a number the engine does not know, a second detour adds a term to
-that particular sum, the way the Necromancer's Pendant already does. Either way
-the result flows through the engine's own arithmetic, caps and display — which
-is the whole meaning of "indistinguishable from a shipped artifact".
+3.2. **Native code makes the effect real, by adding to the engine's answer
+rather than replacing it.** A proxy DLL detours a calculation, calls the
+original, and appends one term of ours: count our set's worn pieces, compare
+against our threshold, add our number. It reads what is worn through the
+engine's own `CountEquipped` — asking about our ids, never answering for
+someone else's. Nothing shipped changes behaviour, and the result still flows
+through the engine's arithmetic, caps and display, which is the whole meaning
+of "indistinguishable from a shipped artifact". Сеня: «мы должны строить
+поверх — не заменять существующее».
 
 3.3. **A config makes it editable.** Which id or set contributes what, at which
 threshold, how much. Written by the editor, read by the DLL.
@@ -134,16 +134,17 @@ of evidence, and the creature and artifact ceilings both looked absent until
 they were found.
 
 5.3. ~~**Where does equipment get applied?**~~ **Answered:** nowhere — it is
-read where it is used, and every read goes through `0xb4c270`. The fallback
-(a detour per sum) is now the *second* lever rather than the only one; the
-first is one detour on that function, which is both cheaper and wider than
-anything this section expected.
+read where it is used, and every read goes through `0xb4c270`. So there is no
+single hook that covers everything, and the fallback named here — a detour per
+sum, adding our term after the engine's — is the plan. The catalogue in
+[docs/ENGINE_INTERNALS.md](docs/ENGINE_INTERNALS.md) bounds it: 36 functions is
+every place an artifact effect can live, so the work is finite and known.
 
 5.4. **Dark energy.** Decided: restore it daily rather than model it — Сеня.
 Needs only the write site, not a new mechanic.
 
-5.5. **How far does the config go?** Two entries are now obvious: *"this id
-also counts as that id"* (the cheap lever) and *"this set, at this count, adds
-this much to that sum"*. Spells granted while worn are a third and are not
-costed yet — the machinery exists, since a Scroll loses its spell the moment it
+5.5. **How far does the config go?** The entry that is now obvious: *"this set,
+at this many worn pieces, adds this much to that calculation"* — one row per
+term we append. Spells granted while worn are a second kind and are not costed
+yet — the machinery exists, since a Scroll loses its spell the moment it
 comes off, but §1.1(а) found the stat path rather than the spellbook one.

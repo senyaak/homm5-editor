@@ -431,24 +431,34 @@ multiply by a constant, add.
 
 ### What this means for the extension
 
-Two levers, and the cheap one is very cheap.
+**We add terms; we never answer for a shipped artifact.** It is tempting to
+detour `CountEquipped` itself and have our Cloak report as a Necromancer's
+Pendant — one hook, fifty behaviours for free. Do not: that is the engine's
+answer about *its* artifact, and taking it over means our effect can only ever
+be a copy of one the developers already wrote, sized by their number. Sums
+would also stop being trustworthy, since the pendant term and ours would be
+indistinguishable to anything reading them.
 
-**A detour on `CountEquipped` alone gives every one of those fifty behaviours to
-our own artifacts.** If the config says our Cloak counts as a Necromancer's
-Pendant for the purpose of the question, the detour adds to the returned count
-and the necromancy sum picks it up — through the engine's own arithmetic, its
-own caps, its own display, on the map and in combat, whatever route the artifact
-arrived by. One hook, no per-effect work, and nothing shipped is overwritten:
-the aliasing lives in our config, not in the game's data.
+So the extension is one shape, applied per calculation:
 
-**A detour per calculation gives magnitudes of our own.** Adding a term to
-`0xc77850` — count our set's worn pieces, add our number — is the same twenty
-bytes the Necromancer's Pendant already costs, and it is what "our own set, our
-own effect" means when the number is not one the engine already knows.
+```
+result = original(...)                       ; the engine's own answer, untouched
+       + ourTerm(hero, config)               ; our set, our threshold, our number
+```
 
-The order to build them in is that order: the first is one function and proves
-the whole native path; the second is per-effect and only worth paying for what
-the first cannot express.
+and `ourTerm` **calls** `CountEquipped` rather than replacing it — it is already
+the right function for "how many of artifact N is this hero wearing", it stays
+the engine's, and we ask it about our own ids.
+
+That is exactly term 7 of the necromancy sum: count worn pieces of a set,
+compare against a threshold, add a number that came from data. Twenty bytes.
+Ours is the same twenty bytes reading our own set and our own number, appended
+where the engine finished its own.
+
+**So the catalogue above is a map of extension points, not of things to
+impersonate.** Thirty-six functions is where an artifact effect can live at all
+in this engine; each one is a place our config may add a term, and every one we
+do not touch keeps behaving exactly as it shipped.
 
 ## Open threads
 
