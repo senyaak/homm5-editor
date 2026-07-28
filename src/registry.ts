@@ -247,6 +247,41 @@ function refPath(href: string): string {
 }
 
 /**
+ * A creature's two source documents — what a new creature's art starts from.
+ *
+ * The units mod takes a `visualSource` (CreatureVisual) and a `monsterSource`
+ * (AdvMapMonsterShared); a person picking a donor knows the creature, not those
+ * two paths. This follows the table entry to its record and reads both refs, so
+ * the picker can offer creatures and the mod still gets documents.
+ */
+export function creatureSources(data: Assets, id: string): { visual: string; monster: string } | null {
+  const text = data.text('GameMechanics/RefTables/Creatures.xdb');
+  if (text === null) return null;
+  const root = children(parse(text))[0];
+  const objects = root ? find(root, 'objects') : null;
+  if (!objects) return null;
+  for (const item of children(objects)) {
+    if (item.name !== 'Item' || childText(item, 'ID') !== id) continue;
+    const obj = find(item, 'Obj');
+    if (!obj) return null;
+    let record = find(obj, 'Creature');
+    const href = obj.attrs.href;
+    if (!record && href && !href.startsWith('#')) {
+      const body = data.text(refPath(href));
+      if (!body) return null;
+      const doc = parse(body);
+      record = doc.name === 'Creature' ? doc : find(doc, 'Creature');
+    }
+    if (!record) return null;
+    const visual = find(record, 'Visual')?.attrs.href;
+    const monster = find(record, 'MonsterShared')?.attrs.href;
+    if (!visual || !monster) return null;
+    return { visual: refPath(visual), monster: refPath(monster) };
+  }
+  return null;
+}
+
+/**
  * A HoMM5 text file's contents — UTF-16 LE with a byte-order mark. Read through
  * the chain, so a mod's own text wins the way the game reads it. Missing or
  * unreadable is '' rather than an error: a roster entry without a name still

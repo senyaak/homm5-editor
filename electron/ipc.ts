@@ -8,8 +8,10 @@
 import type { Scene, SplatData, TileInfo, Instance, GeomData } from '../src/scene.ts';
 import type { ProjectStatus } from '../src/project.ts';
 import type { TypeCounts, ObjectProp } from '../src/map.ts';
+import type { CreatureStats } from '../src/creatures.ts';
 
 export type { ObjectProp } from '../src/map.ts';
+export type { CreatureStats } from '../src/creatures.ts';
 import type { PlaceableObject } from '../src/objects.ts';
 export type { PlaceableObject } from '../src/objects.ts';
 
@@ -641,6 +643,70 @@ export interface UndoResult {
   redoLabel: string | null;
 }
 
+// --- units mod ---------------------------------------------------------------
+//
+// Creature mods are GAME-GLOBAL, not part of any map: a .h5u in UserMODs plus a
+// patched executable ceiling (src/creature-mod.ts). So these channels need no
+// session — the dialog works with no map open, exactly like the game does.
+
+/** One creature of an installed mod, as `mods:list` reports it. */
+export interface ModCreatureDTO {
+  id: string;
+  number: number;
+  name: string;
+  tier: number;
+  gold: number;
+}
+
+/** One installed creature mod. */
+export interface ModListEntry {
+  /** Absolute path of the .h5u in UserMODs. */
+  path: string;
+  /** Archive name stem — what `mods:install` targets. */
+  stem: string;
+  /** The exe ceiling this mod needs. */
+  limit: number;
+  /** Read back without our manifest — listable, but not extendable. */
+  reconstructed: boolean;
+  creatures: ModCreatureDTO[];
+}
+
+/** Result of `mods:list`. */
+export interface ModsListResult {
+  /** The game install the mods live in, or null when none is configured. */
+  gameRoot: string | null;
+  mods: ModListEntry[];
+}
+
+/** Payload of `mods:install` — one creature to add, and to which archive. */
+export interface ModsInstallPayload {
+  /** Archive stem to create or extend (UserMODs/<stem>.h5u). */
+  stem: string;
+  /** `CREATURE_…` — the id maps and scripts will use. */
+  id: string;
+  /** File stem of everything generated for the creature. */
+  file: string;
+  name: string;
+  description: string;
+  /** The ability line the hire dialog prints, in words. */
+  abilitiesText: string;
+  /** Donor creature id — its visual and its map stack are the starting point. */
+  donor: string;
+  stats: Partial<CreatureStats>;
+}
+
+/** Result of `mods:install`. */
+export interface ModsInstallResult {
+  /** Where the archive landed. */
+  archive: string;
+  /** The ceiling the executable was set to. */
+  limit: number;
+  /** What happened to the executable, in words. */
+  exe: string;
+  /** Art files copied for the new creature. */
+  art: number;
+}
+
 /** The surface preload puts on `window.editor`. */
 export interface EditorApi {
   listMaps(): Promise<MapsListResult>;
@@ -711,6 +777,12 @@ export interface EditorApi {
   packCampaign(dir: string): Promise<CampaignPackResult>;
   /** The heroes a mission on this map can hand on, and whether it can receive. */
   mapHeroes(mapRel: string): Promise<MapHeroesResult>;
+  /** Installed creature mods (units), game-global — no map needed. */
+  listMods(): Promise<ModsListResult>;
+  /** Every creature that can donate its looks to a new one. */
+  modDonors(): Promise<RosterResult>;
+  /** Add a creature to a mod, build it, install it, patch the ceiling. */
+  installMod(p: ModsInstallPayload): Promise<ModsInstallResult>;
   /**
    * A human-readable dump of what Chromium decided about this machine's
    * graphics: which GPU features it turned off, and the adapter behind them.

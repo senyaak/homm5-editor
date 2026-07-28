@@ -643,6 +643,22 @@
     /* New Map dialog: the two-level toggle and the "where it lands" hint */
     #newmap { padding: 0; border: 0; background: transparent; max-width: 92vw; overflow: visible; }
     #newmap::backdrop { background: #0d1014cc; }
+    /* Units dialog: installed creature mods and the new-creature form */
+    #unitsmod { padding: 0; border: 0; background: transparent; max-width: 94vw; overflow: visible; }
+    #unitsmod::backdrop { background: #0d1014cc; }
+    .um-card { width: min(640px, 94vw); }
+    .um-body { max-height: 74vh; overflow: auto; }
+    .um-body .on-row span { flex: 0 0 78px; }
+    .um-mods { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #c9d1d9; }
+    .um-mods i { color: #8b949e; font-style: normal; }
+    .um-empty { color: #6e7681; font-size: 12px; }
+    .um-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px 10px; }
+    .um-stats label { display: flex; flex-direction: column; gap: 2px; font-size: 11px; color: #8b949e; }
+    .um-stats input { background: #0d1014; border: 1px solid #30363d; border-radius: 6px;
+      padding: 5px 8px; color: #c9d1d9; font-size: 12px; width: 100%; box-sizing: border-box; }
+    .um-stats input:focus { outline: none; border-color: #1f6feb; }
+    .um-note { color: #3fb950; font-size: 11px; min-height: 14px; white-space: pre-line; word-break: break-all; }
+    .um-warn { color: #d29922; font-size: 11px; }
     .nm-check { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #c9d1d9;
       cursor: pointer; }
     .nm-where { font-size: 11px; color: #6e7681; word-break: break-all; }
@@ -696,6 +712,7 @@
     <button id="newmapbtn" title="create a blank map from scratch">New map…</button>
     <button id="open">Open map…</button>
     <button id="campaignbtn" title="build a campaign out of maps and pack it to .h5c">Campaigns…</button>
+    <button id="unitsbtn" title="creature mods — add new units to the game (an archive in UserMODs plus a patched executable)">Units…</button>
     <button id="undobtn" disabled title="Nothing to undo">↶ Undo</button>
     <button id="redobtn" disabled title="Nothing to redo">↷ Redo</button>
     <button id="save" disabled title="write the work back where the map came from — into its .h5m when it was opened from one">Save</button>
@@ -1124,6 +1141,64 @@
       <div class="de-foot">
         <button id="nm-cancel" class="ghost">Cancel</button>
         <button id="nm-ok">Create</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- units: the game-global creature mods. Lists what UserMODs adds and adds a
+       creature to a mod — the window over src/creature-mod.ts, the same blocks
+       tools/units-mod.ts drives from the command line. Game-global on purpose:
+       a mod is UserMODs plus the executable's ceiling, nothing of the open map,
+       so the dialog works with no map loaded. -->
+  <dialog id="unitsmod">
+    <div class="mp-card um-card">
+      <div class="mp-head">
+        <span class="mp-title">Units</span>
+        <button id="um-close" title="close (Esc)">✕</button>
+      </div>
+      <div class="mp-body on-body um-body">
+        <fieldset>
+          <legend>Installed mods</legend>
+          <div id="um-list" class="um-mods"></div>
+          <div id="um-conflict" class="um-warn"></div>
+        </fieldset>
+        <fieldset>
+          <legend>New creature</legend>
+          <div class="on-body">
+            <label class="on-row"><span>Mod</span><input id="um-stem" type="text" spellcheck="false" autocomplete="off" value="homm5-units" title="archive stem — UserMODs/(stem).h5u; an existing mod of ours is extended"></label>
+            <label class="on-row"><span>ID</span><input id="um-id" type="text" spellcheck="false" autocomplete="off" placeholder="CREATURE_…" title="what maps, saves and scripts store — pick once, never reuse"></label>
+            <label class="on-row"><span>Files</span><input id="um-file" type="text" spellcheck="false" autocomplete="off" placeholder="file stem, e.g. Sharpshooter" title="the stem of every file generated for the creature"></label>
+            <label class="on-row"><span>Name</span><input id="um-name" type="text" autocomplete="off"></label>
+            <label class="on-row"><span>Description</span><input id="um-desc" type="text" autocomplete="off"></label>
+            <label class="on-row"><span>Abilities</span><input id="um-abil" type="text" autocomplete="off" title="the ability line the hire dialog prints, in words"></label>
+            <label class="on-row"><span>Ability ids</span><input id="um-abids" type="text" spellcheck="false" autocomplete="off" placeholder="ABILITY_…, space or comma separated" title="the engine abilities the creature actually has — the line above is only what the dialog prints"></label>
+            <label class="on-row"><span>Looks like</span><select id="um-donor" title="the creature whose visual and map stack the new one starts from"></select></label>
+            <div class="um-stats">
+              <label>Attack<input id="um-attack" type="number" value="1"></label>
+              <label>Defence<input id="um-defence" type="number" value="1"></label>
+              <label>Min dmg<input id="um-mindmg" type="number" value="1"></label>
+              <label>Max dmg<input id="um-maxdmg" type="number" value="1"></label>
+              <label>Health<input id="um-health" type="number" value="1"></label>
+              <label>Speed<input id="um-speed" type="number" value="4"></label>
+              <label>Initiative<input id="um-init" type="number" value="10"></label>
+              <label>Shots<input id="um-shots" type="number" value="0" title="0 for a melee creature"></label>
+              <label>Range<input id="um-range" type="number" value="0" title="0 = ordinary ranged; -1 = no distance penalty (the Sharp Shooter's)"></label>
+              <label>Growth/week<input id="um-growth" type="number" value="1"></label>
+              <label>Gold<input id="um-gold" type="number" value="100"></label>
+              <label>Tier<input id="um-tier" type="number" value="1" min="1" max="7"></label>
+              <label>Exp<input id="um-exp" type="number" value="1"></label>
+              <label>Power<input id="um-power" type="number" value="1" title="what the AI values one at"></label>
+              <label>Size<input id="um-size" type="number" value="1" min="1" max="2" title="1 small, 2 large (two tiles square in combat)"></label>
+              <label class="nm-check" style="align-self:end"><input id="um-fly" type="checkbox"> Flying</label>
+            </div>
+          </div>
+        </fieldset>
+        <div id="um-note" class="um-note"></div>
+        <div id="um-err" class="on-err"></div>
+      </div>
+      <div class="de-foot">
+        <button id="um-cancel" class="ghost">Close</button>
+        <button id="um-ok">Build &amp; install</button>
       </div>
     </div>
   </dialog>

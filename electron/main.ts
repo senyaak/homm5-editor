@@ -23,6 +23,7 @@ import type { FxTransfer } from '../src/effects.ts';
 import { listPlaceable, iconPathFor, readIconFile } from '../src/objects.ts';
 import { decodeDDS } from '../src/dds.ts';
 import { editorRoot, gameData, gameRoot, isConfigured, mountedAssets, preloadPath, readSettings, rendererFile, saveSettings, tmpRoot } from './paths.ts';
+import { assets } from '../src/assets.ts';
 import type { Assets } from '../src/assets.ts';
 import { closeSetup, runSetup } from './setup.ts';
 import { initProject, openProject, packProject, exportLocalized, readManifest, writeManifest, status, pickMapRel, MANIFEST_NAME } from '../src/project.ts';
@@ -38,8 +39,13 @@ import { buildMapTag } from '../src/map-tag.ts';
 import { createField } from '../src/defaults.ts';
 import { buildNewMapProject } from '../src/new-map.ts';
 import { MAP_SIZES } from '../src/terrain-blank.ts';
-import { Registry } from '../src/registry.ts';
+import { Registry, creatureSources } from '../src/registry.ts';
 import type { RosterEntry } from '../src/registry.ts';
+import {
+  addCreature, buildCreatureMod, dataReader, findCreatureMods, installCreatureMod,
+  MOD_STEM, newCreatureMod, packCreatureMod, readCreatureMod,
+} from '../src/creature-mod.ts';
+import { blankStats } from '../src/creatures.ts';
 import type { RegistryName, FieldSchema } from '../src/schema.ts';
 import { readTypeSpec, fieldOrder, typesXmlPath, fieldValues } from '../src/typespec.ts';
 import type { FieldOrder, SpecType } from '../src/typespec.ts';
@@ -83,6 +89,7 @@ import type {
   NewMapPayload, NewMapResult, OpenArchivePayload, OpenArchiveResult,
   ExternalChange, PaintTilePayload, PaintTileResult, SculptPayload, SculptResult,
   AddLayerPayload, AddLayerResult, PaintRiverPayload, RiverCellsPayload, MaskPayload, UndoResult, HistoryState,
+  ModsListResult, ModsInstallPayload, ModsInstallResult,
 } from './ipc.ts';
 
 // [perf] Windows-only Chromium bug: the native occlusion calculator intermittently
@@ -2165,4 +2172,68 @@ ipcMain.handle('campaign:pack', async (_e: IpcMainInvokeEvent, p: CampaignDirPay
   if (r.canceled || !r.filePath) return { canceled: true };
   const res = packCampaign(p.dir, r.filePath);
   return { ok: true, output: r.filePath, entries: res.entries, bytes: res.bytes };
+});
+
+// --- units mod ----------------------------------------------------------------
+//
+// Game-global and session-free: a creature mod is an archive in UserMODs plus a
+// ceiling in the executable, nothing of the open map — so the dialog works with
+// no map loaded. The building blocks are the same ones tools/units-mod.ts uses.
+
+ipcMain.handle('mods:list', async (): Promise<ModsListResult> => {
+  const g = gameRoot();
+  if (!g) return { gameRoot: null, mods: [] };
+  const mods = findCreatureMods(g).map((f) => ({
+    path: f.path,
+    stem: basename(f.path).replace(/\.[^.]+$/, ''),
+    limit: f.limit,
+    reconstructed: !!f.reconstructed,
+    creatures: f.mod.creatures.map((c) => ({
+      id: c.id, number: c.number, name: c.name, tier: c.stats.tier, gold: c.stats.gold,
+    })),
+  }));
+  return { gameRoot: g, mods };
+});
+
+// Donors come from the plain data root, not the mounted chain: install resolves
+// the donor's documents there, so offering a mod's own creature would offer a
+// choice that then fails.
+ipcMain.handle('mods:donors', async (): Promise<RosterResult> => {
+  if (!isConfigured()) throw new Error('no data root configured');
+  return { entries: new Registry(gameData()).creatures() };
+});
+
+ipcMain.handle('mods:install', async (_e: IpcMainInvokeEvent, p: ModsInstallPayload): Promise<ModsInstallResult> => {
+  const g = gameRoot();
+  if (!g) throw new Error('no game install configured — a mod needs UserMODs and the executable');
+  if (!isConfigured()) throw new Error('no data root configured');
+  if (!p.file.trim()) throw new Error('the file stem is required');
+
+  const stem = p.stem.trim() || MOD_STEM;
+  const archivePath = join(g, 'UserMODs', `${stem}.h5u`);
+  const existing = existsSync(archivePath) ? readCreatureMod(archivePath) : null;
+  if (existing?.reconstructed) {
+    throw new Error(`${stem}.h5u carries no manifest of ours — it can only be replaced, not extended`);
+  }
+  const mod = existing?.mod ?? newCreatureMod(stem);
+
+  const sources = creatureSources(assets([gameData()]), p.donor);
+  if (!sources) throw new Error(`cannot resolve the donor ${p.donor || '(none)'}`);
+
+  addCreature(mod, {
+    id: p.id.trim(), file: p.file.trim(),
+    name: p.name, description: p.description, abilitiesText: p.abilitiesText,
+    stats: { ...blankStats(), ...p.stats },
+    visualSource: sources.visual, monsterSource: sources.monster,
+  });
+
+  const report = buildCreatureMod(mod, dataReader(gameData()));
+  const archive = packCreatureMod(report);
+  mkdirSync(join(g, 'UserMODs'), { recursive: true });
+  const installed = installCreatureMod(g, mod, archive);
+  const exe = installed.exe
+    ? `${basename(installed.exe.path)} → ceiling ${installed.exe.to} (${installed.exe.build})`
+    : 'executable not touched';
+  const added = mod.creatures[mod.creatures.length - 1]!;
+  return { archive: installed.archive, limit: report.limit, exe, art: report.art[added.id] ?? 0 };
 });

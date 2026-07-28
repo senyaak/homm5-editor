@@ -22,7 +22,7 @@ import type { Scene, Floor, Instance, SplatData, TileInfo, GeomData, GeomPart, F
 import { createFxSystem } from './particles.ts';
 import type { FxSystem } from './particles.ts';
 import type { EditorApi, MapListEntry, ExternalChange, PlaceableObject, RosterEntryDTO, LocResult,
-  CampaignDoc, CampaignListEntry, CampaignMissionDto } from '../electron/ipc.ts';
+  CampaignDoc, CampaignListEntry, CampaignMissionDto, CreatureStats } from '../electron/ipc.ts';
 import type { ObjectProp } from '../src/map.ts';
 import { objectProps, deref, controlOf, objectSchema, mapSchema, resolveSchemaAtPath, classOf, schemaForClass } from '../src/schema.ts';
 import type { FieldSchema, HasDefs } from '../src/schema.ts';
@@ -7272,6 +7272,129 @@ async function submitNewMap(): Promise<void> {
     ok.disabled = false;
   }
 }
+
+// --- Units mod -----------------------------------------------------------
+//
+// The game-global creature mods: what UserMODs adds, and the window's way of
+// adding a creature without the CLI. Main does the building and installing
+// (mods:* channels); this is only the form over it. No map has to be open —
+// a mod is UserMODs plus the executable's ceiling, nothing of the map.
+
+function unitsDialog(): HTMLDialogElement {
+  const el = $('unitsmod');
+  if (!(el instanceof HTMLDialogElement)) throw new Error('#unitsmod is not a <dialog>');
+  return el;
+}
+
+/** Form input id → the CreatureStats field it fills. */
+const UM_STATS: ReadonlyArray<[string, keyof CreatureStats]> = [
+  ['um-attack', 'attack'], ['um-defence', 'defence'],
+  ['um-mindmg', 'minDamage'], ['um-maxdmg', 'maxDamage'],
+  ['um-health', 'health'], ['um-speed', 'speed'], ['um-init', 'initiative'],
+  ['um-shots', 'shots'], ['um-range', 'range'], ['um-growth', 'weeklyGrowth'],
+  ['um-gold', 'gold'], ['um-tier', 'tier'], ['um-exp', 'exp'],
+  ['um-power', 'power'], ['um-size', 'combatSize'],
+];
+
+async function refreshUnitsMods(): Promise<void> {
+  const list = $('um-list');
+  const { gameRoot, mods } = await window.editor.listMods();
+  list.innerHTML = '';
+  if (!gameRoot) {
+    list.innerHTML = '<div class="um-empty">no game install configured — nowhere to install to</div>';
+    return;
+  }
+  if (!mods.length) {
+    list.innerHTML = '<div class="um-empty">none — the game holds its shipped creatures only</div>';
+  }
+  for (const m of mods) {
+    const div = document.createElement('div');
+    div.append(`${m.stem}.h5u — ${m.creatures.length} creature(s), ceiling ${m.limit}`
+      + (m.reconstructed ? ' (no manifest)' : ''));
+    const who = m.creatures.map((c) => `${c.number} ${c.name || c.id}`).join(', ');
+    if (who) {
+      const i = document.createElement('i');
+      i.textContent = ` · ${who}`;
+      div.appendChild(i);
+    }
+    list.appendChild(div);
+  }
+  // More than one creature mod is a conflict, not a set — each carries a whole
+  // copy of the registry, so the game reads one and the rest do not exist.
+  $('um-conflict').textContent = mods.length > 1
+    ? 'more than one creature mod: they conflict — the game reads one and ignores the others'
+    : '';
+  // Extend the existing mod rather than fork a second, conflicting one.
+  const ours = mods.filter((m) => !m.reconstructed);
+  if (ours.length === 1) $input('um-stem').value = ours[0]!.stem;
+}
+
+let umDonorsLoaded = false;
+async function loadUnitDonors(): Promise<void> {
+  if (umDonorsLoaded) return;
+  const sel = $select('um-donor');
+  const { entries } = await window.editor.modDonors();
+  sel.innerHTML = '';
+  for (const e of entries) {
+    // The null creature has no looks to donate.
+    if (/_(NONE|UNKNOWN)$/.test(e.id)) continue;
+    const o = document.createElement('option');
+    o.value = e.id;
+    o.textContent = e.name ? `${e.name} (${e.id})` : e.id;
+    sel.appendChild(o);
+  }
+  umDonorsLoaded = true;
+}
+
+function openUnitsMod(): void {
+  $('um-err').textContent = '';
+  $('um-note').textContent = '';
+  unitsDialog().showModal();
+  const report = (e: unknown): void => {
+    $('um-err').textContent = e instanceof Error ? e.message : String(e);
+  };
+  void refreshUnitsMods().catch(report);
+  void loadUnitDonors().catch(report);
+}
+
+async function submitUnitsMod(): Promise<void> {
+  const ok = $button('um-ok');
+  ok.disabled = true;
+  $('um-err').textContent = '';
+  $('um-note').textContent = '';
+  try {
+    const stats: Partial<CreatureStats> = {
+      flying: $input('um-fly').checked,
+      abilities: $input('um-abids').value.split(/[\s,]+/).filter(Boolean),
+    };
+    for (const [input, key] of UM_STATS) {
+      (stats as Record<string, number | boolean>)[key] = Number($input(input).value) || 0;
+    }
+    const res = await window.editor.installMod({
+      stem: $input('um-stem').value,
+      id: $input('um-id').value,
+      file: $input('um-file').value,
+      name: $input('um-name').value,
+      description: $input('um-desc').value,
+      abilitiesText: $input('um-abil').value,
+      donor: $select('um-donor').value,
+      stats,
+    });
+    // Stay open and say what happened: the natural next step is either another
+    // creature or reading the refreshed list.
+    $('um-note').textContent = `installed ${res.archive}\n${res.exe} · ${res.art} art file(s) copied`;
+    await refreshUnitsMods();
+  } catch (e) {
+    $('um-err').textContent = e instanceof Error ? e.message : String(e);
+  } finally {
+    ok.disabled = false;
+  }
+}
+
+$('unitsbtn').onclick = openUnitsMod;
+$('um-close').onclick = () => unitsDialog().close();
+$('um-cancel').onclick = () => unitsDialog().close();
+$('um-ok').onclick = () => { void submitUnitsMod(); };
 
 $('newmapbtn').onclick = openNewMap;
 $('newmap2').onclick = openNewMap;
