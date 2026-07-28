@@ -67,6 +67,7 @@
     "test-artifact-mod": "node tools/test-artifact-mod.ts",
     "test-artifact-limit": "node tools/test-artifact-limit.ts",
     "test-artifact-set": "node tools/test-artifact-set.ts",
+    "test-artifact-effects": "node tools/test-artifact-effects.ts",
     "build-native": "node tools/build-native.ts",
     "install-native": "node tools/install-native.ts",
     "test-exe-import": "node tools/test-exe-import.ts",

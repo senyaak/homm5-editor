@@ -779,6 +779,12 @@ export interface ModsInstallArtifactPayload {
   canBeGeneratedToSell: boolean;
   /** Attack / Defence / Knowledge / SpellPower / Morale / Luck. */
   stats: Record<string, number>;
+  /**
+   * What it does beyond those six — percentage points, per stat the native
+   * extension knows. Without the extension installed these do nothing, which
+   * the dialog says.
+   */
+  effects?: Record<string, number>;
   /** href of the 64x64 icon (usually the donor's). */
   icon: string;
   /** href of the map model; empty means a flat board of the icon. */
@@ -815,6 +821,16 @@ export interface ModsInstallSetPayload {
   description: string;
   /** One per member, indexed from ONE piece worn. The first is normally blank. */
   perCount?: string[];
+}
+
+/** Whether the native extension is in place, and what it would take. */
+export interface ExtensionStatus {
+  present: boolean;
+  imported: boolean;
+  installed: boolean;
+  size?: number;
+  /** Set when the editor has no built DLL to install. */
+  unbuilt?: boolean;
 }
 
 /** Result of `mods:install-set`. */
@@ -953,6 +969,10 @@ export interface EditorApi {
   installArtifact(p: ModsInstallArtifactPayload): Promise<ModsInstallArtifactResult>;
   /** Add an artifact set to OUR mod, build it, install it. No ceiling moves. */
   installArtifactSet(p: ModsInstallSetPayload): Promise<ModsInstallSetResult>;
+  /** Whether the native extension is installed — effects need it. */
+  extensionStatus(): Promise<ExtensionStatus>;
+  /** Put the extension in place: the DLL, and the import that loads it. */
+  installExtension(): Promise<ExtensionStatus>;
   /** A mod creature's textures, decoded for the Recolor preview. */
   modTextures(creature: string): Promise<ModsTexturesResult>;
   /** Recolour a mod creature's textures and rewrite the archive. */

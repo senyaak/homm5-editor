@@ -18,6 +18,7 @@ import { launchEditor, REPO_ROOT } from './launch.ts';
 import type { Launched } from './launch.ts';
 import { AMULET, CLOAK, prepareGameRoot, readInstalledMod, removeGameRoot, UNDEAD_KING } from './mods.ts';
 import { ORIGINAL_ARTIFACTS, readArtifactLimit, SITES_FILE } from '../src/artifact-limit.ts';
+import { EFFECTS_FILE, readEffects } from '../src/artifact-effects.ts';
 import type { Site } from '../src/artifact-limit.ts';
 
 let ed: Launched;
@@ -109,10 +110,29 @@ test('a second piece, so there is a set to make', async () => {
   await page.locator('#am-slot').selectOption(CLOAK.slot);
   await page.locator('#am-rank').selectOption('ARTF_CLASS_MINOR');
   await page.locator('#am-knowledge').fill('2');
+  // The part no artifact record can hold: it goes to a file the native
+  // extension reads, and the artifact carries its six stats without it.
+  await page.locator('#am-necromancy').fill('10');
 
   await page.locator('#am-ok').click();
   await expect(page.locator('#am-note')).toContainText('installed', { timeout: 120_000 });
   await expect(page.locator('#am-list')).toContainText('Плащ вампира (SHOULDERS)');
+
+  // Written beside the executable, not into the mod — the extension reads it
+  // from its own folder and knows nothing about archives.
+  const effects = readFileSync(join(GAME, EFFECTS_FILE), 'latin1');
+  expect(readEffects(effects)).toEqual([{ stat: 'necromancy', artifact: ORIGINAL_ARTIFACTS + 1, amount: 10 }]);
+  // The amulet was installed first with no effect, so it must NOT be in there:
+  // a file that only grows would keep granting bonuses nobody asked for.
+  expect(effects).not.toContain(`artifact ${ORIGINAL_ARTIFACTS} `);
+});
+
+test('says the extension is missing rather than letting the effect look live', async () => {
+  const { page } = ed;
+  if (!(await page.locator('#artsmod').isVisible())) await page.locator('#artsbtn').click();
+  // This install has no extension: the effect is written and does nothing, and
+  // "it does not work" and "it is not installed" look identical in game.
+  await expect(page.locator('#am-ext')).toContainText('not installed', { timeout: 30_000 });
 });
 
 test('makes a set of the two, with an effect of our own', async () => {

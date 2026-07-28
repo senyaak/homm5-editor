@@ -22,7 +22,7 @@ import { transferEffect } from '../src/effects.ts';
 import type { FxTransfer } from '../src/effects.ts';
 import { listPlaceable, iconPathFor, readIconFile } from '../src/objects.ts';
 import { decodeDDS } from '../src/dds.ts';
-import { editorRoot, gameData, gameRoot, isConfigured, mountedAssets, preloadPath, readSettings, rendererFile, saveSettings, tmpRoot } from './paths.ts';
+import { editorRoot, APP_ROOT, gameData, gameRoot, isConfigured, mountedAssets, preloadPath, readSettings, rendererFile, saveSettings, tmpRoot } from './paths.ts';
 import { assets } from '../src/assets.ts';
 import type { Assets } from '../src/assets.ts';
 import { closeSetup, runSetup } from './setup.ts';
@@ -45,6 +45,9 @@ import {
   addArtifact, addArtifactSet, addCreature, artifactLimit, buildCreatureMod, dataReader, findCreatureMods,
   installCreatureMod, MOD_STEM, newCreatureMod, packCreatureMod,
 } from '../src/creature-mod.ts';
+import { builtDll, extensionState, installExtension, writeEffectsFile } from '../src/extension.ts';
+import { EFFECT_STATS, effectsOf } from '../src/artifact-effects.ts';
+import type { EffectStat } from '../src/artifact-effects.ts';
 import type { BuildReport, CreatureMod, Installed, ModCreature } from '../src/creature-mod.ts';
 import { decodeDDSBuffer } from '../src/dds.ts';
 import { writeDDS } from '../src/texture.ts';
@@ -99,7 +102,7 @@ import type {
   AddLayerPayload, AddLayerResult, PaintRiverPayload, RiverCellsPayload, MaskPayload, UndoResult, HistoryState,
   ModsListResult, ModsInstallPayload, ModsInstallResult, ModsFormDataResult, ModsPresetPayload,
   CreaturePresetDTO, ArtifactPresetDTO, ModsInstallArtifactPayload, ModsInstallArtifactResult,
-  ModsInstallSetPayload, ModsInstallSetResult,
+  ModsInstallSetPayload, ModsInstallSetResult, ExtensionStatus,
   ModsTexturesPayload, ModsTexturesResult, ModsRecolorPayload, ModsRecolorResult,
 } from './ipc.ts';
 
@@ -2315,17 +2318,45 @@ ipcMain.handle('mods:install-artifact', async (_e: IpcMainInvokeEvent, p: ModsIn
     cost: Number(p.cost) || 0, aiValue: Number(p.aiValue) || 0,
     canBeGeneratedToSell: !!p.canBeGeneratedToSell,
     ...(Object.keys(stats).length ? { stats } : {}),
+    ...(effectsFrom(p.effects) ? { effects: effectsFrom(p.effects)! } : {}),
     icon: p.icon.trim(),
     // No model → a flat board of the artifact's own icon stands on the map.
     ...(p.model?.trim() ? { model: p.model.trim() } : { board: { tiles: p.boardTiles || 1 } }),
   });
 
   const { installed } = buildAndInstall(g, mod);
+  // The effects file is rewritten from the WHOLE mod every time, not appended
+  // to: an artifact removed from the mod must stop granting its bonus, and a
+  // file that only ever grows would keep it.
+  writeEffectsFile(g, effectsOf(mod.artifacts ?? []));
   return {
     archive: installed.archive,
     limit: artifactLimit(mod),
     exe: exeWords(installed.artifacts),
   };
+});
+
+/** Only the stats the extension knows, and only when they are not zero. */
+function effectsFrom(raw: Record<string, number> | undefined): Partial<Record<EffectStat, number>> | null {
+  if (!raw) return null;
+  const out: Partial<Record<EffectStat, number>> = {};
+  for (const stat of EFFECT_STATS) {
+    const v = Number(raw[stat] ?? 0);
+    if (v) out[stat] = v;
+  }
+  return Object.keys(out).length ? out : null;
+}
+
+ipcMain.handle('mods:extension-status', async (): Promise<ExtensionStatus> => {
+  const g = gameRoot();
+  if (!g) return { present: false, imported: false, installed: false };
+  return { ...extensionState(g), ...(existsSync(builtDll(APP_ROOT)) ? {} : { unbuilt: true }) };
+});
+
+ipcMain.handle('mods:install-extension', async (): Promise<ExtensionStatus> => {
+  const g = gameRoot();
+  if (!g) throw new Error('no game install configured');
+  return installExtension(g, APP_ROOT);
 });
 
 // A set costs the executable nothing — no table is indexed by it, no ceiling

@@ -22,6 +22,7 @@
 // cannot be given any. Its behaviour has to come from a map or campaign script.
 // See docs/ARTIFACTS.md.
 
+import type { EffectStat } from './artifact-effects.ts';
 import { allFields } from './typespec.ts';
 import type { SpecType } from './typespec.ts';
 
@@ -100,6 +101,15 @@ export interface ArtifactSpec {
   canBeGeneratedToSell?: boolean;
   /** The six stats it moves. Anything omitted is zero. */
   stats?: Partial<HeroStats>;
+  /**
+   * What it does BEYOND those six — the part no artifact record can hold.
+   *
+   * Written to a file the native extension reads, not into the artifact's own
+   * document: the game has nowhere to put it. Without the extension installed
+   * these are simply not in effect, and the artifact is its six stats.
+   * See src/artifact-effects.ts.
+   */
+  effects?: Partial<Record<EffectStat, number>>;
   /**
    * href of its 64x64 icon — the hero screen's, and the only picture it has.
    * Omitted, the mod builds one from `picture`.

@@ -7562,6 +7562,45 @@ async function submitUnitsMod(): Promise<void> {
   }
 }
 
+/**
+ * Say whether the native extension is in place, and offer to put it there.
+ *
+ * An effect typed into the form above is written to a file whichever way this
+ * goes — but without the extension nothing reads that file, and the artifact is
+ * its six stats. Saying so here is the difference between "it does not work"
+ * and "it is not installed", which look identical in game.
+ */
+async function showExtensionState(): Promise<void> {
+  const box = $('am-ext');
+  box.textContent = '';
+  const st = await window.editor.extensionStatus();
+  if (st.installed) {
+    box.style.color = '#3fb950';
+    box.textContent = `extension installed (${st.size} bytes) — effects are in force in H5_Game_NCF.exe`;
+    return;
+  }
+  box.style.color = '';
+  if (st.unbuilt) {
+    box.textContent = 'the extension has not been built — run npm run build-native';
+    return;
+  }
+  box.append('effects need the extension, which is not installed yet. ');
+  const button = document.createElement('button');
+  button.className = 'um-recolor';
+  button.textContent = 'Install extension';
+  button.title = 'copies the extension beside the game and names it in OUR copy of the executable';
+  button.onclick = () => {
+    button.disabled = true;
+    void window.editor.installExtension()
+      .then(() => showExtensionState())
+      .catch((e: unknown) => {
+        $('am-err').textContent = e instanceof Error ? e.message : String(e);
+        button.disabled = false;
+      });
+  };
+  box.appendChild(button);
+}
+
 // --- artifact sets ----------------------------------------------------------
 //
 // A set is two data edits — an effect value of ours appended to the enum, and a
@@ -7693,6 +7732,7 @@ async function submitArtifactMod(): Promise<void> {
       aiValue: Number($input('am-ai').value) || 0,
       canBeGeneratedToSell: $input('am-sell').checked,
       stats,
+      effects: { necromancy: Number($input('am-necromancy').value) || 0 },
       icon: $input('am-icon').value,
       model: $input('am-model').value,
       boardTiles: Number($input('am-board').value) || 1,
@@ -7879,6 +7919,7 @@ $('artsbtn').onclick = () => {
   void fillSetMembers().catch((e: unknown) => {
     $('as-err').textContent = e instanceof Error ? e.message : String(e);
   });
+  void showExtensionState().catch(() => {});
 };
 $select('um-donor').addEventListener('change', () => { void loadUnitPreset().catch(() => {}); });
 $select('am-donor').addEventListener('change', () => { void loadArtifactPreset().catch(() => {}); });
