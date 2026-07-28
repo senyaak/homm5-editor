@@ -32,13 +32,11 @@ and script can express), [docs/ENGINE_INTERNALS.md](docs/ENGINE_INTERNALS.md)
   `addArtifactSet` emits our own `ARTFSET_EFFECT_… = 11` into `types.xml` and
   the matching row into `DefaultStats.xdb`, refusing a shipped effect id;
   `npm run test-artifact-set` holds it, including that the shipped eleven come
-  out unmoved. `Maps/sod/tools/probe-artifact-set.ts` adds the Cloak of the
-  Undead King set to the port's own mod and installs it — in the ONE archive,
-  because a mod replaces a game file rather than merging it and a second
-  `types.xml` would take the port's creatures down with it. *Installed
-  2026-07-28; awaiting a look in game:* does the parser accept a twelfth value,
-  does the tooltip draw, does `GetArtifactSetItemsCount` count our worn pieces,
-  does an eleventh set hit a compiled ceiling.
+  out unmoved. **Answered in game, 2026-07-28: it works.** The parser accepts a
+  twelfth effect value, an eleventh set is reached — no compiled ceiling — the
+  set is named on the hero screen, and the game counts the worn pieces itself.
+  The probe is retired; the Cloak of the Undead King is ordinary data in the
+  port now (`Maps/sod/src/new-artifacts.ts`).
 - в) **Prove the native path.** A proxy DLL forwarding `zlib1.dll` — no patched
   byte in the executable — carrying two proofs on top: one new Lua function
   callable from a map script, and **one detour on the necromancy sum
@@ -133,14 +131,14 @@ skipped by having one (`Maps/sod/docs/ARTIFACTS.md`).
 
 ## 5. Open questions (need a call before code)
 
-5.1. **Does an added enum value parse?** The whole "our own effect" premise. If
-the parser rejects it, fall back to `ARTFSET_EFFECT_CUSTOM` — same mechanics,
-someone else's name. Answered by §1.1(б), an afternoon.
+5.1. ~~**Does an added enum value parse?**~~ **Yes** — seen in game
+2026-07-28. `ARTFSET_EFFECT_H3_UNDEAD_KING = 11` loads, the set is named on the
+hero screen, and the game counts the worn pieces on its own. No fallback to
+`ARTFSET_EFFECT_CUSTOM` is needed; the effect is ours and nothing shipped moved.
 
-5.2. **Is there a ceiling on the number of sets?** The container is dynamic and
-no accessor returning 11 has a caller, so probably not — but that is an absence
-of evidence, and the creature and artifact ceilings both looked absent until
-they were found.
+5.2. ~~**Is there a ceiling on the number of sets?**~~ **No** — the eleventh set
+is reached and works. The absence of evidence held this time, unlike the
+creature and artifact ceilings.
 
 5.3. ~~**Where does equipment get applied?**~~ **Answered:** nowhere — it is
 read where it is used, and every read goes through `0xb4c270`. So there is no

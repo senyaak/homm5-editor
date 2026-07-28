@@ -204,8 +204,11 @@ tooltips, per-count texts and icons all work from the entry alone. Its
   `types.xml`, so a mod appends `ARTFSET_EFFECT_<OURS> = 11` exactly the way
   it appends an artifact id. Nothing shipped is displaced and nothing borrowed;
   the engine counts and draws the set and implements no behaviour, which is
-  what we want since the behaviour will be ours. **This is the route the port
-  takes** — see [ENGINE_INTERNALS.md](ENGINE_INTERNALS.md#the-shape-of-our-own-extension).
+  what we want since the behaviour will be ours. **Confirmed in game on
+  2026-07-28**: the twelfth value parses, the eleventh set is reached — there is
+  no compiled ceiling on sets — it is named on the hero screen, and the game
+  counts the worn pieces itself. **This is the route the port takes** — see
+  [ENGINE_INTERNALS.md](ENGINE_INTERNALS.md#the-shape-of-our-own-extension).
 - **`ARTFSET_EFFECT_CUSTOM`** (value 0) — the developers' own slot for "no
   predefined effect, add it with scripts", per the field's description in
   `types.xml`, and confirmed unused by the 25 call sites in code. Fine for a
@@ -237,10 +240,10 @@ artifacts down with it — and the editor would have refused to add anything
 after, since `ourMod()` throws when `UserMODs` holds more than one mod with a
 manifest. Everything that edits a game file rides in the one archive.
 
-The probe therefore lives with the mod it joins:
-`Maps/sod/tools/probe-artifact-set.ts` in the port's repo adds the Cloak of the
-Undead King set to the port's own mod and installs it, and rebuilding the mod
-normally undoes it.
+The probe therefore lived with the mod it joined, as a script beside the port's
+other probes that added the set to the port's own mod. It has served its purpose
+and is gone: the Cloak of the Undead King is now ordinary data in
+`Maps/sod/src/new-artifacts.ts`.
 
 ## The script toolbox
 
