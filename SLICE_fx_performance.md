@@ -6,8 +6,9 @@
 > and the effects turn out to be heavier than the entire rest of the scene on
 > every axis at once — draw calls, per-frame CPU, buffer traffic and texture
 > memory. This slice says where the cost is, what it would take to remove it,
-> and — importantly — what to confirm with a live profile before touching
-> anything. When it ships, fold the surviving facts into
+> in what order (§6, costed), and — importantly — what to confirm with a live
+> profile before touching anything (§5). The plan is agreed and waiting for a
+> go-ahead; nothing here is started. When it ships, fold the surviving facts into
 > [docs/EFFECTS_FORMAT.md](docs/EFFECTS_FORMAT.md) and retire this file.
 
 Reading first: [docs/EFFECTS_FORMAT.md](docs/EFFECTS_FORMAT.md) (what the data
@@ -146,10 +147,24 @@ plausible and wrong diagnosis three times in this project already, so:
 5.1. **`renderer.info.render.calls` / `.triangles` in the HUD.** Should read
 ~1400 calls on A2S1's surface and confirm the 607/831 split.
 
-5.2. **`performance.now()` around `advanceFx`** in the render loop. Separates
-the CPU simulation (§2.5, §2.6) from everything on the GPU side. If it is under
-a millisecond, 3.4 and 3.5 are not worth their risk and the whole slice is
-3.1 + 3.2.
+5.2. **Where the frame actually goes**, through the **Long Animation Frames
+API** rather than a hand-rolled timer — it is the grown-up version of the
+`JANK_MS` warning already in the render loop, and it names the culprit instead
+of the symptom:
+
+```js
+new PerformanceObserver((list) => {
+  for (const e of list.getEntries())
+    console.warn(`LoAF ${e.duration|0}ms · blocking ${e.blockingDuration|0}ms`,
+      `render ${(e.styleAndLayoutStart - e.renderStart)|0}ms`,
+      e.scripts.map((s) => `${s.name} ${s.duration|0}ms @${s.sourceURL}:${s.sourceCharPosition}`));
+}).observe({ type: 'long-animation-frame', buffered: true });
+```
+
+`scripts[]` attributes to a function and a source position, and
+`renderStart`/`styleAndLayoutStart` split our code from the paint. If `advanceFx`
+does not show up here, 3.4 and 3.5 are not worth their risk and the whole slice
+is 3.1 + 3.2.
 
 5.3. **The `showFx` toggle is already the experiment.** FPS with effects on
 versus off is the upper bound on everything here. If the difference is small
@@ -165,3 +180,78 @@ particles travel far from its origin (smoke drifting, a tall phoenix flame)
 needs the radius to come from the *keys*, not from the placement — which is what
 §2.2 says, and what the implementation has to be checked against visually, on a
 map with drifting smoke, before the culling is trusted.
+
+5.5. **The instruments, and why not Web Vitals.** LCP, CLS and the rest measure
+a document: here the canvas appears instantly and empty, nothing reflows, and
+only INP (does a click on the palette answer) means anything. What corresponds
+to them for this editor is a different set, and every piece of it is already
+reachable without a dependency:
+
+| Question | Instrument |
+| --- | --- |
+| Is the frame slow, and because of what? | `long-animation-frame` (§5.2) |
+| How many draws, how many triangles? | `renderer.info.render` — mind `info.autoReset`, read it after `render()` |
+| How much GPU memory? | DevTools → Rendering → **Frame Rendering Stats** (an overlay, nothing to write) |
+| Which process is heavy? | `app.getAppMetrics()` from main — the gpu process is listed separately, so 644 MB shows up as its RSS |
+| **Are we even on the GPU?** | `app.getGPUInfo('complete')` / `getGPUFeatureStatus()`. Already called with `'basic'` in `electron/main.ts`, and there is already a SwiftShader switch — so "we are silently on software rendering" costs nothing to rule out and **invalidates every other measurement**. Check it first. |
+| What does the GPU process actually do? | `contentTracing` → Perfetto: texture uploads, shader compiles, swap waits. Electron-only; a web page cannot see this. |
+| How much JS memory? | `performance.measureUserAgentSpecificMemory()` (needs cross-origin isolation) |
+| Per-draw GPU time | `EXT_disjoint_timer_query_webgl2` by hand — three's `resolveTimestampAsync` landed well after r160. Availability is one line: `renderer.getContext().getExtension('EXT_disjoint_timer_query_webgl2')` |
+
+The four worth keeping permanently, once measured: **p95 frame time** (a mean
+FPS hides exactly the stutter being chased), `render.calls`, gpu-process RSS,
+and `map:load` wall time — that last one is 13.5 s on A2S1 and is a worse
+number than anything in a frame.
+
+## 6. Cost, order, and what could go wrong
+
+Estimates are for the way this repo is actually worked: written here, held by
+the e2e suite, argued about on screenshots where the suite cannot judge.
+
+**The suite already covers this ground**, which is what makes the cheap steps
+cheap: `e2e/effects.spec.ts`, `e2e/effect-timing.spec.ts` and
+`e2e/glued-effects.spec.ts`, plus the `fxSystems()` debug hook in
+`renderer/app.ts`, which reports `alive`, `visible` and the world position of
+every system on the active floor. "The campfire went out", "the wrong thing got
+culled" and "the glued eye stopped following the head" are assertions, not
+screenshot reviews.
+
+| Step | Size | Risk | Held by |
+| --- | --- | --- | --- |
+| §5 measurements | 30–40 min | none | is itself the result |
+| 3.1 atlas dedupe | ~1 h | medium | `fxSystems().alive` + deleting a placed object |
+| 3.3 `addUpdateRange` | 15 min | none | nothing visible may change |
+| 3.4 30 Hz step | 20 min | low | `effect-timing.spec.ts` |
+| 3.2 bounds + culling | 2–3 h | medium | `test-effects` + `visible` from the hook + eyes on smoke |
+| 3.5 alive index | ~1.5 h | low | `test-effects` |
+| 3.5 one draw per effect | half a day – a day | high | all of the above |
+| 3.6 RGBA instead of PNG | half a day | medium | eyes on fire |
+
+**Two sittings.** The first is ~2 hours — measurements, then 3.1 + 3.3 + 3.4:
+that is where the 644 MB and the whole upload traffic live, and only 3.1 risks
+anything. The second is half a day for 3.2. Then stop and re-profile: after
+those two the picture changes enough that planning 3.5/3.6 now would be
+guessing. A day of work covers ~90% of the problem **if** §5 confirms the
+diagnosis.
+
+Three places where the estimate can slip:
+
+6.1. **`dispose()` against a shared atlas** (3.1). Every system currently
+disposes its own textures; share them and the first deleted campfire blanks the
+other 181. Needs a refcount, or ownership moved to the cache and cleared when
+the map closes. That is the whole substance of the step — the rest is fifteen
+lines.
+
+6.2. **Which space the radius lives in** (3.2). three computes the bounding
+sphere in geometry space and pushes it through `matrixWorld`, which here is set
+by hand (`matrixAutoUpdate = false`). And the radius must come from the keys,
+not the placement, or drifting smoke gets culled while still visible — §5.4.
+
+6.3. **Premultiplication** (3.6). The two-texture split exists solely because a
+canvas premultiplies; walking back in without watching the fire is how the
+flames come out blue a second time.
+
+Minor, but it bites exactly at 3.3: `package.json` pins `three@^0.160.0` against
+`@types/three@^0.185.1`, so the types describe an API newer than the runtime.
+`addUpdateRange` does exist in r160 (checked in `node_modules`), but the next
+call taken on the types' word may typecheck and fail at runtime.
