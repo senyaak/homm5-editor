@@ -191,3 +191,23 @@ test('reopening the same archive returns to the same workspace', { tag: '@nodata
   // And it holds the saved edit, since Save put it into the archive first.
   expect(readFileSync(join(again, 'name.txt')).toString('utf16le', 2)).toBe(EDITED);
 });
+
+test('the picker opens the map the app itself made', { tag: '@nodata' }, async () => {
+  // The picker is the start screen, and the tests above left a map open over it.
+  // A fresh window is the honest way back — and it also proves the archive is
+  // found by an app that knows nothing about this run.
+  await ed.app.close();
+  ed = await launchEditor({ HOMM5_UNPACK_TO: '' });
+  const { page } = ed;
+  // New Map put `<game>/H5E/e2e Pack.mod` in the install, so the picker lists it
+  // under ours. Clicking it must unpack OUR archive — the row carries the folder
+  // the map sits at inside, and taking that as "this is one of the game's" sent
+  // every map of ours looking for itself inside the game's paks instead.
+  await page.locator('#cats .chip', { hasText: 'Ours' }).click();
+  await page.locator('#search').fill(NAME);
+  const row = page.locator('#maplist .m', { hasText: `${NAME}.mod` }).first();
+  await expect(row, 'the picker lists the map New Map made').toBeVisible();
+  await row.click();
+  await hudSays(page, /unpacked \d+ files → /);
+  await expect(page.locator('#title')).toHaveText(`homm5-editor — ${NAME} (72×72)`, { timeout: 60_000 });
+});

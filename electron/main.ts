@@ -297,10 +297,19 @@ function catalog(): ReturnType<typeof listPlaceable> {
 let session: Session | null = null;
 let win: BrowserWindow | null = null;
 
-/** Where the file dialog opens. Follows the last map opened; starts at Maps. */
+/**
+ * Where the file dialog opens. Follows the last map opened; starts at ours.
+ *
+ * Our folder rather than `<data>/Maps`: that is where every map of ours is a
+ * file, and where the game reads them from. The unpacked tree holds working
+ * copies and the game's own maps, neither of which is what a person means by
+ * "open a map".
+ */
 let lastDir = '';
 function openDialogDir(): string {
   if (lastDir) return lastDir;
+  const g = gameRoot();
+  if (g && existsSync(modDir(g))) return modDir(g);
   const root = gameData();
   if (!root) return '';
   const maps = join(root, 'Maps');
@@ -680,7 +689,11 @@ ipcMain.handle('map:open-archive', async (_e: IpcMainInvokeEvent, p: OpenArchive
   // folder is taken, the archive is never written to, and the workspace records
   // no source: saving a shipped map means saving the copy, and packing it offers
   // our folder. Opening one is starting FROM it.
-  if (p.inner) return openStockMap(archive, p.inner);
+  //
+  // Keyed on `stock`, NOT on `inner` having a value: ours carry an inner path
+  // too — it is how a campaign mission names them — and taking that as the
+  // signal sent every map of ours looking for itself inside the game's paks.
+  if (p.stock && p.inner) return openStockMap(archive, p.inner);
   const { root, shared } = unpackRoot(archive);
   // Where this archive's map will land, so a shared root can be cleared of THIS
   // map without touching whatever else is in it.

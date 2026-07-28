@@ -34,8 +34,14 @@ export interface MapListEntry {
   stock?: boolean;
 }
 
-/** Payload of `map:open-archive` — the archive to unpack, and what to take out. */
-export interface OpenArchivePayload { path: string; inner?: string }
+/**
+ * Payload of `map:open-archive` — the archive to unpack, and what to take out.
+ *
+ * `inner` is where the map sits inside it, and every map has one, ours included.
+ * `stock` is the thing that changes what happens: the game's own archives hold
+ * many maps, are gathered from as a set, and are never written to.
+ */
+export interface OpenArchivePayload { path: string; inner?: string; stock?: boolean }
 
 /** Result of `map:open-archive` — the unpacked project, ready for `map:load`. */
 export interface OpenArchiveResult {
@@ -914,8 +920,8 @@ export interface EditorApi {
   listMaps(): Promise<MapsListResult>;
   openMapDialog(): Promise<OpenMapDialogResult>;
   newMap(p: NewMapPayload): Promise<NewMapResult>;
-  /** `inner` takes ONE map out of an archive holding many — the game's own paks. */
-  openArchive(path: string, inner?: string): Promise<OpenArchiveResult>;
+  /** `stock` takes ONE map out of the game's own archives, which hold many. */
+  openArchive(path: string, inner?: string, stock?: boolean): Promise<OpenArchiveResult>;
   loadMap(path: string): Promise<MapLoadResult>;
   moveObject(id: string, x: number, y: number): Promise<MoveObjectResult>;
   rotateObject(id: string, r: number): Promise<ObjectEditResult>;

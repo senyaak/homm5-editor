@@ -7195,13 +7195,13 @@ $('extchange-ignore').onclick = hideExternalChange;
  * archive — which is unpacked beside itself first, so what gets edited is always
  * a working folder and the archive stays as the game got it.
  */
-async function openAny(path: string | null, inner?: string): Promise<void> {
+async function openAny(path: string | null, inner?: string, stock?: boolean): Promise<void> {
   if (!path) return;
-  if (!inner && !/\.(mod|h5m|h5c|h5u|pak)$/i.test(path)) { await loadMapPath(path); return; }
+  if (!stock && !/\.(mod|h5m|h5c|h5u|pak)$/i.test(path)) { await loadMapPath(path); return; }
   $('loading').classList.add('on');
   $('loadmsg').textContent = 'unpacking…';
   try {
-    const { mapPath, mapDir, files } = await window.editor.openArchive(path, inner);
+    const { mapPath, mapDir, files } = await window.editor.openArchive(path, inner, stock);
     await loadMapPath(mapPath);
     $('hud').textContent = `unpacked ${files} files → ${mapDir}`;
     // The folder that just appeared belongs in the picker's list.
@@ -7245,7 +7245,7 @@ function renderMapList() {
     // Every map lives in an archive now, and opening one unpacks a copy to work
     // in. For the game's own that is the whole point, so it is worth saying.
     setChild(div, '.rel', m.stock ? `${m.rel} · a copy to start from` : m.rel);
-    div.onclick = () => { void openAny(m.path, m.inner); };
+    div.onclick = () => { void openAny(m.path, m.inner, m.stock); };
     list.appendChild(div);
   }
 }
