@@ -11,9 +11,7 @@
 //   * REMOVING one is what breaks a map — the name it lists stops resolving.
 //     That is exactly what a search for the name finds, exactly, with no
 //     guessing.
-//   * RENUMBERING the ones behind it does NOT break a map. It does invalidate a
-//     saved game, which stores numbers; nothing here can see inside one, so
-//     that is said plainly rather than detected.
+//   * RENUMBERING the ones behind it does NOT break a map.
 //
 // So the editor's job is to look before it removes, and say what it found.
 
@@ -57,6 +55,19 @@ function mapDocuments(root: string, out: string[] = [], depth = 0): string[] {
  * the wrong artifact is worse than none.
  */
 export function findArtifactUses(mapsRoot: string, ids: readonly string[]): Map<string, ArtifactUse[]> {
+  return findUses(mapsRoot, ids, ['Item', 'ArtifactID']);
+}
+
+/**
+ * The same for creatures, which a map names in two places: an army slot holds
+ * `<Creature>NAME</Creature>`, and a neutral stack is an href at a document in
+ * the mod — the name reaches the first and is what a person recognises.
+ */
+export function findCreatureUses(mapsRoot: string, ids: readonly string[]): Map<string, ArtifactUse[]> {
+  return findUses(mapsRoot, ids, ['Creature', 'Item']);
+}
+
+function findUses(mapsRoot: string, ids: readonly string[], elements: readonly string[]): Map<string, ArtifactUse[]> {
   const found = new Map<string, ArtifactUse[]>();
   if (!ids.length) return found;
 
@@ -67,7 +78,8 @@ export function findArtifactUses(mapsRoot: string, ids: readonly string[]): Map<
     const objectsEnd = text.indexOf('</objects>');
     for (const id of ids) {
       const hits: Record<'allowed' | 'hero', number> = { allowed: 0, hero: 0 };
-      const pattern = new RegExp(`<(?:Item|ArtifactID)>${id}</(?:Item|ArtifactID)>`, 'g');
+      const tag = elements.join('|');
+      const pattern = new RegExp(`<(?:${tag})>${id}</(?:${tag})>`, 'g');
       for (const m of text.matchAll(pattern)) {
         hits[objectsEnd >= 0 && m.index! > objectsEnd ? 'allowed' : 'hero']++;
       }

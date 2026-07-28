@@ -7411,6 +7411,79 @@ async function fillModForms(): Promise<void> {
   }
 }
 
+/**
+ * Which artifact the form is editing, or '' when it is making a new one.
+ *
+ * The dialog used to be a read-only list with a permanent "new" form under it,
+ * which left no way to change or remove anything that was already installed.
+ * Now the list is the thing you act on and the form follows it.
+ */
+let editingArtifact = '';
+let editingCreature = '';
+
+/** A row in an installed list: what it is, and the two things you can do. */
+function modRow(
+  { number, label, note, onEdit, onRemove }:
+  { number: number; label: string; note?: string; onEdit: () => void; onRemove: () => void },
+): HTMLElement {
+  const row = document.createElement('div');
+  row.className = 'um-item';
+  const num = document.createElement('span');
+  num.className = 'num';
+  num.textContent = String(number);
+  const text = document.createElement('span');
+  text.className = 'grow';
+  text.textContent = label;
+  if (note) {
+    const i = document.createElement('i');
+    i.textContent = ` · ${note}`;
+    text.appendChild(i);
+  }
+  const edit = document.createElement('button');
+  edit.className = 'um-recolor';
+  edit.textContent = '✎';
+  edit.title = 'load it into the form below and change it';
+  edit.onclick = onEdit;
+  const drop = document.createElement('button');
+  drop.className = 'um-recolor';
+  drop.textContent = '×';
+  drop.title = 'remove it from the mod';
+  drop.onclick = onRemove;
+  row.append(num, text, edit, drop);
+  return row;
+}
+
+/**
+ * Ask what would break, show it, and only then remove.
+ *
+ * A map names an artifact or a creature by name, so this is an exact list
+ * rather than a warning in general terms — and it is shown BEFORE anything
+ * happens, which is the whole point.
+ */
+const NL = String.fromCharCode(10);
+
+async function removeWithWarning(
+  kind: 'artifact' | 'creature', id: string, label: string, errBox: string,
+): Promise<void> {
+  const { uses } = kind === 'artifact'
+    ? await window.editor.artifactUses({ id })
+    : await window.editor.creatureUses({ id });
+  const shown = uses.slice(0, 12).join(NL);
+  const more = uses.length > 12 ? `${NL}… and ${uses.length - 12} more` : '';
+  const warning = uses.length
+    ? `${label} is named by ${uses.length} map(s):${NL}${NL}${shown}${more}${NL}${NL}`
+      + 'They will stop resolving it. Remove anyway?'
+    : `Remove ${label}? No map names it.`;
+  if (!confirm(warning)) return;
+  try {
+    if (kind === 'artifact') await window.editor.removeArtifact({ id });
+    else await window.editor.removeCreature({ id });
+    await refreshModLists();
+  } catch (e) {
+    $(errBox).textContent = e instanceof Error ? e.message : String(e);
+  }
+}
+
 async function refreshModLists(): Promise<void> {
   const { gameRoot, mods } = await window.editor.listMods();
   const empty = (msg: string): string => `<div class="um-empty">${msg}</div>`;
@@ -7425,39 +7498,38 @@ async function refreshModLists(): Promise<void> {
   if (!mods.length) units.innerHTML = empty('none — the game holds its shipped creatures only');
   if (!mods.some((m) => m.artifacts.length)) arts.innerHTML = empty('none — the game holds its shipped artifacts only');
   for (const m of mods) {
-    const row = document.createElement('div');
-    row.append(`${m.stem}.h5u — ${m.creatures.length} creature(s), ceiling ${m.limit}`
+    const head = document.createElement('div');
+    head.append(`${m.stem}.h5u — ${m.creatures.length} creature(s), ceiling ${m.limit}`
       + (m.reconstructed ? ' (no manifest)' : ''));
-    const who = m.creatures.map((c) => `${c.number} ${c.name || c.id}`).join(', ');
-    if (who) {
-      const i = document.createElement('i');
-      i.textContent = ` · ${who}`;
-      row.appendChild(i);
-    }
-    // Each creature of OUR mod can be repainted: its textures are the mod's
-    // own copies, so a recolour touches nothing shipped.
-    if (!m.reconstructed) {
-      for (const c of m.creatures) {
-        const b = document.createElement('button');
-        b.className = 'um-recolor';
-        b.textContent = `🎨 ${c.name || c.id}`;
-        b.title = `repaint ${c.id}'s textures`;
-        b.onclick = () => {
+    units.appendChild(head);
+    for (const c of m.creatures) {
+      const row = modRow({
+        number: c.number, label: c.name || c.id, note: c.id,
+        onEdit: () => { void editCreature(c.id); },
+        onRemove: () => { void removeWithWarning('creature', c.id, c.name || c.id, 'um-err'); },
+      });
+      // Each creature of OUR mod can be repainted: its textures are the mod's
+      // own copies, so a recolour touches nothing shipped.
+      if (!m.reconstructed) {
+        const paint = document.createElement('button');
+        paint.className = 'um-recolor';
+        paint.textContent = '🎨';
+        paint.title = `repaint ${c.id}'s textures`;
+        paint.onclick = () => {
           void openRecolor(c.id, c.name || c.id).catch((e: unknown) => {
             $('um-err').textContent = e instanceof Error ? e.message : String(e);
           });
         };
-        row.appendChild(b);
+        row.insertBefore(paint, row.lastChild);
       }
+      units.appendChild(row);
     }
-    units.appendChild(row);
-    if (m.artifacts.length) {
-      const arow = document.createElement('div');
-      arow.append(`${m.stem}.h5u — ${m.artifacts.length} artifact(s)`);
-      const ai = document.createElement('i');
-      ai.textContent = ` · ${m.artifacts.map((a) => `${a.number} ${a.name || a.id} (${a.slot})`).join(', ')}`;
-      arow.appendChild(ai);
-      arts.appendChild(arow);
+    for (const a of m.artifacts) {
+      arts.appendChild(modRow({
+        number: a.number, label: `${a.name || a.id} (${a.slot})`, note: a.id,
+        onEdit: () => { void editArtifact(a.id); },
+        onRemove: () => { void removeWithWarning('artifact', a.id, a.name || a.id, 'am-err'); },
+      }));
     }
     // Sets get a line of their own. Without one an installed set is invisible
     // here, and "nothing happened" reads exactly like "it worked".
@@ -7607,6 +7679,68 @@ function artifactEffects(): Record<string, number> {
     if (stat && amount) out[stat] = (out[stat] ?? 0) + amount;
   }
   return out;
+}
+
+/**
+ * Put an installed artifact into the form, and switch the form to editing it.
+ *
+ * The id and the file stem are locked while editing: the id is what a map, a
+ * script and the manifest all name the same thing by, and the file stem names
+ * every document already written for it.
+ */
+async function editArtifact(id: string): Promise<void> {
+  const { mods } = await window.editor.listMods();
+  const a = mods.flatMap((m) => m.artifacts).find((x) => x.id === id);
+  if (!a) return;
+  editingArtifact = id;
+  $input('am-id').value = a.id;
+  $input('am-file').value = a.id.replace(/^ARTIFACT_/, '');
+  $input('am-name').value = a.name;
+  $select('am-slot').value = a.slot;
+  $input('am-id').disabled = true;
+  $input('am-file').disabled = true;
+  $('am-legend').textContent = 'Editing artifact';
+  $('am-editing').textContent = `${a.name || a.id} — id and files are fixed; everything else can move`;
+  $button('am-ok').textContent = 'Save & install';
+  $button('am-cancel-edit').hidden = false;
+  $('am-note').textContent = '';
+}
+
+/** Back to making a new one. */
+function newArtifact(): void {
+  editingArtifact = '';
+  $input('am-id').disabled = false;
+  $input('am-file').disabled = false;
+  $('am-legend').textContent = 'New artifact';
+  $('am-editing').textContent = '';
+  $button('am-ok').textContent = 'Build & install';
+  $button('am-cancel-edit').hidden = true;
+}
+
+async function editCreature(id: string): Promise<void> {
+  const { mods } = await window.editor.listMods();
+  const c = mods.flatMap((m) => m.creatures).find((x) => x.id === id);
+  if (!c) return;
+  editingCreature = id;
+  $input('um-id').value = c.id;
+  $input('um-name').value = c.name;
+  $input('um-id').disabled = true;
+  $input('um-file').disabled = true;
+  $('um-legend').textContent = 'Editing creature';
+  $('um-editing').textContent = `${c.name || c.id} — id and files are fixed; everything else can move`;
+  $button('um-ok').textContent = 'Save & install';
+  $button('um-cancel-edit').hidden = false;
+  $('um-note').textContent = '';
+}
+
+function newCreature(): void {
+  editingCreature = '';
+  $input('um-id').disabled = false;
+  $input('um-file').disabled = false;
+  $('um-legend').textContent = 'New creature';
+  $('um-editing').textContent = '';
+  $button('um-ok').textContent = 'Build & install';
+  $button('um-cancel-edit').hidden = true;
 }
 
 /**
@@ -7768,7 +7902,8 @@ async function submitArtifactMod(): Promise<void> {
   try {
     const stats: Record<string, number> = {};
     for (const [input, key] of AM_STATS) stats[key] = Number($input(input).value) || 0;
-    const res = await window.editor.installArtifact({
+    const send = editingArtifact ? window.editor.updateArtifact : window.editor.installArtifact;
+    const res = await send({
       id: $input('am-id').value,
       file: $input('am-file').value,
       name: $input('am-name').value,
@@ -7958,11 +8093,14 @@ $input('as-file').addEventListener('input', () => {
 $('as-members').addEventListener('change', renderSetCounts);
 $('as-ok').onclick = () => { void submitArtifactSet(); };
 
-$('unitsbtn').onclick = () => { umIdTouched = false; openModDialog('unitsmod'); };
+$('unitsbtn').onclick = () => { umIdTouched = false; newCreature(); openModDialog('unitsmod'); };
 $('am-effect-add').onclick = () => addEffectRow();
+$('am-cancel-edit').onclick = newArtifact;
+$('um-cancel-edit').onclick = newCreature;
 $('artsbtn').onclick = () => {
   amIdTouched = false;
   asIdTouched = false;
+  newArtifact();
   // Ours, not the donor's: a shipped artifact has no effects of this kind, so
   // carrying them over from a preset would invent them.
   $('am-effects').innerHTML = '';

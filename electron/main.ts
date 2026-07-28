@@ -42,11 +42,12 @@ import { MAP_SIZES } from '../src/terrain-blank.ts';
 import { Registry, artifactPreset, creatureAbilities, creaturePreset, creatureSources } from '../src/registry.ts';
 import type { RosterEntry } from '../src/registry.ts';
 import {
-  addArtifact, addArtifactSet, addCreature, removeArtifact, removeArtifactSet, updateArtifact, artifactLimit, buildCreatureMod, dataReader, findCreatureMods,
+  addArtifact, addArtifactSet, addCreature, removeArtifact, removeArtifactSet, removeCreature,
+  updateArtifact, artifactLimit, buildCreatureMod, dataReader, findCreatureMods,
   installCreatureMod, MOD_STEM, newCreatureMod, packCreatureMod,
 } from '../src/creature-mod.ts';
 import { builtDll, extensionState, installExtension, writeEffectsFile } from '../src/extension.ts';
-import { describeUses, findArtifactUses } from '../src/artifact-usage.ts';
+import { describeUses, findArtifactUses, findCreatureUses } from '../src/artifact-usage.ts';
 import { EFFECT_STATS, effectsOf } from '../src/artifact-effects.ts';
 import type { EffectStat } from '../src/artifact-effects.ts';
 import type { BuildReport, CreatureMod, Installed, ModCreature } from '../src/creature-mod.ts';
@@ -2411,6 +2412,23 @@ ipcMain.handle('mods:remove-set', async (_e: IpcMainInvokeEvent, { id }: ModsRem
   const gone = removeArtifactSet(mod, id);
   const { installed } = buildAndInstall(g, mod);
   return { archive: installed.archive, removed: gone.effect };
+});
+
+ipcMain.handle('mods:creature-uses', async (_e: IpcMainInvokeEvent, { id }: ModsRemovePayload): Promise<ModsUsesResult> => {
+  const uses = findCreatureUses(join(gameData(), 'Maps'), [id]).get(id) ?? [];
+  return { uses: describeUses(uses) };
+});
+
+ipcMain.handle('mods:remove-creature', async (_e: IpcMainInvokeEvent, { id }: ModsRemovePayload): Promise<ModsRemoveResult> => {
+  const g = gameRoot();
+  if (!g) throw new Error('no game install configured');
+  if (!isConfigured()) throw new Error('no data root configured');
+  const mod = ourMod(g);
+  const gone = removeCreature(mod, id);
+  // The ceiling comes down with it: an executable told to expect more creatures
+  // than the mod carries reads past the end of the table.
+  const { installed } = buildAndInstall(g, mod);
+  return { archive: installed.archive, removed: gone.id };
 });
 
 ipcMain.handle('mods:extension-status', async (): Promise<ExtensionStatus> => {

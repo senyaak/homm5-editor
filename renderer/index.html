@@ -658,6 +658,12 @@
     .um-form { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 18px; }
     .um-form > .um-span, .um-form > .um-stats { grid-column: 1 / -1; }
     .um-mods { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #c9d1d9; }
+    /* one installed thing: what it is, then what can be done to it */
+    .um-item { display: flex; align-items: center; gap: 8px; padding: 3px 0;
+      border-bottom: 1px solid #21262d; }
+    .um-item .grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .um-item .num { color: #6e7681; font-variant-numeric: tabular-nums; }
+    .um-editing { color: #d29922; font-size: 11px; min-height: 14px; }
     .um-mods i { color: #8b949e; font-style: normal; }
     .um-empty { color: #6e7681; font-size: 12px; }
     .um-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 6px 10px; }
@@ -1203,7 +1209,8 @@
           <div id="um-conflict" class="um-warn"></div>
         </fieldset>
         <fieldset>
-          <legend>New creature</legend>
+          <legend id="um-legend">New creature</legend>
+          <div id="um-editing" class="um-editing"></div>
           <div class="on-body um-form">
             <!-- The donor IS the preset: picking one loads its every field —
                  stats, texts, abilities, the four art documents — and the form
@@ -1255,6 +1262,7 @@
       </div>
       <div class="de-foot">
         <button id="um-cancel" class="ghost">Close</button>
+        <button id="um-cancel-edit" class="ghost" hidden>Cancel edit</button>
         <button id="um-ok">Build &amp; install</button>
       </div>
     </div>
@@ -1312,7 +1320,8 @@
           <div id="am-list" class="um-mods"></div>
         </fieldset>
         <fieldset>
-          <legend>New artifact</legend>
+          <legend id="am-legend">New artifact</legend>
+          <div id="am-editing" class="um-editing"></div>
           <div class="on-body um-form">
             <label class="on-row um-span"><span>Preset</span><select id="am-donor" title="an artifact to start from — every field below loads from it"></select></label>
             <label class="on-row"><span>Files</span><input id="am-file" type="text" spellcheck="false" autocomplete="off" placeholder="file stem, e.g. UndertakersAmulet" title="the stem of every file generated for it; the ID fills itself from it"></label>
@@ -1390,6 +1399,7 @@
       </div>
       <div class="de-foot">
         <button id="am-cancel" class="ghost">Close</button>
+        <button id="am-cancel-edit" class="ghost" hidden>Cancel edit</button>
         <button id="am-ok">Build &amp; install</button>
       </div>
     </div>

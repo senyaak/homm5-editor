@@ -404,6 +404,38 @@ export function removeArtifactSet(mod: CreatureMod, effect: string): ModArtifact
   return gone;
 }
 
+/**
+ * Change a creature already in the mod, keeping its number.
+ *
+ * The id is fixed for the same reason an artifact's is: it names the same thing
+ * in a map, a script and this manifest.
+ */
+export function updateCreature(mod: CreatureMod, id: string, spec: CreatureSpec): ModCreature {
+  const at = mod.creatures.findIndex((c) => c.id === id);
+  if (at < 0) throw new Error(`${id} is not in the mod`);
+  if (spec.id !== id) throw new Error(`a creature cannot be renamed — ${id} is what maps and scripts store`);
+  const kept = mod.creatures[at]!;
+  const updated: ModCreature = { ...spec, number: kept.number, from: kept.from };
+  mod.creatures[at] = updated;
+  return updated;
+}
+
+/**
+ * Take a creature out of the mod; the numbers behind it close up.
+ *
+ * Safe for maps, which name a creature rather than numbering it, and the
+ * executable's ceiling comes down with it on the next install. What breaks is a
+ * map that names THIS one — found by searching for it, the same way artifacts
+ * are (src/artifact-usage.ts).
+ */
+export function removeCreature(mod: CreatureMod, id: string): ModCreature {
+  const at = mod.creatures.findIndex((c) => c.id === id);
+  if (at < 0) throw new Error(`${id} is not in the mod`);
+  const removed = mod.creatures.splice(at, 1)[0]!;
+  mod.creatures.forEach((c, i) => { c.number = mod.first + i; });
+  return removed;
+}
+
 /** Append a dwelling. Unlike a creature it holds no id, so order is cosmetic. */
 export function addDwelling(mod: CreatureMod, spec: DwellingSpec): DwellingSpec {
   if (!spec.creatures.length) throw new Error(`${spec.file}: a dwelling with no creatures hires nothing`);
