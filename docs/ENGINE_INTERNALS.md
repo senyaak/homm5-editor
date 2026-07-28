@@ -253,10 +253,11 @@ no script API can do), and it is the natural home for stat contributions from
 new artifacts. Finding it is the next reverse-engineering job, and it matters
 more than anything else on this list.
 
-## Hunting the equipment aggregator
+## Where equipment is read
 
-Not found yet. This is what the search established, so the next attempt starts
-here rather than at the beginning.
+There is no aggregator. Finding that out took a detour through the artifact
+record, the stat getters and the command layer, and all of it is worth keeping,
+because it is what a hook has to be written against.
 
 **An artifact record's stats, in memory.** The loader names each field as it
 parses it, which gives the layout directly: `CostOfGold` at +0x34, `AIValue`
@@ -326,10 +327,16 @@ hero screen putting one on or taking one off), `CCreateArtifactCmd`,
 The engine has no separate "script path" and "UI path" — the script *is* a
 command, the same as the click. A command's vtable has a small wrapper at
 `+0xc` and the real work at `+0x1c` (`0xb2d030` for give, `0xb2a790` for
-swap), and those two apply methods share three helpers directly, one of which
-— `0xb4a560` — carries the string `spell_name`. That is almost certainly the
-scroll mechanism: the artifact's spell going into or out of the hero's book,
-which is the effect no script API can reproduce.
+swap), and those two apply methods share three helpers directly.
+
+One of those helpers, `0xb4a560`, carries the string `spell_name`, and it was
+read as the scroll mechanism — the artifact's spell entering or leaving the
+hero's book. **It is not.** Read through, it switches on the artifact's id
+(`[this+0x28]`, values 3, 0x34, 0x56 — the scroll and wand family) and writes
+key/value pairs into an object passed in: `spell_name`, then `charges_cur` and
+`charges_max` off a sub-object at `+0x1c`, through the setters `0xc95580`
+(string) and `0xc954d0` (integer). It is a property-bag writer — description,
+serialisation or network state — and it grants nothing.
 
 **A hook belongs at that shared level, not on the UI command.** Anything
 attached to `CSwapMoveArtifactCmd` would miss a script removal, a quest taking
@@ -341,15 +348,107 @@ an item away, and a hero dying; anything below the commands sees all of them.
 record after the getter but build tooltips (`ARTIFACT_NAME_MINOR`, per-id
 special text).
 
-**The working hypothesis** for why no code reads the six stat fields together:
-the stats are applied to the hero **when the artifact is equipped**, not summed
-each time a stat is read. If that holds, there is no aggregator to find — there
-is an apply-and-undo pair inside the command layer, which is a better hook
-anyway, and `0xb4a560` is one end of it.
+**The working hypothesis was wrong, and the answer is better than the
+hypothesis.** The guess was that stats are applied to the hero when an artifact
+is equipped, so there would be an apply-and-undo pair in the command layer.
+There is no such pair. The engine asks what is worn **at the moment it needs
+the answer**, inside each calculation, and it asks through one function.
 
-Next: identify the equipped-collection class behind hero vtable `+0x74` (its
-`contains` is `0xb4c270`, `0xb4cbe0` for the backpack), and read `0xb4a560`
-through.
+## The one door: `CountEquipped`
+
+`0xb4c270` — reached as hero vtable `+0x74` then a call — is thirty
+instructions:
+
+```
+for (a in this->artifacts)          ; a plain vector, stride 4
+    if (a == null) continue
+    if (*(int*)((char*)a + a->vbase + 8) < 0) continue   ; slot < 0 = not worn
+    if (a->id != wanted) continue                        ; id is at +0x28
+    n++
+return n
+```
+
+Three facts fall out of those thirty instructions:
+
+- an artifact object keeps its **id at `+0x28`** (the same field `0xb4a560`
+  switches on) and its **equipped slot at `+8` off its virtual base**, negative
+  meaning "in the backpack";
+- hero vtable **`+0x74` returns the artifact collection**, which is what the
+  necromancy sum was already using without it being named;
+- the function answers *how many of artifact N are worn* — so it is the
+  equipment query, not a helper beside one.
+
+**It has 75 call sites and nothing competes with it.** Its neighbours in the
+same class are an index accessor (`0xb4c9e0`, 23 calls), a reference-release
+loop (`0xb4d3a0`) and two bounds-checked record getters (`0xb4cf90`,
+`0xb4cfb0`); none of them takes an artifact id. The Lua `HasArtefact` goes
+through it too.
+
+### What the engine hardcodes, by id
+
+The 75 sites sit in **36 functions** and name **54 distinct artifacts**. This is
+the complete list of behaviour the executable owns per id — the thing a new
+artifact does not get, spelled out:
+
+| function | artifacts it asks about |
+|---|---|
+| `0xab9db0` | Werewolf Claw Necklace |
+| `0xab9e40` | Boots of Swiftness, Whispering Ring |
+| `0xab9f10` | Ring of Haste, Ring of Celerity, the five Dragon pieces, Ogre Club, Ogre Shield |
+| `0xaba230` | Ring of Life |
+| `0xabb2c0` | Werewolf Claw Necklace ×2, Boots of Swiftness, Whispering Ring |
+| `0xabbe50`, `0xabc1f0` | Dragon Talon Crown |
+| `0xad4bb0` | Ring of the Magi |
+| `0xad8bc0`, `0xc24ac0`, `0xc3cc00` | Angel Wings, Boots of Levitation |
+| `0xb6d890` | Staff of Vexings |
+| `0xb6e300` | Unicorn Horn Bow, Shawl of the Great Lich |
+| `0xb76ea2` | Twisting Nether |
+| `0xb85e40` | Titan's Trident, Evercold Icicle, Phoenix Feather Cape, Earthsliders |
+| `0xb869b0` | Iceberg Shield, Dwarven Smithy Hammer, Ring of Lightning Protection, Dragon Flame Tongue, Bearhide Wraps, Rigid Mantle |
+| `0xb86fd0` | Ring of Death, the four Dwarven Mithral pieces, Staff of the Magi, Plate Mail of Stability, Boots of Interference |
+| `0xc1c940` | Golden Sextant |
+| `0xc24b00` | Wayfarer Boots, Angel Wings |
+| `0xc25010` | Endless Sack of Gold, Endless Bag of Gold, Horn of Plenty |
+| `0xc25830`, `0xc28d10` | Pendant of Mastery |
+| `0xc25d40` | Helm of Enlightenment, Chain Mail of Enlightenment |
+| `0xc27cf0` | Crown of Many Eyes |
+| `0xc52920` | Shackles of War ×2 |
+| `0xc77270`, `0xc77850` | Necromancer's Pendant — cost and raise |
+| `0xcbad70` | Unicorn Horn Bow |
+| `0xd52d20` | Nightmarish Ring, Cloak of Mourning |
+| `0xd534a0` | Cloak of Mourning, Jinxing Band |
+| `0xd55cc0` | Mask of the Doppelganger |
+| `0xdca200` | Ring of Celerity |
+
+`node tools/reverse/equipment.ts` rebuilds that table from the binary, so it can
+be checked rather than trusted.
+
+`0xab9f10` reads as the movement calculation, which the names confirm and the
+arithmetic seconds: `+20` for a Ring of Haste, `×10` per Ring of Celerity,
+`×5`/`×10` per Dragon piece, `−5` per Ogre item, clamped at `−100`, then
+`(100 + sum)` scaled. Every entry in the table has that same shape — count,
+multiply by a constant, add.
+
+### What this means for the extension
+
+Two levers, and the cheap one is very cheap.
+
+**A detour on `CountEquipped` alone gives every one of those fifty behaviours to
+our own artifacts.** If the config says our Cloak counts as a Necromancer's
+Pendant for the purpose of the question, the detour adds to the returned count
+and the necromancy sum picks it up — through the engine's own arithmetic, its
+own caps, its own display, on the map and in combat, whatever route the artifact
+arrived by. One hook, no per-effect work, and nothing shipped is overwritten:
+the aliasing lives in our config, not in the game's data.
+
+**A detour per calculation gives magnitudes of our own.** Adding a term to
+`0xc77850` — count our set's worn pieces, add our number — is the same twenty
+bytes the Necromancer's Pendant already costs, and it is what "our own set, our
+own effect" means when the number is not one the engine already knows.
+
+The order to build them in is that order: the first is one function and proves
+the whole native path; the second is per-effect and only worth paying for what
+the first cannot express.
 
 ## Open threads
 
@@ -361,7 +460,11 @@ through.
   approach (probably the town/day-tick code, or watching the field offset the
   getter reads). Since the plan is "just restore it every day", finding the
   write site is enough; no new mechanic is needed.
-- **The equipment aggregator** — see the section above for where the hunt got to.
+- **The spellbook side.** `CountEquipped` explains stats and percentages, not a
+  Scroll's spell appearing and disappearing with the item. That is a different
+  mechanism and it is still unlocated — `0xb4a560` turned out to be a property
+  writer, not it. It only matters if the config is to carry spells granted
+  while worn; nothing else in the plan waits on it.
 - Whether an eleventh artifact set has a compiled ceiling. No accessor
   returning 11 has a caller and the container is dynamic, but that is an
   absence of evidence.

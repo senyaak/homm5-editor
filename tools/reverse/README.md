@@ -20,11 +20,15 @@ node tools/reverse/trace.ts show 0xc77850         # disassemble, strings annotat
 node tools/reverse/trace.ts calls 0xb1ef70        # who calls this
 node tools/reverse/trace.ts common 0xb2d030 0xb2a790   # what both reach
 node tools/reverse/trace.ts field 0x44 0x48 --min 2    # who reads these offsets
+
+node tools/reverse/equipment.ts                   # every behaviour keyed on an artifact id
 ```
 
 `common` is the one that earned its keep: an artifact can leave a hero from the
 hero screen, a script, a quest or a death, so what those paths share is where
-the engine really does the work.
+the engine really does the work. `equipment` prints what that search ended at —
+the single function every "is this worn" question goes through, and the fifty-odd
+artifact ids the executable reacts to by name.
 
 The decoding lives in `src/pe.ts` (sections, addresses, strings, references)
 and `src/disasm.ts` (iced-x86). `src/lua-registry.ts` holds the registration
