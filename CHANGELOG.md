@@ -59,9 +59,12 @@ one.
   touched, being the silhouette. Global hue/saturation/lightness/tint apply on
   top, with a one-click Grey. The previews are not an approximation: preview and
   rewrite run the same arithmetic. It repaints the mod's own copies, so nothing
-  shipped is touched. **First cut**, with two costs stated in the doc: the
-  recoloured surface is written uncompressed, which drops the mipmap chain and
-  quadruples the file — and it has not yet been seen in the running game.
+  shipped is touched. Seen in the running game: the Sharpshooter with its cloak
+  remapped to steel grey — and its skin left alone, which is the point, since
+  skin and gold trim share one hue cluster and the sliders would have taken the
+  face too. **First cut** all the same: the recoloured surface is written
+  uncompressed, which quadruples the texture and drops its mipmap chain.
+  Recompressing to DXT3 is the first thing in the plan.
 - **The last three real "cannot decode" objects decode.** Of the objects that
   refused to mesh, three turned out to be real and each hid a different
   mechanism: the unshipped Hill_Castle town declares an EMPTY exterior, which

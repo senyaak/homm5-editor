@@ -754,24 +754,29 @@ Two constraints shape the design, both learned the hard way:
       run the same arithmetic (`src/recolor.ts`), so what the canvases show is what lands in
       the archive; alpha is never touched, being the silhouette cut-out.
 
-      **What it does NOT do yet, and it matters:** the plan below was decompress BC2 →
-      transform → **recompress → regenerate mipmaps → recompute `AverageColor`**. This cut
-      writes the recoloured surface **uncompressed** (`TF_8888`, one surface) and updates the
-      paired `.(Texture).xdb` to say so. That is a format the game demonstrably reads — every
-      shipped artifact icon is one — but on a 512×512 creature body it costs 1 MB instead of
-      256 KB and, more importantly, **drops the mipmap chain**, so a recoloured creature seen
-      small may shimmer where the original does not. **Not yet verified in the running
-      game.** The finish is below.
+      **Proved in the running game** (2026-07-28): the port's Sharpshooter, its turquoise
+      cloak remapped to steel grey and its skin left alone, loads and looks right — so the
+      uncompressed pair is something the engine accepts for creature art, not only for
+      interface icons. The palette's selectivity is the point of the exercise: skin and gold
+      trim share the 48° cluster, so remapping *that* one would have greyed the face.
+
+      **What it does NOT do yet:** the plan below was decompress BC2 → transform →
+      **recompress → regenerate mipmaps → recompute `AverageColor`**. This cut writes the
+      recoloured surface **uncompressed** (`TF_8888`, one surface) and updates the paired
+      `.(Texture).xdb` to say so, which costs 1 MB instead of 256 KB per body texture, four
+      times the VRAM, and **the mipmap chain** — nothing showed at ordinary zoom, but a
+      creature seen small now has nothing to fall back to. The finish is below.
 - [ ] ⬜ **The recolour editor, properly** — what the first cut deferred, roughly in order of
       how much each is missed:
       - **DXT3 recompression and mipmaps.** Write back in the format the file already had
         (BC2 keeps alpha uncompressed, so only colour is lossy and only once), regenerate the
         7-level chain by box filter, recompute `AverageColor`, and leave the `.xdb` alone —
-        then a recolour is invisible to everything except the eye.
-      - **Verify in the running game** — a recoloured creature hired, walked and fought.
-        Until then the pipeline is proved only against our own decoder.
-      - **Split a cluster by lightness**, not only by hue: black leather and white fur are
-        one neutral swatch today, and telling them apart is what a person wants next.
+        then a recolour costs nothing at all, and the VRAM and the missing chain stop being
+        the price of using it.
+      - **Split a cluster by lightness**, not only by hue. The concrete case, measured on the
+        Sharpshooter: **skin and gold trim are one 48° cluster**, so "grey the trim" greys the
+        face — and black leather and white fur are one neutral swatch. Lightness separates
+        both pairs where hue cannot.
       - **Paint by region** — a brush over the texture (or over the model, projected), for
         the shoulder patch that no colour cluster isolates.
       - **Per-material targeting**: the two body materials and the icon are one set now;

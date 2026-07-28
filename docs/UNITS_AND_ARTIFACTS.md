@@ -110,6 +110,26 @@ not an approximation of the result, they are the result. Alpha is never touched:
 on a creature texture it is the silhouette cut-out (`AM_ALPHA_TEST`), and
 recoloured must not mean eroded.
 
+### A worked example: the Sharpshooter's own palette
+
+Measured off the port's installed mod, which is what the swatches showed:
+
+| Cluster | Share | What it actually is |
+|---|---|---|
+| 48° | 59% | the warm half: **the skin AND the gold trim, together** |
+| 194° | 16% | the turquoise cloak and hood — the creature's identity colour |
+| 128° | 1% | a little green |
+| neutral | 24% | leather, the bow, the dark cloth |
+
+The first row is the lesson. "Paint the creature grey" through the sliders — or
+by remapping the 48° swatch — takes **the face with it**, because a hue
+histogram cannot tell tan skin from gold thread; they sit within a few degrees
+of each other. Remapping only the 194° cluster gives a grey-cloaked ranger with
+its own skin, which is what a person means by a recolour.
+
+That is the concrete want behind "split a cluster by lightness" in the plan:
+skin is lighter than the trim even where their hues agree.
+
 ### Where this pipeline stops
 
 The shipped textures are **DXT3, 512×512, with a 7-level mipmap chain**. The
@@ -119,13 +139,16 @@ surface) and edits the paired `.(Texture).xdb` to match — `Format`, `IsDXT`,
 icon is one), and a `.dds` its document misdescribes is present and invisible,
 which is why the pair is always written together.
 
-The costs, stated plainly:
+**It has been seen in the running game** (2026-07-28): the Sharpshooter with its
+cloak remapped to steel grey loads and looks right, so the uncompressed pair is
+a thing the engine accepts for creature art, not only for interface icons.
 
-- **1 MB instead of 256 KB** per 512×512 texture.
-- **No mipmaps**, so a recoloured creature seen small may shimmer where the
-  original does not.
-- **Not yet verified in the running game** — only against our own decoder and the
-  editor's renderer.
+The costs that remain, stated plainly:
+
+- **1 MB instead of 256 KB** per 512×512 texture, and four times the VRAM.
+- **No mipmaps**, so a recoloured creature seen small has nothing to fall back
+  to. Nothing was reported at ordinary zoom; the shimmer this risks is a
+  property of the format, not a bug that has been ruled out.
 
 Recompressing to BC2 and regenerating the chain is the finish, and it is the
 first item of the recolour section in `ROADMAP.md`, along with splitting a
