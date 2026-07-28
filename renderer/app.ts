@@ -7501,14 +7501,17 @@ async function refreshModLists(): Promise<void> {
   const empty = (msg: string): string => `<div class="um-empty">${msg}</div>`;
   const units = $('um-list');
   const arts = $('am-list');
+  const sets = $('as-list');
+  sets.innerHTML = '';
   units.innerHTML = '';
   arts.innerHTML = '';
   if (!gameRoot) {
-    units.innerHTML = arts.innerHTML = empty('no game install configured — nowhere to install to');
+    units.innerHTML = arts.innerHTML = sets.innerHTML = empty('no game install configured — nowhere to install to');
     return;
   }
   if (!mods.length) units.innerHTML = empty('none — the game holds its shipped creatures only');
   if (!mods.some((m) => m.artifacts.length)) arts.innerHTML = empty('none — the game holds its shipped artifacts only');
+  if (!mods.some((m) => m.sets?.length)) sets.innerHTML = empty('no sets of ours');
   for (const m of mods) {
     const head = document.createElement('div');
     head.append(`${m.stem}.h5u — ${m.creatures.length} creature(s), ceiling ${m.limit}`
@@ -7543,15 +7546,16 @@ async function refreshModLists(): Promise<void> {
         onRemove: () => { void removeWithWarning('artifact', a.id, a.name || a.id, 'am-err'); },
       }));
     }
-    // Sets get a line of their own. Without one an installed set is invisible
-    // here, and "nothing happened" reads exactly like "it worked".
+    // Sets get a list of their own beside the artifacts they are made of.
+    // Without one an installed set is invisible here, and "nothing happened"
+    // reads exactly like "it worked".
     for (const s of m.sets) {
-      const srow = document.createElement('div');
-      srow.append(`set ${s.number} — ${s.name || s.effect}`);
-      const si = document.createElement('i');
-      si.textContent = ` · ${s.artifacts.length} piece(s): ${s.artifacts.map(shortArtifactId).join(', ')}`;
-      srow.appendChild(si);
-      arts.appendChild(srow);
+      sets.appendChild(modRow({
+        number: s.number, label: s.name || s.effect,
+        note: `${s.artifacts.length} piece(s): ${s.artifacts.map(shortArtifactId).join(', ')}`,
+        onEdit: () => { void editArtifactSet(s.effect); },
+        onRemove: () => { void removeSet(s.effect, s.name || s.effect); },
+      }));
     }
   }
   // More than one creature mod is a conflict, not a set — each carries a whole
@@ -7884,13 +7888,66 @@ function renderSetCounts(): void {
   }
 }
 
+/** Which set the form is editing, or '' when it is making a new one. */
+let editingSet = '';
+
+/**
+ * Put an installed set into the form.
+ *
+ * The effect value is locked: `DefaultStats` names it and the enum holds it,
+ * so renaming it here would leave the data pointing at nothing. Members and
+ * texts are all free to move.
+ */
+async function editArtifactSet(effect: string): Promise<void> {
+  const { mods } = await window.editor.listMods();
+  const s = mods.flatMap((m) => m.sets).find((x) => x.effect === effect);
+  if (!s) return;
+  editingSet = effect;
+  await fillSetMembers();
+  for (const box of $('as-members').querySelectorAll<HTMLInputElement>('input')) {
+    box.checked = s.artifacts.includes(box.value);
+  }
+  renderSetCounts();
+  $input('as-effect').value = s.effect;
+  $input('as-name').value = s.name;
+  $input('as-effect').disabled = true;
+  $input('as-file').disabled = true;
+  $button('as-ok').textContent = 'Save & install';
+  $('as-note').textContent = '';
+  openOnTop('setedit');
+  $('setedit-title').textContent = 'Editing set';
+}
+
+/** Back to making a new one. */
+function newSet(): void {
+  editingSet = '';
+  $input('as-effect').disabled = false;
+  $input('as-file').disabled = false;
+  $button('as-ok').textContent = 'Build & install';
+  for (const box of $('as-members').querySelectorAll<HTMLInputElement>('input')) box.checked = false;
+  renderSetCounts();
+  openOnTop('setedit');
+  $('setedit-title').textContent = 'New set';
+}
+
+/** A set's effect value is named by nothing outside the mod, so no scan. */
+async function removeSet(effect: string, label: string): Promise<void> {
+  if (!confirm(`Remove ${label}? Its members stay; only the set goes.`)) return;
+  try {
+    await window.editor.removeArtifactSet({ id: effect });
+    await refreshModLists();
+  } catch (e) {
+    $('am-err').textContent = e instanceof Error ? e.message : String(e);
+  }
+}
 async function submitArtifactSet(): Promise<void> {
   const ok = $button('as-ok');
   ok.disabled = true;
   $('as-err').textContent = '';
   $('as-note').textContent = '';
   try {
-    const res = await window.editor.installArtifactSet({
+    const send = editingSet ? window.editor.updateArtifactSet : window.editor.installArtifactSet;
+    const res = await send({
       effect: $input('as-effect').value,
       artifacts: setMembers(),
       file: $input('as-file').value,
@@ -7899,6 +7956,7 @@ async function submitArtifactSet(): Promise<void> {
       perCount: [...$('as-counts').querySelectorAll<HTMLInputElement>('input')].map((i) => i.value),
     });
     modDialog('setedit').close();
+    editingSet = '';
     $('am-note').textContent = `installed ${res.archive}\nset effect ${res.number}`
       + ' — the game will count its pieces; the bonus itself is native code';
     await refreshModLists();
@@ -8118,8 +8176,9 @@ $('am-new').onclick = () => { amIdTouched = false; newArtifact(); };
 $('um-new').onclick = () => { umIdTouched = false; newCreature(); };
 $('as-new').onclick = () => {
   asIdTouched = false;
-  openOnTop('setedit');
-  void fillSetMembers().catch(() => {});
+  void fillSetMembers().then(newSet).catch((e: unknown) => {
+    $('as-err').textContent = e instanceof Error ? e.message : String(e);
+  });
 };
 for (const [dlg, back] of [['artedit', 'am'], ['unitedit', 'um'], ['setedit', 'as']] as const) {
   $(`${dlg}-x`).onclick = () => modDialog(dlg).close();

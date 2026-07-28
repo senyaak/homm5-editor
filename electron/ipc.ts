@@ -988,6 +988,8 @@ export interface EditorApi {
   installArtifactSet(p: ModsInstallSetPayload): Promise<ModsInstallSetResult>;
   /** Change an artifact already in the mod. Its id and number do not move. */
   updateArtifact(p: ModsInstallArtifactPayload): Promise<ModsInstallArtifactResult>;
+  /** Change a set already in the mod. Its effect value does not move. */
+  updateArtifactSet(p: ModsInstallSetPayload): Promise<ModsInstallSetResult>;
   /** Which maps name this creature — ask BEFORE removing it. */
   creatureUses(p: ModsRemovePayload): Promise<ModsUsesResult>;
   /** Drop a creature and lower the executable's ceiling with it. */

@@ -387,6 +387,23 @@ export function removeArtifact(mod: CreatureMod, id: string): ModArtifact {
 }
 
 /**
+ * Change a set already in the mod, keeping its effect value.
+ *
+ * The effect may not be renamed: `DefaultStats` names it, the enum in
+ * types.xml holds it, and our effects file will one day too. Members, texts and
+ * per-count lines are all free to move.
+ */
+export function updateArtifactSet(mod: CreatureMod, effect: string, spec: ArtifactSetSpec): ModArtifactSet {
+  const at = (mod.sets ?? []).findIndex((s) => s.effect === effect);
+  if (at < 0) throw new Error(`${effect} is not in the mod`);
+  if (spec.effect !== effect) throw new Error(`a set effect cannot be renamed — ${effect} is what the data names`);
+  if (spec.artifacts.length < 2) throw new Error(`${effect}: a set of ${spec.artifacts.length} never combines`);
+  const updated: ModArtifactSet = { ...spec, number: mod.sets[at]!.number };
+  mod.sets[at] = updated;
+  return updated;
+}
+
+/**
  * Take a set out of the mod.
  *
  * Freer than an artifact: a set's effect value is named by `DefaultStats` and

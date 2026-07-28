@@ -672,6 +672,8 @@
     .um-editing { color: #d29922; font-size: 11px; min-height: 14px; }
     .um-mods i { color: #8b949e; font-style: normal; }
     .um-empty { color: #6e7681; font-size: 12px; }
+    .am-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 20px; align-items: start; }
+    .am-columns > div { min-width: 0; }
     .um-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 6px 10px; }
     .um-stats label { display: flex; flex-direction: column; gap: 2px; font-size: 11px; color: #8b949e; }
     .um-stats input { background: #0d1014; border: 1px solid #30363d; border-radius: 6px;
@@ -1274,12 +1276,24 @@
       <div class="mp-body on-body um-body">
         <fieldset>
           <legend>Installed</legend>
-          <div id="am-list" class="um-mods"></div>
+          <!-- Side by side, not stacked: a set is made OF the artifacts beside
+               it, and choosing members while the list of them is off screen is
+               the awkward part. -->
+          <div class="am-columns">
+            <div>
+              <div id="am-list" class="um-mods"></div>
+              <div class="de-foot" style="padding:8px 0 0;justify-content:flex-start">
+                <button id="am-new">New artifact…</button>
+              </div>
+            </div>
+            <div>
+              <div id="as-list" class="um-mods"></div>
+              <div class="de-foot" style="padding:8px 0 0;justify-content:flex-start">
+                <button id="as-new" class="ghost">New set…</button>
+              </div>
+            </div>
+          </div>
         </fieldset>
-        <div class="de-foot" style="padding:0;justify-content:flex-start;gap:8px">
-          <button id="am-new">New artifact…</button>
-          <button id="as-new" class="ghost">New set…</button>
-        </div>
         <!-- Sets live inside this dialog, not beside it: they belong to the same
              archive, and their members are the artifacts listed above. What a set
              gives a hero is NOT here — that is native code, and no arrangement of

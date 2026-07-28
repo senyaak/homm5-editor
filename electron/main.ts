@@ -43,7 +43,7 @@ import { Registry, artifactPreset, creatureAbilities, creaturePreset, creatureSo
 import type { RosterEntry } from '../src/registry.ts';
 import {
   addArtifact, addArtifactSet, addCreature, removeArtifact, removeArtifactSet, removeCreature,
-  updateArtifact, artifactLimit, buildCreatureMod, dataReader, findCreatureMods,
+  updateArtifact, updateArtifactSet, artifactLimit, buildCreatureMod, dataReader, findCreatureMods,
   installCreatureMod, MOD_STEM, newCreatureMod, packCreatureMod,
 } from '../src/creature-mod.ts';
 import { builtDll, extensionState, installExtension, writeEffectsFile } from '../src/extension.ts';
@@ -2436,6 +2436,23 @@ ipcMain.handle('mods:remove-set', async (_e: IpcMainInvokeEvent, { id }: ModsRem
   const gone = removeArtifactSet(mod, id);
   const { installed } = buildAndInstall(g, mod);
   return { archive: installed.archive, removed: gone.effect };
+});
+
+ipcMain.handle('mods:update-set', async (_e: IpcMainInvokeEvent, p: ModsInstallSetPayload): Promise<ModsInstallSetResult> => {
+  const g = gameRoot();
+  if (!g) throw new Error('no game install configured');
+  if (!isConfigured()) throw new Error('no data root configured');
+  const mod = ourMod(g);
+  const set = updateArtifactSet(mod, p.effect.trim(), {
+    effect: p.effect.trim(),
+    artifacts: p.artifacts.map((a) => a.trim()).filter(Boolean),
+    file: p.file.trim(),
+    name: p.name,
+    description: p.description,
+    ...(p.perCount?.length ? { perCount: p.perCount } : {}),
+  });
+  const { installed } = buildAndInstall(g, mod);
+  return { archive: installed.archive, number: set.number };
 });
 
 ipcMain.handle('mods:creature-uses', async (_e: IpcMainInvokeEvent, { id }: ModsRemovePayload): Promise<ModsUsesResult> => {

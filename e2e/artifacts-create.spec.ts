@@ -171,7 +171,8 @@ test('makes a set of the two, with an effect of our own', async () => {
   // 11 — after the game's own eleven, 0..10. Taking one of theirs would build
   // just as cleanly and stop their set working.
   await expect(page.locator('#am-note')).toContainText('set effect 11');
-  await expect(page.locator('#am-list')).toContainText(`set 11 — ${UNDEAD_KING.name}`);
+  // Sets have a list of their own beside the artifacts they are made of.
+  await expect(page.locator('#as-list')).toContainText(UNDEAD_KING.name);
 
   const mod = readInstalledMod(GAME);
   const set = mod.sets[0]!;
