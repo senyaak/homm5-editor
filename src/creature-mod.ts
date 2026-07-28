@@ -67,8 +67,18 @@ import type { ArtifactSpec } from './artifacts.ts';
 import { readGif } from './gif.ts';
 import { fitSquare, textureDoc, writeDDS } from './texture.ts';
 
-/** The mod's file name stem — `homm5-units.h5u` in UserMODs. */
-export const MOD_STEM = 'homm5-units';
+/**
+ * The mod's file name stem — `homm5-editor.h5u` in UserMODs.
+ *
+ * Named after the editor, not after any one project, because there can only be
+ * ONE of it: creatures and artifacts both extend reference tables declared in
+ * `types.xml`, a mod replaces a file whole rather than merging it, and the
+ * executable's ceilings count what that one copy holds. So this archive is
+ * every global thing the editor adds, whatever the map or campaign it was added
+ * for. A project's own content that costs the game nothing global — dwellings
+ * and other plain objects — can and should ship in its own archive beside it.
+ */
+export const MOD_STEM = 'homm5-editor';
 
 /**
  * Our own record of the mod, shipped inside it.
@@ -1339,6 +1349,12 @@ function rootName(text: string): string | null {
 /**
  * A stable uid for a copied document. Derived from what it is rather than drawn
  * at random, so rebuilding a mod produces the same bytes.
+ *
+ * The salt below is FROZEN at the old mod name and is not `MOD_STEM`: it names
+ * nothing, it only keeps this hash away from other hashes. Change it and every
+ * copied geometry, skeleton and animation lands under a different uid — which
+ * is a new `bin/…` file for each, and the byte-identical rebuild this exists
+ * for stops being identical to anything built before.
  */
 function uidFor(of: string): string {
   const h = createHash('sha1').update(`homm5-units:uid:${of}`).digest('hex').toUpperCase();

@@ -19,7 +19,15 @@ the game reads one and the other's creatures do not exist.
 
 That is why the dialogs never ask which archive to write. They find the one
 manifest-carrying mod in `UserMODs` and extend it; with none, they create
-`homm5-units.h5u`. Two of ours is an error with the reason, not a choice.
+`homm5-editor.h5u` — named after the editor rather than after any one project,
+because there can only be one of it and everything global the editor adds goes
+in. Two of ours is an error with the reason, not a choice.
+
+A project's own content that costs the game nothing global — dwellings, plain
+objects, texture overrides — belongs in its OWN archive beside this one. That is
+how the Heroes III port is meant to sit: its creatures and artifacts extend the
+tables and so live here, its dwellings ship as its own `.h5u` and need no
+patched executable at all.
 
 An archive without our `units.json` manifest (someone else's mod) is listed and
 left alone — it can be replaced, never extended, because names, texts and art

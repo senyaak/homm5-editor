@@ -441,7 +441,7 @@ if (!existsSync(join(dataRoot, 'types.xml'))) {
   // exist for it. The army picker offered the shipped 180 and a map that placed
   // one of ours dropped the object from the scene, which is how this was found.
   console.log('\nmounted over the game data');
-  const mounted = mkdtempSync(join(tmpdir(), 'homm5-units-'));
+  const mounted = mkdtempSync(join(tmpdir(), 'homm5-editor-'));
   try {
     writeCreatureMod(mounted, realBuilt);
     const chain = assets([mounted, dataRoot]);
