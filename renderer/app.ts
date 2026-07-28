@@ -8142,8 +8142,6 @@ $('um-cancel').onclick = () => modDialog('unitsmod').close();
 $('um-ok').onclick = () => { void submitUnitsMod(); };
 $('am-close').onclick = () => modDialog('artsmod').close();
 $('am-cancel').onclick = () => modDialog('artsmod').close();
-$('am-close2').onclick = () => modDialog('artsmod').close();
-$('um-close2').onclick = () => modDialog('unitsmod').close();
 $('am-ok').onclick = () => { void submitArtifactMod(); };
 
 $('newmapbtn').onclick = openNewMap;

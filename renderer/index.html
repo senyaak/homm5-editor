@@ -466,6 +466,12 @@
       box-shadow: 0 12px 40px #000a; overflow: hidden; }
     .mp-head { display: flex; align-items: center; padding: 11px 14px; border-bottom: 1px solid #21262d; }
     .mp-title { font-weight: 600; color: #e6edf3; flex: 1; }
+    /* The ✕ in a card header. By position rather than by id: the per-id list
+       below predates half these dialogs and a new one came out with a default
+       white button. */
+    .mp-head > button { background: transparent; border: 0; color: #8b949e; font-size: 15px;
+      cursor: pointer; padding: 2px 7px; border-radius: 6px; line-height: 1; }
+    .mp-head > button:hover { background: #21262d; color: #e6edf3; }
     #mp-close { background: transparent; border: 0; color: #8b949e; font-size: 15px; cursor: pointer;
       padding: 2px 6px; border-radius: 5px; }
     #mp-close:hover { background: #21262d; color: #e6edf3; }
@@ -1215,7 +1221,6 @@
       </div>
       <div class="de-foot">
         <button id="um-cancel" class="ghost">Close</button>
-        <button id="um-close2" class="ghost">Close</button>
       </div>
     </div>
   </dialog>
@@ -1283,7 +1288,6 @@
       </div>
       <div class="de-foot">
         <button id="am-cancel" class="ghost">Close</button>
-        <button id="am-close2" class="ghost">Close</button>
       </div>
     </div>
   </dialog>
