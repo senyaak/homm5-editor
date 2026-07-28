@@ -38,6 +38,17 @@
 /** Its first five bytes: sub esp,8 / push ebx / push ebp. A whole number of
  *  instructions, which is why the detour is exactly this long. */
 static const BYTE RAISE_PERCENT_HEAD[5] = { 0x83, 0xEC, 0x08, 0x53, 0x55 };
+/**
+ * `CNecromancy::RaiseCost` — what one creature costs in dark energy.
+ *
+ * Hooked only to watch, for now. The percentage says how many the engine will
+ * OFFER; this says what each one is paid for, and which of the two is doing the
+ * limiting is not something to reason about from the outside. Its prologue is
+ * five pushes, so the detour is again a whole number of instructions.
+ */
+#define RAISE_COST_RVA 0x877270u
+static const BYTE RAISE_COST_HEAD[5] = { 0x51, 0x53, 0x55, 0x56, 0x57 };
+
 /** Where a hero hands over the artifacts it is WEARING. */
 #define VT_WORN_ARTIFACTS 0x74u
 /** `CountEquipped(collection, artifactId)`, and the bytes that say it is. */
@@ -53,6 +64,7 @@ typedef int(__thiscall *SetCountFn)(void *hero, int effect);
 typedef void *(__thiscall *WornFn)(void *hero);
 typedef int(__thiscall *CountEquippedFn)(void *worn, int artifactId);
 typedef int(__fastcall *RaiseFn)(void *hero);
+typedef int(__fastcall *CostFn)(void *hero, int power);
 
 static CountEquippedFn g_countEquipped = NULL;
 
@@ -91,6 +103,7 @@ static Row g_rows[MAX_ROWS];
 static int g_rowCount = 0;
 
 static RaiseFn g_original = NULL;
+static CostFn g_originalCost = NULL;
 
 // ---------------------------------------------------------------------------
 // Small helpers, since there is no CRT.
@@ -262,6 +275,25 @@ static int __fastcall raise_percent_hook(void *hero) {
   return total + added;
 }
 
+/**
+ * What one creature costs in dark energy. Watched, not changed.
+ *
+ * Logged because "the percentage went up and the number raised did not" has
+ * more than one explanation, and they are indistinguishable from outside the
+ * process. Here they are three numbers.
+ */
+static int g_costTraceLeft = 24;
+
+static int __fastcall raise_cost_hook(void *hero, int power) {
+  int cost = g_originalCost(hero, power);
+  if (g_costTraceLeft > 0) {
+    g_costTraceLeft--;
+    log_num("cost: creature power ", power);
+    log_num("      energy per one ", cost);
+  }
+  return cost;
+}
+
 // ---------------------------------------------------------------------------
 // Installing it.
 
@@ -274,15 +306,47 @@ static int __fastcall raise_percent_hook(void *hero) {
  * function rather than replacing it, and the crash lands somewhere else
  * entirely.
  */
-static int install_detour(void) {
+static void *detour(DWORD rva, const BYTE *head, void *hook, const char *what) {
   // The RVA, added to wherever the loader actually put the image — the game's
   // preferred base is 0x400000 but nothing guarantees it got that one.
-  BYTE *base = (BYTE *)GetModuleHandleW(NULL);
-  BYTE *target = base + RAISE_PERCENT_RVA;
+  BYTE *target = (BYTE *)GetModuleHandleW(NULL) + rva;
+  for (int i = 0; i < DETOUR_LEN; i++) {
+    if (target[i] != head[i]) {
+      char msg[96];
+      int n = 0;
+      while (what[n] && n < 60) { msg[n] = what[n]; n++; }
+      const char *tail = ": the bytes are not the ones we know - not hooking";
+      int j = 0;
+      while (tail[j]) msg[n + j] = tail[j], j++;
+      msg[n + j] = 0;
+      log_line(msg);
+      return NULL;
+    }
+  }
 
-  // The other function we call by address, checked the same way. It is only
-  // read, never written, but a wrong one would be called with a live object.
-  BYTE *counter = base + COUNT_EQUIPPED_RVA;
+  BYTE *tramp = (BYTE *)VirtualAlloc(NULL, 32, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+  if (!tramp) { log_line("no memory for the trampoline"); return NULL; }
+  for (int i = 0; i < DETOUR_LEN; i++) tramp[i] = target[i];
+  tramp[DETOUR_LEN] = 0xE9;
+  *(DWORD *)(tramp + DETOUR_LEN + 1) =
+      (DWORD)(target + DETOUR_LEN) - (DWORD)(tramp + DETOUR_LEN + 5);
+
+  DWORD old = 0;
+  if (!VirtualProtect(target, DETOUR_LEN, PAGE_EXECUTE_READWRITE, &old)) {
+    log_line("could not make the code writable");
+    return NULL;
+  }
+  target[0] = 0xE9;
+  *(DWORD *)(target + 1) = (DWORD)hook - ((DWORD)target + 5);
+  VirtualProtect(target, DETOUR_LEN, old, &old);
+  FlushInstructionCache(GetCurrentProcess(), target, DETOUR_LEN);
+  return tramp;
+}
+
+static int install_detour(void) {
+  // Read by address, never written — but a wrong one would be CALLED with a
+  // live object, so it is checked the same way as the ones we overwrite.
+  BYTE *counter = (BYTE *)GetModuleHandleW(NULL) + COUNT_EQUIPPED_RVA;
   for (int i = 0; i < 5; i++) {
     if (counter[i] != COUNT_EQUIPPED_HEAD[i]) {
       log_line("the bytes at CountEquipped are not the ones we know - not hooking");
@@ -291,30 +355,11 @@ static int install_detour(void) {
   }
   g_countEquipped = (CountEquippedFn)counter;
 
-  for (int i = 0; i < DETOUR_LEN; i++) {
-    if (target[i] != RAISE_PERCENT_HEAD[i]) {
-      log_line("the bytes at the necromancy sum are not the ones we know - not hooking");
-      return 0;
-    }
-  }
-
-  BYTE *tramp = (BYTE *)VirtualAlloc(NULL, 32, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
-  if (!tramp) { log_line("no memory for the trampoline"); return 0; }
-  for (int i = 0; i < DETOUR_LEN; i++) tramp[i] = target[i];
-  tramp[DETOUR_LEN] = 0xE9;
-  *(DWORD *)(tramp + DETOUR_LEN + 1) =
-      (DWORD)(target + DETOUR_LEN) - (DWORD)(tramp + DETOUR_LEN + 5);
-  g_original = (RaiseFn)tramp;
-
-  DWORD old = 0;
-  if (!VirtualProtect(target, DETOUR_LEN, PAGE_EXECUTE_READWRITE, &old)) {
-    log_line("could not make the code writable");
-    return 0;
-  }
-  target[0] = 0xE9;
-  *(DWORD *)(target + 1) = (DWORD)&raise_percent_hook - ((DWORD)target + 5);
-  VirtualProtect(target, DETOUR_LEN, old, &old);
-  FlushInstructionCache(GetCurrentProcess(), target, DETOUR_LEN);
+  g_original = (RaiseFn)detour(RAISE_PERCENT_RVA, RAISE_PERCENT_HEAD, &raise_percent_hook, "raise percent");
+  if (!g_original) return 0;
+  // Watching only, and a failure here is not fatal: the percentage is the part
+  // that has to work.
+  g_originalCost = (CostFn)detour(RAISE_COST_RVA, RAISE_COST_HEAD, &raise_cost_hook, "raise cost");
   return 1;
 }
 
