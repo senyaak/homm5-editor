@@ -173,3 +173,36 @@ at this many worn pieces, adds this much to that calculation"* — one row per
 term we append. Spells granted while worn are a second kind and are not costed
 yet — the machinery exists, since a Scroll loses its spell the moment it
 comes off, but §1.1(а) found the stat path rather than the spellbook one.
+
+## 6. Where this stands, 2026-07-28
+
+6.1. **Done and seen in game.** Our own set effect parses and the game counts
+its pieces. The native extension loads through an import added to
+`H5_Game_NCF.exe` — no file of the game's is touched — and its detour adds our
+term to the necromancy sum: three pieces worn gave engine 20 + ours 30, one
+taken off gave 20 + 20, and the count of undead raised moved with it,
+`floor(0.75 x percent)` across four battles.
+
+6.2. **Done in the editor.** Effects are rows on an artifact ("+ effect", a
+stat from a list, a number), written to `bin/homm5-editor-effects.txt` and read
+by the extension. The Artifacts dialog lists artifacts and sets side by side,
+each row with edit and remove; forms are dialogs on top. Removing warns with
+the maps that name the thing, found by name. `npm run build-native` builds the
+DLL with Zig (a devDependency); the dialog has a button that installs it.
+
+6.3. **Next: what the full set gives.** Сеня's decision stands — three pieces
+worn restore the player's dark energy every day. Two things are missing for it:
+
+- **The set as a condition.** Rows are keyed on an ARTIFACT id today, through
+  `CountEquipped`. A set of ours is not reachable that way: asked through the
+  hero's set accessor (vtable `+0x328`), our effect 11 answers 0 with all three
+  worn, while the hero screen names the set and counts its pieces. §5.2.
+- **The daily tick.** `GetPlayerNecroEnergy` (`0x5e2ce0`) reads the value
+  through the PLAYER's vtable at `+0x1fc`; what writes it has not been found.
+  Start from the field that getter reads and look for who writes it — going
+  from the debug strings failed, they have no xref.
+
+6.4. **How to check anything here.** The extension logs beside itself
+(`bin/homm5-editor.log`): what it loaded, what the config said, and for the
+first two dozen calls what it saw and what it added. That log settled every
+question so far faster than reasoning did.
