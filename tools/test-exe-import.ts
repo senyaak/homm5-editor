@@ -6,7 +6,7 @@
 // changes nothing — an installer that grows the executable each time it is run
 // would look like it worked.
 //
-// Runs against the game's own `H5_Game_NCF.exe` when there is one, because a
+// Runs against the game's own `H5_Game_H5E.exe` when there is one, because a
 // synthetic PE proves the code agrees with itself and nothing more. It names a
 // library of its own rather than the real one, so it says the same thing
 // whether or not the extension happens to be installed — a test that only
@@ -24,7 +24,7 @@ function check(name: string, ok: boolean, detail = ''): void {
 }
 
 const gameRoot = process.env.HOMM5_GAME ?? resolve(import.meta.dirname, '..', '..');
-const exe = join(gameRoot, 'bin', 'H5_Game_NCF.exe');
+const exe = join(gameRoot, 'bin', 'H5_Game_H5E.exe');
 if (!existsSync(exe)) {
   console.log(`no ${exe} — run npm run unwrap-exe first; skipping`);
   process.exit(0);

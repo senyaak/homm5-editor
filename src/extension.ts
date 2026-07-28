@@ -3,7 +3,7 @@
 // Two files and one patch: the DLL beside the executable, and OUR copy of the
 // executable naming it in its import table. The game's own files are never
 // touched, so the mod is turned off the way every other one is — by launching
-// `H5_Game.exe` instead of `H5_Game_NCF.exe`.
+// `H5_Game.exe` instead of `H5_Game_H5E.exe`.
 //
 // The DLL is BUILT BY US and shipped: it is the same bytes for every install,
 // it reads a config rather than being generated per artifact, and nobody
@@ -21,7 +21,7 @@ export const EXTENSION_DLL = 'homm5-editor.dll';
 /** The export the import table names. Never called — the point is `DllMain`. */
 const EXTENSION_ENTRY = 'homm5_editor_present';
 /** Our copy of the game's executable, the only one ever written to. */
-const PATCHED_EXE = join('bin', 'H5_Game_NCF.exe');
+const PATCHED_EXE = join('bin', 'H5_Game_H5E.exe');
 
 export interface ExtensionState {
   /** The DLL is beside the executable. */

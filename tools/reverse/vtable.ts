@@ -28,7 +28,7 @@ const positional = args.filter((a, i) => !a.startsWith('--') && !args[i - 1]?.st
 
 const editor = resolve(import.meta.dirname, '..', '..');
 const gameRoot = process.env.HOMM5_GAME ?? resolve(editor, '..');
-const pe = PEFile.read(flagValue('exe') ?? resolve(gameRoot, 'bin', 'H5_Game_NCF.exe'));
+const pe = PEFile.read(flagValue('exe') ?? resolve(gameRoot, 'bin', 'H5_Game_H5E.exe'));
 
 const fragment = flagValue('list') ?? positional[0];
 if (!fragment) {

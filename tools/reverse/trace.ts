@@ -27,7 +27,7 @@ const addresses = operands.map((a) => Number.parseInt(a, 16));
 
 const editor = resolve(import.meta.dirname, '..', '..');
 const gameRoot = process.env.HOMM5_GAME ?? resolve(editor, '..');
-const pe = PEFile.read(flagValue('exe') ?? resolve(gameRoot, 'bin', 'H5_Game_NCF.exe'));
+const pe = PEFile.read(flagValue('exe') ?? resolve(gameRoot, 'bin', 'H5_Game_H5E.exe'));
 
 /** A function's instructions, or nothing when the address is not code. */
 function body(address: number, maxBytes?: number): Instruction[] {

@@ -3,7 +3,7 @@
 //   node tools/install-native.ts [--game <dir>] [--uninstall]
 //
 // Two things: the DLL goes beside the executable, and OUR copy of the
-// executable — `bin/H5_Game_NCF.exe`, never the game's own — gets our library
+// executable — `bin/H5_Game_H5E.exe`, never the game's own — gets our library
 // added to its import table. So the game's files are untouched and the mod is
 // turned off the way it always was, by launching `H5_Game.exe` instead.
 //
@@ -28,13 +28,13 @@ const DLL = 'homm5-editor.dll';
 const ENTRY = 'homm5_editor_present';
 
 const game = resolve(flag('game') ?? process.env.HOMM5_GAME ?? join(here, '..'));
-const exe = join(game, 'bin', 'H5_Game_NCF.exe');
+const exe = join(game, 'bin', 'H5_Game_H5E.exe');
 const target = join(game, 'bin', DLL);
 
 if (args.includes('--uninstall')) {
   rmSync(target, { force: true });
   console.log(`removed ${target}`);
-  console.log('the import in H5_Game_NCF.exe is still there — it will not start without the file.');
+  console.log('the import in H5_Game_H5E.exe is still there — it will not start without the file.');
   process.exit(0);
 }
 
@@ -60,4 +60,4 @@ if (!added) {
   console.log(`patched ${exe}: import added in a new section at 0x${(rva ?? 0).toString(16)}`);
 }
 console.log(`  now imports ${imports(readFileSync(exe)).length} libraries`);
-console.log('\nLaunch H5_Game_NCF.exe. bin/homm5-editor.log says whether it loaded.');
+console.log('\nLaunch H5_Game_H5E.exe. bin/homm5-editor.log says whether it loaded.');

@@ -51,7 +51,7 @@ const clean = join(game, CLEAN_EXE);
 if (existsSync(shipped) && existsSync(clean)) {
   check('this install\'s shipped executable is wrapped',
     classify(readFileSync(shipped)) === 'wrapped', 'a Steam copy');
-  check('this install\'s _NCF copy is clean',
+  check('this install\'s _H5E copy is clean',
     classify(readFileSync(clean)) === 'clean', 'what the patchers read');
 } else {
   console.log('skip  no game executables beside this editor');
@@ -89,7 +89,7 @@ if (existsSync(shipped) && existsSync(clean)) {
   }
 }
 
-// A wrapped file under the _NCF name is somebody's plain copy; it cannot be
+// A wrapped file under the _H5E name is somebody's plain copy; it cannot be
 // patched and must not be mistaken for a finished job.
 {
   const dir = mkdtempSync(join(tmpdir(), 'unwrap-'));
@@ -99,7 +99,7 @@ if (existsSync(shipped) && existsSync(clean)) {
     writeFileSync(join(dir, CLEAN_EXE), fakePe(['.text', '.bind']));
     let said = '';
     try { await ensureCleanExe(dir); } catch (e) { said = e instanceof Error ? e.message : String(e); }
-    check('a wrapped _NCF copy is refused, and the message says to delete it',
+    check('a wrapped _H5E copy is refused, and the message says to delete it',
       said.includes('itself wrapped') && said.includes('delete'), said);
   } finally {
     rmSync(dir, { recursive: true, force: true });

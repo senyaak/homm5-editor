@@ -156,7 +156,7 @@ export function findArtifactSites(buf: Buffer): Site[] {
 }
 
 /** Where the found offsets are kept, beside the executable they describe. */
-export const SITES_FILE = join('bin', 'H5_Game_NCF.artifact-sites.json');
+export const SITES_FILE = join('bin', 'H5_Game_H5E.artifact-sites.json');
 
 /** Sites read back from the note, checked against the executable in hand. */
 function rememberedSites(gameRoot: string, buf: Buffer): Site[] {

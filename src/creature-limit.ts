@@ -284,10 +284,10 @@ export function patchExe(buf: Buffer, limit: number): Patch {
 /**
  * The copy we patch. Never the file Steam or the installer put there.
  *
- * `_NCF` for New Creature Framework, the name the modding scene uses, so anyone
- * who has done this by hand already has the file this looks for.
+ * `_H5E` for Heroes 5 Editor: the copy is ours end to end — our ceilings, our
+ * import, our name — so nothing about it pretends to be anybody else's build.
  */
-export const PATCHED_EXE = join('bin', 'H5_Game_NCF.exe');
+export const PATCHED_EXE = join('bin', 'H5_Game_H5E.exe');
 /** The game's own executable — read for a first copy, never written. */
 export const SHIPPED_EXE = join('bin', 'H5_Game.exe');
 
@@ -306,7 +306,7 @@ export interface ExeResult {
 /**
  * Put the game's creature ceiling at `limit`, and say what happened.
  *
- * Patches `bin/H5_Game_NCF.exe`, making it from `bin/H5_Game.exe` if it is not
+ * Patches `bin/H5_Game_H5E.exe`, making it from `bin/H5_Game.exe` if it is not
  * there yet and that one can be read. The shipped executable is never written to:
  * a mod is a thing you turn off by launching the other file.
  *

@@ -13,7 +13,7 @@ This file is about the editor.
 ## One mod, always ours
 
 A creature mod is a `.h5u` in `<game>/UserMODs` plus a ceiling in
-`bin/H5_Game_NCF.exe`, and the two must agree exactly. It carries its own whole
+`bin/H5_Game_H5E.exe`, and the two must agree exactly. It carries its own whole
 copy of the game's creature registry, so **two creature mods do not compose**:
 the game reads one and the other's creatures do not exist.
 
@@ -85,7 +85,7 @@ Two things differ from creatures:
   ones past 97. `src/artifact-limit.ts` patches the two sites, and because an
   already-patched executable holds a round number whose accessor bytes are no
   longer unique, it leaves a note beside itself
-  (`bin/H5_Game_NCF.artifact-sites.json`). **That note belongs with the
+  (`bin/H5_Game_H5E.artifact-sites.json`). **That note belongs with the
   executable** — copy one without the other and the next patch cannot find its
   own sites.
 

@@ -67,7 +67,7 @@ if (!set) {
     const what = r.limit !== null ? `ceiling ${r.limit}` : (r.problems[0] ?? 'unreadable');
     console.log(`${rel}  ${r.build?.name ?? '?'}  ${what}`);
   }
-  console.log('\npass --set <n> to put the ceiling there (writes only the _NCF copy)');
+  console.log('\npass --set <n> to put the ceiling there (writes only the _H5E copy)');
   process.exit(0);
 }
 

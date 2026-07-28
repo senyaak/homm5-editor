@@ -8,7 +8,7 @@
 // A project is a folder holding units.json — the registry. `build` reads it,
 // generates the mod's tree beside it in `packed/` and packs the .h5u.
 //
-// `--install` also sets the creature ceiling in `bin/H5_Game_NCF.exe`, because the
+// `--install` also sets the creature ceiling in `bin/H5_Game_H5E.exe`, because the
 // ceiling has to equal the mod's creature count exactly and a mod installed
 // without it is read and ignored. Adding or removing a creature and re-installing
 // is all there is to it — see src/creature-limit.ts.

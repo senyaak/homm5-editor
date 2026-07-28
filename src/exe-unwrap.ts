@@ -9,12 +9,12 @@
 // THE UNWRAPPING IS NOT OURS TO DO. Steamless (atom0s, MIT) does it, and this
 // module only arranges the meeting: it says whether the file needs unwrapping,
 // fetches the tool when it does, runs it, and puts the result where the rest of
-// the editor already looks — `bin/H5_Game_NCF.exe`.
+// the editor already looks — `bin/H5_Game_H5E.exe`.
 //
 // WHY A COPY AT ALL. A mod is a thing you turn off by launching the other file,
-// so the game's own executable is never written to. `_NCF` is the name the
-// modding scene already uses for the patched copy, so anyone who has done this
-// by hand has the file this looks for.
+// so the game's own executable is never written to. `_H5E` is Heroes 5 Editor:
+// the copy is ours from here on — our ceilings, our import — and it is named for
+// what made it.
 //
 // AN EXISTING COPY IS NEVER OVERWRITTEN. It is very likely already patched —
 // a creature or artifact ceiling lives in it — and replacing it with a fresh
@@ -30,7 +30,7 @@ import { extract } from './pak.ts';
 /** The game's own executable. Read, never written. */
 export const SHIPPED_EXE = join('bin', 'H5_Game.exe');
 /** The copy everything else patches. */
-export const CLEAN_EXE = join('bin', 'H5_Game_NCF.exe');
+export const CLEAN_EXE = join('bin', 'H5_Game_H5E.exe');
 
 /**
  * The release we ask for, pinned.
@@ -124,7 +124,7 @@ async function fetchSteamless(dir: string, log: (s: string) => void): Promise<st
 }
 
 /**
- * Make sure `bin/H5_Game_NCF.exe` exists and holds readable code.
+ * Make sure `bin/H5_Game_H5E.exe` exists and holds readable code.
  *
  * Copies the shipped executable when it is already clean; unwraps it with
  * Steamless when it is not, downloading the tool once. Never touches an
@@ -142,7 +142,7 @@ export async function ensureCleanExe(
     const kind = classify(readFileSync(target));
     if (kind === 'clean') return { action: 'kept', path: target, kind };
     // A wrapped copy under this name is not the patched copy anyone means; it is
-    // someone's `copy H5_Game.exe H5_Game_NCF.exe`, and nothing can patch it.
+    // someone's `copy H5_Game.exe H5_Game_H5E.exe`, and nothing can patch it.
     throw new Error(`${target} is itself wrapped — delete it and run this again`);
   }
   if (!existsSync(shipped)) throw new Error(`no executable at ${shipped}`);

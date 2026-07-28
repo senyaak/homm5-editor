@@ -6,7 +6,7 @@
 // works, and it means a file of the GAME's is replaced, so turning the mod off
 // becomes a repair rather than a choice. We already have a better place: the
 // editor never writes to `H5_Game.exe`, it patches a copy called
-// `H5_Game_NCF.exe`, and a mod is turned off by launching the original. Adding
+// `H5_Game_H5E.exe`, and a mod is turned off by launching the original. Adding
 // an import to that copy keeps that rule exactly: nothing of the game's is
 // touched, and the extension exists only for the executable we made.
 //

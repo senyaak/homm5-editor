@@ -105,7 +105,7 @@ test('edits the difference and installs the creature', async () => {
   expect(c.from.character).toContain('T3_Elf_Sniper');
 
   // ...and the executable's ceiling agrees with it exactly.
-  const exe = readExe(readFileSync(join(GAME, 'bin', 'H5_Game_NCF.exe')));
+  const exe = readExe(readFileSync(join(GAME, 'bin', 'H5_Game_H5E.exe')));
   expect(exe.limit).toBe(181);
   expect(exe.problems).toEqual([]);
 

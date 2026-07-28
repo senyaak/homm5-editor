@@ -38,7 +38,7 @@ and script can express), [docs/ENGINE_INTERNALS.md](docs/ENGINE_INTERNALS.md)
   The probe is retired; the Cloak of the Undead King is ordinary data in the
   port now (`Maps/sod/src/new-artifacts.ts`).
 - в) ~~**Prove the native path.**~~ **Done, 2026-07-28.** Not a proxy DLL in the
-  end: `H5_Game_NCF.exe` is our copy already, so it names our library in its
+  end: `H5_Game_H5E.exe` is our copy already, so it names our library in its
   import table and no file of the game's is touched. The detour on the
   necromancy sum `0xc77850` calls the original and adds our term, reading what
   is worn through the engine's own `CountEquipped`. Seen in game, from the
@@ -178,7 +178,7 @@ comes off, but §1.1(а) found the stat path rather than the spellbook one.
 
 6.1. **Done and seen in game.** Our own set effect parses and the game counts
 its pieces. The native extension loads through an import added to
-`H5_Game_NCF.exe` — no file of the game's is touched — and its detour adds our
+`H5_Game_H5E.exe` — no file of the game's is touched — and its detour adds our
 term to the necromancy sum: three pieces worn gave engine 20 + ours 30, one
 taken off gave 20 + 20, and the count of undead raised moved with it,
 `floor(0.75 x percent)` across four battles.

@@ -124,7 +124,7 @@ function tinyExe(o: { count?: number; imm32?: boolean; accessor?: boolean } = {}
 // --- the real thing, read only ------------------------------------------------
 
 const gameRoot = join(import.meta.dirname, '..', '..');
-for (const exe of ['bin/H5_Game_NCF.exe', 'bin/H5_Game.exe']) {
+for (const exe of ['bin/H5_Game_H5E.exe', 'bin/H5_Game.exe']) {
   const path = join(gameRoot, exe);
   if (!existsSync(path)) continue;
   const r = readArtifactLimit(readFileSync(path));

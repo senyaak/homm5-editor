@@ -76,7 +76,7 @@ export const UNDEAD_KING = {
  * A game install of our own, as a game no mod has ever touched.
  *
  * The shipped `H5_Game.exe` is wrapped in Steam's DRM and cannot be read, so the
- * unwrapped `H5_Game_NCF.exe` beside it is the source — with BOTH ceilings put
+ * unwrapped `H5_Game_H5E.exe` beside it is the source — with BOTH ceilings put
  * back to their shipped values. The artifact sites note travels with it: once
  * the count is a round number its accessor bytes are no longer unique, so an
  * already-patched executable can no longer find its own sites by search.
@@ -86,9 +86,9 @@ export function prepareGameRoot(dir: string): void {
   mkdirSync(join(dir, 'bin'), { recursive: true });
   mkdirSync(join(dir, 'UserMODs'), { recursive: true });
   mkdirSync(join(dir, 'Maps'), { recursive: true });
-  const real = readFileSync(join(REAL_GAME, 'bin', 'H5_Game_NCF.exe'));
+  const real = readFileSync(join(REAL_GAME, 'bin', 'H5_Game_H5E.exe'));
   const noted = JSON.parse(readFileSync(join(REAL_GAME, SITES_FILE), 'utf8')) as Site[];
-  writeFileSync(join(dir, 'bin', 'H5_Game_NCF.exe'),
+  writeFileSync(join(dir, 'bin', 'H5_Game_H5E.exe'),
     patchArtifactLimit(patchExe(real, ORIGINAL_LIMIT).data, ORIGINAL_ARTIFACTS, noted).data);
   writeFileSync(join(dir, SITES_FILE), `${JSON.stringify(noted, null, 2)}\n`);
 }

@@ -7,7 +7,7 @@
 // arithmetic: it calls the original calculation, appends what our config says,
 // and returns the sum. Nothing shipped changes behaviour.
 //
-// HOW IT GETS LOADED. Not by taking another library's name: `H5_Game_NCF.exe`
+// HOW IT GETS LOADED. Not by taking another library's name: `H5_Game_H5E.exe`
 // is our copy already, and it names this file in its import table. So no file
 // of the game's is touched, and turning the mod off is what it always was —
 // launch the game's own executable instead.

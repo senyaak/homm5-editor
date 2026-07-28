@@ -7775,7 +7775,7 @@ async function showExtensionState(): Promise<void> {
   const st = await window.editor.extensionStatus();
   if (st.installed) {
     box.style.color = '#3fb950';
-    box.textContent = `extension installed (${st.size} bytes) — effects are in force in H5_Game_NCF.exe`;
+    box.textContent = `extension installed (${st.size} bytes) — effects are in force in H5_Game_H5E.exe`;
     return;
   }
   box.style.color = '';

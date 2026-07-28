@@ -19,7 +19,7 @@
 
 import { join } from 'node:path';
 
-/** Beside `H5_Game_NCF.exe` and the extension, relative to the game root. */
+/** Beside `H5_Game_H5E.exe` and the extension, relative to the game root. */
 export const EFFECTS_FILE = join('bin', 'homm5-editor-effects.txt');
 
 /**

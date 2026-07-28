@@ -177,7 +177,7 @@ get a live 3D scene you sculpt, paint, populate, script and pack.
   a dwelling is an object and costs the game nothing global. What a mod cannot
   carry is the **creature ceiling**: 180 is compiled into the executable, and an id
   above it is read and silently ignored. So installing sets it — one action writes
-  the archive and the ceiling, they have to agree exactly, and a `bin/H5_Game_NCF.exe`
+  the archive and the ceiling, they have to agree exactly, and a `bin/H5_Game_H5E.exe`
   already patched to any number goes to any other in place (`src/creature-limit.ts`,
   `npm run creature-limit` to look). Steam's own executable is DRM-wrapped, so its
   code cannot be read or patched at all; `npm run unwrap-exe` makes the copy that

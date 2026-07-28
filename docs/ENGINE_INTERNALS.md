@@ -12,15 +12,15 @@ be one. That means finding the code the shipped artifacts run through, and it
 turned out to be short, readable, and already parameterised by data in most
 of the places that matter.
 
-## Read an unwrapped binary — on this machine, `H5_Game_NCF.exe`
+## Read an unwrapped binary — on this machine, `H5_Game_H5E.exe`
 
 `H5_Game.exe` in a Steam install has its `.text` encrypted by the wrapper:
 entropy 7.98 across the section, an extra `.bind` section, and a disassembler
 produces nonsense. This is not a Heroes fact, it is a Steam fact — a GOG or
 retail install ships the code in the clear and needs none of this.
 
-`bin/H5_Game_NCF.exe` is **ours**: the shipped executable copied aside under
-that name (the `_NCF` convention the modding scene already uses) and patched
+`bin/H5_Game_H5E.exe` is **ours**: the shipped executable copied aside under
+that name (`_H5E` for Heroes 5 Editor — the copy is ours) and patched
 there, never the original. Entropy 5.2, ordinary prologues, disassembles fine.
 
 ```bash

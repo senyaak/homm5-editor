@@ -93,7 +93,7 @@ test('edits the difference and installs the artifact', async () => {
 
   // And the executable's ARTIFACT ceiling agrees.
   const noted = JSON.parse(readFileSync(join(GAME, SITES_FILE), 'utf8')) as Site[];
-  const reading = readArtifactLimit(readFileSync(join(GAME, 'bin', 'H5_Game_NCF.exe')), noted);
+  const reading = readArtifactLimit(readFileSync(join(GAME, 'bin', 'H5_Game_H5E.exe')), noted);
   expect(reading.limit).toBe(ORIGINAL_ARTIFACTS + 1);
 
   await expect(page.locator('#artedit')).toBeHidden(); // a build closes the form

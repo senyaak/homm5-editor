@@ -1,6 +1,6 @@
 # The executable's Lua registration tables
 
-Read out of `bin/H5_Game_NCF.exe` on 2026-07-27. **Use an unwrapped binary**
+Read out of `bin/H5_Game_H5E.exe` on 2026-07-27. **Use an unwrapped binary**
 — a Steam install ships `H5_Game.exe` with its `.text` encrypted (entropy
 7.98, an extra `.bind` section) and it disassembles to nonsense. `npm run
 unwrap-exe` produces the clean copy; GOG and retail builds need no such step.

@@ -1,6 +1,6 @@
 // A readable executable, from the command line.
 //
-//   node tools/unwrap-exe.ts                 make bin/H5_Game_NCF.exe if it is missing
+//   node tools/unwrap-exe.ts                 make bin/H5_Game_H5E.exe if it is missing
 //   node tools/unwrap-exe.ts --game <dir>
 //   node tools/unwrap-exe.ts --check         say what each executable is, write nothing
 //

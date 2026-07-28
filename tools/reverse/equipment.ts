@@ -26,7 +26,7 @@ const flag = (name: string): string | undefined => {
 
 const editor = resolve(import.meta.dirname, '..', '..');
 const gameRoot = process.env.HOMM5_GAME ?? resolve(editor, '..');
-const pe = PEFile.read(flag('exe') ?? resolve(gameRoot, 'bin', 'H5_Game_NCF.exe'));
+const pe = PEFile.read(flag('exe') ?? resolve(gameRoot, 'bin', 'H5_Game_H5E.exe'));
 const COUNT_EQUIPPED = Number.parseInt(flag('fn') ?? 'b4c270', 16);
 
 /** The artifact enum, in declaration order — the index is the id. */
