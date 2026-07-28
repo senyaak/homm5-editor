@@ -421,8 +421,9 @@ map of our own — the showcase for the Heroes III port's Sharpshooter — again
 the same three gap reports. It is the cheap regression the C1M1 chain cannot be,
 and it covers what a shipped mission does not: a map whose creature, dwellings
 and artifacts exist only because a **mod** is installed. Authoring that mod
-through the window is `e2e/units-mod.spec.ts`, against an isolated game root so
-the real install is never touched.
+through the window is `e2e/units-create`, `artifacts-create` and `units-recolor`
+— one spec per thing, each on its own isolated game install so any of them can
+run alone and the real one is never touched.
 
 Most of that needs the game's data, which cannot be published, so it runs on a
 machine that has the game. What does not need it is tagged `@nodata` and runs on

@@ -141,19 +141,20 @@ creature art.
 
 ## Testing
 
-`e2e/units-mod.spec.ts` drives all of it against an **isolated game root**: a
-temp folder holding a copy of the unwrapped executable with both ceilings reset
-to their shipped values, and an empty `UserMODs`. The real install is never
-touched. In order, it
+**One spec per thing, each runnable alone.** Every one builds its OWN game
+install — a temp folder with a copy of the unwrapped executable, both ceilings
+reset to their shipped values, an empty `UserMODs` and the artifact sites note —
+so the real install is never touched and no spec depends on another having run.
+The shared setup is `e2e/mods.ts`.
 
-1. opens Units… on a clean install and checks the donor preset fills the form,
-2. edits the difference and installs the port's Sharpshooter, then reads the
-   archive back and the executable's ceiling,
-3. builds the Undertaker's Amulet through Artifacts… into the same archive,
-4. remaps one palette cluster to grey and proves, through `extractPalette` over
-   the archive's own bytes, that the remapped hue is gone and every other cluster
-   survived,
-5. paints the whole creature grey and checks every pixel, the alpha, and the
-   paired documents,
-6. places a garrison on a fresh map and finds the new creature in the army
-   picker — the loop closing, since the editor mounts what it just installed.
+| Spec | What it proves |
+|---|---|
+| `units-create.spec.ts` | the donor preset fills the form; the difference installs as the port's Sharpshooter; the archive and the creature ceiling agree; a fresh map's garrison offers it in the army picker |
+| `artifacts-create.spec.ts` | the artifact preset fills the form; the Undertaker's Amulet installs into a mod with **no creature in it**; the artifact ceiling moves |
+| `units-recolor.spec.ts` | remapping one palette cluster leaves every other cluster where it was (checked with `extractPalette` over the archive's own bytes); the Grey preset makes every pixel r=g=b with the alpha intact and the paired documents updated |
+| `sharpshooter-map.spec.ts` | a map that *uses* the mod, rebuilt from a blank and diffed against the hand-made original |
+
+Where a spec needs something another one authors — the recolour needs a creature
+with textures — it installs it **headlessly** through the same functions the
+dialog's channel calls (`installCreatureHeadless`), rather than driving a form
+that is not its subject.

@@ -245,8 +245,9 @@ It is the cheap regression the C1M1 chain cannot be: one minute, no fixture
 extraction, and it exercises the parts of the editor a shipped mission does not —
 a map that depends on a **mod**, whose creature, dwellings and artifacts only
 exist because a `.h5u` is installed. The mod is a fixture copied into the run's
-own game root; authoring one through the window is `e2e/units-mod.spec.ts`
-(docs/UNITS_AND_ARTIFACTS.md).
+own game root; authoring one through the window is `e2e/units-create.spec.ts`,
+`artifacts-create.spec.ts` and `units-recolor.spec.ts` — one per thing, each on
+its own isolated install so any of them runs alone (docs/UNITS_AND_ARTIFACTS.md).
 
 One accepted deviation: the terrain **container is 5003 bytes shorter** than the
 original's. Every data plane matches — heights, ground flags, passability,
