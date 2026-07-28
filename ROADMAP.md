@@ -859,7 +859,11 @@ map. See `docs/LOCALIZATION.md`.
 - [ ] ⬜ Projects and recent maps
 - [ ] ⬜ Auto-detect the install (Steam/Uplay/registry) — setup asks for now,
       and unpacks into a folder of the user's choosing (`src/unpack.ts`)
-- [ ] ⬜ Performance (workers for parsing/packing, asset streaming)
+- [ ] ⬜ Performance (workers for parsing/packing, asset streaming). The frame
+      side is measured and planned in
+      [SLICE_fx_performance.md](SLICE_fx_performance.md): the particle effects
+      cost more than the whole rest of the scene — 607 uncullable draw calls and
+      644 MB of duplicated atlases on one shipped map
 - [ ] ⬜ Round-trip tests across the shipped map set (saving must not break them)
 - [ ] ⬜ User documentation and examples
 
