@@ -1219,6 +1219,10 @@
         <div class="de-foot" style="padding:0;justify-content:flex-start">
           <button id="um-new">New creature…</button>
         </div>
+        <!-- What the last build did. It belongs to the LIST, not to the form:
+             the form closes when a build succeeds, and a message written into a
+             dialog that is closing is a message nobody reads. -->
+        <div id="um-note" class="um-note"></div>
         <div id="um-err" class="on-err"></div>
       </div>
       <div class="de-foot">
@@ -1298,6 +1302,9 @@
              archive, and their members are the artifacts listed above. What a set
              gives a hero is NOT here — that is native code, and no arrangement of
              data can express it (docs/ARTIFACT_EFFECTS.md). -->
+        <!-- As with creatures: the result of a build stays with the list the
+             form closes back to. -->
+        <div id="am-note" class="um-note"></div>
         <div id="am-err" class="on-err"></div>
       </div>
       <div class="de-foot">
@@ -1366,8 +1373,7 @@
             <label class="on-row um-art"><span>Icon</span><input id="um-art-icon" type="text" spellcheck="false" autocomplete="off" title="the hire and army icon — a creature without one stops the game"></label>
           </div>
         </fieldset>
-        <div id="um-note" class="um-note"></div>
-        <div id="um-err" class="on-err"></div>
+        <div id="ue-err" class="on-err"></div>
       </div>
       <div class="de-foot">
         <button id="unitedit-cancel" class="ghost">Cancel</button>
@@ -1437,8 +1443,7 @@
             <label class="on-row um-art um-span"><span>Map model</span><input id="am-model" type="text" spellcheck="false" autocomplete="off" placeholder="empty → a flat board of the icon" title="href of the model lying on the map; referenced, not copied"></label>
           </div>
         </fieldset>
-        <div id="am-note" class="um-note"></div>
-        <div id="am-err" class="on-err"></div>
+        <div id="ae-err" class="on-err"></div>
       </div>
       <div class="de-foot">
         <button id="artedit-cancel" class="ghost">Cancel</button>

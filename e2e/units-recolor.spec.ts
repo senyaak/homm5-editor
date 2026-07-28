@@ -37,9 +37,12 @@ test.afterAll(async () => { await ed?.app.close(); removeGameRoot(GAME); });
 async function openRecolor(page: Launched['page']): Promise<void> {
   if (!(await page.locator('#recolor').isVisible())) {
     if (!(await page.locator('#unitsmod').isVisible())) await page.locator('#unitsbtn').click();
-    const paint = page.locator('.um-recolor', { hasText: 'Снайперы' });
-    await expect(paint).toBeVisible({ timeout: 30_000 });
-    await paint.click();
+    // The brush is on the creature's ROW, and it is a button with an emoji on
+    // it: the name is in the row beside it, never on the button, so asking for
+    // a `.um-recolor` that says "Снайперы" asks for something that cannot exist.
+    const row = page.locator('#um-list .um-item', { hasText: SHARPSHOOTER.name });
+    await expect(row).toBeVisible({ timeout: 30_000 });
+    await row.locator('.um-paint').click();
   }
   await expect(page.locator('#recolor')).toBeVisible();
   // The mod carries three textures for it: the body, the add layer, the icon.

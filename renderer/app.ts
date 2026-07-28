@@ -7354,10 +7354,23 @@ async function submitNewMap(): Promise<void> {
  * handler where nothing catches it — the form then stays as it was and looks
  * like a button that does nothing.
  */
+/**
+ * Open a form over its list, with its own error slot wiped.
+ *
+ * Each form dialog has an error line of its own (`ue-err`, `ae-err`, `as-err`)
+ * — the list behind it has another, and they must not share an id: with two
+ * `um-err` in the document, `$('um-err')` answered with the list's, so every
+ * message the form ever wrote landed on a dialog the user could not see.
+ */
 function openOnTop(id: string): void {
   const dialog = modDialog(id);
+  const err = FORM_ERR[id];
+  if (err) $(err).textContent = '';
   if (!dialog.open) dialog.showModal();
 }
+
+/** The error line belonging to each form, as opposed to its list's. */
+const FORM_ERR: Record<string, string> = { unitedit: 'ue-err', artedit: 'ae-err', setedit: 'as-err' };
 
 function modDialog(id: string): HTMLDialogElement {
   const el = $(id);
@@ -7523,7 +7536,10 @@ async function refreshModLists(): Promise<void> {
       // own copies, so a recolour touches nothing shipped.
       if (!m.reconstructed) {
         const paint = document.createElement('button');
-        paint.className = 'um-recolor';
+        // Three buttons on a row share the look; only this one is the brush, and
+        // a class of its own is how anything else can say which it means — the
+        // emoji is not a handle.
+        paint.className = 'um-recolor um-paint';
         paint.textContent = '🎨';
         paint.title = `repaint ${c.id}'s textures`;
         paint.onclick = () => {
@@ -7613,7 +7629,7 @@ function openModDialog(id: 'unitsmod' | 'artsmod'): void {
 async function submitUnitsMod(): Promise<void> {
   const ok = $button('um-ok');
   ok.disabled = true;
-  $('um-err').textContent = '';
+  $('ue-err').textContent = '';
   $('um-note').textContent = '';
   try {
     const stats: Partial<CreatureStats> = {
@@ -7636,12 +7652,15 @@ async function submitUnitsMod(): Promise<void> {
       stats,
       art,
     });
-    // Stay open and say what happened: the natural next step is either another
-    // creature or reading the refreshed list.
+    // Back to the list, which now holds the creature — and the note saying so.
+    // The same shape as an artifact build, which had it right first: the form
+    // is done with, and what happened belongs where the user is left standing.
     $('um-note').textContent = `installed ${res.archive}\n${res.exe} · ${res.art} art file(s) copied`;
     await refreshModLists();
+    modDialog('unitedit').close();
   } catch (e) {
-    $('um-err').textContent = e instanceof Error ? e.message : String(e);
+    // The form's own line, not the list's behind it — see openOnTop.
+    $('ue-err').textContent = e instanceof Error ? e.message : String(e);
   } finally {
     ok.disabled = false;
   }
@@ -7966,7 +7985,7 @@ async function submitArtifactSet(): Promise<void> {
 async function submitArtifactMod(): Promise<void> {
   const ok = $button('am-ok');
   ok.disabled = true;
-  $('am-err').textContent = '';
+  $('ae-err').textContent = '';
   $('am-note').textContent = '';
   try {
     const stats: Record<string, number> = {};
@@ -7998,7 +8017,8 @@ async function submitArtifactMod(): Promise<void> {
     // natural next step is to build one.
     await fillSetMembers();
   } catch (e) {
-    $('am-err').textContent = e instanceof Error ? e.message : String(e);
+    // The form's own line, not the list's behind it — see openOnTop.
+    $('ae-err').textContent = e instanceof Error ? e.message : String(e);
   } finally {
     ok.disabled = false;
   }

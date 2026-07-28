@@ -7,9 +7,9 @@
 // result against the original with the same gap reports the C1M1
 // reconstruction used (diff-objects, diff-map, diff-terrain, texts, pack).
 //
-// The mod the map depends on (sod-creatures: the Sharpshooter, ten dwellings,
-// three artifacts) is installed as a FIXTURE — copied into this run's own game
-// root. Adding units through the window is its own suite (units-mod.spec.ts);
+// The mod the map depends on — ours, H5E/homm5-editor.h5u: the Sharpshooter,
+// ten dwellings, three artifacts — is installed as a FIXTURE, copied into this
+// run's own game root. Adding units through the window is its own suite (units-mod.spec.ts);
 // this one is about the map, and it must not depend on that dialog having run.
 //
 // The map keeps the original's own name: it is created under the data root's
@@ -28,6 +28,7 @@ import { openObjectPalette, pickObject, placeAtTile, setObjectProp, setPlacement
 import { addItem, addValueItem, openTree, setTreeValue } from './tree.ts';
 import { readEntries } from '../src/pak.ts';
 import { ensureModDir, modFile } from '../src/mod-paths.ts';
+import { MOD_STEM } from '../src/creature-mod.ts';
 
 let ed: Launched;
 
@@ -88,11 +89,33 @@ const PLACES = {
   ],
 };
 
-/** The creature mod this map needs, wherever the real install keeps it. */
-function fixtureMod(): string {
-  const ours = modFile(REAL_GAME, 'mod', 'sod-creatures');
-  return existsSync(ours) ? ours : join(REAL_GAME, 'UserMODs', 'sod-creatures.h5u');
+/**
+ * The mod this map is made of — OURS.
+ *
+ * Everything it places (the Sharpshooter, ten dwellings, three artifacts) is in
+ * the one global mod the editor installs, `H5E/homm5-editor.h5u`. The separate
+ * `sod-creatures.h5u` this used to copy is history: `UserMODs/` is not read by
+ * our build at all, and no install here has that file any more. Still accepted
+ * where it exists, so an older install runs this too.
+ */
+function fixtureMod(): string | null {
+  return [
+    modFile(REAL_GAME, 'mod', MOD_STEM),
+    modFile(REAL_GAME, 'mod', 'sod-creatures'),
+    join(REAL_GAME, 'UserMODs', 'sod-creatures.h5u'),
+  ].find((p) => existsSync(p)) ?? null;
 }
+
+/**
+ * The map is made of that mod's creatures, dwellings and artifacts, so without
+ * it there is nothing to build the map from.
+ *
+ * Said out loud and skipped, rather than failing on a copyfile ENOENT thirty
+ * lines later: an install where the editor's mod has never been built is not a
+ * broken checkout.
+ */
+const NEED_MOD = `needs the editor's mod installed — ${modFile(REAL_GAME, 'mod', MOD_STEM)}`
+  + ' (Units… / Artifacts… build and install it)';
 
 function cleanup(): void {
   for (const p of [GAME, REF_ROOT, MAP_DIR]) if (existsSync(p)) rmSync(p, { recursive: true, force: true });
@@ -108,9 +131,11 @@ function decode(buf: Buffer): string {
 // beforeAll again — so beforeAll only ENSURES the fixtures (idempotent, and it
 // never deletes the map under reconstruction). The clean slate belongs to the
 // build test itself; the full sweep to afterAll.
+test.beforeEach(() => { test.skip(!fixtureMod(), NEED_MOD); });
+
 test.beforeAll(async () => {
   // The reference: the hand-made archive, unpacked and never written again.
-  if (!existsSync(join(REF, 'map.xdb'))) {
+  if (existsSync(ORIGINAL) && !existsSync(join(REF, 'map.xdb'))) {
     for (const e of readEntries(readFileSync(ORIGINAL))) {
       const path = join(REF_ROOT, e.name);
       mkdirSync(dirname(path), { recursive: true });
@@ -118,9 +143,13 @@ test.beforeAll(async () => {
     }
   }
 
-  // The fixture mod, into this run's own install.
-  ensureModDir(GAME);
-  copyFileSync(fixtureMod(), modFile(GAME, 'mod', 'sod-creatures'));
+  // The fixture mod, into this run's own install. Absent, every test here skips
+  // itself (see NEED_MOD) — so this arranges what it can and says nothing.
+  const mod = fixtureMod();
+  if (mod) {
+    ensureModDir(GAME);
+    copyFileSync(mod, modFile(GAME, 'mod', MOD_STEM));
+  }
 
   ed = await launchEditor({ HOMM5_ROOT: GAME });
   // The one thing Playwright cannot click is the OS save dialog; Pack's answer

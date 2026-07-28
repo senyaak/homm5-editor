@@ -41,7 +41,12 @@ test.afterAll(async () => {
 
 /** Open Units… and load the donor — the state the next test needs. */
 async function openWithDonor(page: Launched['page']): Promise<void> {
+  // The list is a list; the form is a dialog on top of it. Without the second
+  // click every field below is in the DOM and not on screen, which Playwright
+  // reports as "element is not visible" thirty seconds later — and reads, from
+  // the outside, exactly like a hang.
   if (!(await page.locator('#unitsmod').isVisible())) await page.locator('#unitsbtn').click();
+  if (!(await page.locator('#unitedit').isVisible())) await page.locator('#um-new').click();
   await expect(page.locator('#um-donor option[value="CREATURE_SHARP_SHOOTER"]')).toHaveCount(1, { timeout: 30_000 });
   await page.locator('#um-donor').selectOption(SHARPSHOOTER.donor);
   await expect(page.locator('#um-attack')).toHaveValue('6'); // the preset settled
@@ -86,7 +91,13 @@ test('edits the difference and installs the creature', async () => {
   await expect(page.locator('#um-note')).toContainText('installed', { timeout: 120_000 });
   await expect(page.locator('#um-note')).toContainText('ceiling 181');
   await expect(page.locator('#um-list')).toContainText(`${MOD}.h5u`);
-  await expect(page.locator('#um-list')).toContainText('180 Снайперы');
+  // The row itself, not the list's running text: number and name are separate
+  // elements with nothing between them, so `180 Снайперы` never appears
+  // anywhere — and matching the whole list would find "180" inside "ceiling 181".
+  const row = page.locator('#um-list .um-item', { hasText: SHARPSHOOTER.name });
+  await expect(row).toHaveCount(1);
+  await expect(row.locator('.num')).toHaveText('180');
+  await expect(row).toContainText(SHARPSHOOTER.id);
 
   // On disk: the archive reads back as the creature we described...
   const mod = readInstalledMod(GAME);
@@ -110,6 +121,8 @@ test('edits the difference and installs the creature', async () => {
   expect(exe.limit).toBe(181);
   expect(exe.problems).toEqual([]);
 
+  // A build closes the form and leaves the list, with what it did on it.
+  await expect(page.locator('#unitedit')).toBeHidden();
   await page.locator('#um-cancel').click();
   await expect(page.locator('#unitsmod')).toBeHidden();
 });
