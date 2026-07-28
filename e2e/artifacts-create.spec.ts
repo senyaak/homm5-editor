@@ -6,15 +6,17 @@
 // copies along, because a patched executable can no longer find those sites by
 // search.
 //
-// What gets built is the SoD port's Undertaker's Amulet, on a shipped
-// neck-piece's preset.
+// What gets built is two pieces of the SoD port's Cloak of the Undead King, on
+// a shipped neck-piece's preset, and then the SET they belong to — because a
+// set is where the two halves of this feature meet: it names artifacts that
+// have to exist already, and it rides in the same archive they do.
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test, expect } from '@playwright/test';
 import { launchEditor, REPO_ROOT } from './launch.ts';
 import type { Launched } from './launch.ts';
-import { AMULET, prepareGameRoot, readInstalledMod, removeGameRoot } from './mods.ts';
+import { AMULET, CLOAK, prepareGameRoot, readInstalledMod, removeGameRoot, UNDEAD_KING } from './mods.ts';
 import { ORIGINAL_ARTIFACTS, readArtifactLimit, SITES_FILE } from '../src/artifact-limit.ts';
 import type { Site } from '../src/artifact-limit.ts';
 
@@ -93,4 +95,80 @@ test('edits the difference and installs the artifact', async () => {
 
   await page.locator('#am-cancel').click();
   await expect(page.locator('#artsmod')).toBeHidden();
+});
+
+test('a second piece, so there is a set to make', async () => {
+  test.setTimeout(3 * 60_000);
+  const { page } = ed;
+  await openWithDonor(page);
+
+  await page.locator('#am-file').fill(CLOAK.file);
+  await expect(page.locator('#am-id')).toHaveValue(CLOAK.id);
+  await page.locator('#am-name').fill(CLOAK.name);
+  await page.locator('#am-desc').fill(CLOAK.description);
+  await page.locator('#am-slot').selectOption(CLOAK.slot);
+  await page.locator('#am-rank').selectOption('ARTF_CLASS_MINOR');
+  await page.locator('#am-knowledge').fill('2');
+
+  await page.locator('#am-ok').click();
+  await expect(page.locator('#am-note')).toContainText('installed', { timeout: 120_000 });
+  await expect(page.locator('#am-list')).toContainText('Плащ вампира (SHOULDERS)');
+});
+
+test('makes a set of the two, with an effect of our own', async () => {
+  test.setTimeout(3 * 60_000);
+  const { page } = ed;
+  if (!(await page.locator('#artsmod').isVisible())) await page.locator('#artsbtn').click();
+
+  // Members are ticked, not typed: a misspelt id builds cleanly and produces a
+  // set that never combines. The list offers this mod's own artifacts first.
+  const members = page.locator('#as-members');
+  await expect(members.locator(`input[value="${AMULET.id}"]`)).toHaveCount(1, { timeout: 30_000 });
+  await members.locator(`input[value="${AMULET.id}"]`).check();
+  await members.locator(`input[value="${CLOAK.id}"]`).check();
+
+  // The per-count fields follow what is ticked, and are indexed from ONE piece
+  // worn — position IS the count, so two members means two fields.
+  const counts = page.locator('#as-counts input');
+  await expect(counts).toHaveCount(2);
+
+  await page.locator('#as-file').fill(UNDEAD_KING.file);
+  await expect(page.locator('#as-effect')).toHaveValue(UNDEAD_KING.effect); // derived from the stem
+  await page.locator('#as-name').fill(UNDEAD_KING.name);
+  await page.locator('#as-desc').fill(UNDEAD_KING.description);
+  await counts.nth(1).fill(UNDEAD_KING.perCount[1]!);
+
+  await page.locator('#as-ok').click();
+  await expect(page.locator('#as-note')).toContainText('installed', { timeout: 120_000 });
+  // 11 — after the game's own eleven, 0..10. Taking one of theirs would build
+  // just as cleanly and stop their set working.
+  await expect(page.locator('#as-note')).toContainText('set effect 11');
+  await expect(page.locator('#am-list')).toContainText(`set 11 — ${UNDEAD_KING.name}`);
+
+  const mod = readInstalledMod(GAME);
+  const set = mod.sets[0]!;
+  expect(set.effect).toBe(UNDEAD_KING.effect);
+  expect(set.number).toBe(11);
+  expect(set.artifacts).toEqual([AMULET.id, CLOAK.id]);
+  expect(set.perCount).toEqual(UNDEAD_KING.perCount);
+  // The two artifacts are still there: a set is added to the mod, not instead
+  // of it, and both edits land in the one archive.
+  expect(mod.artifacts.map((a) => a.id)).toEqual([AMULET.id, CLOAK.id]);
+});
+
+test('refuses one of the game\'s own set effects', async () => {
+  const { page } = ed;
+  if (!(await page.locator('#artsmod').isVisible())) await page.locator('#artsbtn').click();
+
+  const members = page.locator('#as-members');
+  await members.locator(`input[value="${AMULET.id}"]`).check();
+  await members.locator(`input[value="${CLOAK.id}"]`).check();
+  await page.locator('#as-file').fill('Borrowed');
+  await page.locator('#as-effect').fill('ARTFSET_EFFECT_NECROMANCERS');
+  await page.locator('#as-name').fill('Borrowed');
+
+  await page.locator('#as-ok').click();
+  await expect(page.locator('#as-err')).toContainText('the game\'s own set', { timeout: 60_000 });
+  // Nothing was installed: the mod still holds the one set from before.
+  expect(readInstalledMod(GAME).sets).toHaveLength(1);
 });

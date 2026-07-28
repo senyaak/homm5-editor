@@ -666,6 +666,18 @@
       padding: 5px 8px; color: #c9d1d9; font-size: 12px; width: 100%; box-sizing: border-box; }
     .um-stats input:focus { outline: none; border-color: #1f6feb; }
     .um-note { color: #3fb950; font-size: 11px; min-height: 14px; white-space: pre-line; word-break: break-all; }
+    /* the set pane: members are picked from a list rather than typed, because a
+       misspelt id builds cleanly and simply never combines */
+    .as-members { display: flex; flex-direction: column; gap: 3px; max-height: 180px; overflow: auto;
+      border: 1px solid #30363d; border-radius: 6px; padding: 6px 8px; background: #0d1014; }
+    .as-members label { display: flex; align-items: center; gap: 7px; font-size: 12px; color: #c9d1d9;
+      cursor: pointer; }
+    .as-members label i { color: #8b949e; font-style: normal; font-size: 11px; }
+    .as-counts { display: flex; flex-direction: column; gap: 4px; }
+    .as-counts label { display: flex; align-items: center; gap: 8px; font-size: 11px; color: #8b949e; }
+    .as-counts label span { flex: 0 0 96px; }
+    .as-counts input { flex: 1; min-width: 0; background: #0d1014; border: 1px solid #30363d;
+      border-radius: 6px; padding: 5px 8px; color: #c9d1d9; font-size: 12px; }
     .um-warn { color: #d29922; font-size: 11px; }
     .um-recolor { margin-left: 8px; background: #21262d; color: #c9d1d9; border: 1px solid #30363d;
       border-radius: 6px; padding: 2px 8px; font-size: 11px; cursor: pointer; }
@@ -1333,6 +1345,30 @@
             </div>
             <label class="on-row um-art um-span"><span>Icon</span><input id="am-icon" type="text" spellcheck="false" autocomplete="off" title="href of the 64x64 hero-screen icon — usually the donor's"></label>
             <label class="on-row um-art um-span"><span>Map model</span><input id="am-model" type="text" spellcheck="false" autocomplete="off" placeholder="empty → a flat board of the icon" title="href of the model lying on the map; referenced, not copied"></label>
+          </div>
+        </fieldset>
+        <!-- Sets live inside this dialog, not beside it: they belong to the same
+             archive, and their members are the artifacts listed above. What a set
+             gives a hero is NOT here — that is native code, and no arrangement of
+             data can express it (docs/ARTIFACT_EFFECTS.md). -->
+        <fieldset>
+          <legend>New set</legend>
+          <div class="on-body um-form">
+            <label class="on-row"><span>Files</span><input id="as-file" type="text" spellcheck="false" autocomplete="off" placeholder="file stem, e.g. UndeadKing" title="the stem of the set's text files; the effect id fills itself from it"></label>
+            <label class="on-row"><span>Effect</span><input id="as-effect" type="text" spellcheck="false" autocomplete="off" placeholder="ARTFSET_EFFECT_…" title="ours, appended after the game's eleven — one of theirs is refused"></label>
+            <label class="on-row"><span>Name</span><input id="as-name" type="text" autocomplete="off"></label>
+            <label class="on-row um-span"><span>Description</span><input id="as-desc" type="text" autocomplete="off"></label>
+            <label class="on-row um-span" style="align-items:flex-start"><span>Members</span>
+              <div id="as-members" class="as-members" title="two or more; a set of one never combines"></div>
+            </label>
+            <label class="on-row um-span" style="align-items:flex-start"><span>Worn</span>
+              <div id="as-counts" class="as-counts" title="what the tooltip says at each number of pieces worn; one piece is not a set, so the first is normally blank"></div>
+            </label>
+          </div>
+          <div id="as-note" class="um-note"></div>
+          <div id="as-err" class="on-err"></div>
+          <div style="display:flex;justify-content:flex-end;margin-top:8px">
+            <button id="as-ok">Add set &amp; install</button>
           </div>
         </fieldset>
         <div id="am-note" class="um-note"></div>

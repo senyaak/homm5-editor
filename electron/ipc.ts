@@ -670,6 +670,17 @@ export interface ModArtifactDTO {
   slot: string;
 }
 
+/** One artifact set in a mod. */
+export interface ModArtifactSetDTO {
+  /** `ARTFSET_EFFECT_…`, ours — appended after the game's eleven. */
+  effect: string;
+  /** The enum value it holds. */
+  number: number;
+  name: string;
+  /** Member artifact ids, in the order they combine. */
+  artifacts: string[];
+}
+
 /** One installed creature mod. */
 export interface ModListEntry {
   /** Absolute path of the .h5u in UserMODs. */
@@ -682,6 +693,11 @@ export interface ModListEntry {
   reconstructed: boolean;
   creatures: ModCreatureDTO[];
   artifacts: ModArtifactDTO[];
+  /**
+   * Its artifact sets. Without these an installed set is invisible from the
+   * window, and "nothing happened" looks exactly like "it worked".
+   */
+  sets: ModArtifactSetDTO[];
 }
 
 /** Result of `mods:list`. */
@@ -778,6 +794,34 @@ export interface ModsInstallArtifactResult {
   limit: number;
   /** What happened to the executable, in words. */
   exe: string;
+}
+
+/**
+ * Payload of `mods:install-set` — one artifact set to add to OUR mod.
+ *
+ * A set costs the executable nothing: no table is indexed by it and no ceiling
+ * counts it. It is two data edits, and what it buys is that the game names the
+ * set and counts the pieces a hero is wearing. The BONUS is not here and cannot
+ * be — see docs/ARTIFACT_EFFECTS.md.
+ */
+export interface ModsInstallSetPayload {
+  /** `ARTFSET_EFFECT_…` — ours. A shipped one is refused. */
+  effect: string;
+  /** Member artifact ids, shipped or the mod's own. Two or more. */
+  artifacts: string[];
+  /** File stem of the set's texts. */
+  file: string;
+  name: string;
+  description: string;
+  /** One per member, indexed from ONE piece worn. The first is normally blank. */
+  perCount?: string[];
+}
+
+/** Result of `mods:install-set`. */
+export interface ModsInstallSetResult {
+  archive: string;
+  /** The enum value the set was given. */
+  number: number;
 }
 
 /** Payload of `mods:textures` — whose textures to show. */
@@ -907,6 +951,8 @@ export interface EditorApi {
   installMod(p: ModsInstallPayload): Promise<ModsInstallResult>;
   /** Add an artifact to OUR mod, build it, install it, patch the ceiling. */
   installArtifact(p: ModsInstallArtifactPayload): Promise<ModsInstallArtifactResult>;
+  /** Add an artifact set to OUR mod, build it, install it. No ceiling moves. */
+  installArtifactSet(p: ModsInstallSetPayload): Promise<ModsInstallSetResult>;
   /** A mod creature's textures, decoded for the Recolor preview. */
   modTextures(creature: string): Promise<ModsTexturesResult>;
   /** Recolour a mod creature's textures and rewrite the archive. */

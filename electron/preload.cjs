@@ -86,6 +86,7 @@ const api = {
   modArtifactPreset: (donor) => ipcRenderer.invoke('mods:artifact-preset', { donor }),
   installMod: (p) => ipcRenderer.invoke('mods:install', p),
   installArtifact: (p) => ipcRenderer.invoke('mods:install-artifact', p),
+  installArtifactSet: (p) => ipcRenderer.invoke('mods:install-set', p),
   modTextures: (creature) => ipcRenderer.invoke('mods:textures', { creature }),
   recolorMod: (p) => ipcRenderer.invoke('mods:recolor', p),
   // Diagnostics for the fatal-error screen in index.html. That screen shows up

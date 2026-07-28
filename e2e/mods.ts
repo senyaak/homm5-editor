@@ -52,6 +52,26 @@ export const AMULET = {
   donor: 'ARTIFACT_NECROMANCER_PENDANT',
 };
 
+/** The second piece, so there is a set to build. Same donor: only the slot differs. */
+export const CLOAK = {
+  file: 'H3VampiresCloak',
+  id: 'ARTIFACT_H3_VAMPIRES_CLOAK',
+  name: 'Плащ вампира',
+  description: 'Увеличивает мастерство некромантии своего владельца.',
+  donor: 'ARTIFACT_NECROMANCER_PENDANT',
+  slot: 'SHOULDERS',
+};
+
+/** The set they make — the port's, and ours: a twelfth effect, never one of theirs. */
+export const UNDEAD_KING = {
+  file: 'H3UndeadKing',
+  effect: 'ARTFSET_EFFECT_H3_UNDEAD_KING',
+  name: 'Плащ короля нежити',
+  description: 'Амулет гробовщика и плащ вампира, надетые вместе.',
+  /** Index 0 is one piece worn, which is not a set — hence blank. */
+  perCount: ['', 'Надето два предмета.'],
+};
+
 /**
  * A game install of our own, as a game no mod has ever touched.
  *

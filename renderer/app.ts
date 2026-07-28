@@ -7458,6 +7458,16 @@ async function refreshModLists(): Promise<void> {
       arow.appendChild(ai);
       arts.appendChild(arow);
     }
+    // Sets get a line of their own. Without one an installed set is invisible
+    // here, and "nothing happened" reads exactly like "it worked".
+    for (const s of m.sets) {
+      const srow = document.createElement('div');
+      srow.append(`set ${s.number} — ${s.name || s.effect}`);
+      const si = document.createElement('i');
+      si.textContent = ` · ${s.artifacts.length} piece(s): ${s.artifacts.map(shortArtifactId).join(', ')}`;
+      srow.appendChild(si);
+      arts.appendChild(srow);
+    }
   }
   // More than one creature mod is a conflict, not a set — each carries a whole
   // copy of the registry, so the game reads one and the rest do not exist.
@@ -7552,6 +7562,118 @@ async function submitUnitsMod(): Promise<void> {
   }
 }
 
+// --- artifact sets ----------------------------------------------------------
+//
+// A set is two data edits — an effect value of ours appended to the enum, and a
+// row naming its members — and from those the game names the set, counts the
+// pieces a hero wears and draws the tooltip. It does NOT make the set do
+// anything: every shipped set's behaviour is compiled against its own value and
+// ours is one the executable never heard of. See docs/ARTIFACT_EFFECTS.md.
+
+/** `ARTIFACT_H3_VAMPIRES_CLOAK` → `H3_VAMPIRES_CLOAK`, for a list that fits. */
+const shortArtifactId = (id: string): string => id.replace(/^ARTIFACT_/, '');
+
+/** The game's artifacts, which do not change while the window is open. */
+let setShipped: { id: string; name: string }[] | null = null;
+
+/**
+ * The members list: every artifact a set can be built from — the game's, and
+ * this mod's own.
+ *
+ * Ticked from a list rather than typed. A misspelt member is accepted by the
+ * file format, builds cleanly, and shows up as a set that simply never
+ * combines — the failure that costs an evening to find.
+ *
+ * REBUILT every time, because the interesting members are the ones added a
+ * minute ago: filling this once on first open left an artifact installed after
+ * it missing from the list, with no sign that anything was stale.
+ */
+async function fillSetMembers(): Promise<void> {
+  const box = $('as-members');
+  const ticked = new Set(setMembers());
+  if (!setShipped) {
+    setShipped = (await window.editor.modFormData()).artifactDonors
+      .map((a) => ({ id: a.id, name: a.name ?? '' }));
+  }
+  const shipped = setShipped;
+  const { mods } = await window.editor.listMods();
+  const mine = new Set(mods.flatMap((m) => m.artifacts).map((a) => a.id));
+  box.innerHTML = '';
+  const rows = [
+    ...mods.flatMap((m) => m.artifacts).map((a) => ({ id: a.id, name: a.name })),
+    ...shipped.filter((a) => !mine.has(a.id)),
+  ];
+  for (const a of rows) {
+    const label = document.createElement('label');
+    const tick = document.createElement('input');
+    tick.type = 'checkbox';
+    tick.value = a.id;
+    tick.checked = ticked.has(a.id);
+    label.append(tick, a.name || shortArtifactId(a.id));
+    const note = document.createElement('i');
+    note.textContent = mine.has(a.id) ? ' · this mod' : ` · ${shortArtifactId(a.id)}`;
+    label.appendChild(note);
+    box.appendChild(label);
+  }
+  renderSetCounts();
+}
+
+const setMembers = (): string[] =>
+  [...$('as-members').querySelectorAll<HTMLInputElement>('input:checked')].map((i) => i.value);
+
+/**
+ * One text field per number of pieces worn, kept in step with what is ticked.
+ *
+ * Indexed from ONE piece, not from none — the array the game reads has one
+ * entry per member and position IS the count. One piece is not a set, so the
+ * first is normally left blank, which is what every shipped set does.
+ */
+function renderSetCounts(): void {
+  const box = $('as-counts');
+  const had = [...box.querySelectorAll<HTMLInputElement>('input')].map((i) => i.value);
+  box.innerHTML = '';
+  const n = setMembers().length;
+  if (!n) {
+    box.innerHTML = '<div class="um-empty">tick two or more members above</div>';
+    return;
+  }
+  for (let i = 0; i < n; i++) {
+    const label = document.createElement('label');
+    const span = document.createElement('span');
+    span.textContent = i === 0 ? '1 piece' : `${i + 1} pieces`;
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = had[i] ?? '';
+    input.placeholder = i === 0 ? 'one piece is not a set — normally blank' : 'what the tooltip says';
+    label.append(span, input);
+    box.appendChild(label);
+  }
+}
+
+async function submitArtifactSet(): Promise<void> {
+  const ok = $button('as-ok');
+  ok.disabled = true;
+  $('as-err').textContent = '';
+  $('as-note').textContent = '';
+  try {
+    const res = await window.editor.installArtifactSet({
+      effect: $input('as-effect').value,
+      artifacts: setMembers(),
+      file: $input('as-file').value,
+      name: $input('as-name').value,
+      description: $input('as-desc').value,
+      perCount: [...$('as-counts').querySelectorAll<HTMLInputElement>('input')].map((i) => i.value),
+    });
+    $('as-note').textContent = `installed ${res.archive}\nset effect ${res.number}`
+      + ' — the game will count its pieces; the bonus itself is native code';
+    await refreshModLists();
+  } catch (e) {
+    $('as-err').textContent = e instanceof Error ? e.message : String(e);
+  } finally {
+    ok.disabled = false;
+  }
+}
+
 async function submitArtifactMod(): Promise<void> {
   const ok = $button('am-ok');
   ok.disabled = true;
@@ -7577,6 +7699,9 @@ async function submitArtifactMod(): Promise<void> {
     });
     $('am-note').textContent = `installed ${res.archive}\nartifact ${res.exe}`;
     await refreshModLists();
+    // The artifact just added is a member a set can be built from, and the
+    // natural next step is to build one.
+    await fillSetMembers();
   } catch (e) {
     $('am-err').textContent = e instanceof Error ? e.message : String(e);
   } finally {
@@ -7738,9 +7863,23 @@ $input('um-file').addEventListener('input', () => {
 $input('am-file').addEventListener('input', () => {
   if (!amIdTouched) $input('am-id').value = idFrom('ARTIFACT_', $input('am-file').value);
 });
+let asIdTouched = false;
+$input('as-effect').addEventListener('input', () => { asIdTouched = true; });
+$input('as-file').addEventListener('input', () => {
+  if (!asIdTouched) $input('as-effect').value = idFrom('ARTFSET_EFFECT_', $input('as-file').value);
+});
+$('as-members').addEventListener('change', renderSetCounts);
+$('as-ok').onclick = () => { void submitArtifactSet(); };
 
 $('unitsbtn').onclick = () => { umIdTouched = false; openModDialog('unitsmod'); };
-$('artsbtn').onclick = () => { amIdTouched = false; openModDialog('artsmod'); };
+$('artsbtn').onclick = () => {
+  amIdTouched = false;
+  asIdTouched = false;
+  openModDialog('artsmod');
+  void fillSetMembers().catch((e: unknown) => {
+    $('as-err').textContent = e instanceof Error ? e.message : String(e);
+  });
+};
 $select('um-donor').addEventListener('change', () => { void loadUnitPreset().catch(() => {}); });
 $select('am-donor').addEventListener('change', () => { void loadArtifactPreset().catch(() => {}); });
 $('um-close').onclick = () => modDialog('unitsmod').close();

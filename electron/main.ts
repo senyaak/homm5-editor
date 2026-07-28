@@ -42,7 +42,7 @@ import { MAP_SIZES } from '../src/terrain-blank.ts';
 import { Registry, artifactPreset, creatureAbilities, creaturePreset, creatureSources } from '../src/registry.ts';
 import type { RosterEntry } from '../src/registry.ts';
 import {
-  addArtifact, addCreature, artifactLimit, buildCreatureMod, dataReader, findCreatureMods,
+  addArtifact, addArtifactSet, addCreature, artifactLimit, buildCreatureMod, dataReader, findCreatureMods,
   installCreatureMod, MOD_STEM, newCreatureMod, packCreatureMod,
 } from '../src/creature-mod.ts';
 import type { BuildReport, CreatureMod, Installed, ModCreature } from '../src/creature-mod.ts';
@@ -99,6 +99,7 @@ import type {
   AddLayerPayload, AddLayerResult, PaintRiverPayload, RiverCellsPayload, MaskPayload, UndoResult, HistoryState,
   ModsListResult, ModsInstallPayload, ModsInstallResult, ModsFormDataResult, ModsPresetPayload,
   CreaturePresetDTO, ArtifactPresetDTO, ModsInstallArtifactPayload, ModsInstallArtifactResult,
+  ModsInstallSetPayload, ModsInstallSetResult,
   ModsTexturesPayload, ModsTexturesResult, ModsRecolorPayload, ModsRecolorResult,
 } from './ipc.ts';
 
@@ -2204,6 +2205,11 @@ ipcMain.handle('mods:list', async (): Promise<ModsListResult> => {
     artifacts: (f.mod.artifacts ?? []).map((a) => ({
       id: a.id, number: a.number, name: a.name, slot: a.slot,
     })),
+    // `?? []` and not a plain read: a mod installed before sets existed has a
+    // manifest without the field, and it stays listable.
+    sets: (f.mod.sets ?? []).map((s) => ({
+      effect: s.effect, number: s.number, name: s.name, artifacts: s.artifacts,
+    })),
   }));
   return { gameRoot: g, mods };
 });
@@ -2320,6 +2326,40 @@ ipcMain.handle('mods:install-artifact', async (_e: IpcMainInvokeEvent, p: ModsIn
     limit: artifactLimit(mod),
     exe: exeWords(installed.artifacts),
   };
+});
+
+// A set costs the executable nothing — no table is indexed by it, no ceiling
+// counts it. It rides in the same archive as everything else because a mod
+// replaces `types.xml` whole rather than merging it, which is also why members
+// may name the mod's own artifacts: by then they are in the same file.
+ipcMain.handle('mods:install-set', async (_e: IpcMainInvokeEvent, p: ModsInstallSetPayload): Promise<ModsInstallSetResult> => {
+  const g = gameRoot();
+  if (!g) throw new Error('no game install configured — a mod needs UserMODs and the executable');
+  if (!isConfigured()) throw new Error('no data root configured');
+  if (!p.file.trim()) throw new Error('the file stem is required');
+
+  const mod = ourMod(g);
+  const known = new Set([
+    ...(mod.artifacts ?? []).map((a) => a.id),
+    ...new Registry(gameData()).artifacts().map((a) => a.id),
+  ]);
+  const members = p.artifacts.map((id) => id.trim()).filter(Boolean);
+  // Caught here rather than at build time: a misspelt member produces a set
+  // that installs cleanly and never combines, which is the worst kind of quiet.
+  const unknown = members.filter((id) => !known.has(id));
+  if (unknown.length) throw new Error(`no such artifact: ${unknown.join(', ')}`);
+
+  const set = addArtifactSet(mod, {
+    effect: p.effect.trim(),
+    artifacts: members,
+    file: p.file.trim(),
+    name: p.name,
+    description: p.description,
+    ...(p.perCount?.length ? { perCount: p.perCount } : {}),
+  });
+
+  const { installed } = buildAndInstall(g, mod);
+  return { archive: installed.archive, number: set.number };
 });
 
 /** Our mod's archive and the creature in it, for the texture channels. */
