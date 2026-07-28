@@ -46,8 +46,10 @@ and script can express), [docs/ENGINE_INTERNALS.md](docs/ENGINE_INTERNALS.md)
 - г) **Make it editable.** The DLL hardcodes nothing: it reads a table saying
   which set, which threshold, which kind of bonus, how much — and the editor
   generates and edits that table.
-- д) **The Cloak of the Undead King set itself**, for the Heroes III port —
-  what it does, in Heroes V's own terms. See §6.
+- д) **The Cloak of the Undead King set itself**, for the Heroes III port.
+  **What it gives is decided** (Сеня): a percentage to necromancy, and — with
+  all three worn — the player's dark energy restored every day. Two terms, two
+  places to write them, and only the second still needs finding.
 
 1.2. **Out (deferred — "потом"):**
 - а) The green bonus line in the hero screen. The UI draws known effects per id
@@ -150,72 +152,14 @@ sum, adding our term after the engine's — is the plan. The catalogue in
 [docs/ENGINE_INTERNALS.md](docs/ENGINE_INTERNALS.md) bounds it: 36 functions is
 every place an artifact effect can live, so the work is finite and known.
 
-5.4. ~~**Dark energy.** Decided: restore it daily rather than model it.~~
-**Dropped** — see §6.3. Restoring it needs a day tick we have not found, and it
-is the wrong shape besides. The engine already prices a raise in dark energy in
-a function we have by address, and a discount there does the same job through
-its own arithmetic.
+5.4. **Dark energy — decided, and it is what the full set gives.** Сеня chose
+it: three pieces worn restore the player's dark energy every day. Not a
+question and not a placeholder; what is open is only how to write it, which is
+§1.1(а)'s remaining thread — the field the getter reads and the day tick that
+already touches it.
 
 5.5. **How far does the config go?** The entry that is now obvious: *"this set,
 at this many worn pieces, adds this much to that calculation"* — one row per
 term we append. Spells granted while worn are a second kind and are not costed
 yet — the machinery exists, since a Scroll loses its spell the moment it
 comes off, but §1.1(а) found the stat path rather than the spellbook one.
-
-## 6. What the Cloak of the Undead King should do
-
-The set exists in game and counts its pieces. What it *gives* is still a design
-question, and it has to be answered before the DLL, because the DLL is only as
-good as the number it adds.
-
-6.1. **What it did in Heroes III.** Three pieces — the Amulet of the
-Undertaker, the Vampire's Cowl and the Dead Man's Boots — each raising
-necromancy on its own, and together raising it further *and* upgrading what a
-necromancer raises: with the full cloak the dead come back as something better
-than skeletons, by the hero's Necromancy level.
-
-6.2. **Heroes V splits that into two numbers, and we have both by address.**
-After a battle the engine works out how many creatures are *offered*, and
-separately what each one *costs* in dark energy:
-
-| what | where | shape |
-|---|---|---|
-| how many are offered | `0xc77850` | a sum of percentage terms, last one "count worn pieces of set N, if ≥ threshold add a constant" |
-| what they cost | `0xc77270` | the same sum of discounts, folded into `(100 − discount) × power / (CreaturePowerPointsForOneEnergy × 100)` |
-
-Both are the twenty bytes described in §2.3, and a term of ours is the same
-twenty bytes in each.
-
-6.3. **So the set's bonus is one term in each, and dark energy needs no new
-mechanic.** "Restore dark energy every day" was decided when the write site was
-unfound and looked like the only way to touch it. It should not be built:
-
-- it needs a day tick we still have not located, where the discount needs
-  nothing we do not already have;
-- it is far stronger than the set. A daily refill does not modify the resource,
-  it removes it — and dark energy is the whole reason necromancy in Heroes V is
-  a decision rather than a multiplier;
-- a discount is what Heroes III's tier upgrade actually means here. Heroes V
-  already lets the player choose which undead to raise; what stops them
-  choosing well is the price. Lower the price and the choice opens up, which is
-  the same experience arrived at through the engine's own arithmetic.
-
-6.4. **The proposal, then** — two terms, both in the config, both the shape the
-Necromancer's Pendant already has:
-
-| worn | term | why |
-|---|---|---|
-| 2 pieces | +N% to the raise (`0xc77850`) | the Heroes III per-piece bonus, collapsed into the threshold Heroes V thinks in |
-| 3 pieces | +M% to the raise, and −K% off the dark-energy cost (`0xc77270`) | the full cloak: more of them, and better ones affordable |
-
-6.5. **The numbers are Сеня's call**, and they are data either way — changing
-one is editing the config, not rebuilding anything. For scale: the shipped
-Necromancer's Pendant is +10% raise and −10% cost, and the shipped Necromancer
-set at four pieces is +20% and −25%. Heroes III's cloak was +30% necromancy in
-total, which in Heroes V's numbers is a lot.
-
-6.6. **Not in scope, and worth saying so.** The tier upgrade as such — "raise
-wights instead of skeletons" — is not portable: Heroes V has no equivalent
-knob, the choice is the player's already. Anyone wanting it literally would
-need a hook on the raise dialog's creature list, which is not in the catalogue
-of §1.1(а) and would be its own reverse.
