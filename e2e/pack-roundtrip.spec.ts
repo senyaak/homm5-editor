@@ -211,3 +211,21 @@ test('the picker opens the map the app itself made', { tag: '@nodata' }, async (
   await hudSays(page, /unpacked \d+ files → /);
   await expect(page.locator('#title')).toHaveText(`homm5-editor — ${NAME} (72×72)`, { timeout: 60_000 });
 });
+
+test('Open… works before anything has been opened', { tag: '@nodata' }, async () => {
+  // The dialog offers a folder to start in, and which folder it is depends on
+  // whether a map has been opened yet: after one, the folder that map came from;
+  // before any, ours in the install. Every test above opens a map first, so the
+  // second branch had never run — and it was broken, in the plainest way code
+  // can be, for anyone who pressed Open… on a fresh start.
+  await ed.app.close();
+  ed = await launchEditor({ HOMM5_UNPACK_TO: '' });
+  const { page } = ed;
+  await ed.app.evaluate(({ dialog }, open) => {
+    dialog.showOpenDialog = (async () => ({ canceled: false, filePaths: [open] })) as typeof dialog.showOpenDialog;
+  }, modFile(E2E_GAME, 'map', NAME));
+
+  await page.locator('#open').click();
+  await hudSays(page, /unpacked \d+ files → /);
+  await expect(page.locator('#title')).toHaveText(`homm5-editor — ${NAME} (72×72)`, { timeout: 60_000 });
+});

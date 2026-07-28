@@ -46,7 +46,7 @@ import {
   updateArtifact, updateArtifactSet, artifactLimit, buildCreatureMod, dataReader, findCreatureMods,
   installCreatureMod, MOD_STEM, newCreatureMod, packCreatureMod,
 } from '../src/creature-mod.ts';
-import { MOD_DIR, MOD_EXT, ensureModDir, modFile } from '../src/mod-paths.ts';
+import { MOD_DIR, MOD_EXT, ensureModDir, modDir, modFile } from '../src/mod-paths.ts';
 import { extractMapFolder, gameArchives, listOurMaps, listStockMaps, mapFolderIn } from '../src/map-source.ts';
 import type { MapSource } from '../src/map-source.ts';
 import { builtDll, extensionState, installExtension, writeEffectsFile } from '../src/extension.ts';
