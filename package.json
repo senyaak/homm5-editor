@@ -74,6 +74,8 @@
     "test-typespec": "node tools/test-typespec.ts",
     "unwrap-exe": "node tools/unwrap-exe.ts",
     "test-exe-unwrap": "node tools/test-exe-unwrap.ts",
+    "mod-paths": "node tools/mod-paths.ts",
+    "test-mod-paths": "node tools/test-mod-paths.ts",
     "lua-registry": "node tools/reverse/lua-registry.ts",
     "test-lua-registry": "node tools/reverse/lua-registry.ts --check"
   },

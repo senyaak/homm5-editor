@@ -460,6 +460,46 @@ impersonate.** Thirty-six functions is where an artifact effect can live at all
 in this engine; each one is a place our config may add a term, and every one we
 do not touch keeps behaving exactly as it shipped.
 
+## Where the game looks for mods, and where maps come from
+
+Five patterns, together in `.rdata` at `0xf4f7e8`:
+
+```
+Maps/*.h5m   DuelPresets/*.h5p   UserCampaigns/*.h5c   UserMODs/*.h5u   UserMODs/*.zip
+```
+
+`0x5bd0f0` pushes all five into **one** list and hands it to **one** provider
+(`0x953350` → the constructor at `0x953fb0`, the same one that scans `data/`
+for `*.pak` when the list is empty). So the extensions are a convention and not
+a mechanism: every archive found by any of the five is mounted into the game
+file system the same way, which is why a `.h5m` can override any path in the
+game and not just its own map.
+
+The patterns are turned into strings with strlen at runtime, so a **shorter**
+name can be written over one in place. `src/mod-paths.ts` does exactly that: our
+copy scans `H5E/*.mod` and four siblings, so nothing anyone installed for
+another mod is read at all, and a map of ours is `H5E/<name>.mod`. Launching
+the shipped executable reads the five again — that is the off switch.
+
+**Maps are found separately, and not by that mask.** `0x915170` builds the list
+for the custom-game screen out of the *mounted* file system, from three roots
+chosen by flags in `+0x38`: `Maps/Multiplayer` (`0xf7df40`, flag 1),
+`Maps/SingleMissions` (`0xf6c044`, flag 2) and `Maps/RMG` (flag 4). Each root
+goes to `0x9152f0` → `0x897440`, which collects `map-tag` files
+(`#xpointer(/AdvMapDescTag)`) under it and logs "Custom game map tags collected
+in … seconds".
+
+Two consequences worth writing down:
+
+- The shipped maps are inside the archives — `data.pak` and `a2p1-data.pak`
+  carry `Maps/SingleMissions/A2S*`, `Maps/Multiplayer/*`, `Maps/Scenario/*` —
+  so ours and theirs land in the same virtual tree and **cannot be told apart by
+  path**. Hiding the shipped ones would mean moving the roots (`Mods/…`, same
+  length, four bytes each), not filtering.
+- A map's own files are referenced relatively (`href="GroundTerrain.bin"`) and
+  only shared data is absolute (`/MapObjects/…`), so a map tree can be moved
+  whole without touching what is inside it.
+
 ## Open threads
 
 - **Dark energy.** `GetPlayerNecroEnergy` exists with no setter, as known. The
