@@ -27,7 +27,8 @@ so a `.cts` preload dies on the first type annotation — silently, leaving
 
 ## What works
 
-Launch with `npm start`. Open a `.h5m` (or make one with **New map…**) and you
+Launch with `npm start`. Open a map (or make one with **New map…**, which puts a
+`.mod` in the game's `H5E` folder) and you
 get a live 3D scene you sculpt, paint, populate, script and pack.
 
 ### Terrain
@@ -152,12 +153,26 @@ get a live 3D scene you sculpt, paint, populate, script and pack.
 ### Project, packing, localization
 
 - **Project model**: the editor edits *unpacked* files (a project is a tree of
-  files, the way the game sees `data/…`), not a ZIP in place. Opening a `.h5m`
+  files, the way the game sees `data/…`), not a ZIP in place. Opening an archive
   unpacks it into a reused workspace; **Save** repacks over the source; **Pack** is
-  a separate explicit build to `.h5m`/`.h5c`/`.h5u`/`.pak`. A `project.json`
+  a separate explicit build to `.mod`/`.h5c`/`.h5u`/`.pak`. A `project.json`
   manifest tracks file hashes at pack time for `git status`-style dirty detection
   and editor-version drift. Archive members are named by their in-game path
   (`Maps/…/map.xdb`) — pack to the root and the game can't see the map.
+  `HOMM5_UNPACK_TO` moves the working copies somewhere of your choosing, at their
+  in-game path, which is what the e2e suite runs with; it changes nothing about
+  what is saved or where a build lands.
+- **One folder, ours** ([src/mod-paths.ts](src/mod-paths.ts)): our copy of the
+  executable reads `<game>/H5E/` and none of the five folders the shipped game
+  scans, so nothing anyone else installed is mounted. A map of ours is
+  `H5E/<name>.mod`; **New map…** writes one at once, and everything the editor
+  installs — the mod, campaigns — goes beside it. `npm run mod-paths` says which
+  set an executable is reading and switches it.
+- **The map list is the install's**, never the unpacked data: ours out of `H5E/`,
+  the game's read straight out of its `.pak` archives (their names only — the
+  1.4 GB one is never read through). Opening one of the game's maps unpacks a
+  copy to start from, gathering it from every archive that holds a piece of it,
+  newest member winning, exactly as the engine would.
 - **Archives** ([docs/ARCHIVES.md](docs/ARCHIVES.md)): a map, a campaign and a mod
   are one thing to the engine, and a `.h5m` is mounted for the whole session
   rather than for its own mission — so a campaign can ship its mod inside itself,
@@ -200,12 +215,12 @@ get a live 3D scene you sculpt, paint, populate, script and pack.
   names a plain `name.txt`), so localization is the editor's job. A per-map
   **Localize** toggle authors every language side by side in tagged files
   (`name.en.txt`) behind a `localization.json` sidecar the game never sees;
-  **Export as `<language>`** packs an ordinary single-language `.h5m`.
+  **Export as `<language>`** packs an ordinary single-language `.mod`.
 - **Campaigns** ([docs/CAMPAIGNS.md](docs/CAMPAIGNS.md)): bind maps into a story and
   pack a `.h5c` the game's Modifications menu loads. Three dialogs, following the
   original editor — campaign, mission list, mission — plus the thing the original
   cannot do: reopen a campaign and edit it. A campaign carries **no** maps; each
-  mission names one by path and the game's VFS finds it in whatever `.h5m` ships
+  mission names one by path and the game's VFS finds it in whatever archive ships
   it. Heroes travel between missions under their *character's* name, which is the
   one detail that decides whether a handover works at all; the doc lists that and
   the other traps that fail silently.
@@ -426,7 +441,7 @@ objects placed by clicking with their fractional positions and 80 facings, their
 fields, the map settings, the 17 regions, the tile list, the objectives, the
 localized texts, and the mission Lua — each a staged spec under `e2e/`
 (`c1m1/001-heights` … `c1m1/013-texts`), closed by a capstone (`c1m1/014-pack`) that
-verifies the whole map and packs it into a **playable `.h5m`**. `npm run
+verifies the whole map and packs it into a **playable map file**. `npm run
 diff-terrain`, `diff-objects` and `diff-map` are down to a handful of accepted
 deviations the engine doesn't read. Every gap it hit became a feature above.
 
@@ -441,8 +456,8 @@ run alone and the real one is never touched.
 
 Most of that needs the game's data, which cannot be published, so it runs on a
 machine that has the game. What does not need it is tagged `@nodata` and runs on
-every push (`.github/workflows/build.yml`): ten tests that create a blank map,
-pack and reopen a `.h5m`, write and localise its texts, and build a campaign —
+every push (`.github/workflows/build.yml`): thirteen tests that create a blank
+map, pack and reopen it, write and localise its texts, and build a campaign —
 our own formats, end to end through the real app, against a data root that is
 two empty folders.
 

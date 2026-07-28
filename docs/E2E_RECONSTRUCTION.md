@@ -255,7 +255,7 @@ reports still where the last complete run left them.
 
 ### The second reconstruction: a map of our own
 
-`e2e/sharpshooter-map.spec.ts` rebuilds `<game>/Maps/Sharpshooter Test.h5m` —
+`e2e/sharpshooter-map.spec.ts` rebuilds `<game>/H5E/Sharpshooter Test.mod` —
 the hand-made showcase for the Heroes III port's Sharpshooter — the same way and
 against the same gap reports, but small enough to run in seconds. The original
 is unpacked into `_tmp` as the reference and never written to; the map is built
@@ -295,6 +295,33 @@ its artefacts for reading. `afterAll` closes the app and nothing else.
 renderer that dies mid-suite leaves the window on the start screen with no page
 error — and `[renderer gone] …` from the main process is the only thing that says
 why.
+
+### The install the suite runs against, and where maps land
+
+A map is a file in a game install now — `<game>/H5E/<name>.mod` — so the suite
+needs an install and must not use the real one, or every run would leave `e2e …`
+maps in the folder a person plays from. `launchEditor` points `HOMM5_ROOT` at
+`_tmp/e2e-install` unless the spec brings its own, and `e2e/build.ts` empties
+that folder's `H5E/` before the run: the app refuses to write over a map that
+exists, so an archive left by a failed run would stop the next one dead in the
+New Map dialog.
+
+Working copies are the other half. Every map the editor opens lives in an
+archive and is unpacked to work in; left alone the app puts that copy in a
+workspace under `_tmp` keyed by a hash of the archive's path, which is no place
+for a spec to read `GroundTerrain.bin` from. `HOMM5_UNPACK_TO` pins it instead —
+the suite points it at the data root, so a map lands at its in-game path
+(`<data>/Maps/SingleMissions/<name>`), which is what every spec here computes
+for itself. It changes nothing about saving: Save still goes back into the
+archive the map came from. `pack-roundtrip` is the one spec that runs **without**
+it, because "unpacked into a workspace, not beside the archive" is its subject;
+it learns the folder from the app's own status line instead.
+
+**The run stops at the first failure** (`maxFailures: 1` in
+`playwright.config.ts`). The specs are serial and share on-disk state, so what
+the rest report after one has failed is noise, and a person watching has to sit
+through it to reach the message that mattered. `PW_ALL=1` runs everything anyway,
+for the sweep after a fix.
 
 ### Accepted deviations (the result matches; the bytes do not)
 

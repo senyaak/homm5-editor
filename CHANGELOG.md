@@ -11,6 +11,48 @@ would have seen.
 its section by version number, so this heading is inert until it is renamed to
 one.
 
+## Unreleased
+
+### Changed
+
+- **Our build reads one folder, `<game>/H5E/`, and nothing anyone else
+  installed.** The game scans five patterns for archives to mount —
+  `Maps/*.h5m`, `DuelPresets/*.h5p`, `UserCampaigns/*.h5c`, `UserMODs/*.h5u`,
+  `UserMODs/*.zip` — and every mod anyone ever installed sits in them. Our copy
+  of the executable now scans `H5E/*` instead, so a stranger's `.h5u` or a map
+  dropped into `Maps/` is not read at all. A map of ours is `H5E/<name>.mod`;
+  campaigns, duel presets and mods keep their extensions beside it. The shipped
+  executable is untouched and still reads all five, which is the way back —
+  or `npm run mod-paths -- --set shipped`.
+- **The patched executable is `bin/H5_Game_H5E.exe`** (was `H5_Game_NCF.exe`).
+  The copy is ours end to end — our ceilings, our import, our folder — and is
+  named for what makes it.
+- **Everything the editor installs goes there too:** the mod, packed maps,
+  campaigns. The Units and Artifacts dialogs read `H5E/` when they list what is
+  installed.
+- **New Map creates a file, not just a folder.** It writes
+  `<game>/H5E/<name>.mod` at once and Save goes back into it, so there is no
+  state where a map exists only as a working folder nothing ships from.
+- **The map picker lists maps out of the install, never out of the unpacked
+  data.** Ours, packed, under "Ours"; the game's own read straight from its
+  `.pak` archives under "The game's" — 42 of them, in about 50 ms, without
+  reading the 1.4 GB archive itself. Opening one of the game's maps unpacks a
+  copy to start from and never writes to the archive it came from. The old list
+  walked the whole unpacked `Maps` tree, stat-ing every file of every shipped
+  map, and was the standing suspect for the lag on the first screen.
+
+### Fixed
+
+- **An error from a mod form was written where nobody could see it.**
+  `id="um-err"` (and `am-err`) existed twice in the page — once in the list,
+  once in the form on top of it — and `getElementById` answers with the first,
+  so every message the form raised landed on the dialog behind it. The forms
+  have their own lines now, and a build's "installed …" note stays with the
+  list the form closes back to.
+- **Placing two of the same object in a row placed one.** A palette swatch
+  toggles; arming what is already armed puts it down, and the next click on the
+  map went nowhere.
+
 ## 0.4.0 — 2026-07-28
 
 ### Fixed

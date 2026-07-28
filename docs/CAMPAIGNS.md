@@ -16,16 +16,24 @@ by an absolute data-root path:
 <MissionTag href="/Maps/SingleMissions/My Map/map-tag.xdb#xpointer(/AdvMapDescTag)"/>
 ```
 
-The map travels separately, as its own `.h5m`. The game's VFS merges every
-archive by path, so the two meet at load time. This is why packing a campaign
+The map travels separately, as its own archive (`.mod` in our build, `.h5m` in
+the shipped one). The game's VFS merges every archive by path, so the two meet
+at load time. This is why packing a campaign
 never touches a map, and why a campaign whose maps were never packed lists in
 the menu and then fails to start.
 
 ## Where it goes
 
-A user campaign is a `.h5c` in `<game>/UserCampaigns/`, loaded from the game's
-**Modifications** menu — not Single Player → Campaign, not a `.h5u` mod, and
-without touching `Campaigns/CampaignsSets/Standart.xdb`.
+A user campaign is a `.h5c`, loaded from the game's **Modifications** menu — not
+Single Player → Campaign, not a `.h5u` mod, and without touching
+`Campaigns/CampaignsSets/Standart.xdb`.
+
+**Which folder depends on which executable.** The shipped game scans
+`<game>/UserCampaigns/`; our copy scans `<game>/H5E/` and nothing else, so that
+is where the editor writes and where a campaign of ours belongs (see
+[ENGINE_INTERNALS.md](ENGINE_INTERNALS.md), "Where the game looks for mods").
+The archive's own contents are the same either way — the folder it sits in is
+not part of it.
 
 Inside, the layout is exactly:
 
@@ -52,8 +60,9 @@ ever create one.)
 Each mission has its own dialog: the map it plays on, its name and description,
 the heroes it hands on, and three start-bonus slots.
 
-Pack the campaign, pack each of its maps to `.h5m`, and both belong where the
-game reads them — `UserCampaigns/` and `Maps/`.
+Pack the campaign, pack each of its maps, and both belong where the executable
+you launch reads them: `<game>/H5E/` for our build, `UserCampaigns/` and `Maps/`
+for the shipped one. The dialogs offer our folder by default.
 
 ## The traps
 

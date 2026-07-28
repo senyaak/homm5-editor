@@ -39,10 +39,10 @@ Localization is the editor's, not the map's — the game never sees any of this.
    Switch tabs to edit each; while translating a non-base language, the base text
    is shown beneath the editor as the source. Save keeps the window open, so the
    languages are saved in turn.
-4. **Export** — **Localize** → **export .h5m** beside a language. This packs an
+4. **Export** — **Localize** → **export .mod** beside a language. This packs an
    ordinary single-language map: each `name.txt` holds that language's text
    (falling back to the base where a translation is missing), and the tagged files
-   and the sidecar are left out. Export one `.h5m` per language you ship.
+   and the sidecar are left out. Export one archive per language you ship.
 
 Normal **Pack** is refused on a localized map — there is no plain `name.txt` to
 pack, so it would ship a map with no text. Use Export.
