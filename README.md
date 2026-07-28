@@ -111,7 +111,10 @@ get a live 3D scene you sculpt, paint, populate, script and pack.
   floor's ground ([docs/LIGHTING.md](docs/LIGHTING.md)).
 - **Particle effects play.** Campfires burn, mana crystals spark, portals
   shimmer — the game's own frames, not an approximation
-  ([docs/EFFECTS_FORMAT.md](docs/EFFECTS_FORMAT.md)).
+  ([docs/EFFECTS_FORMAT.md](docs/EFFECTS_FORMAT.md)). What they cost was never
+  counted until it was: on a shipped map they outweigh the entire rest of the
+  scene in draw calls, per-frame CPU and texture memory. Measured and planned in
+  [SLICE_fx_performance.md](SLICE_fx_performance.md).
 
 ### Map properties, model & scripting
 
