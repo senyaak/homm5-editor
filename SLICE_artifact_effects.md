@@ -37,12 +37,13 @@ and script can express), [docs/ENGINE_INTERNALS.md](docs/ENGINE_INTERNALS.md)
   set is named on the hero screen, and the game counts the worn pieces itself.
   The probe is retired; the Cloak of the Undead King is ordinary data in the
   port now (`Maps/sod/src/new-artifacts.ts`).
-- в) **Prove the native path.** A proxy DLL forwarding `zlib1.dll` — no patched
-  byte in the executable — carrying two proofs on top: one new Lua function
-  callable from a map script, and **one detour on the necromancy sum
-  `0xc77850`** that calls the original and adds a term of ours — our set, our
-  threshold, our number — so the percentage visibly moves in game while every
-  shipped term still reads exactly as it did.
+- в) ~~**Prove the native path.**~~ **Done, 2026-07-28.** Not a proxy DLL in the
+  end: `H5_Game_NCF.exe` is our copy already, so it names our library in its
+  import table and no file of the game's is touched. The detour on the
+  necromancy sum `0xc77850` calls the original and adds our term, reading what
+  is worn through the engine's own `CountEquipped`. Seen in game, from the
+  extension's own log: three pieces worn → engine 20, ours +30; one taken off →
+  engine 20, ours +20. The shipped terms read exactly as they did.
 - г) **Make it editable.** The DLL hardcodes nothing: it reads a table saying
   which set, which threshold, which kind of bonus, how much — and the editor
   generates and edits that table.
@@ -141,9 +142,18 @@ skipped by having one (`Maps/sod/docs/ARTIFACTS.md`).
 hero screen, and the game counts the worn pieces on its own. No fallback to
 `ARTFSET_EFFECT_CUSTOM` is needed; the effect is ours and nothing shipped moved.
 
-5.2. ~~**Is there a ceiling on the number of sets?**~~ **No** — the eleventh set
-is reached and works. The absence of evidence held this time, unlike the
-creature and artifact ceilings.
+5.2. **Is a set of ours reachable from CODE?** Open, and the answer so far is
+no. The game names our eleventh set on the hero screen and counts its pieces
+there, which is why this was briefly marked answered — but that is the UI
+reading `<Sets>` directly. Asked through the hero's set accessor
+(vtable `+0x328`, the call the necromancy sum makes for the shipped set), our
+effect 11 answers **0** with all three pieces worn. So the tooltip proves the
+data parses, not that code can reach it.
+
+It does not block anything: per-ARTIFACT rows go through `CountEquipped`, need
+no set at all, and are proven working (§1.1(в)). Heroes III gave each piece its
+own bonus anyway. Worth solving for a bonus that only a complete set should
+give.
 
 5.3. ~~**Where does equipment get applied?**~~ **Answered:** nowhere — it is
 read where it is used, and every read goes through `0xb4c270`. So there is no

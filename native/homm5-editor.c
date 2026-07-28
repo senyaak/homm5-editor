@@ -38,6 +38,11 @@
 /** Its first five bytes: sub esp,8 / push ebx / push ebp. A whole number of
  *  instructions, which is why the detour is exactly this long. */
 static const BYTE RAISE_PERCENT_HEAD[5] = { 0x83, 0xEC, 0x08, 0x53, 0x55 };
+/** Where a hero hands over the artifacts it is WEARING. */
+#define VT_WORN_ARTIFACTS 0x74u
+/** `CountEquipped(collection, artifactId)`, and the bytes that say it is. */
+#define COUNT_EQUIPPED_RVA 0x74c270u
+static const BYTE COUNT_EQUIPPED_HEAD[5] = { 0x53, 0x8B, 0x19, 0x56, 0x57 };
 /** Where a hero answers "how many pieces of set N am I wearing". */
 #define VT_ARTIFACT_SET_COUNT 0x328u
 
@@ -45,7 +50,11 @@ static const BYTE RAISE_PERCENT_HEAD[5] = { 0x83, 0xEC, 0x08, 0x53, 0x55 };
 #define MAX_ROWS 64
 
 typedef int(__thiscall *SetCountFn)(void *hero, int effect);
+typedef void *(__thiscall *WornFn)(void *hero);
+typedef int(__thiscall *CountEquippedFn)(void *worn, int artifactId);
 typedef int(__fastcall *RaiseFn)(void *hero);
+
+static CountEquippedFn g_countEquipped = NULL;
 
 // ---------------------------------------------------------------------------
 // Config: one row per term we add. Written by the editor, read here.
@@ -57,8 +66,23 @@ typedef int(__fastcall *RaiseFn)(void *hero);
 // another, and when something does not work the first question is what it
 // actually says.
 
+/**
+ * What a row is keyed on.
+ *
+ * `ROW_ARTIFACT` is the one to reach for. It asks the engine's own
+ * `CountEquipped` about an artifact id — the same call the shipped
+ * Necromancer's Pendant term makes, two instructions above where we cut in —
+ * so there is nothing to get wrong and nothing that has to be reachable.
+ * `ROW_SET` goes through the hero's set accessor, which is a different
+ * question: the game draws an eleventh set and counts its pieces on the hero
+ * screen, but the accessor answered 0 for it, so a set of ours may not be
+ * reachable that way at all. Per-artifact rows do not care.
+ */
+typedef enum { ROW_ARTIFACT = 0, ROW_SET = 1 } RowKind;
+
 typedef struct {
-  int effect;    /**< the ArtifactSetEffect value, ours */
+  RowKind kind;
+  int id;        /**< an artifact id, or an ArtifactSetEffect value */
   int threshold; /**< pieces worn, at least this many */
   int amount;    /**< percentage points to add */
 } Row;
@@ -174,13 +198,25 @@ static void load_config(void) {
     while (line < stop && (*line == ' ' || *line == '\t')) line++;
     if (line >= stop || *line == '#') continue;
 
-    // Only one kind of row so far: `necromancy set <effect> <threshold> <amount>`.
-    if (!str_eq_n(line, "necromancy set ", 15)) continue;
-    const char *q = line + 15;
+    //   necromancy artifact <id> <amount>
+    //   necromancy set <effect> <threshold> <amount>
     Row r;
-    if (!read_int(&q, stop, &r.effect)) continue;
-    if (!read_int(&q, stop, &r.threshold)) continue;
-    if (!read_int(&q, stop, &r.amount)) continue;
+    const char *q;
+    if (str_eq_n(line, "necromancy artifact ", 20)) {
+      r.kind = ROW_ARTIFACT;
+      r.threshold = 1;
+      q = line + 20;
+      if (!read_int(&q, stop, &r.id)) continue;
+      if (!read_int(&q, stop, &r.amount)) continue;
+    } else if (str_eq_n(line, "necromancy set ", 15)) {
+      r.kind = ROW_SET;
+      q = line + 15;
+      if (!read_int(&q, stop, &r.id)) continue;
+      if (!read_int(&q, stop, &r.threshold)) continue;
+      if (!read_int(&q, stop, &r.amount)) continue;
+    } else {
+      continue;
+    }
     if (g_rowCount < MAX_ROWS) g_rows[g_rowCount++] = r;
   }
   log_num("config rows: ", g_rowCount);
@@ -189,15 +225,41 @@ static void load_config(void) {
 // ---------------------------------------------------------------------------
 // The added term.
 
+/**
+ * How many calls still say what they saw.
+ *
+ * Bounded because this runs whenever the game wants the percentage and a log
+ * that grows without end is its own problem — but the first few are worth
+ * having: "the hook is installed" and "the hook adds something" are different
+ * claims, and only the second one explains a number on screen.
+ */
+static int g_traceLeft = 24;
+
 static int __fastcall raise_percent_hook(void *hero) {
   int total = g_original(hero);
   if (!hero) return total;
   void **vtable = *(void ***)hero;
-  SetCountFn count = (SetCountFn)vtable[VT_ARTIFACT_SET_COUNT / 4];
+  // The collection of what the hero is WEARING, fetched the way the engine
+  // fetches it in this very function for the Necromancer's Pendant.
+  void *worn = ((WornFn)vtable[VT_WORN_ARTIFACTS / 4])(hero);
+  SetCountFn setCount = (SetCountFn)vtable[VT_ARTIFACT_SET_COUNT / 4];
+  int added = 0;
   for (int i = 0; i < g_rowCount; i++) {
-    if (count(hero, g_rows[i].effect) >= g_rows[i].threshold) total += g_rows[i].amount;
+    int have = g_rows[i].kind == ROW_ARTIFACT
+        ? (worn ? g_countEquipped(worn, g_rows[i].id) : 0)
+        : setCount(hero, g_rows[i].id);
+    if (g_traceLeft > 0) {
+      log_num(g_rows[i].kind == ROW_ARTIFACT ? "  artifact " : "  set ", g_rows[i].id);
+      log_num("    worn ", have);
+    }
+    if (have >= g_rows[i].threshold) added += g_rows[i].amount;
   }
-  return total;
+  if (g_traceLeft > 0) {
+    g_traceLeft--;
+    log_num("raise: engine said ", total);
+    log_num("       we add ", added);
+  }
+  return total + added;
 }
 
 // ---------------------------------------------------------------------------
@@ -217,6 +279,17 @@ static int install_detour(void) {
   // preferred base is 0x400000 but nothing guarantees it got that one.
   BYTE *base = (BYTE *)GetModuleHandleW(NULL);
   BYTE *target = base + RAISE_PERCENT_RVA;
+
+  // The other function we call by address, checked the same way. It is only
+  // read, never written, but a wrong one would be called with a live object.
+  BYTE *counter = base + COUNT_EQUIPPED_RVA;
+  for (int i = 0; i < 5; i++) {
+    if (counter[i] != COUNT_EQUIPPED_HEAD[i]) {
+      log_line("the bytes at CountEquipped are not the ones we know - not hooking");
+      return 0;
+    }
+  }
+  g_countEquipped = (CountEquippedFn)counter;
 
   for (int i = 0; i < DETOUR_LEN; i++) {
     if (target[i] != RAISE_PERCENT_HEAD[i]) {
