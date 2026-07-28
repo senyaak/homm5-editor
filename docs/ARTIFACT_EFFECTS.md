@@ -229,10 +229,18 @@ piece early and the set appears to combine sooner than it does. A bonus that
 persists is repeated rather than left blank: the Dragonish set names its
 two-piece text at both two and three pieces.
 
-`probes/artifact-set/` is a mod that declares one set of our own and nothing
-else — three shipped Necromancer artifacts as members, so nothing but the set
-can be what worked or broke. It is the cheapest answer to whether the parser
-accepts a twelfth effect value at all.
+**A set cannot be probed by an archive of its own**, and the first attempt at
+one was wrong for a reason worth writing down: a mod REPLACES a game file
+rather than merging it, so two archives both carrying `types.xml` end with one
+winning whole. A separate probe would have taken the port's creatures and
+artifacts down with it — and the editor would have refused to add anything
+after, since `ourMod()` throws when `UserMODs` holds more than one mod with a
+manifest. Everything that edits a game file rides in the one archive.
+
+The probe therefore lives with the mod it joins:
+`Maps/sod/tools/probe-artifact-set.ts` in the port's repo adds the Cloak of the
+Undead King set to the port's own mod and installs it, and rebuilding the mod
+normally undoes it.
 
 ## The script toolbox
 

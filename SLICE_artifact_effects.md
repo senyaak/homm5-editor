@@ -32,11 +32,13 @@ and script can express), [docs/ENGINE_INTERNALS.md](docs/ENGINE_INTERNALS.md)
   `addArtifactSet` emits our own `ARTFSET_EFFECT_… = 11` into `types.xml` and
   the matching row into `DefaultStats.xdb`, refusing a shipped effect id;
   `npm run test-artifact-set` holds it, including that the shipped eleven come
-  out unmoved. `probes/artifact-set/` is the mod to install — one set, three
-  shipped artifacts as members, nothing else, so nothing else can be what
-  worked. *Left, and it needs the game running:* does the parser accept a
-  twelfth value, does the tooltip draw, does `GetArtifactSetItemsCount` count
-  our worn pieces, does an eleventh set hit a compiled ceiling.
+  out unmoved. `Maps/sod/tools/probe-artifact-set.ts` adds the Cloak of the
+  Undead King set to the port's own mod and installs it — in the ONE archive,
+  because a mod replaces a game file rather than merging it and a second
+  `types.xml` would take the port's creatures down with it. *Installed
+  2026-07-28; awaiting a look in game:* does the parser accept a twelfth value,
+  does the tooltip draw, does `GetArtifactSetItemsCount` count our worn pieces,
+  does an eleventh set hit a compiled ceiling.
 - в) **Prove the native path.** A proxy DLL forwarding `zlib1.dll` — no patched
   byte in the executable — carrying two proofs on top: one new Lua function
   callable from a map script, and **one detour on the necromancy sum
@@ -116,7 +118,8 @@ an artifact depends on.
 | `types.xml` (in the mod archive) | ✅ Append `ARTFSET_EFFECT_<ours> = 11` to the `ArtifactSetEffect` enum. Append-only: the value is what saves and maps store. |
 | `GameMechanics/RPGStats/DefaultStats.xdb` | ✅ A `<Sets>` entry using that effect — members, per-count texts and icons. |
 | [src/creature-mod.ts](src/creature-mod.ts) | ✅ `addArtifactSet` and the two patches above, in the existing single pass over types.xml. |
-| [probes/artifact-set/](probes/artifact-set/) | ✅ The mod that answers §1.1(б) — install, look, delete. |
+| `Maps/sod/tools/probe-artifact-set.ts` (port repo) | ✅ Adds the set to the port's own mod and installs it — §1.1(б). Undone by rebuilding the mod. |
+| the Artifacts dialog | A Sets pane inside it, not a dialog of its own: one mod, one install. Needs `sets` in `ModListEntry` first, or an installed set is invisible. Deferred — Сеня: «щас юай вообще не трогаем». |
 | new: the proxy DLL | Forwards `zlib1.dll`, registers Lua functions, installs detours, reads the config. Built outside this repo; the editor ships and configures it. |
 | new: `src/artifact-effects.ts` | The config model + writer — what the DLL reads. |
 | [src/artifacts.ts](src/artifacts.ts) | Emit the enum entry and the set alongside the existing artifact records. |

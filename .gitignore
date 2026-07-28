@@ -29,5 +29,3 @@ playwright-report/
 tools/vendor/
 __pycache__/
 
-# A probe project builds its mod beside its manifest; the manifest is the source.
-probes/*/packed/
