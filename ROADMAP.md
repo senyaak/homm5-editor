@@ -646,6 +646,17 @@ and carries a levelled hero from mission to mission. See `docs/CAMPAIGNS.md`.
       `.h5m`/`.h5c`/`.h5u`/`.pak` — `src/project.js` ✅
 - [x] **`project.json` manifest + version tracking**: hash snapshot at pack time,
       `lastPack`, dirty detection (`status`), version-drift warning ✅
+- [ ] 🔴 **HIGH — the engine mounts plain `.zip` from `UserMODs`.** Its mount
+      list is five string literals in the executable: `Maps/*.h5m`,
+      `DuelPresets/*.h5p`, `UserCampaigns/*.h5c`, `UserMODs/*.h5u` and
+      **`UserMODs/*.zip`**. So an ordinary zip is a mod — no renaming, no
+      packer, and anything that can write a zip can write one. Worth finding
+      out what that changes for us: whether a project folder can be shipped as
+      a zip without the `.h5u` step, and whether the editor should offer it.
+      (Found while looking at whether the mount patterns could be repointed at
+      a folder of our own, so the game's own exe never sees our mods —
+      `UserMODs/*.zip` and `EditorMods/*.mod` are the same length, so that
+      edit needs no room. Two separate ideas; this one is the surprise.)
 - [ ] ⬜ Mod structure for `.h5u`/`.pak`, managing overrides
 - [ ] ⬜ Importing custom assets into a project (models/textures/texts)
 - [ ] ⬜ Mod integrity check before building

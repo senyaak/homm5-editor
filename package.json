@@ -68,6 +68,8 @@
     "test-artifact-limit": "node tools/test-artifact-limit.ts",
     "test-artifact-set": "node tools/test-artifact-set.ts",
     "build-native": "node tools/build-native.ts",
+    "install-native": "node tools/install-native.ts",
+    "test-exe-import": "node tools/test-exe-import.ts",
     "test-typespec": "node tools/test-typespec.ts",
     "unwrap-exe": "node tools/unwrap-exe.ts",
     "test-exe-unwrap": "node tools/test-exe-unwrap.ts",
