@@ -25,6 +25,7 @@ import { readEntries } from '../src/pak.ts';
 import { modFile } from '../src/mod-paths.ts';
 import { readCreatureMod } from '../src/creature-mod.ts';
 import { EFFECTS_FILE, readEffects } from '../src/artifact-effects.ts';
+import { COMMON_SCRIPT, SCRIPT_DIR } from '../src/artifact-scripts.ts';
 import { ORIGINAL_ARTIFACTS, readArtifactLimit, SITES_FILE } from '../src/artifact-limit.ts';
 import type { Site } from '../src/artifact-limit.ts';
 import { ORIGINAL_LIMIT, readExe } from '../src/creature-limit.ts';
@@ -100,6 +101,20 @@ test('the extension is told about every piece, and only about ours', () => {
     },
   ]);
   expect(rows[PIECES.length - 1]?.amount, 'the boots grant what they say').toBe(BOOTS.necromancy);
+});
+
+test('the set brought its script, and the global one still loads it', () => {
+  const files = members();
+  const script = files.get(`${SCRIPT_DIR}/${UNDEAD_KING.file}.lua`);
+  expect(script, 'a set with a script contributes its own file').toBeTruthy();
+  const common = files.get(COMMON_SCRIPT)?.toString('latin1');
+  expect(common, "and the game's global script, carried by the mod").toBeTruthy();
+  expect(common).toContain(`doFile("/${SCRIPT_DIR}/${UNDEAD_KING.file}.lua");`);
+  // The 73 lines the game ships in this file are what every mission expects to
+  // find. Replacing it is how a mod loads anything globally; dropping them is
+  // how a mod breaks everything else quietly.
+  expect(common).toContain('function SetPlayerStartResource(');
+  expect(common).toContain('function IsPlayerHeroesInRegion(');
 });
 
 test('the creature is still wearing the paint mod-002 gave it', () => {

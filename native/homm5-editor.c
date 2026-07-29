@@ -95,6 +95,54 @@ static const BYTE ENERGY_CAPS_ACCESSOR_HEAD[7] = { 0x8D, 0x81, 0x7C, 0x06, 0x00,
 /** Where a player hands over its heroes: `{ begin, end }`, four bytes apiece. */
 #define VT_PLAYER_HEROES 0xC0u
 
+// ---------------------------------------------------------------------------
+// Functions of our own, callable from a map's Lua.
+//
+// The engine hands Lua 306 functions out of seven `{name, function}` tables in
+// .data. The tables are packed with no slack, so nothing can be appended in
+// place — but each one is reached through a tiny accessor of its own,
+// `mov eax,<table>; ret`, and the adventure map's is the only one we need. So
+// the whole mechanism is: copy their table, add our rows, and rewrite the four
+// bytes of that immediate. No detour, no trampoline, and the engine's own 99
+// functions are the first 99 entries of the copy — untouched, in order.
+//
+// A registered function is `__fastcall(void *ctx)`: the call context arrives in
+// ecx and the result is a handle returned in eax, or 0. Every shipped one
+// returns 0 on a path it cannot serve (no adventure map, bad argument), so 0 is
+// a value the caller is known to tolerate.
+
+/**
+ * `GetPlayerNecroEnergy`, the engine's own Lua function.
+ *
+ * We CALL it rather than reimplement it. It already parses the player argument
+ * the way every other function does, complains in the same words when the
+ * number is out of range, walks the world to the player and asks for the pool.
+ * That last step goes through the player's vtable — the slot below — so a
+ * replacement in that slot sees the player the lookup found, which is the one
+ * thing we need and the one thing a Lua function cannot be handed.
+ */
+#define LUA_GET_NECRO_ENERGY_RVA 0x1e2ce0u
+/** `mov eax,[ecx+638h]; ret` — the pool getter, vtable +0x1fc. */
+#define ENERGY_GETTER_RVA 0x806c50u
+static const BYTE ENERGY_GETTER_HEAD[7] = { 0x8B, 0x81, 0x38, 0x06, 0x00, 0x00, 0xC3 };
+/** Where a player refills its own pool to the ceiling — the weekly grant. */
+#define VT_PLAYER_REFILL 0x214u
+
+/** `mov eax,<adventure-map table>; ret`, and the two bytes that say it is. */
+#define LUA_TABLE_ACCESSOR_RVA 0x1ce710u
+#define LUA_MOV_EAX_IMM 0xB8
+#define LUA_RET 0xC3
+/** How many of ours can be added. Room to grow; the table is ours to size. */
+#define MAX_LUA_FUNCTIONS 8
+
+/** One row of a registration table, exactly as the engine lays it out. */
+typedef struct {
+  const char *name;
+  void *fn;
+} LuaEntry;
+
+typedef void *(__fastcall *LuaFn)(void *ctx);
+
 #define DETOUR_LEN 5
 #define MAX_ROWS 64
 /** Members of one set. The game's longest is eight (the Dragonish). */
@@ -612,6 +660,20 @@ static int replace_vtable_entry(DWORD rva, const BYTE *head, int headLen, void *
   return 1;
 }
 
+typedef int(__thiscall *EnergyGetterFn)(void *player);
+typedef void(__thiscall *RefillFn)(void *player);
+
+static EnergyGetterFn g_energyGetter = NULL;
+/** Set while the engine's lookup runs, so the getter knows to say who it read. */
+static int g_capturing = 0;
+static void *g_capturedPlayer = NULL;
+
+/** The pool getter, replaced in the vtable: passes through, and reports. */
+static int __fastcall energy_getter_hook(void *player) {
+  if (g_capturing) g_capturedPlayer = player;
+  return g_energyGetter(player);
+}
+
 /** The dark energy ceiling: two detours and one replaced slot. */
 static int install_energy(void) {
   g_originalRefill = (PlayerFn)detour(REFILL_ENERGY_RVA, REFILL_ENERGY_HEAD, &refill_energy_hook, "energy refill");
@@ -624,6 +686,131 @@ static int install_energy(void) {
   // short, which is worth saying out loud but not worth refusing to run for.
   replace_vtable_entry(ENERGY_CAPS_ACCESSOR_RVA, ENERGY_CAPS_ACCESSOR_HEAD,
                        sizeof ENERGY_CAPS_ACCESSOR_HEAD, &energy_caps_hook, "energy bar shows our term");
+  return 1;
+}
+
+/**
+ * The pool getter, so `RestoreDarkEnergy` can see which player was found.
+ *
+ * Installed whether or not any row asks for energy: the Lua function is offered
+ * to scripts regardless, and it is useless without this. A pass-through costs
+ * one comparison on a getter that reads one field.
+ */
+static int install_energy_getter(void) {
+  BYTE *original = (BYTE *)GetModuleHandleW(NULL) + ENERGY_GETTER_RVA;
+  for (int i = 0; i < (int)sizeof ENERGY_GETTER_HEAD; i++) {
+    if (original[i] != ENERGY_GETTER_HEAD[i]) {
+      log_line("the energy getter is not the shape we know - RestoreDarkEnergy will not work");
+      return 0;
+    }
+  }
+  g_energyGetter = (EnergyGetterFn)original;
+  return replace_vtable_entry(ENERGY_GETTER_RVA, ENERGY_GETTER_HEAD, sizeof ENERGY_GETTER_HEAD,
+                              &energy_getter_hook, "energy getter reports which player was read");
+}
+
+// ---------------------------------------------------------------------------
+// Registering our own Lua functions.
+
+/**
+ * The proof that this works at all: say so in the log, and nothing else.
+ *
+ * Kept after the thing it proved started working, because "the extension is
+ * loaded" and "the game's Lua can reach it" are different claims and only the
+ * second one explains why a script does nothing.
+ */
+static void *__fastcall lua_editor_test(void *ctx) {
+  (void)ctx;
+  log_line("lua: EditorTest() was called from a script");
+  return NULL;
+}
+
+// --- RestoreDarkEnergy(player) ----------------------------------------------
+//
+// What Lua could never do: put dark energy back. There is no setter because the
+// engine does not set the pool — it fills it to a ceiling — so "restore" here
+// means asking the player to do its own weekly refill, out of turn. Our ceiling
+// term rides along, because that refill is one of the calls we already extend.
+//
+// The player is found by CALLING the engine's own `GetPlayerNecroEnergy` and
+// watching where it lands: its last step reads the pool through the player's
+// vtable, and that slot is ours, so the player it found arrives as `this`. That
+// is one address instead of the service locator, the world walk, the argument
+// parser and its two heap strings — none of which we would be reimplementing,
+// only copying badly.
+
+static int g_restoreTraceLeft = 24;
+
+static void *__fastcall lua_restore_dark_energy(void *ctx) {
+  BYTE *base = (BYTE *)GetModuleHandleW(NULL);
+  g_capturedPlayer = NULL;
+  g_capturing = 1;
+  // Its own error reporting stands: a bad player number is refused in the words
+  // every other function of the engine's uses, before we are ever involved.
+  void *result = ((LuaFn)(base + LUA_GET_NECRO_ENERGY_RVA))(ctx);
+  g_capturing = 0;
+
+  void *player = g_capturedPlayer;
+  if (!player) {
+    log_line("RestoreDarkEnergy: no player was reached - nothing restored");
+    return result;
+  }
+  int before = *(int *)((BYTE *)player + ENERGY_FIELD);
+  void **vtable = *(void ***)player;
+  ((RefillFn)vtable[VT_PLAYER_REFILL / 4])(player);
+  if (g_restoreTraceLeft > 0) {
+    g_restoreTraceLeft--;
+    log_num("RestoreDarkEnergy: was ", before);
+    log_num("                   now ", *(int *)((BYTE *)player + ENERGY_FIELD));
+  }
+  return result;
+}
+
+static LuaEntry g_ourFunctions[MAX_LUA_FUNCTIONS] = {
+  { "EditorTest", &lua_editor_test },
+  { "RestoreDarkEnergy", &lua_restore_dark_energy },
+};
+static int g_ourFunctionCount = 2;
+
+/**
+ * Give the engine a table of our own: theirs, plus ours, plus the terminator.
+ *
+ * The four bytes rewritten are the accessor's immediate, and the address that
+ * was in them is where the engine's own table is — read rather than assumed, so
+ * a build that loads at another base still finds it.
+ */
+static int install_lua_functions(void) {
+  BYTE *accessor = (BYTE *)GetModuleHandleW(NULL) + LUA_TABLE_ACCESSOR_RVA;
+  if (accessor[0] != LUA_MOV_EAX_IMM || accessor[5] != LUA_RET) {
+    log_line("the lua table accessor is not the shape we know - not registering");
+    return 0;
+  }
+
+  LuaEntry *theirs = *(LuaEntry **)(accessor + 1);
+  int n = 0;
+  while (theirs[n].name || theirs[n].fn) n++;
+
+  LuaEntry *ours = (LuaEntry *)VirtualAlloc(
+      NULL, (n + g_ourFunctionCount + 1) * sizeof(LuaEntry),
+      MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+  if (!ours) { log_line("no memory for the lua table"); return 0; }
+
+  for (int i = 0; i < n; i++) ours[i] = theirs[i];
+  for (int i = 0; i < g_ourFunctionCount; i++) ours[n + i] = g_ourFunctions[i];
+  ours[n + g_ourFunctionCount].name = NULL;
+  ours[n + g_ourFunctionCount].fn = NULL;
+
+  DWORD old = 0;
+  if (!VirtualProtect(accessor + 1, sizeof(void *), PAGE_EXECUTE_READWRITE, &old)) {
+    log_line("could not make the lua accessor writable");
+    return 0;
+  }
+  *(LuaEntry **)(accessor + 1) = ours;
+  VirtualProtect(accessor + 1, sizeof(void *), old, &old);
+  FlushInstructionCache(GetCurrentProcess(), accessor, 6);
+
+  log_num("lua: the engine's table had ", n);
+  log_num("lua: functions of ours added: ", g_ourFunctionCount);
   return 1;
 }
 
@@ -671,6 +858,11 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   log_line("--- homm5-editor extension loaded");
   load_config();
   if (g_rowCount) install_hooks();
+  // Independent of the config: the functions are ours to offer whether or not
+  // any artifact asks for a bonus, and a script that calls one is a different
+  // user from an artifact that carries one.
+  install_lua_functions();
+  install_energy_getter();
   return TRUE;
 }
 

@@ -717,6 +717,8 @@ export interface ModArtifactSetDTO {
   perCount?: string[];
   /** What it adds, at a number worn — `{ stat, threshold, amount }`. */
   effects?: { stat: string; threshold: number; amount: number }[];
+  /** The Lua it carries, so editing shows what is there rather than a blank. */
+  script?: string;
 }
 
 /** One installed creature mod. */
@@ -764,6 +766,8 @@ export interface ModsFormDataResult {
    * bonuses above — the form does not care which side of the line one is on.
    */
   heroStats: string[];
+  /** Starting texts a set's script can be created from. */
+  scriptPresets: string[];
   /** Every ABILITY_… the engine's type registry names. */
   abilities: string[];
   /** The TOWN_… races, for a creature's home town. */
@@ -879,7 +883,25 @@ export interface ModsInstallSetPayload {
    * is not one of the engine's compiled 2/3/4.
    */
   effects?: { stat: string; threshold: number; amount: number }[];
+  /** Lua the set runs on an event — see src/artifact-scripts.ts. */
+  script?: string;
 }
+
+/**
+ * Payload of `mods:script-preset` — the starting text for a set's script.
+ *
+ * The preset needs the set to write about: its members become the generated
+ * head's list and its file stem the names of the functions, so a text made
+ * before the members were ticked would name the wrong things.
+ */
+export interface ModsScriptPresetPayload {
+  preset: string;
+  file: string;
+  artifacts: string[];
+}
+
+/** Result of `mods:script-preset`. */
+export interface ModsScriptPresetResult { code: string }
 
 /** Payload of `mods:remove-artifact` / `mods:remove-set` — which one to drop. */
 export interface ModsRemovePayload { id: string }
@@ -1027,6 +1049,7 @@ export interface EditorApi {
   listMods(): Promise<ModsListResult>;
   /** The rosters and enums the Units/Artifacts forms are built from. */
   modFormData(): Promise<ModsFormDataResult>;
+  scriptPreset(p: ModsScriptPresetPayload): Promise<ModsScriptPresetResult>;
   /** A donor creature, read whole — the form's preset. */
   modPreset(donor: string): Promise<CreaturePresetDTO>;
   /** A donor artifact, read whole — the form's preset. */

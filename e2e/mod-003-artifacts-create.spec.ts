@@ -22,6 +22,8 @@ import { modFile } from '../src/mod-paths.ts';
 import { MOD_STEM } from '../src/creature-mod.ts';
 import { extensionState } from '../src/extension.ts';
 import { EFFECTS_FILE, readEffects } from '../src/artifact-effects.ts';
+import { COMMON_SCRIPT, SCRIPT_DIR } from '../src/artifact-scripts.ts';
+import { readEntries } from '../src/pak.ts';
 import type { Site } from '../src/artifact-limit.ts';
 
 let ed: Launched;
@@ -325,6 +327,17 @@ test('makes a set of all three, with an effect of our own', {
   await effect.locator('input').first().fill(String(UNDEAD_KING.energy.worn));
   await effect.locator('input').last().fill(String(UNDEAD_KING.energy.amount));
 
+  // The other half of a set: what it does on an EVENT. The preset writes a whole
+  // script — trigger, threshold and all — because what runs has to be what the
+  // author can see; picking one into an empty field asks nothing.
+  await expect(page.locator('#as-script')).toHaveValue('');
+  await page.locator('#as-preset').selectOption('newDay');
+  await expect(page.locator('#as-script')).toHaveValue(/Trigger\(NEW_DAY_TRIGGER/, { timeout: 30_000 });
+  await expect(page.locator('#as-script')).toHaveValue(/RestoreDarkEnergy\(player\)/);
+  // The linter runs on what is in the field, and a preset that does not pass it
+  // would teach everyone to ignore the line under the box.
+  await expect(page.locator('#as-lint')).toHaveText('no structural errors');
+
   await page.locator('#as-ok').click();
   await expect(page.locator('#am-note')).toContainText('installed', { timeout: 120_000 });
   // 11 — after the game's own eleven, 0..10. Taking one of theirs would build
@@ -339,6 +352,21 @@ test('makes a set of all three, with an effect of our own', {
   expect(set.number).toBe(11);
   expect(set.artifacts).toEqual(PIECES.map((p) => p.id));
   expect(set.perCount).toEqual(UNDEAD_KING.perCount);
+  // The script is the set's, and it reaches the game the only way a script can:
+  // its own file in the mod, plus the game's global one carrying a line that
+  // loads it — with everything the game shipped in it still there, because a mod
+  // that dropped those lines would break every mission's script instead.
+  expect(set.script).toContain('Trigger(NEW_DAY_TRIGGER,');
+  const files = new Map(readEntries(readFileSync(modFile(GAME, 'mod', MOD_STEM)))
+    .map((e) => [e.name.split('\\').join('/'), e.data.toString('latin1')] as const));
+  const script = files.get(`${SCRIPT_DIR}/${UNDEAD_KING.file}.lua`);
+  expect(script, 'the set brought its own script file').toBeTruthy();
+  expect(script).toContain(`${UNDEAD_KING.file}_MEMBERS = { ${PIECES.map((p) => p.id).join(', ')} };`);
+  const common = files.get(COMMON_SCRIPT);
+  expect(common, 'and the global script that loads it').toBeTruthy();
+  expect(common).toContain(`doFile("/${SCRIPT_DIR}/${UNDEAD_KING.file}.lua");`);
+  expect(common).toContain('function EditorHeroWearing(');
+  expect(common, "the game's own helpers are still in it").toContain('function SetPlayerStartResource(');
   expect(set.effects).toEqual([
     { stat: 'energy', threshold: UNDEAD_KING.energy.worn, amount: UNDEAD_KING.energy.amount },
   ]);

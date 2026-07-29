@@ -28,6 +28,7 @@ import { ensureModDir, modFile } from '../src/mod-paths.ts';
 import { decodeDDSBuffer } from '../src/dds.ts';
 import { writeEffectsFile } from '../src/extension.ts';
 import { effectsOf } from '../src/artifact-effects.ts';
+import { presetScript } from '../src/artifact-scripts.ts';
 
 /**
  * `--noRemove`: do the work in the REAL install and leave it standing.
@@ -453,6 +454,9 @@ export function installMapFixture(gameRoot: string): CreatureMod {
       threshold: UNDEAD_KING.energy.worn,
       amount: UNDEAD_KING.energy.amount,
     }],
+    // And the script, for the same reason: this fixture reinstalls the set over
+    // one the dialog authored, and what it leaves out it silently removes.
+    script: presetScript('newDay', { file: UNDEAD_KING.file, artifacts: [AMULET.id, CLOAK.id, BOOTS.id] }),
   };
   if ((mod.sets ?? []).some((s) => s.effect === UNDEAD_KING.effect)) {
     updateArtifactSet(mod, UNDEAD_KING.effect, set);

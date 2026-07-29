@@ -33,6 +33,7 @@ import { makeIdle, poseIdle } from './skinning.ts';
 import type { IdleObject } from './skinning.ts';
 import { mountCodeEditor, setScriptContext } from './code-editor.ts';
 import type { CodeEditor, ScriptContext } from './code-editor.ts';
+import { luaDiagnostics } from '../src/lua-lint.ts';
 import type { LuaDiagnostic } from '../src/lua-lint.ts';
 
 type MapEntry = MapListEntry & { cat: string };
@@ -81,6 +82,12 @@ const $button = (id: string): HTMLButtonElement => {
 };
 
 /** Same, for the inputs whose .value we read — checked, not cast. */
+const $textarea = (id: string): HTMLTextAreaElement => {
+  const el = $(id);
+  if (!(el instanceof HTMLTextAreaElement)) throw new Error(`#${id} is not a textarea`);
+  return el;
+};
+
 const $input = (id: string): HTMLInputElement => {
   const el = $(id);
   if (!(el instanceof HTMLInputElement)) throw new Error(`#${id} is not an input`);
@@ -7486,6 +7493,16 @@ async function fillModForms(): Promise<void> {
   }
   effectStats = data.effectStats;
   heroStats = data.heroStats;
+  scriptPresets = data.scriptPresets;
+  const presets = $select('as-preset');
+  // Rebuilt rather than appended: this runs again whenever the dialog is
+  // reopened, and a list that grew each time would offer "newDay" five times.
+  presets.innerHTML = '<option value="">— no script —</option>';
+  for (const name of scriptPresets) {
+    const option = document.createElement('option');
+    option.value = option.textContent = name;
+    presets.appendChild(option);
+  }
   if (!$select('am-donor').options.length) {
     fillModSelect($select('am-donor'), data.artifactDonors, true);
   }
@@ -7750,6 +7767,8 @@ let effectStats: string[] = [];
  * one list of "what it gives".
  */
 let heroStats: string[] = [];
+/** Starting texts a set's script can be created from — filled from the app. */
+let scriptPresets: string[] = [];
 const isHeroStat = (stat: string): boolean => heroStats.includes(stat);
 
 function addEffectRow(stat = '', amount = ''): void {
@@ -8091,6 +8110,9 @@ async function editArtifactSet(effect: string): Promise<void> {
   counts.forEach((input, i) => { input.value = s.perCount?.[i] ?? ''; });
   $('as-effects').innerHTML = '';
   for (const e of s.effects ?? []) addSetEffectRow(e.stat, String(e.threshold), String(e.amount));
+  $textarea('as-script').value = s.script ?? '';
+  $select('as-preset').value = '';
+  lintSetScript();
   $input('as-effect').disabled = true;
   $input('as-file').disabled = true;
   $button('as-ok').textContent = 'Save & install';
@@ -8107,9 +8129,12 @@ function newSet(): void {
   $input('as-file').disabled = false;
   $button('as-ok').textContent = 'Build & install';
   for (const box of $('as-members').querySelectorAll<HTMLInputElement>('input')) box.checked = false;
-  // A new set has no bonus. The form is reached again without closing it, and a
-  // row left standing would give the next set the last one's.
+  // A new set has no bonus and no script. The form is reached again without
+  // closing it, and what was left standing would land on the next set.
   $('as-effects').innerHTML = '';
+  $textarea('as-script').value = '';
+  $select('as-preset').value = '';
+  lintSetScript();
   renderSetCounts();
   openOnTop('setedit');
   $('setedit-title').textContent = 'New set';
@@ -8141,6 +8166,7 @@ async function submitArtifactSet(): Promise<void> {
       description: $input('as-desc').value,
       perCount: [...$('as-counts').querySelectorAll<HTMLInputElement>('input')].map((i) => i.value),
       effects: setEffects(),
+      script: $textarea('as-script').value,
     });
     modDialog('setedit').close();
     editingSet = '';
@@ -8355,6 +8381,57 @@ $input('as-file').addEventListener('input', () => {
   if (!asIdTouched) $input('as-effect').value = idFrom('ARTFSET_EFFECT_', $input('as-file').value);
 });
 $('as-members').addEventListener('change', renderSetCounts);
+
+/**
+ * Picking a preset writes its text into the field — once, and never over work.
+ *
+ * A preset is a starting point, so it fills an EMPTY field and asks first when
+ * the field is not empty. Losing a script someone wrote because a select
+ * changed by a stray scroll is exactly the kind of thing a dialog must not do.
+ */
+$('as-preset').addEventListener('change', () => {
+  const preset = $select('as-preset').value;
+  if (!preset) return;
+  const field = $textarea('as-script');
+  if (field.value.trim() && !confirm('Replace the script with the preset?')) {
+    $select('as-preset').value = '';
+    return;
+  }
+  void window.editor.scriptPreset({
+    preset, file: $input('as-file').value, artifacts: setMembers(),
+  }).then(({ code }) => {
+    field.value = code;
+    lintSetScript();
+  }).catch((e: unknown) => {
+    $('as-err').textContent = e instanceof Error ? e.message : String(e);
+  });
+});
+
+/** A line break, as a pattern — CRLF or LF, since the field takes either. */
+const NEWLINE = /\r?\n/;
+
+/**
+ * What the linter says about the script, under the field.
+ *
+ * Structural only — unclosed `end`, a stray `then` — because the API list is
+ * incomplete and painting an unknown name red would train everyone to ignore
+ * the colour. See src/lua-lint.ts.
+ */
+function lintSetScript(): void {
+  const code = $textarea('as-script').value;
+  const box = $('as-lint');
+  if (!code.trim()) { box.textContent = ''; return; }
+  const problems = luaDiagnostics(code);
+  box.style.color = problems.length ? '#f85149' : '#3fb950';
+  // The diagnostic carries character offsets, not a line — the editor pane draws
+  // it in place. Here there is no pane, so the line is counted for the reader.
+  const line = problems.length ? code.slice(0, problems[0]!.from).split(NEWLINE).length : 0;
+  box.textContent = problems.length
+    ? `${problems.length} problem(s): ${problems[0]!.message} (line ${line})`
+    : 'no structural errors';
+}
+
+$('as-script').addEventListener('input', lintSetScript);
 $('as-effect-add').onclick = () => addSetEffectRow();
 $('as-ok').onclick = () => { void submitArtifactSet(); };
 

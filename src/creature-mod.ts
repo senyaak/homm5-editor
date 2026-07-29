@@ -66,6 +66,7 @@ import {
 } from './artifacts.ts';
 import type { ArtifactSpec } from './artifacts.ts';
 import type { SetEffect } from './artifact-effects.ts';
+import { COMMON_SCRIPT, patchCommonScript, setScriptFiles } from './artifact-scripts.ts';
 import { readGif } from './gif.ts';
 import { decodeDDSBuffer } from './dds.ts';
 import { isIdentity, recolorPixels } from './recolor.ts';
@@ -317,6 +318,15 @@ export interface ArtifactSetSpec {
    * See src/artifact-effects.ts.
    */
   effects?: SetEffect[];
+  /**
+   * Lua the set carries — what it does on an EVENT rather than inside a sum.
+   *
+   * The extension adds numbers to calculations no script can reach; a day
+   * starting, a building visited, a battle ending are things the engine already
+   * hands to Lua, so they belong here. Written from a preset the author can
+   * rewrite, generated head and all: src/artifact-scripts.ts.
+   */
+  script?: string;
 }
 
 /** One in a mod: a spec plus the enum value it holds. */
@@ -713,6 +723,18 @@ export function buildCreatureMod(mod: CreatureMod, read: DataReader): BuildRepor
       path: DEFAULT_STATS,
       data: Buffer.from(patchDefaultStats(mustRead(read, DEFAULT_STATS), sets), 'latin1'),
     });
+    // A set that carries Lua brings two more files: its own script, and the
+    // game's global one with a line loading it. Both only when there is a
+    // script — a mod that replaces advmap-common.lua for nothing is a mod that
+    // can only break something.
+    const scripts = setScriptFiles(sets);
+    for (const f of scripts) files.push({ path: f.path, data: Buffer.from(f.text, 'latin1') });
+    if (scripts.length) {
+      files.push({
+        path: COMMON_SCRIPT,
+        data: Buffer.from(patchCommonScript(mustRead(read, COMMON_SCRIPT), sets), 'latin1'),
+      });
+    }
   }
 
   // Last, so it records the art each slot actually resolved to.

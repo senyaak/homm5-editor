@@ -687,6 +687,8 @@
     .as-members label { display: flex; align-items: center; gap: 7px; font-size: 12px; color: #c9d1d9;
       cursor: pointer; }
     .as-members label i { color: #8b949e; font-style: normal; font-size: 11px; }
+    .as-script { width: 100%; box-sizing: border-box; margin-top: 6px; font-family: ui-monospace, Consolas, monospace;
+      font-size: 11px; background: #0d1117; color: #c9d1d9; border: 1px solid #30363d; border-radius: 4px; padding: 6px; resize: vertical; }
     .as-counts { display: flex; flex-direction: column; gap: 4px; }
     .as-counts label { display: flex; align-items: center; gap: 8px; font-size: 11px; color: #8b949e; }
     .as-counts label span { flex: 0 0 96px; }
@@ -1483,6 +1485,21 @@
               </div>
             </div>
             <div id="as-ext" class="um-span um-warn"></div>
+            <!-- The other half of a set: what it does on an EVENT. The numbers
+                 above go into calculations no script can reach; a day starting
+                 is something the engine already hands to Lua, so it lives here.
+                 The preset writes a whole script, threshold and all — what runs
+                 is what the author can see and change. -->
+            <div class="on-row um-span" style="align-items:flex-start">
+              <span>Script</span>
+              <div style="flex:1;min-width:0">
+                <select id="as-preset" title="a starting text; it is yours to rewrite after that">
+                  <option value="">— no script —</option>
+                </select>
+                <textarea id="as-script" class="as-script" rows="10" spellcheck="false" placeholder="Lua the set runs on an event — pick a preset above to start from one"></textarea>
+                <div id="as-lint" class="um-note"></div>
+              </div>
+            </div>
           </div>
         </fieldset>
         <div id="as-note" class="um-note"></div>

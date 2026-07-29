@@ -80,7 +80,8 @@
     "test-mod-paths": "node tools/test-mod-paths.ts",
     "test-map-source": "node tools/test-map-source.ts",
     "lua-registry": "node tools/reverse/lua-registry.ts",
-    "test-lua-registry": "node tools/reverse/lua-registry.ts --check"
+    "test-lua-registry": "node tools/reverse/lua-registry.ts --check",
+    "test-artifact-scripts": "node tools/test-artifact-scripts.ts"
   },
   "dependencies": {
     "@codemirror/legacy-modes": "^6.5.3",
