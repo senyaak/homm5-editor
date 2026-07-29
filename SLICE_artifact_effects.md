@@ -230,7 +230,35 @@ engine's, which is the point of the design:
   the engine recalculates. Its own four terms behave the same way. Сеня, on
   seeing it: «пока не мешает».
 
-6.5. **What the set SAYS it gives** is a text per number of pieces worn, and it
+6.5. **Open: the six an artifact record holds, granted by a SET.** A set has no
+`HeroStatsModif` — that field belongs to an artifact record — so "+2 Attack while
+two pieces are worn" needs a native term like the other two, and the place to add
+it is not found yet. What the search establishes, so the next attempt starts
+further along:
+
+- The six are NOT in the `CountEquipped` catalogue. Its 36 functions are special
+  behaviours (movement points, spell immunities, luck riders); none of them adds
+  up `HeroStatsModif`.
+- They are not read off the record at the point of use either: the only callers
+  of the record getter (`0xb1ef70`) that touch `+0x44 … +0x58` are the AI's
+  valuation, which was already ruled out once.
+- **They are cached, packed into bitfields.** The hero's Luck reads
+  `[this-0x78] >> 0x14 & 0xF` — four bits of a dword that also holds other stats
+  (masks `0x3ff`, `0xffc00`, `0xf00000` appear in the writer at `0xc7bd40`), and
+  the getters in `CAdvMapHero`'s vtable are that narrow. So there IS a recompute
+  that fills them, and `0xd06fb0` — 246 instructions ending in that writer — is
+  the candidate.
+- The dispatch behind `GetHeroStat` is at **`0x108db90`**, not `0x108db8c`:
+  twelve-byte entries of `{thunk, 0, 0}`, each thunk two instructions
+  (`mov eax,[ecx]; jmp [eax+SLOT]`) — Attack `+0x10`, Defence `+0x14`, SpellPower
+  `+0x18`, Knowledge `+0x1c`, Experience `+0x1a4`, and two more at `+0xf4`/`+0xfc`.
+
+The next step is to read that recompute and find where the artifact contribution
+enters it, the way the necromancy sum was read. Until then the set dialog offers
+only what works — a bonus that appears in a list and does nothing is exactly what
+the extension banner exists to prevent.
+
+6.6. **What the set SAYS it gives** is a text per number of pieces worn, and it
 follows the game's own convention rather than ours: the sentence names the
 effect (`Добавляет игроку 150 очков темной энергии.`, the Amplifier's wording),
 not the count — the count is drawn beside it — and it is REPEATED at three
