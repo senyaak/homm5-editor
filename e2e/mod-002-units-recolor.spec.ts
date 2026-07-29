@@ -14,7 +14,7 @@ import { test, expect } from '@playwright/test';
 import { launchEditor, REPO_ROOT } from './launch.ts';
 import type { Launched } from './launch.ts';
 import {
-  creatureTextures, gameRootFor, hueDist, installCreatureHeadless, openGameRoot, removeGameRoot,
+  creatureTextures, hueDist, installCreatureHeadless, modGameRoot,
 } from './mods.ts';
 import { readEntries } from '../src/pak.ts';
 import { modFile } from '../src/mod-paths.ts';
@@ -24,14 +24,13 @@ import { extractPalette } from '../src/recolor.ts';
 
 let ed: Launched;
 
-const GAME = gameRootFor('e2e-recolor-game');
+const GAME = modGameRoot();
 
 test.beforeAll(async () => {
-  openGameRoot(GAME);
   installCreatureHeadless(GAME);
   ed = await launchEditor({ HOMM5_ROOT: GAME });
 });
-test.afterAll(async () => { await ed?.app.close(); removeGameRoot(GAME); });
+test.afterAll(async () => { await ed?.app.close(); });
 
 /** Open the Recolor dialog on our creature, with its previews drawn. */
 async function openRecolor(page: Launched['page']): Promise<void> {

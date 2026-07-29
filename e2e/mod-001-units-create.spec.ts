@@ -18,18 +18,17 @@ import type { Launched } from './launch.ts';
 import { newMap } from './tiles.ts';
 import { openObjectPalette, pickObject, placeAtTile } from './objects.ts';
 import { addItem, reveal, setTreeValue } from './tree.ts';
-import { DATA, MOD, SHARPSHOOTER, clearMap, gameRootFor, openGameRoot, readInstalledMod, removeGameRoot } from './mods.ts';
+import { DATA, MOD, SHARPSHOOTER, clearMap, modGameRoot, readInstalledMod } from './mods.ts';
 import { readExe } from '../src/creature-limit.ts';
 import { modFile } from '../src/mod-paths.ts';
 
 let ed: Launched;
 
-const GAME = gameRootFor('e2e-units-game');
+const GAME = modGameRoot();
 const MAP_NAME = 'e2e Units Map';
 const MAP_DIR = join(DATA, 'Maps', 'SingleMissions', MAP_NAME);
 
 test.beforeAll(async () => {
-  openGameRoot(GAME);
   // The map this spec builds, gone before it starts: live, the last run left it
   // packed in the game and New Map will not write over a map that exists.
   clearMap(GAME, DATA, MAP_NAME);
@@ -37,7 +36,6 @@ test.beforeAll(async () => {
 });
 test.afterAll(async () => {
   await ed?.app.close();
-  removeGameRoot(GAME);
   if (existsSync(MAP_DIR)) rmSync(MAP_DIR, { recursive: true, force: true });
 });
 

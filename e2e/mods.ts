@@ -52,9 +52,21 @@ import { effectsOf } from '../src/artifact-effects.ts';
  */
 export const LIVE = !!process.env.HOMM5_NO_REMOVE;
 
-/** Where a spec's install lives: its own throwaway, or the game itself. */
-export function gameRootFor(stem: string): string {
-  return LIVE ? REAL_GAME : join(REPO_ROOT, '_tmp', stem);
+/**
+ * The install every mod spec works in — ONE of them, either way.
+ *
+ * The stages are a chain: mod-001 authors the creature, mod-002 paints it,
+ * mod-003 authors the artifacts, mod-004 builds a map out of all of it. That
+ * only means something if they share an install, so isolated they share a
+ * sandbox and live they share the game. It also makes the two modes the same
+ * run — the only difference is which folder it happens in.
+ *
+ * A spec run ALONE still works: what it needs and nobody authored, the fixture
+ * fills in (installMapFixture), so a single stage never depends on a stage that
+ * did not run.
+ */
+export function modGameRoot(): string {
+  return LIVE ? REAL_GAME : join(REPO_ROOT, '_tmp', 'e2e-mod-game');
 }
 
 /** Pictures and reference maps that travel with the checkout — assets/README.md. */
@@ -241,14 +253,17 @@ export function prepareGameRoot(dir: string): void {
  * means taking OUR things back out of the installed mod — the same starting
  * point, without destroying the install to get there.
  */
-export function openGameRoot(dir: string): void {
-  // Live, there is nothing to open and nothing to clear: the install is the
-  // game, and it was cleared ONCE for the whole run (e2e/build.ts). The specs
-  // then fill it back up IN ORDER — mod-001 authors the creature, mod-003 the
-  // artifacts, mod-004 the map made of them — which is why they are numbered
-  // the way the C1M1 stages are.
-  if (LIVE) return;
-  prepareGameRoot(dir);
+/**
+ * Put the run's install into its starting state — ONCE per run, from the global
+ * setup, never from a spec.
+ *
+ * Isolated that is a sandbox reset to a game no mod has touched; live it is the
+ * game with our own things taken back out of it. Doing it per spec would undo
+ * the stage before: they share one install and one archive.
+ */
+export function openModGameRoot(): void {
+  if (LIVE) { clearFixture(REAL_GAME); return; }
+  prepareGameRoot(modGameRoot());
 }
 
 /**

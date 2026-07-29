@@ -31,14 +31,14 @@ import { openObjectPalette, pickObject, placeAtTile, setObjectProp, setPlacement
 import { addItem, addValueItem, openTree, setTreeValue } from './tree.ts';
 import { readEntries } from '../src/pak.ts';
 import { modFile } from '../src/mod-paths.ts';
-import { clearMap, gameRootFor, installMapFixture, LIVE, openGameRoot, removeGameRoot } from './mods.ts';
+import { clearMap, installMapFixture, LIVE, modGameRoot } from './mods.ts';
 import { MOD_STEM } from '../src/creature-mod.ts';
 
 let ed: Launched;
 
 const DATA = process.env.HOMM5_DATA || join(REPO_ROOT, 'data-unpacked');
 /** This run's own game install: the fixture mod goes here, the archive comes out here. */
-const GAME = gameRootFor('e2e-sharp-game');
+const GAME = modGameRoot();
 /** The real install the checkout sits in — the source of the mod and the original. */
 const REAL_GAME = join(REPO_ROOT, '..');
 /**
@@ -135,15 +135,13 @@ test.beforeAll(async () => {
   // the real one: the map is made of a creature, a dwelling and three artifacts
   // the game does not ship, and borrowing them from whatever somebody happens to
   // have installed makes this spec pass or fail on their game instead of on the
-  // code. Guarded so a worker restart does not rebuild it under the running map.
-  // Live, the fixture is (re)installed every run — that is the point of the
-  // mode, and it merges rather than replacing. Isolated, only when the throwaway
-  // install has none: opening it wipes it, and a worker restart mid-chain would
-  // take the map being rebuilt with it.
-  if (LIVE || !existsSync(modFile(GAME, 'mod', MOD_STEM))) {
-    openGameRoot(GAME);
-    installMapFixture(GAME);
-  }
+  // FILLS THE GAPS, and usually there are none: run as the chain it belongs to,
+  // mod-001 authored the creature and mod-003 the artifacts through the dialogs,
+  // and all this adds is the palace — the one thing with no form to author it
+  // in. Run alone, it supplies the lot, so this stage never depends on a stage
+  // that did not run. Either way it adds what is missing and leaves what is
+  // there, so it cannot repaint a creature mod-002 has just painted.
+  installMapFixture(GAME);
   // Live, the map is rebuilt into the game itself, and the copy the last run
   // packed is in the way — New Map refuses to write over a map that exists. The
   // reference was read above, out of assets/, so nothing needed is lost.

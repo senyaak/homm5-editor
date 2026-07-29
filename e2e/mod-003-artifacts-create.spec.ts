@@ -16,7 +16,7 @@ import { join } from 'node:path';
 import { test, expect } from '@playwright/test';
 import { launchEditor, REPO_ROOT } from './launch.ts';
 import type { Launched } from './launch.ts';
-import { AMULET, BOOTS, CLOAK, gameRootFor, openGameRoot, PIECES, readInstalledMod, removeGameRoot, UNDEAD_KING } from './mods.ts';
+import { AMULET, BOOTS, CLOAK, modGameRoot, PIECES, readInstalledMod, UNDEAD_KING } from './mods.ts';
 import { ORIGINAL_ARTIFACTS, readArtifactLimit, SITES_FILE } from '../src/artifact-limit.ts';
 import { modFile } from '../src/mod-paths.ts';
 import { MOD_STEM } from '../src/creature-mod.ts';
@@ -26,19 +26,18 @@ import type { Site } from '../src/artifact-limit.ts';
 
 let ed: Launched;
 
-const GAME = gameRootFor('e2e-arts-game');
+const GAME = modGameRoot();
 /** How many creatures were in the mod before this spec touched it. */
 let creaturesBefore = 0;
 
 test.beforeAll(async () => {
-  openGameRoot(GAME);
   // Zero in a throwaway install; live, whatever mod-001 authored. Either way
   // this spec must not move it — an artifact is not a creature.
   creaturesBefore = existsSync(modFile(GAME, 'mod', MOD_STEM))
     ? readInstalledMod(GAME).creatures.length : 0;
   ed = await launchEditor({ HOMM5_ROOT: GAME });
 });
-test.afterAll(async () => { await ed?.app.close(); removeGameRoot(GAME); });
+test.afterAll(async () => { await ed?.app.close(); });
 
 /** Open Artifacts… with the donor loaded. */
 async function openWithDonor(page: Launched['page']): Promise<void> {

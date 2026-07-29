@@ -19,7 +19,7 @@ import { test, expect } from '@playwright/test';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
-  BOOTS, creatureTextures, gameRootFor, LIVE, MOD, PALACE, PIECES, removeGameRoot, SHARPSHOOTER, UNDEAD_KING,
+  BOOTS, creatureTextures, MOD, modGameRoot, PALACE, PIECES, SHARPSHOOTER, UNDEAD_KING,
 } from './mods.ts';
 import { readEntries } from '../src/pak.ts';
 import { modFile } from '../src/mod-paths.ts';
@@ -31,7 +31,7 @@ import { ORIGINAL_LIMIT, readExe } from '../src/creature-limit.ts';
 
 // mod-004's install, because it is the last to write and the only one that ends
 // with all four kinds in it. Live, every spec shares one install anyway.
-const GAME = gameRootFor('e2e-sharp-game');
+const GAME = modGameRoot();
 const ARCHIVE = modFile(GAME, 'mod', MOD);
 
 /** A text in the archive is UTF-16LE with a BOM, as the game writes them. */
@@ -93,9 +93,12 @@ test('the extension is told about every piece, and only about ours', () => {
 });
 
 test('the creature is still wearing the paint mod-002 gave it', () => {
-  // Only when the stages share one install, which is the live run: isolated,
-  // mod-002 repaints its own throwaway and this reads mod-004's.
-  test.skip(!LIVE, 'each stage has its own install; nothing here was repainted');
+  // Asked of the manifest, not of the mode: if a recolour was recorded, the
+  // textures have to show it. Run the chain and mod-002 recorded one; run this
+  // stage alone and the fixture's creature carries none, and there is nothing
+  // to check rather than something to skip for the wrong reason.
+  const creature = readCreatureMod(ARCHIVE)!.mod.creatures.find((c) => c.id === SHARPSHOOTER.id);
+  test.skip(!creature?.recolor, 'nothing repainted this creature');
   const textures = creatureTextures(GAME);
   expect(textures.length, 'the creature carries its textures').toBeGreaterThan(0);
   // Grey is what mod-002 leaves: r=g=b everywhere. A rebuild of the creature
@@ -125,7 +128,6 @@ test('and the executable counts exactly what is installed', () => {
   expect(readArtifactLimit(bytes, noted).limit).toBe(ORIGINAL_ARTIFACTS + (found.mod.artifacts ?? []).length);
 });
 
-// The end of the chain, so the throwaway install goes now rather than in
-// mod-004 — that spec used to sweep it, and this stage would have had nothing
-// to read. Live it is the game and removeGameRoot leaves it alone.
-test.afterAll(() => { removeGameRoot(GAME); });
+// Nothing is swept here. The stages share one install, and it is reset by the
+// global setup at the START of a run — the only moment that is safe, since a
+// stage tidying up after itself takes the next one's ground away.
