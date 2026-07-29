@@ -8,7 +8,7 @@
 // reconstruction used (diff-objects, diff-map, diff-terrain, texts, pack).
 //
 // The mod the map depends on — ours, H5E/homm5-editor.h5u: the Sharpshooter,
-// ten dwellings, three artifacts — is installed as a FIXTURE, copied into this
+// its palace, three artifacts — is installed as a FIXTURE, copied into this
 // run's own game root. Adding units through the window is its own suite (units-mod.spec.ts);
 // this one is about the map, and it must not depend on that dialog having run.
 //
@@ -61,9 +61,9 @@ const PLACES = {
   town: { shared: '/MapObjects/Academy.(AdvMapTownShared).xdb', x: 45, y: 47 },
   heroes: [
     { shared: '/MapObjects/Academy/Sufi.(AdvMapHeroShared).xdb', x: 34, y: 37, player: 'PLAYER_1', count: 12, artifacts: [] as string[] },
-    // At 38: two tiles clear of SylvanStonehenge's footprint (anchor 41,37) —
-    // at the original 40 the hero stood inside the building.
-    { shared: '/MapObjects/Preserve/Diraya.(AdvMapHeroShared).xdb', x: 38, y: 37, player: 'PLAYER_2', count: 8, artifacts: [] as string[] },
+    // Back at 40. She was moved to 38 to get out of SylvanStonehenge's
+    // footprint, and that building is no longer on this map.
+    { shared: '/MapObjects/Preserve/Diraya.(AdvMapHeroShared).xdb', x: 40, y: 37, player: 'PLAYER_2', count: 8, artifacts: [] as string[] },
     {
       shared: '/MapObjects/Necropolis/Straker.(AdvMapHeroShared).xdb', x: 34, y: 40, player: 'PLAYER_1', count: 12,
       artifacts: ['ARTIFACT_TREEBORN_QUIVER', 'ARTIFACT_H3_UNDERTAKERS_AMULET', 'ARTIFACT_H3_VAMPIRES_CLOAK', 'ARTIFACT_H3_DEAD_MANS_BOOTS'],
@@ -76,17 +76,14 @@ const PLACES = {
     { shared: '/MapObjects/Haven/Peasant.(AdvMapMonsterShared).xdb', x: 36, y: 42, amount: 100 },
     { shared: '/MapObjects/Haven/Peasant.(AdvMapMonsterShared).xdb', x: 38, y: 42, amount: 100 },
   ],
+  // ONE dwelling, and it is here to prove something: the Sharpshooter's palace
+  // is a dwelling for a creature the game does not ship, which is the editor's
+  // own feature. The eight tier 4–7 dwellings and the mummies' pyramid used to
+  // stand here too and were taken off — they are the port's CONTENT, they
+  // exercise nothing this spec is about, and a map that is mostly content takes
+  // longer to rebuild for no answer.
   dwellings: [
-    { shared: '/Dwellings/SylvanStonehenge/SylvanStonehenge.(AdvMapDwellingShared).xdb', x: 41, y: 37 },
-    { shared: '/Dwellings/SylvanUnicornGlade/SylvanUnicornGlade.(AdvMapDwellingShared).xdb', x: 35, y: 44 },
-    { shared: '/Dwellings/SylvanTreantArches/SylvanTreantArches.(AdvMapDwellingShared).xdb', x: 27, y: 38 },
-    { shared: '/Dwellings/SylvanDragonAltar/SylvanDragonAltar.(AdvMapDwellingShared).xdb', x: 33, y: 30 },
-    { shared: '/Dwellings/NecropolisEstate/NecropolisEstate.(AdvMapDwellingShared).xdb', x: 28, y: 45 },
-    { shared: '/Dwellings/NecropolisMausoleum/NecropolisMausoleum.(AdvMapDwellingShared).xdb', x: 26, y: 31 },
-    { shared: '/Dwellings/NecropolisHallOfDarkness/NecropolisHallOfDarkness.(AdvMapDwellingShared).xdb', x: 40, y: 29 },
-    { shared: '/Dwellings/NecropolisDragonGraveyard/NecropolisDragonGraveyard.(AdvMapDwellingShared).xdb', x: 42, y: 45 },
     { shared: '/Dwellings/SharpshooterPalace/SharpshooterPalace.(AdvMapDwellingShared).xdb', x: 48, y: 37 },
-    { shared: '/Dwellings/MummyPyramid/MummyPyramid.(AdvMapDwellingShared).xdb', x: 20, y: 40 },
   ],
   artifacts: [
     { shared: '/Artifacts/H3UndertakersAmulet/H3UndertakersAmulet.(AdvMapArtifactShared).xdb', x: 32, y: 39 },
@@ -98,7 +95,7 @@ const PLACES = {
 /**
  * The mod this map is made of — OURS.
  *
- * Everything it places (the Sharpshooter, ten dwellings, three artifacts) is in
+ * Everything it places (the Sharpshooter, its palace, three artifacts) is in
  * the one global mod the editor installs, `H5E/homm5-editor.h5u`. The separate
  * `sod-creatures.h5u` this used to copy is history: `UserMODs/` is not read by
  * our build at all, and no install here has that file any more. Still accepted
@@ -231,7 +228,7 @@ test('the map, built the way a person would', async () => {
     await setObjectProp(page, 'Courage', 'MONSTER_COURAGE_ALWAYS_FIGHT');
   }
 
-  // --- the mod's ten dwellings and three artifacts ----------------------
+  // --- the mod's dwelling and three artifacts ---------------------------
   // The original names each after its definition's file stem; ours suggests
   // DWELLING_001-style names, so the name is typed like everything else.
   const stem = (shared: string): string => shared.split('/').pop()!.replace(/\..*$/, '');
