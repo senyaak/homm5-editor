@@ -18,7 +18,9 @@
 import { test, expect } from '@playwright/test';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { BOOTS, gameRootFor, MOD, PALACE, PIECES, removeGameRoot, SHARPSHOOTER, UNDEAD_KING } from './mods.ts';
+import {
+  BOOTS, creatureTextures, gameRootFor, LIVE, MOD, PALACE, PIECES, removeGameRoot, SHARPSHOOTER, UNDEAD_KING,
+} from './mods.ts';
 import { readEntries } from '../src/pak.ts';
 import { modFile } from '../src/mod-paths.ts';
 import { readCreatureMod } from '../src/creature-mod.ts';
@@ -88,6 +90,26 @@ test('the extension is told about every piece, and only about ours', () => {
     stat: 'necromancy', artifact: ORIGINAL_ARTIFACTS + i, amount: p.necromancy,
   })));
   expect(rows.at(-1)?.amount, 'the boots grant what they say').toBe(BOOTS.necromancy);
+});
+
+test('the creature is still wearing the paint mod-002 gave it', () => {
+  // Only when the stages share one install, which is the live run: isolated,
+  // mod-002 repaints its own throwaway and this reads mod-004's.
+  test.skip(!LIVE, 'each stage has its own install; nothing here was repainted');
+  const textures = creatureTextures(GAME);
+  expect(textures.length, 'the creature carries its textures').toBeGreaterThan(0);
+  // Grey is what mod-002 leaves: r=g=b everywhere. A rebuild of the creature
+  // copies the art off the donor again and puts the colour back — which is
+  // exactly what a later stage did until it stopped updating a creature that
+  // was already installed. The paint is in the archive's bytes and NOWHERE
+  // else, so anything that rebuilds it loses it silently.
+  for (const t of textures) {
+    for (let i = 0; i < t.rgba.length; i += 4) {
+      if (t.rgba[i] !== t.rgba[i + 1] || t.rgba[i + 1] !== t.rgba[i + 2]) {
+        throw new Error(`${t.name}: pixel ${i / 4} is coloured again — something rebuilt the creature`);
+      }
+    }
+  }
 });
 
 test('and the executable counts exactly what is installed', () => {

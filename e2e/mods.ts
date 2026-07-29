@@ -13,7 +13,7 @@ import {
   addArtifact, addArtifactSet, addCreature, addDwelling, buildCreatureMod, dataReader,
   installCreatureMod, MOD_STEM, newCreatureMod, packCreatureMod, readCreatureMod,
   removeArtifact, removeArtifactSet, removeCreature, removeDwelling,
-  updateArtifact, updateArtifactSet, updateCreature,
+  updateArtifact, updateArtifactSet,
 } from '../src/creature-mod.ts';
 import type { ArtifactSlot } from '../src/artifacts.ts';
 import type { CreatureMod } from '../src/creature-mod.ts';
@@ -376,8 +376,11 @@ export function installMapFixture(gameRoot: string): CreatureMod {
     stats: { ...blankStats(), ...SHARPSHOOTER.numbers },
     visualSource: sources.visual, monsterSource: sources.monster,
   };
-  if (mod.creatures.some((c) => c.id === SHARPSHOOTER.id)) updateCreature(mod, SHARPSHOOTER.id, creature);
-  else addCreature(mod, creature);
+  // ADDED when missing, and LEFT ALONE when it is there. Not updated: a rebuild
+  // copies the art fresh off the donor, and a recolour lives nowhere but in the
+  // archive's own bytes — so updating a creature that mod-002 has just repainted
+  // paints it back to the donor's colours, quietly, one stage later.
+  if (!mod.creatures.some((c) => c.id === SHARPSHOOTER.id)) addCreature(mod, creature);
   // A dwelling has no update of its own — it is a document and a palette entry,
   // not a numbered row — so replacing it means taking it out and putting it back.
   if (mod.dwellings.some((d) => d.file === PALACE.file)) removeDwelling(mod, PALACE.file);

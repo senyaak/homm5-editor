@@ -2654,31 +2654,25 @@ ipcMain.handle('mods:textures', async (_e: IpcMainInvokeEvent, { creature }: Mod
 ipcMain.handle('mods:recolor', async (_e: IpcMainInvokeEvent, p: ModsRecolorPayload): Promise<ModsRecolorResult> => {
   const g = gameRoot();
   if (!g) throw new Error('no game install configured');
+  if (!isConfigured()) throw new Error('no data root configured');
   if (isIdentity(p.ops)) throw new Error('nothing to change — every control is at its neutral value');
-  const found = modCreatureArchive(g, p.creature);
-  const prefix = `Units/${found.creature.file}/`;
-  let textures = 0;
-  const out = readEntries(readFileSync(found.path)).map((e) => {
-    const name = e.name.replace(/\\/g, '/');
-    if (name.startsWith(prefix) && name.toLowerCase().endsWith('.dds')) {
-      const img = decodeDDSBuffer(e.data);
-      recolorPixels(img.rgba, p.ops);
-      textures++;
-      return { name, data: writeDDS(img) };
-    }
-    if (name.startsWith(prefix) && name.toLowerCase().endsWith('.(texture).xdb')) {
-      // The paired document has to agree with the new bytes: uncompressed
-      // 32-bit, one surface. A dds the xdb misdescribes is present and invisible.
-      const text = e.data.toString('latin1')
-        .replace(/<Format>[^<]*<\/Format>/, '<Format>TF_8888</Format>')
-        .replace(/<IsDXT>[^<]*<\/IsDXT>/, '<IsDXT>false</IsDXT>')
-        .replace(/<NMips>[^<]*<\/NMips>/, '<NMips>1</NMips>')
-        .replace(/<UseS3TC>[^<]*<\/UseS3TC>/, '<UseS3TC>false</UseS3TC>');
-      return { name, data: Buffer.from(text, 'latin1') };
-    }
-    return { name, data: e.data };
-  });
+
+  // RECORDED, then rebuilt — not painted onto the archive in place. A build
+  // copies the creature's art off the game's data every time, so paint applied
+  // to the bytes afterwards lasts exactly until the next thing that touches the
+  // mod: add an artifact, and the creature is the donor's colours again with
+  // nothing anywhere to say it ever was not. Kept on the creature, every build
+  // reapplies it.
+  const mod = ourMod(g);
+  const creature = mod.creatures.find((c) => c.id === p.creature);
+  if (!creature) throw new Error(`${p.creature} is not in ${modFile(g, 'mod', mod.stem)}`);
+  creature.recolor = p.ops;
+
+  const { installed, report } = buildAndInstall(g, mod);
+  const prefix = `Units/${creature.file}/`;
+  const textures = report.files.filter(
+    (x) => x.path.split('\\').join('/').startsWith(prefix) && x.path.toLowerCase().endsWith('.dds'),
+  ).length;
   if (!textures) throw new Error(`${p.creature} carries no textures to recolour`);
-  writeFileSync(found.path, writeArchive(out));
-  return { archive: found.path, textures };
+  return { archive: installed.archive, textures };
 });

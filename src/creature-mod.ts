@@ -66,6 +66,9 @@ import {
 } from './artifacts.ts';
 import type { ArtifactSpec } from './artifacts.ts';
 import { readGif } from './gif.ts';
+import { decodeDDSBuffer } from './dds.ts';
+import { isIdentity, recolorPixels } from './recolor.ts';
+import type { RecolorOps } from './recolor.ts';
 import { fitSquare, textureDoc, writeDDS } from './texture.ts';
 
 /**
@@ -219,6 +222,17 @@ export interface CreatureSpec {
    * from the source documents, so a bare spec already works.
    */
   art?: Partial<Record<ArtSlot, string>>;
+  /**
+   * Paint the copied textures on the way in.
+   *
+   * DECLARATIVE, and it has to be: a build copies the art off the donor every
+   * time, so paint applied to the archive's bytes afterwards is undone by the
+   * next thing that touches the mod — add an artifact, and the creature is the
+   * donor's colours again with nothing anywhere to say it ever was not. Kept
+   * here, every build reapplies it and the manifest can say what a creature
+   * looks like.
+   */
+  recolor?: RecolorOps;
 }
 
 /** One in a mod: a spec, plus the id number it holds and what it actually got. */
@@ -612,6 +626,11 @@ export function buildCreatureMod(mod: CreatureMod, read: DataReader): BuildRepor
     c.from = sources as Record<ArtSlot, string>;
 
     const copied = copyArt(Object.values(sources), p.art, read, c.id);
+    // The paint, if this creature carries any. Applied to the COPIES, so the
+    // game's own textures are untouched and a rebuild reproduces the same
+    // creature — which is the whole reason it is written down rather than done
+    // to the archive afterwards.
+    if (c.recolor && !isIdentity(c.recolor)) repaint(copied.files, c.recolor);
     for (const [path, data] of copied.files) files.push({ path, data });
     missing.push(...copied.missing);
     art[c.id] = copied.files.size;
@@ -1532,6 +1551,31 @@ function inlineObjects(table: string): Array<[string, string]> {
 // --- copying art -------------------------------------------------------------
 
 /** What a copy produced: the files, where each source landed, what was absent. */
+/**
+ * Paint every texture in a copied art tree, and correct the documents that
+ * describe them.
+ *
+ * The bytes come out uncompressed 32-bit with one surface, so the paired `.xdb`
+ * has to say so — a `.dds` its document misdescribes is present and invisible,
+ * which looks exactly like a texture that failed to copy.
+ */
+function repaint(files: Map<string, Buffer>, ops: RecolorOps): void {
+  for (const [path, data] of files) {
+    const lower = path.toLowerCase();
+    if (lower.endsWith('.dds')) {
+      const img = decodeDDSBuffer(data);
+      recolorPixels(img.rgba, ops);
+      files.set(path, writeDDS(img));
+    } else if (lower.endsWith('.(texture).xdb')) {
+      files.set(path, Buffer.from(data.toString('latin1')
+        .replace(/<Format>[^<]*<\/Format>/, '<Format>TF_8888</Format>')
+        .replace(/<IsDXT>[^<]*<\/IsDXT>/, '<IsDXT>false</IsDXT>')
+        .replace(/<NMips>[^<]*<\/NMips>/, '<NMips>1</NMips>')
+        .replace(/<UseS3TC>[^<]*<\/UseS3TC>/, '<UseS3TC>false</UseS3TC>'), 'latin1'));
+    }
+  }
+}
+
 interface ArtCopy {
   files: Map<string, Buffer>;
   /** Source data path → its path inside the mod. */
