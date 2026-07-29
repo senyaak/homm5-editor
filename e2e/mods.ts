@@ -43,6 +43,24 @@ export const SHARPSHOOTER = {
     'um-range': '-1', 'um-growth': '4', 'um-gold': '400', 'um-tier': '4',
     'um-exp': '82', 'um-power': '940', 'um-size': '1',
   } as Record<string, string>,
+  /**
+   * The same creature as numbers, for the fixture that builds without the form.
+   *
+   * These are Heroes III's own, not a conversion of them, and two of them look
+   * wrong on Heroes V's scale until you know why: speed 9 is dragon territory
+   * here and was ordinary for the unit there, and initiative has no Heroes III
+   * counterpart at all — 12 is ours, chosen so they shoot early without acting
+   * twice as often as a Grand Elf.
+   */
+  numbers: {
+    attack: 12, defence: 10, minDamage: 8, maxDamage: 10, health: 15,
+    speed: 9, initiative: 12, shots: 32,
+    range: -1,          // as the shipped Sharp Shooter: no obstacle penalty
+    weeklyGrowth: 4, gold: 400, tier: 4, town: 'TOWN_NO_TYPE',
+    // The shipped Sharp Shooter is 39/447 at 190 gold; this one costs 2.1 times that.
+    exp: 82, power: 940,
+    abilities: ['ABILITY_NO_RANGE_PENALTY', 'ABILITY_PIERCING_ARROW'],
+  },
 };
 
 /**
@@ -198,7 +216,7 @@ export function installMapFixture(gameRoot: string): CreatureMod {
     id: SHARPSHOOTER.id, file: SHARPSHOOTER.file,
     name: SHARPSHOOTER.name, description: SHARPSHOOTER.description,
     abilitiesText: SHARPSHOOTER.abilitiesText,
-    stats: { ...blankStats(), attack: 12, shots: 32, range: -1, tier: 4, gold: 400 },
+    stats: { ...blankStats(), ...SHARPSHOOTER.numbers },
     visualSource: sources.visual, monsterSource: sources.monster,
   });
   addDwelling(mod, PALACE);
