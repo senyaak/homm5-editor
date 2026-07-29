@@ -327,11 +327,21 @@ test('makes a set of all three, with an effect of our own', {
   await effect.locator('input').first().fill(String(UNDEAD_KING.energy.worn));
   await effect.locator('input').last().fill(String(UNDEAD_KING.energy.amount));
 
-  // The other half of a set: what it does on an EVENT. A script is a script —
-  // typed in, linted under the field, and carried into the mod verbatim.
-  await expect(page.locator('#as-script')).toHaveValue('');
-  await page.locator('#as-script').fill(UNDEAD_KING.script);
-  await expect(page.locator('#as-lint')).toHaveText('no structural errors');
+  // The other half of a set: what it does on an EVENT. Lua is a row like the
+  // rest, but it is never written among the fields — the row carries a pencil
+  // and the pencil opens the editor the map's own scripts are written in.
+  await page.locator('#as-effect-add').click();
+  const luaRow = page.locator('#as-effects label').nth(1);
+  await luaRow.locator('select').selectOption('lua');
+  await expect(luaRow.locator('.as-effect-edit')).toBeVisible();
+  await luaRow.locator('.as-effect-edit').click();
+  await expect(page.locator('#setscript')).toBeVisible();
+  const code = page.locator('#ss-text .cm-content');
+  await code.fill(UNDEAD_KING.script);
+  // The linter is the editor's own, in the gutter and on the line below it.
+  await expect(page.locator('#ss-lint')).toHaveText('✓ no errors');
+  await page.locator('#ss-ok').click();
+  await expect(page.locator('#setscript')).toBeHidden();
 
   await page.locator('#as-ok').click();
   await expect(page.locator('#am-note')).toContainText('installed', { timeout: 120_000 });

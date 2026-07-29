@@ -687,8 +687,10 @@
     .as-members label { display: flex; align-items: center; gap: 7px; font-size: 12px; color: #c9d1d9;
       cursor: pointer; }
     .as-members label i { color: #8b949e; font-style: normal; font-size: 11px; }
-    .as-script { width: 100%; box-sizing: border-box; margin-top: 6px; font-family: ui-monospace, Consolas, monospace;
-      font-size: 11px; background: #0d1117; color: #c9d1d9; border: 1px solid #30363d; border-radius: 4px; padding: 6px; resize: vertical; }
+    /* The same editor the map's scripts are written in, in a dialog of its own. */
+    .ss-text { border: 1px solid #30363d; border-radius: 4px; overflow: hidden; }
+    .ss-text .cm-editor { height: 340px; font-size: 12px; }
+    .ss-text .cm-scroller { overflow: auto; }
     .as-counts { display: flex; flex-direction: column; gap: 4px; }
     .as-counts label { display: flex; align-items: center; gap: 8px; font-size: 11px; color: #8b949e; }
     .as-counts label span { flex: 0 0 96px; }
@@ -1481,22 +1483,10 @@
               <span>Effects</span>
               <div style="flex:1;min-width:0">
                 <div id="as-effects" class="as-counts"></div>
-                <button id="as-effect-add" class="um-recolor" style="margin:6px 0 0" title="a bonus the engine has no field for — needs the extension">+ effect</button>
+                <button id="as-effect-add" class="um-recolor" style="margin:6px 0 0" title="a bonus the engine has no field for, or a script the set runs on an event">+ effect</button>
               </div>
             </div>
             <div id="as-ext" class="um-span um-warn"></div>
-            <!-- The other half of a set: what it does on an EVENT. The numbers
-                 above go into calculations no script can reach; a day starting
-                 is something the engine already hands to Lua, so it lives here.
-                 A script is a script — the field takes one, the linter reads it,
-                 and the names it can call are in docs/SCRIPT_API.md. -->
-            <div class="on-row um-span" style="align-items:flex-start">
-              <span>Script</span>
-              <div style="flex:1;min-width:0">
-                <textarea id="as-script" class="as-script" rows="10" spellcheck="false" placeholder="Lua the set runs on an event — pick a preset above to start from one"></textarea>
-                <div id="as-lint" class="um-note"></div>
-              </div>
-            </div>
           </div>
         </fieldset>
         <div id="as-note" class="um-note"></div>
@@ -1508,6 +1498,28 @@
       </div>
     </div>
   </dialog>
+  <!-- Lua is written in the editor, never in a box among fields. A set's script
+       opens here, on top of the set form, with the same CodeMirror the map's
+       scripts use: highlighting, completion over the engine's API and ours, and
+       the linter in the gutter. -->
+  <dialog id="setscript">
+    <div class="mp-card um-card">
+      <div class="mp-head">
+        <span class="mp-title">Set script</span>
+        <button id="ss-x" title="close (Esc)">✕</button>
+      </div>
+      <div class="mp-body on-body">
+        <div id="ss-info" class="um-note"></div>
+        <div id="ss-text" class="ss-text"></div>
+        <div id="ss-lint" class="de-lint"></div>
+      </div>
+      <div class="de-foot">
+        <button id="ss-cancel" class="ghost">Cancel</button>
+        <button id="ss-ok">Done</button>
+      </div>
+    </div>
+  </dialog>
+
   <!-- edit a referenced entity's own typed fields (the original's "Edit" on a
        structured ref: an AdvMapBirds flock, a Wind, an AmbientLight preset) -->
   <dialog id="entedit">

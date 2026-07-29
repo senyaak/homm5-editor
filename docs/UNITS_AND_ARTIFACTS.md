@@ -86,6 +86,15 @@ document, anything else into the file the native extension reads
 cannot carry a `HeroStatsModif`, and offering a row that does nothing would be
 worse than not offering it.
 
+**A set's rows go one further.** Beside the bonuses the extension adds, a row can
+be `lua` — what the set does on an EVENT rather than inside a sum. It carries no
+numbers: it carries a pencil, and the pencil opens the script in the editor the
+map's own scripts are written in, on top of the set form. Lua is never typed
+into a box among fields. What the script can call, beyond the engine's own API,
+is in [SCRIPT_API.md](SCRIPT_API.md) under *Ours* — `RestoreDarkEnergy`,
+`EditorHeroWearing`, `EditorWornCount` — and those exist only while the
+extension is installed, which is what marks them `ours` there.
+
 Two things differ from creatures:
 
 - **No map model means a flat board.** With `Map model` left empty the mod builds

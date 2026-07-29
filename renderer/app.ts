@@ -33,7 +33,6 @@ import { makeIdle, poseIdle } from './skinning.ts';
 import type { IdleObject } from './skinning.ts';
 import { mountCodeEditor, setScriptContext } from './code-editor.ts';
 import type { CodeEditor, ScriptContext } from './code-editor.ts';
-import { luaDiagnostics } from '../src/lua-lint.ts';
 import type { LuaDiagnostic } from '../src/lua-lint.ts';
 
 type MapEntry = MapListEntry & { cat: string };
@@ -82,12 +81,6 @@ const $button = (id: string): HTMLButtonElement => {
 };
 
 /** Same, for the inputs whose .value we read — checked, not cast. */
-const $textarea = (id: string): HTMLTextAreaElement => {
-  const el = $(id);
-  if (!(el instanceof HTMLTextAreaElement)) throw new Error(`#${id} is not a textarea`);
-  return el;
-};
-
 const $input = (id: string): HTMLInputElement => {
   const el = $(id);
   if (!(el instanceof HTMLInputElement)) throw new Error(`#${id} is not an input`);
@@ -8030,7 +8023,10 @@ function renderSetCounts(): void {
 function addSetEffectRow(stat = '', threshold = '', amount = ''): void {
   const row = document.createElement('label');
   const select = document.createElement('select');
-  for (const s of effectStats) {
+  // The engine's sums, and then LUA — the same list, because to whoever is
+  // authoring the set both are "what it does". What differs is where it lands:
+  // a sum goes to the extension's config, a script into the mod.
+  for (const s of [...effectStats, LUA_ROW]) {
     const option = document.createElement('option');
     option.value = option.textContent = s;
     select.appendChild(option);
@@ -8048,14 +8044,38 @@ function addSetEffectRow(stat = '', threshold = '', amount = ''): void {
   value.value = amount || '0';
   value.className = 'as-effect-amount';
   value.title = 'how much — percentage points, or energy';
+  // Lua is never written among fields: the row carries a pencil, and the pencil
+  // opens the editor on top — the same one the map's scripts use.
+  const edit = document.createElement('button');
+  edit.className = 'um-recolor as-effect-edit';
+  edit.textContent = '✎ script';
+  edit.title = 'write the script — opens the editor';
+  edit.onclick = (e) => { e.preventDefault(); openSetScript(); };
   const drop = document.createElement('button');
   drop.className = 'um-recolor';
   drop.textContent = '×';
   drop.title = 'remove this effect';
-  drop.onclick = () => row.remove();
-  row.append(select, worn, value, drop);
+  drop.onclick = () => { row.remove(); if (select.value === LUA_ROW) setScript = ''; };
+  const show = (): void => {
+    const lua = select.value === LUA_ROW;
+    worn.style.display = value.style.display = lua ? 'none' : '';
+    edit.style.display = lua ? '' : 'none';
+  };
+  select.onchange = show;
+  row.append(select, worn, value, edit, drop);
   $('as-effects').appendChild(row);
+  show();
 }
+
+/** The row kind that is a script rather than a number. */
+const LUA_ROW = 'lua';
+
+/** The set's script, held while the form is open. The row is only its handle. */
+let setScript = '';
+
+/** Which rows are scripts — a set has one, and the option says so. */
+const luaRows = (): HTMLSelectElement[] =>
+  [...$('as-effects').querySelectorAll<HTMLSelectElement>('.as-effect-stat')].filter((s) => s.value === LUA_ROW);
 
 /** What the rows say, as the payload wants it. */
 function setEffects(): { stat: string; threshold: number; amount: number }[] {
@@ -8064,7 +8084,7 @@ function setEffects(): { stat: string; threshold: number; amount: number }[] {
     const stat = row.querySelector<HTMLSelectElement>('.as-effect-stat')?.value;
     const threshold = Number(row.querySelector<HTMLInputElement>('.as-effect-worn')?.value) || 1;
     const amount = Number(row.querySelector<HTMLInputElement>('.as-effect-amount')?.value) || 0;
-    if (stat && amount) out.push({ stat, threshold, amount });
+    if (stat && stat !== LUA_ROW && amount) out.push({ stat, threshold, amount });
   }
   return out;
 }
@@ -8098,8 +8118,8 @@ async function editArtifactSet(effect: string): Promise<void> {
   counts.forEach((input, i) => { input.value = s.perCount?.[i] ?? ''; });
   $('as-effects').innerHTML = '';
   for (const e of s.effects ?? []) addSetEffectRow(e.stat, String(e.threshold), String(e.amount));
-  $textarea('as-script').value = s.script ?? '';
-  lintSetScript();
+  setScript = s.script ?? '';
+  if (setScript) addSetEffectRow(LUA_ROW);
   $input('as-effect').disabled = true;
   $input('as-file').disabled = true;
   $button('as-ok').textContent = 'Save & install';
@@ -8119,8 +8139,7 @@ function newSet(): void {
   // A new set has no bonus and no script. The form is reached again without
   // closing it, and what was left standing would land on the next set.
   $('as-effects').innerHTML = '';
-  $textarea('as-script').value = '';
-  lintSetScript();
+  setScript = '';
   renderSetCounts();
   openOnTop('setedit');
   $('setedit-title').textContent = 'New set';
@@ -8152,7 +8171,10 @@ async function submitArtifactSet(): Promise<void> {
       description: $input('as-desc').value,
       perCount: [...$('as-counts').querySelectorAll<HTMLInputElement>('input')].map((i) => i.value),
       effects: setEffects(),
-      script: $textarea('as-script').value,
+      // Only when the set carries a script row: taking the row off is how a set
+      // stops having one, and an install that ignored that would leave the old
+      // text in the mod forever.
+      script: luaRows().length ? setScript : '',
     });
     modDialog('setedit').close();
     editingSet = '';
@@ -8368,31 +8390,41 @@ $input('as-file').addEventListener('input', () => {
 });
 $('as-members').addEventListener('change', renderSetCounts);
 
-/** A line break, as a pattern — CRLF or LF, since the field takes either. */
-const NEWLINE = /\r?\n/;
-
 /**
- * What the linter says about the script, under the field.
+ * The set's script, in the editor — on top of the set form, never inside it.
  *
- * Structural only — unclosed `end`, a stray `then` — because the API list is
- * incomplete and painting an unknown name red would train everyone to ignore
- * the colour. See src/lua-lint.ts.
+ * A second instance of the map editor's own CodeMirror: the same highlighting,
+ * the same completion (the engine's API, ours from the extension, the names the
+ * map defines) and the same linter in the gutter. Mounted once, lazily, because
+ * a set without a script never opens it.
  */
-function lintSetScript(): void {
-  const code = $textarea('as-script').value;
-  const box = $('as-lint');
-  if (!code.trim()) { box.textContent = ''; return; }
-  const problems = luaDiagnostics(code);
-  box.style.color = problems.length ? '#f85149' : '#3fb950';
-  // The diagnostic carries character offsets, not a line — the editor pane draws
-  // it in place. Here there is no pane, so the line is counted for the reader.
-  const line = problems.length ? code.slice(0, problems[0]!.from).split(NEWLINE).length : 0;
-  box.textContent = problems.length
-    ? `${problems.length} problem(s): ${problems[0]!.message} (line ${line})`
-    : 'no structural errors';
+let setScriptEditor: CodeEditor | null = null;
+
+function openSetScript(): void {
+  if (!setScriptEditor) {
+    setScriptEditor = mountCodeEditor($('ss-text'), () => closeSetScript(true), (diags) => {
+      const errors = diags.filter((d) => d.severity === 'error').length;
+      const el = $('ss-lint');
+      el.className = 'de-lint ' + (errors ? 'err' : diags.length ? 'warn' : 'ok');
+      el.textContent = errors ? `⚠ ${errors} error${errors === 1 ? '' : 's'}`
+        : diags.length ? `⚠ ${diags.length} warning${diags.length === 1 ? '' : 's'}` : '✓ no errors';
+    });
+  }
+  setScriptEditor.setDoc(setScript, 'lua');
+  $('ss-info').textContent = scriptContextNote();
+  openOnTop('setscript');
+  setScriptEditor.focus();
 }
 
-$('as-script').addEventListener('input', lintSetScript);
+/** Done keeps what was written; Cancel leaves the set with what it had. */
+function closeSetScript(keep: boolean): void {
+  if (keep && setScriptEditor) setScript = setScriptEditor.getDoc();
+  modDialog('setscript').close();
+}
+
+$('ss-ok').onclick = () => closeSetScript(true);
+$('ss-cancel').onclick = () => closeSetScript(false);
+$('ss-x').onclick = () => closeSetScript(false);
 $('as-effect-add').onclick = () => addSetEffectRow();
 $('as-ok').onclick = () => { void submitArtifactSet(); };
 
