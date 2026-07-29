@@ -182,6 +182,13 @@ export const UNDEAD_KING = {
  * already-patched executable can no longer find its own sites by search.
  */
 export function prepareGameRoot(dir: string): void {
+  // It DELETES what it is given, so it may only ever be given a throwaway. A
+  // real install handed to it — by a spec reaching for HOMM5_ROOT, say — would
+  // erase the game, and the mistake is one word long. The same rule the suite's
+  // own cleanup follows (e2e/build.ts).
+  if (!dir.startsWith(join(REPO_ROOT, '_tmp'))) {
+    throw new Error(`prepareGameRoot wipes what it prepares — ${dir} is not under _tmp`);
+  }
   rmSync(dir, { recursive: true, force: true });
   mkdirSync(join(dir, 'bin'), { recursive: true });
   ensureModDir(dir);
