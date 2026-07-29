@@ -681,6 +681,8 @@ export interface ModArtifactDTO {
   number: number;
   name: string;
   slot: string;
+  /** What the extension adds while it is worn — `{ necromancy: 5 }`. */
+  effects?: Record<string, number>;
 }
 
 /** One artifact set in a mod. */

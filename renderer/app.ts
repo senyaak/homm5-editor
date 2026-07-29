@@ -7794,6 +7794,11 @@ async function editArtifact(id: string): Promise<void> {
   $('am-editing').textContent = `${a.name || a.id} — id and files are fixed; everything else can move`;
   $button('am-ok').textContent = 'Save & install';
   $('am-note').textContent = '';
+  // What it already gives, as rows. Without this an artifact opened for editing
+  // showed none, and saving it wrote none — so changing a price silently took
+  // the bonus away.
+  $('am-effects').innerHTML = '';
+  for (const [stat, amount] of Object.entries(a.effects ?? {})) addEffectRow(stat, String(amount));
   openOnTop('artedit');
   $('artedit-title').textContent = 'Editing artifact';
   void showExtensionState().catch(() => {});
@@ -7802,6 +7807,11 @@ async function editArtifact(id: string): Promise<void> {
 /** Back to making a new one. */
 function newArtifact(): void {
   editingArtifact = '';
+  // A new artifact has no effects. The rows are cleared when the dialog opens,
+  // but the form is reached again without closing it — author one piece, press
+  // New, author the next — and the row left standing gave the second artifact
+  // the first one's bonus.
+  $('am-effects').innerHTML = '';
   $input('am-id').disabled = false;
   $input('am-file').disabled = false;
   $('am-editing').textContent = '';
