@@ -672,11 +672,11 @@ and carries a levelled hero from mission to mission. See `docs/CAMPAIGNS.md`.
 
 Proved end to end outside the editor first: a creature the game never shipped with now
 exists, stands on a map and fights. The recipe, every dead end, and both traps that cost a
-launch are written up in `<game>/Maps/sod/docs/NEW_CREATURES.md`; the working
-implementation is `Maps/sod/tools/build-creature-slots.ts` and
-`tools/patch-creature-limit.ts`. What moves here is the **mechanism** — Heroes V's own
-format work. What stays in `Maps/sod` is which creatures the Heroes III port needs and what
-their numbers are.
+launch are written up in `docs/NEW_CREATURES.md` — written in the port, and moved
+here with the mechanism, as the whole plan below intended. The port's own
+`build-creature-slots.ts` is retired: the dialogs and `tools/units-mod.ts` are
+the writers now. What stays with the port (`<game>/h3-mod/`) is which creatures
+the Heroes III conversion needs and what their numbers are.
 
 Two constraints shape the design, both learned the hard way:
 

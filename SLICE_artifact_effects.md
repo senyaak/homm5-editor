@@ -1,7 +1,7 @@
 # SLICE — Artifact effects that the engine treats as its own
 
 > **Status:** built, and waiting to be seen in game. Adding an artifact already
-> worked (`Maps/sod/docs/ARTIFACTS.md` in the maps repo) but a new id got **no
+> worked ([docs/ARTIFACTS.md](docs/ARTIFACTS.md)) but a new id got **no
 > properties**: every special behaviour the shipped artifacts have is compiled
 > against a specific id. This slice makes our own artifacts carry real
 > properties — our own set, our own effect id, our own numbers — through the
@@ -38,7 +38,7 @@ and script can express), [docs/ENGINE_INTERNALS.md](docs/ENGINE_INTERNALS.md)
   twelfth effect value, an eleventh set is reached — no compiled ceiling — the
   set is named on the hero screen, and the game counts the worn pieces itself.
   The probe is retired; the Cloak of the Undead King is ordinary data in the
-  port now (`Maps/sod/src/new-artifacts.ts`).
+  port now, authored through the dialog and held by [e2e/mods.ts](e2e/mods.ts).
 - в) ~~**Prove the native path.**~~ **Done, 2026-07-28.** Not a proxy DLL in the
   end: `H5_Game_H5E.exe` is our copy already, so it names our library in its
   import table and no file of the game's is touched. The detour on the
@@ -126,7 +126,7 @@ an artifact depends on.
 | `types.xml` (in the mod archive) | ✅ Append `ARTFSET_EFFECT_<ours> = 11` to the `ArtifactSetEffect` enum. Append-only: the value is what saves and maps store. |
 | `GameMechanics/RPGStats/DefaultStats.xdb` | ✅ A `<Sets>` entry using that effect — members, per-count texts and icons. |
 | [src/creature-mod.ts](src/creature-mod.ts) | ✅ `addArtifactSet` and the two patches above, in the existing single pass over types.xml. |
-| `Maps/sod/src/new-artifacts.ts` (port repo) | ✅ `NEW_ARTIFACT_SETS` — the Cloak of the Undead King, ordinary data now that §1.1(б) is answered. The probe that proved it is retired. |
+| [e2e/mods.ts](e2e/mods.ts) | ✅ The Cloak of the Undead King as a fixture — ordinary data now that §1.1(б) is answered, authored through the dialog like everything else. The probe that proved it is retired. |
 | [renderer/index.html](renderer/index.html), [renderer/app.ts](renderer/app.ts) | ✅ A Sets pane inside the Artifacts dialog, not a dialog of its own: one mod, one install. Members are ticked from a list, never typed. |
 | [electron/main.ts](electron/main.ts), [electron/ipc.ts](electron/ipc.ts) | ✅ `mods:install-set`, and `sets` in `ModListEntry` so an installed set is visible. |
 | [e2e/mod-003-artifacts-create.spec.ts](e2e/mod-003-artifacts-create.spec.ts) | ✅ Builds two pieces and the set they belong to; checks that borrowing a shipped effect is refused. |
@@ -139,7 +139,7 @@ an artifact depends on.
 
 Verification is in game, with a control: a shipped artifact on the same hero by
 the same route. Three of the four wrong answers last time would have been
-skipped by having one (`Maps/sod/docs/ARTIFACTS.md`).
+skipped by having one ([docs/ARTIFACTS.md](docs/ARTIFACTS.md)).
 
 ## 5. Open questions (need a call before code)
 

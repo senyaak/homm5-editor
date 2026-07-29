@@ -1,7 +1,7 @@
 # Artifact effects, stats and sets — what data, script and exe each control
 
 The base recipe for *adding* an artifact (record, shared, icon, ceiling patch,
-map's `<artifactIDs>`) lives in the maps repo, `Maps/sod/docs/ARTIFACTS.md`.
+map's `<artifactIDs>`) is [ARTIFACTS.md](ARTIFACTS.md) beside this file.
 This document is the other half: what a new artifact can *do* — which knobs are
 data, which behaviours a script can build, and which are compiled into the
 executable and closed. Researched 2026-07-27 from the ToE data
@@ -242,8 +242,8 @@ manifest. Everything that edits a game file rides in the one archive.
 
 The probe therefore lived with the mod it joined, as a script beside the port's
 other probes that added the set to the port's own mod. It has served its purpose
-and is gone: the Cloak of the Undead King is now ordinary data in
-`Maps/sod/src/new-artifacts.ts`.
+and is gone: the Cloak of the Undead King is authored through the Artifacts
+dialog now, and is a fixture of [e2e/mods.ts](../e2e/mods.ts).
 
 ## The script toolbox
 
@@ -370,7 +370,7 @@ Sources: [NAF thread](https://forum.heroesworld.ru/showthread.php?t=12252),
 
 **A new set** (e.g. the King of the Dead cloak set):
 
-1. Add the artifacts (base recipe in the maps repo).
+1. Add the artifacts (base recipe: [ARTIFACTS.md](ARTIFACTS.md)).
 2. Append `ARTFSET_EFFECT_<OURS>` to the `ArtifactSetEffect` enum in
    `types.xml` — append only, the value is what saves and maps store.
 3. Append an `<Item>` to `<ArtifactSets><Sets>` in our override of

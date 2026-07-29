@@ -16,9 +16,9 @@
 // Not the only way any more: the window's **Units…** and **Artifacts…** dialogs
 // build and install through the same functions (docs/UNITS_AND_ARTIFACTS.md).
 // This stays because a batch belongs on a command line — a project's units.json
-// declares a whole creature set at once, which is how the Heroes III port ships
-// its own (Maps/sod/tools/build-creature-slots.ts), and `list` answers "what is
-// installed" without opening the editor. Dwellings are still CLI-only.
+// declares a whole creature set at once, which is how the Heroes III port shipped
+// its own before the dialogs existed, and `list` answers "what is installed"
+// without opening the editor. Dwellings are still CLI-only.
 //
 // Either way the UI READS what is installed: mountedAssets() layers every
 // installed .h5u over the data, so a mod's creatures are in the army picker and

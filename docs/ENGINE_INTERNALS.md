@@ -244,7 +244,7 @@ the design rests on:
 - *Does a set bonus reach the engine's arithmetic?* Temporarily put the Cloak
   in the shipped Necromancer set and confirm the raise percentage moves. Not a
   design — a control, the kind that would have saved four wrong answers last
-  time (`Maps/sod/docs/ARTIFACTS.md`). Then take it back out.
+  time ([ARTIFACTS.md](ARTIFACTS.md)). Then take it back out.
 
 **And the piece still missing:** the equipment aggregator — the code that
 rebuilds a hero's stats and spellbook from what is worn. Its existence is not

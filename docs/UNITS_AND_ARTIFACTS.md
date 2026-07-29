@@ -7,7 +7,8 @@ The format work behind it — why the mod carries copies of three shipped files,
 why an id is a NUMBER, why the executable has to be patched — lives in
 `src/creature-mod.ts`, `src/creatures.ts`, `src/artifacts.ts`,
 `src/creature-limit.ts` and `src/artifact-limit.ts`, each documented at its head.
-The port's own write-up of the discovery is `<game>/Maps/sod/docs/NEW_CREATURES.md`.
+The write-up of the discovery is [NEW_CREATURES.md](NEW_CREATURES.md), written
+in the Heroes III port and moved here with the mechanism it describes.
 This file is about the editor.
 
 ## One mod, always ours
