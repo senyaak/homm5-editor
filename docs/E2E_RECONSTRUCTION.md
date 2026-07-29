@@ -258,7 +258,7 @@ reports still where the last complete run left them.
 
 ### The second reconstruction: a map of our own
 
-`e2e/sharpshooter-map.spec.ts` rebuilds `<game>/H5E/Sharpshooter Test.mod` —
+`e2e/mod-004-sharpshooter-map.spec.ts` rebuilds `<game>/H5E/Sharpshooter Test.mod` —
 the hand-made showcase for the Heroes III port's Sharpshooter — the same way and
 against the same gap reports, but small enough to run in seconds. The original
 is unpacked into `_tmp` as the reference and never written to; the map is built
@@ -271,8 +271,8 @@ It is the cheap regression the C1M1 chain cannot be: one minute, no fixture
 extraction, and it exercises the parts of the editor a shipped mission does not —
 a map that depends on a **mod**, whose creature, dwellings and artifacts only
 exist because a `.h5u` is installed. The mod is a fixture copied into the run's
-own game root; authoring one through the window is `e2e/units-create.spec.ts`,
-`artifacts-create.spec.ts` and `units-recolor.spec.ts` — one per thing, each on
+own game root; authoring one through the window is `e2e/mod-001-units-create.spec.ts`,
+`mod-003-artifacts-create.spec.ts` and `mod-002-units-recolor.spec.ts` — one per thing, each on
 its own isolated install so any of them runs alone (docs/UNITS_AND_ARTIFACTS.md).
 
 One accepted deviation: the terrain **container is 5003 bytes shorter** than the

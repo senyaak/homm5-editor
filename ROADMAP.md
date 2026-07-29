@@ -754,7 +754,7 @@ Two constraints shape the design, both learned the hard way:
 
       The artifact table keeps everything inline (slot, rank, prices, the six stats, the
       icon href), so an artifact preset is one lookup; no map model means a flat board of
-      the artifact's own icon. `e2e/units-create.spec.ts` and `artifacts-create.spec.ts`
+      the artifact's own icon. `e2e/mod-001-units-create.spec.ts` and `mod-003-artifacts-create.spec.ts`
       rebuild the port's Sharpshooter and its Undertaker's Amulet through the forms — each
       against its own isolated game install, so either runs alone — and check both ceilings
       in the executable.

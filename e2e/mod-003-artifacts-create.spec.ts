@@ -11,22 +11,31 @@
 // set is where the two halves of this feature meet: it names artifacts that
 // have to exist already, and it rides in the same archive they do.
 
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test, expect } from '@playwright/test';
 import { launchEditor, REPO_ROOT } from './launch.ts';
 import type { Launched } from './launch.ts';
-import { AMULET, CLOAK, prepareGameRoot, readInstalledMod, removeGameRoot, UNDEAD_KING } from './mods.ts';
+import { AMULET, CLOAK, gameRootFor, openGameRoot, readInstalledMod, removeGameRoot, UNDEAD_KING } from './mods.ts';
 import { ORIGINAL_ARTIFACTS, readArtifactLimit, SITES_FILE } from '../src/artifact-limit.ts';
+import { modFile } from '../src/mod-paths.ts';
+import { MOD_STEM } from '../src/creature-mod.ts';
+import { extensionState } from '../src/extension.ts';
 import { EFFECTS_FILE, readEffects } from '../src/artifact-effects.ts';
 import type { Site } from '../src/artifact-limit.ts';
 
 let ed: Launched;
 
-const GAME = join(REPO_ROOT, '_tmp', 'e2e-arts-game');
+const GAME = gameRootFor('e2e-arts-game');
+/** How many creatures were in the mod before this spec touched it. */
+let creaturesBefore = 0;
 
 test.beforeAll(async () => {
-  prepareGameRoot(GAME);
+  openGameRoot(GAME);
+  // Zero in a throwaway install; live, whatever mod-001 authored. Either way
+  // this spec must not move it — an artifact is not a creature.
+  creaturesBefore = existsSync(modFile(GAME, 'mod', MOD_STEM))
+    ? readInstalledMod(GAME).creatures.length : 0;
   ed = await launchEditor({ HOMM5_ROOT: GAME });
 });
 test.afterAll(async () => { await ed?.app.close(); removeGameRoot(GAME); });
@@ -45,7 +54,9 @@ test('the dialog opens clean, and the donor loads as a preset', async () => {
   const { page } = ed;
   await page.locator('#artsbtn').click();
   await expect(page.locator('#artsmod')).toBeVisible();
-  await expect(page.locator('#am-list')).toContainText('none — the game holds its shipped artifacts only');
+  // As in the units spec: no artifact of ours, whether or not an archive exists.
+  await expect(page.locator('#am-list'))
+    .toContainText(/none — the game holds its shipped artifacts only|0 artifact\(s\)|none/);
 
   // The artifact table keeps everything inline, so one lookup fills the form.
   await openWithDonor(page);
@@ -99,8 +110,10 @@ test('edits the difference and installs the artifact', async () => {
   expect(a.icon).toContain('Necromancer_Pendant');
   // No map model was given, so it stands as a flat board of its own icon.
   expect(a.board).toEqual({ tiles: 1 });
-  // An artifact needs no creature, and the mod has none.
-  expect(mod.creatures).toHaveLength(0);
+  // An artifact needs no creature: whatever was in the mod is still there and
+  // nothing was added. In a fresh install that is none, which is the stronger
+  // reading and the one the isolated run makes.
+  expect(mod.creatures).toHaveLength(creaturesBefore);
 
   // And the executable's ARTIFACT ceiling agrees.
   const noted = JSON.parse(readFileSync(join(GAME, SITES_FILE), 'utf8')) as Site[];
@@ -121,7 +134,13 @@ test('a second piece, so there is a set to make', async () => {
   await page.locator('#am-desc').fill(CLOAK.description);
   await page.locator('#am-slot').selectOption(CLOAK.slot);
   await page.locator('#am-rank').selectOption('ARTF_CLASS_MINOR');
+  // THE FORM CAME UP EMPTY OF EFFECTS. The amulet was authored a test ago with
+  // a row of its own, and the dialog was never closed in between — the row it
+  // left standing gave this artifact the amulet's bonus as well as its own, and
+  // the only sign was two rows nobody looked at.
+  await expect(page.locator('#am-effects label')).toHaveCount(0);
   await page.locator('#am-effect-add').click();
+  await expect(page.locator('#am-effects label')).toHaveCount(1);
   const effect = page.locator('#am-effects label').first();
   await expect(effect.locator('select')).toHaveValue('necromancy');
   await effect.locator('input').fill(String(CLOAK.necromancy));
@@ -144,12 +163,16 @@ test('a second piece, so there is a set to make', async () => {
   expect(readInstalledMod(GAME).artifacts[1]!.description).toBe(CLOAK.description);
 });
 
-test('says the extension is missing rather than letting the effect look live', async () => {
+test('says whether the extension is there, so an effect cannot look live when it is not', async () => {
   const { page } = ed;
   await openWithDonor(page);
-  // This install has no extension: the effect is written and does nothing, and
-  // "it does not work" and "it is not installed" look identical in game.
-  await expect(page.locator('#am-ext')).toContainText('not installed', { timeout: 30_000 });
+  // Without the extension an effect is written and does nothing, and "it does
+  // not work" and "it is not installed" look identical in game — so the form
+  // says which. The assertion is against the state of the install being used: a
+  // throwaway one has no extension, the game this checkout sits in usually has.
+  const there = extensionState(GAME).installed;
+  await expect(page.locator('#am-ext'))
+    .toContainText(there ? /(?<!not )installed/ : /not installed/, { timeout: 30_000 });
 });
 
 test('makes a set of the two, with an effect of our own', async () => {

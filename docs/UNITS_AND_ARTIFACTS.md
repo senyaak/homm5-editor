@@ -181,10 +181,10 @@ The shared setup is `e2e/mods.ts`.
 
 | Spec | What it proves |
 |---|---|
-| `units-create.spec.ts` | the donor preset fills the form; the difference installs as the port's Sharpshooter; the archive and the creature ceiling agree; a fresh map's garrison offers it in the army picker |
-| `artifacts-create.spec.ts` | the artifact preset fills the form; the Undertaker's Amulet installs into a mod with **no creature in it**; the artifact ceiling moves |
-| `units-recolor.spec.ts` | remapping one palette cluster leaves every other cluster where it was (checked with `extractPalette` over the archive's own bytes); the Grey preset makes every pixel r=g=b with the alpha intact and the paired documents updated |
-| `sharpshooter-map.spec.ts` | a map that *uses* the mod, rebuilt from a blank and diffed against the hand-made original |
+| `mod-001-units-create.spec.ts` | the donor preset fills the form; the difference installs as the port's Sharpshooter; the archive and the creature ceiling agree; a fresh map's garrison offers it in the army picker |
+| `mod-003-artifacts-create.spec.ts` | the artifact preset fills the form; the Undertaker's Amulet installs into a mod with **no creature in it**; the artifact ceiling moves |
+| `mod-002-units-recolor.spec.ts` | remapping one palette cluster leaves every other cluster where it was (checked with `extractPalette` over the archive's own bytes); the Grey preset makes every pixel r=g=b with the alpha intact and the paired documents updated |
+| `mod-004-sharpshooter-map.spec.ts` | a map that *uses* the mod, rebuilt from a blank and diffed against the hand-made original |
 
 Where a spec needs something another one authors — the recolour needs a creature
 with textures — it installs it **headlessly** through the same functions the

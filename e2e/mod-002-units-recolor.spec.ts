@@ -14,7 +14,7 @@ import { test, expect } from '@playwright/test';
 import { launchEditor, REPO_ROOT } from './launch.ts';
 import type { Launched } from './launch.ts';
 import {
-  creatureTextures, hueDist, installCreatureHeadless, prepareGameRoot, removeGameRoot,
+  creatureTextures, gameRootFor, hueDist, installCreatureHeadless, openGameRoot, removeGameRoot,
 } from './mods.ts';
 import { readEntries } from '../src/pak.ts';
 import { modFile } from '../src/mod-paths.ts';
@@ -24,10 +24,10 @@ import { extractPalette } from '../src/recolor.ts';
 
 let ed: Launched;
 
-const GAME = join(REPO_ROOT, '_tmp', 'e2e-recolor-game');
+const GAME = gameRootFor('e2e-recolor-game');
 
 test.beforeAll(async () => {
-  prepareGameRoot(GAME);
+  openGameRoot(GAME);
   installCreatureHeadless(GAME);
   ed = await launchEditor({ HOMM5_ROOT: GAME });
 });

@@ -423,6 +423,21 @@ export function removeArtifactSet(mod: CreatureMod, effect: string): ModArtifact
 }
 
 /**
+ * Take a dwelling out of the mod, by its file stem.
+ *
+ * Nothing numbers a dwelling — it is an object with a document and a palette
+ * entry, not a row in a reference table — so this is a plain removal with no
+ * renumbering behind it. What it breaks is a map that has one placed: the
+ * object's `Shared` href stops resolving, exactly as a deleted artifact breaks
+ * a map that names it.
+ */
+export function removeDwelling(mod: CreatureMod, file: string): DwellingSpec {
+  const at = mod.dwellings.findIndex((d) => d.file === file);
+  if (at < 0) throw new Error(`${file} is not in the mod`);
+  return mod.dwellings.splice(at, 1)[0]!;
+}
+
+/**
  * Change a creature already in the mod, keeping its number.
  *
  * The id is fixed for the same reason an artifact's is: it names the same thing

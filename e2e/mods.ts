@@ -9,7 +9,12 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { REPO_ROOT } from './launch.ts';
-import { addArtifact, addArtifactSet, addCreature, addDwelling, buildCreatureMod, dataReader, installCreatureMod, MOD_STEM, newCreatureMod, packCreatureMod, readCreatureMod } from '../src/creature-mod.ts';
+import {
+  addArtifact, addArtifactSet, addCreature, addDwelling, buildCreatureMod, dataReader,
+  installCreatureMod, MOD_STEM, newCreatureMod, packCreatureMod, readCreatureMod,
+  removeArtifact, removeArtifactSet, removeCreature, removeDwelling,
+  updateArtifact, updateArtifactSet, updateCreature,
+} from '../src/creature-mod.ts';
 import type { ArtifactSlot } from '../src/artifacts.ts';
 import type { CreatureMod } from '../src/creature-mod.ts';
 import { creatureSources } from '../src/registry.ts';
@@ -21,6 +26,34 @@ import type { Site } from '../src/artifact-limit.ts';
 import { readEntries } from '../src/pak.ts';
 import { ensureModDir, modFile } from '../src/mod-paths.ts';
 import { decodeDDSBuffer } from '../src/dds.ts';
+
+/**
+ * `--noRemove`: do the work in the REAL install and leave it standing.
+ *
+ * Two modes, and the difference is only where the work lands:
+ *
+ *   default    each spec owns a throwaway install under `_tmp` — a game no mod
+ *              has ever touched, reset before the run and deleted after it.
+ *   noRemove   the install this checkout sits in, with nothing swept up: the
+ *              patched executable, the mod archive and whatever a spec packed
+ *              are all left where the game reads them. What comes out is what
+ *              would have come out of clicking the same buttons by hand.
+ *
+ * `node tools/e2e-live.ts <spec…>` is the front door; the C1M1 capstone has had
+ * the same switch for its map for a while (`--noRemoveMap`), and this is that
+ * idea for everything a mod spec installs.
+ *
+ * A live run still starts from a known state: OUR things are taken out of the
+ * installed mod first, so the spec authors them from nothing the way it does in
+ * a fresh install. Everything else in the archive is left alone — dwellings the
+ * editor cannot yet author would be gone for good.
+ */
+export const LIVE = !!process.env.HOMM5_NO_REMOVE;
+
+/** Where a spec's install lives: its own throwaway, or the game itself. */
+export function gameRootFor(stem: string): string {
+  return LIVE ? REAL_GAME : join(REPO_ROOT, '_tmp', stem);
+}
 
 /** Pictures and reference maps that travel with the checkout — assets/README.md. */
 export const ASSETS = join(REPO_ROOT, 'assets');
@@ -199,9 +232,81 @@ export function prepareGameRoot(dir: string): void {
   writeFileSync(join(dir, SITES_FILE), `${JSON.stringify(noted, null, 2)}\n`);
 }
 
-/** Take the whole install away again. */
+/**
+ * Open the install a spec is about to work in.
+ *
+ * Isolated, that means resetting it to a game no mod has touched. Live, it
+ * means taking OUR things back out of the installed mod — the same starting
+ * point, without destroying the install to get there.
+ */
+export function openGameRoot(dir: string): void {
+  // Live, there is nothing to open and nothing to clear: the install is the
+  // game, and it was cleared ONCE for the whole run (e2e/build.ts). The specs
+  // then fill it back up IN ORDER — mod-001 authors the creature, mod-003 the
+  // artifacts, mod-004 the map made of them — which is why they are numbered
+  // the way the C1M1 stages are.
+  if (LIVE) return;
+  prepareGameRoot(dir);
+}
+
+/**
+ * Take away a map a spec is about to build — its working tree AND its archive.
+ *
+ * Both, because a map is a FILE now and New Map refuses to write over one: the
+ * packed `.mod` left by the last run stops the next one before it starts, with
+ * "already exists" out of the main process. Isolated that never showed, since
+ * the archive sat inside the throwaway install and went with it.
+ */
+export function clearMap(gameRoot: string, dataRoot: string, name: string): void {
+  for (const p of [modFile(gameRoot, 'map', name), join(dataRoot, 'Maps', 'SingleMissions', name)]) {
+    if (existsSync(p)) rmSync(p, { recursive: true, force: true });
+  }
+}
+
+/** Take the whole install away again — never the real one. */
 export function removeGameRoot(dir: string): void {
+  if (LIVE) return;
   if (existsSync(dir)) rmSync(dir, { recursive: true, force: true });
+}
+
+/** Everything the fixtures author, so a live run can start where a fresh one does. */
+const OURS = {
+  creatures: [SHARPSHOOTER.id],
+  dwellings: [PALACE.file],
+  artifacts: [AMULET.id, CLOAK.id, BOOTS.id],
+  sets: [UNDEAD_KING.effect],
+};
+
+/**
+ * Take the fixtures out of an installed mod, leaving the rest of it alone.
+ *
+ * The rest matters: the archive in a real game also carries dwellings authored
+ * before the editor became the mod's only writer, and no dialog can make them
+ * again. Rebuilding it from the fixture alone would delete them without a word.
+ */
+export function clearFixture(gameRoot: string): void {
+  const archive = modFile(gameRoot, 'mod', MOD);
+  const found = existsSync(archive) ? readCreatureMod(archive) : null;
+  if (!found) return;
+  const mod = found.mod;
+  let touched = false;
+  // The set first: it names the artifacts, and a set whose members are gone is
+  // a tooltip pointing at nothing.
+  for (const effect of OURS.sets) {
+    if ((mod.sets ?? []).some((s) => s.effect === effect)) { removeArtifactSet(mod, effect); touched = true; }
+  }
+  for (const id of OURS.artifacts) {
+    if ((mod.artifacts ?? []).some((a) => a.id === id)) { removeArtifact(mod, id); touched = true; }
+  }
+  for (const file of OURS.dwellings) {
+    if (mod.dwellings.some((d) => d.file === file)) { removeDwelling(mod, file); touched = true; }
+  }
+  for (const id of OURS.creatures) {
+    if (mod.creatures.some((c) => c.id === id)) { removeCreature(mod, id); touched = true; }
+  }
+  if (!touched) return;
+  const report = buildCreatureMod(mod, dataReader(DATA));
+  installCreatureMod(gameRoot, mod, packCreatureMod(report));
 }
 
 /**
@@ -213,6 +318,11 @@ export function removeGameRoot(dir: string): void {
  * the dialog would have.
  */
 export function installCreatureHeadless(gameRoot: string): CreatureMod {
+  // Live, the creature is already there — mod-001 authored it through the
+  // dialog. Taking it out and putting it back would undo that spec's work for
+  // nothing: this is a prerequisite, not the thing under test.
+  const installed = existsSync(modFile(gameRoot, 'mod', MOD)) ? readCreatureMod(modFile(gameRoot, 'mod', MOD)) : null;
+  if (installed?.mod.creatures.some((c) => c.id === SHARPSHOOTER.id)) return installed.mod;
   const mod = newCreatureMod(MOD);
   const sources = creatureSources(assets([DATA]), SHARPSHOOTER.donor);
   if (!sources) throw new Error(`cannot resolve the donor ${SHARPSHOOTER.donor} — is the data root unpacked?`);
@@ -243,22 +353,35 @@ export function installCreatureHeadless(gameRoot: string): CreatureMod {
  * what the dialog does with a file somebody points it at.
  */
 export function installMapFixture(gameRoot: string): CreatureMod {
-  const mod = newCreatureMod(MOD);
+  // Room for all four kinds first — live, another spec may have authored some of
+  // On top of what is installed, not instead of it: the archive holds dwellings
+  // nothing can author again, and in a live run it holds what the specs before
+  // this one authored — the creature from mod-001, the artifacts from mod-003.
+  // Every piece below is ADDED when missing and UPDATED when it is already
+  // there, so this is the same fixture either way and running it twice changes
+  // nothing.
+  const archive = modFile(gameRoot, 'mod', MOD);
+  const mod = (existsSync(archive) ? readCreatureMod(archive)?.mod : null) ?? newCreatureMod(MOD);
   const sources = creatureSources(assets([DATA]), SHARPSHOOTER.donor);
   if (!sources) throw new Error(`cannot resolve the donor ${SHARPSHOOTER.donor} — is the data root unpacked?`);
-  addCreature(mod, {
+  const creature = {
     id: SHARPSHOOTER.id, file: SHARPSHOOTER.file,
     name: SHARPSHOOTER.name, description: SHARPSHOOTER.description,
     abilitiesText: SHARPSHOOTER.abilitiesText,
     stats: { ...blankStats(), ...SHARPSHOOTER.numbers },
     visualSource: sources.visual, monsterSource: sources.monster,
-  });
+  };
+  if (mod.creatures.some((c) => c.id === SHARPSHOOTER.id)) updateCreature(mod, SHARPSHOOTER.id, creature);
+  else addCreature(mod, creature);
+  // A dwelling has no update of its own — it is a document and a palette entry,
+  // not a numbered row — so replacing it means taking it out and putting it back.
+  if (mod.dwellings.some((d) => d.file === PALACE.file)) removeDwelling(mod, PALACE.file);
   addDwelling(mod, PALACE);
   for (const a of PIECES) {
-    addArtifact(mod, {
+    const spec = {
       id: a.id, file: a.file, name: a.name, description: a.description,
       slot: a.slot,
-      rank: 'ARTF_CLASS_MINOR', cost: 5000,
+      rank: 'ARTF_CLASS_MINOR' as const, cost: 5000,
       // A piece of the Cloak gives NECROMANCY AND NOTHING ELSE — no stat, the
       // way Heroes III had it. Which means all it gives is the one thing an
       // artifact record cannot hold, so the whole artifact is that one row in
@@ -268,16 +391,22 @@ export function installMapFixture(gameRoot: string): CreatureMod {
       // checkout, so the mod builds the game's texture from it the way the
       // dialog does — and the gif reader and the texture writer are exercised
       // by every run instead of only by hand.
-      picture: join(ART, a.picture),
+      picture: a.picturePath,
       board: { tiles: 1 },
-    });
+    };
+    if ((mod.artifacts ?? []).some((x) => x.id === a.id)) updateArtifact(mod, a.id, spec);
+    else addArtifact(mod, spec);
   }
-  addArtifactSet(mod, {
+  const set = {
     effect: UNDEAD_KING.effect, file: UNDEAD_KING.file,
     name: UNDEAD_KING.name, description: UNDEAD_KING.description,
     artifacts: [AMULET.id, CLOAK.id, BOOTS.id],
     perCount: ['', 'Надето два предмета из трёх.', 'Набор собран полностью.'],
-  });
+  };
+  if ((mod.sets ?? []).some((s) => s.effect === UNDEAD_KING.effect)) {
+    updateArtifactSet(mod, UNDEAD_KING.effect, set);
+  } else addArtifactSet(mod, set);
+
   const report = buildCreatureMod(mod, dataReader(DATA));
   installCreatureMod(gameRoot, mod, packCreatureMod(report));
   return mod;

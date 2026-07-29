@@ -12,7 +12,7 @@
 // off the real install: a spec that borrows whatever somebody happened to build
 // passes or fails on their game rather than on the code, and cannot run at all
 // where nobody has pressed the buttons. Adding units through the window is its
-// own suite (units-create.spec.ts); this one is about the map, and it must not
+// own suite (mod-001-units-create.spec.ts); this one is about the map, and it must not
 // depend on that dialog having run.
 //
 // The map keeps the original's own name: it is created under the data root's
@@ -31,14 +31,14 @@ import { openObjectPalette, pickObject, placeAtTile, setObjectProp, setPlacement
 import { addItem, addValueItem, openTree, setTreeValue } from './tree.ts';
 import { readEntries } from '../src/pak.ts';
 import { modFile } from '../src/mod-paths.ts';
-import { installMapFixture, prepareGameRoot } from './mods.ts';
+import { clearMap, gameRootFor, installMapFixture, LIVE, openGameRoot, removeGameRoot } from './mods.ts';
 import { MOD_STEM } from '../src/creature-mod.ts';
 
 let ed: Launched;
 
 const DATA = process.env.HOMM5_DATA || join(REPO_ROOT, 'data-unpacked');
 /** This run's own game install: the fixture mod goes here, the archive comes out here. */
-const GAME = join(REPO_ROOT, '_tmp', 'e2e-sharp-game');
+const GAME = gameRootFor('e2e-sharp-game');
 /** The real install the checkout sits in — the source of the mod and the original. */
 const REAL_GAME = join(REPO_ROOT, '..');
 /**
@@ -102,7 +102,11 @@ const PLACES = {
 };
 
 function cleanup(): void {
-  for (const p of [GAME, REF_ROOT, MAP_DIR]) if (existsSync(p)) rmSync(p, { recursive: true, force: true });
+  // Live, nothing is swept: the install is the game, the packed map is the
+  // point, and the working tree beside it is what a person would have left.
+  if (LIVE) return;
+  removeGameRoot(GAME);
+  for (const p of [REF_ROOT, MAP_DIR]) if (existsSync(p)) rmSync(p, { recursive: true, force: true });
 }
 
 /** A map text is UTF-16LE with a BOM; decode it to compare content. */
@@ -130,10 +134,18 @@ test.beforeAll(async () => {
   // the game does not ship, and borrowing them from whatever somebody happens to
   // have installed makes this spec pass or fail on their game instead of on the
   // code. Guarded so a worker restart does not rebuild it under the running map.
-  if (!existsSync(modFile(GAME, 'mod', MOD_STEM))) {
-    prepareGameRoot(GAME);
+  // Live, the fixture is (re)installed every run — that is the point of the
+  // mode, and it merges rather than replacing. Isolated, only when the throwaway
+  // install has none: opening it wipes it, and a worker restart mid-chain would
+  // take the map being rebuilt with it.
+  if (LIVE || !existsSync(modFile(GAME, 'mod', MOD_STEM))) {
+    openGameRoot(GAME);
     installMapFixture(GAME);
   }
+  // Live, the map is rebuilt into the game itself, and the copy the last run
+  // packed is in the way — New Map refuses to write over a map that exists. The
+  // reference was read above, out of assets/, so nothing needed is lost.
+  if (LIVE) clearMap(GAME, DATA, NAME);
 
   ed = await launchEditor({ HOMM5_ROOT: GAME });
   // The one thing Playwright cannot click is the OS save dialog; Pack's answer

@@ -18,19 +18,21 @@ import type { Launched } from './launch.ts';
 import { newMap } from './tiles.ts';
 import { openObjectPalette, pickObject, placeAtTile } from './objects.ts';
 import { addItem, reveal, setTreeValue } from './tree.ts';
-import { DATA, MOD, SHARPSHOOTER, prepareGameRoot, readInstalledMod, removeGameRoot } from './mods.ts';
+import { DATA, MOD, SHARPSHOOTER, clearMap, gameRootFor, openGameRoot, readInstalledMod, removeGameRoot } from './mods.ts';
 import { readExe } from '../src/creature-limit.ts';
 import { modFile } from '../src/mod-paths.ts';
 
 let ed: Launched;
 
-const GAME = join(REPO_ROOT, '_tmp', 'e2e-units-game');
+const GAME = gameRootFor('e2e-units-game');
 const MAP_NAME = 'e2e Units Map';
 const MAP_DIR = join(DATA, 'Maps', 'SingleMissions', MAP_NAME);
 
 test.beforeAll(async () => {
-  prepareGameRoot(GAME);
-  if (existsSync(MAP_DIR)) rmSync(MAP_DIR, { recursive: true, force: true });
+  openGameRoot(GAME);
+  // The map this spec builds, gone before it starts: live, the last run left it
+  // packed in the game and New Map will not write over a map that exists.
+  clearMap(GAME, DATA, MAP_NAME);
   ed = await launchEditor({ HOMM5_ROOT: GAME });
 });
 test.afterAll(async () => {
@@ -56,7 +58,11 @@ test('the dialog opens clean, and the donor loads as a preset', async () => {
   const { page } = ed;
   await page.locator('#unitsbtn').click();
   await expect(page.locator('#unitsmod')).toBeVisible();
-  await expect(page.locator('#um-list')).toContainText('none — the game holds its shipped creatures only');
+  // No creature of ours is listed — which reads two ways and both are the same
+  // fact: a throwaway install has no archive at all, while a live run works in a
+  // game whose archive is still there carrying dwellings.
+  await expect(page.locator('#um-list'))
+    .toContainText(/none — the game holds its shipped creatures only|0 creature\(s\)/);
 
   // Picking the donor loads its EVERY field: texts, stats, abilities, art.
   await openWithDonor(page);
