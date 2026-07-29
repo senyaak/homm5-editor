@@ -42,13 +42,18 @@ const GAME = join(REPO_ROOT, '_tmp', 'e2e-sharp-game');
 /** The real install the checkout sits in — the source of the mod and the original. */
 const REAL_GAME = join(REPO_ROOT, '..');
 /**
- * The hand-made map this spec rebuilds — in our folder, where our build reads
- * it. An install that still has it only under its old name is taken as it is:
- * the map is somebody's file, not a fixture in the repo.
+ * The map this spec rebuilds.
+ *
+ * `assets/maps/` first — the checkout's own copy, which makes the run the same
+ * on any machine. It is not in the repo and cannot be: the map was made by
+ * editing one the stock editor produced (assets/README.md). Absent, the
+ * installed one is used, under either the name our build writes or the old one.
  */
-const ORIGINAL = existsSync(modFile(REAL_GAME, 'map', 'Sharpshooter Test'))
-  ? modFile(REAL_GAME, 'map', 'Sharpshooter Test')
-  : join(REAL_GAME, 'Maps', 'Sharpshooter Test.h5m');
+const ORIGINAL = [
+  join(REPO_ROOT, 'assets', 'maps', 'Sharpshooter Test.h5m'),
+  modFile(REAL_GAME, 'map', 'Sharpshooter Test'),
+  join(REAL_GAME, 'Maps', 'Sharpshooter Test.h5m'),
+].find((p) => existsSync(p)) ?? '';
 /** The original, unpacked as the reference. Read-only after beforeAll. */
 const REF_ROOT = join(REPO_ROOT, '_tmp', 'e2e-sharp-ref');
 const REF = join(REF_ROOT, 'Maps', 'SingleMissions', 'Sharpshooter Test');
