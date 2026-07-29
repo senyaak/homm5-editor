@@ -110,6 +110,14 @@ stubbed `window.editor`) is how you drive it headless. Extend the stub in
 
 ## Testing, the big picture
 
+**Which command, and when.** `npm test` is the everyday one: every unit suite
+plus `test-e2e-fast`, which is every spec EXCEPT `e2e/c1m1/**`. The bare
+`npx playwright test` adds the reconstruction chain — three files of 5 to 10
+minutes each, 40 minutes end to end — and belongs before a release or when the
+change is in the reconstruction itself. Reaching for it as "run all the tests"
+costs three quarters of an hour and answers nothing the fast run did not.
+
+
 Beyond the unit `test-*` scripts, the project's north-star e2e is
 **reconstructing the shipped campaign missions from scratch** and diffing against
 the originals — see [docs/E2E_RECONSTRUCTION.md](docs/E2E_RECONSTRUCTION.md).

@@ -287,7 +287,9 @@ test('says whether the extension is there, so an effect cannot look live when it
 // game (2026-07-29) but the dialog around it is not finished — there is no
 // hint of what a threshold means, and nothing offers to write the tooltip that
 // describes the bonus. The assertions below are the contract as it stands, so
-// they run on every pass; `--grep-invert @wip` leaves them out.
+// they run on every pass. To see just these: `npx playwright test --grep @wip`
+// — a script for it would be run by `npm test` as a suite, and this stage
+// cannot pass out of the chain's order.
 test('makes a set of all three, with an effect of our own', {
   tag: '@wip',
   annotation: { type: 'wip', description: 'set effects work; the dialog around them is unfinished' },
@@ -387,6 +389,26 @@ test('makes a set of all three, with an effect of our own', {
   // The artifacts are still there: a set is added to the mod, not instead of
   // it, and every edit lands in the one archive.
   expect(mod.artifacts.map((a) => a.id)).toEqual(PIECES.map((p) => p.id));
+});
+
+test('removing asks in a dialog of ours, and Cancel means no', async () => {
+  test.setTimeout(2 * 60_000);
+  const { page } = ed;
+  if (await page.locator('#setedit').isVisible()) await page.locator('#setedit-cancel').click();
+  if (!(await page.locator('#artsmod').isVisible())) await page.locator('#artsbtn').click();
+
+  // The × on the set's row. This used to be `confirm()` — a native window that
+  // blocks the renderer, so a spec that reached one hung until the timeout with
+  // nothing to read. Now the question is ours: visible, readable, answerable.
+  const row = page.locator('#as-list .um-item').filter({ hasText: UNDEAD_KING.name });
+  await row.locator('button', { hasText: '×' }).click();
+  await expect(page.locator('#ask-text')).toContainText('only the set goes');
+  await page.locator('#ask-no').click();
+  await expect(page.locator('#ask')).toBeHidden();
+  // Cancel means the set is still there — the assertion the old prompt could
+  // not make, because nothing could press its buttons.
+  expect(readInstalledMod(GAME).sets.map((x) => x.effect)).toContain(UNDEAD_KING.effect);
+  await expect(page.locator('#as-list')).toContainText(UNDEAD_KING.name);
 });
 
 test('refuses one of the game\'s own set effects', async () => {

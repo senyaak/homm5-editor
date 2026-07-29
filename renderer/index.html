@@ -687,6 +687,7 @@
     .as-members label { display: flex; align-items: center; gap: 7px; font-size: 12px; color: #c9d1d9;
       cursor: pointer; }
     .as-members label i { color: #8b949e; font-style: normal; font-size: 11px; }
+    .ask-text { white-space: pre-wrap; max-width: 520px; font-size: 12px; line-height: 1.5; }
     /* The same editor the map's scripts are written in, in a dialog of its own. */
     .ss-text { border: 1px solid #30363d; border-radius: 4px; overflow: hidden; }
     .ss-text .cm-editor { height: 340px; font-size: 12px; }
@@ -1498,6 +1499,26 @@
       </div>
     </div>
   </dialog>
+  <!-- Asking before something irreversible, in a dialog of OURS.
+       `confirm()` is a native window: in Electron it blocks the renderer, so a
+       test that reaches one waits for a click nobody will make and dies by
+       timeout — and it looks nothing like the rest of the app. A <dialog> is
+       the whole fix: it stacks on top of whatever is open, Esc means no, and a
+       spec can read the question and press the button. -->
+  <dialog id="ask">
+    <div class="mp-card">
+      <div class="mp-head">
+        <span class="mp-title" id="ask-title">Confirm</span>
+        <button id="ask-x" title="close (Esc)">✕</button>
+      </div>
+      <div class="mp-body on-body"><div id="ask-text" class="ask-text"></div></div>
+      <div class="de-foot">
+        <button id="ask-no" class="ghost">Cancel</button>
+        <button id="ask-yes">Yes</button>
+      </div>
+    </div>
+  </dialog>
+
   <!-- Lua is written in the editor, never in a box among fields. A set's script
        opens here, on top of the set form, with the same CodeMirror the map's
        scripts use: highlighting, completion over the engine's API and ours, and

@@ -41,7 +41,6 @@ test.afterAll(async () => {
 test('localize a map: enable tags the texts, a language copies them, tabs edit each', { tag: '@nodata' }, async () => {
   test.setTimeout(5 * 60_000);
   const { page } = ed;
-  page.on('dialog', (d) => void d.accept());   // accept the "remove language?" confirm
 
   // A fresh map — it ships a name.txt and a description.txt.
   if (existsSync(MAP_DIR)) rmSync(MAP_DIR, { recursive: true, force: true });
@@ -133,6 +132,11 @@ test('localize a map: enable tags the texts, a language copies them, tabs edit e
   // --- remove Russian: its files go --------------------------------------------
   await page.locator('#locbtn').click();
   await page.locator('#localize .lz-lang', { hasText: 'Russian' }).locator('button', { hasText: 'remove' }).click();
+  // The question is OURS now, not a native confirm: a <dialog> the spec can read
+  // and answer. The native one blocked the renderer, and a spec that met one
+  // without a handler waited for a click nobody would make.
+  await expect(page.locator('#ask-text')).toContainText('Every ru.txt is deleted');
+  await page.locator('#ask-yes').click();
   await expect(async () => expect(has('name.ru.txt'), 'name.ru.txt deleted').toBe(false)).toPass({ timeout: 10_000 });
   expect(has('name.en.txt'), 'the base survives a removal').toBe(true);
 });

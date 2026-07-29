@@ -3529,7 +3529,7 @@ async function showLocRef(): Promise<void> {
 /** Switch the editor to another language, guarding unsaved work. */
 async function switchLocTab(code: string): Promise<void> {
   if (code === locActive) return;
-  if (docEdited() && !confirm(`${deHref} has unsaved changes. Switch language anyway?`)) {
+  if (docEdited() && !await ask(`${deHref} has unsaved changes. Switch language anyway?`, 'Switch')) {
     renderLocTabs();   // keep the visual on the language still open
     return;
   }
@@ -3612,19 +3612,24 @@ function saveDoc(): void {
 const docEdited = (): boolean => !!codeEditor && codeEditor.getDoc() !== deLoaded;
 
 /** Close, asking first when there is unsaved work — a script is worth a prompt. */
-function closeDoc(): void {
-  if (docEdited() && !confirm(`${deHref} has unsaved changes. Close anyway?`)) return;
+async function closeDoc(): Promise<void> {
+  if (docEdited() && !await ask(`${deHref} has unsaved changes. Close anyway?`, 'Close')) return;
   docDialog().close();
 }
 
 $('de-save').onclick = () => saveDoc();
-$('de-close').onclick = () => closeDoc();
-$('de-cancel').onclick = () => closeDoc();
-docDialog().addEventListener('click', (e) => { if (e.target === docDialog()) closeDoc(); });
+$('de-close').onclick = () => { void closeDoc(); };
+$('de-cancel').onclick = () => { void closeDoc(); };
+docDialog().addEventListener('click', (e) => { if (e.target === docDialog()) void closeDoc(); });
 // Esc reaches the dialog itself rather than our buttons, so the same guard has
 // to sit here too — or one stray keypress throws an afternoon's script away.
+// Asking cannot be awaited before the browser acts on Esc, so the close is
+// always stopped and then done again if the answer says so.
 docDialog().addEventListener('cancel', (e) => {
-  if (docEdited() && !confirm(`${deHref} has unsaved changes. Close anyway?`)) e.preventDefault();
+  if (!docEdited()) return;
+  e.preventDefault();
+  void ask(`${deHref} has unsaved changes. Close anyway?`, 'Close')
+    .then((yes) => { if (yes) docDialog().close(); });
 });
 
 // --- the map's scripts ------------------------------------------------------
@@ -3767,7 +3772,7 @@ async function exportLoc(code: string): Promise<void> {
 }
 
 async function removeLoc(code: string): Promise<void> {
-  if (!confirm(`Remove ${langName(code)}? Every ${code}.txt is deleted.`)) return;
+  if (!await ask(`Remove ${langName(code)}? Every ${code}.txt is deleted.`, 'Remove')) return;
   try { locState = await window.editor.locRemoveLanguage({ lang: code }); markDirty(true); }
   catch (e) { $('hud').textContent = 'could not remove: ' + (e instanceof Error ? e.message : String(e)); return; }
   if (locActive === code) locActive = locState.base;
@@ -7425,6 +7430,41 @@ async function submitNewMap(): Promise<void> {
  * `um-err` in the document, `$('um-err')` answered with the list's, so every
  * message the form ever wrote landed on a dialog the user could not see.
  */
+/**
+ * Ask before something irreversible — in a dialog of ours, never `confirm()`.
+ *
+ * `confirm()` is a native window, and in Electron it blocks the renderer: a
+ * spec that reaches one waits for a click nobody will make and dies by timeout,
+ * which is a hang with no message. This is a <dialog>, so it stacks over
+ * whatever is open, Esc answers no, and a test can read the question.
+ *
+ * One dialog for all of them, because a question is a question; the caller
+ * supplies the words and, when the button should say something sharper than
+ * "Yes", its label.
+ */
+function ask(question: string, yes = 'Yes'): Promise<boolean> {
+  const dialog = modDialog('ask');
+  $('ask-text').textContent = question;
+  $button('ask-yes').textContent = yes;
+  if (!dialog.open) dialog.showModal();
+  return new Promise<boolean>((resolve) => {
+    const done = (answer: boolean): void => {
+      dialog.removeEventListener('cancel', onCancel);
+      $('ask-yes').onclick = null;
+      $('ask-no').onclick = null;
+      $('ask-x').onclick = null;
+      if (dialog.open) dialog.close();
+      resolve(answer);
+    };
+    // Esc closes a <dialog> without touching our buttons, and it means no.
+    const onCancel = (): void => done(false);
+    dialog.addEventListener('cancel', onCancel, { once: true });
+    $('ask-yes').onclick = () => done(true);
+    $('ask-no').onclick = () => done(false);
+    $('ask-x').onclick = () => done(false);
+  });
+}
+
 function openOnTop(id: string): void {
   const dialog = modDialog(id);
   const err = FORM_ERR[id];
@@ -7554,7 +7594,7 @@ async function removeWithWarning(
     ? `${label} is named by ${uses.length} map(s):${NL}${NL}${shown}${more}${NL}${NL}`
       + 'They will stop resolving it. Remove anyway?'
     : `Remove ${label}? No map names it.`;
-  if (!confirm(warning)) return;
+  if (!await ask(warning, 'Remove')) return;
   try {
     if (kind === 'artifact') await window.editor.removeArtifact({ id });
     else await window.editor.removeCreature({ id });
@@ -8050,7 +8090,7 @@ function addSetEffectRow(stat = '', threshold = '', amount = ''): void {
   edit.className = 'um-recolor as-effect-edit';
   edit.textContent = '✎ script';
   edit.title = 'write the script — opens the editor';
-  edit.onclick = (e) => { e.preventDefault(); openSetScript(); };
+  edit.onclick = (e) => { e.preventDefault(); openSetScriptSafely(); };
   const drop = document.createElement('button');
   drop.className = 'um-recolor';
   drop.textContent = '×';
@@ -8148,7 +8188,7 @@ function newSet(): void {
 
 /** A set's effect value is named by nothing outside the mod, so no scan. */
 async function removeSet(effect: string, label: string): Promise<void> {
-  if (!confirm(`Remove ${label}? Its members stay; only the set goes.`)) return;
+  if (!await ask(`Remove ${label}? Its members stay; only the set goes.`, 'Remove')) return;
   try {
     await window.editor.removeArtifactSet({ id: effect });
     await refreshModLists();
@@ -8401,6 +8441,11 @@ $('as-members').addEventListener('change', renderSetCounts);
 let setScriptEditor: CodeEditor | null = null;
 
 function openSetScript(): void {
+  // The completion sources are fetched when a MAP opens, and this dialog is
+  // reachable with none: the mods window works on its own. Without this the
+  // editor comes up with an empty API list and completes nothing, which looks
+  // like the feature being broken rather than like a list not being asked for.
+  if (!scriptCtx) void loadScriptContext().then(() => { $('ss-info').textContent = scriptContextNote(); });
   if (!setScriptEditor) {
     setScriptEditor = mountCodeEditor($('ss-text'), () => closeSetScript(true), (diags) => {
       const errors = diags.filter((d) => d.severity === 'error').length;
@@ -8416,11 +8461,31 @@ function openSetScript(): void {
   setScriptEditor.focus();
 }
 
+/**
+ * The pencil, with the editor's own failures kept out of the click handler.
+ *
+ * A modal that fails to open leaves the form looking dead and a spec waiting for
+ * something that will never appear; a line in the form's error slot says what
+ * happened instead.
+ */
+function openSetScriptSafely(): void {
+  try {
+    openSetScript();
+  } catch (e) {
+    $('as-err').textContent = 'could not open the script editor: '
+      + (e instanceof Error ? e.message : String(e));
+  }
+}
+
 /** Done keeps what was written; Cancel leaves the set with what it had. */
 function closeSetScript(keep: boolean): void {
   if (keep && setScriptEditor) setScript = setScriptEditor.getDoc();
   modDialog('setscript').close();
 }
+
+// Esc closes a <dialog> on its own, and this one must behave like Cancel when it
+// does: the alternative is a script kept because a key was pressed.
+modDialog('setscript').addEventListener('cancel', () => { closeSetScript(false); });
 
 $('ss-ok').onclick = () => closeSetScript(true);
 $('ss-cancel').onclick = () => closeSetScript(false);

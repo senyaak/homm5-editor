@@ -2,7 +2,10 @@
 //
 //   node tools/e2e-live.ts e2e/mod-003-artifacts-create.spec.ts
 //   node tools/e2e-live.ts e2e/mod-001-units-create.spec.ts e2e/mod-004-sharpshooter-map.spec.ts
-//   npm run test-e2e-live -- e2e/mod-003-artifacts-create.spec.ts
+//   npm run e2e-live -- e2e/mod-003-artifacts-create.spec.ts
+//
+// Not called `test-…`: `npm test` runs every script with that prefix as a
+// suite, and this one needs arguments — it is a runner, not a suite.
 //
 // An ordinary run gives every mod spec a throwaway install under `_tmp`: an
 // executable with the shipped ceilings, an empty mod folder, deleted when the
