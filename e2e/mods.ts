@@ -71,17 +71,19 @@ export const SHARPSHOOTER = {
  * And the Artifacts form — the port's Undertaker's Amulet, on a shipped
  * neck-piece.
  *
- * THE DESCRIPTION NAMES WHAT THE FORM ENTERS, and that is not decoration: every
- * shipped artifact's description says what it gives down to the number, ours are
- * written the same way, and this one is filled in beside a Knowledge of 2 and no
- * effect at all. Give it the cloak's text and it promises a necromancy bonus the
- * artifact does not have.
+ * THE DESCRIPTION NAMES WHAT THE FORM ENTERS, down to the number, the way every
+ * shipped artifact's does. The wording is the game's own for a necromancy
+ * bonus — the Necropolis town building says «Добавляет 10% к навыку
+ * «Некромантия» и 150 очков темной энергии…», so a piece that raises the same
+ * skill says it the same way, and the stat follows as the shipped artifacts
+ * write it («Добавляет +2 к «Нападению» героя»).
  */
 export const AMULET = {
   file: 'H3UndertakersAmulet',
   id: 'ARTIFACT_H3_UNDERTAKERS_AMULET',
   name: 'Амулет гробовщика',
-  description: 'Увеличивает «Знание» героя на +2.',
+  description: 'Добавляет 5% к навыку «Некромантия» и +2 к «Знанию» героя.',
+  necromancy: 5,
   donor: 'ARTIFACT_NECROMANCER_PENDANT',
   picture: 'amulet_grob.gif',
 };
@@ -94,7 +96,8 @@ export const CLOAK = {
   file: 'H3VampiresCloak',
   id: 'ARTIFACT_H3_VAMPIRES_CLOAK',
   name: 'Плащ вампира',
-  description: 'Увеличивает «Знание» героя на +2 и добавляет 10% к навыку «Некромантия».',
+  description: 'Добавляет 10% к навыку «Некромантия» и +2 к «Знанию» героя.',
+  necromancy: 10,
   donor: 'ARTIFACT_NECROMANCER_PENDANT',
   slot: 'SHOULDERS',
   picture: 'mantia_vamp.gif',
@@ -105,7 +108,10 @@ export const BOOTS = {
   file: 'H3DeadMansBoots',
   id: 'ARTIFACT_H3_DEAD_MANS_BOOTS',
   name: 'Сапоги мертвеца',
-  description: 'Увеличивают «Знание» героя на +1 и добавляют 15% к навыку «Некромантия».',
+  // Plural in Russian, and the verbs follow the name the way the shipped
+  // «Сапоги странника» do — «Добавляют», not «Добавляет».
+  description: 'Добавляют 15% к навыку «Некромантия» и +1 к «Знанию» героя.',
+  necromancy: 15,
   donor: 'ARTIFACT_NECROMANCER_PENDANT',
   slot: 'FEET',
   picture: 'sapogi_mertv.gif',
@@ -231,6 +237,10 @@ export function installMapFixture(gameRoot: string): CreatureMod {
       id: a.id, file: a.file, name: a.name, description: a.description,
       slot: ('slot' in a ? a.slot : 'NECK') as ArtifactSlot,
       rank: 'ARTF_CLASS_MINOR', cost: 5000,
+      stats: { Knowledge: a.id === BOOTS.id ? 1 : 2 },
+      // What the description promises, in the only place that can hold it: the
+      // artifact record has six stats and no room for a necromancy percentage.
+      effects: { necromancy: a.necromancy },
       // Its own picture, not a shipped artifact's icon: the file is in the
       // checkout, so the mod builds the game's texture from it the way the
       // dialog does — and the gif reader and the texture writer are exercised

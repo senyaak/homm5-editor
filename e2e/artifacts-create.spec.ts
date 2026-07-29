@@ -69,6 +69,12 @@ test('edits the difference and installs the artifact', async () => {
   await page.locator('#am-cost').fill('5000');
   await page.locator('#am-ai').fill('700');
   await page.locator('#am-knowledge').fill('2');
+  // The part no artifact record can hold: a percentage on a skill. It goes to a
+  // file the native extension reads, added as a row rather than a field of its
+  // own — the list of stats grows with the reverse engineering, the form should
+  // not. The description beside it promises exactly this number.
+  await page.locator('#am-effect-add').click();
+  await page.locator('#am-effects label').first().locator('input').fill('5');
 
   await page.locator('#am-ok').click();
   await expect(page.locator('#am-note')).toContainText('installed', { timeout: 120_000 });
@@ -115,14 +121,10 @@ test('a second piece, so there is a set to make', async () => {
   await page.locator('#am-slot').selectOption(CLOAK.slot);
   await page.locator('#am-rank').selectOption('ARTF_CLASS_MINOR');
   await page.locator('#am-knowledge').fill('2');
-  // The part no artifact record can hold: it goes to a file the native
-  // extension reads, and the artifact carries its six stats without it. Added
-  // as a row rather than typed into a field of its own — the list of stats
-  // grows with the reverse engineering and the form should not.
   await page.locator('#am-effect-add').click();
   const effect = page.locator('#am-effects label').first();
   await expect(effect.locator('select')).toHaveValue('necromancy');
-  await effect.locator('input').fill('10');
+  await effect.locator('input').fill(String(CLOAK.necromancy));
 
   await page.locator('#am-ok').click();
   await expect(page.locator('#am-note')).toContainText('installed', { timeout: 120_000 });
@@ -130,14 +132,16 @@ test('a second piece, so there is a set to make', async () => {
 
   // Written beside the executable, not into the mod — the extension reads it
   // from its own folder and knows nothing about archives.
-  const effects = readFileSync(join(GAME, EFFECTS_FILE), 'latin1');
-  expect(readEffects(effects)).toEqual([{ stat: 'necromancy', artifact: ORIGINAL_ARTIFACTS + 1, amount: 10 }]);
+  // BOTH rows, in mod order: the file is rewritten from the whole mod every
+  // time rather than appended to, so the piece installed a test ago is still in
+  // it and neither row is a leftover.
+  expect(readEffects(readFileSync(join(GAME, EFFECTS_FILE), 'latin1'))).toEqual([
+    { stat: 'necromancy', artifact: ORIGINAL_ARTIFACTS, amount: AMULET.necromancy },
+    { stat: 'necromancy', artifact: ORIGINAL_ARTIFACTS + 1, amount: CLOAK.necromancy },
+  ]);
   // And the text promises exactly that 10%: the row and the sentence are
   // written from the same form and are the only two places the number exists.
   expect(readInstalledMod(GAME).artifacts[1]!.description).toBe(CLOAK.description);
-  // The amulet was installed first with no effect, so it must NOT be in there:
-  // a file that only grows would keep granting bonuses nobody asked for.
-  expect(effects).not.toContain(`artifact ${ORIGINAL_ARTIFACTS} `);
 });
 
 test('says the extension is missing rather than letting the effect look live', async () => {
