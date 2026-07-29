@@ -43,6 +43,19 @@ test('C1M1 ground textures, layer by layer', async () => {
   await page.locator('#rivercarve').setChecked(false);
 
   let writes = 0;
+  // Vertices the brush should have painted, counted the way the brush counts:
+  // a rectangle stamps the whole grid, a click one vertex.
+  let asked = 0;
+  // Where the map sits on screen. Every click of this stage uses pixels worked
+  // out once, at the fitted zoom, so a view that moves silently re-aims all of
+  // them at other vertices — which looks in the file exactly like paint lost
+  // here and gained there, in equal numbers.
+  const whereIsIt = () => page.evaluate((n: number) => {
+    const a = window.view.vertexToScreen(0, 0), b = window.view.vertexToScreen(n - 1, n - 1);
+    return `${Math.round(a.x)},${Math.round(a.y)} .. ${Math.round(b.x)},${Math.round(b.y)}`;
+  }, V);
+  const fitted = await whereIsIt();
+
   for (const layer of want) {
     // Picking the tile also arms the paint brush, and adds the layer if this map
     // has none — the editor refuses to arm paint with no tile chosen.
@@ -61,15 +74,28 @@ test('C1M1 ground textures, layer by layer', async () => {
     await setTileStrength(page, wholeValue, true);
     await armBrush(page, 'paint', 'rect');
     await dragTiles(page, [0, 0], [V - 2, V - 2], 12);
+    // The rectangle is a drag, and a drag the brush does not take is a drag the
+    // CAMERA takes. Checked here rather than at the end so the failure names the
+    // layer that moved it.
+    expect(await whereIsIt(), `the rectangle of ${layer.path} moved the view`).toBe(fitted);
     writes += wholeVerts.length;
+    asked += V * V;
 
     await armBrush(page, 'paint', 'vertex');
     for (const [value, verts] of groups.slice(1)) {
       await setTileStrength(page, value, true);
-      for (const v of verts) { await clickAt(page, pixels[v]!); writes++; }
+      for (const v of verts) { await clickAt(page, pixels[v]!); writes++; asked++; }
     }
+    // What the brush says it did, against what this layer asked for. A stroke
+    // that reached the brush and painted nothing, or a vertex painted but never
+    // handed over, is invisible in the file until it is compared with the
+    // fixture — and by then it is 9409 numbers with no clue which layer moved.
+    const st = await page.evaluate(() => window.view.strokes());
     console.log(`  ${layer.path.replace('/mapobjects/_(advmaptile)/', '')}: rect at ${wholeValue}`
-      + ` (${wholeVerts.length}) + ${layer.mask.length - wholeVerts.length} vertices`);
+      + ` (${wholeVerts.length}) + ${layer.mask.length - wholeVerts.length} vertices`
+      + ` | asked ${asked} painted ${st.painted} sent ${st.sent} refused ${st.refused}`);
+    expect(st.refused, `strokes ${layer.path} dropped`).toBe(0);
+    expect(await whereIsIt(), `painting ${layer.path} moved the view`).toBe(fitted);
   }
   console.log(`textures: ${want.length} layers, ${writes} vertex writes`);
 

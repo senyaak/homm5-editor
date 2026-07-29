@@ -9,14 +9,20 @@
 // Every stage is idempotent and works on the map left by the last one. Heights
 // are planned against what the map currently holds rather than against a blank,
 // so re-running a stage fixes drift instead of doubling it, and any stage can be
-// run alone as long as the map exists — the heights stage creates it if not.
+// run alone as long as the map exists.
 //
-// The map is deliberately NOT cleaned up: it is the artefact the whole exercise
+// The chain itself, though, starts from nothing: stage 1 deletes what the last
+// run built (startFresh). Idempotence is for working on one stage, not for the
+// run that proves the claim — over last run's finished map the terrain stages
+// would sculpt and paint underneath objects that stage 6 has not placed yet,
+// which is neither the order a person works in nor one the editor is fast at.
+//
+// The map is not cleaned up at the END: it is the artefact the whole exercise
 // is for. It lives under the data root, where the game looks for maps.
 
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { REPO_ROOT } from '../launch.ts';
 import { newMap, settle } from '../tiles.ts';
@@ -62,6 +68,25 @@ export function requireFixture(extra?: { ok: boolean; need: string }): void {
   const need = extra && !extra.ok ? extra.need : NEED_FIXTURE;
   if (process.env[ALLOW_NO_FIXTURE]) { test.skip(!ok, need); return; }
   expect(ok, `${need}  —  or set ${ALLOW_NO_FIXTURE}=1 to skip instead of fail`).toBe(true);
+}
+
+/**
+ * Throw away whatever the last run built, so the chain starts from nothing.
+ *
+ * Called by stage 1 and nowhere else. The stages are written to converge on a
+ * map that already exists, which is what makes any one of them re-runnable —
+ * but a chain that starts on last run's finished map does the work in the wrong
+ * ORDER: it paints ground and carves rivers under two and a half thousand
+ * objects that will not be placed until stage 6. That is not the claim this
+ * exercise makes, and it is not cheap either — the terrain stages slow to a
+ * crawl over a populated map, and stage 4 took as long alone as the first four
+ * stages take from a blank one.
+ *
+ * So the artefact is rebuilt rather than touched up. Running stage 1 on its own
+ * therefore means "start over", which is what stage 1 is.
+ */
+export function startFresh(): void {
+  rmSync(MAP_DIR, { recursive: true, force: true });
 }
 
 /**

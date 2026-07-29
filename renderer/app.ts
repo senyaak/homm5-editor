@@ -4989,6 +4989,16 @@ interface ViewApi {
   /** Edits sent to the main process and not yet acknowledged. */
   pending(): number;
   /**
+   * What the paint brush has done since the app started.
+   *
+   * `painted` counts vertices written into the GPU masks, `sent` the ones
+   * handed to the main process, and `refused` the strokes that reached the
+   * brush and did nothing (no tile, no layer, masks not ready). A stage that
+   * clicks N times and sees fewer than N here knows the loss is on this side of
+   * the IPC before it reads a single byte of the file.
+   */
+  strokes(): { painted: number; sent: number; refused: number };
+  /**
    * Open a map by path, the way the Open dialog does.
    *
    * `window.editor.loadMap` is only the main-process half; the scene, the title
@@ -5107,7 +5117,15 @@ const view: ViewApi = {
   // and did not reach the file", which otherwise look identical in the diff.
   // Painting refuses until the splat textures are decoded, and a refused stroke
   // looks exactly like a brush that did nothing — so the state is published.
-  paintReady() { const fl = world ? activeFloor() : null; return !!(fl && fl.splat && fl.maskTex); },
+  paintReady() {
+    const fl = world ? activeFloor() : null;
+    if (!fl || !fl.splat || !fl.maskTex) return false;
+    // The armed tile's own layer, not just "some splat is decoded". Picking a
+    // tile this map has no layer for adds one in the background, and until that
+    // lands a stroke has nowhere to go — see brushAt.
+    return !paintTile || fl.splat.paths.includes(paintTile.path);
+  },
+  strokes() { return { painted: paintedVerts, sent: sentVerts, refused: refusedStrokes }; },
   idle() {
     const fl = world ? activeFloor() : null;
     return {
@@ -5362,19 +5380,31 @@ const tileBlend = (): boolean => ($('tilesolo') as HTMLInputElement).checked;
 /** Whether painting water also sinks the bed under it. */
 const riverCarve = (): boolean => ($('rivercarve') as HTMLInputElement).checked;
 
+/** Vertices painted into the masks, handed over, and strokes that did nothing. */
+let paintedVerts = 0, sentVerts = 0, refusedStrokes = 0;
+
 /** Paint at the cursor, if the brush is armed and the tile is paintable. */
 function brushAt(verts: number[]): void {
   const fl = activeFloor();
   const tile = paintTile;
-  if (!tile || !fl.splat) return;
+  if (!tile || !fl.splat) { refusedStrokes++; return; }
   // Before upgradeToSplat finishes there is nothing to paint into. Refusing here
   // matters: the stroke would otherwise reach the file but never the screen.
-  if (!fl.maskTex) { $('hud').textContent = 'ground textures still loading…'; return; }
+  if (!fl.maskTex) { refusedStrokes++; $('hud').textContent = 'ground textures still loading…'; return; }
   const layerIdx = fl.splat.paths.indexOf(tile.path);
-  if (layerIdx < 0) return; // not a layer this map has — the palette shows which do
+  if (layerIdx < 0) {
+    // Picking a tile this map has no layer for adds one in the background, and
+    // a stroke that arrives first has nowhere to land. It used to be dropped in
+    // silence, which is how a reconstruction lost three whole layers without
+    // anything on screen or in the file saying so.
+    refusedStrokes++;
+    $('hud').textContent = `${tile.name} has no layer in this map yet — one moment`;
+    return;
+  }
   const fresh = verts.filter((v) => !strokeVerts.has(v));
-  if (!fresh.length) return;
+  if (!fresh.length) { refusedStrokes++; return; }
   for (const v of fresh) strokeVerts.add(v);
+  paintedVerts += fresh.length;
   const strength = tileStrength();
   paintMaskTexture(fl, layerIdx, fresh, strength, !tileBlend());
   // Water carves its bed — unless there is no water being painted (strength 0
@@ -5388,6 +5418,7 @@ async function commitStroke(): Promise<void> {
   if (!tile || !strokeVerts.size || !world) { strokeVerts.clear(); return; }
   const verts = [...strokeVerts];
   strokeVerts.clear();
+  sentVerts += verts.length;
   const heightEdits = [...riverHeights];
   riverHeights.clear();
   try {

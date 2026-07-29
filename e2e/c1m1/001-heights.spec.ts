@@ -14,7 +14,7 @@ import { launchEditor } from '../launch.ts';
 import type { Launched } from '../launch.ts';
 import { armBrush, setBrushForce } from '../tiles.ts';
 import {
-  clickAt, fixture, mismatches, openMap, requireFixture, saveTerrain, vertexPixels,
+  clickAt, fixture, mismatches, openMap, requireFixture, saveTerrain, startFresh, vertexPixels,
 } from './shared.ts';
 import { readHeights } from '../../src/terrain.ts';
 
@@ -32,6 +32,10 @@ test('C1M1 heights, clicked one vertex at a time', async () => {
   const { page } = ed;
 
   const target = readHeights(fixture());
+  // The chain builds a map the way a person would: ground first, objects last.
+  // Starting on the one the last run finished would sculpt and paint underneath
+  // 2600 objects that belong to stage 6 — see startFresh.
+  startFresh();
   const V = await openMap(page);
   expect(V * V).toBe(target.length);
 

@@ -64,6 +64,14 @@ reads the old folders, so the game as it was is one launch away.
 - **Placing two of the same object in a row placed one.** A palette swatch
   toggles; arming what is already armed puts it down, and the next click on the
   map went nowhere.
+- **Painting straight after picking a new tile went nowhere, silently.**
+  Choosing a tile the map has no layer for adds one in the background, and the
+  brush was armed and the tile named on screen before that landed — so a stroke
+  in between had nothing to paint into and was dropped without a word, the
+  ground looking untouched and the file keeping its zeroes. The bigger the map,
+  the longer the window: rebuilding C1M1 lost three complete texture layers
+  this way. The brush now says when a tile is not paintable yet, and reports
+  itself unready until the layer is really there.
 
 ## 0.4.0 — 2026-07-28
 

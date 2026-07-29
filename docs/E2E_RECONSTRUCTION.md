@@ -231,14 +231,17 @@ The map is not cleaned up afterwards — it is left for reading:
 `<data root>/Maps/SingleMissions/e2e Reconstruct C1M1/`. But it is **disposable
 test output, not an asset**, and that matters for how the suite is run.
 
-**Delete it before a run that is meant to prove something.** The stages are
-idempotent, so over a map a previous run already built they mostly find nothing
-to do and pass in seconds — green, and having rebuilt nothing. The claim this
-suite exists to make is "the editor builds C1M1 from a blank", and only a clean
-slate makes it:
+**Stage 1 deletes it, so the chain always starts from a blank.** That is not
+tidiness. Idempotence is what lets you re-run the one stage you are working on;
+it is the wrong thing for the run that proves the claim, because over last run's
+finished map the chain does the work in the wrong ORDER — sculpting ground and
+painting texture underneath 2600 objects that stage 6 has not placed yet. It is
+also where the suite went quietly wrong for a week: on a populated map the
+terrain stages crawl, and stage 4 took as long by itself as stages 1–4 take from
+a blank one, painting layers that came out short. From nothing, all four are
+exact.
 
 ```bash
-rm -rf "<data root>/Maps/SingleMissions/e2e Reconstruct C1M1"
 npx playwright test          # ~35–45 min, the whole chain from nothing
 ```
 
@@ -387,6 +390,24 @@ follow the carve toggle. And a stroke hands its edit to the main process without
 waiting, so at this scale **the backlog outlived the Save**: the file was written,
 then thousands of queued commits marked the map dirty again. The renderer now
 publishes how many commits are in flight, and the harness waits for quiet.
+
+A third surfaced a week later and cost three whole layers. Picking a tile the
+map has no layer for adds one in the BACKGROUND — a round trip that rebuilds the
+terrain container in the main process — while the palette has already armed the
+brush and put the tile's name on screen. `paintReady` said yes throughout,
+because it asked whether the ground textures were decoded, not whether THIS tile
+had a layer yet; so the stage painted into a layer that did not exist, and every
+stroke was dropped in silence, the rectangle included. On a small map the round
+trip always won the race. On C1M1 it did not — each added layer makes the next
+add slower, since adding one re-composes every mask already there — and the last
+three layers, water, road and stoneroad, stayed at zero. The file said `built 0
+vs 255` and nothing anywhere said why. The gate now means what it says, the
+brush says out loud when it has nowhere to paint, and it counts what it dropped:
+`window.view.strokes()` reports vertices painted, vertices handed over, and
+strokes refused. `e2e/paint-burst.spec.ts` guards both halves in seconds — it
+reads the gate in the same turn as the swatch click, where the layer cannot yet
+have arrived, and then checks that a burst of 3600 clicks reaches the file with
+nothing refused.
 
 What the first full run cost, and is worth remembering: 18 of those 9409
 vertices came out wrong, every one beside a tall step. The pick asked the
