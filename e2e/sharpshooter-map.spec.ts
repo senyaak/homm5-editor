@@ -7,10 +7,13 @@
 // result against the original with the same gap reports the C1M1
 // reconstruction used (diff-objects, diff-map, diff-terrain, texts, pack).
 //
-// The mod the map depends on — ours, H5E/homm5-editor.h5u: the Sharpshooter,
-// its palace, three artifacts — is installed as a FIXTURE, copied into this
-// run's own game root. Adding units through the window is its own suite (units-mod.spec.ts);
-// this one is about the map, and it must not depend on that dialog having run.
+// The mod the map is made of — the Sharpshooter, its palace, three artifacts —
+// is BUILT into this run's own game root as a fixture (e2e/mods.ts), not copied
+// off the real install: a spec that borrows whatever somebody happened to build
+// passes or fails on their game rather than on the code, and cannot run at all
+// where nobody has pressed the buttons. Adding units through the window is its
+// own suite (units-create.spec.ts); this one is about the map, and it must not
+// depend on that dialog having run.
 //
 // The map keeps the original's own name: it is created under the data root's
 // Maps tree (the checkout's data-unpacked), where that name is free — the
@@ -27,7 +30,8 @@ import { armBrush, clickTile, newMap, planView } from './tiles.ts';
 import { openObjectPalette, pickObject, placeAtTile, setObjectProp, setPlacement } from './objects.ts';
 import { addItem, addValueItem, openTree, setTreeValue } from './tree.ts';
 import { readEntries } from '../src/pak.ts';
-import { ensureModDir, modFile } from '../src/mod-paths.ts';
+import { modFile } from '../src/mod-paths.ts';
+import { installMapFixture, prepareGameRoot } from './mods.ts';
 import { MOD_STEM } from '../src/creature-mod.ts';
 
 let ed: Launched;
@@ -92,34 +96,6 @@ const PLACES = {
   ],
 };
 
-/**
- * The mod this map is made of — OURS.
- *
- * Everything it places (the Sharpshooter, its palace, three artifacts) is in
- * the one global mod the editor installs, `H5E/homm5-editor.h5u`. The separate
- * `sod-creatures.h5u` this used to copy is history: `UserMODs/` is not read by
- * our build at all, and no install here has that file any more. Still accepted
- * where it exists, so an older install runs this too.
- */
-function fixtureMod(): string | null {
-  return [
-    modFile(REAL_GAME, 'mod', MOD_STEM),
-    modFile(REAL_GAME, 'mod', 'sod-creatures'),
-    join(REAL_GAME, 'UserMODs', 'sod-creatures.h5u'),
-  ].find((p) => existsSync(p)) ?? null;
-}
-
-/**
- * The map is made of that mod's creatures, dwellings and artifacts, so without
- * it there is nothing to build the map from.
- *
- * Said out loud and skipped, rather than failing on a copyfile ENOENT thirty
- * lines later: an install where the editor's mod has never been built is not a
- * broken checkout.
- */
-const NEED_MOD = `needs the editor's mod installed — ${modFile(REAL_GAME, 'mod', MOD_STEM)}`
-  + ' (Units… / Artifacts… build and install it)';
-
 function cleanup(): void {
   for (const p of [GAME, REF_ROOT, MAP_DIR]) if (existsSync(p)) rmSync(p, { recursive: true, force: true });
 }
@@ -134,8 +110,6 @@ function decode(buf: Buffer): string {
 // beforeAll again — so beforeAll only ENSURES the fixtures (idempotent, and it
 // never deletes the map under reconstruction). The clean slate belongs to the
 // build test itself; the full sweep to afterAll.
-test.beforeEach(() => { test.skip(!fixtureMod(), NEED_MOD); });
-
 test.beforeAll(async () => {
   // The reference: the hand-made archive, unpacked and never written again.
   if (existsSync(ORIGINAL) && !existsSync(join(REF, 'map.xdb'))) {
@@ -146,12 +120,14 @@ test.beforeAll(async () => {
     }
   }
 
-  // The fixture mod, into this run's own install. Absent, every test here skips
-  // itself (see NEED_MOD) — so this arranges what it can and says nothing.
-  const mod = fixtureMod();
-  if (mod) {
-    ensureModDir(GAME);
-    copyFileSync(mod, modFile(GAME, 'mod', MOD_STEM));
+  // The fixture mod, BUILT into this run's own install rather than copied off
+  // the real one: the map is made of a creature, a dwelling and three artifacts
+  // the game does not ship, and borrowing them from whatever somebody happens to
+  // have installed makes this spec pass or fail on their game instead of on the
+  // code. Guarded so a worker restart does not rebuild it under the running map.
+  if (!existsSync(modFile(GAME, 'mod', MOD_STEM))) {
+    prepareGameRoot(GAME);
+    installMapFixture(GAME);
   }
 
   ed = await launchEditor({ HOMM5_ROOT: GAME });

@@ -9,7 +9,8 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { REPO_ROOT } from './launch.ts';
-import { addCreature, buildCreatureMod, dataReader, installCreatureMod, MOD_STEM, newCreatureMod, packCreatureMod, readCreatureMod } from '../src/creature-mod.ts';
+import { addArtifact, addArtifactSet, addCreature, addDwelling, buildCreatureMod, dataReader, installCreatureMod, MOD_STEM, newCreatureMod, packCreatureMod, readCreatureMod } from '../src/creature-mod.ts';
+import type { ArtifactSlot } from '../src/artifacts.ts';
 import type { CreatureMod } from '../src/creature-mod.ts';
 import { creatureSources } from '../src/registry.ts';
 import { assets } from '../src/assets.ts';
@@ -75,6 +76,46 @@ export const CLOAK = {
   slot: 'SHOULDERS',
 };
 
+/** The third piece. Only the map fixture builds this one; the dialog specs stop at two. */
+export const BOOTS = {
+  file: 'H3DeadMansBoots',
+  id: 'ARTIFACT_H3_DEAD_MANS_BOOTS',
+  name: 'Сапоги мертвеца',
+  description: 'Увеличивают «Знание» героя на +1 и добавляют 15% к навыку «Некромантия».',
+  donor: 'ARTIFACT_NECROMANCER_PENDANT',
+  slot: 'FEET',
+};
+
+/**
+ * The dwelling that hires the Sharpshooter.
+ *
+ * A dwelling for a creature the game does not ship is a feature of OURS, which
+ * is why it is a fixture here: `addDwelling` is the only thing that can make
+ * one, and no dialog does it yet. The tier 4–7 dwellings that used to sit
+ * beside it are content and belong to whoever is porting a campaign.
+ *
+ * The model is the elves' upgraded town building, which is where the game sells
+ * its own Sharp Shooter. `bake` gives the ground and the width by hand: the
+ * houses ARE the trees and start at 41.2, so the usual "ground is where the
+ * decoration begins" reading cuts four units off their bottoms; six tiles
+ * rather than four because the upgraded model carries the basic one's meshes
+ * beside its own and spreads 34 units wide.
+ */
+export const PALACE = {
+  file: 'SharpshooterPalace',
+  creatures: [SHARPSHOOTER.id],
+  model: '/Arenas/Town/Rampart/HighCabins_u2r0.xdb',
+  bake: { tiles: 6, ground: 41.2 },
+  icon: '/UI/TownHall/preserve/128/d3u.xdb',
+  type: 'BUILDING_PRESERVE_MILITARY_POST',
+  name: 'Дом снайперов',
+  description: 'Дом снайперов позволяет вам нанимать снайперов.',
+  firstVisit: 'Вы захватили дом снайперов. Вы хотите нанять снайперов?',
+  secondVisit: 'Вы хотите нанять снайперов?',
+  firstVisitNoHire: 'Вы захватили дом снайперов, но снайперов здесь нет.',
+  secondVisitNoHire: 'Здесь нет снайперов.',
+};
+
 /** The set they make — the port's, and ours: a twelfth effect, never one of theirs. */
 export const UNDEAD_KING = {
   file: 'H3UndeadKing',
@@ -133,6 +174,56 @@ export function installCreatureHeadless(gameRoot: string): CreatureMod {
   installCreatureMod(gameRoot, mod, packCreatureMod(report));
   return mod;
 }
+
+/**
+ * The whole fixture the map spec is made of, built into `gameRoot` WITHOUT the
+ * window: the Sharpshooter, its palace, the three artifacts and the set.
+ *
+ * BUILT, not copied off the real install. A test that borrows the mod somebody
+ * built earlier passes or fails on the state of that person's game, and says
+ * nothing about the code under test — and it cannot run at all on a machine
+ * where nobody has pressed the buttons. Everything here goes through the same
+ * functions the dialogs' channels call, so what it leaves behind is what the
+ * dialogs would have left.
+ *
+ * The artifacts take a shipped artifact's icon rather than a picture of their
+ * own: what the map spec needs is that they EXIST, and their own artwork is
+ * somebody else's file that this repo does not carry.
+ */
+export function installMapFixture(gameRoot: string): CreatureMod {
+  const mod = newCreatureMod(MOD);
+  const sources = creatureSources(assets([DATA]), SHARPSHOOTER.donor);
+  if (!sources) throw new Error(`cannot resolve the donor ${SHARPSHOOTER.donor} — is the data root unpacked?`);
+  addCreature(mod, {
+    id: SHARPSHOOTER.id, file: SHARPSHOOTER.file,
+    name: SHARPSHOOTER.name, description: SHARPSHOOTER.description,
+    abilitiesText: SHARPSHOOTER.abilitiesText,
+    stats: { ...blankStats(), attack: 12, shots: 32, range: -1, tier: 4, gold: 400 },
+    visualSource: sources.visual, monsterSource: sources.monster,
+  });
+  addDwelling(mod, PALACE);
+  for (const a of [AMULET, CLOAK, BOOTS]) {
+    addArtifact(mod, {
+      id: a.id, file: a.file, name: a.name, description: a.description,
+      slot: ('slot' in a ? a.slot : 'NECK') as ArtifactSlot,
+      rank: 'ARTF_CLASS_MINOR', cost: 5000,
+      icon: DONOR_ICON,
+      board: { tiles: 1 },
+    });
+  }
+  addArtifactSet(mod, {
+    effect: UNDEAD_KING.effect, file: UNDEAD_KING.file,
+    name: UNDEAD_KING.name, description: UNDEAD_KING.description,
+    artifacts: [AMULET.id, CLOAK.id, BOOTS.id],
+    perCount: ['', 'Надето два предмета из трёх.', 'Набор собран полностью.'],
+  });
+  const report = buildCreatureMod(mod, dataReader(DATA));
+  installCreatureMod(gameRoot, mod, packCreatureMod(report));
+  return mod;
+}
+
+/** The shipped icon the fixture's artifacts wear — the Necromancer's Pendant. */
+const DONOR_ICON = '/Textures/HeroScreen/Artifacts/Necromancer_Pendant.(Texture).xdb';
 
 /** Our mod, read back off the install. */
 export function readInstalledMod(gameRoot: string): CreatureMod {
