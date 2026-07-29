@@ -110,6 +110,35 @@ names its combat scripts by **absolute** path into the shipped mission's folder
 location, not a rebuilt map's. Rehoming those paths is a separate concern from
 authoring the script and is left to the mission author.
 
+## A global script, and triggers that stack
+
+`scripts/advmap-startup.lua` ends with `doFile("/scripts/advmap-common.lua")`,
+and both are ordinary files under the data root — so a mod that carries its own
+`advmap-common.lua` runs code on **every adventure map**, the game's own
+included. That is where a mod puts behaviour that is not one map's business.
+
+**Two things were measured in game on 2026-07-29, because guessing them wrong is
+expensive:**
+
+- A `Trigger(NEW_DAY_TRIGGER, "…")` set from that global file **fires**. The
+  probe was an archive holding nothing but `scripts/advmap-common.lua` — the
+  shipped 73 lines plus a handler adding 1000 gold — and the resource bar moved
+  on the first end of turn.
+- It **also fires on a map that sets its own** handler for the same trigger.
+  `Maps/Multiplayer/A1S1` («Дуэль») does exactly that (`Trigger(NEW_DAY_TRIGGER,
+  "hero_teleport")`, its line 138), and with the probe installed both were heard.
+
+So **triggers stack**: `SetTrigger` keeps a list rather than one slot per type,
+which the binary agrees with — it allocates a 0x1C-byte record per call
+(`0x5f2640`) and hands it to the adventure map, and an allocation per call is not
+how a single field is written. An earlier note here said the opposite and led to
+a design built on a polling thread; the thread is not needed.
+
+There is no log to read any of this from: the game writes none — `print` goes to
+its console and `Documents\My Games\…` holds only `Profiles`. A probe has to
+show its answer in something the game draws, and a round number of gold is the
+bluntest such thing.
+
 ## The `<Name>` is the script handle
 
 Lua addresses everything on the map by a **string name**, not by file path or
