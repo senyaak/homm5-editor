@@ -16,7 +16,7 @@ import { join } from 'node:path';
 import { test, expect } from '@playwright/test';
 import { launchEditor, REPO_ROOT } from './launch.ts';
 import type { Launched } from './launch.ts';
-import { AMULET, CLOAK, gameRootFor, openGameRoot, readInstalledMod, removeGameRoot, UNDEAD_KING } from './mods.ts';
+import { AMULET, BOOTS, CLOAK, gameRootFor, openGameRoot, PIECES, readInstalledMod, removeGameRoot, UNDEAD_KING } from './mods.ts';
 import { ORIGINAL_ARTIFACTS, readArtifactLimit, SITES_FILE } from '../src/artifact-limit.ts';
 import { modFile } from '../src/mod-paths.ts';
 import { MOD_STEM } from '../src/creature-mod.ts';
@@ -163,6 +163,36 @@ test('a second piece, so there is a set to make', async () => {
   expect(readInstalledMod(GAME).artifacts[1]!.description).toBe(CLOAK.description);
 });
 
+test('and the third, so the set is the whole Cloak', async () => {
+  test.setTimeout(3 * 60_000);
+  const { page } = ed;
+  await openWithDonor(page);
+
+  // Every piece a player will wear is authored HERE, through the form. The map
+  // fixture used to add this one in code because the dialog stopped at two, and
+  // that is exactly the difference nobody notices: two artifacts made the way a
+  // person makes them, one made a way no person can.
+  await page.locator('#am-file').fill(BOOTS.file);
+  await expect(page.locator('#am-id')).toHaveValue(BOOTS.id);
+  await page.locator('#am-name').fill(BOOTS.name);
+  await page.locator('#am-desc').fill(BOOTS.description);
+  await page.locator('#am-slot').selectOption(BOOTS.slot);
+  await page.locator('#am-rank').selectOption('ARTF_CLASS_MINOR');
+  await expect(page.locator('#am-effects label')).toHaveCount(0);
+  await page.locator('#am-effect-add').click();
+  await page.locator('#am-effects label').first().locator('input').fill(String(BOOTS.necromancy));
+
+  await page.locator('#am-ok').click();
+  await expect(page.locator('#am-note')).toContainText('installed', { timeout: 120_000 });
+  await expect(page.locator('#am-list')).toContainText('Сапоги мертвеца (FEET)');
+
+  // Three rows now, one per piece, each with the number its own description
+  // promises — the file is written from the whole mod every time.
+  expect(readEffects(readFileSync(join(GAME, EFFECTS_FILE), 'latin1'))).toEqual(
+    PIECES.map((p, i) => ({ stat: 'necromancy', artifact: ORIGINAL_ARTIFACTS + i, amount: p.necromancy })),
+  );
+});
+
 test('says whether the extension is there, so an effect cannot look live when it is not', async () => {
   const { page } = ed;
   await openWithDonor(page);
@@ -175,7 +205,7 @@ test('says whether the extension is there, so an effect cannot look live when it
     .toContainText(there ? /(?<!not )installed/ : /not installed/, { timeout: 30_000 });
 });
 
-test('makes a set of the two, with an effect of our own', async () => {
+test('makes a set of all three, with an effect of our own', async () => {
   test.setTimeout(3 * 60_000);
   const { page } = ed;
   if (await page.locator('#artedit').isVisible()) await page.locator('#artedit-cancel').click();
@@ -186,19 +216,19 @@ test('makes a set of the two, with an effect of our own', async () => {
   // set that never combines. The list offers this mod's own artifacts first.
   const members = page.locator('#as-members');
   await expect(members.locator(`input[value="${AMULET.id}"]`)).toHaveCount(1, { timeout: 30_000 });
-  await members.locator(`input[value="${AMULET.id}"]`).check();
-  await members.locator(`input[value="${CLOAK.id}"]`).check();
+  for (const p of PIECES) await members.locator(`input[value="${p.id}"]`).check();
 
   // The per-count fields follow what is ticked, and are indexed from ONE piece
-  // worn — position IS the count, so two members means two fields.
+  // worn — position IS the count, so three members means three fields, and the
+  // first stays blank because one piece of a set is not a set.
   const counts = page.locator('#as-counts input');
-  await expect(counts).toHaveCount(2);
+  await expect(counts).toHaveCount(PIECES.length);
 
   await page.locator('#as-file').fill(UNDEAD_KING.file);
   await expect(page.locator('#as-effect')).toHaveValue(UNDEAD_KING.effect); // derived from the stem
   await page.locator('#as-name').fill(UNDEAD_KING.name);
   await page.locator('#as-desc').fill(UNDEAD_KING.description);
-  await counts.nth(1).fill(UNDEAD_KING.perCount[1]!);
+  for (const [i, text] of UNDEAD_KING.perCount.entries()) if (text) await counts.nth(i).fill(text);
 
   await page.locator('#as-ok').click();
   await expect(page.locator('#am-note')).toContainText('installed', { timeout: 120_000 });
@@ -212,11 +242,11 @@ test('makes a set of the two, with an effect of our own', async () => {
   const set = mod.sets[0]!;
   expect(set.effect).toBe(UNDEAD_KING.effect);
   expect(set.number).toBe(11);
-  expect(set.artifacts).toEqual([AMULET.id, CLOAK.id]);
+  expect(set.artifacts).toEqual(PIECES.map((p) => p.id));
   expect(set.perCount).toEqual(UNDEAD_KING.perCount);
-  // The two artifacts are still there: a set is added to the mod, not instead
-  // of it, and both edits land in the one archive.
-  expect(mod.artifacts.map((a) => a.id)).toEqual([AMULET.id, CLOAK.id]);
+  // The artifacts are still there: a set is added to the mod, not instead of
+  // it, and every edit lands in the one archive.
+  expect(mod.artifacts.map((a) => a.id)).toEqual(PIECES.map((p) => p.id));
 });
 
 test('refuses one of the game\'s own set effects', async () => {

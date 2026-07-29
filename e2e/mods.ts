@@ -202,9 +202,9 @@ export const UNDEAD_KING = {
   file: 'H3UndeadKing',
   effect: 'ARTFSET_EFFECT_H3_UNDEAD_KING',
   name: 'Плащ короля нежити',
-  description: 'Амулет гробовщика и плащ вампира, надетые вместе.',
+  description: 'Амулет гробовщика, плащ вампира и сапоги мертвеца, надетые вместе.',
   /** Index 0 is one piece worn, which is not a set — hence blank. */
-  perCount: ['', 'Надето два предмета.'],
+  perCount: ['', 'Надето два предмета из трёх.', 'Набор собран полностью.'],
 };
 
 /**
@@ -409,7 +409,7 @@ export function installMapFixture(gameRoot: string): CreatureMod {
     effect: UNDEAD_KING.effect, file: UNDEAD_KING.file,
     name: UNDEAD_KING.name, description: UNDEAD_KING.description,
     artifacts: [AMULET.id, CLOAK.id, BOOTS.id],
-    perCount: ['', 'Надето два предмета из трёх.', 'Набор собран полностью.'],
+    perCount: UNDEAD_KING.perCount,
   };
   if ((mod.sets ?? []).some((s) => s.effect === UNDEAD_KING.effect)) {
     updateArtifactSet(mod, UNDEAD_KING.effect, set);
