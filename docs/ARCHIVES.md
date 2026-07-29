@@ -24,10 +24,10 @@ one thing to the engine: an archive it attaches, whose name and description come
 from `name.txt`/`desc.txt` at its root.
 
 **In our build those five read `H5E/*` instead** — every kind keeping the
-extension the game gave it, so a map of ours is still a `.h5m` — so nothing installed for anybody else's mod is
-mounted. What is patched, and where the map browser gets its list from, is in
-[ENGINE_INTERNALS.md](ENGINE_INTERNALS.md); everything below is about the
-mechanism itself and holds either way.
+extension the game gave it, so a map of ours is still a `.h5m` — and nothing
+installed for anybody else's mod is mounted. What is patched, and where the map
+browser gets its list from, is in [ENGINE_INTERNALS.md](ENGINE_INTERNALS.md);
+everything below is about the mechanism itself and holds either way.
 
 That grouping is where the static evidence stops. The executable has a `.bind`
 section — the publisher's protector — so `.text` is encrypted on disk and the
@@ -102,6 +102,39 @@ ignored, so an archive can be mounted, correct and completely without effect.
   creature instead, read through the chain under the id the map stores, which is
   the same name the roster and the game show; the picture comes from the
   creature's own 128px texture, which the mod already carries.
+
+## The folder itself: `<game>/H5E/`
+
+That folder **is** the mod. Our copy of the executable reads it and nothing
+else, so everything the editor installs goes there, under the name the game has
+always used for its kind:
+
+```
+H5E/*.h5m    maps            H5E/*.h5u    mods
+H5E/*.h5c    campaigns       H5E/*.zip    mods, zipped
+H5E/*.h5p    duel presets
+```
+
+- **Maps** — written by **Pack**, by **New map…** (which creates one straight
+  away), and by the game's own random map generator, whose output folder is
+  patched with the same switch (ENGINE_INTERNALS.md).
+- **Campaigns** — a campaign carries no maps; each mission names one by path and
+  the game finds it in whatever archive of ours ships it.
+- **The mod** — `homm5-editor.h5u`: new creatures, dwellings, artifacts and their
+  art. It is game-global and there is only ever one of it.
+
+A file that is not one of those extensions is simply not read, which is why the
+folder tolerates whatever else ends up in it.
+
+**Nothing in it is versioned, because nothing in it is a source.** The mod is
+built by installing it, the maps by packing them, the test maps by the e2e
+suite, and generated maps by the game. What is under version control is this
+repository — the code that produces all of it. The folder was briefly a git
+repository of its own; that was dropped on 2026-07-29, the same call as for
+`Maps/` and for the same reason.
+
+Launching the shipped `bin/H5_Game.exe` reads the five stock folders again and
+none of this, which is the off switch.
 
 ## What this does not establish
 
