@@ -692,8 +692,13 @@ export interface ModArtifactSetDTO {
   /** The enum value it holds. */
   number: number;
   name: string;
+  description: string;
   /** Member artifact ids, in the order they combine. */
   artifacts: string[];
+  /** Its tooltip per number of pieces worn, so editing keeps what was written. */
+  perCount?: string[];
+  /** What it adds, at a number worn — `{ stat, threshold, amount }`. */
+  effects?: { stat: string; threshold: number; amount: number }[];
 }
 
 /** One installed creature mod. */
@@ -830,8 +835,9 @@ export interface ModsInstallArtifactResult {
  *
  * A set costs the executable nothing: no table is indexed by it and no ceiling
  * counts it. It is two data edits, and what it buys is that the game names the
- * set and counts the pieces a hero is wearing. The BONUS is not here and cannot
- * be — see docs/ARTIFACT_EFFECTS.md.
+ * set and counts the pieces a hero is wearing. The BONUS rides in `effects`,
+ * which is not data of the game's at all — it goes to the file the native
+ * extension reads, and without the extension the set is its texts.
  */
 export interface ModsInstallSetPayload {
   /** `ARTFSET_EFFECT_…` — ours. A shipped one is refused. */
@@ -844,6 +850,12 @@ export interface ModsInstallSetPayload {
   description: string;
   /** One per member, indexed from ONE piece worn. The first is normally blank. */
   perCount?: string[];
+  /**
+   * What it GIVES, at a number of pieces worn — `{ stat, threshold, amount }`.
+   * The threshold is ours: the extension counts the worn members itself, so it
+   * is not one of the engine's compiled 2/3/4.
+   */
+  effects?: { stat: string; threshold: number; amount: number }[];
 }
 
 /** Payload of `mods:remove-artifact` / `mods:remove-set` — which one to drop. */

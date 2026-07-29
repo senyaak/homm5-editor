@@ -217,6 +217,14 @@ export const UNDEAD_KING = {
   description: 'Амулет гробовщика, плащ вампира и сапоги мертвеца, надетые вместе.',
   /** Index 0 is one piece worn, which is not a set — hence blank. */
   perCount: ['', 'Надето два предмета из трёх.', 'Набор собран полностью.'],
+  /**
+   * What it gives at two pieces: a bigger dark energy pool.
+   *
+   * Two of three, which no shipped set effect can express — the engine compiles
+   * a threshold into each of its eleven. The extension counts the worn members
+   * itself, so this number is ours.
+   */
+  energy: { worn: 2, amount: 150 },
 };
 
 /**
@@ -326,7 +334,7 @@ export function clearFixture(gameRoot: string): void {
   installCreatureMod(gameRoot, mod, packCreatureMod(report));
   // An artifact taken out has to stop granting its bonus: the file is written
   // from what is LEFT, never appended to.
-  writeEffectsFile(gameRoot, effectsOf(mod.artifacts ?? []));
+  writeEffectsFile(gameRoot, effectsOf(mod.artifacts ?? [], mod.sets ?? []));
 }
 
 /**
@@ -425,6 +433,14 @@ export function installMapFixture(gameRoot: string): CreatureMod {
     name: UNDEAD_KING.name, description: UNDEAD_KING.description,
     artifacts: [AMULET.id, CLOAK.id, BOOTS.id],
     perCount: UNDEAD_KING.perCount,
+    // What the set gives, as the dialog would write it. Left out, this fixture
+    // reinstalls the set over one the dialog authored and quietly drops the
+    // bonus — the boots' mistake again, a rung higher.
+    effects: [{
+      stat: 'energy' as const,
+      threshold: UNDEAD_KING.energy.worn,
+      amount: UNDEAD_KING.energy.amount,
+    }],
   };
   if ((mod.sets ?? []).some((s) => s.effect === UNDEAD_KING.effect)) {
     updateArtifactSet(mod, UNDEAD_KING.effect, set);
@@ -437,7 +453,7 @@ export function installMapFixture(gameRoot: string): CreatureMod {
   // grants nothing — which is what happened to the boots: the dialog writes this
   // file, a fixture that skipped it left one piece of the set inert while its
   // own description promised 15%.
-  writeEffectsFile(gameRoot, effectsOf(mod.artifacts ?? []));
+  writeEffectsFile(gameRoot, effectsOf(mod.artifacts ?? [], mod.sets ?? []));
   return mod;
 }
 

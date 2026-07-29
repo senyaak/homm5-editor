@@ -1475,6 +1475,18 @@
             <label class="on-row um-span" style="align-items:flex-start"><span>Worn</span>
               <div id="as-counts" class="as-counts" title="what the tooltip says at each number of pieces worn; one piece is not a set, so the first is normally blank"></div>
             </label>
+            <!-- What the set GIVES. Not data of the game's: its own <Effect> is
+                 one of eleven behaviours compiled into the executable, so ours
+                 goes to the file the extension reads. The threshold is ours
+                 too — the extension counts the worn members itself. -->
+            <div class="on-row um-span" style="align-items:flex-start">
+              <span>Effects</span>
+              <div style="flex:1;min-width:0">
+                <div id="as-effects" class="as-counts"></div>
+                <button id="as-effect-add" class="um-recolor" style="margin:6px 0 0" title="a bonus the engine has no field for — needs the extension">+ effect</button>
+              </div>
+            </div>
+            <div id="as-ext" class="um-span um-warn"></div>
           </div>
         </fieldset>
         <div id="as-note" class="um-note"></div>

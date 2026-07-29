@@ -5,6 +5,7 @@
 //   node tools/reverse/trace.ts calls 0xb1ef70             who calls this
 //   node tools/reverse/trace.ts common 0xb2d030 0xb2a790   what both call
 //   node tools/reverse/trace.ts field 0x44 0x48 0x4c       who reads these offsets
+//   node tools/reverse/trace.ts field 0x638 --all         every instruction, ungrouped
 //
 // `common` is how the hook point was found: an artifact can leave a hero from
 // the hero screen, a script, a quest or a death, so whatever they share is
@@ -130,6 +131,20 @@ switch (command) {
       if (m && m.base !== 'None' && wanted.has(m.displacement)) {
         hits.push({ at: ins.address, displacement: m.displacement });
       }
+    }
+    // Every hit, in address order. Grouping answers "who walks this structure";
+    // this answers "who touches this field AT ALL", which is the question when
+    // the field is one number rather than a record — the dark energy pool has
+    // five such places in the whole executable, and reading all five is what
+    // showed there is no setter to find. See docs/ENGINE_INTERNALS.md.
+    if (args.includes('--all')) {
+      console.log(`${hits.length} instruction(s) touch those offsets`);
+      for (const h of hits) {
+        const at = pe.offsetOf(h.at);
+        const text = at === null ? '' : functionBody(pe.buf.subarray(at), h.at, 16)[0]?.text ?? '';
+        console.log(`  0x${h.at.toString(16)}  ${text}`);
+      }
+      break;
     }
     const groups: Array<{ at: number; fields: Set<number> }> = [];
     for (let i = 0; i < hits.length; i++) {

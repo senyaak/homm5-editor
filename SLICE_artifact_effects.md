@@ -1,13 +1,15 @@
 # SLICE — Artifact effects that the engine treats as its own
 
-> **Status:** reconnaissance done, nothing built yet. Adding an artifact already
-> works (`Maps/sod/docs/ARTIFACTS.md` in the maps repo) but a new id gets **no
+> **Status:** built, and waiting to be seen in game. Adding an artifact already
+> worked (`Maps/sod/docs/ARTIFACTS.md` in the maps repo) but a new id got **no
 > properties**: every special behaviour the shipped artifacts have is compiled
 > against a specific id. This slice makes our own artifacts carry real
 > properties — our own set, our own effect id, our own numbers — through the
-> engine's own arithmetic rather than a script imitating it from outside.
-> When it ships, fold the findings into [docs/ENGINE_INTERNALS.md](docs/ENGINE_INTERNALS.md)
-> and retire this file.
+> engine's own arithmetic rather than a script imitating it from outside. Two
+> stats are live now: the necromancy percentage, and the dark energy ceiling
+> a set of ours raises. When the second is confirmed in game, fold the findings
+> into [docs/ENGINE_INTERNALS.md](docs/ENGINE_INTERNALS.md) and retire this
+> file.
 
 Reading first: [docs/ARTIFACT_EFFECTS.md](docs/ARTIFACT_EFFECTS.md) (what data
 and script can express), [docs/ENGINE_INTERNALS.md](docs/ENGINE_INTERNALS.md)
@@ -44,13 +46,17 @@ and script can express), [docs/ENGINE_INTERNALS.md](docs/ENGINE_INTERNALS.md)
   is worn through the engine's own `CountEquipped`. Seen in game, from the
   extension's own log: three pieces worn → engine 20, ours +30; one taken off →
   engine 20, ours +20. The shipped terms read exactly as they did.
-- г) **Make it editable.** The DLL hardcodes nothing: it reads a table saying
-  which set, which threshold, which kind of bonus, how much — and the editor
-  generates and edits that table.
+- г) ~~**Make it editable.**~~ **Done.** The DLL hardcodes nothing: it reads
+  rows saying which artifacts, how many of them worn, which bonus and how much,
+  and the editor writes them — per artifact from the artifact dialog, per set
+  from the set dialog.
 - д) **The Cloak of the Undead King set itself**, for the Heroes III port.
-  **What it gives is decided** (Сеня): a percentage to necromancy, and — with
-  all three worn — the player's dark energy restored every day. Two terms, two
-  places to write them, and only the second still needs finding.
+  **What it gives is decided** (Сеня): a percentage to necromancy per piece,
+  and — with **two of the three** worn — **+150 to the player's dark energy
+  ceiling**, "a grail of our own": put a piece on and the pool's maximum grows,
+  take it off and it shrinks, while the pool itself does not jump. Both terms
+  are built; what is left is authoring the numbers for the port and seeing it
+  in game.
 
 1.2. **Out (deferred — "потом"):**
 - а) The green bonus line in the hero screen. The UI draws known effects per id
@@ -142,8 +148,13 @@ skipped by having one (`Maps/sod/docs/ARTIFACTS.md`).
 hero screen, and the game counts the worn pieces on its own. No fallback to
 `ARTFSET_EFFECT_CUSTOM` is needed; the effect is ours and nothing shipped moved.
 
-5.2. **Is a set of ours reachable from CODE?** Open, and the answer so far is
-no. The game names our eleventh set on the hero screen and counts its pieces
+5.2. **Is a set of ours reachable from CODE?** No — and it stopped mattering.
+The extension counts the members itself through `CountEquipped`, so a row is a
+list of artifact ids and how many of them must be worn; the threshold became
+ours rather than one compiled into an effect, which is what makes "two of
+three" expressible at all. The finding below stands as the reason.
+
+The original finding: The game names our eleventh set on the hero screen and counts its pieces
 there, which is why this was briefly marked answered — but that is the UI
 reading `<Sets>` directly. Asked through the hero's set accessor
 (vtable `+0x328`, the call the necromancy sum makes for the shipped set), our
@@ -162,11 +173,13 @@ sum, adding our term after the engine's — is the plan. The catalogue in
 [docs/ENGINE_INTERNALS.md](docs/ENGINE_INTERNALS.md) bounds it: 36 functions is
 every place an artifact effect can live, so the work is finite and known.
 
-5.4. **Dark energy — decided, and it is what the full set gives.** Сеня chose
-it: three pieces worn restore the player's dark energy every day. Not a
-question and not a placeholder; what is open is only how to write it, which is
-§1.1(а)'s remaining thread — the field the getter reads and the day tick that
-already touches it.
+5.4. ~~**Dark energy — how to write it.**~~ **Answered, and nothing needs
+writing.** There is no setter because the engine does not set the pool — it
+maintains a CEILING of four numbers and fills the pool to it on its own. So the
+bonus is a fifth term of that ceiling, and the grant stays the engine's.
+`docs/ENGINE_INTERNALS.md` carries the map; the short of it is that the four are
+summed in exactly three places (clamp, refill, and the bar), which is the whole
+cost of the feature.
 
 5.5. **How far does the config go?** The entry that is now obvious: *"this set,
 at this many worn pieces, adds this much to that calculation"* — one row per
@@ -190,17 +203,22 @@ each row with edit and remove; forms are dialogs on top. Removing warns with
 the maps that name the thing, found by name. `npm run build-native` builds the
 DLL with Zig (a devDependency); the dialog has a button that installs it.
 
-6.3. **Next: what the full set gives.** Сеня's decision stands — three pieces
-worn restore the player's dark energy every day. Two things are missing for it:
+6.3. **Done, 2026-07-29: the set as a condition, and dark energy.** Both of the
+things this section listed as missing are built.
 
-- **The set as a condition.** Rows are keyed on an ARTIFACT id today, through
-  `CountEquipped`. A set of ours is not reachable that way: asked through the
-  hero's set accessor (vtable `+0x328`), our effect 11 answers 0 with all three
-  worn, while the hero screen names the set and counts its pieces. §5.2.
-- **The daily tick.** `GetPlayerNecroEnergy` (`0x5e2ce0`) reads the value
-  through the PLAYER's vtable at `+0x1fc`; what writes it has not been found.
-  Start from the field that getter reads and look for who writes it — going
-  from the debug strings failed, they have no xref.
+- **The set as a condition** needed no engine reach after all. A row now names
+  several artifact NUMBERS and a threshold, and the extension counts them with
+  the same `CountEquipped` a single artifact uses. The hero's set accessor still
+  answers 0 for our effect 11 and no longer matters.
+- **Dark energy** turned out not to need a write site: the engine keeps a
+  ceiling of four numbers and refills the pool to it. Ours is a fifth term —
+  two detours (`0xc066d0` refill, `0xc06670` recompute-and-clamp) and one
+  replaced vtable pointer for the bar (`0xc06c60`), so the number on screen
+  moves the moment a piece goes on. `docs/ENGINE_INTERNALS.md` has the map.
+
+Still to do: see it in game, with a control — a Necromancy Amplifier adds
+exactly 150 by the engine's own arithmetic, so ours and theirs should move the
+ceiling by the same amount and the pool by nothing.
 
 6.4. **How to check anything here.** The extension logs beside itself
 (`bin/homm5-editor.log`): what it loaded, what the config said, and for the

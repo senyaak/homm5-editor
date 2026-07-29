@@ -20,9 +20,14 @@ node tools/reverse/trace.ts show 0xc77850         # disassemble, strings annotat
 node tools/reverse/trace.ts calls 0xb1ef70        # who calls this
 node tools/reverse/trace.ts common 0xb2d030 0xb2a790   # what both reach
 node tools/reverse/trace.ts field 0x44 0x48 --min 2    # who reads these offsets
+node tools/reverse/trace.ts field 0x638 --all         # every instruction, ungrouped
 
 node tools/reverse/equipment.ts                   # every behaviour keyed on an artifact id
 ```
+
+`field --all` is what closed dark energy: the pool is ONE int, so grouping had
+nothing to group, and the ten instructions that touch it are the whole story —
+a getter, a spend, two clamps and a refill, and no setter anywhere.
 
 `common` is the one that earned its keep: an artifact can leave a hero from the
 hero screen, a script, a quest or a death, so what those paths share is where

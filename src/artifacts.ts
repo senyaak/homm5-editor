@@ -150,6 +150,32 @@ export interface ArtifactSpec {
   board?: { tiles: number };
 }
 
+/** The enum that gives every artifact the number a save and a script store. */
+const ARTIFACT_ENUM = 'ArtifactEffect';
+
+/**
+ * Every artifact's id and the NUMBER it holds, read from `types.xml`.
+ *
+ * A mod's own artifacts carry their number in the manifest; the game's ninety
+ * seven only have one here, and the extension's config speaks numbers. Reading
+ * the map rather than assuming the table's order is deliberate: the ids are
+ * inconsistently prefixed (`SWORD_OF_RUINS` beside `ARTIFACT_SKULL_HELMET`) and
+ * the pairing is the file's own, not something to re-derive.
+ */
+export function artifactNumbers(types: string): Map<string, number> {
+  const out = new Map<string, number>();
+  const at = types.indexOf(`<TypeName>${ARTIFACT_ENUM}</TypeName>`);
+  if (at < 0) return out;
+  const entries = types.indexOf('<Entries>', at);
+  const end = types.indexOf('</Entries>', entries);
+  if (entries < 0 || end < 0) return out;
+  const block = types.slice(entries, end);
+  for (const m of block.matchAll(/<Name>(\w+)<\/Name>\s*<Value>(\d+)<\/Value>/g)) {
+    out.set(m[1]!, Number(m[2]));
+  }
+  return out;
+}
+
 /** Where an artifact's files sit inside a mod. */
 export interface ArtifactPaths {
   dir: string;

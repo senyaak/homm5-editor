@@ -500,16 +500,56 @@ Two consequences worth writing down:
   only shared data is absolute (`/MapObjects/…`), so a map tree can be moved
   whole without touching what is inside it.
 
+## Dark energy, in full
+
+There is no setter because there is no single value being set: the pool is
+`[player+0x638]`, and what the engine actually maintains is a **ceiling made of
+four numbers**, which it then fills the pool up to. Everything else follows from
+that. Reached from Lua by `GetPlayerNecroEnergy`, which calls the player's
+`+0x1fc`.
+
+| what | where | shape |
+|---|---|---|
+| the pool | `+0x638` | one int |
+| the four terms of the ceiling | `+0x67c … +0x688` | four ints, copied in one `movups` |
+| "this player has a necromancer" | `+0x68c` | flag, set by the same computation |
+| read the pool | `0xc06c50`, vtable `+0x1fc` | `mov eax,[ecx+638h]` |
+| hand out the four | `0xc06c60`, vtable `+0x200` | `lea eax,[ecx+67Ch]` |
+| spend | `0xc06640`, vtable `+0x208` | clamps to ≥ 0, refuses if short, subtracts |
+| recompute + clamp | `0xc06670`, vtable `+0x204` | sum the four; cut the pool down to it |
+| refill | `0xc066d0`, vtable `+0x214` | recompute, then `pool = sum` |
+
+`CNecromancy::CalcEnergyCaps` = **`0xc770d0`** (`ecx` = the five-int buffer,
+`edx` = the player) fills those four the same way the raise percentage is
+summed, out of the `Necromancy` block of `DefaultStats`:
+
+| # | term | number |
+|---|---|---|
+| 1 | base | `EnergyBase` (200) |
+| 2 | necromancer heroes | `EnergyPerNecromancerLevel` (1) × a walk over the player's heroes |
+| 3 | Necromancy Amplifiers | `EnergyPerNecromancyAmplifier` (**150**) × how many |
+| 4 | the grail building | `EnergyForGrailBuilding` (150) × how many |
+
+Term 2 is where the heroes come in: the player hands over its hero vector
+through its own vtable `+0xC0` (`{ begin, end }`, four bytes each), and each
+hero is checked alive before `GetSkillMastery(15)` is asked of it. That walk is
+worth copying rather than inventing — it is how an artifact worn by a hero can
+contribute to a number that belongs to the player.
+
+**Three sums, and only three.** Scanning every instruction in `.text` that
+touches `+0x67c … +0x68c` finds the four added up in exactly three places: the
+clamp (`0xc0669c`), the refill (`0xc066e5`) and the `dark-energy-bar` widget
+(`0x74ed42`, reached through the accessor at vtable `+0x200`, which ten call
+sites use and nothing else does). Nothing displays the four separately, so a
+fifth term of ours has three places to appear and no tooltip to contradict.
+
+That is what `native/homm5-editor.c` does: detour the refill and the clamp, and
+replace the accessor's single vtable pointer so the bar is handed a copy with
+our term in it. The pool itself is still the engine's to grant — we move the
+ceiling, and it fills to it on its own.
+
 ## Open threads
 
-- **Dark energy.** `GetPlayerNecroEnergy` exists with no setter, as known. The
-  strings `NecroEnergy`, `EnergyBase`, `EnergyPerNecromancyAmplifier` are
-  there; the daily/weekly grant that writes the value has not been located yet
-  — the wrapper's call chain was followed to the wrong branch and the debug
-  strings near it (`"Energy = "`) have no code xref, so it needs a different
-  approach (probably the town/day-tick code, or watching the field offset the
-  getter reads). Since the plan is "just restore it every day", finding the
-  write site is enough; no new mechanic is needed.
 - **The spellbook side.** `CountEquipped` explains stats and percentages, not a
   Scroll's spell appearing and disappearing with the item. That is a different
   mechanism and it is still unlocated — `0xb4a560` turned out to be a property

@@ -154,8 +154,8 @@ test('a second piece, so there is a set to make', async () => {
   // time rather than appended to, so the piece installed a test ago is still in
   // it and neither row is a leftover.
   expect(readEffects(readFileSync(join(GAME, EFFECTS_FILE), 'latin1'))).toEqual([
-    { stat: 'necromancy', artifact: ORIGINAL_ARTIFACTS, amount: AMULET.necromancy },
-    { stat: 'necromancy', artifact: ORIGINAL_ARTIFACTS + 1, amount: CLOAK.necromancy },
+    { stat: 'necromancy', artifacts: [ORIGINAL_ARTIFACTS], threshold: 1, amount: AMULET.necromancy },
+    { stat: 'necromancy', artifacts: [ORIGINAL_ARTIFACTS + 1], threshold: 1, amount: CLOAK.necromancy },
   ]);
   // And the text promises exactly that 10%: the row and the sentence are
   // written from the same form and are the only two places the number exists.
@@ -188,7 +188,9 @@ test('and the third, so the set is the whole Cloak', async () => {
   // Three rows now, one per piece, each with the number its own description
   // promises — the file is written from the whole mod every time.
   expect(readEffects(readFileSync(join(GAME, EFFECTS_FILE), 'latin1'))).toEqual(
-    PIECES.map((p, i) => ({ stat: 'necromancy', artifact: ORIGINAL_ARTIFACTS + i, amount: p.necromancy })),
+    PIECES.map((p, i) => ({
+      stat: 'necromancy', artifacts: [ORIGINAL_ARTIFACTS + i], threshold: 1, amount: p.necromancy,
+    })),
   );
 });
 
@@ -229,6 +231,17 @@ test('makes a set of all three, with an effect of our own', async () => {
   await page.locator('#as-desc').fill(UNDEAD_KING.description);
   for (const [i, text] of UNDEAD_KING.perCount.entries()) if (text) await counts.nth(i).fill(text);
 
+  // And what the set GIVES, which is not data of the game's at all: its own
+  // <Effect> is one of eleven behaviours compiled into the executable. The
+  // threshold is a field because it is ours — the extension counts the worn
+  // members itself, so "two of three" needs nothing of the engine's.
+  await expect(page.locator('#as-effects label')).toHaveCount(0);
+  await page.locator('#as-effect-add').click();
+  const effect = page.locator('#as-effects label').first();
+  await effect.locator('select').selectOption('energy');
+  await effect.locator('input').first().fill(String(UNDEAD_KING.energy.worn));
+  await effect.locator('input').last().fill(String(UNDEAD_KING.energy.amount));
+
   await page.locator('#as-ok').click();
   await expect(page.locator('#am-note')).toContainText('installed', { timeout: 120_000 });
   // 11 — after the game's own eleven, 0..10. Taking one of theirs would build
@@ -243,6 +256,18 @@ test('makes a set of all three, with an effect of our own', async () => {
   expect(set.number).toBe(11);
   expect(set.artifacts).toEqual(PIECES.map((p) => p.id));
   expect(set.perCount).toEqual(UNDEAD_KING.perCount);
+  expect(set.effects).toEqual([
+    { stat: 'energy', threshold: UNDEAD_KING.energy.worn, amount: UNDEAD_KING.energy.amount },
+  ]);
+  // And the extension is told, in the form it parses: the members by NUMBER,
+  // because that is what the game knows them by, and the threshold beside them.
+  // Without this row the set is named on the hero screen and does nothing.
+  expect(readEffects(readFileSync(join(GAME, EFFECTS_FILE), 'latin1')).at(-1)).toEqual({
+    stat: 'energy',
+    artifacts: PIECES.map((_, i) => ORIGINAL_ARTIFACTS + i),
+    threshold: UNDEAD_KING.energy.worn,
+    amount: UNDEAD_KING.energy.amount,
+  });
   // The artifacts are still there: a set is added to the mod, not instead of
   // it, and every edit lands in the one archive.
   expect(mod.artifacts.map((a) => a.id)).toEqual(PIECES.map((p) => p.id));

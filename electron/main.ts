@@ -52,7 +52,8 @@ import type { MapSource } from '../src/map-source.ts';
 import { builtDll, extensionState, installExtension, writeEffectsFile } from '../src/extension.ts';
 import { describeUses, findArtifactUses, findCreatureUses } from '../src/artifact-usage.ts';
 import { EFFECT_STATS, effectsOf } from '../src/artifact-effects.ts';
-import type { EffectStat } from '../src/artifact-effects.ts';
+import type { EffectRow, EffectStat, SetEffect } from '../src/artifact-effects.ts';
+import { artifactNumbers } from '../src/artifacts.ts';
 import type { BuildReport, CreatureMod, Installed, ModCreature } from '../src/creature-mod.ts';
 import { decodeDDSBuffer } from '../src/dds.ts';
 import { writeDDS } from '../src/texture.ts';
@@ -2335,13 +2336,21 @@ ipcMain.handle('mods:list', async (): Promise<ModsListResult> => {
     creatures: f.mod.creatures.map((c) => ({
       id: c.id, number: c.number, name: c.name, tier: c.stats.tier, gold: c.stats.gold,
     })),
+    // The effects ride along: the dialog fills its rows from this list, and an
+    // artifact opened for editing without them saves none — so changing a price
+    // took the bonus away. The DTO always declared the field; this is what
+    // finally fills it.
     artifacts: (f.mod.artifacts ?? []).map((a) => ({
       id: a.id, number: a.number, name: a.name, slot: a.slot,
+      ...(a.effects ? { effects: a.effects } : {}),
     })),
     // `?? []` and not a plain read: a mod installed before sets existed has a
     // manifest without the field, and it stays listable.
     sets: (f.mod.sets ?? []).map((s) => ({
-      effect: s.effect, number: s.number, name: s.name, artifacts: s.artifacts,
+      effect: s.effect, number: s.number, name: s.name, description: s.description,
+      artifacts: s.artifacts,
+      ...(s.perCount?.length ? { perCount: s.perCount } : {}),
+      ...(s.effects?.length ? { effects: s.effects } : {}),
     })),
   }));
   return { gameRoot: g, mods };
@@ -2389,11 +2398,35 @@ function ourMod(g: string): CreatureMod {
   return ours[0]?.mod ?? newCreatureMod(MOD_STEM);
 }
 
-/** Build the mod, pack it, install it — the shared tail of both installs. */
+/**
+ * The extension's rows for the whole mod — its artifacts and its sets.
+ *
+ * A set names its members by id, and the extension counts them by number, so a
+ * member the mod does not own is looked up in the game's own `types.xml`.
+ */
+function modEffects(mod: CreatureMod): EffectRow[] {
+  let shipped: Map<string, number> | undefined;
+  return effectsOf(mod.artifacts ?? [], mod.sets ?? [], (id) => {
+    shipped ??= artifactNumbers(dataReader(gameData())('types.xml')?.toString('latin1') ?? '');
+    return shipped.get(id);
+  });
+}
+
+/**
+ * Build the mod, pack it, install it — the shared tail of both installs.
+ *
+ * The effects file is rewritten here, from the WHOLE mod, rather than beside
+ * each caller: it is derived from the manifest, so anything that changes the
+ * manifest changes it. Written per caller, a set installed through one handler
+ * and an artifact removed through another drift apart, and the file keeps
+ * granting what the mod no longer carries.
+ */
 function buildAndInstall(g: string, mod: CreatureMod): { installed: Installed; report: BuildReport } {
   const report = buildCreatureMod(mod, dataReader(gameData()));
   const archive = packCreatureMod(report);
-  return { installed: installCreatureMod(g, mod, archive), report };
+  const installed = installCreatureMod(g, mod, archive);
+  writeEffectsFile(g, modEffects(mod));
+  return { installed, report };
 }
 
 const exeWords = (r: ExeResult | ArtifactExeResult | null): string =>
@@ -2455,16 +2488,29 @@ ipcMain.handle('mods:install-artifact', async (_e: IpcMainInvokeEvent, p: ModsIn
   });
 
   const { installed } = buildAndInstall(g, mod);
-  // The effects file is rewritten from the WHOLE mod every time, not appended
-  // to: an artifact removed from the mod must stop granting its bonus, and a
-  // file that only ever grows would keep it.
-  writeEffectsFile(g, effectsOf(mod.artifacts ?? []));
   return {
     archive: installed.archive,
     limit: artifactLimit(mod),
     exe: exeWords(installed.artifacts),
   };
 });
+
+/**
+ * The same, for a set: a stat, how many pieces it takes, and how much.
+ *
+ * A threshold below one is raised to one rather than refused — "worn zero
+ * pieces" is a bonus the player has for free, which is never what was meant.
+ */
+function setEffectsFrom(raw: ModsInstallSetPayload['effects']): SetEffect[] | null {
+  const out: SetEffect[] = [];
+  for (const e of raw ?? []) {
+    const stat = e.stat as EffectStat;
+    const amount = Number(e.amount) || 0;
+    if (!amount || !EFFECT_STATS.includes(stat)) continue;
+    out.push({ stat, threshold: Math.max(1, Number(e.threshold) || 1), amount });
+  }
+  return out.length ? out : null;
+}
 
 /** Only the stats the extension knows, and only when they are not zero. */
 function effectsFrom(raw: Record<string, number> | undefined): Partial<Record<EffectStat, number>> | null {
@@ -2505,7 +2551,6 @@ ipcMain.handle('mods:update-artifact', async (_e: IpcMainInvokeEvent, p: ModsIns
   const mod = ourMod(g);
   updateArtifact(mod, p.id.trim(), artifactSpecOf(p));
   const { installed } = buildAndInstall(g, mod);
-  writeEffectsFile(g, effectsOf(mod.artifacts ?? []));
   return { archive: installed.archive, limit: artifactLimit(mod), exe: exeWords(installed.artifacts) };
 });
 
@@ -2519,7 +2564,6 @@ ipcMain.handle('mods:remove-artifact', async (_e: IpcMainInvokeEvent, { id }: Mo
   // has to come back down with it or the game reads a table shorter than it
   // was told to expect.
   const { installed } = buildAndInstall(g, mod);
-  writeEffectsFile(g, effectsOf(mod.artifacts ?? []));
   return { archive: installed.archive, removed: gone.id };
 });
 
@@ -2552,6 +2596,7 @@ ipcMain.handle('mods:update-set', async (_e: IpcMainInvokeEvent, p: ModsInstallS
     name: p.name,
     description: p.description,
     ...(p.perCount?.length ? { perCount: p.perCount } : {}),
+    ...(setEffectsFrom(p.effects) ? { effects: setEffectsFrom(p.effects)! } : {}),
   });
   const { installed } = buildAndInstall(g, mod);
   return { archive: installed.archive, number: set.number };
@@ -2614,6 +2659,7 @@ ipcMain.handle('mods:install-set', async (_e: IpcMainInvokeEvent, p: ModsInstall
     name: p.name,
     description: p.description,
     ...(p.perCount?.length ? { perCount: p.perCount } : {}),
+    ...(setEffectsFrom(p.effects) ? { effects: setEffectsFrom(p.effects)! } : {}),
   });
 
   const { installed } = buildAndInstall(g, mod);

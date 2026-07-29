@@ -86,10 +86,20 @@ test('the extension is told about every piece, and only about ours', () => {
   // One row per piece, in mod order, with the percentage its description
   // promises. The boots were the ones missing when this stage did not exist:
   // installed, worn, and doing nothing.
-  expect(rows).toEqual(PIECES.map((p, i) => ({
-    stat: 'necromancy', artifact: ORIGINAL_ARTIFACTS + i, amount: p.necromancy,
-  })));
-  expect(rows.at(-1)?.amount, 'the boots grant what they say').toBe(BOOTS.necromancy);
+  expect(rows).toEqual([
+    ...PIECES.map((p, i) => ({
+      stat: 'necromancy', artifacts: [ORIGINAL_ARTIFACTS + i], threshold: 1, amount: p.necromancy,
+    })),
+    // And the set's own row, which no piece carries: two of the three worn,
+    // and the members named by number because that is what the engine knows.
+    {
+      stat: 'energy',
+      artifacts: PIECES.map((_, i) => ORIGINAL_ARTIFACTS + i),
+      threshold: UNDEAD_KING.energy.worn,
+      amount: UNDEAD_KING.energy.amount,
+    },
+  ]);
+  expect(rows[PIECES.length - 1]?.amount, 'the boots grant what they say').toBe(BOOTS.necromancy);
 });
 
 test('the creature is still wearing the paint mod-002 gave it', () => {

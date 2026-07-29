@@ -2986,7 +2986,9 @@ const mapTreeOpen = (): boolean => $('maptree').style.display !== 'none';
 let mtShowAdvanced = false;
 /** Expanded group paths, so a rebuild (after add/remove) keeps them open. */
 const mtOpen = new Set<string>();
-const pathKey = (path: TreePath): string => path.join(' ');
+// The separator is escaped rather than typed: a literal NUL in the source
+// makes git treat this whole file as binary, so no diff of it is ever shown.
+const pathKey = (path: TreePath): string => path.join('\u0000');
 
 function openMapTree(target: TreeTarget = MAP_TREE): void {
   // Switching what the tree shows starts it collapsed: an expansion remembered
@@ -7855,8 +7857,8 @@ function newCreature(): void {
  * its six stats. Saying so here is the difference between "it does not work"
  * and "it is not installed", which look identical in game.
  */
-async function showExtensionState(): Promise<void> {
-  const box = $('am-ext');
+async function showExtensionState(where: 'am-ext' | 'as-ext' = 'am-ext'): Promise<void> {
+  const box = $(where);
   box.textContent = '';
   const st = await window.editor.extensionStatus();
   if (st.installed) {
@@ -7877,9 +7879,9 @@ async function showExtensionState(): Promise<void> {
   button.onclick = () => {
     button.disabled = true;
     void window.editor.installExtension()
-      .then(() => showExtensionState())
+      .then(() => showExtensionState(where))
       .catch((e: unknown) => {
-        $('am-err').textContent = e instanceof Error ? e.message : String(e);
+        $(where === 'as-ext' ? 'as-err' : 'am-err').textContent = e instanceof Error ? e.message : String(e);
         button.disabled = false;
       });
   };
@@ -7974,6 +7976,55 @@ function renderSetCounts(): void {
   }
 }
 
+/**
+ * One row of what the set GIVES: a stat, how many pieces it takes, how much.
+ *
+ * The threshold is a field rather than a fixed 2-or-all because it is OURS —
+ * the extension counts the worn members itself, so nothing here has to line up
+ * with the 2/3/4 the engine compiled into its own eleven set effects.
+ */
+function addSetEffectRow(stat = '', threshold = '', amount = ''): void {
+  const row = document.createElement('label');
+  const select = document.createElement('select');
+  for (const s of effectStats) {
+    const option = document.createElement('option');
+    option.value = option.textContent = s;
+    select.appendChild(option);
+  }
+  if (stat) select.value = stat;
+  select.className = 'as-effect-stat';
+  const worn = document.createElement('input');
+  worn.type = 'number';
+  worn.min = '1';
+  worn.value = threshold || '2';
+  worn.className = 'as-effect-worn';
+  worn.title = 'pieces worn, at least this many';
+  const value = document.createElement('input');
+  value.type = 'number';
+  value.value = amount || '0';
+  value.className = 'as-effect-amount';
+  value.title = 'how much — percentage points, or energy';
+  const drop = document.createElement('button');
+  drop.className = 'um-recolor';
+  drop.textContent = '×';
+  drop.title = 'remove this effect';
+  drop.onclick = () => row.remove();
+  row.append(select, worn, value, drop);
+  $('as-effects').appendChild(row);
+}
+
+/** What the rows say, as the payload wants it. */
+function setEffects(): { stat: string; threshold: number; amount: number }[] {
+  const out: { stat: string; threshold: number; amount: number }[] = [];
+  for (const row of $('as-effects').querySelectorAll('label')) {
+    const stat = row.querySelector<HTMLSelectElement>('.as-effect-stat')?.value;
+    const threshold = Number(row.querySelector<HTMLInputElement>('.as-effect-worn')?.value) || 1;
+    const amount = Number(row.querySelector<HTMLInputElement>('.as-effect-amount')?.value) || 0;
+    if (stat && amount) out.push({ stat, threshold, amount });
+  }
+  return out;
+}
+
 /** Which set the form is editing, or '' when it is making a new one. */
 let editingSet = '';
 
@@ -7996,12 +8047,20 @@ async function editArtifactSet(effect: string): Promise<void> {
   renderSetCounts();
   $input('as-effect').value = s.effect;
   $input('as-name').value = s.name;
+  // The texts and the bonus come back with it. A set opened for editing without
+  // them saved blanks over what was written — the same trap artifacts had.
+  $input('as-desc').value = s.description ?? '';
+  const counts = [...$('as-counts').querySelectorAll<HTMLInputElement>('input')];
+  counts.forEach((input, i) => { input.value = s.perCount?.[i] ?? ''; });
+  $('as-effects').innerHTML = '';
+  for (const e of s.effects ?? []) addSetEffectRow(e.stat, String(e.threshold), String(e.amount));
   $input('as-effect').disabled = true;
   $input('as-file').disabled = true;
   $button('as-ok').textContent = 'Save & install';
   $('as-note').textContent = '';
   openOnTop('setedit');
   $('setedit-title').textContent = 'Editing set';
+  void showExtensionState('as-ext').catch(() => {});
 }
 
 /** Back to making a new one. */
@@ -8011,9 +8070,13 @@ function newSet(): void {
   $input('as-file').disabled = false;
   $button('as-ok').textContent = 'Build & install';
   for (const box of $('as-members').querySelectorAll<HTMLInputElement>('input')) box.checked = false;
+  // A new set has no bonus. The form is reached again without closing it, and a
+  // row left standing would give the next set the last one's.
+  $('as-effects').innerHTML = '';
   renderSetCounts();
   openOnTop('setedit');
   $('setedit-title').textContent = 'New set';
+  void showExtensionState('as-ext').catch(() => {});
 }
 
 /** A set's effect value is named by nothing outside the mod, so no scan. */
@@ -8040,6 +8103,7 @@ async function submitArtifactSet(): Promise<void> {
       name: $input('as-name').value,
       description: $input('as-desc').value,
       perCount: [...$('as-counts').querySelectorAll<HTMLInputElement>('input')].map((i) => i.value),
+      effects: setEffects(),
     });
     modDialog('setedit').close();
     editingSet = '';
@@ -8255,6 +8319,7 @@ $input('as-file').addEventListener('input', () => {
   if (!asIdTouched) $input('as-effect').value = idFrom('ARTFSET_EFFECT_', $input('as-file').value);
 });
 $('as-members').addEventListener('change', renderSetCounts);
+$('as-effect-add').onclick = () => addSetEffectRow();
 $('as-ok').onclick = () => { void submitArtifactSet(); };
 
 $('unitsbtn').onclick = () => { umIdTouched = false; openModDialog('unitsmod'); };

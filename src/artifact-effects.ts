@@ -25,23 +25,46 @@ export const EFFECTS_FILE = join('bin', 'homm5-editor-effects.txt');
 /**
  * The bonuses the extension knows how to add.
  *
- * One so far, and the list grows by reverse engineering rather than by wishing:
- * each entry is a place in the executable where the engine sums its own terms
- * and we have found where to append ours. `necromancy` is the percentage of a
- * battle's dead a necromancer raises — `CNecromancy::RaisePercent`.
+ * The list grows by reverse engineering rather than by wishing: each entry is a
+ * place in the executable where the engine sums its own terms and we have found
+ * where to append ours. Adding a ROW is free; adding a STAT costs a detour.
+ *
+ *   `necromancy` — the percentage of a battle's dead a necromancer raises
+ *     (`CNecromancy::RaisePercent`). A property of the HERO the engine asks
+ *     about, so a row is answered for that hero alone.
+ *   `energy` — the ceiling of the player's dark energy pool, which the engine
+ *     itself refills to the brim every week. A property of the PLAYER, so rows
+ *     are answered for every hero of theirs and added up, the way an extra
+ *     Necromancy Amplifier would be. See docs/ENGINE_INTERNALS.md.
  */
-export const EFFECT_STATS = ['necromancy'] as const;
+export const EFFECT_STATS = ['necromancy', 'energy'] as const;
 export type EffectStat = (typeof EFFECT_STATS)[number];
 
-/** One term: while this artifact is worn, add this much to that sum. */
+/**
+ * One term: while these artifacts are worn, add this much to that sum.
+ *
+ * A single artifact and a whole set are the same row with a different count,
+ * which is the point. The engine's own set accessor cannot see a set of ours —
+ * asked for our eleventh effect it answers 0 — so the extension counts the
+ * pieces itself, through the same `CountEquipped` a single artifact goes
+ * through. A set is then a list of ids and a number of them, and nothing about
+ * it has to be reachable from the executable.
+ */
 export interface EffectRow {
   stat: EffectStat;
-  /** The artifact's NUMBER, which is what the engine knows it by. */
-  artifact: number;
-  /** Percentage points. Negative is allowed and means a cursed item. */
+  /** The artifact NUMBERS counted together — what the engine knows them by. */
+  artifacts: number[];
+  /** How many of them must be WORN. One, for a plain artifact. */
+  threshold: number;
+  /** Percentage points, or energy. Negative is allowed and means a curse. */
   amount: number;
   /** For the comment beside it — the file is meant to be read. */
   name?: string;
+}
+
+/** A row for one artifact: the common case, written in the short form. */
+function isSingle(r: EffectRow): boolean {
+  return r.artifacts.length === 1 && r.threshold <= 1;
 }
 
 /**
@@ -49,19 +72,24 @@ export interface EffectRow {
  *
  * Rows with a zero amount are dropped rather than written: a row that adds
  * nothing is indistinguishable in game from a row that was never read, and
- * leaving it in makes the file lie about what is in effect.
+ * leaving it in makes the file lie about what is in effect. So is a row with
+ * no members, which can only come of a set whose pieces did not resolve.
  */
 export function writeEffects(rows: readonly EffectRow[]): string {
   const lines = [
-    '# Artifact effects, written by the editor — see src/artifact-effects.ts.',
+    '# Artifact effects, written by the editor - see src/artifact-effects.ts.',
     '# The game does not read this; the extension beside it does.',
     '#',
     '#   <stat> artifact <id> <amount>',
+    '#   <stat> set <worn> <amount> <id> <id> ...',
     '',
   ];
   for (const r of rows) {
-    if (!r.amount) continue;
-    lines.push(`${r.stat} artifact ${r.artifact} ${r.amount}${r.name ? `   # ${r.name}` : ''}`);
+    if (!r.amount || !r.artifacts.length) continue;
+    const comment = r.name ? `   # ${r.name}` : '';
+    lines.push(isSingle(r)
+      ? `${r.stat} artifact ${r.artifacts[0]} ${r.amount}${comment}`
+      : `${r.stat} set ${r.threshold} ${r.amount} ${r.artifacts.join(' ')}${comment}`);
   }
   return `${lines.join('\r\n')}\r\n`;
 }
@@ -70,24 +98,85 @@ export function writeEffects(rows: readonly EffectRow[]): string {
 export function readEffects(text: string): EffectRow[] {
   const rows: EffectRow[] = [];
   for (const line of text.split(/\r?\n/)) {
-    const m = /^\s*(\w+)\s+artifact\s+(-?\d+)\s+(-?\d+)/.exec(line);
-    if (!m || line.trimStart().startsWith('#')) continue;
-    const stat = m[1] as EffectStat;
-    if (!EFFECT_STATS.includes(stat)) continue;
-    rows.push({ stat, artifact: Number(m[2]), amount: Number(m[3]) });
+    if (line.trimStart().startsWith('#')) continue;
+    // Everything after a `#` is the comment the writer put there, and the C
+    // parser stops at it the same way — by finding no more digits.
+    const body = line.split('#')[0] ?? '';
+    const single = /^\s*(\w+)\s+artifact\s+(-?\d+)\s+(-?\d+)\s*$/.exec(body);
+    const set = /^\s*(\w+)\s+set\s+(\d+)\s+(-?\d+)((?:\s+\d+)+)\s*$/.exec(body);
+    const stat = (single ?? set)?.[1] as EffectStat | undefined;
+    if (!stat || !EFFECT_STATS.includes(stat)) continue;
+    if (single) rows.push({ stat, artifacts: [Number(single[2])], threshold: 1, amount: Number(single[3]) });
+    else if (set) {
+      rows.push({
+        stat,
+        artifacts: set[4]!.trim().split(/\s+/).map(Number),
+        threshold: Number(set[2]),
+        amount: Number(set[3]),
+      });
+    }
   }
   return rows;
 }
 
-/** The rows a mod's artifacts imply, in id order. */
+/** An artifact of a mod, as far as its effects are concerned. */
+export interface EffectArtifact {
+  id: string;
+  number: number;
+  effects?: Partial<Record<EffectStat, number>>;
+}
+
+/** One thing a set gives, at a number of pieces worn. */
+export interface SetEffect {
+  stat: EffectStat;
+  /** Pieces worn, at least this many. Two of three, for the Cloak. */
+  threshold: number;
+  amount: number;
+}
+
+/** A set of a mod, as far as its effects are concerned. */
+export interface EffectSet {
+  effect: string;
+  /** Member ids — the mod's own or the game's, which is why they need looking up. */
+  artifacts: string[];
+  effects?: SetEffect[];
+}
+
+/**
+ * The rows a mod implies: its artifacts first, then its sets.
+ *
+ * A member id is resolved to the number the engine knows it by — the mod's own
+ * artifacts carry theirs, and a shipped member has to be looked up in
+ * `types.xml` by the caller. A set with a member that does not resolve produces
+ * NO row: half a set counted is a bonus that arrives early, which is worse than
+ * one that does not arrive at all.
+ */
 export function effectsOf(
-  artifacts: readonly { id: string; number: number; effects?: Partial<Record<EffectStat, number>> }[],
+  artifacts: readonly EffectArtifact[],
+  sets: readonly EffectSet[] = [],
+  numberOf: (id: string) => number | undefined = () => undefined,
 ): EffectRow[] {
   const rows: EffectRow[] = [];
+  const own = new Map(artifacts.map((a) => [a.id, a.number]));
   for (const a of artifacts) {
     for (const stat of EFFECT_STATS) {
       const amount = a.effects?.[stat];
-      if (amount) rows.push({ stat, artifact: a.number, amount, name: a.id });
+      if (amount) rows.push({ stat, artifacts: [a.number], threshold: 1, amount, name: a.id });
+    }
+  }
+  for (const s of sets) {
+    if (!s.effects?.length) continue;
+    const members = s.artifacts.map((id) => own.get(id) ?? numberOf(id));
+    if (members.some((n) => n === undefined)) continue;
+    for (const e of s.effects) {
+      if (!e.amount) continue;
+      rows.push({
+        stat: e.stat,
+        artifacts: members as number[],
+        threshold: Math.max(1, e.threshold),
+        amount: e.amount,
+        name: `${s.effect} at ${e.threshold} worn`,
+      });
     }
   }
   return rows;

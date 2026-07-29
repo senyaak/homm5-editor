@@ -65,6 +65,7 @@ import {
   boardMaterial, boardModel,
 } from './artifacts.ts';
 import type { ArtifactSpec } from './artifacts.ts';
+import type { SetEffect } from './artifact-effects.ts';
 import { readGif } from './gif.ts';
 import { decodeDDSBuffer } from './dds.ts';
 import { isIdentity, recolorPixels } from './recolor.ts';
@@ -305,6 +306,17 @@ export interface ArtifactSetSpec {
    * game shows the entry for the count worn and nothing accumulates for it.
    */
   perCount?: string[];
+  /**
+   * What the set GIVES at a number of pieces worn — the part no data can hold.
+   *
+   * It goes to the file the native extension reads, not into `DefaultStats`:
+   * the `<Effect>` there is one of the game's own eleven behaviours and ours is
+   * a twelfth value the executable has never heard of. The extension counts the
+   * worn members itself, so the threshold here is OUR number and not one of the
+   * engine's compiled ones (which are 2, 3, or 2/4 depending on the set).
+   * See src/artifact-effects.ts.
+   */
+  effects?: SetEffect[];
 }
 
 /** One in a mod: a spec plus the enum value it holds. */
