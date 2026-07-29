@@ -121,6 +121,24 @@ minutes each, 40 minutes end to end — and belongs before a release or when the
 change is in the reconstruction itself. Reaching for it as "run all the tests"
 costs three quarters of an hour and answers nothing the fast run did not.
 
+**When you want to PLAY what a spec built.** Every ordinary run gives the mod
+specs a throwaway install under `_tmp` and deletes it at the end, so a green run
+leaves nothing to launch. `npm run e2e-live -- <spec…>` runs the same specs
+against the install this checkout sits in and keeps what they make — the patched
+executable, `H5E/homm5-editor.h5u`, and any map a spec packed:
+
+```
+npm run e2e-live -- e2e/mod-004-sharpshooter-map.spec.ts
+```
+
+That is also how a fixture map gets rebuilt after you have edited it by hand: the
+spec authors it from a blank New Map, so the archive in `H5E/` comes back as the
+spec describes it and whatever you changed in place is gone. A live run first
+takes OUR things back out of the installed mod so the spec builds them from
+nothing, and leaves the rest of the archive alone. The flag behind it is
+`HOMM5_NO_REMOVE`; pass it through the runner rather than by hand, since
+Playwright rejects switches it does not know. See the header of
+`tools/e2e-live.ts` and `LIVE` in `e2e/mods.ts`.
 
 Beyond the unit `test-*` scripts, the project's north-star e2e is
 **reconstructing the shipped campaign missions from scratch** and diffing against
