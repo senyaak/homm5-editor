@@ -22,6 +22,10 @@ import { readEntries } from '../src/pak.ts';
 import { ensureModDir, modFile } from '../src/mod-paths.ts';
 import { decodeDDSBuffer } from '../src/dds.ts';
 
+/** Pictures and reference maps that travel with the checkout — assets/README.md. */
+export const ASSETS = join(REPO_ROOT, 'assets');
+const ART = join(ASSETS, 'artifacts');
+
 /** The unpacked data root the app reads (never written by these specs). */
 export const DATA = process.env.HOMM5_DATA || join(REPO_ROOT, 'data-unpacked');
 /** The real install the checkout sits in — where the executable comes from. */
@@ -79,6 +83,7 @@ export const AMULET = {
   name: 'Амулет гробовщика',
   description: 'Увеличивает «Знание» героя на +2.',
   donor: 'ARTIFACT_NECROMANCER_PENDANT',
+  picture: 'amulet_grob.gif',
 };
 
 /**
@@ -92,6 +97,7 @@ export const CLOAK = {
   description: 'Увеличивает «Знание» героя на +2 и добавляет 10% к навыку «Некромантия».',
   donor: 'ARTIFACT_NECROMANCER_PENDANT',
   slot: 'SHOULDERS',
+  picture: 'mantia_vamp.gif',
 };
 
 /** The third piece. Only the map fixture builds this one; the dialog specs stop at two. */
@@ -102,6 +108,7 @@ export const BOOTS = {
   description: 'Увеличивают «Знание» героя на +1 и добавляют 15% к навыку «Некромантия».',
   donor: 'ARTIFACT_NECROMANCER_PENDANT',
   slot: 'FEET',
+  picture: 'sapogi_mertv.gif',
 };
 
 /**
@@ -204,9 +211,8 @@ export function installCreatureHeadless(gameRoot: string): CreatureMod {
  * functions the dialogs' channels call, so what it leaves behind is what the
  * dialogs would have left.
  *
- * The artifacts take a shipped artifact's icon rather than a picture of their
- * own: what the map spec needs is that they EXIST, and their own artwork is
- * somebody else's file that this repo does not carry.
+ * The artifacts are built from the pictures in `assets/artifacts/`, which is
+ * what the dialog does with a file somebody points it at.
  */
 export function installMapFixture(gameRoot: string): CreatureMod {
   const mod = newCreatureMod(MOD);
@@ -225,7 +231,11 @@ export function installMapFixture(gameRoot: string): CreatureMod {
       id: a.id, file: a.file, name: a.name, description: a.description,
       slot: ('slot' in a ? a.slot : 'NECK') as ArtifactSlot,
       rank: 'ARTF_CLASS_MINOR', cost: 5000,
-      icon: DONOR_ICON,
+      // Its own picture, not a shipped artifact's icon: the file is in the
+      // checkout, so the mod builds the game's texture from it the way the
+      // dialog does — and the gif reader and the texture writer are exercised
+      // by every run instead of only by hand.
+      picture: join(ART, a.picture),
       board: { tiles: 1 },
     });
   }
@@ -239,9 +249,6 @@ export function installMapFixture(gameRoot: string): CreatureMod {
   installCreatureMod(gameRoot, mod, packCreatureMod(report));
   return mod;
 }
-
-/** The shipped icon the fixture's artifacts wear — the Necromancer's Pendant. */
-const DONOR_ICON = '/Textures/HeroScreen/Artifacts/Necromancer_Pendant.(Texture).xdb';
 
 /** Our mod, read back off the install. */
 export function readInstalledMod(gameRoot: string): CreatureMod {

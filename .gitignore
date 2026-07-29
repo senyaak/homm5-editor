@@ -30,8 +30,3 @@ tools/vendor/
 __pycache__/
 
 native/build/
-
-# Files the specs read but the repo must not carry: another game's artwork,
-# maps built out of the game's own. assets/README.md says what belongs there.
-assets/*
-!assets/README.md
