@@ -216,9 +216,26 @@ things this section listed as missing are built.
   replaced vtable pointer for the bar (`0xc06c60`), so the number on screen
   moves the moment a piece goes on. `docs/ENGINE_INTERNALS.md` has the map.
 
-Still to do: see it in game, with a control — a Necromancy Amplifier adds
-exactly 150 by the engine's own arithmetic, so ours and theirs should move the
-ceiling by the same amount and the pool by nothing.
+**Seen in game, 2026-07-29: it works.** Two of the three worn add 150 to the
+ceiling, the bar moves as the pieces go on and off, and the pool is granted by
+the engine itself.
+
+6.4. **Known, accepted, not bugs.** Both follow from the grant being the
+engine's, which is the point of the design:
+
+- A hero who **starts** the map wearing the pieces starts with the pool full to
+  the raised ceiling — the first refill sees them already on.
+- **Taking a piece off drops the ceiling at once but the pool only the next
+  day**, because the pool is cut by the engine's clamp and the clamp runs when
+  the engine recalculates. Its own four terms behave the same way. Сеня, on
+  seeing it: «пока не мешает».
+
+6.5. **What the set SAYS it gives** is a text per number of pieces worn, and it
+follows the game's own convention rather than ours: the sentence names the
+effect (`Добавляет игроку 150 очков темной энергии.`, the Amplifier's wording),
+not the count — the count is drawn beside it — and it is REPEATED at three
+pieces, because the game shows only the entry for the count worn and nothing
+accumulates across them. The Dragonish set does the same.
 
 6.4. **How to check anything here.** The extension logs beside itself
 (`bin/homm5-editor.log`): what it loaded, what the config said, and for the

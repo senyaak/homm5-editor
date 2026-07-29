@@ -215,8 +215,20 @@ export const UNDEAD_KING = {
   effect: 'ARTFSET_EFFECT_H3_UNDEAD_KING',
   name: 'Плащ короля нежити',
   description: 'Амулет гробовщика, плащ вампира и сапоги мертвеца, надетые вместе.',
-  /** Index 0 is one piece worn, which is not a set — hence blank. */
-  perCount: ['', 'Надето два предмета из трёх.', 'Набор собран полностью.'],
+  /**
+   * Index 0 is one piece worn, which is not a set — hence blank.
+   *
+   * Two and three carry the SAME sentence, and it names the EFFECT rather than
+   * the count: that is how the game writes its own (the Amplifier's "150 очков
+   * темной энергии" is where the wording comes from), the count is drawn beside
+   * it already, and nothing accumulates across entries — the Dragonish set
+   * repeats its two-piece text at three for exactly this reason.
+   */
+  perCount: [
+    '',
+    'Добавляет игроку 150 очков темной энергии.',
+    'Добавляет игроку 150 очков темной энергии.',
+  ],
   /**
    * What it gives at two pieces: a bigger dark energy pool.
    *

@@ -548,6 +548,19 @@ replace the accessor's single vtable pointer so the bar is handed a copy with
 our term in it. The pool itself is still the engine's to grant — we move the
 ceiling, and it fills to it on its own.
 
+**Two consequences of leaving the grant to the engine** (seen in game
+2026-07-29, and expected rather than worked around):
+
+- **A hero who starts wearing the pieces starts with the pool full to the raised
+  ceiling.** The first refill runs with the artifacts already on, and it fills
+  to whatever the ceiling says then.
+- **Taking a piece off lowers the ceiling at once, but the pool only follows the
+  next day.** The bar's maximum is recomputed on every update, so it drops
+  immediately; the pool is cut by the clamp, and the clamp runs when the engine
+  recalculates — which is the same rule that governs its own four terms. Energy
+  already banked is not confiscated the moment the ceiling moves, and that is
+  the engine's behaviour, not ours.
+
 ## Open threads
 
 - **The spellbook side.** `CountEquipped` explains stats and percentages, not a

@@ -206,7 +206,15 @@ test('says whether the extension is there, so an effect cannot look live when it
     .toContainText(there ? /(?<!not )installed/ : /not installed/, { timeout: 30_000 });
 });
 
-test('makes a set of all three, with an effect of our own', async () => {
+// WIP, and tagged so it says so while still running: the set's bonus works in
+// game (2026-07-29) but the dialog around it is not finished — there is no
+// hint of what a threshold means, and nothing offers to write the tooltip that
+// describes the bonus. The assertions below are the contract as it stands, so
+// they run on every pass; `--grep-invert @wip` leaves them out.
+test('makes a set of all three, with an effect of our own', {
+  tag: '@wip',
+  annotation: { type: 'wip', description: 'set effects work; the dialog around them is unfinished' },
+}, async () => {
   test.setTimeout(3 * 60_000);
   const { page } = ed;
   if (await page.locator('#artedit').isVisible()) await page.locator('#artedit-cancel').click();

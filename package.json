@@ -52,6 +52,7 @@
     "test-e2e-fast": "playwright test \"e2e/[^/]+\\.spec\\.ts$\"",
     "test-e2e-live": "node tools/e2e-live.ts",
     "test-e2e-nodata": "playwright test --grep @nodata",
+    "test-e2e-wip": "playwright test --grep @wip",
     "build:renderer": "node tools/build-renderer.ts",
     "build:app": "node tools/build-app.ts",
     "dist": "node tools/build-app.ts && node tools/package-app.ts",
