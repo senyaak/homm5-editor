@@ -64,11 +64,12 @@ test('edits the difference and installs the artifact', async () => {
   await expect(page.locator('#am-id')).toHaveValue(AMULET.id);
   await page.locator('#am-name').fill(AMULET.name);
   await page.locator('#am-desc').fill(AMULET.description);
-  // The port's amulet is a cheaper minor piece that moves Knowledge.
+  // A cheaper minor piece, and one that moves no stat at all: everything it
+  // gives is the percentage below, which is the case worth authoring — an
+  // artifact whose whole effect is the part the record cannot hold.
   await page.locator('#am-rank').selectOption('ARTF_CLASS_MINOR');
   await page.locator('#am-cost').fill('5000');
   await page.locator('#am-ai').fill('700');
-  await page.locator('#am-knowledge').fill('2');
   // The part no artifact record can hold: a percentage on a skill. It goes to a
   // file the native extension reads, added as a row rather than a field of its
   // own — the list of stats grows with the reverse engineering, the form should
@@ -90,7 +91,7 @@ test('edits the difference and installs the artifact', async () => {
   expect(a.slot).toBe('NECK');
   expect(a.rank).toBe('ARTF_CLASS_MINOR');
   expect(a.cost).toBe(5000);
-  expect(a.stats).toEqual({ Knowledge: 2 });
+  expect(a.stats).toBeUndefined(); // no stat was typed, so none is recorded
   // The description is what the hero screen shows, and it names the +2 the
   // stats above give. It has to survive the round trip, or the artifact arrives
   // in game explaining itself with whatever the preset's donor said.
@@ -120,7 +121,6 @@ test('a second piece, so there is a set to make', async () => {
   await page.locator('#am-desc').fill(CLOAK.description);
   await page.locator('#am-slot').selectOption(CLOAK.slot);
   await page.locator('#am-rank').selectOption('ARTF_CLASS_MINOR');
-  await page.locator('#am-knowledge').fill('2');
   await page.locator('#am-effect-add').click();
   const effect = page.locator('#am-effects label').first();
   await expect(effect.locator('select')).toHaveValue('necromancy');

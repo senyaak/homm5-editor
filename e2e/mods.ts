@@ -75,14 +75,14 @@ export const SHARPSHOOTER = {
  * shipped artifact's does. The wording is the game's own for a necromancy
  * bonus — the Necropolis town building says «Добавляет 10% к навыку
  * «Некромантия» и 150 очков темной энергии…», so a piece that raises the same
- * skill says it the same way, and the stat follows as the shipped artifacts
- * write it («Добавляет +2 к «Нападению» героя»).
+ * skill says it the same way. And it says nothing else, because it gives
+ * nothing else: no stat, as in Heroes III.
  */
 export const AMULET = {
   file: 'H3UndertakersAmulet',
   id: 'ARTIFACT_H3_UNDERTAKERS_AMULET',
   name: 'Амулет гробовщика',
-  description: 'Добавляет 5% к навыку «Некромантия» и +2 к «Знанию» героя.',
+  description: 'Добавляет 5% к навыку «Некромантия».',
   necromancy: 5,
   donor: 'ARTIFACT_NECROMANCER_PENDANT',
   picture: 'amulet_grob.gif',
@@ -96,7 +96,7 @@ export const CLOAK = {
   file: 'H3VampiresCloak',
   id: 'ARTIFACT_H3_VAMPIRES_CLOAK',
   name: 'Плащ вампира',
-  description: 'Добавляет 10% к навыку «Некромантия» и +2 к «Знанию» героя.',
+  description: 'Добавляет 10% к навыку «Некромантия».',
   necromancy: 10,
   donor: 'ARTIFACT_NECROMANCER_PENDANT',
   slot: 'SHOULDERS',
@@ -110,7 +110,7 @@ export const BOOTS = {
   name: 'Сапоги мертвеца',
   // Plural in Russian, and the verbs follow the name the way the shipped
   // «Сапоги странника» do — «Добавляют», not «Добавляет».
-  description: 'Добавляют 15% к навыку «Некромантия» и +1 к «Знанию» героя.',
+  description: 'Добавляют 15% к навыку «Некромантия».',
   necromancy: 15,
   donor: 'ARTIFACT_NECROMANCER_PENDANT',
   slot: 'FEET',
@@ -237,9 +237,10 @@ export function installMapFixture(gameRoot: string): CreatureMod {
       id: a.id, file: a.file, name: a.name, description: a.description,
       slot: ('slot' in a ? a.slot : 'NECK') as ArtifactSlot,
       rank: 'ARTF_CLASS_MINOR', cost: 5000,
-      stats: { Knowledge: a.id === BOOTS.id ? 1 : 2 },
-      // What the description promises, in the only place that can hold it: the
-      // artifact record has six stats and no room for a necromancy percentage.
+      // A piece of the Cloak gives NECROMANCY AND NOTHING ELSE — no stat, the
+      // way Heroes III had it. Which means all it gives is the one thing an
+      // artifact record cannot hold, so the whole artifact is that one row in
+      // the file the extension reads.
       effects: { necromancy: a.necromancy },
       // Its own picture, not a shipped artifact's icon: the file is in the
       // checkout, so the mod builds the game's texture from it the way the
