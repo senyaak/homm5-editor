@@ -85,6 +85,10 @@ test('edits the difference and installs the artifact', async () => {
   expect(a.rank).toBe('ARTF_CLASS_MINOR');
   expect(a.cost).toBe(5000);
   expect(a.stats).toEqual({ Knowledge: 2 });
+  // The description is what the hero screen shows, and it names the +2 the
+  // stats above give. It has to survive the round trip, or the artifact arrives
+  // in game explaining itself with whatever the preset's donor said.
+  expect(a.description).toBe(AMULET.description);
   expect(a.icon).toContain('Necromancer_Pendant');
   // No map model was given, so it stands as a flat board of its own icon.
   expect(a.board).toEqual({ tiles: 1 });
@@ -128,6 +132,9 @@ test('a second piece, so there is a set to make', async () => {
   // from its own folder and knows nothing about archives.
   const effects = readFileSync(join(GAME, EFFECTS_FILE), 'latin1');
   expect(readEffects(effects)).toEqual([{ stat: 'necromancy', artifact: ORIGINAL_ARTIFACTS + 1, amount: 10 }]);
+  // And the text promises exactly that 10%: the row and the sentence are
+  // written from the same form and are the only two places the number exists.
+  expect(readInstalledMod(GAME).artifacts[1]!.description).toBe(CLOAK.description);
   // The amulet was installed first with no effect, so it must NOT be in there:
   // a file that only grows would keep granting bonuses nobody asked for.
   expect(effects).not.toContain(`artifact ${ORIGINAL_ARTIFACTS} `);

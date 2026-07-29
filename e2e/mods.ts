@@ -44,21 +44,33 @@ export const SHARPSHOOTER = {
   } as Record<string, string>,
 };
 
-/** And the Artifacts form — the port's Undertaker's Amulet, on a shipped neck-piece. */
+/**
+ * And the Artifacts form — the port's Undertaker's Amulet, on a shipped
+ * neck-piece.
+ *
+ * THE DESCRIPTION NAMES WHAT THE FORM ENTERS, and that is not decoration: every
+ * shipped artifact's description says what it gives down to the number, ours are
+ * written the same way, and this one is filled in beside a Knowledge of 2 and no
+ * effect at all. Give it the cloak's text and it promises a necromancy bonus the
+ * artifact does not have.
+ */
 export const AMULET = {
   file: 'H3UndertakersAmulet',
   id: 'ARTIFACT_H3_UNDERTAKERS_AMULET',
   name: 'Амулет гробовщика',
-  description: 'Увеличивает мастерство некромантии своего владельца.',
+  description: 'Увеличивает «Знание» героя на +2.',
   donor: 'ARTIFACT_NECROMANCER_PENDANT',
 };
 
-/** The second piece, so there is a set to build. Same donor: only the slot differs. */
+/**
+ * The second piece, so there is a set to build. Same donor: only the slot
+ * differs — and this one carries an effect, so its text says so.
+ */
 export const CLOAK = {
   file: 'H3VampiresCloak',
   id: 'ARTIFACT_H3_VAMPIRES_CLOAK',
   name: 'Плащ вампира',
-  description: 'Увеличивает мастерство некромантии своего владельца.',
+  description: 'Увеличивает «Знание» героя на +2 и добавляет 10% к навыку «Некромантия».',
   donor: 'ARTIFACT_NECROMANCER_PENDANT',
   slot: 'SHOULDERS',
 };
