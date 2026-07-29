@@ -61,9 +61,18 @@ export interface HeroStats {
   Luck: number;
 }
 
-const STAT_NAMES: (keyof HeroStats)[] = [
+/**
+ * The six, in the order the record writes them.
+ *
+ * Exported because the dialog offers them in the same list as the bonuses the
+ * extension adds: to whoever is authoring an artifact they are all "what it
+ * gives", and which of them the game's own data can hold is our problem, not
+ * theirs. See renderer/app.ts.
+ */
+export const HERO_STAT_NAMES: (keyof HeroStats)[] = [
   'Attack', 'Defence', 'Knowledge', 'SpellPower', 'Morale', 'Luck',
 ];
+const STAT_NAMES = HERO_STAT_NAMES;
 
 /** What the shipped artifacts point at for the fog-of-war name and the pickup sound. */
 const VISIBILITY = '/Text/Visibility_Types/Arefacts.txt';

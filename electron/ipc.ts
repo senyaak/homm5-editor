@@ -676,13 +676,31 @@ export interface ModCreatureDTO {
 }
 
 /** One artifact of an installed mod, as `mods:list` reports it. */
+/**
+ * An installed artifact, in full.
+ *
+ * Everything the form can edit, because the form fills itself from this: sent
+ * short, "Save & install" wrote back blanks for whatever was missing, and a
+ * changed price cost the artifact its description, its price and its stats.
+ */
 export interface ModArtifactDTO {
   id: string;
   number: number;
   name: string;
+  description: string;
   slot: string;
+  rank?: string;
+  cost: number;
+  aiValue?: number;
+  canBeGeneratedToSell?: boolean;
+  /** The six the record itself can hold — `{ Attack: 2 }`. */
+  stats?: Record<string, number>;
   /** What the extension adds while it is worn — `{ necromancy: 5 }`. */
   effects?: Record<string, number>;
+  icon?: string;
+  model?: string;
+  /** Set when it stands on the map as a flat board of its own icon. */
+  board?: { tiles: number };
 }
 
 /** One artifact set in a mod. */
@@ -741,6 +759,11 @@ export interface ModsFormDataResult {
    * where to append our term, and an artifact uses one or two of them.
    */
   effectStats: string[];
+  /**
+   * The six an artifact record can hold, offered in the same list as the
+   * bonuses above — the form does not care which side of the line one is on.
+   */
+  heroStats: string[];
   /** Every ABILITY_… the engine's type registry names. */
   abilities: string[];
   /** The TOWN_… races, for a creature's home town. */

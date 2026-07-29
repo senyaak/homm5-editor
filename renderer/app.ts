@@ -7451,11 +7451,6 @@ const UM_STATS: ReadonlyArray<[string, keyof CreatureStats]> = [
   ['um-power', 'power'], ['um-size', 'combatSize'], ['um-command', 'timeToCommand'],
 ];
 
-/** Form input id → the artifact HeroStats field it fills. */
-const AM_STATS: ReadonlyArray<[string, string]> = [
-  ['am-attack', 'Attack'], ['am-defence', 'Defence'], ['am-knowledge', 'Knowledge'],
-  ['am-spellpower', 'SpellPower'], ['am-morale', 'Morale'], ['am-luck', 'Luck'],
-];
 
 const UM_ART: ReadonlyArray<[string, 'character' | 'model' | 'animSet' | 'icon']> = [
   ['um-art-character', 'character'], ['um-art-model', 'model'],
@@ -7490,6 +7485,7 @@ async function fillModForms(): Promise<void> {
     fillModSelect($select('um-town'), data.towns);
   }
   effectStats = data.effectStats;
+  heroStats = data.heroStats;
   if (!$select('am-donor').options.length) {
     fillModSelect($select('am-donor'), data.artifactDonors, true);
   }
@@ -7672,7 +7668,13 @@ async function loadArtifactPreset(): Promise<void> {
   $input('am-cost').value = String(p.cost);
   $input('am-ai').value = String(p.aiValue);
   $input('am-sell').checked = p.canBeGeneratedToSell;
-  for (const [input, key] of AM_STATS) $input(input).value = String(p.stats[key] ?? 0);
+  // The preset's stats arrive as rows like everything else it gives; a donor
+  // with none leaves the list empty rather than six zeroes to scroll past.
+  $('am-effects').innerHTML = '';
+  for (const stat of heroStats) {
+    const v = Number(p.stats[stat as keyof typeof p.stats] ?? 0);
+    if (v) addEffectRow(stat, String(v));
+  }
   $input('am-icon').value = p.icon;
   $input('am-model').value = p.model;
 }
@@ -7739,11 +7741,24 @@ async function submitUnitsMod(): Promise<void> {
  * not have to be edited every time another is found.
  */
 let effectStats: string[] = [];
+/**
+ * The six the artifact RECORD can hold, offered in the same list.
+ *
+ * The split matters to the code and to nobody else: a row naming one of these
+ * is written into the artifact's own document, and a row naming anything else
+ * goes to the file the extension reads. To whoever is filling the form they are
+ * one list of "what it gives".
+ */
+let heroStats: string[] = [];
+const isHeroStat = (stat: string): boolean => heroStats.includes(stat);
 
 function addEffectRow(stat = '', amount = ''): void {
   const row = document.createElement('label');
   const select = document.createElement('select');
-  for (const s of effectStats) {
+  // The record's six first, then what only the extension can add. Order is the
+  // familiar one — the hero screen reads Attack, Defence, Knowledge, Spell
+  // power, Morale, Luck — and the rest follow as they are found.
+  for (const s of [...heroStats, ...effectStats]) {
     const option = document.createElement('option');
     option.value = option.textContent = s;
     select.appendChild(option);
@@ -7754,7 +7769,7 @@ function addEffectRow(stat = '', amount = ''): void {
   value.type = 'number';
   value.value = amount || '0';
   value.className = 'am-effect-amount';
-  value.title = 'percentage points; negative is a cursed item';
+  value.title = 'how much; negative is a cursed item';
   const drop = document.createElement('button');
   drop.className = 'um-recolor';
   drop.textContent = '×';
@@ -7764,15 +7779,25 @@ function addEffectRow(stat = '', amount = ''): void {
   $('am-effects').appendChild(row);
 }
 
-/** What the rows say, as the payload wants it. */
-function artifactEffects(): Record<string, number> {
-  const out: Record<string, number> = {};
+/**
+ * What the rows say, split the way the payload wants it: the record's six on
+ * one side, the extension's bonuses on the other.
+ *
+ * Two rows naming the same thing add up rather than the last one winning —
+ * "+2 Attack" twice is +4 by any reading, and silently dropping one would be
+ * the kind of quiet the rest of this dialog exists to avoid.
+ */
+function artifactGives(): { stats: Record<string, number>; effects: Record<string, number> } {
+  const stats: Record<string, number> = {};
+  const effects: Record<string, number> = {};
   for (const row of $('am-effects').querySelectorAll('label')) {
     const stat = row.querySelector<HTMLSelectElement>('.am-effect-stat')?.value;
     const amount = Number(row.querySelector<HTMLInputElement>('.am-effect-amount')?.value) || 0;
-    if (stat && amount) out[stat] = (out[stat] ?? 0) + amount;
+    if (!stat || !amount) continue;
+    const into = isHeroStat(stat) ? stats : effects;
+    into[stat] = (into[stat] ?? 0) + amount;
   }
-  return out;
+  return { stats, effects };
 }
 
 /**
@@ -7796,10 +7821,22 @@ async function editArtifact(id: string): Promise<void> {
   $('am-editing').textContent = `${a.name || a.id} — id and files are fixed; everything else can move`;
   $button('am-ok').textContent = 'Save & install';
   $('am-note').textContent = '';
-  // What it already gives, as rows. Without this an artifact opened for editing
-  // showed none, and saving it wrote none — so changing a price silently took
-  // the bonus away.
+  // EVERYTHING it already is, not just its name. The form writes back what it
+  // holds, so a field left blank here is a field erased on save: opening an
+  // artifact to change its price used to cost it its description, its stats and
+  // its bonus at once.
+  $input('am-desc').value = a.description ?? '';
+  if (a.rank) $select('am-rank').value = a.rank;
+  $input('am-cost').value = String(a.cost ?? 0);
+  $input('am-ai').value = String(a.aiValue ?? 0);
+  $input('am-sell').checked = !!a.canBeGeneratedToSell;
+  $input('am-icon').value = a.icon ?? '';
+  $input('am-model').value = a.model ?? '';
+  $input('am-board').value = String(a.board?.tiles ?? 1);
+  // What it gives, as rows: the record's six and the extension's bonuses in the
+  // one list they are authored in.
   $('am-effects').innerHTML = '';
+  for (const [stat, amount] of Object.entries(a.stats ?? {})) addEffectRow(stat, String(amount));
   for (const [stat, amount] of Object.entries(a.effects ?? {})) addEffectRow(stat, String(amount));
   openOnTop('artedit');
   $('artedit-title').textContent = 'Editing artifact';
@@ -8123,8 +8160,7 @@ async function submitArtifactMod(): Promise<void> {
   $('ae-err').textContent = '';
   $('am-note').textContent = '';
   try {
-    const stats: Record<string, number> = {};
-    for (const [input, key] of AM_STATS) stats[key] = Number($input(input).value) || 0;
+    const gives = artifactGives();
     const send = editingArtifact ? window.editor.updateArtifact : window.editor.installArtifact;
     const res = await send({
       id: $input('am-id').value,
@@ -8136,8 +8172,8 @@ async function submitArtifactMod(): Promise<void> {
       cost: Number($input('am-cost').value) || 0,
       aiValue: Number($input('am-ai').value) || 0,
       canBeGeneratedToSell: $input('am-sell').checked,
-      stats,
-      effects: artifactEffects(),
+      stats: gives.stats,
+      effects: gives.effects,
       icon: $input('am-icon').value,
       model: $input('am-model').value,
       boardTiles: Number($input('am-board').value) || 1,

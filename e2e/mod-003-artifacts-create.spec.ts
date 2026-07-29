@@ -85,7 +85,13 @@ test('edits the difference and installs the artifact', async () => {
   // own — the list of stats grows with the reverse engineering, the form should
   // not. The description beside it promises exactly this number.
   await page.locator('#am-effect-add').click();
-  await page.locator('#am-effects label').first().locator('input').fill('5');
+  const amuletRow = page.locator('#am-effects label').first();
+  // One list, both kinds: the six the record itself holds and the bonuses only
+  // the extension can add. Which side of that line a row falls on is the
+  // dialog's problem, not the author's.
+  await expect(amuletRow.locator('select option')).toContainText(['Attack', 'necromancy', 'energy']);
+  await amuletRow.locator('select').selectOption('necromancy');
+  await amuletRow.locator('input').fill('5');
 
   await page.locator('#am-ok').click();
   await expect(page.locator('#am-note')).toContainText('installed', { timeout: 120_000 });
@@ -141,7 +147,7 @@ test('a second piece, so there is a set to make', async () => {
   await page.locator('#am-effect-add').click();
   await expect(page.locator('#am-effects label')).toHaveCount(1);
   const effect = page.locator('#am-effects label').first();
-  await expect(effect.locator('select')).toHaveValue('necromancy');
+  await effect.locator('select').selectOption('necromancy');
   await effect.locator('input').fill(String(CLOAK.necromancy));
 
   await page.locator('#am-ok').click();
@@ -179,7 +185,9 @@ test('and the third, so the set is the whole Cloak', async () => {
   await page.locator('#am-rank').selectOption('ARTF_CLASS_MINOR');
   await expect(page.locator('#am-effects label')).toHaveCount(0);
   await page.locator('#am-effect-add').click();
-  await page.locator('#am-effects label').first().locator('input').fill(String(BOOTS.necromancy));
+  const bootsRow = page.locator('#am-effects label').first();
+  await bootsRow.locator('select').selectOption('necromancy');
+  await bootsRow.locator('input').fill(String(BOOTS.necromancy));
 
   await page.locator('#am-ok').click();
   await expect(page.locator('#am-note')).toContainText('installed', { timeout: 120_000 });
@@ -192,6 +200,73 @@ test('and the third, so the set is the whole Cloak', async () => {
       stat: 'necromancy', artifacts: [ORIGINAL_ARTIFACTS + i], threshold: 1, amount: p.necromancy,
     })),
   );
+});
+
+test('an artifact opened for editing comes back whole', async () => {
+  test.setTimeout(3 * 60_000);
+  const { page } = ed;
+  if (await page.locator('#artedit').isVisible()) await page.locator('#artedit-cancel').click();
+  if (!(await page.locator('#artsmod').isVisible())) await page.locator('#artsbtn').click();
+
+  // The pencil on the amulet's row. Nothing covered this path before, which is
+  // why the form could come up holding a quarter of the artifact and write the
+  // rest away on save — a price changed, and the description, the rank, the
+  // icon and the bonus went with it.
+  const row = page.locator('#am-list .um-item').filter({ hasText: AMULET.name });
+  await row.locator('button', { hasText: '✎' }).click();
+  await expect(page.locator('#artedit-title')).toHaveText('Editing artifact');
+
+  await expect(page.locator('#am-name')).toHaveValue(AMULET.name);
+  await expect(page.locator('#am-desc')).toHaveValue(AMULET.description);
+  await expect(page.locator('#am-rank')).toHaveValue('ARTF_CLASS_MINOR');
+  await expect(page.locator('#am-cost')).toHaveValue('5000');
+  await expect(page.locator('#am-ai')).toHaveValue('700');
+  await expect(page.locator('#am-icon')).toHaveValue(/Necromancer_Pendant/);
+  // And what it gives, as the row it was authored as.
+  await expect(page.locator('#am-effects label')).toHaveCount(1);
+  const first = page.locator('#am-effects label').first();
+  await expect(first.locator('select')).toHaveValue('necromancy');
+  await expect(first.locator('input')).toHaveValue(String(AMULET.necromancy));
+
+  // A stat the RECORD holds, added the same way as the bonus above — the whole
+  // point of one list. It lands in the artifact's own document, not in the
+  // extension's file, and the price it was opened for stays what it was.
+  await page.locator('#am-effect-add').click();
+  const added = page.locator('#am-effects label').nth(1);
+  await added.locator('select').selectOption('Attack');
+  await added.locator('input').fill('2');
+  await page.locator('#am-ok').click();
+  await expect(page.locator('#artedit')).toBeHidden({ timeout: 120_000 });
+
+  const a = readInstalledMod(GAME).artifacts.find((x) => x.id === AMULET.id)!;
+  expect(a.stats).toEqual({ Attack: 2 });
+  expect(a.description).toBe(AMULET.description);
+  expect(a.cost).toBe(5000);
+  expect(a.aiValue).toBe(700);
+  expect(a.rank).toBe('ARTF_CLASS_MINOR');
+  // The bonus is still in the extension's file, and only once.
+  const rows = readEffects(readFileSync(join(GAME, EFFECTS_FILE), 'latin1'));
+  expect(rows.filter((r) => r.artifacts[0] === ORIGINAL_ARTIFACTS && r.stat === 'necromancy'))
+    .toEqual([{ stat: 'necromancy', artifacts: [ORIGINAL_ARTIFACTS], threshold: 1, amount: AMULET.necromancy }]);
+
+  // Put it back: the port's amulet moves no stat, as in Heroes III, and the
+  // stages after this one read the mod as the port's.
+  await row.locator('button', { hasText: '✎' }).click();
+  const gives = page.locator('#am-effects label');
+  await expect(gives).toHaveCount(2);
+  // The record's six come first and the extension's bonuses after — which is
+  // worth saying out loud, because the first draft of this test removed "the
+  // second row" and took the bonus off instead of the stat.
+  await expect(gives.nth(0).locator('select')).toHaveValue('Attack');
+  await expect(gives.nth(1).locator('select')).toHaveValue('necromancy');
+  await gives.nth(0).locator('button', { hasText: '×' }).click();
+  await expect(gives).toHaveCount(1);
+  await expect(gives.first().locator('select')).toHaveValue('necromancy');
+  await page.locator('#am-ok').click();
+  await expect(page.locator('#artedit')).toBeHidden({ timeout: 120_000 });
+  const back = readInstalledMod(GAME).artifacts.find((x) => x.id === AMULET.id)!;
+  expect(back.stats).toBeUndefined();
+  expect(back.effects).toEqual({ necromancy: AMULET.necromancy });
 });
 
 test('says whether the extension is there, so an effect cannot look live when it is not', async () => {

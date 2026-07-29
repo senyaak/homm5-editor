@@ -1414,28 +1414,24 @@
               </select>
             </label>
             <div class="um-stats">
-              <label>Attack<input id="am-attack" type="number" value="0"></label>
-              <label>Defence<input id="am-defence" type="number" value="0"></label>
-              <label>Knowledge<input id="am-knowledge" type="number" value="0"></label>
-              <label>Spell power<input id="am-spellpower" type="number" value="0"></label>
-              <label>Morale<input id="am-morale" type="number" value="0"></label>
-              <label>Luck<input id="am-luck" type="number" value="0"></label>
               <label>Cost<input id="am-cost" type="number" value="0" title="what a market sells it for"></label>
               <label>AI value<input id="am-ai" type="number" value="0" title="how much an AI hero wants it; shipped relics sit around 500"></label>
               <label>Board tiles<input id="am-board" type="number" value="1" min="1" title="with no map model, the artifact stands as a flat board of its icon this many tiles wide"></label>
               <label class="nm-check" style="align-self:end" title="whether random-artifact rolls may produce it"><input id="am-sell" type="checkbox"> Rollable</label>
             </div>
-            <!-- Beyond the six. An artifact record has nowhere to put these, so
-                 they go to a file the native extension reads; without the
-                 extension installed they do nothing, which the line below says.
-                 Added one at a time rather than laid out as a field per stat:
-                 the list of stats grows with the reverse engineering, and an
-                 artifact uses one or two of them. -->
+            <!-- Everything the artifact GIVES, in one list. Six of them the
+                 record itself holds (Attack … Luck); the rest have nowhere to
+                 live in the game's data and go to a file the native extension
+                 reads, which is what the line below is about. Which side of
+                 that line a bonus falls on is our problem, not the author's —
+                 they are all "what it gives", so they are all rows here.
+                 Rows rather than a field per stat because the list grows with
+                 the reverse engineering and an artifact uses one or two. -->
             <div class="on-row um-span" style="align-items:flex-start">
-              <span>Effects</span>
+              <span>Gives</span>
               <div style="flex:1;min-width:0">
                 <div id="am-effects" class="as-counts"></div>
-                <button id="am-effect-add" class="um-recolor" style="margin:6px 0 0" title="a bonus the engine has no field for — needs the extension">+ effect</button>
+                <button id="am-effect-add" class="um-recolor" style="margin:6px 0 0" title="a stat the record holds, or a bonus only the extension can add">+ bonus</button>
               </div>
             </div>
             <div id="am-ext" class="um-span um-warn"></div>

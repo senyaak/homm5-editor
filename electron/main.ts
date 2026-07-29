@@ -53,7 +53,7 @@ import { builtDll, extensionState, installExtension, writeEffectsFile } from '..
 import { describeUses, findArtifactUses, findCreatureUses } from '../src/artifact-usage.ts';
 import { EFFECT_STATS, effectsOf } from '../src/artifact-effects.ts';
 import type { EffectRow, EffectStat, SetEffect } from '../src/artifact-effects.ts';
-import { artifactNumbers } from '../src/artifacts.ts';
+import { artifactNumbers, HERO_STAT_NAMES } from '../src/artifacts.ts';
 import type { BuildReport, CreatureMod, Installed, ModCreature } from '../src/creature-mod.ts';
 import { decodeDDSBuffer } from '../src/dds.ts';
 import { writeDDS } from '../src/texture.ts';
@@ -2341,8 +2341,14 @@ ipcMain.handle('mods:list', async (): Promise<ModsListResult> => {
     // took the bonus away. The DTO always declared the field; this is what
     // finally fills it.
     artifacts: (f.mod.artifacts ?? []).map((a) => ({
-      id: a.id, number: a.number, name: a.name, slot: a.slot,
+      id: a.id, number: a.number, name: a.name, description: a.description,
+      slot: a.slot, rank: a.rank, cost: a.cost, aiValue: a.aiValue,
+      canBeGeneratedToSell: a.canBeGeneratedToSell,
+      ...(a.stats ? { stats: a.stats } : {}),
       ...(a.effects ? { effects: a.effects } : {}),
+      ...(a.icon ? { icon: a.icon } : {}),
+      ...(a.model ? { model: a.model } : {}),
+      ...(a.board ? { board: a.board } : {}),
     })),
     // `?? []` and not a plain read: a mod installed before sets existed has a
     // manifest without the field, and it stays listable.
@@ -2366,6 +2372,7 @@ ipcMain.handle('mods:form-data', async (): Promise<ModsFormDataResult> => {
     donors: r.creatures(),
     artifactDonors: r.artifacts(),
     effectStats: [...EFFECT_STATS],
+    heroStats: [...HERO_STAT_NAMES],
     abilities: creatureAbilities(assets([gameData()])),
     towns: r.races(),
   };

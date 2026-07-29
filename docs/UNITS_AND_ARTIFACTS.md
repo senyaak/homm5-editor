@@ -75,6 +75,17 @@ AI value, the six hero stats, the icon and model hrefs — so a preset is one
 lookup (`artifactPreset`). Slot and rank are selects over the engine's own
 enums.
 
+**What it gives is ONE list.** Six of an artifact's bonuses the record itself
+holds — Attack, Defence, Knowledge, Spell power, Morale, Luck — and the rest
+have nowhere to live in the game's data at all: a percentage of necromancy, a
+bigger dark energy pool. To whoever is authoring the thing that distinction is
+ours, not theirs, so the form has one list of rows added with **+ bonus**, and
+the dialog sorts them: a row naming one of the six goes into the artifact's own
+document, anything else into the file the native extension reads
+(`docs/ARTIFACT_EFFECTS.md`). Sets have the same list, minus the six — a set
+cannot carry a `HeroStatsModif`, and offering a row that does nothing would be
+worse than not offering it.
+
 Two things differ from creatures:
 
 - **No map model means a flat board.** With `Map model` left empty the mod builds
