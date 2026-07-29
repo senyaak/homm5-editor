@@ -147,6 +147,21 @@ export const PALACE = {
   secondVisitNoHire: 'Здесь нет снайперов.',
 };
 
+/**
+ * The three as one list, with the fields a build needs spelled out.
+ *
+ * The dialog specs fill a FORM from the constants above, so those carry what a
+ * person types; this carries the same artifacts as a builder takes them — the
+ * slot the amulet leaves at its default, and the picture as a path. Both the map
+ * fixture and tools/install-fixture.ts read this, so a game and the suite cannot
+ * end up with different artifacts under the same names.
+ */
+export const PIECES = [
+  { ...AMULET, slot: 'NECK' as ArtifactSlot, picturePath: join(ART, AMULET.picture) },
+  { ...CLOAK, slot: CLOAK.slot as ArtifactSlot, picturePath: join(ART, CLOAK.picture) },
+  { ...BOOTS, slot: BOOTS.slot as ArtifactSlot, picturePath: join(ART, BOOTS.picture) },
+];
+
 /** The set they make — the port's, and ours: a twelfth effect, never one of theirs. */
 export const UNDEAD_KING = {
   file: 'H3UndeadKing',
@@ -232,10 +247,10 @@ export function installMapFixture(gameRoot: string): CreatureMod {
     visualSource: sources.visual, monsterSource: sources.monster,
   });
   addDwelling(mod, PALACE);
-  for (const a of [AMULET, CLOAK, BOOTS]) {
+  for (const a of PIECES) {
     addArtifact(mod, {
       id: a.id, file: a.file, name: a.name, description: a.description,
-      slot: ('slot' in a ? a.slot : 'NECK') as ArtifactSlot,
+      slot: a.slot,
       rank: 'ARTF_CLASS_MINOR', cost: 5000,
       // A piece of the Cloak gives NECROMANCY AND NOTHING ELSE — no stat, the
       // way Heroes III had it. Which means all it gives is the one thing an
