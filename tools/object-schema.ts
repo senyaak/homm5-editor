@@ -26,6 +26,7 @@
 
 import { readFileSync, readdirSync, statSync, existsSync, openSync, closeSync } from 'node:fs';
 import { join } from 'node:path';
+import { mapFilesUnder } from '../src/map-source.ts';
 import { loadMap } from '../src/map.ts';
 import { children, text } from '../src/xml.ts';
 import { readEntries, readIndex } from '../src/pak.ts';
@@ -36,18 +37,7 @@ const asMarkdown = args.includes('--md');
 const onlyType = /^--type=(\w+)$/.exec(args.find((a) => a.startsWith('--type=')) ?? '')?.[1];
 
 /** Every map.xdb under the data root. */
-function mapFiles(dir: string, out: string[] = []): string[] {
-  let ents: string[];
-  try { ents = readdirSync(dir); } catch { return out; }
-  for (const e of ents) {
-    const full = join(dir, e);
-    let st;
-    try { st = statSync(full); } catch { continue; }
-    if (st.isDirectory()) mapFiles(full, out);
-    else if (e === 'map.xdb') out.push(full);
-  }
-  return out;
-}
+const mapFiles = mapFilesUnder;
 
 /** What a field looks like across every example of it. */
 interface FieldStat {

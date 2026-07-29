@@ -4901,7 +4901,27 @@ function hitPointAtClient(clientX: number, clientY: number): THREE.Vector3 | nul
 /** Screen position of a tile, and whether it is actually in the viewport. */
 interface TilePoint { x: number; y: number; onScreen: boolean }
 
+/** What is open, as paths — see `opened()`. */
+interface OpenedMap {
+  /** The `map.xdb` being edited. */
+  mapPath: string;
+  /** The folder holding it — a workspace, or wherever HOMM5_UNPACK_TO put it. */
+  mapDir: string;
+  /** The archive it belongs to, when the app knows which: `<game>/H5E/<name>.mod`. */
+  archive: string | null;
+}
+
 interface ViewApi {
+  /**
+   * Where the open map actually is.
+   *
+   * Neither path is guessable from outside: the working folder is a workspace
+   * named by a hash unless `HOMM5_UNPACK_TO` says otherwise, and the archive is
+   * chosen by the app. A test that needs them used to read them out of the
+   * status line, which any later message overwrites — on a machine without an
+   * `Editor` folder the very next warning won that race.
+   */
+  opened(): OpenedMap | null;
   /** Switch the plan (2D) view on or off — the same call the toolbar makes. */
   plan(on: boolean): void;
   /** Fit the whole active floor in the plan view. */
@@ -5156,6 +5176,7 @@ const view: ViewApi = {
     return { count, litTexels: lit };
   },
   pending() { return pendingCommits; },
+  opened() { return openedMap; },
   open(path) { return loadMapPath(path); },
   editText(href) { return openTextEdit(href, href); },
   heights() { return world ? Array.from(activeFloor().heights) : []; },
@@ -7033,8 +7054,15 @@ $input('texscale').addEventListener('input', (e) => {
 });
 $input('ex-search').addEventListener('input', renderExList);
 
-async function loadMapPath(path: string | null): Promise<void> {
+/**
+ * What is open, as paths, for anything that has to know where the map went —
+ * see `ViewApi.opened`. Written here, where a map actually becomes the open one.
+ */
+let openedMap: OpenedMap | null = null;
+
+async function loadMapPath(path: string | null, archive: string | null = null): Promise<void> {
   if (!path) return;
+  openedMap = { mapPath: path, mapDir: path.replace(/[\\/][^\\/]*$/, ''), archive };
   // Whatever the banner was offering is about to be on screen for real.
   hideExternalChange();
   const say = (m: string): Promise<void> => {
@@ -7202,7 +7230,9 @@ async function openAny(path: string | null, inner?: string, stock?: boolean): Pr
   $('loadmsg').textContent = 'unpacking…';
   try {
     const { mapPath, mapDir, files } = await window.editor.openArchive(path, inner, stock);
-    await loadMapPath(mapPath);
+    // The game's own maps are opened as a copy to start from, so nothing here
+    // belongs to that archive — `archive` stays null and Save writes the copy.
+    await loadMapPath(mapPath, stock ? null : path);
     $('hud').textContent = `unpacked ${files} files → ${mapDir}`;
     // The folder that just appeared belongs in the picker's list.
     void initPicker();
@@ -7319,7 +7349,7 @@ async function submitNewMap(): Promise<void> {
       multiplayer: $select('nm-type').value === 'multi',
     });
     newMapDialog().close();
-    await loadMapPath(mapPath);
+    await loadMapPath(mapPath, archive);
     // Where it went — a map is a file in the install now, and the folder it is
     // worked on in moves with HOMM5_UNPACK_TO, so neither is guessable.
     $('hud').textContent = `new map → ${archive} · working folder ${mapDir}`;

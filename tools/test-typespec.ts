@@ -14,6 +14,7 @@
 
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { mapFilesUnder } from '../src/map-source.ts';
 import { readTypeSpec, typesXmlPath, fieldValues, valuesAtPath, enums } from '../src/typespec.ts';
 import { objectSchema, objectProps, deref } from '../src/schema.ts';
 import { loadMap } from '../src/map.ts';
@@ -72,19 +73,7 @@ for (const type of Object.keys(objectSchema.types)) {
 console.log('\nNO SHIPPED VALUE IS REFUSED');
 
 /** Every map.xdb under the data root. */
-function mapFiles(dir: string, out: string[] = []): string[] {
-  let ents: string[];
-  try { ents = readdirSync(dir); } catch { return out; }
-  for (const e of ents) {
-    const full = join(dir, e);
-    let st; try { st = statSync(full); } catch { continue; }
-    if (st.isDirectory()) mapFiles(full, out);
-    else if (e === 'map.xdb') out.push(full);
-  }
-  return out;
-}
-
-const maps = mapFiles(join(dataRoot, 'Maps'));
+const maps = mapFilesUnder(join(dataRoot, 'Maps'));
 if (!maps.length) {
   console.log('  (no maps to check against)');
 } else {

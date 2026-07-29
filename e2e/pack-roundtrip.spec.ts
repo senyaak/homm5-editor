@@ -86,11 +86,14 @@ test('packs a new map, opens the .h5m back, and gets the same bytes', { tag: '@n
   await page.locator('#nm-ok').click();
   await expect(page.locator('#newmap')).toBeHidden({ timeout: 30_000 });
   await expect(page.locator('#title')).toHaveText(`homm5-editor — ${NAME} (72×72)`, { timeout: 60_000 });
-  // The app says where the map went: a `.mod` in the install, and the folder it
+  // Ask the app where the map went: a `.mod` in the install, and the folder it
   // is worked on in. Neither is guessable from here, and the folder is what the
-  // comparison below reads.
-  const created = await hudSays(page, /^new map → /);
-  MAP_DIR = created.replace(/^.*· working folder /, '');
+  // comparison below reads. ASKED, not read off the status line — that line is
+  // one shared slot, and on a machine with no `Editor` folder the warning about
+  // it arrives right after and wins.
+  const opened = await page.evaluate(() => window.view.opened());
+  MAP_DIR = opened?.mapDir ?? '';
+  expect(opened?.archive, 'a new map is a file in the install').toBe(modFile(E2E_GAME, 'map', NAME));
   workspaces.add(MAP_DIR);
   expect(existsSync(join(MAP_DIR, 'map.xdb')), `the working folder is ${MAP_DIR}`).toBe(true);
   expect(existsSync(modFile(E2E_GAME, 'map', NAME)), 'a new map is a file in the install').toBe(true);
@@ -208,8 +211,11 @@ test('the picker opens the map the app itself made', { tag: '@nodata' }, async (
   const row = page.locator('#maplist .m', { hasText: `${NAME}.mod` }).first();
   await expect(row, 'the picker lists the map New Map made').toBeVisible();
   await row.click();
-  await hudSays(page, /unpacked \d+ files → /);
+  // The title, not the status line: a map that is open says so in a place
+  // nothing else writes to.
   await expect(page.locator('#title')).toHaveText(`homm5-editor — ${NAME} (72×72)`, { timeout: 60_000 });
+  const opened = await page.evaluate(() => window.view.opened());
+  expect(opened?.archive, 'opened OUR archive, not one of the game\'s').toBe(modFile(E2E_GAME, 'map', NAME));
 });
 
 test('Open… works before anything has been opened', { tag: '@nodata' }, async () => {
@@ -226,6 +232,5 @@ test('Open… works before anything has been opened', { tag: '@nodata' }, async 
   }, modFile(E2E_GAME, 'map', NAME));
 
   await page.locator('#open').click();
-  await hudSays(page, /unpacked \d+ files → /);
   await expect(page.locator('#title')).toHaveText(`homm5-editor — ${NAME} (72×72)`, { timeout: 60_000 });
 });

@@ -19,6 +19,7 @@
 
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { mapFilesUnder } from './map-source.ts';
 
 /** One `<Item …><AdvMapX>…</AdvMapX></Item>` fragment, as text. */
 export type DonorXml = string;
@@ -28,22 +29,7 @@ const cache = new Map<string, DonorXml | null>();
 
 /** Every map.xdb under the game's Maps folder, nearest first. */
 function mapFiles(gameData: string): string[] {
-  const root = join(gameData, 'Maps');
-  if (!existsSync(root)) return [];
-  const out: string[] = [];
-  const walk = (dir: string): void => {
-    let ents: string[];
-    try { ents = readdirSync(dir); } catch { return; }
-    for (const e of ents) {
-      const full = join(dir, e);
-      let st;
-      try { st = statSync(full); } catch { continue; }
-      if (st.isDirectory()) walk(full);
-      else if (e === 'map.xdb') out.push(full);
-    }
-  };
-  walk(root);
-  return out;
+  return mapFilesUnder(join(gameData, 'Maps'));
 }
 
 /**

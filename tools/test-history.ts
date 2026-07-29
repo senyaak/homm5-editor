@@ -9,6 +9,7 @@
 
 import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { mapFilesUnder } from '../src/map-source.ts';
 import { diff, apply, History, storeSteps, loadSteps } from '../src/history.ts';
 import type { Step } from '../src/history.ts';
 
@@ -67,22 +68,8 @@ ok('identical documents produce no patch', diff(bytes('abc'), bytes('abc')) === 
 
 console.log('\n--- diff/apply, real map bytes ---');
 /** Every map.xdb under a root, nearest first. */
-function mapFiles(dir: string, out: string[] = [], cap = 6): string[] {
-  if (out.length >= cap) return out;
-  let ents: string[];
-  try { ents = readdirSync(dir); } catch { return out; }
-  for (const e of ents) {
-    if (out.length >= cap) break;
-    const full = join(dir, e);
-    let st; try { st = statSync(full); } catch { continue; }
-    if (st.isDirectory()) mapFiles(full, out, cap);
-    else if (e === 'map.xdb') out.push(full);
-  }
-  return out;
-}
-
 const root = 'data-unpacked/Maps';
-const maps = existsSync(root) ? mapFiles(root) : [];
+const maps = existsSync(root) ? mapFilesUnder(root, 6) : [];
 if (!maps.length) {
   console.log('  (no sample maps unpacked — skipping; unpack under data-unpacked to run these)');
 } else {

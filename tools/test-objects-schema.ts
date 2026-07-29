@@ -3,7 +3,7 @@
 //   node tools/test-objects-schema.ts [dataRoot]
 
 import { readFileSync } from 'node:fs';
-import { execSync } from 'node:child_process';
+import { mapFilesUnder } from '../src/map-source.ts';
 import { objectSchema, objectProps, resolveRef, controlOf, deref } from '../src/schema.ts';
 import type { FieldSchema, RegistryName } from '../src/schema.ts';
 import { Registry } from '../src/registry.ts';
@@ -43,7 +43,10 @@ if (skills.length < 50) fail('skills roster too small');
 
 // --- 3. coverage: every field each object type carries should be declared ---
 console.log('\n=== coverage across all maps ===');
-const files = execSync('find data-unpacked -path "*/SingleMissions/*/map.xdb" -o -path "*/Multiplayer/*/map.xdb"', { encoding: 'utf8', maxBuffer: 1e8 }).trim().split('\n').filter(Boolean);
+// The playable trees only: arenas and duel presets are maps by file shape and
+// not by anything this checks.
+const files = mapFilesUnder(dataRoot)
+  .filter((f) => /[\\/](SingleMissions|Multiplayer)[\\/]/i.test(f));
 const byType = new Map<string, Set<string>>();
 let maps = 0;
 for (const f of files) {

@@ -109,6 +109,33 @@ export function listStockMaps(gameRoot: string | null): MapSource[] {
   return out.sort((a, b) => a.rel.localeCompare(b.rel));
 }
 
+/**
+ * Every `map.xdb` under a folder, absolute, deepest last.
+ *
+ * One walk instead of five: the tools each grew their own, and two of them
+ * shelled out to `find` — which is a Unix program, so those two suites had
+ * never run on Windows at all. `cap` stops early for a tool that only wants a
+ * handful of samples.
+ */
+export function mapFilesUnder(dir: string, cap = Infinity): string[] {
+  const out: string[] = [];
+  const walk = (at: string): void => {
+    if (out.length >= cap) return;
+    let names: string[];
+    try { names = readdirSync(at); } catch { return; }
+    for (const name of names) {
+      if (out.length >= cap) return;
+      const full = join(at, name);
+      let st;
+      try { st = statSync(full); } catch { continue; }
+      if (st.isDirectory()) walk(full);
+      else if (name.toLowerCase() === 'map.xdb') out.push(full);
+    }
+  };
+  walk(dir);
+  return out;
+}
+
 /** Every archive the game mounts from `data/`, in the order it finds them. */
 export function gameArchives(gameRoot: string): string[] {
   const dir = join(gameRoot, PAK_DIR);
