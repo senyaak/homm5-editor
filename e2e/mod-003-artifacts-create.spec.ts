@@ -327,15 +327,10 @@ test('makes a set of all three, with an effect of our own', {
   await effect.locator('input').first().fill(String(UNDEAD_KING.energy.worn));
   await effect.locator('input').last().fill(String(UNDEAD_KING.energy.amount));
 
-  // The other half of a set: what it does on an EVENT. The preset writes a whole
-  // script — trigger, threshold and all — because what runs has to be what the
-  // author can see; picking one into an empty field asks nothing.
+  // The other half of a set: what it does on an EVENT. A script is a script —
+  // typed in, linted under the field, and carried into the mod verbatim.
   await expect(page.locator('#as-script')).toHaveValue('');
-  await page.locator('#as-preset').selectOption('newDay');
-  await expect(page.locator('#as-script')).toHaveValue(/Trigger\(NEW_DAY_TRIGGER/, { timeout: 30_000 });
-  await expect(page.locator('#as-script')).toHaveValue(/RestoreDarkEnergy\(player\)/);
-  // The linter runs on what is in the field, and a preset that does not pass it
-  // would teach everyone to ignore the line under the box.
+  await page.locator('#as-script').fill(UNDEAD_KING.script);
   await expect(page.locator('#as-lint')).toHaveText('no structural errors');
 
   await page.locator('#as-ok').click();

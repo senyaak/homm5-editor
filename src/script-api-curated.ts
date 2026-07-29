@@ -41,8 +41,9 @@ export interface ApiDoc {
   /** A real call, ideally from a shipped mission. */
   example?: string;
   /** `manual` — documented in the shipped PDF; `observed` — undocumented, learned
-   *  from a script the campaigns ship. */
-  source: 'manual' | 'observed';
+   *  from a script the campaigns ship; `extension` — OURS, and only there when
+   *  the native extension is installed (src/artifact-scripts.ts). */
+  source: 'manual' | 'observed' | 'extension';
   /** The mission we first wrote this up from, for provenance. */
   since?: string;
   notes?: string;
@@ -51,6 +52,51 @@ export interface ApiDoc {
 /** The reference. Alphabetical within nothing in particular — grouped by category
  *  when rendered. Grows per mission. */
 export const CURATED: ApiDoc[] = [
+  // --- Ours, from the extension --------------------------------------------
+  //
+  // Not the game's. These exist because `bin/homm5-editor.dll` is loaded and
+  // adds them to the table the engine hands Lua — a map that runs without the
+  // extension will find them nil, which is why a script that calls one should
+  // check it is there first. See
+  // docs/ENGINE_INTERNALS.md for how they are registered.
+  {
+    name: 'RestoreDarkEnergy', category: 'Ours', source: 'extension',
+    summary: "Fill a player's dark energy back up to its ceiling.",
+    params: [{ name: 'player', type: 'PLAYER_*', desc: 'Whose pool to fill — 1 through 8.' }],
+    example: 'RestoreDarkEnergy(PLAYER_1);',
+    notes: 'The engine has no setter for the pool: it keeps a CEILING and fills to it '
+      + 'weekly, so "restore" is asking the player to do that refill out of turn. Any '
+      + 'ceiling our artifacts add is included, because the refill is one of the '
+      + 'calculations the extension extends. A player number out of range is refused '
+      + "in the engine's own words.",
+  },
+  {
+    name: 'EditorWornCount', category: 'Ours', source: 'extension',
+    summary: 'How many of these artifacts the hero is WEARING.',
+    params: [
+      { name: "hero", type: "name", desc: "The hero's script name." },
+      { name: "members", type: "table", desc: "Artifact ids — a set's `<Set>_MEMBERS` list." },
+    ],
+    returns: 'The count worn. A piece in the backpack does not count.',
+    example: 'EditorWornCount(hero, H3UndeadKing_MEMBERS)',
+    notes: "Plain Lua, defined in the mod's copy of scripts/advmap-common.lua rather "
+      + "than in the extension. It leans on HasArtefact's third argument, which the "
+      + 'manuals omit and which is what makes "worn" mean worn.',
+  },
+  {
+    name: 'EditorHeroWearing', category: 'Ours', source: 'extension',
+    summary: 'The first hero of a player wearing at least N of these artifacts.',
+    params: [
+      { name: 'player', type: 'PLAYER_*', desc: 'Whose heroes to look through.' },
+      { name: "members", type: "table", desc: "Artifact ids — a set's `<Set>_MEMBERS` list." },
+      { name: 'count', type: 'number', desc: 'How many have to be worn.' },
+    ],
+    returns: "The hero's name, or nil when none of them qualifies.",
+    example: 'local hero = EditorHeroWearing(player, H3UndeadKing_MEMBERS, 3);',
+    notes: "The condition half of a set's script: what the set does is up to the "
+      + 'script, whether that is one of ours or anything else the API offers.',
+  },
+
   // --- Objectives ----------------------------------------------------------
   {
     name: 'SetObjectiveState', category: 'Objectives', source: 'manual', since: 'C1M1',

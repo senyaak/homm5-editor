@@ -80,7 +80,8 @@ const L: string[] = [
 for (const c of categories) {
   L.push(`## ${c}`, '');
   for (const fn of byCategory.get(c)!.sort((a, b) => a.name.localeCompare(b.name))) {
-    const tag = fn.source === 'observed' ? ' · **undocumented** (learned from a script)' : '';
+    const tag = fn.source === 'observed' ? ' · **undocumented** (learned from a script)'
+      : fn.source === 'extension' ? " · **ours** (needs the editor's extension installed)" : '';
     const since = fn.since ? ` · first seen in ${fn.since}` : '';
     L.push(`### \`${sig(fn)}\``, '');
     L.push(`${fn.summary}${tag}${since}`, '');

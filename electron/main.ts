@@ -54,8 +54,6 @@ import { describeUses, findArtifactUses, findCreatureUses } from '../src/artifac
 import { EFFECT_STATS, effectsOf } from '../src/artifact-effects.ts';
 import type { EffectRow, EffectStat, SetEffect } from '../src/artifact-effects.ts';
 import { artifactNumbers, HERO_STAT_NAMES } from '../src/artifacts.ts';
-import { presetScript, SCRIPT_PRESETS } from '../src/artifact-scripts.ts';
-import type { ScriptPreset } from '../src/artifact-scripts.ts';
 import type { BuildReport, CreatureMod, Installed, ModCreature } from '../src/creature-mod.ts';
 import { decodeDDSBuffer } from '../src/dds.ts';
 import { writeDDS } from '../src/texture.ts';
@@ -111,7 +109,6 @@ import type {
   ModsListResult, ModsInstallPayload, ModsInstallResult, ModsFormDataResult, ModsPresetPayload,
   CreaturePresetDTO, ArtifactPresetDTO, ModsInstallArtifactPayload, ModsInstallArtifactResult,
   ModsInstallSetPayload, ModsInstallSetResult, ExtensionStatus,
-  ModsScriptPresetPayload, ModsScriptPresetResult,
   ModsRemovePayload, ModsRemoveResult, ModsUsesResult,
   ModsTexturesPayload, ModsTexturesResult, ModsRecolorPayload, ModsRecolorResult,
 } from './ipc.ts';
@@ -2377,7 +2374,6 @@ ipcMain.handle('mods:form-data', async (): Promise<ModsFormDataResult> => {
     artifactDonors: r.artifacts(),
     effectStats: [...EFFECT_STATS],
     heroStats: [...HERO_STAT_NAMES],
-    scriptPresets: [...SCRIPT_PRESETS],
     abilities: creatureAbilities(assets([gameData()])),
     towns: r.races(),
   };
@@ -2614,16 +2610,6 @@ ipcMain.handle('mods:update-set', async (_e: IpcMainInvokeEvent, p: ModsInstallS
   const { installed } = buildAndInstall(g, mod);
   return { archive: installed.archive, number: set.number };
 });
-
-// The preset is TEXT, not a hidden wrapper: what the author gets is what runs,
-// and they can change the threshold in it. Generated here rather than in the
-// renderer because it is written from the same module that writes the file.
-ipcMain.handle('mods:script-preset', async (_e: IpcMainInvokeEvent, p: ModsScriptPresetPayload): Promise<ModsScriptPresetResult> => ({
-  code: presetScript(p.preset as ScriptPreset, {
-    file: p.file.trim() || 'Set',
-    artifacts: p.artifacts.map((a) => a.trim()).filter(Boolean),
-  }),
-}));
 
 ipcMain.handle('mods:creature-uses', async (_e: IpcMainInvokeEvent, { id }: ModsRemovePayload): Promise<ModsUsesResult> => {
   const uses = findCreatureUses(join(gameData(), 'Maps'), [id]).get(id) ?? [];

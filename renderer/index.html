@@ -1488,14 +1488,11 @@
             <!-- The other half of a set: what it does on an EVENT. The numbers
                  above go into calculations no script can reach; a day starting
                  is something the engine already hands to Lua, so it lives here.
-                 The preset writes a whole script, threshold and all — what runs
-                 is what the author can see and change. -->
+                 A script is a script — the field takes one, the linter reads it,
+                 and the names it can call are in docs/SCRIPT_API.md. -->
             <div class="on-row um-span" style="align-items:flex-start">
               <span>Script</span>
               <div style="flex:1;min-width:0">
-                <select id="as-preset" title="a starting text; it is yours to rewrite after that">
-                  <option value="">— no script —</option>
-                </select>
                 <textarea id="as-script" class="as-script" rows="10" spellcheck="false" placeholder="Lua the set runs on an event — pick a preset above to start from one"></textarea>
                 <div id="as-lint" class="um-note"></div>
               </div>

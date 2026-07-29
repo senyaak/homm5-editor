@@ -8,7 +8,7 @@ because the shipped manuals are the only published list and they are crooked
 (mangled by `pdftotext`, no clean grouping, and not ours to reproduce). Each
 entry is in our own words, with typed arguments and a real example.
 
-**24** functions written up so far, of **204** the editor knows
+**27** functions written up so far, of **207** the editor knows
 (the rest are signatures from the manual, listed at the end — a to-do list).
 For the task view — which call for which job — see
 [RECIPES.md](RECIPES.md#which-call-for-what).
@@ -22,6 +22,7 @@ For the task view — which call for which job — see
 - [Heroes](#heroes) — 5
 - [Objectives](#objectives) — 2
 - [Objects](#objects) — 4
+- [Ours](#ours) — 3
 - [Players](#players) — 1
 - [Triggers](#triggers) — 1
 
@@ -342,6 +343,57 @@ Show or hide a placed object (a disabled object is not on the map for the player
 ```lua
 SetObjectEnabled('zastava', 1);
 ```
+
+## Ours
+
+### `EditorHeroWearing(player, members, count)`
+
+The first hero of a player wearing at least N of these artifacts. · **ours** (needs the editor's extension installed)
+
+| param | type | meaning |
+|---|---|---|
+| `player` | PLAYER_* | Whose heroes to look through. |
+| `members` | table | Artifact ids — a set's `<Set>_MEMBERS` list. |
+| `count` | number | How many have to be worn. |
+
+**Returns:** The hero's name, or nil when none of them qualifies.
+
+```lua
+local hero = EditorHeroWearing(player, H3UndeadKing_MEMBERS, 3);
+```
+
+> The condition half of a set's script: what the set does is up to the script, whether that is one of ours or anything else the API offers.
+
+### `EditorWornCount(hero, members)`
+
+How many of these artifacts the hero is WEARING. · **ours** (needs the editor's extension installed)
+
+| param | type | meaning |
+|---|---|---|
+| `hero` | name | The hero's script name. |
+| `members` | table | Artifact ids — a set's `<Set>_MEMBERS` list. |
+
+**Returns:** The count worn. A piece in the backpack does not count.
+
+```lua
+EditorWornCount(hero, H3UndeadKing_MEMBERS)
+```
+
+> Plain Lua, defined in the mod's copy of scripts/advmap-common.lua rather than in the extension. It leans on HasArtefact's third argument, which the manuals omit and which is what makes "worn" mean worn.
+
+### `RestoreDarkEnergy(player)`
+
+Fill a player's dark energy back up to its ceiling. · **ours** (needs the editor's extension installed)
+
+| param | type | meaning |
+|---|---|---|
+| `player` | PLAYER_* | Whose pool to fill — 1 through 8. |
+
+```lua
+RestoreDarkEnergy(PLAYER_1);
+```
+
+> The engine has no setter for the pool: it keeps a CEILING and fills to it weekly, so "restore" is asking the player to do that refill out of turn. Any ceiling our artifacts add is included, because the refill is one of the calculations the extension extends. A player number out of range is refused in the engine's own words.
 
 ## Players
 

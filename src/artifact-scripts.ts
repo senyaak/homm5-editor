@@ -15,10 +15,9 @@
 // trigger set here survives a map that sets its own (it does; triggers stack).
 //
 // WHAT IS GENERATED AND WHAT IS AUTHORED. The header is ours: the set's members
-// as the constants a script names them by, and helpers that hide the walk over
-// heroes. The body is the author's, verbatim, from a preset they can rewrite —
-// the point of a preset being a starting text rather than a hidden wrapper is
-// that what runs is what they can see.
+// as the constants a script names them by, and the helpers in the global file
+// hide the walk over heroes. Everything else is the author's, verbatim — a
+// script is a script, and what runs is what they wrote.
 
 import type { ModArtifactSet } from './creature-mod.ts';
 
@@ -29,48 +28,8 @@ export const COMMON_SCRIPT = 'scripts/advmap-common.lua';
 
 const EOL = '\r\n';
 
-/**
- * The presets the dialog offers.
- *
- * `newDay` is the one that pays for the whole mechanism: the engine calls it at
- * the start of each day, so nothing polls and nothing can hang the game in a
- * loop that forgets to sleep. `empty` is for an author who knows what they want
- * and would rather not delete someone else's example first.
- */
-export const SCRIPT_PRESETS = ['empty', 'newDay'] as const;
-export type ScriptPreset = (typeof SCRIPT_PRESETS)[number];
-
 /** A Lua name from a file stem: what the generated symbols are prefixed with. */
 const symbolOf = (file: string): string => file.replace(/[^A-Za-z0-9_]/g, '_');
-
-/**
- * The text a preset starts an author off with.
- *
- * It is a whole script, threshold and all, rather than a body with the
- * interesting parts elsewhere: an author who wants the bonus at two pieces
- * instead of three should be able to see the number and change it.
- */
-export function presetScript(preset: ScriptPreset, set: Pick<ModArtifactSet, 'file' | 'artifacts'>): string {
-  const name = symbolOf(set.file);
-  if (preset === 'empty') return '';
-  return [
-    `-- ${set.file}: runs at the start of every day.`,
-    '--',
-    '-- MEMBERS and the helpers below are generated from the set; everything from',
-    '-- here down is yours. The trigger stacks with any the map sets itself.',
-    `function ${name}_NewDay()`,
-    '\tfor player = 1, 8 do',
-    `\t\tlocal hero = EditorHeroWearing(player, ${name}_MEMBERS, ${set.artifacts.length});`,
-    '\t\tif hero then',
-    '\t\t\t-- ваш код здесь',
-    '\t\t\tRestoreDarkEnergy(player);',
-    '\t\tend;',
-    '\tend;',
-    'end;',
-    '',
-    `Trigger(NEW_DAY_TRIGGER, "${name}_NewDay");`,
-  ].join(EOL) + EOL;
-}
 
 /**
  * The generated head of a set's script: its members, by the names a script uses.

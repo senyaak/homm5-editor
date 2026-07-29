@@ -28,7 +28,6 @@ import { ensureModDir, modFile } from '../src/mod-paths.ts';
 import { decodeDDSBuffer } from '../src/dds.ts';
 import { writeEffectsFile } from '../src/extension.ts';
 import { effectsOf } from '../src/artifact-effects.ts';
-import { presetScript } from '../src/artifact-scripts.ts';
 
 /**
  * `--noRemove`: do the work in the REAL install and leave it standing.
@@ -216,6 +215,20 @@ export const UNDEAD_KING = {
   effect: 'ARTFSET_EFFECT_H3_UNDEAD_KING',
   name: 'Плащ короля нежити',
   description: 'Амулет гробовщика, плащ вампира и сапоги мертвеца, надетые вместе.',
+  /**
+   * What the full set does on an event, as an author would write it: the numbers
+   * are the extension's, but WHEN is the engine's own trigger.
+   */
+  script: [
+    'function H3UndeadKing_NewDay()',
+    '	for player = 1, 8 do',
+    '		local hero = EditorHeroWearing(player, H3UndeadKing_MEMBERS, 3);',
+    '		if hero then RestoreDarkEnergy(player); end;',
+    '	end;',
+    'end;',
+    '',
+    'Trigger(NEW_DAY_TRIGGER, "H3UndeadKing_NewDay");',
+  ].join('\r\n'),
   /**
    * Index 0 is one piece worn, which is not a set — hence blank.
    *
@@ -456,7 +469,7 @@ export function installMapFixture(gameRoot: string): CreatureMod {
     }],
     // And the script, for the same reason: this fixture reinstalls the set over
     // one the dialog authored, and what it leaves out it silently removes.
-    script: presetScript('newDay', { file: UNDEAD_KING.file, artifacts: [AMULET.id, CLOAK.id, BOOTS.id] }),
+    script: UNDEAD_KING.script,
   };
   if ((mod.sets ?? []).some((s) => s.effect === UNDEAD_KING.effect)) {
     updateArtifactSet(mod, UNDEAD_KING.effect, set);

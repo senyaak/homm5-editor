@@ -135,6 +135,18 @@
   "group": "PLAYERS"
  },
  {
+  "name": "EditorHeroWearing",
+  "params": "player, members, count",
+  "group": "Ours",
+  "summary": "The first hero of a player wearing at least N of these artifacts."
+ },
+ {
+  "name": "EditorWornCount",
+  "params": "hero, members",
+  "group": "Ours",
+  "summary": "How many of these artifacts the hero is WEARING."
+ },
+ {
   "name": "EnableAIHeroHiring",
   "params": "playerID, townName, enable",
   "group": "ADVMAP"
@@ -760,6 +772,12 @@
   "name": "ResetObjectFlashlight",
   "params": "objectName",
   "group": "ADVMAP"
+ },
+ {
+  "name": "RestoreDarkEnergy",
+  "params": "player",
+  "group": "Ours",
+  "summary": "Fill a player's dark energy back up to its ceiling."
  },
  {
   "name": "Save",

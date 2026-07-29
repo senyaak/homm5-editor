@@ -7493,16 +7493,6 @@ async function fillModForms(): Promise<void> {
   }
   effectStats = data.effectStats;
   heroStats = data.heroStats;
-  scriptPresets = data.scriptPresets;
-  const presets = $select('as-preset');
-  // Rebuilt rather than appended: this runs again whenever the dialog is
-  // reopened, and a list that grew each time would offer "newDay" five times.
-  presets.innerHTML = '<option value="">— no script —</option>';
-  for (const name of scriptPresets) {
-    const option = document.createElement('option');
-    option.value = option.textContent = name;
-    presets.appendChild(option);
-  }
   if (!$select('am-donor').options.length) {
     fillModSelect($select('am-donor'), data.artifactDonors, true);
   }
@@ -7767,8 +7757,6 @@ let effectStats: string[] = [];
  * one list of "what it gives".
  */
 let heroStats: string[] = [];
-/** Starting texts a set's script can be created from — filled from the app. */
-let scriptPresets: string[] = [];
 const isHeroStat = (stat: string): boolean => heroStats.includes(stat);
 
 function addEffectRow(stat = '', amount = ''): void {
@@ -8111,7 +8099,6 @@ async function editArtifactSet(effect: string): Promise<void> {
   $('as-effects').innerHTML = '';
   for (const e of s.effects ?? []) addSetEffectRow(e.stat, String(e.threshold), String(e.amount));
   $textarea('as-script').value = s.script ?? '';
-  $select('as-preset').value = '';
   lintSetScript();
   $input('as-effect').disabled = true;
   $input('as-file').disabled = true;
@@ -8133,7 +8120,6 @@ function newSet(): void {
   // closing it, and what was left standing would land on the next set.
   $('as-effects').innerHTML = '';
   $textarea('as-script').value = '';
-  $select('as-preset').value = '';
   lintSetScript();
   renderSetCounts();
   openOnTop('setedit');
@@ -8381,31 +8367,6 @@ $input('as-file').addEventListener('input', () => {
   if (!asIdTouched) $input('as-effect').value = idFrom('ARTFSET_EFFECT_', $input('as-file').value);
 });
 $('as-members').addEventListener('change', renderSetCounts);
-
-/**
- * Picking a preset writes its text into the field — once, and never over work.
- *
- * A preset is a starting point, so it fills an EMPTY field and asks first when
- * the field is not empty. Losing a script someone wrote because a select
- * changed by a stray scroll is exactly the kind of thing a dialog must not do.
- */
-$('as-preset').addEventListener('change', () => {
-  const preset = $select('as-preset').value;
-  if (!preset) return;
-  const field = $textarea('as-script');
-  if (field.value.trim() && !confirm('Replace the script with the preset?')) {
-    $select('as-preset').value = '';
-    return;
-  }
-  void window.editor.scriptPreset({
-    preset, file: $input('as-file').value, artifacts: setMembers(),
-  }).then(({ code }) => {
-    field.value = code;
-    lintSetScript();
-  }).catch((e: unknown) => {
-    $('as-err').textContent = e instanceof Error ? e.message : String(e);
-  });
-});
 
 /** A line break, as a pattern — CRLF or LF, since the field takes either. */
 const NEWLINE = /\r?\n/;

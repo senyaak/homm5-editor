@@ -5,7 +5,7 @@
 // `advmap-common.lua` keeps every line it shipped with. A mod that drops those
 // 73 lines breaks every mission's script, and it breaks them silently.
 
-import { COMMON_SCRIPT, SCRIPT_DIR, patchCommonScript, presetScript, setScriptFiles } from '../src/artifact-scripts.ts';
+import { COMMON_SCRIPT, SCRIPT_DIR, patchCommonScript, setScriptFiles } from '../src/artifact-scripts.ts';
 import { luaDiagnostics } from '../src/lua-lint.ts';
 import type { ModArtifactSet } from '../src/creature-mod.ts';
 
@@ -24,26 +24,30 @@ const SET: ModArtifactSet = {
   artifacts: ['ARTIFACT_H3_UNDERTAKERS_AMULET', 'ARTIFACT_H3_VAMPIRES_CLOAK', 'ARTIFACT_H3_DEAD_MANS_BOOTS'],
 };
 
-// --- the preset --------------------------------------------------------------
+// --- what an author writes ---------------------------------------------------
+//
+// A script is a script: nothing wraps it and nothing is generated but the head
+// naming the members. This is the shape one takes, and it has to survive the
+// linter — a set whose script does not is a set that does nothing in game.
 
-const preset = presetScript('newDay', SET);
-check('the new-day preset is a whole script, trigger and all',
-  preset.includes('Trigger(NEW_DAY_TRIGGER,'), preset.split('\r\n')[0]);
-check('it names the set\'s own members list', preset.includes('H3UndeadKing_MEMBERS'));
-check('and the threshold is in the text, where it can be changed',
-  preset.includes(`, ${SET.artifacts.length});`), 'three pieces');
-check('it calls the extension\'s own function', preset.includes('RestoreDarkEnergy(player)'));
-// A preset that does not survive the linter teaches everyone to ignore the
-// linter. Structural only — see src/lua-lint.ts.
-check('the preset passes the linter', luaDiagnostics(preset).length === 0,
-  JSON.stringify(luaDiagnostics(preset).slice(0, 1)));
-check('the empty preset really is empty', presetScript('empty', SET) === '');
+const AUTHORED = [
+  'function H3UndeadKing_NewDay()',
+  '\tfor player = 1, 8 do',
+  '\t\tlocal hero = EditorHeroWearing(player, H3UndeadKing_MEMBERS, 3);',
+  '\t\tif hero then RestoreDarkEnergy(player); end;',
+  '\tend;',
+  'end;',
+  '',
+  'Trigger(NEW_DAY_TRIGGER, "H3UndeadKing_NewDay");',
+].join('\r\n');
+check('the shape an author writes passes the linter', luaDiagnostics(AUTHORED).length === 0,
+  JSON.stringify(luaDiagnostics(AUTHORED).slice(0, 1)));
 
 // --- the files ---------------------------------------------------------------
 
 check('a set with no script contributes no file', setScriptFiles([SET]).length === 0);
 
-const withScript: ModArtifactSet = { ...SET, script: preset };
+const withScript: ModArtifactSet = { ...SET, script: AUTHORED };
 const files = setScriptFiles([withScript]);
 check('one file per set that carries one', files.length === 1, files.map((f) => f.path).join());
 check('it lands where a doFile can name it', files[0]!.path === `${SCRIPT_DIR}/H3UndeadKing.lua`, files[0]!.path);
@@ -63,7 +67,7 @@ check('a mod with no scripted set leaves advmap-common.lua alone',
 const common = patchCommonScript(SHIPPED, [withScript]);
 check('the game\'s own lines are all still there', common.startsWith(SHIPPED.trimEnd()));
 check('the set\'s file is loaded', common.includes(`doFile("/${SCRIPT_DIR}/H3UndeadKing.lua");`));
-check('the helpers a preset leans on are defined', common.includes('function EditorHeroWearing(')
+check('the helpers a script leans on are defined', common.includes('function EditorHeroWearing(')
   && common.includes('function EditorWornCount('));
 // The third argument is the one the manuals omit and the whole reason the
 // helper exists: a piece in the backpack is not worn.

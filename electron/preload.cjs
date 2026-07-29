@@ -82,7 +82,6 @@ const api = {
   // Units/Artifacts mod — game-global, no map needed.
   listMods: () => ipcRenderer.invoke('mods:list'),
   modFormData: () => ipcRenderer.invoke('mods:form-data'),
-  scriptPreset: (p) => ipcRenderer.invoke('mods:script-preset', p),
   modPreset: (donor) => ipcRenderer.invoke('mods:preset', { donor }),
   modArtifactPreset: (donor) => ipcRenderer.invoke('mods:artifact-preset', { donor }),
   installMod: (p) => ipcRenderer.invoke('mods:install', p),
