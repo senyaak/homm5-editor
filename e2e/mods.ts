@@ -26,6 +26,8 @@ import type { Site } from '../src/artifact-limit.ts';
 import { readEntries } from '../src/pak.ts';
 import { ensureModDir, modFile } from '../src/mod-paths.ts';
 import { decodeDDSBuffer } from '../src/dds.ts';
+import { writeEffectsFile } from '../src/extension.ts';
+import { effectsOf } from '../src/artifact-effects.ts';
 
 /**
  * `--noRemove`: do the work in the REAL install and leave it standing.
@@ -307,6 +309,9 @@ export function clearFixture(gameRoot: string): void {
   if (!touched) return;
   const report = buildCreatureMod(mod, dataReader(DATA));
   installCreatureMod(gameRoot, mod, packCreatureMod(report));
+  // An artifact taken out has to stop granting its bonus: the file is written
+  // from what is LEFT, never appended to.
+  writeEffectsFile(gameRoot, effectsOf(mod.artifacts ?? []));
 }
 
 /**
@@ -409,6 +414,12 @@ export function installMapFixture(gameRoot: string): CreatureMod {
 
   const report = buildCreatureMod(mod, dataReader(DATA));
   installCreatureMod(gameRoot, mod, packCreatureMod(report));
+  // And the file the extension reads. The archive cannot hold a percentage on a
+  // skill, so an artifact installed without its row exists in the game and
+  // grants nothing — which is what happened to the boots: the dialog writes this
+  // file, a fixture that skipped it left one piece of the set inert while its
+  // own description promised 15%.
+  writeEffectsFile(gameRoot, effectsOf(mod.artifacts ?? []));
   return mod;
 }
 
