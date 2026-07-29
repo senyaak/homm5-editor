@@ -30,6 +30,13 @@ address — the same rule the creature and artifact ceilings follow.
 
 Regenerate with `node tools/reverse/lua-registry.ts`.
 
+**Adding functions of our own** is four bytes, not a proxy DLL: each table is
+reached through an accessor (`mov eax,<table>; ret`), so the extension hands the
+engine a copy with its own rows appended. How, and what a registered function
+has to look like, is in
+[ENGINE_INTERNALS.md](ENGINE_INTERNALS.md#how-lua-functions-are-registered);
+what ours do is in [SCRIPT_API.md](SCRIPT_API.md) under *Ours*.
+
 
 ## Table 1 — `0xc8c258` (99 entries)
 

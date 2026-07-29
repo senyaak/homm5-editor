@@ -330,6 +330,22 @@ undocumented `GetLastSavedCombatIndex` makes post-combat detection clean
 adds from experience: combat-script tricks break in multiplayer (tactical
 scripting is prohibited there) — single-player only.
 
+### The file the extension reads
+
+One row per term, written by the editor from the mod and read by
+`native/homm5-editor.c` at load:
+
+```
+necromancy artifact 97 5            # artifact 97 worn -> +5% raised
+energy set 2 150 97 98 99           # any 2 of those three worn -> +150 ceiling
+```
+
+Both forms are the same question inside the extension — *count how many of these
+ids are worn; if at least N, add this* — which is why a single artifact is a
+one-member row with a threshold of 1. A set of ours is nothing the executable
+has to recognise, and an id may appear in as many rows as it likes; each is
+counted on its own.
+
 ### Possible vs impossible, in one place
 
 | want | verdict |
@@ -341,8 +357,8 @@ scripting is prohibited there) — single-player only.
 | activated artifact power | `ControlHeroCustomAbility` + `CUSTOM_ABILITY_TRIGGER` |
 | +% fire (or any element) damage | **impossible for a new id.** Exe-only (the Trident/Icicle/Cape family); no damage hook in any script API |
 | ATB/initiative effects, combat-start spell casts | combat script, via undocumented `setATB` / `UnitCast*` (single-player; signatures to be probed) |
-| new set with own thresholds/behaviour | UI and membership as data; behaviour scripted (thresholds are then whatever the script checks) |
-| dark energy grants | **impossible** — getter exists, setter does not (full exe function table checked); raise creatures directly instead |
+| new set with own thresholds/behaviour | **done.** Membership and texts are data; the BONUS is a row the extension reads and the THRESHOLD is ours, because the extension counts the worn members itself rather than asking the engine's set accessor (which answers 0 for an effect of ours). "Two of three" is expressible, which no shipped effect is. What the set does on an EVENT is a script it carries — [artifact-scripts.ts](../src/artifact-scripts.ts) |
+| dark energy grants | **done, natively.** There is no setter because the engine does not set the pool: it keeps a CEILING of four numbers and fills to it. A term of ours is a fifth ([ENGINE_INTERNALS.md](ENGINE_INTERNALS.md#dark-energy-in-full)), and `RestoreDarkEnergy(player)` — a Lua function the extension registers — asks a player to refill out of turn. Seen in game 2026-07-29 |
 | backpack-passive artifact | trivially scriptable — poll `HasArtefact` and skip the worn check (NAF ships this as a feature) |
 | auto-combining artifacts | script: detect all parts via `HasArtefact`, `RemoveArtefact` them, `GiveArtefact` the combined one (NAF does exactly this, with a one-day delay) |
 

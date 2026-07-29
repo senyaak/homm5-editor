@@ -61,7 +61,11 @@ format knowledge belongs in `src/` with a test in `tools/` and a note in `docs/`
   a value, say where it came from (see the naming/scripting model in
   [docs/NAMES_AND_SCRIPTING.md](docs/NAMES_AND_SCRIPTING.md)).
 - **Use the web platform.** Native `<dialog>`, modern DOM/CSS — prefer the
-  platform over hand-rolled widgets or a framework.
+  platform over hand-rolled widgets or a framework. But **never `confirm()`,
+  `alert()` or `prompt()`**: in Electron those are native windows that block the
+  renderer, so a spec that reaches one hangs until its timeout with nothing to
+  read. Ask with `ask(question, label)` — a `<dialog>` that stacks over whatever
+  is open, answers no on Esc, and can be read and pressed by a test.
 - **Match the surrounding code** — its naming, comment density, and idiom. Files
   carry a short "why" comment at the top; keep that habit.
 

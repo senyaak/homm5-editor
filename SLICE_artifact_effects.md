@@ -196,9 +196,12 @@ term to the necromancy sum: three pieces worn gave engine 20 + ours 30, one
 taken off gave 20 + 20, and the count of undead raised moved with it,
 `floor(0.75 x percent)` across four battles.
 
-6.2. **Done in the editor.** Effects are rows on an artifact ("+ effect", a
-stat from a list, a number), written to `bin/homm5-editor-effects.txt` and read
-by the extension. The Artifacts dialog lists artifacts and sets side by side,
+6.2. **Done in the editor.** Everything an artifact gives is ONE list of rows
+added with "+ bonus": the six the record itself holds go into the artifact's own
+document, and the rest — necromancy, dark energy — into
+`bin/homm5-editor-effects.txt`, which the extension reads. A set's list adds a
+`lua` row, and that one carries no numbers: it carries a pencil, and the pencil
+opens the script in the editor the map's own scripts are written in. The Artifacts dialog lists artifacts and sets side by side,
 each row with edit and remove; forms are dialogs on top. Removing warns with
 the maps that name the thing, found by name. `npm run build-native` builds the
 DLL with Zig (a devDependency); the dialog has a button that installs it.
@@ -220,7 +223,24 @@ things this section listed as missing are built.
 ceiling, the bar moves as the pieces go on and off, and the pool is granted by
 the engine itself.
 
-6.4. **Known, accepted, not bugs.** Both follow from the grant being the
+6.4. **The Lua half, 2026-07-29.** The extension adds numbers to sums no script
+can reach; it cannot decide WHEN, and the engine already hands events to Lua. So
+the halves split there, and both ends are built:
+
+- **Functions of ours are registered** — the adventure map's table is reached
+  through an accessor, so the extension hands over a copy with its own rows and
+  rewrites four bytes. `RestoreDarkEnergy(player)` is the first, and it finds
+  its player by calling the engine's own `GetPlayerNecroEnergy` and watching
+  which player the vtable slot we own is asked about. In game: `was 231 → now
+  351`.
+- **A set carries a script**, generated into the mod beside a copy of the game's
+  `advmap-common.lua` that loads it. That file runs on every adventure map, and
+  a `NEW_DAY_TRIGGER` set from it fires even on a map that sets its own — both
+  measured, `docs/NAMES_AND_SCRIPTING.md`.
+- **The three calls are in the reference** (`docs/SCRIPT_API.md`, marked `ours`),
+  so the script editor completes them.
+
+6.5. **Known, accepted, not bugs.** Both follow from the grant being the
 engine's, which is the point of the design:
 
 - A hero who **starts** the map wearing the pieces starts with the pool full to
@@ -230,7 +250,7 @@ engine's, which is the point of the design:
   the engine recalculates. Its own four terms behave the same way. Сеня, on
   seeing it: «пока не мешает».
 
-6.5. **Open: the six an artifact record holds, granted by a SET.** A set has no
+6.6. **Open: the six an artifact record holds, granted by a SET.** A set has no
 `HeroStatsModif` — that field belongs to an artifact record — so "+2 Attack while
 two pieces are worn" needs a native term like the other two, and the place to add
 it is not found yet. What the search establishes, so the next attempt starts
@@ -258,14 +278,14 @@ enters it, the way the necromancy sum was read. Until then the set dialog offers
 only what works — a bonus that appears in a list and does nothing is exactly what
 the extension banner exists to prevent.
 
-6.6. **What the set SAYS it gives** is a text per number of pieces worn, and it
+6.7. **What the set SAYS it gives** is a text per number of pieces worn, and it
 follows the game's own convention rather than ours: the sentence names the
 effect (`Добавляет игроку 150 очков темной энергии.`, the Amplifier's wording),
 not the count — the count is drawn beside it — and it is REPEATED at three
 pieces, because the game shows only the entry for the count worn and nothing
 accumulates across them. The Dragonish set does the same.
 
-6.4. **How to check anything here.** The extension logs beside itself
+6.8. **How to check anything here.** The extension logs beside itself
 (`bin/homm5-editor.log`): what it loaded, what the config said, and for the
 first two dozen calls what it saw and what it added. That log settled every
 question so far faster than reasoning did.
