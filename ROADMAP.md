@@ -648,7 +648,7 @@ and carries a levelled hero from mission to mission. See `docs/CAMPAIGNS.md`.
       `lastPack`, dirty detection (`status`), version-drift warning ✅
 - [x] **The mount patterns are repointed at a folder of our own** — all five
       now read `H5E/*` in our copy of the executable, so nothing installed for
-      somebody else's mod is read at all and a map of ours is `H5E/*.mod`.
+      somebody else's mod is read at all and a map of ours is `H5E/*.h5m`.
       `src/mod-paths.ts`, `npm run mod-paths`; the mechanism is written up in
       docs/ENGINE_INTERNALS.md ✅
 - [ ] 🔴 **HIGH — the engine mounts plain `.zip` too.** The fifth pattern was

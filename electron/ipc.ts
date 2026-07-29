@@ -111,7 +111,7 @@ export interface NewMapResult {
   mapPath: string;
   /** Folder the project was created in. */
   mapDir: string;
-  /** The `.mod` it was packed into — the map, as the game will read it. */
+  /** The `.h5m` it was packed into — the map, as the game will read it. */
   archive: string;
 }
 

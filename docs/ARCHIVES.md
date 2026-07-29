@@ -23,8 +23,8 @@ search paths to game file system". A map, a duel preset, a campaign and a mod ar
 one thing to the engine: an archive it attaches, whose name and description come
 from `name.txt`/`desc.txt` at its root.
 
-**In our build those five read `H5E/*` instead** — `*.mod` for maps, and the
-kinds keep their extensions — so nothing installed for anybody else's mod is
+**In our build those five read `H5E/*` instead** — every kind keeping the
+extension the game gave it, so a map of ours is still a `.h5m` — so nothing installed for anybody else's mod is
 mounted. What is patched, and where the map browser gets its list from, is in
 [ENGINE_INTERNALS.md](ENGINE_INTERNALS.md); everything below is about the
 mechanism itself and holds either way.

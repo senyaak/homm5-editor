@@ -304,7 +304,7 @@ export function openModGameRoot(): void {
  * Take away a map a spec is about to build — its working tree AND its archive.
  *
  * Both, because a map is a FILE now and New Map refuses to write over one: the
- * packed `.mod` left by the last run stops the next one before it starts, with
+ * packed map left by the last run stops the next one before it starts, with
  * "already exists" out of the main process. Isolated that never showed, since
  * the archive sat inside the throwaway install and went with it.
  */

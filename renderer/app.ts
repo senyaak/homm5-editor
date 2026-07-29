@@ -3726,7 +3726,7 @@ function renderLocDialog(): void {
     if (code === locState.base) {
       const b = document.createElement('span'); b.className = 'lz-base'; b.textContent = 'base'; row.appendChild(b);
     }
-    const exp = document.createElement('button'); exp.className = 'lz-export'; exp.textContent = 'export .mod';
+    const exp = document.createElement('button'); exp.className = 'lz-export'; exp.textContent = 'export .h5m';
     exp.title = `pack a single-language ${code} map`;
     exp.addEventListener('click', () => void exportLoc(code));
     row.appendChild(exp);
@@ -4914,7 +4914,7 @@ interface OpenedMap {
   mapPath: string;
   /** The folder holding it — a workspace, or wherever HOMM5_UNPACK_TO put it. */
   mapDir: string;
-  /** The archive it belongs to, when the app knows which: `<game>/H5E/<name>.mod`. */
+  /** The archive it belongs to, when the app knows which: `<game>/H5E/<name>.h5m`. */
   archive: string | null;
 }
 
@@ -7365,7 +7365,7 @@ function newMapDialog(): HTMLDialogElement {
 function updateNewMapWhere(): void {
   const name = $input('nm-name').value.trim() || 'New Map';
   const sub = $select('nm-type').value === 'multi' ? 'Maps/Multiplayer/' : 'Maps/SingleMissions/';
-  $('nm-where').textContent = `→ <game>/H5E/${name}.mod · working folder <game data>/${sub}${name}`;
+  $('nm-where').textContent = `→ <game>/H5E/${name}.h5m · working folder <game data>/${sub}${name}`;
 }
 
 function openNewMap(): void {

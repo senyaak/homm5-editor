@@ -37,8 +37,8 @@ try {
   writeFileSync(modFile(dir, 'campaign', 'A Campaign'), oneMap('UserCampaigns/A Campaign'));
 
   const ours = listOurMaps(dir);
-  check('our maps are the .mod files in our folder',
-    ours.map((m) => m.rel).join() === 'My Map.mod,Together.mod', ours.map((m) => m.rel).join());
+  check('our maps are the packed maps in our folder',
+    ours.map((m) => m.rel).join() === 'My Map.h5m,Together.h5m', ours.map((m) => m.rel).join());
   check('...named without the extension', ours[0]?.name === 'My Map');
   // A campaign mission names the map by its path in the game's file system, so
   // the archive's own folder has to come back with it.

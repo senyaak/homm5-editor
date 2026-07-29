@@ -16,8 +16,8 @@ by an absolute data-root path:
 <MissionTag href="/Maps/SingleMissions/My Map/map-tag.xdb#xpointer(/AdvMapDescTag)"/>
 ```
 
-The map travels separately, as its own archive (`.mod` in our build, `.h5m` in
-the shipped one). The game's VFS merges every archive by path, so the two meet
+The map travels separately, as its own archive — a `.h5m`, in our build out of
+`H5E/` and in the shipped one out of `Maps/`. The game's VFS merges every archive by path, so the two meet
 at load time. This is why packing a campaign
 never touches a map, and why a campaign whose maps were never packed lists in
 the menu and then fails to start.

@@ -468,7 +468,7 @@ app.on('will-quit', () => { session?.watch.stop(); });
 // --- IPC: the maps on offer — ours, and the game's own ---
 //
 // Both come out of archives in the install, never out of the unpacked data:
-// `<game>/H5E/*.mod` are ours, `<game>/data/*.pak` hold the shipped ones. What
+// `<game>/H5E/*.h5m` are ours, `<game>/data/*.pak` hold the shipped ones. What
 // each list is and how it is read lives in src/map-source.ts, where it can be
 // tested without a window; the stock ones are cached because their archives do
 // not change while the editor runs.
@@ -492,9 +492,9 @@ ipcMain.handle('dialog:openMap', async (): Promise<OpenMapDialogResult> => {
     // Both halves of the round trip: an unpacked folder's map.xdb, or the .h5m
     // Pack produced from one.
     filters: [
-      { name: 'HoMM5 map', extensions: ['xdb', 'mod', 'h5m', 'h5c', 'h5u'] },
+      { name: 'HoMM5 map', extensions: ['xdb', 'h5m', 'h5c', 'h5u'] },
       { name: 'Map folder', extensions: ['xdb'] },
-      { name: 'Packed map', extensions: ['mod', 'h5m', 'h5c', 'h5u'] },
+      { name: 'Packed map', extensions: ['h5m', 'h5c', 'h5u'] },
     ],
   };
   // Electron treats a null parent as "no parent"; pick the overload to match.
@@ -517,11 +517,11 @@ ipcMain.handle('map:new', async (_e: IpcMainInvokeEvent, p: NewMapPayload): Prom
   if (/[\\/:*?"<>|]/.test(name)) throw new Error('the name cannot contain \\ / : * ? " < > |');
   if (!MAP_SIZES.includes(p.tiles)) throw new Error(`unknown map size ${p.tiles}`);
 
-  // A new map is a FILE from the moment it exists: `<game>/H5E/<name>.mod`, the
+  // A new map is a FILE from the moment it exists: `<game>/H5E/<name>.h5m`, the
   // one our build reads and the only place the picker looks. It is written into
   // a working folder like any other map (unpackRoot) and packed straight away,
-  // so Save goes back into the .mod and there is never a map that exists only as
-  // a folder nothing ships from.
+  // so Save goes back into the archive and there is never a map that exists only
+  // as a folder nothing ships from.
   const g = gameRoot();
   if (!g) throw new Error('no game install configured — a new map needs somewhere to be a file');
   const archive = modFile(g, 'map', name);
@@ -584,7 +584,7 @@ function workspaceFor(archivePath: string): string {
  * at or clean up.
  *
  * `HOMM5_UNPACK_TO` puts them in a folder of your choosing instead, at their
- * in-game path: with it pointed at the data root, `Foo.mod` unpacks to
+ * in-game path: with it pointed at the data root, `Foo.h5m` unpacks to
  * `<data>/Maps/SingleMissions/Foo` — a fixed, predictable place, which is what
  * the e2e suite reads after driving the window, and how the editor behaved
  * before maps became files.
@@ -2070,7 +2070,7 @@ function writeMapTag(s: Session): void {
 /**
  * Where the Pack dialog opens: our folder in the install, under this name.
  *
- * The game our build is — the patched executable — reads `H5E/*.mod` and nothing
+ * The game our build is — the patched executable — reads `H5E/*.h5m` and nothing
  * in `Maps/`, so a map packed anywhere else is a map it will not list
  * (src/mod-paths.ts). Without an install configured there is nowhere to offer,
  * and the map's own folder is the honest fallback.
@@ -2080,16 +2080,16 @@ function packDefault(name: string, mapDir: string): string {
   return root ? modFile(root, 'map', name) : `${mapDir}.${MOD_EXT.map}`;
 }
 
-// --- IPC: pack the map folder into a .mod ---
+// --- IPC: pack the map folder into a .h5m ---
 ipcMain.handle('map:pack', async (): Promise<MapPackResult> => {
   if (!session) throw new Error('no map loaded');
   // A localized map has no plain name.txt on disk — the game would find tagged
   // files and the sidecar and no text at all. Export bakes one language in.
-  if (readLoc(session)) throw new Error('this map is localized — use Localize → “export .mod” to pack a single language');
+  if (readLoc(session)) throw new Error('this map is localized — use Localize → “export .h5m” to pack a single language');
   const opts = {
-    title: 'Pack map to .mod',
+    title: 'Pack map to .h5m',
     defaultPath: packDefault(basename(session.mapDir), session.mapDir),
-    filters: [{ name: 'HoMM5 map', extensions: ['mod', 'h5m'] }],
+    filters: [{ name: 'HoMM5 map', extensions: ['h5m'] }],
   };
   // Electron treats a null parent as "no parent"; pick the overload to match.
   const parent = win;
@@ -2127,9 +2127,9 @@ ipcMain.handle('loc:export', async (_e: IpcMainInvokeEvent, { lang, output }: Lo
   let out = output;
   if (!out) {
     const opts = {
-      title: `Export ${lang} map to .mod`,
+      title: `Export ${lang} map to .h5m`,
       defaultPath: packDefault(`${basename(session.mapDir)}.${lang}`, `${session.mapDir}.${lang}`),
-      filters: [{ name: 'HoMM5 map', extensions: ['mod', 'h5m'] }],
+      filters: [{ name: 'HoMM5 map', extensions: ['h5m'] }],
     };
     const r = await (win ? dialog.showSaveDialog(win, opts) : dialog.showSaveDialog(opts));
     if (r.canceled || !r.filePath) return { canceled: true };

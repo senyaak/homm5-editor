@@ -30,7 +30,7 @@ import { armBrush, clickTile, newMap, planView } from './tiles.ts';
 import { openObjectPalette, pickObject, placeAtTile, setObjectProp, setPlacement } from './objects.ts';
 import { addItem, addValueItem, openTree, setTreeValue } from './tree.ts';
 import { readEntries } from '../src/pak.ts';
-import { modFile } from '../src/mod-paths.ts';
+import { MOD_EXT, modFile } from '../src/mod-paths.ts';
 import { clearMap, installMapFixture, LIVE, modGameRoot } from './mods.ts';
 import { MOD_STEM } from '../src/creature-mod.ts';
 
@@ -179,7 +179,7 @@ test('the map, built the way a person would', async () => {
 
   // The clean slate: this test owns the rebuild from nothing — the working
   // folder AND the archive. A map is a file now, and New Map refuses to write
-  // over one, so a run that left its `.mod` behind (a failure, a kill) would
+  // over one, so a run that left its archive behind (a failure, a kill) would
   // stop the next one dead in the dialog.
   if (existsSync(MAP_DIR)) rmSync(MAP_DIR, { recursive: true, force: true });
   rmSync(ARCHIVE, { force: true });
@@ -362,7 +362,7 @@ test('packs to a .h5m holding the same members', async () => {
     // first. What the picker lists is the packed map in our folder.
     await page.locator('#cats .chip', { hasText: 'All' }).click();
     await page.locator('#search').fill(NAME);
-    const row = page.locator('#maplist .m', { hasText: `${NAME}.mod` }).first();
+    const row = page.locator('#maplist .m', { hasText: `${NAME}.${MOD_EXT.map}` }).first();
     await expect(row, 'the picker lists the rebuilt map').toBeVisible();
     await row.click();
     await expect(page.locator('#title')).toContainText(NAME, { timeout: 120_000 });

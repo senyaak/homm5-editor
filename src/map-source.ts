@@ -6,7 +6,7 @@
 // editor's own maps meant the picker was a mirror of a mirror — worse, a map
 // opened from there was edited in place, in a tree nothing ships from.
 //
-//   ours    <game>/H5E/*.mod     packed, exactly what our build reads
+//   ours    <game>/H5E/*.h5m     packed, exactly what our build reads
 //   stock   <game>/data/*.pak    the shipped maps, read where the game keeps them
 //
 // Both are archives, so both open the same way: unpack into a workspace and edit
@@ -27,7 +27,7 @@ export interface MapSource {
   name: string;
   /** What is shown beside the name, and what search matches on. */
   rel: string;
-  /** The archive holding it: our `.mod`, or the game's `.pak`. */
+  /** The archive holding it: ours out of `H5E/`, or the game's `.pak`. */
   path: string;
   /** The folder inside that archive, for an archive that holds many maps. */
   inner?: string;

@@ -1,7 +1,7 @@
 // A map for a spec that needs one to point at, rather than to build.
 //
 // It is made the way the app makes one — a blank project written under the data
-// root, packed into `<game>/H5E/<name>.mod` — because that pair is what a map IS
+// root, packed into `<game>/H5E/<name>.h5m` — because that pair is what a map IS
 // now: a file in the install, plus the folder it is worked on in. A mission can
 // only name a map the game will have, so a fixture that is a folder and nothing
 // else is a fixture the campaign dialog will not offer.

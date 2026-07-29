@@ -27,7 +27,7 @@ import { existsSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { readEntries } from '../src/pak.ts';
 import { E2E_GAME, hudSays, launchEditor, REPO_ROOT } from './launch.ts';
-import { modFile } from '../src/mod-paths.ts';
+import { MOD_EXT, modFile } from '../src/mod-paths.ts';
 import type { Launched } from './launch.ts';
 
 let ed: Launched;
@@ -86,7 +86,7 @@ test('packs a new map, opens the .h5m back, and gets the same bytes', { tag: '@n
   await page.locator('#nm-ok').click();
   await expect(page.locator('#newmap')).toBeHidden({ timeout: 30_000 });
   await expect(page.locator('#title')).toHaveText(`homm5-editor — ${NAME} (72×72)`, { timeout: 60_000 });
-  // Ask the app where the map went: a `.mod` in the install, and the folder it
+  // Ask the app where the map went: a `.h5m` in the install, and the folder it
   // is worked on in. Neither is guessable from here, and the folder is what the
   // comparison below reads. ASKED, not read off the status line — that line is
   // one shared slot, and on a machine with no `Editor` folder the warning about
@@ -202,13 +202,13 @@ test('the picker opens the map the app itself made', { tag: '@nodata' }, async (
   await ed.app.close();
   ed = await launchEditor({ HOMM5_UNPACK_TO: '' });
   const { page } = ed;
-  // New Map put `<game>/H5E/e2e Pack.mod` in the install, so the picker lists it
+  // New Map put `<game>/H5E/e2e Pack.h5m` in the install, so the picker lists it
   // under ours. Clicking it must unpack OUR archive — the row carries the folder
   // the map sits at inside, and taking that as "this is one of the game's" sent
   // every map of ours looking for itself inside the game's paks instead.
   await page.locator('#cats .chip', { hasText: 'Ours' }).click();
   await page.locator('#search').fill(NAME);
-  const row = page.locator('#maplist .m', { hasText: `${NAME}.mod` }).first();
+  const row = page.locator('#maplist .m', { hasText: `${NAME}.${MOD_EXT.map}` }).first();
   await expect(row, 'the picker lists the map New Map made').toBeVisible();
   await row.click();
   // The title, not the status line: a map that is open says so in a place

@@ -41,7 +41,7 @@ const FIXTURE_DIR = join(REPO_ROOT, '_tmp', 'fixtures', 'C1M1');
 const FIXTURE_XDB = join(FIXTURE_DIR, 'C1M1.xdb');
 
 // Where the archive lands. Keeping it means the game should find it, so it goes
-// into the folder our build scans — H5E/<name>.mod, see src/mod-paths.ts. The
+// into the folder our build scans — H5E/<name>.h5m, see src/mod-paths.ts. The
 // throwaway default stays under the test data root, beside where every other
 // spec packs.
 const ARCHIVE = KEEP

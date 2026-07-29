@@ -28,7 +28,7 @@ so a `.cts` preload dies on the first type annotation — silently, leaving
 ## What works
 
 Launch with `npm start`. Open a map (or make one with **New map…**, which puts a
-`.mod` in the game's `H5E` folder) and you
+`.h5m` in the game's `H5E` folder) and you
 get a live 3D scene you sculpt, paint, populate, script and pack.
 
 ### Terrain
@@ -155,7 +155,7 @@ get a live 3D scene you sculpt, paint, populate, script and pack.
 - **Project model**: the editor edits *unpacked* files (a project is a tree of
   files, the way the game sees `data/…`), not a ZIP in place. Opening an archive
   unpacks it into a reused workspace; **Save** repacks over the source; **Pack** is
-  a separate explicit build to `.mod`/`.h5c`/`.h5u`/`.pak`. A `project.json`
+  a separate explicit build to `.h5m`/`.h5c`/`.h5u`/`.pak`. A `project.json`
   manifest tracks file hashes at pack time for `git status`-style dirty detection
   and editor-version drift. Archive members are named by their in-game path
   (`Maps/…/map.xdb`) — pack to the root and the game can't see the map.
@@ -165,7 +165,7 @@ get a live 3D scene you sculpt, paint, populate, script and pack.
 - **One folder, ours** ([src/mod-paths.ts](src/mod-paths.ts)): our copy of the
   executable reads `<game>/H5E/` and none of the five folders the shipped game
   scans, so nothing anyone else installed is mounted. A map of ours is
-  `H5E/<name>.mod`; **New map…** writes one at once, and everything the editor
+  `H5E/<name>.h5m`; **New map…** writes one at once, and everything the editor
   installs — the mod, campaigns — goes beside it. `npm run mod-paths` says which
   set an executable is reading and switches it.
 - **The map list is the install's**, never the unpacked data: ours out of `H5E/`,
@@ -215,7 +215,7 @@ get a live 3D scene you sculpt, paint, populate, script and pack.
   names a plain `name.txt`), so localization is the editor's job. A per-map
   **Localize** toggle authors every language side by side in tagged files
   (`name.en.txt`) behind a `localization.json` sidecar the game never sees;
-  **Export as `<language>`** packs an ordinary single-language `.mod`.
+  **Export as `<language>`** packs an ordinary single-language `.h5m`.
 - **Campaigns** ([docs/CAMPAIGNS.md](docs/CAMPAIGNS.md)): bind maps into a story and
   pack a `.h5c` the game's Modifications menu loads. Three dialogs, following the
   original editor — campaign, mission list, mission — plus the thing the original

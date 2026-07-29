@@ -258,7 +258,7 @@ reports still where the last complete run left them.
 
 ### The second reconstruction: a map of our own
 
-`e2e/mod-004-sharpshooter-map.spec.ts` rebuilds `<game>/H5E/Sharpshooter Test.mod` —
+`e2e/mod-004-sharpshooter-map.spec.ts` rebuilds `<game>/H5E/Sharpshooter Test.h5m` —
 the hand-made showcase for the Heroes III port's Sharpshooter — the same way and
 against the same gap reports, but small enough to run in seconds. The original
 is unpacked into `_tmp` as the reference and never written to; the map is built
@@ -301,7 +301,7 @@ why.
 
 ### The install the suite runs against, and where maps land
 
-A map is a file in a game install now — `<game>/H5E/<name>.mod` — so the suite
+A map is a file in a game install now — `<game>/H5E/<name>.h5m` — so the suite
 needs an install and must not use the real one, or every run would leave `e2e …`
 maps in the folder a person plays from. `launchEditor` points `HOMM5_ROOT` at
 `_tmp/e2e-install` unless the spec brings its own, and `e2e/build.ts` empties

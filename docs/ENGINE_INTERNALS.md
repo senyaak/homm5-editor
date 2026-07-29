@@ -494,9 +494,33 @@ game and not just its own map.
 
 The patterns are turned into strings with strlen at runtime, so a **shorter**
 name can be written over one in place. `src/mod-paths.ts` does exactly that: our
-copy scans `H5E/*.mod` and four siblings, so nothing anyone installed for
-another mod is read at all, and a map of ours is `H5E/<name>.mod`. Launching
-the shipped executable reads the five again — that is the off switch.
+copy scans `H5E/*.h5m` and four siblings, so nothing anyone installed for
+another mod is read at all, and a map of ours keeps the name the game has always
+given it — `H5E/<name>.h5m`. Launching the shipped executable reads the five
+again — that is the off switch.
+
+**Where the generator writes, and why that string is different.** The random map
+generator saves what it makes to `<install>/` + `Maps/` + name + `.h5m`, which
+is a folder our copy no longer mounts — so a generated map used to be there on
+disk and gone from the game. Four strings sit together for it at `0xf7dce8`:
+
+```
+RMGTemp/CurrentMap/   Maps/RMG/   .h5m   Maps/
+```
+
+`Maps/RMG/` is the *virtual* prefix the archive carries inside it
+(`Maps/RMG/<GUID>/map.xdb`) and must not move; `Maps/` (`0xf7dd10`) is the folder
+on disk. It has fifteen references, of which **three are live** — two literals
+(`0x91dbba`, `0xea8460`) and one static string (`0x121b18c`, built at `0x4d4f28`,
+read at `0xead2cd` where a flag picks between it and `RMGTemp/CurrentMap/`).
+The other twelve are per-translation-unit copies nothing ever reads.
+
+Unlike a scan pattern, **this one cannot be shortened**. It is appended by
+(begin, end) pointers (`push 0F7DD15h; push 0F7DD10h`) and copied with an
+allocation size that is an immediate (`push 6`), so the length 5 is compiled into
+every site: writing `H5E/` would append the terminator with it and the path would
+end at the folder. The replacement is therefore exactly as long — `H5E//` — and
+Windows collapses the doubled separator on the way to the file system.
 
 **Maps are found separately, and not by that mask.** `0x915170` builds the list
 for the custom-game screen out of the *mounted* file system, from three roots

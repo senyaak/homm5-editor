@@ -16,7 +16,7 @@ export const REPO_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 /**
  * The install the suite runs against, unless a spec brings its own.
  *
- * A map is a file in an install now (`<game>/H5E/<name>.mod`), so the specs need
+ * A map is a file in an install now (`<game>/H5E/<name>.h5m`), so the specs need
  * one — and it must not be the real game folder, or every run would leave `e2e …`
  * maps in it.
  */
@@ -62,7 +62,7 @@ export async function launchEditor(env: Record<string, string> = {}, args: strin
       // window instead of the editor, after that folder was deleted.
       HOMM5_DATA: process.env.HOMM5_DATA || join(REPO_ROOT, 'data-unpacked'),
       // An install of its own, unless the spec brings one. A new map is a file
-      // in the install now — `<game>/H5E/<name>.mod` — so without this every
+      // in the install now — `<game>/H5E/<name>.h5m` — so without this every
       // spec that creates one would leave an archive in the real game folder,
       // and the picker would fill up with `e2e …` maps nobody asked for.
       HOMM5_ROOT: E2E_GAME,

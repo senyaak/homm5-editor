@@ -12,13 +12,20 @@
 // folders, and the game reads all of it, every launch, whatever it contains. Our
 // copy of the executable scans `H5E/` instead — our folder, our files — so a
 // `.h5m` somebody dropped into `Maps/` or a `.h5u` in `UserMODs/` is simply not
-// looked at. Maps of ours are `H5E/*.mod`. The shipped executable is untouched
-// and still reads all five, so launching it is the way back.
+// looked at. The extensions stay what the game has always called them, so a map
+// of ours is `H5E/<name>.h5m`. The shipped executable is untouched and still
+// reads all five, so launching it is the way back.
 //
-// WHY THIS CAN BE WRITTEN IN PLACE. Each pattern is turned into a string with
-// strlen at runtime, so what matters is the terminator, not the original length.
-// Every replacement here is SHORTER than what it replaces; the tail is zeroed so
-// no half of the old name is left in the file. Going back writes the longer
+// THE GAME WRITES TOO. The random map generator saves what it makes to
+// `<install>/Maps/<name>.h5m`, and nothing there is mounted any more, so a
+// generated map used to vanish the moment the game was closed. That folder is a
+// sixth string, patched with the same switch (WRITES below), because where the
+// game writes maps and where it looks for them have to be one place.
+//
+// WHY THIS CAN BE WRITTEN IN PLACE. Each scan pattern is turned into a string
+// with strlen at runtime, so what matters is the terminator, not the original
+// length. Every replacement is SHORTER than what it replaces; the tail is zeroed
+// so no half of the old name is left in the file. Going back writes the longer
 // shipped name into the same space it came from.
 //
 // FOUND BY PATTERN, NOT BY ADDRESS — the same discipline as the two ceilings.
@@ -33,37 +40,60 @@ import { PATCHED_EXE, SHIPPED_EXE } from './creature-limit.ts';
 /** The folder our build reads, relative to the game root. */
 export const MOD_DIR = 'H5E';
 
-/** One thing the game scans for, shipped and ours. */
-export interface Mask {
-  /** The pattern the shipped game scans. */
+/** One path the executable has compiled in, shipped and ours. */
+export interface Literal {
+  /** What the shipped game has there. */
   shipped: string;
-  /** The pattern our copy scans instead. */
+  /** What our copy has instead. */
   ours: string;
-  /** What this kind carries, for a message. */
+  /** What this one is about, for a message. */
   what: string;
 }
 
 /**
- * The five, in the order the executable builds them.
+ * The five patterns, in the order the executable builds them.
  *
- * The extension is what tells one of our files from another at a glance; the
- * game does not care, since all five are mounted the same way. Maps get `.mod`
- * because that is the one anybody will type.
+ * The extension is what tells one of our files from another at a glance, and
+ * every one of them keeps the name the game has always given it — a map of ours
+ * is a `.h5m`, the same file the shipped game would have read out of `Maps/`.
+ * The game does not care either way, since all five are mounted the same way.
  */
-export const MASKS: readonly Mask[] = [
-  { shipped: 'Maps/*.h5m', ours: `${MOD_DIR}/*.mod`, what: 'maps' },
+export const MASKS: readonly Literal[] = [
+  { shipped: 'Maps/*.h5m', ours: `${MOD_DIR}/*.h5m`, what: 'maps' },
   { shipped: 'DuelPresets/*.h5p', ours: `${MOD_DIR}/*.h5p`, what: 'duel presets' },
   { shipped: 'UserCampaigns/*.h5c', ours: `${MOD_DIR}/*.h5c`, what: 'campaigns' },
   { shipped: 'UserMODs/*.h5u', ours: `${MOD_DIR}/*.h5u`, what: 'mods' },
   { shipped: 'UserMODs/*.zip', ours: `${MOD_DIR}/*.zip`, what: 'mods, zipped' },
 ];
 
+/**
+ * Folders the game itself writes into.
+ *
+ * Only one so far: the random map generator builds `<install>/` + this + the
+ * name it chose + `.h5m`, and it is the only place the game makes a map file of
+ * its own accord.
+ *
+ * THIS ONE CANNOT BE SHORTENED. A scan pattern is measured with strlen, but this
+ * string is appended by (begin, end) pointers and copied into static strings
+ * whose allocation size is an immediate — three live sites, and every one of
+ * them has the length 5 compiled in. Writing `H5E/` here would append the
+ * terminator with it and the path would end at the folder. So the replacement is
+ * exactly as long as what it replaces, and the spare character is a second
+ * separator, which Windows collapses on its way to the file system.
+ */
+export const WRITES: readonly Literal[] = [
+  { shipped: 'Maps/', ours: `${MOD_DIR}//`, what: 'maps the generator makes' },
+];
+
+/** Everything the switch writes: what the game reads, and where it writes. */
+export const LITERALS: readonly Literal[] = [...MASKS, ...WRITES];
+
 /** What a file of ours is, which is what its extension says. */
 export type ModKind = 'map' | 'duel' | 'campaign' | 'mod';
 
 /** The extension each kind gets in our folder. */
 export const MOD_EXT: Readonly<Record<ModKind, string>> = {
-  map: 'mod', duel: 'h5p', campaign: 'h5c', mod: 'h5u',
+  map: 'h5m', duel: 'h5p', campaign: 'h5c', mod: 'h5u',
 };
 
 /** Our folder in an install. Asking where it is does not make it. */
@@ -88,12 +118,12 @@ export function modFile(gameRoot: string, kind: ModKind, stem: string): string {
   return join(modDir(gameRoot), `${stem}.${MOD_EXT[kind]}`);
 }
 
-/** Which set of patterns an executable is scanning. */
+/** Which set of paths an executable is using. */
 export type ModPathState = 'shipped' | 'ours' | 'mixed' | 'unknown';
 
-/** One pattern found in a file. */
-export interface MaskSite {
-  mask: Mask;
+/** One literal found in a file. */
+export interface Site {
+  literal: Literal;
   /** File offset of the first character. */
   at: number;
   /** Which of the two is written there now. */
@@ -101,10 +131,10 @@ export interface MaskSite {
 }
 
 export interface ModPathsReading {
-  sites: MaskSite[];
+  sites: Site[];
   state: ModPathState;
-  /** Patterns neither form of which is in the file. */
-  missing: Mask[];
+  /** Literals neither form of which is in the file. */
+  missing: Literal[];
 }
 
 /**
@@ -124,30 +154,30 @@ function findStrings(buf: Buffer, text: string): number[] {
 }
 
 /**
- * Find every pattern, in whichever form it currently has.
+ * Find every literal, in whichever form it currently has.
  *
- * A pattern that occurs twice is not reported at all: writing into one of two
+ * One that occurs twice is not reported at all: writing into one of two
  * indistinguishable places is how a patch half-lands, and half a patch here
  * means the game scans our folder for maps and someone else's for mods.
  */
-export function findMaskSites(buf: Buffer): MaskSite[] {
-  const sites: MaskSite[] = [];
-  for (const mask of MASKS) {
-    const shipped = findStrings(buf, mask.shipped);
-    const ours = findStrings(buf, mask.ours);
+export function findSites(buf: Buffer): Site[] {
+  const sites: Site[] = [];
+  for (const literal of LITERALS) {
+    const shipped = findStrings(buf, literal.shipped);
+    const ours = findStrings(buf, literal.ours);
     if (shipped.length + ours.length !== 1) continue;
-    if (shipped.length === 1) sites.push({ mask, at: shipped[0]!, holds: 'shipped' });
-    else sites.push({ mask, at: ours[0]!, holds: 'ours' });
+    if (shipped.length === 1) sites.push({ literal, at: shipped[0]!, holds: 'shipped' });
+    else sites.push({ literal, at: ours[0]!, holds: 'ours' });
   }
   return sites;
 }
 
-/** What this executable scans. */
+/** What this executable reads, and where it writes. */
 export function readModPaths(buf: Buffer): ModPathsReading {
-  const sites = findMaskSites(buf);
-  const missing = MASKS.filter((m) => !sites.some((s) => s.mask === m));
+  const sites = findSites(buf);
+  const missing = LITERALS.filter((m) => !sites.some((s) => s.literal === m));
   let state: ModPathState = 'unknown';
-  if (sites.length === MASKS.length) {
+  if (sites.length === LITERALS.length) {
     const holds = new Set(sites.map((s) => s.holds));
     state = holds.size === 1 ? [...holds][0]! : 'mixed';
   }
@@ -156,21 +186,21 @@ export function readModPaths(buf: Buffer): ModPathsReading {
 
 export interface ModPathsPatch {
   data: Buffer;
-  /** How many patterns were written. Zero means it already said this. */
+  /** How many literals were written. Zero means it already said this. */
   written: number;
 }
 
 /**
- * Write one set of patterns over the other.
+ * Write one set of paths over the other.
  *
- * All five or none: a build that is missing one of them is a build this does not
- * know, and rewriting the four it does recognise would leave the game reading a
- * stranger's folder for the fifth.
+ * All six or none: a build that is missing one of them is a build this does not
+ * know, and rewriting the five it does recognise would leave the game reading a
+ * stranger's folder for the sixth.
  */
 export function patchModPaths(buf: Buffer, to: 'ours' | 'shipped'): ModPathsPatch {
   const reading = readModPaths(buf);
   if (reading.missing.length) {
-    throw new Error('this executable does not hold the patterns the game scans for mods'
+    throw new Error('this executable does not hold the paths the game keeps its mods at'
       + ` (missing ${reading.missing.map((m) => m.shipped).join(', ')}) — unknown build`);
   }
 
@@ -178,11 +208,11 @@ export function patchModPaths(buf: Buffer, to: 'ours' | 'shipped'): ModPathsPatc
   let written = 0;
   for (const site of reading.sites) {
     if (site.holds === to) continue;
-    const text = to === 'ours' ? site.mask.ours : site.mask.shipped;
+    const text = to === 'ours' ? site.literal.ours : site.literal.shipped;
     // The space is what the shipped name needed, and nothing here may grow past
     // it — the next string starts right after.
-    const room = site.mask.shipped.length + 1;
-    if (text.length + 1 > room) throw new Error(`"${text}" does not fit where "${site.mask.shipped}" was`);
+    const room = site.literal.shipped.length + 1;
+    if (text.length + 1 > room) throw new Error(`"${text}" does not fit where "${site.literal.shipped}" was`);
     data.fill(0, site.at, site.at + room);
     data.write(text, site.at, 'latin1');
     written++;

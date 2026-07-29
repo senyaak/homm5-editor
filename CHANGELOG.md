@@ -13,6 +13,21 @@ one.
 
 ## Unreleased
 
+### Changed
+
+- **A map of ours is a `.h5m` again**, not a `.mod`. The extension was ours to
+  choose and choosing a new one bought nothing: the game mounts every archive
+  the same way, and every tool, wiki and habit around Heroes 5 says `.h5m`.
+  Existing maps in `<game>/H5E/` need renaming — the archives themselves are
+  unchanged — and `npm run mod-paths -- --set ours` writes the new pattern into
+  `bin/H5_Game_H5E.exe`.
+- **Maps the game generates land in our folder.** The random map generator saves
+  to `<install>/Maps/`, which our build stopped mounting in 0.5.0, so a
+  generated map was written to disk and then never seen again — it played that
+  once and was gone from the list next launch. That folder is now patched with
+  the same switch, so the generator writes into `<game>/H5E/` like everything
+  else. `npm run mod-paths` lists it beside the five it already showed.
+
 ## 0.5.0 — 2026-07-28
 
 ### Changed
