@@ -37,3 +37,16 @@ export const setChild = (root: HTMLElement, sel: string, text: string): void => 
   const el = root.querySelector(sel);
   if (el) el.textContent = text;
 };
+
+/** Fill a <select> with options, keeping `value` selected even if unknown. */
+export function fillSelect(sel: HTMLSelectElement, opts: { id: string; label: string }[], value: string): void {
+  sel.replaceChildren();
+  if (value && !opts.some((o) => o.id === value)) opts = [{ id: value, label: value }, ...opts];
+  for (const o of opts) {
+    const el = document.createElement('option');
+    el.value = o.id;
+    el.textContent = o.label;
+    sel.appendChild(el);
+  }
+  sel.value = value;
+}
