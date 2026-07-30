@@ -46,6 +46,56 @@
       white-space: nowrap; }
     #dirty.on { color: #e3b341; }
 
+    /* --- two bars in one ----------------------------------------------------
+       The window has two jobs and the bar had been carrying both at once, in a
+       single row of two dozen controls. It now shows one at a time: with no map
+       open the four editors the start screen exists for, and with one open the
+       tools that work on it. Both halves stay in the markup and only their
+       visibility swaps — building the row fresh each time would mean the same
+       button under two identities, and the state a toggle carries in its label
+       would have to be reapplied to whichever copy happened to be on screen.
+
+       The Map menu belongs to neither half: New, Open and Close read the same on
+       both screens, and Save and Pack are simply dead until there is something
+       to save. */
+    body.nomap .maponly, body:not(.nomap) .nomaponly { display: none !important; }
+    /* The working panels answer to the same switch. Hidden by the class rather
+       than by their own setters, because whether each of them is open is the
+       user's standing choice — several of those setters persist it — and closing
+       a map must not be mistaken for the user closing the panel. Taking the
+       class off brings them all back exactly as they were left. */
+    body.nomap #explorer, body.nomap #palette, body.nomap #objpal,
+    body.nomap #regions, body.nomap #maptree, body.nomap #panel,
+    body.nomap #help, body.nomap #passlegend { display: none !important; }
+
+    /* --- menus -------------------------------------------------------------
+       Native popovers: the platform gives light-dismiss, Esc, focus handling and
+       the top layer, and anchor positioning puts each menu under its own button
+       without measuring anything by hand. */
+    #bar .menubtn::after { content: '▾'; margin-left: 6px; font-size: 10px; color: #8b949e; }
+    /* The button reads as pressed while its own menu is down. */
+    #bar .menubtn:has(+ .menupop:popover-open) { background: #30363d; border-color: #484f58; }
+    .menupop { position: fixed; margin: 0; inset: auto;
+      top: calc(anchor(bottom) + 6px); left: anchor(left);
+      /* A menu near the right edge opens leftwards rather than off-screen. */
+      position-try-fallbacks: flip-inline;
+      min-width: 210px; max-height: calc(100vh - 60px); overflow-y: auto;
+      padding: 6px; background: #161b22f2; backdrop-filter: blur(8px);
+      border: 1px solid #30363d; border-radius: 8px; color: #c9d1d9;
+      box-shadow: 0 10px 28px #00000077; display: none; }
+    .menupop:popover-open { display: flex; flex-direction: column; gap: 2px; }
+    /* Menu items are rows, not pills — they have to override the bar's own look. */
+    #bar .menupop button { display: block; width: 100%; text-align: left;
+      background: transparent; border: 1px solid transparent; border-radius: 6px;
+      padding: 5px 10px; font-size: 13px; }
+    #bar .menupop button:hover:not(:disabled) { background: #30363d; }
+    #bar .menupop button.on { background: #1f6feb33; border-color: #1f6feb; color: #cbe0ff; }
+    .menupop hr { border: 0; border-top: 1px solid #21262d; margin: 4px 2px; width: 100%; }
+    /* The sliders keep their own layout, stacked into the menu's column. */
+    .menupop #scalewrap, .menupop #seawrap { padding: 3px 10px; }
+    /* Where the menus and the working buttons end and the panel toggles begin. */
+    .barsep { flex: 0 0 1px; align-self: stretch; margin: 8px 2px; background: #30363d; }
+
     /* selection / info panel */
     #panel { position: fixed; right: 12px; top: 52px; width: 260px;
       background: #161b22ee; border: 1px solid #21262d; border-radius: 8px;
@@ -771,50 +821,89 @@
     .mp-teams td.pl { text-align: left; color: #c9d1d9; white-space: nowrap; }
   </style>
 </head>
-<body>
+<!-- The window opens on the map list, so the start-screen bar is what the markup
+     ships with — waiting for script to put it right would show the map tools for
+     a frame on every launch. -->
+<body class="nomap">
   <div id="bar">
     <span id="title">homm5-editor</span>
-    <button id="newmapbtn" title="create a blank map from scratch">New map…</button>
-    <button id="open">Open map…</button>
-    <button id="campaignbtn" title="build a campaign out of maps and pack it to .h5c">Campaigns…</button>
-    <button id="unitsbtn" title="creature mods — add new units to the game (an archive in UserMODs plus a patched executable)">Units…</button>
-    <button id="artsbtn" title="artifact mods — add new artifacts to the game (same archive, artifact ceiling patched)">Artifacts…</button>
-    <button id="heroesbtn" title="hero mods — add new characters to the game (same archive; a hero needs no patched executable at all)">Heroes…</button>
-    <button id="undobtn" disabled title="Nothing to undo">↶ Undo</button>
-    <button id="redobtn" disabled title="Nothing to redo">↷ Redo</button>
-    <button id="save" disabled title="write the work back where the map came from — into its .h5m when it was opened from one">Save</button>
-    <button id="pack" disabled title="build a .h5m in the game's H5E folder, where our build reads maps (Save already writes back into the archive it came from)">Pack .h5m…</button>
-    <!-- Beside Pack because the two are a pair: build the archive, then go and
-         look at it. Ours is the only executable this offers — the shipped one
-         reads none of what the editor makes. -->
+
+    <!-- The map as a document: where it comes from, where it goes, and the way
+         back out. The one menu both screens carry — New and Open read the same
+         with a map open as without, and Save and Pack are simply dead until
+         there is something to save. -->
+    <button class="menubtn" id="mapmenubtn" popovertarget="mapmenu">Map</button>
+    <div class="menupop" id="mapmenu" popover>
+      <button id="newmapbtn" title="create a blank map from scratch">New map…</button>
+      <button id="open">Open map…</button>
+      <button id="closemapbtn" disabled title="put the map away and come back to the list of maps">Close map</button>
+      <hr>
+      <button id="save" disabled title="write the work back where the map came from — into its .h5m when it was opened from one">Save</button>
+      <button id="pack" disabled title="build a .h5m in the game's H5E folder, where our build reads maps (Save already writes back into the archive it came from)">Pack .h5m…</button>
+    </div>
+
+    <!-- View: nothing in here changes the map, only what this window draws. -->
+    <button class="menubtn maponly" id="viewmenubtn" popovertarget="viewmenu">View</button>
+    <div class="menupop" id="viewmenu" popover>
+      <button id="viewbtn" title="switch between the 3D orbit view and a 2D top-down plan view">View: 3D</button>
+      <button id="showobj">Objects: on</button>
+      <button id="idlebtn" title="play the creatures' idle stance — off, only what the camera can see, or everything on the floor">Idle stance: off</button>
+      <button id="fxbtn" title="particle effects — campfires, portals, crystal sparks">Effects: on</button>
+      <button id="lightbtn" title="light the floor as the game does (its preset + the designers' point lights), or flat neutral light for editing dark maps">Light: map</button>
+      <button id="cliffbtn" title="rock texture on steep faces">Cliffs</button>
+      <button id="blockbtn" title="tile grid: passability wash plus building footprints">Grid</button>
+      <!-- Shown only on a map that has a second floor to switch to. -->
+      <button id="floor" style="display:none"></button>
+      <hr>
+      <label id="scalewrap" title="ground texture repeats per tile">
+        ground <input id="texscale" type="range" min="0.05" max="2" step="0.05" value="0.5">
+        <span id="texscaleval">0.50</span>
+      </label>
+      <!-- Only on maps that actually have water-flagged ground. -->
+      <label id="seawrap" style="display:none" title="sea level — the bed is dug to 0, ordinary ground sits at 2.0">
+        sea <input id="sealevel" type="range" min="0" max="2.4" step="0.05" value="1.5">
+        <span id="sealevelval">1.50</span>
+      </label>
+    </div>
+
+    <!-- Properties: everything the map carries besides its ground and its
+         objects — its settings, its regions, its scripts, its texts. -->
+    <button class="menubtn maponly" id="propmenubtn" popovertarget="propmenu">Properties</button>
+    <div class="menupop" id="propmenu" popover>
+      <button id="mapbtn" title="map settings — name, size, rules">Settings…</button>
+      <button id="maptreebtn" title="edit every map setting as a tree">Tree</button>
+      <button id="regionbtn" title="named map rectangles the scripts address">Regions</button>
+      <button id="scriptbtn" title="the map's Lua scripts">Scripts</button>
+      <button id="locbtn" title="author the map's texts in several languages, export one at a time">Localize</button>
+    </div>
+
+    <!-- Undo and redo are worked, not chosen from a list: they stay out where a
+         hand can reach them without a menu opening first. -->
+    <button id="undobtn" class="maponly" disabled title="Nothing to undo">↶ Undo</button>
+    <button id="redobtn" class="maponly" disabled title="Nothing to redo">↷ Redo</button>
+
+    <!-- With no map open the window is a launcher, and these four are what it is
+         for: the editors that build content for the game rather than for one map. -->
+    <button id="campaignbtn" class="nomaponly" title="build a campaign out of maps and pack it to .h5c">Campaigns…</button>
+    <button id="unitsbtn" class="nomaponly" title="creature mods — add new units to the game (an archive in UserMODs plus a patched executable)">Units…</button>
+    <button id="artsbtn" class="nomaponly" title="artifact mods — add new artifacts to the game (same archive, artifact ceiling patched)">Artifacts…</button>
+    <button id="heroesbtn" class="nomaponly" title="hero mods — add new characters to the game (same archive; a hero needs no patched executable at all)">Heroes…</button>
+
+    <span class="barsep"></span>
+
+    <!-- Offered on both screens, and always enabled: what the game shows is
+         whatever is in the mod folder, which has nothing to do with what this
+         window happens to have loaded. -->
     <button id="playbtn" title="start the game — our copy (bin/H5_Game_H5E.exe), the one that reads the H5E folder. It reads maps at startup, so pack yours first">▶ Play</button>
-    <button id="viewbtn" style="display:none" title="switch between the 3D orbit view and a 2D top-down plan view">View: 3D</button>
-    <button id="objects" style="display:none">Objects</button>
-    <button id="showobj" style="display:none">Objects: on</button>
-    <button id="idlebtn" style="display:none" title="play the creatures' idle stance — off, only what the camera can see, or everything on the floor">Idle stance: off</button>
-    <button id="fxbtn" style="display:none" title="particle effects — campfires, portals, crystal sparks">Effects: on</button>
-    <button id="lightbtn" style="display:none" title="light the floor as the game does (its preset + the designers' point lights), or flat neutral light for editing dark maps">Light: map</button>
-    <!-- The terrain tools and the tiles they paint with live in #palette; the
-         bar keeps the one button that opens it, which also reads as what is
-         armed, since the panel can be closed while the brush is live. -->
-    <button id="palbtn" style="display:none" title="terrain brushes and the ground tiles">Terrain</button>
-    <button id="objpalbtn" style="display:none" title="place objects from the game's catalogue">Objects+</button>
-    <button id="regionbtn" style="display:none" title="named map rectangles the scripts address">Regions</button>
-    <button id="scriptbtn" style="display:none" title="the map's Lua scripts">Scripts</button>
-    <button id="locbtn" style="display:none" title="author the map's texts in several languages, export one at a time">Localize</button>
-    <button id="mapbtn" style="display:none" title="map settings — name, size, rules">Map…</button>
-    <button id="maptreebtn" style="display:none" title="edit every map setting as a tree">Tree</button>
-    <button id="cliffbtn" style="display:none" title="rock texture on steep faces">Cliffs</button>
-    <button id="blockbtn" style="display:none" title="tile grid: passability wash plus building footprints">Grid</button>
-    <button id="floor" style="display:none"></button>
-    <label id="scalewrap" style="display:none" title="ground texture repeats per tile">
-      ground <input id="texscale" type="range" min="0.05" max="2" step="0.05" value="0.5">
-      <span id="texscaleval">0.50</span>
-    </label>
-    <label id="seawrap" style="display:none" title="sea level — the bed is dug to 0, ordinary ground sits at 2.0">
-      sea <input id="sealevel" type="range" min="0" max="2.4" step="0.05" value="1.5">
-      <span id="sealevelval">1.50</span>
-    </label>
+
+    <span class="barsep maponly"></span>
+
+    <!-- The three panels stay in the open: they are held down through a whole
+         session of work, and the button is also the readout of what is armed —
+         the terrain one says which brush is live even with its panel closed. -->
+    <button id="objects" class="maponly">Objects</button>
+    <button id="objpalbtn" class="maponly" title="place objects from the game's catalogue">Objects+</button>
+    <button id="palbtn" class="maponly" title="terrain brushes and the ground tiles">Terrain</button>
     <span id="dirty"></span>
   </div>
 

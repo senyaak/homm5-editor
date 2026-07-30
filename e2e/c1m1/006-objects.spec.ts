@@ -26,6 +26,7 @@ import { settle } from '../tiles.ts';
 import { degOf, pickObject, placeAtTile, rotDelta, setPlacement, sharedKey } from '../objects.ts';
 import { MAP_DIR, FIXTURE, openMap, requireFixture } from './shared.ts';
 import { loadMap } from '../../src/map.ts';
+import { bar } from '../bar.ts';
 
 let ed: Launched;
 
@@ -195,7 +196,7 @@ test('C1M1 objects, placed one click at a time', async () => {
     await settle(page);
     // A pass that changed nothing leaves nothing to save, and Save is disabled
     // then — which is the point of the stage being idempotent, not a failure.
-    if (await page.locator('#save').isEnabled()) await page.locator('#save').click();
+    if (await page.locator('#save').isEnabled()) await bar(page, '#save');
     await expect(page.locator('#save')).toBeDisabled({ timeout: 300_000 });
 
     const built = loadMap(readFileSync(join(MAP_DIR, 'map.xdb'), 'utf8'));

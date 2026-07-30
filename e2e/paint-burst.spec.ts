@@ -20,6 +20,7 @@ import { launchEditor, REPO_ROOT } from './launch.ts';
 import type { Launched } from './launch.ts';
 import { armBrush, newMap, openBrushPanel, planView, setTileStrength } from './tiles.ts';
 import { parseTerrain, readTextureLayers, readMask } from '../src/terrain.ts';
+import { bar } from './bar.ts';
 
 let ed: Launched;
 
@@ -95,7 +96,7 @@ test('every vertex of a fast burst lands', async () => {
   }
 
   await expect.poll(() => page.evaluate(() => window.view.pending()), { timeout: 300_000 }).toBe(0);
-  await page.locator('#save').click();
+  await bar(page, '#save');
   await expect(page.locator('#save')).toBeDisabled({ timeout: 120_000 });
 
   const t = parseTerrain(readFileSync(join(MAP_DIR, 'GroundTerrain.bin')));

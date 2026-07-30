@@ -7134,14 +7134,12 @@ async function loadMapPath(path: string | null, archive: string | null = null): 
     updateHistoryUI(history.canUndo, history.canRedo, history.undoLabel, history.redoLabel);
     $('empty').style.display = 'none';
     $('title').textContent = `homm5-editor — ${info.name} (${info.tileX}×${info.tileY})`;
+    // One switch for the whole bar: the map tools come out, the launcher's
+    // editors go away. What used to be a dozen `style.display` lines here — and
+    // the same dozen again, inverted, on the way out — is a class the stylesheet
+    // reads.
+    setMapOpen(true);
     $button('pack').disabled = false;
-    $('viewbtn').style.display = '';
-    $('objects').style.display = '';
-    $('showobj').style.display = '';
-    $('idlebtn').style.display = '';
-    $('fxbtn').style.display = '';
-    $('lightbtn').style.display = '';
-    $('scalewrap').style.display = 'flex';
     // Reflect the persisted ground-scale on the slider itself, or its thumb would
     // sit at the HTML default while the terrain uses the restored value.
     $input('texscale').value = String(texScale);
@@ -7150,13 +7148,6 @@ async function loadMapPath(path: string | null, archive: string | null = null): 
     const hasSea = S.floors.some((f) => f.water && f.water.cells.length);
     $('seawrap').style.display = hasSea ? 'flex' : 'none';
     seaBase = S.floors.find((f) => f.water)?.water?.level ?? 1.5;
-    $('palbtn').style.display = '';
-    $('objpalbtn').style.display = '';
-    $('mapbtn').style.display = '';
-    $('maptreebtn').style.display = '';
-    $('regionbtn').style.display = '';
-    $('scriptbtn').style.display = '';
-    $('locbtn').style.display = '';
     // The map changed, so the names a script completes from did too.
     scriptCtx = null;
     void loadScriptContext();
@@ -7173,8 +7164,6 @@ async function loadMapPath(path: string | null, archive: string | null = null): 
     $('brushtensionval').textContent = brushTension.toFixed(2);
     syncBrushPanel();
     setBrush(false); // a fresh map starts in camera mode
-    $('cliffbtn').style.display = '';
-    $('blockbtn').style.display = '';
     setCliffs(cliffAmount > 0);
     setShowBlocked(showBlocked);
     $('help').style.display = '';
@@ -7280,6 +7269,56 @@ async function openAny(path: string | null, inner?: string, stock?: boolean): Pr
   } finally {
     $('loading').classList.remove('on');
   }
+}
+
+/**
+ * Which of the two bars is on screen — and, through the stylesheet, whether the
+ * working panels are shown at all.
+ *
+ * A class rather than a run of `style.display`: the panels' own open/closed
+ * flags are the user's choice and must survive a map being put away, so closing
+ * one must not go through their setters (several of those persist). The class
+ * hides what is open without telling anything it was closed, and taking the
+ * class off brings the same panels back exactly as they were left.
+ */
+function setMapOpen(on: boolean): void {
+  document.body.classList.toggle('nomap', !on);
+  $button('closemapbtn').disabled = !on;
+}
+
+/**
+ * Put the map away and come back to the list.
+ *
+ * The map is the window's whole state — a scene on the GPU here, a session with
+ * a file watcher on it in the main process — so this is a real teardown, not a
+ * screen swap: without the watcher going down, a closed map's folder would keep
+ * pushing "changed on disk" banners at a window that no longer has it open, and
+ * on Windows the open handle alone is enough to stop the folder being replaced.
+ */
+async function closeMap(): Promise<void> {
+  if (!openedMap) return;
+  if (isDirty && !await ask('This map has changes that were never saved. Close it anyway?', 'Close')) return;
+  // Both of these are filled from the map that is going away, and neither
+  // notices on its own that it is gone.
+  if (mapTreeOpen()) closeMapTree();
+  closeMapProps();
+  if (placeObject) armObject(null);
+  clearWorld();
+  await window.editor.closeMap();
+  openedMap = null;
+  hideExternalChange();
+  scriptCtx = null;
+  locActive = '';
+  setMapOpen(false);
+  $('title').textContent = 'homm5-editor';
+  $button('pack').disabled = true;
+  markDirty(false);
+  updateHistoryUI(false, false, null, null);
+  $('empty').style.display = '';
+  $('hud').textContent = '';
+  // A map made or packed during this session belongs in the list the user is
+  // being handed back to.
+  void initPicker();
 }
 
 async function openViaDialog() {
@@ -8618,8 +8657,36 @@ $input('nm-name').addEventListener('keydown', (e) => {
 
 $('open').onclick = openViaDialog;
 $('open2').onclick = openViaDialog;
+$('closemapbtn').onclick = () => { void closeMap(); };
 $input('search').addEventListener('input', renderMapList);
 initPicker();
+
+// --- the bar's menus ---------------------------------------------------------
+//
+// The popovers are the platform's: light-dismiss, Esc, the top layer and focus
+// are all handled, and CSS anchors each menu to the button that opened it. Two
+// manners are left to us, and both are what a menu bar has always done.
+
+// A menu item is a command, so it takes its menu down with it. Only buttons: the
+// sliders live in here too, and dragging one must not close the menu under the
+// hand that is dragging.
+for (const pop of document.querySelectorAll<HTMLElement>('#bar .menupop')) {
+  pop.addEventListener('click', (e) => {
+    if ((e.target as HTMLElement).closest('button')) pop.hidePopover();
+  });
+}
+// Once one menu is down, sliding along the bar walks between them rather than
+// asking for a click each time.
+for (const btn of document.querySelectorAll<HTMLButtonElement>('#bar .menubtn')) {
+  btn.addEventListener('pointerenter', () => {
+    if (btn.disabled) return;
+    const open = document.querySelector<HTMLElement>('#bar .menupop:popover-open');
+    const mine = btn.nextElementSibling;
+    if (!open || open === mine || !(mine instanceof HTMLElement)) return;
+    open.hidePopover();
+    mine.showPopover();
+  });
+}
 
 // Say so while the editor is drawing in software, and offer the way back. The
 // mode survives restarts, so without this a machine that had one bad driver day

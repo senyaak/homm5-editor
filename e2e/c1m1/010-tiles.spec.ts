@@ -24,6 +24,7 @@ import { loadMap } from '../../src/map.ts';
 import { readTree } from '../../src/tree.ts';
 import type { TreeData } from '../../src/tree.ts';
 import { parseTerrain, readTextureLayers } from '../../src/terrain.ts';
+import { bar } from '../bar.ts';
 
 let ed: Launched;
 
@@ -45,7 +46,7 @@ test('the map names every ground tile its terrain paints with', async () => {
 
   await openMap(page);
   await settle(page);
-  if (await page.locator('#save').isEnabled()) await page.locator('#save').click();
+  if (await page.locator('#save').isEnabled()) await bar(page, '#save');
   await expect(page.locator('#save')).toBeDisabled({ timeout: 120_000 });
 
   // What the terrain actually paints with — the list's only source of truth.

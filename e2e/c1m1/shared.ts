@@ -28,6 +28,7 @@ import { DATA, REPO_ROOT } from '../launch.ts';
 import { newMap, settle } from '../tiles.ts';
 import { parseTerrain } from '../../src/terrain.ts';
 import type { Terrain } from '../../src/terrain.ts';
+import { bar } from '../bar.ts';
 
 export const NAME = 'e2e Reconstruct C1M1';
 export const MAP_DIR = join(DATA, 'Maps', 'SingleMissions', NAME);
@@ -125,7 +126,7 @@ export function currentTerrain(): Terrain {
 export async function saveTerrain(page: Page): Promise<Terrain> {
   await settle(page);
   // Re-running a finished stage changes nothing, and Save is disabled then.
-  if (await page.locator('#save').isEnabled()) await page.locator('#save').click();
+  if (await page.locator('#save').isEnabled()) await bar(page, '#save');
   await expect(page.locator('#save')).toBeDisabled({ timeout: 120_000 });
   const bin = readFileSync(join(MAP_DIR, 'GroundTerrain.bin'));
   mkdirSync(RECON_DIR, { recursive: true });

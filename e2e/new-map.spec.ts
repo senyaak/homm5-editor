@@ -16,6 +16,7 @@ import { existsSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { launchEditor, REPO_ROOT } from './launch.ts';
 import type { Launched } from './launch.ts';
+import { bar, openBarMenu } from './bar.ts';
 
 let ed: Launched;
 
@@ -36,7 +37,7 @@ test.afterAll(async () => { await ed?.app.close(); cleanup(); });
 test('creates a blank map through the dialog and opens it', { tag: '@nodata' }, async () => {
   const { page } = ed;
 
-  await page.locator('#newmapbtn').click();
+  await bar(page, '#newmapbtn');
   await expect(page.locator('#newmap')).toBeVisible();
 
   await page.locator('#nm-name').fill(NAME);
@@ -54,6 +55,12 @@ test('creates a blank map through the dialog and opens it', { tag: '@nodata' }, 
   // The map the app now has open is the one we asked for.
   await expect(page.locator('#title')).toHaveText(`homm5-editor — ${NAME} (72×72)`, { timeout: 60_000 });
   await expect(page.locator('#pack')).toBeEnabled();
+  // The bar turned over to its map face: the map menus and the panel toggles are
+  // out, the launcher's editors are away.
+  await expect(page.locator('#viewmenubtn')).toBeVisible();
+  await expect(page.locator('#palbtn')).toBeVisible();
+  await expect(page.locator('#heroesbtn')).toBeHidden();
+  await openBarMenu(page, '#viewbtn');
   await expect(page.locator('#viewbtn')).toBeVisible();
 
   // And on disk it is a complete project, not a stub: both terrains (we asked
@@ -75,7 +82,7 @@ test('creates a blank map through the dialog and opens it', { tag: '@nodata' }, 
 
 test('refuses to overwrite a map that already exists', { tag: '@nodata' }, async () => {
   const { page } = ed;
-  await page.locator('#newmapbtn').click();
+  await bar(page, '#newmapbtn');
   await page.locator('#nm-name').fill(NAME); // still on disk from the test above
   await page.locator('#nm-ok').click();
   // The dialog stays up with the reason, rather than clobbering the folder.

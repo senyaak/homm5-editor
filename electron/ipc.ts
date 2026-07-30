@@ -1120,6 +1120,13 @@ export interface EditorApi {
   /** `stock` takes ONE map out of the game's own archives, which hold many. */
   openArchive(path: string, inner?: string, stock?: boolean): Promise<OpenArchiveResult>;
   loadMap(path: string): Promise<MapLoadResult>;
+  /**
+   * Put the open map down: the file watcher stops and the session goes.
+   *
+   * Every other handler already refuses without a session, so this leaves the
+   * main process in the state it starts in rather than a half-open one.
+   */
+  closeMap(): Promise<void>;
   moveObject(id: string, x: number, y: number): Promise<MoveObjectResult>;
   rotateObject(id: string, r: number): Promise<ObjectEditResult>;
   removeObject(id: string): Promise<ObjectEditResult>;

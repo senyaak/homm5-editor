@@ -14,6 +14,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { launchEditor, REPO_ROOT } from './launch.ts';
 import type { Launched } from './launch.ts';
+import { bar, openBarMenu } from './bar.ts';
 
 let ed: Launched;
 /** Restored afterwards: this is the user's own persisted setting. */
@@ -62,7 +63,7 @@ test('creatures take an animated body and the loop turns', async () => {
   // Now the user's actual gesture: ONE click, off -> visible, on the scene that
   // was built without bones. The animations are fetched and grafted in place —
   // no reopen. The click itself is what is under test, so no evaluate here.
-  await page.locator('#idlebtn').click();
+  await bar(page, '#idlebtn');
   await expect(page.locator('#idlebtn')).toHaveText('Idle stance: visible');
   const grafted = await page.evaluate(() => window.view.idle());
   expect(grafted.mode).toBe('visible');
@@ -90,12 +91,15 @@ test('the toolbar button cycles the three modes', async () => {
   test.skip(!MAP, 'no shipped map with monsters under the data root');
   const { page } = ed;
   const label = page.locator('#idlebtn');
+  // It lives under View now, so "on offer" means the menu shows it — which also
+  // says the map-only half of the bar is the one on screen.
+  await openBarMenu(page, '#idlebtn');
   await expect(label).toBeVisible();
   // The map above was opened with animation on, so every mode is reachable
   // without another reload and the label must follow each step.
   const seen: string[] = [await label.textContent() ?? ''];
   for (let i = 0; i < 3; i++) {
-    await label.click();
+    await bar(page, '#idlebtn');
     seen.push(await label.textContent() ?? '');
   }
   expect(seen[3]).toBe(seen[0]); // three clicks, back where it started

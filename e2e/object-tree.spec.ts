@@ -19,6 +19,7 @@ import { newMap, settle } from './tiles.ts';
 import { pickObject, placeAtTile } from './objects.ts';
 import { loadMap } from '../src/map.ts';
 import { find, children, text } from '../src/xml.ts';
+import { bar } from './bar.ts';
 
 let ed: Launched;
 
@@ -76,7 +77,7 @@ test('a hero army is built through the object tree, from the schema', async () =
   await count.dispatchEvent('change');
 
   await settle(page);
-  await page.locator('#save').click();
+  await bar(page, '#save');
   await expect(page.locator('#save')).toBeDisabled({ timeout: 120_000 });
 
   const map = loadMap(readFileSync(join(MAP_DIR, 'map.xdb'), 'utf8'));

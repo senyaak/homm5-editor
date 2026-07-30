@@ -13,6 +13,7 @@
 import { expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { dragAt } from './pointer.ts';
+import { bar } from './bar.ts';
 
 /** A region as the original keeps it — inclusive tile bounds. */
 export interface RegionSpec {
@@ -24,7 +25,7 @@ export interface RegionSpec {
 
 /** Open the regions panel, with the drawing tool armed. */
 export async function openRegions(page: Page, draw = true): Promise<void> {
-  if (!(await page.locator('#regions').isVisible())) await page.locator('#regionbtn').click();
+  if (!(await page.locator('#regions').isVisible())) await bar(page, '#regionbtn');
   await expect(page.locator('#regions')).toBeVisible();
   const on = (await page.locator('#rg-draw').textContent())?.includes('on');
   if (on !== draw) await page.locator('#rg-draw').click();

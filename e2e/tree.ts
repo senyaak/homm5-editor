@@ -12,13 +12,14 @@
 import { expect } from '@playwright/test';
 import type { Locator, Page } from '@playwright/test';
 import { step } from './trace.ts';
+import { bar } from './bar.ts';
 
 /** The DOM key for a path — JSON, exactly as the renderer writes data-path. */
 const key = (path: (string | number)[]): string => JSON.stringify(path);
 
 /** Open the map-settings tree, with the advanced fields shown. */
 export async function openTree(page: Page, advanced = true): Promise<void> {
-  if (!(await page.locator('#maptree').isVisible())) await page.locator('#maptreebtn').click();
+  if (!(await page.locator('#maptree').isVisible())) await bar(page, '#maptreebtn');
   await expect(page.locator('#maptree')).toBeVisible();
   await expect(page.locator('#mt-title')).toHaveText('Map tree');
   // Rare and deep structures — the RMG block, the moon calendar, the scenario

@@ -29,6 +29,7 @@ import type { RegionSpec } from '../regions.ts';
 import { loadMap } from '../../src/map.ts';
 import { readTree } from '../../src/tree.ts';
 import type { TreeData } from '../../src/tree.ts';
+import { bar } from '../bar.ts';
 
 let ed: Launched;
 
@@ -95,7 +96,7 @@ test('C1M1 regions, dragged out on the map', async () => {
     'line segments the region outlines are drawn with').toBe(segments);
 
   await settle(page);
-  if (await page.locator('#save').isEnabled()) await page.locator('#save').click();
+  if (await page.locator('#save').isEnabled()) await bar(page, '#save');
   await expect(page.locator('#save')).toBeDisabled({ timeout: 120_000 });
 
   // --- what landed in the file ---

@@ -16,6 +16,7 @@ import { launchEditor, REPO_ROOT } from './launch.ts';
 import type { Launched } from './launch.ts';
 import { armBrush, clickVertex, newMap, pickTile, planView, setTileStrength } from './tiles.ts';
 import { parseTerrain, readTextureLayers, readMask } from '../src/terrain.ts';
+import { bar } from './bar.ts';
 
 let ed: Launched;
 
@@ -49,7 +50,7 @@ test('a blended stroke sets its own weight and leaves the layer under it', async
   await setTileStrength(page, 96, true);
   for (const [x, y] of [[10, 10], [11, 10]] as const) await clickVertex(page, x, y);
 
-  await page.locator('#save').click();
+  await bar(page, '#save');
   await expect(page.locator('#save')).toBeDisabled({ timeout: 120_000 });
   expect(await page.locator('#hud').textContent()).not.toContain('failed');
 

@@ -26,6 +26,7 @@ import { loadMap } from '../src/map.ts';
 import { parse, find, serialize } from '../src/xml.ts';
 import { objectProps } from '../src/schema.ts';
 import type { XmlElement } from '../src/xml.ts';
+import { bar } from './bar.ts';
 
 let ed: Launched;
 
@@ -108,7 +109,7 @@ test('objects placed in the app are saved at the measured defaults', async () =>
   const { page } = ed;
 
   // --- a new map, through the dialog ---
-  await page.locator('#newmapbtn').click();
+  await bar(page, '#newmapbtn');
   await page.locator('#nm-name').fill(NAME);
   await page.locator('#nm-size').selectOption('72');
   await page.locator('#nm-ok').click();

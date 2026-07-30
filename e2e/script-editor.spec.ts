@@ -23,6 +23,7 @@ import { DATA, launchEditor } from './launch.ts';
 import type { Launched } from './launch.ts';
 import { buildMapFixture } from './map-fixture.ts';
 import { drawRegion, openRegions, setRegionName } from './regions.ts';
+import { bar } from './bar.ts';
 
 let ed: Launched;
 
@@ -54,12 +55,12 @@ test('the Lua editor highlights, completes from the map, and saves', async () =>
   await openRegions(page);
   await drawRegion(page, REGION);
   await setRegionName(page, 0, REGION.name);
-  await page.locator('#regionbtn').click();
+  await bar(page, '#regionbtn');
 
   await page.evaluate(([href, text]) => window.editor.writeFile({ href: href!, text: text! }), [FILE, SEED]);
 
   // --- the map's scripts are reachable at all ---
-  await page.locator('#scriptbtn').click();
+  await bar(page, '#scriptbtn');
   const row = page.locator(`#sp-list button[data-file="${FILE}"]`);
   await expect(row, 'the scratch script is listed').toBeVisible();
   await row.click();

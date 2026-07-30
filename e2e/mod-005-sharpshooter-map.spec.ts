@@ -33,6 +33,7 @@ import { readEntries } from '../src/pak.ts';
 import { MOD_EXT, modFile } from '../src/mod-paths.ts';
 import { clearMap, installMapFixture, LIVE, modGameRoot } from './mods.ts';
 import { MOD_STEM } from '../src/creature-mod.ts';
+import { bar } from './bar.ts';
 
 let ed: Launched;
 
@@ -271,7 +272,7 @@ test('the map, built the way a person would', async () => {
   await page.locator('#mt-close').click();
 
   // --- every spell and artifact enabled, as the original lists them -----
-  await page.locator('#mapbtn').click();
+  await bar(page, '#mapbtn');
   await expect(page.locator('#mapprops')).toBeVisible();
   for (const tab of ['Spells', 'Artifacts']) {
     await page.locator('.mp-tab', { hasText: tab }).click();
@@ -289,9 +290,11 @@ test('the map, built the way a person would', async () => {
   }
 
   // Everything above edits the model; Save writes the map.xdb.
-  const save = page.locator('#save');
-  if (await save.isEnabled()) {
-    await save.click();
+  // Whether Save is live can be read through the closed menu — being enabled is
+  // not being visible — but pressing it needs the menu down, so that goes
+  // through the bar helper.
+  if (await page.locator('#save').isEnabled()) {
+    await bar(page, '#save');
     await hudSays(page, /saved/i, 60_000);
   }
 });
@@ -371,7 +374,7 @@ test('packs to a .h5m holding the same members', async () => {
     await row.click();
     await expect(page.locator('#title')).toContainText(NAME, { timeout: 120_000 });
   }
-  await page.locator('#pack').click();
+  await bar(page, '#pack');
   await hudSays(page, /^packed → /, 60_000);
   expect(existsSync(ARCHIVE)).toBe(true);
 
@@ -395,7 +398,7 @@ test('and Gem stands on it, in red', async () => {
   await setObjectProp(page, 'PlayerID', 'PLAYER_1');
   void id;
 
-  await page.locator('#save').click();
+  await bar(page, '#save');
   await hudSays(page, /saved/i, 60_000);
 
   // On disk, in the map the game will read: our hero, owned by red.
@@ -407,7 +410,7 @@ test('and Gem stands on it, in red', async () => {
   const gem = xml.split('<AdvMapHero>').find((part) => part.includes('H3Gem')) ?? '';
   expect(gem, 'the placed hero is red').toContain('<PlayerID>PLAYER_1</PlayerID>');
 
-  await page.locator('#pack').click();
+  await bar(page, '#pack');
   await hudSays(page, /^packed → /, 60_000);
   const packed = readEntries(readFileSync(ARCHIVE))
     .find((e) => e.name.replace(/\\/g, '/').endsWith('map.xdb'))!;

@@ -29,6 +29,7 @@ import { readEntries } from '../src/pak.ts';
 import { E2E_GAME, hudSays, launchEditor, REPO_ROOT } from './launch.ts';
 import { MOD_EXT, modFile } from '../src/mod-paths.ts';
 import type { Launched } from './launch.ts';
+import { bar } from './bar.ts';
 
 let ed: Launched;
 
@@ -80,7 +81,7 @@ test('packs a new map, opens the .h5m back, and gets the same bytes', { tag: '@n
   const { page } = ed;
 
   // --- create -----------------------------------------------------------
-  await page.locator('#newmapbtn').click();
+  await bar(page, '#newmapbtn');
   await page.locator('#nm-name').fill(NAME);
   await page.locator('#nm-size').selectOption('72');
   await page.locator('#nm-ok').click();
@@ -101,7 +102,7 @@ test('packs a new map, opens the .h5m back, and gets the same bytes', { tag: '@n
   // --- pack -------------------------------------------------------------
   // The stubbed save dialog answers with the path it would have suggested,
   // which is what a user pressing Save without retyping anything gets.
-  await page.locator('#pack').click();
+  await bar(page, '#pack');
   await hudSays(page, /^packed → /, 30_000);
   expect(existsSync(ARCHIVE)).toBe(true);
   // A zip, by its local-file-header signature — the game will not read anything else.
@@ -124,7 +125,7 @@ test('packs a new map, opens the .h5m back, and gets the same bytes', { tag: '@n
   expect(before.filter((f) => f.endsWith('.txt'))).toHaveLength(20);
 
   // --- open the archive back --------------------------------------------
-  await page.locator('#open').click();
+  await bar(page, '#open');
   // The exact message, not the word: the data root is called `data-unpacked`,
   // so "unpacked" matches the PACK line's path too and the wait passed on the
   // wrong status entirely.
@@ -155,14 +156,14 @@ test('Save writes the work back into the .h5m it came from', { tag: '@nodata' },
   const packedBefore = readFileSync(ARCHIVE);
 
   // An edit through the UI: the map's visible name, which lives in name.txt.
-  await page.locator('#mapbtn').click();
+  await bar(page, '#mapbtn');
   await expect(page.locator('#mapprops')).toBeVisible();
   await page.locator('#mapprops .mp-name-edit').fill(EDITED);
   await page.locator('#mapprops .mp-name-edit').press('Enter');
   await expect(page.locator('#save')).toBeEnabled({ timeout: 30_000 });
   await page.locator('#mp-close').click();
 
-  await page.locator('#save').click();
+  await bar(page, '#save');
   // Saving an archive-backed map says where the work went, and it is the .h5m.
   await hudSays(page, `saved → ${ARCHIVE}`);
   await expect(page.locator('#save')).toBeDisabled();
@@ -181,7 +182,7 @@ test('reopening the same archive returns to the same workspace', { tag: '@nodata
   // the map was created in, which is its own and stays as it is.
   const first = REOPENED;
 
-  await page.locator('#open').click();
+  await bar(page, '#open');
   // The exact message, not the word: the data root is called `data-unpacked`,
   // so "unpacked" matches the PACK line's path too and the wait passed on the
   // wrong status entirely.
@@ -231,6 +232,6 @@ test('Open… works before anything has been opened', { tag: '@nodata' }, async 
     dialog.showOpenDialog = (async () => ({ canceled: false, filePaths: [open] })) as typeof dialog.showOpenDialog;
   }, modFile(E2E_GAME, 'map', NAME));
 
-  await page.locator('#open').click();
+  await bar(page, '#open');
   await expect(page.locator('#title')).toHaveText(`homm5-editor — ${NAME} (72×72)`, { timeout: 60_000 });
 });

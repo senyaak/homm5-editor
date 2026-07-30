@@ -846,6 +846,18 @@ ipcMain.handle('map:load', async (_e: IpcMainInvokeEvent, mapPath: string): Prom
   };
 });
 
+// --- IPC: put the open map down ---
+//
+// The watcher is the reason this is a call and not a renderer-only affair: left
+// running, a closed map's folder would keep pushing "changed on disk" at a window
+// that no longer holds it, and on Windows the open handle alone is enough to stop
+// that folder being deleted or replaced — which is exactly what opening the same
+// archive again goes on to do.
+ipcMain.handle('map:close', (): void => {
+  session?.watch.stop();
+  session = null;
+});
+
 // --- IPC: the idle-animation setting ---
 // Read and written here rather than in the renderer, because it decides what
 // map:load builds; the renderer only learns which mode the scene it was handed

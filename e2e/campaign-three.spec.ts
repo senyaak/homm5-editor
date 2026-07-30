@@ -36,6 +36,8 @@ import { loadMap } from '../src/map.ts';
 import { readEntries } from '../src/pak.ts';
 import { modFile } from '../src/mod-paths.ts';
 import { find, childText } from '../src/xml.ts';
+import { bar } from './bar.ts';
+import { closeMap } from './tiles.ts';
 
 let ed: Launched;
 
@@ -74,7 +76,7 @@ test('a hero carried across three missions, and the campaign packed for play', a
 
   // --- the three maps ---
   for (const [i, name] of MAPS.entries()) {
-    await page.locator('#newmapbtn').click();
+    await bar(page, '#newmapbtn');
     await page.locator('#nm-name').fill(name);
     await page.locator('#nm-size').selectOption('72');
     await page.locator('#nm-ok').click();
@@ -246,6 +248,11 @@ test('a hero carried across three missions, and the campaign packed for play', a
   }
 
   // --- the campaign, through the dialogs ---
+  // The third map is still open, and the campaign builder is one of the editors
+  // the start screen carries — it works on maps as files, not on the one this
+  // window happens to be showing. So the way there is the way a person takes:
+  // put the map down first.
+  await closeMap(page);
   await page.locator('#campaignbtn').click();
   await page.locator('#cl-name').fill(CAMP);
   await page.locator('#cl-new').click();
@@ -325,7 +332,7 @@ test('a hero carried across three missions, and the campaign packed for play', a
     }, to);
     await page.evaluate((p) => window.view.open(p), join(mapDir(name), 'map.xdb'));
     await expect(page.locator('#title')).toContainText(name, { timeout: 90_000 });
-    await page.locator('#pack').click();
+    await bar(page, '#pack');
     await expect.poll(() => existsSync(to), { timeout: 60_000 }).toBe(true);
     packed.push(to);
   }

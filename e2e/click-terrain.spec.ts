@@ -24,6 +24,7 @@ import { launchEditor, REPO_ROOT } from './launch.ts';
 import type { Launched } from './launch.ts';
 import { armBrush, clickTile, clickVertex, mapSize, newMap, planView, setBrushForce } from './tiles.ts';
 import { parseTerrain, readHeights, readGroundFlags, tierOf } from '../src/terrain.ts';
+import { bar } from './bar.ts';
 
 let ed: Launched;
 
@@ -96,7 +97,7 @@ test('clicking with the Raise brush moves exactly those vertices, into the file'
 
   for (const [x, y] of RAISED) await clickTile(page, x, y);
 
-  await page.locator('#save').click();
+  await bar(page, '#save');
   await expect(page.locator('#save')).toBeDisabled({ timeout: 60_000 });
 
   const t = parseTerrain(readFileSync(join(MAP_DIR, 'GroundTerrain.bin')));
@@ -143,7 +144,7 @@ test('the brush force is the height one stroke adds, exactly', async () => {
     await clickTile(page, s.tile[0], s.tile[1]);
   }
 
-  await page.locator('#save').click();
+  await bar(page, '#save');
   await expect(page.locator('#save')).toBeDisabled({ timeout: 60_000 });
 
   const t = parseTerrain(readFileSync(join(MAP_DIR, 'GroundTerrain.bin')));
@@ -189,7 +190,7 @@ test('the Vertex brush moves one corner, including the outermost row', async () 
     await clickVertex(page, s.vertex[0], s.vertex[1]);
   }
 
-  await page.locator('#save').click();
+  await bar(page, '#save');
   await expect(page.locator('#save')).toBeDisabled({ timeout: 60_000 });
 
   const t = parseTerrain(readFileSync(join(MAP_DIR, 'GroundTerrain.bin')));

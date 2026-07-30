@@ -35,6 +35,7 @@ import { hudSays, launchEditor, REPO_ROOT } from '../launch.ts';
 import type { Launched } from '../launch.ts';
 import { DATA } from '../launch.ts';
 import { MAP_DIR, NAME, NEED_FIXTURE, requireFixture } from './shared.ts';
+import { bar } from '../bar.ts';
 
 const KEEP = !!process.env.HOMM5_NO_REMOVE_MAP;
 const MAP_XDB = join(MAP_DIR, 'map.xdb');
@@ -105,7 +106,7 @@ test('C1M1 capstone: the whole map matches the original, and packs to a playable
   await page.evaluate((p) => window.view.open(p), MAP_XDB);
   await expect(page.locator('#title')).toContainText(NAME, { timeout: 120_000 });
 
-  await page.locator('#pack').click();
+  await bar(page, '#pack');
   await hudSays(page, /^packed → /);
   expect(existsSync(ARCHIVE), 'the archive was written').toBe(true);
 

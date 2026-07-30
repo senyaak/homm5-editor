@@ -21,6 +21,7 @@ import type { Launched } from './launch.ts';
 import { newMap, settle } from './tiles.ts';
 import { catalogEntry, degOf, pickObject, placeAtTile, setPlacement, sharedKey } from './objects.ts';
 import { loadMap } from '../src/map.ts';
+import { bar } from './bar.ts';
 
 let ed: Launched;
 
@@ -59,7 +60,7 @@ test('an object lands at an exact fraction of a tile, at an exact angle', async 
 
   await setPlacement(page, AT);
   await settle(page);
-  await page.locator('#save').click();
+  await bar(page, '#save');
   await expect(page.locator('#save')).toBeDisabled({ timeout: 120_000 });
 
   const map = loadMap(readFileSync(join(MAP_DIR, 'map.xdb'), 'utf8'));

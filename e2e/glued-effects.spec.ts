@@ -18,6 +18,7 @@ import { existsSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { launchEditor, REPO_ROOT } from './launch.ts';
 import type { Launched } from './launch.ts';
+import { bar } from './bar.ts';
 import { newMap } from './tiles.ts';
 import { openObjectPalette, pickObject, placeAtTile } from './objects.ts';
 
@@ -42,8 +43,10 @@ test('the dragon\'s eye glow rides its head, and the mist does not', async () =>
 
   // The idle stance decides whether the scene carries bones at all, so it has
   // to be on BEFORE the object is placed.
+  // The label reads through the closed View menu — textContent needs no box on
+  // screen — but each press opens it, which is what `bar` is for.
   const idle = page.locator('#idlebtn');
-  for (let i = 0; i < 3 && !((await idle.textContent()) ?? '').includes('all'); i++) await idle.click();
+  for (let i = 0; i < 3 && !((await idle.textContent()) ?? '').includes('all'); i++) await bar(page, '#idlebtn');
   await expect(idle).toHaveText('Idle stance: all');
 
   await openObjectPalette(page);

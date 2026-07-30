@@ -29,6 +29,7 @@ import { MAP_DIR, FIXTURE, openMap, requireFixture } from './shared.ts';
 import { openTree, reveal, treeValue } from '../tree.ts';
 import { loadMap } from '../../src/map.ts';
 import { readTree } from '../../src/tree.ts';
+import { bar } from '../bar.ts';
 
 let ed: Launched;
 
@@ -86,7 +87,7 @@ test('C1M1 scripts: bind the map script, write the Lua, and the linter catches a
 
   // Save the map so the binding lands in map.xdb.
   await settle(page);
-  if (await page.locator('#save').isEnabled()) await page.locator('#save').click();
+  if (await page.locator('#save').isEnabled()) await bar(page, '#save');
   await expect(page.locator('#save')).toBeDisabled({ timeout: 120_000 });
 
   // The files are on disk, and the wrapper names the script.
@@ -98,7 +99,7 @@ test('C1M1 scripts: bind the map script, write the Lua, and the linter catches a
   expect(norm(built.MapScript ?? ''), 'map.xdb MapScript ref').toBe('mapscript.xdb#xpointer(/script)');
 
   // --- 3. the linter: open the real script, break it, watch it complain ------
-  await page.locator('#scriptbtn').click();
+  await bar(page, '#scriptbtn');
   await page.locator('#sp-list button[data-file="MapScript.lua"]').click();
   await expect(doc).toBeVisible();
   const content = page.locator('#de-text .cm-content');
@@ -118,7 +119,7 @@ test('C1M1 scripts: bind the map script, write the Lua, and the linter catches a
   await page.evaluate((t) => window.editor.writeFile({ href: 'MapScript.lua', text: t }), broken);
   // Re-open to load the broken text through the app the way a person would.
   await page.locator('#de-close').click();
-  await page.locator('#scriptbtn').click();
+  await bar(page, '#scriptbtn');
   await page.locator('#sp-list button[data-file="MapScript.lua"]').click();
   await expect(doc).toBeVisible();
 
@@ -135,7 +136,7 @@ test('C1M1 scripts: bind the map script, write the Lua, and the linter catches a
   // --- and it clears when the mistakes are fixed -----------------------------
   await page.evaluate((t) => window.editor.writeFile({ href: 'MapScript.lua', text: t }), fixtureScript('MapScript.lua'));
   await page.locator('#de-close').click();
-  await page.locator('#scriptbtn').click();
+  await bar(page, '#scriptbtn');
   await page.locator('#sp-list button[data-file="MapScript.lua"]').click();
   await expect(doc).toBeVisible();
   await expect(page.locator('#de-lint'), 'the linter clears once the script is valid').toHaveText('✓ no errors');

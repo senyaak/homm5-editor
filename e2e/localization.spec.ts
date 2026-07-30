@@ -19,6 +19,7 @@ import { tmpdir } from 'node:os';
 import { newMap } from './tiles.ts';
 import { DATA } from './launch.ts';
 import { readEntries } from '../src/pak.ts';
+import { bar } from './bar.ts';
 
 let ed: Launched;
 const NAME = 'e2e Localize';
@@ -48,7 +49,7 @@ test('localize a map: enable tags the texts, a language copies them, tabs edit e
   expect(has('name.txt'), 'a new map has name.txt').toBe(true);
 
   // --- enable: the existing texts are tagged with the base language ----------
-  await page.locator('#locbtn').click();
+  await bar(page, '#locbtn');
   await expect(page.locator('#localize')).toBeVisible();
   await page.locator('#lz-body select').selectOption('en');
   await page.locator('#lz-body button', { hasText: 'Enable localization' }).click();
@@ -130,7 +131,7 @@ test('localize a map: enable tags the texts, a language copies them, tabs edit e
   }
 
   // --- remove Russian: its files go --------------------------------------------
-  await page.locator('#locbtn').click();
+  await bar(page, '#locbtn');
   await page.locator('#localize .lz-lang', { hasText: 'Russian' }).locator('button', { hasText: 'remove' }).click();
   // The question is OURS now, not a native confirm: a <dialog> the spec can read
   // and answer. The native one blocked the renderer, and a spec that met one

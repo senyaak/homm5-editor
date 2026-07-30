@@ -15,6 +15,7 @@ import type { Launched } from './launch.ts';
 import { newMap } from './tiles.ts';
 import { DATA } from './launch.ts';
 import { openObjectPalette, pickObject, placeAtTile } from './objects.ts';
+import { bar } from './bar.ts';
 
 let ed: Launched;
 const NAME = 'e2e town spec';
@@ -66,7 +67,7 @@ test('create a map-local specialization and link a town to it by href', async ()
   expect(specXml).toContain('<TownType>TOWN_HEAVEN</TownType>');
 
   // Save, then the town references it as an HREF attribute, not element text.
-  if (await page.locator('#save').isEnabled()) await page.locator('#save').click();
+  if (await page.locator('#save').isEnabled()) await bar(page, '#save');
   await expect(page.locator('#save')).toBeDisabled({ timeout: 60_000 });
   const mapXml = readFileSync(join(MAP_DIR, 'map.xdb'), 'utf8');
   expect(mapXml, 'the town points at the spec by href').toMatch(

@@ -16,6 +16,7 @@ const api = {
   newMap: (p) => ipcRenderer.invoke('map:new', p),
   openArchive: (path, inner, stock) => ipcRenderer.invoke('map:open-archive', { path, inner, stock }),
   loadMap: (path) => ipcRenderer.invoke('map:load', path),
+  closeMap: () => ipcRenderer.invoke('map:close'),
   moveObject: (id, x, y) => ipcRenderer.invoke('object:move', { id, x, y }),
   rotateObject: (id, r) => ipcRenderer.invoke('object:rotate', { id, r }),
   removeObject: (id) => ipcRenderer.invoke('object:remove', { id }),

@@ -15,6 +15,35 @@ one.
 
 ### Added
 
+- **A way back out of a map, and a bar that shows one thing at a time.** The top
+  bar had been carrying both of the window's jobs at once — the editors that
+  build content for the game, and the tools that work on the open map — in a
+  single row of two dozen controls that had simply grown until it scrolled
+  sideways. It now shows one face or the other.
+
+  With no map open you get the launcher: **Campaigns**, **Units**, **Artifacts**
+  and **Heroes** stand out in the open, because they are what that screen is for.
+  With a map open you get its tools, grouped under **View** (what the window
+  draws — the plan view, the idle stance, effects, light, cliffs, the grid) and
+  **Properties** (what the map carries — its settings, its tree, regions,
+  scripts, texts). Undo and Redo stay out in the open next to them: they are
+  worked, not chosen from a list. So do the three panel toggles — **Objects**,
+  **Objects+** and **Terrain** — which are held down through a whole session and
+  double as the readout of which brush is live.
+
+  **Map** is the one menu on both screens, and it now holds **Close map**. That
+  was the missing door: a map could be opened and never put down, so the list of
+  maps was somewhere you passed through once at startup and could not get back
+  to. Closing tears the scene down for real and lets go of the map in the main
+  process too — the file watcher stops, which matters because a watcher left
+  running keeps pushing "changed on disk" at a window that no longer holds the
+  map, and on Windows its open handle alone is enough to stop that folder being
+  replaced by the next thing you open. Unsaved work is asked about first, in a
+  dialog of ours, and Cancel means the map stays.
+
+  Panels you had open are hidden, not closed: whether the terrain palette is up
+  is your standing choice, and it comes back the way you left it on the next map
+  rather than being quietly forgotten every time one is put away.
 - **A ▶ Play button in the bar**, beside **Pack**, because the two are a pair:
   build the archive, then go and look at it. It starts *our* copy of the game —
   `bin/H5_Game_H5E.exe`, the only one that reads your `H5E` folder — and says

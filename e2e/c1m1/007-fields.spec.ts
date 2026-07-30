@@ -24,6 +24,7 @@ import { MAP_DIR, FIXTURE, openMap, requireFixture } from './shared.ts';
 import { loadMap } from '../../src/map.ts';
 import type { MapObject } from '../../src/map.ts';
 import { children, find, text } from '../../src/xml.ts';
+import { bar } from '../bar.ts';
 
 let ed: Launched;
 
@@ -185,7 +186,7 @@ test('C1M1 object fields, set in the panel and the object tree', async () => {
 
   // --- what landed in the file ---
   await settle(page);
-  if (await page.locator('#save').isEnabled()) await page.locator('#save').click();
+  if (await page.locator('#save').isEnabled()) await bar(page, '#save');
   await expect(page.locator('#save')).toBeDisabled({ timeout: 300_000 });
 
   const built = loadMap(readFileSync(join(MAP_DIR, 'map.xdb'), 'utf8'));

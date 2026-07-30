@@ -13,6 +13,7 @@
 import { expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { step } from './trace.ts';
+import { bar } from './bar.ts';
 
 /** How many tiles the plan view spans from centre to top edge while editing. */
 const ZOOM_HALF_TILES = 24;
@@ -228,12 +229,26 @@ export async function settle(page: Page, timeout = 300_000): Promise<void> {
 
 /** Create a blank map through the New Map dialog, as a person would. */
 export async function newMap(page: Page, name: string, size: string): Promise<void> {
-  await page.locator('#newmapbtn').click();
+  await bar(page, '#newmapbtn');
   await page.locator('#nm-name').fill(name);
   await page.locator('#nm-size').selectOption(size);
   await page.locator('#nm-ok').click();
   await expect(page.locator('#newmap')).toBeHidden({ timeout: 30_000 });
   await expect(page.locator('#title')).toContainText(name, { timeout: 60_000 });
+}
+
+/**
+ * Put the open map down and come back to the launcher, as a person would.
+ *
+ * Needed by anything that wants the editors the start screen carries — the mod
+ * and campaign builders live there, not on the map bar, so reaching them from a
+ * map means going back first. Unsaved work is asked about, and here the answer
+ * is always yes: a spec that has finished with its map has finished with it.
+ */
+export async function closeMap(page: Page): Promise<void> {
+  await bar(page, '#closemapbtn');
+  if (await page.locator('#ask').isVisible()) await page.locator('#ask-yes').click();
+  await expect(page.locator('#empty')).toBeVisible({ timeout: 30_000 });
 }
 
 export { ZOOM_HALF_TILES };
