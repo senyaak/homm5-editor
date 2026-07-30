@@ -9022,8 +9022,6 @@ function fillHeroSelect(id: string, opts: { id: string; label: string }[], optio
 }
 
 let heDonors: RosterEntryDTO[] = [];
-/** Set once the file stem has been typed into, so it stops driving the name. */
-let heInternalTouched = false;
 
 /** Everything the hero form is built from: the rosters and the type's own enums. */
 async function fillHeroForm(): Promise<void> {
@@ -9090,8 +9088,8 @@ function renderHeroList(mods: ModListEntry[]): void {
     const row = document.createElement('div');
     row.className = 'um-mod';
     const where = h.scenarioHero ? 'placed by hand only' : 'offered by taverns';
-    row.textContent = `${h.name || h.file} — ${h.town.replace('TOWN_', '').toLowerCase()}, ${where}`;
-    row.title = `travels as ${h.internalName}${h.specialization ? `, ${h.specialization}` : ''}`;
+    row.textContent = `${h.name || h.id} — ${h.town.replace('TOWN_', '').toLowerCase()}, ${where}`;
+    row.title = `${h.id}${h.specialization ? ` · ${h.specialization}` : ''}`;
     box.append(row);
   }
 }
@@ -9108,8 +9106,7 @@ async function submitHeroMod(): Promise<void> {
     const spell = $select('he-spell').value;
     const primary = $select('he-primary').value;
     const res = await window.editor.installHero({
-      file: $input('he-file').value,
-      internalName: $input('he-internal').value || $input('he-file').value,
+      id: $input('he-id').value,
       name: $input('he-name').value,
       biography: $input('he-bio').value,
       donor: $select('he-donor').value,
@@ -9155,7 +9152,6 @@ async function refreshHeroList(): Promise<void> {
 }
 
 $('heroesbtn').onclick = () => {
-  heInternalTouched = false;
   $('hm-err').textContent = '';
   $('hm-note').textContent = '';
   modDialog('heroesmod').showModal();
@@ -9168,7 +9164,6 @@ $('heroesbtn').onclick = () => {
 $('hm-close').onclick = () => modDialog('heroesmod').close();
 $('hm-cancel').onclick = () => modDialog('heroesmod').close();
 $('hm-new').onclick = () => {
-  heInternalTouched = false;
   $('he-err').textContent = '';
   modDialog('heroedit').showModal();
   heroDonorChanged();
@@ -9178,13 +9173,7 @@ $('heroedit-cancel').onclick = () => modDialog('heroedit').close();
 $('he-ok').onclick = () => { void submitHeroMod(); };
 $select('he-donor').addEventListener('change', heroDonorChanged);
 $select('he-town').addEventListener('change', heroTownChanged);
-// The name a campaign carries him by follows the file stem until it is typed
-// into: two fields that are the same in every ordinary case, and one of them
-// is the one that must never collide.
-$input('he-internal').addEventListener('input', () => { heInternalTouched = true; });
-$input('he-file').addEventListener('input', () => {
-  if (!heInternalTouched) $input('he-internal').value = $input('he-file').value;
-});
+
 
 // The finish line. Everything above ran, so the window is wired and the render
 // loop is turning; index.html's watchdog stands down. Keep this last — moved

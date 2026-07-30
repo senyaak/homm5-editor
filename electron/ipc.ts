@@ -751,8 +751,7 @@ export interface ModListEntry {
 
 /** One hero of an installed mod, as `mods:list` reports it. */
 export interface ModHeroDTO {
-  file: string;
-  internalName: string;
+  id: string;
   name: string;
   town: string;
   heroClass: string;
@@ -899,10 +898,12 @@ export interface ModsInstallArtifactResult {
  * without art cannot stand on a map. See src/heroes.ts.
  */
 export interface ModsInstallHeroPayload {
-  /** File stem of everything generated for him, and of his folder. */
-  file: string;
-  /** `<InternalName>` — what a campaign carries him from mission to mission by. */
-  internalName: string;
+  /**
+   * His unique identifier: the `<InternalName>` a campaign and a script name
+   * him by, and the stem of every file made for him. Refused if any hero — the
+   * game's own included — already answers to it.
+   */
+  id: string;
   name: string;
   biography: string;
   /** Data-root-relative path of the shipped hero his art comes from. */

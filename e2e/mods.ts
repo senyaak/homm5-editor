@@ -372,7 +372,7 @@ export function clearFixture(gameRoot: string): void {
     if (mod.creatures.some((c) => c.id === id)) { removeCreature(mod, id); touched = true; }
   }
   for (const file of OURS.heroes) {
-    if ((mod.heroes ?? []).some((h) => h.file === file)) { removeHero(mod, file); touched = true; }
+    if ((mod.heroes ?? []).some((h) => h.id === file)) { removeHero(mod, file); touched = true; }
   }
   if (!touched) return;
   // Nothing left but the manifest: an archive of nothing is not a mod, and

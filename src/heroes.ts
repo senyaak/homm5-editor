@@ -100,16 +100,17 @@ export interface HeroMachines {
 
 /** A hero to add to the mod. */
 export interface HeroSpec {
-  /** The stem of every file made for him, and of his folder. */
-  file: string;
   /**
-   * `<InternalName>` — the handle he travels under.
+   * His unique identifier — one string, doing both jobs it has to do.
    *
-   * A campaign carries a hero from mission to mission by this, not by the name
-   * of the object on the map, so it has to be unique among heroes and stable
-   * once anything references it. See docs/CAMPAIGNS.md.
+   * It is the `<InternalName>` in his document, which is what a campaign
+   * carries a levelled hero between missions by (docs/CAMPAIGNS.md) and what a
+   * script names him with; and it is the stem of every file made for him. Those
+   * were two fields for a while, and they were the same string in every case
+   * anyone wrote — so it is one, and the one rule that matters holds for both:
+   * no shipped hero and no hero of the mod may already answer to it.
    */
-  internalName: string;
+  id: string;
   name: string;
   biography: string;
   /**
@@ -181,16 +182,16 @@ export interface HeroPaths {
 }
 
 /** Where each of a hero's files goes. */
-export function heroPaths(spec: Pick<HeroSpec, 'file'>): HeroPaths {
-  const dir = `${HERO_DIR}/${spec.file}`;
+export function heroPaths(spec: Pick<HeroSpec, 'id'>): HeroPaths {
+  const dir = `${HERO_DIR}/${spec.id}`;
   return {
     dir,
-    shared: `${dir}/${spec.file}.(${HERO_CLASS}).xdb`,
-    link: `${LINK_DIR}/${spec.file}.xdb`,
-    name: `${dir}/${spec.file}_Name.txt`,
-    biography: `${dir}/${spec.file}_Bio.txt`,
-    specName: `${dir}/${spec.file}_SpecName.txt`,
-    specDescription: `${dir}/${spec.file}_SpecDesc.txt`,
+    shared: `${dir}/${spec.id}.(${HERO_CLASS}).xdb`,
+    link: `${LINK_DIR}/${spec.id}.xdb`,
+    name: `${dir}/${spec.id}_Name.txt`,
+    biography: `${dir}/${spec.id}_Bio.txt`,
+    specName: `${dir}/${spec.id}_SpecName.txt`,
+    specDescription: `${dir}/${spec.id}_SpecDesc.txt`,
   };
 }
 
@@ -274,7 +275,7 @@ export function heroDoc(spec: HeroSpec, donorXml: string, p: HeroPaths = heroPat
   const root = doc.name === HERO_CLASS ? doc : find(doc, HERO_CLASS);
   if (!root) throw new Error(`the donor is no ${HERO_CLASS}`);
 
-  set(root, 'InternalName', spec.internalName);
+  set(root, 'InternalName', spec.id);
   set(root, 'Class', spec.heroClass);
   set(root, 'TownType', spec.town);
   set(root, 'ScenarioHero', String(!!spec.scenarioHero));
@@ -337,4 +338,29 @@ export function heroInternalName(xml: string): string {
   const doc = parse(xml);
   const root = doc.name === HERO_CLASS ? doc : find(doc, HERO_CLASS);
   return root ? childText(root, 'InternalName') : '';
+}
+
+/**
+ * Every identifier a hero already answers to, across the mounted chain.
+ *
+ * BOTH halves of it, because the one string does two jobs: the `InternalName`
+ * inside each document — what a campaign and a script name him by — and the
+ * file stem, which is what a path collision would be. A new hero must clash
+ * with neither, and the shipped 118 are as much in the way as the mod's own.
+ *
+ * `heroes` is the roster (registry.heroes()); `read` turns one of its hrefs
+ * into the document's text.
+ */
+export function takenHeroIds(
+  heroes: readonly { id: string }[],
+  read: (path: string) => string | null,
+): Set<string> {
+  const taken = new Set<string>();
+  for (const h of heroes) {
+    const path = h.id.split('#')[0]!.replace(/^\/+/, '');
+    taken.add(path.split('/').pop()!.replace(/\.\([^)]*\)\.xdb$/i, '').replace(/\.xdb$/i, ''));
+    const name = heroInternalName(read(path) ?? '');
+    if (name) taken.add(name);
+  }
+  return taken;
 }

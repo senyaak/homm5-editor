@@ -359,18 +359,17 @@ export function newCreatureMod(stem = MOD_STEM): CreatureMod {
  * a levelled hero from mission to mission under it, so two heroes sharing one
  * would be one character as far as the carry is concerned.
  */
-export function addHero(mod: CreatureMod, spec: HeroSpec): HeroSpec {
+export function addHero(mod: CreatureMod, spec: HeroSpec, taken: ReadonlySet<string> = new Set()): HeroSpec {
   if (!mod.heroes) mod.heroes = [];
-  if (!spec.file.trim()) throw new Error('a hero needs a file stem');
-  if (!spec.internalName.trim()) throw new Error(`${spec.file}: a hero needs an internal name to travel under`);
-  if (mod.heroes.some((h) => h.file === spec.file)) {
-    throw new Error(`two heroes cannot both be "${spec.file}"`);
-  }
-  if (mod.heroes.some((h) => h.internalName === spec.internalName)) {
-    throw new Error(`two heroes cannot both be "${spec.internalName}" — a campaign carries them by that name`);
-  }
-  mod.heroes.push(spec);
-  return spec;
+  const id = spec.id.trim();
+  if (!id) throw new Error('a hero needs an identifier');
+  // The game's own heroes are as much in the way as the mod's: the identifier
+  // is the InternalName a campaign carries him by AND the stem of his files, so
+  // a clash with a shipped hero is a hero who travels as somebody else.
+  if (taken.has(id)) throw new Error(`"${id}" is a hero the game already has`);
+  if (mod.heroes.some((h) => h.id === id)) throw new Error(`the mod already has a hero called "${id}"`);
+  mod.heroes.push({ ...spec, id });
+  return mod.heroes[mod.heroes.length - 1]!;
 }
 
 /**
@@ -504,9 +503,9 @@ export function removeArtifactSet(mod: CreatureMod, effect: string): ModArtifact
  * Drop a hero. Nothing renumbers: he holds no id, so removing one is removing
  * three files and the manifest entry that named them.
  */
-export function removeHero(mod: CreatureMod, file: string): HeroSpec {
-  const at = (mod.heroes ?? []).findIndex((h) => h.file === file);
-  if (at < 0) throw new Error(`${file} is not in the mod`);
+export function removeHero(mod: CreatureMod, id: string): HeroSpec {
+  const at = (mod.heroes ?? []).findIndex((h) => h.id === id);
+  if (at < 0) throw new Error(`${id} is not in the mod`);
   return mod.heroes.splice(at, 1)[0]!;
 }
 

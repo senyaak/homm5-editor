@@ -41,11 +41,12 @@ const GAME = modGameRoot();
 
 /** Gem, as the form is filled in. */
 const GEM = {
+  /** His unique identifier: InternalName in the document, stem of his files. */
+  id: 'H3Gem',
   /** As the roster offers him: the href a map would store. */
   donor: '/MapObjects/Preserve/Ossir.(AdvMapHeroShared).xdb#xpointer(/AdvMapHeroShared)',
   /** The same, as the manifest records it and the builder reads it. */
   donorPath: 'MapObjects/Preserve/Ossir.(AdvMapHeroShared).xdb',
-  file: 'H3Gem',
   name: 'Gem',
   biography: 'A sorceress of Enroth, newly come to AvLee and its druids.',
   town: 'TOWN_PRESERVE',
@@ -98,9 +99,7 @@ test('authors Gem and installs her', async () => {
   const { page } = ed;
   await openWithDonor(page);
 
-  await page.locator('#he-file').fill(GEM.file);
-  // The name a campaign carries her by follows the stem until it is typed into.
-  await expect(page.locator('#he-internal')).toHaveValue(GEM.file);
+  await page.locator('#he-id').fill(GEM.id);
   await page.locator('#he-name').fill(GEM.name);
   await page.locator('#he-bio').fill(GEM.biography);
 
@@ -137,7 +136,7 @@ test('the archive holds her, and nothing of the game\'s', async () => {
   const mod = readInstalledMod(GAME);
   const gem = (mod.heroes ?? [])[0];
   expect(gem, 'the manifest remembers her').toBeTruthy();
-  expect(gem!.internalName).toBe(GEM.file);
+  expect(gem!.id).toBe(GEM.id);
   expect(gem!.town).toBe(GEM.town);
   expect(gem!.heroClass).toBe(GEM.heroClass);
   expect(gem!.specialization).toBe(GEM.spec);

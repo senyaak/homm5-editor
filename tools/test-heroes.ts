@@ -23,7 +23,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { assets } from '../src/assets.ts';
 import { addHero, buildCreatureMod, dataReader, newCreatureMod } from '../src/creature-mod.ts';
-import { HERO_CLASS, heroDoc, heroHref, heroInternalName, heroPaths } from '../src/heroes.ts';
+import { HERO_CLASS, heroDoc, heroHref, heroInternalName, heroPaths, takenHeroIds } from '../src/heroes.ts';
 import type { HeroSpec } from '../src/heroes.ts';
 import { allFields, parseTypeSpec } from '../src/typespec.ts';
 import { children, find, parse, text } from '../src/xml.ts';
@@ -50,8 +50,7 @@ if (!donorXml) {
 
 /** Gem: the pilot of the Heroes III port, and the reason this module exists. */
 const GEM: HeroSpec = {
-  file: 'H3Gem',
-  internalName: 'H3Gem',
+  id: 'H3Gem',
   name: 'Gem',
   biography: 'A sorceress of Enroth, newly come to AvLee.',
   donor: DONOR,
@@ -103,8 +102,8 @@ console.log('\nwho he is');
 check('Class is ours', field('Class') === GEM.heroClass, field('Class'));
 check('TownType is ours', field('TownType') === GEM.town, field('TownType'));
 check('Specialization is ours', field('Specialization') === GEM.specialization, field('Specialization'));
-check('InternalName is ours — a campaign carries him by it',
-  field('InternalName') === GEM.internalName && heroInternalName(built) === GEM.internalName);
+check('InternalName is the identifier — a campaign carries him by it',
+  field('InternalName') === GEM.id && heroInternalName(built) === GEM.id);
 
 const slot = find(root, 'PrimarySkill')!;
 check('the racial slot holds the skill asked for',
@@ -243,10 +242,22 @@ check('his name is UTF-16 with a BOM, as the game reads texts',
   nameFile.data[0] === 0xff && nameFile.data[1] === 0xfe
   && nameFile.data.toString('utf16le').slice(1) === 'Gem');
 
-// Two heroes cannot share the name a campaign carries them under.
-check('a clashing internal name is refused', (() => {
-  try { addHero(mod, { ...GEM, file: 'H3Gem2' }); return false; } catch { return true; }
+// The identifier is the one thing that must be his alone — in the mod, and in
+// the game, whose own 118 are just as much in the way.
+check('a second hero of the same identifier is refused', (() => {
+  try { addHero(mod, GEM); return false; } catch { return true; }
 })());
+check('an identifier a shipped hero already answers to is refused', (() => {
+  const taken = takenHeroIds(shippedHeroes.map((f) => ({ id: `/${f}` })), (rel) => data.text(rel));
+  try { addHero(mod, { ...GEM, id: 'Ossir' }, taken); return false; } catch { return true; }
+})());
+check('...and the set it checks against holds both halves of what a hero answers to',
+  (() => {
+    const taken = takenHeroIds(shippedHeroes.map((f) => ({ id: `/${f}` })), (rel) => data.text(rel));
+    // Ossir is his file stem AND his InternalName; Biara_Saint_Isabel is a file
+    // whose document calls him something else, so the set must hold both.
+    return taken.has('Ossir') && taken.size > shippedHeroes.length;
+  })(), 'file stems and internal names');
 
 console.log(failures ? `\n${failures} failure(s)` : '\nall good');
 process.exit(failures ? 1 : 0);

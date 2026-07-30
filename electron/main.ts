@@ -48,7 +48,7 @@ import {
   installCreatureMod, MOD_STEM, newCreatureMod, packCreatureMod,
 } from '../src/creature-mod.ts';
 import { MOD_DIR, MOD_EXT, ensureModDir, modDir, modFile } from '../src/mod-paths.ts';
-import { HERO_CLASS, heroHref, heroPaths } from '../src/heroes.ts';
+import { HERO_CLASS, heroHref, heroPaths, takenHeroIds } from '../src/heroes.ts';
 import { refPath } from '../src/dwellings.ts';
 import type { HeroSpec, Mastery } from '../src/heroes.ts';
 import { extractMapFolder, gameArchives, listOurMaps, listStockMaps, mapFolderIn } from '../src/map-source.ts';
@@ -2390,7 +2390,7 @@ ipcMain.handle('mods:list', async (): Promise<ModsListResult> => {
     // took the bonus away. The DTO always declared the field; this is what
     // finally fills it.
     heroes: (f.mod.heroes ?? []).map((h) => ({
-      file: h.file, internalName: h.internalName, name: h.name,
+      id: h.id, name: h.name,
       town: h.town, heroClass: h.heroClass,
       ...(h.specialization ? { specialization: h.specialization } : {}),
       ...(h.scenarioHero !== undefined ? { scenarioHero: h.scenarioHero } : {}),
@@ -2585,8 +2585,8 @@ ipcMain.handle('mods:install-hero', async (_e: IpcMainInvokeEvent, p: ModsInstal
   const g = gameRoot();
   if (!g) throw new Error('no game install configured — a mod needs a folder to install into');
   if (!isConfigured()) throw new Error('no data root configured');
-  if (!p.file.trim()) throw new Error('the file stem is required');
-  if (!p.donor.trim()) throw new Error('a donor is required — a hero wears a shipped hero\'s model');
+  if (!p.id.trim()) throw new Error('the hero needs an identifier');
+  if (!p.donor.trim()) throw new Error('a preset is required — a hero wears a shipped hero\'s art');
 
   const stats: HeroSpec['stats'] = {};
   for (const [field, key] of [['Offence', 'offence'], ['Defence', 'defence'],
@@ -2596,11 +2596,13 @@ ipcMain.handle('mods:install-hero', async (_e: IpcMainInvokeEvent, p: ModsInstal
   }
 
   const mod = ourMod(g);
+  // Every identifier already spoken for, the game's 118 included: one string
+  // names him in a campaign, in a script and on disk, so it has to be his.
+  const registry = new Registry(gameData());
+  const data = assets([gameData()]);
+  const taken = takenHeroIds(registry.heroes(), (rel) => data.text(rel));
   const spec = addHero(mod, {
-    file: p.file.trim(),
-    // A hero who is not told what to travel under travels under his file stem:
-    // a campaign needs SOMETHING, and the stem is already unique in the mod.
-    internalName: (p.internalName || p.file).trim(),
+    id: p.id.trim(),
     name: p.name,
     biography: p.biography,
     // The window offers donors as the roster lists them, which is the HREF a
@@ -2626,7 +2628,7 @@ ipcMain.handle('mods:install-hero', async (_e: IpcMainInvokeEvent, p: ModsInstal
     ...(p.scenarioHero !== undefined ? { scenarioHero: !!p.scenarioHero } : {}),
     ...(p.face ? { face: p.face } : {}),
     ...(p.faceSmall ? { faceSmall: p.faceSmall } : {}),
-  });
+  }, taken);
 
   const { installed } = buildAndInstall(g, mod);
   return { archive: installed.archive, href: heroHref(heroPaths(spec)) };
