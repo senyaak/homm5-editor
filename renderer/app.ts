@@ -1,6 +1,6 @@
 // Renderer — live 3D map view with pick-and-move editing.
 //
-// Talks to the main process only through `window.editor` (see preload.cjs):
+// Talks to the main process only through `api` (see preload.cjs):
 // loadMap returns scene data (terrain + decoded object meshes + placed
 // instances); moving an object sends the new tile position back so the map
 // model — the source of truth — records the edit.
@@ -17,7 +17,9 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 import { $, $select, $button, $input, setChild } from '#core/dom.ts';
+import { api } from '#core/ipc.ts';
 import { uiPrefs, saveUiPrefs } from '#core/prefs.ts';
+import { ask, modDialog, openOnTop } from '#core/dialog.ts';
 import { state, activeFloor, heightOn, heightAt } from '#core/state.ts';
 import type { Floor3D, World, Selection, GeomBatch } from '#core/state.ts';
 import { UNITS_PER_TILE as U } from '#src/units.ts';
@@ -25,7 +27,7 @@ import { tierOf, RAMP_BIT, TIER_STEP } from '#src/terrain.ts';
 import type { Scene, Floor, Instance, SplatData, TileInfo, GeomData, GeomPart, Footprint, SkinnedGeom, AmbientData, FxInstancePayload } from '#src/scene.ts';
 import { createFxSystem } from '#viewport/particles.ts';
 import type { FxSystem } from '#viewport/particles.ts';
-import type { EditorApi, MapListEntry, ExternalChange, ModListEntry, PlaceableObject, RosterEntryDTO, LocResult,
+import type { MapListEntry, ExternalChange, ModListEntry, PlaceableObject, RosterEntryDTO, LocResult,
   CampaignDoc, CampaignListEntry, CampaignMissionDto, CreatureStats, PaletteEntry, RecolorOps } from '#electron/ipc.ts';
 import { recolorPixels } from '#src/recolor.ts';
 import { artLabels } from '#src/heroes.ts';
@@ -41,13 +43,9 @@ import type { CodeEditor, ScriptContext } from '#features/text-editor/code-edito
 import type { LuaDiagnostic } from '#src/lua-lint.ts';
 
 type MapEntry = MapListEntry & { cat: string };
-/**
- * The preload bridge. contextIsolation is on, so this is the entire surface the
- * renderer has — the contract lives in electron/ipc.ts and both sides bind to it.
- */
+
 declare global {
   interface Window {
-    editor: EditorApi;
     /** Plan-view geometry for click-driven tests — see "automation hook" below. */
     view: ViewApi;
     /**
@@ -1481,7 +1479,7 @@ function buildWorld(S: Scene): void {
 async function loadFx(floors: Floor3D[]): Promise<void> {
   if (!geomFx.size) return;
   const uids = [...new Set([...geomFx.values()].flat().map((f) => f.uid))];
-  const bank = await window.editor.fx(uids);
+  const bank = await api.fx(uids);
   const m4 = new THREE.Matrix4();
   let built = 0;
   for (const fl of floors) {
@@ -1565,7 +1563,7 @@ function boneOf(body: IdleObject, glue: string): THREE.Bone | null {
 async function spawnFx(fl: Floor3D, inst: Instance): Promise<void> {
   const list = geomFx.get(inst.g);
   if (!list?.length) return;
-  const bank = await window.editor.fx([...new Set(list.map((f) => f.uid))]);
+  const bank = await api.fx([...new Set(list.map((f) => f.uid))]);
   const m4 = new THREE.Matrix4();
   for (const f of list) {
     const baked = bank[f.uid];
@@ -1882,7 +1880,7 @@ async function rotateSelected(deg: number, commit = true): Promise<void> {
   if (commit) $input('p-rotslider').value = String(Math.round(degOf(r)));
   if (!commit) return;
   try {
-    await window.editor.rotateObject(state.selected.id, r);
+    await api.rotateObject(state.selected.id, r);
     markDirty(true);
   } catch (e) {
     $('hud').textContent = 'rotate failed: ' + (e instanceof Error ? e.message : String(e));
@@ -1899,7 +1897,7 @@ async function stepHistory(dir: 'undo' | 'redo'): Promise<void> {
   if (!state.world) return;
   let r;
   try {
-    r = dir === 'undo' ? await window.editor.undo() : await window.editor.redo();
+    r = dir === 'undo' ? await api.undo() : await api.redo();
   } catch (e) {
     $('hud').textContent = `${dir} failed: ` + (e instanceof Error ? e.message : String(e));
     return;
@@ -1946,7 +1944,7 @@ async function deleteSelected(): Promise<void> {
   if (!state.selected) return;
   const { id, mesh, inst } = state.selected;
   try {
-    await window.editor.removeObject(id);
+    await api.removeObject(id);
   } catch (e) {
     $('hud').textContent = 'delete failed: ' + (e instanceof Error ? e.message : String(e));
     return;
@@ -1992,7 +1990,7 @@ async function loadProps(): Promise<void> {
   propsFor = id;
   let res;
   try {
-    res = await window.editor.objectProps(id);
+    res = await api.objectProps(id);
   } catch (e) {
     host.textContent = 'could not read properties: ' + (e instanceof Error ? e.message : String(e));
     return;
@@ -2055,7 +2053,7 @@ async function loadProps(): Promise<void> {
     h3.title = 'Lists and sub-objects — army, buildings, triggers. Edited in the tree.';
     host.appendChild(h3);
     let data: TreeData | undefined;
-    try { data = (await window.editor.objectTree({ id })).tree as TreeData; } catch { /* count is a nicety */ }
+    try { data = (await api.objectTree({ id })).tree as TreeData; } catch { /* count is a nicety */ }
     if (propsFor !== id || !state.selected || state.selected.id !== id) return;
     for (const [name, f] of structured) host.appendChild(structRow(id, res.type, name, f, dataAt(data, name)));
   }
@@ -2181,7 +2179,7 @@ async function loadSpecValues(type: string): Promise<Record<string, string[]>> {
   const hit = specValuesByType.get(type);
   if (hit) return hit;
   let values: Record<string, string[]> = {};
-  try { values = (await window.editor.specValues(type)).values; } catch { /* no spec, no dropdowns */ }
+  try { values = (await api.specValues(type)).values; } catch { /* no spec, no dropdowns */ }
   specValuesByType.set(type, values);
   return values;
 }
@@ -2212,7 +2210,7 @@ function specSelect(value: string, allowed: string[], commit: (v: string) => voi
 const rosterCache = new Map<string, Promise<RosterEntryDTO[]>>();
 function roster(name: string): Promise<RosterEntryDTO[]> {
   let p = rosterCache.get(name);
-  if (!p) { p = window.editor.roster(name).then((r) => r.entries).catch(() => []); rosterCache.set(name, p); }
+  if (!p) { p = api.roster(name).then((r) => r.entries).catch(() => []); rosterCache.set(name, p); }
   return p;
 }
 
@@ -2221,7 +2219,7 @@ function roster(name: string): Promise<RosterEntryDTO[]> {
 const classCache = new Map<string, Promise<RosterEntryDTO[]>>();
 function objectsOfClass(className: string): Promise<RosterEntryDTO[]> {
   let p = classCache.get(className);
-  if (!p) { p = window.editor.objectsOfClass(className).then((r) => r.entries).catch(() => []); classCache.set(className, p); }
+  if (!p) { p = api.objectsOfClass(className).then((r) => r.entries).catch(() => []); classCache.set(className, p); }
   return p;
 }
 
@@ -2235,7 +2233,7 @@ function canCreateClass(className: string): boolean {
  *  cached across edits — names change as the map is edited — but per render pass
  *  the same promise is reused. */
 function mapNames(kind: string): Promise<string[]> {
-  return window.editor.names(kind).then((r) => r.names).catch(() => []);
+  return api.names(kind).then((r) => r.names).catch(() => []);
 }
 
 /** A text input with a <datalist> of names defined elsewhere in the map — a
@@ -2392,7 +2390,7 @@ function fieldRow(p: ObjectProp, field: FieldSchema | null, commit: (name: strin
 
 async function setProp(id: string, name: string, value: string): Promise<void> {
   try {
-    await window.editor.setObjectProp({ id, name, value });
+    await api.setObjectProp({ id, name, value });
     markDirty(true);
     $('hud').textContent = `${name} = ${value || '(empty)'}`;
   } catch (e) {
@@ -2417,7 +2415,7 @@ async function moveSelectedTo(x: number, y: number): Promise<void> {
   state.boxHelper?.setFromObject(state.selected.mesh);
   updatePanel();
   try {
-    await window.editor.moveObject(state.selected.id, x, y);
+    await api.moveObject(state.selected.id, x, y);
     markDirty(true);
   } catch (e) {
     $('hud').textContent = 'move failed: ' + (e instanceof Error ? e.message : String(e));
@@ -2502,8 +2500,8 @@ function buildMpTabs(): void {
 
 /** Read the whole map tree (values) plus the resolved name/description. */
 async function loadMpData(): Promise<void> {
-  try { mpData = (await window.editor.mapTree()).tree as TreeData; } catch { mpData = {}; }
-  try { const r = await window.editor.mapProps(); mpNameDesc = { name: r.name, description: r.description }; } catch { /* keep */ }
+  try { mpData = (await api.mapTree()).tree as TreeData; } catch { mpData = {}; }
+  try { const r = await api.mapProps(); mpNameDesc = { name: r.name, description: r.description }; } catch { /* keep */ }
 }
 /** Re-read after a structural edit (a rumour added/removed), then re-render. */
 async function mpReload(): Promise<void> { await loadMpData(); renderMpTab(); }
@@ -2618,7 +2616,7 @@ function mpChecklist(body: HTMLElement, fieldName: string, regName: string): voi
       const vals = ros.filter((e) => currentSet.has(e.id))
         .sort((a, b) => a.order - b.order).map((e) => e.id);
       (mpData as Record<string, TreeData>)[fieldName] = vals;
-      void window.editor.setMapList({ path: [fieldName], values: vals }).then(() => markDirty(true));
+      void api.setMapList({ path: [fieldName], values: vals }).then(() => markDirty(true));
     };
     const render = (): void => {
       const f = search.value.toLowerCase();
@@ -2652,7 +2650,7 @@ function mpRumours(body: HTMLElement): void {
     const head = document.createElement('div'); head.className = 'mt-ghead';
     const nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = `Rumour ${i + 1}`;
     const x = document.createElement('button'); x.className = 'mt-x'; x.textContent = '✕'; x.title = 'remove'; x.style.marginLeft = 'auto';
-    x.addEventListener('click', () => { void window.editor.removeMapItem({ path: ['MapRumours', i] }).then(() => { markDirty(true); return mpReload(); }); });
+    x.addEventListener('click', () => { void api.removeMapItem({ path: ['MapRumours', i] }).then(() => { markDirty(true); return mpReload(); }); });
     head.append(nm, x); box.appendChild(head);
     for (const [name, raw] of Object.entries(rumourDef.properties ?? {})) {
       const field = deref(mapSchema, raw);
@@ -2662,7 +2660,7 @@ function mpRumours(body: HTMLElement): void {
   });
   const add = document.createElement('div'); add.className = 'mt-add';
   const btn = document.createElement('button'); btn.textContent = '＋ add rumour';
-  btn.addEventListener('click', () => { void window.editor.addMapItem({ path: ['MapRumours'] }).then(() => { markDirty(true); return mpReload(); }); });
+  btn.addEventListener('click', () => { void api.addMapItem({ path: ['MapRumours'] }).then(() => { markDirty(true); return mpReload(); }); });
   add.appendChild(btn); body.appendChild(add);
 }
 
@@ -2697,7 +2695,7 @@ function nameFileRow(label: string, hrefField: string, which: 'name' | 'descript
   input.spellcheck = false;
   input.addEventListener('change', () => {
     const text = input.value;
-    void window.editor.writeFile({ href, text }).then(() => {
+    void api.writeFile({ href, text }).then(() => {
       markDirty(true);
       if (which === 'name') mpNameDesc.name = text; else mpNameDesc.description = text;
       $('hud').textContent = `saved ${href}`;
@@ -2766,11 +2764,11 @@ const MAP_TREE: TreeTarget = {
   label: 'Map tree',
   root: mapSchema,
   fields: () => mapSchema.properties,
-  read: async () => (await window.editor.mapTree()).tree as TreeData,
-  set: (path, value) => window.editor.setMapPath({ path, value }),
-  add: (path, value) => window.editor.addMapItem(value === undefined ? { path } : { path, value }),
-  remove: (path) => window.editor.removeMapItem({ path }),
-  setList: (path, values) => window.editor.setMapList({ path, values }),
+  read: async () => (await api.mapTree()).tree as TreeData,
+  set: (path, value) => api.setMapPath({ path, value }),
+  add: (path, value) => api.addMapItem(value === undefined ? { path } : { path, value }),
+  remove: (path) => api.removeMapItem({ path }),
+  setList: (path, values) => api.setMapList({ path, values }),
 };
 
 /** The tree rooted at one object — same renderer, same edit primitives. */
@@ -2779,10 +2777,10 @@ function objectTree(id: string, type: string): TreeTarget {
     label: `${type} · ${id.replace('item_', '').slice(0, 8)}`,
     root: objectSchema,
     fields: () => objectProps(type),
-    read: async () => (await window.editor.objectTree({ id })).tree as TreeData,
-    set: (path, value) => window.editor.setObjectPath({ id, path, value }),
-    add: (path, value) => window.editor.addObjectItem(value === undefined ? { id, path } : { id, path, value }),
-    remove: (path) => window.editor.removeObjectItem({ id, path }),
+    read: async () => (await api.objectTree({ id })).tree as TreeData,
+    set: (path, value) => api.setObjectPath({ id, path, value }),
+    add: (path, value) => api.addObjectItem(value === undefined ? { id, path } : { id, path, value }),
+    remove: (path) => api.removeObjectItem({ id, path }),
   };
 }
 
@@ -3072,7 +3070,7 @@ async function treeSet(path: TreePath, value: string): Promise<void> {
 
 /** Write one leaf by path, then reflect dirty (the input already shows the value). */
 async function setMapPath(path: TreePath, value: string): Promise<void> {
-  try { await window.editor.setMapPath({ path, value }); markDirty(true); $('hud').textContent = `${path.join('.')} = ${value || '(empty)'}`; }
+  try { await api.setMapPath({ path, value }); markDirty(true); $('hud').textContent = `${path.join('.')} = ${value || '(empty)'}`; }
   catch (e) { $('hud').textContent = `could not set ${path.join('.')}: ` + (e instanceof Error ? e.message : String(e)); }
 }
 
@@ -3092,7 +3090,7 @@ function fileRefControl(href: string, label: string, commit: (v: string) => void
   show(href);
   const browse = document.createElement('button'); browse.textContent = '…'; browse.title = 'pick an existing text file';
   browse.addEventListener('click', () => {
-    void window.editor.pickText().then((r) => { if (r.href) { commit(r.href); show(r.href); } });
+    void api.pickText().then((r) => { if (r.href) { commit(r.href); show(r.href); } });
   });
   const nw = document.createElement('button'); nw.textContent = 'New'; nw.title = 'create a new text file';
   nw.addEventListener('click', () => {
@@ -3125,14 +3123,14 @@ function scriptRefControl(value: string, commit: (v: string) => void): HTMLEleme
   const nw = document.createElement('button'); nw.textContent = 'New'; nw.title = 'create or bind a script';
   nw.addEventListener('click', () => {
     void openCreate('New map script', null, 'Script name', async (name) => {
-      const r = await window.editor.newScript({ base: name });
+      const r = await api.newScript({ base: name });
       queueMicrotask(() => void openTextEdit(r.lua, r.lua));
       return r.href;
     }, 'MapScript').then((href) => { if (href != null) { commit(href); show(href); } });
   });
   edit.addEventListener('click', () => {
     if (!rv.title) return;
-    void window.editor.resolveScript({ href: rv.title })
+    void api.resolveScript({ href: rv.title })
       .then((r) => openTextEdit(r.lua, r.lua))
       .catch((e: unknown) => { $('hud').textContent = 'cannot open script: ' + (e instanceof Error ? e.message : String(e)); });
   });
@@ -3159,7 +3157,7 @@ function specRefControl(value: string, commit: (v: string) => void): HTMLElement
   nw.addEventListener('click', () => {
     void openSpecCreate().then((choice) => {
       if (!choice) return undefined;
-      return window.editor.newSpecialization(choice).then((r) => { commit(r.href); show(r.href); });
+      return api.newSpecialization(choice).then((r) => { commit(r.href); show(r.href); });
     }).catch((e: unknown) => { $('hud').textContent = 'cannot create specialization: ' + (e instanceof Error ? e.message : String(e)); });
   });
   clear.addEventListener('click', () => { commit(''); show(''); });
@@ -3249,7 +3247,7 @@ let deLabel = '';             // the label to keep across a tab switch
 
 /** Fetch the map's localization state (called when a map opens). */
 async function loadLocState(): Promise<void> {
-  try { locState = await window.editor.locGet(); }
+  try { locState = await api.locGet(); }
   catch { locState = { enabled: false, base: '', languages: [] }; }
   if (!locState.languages.includes(locActive)) locActive = locState.base;
 }
@@ -3276,7 +3274,7 @@ async function openTextEdit(href: string, label: string): Promise<void> {
   ed.setDoc('loading…', lang);
   docDialog().showModal();
   let text = '';
-  try { text = (await window.editor.readFile(file)).text; }
+  try { text = (await api.readFile(file)).text; }
   catch { $('hud').textContent = 'could not read ' + file; }
   ed.setDoc(text, lang);
   // The baseline is what the editor NOW holds, not the raw bytes: CodeMirror
@@ -3323,7 +3321,7 @@ async function showLocRef(): Promise<void> {
   const ref = $('de-ref');
   if (!locState.enabled || langOf(deRef) !== 'text' || locActive === locState.base) { ref.hidden = true; return; }
   let base = '';
-  try { base = (await window.editor.readFile(locVariant(deRef, locState.base))).text; }
+  try { base = (await api.readFile(locVariant(deRef, locState.base))).text; }
   catch { /* the base may not exist yet */ }
   ref.hidden = false;
   ref.innerHTML = '';
@@ -3345,7 +3343,7 @@ async function switchLocTab(code: string): Promise<void> {
 
 /** Add a language: provisions a copy of every base text, then edits it. */
 async function addLocLanguage(code: string): Promise<void> {
-  try { locState = await window.editor.locAddLanguage({ lang: code }); markDirty(true); }
+  try { locState = await api.locAddLanguage({ lang: code }); markDirty(true); }
   catch (e) { $('hud').textContent = 'could not add language: ' + (e instanceof Error ? e.message : String(e)); return; }
   locActive = code;
   await openTextEdit(deRef, deLabel);
@@ -3387,7 +3385,7 @@ function scriptContextNote(): string {
 /** Fetch the completion sources for the loaded map. */
 async function loadScriptContext(): Promise<void> {
   try {
-    scriptCtx = await window.editor.scriptContext();
+    scriptCtx = await api.scriptContext();
     setScriptContext(scriptCtx);
     if (docDialog().open && langOf(deHref) === 'lua') $('de-info').textContent = scriptContextNote();
   } catch (e) {
@@ -3399,7 +3397,7 @@ function saveDoc(): void {
   const ed = codeEditor;
   if (!ed || !deHref) return;
   const text = ed.getDoc();
-  void window.editor.writeFile({ href: deHref, text })
+  void api.writeFile({ href: deHref, text })
     .then(() => {
       deLoaded = text;
       markDirty(true);
@@ -3459,7 +3457,7 @@ async function openScriptList(): Promise<void> {
   list.appendChild(note);
   scriptDialog().showModal();
   let files: string[] = [];
-  try { files = (await window.editor.mapFiles({ exts: ['.lua'] })).files; }
+  try { files = (await api.mapFiles({ exts: ['.lua'] })).files; }
   catch (e) { note.textContent = 'could not list: ' + (e instanceof Error ? e.message : String(e)); return; }
   list.innerHTML = '';
   if (!files.length) {
@@ -3556,14 +3554,14 @@ function renderLocDialog(): void {
 }
 
 async function enableLoc(base: string): Promise<void> {
-  try { locState = await window.editor.locEnable({ base }); markDirty(true); $('hud').textContent = `localization on · base ${base}`; }
+  try { locState = await api.locEnable({ base }); markDirty(true); $('hud').textContent = `localization on · base ${base}`; }
   catch (e) { $('hud').textContent = 'could not enable: ' + (e instanceof Error ? e.message : String(e)); return; }
   locActive = locState.base;
   renderLocDialog();
 }
 
 async function addLocFromDialog(code: string): Promise<void> {
-  try { locState = await window.editor.locAddLanguage({ lang: code }); markDirty(true); }
+  try { locState = await api.locAddLanguage({ lang: code }); markDirty(true); }
   catch (e) { $('hud').textContent = 'could not add language: ' + (e instanceof Error ? e.message : String(e)); return; }
   renderLocDialog();
 }
@@ -3571,7 +3569,7 @@ async function addLocFromDialog(code: string): Promise<void> {
 async function exportLoc(code: string): Promise<void> {
   $('hud').textContent = `exporting ${code}…`;
   try {
-    const r = await window.editor.locExport({ lang: code });
+    const r = await api.locExport({ lang: code });
     if ('ok' in r) $('hud').textContent = `exported ${langName(code)} → ${r.output} (${r.entries} files)`;
     else $('hud').textContent = 'export cancelled';
   } catch (e) { $('hud').textContent = 'export failed: ' + (e instanceof Error ? e.message : String(e)); }
@@ -3579,7 +3577,7 @@ async function exportLoc(code: string): Promise<void> {
 
 async function removeLoc(code: string): Promise<void> {
   if (!await ask(`Remove ${langName(code)}? Every ${code}.txt is deleted.`, 'Remove')) return;
-  try { locState = await window.editor.locRemoveLanguage({ lang: code }); markDirty(true); }
+  try { locState = await api.locRemoveLanguage({ lang: code }); markDirty(true); }
   catch (e) { $('hud').textContent = 'could not remove: ' + (e instanceof Error ? e.message : String(e)); return; }
   if (locActive === code) locActive = locState.base;
   renderLocDialog();
@@ -3705,9 +3703,9 @@ function openCreate(title: string, typeLabel: string | null, nameLabel: string, 
  *  Prefills a free `Class_00N` handle so it is never empty or a duplicate. */
 async function createEntity(className: string): Promise<string | null> {
   let suggested = '';
-  try { suggested = (await window.editor.suggestName(className)).name; } catch { /* prefill is optional */ }
+  try { suggested = (await api.suggestName(className)).name; } catch { /* prefill is optional */ }
   return openCreate(`Create New <${className}> Object`, className, 'Name',
-    (name) => window.editor.newEntity({ className, name }).then((r) => { classCache.delete(className); return r.href; }), suggested);
+    (name) => api.newEntity({ className, name }).then((r) => { classCache.delete(className); return r.href; }), suggested);
 }
 
 /** Name a new text file for a text ref and create it empty at once (so the ref
@@ -3729,8 +3727,8 @@ function createText(): Promise<string | null> {
     // the export bakes back into foo.txt. Other languages are made when first
     // opened, and fall back to the base until then.
     const file = locState.enabled ? locVariant(locBareOf(href), locState.base) : href;
-    const { exists } = await window.editor.readFile(file);
-    if (!exists) await window.editor.writeFile({ href: file, text: '' });
+    const { exists } = await api.readFile(file);
+    if (!exists) await api.writeFile({ href: file, text: '' });
     return href;
   });
 }
@@ -3825,7 +3823,7 @@ async function loadEntity(href: string): Promise<void> {
   const host = $('ee-form'); host.innerHTML = '<div class="ph">loading…</div>';
   $('ee-copy').style.display = 'none';
   let res;
-  try { res = await window.editor.readEntity(href); }
+  try { res = await api.readEntity(href); }
   catch (e) { host.innerHTML = ''; note.textContent = 'could not read: ' + errMsg(e); return; }
   if (eeHref !== href) return; // a later load won the race
   const sc = schemaForClass(res.className);
@@ -3847,7 +3845,7 @@ async function loadEntity(href: string): Promise<void> {
 /** Copy the shipped-library entity into the map and switch to editing the copy. */
 async function copyEntityToMap(): Promise<void> {
   try {
-    const r = await window.editor.copyEntityToMap(eeHref);
+    const r = await api.copyEntityToMap(eeHref);
     if (eeRepoint) eeRepoint(r.href);
     markDirty(true);
     await loadEntity(r.href);
@@ -3856,7 +3854,7 @@ async function copyEntityToMap(): Promise<void> {
 
 /** Commit one entity field to disk, then reflect dirty. */
 async function entitySet(path: TreePath, value: string): Promise<void> {
-  try { await window.editor.setEntityPath({ href: eeHref, path, value }); markDirty(true); $('hud').textContent = `${path.join('.')} = ${value || '(empty)'}`; }
+  try { await api.setEntityPath({ href: eeHref, path, value }); markDirty(true); $('hud').textContent = `${path.join('.')} = ${value || '(empty)'}`; }
   catch (e) { $('hud').textContent = 'entity edit failed: ' + errMsg(e); }
 }
 
@@ -4134,7 +4132,7 @@ addEventListener('pointerup', async (ev) => {
   if (dragging) {
     dragging = false; controls.enabled = true;
     if (moved && state.selected) {
-      await window.editor.moveObject(state.selected.id, state.selected.inst.x, state.selected.inst.y);
+      await api.moveObject(state.selected.id, state.selected.inst.x, state.selected.inst.y);
       markDirty(true);
     }
   } else if (wasClick) {
@@ -4484,7 +4482,7 @@ async function commitMask(walkable: boolean): Promise<void> {
   const verts = [...strokeVerts];
   strokeVerts.clear();
   try {
-    await committing(window.editor.setMask({ floor: state.world.active, verts, walkable }));
+    await committing(api.setMask({ floor: state.world.active, verts, walkable }));
     markDirty(true);
   } catch (e) {
     $('hud').textContent = 'mask failed (reload to resync): '
@@ -4793,7 +4791,7 @@ interface ViewApi {
   /**
    * Place an object through the renderer's own palette path — the one that
    * grafts the new instance onto the LIVE scene (idle, effects, batch).
-   * `window.editor.addObject` alone is only the main-process half; a test
+   * `api.addObject` alone is only the main-process half; a test
    * driving it directly would assert on a scene the placement never touched.
    */
   place(o: { type: string; shared: string; x: number; y: number }): Promise<void>;
@@ -4814,7 +4812,7 @@ interface ViewApi {
   /**
    * Open a map by path, the way the Open dialog does.
    *
-   * `window.editor.loadMap` is only the main-process half; the scene, the title
+   * `api.loadMap` is only the main-process half; the scene, the title
    * and the toolbar all come from the renderer's own open path, which the file
    * dialog normally drives and a test cannot.
    */
@@ -4989,7 +4987,7 @@ const view: ViewApi = {
   },
   async place(o) {
     if (!state.world) throw new Error('no map open');
-    const res = await window.editor.addObject({
+    const res = await api.addObject({
       type: o.type, shared: o.shared, x: o.x, y: o.y, floor: state.world.active,
     });
     addInstanceToScene(res.instance, res.geom);
@@ -5243,13 +5241,13 @@ async function commitStroke(): Promise<void> {
       // Mask, river plane and heights travel together: a river missing any one
       // of the three is not a river, and a half-applied stroke would be worse
       // than a rejected one.
-      await committing(window.editor.paintRiver({
+      await committing(api.paintRiver({
         floor: state.world.active, tile: tile.path, verts,
         heightVerts: heightEdits.map(([v]) => v),
         heights: heightEdits.map(([, h]) => h),
       }));
     } else {
-      await committing(window.editor.paintTile({
+      await committing(api.paintTile({
         floor: state.world.active, tile: tile.path, verts,
         strength: tileStrength(), exclusive: !tileBlend(),
       }));
@@ -5456,7 +5454,7 @@ async function commitRiver(): Promise<void> {
   strokeCells.clear();
   const value = Math.max(0, Math.min(255, +$input('riverstrength').value || 0));
   try {
-    await committing(window.editor.setRiverCells({ floor: state.world.active, cells, value }));
+    await committing(api.setRiverCells({ floor: state.world.active, cells, value }));
     // Carving moved ground, and those heights travel by the sculpt path.
     if (strokeVerts.size) await commitSculpt(); else strokeVerts.clear();
     markDirty(true);
@@ -5715,7 +5713,7 @@ async function commitSculpt(): Promise<void> {
   const verts = [...strokeVerts];
   strokeVerts.clear();
   try {
-    await committing(window.editor.sculpt({
+    await committing(api.sculpt({
       floor: state.world.active,
       verts,
       heights: verts.map((v) => fl.heights[v]!),
@@ -5963,7 +5961,7 @@ function updateIdleButton(): void {
 
 /** Fetch and graft the animation payloads a built-without-bones scene lacks. */
 async function loadIdleSkins(): Promise<void> {
-  const skins = await window.editor.idleSkins();
+  const skins = await api.idleSkins();
   for (const [key, skin] of Object.entries(skins)) {
     const g = Number(key);
     const geo = worldGeos[g];
@@ -5982,7 +5980,7 @@ async function loadIdleSkins(): Promise<void> {
 
 $('idlebtn').onclick = async () => {
   const next = IDLE_MODES[(IDLE_MODES.indexOf(idleMode) + 1) % IDLE_MODES.length]!;
-  await window.editor.setIdleAnimation(next);
+  await api.setIdleAnimation(next);
   if (next !== 'off' && !geomSkin.size && state.world) {
     $('hud').textContent = `idle stance: ${next} — loading animations…`;
     try {
@@ -6091,7 +6089,7 @@ function initObjectPalette(): Promise<void> {
   if (objPalOpen) $('obj-grid').innerHTML = '<div style="color:#8b949e;font-size:11px;padding:8px">loading objects…</div>';
   catalogLoad = (async () => {
     try {
-      const r = await window.editor.listObjects();
+      const r = await api.listObjects();
       catalog = r.objects;
       catGroups = r.groups;
       if (!r.hasEditor) {
@@ -6193,7 +6191,7 @@ async function setIcon(img: HTMLImageElement, path: string): Promise<void> {
     return;
   }
   try {
-    const uri = await window.editor.objectIcon(path);
+    const uri = await api.objectIcon(path);
     iconCache.set(path, uri);
     if (uri) img.src = uri;
   } catch { iconCache.set(path, null); }
@@ -6251,7 +6249,7 @@ async function placeAt(tile: { x: number; y: number }): Promise<void> {
   if (!o || !state.world) return;
   if (!o.type) { $('hud').textContent = `${o.name}: unknown object type, not placed`; return; }
   try {
-    const res = await window.editor.addObject({
+    const res = await api.addObject({
       type: o.type, shared: o.shared, x: tile.x, y: tile.y, floor: state.world.active,
     });
     addInstanceToScene(res.instance, res.geom);
@@ -6354,7 +6352,7 @@ async function addTileLayer(t: TileInfo): Promise<void> {
   const fl = activeFloor();
   $('hud').textContent = `adding ${t.name} to this map…`;
   try {
-    const r = await window.editor.addLayer({ floor: state.world.active, tile: t.path });
+    const r = await api.addLayer({ floor: state.world.active, tile: t.path });
     // One more layer means a different shader, not a texture we can patch.
     if (r.splat) { fl.splat = r.splat; await upgradeToSplat(fl); }
     tilesInMap = new Set(r.inMap);
@@ -6426,7 +6424,7 @@ $select('pal-cat').addEventListener('change', (e) => {
 async function initPalette() {
   if (allTiles.length) return;
   try {
-    const { tiles, inMap } = await window.editor.listTiles();
+    const { tiles, inMap } = await api.listTiles();
     allTiles = tiles;
     tilesInMap = new Set(inMap);
     renderPalCats();
@@ -6529,7 +6527,7 @@ const fromHex = (hex: string): [number, number, number] => [
 async function loadRegions(): Promise<void> {
   if (!state.world) { regionList = []; renderRegionList(); drawRegionOverlay(); return; }
   let tree: TreeData;
-  try { tree = (await window.editor.mapTree()).tree as TreeData; }
+  try { tree = (await api.mapTree()).tree as TreeData; }
   catch { return; }
   const raw = dataAt(tree, 'regions');
   regionList = (Array.isArray(raw) ? raw : []).map((it, i): RegionInfo => {
@@ -6551,7 +6549,7 @@ async function loadRegions(): Promise<void> {
 /** Write one field of one region, by path. */
 async function setRegionField(i: number, path: TreePath, value: string): Promise<void> {
   try {
-    await window.editor.setMapPath({ path: ['regions', i, ...path], value });
+    await api.setMapPath({ path: ['regions', i, ...path], value });
     markDirty(true);
   } catch (e) {
     $('hud').textContent = 'region: ' + (e instanceof Error ? e.message : String(e));
@@ -6579,9 +6577,9 @@ async function addRegion(r: TileRect): Promise<void> {
   const name = freshRegionName();
   const c = REGION_COLOURS[i % REGION_COLOURS.length]!;
   try {
-    await window.editor.addMapItem({ path: ['regions'] });
+    await api.addMapItem({ path: ['regions'] });
     const set = (path: TreePath, value: string): Promise<unknown> =>
-      window.editor.setMapPath({ path: ['regions', i, ...path], value });
+      api.setMapPath({ path: ['regions', i, ...path], value });
     await set(['Floor'], String(state.world.active));
     await set(['Rect', 'x1'], String(r.x0));
     await set(['Rect', 'y1'], String(r.y0));
@@ -6603,7 +6601,7 @@ async function addRegion(r: TileRect): Promise<void> {
 /** Delete a region, by index. */
 async function removeRegion(i: number): Promise<void> {
   try {
-    await window.editor.removeMapItem({ path: ['regions', i] });
+    await api.removeMapItem({ path: ['regions', i] });
     markDirty(true);
   } catch (e) {
     $('hud').textContent = 'could not remove region: ' + (e instanceof Error ? e.message : String(e));
@@ -6922,7 +6920,7 @@ async function loadMapPath(path: string | null, archive: string | null = null): 
     // The heavy lifting is in the main process (mesh/texture decode), so the
     // renderer's own thread is free to keep the spinner turning while it runs.
     const tReq = performance.now();
-    const { scene: S, info, history, idleAnimation } = await window.editor.loadMap(path);
+    const { scene: S, info, history, idleAnimation } = await api.loadMap(path);
     const tLoad = performance.now();
     // The scene says which mode it was BUILT for, and that is what the view
     // follows: a map built without bones cannot be animated by asking nicely.
@@ -6974,7 +6972,7 @@ async function loadMapPath(path: string | null, archive: string | null = null): 
     setShowBlocked(showBlocked);
     $('help').style.display = '';
     // A newly loaded map has its own layer set; refresh the "used" markers.
-    tilesInMap = new Set((await window.editor.listTiles()).inMap);
+    tilesInMap = new Set((await api.listTiles()).inMap);
     if (allTiles.length) renderPalette();
     // Restore the panels the way they were left rather than forcing them open —
     // that is the whole point of persisting the toggles.
@@ -7040,7 +7038,7 @@ function hideExternalChange(): void {
   $('extchange').style.display = 'none';
 }
 
-window.editor.onExternalChange((c) => { showExternalChange(c); });
+api.onExternalChange((c) => { showExternalChange(c); });
 
 $('extchange-reload').onclick = () => {
   const c = pendingChange;
@@ -7062,7 +7060,7 @@ async function openAny(path: string | null, inner?: string, stock?: boolean): Pr
   $('loading').classList.add('on');
   $('loadmsg').textContent = 'unpacking…';
   try {
-    const { mapPath, mapDir, files } = await window.editor.openArchive(path, inner, stock);
+    const { mapPath, mapDir, files } = await api.openArchive(path, inner, stock);
     // The game's own maps are opened as a copy to start from, so nothing here
     // belongs to that archive — `archive` stays null and Save writes the copy.
     await loadMapPath(mapPath, stock ? null : path);
@@ -7110,7 +7108,7 @@ async function closeMap(): Promise<void> {
   closeMapProps();
   if (placeObject) armObject(null);
   clearWorld();
-  await window.editor.closeMap();
+  await api.closeMap();
   openedMap = null;
   hideExternalChange();
   scriptCtx = null;
@@ -7128,7 +7126,7 @@ async function closeMap(): Promise<void> {
 }
 
 async function openViaDialog() {
-  await openAny(await window.editor.openMapDialog());
+  await openAny(await api.openMapDialog());
 }
 
 // In-window map picker: list openable maps under the game-data root, grouped by
@@ -7179,7 +7177,7 @@ function renderCats() {
 
 async function initPicker() {
   try {
-    const { root, maps } = await window.editor.listMaps();
+    const { root, maps } = await api.listMaps();
     allMaps = maps.map((m) => ({ ...m, cat: CATEGORY(m) }));
     // Ours first — the game's own are there to start from, not to browse.
     activeCat = allMaps.some((m) => m.cat === 'Ours') ? 'Ours' : ALL;
@@ -7225,7 +7223,7 @@ async function submitNewMap(): Promise<void> {
   ok.disabled = true;
   $('nm-err').textContent = '';
   try {
-    const { mapPath, mapDir, archive } = await window.editor.newMap({
+    const { mapPath, mapDir, archive } = await api.newMap({
       name: $input('nm-name').value.trim(),
       tiles: Number($select('nm-size').value),
       twoLevel: $input('nm-two').checked,
@@ -7260,71 +7258,6 @@ async function submitNewMap(): Promise<void> {
 // are the copy handles: point one at another file (a recolour, another model)
 // and only that piece changes.
 
-/**
- * Show a form dialog, whether or not it is already up.
- *
- * `showModal()` on an open dialog throws, and the throw lands in a click
- * handler where nothing catches it — the form then stays as it was and looks
- * like a button that does nothing.
- */
-/**
- * Open a form over its list, with its own error slot wiped.
- *
- * Each form dialog has an error line of its own (`ue-err`, `ae-err`, `as-err`)
- * — the list behind it has another, and they must not share an id: with two
- * `um-err` in the document, `$('um-err')` answered with the list's, so every
- * message the form ever wrote landed on a dialog the user could not see.
- */
-/**
- * Ask before something irreversible — in a dialog of ours, never `confirm()`.
- *
- * `confirm()` is a native window, and in Electron it blocks the renderer: a
- * spec that reaches one waits for a click nobody will make and dies by timeout,
- * which is a hang with no message. This is a <dialog>, so it stacks over
- * whatever is open, Esc answers no, and a test can read the question.
- *
- * One dialog for all of them, because a question is a question; the caller
- * supplies the words and, when the button should say something sharper than
- * "Yes", its label.
- */
-function ask(question: string, yes = 'Yes'): Promise<boolean> {
-  const dialog = modDialog('ask');
-  $('ask-text').textContent = question;
-  $button('ask-yes').textContent = yes;
-  if (!dialog.open) dialog.showModal();
-  return new Promise<boolean>((resolve) => {
-    const done = (answer: boolean): void => {
-      dialog.removeEventListener('cancel', onCancel);
-      $('ask-yes').onclick = null;
-      $('ask-no').onclick = null;
-      $('ask-x').onclick = null;
-      if (dialog.open) dialog.close();
-      resolve(answer);
-    };
-    // Esc closes a <dialog> without touching our buttons, and it means no.
-    const onCancel = (): void => done(false);
-    dialog.addEventListener('cancel', onCancel, { once: true });
-    $('ask-yes').onclick = () => done(true);
-    $('ask-no').onclick = () => done(false);
-    $('ask-x').onclick = () => done(false);
-  });
-}
-
-function openOnTop(id: string): void {
-  const dialog = modDialog(id);
-  const err = FORM_ERR[id];
-  if (err) $(err).textContent = '';
-  if (!dialog.open) dialog.showModal();
-}
-
-/** The error line belonging to each form, as opposed to its list's. */
-const FORM_ERR: Record<string, string> = { unitedit: 'ue-err', artedit: 'ae-err', setedit: 'as-err' };
-
-function modDialog(id: string): HTMLDialogElement {
-  const el = $(id);
-  if (!(el instanceof HTMLDialogElement)) throw new Error(`#${id} is not a <dialog>`);
-  return el;
-}
 
 /** Form input id → the CreatureStats field it fills. */
 const UM_STATS: ReadonlyArray<[string, keyof CreatureStats]> = [
@@ -7349,7 +7282,7 @@ const idFrom = (prefix: string, file: string): string =>
 /** The rosters and enums both forms are built from, fetched once. */
 let modForms: Promise<import('../electron/ipc.ts').ModsFormDataResult> | null = null;
 const modFormData = (): Promise<import('../electron/ipc.ts').ModsFormDataResult> =>
-  (modForms ??= window.editor.modFormData());
+  (modForms ??= api.modFormData());
 
 function fillModSelect(sel: HTMLSelectElement, entries: { id: string; name?: string }[], skipUnset = false): void {
   sel.innerHTML = '';
@@ -7430,8 +7363,8 @@ async function removeWithWarning(
   kind: 'artifact' | 'creature', id: string, label: string, errBox: string,
 ): Promise<void> {
   const { uses } = kind === 'artifact'
-    ? await window.editor.artifactUses({ id })
-    : await window.editor.creatureUses({ id });
+    ? await api.artifactUses({ id })
+    : await api.creatureUses({ id });
   const shown = uses.slice(0, 12).join(NL);
   const more = uses.length > 12 ? `${NL}… and ${uses.length - 12} more` : '';
   const warning = uses.length
@@ -7440,8 +7373,8 @@ async function removeWithWarning(
     : `Remove ${label}? No map names it.`;
   if (!await ask(warning, 'Remove')) return;
   try {
-    if (kind === 'artifact') await window.editor.removeArtifact({ id });
-    else await window.editor.removeCreature({ id });
+    if (kind === 'artifact') await api.removeArtifact({ id });
+    else await api.removeCreature({ id });
     await refreshModLists();
   } catch (e) {
     $(errBox).textContent = e instanceof Error ? e.message : String(e);
@@ -7449,7 +7382,7 @@ async function removeWithWarning(
 }
 
 async function refreshModLists(): Promise<void> {
-  const { gameRoot, mods } = await window.editor.listMods();
+  const { gameRoot, mods } = await api.listMods();
   const empty = (msg: string): string => `<div class="um-empty">${msg}</div>`;
   const units = $('um-list');
   const arts = $('am-list');
@@ -7524,7 +7457,7 @@ async function refreshModLists(): Promise<void> {
 async function loadUnitPreset(): Promise<void> {
   const donor = $input('um-donor').value;
   if (!donor) return;
-  const p = await window.editor.modPreset(donor);
+  const p = await api.modPreset(donor);
   $input('um-name').value = p.name;
   $input('um-desc').value = p.description;
   for (const [input, key] of UM_STATS) $input(input).value = String(p.stats[key] ?? 0);
@@ -7542,7 +7475,7 @@ async function loadUnitPreset(): Promise<void> {
 async function loadArtifactPreset(): Promise<void> {
   const donor = $select('am-donor').value;
   if (!donor) return;
-  const p = await window.editor.modArtifactPreset(donor);
+  const p = await api.modArtifactPreset(donor);
   $input('am-name').value = p.name;
   $input('am-desc').value = p.description;
   $select('am-slot').value = p.slot;
@@ -7589,7 +7522,7 @@ async function submitUnitsMod(): Promise<void> {
     }
     const art: Partial<Record<'character' | 'model' | 'animSet' | 'icon', string>> = {};
     for (const [input, slot] of UM_ART) art[slot] = $input(input).value.trim();
-    const send = editingCreature ? window.editor.updateMod : window.editor.installMod;
+    const send = editingCreature ? api.updateMod : api.installMod;
     const res = await send({
       id: $input('um-id').value,
       file: $input('um-file').value,
@@ -7739,7 +7672,7 @@ function artifactGives(): { stats: Record<string, number>; effects: Record<strin
  * every document already written for it.
  */
 async function editArtifact(id: string): Promise<void> {
-  const { mods } = await window.editor.listMods();
+  const { mods } = await api.listMods();
   const a = mods.flatMap((m) => m.artifacts).find((x) => x.id === id);
   if (!a) return;
   editingArtifact = id;
@@ -7792,7 +7725,7 @@ function newArtifact(): void {
 }
 
 async function editCreature(id: string): Promise<void> {
-  const { mods } = await window.editor.listMods();
+  const { mods } = await api.listMods();
   const c = mods.flatMap((m) => m.creatures).find((x) => x.id === id);
   if (!c) return;
   editingCreature = id;
@@ -7847,7 +7780,7 @@ function newCreature(): void {
 async function showExtensionState(where: 'am-ext' | 'as-ext' = 'am-ext'): Promise<void> {
   const box = $(where);
   box.textContent = '';
-  const st = await window.editor.extensionStatus();
+  const st = await api.extensionStatus();
   if (st.installed) {
     box.style.color = '#3fb950';
     box.textContent = `extension installed (${st.size} bytes) — effects are in force in H5_Game_H5E.exe`;
@@ -7865,7 +7798,7 @@ async function showExtensionState(where: 'am-ext' | 'as-ext' = 'am-ext'): Promis
   button.title = 'copies the extension beside the game and names it in OUR copy of the executable';
   button.onclick = () => {
     button.disabled = true;
-    void window.editor.installExtension()
+    void api.installExtension()
       .then(() => showExtensionState(where))
       .catch((e: unknown) => {
         $(where === 'as-ext' ? 'as-err' : 'am-err').textContent = e instanceof Error ? e.message : String(e);
@@ -7905,11 +7838,11 @@ async function fillSetMembers(): Promise<void> {
   const box = $('as-members');
   const ticked = new Set(setMembers());
   if (!setShipped) {
-    setShipped = (await window.editor.modFormData()).artifactDonors
+    setShipped = (await api.modFormData()).artifactDonors
       .map((a) => ({ id: a.id, name: a.name ?? '' }));
   }
   const shipped = setShipped;
-  const { mods } = await window.editor.listMods();
+  const { mods } = await api.listMods();
   const mine = new Set(mods.flatMap((m) => m.artifacts).map((a) => a.id));
   box.innerHTML = '';
   const rows = [
@@ -8050,7 +7983,7 @@ let editingSet = '';
  * texts are all free to move.
  */
 async function editArtifactSet(effect: string): Promise<void> {
-  const { mods } = await window.editor.listMods();
+  const { mods } = await api.listMods();
   const s = mods.flatMap((m) => m.sets).find((x) => x.effect === effect);
   if (!s) return;
   editingSet = effect;
@@ -8100,7 +8033,7 @@ function newSet(): void {
 async function removeSet(effect: string, label: string): Promise<void> {
   if (!await ask(`Remove ${label}? Its members stay; only the set goes.`, 'Remove')) return;
   try {
-    await window.editor.removeArtifactSet({ id: effect });
+    await api.removeArtifactSet({ id: effect });
     await refreshModLists();
   } catch (e) {
     $('am-err').textContent = e instanceof Error ? e.message : String(e);
@@ -8112,7 +8045,7 @@ async function submitArtifactSet(): Promise<void> {
   $('as-err').textContent = '';
   $('as-note').textContent = '';
   try {
-    const send = editingSet ? window.editor.updateArtifactSet : window.editor.installArtifactSet;
+    const send = editingSet ? api.updateArtifactSet : api.installArtifactSet;
     const res = await send({
       effect: $input('as-effect').value,
       artifacts: setMembers(),
@@ -8145,7 +8078,7 @@ async function submitArtifactMod(): Promise<void> {
   $('am-note').textContent = '';
   try {
     const gives = artifactGives();
-    const send = editingArtifact ? window.editor.updateArtifact : window.editor.installArtifact;
+    const send = editingArtifact ? api.updateArtifact : api.installArtifact;
     const res = await send({
       id: $input('am-id').value,
       file: $input('am-file').value,
@@ -8273,7 +8206,7 @@ async function openRecolor(creature: string, label: string): Promise<void> {
   $('rc-note').textContent = '';
   $('rc-previews').textContent = 'reading the mod\'s textures…';
   modDialog('recolor').showModal();
-  const { textures, palette } = await window.editor.modTextures(creature);
+  const { textures, palette } = await api.modTextures(creature);
   rcTextures = await Promise.all(textures.map(async (t) => ({
     path: t.path, width: t.width, height: t.height, img: await loadImage(t.png),
   })));
@@ -8287,11 +8220,11 @@ async function submitRecolor(): Promise<void> {
   $('rc-err').textContent = '';
   $('rc-note').textContent = '';
   try {
-    const res = await window.editor.recolorMod({ creature: rcCreature, ops: currentRecolorOps() });
+    const res = await api.recolorMod({ creature: rcCreature, ops: currentRecolorOps() });
     $('rc-note').textContent = `repainted ${res.textures} texture(s) → ${res.archive}`;
     // The previews now show the archive's new bytes, and the controls return
     // to neutral — a second pass starts from what is really there.
-    const { textures, palette } = await window.editor.modTextures(rcCreature);
+    const { textures, palette } = await api.modTextures(rcCreature);
     rcTextures = await Promise.all(textures.map(async (t) => ({
       path: t.path, width: t.width, height: t.height, img: await loadImage(t.png),
     })));
@@ -8338,7 +8271,7 @@ for (const btn of document.querySelectorAll<HTMLButtonElement>('button.um-pick')
   btn.onclick = () => {
     const target = btn.dataset.for!;
     void (async () => {
-      const picked = await window.editor.pickHeroFile({ id: $input('um-file').value.trim(), slot: target });
+      const picked = await api.pickHeroFile({ id: $input('um-file').value.trim(), slot: target });
       if (picked.href) $input(target).value = picked.href;
     })().catch((e) => { $('ue-err').textContent = e instanceof Error ? e.message : String(e); });
   };
@@ -8499,22 +8432,22 @@ for (const btn of document.querySelectorAll<HTMLButtonElement>('#bar .menubtn'))
 // would keep paying for it silently — and the person who turned it on did so from
 // a window that could not start, which is not where they will look to undo it.
 void (async () => {
-  if (!await window.editor.gpuSoftware()) return;
+  if (!await api.gpuSoftware()) return;
   $('gpunote').hidden = false;
-  $('gpunote-off').onclick = () => { void window.editor.setGpuSoftware(false); };
+  $('gpunote-off').onclick = () => { void api.setGpuSoftware(false); };
 })();
 // Save puts the work back where the map came from. For a map opened from a
 // .h5m that is the archive itself — the working folder is ours, not something
 // the user picked, so writing only there would look like nothing happened.
 $('save').onclick = async () => {
-  const r = await window.editor.save();
+  const r = await api.save();
   markDirty(false);
   $('hud').textContent = r.output ? `saved → ${r.output}` : 'saved';
 };
 $('undobtn').onclick = () => { void stepHistory('undo'); };
 $('redobtn').onclick = () => { void stepHistory('redo'); };
 $('pack').onclick = async () => {
-  const r = await window.editor.pack();
+  const r = await api.pack();
   if ('canceled' in r) return;
   markDirty(false);
   $('hud').textContent = `packed → ${r.output} (${(r.bytes / 1024 | 0)} KB)`;
@@ -8527,7 +8460,7 @@ $('pack').onclick = async () => {
 $('playbtn').onclick = async () => {
   $('hud').textContent = 'starting the game…';
   try {
-    const r = await window.editor.launchGame();
+    const r = await api.launchGame();
     $('hud').textContent = `started ${r.exe}`;
   } catch (e) {
     $('hud').textContent = `error: ${e instanceof Error ? e.message : String(e)}`;
@@ -8594,7 +8527,7 @@ async function openCampaignList(): Promise<void> {
   const list = $('cl-list');
   list.replaceChildren();
   let campaigns: CampaignListEntry[] = [];
-  try { campaigns = (await window.editor.listCampaigns()).campaigns; }
+  try { campaigns = (await api.listCampaigns()).campaigns; }
   catch (e) { $('hud').textContent = 'could not list campaigns: ' + msgOf(e); }
   if (!campaigns.length) {
     const empty = document.createElement('div');
@@ -8618,7 +8551,7 @@ async function openCampaignList(): Promise<void> {
 }
 
 async function openCampaign(dir: string): Promise<void> {
-  try { campDoc = await window.editor.openCampaign(dir); }
+  try { campDoc = await api.openCampaign(dir); }
   catch (e) { $('hud').textContent = 'could not open: ' + msgOf(e); return; }
   dlg('camplist').close();
   campSel = -1;
@@ -8626,7 +8559,7 @@ async function openCampaign(dir: string): Promise<void> {
     // A mission names the map's path in the game's file system, which is the
     // folder the archive carries it at — so an archive that holds no map folder
     // is not a mission's map.
-    try { campMaps = (await window.editor.listMaps()).maps.filter((m) => !!m.inner); }
+    try { campMaps = (await api.listMaps()).maps.filter((m) => !!m.inner); }
     catch { campMaps = []; }
   }
   renderCampaign();
@@ -8721,7 +8654,7 @@ async function renderHeroSlots(): Promise<void> {
   let heroes: string[] = [];
   let entryPoint = false;
   if (missionDraft.mapRel) {
-    try { ({ heroes, entryPoint } = await window.editor.mapHeroes(missionDraft.mapRel)); }
+    try { ({ heroes, entryPoint } = await api.mapHeroes(missionDraft.mapRel)); }
     catch { /* an unreadable map just offers nothing */ }
   }
   const opts = [{ id: '', label: '(default hero)' }, ...heroes.map((h) => ({ id: h, label: h }))];
@@ -8824,7 +8757,7 @@ $('cl-close').onclick = () => dlg('camplist').close();
 $('cl-new').onclick = async () => {
   const name = $input('cl-name').value.trim();
   if (!name) return;
-  try { campDoc = await window.editor.newCampaign(name); }
+  try { campDoc = await api.newCampaign(name); }
   catch (e) { $('hud').textContent = 'could not create: ' + msgOf(e); return; }
   await openCampaign(campDoc.dir);
 };
@@ -8868,7 +8801,7 @@ $('cp-pack').onclick = async () => {
   if (!(await saveCampaign(false))) return;
   if (!campDoc) return;
   try {
-    const r = await window.editor.packCampaign(campDoc.dir);
+    const r = await api.packCampaign(campDoc.dir);
     if (r.canceled) return;
     $('hud').textContent = `packed → ${r.output} (${((r.bytes ?? 0) / 1024) | 0} KB)`;
   } catch (e) { $('cp-err').textContent = msgOf(e); }
@@ -8878,7 +8811,7 @@ $('cp-pack').onclick = async () => {
 async function saveCampaign(close: boolean): Promise<boolean> {
   if (!campDoc) return false;
   readCampaignForm();
-  try { campDoc = await window.editor.saveCampaign(campDoc); }
+  try { campDoc = await api.saveCampaign(campDoc); }
   catch (e) { $('cp-err').textContent = msgOf(e); return false; }
   if (close) dlg('campaign').close();
   else renderCampaign();
@@ -8988,7 +8921,7 @@ async function fillHeroForm(): Promise<void> {
   // One call, and not `roster`/`specValues`: those read the open map's registry,
   // and a hero is authored with no map in sight — exactly like a creature or an
   // artifact, which is why this payload exists at all.
-  const form = await window.editor.modFormData();
+  const form = await api.modFormData();
   const heroes = form.heroDonors;
   const skills = form.skills.map((e) => ({ id: e.id, label: e.name || e.id }));
   const spells = form.spells.map((e) => ({ id: e.id, label: e.name || e.id }));
@@ -9060,7 +8993,7 @@ async function heroPresetChanged(): Promise<void> {
 
   // And his looks, slot by slot. A preset the data cannot be read for leaves
   // the fields as they were rather than blanking them.
-  const art = await window.editor.heroArtOf(preset).catch(() => ({} as Record<string, string>));
+  const art = await api.heroArtOf(preset).catch(() => ({} as Record<string, string>));
   for (const [slot, id] of Object.entries(HE_ART_FIELDS)) {
     const href = art[slot];
     if (!href) continue;
@@ -9104,7 +9037,7 @@ let editingHero = '';
 
 /** Load an installed hero back into the form, every field of him. */
 async function editHero(id: string): Promise<void> {
-  const { mods } = await window.editor.listMods();
+  const { mods } = await api.listMods();
   const h = mods.flatMap((m) => m.heroes ?? []).find((x) => x.id === id);
   if (!h) return;
   editingHero = id;
@@ -9156,7 +9089,7 @@ async function editHero(id: string): Promise<void> {
 
 /** Ask what would break, show it, and only then remove. */
 async function removeHeroWithWarning(id: string, label: string): Promise<void> {
-  const { uses } = await window.editor.heroUses({ id });
+  const { uses } = await api.heroUses({ id });
   const shown = uses.slice(0, 12).join(NL);
   const more = uses.length > 12 ? `${NL}… and ${uses.length - 12} more` : '';
   const warning = uses.length
@@ -9165,7 +9098,7 @@ async function removeHeroWithWarning(id: string, label: string): Promise<void> {
     : `Remove ${label}? No map reaches him.`;
   if (!await ask(warning, 'Remove')) return;
   try {
-    await window.editor.removeHero({ id });
+    await api.removeHero({ id });
     await refreshHeroList();
     $('hm-note').textContent = `${label} removed.`;
   } catch (e) {
@@ -9184,7 +9117,7 @@ async function submitHeroMod(): Promise<void> {
     const perk = $select('he-perk').value;
     const spell = $select('he-spell').value;
     const primary = $select('he-primary').value;
-    const send = editingHero ? window.editor.updateHero : window.editor.installHero;
+    const send = editingHero ? api.updateHero : api.installHero;
     const res = await send({
       id: $input('he-id').value,
       name: $input('he-name').value,
@@ -9236,7 +9169,7 @@ async function submitHeroMod(): Promise<void> {
 }
 
 async function refreshHeroList(): Promise<void> {
-  const { mods } = await window.editor.listMods();
+  const { mods } = await api.listMods();
   renderHeroList(mods);
 }
 
@@ -9289,7 +9222,7 @@ for (const btn of document.querySelectorAll<HTMLButtonElement>('button.he-file')
     const target = btn.dataset.for!;
     const slot = Object.entries(HE_ART_FIELDS).find(([, id]) => id === target)?.[0] ?? target;
     void (async () => {
-      const picked = await window.editor.pickHeroFile({ id: $input('he-id').value.trim(), slot });
+      const picked = await api.pickHeroFile({ id: $input('he-id').value.trim(), slot });
       if (!picked.href) return; // cancelled
       heOwnFiles[picked.href] = picked.from;
       const el = $select(target);
@@ -9356,7 +9289,7 @@ $('pp-cancel').onclick = () => modDialog('presetpick').close();
 
 $('he-preset-pick').onclick = () => {
   void (async () => {
-    const heroes = (await window.editor.modFormData()).heroDonors;
+    const heroes = (await api.modFormData()).heroDonors;
     pickPreset('Start this hero from', heroes.map((h) => ({
       id: h.id,
       label: h.group ? `${h.group} — ${h.name ?? h.id}` : (h.name ?? h.id),
@@ -9370,7 +9303,7 @@ $('he-preset-pick').onclick = () => {
 
 $('um-donor-pick').onclick = () => {
   void (async () => {
-    const creatures = (await window.editor.modFormData()).donors;
+    const creatures = (await api.modFormData()).donors;
     pickPreset('Start this creature from', creatures.map((c) => ({
       id: c.id, label: c.name || c.id,
     })), (id, label) => {
