@@ -12,9 +12,7 @@ import { basename, join, relative, sep } from 'node:path';
 import { buildNewMapProject } from '../src/new-map.ts';
 import { ensureModDir, modFile } from '../src/mod-paths.ts';
 import { initProject, packProject } from '../src/project.ts';
-import { E2E_GAME, REPO_ROOT } from './launch.ts';
-
-const DATA = process.env.HOMM5_DATA || join(REPO_ROOT, 'data-unpacked');
+import { DATA, E2E_GAME } from './launch.ts';
 
 /**
  * Make a blank map at `mapDir` and pack it into the suite's install.

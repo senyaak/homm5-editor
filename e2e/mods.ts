@@ -8,7 +8,7 @@
 
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { REPO_ROOT } from './launch.ts';
+import { DATA, REPO_ROOT } from './launch.ts';
 import {
   addArtifact, addArtifactSet, addCreature, addDwelling, buildCreatureMod, dataReader,
   installCreatureMod, MOD_STEM, newCreatureMod, packCreatureMod, readCreatureMod,
@@ -73,8 +73,6 @@ export function modGameRoot(): string {
 export const ASSETS = join(REPO_ROOT, 'assets');
 const ART = join(ASSETS, 'artifacts');
 
-/** The unpacked data root the app reads (never written by these specs). */
-export const DATA = process.env.HOMM5_DATA || join(REPO_ROOT, 'data-unpacked');
 /** The real install the checkout sits in — where the executable comes from. */
 export const REAL_GAME = join(REPO_ROOT, '..');
 /** The archive the dialogs always create: OUR mod, never a choice. */

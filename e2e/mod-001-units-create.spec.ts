@@ -18,7 +18,8 @@ import type { Launched } from './launch.ts';
 import { newMap } from './tiles.ts';
 import { openObjectPalette, pickObject, placeAtTile } from './objects.ts';
 import { addItem, reveal, setTreeValue } from './tree.ts';
-import { DATA, MOD, SHARPSHOOTER, clearMap, modGameRoot, readInstalledMod } from './mods.ts';
+import { DATA } from './launch.ts';
+import { MOD, SHARPSHOOTER, clearMap, modGameRoot, readInstalledMod } from './mods.ts';
 import { readExe } from '../src/creature-limit.ts';
 import { modFile } from '../src/mod-paths.ts';
 

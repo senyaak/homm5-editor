@@ -3,32 +3,59 @@
 // The point of the completion is not convenience. Every name a map script
 // passes to the engine — an object, a region, an objective — is a plain string,
 // and a wrong one fails inside the game with no message at all. So the editor
-// offers the names THIS map defines, and that is what is checked here: that the
-// regions the reconstruction carries turn up inside a string literal, and the
-// engine's own functions turn up outside one.
+// offers the names THIS map defines, and that is what is checked here: that a
+// region of the map's own turns up inside a string literal, and the engine's own
+// functions turn up outside one.
+//
+// IT BRINGS ITS OWN MAP. This used to borrow the C1M1 reconstruction and
+// complete from the regions that exercise happens to carry, which coupled a spec
+// about an editor panel to a campaign rebuild it has nothing to do with — and
+// duly broke, in the least useful way, the moment something left that map blank:
+// "the map has no regions" rather than "the map is not the one I meant". So it
+// makes a blank fixture and draws the one region it needs, which is also the
+// honest setup: what is under test is completing from a name the map defines,
+// and defining it here is one drag.
 
 import { test, expect } from '@playwright/test';
 import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { launchEditor } from './launch.ts';
+import { DATA, launchEditor } from './launch.ts';
 import type { Launched } from './launch.ts';
-import { MAP_DIR, openMap, requireFixture } from './c1m1/shared.ts';
+import { buildMapFixture } from './map-fixture.ts';
+import { drawRegion, openRegions, setRegionName } from './regions.ts';
 
 let ed: Launched;
 
-test.beforeAll(async () => { ed = await launchEditor(); });
-test.afterAll(async () => { await ed?.app.close(); });
+/** Our own map, and the region a script will address by name. */
+const NAME = 'e2e Script Editor';
+const MAP_DIR = join(DATA, 'Maps', 'SingleMissions', NAME);
+const REGION = { name: 'e2eScriptRegion', x1: 6, y1: 6, x2: 12, y2: 12, color: [1, 0, 0] as [number, number, number] };
 
 /** A scratch script, written through the app's own file API and removed after. */
 const FILE = 'e2e-editor-scratch.lua';
 const SEED = 'function onStart()\n\t-- a comment\n\tlocal n = 1\nend\n';
 
+test.beforeAll(async () => {
+  buildMapFixture(MAP_DIR, NAME);
+  ed = await launchEditor();
+});
+test.afterAll(async () => { await ed?.app.close(); });
+
 test('the Lua editor highlights, completes from the map, and saves', async () => {
-  requireFixture();
   test.setTimeout(10 * 60_000);
   const { page } = ed;
 
-  await openMap(page);
+  await page.evaluate((p) => window.view.open(p), join(MAP_DIR, 'map.xdb'));
+  await expect(page.locator('#title')).toContainText(NAME, { timeout: 120_000 });
+  await page.evaluate(() => { window.view.plan(true); window.view.fit(); });
+
+  // The name the completion will offer — defined here, on this map, so the spec
+  // owns both halves of what it is checking.
+  await openRegions(page);
+  await drawRegion(page, REGION);
+  await setRegionName(page, 0, REGION.name);
+  await page.locator('#regionbtn').click();
+
   await page.evaluate(([href, text]) => window.editor.writeFile({ href: href!, text: text! }), [FILE, SEED]);
 
   // --- the map's scripts are reachable at all ---
@@ -76,17 +103,16 @@ test('the Lua editor highlights, completes from the map, and saves', async () =>
 
   // --- completing a name defined in THIS map ---
   const regions: string[] = await page.evaluate(() => window.view.regions().map((r) => r.name));
-  expect(regions.length, 'the map has regions to complete from').toBeGreaterThan(0);
-  const region = regions[0]!;
+  expect(regions, 'the region drawn above is what the map defines').toContain(REGION.name);
   await content.click();
   await page.keyboard.press('Control+End');
   await page.keyboard.type(`
-local r = "${region.slice(0, 2)}`);
+local r = "${REGION.name.slice(0, 4)}`);
   await expect(popup, 'names offered inside a string').toBeVisible({ timeout: 15_000 });
-  await expect(popup).toContainText(region);
+  await expect(popup).toContainText(REGION.name);
   await expect(popup, 'and tagged with what defines them').toContainText('region');
-  await popup.locator('li', { hasText: region }).first().click();
-  await expect(content).toContainText(`"${region}`);
+  await popup.locator('li', { hasText: REGION.name }).first().click();
+  await expect(content).toContainText(`"${REGION.name}`);
 
   // --- saving --- (a script closes the editor on save)
   await page.locator('#de-save').click();

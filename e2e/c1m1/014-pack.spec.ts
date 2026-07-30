@@ -33,7 +33,8 @@ import { readEntries } from '../../src/pak.ts';
 import { modFile } from '../../src/mod-paths.ts';
 import { hudSays, launchEditor, REPO_ROOT } from '../launch.ts';
 import type { Launched } from '../launch.ts';
-import { DATA, MAP_DIR, NAME, NEED_FIXTURE, requireFixture } from './shared.ts';
+import { DATA } from '../launch.ts';
+import { MAP_DIR, NAME, NEED_FIXTURE, requireFixture } from './shared.ts';
 
 const KEEP = !!process.env.HOMM5_NO_REMOVE_MAP;
 const MAP_XDB = join(MAP_DIR, 'map.xdb');

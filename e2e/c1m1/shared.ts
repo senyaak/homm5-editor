@@ -24,13 +24,12 @@ import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { REPO_ROOT } from '../launch.ts';
+import { DATA, REPO_ROOT } from '../launch.ts';
 import { newMap, settle } from '../tiles.ts';
 import { parseTerrain } from '../../src/terrain.ts';
 import type { Terrain } from '../../src/terrain.ts';
 
 export const NAME = 'e2e Reconstruct C1M1';
-export const DATA = process.env.HOMM5_DATA || join(REPO_ROOT, 'data-unpacked');
 export const MAP_DIR = join(DATA, 'Maps', 'SingleMissions', NAME);
 export const FIXTURE = join(REPO_ROOT, '_tmp', 'fixtures', 'C1M1', 'GroundTerrain.bin');
 /** Where the rebuilt terrain is kept for `npm run diff-terrain`. */
@@ -92,85 +91,26 @@ export function startFresh(): void {
 /**
  * Open the reconstruction map, creating a blank one if this is the first stage
  * to run. Leaves the app in the plan view, fitted, ready to be clicked.
+ *
+ * `make` is what says a caller is entitled to a blank map. Only the chain is:
+ * stage 1 starts over from nothing, and every later stage means to work on what
+ * the one before it left. Getting a blank map instead used to be silent, and it
+ * cost a green suite going red for the wrong reason — a spec that borrowed this
+ * map opened it, found a fresh 96×96 blank where the reconstruction should be,
+ * and failed on "no regions" instead of "there is no reconstruction here".
  */
-export async function openMap(page: Page, size = '96'): Promise<number> {
+export async function openMap(page: Page, size = '96', make = true): Promise<number> {
   if (existsSync(join(MAP_DIR, 'map.xdb'))) {
     await page.evaluate((p) => window.view.open(p), join(MAP_DIR, 'map.xdb'));
     await expect(page.locator('#title')).toContainText(NAME, { timeout: 120_000 });
-  } else {
+  } else if (make) {
     await newMap(page, NAME, size);
+  } else {
+    throw new Error(`no reconstruction at ${MAP_DIR}`
+      + '\n  the C1M1 chain builds it: npx playwright test e2e/c1m1');
   }
   await page.evaluate(() => { window.view.plan(true); window.view.fit(); });
   return (await page.evaluate(() => window.view.size())) + 1; // vertices per side
-}
-
-/**
- * Screen positions of every vertex, computed once.
- *
- * At the fitted zoom the whole map is on screen, so this replaces a round trip
- * per click — the difference between minutes and hours over 9409 of them.
- */
-export async function vertexPixels(page: Page, V: number): Promise<[number, number][]> {
-  return page.evaluate((n) => {
-    window.view.fit();
-    const out: [number, number][] = [];
-    for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
-      const at = window.view.vertexToScreen(x, y);
-      out.push([at.x, at.y]);
-    }
-    return out;
-  }, V);
-}
-
-/** The same for tile centres — what the mask brush addresses. */
-export async function tilePixels(page: Page, T: number): Promise<[number, number][]> {
-  return page.evaluate((n) => {
-    window.view.fit();
-    const out: [number, number][] = [];
-    for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
-      const at = window.view.tileToScreen(x, y);
-      out.push([at.x, at.y]);
-    }
-    return out;
-  }, T);
-}
-
-/** The same for the half-tile river grid. */
-export async function cellPixels(page: Page, W: number): Promise<[number, number][]> {
-  return page.evaluate((n) => {
-    window.view.fit();
-    const out: [number, number][] = [];
-    for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
-      const at = window.view.cellToScreen(x, y);
-      out.push([at.x, at.y]);
-    }
-    return out;
-  }, W);
-}
-
-/** Click a precomputed pixel. The brush must already be armed. */
-export async function clickAt(page: Page, at: [number, number]): Promise<void> {
-  await page.mouse.move(at[0], at[1]);
-  await page.mouse.down();
-  await page.mouse.up();
-}
-
-/**
- * Drag between two precomputed pixels — one continuous stroke.
- *
- * The intermediate moves are not decoration: a rect stroke reads the tile under
- * the cursor on press and on release, and a brush that acts per move would
- * otherwise paint the ends and nothing between them.
- */
-export async function dragAt(
-  page: Page, from: [number, number], to: [number, number], steps = 4,
-): Promise<void> {
-  await page.mouse.move(from[0], from[1]);
-  await page.mouse.down();
-  for (let i = 1; i <= steps; i++) {
-    await page.mouse.move(from[0] + ((to[0] - from[0]) * i) / steps, from[1] + ((to[1] - from[1]) * i) / steps);
-  }
-  await page.mouse.up();
 }
 
 /** The terrain as it currently stands on disk — the state a stage starts from. */

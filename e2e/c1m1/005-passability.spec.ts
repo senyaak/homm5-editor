@@ -17,9 +17,9 @@ import { test, expect } from '@playwright/test';
 import { launchEditor } from '../launch.ts';
 import type { Launched } from '../launch.ts';
 import { armBrush } from '../tiles.ts';
+import { dragAt, tilePixels } from '../pointer.ts';
 import {
-  currentTerrain, dragAt, fixture, mismatches, openMap, requireFixture, saveTerrain,
-  tilePixels,
+  currentTerrain, fixture, mismatches, openMap, requireFixture, saveTerrain,
 } from './shared.ts';
 import {
   readGroundFlags, readHeights, readMask, readPassability, readTextureLayers, readWaterPlane,

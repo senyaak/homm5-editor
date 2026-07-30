@@ -22,6 +22,17 @@ export const REPO_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
  */
 export const E2E_GAME = process.env.HOMM5_ROOT || join(REPO_ROOT, '_tmp', 'e2e-install');
 
+/**
+ * The unpacked game data every spec resolves assets against.
+ *
+ * Here rather than in one spec's folder because it is the same answer for all of
+ * them, and because the two places that used to define it — the campaign
+ * reconstruction's `shared.ts` and `mods.ts` — had it written out twice, which is
+ * how a spec about the script editor came to import from the reconstruction.
+ * Read-only to the suite: nothing writes into it except a map being worked on.
+ */
+export const DATA = process.env.HOMM5_DATA || join(REPO_ROOT, 'data-unpacked');
+
 /** A launched app plus its first (only) window, ready for interaction. */
 export interface Launched {
   app: ElectronApplication;

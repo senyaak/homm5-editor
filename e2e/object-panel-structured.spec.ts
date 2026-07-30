@@ -13,7 +13,7 @@ import { join } from 'node:path';
 import { launchEditor } from './launch.ts';
 import type { Launched } from './launch.ts';
 import { newMap } from './tiles.ts';
-import { DATA } from './c1m1/shared.ts';
+import { DATA } from './launch.ts';
 import { openObjectPalette, pickObject, placeAtTile } from './objects.ts';
 
 let ed: Launched;

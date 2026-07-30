@@ -13,9 +13,8 @@ import { test, expect } from '@playwright/test';
 import { launchEditor } from '../launch.ts';
 import type { Launched } from '../launch.ts';
 import { armBrush, setBrushForce } from '../tiles.ts';
-import {
-  clickAt, fixture, mismatches, openMap, requireFixture, saveTerrain, startFresh, vertexPixels,
-} from './shared.ts';
+import { clickAt, vertexPixels } from '../pointer.ts';
+import { fixture, mismatches, openMap, requireFixture, saveTerrain, startFresh } from './shared.ts';
 import { readHeights } from '../../src/terrain.ts';
 
 let ed: Launched;
