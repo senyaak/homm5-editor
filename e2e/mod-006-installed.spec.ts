@@ -11,7 +11,7 @@
 // text files, the icons it carries, the file the native extension reads beside
 // the executable, and the two ceilings in it. Nothing here drives the app.
 //
-// It closes the chain in both modes. Isolated it reads mod-004's throwaway
+// It closes the chain in both modes. Isolated it reads mod-005's throwaway
 // install, which by then holds everything the four specs made; live it reads
 // the game, and the report is exactly what a player would get.
 
@@ -30,7 +30,7 @@ import { ORIGINAL_ARTIFACTS, readArtifactLimit, SITES_FILE } from '../src/artifa
 import type { Site } from '../src/artifact-limit.ts';
 import { ORIGINAL_LIMIT, readExe } from '../src/creature-limit.ts';
 
-// mod-004's install, because it is the last to write and the only one that ends
+// mod-005's install, because it is the last to write and the only one that ends
 // with all four kinds in it. Live, every spec shares one install anyway.
 const GAME = modGameRoot();
 const ARCHIVE = modFile(GAME, 'mod', MOD);
@@ -48,7 +48,7 @@ function members(): Map<string, Buffer> {
 }
 
 test.beforeAll(() => {
-  test.skip(!existsSync(ARCHIVE), `nothing to read — no ${ARCHIVE}; run mod-001…mod-004 first`);
+  test.skip(!existsSync(ARCHIVE), `nothing to read — no ${ARCHIVE}; run mod-001…mod-005 first`);
 });
 
 test('the archive carries what the run authored', () => {

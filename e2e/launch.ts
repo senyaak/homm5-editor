@@ -5,6 +5,7 @@
 // finds the electron binary from the installed `electron` package.
 
 import { _electron as electron } from '@playwright/test';
+import { note } from './trace.ts';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
@@ -118,11 +119,22 @@ export async function hudSays(page: Page, expected: RegExp | string, timeout = 6
   const hud = page.locator('#hud');
   const hit = (t: string): boolean => (typeof expected === 'string' ? t.includes(expected) : expected.test(t));
   const deadline = Date.now() + timeout;
+  // A pack or a save is the longest wait in the suite, and a silent one: the
+  // status line is the only thing that moves. Say what it says every few
+  // seconds, so a run that is working can be told apart from a wedged one
+  // WITHOUT waiting out the timeout. See e2e/trace.ts.
+  const started = Date.now();
+  let spoke = 0;
   for (;;) {
     const text = (await hud.textContent()) ?? '';
     if (hit(text)) return text;
     if (text.startsWith('error:')) throw new Error(`the editor reported a failure instead: ${text}`);
     if (Date.now() > deadline) throw new Error(`the status line never matched ${expected}; it says: ${text || '(nothing)'}`);
+    const waited = Math.floor((Date.now() - started) / 5000);
+    if (waited > spoke) {
+      spoke = waited;
+      note(`waiting for ${expected} — the editor says ${text ? `"${text}"` : 'nothing yet'} (${waited * 5}s)`);
+    }
     await delay(100);
   }
 }

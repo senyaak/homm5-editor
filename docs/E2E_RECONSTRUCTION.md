@@ -258,7 +258,7 @@ reports still where the last complete run left them.
 
 ### The second reconstruction: a map of our own
 
-`e2e/mod-004-sharpshooter-map.spec.ts` rebuilds `<game>/H5E/Sharpshooter Test.h5m` —
+`e2e/mod-005-sharpshooter-map.spec.ts` rebuilds `<game>/H5E/Sharpshooter Test.h5m` —
 the hand-made showcase for the Heroes III port's Sharpshooter — the same way and
 against the same gap reports, but small enough to run in seconds. The original
 is unpacked into `_tmp` as the reference and never written to; the map is built

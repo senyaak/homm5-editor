@@ -63,6 +63,10 @@ const MAP_DIR = join(DATA, 'Maps', 'SingleMissions', NAME);
 const ARCHIVE = modFile(GAME, 'map', NAME);
 
 const SHARPSHOOTER = 'CREATURE_H3_SHARPSHOOTER';
+/** The hero mod-004 installs, as the palette lists him and the map stores him. */
+const GEM = '/Heroes/H3Gem/H3Gem.(AdvMapHeroShared).xdb';
+/** Clear of the town, the three heroes and the neutral stacks. */
+const GEM_AT = { x: 44, y: 40 };
 
 /** The original's placements — read off its map.xdb, kept literal so the spec
  *  reads like the plan of the map. */
@@ -105,7 +109,7 @@ function cleanup(): void {
   // Live, nothing is swept: the install is the game, the packed map is the
   // point, and the working tree beside it is what a person would have left.
   if (LIVE) return;
-  // The INSTALL is not swept here even isolated — mod-005 reads it, being the
+  // The INSTALL is not swept here even isolated — mod-006 reads it, being the
   // stage that asks what the run actually put on disk. It takes it away when it
   // is done.
   for (const p of [REF_ROOT, MAP_DIR]) if (existsSync(p)) rmSync(p, { recursive: true, force: true });
@@ -375,6 +379,39 @@ test('packs to a .h5m holding the same members', async () => {
   const theirs = readEntries(readFileSync(ORIGINAL)).map((e) => e.name.replace(/\\/g, '/'));
   const missing = theirs.filter((n) => !ours.has(n));
   expect(missing, 'members of the original our archive lacks').toEqual([]);
+});
+
+// The map has held against the original by now, so what follows is ADDED to it
+// on purpose: a hero the game does not ship, standing on a map through the same
+// palette every other object came from. That is the point of the check — a
+// hero authored by mod-004 is an object like any other from here on, and the
+// palette finds him because a mod is a mounted root like the data folder is.
+test('and Gem stands on it, in red', async () => {
+  test.setTimeout(2 * 60_000);
+  const { page } = ed;
+
+  await pickObject(page, GEM);
+  const id = await placeOne(page, GEM, GEM_AT.x, GEM_AT.y);
+  await setObjectProp(page, 'PlayerID', 'PLAYER_1');
+  void id;
+
+  await page.locator('#save').click();
+  await hudSays(page, /saved/i, 60_000);
+
+  // On disk, in the map the game will read: our hero, owned by red.
+  const xml = readFileSync(join(MAP_DIR, 'map.xdb'), 'latin1');
+  expect(xml, 'the map references the hero the mod installed').toContain(GEM);
+  // Her own <AdvMapHero> block and nobody else's: split on the element, keep
+  // the piece that names her. A regex spanning "…H3Gem…</AdvMapHero>" would
+  // happily start at the hero before her and still match.
+  const gem = xml.split('<AdvMapHero>').find((part) => part.includes('H3Gem')) ?? '';
+  expect(gem, 'the placed hero is red').toContain('<PlayerID>PLAYER_1</PlayerID>');
+
+  await page.locator('#pack').click();
+  await hudSays(page, /^packed → /, 60_000);
+  const packed = readEntries(readFileSync(ARCHIVE))
+    .find((e) => e.name.replace(/\\/g, '/').endsWith('map.xdb'))!;
+  expect(packed.data.toString('latin1'), 'the packed map carries her too').toContain('H3Gem');
 
   // The whole run converged — leave nothing behind.
   cleanup();

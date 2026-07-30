@@ -12,7 +12,7 @@ import { DATA, REPO_ROOT } from './launch.ts';
 import {
   addArtifact, addArtifactSet, addCreature, addDwelling, buildCreatureMod, dataReader,
   installCreatureMod, MOD_STEM, newCreatureMod, packCreatureMod, readCreatureMod,
-  removeArtifact, removeArtifactSet, removeCreature, removeDwelling,
+  removeArtifact, removeArtifactSet, removeCreature, removeDwelling, removeHero,
   updateArtifact, updateArtifactSet,
 } from '../src/creature-mod.ts';
 import type { ArtifactSlot } from '../src/artifacts.ts';
@@ -329,12 +329,19 @@ export function removeGameRoot(dir: string): void {
   if (existsSync(dir)) rmSync(dir, { recursive: true, force: true });
 }
 
+/** The file stem mod-004 gives Gem; hers to author, so hers to clear. */
+export const GEM_FILE = 'H3Gem';
+
 /** Everything the fixtures author, so a live run can start where a fresh one does. */
 const OURS = {
   creatures: [SHARPSHOOTER.id],
   dwellings: [PALACE.file],
   artifacts: [AMULET.id, CLOAK.id, BOOTS.id],
   sets: [UNDEAD_KING.effect],
+  // The hero mod-004 authors. Without him here a second live run met his own
+  // leftovers and the dialog refused the name — which is exactly what the
+  // clearing is for.
+  heroes: [GEM_FILE],
 };
 
 /**
@@ -364,7 +371,21 @@ export function clearFixture(gameRoot: string): void {
   for (const id of OURS.creatures) {
     if (mod.creatures.some((c) => c.id === id)) { removeCreature(mod, id); touched = true; }
   }
+  for (const file of OURS.heroes) {
+    if ((mod.heroes ?? []).some((h) => h.file === file)) { removeHero(mod, file); touched = true; }
+  }
   if (!touched) return;
+  // Nothing left but the manifest: an archive of nothing is not a mod, and
+  // building one throws. This is the ordinary case in a throwaway install,
+  // where the fixtures ARE the whole mod — and it stayed hidden until a spec
+  // ran live against an install holding nothing else.
+  const empty = !mod.creatures.length && !mod.dwellings.length
+    && !(mod.artifacts ?? []).length && !(mod.sets ?? []).length && !(mod.heroes ?? []).length;
+  if (empty) {
+    rmSync(archive, { force: true });
+    writeEffectsFile(gameRoot, []);
+    return;
+  }
   const report = buildCreatureMod(mod, dataReader(DATA));
   installCreatureMod(gameRoot, mod, packCreatureMod(report));
   // An artifact taken out has to stop granting its bonus: the file is written

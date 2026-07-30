@@ -72,7 +72,7 @@ import { decodeDDSBuffer } from './dds.ts';
 import { isIdentity, recolorPixels } from './recolor.ts';
 import type { RecolorOps } from './recolor.ts';
 import { fitSquare, textureDoc, writeDDS } from './texture.ts';
-import { heroDoc, heroPaths } from './heroes.ts';
+import { heroDoc, heroLink, heroPaths } from './heroes.ts';
 import type { HeroSpec } from './heroes.ts';
 
 /**
@@ -500,6 +500,16 @@ export function removeArtifactSet(mod: CreatureMod, effect: string): ModArtifact
  * object's `Shared` href stops resolving, exactly as a deleted artifact breaks
  * a map that names it.
  */
+/**
+ * Drop a hero. Nothing renumbers: he holds no id, so removing one is removing
+ * three files and the manifest entry that named them.
+ */
+export function removeHero(mod: CreatureMod, file: string): HeroSpec {
+  const at = (mod.heroes ?? []).findIndex((h) => h.file === file);
+  if (at < 0) throw new Error(`${file} is not in the mod`);
+  return mod.heroes.splice(at, 1)[0]!;
+}
+
 export function removeDwelling(mod: CreatureMod, file: string): DwellingSpec {
   const at = mod.dwellings.findIndex((d) => d.file === file);
   if (at < 0) throw new Error(`${file} is not in the mod`);
@@ -1049,6 +1059,9 @@ function buildHeroes(heroes: readonly HeroSpec[], read: DataReader): ModFile[] {
   for (const h of heroes) {
     const p = heroPaths(h);
     files.push({ path: p.shared, data: Buffer.from(heroDoc(h, mustRead(read, h.donor), p), 'latin1') });
+    // The palette entry, so he can be PLACED and not merely hired: the Objects
+    // tab is built from these link files, read through the mounted chain.
+    files.push({ path: p.link, data: Buffer.from(heroLink(p), 'latin1') });
     files.push({ path: p.name, data: utf16(h.name) });
     files.push({ path: p.biography, data: utf16(h.biography) });
     if (h.specializationName) files.push({ path: p.specName, data: utf16(h.specializationName) });

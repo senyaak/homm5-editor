@@ -27,6 +27,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test, expect } from '@playwright/test';
 import { launchEditor, REPO_ROOT } from './launch.ts';
+import { settled } from './trace.ts';
 import type { Launched } from './launch.ts';
 import { modGameRoot, readInstalledMod } from './mods.ts';
 import { modFile } from '../src/mod-paths.ts';
@@ -120,10 +121,13 @@ test('authors Gem and installs her', async () => {
   await page.locator('#he-kn').fill('2');
 
   await page.locator('#he-ok').click();
-  await expect(page.locator('#hm-note')).toContainText('Installed into', { timeout: 120_000 });
+  // Watch BOTH boxes: the form reports a refusal in #he-err, and waiting only
+  // on the note spends two minutes discovering what the window said at once.
+  const note = await settled(page, 'installing Gem', '#hm-note', '#he-err');
+  expect(note).toContain('Installed into');
   // The href is the useful half of the result: it is what a map's roster, a
   // pool or a placed hero points at, and nothing else in the window reveals it.
-  await expect(page.locator('#hm-note')).toContainText('Heroes/H3Gem/H3Gem.(AdvMapHeroShared).xdb');
+  expect(note, 'the href a map, a pool or a placed hero points at').toContain('Heroes/H3Gem/H3Gem.(AdvMapHeroShared).xdb');
   await expect(page.locator('#hm-list')).toContainText('Gem');
   // Not a scenario hero, so the taverns of her faction may offer her.
   await expect(page.locator('#hm-list')).toContainText('offered by taverns');

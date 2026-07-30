@@ -218,10 +218,17 @@ addHero(mod, GEM);
 const files = buildCreatureMod(mod, dataReader(dataRoot)).files;
 const paths = files.map((f) => f.path);
 
-// Three of his own — document, name, biography — beside the mod's manifest.
-check('a hero is three files and no more',
+// Three of his own — document, name, biography — plus the palette entry, which
+// sits with the other palette entries and not in his folder, beside the mod's
+// manifest.
+check('a hero is three files of his own',
   paths.filter((f) => f.startsWith('Heroes/')).length === 3, paths.join(', '));
 check('the document is one of them', paths.includes(p.shared));
+check('and a palette entry, so he can be placed on a map', paths.includes(p.link), p.link);
+check('the entry points at him', (() => {
+  const link = files.find((f) => f.path === p.link)!.data.toString('latin1');
+  return link.includes(`<Link href="${heroHref(p)}"/>`);
+})());
 
 // The point of the whole exercise: unlike a creature or an artifact, a hero
 // extends nothing, so a heroes-only mod must carry not one file of the game's.

@@ -11,6 +11,7 @@
 
 import { expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
+import { step } from './trace.ts';
 
 /** Compare shared references by what they point at; case and slash vary. */
 export const sharedKey = (href: string): string =>
@@ -44,6 +45,10 @@ export async function catalogEntry(page: Page, shared: string): Promise<{
  * entries need their checkbox first or the grid will not show them.
  */
 export async function pickObject(page: Page, shared: string): Promise<void> {
+  return step(`arm ${shared.split('/').pop()}`, () => armObject(page, shared));
+}
+
+async function armObject(page: Page, shared: string): Promise<void> {
   const entry = await catalogEntry(page, shared);
   if (!entry) throw new Error(`no catalogue entry places ${shared}`);
   const armed = `placing: ${entry.label} · ${entry.type}`;
@@ -66,10 +71,12 @@ export async function pickObject(page: Page, shared: string): Promise<void> {
 
 /** Click the map at tile (x, y) to place the armed object. */
 export async function placeAtTile(page: Page, x: number, y: number): Promise<void> {
-  const at = await page.evaluate(([tx, ty]) => window.view.tileToScreen(tx!, ty!), [x, y]);
-  await page.mouse.move(at.x, at.y);
-  await page.mouse.down();
-  await page.mouse.up();
+  return step(`place at ${x},${y}`, async () => {
+    const at = await page.evaluate(([tx, ty]) => window.view.tileToScreen(tx!, ty!), [x, y]);
+    await page.mouse.move(at.x, at.y);
+    await page.mouse.down();
+    await page.mouse.up();
+  });
 }
 
 /** The object the app currently has selected, as the panel shows it. */
@@ -118,6 +125,10 @@ export async function setPlacement(
  * working when a field's control changes, because it never assumes one.
  */
 export async function setObjectProp(page: Page, name: string, value: string): Promise<void> {
+  return step(`set ${name} = ${value}`, () => writeObjectProp(page, name, value));
+}
+
+async function writeObjectProp(page: Page, name: string, value: string): Promise<void> {
   const row = page.locator('#p-props .pf').filter({ has: page.locator(`label[data-field="${name}"]`) }).first();
   await expect(row, `the panel offers ${name}`).toBeVisible();
   const control = row.locator('select, input[type=text], input[type=number], input[type=checkbox]').first();

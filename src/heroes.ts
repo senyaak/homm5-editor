@@ -52,11 +52,26 @@
 import { childText, find, parse, serialize, setText } from './xml.ts';
 import type { XmlElement, XmlNode } from './xml.ts';
 
+/** The line ending every shipped document uses, and so does ours. */
+const EOL = '\r\n';
+
 /** The document's own type — the class every hero file declares. */
 export const HERO_CLASS = 'AdvMapHeroShared';
 
 /** Where a hero's own files live in the mod. */
 export const HERO_DIR = 'Heroes';
+
+/**
+ * Where his palette entry goes.
+ *
+ * The Objects tab is built from `MapObjects/_(AdvMapObjectLink)/**` — one small
+ * file per entry, pointing at a shared definition — and it is read through the
+ * mounted chain, so a mod that drops one there gains a palette entry. Without
+ * it a hero exists for taverns and for a map's roster, but cannot be PLACED,
+ * which is how the shipped heroes are reached too: every one of them has a link
+ * beside him under `Heroes/<faction>/`.
+ */
+export const LINK_DIR = 'MapObjects/_(AdvMapObjectLink)/Heroes/Ours';
 
 /** One of the four masteries a skill is held at. */
 export type Mastery = 'MASTERY_NONE' | 'MASTERY_BASIC' | 'MASTERY_ADVANCED' | 'MASTERY_EXPERT';
@@ -156,6 +171,8 @@ export interface HeroSpec {
 export interface HeroPaths {
   dir: string;
   shared: string;
+  /** His palette entry, so the editor's Objects tab can place him. */
+  link: string;
   name: string;
   biography: string;
   /** Where his specialization's own texts go, when he does not borrow them. */
@@ -169,6 +186,7 @@ export function heroPaths(spec: Pick<HeroSpec, 'file'>): HeroPaths {
   return {
     dir,
     shared: `${dir}/${spec.file}.(${HERO_CLASS}).xdb`,
+    link: `${LINK_DIR}/${spec.file}.xdb`,
     name: `${dir}/${spec.file}_Name.txt`,
     biography: `${dir}/${spec.file}_Bio.txt`,
     specName: `${dir}/${spec.file}_SpecName.txt`,
@@ -299,6 +317,19 @@ export function heroDoc(spec: HeroSpec, donorXml: string, p: HeroPaths = heroPat
   if (m.ammoCart !== undefined) set(editable, 'AmmoCart', String(m.ammoCart));
 
   return serialize(doc);
+}
+
+/** The palette entry: a link file pointing at our hero. */
+export function heroLink(p: HeroPaths, icon = ''): string {
+  return [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<AdvMapObjectLink>',
+    `	<Link href="${heroHref(p)}"/>`,
+    '	<RndGroup/>',
+    `	<IconFile>${icon}</IconFile>`,
+    '	<HideInEditor>false</HideInEditor>',
+    '</AdvMapObjectLink>',
+  ].join(EOL) + EOL;
 }
 
 /** The `<InternalName>` of a hero document — what a campaign carries him under. */

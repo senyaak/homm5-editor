@@ -128,7 +128,7 @@ against the install this checkout sits in and keeps what they make — the patch
 executable, `H5E/homm5-editor.h5u`, and any map a spec packed:
 
 ```
-npm run e2e-live -- e2e/mod-004-sharpshooter-map.spec.ts
+npm run e2e-live -- e2e/mod-005-sharpshooter-map.spec.ts
 ```
 
 That is also how a fixture map gets rebuilt after you have edited it by hand: the
@@ -139,6 +139,14 @@ nothing, and leaves the rest of the archive alone. The flag behind it is
 `HOMM5_NO_REMOVE`; pass it through the runner rather than by hand, since
 Playwright rejects switches it does not know. See the header of
 `tools/e2e-live.ts` and `LIVE` in `e2e/mods.ts`.
+
+**When a run goes quiet.** A spec that drives the window makes hundreds of
+gestures inside ONE test, and the reporter prints a line per test — so a working
+run and a wedged one look identical for minutes. `e2e/trace.ts` prints anything
+that took longer than a second (`SLOW`), anything that threw (`FAIL`, with the
+name of the gesture, which the locator error does not carry), and a heartbeat
+while `hudSays` waits on a save or a pack. `E2E_TRACE=1` prints every gesture —
+when a step hangs, the last line before the silence is the culprit.
 
 Beyond the unit `test-*` scripts, the project's north-star e2e is
 **reconstructing the shipped campaign missions from scratch** and diffing against
