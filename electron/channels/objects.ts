@@ -74,7 +74,6 @@ function rosterFor(s: Session): (name: RegistryName) => string[] {
   };
 }
 
-// --- IPC: an object's simple fields, for the property panel ---
 /** The editor kind for a field we are describing from the schema alone. */
 function kindOf(f: FieldSchema): ObjectProp['kind'] {
   switch (controlOf(f)) {
@@ -116,7 +115,7 @@ function absentProps(obj: MapObject): ObjectProp[] {
 
 /** Wire this domain onto ipcMain. Called once, from main. */
 export function registerObjects(): void {
-  // --- IPC: move an object (x,y tiles); z stays the object's stored value ---
+  // Move an object (x,y tiles); z stays the object's stored value.
   ipcMain.handle('object:move', async (_e: IpcMainInvokeEvent, { id, x, y }: MoveObjectPayload): Promise<MoveObjectResult> => {
     const session = need();
     const obj = session.map.objects.find((o) => o.id === id);
@@ -125,7 +124,7 @@ export function registerObjects(): void {
     return { ok: true };
   });
 
-  // --- IPC: rotate an object ---
+  // Rotate an object.
   // An absolute angle rather than a delta, for the same reason the height brush
   // sends absolute heights: the renderer already worked out the answer, and
   // recomputing it here would be a second place for it to come out different.
@@ -136,7 +135,7 @@ export function registerObjects(): void {
     return { ok: true };
   });
 
-  // --- IPC: the placeable-object catalogue (the original's Objects tab) ---
+  // The placeable-object catalogue (the original's Objects tab).
   //
   // Two different roots, deliberately. The link files are game DATA, so they come
   // from the same unpacked root as every other asset; the filter list and icons
@@ -158,7 +157,7 @@ export function registerObjects(): void {
     };
   });
 
-  // --- IPC: one palette icon, decoded on demand ---
+  // One palette icon, decoded on demand.
   // 1466 icons at 64x64 RGBA would be ~24 MB pushed across the bridge for a panel
   // showing a few dozen at a time, so they are fetched per tile as it scrolls in.
   ipcMain.handle('objects:icon', async (_e: IpcMainInvokeEvent, { path }: IconPayload): Promise<IconResult> => {
@@ -178,7 +177,7 @@ export function registerObjects(): void {
     return linkTexture(catalog().objects.find((o) => o.path === path)?.iconFile);
   });
 
-  // --- IPC: place a new object ---
+  // Place a new object.
   // The model writes the map side; the mesh is resolved here so the renderer can
   // show it at once. A model the scene has not seen before is sent along with the
   // instance, since the renderer's geometry list is built at load time.
@@ -212,18 +211,19 @@ export function registerObjects(): void {
     };
   });
 
+  // An object's simple fields, for the property panel.
   ipcMain.handle('object:props', async (_e: IpcMainInvokeEvent, { id }: RemoveObjectPayload): Promise<ObjectPropsResult> => {
     const session = need();
     const obj = findObject(session, id);
     return { type: obj.type, props: [...obj.props(), ...absentProps(obj)] };
   });
 
-  // --- IPC: the legal values of a type's enum fields, from the game's spec ---
+  // The legal values of a type's enum fields, from the game's spec.
   ipcMain.handle('spec:values', async (_e: IpcMainInvokeEvent, { type }: SpecValuesPayload): Promise<SpecValuesResult> => {
     return { values: valuesFor(type) };
   });
 
-  // --- IPC: set one simple field ---
+  // Set one simple field.
   ipcMain.handle('object:set-prop', async (_e: IpcMainInvokeEvent, p: SetPropPayload): Promise<ObjectEditResult> => {
     const session = need();
     const obj = findObject(session, p.id);
@@ -247,7 +247,7 @@ export function registerObjects(): void {
     return { ok: true };
   });
 
-  // --- IPC: delete an object ---
+  // Delete an object.
   // `remove` takes out the whole <Item> wrapper and the blank line after it, so
   // the surrounding XML is left exactly as it was — which is also what lets the
   // recorded patch put it back byte for byte on undo.

@@ -1,5 +1,7 @@
 // What the mod dialogs are filled from: what is installed, and what can be
-// picked. Rosters and presets come from the plain data root, not the mounted
+// picked. The building blocks are the same ones tools/units-mod.ts uses.
+//
+// Rosters and presets come from the plain data root, not the mounted
 // chain — install resolves a donor's documents there, so offering a mod's own
 // creature as a donor would offer a choice that then fails.
 
@@ -20,12 +22,6 @@ import { Registry, artifactPreset, creatureAbilities, creatureAbilityNames, crea
 
 /** Wire this domain onto ipcMain. Called once, from main. */
 export function registerModsList(): void {
-  // --- units mod ----------------------------------------------------------------
-  //
-  // Game-global and session-free: a creature mod is an archive in our folder plus a
-  // ceiling in the executable, nothing of the open map — so the dialog works with
-  // no map loaded. The building blocks are the same ones tools/units-mod.ts uses.
-
   ipcMain.handle('mods:list', async (): Promise<ModsListResult> => {
     const g = gameRoot();
     if (!g) return { gameRoot: null, mods: [] };

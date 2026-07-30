@@ -18,7 +18,7 @@ import type { GeomData } from '#src/scene.ts';
 
 /** Wire this domain onto ipcMain. Called once, from main. */
 export function registerScene(): void {
-  // --- IPC: the idle-animation setting ---
+  // The idle-animation setting.
   // Read and written here rather than in the renderer, because it decides what
   // map:load builds; the renderer only learns which mode the scene it was handed
   // was built for. A scene built with it off can be topped up in place through
@@ -30,7 +30,7 @@ export function registerScene(): void {
     return {};
   });
 
-  // --- IPC: animation data for a scene that was built without it ---
+  // Animation data for a scene that was built without it.
   // A map opened with idles off carries no bones anywhere in its payload — that
   // is what makes `off` free. Turning the setting on used to mean reopening the
   // map; instead, this replays the open map's models through a fresh resolver
@@ -60,7 +60,7 @@ export function registerScene(): void {
     return skins;
   });
 
-  // --- IPC: baked particle keys, by bin/effects uid ---
+  // Baked particle keys, by bin/effects uid.
   // Separate from the scene payload on purpose: these are tens of MB as JSON and
   // a few MB as typed arrays, and structured clone ships typed arrays binary.
   // The renderer asks once per unique uid after the scene is up.

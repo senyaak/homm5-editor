@@ -66,7 +66,7 @@ function resolveEntityFile(s: Session, href: string): { file: string; editable: 
 
 /** Wire this domain onto ipcMain. Called once, from main. */
 export function registerEntities(): void {
-  // --- IPC: names defined in this map, for x-nameRef autocomplete ---
+  // Names defined in this map, for x-nameRef autocomplete.
   // A field can reference another entity by the name it was given (an objective's
   // Name, an object's Name). These are the names on offer, gathered from the map
   // itself so the hints are always current.
@@ -97,7 +97,7 @@ export function registerEntities(): void {
     return { names: [...seen].sort() };
   });
 
-  // --- IPC: a game-data roster for the typed-editing pickers ---
+  // A game-data roster for the typed-editing pickers.
   // Discovered from the data tree (see src/registry.ts) and cached per session, so
   // the first request for a roster scans and the rest are instant.
   ipcMain.handle('registry:roster', async (_e: IpcMainInvokeEvent, { name }: RosterPayload): Promise<RosterResult> => {
@@ -168,7 +168,7 @@ export function registerEntities(): void {
     return { name };
   });
 
-  // --- IPC: read/edit a referenced entity document (Birds/Wind/AmbientLight…) ---
+  // Read/edit a referenced entity document (Birds/Wind/AmbientLight…).
   // The original's "Edit" on a structured ref opens the referenced object's own
   // typed fields. These back that: read the document as a tree (like the map
   // tree), and — for a map-local document — set one field and write it back. The
@@ -196,7 +196,7 @@ export function registerEntities(): void {
     return { ok: true };
   });
 
-  // --- IPC: pick an existing text file for a text ref (the "…" on a txt row) ---
+  // Pick an existing text file for a text ref (the "…" on a txt row).
   // A native OS open-dialog, starting in the map folder. A file chosen from
   // elsewhere is copied in beside map.xdb, since a text ref stores a basename.
   ipcMain.handle('map:pick-text', async (): Promise<PickTextResult> => {
@@ -216,7 +216,7 @@ export function registerEntities(): void {
     return { href: basename(src) };
   });
 
-  // --- IPC: copy a shipped-library entity into the map so it can be edited ---
+  // Copy a shipped-library entity into the map so it can be edited.
   // The library is read-only; this makes an editable map-local twin and hands
   // back the href the ref should now point at (keeping the original xpointer).
   ipcMain.handle('entity:copy-to-map', async (_e: IpcMainInvokeEvent, { href }: EntityCopyPayload): Promise<EntityCopyResult> => {

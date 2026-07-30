@@ -5,11 +5,6 @@
 // terrain document. Only add-layer changes the file's structure rather than its
 // bytes, which is why it is a deliberate action and not something a stroke does.
 
-// --- IPC: the ground-tile palette (terrain brushes) ---
-// Decoding 80+ tile textures takes ~1s, and the set never changes while the app
-// runs, so it's built once and reused. `inMap` marks the tiles this map's
-// terrain already has a layer for — those are the ones paintable without
-// restructuring the .bin.
 import { ipcMain } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
 import { record } from '#electron/edits.ts';
@@ -21,11 +16,16 @@ import { join } from 'node:path';
 import { listTiles, splatFor } from '#src/scene.ts';
 import type { TileInfo } from '#src/scene.ts';
 
+// The ground-tile palette (terrain brushes).
+// Decoding 80+ tile textures takes ~1s, and the set never changes while the app
+// runs, so it's built once and reused. `inMap` marks the tiles this map's
+// terrain already has a layer for — those are the ones paintable without
+// restructuring the .bin.
 let tileCache: { root: string; tiles: TileInfo[] } | null = null;
 
 /** Wire this domain onto ipcMain. Called once, from main. */
 export function registerTerrain(): void {
-  // --- IPC: paint a ground tile over a set of vertices ---
+  // Paint a ground tile over a set of vertices.
   // The renderer has already painted its own copy for immediate feedback; this is
   // the authoritative write. Only tiles the map has a layer for can be painted —
   // adding a layer means restructuring the .bin (see src/terrain.ts).
@@ -36,7 +36,7 @@ export function registerTerrain(): void {
     return { ok: true };
   });
 
-  // --- IPC: raise/lower vertices ---
+  // Raise/lower vertices.
   // The payload carries final heights and flags, not an operation, so this is a
   // plain assignment. Flags travel with heights because the format ties them: a
   // bed dug to 0 is water, and raising it off 0 makes it ground again.
@@ -47,7 +47,7 @@ export function registerTerrain(): void {
     return { ok: true };
   });
 
-  // --- IPC: paint a river ---
+  // Paint a river.
   // Mask, river plane and heights in one message: a river whose plane is unset is
   // only paint as far as the game is concerned, and one whose bed was not sunk
   // sits on top of its own banks. Applying them separately would leave the file
@@ -63,7 +63,7 @@ export function registerTerrain(): void {
     return { ok: true };
   });
 
-  // --- IPC: the river plane on its own, at a chosen strength ---
+  // The river plane on its own, at a chosen strength.
   ipcMain.handle('terrain:river-cells', async (_e: IpcMainInvokeEvent, p: RiverCellsPayload): Promise<PaintTileResult> => {
     const session = need();
     record(session, p.value ? 'paint river' : 'erase river', { floors: [p.floor] },
@@ -71,7 +71,7 @@ export function registerTerrain(): void {
     return { ok: true };
   });
 
-  // --- IPC: the passability mask (the original editor's Masks tab) ---
+  // The passability mask (the original editor's Masks tab).
   ipcMain.handle('terrain:mask', async (_e: IpcMainInvokeEvent, p: MaskPayload): Promise<PaintTileResult> => {
     const session = need();
     record(session, p.walkable ? 'unblock tiles' : 'block tiles', { floors: [p.floor] },
@@ -79,7 +79,7 @@ export function registerTerrain(): void {
     return { ok: true };
   });
 
-  // --- IPC: give this map a layer for a tile it does not carry ---
+  // Give this map a layer for a tile it does not carry.
   // The only terrain edit that changes the file's structure rather than its
   // bytes, so it is a deliberate action rather than something a brush stroke
   // triggers. Returns a rebuilt splat: one more layer means a new shader and new

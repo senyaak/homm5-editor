@@ -4,9 +4,6 @@
 // identifier has to be free of all 118 the game already ships — one string
 // names him in a campaign, in a script and on disk.
 
-// Rosters and presets come from the plain data root, not the mounted chain:
-// install resolves the donor's documents there, so offering a mod's own
-// creature would offer a choice that then fails.
 import { dialog, ipcMain } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
 import type { ModsInstallHeroPayload, ModsInstallHeroResult, ModsRemovePayload, ModsRemoveResult, ModsUsesResult } from '#electron/ipc.ts';
@@ -22,6 +19,9 @@ import { HERO_DIR, artOf, heroHref, heroPaths, takenHeroIds } from '#src/heroes.
 import type { HeroSpec, Mastery } from '#src/heroes.ts';
 import { Registry } from '#src/registry.ts';
 
+// Rosters and presets come from the plain data root, not the mounted chain:
+// install resolves the donor's documents there, so offering a mod's own
+// creature would offer a choice that then fails.
 /**
  * One payload, one spec — shared by adding a hero and by changing one.
  *

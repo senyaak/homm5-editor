@@ -25,7 +25,7 @@ function readScriptFileName(xml: string): string | null {
 
 /** Wire this domain onto ipcMain. Called once, from main. */
 export function registerText(): void {
-  // --- IPC: everything the script editor completes from ---
+  // Everything the script editor completes from.
   //
   // Three sources, and none of them is "the words already in the buffer": the
   // engine's API (extracted from the manuals the game ships — src/script-api.json,
@@ -91,7 +91,7 @@ export function registerText(): void {
     return { files };
   });
 
-  // --- IPC: read/write a text file the map references (name.txt, a rumour…) ---
+  // Read/write a text file the map references (name.txt, a rumour…).
   // The original's "Edit" button on a text ref opens a plain-text editor on the
   // referenced file; these back that. Written straight to disk (the file is its
   // own document, not part of map.xdb), with the watcher resynced.
@@ -150,7 +150,7 @@ export function registerText(): void {
     return { lua };
   });
 
-  // --- IPC: create a map-local town specialization and return its ref ---
+  // Create a map-local town specialization and return its ref.
   // A specialization is a named town bonus. The shipped ones live in the game's
   // GameMechanics/, but there is nothing special about that folder — a map can
   // carry its own, packed beside map.xdb and referenced by a relative href, the

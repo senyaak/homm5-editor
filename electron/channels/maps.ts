@@ -49,7 +49,7 @@ function openDialogDir(): string {
   return existsSync(maps) ? maps : root;
 }
 
-// --- IPC: the maps on offer — ours, and the game's own ---
+// The maps on offer — ours, and the game's own.
 //
 // Both come out of archives in the install, never out of the unpacked data:
 // `<game>/H5E/*.h5m` are ours, `<game>/data/*.pak` hold the shipped ones. What
@@ -184,7 +184,7 @@ export function registerMaps(): void {
     return { root: g ?? gameData(), maps };
   });
 
-  // --- IPC: open a map file via the OS dialog (starts in the last-used folder) ---
+  // Open a map file via the OS dialog (starts in the last-used folder).
   ipcMain.handle('dialog:openMap', async (): Promise<OpenMapDialogResult> => {
     const opts = {
       title: 'Open a map',
@@ -204,7 +204,7 @@ export function registerMaps(): void {
     return r.canceled ? null : r.filePaths[0];
   });
 
-  // --- IPC: create a blank map from scratch (the original's New Map) ---
+  // Create a blank map from scratch (the original's New Map).
   //
   // Writes a complete project folder under <data>/Maps — where both the original
   // editor and our own Pack put maps — and hands back its map.xdb so the renderer
@@ -261,7 +261,7 @@ export function registerMaps(): void {
     return { mapPath: join(mapDir, 'map.xdb'), mapDir, archive };
   });
 
-  // --- IPC: open a packed .h5m as an editable project ---
+  // Open a packed .h5m as an editable project.
   //
   // The other half of Pack. A .h5m is a zip of the map folder, so opening one is
   // unpacking it beside the archive and then loading the map.xdb that comes out.
@@ -322,7 +322,7 @@ export function registerMaps(): void {
     return { mapPath, mapDir: projectDir, files: files.length };
   });
 
-  // --- IPC: load a map -> decode into a renderable scene ---
+  // Load a map -> decode into a renderable scene.
   ipcMain.handle('map:load', async (_e: IpcMainInvokeEvent, mapPath: string): Promise<MapLoadResult> => {
     const assetRoot = assetRootFor(mapPath);
     lastDir = dirname(mapPath);
@@ -388,7 +388,7 @@ export function registerMaps(): void {
     };
   });
 
-  // --- IPC: put the open map down ---
+  // Put the open map down.
   //
   // The watcher is the reason this is a call and not a renderer-only affair: left
   // running, a closed map's folder would keep pushing "changed on disk" at a window
@@ -400,7 +400,7 @@ export function registerMaps(): void {
     state.session = null;
   });
 
-  // --- IPC: project status (drift vs last pack) ---
+  // Project status (drift vs last pack).
   ipcMain.handle('map:status', async (): Promise<MapStatusResult> => {
     const { session } = state;
     if (!session) return null;

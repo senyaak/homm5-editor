@@ -17,7 +17,7 @@ import { addRefItem, addStringItem, appendItem, indentText, nodeAt, readTree, re
 
 /** Wire this domain onto ipcMain. Called once, from main. */
 export function registerTree(): void {
-  // --- IPC: the whole <AdvMapDesc> as a tree, and path-based edits on it ---
+  // The whole <AdvMapDesc> as a tree, and path-based edits on it.
   // The tree editor reads the map's full shape once, then edits by path. Every
   // edit goes through record({map:true}), so the tree shares undo/dirty/save with
   // every other edit.
@@ -61,7 +61,7 @@ export function registerTree(): void {
     return { ok: true };
   });
 
-  // --- IPC: one object as a tree ---
+  // One object as a tree.
   //
   // The property panel edits an object's simple fields; its STRUCTURES — a hero's
   // army, a capture trigger, a monster's reward resources — have children and no
@@ -116,7 +116,7 @@ export function registerTree(): void {
     return { ok: true };
   });
 
-  // --- IPC: the map's own settings (the original's map-properties tree) ---
+  // The map's own settings (the original's map-properties tree).
   // Read from map.desc, plus the visible name/description pulled from the sibling
   // text files they reference. Those files are shown read-only for now: they are a
   // separate document from the in-memory map.xdb, so editing them wants the same
@@ -130,7 +130,7 @@ export function registerTree(): void {
     };
   });
 
-  // --- IPC: set one map-root simple field ---
+  // Set one map-root simple field.
   ipcMain.handle('map:set-prop', async (_e: IpcMainInvokeEvent, p: SetMapPropPayload): Promise<ObjectEditResult> => {
     const session = need();
     const done = record(session, `set ${p.name}`, { map: true }, () => session.map.setMapProp(p.name, p.value));

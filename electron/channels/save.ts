@@ -68,7 +68,7 @@ function packDefault(name: string, mapDir: string): string {
 
 /** Wire this domain onto ipcMain. Called once, from main. */
 export function registerSave(): void {
-  // --- IPC: save map.xdb (latin1 preserves the original bytes) ---
+  // Save map.xdb (latin1 preserves the original bytes).
   ipcMain.handle('map:save', async (): Promise<MapSaveResult> => {
     const session = need();
     // The folder the session points at must still be a map. If it is not — it was
@@ -115,7 +115,7 @@ export function registerSave(): void {
     return { ok: true, status: status(session.mapDir) };
   });
 
-  // --- IPC: pack the map folder into a .h5m ---
+  // Pack the map folder into a .h5m.
   ipcMain.handle('map:pack', async (): Promise<MapPackResult> => {
     const session = need();
     // A localized map has no plain name.txt on disk — the game would find tagged
