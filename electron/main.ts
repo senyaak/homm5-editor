@@ -62,7 +62,7 @@ import { extractPalette, isIdentity, recolorPixels } from '../src/recolor.ts';
 import { readEntries, writeArchive } from '../src/pak.ts';
 import type { ArtifactRank, ArtifactSlot, ArtifactSpec, HeroStats } from '../src/artifacts.ts';
 import type { ArtifactExeResult } from '../src/artifact-limit.ts';
-import { GAME_EXE, cleanEnv } from '../src/launch-game.ts';
+import { PATCHED_EXE } from '../src/creature-limit.ts';
 import type { ExeResult } from '../src/creature-limit.ts';
 import { blankStats } from '../src/creatures.ts';
 import type { RegistryName, FieldSchema } from '../src/schema.ts';
@@ -428,15 +428,15 @@ async function gpuReport(): Promise<string> {
 ipcMain.handle('app:launch-game', (): LaunchGameResult => {
   const g = gameRoot();
   if (!g) throw new Error('no game install configured');
-  const exe = join(g, GAME_EXE);
+  const exe = join(g, PATCHED_EXE);
   if (!existsSync(exe)) {
-    throw new Error(`no ${GAME_EXE} — this install has not been prepared yet`
+    throw new Error(`no ${PATCHED_EXE} — this install has not been prepared yet`
       + ' (start the editor with --setup, or delete nothing and press Prepare there)');
   }
   // The install root, not `bin/`: the game resolves `data/`, `H5E/` and its
   // profiles from here, and this is where it was verified writing a generated
   // map. Started by hand from `bin/` it works out the same answer for itself.
-  const child = spawn(exe, [], { cwd: g, detached: true, stdio: 'ignore', env: cleanEnv(process.env) });
+  const child = spawn(exe, [], { cwd: g, detached: true, stdio: 'ignore' });
   child.unref();
   return { ok: true, exe };
 });
