@@ -743,7 +743,7 @@ Two constraints shape the design, both learned the hard way:
       written apart, and adding or removing a creature is one command.
 - [x] ✅ **Author a creature and an artifact from the window** (2026-07-28) —
       **Units…** and **Artifacts…**, session-free dialogs over the same functions the CLI
-      drives (`mods:*` in `electron/main.ts`, docs/UNITS_AND_ARTIFACTS.md). The donor is a
+      drives (`mods:*` in `electron/channels/mods-*.ts`, docs/UNITS_AND_ARTIFACTS.md). The donor is a
       **preset**, not a costume: picking one reads its record, its visual's text refs and
       both source documents whole, and fills every field — stats, name, description, the
       hire dialog's ability line, the engine abilities, the home town, and the four art
@@ -826,7 +826,7 @@ map. See `docs/LOCALIZATION.md`.
       resolve the ref to the active language's tagged file, with the base text
       shown as the source while translating. Editor-only state in a
       `localization.json` sidecar the game never sees. `loc:*` in
-      `electron/main.ts`, `e2e/localization.spec.ts`.
+      `electron/channels/loc.ts`, `e2e/localization.spec.ts`.
 - [x] ✅ **Export as `<language>`** (2026-07-23) — packs a single-language `.h5m`
       where each `name.txt` holds that language's text (falling back to the base
       when a translation is missing); the tagged files and the sidecar never ship.

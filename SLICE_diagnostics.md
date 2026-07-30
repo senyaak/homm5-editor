@@ -74,9 +74,11 @@ instinct applied to runs).
   is.
 - б) Telemetry of any kind. Nothing leaves the machine without a person pressing
   a button in their own browser.
-- в) Restructuring `electron/main.ts` (2671 lines). It has the same smell and is
-  a separate slice; the renderer is where the bugs of this kind actually
-  happened.
+- в) ~~Restructuring `electron/main.ts` (2671 lines). It has the same smell and
+  is a separate slice; the renderer is where the bugs of this kind actually
+  happened.~~ Done on 2026-07-31, as the separate slice this called for: 3011
+  lines down to 187, the handlers in `electron/channels/` — see
+  [SLICE_renderer_layout.md](SLICE_renderer_layout.md) §1.
 - г) A log viewer inside the app. "Open the folder" is enough until it is not.
 - д) ~~The deeply-wired sections of `renderer/app.ts` — regions, the terrain
   parts, the palettes.~~ Moved after all, once the shared state they hold was
