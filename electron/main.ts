@@ -433,10 +433,18 @@ ipcMain.handle('app:launch-game', (): LaunchGameResult => {
     throw new Error(`no ${PATCHED_EXE} — this install has not been prepared yet`
       + ' (start the editor with --setup, or delete nothing and press Prepare there)');
   }
-  // The install root, not `bin/`: the game resolves `data/`, `H5E/` and its
-  // profiles from here, and this is where it was verified writing a generated
-  // map. Started by hand from `bin/` it works out the same answer for itself.
-  const child = spawn(exe, [], { cwd: g, detached: true, stdio: 'ignore' });
+  // `bin/`, the executable's OWN folder. This is not a detail: started with the
+  // install root as its working directory the game came up and played, and broke
+  // creature models in the middle of it — so it resolves at least some of its
+  // content relative to the working directory and not to its own path. `bin/` is
+  // what a double-click gives it, a double-click is the launch that has always
+  // worked, and so it is the only working directory this may use.
+  //
+  // The install root was the reasonable-looking choice: `data/`, `H5E/` and
+  // `profiles/` are all there, and it looked verified — the game found its
+  // archives and a generated map still landed in `H5E/`. It got that far and was
+  // still wrong, which is why this line carries a comment.
+  const child = spawn(exe, [], { cwd: dirname(exe), detached: true, stdio: 'ignore' });
   child.unref();
   return { ok: true, exe };
 });
