@@ -21,12 +21,14 @@
 // built by READING one and replacing what makes him himself — the same shape as
 // a creature's donor, and for the same reason.
 //
-// The art is REFERENCED, not copied, which is where a hero differs from a
-// creature. A creature copies its donor's whole art closure so that recolouring
-// its texture cannot reach the original; a hero has no art of his own to edit
-// yet, so pointing at the shipped model is honest and costs three kilobytes
-// instead of two megabytes. The day a hero wants his own look, the copying is
-// creature-mod's to do and this is where it would hook in.
+// The art is COPIED into his folder, closure and all — the same bargain a
+// creature makes. It costs megabytes instead of kilobytes, and it buys the only
+// thing that matters here: recolouring his texture or swapping his mesh is an
+// edit to the mod and reaches nothing else. Referencing the shipped files would
+// mean a hero who cannot be given a look of his own without giving it to the
+// hero he was seeded from. The walk itself is creature-mod's copyArt(); this
+// module says WHICH hrefs are art (ART_FIELDS, FACE_FIELDS) and repoints them
+// at the copies afterwards (repointArt).
 //
 // WHAT MAKES HIM HIMSELF. Four fields decide who he is, and none of them can be
 // reached from a map (a placed hero's `Editable` covers stats, skills, spells,
@@ -482,4 +484,31 @@ export function artChoices(
   const out: Record<string, string[]> = {};
   for (const [slot, set] of Object.entries(seen)) out[slot] = [...set].sort();
   return out;
+}
+
+/** Where a hero's copied art lives inside his folder. */
+export const heroArtDir = (p: HeroPaths): string => `${p.dir}/art`;
+
+/**
+ * Point a hero's art fields at copies of themselves.
+ *
+ * `at` maps a data path to where the copy of it sits in the mod, which is what
+ * copyArt() hands back. Only fields we actually copied move: an href naming
+ * something that was not copied is left exactly as it was, so a hero half of
+ * whose art is missing still points at the half that exists.
+ */
+export function repointArt(xml: string, at: ReadonlyMap<string, string>): string {
+  const doc = parse(xml);
+  const root = doc.name === HERO_CLASS ? doc : find(doc, HERO_CLASS);
+  if (!root) return xml;
+  for (const field of [...Object.values(ART_FIELDS), ...Object.values(FACE_FIELDS)]) {
+    const el = find(root, field);
+    const href = el?.attrs.href;
+    if (!el || !href) continue;
+    const to = at.get(href.split('#')[0]!.replace(/^\/+/, ''));
+    if (!to) continue;
+    el.attrs.href = `/${to}${href.includes('#') ? href.slice(href.indexOf('#')) : ''}`;
+    el._dirtyAttrs = true;
+  }
+  return serialize(doc);
 }

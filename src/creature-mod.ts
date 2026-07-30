@@ -72,7 +72,7 @@ import { decodeDDSBuffer } from './dds.ts';
 import { isIdentity, recolorPixels } from './recolor.ts';
 import type { RecolorOps } from './recolor.ts';
 import { fitSquare, textureDoc, writeDDS } from './texture.ts';
-import { heroDoc, heroLink, heroPaths } from './heroes.ts';
+import { artOf, heroArtDir, heroDoc, heroLink, heroPaths, repointArt } from './heroes.ts';
 import type { HeroSpec } from './heroes.ts';
 
 /**
@@ -1082,7 +1082,27 @@ function buildHeroes(heroes: readonly HeroSpec[], read: DataReader): ModFile[] {
   const files: ModFile[] = [];
   for (const h of heroes) {
     const p = heroPaths(h);
-    files.push({ path: p.shared, data: Buffer.from(heroDoc(h, mustRead(read, h.basedOn), p), 'latin1') });
+    let doc = heroDoc(h, mustRead(read, h.basedOn), p);
+
+    // His looks, copied into his own folder — the same closure walk a creature
+    // gets, and for the same reason: with the art inside, recolouring a texture
+    // or swapping a mesh is an edit to the mod and reaches nothing else. It was
+    // hrefs at the shipped files for a while, which is three kilobytes and no
+    // way to change how he looks without changing how the donor looks too.
+    //
+    // Files the author brought are NOT seeds: they are already in his folder,
+    // and walking them would copy whatever they point at back out of the game.
+    const own = new Set(Object.keys(h.ownFiles ?? {}).map((href) => href.replace(/^\/+/, '')));
+    const seeds = Object.values(artOf(doc))
+      .map((href) => href.split('#')[0]!.replace(/^\/+/, ''))
+      .filter((rel) => rel && !own.has(rel));
+    if (seeds.length) {
+      const copied = copyArt(seeds, heroArtDir(p), read, h.id);
+      for (const [path, data] of copied.files) files.push({ path, data });
+      doc = repointArt(doc, copied.at);
+    }
+
+    files.push({ path: p.shared, data: Buffer.from(doc, 'latin1') });
     // The palette entry, so he can be PLACED and not merely hired: the Objects
     // tab is built from these link files, read through the mounted chain.
     files.push({ path: p.link, data: Buffer.from(heroLink(p), 'latin1') });

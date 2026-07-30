@@ -9,7 +9,7 @@
 //   the shape — the fields we write are the fields the shipped heroes carry,
 //     in the order types.xml declares them;
 //   the preset — everything not asked for stays as the document it was seeded
-//     from has it, which is what makes a hero three kilobytes;
+//     from has it, and the art it names is copied into his own folder;
 //   the identity — Class, TownType, Specialization and PrimarySkill are the
 //     four the map cannot reach, and they are what a new hero exists for;
 //   the racial slot — a hero may hold a non-racial skill there, because the
@@ -136,8 +136,11 @@ const oursOf = (name: string): string => {
   return el ? (el.attrs.href ?? text(el)) : '';
 };
 
+// heroDoc() alone names the preset's files; the mod build then copies them in
+// and repoints these fields at the copies (checked further down). What matters
+// here is that the document asked for the right art in the first place.
 for (const art of ['Model', 'AnimSet', 'HeroCharacterArena', 'HeroCharacterAdventure', 'CombatVisual', 'Selection', 'Trace']) {
-  check(`${art} is still the donor's — referenced, not copied`, oursOf(art) === donorOf(art) && !!donorOf(art));
+  check(`${art} is the preset's, before the build copies it in`, oursOf(art) === donorOf(art) && !!donorOf(art));
 }
 check('the portrait is the donor\'s until one is given', oursOf('FaceTexture') === donorOf('FaceTexture'));
 
@@ -217,12 +220,32 @@ addHero(mod, GEM);
 const files = buildCreatureMod(mod, dataReader(dataRoot)).files;
 const paths = files.map((f) => f.path);
 
-// Three of his own — document, name, biography — plus the palette entry, which
-// sits with the other palette entries and not in his folder, beside the mod's
-// manifest.
-check('a hero is three files of his own',
-  paths.filter((f) => f.startsWith('Heroes/')).length === 3, paths.join(', '));
-check('the document is one of them', paths.includes(p.shared));
+// His own four — document, name, biography, and the art copied in beside them —
+// plus the palette entry, which sits with the other palette entries.
+check('the document is his', paths.includes(p.shared));
+check('his texts are beside it', paths.includes(p.name) && paths.includes(p.biography));
+
+// The art, copied into his folder rather than referenced. It is what lets a
+// hero be recoloured or re-modelled without the shipped hero changing too —
+// the same bargain a creature makes, and the reason it is megabytes not
+// kilobytes.
+const art = paths.filter((f) => f.startsWith(`${p.dir}/art/`));
+check('his art is copied into his own folder', art.length > 50, `${art.length} files`);
+check('...the model among it', art.some((f) => /Ranger_LOD-geom\.xdb$/.test(f)));
+check('...and its textures', art.some((f) => f.endsWith('.dds')));
+
+// And the document points at the COPIES: art copied in but still referenced
+// where it came from would be megabytes bought for nothing.
+const heroXml = files.find((f) => f.path === p.shared)!.data.toString('latin1');
+check('the document points at the copies, not the shipped files',
+  /<Model href="\/Heroes\/H3Gem\/art\//.test(heroXml),
+  /<Model href="([^"]*)"/.exec(heroXml)?.[1]);
+
+// Binaries are keyed by uid, so a copy needs one of its own — sharing the
+// donor's would mean editing our mesh edited the shipped hero's.
+const bins = paths.filter((f) => f.startsWith('bin/'));
+check('its binaries got fresh uids', bins.length > 0
+  && bins.every((f) => !existsSync(join(dataRoot, f))), `${bins.length} binaries`);
 check('and a palette entry, so he can be placed on a map', paths.includes(p.link), p.link);
 check('the entry points at him', (() => {
   const link = files.find((f) => f.path === p.link)!.data.toString('latin1');

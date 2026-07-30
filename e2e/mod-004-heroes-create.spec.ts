@@ -179,11 +179,19 @@ test('the archive holds her, and nothing of the game\'s', async () => {
   expect(xml).toContain('<SkillID>HERO_SKILL_AVENGER</SkillID>');
   // The appearance the preset seeded was WRITTEN, not merely displayed.
   expect(xml).toMatch(/<Model href="[^"]*Ranger_LOD/);
-  // Referenced, not copied: her body is still Ossir's, by href.
-  const donorXml = readFileSync(join(dataRoot, GEM.donorPath), 'utf8');
+  // COPIED, not referenced: her body is Ossir's model, but the archive carries
+  // its own copy of it and she points at that. It is what lets her be recoloured
+  // or re-modelled later without Ossir changing too.
   const modelOf = (s: string): string => /<Model href="([^"]+)"/.exec(s)?.[1] ?? '';
-  expect(modelOf(xml)).toBe(modelOf(donorXml));
-  expect(modelOf(xml)).toBeTruthy();
+  expect(modelOf(xml)).toContain(`/${p.dir}/art/`);
+  const donorModel = modelOf(readFileSync(join(dataRoot, GEM.donorPath), 'utf8'));
+  expect(modelOf(xml), 'the same model, at her own path')
+    .toBe(`/${p.dir}/art${donorModel}`);
+  // And the copy is really in the archive, with its binary under a uid of ours.
+  expect(names).toContain(`${p.dir}/art/Characters/Heroes/Ranger_LOD.xdb`);
+  const bins = names.filter((n) => n.startsWith('bin/'));
+  expect(bins.length, 'binaries copied under fresh uids').toBeGreaterThan(0);
+  expect(bins.filter((n) => existsSync(join(dataRoot, n))), 'and none overwrites a shipped one').toEqual([]);
 });
 
 test('an installed hero opens for editing, whole', async () => {
