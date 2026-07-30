@@ -31,6 +31,7 @@
     "test-assets": "node tools/test-assets.ts",
     "test-creature-mod": "node tools/test-creature-mod.ts",
     "test-dwellings": "node tools/test-dwellings.ts",
+    "test-heroes": "node tools/test-heroes.ts",
     "test-creature-limit": "node tools/test-creature-limit.ts",
     "units-mod": "node tools/units-mod.ts",
     "creature-limit": "node tools/creature-limit.ts",

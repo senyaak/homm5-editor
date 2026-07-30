@@ -72,6 +72,8 @@ import { decodeDDSBuffer } from './dds.ts';
 import { isIdentity, recolorPixels } from './recolor.ts';
 import type { RecolorOps } from './recolor.ts';
 import { fitSquare, textureDoc, writeDDS } from './texture.ts';
+import { heroDoc, heroPaths } from './heroes.ts';
+import type { HeroSpec } from './heroes.ts';
 
 /**
  * The mod's file name stem — `homm5-editor.h5u` in UserMODs.
@@ -277,6 +279,16 @@ export interface CreatureMod {
    * executable has never heard of. See docs/ENGINE_INTERNALS.md.
    */
   sets: ModArtifactSet[];
+  /**
+   * Heroes of our own — the cheapest thing in the archive.
+   *
+   * Cheaper even than a dwelling: a dwelling at least declares a BUILDING_ type,
+   * while a hero has no enum, no reference table and no ceiling anywhere, and
+   * the executable does not carry so much as a shipped hero's name. Everything
+   * that reaches a hero reaches him by PATH, so a new one is a file nobody owns
+   * and the game's own files stay untouched. See src/heroes.ts.
+   */
+  heroes: HeroSpec[];
 }
 
 /** One in a mod: a spec plus the id number it holds. */
@@ -337,7 +349,28 @@ export interface ModArtifactSet extends ArtifactSetSpec {
 
 /** A fresh, empty mod. */
 export function newCreatureMod(stem = MOD_STEM): CreatureMod {
-  return { version: 1, stem, first: SHIPPED_CREATURES, creatures: [], dwellings: [], artifacts: [], sets: [] };
+  return { version: 1, stem, first: SHIPPED_CREATURES, creatures: [], dwellings: [], artifacts: [], sets: [], heroes: [] };
+}
+
+/**
+ * Append a hero. Like a dwelling he holds no id, so order is cosmetic.
+ *
+ * The one thing that must not collide is his `InternalName`: a campaign carries
+ * a levelled hero from mission to mission under it, so two heroes sharing one
+ * would be one character as far as the carry is concerned.
+ */
+export function addHero(mod: CreatureMod, spec: HeroSpec): HeroSpec {
+  if (!mod.heroes) mod.heroes = [];
+  if (!spec.file.trim()) throw new Error('a hero needs a file stem');
+  if (!spec.internalName.trim()) throw new Error(`${spec.file}: a hero needs an internal name to travel under`);
+  if (mod.heroes.some((h) => h.file === spec.file)) {
+    throw new Error(`two heroes cannot both be "${spec.file}"`);
+  }
+  if (mod.heroes.some((h) => h.internalName === spec.internalName)) {
+    throw new Error(`two heroes cannot both be "${spec.internalName}" — a campaign carries them by that name`);
+  }
+  mod.heroes.push(spec);
+  return spec;
 }
 
 /**
@@ -622,7 +655,8 @@ export interface BuildReport {
  * a test.
  */
 export function buildCreatureMod(mod: CreatureMod, read: DataReader): BuildReport {
-  if (!mod.creatures.length && !mod.dwellings.length && !mod.artifacts?.length && !mod.sets?.length) {
+  if (!mod.creatures.length && !mod.dwellings.length && !mod.artifacts?.length
+    && !mod.sets?.length && !mod.heroes?.length) {
     throw new Error('the mod is empty');
   }
   const limit = creatureLimit(mod);
@@ -684,6 +718,7 @@ export function buildCreatureMod(mod: CreatureMod, read: DataReader): BuildRepor
   files.push(...buildDwellings(mod.dwellings, read));
   files.push(...buildArtifacts(mod.artifacts ?? [], read));
   files.push(...buildArtifactSets(mod.sets ?? []));
+  files.push(...buildHeroes(mod.heroes ?? [], read));
 
   // Only creatures need the game's own files touched: the enum and the id→number
   // map in types.xml, the reference table the ceiling indexes, and the hire
@@ -997,6 +1032,27 @@ function patchStartupScript(script: string, artifacts: readonly ModArtifact[]): 
   return withIds.slice(0, from) + withIds.slice(from).replace(
     new RegExp(`^(\\s*=\\s*)${SHIPPED_ARTIFACTS}\\b`), `$1${to}`,
   );
+}
+
+/**
+ * The files every hero contributes: his document, his name and his biography.
+ *
+ * Three files and nothing else. His art is REFERENCED like a dwelling's model —
+ * he is built by reading a shipped hero of his faction and replacing what makes
+ * him himself, so the model, animations, arena character and trace stay the
+ * donor's hrefs. Copying that closure would add two megabytes to buy an ability
+ * to recolour nobody has asked for yet; the day a hero wants his own look, the
+ * copying already exists for creatures and this is where it hooks in.
+ */
+function buildHeroes(heroes: readonly HeroSpec[], read: DataReader): ModFile[] {
+  const files: ModFile[] = [];
+  for (const h of heroes) {
+    const p = heroPaths(h);
+    files.push({ path: p.shared, data: Buffer.from(heroDoc(h, mustRead(read, h.donor), p), 'latin1') });
+    files.push({ path: p.name, data: utf16(h.name) });
+    files.push({ path: p.biography, data: utf16(h.biography) });
+  }
+  return files;
 }
 
 /**
@@ -1554,10 +1610,14 @@ function reconstruct(types: string, table: string): CreatureMod {
     // among a mod's other files, with no registry to enumerate. An artifact
     // could be read back out of the table it extends, but only its numbers —
     // which picture it was built from is in the manifest or nowhere. A set is
-    // the same: its members survive in DefaultStats, its texts do not.
+    // the same: its members survive in DefaultStats, its texts do not. A hero
+    // is the extreme case: he extends nothing at all, so the only trace of him
+    // is his own file, and which donor he was built from is the manifest's to
+    // remember.
     dwellings: [],
     artifacts: [],
     sets: [],
+    heroes: [],
   };
 }
 
