@@ -30,19 +30,34 @@ export async function openTree(page: Page, advanced = true): Promise<void> {
 /** Expand a group if it is collapsed; its twisty says which. */
 async function expand(grp: Locator): Promise<void> {
   const tw = grp.locator('> .mt-ghead > .tw').first();
-  await expect(tw).toBeVisible();
-  if ((await tw.textContent())?.trim() === '▸') await grp.locator('> .mt-ghead').first().click();
+  // One question, not three. Reading the twisty already waits for it to be
+  // there, and its answer already says whether the group is open — asserting
+  // visibility before and `▾` after asked the browser twice more for what was
+  // in hand, on every group of every path.
+  if ((await tw.textContent())?.trim() === '▾') return;
+  await grp.locator('> .mt-ghead').first().click();
   await expect(tw).toHaveText('▾');
 }
 
 /**
  * Expand every group along a path, so the node at its end is on screen.
  *
- * Groups fill when they open, so this cannot be one selector: each step has to
- * exist before the next one can be found.
+ * Two ways there, and the difference is minutes. A caller reading the fields of
+ * one item asks for a dozen paths that share all but their last step, so after
+ * the first the whole way is already open and the node is simply THERE — one
+ * question answers that. Walking down from the root regardless asked the browser
+ * four times per level for something it had already been told: on C1M1's
+ * objectives that made a leaf cost 431ms where reading it outright costs 10, and
+ * a stage that writes nothing at all still took four minutes.
+ *
+ * The walk stays for the case it was written for: a path not yet on screen, where
+ * each group has to open before the next one exists to be found.
  */
 export async function reveal(page: Page, path: (string | number)[]): Promise<Locator> {
-  let at = page.locator('#maptree-body');
+  const body = page.locator('#maptree-body');
+  const target = body.locator(`[data-path='${key(path)}']`).first();
+  if (await target.isVisible()) return target;
+  let at: Locator = body;
   for (let i = 1; i <= path.length; i++) {
     const sel = `[data-path='${key(path.slice(0, i))}']`;
     const node = at.locator(sel).first();
