@@ -17,7 +17,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import * as THREE from 'three';
 import { createGeomResolver } from '../src/scene.ts';
-import { makeIdle, poseIdle } from '../renderer/skinning.ts';
+import { makeIdle, poseIdle } from '#viewport/skinning.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {

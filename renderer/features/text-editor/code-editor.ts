@@ -25,8 +25,8 @@ import { lintKeymap, linter, lintGutter } from '@codemirror/lint';
 import type { Diagnostic } from '@codemirror/lint';
 import { lua } from '@codemirror/legacy-modes/mode/lua';
 import { oneDark } from '@codemirror/theme-one-dark';
-import { luaDiagnostics, luaNameWarnings } from '../src/lua-lint.ts';
-import type { LuaDiagnostic } from '../src/lua-lint.ts';
+import { luaDiagnostics, luaNameWarnings } from '#src/lua-lint.ts';
+import type { LuaDiagnostic } from '#src/lua-lint.ts';
 
 /** One engine function the editor completes from — merged from our curated
  *  reference (`summary` present) and the PDF extraction (signature only). */

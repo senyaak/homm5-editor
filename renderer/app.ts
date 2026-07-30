@@ -16,25 +16,29 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-import { UNITS_PER_TILE as U } from '../src/units.ts';
-import { tierOf, RAMP_BIT, TIER_STEP } from '../src/terrain.ts';
-import type { Scene, Floor, Instance, SplatData, TileInfo, GeomData, GeomPart, Footprint, SkinnedGeom, AmbientData, FxInstancePayload } from '../src/scene.ts';
-import { createFxSystem } from './particles.ts';
-import type { FxSystem } from './particles.ts';
+import { $, $select, $button, $input, setChild } from '#core/dom.ts';
+import { uiPrefs, saveUiPrefs } from '#core/prefs.ts';
+import { state, activeFloor, heightOn, heightAt } from '#core/state.ts';
+import type { Floor3D, World, Selection, GeomBatch } from '#core/state.ts';
+import { UNITS_PER_TILE as U } from '#src/units.ts';
+import { tierOf, RAMP_BIT, TIER_STEP } from '#src/terrain.ts';
+import type { Scene, Floor, Instance, SplatData, TileInfo, GeomData, GeomPart, Footprint, SkinnedGeom, AmbientData, FxInstancePayload } from '#src/scene.ts';
+import { createFxSystem } from '#viewport/particles.ts';
+import type { FxSystem } from '#viewport/particles.ts';
 import type { EditorApi, MapListEntry, ExternalChange, ModListEntry, PlaceableObject, RosterEntryDTO, LocResult,
-  CampaignDoc, CampaignListEntry, CampaignMissionDto, CreatureStats, PaletteEntry, RecolorOps } from '../electron/ipc.ts';
-import { recolorPixels } from '../src/recolor.ts';
-import { artLabels } from '../src/heroes.ts';
-import type { ObjectProp } from '../src/map.ts';
-import { objectProps, deref, controlOf, objectSchema, mapSchema, resolveSchemaAtPath, classOf, schemaForClass } from '../src/schema.ts';
-import type { FieldSchema, HasDefs } from '../src/schema.ts';
-import { TOWN_BONUSES } from '../src/town-bonuses.ts';
-import type { TreeData, Path as TreePath } from '../src/tree.ts';
-import { makeIdle, poseIdle } from './skinning.ts';
-import type { IdleObject } from './skinning.ts';
-import { mountCodeEditor, setScriptContext } from './code-editor.ts';
-import type { CodeEditor, ScriptContext } from './code-editor.ts';
-import type { LuaDiagnostic } from '../src/lua-lint.ts';
+  CampaignDoc, CampaignListEntry, CampaignMissionDto, CreatureStats, PaletteEntry, RecolorOps } from '#electron/ipc.ts';
+import { recolorPixels } from '#src/recolor.ts';
+import { artLabels } from '#src/heroes.ts';
+import type { ObjectProp } from '#src/map.ts';
+import { objectProps, deref, controlOf, objectSchema, mapSchema, resolveSchemaAtPath, classOf, schemaForClass } from '#src/schema.ts';
+import type { FieldSchema, HasDefs } from '#src/schema.ts';
+import { TOWN_BONUSES } from '#src/town-bonuses.ts';
+import type { TreeData, Path as TreePath } from '#src/tree.ts';
+import { makeIdle, poseIdle } from '#viewport/skinning.ts';
+import type { IdleObject } from '#viewport/skinning.ts';
+import { mountCodeEditor, setScriptContext } from '#features/text-editor/code-editor.ts';
+import type { CodeEditor, ScriptContext } from '#features/text-editor/code-editor.ts';
+import type { LuaDiagnostic } from '#src/lua-lint.ts';
 
 type MapEntry = MapListEntry & { cat: string };
 /**
@@ -55,120 +59,6 @@ declare global {
   }
 }
 
-
-/**
- * Look up an element the page is known to contain. Throws rather than returning
- * null: every id here is hard-coded in index.html, so a miss is a typo caught on
- * first load, not a runtime condition worth handling at each call site.
- */
-const $ = (id: string): HTMLElement => {
-  const el = document.getElementById(id);
-  if (!el) throw new Error(`no element #${id}`);
-  return el;
-};
-
-/** Same, for the one <select> we drive. */
-const $select = (id: string): HTMLSelectElement => {
-  const el = $(id);
-  if (!(el instanceof HTMLSelectElement)) throw new Error(`#${id} is not a select`);
-  return el;
-};
-
-/** Same, for the buttons whose .disabled we set. */
-const $button = (id: string): HTMLButtonElement => {
-  const el = $(id);
-  if (!(el instanceof HTMLButtonElement)) throw new Error(`#${id} is not a button`);
-  return el;
-};
-
-/** Same, for the inputs whose .value we read — checked, not cast. */
-const $input = (id: string): HTMLInputElement => {
-  const el = $(id);
-  if (!(el instanceof HTMLInputElement)) throw new Error(`#${id} is not an input`);
-  return el;
-};
-
-/** Set the text of a child the markup is known to contain. */
-const setChild = (root: HTMLElement, sel: string, text: string): void => {
-  const el = root.querySelector(sel);
-  if (el) el.textContent = text;
-};
-
-/** One floor as it exists in the scene graph, beside the data it came from. */
-interface Floor3D {
-  name: string;
-  V: number;
-  /** Live height plane; the sculpt brush edits it in place and remeshes. */
-  heights: number[];
-  /** Live ground-kind flags, edited alongside heights (digging floods, raising drains). */
-  flags: number[] | null;
-  /**
-   * How far the river brush has already lowered each vertex, seeded from the
-   * map's own river plane. Two things depend on it being a depth rather than a
-   * flag:
-   *
-   *   * A river is a fixed depth below its banks, not a hole that deepens every
-   *     time you paint over it — so this survives across strokes. Clearing it
-   *     per stroke turned four passes over one stream into a canyon.
-   *   * A vertex feathered as rim by one part of a stroke often ends up under
-   *     the bed as the brush moves on. Recording only "touched" left it stuck
-   *     0.2 above the bed forever, which is what made a dragged river ragged.
-   */
-  riverDrop: Map<number, number>;
-  /** Explicit passability mask: 0 blocked, 1 walkable. */
-  passable: number[] | null;
-  /** River-bed vertices — the bed only, never the feathered rim. */
-  river: Set<number>;
-  /** The passability view: blocked fill, navigable fill and the tile grid. */
-  passMeshes: THREE.Mesh[];
-  /** Building footprint squares (blocked/active/hole/passable), shown with the grid. */
-  footMeshes: THREE.Mesh[];
-  /** Ground colours for the fallback material, kept for remeshing. */
-  colors: number[] | null;
-  group: THREE.Group;
-  objGroup: THREE.Group;
-  /**
-   * Per-object handles for picking and editing. Deliberately NOT in the scene:
-   * `batches` does the drawing, and these exist to be raycast, dragged and
-   * boxed. The raycaster gets them as an explicit list.
-   */
-  meshes: Map<string, THREE.Mesh>;
-  /** One instanced draw per model. See buildBatches. */
-  batches: Map<number, GeomBatch>;
-  /**
-   * Objects playing their idle clip, each its own skinned draw. Empty unless
-   * the idle-stance setting is on — and an object in here is NOT in `batches`,
-   * or it would be drawn twice, once moving and once frozen.
-   */
-  idle: IdleObject[];
-  /**
-   * Playing particle effects, one system per (placed object x its effect's
-   * ParticleInstance). Built asynchronously after the floor (the baked keys
-   * arrive over their own IPC); empty until then and on maps without effects.
-   */
-  fx: FxSystem[];
-  /**
-   * The floor's designer point lights (map.xdb <pointLights>), baked into one
-   * texture the terrain shaders add to the preset's light. See bakeLightMap.
-   */
-  lightMap: THREE.DataTexture;
-  /** A light-carrying object moved or died; the render loop rebakes soon. */
-  lightsDirty: boolean;
-  terrainMesh: THREE.Mesh;
-  waterMesh: THREE.Mesh | null;
-  /** The sea texture, kept so sculpting can raise a sheet on a map that began dry. */
-  waterTex: string | null;
-  splat: SplatData | null;
-  /** The packed layer masks on the GPU; the brush paints straight into it. */
-  maskTex: THREE.DataArrayTexture | null;
-  /** The floor's lighting preset; applied whenever this floor is shown. */
-  ambient: AmbientData | null;
-  instances: Instance[];
-}
-
-/** The loaded map: one group per floor, exactly one of them visible. */
-interface World { floors: Floor3D[]; active: number }
-
 /**
  * A point on a cut cell's boundary ring. Corners reuse their existing grid
  * vertex; a cut sits at an edge midpoint and carries TWO heights, since the cut
@@ -178,8 +68,6 @@ interface RingCorner { cut: false; up: boolean; gi: number }
 interface RingCut { cut: true; xy: [number, number]; hz: number; lz: number }
 type RingPoint = RingCorner | RingCut;
 
-/** The currently picked object, kept with its mesh so a drag can move it. */
-interface Selection { id: string; mesh: THREE.Mesh; inst: Instance }
 const ALL = 'All'; // category chip meaning 'no filter', used as both label and key
 
 // --- three.js boilerplate ---
@@ -397,93 +285,19 @@ addEventListener('resize', () => {
   syncTopCamera(); // keep the plan-view frustum matched to the new aspect
 });
 
-// --- persisted UI preferences ----------------------------------------------
-// The toolbar toggles and sliders are view state, not map data, so they live in
-// localStorage and a restart reopens the editor the way it was left. Declared
-// ahead of the state below because those globals initialise from it. showObjects
-// now defaults ON — the first thing a session usually wants is to see the map's
-// objects, and terrain-only work can still flip the toggle off (and it sticks).
-interface UiPrefs {
-  showObjects: boolean;
-  explorerOpen: boolean;
-  cliffs: boolean;
-  grid: boolean;
-  showHidden: boolean;
-  texScale: number;
-  /** Plan (top-down orthographic) view instead of the 3D orbit view. */
-  topView: boolean;
-  /** Height the Bulk/Dig brush moves per stroke, and how far it tapers. */
-  brushForce: number;
-  brushTension: number;
-  /** The terrain strip (brushes + tiles) — open by default, since the bar no
-   *  longer holds the tools. */
-  terrainPanel: boolean;
-  /** Particle effects playing, and the map's own light vs flat editing light. */
-  showFx: boolean;
-  mapLight: boolean;
-}
-const UI_PREFS_DEFAULT: UiPrefs = {
-  showObjects: true, explorerOpen: true, cliffs: true, grid: false, showHidden: false, texScale: 0.5,
-  topView: false, brushForce: 0.35, brushTension: 1, terrainPanel: true,
-  showFx: true, mapLight: true,
-};
-const UI_PREFS_KEY = 'homm5-editor.ui';
-function loadUiPrefs(): UiPrefs {
-  try {
-    const raw = localStorage.getItem(UI_PREFS_KEY);
-    // Spread over the defaults so a prefs blob written by an older build (missing
-    // a key added since) still yields a complete object.
-    return raw ? { ...UI_PREFS_DEFAULT, ...JSON.parse(raw) } : { ...UI_PREFS_DEFAULT };
-  } catch { return { ...UI_PREFS_DEFAULT }; }
-}
-let uiPrefs = loadUiPrefs();
-// Merge one change in and write the whole blob back. Every toggle's setter calls
-// this, so the store always mirrors the live UI with no separate save step.
-function saveUiPrefs(patch: Partial<UiPrefs>): void {
-  uiPrefs = { ...uiPrefs, ...patch };
-  try { localStorage.setItem(UI_PREFS_KEY, JSON.stringify(uiPrefs)); }
-  catch { /* private mode or quota: the editor still runs, just without persistence */ }
-}
-
-// --- world state (rebuilt on each map load) ---
-// A map has one or two floors (surface + underground); each is its own terrain
-// and object set. We build a group per floor and show one at a time — mixing
-// them would dump underground objects onto the surface (wrong heights, chaos).
-let world: World | null = null; // { floors:[{ name, V, heights, group, objGroup, meshes:Map<id,mesh> }], active }
-let selected: Selection | null = null; // { id, mesh, inst }
-let showObjects = uiPrefs.showObjects;
-let showFx = uiPrefs.showFx;
-let mapLight = uiPrefs.mapLight;
-let boxHelper: THREE.BoxHelper | null = null;
-
 /**
  * Point the lighting at what the Light toggle says: the active floor's own
  * preset + its baked point-light pools, or the flat neutral look (the same one
  * a preset-less map gets) for editing a dark underground without squinting.
  */
 function refreshLighting(): void {
-  const fl = world ? world.floors[world.active] : null;
-  applyAmbient(mapLight ? fl?.ambient ?? null : null);
-  uLmGain.value = mapLight ? 1 : 0;
+  const fl = state.world ? state.world.floors[state.world.active] : null;
+  applyAmbient(state.mapLight ? fl?.ambient ?? null : null);
+  uLmGain.value = state.mapLight ? 1 : 0;
 }
 
 const raycaster = new THREE.Raycaster();
 const ptr = new THREE.Vector2();
-
-// Only called while a map is loaded; every caller is gated on `world`.
-const activeFloor = (): Floor3D => world!.floors[world!.active]!;
-
-/** Ground height at a tile of a given floor. */
-function heightOn(fl: Floor3D, x: number, y: number): number {
-  const { V, heights } = fl;
-  const ix = Math.max(0, Math.min(V - 1, Math.round(x)));
-  const iy = Math.max(0, Math.min(V - 1, Math.round(y)));
-  return heights[iy * V + ix]!;
-}
-
-function heightAt(x: number, y: number): number {
-  return heightOn(activeFloor(), x, y);
-}
 
 /**
  * World centre of a tile. An object's saved position is a CELL index (placement
@@ -506,7 +320,7 @@ function clearWorld(): void {
   for (const m of splatMats.splice(0)) {
     m.uniforms.uGround.value?.dispose?.(); m.uniforms.uMask.value?.dispose?.(); m.dispose();
   }
-  if (world) for (const fl of world.floors) {
+  if (state.world) for (const fl of state.world.floors) {
     scene.remove(fl.group);
     // An InstancedMesh owns a GPU buffer of its own beyond the shared geometry;
     // without this it survives every map load.
@@ -516,8 +330,8 @@ function clearWorld(): void {
     fl.lightMap.dispose();
     fl.group.traverse((o) => { if (o instanceof THREE.Mesh) o.geometry.dispose(); });
   }
-  if (boxHelper) { scene.remove(boxHelper); boxHelper = null; }
-  world = null; selected = null; updatePanel();
+  if (state.boxHelper) { scene.remove(state.boxHelper); state.boxHelper = null; }
+  state.world = null; state.selected = null; updatePanel();
   applyAmbient(null);
 }
 
@@ -680,8 +494,8 @@ const _idlePoint = new THREE.Vector3();
  * is for; `all` does not make it.
  */
 function advanceIdle(dt: number): void {
-  if (idleMode === 'off' || !world) return;
-  const fl = world.floors[world.active];
+  if (idleMode === 'off' || !state.world) return;
+  const fl = state.world.floors[state.world.active];
   if (!fl?.idle.length || !fl.objGroup.visible) return;
   if (idleMode === 'visible') {
     idleViewProjection.multiplyMatrices(activeCam.projectionMatrix, activeCam.matrixWorldInverse);
@@ -759,15 +573,6 @@ function addIdle(
 // the scene — it exists to be picked, dragged and boxed, and the drawing is
 // done by the InstancedMesh. The raycaster is handed the handles explicitly, so
 // it still finds them; their world matrices just have to be kept current.
-
-/** Every copy of one model on one floor, drawn in a single call. */
-interface GeomBatch {
-  im: THREE.InstancedMesh;
-  /** Slot in the instance buffer for each object. */
-  slot: Map<Instance, number>;
-  /** What occupies each slot, so a removed one can be back-filled. */
-  at: (Instance | null)[];
-}
 
 /** Spare slots kept so placing a few objects does not reallocate every time. */
 const BATCH_HEADROOM = 8;
@@ -1606,7 +1411,7 @@ function buildFloor(floor: Floor, geos: THREE.BufferGeometry[], mats: THREE.Mate
   // Objects live in their own subgroup so they can be hidden wholesale while
   // working on the terrain (which they otherwise cover almost completely).
   const objGroup = new THREE.Group();
-  objGroup.visible = showObjects;
+  objGroup.visible = state.showObjects;
   group.add(objGroup);
 
   const meshes = new Map();
@@ -1653,7 +1458,7 @@ function buildWorld(S: Scene): void {
   // Particle effects arrive over their own IPC (typed arrays, not scene JSON);
   // the map is fully usable while they stream in.
   loadFx(floors).catch((e: unknown) => console.error('effects failed', e));
-  world = { floors, active: 0 };
+  state.world = { floors, active: 0 };
   setActiveFloor(0); // frames the floor + builds its explorer list
   updateFloorUI();
   // Textured ground arrives asynchronously; the flat blend shows meanwhile.
@@ -1692,7 +1497,7 @@ async function loadFx(floors: Floor3D[]): Promise<void> {
         const { system } = createFxSystem(f, baked, m4, (at * 0.37) % 3, uFxTint);
         system.mesh.userData.inst = inst;
         system.mesh.userData.uid = f.uid; // for fxSystems() debugging
-        system.mesh.visible = showFx; // effects arrive async; respect the toggle they land under
+        system.mesh.visible = state.showFx; // effects arrive async; respect the toggle they land under
         fl.fx.push(system);
         fl.objGroup.add(system.mesh);
         built++;
@@ -1705,9 +1510,9 @@ async function loadFx(floors: Floor3D[]): Promise<void> {
 /** The one clock every effect follows (phase offsets are per system). */
 let fxClock = 0;
 function advanceFx(dt: number): void {
-  if (!world || !showFx) return;
+  if (!state.world || !state.showFx) return;
   fxClock += dt;
-  const fl = world.floors[world.active];
+  const fl = state.world.floors[state.world.active];
   if (!fl?.fx.length || !fl.objGroup.visible) return;
   /** Animated bodies by instance, built only when something is glued to one. */
   let bodies: Map<unknown, IdleObject> | null = null;
@@ -1769,7 +1574,7 @@ async function spawnFx(fl: Floor3D, inst: Instance): Promise<void> {
     const { system } = createFxSystem(f, baked, m4, (fl.fx.length * 0.37) % 3, uFxTint);
     system.mesh.userData.inst = inst;
     system.mesh.userData.uid = f.uid;
-    system.mesh.visible = showFx;
+    system.mesh.visible = state.showFx;
     fl.fx.push(system);
     fl.objGroup.add(system.mesh);
   }
@@ -1863,9 +1668,9 @@ function markLightsDirty(fl: Floor3D, inst: Instance): void {
 
 // Switch which floor is shown; only its group is visible and pickable.
 function setActiveFloor(i: number): void {
-  if (!world) return;
-  world.active = i;
-  world.floors.forEach((fl, idx) => { fl.group.visible = idx === i; });
+  if (!state.world) return;
+  state.world.active = i;
+  state.world.floors.forEach((fl, idx) => { fl.group.visible = idx === i; });
   // Each floor lights like its own preset says — surface day, underground dark
   // (unless the Light toggle asks for the flat editing look).
   refreshLighting();
@@ -1881,7 +1686,7 @@ function setActiveFloor(i: number): void {
   topHalf = V * 0.55 * U;
   syncTopCamera();
   updateFloorUI();
-  if (world) renderExplorer(); // floor switch -> its own object list
+  if (state.world) renderExplorer(); // floor switch -> its own object list
   // Regions belong to a floor too: the outlines and the list's dimming both
   // follow which one is shown.
   renderRegionList();
@@ -1892,16 +1697,16 @@ function setActiveFloor(i: number): void {
 function selectById(id: string): void {
   const mesh = activeFloor().meshes.get(id);
   if (!mesh) return;
-  selected = { id, mesh, inst: mesh.userData.inst };
-  if (!boxHelper) { boxHelper = new THREE.BoxHelper(mesh, 0x4fd1c5); scene.add(boxHelper); }
-  else { boxHelper.setFromObject(mesh); boxHelper.visible = true; }
+  state.selected = { id, mesh, inst: mesh.userData.inst };
+  if (!state.boxHelper) { state.boxHelper = new THREE.BoxHelper(mesh, 0x4fd1c5); scene.add(state.boxHelper); }
+  else { state.boxHelper.setFromObject(mesh); state.boxHelper.visible = true; }
   updatePanel();
   void loadProps();
   syncExplorerSel();
 }
 function deselect(): void {
-  selected = null;
-  if (boxHelper) boxHelper.visible = false;
+  state.selected = null;
+  if (state.boxHelper) state.boxHelper.visible = false;
   updatePanel();
   void loadProps();
   syncExplorerSel();
@@ -1949,7 +1754,7 @@ function objCategory(it: Instance): string {
 }
 
 let exCat = ALL;
-const exInstances = () => (world ? activeFloor().instances : []);
+const exInstances = () => (state.world ? activeFloor().instances : []);
 
 function renderExplorer(): void { renderExCats(); renderExList(); }
 
@@ -1983,7 +1788,7 @@ function renderExList(): void {
   const frag = document.createDocumentFragment();
   for (const it of shown.slice(0, 2000)) {
     const div = document.createElement('div');
-    div.className = 'exrow' + (selected && selected.id === it.id ? ' sel' : '');
+    div.className = 'exrow' + (state.selected && state.selected.id === it.id ? ' sel' : '');
     div.dataset.id = it.id ?? undefined;
     div.innerHTML = `<span class="nm"></span><span class="co"></span>`;
     setChild(div, '.nm', objName(it));
@@ -2006,7 +1811,7 @@ function syncExplorerSel(): void {
   const list = $('ex-list'); if (!list) return;
   let selRow = null;
   for (const r of list.querySelectorAll<HTMLElement>('.exrow')) {
-    const on = selected !== null && r.dataset.id === selected.id;
+    const on = state.selected !== null && r.dataset.id === state.selected.id;
     r.classList.toggle('sel', on);
     if (on) selRow = r;
   }
@@ -2015,9 +1820,9 @@ function syncExplorerSel(): void {
 
 function updatePanel(): void {
   const p = $('panel');
-  if (!selected) { p.style.display = 'none'; return; }
+  if (!state.selected) { p.style.display = 'none'; return; }
   p.style.display = 'block';
-  const it = selected.inst;
+  const it = state.selected.inst;
   $('p-type').textContent = it.type;
   $('p-id').textContent = it.id ? it.id.replace('item_', '').slice(0, 8) : '—';
   // Not while the box is being typed into: writing the field back on every
@@ -2060,24 +1865,24 @@ const snap90 = (deg: number): number => (Math.round(deg / 90) * 90 % 360 + 360) 
  *   live, but the map is written once on release rather than once per pixel.
  */
 async function rotateSelected(deg: number, commit = true): Promise<void> {
-  if (!selected) return;
+  if (!state.selected) return;
   // Not snapped here. The quarter-turn buttons snap their own argument, which
   // is where "the game turns objects in 90° steps" belongs; the file does not
   // agree with it anyway — C1M1 alone holds 80 distinct angles across 368
   // objects, and a reconstruction that could only turn by 90° would lose them.
   const r = ((deg % 360) + 360) % 360 * Math.PI / 180;
-  selected.inst.r = r;
-  selected.mesh.rotation.z = r;
-  syncInstance(activeFloor(), selected.inst);
+  state.selected.inst.r = r;
+  state.selected.mesh.rotation.z = r;
+  syncInstance(activeFloor(), state.selected.inst);
   syncFootprints();
-  boxHelper?.setFromObject(selected.mesh);
+  state.boxHelper?.setFromObject(state.selected.mesh);
   $input('p-rot').value = String(+degOf(r).toFixed(3));
   // Skipped while the slider itself is the source, or dragging it would fight
   // its own value being written back mid-gesture.
   if (commit) $input('p-rotslider').value = String(Math.round(degOf(r)));
   if (!commit) return;
   try {
-    await window.editor.rotateObject(selected.id, r);
+    await window.editor.rotateObject(state.selected.id, r);
     markDirty(true);
   } catch (e) {
     $('hud').textContent = 'rotate failed: ' + (e instanceof Error ? e.message : String(e));
@@ -2091,7 +1896,7 @@ async function rotateSelected(deg: number, commit = true): Promise<void> {
 // owns; this only takes delivery of whatever the renderer cannot recompute.
 // Objects arrive as a whole list, terrain as its planes plus a rebuilt splat.
 async function stepHistory(dir: 'undo' | 'redo'): Promise<void> {
-  if (!world) return;
+  if (!state.world) return;
   let r;
   try {
     r = dir === 'undo' ? await window.editor.undo() : await window.editor.redo();
@@ -2107,10 +1912,10 @@ async function stepHistory(dir: 'undo' | 'redo'): Promise<void> {
   // about to be discarded either way.
   deselect();
   if (r.instances) {
-    world.floors.forEach((fl, i) => replaceInstances(fl, r.instances![i] ?? []));
+    state.world.floors.forEach((fl, i) => replaceInstances(fl, r.instances![i] ?? []));
   }
   for (const t of r.terrain) {
-    const fl = world.floors[t.floor];
+    const fl = state.world.floors[t.floor];
     if (!fl) continue;
     fl.heights = t.heights;
     fl.flags = t.flags;
@@ -2138,8 +1943,8 @@ function updateHistoryUI(canUndo: boolean, canRedo: boolean, undoLabel: string |
 }
 
 async function deleteSelected(): Promise<void> {
-  if (!selected) return;
-  const { id, mesh, inst } = selected;
+  if (!state.selected) return;
+  const { id, mesh, inst } = state.selected;
   try {
     await window.editor.removeObject(id);
   } catch (e) {
@@ -2182,8 +1987,8 @@ let propsFor: string | null = null;
 async function loadProps(): Promise<void> {
   const host = $('p-props');
   host.innerHTML = '';
-  if (!selected) { propsFor = null; return; }
-  const id = selected.id;
+  if (!state.selected) { propsFor = null; return; }
+  const id = state.selected.id;
   propsFor = id;
   let res;
   try {
@@ -2194,7 +1999,7 @@ async function loadProps(): Promise<void> {
   }
   // Selection can move while the reply is in flight; showing the old object's
   // fields under the new object's heading would be a quiet lie.
-  if (propsFor !== id || !selected || selected.id !== id) return;
+  if (propsFor !== id || !state.selected || state.selected.id !== id) return;
   if (!res.props.length) { host.innerHTML = '<div class="ph">no simple fields</div>'; return; }
 
   const head = document.createElement('div');
@@ -2208,7 +2013,7 @@ async function loadProps(): Promise<void> {
   // And what the GAME's type spec says a field may hold — the closed sets our
   // schema does not spell out. Awaited here so a row is built once, complete.
   const allowed = await loadSpecValues(res.type);
-  if (propsFor !== id || !selected || selected.id !== id) return;
+  if (propsFor !== id || !state.selected || state.selected.id !== id) return;
   const rowFor = (p: ObjectProp): HTMLElement => {
     const raw = typeFields[p.name];
     const field = raw ? deref(objectSchema, raw) : null;
@@ -2251,7 +2056,7 @@ async function loadProps(): Promise<void> {
     host.appendChild(h3);
     let data: TreeData | undefined;
     try { data = (await window.editor.objectTree({ id })).tree as TreeData; } catch { /* count is a nicety */ }
-    if (propsFor !== id || !selected || selected.id !== id) return;
+    if (propsFor !== id || !state.selected || state.selected.id !== id) return;
     for (const [name, f] of structured) host.appendChild(structRow(id, res.type, name, f, dataAt(data, name)));
   }
 
@@ -2603,16 +2408,16 @@ async function setProp(id: string, name: string, value: string): Promise<void> {
  * express (218 of C1M1's objects, none of them on a half tile either).
  */
 async function moveSelectedTo(x: number, y: number): Promise<void> {
-  if (!selected || !world) return;
+  if (!state.selected || !state.world) return;
   if (!Number.isFinite(x) || !Number.isFinite(y)) return;
-  selected.inst.x = x; selected.inst.y = y;
-  selected.mesh.position.set(tileCenter(x), tileCenter(y), heightAt(Math.floor(x), Math.floor(y)));
-  syncInstance(activeFloor(), selected.inst);
+  state.selected.inst.x = x; state.selected.inst.y = y;
+  state.selected.mesh.position.set(tileCenter(x), tileCenter(y), heightAt(Math.floor(x), Math.floor(y)));
+  syncInstance(activeFloor(), state.selected.inst);
   syncFootprints();
-  boxHelper?.setFromObject(selected.mesh);
+  state.boxHelper?.setFromObject(state.selected.mesh);
   updatePanel();
   try {
-    await window.editor.moveObject(selected.id, x, y);
+    await window.editor.moveObject(state.selected.id, x, y);
     markDirty(true);
   } catch (e) {
     $('hud').textContent = 'move failed: ' + (e instanceof Error ? e.message : String(e));
@@ -2621,7 +2426,7 @@ async function moveSelectedTo(x: number, y: number): Promise<void> {
 
 for (const axis of ['x', 'y'] as const) {
   $input(`p-${axis}`).addEventListener('change', () => {
-    if (!selected) return;
+    if (!state.selected) return;
     void moveSelectedTo(+$input('p-x').value, +$input('p-y').value);
   });
 }
@@ -2630,15 +2435,15 @@ $input('p-rot').addEventListener('change', (e) => {
 });
 
 $('p-tree').onclick = () => {
-  if (!selected) return;
-  openMapTree(objectTree(selected.id, selected.inst.type));
+  if (!state.selected) return;
+  openMapTree(objectTree(state.selected.id, state.selected.inst.type));
 };
 $('p-del').onclick = () => { void deleteSelected(); };
 // A button is a quarter turn from the current heading. Snapping the current
 // angle first means an object at an odd shipped angle aligns to the grid on the
 // first press, then turns cleanly from there.
-$('p-rotl').onclick = () => { if (selected) void rotateSelected(snap90(degOf(selected.inst.r)) - 90); };
-$('p-rotr').onclick = () => { if (selected) void rotateSelected(snap90(degOf(selected.inst.r)) + 90); };
+$('p-rotl').onclick = () => { if (state.selected) void rotateSelected(snap90(degOf(state.selected.inst.r)) - 90); };
+$('p-rotr').onclick = () => { if (state.selected) void rotateSelected(snap90(degOf(state.selected.inst.r)) + 90); };
 $input('p-rotslider').addEventListener('input', (e) => {
   void rotateSelected(+(e.currentTarget as HTMLInputElement).value, false);
 });
@@ -4146,8 +3951,8 @@ addEventListener('keydown', (e) => {
 });
 
 addEventListener('keydown', (e) => {
-  if (!selected || isTyping(e.target) || e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
-  const cur = snap90(degOf(selected.inst.r));
+  if (!state.selected || isTyping(e.target) || e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
+  const cur = snap90(degOf(state.selected.inst.r));
   if (e.code === 'BracketLeft') { void rotateSelected(cur - 90); }
   else if (e.code === 'BracketRight') { void rotateSelected(cur + 90); }
   else if (e.code === 'Delete') { void deleteSelected(); }
@@ -4174,7 +3979,7 @@ let dragging = false, moved = false;
 let hoverEv: PointerEvent | null = null;
 
 function pickObject(ev: PointerEvent): THREE.Mesh | null {
-  if (!showObjects) return null; // hidden objects must not swallow clicks
+  if (!state.showObjects) return null; // hidden objects must not swallow clicks
   ptr.x = (ev.clientX / innerWidth) * 2 - 1;
   ptr.y = -(ev.clientY / innerHeight) * 2 + 1;
   raycaster.setFromCamera(ptr, activeCam);
@@ -4185,7 +3990,7 @@ function pickObject(ev: PointerEvent): THREE.Mesh | null {
 renderer.domElement.addEventListener('pointerleave', () => { updateBrushCursor(null); updateHoverCursor(null); hoverEv = null; });
 
 renderer.domElement.addEventListener('pointerdown', (ev) => {
-  if (!world || ev.button !== 0) return;
+  if (!state.world || ev.button !== 0) return;
   // The region tool drags out a rectangle: the press is one corner, the release
   // the other. Like the brush it takes the left button off the camera, which
   // middle and right still move.
@@ -4217,7 +4022,7 @@ renderer.domElement.addEventListener('pointerdown', (ev) => {
   const hit = pickObject(ev);
   down = { sx: ev.clientX, sy: ev.clientY, hitId: hit ? hit.userData.inst.id : null };
   // Grab-to-move only when pressing on the already-selected object.
-  if (selected && hit && hit.userData.inst.id === selected.id) {
+  if (state.selected && hit && hit.userData.inst.id === state.selected.id) {
     dragging = true; moved = false;
     controls.enabled = false;
   }
@@ -4261,13 +4066,13 @@ renderer.domElement.addEventListener('pointermove', (ev) => {
     return;
   }
   if (painting) { applyBrush(ev); return; }
-  if (!dragging || !selected) return;
+  if (!dragging || !state.selected) return;
   // Project the cursor onto a horizontal plane at the object's height and snap
   // the resulting world position to the tile grid.
   ptr.x = (ev.clientX / innerWidth) * 2 - 1;
   ptr.y = -(ev.clientY / innerHeight) * 2 + 1;
   raycaster.setFromCamera(ptr, activeCam);
-  const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -selected.mesh.position.z);
+  const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -state.selected.mesh.position.z);
   const hit = new THREE.Vector3();
   if (!raycaster.ray.intersectPlane(plane, hit)) return;
   // The ray lands in world units; the object's position is a CELL index, the
@@ -4278,12 +4083,12 @@ renderer.domElement.addEventListener('pointermove', (ev) => {
   const free = ev.altKey;
   const nx = free ? +(hit.x / U).toFixed(3) : Math.floor(hit.x / U);
   const ny = free ? +(hit.y / U).toFixed(3) : Math.floor(hit.y / U);
-  if (nx === selected.inst.x && ny === selected.inst.y) return;
-  selected.inst.x = nx; selected.inst.y = ny;
-  selected.mesh.position.set(tileCenter(nx), tileCenter(ny), heightAt(Math.floor(nx), Math.floor(ny)));
-  syncInstance(activeFloor(), selected.inst);
+  if (nx === state.selected.inst.x && ny === state.selected.inst.y) return;
+  state.selected.inst.x = nx; state.selected.inst.y = ny;
+  state.selected.mesh.position.set(tileCenter(nx), tileCenter(ny), heightAt(Math.floor(nx), Math.floor(ny)));
+  syncInstance(activeFloor(), state.selected.inst);
   syncFootprints();
-  boxHelper?.setFromObject(selected.mesh);
+  state.boxHelper?.setFromObject(state.selected.mesh);
   moved = true;
   updatePanel();
 });
@@ -4313,7 +4118,7 @@ addEventListener('pointerup', async (ev) => {
     await commitBrush();
     return;
   }
-  if (!world || !down) return;
+  if (!state.world || !down) return;
   const wasClick = Math.abs(ev.clientX - down.sx) < CLICK_SLOP && Math.abs(ev.clientY - down.sy) < CLICK_SLOP;
 
   if (placeObject) {
@@ -4328,8 +4133,8 @@ addEventListener('pointerup', async (ev) => {
 
   if (dragging) {
     dragging = false; controls.enabled = true;
-    if (moved && selected) {
-      await window.editor.moveObject(selected.id, selected.inst.x, selected.inst.y);
+    if (moved && state.selected) {
+      await window.editor.moveObject(state.selected.id, state.selected.inst.x, state.selected.inst.y);
       markDirty(true);
     }
   } else if (wasClick) {
@@ -4651,7 +4456,7 @@ function setShowBlocked(on: boolean): void {
   showBlocked = on;
   $('blockbtn').classList.toggle('on', on);
   $('passlegend').style.display = on ? 'flex' : 'none';
-  if (world) for (const fl of world.floors) refreshBlocked(fl);
+  if (state.world) for (const fl of state.world.floors) refreshBlocked(fl);
   saveUiPrefs({ grid: on });
 }
 
@@ -4675,11 +4480,11 @@ function maskAt(tiles: number[], walkable: boolean): void {
 
 /** Send the finished mask stroke. */
 async function commitMask(walkable: boolean): Promise<void> {
-  if (!strokeVerts.size || !world) { strokeVerts.clear(); return; }
+  if (!strokeVerts.size || !state.world) { strokeVerts.clear(); return; }
   const verts = [...strokeVerts];
   strokeVerts.clear();
   try {
-    await committing(window.editor.setMask({ floor: world.active, verts, walkable }));
+    await committing(window.editor.setMask({ floor: state.world.active, verts, walkable }));
     markDirty(true);
   } catch (e) {
     $('hud').textContent = 'mask failed (reload to resync): '
@@ -4716,7 +4521,7 @@ function ensureBrushCursor(): THREE.LineSegments {
 /** Redraw the footprint outline over tile (cx, cy), or hide it when off-map. */
 function updateBrushCursor(at: { x: number; y: number } | null): void {
   const c = ensureBrushCursor();
-  if (!at || !world) { c.visible = false; return; }
+  if (!at || !state.world) { c.visible = false; return; }
   const fl = activeFloor();
   // Mid-drag in Rect mode the footprint is the rectangle so far, not a square
   // under the cursor — otherwise the one size whose shape you choose yourself is
@@ -4777,7 +4582,7 @@ function ensureHoverCursor(): THREE.LineSegments {
 /** Outline the single cell under the cursor, or hide it when off-map. */
 function updateHoverCursor(at: { x: number; y: number } | null): void {
   const c = ensureHoverCursor();
-  const fl = world ? activeFloor() : null;
+  const fl = state.world ? activeFloor() : null;
   // A cell (x, y) needs its far corner (x+1, y+1) to exist, so stop one short.
   if (!at || !fl || at.x < 0 || at.y < 0 || at.x + 1 >= fl.V || at.y + 1 >= fl.V) {
     c.visible = false; return;
@@ -4859,7 +4664,7 @@ function tileAtClient(clientX: number, clientY: number): { x: number; y: number 
  * height is what decides where it meets, so it still asks the geometry.
  */
 function groundPointAtClient(clientX: number, clientY: number): { x: number; y: number } | null {
-  if (!world) return null;
+  if (!state.world) return null;
   if (topView) {
     syncTopCamera();
     const aspect = innerWidth / innerHeight;
@@ -4875,7 +4680,7 @@ function groundPointAtClient(clientX: number, clientY: number): { x: number; y: 
 
 /** Where a ray through these client coordinates meets the ground, in world units. */
 function hitPointAtClient(clientX: number, clientY: number): THREE.Vector3 | null {
-  if (!world) return null;
+  if (!state.world) return null;
   ptr.x = (clientX / innerWidth) * 2 - 1;
   ptr.y = -(clientY / innerHeight) * 2 + 1;
   raycaster.setFromCamera(ptr, activeCam);
@@ -5063,14 +4868,14 @@ function worldToScreen(wx: number, wy: number): TilePoint {
 const view: ViewApi = {
   plan(on) { setTopView(on); },
   fit() {
-    if (!world) return;
+    if (!state.world) return;
     const V = activeFloor().V, c = (V / 2) * U;
     controls.target.set(c, c, controls.target.z);
     topHalf = V * 0.55 * U;
     syncTopCamera();
   },
   focus(x, y) {
-    if (!world) return;
+    if (!state.world) return;
     controls.target.set((x + 0.5) * U, (y + 0.5) * U, controls.target.z);
     syncTopCamera();
   },
@@ -5079,7 +4884,7 @@ const view: ViewApi = {
     syncTopCamera();
   },
   objects() {
-    if (!world) return [];
+    if (!state.world) return [];
     return [...activeFloor().meshes.values()]
       .map((m) => m.userData.inst as Instance)
       .filter((i) => i && i.id)
@@ -5107,7 +4912,7 @@ const view: ViewApi = {
   // vertex, so it still resolves to the same one — but it now lands on ground.
   // Without this, every click along the outer ring silently does nothing.
   vertexToScreen(x, y) {
-    const last = world ? activeFloor().V - 1 : 0;
+    const last = state.world ? activeFloor().V - 1 : 0;
     const inset = (v: number): number => (v === 0 ? 0.25 : v === last ? -0.25 : 0);
     return worldToScreen((x + inset(x)) * U, (y + inset(y)) * U);
   },
@@ -5115,18 +4920,18 @@ const view: ViewApi = {
   // Cells sit every half tile, and the outermost ring gets the same inward nudge
   // as the vertices: on the boundary a ray can pass beside the mesh entirely.
   cellToScreen(x, y) {
-    const last = world ? riverSide(activeFloor().V) - 1 : 0;
+    const last = state.world ? riverSide(activeFloor().V) - 1 : 0;
     const inset = (v: number): number => (v === 0 ? 0.5 : v === last ? -0.5 : 0);
     return worldToScreen((x + inset(x)) * (U / 2), (y + inset(y)) * (U / 2));
   },
   cellAt(clientX, clientY) { return riverCellAtClient(clientX, clientY); },
-  cells() { return world ? riverSide(activeFloor().V) : 0; },
+  cells() { return state.world ? riverSide(activeFloor().V) : 0; },
   // Reading the live planes separates "the stroke never landed" from "it landed
   // and did not reach the file", which otherwise look identical in the diff.
   // Painting refuses until the splat textures are decoded, and a refused stroke
   // looks exactly like a brush that did nothing — so the state is published.
   paintReady() {
-    const fl = world ? activeFloor() : null;
+    const fl = state.world ? activeFloor() : null;
     if (!fl || !fl.splat || !fl.maskTex) return false;
     // The armed tile's own layer, not just "some splat is decoded". Picking a
     // tile this map has no layer for adds one in the background, and until that
@@ -5135,7 +4940,7 @@ const view: ViewApi = {
   },
   strokes() { return { painted: paintedVerts, sent: sentVerts, refused: refusedStrokes }; },
   idle() {
-    const fl = world ? activeFloor() : null;
+    const fl = state.world ? activeFloor() : null;
     return {
       mode: idleMode,
       animated: fl?.idle.length ?? 0,
@@ -5150,7 +4955,7 @@ const view: ViewApi = {
   },
   ambientState() {
     return {
-      preset: !!(world && world.floors[world.active]?.ambient),
+      preset: !!(state.world && state.world.floors[state.world.active]?.ambient),
       sun: [+sun.color.r.toFixed(3), +sun.color.g.toFixed(3), +sun.color.b.toFixed(3)],
       sunPos: [+sun.position.x.toFixed(3), +sun.position.y.toFixed(3), +sun.position.z.toFixed(3)],
       terrain: {
@@ -5160,7 +4965,7 @@ const view: ViewApi = {
     };
   },
   fxSystems() {
-    const fl = world ? activeFloor() : null;
+    const fl = state.world ? activeFloor() : null;
     if (!fl) return [];
     return fl.fx.map((s) => {
       const g = (s.mesh as unknown as { geometry: THREE.InstancedBufferGeometry }).geometry;
@@ -5183,16 +4988,16 @@ const view: ViewApi = {
     });
   },
   async place(o) {
-    if (!world) throw new Error('no map open');
+    if (!state.world) throw new Error('no map open');
     const res = await window.editor.addObject({
-      type: o.type, shared: o.shared, x: o.x, y: o.y, floor: world.active,
+      type: o.type, shared: o.shared, x: o.x, y: o.y, floor: state.world.active,
     });
     addInstanceToScene(res.instance, res.geom);
     markDirty(true);
     renderExplorer();
   },
   pointLights() {
-    const fl = world ? activeFloor() : null;
+    const fl = state.world ? activeFloor() : null;
     if (!fl) return { count: 0, litTexels: 0 };
     if (fl.lightsDirty) bakeLightMap(fl); // a test asks right after an edit
     const count = fl.instances.reduce((a, i) => a + (i.lights?.length ?? 0), 0);
@@ -5205,9 +5010,9 @@ const view: ViewApi = {
   opened() { return openedMap; },
   open(path) { return loadMapPath(path); },
   editText(href) { return openTextEdit(href, href); },
-  heights() { return world ? Array.from(activeFloor().heights) : []; },
-  kinds() { return world && activeFloor().flags ? Array.from(activeFloor().flags!) : []; },
-  size() { return world ? activeFloor().V - 1 : 0; },
+  heights() { return state.world ? Array.from(activeFloor().heights) : []; },
+  kinds() { return state.world && activeFloor().flags ? Array.from(activeFloor().flags!) : []; },
+  size() { return state.world ? activeFloor().V - 1 : 0; },
 };
 window.view = view;
 
@@ -5423,7 +5228,7 @@ function brushAt(verts: number[]): void {
 /** Hand the finished stroke to the main process in one message. */
 async function commitStroke(): Promise<void> {
   const tile = paintTile;
-  if (!tile || !strokeVerts.size || !world) { strokeVerts.clear(); return; }
+  if (!tile || !strokeVerts.size || !state.world) { strokeVerts.clear(); return; }
   const verts = [...strokeVerts];
   strokeVerts.clear();
   sentVerts += verts.length;
@@ -5439,13 +5244,13 @@ async function commitStroke(): Promise<void> {
       // of the three is not a river, and a half-applied stroke would be worse
       // than a rejected one.
       await committing(window.editor.paintRiver({
-        floor: world.active, tile: tile.path, verts,
+        floor: state.world.active, tile: tile.path, verts,
         heightVerts: heightEdits.map(([v]) => v),
         heights: heightEdits.map(([, h]) => h),
       }));
     } else {
       await committing(window.editor.paintTile({
-        floor: world.active, tile: tile.path, verts,
+        floor: state.world.active, tile: tile.path, verts,
         strength: tileStrength(), exclusive: !tileBlend(),
       }));
     }
@@ -5646,12 +5451,12 @@ function riverAt(cells: { x: number; y: number }[]): void {
 /** Send the finished river stroke. */
 async function commitRiver(): Promise<void> {
   const fl = activeFloor();
-  if (!strokeCells.size || !world) { strokeCells.clear(); strokeVerts.clear(); return; }
+  if (!strokeCells.size || !state.world) { strokeCells.clear(); strokeVerts.clear(); return; }
   const cells = [...strokeCells];
   strokeCells.clear();
   const value = Math.max(0, Math.min(255, +$input('riverstrength').value || 0));
   try {
-    await committing(window.editor.setRiverCells({ floor: world.active, cells, value }));
+    await committing(window.editor.setRiverCells({ floor: state.world.active, cells, value }));
     // Carving moved ground, and those heights travel by the sculpt path.
     if (strokeVerts.size) await commitSculpt(); else strokeVerts.clear();
     markDirty(true);
@@ -5906,12 +5711,12 @@ function sculptTick(ev: PointerEvent): void {
 /** Hand the finished sculpt to the main process as absolute values. */
 async function commitSculpt(): Promise<void> {
   const fl = activeFloor();
-  if (!strokeVerts.size || !world) { strokeVerts.clear(); return; }
+  if (!strokeVerts.size || !state.world) { strokeVerts.clear(); return; }
   const verts = [...strokeVerts];
   strokeVerts.clear();
   try {
     await committing(window.editor.sculpt({
-      floor: world.active,
+      floor: state.world.active,
       verts,
       heights: verts.map((v) => fl.heights[v]!),
       flags: fl.flags ? verts.map((v) => fl.flags![v]!) : null,
@@ -6096,13 +5901,13 @@ const FLOOR_LABEL: Record<string, string> = { surface: 'Surface', underground: '
 // switches to, and clicking cycles.
 function updateFloorUI(): void {
   const btn = $('floor');
-  if (!world || world.floors.length < 2) { btn.style.display = 'none'; return; }
+  if (!state.world || state.world.floors.length < 2) { btn.style.display = 'none'; return; }
   btn.style.display = '';
-  const next = world.floors[(world.active + 1) % world.floors.length];
-  const cur = world.floors[world.active];
+  const next = state.world.floors[(state.world.active + 1) % state.world.floors.length];
+  const cur = state.world.floors[state.world.active];
   btn.textContent = `${FLOOR_LABEL[cur.name] || cur.name} → ${FLOOR_LABEL[next.name] || next.name}`;
 }
-$('floor').onclick = () => { if (world) setActiveFloor((world.active + 1) % world.floors.length); };
+$('floor').onclick = () => { if (state.world) setActiveFloor((state.world.active + 1) % state.world.floors.length); };
 
 // Explorer show/hide + search wiring.
 let explorerOpen = uiPrefs.explorerOpen;
@@ -6123,20 +5928,20 @@ $('objects').onclick = () => {
   // Only on this click, not inside setExplorer: loading a map opens the list
   // too, and doing it there would quietly undo a deliberate "objects off"
   // every time a map was opened.
-  if (open && world && !showObjects) setShowObjects(true);
+  if (open && state.world && !state.showObjects) setShowObjects(true);
   setExplorer(open);
 };
 
 // Hide/show all placed objects — terrain work needs an unobstructed ground view.
 function setShowObjects(on: boolean): void {
-  showObjects = on;
-  if (world) for (const fl of world.floors) fl.objGroup.visible = on;
+  state.showObjects = on;
+  if (state.world) for (const fl of state.world.floors) fl.objGroup.visible = on;
   if (!on) deselect();
   $('showobj').classList.toggle('on', on);
   $('showobj').textContent = on ? 'Objects: on' : 'Objects: off';
   saveUiPrefs({ showObjects: on });
 }
-$('showobj').onclick = () => setShowObjects(!showObjects);
+$('showobj').onclick = () => setShowObjects(!state.showObjects);
 $('viewbtn').onclick = () => setTopView(!topView);
 
 // --- idle stance ------------------------------------------------------------
@@ -6178,7 +5983,7 @@ async function loadIdleSkins(): Promise<void> {
 $('idlebtn').onclick = async () => {
   const next = IDLE_MODES[(IDLE_MODES.indexOf(idleMode) + 1) % IDLE_MODES.length]!;
   await window.editor.setIdleAnimation(next);
-  if (next !== 'off' && !geomSkin.size && world) {
+  if (next !== 'off' && !geomSkin.size && state.world) {
     $('hud').textContent = `idle stance: ${next} — loading animations…`;
     try {
       await loadIdleSkins();
@@ -6190,11 +5995,11 @@ $('idlebtn').onclick = async () => {
   }
   idleMode = next;
   updateIdleButton();
-  if (world) {
+  if (state.world) {
     // Handles are rebuilt, so anything selected is about to point at a mesh
     // that no longer exists.
     deselect();
-    for (const fl of world.floors) replaceInstances(fl, fl.instances);
+    for (const fl of state.world.floors) replaceInstances(fl, fl.instances);
   }
   $('hud').textContent = `idle stance: ${next}`;
 };
@@ -6210,24 +6015,24 @@ $('idlebtn').onclick = async () => {
 // "let me actually see this dark underground while I edit".
 
 function setShowFx(on: boolean): void {
-  showFx = on;
-  if (world) for (const fl of world.floors) for (const s of fl.fx) s.mesh.visible = on;
+  state.showFx = on;
+  if (state.world) for (const fl of state.world.floors) for (const s of fl.fx) s.mesh.visible = on;
   $('fxbtn').textContent = on ? 'Effects: on' : 'Effects: off';
   $('fxbtn').classList.toggle('on', on);
   saveUiPrefs({ showFx: on });
 }
-$('fxbtn').onclick = () => setShowFx(!showFx);
-setShowFx(showFx); // reflect the persisted choice in the label
+$('fxbtn').onclick = () => setShowFx(!state.showFx);
+setShowFx(state.showFx); // reflect the persisted choice in the label
 
 function setMapLight(on: boolean): void {
-  mapLight = on;
+  state.mapLight = on;
   refreshLighting();
   $('lightbtn').textContent = on ? 'Light: map' : 'Light: flat';
   $('lightbtn').classList.toggle('on', on);
   saveUiPrefs({ mapLight: on });
 }
-$('lightbtn').onclick = () => setMapLight(!mapLight);
-setMapLight(mapLight);
+$('lightbtn').onclick = () => setMapLight(!state.mapLight);
+setMapLight(state.mapLight);
 
 // --- object palette (the original editor's Objects tab) --------------------
 //
@@ -6443,11 +6248,11 @@ function armObject(o: PlaceableObject | null): void {
  */
 async function placeAt(tile: { x: number; y: number }): Promise<void> {
   const o = placeObject;
-  if (!o || !world) return;
+  if (!o || !state.world) return;
   if (!o.type) { $('hud').textContent = `${o.name}: unknown object type, not placed`; return; }
   try {
     const res = await window.editor.addObject({
-      type: o.type, shared: o.shared, x: tile.x, y: tile.y, floor: world.active,
+      type: o.type, shared: o.shared, x: tile.x, y: tile.y, floor: state.world.active,
     });
     addInstanceToScene(res.instance, res.geom);
     markDirty(true);
@@ -6464,8 +6269,8 @@ async function placeAt(tile: { x: number; y: number }): Promise<void> {
 
 /** Add a freshly placed object to the live scene. */
 function addInstanceToScene(inst: Instance, geom: { index: number; data: GeomData } | null): void {
-  if (!world) return;
-  const fl = world.floors[world.active];
+  if (!state.world) return;
+  const fl = state.world.floors[state.world.active];
   if (!fl) return;
   // Every path that selects, moves, rotates or deletes an object finds it by
   // id, so an object without one would be on screen and unreachable.
@@ -6545,11 +6350,11 @@ let paletteOpen = false;
  * map looks unchanged until the first stroke.
  */
 async function addTileLayer(t: TileInfo): Promise<void> {
-  if (!world) return;
+  if (!state.world) return;
   const fl = activeFloor();
   $('hud').textContent = `adding ${t.name} to this map…`;
   try {
-    const r = await window.editor.addLayer({ floor: world.active, tile: t.path });
+    const r = await window.editor.addLayer({ floor: state.world.active, tile: t.path });
     // One more layer means a different shader, not a texture we can patch.
     if (r.splat) { fl.splat = r.splat; await upgradeToSplat(fl); }
     tilesInMap = new Set(r.inMap);
@@ -6654,7 +6459,7 @@ $('objpalbtn').onclick = () => {
   // map, and placing one while objects are hidden drops it somewhere invisible.
   // Worse here than in the list, because the object really was added — it just
   // cannot be seen, so it reads as the placement having failed.
-  if (open && world && !showObjects) setShowObjects(true);
+  if (open && state.world && !state.showObjects) setShowObjects(true);
   setObjPalette(open);
 };
 // --- regions ---------------------------------------------------------------
@@ -6722,7 +6527,7 @@ const fromHex = (hex: string): [number, number, number] => [
 
 /** Re-read the regions from the map and redraw both the list and the overlay. */
 async function loadRegions(): Promise<void> {
-  if (!world) { regionList = []; renderRegionList(); drawRegionOverlay(); return; }
+  if (!state.world) { regionList = []; renderRegionList(); drawRegionOverlay(); return; }
   let tree: TreeData;
   try { tree = (await window.editor.mapTree()).tree as TreeData; }
   catch { return; }
@@ -6769,7 +6574,7 @@ function freshRegionName(): string {
  * which for the two triggers is an empty function name.
  */
 async function addRegion(r: TileRect): Promise<void> {
-  if (!world) return;
+  if (!state.world) return;
   const i = regionList.length;
   const name = freshRegionName();
   const c = REGION_COLOURS[i % REGION_COLOURS.length]!;
@@ -6777,7 +6582,7 @@ async function addRegion(r: TileRect): Promise<void> {
     await window.editor.addMapItem({ path: ['regions'] });
     const set = (path: TreePath, value: string): Promise<unknown> =>
       window.editor.setMapPath({ path: ['regions', i, ...path], value });
-    await set(['Floor'], String(world.active));
+    await set(['Floor'], String(state.world.active));
     await set(['Rect', 'x1'], String(r.x0));
     await set(['Rect', 'y1'], String(r.y0));
     await set(['Rect', 'x2'], String(r.x1));
@@ -6812,7 +6617,7 @@ function renderRegionList(): void {
   list.innerHTML = '';
   for (const r of regionList) {
     const row = document.createElement('div');
-    row.className = 'rg' + (world && r.floor !== world.active ? ' other' : '');
+    row.className = 'rg' + (state.world && r.floor !== state.world.active ? ' other' : '');
     row.dataset.region = String(r.i);
     const top = document.createElement('div');
     top.className = 'top';
@@ -6870,7 +6675,7 @@ function renderRegionList(): void {
     row.append(top, rect);
     list.appendChild(row);
   }
-  $('rg-count').textContent = world
+  $('rg-count').textContent = state.world
     ? `${regionList.length} region(s)`
     : 'no map';
 }
@@ -6895,7 +6700,7 @@ function ensureRegionOverlay(): THREE.LineSegments {
  */
 function drawRegionOverlay(): void {
   const o = ensureRegionOverlay();
-  if (!world || !regionsOpen || !regionList.length) { o.visible = false; return; }
+  if (!state.world || !regionsOpen || !regionList.length) { o.visible = false; return; }
   const fl = activeFloor();
   const LIFT = 0.07; // above the brush gizmo's 0.05, so an outline never z-fights it
   const z = (x: number, y: number): number => {
@@ -6904,7 +6709,7 @@ function drawRegionOverlay(): void {
   };
   const pts: number[] = [], cols: number[] = [];
   for (const r of regionList) {
-    if (r.floor !== world.active) continue;
+    if (r.floor !== state.world.active) continue;
     // The file keeps inclusive TILE bounds; the outline runs along the outer
     // grid lines, so the far edge is one past the last tile.
     const x0 = Math.max(0, Math.min(r.x1, r.x2)), y0 = Math.max(0, Math.min(r.y1, r.y2));
@@ -7077,7 +6882,7 @@ let seaBase = 1.5;
 $input('sealevel').addEventListener('input', (e) => {
   const v = +(e.currentTarget as HTMLInputElement).value;
   $('sealevelval').textContent = v.toFixed(2);
-  if (world) for (const fl of world.floors) if (fl.waterMesh) fl.waterMesh.position.z = v - seaBase;
+  if (state.world) for (const fl of state.world.floors) if (fl.waterMesh) fl.waterMesh.position.z = v - seaBase;
 });
 
 // Ground texture tiling density. The format doesn't record it, so it's tuned by
@@ -7175,7 +6980,7 @@ async function loadMapPath(path: string | null, archive: string | null = null): 
     // that is the whole point of persisting the toggles.
     setExplorer(explorerOpen);
     setPalette(uiPrefs.terrainPanel);
-    setShowObjects(showObjects);
+    setShowObjects(state.showObjects);
     setTopView(uiPrefs.topView); // restore the plan/3D view choice
     markDirty(false);
     const total = Object.values(info.counts).reduce((a, b) => a + b, 0);
@@ -9114,8 +8919,8 @@ let lastLightBake = 0;
 // A moved/deleted light-carrier re-bakes its floor's lightmap here, at most
 // four times a second — a full bake is a few ms, a drag fires per mousemove.
 function bakePendingLights(now: number): void {
-  if (!world) return;
-  const fl = world.floors[world.active];
+  if (!state.world) return;
+  const fl = state.world.floors[state.world.active];
   if (fl?.lightsDirty && now - lastLightBake > 250) { lastLightBake = now; bakeLightMap(fl); }
 }
 (function loop() {

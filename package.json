@@ -5,6 +5,13 @@
   "type": "module",
   "description": "Experimental map/campaign editor for Heroes of Might and Magic 5 (Tribes of the East)",
   "main": "electron/main.ts",
+  "imports": {
+    "#core/*": "./renderer/core/*",
+    "#viewport/*": "./renderer/viewport/*",
+    "#features/*": "./renderer/features/*",
+    "#src/*": "./src/*",
+    "#electron/*": "./electron/*"
+  },
   "scripts": {
     "start": "npm run build:renderer && electron .",
     "inspect": "node tools/inspect-terrain.js",

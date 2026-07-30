@@ -22,8 +22,8 @@
 // break the single draw call.
 
 import * as THREE from 'three';
-import type { FxInstancePayload } from '../src/scene.ts';
-import type { FxTransfer } from '../src/effects.ts';
+import type { FxInstancePayload } from '#src/scene.ts';
+import type { FxTransfer } from '#src/effects.ts';
 
 /** One playing effect instance, attached to one placed object. */
 export interface FxSystem {
