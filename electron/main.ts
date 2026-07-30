@@ -16,6 +16,7 @@ import type { IpcMainInvokeEvent } from 'electron';
 import { dirname, join, basename, relative, resolve, sep, isAbsolute } from 'node:path';
 import { readFileSync, writeFileSync, existsSync, readdirSync, statSync, mkdirSync, copyFileSync, rmSync, renameSync } from 'node:fs';
 import { createHash } from 'node:crypto';
+import { spawn } from 'node:child_process';
 import { buildScene, createGeomResolver, findAssetRoot, listTiles, splatFor, pngDataUri } from '../src/scene.ts';
 import type { GeomData } from '../src/scene.ts';
 import { transferEffect } from '../src/effects.ts';
@@ -61,6 +62,7 @@ import { extractPalette, isIdentity, recolorPixels } from '../src/recolor.ts';
 import { readEntries, writeArchive } from '../src/pak.ts';
 import type { ArtifactRank, ArtifactSlot, ArtifactSpec, HeroStats } from '../src/artifacts.ts';
 import type { ArtifactExeResult } from '../src/artifact-limit.ts';
+import { GAME_EXE, cleanEnv } from '../src/launch-game.ts';
 import type { ExeResult } from '../src/creature-limit.ts';
 import { blankStats } from '../src/creatures.ts';
 import type { RegistryName, FieldSchema } from '../src/schema.ts';
@@ -102,6 +104,7 @@ import type {
   SpecNewPayload, SpecNewResult,
   LocResult, LocEnablePayload, LocLangPayload, LocExportPayload,
   ObjectCatalogResult, IconPayload, IconResult, AddObjectPayload, AddObjectResult,
+  LaunchGameResult,
   MapSaveResult, MapPackResult, TerrainTilesResult, MapStatusResult, OpenMapDialogResult,
   NewMapPayload, NewMapResult, OpenArchivePayload, OpenArchiveResult,
   ExternalChange, PaintTilePayload, PaintTileResult, SculptPayload, SculptResult,
@@ -405,6 +408,38 @@ async function gpuReport(): Promise<string> {
     }
   })) as typeof ipcMain.handle;
 }
+
+/**
+ * Launch the game — OUR copy of it, and only ever ours.
+ *
+ * `bin/H5_Game_H5E.exe` is the one that reads `H5E/`, so it is the one that can
+ * see what the editor makes; the shipped executable beside it reads none of it
+ * and is the off switch, which is not a thing a button in here should offer.
+ *
+ * Detached and its streams let go of, because the game outlives this: closing
+ * the editor while a mission is being played must not take the game with it, and
+ * a 2007 executable writing to a pipe nobody drains would eventually block on it.
+ *
+ * Nothing is saved first. The map lives in an archive the game reads at startup,
+ * so what it will show is what was last packed — and quietly packing on the way
+ * out would make a Launch button a Save button with a surprise in it. Whether
+ * there are unsaved edits is on screen already.
+ */
+ipcMain.handle('app:launch-game', (): LaunchGameResult => {
+  const g = gameRoot();
+  if (!g) throw new Error('no game install configured');
+  const exe = join(g, GAME_EXE);
+  if (!existsSync(exe)) {
+    throw new Error(`no ${GAME_EXE} — this install has not been prepared yet`
+      + ' (start the editor with --setup, or delete nothing and press Prepare there)');
+  }
+  // The install root, not `bin/`: the game resolves `data/`, `H5E/` and its
+  // profiles from here, and this is where it was verified writing a generated
+  // map. Started by hand from `bin/` it works out the same answer for itself.
+  const child = spawn(exe, [], { cwd: g, detached: true, stdio: 'ignore', env: cleanEnv(process.env) });
+  child.unref();
+  return { ok: true, exe };
+});
 
 ipcMain.handle('app:gpu-report', gpuReport);
 ipcMain.handle('app:open-devtools', () => { win?.webContents.openDevTools({ mode: 'detach' }); });

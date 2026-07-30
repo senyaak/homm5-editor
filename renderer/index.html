@@ -776,6 +776,10 @@
     <button id="redobtn" disabled title="Nothing to redo">↷ Redo</button>
     <button id="save" disabled title="write the work back where the map came from — into its .h5m when it was opened from one">Save</button>
     <button id="pack" disabled title="build a .h5m in the game's H5E folder, where our build reads maps (Save already writes back into the archive it came from)">Pack .h5m…</button>
+    <!-- Beside Pack because the two are a pair: build the archive, then go and
+         look at it. Ours is the only executable this offers — the shipped one
+         reads none of what the editor makes. -->
+    <button id="playbtn" title="start the game — our copy (bin/H5_Game_H5E.exe), the one that reads the H5E folder. It reads maps at startup, so pack yours first">▶ Play</button>
     <button id="viewbtn" style="display:none" title="switch between the 3D orbit view and a 2D top-down plan view">View: 3D</button>
     <button id="objects" style="display:none">Objects</button>
     <button id="showobj" style="display:none">Objects: on</button>

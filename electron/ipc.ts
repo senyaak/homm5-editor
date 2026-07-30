@@ -443,6 +443,13 @@ export interface MapPackOk {
 /** Result of `map:pack`. */
 export type MapPackResult = MapPackCanceled | MapPackOk;
 
+/** Result of `app:launch-game` — the executable that was started. */
+export interface LaunchGameResult {
+  ok: true;
+  /** Absolute path of the copy that was launched, for the status line. */
+  exe: string;
+}
+
 /** Result of `terrain:tiles`. */
 export interface TerrainTilesResult {
   tiles: TileInfo[];
@@ -1073,6 +1080,13 @@ export interface EditorApi {
   gpuReport(): Promise<string>;
   /** Open DevTools on the editor window (the fatal screen's escape hatch). */
   openDevTools(): Promise<void>;
+  /**
+   * Start the game — our copy, the one that reads `H5E/`.
+   *
+   * Rejects when the install has not been prepared (no patched executable): the
+   * shipped one would start, and would show none of what the editor makes.
+   */
+  launchGame(): Promise<LaunchGameResult>;
   /** Is this run rendering through SwiftShader? See Settings.softwareRendering. */
   gpuSoftware(): Promise<boolean>;
   /**

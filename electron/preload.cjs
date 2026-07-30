@@ -103,6 +103,7 @@ const api = {
   // preload has its own context and survives.
   gpuReport: () => ipcRenderer.invoke('app:gpu-report'),
   openDevTools: () => ipcRenderer.invoke('app:open-devtools'),
+  launchGame: () => ipcRenderer.invoke('app:launch-game'),
   gpuSoftware: () => ipcRenderer.invoke('app:gpu-software'),
   setGpuSoftware: (on) => ipcRenderer.invoke('app:set-gpu-software', { on }),
   idleAnimation: () => ipcRenderer.invoke('app:idle-animation'),

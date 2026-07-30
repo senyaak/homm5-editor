@@ -8569,6 +8569,20 @@ $('pack').onclick = async () => {
   $('hud').textContent = `packed → ${r.output} (${(r.bytes / 1024 | 0)} KB)`;
 };
 
+// Always enabled, map open or not: what the game shows is whatever is in the
+// mod folder, which has nothing to do with what this window happens to have
+// loaded. The button says what it starts and then gets out of the way — the game
+// runs on its own and outlives the editor.
+$('playbtn').onclick = async () => {
+  $('hud').textContent = 'starting the game…';
+  try {
+    const r = await window.editor.launchGame();
+    $('hud').textContent = `started ${r.exe}`;
+  } catch (e) {
+    $('hud').textContent = `error: ${e instanceof Error ? e.message : String(e)}`;
+  }
+};
+
 // --- campaigns ---------------------------------------------------------------
 //
 // Three dialogs, mirroring the original editor: pick or create a campaign, edit
