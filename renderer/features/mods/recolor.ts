@@ -136,13 +136,17 @@ async function submitRecolor(): Promise<void> {
 for (const id of ['rc-hue', 'rc-sat', 'rc-light', 'rc-tint', 'rc-tintk']) {
   $input(id).addEventListener('input', renderRecolorPreviews);
 }
-$('rc-grey').onclick = () => {
-  $input('rc-sat').value = '0';
-  $input('rc-hue').value = '0';
-  $input('rc-light').value = '0';
-  $input('rc-tintk').value = '0';
-  renderRecolorPreviews();
-};
-$('rc-close').onclick = () => modDialog('recolor').close();
-$('rc-cancel').onclick = () => modDialog('recolor').close();
-$('rc-ok').onclick = () => { void submitRecolor(); };
+
+/** Bind the recolour dialog to its markup. */
+export function initRecolor(): void {
+  $('rc-grey').onclick = () => {
+    $input('rc-sat').value = '0';
+    $input('rc-hue').value = '0';
+    $input('rc-light').value = '0';
+    $input('rc-tintk').value = '0';
+    renderRecolorPreviews();
+  };
+  $('rc-close').onclick = () => modDialog('recolor').close();
+  $('rc-cancel').onclick = () => modDialog('recolor').close();
+  $('rc-ok').onclick = () => { void submitRecolor(); };
+}

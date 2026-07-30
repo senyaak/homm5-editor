@@ -277,89 +277,92 @@ const msgOf = (e: unknown): string => (e instanceof Error ? e.message : String(e
 
 // --- wiring -------------------------------------------------------------------
 
-$('campaignbtn').onclick = () => { void openCampaignList(); };
-$('cl-close').onclick = () => modDialog('camplist').close();
-$('cl-new').onclick = async () => {
-  const name = $input('cl-name').value.trim();
-  if (!name) return;
-  try { campDoc = await api.newCampaign(name); }
-  catch (e) { $('hud').textContent = 'could not create: ' + msgOf(e); return; }
-  await openCampaign(campDoc.dir);
-};
-$input('cl-name').addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') { e.preventDefault(); $('cl-new').click(); }
-});
+/** Bind the campaign dialogs to their markup. */
+export function initCampaigns(): void {
+  $('campaignbtn').onclick = () => { void openCampaignList(); };
+  $('cl-close').onclick = () => modDialog('camplist').close();
+  $('cl-new').onclick = async () => {
+    const name = $input('cl-name').value.trim();
+    if (!name) return;
+    try { campDoc = await api.newCampaign(name); }
+    catch (e) { $('hud').textContent = 'could not create: ' + msgOf(e); return; }
+    await openCampaign(campDoc.dir);
+  };
+  $input('cl-name').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); $('cl-new').click(); }
+  });
 
-$('cp-close').onclick = () => modDialog('campaign').close();
-$('cp-cancel').onclick = () => modDialog('campaign').close();
-$('cp-add').onclick = () => {
-  if (!campDoc) return;
-  readCampaignForm();
-  campDoc.missions.push({ mapRel: campMaps[0] ? missionMapRel(campMaps[0]) : '', name: '', description: '', heroes: [], bonuses: [] });
-  campSel = campDoc.missions.length - 1;
-  renderCampaign();
-  void editMission(campSel);
-};
-$('cp-edit').onclick = () => { void editMission(campSel); };
-$('cp-remove').onclick = () => {
-  if (!campDoc || campSel < 0) return;
-  readCampaignForm();
-  campDoc.missions.splice(campSel, 1);
-  campSel = Math.min(campSel, campDoc.missions.length - 1);
-  renderCampaign();
-};
-for (const [id, delta] of [['cp-up', -1], ['cp-down', 1]] as [string, number][]) {
-  $(id).onclick = () => {
+  $('cp-close').onclick = () => modDialog('campaign').close();
+  $('cp-cancel').onclick = () => modDialog('campaign').close();
+  $('cp-add').onclick = () => {
+    if (!campDoc) return;
+    readCampaignForm();
+    campDoc.missions.push({ mapRel: campMaps[0] ? missionMapRel(campMaps[0]) : '', name: '', description: '', heroes: [], bonuses: [] });
+    campSel = campDoc.missions.length - 1;
+    renderCampaign();
+    void editMission(campSel);
+  };
+  $('cp-edit').onclick = () => { void editMission(campSel); };
+  $('cp-remove').onclick = () => {
     if (!campDoc || campSel < 0) return;
     readCampaignForm();
-    const to = campSel + delta;
-    if (to < 0 || to >= campDoc.missions.length) return;
-    const [moved] = campDoc.missions.splice(campSel, 1);
-    campDoc.missions.splice(to, 0, moved!);
-    campSel = to;
+    campDoc.missions.splice(campSel, 1);
+    campSel = Math.min(campSel, campDoc.missions.length - 1);
+    renderCampaign();
+  };
+  for (const [id, delta] of [['cp-up', -1], ['cp-down', 1]] as [string, number][]) {
+    $(id).onclick = () => {
+      if (!campDoc || campSel < 0) return;
+      readCampaignForm();
+      const to = campSel + delta;
+      if (to < 0 || to >= campDoc.missions.length) return;
+      const [moved] = campDoc.missions.splice(campSel, 1);
+      campDoc.missions.splice(to, 0, moved!);
+      campSel = to;
+      renderCampaign();
+    };
+  }
+  $('cp-ok').onclick = () => { void saveCampaign(true); };
+  $('cp-pack').onclick = async () => {
+    // Pack what is on screen, not what was last saved.
+    if (!(await saveCampaign(false))) return;
+    if (!campDoc) return;
+    try {
+      const r = await api.packCampaign(campDoc.dir);
+      if (r.canceled) return;
+      $('hud').textContent = `packed → ${r.output} (${((r.bytes ?? 0) / 1024) | 0} KB)`;
+    } catch (e) { $('cp-err').textContent = msgOf(e); }
+  };
+
+  /** Write the campaign back. Returns false when main refused it. */
+  async function saveCampaign(close: boolean): Promise<boolean> {
+    if (!campDoc) return false;
+    readCampaignForm();
+    try { campDoc = await api.saveCampaign(campDoc); }
+    catch (e) { $('cp-err').textContent = msgOf(e); return false; }
+    if (close) modDialog('campaign').close();
+    else renderCampaign();
+    return true;
+  }
+
+  $('ms-close').onclick = () => modDialog('mission').close();
+  $('ms-cancel').onclick = () => modDialog('mission').close();
+  $sel('ms-map').onchange = () => {
+    if (!missionDraft) return;
+    missionDraft.mapRel = $sel('ms-map').value;
+    // A different map means different heroes to hand on.
+    missionDraft.heroes = [];
+    $input('ms-hcount').value = '0';
+    void renderHeroSlots();
+  };
+  $input('ms-hcount').addEventListener('change', () => { void renderHeroSlots(); });
+  $('ms-ok').onclick = () => {
+    if (!campDoc || !missionDraft || missionAt < 0) return;
+    missionDraft.name = $input('ms-name').value;
+    missionDraft.description = $input('ms-description').value;
+    campDoc.missions[missionAt] = missionDraft;
+    missionDraft = null;
+    modDialog('mission').close();
     renderCampaign();
   };
 }
-$('cp-ok').onclick = () => { void saveCampaign(true); };
-$('cp-pack').onclick = async () => {
-  // Pack what is on screen, not what was last saved.
-  if (!(await saveCampaign(false))) return;
-  if (!campDoc) return;
-  try {
-    const r = await api.packCampaign(campDoc.dir);
-    if (r.canceled) return;
-    $('hud').textContent = `packed → ${r.output} (${((r.bytes ?? 0) / 1024) | 0} KB)`;
-  } catch (e) { $('cp-err').textContent = msgOf(e); }
-};
-
-/** Write the campaign back. Returns false when main refused it. */
-async function saveCampaign(close: boolean): Promise<boolean> {
-  if (!campDoc) return false;
-  readCampaignForm();
-  try { campDoc = await api.saveCampaign(campDoc); }
-  catch (e) { $('cp-err').textContent = msgOf(e); return false; }
-  if (close) modDialog('campaign').close();
-  else renderCampaign();
-  return true;
-}
-
-$('ms-close').onclick = () => modDialog('mission').close();
-$('ms-cancel').onclick = () => modDialog('mission').close();
-$sel('ms-map').onchange = () => {
-  if (!missionDraft) return;
-  missionDraft.mapRel = $sel('ms-map').value;
-  // A different map means different heroes to hand on.
-  missionDraft.heroes = [];
-  $input('ms-hcount').value = '0';
-  void renderHeroSlots();
-};
-$input('ms-hcount').addEventListener('change', () => { void renderHeroSlots(); });
-$('ms-ok').onclick = () => {
-  if (!campDoc || !missionDraft || missionAt < 0) return;
-  missionDraft.name = $input('ms-name').value;
-  missionDraft.description = $input('ms-description').value;
-  campDoc.missions[missionAt] = missionDraft;
-  missionDraft = null;
-  modDialog('mission').close();
-  renderCampaign();
-};
