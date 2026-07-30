@@ -650,8 +650,8 @@
     #newmap { padding: 0; border: 0; background: transparent; max-width: 92vw; overflow: visible; }
     #newmap::backdrop { background: #0d1014cc; }
     /* Units/Artifacts dialogs: installed mod contents and the new-thing form */
-    #unitsmod, #artsmod { padding: 0; border: 0; background: transparent; max-width: 94vw; overflow: visible; }
-    #unitsmod::backdrop, #artsmod::backdrop { background: #0d1014cc; }
+    #unitsmod, #artsmod, #heroesmod, #heroedit { padding: 0; border: 0; background: transparent; max-width: 94vw; overflow: visible; }
+    #unitsmod::backdrop, #artsmod::backdrop, #heroesmod::backdrop, #heroedit::backdrop { background: #0d1014cc; }
     .um-body select[multiple] { flex: 1; min-width: 0; background: #0d1014; border: 1px solid #30363d;
       border-radius: 6px; padding: 4px 6px; color: #c9d1d9; font-size: 12px; }
     .um-art input { font-size: 11px; color: #8b949e; }
@@ -772,6 +772,7 @@
     <button id="campaignbtn" title="build a campaign out of maps and pack it to .h5c">Campaigns…</button>
     <button id="unitsbtn" title="creature mods — add new units to the game (an archive in UserMODs plus a patched executable)">Units…</button>
     <button id="artsbtn" title="artifact mods — add new artifacts to the game (same archive, artifact ceiling patched)">Artifacts…</button>
+    <button id="heroesbtn" title="hero mods — add new characters to the game (same archive; a hero needs no patched executable at all)">Heroes…</button>
     <button id="undobtn" disabled title="Nothing to undo">↶ Undo</button>
     <button id="redobtn" disabled title="Nothing to redo">↷ Redo</button>
     <button id="save" disabled title="write the work back where the map came from — into its .h5m when it was opened from one">Save</button>
@@ -1460,6 +1461,105 @@
   <!-- A form of its own, opened ON TOP of the list it belongs to. The list is a
        list; making and changing things happens here, where Cancel means what it
        says and closing loses nothing else. -->
+  <!-- heroes: the same mod again, and the cheapest side of it. A hero extends
+       no table, holds no number and moves no ceiling — he is three files at a
+       path nobody owns (src/heroes.ts). So this dialog installs without ever
+       touching the executable, unlike its two siblings. -->
+  <dialog id="heroesmod">
+    <div class="mp-card um-card">
+      <div class="mp-head">
+        <span class="mp-title">Heroes</span>
+        <button id="hm-close" title="close (Esc)">✕</button>
+      </div>
+      <div class="mp-body on-body um-body">
+        <fieldset>
+          <legend>Installed</legend>
+          <div id="hm-list" class="um-mods"></div>
+          <div class="de-foot" style="padding:8px 0 0;justify-content:flex-start">
+            <button id="hm-new">New hero…</button>
+          </div>
+        </fieldset>
+        <div id="hm-note" class="um-note"></div>
+        <div id="hm-err" class="on-err"></div>
+      </div>
+      <div class="de-foot">
+        <button id="hm-cancel" class="ghost">Close</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- The form, opened on top of the list, exactly as an artifact's is. -->
+  <dialog id="heroedit">
+    <div class="mp-card um-card">
+      <div class="mp-head">
+        <span class="mp-title" id="heroedit-title">New hero</span>
+        <button id="heroedit-x" title="close (Esc)">✕</button>
+      </div>
+      <div class="mp-body on-body um-body">
+        <fieldset>
+          <legend>New hero</legend>
+          <div class="on-body um-form">
+            <!-- The donor is not a preset here but the hero's BODY: his model,
+                 animations, arena character and trace stay the donor's hrefs,
+                 referenced and never copied. Which is why it comes first. -->
+            <label class="on-row um-span"><span>Donor</span><select id="he-donor" title="the shipped hero whose model, animations and arena character he wears — everything not set below stays his"></select></label>
+            <label class="on-row"><span>Files</span><input id="he-file" type="text" spellcheck="false" autocomplete="off" placeholder="file stem, e.g. H3Gem" title="the stem of every file generated for him, and of his folder in the mod"></label>
+            <label class="on-row"><span>Travels as</span><input id="he-internal" type="text" spellcheck="false" autocomplete="off" placeholder="InternalName" title="what a campaign carries him from mission to mission by; fills itself from the file stem"></label>
+            <label class="on-row"><span>Name</span><input id="he-name" type="text" autocomplete="off"></label>
+            <label class="on-row um-span"><span>Biography</span><input id="he-bio" type="text" autocomplete="off"></label>
+            <label class="on-row"><span>Faction</span><select id="he-town" title="whose tavern offers him; picking one picks the class, since the game has one class per faction"></select></label>
+            <label class="on-row"><span>Class</span><select id="he-class" title="one per faction, and what a level up offers is keyed to it"></select></label>
+            <!-- What a specialization DOES is compiled against its enum value
+                 and bound to no faction, so a Sylvan hero may hold a Necropolis
+                 one and get its behaviour. The words stay the lender's, though,
+                 which is what the two fields under it are for. -->
+            <label class="on-row"><span>Specialization</span><select id="he-spec" title="any faction's: what it does is keyed to the value, not to the race"></select></label>
+            <label class="on-row"><span>Spec. name</span><input id="he-spec-name" type="text" autocomplete="off" placeholder="empty → the donor's words"></label>
+            <label class="on-row um-span"><span>Spec. text</span><input id="he-spec-desc" type="text" autocomplete="off" placeholder="what the specialization does, in words"></label>
+            <!-- The racial slot. It need NOT hold the faction's racial skill:
+                 the shipped Erasial is a Demon Lord holding Logistics there. -->
+            <label class="on-row"><span>Racial slot</span><select id="he-primary" title="the skill he starts with in the racial slot — it need not be his faction's"></select></label>
+            <label class="on-row"><span>at</span>
+              <select id="he-primary-mastery">
+                <option>MASTERY_BASIC</option><option>MASTERY_ADVANCED</option><option>MASTERY_EXPERT</option>
+              </select>
+            </label>
+            <div class="um-stats">
+              <label>Offence<input id="he-off" type="number" value="0"></label>
+              <label>Defence<input id="he-def" type="number" value="0"></label>
+              <label>Spellpower<input id="he-sp" type="number" value="0"></label>
+              <label>Knowledge<input id="he-kn" type="number" value="0"></label>
+            </div>
+            <label class="on-row"><span>Skill</span><select id="he-skill" title="a starting secondary skill, beside the racial one"></select></label>
+            <label class="on-row"><span>at</span>
+              <select id="he-skill-mastery">
+                <option>MASTERY_BASIC</option><option>MASTERY_ADVANCED</option><option>MASTERY_EXPERT</option>
+              </select>
+            </label>
+            <label class="on-row"><span>Perk</span><select id="he-perk" title="a perk he starts with"></select></label>
+            <label class="on-row"><span>Spell</span><select id="he-spell" title="a spell he knows from the start"></select></label>
+            <div class="um-stats">
+              <label class="nm-check" title="he brings a ballista"><input id="he-ballista" type="checkbox"> Ballista</label>
+              <label class="nm-check" title="he brings a first aid tent"><input id="he-tent" type="checkbox"> First aid tent</label>
+              <label class="nm-check" title="he brings an ammo cart"><input id="he-ammo" type="checkbox"> Ammo cart</label>
+              <!-- The flag that decides whether he is a person or a fixture: the
+                   64 shipped heroes with it false are exactly the 64 a map
+                   offers when its hero roster is fully checked. -->
+              <label class="nm-check" title="a scenario hero is in no tavern pool — he exists only where he is placed by hand or by script"><input id="he-scenario" type="checkbox"> Scenario hero</label>
+            </div>
+            <label class="on-row um-art um-span"><span>Portrait</span><input id="he-face" type="text" spellcheck="false" autocomplete="off" placeholder="empty → the donor's face" title="href of the 128x128 portrait"></label>
+            <label class="on-row um-art um-span"><span>Portrait 64</span><input id="he-face-small" type="text" spellcheck="false" autocomplete="off" placeholder="empty → the donor's" title="href of the 64x64 portrait"></label>
+          </div>
+        </fieldset>
+        <div id="he-err" class="on-err"></div>
+      </div>
+      <div class="de-foot">
+        <button id="heroedit-cancel" class="ghost">Cancel</button>
+        <button id="he-ok">Build &amp; install</button>
+      </div>
+    </div>
+  </dialog>
+
   <dialog id="setedit">
     <div class="mp-card um-card">
       <div class="mp-head">

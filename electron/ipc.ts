@@ -745,6 +745,20 @@ export interface ModListEntry {
    * window, and "nothing happened" looks exactly like "it worked".
    */
   sets: ModArtifactSetDTO[];
+  /** Its heroes. They extend nothing, so this list is the only trace of them. */
+  heroes: ModHeroDTO[];
+}
+
+/** One hero of an installed mod, as `mods:list` reports it. */
+export interface ModHeroDTO {
+  file: string;
+  internalName: string;
+  name: string;
+  town: string;
+  heroClass: string;
+  specialization?: string;
+  /** False means every tavern of his faction may offer him. */
+  scenarioHero?: boolean;
 }
 
 /** Result of `mods:list`. */
@@ -777,6 +791,20 @@ export interface ModsFormDataResult {
   abilities: string[];
   /** The TOWN_… races, for a creature's home town. */
   towns: RosterEntryDTO[];
+  /**
+   * Every shipped hero, as donors for a new one.
+   *
+   * They come with this payload rather than from `registry:roster`, which needs
+   * a map open — and a hero is authored with no map in sight, exactly like a
+   * creature or an artifact.
+   */
+  heroDonors: RosterEntryDTO[];
+  /** Every skill and perk (one table holds both), for a hero's starting kit. */
+  skills: RosterEntryDTO[];
+  /** Every spell, for the one a hero starts knowing. */
+  spells: RosterEntryDTO[];
+  /** The enums `AdvMapHeroShared` closes: TownType, Class, Specialization. */
+  heroEnums: Record<string, string[]>;
 }
 
 /** Payload of `mods:preset` / `mods:artifact-preset` — which donor to read. */
@@ -860,6 +888,56 @@ export interface ModsInstallArtifactResult {
   limit: number;
   /** What happened to the executable, in words. */
   exe: string;
+}
+
+/**
+ * Payload of `mods:install-hero` — one hero to add to OUR mod.
+ *
+ * The cheapest install there is: no id, no number, no ceiling and no file of
+ * the game's touched. What a hero costs instead is a DONOR — the shipped hero
+ * whose model, animations and arena character he wears, since a character
+ * without art cannot stand on a map. See src/heroes.ts.
+ */
+export interface ModsInstallHeroPayload {
+  /** File stem of everything generated for him, and of his folder. */
+  file: string;
+  /** `<InternalName>` — what a campaign carries him from mission to mission by. */
+  internalName: string;
+  name: string;
+  biography: string;
+  /** Data-root-relative path of the shipped hero his art comes from. */
+  donor: string;
+  /** `TOWN_…` — whose tavern offers him. */
+  town: string;
+  /** `HERO_CLASS_…` — one per faction. */
+  heroClass: string;
+  /** `HERO_SPEC_…`. Any faction's: what it does is keyed to the value, not the race. */
+  specialization?: string;
+  /** Its own words, when the specialization is borrowed from another faction. */
+  specializationName?: string;
+  specializationDescription?: string;
+  specializationIcon?: string;
+  /** The racial slot: skill and mastery. It need not be the faction's racial skill. */
+  primarySkill?: { skill: string; mastery: string };
+  /** Offence / Defence / Spellpower / Knowledge. Omitted, the donor's. */
+  stats?: Record<string, number>;
+  /** Starting secondary skills, each a skill at a mastery. */
+  skills?: { skill: string; mastery: string }[];
+  perks?: string[];
+  spells?: string[];
+  machines?: { ballista?: boolean; firstAidTent?: boolean; ammoCart?: boolean };
+  /** True keeps him out of every tavern — placed by hand or by script only. */
+  scenarioHero?: boolean;
+  /** href of a 128x128 portrait, and of the 64x64. Omitted, the donor's face. */
+  face?: string;
+  faceSmall?: string;
+}
+
+/** Result of `mods:install-hero`. */
+export interface ModsInstallHeroResult {
+  archive: string;
+  /** The href a map's roster, a pool or a placed hero points at to reach him. */
+  href: string;
 }
 
 /**
@@ -1048,6 +1126,8 @@ export interface EditorApi {
   installArtifact(p: ModsInstallArtifactPayload): Promise<ModsInstallArtifactResult>;
   /** Add an artifact set to OUR mod, build it, install it. No ceiling moves. */
   installArtifactSet(p: ModsInstallSetPayload): Promise<ModsInstallSetResult>;
+  /** Add a hero to OUR mod, build it, install it. Nothing global moves at all. */
+  installHero(p: ModsInstallHeroPayload): Promise<ModsInstallHeroResult>;
   /** Change an artifact already in the mod. Its id and number do not move. */
   updateArtifact(p: ModsInstallArtifactPayload): Promise<ModsInstallArtifactResult>;
   /** Change a set already in the mod. Its effect value does not move. */

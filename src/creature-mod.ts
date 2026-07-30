@@ -1051,6 +1051,10 @@ function buildHeroes(heroes: readonly HeroSpec[], read: DataReader): ModFile[] {
     files.push({ path: p.shared, data: Buffer.from(heroDoc(h, mustRead(read, h.donor), p), 'latin1') });
     files.push({ path: p.name, data: utf16(h.name) });
     files.push({ path: p.biography, data: utf16(h.biography) });
+    if (h.specializationName) files.push({ path: p.specName, data: utf16(h.specializationName) });
+    if (h.specializationDescription) {
+      files.push({ path: p.specDescription, data: utf16(h.specializationDescription) });
+    }
   }
   return files;
 }

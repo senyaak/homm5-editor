@@ -87,6 +87,7 @@ const api = {
   installMod: (p) => ipcRenderer.invoke('mods:install', p),
   installArtifact: (p) => ipcRenderer.invoke('mods:install-artifact', p),
   installArtifactSet: (p) => ipcRenderer.invoke('mods:install-set', p),
+  installHero: (p) => ipcRenderer.invoke('mods:install-hero', p),
   updateArtifact: (p) => ipcRenderer.invoke('mods:update-artifact', p),
   updateArtifactSet: (p) => ipcRenderer.invoke('mods:update-set', p),
   creatureUses: (p) => ipcRenderer.invoke('mods:creature-uses', p),

@@ -43,11 +43,14 @@ import { MAP_SIZES } from '../src/terrain-blank.ts';
 import { Registry, artifactPreset, creatureAbilities, creaturePreset, creatureSources } from '../src/registry.ts';
 import type { RosterEntry } from '../src/registry.ts';
 import {
-  addArtifact, addArtifactSet, addCreature, removeArtifact, removeArtifactSet, removeCreature,
+  addArtifact, addArtifactSet, addCreature, addHero, removeArtifact, removeArtifactSet, removeCreature,
   updateArtifact, updateArtifactSet, artifactLimit, buildCreatureMod, dataReader, findCreatureMods,
   installCreatureMod, MOD_STEM, newCreatureMod, packCreatureMod,
 } from '../src/creature-mod.ts';
 import { MOD_DIR, MOD_EXT, ensureModDir, modDir, modFile } from '../src/mod-paths.ts';
+import { HERO_CLASS, heroHref, heroPaths } from '../src/heroes.ts';
+import { refPath } from '../src/dwellings.ts';
+import type { HeroSpec, Mastery } from '../src/heroes.ts';
 import { extractMapFolder, gameArchives, listOurMaps, listStockMaps, mapFolderIn } from '../src/map-source.ts';
 import type { MapSource } from '../src/map-source.ts';
 import { builtDll, extensionState, installExtension, writeEffectsFile } from '../src/extension.ts';
@@ -111,7 +114,7 @@ import type {
   AddLayerPayload, AddLayerResult, PaintRiverPayload, RiverCellsPayload, MaskPayload, UndoResult, HistoryState,
   ModsListResult, ModsInstallPayload, ModsInstallResult, ModsFormDataResult, ModsPresetPayload,
   CreaturePresetDTO, ArtifactPresetDTO, ModsInstallArtifactPayload, ModsInstallArtifactResult,
-  ModsInstallSetPayload, ModsInstallSetResult, ExtensionStatus,
+  ModsInstallSetPayload, ModsInstallSetResult, ModsInstallHeroPayload, ModsInstallHeroResult, ExtensionStatus,
   ModsRemovePayload, ModsRemoveResult, ModsUsesResult,
   ModsTexturesPayload, ModsTexturesResult, ModsRecolorPayload, ModsRecolorResult,
 } from './ipc.ts';
@@ -2386,6 +2389,12 @@ ipcMain.handle('mods:list', async (): Promise<ModsListResult> => {
     // artifact opened for editing without them saves none — so changing a price
     // took the bonus away. The DTO always declared the field; this is what
     // finally fills it.
+    heroes: (f.mod.heroes ?? []).map((h) => ({
+      file: h.file, internalName: h.internalName, name: h.name,
+      town: h.town, heroClass: h.heroClass,
+      ...(h.specialization ? { specialization: h.specialization } : {}),
+      ...(h.scenarioHero !== undefined ? { scenarioHero: h.scenarioHero } : {}),
+    })),
     artifacts: (f.mod.artifacts ?? []).map((a) => ({
       id: a.id, number: a.number, name: a.name, description: a.description,
       slot: a.slot, rank: a.rank, cost: a.cost, aiValue: a.aiValue,
@@ -2412,6 +2421,25 @@ ipcMain.handle('mods:list', async (): Promise<ModsListResult> => {
 // Rosters and presets come from the plain data root, not the mounted chain:
 // install resolves the donor's documents there, so offering a mod's own
 // creature would offer a choice that then fails.
+/**
+ * The enums a hero picks from, read straight out of the type spec.
+ *
+ * Not through valuesFor(): that answers for the fields OUR schema knows, and it
+ * knows AdvMapHero — the thing on a map — not AdvMapHeroShared, the character
+ * behind it. These three are exactly what a map cannot reach and a new hero
+ * exists to set.
+ */
+function heroEnumValues(): Record<string, string[]> {
+  orderFor(HERO_CLASS); // parses types.xml on first use
+  const out: Record<string, string[]> = {};
+  if (!typeSpec) return out;
+  for (const field of ['TownType', 'Class', 'Specialization']) {
+    const v = fieldValues(typeSpec, HERO_CLASS, field);
+    if (v && v.length) out[field] = v;
+  }
+  return out;
+}
+
 ipcMain.handle('mods:form-data', async (): Promise<ModsFormDataResult> => {
   if (!isConfigured()) throw new Error('no data root configured');
   const r = new Registry(gameData());
@@ -2422,6 +2450,10 @@ ipcMain.handle('mods:form-data', async (): Promise<ModsFormDataResult> => {
     heroStats: [...HERO_STAT_NAMES],
     abilities: creatureAbilities(assets([gameData()])),
     towns: r.races(),
+    heroDonors: r.heroes(),
+    skills: r.skills(),
+    spells: r.spells(),
+    heroEnums: heroEnumValues(),
   };
 });
 
@@ -2547,6 +2579,57 @@ ipcMain.handle('mods:install-artifact', async (_e: IpcMainInvokeEvent, p: ModsIn
     limit: artifactLimit(mod),
     exe: exeWords(installed.artifacts),
   };
+});
+
+ipcMain.handle('mods:install-hero', async (_e: IpcMainInvokeEvent, p: ModsInstallHeroPayload): Promise<ModsInstallHeroResult> => {
+  const g = gameRoot();
+  if (!g) throw new Error('no game install configured — a mod needs a folder to install into');
+  if (!isConfigured()) throw new Error('no data root configured');
+  if (!p.file.trim()) throw new Error('the file stem is required');
+  if (!p.donor.trim()) throw new Error('a donor is required — a hero wears a shipped hero\'s model');
+
+  const stats: HeroSpec['stats'] = {};
+  for (const [field, key] of [['Offence', 'offence'], ['Defence', 'defence'],
+    ['Spellpower', 'spellpower'], ['Knowledge', 'knowledge']] as const) {
+    const v = p.stats?.[field];
+    if (v !== undefined && v !== null) stats[key] = Number(v) || 0;
+  }
+
+  const mod = ourMod(g);
+  const spec = addHero(mod, {
+    file: p.file.trim(),
+    // A hero who is not told what to travel under travels under his file stem:
+    // a campaign needs SOMETHING, and the stem is already unique in the mod.
+    internalName: (p.internalName || p.file).trim(),
+    name: p.name,
+    biography: p.biography,
+    // The window offers donors as the roster lists them, which is the HREF a
+    // map would store; the builder reads the file, so it wants the path. One
+    // normalisation here rather than every caller getting it right.
+    donor: refPath(p.donor.trim()),
+    town: p.town,
+    heroClass: p.heroClass,
+    ...(p.specialization ? { specialization: p.specialization } : {}),
+    ...(p.specializationName ? { specializationName: p.specializationName } : {}),
+    ...(p.specializationDescription ? { specializationDescription: p.specializationDescription } : {}),
+    ...(p.specializationIcon ? { specializationIcon: p.specializationIcon } : {}),
+    ...(p.primarySkill?.skill ? { primarySkill: {
+      skill: p.primarySkill.skill, mastery: (p.primarySkill.mastery || 'MASTERY_BASIC') as Mastery,
+    } } : {}),
+    ...(Object.keys(stats).length ? { stats } : {}),
+    ...(p.skills ? { skills: p.skills.filter((s) => s.skill).map((s) => ({
+      skill: s.skill, mastery: (s.mastery || 'MASTERY_BASIC') as Mastery,
+    })) } : {}),
+    ...(p.perks ? { perks: p.perks.filter(Boolean) } : {}),
+    ...(p.spells ? { spells: p.spells.filter(Boolean) } : {}),
+    ...(p.machines ? { machines: p.machines } : {}),
+    ...(p.scenarioHero !== undefined ? { scenarioHero: !!p.scenarioHero } : {}),
+    ...(p.face ? { face: p.face } : {}),
+    ...(p.faceSmall ? { faceSmall: p.faceSmall } : {}),
+  });
+
+  const { installed } = buildAndInstall(g, mod);
+  return { archive: installed.archive, href: heroHref(heroPaths(spec)) };
 });
 
 /**

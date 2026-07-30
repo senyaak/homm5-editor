@@ -108,8 +108,24 @@ export interface HeroSpec {
   town: string;
   /** `HERO_CLASS_…` — one per faction; it decides what a level up offers. */
   heroClass: string;
-  /** `HERO_SPEC_…`. Omitted, the donor's specialization and its texts stand. */
+  /**
+   * `HERO_SPEC_…`. Omitted, the donor's specialization and its texts stand.
+   *
+   * The value is an enum and nothing else: what it DOES is compiled into the
+   * executable against that value, and no table binds one to a faction. So a
+   * Sylvan hero may hold a Necropolis specialization and get its behaviour —
+   * HERO_SPEC_EMPIRIC makes the first aid tent heal five more per level for
+   * whoever carries it. What is not shared is the words: name, description and
+   * icon are hrefs on the HERO, so a borrowed specialization shows the lender's
+   * texts unless its own are given below.
+   */
   specialization?: string;
+  /** The specialization's name, as the hero screen prints it. */
+  specializationName?: string;
+  /** Its description — what the specialization does, in words. */
+  specializationDescription?: string;
+  /** href of its icon. Omitted, the donor's — which may be the wrong picture. */
+  specializationIcon?: string;
   /**
    * The racial slot. Omitted, the donor's stands; a hero of the faction's own
    * racial skill is the ordinary case, and anything else is deliberate.
@@ -142,6 +158,9 @@ export interface HeroPaths {
   shared: string;
   name: string;
   biography: string;
+  /** Where his specialization's own texts go, when he does not borrow them. */
+  specName: string;
+  specDescription: string;
 }
 
 /** Where each of a hero's files goes. */
@@ -152,6 +171,8 @@ export function heroPaths(spec: Pick<HeroSpec, 'file'>): HeroPaths {
     shared: `${dir}/${spec.file}.(${HERO_CLASS}).xdb`,
     name: `${dir}/${spec.file}_Name.txt`,
     biography: `${dir}/${spec.file}_Bio.txt`,
+    specName: `${dir}/${spec.file}_SpecName.txt`,
+    specDescription: `${dir}/${spec.file}_SpecDesc.txt`,
   };
 }
 
@@ -241,6 +262,11 @@ export function heroDoc(spec: HeroSpec, donorXml: string, p: HeroPaths = heroPat
   set(root, 'ScenarioHero', String(!!spec.scenarioHero));
 
   if (spec.specialization) set(root, 'Specialization', spec.specialization);
+  // A borrowed specialization keeps the lender's words unless ours are given,
+  // which is how a Sylvan hero ends up described as a Necropolis embalmer.
+  if (spec.specializationName) point(root, 'SpecializationNameFileRef', `/${p.specName}`);
+  if (spec.specializationDescription) point(root, 'SpecializationDescFileRef', `/${p.specDescription}`);
+  if (spec.specializationIcon) point(root, 'SpecializationIcon', spec.specializationIcon);
   if (spec.face) point(root, 'FaceTexture', spec.face);
   if (spec.faceSmall) point(root, 'FaceTextureSmall', spec.faceSmall);
 

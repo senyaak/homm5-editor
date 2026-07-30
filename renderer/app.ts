@@ -21,7 +21,7 @@ import { tierOf, RAMP_BIT, TIER_STEP } from '../src/terrain.ts';
 import type { Scene, Floor, Instance, SplatData, TileInfo, GeomData, GeomPart, Footprint, SkinnedGeom, AmbientData, FxInstancePayload } from '../src/scene.ts';
 import { createFxSystem } from './particles.ts';
 import type { FxSystem } from './particles.ts';
-import type { EditorApi, MapListEntry, ExternalChange, PlaceableObject, RosterEntryDTO, LocResult,
+import type { EditorApi, MapListEntry, ExternalChange, ModListEntry, PlaceableObject, RosterEntryDTO, LocResult,
   CampaignDoc, CampaignListEntry, CampaignMissionDto, CreatureStats, PaletteEntry, RecolorOps } from '../electron/ipc.ts';
 import { recolorPixels } from '../src/recolor.ts';
 import type { ObjectProp } from '../src/map.ts';
@@ -8989,6 +8989,202 @@ function bakePendingLights(now: number): void {
   bakePendingLights(now);
   renderer.render(scene, activeCam);
 })();
+
+
+// --- heroes: the mod's third side, and the one that costs the game nothing ---
+//
+// A creature moves a ceiling in the executable and an artifact extends a
+// reference table; a hero does neither. He is three files at a path nobody
+// owns, so this form installs without patching anything — which is why it has
+// no ceiling line and no extension warning, unlike its two siblings.
+//
+// The DONOR is not a preset here but the hero's body: his model, animations,
+// arena character and trace stay the donor's hrefs, referenced and never
+// copied. Everything the form leaves empty stays the donor's too.
+
+/** Which faction each class belongs to — the game pairs them one to one. */
+const HERO_CLASS_OF_TOWN: Record<string, string> = {
+  TOWN_HEAVEN: 'HERO_CLASS_KNIGHT',
+  TOWN_PRESERVE: 'HERO_CLASS_RANGER',
+  TOWN_ACADEMY: 'HERO_CLASS_WIZARD',
+  TOWN_INFERNO: 'HERO_CLASS_DEMON_LORD',
+  TOWN_NECROMANCY: 'HERO_CLASS_NECROMANCER',
+  TOWN_DUNGEON: 'HERO_CLASS_WARLOCK',
+  TOWN_FORTRESS: 'HERO_CLASS_RUNEMAGE',
+  TOWN_STRONGHOLD: 'HERO_CLASS_BARBARIAN',
+};
+
+/** The same, for the hero form: a blank first entry is what "leave it to the
+ *  donor" looks like in a dropdown over a closed set. */
+function fillHeroSelect(id: string, opts: { id: string; label: string }[], optional = false): void {
+  const el = $select(id);
+  fillSelect(el, optional ? [{ id: '', label: '—' }, ...opts] : opts, el.value);
+}
+
+let heDonors: RosterEntryDTO[] = [];
+/** Set once the file stem has been typed into, so it stops driving the name. */
+let heInternalTouched = false;
+
+/** Everything the hero form is built from: the rosters and the type's own enums. */
+async function fillHeroForm(): Promise<void> {
+  // One call, and not `roster`/`specValues`: those read the open map's registry,
+  // and a hero is authored with no map in sight — exactly like a creature or an
+  // artifact, which is why this payload exists at all.
+  const form = await window.editor.modFormData();
+  const heroes = form.heroDonors;
+  const skills = form.skills.map((e) => ({ id: e.id, label: e.name || e.id }));
+  const spells = form.spells.map((e) => ({ id: e.id, label: e.name || e.id }));
+  const values = form.heroEnums;
+
+  // A donor is named by the path the hero's own document will reference him
+  // through, and grouped by faction folder — Preserve/Ossir reads better than
+  // one flat list of 118.
+  heDonors = heroes;
+  const el = $select('he-donor');
+  const had = el.value;
+  el.innerHTML = '';
+  for (const h of heroes) {
+    el.append(new Option(h.group ? `${h.group} — ${h.name ?? h.id}` : (h.name ?? h.id), h.id));
+  }
+  if (had && [...el.options].some((o) => o.value === had)) el.value = had;
+
+  const asOptions = (v: string[] = []): { id: string; label: string }[] => v.map((id) => ({ id, label: id }));
+  fillHeroSelect('he-town', asOptions(values.TownType));
+  fillHeroSelect('he-class', asOptions(values.Class));
+  fillHeroSelect('he-spec', asOptions(values.Specialization), true);
+
+  // Skills and perks come out of one table (Skills.xdb holds both), so both
+  // pickers are offered the whole of it rather than a guess at which is which.
+  fillHeroSelect('he-primary', skills, true);
+  fillHeroSelect('he-skill', skills, true);
+  fillHeroSelect('he-perk', skills, true);
+  fillHeroSelect('he-spell', spells, true);
+}
+
+/** The donor decides the faction and class a blank form starts on. */
+function heroDonorChanged(): void {
+  const donor = $select('he-donor').value;
+  const entry = heDonors.find((h) => h.id === donor);
+  const town = [...$select('he-town').options].map((o) => o.value)
+    .find((t) => entry?.group && t.toLowerCase().includes(entry.group.toLowerCase()));
+  if (town) $select('he-town').value = town;
+  heroTownChanged();
+}
+
+/** One class per faction, so picking a faction picks the class with it. */
+function heroTownChanged(): void {
+  const cls = HERO_CLASS_OF_TOWN[$select('he-town').value];
+  if (cls && [...$select('he-class').options].some((o) => o.value === cls)) $select('he-class').value = cls;
+}
+
+/** The installed heroes, as the list inside the dialog shows them. */
+function renderHeroList(mods: ModListEntry[]): void {
+  const box = $('hm-list');
+  box.innerHTML = '';
+  const heroes = mods.flatMap((m) => (m.heroes ?? []).map((h) => ({ ...h, stem: m.stem })));
+  if (!heroes.length) {
+    box.textContent = 'No heroes installed. A hero costs the game nothing: no id, no ceiling, no patched executable.';
+    return;
+  }
+  for (const h of heroes) {
+    const row = document.createElement('div');
+    row.className = 'um-mod';
+    const where = h.scenarioHero ? 'placed by hand only' : 'offered by taverns';
+    row.textContent = `${h.name || h.file} — ${h.town.replace('TOWN_', '').toLowerCase()}, ${where}`;
+    row.title = `travels as ${h.internalName}${h.specialization ? `, ${h.specialization}` : ''}`;
+    box.append(row);
+  }
+}
+
+/** Build the hero and install him, then go back to the list that now holds him. */
+async function submitHeroMod(): Promise<void> {
+  const ok = $button('he-ok');
+  ok.disabled = true;
+  $('he-err').textContent = '';
+  $('hm-note').textContent = '';
+  try {
+    const skill = $select('he-skill').value;
+    const perk = $select('he-perk').value;
+    const spell = $select('he-spell').value;
+    const primary = $select('he-primary').value;
+    const res = await window.editor.installHero({
+      file: $input('he-file').value,
+      internalName: $input('he-internal').value || $input('he-file').value,
+      name: $input('he-name').value,
+      biography: $input('he-bio').value,
+      donor: $select('he-donor').value,
+      town: $select('he-town').value,
+      heroClass: $select('he-class').value,
+      ...($select('he-spec').value ? { specialization: $select('he-spec').value } : {}),
+      ...($input('he-spec-name').value ? { specializationName: $input('he-spec-name').value } : {}),
+      ...($input('he-spec-desc').value ? { specializationDescription: $input('he-spec-desc').value } : {}),
+      ...(primary ? { primarySkill: { skill: primary, mastery: $select('he-primary-mastery').value } } : {}),
+      stats: {
+        Offence: Number($input('he-off').value) || 0,
+        Defence: Number($input('he-def').value) || 0,
+        Spellpower: Number($input('he-sp').value) || 0,
+        Knowledge: Number($input('he-kn').value) || 0,
+      },
+      ...(skill ? { skills: [{ skill, mastery: $select('he-skill-mastery').value }] } : {}),
+      ...(perk ? { perks: [perk] } : {}),
+      ...(spell ? { spells: [spell] } : {}),
+      machines: {
+        ballista: $input('he-ballista').checked,
+        firstAidTent: $input('he-tent').checked,
+        ammoCart: $input('he-ammo').checked,
+      },
+      scenarioHero: $input('he-scenario').checked,
+      ...($input('he-face').value.trim() ? { face: $input('he-face').value.trim() } : {}),
+      ...($input('he-face-small').value.trim() ? { faceSmall: $input('he-face-small').value.trim() } : {}),
+    });
+    modDialog('heroedit').close();
+    await refreshHeroList();
+    // The href is the useful part of the result: it is what a map's roster, a
+    // pool or a placed hero has to point at, and nothing else reveals it.
+    $('hm-note').textContent = `Installed into ${res.archive.split(/[\\/]/).pop()} — ${res.href}`;
+  } catch (e) {
+    $('he-err').textContent = e instanceof Error ? e.message : String(e);
+  } finally {
+    ok.disabled = false;
+  }
+}
+
+async function refreshHeroList(): Promise<void> {
+  const { mods } = await window.editor.listMods();
+  renderHeroList(mods);
+}
+
+$('heroesbtn').onclick = () => {
+  heInternalTouched = false;
+  $('hm-err').textContent = '';
+  $('hm-note').textContent = '';
+  modDialog('heroesmod').showModal();
+  const report = (e: unknown): void => {
+    $('hm-err').textContent = e instanceof Error ? e.message : String(e);
+  };
+  void refreshHeroList().catch(report);
+  void fillHeroForm().catch(report);
+};
+$('hm-close').onclick = () => modDialog('heroesmod').close();
+$('hm-cancel').onclick = () => modDialog('heroesmod').close();
+$('hm-new').onclick = () => {
+  heInternalTouched = false;
+  $('he-err').textContent = '';
+  modDialog('heroedit').showModal();
+  heroDonorChanged();
+};
+$('heroedit-x').onclick = () => modDialog('heroedit').close();
+$('heroedit-cancel').onclick = () => modDialog('heroedit').close();
+$('he-ok').onclick = () => { void submitHeroMod(); };
+$select('he-donor').addEventListener('change', heroDonorChanged);
+$select('he-town').addEventListener('change', heroTownChanged);
+// The name a campaign carries him by follows the file stem until it is typed
+// into: two fields that are the same in every ordinary case, and one of them
+// is the one that must never collide.
+$input('he-internal').addEventListener('input', () => { heInternalTouched = true; });
+$input('he-file').addEventListener('input', () => {
+  if (!heInternalTouched) $input('he-internal').value = $input('he-file').value;
+});
 
 // The finish line. Everything above ran, so the window is wired and the render
 // loop is turning; index.html's watchdog stands down. Keep this last — moved
