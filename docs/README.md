@@ -1,14 +1,14 @@
 # Documentation
 
 One document per subject. Flat files are about a *format* or a *mechanism*;
-`mapPlacables/` is about the things a map is made of, one folder per kind.
+`mapPlaceables/` is about the things a map is made of, one folder per kind.
 
 ## Map placeables
 
 What each kind of object on the adventure map is, what defines it, and what a
 mod may change about it.
 
-- [mapPlacables/buildings/BUILDINGS.md](mapPlacables/buildings/BUILDINGS.md) —
+- [mapPlaceables/buildings/BUILDINGS.md](mapPlaceables/buildings/BUILDINGS.md) —
   adventure-map buildings: the 128 `BuildingType` behaviours compiled into the
   executable, the sixteen classes that declare them, the three levels a
   parameter can live at, ownership, and the full registry.
