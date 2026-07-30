@@ -31,13 +31,32 @@ and format notes only.** A PR that adds game bytes will be rejected.
 src/        the core: format decoders + the map model (terrain, geometry, xml,
             map, registry, schema, skeleton…). Runs as .ts directly (no build).
 electron/   the Electron main process + the IPC contract (ipc.ts) + preload.cjs.
-renderer/   the UI: app.ts (bundled by esbuild) + index.html. The only built part.
+renderer/   the UI (bundled by esbuild from app.ts) + index.html:
+              core/      what every screen shares — dom, ipc, dialog, prefs,
+                         state (the loaded world + selection), coords, rosters
+              viewport/  the drawing — stage (context, cameras, controls),
+                         lighting, materials, geoms, splat, terrain-mesh,
+                         instancing, idle, fx, point-lights, overlays
+              features/  one folder or file per screen — campaigns, mods/,
+                         text-editor/
+              app.ts     what is left: the panels not yet moved, and the boot
 docs/       the reverse-engineering write-ups and the plans. Keep these in step.
 tools/      test scripts (test-*), the harness generator, CLIs.
 ```
 
 `src/*` is the foundation; `electron/` and `renderer/` are wiring on top. New
 format knowledge belongs in `src/` with a test in `tools/` and a note in `docs/`.
+
+Inside `renderer/`, imports go through the subpath aliases declared in
+package.json — `#core/…`, `#viewport/…`, `#features/…`, `#src/…`,
+`#electron/…` — so moving a file does not rewrite every path that mentions it.
+Node's strip-mode and esbuild both resolve them; keep the real `.ts` extension.
+
+The dependency direction is one-way: `core/` knows nothing above it,
+`viewport/` may use `core/`, `features/` may use both. A feature binds itself
+to its markup in an exported `init*()` that app.ts calls — never as a side
+effect of being imported, or a module nothing imports for a value is silently
+never wired.
 
 ## Conventions that matter
 
