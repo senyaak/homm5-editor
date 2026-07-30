@@ -23,7 +23,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { assets } from '../src/assets.ts';
 import { addHero, buildCreatureMod, dataReader, newCreatureMod } from '../src/creature-mod.ts';
-import { HERO_CLASS, heroDoc, heroHref, heroInternalName, heroPaths, takenHeroIds } from '../src/heroes.ts';
+import { artLabels, HERO_CLASS, heroDoc, heroHref, heroInternalName, heroPaths, takenHeroIds } from '../src/heroes.ts';
 import type { HeroSpec } from '../src/heroes.ts';
 import { allFields, parseTypeSpec } from '../src/typespec.ts';
 import { children, find, parse, text } from '../src/xml.ts';
@@ -210,6 +210,34 @@ console.log('\nwhere his files go');
 check('everything is under his own folder', [p.shared, p.name, p.biography].every((f) => f.startsWith('Heroes/H3Gem/')));
 check('nothing of the game\'s is overwritten',
   [p.shared, p.name, p.biography].every((f) => !existsSync(join(dataRoot, f))));
+
+// ---- 6b. labels a person can choose between ---------------------------------
+
+console.log('\nthe appearance dropdowns');
+
+// Every Selection model in the game is called Symbol; the folder is what says
+// whose it is. A label that stopped at the file name gave eight identical rows.
+const selections = [...new Set(shippedHeroes
+  .map((f) => /<Selection href="([^"]*)"/.exec(data.text(f) ?? '')?.[1] ?? '')
+  .filter(Boolean).map((h) => h.split('#')[0]!))];
+const labels = artLabels(selections);
+check('every Selection is called Symbol, so the file name alone cannot do',
+  selections.every((h) => /\/Symbol(\.\([^)]*\))?\.xdb$/i.test(h)), `${selections.length} of them`);
+check('...and the labels tell them apart anyway',
+  new Set(labels.values()).size === selections.length,
+  [...labels.values()].slice(0, 3).join(', '));
+check('...without the library folder in the way',
+  [...labels.values()].every((l) => !l.includes('_(')), [...labels.values()][0]);
+
+// Traces differ by file name, so they stay short — the label grows only as far
+// as it has to.
+const traces = [...new Set(shippedHeroes
+  .map((f) => /<Trace href="([^"]*)"/.exec(data.text(f) ?? '')?.[1] ?? '')
+  .filter(Boolean).map((h) => h.split('#')[0]!))];
+const traceLabels = artLabels(traces);
+check('a slot that differs by file name keeps one-word labels',
+  [...traceLabels.values()].every((l) => !l.includes('/')),
+  [...traceLabels.values()].sort().join(', '));
 
 // ---- 7. the mod he ships in -------------------------------------------------
 

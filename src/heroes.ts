@@ -512,3 +512,42 @@ export function repointArt(xml: string, at: ReadonlyMap<string, string>): string
   }
   return serialize(doc);
 }
+
+/**
+ * Readable labels for a set of art hrefs — as short as they can be and still
+ * tell each other apart.
+ *
+ * A file name alone is not enough and the shipped heroes prove it: every one of
+ * the eight `Selection` models is called `Symbol`, and what distinguishes them
+ * is the folder (`Knight_Path`, `Ranger_Path`). A dropdown of eight identical
+ * words is a dropdown you cannot use. So the label grows leftwards along the
+ * path until the set is unambiguous, and no further.
+ *
+ * The noise is dropped first: the `.xdb` extension, the `.(Type)` suffix the
+ * game hangs on some files but not others (`Fortress.(AdvMapHeroTraceSet)` and
+ * `Necropolis` are the same kind of thing), and the `_(Class)` library folders,
+ * which say what a file IS and never which one it is.
+ */
+export function artLabels(hrefs: readonly string[]): Map<string, string> {
+  const parts = new Map<string, string[]>();
+  for (const href of hrefs) {
+    const segments = href.split('#')[0]!.replace(/^\/+/, '').split('/')
+      .filter((s) => !/^_\([^)]*\)$/.test(s))
+      .map((s) => s.replace(/\.\([^)]*\)\.xdb$/i, '').replace(/\.xdb$/i, ''));
+    parts.set(href, segments.filter(Boolean));
+  }
+  const label = (segs: string[], depth: number): string => segs.slice(-depth).join('/');
+  for (let depth = 1; depth <= 4; depth++) {
+    const seen = new Map<string, string>();
+    let clash = false;
+    for (const [href, segs] of parts) {
+      const l = label(segs, depth);
+      if (seen.has(l)) { clash = true; break; }
+      seen.set(l, href);
+    }
+    if (!clash) return new Map([...parts].map(([href, segs]) => [href, label(segs, depth)]));
+  }
+  // Four levels deep and still colliding: the whole path, which is ugly and
+  // unambiguous — better than two entries a person cannot tell apart.
+  return new Map([...parts].map(([href, segs]) => [href, segs.join('/')]));
+}

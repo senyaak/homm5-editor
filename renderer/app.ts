@@ -24,6 +24,7 @@ import type { FxSystem } from './particles.ts';
 import type { EditorApi, MapListEntry, ExternalChange, ModListEntry, PlaceableObject, RosterEntryDTO, LocResult,
   CampaignDoc, CampaignListEntry, CampaignMissionDto, CreatureStats, PaletteEntry, RecolorOps } from '../electron/ipc.ts';
 import { recolorPixels } from '../src/recolor.ts';
+import { artLabels } from '../src/heroes.ts';
 import type { ObjectProp } from '../src/map.ts';
 import { objectProps, deref, controlOf, objectSchema, mapSchema, resolveSchemaAtPath, classOf, schemaForClass } from '../src/schema.ts';
 import type { FieldSchema, HasDefs } from '../src/schema.ts';
@@ -9210,7 +9211,14 @@ async function fillHeroForm(): Promise<void> {
   // value carries the href anyway.
   for (const [slot, id] of Object.entries(HE_ART_FIELDS)) {
     const hrefs = form.heroArt[slot] ?? [];
-    fillHeroSelect(id, hrefs.map((href) => ({ id: href, label: artLabel(href) })), true);
+    // Labelled against the OTHERS in the same slot: every Selection model is
+    // called Symbol, and eight rows saying "Symbol" are eight rows nobody can
+    // choose between. artLabels() grows each label leftwards until they differ.
+    const labels = artLabels(hrefs);
+    heArtLabels.set(slot, labels);
+    fillHeroSelect(id, hrefs.map((href) => ({ id: href, label: labels.get(href) ?? href })), true);
+    // The full path on hover: the label says which one, this says what it is.
+    for (const option of $select(id).options) if (option.value) option.title = option.value;
   }
 }
 
@@ -9221,6 +9229,9 @@ const HE_ART_FIELDS: Record<string, string> = {
   trace: 'he-trace', camera: 'he-camera', icon128: 'he-icon128', music: 'he-music',
   face: 'he-face', faceSmall: 'he-face-small', specializationIcon: 'he-spec-icon',
 };
+
+/** The labels each slot's options carry, so a file added later matches them. */
+const heArtLabels = new Map<string, Map<string, string>>();
 
 /** An href as a person reads it: the file's name, without the pointer. */
 function artLabel(href: string): string {
