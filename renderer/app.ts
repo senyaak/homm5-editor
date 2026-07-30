@@ -9121,13 +9121,88 @@ function renderHeroList(mods: ModListEntry[]): void {
     box.textContent = 'No heroes installed. A hero costs the game nothing: no id, no ceiling, no patched executable.';
     return;
   }
-  for (const h of heroes) {
-    const row = document.createElement('div');
-    row.className = 'um-mod';
+  heroes.forEach((h, i) => {
     const where = h.scenarioHero ? 'placed by hand only' : 'offered by taverns';
-    row.textContent = `${h.name || h.id} — ${h.town.replace('TOWN_', '').toLowerCase()}, ${where}`;
+    const row = modRow({
+      number: i + 1,
+      label: `${h.name || h.id} (${h.town.replace('TOWN_', '').toLowerCase()})`,
+      note: where,
+      onEdit: () => { void editHero(h.id); },
+      onRemove: () => { void removeHeroWithWarning(h.id, h.name || h.id); },
+    });
     row.title = `${h.id}${h.specialization ? ` · ${h.specialization}` : ''}`;
     box.append(row);
+  });
+}
+
+/** The hero being changed, or '' when the form is making a new one. */
+let editingHero = '';
+
+/** Load an installed hero back into the form, every field of him. */
+async function editHero(id: string): Promise<void> {
+  const { mods } = await window.editor.listMods();
+  const h = mods.flatMap((m) => m.heroes ?? []).find((x) => x.id === id);
+  if (!h) return;
+  editingHero = id;
+  $('he-err').textContent = '';
+  heOwnFiles = {};
+  $('heroedit-title').textContent = `Edit ${h.name || h.id}`;
+  modDialog('heroedit').showModal();
+  await fillHeroForm();
+
+  // The identifier is what he IS — a campaign carries him by it and a map's
+  // roster names his path — so changing one is making a different hero.
+  $input('he-id').value = h.id;
+  $input('he-id').disabled = true;
+  $input('he-name').value = h.name;
+  $input('he-bio').value = h.biography ?? '';
+  $select('he-town').value = h.town;
+  $select('he-class').value = h.heroClass;
+  $select('he-spec').value = h.specialization ?? '';
+  $input('he-spec-name').value = h.specializationName ?? '';
+  $input('he-spec-desc').value = h.specializationDescription ?? '';
+  $select('he-preset').value = h.basedOn ? `/${h.basedOn}#xpointer(/AdvMapHeroShared)` : '';
+  $select('he-primary').value = h.primarySkill?.skill ?? '';
+  $select('he-primary-mastery').value = h.primarySkill?.mastery ?? 'MASTERY_BASIC';
+  $input('he-off').value = String(h.stats?.offence ?? 0);
+  $input('he-def').value = String(h.stats?.defence ?? 0);
+  $input('he-sp').value = String(h.stats?.spellpower ?? 0);
+  $input('he-kn').value = String(h.stats?.knowledge ?? 0);
+  $select('he-skill').value = h.skills?.[0]?.skill ?? '';
+  $select('he-skill-mastery').value = h.skills?.[0]?.mastery ?? 'MASTERY_BASIC';
+  $select('he-perk').value = h.perks?.[0] ?? '';
+  $select('he-spell').value = h.spells?.[0] ?? '';
+  $input('he-ballista').checked = !!h.machines?.ballista;
+  $input('he-tent').checked = !!h.machines?.firstAidTent;
+  $input('he-ammo').checked = !!h.machines?.ammoCart;
+  $input('he-scenario').checked = !!h.scenarioHero;
+  // His looks as he was BUILT, not as the preset would seed them: an edit that
+  // silently put the preset's model back would undo a choice without a word.
+  for (const [slot, id2] of Object.entries(HE_ART_FIELDS)) {
+    const href = (h.art ?? {})[slot] ?? (slot === 'face' ? h.face : slot === 'faceSmall' ? h.faceSmall
+      : slot === 'specializationIcon' ? h.specializationIcon : '') ?? '';
+    const el = $select(id2);
+    if (href && ![...el.options].some((o) => o.value === href)) el.append(new Option(artLabel(href), href));
+    el.value = href;
+  }
+}
+
+/** Ask what would break, show it, and only then remove. */
+async function removeHeroWithWarning(id: string, label: string): Promise<void> {
+  const { uses } = await window.editor.heroUses({ id });
+  const shown = uses.slice(0, 12).join(NL);
+  const more = uses.length > 12 ? `${NL}… and ${uses.length - 12} more` : '';
+  const warning = uses.length
+    ? `${label} is reached by ${uses.length} map(s):${NL}${NL}${shown}${more}${NL}${NL}`
+      + 'They will stop resolving him. Remove anyway?'
+    : `Remove ${label}? No map reaches him.`;
+  if (!await ask(warning, 'Remove')) return;
+  try {
+    await window.editor.removeHero({ id });
+    await refreshHeroList();
+    $('hm-note').textContent = `${label} removed.`;
+  } catch (e) {
+    $('hm-err').textContent = e instanceof Error ? e.message : String(e);
   }
 }
 
@@ -9142,7 +9217,8 @@ async function submitHeroMod(): Promise<void> {
     const perk = $select('he-perk').value;
     const spell = $select('he-spell').value;
     const primary = $select('he-primary').value;
-    const res = await window.editor.installHero({
+    const send = editingHero ? window.editor.updateHero : window.editor.installHero;
+    const res = await send({
       id: $input('he-id').value,
       name: $input('he-name').value,
       biography: $input('he-bio').value,
@@ -9183,7 +9259,8 @@ async function submitHeroMod(): Promise<void> {
     await refreshHeroList();
     // The href is the useful part of the result: it is what a map's roster, a
     // pool or a placed hero has to point at, and nothing else reveals it.
-    $('hm-note').textContent = `Installed into ${res.archive.split(/[\\/]/).pop()} — ${res.href}`;
+    $('hm-note').textContent = `${editingHero ? 'Updated' : 'Installed'} in `
+      + `${res.archive.split(/[\\/]/).pop()} — ${res.href}`;
   } catch (e) {
     $('he-err').textContent = e instanceof Error ? e.message : String(e);
   } finally {
@@ -9211,6 +9288,10 @@ $('hm-cancel').onclick = () => modDialog('heroesmod').close();
 $('hm-new').onclick = () => {
   $('he-err').textContent = '';
   heOwnFiles = {};
+  editingHero = '';
+  $('heroedit-title').textContent = 'New hero';
+  $input('he-id').disabled = false;
+  $input('he-id').value = '';
   modDialog('heroedit').showModal();
   void heroPresetChanged().catch(() => {});
 };

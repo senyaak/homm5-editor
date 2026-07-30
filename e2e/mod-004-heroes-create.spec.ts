@@ -128,11 +128,11 @@ test('authors Gem and installs her', async () => {
   await page.locator('#he-sp').fill('2');
   await page.locator('#he-kn').fill('2');
 
-  await page.locator('#he-ok').click();
   // Watch BOTH boxes: the form reports a refusal in #he-err, and waiting only
   // on the note spends two minutes discovering what the window said at once.
-  const note = await settled(page, 'installing Gem', '#hm-note', '#he-err');
-  expect(note).toContain('Installed into');
+  const note = await settled(page, 'installing Gem', '#hm-note', '#he-err',
+    () => page.locator('#he-ok').click());
+  expect(note).toContain('Installed');
   // The href is the useful half of the result: it is what a map's roster, a
   // pool or a placed hero points at, and nothing else in the window reveals it.
   expect(note, 'the href a map, a pool or a placed hero points at').toContain('Heroes/H3Gem/H3Gem.(AdvMapHeroShared).xdb');
@@ -178,6 +178,84 @@ test('the archive holds her, and nothing of the game\'s', async () => {
   const modelOf = (s: string): string => /<Model href="([^"]+)"/.exec(s)?.[1] ?? '';
   expect(modelOf(xml)).toBe(modelOf(donorXml));
   expect(modelOf(xml)).toBeTruthy();
+});
+
+test('an installed hero opens for editing, whole', async () => {
+  const { page } = ed;
+  if (!(await page.locator('#heroesmod').isVisible())) await page.locator('#heroesbtn').click();
+  // The list is where editing starts: one row per hero, with the two things
+  // that can be done to him.
+  const row = page.locator('#hm-list .um-item', { hasText: 'Gem' }).first();
+  await expect(row).toBeVisible();
+  await row.locator('button', { hasText: '✎' }).click();
+  await expect(page.locator('#heroedit')).toBeVisible();
+  // The form has to KNOW it is editing: same fields, different verb, and the
+  // difference decides whether saving adds a second hero or changes this one.
+  await expect(page.locator('#heroedit-title')).toHaveText(/Edit/);
+
+  // Whole: the fields a summary would have dropped are the ones checked here.
+  await expect(page.locator('#he-id')).toHaveValue(GEM.id);
+  await expect(page.locator('#he-id')).toBeDisabled(); // it is what he IS
+  await expect(page.locator('#he-spec')).toHaveValue(GEM.spec);
+  await expect(page.locator('#he-spec-name')).toHaveValue(GEM.specName);
+  await expect(page.locator('#he-bio')).toHaveValue(GEM.biography);
+  await expect(page.locator('#he-perk')).toHaveValue('HERO_SKILL_FIRST_AID');
+  await expect(page.locator('#he-tent')).toBeChecked();
+  await expect(page.locator('#he-model')).toHaveValue(/Ranger_LOD/);
+
+  // Change one thing and save: the rest must survive the round trip.
+  await page.locator('#he-kn').fill('4');
+  const note = await settled(page, 'updating Gem', '#hm-note', '#he-err',
+    () => page.locator('#he-ok').click());
+  expect(note).toContain('Updated');
+
+  const gem = (readInstalledMod(GAME).heroes ?? [])[0]!;
+  expect(gem.stats?.knowledge).toBe(4);
+  expect(gem.specializationName, 'the words a summary would have lost').toBe(GEM.specName);
+  expect(gem.perks).toEqual(['HERO_SKILL_FIRST_AID']);
+});
+
+test('removing says what would break, and Cancel means no', async () => {
+  const { page } = ed;
+  if (!(await page.locator('#heroesmod').isVisible())) await page.locator('#heroesbtn').click();
+  const row = page.locator('#hm-list .um-item', { hasText: 'Gem' }).first();
+  await row.locator('button', { hasText: '×' }).click();
+
+  // Asked in a dialog of ours, and the question names what reaches him: a map
+  // points at a hero by href, in its roster or under a placed hero, so this can
+  // be exact instead of a warning in general terms.
+  const dialog = page.locator('#ask');
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText(/Remove Gem|reached by/);
+  await dialog.locator('button', { hasText: /cancel/i }).click();
+  await expect(dialog).toBeHidden();
+  expect((readInstalledMod(GAME).heroes ?? []).length, 'Cancel removed nothing').toBe(1);
+});
+
+test('and removing for real takes his files with him', async () => {
+  const { page } = ed;
+  const row = page.locator('#hm-list .um-item', { hasText: 'Gem' }).first();
+  // Through settled(), like every other install: the note still holds the last
+  // message, and a plain wait-for-text reads THAT and either passes wrongly or
+  // sits out its timeout. Clearing first is the whole point of the helper.
+  const note = await settled(page, 'removing Gem', '#hm-note', '#hm-err', async () => {
+    await row.locator('button', { hasText: '×' }).click();
+    await page.locator('#ask button', { hasText: 'Remove' }).click();
+  });
+  expect(note).toContain('removed');
+
+  // His folder and his palette entry go with him, or a map would still find a
+  // hero the mod no longer knows about.
+  //
+  // Run alone, Gem is the only thing in the mod, so the ARCHIVE goes with her:
+  // an archive of nothing is not a mod, and building one throws. Run after the
+  // other stages, the creature and the artifacts are still in it and it stays —
+  // both are correct, and which one happened is what existsSync answers.
+  const archive = modFile(GAME, 'mod', MOD_STEM);
+  if (!existsSync(archive)) return;
+  expect(readInstalledMod(GAME).heroes ?? [], 'he is out of the manifest').toEqual([]);
+  const names = readEntries(readFileSync(archive)).map((e) => e.name.replace(/\\/g, '/'));
+  expect(names.filter((n) => n.includes('H3Gem'))).toEqual([]);
 });
 
 test('the executable is untouched — a hero moves no ceiling', async () => {

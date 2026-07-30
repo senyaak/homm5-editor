@@ -66,12 +66,29 @@ export function note(what: string): void {
  * timeout on an answer the window gave in the first second.
  */
 export async function settled(
-  page: { locator: (sel: string) => { textContent: () => Promise<string | null> } },
+  page: {
+    locator: (sel: string) => { textContent: () => Promise<string | null> };
+    evaluate: (fn: (sel: string[]) => void, arg: string[]) => Promise<unknown>;
+  },
   what: string,
   ok: string,
   err: string,
+  act: () => Promise<void>,
   timeout = 120_000,
 ): Promise<string> {
+  // Empty both boxes FIRST, then act. Two ways of getting this wrong were paid
+  // for already: waiting on "any text at all" reads the note the previous
+  // install left and calls it success, and waiting on "text that differs"
+  // hangs when the new note happens to say exactly what the old one said.
+  // Clearing before acting leaves nothing to mistake.
+  await page.evaluate((sels) => {
+    for (const sel of sels) {
+      const el = document.querySelector(sel);
+      if (el) el.textContent = '';
+    }
+  }, [ok, err]);
+  await act();
+
   const deadline = Date.now() + timeout;
   for (;;) {
     const failed = (await page.locator(err).textContent())?.trim();

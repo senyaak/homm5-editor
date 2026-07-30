@@ -43,7 +43,7 @@ import { MAP_SIZES } from '../src/terrain-blank.ts';
 import { Registry, artifactPreset, creatureAbilities, creaturePreset, creatureSources } from '../src/registry.ts';
 import type { RosterEntry } from '../src/registry.ts';
 import {
-  addArtifact, addArtifactSet, addCreature, addHero, removeArtifact, removeArtifactSet, removeCreature,
+  addArtifact, addArtifactSet, addCreature, addHero, removeArtifact, removeArtifactSet, removeCreature, removeHero, updateHero,
   updateArtifact, updateArtifactSet, artifactLimit, buildCreatureMod, dataReader, findCreatureMods,
   installCreatureMod, MOD_STEM, newCreatureMod, packCreatureMod,
 } from '../src/creature-mod.ts';
@@ -54,7 +54,7 @@ import type { HeroSpec, Mastery } from '../src/heroes.ts';
 import { extractMapFolder, gameArchives, listOurMaps, listStockMaps, mapFolderIn } from '../src/map-source.ts';
 import type { MapSource } from '../src/map-source.ts';
 import { builtDll, extensionState, installExtension, writeEffectsFile } from '../src/extension.ts';
-import { describeUses, findArtifactUses, findCreatureUses } from '../src/artifact-usage.ts';
+import { describeUses, findArtifactUses, findCreatureUses, findHeroUses } from '../src/artifact-usage.ts';
 import { EFFECT_STATS, effectsOf } from '../src/artifact-effects.ts';
 import type { EffectRow, EffectStat, SetEffect } from '../src/artifact-effects.ts';
 import { artifactNumbers, HERO_STAT_NAMES } from '../src/artifacts.ts';
@@ -2389,11 +2389,13 @@ ipcMain.handle('mods:list', async (): Promise<ModsListResult> => {
     // artifact opened for editing without them saves none — so changing a price
     // took the bonus away. The DTO always declared the field; this is what
     // finally fills it.
+    // The whole hero: this list is where editing starts, and a summary would
+    // mean a form that silently forgets whatever it did not carry. `art` is
+    // flattened to plain strings — the renderer keys it by slot name and has no
+    // business importing the type.
     heroes: (f.mod.heroes ?? []).map((h) => ({
-      id: h.id, name: h.name,
-      town: h.town, heroClass: h.heroClass,
-      ...(h.specialization ? { specialization: h.specialization } : {}),
-      ...(h.scenarioHero !== undefined ? { scenarioHero: h.scenarioHero } : {}),
+      ...h,
+      art: Object.fromEntries(Object.entries(h.art ?? {}).filter(([, v]) => !!v)) as Record<string, string>,
     })),
     artifacts: (f.mod.artifacts ?? []).map((a) => ({
       id: a.id, number: a.number, name: a.name, description: a.description,
@@ -2508,7 +2510,26 @@ function modEffects(mod: CreatureMod): EffectRow[] {
  * and an artifact removed through another drift apart, and the file keeps
  * granting what the mod no longer carries.
  */
+/** Nothing left in it — the state removing the last of something leaves. */
+function modIsEmpty(mod: CreatureMod): boolean {
+  return !mod.creatures.length && !mod.dwellings.length
+    && !(mod.artifacts ?? []).length && !(mod.sets ?? []).length && !(mod.heroes ?? []).length;
+}
+
 function buildAndInstall(g: string, mod: CreatureMod): { installed: Installed; report: BuildReport } {
+  // Removing the LAST thing in the mod leaves nothing to build, and building
+  // nothing throws — so the archive goes instead. Reached by removing the last
+  // hero, the last artifact or the last creature alike; it was the hero that
+  // found it, because a hero is the one kind you might install on its own.
+  if (modIsEmpty(mod)) {
+    const archive = modFile(g, 'mod', mod.stem);
+    rmSync(archive, { force: true });
+    writeEffectsFile(g, []);
+    return {
+      installed: { archive, creatures: null, artifacts: null },
+      report: { files: [], limit: 0 },
+    } as unknown as { installed: Installed; report: BuildReport };
+  }
   const report = buildCreatureMod(mod, dataReader(gameData()));
   const archive = packCreatureMod(report);
   const installed = installCreatureMod(g, mod, archive);
@@ -2610,27 +2631,22 @@ ipcMain.handle('mods:pick-hero-file', async (_e: IpcMainInvokeEvent, { id, slot 
   return { href: `/${HERO_DIR}/${id || 'hero'}/${basename(from)}`, from };
 });
 
-ipcMain.handle('mods:install-hero', async (_e: IpcMainInvokeEvent, p: ModsInstallHeroPayload): Promise<ModsInstallHeroResult> => {
-  const g = gameRoot();
-  if (!g) throw new Error('no game install configured — a mod needs a folder to install into');
-  if (!isConfigured()) throw new Error('no data root configured');
-  if (!p.id.trim()) throw new Error('the hero needs an identifier');
-  if (!p.basedOn.trim()) throw new Error('a preset is required — a new hero starts from the shape of a shipped one');
-
+/**
+ * One payload, one spec — shared by adding a hero and by changing one.
+ *
+ * They differ in exactly one thing (whether the identifier must be free), so
+ * everything else lives here: two copies of thirty fields is two copies that
+ * drift, and the field that stops being carried is always the one nobody
+ * remembers to check.
+ */
+function heroSpecOf(p: ModsInstallHeroPayload): HeroSpec {
   const stats: HeroSpec['stats'] = {};
   for (const [field, key] of [['Offence', 'offence'], ['Defence', 'defence'],
     ['Spellpower', 'spellpower'], ['Knowledge', 'knowledge']] as const) {
     const v = p.stats?.[field];
     if (v !== undefined && v !== null) stats[key] = Number(v) || 0;
   }
-
-  const mod = ourMod(g);
-  // Every identifier already spoken for, the game's 118 included: one string
-  // names him in a campaign, in a script and on disk, so it has to be his.
-  const registry = new Registry(gameData());
-  const data = assets([gameData()]);
-  const taken = takenHeroIds(registry.heroes(), (rel) => data.text(rel));
-  const spec = addHero(mod, {
+  return {
     id: p.id.trim(),
     name: p.name,
     biography: p.biography,
@@ -2659,7 +2675,34 @@ ipcMain.handle('mods:install-hero', async (_e: IpcMainInvokeEvent, p: ModsInstal
     ...(p.scenarioHero !== undefined ? { scenarioHero: !!p.scenarioHero } : {}),
     ...(p.face ? { face: p.face } : {}),
     ...(p.faceSmall ? { faceSmall: p.faceSmall } : {}),
-  }, taken);
+  };
+}
+
+// Adding and changing are the same form and the same fields; what differs is
+// whether the identifier is expected to be free or expected to be his.
+ipcMain.handle('mods:update-hero', async (_e: IpcMainInvokeEvent, p: ModsInstallHeroPayload): Promise<ModsInstallHeroResult> => {
+  const g = gameRoot();
+  if (!g) throw new Error('no game install configured');
+  if (!isConfigured()) throw new Error('no data root configured');
+  const mod = ourMod(g);
+  const spec = updateHero(mod, p.id.trim(), heroSpecOf(p));
+  const { installed } = buildAndInstall(g, mod);
+  return { archive: installed.archive, href: heroHref(heroPaths(spec)) };
+});
+
+ipcMain.handle('mods:install-hero', async (_e: IpcMainInvokeEvent, p: ModsInstallHeroPayload): Promise<ModsInstallHeroResult> => {
+  const g = gameRoot();
+  if (!g) throw new Error('no game install configured — a mod needs a folder to install into');
+  if (!isConfigured()) throw new Error('no data root configured');
+  if (!p.id.trim()) throw new Error('the hero needs an identifier');
+  if (!p.basedOn.trim()) throw new Error('a preset is required — a new hero starts from the shape of a shipped one');
+
+  const mod = ourMod(g);
+  // Every identifier already spoken for, the game's 118 included: one string
+  // names him in a campaign, in a script and on disk, so it has to be his.
+  const data = assets([gameData()]);
+  const taken = takenHeroIds(new Registry(gameData()).heroes(), (rel) => data.text(rel));
+  const spec = addHero(mod, heroSpecOf(p), taken);
 
   const { installed } = buildAndInstall(g, mod);
   return { archive: installed.archive, href: heroHref(heroPaths(spec)) };
@@ -2735,6 +2778,26 @@ ipcMain.handle('mods:remove-artifact', async (_e: IpcMainInvokeEvent, { id }: Mo
   // was told to expect.
   const { installed } = buildAndInstall(g, mod);
   return { archive: installed.archive, removed: gone.id };
+});
+
+ipcMain.handle('mods:remove-hero', async (_e: IpcMainInvokeEvent, { id }: ModsRemovePayload): Promise<ModsRemoveResult> => {
+  const g = gameRoot();
+  if (!g) throw new Error('no game install configured');
+  if (!isConfigured()) throw new Error('no data root configured');
+  const mod = ourMod(g);
+  const gone = removeHero(mod, id);
+  // No ceiling to bring back down and no table to shorten — a hero was never
+  // counted anywhere. Rebuilding is only so his files leave the archive.
+  const { installed } = buildAndInstall(g, mod);
+  return { archive: installed.archive, removed: gone.id };
+});
+
+// Which maps reach this hero — asked BEFORE he is removed, and exact: a map
+// points at his document by href, either in its roster or under a placed hero.
+ipcMain.handle('mods:hero-uses', async (_e: IpcMainInvokeEvent, { id }: ModsRemovePayload): Promise<ModsUsesResult> => {
+  const href = heroHref(heroPaths({ id }));
+  const uses = findHeroUses(join(gameData(), 'Maps'), [href.split('#')[0]!]).get(href.split('#')[0]!) ?? [];
+  return { uses: describeUses(uses) };
 });
 
 // Looked up BEFORE anything is removed, so the person deciding sees the list.

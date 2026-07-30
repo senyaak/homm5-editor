@@ -749,15 +749,38 @@ export interface ModListEntry {
   heroes: ModHeroDTO[];
 }
 
-/** One hero of an installed mod, as `mods:list` reports it. */
+/**
+ * One hero of an installed mod, as `mods:list` reports it.
+ *
+ * The WHOLE hero, not a summary: the list is where editing starts, and a form
+ * filled from a summary would quietly drop every field the summary left out —
+ * the specialization's own words, his looks, the spell he starts knowing. The
+ * shape is HeroSpec's, mirrored here so the renderer needs no src/ import.
+ */
 export interface ModHeroDTO {
   id: string;
   name: string;
+  biography: string;
+  /** The shipped hero his document's shape came from. */
+  basedOn: string;
   town: string;
   heroClass: string;
   specialization?: string;
+  specializationName?: string;
+  specializationDescription?: string;
+  specializationIcon?: string;
+  primarySkill?: { skill: string; mastery: string };
+  stats?: { offence?: number; defence?: number; spellpower?: number; knowledge?: number };
+  skills?: { skill: string; mastery: string }[];
+  perks?: string[];
+  spells?: string[];
+  machines?: { ballista?: boolean; firstAidTent?: boolean; ammoCart?: boolean };
   /** False means every tavern of his faction may offer him. */
   scenarioHero?: boolean;
+  face?: string;
+  faceSmall?: string;
+  /** What he wears, slot by slot. */
+  art?: Record<string, string>;
 }
 
 /** Result of `mods:list`. */
@@ -1147,6 +1170,12 @@ export interface EditorApi {
   installArtifactSet(p: ModsInstallSetPayload): Promise<ModsInstallSetResult>;
   /** Add a hero to OUR mod, build it, install it. Nothing global moves at all. */
   installHero(p: ModsInstallHeroPayload): Promise<ModsInstallHeroResult>;
+  /** Change a hero already in the mod. His identifier does not move. */
+  updateHero(p: ModsInstallHeroPayload): Promise<ModsInstallHeroResult>;
+  /** Take a hero out of the mod. No ceiling moves; his files simply go. */
+  removeHero(p: ModsRemovePayload): Promise<ModsRemoveResult>;
+  /** Which maps reach this hero — ask BEFORE removing him. */
+  heroUses(p: ModsRemovePayload): Promise<ModsUsesResult>;
   /** What one shipped hero wears, slot by slot — the preset seeding the form. */
   heroArtOf(hero: string): Promise<Record<string, string>>;
   /**

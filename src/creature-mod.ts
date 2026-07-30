@@ -503,6 +503,20 @@ export function removeArtifactSet(mod: CreatureMod, effect: string): ModArtifact
  * Drop a hero. Nothing renumbers: he holds no id, so removing one is removing
  * three files and the manifest entry that named them.
  */
+/**
+ * Change a hero already in the mod, keeping his identity.
+ *
+ * The identifier is fixed for the same reason an artifact's id is: a campaign
+ * carries him by it and a map's roster names his path. Changing it would be a
+ * different hero, so that is what removing and adding is for.
+ */
+export function updateHero(mod: CreatureMod, id: string, spec: HeroSpec): HeroSpec {
+  const at = (mod.heroes ?? []).findIndex((h) => h.id === id);
+  if (at < 0) throw new Error(`${id} is not in the mod`);
+  mod.heroes[at] = { ...spec, id };
+  return mod.heroes[at]!;
+}
+
 export function removeHero(mod: CreatureMod, id: string): HeroSpec {
   const at = (mod.heroes ?? []).findIndex((h) => h.id === id);
   if (at < 0) throw new Error(`${id} is not in the mod`);
