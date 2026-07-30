@@ -12,6 +12,7 @@
 
 import { expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
+import { step } from './trace.ts';
 
 /** How many tiles the plan view spans from centre to top edge while editing. */
 const ZOOM_HALF_TILES = 24;
@@ -56,6 +57,10 @@ export async function screenOf(page: Page, x: number, y: number): Promise<{ x: n
  * turns that into a failure at the click.
  */
 export async function clickTile(page: Page, x: number, y: number): Promise<void> {
+  return step(`click tile ${x},${y}`, () => clickTileNow(page, x, y));
+}
+
+async function clickTileNow(page: Page, x: number, y: number): Promise<void> {
   const at = await screenOf(page, x, y);
   const hit = await page.evaluate(([px, py]) => window.view.tileAt(px!, py!), [at.x, at.y]);
   expect(hit, `tile (${x},${y}) is not pickable at ${Math.round(at.x)},${Math.round(at.y)}`).toEqual({ x, y });
@@ -87,6 +92,10 @@ export async function clickVertex(page: Page, x: number, y: number): Promise<voi
 
 /** Drag from one tile to another — one continuous brush stroke. */
 export async function dragTiles(page: Page, from: [number, number], to: [number, number], steps = 8): Promise<void> {
+  return step(`drag ${from[0]},${from[1]} → ${to[0]},${to[1]}`, () => dragTilesNow(page, from, to, steps));
+}
+
+async function dragTilesNow(page: Page, from: [number, number], to: [number, number], steps = 8): Promise<void> {
   const a = await screenOf(page, from[0], from[1]);
   await page.mouse.move(a.x, a.y);
   await page.mouse.down();

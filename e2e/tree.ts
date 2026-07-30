@@ -11,6 +11,7 @@
 
 import { expect } from '@playwright/test';
 import type { Locator, Page } from '@playwright/test';
+import { step } from './trace.ts';
 
 /** The DOM key for a path — JSON, exactly as the renderer writes data-path. */
 const key = (path: (string | number)[]): string => JSON.stringify(path);
@@ -53,6 +54,10 @@ export async function reveal(page: Page, path: (string | number)[]): Promise<Loc
 
 /** Set a leaf value in the tree, by its path. */
 export async function setTreeValue(page: Page, path: (string | number)[], value: string): Promise<void> {
+  return step(`tree ${path.join('.')} = ${value}`, () => setTreeValueNow(page, path, value));
+}
+
+async function setTreeValueNow(page: Page, path: (string | number)[], value: string): Promise<void> {
   const row = await reveal(page, path);
   const control = row.locator('select, input[type=text], input[type=number], input[type=checkbox]').first();
   const kind = await control.evaluate((el) => `${el.tagName}:${(el as HTMLInputElement).type ?? ''}`);
@@ -152,6 +157,10 @@ export async function listLength(page: Page, path: (string | number)[]): Promise
  * the fields that differ from a fresh one.
  */
 export async function addItem(page: Page, path: (string | number)[]): Promise<void> {
+  return step(`tree add ${path.join('.')}`, () => addItemNow(page, path));
+}
+
+async function addItemNow(page: Page, path: (string | number)[]): Promise<void> {
   const grp = await reveal(page, path);
   await expand(grp);
   const before = await listLength(page, path);
