@@ -198,9 +198,15 @@ export interface FirstRunOptions {
  * The game folder is checked once, here, rather than inside every step: a path
  * that is not an install fails on the first archive it cannot find, minutes in,
  * with a message about a `.pak`. This says the one true thing instead.
+ *
+ * Only when the unpack is one of the steps, though. `only` is how a caller says
+ * it wants the executable prepared and nothing else — the e2e suite builds its
+ * throwaway install that way, out of the shipped executable alone — and a folder
+ * with no archives in it is then exactly what was asked for, not a mistake.
  */
 export async function firstRun(install: Install, opt: FirstRunOptions = {}): Promise<FirstRunResult> {
-  if (!looksLikeGameFolder(install.gameRoot)) {
+  const unpacking = !opt.only || opt.only.includes('data');
+  if (unpacking && !looksLikeGameFolder(install.gameRoot)) {
     throw new Error(`${install.gameRoot || '(nothing)'} is not a Heroes 5 install — no data/*.pak in it`);
   }
 

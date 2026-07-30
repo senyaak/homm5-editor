@@ -1,10 +1,12 @@
 // Adding an artifact to the game through the window, end to end.
 //
 // Runs alone, on its own game install (e2e/mods.ts) — and needs no creature:
-// an artifact costs the mod no creature ceiling, only its own. What it does
-// need is the artifact sites note beside the executable, which prepareGameRoot
-// copies along, because a patched executable can no longer find those sites by
-// search.
+// an artifact costs the mod no creature ceiling, only its own. The artifact
+// sites note beside the executable takes care of itself here: that install is
+// built by the first run out of the shipped executable, so its accessor bytes
+// are still unique and the search finds them, which is the one moment the note
+// can be written. It exists because a PATCHED executable can no longer find
+// those sites by search.
 //
 // What gets built is two pieces of the SoD port's Cloak of the Undead King, on
 // a shipped neck-piece's preset, and then the SET they belong to — because a

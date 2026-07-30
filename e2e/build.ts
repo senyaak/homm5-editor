@@ -33,7 +33,7 @@ export default async function build(): Promise<void> {
   // has touched; live it is the real install with our own things taken back out
   // of it, everything else left standing (there are dwellings in there no
   // dialog can author again).
-  openModGameRoot();
+  await openModGameRoot();
   if (LIVE) {
     console.warn(`\n[e2e] live run — working in ${REAL_GAME}; the fixtures were cleared`
       + ' and the specs will rebuild them. Nothing is removed at the end.\n');

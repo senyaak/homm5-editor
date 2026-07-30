@@ -20,9 +20,8 @@ import type { CreatureMod } from '../src/creature-mod.ts';
 import { creatureSources } from '../src/registry.ts';
 import { assets } from '../src/assets.ts';
 import { blankStats } from '../src/creatures.ts';
-import { ORIGINAL_LIMIT, patchExe } from '../src/creature-limit.ts';
-import { ORIGINAL_ARTIFACTS, patchArtifactLimit, SITES_FILE } from '../src/artifact-limit.ts';
-import type { Site } from '../src/artifact-limit.ts';
+import { SHIPPED_EXE } from '../src/creature-limit.ts';
+import { firstRun } from '../src/first-run.ts';
 import { readEntries } from '../src/pak.ts';
 import { ensureModDir, modFile } from '../src/mod-paths.ts';
 import { decodeDDSBuffer } from '../src/dds.ts';
@@ -254,13 +253,26 @@ export const UNDEAD_KING = {
 /**
  * A game install of our own, as a game no mod has ever touched.
  *
- * The shipped `H5_Game.exe` is wrapped in Steam's DRM and cannot be read, so the
- * unwrapped `H5_Game_H5E.exe` beside it is the source — with BOTH ceilings put
- * back to their shipped values. The artifact sites note travels with it: once
- * the count is a round number its accessor bytes are no longer unique, so an
- * already-patched executable can no longer find its own sites by search.
+ * BUILT THE WAY A PERSON'S IS. It used to be assembled here by hand — copy the
+ * real install's already-unwrapped executable, undo both ceilings in it, and
+ * bring the artifact-sites note along because a patched executable can no longer
+ * find its own sites by search. Three pieces of knowledge about what a prepared
+ * install looks like, kept in the test suite, beside the same knowledge in
+ * `src/first-run.ts` where the editor keeps it. So the specs never once ran
+ * through the code that prepares an install; they ran on a hand-made imitation
+ * of its output.
+ *
+ * Now the input is what a person's install starts from — the shipped, DRM-wrapped
+ * `H5_Game.exe`, copied in and nothing else — and the first run does the rest:
+ * unwraps it, puts our extension in it, points it at our folder. Nothing needs
+ * undoing afterwards, because a freshly unwrapped executable HAS the shipped
+ * ceilings and its accessor bytes are still findable, so the note writes itself
+ * the first time a mod is installed.
+ *
+ * The data step is not among them: the sandbox has no archives of its own and
+ * needs none — every spec reads assets from the real unpacked tree (DATA).
  */
-export function prepareGameRoot(dir: string): void {
+export async function prepareGameRoot(dir: string): Promise<void> {
   // It DELETES what it is given, so it may only ever be given a throwaway. A
   // real install handed to it — by a spec reaching for HOMM5_ROOT, say — would
   // erase the game, and the mistake is one word long. The same rule the suite's
@@ -270,12 +282,11 @@ export function prepareGameRoot(dir: string): void {
   }
   rmSync(dir, { recursive: true, force: true });
   mkdirSync(join(dir, 'bin'), { recursive: true });
-  ensureModDir(dir);
-  const real = readFileSync(join(REAL_GAME, 'bin', 'H5_Game_H5E.exe'));
-  const noted = JSON.parse(readFileSync(join(REAL_GAME, SITES_FILE), 'utf8')) as Site[];
-  writeFileSync(join(dir, 'bin', 'H5_Game_H5E.exe'),
-    patchArtifactLimit(patchExe(real, ORIGINAL_LIMIT).data, ORIGINAL_ARTIFACTS, noted).data);
-  writeFileSync(join(dir, SITES_FILE), `${JSON.stringify(noted, null, 2)}\n`);
+  copyFileSync(join(REAL_GAME, SHIPPED_EXE), join(dir, SHIPPED_EXE));
+  await firstRun(
+    { gameRoot: dir, dataRoot: DATA, editorRoot: REPO_ROOT },
+    { only: ['exe', 'extension', 'paths'] },
+  );
 }
 
 /**
@@ -293,9 +304,9 @@ export function prepareGameRoot(dir: string): void {
  * game with our own things taken back out of it. Doing it per spec would undo
  * the stage before: they share one install and one archive.
  */
-export function openModGameRoot(): void {
+export async function openModGameRoot(): Promise<void> {
   if (LIVE) { clearFixture(REAL_GAME); return; }
-  prepareGameRoot(modGameRoot());
+  await prepareGameRoot(modGameRoot());
 }
 
 /**
