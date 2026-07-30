@@ -15,6 +15,22 @@ one.
 
 ### Added
 
+- **A ▶ Play button in the bar**, beside **Pack**, because the two are a pair:
+  build the archive, then go and look at it. It starts *our* copy of the game —
+  `bin/H5_Game_H5E.exe`, the only one that reads your `H5E` folder — and says
+  which file is missing if the install has not been prepared yet. The game runs
+  on its own and outlives the editor, and nothing is saved on the way out: what
+  it shows is what was last packed.
+
+  It launches with `bin/` as the working directory, which is not a detail. Given
+  the install root instead, the game came up, played, found its archives, wrote a
+  generated map exactly where it should — and broke creature models while doing
+  it. Started by hand from `bin/` it never did, which is how that was found.
+- **`run-test-and-keep.bat`** runs the five mod stages against the install this
+  checkout sits in and sweeps up nothing, so the creature, the artifacts, the set
+  and a map to see them in are left in `H5E/` for you to play. An ordinary test
+  run does the same work in a throwaway install and deletes it, which is what
+  makes the suite say something about the code rather than about one machine.
 - **The first run prepares the whole install, and it is tested.** Four things
   have to be true before the editor is any use: the archives unpacked, a
   readable copy of the game's executable, our extension loaded by it, and that
