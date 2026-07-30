@@ -12,86 +12,154 @@
 // is only wiring: window creation + IPC handlers.
 
 import { app, BrowserWindow, ipcMain, dialog, screen } from 'electron';
+
 import type { IpcMainInvokeEvent } from 'electron';
+
 import { dirname, join, basename, relative, resolve, sep, isAbsolute } from 'node:path';
+
 import { readFileSync, writeFileSync, existsSync, readdirSync, statSync, mkdirSync, copyFileSync, rmSync, renameSync } from 'node:fs';
+
 import { createHash } from 'node:crypto';
+
 import { spawn } from 'node:child_process';
+
 import { buildScene, createGeomResolver, findAssetRoot, listTiles, splatFor, pngDataUri } from '../src/scene.ts';
+
 import type { GeomData } from '../src/scene.ts';
+
 import { transferEffect } from '../src/effects.ts';
+
 import type { FxTransfer } from '../src/effects.ts';
+
 import { listPlaceable, iconPathFor, readIconFile } from '../src/objects.ts';
+
 import { decodeDDS } from '../src/dds.ts';
+
 import { editorRoot, APP_ROOT, gameData, gameRoot, isConfigured, mountedAssets, preloadPath, readSettings, rendererFile, saveSettings, tmpRoot } from './paths.ts';
+
 import { assets } from '../src/assets.ts';
+
 import type { Assets } from '../src/assets.ts';
+
 import { closeSetup, runSetup } from './setup.ts';
+
 import { initProject, openProject, packProject, exportLocalized, readManifest, writeManifest, status, pickMapRel, MANIFEST_NAME } from '../src/project.ts';
+
 import { listDirFiles } from '../src/pak.ts';
+
 import scriptApi from '../src/script-api.json' with { type: 'json' };
+
 import { watchMapDir } from '../src/watch.ts';
+
 import { donorFor } from '../src/donors.ts';
+
 import type { MapWatch } from '../src/watch.ts';
+
 import { TerrainDoc } from '../src/terrain-edit.ts';
+
 import { History, diff, apply } from '../src/history.ts';
+
 import { loadMap } from '../src/map.ts';
+
 import { buildMapTag } from '../src/map-tag.ts';
+
 import { createField } from '../src/defaults.ts';
+
 import { buildNewMapProject } from '../src/new-map.ts';
+
 import { MAP_SIZES } from '../src/terrain-blank.ts';
+
 import { Registry, artifactPreset, creatureAbilities, creatureAbilityNames, creaturePreset, creatureSources } from '../src/registry.ts';
+
 import type { RosterEntry } from '../src/registry.ts';
+
 import {
   addArtifact, addArtifactSet, addCreature, addHero, removeArtifact, removeArtifactSet, removeCreature, removeHero, updateHero,
   updateArtifact, updateArtifactSet, updateCreature, artifactLimit, buildCreatureMod, dataReader, findCreatureMods,
   installCreatureMod, MOD_STEM, newCreatureMod, packCreatureMod,
 } from '../src/creature-mod.ts';
+
 import { MOD_DIR, MOD_EXT, ensureModDir, modDir, modFile } from '../src/mod-paths.ts';
+
 import { artChoices, artOf, HERO_CLASS, HERO_DIR, heroHref, heroPaths, takenHeroIds } from '../src/heroes.ts';
+
 import { refPath } from '../src/dwellings.ts';
+
 import type { HeroSpec, Mastery } from '../src/heroes.ts';
+
 import { extractMapFolder, gameArchives, listOurMaps, listStockMaps, mapFolderIn } from '../src/map-source.ts';
+
 import type { MapSource } from '../src/map-source.ts';
+
 import { builtDll, extensionState, installExtension, writeEffectsFile } from '../src/extension.ts';
+
 import { describeUses, findArtifactUses, findCreatureUses, findHeroUses } from '../src/artifact-usage.ts';
+
 import { EFFECT_STATS, effectsOf } from '../src/artifact-effects.ts';
+
 import type { EffectRow, EffectStat, SetEffect } from '../src/artifact-effects.ts';
+
 import { artifactNumbers, HERO_STAT_NAMES } from '../src/artifacts.ts';
+
 import type { BuildReport, CreatureMod, CreatureSpec, Installed, ModCreature } from '../src/creature-mod.ts';
+
 import { decodeDDSBuffer } from '../src/dds.ts';
+
 import { writeDDS } from '../src/texture.ts';
+
 import { extractPalette, isIdentity, recolorPixels } from '../src/recolor.ts';
+
 import { readEntries, writeArchive } from '../src/pak.ts';
+
 import type { ArtifactRank, ArtifactSlot, ArtifactSpec, HeroStats } from '../src/artifacts.ts';
+
 import type { ArtifactExeResult } from '../src/artifact-limit.ts';
+
 import { PATCHED_EXE } from '../src/creature-limit.ts';
+
 import type { ExeResult } from '../src/creature-limit.ts';
+
 import { blankStats } from '../src/creatures.ts';
+
 import type { RegistryName, FieldSchema } from '../src/schema.ts';
+
 import { readTypeSpec, fieldOrder, typesXmlPath, fieldValues } from '../src/typespec.ts';
+
 import type { FieldOrder, SpecType } from '../src/typespec.ts';
+
 import { readTree, setPath, addStringItem, addRefItem, removeItem, appendItem, indentText, nodeAt, setList } from '../src/tree.ts';
+
 import { mapSchema, resolveSchemaAtPath, resolveObjectPath, deref, schemaForClass, objectProps, objectSchema, controlOf } from '../src/schema.ts';
+
 import { buildItem, isBuildable, buildEntity } from '../src/skeleton.ts';
+
 import { TOWN_BONUS_IDS } from '../src/town-bonuses.ts';
+
 import { children, find, text, childText, setText, serialize, parse } from '../src/xml.ts';
+
 import {
   CAMPAIGN_TEXTS, addMission, buildNewCampaignProject, handOnTo, hasEntryPoint,
   heroScriptName, loadCampaignProject, missionTexts, missions, placedHeroes,
   readBonuses, readHeroesPool, readProjectText, removeMission, saveCampaignProject,
   writeBonuses, writeHeroesPool, writeProjectText,
 } from '../src/campaign-project.ts';
+
 import { packCampaign, missionMapDir } from '../src/campaign-pack.ts';
+
 import type {
   CampaignDirPayload, CampaignDoc, CampaignListEntry, CampaignListResult,
   CampaignPackResult, MapHeroesPayload, MapHeroesResult, NewCampaignPayload,
   SaveCampaignPayload,
 } from './ipc.ts';
+
 import type { XmlElement, XmlNode } from '../src/xml.ts';
+
 import type { DocPatch, Step, StoredHistory } from '../src/history.ts';
+
 import type { TileInfo, GeomResolver, Instance as SceneInstance } from '../src/scene.ts';
+
 import type { HommMap, MapObject, ObjectProp } from '../src/map.ts';
+
 import type {
   MapsListResult, MapListEntry, MapLoadResult, MoveObjectPayload, MoveObjectResult, FxPayload,
   RotateObjectPayload, RemoveObjectPayload, ObjectEditResult, ObjectPropsResult, SetPropPayload,
@@ -119,6 +187,14 @@ import type {
   ModsTexturesPayload, ModsTexturesResult, ModsRecolorPayload, ModsRecolorResult,
 } from './ipc.ts';
 
+import { assetRootFor, findObject, historyState, need, saveTerrain, state, syncMapTiles, TERRAIN_FILE, terrainDoc } from '#electron/state.ts';
+
+import type { Session } from '#electron/state.ts';
+
+import { applyStep, historyPathFor, loadHistory, record, saveHistory } from '#electron/edits.ts';
+import { readSidecarText, sidecarPath, writeSidecarText } from '#electron/sidecar.ts';
+import { enumValues, orderFor, valuesFor } from '#electron/spec.ts';
+
 // [perf] Windows-only Chromium bug: the native occlusion calculator intermittently
 // decides a fully visible window is covered and throttles its compositor to a
 // crawl for the rest of the session — the "sometimes the whole editor goes
@@ -145,164 +221,14 @@ if (readSettings().softwareRendering) {
 /** Unpacked archives, one folder per archive. */
 const workspaces = (): string => join(tmpRoot(), 'workspaces');
 
-/** The map currently open for editing, with everything derived at load time. */
-interface Session {
-  /** Absolute path to the open map.xdb. */
-  mapPath: string;
-  /** Folder holding map.xdb — the project dir for status()/packProject(). */
-  mapDir: string;
-  /** Unpacked data root — the base of the chain, for the plain-path uses. */
-  assetRoot: string;
-  /**
-   * What the meshes, textures and rosters actually resolve against: the data
-   * root with the installed creature mods layered over it, the way the game
-   * mounts them. A creature a mod adds exists only here.
-   */
-  assets: Assets;
-  /** Authoritative in-memory model; edits go through it and save() re-emits it. */
-  map: HommMap;
-  /** Tile paths this map's terrain has splat layers for (union over floors). */
-  layerPaths: string[];
-  /** Watches mapDir for edits made by another editor. */
-  watch: MapWatch;
-  /** Editable terrain per floor, opened lazily on the first brush stroke. */
-  terrain: Map<number, TerrainDoc>;
-  /** Kept alive so an object placed later can be meshed without a full rebuild. */
-  resolver: GeomResolver;
-  /** Undo/redo, as byte patches over the documents this session owns. */
-  history: History;
-  /** Where this map's history is kept between runs. */
-  historyPath: string;
-  /** Game-data rosters for the typed-editing pickers, resolved against assetRoot. */
-  registry: Registry;
-}
-
-/** Documents an edit may touch: the map, some floors' terrain, or both. */
-interface Touches { map?: boolean; floors?: number[] }
-
-/** The map document's key in a history step; floors use their index. */
-const MAP_DOC = '';
-
-/** Current bytes of every document an edit is about to touch. */
-function snapshot(s: Session, t: Touches): Record<string, Uint8Array> {
-  const out: Record<string, Uint8Array> = {};
-  if (t.map) out[MAP_DOC] = Buffer.from(s.map.save(), 'latin1');
-  // Opened here rather than inside the edit: a document created midway through
-  // would have no "before" to compare against, and its first edit would be
-  // silently unundoable.
-  for (const f of t.floors ?? []) out[String(f)] = terrainDoc(s, f).buffer();
-  return out;
-}
-
-/**
- * Run an edit and record what it did to the documents.
- *
- * Snapshot, run, snapshot, diff. The edit itself needs no knowledge of undo,
- * which is the point: an operation added later is undoable without anyone
- * remembering to write its inverse.
- */
-function record<T>(s: Session, label: string, touches: Touches, fn: () => T): T {
-  const before = snapshot(s, touches);
-  const out = fn();
-  const after = snapshot(s, touches);
-  const docs: Record<string, DocPatch> = {};
-  for (const key of Object.keys(before)) {
-    const p = diff(before[key]!, after[key]!);
-    if (p) docs[key] = p;
-  }
-  s.history.push({ label, docs });
-  return out;
-}
-
-/** Put a step's other side into the live documents. Returns what moved. */
-function applyStep(s: Session, step: Step, dir: 'undo' | 'redo'): Touches {
-  const floors: number[] = [];
-  let map = false;
-  for (const [key, patch] of Object.entries(step.docs)) {
-    if (key === MAP_DOC) {
-      const now = Buffer.from(s.map.save(), 'latin1');
-      s.map = loadMap(Buffer.from(apply(now, patch, dir)).toString('latin1'));
-      map = true;
-    } else {
-      const floor = Number(key);
-      const doc = terrainDoc(s, floor);
-      doc.restore(Buffer.from(apply(doc.buffer(), patch, dir)));
-      floors.push(floor);
-    }
-  }
-  return { map, floors };
-}
-
-/**
- * Identity of the documents as they stand, for deciding whether a history saved
- * by a previous run still describes them.
- *
- * Taken over the live in-memory state rather than the files, because that is
- * what the patches were taken from — and on a clean open the two are the same
- * bytes anyway.
- */
-function docsHash(s: Session): string {
-  const h = createHash('sha1');
-  h.update(s.map.save(), 'latin1');
-  TERRAIN_FILE.forEach((file, floor) => {
-    // The live document when there is one, the file otherwise — unsaved brush
-    // work is part of the state the history describes.
-    const doc = s.terrain.get(floor);
-    if (doc) { h.update(doc.buffer()); return; }
-    const p = join(s.mapDir, file);
-    if (existsSync(p)) h.update(readFileSync(p));
-  });
-  return h.digest('hex');
-}
-
-/** Where a map's history lives: in the editor's own scratch dir, never in the map. */
-function historyPathFor(mapDir: string): string {
-  // NOT inside the map folder: packProject sweeps every file in there into the
-  // .h5m, and an editor's undo log has no business shipping inside a map.
-  const key = createHash('sha1').update(mapDir).digest('hex').slice(0, 16);
-  return join(tmpRoot(), 'history', `${key}.json`);
-}
-
-function saveHistory(s: Session): void {
-  try {
-    mkdirSync(dirname(s.historyPath), { recursive: true });
-    writeFileSync(s.historyPath, JSON.stringify(s.history.save(docsHash(s))));
-  } catch { /* a history that cannot be written is not a reason to fail an edit */ }
-}
-
-function loadHistory(s: Session): void {
-  try {
-    if (!existsSync(s.historyPath)) return;
-    const stored = JSON.parse(readFileSync(s.historyPath, 'utf8')) as StoredHistory;
-    s.history.restore(stored, docsHash(s));
-  } catch { /* an unreadable history is dropped, not repaired */ }
-}
-
-/** Terrain file backing each floor index. */
-const TERRAIN_FILE = ['GroundTerrain.bin', 'UndergroundTerrain.bin'];
-
-/** The open terrain document for a floor, opened on first use. */
-function terrainDoc(s: Session, floor: number): TerrainDoc {
-  const cached = s.terrain.get(floor);
-  if (cached) return cached;
-  const file = TERRAIN_FILE[floor];
-  if (!file) throw new Error(`no terrain file for floor ${floor}`);
-  const doc = TerrainDoc.open(join(s.mapDir, file));
-  s.terrain.set(floor, doc);
-  return doc;
-}
-
 /** The object catalogue, scanned once — 1466 small files is not a per-call cost. */
 let catalogCache: ReturnType<typeof listPlaceable> | null = null;
+
 function catalog(): ReturnType<typeof listPlaceable> {
   // Through the mounted chain, so a mod's palette entries are in the catalogue.
   if (!catalogCache) catalogCache = listPlaceable(mountedAssets(gameData()), editorRoot() || '');
   return catalogCache;
 }
-
-// Current editing session (one map at a time for now).
-let session: Session | null = null;
-let win: BrowserWindow | null = null;
 
 /**
  * Where the file dialog opens. Follows the last map opened; starts at ours.
@@ -313,6 +239,7 @@ let win: BrowserWindow | null = null;
  * "open a map".
  */
 let lastDir = '';
+
 function openDialogDir(): string {
   if (lastDir) return lastDir;
   const g = gameRoot();
@@ -328,7 +255,7 @@ function createWindow(): void {
   // display that size hangs off the right edge, and what hangs off is the
   // right-hand panel — the palettes — so a chunk of the UI is simply not there.
   const area = screen.getPrimaryDisplay().workAreaSize;
-  win = new BrowserWindow({
+  state.win = new BrowserWindow({
     width: Math.min(1400, area.width), height: Math.min(900, area.height),
     center: true,
     backgroundColor: '#0d1014',
@@ -345,8 +272,8 @@ function createWindow(): void {
     },
   });
   // Hoisted so the rest of the function sees a non-null window without
-  // re-narrowing the mutable module-level `win` after every call.
-  const w = win;
+  // re-narrowing the mutable shared `state.win` after every call.
+  const w = state.win;
   w.setMenuBarVisibility(false);
   // Renderer failures, in the terminal that launched the app. Until this was
   // here, a renderer that died on its first line left no trace anywhere the
@@ -453,8 +380,11 @@ ipcMain.handle('app:launch-game', (): LaunchGameResult => {
 });
 
 ipcMain.handle('app:gpu-report', gpuReport);
-ipcMain.handle('app:open-devtools', () => { win?.webContents.openDevTools({ mode: 'detach' }); });
+
+ipcMain.handle('app:open-devtools', () => { state.win?.webContents.openDevTools({ mode: 'detach' }); });
+
 ipcMain.handle('app:gpu-software', (): boolean => !!readSettings().softwareRendering);
+
 // Remember, then come back up with the switches applied. A restart is the whole
 // mechanism, not an inconvenience of it: the backend is chosen before the app is
 // ready, so this is the only moment the choice can be made.
@@ -486,22 +416,6 @@ app.whenReady().then(async () => {
   if (process.env.HOMM5_SMOKE) runSmoke(process.env.HOMM5_SMOKE);
 });
 
-/**
- * The base asset root for a map: the tree above it when the map sits inside one,
- * else the configured game data.
- *
- * A map opened from a `.h5m` is extracted on its own and has no data above it,
- * which is the ordinary case — the archive holds the map, never the models. The
- * smoke test used to insist on the walk alone and so could not load any map the
- * editor itself can.
- */
-function assetRootFor(mapPath: string): string {
-  const above = findAssetRoot(mapPath);
-  if (above) return above;
-  if (existsSync(join(gameData(), 'MapObjects')) || existsSync(join(gameData(), 'bin', 'Geometries'))) return gameData();
-  throw new Error('asset root not found (need MapObjects/ or bin/Geometries/ above the map, or set HOMM5_DATA)');
-}
-
 async function runSmoke(mapPath: string): Promise<void> {
   try {
     const { map, scene, skipped, resolver } = buildScene(mountedAssets(assetRootFor(mapPath)), mapPath);
@@ -511,8 +425,10 @@ async function runSmoke(mapPath: string): Promise<void> {
     app.exit(0);
   } catch (e) { console.error('SMOKE fail:', e instanceof Error ? e.message : String(e)); app.exit(1); }
 }
+
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
-app.on('will-quit', () => { session?.watch.stop(); });
+
+app.on('will-quit', () => { state.session?.watch.stop(); });
 
 // --- IPC: the maps on offer — ours, and the game's own ---
 //
@@ -547,7 +463,7 @@ ipcMain.handle('dialog:openMap', async (): Promise<OpenMapDialogResult> => {
     ],
   };
   // Electron treats a null parent as "no parent"; pick the overload to match.
-  const parent = win;
+  const parent = state.win;
   const r = await (parent ? dialog.showOpenDialog(parent, opts) : dialog.showOpenDialog(opts));
   return r.canceled ? null : r.filePaths[0];
 });
@@ -765,7 +681,8 @@ ipcMain.handle('map:open-archive', async (_e: IpcMainInvokeEvent, p: OpenArchive
   // Windows an open handle is enough to make the delete fail.
   const stale = shared ? (guess ?? '') : root;
   if (stale) {
-    if (session && session.mapDir.startsWith(stale)) { session.watch.stop(); session = null; }
+    const open = state.session;
+    if (open && open.mapDir.startsWith(stale)) { open.watch.stop(); state.session = null; }
     rmSync(stale, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   }
   if (!shared) pruneWorkspaces(root);
@@ -802,7 +719,7 @@ ipcMain.handle('map:load', async (_e: IpcMainInvokeEvent, mapPath: string): Prom
   const layerPaths = [...new Set(scene.floors.flatMap((f) => f.splat?.paths || []))];
   // Reloading the same map replaces the session, so retire the previous watcher
   // before starting one on the new folder.
-  session?.watch.stop();
+  state.session?.watch.stop();
   const watch = watchMapDir(mapDir, (c) => {
     const touched = [...c.changed, ...c.added, ...c.removed];
     const payload: ExternalChange = {
@@ -811,13 +728,14 @@ ipcMain.handle('map:load', async (_e: IpcMainInvokeEvent, mapPath: string): Prom
       map: touched.some((f) => /(^|\/)map\.xdb$/i.test(f)),
       terrain: touched.some((f) => /(^|\/)GroundTerrain\.bin$/i.test(f)),
     };
-    win?.webContents.send('map:external-change', payload);
+    state.win?.webContents.send('map:external-change', payload);
   });
-  session = {
+  const session: Session = {
     mapPath, mapDir, assetRoot, assets: data, map, layerPaths, watch, terrain: new Map(), resolver,
     history: new History(), historyPath: historyPathFor(mapDir),
     registry: new Registry(data),
   };
+  state.session = session;
   // A history from a previous run is adopted only if the documents still hash
   // to what they hashed when it was written.
   loadHistory(session);
@@ -854,8 +772,8 @@ ipcMain.handle('map:load', async (_e: IpcMainInvokeEvent, mapPath: string): Prom
 // that folder being deleted or replaced — which is exactly what opening the same
 // archive again goes on to do.
 ipcMain.handle('map:close', (): void => {
-  session?.watch.stop();
-  session = null;
+  state.session?.watch.stop();
+  state.session = null;
 });
 
 // --- IPC: the idle-animation setting ---
@@ -864,6 +782,7 @@ ipcMain.handle('map:close', (): void => {
 // was built for. A scene built with it off can be topped up in place through
 // map:idle-skins below, so changing the setting never needs a reload.
 ipcMain.handle('app:idle-animation', (): 'off' | 'visible' | 'all' => readSettings().idleAnimation ?? 'off');
+
 ipcMain.handle('app:set-idle-animation', (_e: IpcMainInvokeEvent, { mode }: { mode: 'off' | 'visible' | 'all' }) => {
   saveSettings({ idleAnimation: mode });
   return {};
@@ -878,7 +797,7 @@ ipcMain.handle('app:set-idle-animation', (_e: IpcMainInvokeEvent, { mode }: { mo
 // same order, same dedup), so the indices line up; anything that does not is
 // dropped here rather than handed over misaligned.
 ipcMain.handle('map:idle-skins', async (): Promise<Record<number, NonNullable<GeomData['skin']>>> => {
-  if (!session) throw new Error('no map loaded');
+  const session = need();
   const t0 = performance.now();
   const fresh = createGeomResolver(session.assets, undefined, { animate: true });
   const skins: Record<number, NonNullable<GeomData['skin']>> = {};
@@ -904,7 +823,7 @@ ipcMain.handle('map:idle-skins', async (): Promise<Record<number, NonNullable<Ge
 // a few MB as typed arrays, and structured clone ships typed arrays binary.
 // The renderer asks once per unique uid after the scene is up.
 ipcMain.handle('map:fx', async (_e: IpcMainInvokeEvent, { uids }: FxPayload): Promise<Record<string, FxTransfer>> => {
-  if (!session) throw new Error('no map loaded');
+  const session = need();
   const t0 = performance.now();
   const out: Record<string, FxTransfer> = {};
   for (const uid of uids) {
@@ -922,26 +841,19 @@ ipcMain.handle('map:fx', async (_e: IpcMainInvokeEvent, { uids }: FxPayload): Pr
 
 // --- IPC: move an object (x,y tiles); z stays the object's stored value ---
 ipcMain.handle('object:move', async (_e: IpcMainInvokeEvent, { id, x, y }: MoveObjectPayload): Promise<MoveObjectResult> => {
-  if (!session) throw new Error('no map loaded');
+  const session = need();
   const obj = session.map.objects.find((o) => o.id === id);
   if (!obj) throw new Error(`object ${id} not found`);
   record(session, 'move object', { map: true }, () => obj.setPos(x, y));
   return { ok: true };
 });
 
-/** The object with this id, or a throw naming the id that was not found. */
-function findObject(s: Session, id: string): MapObject {
-  const obj = s.map.objects.find((o) => o.id === id);
-  if (!obj) throw new Error(`object ${id} not found`);
-  return obj;
-}
-
 // --- IPC: rotate an object ---
 // An absolute angle rather than a delta, for the same reason the height brush
 // sends absolute heights: the renderer already worked out the answer, and
 // recomputing it here would be a second place for it to come out different.
 ipcMain.handle('object:rotate', async (_e: IpcMainInvokeEvent, { id, r }: RotateObjectPayload): Promise<ObjectEditResult> => {
-  if (!session) throw new Error('no map loaded');
+  const session = need();
   const obj = findObject(session, id);
   record(session, 'rotate object', { map: true }, () => obj.setRot(r));
   return { ok: true };
@@ -1012,57 +924,6 @@ function linkTexture(href: string | undefined): IconResult {
 }
 
 /**
- * The game's own type spec, read once per run.
- *
- * 2.4 MB of XML, so it is parsed on first use rather than at startup, and only
- * when the data folder actually has it — a data root without types.xml simply
- * means no field can be created, which is the old behaviour.
- */
-let typeSpec: Map<string, SpecType> | null | undefined;
-const orderCache = new Map<string, FieldOrder | null>();
-function orderFor(type: string): FieldOrder | undefined {
-  if (typeSpec === undefined) {
-    const p = typesXmlPath(gameData());
-    const t0 = performance.now();
-    typeSpec = p ? readTypeSpec(p) : null;
-    if (p) console.log(`[spec] types.xml ${(performance.now() - t0) | 0}ms · ${typeSpec!.size} types`);
-  }
-  if (!typeSpec) return undefined;
-  if (!orderCache.has(type)) orderCache.set(type, fieldOrder(typeSpec, type));
-  return orderCache.get(type) ?? undefined;
-}
-
-/**
- * Every field of a type whose values the spec closes, with the full legal set.
- *
- * This is what turns a text box into a dropdown honestly. The panel used to
- * show enum fields as free text, with a comment saying the legal set lives in
- * the game's data and a guessed list would refuse values the game accepts —
- * true then, and the spec is that data. `AttackType` is `ATTACK_ANY` on all
- * 6377 monsters ever shipped, and the type also has `ATTACK_RANGE` and
- * `ATTACK_MELEE`.
- *
- * Cached per type: the parse is 2.4 MB and the answer never changes.
- */
-const valuesCache = new Map<string, Record<string, string[]>>();
-function valuesFor(type: string): Record<string, string[]> {
-  const hit = valuesCache.get(type);
-  if (hit) return hit;
-  orderFor(type); // parses types.xml on first use
-  const out: Record<string, string[]> = {};
-  if (typeSpec) {
-    // Only the fields our own schema knows about: an option list for a field
-    // the editor never shows is payload for nothing.
-    for (const name of Object.keys(objectProps(type))) {
-      const v = fieldValues(typeSpec, type, name);
-      if (v && v.length) out[name] = v;
-    }
-  }
-  valuesCache.set(type, out);
-  return out;
-}
-
-/**
  * The session's rosters, for the defaults that mean "everything the game has"
  * — a new town's guild-spell filter. Read from the installed data, so a mod's
  * spells are in it and a list frozen into the source would not be.
@@ -1085,7 +946,7 @@ function rosterFor(s: Session): (name: RegistryName) => string[] {
 // show it at once. A model the scene has not seen before is sent along with the
 // instance, since the renderer's geometry list is built at load time.
 ipcMain.handle('object:add', async (_e: IpcMainInvokeEvent, p: AddObjectPayload): Promise<AddObjectResult> => {
-  if (!session) throw new Error('no map loaded');
+  const session = need();
   const before = session.resolver.geoms.length;
   const gi = session.resolver.resolve(p.shared);
   if (gi < 0) throw new Error('this object has no model we can decode yet');
@@ -1097,9 +958,9 @@ ipcMain.handle('object:add', async (_e: IpcMainInvokeEvent, p: AddObjectPayload)
   // finds the document a different size than its patch was taken from and throws
   // "patch does not fit". This was the one mutating handler that skipped it.
   const { object, complete } = record(session, 'add object', { map: true }, () =>
-    session!.map.addObject({
+    session.map.addObject({
       type: p.type, shared: p.shared, x: p.x, y: p.y, floor: p.floor, r: p.r ?? 0,
-      roster: rosterFor(session!),
+      roster: rosterFor(session),
       order: orderFor(p.type),
       ...(donor ? { donor } : {}),
     }));
@@ -1155,7 +1016,7 @@ function absentProps(obj: MapObject): ObjectProp[] {
 }
 
 ipcMain.handle('object:props', async (_e: IpcMainInvokeEvent, { id }: RemoveObjectPayload): Promise<ObjectPropsResult> => {
-  if (!session) throw new Error('no map loaded');
+  const session = need();
   const obj = findObject(session, id);
   return { type: obj.type, props: [...obj.props(), ...absentProps(obj)] };
 });
@@ -1167,7 +1028,7 @@ ipcMain.handle('spec:values', async (_e: IpcMainInvokeEvent, { type }: SpecValue
 
 // --- IPC: set one simple field ---
 ipcMain.handle('object:set-prop', async (_e: IpcMainInvokeEvent, p: SetPropPayload): Promise<ObjectEditResult> => {
-  if (!session) throw new Error('no map loaded');
+  const session = need();
   const obj = findObject(session, p.id);
   // A reference field (`x-ref`) is written as an href, even into a bare element
   // that has no attribute yet — a town's `<Specialization/>` set for the first
@@ -1194,7 +1055,7 @@ ipcMain.handle('object:set-prop', async (_e: IpcMainInvokeEvent, p: SetPropPaylo
 // Name, an object's Name). These are the names on offer, gathered from the map
 // itself so the hints are always current.
 ipcMain.handle('map:names', async (_e: IpcMainInvokeEvent, { kind }: NamesPayload): Promise<NamesResult> => {
-  if (!session) throw new Error('no map loaded');
+  const session = need();
   const seen = new Set<string>();
   if (kind === 'object') {
     for (const o of session.map.objects) { const n = text(find(o.el, 'Name')); if (n) seen.add(n); }
@@ -1234,6 +1095,7 @@ ipcMain.handle('script:context', async (): Promise<ScriptContextResult> => {
   const constants = new Set<string>();
   // The game's own Lua: helpers a mission is expected to call, and the constants
   // they define. Read from the data root, so it follows the installation.
+  const { session } = state;
   const scripts = session ? join(session.assetRoot, 'scripts') : null;
   if (scripts && existsSync(scripts)) {
     for (const f of readdirSync(scripts)) {
@@ -1277,7 +1139,7 @@ ipcMain.handle('script:context', async (): Promise<ScriptContextResult> => {
 
 /** Every file in the map folder the script editor can open — its Lua and texts. */
 ipcMain.handle('map:files', async (_e: IpcMainInvokeEvent, { exts }: MapFilesPayload): Promise<MapFilesResult> => {
-  if (!session) throw new Error('no map loaded');
+  const session = need();
   const want = exts.map((e) => e.toLowerCase());
   const files = listDirFiles(session.mapDir)
     .filter((rel) => want.some((e) => rel.toLowerCase().endsWith(e)))
@@ -1289,7 +1151,7 @@ ipcMain.handle('map:files', async (_e: IpcMainInvokeEvent, { exts }: MapFilesPay
 // Discovered from the data tree (see src/registry.ts) and cached per session, so
 // the first request for a roster scans and the rest are instant.
 ipcMain.handle('registry:roster', async (_e: IpcMainInvokeEvent, { name }: RosterPayload): Promise<RosterResult> => {
-  if (!session) throw new Error('no map loaded');
+  const session = need();
   const r = session.registry;
   const roster =
     name === 'spells' ? r.spells() :
@@ -1311,7 +1173,7 @@ ipcMain.handle('registry:roster', async (_e: IpcMainInvokeEvent, { name }: Roste
 // discovery as the class-based rosters, but for any class the schema names
 // (an object's ${type}Shared, or a header ref's entity class).
 ipcMain.handle('objects:of-class', async (_e: IpcMainInvokeEvent, { className }: OfClassPayload): Promise<RosterResult> => {
-  if (!session) throw new Error('no map loaded');
+  const session = need();
   if (!/^[A-Za-z][A-Za-z0-9]*$/.test(className)) throw new Error(`bad class "${className}"`);
   return { entries: [...mapLocalEntities(session, className), ...session.registry.objectsOfClass(className)] };
 });
@@ -1351,7 +1213,7 @@ function mapLocalEntities(s: Session, className: string): RosterEntry[] {
 // href the ref should store is returned. Only classes the schema can build a
 // template for are supported — others are picked, not authored here.
 ipcMain.handle('map:new-entity', async (_e: IpcMainInvokeEvent, { className, name }: NewEntityPayload): Promise<NewEntityResult> => {
-  if (!session) throw new Error('no map loaded');
+  const session = need();
   if (!/^[A-Za-z][A-Za-z0-9]*$/.test(className)) throw new Error(`bad class "${className}"`);
   const clean = name.trim().replace(/[\\/:*?"<>|]/g, '_');
   if (!clean) throw new Error('name is empty');
@@ -1374,7 +1236,7 @@ ipcMain.handle('map:new-entity', async (_e: IpcMainInvokeEvent, { className, nam
 // number not already taken by a `*.(Class).xdb` in the map folder, so New starts
 // with a non-empty, non-duplicate name (see docs/NAMES_AND_SCRIPTING.md).
 ipcMain.handle('map:suggest-name', async (_e: IpcMainInvokeEvent, { className }: SuggestNamePayload): Promise<SuggestNameResult> => {
-  if (!session) throw new Error('no map loaded');
+  const session = need();
   if (!/^[A-Za-z][A-Za-z0-9]*$/.test(className)) throw new Error(`bad class "${className}"`);
   const suffix = `.(${className}).xdb`;
   const taken = new Set<string>();
@@ -1406,15 +1268,16 @@ function resolveEntityFile(s: Session, href: string): { file: string; editable: 
 // tree), and — for a map-local document — set one field and write it back. The
 // shipped library is read-only; to change one you save a copy in the map folder.
 ipcMain.handle('entity:read', async (_e: IpcMainInvokeEvent, { href }: EntityReadPayload): Promise<EntityReadResult> => {
-  if (!session) throw new Error('no map loaded');
+  const session = need();
   const r = resolveEntityFile(session, href);
   if (!r || !existsSync(r.file)) throw new Error(`entity not found: ${href}`);
   const root = children(parse(readFileSync(r.file, 'utf8')))[0];
   if (!root) throw new Error(`empty entity document: ${href}`);
   return { className: root.name, editable: r.editable, tree: readTree(root) };
 });
+
 ipcMain.handle('entity:set-path', async (_e: IpcMainInvokeEvent, p: EntitySetPathPayload): Promise<ObjectEditResult> => {
-  if (!session) throw new Error('no map loaded');
+  const session = need();
   const r = resolveEntityFile(session, p.href);
   if (!r) throw new Error(`bad entity href: ${p.href}`);
   if (!r.editable) throw new Error('this entity is from the shipped library — save a copy in the map to edit it');
@@ -1431,14 +1294,15 @@ ipcMain.handle('entity:set-path', async (_e: IpcMainInvokeEvent, p: EntitySetPat
 // A native OS open-dialog, starting in the map folder. A file chosen from
 // elsewhere is copied in beside map.xdb, since a text ref stores a basename.
 ipcMain.handle('map:pick-text', async (): Promise<PickTextResult> => {
-  if (!session) throw new Error('no map loaded');
+  const session = need();
   const opts = {
     title: 'Select text file',
     defaultPath: session.mapDir,
     properties: ['openFile' as const],
     filters: [{ name: 'Text', extensions: ['txt'] }, { name: 'All files', extensions: ['*'] }],
   };
-  const r = await (win ? dialog.showOpenDialog(win, opts) : dialog.showOpenDialog(opts));
+  const w = state.win;
+  const r = await (w ? dialog.showOpenDialog(w, opts) : dialog.showOpenDialog(opts));
   const src = r.canceled ? undefined : r.filePaths[0];
   if (!src) return { href: '' };
   const dest = join(session.mapDir, basename(src));
@@ -1450,7 +1314,7 @@ ipcMain.handle('map:pick-text', async (): Promise<PickTextResult> => {
 // The library is read-only; this makes an editable map-local twin and hands
 // back the href the ref should now point at (keeping the original xpointer).
 ipcMain.handle('entity:copy-to-map', async (_e: IpcMainInvokeEvent, { href }: EntityCopyPayload): Promise<EntityCopyResult> => {
-  if (!session) throw new Error('no map loaded');
+  const session = need();
   const r = resolveEntityFile(session, href);
   if (!r || !existsSync(r.file)) throw new Error(`entity not found: ${href}`);
   if (r.editable) return { href }; // already map-local
@@ -1468,17 +1332,19 @@ ipcMain.handle('entity:copy-to-map', async (_e: IpcMainInvokeEvent, { href }: En
 // edit goes through record({map:true}), so the tree shares undo/dirty/save with
 // every other edit.
 ipcMain.handle('map:tree', async (): Promise<MapTreeResult> => {
-  if (!session) throw new Error('no map loaded');
+  const session = need();
   return { tree: readTree(session.map.desc) };
 });
+
 ipcMain.handle('map:set-path', async (_e: IpcMainInvokeEvent, p: SetPathPayload): Promise<ObjectEditResult> => {
-  if (!session) throw new Error('no map loaded');
-  const done = record(session, `set ${p.path.join('.')}`, { map: true }, () => setPath(session!.map.desc, p.path, p.value));
+  const session = need();
+  const done = record(session, `set ${p.path.join('.')}`, { map: true }, () => setPath(session.map.desc, p.path, p.value));
   if (!done) throw new Error(`cannot set ${p.path.join('.')}`);
   return { ok: true };
 });
+
 ipcMain.handle('map:add-item', async (_e: IpcMainInvokeEvent, p: AddItemPayload): Promise<ObjectEditResult> => {
-  if (!session) throw new Error('no map loaded');
+  const session = need();
   const desc = session.map.desc;
   // A list of structures (rumours, players, army stacks) gets a full item built
   // from its schema with default values; a list of plain values gets <Item>v</Item>;
@@ -1497,12 +1363,14 @@ ipcMain.handle('map:add-item', async (_e: IpcMainInvokeEvent, p: AddItemPayload)
   if (!done) throw new Error(`cannot add to ${p.path.join('.')}`);
   return { ok: true };
 });
+
 ipcMain.handle('map:remove-item', async (_e: IpcMainInvokeEvent, p: RemoveItemPayload2): Promise<ObjectEditResult> => {
-  if (!session) throw new Error('no map loaded');
-  const done = record(session, `remove ${p.path.join('.')}`, { map: true }, () => removeItem(session!.map.desc, p.path));
+  const session = need();
+  const done = record(session, `remove ${p.path.join('.')}`, { map: true }, () => removeItem(session.map.desc, p.path));
   if (!done) throw new Error(`cannot remove ${p.path.join('.')}`);
   return { ok: true };
 });
+
 // --- IPC: one object as a tree ---
 //
 // The property panel edits an object's simple fields; its STRUCTURES — a hero's
@@ -1511,19 +1379,21 @@ ipcMain.handle('map:remove-item', async (_e: IpcMainInvokeEvent, p: RemoveItemPa
 // with the same tree the map's own settings use: one renderer, one set of edit
 // primitives (src/tree.ts), rooted at the object's element instead of the map's.
 ipcMain.handle('object:tree', async (_e: IpcMainInvokeEvent, p: ObjectTreePayload): Promise<ObjectTreeResult> => {
-  if (!session) throw new Error('no map loaded');
+  const session = need();
   const obj = findObject(session, p.id);
   return { type: obj.type, tree: readTree(obj.el) };
 });
+
 ipcMain.handle('object:set-path', async (_e: IpcMainInvokeEvent, p: ObjectSetPathPayload): Promise<ObjectEditResult> => {
-  if (!session) throw new Error('no map loaded');
+  const session = need();
   const obj = findObject(session, p.id);
   const done = record(session, `set ${p.path.join('.')}`, { map: true }, () => setPath(obj.el, p.path, p.value));
   if (!done) throw new Error(`cannot set ${p.path.join('.')}`);
   return { ok: true };
 });
+
 ipcMain.handle('object:add-item', async (_e: IpcMainInvokeEvent, p: ObjectAddItemPayload): Promise<ObjectEditResult> => {
-  if (!session) throw new Error('no map loaded');
+  const session = need();
   const obj = findObject(session, p.id);
   // A list of structures (army stacks) gets an item built from its schema with
   // the declared defaults; a list of plain values gets <Item>v</Item>.
@@ -1540,8 +1410,9 @@ ipcMain.handle('object:add-item', async (_e: IpcMainInvokeEvent, p: ObjectAddIte
   if (!done) throw new Error(`cannot add to ${p.path.join('.')}`);
   return { ok: true };
 });
+
 ipcMain.handle('object:remove-item', async (_e: IpcMainInvokeEvent, p: ObjectRemoveItemPayload): Promise<ObjectEditResult> => {
-  if (!session) throw new Error('no map loaded');
+  const session = need();
   const obj = findObject(session, p.id);
   const done = record(session, `remove ${p.path.join('.')}`, { map: true }, () => removeItem(obj.el, p.path));
   if (!done) throw new Error(`cannot remove ${p.path.join('.')}`);
@@ -1549,8 +1420,8 @@ ipcMain.handle('object:remove-item', async (_e: IpcMainInvokeEvent, p: ObjectRem
 });
 
 ipcMain.handle('map:set-list', async (_e: IpcMainInvokeEvent, p: SetListPayload): Promise<ObjectEditResult> => {
-  if (!session) throw new Error('no map loaded');
-  const done = record(session, `set list ${p.path.join('.')}`, { map: true }, () => setList(session!.map.desc, p.path, p.values));
+  const session = need();
+  const done = record(session, `set list ${p.path.join('.')}`, { map: true }, () => setList(session.map.desc, p.path, p.values));
   if (!done) throw new Error(`cannot set list ${p.path.join('.')}`);
   return { ok: true };
 });
@@ -1561,7 +1432,7 @@ ipcMain.handle('map:set-list', async (_e: IpcMainInvokeEvent, p: SetListPayload)
 // separate document from the in-memory map.xdb, so editing them wants the same
 // undo/save plumbing terrain floors have, which is a later step.
 ipcMain.handle('map:props', async (): Promise<MapPropsResult> => {
-  if (!session) throw new Error('no map loaded');
+  const session = need();
   return {
     props: session.map.mapProps(),
     name: readSidecarText(session, session.map.nameFileRef),
@@ -1571,8 +1442,8 @@ ipcMain.handle('map:props', async (): Promise<MapPropsResult> => {
 
 // --- IPC: set one map-root simple field ---
 ipcMain.handle('map:set-prop', async (_e: IpcMainInvokeEvent, p: SetMapPropPayload): Promise<ObjectEditResult> => {
-  if (!session) throw new Error('no map loaded');
-  const done = record(session, `set ${p.name}`, { map: true }, () => session!.map.setMapProp(p.name, p.value));
+  const session = need();
+  const done = record(session, `set ${p.name}`, { map: true }, () => session.map.setMapProp(p.name, p.value));
   if (!done) throw new Error(`${p.name} is not an editable map field`);
   return { ok: true };
 });
@@ -1582,12 +1453,13 @@ ipcMain.handle('map:set-prop', async (_e: IpcMainInvokeEvent, p: SetMapPropPaylo
 // referenced file; these back that. Written straight to disk (the file is its
 // own document, not part of map.xdb), with the watcher resynced.
 ipcMain.handle('map:read-file', async (_e: IpcMainInvokeEvent, { href }: ReadFilePayload): Promise<ReadFileResult> => {
-  if (!session) throw new Error('no map loaded');
+  const session = need();
   const file = sidecarPath(session, href);
   return { text: readSidecarText(session, href), exists: !!file && existsSync(file) };
 });
+
 ipcMain.handle('map:write-file', async (_e: IpcMainInvokeEvent, { href, text }: WriteFilePayload): Promise<ObjectEditResult> => {
-  if (!session) throw new Error('no map loaded');
+  const session = need();
   if (!writeSidecarText(session, href, text)) throw new Error(`cannot write ${href}`);
   return { ok: true };
 });
@@ -1606,7 +1478,7 @@ ipcMain.handle('map:write-file', async (_e: IpcMainInvokeEvent, { href, text }: 
  * does not clobber an existing text.
  */
 ipcMain.handle('script:new', async (_e: IpcMainInvokeEvent, { base }: ScriptNewPayload): Promise<ScriptNewResult> => {
-  if (!session) throw new Error('no map loaded');
+  const session = need();
   const clean = base.trim().replace(/\.(lua|xdb)$/i, '');
   if (!clean || /[/\\]/.test(clean)) throw new Error('a script name has no path or extension');
   const luaName = `${clean}.lua`;
@@ -1629,7 +1501,7 @@ ipcMain.handle('script:new', async (_e: IpcMainInvokeEvent, { base }: ScriptNewP
 
 /** The `.lua` a Script wrapper names — so "Edit" opens the script, not the wrapper. */
 ipcMain.handle('script:resolve', async (_e: IpcMainInvokeEvent, { href }: ScriptResolvePayload): Promise<ScriptResolveResult> => {
-  if (!session) throw new Error('no map loaded');
+  const session = need();
   const lua = readScriptFileName(readSidecarText(session, href));
   if (!lua) throw new Error(`${href} names no script file`);
   return { lua };
@@ -1642,7 +1514,7 @@ ipcMain.handle('script:resolve', async (_e: IpcMainInvokeEvent, { href }: Script
 // same way scripts and texts are. RandomTown is TOWN_SCRIPT_ONLY: this is a
 // named specialization for a placed town, not a member of the random pool.
 ipcMain.handle('spec:new', async (_e: IpcMainInvokeEvent, { base, bonus, townType, name }: SpecNewPayload): Promise<SpecNewResult> => {
-  if (!session) throw new Error('no map loaded');
+  const session = need();
   const clean = base.trim().replace(/\.xdb$/i, '');
   if (!clean || /[/\\]/.test(clean)) throw new Error('a specialization name has no path or extension');
   if (!TOWN_BONUS_IDS.has(bonus)) throw new Error(`unknown bonus ${bonus}`);
@@ -1685,18 +1557,22 @@ function readScriptFileName(xml: string): string | null {
 // copies every base text so a translator edits in place; removing deletes them.
 
 const LOC_FILE = 'localization.json';
+
 /** The languages the editor offers — the codes the game's own text archives use. */
 const LOC_KNOWN = new Set(['en', 'ru', 'de', 'fr', 'es', 'it', 'pl', 'cz', 'hu']);
+
 const LOC_TAG = /\.([a-z]{2})\.txt$/i;
 
 interface LocConfig { base: string; languages: string[] }
 
 function locPath(s: Session): string { return join(s.mapDir, LOC_FILE); }
+
 function readLoc(s: Session): LocConfig | null {
   const p = locPath(s);
   if (!existsSync(p)) return null;
   try { return JSON.parse(readFileSync(p, 'utf8')) as LocConfig; } catch { return null; }
 }
+
 function writeLoc(s: Session, cfg: LocConfig): void {
   writeFileSync(locPath(s), JSON.stringify(cfg, null, 1) + '\n');
   s.watch.resync();
@@ -1723,6 +1599,7 @@ function locTagOf(path: string): string {
   const t = LOC_TAG.exec(path)?.[1]?.toLowerCase();
   return t && LOC_KNOWN.has(t) ? t : '';
 }
+
 /** Retag a text path to a language: `name.txt` / `name.ru.txt` → `name.<lang>.txt`. */
 function locTagged(path: string, lang: string): string {
   const bare = locTagOf(path) ? path.replace(LOC_TAG, '.txt') : path;
@@ -1730,13 +1607,13 @@ function locTagged(path: string, lang: string): string {
 }
 
 ipcMain.handle('loc:get', async (): Promise<LocResult> => {
-  if (!session) throw new Error('no map loaded');
+  const session = need();
   const cfg = readLoc(session);
   return { enabled: !!cfg, base: cfg?.base ?? '', languages: cfg?.languages ?? [] };
 });
 
 ipcMain.handle('loc:enable', async (_e: IpcMainInvokeEvent, { base }: LocEnablePayload): Promise<LocResult> => {
-  if (!session) throw new Error('no map loaded');
+  const session = need();
   if (readLoc(session)) throw new Error('localization is already enabled');
   if (!LOC_KNOWN.has(base)) throw new Error(`unknown language "${base}"`);
   // Tag every existing untagged text with the base language, so from now on every
@@ -1752,7 +1629,7 @@ ipcMain.handle('loc:enable', async (_e: IpcMainInvokeEvent, { base }: LocEnableP
 });
 
 ipcMain.handle('loc:add-language', async (_e: IpcMainInvokeEvent, { lang }: LocLangPayload): Promise<LocResult> => {
-  if (!session) throw new Error('no map loaded');
+  const session = need();
   const cfg = readLoc(session);
   if (!cfg) throw new Error('localization is not enabled');
   if (!LOC_KNOWN.has(lang)) throw new Error(`unknown language "${lang}"`);
@@ -1771,7 +1648,7 @@ ipcMain.handle('loc:add-language', async (_e: IpcMainInvokeEvent, { lang }: LocL
 });
 
 ipcMain.handle('loc:remove-language', async (_e: IpcMainInvokeEvent, { lang }: LocLangPayload): Promise<LocResult> => {
-  if (!session) throw new Error('no map loaded');
+  const session = need();
   const cfg = readLoc(session);
   if (!cfg) throw new Error('localization is not enabled');
   if (lang === cfg.base) throw new Error('cannot remove the base language');
@@ -1783,82 +1660,14 @@ ipcMain.handle('loc:remove-language', async (_e: IpcMainInvokeEvent, { lang }: L
   return { enabled: true, base: cfg.base, languages: cfg.languages };
 });
 
-/**
- * Where a text reference lands inside the map folder.
- *
- * A ref is relative to the map document, and it is not always a bare name: a
- * mission keeps its objective texts in a subfolder (`objectives/prim1_name.txt`
- * on C1M1), and flattening that to the basename wrote the file next to map.xdb
- * while the ref went on pointing into a folder that did not exist — a reference
- * to nothing, which is worse than refusing.
- *
- * Refuses to leave the map folder: a `..` in a ref would otherwise write
- * anywhere on disk, and no legitimate map has one.
- */
-function sidecarPath(s: Session, href: string): string | null {
-  if (!href) return null;
-  const rel = href.split('#')[0]!.replace(/^[/\\]+/, '');
-  if (!rel) return null;
-  const file = resolve(s.mapDir, rel);
-  const root = resolve(s.mapDir);
-  if (file !== root && !file.startsWith(root + sep)) return null;
-  return file;
-}
-
-/**
- * Read a text file the map references (name.txt, description.txt), decoding the
- * BOM the game writes. Empty href or a missing file returns '' rather than
- * throwing — a map with no name is a display gap, not an error.
- */
-function readSidecarText(s: Session, href: string): string {
-  const file = sidecarPath(s, href);
-  if (!file || !existsSync(file)) return '';
-  const buf = readFileSync(file);
-  if (buf.length >= 2 && buf[0] === 0xff && buf[1] === 0xfe) return buf.toString('utf16le', 2);
-  if (buf.length >= 3 && buf[0] === 0xef && buf[1] === 0xbb && buf[2] === 0xbf) return buf.toString('utf8', 3);
-  return buf.toString('utf8');
-}
-
-/**
- * Write a text file of the map, keeping the encoding it already has.
- *
- * A NEW file's encoding follows what it is for: the game writes its display
- * texts (name.txt, an objective's caption) as UTF-16LE with a BOM, and reads
- * them back that way — but a .lua is source the engine's parser reads byte by
- * byte, and a UTF-16 script is a script it cannot run at all. So anything that
- * is not a .txt is written as plain UTF-8.
- *
- * Our own write is folded into the watcher baseline so it is not reported back
- * as somebody else's edit.
- */
-function writeSidecarText(s: Session, href: string, text: string): boolean {
-  const file = sidecarPath(s, href);
-  if (!file) return false;
-  // A ref into a subfolder the map does not have yet is how the folder gets
-  // made — the original's objective texts live in one.
-  mkdirSync(dirname(file), { recursive: true });
-  const isText = /\.txt$/i.test(file);
-  let enc: 'utf16le' | 'utf8' = isText ? 'utf16le' : 'utf8';
-  let bom = isText;
-  if (existsSync(file)) {
-    const b = readFileSync(file);
-    if (b.length >= 3 && b[0] === 0xef && b[1] === 0xbb && b[2] === 0xbf) { enc = 'utf8'; bom = true; }
-    else if (!(b.length >= 2 && b[0] === 0xff && b[1] === 0xfe)) { enc = 'utf8'; bom = false; }
-  }
-  const head = enc === 'utf16le' ? Buffer.from([0xff, 0xfe]) : (bom ? Buffer.from([0xef, 0xbb, 0xbf]) : Buffer.alloc(0));
-  writeFileSync(file, Buffer.concat([head, Buffer.from(text, enc)]));
-  s.watch.resync();
-  return true;
-}
-
 // --- IPC: delete an object ---
 // `remove` takes out the whole <Item> wrapper and the blank line after it, so
 // the surrounding XML is left exactly as it was — which is also what lets the
 // recorded patch put it back byte for byte on undo.
 ipcMain.handle('object:remove', async (_e: IpcMainInvokeEvent, { id }: RemoveObjectPayload): Promise<ObjectEditResult> => {
-  if (!session) throw new Error('no map loaded');
+  const session = need();
   const obj = findObject(session, id);
-  const gone = record(session, 'delete object', { map: true }, () => session!.map.remove(obj));
+  const gone = record(session, 'delete object', { map: true }, () => session.map.remove(obj));
   if (!gone) throw new Error(`could not remove ${id}`);
   return { ok: true };
 });
@@ -1868,9 +1677,9 @@ ipcMain.handle('object:remove', async (_e: IpcMainInvokeEvent, { id }: RemoveObj
 // the authoritative write. Only tiles the map has a layer for can be painted —
 // adding a layer means restructuring the .bin (see src/terrain.ts).
 ipcMain.handle('terrain:paint', async (_e: IpcMainInvokeEvent, p: PaintTilePayload): Promise<PaintTileResult> => {
-  if (!session) throw new Error('no map loaded');
+  const session = need();
   record(session, 'paint ground', { floors: [p.floor] },
-    () => terrainDoc(session!, p.floor).paintTile(p.tile, p.verts, p.strength ?? 255, p.exclusive ?? true));
+    () => terrainDoc(session, p.floor).paintTile(p.tile, p.verts, p.strength ?? 255, p.exclusive ?? true));
   return { ok: true };
 });
 
@@ -1879,9 +1688,9 @@ ipcMain.handle('terrain:paint', async (_e: IpcMainInvokeEvent, p: PaintTilePaylo
 // plain assignment. Flags travel with heights because the format ties them: a
 // bed dug to 0 is water, and raising it off 0 makes it ground again.
 ipcMain.handle('terrain:sculpt', async (_e: IpcMainInvokeEvent, p: SculptPayload): Promise<SculptResult> => {
-  if (!session) throw new Error('no map loaded');
+  const session = need();
   record(session, 'sculpt terrain', { floors: [p.floor] },
-    () => terrainDoc(session!, p.floor).setVertices(p.verts, p.heights, p.flags));
+    () => terrainDoc(session, p.floor).setVertices(p.verts, p.heights, p.flags));
   return { ok: true };
 });
 
@@ -1891,9 +1700,9 @@ ipcMain.handle('terrain:sculpt', async (_e: IpcMainInvokeEvent, p: SculptPayload
 // sits on top of its own banks. Applying them separately would leave the file
 // briefly — or on a failure, permanently — inconsistent.
 ipcMain.handle('terrain:paint-river', async (_e: IpcMainInvokeEvent, p: PaintRiverPayload): Promise<PaintTileResult> => {
-  if (!session) throw new Error('no map loaded');
+  const session = need();
   record(session, 'paint river', { floors: [p.floor] }, () => {
-    const doc = terrainDoc(session!, p.floor);
+    const doc = terrainDoc(session, p.floor);
     doc.paintTile(p.tile, p.verts);
     doc.setRiver(p.verts);
     doc.setVertices(p.heightVerts, p.heights, null);
@@ -1903,53 +1712,19 @@ ipcMain.handle('terrain:paint-river', async (_e: IpcMainInvokeEvent, p: PaintRiv
 
 // --- IPC: the river plane on its own, at a chosen strength ---
 ipcMain.handle('terrain:river-cells', async (_e: IpcMainInvokeEvent, p: RiverCellsPayload): Promise<PaintTileResult> => {
-  if (!session) throw new Error('no map loaded');
+  const session = need();
   record(session, p.value ? 'paint river' : 'erase river', { floors: [p.floor] },
-    () => terrainDoc(session!, p.floor).setRiverCells(p.cells, p.value));
+    () => terrainDoc(session, p.floor).setRiverCells(p.cells, p.value));
   return { ok: true };
 });
 
 // --- IPC: the passability mask (the original editor's Masks tab) ---
 ipcMain.handle('terrain:mask', async (_e: IpcMainInvokeEvent, p: MaskPayload): Promise<PaintTileResult> => {
-  if (!session) throw new Error('no map loaded');
+  const session = need();
   record(session, p.walkable ? 'unblock tiles' : 'block tiles', { floors: [p.floor] },
-    () => terrainDoc(session!, p.floor).setPassable(p.verts, p.walkable));
+    () => terrainDoc(session, p.floor).setPassable(p.verts, p.walkable));
   return { ok: true };
 });
-
-/**
- * Name every tile the terrain paints with in the map's own `<tiles>` list.
- *
- * The list is derived data — the same set of `AdvMapTile` documents the terrain
- * layers use, pointed at from the map instead of from the terrain — and the
- * editor is what keeps the two in step. Ours did not: the reconstruction added
- * twelve layers and left `<tiles>` empty, which the original never does.
- *
- * Add-only, and matched case-insensitively: a map's own list carries the game's
- * spelling (`/MapObjects/…/Field.xdb`) while the terrain keeps a lowercased one,
- * so comparing literally would append a second entry for a tile already there.
- * Nothing is ever removed — a layer cannot be taken away, and an entry we did
- * not put there is not ours to judge.
- *
- * @returns how many entries it added.
- */
-function syncMapTiles(s: Session, layerPaths: string[]): number {
-  const desc = s.map.desc;
-  const key = (v: string): string => v.toLowerCase().replace(/^\/+/, '').split('#')[0]!;
-  const tree = readTree(desc) as Record<string, unknown>;
-  const have = new Set((Array.isArray(tree.tiles) ? tree.tiles : [])
-    .filter((v): v is string => typeof v === 'string').map(key));
-  let added = 0;
-  for (const path of layerPaths) {
-    if (!path || have.has(key(path))) continue;
-    // The map points INTO the tile document, the way every other reference in
-    // the file does; the terrain stores the plain file path.
-    if (!addRefItem(desc, ['tiles'], `${path}#xpointer(/AdvMapTile)`)) break;
-    have.add(key(path));
-    added++;
-  }
-  return added;
-}
 
 // --- IPC: give this map a layer for a tile it does not carry ---
 // The only terrain edit that changes the file's structure rather than its
@@ -1957,14 +1732,14 @@ function syncMapTiles(s: Session, layerPaths: string[]): number {
 // triggers. Returns a rebuilt splat: one more layer means a new shader and new
 // mask groups, which the renderer cannot patch in place.
 ipcMain.handle('terrain:add-layer', async (_e: IpcMainInvokeEvent, p: AddLayerPayload): Promise<AddLayerResult> => {
-  if (!session) throw new Error('no map loaded');
+  const session = need();
   const doc = terrainDoc(session, p.floor);
   // Two documents, one edit: the layer goes into the terrain, and the map's own
   // tile set has to name the tile as well (see syncMapTiles). Recorded together
   // so undo takes both back.
   record(session, 'add ground layer', { map: true, floors: [p.floor] }, () => {
     doc.addLayer(p.tile);
-    syncMapTiles(session!, doc.layerPaths().filter((x): x is string => !!x));
+    syncMapTiles(session, doc.layerPaths().filter((x): x is string => !!x));
   });
   const paths = doc.layerPaths().filter((x) => x);
   // Keep the palette's "already in this map" markers in step for every floor.
@@ -2027,32 +1802,19 @@ function instancesOf(s: Session): SceneInstance[][] {
   return floors;
 }
 
-/** The undo stack's reach, for a UI that greys out what cannot be done. */
-function historyState(s: Session): HistoryState {
-  return {
-    canUndo: s.history.canUndo, canRedo: s.history.canRedo,
-    undoLabel: s.history.undoLabel, redoLabel: s.history.redoLabel,
-  };
-}
-
 ipcMain.handle('history:undo', async (): Promise<UndoResult> => {
-  if (!session) throw new Error('no map loaded');
+  const session = need();
   return undoResult(session, session.history.takeUndo(), 'undo');
 });
 
 ipcMain.handle('history:redo', async (): Promise<UndoResult> => {
-  if (!session) throw new Error('no map loaded');
+  const session = need();
   return undoResult(session, session.history.takeRedo(), 'redo');
 });
 
-/** Flush every terrain document that has unsaved brush work. */
-function saveTerrain(s: Session): void {
-  for (const doc of s.terrain.values()) if (doc.dirty) doc.save();
-}
-
 // --- IPC: save map.xdb (latin1 preserves the original bytes) ---
 ipcMain.handle('map:save', async (): Promise<MapSaveResult> => {
-  if (!session) throw new Error('no map loaded');
+  const session = need();
   // The folder the session points at must still be a map. If it is not — it was
   // deleted, or the session outlived a workspace rebuild — then writing and
   // repacking would put a stub where the user's map was.
@@ -2143,7 +1905,7 @@ function packDefault(name: string, mapDir: string): string {
 
 // --- IPC: pack the map folder into a .h5m ---
 ipcMain.handle('map:pack', async (): Promise<MapPackResult> => {
-  if (!session) throw new Error('no map loaded');
+  const session = need();
   // A localized map has no plain name.txt on disk — the game would find tagged
   // files and the sidecar and no text at all. Export bakes one language in.
   if (readLoc(session)) throw new Error('this map is localized — use Localize → “export .h5m” to pack a single language');
@@ -2153,7 +1915,7 @@ ipcMain.handle('map:pack', async (): Promise<MapPackResult> => {
     filters: [{ name: 'HoMM5 map', extensions: ['h5m'] }],
   };
   // Electron treats a null parent as "no parent"; pick the overload to match.
-  const parent = win;
+  const parent = state.win;
   const r = await (parent ? dialog.showSaveDialog(parent, opts) : dialog.showSaveDialog(opts));
   if (r.canceled) return { canceled: true };
   // Save pending edits first so the archive reflects them.
@@ -2181,7 +1943,7 @@ ipcMain.handle('map:pack', async (): Promise<MapPackResult> => {
  * ship. `output` skips the dialog (a test, or a caller that knows the path).
  */
 ipcMain.handle('loc:export', async (_e: IpcMainInvokeEvent, { lang, output }: LocExportPayload): Promise<MapPackResult> => {
-  if (!session) throw new Error('no map loaded');
+  const session = need();
   const cfg = readLoc(session);
   if (!cfg) throw new Error('localization is not enabled for this map');
   if (!cfg.languages.includes(lang)) throw new Error(`the map has no ${lang} texts`);
@@ -2192,7 +1954,8 @@ ipcMain.handle('loc:export', async (_e: IpcMainInvokeEvent, { lang, output }: Lo
       defaultPath: packDefault(`${basename(session.mapDir)}.${lang}`, `${session.mapDir}.${lang}`),
       filters: [{ name: 'HoMM5 map', extensions: ['h5m'] }],
     };
-    const r = await (win ? dialog.showSaveDialog(win, opts) : dialog.showSaveDialog(opts));
+    const w = state.win;
+    const r = await (w ? dialog.showSaveDialog(w, opts) : dialog.showSaveDialog(opts));
     if (r.canceled || !r.filePath) return { canceled: true };
     out = r.filePath;
   }
@@ -2212,7 +1975,9 @@ ipcMain.handle('loc:export', async (_e: IpcMainInvokeEvent, { lang, output }: Lo
 // terrain already has a layer for — those are the ones paintable without
 // restructuring the .bin.
 let tileCache: { root: string; tiles: TileInfo[] } | null = null;
+
 ipcMain.handle('terrain:tiles', async (): Promise<TerrainTilesResult> => {
+  const { session } = state;
   const root = session?.assetRoot
     || (existsSync(join(gameData(), 'MapObjects')) ? gameData() : null);
   if (!root) return { tiles: [], inMap: [] };
@@ -2223,6 +1988,7 @@ ipcMain.handle('terrain:tiles', async (): Promise<TerrainTilesResult> => {
 
 // --- IPC: project status (drift vs last pack) ---
 ipcMain.handle('map:status', async (): Promise<MapStatusResult> => {
+  const { session } = state;
   if (!session) return null;
   return status(session.mapDir);
 });
@@ -2372,7 +2138,7 @@ ipcMain.handle('campaign:pack', async (_e: IpcMainInvokeEvent, p: CampaignDirPay
     defaultPath: root ? modFile(root, 'campaign', name) : join(p.dir, `${name}.h5c`),
     filters: [{ name: 'HoMM5 campaign', extensions: ['h5c'] }],
   };
-  const parent = win;
+  const parent = state.win;
   const r = await (parent ? dialog.showSaveDialog(parent, opts) : dialog.showSaveDialog(opts));
   if (r.canceled || !r.filePath) return { canceled: true };
   mkdirSync(dirname(r.filePath), { recursive: true });
@@ -2450,14 +2216,7 @@ ipcMain.handle('mods:list', async (): Promise<ModsListResult> => {
  * exists to set.
  */
 function heroEnumValues(): Record<string, string[]> {
-  orderFor(HERO_CLASS); // parses types.xml on first use
-  const out: Record<string, string[]> = {};
-  if (!typeSpec) return out;
-  for (const field of ['TownType', 'Class', 'Specialization']) {
-    const v = fieldValues(typeSpec, HERO_CLASS, field);
-    if (v && v.length) out[field] = v;
-  }
-  return out;
+  return enumValues(HERO_CLASS, ['TownType', 'Class', 'Specialization']);
 }
 
 ipcMain.handle('mods:form-data', async (): Promise<ModsFormDataResult> => {
@@ -2675,7 +2434,8 @@ ipcMain.handle('mods:pick-hero-file', async (_e: IpcMainInvokeEvent, { id, slot 
     properties: ['openFile' as const],
     filters: [{ name: 'Game files', extensions: ['xdb', 'dds', 'gr2', 'bin'] }, { name: 'All files', extensions: ['*'] }],
   };
-  const r = await (win ? dialog.showOpenDialog(win, opts) : dialog.showOpenDialog(opts));
+  const w = state.win;
+  const r = await (w ? dialog.showOpenDialog(w, opts) : dialog.showOpenDialog(opts));
   const from = r.canceled ? undefined : r.filePaths[0];
   if (!from) return { href: '', from: '' };
   // Inside his own folder, under the name it came with: everything of his in
