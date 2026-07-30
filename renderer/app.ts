@@ -7519,8 +7519,7 @@ function fillModSelect(sel: HTMLSelectElement, entries: { id: string; name?: str
 
 async function fillModForms(): Promise<void> {
   const data = await modFormData();
-  if (!$select('um-donor').options.length) {
-    fillModSelect($select('um-donor'), data.donors, true); // the null creature has no looks to donate
+  {
     umAbilities = data.abilityNames;
     fillModSelect($select('um-town'), data.towns);
   }
@@ -7678,7 +7677,7 @@ async function refreshModLists(): Promise<void> {
 
 /** Load the donor into every creature field — the form's "preset". */
 async function loadUnitPreset(): Promise<void> {
-  const donor = $select('um-donor').value;
+  const donor = $input('um-donor').value;
   if (!donor) return;
   const p = await window.editor.modPreset(donor);
   $input('um-name').value = p.name;
@@ -7751,7 +7750,7 @@ async function submitUnitsMod(): Promise<void> {
       file: $input('um-file').value,
       name: $input('um-name').value,
       description: $input('um-desc').value,
-      donor: $select('um-donor').value,
+      donor: $input('um-donor').value,
       stats,
       art,
     });
@@ -8596,7 +8595,7 @@ $('artsbtn').onclick = () => {
   openModDialog('artsmod');
   void showExtensionState().catch(() => {});
 };
-$select('um-donor').addEventListener('change', () => { void loadUnitPreset().catch(() => {}); });
+
 $select('am-donor').addEventListener('change', () => { void loadArtifactPreset().catch(() => {}); });
 $('um-close').onclick = () => modDialog('unitsmod').close();
 $('um-cancel').onclick = () => modDialog('unitsmod').close();
@@ -9101,6 +9100,15 @@ function fillHeroSelect(id: string, opts: { id: string; label: string }[], optio
 }
 
 let heDonors: RosterEntryDTO[] = [];
+/**
+ * The form's own lists, while they are being filled.
+ *
+ * Anything that WRITES into those selects has to wait for it: the preset button
+ * sets a faction and a class, and setting a select that has no options yet
+ * silently does nothing — which showed up as a form that opened blank and a
+ * preset that had visibly been chosen.
+ */
+let heFormReady: Promise<void> = Promise.resolve();
 
 /** Everything the hero form is built from: the rosters and the type's own enums. */
 async function fillHeroForm(): Promise<void> {
@@ -9113,17 +9121,10 @@ async function fillHeroForm(): Promise<void> {
   const spells = form.spells.map((e) => ({ id: e.id, label: e.name || e.id }));
   const values = form.heroEnums;
 
-  // A preset is named by the path the hero's own document references him
-  // through, and grouped by faction folder — Preserve/Ossir reads better than
-  // one flat list of 118.
+  // The presets themselves are not a control any more — the button opens a
+  // searchable list — but the roster is kept here, because the picker labels
+  // its rows from it and heroPresetChanged reads a faction off it.
   heDonors = heroes;
-  const el = $select('he-preset');
-  const had = el.value;
-  el.innerHTML = '';
-  for (const h of heroes) {
-    el.append(new Option(h.group ? `${h.group} — ${h.name ?? h.id}` : (h.name ?? h.id), h.id));
-  }
-  if (had && [...el.options].some((o) => o.value === had)) el.value = had;
 
   const asOptions = (v: string[] = []): { id: string; label: string }[] => v.map((id) => ({ id, label: id }));
   fillHeroSelect('he-town', asOptions(values.TownType));
@@ -9166,7 +9167,8 @@ function artLabel(href: string): string {
  * the hero is built from is what the controls hold, not what was picked here.
  */
 async function heroPresetChanged(): Promise<void> {
-  const preset = $select('he-preset').value;
+  await heFormReady;
+  const preset = $input('he-preset').value;
   const entry = heDonors.find((h) => h.id === preset);
   const town = [...$select('he-town').options].map((o) => o.value)
     .find((t) => entry?.group && t.toLowerCase().includes(entry.group.toLowerCase()));
@@ -9227,7 +9229,8 @@ async function editHero(id: string): Promise<void> {
   heOwnFiles = {};
   $('heroedit-title').textContent = `Edit ${h.name || h.id}`;
   modDialog('heroedit').showModal();
-  await fillHeroForm();
+  heFormReady = fillHeroForm();
+  await heFormReady;
 
   // The identifier is what he IS — a campaign carries him by it and a map's
   // roster names his path — so changing one is making a different hero.
@@ -9240,7 +9243,9 @@ async function editHero(id: string): Promise<void> {
   $select('he-spec').value = h.specialization ?? '';
   $input('he-spec-name').value = h.specializationName ?? '';
   $input('he-spec-desc').value = h.specializationDescription ?? '';
-  $select('he-preset').value = h.basedOn ? `/${h.basedOn}#xpointer(/AdvMapHeroShared)` : '';
+  const preset = h.basedOn ? `/${h.basedOn}#xpointer(/AdvMapHeroShared)` : '';
+  $input('he-preset').value = preset;
+  $('he-preset-name').textContent = h.basedOn ? h.basedOn.split('/').pop()!.replace(/\.\([^)]*\)\.xdb$/, '') : 'none';
   $select('he-primary').value = h.primarySkill?.skill ?? '';
   $select('he-primary-mastery').value = h.primarySkill?.mastery ?? 'MASTERY_BASIC';
   $input('he-off').value = String(h.stats?.offence ?? 0);
@@ -9301,7 +9306,7 @@ async function submitHeroMod(): Promise<void> {
       id: $input('he-id').value,
       name: $input('he-name').value,
       biography: $input('he-bio').value,
-      basedOn: $select('he-preset').value,
+      basedOn: $input('he-preset').value,
       town: $select('he-town').value,
       heroClass: $select('he-class').value,
       ...($select('he-spec').value ? { specialization: $select('he-spec').value } : {}),
@@ -9360,7 +9365,8 @@ $('heroesbtn').onclick = () => {
     $('hm-err').textContent = e instanceof Error ? e.message : String(e);
   };
   void refreshHeroList().catch(report);
-  void fillHeroForm().catch(report);
+  heFormReady = fillHeroForm();
+  void heFormReady.catch(report);
 };
 $('hm-close').onclick = () => modDialog('heroesmod').close();
 $('hm-cancel').onclick = () => modDialog('heroesmod').close();
@@ -9371,13 +9377,21 @@ $('hm-new').onclick = () => {
   $('heroedit-title').textContent = 'New hero';
   $input('he-id').disabled = false;
   $input('he-id').value = '';
+  $input('he-preset').value = '';
+  $('he-preset-name').textContent = 'nothing yet — the form is blank';
   modDialog('heroedit').showModal();
-  void heroPresetChanged().catch(() => {});
+  // Fill the form's own lists HERE rather than relying on the list dialog
+  // having done it: opening the form is what needs them, and the preset button
+  // writes into selects that must already have their options.
+  heFormReady = fillHeroForm();
+  void heFormReady.catch((e: unknown) => {
+    $('he-err').textContent = e instanceof Error ? e.message : String(e);
+  });
 };
 $('heroedit-x').onclick = () => modDialog('heroedit').close();
 $('heroedit-cancel').onclick = () => modDialog('heroedit').close();
 $('he-ok').onclick = () => { void submitHeroMod(); };
-$select('he-preset').addEventListener('change', () => { void heroPresetChanged().catch(() => {}); });
+
 
 /**
  * Files the author brought, by the href they will answer to in the mod.
@@ -9407,6 +9421,82 @@ for (const btn of document.querySelectorAll<HTMLButtonElement>('button.he-file')
 }
 $select('he-town').addEventListener('change', heroTownChanged);
 
+
+// --- choosing a preset ------------------------------------------------------
+//
+// A preset is an action, not a property: press it once and every field below is
+// filled in, then edit whatever you like. As a select sitting in the form it
+// read as "this thing's donor" — the very idea the hero form stopped having,
+// where the donor was a hidden source nobody could see the effects of.
+//
+// One picker for both forms, because it is the same question: which shipped
+// thing should this start from. A searchable list rather than a dropdown, since
+// the hero list alone is 118 long.
+
+/** Where the picker puts its answer, and what it does with it. */
+let ppChoose: ((id: string, label: string) => void) | null = null;
+
+/** Open the picker over a list of things to start from. */
+function pickPreset(
+  title: string,
+  entries: { id: string; label: string }[],
+  chosen: (id: string, label: string) => void,
+): void {
+  $('pp-title').textContent = title;
+  ppChoose = chosen;
+  const search = $input('pp-search');
+  search.value = '';
+  const draw = (): void => {
+    const q = search.value.trim().toLowerCase();
+    const box = $('pp-list');
+    box.innerHTML = '';
+    for (const e of entries.filter((x) => !q || x.label.toLowerCase().includes(q))) {
+      const row = document.createElement('button');
+      row.className = 'um-mod';
+      row.style.cssText = 'display:block;width:100%;text-align:left';
+      row.textContent = e.label;
+      row.onclick = () => {
+        modDialog('presetpick').close();
+        ppChoose?.(e.id, e.label);
+      };
+      box.append(row);
+    }
+  };
+  search.oninput = draw;
+  draw();
+  modDialog('presetpick').showModal();
+  search.focus();
+}
+
+$('pp-x').onclick = () => modDialog('presetpick').close();
+$('pp-cancel').onclick = () => modDialog('presetpick').close();
+
+$('he-preset-pick').onclick = () => {
+  void (async () => {
+    const heroes = (await window.editor.modFormData()).heroDonors;
+    pickPreset('Start this hero from', heroes.map((h) => ({
+      id: h.id,
+      label: h.group ? `${h.group} — ${h.name ?? h.id}` : (h.name ?? h.id),
+    })), (id, label) => {
+      $input('he-preset').value = id;
+      $('he-preset-name').textContent = label;
+      void heroPresetChanged().catch(() => {});
+    });
+  })().catch((e) => { $('he-err').textContent = e instanceof Error ? e.message : String(e); });
+};
+
+$('um-donor-pick').onclick = () => {
+  void (async () => {
+    const creatures = (await window.editor.modFormData()).donors;
+    pickPreset('Start this creature from', creatures.map((c) => ({
+      id: c.id, label: c.name || c.id,
+    })), (id, label) => {
+      $input('um-donor').value = id;
+      $('um-donor-name').textContent = label;
+      void loadUnitPreset().catch(() => {});
+    });
+  })().catch((e) => { $('ue-err').textContent = e instanceof Error ? e.message : String(e); });
+};
 
 // The finish line. Everything above ran, so the window is wired and the render
 // loop is turning; index.html's watchdog stands down. Keep this last — moved

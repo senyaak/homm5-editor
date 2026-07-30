@@ -43,15 +43,16 @@ test.afterAll(async () => {
 
 /** Open Units… and load the donor — the state the next test needs. */
 async function openWithDonor(page: Launched['page']): Promise<void> {
-  // The list is a list; the form is a dialog on top of it. Without the second
-  // click every field below is in the DOM and not on screen, which Playwright
-  // reports as "element is not visible" thirty seconds later — and reads, from
-  // the outside, exactly like a hang.
   if (!(await page.locator('#unitsmod').isVisible())) await page.locator('#unitsbtn').click();
   if (!(await page.locator('#unitedit').isVisible())) await page.locator('#um-new').click();
-  await expect(page.locator('#um-donor option[value="CREATURE_SHARP_SHOOTER"]')).toHaveCount(1, { timeout: 30_000 });
-  await page.locator('#um-donor').selectOption(SHARPSHOOTER.donor);
-  await expect(page.locator('#um-attack')).toHaveValue('6'); // the preset settled
+  // Through the button, as a person does it: the preset is an action, and the
+  // form shows which one was used rather than holding it as a field.
+  await page.locator('#um-donor-pick').click();
+  await expect(page.locator('#presetpick')).toBeVisible();
+  await page.locator('#pp-search').fill('Лесные стрелки');
+  await page.locator('#pp-list button').first().click();
+  await expect(page.locator('#presetpick')).toBeHidden();
+  await expect(page.locator('#um-shots')).toHaveValue('16'); // the preset settled
 }
 
 test('the dialog opens clean, and the donor loads as a preset', async () => {

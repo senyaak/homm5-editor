@@ -650,7 +650,7 @@
     #newmap { padding: 0; border: 0; background: transparent; max-width: 92vw; overflow: visible; }
     #newmap::backdrop { background: #0d1014cc; }
     /* Units/Artifacts dialogs: installed mod contents and the new-thing form */
-    #unitsmod, #artsmod, #heroesmod, #heroedit { padding: 0; border: 0; background: transparent; max-width: 94vw; overflow: visible; }
+    #unitsmod, #artsmod, #heroesmod, #heroedit, #presetpick { padding: 0; border: 0; background: transparent; max-width: 94vw; overflow: visible; }
     /* The appearance fold: a summary that reads as a row of the form, and rows
        inside it that line up with the ones above. */
     .he-art > summary { cursor: pointer; padding: 6px 0; color: #9fb4c7; font-size: 12px; }
@@ -658,7 +658,7 @@
     .he-art > label { margin-top: 4px; }
     .he-art select { flex: 1; min-width: 0; }
     button.he-file { margin-left: 6px; flex: 0 0 auto; }
-    #unitsmod::backdrop, #artsmod::backdrop, #heroesmod::backdrop, #heroedit::backdrop { background: #0d1014cc; }
+    #unitsmod::backdrop, #artsmod::backdrop, #heroesmod::backdrop, #heroedit::backdrop, #presetpick::backdrop { background: #0d1014cc; }
     .um-body select[multiple] { flex: 1; min-width: 0; background: #0d1014; border: 1px solid #30363d;
       border-radius: 6px; padding: 4px 6px; color: #c9d1d9; font-size: 12px; }
     .um-art input { font-size: 11px; color: #8b949e; }
@@ -1350,7 +1350,15 @@
                  then edits the difference. The mod is always OURS (the one
                  manifest-carrying archive in UserMODs); there is nothing to
                  choose about where a creature goes. -->
-            <label class="on-row um-span"><span>Preset</span><select id="um-donor" title="a creature to start from — every field below loads from it"></select></label>
+            <!-- A button, not a field: a preset is something you DO once, and a
+                 select sitting in the form reads as "this creature's donor" —
+                 which is exactly the idea this stopped being. -->
+            <div class="on-row um-span">
+              <span>Preset</span>
+              <span id="um-donor-name" class="um-note" style="flex:1;min-width:0">nothing yet — the form is blank</span>
+              <button id="um-donor-pick" class="ghost" title="fill every field below from a shipped creature; each stays editable afterwards">Use preset…</button>
+              <input id="um-donor" type="hidden">
+            </div>
             <!-- One string, two jobs, as with a hero: it names his files and it
                  is what the CREATURE_ id is made of — and that id is what maps,
                  saves and scripts store, so it is shown rather than hidden. -->
@@ -1485,6 +1493,25 @@
        no table, holds no number and moves no ceiling — he is three files at a
        path nobody owns (src/heroes.ts). So this dialog installs without ever
        touching the executable, unlike its two siblings. -->
+  <!-- Choosing a preset: a list you search, not a dropdown of 118. Shared by
+       the units and the heroes forms — the question is the same one, "which
+       shipped thing should this start from", and so is the answer's shape. -->
+  <dialog id="presetpick">
+    <div class="mp-card um-card" style="max-width:520px">
+      <div class="mp-head">
+        <span class="mp-title" id="pp-title">Use preset</span>
+        <button id="pp-x" title="close (Esc)">✕</button>
+      </div>
+      <div class="mp-body on-body um-body">
+        <input id="pp-search" type="search" placeholder="search…" autocomplete="off" spellcheck="false" style="width:100%">
+        <div id="pp-list" class="um-mods" style="max-height:50vh;overflow:auto;margin-top:8px"></div>
+      </div>
+      <div class="de-foot">
+        <button id="pp-cancel" class="ghost">Cancel</button>
+      </div>
+    </div>
+  </dialog>
+
   <dialog id="heroesmod">
     <div class="mp-card um-card">
       <div class="mp-head">
@@ -1523,7 +1550,12 @@
                  Picking one fills every field below with that hero's values,
                  and every one of them stays editable afterwards — nothing is
                  taken from him behind the author's back. -->
-            <label class="on-row um-span"><span>Preset</span><select id="he-preset" title="a shipped hero to fill the form from — every field below is set from him and stays editable"></select></label>
+            <div class="on-row um-span">
+              <span>Preset</span>
+              <span id="he-preset-name" class="um-note" style="flex:1;min-width:0">nothing yet — the form is blank</span>
+              <button id="he-preset-pick" class="ghost" title="fill every field below from a shipped hero; each stays editable afterwards">Use preset…</button>
+              <input id="he-preset" type="hidden">
+            </div>
             <label class="on-row um-span"><span>Identifier</span><input id="he-id" type="text" spellcheck="false" autocomplete="off" placeholder="unique id, e.g. H3Gem" title="the hero's unique identifier: a campaign carries him between missions by it, a script names him with it, and his files are called after it. Refused if any hero already has it — the game's own included."></label>
             <label class="on-row"><span>Name</span><input id="he-name" type="text" autocomplete="off"></label>
             <label class="on-row um-span"><span>Biography</span><input id="he-bio" type="text" autocomplete="off"></label>

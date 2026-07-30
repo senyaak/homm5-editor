@@ -71,8 +71,14 @@ test.afterAll(async () => { await ed?.app.close(); });
 async function openWithDonor(page: Launched['page']): Promise<void> {
   if (!(await page.locator('#heroesmod').isVisible())) await page.locator('#heroesbtn').click();
   if (!(await page.locator('#heroedit').isVisible())) await page.locator('#hm-new').click();
-  await expect(page.locator(`#he-preset option[value="${GEM.donor}"]`)).toHaveCount(1, { timeout: 30_000 });
-  await page.locator('#he-preset').selectOption(GEM.donor);
+  // The preset is a BUTTON: press it, pick from the list it opens. It is an
+  // action done once, not a field the hero carries.
+  await page.locator('#he-preset-pick').click();
+  await expect(page.locator('#presetpick')).toBeVisible();
+  await page.locator('#pp-search').fill('Ossir');
+  await page.locator('#pp-list button', { hasText: 'Ossir' }).first().click();
+  await expect(page.locator('#presetpick')).toBeHidden();
+  await expect(page.locator('#he-preset-name')).toContainText('Ossir');
   // The preset fills the appearance fields; the model settling is the signal
   // that it has, since everything else can be set before it arrives.
   await expect(page.locator('#he-model')).not.toHaveValue('', { timeout: 30_000 });
