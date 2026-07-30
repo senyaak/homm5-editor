@@ -10,30 +10,17 @@
 import { dialog, ipcMain } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
 import type { ModsInstallHeroPayload, ModsInstallHeroResult, ModsRemovePayload, ModsRemoveResult, ModsUsesResult } from '#electron/ipc.ts';
-import { buildAndInstall, ourMod } from '#electron/channels/mods-shared.ts';
+import { buildAndInstall, ourMod } from '#electron/mod-install.ts';
 import { gameData, gameRoot, isConfigured } from '#electron/paths.ts';
 import { state } from '#electron/state.ts';
-import { enumValues } from '#electron/spec.ts';
 import { basename, join } from 'node:path';
 import { describeUses, findHeroUses } from '#src/artifact-usage.ts';
 import { assets } from '#src/assets.ts';
 import { addHero, removeHero, updateHero } from '#src/creature-mod.ts';
 import { refPath } from '#src/dwellings.ts';
-import { HERO_CLASS, HERO_DIR, artOf, heroHref, heroPaths, takenHeroIds } from '#src/heroes.ts';
+import { HERO_DIR, artOf, heroHref, heroPaths, takenHeroIds } from '#src/heroes.ts';
 import type { HeroSpec, Mastery } from '#src/heroes.ts';
 import { Registry } from '#src/registry.ts';
-
-/**
- * The enums a hero picks from, read straight out of the type spec.
- *
- * Not through valuesFor(): that answers for the fields OUR schema knows, and it
- * knows AdvMapHero — the thing on a map — not AdvMapHeroShared, the character
- * behind it. These three are exactly what a map cannot reach and a new hero
- * exists to set.
- */
-export function heroEnumValues(): Record<string, string[]> {
-  return enumValues(HERO_CLASS, ['TownType', 'Class', 'Specialization']);
-}
 
 /**
  * One payload, one spec — shared by adding a hero and by changing one.

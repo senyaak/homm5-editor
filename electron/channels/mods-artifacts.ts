@@ -8,7 +8,7 @@
 import { ipcMain } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
 import type { ModsInstallArtifactPayload, ModsInstallArtifactResult, ModsInstallSetPayload, ModsInstallSetResult, ModsRemovePayload, ModsRemoveResult, ModsUsesResult } from '#electron/ipc.ts';
-import { buildAndInstall, effectsFrom, exeWords, ourMod, setEffectsFrom } from '#electron/channels/mods-shared.ts';
+import { buildAndInstall, effectsFrom, exeWords, ourMod, setEffectsFrom } from '#electron/mod-install.ts';
 import { gameData, gameRoot, isConfigured } from '#electron/paths.ts';
 import { join } from 'node:path';
 import { describeUses, findArtifactUses } from '#src/artifact-usage.ts';

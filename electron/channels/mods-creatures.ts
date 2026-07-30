@@ -7,7 +7,7 @@
 import { ipcMain } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
 import type { ModsInstallPayload, ModsInstallResult, ModsRemovePayload, ModsRemoveResult, ModsUsesResult } from '#electron/ipc.ts';
-import { buildAndInstall, exeWords, ourMod } from '#electron/channels/mods-shared.ts';
+import { buildAndInstall, exeWords, ourMod } from '#electron/mod-install.ts';
 import { gameData, gameRoot, isConfigured } from '#electron/paths.ts';
 import { join } from 'node:path';
 import { describeUses, findCreatureUses } from '#src/artifact-usage.ts';

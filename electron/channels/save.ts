@@ -8,7 +8,7 @@
 
 import { dialog, ipcMain } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
-import { readLoc } from '#electron/channels/loc.ts';
+import { readLoc } from '#electron/localization.ts';
 import { saveHistory } from '#electron/edits.ts';
 import type { LocExportPayload, MapPackResult, MapSaveResult } from '#electron/ipc.ts';
 import { gameData, gameRoot } from '#electron/paths.ts';

@@ -6,14 +6,6 @@
 // its map by an absolute data-root path and the game's VFS finds it in whatever
 // .h5m ships it, which is why picking a map here only records a path.
 
-// --- IPC: campaigns ---------------------------------------------------------
-//
-// A campaign project is a folder under <data>/Campaigns holding campaign.xdb
-// and its texts — the same layout that goes into UserCampaigns/<name>/ inside
-// the .h5c, so packing is a copy. The maps are NOT part of it: a mission names
-// its map by an absolute data-root path and the game's VFS finds it in whatever
-// .h5m ships it, which is why picking a map here only records a path.
-
 import { dialog, ipcMain } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
 import type { CampaignDirPayload, CampaignDoc, CampaignListEntry, CampaignListResult, CampaignPackResult, MapHeroesPayload, MapHeroesResult, NewCampaignPayload, SaveCampaignPayload } from '#electron/ipc.ts';

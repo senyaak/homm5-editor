@@ -8,7 +8,7 @@
 import { ipcMain } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
 import type { ModsRecolorPayload, ModsRecolorResult, ModsTexturesPayload, ModsTexturesResult } from '#electron/ipc.ts';
-import { buildAndInstall, ourMod } from '#electron/channels/mods-shared.ts';
+import { buildAndInstall, ourMod } from '#electron/mod-install.ts';
 import { gameRoot, isConfigured } from '#electron/paths.ts';
 import { readFileSync } from 'node:fs';
 import { findCreatureMods } from '#src/creature-mod.ts';

@@ -1,18 +1,12 @@
 // Undo and redo.
 //
 // The step is applied to the documents here; what goes back to the renderer is
-// the state it cannot derive on its own — objects as the whole instance list
-// (the map was re-parsed, so matching ids up one by one would be more work than
-// rebuilding the batches) and terrain as its planes plus a rebuilt splat.
-
-// --- IPC: undo / redo ---
-//
-// The step is applied to the documents here; what goes back to the renderer is
 // the state it cannot derive on its own. Objects come back as the whole
 // instance list — the map was re-parsed, so every id is new-ish and matching
 // them up one by one would be more work than rebuilding the batches. Terrain
 // comes back as its planes plus a rebuilt splat, which is what a repainted mask
 // or an added layer changes.
+
 import { ipcMain } from 'electron';
 import { applyStep } from '#electron/edits.ts';
 import type { UndoResult } from '#electron/ipc.ts';

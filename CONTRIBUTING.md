@@ -30,7 +30,15 @@ and format notes only.** A PR that adds game bytes will be rejected.
 ```
 src/        the core: format decoders + the map model (terrain, geometry, xml,
             map, registry, schema, skeleton…). Runs as .ts directly (no build).
-electron/   the Electron main process + the IPC contract (ipc.ts) + preload.cjs.
+electron/   the main process. main.ts is the boot — switches, window, the
+            timing wrapper, the register() calls — and beside it:
+              ipc.ts     the contract: every payload/result type + EditorApi
+              state.ts   the open session and the window, on one object
+              edits.ts   record(): run an edit, keep the patch, undo/redo
+              sidecar.ts the text files a map references
+              spec.ts    the game's types.xml, parsed once
+              channels/  one module per domain, each exporting register()
+              preload.cjs the bridge (plain CommonJS — see below)
 renderer/   the UI (bundled by esbuild from app.ts) + index.html:
               core/      what every screen shares — dom, ipc, dialog, prefs,
                          state (the loaded world + selection), coords, rosters
@@ -51,16 +59,23 @@ tools/      test scripts (test-*), the harness generator, CLIs.
 `src/*` is the foundation; `electron/` and `renderer/` are wiring on top. New
 format knowledge belongs in `src/` with a test in `tools/` and a note in `docs/`.
 
-Inside `renderer/`, imports go through the subpath aliases declared in
-package.json — `#core/…`, `#viewport/…`, `#features/…`, `#src/…`,
-`#electron/…` — so moving a file does not rewrite every path that mentions it.
-Node's strip-mode and esbuild both resolve them; keep the real `.ts` extension.
+Imports go through the subpath aliases declared in package.json — `#core/…`,
+`#viewport/…`, `#features/…`, `#src/…`, `#electron/…` — so moving a file does
+not rewrite every path that mentions it. Node's strip-mode and esbuild both
+resolve them; keep the real `.ts` extension.
 
-The dependency direction is one-way: `core/` knows nothing above it,
-`viewport/` may use `core/`, `features/` may use both. A feature binds itself
-to its markup in an exported `init*()` that app.ts calls — never as a side
-effect of being imported, or a module nothing imports for a value is silently
-never wired.
+The dependency direction is one-way on both sides. In the renderer: `core/`
+knows nothing above it, `viewport/` may use `core/`, `features/` may use both.
+In the main process: `paths.ts` → `state.ts` → `edits.ts`/`sidecar.ts`/`spec.ts`
+→ `channels/*` → `main.ts`. A channel module never imports another channel
+module; what two of them need lives one layer down.
+
+**Wiring is a call, never an import side effect.** A feature binds itself to
+its markup in an exported `init*()` that app.ts calls; a channel module wires
+its handlers in an exported `register()` that main.ts calls. A module that did
+it at file scope works right up until something tidies away an import it looked
+unused from — and then the screen is dead markup, or the channel answers "no
+handler registered", with nothing anywhere saying why.
 
 ## Conventions that matter
 
@@ -132,8 +147,9 @@ stubbed `window.editor`) is how you drive it headless. Extend the stub in
 - **A game roster** (spells, a new object class) → `src/registry.ts`, discovered
   from the data tree; add a line to `tools/test-registry.ts`.
 - **An IPC channel** → the payload/result types + `EditorApi` in
-  `electron/ipc.ts`, the binding in `preload.cjs`, the handler in
-  `electron/main.ts`, and the stub in `tools/make-harness.js`.
+  `electron/ipc.ts`, the binding in `preload.cjs`, the handler in the
+  `electron/channels/` module for its domain (a new domain also needs its
+  `register()` called from `main.ts`), and the stub in `tools/make-harness.js`.
 
 ## Testing, the big picture
 

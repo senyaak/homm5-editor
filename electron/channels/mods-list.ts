@@ -6,7 +6,7 @@
 import { ipcMain } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
 import type { ArtifactPresetDTO, CreaturePresetDTO, ExtensionStatus, ModsFormDataResult, ModsListResult, ModsPresetPayload } from '#electron/ipc.ts';
-import { heroEnumValues } from '#electron/channels/mods-heroes.ts';
+import { enumValues } from '#electron/spec.ts';
 import { APP_ROOT, gameData, gameRoot, isConfigured } from '#electron/paths.ts';
 import { existsSync } from 'node:fs';
 import { basename } from 'node:path';
@@ -15,7 +15,7 @@ import { HERO_STAT_NAMES } from '#src/artifacts.ts';
 import { assets } from '#src/assets.ts';
 import { findCreatureMods } from '#src/creature-mod.ts';
 import { builtDll, extensionState, installExtension } from '#src/extension.ts';
-import { artChoices } from '#src/heroes.ts';
+import { HERO_CLASS, artChoices } from '#src/heroes.ts';
 import { Registry, artifactPreset, creatureAbilities, creatureAbilityNames, creaturePreset } from '#src/registry.ts';
 
 /** Wire this domain onto ipcMain. Called once, from main. */
@@ -92,7 +92,11 @@ export function registerModsList(): void {
       heroDonors: r.heroes(),
       skills: r.skills(),
       spells: r.spells(),
-      heroEnums: heroEnumValues(),
+      // Straight from the spec, not through valuesFor(): that answers for the
+      // fields OUR schema knows, and the schema knows AdvMapHero — the thing on
+      // a map — not AdvMapHeroShared, the character behind it. These three are
+      // exactly what a map cannot reach and a new hero exists to set.
+      heroEnums: enumValues(HERO_CLASS, ['TownType', 'Class', 'Specialization']),
       heroArt: artChoices(r.heroes(), (rel) => assets([gameData()]).text(rel)),
     };
   });
