@@ -434,6 +434,43 @@ export function creatureAbilities(data: Assets): string[] {
 }
 
 /**
+ * The same list, with the names a PLAYER sees.
+ *
+ * `GameMechanics/RefTables/CombatAbilities.xdb` pairs each id with the text
+ * files the game prints, so an ability can be offered as "Стрелок" instead of
+ * ABILITY_SHOOTER — and the line a creature's hire dialog shows can be built
+ * from the abilities it actually has, instead of being typed out by hand and
+ * drifting from them.
+ *
+ * Ids the table does not name (the enum is larger than the table) keep their
+ * id as the label rather than disappearing: an ability the engine knows is a
+ * choice even when nobody wrote a caption for it.
+ */
+export function creatureAbilityNames(data: Assets): RosterEntry[] {
+  const table = data.text('GameMechanics/RefTables/CombatAbilities.xdb') ?? '';
+  const named = new Map<string, string>();
+  for (const m of table.matchAll(/<ID>(ABILITY_[A-Z0-9_]+)<\/ID>[\s\S]*?<NameFileRef href="([^"]*)"/g)) {
+    const name = m[2] ? gameText(data, m[2]) : '';
+    if (name) named.set(m[1]!, name);
+  }
+  return creatureAbilities(data)
+    .filter((id) => id !== 'ABILITY_NONE')
+    .map((id) => ({ id, name: named.get(id) ?? id }));
+}
+
+/**
+ * The line the hire dialog prints, built from what the creature has.
+ *
+ * Every shipped creature's is its abilities in words, and ours were typed into
+ * a box beside the ability picker — two places saying the same thing, which is
+ * one place too many: a creature that gained an ability kept the old sentence.
+ */
+export function abilitiesLine(data: Assets, abilities: readonly string[]): string {
+  const names = new Map(creatureAbilityNames(data).map((a) => [a.id, a.name!]));
+  return abilities.map((id) => names.get(id) ?? id).join(', ');
+}
+
+/**
  * A HoMM5 text file's contents — UTF-16 LE with a byte-order mark. Read through
  * the chain, so a mod's own text wins the way the game reads it. Missing or
  * unreadable is '' rather than an error: a roster entry without a name still

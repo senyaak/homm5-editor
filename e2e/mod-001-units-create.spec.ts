@@ -68,8 +68,12 @@ test('the dialog opens clean, and the donor loads as a preset', async () => {
   await expect(page.locator('#um-name')).toHaveValue('Лесные стрелки');
   await expect(page.locator('#um-shots')).toHaveValue('16');
   await expect(page.locator('#um-town')).toHaveValue('TOWN_PRESERVE');
-  await expect(page.locator('#um-abids option:checked')).toHaveCount(2);
-  await expect(page.locator('#um-abids option[value="ABILITY_NO_RANGE_PENALTY"]')).toHaveJSProperty('selected', true);
+  // The donor's abilities arrive as ROWS, one each, named the way a player
+  // reads them — and the line the hire dialog will print is shown as it is
+  // decided, instead of being typed into a box beside them.
+  await expect(page.locator('#um-abilities .um-ability-id')).toHaveCount(2);
+  await expect(page.locator('#um-abilities .um-ability-id').first()).toHaveValue(/ABILITY_/);
+  await expect(page.locator('#um-abil-preview')).toContainText('Hire dialog will print:');
   await expect(page.locator('#um-art-icon')).toHaveValue(/Sharpshooter\.\(Texture\)\.xdb/);
   await expect(page.locator('#um-art-character')).toHaveValue(/T3_Elf_Sniper\.\(Character\)\.xdb/);
 });
@@ -85,7 +89,10 @@ test('edits the difference and installs the creature', async () => {
 
   await page.locator('#um-name').fill(SHARPSHOOTER.name);
   await page.locator('#um-desc').fill(SHARPSHOOTER.description);
-  await page.locator('#um-abil').fill(SHARPSHOOTER.abilitiesText);
+  // Its third ability, added as a row. Nothing is typed about it: the printed
+  // line follows what the creature has.
+  await page.locator('#um-ability-add').click();
+  await page.locator('#um-abilities .um-ability-id').last().selectOption('ABILITY_NO_MELEE_PENALTY');
   for (const [input, value] of Object.entries(SHARPSHOOTER.stats)) {
     await page.locator(`#${input}`).fill(value);
   }
@@ -113,8 +120,9 @@ test('edits the difference and installs the creature', async () => {
   expect(c.stats.shots).toBe(32);
   expect(c.stats.range).toBe(-1);
   expect(c.stats.town).toBe('TOWN_NO_TYPE');
-  // The abilities came from the donor's preset, untouched.
-  expect([...c.stats.abilities].sort()).toEqual(['ABILITY_NO_RANGE_PENALTY', 'ABILITY_PIERCING_ARROW']);
+  // The donor's two abilities, plus the one added as a row.
+  expect([...c.stats.abilities].sort())
+    .toEqual(['ABILITY_NO_MELEE_PENALTY', 'ABILITY_NO_RANGE_PENALTY', 'ABILITY_PIERCING_ARROW']);
   expect(c.visualSource).toContain('SharpShooter.(CreatureVisual)');
   expect(c.monsterSource).toContain('Sharpshooter.(AdvMapMonsterShared)');
   // And the art slots resolved to the donor's documents — the preset's copies.

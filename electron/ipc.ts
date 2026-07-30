@@ -811,6 +811,15 @@ export interface ModsFormDataResult {
   heroStats: string[];
   /** Every ABILITY_… the engine's type registry names. */
   abilities: string[];
+  /**
+   * The same, each with the name a player sees.
+   *
+   * From `CombatAbilities.xdb`, which pairs an id with the text the game
+   * prints. It is what lets the form offer "Стрелок" instead of ABILITY_SHOOTER
+   * — and what the hire dialog's line is built from, instead of being typed in
+   * beside the picker and drifting from it.
+   */
+  abilityNames: RosterEntryDTO[];
   /** The TOWN_… races, for a creature's home town. */
   towns: RosterEntryDTO[];
   /**
@@ -873,8 +882,14 @@ export interface ModsInstallPayload {
   file: string;
   name: string;
   description: string;
-  /** The ability line the hire dialog prints, in words. */
-  abilitiesText: string;
+  /**
+   * The ability line the hire dialog prints, in words.
+   *
+   * Optional, and normally absent: the line is BUILT from the creature's
+   * abilities when the mod is built, so it cannot say something the creature
+   * cannot do. Set it only to override those words with your own.
+   */
+  abilitiesText?: string;
   /** Donor creature id — its visual and its map stack are the starting point. */
   donor: string;
   stats: Partial<CreatureStats>;

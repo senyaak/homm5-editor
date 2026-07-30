@@ -83,7 +83,15 @@ export const SHARPSHOOTER = {
   id: 'CREATURE_H3_SHARPSHOOTER', // fills itself from the file stem
   name: 'Снайперы',
   description: 'Стрелки-наёмники, чьё мастерство не знает ни укрытий, ни расстояний.',
-  abilitiesText: 'Стрелок, Без штрафа за дистанцию, Пробивающая стрела',
+  /**
+   * What the hire dialog ends up printing — DERIVED, not typed.
+   *
+   * The mod builds this line out of the game's own ability names when it builds
+   * the creature, so the fixture states what the game will say rather than a
+   * translation of our own. It used to be the latter, and it read
+   * «Без штрафа за дистанцию» where the game says «Стрельба без штрафа».
+   */
+  abilitiesLine: 'Усиленная стрела, Стрельба без штрафа',
   donor: 'CREATURE_SHARP_SHOOTER',
   stats: {
     'um-attack': '12', 'um-defence': '10', 'um-mindmg': '8', 'um-maxdmg': '10',
@@ -413,7 +421,6 @@ export function installCreatureHeadless(gameRoot: string): CreatureMod {
   addCreature(mod, {
     id: SHARPSHOOTER.id, file: SHARPSHOOTER.file,
     name: SHARPSHOOTER.name, description: SHARPSHOOTER.description,
-    abilitiesText: SHARPSHOOTER.abilitiesText,
     stats: { ...blankStats(), attack: 12, shots: 32, range: -1, tier: 4, gold: 400 },
     visualSource: sources.visual, monsterSource: sources.monster,
   });
@@ -451,7 +458,6 @@ export function installMapFixture(gameRoot: string): CreatureMod {
   const creature = {
     id: SHARPSHOOTER.id, file: SHARPSHOOTER.file,
     name: SHARPSHOOTER.name, description: SHARPSHOOTER.description,
-    abilitiesText: SHARPSHOOTER.abilitiesText,
     stats: { ...blankStats(), ...SHARPSHOOTER.numbers },
     visualSource: sources.visual, monsterSource: sources.monster,
   };

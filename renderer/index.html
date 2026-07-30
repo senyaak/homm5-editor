@@ -1351,13 +1351,25 @@
                  manifest-carrying archive in UserMODs); there is nothing to
                  choose about where a creature goes. -->
             <label class="on-row um-span"><span>Preset</span><select id="um-donor" title="a creature to start from — every field below loads from it"></select></label>
-            <label class="on-row"><span>Files</span><input id="um-file" type="text" spellcheck="false" autocomplete="off" placeholder="file stem, e.g. Sharpshooter" title="the stem of every file generated for the creature; the ID fills itself from it"></label>
-            <label class="on-row"><span>ID</span><input id="um-id" type="text" spellcheck="false" autocomplete="off" placeholder="CREATURE_…" title="what maps, saves and scripts store — pick once, never reuse"></label>
+            <!-- One string, two jobs, as with a hero: it names his files and it
+                 is what the CREATURE_ id is made of — and that id is what maps,
+                 saves and scripts store, so it is shown rather than hidden. -->
+            <label class="on-row"><span>Identifier</span><input id="um-file" type="text" spellcheck="false" autocomplete="off" placeholder="unique id, e.g. Sharpshooter" title="the creature's unique identifier: its files are named after it and its CREATURE_ id is made from it. Refused if any creature already has it — the game's own included."></label>
+            <label class="on-row"><span>Stored as</span><input id="um-id" type="text" spellcheck="false" autocomplete="off" readonly title="what maps, saves and scripts store. Made from the identifier — pick once, never reuse."></label>
             <label class="on-row"><span>Name</span><input id="um-name" type="text" autocomplete="off"></label>
             <label class="on-row"><span>Town</span><select id="um-town" title="the creature's home town — TOWN_NO_TYPE for a neutral"></select></label>
             <label class="on-row um-span"><span>Description</span><input id="um-desc" type="text" autocomplete="off"></label>
-            <label class="on-row um-span"><span>Abilities</span><input id="um-abil" type="text" autocomplete="off" title="the ability line the hire dialog prints, in words"></label>
-            <label class="on-row um-span"><span>Ability ids</span><select id="um-abids" multiple size="6" title="the engine abilities the creature actually has — the line above is only what the dialog prints"></select></label>
+            <!-- Added one at a time, by name. The line the hire dialog prints is
+                 NOT typed here: it is built from these when the creature is
+                 built, so it cannot drift from what the creature can do. -->
+            <div class="on-row um-span" style="align-items:flex-start">
+              <span>Abilities</span>
+              <div style="flex:1;min-width:0">
+                <div id="um-abilities" class="as-counts"></div>
+                <button id="um-ability-add" class="um-recolor" style="margin:6px 0 0" title="one of the engine's own abilities; the printed line is made from these">+ ability</button>
+                <div id="um-abil-preview" class="um-note" style="margin-top:6px"></div>
+              </div>
+            </div>
             <div class="um-stats">
               <label>Attack<input id="um-attack" type="number" value="1"></label>
               <label>Defence<input id="um-defence" type="number" value="1"></label>
@@ -1380,14 +1392,15 @@
           </div>
         </fieldset>
         <fieldset>
-          <legend>Art — the donor's files, swappable one by one</legend>
+          <legend>Appearance</legend>
+          <p class="um-note" style="margin:0 0 6px">Copied into the creature's own folder when it is built, so recolouring one never reaches the original.</p>
           <div class="on-body">
             <!-- These are COPIED into the mod, so pointing one at another file
                  (a recolour, another model) changes just that piece. -->
-            <label class="on-row um-art"><span>Character</span><input id="um-art-character" type="text" spellcheck="false" autocomplete="off" title="what fights: the combat model with its arena animations"></label>
-            <label class="on-row um-art"><span>Model</span><input id="um-art-model" type="text" spellcheck="false" autocomplete="off" title="what stands on the adventure map"></label>
-            <label class="on-row um-art"><span>Anim set</span><input id="um-art-animset" type="text" spellcheck="false" autocomplete="off" title="the adventure-map animations"></label>
-            <label class="on-row um-art"><span>Icon</span><input id="um-art-icon" type="text" spellcheck="false" autocomplete="off" title="the hire and army icon — a creature without one stops the game"></label>
+            <label class="on-row um-art um-span"><span>Character</span><input id="um-art-character" type="text" spellcheck="false" autocomplete="off" title="what fights: the combat model with its arena animations"><button class="ghost um-pick" data-for="um-art-character" title="choose a file of your own; it is copied into the creature's folder when it is built">File…</button></label>
+            <label class="on-row um-art um-span"><span>Model</span><input id="um-art-model" type="text" spellcheck="false" autocomplete="off" title="what stands on the adventure map"><button class="ghost um-pick" data-for="um-art-model" title="choose a file of your own; it is copied into the creature's folder when it is built">File…</button></label>
+            <label class="on-row um-art um-span"><span>Anim set</span><input id="um-art-animset" type="text" spellcheck="false" autocomplete="off" title="the adventure-map animations"><button class="ghost um-pick" data-for="um-art-animset" title="choose a file of your own; it is copied into the creature's folder when it is built">File…</button></label>
+            <label class="on-row um-art um-span"><span>Icon</span><input id="um-art-icon" type="text" spellcheck="false" autocomplete="off" title="the hire and army icon — a creature without one stops the game"><button class="ghost um-pick" data-for="um-art-icon" title="choose a file of your own; it is copied into the creature's folder when it is built">File…</button></label>
           </div>
         </fieldset>
         <div id="ue-err" class="on-err"></div>

@@ -214,8 +214,16 @@ export interface CreatureSpec {
   file: string;
   name: string;
   description: string;
-  /** The ability line the hire dialog prints, in words rather than ids. */
-  abilitiesText: string;
+  /**
+   * The ability line the hire dialog prints, in words rather than ids.
+   *
+   * Normally absent: it is BUILT from `stats.abilities` at build time, out of
+   * the names the game itself prints (`CombatAbilities.xdb`). It used to be a
+   * box beside the ability picker, and two places saying what a creature can do
+   * meant the sentence went stale the moment an ability was added. Set it only
+   * to say something else on purpose.
+   */
+  abilitiesText?: string;
   stats: CreatureStats;
   /** The shipped `CreatureVisual` this creature's own starts from. */
   visualSource: string;
@@ -735,7 +743,10 @@ export function buildCreatureMod(mod: CreatureMod, read: DataReader): BuildRepor
     files.push({ path: p.link, data: Buffer.from(objectLink(p, copied.at.get(sources.icon!) ?? ''), 'latin1') });
     files.push({ path: p.name, data: utf16(c.name) });
     files.push({ path: p.description, data: utf16(c.description) });
-    files.push({ path: p.abilities, data: utf16(c.abilitiesText) });
+    // The line the hire dialog prints, built from the abilities the creature
+    // HAS rather than typed beside them — so it cannot promise something the
+    // creature cannot do. A spec that carries its own words still wins.
+    files.push({ path: p.abilities, data: utf16(c.abilitiesText || abilityLine(read, c.stats.abilities)) });
   }
 
   files.push(...buildDwellings(mod.dwellings, read));
@@ -1101,6 +1112,35 @@ function buildHeroes(heroes: readonly HeroSpec[], read: DataReader): ModFile[] {
  * dwelling that wants art of its own can point at a model the mod carries; the
  * href is the href either way.
  */
+/** What ends a game text: they are NUL-terminated, padding included. */
+const TEXT_END = String.fromCharCode(0);
+
+/**
+ * A creature's abilities in the words a player reads, joined as the game joins
+ * them.
+ *
+ * `CombatAbilities.xdb` pairs every `ABILITY_…` with the text files the game
+ * prints, so the hire dialog's line can be DERIVED from what the creature has.
+ * Read through the same DataReader as the rest of the build, so a mod shipping
+ * its own texts is honoured exactly as the game would honour it.
+ */
+function abilityLine(read: DataReader, abilities: readonly string[]): string {
+  if (!abilities.length) return '';
+  const table = read('GameMechanics/RefTables/CombatAbilities.xdb')?.toString('utf8') ?? '';
+  const named = new Map<string, string>();
+  for (const m of table.matchAll(/<ID>(ABILITY_[A-Z0-9_]+)<\/ID>[\s\S]*?<NameFileRef href="([^"]*)"/g)) {
+    if (!m[2]) continue;
+    const bytes = read(m[2].replace(/^\/+/, ''));
+    if (!bytes || !bytes.length) continue;
+    const raw = bytes[0] === 0xff && bytes[1] === 0xfe ? bytes.toString('utf16le', 2) : bytes.toString('utf8');
+    const text = raw.split(TEXT_END)[0]!.trim();
+    if (text) named.set(m[1]!, text);
+  }
+  // An id the table does not name keeps its id: a line with ABILITY_SOMETHING
+  // in it is ugly and true, which beats a line that quietly drops an ability.
+  return abilities.map((id) => named.get(id) ?? id).join(', ');
+}
+
 function buildDwellings(dwellings: readonly DwellingSpec[], read: DataReader): ModFile[] {
   if (!dwellings.length) return [];
   const files: ModFile[] = [];

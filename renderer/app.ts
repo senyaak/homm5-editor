@@ -7521,7 +7521,7 @@ async function fillModForms(): Promise<void> {
   const data = await modFormData();
   if (!$select('um-donor').options.length) {
     fillModSelect($select('um-donor'), data.donors, true); // the null creature has no looks to donate
-    fillModSelect($select('um-abids'), data.abilities.map((id) => ({ id })));
+    umAbilities = data.abilityNames;
     fillModSelect($select('um-town'), data.towns);
   }
   effectStats = data.effectStats;
@@ -7683,16 +7683,14 @@ async function loadUnitPreset(): Promise<void> {
   const p = await window.editor.modPreset(donor);
   $input('um-name').value = p.name;
   $input('um-desc').value = p.description;
-  $input('um-abil').value = p.abilitiesText;
   for (const [input, key] of UM_STATS) $input(input).value = String(p.stats[key] ?? 0);
   $input('um-fly').checked = p.stats.flying;
   $select('um-town').value = p.stats.town;
-  const abids = new Set(p.stats.abilities);
-  const sel = $select('um-abids');
-  for (const o of sel.options) o.selected = abids.has(o.value);
-  // Bring the first selected ability into view — a list of 199 opens at the top.
-  const first = [...sel.options].find((o) => o.selected);
-  if (first) sel.scrollTop = Math.max(0, first.offsetTop - sel.clientHeight / 2);
+  // The preset's abilities, one row each — and the printed line follows them,
+  // so it says what this creature can do rather than what the donor could.
+  $('um-abilities').innerHTML = '';
+  for (const id of p.stats.abilities) addAbilityRow(id);
+  showAbilityLine();
   for (const [input, slot] of UM_ART) $input(input).value = p.art[slot] ?? '';
 }
 
@@ -7740,7 +7738,7 @@ async function submitUnitsMod(): Promise<void> {
     const stats: Partial<CreatureStats> = {
       flying: $input('um-fly').checked,
       town: $select('um-town').value,
-      abilities: [...$select('um-abids').selectedOptions].map((o) => o.value),
+      abilities: chosenAbilities(),
     };
     for (const [input, key] of UM_STATS) {
       (stats as Record<string, number | boolean | string>)[key] = Number($input(input).value) || 0;
@@ -7752,7 +7750,6 @@ async function submitUnitsMod(): Promise<void> {
       file: $input('um-file').value,
       name: $input('um-name').value,
       description: $input('um-desc').value,
-      abilitiesText: $input('um-abil').value,
       donor: $select('um-donor').value,
       stats,
       art,
@@ -7791,6 +7788,55 @@ let effectStats: string[] = [];
  */
 let heroStats: string[] = [];
 const isHeroStat = (stat: string): boolean => heroStats.includes(stat);
+
+/** Every ability the engine knows, by id, with the name a player sees. */
+let umAbilities: RosterEntryDTO[] = [];
+
+/**
+ * One ability the creature has.
+ *
+ * A row rather than an entry in a multi-select, for the reason the artifact
+ * bonuses are rows: a creature has two or three, and picking them out of a list
+ * of 198 by ctrl-clicking is a way to lose one without noticing.
+ */
+function addAbilityRow(id = ''): void {
+  const row = document.createElement('label');
+  const select = document.createElement('select');
+  select.className = 'um-ability-id';
+  for (const a of umAbilities) {
+    const option = document.createElement('option');
+    option.value = a.id;
+    // The name a player reads, with the id behind it: two creatures can print
+    // the same word and the id is what actually goes in the file.
+    option.textContent = a.name && a.name !== a.id ? `${a.name} — ${a.id}` : a.id;
+    select.appendChild(option);
+  }
+  if (id) select.value = id;
+  select.onchange = showAbilityLine;
+  const drop = document.createElement('button');
+  drop.className = 'um-recolor';
+  drop.textContent = '×';
+  drop.title = 'the creature does not have this one';
+  drop.onclick = () => { row.remove(); showAbilityLine(); };
+  row.append(select, drop);
+  $('um-abilities').appendChild(row);
+  showAbilityLine();
+}
+
+/** What the hire dialog will print, shown as it is being decided. */
+function showAbilityLine(): void {
+  const names = new Map(umAbilities.map((a) => [a.id, a.name || a.id]));
+  const line = chosenAbilities().map((id) => names.get(id) ?? id).join(', ');
+  $('um-abil-preview').textContent = line ? `Hire dialog will print: ${line}` : '';
+}
+
+/** The abilities the form currently holds, in the order they were added. */
+function chosenAbilities(): string[] {
+  // Deduplicated: two rows naming one ability is a slip, and the creature
+  // record would carry it twice — which the hire dialog then prints twice.
+  return [...new Set([...document.querySelectorAll<HTMLSelectElement>('#um-abilities .um-ability-id')]
+    .map((el) => el.value).filter(Boolean))];
+}
 
 function addEffectRow(stat = '', amount = ''): void {
   const row = document.createElement('label');
@@ -7918,6 +7964,12 @@ async function editCreature(id: string): Promise<void> {
 
 function newCreature(): void {
   editingCreature = '';
+  // A new creature has no abilities. Cleared here and not only on open, because
+  // the form is reached again without closing it — author one, press New,
+  // author the next — and a row left standing gives the second one the first
+  // one's ability. The artifact rows learned this the same way.
+  $('um-abilities').innerHTML = '';
+  showAbilityLine();
   $input('um-id').disabled = false;
   $input('um-file').disabled = false;
   $('um-editing').textContent = '';
@@ -8412,14 +8464,27 @@ $('rc-close').onclick = () => modDialog('recolor').close();
 $('rc-cancel').onclick = () => modDialog('recolor').close();
 $('rc-ok').onclick = () => { void submitRecolor(); };
 
-// The ID fills itself from the file stem until it is edited by hand.
-let umIdTouched = false;
+// A creature's id is MADE from its identifier and shown, never typed: they
+// were two boxes holding the same string, and the second one existed only to
+// be got wrong. Shown rather than hidden because it is what maps, saves and
+// scripts store, and an author deserves to see what they are committing to.
 let amIdTouched = false;
-$input('um-id').addEventListener('input', () => { umIdTouched = true; });
 $input('am-id').addEventListener('input', () => { amIdTouched = true; });
 $input('um-file').addEventListener('input', () => {
-  if (!umIdTouched) $input('um-id').value = idFrom('CREATURE_', $input('um-file').value);
+  $input('um-id').value = idFrom('CREATURE_', $input('um-file').value);
 });
+$('um-ability-add').onclick = () => addAbilityRow();
+// A file of your own for one art slot — copied into the creature's folder when
+// it is built, exactly as the hero form does it.
+for (const btn of document.querySelectorAll<HTMLButtonElement>('button.um-pick')) {
+  btn.onclick = () => {
+    const target = btn.dataset.for!;
+    void (async () => {
+      const picked = await window.editor.pickHeroFile({ id: $input('um-file').value.trim(), slot: target });
+      if (picked.href) $input(target).value = picked.href;
+    })().catch((e) => { $('ue-err').textContent = e instanceof Error ? e.message : String(e); });
+  };
+}
 $input('am-file').addEventListener('input', () => {
   if (!amIdTouched) $input('am-id').value = idFrom('ARTIFACT_', $input('am-file').value);
 });
@@ -8493,10 +8558,10 @@ $('ss-x').onclick = () => closeSetScript(false);
 $('as-effect-add').onclick = () => addSetEffectRow();
 $('as-ok').onclick = () => { void submitArtifactSet(); };
 
-$('unitsbtn').onclick = () => { umIdTouched = false; openModDialog('unitsmod'); };
+$('unitsbtn').onclick = () => { openModDialog('unitsmod'); };
 $('am-effect-add').onclick = () => addEffectRow();
 $('am-new').onclick = () => { amIdTouched = false; newArtifact(); };
-$('um-new').onclick = () => { umIdTouched = false; newCreature(); };
+$('um-new').onclick = () => { newCreature(); };
 $('as-new').onclick = () => {
   asIdTouched = false;
   void fillSetMembers().then(newSet).catch((e: unknown) => {

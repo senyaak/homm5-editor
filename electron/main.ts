@@ -40,7 +40,7 @@ import { buildMapTag } from '../src/map-tag.ts';
 import { createField } from '../src/defaults.ts';
 import { buildNewMapProject } from '../src/new-map.ts';
 import { MAP_SIZES } from '../src/terrain-blank.ts';
-import { Registry, artifactPreset, creatureAbilities, creaturePreset, creatureSources } from '../src/registry.ts';
+import { Registry, artifactPreset, creatureAbilities, creatureAbilityNames, creaturePreset, creatureSources } from '../src/registry.ts';
 import type { RosterEntry } from '../src/registry.ts';
 import {
   addArtifact, addArtifactSet, addCreature, addHero, removeArtifact, removeArtifactSet, removeCreature, removeHero, updateHero,
@@ -2451,6 +2451,7 @@ ipcMain.handle('mods:form-data', async (): Promise<ModsFormDataResult> => {
     effectStats: [...EFFECT_STATS],
     heroStats: [...HERO_STAT_NAMES],
     abilities: creatureAbilities(assets([gameData()])),
+    abilityNames: creatureAbilityNames(assets([gameData()])),
     towns: r.races(),
     heroDonors: r.heroes(),
     skills: r.skills(),
@@ -2558,7 +2559,9 @@ ipcMain.handle('mods:install', async (_e: IpcMainInvokeEvent, p: ModsInstallPayl
 
   addCreature(mod, {
     id: p.id.trim(), file: p.file.trim(),
-    name: p.name, description: p.description, abilitiesText: p.abilitiesText,
+    name: p.name, description: p.description,
+    // Absent by default: the line is derived from the abilities at build time.
+    ...(p.abilitiesText ? { abilitiesText: p.abilitiesText } : {}),
     stats: { ...blankStats(), ...p.stats },
     visualSource: sources.visual, monsterSource: sources.monster,
     ...(Object.keys(art).length ? { art } : {}),
