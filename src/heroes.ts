@@ -91,6 +91,37 @@ export interface HeroStats {
   knowledge?: number;
 }
 
+/**
+ * The art a hero wears — each an href, each optional.
+ *
+ * The counts are how many DISTINCT values the shipped 118 use, which is why
+ * these are dropdowns and not free text: the choice is small and known.
+ */
+export interface HeroArt {
+  /** The adventure-map model. 28 among the shipped heroes. */
+  model?: string;
+  /** Its animations. 29. */
+  animSet?: string;
+  /** The character that fights in the arena. 38. */
+  arena?: string;
+  /** Its melee variant, where one exists. 14. */
+  arenaMelee?: string;
+  /** The character that walks the adventure map. 37. */
+  adventure?: string;
+  /** What the combat screen draws him from. 14. */
+  combatVisual?: string;
+  /** The marker under a selected hero. 8. */
+  selection?: string;
+  /** The footprints he leaves. 8. */
+  trace?: string;
+  /** His own camera in the hero screen, where he has one. 5. */
+  camera?: string;
+  /** The 128x128 icon some heroes carry beside their portrait. 13. */
+  icon128?: string;
+  /** The music his presence brings. 20. */
+  music?: string;
+}
+
 /** The war machines he brings. */
 export interface HeroMachines {
   ballista?: boolean;
@@ -114,12 +145,26 @@ export interface HeroSpec {
   name: string;
   biography: string;
   /**
-   * The shipped hero his art comes from, as a data-root-relative path:
-   * `MapObjects/Preserve/Ossir.(AdvMapHeroShared).xdb`. Everything not named
-   * below is his — model, animations, arena character, trace, sounds, and the
-   * portrait until one of our own is given.
+   * The document his STRUCTURE is taken from, data-root-relative.
+   *
+   * Not a donor in the sense the creature side means it: everything a person
+   * would ever choose is a field of its own below, and the form fills those
+   * from a preset the moment one is picked. What this still supplies is the
+   * seven fields that are the SAME in all 118 shipped heroes — the visibility
+   * type, the flyby message, the race-trait text, WaterBased, TerrainAligned,
+   * ArrowButtonState, RazedStatic — plus the shape and field order of the
+   * document itself. Nobody needs to be asked about those.
    */
-  donor: string;
+  basedOn: string;
+  /**
+   * What he looks like. Every one of these is an href into the game's data or
+   * into the mod's own folder; anything omitted stays as `basedOn` has it.
+   *
+   * They are a group of their own because they are not gameplay: a hero is
+   * authored by his faction, his specialization and his skills, and the model
+   * he wears is a separate question that most heroes never ask.
+   */
+  art?: HeroArt;
   /** `TOWN_…` — whose tavern offers him. */
   town: string;
   /** `HERO_CLASS_…` — one per faction; it decides what a level up offers. */
@@ -162,6 +207,14 @@ export interface HeroSpec {
    * Defaults to false — a new hero is a person unless he is a fixture.
    */
   scenarioHero?: boolean;
+  /**
+   * Files of the author's own, to be copied into his folder when he is built.
+   *
+   * Keyed by the href they will be reachable at inside the mod, valued by where
+   * the file sits now. Already in the game's format — this copies, it does not
+   * convert — so what lands in the archive is the bytes that were chosen.
+   */
+  ownFiles?: Record<string, string>;
   /** href of a 128x128 portrait. Omitted, the donor's face is worn. */
   face?: string;
   /** href of the 64x64 portrait. Omitted, the donor's. */
@@ -289,6 +342,20 @@ export function heroDoc(spec: HeroSpec, donorXml: string, p: HeroPaths = heroPat
   if (spec.face) point(root, 'FaceTexture', spec.face);
   if (spec.faceSmall) point(root, 'FaceTextureSmall', spec.faceSmall);
 
+  // What he looks like. Each is a plain href swap, and anything not chosen is
+  // left as the document we started from has it.
+  const art = spec.art ?? {};
+  for (const [field, href] of [
+    ['Model', art.model], ['AnimSet', art.animSet],
+    ['HeroCharacterArena', art.arena], ['HeroCharacterArenaMelee', art.arenaMelee],
+    ['HeroCharacterAdventure', art.adventure], ['CombatVisual', art.combatVisual],
+    ['Selection', art.selection], ['Trace', art.trace],
+    ['HeroIndividualCamera', art.camera], ['Icon128', art.icon128],
+    ['AdventureMusic', art.music],
+  ] as const) {
+    if (href) point(root, field, href);
+  }
+
   if (spec.primarySkill) {
     const slot = find(root, 'PrimarySkill');
     if (!slot) throw new Error('the donor has no <PrimarySkill>');
@@ -363,4 +430,56 @@ export function takenHeroIds(
     if (name) taken.add(name);
   }
   return taken;
+}
+
+/** Which document field each art slot lives in. */
+export const ART_FIELDS: Readonly<Record<keyof HeroArt, string>> = {
+  model: 'Model', animSet: 'AnimSet',
+  arena: 'HeroCharacterArena', arenaMelee: 'HeroCharacterArenaMelee',
+  adventure: 'HeroCharacterAdventure', combatVisual: 'CombatVisual',
+  selection: 'Selection', trace: 'Trace', camera: 'HeroIndividualCamera',
+  icon128: 'Icon128', music: 'AdventureMusic',
+};
+
+/** The portrait and icon slots, which are hrefs on the hero like the rest. */
+export const FACE_FIELDS = {
+  face: 'FaceTexture', faceSmall: 'FaceTextureSmall', specializationIcon: 'SpecializationIcon',
+} as const;
+
+/** Read one hero's art out of his document, slot by slot. */
+export function artOf(xml: string): Record<string, string> {
+  const doc = parse(xml);
+  const root = doc.name === HERO_CLASS ? doc : find(doc, HERO_CLASS);
+  const out: Record<string, string> = {};
+  if (!root) return out;
+  for (const [slot, field] of Object.entries({ ...ART_FIELDS, ...FACE_FIELDS })) {
+    const href = find(root, field)?.attrs.href ?? '';
+    if (href) out[slot] = href;
+  }
+  return out;
+}
+
+/**
+ * Every value the shipped heroes use, per art slot — the dropdowns' universe.
+ *
+ * Gathered from the heroes themselves rather than by scanning the data tree:
+ * `Textures/` alone holds thousands of files, while what heroes actually wear
+ * is 28 models, 29 animation sets and 8 traces. A short list of things known to
+ * work beats a long list of everything that exists.
+ */
+export function artChoices(
+  heroes: readonly { id: string }[],
+  read: (path: string) => string | null,
+): Record<string, string[]> {
+  const seen: Record<string, Set<string>> = {};
+  for (const h of heroes) {
+    const xml = read(h.id.split('#')[0]!.replace(/^\/+/, ''));
+    if (!xml) continue;
+    for (const [slot, href] of Object.entries(artOf(xml))) {
+      (seen[slot] ??= new Set()).add(href);
+    }
+  }
+  const out: Record<string, string[]> = {};
+  for (const [slot, set] of Object.entries(seen)) out[slot] = [...set].sort();
+  return out;
 }

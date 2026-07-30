@@ -804,6 +804,14 @@ export interface ModsFormDataResult {
   spells: RosterEntryDTO[];
   /** The enums `AdvMapHeroShared` closes: TownType, Class, Specialization. */
   heroEnums: Record<string, string[]>;
+  /**
+   * Per art slot, every href the shipped heroes wear there.
+   *
+   * The universe of the Appearance dropdowns. Gathered from the heroes rather
+   * than from the data tree: 28 models and 8 traces are a choice, while
+   * `Textures/` is a haystack.
+   */
+  heroArt: Record<string, string[]>;
 }
 
 /** Payload of `mods:preset` / `mods:artifact-preset` — which donor to read. */
@@ -906,8 +914,16 @@ export interface ModsInstallHeroPayload {
   id: string;
   name: string;
   biography: string;
-  /** Data-root-relative path of the shipped hero his art comes from. */
-  donor: string;
+  /**
+   * The shipped hero the form was seeded from, data-root-relative.
+   *
+   * Its job is the document's SHAPE and the seven fields identical in all 118
+   * shipped heroes; everything a person chooses arrives in the fields below,
+   * `art` included.
+   */
+  basedOn: string;
+  /** What he looks like — hrefs, each optional. Omitted, `basedOn` decides. */
+  art?: Record<string, string>;
   /** `TOWN_…` — whose tavern offers him. */
   town: string;
   /** `HERO_CLASS_…` — one per faction. */
@@ -929,9 +945,11 @@ export interface ModsInstallHeroPayload {
   machines?: { ballista?: boolean; firstAidTent?: boolean; ammoCart?: boolean };
   /** True keeps him out of every tavern — placed by hand or by script only. */
   scenarioHero?: boolean;
-  /** href of a 128x128 portrait, and of the 64x64. Omitted, the donor's face. */
+  /** href of a 128x128 portrait, and of the 64x64. Omitted, the preset's face. */
   face?: string;
   faceSmall?: string;
+  /** Files of the author's own: href inside the mod → where the file is now. */
+  ownFiles?: Record<string, string>;
 }
 
 /** Result of `mods:install-hero`. */
@@ -1129,6 +1147,16 @@ export interface EditorApi {
   installArtifactSet(p: ModsInstallSetPayload): Promise<ModsInstallSetResult>;
   /** Add a hero to OUR mod, build it, install it. Nothing global moves at all. */
   installHero(p: ModsInstallHeroPayload): Promise<ModsInstallHeroResult>;
+  /** What one shipped hero wears, slot by slot — the preset seeding the form. */
+  heroArtOf(hero: string): Promise<Record<string, string>>;
+  /**
+   * Pick a file of your own for one appearance slot.
+   *
+   * Returns where it sits now and the href it will answer to inside the mod;
+   * the copying happens when the hero is built, not here, so cancelling the
+   * form leaves nothing behind.
+   */
+  pickHeroFile(p: { id: string; slot: string }): Promise<{ href: string; from: string }>;
   /** Change an artifact already in the mod. Its id and number do not move. */
   updateArtifact(p: ModsInstallArtifactPayload): Promise<ModsInstallArtifactResult>;
   /** Change a set already in the mod. Its effect value does not move. */

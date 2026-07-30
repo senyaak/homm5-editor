@@ -48,7 +48,7 @@ import {
   installCreatureMod, MOD_STEM, newCreatureMod, packCreatureMod,
 } from '../src/creature-mod.ts';
 import { MOD_DIR, MOD_EXT, ensureModDir, modDir, modFile } from '../src/mod-paths.ts';
-import { HERO_CLASS, heroHref, heroPaths, takenHeroIds } from '../src/heroes.ts';
+import { artChoices, artOf, HERO_CLASS, HERO_DIR, heroHref, heroPaths, takenHeroIds } from '../src/heroes.ts';
 import { refPath } from '../src/dwellings.ts';
 import type { HeroSpec, Mastery } from '../src/heroes.ts';
 import { extractMapFolder, gameArchives, listOurMaps, listStockMaps, mapFolderIn } from '../src/map-source.ts';
@@ -2454,6 +2454,7 @@ ipcMain.handle('mods:form-data', async (): Promise<ModsFormDataResult> => {
     skills: r.skills(),
     spells: r.spells(),
     heroEnums: heroEnumValues(),
+    heroArt: artChoices(r.heroes(), (rel) => assets([gameData()]).text(rel)),
   };
 });
 
@@ -2581,12 +2582,40 @@ ipcMain.handle('mods:install-artifact', async (_e: IpcMainInvokeEvent, p: ModsIn
   };
 });
 
+// What a shipped hero wears — the preset, read on demand rather than shipped
+// with the form data: one document, and only when a preset is actually picked.
+ipcMain.handle('mods:hero-art', async (_e: IpcMainInvokeEvent, { hero }: { hero: string }): Promise<Record<string, string>> => {
+  if (!isConfigured()) throw new Error('no data root configured');
+  const xml = assets([gameData()]).text(refPath(hero));
+  return xml ? artOf(xml) : {};
+});
+
+// Pick a file of the author's own for one appearance slot.
+//
+// It is copied when the hero is BUILT, not here: a form that is cancelled must
+// leave nothing behind, and until then the mod has no folder for him anyway.
+// The file is expected to be in the game's format already — this is a choice of
+// bytes, not a conversion.
+ipcMain.handle('mods:pick-hero-file', async (_e: IpcMainInvokeEvent, { id, slot }: { id: string; slot: string }): Promise<{ href: string; from: string }> => {
+  const opts = {
+    title: `Choose a file for ${slot}`,
+    properties: ['openFile' as const],
+    filters: [{ name: 'Game files', extensions: ['xdb', 'dds', 'gr2', 'bin'] }, { name: 'All files', extensions: ['*'] }],
+  };
+  const r = await (win ? dialog.showOpenDialog(win, opts) : dialog.showOpenDialog(opts));
+  const from = r.canceled ? undefined : r.filePaths[0];
+  if (!from) return { href: '', from: '' };
+  // Inside his own folder, under the name it came with: everything of his in
+  // one place is the point of giving him a folder at all.
+  return { href: `/${HERO_DIR}/${id || 'hero'}/${basename(from)}`, from };
+});
+
 ipcMain.handle('mods:install-hero', async (_e: IpcMainInvokeEvent, p: ModsInstallHeroPayload): Promise<ModsInstallHeroResult> => {
   const g = gameRoot();
   if (!g) throw new Error('no game install configured — a mod needs a folder to install into');
   if (!isConfigured()) throw new Error('no data root configured');
   if (!p.id.trim()) throw new Error('the hero needs an identifier');
-  if (!p.donor.trim()) throw new Error('a preset is required — a hero wears a shipped hero\'s art');
+  if (!p.basedOn.trim()) throw new Error('a preset is required — a new hero starts from the shape of a shipped one');
 
   const stats: HeroSpec['stats'] = {};
   for (const [field, key] of [['Offence', 'offence'], ['Defence', 'defence'],
@@ -2605,10 +2634,12 @@ ipcMain.handle('mods:install-hero', async (_e: IpcMainInvokeEvent, p: ModsInstal
     id: p.id.trim(),
     name: p.name,
     biography: p.biography,
-    // The window offers donors as the roster lists them, which is the HREF a
+    // The window offers heroes as the roster lists them, which is the HREF a
     // map would store; the builder reads the file, so it wants the path. One
     // normalisation here rather than every caller getting it right.
-    donor: refPath(p.donor.trim()),
+    basedOn: refPath(p.basedOn.trim()),
+    ...(p.art && Object.values(p.art).some(Boolean) ? { art: p.art } : {}),
+    ...(p.ownFiles && Object.keys(p.ownFiles).length ? { ownFiles: p.ownFiles } : {}),
     town: p.town,
     heroClass: p.heroClass,
     ...(p.specialization ? { specialization: p.specialization } : {}),

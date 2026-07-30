@@ -9034,11 +9034,11 @@ async function fillHeroForm(): Promise<void> {
   const spells = form.spells.map((e) => ({ id: e.id, label: e.name || e.id }));
   const values = form.heroEnums;
 
-  // A donor is named by the path the hero's own document will reference him
+  // A preset is named by the path the hero's own document references him
   // through, and grouped by faction folder — Preserve/Ossir reads better than
   // one flat list of 118.
   heDonors = heroes;
-  const el = $select('he-donor');
+  const el = $select('he-preset');
   const had = el.value;
   el.innerHTML = '';
   for (const h of heroes) {
@@ -9057,16 +9057,53 @@ async function fillHeroForm(): Promise<void> {
   fillHeroSelect('he-skill', skills, true);
   fillHeroSelect('he-perk', skills, true);
   fillHeroSelect('he-spell', spells, true);
+
+  // Appearance: what the shipped heroes actually wear in each slot. The label
+  // is the file's own name — a full href in a dropdown is unreadable, and the
+  // value carries the href anyway.
+  for (const [slot, id] of Object.entries(HE_ART_FIELDS)) {
+    const hrefs = form.heroArt[slot] ?? [];
+    fillHeroSelect(id, hrefs.map((href) => ({ id: href, label: artLabel(href) })), true);
+  }
 }
 
-/** The donor decides the faction and class a blank form starts on. */
-function heroDonorChanged(): void {
-  const donor = $select('he-donor').value;
-  const entry = heDonors.find((h) => h.id === donor);
+/** Which control holds which art slot — the same slots src/heroes.ts names. */
+const HE_ART_FIELDS: Record<string, string> = {
+  model: 'he-model', animSet: 'he-animset', arena: 'he-arena', arenaMelee: 'he-arena-melee',
+  adventure: 'he-adventure', combatVisual: 'he-combat', selection: 'he-selection',
+  trace: 'he-trace', camera: 'he-camera', icon128: 'he-icon128', music: 'he-music',
+  face: 'he-face', faceSmall: 'he-face-small', specializationIcon: 'he-spec-icon',
+};
+
+/** An href as a person reads it: the file's name, without the pointer. */
+function artLabel(href: string): string {
+  return href.split('#')[0]!.split('/').pop()!.replace(/\.\([^)]*\)\.xdb$/i, '').replace(/\.xdb$/i, '');
+}
+
+/**
+ * The preset seeds the form: faction, class, and every appearance field.
+ *
+ * Seeds, and nothing more — each control stays editable afterwards, and what
+ * the hero is built from is what the controls hold, not what was picked here.
+ */
+async function heroPresetChanged(): Promise<void> {
+  const preset = $select('he-preset').value;
+  const entry = heDonors.find((h) => h.id === preset);
   const town = [...$select('he-town').options].map((o) => o.value)
     .find((t) => entry?.group && t.toLowerCase().includes(entry.group.toLowerCase()));
   if (town) $select('he-town').value = town;
   heroTownChanged();
+
+  // And his looks, slot by slot. A preset the data cannot be read for leaves
+  // the fields as they were rather than blanking them.
+  const art = await window.editor.heroArtOf(preset).catch(() => ({} as Record<string, string>));
+  for (const [slot, id] of Object.entries(HE_ART_FIELDS)) {
+    const href = art[slot];
+    if (!href) continue;
+    const el = $select(id);
+    if (![...el.options].some((o) => o.value === href)) el.append(new Option(artLabel(href), href));
+    el.value = href;
+  }
 }
 
 /** One class per faction, so picking a faction picks the class with it. */
@@ -9109,7 +9146,7 @@ async function submitHeroMod(): Promise<void> {
       id: $input('he-id').value,
       name: $input('he-name').value,
       biography: $input('he-bio').value,
-      donor: $select('he-donor').value,
+      basedOn: $select('he-preset').value,
       town: $select('he-town').value,
       heroClass: $select('he-class').value,
       ...($select('he-spec').value ? { specialization: $select('he-spec').value } : {}),
@@ -9131,8 +9168,16 @@ async function submitHeroMod(): Promise<void> {
         ammoCart: $input('he-ammo').checked,
       },
       scenarioHero: $input('he-scenario').checked,
-      ...($input('he-face').value.trim() ? { face: $input('he-face').value.trim() } : {}),
-      ...($input('he-face-small').value.trim() ? { faceSmall: $input('he-face-small').value.trim() } : {}),
+      ...($select('he-face').value ? { face: $select('he-face').value } : {}),
+      ...($select('he-face-small').value ? { faceSmall: $select('he-face-small').value } : {}),
+      ...($select('he-spec-icon').value ? { specializationIcon: $select('he-spec-icon').value } : {}),
+      // Appearance rides as one object: the fields are all the same shape, and
+      // the builder leaves any slot the form did not fill as the preset has it.
+      ...(Object.keys(heOwnFiles).length ? { ownFiles: heOwnFiles } : {}),
+      art: Object.fromEntries(Object.entries(HE_ART_FIELDS)
+        .filter(([slot]) => !['face', 'faceSmall', 'specializationIcon'].includes(slot))
+        .map(([slot, id]) => [slot, $select(id).value])
+        .filter(([, href]) => href)),
     });
     modDialog('heroedit').close();
     await refreshHeroList();
@@ -9165,13 +9210,41 @@ $('hm-close').onclick = () => modDialog('heroesmod').close();
 $('hm-cancel').onclick = () => modDialog('heroesmod').close();
 $('hm-new').onclick = () => {
   $('he-err').textContent = '';
+  heOwnFiles = {};
   modDialog('heroedit').showModal();
-  heroDonorChanged();
+  void heroPresetChanged().catch(() => {});
 };
 $('heroedit-x').onclick = () => modDialog('heroedit').close();
 $('heroedit-cancel').onclick = () => modDialog('heroedit').close();
 $('he-ok').onclick = () => { void submitHeroMod(); };
-$select('he-donor').addEventListener('change', heroDonorChanged);
+$select('he-preset').addEventListener('change', () => { void heroPresetChanged().catch(() => {}); });
+
+/**
+ * Files the author brought, by the href they will answer to in the mod.
+ *
+ * Kept beside the form rather than copied on the spot: a form that is cancelled
+ * must leave nothing behind, so the copying happens when the hero is built.
+ */
+let heOwnFiles: Record<string, string> = {};
+
+for (const btn of document.querySelectorAll<HTMLButtonElement>('button.he-file')) {
+  btn.onclick = () => {
+    const target = btn.dataset.for!;
+    const slot = Object.entries(HE_ART_FIELDS).find(([, id]) => id === target)?.[0] ?? target;
+    void (async () => {
+      const picked = await window.editor.pickHeroFile({ id: $input('he-id').value.trim(), slot });
+      if (!picked.href) return; // cancelled
+      heOwnFiles[picked.href] = picked.from;
+      const el = $select(target);
+      // Offered under the name it came with, and chosen: a file picked and then
+      // silently not used would be the worst of both.
+      if (![...el.options].some((o) => o.value === picked.href)) {
+        el.append(new Option(`${artLabel(picked.href)} (yours)`, picked.href));
+      }
+      el.value = picked.href;
+    })().catch((e) => { $('he-err').textContent = e instanceof Error ? e.message : String(e); });
+  };
+}
 $select('he-town').addEventListener('change', heroTownChanged);
 
 

@@ -10,7 +10,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSyn
 import { join } from 'node:path';
 import { DATA, REPO_ROOT } from './launch.ts';
 import {
-  addArtifact, addArtifactSet, addCreature, addDwelling, buildCreatureMod, dataReader,
+  addArtifact, addArtifactSet, addCreature, addDwelling, addHero, buildCreatureMod, dataReader,
   installCreatureMod, MOD_STEM, newCreatureMod, packCreatureMod, readCreatureMod,
   removeArtifact, removeArtifactSet, removeCreature, removeDwelling, removeHero,
   updateArtifact, updateArtifactSet,
@@ -484,6 +484,29 @@ export function installMapFixture(gameRoot: string): CreatureMod {
     if ((mod.artifacts ?? []).some((x) => x.id === a.id)) updateArtifact(mod, a.id, spec);
     else addArtifact(mod, spec);
   }
+  // Gem, so the map spec can PLACE her when it runs alone. The dialog authors
+  // her in mod-004; this is the same hero built the same way, for a run that
+  // starts at the map. Added when missing and left alone when she is there,
+  // like the creature above.
+  if (!(mod.heroes ?? []).some((h) => h.id === GEM_FILE)) {
+    addHero(mod, {
+      id: GEM_FILE,
+      name: 'Gem',
+      biography: 'A sorceress of Enroth, newly come to AvLee and its druids.',
+      basedOn: 'MapObjects/Preserve/Ossir.(AdvMapHeroShared).xdb',
+      town: 'TOWN_PRESERVE',
+      heroClass: 'HERO_CLASS_RANGER',
+      specialization: 'HERO_SPEC_EMPIRIC',
+      specializationName: 'Field Medic',
+      specializationDescription: 'With every level the first aid tent heals 5 more points of damage.',
+      primarySkill: { skill: 'HERO_SKILL_AVENGER', mastery: 'MASTERY_BASIC' },
+      stats: { offence: 0, defence: 1, spellpower: 2, knowledge: 2 },
+      skills: [{ skill: 'HERO_SKILL_WAR_MACHINES', mastery: 'MASTERY_BASIC' }],
+      perks: ['HERO_SKILL_FIRST_AID'],
+      machines: { firstAidTent: true },
+    });
+  }
+
   const set = {
     effect: UNDEAD_KING.effect, file: UNDEAD_KING.file,
     name: UNDEAD_KING.name, description: UNDEAD_KING.description,

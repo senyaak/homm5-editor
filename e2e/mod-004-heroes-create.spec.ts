@@ -71,8 +71,11 @@ test.afterAll(async () => { await ed?.app.close(); });
 async function openWithDonor(page: Launched['page']): Promise<void> {
   if (!(await page.locator('#heroesmod').isVisible())) await page.locator('#heroesbtn').click();
   if (!(await page.locator('#heroedit').isVisible())) await page.locator('#hm-new').click();
-  await expect(page.locator(`#he-donor option[value="${GEM.donor}"]`)).toHaveCount(1, { timeout: 30_000 });
-  await page.locator('#he-donor').selectOption(GEM.donor);
+  await expect(page.locator(`#he-preset option[value="${GEM.donor}"]`)).toHaveCount(1, { timeout: 30_000 });
+  await page.locator('#he-preset').selectOption(GEM.donor);
+  // The preset fills the appearance fields; the model settling is the signal
+  // that it has, since everything else can be set before it arrives.
+  await expect(page.locator('#he-model')).not.toHaveValue('', { timeout: 30_000 });
 }
 
 test('the dialog opens, and the donor decides the faction', async () => {
@@ -85,6 +88,12 @@ test('the dialog opens, and the donor decides the faction', async () => {
   // One class per faction: choosing where he comes from chooses what he is.
   await expect(page.locator('#he-town')).toHaveValue(GEM.town);
   await expect(page.locator('#he-class')).toHaveValue(GEM.heroClass);
+
+  // The preset seeded her looks, and they are the shipped hero's own — under
+  // the fold, where appearance belongs: a hero is authored by his faction and
+  // his skills, not by which model he wears.
+  await expect(page.locator('#he-model')).toHaveValue(/Ranger_LOD/);
+  await expect(page.locator('#he-trace')).toHaveValue(/Rampart/);
 
   // Any faction's specialization is on offer, because the effect is keyed to
   // the value and not to the race — that is what lets an elf be an embalmer.
@@ -140,7 +149,7 @@ test('the archive holds her, and nothing of the game\'s', async () => {
   expect(gem!.town).toBe(GEM.town);
   expect(gem!.heroClass).toBe(GEM.heroClass);
   expect(gem!.specialization).toBe(GEM.spec);
-  expect(gem!.donor).toBe(GEM.donorPath);
+  expect(gem!.basedOn).toBe(GEM.donorPath);
 
   const p = heroPaths(gem!);
   const entries = readEntries(readFileSync(modFile(GAME, 'mod', MOD_STEM)));
@@ -162,6 +171,8 @@ test('the archive holds her, and nothing of the game\'s', async () => {
   expect(xml).toContain(`<Specialization>${GEM.spec}</Specialization>`);
   expect(xml).toContain('<ScenarioHero>false</ScenarioHero>');
   expect(xml).toContain('<SkillID>HERO_SKILL_AVENGER</SkillID>');
+  // The appearance the preset seeded was WRITTEN, not merely displayed.
+  expect(xml).toMatch(/<Model href="[^"]*Ranger_LOD/);
   // Referenced, not copied: her body is still Ossir's, by href.
   const donorXml = readFileSync(join(dataRoot, GEM.donorPath), 'utf8');
   const modelOf = (s: string): string => /<Model href="([^"]+)"/.exec(s)?.[1] ?? '';

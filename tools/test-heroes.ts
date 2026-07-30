@@ -8,8 +8,8 @@
 //
 //   the shape — the fields we write are the fields the shipped heroes carry,
 //     in the order types.xml declares them;
-//   the donor — everything not asked for is the donor's, which is what makes a
-//     hero three kilobytes instead of a character sheet;
+//   the preset — everything not asked for stays as the document it was seeded
+//     from has it, which is what makes a hero three kilobytes;
 //   the identity — Class, TownType, Specialization and PrimarySkill are the
 //     four the map cannot reach, and they are what a new hero exists for;
 //   the racial slot — a hero may hold a non-racial skill there, because the
@@ -53,7 +53,7 @@ const GEM: HeroSpec = {
   id: 'H3Gem',
   name: 'Gem',
   biography: 'A sorceress of Enroth, newly come to AvLee.',
-  donor: DONOR,
+  basedOn: DONOR,
   town: 'TOWN_PRESERVE',
   heroClass: 'HERO_CLASS_RANGER',
   specialization: 'HERO_SPEC_ELVES',

@@ -1057,12 +1057,17 @@ function buildHeroes(heroes: readonly HeroSpec[], read: DataReader): ModFile[] {
   const files: ModFile[] = [];
   for (const h of heroes) {
     const p = heroPaths(h);
-    files.push({ path: p.shared, data: Buffer.from(heroDoc(h, mustRead(read, h.donor), p), 'latin1') });
+    files.push({ path: p.shared, data: Buffer.from(heroDoc(h, mustRead(read, h.basedOn), p), 'latin1') });
     // The palette entry, so he can be PLACED and not merely hired: the Objects
     // tab is built from these link files, read through the mounted chain.
     files.push({ path: p.link, data: Buffer.from(heroLink(p), 'latin1') });
     files.push({ path: p.name, data: utf16(h.name) });
     files.push({ path: p.biography, data: utf16(h.biography) });
+    // Anything the author brought from disk, copied verbatim into his folder:
+    // it is already in the game's format, so there is nothing to convert.
+    for (const [href, from] of Object.entries(h.ownFiles ?? {})) {
+      files.push({ path: href.replace(/^\/+/, ''), data: readFileSync(from) });
+    }
     if (h.specializationName) files.push({ path: p.specName, data: utf16(h.specializationName) });
     if (h.specializationDescription) {
       files.push({ path: p.specDescription, data: utf16(h.specializationDescription) });
