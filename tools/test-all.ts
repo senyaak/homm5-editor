@@ -12,7 +12,7 @@
 
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { delimiter, join } from 'node:path';
 
 const root = join(import.meta.dirname, '..');
 const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { scripts: Record<string, string> };
@@ -34,7 +34,13 @@ for (const { name, cmd } of suites) {
   // dir to the suites that accept one so their oracle checks run when available.
   const [bin, ...args] = cmd.split(' ');
   if (blanks && /test-(terrain-blank|blank-map|new-map)/.test(name)) args.push(blanks);
-  const r = spawnSync(bin!, args, { cwd: root, stdio: 'inherit', env: process.env, shell: process.platform === 'win32' });
+  // Run it the way `npm run` would: a script naming a package's own binary
+  // (`playwright test …`) finds it in node_modules/.bin, and this runner has to
+  // put that on PATH itself — spawned bare, those two suites failed in 0.0s
+  // with "playwright is not recognised" and read as a broken test run.
+  const bin_ = join(root, 'node_modules', '.bin');
+  const env = { ...process.env, PATH: `${bin_}${delimiter}${process.env.PATH ?? ''}` };
+  const r = spawnSync(bin!, args, { cwd: root, stdio: 'inherit', env, shell: process.platform === 'win32' });
   const ms = Number(process.hrtime.bigint() - started) / 1e6;
   results.push({ name, ok: r.status === 0, ms });
 }

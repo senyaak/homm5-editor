@@ -7745,7 +7745,8 @@ async function submitUnitsMod(): Promise<void> {
     }
     const art: Partial<Record<'character' | 'model' | 'animSet' | 'icon', string>> = {};
     for (const [input, slot] of UM_ART) art[slot] = $input(input).value.trim();
-    const res = await window.editor.installMod({
+    const send = editingCreature ? window.editor.updateMod : window.editor.installMod;
+    const res = await send({
       id: $input('um-id').value,
       file: $input('um-file').value,
       name: $input('um-name').value,
@@ -7952,7 +7953,20 @@ async function editCreature(id: string): Promise<void> {
   if (!c) return;
   editingCreature = id;
   $input('um-id').value = c.id;
+  $input('um-file').value = c.file;
   $input('um-name').value = c.name;
+  $input('um-desc').value = c.description;
+  // Everything else it was built with. Left out, the form would show the last
+  // creature's numbers — or a blank one's — and saving would write those.
+  for (const [input, key] of UM_STATS) $input(input).value = String(c.stats[key] ?? 0);
+  $input('um-fly').checked = !!c.stats.flying;
+  $select('um-town').value = c.stats.town;
+  $('um-abilities').innerHTML = '';
+  for (const a of c.stats.abilities ?? []) addAbilityRow(a);
+  showAbilityLine();
+  // The art it actually wears, which is where its files resolved to — not the
+  // donor's, since a recolour or a swap since then lives in the mod.
+  for (const [input, slot] of UM_ART) $input(input).value = (c.from ?? {})[slot] ?? '';
   $input('um-id').disabled = true;
   $input('um-file').disabled = true;
   $('um-editing').textContent = `${c.name || c.id} — id and files are fixed; everything else can move`;

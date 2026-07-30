@@ -44,7 +44,7 @@ import { Registry, artifactPreset, creatureAbilities, creatureAbilityNames, crea
 import type { RosterEntry } from '../src/registry.ts';
 import {
   addArtifact, addArtifactSet, addCreature, addHero, removeArtifact, removeArtifactSet, removeCreature, removeHero, updateHero,
-  updateArtifact, updateArtifactSet, artifactLimit, buildCreatureMod, dataReader, findCreatureMods,
+  updateArtifact, updateArtifactSet, updateCreature, artifactLimit, buildCreatureMod, dataReader, findCreatureMods,
   installCreatureMod, MOD_STEM, newCreatureMod, packCreatureMod,
 } from '../src/creature-mod.ts';
 import { MOD_DIR, MOD_EXT, ensureModDir, modDir, modFile } from '../src/mod-paths.ts';
@@ -58,7 +58,7 @@ import { describeUses, findArtifactUses, findCreatureUses, findHeroUses } from '
 import { EFFECT_STATS, effectsOf } from '../src/artifact-effects.ts';
 import type { EffectRow, EffectStat, SetEffect } from '../src/artifact-effects.ts';
 import { artifactNumbers, HERO_STAT_NAMES } from '../src/artifacts.ts';
-import type { BuildReport, CreatureMod, Installed, ModCreature } from '../src/creature-mod.ts';
+import type { BuildReport, CreatureMod, CreatureSpec, Installed, ModCreature } from '../src/creature-mod.ts';
 import { decodeDDSBuffer } from '../src/dds.ts';
 import { writeDDS } from '../src/texture.ts';
 import { extractPalette, isIdentity, recolorPixels } from '../src/recolor.ts';
@@ -2382,8 +2382,14 @@ ipcMain.handle('mods:list', async (): Promise<ModsListResult> => {
     stem: basename(f.path).replace(/\.[^.]+$/, ''),
     limit: f.limit,
     reconstructed: !!f.reconstructed,
+    // The whole creature: this list is what the form is filled from, and a
+    // summary is how a creature loses its description on the way through.
     creatures: f.mod.creatures.map((c) => ({
       id: c.id, number: c.number, name: c.name, tier: c.stats.tier, gold: c.stats.gold,
+      file: c.file, description: c.description,
+      ...(c.abilitiesText ? { abilitiesText: c.abilitiesText } : {}),
+      stats: c.stats,
+      ...(c.from ? { from: c.from as Record<string, string> } : {}),
     })),
     // The effects ride along: the dialog fills its rows from this list, and an
     // artifact opened for editing without them saves none — so changing a price
@@ -2541,23 +2547,22 @@ function buildAndInstall(g: string, mod: CreatureMod): { installed: Installed; r
 const exeWords = (r: ExeResult | ArtifactExeResult | null): string =>
   r ? `${basename(r.path)} → ceiling ${r.to}${'build' in r ? ` (${r.build})` : ''}` : 'executable not touched';
 
-ipcMain.handle('mods:install', async (_e: IpcMainInvokeEvent, p: ModsInstallPayload): Promise<ModsInstallResult> => {
-  const g = gameRoot();
-  if (!g) throw new Error('no game install configured — a mod needs a folder to install into and the executable');
-  if (!isConfigured()) throw new Error('no data root configured');
-  if (!p.file.trim()) throw new Error('the file stem is required');
-
-  const mod = ourMod(g);
+/**
+ * One payload, one spec — shared by adding a creature and by changing one.
+ *
+ * Same reason as the hero side: they differ in one thing (whether the id is
+ * expected to be free or expected to be its own), and two copies of a dozen
+ * fields is two copies that drift.
+ */
+function creatureSpecOf(p: ModsInstallPayload): CreatureSpec {
   const sources = creatureSources(assets([gameData()]), p.donor);
   if (!sources) throw new Error(`cannot resolve the donor ${p.donor || '(none)'}`);
-
   // Art overrides: only the slots the form actually changed away from empty.
   const art: Partial<Record<'character' | 'model' | 'animSet' | 'icon', string>> = {};
   for (const [slot, href] of Object.entries(p.art ?? {})) {
     if (href && href.trim()) art[slot as keyof typeof art] = href.trim();
   }
-
-  addCreature(mod, {
+  return {
     id: p.id.trim(), file: p.file.trim(),
     name: p.name, description: p.description,
     // Absent by default: the line is derived from the abilities at build time.
@@ -2565,11 +2570,43 @@ ipcMain.handle('mods:install', async (_e: IpcMainInvokeEvent, p: ModsInstallPayl
     stats: { ...blankStats(), ...p.stats },
     visualSource: sources.visual, monsterSource: sources.monster,
     ...(Object.keys(art).length ? { art } : {}),
-  });
+  };
+}
+
+ipcMain.handle('mods:install', async (_e: IpcMainInvokeEvent, p: ModsInstallPayload): Promise<ModsInstallResult> => {
+  const g = gameRoot();
+  if (!g) throw new Error('no game install configured — a mod needs a folder to install into and the executable');
+  if (!isConfigured()) throw new Error('no data root configured');
+  if (!p.file.trim()) throw new Error('the file stem is required');
+
+  const mod = ourMod(g);
+  addCreature(mod, creatureSpecOf(p));
 
   const { installed, report } = buildAndInstall(g, mod);
   const added = mod.creatures[mod.creatures.length - 1]!;
   return { archive: installed.archive, limit: report.limit, exe: exeWords(installed.exe), art: report.art[added.id] ?? 0 };
+});
+
+/**
+ * Change a creature already in the mod.
+ *
+ * Its NUMBER does not move, which is the whole point: that number is what maps,
+ * saved games and Lua store, so a creature that renumbered itself on an edit
+ * would repoint every army that holds it. The id is fixed for the same reason.
+ *
+ * The core has had updateCreature for a while; nothing reached it, so the
+ * dialog's pencil opened a form whose Save tried to ADD the creature again and
+ * was told it already existed.
+ */
+ipcMain.handle('mods:update', async (_e: IpcMainInvokeEvent, p: ModsInstallPayload): Promise<ModsInstallResult> => {
+  const g = gameRoot();
+  if (!g) throw new Error('no game install configured');
+  if (!isConfigured()) throw new Error('no data root configured');
+
+  const mod = ourMod(g);
+  const changed = updateCreature(mod, p.id.trim(), creatureSpecOf(p));
+  const { installed, report } = buildAndInstall(g, mod);
+  return { archive: installed.archive, limit: report.limit, exe: exeWords(installed.exe), art: report.art[changed.id] ?? 0 };
 });
 
 ipcMain.handle('mods:install-artifact', async (_e: IpcMainInvokeEvent, p: ModsInstallArtifactPayload): Promise<ModsInstallArtifactResult> => {

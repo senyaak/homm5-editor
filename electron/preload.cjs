@@ -85,6 +85,7 @@ const api = {
   modPreset: (donor) => ipcRenderer.invoke('mods:preset', { donor }),
   modArtifactPreset: (donor) => ipcRenderer.invoke('mods:artifact-preset', { donor }),
   installMod: (p) => ipcRenderer.invoke('mods:install', p),
+  updateMod: (p) => ipcRenderer.invoke('mods:update', p),
   installArtifact: (p) => ipcRenderer.invoke('mods:install-artifact', p),
   installArtifactSet: (p) => ipcRenderer.invoke('mods:install-set', p),
   installHero: (p) => ipcRenderer.invoke('mods:install-hero', p),

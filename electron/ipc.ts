@@ -680,6 +680,20 @@ export interface ModCreatureDTO {
   name: string;
   tier: number;
   gold: number;
+  /**
+   * And the rest of it, because the form fills itself from this list.
+   *
+   * A summary meant that opening a creature to change its price came back with
+   * its description, its abilities and its art blank, and saving wrote that
+   * back — the artifact side learned this first, and the hero side after it.
+   */
+  file: string;
+  description: string;
+  /** Only when the author overrode the derived line. */
+  abilitiesText?: string;
+  stats: CreatureStats;
+  /** Where its art resolved to, slot by slot. */
+  from?: Record<string, string>;
 }
 
 /** One artifact of an installed mod, as `mods:list` reports it. */
@@ -1179,6 +1193,8 @@ export interface EditorApi {
   modArtifactPreset(donor: string): Promise<ArtifactPresetDTO>;
   /** Add a creature to OUR mod, build it, install it, patch the ceiling. */
   installMod(p: ModsInstallPayload): Promise<ModsInstallResult>;
+  /** Change a creature already in the mod. Its id and number do not move. */
+  updateMod(p: ModsInstallPayload): Promise<ModsInstallResult>;
   /** Add an artifact to OUR mod, build it, install it, patch the ceiling. */
   installArtifact(p: ModsInstallArtifactPayload): Promise<ModsInstallArtifactResult>;
   /** Add an artifact set to OUR mod, build it, install it. No ceiling moves. */

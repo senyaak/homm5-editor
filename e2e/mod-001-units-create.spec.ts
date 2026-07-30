@@ -14,6 +14,7 @@ import { test, expect } from '@playwright/test';
 import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { launchEditor, REPO_ROOT } from './launch.ts';
+import { settled } from './trace.ts';
 import type { Launched } from './launch.ts';
 import { newMap } from './tiles.ts';
 import { openObjectPalette, pickObject, placeAtTile } from './objects.ts';
@@ -136,6 +137,49 @@ test('edits the difference and installs the creature', async () => {
 
   // A build closes the form and leaves the list, with what it did on it.
   await expect(page.locator('#unitedit')).toBeHidden();
+  await page.locator('#um-cancel').click();
+  await expect(page.locator('#unitsmod')).toBeHidden();
+});
+
+test('an installed creature opens for editing, whole', async () => {
+  const { page } = ed;
+  if (!(await page.locator('#unitsmod').isVisible())) await page.locator('#unitsbtn').click();
+  const row = page.locator('#um-list .um-item', { hasText: SHARPSHOOTER.name }).first();
+  await expect(row).toBeVisible();
+  await row.locator('button', { hasText: '✎' }).click();
+  await expect(page.locator('#unitedit')).toBeVisible();
+  await expect(page.locator('#unitedit-title')).toHaveText(/Editing/);
+
+  // Whole. Everything below was blank when the list sent a summary, and saving
+  // wrote the blanks back — which is how a creature loses its description by
+  // having its price corrected.
+  await expect(page.locator('#um-id')).toHaveValue(SHARPSHOOTER.id);
+  await expect(page.locator('#um-name')).toHaveValue(SHARPSHOOTER.name);
+  await expect(page.locator('#um-desc')).toHaveValue(SHARPSHOOTER.description);
+  await expect(page.locator('#um-attack')).toHaveValue('12');
+  await expect(page.locator('#um-shots')).toHaveValue('32');
+  await expect(page.locator('#um-town')).toHaveValue('TOWN_NO_TYPE');
+  await expect(page.locator('#um-abilities .um-ability-id')).toHaveCount(3);
+  await expect(page.locator('#um-art-icon')).toHaveValue(/Sharpshooter/);
+
+  // Change one number and save: the rest must survive the round trip.
+  await page.locator('#um-gold').fill('450');
+  // settled(), never a bare wait-for-text: the note still holds the last
+  // message, and the form reports a refusal in a different box entirely — so a
+  // plain wait either reads the old note or sits out its timeout while the
+  // answer is on screen. Twice now.
+  const note = await settled(page, 'saving the creature', '#um-note', '#ue-err',
+    () => page.locator('#um-ok').click());
+  expect(note).toMatch(/installed|updated/i);
+
+  const c = readInstalledMod(GAME).creatures[0]!;
+  expect(c.stats.gold).toBe(450);
+  expect(c.description, 'the words a summary would have lost').toBe(SHARPSHOOTER.description);
+  expect([...c.stats.abilities].sort())
+    .toEqual(['ABILITY_NO_MELEE_PENALTY', 'ABILITY_NO_RANGE_PENALTY', 'ABILITY_PIERCING_ARROW']);
+
+  // Put the window back the way it was found: these are modal dialogs, and the
+  // next test clicks a button that is underneath them.
   await page.locator('#um-cancel').click();
   await expect(page.locator('#unitsmod')).toBeHidden();
 });
