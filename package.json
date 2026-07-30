@@ -74,6 +74,7 @@
     "test-typespec": "node tools/test-typespec.ts",
     "unwrap-exe": "node tools/unwrap-exe.ts",
     "test-exe-unwrap": "node tools/test-exe-unwrap.ts",
+    "test-first-run": "node tools/test-first-run.ts",
     "mod-paths": "node tools/mod-paths.ts",
     "test-mod-paths": "node tools/test-mod-paths.ts",
     "test-map-source": "node tools/test-map-source.ts",

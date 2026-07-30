@@ -7,9 +7,12 @@
 //
 // The DLL is BUILT BY US and shipped: it is the same bytes for every install,
 // it reads a config rather than being generated per artifact, and nobody
-// running the editor needs a compiler. `npm run build-native` makes it; this
-// puts it where the game will find it.
+// running the editor needs a compiler. `buildExtension` makes it — from a
+// checkout, where the compiler comes with the dependencies — and this puts it
+// where the game will find it. `npm run build-native` is a front door onto the
+// same function, and first-run.ts calls it when the file is not there yet.
 
+import { execFileSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
@@ -37,6 +40,44 @@ export interface ExtensionState {
 /** What `dir` (a built editor, or this checkout) ships the DLL as. */
 export function builtDll(editorRoot: string): string {
   return join(editorRoot, 'native', 'build', EXTENSION_DLL);
+}
+
+/** The source it is compiled from, and the compiler that comes with the deps. */
+const NATIVE_SOURCE = join('native', 'homm5-editor.c');
+const ZIG = join('node_modules', '@zigc', 'win32-x64', 'bin', 'zig.exe');
+
+/**
+ * Compile the extension out of a checkout.
+ *
+ * `x86-windows-gnu` is the 32-bit target; the game is a PE32 and will not load
+ * anything else. The C runtime comes along, and that is Zig's call rather than
+ * ours: it serves the Windows headers as part of libc, so `-nostdlib` takes
+ * `windows.h` with it. What arrives is the UCRT, which every Windows 10 and 11
+ * has — and the source calls none of it, so the import is a formality.
+ *
+ * Only a checkout can do this: a packaged editor has no `node_modules` and
+ * therefore no compiler, which is why the built DLL is something a build ships
+ * rather than something it makes.
+ *
+ * The binary is called directly rather than through the package's `zig` shim:
+ * the shim concatenates its arguments into a shell command, and this repo lives
+ * under a path with spaces in it.
+ */
+export function buildExtension(editorRoot: string, log: (s: string) => void = () => {}): string {
+  const zig = join(editorRoot, ZIG);
+  if (!existsSync(zig)) {
+    throw new Error(`no compiler at ${zig}\n  a checkout builds the extension; run "npm install" first`);
+  }
+  const source = join(editorRoot, NATIVE_SOURCE);
+  const dll = builtDll(editorRoot);
+  mkdirSync(dirname(dll), { recursive: true });
+  execFileSync(zig, [
+    'cc', '-target', 'x86-windows-gnu',
+    '-shared', '-Os', '-fno-stack-protector',
+    '-o', dll, source,
+  ], { stdio: 'pipe' });
+  log(`built ${dll} — ${statSync(dll).size} bytes`);
+  return dll;
 }
 
 /**
