@@ -27,6 +27,8 @@ import { fileURLToPath } from 'node:url';
 import { basename, dirname, join } from 'node:path';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { findEditorRoot } from '../src/objects.ts';
+import { loadEnvFile } from '../src/env-file.ts';
+import { isReady } from '../src/first-run.ts';
 import { looksLikeDataRoot } from '../src/unpack.ts';
 import { assets } from '../src/assets.ts';
 import type { Assets } from '../src/assets.ts';
@@ -41,6 +43,12 @@ import { mountCreatureMods } from '../src/creature-mod.ts';
  */
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const APP_ROOT = app.isPackaged ? HERE : join(HERE, '..');
+
+// `.env` beside the checkout, before anything below is asked anything. It only
+// fills in what the environment does not already say, and its whole job is to
+// spare a developer the two folder walks in the setup window — nothing is
+// decided by it (src/env-file.ts).
+loadEnvFile(APP_ROOT);
 
 /** The preload bridge for a window. Stays .cjs — see preload.cjs. */
 export const preloadPath = (name: string): string => join(APP_ROOT, 'electron', name);
@@ -202,10 +210,31 @@ export const tmpRoot = (): string => roots().tmpRoot;
  * This is the one question that decides whether the editor can open anything at
  * all, so it is what setup gates on — not "did someone pick a game folder",
  * which can be answered and still leave nothing to read.
+ *
+ * DELIBERATELY NOT the whole first run. The other three steps (a readable copy
+ * of the executable, our extension in it, our mod folder) are what it takes to
+ * PLAY with what you made; editing a map needs none of them. Gating the editor
+ * on them would open the setup window in front of every e2e spec, each of which
+ * runs against a throwaway install with no `bin/` at all — and would refuse to
+ * open a perfectly good map because the game could not have loaded it yet.
+ * `installReady()` is the stricter question, and the setup window asks it.
  */
 export const isConfigured = (): boolean => {
   const d = gameData();
   return !!d && existsSync(d) && looksLikeDataRoot(d);
+};
+
+/**
+ * Is every one of the first run's four steps done in this install?
+ *
+ * What the setup window's "Open the editor" waits for, and what a caller asks
+ * before promising that something will work in the game rather than merely in
+ * the editor.
+ */
+export const installReady = (): boolean => {
+  const g = gameRoot();
+  const d = gameData();
+  return !!g && !!d && isReady({ gameRoot: g, dataRoot: d, editorRoot: APP_ROOT });
 };
 
 /** Where an unpacked tree should go when the user has no opinion. */

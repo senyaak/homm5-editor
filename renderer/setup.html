@@ -29,6 +29,15 @@
     .ok { color: #3fb950; font-size: 12px; }
     .hint { font-size: 11px; color: #6e7681; }
     progress { width: 100%; height: 6px; accent-color: #1f6feb; }
+    /* The four steps. A tick is a fact read off the install every time this is
+       drawn, never a checkbox remembering what we did. */
+    #steps { display: flex; flex-direction: column; gap: 3px; margin: 2px 0 0; }
+    .four { display: flex; gap: 8px; align-items: baseline; font-size: 12px; color: #6e7681; }
+    .four .mark { width: 14px; flex: none; text-align: center; }
+    .four.done { color: #8b949e; }
+    .four.done .mark { color: #3fb950; }
+    .four.now { color: #cbe0ff; }
+    .four.now .mark { color: #1f6feb; }
     #foot { margin-top: auto; display: flex; align-items: center; gap: 10px; }
     #status { flex: 1; font-size: 12px; color: #8b949e;
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -36,8 +45,9 @@
 </head>
 <body>
   <h1>Point the editor at Heroes V</h1>
-  <p>It reads the game's own models, textures and rosters, so it needs to know where the game is —
-     and it reads them unpacked, so the archives have to be laid out once.</p>
+  <p>It reads the game's own models, textures and rosters, so it needs to know where the game is.
+     Then it prepares that install once: the archives laid out, and a copy of the game's executable
+     that loads our extension and reads a mod folder of our own.</p>
 
   <div class="step">
     <h2>1 · The game folder</h2>
@@ -55,10 +65,15 @@
       <button id="pick-data">Choose…</button>
     </div>
     <div class="hint">About 3 GB. Keep it — the editor reads from here every run, and it is what you diff your mods against.</div>
+  </div>
+
+  <div class="step">
+    <h2>3 · Prepare the install</h2>
+    <div id="steps"></div>
     <progress id="bar" value="0" max="1" hidden></progress>
     <div class="row">
-      <button id="unpack" class="go" disabled>Unpack now</button>
-      <div class="hint" id="unpack-note"></div>
+      <button id="prepare" class="go" disabled>Prepare</button>
+      <div class="hint" id="prepare-note">The game's own files are never written to — the copy is ours.</div>
     </div>
   </div>
 
@@ -69,7 +84,7 @@
 
   <script>
     const $ = (id) => document.getElementById(id);
-    let gameRoot = '', dataRoot = '', dataReady = false, gameOk = false, busy = false;
+    let gameRoot = '', dataRoot = '', gameOk = false, steps = [], busy = false, running = '';
 
     function show(el, path) {
       el.textContent = path || 'not chosen';
@@ -78,6 +93,8 @@
       el.title = path || '';
     }
 
+    const ready = () => steps.length > 0 && steps.every((s) => s.done);
+
     function render() {
       show($('game'), gameRoot);
       show($('data'), dataRoot);
@@ -85,55 +102,81 @@
       $('game-note').textContent = !gameRoot ? 'The folder holding data\\ with the .pak archives.'
         : gameOk ? 'Archives found.'
         : 'No .pak archives in that folder\'s data\\ — is this the game folder?';
-      $('unpack').disabled = busy || !gameOk || !dataRoot;
+
+      $('steps').replaceChildren(...steps.map((s) => {
+        const row = document.createElement('div');
+        row.className = 'four' + (s.done ? ' done' : (running === s.id ? ' now' : ''));
+        const mark = document.createElement('span');
+        mark.className = 'mark';
+        mark.textContent = s.done ? '✓' : (running === s.id ? '›' : '·');
+        const what = document.createElement('span');
+        what.textContent = s.what;
+        row.append(mark, what);
+        return row;
+      }));
+
       $('pick-game').disabled = busy;
       $('pick-data').disabled = busy;
-      $('start').disabled = busy || !dataReady;
-      $('unpack-note').textContent = dataReady && !busy ? 'Data is already there — unpacking again only fills in what changed.' : '';
+      $('prepare').disabled = busy || !gameOk || !dataRoot || ready();
+      $('prepare-note').textContent = ready()
+        ? 'Everything is in place — nothing left to do here.'
+        : 'The game\'s own files are never written to — the copy is ours.';
+      $('start').disabled = busy || !ready();
+    }
+
+    /** Ask the install what is true of it, rather than remembering what we did. */
+    async function refresh() {
+      steps = (gameRoot && dataRoot) ? await window.setup.steps(gameRoot, dataRoot) : [];
+      render();
     }
 
     $('pick-game').onclick = async () => {
       const r = await window.setup.pickGame();
       if (!r.path) return;
       gameRoot = r.path; gameOk = r.ok;
-      render();
+      await refresh();
     };
 
     $('pick-data').onclick = async () => {
       const r = await window.setup.pickData();
       if (!r.path) return;
       dataRoot = r.path;
-      // A folder chosen by hand may already hold a tree from an earlier run, so
-      // ask rather than assume — that is the difference between "unpack 3 GB
-      // again" and "open the editor now".
-      dataReady = await window.setup.check(dataRoot);
-      render();
+      await refresh();
     };
 
-    $('unpack').onclick = async () => {
-      busy = true; $('bar').hidden = false; render();
-      $('status').textContent = 'reading archives…';
+    $('prepare').onclick = async () => {
+      busy = true; $('bar').hidden = false; $('bar').value = 0; render();
+      $('status').textContent = 'starting…';
       try {
-        const r = await window.setup.unpack(gameRoot, dataRoot);
-        dataReady = await window.setup.check(dataRoot);
-        $('status').textContent = `${r.written} new, ${r.replaced} replaced, ${r.unchanged} already current`
-          + (r.failed ? ` — ${r.failed} failed` : '');
+        const r = await window.setup.prepare(gameRoot, dataRoot);
+        $('status').textContent = r.ran.length
+          ? r.ran.map((x) => x.said).join(' · ')
+          : 'everything was already in place';
       } catch (e) {
         $('status').textContent = String(e && e.message || e);
       } finally {
-        busy = false; $('bar').hidden = true; render();
+        busy = false; running = ''; $('bar').hidden = true;
+        await refresh();
       }
     };
 
     $('start').onclick = () => window.setup.finish(gameRoot, dataRoot);
 
+    window.setup.onStep((s) => {
+      running = s.id;
+      // Indeterminate until a step says how far it is — only the unpack can.
+      $('bar').removeAttribute('value');
+      $('status').textContent = s.what + '…';
+      render();
+    });
+
     window.setup.onProgress((p) => {
-      $('bar').value = p.done; $('bar').max = p.total;
-      $('status').textContent = `${p.pak} (${p.pakIndex}/${p.pakCount}) — ${p.done} of ${p.total}`;
+      if (p.total) { $('bar').value = p.done; $('bar').max = p.total; }
+      $('status').textContent = p.total ? `${p.text} — ${p.done} of ${p.total}` : p.text;
     });
 
     window.setup.state().then((s) => {
-      gameRoot = s.gameRoot; dataRoot = s.dataRoot; dataReady = s.dataReady; gameOk = s.gameOk;
+      gameRoot = s.gameRoot; dataRoot = s.dataRoot; gameOk = s.gameOk; steps = s.steps;
       render();
     });
   </script>

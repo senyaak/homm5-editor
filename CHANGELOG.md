@@ -13,6 +13,23 @@ one.
 
 ## Unreleased
 
+### Added
+
+- **The first run prepares the whole install, and it is tested.** Four things
+  have to be true before the editor is any use: the archives unpacked, a
+  readable copy of the game's executable, our extension loaded by it, and that
+  copy reading our own mod folder. Only the first was ever done for anybody —
+  the other three were `npm run` commands typed by hand, so they had happened
+  once, on the machine of whoever wrote them, and nothing exercised them again.
+  The setup screen now does all four, shows which are already true, and only
+  offers **Open the editor** when none are left; the steps are idempotent, so a
+  second run writes nothing. `--setup` reopens the screen at any time.
+- **`.env` beside the checkout** (`.env.example` says what goes in it) fills the
+  setup window's two fields in. It decides nothing: the picker in that window is
+  the only place an install is ever chosen. The e2e suite pointedly does not
+  read it — there `HOMM5_ROOT` means "the install to play in", and its default is
+  a throwaway one so a run cannot leave test maps in a real game folder.
+
 ### Changed
 
 - **A map of ours is a `.h5m` again**, not a `.mod`. The extension was ours to

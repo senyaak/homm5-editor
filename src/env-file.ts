@@ -13,8 +13,16 @@
 // is read as "the game is there" — only as "start looking there".
 //
 // PRECEDENCE. A variable already in the environment wins: an explicit
-// `HOMM5_ROOT=… npm test` is someone saying something about this one run, and a
+// `HOMM5_ROOT=… npm start` is someone saying something about this one run, and a
 // file must not talk over it.
+//
+// THE APP READS IT AND THE TESTS DO NOT, on purpose. `HOMM5_ROOT` means two
+// different things either side of that line: to the editor it is "the install",
+// to the e2e suite it is "the install to play in", and the suite's default is a
+// throwaway under `_tmp` precisely so a run cannot leave `e2e …` maps in a real
+// game folder (e2e/launch.ts). A file that quietly set it for every run would
+// turn that default off for good, on one machine, invisibly. So the suite keeps
+// its explicit variables and this is loaded by electron/paths.ts alone.
 
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';

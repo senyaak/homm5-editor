@@ -280,10 +280,31 @@ folder anywhere and run `homm5-editor.exe`; there is no installer, on purpose.
 
 A packaged editor has no checkout to take its bearings from, so on first run it
 asks: where the game is installed, and where to put the unpacked data. Both
-answers go in `settings.json` under the user's app-data folder, and the setup
-screen unpacks the archives itself. `HOMM5_ROOT` / `HOMM5_DATA` still win over
-what was remembered, and `homm5-editor.exe --setup` reopens the screen when the
-answers go stale.
+answers go in `settings.json` under the user's app-data folder, and
+`homm5-editor.exe --setup` reopens the screen when they go stale.
+
+Then that screen **prepares the install** — four steps, and the editor is only
+worth opening once they are done ([src/first-run.ts](src/first-run.ts)):
+
+1. the archives unpacked into a tree we can read;
+2. a readable copy of the executable (`bin/H5_Game_H5E.exe`) — the shipped one is
+   never written to, which is what keeps it as the off switch;
+3. our extension compiled in and named by that copy's import table;
+4. that copy pointed at `H5E/`, our own mod folder, instead of the five the game
+   ships with.
+
+Three of those four used to be npm commands typed by hand, which meant they were
+done once on the machine of whoever wrote them. They are all idempotent and the
+screen shows which are already true, so a second run does nothing;
+`e2e/first-run.spec.ts` does all four to an install that did not exist a second
+ago and then checks that a second pass writes not one byte.
+
+**The paths come from that picker and nowhere else.** `HOMM5_ROOT` / `HOMM5_DATA`
+— from the shell, or from a `.env` beside the checkout (see `.env.example`) —
+fill the two fields in and decide nothing. The e2e suite deliberately does not
+read that file: to it `HOMM5_ROOT` means "the install to play in", and its
+default is a throwaway under `_tmp` so a run cannot leave `e2e …` maps in a real
+game folder.
 
 The build is unsigned, so on another machine SmartScreen will warn about an
 unknown publisher — that needs a code-signing certificate, not a packaging flag.

@@ -1,29 +1,39 @@
-// First-run setup: where is the game, and where should its data be unpacked.
+// First run: where the game is, and everything that has to be true before the
+// editor can work in it.
 //
-// Runs before the editor's window exists, because without a data root there is
-// nothing to open — no models, no textures, no rosters, an empty map list. From
-// the repo this never appears (the checkout's position answers both questions);
-// it is the packaged editor, installed somewhere with no environment variables
-// and no terminal, that has to ask.
+// Runs before the editor's window exists, because an editor with nothing to read
+// is not worth opening — no models, no textures, no rosters, an empty map list.
+//
+// THE PICKER DECIDES. Every path comes from this window and nowhere else. The
+// environment (and `.env` beside the checkout) fills the two fields in so the
+// answer is one Enter away, but nothing is ever taken as settled without the
+// person in front of it saying so. Everything downstream — the four steps, the
+// e2e suite, the tools — is handed its folders; none of them go looking.
+//
+// WHAT IT DOES ONCE THE PATHS ARE IN: src/first-run.ts, all four steps, with the
+// window showing which are already true. It used to do only the first of them
+// and leave the other three to npm commands nobody but the author ever ran.
 //
 // A window of its own rather than a panel in the editor: it has its own preload
-// with its own three methods, so nothing here can reach the editor's IPC surface
-// or disturb its UI.
+// with its own methods, so nothing here can reach the editor's IPC surface or
+// disturb its UI.
 
 import { BrowserWindow, dialog, ipcMain } from 'electron';
-import { existsSync, mkdirSync } from 'node:fs';
-import { unpackSteps, looksLikeDataRoot, looksLikeGameFolder } from '../src/unpack.ts';
-import type { UnpackReport } from '../src/unpack.ts';
-import { defaultDataRoot, gameRoot, gameData, preloadPath, reload, rendererFile, saveSettings } from './paths.ts';
+import { existsSync } from 'node:fs';
+
+import { firstRun, installState } from '../src/first-run.ts';
+import type { FirstRunResult, Install, Progress, StepState } from '../src/first-run.ts';
+import { looksLikeGameFolder } from '../src/unpack.ts';
+import { APP_ROOT, defaultDataRoot, gameData, gameRoot, preloadPath, reload, rendererFile, saveSettings } from './paths.ts';
 
 /** What the setup window shows when it opens. */
 export interface SetupState {
   gameRoot: string;
   dataRoot: string;
-  /** The data root already holds an unpacked tree, so unpacking is optional. */
-  dataReady: boolean;
   /** The game folder holds archives to unpack. */
   gameOk: boolean;
+  /** The four steps, and which of them this install already has. */
+  steps: StepState[];
 }
 
 /** The answer to "pick a folder": empty path means the user cancelled. */
@@ -31,23 +41,6 @@ export interface PickResult {
   path: string;
   ok: boolean;
 }
-
-/** How far the unpack has got, as the window shows it. */
-export interface SetupProgress {
-  pak: string;
-  pakIndex: number;
-  pakCount: number;
-  done: number;
-  total: number;
-}
-
-/**
- * How long to stay in the unpack loop before letting the main process breathe.
- *
- * Counting members instead would be wrong in both directions: a slice of small
- * text entries goes by in no time, while one 100 MB video is a slice of its own.
- */
-const SLICE_MS = 100;
 
 /** Kept alive after setup succeeds, until the editor's window exists. */
 let setupWin: BrowserWindow | null = null;
@@ -68,23 +61,38 @@ export function closeSetup(): void {
   setupWin = null;
 }
 
+/** The install a pair of chosen folders describes. `editorRoot` is ours to know. */
+const installOf = (gameDir: string, dataDir: string): Install =>
+  ({ gameRoot: gameDir, dataRoot: dataDir, editorRoot: APP_ROOT });
+
+/**
+ * What the four steps say about a pair of folders.
+ *
+ * Asked after every pick and after every run, never guessed from what the last
+ * answer was — the folder may have been chosen by hand and already hold a tree
+ * from an earlier install, which is the difference between "unpack 3 GB again"
+ * and "open the editor now".
+ */
+function stepsFor(gameDir: string, dataDir: string): StepState[] {
+  return installState(installOf(gameDir, dataDir));
+}
+
 const state = (): SetupState => {
   const g = gameRoot() || '';
   const d = gameData() || defaultDataRoot();
-  return { gameRoot: g, dataRoot: d, dataReady: !!d && existsSync(d) && looksLikeDataRoot(d), gameOk: !!g && looksLikeGameFolder(g) };
+  return { gameRoot: g, dataRoot: d, gameOk: !!g && looksLikeGameFolder(g), steps: stepsFor(g, d) };
 };
 
 /**
  * Show the setup window and resolve once the editor can start.
  *
- * `true` means there is a usable data root; `false` means the user closed the
- * window, and the caller quits — an editor with nothing to read is not worth
- * opening.
+ * `true` means the install is ready; `false` means the user closed the window,
+ * and the caller quits.
  */
 export function runSetup(): Promise<boolean> {
   return new Promise<boolean>((resolve) => {
     const win = new BrowserWindow({
-      width: 640, height: 520, center: true, resizable: false,
+      width: 660, height: 620, center: true, resizable: false,
       backgroundColor: '#0d1014', title: 'homm5-editor — setup',
       webPreferences: { preload: preloadPath('setup-preload.cjs'), contextIsolation: true, nodeIntegration: false },
     });
@@ -92,7 +100,7 @@ export function runSetup(): Promise<boolean> {
     setupWin = win;
 
     let done = false;
-    const channels = ['setup:state', 'setup:check', 'setup:pick-game', 'setup:pick-data', 'setup:unpack', 'setup:finish'];
+    const channels = ['setup:state', 'setup:steps', 'setup:pick-game', 'setup:pick-data', 'setup:prepare', 'setup:finish'];
     const finish = (ok: boolean): void => {
       if (done) return;
       done = true;
@@ -105,12 +113,15 @@ export function runSetup(): Promise<boolean> {
       resolve(ok);
     };
 
+    /** Send an event, unless the window went away while a step was running. */
+    const send = (channel: string, payload: unknown): void => {
+      if (!win.isDestroyed()) win.webContents.send(channel, payload);
+    };
+
     ipcMain.handle('setup:state', async (): Promise<SetupState> => state());
 
-    // Whether a folder holds a tree the editor can read — asked after picking one
-    // and again after unpacking, so "Open the editor" is never enabled on a guess.
-    ipcMain.handle('setup:check', async (_e, p: { dataRoot: string }): Promise<boolean> =>
-      !!p.dataRoot && existsSync(p.dataRoot) && looksLikeDataRoot(p.dataRoot));
+    ipcMain.handle('setup:steps', async (_e, p: { gameRoot: string; dataRoot: string }): Promise<StepState[]> =>
+      stepsFor(p.gameRoot, p.dataRoot));
 
     ipcMain.handle('setup:pick-game', async (): Promise<PickResult> => {
       const r = await dialog.showOpenDialog(win, {
@@ -129,34 +140,17 @@ export function runSetup(): Promise<boolean> {
         defaultPath: gameData() || defaultDataRoot(),
       });
       const path = r.canceled ? '' : r.filePaths[0] || '';
-      return { path, ok: !!path };
+      return { path, ok: !!path && existsSync(path) };
     });
 
-    // Unpacking is minutes of synchronous file work. Run flat out and the main
-    // process stops pumping window messages, so Windows greys the window out and
-    // calls the app hung — hence the slice-and-yield.
-    ipcMain.handle('setup:unpack', async (_e, p: { gameRoot: string; dataRoot: string }): Promise<UnpackReport> => {
-      mkdirSync(p.dataRoot, { recursive: true });
-      const steps = unpackSteps(p.gameRoot, p.dataRoot);
-      try {
-        // Sent from the first member on, so the window says something even when
-        // the whole archive goes by inside one slice.
-        let due = 0;
-        for (;;) {
-          const s = steps.next();
-          // The report is the handler's return value, so the window learns the
-          // run finished by the invoke resolving — no "done" event.
-          if (s.done) return s.value;
-          const now = Date.now();
-          if (now < due) continue;
-          due = now + SLICE_MS;
-          if (!win.isDestroyed()) win.webContents.send('setup:progress', s.value);
-          await new Promise<void>((r) => { setImmediate(r); });
-        }
-      } finally {
-        steps.return(undefined as never);   // closes the archive if we bailed out
-      }
-    });
+    // Minutes of work in the window's own process. `firstRun` yields inside the
+    // unpack for exactly that reason — run it flat out and Windows stops getting
+    // messages, greys the window and calls the app hung.
+    ipcMain.handle('setup:prepare', async (_e, p: { gameRoot: string; dataRoot: string }): Promise<FirstRunResult> =>
+      firstRun(installOf(p.gameRoot, p.dataRoot), {
+        onStep: (s) => send('setup:step', { id: s.id, what: s.what }),
+        note: (n: Progress) => send('setup:progress', n),
+      }));
 
     ipcMain.handle('setup:finish', async (_e, p: { gameRoot: string; dataRoot: string }): Promise<boolean> => {
       saveSettings({ gameRoot: p.gameRoot, dataRoot: p.dataRoot });

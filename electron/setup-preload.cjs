@@ -8,10 +8,11 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('setup', {
   state: () => ipcRenderer.invoke('setup:state'),
-  check: (dataRoot) => ipcRenderer.invoke('setup:check', { dataRoot }),
+  steps: (gameRoot, dataRoot) => ipcRenderer.invoke('setup:steps', { gameRoot, dataRoot }),
   pickGame: () => ipcRenderer.invoke('setup:pick-game'),
   pickData: () => ipcRenderer.invoke('setup:pick-data'),
-  unpack: (gameRoot, dataRoot) => ipcRenderer.invoke('setup:unpack', { gameRoot, dataRoot }),
+  prepare: (gameRoot, dataRoot) => ipcRenderer.invoke('setup:prepare', { gameRoot, dataRoot }),
   finish: (gameRoot, dataRoot) => ipcRenderer.invoke('setup:finish', { gameRoot, dataRoot }),
+  onStep: (cb) => ipcRenderer.on('setup:step', (_e, s) => cb(s)),
   onProgress: (cb) => ipcRenderer.on('setup:progress', (_e, p) => cb(p)),
 });

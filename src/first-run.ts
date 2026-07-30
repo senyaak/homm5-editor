@@ -48,8 +48,21 @@ export interface Install {
 
 export type StepId = 'data' | 'exe' | 'extension' | 'paths';
 
-/** Progress from inside a step, for a window that has to show something. */
-export type Note = (line: string) => void;
+/**
+ * Progress from inside a step, for a window that has to show something.
+ *
+ * `done`/`total` are there when the step can honestly say how far it is, which
+ * is one step out of four — the rest send a line and no bar, because a bar that
+ * moves without meaning is worse than none.
+ */
+export interface Progress {
+  /** One line, for whoever is waiting. */
+  text: string;
+  done?: number;
+  total?: number;
+}
+
+export type Note = (p: Progress) => void;
 
 export interface Step {
   id: StepId;
@@ -92,7 +105,8 @@ export const STEPS: readonly Step[] = [
           const now = Date.now();
           if (now < due) continue;
           due = now + SLICE_MS;
-          note?.(`${s.value.pak} — ${s.value.done} of ${s.value.total}`);
+          const p = s.value;
+          note?.({ text: `${p.pak} (${p.pakIndex}/${p.pakCount})`, done: p.done, total: p.total });
           await breathe();
         }
       } finally {
@@ -107,7 +121,7 @@ export const STEPS: readonly Step[] = [
     what: 'make a readable copy of the executable',
     done: (i) => existsSync(join(i.gameRoot, PATCHED_EXE)),
     run: async (i, note) => {
-      const r = await ensureCleanExe(i.gameRoot, { editorRoot: i.editorRoot, log: (s) => note?.(s) });
+      const r = await ensureCleanExe(i.gameRoot, { editorRoot: i.editorRoot, log: (text) => note?.({ text }) });
       return `${r.action} ${PATCHED_EXE} (${r.kind})`;
     },
   },
@@ -119,7 +133,7 @@ export const STEPS: readonly Step[] = [
       // A checkout compiles it; a build ships it already compiled. Either way
       // the file has to be there before the executable can be made to name it.
       if (!existsSync(builtDll(i.editorRoot))) {
-        note?.('building the extension');
+        note?.({ text: 'building the extension' });
         buildExtension(i.editorRoot);
       }
       const r = installExtension(i.gameRoot, i.editorRoot);

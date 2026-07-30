@@ -420,9 +420,12 @@ ipcMain.handle('app:set-gpu-software', (_e: IpcMainInvokeEvent, { on }: { on: bo
 
 app.whenReady().then(async () => {
   // Nothing to read means nothing to edit, so setup comes first: it asks where
-  // the game is and unpacks its archives. `--setup` forces it, which is the way
-  // back in once the answers are wrong (the game moved, the data root was
-  // deleted) and the editor would otherwise open onto an empty map list.
+  // the game is and then prepares that install — the archives unpacked, a
+  // readable copy of the executable, our extension in it, our own mod folder
+  // (src/first-run.ts). `--setup` forces it, which is the way back in once the
+  // answers are wrong (the game moved, the data root was deleted, the install
+  // was never prepared) and the editor would otherwise open onto an empty map
+  // list or a game that cannot load what it makes.
   if (!isConfigured() || process.argv.includes('--setup')) {
     const ok = await runSetup();
     if (!ok) { app.quit(); return; }
