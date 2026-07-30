@@ -51,13 +51,15 @@ instinct applied to runs).
   warnings we do have must be fixed rather than excused (§6). What is left over
   is not an exemption list but a debt register — every line a number that may
   only go down.
-- д) **Split the renderer by section, not by dialog.** `renderer/app.ts` is 8676
-  lines carrying 48 marked `// --- … ---` sections; `renderer/index.html` is
-  1703 lines and 19 `<dialog>`s. Measured (§5.3), the dialogs are 4% of the
-  code, so moving them alone changes nothing — the units that matter are the
-  sections, and the first pass is the three that barely touch the 3D world: the
-  mod dialogs, the campaign dialogs, and map settings. Markup moves in step, to
-  `renderer/parts/<name>.html`; `index.html` keeps only the shell.
+- д) **Split the renderer by section, not by dialog.** DONE, and it grew into
+  its own slice — see [SLICE_renderer_layout.md](SLICE_renderer_layout.md).
+  `renderer/app.ts` is 803 lines rather than 8676, and the sections live under
+  `renderer/{core,viewport,features}`. The measurement in §5.3 held: the
+  dialogs were never the unit, the sections were. The markup did NOT move —
+  `renderer/index.html` still carries all 30 `<dialog>`s, because moving it
+  needs a templating step this slice deliberately does not add (§1.2.а), and
+  the deeply-wired sections named in §1.2.д turned out to be movable after all
+  once shared state was put on named objects.
 - е) **A crash dialog that ends in a filed ticket.** For UNHANDLED errors only:
   copy the details, open the log, or open a prefilled
   `github.com/senyaak/homm5-editor/issues/new?title=…&body=…` carrying version,
@@ -76,9 +78,11 @@ instinct applied to runs).
   a separate slice; the renderer is where the bugs of this kind actually
   happened.
 - г) A log viewer inside the app. "Open the folder" is enough until it is not.
-- д) The deeply-wired sections of `renderer/app.ts` — regions, the terrain
-  parts, the palettes. They hold real shared state (§5.3) and moving them is a
-  design job, not a mechanical one.
+- д) ~~The deeply-wired sections of `renderer/app.ts` — regions, the terrain
+  parts, the palettes.~~ Moved after all, once the shared state they hold was
+  put on named objects rather than module globals — see
+  [SLICE_renderer_layout.md](SLICE_renderer_layout.md) §2.2. It was a design
+  job, as predicted; the design was one object per thing being shared.
 
 ## 2. Why — what went wrong, and what would have caught it
 
