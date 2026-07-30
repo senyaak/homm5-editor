@@ -183,7 +183,7 @@ building.
 | `src/campaign.ts` | build / load / save a descriptor (and strip empty hrefs) |
 | `src/campaign-project.ts` | the project folder: texts, the mission list, hero pools, bonuses |
 | `src/campaign-pack.ts` | `packCampaign` → `.h5c`, and `campaignMaps` (which `.h5m` you still owe) |
-| `electron/main.ts` | the `campaign:*` IPC, including resolving a map's heroes to their characters |
+| `electron/channels/campaigns.ts` | the `campaign:*` IPC, including resolving a map's heroes to their characters |
 | `renderer/app.ts` | the three dialogs |
 | `tools/test-campaign.ts` | the format checks, held against a real editor-made campaign when one is present |
 | `e2e/campaign.spec.ts` | a one-mission campaign, assembled in the app |

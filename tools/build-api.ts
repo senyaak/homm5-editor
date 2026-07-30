@@ -26,7 +26,7 @@ const EXTRACTED = join(ROOT, 'src', 'script-api-extracted.json');
 const OUT = join(ROOT, 'src', 'script-api.json');
 const DOC = join(ROOT, 'docs', 'SCRIPT_API.md');
 
-/** The completion source shape — what electron/main.ts serves to the editor. */
+/** The completion source shape — what script:context serves to the editor. */
 interface ApiFn { name: string; params: string; group: string; summary?: string }
 
 const extracted: ApiFn[] = existsSync(EXTRACTED)

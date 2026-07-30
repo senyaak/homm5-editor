@@ -93,7 +93,7 @@ call's script argument) all point at the **wrapper**, by xpointer:
 button makes both files, binds the ref, and opens the code; **✎** follows the
 wrapper to its `.lua`. Typing the name of a script that already exists re-binds to
 it without touching its contents, which is also how you point the map at a script
-you wrote earlier. (`script:new` / `script:resolve` in `electron/main.ts`.)
+you wrote earlier. (`script:new` / `script:resolve` in `electron/channels/text.ts`.)
 
 A mission usually has more than one:
 

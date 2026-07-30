@@ -49,7 +49,8 @@ pack, so it would ship a map with no text. Use Export.
 
 ## Where it lives
 
-- Provisioning (enable/add/remove) and the sidecar: `loc:*` in `electron/main.ts`.
+- Provisioning (enable/add/remove): `loc:*` in `electron/channels/loc.ts`;
+  the sidecar and the tagged texts: `electron/localization.ts`.
 - The single-language pack: `exportLocalized` in `src/project.ts` (a normal pack
   with the tagged files collapsed to plain names for the chosen language).
 - Tabs, the Localize dialog and export buttons: `renderer/app.ts`.
