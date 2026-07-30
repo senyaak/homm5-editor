@@ -4,6 +4,8 @@ node_modules/
 renderer/scene-view.html
 renderer/terrain-view.html
 data-unpacked/
+# ...and any copy of it set aside by hand. It is game content either way.
+data-unpacked.*/
 
 # built from renderer/app.ts by esbuild
 renderer/app.js
