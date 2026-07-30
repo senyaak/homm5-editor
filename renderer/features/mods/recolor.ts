@@ -133,12 +133,13 @@ async function submitRecolor(): Promise<void> {
   }
 }
 
-for (const id of ['rc-hue', 'rc-sat', 'rc-light', 'rc-tint', 'rc-tintk']) {
-  $input(id).addEventListener('input', renderRecolorPreviews);
-}
 
 /** Bind the recolour dialog to its markup. */
+
 export function initRecolor(): void {
+  for (const id of ['rc-hue', 'rc-sat', 'rc-light', 'rc-tint', 'rc-tintk']) {
+    $input(id).addEventListener('input', renderRecolorPreviews);
+  }
   $('rc-grey').onclick = () => {
     $input('rc-sat').value = '0';
     $input('rc-hue').value = '0';

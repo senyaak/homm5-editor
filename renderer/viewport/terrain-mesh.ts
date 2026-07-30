@@ -11,6 +11,16 @@ import { uiPrefs } from '#core/prefs.ts';
 import { tierOf, RAMP_BIT, TIER_STEP } from '#src/terrain.ts';
 import { UNITS_PER_TILE as U } from '#src/units.ts';
 import type { TileInfo } from '#src/scene.ts';
+import { $ } from '#core/dom.ts';
+import type { Floor3D } from '#core/state.ts';
+import { refreshBlocked } from '#viewport/overlays.ts';
+
+/**
+ * Sea level. The bed is dug to 0 and ordinary ground sits at 2.0, but the fill
+ * level isn't recorded anywhere, so it is tuned by eye — and a loaded map
+ * overwrites it with whatever its own water plane says.
+ */
+export const sea = { base: 1.5 };
 
 /**
  * A point on a cut cell's boundary ring. Corners reuse their existing grid
@@ -288,4 +298,33 @@ export function terrainGeometry(
   tg.setIndex(ti); tg.computeVertexNormals();
   tg.userData.triTile = new Int32Array(triTile);
   return tg;
+}
+
+/** Rebuild the meshes a sculpt stroke invalidated. */
+export function remeshFloor(fl: Floor3D): void {
+  const old = fl.terrainMesh.geometry;
+  fl.terrainMesh.geometry = terrainGeometry(fl.V, fl.heights, fl.flags, fl.colors);
+  old.dispose();
+  // Flooding or draining changes which cells the sheet covers. On a map that
+  // began dry there is no sheet yet, so digging the first basin creates one —
+  // otherwise the new sea would not appear until a reload.
+  const cells = waterCells(fl.V, fl.flags);
+  if (!cells.length) {
+    if (fl.waterMesh) {
+      fl.group.remove(fl.waterMesh);
+      fl.waterMesh.geometry.dispose();
+      fl.waterMesh = null;
+    }
+  } else if (fl.waterMesh) {
+    const prev = fl.waterMesh.geometry;
+    fl.waterMesh.geometry = waterGeometry(fl.V, cells, sea.base);
+    prev.dispose();
+  } else {
+    fl.waterMesh = makeWaterMesh(fl.V, cells, sea.base, fl.waterTex);
+    fl.group.add(fl.waterMesh);
+    $('seawrap').style.display = 'flex'; // the map has a sea now, so offer its level
+  }
+  // The overlay is built from the terrain's triangles, which have just been
+  // replaced — and sculpting changes what counts as a cliff anyway.
+  refreshBlocked(fl);
 }
