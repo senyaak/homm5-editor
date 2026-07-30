@@ -37,9 +37,13 @@ renderer/   the UI (bundled by esbuild from app.ts) + index.html:
               viewport/  the drawing — stage (context, cameras, controls),
                          lighting, materials, geoms, splat, terrain-mesh,
                          instancing, idle, fx, point-lights, overlays
-              features/  one folder or file per screen — campaigns, mods/,
-                         text-editor/
-              app.ts     what is left: the panels not yet moved, and the boot
+              features/  one folder or file per screen — shell (toolbar,
+                         panels, picker), map-session, selection, history,
+                         inspector/ (panel, controls, tree, map-props, refs),
+                         terrain-brush/, palettes, regions, localization,
+                         text-editor/, campaigns, mods/
+              app.ts     the pointer, the automation hook, the menus, the
+                         render loop, and the init*() calls that wire it all
 docs/       the reverse-engineering write-ups and the plans. Keep these in step.
 tools/      test scripts (test-*), the harness generator, CLIs.
 ```
