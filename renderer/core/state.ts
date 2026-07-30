@@ -117,15 +117,3 @@ export const state = {
 
 /** Only called while a map is loaded; every caller is gated on `state.world`. */
 export const activeFloor = (): Floor3D => state.world!.floors[state.world!.active]!;
-
-/** Ground height at a tile of a given floor. */
-export function heightOn(fl: Floor3D, x: number, y: number): number {
-  const { V, heights } = fl;
-  const ix = Math.max(0, Math.min(V - 1, Math.round(x)));
-  const iy = Math.max(0, Math.min(V - 1, Math.round(y)));
-  return heights[iy * V + ix]!;
-}
-
-export function heightAt(x: number, y: number): number {
-  return heightOn(activeFloor(), x, y);
-}
