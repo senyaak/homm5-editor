@@ -21,6 +21,14 @@ import { api } from '#core/ipc.ts';
 import { uiPrefs, saveUiPrefs } from '#core/prefs.ts';
 import { ask, modDialog, openOnTop } from '#core/dialog.ts';
 import { state, activeFloor, heightOn, heightAt } from '#core/state.ts';
+import { renderer, scene, camera, controls, topCamera, cam, keys, isTyping, raycaster, ptr,
+  syncTopCamera, setTopView, keyPan, DEFAULT_BG } from '#viewport/stage.ts';
+import { worldGeos, worldMats, geomParts, geomScale, geomFootprint, geomSkin, geomFx,
+  registerGeom, buildGeos } from '#viewport/geoms.ts';
+import { materialFor, partTexture } from '#viewport/materials.ts';
+import { upgradeToSplat, projectBatch, applyProjectedMaterials, setGroundScale, setCliffAmount,
+  cliffsOn, disposeSplats } from '#viewport/splat.ts';
+import { applyAmbient, refreshLighting, sun, uSunDir, uSunCol, uAmbCol, uLmGain, uFxTint } from '#viewport/lighting.ts';
 import type { Floor3D, World, Selection, GeomBatch } from '#core/state.ts';
 import { UNITS_PER_TILE as U } from '#src/units.ts';
 import { tierOf, RAMP_BIT, TIER_STEP } from '#src/terrain.ts';
@@ -68,234 +76,6 @@ type RingPoint = RingCorner | RingCut;
 
 const ALL = 'All'; // category chip meaning 'no filter', used as both label and key
 
-// --- three.js boilerplate ---
-
-/**
- * The 3D context, or a failure that says what to do about it.
- *
- * three.js throws a bare "Error creating WebGL context." here, and this is a
- * top-level `const`: the throw stops the rest of this module, which is every
- * event handler the window has. The page keeps its static markup, so the editor
- * looks open and does nothing at all — the map list stays on its "loading…"
- * placeholder for good. That is how this shipped, and the message a user got was
- * nothing. The context is genuinely required (the whole editor is the 3D view),
- * so this does not try to carry on without one; it just makes the failure name
- * itself, and index.html's trap puts it on screen.
- */
-function makeRenderer(): THREE.WebGLRenderer {
-  try {
-    return new THREE.WebGLRenderer({ antialias: true });
-  } catch (e) {
-    throw new Error(
-      'This machine did not give the editor a 3D (WebGL) context, so the map view cannot start. '
-      + 'The usual causes are a graphics driver too old for Chromium to trust, a remote-desktop '
-      + 'or virtual-machine session with no GPU, or a laptop running this on its idle GPU.\n\n'
-      + 'Updating the graphics driver is the fix worth having. Failing that, the button below '
-      + 'restarts the editor drawing in software — several times slower, but it does not need a '
-      + 'driver to cooperate, and it can be turned off again from inside the editor.\n\n'
-      + `(three.js said: ${e instanceof Error ? e.message : String(e)})`,
-    );
-  }
-}
-const renderer = makeRenderer();
-renderer.setSize(innerWidth, innerHeight);
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-$('app').appendChild(renderer.domElement);
-
-const scene = new THREE.Scene();
-const DEFAULT_BG = new THREE.Color(0x0d1014);
-scene.background = DEFAULT_BG;
-const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.5, 6000);
-camera.up.set(0, 0, 1); // Z-up
-// The three lights a map's AmbientLight preset drives (applyAmbient). Their
-// initial values are the fallback look for a map with no readable preset:
-// bright, wraparound lighting so back-facing / normal-less meshes never go
-// pure black (a lot of decoded props have imperfect normals).
-const hemi = new THREE.HemisphereLight(0xdfeaff, 0x555044, 1.15);
-const amb = new THREE.AmbientLight(0xffffff, 0.35);
-const sun = new THREE.DirectionalLight(0xfff0d8, 0.9);
-sun.position.set(0.6, 0.4, 1);
-scene.add(hemi, amb, sun);
-
-// The floor's lighting preset, applied on load and floor switch.
-//
-// Mapping the game's four-colour model onto three lights: the sun carries
-// LightColor from its Pitch/Yaw; the hemisphere spans AmbientColor (sky side)
-// down to ShadeColor (the colour the game paints surfaces facing away from the
-// sun — three.js has no shade term, but a hemisphere's underside reaches the
-// same faces); a small constant floor stays so decoded props with broken
-// normals never go black.
-//
-// GAIN, and why it is ~4.6 and not 2: the game's fixed-function pipeline
-// multiplies colours in GAMMA space (its `Whitening` is the era's modulate-×2),
-// while three.js lights in linear. Multiplication commutes with a pure power
-// transfer, so a gamma-space ×2 is a linear-space ×2^2.2 — with the honest
-// factor 2 the same preset renders a dusk. Whether Yaw counts from +X and
-// which way it turns is not written down anywhere reachable — this mapping is
-// the one that matched the game's picture on the maps checked visually.
-const AMBIENT_GAIN = Math.pow(2, 2.2);
-
-// The terrain and the terrain-projected parts draw with custom shaders outside
-// three.js's lighting, so the preset reaches them as uniforms — these three
-// objects are shared by reference across every such material, and applyAmbient
-// mutates the values in place. They hold GAMMA-space colours (the splat works
-// on raw texture values, like the game did); the defaults reproduce the old
-// hard-coded look, `0.62 + 0.5·d = 2·(0.31 + 0.25·d)`.
-const uSunDir = { value: new THREE.Vector3(0.45, 0.35, 0.82) };
-const uSunCol = { value: new THREE.Color(0.25, 0.25, 0.25) };
-const uAmbCol = { value: new THREE.Color(0.31, 0.31, 0.31) };
-// The Light toggle's reach into the terrain: 1 = the baked designer point
-// lights add in, 0 = they don't (flat editing light keeps pools off too).
-const uLmGain = { value: 1 };
-// Scene light on L_LIT particle instances (docs/EFFECTS_FORMAT.md §5): the
-// terrain's own gamma-space sum at full incidence, 2·(amb + sun) clamped to
-// 1 — daylight leaves lit smoke alone, a night preset darkens it while the
-// self-lit (L_NORMAL) fire beside it keeps burning. Shared by reference into
-// every fx system; flat editing light resets it to white.
-const uFxTint = { value: new THREE.Color(1, 1, 1) };
-
-function applyAmbient(a: AmbientData | null): void {
-  scene.background = DEFAULT_BG;
-  if (!a) {
-    hemi.color.set(0xdfeaff); hemi.groundColor.set(0x555044); hemi.intensity = 1.15;
-    amb.color.set(0xffffff); amb.intensity = 0.35;
-    sun.color.set(0xfff0d8); sun.intensity = 0.9;
-    sun.position.set(0.6, 0.4, 1);
-    uSunDir.value.set(0.45, 0.35, 0.82);
-    uSunCol.value.setRGB(0.25, 0.25, 0.25);
-    uAmbCol.value.setRGB(0.31, 0.31, 0.31);
-    uFxTint.value.setRGB(1, 1, 1);
-    return;
-  }
-  const [lr, lg, lb] = a.light as [number, number, number];
-  const [ar, ag, ab] = a.ambient as [number, number, number];
-  const [sr, sg, sb] = a.shade as [number, number, number];
-  sun.color.setRGB(lr, lg, lb, THREE.SRGBColorSpace);
-  sun.intensity = AMBIENT_GAIN;
-  // Pitch counts from the ZENITH, not the horizon: presets carry 35-50, and
-  // read as elevation those made flat ground catch barely half the sun and
-  // every shipped day map rendered as dusk (the engine's own PWL preview of
-  // the same maps shows bright noon grass).
-  const p = a.pitch * Math.PI / 180, yw = a.yaw * Math.PI / 180;
-  sun.position.set(Math.sin(p) * Math.cos(yw), Math.sin(p) * Math.sin(yw), Math.cos(p));
-  hemi.color.setRGB(ar, ag, ab, THREE.SRGBColorSpace);
-  hemi.groundColor.setRGB(sr, sg, sb, THREE.SRGBColorSpace);
-  hemi.intensity = AMBIENT_GAIN;
-  amb.color.set(0xffffff); amb.intensity = 0.12;
-  uSunDir.value.copy(sun.position);
-  uSunCol.value.setRGB(lr, lg, lb); // raw, no conversion: gamma-space shader
-  uAmbCol.value.setRGB(ar, ag, ab);
-  uFxTint.value.setRGB(
-    Math.min(1, 2 * (ar + lr)), Math.min(1, 2 * (ag + lg)), Math.min(1, 2 * (ab + lb)));
-}
-
-const controls = new OrbitControls(camera, renderer.domElement);
-controls.enableDamping = true;
-// Map-editor feel: middle-drag pans (the default dollies, which duplicates the
-// wheel), and panning slides along the ground plane instead of the screen plane
-// so the view doesn't drift off the terrain when the camera is tilted.
-controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.PAN, RIGHT: THREE.MOUSE.PAN };
-controls.screenSpacePanning = false;
-
-// --- top-down (plan) camera -------------------------------------------------
-// A fixed orthographic view straight down the -Z axis. Perspective foreshortening
-// and terrain height both drop out, so world (x, y) maps to the screen by a plain
-// affine transform: a proper plan view for laying a map out, and — because that
-// mapping is exact and camera-independent — the stable coordinate frame the
-// click-driven reconstruction tests need to compute "where to click" for a tile.
-//
-// The orbit camera above still owns pan/target; this one just re-centres on that
-// same target every frame (see syncTopCamera). Rotation is disabled in plan view
-// so the affine mapping holds; pan (WASD / middle-drag) and zoom (wheel -> the
-// frustum half-height) still work.
-const topCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, -20000, 20000);
-topCamera.up.set(0, 1, 0); // world +Y is screen up, +X is screen right
-/** Half-height of the ortho frustum, in world units — the plan-view zoom level. */
-let topHalf = 40 * U;
-/** false = 3D perspective + orbit; true = 2D plan (orthographic top-down). */
-let topView = false;
-/** The camera the render loop, raycaster and resize all read; swapped by the toggle. */
-let activeCam: THREE.Camera = camera;
-
-/** Re-fit the ortho frustum to the viewport aspect and re-centre it over the orbit target. */
-function syncTopCamera(): void {
-  const aspect = innerWidth / innerHeight;
-  topCamera.top = topHalf; topCamera.bottom = -topHalf;
-  topCamera.left = -topHalf * aspect; topCamera.right = topHalf * aspect;
-  const t = controls.target;
-  topCamera.position.set(t.x, t.y, 10000); // height is arbitrary under ortho, just above all geometry
-  topCamera.lookAt(t.x, t.y, 0);
-  topCamera.updateProjectionMatrix();
-  topCamera.updateMatrixWorld();
-}
-
-/** Switch between the 3D orbit view and the 2D plan view. */
-function setTopView(on: boolean): void {
-  topView = on;
-  activeCam = on ? topCamera : camera;
-  controls.enableRotate = !on; // plan view keeps pan + zoom, drops orbit
-  if (on) syncTopCamera();
-  const b = document.getElementById('viewbtn');
-  if (b) { b.textContent = on ? 'View: 2D' : 'View: 3D'; b.classList.toggle('on', on); }
-  saveUiPrefs({ topView: on });
-}
-
-// Wheel zoom in plan view: OrbitControls dollies the (hidden) perspective camera,
-// which does nothing to the ortho frustum, so adjust its half-height here instead.
-addEventListener('wheel', (e) => {
-  if (!topView) return;
-  topHalf = Math.max(2 * U, Math.min(400 * U, topHalf * (e.deltaY > 0 ? 1.1 : 1 / 1.1)));
-}, { passive: true });
-
-// --- WASD panning ---
-// Held keys move the camera and its orbit target together across the ground.
-// Speed scales with zoom distance so it feels the same up close and far out.
-const keys = new Set();
-const isTyping = (el: EventTarget | null): boolean =>
-  el instanceof HTMLElement && el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
-addEventListener('keydown', (e) => { if (!isTyping(e.target)) keys.add(e.code); });
-addEventListener('keyup', (e) => keys.delete(e.code));
-addEventListener('blur', () => keys.clear()); // don't keep sliding if focus is lost
-
-const panVec = new THREE.Vector3(), fwdVec = new THREE.Vector3();
-function keyPan(dt: number): void {
-  let f = 0, s = 0;
-  if (keys.has('KeyW') || keys.has('ArrowUp')) f += 1;
-  if (keys.has('KeyS') || keys.has('ArrowDown')) f -= 1;
-  if (keys.has('KeyD') || keys.has('ArrowRight')) s += 1;
-  if (keys.has('KeyA') || keys.has('ArrowLeft')) s -= 1;
-  if (!f && !s) return;
-  camera.getWorldDirection(fwdVec);
-  fwdVec.z = 0;                                   // travel along the ground
-  if (fwdVec.lengthSq() < 1e-6) fwdVec.set(0, 1, 0);
-  fwdVec.normalize();
-  const speed = camera.position.distanceTo(controls.target) * 0.9
-    * (keys.has('ShiftLeft') || keys.has('ShiftRight') ? 2.5 : 1) * dt;
-  // right = forward × up, for a Z-up world
-  panVec.set(fwdVec.x * f + fwdVec.y * s, fwdVec.y * f - fwdVec.x * s, 0).normalize().multiplyScalar(speed);
-  camera.position.add(panVec);
-  controls.target.add(panVec);
-}
-
-addEventListener('resize', () => {
-  camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth, innerHeight);
-  syncTopCamera(); // keep the plan-view frustum matched to the new aspect
-});
-
-/**
- * Point the lighting at what the Light toggle says: the active floor's own
- * preset + its baked point-light pools, or the flat neutral look (the same one
- * a preset-less map gets) for editing a dark underground without squinting.
- */
-function refreshLighting(): void {
-  const fl = state.world ? state.world.floors[state.world.active] : null;
-  applyAmbient(state.mapLight ? fl?.ambient ?? null : null);
-  uLmGain.value = state.mapLight ? 1 : 0;
-}
-
-const raycaster = new THREE.Raycaster();
-const ptr = new THREE.Vector2();
 
 /**
  * World centre of a tile. An object's saved position is a CELL index (placement
@@ -315,9 +95,7 @@ function terrainColor(h: number): [number, number, number] {
 }
 
 function clearWorld(): void {
-  for (const m of splatMats.splice(0)) {
-    m.uniforms.uGround.value?.dispose?.(); m.uniforms.uMask.value?.dispose?.(); m.dispose();
-  }
+  disposeSplats();
   if (state.world) for (const fl of state.world.floors) {
     scene.remove(fl.group);
     // An InstancedMesh owns a GPU buffer of its own beyond the shared geometry;
@@ -333,128 +111,6 @@ function clearWorld(): void {
   applyAmbient(null);
 }
 
-// The per-geom geometries and materials, shared across floors.
-//
-// Module-level rather than local to buildGeos because they outlive the load:
-// placing an object from the palette can bring a model the map never used, and
-// it is appended here at the index the main process assigned it.
-let worldGeos: THREE.BufferGeometry[] = [];
-/** One material ARRAY per geom, lined up with that geometry's groups. */
-let worldMats: THREE.Material[][] = [];
-
-const texLoader = new THREE.TextureLoader();
-const greyMat = new THREE.MeshLambertMaterial({ color: 0x8a8f98, side: THREE.DoubleSide });
-
-/**
- * Materials shared across every part that uses the same texture, so a model
- * naming one material for several meshes uploads it once.
- */
-const texCache = new Map<string, THREE.Material>();
-
-/**
- * Material for one submesh: its own texture, blended as its material says.
- *
- * The mode comes from the file's <AlphaMode>, not from inspecting the texels.
- * Guessing from the image said "this has soft edges, so alpha-test it", which
- * is exactly wrong for a decal meant to be blended: the Abandoned Mine's base
- * plate is a nearly black texture at alpha 33/255, and drawn opaque it is the
- * grey slab under the building instead of a soft shadow on the grass.
- */
-function materialFor(part: GeomPart): THREE.Material {
-  if (!part.tex) return greyMat;
-  // Cached per texture AND mode: the same image is used both ways in places.
-  // Flatness is in the key because it changes the material: the same texture in
-  // the same blend mode is a depth-writing body on one mesh and a decal on
-  // another.
-  const key = `${part.alphaMode}|${part.projectOnTerrain ? 'proj' : 'own'}|${part.opaque ? 'body' : 'sheer'}|${part.additive ? 'add' : ''}${part.selfIllum ? 'lit' : ''}|${part.tex}`;
-  const hit = texCache.get(key);
-  if (hit) return hit;
-  const tx = texLoader.load(part.tex);
-  tx.wrapS = tx.wrapT = THREE.RepeatWrapping;
-  tx.flipY = false;
-  // A diffuse texture holds sRGB-encoded colour. Left unmarked, three samples it
-  // as linear, so the shader over-brightens every texel and the deep browns wash
-  // out to a flat pale grey -- the Garrison wall looked untextured for exactly
-  // this reason. Tagging it sRGB makes the sampler decode to linear before
-  // lighting, and the render finally shows the wood.
-  tx.colorSpace = THREE.SRGBColorSpace;
-  // A self-illuminated part (L_SELFILLUM: portal runes, spell auras) emits its
-  // own colour, so it uses an unlit material — a Lambert would drop it into
-  // shadow the game never shows.
-  const m: THREE.MeshBasicMaterial | THREE.MeshLambertMaterial = part.selfIllum
-    ? new THREE.MeshBasicMaterial({ map: tx, side: THREE.DoubleSide })
-    : new THREE.MeshLambertMaterial({ map: tx, side: THREE.DoubleSide });
-  switch (part.alphaMode) {
-    case 'AM_ALPHA_TEST':
-      // Cutout (foliage): discard transparent texels so leaves aren't opaque
-      // black cards, without paying for sorted transparency.
-      m.alphaTest = 0.5;
-      break;
-    case 'AM_TRANSPARENT':
-    case 'AM_OVERLAY':
-    case 'AM_DECAL':
-      // Blended. Whether it writes depth turns on whether the texture is a solid
-      // skin, not on the blend mode or the mesh shape. A body with an opaque
-      // texture (Mountain10x10's rock, 96% opaque) must occlude or it goes
-      // see-through and draws its far side over its near one. A sheer overlay
-      // (the Abandoned Mine's hill, 11% opaque, projected onto and blended into
-      // the terrain) must NOT write depth: its near-invisible pixels would
-      // occlude the ground behind it, punching the hole Senya saw where the
-      // earth should be. Flatness cannot tell these two apart — both are
-      // non-flat AM_OVERLAY.
-      m.transparent = true;
-      m.depthWrite = part.opaque;
-      break;
-    case 'AM_OVERLAY_ZWRITE':
-      m.transparent = true;
-      break;
-    default: // AM_OPAQUE
-      break;
-  }
-  // A part that declares ProjectOnTerrain lies ON the ground rather than above
-  // it, so it is coplanar with the terrain and z-fights with it. Push it toward
-  // the camera in depth only — the geometry does not move.
-  if (part.projectOnTerrain) {
-    m.polygonOffset = true;
-    m.polygonOffsetFactor = -1;
-    m.polygonOffsetUnits = -1;
-    m.depthWrite = false;
-  }
-  // Additive (AddPlaced): the texels are ADDED to the background, so the part
-  // reads as light — a portal's glow, a spell aura. Black adds nothing and
-  // bright core adds a lot. It must not write depth, or its own far side would
-  // occlude its near one and the glow would tear.
-  if (part.additive) {
-    m.blending = THREE.AdditiveBlending;
-    m.transparent = true;
-    m.depthWrite = false;
-  }
-  texCache.set(key, m);
-  return m;
-}
-
-/** Geometry for one decoded model, with a group per submesh. */
-function geometryFor(g: GeomData): THREE.BufferGeometry {
-  const b = new THREE.BufferGeometry();
-  b.setAttribute('position', new THREE.BufferAttribute(new Float32Array(g.pos), 3));
-  if (g.uv) b.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(g.uv), 2));
-  b.setIndex(g.idx);
-  // A group per submesh, indexed into the material array. Drawn as one group
-  // instead, every mesh of a building took whichever texture came first.
-  g.parts.forEach((p, i) => b.addGroup(p.start, p.count, i));
-  // Prefer the authored normals; computing them averages across every face at a
-  // vertex and softens the hard edges that give a model its shape.
-  if (g.nrm) b.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(g.nrm), 3));
-  else b.computeVertexNormals();
-  // The binding rides along on the shared geometry: it is the same for every
-  // copy of a model, only the skeleton differs per object. Harmless on the
-  // instanced draws, which never look at it.
-  if (g.skin?.clip) {
-    b.setAttribute('skinIndex', new THREE.BufferAttribute(new Uint8Array(g.skin.index), 4));
-    b.setAttribute('skinWeight', new THREE.BufferAttribute(new Float32Array(g.skin.weight), 4));
-  }
-  return b;
-}
 
 // --- idle stance -------------------------------------------------------------
 //
@@ -473,10 +129,6 @@ type IdleMode = 'off' | 'visible' | 'all';
 
 /** Which mode the CURRENT scene was built for; `off` means it has no bones. */
 let idleMode: IdleMode = 'off';
-/** Skin payloads by geom index, kept from the scene for building skeletons. */
-const geomSkin = new Map<number, SkinnedGeom>();
-/** Effect instances per geom — every placement of the geom plays them. */
-const geomFx = new Map<number, FxInstancePayload[]>();
 const idleFrustum = new THREE.Frustum();
 const idleViewProjection = new THREE.Matrix4();
 const _idlePoint = new THREE.Vector3();
@@ -496,7 +148,7 @@ function advanceIdle(dt: number): void {
   const fl = state.world.floors[state.world.active];
   if (!fl?.idle.length || !fl.objGroup.visible) return;
   if (idleMode === 'visible') {
-    idleViewProjection.multiplyMatrices(activeCam.projectionMatrix, activeCam.matrixWorldInverse);
+    idleViewProjection.multiplyMatrices(cam.active.projectionMatrix, cam.active.matrixWorldInverse);
     idleFrustum.setFromProjectionMatrix(idleViewProjection);
   }
   for (const idle of fl.idle) {
@@ -746,375 +398,6 @@ function replaceInstances(fl: Floor3D, instances: Instance[]): void {
   const batches = buildBatches(still, fl.meshes, worldGeos, worldMats, fl.objGroup);
   for (const [g, b] of batches) fl.batches.set(g, b);
   syncFootprints(fl);
-}
-
-// Build the shared per-geom geometries + materials (reused across floors).
-function buildGeos(S: Scene) {
-  const geos = S.geoms.map(geometryFor);
-  const mats = S.geoms.map((g) => g.parts.map(materialFor));
-  geomParts.clear();
-  geomFootprint.clear();
-  geomSkin.clear();
-  geomFx.clear();
-  geomScale.clear();
-  S.geoms.forEach((g, i) => {
-    geomParts.set(i, g.parts);
-    geomFootprint.set(i, g.footprint ?? null);
-    // Only a model with a clip is worth remembering: the binding alone poses
-    // nothing, and every other geom would just sit in the map unused.
-    if (g.skin?.clip) geomSkin.set(i, g.skin);
-    if (g.fx?.length) geomFx.set(i, g.fx);
-    if (g.scale && g.scale !== 1) geomScale.set(i, g.scale);
-  });
-  worldGeos = geos;
-  worldMats = mats;
-  return { geos, mats };
-}
-
-// --- terrain splat shader --------------------------------------------------
-// The ground is N tile textures blended by per-vertex weight masks. Baking that
-// into one atlas would need ~500 texels per tile to stay sharp, so instead we
-// blend live: each texture tiles across the map at `uScale` repeats per tile,
-// weighted by its mask. Both texture sets are 2D array textures (WebGL2), which
-// keeps it to two samplers no matter how many layers a map uses.
-const SPLAT_VERT = `
-out vec2 vGrid;   // 0..1 across the map -> mask lookup
-out vec2 vWorld;  // tile coords -> tiled ground lookup
-out vec3 vNrm;    // world-space normal (lighting must not swim with the camera)
-out vec3 vPos;    // world position -> vertical projection for cliff faces
-void main() {
-  vGrid = uv;
-  vWorld = position.xy;
-  vPos = (modelMatrix * vec4(position, 1.0)).xyz;
-  // The terrain mesh is built in grid space and stretched to the real tile
-  // spacing in X and Y only, so its model matrix is non-uniform. Normals do not
-  // survive that: scaling a surface wider without scaling its normals leaves
-  // every slope reading as steep as it was before the stretch, which is the
-  // whole artefact this scaling exists to remove. The inverse transpose is the
-  // transform that gets it right, and it costs one 3x3 inverse per vertex.
-  vNrm = normalize(transpose(inverse(mat3(modelMatrix))) * normal);
-  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-}`;
-
-const splatFrag = (groups: number, layers: number): string => `
-precision highp sampler2DArray;
-uniform sampler2DArray uGround;
-uniform sampler2DArray uMask;
-uniform sampler2D uRock;
-uniform float uScale;
-uniform float uRockScale;
-uniform float uCliff;   // 0 disables the rock blend entirely
-uniform vec3 uSunDir; uniform vec3 uSunCol; uniform vec3 uAmb;
-uniform sampler2D uLm;  // baked designer point lights (bakeLightMap)
-uniform float uInvTiles;
-uniform float uLmGain;  // the Light toggle: 0 turns the pools off
-in vec2 vGrid; in vec2 vWorld; in vec3 vNrm; in vec3 vPos;
-out vec4 outColor;
-void main() {
-  // Layers arrive sorted by the tiles' <Priority>, so compositing them in order
-  // paints high-priority tiles (roads, rocks) over low ones (grass, dirt). An
-  // averaged blend would instead dilute each layer against the base.
-  vec3 col = vec3(0.30, 0.33, 0.24);
-  for (int g = 0; g < ${groups}; g++) {
-    vec3 m = texture(uMask, vec3(vGrid, float(g))).rgb;
-    for (int c = 0; c < 3; c++) {
-      int li = g * 3 + c;
-      if (li >= ${layers}) break;
-      float w = m[c];
-      if (w <= 0.002) continue;
-      col = mix(col, texture(uGround, vec3(vWorld * uScale, float(li))).rgb, w);
-    }
-  }
-  // Cliff faces. The ground layers are projected straight down, so on a near
-  // vertical drop they smear into streaks. Steep faces instead take the rock
-  // texture, projected sideways (blended between the X and Y walls) so it keeps
-  // its scale down the face.
-  // Thresholds matter at the shoreline: land sits at 2.0, the beach ring at 1.6
-  // and the bed at 0, so the cut into water falls about 58° (steep ~0.47). The
-  // old 0.35-0.68 ramp only mixed in a quarter of the rock there and the edge
-  // still read as grass poured over the side, which is exactly what it looked
-  // like. Starting at 0.18 makes a 58° face solid rock while leaving anything
-  // gentler than ~25° untouched.
-  vec3 n = normalize(vNrm);
-  float steep = 1.0 - clamp(n.z, 0.0, 1.0);
-  float cliff = uCliff * smoothstep(0.18, 0.45, steep);
-  if (cliff > 0.001) {
-    float wx = abs(n.x), wy = abs(n.y);
-    // uScale counts repeats per TILE and vPos is in world units, so the rock
-    // needs the world-unit rate or it would stretch along the face.
-    vec3 rx = texture(uRock, vec2(vPos.y, vPos.z) * uRockScale).rgb;
-    vec3 ry = texture(uRock, vec2(vPos.x, vPos.z) * uRockScale).rgb;
-    // The rock texture averages 26% grey, so at minimum light a cut face landed
-    // near rgb 35 — solid black against lit grass. Brightened, and mixed at 0.85
-    // so the surrounding ground's hue still tints the face (brown by dirt, pale
-    // by stone) instead of a flat grey band.
-    vec3 rock = mix(ry, rx, wx / (wx + wy + 1e-4)) * 1.7;
-    col = mix(col, rock, cliff * 0.85);
-  }
-
-  // The game's own fixed-function sum, in the same gamma space it ran in:
-  // albedo · (ambient + sun·NdotL + pointLights) · 2 — the ×2 is the era's
-  // modulate-×2 (the preset's colours are authored around 0.2-0.55 with it in
-  // mind), and the baked designer lights join the sum before it, like the
-  // engine's own vertex lights would.
-  // abs(), not max(): the terrain is DoubleSide and a generated wall normal may
-  // point into the cliff, which would otherwise pin the face at ambient.
-  // The lightmap spans the TILES (vWorld/tiles), not vGrid: vGrid is nudged
-  // half a texel to hit the V-wide mask's texel centers and would smear the
-  // pools half a tile off their objects.
-  float d = abs(dot(n, normalize(uSunDir)));
-  vec3 pl = texture(uLm, vWorld * uInvTiles).rgb * uLmGain;
-  outColor = vec4(col * (uAmb + uSunCol * d + pl) * 2.0, 1.0);
-}`;
-
-const loadImg = (src: string): Promise<HTMLImageElement> => new Promise((res, rej) => {
-  const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('image decode failed')); i.src = src;
-});
-
-// Stack same-sized images into one DataArrayTexture via a canvas read-back.
-async function arrayTexture(uris: string[], size: number): Promise<THREE.DataArrayTexture> {
-  const data = new Uint8Array(uris.length * size * size * 4);
-  const cv = document.createElement('canvas'); cv.width = cv.height = size;
-  const cx = cv.getContext('2d', { willReadFrequently: true });
-  if (!cx) throw new Error('no 2d canvas context');
-  for (let i = 0; i < uris.length; i++) {
-    const img = await loadImg(uris[i]!);
-    cx.clearRect(0, 0, size, size);
-    cx.drawImage(img, 0, 0, size, size);
-    data.set(cx.getImageData(0, 0, size, size).data, i * size * size * 4);
-  }
-  const tex = new THREE.DataArrayTexture(data, size, size, uris.length);
-  tex.format = THREE.RGBAFormat; tex.type = THREE.UnsignedByteType;
-  tex.needsUpdate = true;
-  return tex;
-}
-
-let texScale = uiPrefs.texScale;   // ground-texture repeats per map tile (tunable in the toolbar)
-let cliffAmount = uiPrefs.cliffs ? 1 : 0;  // how strongly steep faces take the rock texture
-const splatMats: THREE.ShaderMaterial[] = [];
-
-// --- terrain-projected parts ------------------------------------------------
-//
-// A part flagged `terrainProjected` (in scene.ts: <ProjectOnTerrain> AND a sheer
-// texture) takes the ground it stands on as its surface. The Abandoned Mine's
-// mound is the case: on grass the engine draws a grassy hump, the model
-// supplying only the dark ore patch, so the green has to come from the terrain
-// underneath — which is what Senya saw in the original editor, the map's texture
-// climbing the hill.
-//
-// So these parts are shaded with the SAME splat the ground uses, sampled at
-// their own world position, with their own texture laid on top as a darkening.
-// The sheer gate is load-bearing: this was tried once on EVERY <ProjectOnTerrain>
-// part and smeared a column of ground texels up Mountain10x10's cliffs, because
-// that mountain is a 96%-opaque proj body, not a decal. Opacity is what tells
-// the mound (11%) from the mountain (96%).
-
-const PROJ_VERT = `
-out vec2 vGrid;   // 0..1 across the map -> mask lookup
-out vec2 vWorld;  // tile coords -> tiled ground lookup
-out vec2 vUv;     // the part's own uv, for its darkening texture
-out vec3 vNrm;
-uniform float uMapSide;   // V - 1
-uniform float uUnits;     // world units per tile
-void main() {
-  // The mesh is batched, so the position has to come through the instance
-  // matrix exactly as the instanced draw sees it.
-  #ifdef USE_INSTANCING
-    vec4 world = modelMatrix * instanceMatrix * vec4(position, 1.0);
-    vNrm = normalize(mat3(modelMatrix) * mat3(instanceMatrix) * normal);
-  #else
-    vec4 world = modelMatrix * vec4(position, 1.0);
-    vNrm = normalize(mat3(modelMatrix) * normal);
-  #endif
-  // Objects live in world units; the splat composites in grid coords, so convert
-  // once here and the ground lines up with the terrain seamlessly.
-  vec2 grid = world.xy / uUnits;
-  vGrid = grid / uMapSide;
-  vWorld = grid;
-  vUv = uv;
-  gl_Position = projectionMatrix * viewMatrix * world;
-}`;
-
-const projFrag = (groups: number, layers: number): string => `
-precision highp sampler2DArray;
-uniform sampler2DArray uGround;
-uniform sampler2DArray uMask;
-uniform sampler2D uOverlay;
-uniform float uScale;
-uniform float uHasOverlay;
-uniform vec3 uSunDir; uniform vec3 uSunCol; uniform vec3 uAmb;
-uniform sampler2D uLm;
-uniform float uLmGain;
-in vec2 vGrid; in vec2 vWorld; in vec2 vUv; in vec3 vNrm;
-out vec4 outColor;
-void main() {
-  // Composited exactly as the ground is, so the seam between a projected part
-  // and the terrain around it is invisible.
-  vec3 col = vec3(0.30, 0.33, 0.24);
-  for (int g = 0; g < ${groups}; g++) {
-    vec3 m = texture(uMask, vec3(vGrid, float(g))).rgb;
-    for (int c = 0; c < 3; c++) {
-      int li = g * 3 + c;
-      if (li >= ${layers}) break;
-      float w = m[c];
-      if (w <= 0.002) continue;
-      col = mix(col, texture(uGround, vec3(vWorld * uScale, float(li))).rgb, w);
-    }
-  }
-  // The model's own texture darkens the ground rather than replacing it: for the
-  // mound it is a near-black ore patch at low alpha, which is all it contributes.
-  if (uHasOverlay > 0.5) {
-    vec4 o = texture(uOverlay, vUv);
-    col *= mix(vec3(1.0), o.rgb, o.a);
-  }
-  // Lit with the terrain's own sun formula: the part IS ground, and a mound
-  // shaded differently from the flat around it reads as a decal, not a hump.
-  // Here vGrid is exactly grid/tiles (see PROJ_VERT), which is the lightmap's
-  // own mapping, so the pools land where the terrain draws them.
-  float d = abs(dot(normalize(vNrm), normalize(uSunDir)));
-  vec3 pl = texture(uLm, vGrid).rgb * uLmGain;
-  outColor = vec4(col * (uAmb + uSunCol * d + pl) * 2.0, 1.0);
-}`;
-
-/**
- * Give every terrain-projected part of this floor a material that samples the
- * floor's ground. Runs after the splat exists, since it borrows its textures —
- * and its uniform objects by reference, so the ground-scale slider reaches these
- * materials through the same uScale it writes on the terrain.
- */
-function applyProjectedMaterials(fl: Floor3D): void {
-  for (const g of fl.batches.keys()) projectBatch(fl, g);
-}
-
-/**
- * Give one batch's terrain-projected parts their ground-sampling material.
- * Split out from applyProjectedMaterials so a freshly placed object gets the
- * same treatment a loaded one does — otherwise a mine dropped from the palette
- * kept the transparent overlay and its earth hood vanished.
- */
-function projectBatch(fl: Floor3D, g: number): void {
-  const s = fl.splat;
-  const splatMat = fl.terrainMesh.material as THREE.ShaderMaterial;
-  if (!s || !splatMat?.uniforms?.uGround) return;
-  const parts = geomParts.get(g);
-  const batch = fl.batches.get(g);
-  if (!parts || !batch) return;
-  const mats = batch.im.material;
-  const list = Array.isArray(mats) ? mats : [mats];
-  let changed = false;
-  parts.forEach((p, i) => {
-    if (!p.terrainProjected) return;
-    // Already projected (re-run on add, or an add-layer rebuild): leave it.
-    if ((list[i] as THREE.ShaderMaterial)?.uniforms?.uUnits) return;
-    const overlay = p.tex ? texLoader.load(p.tex) : null;
-    if (overlay) { overlay.wrapS = overlay.wrapT = THREE.RepeatWrapping; overlay.flipY = false; }
-    list[i] = new THREE.ShaderMaterial({
-      glslVersion: THREE.GLSL3,
-      vertexShader: PROJ_VERT,
-      fragmentShader: projFrag(s.maskGroups.length, s.layerCount),
-      uniforms: {
-        uGround: splatMat.uniforms.uGround!,
-        uMask: splatMat.uniforms.uMask!,
-        uScale: splatMat.uniforms.uScale!,
-        uOverlay: { value: overlay },
-        uHasOverlay: { value: overlay ? 1 : 0 },
-        uMapSide: { value: s.V - 1 },
-        uUnits: { value: U },
-        uLm: { value: fl.lightMap }, uLmGain,
-        uSunDir, uSunCol, uAmb: uAmbCol,
-      },
-      side: THREE.DoubleSide,
-      // The mound IS the ground, and the building's entrance and floor sit ON
-      // it: where they are coplanar the two flickered green/dark as the camera
-      // moved. Push the ground surface back in depth so the solid parts on top
-      // of it always win — same trick the flat ProjectOnTerrain decals use.
-      polygonOffset: true,
-      polygonOffsetFactor: 1,
-      polygonOffsetUnits: 1,
-    });
-    changed = true;
-  });
-  if (changed) batch.im.material = list;
-}
-
-/** Submesh descriptions per geom index, so materials can be rebuilt later. */
-const geomParts = new Map<number, GeomPart[]>();
-
-/**
- * Creature display scale per geom index (GeomData.scale: the idle clip
- * skeleton's root — Phoenix 0.37, Devil 0.7). Applied on the pick-handle mesh
- * so it flows into the batch, the selection box and the idle body alike;
- * absent means 1. Effects deliberately do NOT take it.
- */
-const geomScale = new Map<number, number>();
-
-/** Building tile footprint per geom index (null for objects that declare none). */
-const geomFootprint = new Map<number, Footprint | null>();
-
-// Swap a floor's flat-colour terrain material for the textured splat one.
-async function upgradeToSplat(fl: Floor3D): Promise<void> {
-  const s = fl.splat;
-  if (!s || !s.layerCount) return;
-  // [perf] Ground textures decode off the critical path but still upload on the
-  // GPU thread; timed so a slow splat shows up next to the other phase logs.
-  const tSplat = performance.now();
-  const [ground, masks] = await Promise.all([
-    arrayTexture(s.layerTex, s.size),
-    arrayTexture(s.maskGroups, s.V),
-  ]);
-  ground.wrapS = ground.wrapT = THREE.RepeatWrapping;
-  ground.magFilter = THREE.LinearFilter;
-  ground.minFilter = THREE.LinearMipmapLinearFilter;
-  ground.generateMipmaps = true;
-  ground.anisotropy = renderer.capabilities.getMaxAnisotropy();
-  masks.wrapS = masks.wrapT = THREE.ClampToEdgeWrapping;
-  masks.magFilter = masks.minFilter = THREE.LinearFilter;
-  ground.needsUpdate = masks.needsUpdate = true;
-
-  let rock = null;
-  if (s.rockTex) {
-    rock = await new THREE.TextureLoader().loadAsync(s.rockTex);
-    rock.wrapS = rock.wrapT = THREE.RepeatWrapping;
-    rock.anisotropy = renderer.capabilities.getMaxAnisotropy();
-    // Deliberately NOT sRGB-tagged. Tagging it makes the GPU decode to linear on
-    // sample, and this shader is custom so nothing encodes back — Rock.dds's
-    // 0.255 grey became 0.053 and cut faces rendered at rgb 19 instead of 94.
-    // That was the "black cliffs": the standalone viewer never set the flag,
-    // which is why its cuts looked right while the editor's didn't. The ground
-    // array textures aren't tagged either, so this keeps the whole splat
-    // consistent in one space.
-  }
-
-  const mat = new THREE.ShaderMaterial({
-    glslVersion: THREE.GLSL3,
-    vertexShader: SPLAT_VERT,
-    fragmentShader: splatFrag(s.maskGroups.length, s.layerCount),
-    uniforms: {
-      uGround: { value: ground }, uMask: { value: masks },
-      uRock: { value: rock }, uCliff: { value: rock ? cliffAmount : 0 },
-      uScale: { value: texScale },
-      uRockScale: { value: texScale / U },
-      uLm: { value: fl.lightMap }, uInvTiles: { value: 1 / (s.V - 1) }, uLmGain,
-      uSunDir, uSunCol, uAmb: uAmbCol,
-    },
-    side: THREE.DoubleSide,
-  });
-  fl.maskTex = masks; // the brush writes into this and flips needsUpdate
-  const old = fl.terrainMesh.material;
-  fl.terrainMesh.material = mat;
-  for (const m of Array.isArray(old) ? old : [old]) {
-    // Adding a layer re-runs this on a floor that already had a splat, so the
-    // retired material has to leave the list too — the ground-scale slider
-    // walks it and would be writing uniforms into a disposed material.
-    const at = splatMats.indexOf(m as THREE.ShaderMaterial);
-    if (at >= 0) splatMats.splice(at, 1);
-    m.dispose();
-  }
-  splatMats.push(mat);
-  // Parts that take their colour from the ground can only be built now: they
-  // borrow this material's textures.
-  applyProjectedMaterials(fl);
-  console.log(`[perf] splat ${fl.name} ${(performance.now() - tSplat) | 0}ms · ${s.layerCount} layers @ ${s.size}px`);
 }
 
 // Build one floor: its coloured terrain heightmap + its placed object meshes.
@@ -1681,7 +964,7 @@ function setActiveFloor(i: number): void {
   camera.position.set(c, -V * 0.5 * U, midZ + V * 0.7 * U);
   controls.update();
   // Fit the whole floor in the plan view too (a touch of margin past the edge).
-  topHalf = V * 0.55 * U;
+  cam.half = V * 0.55 * U;
   syncTopCamera();
   updateFloorUI();
   if (state.world) renderExplorer(); // floor switch -> its own object list
@@ -3980,7 +3263,7 @@ function pickObject(ev: PointerEvent): THREE.Mesh | null {
   if (!state.showObjects) return null; // hidden objects must not swallow clicks
   ptr.x = (ev.clientX / innerWidth) * 2 - 1;
   ptr.y = -(ev.clientY / innerHeight) * 2 + 1;
-  raycaster.setFromCamera(ptr, activeCam);
+  raycaster.setFromCamera(ptr, cam.active);
   const hits = raycaster.intersectObjects<THREE.Mesh>([...activeFloor().meshes.values()], false);
   return hits.length ? hits[0]!.object : null;
 }
@@ -4069,7 +3352,7 @@ renderer.domElement.addEventListener('pointermove', (ev) => {
   // the resulting world position to the tile grid.
   ptr.x = (ev.clientX / innerWidth) * 2 - 1;
   ptr.y = -(ev.clientY / innerHeight) * 2 + 1;
-  raycaster.setFromCamera(ptr, activeCam);
+  raycaster.setFromCamera(ptr, cam.active);
   const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -state.selected.mesh.position.z);
   const hit = new THREE.Vector3();
   if (!raycaster.ray.intersectPlane(plane, hit)) return;
@@ -4663,13 +3946,13 @@ function tileAtClient(clientX: number, clientY: number): { x: number; y: number 
  */
 function groundPointAtClient(clientX: number, clientY: number): { x: number; y: number } | null {
   if (!state.world) return null;
-  if (topView) {
+  if (cam.top) {
     syncTopCamera();
     const aspect = innerWidth / innerHeight;
     const ndcX = (clientX / innerWidth) * 2 - 1, ndcY = -(clientY / innerHeight) * 2 + 1;
     return {
-      x: topCamera.position.x + ndcX * topHalf * aspect,
-      y: topCamera.position.y + ndcY * topHalf,
+      x: topCamera.position.x + ndcX * cam.half * aspect,
+      y: topCamera.position.y + ndcY * cam.half,
     };
   }
   const p = hitPointAtClient(clientX, clientY);
@@ -4681,7 +3964,7 @@ function hitPointAtClient(clientX: number, clientY: number): THREE.Vector3 | nul
   if (!state.world) return null;
   ptr.x = (clientX / innerWidth) * 2 - 1;
   ptr.y = -(clientY / innerHeight) * 2 + 1;
-  raycaster.setFromCamera(ptr, activeCam);
+  raycaster.setFromCamera(ptr, cam.active);
   const ground = activeFloor().terrainMesh;
   // The raycaster tests against matrixWorld, and three.js only refreshes that
   // while rendering. The ground carries a real transform now — it is built in
@@ -4857,8 +4140,8 @@ function worldToScreen(wx: number, wy: number): TilePoint {
   // viewport, and both can have moved since the last frame was drawn.
   syncTopCamera();
   const aspect = innerWidth / innerHeight;
-  const ndcX = (wx - topCamera.position.x) / (topHalf * aspect);
-  const ndcY = (wy - topCamera.position.y) / topHalf;
+  const ndcX = (wx - topCamera.position.x) / (cam.half * aspect);
+  const ndcY = (wy - topCamera.position.y) / cam.half;
   const px = ((ndcX + 1) / 2) * innerWidth, py = ((1 - ndcY) / 2) * innerHeight;
   return { x: px, y: py, onScreen: px >= 0 && py >= 0 && px < innerWidth && py < innerHeight };
 }
@@ -4869,7 +4152,7 @@ const view: ViewApi = {
     if (!state.world) return;
     const V = activeFloor().V, c = (V / 2) * U;
     controls.target.set(c, c, controls.target.z);
-    topHalf = V * 0.55 * U;
+    cam.half = V * 0.55 * U;
     syncTopCamera();
   },
   focus(x, y) {
@@ -4878,7 +4161,7 @@ const view: ViewApi = {
     syncTopCamera();
   },
   zoom(halfTiles) {
-    topHalf = Math.max(2 * U, Math.min(400 * U, halfTiles * U));
+    cam.half = Math.max(2 * U, Math.min(400 * U, halfTiles * U));
     syncTopCamera();
   },
   objects() {
@@ -5940,7 +5223,7 @@ function setShowObjects(on: boolean): void {
   saveUiPrefs({ showObjects: on });
 }
 $('showobj').onclick = () => setShowObjects(!state.showObjects);
-$('viewbtn').onclick = () => setTopView(!topView);
+$('viewbtn').onclick = () => setTopView(!cam.top);
 
 // --- idle stance ------------------------------------------------------------
 //
@@ -6276,32 +5559,11 @@ function addInstanceToScene(inst: Instance, geom: { index: number; data: GeomDat
   // A model this scene has never drawn arrives with the instance; build its
   // geometry and material now and park them at the index the main process used,
   // so `inst.g` means the same thing on both sides.
-  if (geom) {
-    const b = new THREE.BufferGeometry();
-    b.setAttribute('position', new THREE.BufferAttribute(new Float32Array(geom.data.pos), 3));
-    if (geom.data.uv) b.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(geom.data.uv), 2));
-    b.setIndex(geom.data.idx);
-    // Same grouping as buildGeos: one group per submesh, one material each.
-    geom.data.parts.forEach((p, i) => b.addGroup(p.start, p.count, i));
-    if (geom.data.nrm) b.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(geom.data.nrm), 3));
-    else b.computeVertexNormals();
-    // Same skin wiring as buildGeos/geometryFor, or a brand-new model placed
-    // with idles on would stand frozen while its loaded twins move.
-    if (geom.data.skin?.clip) {
-      b.setAttribute('skinIndex', new THREE.BufferAttribute(new Uint8Array(geom.data.skin.index), 4));
-      b.setAttribute('skinWeight', new THREE.BufferAttribute(new Float32Array(geom.data.skin.weight), 4));
-      geomSkin.set(geom.index, geom.data.skin);
-    }
-    worldGeos[geom.index] = b;
-    worldMats[geom.index] = geom.data.parts.map(materialFor);
-    // Rebuildable-materials registry, same as buildGeos — without this a newly
-    // placed terrain-projected model has no parts to project and its ground
-    // material is never built.
-    geomParts.set(geom.index, geom.data.parts);
-    geomFootprint.set(geom.index, geom.data.footprint ?? null);
-    if (geom.data.scale && geom.data.scale !== 1) geomScale.set(geom.index, geom.data.scale);
-    if (geom.data.fx?.length) geomFx.set(geom.index, geom.data.fx);
-  }
+  // Same registration a load does — geometry, materials, and everything else
+  // keyed by geom index (the skin, the footprint, the parts a projected
+  // material is rebuilt from). This was a second copy of buildGeos once, and
+  // what the copy forgot is what a placed object then lacked.
+  if (geom) registerGeom(geom.index, geom.data);
   const g = worldGeos[inst.g], m = worldMats[inst.g];
   if (!g || !m) { $('hud').textContent = 'placed, but its mesh is missing — reload to see it'; return; }
   // Stand it on the ground: the main process does not have the height plane the
@@ -6866,12 +6128,11 @@ $('blockbtn').onclick = () => setShowBlocked(!showBlocked);
 // Cliff shading on/off, so the rock blend can be compared against the raw
 // stretched-ground look it replaces.
 function setCliffs(on: boolean): void {
-  cliffAmount = on ? 1 : 0;
-  for (const m of splatMats) if (m.uniforms.uRock.value) m.uniforms.uCliff.value = cliffAmount;
+  setCliffAmount(on);
   $('cliffbtn').classList.toggle('on', on);
   saveUiPrefs({ cliffs: on });
 }
-$('cliffbtn').onclick = () => setCliffs(!cliffAmount);
+$('cliffbtn').onclick = () => setCliffs(!cliffsOn());
 
 // Sea level. The bed is dug to 0 and ordinary ground sits at 2.0, but the fill
 // level isn't recorded anywhere, so it's tuned by eye. The sheet is flat, so
@@ -6886,13 +6147,10 @@ $input('sealevel').addEventListener('input', (e) => {
 // Ground texture tiling density. The format doesn't record it, so it's tuned by
 // eye against the game's own look and applied live to every splat material.
 $input('texscale').addEventListener('input', (e) => {
-  texScale = +(e.currentTarget as HTMLInputElement).value;
-  $('texscaleval').textContent = texScale.toFixed(2);
-  for (const m of splatMats) {
-    m.uniforms.uScale.value = texScale;
-    m.uniforms.uRockScale.value = texScale / U;
-  }
-  saveUiPrefs({ texScale });
+  const v = +(e.currentTarget as HTMLInputElement).value;
+  setGroundScale(v);
+  $('texscaleval').textContent = v.toFixed(2);
+  saveUiPrefs({ texScale: v });
 });
 $input('ex-search').addEventListener('input', renderExList);
 
@@ -6946,8 +6204,8 @@ async function loadMapPath(path: string | null, archive: string | null = null): 
     $button('pack').disabled = false;
     // Reflect the persisted ground-scale on the slider itself, or its thumb would
     // sit at the HTML default while the terrain uses the restored value.
-    $input('texscale').value = String(texScale);
-    $('texscaleval').textContent = texScale.toFixed(2);
+    $input('texscale').value = String(uiPrefs.texScale);
+    $('texscaleval').textContent = uiPrefs.texScale.toFixed(2);
     // Sea controls only matter on maps that actually have water-flagged ground.
     const hasSea = S.floors.some((f) => f.water && f.water.cells.length);
     $('seawrap').style.display = hasSea ? 'flex' : 'none';
@@ -6968,7 +6226,7 @@ async function loadMapPath(path: string | null, archive: string | null = null): 
     $('brushtensionval').textContent = brushTension.toFixed(2);
     syncBrushPanel();
     setBrush(false); // a fresh map starts in camera mode
-    setCliffs(cliffAmount > 0);
+    setCliffs(cliffsOn());
     setShowBlocked(showBlocked);
     $('help').style.display = '';
     // A newly loaded map has its own layer set; refresh the "used" markers.
@@ -8867,11 +8125,11 @@ function bakePendingLights(now: number): void {
   // Resolve at most one deferred hover pick per frame (see hoverEv).
   if (hoverEv) { updateHoverCursor(tileUnderCursor(hoverEv)); hoverEv = null; }
   controls.update();
-  if (topView) syncTopCamera(); // follow pan/zoom + the orbit target each frame
+  if (cam.top) syncTopCamera(); // follow pan/zoom + the orbit target each frame
   advanceIdle(dt);
   advanceFx(dt);
   bakePendingLights(now);
-  renderer.render(scene, activeCam);
+  renderer.render(scene, cam.active);
 })();
 
 
