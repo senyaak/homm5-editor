@@ -107,7 +107,22 @@ generator reads, and what is being measured here is the shipped generator.
 robocopy "<install>" game /E /XD homm5-editor UserMODs h3-mod H5E screenshots
 npm run unpack-data          # into this worktree's own data-unpacked/
 npm run install-native       # into game/bin, never the shared install
+npm run rmg-oracle           # …and check the copy is consistent
 ```
+
+**A half-copied install is a broken one**, and it does not look broken until the
+game refuses to start. The executable carries two raised ceilings — 181
+creatures, 100 artifacts — and the creatures and artifacts that fill them live
+in `H5E/homm5-editor.h5u`. Copy the executable without the archive and the game
+comes up with *"Empty pointer to creature # 180"*. They are one pair. A vanilla
+oracle therefore needs the ceilings put **back** to the shipped 180 and 97
+(`setCreatureLimit` / `setArtifactLimit`), not just the archive left out.
+
+`npm run rmg-oracle` checks exactly that, plus the things a run needs to say
+anything: our extension imported, the oracle's config in place, somewhere for
+the map to be saved. `--seed <n>` writes the config; `--read` reads the last run
+back. It costs a second and it is the thing to run **before** asking anyone to
+launch a game.
 
 ## How a port is checked
 
