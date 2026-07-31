@@ -27,7 +27,7 @@ const OBJECT_DIRS = ['MapObjects'];
 export interface BuildingDonor {
   /** Its data path, which is what a preset is asked for. */
   path: string;
-  /** Which of the sixteen it is. */
+  /** Which class it is. */
   className: string;
   /** The behaviour it declares, for the classes that declare one. */
   type?: string;
@@ -68,7 +68,7 @@ function rootOf(xml: string): { name: string; el: ReturnType<typeof parse> } | n
 }
 
 /**
- * Every shipped definition of one of the sixteen classes.
+ * Every shipped definition of a class the editor offers.
  *
  * Scanned by ROOT ELEMENT and not by file name: the addon ships
  * `MapObjects/H5A2/SpellShop.xdb` whose root is `<AdvMapBuildingShared>`, and

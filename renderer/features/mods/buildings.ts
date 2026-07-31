@@ -1,6 +1,6 @@
 // The Buildings window: everything a hero walks up to.
 //
-// THE TABS ARE THE CLASSES. A building is one of sixteen classes, and the class
+// THE TABS ARE THE CLASSES. A building is one of a fixed set of classes, and the class
 // is not a property among others — it decides whether a behaviour is picked or
 // the class IS one, what fields the document adds, and how many lines it shows
 // (docs/mapPlaceables/buildings/BUILDINGS.md). So each list holds one class and

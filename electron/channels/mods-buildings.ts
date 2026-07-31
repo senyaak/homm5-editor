@@ -1,4 +1,4 @@
-// Buildings: the sixteen classes, adding one, changing one, taking one out.
+// Buildings: the classes, adding one, changing one, taking one out.
 //
 // A building holds no number and extends no table — it is a document picking
 // one of the behaviours the executable already has — so nothing here moves an

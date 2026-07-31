@@ -27,11 +27,11 @@ import { dirname, join } from 'node:path';
 import { launchEditor, hudSays, REPO_ROOT } from './launch.ts';
 import type { Launched } from './launch.ts';
 import { armBrush, clickTile, newMap, planView } from './tiles.ts';
-import { openObjectPalette, pickObject, placeAtTile, setObjectProp, setPlacement } from './objects.ts';
+import { openObjectPalette, pickObject, placeAtTile, setObjectProp, setPlacement, sharedKey } from './objects.ts';
 import { addItem, addValueItem, openTree, setTreeValue } from './tree.ts';
 import { readEntries } from '../src/format/pak.ts';
 import { MOD_EXT, modFile } from '../src/game/mod-paths.ts';
-import { clearMap, installMapFixture, LIVE, modGameRoot, PALACE_SHARED } from './mods.ts';
+import { clearMap, installMapFixture, LIVE, modGameRoot, PALACE_SHARED, readInstalledMod } from './mods.ts';
 import { MOD_STEM } from '../src/mods/mod-files.ts';
 import { bar } from './bar.ts';
 
@@ -113,7 +113,7 @@ function cleanup(): void {
   // Live, nothing is swept: the install is the game, the packed map is the
   // point, and the working tree beside it is what a person would have left.
   if (LIVE) return;
-  // The INSTALL is not swept here even isolated — mod-009 reads it, being the
+  // The INSTALL is not swept here even isolated — mod-008 reads it, being the
   // stage that asks what the run actually put on disk. It takes it away when it
   // is done.
   for (const p of [REF_ROOT, MAP_DIR]) if (existsSync(p)) rmSync(p, { recursive: true, force: true });
@@ -425,6 +425,70 @@ test('and Gem stands on it, in red', async () => {
   const packed = readEntries(readFileSync(ARCHIVE))
     .find((e) => e.name.replace(/\\/g, '/').endsWith('map.xdb'))!;
   expect(packed.data.toString('latin1'), 'the packed map carries her too').toContain('H3Gem');
+});
+
+/**
+ * And every building the mod carries, in the corner nothing else uses.
+ *
+ * Placing one is the other half of making one: the palette has to offer it, its
+ * footprint has to be a real size, and a row of them has to lay out without
+ * landing on each other. One of every class is the widest sweep of the placement
+ * path there is.
+ *
+ * On THIS map and not one of their own, because a map is only a test if it can
+ * be walked into: a blank map with buildings and no player the game will not
+ * even load. Here there is a town, three heroes and an opponent, and the bottom-
+ * left corner is empty — everything the map is made of sits between rows 37 and
+ * 47. Eight tiles apart is wider than anything placed here, so each keeps clear
+ * ground and an entrance a hero can reach.
+ */
+test('and every building the mod carries stands in its empty corner', async () => {
+  test.setTimeout(10 * 60_000);
+  const { page } = ed;
+
+  // The buildings come from mod-005; the fixture this spec installs on its own
+  // carries only the palace. Run alone, there is nothing here to place — and
+  // saying so is better than failing a map spec over a stage that did not run.
+  const buildings = readInstalledMod(GAME).buildings ?? [];
+  test.skip(buildings.length < 2, 'no buildings installed — run mod-005 first');
+
+  // What the map already has — the palace among it, placed above. Placing a
+  // second one would be a duplicate rather than a check.
+  const already = new Set((await page.evaluate(() => window.view.objects()))
+    .map((o) => (o.shared ? sharedKey(o.shared) : ''))
+    .filter(Boolean));
+  const todo = buildings.filter((b) => !already.has(sharedKey(`/Buildings/${b.file}/${b.file}.(${b.className}).xdb`)));
+  expect(todo.length, 'something left to place').toBeGreaterThan(0);
+
+  const STEP = 8, COLUMNS = 5, FIRST = { x: 6, y: 48 };
+  const placed: string[] = [];
+  for (const [i, b] of todo.entries()) {
+    const at = { x: FIRST.x + (i % COLUMNS) * STEP, y: FIRST.y + Math.floor(i / COLUMNS) * STEP };
+    await test.step(`${b.file} at ${at.x}:${at.y}`, async () => {
+      const shared = `/Buildings/${b.file}/${b.file}.(${b.className}).xdb`;
+      // A building the palette cannot find is one nobody can place, however well
+      // it was built — so this arms it the way a person would.
+      await pickObject(page, shared);
+      // placeOne fails when nothing went down, and the editor refuses a
+      // placement that would land on something already there — so a refusal
+      // here IS the overlap check.
+      await placeOne(page, shared, at.x, at.y);
+      placed.push(b.file);
+    });
+  }
+  expect(placed).toHaveLength(todo.length);
+
+  await bar(page, '#save');
+  await hudSays(page, /saved/i, 60_000);
+  const xml = readFileSync(join(MAP_DIR, 'map.xdb'), 'latin1');
+  expect(placed.filter((file) => !xml.includes(`/Buildings/${file}/`)),
+    'buildings the saved map does not name').toEqual([]);
+
+  await bar(page, '#pack');
+  await hudSays(page, /^packed → /, 60_000);
+  const names = readEntries(readFileSync(ARCHIVE)).map((e) => e.name.replace(/\\/g, '/'));
+  // The lobby indexes tags, so a map without one is packed and not on the menu.
+  expect(names.some((n) => n.endsWith(`Maps/SingleMissions/${NAME}/map-tag.xdb`))).toBe(true);
 
   // The whole run converged — leave nothing behind.
   cleanup();

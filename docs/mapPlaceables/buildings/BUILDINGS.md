@@ -323,6 +323,12 @@ The behaviour-carrying classes, for completeness:
 | `AdvMapDwarvenWarrenShared` | 2 | the dwarven mine (see 110) |
 | `AdvMapStandShared` | 1 | Tieru's Hut — a set of `States` a script switches between; the one object of its class |
 
+`AdvMapStandShared` is the one class the editor does not offer. It does nothing
+on its own — the states are a campaign script's to switch, and its single object
+carries no name and no message — so what it is ever wanted for is a building of
+another class plus a Lua trigger on the visit, which every other class already
+gives. See `BUILDING_CLASSES` in src/mods/buildings.ts.
+
 ## 6. What this means for a mod
 
 A new building costs the game **nothing global** — no reference table, no

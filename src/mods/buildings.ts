@@ -41,7 +41,7 @@ export const BASE_CLASS = 'AdvMapObjectBaseShared';
 const VISIBILITY = '/Text/Visibility_Types/Buildings.txt';
 
 /**
- * The sixteen classes a building can be, and what each is for.
+ * The classes a building can be, and what each is for.
  *
  * `placed` is the map-side element a placement of it uses — the editor needs it
  * to put one on a map, and it is not derivable from the class name in every
@@ -120,11 +120,13 @@ export const BUILDING_CLASSES: readonly BuildingClass[] = [
     shared: 'AdvMapSignShared', placed: 'AdvMapSign', label: 'Sign',
     about: 'a signpost carrying one message',
   },
-  {
-    shared: 'AdvMapStandShared', placed: 'AdvMapStand', label: 'Stand',
-    about: 'a set of states a script switches between (Tieru\'s Hut is the only one)',
-  },
 ];
+
+// NOT OFFERED: `AdvMapStandShared`. Its one shipped object is Tieru's Hut, a
+// prop a campaign script switches between states — it names itself nowhere, does
+// nothing on its own, and what anybody actually wants from it is a building plus
+// a Lua trigger on the visit, which every class above already gives them. So the
+// game declares sixteen classes and the editor offers fifteen.
 
 export const buildingClass = (shared: string): BuildingClass | null =>
   BUILDING_CLASSES.find((c) => c.shared === shared) ?? null;
@@ -187,7 +189,7 @@ export const messageSlots = (shared: string): readonly string[] =>
 export interface BuildingSpec {
   /** The stem of every file made for it, and of its folder in the mod. */
   file: string;
-  /** Which of the sixteen it is. */
+  /** Which class it is. */
   className: string;
   /** The `BUILDING_*` it reports as, for the classes that take one. */
   type?: string;
@@ -336,7 +338,7 @@ export function buildingDoc(
   };
 
   // The class's own fields. A list value becomes `<Item>`s, a plain one text —
-  // which covers every extra field the sixteen classes declare.
+  // which covers every extra field these classes declare.
   if (spec.type) values.Type = [`<Type>${spec.type}</Type>`];
   for (const [name, value] of Object.entries(spec.fields ?? {})) {
     values[name] = [Array.isArray(value)

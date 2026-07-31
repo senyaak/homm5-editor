@@ -1,14 +1,18 @@
 // One building of every class, authored through the window.
 //
-// A building is one of SIXTEEN classes, and the class is what the form is built
-// from: whether a behaviour is picked or the class is one, which fields the
-// document adds, how many lines it shows. Sixteen forms is sixteen chances for
-// one of them to be wrong in a way no single example would catch — a class whose
-// donor list is empty, a field the spec declares and the form cannot fill, a
-// message slot off by one — so every one of them is made here, in its own tab.
+// A building is one of a fixed set of CLASSES, and the class is what the form is
+// built from: whether a behaviour is picked or the class is one, which fields the
+// document adds, how many lines it shows. Every class is a chance for one of them
+// to be wrong in a way no single example would catch — a class whose donor list
+// is empty, a field the spec declares and the form cannot fill, a message slot
+// off by one — so one of each is made here, in its own tab.
 //
-// What comes out is also the CONTENT the map stage places: mod-008 stands all of
-// them on a map, and mod-009 reads back what landed on disk.
+// How many there are is the editor's answer, not this spec's: the game declares
+// sixteen and one of them (the Stand, a script's prop) is deliberately not
+// offered, so the count comes from the window rather than from a number here.
+//
+// What comes out is also the CONTENT the map stage places: mod-007 stands all of
+// them on its map, and mod-008 reads back what landed on disk.
 //
 // Its own game install (HOMM5_ROOT, e2e/mods.ts), so the real one is untouched.
 
@@ -28,6 +32,33 @@ const GAME = modGameRoot();
 /** What every building this spec makes is called: `E2eBuilding`, `E2eMine`… */
 export const stemFor = (label: string): string => `E2e${label.replace(/[^A-Za-z]+/g, '')}`;
 
+/**
+ * The donor's name, written LiKe ThIs.
+ *
+ * A building made from a preset carries the shipped one's words as well as its
+ * art, and two objects with the same name on one map are one object as far as
+ * anybody reading the screen is concerned. Alternating the case keeps the name
+ * recognisable — it is still the Windmill — while making it unmistakably the
+ * copy, in the flyover, in the palette and in the visit dialog alike.
+ *
+ * Case is flipped per LETTER rather than per character, so spaces and
+ * punctuation do not shift the rhythm.
+ */
+/** A map text as the game writes it: UTF-16 LE with a byte-order mark. */
+const decodeUtf16 = (buf: Buffer): string =>
+  (buf.length >= 2 && buf[0] === 0xff && buf[1] === 0xfe ? buf.toString('utf16le', 2) : buf.toString('utf8'))
+    .replace(/\0+$/, '').trim();
+
+export function mockCase(name: string): string {
+  let letters = 0;
+  return [...name].map((ch) => {
+    const upper = ch.toUpperCase();
+    const lower = ch.toLowerCase();
+    if (upper === lower) return ch;                 // not a letter: no case to alternate
+    return (letters++ % 2 === 0 ? upper : lower);
+  }).join('');
+}
+
 test.beforeAll(async () => { ed = await launchEditor({ HOMM5_ROOT: GAME }); });
 test.afterAll(async () => { await ed?.app.close(); });
 
@@ -35,9 +66,12 @@ test('the window is the classes, and the tab decides what New makes', async () =
   const { page } = ed;
   await page.locator('#bldbtn').click();
   await expect(page.locator('#bldmod')).toBeVisible();
-  // Sixteen, read from types.xml through mods:building-data — not a list
-  // written into the renderer.
-  await expect(page.locator('#bld-tabs .mp-tab')).toHaveCount(16);
+  // The classes the editor offers, each with fields read from types.xml through
+  // mods:building-data — not a list written into the renderer.
+  await expect(page.locator('#bld-tabs .mp-tab')).toHaveCount(15);
+  // And the one it does not: a Stand is a prop a campaign script drives, and
+  // what it is wanted for is a building plus a Lua trigger.
+  await expect(page.locator('#bld-tabs .mp-tab', { hasText: 'Stand' })).toHaveCount(0);
   await expect(page.locator('#bld-new')).toHaveText('New building…');
   await page.locator('#bld-tabs .mp-tab', { hasText: 'Dwelling' }).first().click();
   await expect(page.locator('#bld-legend')).toHaveText('Installed — Dwelling');
@@ -73,7 +107,7 @@ test('one of every class, each from a shipped object of that class', async () =>
   const { page } = ed;
 
   const labels = await page.locator('#bld-tabs .mp-tab').allTextContents();
-  expect(labels).toHaveLength(16);
+  expect(labels.length, 'every class the window offers').toBeGreaterThan(10);
 
   for (const label of labels) {
     await test.step(label, async () => {
@@ -99,14 +133,20 @@ test('one of every class, each from a shipped object of that class', async () =>
 
       const stem = stemFor(label);
       await page.locator('#bld-file').fill(stem);
-      // A line of our own, so the list can be checked by what it says rather
-      // than by the file stem the form already knows.
-      await page.locator('#bld-texts .bld-text').first().fill(`${stem} name`);
+      // The donor's own name, WrItTeN lIkE tHiS — the preset brought the shipped
+      // object's words along with its art, and two things called the Windmill on
+      // one map are one thing to whoever is reading the screen.
+      const nameBox = page.locator('#bld-texts .bld-text').first();
+      // Some shipped objects have no words at all — Tieru's Hut, the one object
+      // of the Stand class, is a script's prop and names itself nowhere. Then
+      // the class is the name there is.
+      const donorName = (await nameBox.inputValue()) || label;
+      await nameBox.fill(mockCase(donorName));
       await page.locator('#bld-ok').click();
 
       await expect(page.locator('#bldedit'), `${label} built`).toBeHidden({ timeout: 240_000 });
       await expect(page.locator('#bld-note')).toContainText(`under Buildings/${stem}/`);
-      await expect(page.locator('#bld-list')).toContainText(`${stem} name`);
+      await expect(page.locator('#bld-list')).toContainText(mockCase(donorName));
       void takesType;
     });
   }
@@ -155,7 +195,7 @@ test('each is repainted, so none of them is the shipped one under a new name', a
   expect(hues.size, 'each building got a hue of its own').toBe((mod.buildings ?? []).length);
 });
 
-test('the archive carries all sixteen, each owning its own art', async () => {
+test('the archive carries one of each, every one owning its own art', async () => {
   const entries = readEntries(readFileSync(modFile(GAME, 'mod', MOD_STEM)))
     .map((e) => e.name.replace(/\\/g, '/'));
   const { page } = ed;
@@ -173,7 +213,21 @@ test('the archive carries all sixteen, each owning its own art', async () => {
   expect(missing, 'classes whose building is not in the archive').toEqual([]);
   expect(artless, 'classes whose building borrowed its art').toEqual([]);
 
-  // And every one of them is offered by the palette, which is what mod-008 needs.
+  // Its NAME is its own too, and shipped as our own UTF-16 text file rather than
+  // as a reference to the game's. mockCase is idempotent, so a name still in the
+  // donor's spelling fails this and a re-cased one passes.
+  const members = readEntries(readFileSync(modFile(GAME, 'mod', MOD_STEM)));
+  const named: string[] = [];
+  for (const label of labels) {
+    const stem = stemFor(label);
+    const file = members.find((e) => e.name.replace(/\\/g, '/') === `Buildings/${stem}/${stem}_Name.txt`);
+    if (!file) { named.push(`${stem}: no name file`); continue; }
+    const text = decodeUtf16(file.data);
+    if (text !== mockCase(text)) named.push(`${stem}: ${text}`);
+  }
+  expect(named, 'buildings still wearing the donor\'s name').toEqual([]);
+
+  // And every one of them is offered by the palette, which is what mod-007 needs.
   const links = entries.filter((n) => n.startsWith('MapObjects/_(AdvMapObjectLink)/'));
   expect(links.length, 'a palette entry each').toBeGreaterThanOrEqual(labels.length);
 
@@ -181,7 +235,6 @@ test('the archive carries all sixteen, each owning its own art', async () => {
   // copy sits at the game's own path under the building's art folder, so the
   // file it was copied from is the same path in the data root — and after a
   // repaint the two must not be the same bytes.
-  const members = readEntries(readFileSync(modFile(GAME, 'mod', MOD_STEM)));
   const painted = members.find((e) => {
     const n = e.name.replace(/\\/g, '/');
     return n.startsWith(`Buildings/${stemFor(labels[0]!)}/art/`) && n.toLowerCase().endsWith('.dds');

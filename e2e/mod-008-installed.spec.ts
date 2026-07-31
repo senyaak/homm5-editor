@@ -11,7 +11,7 @@
 // text files, the icons it carries, the file the native extension reads beside
 // the executable, and the two ceilings in it. Nothing here drives the app.
 //
-// It closes the chain in both modes. Isolated it reads mod-008's throwaway
+// It closes the chain in both modes. Isolated it reads mod-007's throwaway
 // install, which by then holds everything the four specs made; live it reads
 // the game, and the report is exactly what a player would get.
 
@@ -24,13 +24,14 @@ import {
 import { readEntries } from '../src/format/pak.ts';
 import { modFile } from '../src/game/mod-paths.ts';
 import { readCreatureMod } from '../src/mods/mod-archive.ts';
+import { BUILDING_CLASSES } from '../src/mods/buildings.ts';
 import { EFFECTS_FILE, readEffects } from '../src/mods/artifact-effects.ts';
 import { COMMON_SCRIPT, SCRIPT_DIR } from '../src/mods/artifact-scripts.ts';
 import { ORIGINAL_ARTIFACTS, readArtifactLimit, SITES_FILE } from '../src/exe/artifact-limit.ts';
 import type { Site } from '../src/exe/artifact-limit.ts';
 import { ORIGINAL_LIMIT, readExe } from '../src/exe/creature-limit.ts';
 
-// mod-008's install, because it is the last to write and the only one that ends
+// mod-007's install, because it is the last to write and the only one that ends
 // with all four kinds in it. Live, every spec shares one install anyway.
 const GAME = modGameRoot();
 const ARCHIVE = modFile(GAME, 'mod', MOD);
@@ -48,7 +49,7 @@ function members(): Map<string, Buffer> {
 }
 
 test.beforeAll(() => {
-  test.skip(!existsSync(ARCHIVE), `nothing to read — no ${ARCHIVE}; run mod-001…mod-008 first`);
+  test.skip(!existsSync(ARCHIVE), `nothing to read — no ${ARCHIVE}; run mod-001…mod-007 first`);
 });
 
 test('the archive carries what the run authored', () => {
@@ -66,10 +67,13 @@ test('the archive carries what the run authored', () => {
   // Dwelling tab.
   const buildings = (mod.buildings ?? []).map((b) => b.file);
   expect(buildings).toContain(PALACE.file);
-  expect(buildings.length, 'one of every class, plus the palace').toBeGreaterThanOrEqual(17);
-  // Every class exactly once: a class silently skipped in the loop would leave
-  // the archive one building short and nothing else would say so.
-  expect(new Set((mod.buildings ?? []).map((b) => b.className)).size).toBe(16);
+  expect(buildings.length, 'one of every class the editor offers, plus the palace')
+    .toBeGreaterThanOrEqual(BUILDING_CLASSES.length + 1);
+  // Every class the editor offers, and only those: a class silently skipped in
+  // mod-005 would leave the archive one building short, and the Stand — a prop a
+  // script drives, deliberately not offered — must not have crept back in.
+  expect([...new Set((mod.buildings ?? []).map((b) => b.className))].sort())
+    .toEqual(BUILDING_CLASSES.map((c) => c.shared).sort());
 });
 
 test('and the words a player reads are the ones we wrote', () => {

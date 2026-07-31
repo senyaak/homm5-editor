@@ -3,7 +3,7 @@
 // The checks that matter are comparisons against the game's OWN objects, since
 // every convention here was read off them:
 //
-//   the classes — the sixteen this module offers are the sixteen types.xml
+//   the classes — the ones this module offers are the ones types.xml
 //     declares, and each one's extra fields are the ones the spec gives it;
 //   the document — its fields are in the order types.xml declares, its class's
 //     own fields carry what the spec asked for, and every href resolves;
@@ -43,12 +43,11 @@ const types = parseTypeSpec(readFileSync(join(dataRoot, 'types.xml'), 'utf8'));
 
 // ---- 1. the classes are the game's ------------------------------------------
 
-console.log('the sixteen classes, against types.xml');
+console.log('the classes offered, against types.xml');
 for (const c of BUILDING_CLASSES) {
   check(c.shared, allFields(types, c.shared).length > 0, `${allFields(types, c.shared).length} fields`);
 }
-// The nine that choose a behaviour, and the seven that are one.
-// Seven choose a behaviour with <Type>; the other nine ARE one (BUILDINGS.md §2).
+// Seven choose a behaviour with <Type>; the rest ARE one (BUILDINGS.md §2).
 const withType = BUILDING_CLASSES.filter((c) => takesType(types, c.shared)).map((c) => c.shared);
 check('seven classes take a <Type>', withType.length === 7, withType.length + ': ' + withType.join(' '));
 check('a dwelling adds creatures/guards/RandomType',
