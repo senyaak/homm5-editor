@@ -82,11 +82,21 @@ function fromDisk(): Doc[] {
   return docs;
 }
 
-/** The same, out of the mod archives — where the original campaigns' scenes live. */
+/**
+ * The same, out of the mod archives — where the original campaigns' scenes live.
+ *
+ * Say so when they are not there. Half the corpus (every C1..C6 scene, and the
+ * shared camera library they point into) ships inside UserMODs/*.h5u, so a run
+ * without them still passes every check on a quarter of the material — which
+ * reads like a green suite and is not one.
+ */
 function fromMods(): Doc[] {
   const docs: Doc[] = [];
   const mods = join(GAME, 'UserMODs');
-  if (!existsSync(mods)) return docs;
+  if (!existsSync(mods)) {
+    console.log(`  (no UserMODs at ${mods} — the campaigns' scenes are not in this run; set HOMM5_ROOT)`);
+    return docs;
+  }
   for (const file of readdirSync(mods)) {
     if (!/\.(h5u|pak)$/i.test(file)) continue;
     for (const entry of readEntries(readFileSync(join(mods, file)))) {
@@ -113,7 +123,10 @@ const all = [...fromDisk(), ...fromMods()];
 const byPath = new Map<string, Doc>();
 for (const d of all) if (!byPath.has(d.path)) byPath.set(d.path, d);
 
-const docs = all.filter((d) => SCENE_ROOTS.has(d.root));
+// One entry per PATH, not per file read: a scene the data ships and a mod
+// overrides is one document to the game, and counting both would inflate every
+// number this prints (the disk copy and the archive copy of the same scene).
+const docs = [...byPath.values()].filter((d) => SCENE_ROOTS.has(d.root));
 if (!docs.length) {
   console.log('dialog scenes: no game data (set HOMM5_DATA / HOMM5_ROOT) — skipped');
   process.exit(0);
