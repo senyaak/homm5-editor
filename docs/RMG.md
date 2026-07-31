@@ -88,8 +88,8 @@ It also states its own types, through RTTI: `CRandomMapGenerator`, `CRandomMap`,
 
 ## This branch works against its own copy of the game
 
-`game/` — a whole install, copied, ignored by git, named by `.env`. Everything
-here reads and writes that one.
+`game/` — a whole install, copied, ignored by git, and named to every tool as
+`--game game`. Everything here reads and writes that one.
 
 The reason is not tidiness. Getting anything out of the generator means
 installing a native extension and reading what it wrote, and the real install is
@@ -103,11 +103,31 @@ The copy is **vanilla on purpose** — no `UserMODs`, no `h3-mod`, no `H5E`, and
 the extension's effects config removed. A mod can change the very data the
 generator reads, and what is being measured here is the shipped generator.
 
+Which install is meant is **said**, never guessed from where the checkout sits
+(`tools/game-dir.ts`) — from a worktree the guess would name whatever folder the
+worktrees happen to live in, and the tool would either fail on a nonsense path
+or, worse, quietly work on the shared install.
+
 ```bash
 robocopy "<install>" game /E /XD homm5-editor UserMODs h3-mod H5E screenshots
-npm run unpack-data          # into this worktree's own data-unpacked/
-npm run install-native       # into game/bin, never the shared install
+npm run unpack-data -- game            # into this worktree's own data-unpacked/
+npm run install-native -- --game game  # into game/bin, never the shared install
+npm run rmg-oracle -- --game game      # …and check the copy is consistent
 ```
+
+**A half-copied install is a broken one**, and it does not look broken until the
+game refuses to start. The executable carries two raised ceilings — 181
+creatures, 100 artifacts — and the creatures and artifacts that fill them live
+in `H5E/homm5-editor.h5u`. Copy the executable without the archive and the game
+comes up with *"Empty pointer to creature # 180"*. They are one pair. A vanilla
+oracle therefore needs the ceilings put **back** to the shipped 180 and 97
+(`setCreatureLimit` / `setArtifactLimit`), not just the archive left out.
+
+`npm run rmg-oracle` checks exactly that, plus the things a run needs to say
+anything: our extension imported, the oracle's config in place, somewhere for
+the map to be saved. `--seed <n>` writes the config; `--read` reads the last run
+back. It costs a second and it is the thing to run **before** asking anyone to
+launch a game.
 
 ## How a port is checked
 
