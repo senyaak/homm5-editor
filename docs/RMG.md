@@ -197,19 +197,46 @@ Three rungs, in order of what they prove:
 2. draw counts matching a real run, phase by phase
 3. `diff-map` of a generated `.h5m` against ours from the same seed
 
+### The generator is deterministic — checked, not assumed
+
+The whole exercise rests on "same seed, same map", and that was an assumption
+until run 5 tested it: the same seed, twice, everything else untouched.
+
+Identical — heights, ground flags, passability and all seven texture masks, and
+`map.xdb` first differs at its GUID, which means every one of the 1,556 objects
+matched. `GroundTerrain.bin` differed by exactly one byte out of 169,757, at an
+offset no parser reads (`0x41` against `0x61` — one bit); uninitialised, and it
+reaches nothing.
+
+Two different seeds, for contrast, agree on almost nothing: 9,033 heights
+differ, and even the texture palette changes shape — 7 layers against 12, drawn
+from different tile sets.
+
+So a port can be held to the map, byte for byte, and `--compare` is the thing
+that holds it there.
+
 ### The reference runs so far
 
 Kept in `_tmp/oracle/` (not committed — game content).
 
-| run | from | seed | template | size |
-| --- | --- | --- | --- | --- |
-| 1 | game | 1785351845 forced, map recorded 1785534414 | `S3-5P2Z7N2.2` | large |
-| 2 | game | 1785534994, log and map agreed | `S0-1P2Z2K3.1T` | tiny |
-| 3 | **editor** | **1785351845 asked for, and recorded** | `S1P2Z2M1` | small |
+| run | from | seed | template | size | what it is for |
+| --- | --- | --- | --- | --- | --- |
+| 1 | game | 1785351845 forced, map recorded 1785534414 | `S3-5P2Z7N2.2` | large | how the mismatch was found |
+| 2 | game | 1785534994, log and map agreed | `S0-1P2Z2K3.1T` | tiny | the pairing fixed |
+| 3 | **editor** | **1785351845** | `S1P2Z2M1` | small | **the reference** |
+| 4 | editor | 1000 | `S1P2Z2M1` | small | a second seed, same everything else |
+| 5 | editor | 1785351845 again | `S1P2Z2M1` | small | the determinism check |
 
-Run 3 is the one to port against: it was ordered rather than observed, so it can
-be asked for again, and its template is the smallest interesting one — two zones
-with towns, two without, three connections.
+Runs 3–5 are the useful ones: same template, same size, same settings, so the
+only variable is the seed. Run 3 is what the port is written against — ordered
+rather than observed, so it can be asked for again — and run 4 is what stops the
+port from being fitted to one lucky case.
+
+**The races are drawn, not chosen.** Run 3 came out Inferno and Academy, run 4
+Fortress and Dungeon, with the same settings. So the players' towns are part of
+what the seed decides — and with `CreateMap` spending three draws for two
+players, two of those three are very likely the races. First real prediction to
+test, and there are two runs to test it against.
 
 ## The port
 
