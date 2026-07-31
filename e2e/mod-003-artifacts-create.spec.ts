@@ -314,13 +314,12 @@ test('says whether the extension is there, so an effect cannot look live when it
     .toContainText(there ? /(?<!not )installed/ : /not installed/, { timeout: 30_000 });
 });
 
-// WIP, and tagged so it says so while still running: the set's bonus works in
-// game (2026-07-29) but the dialog around it is not finished — there is no
-// hint of what a threshold means, and nothing offers to write the tooltip that
-// describes the bonus. The assertions below are the contract as it stands, so
-// they run on every pass. To see just these: `npx playwright test --grep @wip`
-// — a script for it would be run by `npm test` as a suite, and this stage
-// cannot pass out of the chain's order.
+// This was tagged @wip while the bonus worked in game (2026-07-29) and the
+// dialog around it did not: nothing said what the threshold meant, what the
+// amount was counted in, or offered to write the tooltip the player reads. All
+// three are in the form now — the hint under the rows, the unit beside the
+// amount, and "Draft from the effects" — so the tag is gone and this is an
+// ordinary stage of the chain.
 /**
  * And the set form, whose hardest field is not a box.
  *
@@ -356,10 +355,7 @@ test('it will not build a set that is missing what it needs', async () => {
   await expect(page.locator('#setedit')).toBeHidden();
 });
 
-test('makes a set of all three, with an effect of our own', {
-  tag: '@wip',
-  annotation: { type: 'wip', description: 'set effects work; the dialog around them is unfinished' },
-}, async () => {
+test('makes a set of all three, with an effect of our own', async () => {
   test.setTimeout(3 * 60_000);
   const { page } = ed;
   if (await page.locator('#artedit').isVisible()) await page.locator('#artedit-cancel').click();
@@ -382,7 +378,6 @@ test('makes a set of all three, with an effect of our own', {
   await expect(page.locator('#as-effect')).toHaveValue(UNDEAD_KING.effect); // derived from the stem
   await page.locator('#as-name').fill(UNDEAD_KING.name);
   await page.locator('#as-desc').fill(UNDEAD_KING.description);
-  for (const [i, text] of UNDEAD_KING.perCount.entries()) if (text) await counts.nth(i).fill(text);
 
   // And what the set GIVES, which is not data of the game's at all: its own
   // <Effect> is one of eleven behaviours compiled into the executable. The
@@ -394,6 +389,24 @@ test('makes a set of all three, with an effect of our own', {
   await effect.locator('select').selectOption('energy');
   await effect.locator('input').first().fill(String(UNDEAD_KING.energy.worn));
   await effect.locator('input').last().fill(String(UNDEAD_KING.energy.amount));
+  // The number is counted in something, and the row says which — the two sums
+  // the extension can add to are a percentage and a ceiling.
+  await expect(effect.locator('.as-effect-unit')).toHaveText('ceiling points');
+
+  // The tooltips the player reads are drafted FROM the effects rather than
+  // typed twice: the boxes at a count the threshold reaches get a first
+  // version, the one-piece box stays blank because one piece is not a set.
+  await page.locator('#as-draft').click();
+  await expect(counts.nth(0)).toHaveValue('');
+  await expect(counts.nth(1)).toHaveValue(/dark energy ceiling by 150/);
+  await expect(counts.nth(2)).toHaveValue(/dark energy ceiling by 150/);
+  await expect(page.locator('#as-note')).toContainText('wrote 2 line(s)');
+  // A draft is a first version, not the answer: these are the set's own words.
+  for (const [i, text] of UNDEAD_KING.perCount.entries()) if (text) await counts.nth(i).fill(text);
+  // And a second press writes nothing over them.
+  await page.locator('#as-draft').click();
+  await expect(page.locator('#as-note')).toContainText('already written');
+  await expect(counts.nth(1)).toHaveValue(UNDEAD_KING.perCount[1]!);
 
   // The other half of a set: what it does on an EVENT. Lua is a row like the
   // rest, but it is never written among the fields — the row carries a pencil

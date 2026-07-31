@@ -103,6 +103,28 @@ one.
   the only place an install is ever chosen. The e2e suite pointedly does not
   read it — there `HOMM5_ROOT` means "the install to play in", and its default is
   a throwaway one so a run cannot leave test maps in a real game folder.
+- **Every form outside the map says what it needs before you press Save.** The
+  buildings window learned this first; creatures, artifacts, artifact sets,
+  heroes, campaigns and New Map now do the same. What a build refuses to go without is
+  marked with a star, Save stays down while one of those is empty, and the ones
+  still missing are named under the form — instead of a rebuild ending in a line
+  of red about a field nothing ever pointed at.
+
+  The preset is the one worth knowing about: a creature and a hero are COPIES of
+  a shipped one, so with none picked the build got as far as the channel and came
+  back "cannot resolve the donor (none)". It is marked now. Editing one already
+  in the mod does not ask again — it keeps the documents it was built from.
+
+- **The artifact-set window explains itself.** Making a set worked and reading
+  the form did not: three controls in a row with nothing over them, an amount in
+  no stated unit, and the sentence the player will read typed a second time by
+  hand. Now the row says what its columns are and that a hero's own stats are
+  not among them (the engine has no hook — a script row does those), the unit
+  sits beside the amount (necromancy in percentage points, dark energy in
+  ceiling points), and **Draft from the effects** writes a first version of every
+  tooltip from the rows — cumulative, the way the shipped sets word theirs, and
+  only into boxes nobody has written in. This was the last thing the test suite
+  still marked unfinished.
 
 ### Changed
 
@@ -118,18 +140,6 @@ one.
   once and was gone from the list next launch. That folder is now patched with
   the same switch, so the generator writes into `<game>/H5E/` like everything
   else. `npm run mod-paths` lists it beside the five it already showed.
-
-- **Every form outside the map says what it needs before you press Save.** The
-  buildings window learned this first; creatures, artifacts, artifact sets,
-  heroes, campaigns and New Map now do the same. What a build refuses to go without is
-  marked with a star, Save stays down while one of those is empty, and the ones
-  still missing are named under the form — instead of a rebuild ending in a line
-  of red about a field nothing ever pointed at.
-
-  The preset is the one worth knowing about: a creature and a hero are COPIES of
-  a shipped one, so with none picked the build got as far as the channel and came
-  back "cannot resolve the donor (none)". It is marked now. Editing one already
-  in the mod does not ask again — it keeps the documents it was built from.
 
 ### Fixed
 

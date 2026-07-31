@@ -127,8 +127,16 @@
             <label class="on-row um-span" style="align-items:flex-start"><span>Members<b class="req">*</b></span>
               <div id="as-members" class="as-members" title="two or more; a set of one never combines"></div>
             </label>
+            <!-- What the PLAYER reads at each number of pieces worn. The game
+                 shows one line per count and the position IS the count, so the
+                 first is normally blank: one piece is not a set. Shipped sets
+                 describe the whole effect at that count rather than the step,
+                 which is what "Draft from the effects" writes. -->
             <label class="on-row um-span" style="align-items:flex-start"><span>Worn</span>
-              <div id="as-counts" class="as-counts" title="what the tooltip says at each number of pieces worn; one piece is not a set, so the first is normally blank"></div>
+              <div style="flex:1;min-width:0">
+                <div id="as-counts" class="as-counts" title="what the tooltip says at each number of pieces worn; one piece is not a set, so the first is normally blank"></div>
+                <button id="as-draft" class="um-recolor" style="margin:6px 0 0" title="write a first version of each line from the effects below — cumulative, as the shipped sets word them; every box stays editable">Draft from the effects</button>
+              </div>
             </label>
             <!-- What the set GIVES. Not data of the game's: its own <Effect> is
                  one of eleven behaviours compiled into the executable, so ours
@@ -139,6 +147,10 @@
               <div style="flex:1;min-width:0">
                 <div id="as-effects" class="as-counts"></div>
                 <button id="as-effect-add" class="um-recolor" style="margin:6px 0 0" title="a bonus the engine has no field for, or a script the set runs on an event">+ effect</button>
+                <!-- Three controls with nothing over them read as three numbers.
+                     What each column is, and what the numbers are IN, is said
+                     here rather than left to hover. -->
+                <div id="as-effects-hint" class="um-note" style="margin-top:6px">what it adds · from how many pieces worn · how much. Necromancy is in percentage points, dark energy in ceiling points. A hero's own stats are not on this list: the engine has no hook for them — a script row does those.</div>
               </div>
             </div>
             <div id="as-ext" class="um-span um-warn"></div>

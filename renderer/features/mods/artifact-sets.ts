@@ -54,6 +54,7 @@ export function initArtifactSets(): void {
   $('ss-cancel').onclick = () => closeSetScript(false);
   $('ss-x').onclick = () => closeSetScript(false);
   $('as-effect-add').onclick = () => addSetEffectRow();
+  $('as-draft').onclick = (e) => { e.preventDefault(); draftCountTexts(); };
   $('as-ok').onclick = () => { void submitArtifactSet(); };
   $('as-new').onclick = () => {
     idTouched.set = false;
@@ -133,6 +134,11 @@ function renderSetCounts(): void {
     const input = document.createElement('input');
     input.type = 'text';
     input.value = had[i] ?? '';
+    // A blank box is a real answer for one piece and a hole for the rest, and
+    // the two look identical until it is said which is which.
+    input.placeholder = i === 0
+      ? 'one piece is not a set — normally blank'
+      : 'nothing shown at this count';
     input.placeholder = i === 0 ? 'one piece is not a set — normally blank' : 'what the tooltip says';
     label.append(span, input);
     box.appendChild(label);
@@ -169,7 +175,12 @@ function addSetEffectRow(stat = '', threshold = '', amount = ''): void {
   value.type = 'number';
   value.value = amount || '0';
   value.className = 'as-effect-amount';
-  value.title = 'how much — percentage points, or energy';
+  value.title = 'how much — see the unit beside it';
+  // The unit, shown rather than implied: the two sums are counted in different
+  // things, and "10" in the box meant either a tenth of the raise or ten points
+  // of ceiling depending on a dropdown three controls to the left.
+  const unit = document.createElement('i');
+  unit.className = 'as-effect-unit';
   // Lua is never written among fields: the row carries a pencil, and the pencil
   // opens the editor on top — the same one the map's scripts use.
   const edit = document.createElement('button');
@@ -184,17 +195,62 @@ function addSetEffectRow(stat = '', threshold = '', amount = ''): void {
   drop.onclick = () => { row.remove(); if (select.value === LUA_ROW) setScript = ''; };
   const show = (): void => {
     const lua = select.value === LUA_ROW;
-    worn.style.display = value.style.display = lua ? 'none' : '';
+    worn.style.display = value.style.display = unit.style.display = lua ? 'none' : '';
     edit.style.display = lua ? '' : 'none';
+    unit.textContent = UNITS[select.value] ?? '';
   };
   select.onchange = show;
-  row.append(select, worn, value, edit, drop);
+  row.append(select, worn, value, unit, edit, drop);
   $('as-effects').appendChild(row);
   show();
 }
 
 /** The row kind that is a script rather than a number. */
 const LUA_ROW = 'lua';
+
+/**
+ * What each sum is counted in, and how a tooltip says it.
+ *
+ * Two, because two is what the extension can add to natively: the necromancy
+ * raise percentage and the dark-energy ceiling, each a term in a sum the engine
+ * already computes (docs/ARTIFACT_EFFECTS.md). A hero's attack or luck is not
+ * here and cannot be — there is no hook — so a set that wants those carries a
+ * script row instead, and the hint under the rows says so.
+ */
+const UNITS: Record<string, string> = { necromancy: '%', energy: 'ceiling points' };
+const READS: Record<string, (n: number) => string> = {
+  necromancy: (n) => `Raises necromancy by ${n}%.`,
+  energy: (n) => `Raises the dark energy ceiling by ${n}.`,
+};
+
+/**
+ * A first version of every tooltip, written from the effects.
+ *
+ * The shipped sets word each line as what the set does AT that count, not as
+ * the step it adds — Necromancers_Desc4 repeats the speed penalty from Desc2
+ * and then adds its own — so this is cumulative: every effect whose threshold
+ * has been reached. Only blank boxes are filled; a line somebody wrote is never
+ * overwritten, because a draft is worth less than a sentence.
+ */
+function draftCountTexts(): void {
+  const boxes = [...$('as-counts').querySelectorAll<HTMLInputElement>('input')];
+  const rows = setEffects();
+  let written = 0;
+  boxes.forEach((box, i) => {
+    const worn = i + 1;
+    if (box.value.trim()) return;
+    const said = rows.filter((r) => r.threshold <= worn)
+      .map((r) => READS[r.stat]?.(r.amount) ?? `${r.stat} ${r.amount}`);
+    if (!said.length) return;
+    box.value = said.join(' ');
+    written++;
+  });
+  $('as-note').textContent = written
+    ? `wrote ${written} line(s) from the effects — edit them, they are only a first version`
+    : rows.length
+      ? 'nothing to write: every line at a count the effects reach is already written'
+      : 'nothing to write from: the set has no numbered effect yet';
+}
 
 /** The set's script, held while the form is open. The row is only its handle. */
 let setScript = '';

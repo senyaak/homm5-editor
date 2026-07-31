@@ -57,6 +57,8 @@ button.he-file { margin-left: 6px; flex: 0 0 auto; }
 .as-counts label span { flex: 0 0 96px; }
 .as-counts input { flex: 1; min-width: 0; background: #0d1014; border: 1px solid #30363d;
   border-radius: 6px; padding: 5px 8px; color: #c9d1d9; font-size: 12px; }
+/* the unit beside an effect's amount: what the number is counted in */
+.as-effect-unit { color: #8b949e; font-style: normal; font-size: 11px; flex: 0 0 auto; }
 .um-warn { color: #d29922; font-size: 11px; }
 .um-recolor { margin-left: 8px; background: #21262d; color: #c9d1d9; border: 1px solid #30363d;
   border-radius: 6px; padding: 2px 8px; font-size: 11px; cursor: pointer; }

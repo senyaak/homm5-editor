@@ -465,11 +465,26 @@ otherwise Edit… opened a tree without it. The map stage fills all four
 errand with a caption and an award, and the ship tile — over a bay dug with the
 Lower brush, because the offset only means something if it lands on water.
 
-**What it still cannot do.** The form marks what a BUILDING cannot be made
-without and refuses to save while one of those is empty — the rule every content
-window now follows, written down in [CONTENT_FORMS.md](../../CONTENT_FORMS.md).
-The object panel does neither for what a PLACEMENT needs, so a shrine placed and
-left at `SPELL_NONE` is silent and nothing says why — the fields are reachable,
-not required. Nested
-documents — the model, the animation set, the effect — are text boxes holding a
-path rather than editors of their own.
+**What it still cannot do.** Three known gaps, left open on purpose rather than
+forgotten — decided 2026-07-31, after the release the window first ships in.
+
+1. **Required fields at the PLACEMENT.** The form marks what a BUILDING cannot be
+   made without and refuses to save while one of those is empty — the rule every
+   content window now follows ([CONTENT_FORMS.md](../../CONTENT_FORMS.md)). The
+   object panel does neither for what a PLACEMENT needs, so a shrine placed and
+   left at `SPELL_NONE` is silent and nothing says why. The fields are all
+   reachable (§3 — mod-007 sets every one of them), just not marked and not
+   refused. Two are also behind the tree's "advanced" switch, which for a
+   shipyard means its ONLY field is behind a checkbox: `ShipTile`, `Quest` and
+   `Riddle` should stop being advanced for the classes whose whole behaviour
+   they are.
+2. **The message slots are shown by their raw names.** The form lists a class's
+   lines as `noMoney`, `deserted`, `wayBlockedByHero`, `spellCantBeLearned2` —
+   the keys of the table in §2, not something to read. They want readable labels
+   and a line saying WHEN the game shows each, which is knowledge that table
+   already holds.
+3. **Nested documents are paths, not editors.** The model, the animation set,
+   the effect, the sound and the icon are text boxes holding a path into the
+   game's data. Every one is copied into the mod on build, so each could be
+   opened and edited in a dialog of its own — which is the point of copying them
+   at all.

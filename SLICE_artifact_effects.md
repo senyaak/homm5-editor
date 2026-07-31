@@ -240,6 +240,31 @@ the halves split there, and both ends are built:
 - **The three calls are in the reference** (`docs/SCRIPT_API.md`, marked `ours`),
   so the script editor completes them.
 
+6.4a. **The set dialog, finished 2026-07-31.** The stage that made a set was
+tagged `@wip` for a fortnight — the bonus worked, the form around it did not
+explain itself. Three things were missing and all three are in:
+
+- **What the columns are.** Three controls in a row with nothing over them read
+  as three numbers. The line under them now says *what it adds · from how many
+  pieces worn · how much*, and says outright that a hero's own stats are not on
+  the list because there is no hook for them (§6.6) — a set that wants those
+  carries a script row.
+- **What the number is counted IN.** Necromancy is percentage points and dark
+  energy is ceiling points, and "150" in the box meant either depending on a
+  dropdown three controls to the left. The unit is shown beside the amount.
+- **The tooltip the player reads.** It was typed twice — once as numbers in the
+  effect row, once as a sentence in the per-count box — with nothing connecting
+  them. **Draft from the effects** writes a first version of each line from the
+  rows, cumulatively (every effect whose threshold that count has reached),
+  which is how the shipped sets word theirs: `Necromancers_Desc4` repeats the
+  two-piece sentence and adds its own. Only blank boxes are filled — a sentence
+  somebody wrote is worth more than a draft — and the empty ones now say which
+  blank is deliberate ("one piece is not a set") and which is a hole.
+
+The tag is gone from `e2e/mod-003-artifacts-create.spec.ts`; the stage exercises
+the draft, then overwrites it with the set's own words, and presses the button a
+second time to see that it overwrites nothing.
+
 6.5. **Known, accepted, not bugs.** Both follow from the grant being the
 engine's, which is the point of the design:
 
