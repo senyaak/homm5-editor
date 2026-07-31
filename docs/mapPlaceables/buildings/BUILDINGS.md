@@ -34,6 +34,14 @@ Scanning by file name misses eight of the addon's objects.
 Either the class carries a `<Type>` field and *that* selects the behaviour, or
 the class **is** the behaviour and there is no `<Type>` at all. Nothing else.
 
+**And the two do not substitute for each other.** A plain `AdvMapBuildingShared`
+declaring `BUILDING_PRISON` — a value whose own class exists — stands on the map,
+shows the name and description its `messagesFileRef` gives it, and on a visit
+answers *"Вы прикасаетесь к неизвестному действующему объекту"*: the generic
+class's fallback for a Type it has no code for. So for the seven class-covered
+values the CLASS is the behaviour, and `<Type>` on a generic document only names
+it. Measured 2026-07-31 in the game (`tools/probe-buildings.ts`).
+
 | class | docs | `<Type>` | types seen | extra definition fields |
 |---|---|---|---|---|
 | `AdvMapBuildingShared` | 118 | yes | 77 | — |
@@ -276,11 +284,21 @@ messages and stands on no shipped map).
 | 124 | STRONGHOLD_CENTAURS | Dwelling | 1 | centaurs |
 | 125 | STRONGHOLD_WARRIORS | Dwelling | 1 | orc warriors |
 | 126 | STRONGHOLD_MILITARY_POST | Dwelling | 1 | Stronghold tiers 4–7 |
-| 127 | NAGA_TEMPLE | — | 0 | **dead id**: no document declares it, and nothing points at its `Text/Game/Buildings/NagaTemple/` strings, which duplicate the Magi Vault's |
+| 127 | NAGA_TEMPLE | — | 0 | **a live bank nobody uses**: guarded, and the hoard is artifacts and spells (see below) |
 
 Seven of the eight values with no document are covered by a class instead
 (`SIGN`, `SHIPYARD`, `SEER_HUT`, `PRISON`, `SHRINE_OF_MAGIC`, `MAGMA_SHRINE`,
-`DWARVEN_WARREN`); `NAGA_TEMPLE` is the only genuinely unused value.
+`DWARVEN_WARREN`); `NAGA_TEMPLE` is the only value with no user of any kind —
+and it is **not** dead. Given a document of its own on the generic class, with
+the `NagaTemple` model and the `Text/Game/Buildings/NagaTemple/` strings that
+ship for it, the game plays it as a full bank: *"Строение охраняется. Вы хотите
+сразиться со стражей?"*, a garrison the engine picks (four stacks — nothing in
+the document asks for them, the same rule as every other bank), and on a win
+**three artifacts and two circle-5 spells**. Measured 2026-07-31 in the game
+(`tools/probe-buildings.ts`); the art, the texts and the behaviour were all
+there and only the document was missing.
+
+So a mod gets a bank behaviour that no shipped object competes for.
 
 The behaviour-carrying classes, for completeness:
 
@@ -307,13 +325,15 @@ compiled ceiling, no patched executable, exactly like a dwelling. It is one
 What cannot be done by data: a new behaviour; a bank's guard; the reward of any
 type not listed in section 3(c).
 
-Two things worth testing before relying on them:
+**Pick the class the behaviour lives on, not just the value.** A prison, a sign,
+a shipyard, a seer hut, a shrine or a dwarven warren has to be a document of ITS
+class; the same value on `AdvMapBuildingShared` is an object that greets a hero
+with "unknown object" (section 2). Everything on the plain class — all 77 values
+including `BUILDING_NAGA_TEMPLE` — is had by declaring the value.
 
-- `[~]` a definition declaring one of the seven class-covered values
-  (`BUILDING_PRISON` on an `AdvMapBuildingShared`, say) — does the engine run
-  the behaviour, or does it need the class?
-- `[~]` `BUILDING_NAGA_TEMPLE` — an id with texts and no user. Live behaviour
-  or a stub?
+Both of this section's `[~]` questions were answered in the game on 2026-07-31;
+`tools/probe-buildings.ts` builds the probe (two definitions and their
+placements, written into a map that already plays) if either needs re-running.
 
 Scale is the same rule as for dwellings: adventure-map art is 1 tile = 2 world
 units, and nothing in the format scales a model.
