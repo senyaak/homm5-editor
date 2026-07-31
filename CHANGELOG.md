@@ -15,6 +15,32 @@ one.
 
 ### Added
 
+- **Buildings — everything a hero walks up to, made in a window.** Mines,
+  dwellings, banks, shrines, border guards, garrisons, prisons, sphinxes: the
+  fifteen classes the game has anything to say about, each with a tab of its own.
+  The class is the first thing you pick because it decides the rest — whether the
+  building chooses one of the 128 behaviours the game has compiled in or IS one,
+  what fields it adds, how many lines it shows. Start from a shipped object with
+  **Use preset…** and edit the difference, or fill the form from nothing.
+
+  A building you make borrows nothing. Its model, textures, animation, effects,
+  sound, icon and every word it says are copies inside the mod, so you can
+  repaint it with the same brush the creature list has, swap its mesh, or
+  translate it, and the game's own files stay as they are. A building from the
+  town screen can be brought down to map scale on the way in, which is how a
+  dwelling gets art for a tier the adventure map never had.
+
+  The form marks what it cannot do without — the identifier, the model, the name,
+  and whatever the class needs (a dwelling hires nobody without creatures) — and
+  Save stays down until those are in, saying what is still missing rather than
+  refusing after the fact.
+
+  What it will not do yet: fill in what a PLACED building needs. A shrine put on
+  a map teaches the spell that placement names, and a fresh one names none — so
+  it stands there and does nothing, and the panel does not say so. Same for a
+  sign with no message, a seer hut with no quest and a shipyard with no water
+  tile.
+
 - **A way back out of a map, and a bar that shows one thing at a time.** The top
   bar had been carrying both of the window's jobs at once — the editors that
   build content for the game, and the tools that work on the open map — in a

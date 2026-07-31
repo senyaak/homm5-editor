@@ -202,12 +202,16 @@ get a live 3D scene you sculpt, paint, populate, script and pack.
   Steamless when it is not, never overwriting a copy that already carries a
   ceiling (`src/exe/exe-unwrap.ts`).
 - **Adventure-map buildings** ([docs/mapPlaceables/buildings/BUILDINGS.md](docs/mapPlaceables/buildings/BUILDINGS.md)): what a
-  building *is* before an editor for them exists. A behaviour is one of the 128
-  `BuildingType` values compiled into the executable, bound either by a `<Type>`
-  field or by the document's own class; a parameter lives in the definition, in
-  the placement or in a global table, and everything else — a bank's guard, a
-  windmill's payout — is in the executable. Includes the full registry of the 128
-  values and which of the sixteen classes declares each.
+  building *is*, and what the **Buildings window** makes of it. A behaviour is
+  one of the 128 `BuildingType` values compiled into the executable, bound either
+  by a `<Type>` field or by the document's own class — and the two do not
+  substitute for each other, which was measured in the game rather than guessed.
+  A parameter lives in the definition, in the placement or in a global table, and
+  everything else — a bank's guard, a windmill's payout — is in the executable.
+  Includes the full registry of the 128 values, which of the sixteen classes
+  declares each, and §7 on the editor: a tab per class, forms built from
+  `types.xml`, and a building that carries its own art so it can be repainted or
+  re-modelled without touching a shipped file.
 - **New artifacts** carry no properties of their own: a record holds six hero
   stats, and every special behaviour the shipped artifacts have is compiled
   against a specific id. What data, script and the executable each control is in

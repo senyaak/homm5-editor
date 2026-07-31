@@ -432,6 +432,40 @@ placing new ones from a palette.
 
 ## Phase 4 — Parity with the original (entities and rules)
 
+- [x] ✅ **Buildings — the Buildings window (2026-07-31).** Everything a hero
+      walks up to, made through a form: mines, dwellings, banks, shrines, tents,
+      garrisons, prisons, sphinxes, the lot. See
+      `docs/mapPlaceables/buildings/BUILDINGS.md` §7 for what it does and what it
+      still cannot.
+
+      The tabs ARE the classes — fifteen of the game's sixteen (the Stand is a
+      script's prop and is not offered) — and the class decides the form:
+      whether a behaviour is picked or the class IS one, which fields the
+      document adds, how many lines it shows. All of that is read from
+      `types.xml`, so the window cannot drift from the game.
+
+      A building of ours is SELF-CONTAINED: model, geometry, materials,
+      textures, animations, effects, sound, icon and every line of text are
+      copies under its own folder, so all of it can be edited and recoloured
+      without touching a shipped file. Recolouring works on a building the same
+      way it does on a creature. A town-screen model can be baked down to map
+      scale (`src/mods/bake-model.ts`), which is how the Sharpshooter's palace
+      used to be made and how any per-tier dwelling can be.
+
+      `src/mods/buildings.ts` · `building-files.ts` · `building-presets.ts` ·
+      `electron/channels/mods-buildings.ts` · `renderer/features/mods/buildings.ts`.
+      Covered by `npm run test-buildings` and e2e stages mod-005 (one of every
+      class, each repainted), mod-006 (the palace) and mod-007 (all of them stood
+      on a playable map).
+- [ ] ⬜ **Required fields at the PLACEMENT, where a class needs them.** The form
+      now marks what a building cannot be made without and will not save until it
+      is filled; the object panel does neither. A placed shrine carries
+      `SPELL_NONE` and teaches nothing, a sign has no `MessageFileRef` and says
+      nothing, a seer hut has an empty `Quest`, a shipyard no `ShipTile` — all
+      measured in the game, all silent, none reported. Two of those have no
+      control at all: a reference field is offered a New/browse button that
+      cannot point at a file the map already carries, and `Quest`/`ShipTile` are
+      structures rather than values.
 - [ ] ⬜ Towns: faction, buildings, garrison, owner
 - [ ] ⬜ Heroes: class, army, artifacts, skills, starting stats
 - [ ] ⬜ Creature stacks: type, count, mood, whether they guard

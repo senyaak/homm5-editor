@@ -365,3 +365,48 @@ placements, written into a map that already plays) if either needs re-running.
 
 Scale is the same rule as for dwellings: adventure-map art is 1 tile = 2 world
 units, and nothing in the format scales a model.
+
+## 7. What the editor does with all this
+
+The **Buildings window** (bar → Buildings…, no map needed) is this document made
+usable. Its tabs are the CLASSES, because that is the first choice section 2
+says a person makes, and each tab's form is built from the class: the behaviour
+list only where a `<Type>` selects one, the class's own fields as the spec
+declares them, one box per message slot the class shows. None of it is written
+out in the renderer — `mods:building-data` reads it from `types.xml` — so the
+window cannot drift from the game.
+
+Fifteen of the sixteen classes are offered. `AdvMapStandShared` is not: see the
+note under the class table above.
+
+**A building of ours borrows nothing.** The build copies the whole closure
+behind the model — geometry, materials, textures, the binaries under `bin/` with
+fresh uids — plus the animation set, effects, sound and icon, and it ships its
+own text file for every line. The document then names only those copies. That is
+what makes a building editable at all: recolouring a texture or swapping a mesh
+is an edit to the mod, and the shipped file it came from is untouched.
+Recolouring is the same dialog a creature uses, recorded on the building so
+every rebuild reapplies it.
+
+A **town-screen model** can be brought down to the map (`bake`): the copy is
+moved to the origin and scaled, and the footprint follows what will be seen.
+That is how the Sharpshooter's palace was built while the adventure-map art for
+its tier did not exist, and how any of the town's per-tier dwellings can be.
+
+**Where the code is:** `src/mods/buildings.ts` (the classes, the document),
+`building-files.ts` (the build and the art closure), `building-presets.ts` (the
+shipped objects to start from), `bake-model.ts`, `electron/channels/mods-buildings.ts`,
+`renderer/features/mods/buildings.ts`. Checked by `npm run test-buildings` and,
+through the window, by e2e stages mod-005 (one building of every class, each
+repainted so none is a shipped one under a new name), mod-006 (the palace, baked
+and hiring a creature the game does not ship) and mod-007 (all of them stood on
+a map that can be played).
+
+**What it still cannot do.** The form marks what a BUILDING cannot be made
+without and refuses to save while one of those is empty; the object panel does
+neither for what a PLACEMENT needs (section 3), so a shrine placed and left at
+`SPELL_NONE` is silent and nothing says why. Two of those fields have no control
+at all: a reference like `MessageFileRef` gets a New/browse button that cannot be
+pointed at a file the map already carries, and `Quest` and `ShipTile` are
+structures rather than values. Nested documents — the model, the animation set,
+the effect — are text boxes holding a path rather than editors of their own.
