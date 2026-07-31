@@ -377,6 +377,13 @@ export function removeGameRoot(dir: string): void {
 /** The file stem mod-004 gives Gem; hers to author, so hers to clear. */
 export const GEM_FILE = 'H3Gem';
 
+/**
+ * What mod-005 names its buildings with — one per class: `E2eBuilding`,
+ * `E2eMine`, `E2eShrine`… They are named after the CLASSES rather than listed
+ * anywhere, so a live run clears them by this prefix.
+ */
+export const E2E_BUILDING = 'E2e';
+
 /** Everything the fixtures author, so a live run can start where a fresh one does. */
 const OURS = {
   creatures: [SHARPSHOOTER.id],
@@ -410,8 +417,14 @@ export function clearFixture(gameRoot: string): void {
   for (const id of OURS.artifacts) {
     if ((mod.artifacts ?? []).some((a) => a.id === id)) { removeArtifact(mod, id); touched = true; }
   }
-  for (const file of OURS.buildings) {
-    if ((mod.buildings ?? []).some((b) => b.file === file)) { removeBuilding(mod, file); touched = true; }
+  // The palace by name, and mod-005's one-per-class by their prefix: those are
+  // named after the classes rather than listed anywhere, and a live run that
+  // left them behind met "two buildings cannot both be E2eBuilding" the next
+  // time round — with the form still open and nothing saying why.
+  for (const b of [...(mod.buildings ?? [])]) {
+    if (!OURS.buildings.includes(b.file) && !b.file.startsWith(E2E_BUILDING)) continue;
+    removeBuilding(mod, b.file);
+    touched = true;
   }
   for (const id of OURS.creatures) {
     if (mod.creatures.some((c) => c.id === id)) { removeCreature(mod, id); touched = true; }
