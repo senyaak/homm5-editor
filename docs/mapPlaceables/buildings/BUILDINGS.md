@@ -454,11 +454,20 @@ repainted so none is a shipped one under a new name), mod-006 (the palace, baked
 and hiring a creature the game does not ship) and mod-007 (all of them stood on
 a map that can be played).
 
+**Every placement field can be set, and mod-007 sets them.** A sign's
+`MessageFileRef` is the panel's New button: it creates the text file beside the
+map and opens it to be typed into. A seer hut's `Quest` and a shipyard's
+`ShipTile` are structures, so the panel lists them under **structures** with
+Edit… into the object's own tree — which now turns the tree's "advanced" switch
+on when the field it was asked to edit is one of the advanced ones, since
+otherwise Edit… opened a tree without it. The map stage fills all four
+(BUILDINGS.md §3): the shrine's rune, the sign's words, a collect-resources
+errand with a caption and an award, and the ship tile — over a bay dug with the
+Lower brush, because the offset only means something if it lands on water.
+
 **What it still cannot do.** The form marks what a BUILDING cannot be made
 without and refuses to save while one of those is empty; the object panel does
-neither for what a PLACEMENT needs (section 3), so a shrine placed and left at
-`SPELL_NONE` is silent and nothing says why. Two of those fields have no control
-at all: a reference like `MessageFileRef` gets a New/browse button that cannot be
-pointed at a file the map already carries, and `Quest` and `ShipTile` are
-structures rather than values. Nested documents — the model, the animation set,
-the effect — are text boxes holding a path rather than editors of their own.
+neither for what a PLACEMENT needs, so a shrine placed and left at `SPELL_NONE`
+is silent and nothing says why — the fields are reachable, not required. Nested
+documents — the model, the animation set, the effect — are text boxes holding a
+path rather than editors of their own.

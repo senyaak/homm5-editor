@@ -27,8 +27,9 @@ import { dirname, join } from 'node:path';
 import { launchEditor, hudSays, REPO_ROOT } from './launch.ts';
 import type { Launched } from './launch.ts';
 import { armBrush, clickTile, newMap, planView } from './tiles.ts';
-import { openObjectPalette, pickObject, placeAtTile, setObjectProp, setPlacement, sharedKey } from './objects.ts';
-import { addItem, addValueItem, openTree, setTreeValue } from './tree.ts';
+import { editStruct, openObjectPalette, pickObject, placeAtTile, setObjectProp, setPlacement, setTextRef, sharedKey } from './objects.ts';
+import { addItem, addValueItem, openTree, setTreeTextRef, setTreeValue } from './tree.ts';
+import { parseTerrain, readGroundFlags, tierOf } from '../src/terrain/terrain.ts';
 import { readEntries } from '../src/format/pak.ts';
 import { MOD_EXT, modFile } from '../src/game/mod-paths.ts';
 import { clearMap, installMapFixture, LIVE, modGameRoot, PALACE_SHARED, readInstalledMod } from './mods.ts';
@@ -79,13 +80,45 @@ const GEM_AT = { x: 44, y: 40 };
 const NEEDS: Record<string, Record<string, string>> = {
   // Ours is the Magma Shrine — runic, circles 1 to 3 — so it teaches a rune.
   AdvMapShrineShared: { SpellID: 'SPELL_RUNE_OF_CHARGE' },
-  // The sign is NOT here, and that is the gap: `MessageFileRef` is a reference,
-  // and the panel gives a reference its own New/browse control rather than a box
-  // to type a path into — which this cannot drive and a person cannot use to
-  // point at a file the map already carries. Until it can, a placed sign says
-  // nothing. Same for the Seer Hut's Quest and the Shipyard's ShipTile, both
-  // structures rather than values.
 };
+
+/** The sign's words. A reference to an empty file is the same empty box. */
+const SIGN_TEXT = 'ЗдЕсЬ БыЛ ЗнАк: за ним — верфь, а перед ней хижина пророка.';
+
+/**
+ * The seer hut's errand.
+ *
+ * `COLLECT_RESOURCES` is the one kind that needs nothing else placed on the map:
+ * its parameters are a resource index (wood 0 … gem 5, gold 6) and an amount, so
+ * a hero who walks up with the gold completes it where it stands. Everything
+ * else — the caption, the description, an award that is not `AWARD_NONE` — is
+ * what turns the structure into an errand rather than a silent building.
+ */
+const QUEST = {
+  name: 'E2E_SEER_QUEST',
+  caption: 'ПрОсЬбА ПрОрОкА',
+  description: 'Принеси мне 500 золота, и я открою тебе то, что стоит 5000 опыта.',
+  kind: 'OBJECTIVE_KIND_COLLECT_RESOURCES',
+  parameters: ['6', '500'],
+  award: 'AWARD_EXPERIENCE',
+  experience: '5000',
+};
+
+/**
+ * The shipyard, and the water without which it is a hut that says nothing.
+ *
+ * `ShipTile` is an OFFSET from the object's own tile and it has to land on
+ * water — true of 42 of the 46 shipyards the game ships. This map is flat grass
+ * to its edges, so the water is dug first, with the Lower brush, which is the
+ * tool that digs to exactly 0.0 and flags the bed as sea. The shipyard then
+ * stands beside it rather than in the grid the others share: it is the one
+ * building whose position is decided by the terrain.
+ */
+const SHIPYARD_CLASS = 'AdvMapShipyardShared';
+const SHIPYARD_AT = { x: 46, y: 64 };
+const SHIP_OFFSET = { x: 0, y: 4 };
+/** Two 7×7 strokes, clear of the building above them and of the map's edge. */
+const BASIN: readonly [number, number][] = [[44, 69], [48, 69]];
 
 /** The original's placements — read off its map.xdb, kept literal so the spec
  *  reads like the plan of the map. */
@@ -198,6 +231,51 @@ async function placeOne(page: Launched['page'], shared: string, x: number, y: nu
   await setPlacement(page, { x, y });
   return id;
 }
+
+/**
+ * The rest of what a placement needs, where a value in a box is not enough.
+ *
+ * `NEEDS` covers the classes whose field is a plain value. These three are not:
+ * a sign's message is a REFERENCE to a text file that has to be made and
+ * written, and a seer hut's quest and a shipyard's ship tile are STRUCTURES,
+ * edited in the object's own tree behind the panel's "Edit…". Each is driven
+ * here the way a person drives it, which is the point of doing it at all —
+ * the map that comes out is only worth having if the window can make it.
+ */
+async function fillPlacement(page: Launched['page'], className: string): Promise<void> {
+  if (className === 'AdvMapSignShared') {
+    await setTextRef(page, 'MessageFileRef', 'sign-message', SIGN_TEXT);
+    return;
+  }
+  if (className === 'AdvMapSeerHutShared') {
+    await editStruct(page, 'Quest');
+    await setTreeValue(page, ['Quest', 'Name'], QUEST.name);
+    await setTreeTextRef(page, ['Quest', 'CaptionFileRef'], 'seer-caption', QUEST.caption);
+    await setTreeTextRef(page, ['Quest', 'DescriptionFileRef'], 'seer-desc', QUEST.description);
+    await setTreeValue(page, ['Quest', 'Kind'], QUEST.kind);
+    for (const p of QUEST.parameters) await addValueItem(page, ['Quest', 'Parameters'], p);
+    await setTreeValue(page, ['Quest', 'Award', 'Type'], QUEST.award);
+    await setTreeValue(page, ['Quest', 'Award', 'Experience'], QUEST.experience);
+    await closeTree(page);
+    return;
+  }
+  if (className === SHIPYARD_CLASS) {
+    await editStruct(page, 'ShipTile');
+    await setTreeValue(page, ['ShipTile', 'x'], String(SHIP_OFFSET.x));
+    await setTreeValue(page, ['ShipTile', 'y'], String(SHIP_OFFSET.y));
+    await closeTree(page);
+  }
+}
+
+/** Put the tree away — the panel is where the next object is selected. */
+async function closeTree(page: Launched['page']): Promise<void> {
+  await page.locator('#mt-close').click();
+  await expect(page.locator('#mt-dialog')).toBeHidden();
+}
+
+/** One object's element out of the map, by class — one of each is placed here. */
+const blockOf = (xml: string, tag: string): string =>
+  xml.split(`<${tag}>`)[1]?.split(`</${tag}>`)[0] ?? '';
 
 test('the map, built the way a person would', async () => {
   test.setTimeout(15 * 60_000);
@@ -459,6 +537,14 @@ test('and Gem stands on it, in red', async () => {
  * left corner is empty — everything the map is made of sits between rows 37 and
  * 47. Eight tiles apart is wider than anything placed here, so each keeps clear
  * ground and an entrance a hero can reach.
+ *
+ * Standing there is not the same as WORKING, and the difference is the
+ * placement: the shrine teaches the spell its placement names, the sign shows
+ * the file its placement points at, the seer hut asks the errand its placement
+ * carries, and the shipyard launches into the tile its placement offsets to.
+ * Walked around in the game, all four were silent — three of them because those
+ * fields were empty and one because the map had no water in it at all. So this
+ * fills them in and digs a bay, and then reads the map back to see it.
  */
 test('and every building the mod carries stands in its empty corner', async () => {
   test.setTimeout(10 * 60_000);
@@ -478,10 +564,23 @@ test('and every building the mod carries stands in its empty corner', async () =
   const todo = buildings.filter((b) => !already.has(sharedKey(`/Buildings/${b.file}/${b.file}.(${b.className}).xdb`)));
   expect(todo.length, 'something left to place').toBeGreaterThan(0);
 
+  // The sea first: the shipyard is placed against it, and digging under a
+  // building that is already there would leave it standing on a cliff.
+  await test.step('a bay for the shipyard', async () => {
+    await planView(page);
+    await armBrush(page, 'lower', '7');
+    for (const [x, y] of BASIN) await clickTile(page, x, y);
+    await page.locator('#brushbtn').click(); // clicks belong to objects again
+    await expect(page.locator('#brushbtn')).toHaveText('off');
+  });
+
   const STEP = 8, COLUMNS = 5, FIRST = { x: 6, y: 48 };
   const placed: string[] = [];
-  for (const [i, b] of todo.entries()) {
-    const at = { x: FIRST.x + (i % COLUMNS) * STEP, y: FIRST.y + Math.floor(i / COLUMNS) * STEP };
+  let slot = 0;
+  for (const b of todo) {
+    const at = b.className === SHIPYARD_CLASS
+      ? SHIPYARD_AT
+      : { x: FIRST.x + (slot % COLUMNS) * STEP, y: FIRST.y + Math.floor(slot++ / COLUMNS) * STEP };
     await test.step(`${b.file} at ${at.x}:${at.y}`, async () => {
       const shared = `/Buildings/${b.file}/${b.file}.(${b.className}).xdb`;
       // A building the palette cannot find is one nobody can place, however well
@@ -499,6 +598,7 @@ test('and every building the mod carries stands in its empty corner', async () =
       for (const [field, value] of Object.entries(NEEDS[b.className] ?? {})) {
         await setObjectProp(page, field, value);
       }
+      await fillPlacement(page, b.className);
       placed.push(b.file);
     });
   }
@@ -509,6 +609,52 @@ test('and every building the mod carries stands in its empty corner', async () =
   const xml = readFileSync(join(MAP_DIR, 'map.xdb'), 'latin1');
   expect(placed.filter((file) => !xml.includes(`/Buildings/${file}/`)),
     'buildings the saved map does not name').toEqual([]);
+
+  // --- and the three whose behaviour lives on the placement --------------
+  //
+  // Checked in the file the game reads, not in the panel that wrote it: all
+  // three came out silent the first time this map was walked around, and each
+  // was silent for its own reason (BUILDINGS.md §3).
+  await test.step('the sign has words', () => {
+    const href = /<MessageFileRef href="([^"]+)"\/>/.exec(blockOf(xml, 'AdvMapSign'))?.[1];
+    expect(href, 'the sign points at a text file').toBeTruthy();
+    // Map-relative, like every message the shipped maps carry.
+    expect(decode(readFileSync(join(MAP_DIR, href!)))).toBe(SIGN_TEXT);
+  });
+
+  await test.step('the seer hut has an errand', () => {
+    const quest = blockOf(xml, 'AdvMapSeerHut');
+    expect(quest).toContain(`<Name>${QUEST.name}</Name>`);
+    expect(quest).toContain(`<Kind>${QUEST.kind}</Kind>`);
+    // A resource index and an amount, in that order — the Kind's own reading.
+    for (const p of QUEST.parameters) expect(quest).toContain(`<Item>${p}</Item>`);
+    expect(quest, 'an award that is not AWARD_NONE').toContain(`<Type>${QUEST.award}</Type>`);
+    expect(quest).toContain(`<Experience>${QUEST.experience}</Experience>`);
+    for (const ref of ['CaptionFileRef', 'DescriptionFileRef']) {
+      const href = new RegExp(`<${ref} href="([^"]*)"`).exec(quest)?.[1];
+      expect(href, `the quest's ${ref}`).toBeTruthy();
+      expect(existsSync(join(MAP_DIR, href!)), `${href} is beside the map`).toBe(true);
+    }
+  });
+
+  await test.step('the shipyard has water to launch into', () => {
+    const yard = blockOf(xml, 'AdvMapShipyard');
+    const ship = /<ShipTile>\s*<x>(-?\d+)<\/x>\s*<y>(-?\d+)<\/y>/.exec(yard);
+    expect(ship, 'the shipyard names a ship tile').toBeTruthy();
+    expect([+ship![1]!, +ship![2]!]).toEqual([SHIP_OFFSET.x, SHIP_OFFSET.y]);
+    // The offset is only half of it: the tile it lands on has to BE water, and
+    // a tile is water when all four of its corners are.
+    const t = parseTerrain(readFileSync(join(MAP_DIR, 'GroundTerrain.bin')));
+    const flags = readGroundFlags(t);
+    expect(flags, 'the map carries a ground-kind plane').toBeTruthy();
+    const at = { x: SHIPYARD_AT.x + SHIP_OFFSET.x, y: SHIPYARD_AT.y + SHIP_OFFSET.y };
+    const dry: string[] = [];
+    for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
+      const i = (at.y + dy!) * t.V + (at.x + dx!);
+      if (tierOf(flags![i]!) !== 0) dry.push(`${at.x + dx!},${at.y + dy!}`);
+    }
+    expect(dry, `corners of ${at.x},${at.y} the Lower brush left dry`).toEqual([]);
+  });
 
   await bar(page, '#pack');
   await hudSays(page, /^packed → /, 60_000);

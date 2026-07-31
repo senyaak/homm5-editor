@@ -13,6 +13,7 @@ import { expect } from '@playwright/test';
 import type { Locator, Page } from '@playwright/test';
 import { step } from './trace.ts';
 import { bar } from './bar.ts';
+import { closeDoc, writeDoc } from './text-doc.ts';
 
 /** The DOM key for a path — JSON, exactly as the renderer writes data-path. */
 const key = (path: (string | number)[]): string => JSON.stringify(path);
@@ -134,16 +135,16 @@ export async function pickEntityRef(page: Page, path: (string | number)[], href:
  *
  * The dialog adopts a file that already exists rather than emptying it, so this
  * is also how an existing text — the map's own name.txt — gets referenced.
+ * `text` fills it in: a quest whose caption file is empty has no caption.
  */
-export async function setTreeTextRef(page: Page, path: (string | number)[], name: string): Promise<void> {
+export async function setTreeTextRef(page: Page, path: (string | number)[], name: string, text?: string): Promise<void> {
   const row = await reveal(page, path);
   await row.locator('.mt-ref button', { hasText: 'New' }).first().click();
   await expect(page.locator('#objnew')).toBeVisible();
   await page.locator('#on-name').fill(name);
   await page.locator('#on-ok').click();
   await expect(page.locator('#objnew')).toBeHidden();
-  const doc = page.locator('#docedit');
-  if (await doc.isVisible()) await page.locator('#de-close').click();
+  if (text === undefined) await closeDoc(page); else await writeDoc(page, text);
 }
 
 /** The value a tree row currently shows. */

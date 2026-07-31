@@ -139,6 +139,10 @@
       "properties": {
         "Name": { "type": "string", "title": "Name", "x-nameOf": "objective" },
         "Kind": { "type": "string", "title": "Kind" },
+        "CaptionFileRef": { "type": "string", "x-ref": true, "x-file": true, "title": "Caption", "description": "The errand's title, in a text file beside the map. Undeclared, a quest's captions came out as plain boxes holding a path to a file nothing created." },
+        "DescriptionFileRef": { "type": "string", "x-ref": true, "x-file": true, "title": "Description" },
+        "ObscureCaptionFileRef": { "type": "string", "x-ref": true, "x-file": true, "title": "Obscure caption", "x-advanced": true },
+        "Parameters": { "type": "array", "title": "Parameters", "items": { "type": "integer" }, "description": "What the Kind reads: COLLECT_RESOURCES takes a resource index (wood 0 … gem 5, gold 6) then an amount, OBTAIN_ARTIFACT takes an artifact index." },
         "Timeout": { "type": "integer", "title": "Timeout", "description": "-1 = no limit." },
         "Holdout": { "type": "integer", "title": "Holdout", "description": "-1 = no limit." },
         "CheckDelay": { "type": "integer", "title": "Check delay", "description": "-1 = no limit." },

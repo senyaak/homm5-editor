@@ -35,11 +35,14 @@ one.
   Save stays down until those are in, saying what is still missing rather than
   refusing after the fact.
 
-  What it will not do yet: fill in what a PLACED building needs. A shrine put on
-  a map teaches the spell that placement names, and a fresh one names none — so
-  it stands there and does nothing, and the panel does not say so. Same for a
-  sign with no message, a seer hut with no quest and a shipyard with no water
-  tile.
+  What it will not do yet: say what a PLACED building needs. A shrine put on a
+  map teaches the spell that placement names, and a fresh one names none — so it
+  stands there and does nothing, and nothing marks the field the way the
+  building's own form marks its own. Same for a sign with no message, a seer hut
+  with no quest and a shipyard with no water tile. All four can be filled in —
+  the sign's message through the panel's New, the quest and the ship tile
+  through Edit… into the tree — and the map the test suite builds now has them
+  filled, bay included.
 
 - **A way back out of a map, and a bar that shows one thing at a time.** The top
   bar had been carrying both of the window's jobs at once — the editors that
@@ -118,6 +121,10 @@ one.
 
 ### Fixed
 
+- **Edit… on a deep structure opens a tree that shows it.** A shipyard's ship
+  tile and a seer hut's quest are marked advanced, and the tree hides those
+  until they are asked for — so the panel's own Edit… button led to a tree
+  without the field it named. Naming it is asking for it: the switch goes on.
 - **A building says the line the class means, not the line that happened to be
   next.** `messagesFileRef` is read by POSITION, and the lists differ by class:
   a shipyard has five entries and the fifth is what it says when there is no

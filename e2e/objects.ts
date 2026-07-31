@@ -12,6 +12,7 @@
 import { expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { step } from './trace.ts';
+import { closeDoc, writeDoc } from './text-doc.ts';
 
 /** Compare shared references by what they point at; case and slash vary. */
 export const sharedKey = (href: string): string =>
@@ -161,8 +162,10 @@ export async function objectPropValues(page: Page): Promise<Record<string, strin
  * A campaign mission's texts live in the campaign's own text archive, not beside
  * the map, so what a reconstruction reproduces is the REFERENCE; the file it
  * creates here is the local, empty counterpart the archive supplies at runtime.
+ * With `text`, the file is filled in too — which is what a sign on a map of our
+ * own needs, since a reference to an empty file reads as no message at all.
  */
-export async function setTextRef(page: Page, field: string, name: string): Promise<void> {
+export async function setTextRef(page: Page, field: string, name: string, text?: string): Promise<void> {
   const row = page.locator('#p-props .pf').filter({ has: page.locator(`label[data-field="${field}"]`) }).first();
   await expect(row, `the panel offers ${field}`).toBeVisible();
   await row.locator('button', { hasText: 'New' }).first().click();
@@ -170,9 +173,21 @@ export async function setTextRef(page: Page, field: string, name: string): Promi
   await page.locator('#on-name').fill(name);
   await page.locator('#on-ok').click();
   await expect(page.locator('#objnew')).toBeHidden();
-  // Creating one opens its text editor; the reconstruction has no text to type.
-  const doc = page.locator('#docedit');
-  if (await doc.isVisible()) await page.locator('#de-close').click();
+  // Creating one opens its text editor.
+  if (text === undefined) await closeDoc(page); else await writeDoc(page, text);
+}
+
+/**
+ * Open a structured field in the tree — the "Edit…" button the panel puts on a
+ * row it cannot hold flat (an army, a quest, a ship tile).
+ */
+export async function editStruct(page: Page, field: string): Promise<void> {
+  const row = page.locator('#p-props .pf').filter({ has: page.locator(`label[data-field="${field}"]`) }).first();
+  await expect(row, `the panel offers ${field}`).toBeVisible();
+  await row.locator('button.struct-edit').first().click();
+  await expect(page.locator('#mt-dialog')).toBeVisible();
+  // The deep structures are hidden until asked for, and these are deep ones.
+  await page.locator('#mt-adv').setChecked(true);
 }
 
 /** Radians as the degrees the panel takes. */

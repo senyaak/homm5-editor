@@ -13,7 +13,7 @@ import { $ } from '#core/dom.ts';
 import { api } from '#core/ipc.ts';
 import { state } from '#core/state.ts';
 import { fieldRow, rowShell, selectFrom, setProp } from '#features/inspector/controls.ts';
-import { dataAt, expandTree, objectTree, openMapTree } from '#features/inspector/tree.ts';
+import { advancedShown, dataAt, expandTree, objectTree, openMapTree, showAdvanced } from '#features/inspector/tree.ts';
 import type { ObjectProp } from '#src/map/map.ts';
 import { controlOf, deref, objectProps, objectSchema } from '#src/schema/schema.ts';
 import type { FieldSchema } from '#src/schema/schema.ts';
@@ -148,7 +148,19 @@ function structRow(id: string, type: string, name: string, field: FieldSchema, d
   btn.className = 'struct-edit';
   btn.textContent = 'Edit…';
   btn.title = `edit ${field.title || name} in the tree`;
-  btn.onclick = () => { openMapTree(objectTree(id, type)); expandTree(); };
+  btn.onclick = () => {
+    // The tree hides what the schema marks advanced until it is asked for, and
+    // a shipyard's ship tile and a seer hut's quest are marked that way — so
+    // Edit… on one used to open a tree that did not show the field it named.
+    // Naming it here IS asking for it.
+    if (field['x-advanced'] && !advancedShown()) {
+      showAdvanced(true);
+      const box = document.getElementById('mt-adv');
+      if (box instanceof HTMLInputElement) box.checked = true;
+    }
+    openMapTree(objectTree(id, type));
+    expandTree();
+  };
   row.append(co, btn);
   return row;
 }
