@@ -179,6 +179,14 @@ function readManifest(bytes: Buffer): CreatureMod | null {
   if (mod.version !== 1 || !Array.isArray(mod.creatures)) return null;
   if (!Array.isArray(mod.dwellings)) mod.dwellings = [];
   if (!Array.isArray(mod.buildings)) mod.buildings = [];
+  // A hero used to be `file` + `donor`; he is `id` + `basedOn` now. An archive
+  // installed before that rename is still on somebody's disk, and reading it as
+  // it is hands the builder a hero with no donor to read — which fails in
+  // hero-files with "path must be of type string", nowhere near the cause.
+  for (const h of (mod.heroes ?? []) as unknown as Record<string, unknown>[]) {
+    h.id ??= h.file;
+    h.basedOn ??= h.donor;
+  }
   return mod;
 }
 
