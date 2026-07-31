@@ -231,17 +231,22 @@ test('the archive carries one of each, every one owning its own art', async () =
   const links = entries.filter((n) => n.startsWith('MapObjects/_(AdvMapObjectLink)/'));
   expect(links.length, 'a palette entry each').toBeGreaterThanOrEqual(labels.length);
 
-  // The paint is really ON the texture, not merely recorded beside it. Each
+  // The paint is really ON the textures, not merely recorded beside them. Each
   // copy sits at the game's own path under the building's art folder, so the
-  // file it was copied from is the same path in the data root — and after a
-  // repaint the two must not be the same bytes.
-  const painted = members.find((e) => {
+  // file it was copied from is the same path in the data root.
+  //
+  // At least ONE has to differ, not all of them and not the first: a hue turn
+  // moves nothing on a grey texture, and a copy carries several — terrain, a
+  // spark, a glow — with no colour to turn.
+  const textures = members.filter((e) => {
     const n = e.name.replace(/\\/g, '/');
     return n.startsWith(`Buildings/${stemFor(labels[0]!)}/art/`) && n.toLowerCase().endsWith('.dds');
   });
-  expect(painted, 'the first building carries a texture of its own').toBeTruthy();
-  const source = join(DATA, painted!.name.replace(/\\/g, '/').split('/art/')[1]!);
-  expect(existsSync(source), `its source ${source} is in the data root`).toBe(true);
-  expect(painted!.data.equals(readFileSync(source)),
-    'the copy is byte-identical to the game\'s — the repaint did not land').toBe(false);
+  expect(textures.length, 'the first building carries textures of its own').toBeGreaterThan(0);
+  const repainted = textures.filter((t) => {
+    const source = join(DATA, t.name.replace(/\\/g, '/').split('/art/')[1]!);
+    return existsSync(source) && !t.data.equals(readFileSync(source));
+  });
+  expect(repainted.length, 'no texture came out different — the repaint did not land')
+    .toBeGreaterThan(0);
 });

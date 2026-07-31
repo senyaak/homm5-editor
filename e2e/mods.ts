@@ -181,19 +181,26 @@ export const BOOTS = {
  * has it without running that stage. The tier 4–7 dwellings that used to sit
  * beside it are content and belong to whoever is porting a campaign.
  *
- * The model is the elves' upgraded town building, which is where the game sells
- * its own Sharp Shooter. `bake` gives the ground and the width by hand: the
- * houses ARE the trees and start at 41.2, so the usual "ground is where the
- * decoration begins" reading cuts four units off their bottoms; six tiles
- * rather than four because the upgraded model carries the basic one's meshes
- * beside its own and spreads 34 units wide.
+ * The model is the elves' own tier-3 dwelling — the High Cabins the game sells
+ * archers from, and adventure-map art already: it stands at map scale and
+ * around its own origin, so nothing has to be baked. It used to be the TOWN
+ * building of the same name (`Arenas/Town/Rampart/HighCabins_u2r0.xdb`, six
+ * tiles wide with its ground at 41.2), which needed baking for both reasons and
+ * put its pedestal under the map.
+ *
+ * Its animation and its effect come along, so the copy is as alive as the
+ * original — and the recolour is what makes it a different building rather than
+ * the shipped one under another name.
  */
 export const PALACE = {
   file: 'SharpshooterPalace',
   creatures: [SHARPSHOOTER.id],
-  model: '/Arenas/Town/Rampart/HighCabins_u2r0.xdb',
-  bake: { tiles: 6, ground: 41.2 },
-  icon: '/UI/TownHall/preserve/128/d3u.xdb',
+  model: '/_(Model)/Buildings/Dwelings/Rampart/High Cabins.(Model).xdb',
+  animSet: '/_(AnimSet)/Buildings/Dwellings/Rampart/High_Cabins.(AnimSet).xdb',
+  effect: '/Effects/_(Effect)/Buildings/Dwellings/Rampart/High_Cabins.(Effect).xdb',
+  icon: '/UI/H5A1/Icons/Buildings/Adventures_Buildings/128x128/Hunters_Cabin.(Texture).xdb',
+  /** Sharpshooters are not elves in green: the copy is repainted to say so. */
+  recolor: { hue: 150, saturation: 0, lightness: 0, tint: { r: 0, g: 0, b: 0, strength: 0 } },
   type: 'BUILDING_PRESERVE_MILITARY_POST',
   name: 'Дом снайперов',
   description: 'Дом снайперов позволяет вам нанимать снайперов.',
@@ -213,8 +220,10 @@ export function palaceSpec(): BuildingSpec {
     className: 'AdvMapDwellingShared',
     type: PALACE.type,
     model: PALACE.model,
+    animSet: PALACE.animSet,
+    effect: PALACE.effect,
     icon: PALACE.icon,
-    bake: PALACE.bake,
+    recolor: PALACE.recolor,
     fields: { creatures: [...PALACE.creatures] },
     messages: {
       name: PALACE.name,
