@@ -118,7 +118,29 @@ static const BYTE ENERGY_CAPS_ACCESSOR_HEAD[7] = { 0x8D, 0x81, 0x7C, 0x06, 0x00,
 // this is a workbench instrument, and a game that quietly writes a log every
 // time somebody generates a map is not one.
 
-/** `call <set seed>` inside `GenerateMap` — the only place the seed is set. */
+/**
+ * `call dword ptr [time]` inside `GenerateMap` — where the seed is BORN.
+ *
+ * This is the one to force, and finding that out cost a run. The code is:
+ *
+ *     mov  eax,[edi+90h]        the seed the screen supplied — always 0,
+ *     mov  [edi+0C4h],eax       there is no field for it
+ *     test eax,eax
+ *     jne  have_it
+ *     call [time]               so: time(NULL)
+ *     mov  [edi+0C4h],eax       <- and THIS is what the map records
+ *   have_it:
+ *     mov  ecx,eax
+ *     call set_seed             <- while this is what the generator uses
+ *
+ * Forcing the second one alone makes a map whose recorded `RMGstartseed` is not
+ * the seed it grew from — the map lies, and a port that trusts it compares
+ * against the wrong run. Forcing `time` instead lands in both.
+ *
+ * Six bytes (`ff 15 <slot>`), so the patch is `call rel32` plus one `nop`.
+ */
+#define RMG_TIME_CALL_RVA 0xaab498u
+/** `call <set seed>` — hooked to say what actually reached the generator. */
 #define RMG_SEED_CALL_RVA 0xaab4a9u
 /** The seed setter itself: `state = (int64)seed; counter = 0`. */
 #define RMG_SET_SEED_RVA 0xab1330u
@@ -129,6 +151,7 @@ static const BYTE ENERGY_CAPS_ACCESSOR_HEAD[7] = { 0x8D, 0x81, 0x7C, 0x06, 0x00,
 
 typedef void(__fastcall *SetSeedFn)(int seed);
 typedef int (*CounterFn)(void);
+typedef long(__cdecl *TimeFn)(void *);
 
 /** The seed to force, when the config named one. */
 static int g_rmgSeed = 0;
@@ -137,6 +160,8 @@ static int g_rmgForceSeed = 0;
 static int g_rmgWanted = 0;
 /** The trampoline through the counter accessor. */
 static CounterFn g_rmgCounter = NULL;
+/** The real `time`, kept so an unforced run still gets a clock. */
+static TimeFn g_time = NULL;
 /** Which boundary this is, within the current run. */
 static int g_rmgReads = 0;
 
@@ -929,16 +954,32 @@ static void rmg_log_pair(const char *prefix, int a, int b) {
 }
 
 /**
- * The seed, on its way into the state.
+ * Where the seed is born: the engine asking the clock what time it is.
  *
- * Called once per run, before anything is drawn — so it is also where a run
- * begins as far as the log is concerned, and where the boundary count restarts.
- * The engine picks `time(NULL)` when the screen did not supply a seed; forcing
- * one here is the only way to ask for a *specific* map, since nothing in the
- * interface can.
+ * Answering with a number of our own is what makes a specific map askable for,
+ * and — because the engine stores this answer and later writes it into the map
+ * as `RMGstartseed` — it is also what keeps the map honest about which seed it
+ * grew from. Forcing further down the line does not: see RMG_TIME_CALL_RVA.
+ *
+ * Unforced, it passes the real clock through, so a normal run is a normal run.
+ */
+static long __cdecl rmg_time_hook(void *arg) {
+  long real = g_time ? g_time(arg) : 0;
+  return g_rmgForceSeed ? (long)g_rmgSeed : real;
+}
+
+/**
+ * The seed, on its way into the generator's state.
+ *
+ * Left hooked even though the forcing moved earlier, because it answers a
+ * different question: not "what did we ask for" but "what did the generator
+ * actually get". The two agreeing is the check that the forcing landed in both
+ * places — and their disagreeing is exactly the bug this pair was built after.
+ *
+ * Called once per run, before anything is drawn, so it is also where a run
+ * begins as far as the log is concerned and where the boundary count restarts.
  */
 static void __fastcall rmg_seed_hook(int seed) {
-  if (g_rmgForceSeed) seed = g_rmgSeed;
   g_rmgReads = 0;
   rmg_log_pair("run seed ", seed, g_rmgForceSeed);
   ((SetSeedFn)((BYTE *)GetModuleHandleW(NULL) + RMG_SET_SEED_RVA))(seed);
@@ -984,6 +1025,37 @@ static int patch_call(DWORD siteRva, DWORD targetRva, void *to, const char *what
 }
 
 /**
+ * Point an INDIRECT call (`call dword ptr [slot]`) at us instead.
+ *
+ * Six bytes, one instruction, so it becomes `call rel32` plus a `nop` and
+ * nothing around it moves. The import slot is read out of the instruction
+ * rather than written down here — that is where the real function's address
+ * lives, and taking it from the bytes means no second address to keep true.
+ *
+ * Returns the original, so an unforced run still reaches the real one.
+ */
+static void *patch_indirect_call(DWORD siteRva, void *hook, const char *what) {
+  BYTE *base = (BYTE *)GetModuleHandleW(NULL);
+  BYTE *site = base + siteRva;
+  if (site[0] != 0xFF || site[1] != 0x15) {
+    log_line(what);
+    log_line("  that is not an indirect call - not patching");
+    return NULL;
+  }
+  void **slot = *(void ***)(site + 2);
+  void *original = *slot;
+
+  DWORD old = 0;
+  if (!VirtualProtect(site, 6, PAGE_EXECUTE_READWRITE, &old)) return NULL;
+  site[0] = 0xE8;
+  *(int *)(site + 1) = (int)((BYTE *)hook - (site + 5));
+  site[5] = 0x90; // the sixth byte of what was there
+  VirtualProtect(site, 6, old, &old);
+  FlushInstructionCache(GetCurrentProcess(), site, 6);
+  return original;
+}
+
+/**
  * Both hooks, or neither.
  *
  * The counter accessor's five bytes embed the address of the counter itself, so
@@ -1000,6 +1072,10 @@ static int install_rmg_oracle(void) {
   g_rmgCounter = (CounterFn)detour(RMG_COUNTER_RVA, head, &rmg_counter_hook, "rmg draw counter");
   if (!g_rmgCounter) return 0;
   if (!patch_call(RMG_SEED_CALL_RVA, RMG_SET_SEED_RVA, &rmg_seed_hook, "rmg seed")) return 0;
+  // Only needed to FORCE a seed; a run that just wants the counters logged is
+  // complete without it, so this one is allowed to fail on its own.
+  g_time = (TimeFn)patch_indirect_call(RMG_TIME_CALL_RVA, &rmg_time_hook, "rmg seed source");
+  if (g_rmgForceSeed && !g_time) log_line("  the seed cannot be forced - it will be the clock's");
   return 1;
 }
 
