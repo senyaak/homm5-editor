@@ -17,6 +17,7 @@ import { loadScriptContext, scriptContextNote, scriptContextReady } from '#featu
 import { effectStats, idFrom, idTouched, listActions, refreshModLists, shortArtifactId } from '#features/mods/shared.ts';
 import { requireFilled } from '#core/form-gate.ts';
 import { showExtensionState } from '#features/mods/artifacts.ts';
+import { starterScript } from '#src/mods/artifact-scripts.ts';
 
 /** The game's artifacts, which do not change while the window is open. */
 let setShipped: { id: string; name: string }[] | null = null;
@@ -402,6 +403,14 @@ function openSetScript(): void {
       el.textContent = errors ? `⚠ ${errors} error${errors === 1 ? '' : 's'}`
         : diags.length ? `⚠ ${diags.length} warning${diags.length === 1 ? '' : 's'}` : '✓ no errors';
     });
+  }
+  // A set that has no script yet opens on the shape every one of them has:
+  // the daily walk, the worn check, and the Trigger line without which nothing
+  // runs at all. It is a starting point, not a template the build knows about —
+  // once it is in the editor it is the author's text like any other.
+  if (!setScript.trim()) {
+    setScript = starterScript($input('as-file').value.trim(), setMembers().length);
+    $('as-note').textContent = 'started the script off — the head is generated, the rest is yours';
   }
   setScriptEditor.setDoc(setScript, 'lua');
   $('ss-info').textContent = scriptContextNote();

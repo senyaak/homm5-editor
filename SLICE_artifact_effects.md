@@ -261,6 +261,15 @@ explain itself. Three things were missing and all three are in:
   somebody wrote is worth more than a draft — and the empty ones now say which
   blank is deliberate ("one piece is not a set") and which is a hole.
 
+- **The script starts written.** The fourth thing, and the one that cost the
+  most to know: an empty editor asks for the members' constant, the walk over
+  players, `EditorHeroWearing` and the `Trigger` line at once, and answers none
+  of them. A set with no script opens on that shape instead, named from its stem
+  by the same `symbolOf` the generated head uses, with the count as `local x`
+  because a set that wants a second behaviour copies the function and changes
+  the number. Once. Nothing rewrites it afterwards — the stem is typed before
+  the script is, so the name is right from the start.
+
 The tag is gone from `e2e/mod-003-artifacts-create.spec.ts`; the stage exercises
 the draft, then overwrites it with the set's own words, and presses the button a
 second time to see that it overwrites nothing.

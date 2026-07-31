@@ -5,7 +5,7 @@
 // `advmap-common.lua` keeps every line it shipped with. A mod that drops those
 // 73 lines breaks every mission's script, and it breaks them silently.
 
-import { COMMON_SCRIPT, SCRIPT_DIR, patchCommonScript, setScriptFiles } from '../src/mods/artifact-scripts.ts';
+import { COMMON_SCRIPT, SCRIPT_DIR, patchCommonScript, setScriptFiles, starterScript } from '../src/mods/artifact-scripts.ts';
 import { luaDiagnostics } from '../src/script/lua-lint.ts';
 import type { ModArtifactSet } from '../src/mods/mod-model.ts';
 
@@ -75,6 +75,33 @@ check('worn means WORN', common.includes('HasArtefact(hero, id, 1)'));
 check('the patched file passes the linter', luaDiagnostics(common).length === 0,
   JSON.stringify(luaDiagnostics(common).slice(0, 1)));
 check('it is named where the game looks for it', COMMON_SCRIPT === 'scripts/advmap-common.lua');
+
+// --- the starter --------------------------------------------------------------
+//
+// The thing an author cannot know from an empty editor: what the members are
+// called, what question to ask about them, and that a file which never calls
+// Trigger does nothing at all. It is checked against the GENERATOR, because a
+// starter naming a constant the head does not write is worse than none.
+
+const starter = starterScript('H3UndeadKing', 3);
+check('the starter names the constant the head writes',
+  starter.includes('H3UndeadKing_MEMBERS') && files[0]!.text.includes('H3UndeadKing_MEMBERS ='));
+check('it asks the question the helper answers', starter.includes('EditorHeroWearing(player, H3UndeadKing_MEMBERS, x)'));
+// The count is a named knob rather than a number buried in the call: a set with
+// a second behaviour at another number is that function copied with another x.
+check('the count is a knob with the whole set as its first value', starter.includes('local x = 3;'));
+check('it hooks itself up - without this nothing runs',
+  starter.includes('Trigger(NEW_DAY_TRIGGER, "H3UndeadKing_NewDay");'));
+check('it leaves a place to write in', /your code/i.test(starter));
+check('it passes the linter as it stands', luaDiagnostics(starter).length === 0,
+  JSON.stringify(luaDiagnostics(starter).slice(0, 1)));
+check('a set with no stem still gets something that parses',
+  luaDiagnostics(starterScript('', 0)).length === 0);
+// A stem is a file name, not a Lua name: `My Set-2` has to become a symbol.
+check('a stem that is not a Lua name is made into one',
+  starterScript('My Set-2', 2).includes('function My_Set_2_NewDay()'));
+check('and the head would spell it the same way',
+  setScriptFiles([{ ...withScript, file: 'My Set-2' }])[0]!.text.includes('My_Set_2_MEMBERS ='));
 
 console.log(failures ? `\n${failures} failure(s)` : '\nall good');
 process.exit(failures ? 1 : 0);

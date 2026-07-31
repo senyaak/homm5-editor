@@ -126,6 +126,16 @@ one.
   only into boxes nobody has written in. This was the last thing the test suite
   still marked unfinished.
 
+  A set's **script starts written**, too. The editor used to open on an empty
+  box, and everything above the author's first line was knowledge they had no
+  way to have: that the members arrive as `<Set>_MEMBERS`, that the walk over
+  the eight players is theirs to write, that `EditorHeroWearing` is the question
+  to ask — and that a file which never calls `Trigger` does nothing at all. It
+  now opens on that shape, named after the set, with the worn count as a knob
+  (`local x = 3`) rather than a number buried in a call: a second behaviour at
+  another count is that function copied with another x. Written once, when a set
+  has no script; after that it is yours like any other text.
+
 ### Changed
 
 - **A map of ours is a `.h5m` again**, not a `.mod`. The extension was ours to
