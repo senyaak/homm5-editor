@@ -11,10 +11,11 @@ import { join } from 'node:path';
 import { DATA, REPO_ROOT } from './launch.ts';
 import { buildCreatureMod } from '../src/mods/creature-mod.ts';
 import {
-  addArtifact, addArtifactSet, addCreature, addDwelling, addHero, newCreatureMod,
-  removeArtifact, removeArtifactSet, removeCreature, removeDwelling, removeHero,
+  addArtifact, addArtifactSet, addBuilding, addCreature, addHero, newCreatureMod,
+  removeArtifact, removeArtifactSet, removeBuilding, removeCreature, removeHero,
   updateArtifact, updateArtifactSet,
 } from '../src/mods/mod-model.ts';
+import type { BuildingSpec } from '../src/mods/buildings.ts';
 import { installCreatureMod, packCreatureMod, readCreatureMod } from '../src/mods/mod-archive.ts';
 import { MOD_STEM, dataReader } from '../src/mods/mod-files.ts';
 import type { ArtifactSlot } from '../src/mods/artifacts.ts';
@@ -174,9 +175,10 @@ export const BOOTS = {
 /**
  * The dwelling that hires the Sharpshooter.
  *
- * A dwelling for a creature the game does not ship is a feature of OURS, which
- * is why it is a fixture here: `addDwelling` is the only thing that can make
- * one, and no dialog does it yet. The tier 4–7 dwellings that used to sit
+ * A dwelling for a creature the game does not ship is a feature of OURS. The
+ * Dwelling tab of the Buildings window authors it now (mod-006); this fixture is
+ * the same thing built through the same core, so a spec that starts at the map
+ * has it without running that stage. The tier 4–7 dwellings that used to sit
  * beside it are content and belong to whoever is porting a campaign.
  *
  * The model is the elves' upgraded town building, which is where the game sells
@@ -200,6 +202,30 @@ export const PALACE = {
   firstVisitNoHire: 'Вы захватили дом снайперов, но снайперов здесь нет.',
   secondVisitNoHire: 'Здесь нет снайперов.',
 };
+
+/** Where the palace's definition lives, which is what a map records. */
+export const PALACE_SHARED = `/Buildings/${PALACE.file}/${PALACE.file}.(AdvMapDwellingShared).xdb`;
+
+/** The same palace as the core takes it — what the form ends up sending. */
+export function palaceSpec(): BuildingSpec {
+  return {
+    file: PALACE.file,
+    className: 'AdvMapDwellingShared',
+    type: PALACE.type,
+    model: PALACE.model,
+    icon: PALACE.icon,
+    bake: PALACE.bake,
+    fields: { creatures: [...PALACE.creatures] },
+    messages: {
+      name: PALACE.name,
+      description: PALACE.description,
+      firstVisit: PALACE.firstVisit,
+      secondVisit: PALACE.secondVisit,
+      firstVisitNoHire: PALACE.firstVisitNoHire,
+      secondVisitNoHire: PALACE.secondVisitNoHire,
+    },
+  };
+}
 
 /**
  * The three as one list, with the fields a build needs spelled out.
@@ -345,7 +371,7 @@ export const GEM_FILE = 'H3Gem';
 /** Everything the fixtures author, so a live run can start where a fresh one does. */
 const OURS = {
   creatures: [SHARPSHOOTER.id],
-  dwellings: [PALACE.file],
+  buildings: [PALACE.file],
   artifacts: [AMULET.id, CLOAK.id, BOOTS.id],
   sets: [UNDEAD_KING.effect],
   // The hero mod-004 authors. Without him here a second live run met his own
@@ -375,8 +401,8 @@ export function clearFixture(gameRoot: string): void {
   for (const id of OURS.artifacts) {
     if ((mod.artifacts ?? []).some((a) => a.id === id)) { removeArtifact(mod, id); touched = true; }
   }
-  for (const file of OURS.dwellings) {
-    if (mod.dwellings.some((d) => d.file === file)) { removeDwelling(mod, file); touched = true; }
+  for (const file of OURS.buildings) {
+    if ((mod.buildings ?? []).some((b) => b.file === file)) { removeBuilding(mod, file); touched = true; }
   }
   for (const id of OURS.creatures) {
     if (mod.creatures.some((c) => c.id === id)) { removeCreature(mod, id); touched = true; }
@@ -389,7 +415,7 @@ export function clearFixture(gameRoot: string): void {
   // building one throws. This is the ordinary case in a throwaway install,
   // where the fixtures ARE the whole mod — and it stayed hidden until a spec
   // ran live against an install holding nothing else.
-  const empty = !mod.creatures.length && !mod.dwellings.length
+  const empty = !mod.creatures.length && !mod.dwellings.length && !(mod.buildings ?? []).length
     && !(mod.artifacts ?? []).length && !(mod.sets ?? []).length && !(mod.heroes ?? []).length;
   if (empty) {
     rmSync(archive, { force: true });
@@ -468,10 +494,11 @@ export function installMapFixture(gameRoot: string): CreatureMod {
   // archive's own bytes — so updating a creature that mod-002 has just repainted
   // paints it back to the donor's colours, quietly, one stage later.
   if (!mod.creatures.some((c) => c.id === SHARPSHOOTER.id)) addCreature(mod, creature);
-  // A dwelling has no update of its own — it is a document and a palette entry,
-  // not a numbered row — so replacing it means taking it out and putting it back.
-  if (mod.dwellings.some((d) => d.file === PALACE.file)) removeDwelling(mod, PALACE.file);
-  addDwelling(mod, PALACE);
+  // The palace is a BUILDING of the dwelling class now, and it carries its own
+  // art rather than pointing at the town's. Replaced rather than updated: it is
+  // a document and a palette entry, not a numbered row.
+  if ((mod.buildings ?? []).some((b) => b.file === PALACE.file)) removeBuilding(mod, PALACE.file);
+  addBuilding(mod, palaceSpec());
   for (const a of PIECES) {
     const spec = {
       id: a.id, file: a.file, name: a.name, description: a.description,

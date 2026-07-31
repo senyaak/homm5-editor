@@ -475,7 +475,7 @@ verifies the whole map and packs it into a **playable map file**. `npm run
 diff-terrain`, `diff-objects` and `diff-map` are down to a handful of accepted
 deviations the engine doesn't read. Every gap it hit became a feature above.
 
-A second, one-minute reconstruction (`e2e/mod-004-sharpshooter-map.spec.ts`) rebuilds a
+A second, one-minute reconstruction (`e2e/mod-007-sharpshooter-map.spec.ts`) rebuilds a
 map of our own — the showcase for the Heroes III port's Sharpshooter — against
 the same three gap reports. It is the cheap regression the C1M1 chain cannot be,
 and it covers what a shipped mission does not: a map whose creature, dwellings

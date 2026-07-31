@@ -11,7 +11,7 @@
 // text files, the icons it carries, the file the native extension reads beside
 // the executable, and the two ceilings in it. Nothing here drives the app.
 //
-// It closes the chain in both modes. Isolated it reads mod-005's throwaway
+// It closes the chain in both modes. Isolated it reads mod-008's throwaway
 // install, which by then holds everything the four specs made; live it reads
 // the game, and the report is exactly what a player would get.
 
@@ -30,7 +30,7 @@ import { ORIGINAL_ARTIFACTS, readArtifactLimit, SITES_FILE } from '../src/exe/ar
 import type { Site } from '../src/exe/artifact-limit.ts';
 import { ORIGINAL_LIMIT, readExe } from '../src/exe/creature-limit.ts';
 
-// mod-005's install, because it is the last to write and the only one that ends
+// mod-008's install, because it is the last to write and the only one that ends
 // with all four kinds in it. Live, every spec shares one install anyway.
 const GAME = modGameRoot();
 const ARCHIVE = modFile(GAME, 'mod', MOD);
@@ -48,7 +48,7 @@ function members(): Map<string, Buffer> {
 }
 
 test.beforeAll(() => {
-  test.skip(!existsSync(ARCHIVE), `nothing to read — no ${ARCHIVE}; run mod-001…mod-005 first`);
+  test.skip(!existsSync(ARCHIVE), `nothing to read — no ${ARCHIVE}; run mod-001…mod-008 first`);
 });
 
 test('the archive carries what the run authored', () => {
@@ -57,9 +57,19 @@ test('the archive carries what the run authored', () => {
   const mod = found!.mod;
 
   expect(mod.creatures.map((c) => c.id)).toContain(SHARPSHOOTER.id);
-  expect(mod.dwellings.map((d) => d.file)).toContain(PALACE.file);
   expect((mod.artifacts ?? []).map((a) => a.id)).toEqual(PIECES.map((p) => p.id));
   expect((mod.sets ?? []).map((s) => s.effect)).toContain(UNDEAD_KING.effect);
+
+  // The buildings: the palace mod-006 authored, and one of every class from
+  // mod-005. They are `buildings` and not `dwellings` — the old list is the
+  // pre-window path, and the palace moved off it when the window gained the
+  // Dwelling tab.
+  const buildings = (mod.buildings ?? []).map((b) => b.file);
+  expect(buildings).toContain(PALACE.file);
+  expect(buildings.length, 'one of every class, plus the palace').toBeGreaterThanOrEqual(17);
+  // Every class exactly once: a class silently skipped in the loop would leave
+  // the archive one building short and nothing else would say so.
+  expect(new Set((mod.buildings ?? []).map((b) => b.className)).size).toBe(16);
 });
 
 test('and the words a player reads are the ones we wrote', () => {

@@ -8,15 +8,13 @@
 
 
 
-import { placeGeometry, positionsBox, wideBase } from '../scene/geometry.ts';
 import { parseTypeSpec } from '../schema/typespec.ts';
+import { bakeCopiedModel } from './bake-model.ts';
 import {
   MESSAGE_SLOTS, dwellingDoc, dwellingLink, dwellingPaths, footprintOf, isRef, refPath,
 } from './dwellings.ts';
-import { copyArt, dataPath, resolve } from './mod-art.ts';
+import { copyArt, dataPath } from './mod-art.ts';
 import { TYPES, mustRead, utf16 } from './mod-files.ts';
-import { groundLevel, retuneBox } from './model-box.ts';
-import { hrefOf } from './xml-edit.ts';
 import type { DwellingPaths, DwellingSpec, Footprint } from './dwellings.ts';
 import type { DataReader, ModFile } from './mod-files.ts';
 
@@ -84,117 +82,23 @@ export function buildDwellings(dwellings: readonly DwellingSpec[], read: DataRea
 /**
  * Copy a town-screen building into the mod as an adventure-map model.
  *
- * Two things are wrong with a town building as it ships, and both are in the
- * geometry rather than in any field: it is 2 to 3 times map scale, and its
- * positions are where it stands in the town scene rather than around the origin.
- * So the whole art closure is copied (fresh uids, exactly as a creature's is) and
- * then the copied POSITIONS are moved to the origin and scaled — the only array
- * in the file that holds a coordinate, see placeGeometry.
- *
- * What follows the positions is the geometry document's own bounding box, which
- * the engine and the editor both take at face value, and the AI geometry beside
- * it, which is the same container and gets the same treatment.
+ * The whole art closure is copied first (fresh uids, exactly as a creature's is)
+ * and then the copy is rescaled and recentred in place — see bake-model.ts,
+ * which does that part for a building too.
  */
 function bakeModel(d: DwellingSpec, p: DwellingPaths, read: DataReader): {
   files: ModFile[]; model: string; sunk: boolean; visible: Footprint;
 } {
-  let pedestalSunk = false;
-  let visible: Footprint = { w: 1, h: 1 };
   const source = dataPath(d.model);
   const copied = copyArt([source], p.art, read, `dwelling:${d.file}`);
   const modelPath = copied.at.get(source);
   if (!modelPath) throw new Error(`${d.file}: ${d.model} is not in the game's data`);
 
-  const tiles = d.bake!.tiles;
-  if (!(tiles > 0)) throw new Error(`${d.file}: bake needs a size in tiles`);
-  // The first geometry is the model's own; the AI geometry hanging off it follows
-  // by the same transform so the two do not disagree about where the walls are.
-  const target = tiles * 2;
-  let placement: { scale: number; shift: [number, number, number] } | null = null;
-
-  const geometryOf = (docPath: string): { path: string; text: string; uid: string; bin: string } | null => {
-    const doc = copied.files.get(docPath)?.toString('latin1');
-    if (!doc) return null;
-    const uid = /<uid>([0-9A-Fa-f-]{36})<\/uid>/.exec(doc)?.[1];
-    if (!uid) return null;
-    const bin = doc.startsWith('<?xml version="1.0" encoding="UTF-8"?>\r\n<AIGeometry')
-      || /<AIGeometry\b/.test(doc.slice(0, 200))
-      ? `bin/AIGeometries/${uid.toUpperCase()}`
-      : `bin/Geometries/${uid.toUpperCase()}`;
-    return { path: docPath, text: doc, uid, bin };
-  };
-
-  /** Every geometry document the copy holds, model's own first. */
-  const geometries: string[] = [];
-  const modelDoc = copied.files.get(modelPath)!.toString('latin1');
-  const first = hrefOf(modelDoc, 'Geometry');
-  if (!first) throw new Error(`${d.file}: ${d.model} names no geometry`);
-  const at = resolve(modelPath, first);
-  if (at) geometries.push(at);
-  for (const g of [...geometries]) {
-    const doc = copied.files.get(g)?.toString('latin1');
-    const ai = doc ? hrefOf(doc, 'AIGeometry') : null;
-    const aiAt = ai ? resolve(g, ai) : null;
-    if (aiAt && copied.files.has(aiAt)) geometries.push(aiAt);
-  }
-
-  for (const [i, g] of geometries.entries()) {
-    const geom = geometryOf(g);
-    if (!geom) continue;
-    const bytes = copied.files.get(geom.bin);
-    if (!bytes) continue;
-    if (!placement) {
-      const box = positionsBox(bytes);
-      if (!box) throw new Error(`${d.file}: cannot read the positions of ${geom.bin}`);
-      const widest = Math.max(box.sx, box.sy);
-      if (!(widest > 0)) throw new Error(`${d.file}: ${d.model} has no size`);
-      // Where the ground is. A town building does not stand on its own base: the
-      // Sylvan town is built up in terraces, so every one of its buildings sits
-      // on a PEDESTAL — a column the town's landscape hides — and a model placed
-      // by its lowest point is a building on a stalk. The pedestal mesh is named
-      // in the geometry document (`…Pod_O`, the game's word for a base, the same
-      // one its materials use), so the ground is the TOP of that column and the
-      // column goes below the map. The terrain then hides it, which is why a baked
-      // dwelling cuts no hole in the ground.
-      const found = d.bake!.ground ?? groundLevel(geom.text, bytes) ?? wideBase(bytes);
-      pedestalSunk = found !== null;
-      const floor = found ?? box.cz - box.sz / 2;
-      // Sized and centred on what will be ABOVE the ground, not on the whole
-      // model: a town building's art keeps going below its terrace, and the
-      // Necropolis Estate's buried rock makes the file half again as wide as the
-      // manor on top of it. Scaling by that shrank the manor to a doormat.
-      const seen = positionsBox(bytes, floor) ?? box;
-      const across = Math.max(seen.sx, seen.sy);
-      const scale = target / (across > 0 ? across : widest);
-      placement = { scale, shift: [-seen.cx, -seen.cy, -floor] };
-      // The footprint follows what will be SEEN, not the whole file: a buried base
-      // is wider than the building on it often enough (the Hall of Darkness) that
-      // measuring the finished bounding box asks for tiles nothing stands on.
-      const tiles = (size: number): number => Math.max(1, Math.round((size * scale) / 2));
-      visible = { w: tiles(seen.sx), h: tiles(seen.sy) };
-    }
-    const placed = placeGeometry(bytes, placement);
-    if (placed) {
-      copied.files.set(geom.bin, placed.data);
-      copied.files.set(geom.path, Buffer.from(retuneBox(geom.text, placed.bbox, placement), 'latin1'));
-      continue;
-    }
-    // The model's own geometry must be placeable — that is the mesh on screen.
-    if (i === 0) throw new Error(`${d.file}: cannot place ${geom.bin}`);
-    // The AI's copy of it is a different container, and a mesh the AI thinks is
-    // three times the size is worse than none: 598 shipped models carry no AI
-    // geometry at all, so the reference goes and its files with it.
-    copied.files.delete(geom.path);
-    copied.files.delete(geom.bin);
-    const owner = geometries[i - 1]!;
-    const doc = copied.files.get(owner)?.toString('latin1');
-    if (doc) copied.files.set(owner, Buffer.from(doc.replace(/<AIGeometry href="[^"]*"\s*\/>/, '<AIGeometry/>'), 'latin1'));
-  }
-
+  const baked = bakeCopiedModel(copied, modelPath, d.bake!, d.file);
   return {
     files: [...copied.files].map(([path, data]) => ({ path, data })),
     model: `/${modelPath}#xpointer(/Model)`,
-    sunk: pedestalSunk,
-    visible,
+    sunk: baked.sunk,
+    visible: baked.visible,
   };
 }

@@ -38,7 +38,7 @@ The Artifacts dialog takes the same files in its Icon field.
 
 ### maps/
 
-`Sharpshooter Test.h5m` — the map `e2e/mod-005-sharpshooter-map.spec.ts` rebuilds through
+`Sharpshooter Test.h5m` — the map `e2e/mod-007-sharpshooter-map.spec.ts` rebuilds through
 the window and holds its result against: a town, three heroes, three neutral
 stacks, the Sharpshooter's palace and the three artifacts on the ground. It also
 carries the necromancer's measurement army, which is what a necromancy bonus is

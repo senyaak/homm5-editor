@@ -157,6 +157,8 @@ async function openBuildingForm(existing: ModBuildingDTO | null): Promise<void> 
   }
 
   for (const [id, slot] of ART) $input(id).value = existing?.[slot] ?? '';
+  $input('bld-bake').value = String(existing?.bake?.tiles ?? 0);
+  $input('bld-bake-ground').value = existing?.bake?.ground === undefined ? '' : String(existing.bake.ground);
   fillArtLists(data);
   drawClassFields(data, cls, existing?.fields ?? {});
   drawTexts(cls, existing?.messages ?? {});
@@ -233,11 +235,12 @@ function drawClassFields(data: ModsBuildingDataResult, cls: BuildingClassDTO, va
       input.type = 'text';
       input.spellcheck = false;
       input.dataset.field = name;
-      // A list field is typed as a comma-separated line: the two shapes the
-      // document knows are a value and a list of values, and nothing here is
-      // long enough to deserve a row editor of its own.
+      // Whether this is a list is the SPEC's answer, carried on the class —
+      // never guessed from the value. One creature typed into `creatures` has no
+      // comma in it, and written as a plain value the dwelling hires nothing.
+      if (cls.lists.includes(name)) input.dataset.list = 'yes';
       input.value = Array.isArray(current) ? current.join(', ') : (current ?? '');
-      input.placeholder = name === 'creatures' || name === 'guards' ? 'CREATURE_…, CREATURE_…' : '';
+      input.placeholder = cls.lists.includes(name) ? 'one per comma' : '';
       control = input;
     }
     control.classList.add('bld-field');
@@ -276,9 +279,25 @@ function readClassFields(): Record<string, string | string[]> {
     const name = el.dataset.field;
     const value = el.value.trim();
     if (!name || !value) continue;
-    out[name] = value.includes(',') ? value.split(',').map((v) => v.trim()).filter(Boolean) : value;
+    out[name] = el.dataset.list
+      ? value.split(',').map((v) => v.trim()).filter(Boolean)
+      : value;
   }
   return out;
+}
+
+/**
+ * The bake, when one was asked for.
+ *
+ * Zero tiles is "use the model as it lies", which is right for every model that
+ * is already adventure-map art — so the field is absent rather than zero, and a
+ * building keeps no bake it does not need.
+ */
+function bakeFrom(): { bake?: { tiles: number; ground?: number } } {
+  const tiles = Number($input('bld-bake').value) || 0;
+  if (tiles <= 0) return {};
+  const ground = $input('bld-bake-ground').value.trim();
+  return { bake: { tiles, ...(ground === '' ? {} : { ground: Number(ground) }) } };
 }
 
 function readTexts(): Record<string, string> {
@@ -324,6 +343,7 @@ async function submitBuilding(): Promise<void> {
       ...(art.icon ? { icon: art.icon } : {}),
       messages: readTexts(),
       fields: readClassFields(),
+      ...bakeFrom(),
     };
     const send = editingFile ? api.updateBuilding : api.installBuilding;
     const res = await send(payload);

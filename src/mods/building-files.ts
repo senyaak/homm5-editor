@@ -13,6 +13,7 @@
 // change is not content, it is a pointer.
 
 import { parseTypeSpec } from '../schema/typespec.ts';
+import { bakeCopiedModel } from './bake-model.ts';
 import {
   buildingDoc, buildingLink, buildingPaths, footprintOf, messageSlots, refPath,
 } from './buildings.ts';
@@ -64,11 +65,16 @@ export function buildBuildings(buildings: readonly BuildingSpec[], read: DataRea
     // repainted model may not be the size its source was.
     const modelCopy = copied.at.get(dataPath(b.model));
     if (!modelCopy) throw new Error(`${b.file}: ${b.model} is not in the game's data`);
-    const measured = b.footprint ?? footprintOf(modelCopy, readCopy);
+    // A town-screen model is rescaled and recentred first — otherwise it is
+    // giant and stands nowhere near the tile that placed it.
+    const baked = b.bake ? bakeCopiedModel(copied, modelCopy, b.bake, b.file) : null;
+    // Its pedestal is under the map; cutting a hole would show the hole.
+    const spec = baked?.sunk && b.ground === undefined ? { ...b, ground: null } : b;
+    const measured = b.footprint ?? baked?.visible ?? footprintOf(modelCopy, readCopy);
     if (!measured) throw new Error(`${b.file}: cannot measure ${b.model} — give a footprint in the spec instead`);
 
     for (const [path, data] of copied.files) files.push({ path, data });
-    files.push({ path: p.shared, data: Buffer.from(buildingDoc(b, p, types, measured, at), 'latin1') });
+    files.push({ path: p.shared, data: Buffer.from(buildingDoc(spec, p, types, measured, at), 'latin1') });
     // The palette tile. The editor's thumbnail cache is keyed by link path and
     // only the game's installer writes it, so the link names a texture instead —
     // our own copy of the icon, when the building has one.

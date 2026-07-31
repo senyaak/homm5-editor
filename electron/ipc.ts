@@ -785,6 +785,7 @@ export interface ModBuildingDTO {
   messages: Record<string, string>;
   fields?: Record<string, string | string[]>;
   footprint?: { w: number; h: number };
+  bake?: { tiles: number; ground?: number };
   recolor?: RecolorOps;
 }
 
@@ -950,6 +951,14 @@ export interface BuildingClassDTO {
   takesType: boolean;
   /** The class's own fields beyond the shared base, `Type` excluded. */
   fields: string[];
+  /**
+   * Which of those hold a LIST.
+   *
+   * Written as a single value instead, a dwelling's `creatures` becomes
+   * `<creatures>CREATURE_X</creatures>` where the engine reads `<Item>`s — and
+   * the dwelling hires nothing, with nothing anywhere saying why.
+   */
+  lists: string[];
   /** The message slots it shows, in the order the engine reads them. */
   slots: string[];
 }
@@ -1013,6 +1022,14 @@ export interface ModsBuildingPayload {
   fields?: Record<string, string | string[]>;
   /** What it blocks, in tiles; omitted, it is measured off the model. */
   footprint?: { w: number; h: number };
+  /**
+   * Bring a town-screen model down to map scale, this many tiles across.
+   *
+   * The town screen is where the per-tier dwellings really live, and none of
+   * them has adventure-map art; without this one of those models lands giant and
+   * off its own tile.
+   */
+  bake?: { tiles: number; ground?: number };
   /** Recolouring, recorded on the building and reapplied by every build. */
   recolor?: RecolorOps;
 }

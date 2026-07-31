@@ -148,6 +148,22 @@ export const takesType = (types: Map<string, SpecType>, shared: string): boolean
   extraFields(types, shared).includes('Type');
 
 /**
+ * Which of the class's own fields hold a LIST, per the spec.
+ *
+ * The difference is not cosmetic and cannot be guessed from the value: a
+ * dwelling's `creatures` written as text is `<creatures>CREATURE_X</creatures>`
+ * where the engine expects `<Item>`s, and it hires nothing. Arrays are declared
+ * anonymously in types.xml and collected under `array:<ptr>` (src/schema/
+ * typespec.ts), so a field is a list exactly when its type is one of those.
+ */
+export function listFields(types: Map<string, SpecType>, shared: string): string[] {
+  const base = new Set(allFields(types, BASE_CLASS).map((f) => f.name));
+  return allFields(types, shared)
+    .filter((f) => !base.has(f.name) && types.has(`array:${f.type}`))
+    .map((f) => f.name);
+}
+
+/**
  * The messages a class shows, in the order `messagesFileRef` lists them.
  *
  * Read off the shipped documents of each class. The list is what the engine
@@ -196,6 +212,17 @@ export interface BuildingSpec {
   footprint?: Footprint;
   /** What its art covers. `null` cuts no hole; omitted: measured off the model. */
   ground?: Footprint | null;
+  /**
+   * Bring a TOWN-SCREEN model down to the map, at this many tiles across.
+   *
+   * The per-tier dwellings the town screen has — Stonehenge, the Unicorn Glade,
+   * the Treant Arches — have no adventure-map art at all, and cannot be used as
+   * they ship: they are two to three times map scale AND stand where they sit in
+   * the town scene, so a model dropped on the map is both giant and nowhere near
+   * the tile that placed it. With this set the copy is moved to the origin and
+   * scaled, and the footprint is measured off THAT. See bake-model.ts.
+   */
+  bake?: { tiles: number; ground?: number };
   /** The class's own fields, by name — see extraFields(). */
   fields?: Record<string, string | string[]>;
   /** Recolouring, recorded here and reapplied by every build. */

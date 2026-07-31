@@ -31,7 +31,7 @@ import { openObjectPalette, pickObject, placeAtTile, setObjectProp, setPlacement
 import { addItem, addValueItem, openTree, setTreeValue } from './tree.ts';
 import { readEntries } from '../src/format/pak.ts';
 import { MOD_EXT, modFile } from '../src/game/mod-paths.ts';
-import { clearMap, installMapFixture, LIVE, modGameRoot } from './mods.ts';
+import { clearMap, installMapFixture, LIVE, modGameRoot, PALACE_SHARED } from './mods.ts';
 import { MOD_STEM } from '../src/mods/mod-files.ts';
 import { bar } from './bar.ts';
 
@@ -96,8 +96,11 @@ const PLACES = {
   // stand here too and were taken off — they are the port's CONTENT, they
   // exercise nothing this spec is about, and a map that is mostly content takes
   // longer to rebuild for no answer.
+  // It is authored as a BUILDING of the dwelling class now (mod-006), so it
+  // lives under Buildings/ with the art it owns — the path is the fixture's to
+  // say rather than this spec's to spell.
   dwellings: [
-    { shared: '/Dwellings/SharpshooterPalace/SharpshooterPalace.(AdvMapDwellingShared).xdb', x: 48, y: 37 },
+    { shared: PALACE_SHARED, x: 48, y: 37 },
   ],
   artifacts: [
     { shared: '/Artifacts/H3UndertakersAmulet/H3UndertakersAmulet.(AdvMapArtifactShared).xdb', x: 32, y: 39 },
@@ -110,7 +113,7 @@ function cleanup(): void {
   // Live, nothing is swept: the install is the game, the packed map is the
   // point, and the working tree beside it is what a person would have left.
   if (LIVE) return;
-  // The INSTALL is not swept here even isolated — mod-006 reads it, being the
+  // The INSTALL is not swept here even isolated — mod-009 reads it, being the
   // stage that asks what the run actually put on disk. It takes it away when it
   // is done.
   for (const p of [REF_ROOT, MAP_DIR]) if (existsSync(p)) rmSync(p, { recursive: true, force: true });
@@ -329,12 +332,19 @@ test('holds against the original: objects, settings, terrain, texts', async () =
     `the rebuilt map exists on disk (app log tail:\n${ed.log.slice(-15).join('\n')})`).toBe(true);
   const refXdb = join(REF, 'map.xdb');
   const ourXdb = join(MAP_DIR, 'map.xdb');
-  // One difference is deliberate and stays: Diraya stands two tiles clear of
-  // the Stonehenge, where the original has her inside its footprint (see
-  // PLACES). Ours refuses to put a building over a hero, so the map cannot be
-  // reproduced there — and the report, which pairs objects by position, shows
-  // that as one unmatched on each side. Everything else must be nothing.
-  const DELIBERATE = /diraya|no counterpart — 1\/20|the original does not — 1$/i;
+  // TWO differences are deliberate and stay. Everything else must be nothing.
+  //
+  // Diraya stands two tiles clear of the Stonehenge, where the original has her
+  // inside its footprint (see PLACES). Ours refuses to put a building over a
+  // hero, so the map cannot be reproduced there — and the report, which pairs
+  // objects by position, shows that as one unmatched on each side.
+  //
+  // The palace's DEFINITION moved. It used to be a dwelling under `Dwellings/`
+  // pointing at the town's art; it is a building of the dwelling class under
+  // `Buildings/` now, carrying its own copy of that art (mod-006), and the hand-
+  // made original predates the move. The placement is the same object on the
+  // same tile — only the href it names is ours rather than the old one.
+  const DELIBERATE = /diraya|sharpshooterpalace|no counterpart — 1\/(11|20)|never places — 1 of 10|the original does not — 1$/i;
   expect(gaps('diff-objects.ts', refXdb, ourXdb).filter((l) => !DELIBERATE.test(l)),
     'object differences beyond the one placement ours will not reproduce').toEqual([]);
   expect(gaps('diff-map.ts', refXdb, ourXdb), 'setting differences').toEqual([]);

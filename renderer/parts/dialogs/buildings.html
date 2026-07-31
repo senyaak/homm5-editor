@@ -69,6 +69,12 @@
             <datalist id="bld-effects"></datalist>
             <datalist id="bld-sounds"></datalist>
             <datalist id="bld-icons"></datalist>
+            <!-- A town-screen model is not map art: it is 2-3x the size and
+                 stands where it sits in the town scene. Bake moves it to the
+                 origin and scales it, and the footprint follows what will be
+                 seen. Left at 0 the model is used as it lies. -->
+            <label class="on-row"><span>Bake to tiles</span><input id="bld-bake" type="number" min="0" step="1" value="0" title="only for a model from the town screen: how many tiles across it should end up. 0 = use the model as it is"></label>
+            <label class="on-row"><span>Ground at</span><input id="bld-bake-ground" type="text" spellcheck="false" autocomplete="off" placeholder="measured" title="where the ground is in the source model's own coordinates, when the measurement gets it wrong"></label>
             <!-- The class's own fields, and its lines: both built from the class. -->
             <div id="bld-fields" class="um-span"></div>
             <div id="bld-texts" class="um-span"></div>

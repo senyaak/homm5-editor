@@ -2,13 +2,17 @@
 REM ===========================================================================
 REM  Build the mod through the editor UI, into the REAL install, and leave it.
 REM
-REM  Runs the five mod stages in order, each driving the window the way a person
+REM  Runs the mod stages in order, each driving the window the way a person
 REM  would:
 REM      mod-001  the Sharpshooter, authored in the Units dialog
 REM      mod-002  its textures repainted by palette
 REM      mod-003  three artifacts and the set made of them
-REM      mod-004  a playable map with the creature and the artifacts on it
-REM      mod-005  reads back what actually landed on disk
+REM      mod-004  a hero of our own
+REM      mod-005  one building of every one of the sixteen classes
+REM      mod-006  the Sharpshooter's palace -- a dwelling, its town art baked
+REM      mod-007  a playable map with the creature and the artifacts on it
+REM      mod-008  every building the mod carries, stood on a map of its own
+REM      mod-009  reads back what actually landed on disk
 REM
 REM  An ORDINARY run gives these specs a throwaway install under _tmp and
 REM  deletes it at the end -- which is what makes the suite say something about
@@ -18,8 +22,10 @@ REM  tools\e2e-live.ts): the work happens in the install this checkout sits in,
 REM  and nothing is swept up.
 REM
 REM  What you get in <game>\H5E\ when it is green:
-REM      homm5-editor.h5u        the creature, the artifacts, the set, the art
+REM      homm5-editor.h5u        the creature, the artifacts, the set, the hero,
+REM                              the buildings and all of their art
 REM      Sharpshooter Test.h5m   a map to load and look at them
+REM      e2e Buildings Map.h5m   the buildings, one of every class, in a row
 REM  ...and the two ceilings in bin\H5_Game_H5E.exe raised to match the archive,
 REM  because a mod id above the compiled limit is read and silently ignored.
 REM
@@ -65,8 +71,12 @@ call node tools\e2e-live.ts ^
   e2e/mod-001-units-create.spec.ts ^
   e2e/mod-002-units-recolor.spec.ts ^
   e2e/mod-003-artifacts-create.spec.ts ^
-  e2e/mod-004-sharpshooter-map.spec.ts ^
-  e2e/mod-005-installed.spec.ts
+  e2e/mod-004-heroes-create.spec.ts ^
+  e2e/mod-005-buildings-create.spec.ts ^
+  e2e/mod-006-dwelling-create.spec.ts ^
+  e2e/mod-007-sharpshooter-map.spec.ts ^
+  e2e/mod-008-buildings-map.spec.ts ^
+  e2e/mod-009-installed.spec.ts
 if errorlevel 1 goto :fail
 
 echo.
