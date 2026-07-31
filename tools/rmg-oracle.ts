@@ -3,6 +3,7 @@
 //   node tools/rmg-oracle.ts              check it
 //   node tools/rmg-oracle.ts --seed 42    check it, and ask for that seed
 //   node tools/rmg-oracle.ts --read       read back what the last run wrote
+//   node tools/rmg-oracle.ts --compare a b   two generated maps, side by side
 //
 // WHY IT EXISTS. A copied install can be *inconsistent* in a way nothing
 // notices until the game refuses to start, and the first time cost a launch:
@@ -40,6 +41,79 @@ const root = gameDir();
 /** Beside the executable, next to the extension that writes it. */
 export const ORACLE_CONFIG = join('bin', 'homm5-editor-rmg.txt');
 export const ORACLE_LOG = join('bin', 'homm5-editor-rmg.log');
+
+// ---------------------------------------------------------------------------
+// Two generated maps, side by side
+//
+// Raw bytes are the wrong question — every run gets a fresh GUID, and one run
+// differed from its own repeat by a single byte that no parser reads. So this
+// compares what a map IS: the terrain as parsed, and where the .xdb first
+// diverges. It is how "the generator is deterministic" stopped being an
+// assumption, and it is what the port will be measured with.
+
+if (args.includes('--compare')) {
+  const i = args.indexOf('--compare');
+  const [left, right] = [args[i + 1], args[i + 2]];
+  if (!left || !right) {
+    console.error('usage: --compare <dir> <dir>   (each holding map.xdb and GroundTerrain.bin)');
+    process.exit(2);
+  }
+  const { parseTerrain, readHeights, readGroundFlags, readPassability, readTextureLayers, readMask } =
+    await import('../src/terrain/terrain.ts');
+
+  const a = parseTerrain(readFileSync(join(left, 'GroundTerrain.bin')));
+  const b = parseTerrain(readFileSync(join(right, 'GroundTerrain.bin')));
+  let differences = 0;
+
+  const plane = (name: string, x: ArrayLike<number> | null, y: ArrayLike<number> | null): void => {
+    if (!x || !y) return console.log(`  ${name.padEnd(22)} absent in one`);
+    if (x.length !== y.length) {
+      differences++;
+      return console.log(`  ${name.padEnd(22)} LENGTHS ${x.length} vs ${y.length}`);
+    }
+    let diff = 0;
+    let firstAt = -1;
+    for (let k = 0; k < x.length; k++) {
+      if (x[k] !== y[k]) {
+        if (firstAt < 0) firstAt = k;
+        diff++;
+      }
+    }
+    if (diff) differences++;
+    console.log(`  ${name.padEnd(22)} ${diff ? `${diff} differ, first at ${firstAt}` : 'identical'}`);
+  };
+
+  plane('heights', readHeights(a), readHeights(b));
+  plane('ground flags', readGroundFlags(a), readGroundFlags(b));
+  plane('passability', readPassability(a), readPassability(b));
+  const layersA = readTextureLayers(a);
+  const layersB = readTextureLayers(b);
+  console.log(`  texture layers         ${layersA.length} vs ${layersB.length}`);
+  for (let k = 0; k < Math.min(layersA.length, layersB.length); k++) {
+    const name = (layersA[k]!.path ?? `#${k}`).split('/').pop()!;
+    if (layersA[k]!.path !== layersB[k]!.path) {
+      differences++;
+      console.log(`  layer ${k} is a different texture: ${layersA[k]!.path} vs ${layersB[k]!.path}`);
+    }
+    plane(`layer ${k} ${name}`.slice(0, 22), readMask(a, layersA[k]!), readMask(b, layersB[k]!));
+  }
+
+  // Where the description first parts company. A run's own repeat diverges at
+  // its GUID and nowhere earlier, so this number IS the answer for objects.
+  const xa = readFileSync(join(left, 'map.xdb'));
+  const xb = readFileSync(join(right, 'map.xdb'));
+  let at = -1;
+  for (let k = 0; k < Math.min(xa.length, xb.length); k++) {
+    if (xa[k] !== xb[k]) {
+      at = k;
+      break;
+    }
+  }
+  const guidAt = xa.indexOf('<RMGguid>');
+  console.log(`  map.xdb                ${at < 0 ? 'identical' : `first difference at ${at}` }`
+    + (at >= 0 && guidAt >= 0 ? at >= guidAt ? ' — at or after the GUID, so everything before it matches' : ' — BEFORE the GUID' : ''));
+  process.exit(0);
+}
 
 // ---------------------------------------------------------------------------
 // Reading a run back
