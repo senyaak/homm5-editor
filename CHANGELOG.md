@@ -116,6 +116,20 @@ one.
   the same switch, so the generator writes into `<game>/H5E/` like everything
   else. `npm run mod-paths` lists it beside the five it already showed.
 
+### Fixed
+
+- **A building says the line the class means, not the line that happened to be
+  next.** `messagesFileRef` is read by POSITION, and the lists differ by class:
+  a shipyard has five entries and the fifth is what it says when there is no
+  water to build on, a seer hut's fifth is its extra message, a shrine has six.
+  The editor wrote the same four for everything and skipped the ones left blank,
+  so the fifth line of a shipyard did not exist — a hero walking up to one with
+  no water got an empty box — and a blank third line silently promoted the
+  fourth into its place. Every class now has its own list, read off the shipped
+  documents, and a line with nothing to say is written as the empty entry the
+  game's own Garrison and Sphinx use. Buildings made from a preset pick up the
+  words the shipped object had in those slots, which they had been dropping.
+
 ## 0.5.0 — 2026-07-28
 
 ### Changed

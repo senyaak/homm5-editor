@@ -194,13 +194,15 @@ export function dwellingDoc(
 ): string {
   const t = tilesOf(spec.footprint ?? measured, spec.ground === null ? undefined : spec.ground ?? measured);
   if (spec.ground === null) t.hole.length = 0;
-  // A message the spec leaves out is left out of the list too, rather than
-  // pointing at a file that is not there.
-  const messages: string[] = [];
-  for (const slot of MESSAGE_SLOTS) {
+  // A message the spec leaves out still takes its PLACE in the list, as the
+  // empty entry the shipped Garrison and Sphinx use: the engine reads the list
+  // by position, so a silent third message would otherwise promote the fourth.
+  // What it must not do is point at a file that is not there.
+  const messages = MESSAGE_SLOTS.map((slot) => {
     const message = spec[slot];
-    if (message) messages.push(isRef(message) ? message : `/${p.text[slot]}`);
-  }
+    return message ? (isRef(message) ? message : `/${p.text[slot]}`) : '';
+  });
+  while (messages.length && !messages[messages.length - 1]) messages.pop();
 
   const values: Record<string, string[]> = {
     Model: [href('Model', spec.model, 'Model')],

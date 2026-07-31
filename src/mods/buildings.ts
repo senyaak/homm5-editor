@@ -183,15 +183,33 @@ export const requiredFields = (shared: string): readonly string[] => REQUIRED_FI
 /**
  * The messages a class shows, in the order `messagesFileRef` lists them.
  *
- * Read off the shipped documents of each class. The list is what the engine
- * indexes into, so a class with five means the fifth line is the fifth entry —
- * writing four and hoping is how a building shows the wrong sentence.
+ * Read off the shipped documents of each class — every `(AdvMap*Shared).xdb` the
+ * game ships, grouped by the basenames its `messagesFileRef` points at. Most
+ * classes ship exactly one document, so the list is not a guess.
+ *
+ * The list is what the engine INDEXES INTO: the fifth line is the fifth entry,
+ * not the fifth non-empty one. Writing four and hoping is how the shipyard on
+ * the test map showed a blank box — with no water it wanted `deserted`, entry
+ * five, and the document stopped at four. A slot with nothing to say is written
+ * as `<Item href=""/>`, which is what the shipped Garrison and Sphinx do.
+ *
+ * `unused` is a slot the game itself leaves empty in every shipped copy.
  */
 export const MESSAGE_SLOTS: Record<string, readonly string[]> = {
+  AdvMapAbanMineShared: ['name', 'description', 'firstVisit'],
+  AdvMapDwarvenWarrenShared: ['name', 'description', 'captured', 'alreadyCaptured', 'descriptionCaptured'],
   AdvMapDwellingShared: ['name', 'description', 'firstVisit', 'secondVisit', 'firstVisitNoHire', 'secondVisitNoHire'],
+  AdvMapGarrisonShared: ['name', 'description', 'unused', 'wayBlockedByHero'],
+  AdvMapHillFortShared: ['name', 'description'],
+  AdvMapMineShared: ['name', 'description', 'captured', 'alreadyCaptured'],
   AdvMapPrisonShared: ['name', 'description', 'prisonEmpty', 'prisonCantHire', 'noExit'],
-  AdvMapMineShared: ['name', 'description', 'firstVisit', 'captured'],
+  AdvMapSeerHutShared: ['name', 'description', 'firstVisit', 'secondVisit', 'extraMessage'],
+  AdvMapShipyardShared: ['name', 'description', 'noMoney', 'blocked', 'deserted'],
+  AdvMapShrineShared: ['name', 'description', 'spellLearned', 'spellAlreadyLearned', 'spellCantBeLearned', 'spellCantBeLearned2'],
   AdvMapSignShared: ['name', 'description'],
+  AdvMapSphinxShared: ['name', 'description', 'unused', 'refuse'],
+  AdvMapTentShared: ['name', 'description', 'noPass', 'pass'],
+  AdvMapTreasureShared: ['name', 'description'],
 };
 
 /** What a class shows when it declares nothing of its own. */
@@ -322,10 +340,11 @@ export function buildingDoc(
   const t = tilesOf(spec.footprint ?? measured, spec.ground === null ? undefined : spec.ground ?? measured);
   if (spec.ground === null) t.hole.length = 0;
 
-  const messages: string[] = [];
-  for (const slot of messageSlots(spec.className)) {
-    if (spec.messages[slot]) messages.push(`/${p.text[slot]}`);
-  }
+  // Every slot gets an entry, empty or not: the engine reads this list by
+  // position, so skipping a silent slot moves every message after it up one.
+  const messages = messageSlots(spec.className)
+    .map((slot) => (spec.messages[slot] ? `/${p.text[slot]}` : ''));
+  while (messages.length && !messages[messages.length - 1]) messages.pop();
 
   const values: Record<string, string[]> = {
     Model: [href('Model', art(spec.model), 'Model')],

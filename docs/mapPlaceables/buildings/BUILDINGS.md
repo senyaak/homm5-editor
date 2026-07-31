@@ -79,6 +79,32 @@ object has: `Model`, `AnimSet`, `blockedTiles` / `holeTiles` / `activeTiles` /
 `ObjectRecordID` on the root element is **optional** — 71 of the 234 building
 definitions ship without it, including every addon object.
 
+### `messagesFileRef` is a POSITION list, and the positions differ by class
+
+The engine takes the *n*-th entry, not the *n*-th non-empty one. Read off every
+shipped `(AdvMap*Shared).xdb`, grouped by the basenames each points at:
+
+| class | the lines, in order |
+|---|---|
+| `AdvMapSignShared`, `AdvMapHillFortShared`, `AdvMapTreasureShared` | name, description |
+| `AdvMapAbanMineShared` | name, description, firstVisit |
+| `AdvMapMineShared` | name, description, captured, alreadyCaptured |
+| `AdvMapGarrisonShared` | name, description, **(empty)**, wayBlockedByHero |
+| `AdvMapSphinxShared` | name, description, **(empty)**, refuse |
+| `AdvMapTentShared` | name, description, noPass, pass |
+| `AdvMapPrisonShared` | name, description, prisonEmpty, prisonCantHire, noExit |
+| `AdvMapSeerHutShared` | name, description, firstVisit, secondVisit, extraMessage |
+| `AdvMapShipyardShared` | name, description, noMoney, blocked, **deserted** |
+| `AdvMapDwarvenWarrenShared` | name, description, captured, alreadyCaptured, descriptionCaptured |
+| `AdvMapDwellingShared` | name, description, firstVisit, secondVisit, firstVisitNoHire, secondVisitNoHire |
+| `AdvMapShrineShared` | name, description, spellLearned, spellAlreadyLearned, spellCantBeLearned, spellCantBeLearned2 |
+| `AdvMapBuildingShared` | varies with the object — 18 of 95 use name, description, firstVisit, alreadyVisited |
+
+A slot with nothing to say is written `<Item href=""/>`, which is what the
+shipped Garrison and Sphinx do — dropping it instead promotes every line after
+it. **This is what made the test shipyard show an empty box**: standing where no
+water is, it wanted `deserted`, entry five, and the editor had written four.
+
 ## 3. Where a parameter can live — three levels, not one
 
 **(a) The definition** (`*Shared`, one document, shared by every placement).
@@ -121,6 +147,32 @@ So the classes worth a required-field check are exactly the ones whose behaviour
 is parameterised at the placement: `AdvMapShrine` (SpellID), `AdvMapSign`
 (MessageFileRef), `AdvMapSeerHut` (Quest), `AdvMapShipyard` (ShipTile),
 `AdvMapSphinx` (Riddle, unless `RandomRiddle`), `AdvMapCartographer` (Cost).
+
+### What each of those three actually wants
+
+Measured against the shipped maps, then written by hand into the test map to
+confirm (`_tmp/fix-sst.ts`):
+
+- **`MessageFileRef`** is a file name relative to the MAP's own folder —
+  `message.1.txt` on A2C0M0, not an absolute data path. The text is UTF-16LE
+  with a BOM and no trailing newline, like every other string a map carries.
+- **`Quest`** needs four things filled before it is an errand rather than a
+  structure: `Name` (an id, not shown), `CaptionFileRef` and
+  `DescriptionFileRef` (map-relative again), a `Kind`, and an `Award` whose
+  `Type` is not `AWARD_NONE`. `Parameters` is a bare `<Item>` list whose meaning
+  is the Kind's: `OBJECTIVE_KIND_COLLECT_RESOURCES` takes a resource index
+  (Wood 0 … Gem 5, Gold 6) then an amount; `OBJECTIVE_KIND_OBTAIN_ARTIFACT`
+  takes an artifact index. Every shipped hut that does nothing (A2S1, A2S3,
+  A2C2M4) is driven from Lua instead and leaves this empty on purpose.
+- **`ShipTile` is an OFFSET from the object's own `Pos`, and it has to land on
+  water.** Over every shipyard the game ships, `Pos + ShipTile` is a flag-0
+  vertex on 42 of 46 (`y*V + x`, no axis flip). So it is the one placement field
+  that a map can make impossible to satisfy: the test map is 72×72 of flat
+  grass with no water anywhere, and no value of `ShipTile` would have helped.
+  Sea is a dug basin — height exactly 0, ground flag 0, passable — and needs no
+  texture layer; the engine fills each connected body to its own level, and the
+  shore vertices around shipped water sit at the ordinary 2.0 with no ring
+  between.
 
 **(c) Global tables**, one setting for every instance in the game:
 
