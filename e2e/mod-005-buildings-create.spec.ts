@@ -13,10 +13,11 @@
 // Its own game install (HOMM5_ROOT, e2e/mods.ts), so the real one is untouched.
 
 import { test, expect } from '@playwright/test';
-import { readFileSync } from 'node:fs';
-import { launchEditor } from './launch.ts';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { DATA, launchEditor } from './launch.ts';
 import type { Launched } from './launch.ts';
-import { modGameRoot } from './mods.ts';
+import { modGameRoot, readInstalledMod } from './mods.ts';
 import { readEntries } from '../src/format/pak.ts';
 import { modFile } from '../src/game/mod-paths.ts';
 import { MOD_STEM } from '../src/mods/mod-files.ts';
@@ -111,6 +112,49 @@ test('one of every class, each from a shipped object of that class', async () =>
   }
 });
 
+/**
+ * And every one of them is REPAINTED, each a different colour.
+ *
+ * A building started from a preset and saved is the shipped one under another
+ * name: same art, same words, indistinguishable on a map. That makes a poor
+ * check of a feature whose whole claim is that the art is OURS — so each is
+ * given a hue of its own here, which both makes it its own building and is the
+ * only test the building side of the recolour has.
+ */
+test('each is repainted, so none of them is the shipped one under a new name', async () => {
+  test.setTimeout(20 * 60_000);
+  const { page } = ed;
+  const labels = await page.locator('#bld-tabs .mp-tab').allTextContents();
+
+  for (const [i, label] of labels.entries()) {
+    await test.step(label, async () => {
+      await page.locator('#bld-tabs .mp-tab', { hasText: label }).first().click();
+      // The brush on the row, where a person would reach for it.
+      await page.locator('#bld-list .um-paint').first().click();
+      await expect(page.locator('#recolor')).toBeVisible();
+      // Spread around the wheel: 16 buildings, each a step apart, so two of them
+      // side by side on a map are plainly two different buildings.
+      const hue = -180 + Math.round((360 / labels.length) * i);
+      await page.locator('#rc-hue').fill(String(hue || 30));
+      await page.locator('#rc-ok').click();
+      await expect(page.locator('#rc-note')).toContainText(/repainted \d+ texture/, { timeout: 240_000 });
+      await page.locator('#rc-close').click();
+      await expect(page.locator('#recolor')).toBeHidden();
+    });
+  }
+
+  // The paint is RECORDED on each building, not left in the archive's bytes: a
+  // build copies the art off the game's data every time, so a recolour that
+  // lived only in the file would be gone the next time anything touched the mod
+  // — and nothing anywhere would say the building had ever been repainted.
+  const mod = readInstalledMod(GAME);
+  const unpainted = (mod.buildings ?? []).filter((b) => !b.recolor).map((b) => b.file);
+  expect(unpainted, 'buildings still wearing the donor\'s colours').toEqual([]);
+  // No two the same, which is what makes them tell apart on a map.
+  const hues = new Set((mod.buildings ?? []).map((b) => b.recolor?.hue));
+  expect(hues.size, 'each building got a hue of its own').toBe((mod.buildings ?? []).length);
+});
+
 test('the archive carries all sixteen, each owning its own art', async () => {
   const entries = readEntries(readFileSync(modFile(GAME, 'mod', MOD_STEM)))
     .map((e) => e.name.replace(/\\/g, '/'));
@@ -132,4 +176,19 @@ test('the archive carries all sixteen, each owning its own art', async () => {
   // And every one of them is offered by the palette, which is what mod-008 needs.
   const links = entries.filter((n) => n.startsWith('MapObjects/_(AdvMapObjectLink)/'));
   expect(links.length, 'a palette entry each').toBeGreaterThanOrEqual(labels.length);
+
+  // The paint is really ON the texture, not merely recorded beside it. Each
+  // copy sits at the game's own path under the building's art folder, so the
+  // file it was copied from is the same path in the data root — and after a
+  // repaint the two must not be the same bytes.
+  const members = readEntries(readFileSync(modFile(GAME, 'mod', MOD_STEM)));
+  const painted = members.find((e) => {
+    const n = e.name.replace(/\\/g, '/');
+    return n.startsWith(`Buildings/${stemFor(labels[0]!)}/art/`) && n.toLowerCase().endsWith('.dds');
+  });
+  expect(painted, 'the first building carries a texture of its own').toBeTruthy();
+  const source = join(DATA, painted!.name.replace(/\\/g, '/').split('/art/')[1]!);
+  expect(existsSync(source), `its source ${source} is in the data root`).toBe(true);
+  expect(painted!.data.equals(readFileSync(source)),
+    'the copy is byte-identical to the game\'s — the repaint did not land').toBe(false);
 });
