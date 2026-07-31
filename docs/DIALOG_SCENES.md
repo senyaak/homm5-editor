@@ -1,0 +1,204 @@
+# Dialog scenes
+
+The cutscenes a campaign plays between missions and in the middle of them:
+Isabell and Agrael talking on a patch of grass while the camera circles. This
+is what the format is, measured against the 251 scenes the game ships — the
+numbers below are printed by `npm run test-dialog-scene`, so they can be
+re-checked rather than believed.
+
+The game's own editor cannot make these. Its manual says so outright: creating
+script-based movies "is not a process intended for an unprepared user", and
+then declines to describe it.
+
+## Three different things get called a cutscene
+
+| | Where | Authored in | Us |
+|---|---|---|---|
+| **DialogScene** | `DialogScenes/<C>/<M>/<S>/DialogScene.xdb` | an in-house tool, never shipped | read, edit and play |
+| **AnimScene** | `Maps/Cutscenes/*/_.(AnimScene).xdb` | Maya, baked | playable in principle, not authorable |
+| camera moves in a mission | `MapScript.lua` | by hand | the script editor already |
+
+Only the first is a data format an editor can offer. The second is a list of
+roles — a model plus a baked clip each, the camera among them — exported from
+Maya; the third is `MoveCamera` and friends in Lua (docs/SCRIPT_API.md).
+
+## What a scene is made of
+
+A scene is a **stage** and a list of **shots**.
+
+The stage is an ordinary map used as scenery — `<Map>` points at an
+`AdvMapDesc`, almost always one of the dozen arenas under
+`Maps/SmallSpecialArenas/` (a few borrow a combat arena). It is a normal 72×72
+map with terrain and objects, which is why the editor's viewport draws it with
+no special case at all. **The arena is usually bare**: C1M1's opening stands on
+an empty grass field, and all 659 props in shot come from the scene itself.
+
+The shots are `<sentences>`. One item is one line of dialogue: who says it,
+which camera pair frames it, how long it lasts, and everything else that
+happens while it is spoken.
+
+```
+DialogScenes/C1/M1/D1/
+  DialogScene.xdb          the scene
+  Isabell.3.xdb  Agrael.xdb  …   actors, one file each
+  Grass01.xdb  Sanctuary.xdb  …  set dressing, one file each
+  DialogScene-Godric-58.txt      the lines (UTF-16LE, per language)
+  *sound.xdb                     one per voice line
+```
+
+### The scene document
+
+Fields in the order the game declares them (`DialogScene` in `types.xml`):
+
+| Field | |
+|---|---|
+| `Map` | the stage |
+| `SoundSet` | ambient sound bed |
+| `Music`, `MusicVolume` | scene music |
+| `CustomSceneAmbientLight` | an `AmbientLight` preset for the whole scene |
+| `sentences` | the shots |
+| `objects` | the set dressing, as hrefs at sibling files |
+| `ModelsLOD` | declared "deprecated (Do not use!)" |
+| `CameraShiftZ`, `Anim3DSoundVolume`, `Name` | |
+
+### A shot
+
+`DialogSentence`, with how many of the 2386 shipped shots fill each field in:
+
+| Field | Used | |
+|---|---|---|
+| `text` | 2386 | the line, in a sibling `.txt` |
+| `sound` | 1553 | the voice recording |
+| `heroLink` / `monsterLink` | 1875 / 509 | who speaks |
+| `NewCameraSet` | 2386 | the camera pair that frames it |
+| `cameraSet` | 171 | the pre-ToE field; `NewCameraSet` wins |
+| `duration`, `soundDuration` | always | seconds |
+| `ActorAnimationIndex`, `AnimName`, `AnimationDelay` | 948 off default | the speaker's own clip |
+| `CustomAnimations` | 1246 | what everyone ELSE does |
+| `CustomEffects` | 259 | an effect at a place, with a delay |
+| `CustomSounds` | 353 | extra sounds, with delays |
+| `MusicOverride` | 1330 | music is steered per shot, not per scene |
+| `AdditionalCameras` | 200 | a second camera pair, started late |
+| `CustomAmbientLight` | 102 | light change mid-scene |
+| `StopAmbient` / `StopMusic` | 45 / 188 | |
+| `DynamicCamera` | never off | all 2386 leave it true |
+
+`CustomAnimations` is what makes a scene move: an actor link, a clip name, a
+delay, and — for a walk — `MovePoints` in TILES with a `FinalAngle` to end on.
+Corpus-wide there are 5578 of them and 769 placed effects.
+
+## Actors
+
+Two storage styles, both in use, both to be preserved on save:
+
+* **inline** (133 shots) — the whole `AdvMapHero` is written inside the scene,
+  `href="#n:inline(AdvMapHero)"`, the same convention a map uses for objects;
+* **a sibling file** (1742 shots) — `href="Agrael.xdb#xpointer(/AdvMapHero)"`.
+
+The addon's scenes prefer the first, the original campaigns' the second.
+
+**A scene actor is the ARENA model, not the adventure one.** The link resolves
+to an `AdvMapHeroShared`, and what a scene plays comes from
+`HeroCharacterArena` → `*.(Character).xdb` → `ArenaAnimSet` — 17 clips
+(`move`, `moveEnd`, `attack00`, `cast`, `death`, `speech_knee`, …). The
+adventure set beside it (`*_LOD-adv`) has two, `idle00` and `move`, and scenes
+routinely name clips it does not have.
+
+What the corpus actually asks for, most used first: `idle00` (1001), `move`
+(903), `death` (741), `happy` (617), `attack00` (498), `spneutral` (334),
+`rangeattack` (196), `hit` (173), `cast` (161).
+
+## Cameras
+
+A `DSceneCamera` is an **orbit pose**: a point it looks at (`Anchor`), a
+distance (`Rod`), two angles, `Roll`, `FOV`, and near/far planes. A
+`DSceneCameraSet` pairs two of them — a shot is the travel from one to the
+other. There are 3045 cameras and 3078 sets across 251 scenes: roughly twelve
+camera poses per scene, which is where a scene author's time goes.
+
+**Half the shots do not use a camera of their own.** The campaigns keep a
+shared library at `Dialogs/` (3201 files) and point into it.
+
+### The convention, measured
+
+The file never says how its angles are measured. `npm run camera-shape` scores
+every candidate against the 4578 poses whose stage terrain is at hand:
+
+* **The anchor is in WORLD units** — 3292 of 6090 anchor coordinates lie past
+  the 72-tile edge of the stage, which a tile coordinate could not. A tile is 2
+  units, the same factor the rest of the renderer runs on.
+* **Pitch is measured from the horizon, and stored negative when the camera is
+  above what it films.** Read that way the eye on a close-up sits a median 2.3
+  units over the ground — head height. Read from the zenith it hovers at 9.0,
+  looking at the tops of their heads; read with the other sign, a tenth of all
+  cameras are underground.
+* **Yaw is not settled by the data.** [~] The arenas are flat, so nothing
+  pushes back: the candidates differ by half a percent on "does the eye stay on
+  the stage". It lives as two constants in `src/dialog/camera.ts`, to be
+  confirmed against the game's own dialog replay once a frame is drawn.
+
+A note on scoring, because the first attempt got it wrong: rewarding a camera
+for *not being buried* rewards it for being high, and every zenith reading
+scored 90-92% for exactly that reason. What separates framing from hovering is
+the eye height on close-ups, not the not-buried count.
+
+### What a set does between its two ends
+
+| Flag | How the corpus uses it |
+|---|---|
+| `UniformCameraMovement` | off in 1063 of 1259 — **easing is the default**, constant speed the exception |
+| `Direction` | set in 205 — which way round the heading travels |
+| `IgnoreYawDiff` | set in 61 — hold the start heading |
+| `Circles` | 0 in 1253, 1 in five, 2 in one — orbiting right around is rare |
+| `Absolute` (on a camera) | false in 162 of 1209 — the anchor is then relative, and nothing reads that yet [~] |
+| `Rot` (on a camera) | non-zero in 156 [~] |
+
+Four cameras carry a **negative** `Rod` — the same eye written with the heading
+turned around.
+
+## Sound
+
+A `<sound>` reference resolves to a `Sound` document whose `<uid>` names a blob:
+`bin/SoundsLoc/<UID>` (Ogg Vorbis, `data/sound.pak`, localized) or
+`bin/Sounds/<UID>` (RIFF WAV, `data/soundsfx.pak`). The campaigns' voice lines
+ship in `UserMODs/All_campaigns.dialogscenes_en.h5u`. Both codecs play in
+Chromium as they are, so a player needs no decoder.
+
+## How a scene gets played
+
+From Lua, in a mission script:
+
+```lua
+StartDialogScene("/DialogScenes/C1/M1/D1/DialogScene.xdb#xpointer(/DialogScene)", "callback", "autosave");
+```
+
+There is also a viewer built into the game — **Settings → Videos → Cutscene** —
+that replays shipped dialogs. Its list is DATA:
+`UI/UIGameRoot.(UIGameRoot).xdb` → `AllDialogScenes` →
+`DialogScenes/AllDialogScenes.(DialogScenesList).xdb`, which any archive of ours
+can override. That is a way to watch a scene in the engine without a map or a
+campaign — the manual says the list depends on campaign progress, which has not
+been tested. [~]
+
+## Where the corpus is
+
+Not all of it is on disk. The addon's scenes unpack from `data/*.pak`; every
+`C1..C6` and `A1C*` scene, and the whole `Dialogs/` camera library, live inside
+`UserMODs/All_campaigns.data.h5u`, with their texts in
+`All_campaigns.texts_en.h5u`. A run that cannot see `UserMODs` grades a quarter
+of the material — `tools/test-dialog-scene.ts` says so out loud rather than
+going quietly green.
+
+## What the editor has so far
+
+* `src/dialog/dialog-scene.ts` — the document: parse, a read-only typed view
+  (stage, shots, actors, animations, effects, sounds, music), and a save that
+  is byte-identical for everything untouched. All 251 scenes round-trip.
+* `src/dialog/camera.ts` — pose to eye and back (which is what "use what I am
+  looking at" is), and the travel between two poses.
+* `tools/test-dialog-scene.ts` — the corpus checks and the census above.
+* `tools/camera-shape.ts` — the convention measurement.
+
+Open, in rough order of when it will bite: yaw's zero [~], what `DynamicCamera`
+does when nothing ever turns it off [~], `Absolute=false` anchors [~], whether
+a custom scene can be listed in the game's replay viewer [~].

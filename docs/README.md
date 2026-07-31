@@ -47,6 +47,7 @@ mod documents below; they move here as each gets written up.
 - [EXE_LUA_REGISTRY.md](EXE_LUA_REGISTRY.md) — the Lua functions the executable registers.
 - [ARCHIVES.md](ARCHIVES.md) — a map, a campaign and a mod are one thing to the engine.
 - [CAMPAIGNS.md](CAMPAIGNS.md) — binding maps into a story, and what carries over between them.
+- [DIALOG_SCENES.md](DIALOG_SCENES.md) — cutscenes: a stage, a list of shots, and orbit cameras.
 
 ## Working in this repo
 

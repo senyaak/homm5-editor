@@ -615,8 +615,11 @@ Format (surveyed 2026-07-23, 250 scenes shipped under `DialogScenes/`):
   camera (with diffs, `Circles`, `Direction`): a shot is the interpolation.
 - Played from Lua: `StartDialogScene("/DialogScenes/…/DialogScene.xdb#xpointer(/DialogScene)", callback, saveName)`.
 
-- [ ] ⬜ `docs/DIALOG_SCENES.md` — written from the 250 shipped scenes, so the
-      editor's UI follows what is actually used rather than what exists
+- [x] ✅ `docs/DIALOG_SCENES.md` — written from the 251 shipped scenes, so the
+      editor's UI follows what is actually used rather than what exists. With
+      it, the document model (`src/dialog/dialog-scene.ts`, every scene loads
+      and saves byte-identical) and the camera (`src/dialog/camera.ts`, whose
+      angle convention was measured rather than guessed — `npm run camera-shape`)
 - [ ] ⬜ Scene editor: actors and props placed by clicking, the camera captured
       from the current view, move paths drawn on the ground (the region tool's
       gesture), lines and durations in a timeline
