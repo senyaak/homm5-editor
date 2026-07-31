@@ -11,10 +11,28 @@ here, port it, check it against a real run, move to the next phase.
 
 ## Where everything is
 
-**The algorithm is in the game executable, and nowhere else.** `H5_MapEditor.exe`
-does not contain a single one of the generator's strings — the shipped editor
-cannot generate a map. There is no library to call and no data file that
-describes the procedure.
+**The algorithm is compiled into two executables, and no data file describes it.**
+Both `H5_Game.exe` and `H5_MapEditor.exe` carry the whole generator — the same
+`NRMG` classes, the same phase log, the same everything.
+
+That is worth stating plainly because this document first claimed the opposite,
+on the strength of one string: `"RMG log: %s"` is absent from the editor. It is
+absent because the editor does not route the log through a UI callback — **it
+writes it to a file called `rmg.txt`** (named at `0x95412d` in the editor's
+code). Same log, different destination, and the destination is the one that can
+actually be read.
+
+The editor is therefore the better oracle, and by some distance:
+
+| | game | map editor |
+| --- | --- | --- |
+| the log | to a callback that goes nowhere | to `rmg.txt` |
+| the seed | no field for it | **can be typed in** |
+| window | fullscreen | a window |
+
+Which means the numbers below can be had without hooking anything at all. The
+extension's oracle keeps its value as a cross-check — two independent readings
+of the same run — but it is no longer the only way in.
 
 **The data, on the other hand, is already ours** — plain XML under
 `data-unpacked/RMG/`, unpacked from `a2p1-data.pak`:
@@ -151,6 +169,14 @@ fix both, and they install only when `bin/homm5-editor-rmg.txt` exists:
 
 Both land in `bin/homm5-editor-rmg.log` as `run seed <n> <forced>` and
 `phase <i> <draws>`.
+
+**Forcing does not reach the game's own screen**, and the second run showed why:
+the seed arrived in `[edi+0x90]` already set, so the fallback to `time()` — the
+thing the hook replaces — never ran. Something upstream of `GenerateMap` fills
+that field in. The hook still reports honestly (log and map agreed on
+`1785534994`), and the map records the seed either way, so a run is still
+reproducible input; it just cannot be *ordered* from the game. The editor can
+order one, which is the other reason it is the better oracle.
 
 **`npm run diff-map` compares the result.** The editor already has it.
 
