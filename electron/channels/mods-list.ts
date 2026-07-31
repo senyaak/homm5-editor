@@ -51,6 +51,9 @@ export function registerModsList(): void {
         ...h,
         art: Object.fromEntries(Object.entries(h.art ?? {}).filter(([, v]) => !!v)) as Record<string, string>,
       })),
+      // `?? []` for the same reason the sets have it: a mod installed before
+      // buildings existed has a manifest without the field, and it stays listable.
+      buildings: (f.mod.buildings ?? []).map((b) => ({ ...b })),
       artifacts: (f.mod.artifacts ?? []).map((a) => ({
         id: a.id, number: a.number, name: a.name, description: a.description,
         slot: a.slot, rank: a.rank, cost: a.cost, aiValue: a.aiValue,

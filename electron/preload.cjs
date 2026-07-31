@@ -85,6 +85,11 @@ const api = {
   modFormData: () => ipcRenderer.invoke('mods:form-data'),
   modPreset: (donor) => ipcRenderer.invoke('mods:preset', { donor }),
   modArtifactPreset: (donor) => ipcRenderer.invoke('mods:artifact-preset', { donor }),
+  buildingData: () => ipcRenderer.invoke('mods:building-data'),
+  buildingPreset: (donor) => ipcRenderer.invoke('mods:building-preset', { donor }),
+  installBuilding: (p) => ipcRenderer.invoke('mods:install-building', p),
+  updateBuilding: (p) => ipcRenderer.invoke('mods:update-building', p),
+  removeBuilding: (p) => ipcRenderer.invoke('mods:remove-building', p),
   installMod: (p) => ipcRenderer.invoke('mods:install', p),
   updateMod: (p) => ipcRenderer.invoke('mods:update', p),
   installArtifact: (p) => ipcRenderer.invoke('mods:install-artifact', p),
@@ -104,7 +109,7 @@ const api = {
   removeArtifactSet: (p) => ipcRenderer.invoke('mods:remove-set', p),
   extensionStatus: () => ipcRenderer.invoke('mods:extension-status'),
   installExtension: () => ipcRenderer.invoke('mods:install-extension'),
-  modTextures: (creature) => ipcRenderer.invoke('mods:textures', { creature }),
+  modTextures: (target) => ipcRenderer.invoke('mods:textures', target),
   recolorMod: (p) => ipcRenderer.invoke('mods:recolor', p),
   // Diagnostics for the fatal-error screen (renderer/parts/fatal.html). It shows up
   // when the renderer module died, so these two are all it can still call —

@@ -34,6 +34,7 @@ import { pickPreset, initPresetPicker } from '#features/mods/preset.ts';
 import { modRow, NL } from '#features/mods/shared.ts';
 import { initHeroesMod } from '#features/mods/heroes.ts';
 import { initUnitsMod } from '#features/mods/units.ts';
+import { initBuildingsMod } from '#features/mods/buildings.ts';
 import { initArtifactsMod } from '#features/mods/artifacts.ts';
 import { initArtifactSets } from '#features/mods/artifact-sets.ts';
 import { openCampaignList, initCampaigns } from '#features/campaigns.ts';
@@ -798,6 +799,7 @@ initPresetPicker();
 initRecolor();
 initHeroesMod();
 initUnitsMod();
+  initBuildingsMod();
   initArtifactsMod();
   initArtifactSets();
 

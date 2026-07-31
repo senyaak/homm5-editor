@@ -9,7 +9,16 @@ import { api } from '#core/ipc.ts';
 import { recolorPixels } from '#src/format/recolor.ts';
 import type { PaletteEntry, RecolorOps } from '#electron/ipc.ts';
 
-let rcCreature = '';
+/**
+ * What is being repainted: a creature of the mod, or a building of it.
+ *
+ * One dialog for both because it is the same operation on the same thing — the
+ * mod's OWN copies of the textures — and the only difference is which folder of
+ * the archive they sit in.
+ */
+export type RecolorTarget = { creature: string } | { building: string };
+
+let rcTarget: RecolorTarget = { creature: '' };
 let rcTextures: { path: string; width: number; height: number; img: HTMLImageElement }[] = [];
 /** The textures' dominant colours, each with its swatch's colour input. */
 let rcPalette: { entry: PaletteEntry; input: HTMLInputElement; original: string }[] = [];
@@ -91,14 +100,14 @@ function renderRecolorPreviews(): void {
   }
 }
 
-export async function openRecolor(creature: string, label: string): Promise<void> {
-  rcCreature = creature;
+export async function openRecolor(target: RecolorTarget | string, label: string): Promise<void> {
+  rcTarget = typeof target === 'string' ? { creature: target } : target;
   $('rc-title').textContent = `Recolor — ${label}`;
   $('rc-err').textContent = '';
   $('rc-note').textContent = '';
   $('rc-previews').textContent = 'reading the mod\'s textures…';
   modDialog('recolor').showModal();
-  const { textures, palette } = await api.modTextures(creature);
+  const { textures, palette } = await api.modTextures(rcTarget);
   rcTextures = await Promise.all(textures.map(async (t) => ({
     path: t.path, width: t.width, height: t.height, img: await loadImage(t.png),
   })));
@@ -112,11 +121,11 @@ async function submitRecolor(): Promise<void> {
   $('rc-err').textContent = '';
   $('rc-note').textContent = '';
   try {
-    const res = await api.recolorMod({ creature: rcCreature, ops: currentRecolorOps() });
+    const res = await api.recolorMod({ ...rcTarget, ops: currentRecolorOps() });
     $('rc-note').textContent = `repainted ${res.textures} texture(s) → ${res.archive}`;
     // The previews now show the archive's new bytes, and the controls return
     // to neutral — a second pass starts from what is really there.
-    const { textures, palette } = await api.modTextures(rcCreature);
+    const { textures, palette } = await api.modTextures(rcTarget);
     rcTextures = await Promise.all(textures.map(async (t) => ({
       path: t.path, width: t.width, height: t.height, img: await loadImage(t.png),
     })));

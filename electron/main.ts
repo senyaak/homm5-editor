@@ -26,6 +26,7 @@ import { registerHistory } from '#electron/channels/history.ts';
 import { registerLoc } from '#electron/channels/loc.ts';
 import { registerMaps } from '#electron/channels/maps.ts';
 import { registerModArtifacts } from '#electron/channels/mods-artifacts.ts';
+import { registerModBuildings } from '#electron/channels/mods-buildings.ts';
 import { registerModCreatures } from '#electron/channels/mods-creatures.ts';
 import { registerModHeroes } from '#electron/channels/mods-heroes.ts';
 import { registerModsList } from '#electron/channels/mods-list.ts';
@@ -149,6 +150,7 @@ registerModsList();
 registerModCreatures();
 registerModHeroes();
 registerModArtifacts();
+registerModBuildings();
 registerModTextures();
 
 app.whenReady().then(async () => {

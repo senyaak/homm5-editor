@@ -29,16 +29,38 @@ function modCreatureArchive(g: string, creatureId: string): { path: string; crea
   throw new Error(`${creatureId} is not in any manifest-carrying mod in ${MOD_DIR}`);
 }
 
+/** Our mod's archive and the building in it. Same job, other folder. */
+function modBuildingArchive(g: string, file: string): { path: string } {
+  for (const f of findCreatureMods(g)) {
+    if (f.reconstructed) continue;
+    if ((f.mod.buildings ?? []).some((b) => b.file === file)) return { path: f.path };
+  }
+  throw new Error(`${file} is not in any manifest-carrying mod in ${MOD_DIR}`);
+}
+
+/**
+ * Where one entry's own textures live inside the archive.
+ *
+ * Everything a creature or a building owns sits under one folder — that is what
+ * the art closure is for — so "its textures" is a prefix and nothing more.
+ */
+function texturePrefix(g: string, p: ModsTexturesPayload | ModsRecolorPayload): { archive: string; prefix: string } {
+  if (p.building) {
+    return { archive: modBuildingArchive(g, p.building).path, prefix: `Buildings/${p.building}/` };
+  }
+  const found = modCreatureArchive(g, p.creature!);
+  return { archive: found.path, prefix: `Units/${found.creature.file}/` };
+}
+
 /** Wire this domain onto ipcMain. Called once, from main. */
 export function registerModTextures(): void {
-  ipcMain.handle('mods:textures', async (_e: IpcMainInvokeEvent, { creature }: ModsTexturesPayload): Promise<ModsTexturesResult> => {
+  ipcMain.handle('mods:textures', async (_e: IpcMainInvokeEvent, p: ModsTexturesPayload): Promise<ModsTexturesResult> => {
     const g = gameRoot();
     if (!g) throw new Error('no game install configured');
-    const found = modCreatureArchive(g, creature);
-    const prefix = `Units/${found.creature.file}/`;
+    const { archive, prefix } = texturePrefix(g, p);
     const textures: ModsTexturesResult['textures'] = [];
     const pixels: Uint8Array[] = [];
-    for (const e of readEntries(readFileSync(found.path))) {
+    for (const e of readEntries(readFileSync(archive))) {
       const name = e.name.replace(/\\/g, '/');
       if (!name.startsWith(prefix) || !name.toLowerCase().endsWith('.dds')) continue;
       const img = decodeDDSBuffer(e.data);
@@ -65,16 +87,24 @@ export function registerModTextures(): void {
     // nothing anywhere to say it ever was not. Kept on the creature, every build
     // reapplies it.
     const mod = ourMod(g);
-    const creature = mod.creatures.find((c) => c.id === p.creature);
-    if (!creature) throw new Error(`${p.creature} is not in ${modFile(g, 'mod', mod.stem)}`);
-    creature.recolor = p.ops;
+    let prefix: string;
+    if (p.building) {
+      const building = (mod.buildings ?? []).find((b) => b.file === p.building);
+      if (!building) throw new Error(`${p.building} is not in ${modFile(g, 'mod', mod.stem)}`);
+      building.recolor = p.ops;
+      prefix = `Buildings/${building.file}/`;
+    } else {
+      const creature = mod.creatures.find((c) => c.id === p.creature);
+      if (!creature) throw new Error(`${p.creature} is not in ${modFile(g, 'mod', mod.stem)}`);
+      creature.recolor = p.ops;
+      prefix = `Units/${creature.file}/`;
+    }
 
     const { installed, report } = buildAndInstall(g, mod);
-    const prefix = `Units/${creature.file}/`;
     const textures = report.files.filter(
       (x) => x.path.split('\\').join('/').startsWith(prefix) && x.path.toLowerCase().endsWith('.dds'),
     ).length;
-    if (!textures) throw new Error(`${p.creature} carries no textures to recolour`);
+    if (!textures) throw new Error(`${p.building ?? p.creature} carries no textures to recolour`);
     return { archive: installed.archive, textures };
   });
 }

@@ -761,6 +761,31 @@ export interface ModListEntry {
   sets: ModArtifactSetDTO[];
   /** Its heroes. They extend nothing, so this list is the only trace of them. */
   heroes: ModHeroDTO[];
+  /**
+   * Its buildings — everything a hero walks up to, one of sixteen classes each.
+   *
+   * The WHOLE building, for the reason a hero is whole here: this list is where
+   * editing starts, and a form filled from a summary would drop whatever the
+   * summary left out — its lines, its class's own fields, its recolouring.
+   */
+  buildings: ModBuildingDTO[];
+}
+
+/** One building of an installed mod, as `mods:list` reports it. */
+export interface ModBuildingDTO {
+  file: string;
+  className: string;
+  type?: string;
+  model: string;
+  animSet?: string;
+  effect?: string;
+  effectWhenOwned?: string;
+  sound?: string;
+  icon?: string;
+  messages: Record<string, string>;
+  fields?: Record<string, string | string[]>;
+  footprint?: { w: number; h: number };
+  recolor?: RecolorOps;
 }
 
 /**
@@ -909,6 +934,99 @@ export interface ModsInstallPayload {
   stats: Partial<CreatureStats>;
   /** Art overrides per slot; anything omitted keeps the donor's file. */
   art?: Partial<Record<'character' | 'model' | 'animSet' | 'icon', string>>;
+}
+
+// --- buildings: everything a hero walks up to ---------------------------------
+
+/** One of the sixteen classes, as the form offers it. */
+export interface BuildingClassDTO {
+  /** Root element of the definition document, e.g. `AdvMapBuildingShared`. */
+  shared: string;
+  /** Root element of the `<Item>` body on a map, e.g. `AdvMapBuilding`. */
+  placed: string;
+  label: string;
+  about: string;
+  /** Whether a `<Type>` picks the behaviour, or the class IS one. */
+  takesType: boolean;
+  /** The class's own fields beyond the shared base, `Type` excluded. */
+  fields: string[];
+  /** The message slots it shows, in the order the engine reads them. */
+  slots: string[];
+}
+
+/** One shipped definition, offered as a starting point. */
+export interface BuildingDonorDTO {
+  path: string;
+  className: string;
+  type?: string;
+  name?: string;
+}
+
+/** A donor read whole — what "Use preset…" fills the form with. */
+export interface BuildingPresetDTO {
+  className: string;
+  type?: string;
+  model: string;
+  animSet?: string;
+  effect?: string;
+  effectWhenOwned?: string;
+  sound?: string;
+  icon?: string;
+  /** Its lines, by slot, as TEXT — ours to edit and to ship. */
+  messages: Record<string, string>;
+  fields: Record<string, string | string[]>;
+}
+
+/** Result of `mods:building-data` — everything the Buildings window is built from. */
+export interface ModsBuildingDataResult {
+  classes: BuildingClassDTO[];
+  donors: BuildingDonorDTO[];
+  /** The 128 `BUILDING_*` behaviours. */
+  types: string[];
+  /** Value lists the class fields take, by field name. */
+  enums: Record<string, string[]>;
+  /** The creature roster, for the class that names creatures. */
+  creatures: RosterEntryDTO[];
+}
+
+/** Payload of `mods:building-preset`. */
+export interface ModsBuildingPresetPayload { donor: string; }
+
+/** Payload of `mods:install-building` / `mods:update-building`. */
+export interface ModsBuildingPayload {
+  /** File stem: names its folder and every file in it. */
+  file: string;
+  /** Which of the sixteen classes. */
+  className: string;
+  /** The behaviour, for the classes that choose one. */
+  type?: string;
+  /** Art, as paths into the game's data — the build copies it all into the mod. */
+  model: string;
+  animSet?: string;
+  effect?: string;
+  effectWhenOwned?: string;
+  sound?: string;
+  icon?: string;
+  /** Every line it shows, by slot. */
+  messages: Record<string, string>;
+  /** The class's own fields, by name. */
+  fields?: Record<string, string | string[]>;
+  /** What it blocks, in tiles; omitted, it is measured off the model. */
+  footprint?: { w: number; h: number };
+  /** Recolouring, recorded on the building and reapplied by every build. */
+  recolor?: RecolorOps;
+}
+
+/** Payload of `mods:remove-building`. */
+export interface ModsRemoveBuildingPayload { file: string; }
+
+/** Result of the three building channels. */
+export interface ModsBuildingResult {
+  archive: string;
+  /** The building's file stem. */
+  file: string;
+  /** How many files its folder holds — its art, mostly. */
+  art: number;
 }
 
 /** Payload of `mods:install-artifact` — one artifact to add to OUR mod. */
@@ -1067,8 +1185,16 @@ export interface ModsInstallSetResult {
   number: number;
 }
 
+/**
+ * Whose textures — a creature of the mod, or a building of it.
+ *
+ * The two are the same operation on the same thing (the mod's own copies) and
+ * differ only in which folder of the archive they live under.
+ */
+export type ModTarget = { creature: string; building?: undefined } | { building: string; creature?: undefined };
+
 /** Payload of `mods:textures` — whose textures to show. */
-export interface ModsTexturesPayload { creature: string }
+export type ModsTexturesPayload = ModTarget;
 
 /** One texture of a mod creature, ready for a preview canvas. */
 export interface ModTextureDTO {
@@ -1087,11 +1213,8 @@ export interface ModsTexturesResult {
   palette: PaletteEntry[];
 }
 
-/** Payload of `mods:recolor` — recolour every texture of one mod creature. */
-export interface ModsRecolorPayload {
-  creature: string;
-  ops: RecolorOps;
-}
+/** Payload of `mods:recolor` — recolour every texture of one mod entry. */
+export type ModsRecolorPayload = ModTarget & { ops: RecolorOps };
 
 /** Result of `mods:recolor`. */
 export interface ModsRecolorResult {
@@ -1198,6 +1321,16 @@ export interface EditorApi {
   modPreset(donor: string): Promise<CreaturePresetDTO>;
   /** A donor artifact, read whole — the form's preset. */
   modArtifactPreset(donor: string): Promise<ArtifactPresetDTO>;
+  /** The sixteen classes, the shipped definitions, and the value lists a form needs. */
+  buildingData(): Promise<ModsBuildingDataResult>;
+  /** A shipped definition, read whole — what "Use preset…" fills a form with. */
+  buildingPreset(donor: string): Promise<BuildingPresetDTO>;
+  /** Add a building to OUR mod, copy its whole art closure in, install it. */
+  installBuilding(p: ModsBuildingPayload): Promise<ModsBuildingResult>;
+  /** Change a building already in the mod. Its file stem does not move. */
+  updateBuilding(p: ModsBuildingPayload): Promise<ModsBuildingResult>;
+  /** Take a building out of the mod, with its art. */
+  removeBuilding(p: ModsRemoveBuildingPayload): Promise<ModsBuildingResult>;
   /** Add a creature to OUR mod, build it, install it, patch the ceiling. */
   installMod(p: ModsInstallPayload): Promise<ModsInstallResult>;
   /** Change a creature already in the mod. Its id and number do not move. */
@@ -1242,9 +1375,9 @@ export interface EditorApi {
   extensionStatus(): Promise<ExtensionStatus>;
   /** Put the extension in place: the DLL, and the import that loads it. */
   installExtension(): Promise<ExtensionStatus>;
-  /** A mod creature's textures, decoded for the Recolor preview. */
-  modTextures(creature: string): Promise<ModsTexturesResult>;
-  /** Recolour a mod creature's textures and rewrite the archive. */
+  /** A mod creature's or building's textures, decoded for the Recolor preview. */
+  modTextures(target: ModsTexturesPayload): Promise<ModsTexturesResult>;
+  /** Recolour one mod entry's textures and rewrite the archive. */
   recolorMod(p: ModsRecolorPayload): Promise<ModsRecolorResult>;
   /**
    * A human-readable dump of what Chromium decided about this machine's

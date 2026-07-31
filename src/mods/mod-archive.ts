@@ -178,6 +178,7 @@ function readManifest(bytes: Buffer): CreatureMod | null {
   }
   if (mod.version !== 1 || !Array.isArray(mod.creatures)) return null;
   if (!Array.isArray(mod.dwellings)) mod.dwellings = [];
+  if (!Array.isArray(mod.buildings)) mod.buildings = [];
   return mod;
 }
 

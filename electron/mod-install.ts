@@ -52,9 +52,16 @@ function modEffects(mod: CreatureMod): EffectRow[] {
   });
 }
 
-/** Nothing left in it — the state removing the last of something leaves. */
+/**
+ * Nothing left in it — the state removing the last of something leaves.
+ *
+ * EVERY kind has to be counted here. Miss one and installing the first of that
+ * kind reads as "the mod is now empty": the archive is deleted, and the caller
+ * is handed the same success it would get from a build, so the window says it
+ * installed something that is not there.
+ */
 function modIsEmpty(mod: CreatureMod): boolean {
-  return !mod.creatures.length && !mod.dwellings.length
+  return !mod.creatures.length && !mod.dwellings.length && !(mod.buildings ?? []).length
     && !(mod.artifacts ?? []).length && !(mod.sets ?? []).length && !(mod.heroes ?? []).length;
 }
 

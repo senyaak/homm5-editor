@@ -1,0 +1,85 @@
+  <!-- buildings: everything a hero walks up to, one of sixteen classes each.
+       The tabs ARE the classes — a list holds one class and nothing else, and
+       New opens the form for that class, because the class decides what the
+       form even has (whether a behaviour is picked, what fields it adds, how
+       many lines it shows). Game-global like the other mod windows: no map
+       need be open. -->
+  <dialog id="bldmod">
+    <div class="mp-card um-card">
+      <div class="mp-head">
+        <span class="mp-title">Buildings</span>
+        <button id="bld-close" title="close (Esc)">✕</button>
+      </div>
+      <div id="bld-tabs" class="mp-tabs"></div>
+      <div class="mp-body on-body um-body">
+        <div id="bld-about" class="um-note"></div>
+        <fieldset>
+          <legend id="bld-legend">Installed</legend>
+          <div id="bld-list" class="um-mods"></div>
+        </fieldset>
+        <div class="de-foot" style="padding:0;justify-content:flex-start">
+          <button id="bld-new">New…</button>
+        </div>
+        <!-- What the last build did. It belongs to the LIST, not to the form:
+             the form closes when a build succeeds. -->
+        <div id="bld-note" class="um-note"></div>
+        <div id="bld-err" class="on-err"></div>
+      </div>
+      <div class="de-foot">
+        <button id="bld-cancel" class="ghost">Close</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- The form, opened ON TOP of the list. Its rows are built from the class:
+       only the art and the identifier are the same for all sixteen. -->
+  <dialog id="bldedit">
+    <div class="mp-card um-card">
+      <div class="mp-head">
+        <span class="mp-title" id="bldedit-title">New building</span>
+        <button id="bldedit-x" title="close (Esc)">✕</button>
+      </div>
+      <div class="mp-body on-body um-body">
+        <fieldset>
+          <legend id="bld-form-legend">New building</legend>
+          <div id="bld-editing" class="um-editing"></div>
+          <div class="on-body um-form">
+            <!-- A preset is something you DO once: it fills every field from a
+                 shipped object of this class, and each stays editable. Starting
+                 blank is the normal case — nothing here needs a donor. -->
+            <div class="on-row um-span">
+              <span>Preset</span>
+              <span id="bld-donor-name" class="um-note" style="flex:1;min-width:0">nothing yet — the form is blank</span>
+              <button id="bld-donor-pick" class="ghost" title="fill every field below from a shipped object of this class; each stays editable afterwards">Use preset…</button>
+              <input id="bld-donor" type="hidden">
+            </div>
+            <label class="on-row"><span>Identifier</span><input id="bld-file" type="text" spellcheck="false" autocomplete="off" placeholder="unique id, e.g. NagaTemple" title="names its folder in the mod and every file in it"></label>
+            <label class="on-row" id="bld-typerow"><span>Behaviour</span><select id="bld-type" title="which of the 128 compiled behaviours it runs"></select></label>
+            <!-- The art. Everything named here is COPIED into the mod when the
+                 building is built, so it can be recoloured or replaced later
+                 without touching the game's own files. -->
+            <div class="on-row um-span"><span style="opacity:.7">Art — copied into the mod, editable there</span></div>
+            <label class="on-row um-span"><span>Model</span><input id="bld-model" type="text" spellcheck="false" autocomplete="off" list="bld-models" placeholder="/_(Model)/Buildings/…"></label>
+            <label class="on-row um-span"><span>Anim set</span><input id="bld-animset" type="text" spellcheck="false" autocomplete="off" list="bld-animsets" placeholder="optional"></label>
+            <label class="on-row um-span"><span>Effect</span><input id="bld-effect" type="text" spellcheck="false" autocomplete="off" list="bld-effects" placeholder="optional"></label>
+            <label class="on-row um-span"><span>Sound</span><input id="bld-sound" type="text" spellcheck="false" autocomplete="off" list="bld-sounds" placeholder="optional"></label>
+            <label class="on-row um-span"><span>Icon</span><input id="bld-icon" type="text" spellcheck="false" autocomplete="off" list="bld-icons" placeholder="optional"></label>
+            <datalist id="bld-models"></datalist>
+            <datalist id="bld-animsets"></datalist>
+            <datalist id="bld-effects"></datalist>
+            <datalist id="bld-sounds"></datalist>
+            <datalist id="bld-icons"></datalist>
+            <!-- The class's own fields, and its lines: both built from the class. -->
+            <div id="bld-fields" class="um-span"></div>
+            <div id="bld-texts" class="um-span"></div>
+          </div>
+        </fieldset>
+        <div id="bld-form-err" class="on-err"></div>
+      </div>
+      <div class="de-foot">
+        <button id="bld-recolor" class="ghost" style="margin-right:auto" title="repaint its textures — the copies in the mod, so nothing of the game's changes">Recolour…</button>
+        <button id="bld-form-cancel" class="ghost">Cancel</button>
+        <button id="bld-ok">Save</button>
+      </div>
+    </div>
+  </dialog>
