@@ -22,6 +22,8 @@ import { childText, children, find, parse, serialize } from '../src/format/xml.t
 import type { XmlElement } from '../src/format/xml.ts';
 import { readEntries } from '../src/format/pak.ts';
 import { loadDialogScene, saveDialogScene } from '../src/dialog/dialog-scene.ts';
+import { cameraShot, eyeOf, loadCamera, loadCameraSet, poseAt, poseFrom } from '../src/dialog/camera.ts';
+import { dirOf, resolveHref } from '../src/scene/xdb.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {
@@ -389,6 +391,52 @@ console.log(line('anchor read as world units', asWorld));
 check('framing the speaker is a default, not a rule — a fifth of shots sit on them',
   asWorld.filter((d) => d < 6).length > asWorld.length / 5,
   `${asWorld.filter((d) => d < 6).length} of ${asWorld.length} shots anchor within 3 tiles of the speaker`);
+
+// ---------------------------------------------------------------------------
+// 6. The camera arithmetic
+// ---------------------------------------------------------------------------
+//
+// Where the eye goes is measured (tools/camera-shape.ts, and the header of
+// src/dialog/camera.ts). What is checked here is that the two directions agree
+// — put a pose through eyeOf and back through poseFrom and the same pose comes
+// out — because "use what I am looking at" is exactly that round trip, and a
+// sign error in it would frame every captured shot backwards.
+
+// Compared as EYE POSITIONS, not as angles. The same eye has more than one
+// spelling — four shipped cameras carry a NEGATIVE rod, which is the same place
+// written with the heading turned around, and a yaw past 2π is another. What
+// must not move is where the camera ends up.
+let worstPose = 0, posesChecked = 0, negativeRod = 0;
+for (const cam of cams) {
+  const pose = loadCamera(cam.text);
+  if (Math.abs(pose.rod) < 1e-3) continue; // sitting on its own anchor: no heading to recover
+  posesChecked++;
+  if (pose.rod < 0) negativeRod++;
+  const eye = eyeOf(pose);
+  const again = eyeOf(poseFrom(eye, pose.anchor, pose.fov, pose.roll));
+  worstPose = Math.max(worstPose, Math.hypot(again.x - eye.x, again.y - eye.y, again.z - eye.z));
+}
+check('a pose survives the trip through the viewport and back', worstPose < 1e-9,
+  `${posesChecked} poses (${negativeRod} of them written with a negative rod), worst drift ${worstPose.toExponential(1)}`);
+
+// The ends of a move are the poses it was built from — nothing creeps in from
+// the easing, the corrections or the extra turns.
+let worstEnd = 0, shotsChecked = 0;
+for (const doc of docs.filter((d) => d.root === 'DSceneCameraSet')) {
+  const set = loadCameraSet(doc.text);
+  const startDoc = set.startCamera && byPath.get(resolveHref(dirOf(doc.path), set.startCamera));
+  const finishDoc = set.finishCamera && byPath.get(resolveHref(dirOf(doc.path), set.finishCamera));
+  if (!startDoc || !finishDoc || set.ignoreYawDiff || set.circles) continue;
+  shotsChecked++;
+  const shot = cameraShot(set, loadCamera(startDoc.text), loadCamera(finishDoc.text));
+  const a = poseAt(shot, 0), b = poseAt(shot, 1);
+  worstEnd = Math.max(worstEnd,
+    Math.abs(a.rod - shot.start.rod), Math.abs(b.rod - shot.finish.rod),
+    Math.abs(a.anchor.x - shot.start.anchor.x - set.startDiff.x),
+    Math.abs(b.anchor.z - shot.finish.anchor.z - set.finishDiff.z));
+}
+check('a move starts and ends exactly on its two cameras', worstEnd < 1e-9,
+  `${shotsChecked} moves, worst drift ${worstEnd.toExponential(1)}`);
 
 console.log(`\n${failures ? `\x1b[31m${failures} failed\x1b[0m` : '\x1b[32mall checks passed\x1b[0m'}`);
 process.exit(failures ? 1 : 0);
