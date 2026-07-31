@@ -242,13 +242,31 @@ next number, so the stream has to be exact before any phase above it can be
 judged — a phase read perfectly still produces a different world if the numbers
 under it are different.
 
-It is a 64-bit LCG using MSVC's own `rand()` constants:
+It is a 64-bit LCG using MSVC's own `rand()` constants, with **five** ways in —
+one step of the state each, and each slicing that step differently:
 
 ```
 state = state * 0x343FD + 0x269EC3        (mod 2^64)
-next()      = (state >> 23) & 0x7FFFFFFF
-below(n)    = ((state >> 16) & (2^47 - 1)) % n
+
+next()            = (state >> 23) & 0x7FFFFFFF            0xeb13a0
+next63()          =  state        & 0x7FFF_FFFFFFFFFFFF   0xeb1360
+below(n)          = ((state >> 16) & (2^47 - 1)) % n      0xeb13e0
+between(lo, hi)   = lo + below(hi - lo + 1)               0xeb1450
+betweenFloat(a,b) = a + (next() / 2^31) * (b - a)         0xeb14d0, in float
 ```
+
+Plus `0xeb1330` to seed (and reset the counter) and `0xeb1350` to read the state
+back, neither of which draws.
+
+`between` is the engine's own function, not a composition — but it composes to
+exactly this, empty range included: `hi < lo` makes the span zero, and it
+returns `lo` having drawn nothing.
+
+`betweenFloat` is where `Zone #%d … k == %2.2f` comes from, and it is computed
+in SINGLE precision — the scale, the multiply and the add are all `ss`
+instructions. In JavaScript that means `Math.fround` around every step. Skip it
+and the answer is right to seven digits and wrong after, which is the drift that
+surfaces a thousand draws later as a different map.
 
 Three details that a reasonable-looking port gets wrong:
 
