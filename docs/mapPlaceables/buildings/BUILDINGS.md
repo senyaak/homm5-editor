@@ -466,8 +466,10 @@ errand with a caption and an award, and the ship tile — over a bay dug with th
 Lower brush, because the offset only means something if it lands on water.
 
 **What it still cannot do.** The form marks what a BUILDING cannot be made
-without and refuses to save while one of those is empty; the object panel does
-neither for what a PLACEMENT needs, so a shrine placed and left at `SPELL_NONE`
-is silent and nothing says why — the fields are reachable, not required. Nested
+without and refuses to save while one of those is empty — the rule every content
+window now follows, written down in [CONTENT_FORMS.md](../../CONTENT_FORMS.md).
+The object panel does neither for what a PLACEMENT needs, so a shrine placed and
+left at `SPELL_NONE` is silent and nothing says why — the fields are reachable,
+not required. Nested
 documents — the model, the animation set, the effect — are text boxes holding a
 path rather than editors of their own.

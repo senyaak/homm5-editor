@@ -275,6 +275,17 @@ own game root; authoring one through the window is `e2e/mod-001-units-create.spe
 `mod-003-artifacts-create.spec.ts` and `mod-002-units-recolor.spec.ts` — one per thing, each on
 its own isolated install so any of them runs alone (docs/UNITS_AND_ARTIFACTS.md).
 
+After the map has held against the reference, the same spec goes on to ADD to it
+what the original never had: the hero mod-004 installed, and one building of
+every class mod-005 made, in the empty corner. Those last stages are where the
+PLACEMENT fields get filled — the shrine's spell, the sign's message file (New,
+then the text typed into the editor it opens), the seer hut's quest and the
+shipyard's ship tile (Edit… into the object's tree) — over a bay dug with the
+Lower brush, because `ShipTile` is an offset that has to land on water. Walked
+around in the game, all four had been silent; the checks now read them back out
+of the saved map and the ground-kind plane rather than trusting the panel that
+wrote them. See BUILDINGS.md §3.
+
 One accepted deviation: the terrain **container is 5003 bytes shorter** than the
 original's. Every data plane matches — heights, ground flags, passability,
 rivers, and the same five-plane array — so the difference is trailer padding the

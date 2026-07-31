@@ -39,6 +39,7 @@ mod documents below; they move here as each gets written up.
 ## Mods and content
 
 - [UNITS_AND_ARTIFACTS.md](UNITS_AND_ARTIFACTS.md) — how new content gets into the game from here.
+- [CONTENT_FORMS.md](CONTENT_FORMS.md) — what every window that MAKES something agrees on: what it refuses, and why a form must carry back all of what it shows.
 - [NEW_CREATURES.md](NEW_CREATURES.md) — a creature, including the ceiling in the executable.
 - [ARTIFACTS.md](ARTIFACTS.md) — an artifact, start to finish.
 - [ARTIFACT_EFFECTS.md](ARTIFACT_EFFECTS.md) — what data, script and the exe each control.

@@ -212,6 +212,15 @@ get a live 3D scene you sculpt, paint, populate, script and pack.
   declares each, and §7 on the editor: a tab per class, forms built from
   `types.xml`, and a building that carries its own art so it can be repainted or
   re-modelled without touching a shipped file.
+- **Every window that makes something refuses early** ([docs/CONTENT_FORMS.md](docs/CONTENT_FORMS.md)) —
+  creatures, artifacts, artifact sets, heroes, buildings, campaigns and New Map
+  mark what their build will not go without (a star on the label), name what is
+  still missing under the form, and keep Save down until it is in. The rules are
+  the ones the channel and the core already enforce, moved to where they can be
+  read before a rebuild rather than after one — a creature with no preset used to
+  reach the build and come back "cannot resolve the donor (none)". The same page
+  carries the rule the near-misses came from: a form must carry back everything
+  it shows, or it saves the last thing's values over this one's.
 - **New artifacts** carry no properties of their own: a record holds six hero
   stats, and every special behaviour the shipped artifacts have is compiled
   against a specific id. What data, script and the executable each control is in
@@ -461,6 +470,20 @@ when placed. Details in [docs/GEOMETRY_FORMAT.md](docs/GEOMETRY_FORMAT.md)
 and [MESH_PLAN.md](MESH_PLAN.md).
 
 ## Testing
+
+`npm test` runs **every `test-*` script in `package.json`**, each in its own
+process (`tools/test-all.ts`). Two things about that are worth knowing before
+you run it:
+
+- it includes **`test-e2e-nodata`**, so it launches the real app under Playwright
+  — `npm test` is not a pure unit run, and it takes minutes rather than seconds;
+- those specs, and `test-campaign`, write into the game root this checkout is
+  configured for: the campaign fixtures `e2e Carry M1..M3.h5m` and
+  `e2e Carry.h5c` land in `<game>/H5E/`. Nothing else there is touched, but an
+  install you are testing by hand will have those four files rewritten.
+
+Only `test-e2e` — the C1M1 chain and the mod stages — is left out; run it
+deliberately.
 
 The unit `test-*` scripts guard the format layer (byte-faithful round trips) and
 the model. The north-star e2e, though, is **rebuilding the shipped campaign
