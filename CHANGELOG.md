@@ -13,6 +13,10 @@ one.
 
 ## Unreleased
 
+Nothing yet — this is where the next build's notes go.
+
+## 0.6.0 — 2026-07-31
+
 ### Added
 
 - **Buildings — everything a hero walks up to, made in a window.** Mines,
