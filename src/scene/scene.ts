@@ -320,7 +320,7 @@ export function buildScene(
   // --- place objects onto their own floor's terrain ---
   const floorInstances: Instance[][] = [[], []];
   let skipped = 0;
-  for (const obj of map.objects) {
+  for (const obj of [...map.objects, ...(opt.extraObjects ?? [])]) {
     const shared = obj.shared;
     const pos = obj.pos;
     if (!shared || !pos) { skipped++; continue; }

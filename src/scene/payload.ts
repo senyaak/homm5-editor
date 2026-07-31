@@ -8,7 +8,7 @@
 // a single line of file reading in its bundle.
 
 import type { BakedClip } from './animation.ts';
-import type { PointLightDef } from '../map/map.ts';
+import type { MapObject, PointLightDef } from '../map/map.ts';
 
 
 /**
@@ -363,6 +363,15 @@ export interface BuildSceneOptions extends SceneAnimationOptions {
   /** Edge length for ground tile textures. */
   tileSize?: number;
   seaLevel?: number;
+  /**
+   * Objects to place on the map's terrain besides the map's own.
+   *
+   * For a dialog scene, which brings its cast and its set dressing with it and
+   * borrows a bare arena to stand them on (src/dialog/stage.ts). They are
+   * placed exactly like the map's — same footprint, same ground height, same
+   * skipping when a shared reference leads nowhere.
+   */
+  extraObjects?: readonly MapObject[];
 }
 
 /** A ground tile in the palette, previewed from its own .dds. */

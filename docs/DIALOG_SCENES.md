@@ -196,8 +196,21 @@ going quietly green.
   is byte-identical for everything untouched. All 251 scenes round-trip.
 * `src/dialog/camera.ts` — pose to eye and back (which is what "use what I am
   looking at" is), and the travel between two poses.
+* `src/dialog/stage.ts` — the scene's own cast and set dressing as map objects,
+  placed on the stage map through the existing scene builder
+  (`BuildSceneOptions.extraObjects`). There is no second renderer.
 * `tools/test-dialog-scene.ts` — the corpus checks and the census above.
 * `tools/camera-shape.ts` — the convention measurement.
+* `tools/scene-stage.ts` — builds a scene headless and reports what drew.
+  C1M1's opening comes out as 53 meshes and 665 placed objects with ONE
+  skipped: `Sunflowers.(AdvMapStaticShared)`, which is one of the game's own
+  empty stubs (the working sunflowers are the `Sunflowers_1..5` group), so the
+  engine draws nothing there either.
+
+A shipped scene is opened the way a shipped map is: its folder is unpacked out
+of the archives into a workspace that mirrors its data path, and that workspace
+is mounted over the data root. Then every href in it resolves normally — the
+absolute ones at the arena, the relative ones at its own files.
 
 Open, in rough order of when it will bite: yaw's zero [~], what `DynamicCamera`
 does when nothing ever turns it off [~], `Absolute=false` anchors [~], whether
