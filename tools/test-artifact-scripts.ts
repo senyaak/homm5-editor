@@ -90,8 +90,15 @@ check('it asks the question the helper answers', starter.includes('EditorHeroWea
 // The count is a named knob rather than a number buried in the call: a set with
 // a second behaviour at another number is that function copied with another x.
 check('the count is a knob with the whole set as its first value', starter.includes('local x = 3;'));
-check('it hooks itself up - without this nothing runs',
-  starter.includes('Trigger(NEW_DAY_TRIGGER, "H3UndeadKing_NewDay");'));
+// WHICH event a set acts on is the author's — "once a day" fits a granting
+// effect and nothing else. So the hook is shown and not made: the starter as it
+// stands runs nothing, and says in as many words that this is why.
+check('it does not decide when the set acts',
+  !/^\s*Trigger\(/m.test(starter), 'an uncommented Trigger line');
+check('but it says a hook is what makes it run, and offers shapes',
+  starter.includes('-- Trigger(NEW_DAY_TRIGGER, "H3UndeadKing_Worn");')
+  && starter.includes('-- Trigger(OBJECT_TOUCH_TRIGGER, "someObjectName", "H3UndeadKing_Worn");')
+  && /hooked to an event/.test(starter));
 check('it leaves a place to write in', /your code/i.test(starter));
 check('it passes the linter as it stands', luaDiagnostics(starter).length === 0,
   JSON.stringify(luaDiagnostics(starter).slice(0, 1)));
@@ -99,7 +106,7 @@ check('a set with no stem still gets something that parses',
   luaDiagnostics(starterScript('', 0)).length === 0);
 // A stem is a file name, not a Lua name: `My Set-2` has to become a symbol.
 check('a stem that is not a Lua name is made into one',
-  starterScript('My Set-2', 2).includes('function My_Set_2_NewDay()'));
+  starterScript('My Set-2', 2).includes('function My_Set_2_Worn()'));
 check('and the head would spell it the same way',
   setScriptFiles([{ ...withScript, file: 'My Set-2' }])[0]!.text.includes('My_Set_2_MEMBERS ='));
 

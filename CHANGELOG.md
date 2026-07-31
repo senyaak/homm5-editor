@@ -133,8 +133,11 @@ one.
   to ask — and that a file which never calls `Trigger` does nothing at all. It
   now opens on that shape, named after the set, with the worn count as a knob
   (`local x = 3`) rather than a number buried in a call: a second behaviour at
-  another count is that function copied with another x. Written once, when a set
-  has no script; after that it is yours like any other text.
+  another count is that function copied with another x. What it does not do is
+  decide WHEN the set acts — "once a day" fits a granting effect and fits
+  nothing else — so the hook is a line of commented shapes to pick from, and the
+  starter as it stands runs nothing on purpose. Written once, when a set has no
+  script; after that it is yours like any other text.
 
 ### Changed
 

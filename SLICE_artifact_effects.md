@@ -267,8 +267,11 @@ explain itself. Three things were missing and all three are in:
   of them. A set with no script opens on that shape instead, named from its stem
   by the same `symbolOf` the generated head uses, with the count as `local x`
   because a set that wants a second behaviour copies the function and changes
-  the number. Once. Nothing rewrites it afterwards — the stem is typed before
-  the script is, so the name is right from the start.
+  the number. The EVENT is not chosen for them: a daily hook fits a granting
+  effect and nothing else, so the `Trigger` lines are commented shapes and the
+  starter runs nothing until one is picked. Once. Nothing rewrites it
+  afterwards — the stem is typed before the script is, so the name is right from
+  the start.
 
 The tag is gone from `e2e/mod-003-artifacts-create.spec.ts`; the stage exercises
 the draft, then overwrites it with the set's own words, and presses the button a

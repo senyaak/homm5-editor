@@ -419,11 +419,13 @@ test('makes a set of all three, with an effect of our own', async () => {
   await expect(page.locator('#setscript')).toBeVisible();
   const code = page.locator('#ss-text .cm-content');
   // Not an empty box: a set with no script yet opens on the shape they all
-  // have — the members under the name the generated head gives them, the worn
-  // count as a knob, and the Trigger line without which none of it runs.
-  await expect(code).toContainText(`H3UndeadKing_MEMBERS`);
+  // have — the members under the name the generated head gives them, and the
+  // worn count as a knob. What it does NOT do is decide when the set acts: the
+  // hooks are commented shapes to pick from, since "once a day" fits a granting
+  // effect and fits nothing else.
+  await expect(code).toContainText('H3UndeadKing_MEMBERS');
   await expect(code).toContainText('local x = 3;');
-  await expect(code).toContainText('Trigger(NEW_DAY_TRIGGER, "H3UndeadKing_NewDay");');
+  await expect(code).toContainText('-- Trigger(NEW_DAY_TRIGGER, "H3UndeadKing_Worn");');
   await expect(page.locator('#ss-lint'), 'and it parses as it stands').toHaveText('✓ no errors');
   await code.fill(UNDEAD_KING.script);
   // The linter is the editor's own, in the gutter and on the line below it.

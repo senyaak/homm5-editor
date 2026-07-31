@@ -36,22 +36,24 @@ export const symbolOf = (file: string): string => file.replace(/[^A-Za-z0-9_]/g,
  *
  * Not a nicety. Everything above the author's first line is knowledge they have
  * no way to have: that the members arrive as `<Set>_MEMBERS`, that the walk over
- * players is theirs to write, that `EditorHeroWearing` is the question to ask,
- * and — the one that decides whether ANY of it runs — that the file has to end
- * in a `Trigger` call. An empty editor asks for all four at once and answers
- * none; the set this was written from got them by being written by hand next to
- * the generator.
+ * the eight players is theirs to write, that `EditorHeroWearing` is the question
+ * to ask, and that a function nothing hooks to an event never runs.
+ *
+ * WHICH event is not ours to decide. "Once a day" fits a granting effect and
+ * fits nothing else — a set that acts on a battle, on touching an object, on a
+ * hero levelling up is the same function under a different `Trigger`. So the
+ * hook is left as commented shapes to choose from: the starter as it stands
+ * does nothing, and that is honest, where a `NEW_DAY_TRIGGER` line put there by
+ * us would be an answer to a question nobody asked.
  *
  * Written ONCE, when the editor is opened on a set that has no script. The name
  * is right from the start because the stem is typed before the script is —
  * nothing here is ever rewritten afterwards, and a set that wants a second
  * behaviour at a different number of pieces gets a copy of the function.
  *
- * A day is the frame because it is the one every "while these are worn" effect
- * fits: the trigger stays hooked for the whole map and the CHECK is what changes
- * its mind, which is why nothing here ever unhooks anything (see
- * docs/NAMES_AND_SCRIPTING.md — the trigger is the WHEN, the condition inside is
- * the WHETHER).
+ * Nothing here ever UNHOOKS anything either: a trigger stays on for the whole
+ * map and the check inside is what changes its mind (docs/NAMES_AND_SCRIPTING.md
+ * — the trigger is the WHEN, the condition is the WHETHER).
  *
  * It lives beside the generator so the two cannot drift: the constant this
  * names is the constant `header()` writes.
@@ -62,24 +64,27 @@ export const symbolOf = (file: string): string => file.replace(/[^A-Za-z0-9_]/g,
 export function starterScript(file: string, members: number): string {
   const name = symbolOf(file || 'MySet');
   return [
-    `-- Runs on every adventure map, once a day. \`${name}_MEMBERS\` is written`,
-    '-- for you in the head above; everything from here down is yours.',
-    `function ${name}_NewDay()`,
+    `-- \`${name}_MEMBERS\` is written for you in the head above.`,
+    '-- Everything from here down is yours.',
+    `function ${name}_Worn()`,
     `	local x = ${Math.max(1, members || 1)};   -- pieces that have to be on`,
     '	for player = 1, 8 do',
     `		local hero = EditorHeroWearing(player, ${name}_MEMBERS, x);`,
     '		if hero then',
     '			-- Your code. `hero` is wearing them, `player` owns him.',
-    '			-- e.g. RestoreDarkEnergy(player);',
     '		end;',
     '	end;',
     'end;',
     '',
-    '-- Without this line nothing above ever runs.',
-    `Trigger(NEW_DAY_TRIGGER, "${name}_NewDay");`,
+    '-- Nothing above runs until it is hooked to an event, and WHICH event is',
+    '-- yours to pick. Uncomment one, or write another — the editor completes',
+    '-- the trigger names:',
+    `-- Trigger(NEW_DAY_TRIGGER, "${name}_Worn");`,
+    `-- Trigger(COMBAT_RESULTS_TRIGGER, "${name}_Worn");`,
+    `-- Trigger(OBJECT_TOUCH_TRIGGER, "someObjectName", "${name}_Worn");`,
     '',
     '-- A second behaviour at a different number of pieces is a copy of the',
-    '-- function above with another x, and its own Trigger line.',
+    '-- function above with another x, under its own trigger.',
     '',
   ].join(EOL);
 }
