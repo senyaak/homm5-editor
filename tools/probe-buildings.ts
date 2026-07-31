@@ -101,6 +101,23 @@ const PROBES: Probe[] = [
     at: { x: 36, y: 46 },
     question: 'is BUILDING_NAGA_TEMPLE a behaviour, or a dead id?',
   },
+  {
+    // The CONTROL for the one above: same art, same texts, same class, and a
+    // Type that means nothing (fourteen documents declare ABANDONED_MINE just to
+    // have something in the field). If this one is a bank too, the bank came
+    // from the model or the strings; if it is inert, the bank is the Type.
+    file: 'NagaTempleControl',
+    type: 'BUILDING_ABANDONED_MINE',
+    model: '/_(Model)/Buildings/NagaTemple.(Model).xdb',
+    messages: [
+      '/Text/Game/Buildings/NagaTemple/Name.txt',
+      '/Text/Game/Buildings/NagaTemple/desc.txt',
+      '/Text/Game/Buildings/NagaTemple/FirstVisit.txt',
+      '/Text/Game/BuildingsCommon/AlreadyVisited.txt',
+    ],
+    at: { x: 32, y: 48 },
+    question: 'the same building without the Type — bank, or nothing?',
+  },
 ];
 
 // ---- the two definitions -----------------------------------------------------

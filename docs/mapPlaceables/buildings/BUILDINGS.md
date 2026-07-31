@@ -42,6 +42,14 @@ class's fallback for a Type it has no code for. So for the seven class-covered
 values the CLASS is the behaviour, and `<Type>` on a generic document only names
 it. Measured 2026-07-31 in the game (`tools/probe-buildings.ts`).
 
+**The Type is what runs, not the model or the texts.** The control for that
+measurement is a third document with the same class, the same model and the same
+message files as the Naga Temple probe below, differing only in carrying
+`BUILDING_ABANDONED_MINE` — and it gives the same "unknown object". Which also
+settles section 1's "no opinion" reading from the other side: value 0 on the
+plain class really is nothing, which is why fourteen documents can spend it on
+ruins and random dwellings without owning anything.
+
 | class | docs | `<Type>` | types seen | extra definition fields |
 |---|---|---|---|---|
 | `AdvMapBuildingShared` | 118 | yes | 77 | — |
