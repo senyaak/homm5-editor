@@ -15,9 +15,14 @@
 // "Player2 has no heroes and no towns", which is its own question).
 //
 //   node tools/probe-buildings.ts ["<map stem in H5E>"] [dataRoot]
+//   node tools/probe-buildings.ts --remove ["<map stem in H5E>"]
 //
 // Then start the game (bin/H5_Game_H5E.exe, cwd bin/), open that map and walk
 // the hero onto each of the two buildings.
+//
+// BOTH QUESTIONS ARE ANSWERED (2026-07-31; the doc has the answers), so what is
+// left here is the apparatus: the probe can be rebuilt if either needs asking
+// again, and `--remove` takes it back out of the map it borrowed.
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -37,9 +42,13 @@ import type { SpecType } from '../src/schema/typespec.ts';
 const EOL = '\r\n';
 
 const REPO = join(import.meta.dirname, '..');
+const args = process.argv.slice(2);
+/** Take the probe back out instead of putting it in. */
+const REMOVE = args.includes('--remove');
+const rest = args.filter((a) => a !== '--remove');
 /** The map the buildings are added to: a `.h5m` in the install's H5E folder. */
-const MAP_STEM = process.argv[2] ?? 'Straker Atk';
-const DATA = process.argv[3] ?? process.env.HOMM5_DATA ?? join(REPO, 'data-unpacked');
+const MAP_STEM = rest[0] ?? 'Straker Atk';
+const DATA = rest[1] ?? process.env.HOMM5_DATA ?? join(REPO, 'data-unpacked');
 /** The install the checkout sits in — where the mod and the map are written. */
 const GAME = join(REPO, '..');
 
@@ -189,6 +198,7 @@ const docOf = (p: Probe): string => `/${DIR}/${p.file}.(${CLASS}).xdb`;
 const sharedOf = (p: Probe): string => `${docOf(p)}#xpointer(/${CLASS})`;
 
 for (const p of PROBES) {
+  if (REMOVE) continue;
   // Measured, not guessed: the footprint has to match the art or the hero walks
   // through the building, or can never reach its entrance (dwellings.ts).
   const foot = footprintOf(p.model, (rel) => data.text(rel) ?? (read(rel)?.toString('latin1') ?? null));
@@ -220,6 +230,7 @@ for (const o of map.objects) if (o.shared && ours.has(o.shared.split('#')[0]!)) 
 const taken = new Map(map.objects.map((o) => [`${o.pos?.x},${o.pos?.y}`, o.type]));
 
 for (const p of PROBES) {
+  if (REMOVE) continue;
   // A tile somebody already stands on is the one way this can quietly ruin the
   // map it borrows, so it is checked rather than hoped for.
   const held = taken.get(`${p.at.x},${p.at.y}`);
@@ -235,7 +246,10 @@ for (const p of PROBES) {
   if (!complete) throw new Error('no donor for AdvMapBuilding — the object would be a skeleton');
 }
 
-const ourNames = new Set(entries.map((e) => e.name));
+// Its own documents go out with it: removing the placements and leaving the
+// files behind would leave the map carrying objects nothing on it names, and an
+// archive's members are mounted for the whole game whether anything uses them.
+const ourNames = new Set([...entries.map((e) => e.name), ...PROBES.map((p) => docOf(p).slice(1))]);
 const rewritten: ZipEntry[] = [
   ...members
     .filter((e) => !ourNames.has(e.name.replace(/\\/g, '/')))
@@ -243,5 +257,9 @@ const rewritten: ZipEntry[] = [
   ...entries,
 ];
 writeFileSync(archive, writeArchive(rewritten));
-console.log(`map  → ${archive} (+${PROBES.length} buildings, ${rewritten.length} members)`);
-for (const p of PROBES) console.log(`       ${p.file} at ${p.at.x}:${p.at.y}`);
+if (REMOVE) {
+  console.log(`map  → ${archive} (probe taken out, ${rewritten.length} members)`);
+} else {
+  console.log(`map  → ${archive} (+${PROBES.length} buildings, ${rewritten.length} members)`);
+  for (const p of PROBES) console.log(`       ${p.file} at ${p.at.x}:${p.at.y}`);
+}
