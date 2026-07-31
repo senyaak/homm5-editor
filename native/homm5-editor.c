@@ -118,6 +118,10 @@
 // relay.c because it borrows that file's URL reader and WinHTTP entry points —
 // plumbing that belongs to neither feature — and nothing else.
 #include "net/lobby.c"
+// Last, and a stranger to everything above it: an instrument rather than a
+// feature, off unless its own file is there, and it borrows nothing but the
+// core — the log, the text helpers and the detour.
+#include "rmg/oracle.c"
 
 /**
  * Which switch turns this file's logging on — see the bottom of core/log.c.
@@ -298,6 +302,12 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   // line used to be "the u-lobby is carried out", the same sentence the thread
   // logs when it has actually done it, and one run was read wrong because of it.
   if (g_qol[QOL_NET_U_LOBBY] && install_lobby()) log_line("lobby: starting");
+  // The generator's oracle, and its own file is the switch — not a flag in the
+  // one above, because nothing here is for playing: it exists to make a run
+  // comparable with the port (native/rmg/oracle.c). What it did lands in its own
+  // log, so this line is only for the person reading THIS file.
+  load_rmg_config();
+  if (g_rmgWanted) log_line(install_rmg_oracle() ? "rmg oracle installed" : "rmg oracle NOT installed");
   return TRUE;
 }
 

@@ -18,6 +18,12 @@ renderer/harness.html
 # and it holds game content, so it must never be committed.
 _tmp/
 
+# A whole copy of the game, for work that has to change an install — the native
+# extension, a patched executable, generated maps. The real install is shared
+# with every other session on this machine, so anything that writes to one gets
+# its own; `.env` here points at this copy. Game content, never committed.
+game/
+
 # Where this machine keeps the game. One person's paths, nobody else's — the
 # committed file is .env.example, which says what belongs in it. `.env.test` is
 # the same file for a `--setup-test` run, and holds a sandbox's paths.
