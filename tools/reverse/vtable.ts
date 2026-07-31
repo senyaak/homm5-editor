@@ -14,9 +14,7 @@
 // subobject. See docs/ENGINE_INTERNALS.md, where this found the hero's stat
 // getters.
 
-import { resolve } from 'node:path';
-
-import { PEFile } from '../../src/exe/pe.ts';
+import { openGameExe } from '../../src/game/install.ts';
 import { functionBody } from '../../src/exe/disasm.ts';
 
 const args = process.argv.slice(2);
@@ -26,9 +24,7 @@ const flagValue = (name: string): string | undefined => {
 };
 const positional = args.filter((a, i) => !a.startsWith('--') && !args[i - 1]?.startsWith('--'));
 
-const editor = resolve(import.meta.dirname, '..', '..');
-const gameRoot = process.env.HOMM5_GAME ?? resolve(editor, '..');
-const pe = PEFile.read(flagValue('exe') ?? resolve(gameRoot, 'bin', 'H5_Game_H5E.exe'));
+const pe = openGameExe(flagValue('exe'));
 
 const fragment = flagValue('list') ?? positional[0];
 if (!fragment) {

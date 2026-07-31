@@ -13,10 +13,10 @@
 // call, resolved to a name through the enum in types.xml.
 
 import { existsSync, readFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 
 import { functionBody } from '../../src/exe/disasm.ts';
-import { PEFile } from '../../src/exe/pe.ts';
+import { openGameExe, requireUnpackedData } from '../../src/game/install.ts';
 
 const args = process.argv.slice(2);
 const flag = (name: string): string | undefined => {
@@ -24,14 +24,12 @@ const flag = (name: string): string | undefined => {
   return i >= 0 ? args[i + 1] : undefined;
 };
 
-const editor = resolve(import.meta.dirname, '..', '..');
-const gameRoot = process.env.HOMM5_GAME ?? resolve(editor, '..');
-const pe = PEFile.read(flag('exe') ?? resolve(gameRoot, 'bin', 'H5_Game_H5E.exe'));
+const pe = openGameExe(flag('exe'));
 const COUNT_EQUIPPED = Number.parseInt(flag('fn') ?? 'b4c270', 16);
 
 /** The artifact enum, in declaration order — the index is the id. */
 function artifactNames(): string[] {
-  const path = flag('types') ?? join(editor, 'data-unpacked', 'types.xml');
+  const path = flag('types') ?? join(requireUnpackedData(), 'types.xml');
   if (!existsSync(path)) return [];
   const xml = readFileSync(path, 'utf8');
   // The enum is the one whose dbid points at the artifact table.

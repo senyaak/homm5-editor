@@ -12,9 +12,7 @@
 // where the engine actually does the work. `field` is the opposite direction —
 // given a structure offset, who reads it.
 
-import { resolve } from 'node:path';
-
-import { PEFile } from '../../src/exe/pe.ts';
+import { openGameExe } from '../../src/game/install.ts';
 import { disassemble, functionBody, type Instruction } from '../../src/exe/disasm.ts';
 
 const args = process.argv.slice(2);
@@ -26,9 +24,7 @@ const rest = args.filter((a, i) => !a.startsWith('--') && !args[i - 1]?.startsWi
 const [command, ...operands] = rest;
 const addresses = operands.map((a) => Number.parseInt(a, 16));
 
-const editor = resolve(import.meta.dirname, '..', '..');
-const gameRoot = process.env.HOMM5_GAME ?? resolve(editor, '..');
-const pe = PEFile.read(flagValue('exe') ?? resolve(gameRoot, 'bin', 'H5_Game_H5E.exe'));
+const pe = openGameExe(flagValue('exe'));
 
 /** A function's instructions, or nothing when the address is not code. */
 function body(address: number, maxBytes?: number): Instruction[] {

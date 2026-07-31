@@ -89,6 +89,9 @@
     "test-map-source": "node tools/test-map-source.ts",
     "lua-registry": "node tools/reverse/lua-registry.ts",
     "test-lua-registry": "node tools/reverse/lua-registry.ts --check",
+    "rmg-map": "node tools/reverse/rmg-map.ts",
+    "test-rmg-map": "node tools/reverse/rmg-map.ts --check",
+    "test-rmg-random": "node tools/test-rmg-random.ts",
     "test-artifact-scripts": "node tools/test-artifact-scripts.ts",
     "e2e-live": "node tools/e2e-live.ts"
   },

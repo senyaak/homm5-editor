@@ -9,7 +9,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { PEFile } from '../../src/exe/pe.ts';
+import { editorRoot, openGameExe } from '../../src/game/install.ts';
 import { describeSignature, readLuaRegistry } from '../../src/exe/lua-registry.ts';
 
 const args = process.argv.slice(2);
@@ -18,19 +18,16 @@ const flag = (name: string): string | undefined => {
   return i >= 0 ? args[i + 1] : undefined;
 };
 
-const editor = resolve(import.meta.dirname, '..', '..');
-// The editor usually sits inside the install; HOMM5_GAME covers a checkout that
-// does not (a worktree, say), the way HOMM5_DATA does for unpacked data.
-const gameRoot = process.env.HOMM5_GAME ?? resolve(editor, '..');
-const exePath = flag('exe') ?? resolve(gameRoot, 'bin', 'H5_Game_H5E.exe');
-const docPath = flag('out') ?? resolve(editor, 'docs', 'EXE_LUA_REGISTRY.md');
+const docPath = flag('out') ?? resolve(editorRoot(), 'docs', 'EXE_LUA_REGISTRY.md');
 
-const pe = PEFile.read(exePath);
+// Where the install is, and what to do when it is not found, is one answer for
+// every tool — src/game/install.ts.
+const pe = openGameExe(flag('exe'));
 const functions = readLuaRegistry(pe);
 
 /** Names the shipped manuals document, as written up in our own reference. */
 const documented = new Set(
-  [...readFileSync(resolve(editor, 'docs', 'SCRIPT_API.md'), 'utf8')
+  [...readFileSync(resolve(editorRoot(), 'docs', 'SCRIPT_API.md'), 'utf8')
     .matchAll(/`([A-Za-z_]\w*)\(/g)].map((m) => m[1]!),
 );
 

@@ -5,13 +5,17 @@ and [docs/EXE_LUA_REGISTRY.md](../../docs/EXE_LUA_REGISTRY.md). Everything here
 only reads; no game file is ever written.
 
 All of it wants an **unwrapped** executable. `npm run unwrap-exe` makes one — a
-Steam build ships its code encrypted and disassembles to nonsense. When the
-editor is not inside the install (a worktree, say), point `HOMM5_GAME` at the
-game folder or pass `--exe`.
+Steam build ships its code encrypted and disassembles to nonsense. Where the
+install is comes from `src/game/install.ts`: `HOMM5_GAME`, then `HOMM5_ROOT`,
+then `.env`, then the folder above the checkout. A worktree therefore works with
+the same `.env` the app uses, and `--exe` still overrides everything.
 
 ```bash
 npm run lua-registry                              # rewrite EXE_LUA_REGISTRY.md
 npm run test-lua-registry                         # fail if it drifted
+
+npm run rmg-map                                   # rewrite RMG_CODE_MAP.md
+npm run test-rmg-map                              # fail if it drifted
 
 node tools/reverse/vtable.ts CAdvMapHero          # RTTI name -> vtables -> slots
 node tools/reverse/vtable.ts --list Artefact      # which classes exist
@@ -34,6 +38,11 @@ hero screen, a script, a quest or a death, so what those paths share is where
 the engine really does the work. `equipment` prints what that search ended at —
 the single function every "is this worn" question goes through, and the fifty-odd
 artifact ids the executable reacts to by name.
+
+`rmg-map` is the newest, and the one whose output is a plan rather than a
+reference: the random map generator logs a counter and a step name at every
+phase boundary, so its own narration recovers the pipeline it runs. See
+[docs/RMG.md](../../docs/RMG.md).
 
 The decoding lives in `src/pe.ts` (sections, addresses, strings, references)
 and `src/disasm.ts` (iced-x86). `src/lua-registry.ts` holds the registration
