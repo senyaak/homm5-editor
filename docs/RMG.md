@@ -245,9 +245,10 @@ is what it is belongs next to the number.
 
 | Module | Holds | State |
 | --- | --- | --- |
-| `random.ts` | the 64-bit LCG and the draw counter | **done**, constants verified against the binary |
-| `data/template.ts` | reading `RMGTemplate` | next |
-| `data/params.ts` | reading `RMGParameters` | next |
+| `random.ts` | the 64-bit LCG, five entry points, the draw counter | **done**, constants verified against the binary |
+| `template.ts` | reading `RMGTemplate` | **done**, all 22 shipped templates parse |
+| `create-map.ts` | `CreateMap` — players and size | **done**, three draws |
+| `params.ts` | reading `RMGParameters` | next |
 | `zones.ts` | `GenerateGameZones` + `FillZones` | |
 | `terrain.ts` | `CalcBorderTiles` + `FillTerrain` | |
 | `towns.ts` | `PlaceTowns` | |
@@ -311,6 +312,44 @@ One thing that test taught: neighbouring seeds share their **first** draw. The
 gap of 1 becomes 0x343FD after one multiply and the low 23 bits are thrown away,
 so the difference is invisible for a step or two. When comparing against a real
 run, a single matching number proves nothing — a sequence does.
+
+### Phase 1 — `CreateMap`, and the rule it establishes
+
+Three draws, and it throws nearly all of them away:
+
+```
+next()                                       always, discarded
+players unset ? Min + below(span) : next()   the else branch DRAWS
+size    unset ? Min + below(span) : next()   likewise
+```
+
+**A supplied parameter is not a draw skipped.** The engine draws either way and
+discards the number when it already has one. This is the rule the whole port
+hangs on: a phase that draws "only when it needs a number" runs the counter
+short before anything interesting has happened, and every later phase then
+reads different numbers — a wrong map for a reason that has nothing to do with
+the code that made it.
+
+The clamp is copied as written rather than as expected:
+
+```
+if (size > MaxMapSize || size < MinMapSize) size = MinMapSize
+```
+
+A size *above* the maximum falls back to the **minimum**. That looks like a bug
+and it is the engine's, so the port keeps it, with a test naming it as
+deliberate so nobody tidies it away.
+
+One draw is left unported and said out loud: a fourth, `below(2)` at
+`0xeab5a2`, reached only when a byte of the parameter block is already set on
+entry. All three reference runs spent exactly three draws, so nothing exercises
+that path and what sets the byte is unknown. Inventing a condition there would
+poison the one counter currently worth trusting.
+
+**And the races are not here.** The prediction from run 4 was wrong: `CreateMap`
+decides players and size only. Whatever draws Inferno-and-Academy against
+Fortress-and-Dungeon happens later — `LoadTemplate` (6 draws) is the next
+suspect.
 
 ## Tools
 

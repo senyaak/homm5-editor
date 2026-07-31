@@ -93,6 +93,7 @@
     "rmg-map": "node tools/reverse/rmg-map.ts",
     "test-rmg-map": "node tools/reverse/rmg-map.ts --check",
     "test-rmg-random": "node tools/test-rmg-random.ts",
+    "test-rmg-template": "node tools/test-rmg-template.ts",
     "test-artifact-scripts": "node tools/test-artifact-scripts.ts",
     "e2e-live": "node tools/e2e-live.ts"
   },
