@@ -21,6 +21,7 @@ import { join, resolve } from 'node:path';
 import { childText, children, find, parse, serialize } from '../src/format/xml.ts';
 import type { XmlElement } from '../src/format/xml.ts';
 import { readEntries } from '../src/format/pak.ts';
+import { loadDialogScene, saveDialogScene } from '../src/dialog/dialog-scene.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {
@@ -240,7 +241,49 @@ check('every camera is an orbit pose (Rod + angles + Anchor)',
   cams.every((c) => nums(c.text, 'Rod') !== null && /<Anchor>/.test(c.text)));
 
 // ---------------------------------------------------------------------------
-// 4. What a camera is aimed at
+// 4. The typed document
+// ---------------------------------------------------------------------------
+//
+// The read model the player and the inspector will work from, checked two ways:
+// it must survive a load/save with the bytes intact (so opening a scene in the
+// editor can never rewrite it), and it must actually see the moving parts of a
+// real scene — C1M1's opening, the one with Isabell and Agrael, which is the
+// richest the game ships.
+
+const reloaded: string[] = [];
+let shotsRead = 0, animationsRead = 0, effectsRead = 0;
+for (const scene of scenes) {
+  const doc = loadDialogScene(scene.text);
+  if (saveDialogScene(doc) !== scene.text) reloaded.push(scene.name);
+  shotsRead += doc.shots.length;
+  for (const shot of doc.shots) {
+    animationsRead += shot.animations.length;
+    effectsRead += shot.effects.length;
+  }
+}
+check('a scene loaded and saved through the document model is unchanged', reloaded.length === 0,
+  reloaded.length ? `${reloaded.length} differ, first: ${reloaded[0]}` : '');
+check('the document model reads every sentence', shotsRead === sentences, `${shotsRead} of ${sentences}`);
+console.log(`    ${animationsRead} actor animations, ${effectsRead} placed effects across the corpus`);
+
+const d1 = byPath.get('DialogScenes/C1/M1/D1/DialogScene.xdb');
+if (!d1) console.log('  (C1M1 D1 is not in this run — it ships inside All_campaigns.data.h5u)');
+else {
+  const scene = loadDialogScene(d1.text);
+  const walks = scene.shots.flatMap((s) => s.animations).filter((a) => a.movePoints.length);
+  check('C1M1 D1 reads as the scene it is', scene.shots.length === 73 && scene.props.length > 100, [
+    `${scene.shots.length} shots`, `${scene.props.length} props`,
+    `stage ${scene.stage.split('#')[0].split('/').slice(-2)[0]}`,
+    `${scene.shots.flatMap((s) => s.animations).length} animations, ${walks.length} of them walks`,
+  ].join(', '));
+  const spoken = scene.shots.filter((s) => s.heroLink || s.monsterLink).length;
+  const framed = scene.shots.filter((s) => s.newCameraSet).length;
+  check('every line in it has a speaker and a camera', spoken === 73 && framed === 73,
+    `${spoken} speakers, ${framed} cameras`);
+}
+
+// ---------------------------------------------------------------------------
+// 5. What a camera is aimed at
 // ---------------------------------------------------------------------------
 //
 // Measured, not reasoned about. A shot's camera orbits an `Anchor`, and two
