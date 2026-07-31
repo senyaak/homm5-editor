@@ -15,7 +15,9 @@ import type {
 import { buildAndInstall, ourMod } from '#electron/mod-install.ts';
 import { gameData, gameRoot, isConfigured } from '#electron/paths.ts';
 import { assets } from '#src/game/assets.ts';
-import { BUILDING_CLASSES, extraFields, listFields, messageSlots, takesType } from '#src/mods/buildings.ts';
+import {
+  BUILDING_CLASSES, extraFields, listFields, messageSlots, requiredFields, takesType,
+} from '#src/mods/buildings.ts';
 import type { BuildingSpec } from '#src/mods/buildings.ts';
 import { buildingPreset, listBuildingDonors } from '#src/mods/building-presets.ts';
 import { addBuilding, removeBuilding, updateBuilding } from '#src/mods/mod-model.ts';
@@ -71,6 +73,7 @@ export function registerModBuildings(): void {
       // of the class's own fields.
       fields: extraFields(types, c.shared).filter((f) => f !== 'Type'),
       lists: listFields(types, c.shared),
+      required: [...requiredFields(c.shared)],
       slots: [...messageSlots(c.shared)],
     }));
     const r = new Registry(gameData());

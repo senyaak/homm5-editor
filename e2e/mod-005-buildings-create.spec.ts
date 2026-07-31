@@ -78,6 +78,38 @@ test('the window is the classes, and the tab decides what New makes', async () =
   await expect(page.locator('#bld-new')).toHaveText('New dwelling…');
 });
 
+test('it will not save a building that is missing what it needs', async () => {
+  const { page } = ed;
+  await page.locator('#bld-tabs .mp-tab', { hasText: 'Dwelling' }).first().click();
+  await page.locator('#bld-new').click();
+  await expect(page.locator('#bldedit')).toBeVisible();
+
+  // Blank: nothing to name it, nothing to stand on, nothing to say, and — for
+  // this class — nothing to hire. Save is not a thing that can be pressed, and
+  // what is missing is named rather than left to be guessed at.
+  await expect(page.locator('#bld-ok')).toBeDisabled();
+  await expect(page.locator('#bld-missing')).toHaveText(/identifier.*model.*name.*creatures/);
+  // Every one of those is marked in the form itself.
+  await expect(page.locator('#bldedit .req')).toHaveCount(4);
+
+  // Filled one at a time, the list shortens and the button stays down until the
+  // last of them is in.
+  await page.locator('#bld-file').fill('E2eRefused');
+  await expect(page.locator('#bld-missing')).toHaveText(/model.*name.*creatures/);
+  await page.locator('#bld-model').fill('/_(Model)/Buildings/Windmill.(Model).xdb');
+  await page.locator('#bld-texts .bld-text').first().fill('unnamed no more');
+  await expect(page.locator('#bld-ok'), 'a dwelling still hires nobody').toBeDisabled();
+  await expect(page.locator('#bld-missing')).toHaveText(/creatures/);
+
+  await page.locator('.bld-field[data-field="creatures"]').fill('CREATURE_PEASANT');
+  await expect(page.locator('#bld-ok')).toBeEnabled();
+  await expect(page.locator('#bld-missing')).toHaveText('');
+
+  // Nothing was built: this test is about the refusal, not about the building.
+  await page.locator('#bld-form-cancel').click();
+  await expect(page.locator('#bldedit')).toBeHidden();
+});
+
 test('the form asks for a behaviour only where the class takes one', async () => {
   const { page } = ed;
   // The plain class picks one of the 128 compiled behaviours.

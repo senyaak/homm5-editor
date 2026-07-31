@@ -959,6 +959,11 @@ export interface BuildingClassDTO {
    * the dwelling hires nothing, with nothing anywhere saying why.
    */
   lists: string[];
+  /**
+   * Which of them the building cannot do without — a dwelling's `creatures`.
+   * The form marks these and refuses to save while one is empty.
+   */
+  required: string[];
   /** The message slots it shows, in the order the engine reads them. */
   slots: string[];
 }

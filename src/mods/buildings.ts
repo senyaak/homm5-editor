@@ -166,6 +166,21 @@ export function listFields(types: Map<string, SpecType>, shared: string): string
 }
 
 /**
+ * The class's own fields a building cannot do without.
+ *
+ * Not "everything the spec declares": a tent without a `Color` is a border guard
+ * of no colour, which is a thing the game will happily show. This is the shorter
+ * list of fields whose emptiness makes the building POINTLESS — a dwelling with
+ * no creatures hires nothing, and that is not a building, it is a decoration
+ * somebody meant as a building.
+ */
+export const REQUIRED_FIELDS: Record<string, readonly string[]> = {
+  AdvMapDwellingShared: ['creatures'],
+};
+
+export const requiredFields = (shared: string): readonly string[] => REQUIRED_FIELDS[shared] ?? [];
+
+/**
  * The messages a class shows, in the order `messagesFileRef` lists them.
  *
  * Read off the shipped documents of each class. The list is what the engine

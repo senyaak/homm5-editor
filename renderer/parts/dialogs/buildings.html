@@ -53,13 +53,13 @@
               <button id="bld-donor-pick" class="ghost" title="fill every field below from a shipped object of this class; each stays editable afterwards">Use preset…</button>
               <input id="bld-donor" type="hidden">
             </div>
-            <label class="on-row"><span>Identifier</span><input id="bld-file" type="text" spellcheck="false" autocomplete="off" placeholder="unique id, e.g. NagaTemple" title="names its folder in the mod and every file in it"></label>
+            <label class="on-row"><span>Identifier<b class="req">*</b></span><input id="bld-file" type="text" spellcheck="false" autocomplete="off" placeholder="unique id, e.g. NagaTemple" title="names its folder in the mod and every file in it"></label>
             <label class="on-row" id="bld-typerow"><span>Behaviour</span><select id="bld-type" title="which of the 128 compiled behaviours it runs"></select></label>
             <!-- The art. Everything named here is COPIED into the mod when the
                  building is built, so it can be recoloured or replaced later
                  without touching the game's own files. -->
             <div class="on-row um-span"><span style="opacity:.7">Art — copied into the mod, editable there</span></div>
-            <label class="on-row um-span"><span>Model</span><input id="bld-model" type="text" spellcheck="false" autocomplete="off" list="bld-models" placeholder="/_(Model)/Buildings/…"></label>
+            <label class="on-row um-span"><span>Model<b class="req">*</b></span><input id="bld-model" type="text" spellcheck="false" autocomplete="off" list="bld-models" placeholder="/_(Model)/Buildings/…"></label>
             <label class="on-row um-span"><span>Anim set</span><input id="bld-animset" type="text" spellcheck="false" autocomplete="off" list="bld-animsets" placeholder="optional"></label>
             <label class="on-row um-span"><span>Effect</span><input id="bld-effect" type="text" spellcheck="false" autocomplete="off" list="bld-effects" placeholder="optional"></label>
             <label class="on-row um-span"><span>Sound</span><input id="bld-sound" type="text" spellcheck="false" autocomplete="off" list="bld-sounds" placeholder="optional"></label>
@@ -80,12 +80,18 @@
             <div id="bld-texts" class="um-span"></div>
           </div>
         </fieldset>
+        <!-- What is still missing, named. Save stays disabled until it is empty:
+             the fields marked * are the ones without which the building is not
+             one — no identifier is no folder, no model is nothing to stand on,
+             no name is a nameless thing in the palette, and a dwelling with no
+             creatures hires nobody. -->
+        <div id="bld-missing" class="um-note"></div>
         <div id="bld-form-err" class="on-err"></div>
       </div>
       <div class="de-foot">
         <button id="bld-recolor" class="ghost" style="margin-right:auto" title="repaint its textures — the copies in the mod, so nothing of the game's changes">Recolour…</button>
         <button id="bld-form-cancel" class="ghost">Cancel</button>
-        <button id="bld-ok">Save</button>
+        <button id="bld-ok" disabled>Save</button>
       </div>
     </div>
   </dialog>

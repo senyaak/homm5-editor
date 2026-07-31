@@ -36,6 +36,10 @@ button.he-file { margin-left: 6px; flex: 0 0 auto; }
   padding: 5px 8px; color: #c9d1d9; font-size: 12px; width: 100%; box-sizing: border-box; }
 .um-stats input:focus { outline: none; border-color: #1f6feb; }
 .um-note { color: #3fb950; font-size: 11px; min-height: 14px; white-space: pre-line; word-break: break-all; }
+/* the star on a label a form will not save without — see checkForm in
+   features/mods/buildings.ts, which also names what is still missing */
+.req { color: #f0883e; font-weight: 700; margin-left: 3px; }
+#bld-missing { color: #f0883e; }
 /* the set pane: members are picked from a list rather than typed, because a
    misspelt id builds cleanly and simply never combines */
 .as-members { display: flex; flex-direction: column; gap: 3px; max-height: 180px; overflow: auto;

@@ -162,6 +162,8 @@ async function openBuildingForm(existing: ModBuildingDTO | null): Promise<void> 
   fillArtLists(data);
   drawClassFields(data, cls, existing?.fields ?? {});
   drawTexts(cls, existing?.messages ?? {});
+  // Every control the form has now exists, so the check can watch them all.
+  watchForm();
   $button('bld-recolor').style.display = existing ? '' : 'none';
   $button('bld-recolor').onclick = () => {
     if (!existing) return;
@@ -202,6 +204,40 @@ function fillArtLists(data: ModsBuildingDataResult): void {
   }
 }
 
+/**
+ * What is still missing, and whether Save may be pressed.
+ *
+ * The rule is the same one the channel would have thrown after the press: an
+ * identifier names the folder, a model is the thing that stands on the map, the
+ * name is what the palette and the flyover show, and a class's required field is
+ * what makes the building that class (a dwelling with no creatures hires
+ * nobody). Refusing early beats refusing after a rebuild — and naming what is
+ * missing beats a disabled button with no reason on it.
+ */
+function checkForm(): void {
+  const missing: string[] = [];
+  if (!$input('bld-file').value.trim()) missing.push('identifier');
+  if (!$input('bld-model').value.trim()) missing.push('model');
+  const name = document.querySelector<HTMLInputElement>('.bld-text');
+  if (name && !name.value.trim()) missing.push('name');
+  for (const el of document.querySelectorAll<HTMLInputElement | HTMLSelectElement>('.bld-field')) {
+    if (el.dataset.required && !el.value.trim()) missing.push(el.dataset.field ?? 'a field');
+  }
+  $('bld-missing').textContent = missing.length ? `still needed: ${missing.join(', ')}` : '';
+  $button('bld-ok').disabled = missing.length > 0;
+}
+
+/** Watch every control the check reads, so the button follows the typing. */
+function watchForm(): void {
+  for (const el of document.querySelectorAll<HTMLElement>(
+    '#bld-file, #bld-model, #bldedit .bld-field, #bldedit .bld-text',
+  )) {
+    el.oninput = checkForm;
+    el.onchange = checkForm;
+  }
+  checkForm();
+}
+
 /** A row per field the class declares, with the game's own values where it has them. */
 function drawClassFields(data: ModsBuildingDataResult, cls: BuildingClassDTO, values: Record<string, string | string[]>): void {
   const box = $('bld-fields');
@@ -216,6 +252,13 @@ function drawClassFields(data: ModsBuildingDataResult, cls: BuildingClassDTO, va
     row.className = 'on-row um-span';
     const label = document.createElement('span');
     label.textContent = name;
+    // The star means Save will not go until it is filled — see checkForm.
+    if (cls.required.includes(name)) {
+      const star = document.createElement('b');
+      star.className = 'req';
+      star.textContent = '*';
+      label.appendChild(star);
+    }
     const current = values[name];
     const choices = data.enums[name];
     let control: HTMLElement;
@@ -239,6 +282,8 @@ function drawClassFields(data: ModsBuildingDataResult, cls: BuildingClassDTO, va
       // never guessed from the value. One creature typed into `creatures` has no
       // comma in it, and written as a plain value the dwelling hires nothing.
       if (cls.lists.includes(name)) input.dataset.list = 'yes';
+      if (cls.required.includes(name)) input.dataset.required = 'yes';
+      input.dataset.field = name;
       input.value = Array.isArray(current) ? current.join(', ') : (current ?? '');
       input.placeholder = cls.lists.includes(name) ? 'one per comma' : '';
       control = input;
@@ -257,11 +302,19 @@ function drawTexts(cls: BuildingClassDTO, values: Record<string, string>): void 
   head.className = 'on-row um-span';
   head.innerHTML = '<span style="opacity:.7">What it says — shipped as our own text files</span>';
   box.appendChild(head);
-  for (const slot of cls.slots) {
+  for (const [i, slot] of cls.slots.entries()) {
     const row = document.createElement('label');
     row.className = 'on-row um-span';
     const label = document.createElement('span');
     label.textContent = slot;
+    // The first line is the NAME — what the palette lists it under and what the
+    // flyover shows. A building without one is a nameless thing in both.
+    if (i === 0) {
+      const star = document.createElement('b');
+      star.className = 'req';
+      star.textContent = '*';
+      label.appendChild(star);
+    }
     const input = document.createElement('input');
     input.type = 'text';
     input.dataset.slot = slot;
@@ -320,6 +373,9 @@ async function loadBuildingPreset(): Promise<void> {
   for (const [id, slot] of ART) $input(id).value = p[slot] ?? '';
   drawClassFields(data, cls, p.fields);
   drawTexts(cls, p.messages);
+  // The preset filled most of what the check looks at, and the rows it drew are
+  // new elements — so the watch is re-attached and the button re-decided.
+  watchForm();
 }
 
 async function submitBuilding(): Promise<void> {
