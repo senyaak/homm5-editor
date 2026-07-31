@@ -33,6 +33,15 @@ const MASK64 = (1n << 64n) - 1n;
 /** `(state >> 16)` keeps 47 bits — the dividend `below()` works from. */
 const MASK47 = (1n << 47n) - 1n;
 
+/**
+ * 1/2^31, the float at 0xff4aa0 — what turns a 31-bit draw into `0 .. 1`.
+ *
+ * Written as the division rather than the decimal the disassembler prints:
+ * 4.656612873077393e-10 is that number rounded to a float, and rounding a
+ * decimal back is one more thing that can be off by an ulp.
+ */
+const SCALE = Math.fround(1 / 2 ** 31);
+
 export class RmgRandom {
   /** The 64-bit state. BigInt because 64-bit wrap-around is the whole point. */
   private state: bigint;
@@ -83,8 +92,47 @@ export class RmgRandom {
     return Number(value % BigInt(limit >>> 0));
   }
 
-  /** Inclusive range, the form most call sites want. */
+  /**
+   * Inclusive range (0xeb1450) — the form most call sites want.
+   *
+   * The engine has this as its own function rather than composing it, and it
+   * composes to exactly this: same 47-bit slice, same remainder, plus the low
+   * end. Including the empty case — `high < low` makes the span 0, and the
+   * engine returns `low` having drawn nothing, which is what `below(0)` does
+   * here.
+   */
   between(low: number, high: number): number {
     return low + this.below(high - low + 1);
+  }
+
+  /**
+   * The whole 63-bit state (0xeb1360), returned as a BigInt.
+   *
+   * A third slicing of the same step: no shift at all, just the low word and
+   * the high word with its top bit cleared. Rare, but a phase that uses it and
+   * gets `next()` instead would be off by everything.
+   */
+  next63(): bigint {
+    const state = this.step();
+    return (state & 0xffffffffn) | (((state >> 32n) & 0x7fffffffn) << 32n);
+  }
+
+  /**
+   * A fractional number in `a .. b` (0xeb14d0).
+   *
+   * This is where `Zone #%d … k == %2.2f` comes from, so getting it exactly
+   * right matters for the very first phase that grows anything.
+   *
+   * The engine draws the same 31 bits as `next()`, scales by 1/2^31, and then
+   * does the interpolation in SINGLE precision — `cvtpd2ps` before the multiply
+   * and every operation after it a `ss`. JavaScript has only doubles, so each
+   * step is rounded back to float with `Math.fround`; skipping that gives
+   * answers that are right to seven digits and wrong afterwards, which is
+   * precisely the kind of drift that shows up a thousand draws later.
+   */
+  betweenFloat(a: number, b: number): number {
+    const draw = this.next();
+    const scaled = Math.fround(Math.fround(draw) * SCALE);
+    return Math.fround(a + Math.fround(scaled * Math.fround(b - a)));
   }
 }

@@ -69,6 +69,47 @@ const spans = Array.from({ length: 500 }, () => ranged.between(3, 7));
 check('between(3, 7) stays inside 3..7', spans.every((n) => n >= 3 && n <= 7));
 check('and is inclusive of both', spans.includes(3) && spans.includes(7));
 
+// The fractional draw (0xeb14d0). It costs one draw like any other, lands
+// inside its range, and — the part worth testing — is computed in single
+// precision, so it must equal the float-rounded form rather than the obvious
+// double one. This is what "k == %2.2f" in the zone log is made of.
+const fractional = new RmgRandom(2024);
+const spread = Array.from({ length: 200 }, () => fractional.betweenFloat(0.5, 2.5));
+check('betweenFloat stays inside its range', spread.every((n) => n >= 0.5 && n <= 2.5));
+check('and is not a handful of repeats', new Set(spread).size > 150, `${new Set(spread).size} distinct`);
+
+const oneDraw = new RmgRandom(2024);
+const before = oneDraw.draws;
+oneDraw.betweenFloat(0, 1);
+check('it costs exactly one draw', oneDraw.draws === before + 1);
+
+// Same draw, computed both ways. The single-precision form is what the engine
+// does; the double one is what a port writes without looking. They agree to
+// about seven digits, which is exactly why the difference has to be asserted
+// rather than eyeballed.
+// Not seed 7: its first draw is 0 (the state has not yet grown past 2^23), so
+// both sides of the comparison would be zero and the check would pass without
+// touching the arithmetic it is about.
+const SEED = 1785351845;
+const single = new RmgRandom(SEED).betweenFloat(0, 1000);
+const draw = new RmgRandom(SEED).next();
+const asFloat = Math.fround(Math.fround(Math.fround(draw) * Math.fround(1 / 2 ** 31)) * Math.fround(1000));
+check('it is exactly the single-precision computation', single === asFloat && single > 0, `${single}`);
+
+let anyDiffer = false;
+const floats = new RmgRandom(99);
+const doubles = new RmgRandom(99);
+for (let i = 0; i < 200; i++) {
+  if (floats.betweenFloat(0, 1000) !== (doubles.next() / 2 ** 31) * 1000) anyDiffer = true;
+}
+check('and differs from the naive double form', anyDiffer);
+
+// The 63-bit draw (0xeb1360) — a third slice of the same step.
+const wide = new RmgRandom(11);
+const big = wide.next63();
+check('next63 fits 63 bits', big >= 0n && big < 1n << 63n, `${big}`);
+check('and costs one draw', wide.draws === 1);
+
 // A negative seed enters the state sign-extended (`cdq`). If that were read as
 // unsigned the whole stream would differ, and nothing else here would notice.
 const negative = new RmgRandom(-1);
@@ -111,6 +152,14 @@ if (pe) {
   // different slice, which is why below() is not next() % limit.
   check('the ranged draw shifts by 16 instead', at([0x0f, 0xac, 0xf0, 0x10]) >= 0);
   check('and keeps 47 bits of state', at([0x81, 0xe6, 0xff, 0x7f, 0x00, 0x00]) >= 0);
+
+  // The scale the fractional draw multiplies by, read as the float it is.
+  // Searching .rdata for the bytes of 1/2^31 says the constant we use is the
+  // constant that is there, whatever the disassembler chose to print.
+  const rdata = pe.bytesOf(pe.section('.rdata'));
+  const scale = Buffer.alloc(4);
+  scale.writeFloatLE(Math.fround(1 / 2 ** 31));
+  check('the executable holds 1/2^31 as a float', rdata.includes(scale));
 }
 
 console.log(failures ? `\n${failures} failed` : '\nall good');
