@@ -5,11 +5,11 @@
 > from 8996 lines to 803, `electron/main.ts` from 3011 to 187, `src/`'s 66 flat
 > files into ten folders, and `renderer/index.html`'s 2023 lines into a shell,
 > 20 parts and 20 stylesheets. Every layout is in
-> [CONTRIBUTING.md](CONTRIBUTING.md) → *Layout*; what is left below is the four
+> [CONTRIBUTING.md](../../CONTRIBUTING.md) → *Layout*; what is left below is the four
 > rules that made the passes survivable and the checks that proved each one.
 
-Reading first: [CONTRIBUTING.md](CONTRIBUTING.md) (the layout and the import
-rules as they stand), and §1.д of [SLICE_diagnostics.md](SLICE_diagnostics.md),
+Reading first: [CONTRIBUTING.md](../../CONTRIBUTING.md) (the layout and the import
+rules as they stand), and §1.д of [SLICE_diagnostics.md](../../SLICE_diagnostics.md),
 which asked for this split and named the sections to start from.
 
 ---

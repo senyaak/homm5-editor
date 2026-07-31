@@ -51,3 +51,6 @@ mod documents below; they move here as each gets written up.
 
 - [RECIPES.md](RECIPES.md) — task-first notes: how to actually make things.
 - [E2E_RECONSTRUCTION.md](E2E_RECONSTRUCTION.md) — proving the editor by rebuilding a shipped campaign.
+- [_slices_done/](_slices_done/) — slices whose work has landed, kept for the
+  reasoning: what was measured, what was tried first, what the check caught. A
+  slice still in flight lives at the repo root instead.

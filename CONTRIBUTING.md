@@ -240,6 +240,10 @@ surfaced, are especially welcome.
   *why*, not just *what*. One logical change per PR.
 - Keep `docs/` and `ROADMAP.md` in step with the code — a format detail you had
   to discover is worth writing down; the next person shouldn't re-derive it.
+- A `SLICE_*.md` at the repo root is work in flight: what it is for, what is in
+  scope, and what was measured to decide. When its work lands, move it to
+  `docs/_slices_done/` rather than deleting it — the code says what the shape
+  is, the slice says why it is that shape.
 - Describe how you verified (which tests, harness checks, or — for map/format
   work — that it round-trips and, ideally, loads in the game).
 

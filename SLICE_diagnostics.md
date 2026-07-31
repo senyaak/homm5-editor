@@ -52,7 +52,7 @@ instinct applied to runs).
   is not an exemption list but a debt register — every line a number that may
   only go down.
 - д) **Split the renderer by section, not by dialog.** DONE, and it grew into
-  its own slice — see [SLICE_renderer_layout.md](SLICE_renderer_layout.md).
+  its own slice — see [SLICE_renderer_layout.md](docs/_slices_done/SLICE_renderer_layout.md).
   `renderer/app.ts` is 803 lines rather than 8676, and the sections live under
   `renderer/{core,viewport,features}`. The measurement in §5.3 held: the
   dialogs were never the unit, the sections were. The markup followed a day
@@ -73,19 +73,19 @@ instinct applied to runs).
   is files and a build step that concatenates them; the DOM code stays what it
   is. **This is what shipped** (2026-07-31): `<!-- @include parts/x.html -->`,
   replaced verbatim, one level deep — see
-  [SLICE_renderer_layout.md](SLICE_renderer_layout.md) §4.
+  [SLICE_renderer_layout.md](docs/_slices_done/SLICE_renderer_layout.md) §4.
 - б) Telemetry of any kind. Nothing leaves the machine without a person pressing
   a button in their own browser.
 - в) ~~Restructuring `electron/main.ts` (2671 lines). It has the same smell and
   is a separate slice; the renderer is where the bugs of this kind actually
   happened.~~ Done on 2026-07-31, as the separate slice this called for: 3011
   lines down to 187, the handlers in `electron/channels/` — see
-  [SLICE_renderer_layout.md](SLICE_renderer_layout.md) §1.
+  [SLICE_renderer_layout.md](docs/_slices_done/SLICE_renderer_layout.md) §1.
 - г) A log viewer inside the app. "Open the folder" is enough until it is not.
 - д) ~~The deeply-wired sections of `renderer/app.ts` — regions, the terrain
   parts, the palettes.~~ Moved after all, once the shared state they hold was
   put on named objects rather than module globals — see
-  [SLICE_renderer_layout.md](SLICE_renderer_layout.md) §2.2. It was a design
+  [SLICE_renderer_layout.md](docs/_slices_done/SLICE_renderer_layout.md) §2.2. It was a design
   job, as predicted; the design was one object per thing being shared.
 
 ## 2. Why — what went wrong, and what would have caught it

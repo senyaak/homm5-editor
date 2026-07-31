@@ -13,8 +13,9 @@
 
 Reading first: [docs/EFFECTS_FORMAT.md](docs/EFFECTS_FORMAT.md) (what the data
 is and why playback is interpolation, not simulation),
-[renderer/particles.ts](renderer/particles.ts) (one playing system),
-[renderer/app.ts](renderer/app.ts) (`loadFx`, `advanceFx`, the render loop).
+[renderer/viewport/particles.ts](renderer/viewport/particles.ts) (one playing system),
+[renderer/viewport/fx.ts](renderer/viewport/fx.ts) (`loadFx`, `advanceFx`) and
+[renderer/app.ts](renderer/app.ts) (the render loop).
 
 ---
 
@@ -61,7 +62,7 @@ construction — no content hashing needed. This also accounts for the 3338 load
 -time image decodes, which are awaited one after another on the main thread.
 
 2.2. **Nothing is ever culled.** `mesh.frustumCulled = false` in
-[renderer/particles.ts](renderer/particles.ts), and the comment says why: the
+[renderer/viewport/particles.ts](renderer/viewport/particles.ts), and the comment says why: the
 positions live in instance attributes, so three.js cannot derive bounds, and a
 fire popping in at the screen edge is worse than the draw call. But the bounds
 *are* derivable — from the recording. `max(|pos|) + max(size)/2` over every key
@@ -101,7 +102,7 @@ between the keys are interpolation of the same two keys either way.
 Each step stands alone; none of them needs the next to exist.
 
 3.1. **Dedupe the atlases** — a `WeakMap<FxInstancePayload, Promise<Atlas>>` in
-[renderer/particles.ts](renderer/particles.ts). 644 MB → 76 MB, 3338 decodes →
+[renderer/viewport/particles.ts](renderer/viewport/particles.ts). 644 MB → 76 MB, 3338 decodes →
 ~380. Smallest change here, largest number.
 
 3.2. **Give a system bounds and let it be culled** — radius per uid from the
@@ -131,8 +132,8 @@ two-texture split, which exists only because a browser canvas premultiplies
 
 | File | Change |
 | ---- | ------ |
-| [renderer/particles.ts](renderer/particles.ts) | Atlas cache by payload identity (3.1); bounding sphere from the bake instead of `frustumCulled = false` (3.2); `addUpdateRange` (3.3). |
-| [renderer/app.ts](renderer/app.ts) | `advanceFx`: frustum skip mirroring `advanceIdle`'s `visible` mode, 30 Hz accumulator (3.2, 3.4). |
+| [renderer/viewport/particles.ts](renderer/viewport/particles.ts) | Atlas cache by payload identity (3.1); bounding sphere from the bake instead of `frustumCulled = false` (3.2); `addUpdateRange` (3.3). |
+| [renderer/viewport/fx.ts](renderer/viewport/fx.ts) | `advanceFx`: frustum skip mirroring `advanceIdle`'s `visible` mode, 30 Hz accumulator (3.2, 3.4). |
 | [src/scene/effects.ts](src/scene/effects.ts) | `transferEffect`: emit the bounding radius and the per-frame alive index alongside `maxAlive` — both are one pass over data already walked (3.2, 3.5). |
 | [electron/main.ts](electron/main.ts) | Only for 3.6: ship frame textures as RGBA typed arrays over `map:fx` rather than data-URIs in the scene payload. |
 | [src/scene/scene.ts](src/scene/scene.ts) | Only for 3.6: `particleTextureUris` stops encoding PNG. |
@@ -211,7 +212,7 @@ the e2e suite, argued about on screenshots where the suite cannot judge.
 **The suite already covers this ground**, which is what makes the cheap steps
 cheap: `e2e/effects.spec.ts`, `e2e/effect-timing.spec.ts` and
 `e2e/glued-effects.spec.ts`, plus the `fxSystems()` debug hook in
-`renderer/app.ts`, which reports `alive`, `visible` and the world position of
+`renderer/viewport/fx.ts`, which reports `alive`, `visible` and the world position of
 every system on the active floor. "The campfire went out", "the wrong thing got
 culled" and "the glued eye stopped following the head" are assertions, not
 screenshot reviews.
