@@ -7,7 +7,7 @@
 
 import * as THREE from 'three';
 
-import type { Scene, GeomData, GeomPart, Footprint, SkinnedGeom, FxInstancePayload } from '#src/scene/scene.ts';
+import type { Scene, GeomData, GeomPart, Footprint, SkinnedGeom, FxInstancePayload } from '#src/scene/payload.ts';
 import { geometryFor, materialFor } from '#viewport/materials.ts';
 
 export const worldGeos: THREE.BufferGeometry[] = [];

@@ -19,14 +19,16 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, posix } from 'node:path';
-import {
-  addCreature, buildCreatureMod, creatureLimit, creaturePaths, dataPath, dataReader,
-  MOD_MANIFEST, newCreatureMod, packCreatureMod, readCreatureModBuffer, writeCreatureMod,
-} from '../src/mods/creature-mod.ts';
+import { buildCreatureMod, creaturePaths } from '../src/mods/creature-mod.ts';
+import { addCreature, creatureLimit, newCreatureMod } from '../src/mods/mod-model.ts';
+import { packCreatureMod, readCreatureModBuffer, writeCreatureMod } from '../src/mods/mod-archive.ts';
+import { dataPath } from '../src/mods/mod-art.ts';
+import { MOD_MANIFEST, dataReader } from '../src/mods/mod-files.ts';
 import { assets } from '../src/game/assets.ts';
 import { Registry } from '../src/schema/registry.ts';
 import { findEditorRoot, listPlaceable } from '../src/map/objects.ts';
-import type { CreatureMod, DataReader, ModFile } from '../src/mods/creature-mod.ts';
+import type { CreatureMod } from '../src/mods/mod-model.ts';
+import type { DataReader, ModFile } from '../src/mods/mod-files.ts';
 import { blankStats, creatureRoot, readStats, SHIPPED_CREATURES } from '../src/mods/creatures.ts';
 import { readEntries } from '../src/format/pak.ts';
 

@@ -13,8 +13,8 @@ import type { UndoResult } from '#electron/ipc.ts';
 import { need, terrainDoc } from '#electron/state.ts';
 import type { Session } from '#electron/state.ts';
 import type { Step } from '#src/map/history.ts';
-import { splatFor } from '#src/scene/scene.ts';
-import type { Instance as SceneInstance } from '#src/scene/scene.ts';
+import { splatFor } from '#src/scene/splat.ts';
+import type { Instance as SceneInstance } from '#src/scene/payload.ts';
 
 function undoResult(s: Session, step: Step | null, dir: 'undo' | 'redo'): UndoResult {
   const moved = step ? applyStep(s, step, dir) : {};

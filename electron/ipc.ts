@@ -5,7 +5,7 @@
 // `window.editor`. Type-only module: nothing here emits, so both the ESM main
 // process and the CommonJS preload can import from it.
 
-import type { Scene, SplatData, TileInfo, Instance, GeomData } from '../src/scene/scene.ts';
+import type { Scene, SplatData, TileInfo, Instance, GeomData } from '../src/scene/payload.ts';
 import type { ProjectStatus } from '../src/map/project.ts';
 import type { TypeCounts, ObjectProp } from '../src/map/map.ts';
 import type { CreatureStats } from '../src/mods/creatures.ts';

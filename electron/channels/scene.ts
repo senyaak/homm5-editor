@@ -14,7 +14,7 @@ import { join } from 'node:path';
 import { transferEffect } from '#src/scene/effects.ts';
 import type { FxTransfer } from '#src/scene/effects.ts';
 import { createGeomResolver } from '#src/scene/scene.ts';
-import type { GeomData } from '#src/scene/scene.ts';
+import type { GeomData } from '#src/scene/payload.ts';
 
 /** Wire this domain onto ipcMain. Called once, from main. */
 export function registerScene(): void {

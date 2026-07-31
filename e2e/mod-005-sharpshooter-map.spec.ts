@@ -32,7 +32,7 @@ import { addItem, addValueItem, openTree, setTreeValue } from './tree.ts';
 import { readEntries } from '../src/format/pak.ts';
 import { MOD_EXT, modFile } from '../src/game/mod-paths.ts';
 import { clearMap, installMapFixture, LIVE, modGameRoot } from './mods.ts';
-import { MOD_STEM } from '../src/mods/creature-mod.ts';
+import { MOD_STEM } from '../src/mods/mod-files.ts';
 import { bar } from './bar.ts';
 
 let ed: Launched;

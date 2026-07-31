@@ -15,7 +15,7 @@ import { basename } from 'node:path';
 import { EFFECT_STATS } from '#src/mods/artifact-effects.ts';
 import { HERO_STAT_NAMES } from '#src/mods/artifacts.ts';
 import { assets } from '#src/game/assets.ts';
-import { findCreatureMods } from '#src/mods/creature-mod.ts';
+import { findCreatureMods } from '#src/mods/mod-archive.ts';
 import { builtDll, extensionState, installExtension } from '#src/mods/extension.ts';
 import { HERO_CLASS, artChoices } from '#src/mods/heroes.ts';
 import { Registry, artifactPreset, creatureAbilities, creatureAbilityNames, creaturePreset } from '#src/schema/registry.ts';

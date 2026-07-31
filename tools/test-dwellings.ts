@@ -18,7 +18,9 @@
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { addDwelling, buildCreatureMod, dataReader, newCreatureMod } from '../src/mods/creature-mod.ts';
+import { buildCreatureMod } from '../src/mods/creature-mod.ts';
+import { addDwelling, newCreatureMod } from '../src/mods/mod-model.ts';
+import { dataReader } from '../src/mods/mod-files.ts';
 import { MESSAGE_SLOTS, dwellingPaths, footprintOf, refPath, tilesOf } from '../src/mods/dwellings.ts';
 import type { DwellingSpec, Footprint, Tile } from '../src/mods/dwellings.ts';
 import { SHIPPED_CREATURES } from '../src/mods/creatures.ts';

@@ -11,13 +11,13 @@ import type { ModsRecolorPayload, ModsRecolorResult, ModsTexturesPayload, ModsTe
 import { buildAndInstall, ourMod } from '#electron/mod-install.ts';
 import { gameRoot, isConfigured } from '#electron/paths.ts';
 import { readFileSync } from 'node:fs';
-import { findCreatureMods } from '#src/mods/creature-mod.ts';
-import type { ModCreature } from '#src/mods/creature-mod.ts';
+import { findCreatureMods } from '#src/mods/mod-archive.ts';
+import type { ModCreature } from '#src/mods/mod-model.ts';
 import { decodeDDSBuffer } from '#src/format/dds.ts';
 import { MOD_DIR, modFile } from '#src/game/mod-paths.ts';
 import { readEntries } from '#src/format/pak.ts';
 import { extractPalette, isIdentity } from '#src/format/recolor.ts';
-import { pngDataUri } from '#src/scene/scene.ts';
+import { pngDataUri } from '#src/format/png.ts';
 
 /** Our mod's archive and the creature in it, for the texture channels. */
 function modCreatureArchive(g: string, creatureId: string): { path: string; creature: ModCreature } {

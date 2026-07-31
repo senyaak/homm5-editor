@@ -20,7 +20,7 @@ import { donorFor } from '#src/map/donors.ts';
 import { MapObject } from '#src/map/map.ts';
 import type { ObjectProp } from '#src/map/map.ts';
 import { iconPathFor, listPlaceable, readIconFile } from '#src/map/objects.ts';
-import { pngDataUri } from '#src/scene/scene.ts';
+import { pngDataUri } from '#src/format/png.ts';
 import { controlOf, deref, objectProps, objectSchema } from '#src/schema/schema.ts';
 import type { FieldSchema, RegistryName } from '#src/schema/schema.ts';
 import { find } from '#src/format/xml.ts';

@@ -13,7 +13,7 @@ import { gameData, gameRoot, isConfigured } from '#electron/paths.ts';
 import { join } from 'node:path';
 import { describeUses, findArtifactUses } from '#src/mods/artifact-usage.ts';
 import type { ArtifactRank, ArtifactSlot, ArtifactSpec, HeroStats } from '#src/mods/artifacts.ts';
-import { addArtifact, addArtifactSet, artifactLimit, removeArtifact, removeArtifactSet, updateArtifact, updateArtifactSet } from '#src/mods/creature-mod.ts';
+import { addArtifact, addArtifactSet, artifactLimit, removeArtifact, removeArtifactSet, updateArtifact, updateArtifactSet } from '#src/mods/mod-model.ts';
 import { Registry } from '#src/schema/registry.ts';
 
 /** The spec an artifact payload describes, shared by install and update. */

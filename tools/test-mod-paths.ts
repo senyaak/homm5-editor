@@ -11,7 +11,9 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
 import { LITERALS, MASKS, MOD_DIR, WRITES, findSites, modFile, patchModPaths, readModPaths } from '../src/game/mod-paths.ts';
-import { MOD_MANIFEST, findCreatureMods, installCreatureMod, newCreatureMod } from '../src/mods/creature-mod.ts';
+import { findCreatureMods, installCreatureMod } from '../src/mods/mod-archive.ts';
+import { newCreatureMod } from '../src/mods/mod-model.ts';
+import { MOD_MANIFEST } from '../src/mods/mod-files.ts';
 import { writeArchive } from '../src/format/pak.ts';
 
 let failures = 0;

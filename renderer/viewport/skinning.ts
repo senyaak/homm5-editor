@@ -19,7 +19,7 @@
 // dragging an animated object keeps working.
 
 import * as THREE from 'three';
-import type { SkinnedGeom } from '#src/scene/scene.ts';
+import type { SkinnedGeom } from '#src/scene/payload.ts';
 
 /** One animated object: its own skeleton, its own place in the loop. */
 export interface IdleObject {

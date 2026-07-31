@@ -31,7 +31,7 @@ import { settled } from './trace.ts';
 import type { Launched } from './launch.ts';
 import { modGameRoot, readInstalledMod } from './mods.ts';
 import { modFile } from '../src/game/mod-paths.ts';
-import { MOD_STEM } from '../src/mods/creature-mod.ts';
+import { MOD_STEM } from '../src/mods/mod-files.ts';
 import { heroPaths } from '../src/mods/heroes.ts';
 import { readEntries } from '../src/format/pak.ts';
 import { PATCHED_EXE, readExe } from '../src/exe/creature-limit.ts';

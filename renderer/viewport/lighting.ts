@@ -10,7 +10,7 @@
 import * as THREE from 'three';
 
 import { state } from '#core/state.ts';
-import type { AmbientData } from '#src/scene/scene.ts';
+import type { AmbientData } from '#src/scene/payload.ts';
 import { scene, DEFAULT_BG } from '#viewport/stage.ts';
 
 // The three lights a map's AmbientLight preset drives (applyAmbient). Their

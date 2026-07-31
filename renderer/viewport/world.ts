@@ -22,7 +22,7 @@ import type { IdleObject } from '#viewport/skinning.ts';
 import { disposeSplats, upgradeToSplat } from '#viewport/splat.ts';
 import { cam, camera, controls, scene, syncTopCamera } from '#viewport/stage.ts';
 import { asTileSpace, makeWaterMesh, terrainGeometry } from '#viewport/terrain-mesh.ts';
-import type { Floor, Scene } from '#src/scene/scene.ts';
+import type { Floor, Scene } from '#src/scene/payload.ts';
 import * as THREE from 'three';
 import { UNITS_PER_TILE as U } from '#src/scene/units.ts';
 export function clearWorld(): void {

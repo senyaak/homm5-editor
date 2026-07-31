@@ -15,8 +15,13 @@ import type { EffectRow, EffectStat, SetEffect } from '#src/mods/artifact-effect
 import type { ArtifactExeResult } from '#src/exe/artifact-limit.ts';
 import { artifactNumbers } from '#src/mods/artifacts.ts';
 import type { ExeResult } from '#src/exe/creature-limit.ts';
-import { MOD_STEM, buildCreatureMod, dataReader, findCreatureMods, installCreatureMod, newCreatureMod, packCreatureMod } from '#src/mods/creature-mod.ts';
-import type { BuildReport, CreatureMod, Installed } from '#src/mods/creature-mod.ts';
+import { buildCreatureMod } from '#src/mods/creature-mod.ts';
+import { findCreatureMods, installCreatureMod, packCreatureMod } from '#src/mods/mod-archive.ts';
+import { newCreatureMod } from '#src/mods/mod-model.ts';
+import { MOD_STEM, dataReader } from '#src/mods/mod-files.ts';
+import type { CreatureMod } from '#src/mods/mod-model.ts';
+import type { Installed } from '#src/mods/mod-archive.ts';
+import type { BuildReport } from '#src/mods/mod-files.ts';
 import { writeEffectsFile } from '#src/mods/extension.ts';
 import { MOD_DIR, modFile } from '#src/game/mod-paths.ts';
 

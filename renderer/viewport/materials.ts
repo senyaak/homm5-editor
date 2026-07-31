@@ -5,7 +5,7 @@
 
 import * as THREE from 'three';
 
-import type { GeomData, GeomPart } from '#src/scene/scene.ts';
+import type { GeomData, GeomPart } from '#src/scene/payload.ts';
 
 const texLoader = new THREE.TextureLoader();
 const greyMat = new THREE.MeshLambertMaterial({ color: 0x8a8f98, side: THREE.DoubleSide });

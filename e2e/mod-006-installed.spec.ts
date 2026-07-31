@@ -23,7 +23,7 @@ import {
 } from './mods.ts';
 import { readEntries } from '../src/format/pak.ts';
 import { modFile } from '../src/game/mod-paths.ts';
-import { readCreatureMod } from '../src/mods/creature-mod.ts';
+import { readCreatureMod } from '../src/mods/mod-archive.ts';
 import { EFFECTS_FILE, readEffects } from '../src/mods/artifact-effects.ts';
 import { COMMON_SCRIPT, SCRIPT_DIR } from '../src/mods/artifact-scripts.ts';
 import { ORIGINAL_ARTIFACTS, readArtifactLimit, SITES_FILE } from '../src/exe/artifact-limit.ts';

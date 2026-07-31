@@ -32,7 +32,7 @@ import { isReady } from '../src/game/first-run.ts';
 import { looksLikeDataRoot } from '../src/game/unpack.ts';
 import { assets } from '../src/game/assets.ts';
 import type { Assets } from '../src/game/assets.ts';
-import { mountCreatureMods } from '../src/mods/creature-mod.ts';
+import { mountCreatureMods } from '../src/mods/mod-archive.ts';
 
 /**
  * The folder holding `electron/` and `renderer/`.

@@ -31,7 +31,7 @@ and format notes only.** A PR that adds game bytes will be rejected.
 src/        the core — format decoders and the game model, by what each file
             knows. Runs as .ts directly (no build):
               format/   bytes in, bytes out: pak, oodle, dds, texture, gif,
-                        gr2, xml, recolor — no game meaning in any of them
+                        gr2, xml, png, recolor — no game meaning in any of them
               game/     where the game is on this machine and what it mounts:
                         env-file, first-run, unpack, assets, mod-paths
               map/      the map document and its project: map, map-tag,
@@ -39,11 +39,20 @@ src/        the core — format decoders and the game model, by what each file
                         defaults, watch, project, history
               terrain/  GroundTerrain.bin — its own format, its own six files
               scene/    a map + its assets turned into something drawable:
-                        scene, geometry, animation, effects, units
+                        scene (the walk) + payload (what crosses IPC), xdb,
+                        model-geom, materials, object-effects, skin, splat,
+                        water, ambient, geometry, animation, effects, units
               schema/   typed editing: schema, typespec, tree, skeleton,
                         registry, town-bonuses + the two .schema.json
-              mods/     content the game does not ship: creature-mod,
-                        creatures, artifacts*, heroes, dwellings, extension
+              mods/     content the game does not ship. What a mod HAS is
+                        mod-model; what a build reads and returns is mod-files;
+                        creature-mod builds the creatures and edits the three
+                        game files, with artifact-/hero-/dwelling-files doing
+                        the same for the rest; mod-archive writes, packs,
+                        installs and reads one back; mod-art copies the art in;
+                        xml-edit and model-box are what those are made of.
+                        Beside them, what each KIND is: creatures, artifacts*,
+                        heroes, dwellings, extension
               exe/      the executable: pe, disasm, exe-*, lua-registry, and
                         the two ceiling patchers
               campaign/ campaign, campaign-project, campaign-pack
@@ -72,7 +81,8 @@ renderer/   the UI. page.html + parts/ + style/ are assembled into index.html,
                          panels, picker), map-session, selection, history,
                          inspector/ (panel, controls, tree, map-props, refs),
                          terrain-brush/, palettes, regions, localization,
-                         text-editor/, campaigns, mods/
+                         text-editor/, campaigns, mods/ (units, artifacts,
+                         artifact-sets, heroes, recolor, preset over shared)
               app.ts     the pointer, the automation hook, the menus, the
                          render loop, and the init*() calls that wire it all
 docs/       the reverse-engineering write-ups and the plans. Keep these in step.

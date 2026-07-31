@@ -13,8 +13,8 @@ import { gameData, mountedAssets } from '#electron/paths.ts';
 import { need, state, syncMapTiles, terrainDoc } from '#electron/state.ts';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { listTiles, splatFor } from '#src/scene/scene.ts';
-import type { TileInfo } from '#src/scene/scene.ts';
+import { listTiles, splatFor } from '#src/scene/splat.ts';
+import type { TileInfo } from '#src/scene/payload.ts';
 
 // The ground-tile palette (terrain brushes).
 // Decoding 80+ tile textures takes ~1s, and the set never changes while the app

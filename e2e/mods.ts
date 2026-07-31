@@ -9,14 +9,16 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { DATA, REPO_ROOT } from './launch.ts';
+import { buildCreatureMod } from '../src/mods/creature-mod.ts';
 import {
-  addArtifact, addArtifactSet, addCreature, addDwelling, addHero, buildCreatureMod, dataReader,
-  installCreatureMod, MOD_STEM, newCreatureMod, packCreatureMod, readCreatureMod,
+  addArtifact, addArtifactSet, addCreature, addDwelling, addHero, newCreatureMod,
   removeArtifact, removeArtifactSet, removeCreature, removeDwelling, removeHero,
   updateArtifact, updateArtifactSet,
-} from '../src/mods/creature-mod.ts';
+} from '../src/mods/mod-model.ts';
+import { installCreatureMod, packCreatureMod, readCreatureMod } from '../src/mods/mod-archive.ts';
+import { MOD_STEM, dataReader } from '../src/mods/mod-files.ts';
 import type { ArtifactSlot } from '../src/mods/artifacts.ts';
-import type { CreatureMod } from '../src/mods/creature-mod.ts';
+import type { CreatureMod } from '../src/mods/mod-model.ts';
 import { creatureSources } from '../src/schema/registry.ts';
 import { assets } from '../src/game/assets.ts';
 import { blankStats } from '../src/mods/creatures.ts';

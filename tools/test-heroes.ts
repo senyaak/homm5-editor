@@ -22,7 +22,9 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { assets } from '../src/game/assets.ts';
-import { addHero, buildCreatureMod, dataReader, newCreatureMod } from '../src/mods/creature-mod.ts';
+import { buildCreatureMod } from '../src/mods/creature-mod.ts';
+import { addHero, newCreatureMod } from '../src/mods/mod-model.ts';
+import { dataReader } from '../src/mods/mod-files.ts';
 import { artLabels, HERO_CLASS, heroDoc, heroHref, heroInternalName, heroPaths, takenHeroIds } from '../src/mods/heroes.ts';
 import type { HeroSpec } from '../src/mods/heroes.ts';
 import { allFields, parseTypeSpec } from '../src/schema/typespec.ts';

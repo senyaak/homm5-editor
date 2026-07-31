@@ -27,11 +27,11 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { MOD_DIR, modDir } from '../src/game/mod-paths.ts';
-import {
-  buildCreatureMod, creatureLimit, dataReader, findCreatureMods, installCreatureMod, MOD_MANIFEST,
-  packCreatureMod, readCreatureMod, writeCreatureMod,
-} from '../src/mods/creature-mod.ts';
-import type { CreatureMod } from '../src/mods/creature-mod.ts';
+import { buildCreatureMod } from '../src/mods/creature-mod.ts';
+import { creatureLimit } from '../src/mods/mod-model.ts';
+import { findCreatureMods, installCreatureMod, packCreatureMod, readCreatureMod, writeCreatureMod } from '../src/mods/mod-archive.ts';
+import { MOD_MANIFEST, dataReader } from '../src/mods/mod-files.ts';
+import type { CreatureMod } from '../src/mods/mod-model.ts';
 import { PATCHED_EXE, readExe } from '../src/exe/creature-limit.ts';
 import { SHIPPED_CREATURES } from '../src/mods/creatures.ts';
 

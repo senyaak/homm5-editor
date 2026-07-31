@@ -7,7 +7,7 @@
 
 import { COMMON_SCRIPT, SCRIPT_DIR, patchCommonScript, setScriptFiles } from '../src/mods/artifact-scripts.ts';
 import { luaDiagnostics } from '../src/script/lua-lint.ts';
-import type { ModArtifactSet } from '../src/mods/creature-mod.ts';
+import type { ModArtifactSet } from '../src/mods/mod-model.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {

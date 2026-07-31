@@ -20,9 +20,9 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
-import {
-  addArtifactSet, buildCreatureMod, dataReader, newCreatureMod,
-} from '../src/mods/creature-mod.ts';
+import { buildCreatureMod } from '../src/mods/creature-mod.ts';
+import { addArtifactSet, newCreatureMod } from '../src/mods/mod-model.ts';
+import { dataReader } from '../src/mods/mod-files.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {

@@ -19,7 +19,7 @@
 // hide the walk over heroes. Everything else is the author's, verbatim — a
 // script is a script, and what runs is what they wrote.
 
-import type { ModArtifactSet } from './creature-mod.ts';
+import type { ModArtifactSet } from './mod-model.ts';
 
 /** Where a set's script goes inside the mod. */
 export const SCRIPT_DIR = 'scripts/homm5-editor';

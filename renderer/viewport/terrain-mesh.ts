@@ -10,7 +10,7 @@ import * as THREE from 'three';
 import { uiPrefs } from '#core/prefs.ts';
 import { tierOf, RAMP_BIT, TIER_STEP } from '#src/terrain/terrain.ts';
 import { UNITS_PER_TILE as U } from '#src/scene/units.ts';
-import type { TileInfo } from '#src/scene/scene.ts';
+import type { TileInfo } from '#src/scene/payload.ts';
 import { $ } from '#core/dom.ts';
 import type { Floor3D } from '#core/state.ts';
 import { refreshBlocked } from '#viewport/overlays.ts';

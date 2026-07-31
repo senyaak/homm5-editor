@@ -11,7 +11,7 @@ import { heightOn } from '#core/coords.ts';
 import { uiPrefs, saveUiPrefs } from '#core/prefs.ts';
 import { state, activeFloor } from '#core/state.ts';
 import type { Floor3D } from '#core/state.ts';
-import type { Footprint } from '#src/scene/scene.ts';
+import type { Footprint } from '#src/scene/payload.ts';
 import { geomFootprint } from '#viewport/geoms.ts';
 import { asTileSpace, WATER_ORDER } from '#viewport/terrain-mesh.ts';
 

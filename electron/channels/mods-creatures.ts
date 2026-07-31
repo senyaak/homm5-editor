@@ -12,8 +12,8 @@ import { gameData, gameRoot, isConfigured } from '#electron/paths.ts';
 import { join } from 'node:path';
 import { describeUses, findCreatureUses } from '#src/mods/artifact-usage.ts';
 import { assets } from '#src/game/assets.ts';
-import { addCreature, removeCreature, updateCreature } from '#src/mods/creature-mod.ts';
-import type { CreatureSpec } from '#src/mods/creature-mod.ts';
+import { addCreature, removeCreature, updateCreature } from '#src/mods/mod-model.ts';
+import type { CreatureSpec } from '#src/mods/mod-model.ts';
 import { blankStats } from '#src/mods/creatures.ts';
 import { creatureSources } from '#src/schema/registry.ts';
 

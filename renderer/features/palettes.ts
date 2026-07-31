@@ -37,7 +37,7 @@ import { syncFootprints } from '#viewport/overlays.ts';
 import { projectBatch, upgradeToSplat } from '#viewport/splat.ts';
 import { renderer } from '#viewport/stage.ts';
 import type { PlaceableObject } from '#src/map/objects.ts';
-import type { GeomData, Instance, TileInfo } from '#src/scene/scene.ts';
+import type { GeomData, Instance, TileInfo } from '#src/scene/payload.ts';
 import { $input } from '#core/dom.ts';
 import * as THREE from 'three';
 let catalog: PlaceableObject[] = [];

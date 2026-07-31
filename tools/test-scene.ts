@@ -13,8 +13,9 @@
 
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { buildScene, listItems } from '../src/scene/scene.ts';
-import type { GeomData } from '../src/scene/scene.ts';
+import { buildScene } from '../src/scene/scene.ts';
+import { listItems } from '../src/scene/xdb.ts';
+import type { GeomData } from '../src/scene/payload.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {

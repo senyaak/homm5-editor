@@ -21,7 +21,7 @@ import type { Launched } from './launch.ts';
 import { AMULET, BOOTS, CLOAK, modGameRoot, PIECES, readInstalledMod, UNDEAD_KING } from './mods.ts';
 import { ORIGINAL_ARTIFACTS, readArtifactLimit, SITES_FILE } from '../src/exe/artifact-limit.ts';
 import { modFile } from '../src/game/mod-paths.ts';
-import { MOD_STEM } from '../src/mods/creature-mod.ts';
+import { MOD_STEM } from '../src/mods/mod-files.ts';
 import { extensionState } from '../src/mods/extension.ts';
 import { EFFECTS_FILE, readEffects } from '../src/mods/artifact-effects.ts';
 import { COMMON_SCRIPT, SCRIPT_DIR } from '../src/mods/artifact-scripts.ts';

@@ -34,6 +34,8 @@ import { pickPreset, initPresetPicker } from '#features/mods/preset.ts';
 import { modRow, NL } from '#features/mods/shared.ts';
 import { initHeroesMod } from '#features/mods/heroes.ts';
 import { initUnitsMod } from '#features/mods/units.ts';
+import { initArtifactsMod } from '#features/mods/artifacts.ts';
+import { initArtifactSets } from '#features/mods/artifact-sets.ts';
 import { openCampaignList, initCampaigns } from '#features/campaigns.ts';
 import { initPropertyPanel } from '#features/inspector/controls.ts';
 import { initRefs } from '#features/inspector/refs.ts';
@@ -48,7 +50,7 @@ import { applyAmbient, refreshLighting, sun, uSunDir, uSunCol, uAmbCol, uLmGain,
 import type { Floor3D, World, Selection, GeomBatch } from '#core/state.ts';
 import { UNITS_PER_TILE as U } from '#src/scene/units.ts';
 import { tierOf, RAMP_BIT, TIER_STEP } from '#src/terrain/terrain.ts';
-import type { Scene, Floor, Instance, SplatData, TileInfo, GeomData, GeomPart, Footprint, SkinnedGeom, AmbientData, FxInstancePayload } from '#src/scene/scene.ts';
+import type { Scene, Floor, Instance, SplatData, TileInfo, GeomData, GeomPart, Footprint, SkinnedGeom, AmbientData, FxInstancePayload } from '#src/scene/payload.ts';
 import { createFxSystem } from '#viewport/particles.ts';
 import type { FxSystem } from '#viewport/particles.ts';
 import type { MapListEntry, ExternalChange, ModListEntry, PlaceableObject, RosterEntryDTO, LocResult, CampaignDoc, CampaignListEntry, CampaignMissionDto, CreatureStats, PaletteEntry, RecolorOps } from '#electron/ipc.ts';
@@ -796,6 +798,8 @@ initPresetPicker();
 initRecolor();
 initHeroesMod();
 initUnitsMod();
+  initArtifactsMod();
+  initArtifactSets();
 
 // The finish line. Everything above ran, so the window is wired and the render
 // loop is turning; the page's watchdog stands down. Keep this last — moved

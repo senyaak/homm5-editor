@@ -6,7 +6,7 @@
 import * as THREE from 'three';
 
 import type { Floor3D } from '#core/state.ts';
-import type { Instance } from '#src/scene/scene.ts';
+import type { Instance } from '#src/scene/payload.ts';
 import { UNITS_PER_TILE as U } from '#src/scene/units.ts';
 import { tileCenter } from '#core/coords.ts';
 

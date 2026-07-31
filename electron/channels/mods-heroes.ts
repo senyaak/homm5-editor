@@ -13,7 +13,7 @@ import { state } from '#electron/state.ts';
 import { basename, join } from 'node:path';
 import { describeUses, findHeroUses } from '#src/mods/artifact-usage.ts';
 import { assets } from '#src/game/assets.ts';
-import { addHero, removeHero, updateHero } from '#src/mods/creature-mod.ts';
+import { addHero, removeHero, updateHero } from '#src/mods/mod-model.ts';
 import { refPath } from '#src/mods/dwellings.ts';
 import { HERO_DIR, artOf, heroHref, heroPaths, takenHeroIds } from '#src/mods/heroes.ts';
 import type { HeroSpec, Mastery } from '#src/mods/heroes.ts';
