@@ -15,12 +15,30 @@ import { mountCodeEditor } from '#features/text-editor/code-editor.ts';
 import type { CodeEditor } from '#features/text-editor/code-editor.ts';
 import { loadScriptContext, scriptContextNote, scriptContextReady } from '#features/text-editor/context.ts';
 import { effectStats, idFrom, idTouched, listActions, refreshModLists, shortArtifactId } from '#features/mods/shared.ts';
+import { requireFilled } from '#core/form-gate.ts';
 import { showExtensionState } from '#features/mods/artifacts.ts';
 
 /** The game's artifacts, which do not change while the window is open. */
 let setShipped: { id: string; name: string }[] | null = null;
 
 /** Bind the artifact-set form to its markup. Called once, from app. */
+/**
+ * What a set cannot be built without.
+ *
+ * The members are the one the core refuses outright — "a set of 1 never
+ * combines" — and it is the one a form of checkboxes cannot star, so it is
+ * counted instead. The stem names its text files and the effect is what the
+ * executable's table gets; both are refused empty.
+ */
+let setGate: { check: () => void; rewatch: () => void } | null = null;
+const gateSet = (): { check: () => void; rewatch: () => void } => (setGate ??= requireFilled({
+  ok: 'as-ok',
+  missing: 'as-missing',
+  fields: { files: 'as-file', effect: 'as-effect', name: 'as-name' },
+  extra: () => (setMembers().length < 2 ? ['two members or more'] : []),
+  watch: '#as-members input',
+}));
+
 export function initArtifactSets(): void {
   listActions.editSet = (effect) => { void editArtifactSet(effect); };
   listActions.removeSet = (effect, label) => { void removeSet(effect, label); };
@@ -218,6 +236,7 @@ async function editArtifactSet(effect: string): Promise<void> {
   }
   renderSetCounts();
   $input('as-effect').value = s.effect;
+  $input('as-file').value = s.file;
   $input('as-name').value = s.name;
   // The texts and the bonus come back with it. A set opened for editing without
   // them saved blanks over what was written — the same trap artifacts had.
@@ -232,6 +251,7 @@ async function editArtifactSet(effect: string): Promise<void> {
   $input('as-file').disabled = true;
   $button('as-ok').textContent = 'Save & install';
   $('as-note').textContent = '';
+  gateSet().rewatch();
   openOnTop('setedit');
   $('setedit-title').textContent = 'Editing set';
   void showExtensionState('as-ext').catch(() => {});
@@ -242,6 +262,7 @@ function newSet(): void {
   editingSet = '';
   $input('as-effect').disabled = false;
   $input('as-file').disabled = false;
+  for (const id of ['as-file', 'as-effect', 'as-name', 'as-desc']) $input(id).value = '';
   $button('as-ok').textContent = 'Build & install';
   for (const box of $('as-members').querySelectorAll<HTMLInputElement>('input')) box.checked = false;
   // A new set has no bonus and no script. The form is reached again without
@@ -249,6 +270,7 @@ function newSet(): void {
   $('as-effects').innerHTML = '';
   setScript = '';
   renderSetCounts();
+  gateSet().rewatch();
   openOnTop('setedit');
   $('setedit-title').textContent = 'New set';
   void showExtensionState('as-ext').catch(() => {});

@@ -11,7 +11,26 @@ import { api } from '#core/ipc.ts';
 import { artLabels } from '#src/mods/heroes.ts';
 import { pickPreset } from '#features/mods/preset.ts';
 import { modRow, NL } from '#features/mods/shared.ts';
+import { requireFilled } from '#core/form-gate.ts';
 import type { ModListEntry, RosterEntryDTO } from '#electron/ipc.ts';
+
+/**
+ * What a hero cannot be built without.
+ *
+ * The channel says both in as many words — "the hero needs an identifier" and
+ * "a preset is required — a new hero starts from the shape of a shipped one" —
+ * which is exactly the pair worth saying BEFORE the press. The name is what
+ * every screen he appears on shows.
+ */
+let heroGate: { check: () => void; rewatch: () => void } | null = null;
+const gateHero = (): { check: () => void; rewatch: () => void } => (heroGate ??= requireFilled({
+  ok: 'he-ok',
+  missing: 'he-missing',
+  fields: { identifier: 'he-id', name: 'he-name' },
+  // A new hero is made from the shape of a shipped one; one already in the mod
+  // has his own document and needs no preset to be saved again.
+  extra: () => (!editingHero && !$input('he-preset').value.trim() ? ['preset'] : []),
+}));
 
 /** Which faction each class belongs to — the game pairs them one to one. */
 const HERO_CLASS_OF_TOWN: Record<string, string> = {
@@ -212,6 +231,7 @@ async function editHero(id: string): Promise<void> {
     if (href && ![...el.options].some((o) => o.value === href)) el.append(new Option(artLabel(href), href));
     el.value = href;
   }
+  gateHero().rewatch();
 }
 
 /** Ask what would break, show it, and only then remove. */
@@ -331,7 +351,9 @@ export function initHeroesMod(): void {
     $input('he-id').disabled = false;
     $input('he-id').value = '';
     $input('he-preset').value = '';
+    $input('he-name').value = '';
     $('he-preset-name').textContent = 'nothing yet — the form is blank';
+    gateHero().rewatch();
     modDialog('heroedit').showModal();
     // Fill the form's own lists HERE rather than relying on the list dialog
     // having done it: opening the form is what needs them, and the preset button
@@ -376,7 +398,8 @@ export function initHeroesMod(): void {
       })), (id, label) => {
         $input('he-preset').value = id;
         $('he-preset-name').textContent = label;
-        void heroPresetChanged().catch(() => {});
+        void heroPresetChanged().then(() => gateHero().check()).catch(() => {});
+        gateHero().check();
       });
     })().catch((e) => { $('he-err').textContent = e instanceof Error ? e.message : String(e); });
   };

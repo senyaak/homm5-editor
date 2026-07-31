@@ -694,6 +694,8 @@ export interface ModCreatureDTO {
   stats: CreatureStats;
   /** Where its art resolved to, slot by slot. */
   from?: Record<string, string>;
+  /** The shipped creature it was copied from, so the form can show it again. */
+  donor?: string;
 }
 
 /** One artifact of an installed mod, as `mods:list` reports it. */
@@ -730,6 +732,14 @@ export interface ModArtifactSetDTO {
   effect: string;
   /** The enum value it holds. */
   number: number;
+  /**
+   * The stem of its text files.
+   *
+   * Carried for the reason the rest of the record is: the form writes it back
+   * on every save, so a set opened for editing without it saved under whatever
+   * stem the box happened to hold — the last set's, or nothing at all.
+   */
+  file: string;
   name: string;
   description: string;
   /** Member artifact ids, in the order they combine. */

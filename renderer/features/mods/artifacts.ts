@@ -14,6 +14,7 @@ import { modDialog, openOnTop } from '#core/dialog.ts';
 import { api } from '#core/ipc.ts';
 import { fillSetMembers } from '#features/mods/artifact-sets.ts';
 import { effectStats, heroStats, idFrom, idTouched, listActions, openModDialog, refreshModLists } from '#features/mods/shared.ts';
+import { requireFilled } from '#core/form-gate.ts';
 
 /**
  * Which artifact the form is editing, or '' when it is making a new one.
@@ -131,6 +132,21 @@ function artifactGives(): { stats: Record<string, number>; effects: Record<strin
  * script and the manifest all name the same thing by, and the file stem names
  * every document already written for it.
  */
+/**
+ * What an artifact cannot be built without.
+ *
+ * The icon is the one that is easy to miss: it is what the hero screen and the
+ * ground both show, the channel refuses an empty one, and it normally arrives
+ * with the preset — so the star is really about the form that was filled in by
+ * hand. The stem names its files, the id is what maps and saves store.
+ */
+let artGate: { check: () => void; rewatch: () => void } | null = null;
+const gateArtifact = (): { check: () => void; rewatch: () => void } => (artGate ??= requireFilled({
+  ok: 'am-ok',
+  missing: 'am-missing',
+  fields: { files: 'am-file', id: 'am-id', name: 'am-name', icon: 'am-icon' },
+}));
+
 async function editArtifact(id: string): Promise<void> {
   const { mods } = await api.listMods();
   const a = mods.flatMap((m) => m.artifacts).find((x) => x.id === id);
@@ -162,6 +178,7 @@ async function editArtifact(id: string): Promise<void> {
   $('am-effects').innerHTML = '';
   for (const [stat, amount] of Object.entries(a.stats ?? {})) addEffectRow(stat, String(amount));
   for (const [stat, amount] of Object.entries(a.effects ?? {})) addEffectRow(stat, String(amount));
+  gateArtifact().rewatch();
   openOnTop('artedit');
   $('artedit-title').textContent = 'Editing artifact';
   void showExtensionState().catch(() => {});
@@ -175,10 +192,16 @@ function newArtifact(): void {
   // New, author the next — and the row left standing gave the second artifact
   // the first one's bonus.
   $('am-effects').innerHTML = '';
+  // And no id, no stem, no words and no icon — the boxes hold the last
+  // artifact's otherwise, and saving under an id the mod already has is
+  // refused only after a full rebuild.
+  for (const id of ['am-file', 'am-id', 'am-name', 'am-desc', 'am-icon', 'am-model']) $input(id).value = '';
+  idTouched.artifact = false;
   $input('am-id').disabled = false;
   $input('am-file').disabled = false;
   $('am-editing').textContent = '';
   $button('am-ok').textContent = 'Build & install';
+  gateArtifact().rewatch();
   openOnTop('artedit');
   $('artedit-title').textContent = 'New artifact';
   void showExtensionState().catch(() => {});

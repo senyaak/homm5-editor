@@ -109,6 +109,36 @@ test('the dialog opens, and the donor decides the faction', async () => {
   await expect(page.locator('#he-primary option[value="HERO_SKILL_LOGISTICS"]')).toHaveCount(1);
 });
 
+/** The hero form's own refusal — the pair main names in as many words. */
+test('it will not build a hero who is missing what he needs', async () => {
+  const { page } = ed;
+  // Same as the other two: the form is modal over the list that holds New.
+  if (await page.locator('#heroedit').isVisible()) await page.locator('#heroedit-cancel').click();
+  if (!(await page.locator('#heroesmod').isVisible())) await page.locator('#heroesbtn').click();
+  await page.locator('#hm-new').click();
+  await expect(page.locator('#heroedit')).toBeVisible();
+
+  await expect(page.locator('#he-ok')).toBeDisabled();
+  await expect(page.locator('#he-missing')).toHaveText(/identifier.*name.*preset/);
+  await expect(page.locator('#heroedit .req')).toHaveCount(3);
+
+  await page.locator('#he-id').fill('E2eRefused');
+  await page.locator('#he-name').fill('Отказник');
+  await expect(page.locator('#he-ok'), 'a hero is made from the shape of one').toBeDisabled();
+  await expect(page.locator('#he-missing')).toHaveText(/preset/);
+
+  await page.locator('#he-preset-pick').click();
+  await expect(page.locator('#presetpick')).toBeVisible();
+  await page.locator('#pp-search').fill('Ossir');
+  await page.locator('#pp-list button', { hasText: 'Ossir' }).first().click();
+  await expect(page.locator('#presetpick')).toBeHidden();
+  await expect(page.locator('#he-ok')).toBeEnabled();
+  await expect(page.locator('#he-missing')).toHaveText('');
+
+  await page.locator('#heroedit-cancel').click();
+  await expect(page.locator('#heroedit')).toBeHidden();
+});
+
 test('authors Gem and installs her', async () => {
   test.setTimeout(3 * 60_000);
   const { page } = ed;

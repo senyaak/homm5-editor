@@ -80,6 +80,46 @@ test('the dialog opens clean, and the donor loads as a preset', async () => {
   await expect(page.locator('#um-art-character')).toHaveValue(/T3_Elf_Sniper\.\(Character\)\.xdb/);
 });
 
+/**
+ * The form knows what the build needs, and says so before the press.
+ *
+ * The preset is the one worth a test of its own: a creature is a COPY of a
+ * shipped creature's two documents, so with none picked the build reached the
+ * channel and came back "cannot resolve the donor (none)" — after a rebuild,
+ * about a field the form never marked.
+ */
+test('it will not build a creature that is missing what it needs', async () => {
+  const { page } = ed;
+  // The form is a modal ON TOP of the list, so New is unreachable until
+  // whatever the last test left open is put away.
+  if (await page.locator('#unitedit').isVisible()) await page.locator('#unitedit-cancel').click();
+  if (!(await page.locator('#unitsmod').isVisible())) await page.locator('#unitsbtn').click();
+  await page.locator('#um-new').click();
+  await expect(page.locator('#unitedit')).toBeVisible();
+
+  await expect(page.locator('#um-ok')).toBeDisabled();
+  await expect(page.locator('#um-missing')).toHaveText(/identifier.*name.*preset/);
+  await expect(page.locator('#unitedit .req')).toHaveCount(3);
+
+  await page.locator('#um-file').fill('E2eRefused');
+  await page.locator('#um-name').fill('Отказник');
+  await expect(page.locator('#um-ok'), 'still nothing to copy from').toBeDisabled();
+  await expect(page.locator('#um-missing')).toHaveText(/preset/);
+
+  await page.locator('#um-donor-pick').click();
+  await expect(page.locator('#presetpick')).toBeVisible();
+  await page.locator('#pp-search').fill('Лесные стрелки');
+  await page.locator('#pp-list button').first().click();
+  await expect(page.locator('#presetpick')).toBeHidden();
+  await expect(page.locator('#um-ok')).toBeEnabled();
+  await expect(page.locator('#um-missing')).toHaveText('');
+
+  // Nothing was built: this is about the refusal. Closing also leaves the next
+  // test a form it opens itself, which is where the blanking is checked.
+  await page.locator('#unitedit-cancel').click();
+  await expect(page.locator('#unitedit')).toBeHidden();
+});
+
 test('edits the difference and installs the creature', async () => {
   test.setTimeout(3 * 60_000);
   const { page } = ed;

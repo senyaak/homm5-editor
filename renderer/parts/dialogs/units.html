@@ -53,7 +53,7 @@
                  select sitting in the form reads as "this creature's donor" —
                  which is exactly the idea this stopped being. -->
             <div class="on-row um-span">
-              <span>Preset</span>
+              <span>Preset<b class="req">*</b></span>
               <span id="um-donor-name" class="um-note" style="flex:1;min-width:0">nothing yet — the form is blank</span>
               <button id="um-donor-pick" class="ghost" title="fill every field below from a shipped creature; each stays editable afterwards">Use preset…</button>
               <input id="um-donor" type="hidden">
@@ -61,9 +61,9 @@
             <!-- One string, two jobs, as with a hero: it names his files and it
                  is what the CREATURE_ id is made of — and that id is what maps,
                  saves and scripts store, so it is shown rather than hidden. -->
-            <label class="on-row"><span>Identifier</span><input id="um-file" type="text" spellcheck="false" autocomplete="off" placeholder="unique id, e.g. Sharpshooter" title="the creature's unique identifier: its files are named after it and its CREATURE_ id is made from it. Refused if any creature already has it — the game's own included."></label>
+            <label class="on-row"><span>Identifier<b class="req">*</b></span><input id="um-file" type="text" spellcheck="false" autocomplete="off" placeholder="unique id, e.g. Sharpshooter" title="the creature's unique identifier: its files are named after it and its CREATURE_ id is made from it. Refused if any creature already has it — the game's own included."></label>
             <label class="on-row"><span>Stored as</span><input id="um-id" type="text" spellcheck="false" autocomplete="off" readonly title="what maps, saves and scripts store. Made from the identifier — pick once, never reuse."></label>
-            <label class="on-row"><span>Name</span><input id="um-name" type="text" autocomplete="off"></label>
+            <label class="on-row"><span>Name<b class="req">*</b></span><input id="um-name" type="text" autocomplete="off"></label>
             <label class="on-row"><span>Town</span><select id="um-town" title="the creature's home town — TOWN_NO_TYPE for a neutral"></select></label>
             <label class="on-row um-span"><span>Description</span><input id="um-desc" type="text" autocomplete="off"></label>
             <!-- Added one at a time, by name. The line the hire dialog prints is
@@ -110,6 +110,7 @@
             <label class="on-row um-art um-span"><span>Icon</span><input id="um-art-icon" type="text" spellcheck="false" autocomplete="off" title="the hire and army icon — a creature without one stops the game"><button class="ghost um-pick" data-for="um-art-icon" title="choose a file of your own; it is copied into the creature's folder when it is built">File…</button></label>
           </div>
         </fieldset>
+        <div id="um-missing" class="um-missing"></div>
         <div id="ue-err" class="on-err"></div>
       </div>
       <div class="de-foot">

@@ -18,6 +18,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 import { $, $select, $button, $input, setChild, fillSelect } from '#core/dom.ts';
 import { api } from '#core/ipc.ts';
+import { requireFilled } from '#core/form-gate.ts';
 import { uiPrefs, saveUiPrefs } from '#core/prefs.ts';
 import { ask, modDialog, openOnTop } from '#core/dialog.ts';
 import { state, activeFloor } from '#core/state.ts';
@@ -659,6 +660,10 @@ async function submitNewMap(): Promise<void> {
     ok.disabled = false;
   }
 }
+
+// A map with no name is refused by main ("the map needs a name"); the box says
+// so first, like every other form that makes something.
+requireFilled({ ok: 'nm-ok', missing: 'nm-missing', fields: { name: 'nm-name' } });
 
 $('newmapbtn').onclick = openNewMap;
 $('newmap2').onclick = openNewMap;

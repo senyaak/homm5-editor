@@ -63,6 +63,13 @@ export interface CreatureSpec {
   /** And the shipped `AdvMapMonsterShared` its map stack starts from. */
   monsterSource: string;
   /**
+   * The shipped creature those two were resolved from, kept so that opening
+   * this one for editing does not mean picking a preset again — which is what
+   * a hero has recorded all along (`basedOn`). Absent on creatures made before
+   * it was written down; the update path then keeps the sources it already has.
+   */
+  donor?: string;
+  /**
    * Art to use instead of what those two point at. Anything omitted is taken
    * from the source documents, so a bare spec already works.
    */

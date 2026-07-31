@@ -38,6 +38,7 @@ export function registerModsList(): void {
         ...(c.abilitiesText ? { abilitiesText: c.abilitiesText } : {}),
         stats: c.stats,
         ...(c.from ? { from: c.from as Record<string, string> } : {}),
+        ...(c.donor ? { donor: c.donor } : {}),
       })),
       // The effects ride along: the dialog fills its rows from this list, and an
       // artifact opened for editing without them saves none — so changing a price
@@ -67,7 +68,7 @@ export function registerModsList(): void {
       // `?? []` and not a plain read: a mod installed before sets existed has a
       // manifest without the field, and it stays listable.
       sets: (f.mod.sets ?? []).map((s) => ({
-        effect: s.effect, number: s.number, name: s.name, description: s.description,
+        effect: s.effect, number: s.number, file: s.file, name: s.name, description: s.description,
         artifacts: s.artifacts,
         ...(s.perCount?.length ? { perCount: s.perCount } : {}),
         ...(s.effects?.length ? { effects: s.effects } : {}),

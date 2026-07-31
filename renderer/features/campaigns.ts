@@ -15,7 +15,25 @@ import { ask, modDialog } from '#core/dialog.ts';
 import { api } from '#core/ipc.ts';
 import { roster } from '#core/rosters.ts';
 import { TOWN_BONUSES } from '#src/schema/town-bonuses.ts';
+import { requireFilled } from '#core/form-gate.ts';
 import type { CampaignDoc, CampaignListEntry, CampaignMissionDto, MapListEntry, RosterEntryDTO } from '#electron/ipc.ts';
+
+/**
+ * A campaign will not be made or saved without a name.
+ *
+ * Main refuses one outright ("the campaign needs a name"), and the list's
+ * Create button used to answer an empty box by doing nothing at all — a press
+ * that neither made a campaign nor said why. The name is also what the game's
+ * own menu lists the campaign under, so blank is not a campaign anyone finds.
+ */
+let campListGate: { check: () => void; rewatch: () => void } | null = null;
+const gateCampList = (): { check: () => void; rewatch: () => void } => (campListGate ??= requireFilled({
+  ok: 'cl-new', missing: 'cl-missing', fields: { 'a name': 'cl-name' },
+}));
+let campGate: { check: () => void; rewatch: () => void } | null = null;
+const gateCampaign = (): { check: () => void; rewatch: () => void } => (campGate ??= requireFilled({
+  ok: 'cp-ok', missing: 'cp-missing', fields: { name: 'cp-name' },
+}));
 
 /** The campaign being edited, and which mission row is selected. */
 let campDoc: CampaignDoc | null = null;
@@ -97,6 +115,7 @@ function renderCampaign(): void {
   $input('cp-name').value = campDoc.name;
   $input('cp-summary').value = campDoc.summary;
   ($('cp-description') as HTMLTextAreaElement).value = campDoc.description;
+  gateCampaign().rewatch();
 
   const rows = $('cp-rows');
   rows.replaceChildren();
@@ -126,6 +145,10 @@ function renderCampaign(): void {
 /** Pull the campaign-wide fields out of the form before anything that saves. */
 function readCampaignForm(): void {
   if (!campDoc) return;
+  // The name box was decorative: it showed the campaign's name, took typing and
+  // then wrote nothing back, so renaming one did nothing and said nothing. The
+  // folder keeps its own name — this is the name the menu shows.
+  campDoc.name = $input('cp-name').value.trim() || campDoc.name;
   campDoc.summary = $input('cp-summary').value;
   campDoc.description = ($('cp-description') as HTMLTextAreaElement).value;
 }
@@ -281,6 +304,7 @@ const msgOf = (e: unknown): string => (e instanceof Error ? e.message : String(e
 export function initCampaigns(): void {
   $('campaignbtn').onclick = () => { void openCampaignList(); };
   $('cl-close').onclick = () => modDialog('camplist').close();
+  gateCampList().rewatch();
   $('cl-new').onclick = async () => {
     const name = $input('cl-name').value.trim();
     if (!name) return;

@@ -24,9 +24,18 @@ import { creatureSources } from '#src/schema/registry.ts';
  * expected to be free or expected to be its own), and two copies of a dozen
  * fields is two copies that drift.
  */
-function creatureSpecOf(p: ModsInstallPayload): CreatureSpec {
-  const sources = creatureSources(assets([gameData()]), p.donor);
-  if (!sources) throw new Error(`cannot resolve the donor ${p.donor || '(none)'}`);
+function creatureSpecOf(p: ModsInstallPayload, keep?: CreatureSpec): CreatureSpec {
+  const donor = p.donor?.trim() ?? '';
+  const sources = donor ? creatureSources(assets([gameData()]), donor) : null;
+  if (donor && !sources) throw new Error(`cannot resolve the donor ${donor}`);
+  // Editing one does not mean picking its preset again: a creature already in
+  // the mod keeps the two documents it was built from. Only a NEW one has
+  // nothing to fall back on, and then the donor is what it is made of.
+  const visualSource = sources?.visual ?? keep?.visualSource ?? '';
+  const monsterSource = sources?.monster ?? keep?.monsterSource ?? '';
+  if (!visualSource || !monsterSource) {
+    throw new Error('a creature is copied from a shipped one — pick a preset');
+  }
   // Art overrides: only the slots the form actually changed away from empty.
   const art: Partial<Record<'character' | 'model' | 'animSet' | 'icon', string>> = {};
   for (const [slot, href] of Object.entries(p.art ?? {})) {
@@ -38,7 +47,8 @@ function creatureSpecOf(p: ModsInstallPayload): CreatureSpec {
     // Absent by default: the line is derived from the abilities at build time.
     ...(p.abilitiesText ? { abilitiesText: p.abilitiesText } : {}),
     stats: { ...blankStats(), ...p.stats },
-    visualSource: sources.visual, monsterSource: sources.monster,
+    visualSource, monsterSource,
+    ...(donor || keep?.donor ? { donor: donor || keep!.donor! } : {}),
     ...(Object.keys(art).length ? { art } : {}),
   };
 }
@@ -76,7 +86,8 @@ export function registerModCreatures(): void {
     if (!isConfigured()) throw new Error('no data root configured');
 
     const mod = ourMod(g);
-    const changed = updateCreature(mod, p.id.trim(), creatureSpecOf(p));
+    const had = mod.creatures.find((c) => c.id === p.id.trim());
+    const changed = updateCreature(mod, p.id.trim(), creatureSpecOf(p, had));
     const { installed, report } = buildAndInstall(g, mod);
     return { archive: installed.archive, limit: report.limit, exe: exeWords(installed.exe), art: report.art[changed.id] ?? 0 };
   });

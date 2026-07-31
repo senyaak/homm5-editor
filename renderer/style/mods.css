@@ -39,7 +39,7 @@ button.he-file { margin-left: 6px; flex: 0 0 auto; }
 /* the star on a label a form will not save without — see checkForm in
    features/mods/buildings.ts, which also names what is still missing */
 .req { color: #f0883e; font-weight: 700; margin-left: 3px; }
-#bld-missing { color: #f0883e; }
+.um-missing, #bld-missing { color: #f0883e; font-size: 11px; min-height: 14px; white-space: pre-line; }
 /* the set pane: members are picked from a list rather than typed, because a
    misspelt id builds cleanly and simply never combines */
 .as-members { display: flex; flex-direction: column; gap: 3px; max-height: 180px; overflow: auto;

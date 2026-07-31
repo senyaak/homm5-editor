@@ -20,6 +20,7 @@ import { api } from '#core/ipc.ts';
 import { pickPreset } from '#features/mods/preset.ts';
 import { openRecolor } from '#features/mods/recolor.ts';
 import { modRow, NL } from '#features/mods/shared.ts';
+import { requireFilled } from '#core/form-gate.ts';
 import type { BuildingClassDTO, ModBuildingDTO, ModsBuildingDataResult } from '#electron/ipc.ts';
 
 /** The classes, donors and value lists, fetched once. */
@@ -214,28 +215,32 @@ function fillArtLists(data: ModsBuildingDataResult): void {
  * nobody). Refusing early beats refusing after a rebuild — and naming what is
  * missing beats a disabled button with no reason on it.
  */
-function checkForm(): void {
-  const missing: string[] = [];
-  if (!$input('bld-file').value.trim()) missing.push('identifier');
-  if (!$input('bld-model').value.trim()) missing.push('model');
-  const name = document.querySelector<HTMLInputElement>('.bld-text');
-  if (name && !name.value.trim()) missing.push('name');
-  for (const el of document.querySelectorAll<HTMLInputElement | HTMLSelectElement>('.bld-field')) {
-    if (el.dataset.required && !el.value.trim()) missing.push(el.dataset.field ?? 'a field');
-  }
-  $('bld-missing').textContent = missing.length ? `still needed: ${missing.join(', ')}` : '';
-  $button('bld-ok').disabled = missing.length > 0;
-}
+let gate: { check: () => void; rewatch: () => void } | null = null;
+
+/**
+ * Built on the first draw, not at load: the class's own rows and its text boxes
+ * do not exist until a class is chosen, and they are drawn again whenever it
+ * changes.
+ */
+const formGate = (): { check: () => void; rewatch: () => void } => (gate ??= requireFilled({
+  ok: 'bld-ok',
+  missing: 'bld-missing',
+  fields: { identifier: 'bld-file', model: 'bld-model' },
+  extra: () => {
+    const missing: string[] = [];
+    const name = document.querySelector<HTMLInputElement>('.bld-text');
+    if (name && !name.value.trim()) missing.push('name');
+    for (const el of document.querySelectorAll<HTMLInputElement | HTMLSelectElement>('.bld-field')) {
+      if (el.dataset.required && !el.value.trim()) missing.push(el.dataset.field ?? 'a field');
+    }
+    return missing;
+  },
+  watch: '#bldedit .bld-field, #bldedit .bld-text',
+}));
 
 /** Watch every control the check reads, so the button follows the typing. */
 function watchForm(): void {
-  for (const el of document.querySelectorAll<HTMLElement>(
-    '#bld-file, #bld-model, #bldedit .bld-field, #bldedit .bld-text',
-  )) {
-    el.oninput = checkForm;
-    el.onchange = checkForm;
-  }
-  checkForm();
+  formGate().rewatch();
 }
 
 /** A row per field the class declares, with the game's own values where it has them. */
@@ -252,7 +257,7 @@ function drawClassFields(data: ModsBuildingDataResult, cls: BuildingClassDTO, va
     row.className = 'on-row um-span';
     const label = document.createElement('span');
     label.textContent = name;
-    // The star means Save will not go until it is filled — see checkForm.
+    // The star means Save will not go until it is filled — see formGate.
     if (cls.required.includes(name)) {
       const star = document.createElement('b');
       star.className = 'req';

@@ -69,6 +69,35 @@ test('the dialog opens clean, and the donor loads as a preset', async () => {
   await expect(page.locator('#am-icon')).toHaveValue(/Necromancer_Pendant/);
 });
 
+/** The same refusal the units form makes, for the fields an artifact needs. */
+test('it will not build an artifact that is missing what it needs', async () => {
+  const { page } = ed;
+  // New is in the list behind the form, so the form has to go first.
+  if (await page.locator('#artedit').isVisible()) await page.locator('#artedit-cancel').click();
+  if (!(await page.locator('#artsmod').isVisible())) await page.locator('#artsbtn').click();
+  await page.locator('#am-new').click();
+  await expect(page.locator('#artedit')).toBeVisible();
+
+  // The icon is the one that is easy to miss — the channel refuses an empty one
+  // ("an icon href is required — take the donor's") and the hero screen shows a
+  // hole without it.
+  await expect(page.locator('#am-ok')).toBeDisabled();
+  await expect(page.locator('#am-missing')).toHaveText(/files.*id.*name.*icon/);
+  await expect(page.locator('#artedit .req')).toHaveCount(4);
+
+  await page.locator('#am-file').fill('E2eRefused');
+  await expect(page.locator('#am-id'), 'the id spells itself').toHaveValue('ARTIFACT_E2E_REFUSED');
+  await expect(page.locator('#am-missing')).toHaveText(/name.*icon/);
+  await page.locator('#am-name').fill('Отказник');
+  await expect(page.locator('#am-ok'), 'no icon yet').toBeDisabled();
+  await page.locator('#am-icon').fill('/Textures/Artifacts/Necromancer_Pendant.(Texture).xdb');
+  await expect(page.locator('#am-ok')).toBeEnabled();
+  await expect(page.locator('#am-missing')).toHaveText('');
+
+  await page.locator('#artedit-cancel').click();
+  await expect(page.locator('#artedit')).toBeHidden();
+});
+
 test('edits the difference and installs the artifact', async () => {
   test.setTimeout(3 * 60_000);
   const { page } = ed;
@@ -292,6 +321,41 @@ test('says whether the extension is there, so an effect cannot look live when it
 // they run on every pass. To see just these: `npx playwright test --grep @wip`
 // — a script for it would be run by `npm test` as a suite, and this stage
 // cannot pass out of the chain's order.
+/**
+ * And the set form, whose hardest field is not a box.
+ *
+ * "A set of 1 never combines" is the core's own refusal, and a list of
+ * checkboxes has nothing to put a star on — so the count is named under the
+ * form instead.
+ */
+test('it will not build a set that is missing what it needs', async () => {
+  const { page } = ed;
+  if (await page.locator('#artedit').isVisible()) await page.locator('#artedit-cancel').click();
+  if (!(await page.locator('#artsmod').isVisible())) await page.locator('#artsbtn').click();
+  await page.locator('#as-new').click();
+  await expect(page.locator('#setedit')).toBeVisible();
+
+  await expect(page.locator('#as-ok')).toBeDisabled();
+  await expect(page.locator('#as-missing')).toHaveText(/files.*effect.*name.*two members/);
+  await expect(page.locator('#setedit .req')).toHaveCount(4);
+
+  await page.locator('#as-file').fill('E2eRefused');
+  await expect(page.locator('#as-effect')).toHaveValue('ARTFSET_EFFECT_E2E_REFUSED');
+  await page.locator('#as-name').fill('Отказники');
+  await expect(page.locator('#as-missing')).toHaveText(/two members/);
+
+  const members = page.locator('#as-members');
+  await expect(members.locator(`input[value="${AMULET.id}"]`)).toHaveCount(1, { timeout: 30_000 });
+  await members.locator(`input[value="${AMULET.id}"]`).check();
+  await expect(page.locator('#as-ok'), 'one piece is not a set').toBeDisabled();
+  await members.locator(`input[value="${CLOAK.id}"]`).check();
+  await expect(page.locator('#as-ok')).toBeEnabled();
+  await expect(page.locator('#as-missing')).toHaveText('');
+
+  await page.locator('#setedit-cancel').click();
+  await expect(page.locator('#setedit')).toBeHidden();
+});
+
 test('makes a set of all three, with an effect of our own', {
   tag: '@wip',
   annotation: { type: 'wip', description: 'set effects work; the dialog around them is unfinished' },

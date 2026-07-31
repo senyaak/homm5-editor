@@ -457,15 +457,16 @@ placing new ones from a palette.
       Covered by `npm run test-buildings` and e2e stages mod-005 (one of every
       class, each repainted), mod-006 (the palace) and mod-007 (all of them stood
       on a playable map).
-- [ ] ⬜ **Required fields at the PLACEMENT, where a class needs them.** The form
-      now marks what a building cannot be made without and will not save until it
-      is filled; the object panel does neither. A placed shrine carries
-      `SPELL_NONE` and teaches nothing, a sign has no `MessageFileRef` and says
-      nothing, a seer hut has an empty `Quest`, a shipyard no `ShipTile` — all
-      measured in the game, all silent, none reported. Two of those have no
-      control at all: a reference field is offered a New/browse button that
-      cannot point at a file the map already carries, and `Quest`/`ShipTile` are
-      structures rather than values.
+- [ ] ⬜ **Required fields at the PLACEMENT, where a class needs them.** Every
+      form OUTSIDE the map now marks what its build refuses to go without, keeps
+      Save down while one is empty and names what is missing — buildings,
+      creatures, artifacts, sets, heroes, campaigns (`requireFilled` in
+      `renderer/features/mods/shared.ts`). The object panel does none of that. A
+      placed shrine carries `SPELL_NONE` and teaches nothing, a sign has no
+      `MessageFileRef` and says nothing, a seer hut has an empty `Quest`, a
+      shipyard no `ShipTile` — all measured in the game, all silent, none
+      reported. Every one of them CAN be set now (mod-007 sets all four, bay
+      included); what is missing is the marking and the refusal.
 - [ ] ⬜ Towns: faction, buildings, garrison, owner
 - [ ] ⬜ Heroes: class, army, artifacts, skills, starting stats
 - [ ] ⬜ Creature stacks: type, count, mood, whether they guard

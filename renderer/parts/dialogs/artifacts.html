@@ -58,9 +58,9 @@
           <div id="am-editing" class="um-editing"></div>
           <div class="on-body um-form">
             <label class="on-row um-span"><span>Preset</span><select id="am-donor" title="an artifact to start from — every field below loads from it"></select></label>
-            <label class="on-row"><span>Files</span><input id="am-file" type="text" spellcheck="false" autocomplete="off" placeholder="file stem, e.g. UndertakersAmulet" title="the stem of every file generated for it; the ID fills itself from it"></label>
-            <label class="on-row"><span>ID</span><input id="am-id" type="text" spellcheck="false" autocomplete="off" placeholder="ARTIFACT_…" title="what maps, saves and scripts store — pick once, never reuse"></label>
-            <label class="on-row"><span>Name</span><input id="am-name" type="text" autocomplete="off"></label>
+            <label class="on-row"><span>Files<b class="req">*</b></span><input id="am-file" type="text" spellcheck="false" autocomplete="off" placeholder="file stem, e.g. UndertakersAmulet" title="the stem of every file generated for it; the ID fills itself from it"></label>
+            <label class="on-row"><span>ID<b class="req">*</b></span><input id="am-id" type="text" spellcheck="false" autocomplete="off" placeholder="ARTIFACT_…" title="what maps, saves and scripts store — pick once, never reuse"></label>
+            <label class="on-row"><span>Name<b class="req">*</b></span><input id="am-name" type="text" autocomplete="off"></label>
             <label class="on-row um-span"><span>Description</span><input id="am-desc" type="text" autocomplete="off"></label>
             <label class="on-row"><span>Slot</span>
               <select id="am-slot" title="where a hero wears it; INVENTORY is the backpack">
@@ -96,10 +96,11 @@
               </div>
             </div>
             <div id="am-ext" class="um-span um-warn"></div>
-            <label class="on-row um-art um-span"><span>Icon</span><input id="am-icon" type="text" spellcheck="false" autocomplete="off" title="href of the 64x64 hero-screen icon — usually the donor's"></label>
+            <label class="on-row um-art um-span"><span>Icon<b class="req">*</b></span><input id="am-icon" type="text" spellcheck="false" autocomplete="off" title="href of the 64x64 hero-screen icon — usually the donor's"></label>
             <label class="on-row um-art um-span"><span>Map model</span><input id="am-model" type="text" spellcheck="false" autocomplete="off" placeholder="empty → a flat board of the icon" title="href of the model lying on the map; referenced, not copied"></label>
           </div>
         </fieldset>
+        <div id="am-missing" class="um-missing"></div>
         <div id="ae-err" class="on-err"></div>
       </div>
       <div class="de-foot">
@@ -119,11 +120,11 @@
         <fieldset>
           <legend>New set</legend>
           <div class="on-body um-form">
-            <label class="on-row"><span>Files</span><input id="as-file" type="text" spellcheck="false" autocomplete="off" placeholder="file stem, e.g. UndeadKing" title="the stem of the set's text files; the effect id fills itself from it"></label>
-            <label class="on-row"><span>Effect</span><input id="as-effect" type="text" spellcheck="false" autocomplete="off" placeholder="ARTFSET_EFFECT_…" title="ours, appended after the game's eleven — one of theirs is refused"></label>
-            <label class="on-row"><span>Name</span><input id="as-name" type="text" autocomplete="off"></label>
+            <label class="on-row"><span>Files<b class="req">*</b></span><input id="as-file" type="text" spellcheck="false" autocomplete="off" placeholder="file stem, e.g. UndeadKing" title="the stem of the set's text files; the effect id fills itself from it"></label>
+            <label class="on-row"><span>Effect<b class="req">*</b></span><input id="as-effect" type="text" spellcheck="false" autocomplete="off" placeholder="ARTFSET_EFFECT_…" title="ours, appended after the game's eleven — one of theirs is refused"></label>
+            <label class="on-row"><span>Name<b class="req">*</b></span><input id="as-name" type="text" autocomplete="off"></label>
             <label class="on-row um-span"><span>Description</span><input id="as-desc" type="text" autocomplete="off"></label>
-            <label class="on-row um-span" style="align-items:flex-start"><span>Members</span>
+            <label class="on-row um-span" style="align-items:flex-start"><span>Members<b class="req">*</b></span>
               <div id="as-members" class="as-members" title="two or more; a set of one never combines"></div>
             </label>
             <label class="on-row um-span" style="align-items:flex-start"><span>Worn</span>
@@ -144,6 +145,7 @@
           </div>
         </fieldset>
         <div id="as-note" class="um-note"></div>
+        <div id="as-missing" class="um-missing"></div>
         <div id="as-err" class="on-err"></div>
       </div>
       <div class="de-foot">

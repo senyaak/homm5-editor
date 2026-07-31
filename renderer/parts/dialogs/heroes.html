@@ -44,13 +44,13 @@
                  and every one of them stays editable afterwards — nothing is
                  taken from him behind the author's back. -->
             <div class="on-row um-span">
-              <span>Preset</span>
+              <span>Preset<b class="req">*</b></span>
               <span id="he-preset-name" class="um-note" style="flex:1;min-width:0">nothing yet — the form is blank</span>
               <button id="he-preset-pick" class="ghost" title="fill every field below from a shipped hero; each stays editable afterwards">Use preset…</button>
               <input id="he-preset" type="hidden">
             </div>
-            <label class="on-row um-span"><span>Identifier</span><input id="he-id" type="text" spellcheck="false" autocomplete="off" placeholder="unique id, e.g. H3Gem" title="the hero's unique identifier: a campaign carries him between missions by it, a script names him with it, and his files are called after it. Refused if any hero already has it — the game's own included."></label>
-            <label class="on-row"><span>Name</span><input id="he-name" type="text" autocomplete="off"></label>
+            <label class="on-row um-span"><span>Identifier<b class="req">*</b></span><input id="he-id" type="text" spellcheck="false" autocomplete="off" placeholder="unique id, e.g. H3Gem" title="the hero's unique identifier: a campaign carries him between missions by it, a script names him with it, and his files are called after it. Refused if any hero already has it — the game's own included."></label>
+            <label class="on-row"><span>Name<b class="req">*</b></span><input id="he-name" type="text" autocomplete="off"></label>
             <label class="on-row um-span"><span>Biography</span><input id="he-bio" type="text" autocomplete="off"></label>
             <label class="on-row"><span>Faction</span><select id="he-town" title="whose tavern offers him; picking one picks the class, since the game has one class per faction"></select></label>
             <label class="on-row"><span>Class</span><select id="he-class" title="one per faction, and what a level up offers is keyed to it"></select></label>
@@ -117,6 +117,7 @@
             </details>
           </div>
         </fieldset>
+        <div id="he-missing" class="um-missing"></div>
         <div id="he-err" class="on-err"></div>
       </div>
       <div class="de-foot">

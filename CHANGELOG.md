@@ -119,8 +119,35 @@ one.
   the same switch, so the generator writes into `<game>/H5E/` like everything
   else. `npm run mod-paths` lists it beside the five it already showed.
 
+- **Every form outside the map says what it needs before you press Save.** The
+  buildings window learned this first; creatures, artifacts, artifact sets,
+  heroes, campaigns and New Map now do the same. What a build refuses to go without is
+  marked with a star, Save stays down while one of those is empty, and the ones
+  still missing are named under the form — instead of a rebuild ending in a line
+  of red about a field nothing ever pointed at.
+
+  The preset is the one worth knowing about: a creature and a hero are COPIES of
+  a shipped one, so with none picked the build got as far as the channel and came
+  back "cannot resolve the donor (none)". It is marked now. Editing one already
+  in the mod does not ask again — it keeps the documents it was built from.
+
 ### Fixed
 
+- **A creature opened for editing remembers what it was copied from.** The form
+  never put the preset back, so Save either failed outright or — if a preset had
+  been picked for something else since — quietly rebuilt the creature from THAT
+  one's art. The creature records its donor now, the way a hero has always
+  recorded his, and one made before that keeps the documents it already has.
+- **An artifact set opened for editing keeps its file stem.** The stem was not
+  among the fields the list handed back, so the box held whatever the last set
+  put there — or nothing — and saving wrote the set's texts under that name.
+- **New creature / New artifact / New set clear the form.** Every box kept the
+  last one's contents, so the quickest way to lose ten minutes was to author one,
+  press New, and be refused for an identifier that was already taken.
+- **The campaign's name box does something.** It showed the name, took typing,
+  and wrote nothing back: renaming a campaign in it changed nothing and said
+  nothing. It is saved now. Create with an empty name is refused visibly rather
+  than by doing nothing at all.
 - **Edit… on a deep structure opens a tree that shows it.** A shipyard's ship
   tile and a seer hut's quest are marked advanced, and the tree hides those
   until they are asked for — so the panel's own Edit… button led to a tree

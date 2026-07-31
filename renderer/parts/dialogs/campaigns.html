@@ -7,7 +7,7 @@
         <span class="mp-title">Campaigns</span>
         <button id="cl-close" title="close (Esc)">✕</button>
       </div>
-      <div class="mp-body cl-body"><div id="cl-list" class="cl-list"></div></div>
+      <div class="mp-body cl-body"><div id="cl-list" class="cl-list"></div><div id="cl-missing" class="um-missing"></div></div>
       <div class="de-foot">
         <input id="cl-name" type="text" spellcheck="false" autocomplete="off" placeholder="new campaign name…">
         <button id="cl-new">Create</button>
@@ -22,7 +22,7 @@
         <button id="cp-close" title="close (Esc)">✕</button>
       </div>
       <div class="mp-body cp-body">
-        <label class="on-row"><span>Name</span><input id="cp-name" type="text" spellcheck="false" autocomplete="off"></label>
+        <label class="on-row"><span>Name<b class="req">*</b></span><input id="cp-name" type="text" spellcheck="false" autocomplete="off"></label>
         <label class="on-row"><span>Short description</span><input id="cp-summary" type="text" spellcheck="false" autocomplete="off"></label>
         <label class="on-row cp-desc"><span>Description</span><textarea id="cp-description" rows="4" spellcheck="false"></textarea></label>
         <fieldset class="cp-missions">
@@ -38,6 +38,7 @@
             </div>
           </div>
         </fieldset>
+        <div id="cp-missing" class="um-missing"></div>
         <div id="cp-err" class="on-err"></div>
       </div>
       <div class="de-foot">

@@ -17,6 +17,7 @@ import { modDialog, openOnTop } from '#core/dialog.ts';
 import { api } from '#core/ipc.ts';
 import { pickPreset } from '#features/mods/preset.ts';
 import { idFrom, listActions, openModDialog, refreshModLists, umAbilities } from '#features/mods/shared.ts';
+import { requireFilled } from '#core/form-gate.ts';
 import type { CreatureStats } from '#electron/ipc.ts';
 
 
@@ -36,6 +37,26 @@ const UM_ART: ReadonlyArray<[string, 'character' | 'model' | 'animSet' | 'icon']
   ['um-art-animset', 'animSet'], ['um-art-icon', 'icon'],
 ];
 let editingCreature = '';
+
+/**
+ * What a creature cannot be built without.
+ *
+ * The preset is the surprise one: a creature is a COPY of a shipped creature's
+ * two documents, and with none picked the build got as far as the channel and
+ * came back "cannot resolve the donor (none)" — a sentence about a field the
+ * form never said was needed. The identifier names its files and makes the
+ * CREATURE_ id maps store; the name is what the hire dialog and the army show.
+ */
+let unitGate: { check: () => void; rewatch: () => void } | null = null;
+const gateUnits = (): { check: () => void; rewatch: () => void } => (unitGate ??= requireFilled({
+  ok: 'um-ok',
+  missing: 'um-missing',
+  fields: { identifier: 'um-file', name: 'um-name' },
+  // Only a NEW creature needs one: one already in the mod keeps the documents
+  // it was built from, and creatures made before the preset was recorded have
+  // none to show — refusing to save those would be a refusal invented here.
+  extra: () => (!editingCreature && !$input('um-donor').value.trim() ? ['preset'] : []),
+}));
 
 /** Load the donor into every creature field — the form's "preset". */
 async function loadUnitPreset(): Promise<void> {
@@ -161,17 +182,32 @@ async function editCreature(id: string): Promise<void> {
   // The art it actually wears, which is where its files resolved to — not the
   // donor's, since a recolour or a swap since then lives in the mod.
   for (const [input, slot] of UM_ART) $input(input).value = (c.from ?? {})[slot] ?? '';
+  // The preset it was made from, so Save has what the build needs and the form
+  // says what this creature is a copy of. Creatures built before that was
+  // recorded show none, and the update keeps the sources they already have.
+  $input('um-donor').value = c.donor ?? '';
+  $('um-donor-name').textContent = c.donor ?? 'not recorded — its own art is kept';
   $input('um-id').disabled = true;
   $input('um-file').disabled = true;
   $('um-editing').textContent = `${c.name || c.id} — id and files are fixed; everything else can move`;
   $button('um-ok').textContent = 'Save & install';
   $('um-note').textContent = '';
+  gateUnits().rewatch();
   openOnTop('unitedit');
   $('unitedit-title').textContent = 'Editing creature';
 }
 
 function newCreature(): void {
   editingCreature = '';
+  // Blank means blank: every box keeps what the last creature put in it
+  // otherwise. The donor is the dangerous one — hidden, so nothing shows that
+  // the next creature is quietly a copy of whatever the last one copied — and
+  // the identifier is the visible one, since saving under a name the mod
+  // already has is refused after a full rebuild.
+  $input('um-donor').value = '';
+  $('um-donor-name').textContent = 'nothing yet — the form is blank';
+  for (const id of ['um-file', 'um-id', 'um-name', 'um-desc']) $input(id).value = '';
+  for (const [input] of UM_ART) $input(input).value = '';
   // A new creature has no abilities. Cleared here and not only on open, because
   // the form is reached again without closing it — author one, press New,
   // author the next — and a row left standing gives the second one the first
@@ -182,6 +218,7 @@ function newCreature(): void {
   $input('um-file').disabled = false;
   $('um-editing').textContent = '';
   $button('um-ok').textContent = 'Build & install';
+  gateUnits().rewatch();
   openOnTop('unitedit');
   $('unitedit-title').textContent = 'New creature';
 }
@@ -217,7 +254,8 @@ export function initUnitsMod(): void {
       })), (id, label) => {
         $input('um-donor').value = id;
         $('um-donor-name').textContent = label;
-        void loadUnitPreset().catch(() => {});
+        void loadUnitPreset().then(() => gateUnits().check()).catch(() => {});
+        gateUnits().check();
       });
     })().catch((e) => { $('ue-err').textContent = e instanceof Error ? e.message : String(e); });
   };

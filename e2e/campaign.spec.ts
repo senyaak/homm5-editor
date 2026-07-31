@@ -46,7 +46,12 @@ test('a one-mission campaign, built in the app and packed to .h5c', { tag: '@nod
   // Create it.
   await page.locator('#campaignbtn').click();
   await expect(page.locator('#camplist')).toBeVisible();
+  // With nothing typed, Create is not a thing that can be pressed. It used to
+  // be pressable and answer an empty box by doing nothing at all.
+  await expect(page.locator('#cl-new')).toBeDisabled();
+  await expect(page.locator('#cl-missing')).toHaveText(/a name/);
   await page.locator('#cl-name').fill(NAME);
+  await expect(page.locator('#cl-new')).toBeEnabled();
   await page.locator('#cl-new').click();
   await expect(page.locator('#campaign')).toBeVisible();
   await expect(page.locator('#cp-title')).toContainText(NAME);
