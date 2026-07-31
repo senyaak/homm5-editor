@@ -108,6 +108,20 @@ From [src/schema/objects.schema.json](../../../src/schema/objects.schema.json):
 | `AdvMapHillFort` | `CreaturesUpgradesFilter` |
 | `AdvMapTent`, `AdvMapStand` | none |
 
+**A placement field left empty is a building that does nothing.** Measured in the
+game on 2026-07-31, with one of every class standing on a map: the Prison worked
+(its `RandomHero` defaults to true, so the engine has somebody to release) and
+the Shrine was silent, because a fresh placement carries `SpellID=SPELL_NONE`
+and a shrine teaches the spell its PLACEMENT names. The same holds for the Sign
+with no `MessageFileRef`, the Seer Hut with an empty `Quest` and the Shipyard
+with no `ShipTile`. Nothing about the definition is wrong in any of those cases,
+and nothing reports it — the object simply stands there.
+
+So the classes worth a required-field check are exactly the ones whose behaviour
+is parameterised at the placement: `AdvMapShrine` (SpellID), `AdvMapSign`
+(MessageFileRef), `AdvMapSeerHut` (Quest), `AdvMapShipyard` (ShipTile),
+`AdvMapSphinx` (Riddle, unless `RandomRiddle`), `AdvMapCartographer` (Cost).
+
 **(c) Global tables**, one setting for every instance in the game:
 
 - `GameMechanics/RPGStats/DefaultStats.xdb` → `RaiseAttributesBuildings`: which

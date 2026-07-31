@@ -69,6 +69,24 @@ const GEM = '/Heroes/H3Gem/H3Gem.(AdvMapHeroShared).xdb';
 /** Clear of the town, the three heroes and the neutral stacks. */
 const GEM_AT = { x: 44, y: 40 };
 
+/**
+ * What a class needs from its PLACEMENT before it does anything.
+ *
+ * Not a nicety: a shrine with `SPELL_NONE` and a sign with no file are objects
+ * that stand on the map and answer nothing at all, which is exactly how they
+ * came out the first time this map was walked around (BUILDINGS.md §3).
+ */
+const NEEDS: Record<string, Record<string, string>> = {
+  // Ours is the Magma Shrine — runic, circles 1 to 3 — so it teaches a rune.
+  AdvMapShrineShared: { SpellID: 'SPELL_RUNE_OF_CHARGE' },
+  // The sign is NOT here, and that is the gap: `MessageFileRef` is a reference,
+  // and the panel gives a reference its own New/browse control rather than a box
+  // to type a path into — which this cannot drive and a person cannot use to
+  // point at a file the map already carries. Until it can, a placed sign says
+  // nothing. Same for the Seer Hut's Quest and the Shipyard's ShipTile, both
+  // structures rather than values.
+};
+
 /** The original's placements — read off its map.xdb, kept literal so the spec
  *  reads like the plan of the map. */
 const PLACES = {
@@ -473,6 +491,14 @@ test('and every building the mod carries stands in its empty corner', async () =
       // placement that would land on something already there — so a refusal
       // here IS the overlap check.
       await placeOne(page, shared, at.x, at.y);
+      // What the CLASS needs from its placement. A shrine teaches the spell its
+      // placement names and a sign shows the text its placement points at, so
+      // one left at SPELL_NONE or at no file is a building that stands there and
+      // does nothing — measured in the game, see BUILDINGS.md §3. The map is
+      // meant to be walked around, so they are filled in.
+      for (const [field, value] of Object.entries(NEEDS[b.className] ?? {})) {
+        await setObjectProp(page, field, value);
+      }
       placed.push(b.file);
     });
   }
