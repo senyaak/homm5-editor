@@ -475,14 +475,16 @@ and [MESH_PLAN.md](MESH_PLAN.md).
 process (`tools/test-all.ts`). Two things about that are worth knowing before
 you run it:
 
-- it includes **`test-e2e-nodata`**, so it launches the real app under Playwright
-  — `npm test` is not a pure unit run, and it takes minutes rather than seconds;
-- those specs, and `test-campaign`, write into the game root this checkout is
-  configured for: the campaign fixtures `e2e Carry M1..M3.h5m` and
-  `e2e Carry.h5c` land in `<game>/H5E/`. Nothing else there is touched, but an
-  install you are testing by hand will have those four files rewritten.
+- it includes **`test-e2e-nodata`** AND **`test-e2e-fast`**, so it launches the
+  real app under Playwright and runs every spec in `e2e/` — `npm test` is not a
+  pure unit run, and it takes tens of minutes rather than seconds;
+- none of it writes into the game this checkout sits in. Specs work in the run's
+  own install (`_tmp/e2e-install`, or whatever `HOMM5_ROOT` names — which is how
+  the live runner points them at a real one) and in map folders under the data
+  root that they make and remove. `test-campaign` is the one exception: a unit
+  tool, and it writes the campaign fixtures into `<game>/H5E/`.
 
-Only `test-e2e` — the C1M1 chain and the mod stages — is left out; run it
+Only `test-e2e` — which adds the C1M1 chain to the above — is left out; run it
 deliberately.
 
 The unit `test-*` scripts guard the format layer (byte-faithful round trips) and

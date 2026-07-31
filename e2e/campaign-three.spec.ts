@@ -30,11 +30,11 @@
 import { test, expect } from '@playwright/test';
 import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { launchEditor, REPO_ROOT } from './launch.ts';
+import { E2E_GAME, launchEditor, REPO_ROOT } from './launch.ts';
 import type { Launched } from './launch.ts';
 import { loadMap } from '../src/map/map.ts';
 import { readEntries } from '../src/format/pak.ts';
-import { modFile } from '../src/game/mod-paths.ts';
+import { modDir, modFile } from '../src/game/mod-paths.ts';
 import { find, childText } from '../src/format/xml.ts';
 import { bar } from './bar.ts';
 import { closeMap } from './tiles.ts';
@@ -42,8 +42,19 @@ import { closeMap } from './tiles.ts';
 let ed: Launched;
 
 const DATA = process.env.HOMM5_DATA || join(REPO_ROOT, 'data-unpacked');
-/** The game folder holds this checkout — data-unpacked lives INSIDE it. */
-const GAME = process.env.HOMM5_ROOT || join(REPO_ROOT, '..');
+/**
+ * Where the maps and the packed campaign are left playable.
+ *
+ * The RUN'S OWN install, like every other spec — `_tmp/e2e-install` unless
+ * `HOMM5_ROOT` names another one, which is what the live runner does. It used
+ * to default to the install this checkout sits in, so an ordinary `npm test`
+ * (which runs the fast suite, not only the data-free one) wrote four files into
+ * the game somebody might be playing, and did it without saying so. The app
+ * itself has always been launched against this root — only the spec's own
+ * copies went elsewhere, which also meant the two disagreed about where the
+ * campaign was.
+ */
+const GAME = E2E_GAME;
 const CAMP = 'e2e Carry';
 /** The hero who travels — his <Name> IS the handle the campaign hands on. */
 const HERO = 'Traveller';
@@ -59,7 +70,13 @@ function cleanup(): void {
   rmSync(join(DATA, 'Campaigns', CAMP), { recursive: true, force: true });
 }
 
-test.beforeAll(async () => { cleanup(); ed = await launchEditor(); });
+test.beforeAll(async () => {
+  cleanup();
+  // The pack dialog is answered with an absolute path, so the folder has to be
+  // there: a throwaway install has no mod folder until something writes one.
+  mkdirSync(modDir(GAME), { recursive: true });
+  ed = await launchEditor();
+});
 test.afterAll(async () => { await ed?.app.close(); });
 
 test('a hero carried across three missions, and the campaign packed for play', async () => {
