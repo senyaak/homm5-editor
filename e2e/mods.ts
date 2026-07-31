@@ -351,6 +351,17 @@ export async function prepareGameRoot(dir: string): Promise<void> {
  */
 export async function openModGameRoot(): Promise<void> {
   if (LIVE) { clearFixture(REAL_GAME); return; }
+  // A machine with no game cannot have one prepared. That is not a failure to
+  // report: the data-free half of the suite (`--grep @nodata`, which is what
+  // GitHub runs) touches no mod install at all, and the stages that DO need one
+  // skip themselves for want of the data anyway. Setting up unconditionally
+  // meant the global setup threw before a single test started, and the whole
+  // run failed on a copyfile of an executable nobody had.
+  if (!existsSync(join(REAL_GAME, SHIPPED_EXE))) {
+    console.warn(`[e2e] no ${SHIPPED_EXE} under ${REAL_GAME} — no mod install to prepare.`
+      + ' The data-free specs do not need one; the mod stages will skip.');
+    return;
+  }
   await prepareGameRoot(modGameRoot());
 }
 
