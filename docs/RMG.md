@@ -16,23 +16,34 @@ Both `H5_Game.exe` and `H5_MapEditor.exe` carry the whole generator — the same
 `NRMG` classes, the same phase log, the same everything.
 
 That is worth stating plainly because this document first claimed the opposite,
-on the strength of one string: `"RMG log: %s"` is absent from the editor. It is
-absent because the editor does not route the log through a UI callback — **it
-writes it to a file called `rmg.txt`** (named at `0x95412d` in the editor's
-code). Same log, different destination, and the destination is the one that can
-actually be read.
+on the strength of one string: `"RMG log: %s"` is absent from the editor. True,
+and it proves nothing — the editor holds every other string the generator has,
+and the same `NRMG` classes.
 
-The editor is therefore the better oracle, and by some distance:
+**The editor is the better oracle, for one reason that matters more than the
+rest: its generator screen has a seed field.** Typing 1785351845 into it
+produced a map recording exactly that, so a specific map can be *ordered*. The
+game cannot do this — its screen fills the seed in before `GenerateMap` runs,
+and the map only ever reports what it was given.
 
 | | game | map editor |
 | --- | --- | --- |
-| the log | to a callback that goes nowhere | to `rmg.txt` |
-| the seed | no field for it | **can be typed in** |
+| the seed | reported only | **typed in** |
 | window | fullscreen | a window |
+| the phase log | to a callback that goes nowhere | destination not yet found |
 
-Which means the numbers below can be had without hooking anything at all. The
-extension's oracle keeps its value as a cross-check — two independent readings
-of the same run — but it is no longer the only way in.
+Two guesses about the editor died on the way here, and both are worth recording
+so nobody retraces them. `rmg.txt` is **not** where the editor writes its log:
+it goes through the same loader as `rand_trn.txt` and `objects.txt`, all three
+read, none written — leftovers of an input format from before the `.xdb` files.
+Where the phase log actually goes is still unknown.
+
+**The number stream is the same in both.** The editor runs the identical LCG —
+`0x343FD`, `0x269EC3`, shift 23, mask `0x7FFFFFFF` — with its counter at
+`0x13D8F38` and the same five-byte accessor (`0xcfd3a0`, against `0xeb1550` in
+the game). So `src/rmg/random.ts` is measured against both, and the counter hook
+moves to the editor by changing one address if the phase-by-phase reading is
+ever wanted from there.
 
 **The data, on the other hand, is already ours** — plain XML under
 `data-unpacked/RMG/`, unpacked from `a2p1-data.pak`:
@@ -185,6 +196,20 @@ Three rungs, in order of what they prove:
 1. the port's own tests — properties, and constants read back out of the binary
 2. draw counts matching a real run, phase by phase
 3. `diff-map` of a generated `.h5m` against ours from the same seed
+
+### The reference runs so far
+
+Kept in `_tmp/oracle/` (not committed — game content).
+
+| run | from | seed | template | size |
+| --- | --- | --- | --- | --- |
+| 1 | game | 1785351845 forced, map recorded 1785534414 | `S3-5P2Z7N2.2` | large |
+| 2 | game | 1785534994, log and map agreed | `S0-1P2Z2K3.1T` | tiny |
+| 3 | **editor** | **1785351845 asked for, and recorded** | `S1P2Z2M1` | small |
+
+Run 3 is the one to port against: it was ordered rather than observed, so it can
+be asked for again, and its template is the smallest interesting one — two zones
+with towns, two without, three connections.
 
 ## The port
 
