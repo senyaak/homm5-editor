@@ -186,6 +186,89 @@ for (const r of [...results].sort((a, b) => b.above - a.above)) {
 // eyes at head height is a camera; one that puts them ten units overhead is a
 // map view of the tops of their heads.
 
+// ---------------------------------------------------------------------------
+// Yaw, from whether the speaker is in shot
+// ---------------------------------------------------------------------------
+//
+// Pitch decides how high the eye is; YAW decides where around the anchor it
+// stands, and the terrain cannot see that on a flat arena. What can is the
+// scene itself: a shot exists to show somebody, so the actor whose line it is
+// should be INSIDE THE FRAME. Under a wrong yaw the eye swings to the far side
+// and the camera films the empty field with the actor behind it.
+//
+// Only shots whose anchor is NOT already on the actor can say anything — when
+// the camera orbits the speaker they are in frame whichever way it faces — so
+// those are dropped, and what is left is the shots that had to be aimed.
+
+interface Aimed { pose: Pose; actor: { x: number; y: number; z: number } }
+const aimed: Aimed[] = [];
+for (const [path, text] of texts) {
+  if (!text.includes('<DialogScene>') && !text.includes('<DialogScene ')) continue;
+  const scene = loadDialogScene(text);
+  const stage = dirOf(resolveHref(dirOf(path), scene.stage));
+  const sentences = find(parse(text), 'sentences');
+  const itemsOf = sentences ? sentences.children.filter((c) => c.type === 'element') : [];
+  scene.shots.forEach((shot, i) => {
+    const link = shot.heroLink || shot.monsterLink;
+    const setPath = shot.newCameraSet && resolveHref(dirOf(path), shot.newCameraSet);
+    const setText = setPath && texts.get(setPath);
+    if (!link || !setText) return;
+    // The actor: written inside the sentence, or in a file beside the scene.
+    let body = null;
+    if (link.startsWith('#n:inline')) {
+      const item = itemsOf[i];
+      const el = item && (find(item, 'heroLink') ?? find(item, 'monsterLink'));
+      body = el ? el.children.find((c) => c.type === 'element') ?? null : null;
+    } else if (!link.startsWith('#')) {
+      const t = texts.get(resolveHref(dirOf(path), link));
+      body = t ? parse(t).children.find((c) => c.type === 'element' && c.name.startsWith('AdvMap')) ?? null : null;
+    }
+    const pos = body && body.type === 'element' ? find(body, 'Pos') : null;
+    if (!pos) return;
+    const set = find(parse(setText), 'DSceneCameraSet');
+    const ref = set && find(set, 'StartCamera')?.attrs.href;
+    const camText = ref && texts.get(resolveHref(dirOf(setPath as string), ref));
+    const cam = camText ? find(parse(camText), 'DSceneCamera') : null;
+    const cpos = cam && find(cam, 'Pos');
+    const anchor = cpos && find(cpos, 'Anchor');
+    if (!anchor) return;
+    aimed.push({
+      pose: {
+        rod: Number(childText(cpos, 'Rod')), pitch: Number(childText(cpos, 'Pitch')),
+        yaw: Number(childText(cpos, 'Yaw')),
+        ax: Number(childText(anchor, 'x')), ay: Number(childText(anchor, 'y')), az: Number(childText(anchor, 'z')),
+        stage,
+      },
+      // Tile index to the centre of its cell, in world units; a head is about a
+      // unit up, which is what a shot is aimed at rather than the feet.
+      actor: {
+        x: (Number(childText(pos, 'x')) + 0.5) * 2,
+        y: (Number(childText(pos, 'y')) + 0.5) * 2,
+        z: Number(childText(pos, 'z')) + 1,
+      },
+    });
+  });
+}
+
+const offActor = aimed.filter((a) => Math.hypot(a.pose.ax - a.actor.x, a.pose.ay - a.actor.y) > 6);
+console.log(`\n  ${aimed.length} shots resolve to an actor and a camera; ${offActor.length} of them are aimed somewhere other than at the speaker`);
+console.log('  is the speaker inside the 35° frame?');
+for (const yawZero of ['x', 'y'] as const) {
+  for (const yawSign of [1, -1] as const) {
+    let inFrame = 0;
+    for (const a of offActor) {
+      const [ex, ey, ez] = eyeOf(a.pose, { frame: 'horizon', pitchSign: -1, yawZero, yawSign });
+      const look = [a.pose.ax - ex, a.pose.ay - ey, a.pose.az - ez];
+      const to = [a.actor.x - ex, a.actor.y - ey, a.actor.z - ez];
+      const dot = look[0] * to[0] + look[1] * to[1] + look[2] * to[2];
+      const cos = dot / (Math.hypot(...look) * Math.hypot(...to) || 1);
+      if (Math.acos(Math.min(1, Math.max(-1, cos))) < (35 / 2) * Math.PI / 180) inFrame++;
+    }
+    const pc = ((inFrame / (offActor.length || 1)) * 100).toFixed(1);
+    console.log(`    yaw from ${yawZero.toUpperCase()} ${yawSign > 0 ? '+' : '-'}   ${pc.padStart(5)}%  ${inFrame}`);
+  }
+}
+
 const closeUps = usable.filter((p) => Math.abs(p.rod) < 20);
 console.log(`\n  height of the eye above the ground, over the ${closeUps.length} close-ups (rod under 20):`);
 for (const frame of ['horizon', 'zenith'] as const) {

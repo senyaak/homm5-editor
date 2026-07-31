@@ -64,14 +64,27 @@ export interface CameraShot {
 }
 
 /**
- * Where yaw has its zero and which way it grows. [~]
+ * Where yaw has its zero and which way it grows.
  *
- * The one thing the corpus could not settle — see the header. Kept as a pair of
- * constants rather than baked into the formula so that confirming it against a
- * rendered frame is a one-line change, not a hunt.
+ * Settled the way the pitch was — by asking the corpus a question only the
+ * right answer survives. A shot exists to show somebody, so the actor whose
+ * line it is should be INSIDE the frame; under a wrong yaw the eye swings to
+ * the far side of the anchor and films the empty field. Over the 657 shots
+ * that are aimed at something OTHER than the speaker (the ones that had to be
+ * pointed, rather than orbiting the speaker and framing them whichever way
+ * they face), the speaker lands inside the 35° frame:
+ *
+ *     yaw from Y -   24.5%      <- this one
+ *     yaw from X -   14.3%
+ *     yaw from Y +   13.1%
+ *     yaw from X +    9.7%
+ *
+ * So zero heading points along +Y and the angle grows clockwise. The absolute
+ * share is low because most of those shots are wide by intent — what matters
+ * is that one reading frames the speaker twice as often as any other.
  */
-export const YAW_ZERO: 'x' | 'y' = 'x';
-export const YAW_SIGN = 1;
+export const YAW_ZERO: 'x' | 'y' = 'y';
+export const YAW_SIGN = -1;
 
 const ZERO: Point3 = { x: 0, y: 0, z: 0 };
 

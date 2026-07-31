@@ -132,10 +132,17 @@ every candidate against the 4578 poses whose stage terrain is at hand:
   units over the ground — head height. Read from the zenith it hovers at 9.0,
   looking at the tops of their heads; read with the other sign, a tenth of all
   cameras are underground.
-* **Yaw is not settled by the data.** [~] The arenas are flat, so nothing
-  pushes back: the candidates differ by half a percent on "does the eye stay on
-  the stage". It lives as two constants in `src/dialog/camera.ts`, to be
-  confirmed against the game's own dialog replay once a frame is drawn.
+* **Yaw has its zero along +Y and grows clockwise.** Flat arenas say nothing
+  about it — "does the eye stay on the stage" separates the candidates by half
+  a percent — so the question came from the scenes instead: a shot exists to
+  show somebody, so the speaker should be inside the frame. Over the 657 shots
+  aimed at something other than the speaker (the ones that had to be pointed
+  rather than orbiting them), the speaker lands in the 35° frame for `Y -` in
+  24.5% of them against 14.3%, 13.1% and 9.7% for the rest. The absolute share
+  is low because most of those shots are wide by intent; the ratio is the
+  answer. Confirmed by eye in `tools/view-dialog-scene.ts`: under the runner-up
+  the opening shot of C1M1 films a rock face, under this one it opens on the
+  forest and later frames Isabell with Godric behind her.
 
 A note on scoring, because the first attempt got it wrong: rewarding a camera
 for *not being buried* rewards it for being high, and every zenith reading
@@ -201,6 +208,10 @@ going quietly green.
   (`BuildSceneOptions.extraObjects`). There is no second renderer.
 * `tools/test-dialog-scene.ts` — the corpus checks and the census above.
 * `tools/camera-shape.ts` — the convention measurement.
+* `tools/view-dialog-scene.ts` — a self-contained page that plays the scene
+  through its own cameras, arrow keys to step the shots. This is how the camera
+  convention was confirmed by eye, and how a scene is looked at before the
+  editor has a window for one.
 * `tools/scene-stage.ts` — builds a scene headless and reports what drew.
   C1M1's opening comes out as 53 meshes and 665 placed objects with ONE
   skipped: `Sunflowers.(AdvMapStaticShared)`, which is one of the game's own
@@ -212,6 +223,7 @@ of the archives into a workspace that mirrors its data path, and that workspace
 is mounted over the data root. Then every href in it resolves normally — the
 absolute ones at the arena, the relative ones at its own files.
 
-Open, in rough order of when it will bite: yaw's zero [~], what `DynamicCamera`
-does when nothing ever turns it off [~], `Absolute=false` anchors [~], whether
-a custom scene can be listed in the game's replay viewer [~].
+Open, in rough order of when it will bite: what `DynamicCamera` does when
+nothing ever turns it off [~], `Absolute=false` anchors and a camera's own
+`Rot` [~], whether the easing between two poses is the smoothstep assumed here
+[~], and whether a custom scene can be listed in the game's replay viewer [~].
