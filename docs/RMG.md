@@ -86,6 +86,29 @@ It also states its own types, through RTTI: `CRandomMapGenerator`, `CRandomMap`,
 `CGameZone` with `Subterra`/`Dwarven`/`SubInferno`/`WaterBordered` subclasses,
 `CTerrainProcessor`, `CMonsterSetter`, `CTreasureBlockDistributor`.
 
+## This branch works against its own copy of the game
+
+`game/` — a whole install, copied, ignored by git, named by `.env`. Everything
+here reads and writes that one.
+
+The reason is not tidiness. Getting anything out of the generator means
+installing a native extension and reading what it wrote, and the real install is
+**shared**: another session, another branch, the editor someone has open right
+now. Installing from a branch into it replaces a DLL that somebody else's work
+depends on, and the first sign of it is their session breaking. A worktree
+isolates the repository and nothing else; the install needs isolating
+separately.
+
+The copy is **vanilla on purpose** — no `UserMODs`, no `h3-mod`, no `H5E`, and
+the extension's effects config removed. A mod can change the very data the
+generator reads, and what is being measured here is the shipped generator.
+
+```bash
+robocopy "<install>" game /E /XD homm5-editor UserMODs h3-mod H5E screenshots
+npm run unpack-data          # into this worktree's own data-unpacked/
+npm run install-native       # into game/bin, never the shared install
+```
+
 ## How a port is checked
 
 This is the part that makes the exercise possible at all.
@@ -98,6 +121,21 @@ reproducible input, not a one-off.
 count at each phase boundary. A port that has read a phase correctly reaches the
 next boundary with the same count; one that has not says exactly *which* phase
 went wrong — something a differing map never does.
+
+**Neither is reachable from the game as it ships**, which is what the extension
+is for (`native/homm5-editor.c`). The screen has no seed field, and the counter
+is formatted into a line handed to a log callback that goes nowhere. Two hooks
+fix both, and they install only when `bin/homm5-editor-rmg.txt` exists:
+
+- the **seed**, patched at its one call site — the run's seed is forced (so the
+  same map can be asked for twice) and written down either way;
+- the **counter accessor**, detoured. It is read twelve times, all inside
+  `GenerateMap`, one per phase boundary — so twelve numbers in order *are* the
+  phase-by-phase reading, with no format string to parse. The Nth call is the
+  Nth boundary.
+
+Both land in `bin/homm5-editor-rmg.log` as `run seed <n> <forced>` and
+`phase <i> <draws>`.
 
 **`npm run diff-map` compares the result.** The editor already has it.
 

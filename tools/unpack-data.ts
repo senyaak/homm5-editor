@@ -9,6 +9,7 @@
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { listPaks, unpackData } from '../src/game/unpack.ts';
+import { dataTarget, gameRoot } from '../src/game/install.ts';
 
 const args = process.argv.slice(2);
 const flag = (name: string): boolean => args.includes(name);
@@ -18,11 +19,12 @@ const value = (name: string): string | undefined => {
 };
 const positional = args.filter((a, i) => !a.startsWith('--') && !(i > 0 && args[i - 1]!.startsWith('--')));
 
-// Default to the install this repo sits inside, which is how the editor's own
-// launcher finds the game.
-const gameDir = resolve(positional[0] || join(import.meta.dirname, '..', '..'));
+// Where the install is, and where its unpacked tree goes, is one answer for
+// every tool — src/game/install.ts. It was "the folder above the checkout"
+// here, which is true of a checkout inside the install and false in a worktree.
+const gameDir = resolve(positional[0] || gameRoot() || join(import.meta.dirname, '..', '..'));
 const dataDir = join(gameDir, 'data');
-const outDir = resolve(value('--out') || join(import.meta.dirname, '..', 'data-unpacked'));
+const outDir = resolve(value('--out') || dataTarget());
 const dry = flag('--dry');
 const force = flag('--force');
 

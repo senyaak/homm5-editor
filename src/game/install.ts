@@ -59,6 +59,20 @@ export function unpackedData(): string | null {
   return null;
 }
 
+/**
+ * Where unpacked data BELONGS, whether or not it is there yet.
+ *
+ * Different question from `unpackedData()`, and the difference matters exactly
+ * once: the unpacker has to write to the folder `.env` names even on the first
+ * run, when that folder does not exist and "find an existing one" would send it
+ * somewhere else entirely.
+ */
+export function dataTarget(): string {
+  const editor = editorRoot();
+  loadEnvFile(editor);
+  return process.env.HOMM5_DATA || join(editor, 'data-unpacked');
+}
+
 /** Like `unpackedData()`, but says what to do instead of returning null. */
 export function requireUnpackedData(): string {
   const data = unpackedData();

@@ -16,6 +16,7 @@ import { copyFileSync, existsSync, readFileSync, rmSync, statSync, writeFileSync
 import { join, resolve } from 'node:path';
 
 import { addImport, imports } from '../src/exe/exe-import.ts';
+import { gameRoot } from '../src/game/install.ts';
 
 const here = resolve(import.meta.dirname, '..');
 const args = process.argv.slice(2);
@@ -27,7 +28,12 @@ const flag = (name: string): string | undefined => {
 const DLL = 'homm5-editor.dll';
 const ENTRY = 'homm5_editor_present';
 
-const game = resolve(flag('game') ?? process.env.HOMM5_GAME ?? join(here, '..'));
+const found = flag('game') ?? gameRoot();
+if (!found) {
+  console.error('no game install found — set HOMM5_ROOT in .env (see .env.example), or pass --game <dir>');
+  process.exit(1);
+}
+const game = resolve(found);
 const exe = join(game, 'bin', 'H5_Game_H5E.exe');
 const target = join(game, 'bin', DLL);
 
