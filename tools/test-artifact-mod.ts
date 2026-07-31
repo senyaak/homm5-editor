@@ -22,10 +22,10 @@
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { addArtifact, buildCreatureMod, dataReader, newCreatureMod, removeArtifact } from '../src/creature-mod.ts';
-import { findArtifactUses } from '../src/artifact-usage.ts';
-import { artifactPaths, SHIPPED_ARTIFACTS } from '../src/artifacts.ts';
-import { positionsBox } from '../src/geometry.ts';
+import { addArtifact, buildCreatureMod, dataReader, newCreatureMod, removeArtifact } from '../src/mods/creature-mod.ts';
+import { findArtifactUses } from '../src/mods/artifact-usage.ts';
+import { artifactPaths, SHIPPED_ARTIFACTS } from '../src/mods/artifacts.ts';
+import { positionsBox } from '../src/scene/geometry.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {

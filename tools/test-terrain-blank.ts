@@ -13,10 +13,10 @@
 
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { buildBlankTerrain, MAP_SIZES } from '../src/terrain-blank.ts';
+import { buildBlankTerrain, MAP_SIZES } from '../src/terrain/terrain-blank.ts';
 import {
   parseTerrain, readHeights, readGroundFlags, readTextureLayers, readWaterPlane,
-} from '../src/terrain.ts';
+} from '../src/terrain/terrain.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {

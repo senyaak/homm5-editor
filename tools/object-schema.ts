@@ -26,10 +26,10 @@
 
 import { readFileSync, readdirSync, statSync, existsSync, openSync, closeSync } from 'node:fs';
 import { join } from 'node:path';
-import { mapFilesUnder } from '../src/map-source.ts';
-import { loadMap } from '../src/map.ts';
-import { children, text } from '../src/xml.ts';
-import { readEntries, readIndex } from '../src/pak.ts';
+import { mapFilesUnder } from '../src/map/map-source.ts';
+import { loadMap } from '../src/map/map.ts';
+import { children, text } from '../src/format/xml.ts';
+import { readEntries, readIndex } from '../src/format/pak.ts';
 
 const args = process.argv.slice(2);
 const root = args.find((a) => !a.startsWith('--')) ?? 'data-unpacked';

@@ -29,9 +29,9 @@
 // Model declares a scale. Using one means rewriting its geometry.
 
 import { posix } from 'node:path';
-import { readGeometryRefFromModelXdb } from './geometry.ts';
-import { allFields } from './typespec.ts';
-import type { SpecType } from './typespec.ts';
+import { readGeometryRefFromModelXdb } from '../scene/geometry.ts';
+import { allFields } from '../schema/typespec.ts';
+import type { SpecType } from '../schema/typespec.ts';
 
 /** The document's own type, and the one whose fields it is written from. */
 export const DWELLING_CLASS = 'AdvMapDwellingShared';

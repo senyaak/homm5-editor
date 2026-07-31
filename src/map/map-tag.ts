@@ -20,9 +20,9 @@
 // free-for-all gives seven <Item>1</Item>. An inactive coloured player — a fixed
 // AI enemy the mission places but the lobby cannot pick — is NOT a slot.
 
-import type { XmlElement } from './xml.ts';
-import { readTree } from './tree.ts';
-import type { TreeData } from './tree.ts';
+import type { XmlElement } from '../format/xml.ts';
+import { readTree } from '../schema/tree.ts';
+import type { TreeData } from '../schema/tree.ts';
 
 /** XML-escape a text or attribute value. */
 function esc(s: string): string {

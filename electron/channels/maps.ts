@@ -17,17 +17,17 @@ import type { Session } from '#electron/state.ts';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
-import { extractMapFolder, gameArchives, listOurMaps, listStockMaps, mapFolderIn } from '#src/map-source.ts';
-import type { MapSource } from '#src/map-source.ts';
-import { ensureModDir, modDir, modFile } from '#src/mod-paths.ts';
-import { buildNewMapProject } from '#src/new-map.ts';
-import { listDirFiles } from '#src/pak.ts';
-import { initProject, MANIFEST_NAME, openProject, packProject, pickMapRel, readManifest, status, writeManifest } from '#src/project.ts';
-import { History } from '#src/history.ts';
-import { Registry } from '#src/registry.ts';
-import { buildScene } from '#src/scene.ts';
-import { MAP_SIZES } from '#src/terrain-blank.ts';
-import { watchMapDir } from '#src/watch.ts';
+import { extractMapFolder, gameArchives, listOurMaps, listStockMaps, mapFolderIn } from '#src/map/map-source.ts';
+import type { MapSource } from '#src/map/map-source.ts';
+import { ensureModDir, modDir, modFile } from '#src/game/mod-paths.ts';
+import { buildNewMapProject } from '#src/map/new-map.ts';
+import { listDirFiles } from '#src/format/pak.ts';
+import { initProject, MANIFEST_NAME, openProject, packProject, pickMapRel, readManifest, status, writeManifest } from '#src/map/project.ts';
+import { History } from '#src/map/history.ts';
+import { Registry } from '#src/schema/registry.ts';
+import { buildScene } from '#src/scene/scene.ts';
+import { MAP_SIZES } from '#src/terrain/terrain-blank.ts';
+import { watchMapDir } from '#src/map/watch.ts';
 
 /**
  * Where the file dialog opens. Follows the last map opened; starts at ours.

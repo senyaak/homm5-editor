@@ -19,14 +19,14 @@ import { test, expect } from '@playwright/test';
 import { launchEditor, REPO_ROOT } from './launch.ts';
 import type { Launched } from './launch.ts';
 import { AMULET, BOOTS, CLOAK, modGameRoot, PIECES, readInstalledMod, UNDEAD_KING } from './mods.ts';
-import { ORIGINAL_ARTIFACTS, readArtifactLimit, SITES_FILE } from '../src/artifact-limit.ts';
-import { modFile } from '../src/mod-paths.ts';
-import { MOD_STEM } from '../src/creature-mod.ts';
-import { extensionState } from '../src/extension.ts';
-import { EFFECTS_FILE, readEffects } from '../src/artifact-effects.ts';
-import { COMMON_SCRIPT, SCRIPT_DIR } from '../src/artifact-scripts.ts';
-import { readEntries } from '../src/pak.ts';
-import type { Site } from '../src/artifact-limit.ts';
+import { ORIGINAL_ARTIFACTS, readArtifactLimit, SITES_FILE } from '../src/exe/artifact-limit.ts';
+import { modFile } from '../src/game/mod-paths.ts';
+import { MOD_STEM } from '../src/mods/creature-mod.ts';
+import { extensionState } from '../src/mods/extension.ts';
+import { EFFECTS_FILE, readEffects } from '../src/mods/artifact-effects.ts';
+import { COMMON_SCRIPT, SCRIPT_DIR } from '../src/mods/artifact-scripts.ts';
+import { readEntries } from '../src/format/pak.ts';
+import type { Site } from '../src/exe/artifact-limit.ts';
 
 let ed: Launched;
 

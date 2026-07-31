@@ -16,7 +16,7 @@ import { execFileSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
-import { addImport, imports } from './exe-import.ts';
+import { addImport, imports } from '../exe/exe-import.ts';
 import { EFFECTS_FILE, writeEffects } from './artifact-effects.ts';
 import type { EffectRow } from './artifact-effects.ts';
 

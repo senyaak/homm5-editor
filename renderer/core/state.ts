@@ -12,7 +12,7 @@
 
 import * as THREE from 'three';
 
-import type { Instance, SplatData, AmbientData } from '#src/scene.ts';
+import type { Instance, SplatData, AmbientData } from '#src/scene/scene.ts';
 import type { FxSystem } from '#viewport/particles.ts';
 import type { IdleObject } from '#viewport/skinning.ts';
 import { uiPrefs } from '#core/prefs.ts';

@@ -22,11 +22,11 @@
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import { writeArchive, listDirFiles } from './pak.ts';
-import type { ZipEntry, PackResult } from './pak.ts';
+import { writeArchive, listDirFiles } from '../format/pak.ts';
+import type { ZipEntry, PackResult } from '../format/pak.ts';
 import { loadCampaign } from './campaign.ts';
-import { find, children } from './xml.ts';
-import type { XmlElement } from './xml.ts';
+import { find, children } from '../format/xml.ts';
+import type { XmlElement } from '../format/xml.ts';
 
 /** The descriptor's name inside the archive — the game looks for this exactly. */
 const DESCRIPTOR = 'campaign.xdb';

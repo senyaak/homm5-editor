@@ -80,7 +80,7 @@ Two sites, mirroring the creature ceiling byte for byte:
 The creature one is a `push 180` thirty-three bytes after *its* table's name, in
 identical surrounding code — the same function called with (table name, count).
 
-`src/artifact-limit.ts` finds both **by pattern, not by address**,
+`src/exe/artifact-limit.ts` finds both **by pattern, not by address**,
 because the Steam build of the game is a different compilation from the retail
 one and shares no offsets with it. Installing the mod sets this ceiling and the
 creature one together, because both have to agree exactly with what the mod
@@ -203,7 +203,7 @@ deeper the bigger it is.
 ## Pictures
 
 The artwork a port starts from is whatever the author has, and for Heroes III
-that is a GIF. `src/gif.ts` reads one and `src/texture.ts` writes
+that is a GIF. `src/format/gif.ts` reads one and `src/format/texture.ts` writes
 the game's texture, so a build depends on nothing that happens to be installed.
 The icons themselves are somebody else's artwork: they live in `art/artifacts/`
 and are not committed, and `src/new-artifacts.ts` says where each came from.

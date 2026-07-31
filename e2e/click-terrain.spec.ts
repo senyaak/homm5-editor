@@ -23,7 +23,7 @@ import { join } from 'node:path';
 import { launchEditor, REPO_ROOT } from './launch.ts';
 import type { Launched } from './launch.ts';
 import { armBrush, clickTile, clickVertex, mapSize, newMap, planView, setBrushForce } from './tiles.ts';
-import { parseTerrain, readHeights, readGroundFlags, tierOf } from '../src/terrain.ts';
+import { parseTerrain, readHeights, readGroundFlags, tierOf } from '../src/terrain/terrain.ts';
 import { bar } from './bar.ts';
 
 let ed: Launched;

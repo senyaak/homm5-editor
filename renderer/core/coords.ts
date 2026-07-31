@@ -4,7 +4,7 @@
 // placement crosses that line, so the conversion lives in one place rather than
 // as a `* U` at each call site.
 
-import { UNITS_PER_TILE as U } from '#src/units.ts';
+import { UNITS_PER_TILE as U } from '#src/scene/units.ts';
 import { activeFloor } from '#core/state.ts';
 import type { Floor3D } from '#core/state.ts';
 

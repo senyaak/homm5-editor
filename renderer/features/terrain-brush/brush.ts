@@ -26,7 +26,7 @@ import { refreshBlocked, setShowBlocked, showBlocked } from '#viewport/overlays.
 import { cam, ptr, raycaster, scene, syncTopCamera, topCamera } from '#viewport/stage.ts';
 import { asTileSpace } from '#viewport/terrain-mesh.ts';
 import type { Floor3D } from '#core/state.ts';
-import { UNITS_PER_TILE as U } from '#src/units.ts';
+import { UNITS_PER_TILE as U } from '#src/scene/units.ts';
 import { uiPrefs } from '#core/prefs.ts';
 import * as THREE from 'three';
 

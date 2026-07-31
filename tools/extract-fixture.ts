@@ -10,7 +10,7 @@
 
 import { openSync, closeSync, statSync, existsSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
-import { readIndex, readEntryFrom } from '../src/pak.ts';
+import { readIndex, readEntryFrom } from '../src/format/pak.ts';
 
 const args = process.argv.slice(2);
 const value = (name: string): string | undefined => {

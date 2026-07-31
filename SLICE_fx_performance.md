@@ -133,9 +133,9 @@ two-texture split, which exists only because a browser canvas premultiplies
 | ---- | ------ |
 | [renderer/particles.ts](renderer/particles.ts) | Atlas cache by payload identity (3.1); bounding sphere from the bake instead of `frustumCulled = false` (3.2); `addUpdateRange` (3.3). |
 | [renderer/app.ts](renderer/app.ts) | `advanceFx`: frustum skip mirroring `advanceIdle`'s `visible` mode, 30 Hz accumulator (3.2, 3.4). |
-| [src/effects.ts](src/effects.ts) | `transferEffect`: emit the bounding radius and the per-frame alive index alongside `maxAlive` — both are one pass over data already walked (3.2, 3.5). |
+| [src/scene/effects.ts](src/scene/effects.ts) | `transferEffect`: emit the bounding radius and the per-frame alive index alongside `maxAlive` — both are one pass over data already walked (3.2, 3.5). |
 | [electron/main.ts](electron/main.ts) | Only for 3.6: ship frame textures as RGBA typed arrays over `map:fx` rather than data-URIs in the scene payload. |
-| [src/scene.ts](src/scene.ts) | Only for 3.6: `particleTextureUris` stops encoding PNG. |
+| [src/scene/scene.ts](src/scene/scene.ts) | Only for 3.6: `particleTextureUris` stops encoding PNG. |
 | [docs/EFFECTS_FORMAT.md](docs/EFFECTS_FORMAT.md) | Fold in whatever survives; the "one instanced draw per ParticleInstance of each placed object" sentence in §1 stops being true at 3.5. |
 
 ## 5. Confirm before coding

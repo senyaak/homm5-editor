@@ -125,15 +125,15 @@ an artifact depends on.
 | ---- | ------ |
 | `types.xml` (in the mod archive) | ✅ Append `ARTFSET_EFFECT_<ours> = 11` to the `ArtifactSetEffect` enum. Append-only: the value is what saves and maps store. |
 | `GameMechanics/RPGStats/DefaultStats.xdb` | ✅ A `<Sets>` entry using that effect — members, per-count texts and icons. |
-| [src/creature-mod.ts](src/creature-mod.ts) | ✅ `addArtifactSet` and the two patches above, in the existing single pass over types.xml. |
+| [src/mods/creature-mod.ts](src/mods/creature-mod.ts) | ✅ `addArtifactSet` and the two patches above, in the existing single pass over types.xml. |
 | [e2e/mods.ts](e2e/mods.ts) | ✅ The Cloak of the Undead King as a fixture — ordinary data now that §1.1(б) is answered, authored through the dialog like everything else. The probe that proved it is retired. |
 | [renderer/index.html](renderer/index.html), [renderer/app.ts](renderer/app.ts) | ✅ A Sets pane inside the Artifacts dialog, not a dialog of its own: one mod, one install. Members are ticked from a list, never typed. |
 | [electron/main.ts](electron/main.ts), [electron/ipc.ts](electron/ipc.ts) | ✅ `mods:install-set`, and `sets` in `ModListEntry` so an installed set is visible. |
 | [e2e/mod-003-artifacts-create.spec.ts](e2e/mod-003-artifacts-create.spec.ts) | ✅ Builds two pieces and the set they belong to; checks that borrowing a shipped effect is refused. |
 | new: the proxy DLL | Forwards `zlib1.dll`, registers Lua functions, installs detours, reads the config. Built outside this repo; the editor ships and configures it. |
-| new: `src/artifact-effects.ts` | The config model + writer — what the DLL reads. |
-| [src/artifacts.ts](src/artifacts.ts) | Emit the enum entry and the set alongside the existing artifact records. |
-| [src/artifact-limit.ts](src/artifact-limit.ts) | Unchanged in shape; the ceiling still gates whether new ids resolve at all. |
+| new: `src/mods/artifact-effects.ts` | The config model + writer — what the DLL reads. |
+| [src/mods/artifacts.ts](src/mods/artifacts.ts) | Emit the enum entry and the set alongside the existing artifact records. |
+| [src/exe/artifact-limit.ts](src/exe/artifact-limit.ts) | Unchanged in shape; the ceiling still gates whether new ids resolve at all. |
 | [docs/ENGINE_INTERNALS.md](docs/ENGINE_INTERNALS.md) | Fold in what §1.1(а) finds; drop the hunt notes once the answer is in. |
 | the editor UI | Editing effects per artifact and per set — the point of §1.1(г). |
 

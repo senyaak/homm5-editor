@@ -26,13 +26,13 @@ import { app } from 'electron';
 import { fileURLToPath } from 'node:url';
 import { basename, dirname, join } from 'node:path';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { findEditorRoot } from '../src/objects.ts';
-import { loadEnvFile } from '../src/env-file.ts';
-import { isReady } from '../src/first-run.ts';
-import { looksLikeDataRoot } from '../src/unpack.ts';
-import { assets } from '../src/assets.ts';
-import type { Assets } from '../src/assets.ts';
-import { mountCreatureMods } from '../src/creature-mod.ts';
+import { findEditorRoot } from '../src/map/objects.ts';
+import { loadEnvFile } from '../src/game/env-file.ts';
+import { isReady } from '../src/game/first-run.ts';
+import { looksLikeDataRoot } from '../src/game/unpack.ts';
+import { assets } from '../src/game/assets.ts';
+import type { Assets } from '../src/game/assets.ts';
+import { mountCreatureMods } from '../src/mods/creature-mod.ts';
 
 /**
  * The folder holding `electron/` and `renderer/`.

@@ -25,9 +25,9 @@
 import { test, expect } from '@playwright/test';
 import { existsSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { readEntries } from '../src/pak.ts';
+import { readEntries } from '../src/format/pak.ts';
 import { E2E_GAME, hudSays, launchEditor, REPO_ROOT } from './launch.ts';
-import { MOD_EXT, modFile } from '../src/mod-paths.ts';
+import { MOD_EXT, modFile } from '../src/game/mod-paths.ts';
 import type { Launched } from './launch.ts';
 import { bar } from './bar.ts';
 

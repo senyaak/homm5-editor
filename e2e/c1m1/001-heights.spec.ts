@@ -15,7 +15,7 @@ import type { Launched } from '../launch.ts';
 import { armBrush, setBrushForce } from '../tiles.ts';
 import { clickAt, vertexPixels } from '../pointer.ts';
 import { fixture, mismatches, openMap, requireFixture, saveTerrain, startFresh } from './shared.ts';
-import { readHeights } from '../../src/terrain.ts';
+import { readHeights } from '../../src/terrain/terrain.ts';
 
 let ed: Launched;
 

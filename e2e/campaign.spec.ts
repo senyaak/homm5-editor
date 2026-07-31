@@ -11,7 +11,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { join } from 'node:path';
 import { launchEditor, REPO_ROOT } from './launch.ts';
 import type { Launched } from './launch.ts';
-import { readEntries } from '../src/pak.ts';
+import { readEntries } from '../src/format/pak.ts';
 import { buildMapFixture } from './map-fixture.ts';
 
 let ed: Launched;

@@ -8,7 +8,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
-import { CLEAN_EXE, SHIPPED_EXE, classify, ensureCleanExe } from '../src/exe-unwrap.ts';
+import { CLEAN_EXE, SHIPPED_EXE, classify, ensureCleanExe } from '../src/exe/exe-unwrap.ts';
 
 let failures = 0;
 const check = (what: string, ok: boolean, detail = ''): void => {

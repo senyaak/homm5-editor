@@ -5,9 +5,9 @@
 // `advmap-common.lua` keeps every line it shipped with. A mod that drops those
 // 73 lines breaks every mission's script, and it breaks them silently.
 
-import { COMMON_SCRIPT, SCRIPT_DIR, patchCommonScript, setScriptFiles } from '../src/artifact-scripts.ts';
-import { luaDiagnostics } from '../src/lua-lint.ts';
-import type { ModArtifactSet } from '../src/creature-mod.ts';
+import { COMMON_SCRIPT, SCRIPT_DIR, patchCommonScript, setScriptFiles } from '../src/mods/artifact-scripts.ts';
+import { luaDiagnostics } from '../src/script/lua-lint.ts';
+import type { ModArtifactSet } from '../src/mods/creature-mod.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {

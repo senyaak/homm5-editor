@@ -21,12 +21,12 @@
 
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { assets } from '../src/assets.ts';
-import { addHero, buildCreatureMod, dataReader, newCreatureMod } from '../src/creature-mod.ts';
-import { artLabels, HERO_CLASS, heroDoc, heroHref, heroInternalName, heroPaths, takenHeroIds } from '../src/heroes.ts';
-import type { HeroSpec } from '../src/heroes.ts';
-import { allFields, parseTypeSpec } from '../src/typespec.ts';
-import { children, find, parse, text } from '../src/xml.ts';
+import { assets } from '../src/game/assets.ts';
+import { addHero, buildCreatureMod, dataReader, newCreatureMod } from '../src/mods/creature-mod.ts';
+import { artLabels, HERO_CLASS, heroDoc, heroHref, heroInternalName, heroPaths, takenHeroIds } from '../src/mods/heroes.ts';
+import type { HeroSpec } from '../src/mods/heroes.ts';
+import { allFields, parseTypeSpec } from '../src/schema/typespec.ts';
+import { children, find, parse, text } from '../src/format/xml.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {

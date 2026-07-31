@@ -5,7 +5,7 @@ file: `<game>/data/types.xml`. 775 type declarations, 3293 fields, and it was
 sitting in the data folder the whole time we were inferring field sets from maps
 (`docs/OBJECT_FIELDS.md`).
 
-Read by `src/typespec.ts`, from the installed game at run time — nothing from it
+Read by `src/schema/typespec.ts`, from the installed game at run time — nothing from it
 is copied into this repository.
 
 ## What a declaration looks like
@@ -120,7 +120,7 @@ it: 29 confirmed, no conflicts, against a measurement taken independently.
 
 ## How the editor uses it
 
-- **Placing an object** (`src/defaults.ts`): a new object is still built by
+- **Placing an object** (`src/map/defaults.ts`): a new object is still built by
   cloning a real one, because a donor carries the file's own formatting and is
   correct by construction. But a field the donor's game version predates is now
   ADDED, in the position the spec gives it — and only when the spec says the

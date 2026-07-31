@@ -9,7 +9,7 @@ import * as THREE from 'three';
 import { api } from '#core/ipc.ts';
 import { state } from '#core/state.ts';
 import type { Floor3D } from '#core/state.ts';
-import type { Instance } from '#src/scene.ts';
+import type { Instance } from '#src/scene/scene.ts';
 import { tileCenter } from '#core/coords.ts';
 import { geomFx } from '#viewport/geoms.ts';
 import { createFxSystem } from '#viewport/particles.ts';

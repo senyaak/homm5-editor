@@ -6,8 +6,8 @@
 import * as THREE from 'three';
 
 import type { Floor3D } from '#core/state.ts';
-import type { Instance } from '#src/scene.ts';
-import { UNITS_PER_TILE as U } from '#src/units.ts';
+import type { Instance } from '#src/scene/scene.ts';
+import { UNITS_PER_TILE as U } from '#src/scene/units.ts';
 import { tileCenter } from '#core/coords.ts';
 
 // Most of the light a map designer actually placed is here: ~10,800 point

@@ -16,8 +16,8 @@ import { join, resolve } from 'node:path';
 import {
   BUILDS, ORIGINAL_LIMIT, PATCHED_EXE, SHIPPED_EXE, checkJumps, patchExe, readExe, sections,
   setCreatureLimit,
-} from '../src/creature-limit.ts';
-import type { Build } from '../src/creature-limit.ts';
+} from '../src/exe/creature-limit.ts';
+import type { Build } from '../src/exe/creature-limit.ts';
 
 const game = resolve(process.argv[2] ?? join(import.meta.dirname, '..', '..'));
 

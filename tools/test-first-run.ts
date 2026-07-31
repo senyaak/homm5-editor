@@ -11,9 +11,9 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
-import { ENV_KEYS, loadEnvFile, parseEnvFile } from '../src/env-file.ts';
-import { STEPS, firstRun, installState, isReady } from '../src/first-run.ts';
-import type { Install } from '../src/first-run.ts';
+import { ENV_KEYS, loadEnvFile, parseEnvFile } from '../src/game/env-file.ts';
+import { STEPS, firstRun, installState, isReady } from '../src/game/first-run.ts';
+import type { Install } from '../src/game/first-run.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {

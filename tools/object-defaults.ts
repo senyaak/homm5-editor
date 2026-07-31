@@ -19,8 +19,8 @@
 
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
-import { readEntries } from '../src/pak.ts';
-import { pickMapRel } from '../src/project.ts';
+import { readEntries } from '../src/format/pak.ts';
+import { pickMapRel } from '../src/map/project.ts';
 
 function loadMapXdb(path: string): string {
   if (/\.xdb$/i.test(path)) return readFileSync(path, 'utf8');

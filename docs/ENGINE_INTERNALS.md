@@ -32,7 +32,7 @@ the GOG and retail case, where nothing else is needed — and unwraps it with
 Steamless (pinned to `v3.1.0.5`, downloaded once into `tools/vendor/`) when it
 is not. An existing copy is never overwritten, because it is probably already
 carrying a patched ceiling. `--check` says what each file is and writes
-nothing. See `src/exe-unwrap.ts`.
+nothing. See `src/exe/exe-unwrap.ts`.
 
 So the rule for reverse engineering is "read an unwrapped build", and on this
 machine that file happens to be the NCF copy. `.rdata` and `.data` are
@@ -42,8 +42,8 @@ compilation, **every address in this document is a landmark for a pattern
 search, never a constant to hardcode** — the same discipline the creature and
 artifact ceiling patchers already follow.
 
-Tooling, all TypeScript: `src/pe.ts` (sections, addresses, strings,
-references), `src/disasm.ts` (iced-x86), `src/lua-registry.ts`, and the
+Tooling, all TypeScript: `src/exe/pe.ts` (sections, addresses, strings,
+references), `src/exe/disasm.ts` (iced-x86), `src/exe/lua-registry.ts`, and the
 commands in `tools/reverse/` — `lua-registry.ts` regenerates
 [EXE_LUA_REGISTRY.md](EXE_LUA_REGISTRY.md) from the binary and
 `npm run test-lua-registry` fails if the two have drifted apart; `vtable.ts`
@@ -493,7 +493,7 @@ file system the same way, which is why a `.h5m` can override any path in the
 game and not just its own map.
 
 The patterns are turned into strings with strlen at runtime, so a **shorter**
-name can be written over one in place. `src/mod-paths.ts` does exactly that: our
+name can be written over one in place. `src/game/mod-paths.ts` does exactly that: our
 copy scans `H5E/*.h5m` and four siblings, so nothing anyone installed for
 another mod is read at all, and a map of ours keeps the name the game has always
 given it — `H5E/<name>.h5m`. Launching the shipped executable reads the five

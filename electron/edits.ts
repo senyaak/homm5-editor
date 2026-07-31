@@ -10,9 +10,9 @@
 import { createHash } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { apply, diff } from '#src/history.ts';
-import type { DocPatch, Step, StoredHistory } from '#src/history.ts';
-import { loadMap } from '#src/map.ts';
+import { apply, diff } from '#src/map/history.ts';
+import type { DocPatch, Step, StoredHistory } from '#src/map/history.ts';
+import { loadMap } from '#src/map/map.ts';
 import { tmpRoot } from '#electron/paths.ts';
 import { TERRAIN_FILE, terrainDoc } from '#electron/state.ts';
 import type { Session } from '#electron/state.ts';

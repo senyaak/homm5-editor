@@ -14,7 +14,7 @@ import * as THREE from 'three';
 
 import { state } from '#core/state.ts';
 import type { Floor3D } from '#core/state.ts';
-import type { Instance } from '#src/scene.ts';
+import type { Instance } from '#src/scene/scene.ts';
 import { worldGeos, worldMats, geomSkin } from '#viewport/geoms.ts';
 import { makeIdle, poseIdle } from '#viewport/skinning.ts';
 import type { IdleObject } from '#viewport/skinning.ts';

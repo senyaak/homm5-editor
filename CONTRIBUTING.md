@@ -28,8 +28,27 @@ and format notes only.** A PR that adds game bytes will be rejected.
 ## Layout
 
 ```
-src/        the core: format decoders + the map model (terrain, geometry, xml,
-            map, registry, schema, skeleton…). Runs as .ts directly (no build).
+src/        the core — format decoders and the game model, by what each file
+            knows. Runs as .ts directly (no build):
+              format/   bytes in, bytes out: pak, oodle, dds, texture, gif,
+                        gr2, xml, recolor — no game meaning in any of them
+              game/     where the game is on this machine and what it mounts:
+                        env-file, first-run, unpack, assets, mod-paths
+              map/      the map document and its project: map, map-tag,
+                        map-source, blank-map, new-map, objects, donors,
+                        defaults, watch, project, history
+              terrain/  GroundTerrain.bin — its own format, its own six files
+              scene/    a map + its assets turned into something drawable:
+                        scene, geometry, animation, effects, units
+              schema/   typed editing: schema, typespec, tree, skeleton,
+                        registry, town-bonuses + the two .schema.json
+              mods/     content the game does not ship: creature-mod,
+                        creatures, artifacts*, heroes, dwellings, extension
+              exe/      the executable: pe, disasm, exe-*, lua-registry, and
+                        the two ceiling patchers
+              campaign/ campaign, campaign-project, campaign-pack
+              script/   the engine's Lua: lua-lint + the API the editor
+                        completes from
 electron/   the main process. main.ts is the boot — switches, window, the
             timing wrapper, the register() calls — and beside it:
               ipc.ts     the contract: every payload/result type + EditorApi
@@ -64,6 +83,13 @@ Imports go through the subpath aliases declared in package.json — `#core/…`,
 not rewrite every path that mentions it. Node's strip-mode and esbuild both
 resolve them; keep the real `.ts` extension.
 
+Inside `src/` the imports stay RELATIVE (`./x.ts`, `../format/xml.ts`), and
+that is deliberate: src is loaded by four runtimes — Node for `tools/`,
+Electron for the main process, esbuild for the renderer bundle, and
+Playwright's own loader for the e2e suite — and a relative path is the one form
+all four agree on without being configured. `tools/` and `e2e/` reach it the
+same way, with `../src/…`.
+
 The dependency direction is one-way on both sides. In the renderer: `core/`
 knows nothing above it, `viewport/` may use `core/`, `features/` may use both.
 In the main process: `paths.ts` → `state.ts` → `edits.ts`/`sidecar.ts`/`spec.ts`
@@ -83,8 +109,8 @@ handler registered", with nothing anywhere saying why.
   every shipped map; keep it that way. An edit rewrites exactly what changed and
   nothing else — that's what lets the external-change watcher and round-trip
   tests work. Never introduce a lossy read or a reformatting write.
-- **Editing goes through the schema, not ad-hoc UI.** `src/map.schema.json` and
-  `src/objects.schema.json` describe every field; the tree and the dialog build
+- **Editing goes through the schema, not ad-hoc UI.** `src/schema/map.schema.json` and
+  `src/schema/objects.schema.json` describe every field; the tree and the dialog build
   their controls from it (`x-` keywords carry game intent — registries, refs,
   tabs, name handles). To make a field editable, describe it in the schema; the
   UI follows. See [docs/MAP_PROPERTIES.md](docs/MAP_PROPERTIES.md).
@@ -95,7 +121,7 @@ handler registered", with nothing anywhere saying why.
   rules come from the data corpus (the shipped maps, `GameMechanics/RefTables`,
   `MapObjects/…`) and the official `Editor Documentation/*.pdf` (read with
   `pdftotext -layout`), never from memory. Rosters are *discovered dynamically*
-  (`src/registry.ts`), so mod/Lua-added content appears on its own. When you add
+  (`src/schema/registry.ts`), so mod/Lua-added content appears on its own. When you add
   a value, say where it came from (see the naming/scripting model in
   [docs/NAMES_AND_SCRIPTING.md](docs/NAMES_AND_SCRIPTING.md)).
 - **Use the web platform.** Native `<dialog>`, modern DOM/CSS — prefer the
@@ -144,7 +170,7 @@ stubbed `window.editor`) is how you drive it headless. Extend the stub in
 
 - **An editable field** → add it to the right schema with the fitting `x-`
   keywords; the tree/dialog render it. No renderer change for the common cases.
-- **A game roster** (spells, a new object class) → `src/registry.ts`, discovered
+- **A game roster** (spells, a new object class) → `src/schema/registry.ts`, discovered
   from the data tree; add a line to `tools/test-registry.ts`.
 - **An IPC channel** → the payload/result types + `EditorApi` in
   `electron/ipc.ts`, the binding in `preload.cjs`, the handler in the

@@ -9,15 +9,15 @@ import type { BrowserWindow } from 'electron';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { gameData } from '#electron/paths.ts';
-import { findAssetRoot } from '#src/scene.ts';
-import type { GeomResolver } from '#src/scene.ts';
-import type { Assets } from '#src/assets.ts';
-import type { HommMap, MapObject } from '#src/map.ts';
-import type { MapWatch } from '#src/watch.ts';
-import { TerrainDoc } from '#src/terrain-edit.ts';
-import type { History } from '#src/history.ts';
-import type { Registry } from '#src/registry.ts';
-import { readTree, addRefItem } from '#src/tree.ts';
+import { findAssetRoot } from '#src/scene/scene.ts';
+import type { GeomResolver } from '#src/scene/scene.ts';
+import type { Assets } from '#src/game/assets.ts';
+import type { HommMap, MapObject } from '#src/map/map.ts';
+import type { MapWatch } from '#src/map/watch.ts';
+import { TerrainDoc } from '#src/terrain/terrain-edit.ts';
+import type { History } from '#src/map/history.ts';
+import type { Registry } from '#src/schema/registry.ts';
+import { readTree, addRefItem } from '#src/schema/tree.ts';
 import type { HistoryState } from '#electron/ipc.ts';
 
 /** The map currently open for editing, with everything derived at load time. */

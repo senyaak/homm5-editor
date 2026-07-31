@@ -22,7 +22,7 @@ import { join } from 'node:path';
 
 import {
   addArtifactSet, buildCreatureMod, dataReader, newCreatureMod,
-} from '../src/creature-mod.ts';
+} from '../src/mods/creature-mod.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {

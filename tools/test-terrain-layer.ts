@@ -11,8 +11,8 @@
 import { existsSync, readFileSync } from 'node:fs';
 import {
   parseTerrain, readHeights, readGroundFlags, readTextureLayers, readMask, readWaterPlane,
-} from '../src/terrain.ts';
-import { addTextureLayer } from '../src/terrain-layer.ts';
+} from '../src/terrain/terrain.ts';
+import { addTextureLayer } from '../src/terrain/terrain-layer.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {

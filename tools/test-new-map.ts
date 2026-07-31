@@ -10,8 +10,8 @@
 
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { buildNewMapProject } from '../src/new-map.ts';
-import { Registry } from '../src/registry.ts';
+import { buildNewMapProject } from '../src/map/new-map.ts';
+import { Registry } from '../src/schema/registry.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {

@@ -23,7 +23,7 @@ The counterpart is that a value may be chosen freely and more than once. Fourtee
 documents declare `BUILDING_ABANDONED_MINE` — the seven random dwellings and a
 handful of scenery pieces (`Inferno_Town_Ruines`) among them — because they need
 *something* in the field and nothing about the value is owned. This is the same
-rule dwellings already rely on ([src/dwellings.ts](../../../src/dwellings.ts)).
+rule dwellings already rely on ([src/mods/dwellings.ts](../../../src/mods/dwellings.ts)).
 
 ## 2. Two ways a document is bound to a behaviour
 
@@ -72,7 +72,7 @@ for a shrine, `GuardsVariants` for an abandoned mine, `Color` for a tent,
 `States` / `StateChanges` for a stand.
 
 **(b) The placement** (the `<AdvMapX>` element in `map.xdb`, per instance).
-From [src/objects.schema.json](../../../src/objects.schema.json):
+From [src/schema/objects.schema.json](../../../src/schema/objects.schema.json):
 
 | placed type | fields beyond the common ones |
 |---|---|

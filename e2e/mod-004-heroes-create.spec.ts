@@ -30,11 +30,11 @@ import { launchEditor, REPO_ROOT } from './launch.ts';
 import { settled } from './trace.ts';
 import type { Launched } from './launch.ts';
 import { modGameRoot, readInstalledMod } from './mods.ts';
-import { modFile } from '../src/mod-paths.ts';
-import { MOD_STEM } from '../src/creature-mod.ts';
-import { heroPaths } from '../src/heroes.ts';
-import { readEntries } from '../src/pak.ts';
-import { PATCHED_EXE, readExe } from '../src/creature-limit.ts';
+import { modFile } from '../src/game/mod-paths.ts';
+import { MOD_STEM } from '../src/mods/creature-mod.ts';
+import { heroPaths } from '../src/mods/heroes.ts';
+import { readEntries } from '../src/format/pak.ts';
+import { PATCHED_EXE, readExe } from '../src/exe/creature-limit.ts';
 
 let ed: Launched;
 const GAME = modGameRoot();

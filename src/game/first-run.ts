@@ -22,8 +22,8 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { ensureCleanExe } from './exe-unwrap.ts';
-import { buildExtension, builtDll, extensionState, installExtension } from './extension.ts';
+import { ensureCleanExe } from '../exe/exe-unwrap.ts';
+import { buildExtension, builtDll, extensionState, installExtension } from '../mods/extension.ts';
 import { readModPaths, setModPaths } from './mod-paths.ts';
 import { looksLikeDataRoot, looksLikeGameFolder, unpackSteps } from './unpack.ts';
 

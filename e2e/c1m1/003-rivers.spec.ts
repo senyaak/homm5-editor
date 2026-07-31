@@ -14,7 +14,7 @@ import type { Launched } from '../launch.ts';
 import { armBrush, setRiverStrength } from '../tiles.ts';
 import { cellPixels, clickAt } from '../pointer.ts';
 import { fixture, mismatches, openMap, requireFixture, saveTerrain } from './shared.ts';
-import { readHeights, readWaterPlane } from '../../src/terrain.ts';
+import { readHeights, readWaterPlane } from '../../src/terrain/terrain.ts';
 
 let ed: Launched;
 

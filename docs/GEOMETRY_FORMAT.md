@@ -4,7 +4,7 @@ Status: **textured meshes decoded**. Container grammar, vertex positions, the
 vertex-split remap, the triangle index buffer and **UVs** are decoded and
 verified (0 stray edges; UV edge-continuity confirmed). Normals are computed
 from geometry (the packed stored normals are imprecise). Textures (`.dds`,
-DXT1/3/5) decode via `src/dds.ts`. The per-submesh material split is decoded
+DXT1/3/5) decode via `src/format/dds.ts`. The per-submesh material split is decoded
 too: a mesh that uses several materials stores each material's slice as its own
 group, and each group is emitted as its own mesh, one-to-one with the model's
 material list (see §4). This document records exactly what is known so the work
@@ -95,7 +95,7 @@ triangles reference renderVertex indices (0..492)
 Selecting the correct remap is unambiguous: it is the `u16` leaf whose every
 value is `< positionCount`. Reconstructed this way the mountain has **0 stray
 edges** (max edge ≈ 4.8 on a 24-unit mesh); the bushes likewise. Implemented in
-`src/geometry.ts → extractMeshesStructured()`; `node tools/mesh-to-obj.js`
+`src/scene/geometry.ts → extractMeshesStructured()`; `node tools/mesh-to-obj.js`
 writes OBJ and prints the edge-length check.
 
 **Material groups.** A named mesh (one `<MeshNames>` entry) is a tag-1 block of

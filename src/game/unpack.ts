@@ -15,7 +15,7 @@
 
 import { openSync, closeSync, statSync, existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { readIndex, readEntryFrom } from './pak.ts';
+import { readIndex, readEntryFrom } from '../format/pak.ts';
 
 /** How one archive turned out. */
 export interface PakReport {

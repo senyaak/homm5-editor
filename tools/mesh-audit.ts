@@ -14,7 +14,7 @@
 
 import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { extractMeshes, readGeometryRefFromModelXdb } from '../src/geometry.ts';
+import { extractMeshes, readGeometryRefFromModelXdb } from '../src/scene/geometry.ts';
 
 const args = process.argv.slice(2);
 const root = args.find((a) => !a.startsWith('--')) ?? 'data-unpacked';

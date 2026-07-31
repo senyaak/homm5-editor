@@ -15,7 +15,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
-import { addImport, imports } from '../src/exe-import.ts';
+import { addImport, imports } from '../src/exe/exe-import.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {

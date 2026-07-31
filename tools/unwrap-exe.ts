@@ -14,7 +14,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { CLEAN_EXE, SHIPPED_EXE, STEAMLESS, classify, ensureCleanExe } from '../src/exe-unwrap.ts';
+import { CLEAN_EXE, SHIPPED_EXE, STEAMLESS, classify, ensureCleanExe } from '../src/exe/exe-unwrap.ts';
 
 const args = process.argv.slice(2);
 const flag = (name: string): string | undefined => {

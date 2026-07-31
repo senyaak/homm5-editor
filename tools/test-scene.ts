@@ -13,8 +13,8 @@
 
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { buildScene, listItems } from '../src/scene.ts';
-import type { GeomData } from '../src/scene.ts';
+import { buildScene, listItems } from '../src/scene/scene.ts';
+import type { GeomData } from '../src/scene/scene.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {

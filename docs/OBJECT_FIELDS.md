@@ -23,7 +23,7 @@ what is legal.
 
 **Field sets vary within a type.** `DoesNotDependOnDifficulty` is missing from
 the oldest monsters, which predate it. A new object is still built by cloning
-a real one (`src/donors.ts`) — a donor carries the file's own formatting and
+a real one (`src/map/donors.ts`) — a donor carries the file's own formatting and
 is correct by construction — but a field the donor predates is now added back
 from the spec, in the position the spec puts it. See `docs/TYPE_SPEC.md`.
 

@@ -6,7 +6,7 @@
 //   (paths point at the extracted sample tree under data-unpacked)
 
 import { readFileSync } from 'node:fs';
-import { extractPositionArrays, readGeometryRefFromModelXdb } from '../src/geometry.ts';
+import { extractPositionArrays, readGeometryRefFromModelXdb } from '../src/scene/geometry.ts';
 
 const DATA = 'data-unpacked';
 const modelXdb = `${DATA}/_(Model)/TerrainObjects/Grass/Mountains/Mounting12x12_1.(Model).xdb`;

@@ -14,8 +14,8 @@
 import { app, BrowserWindow, ipcMain, screen } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
 import { dirname } from 'node:path';
-import { buildScene } from '#src/scene.ts';
-import { initProject } from '#src/project.ts';
+import { buildScene } from '#src/scene/scene.ts';
+import { initProject } from '#src/map/project.ts';
 import { isConfigured, mountedAssets, preloadPath, readSettings, rendererFile } from '#electron/paths.ts';
 import { closeSetup, runSetup } from '#electron/setup.ts';
 import { assetRootFor, state } from '#electron/state.ts';

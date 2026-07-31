@@ -6,8 +6,8 @@
 // that are easy to get wrong and fail quietly — the palette lookup and the
 // variable-width LZW — by using a code width that grows mid-stream.
 
-import { readGif } from '../src/gif.ts';
-import { fitSquare, writeDDS } from '../src/texture.ts';
+import { readGif } from '../src/format/gif.ts';
+import { fitSquare, writeDDS } from '../src/format/texture.ts';
 
 let failures = 0;
 const eq = (what: string, got: unknown, want: unknown): void => {

@@ -21,9 +21,9 @@
 import { BrowserWindow, dialog, ipcMain } from 'electron';
 import { existsSync } from 'node:fs';
 
-import { firstRun, installState } from '../src/first-run.ts';
-import type { FirstRunResult, Install, Progress, StepState } from '../src/first-run.ts';
-import { looksLikeGameFolder } from '../src/unpack.ts';
+import { firstRun, installState } from '../src/game/first-run.ts';
+import type { FirstRunResult, Install, Progress, StepState } from '../src/game/first-run.ts';
+import { looksLikeGameFolder } from '../src/game/unpack.ts';
 import { APP_ROOT, defaultDataRoot, gameData, gameRoot, preloadPath, reload, rendererFile, saveSettings } from './paths.ts';
 
 /** What the setup window shows when it opens. */

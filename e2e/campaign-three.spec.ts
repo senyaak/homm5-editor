@@ -32,10 +32,10 @@ import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { launchEditor, REPO_ROOT } from './launch.ts';
 import type { Launched } from './launch.ts';
-import { loadMap } from '../src/map.ts';
-import { readEntries } from '../src/pak.ts';
-import { modFile } from '../src/mod-paths.ts';
-import { find, childText } from '../src/xml.ts';
+import { loadMap } from '../src/map/map.ts';
+import { readEntries } from '../src/format/pak.ts';
+import { modFile } from '../src/game/mod-paths.ts';
+import { find, childText } from '../src/format/xml.ts';
 import { bar } from './bar.ts';
 import { closeMap } from './tiles.ts';
 
@@ -340,7 +340,7 @@ test('a hero carried across three missions, and the campaign packed for play', a
 });
 
 /** The creatures an object's army holds, as text. */
-function serializeArmy(o: { el: import('../src/xml.ts').XmlElement }): string {
+function serializeArmy(o: { el: import('../src/format/xml.ts').XmlElement }): string {
   const slots = find(o.el, 'armySlots');
   return slots ? JSON.stringify(slots.children.map((c) => (c.type === 'element' ? childText(c, 'Creature') : ''))) : '';
 }

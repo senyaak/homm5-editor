@@ -32,8 +32,8 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
-import { extract, writeArchive, listDirFiles, readEntries } from './pak.ts';
-import type { ExtractedFile, PackResult, WriteOptions, ZipEntry } from './pak.ts';
+import { extract, writeArchive, listDirFiles, readEntries } from '../format/pak.ts';
+import type { ExtractedFile, PackResult, WriteOptions, ZipEntry } from '../format/pak.ts';
 
 export const MANIFEST_NAME = 'project.json';
 
@@ -179,10 +179,14 @@ export interface PackProjectResult extends PackResult {
   manifest: ProjectManifest;
 }
 
-// Editor version, read from the package.json next to src/. Single source of truth
+// Editor version, read from the package.json above src/. Single source of truth
 // so the manifest records exactly what the running build reports.
+//
+// Two levels up, not one: this file lives in src/map/. It is the only thing in
+// src/ that knows where it sits on disk, which is why the foldering pass had
+// exactly one line to fix.
 export function editorVersion(): string {
-  const pkg = join(dirname(fileURLToPath(import.meta.url)), '..', 'package.json');
+  const pkg = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'package.json');
   try {
     const parsed = JSON.parse(readFileSync(pkg, 'utf8')) as { version?: string };
     return parsed.version || '0.0.0';

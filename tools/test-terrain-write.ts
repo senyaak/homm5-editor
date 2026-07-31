@@ -15,9 +15,9 @@ import { dirname, join } from 'node:path';
 import {
   parseTerrain, readHeights, readGroundFlags, readTextureLayers, readMask, readWaterPlane,
   writeTerrain, groundFlagsPlane, waterPlane, readPassability, passabilityPlane,
-} from '../src/terrain.ts';
-import type { Terrain } from '../src/terrain.ts';
-import { TerrainDoc } from '../src/terrain-edit.ts';
+} from '../src/terrain/terrain.ts';
+import type { Terrain } from '../src/terrain/terrain.ts';
+import { TerrainDoc } from '../src/terrain/terrain-edit.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {

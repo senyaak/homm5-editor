@@ -15,8 +15,8 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
-import { functionBody } from '../../src/disasm.ts';
-import { PEFile } from '../../src/pe.ts';
+import { functionBody } from '../../src/exe/disasm.ts';
+import { PEFile } from '../../src/exe/pe.ts';
 
 const args = process.argv.slice(2);
 const flag = (name: string): string | undefined => {

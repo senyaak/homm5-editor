@@ -15,7 +15,7 @@
 import { copyFileSync, existsSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
-import { addImport, imports } from '../src/exe-import.ts';
+import { addImport, imports } from '../src/exe/exe-import.ts';
 
 const here = resolve(import.meta.dirname, '..');
 const args = process.argv.slice(2);

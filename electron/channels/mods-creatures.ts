@@ -10,12 +10,12 @@ import type { ModsInstallPayload, ModsInstallResult, ModsRemovePayload, ModsRemo
 import { buildAndInstall, exeWords, ourMod } from '#electron/mod-install.ts';
 import { gameData, gameRoot, isConfigured } from '#electron/paths.ts';
 import { join } from 'node:path';
-import { describeUses, findCreatureUses } from '#src/artifact-usage.ts';
-import { assets } from '#src/assets.ts';
-import { addCreature, removeCreature, updateCreature } from '#src/creature-mod.ts';
-import type { CreatureSpec } from '#src/creature-mod.ts';
-import { blankStats } from '#src/creatures.ts';
-import { creatureSources } from '#src/registry.ts';
+import { describeUses, findCreatureUses } from '#src/mods/artifact-usage.ts';
+import { assets } from '#src/game/assets.ts';
+import { addCreature, removeCreature, updateCreature } from '#src/mods/creature-mod.ts';
+import type { CreatureSpec } from '#src/mods/creature-mod.ts';
+import { blankStats } from '#src/mods/creatures.ts';
+import { creatureSources } from '#src/schema/registry.ts';
 
 /**
  * One payload, one spec — shared by adding a creature and by changing one.

@@ -28,16 +28,16 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { loadMap } from '../src/map.ts';
-import type { HommMap } from '../src/map.ts';
-import { applyDefaults, undefaulted } from '../src/defaults.ts';
-import { readEntries } from '../src/pak.ts';
-import { pickMapRel } from '../src/project.ts';
-import { parse, find, childText, serialize } from '../src/xml.ts';
-import { objectProps, objectSchema, mapSchema } from '../src/schema.ts';
-import type { FieldSchema } from '../src/schema.ts';
-import { readTypeSpec, declaredDefaults, typesXmlPath } from '../src/typespec.ts';
-import type { XmlElement } from '../src/xml.ts';
+import { loadMap } from '../src/map/map.ts';
+import type { HommMap } from '../src/map/map.ts';
+import { applyDefaults, undefaulted } from '../src/map/defaults.ts';
+import { readEntries } from '../src/format/pak.ts';
+import { pickMapRel } from '../src/map/project.ts';
+import { parse, find, childText, serialize } from '../src/format/xml.ts';
+import { objectProps, objectSchema, mapSchema } from '../src/schema/schema.ts';
+import type { FieldSchema } from '../src/schema/schema.ts';
+import { readTypeSpec, declaredDefaults, typesXmlPath } from '../src/schema/typespec.ts';
+import type { XmlElement } from '../src/format/xml.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {

@@ -11,8 +11,8 @@
 //        npm run object-shape <map.xdb> --props   (also list every field seen)
 
 import { readFileSync } from 'node:fs';
-import { loadMap } from '../src/map.ts';
-import type { MapObject } from '../src/map.ts';
+import { loadMap } from '../src/map/map.ts';
+import type { MapObject } from '../src/map/map.ts';
 
 const args = process.argv.slice(2);
 const path = args.find((a) => !a.startsWith('--')) ?? '_tmp/fixtures/C1M1/C1M1.xdb';

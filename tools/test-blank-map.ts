@@ -10,9 +10,9 @@
 
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { buildBlankMap } from '../src/blank-map.ts';
-import { loadMap } from '../src/map.ts';
-import { Registry } from '../src/registry.ts';
+import { buildBlankMap } from '../src/map/blank-map.ts';
+import { loadMap } from '../src/map/map.ts';
+import { Registry } from '../src/schema/registry.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {

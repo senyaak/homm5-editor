@@ -9,7 +9,7 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { luaDiagnostics, luaNameWarnings } from '../src/lua-lint.ts';
+import { luaDiagnostics, luaNameWarnings } from '../src/script/lua-lint.ts';
 
 let bad = 0;
 const ok = (cond: boolean, msg: string): void => {

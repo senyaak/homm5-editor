@@ -17,7 +17,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
   BUILDS, ORIGINAL_LIMIT, PATCHED_EXE, SHIPPED_EXE, readExe, setCreatureLimit, showBytes,
-} from '../src/creature-limit.ts';
+} from '../src/exe/creature-limit.ts';
 
 const args = process.argv.slice(2);
 const flag = (name: string): string | undefined => {

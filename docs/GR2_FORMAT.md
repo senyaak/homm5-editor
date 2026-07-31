@@ -1,6 +1,6 @@
 # Granny GR2 container (`bin/Skeletons`, `bin/animations`) — notes
 
-Status: **decoded** (`src/gr2.ts`). Everything else under `bin/` is Nival's own
+Status: **decoded** (`src/format/gr2.ts`). Everything else under `bin/` is Nival's own
 record container (see GEOMETRY_FORMAT.md); these two directories are not. They
 are RAD Game Tools' **Granny GR2**, written by "Granny Standard Exporter, SDK
 version 2.5.0.5" out of Maya 6. The game ships `bin/granny2.dll` (32-bit) to
@@ -19,7 +19,7 @@ strong heuristic, not yet proven.
 every field of every structure it stores, so a reader walks it *by field name* —
 `Bones`, `ParentIndex`, `InverseWorldTransform` — instead of by offsets inferred
 from bounding boxes and stride arithmetic, which is what the mesh container
-required. That is why `src/gr2.ts` is short for what it does, and why almost
+required. That is why `src/format/gr2.ts` is short for what it does, and why almost
 nothing in it is a guess.
 
 The cost is one layer of indirection: pointers are not usable as stored.

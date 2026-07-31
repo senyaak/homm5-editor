@@ -25,7 +25,7 @@ import type { Launched } from '../launch.ts';
 import { settle } from '../tiles.ts';
 import { degOf, pickObject, placeAtTile, rotDelta, setPlacement, sharedKey } from '../objects.ts';
 import { MAP_DIR, FIXTURE, openMap, requireFixture } from './shared.ts';
-import { loadMap } from '../../src/map.ts';
+import { loadMap } from '../../src/map/map.ts';
 import { bar } from '../bar.ts';
 
 let ed: Launched;

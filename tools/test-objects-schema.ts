@@ -3,14 +3,14 @@
 //   node tools/test-objects-schema.ts [dataRoot]
 
 import { readFileSync } from 'node:fs';
-import { mapFilesUnder } from '../src/map-source.ts';
-import { objectSchema, objectProps, resolveRef, controlOf, deref } from '../src/schema.ts';
-import type { FieldSchema, RegistryName } from '../src/schema.ts';
-import { Registry } from '../src/registry.ts';
-import { loadMap } from '../src/map.ts';
-import { children } from '../src/xml.ts';
-import { readTypeSpec, typesXmlPath } from '../src/typespec.ts';
-import type { SpecField, SpecType } from '../src/typespec.ts';
+import { mapFilesUnder } from '../src/map/map-source.ts';
+import { objectSchema, objectProps, resolveRef, controlOf, deref } from '../src/schema/schema.ts';
+import type { FieldSchema, RegistryName } from '../src/schema/schema.ts';
+import { Registry } from '../src/schema/registry.ts';
+import { loadMap } from '../src/map/map.ts';
+import { children } from '../src/format/xml.ts';
+import { readTypeSpec, typesXmlPath } from '../src/schema/typespec.ts';
+import type { SpecField, SpecType } from '../src/schema/typespec.ts';
 
 const dataRoot = process.argv[2] ?? 'data-unpacked';
 const VALID_REGISTRIES: RegistryName[] = ['spells', 'artifacts', 'heroes', 'races', 'ambientLights', 'creatures', 'skills', 'birds', 'winds', 'weathers'];

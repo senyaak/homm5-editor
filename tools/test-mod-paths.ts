@@ -10,9 +10,9 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
-import { LITERALS, MASKS, MOD_DIR, WRITES, findSites, modFile, patchModPaths, readModPaths } from '../src/mod-paths.ts';
-import { MOD_MANIFEST, findCreatureMods, installCreatureMod, newCreatureMod } from '../src/creature-mod.ts';
-import { writeArchive } from '../src/pak.ts';
+import { LITERALS, MASKS, MOD_DIR, WRITES, findSites, modFile, patchModPaths, readModPaths } from '../src/game/mod-paths.ts';
+import { MOD_MANIFEST, findCreatureMods, installCreatureMod, newCreatureMod } from '../src/mods/creature-mod.ts';
+import { writeArchive } from '../src/format/pak.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {

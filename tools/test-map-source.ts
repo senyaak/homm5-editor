@@ -9,9 +9,9 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, 
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
-import { extractMapFolder, gameArchives, listOurMaps, listStockMaps } from '../src/map-source.ts';
-import { ensureModDir, modFile } from '../src/mod-paths.ts';
-import { writeArchive } from '../src/pak.ts';
+import { extractMapFolder, gameArchives, listOurMaps, listStockMaps } from '../src/map/map-source.ts';
+import { ensureModDir, modFile } from '../src/game/mod-paths.ts';
+import { writeArchive } from '../src/format/pak.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {

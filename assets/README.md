@@ -32,7 +32,7 @@ taken from the open web:
 | `sapogi_mertv.gif` | Сапоги мертвеца — `ARTIFACT_H3_DEAD_MANS_BOOTS` |
 
 An artifact takes one as its `picture` and the mod builds the game's own 64x64
-texture from it — `src/gif.ts` reads the file, `src/texture.ts` writes the
+texture from it — `src/format/gif.ts` reads the file, `src/format/texture.ts` writes the
 texture — so the specs exercise that path rather than borrowing a shipped icon.
 The Artifacts dialog takes the same files in its Icon field.
 

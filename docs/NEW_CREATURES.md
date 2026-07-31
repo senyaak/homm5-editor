@@ -133,7 +133,7 @@ So the offsets had to be found. See [The edits](#the-edits).
 
 ## The edits
 
-The editor applies them — `src/creature-limit.ts`, with
+The editor applies them — `src/exe/creature-limit.ts`, with
 `tools/creature-limit.ts` as its command line — and writes nothing unless every site
 reads what it should. It identifies the build first, and says so plainly when handed
 a wrapped executable rather than reporting an unknown one. The patch data lives there
@@ -346,7 +346,7 @@ never the problem and neither was where it sat.
 The mods installed here show the same rule from the other side: `EWA_CoolTip`'s members
 are dated 2017 and `Skill_wheel`'s 2007-10-29, both at or after the game's own files.
 
-Fixed in `src/pak.ts` — `writeArchive` stamps the current time, and
+Fixed in `src/format/pak.ts` — `writeArchive` stamps the current time, and
 `WriteOptions.mtime` pins it for callers that want byte-identical output. **This reached
 beyond mods: every `.h5m` the editor packed was dated 1980 too**, so a map's own files
 could lose the same way.
@@ -427,7 +427,7 @@ Nothing goes into `data/`. An earlier version of this file worked out an orderin
 `data/*.pak` from the addon's paks sorting before the base ones, and shipped the same bytes
 under two names to be safe. All of it was beside the point.
 
-One thing to revisit: the editor's `pakOrder()` in `src/unpack.ts` builds its
+One thing to revisit: the editor's `pakOrder()` in `src/game/unpack.ts` builds its
 unpacked view from `data/` only. That is right for the shipped game, but it knows nothing
 about `UserMODs/`, so the editor cannot see a mod's overrides at all.
 

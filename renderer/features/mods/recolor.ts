@@ -6,7 +6,7 @@
 import { $, $input, $button } from '#core/dom.ts';
 import { modDialog } from '#core/dialog.ts';
 import { api } from '#core/ipc.ts';
-import { recolorPixels } from '#src/recolor.ts';
+import { recolorPixels } from '#src/format/recolor.ts';
 import type { PaletteEntry, RecolorOps } from '#electron/ipc.ts';
 
 let rcCreature = '';

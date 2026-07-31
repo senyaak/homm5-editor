@@ -9,7 +9,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 import { $ } from '#core/dom.ts';
 import { saveUiPrefs } from '#core/prefs.ts';
-import { UNITS_PER_TILE as U } from '#src/units.ts';
+import { UNITS_PER_TILE as U } from '#src/scene/units.ts';
 
 /**
  * The 3D context, or a failure that says what to do about it.

@@ -17,12 +17,12 @@
 
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { GrannyFile } from '../src/gr2.ts';
+import { GrannyFile } from '../src/format/gr2.ts';
 import {
   checkSkeleton, isIdentityFrame, readAnimations, readSkeletons, skinMatrices, skinPositions,
-} from '../src/animation.ts';
-import { extractMeshesStructured, readGeometryRefFromModelXdb } from '../src/geometry.ts';
-import { createGeomResolver } from '../src/scene.ts';
+} from '../src/scene/animation.ts';
+import { extractMeshesStructured, readGeometryRefFromModelXdb } from '../src/scene/geometry.ts';
+import { createGeomResolver } from '../src/scene/scene.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {

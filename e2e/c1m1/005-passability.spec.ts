@@ -24,8 +24,8 @@ import {
 import {
   readGroundFlags, readHeights, readMask, readPassability, readTextureLayers, readWaterPlane,
   BLOCKED,
-} from '../../src/terrain.ts';
-import type { Terrain } from '../../src/terrain.ts';
+} from '../../src/terrain/terrain.ts';
+import type { Terrain } from '../../src/terrain/terrain.ts';
 
 let ed: Launched;
 

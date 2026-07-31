@@ -9,8 +9,8 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { PEFile } from '../../src/pe.ts';
-import { describeSignature, readLuaRegistry } from '../../src/lua-registry.ts';
+import { PEFile } from '../../src/exe/pe.ts';
+import { describeSignature, readLuaRegistry } from '../../src/exe/lua-registry.ts';
 
 const args = process.argv.slice(2);
 const flag = (name: string): string | undefined => {

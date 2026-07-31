@@ -15,16 +15,16 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { newCampaignBody, newMission, saveCampaign, loadCampaign } from '../src/campaign.ts';
-import { packCampaign, missionMapDir, campaignMaps } from '../src/campaign-pack.ts';
+import { newCampaignBody, newMission, saveCampaign, loadCampaign } from '../src/campaign/campaign.ts';
+import { packCampaign, missionMapDir, campaignMaps } from '../src/campaign/campaign-pack.ts';
 import {
   addMission, buildNewCampaignProject, hasEntryPoint, heroScriptName, loadCampaignProject,
   missions, moveMission, placedHeroes, readHeroesPool, readProjectText, removeMission,
   saveCampaignProject, writeHeroesPool,
-} from '../src/campaign-project.ts';
-import { readEntries } from '../src/pak.ts';
-import { find, setAttr } from '../src/xml.ts';
-import type { XmlElement } from '../src/xml.ts';
+} from '../src/campaign/campaign-project.ts';
+import { readEntries } from '../src/format/pak.ts';
+import { find, setAttr } from '../src/format/xml.ts';
+import type { XmlElement } from '../src/format/xml.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {

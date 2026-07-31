@@ -35,7 +35,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { PATCHED_EXE, SHIPPED_EXE } from './creature-limit.ts';
+import { PATCHED_EXE, SHIPPED_EXE } from '../exe/creature-limit.ts';
 
 /** The folder our build reads, relative to the game root. */
 export const MOD_DIR = 'H5E';

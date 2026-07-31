@@ -8,8 +8,8 @@
 //
 // Archives: .pak / .h5m / .h5c / .h5u (all ZIP).
 
-import { readEntries } from '../src/pak.ts';
-import { openProject, packProject, status } from '../src/project.ts';
+import { readEntries } from '../src/format/pak.ts';
+import { openProject, packProject, status } from '../src/map/project.ts';
 import { readFileSync } from 'node:fs';
 
 const [cmd, a, b] = process.argv.slice(2);

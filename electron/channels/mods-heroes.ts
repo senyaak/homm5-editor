@@ -11,13 +11,13 @@ import { buildAndInstall, ourMod } from '#electron/mod-install.ts';
 import { gameData, gameRoot, isConfigured } from '#electron/paths.ts';
 import { state } from '#electron/state.ts';
 import { basename, join } from 'node:path';
-import { describeUses, findHeroUses } from '#src/artifact-usage.ts';
-import { assets } from '#src/assets.ts';
-import { addHero, removeHero, updateHero } from '#src/creature-mod.ts';
-import { refPath } from '#src/dwellings.ts';
-import { HERO_DIR, artOf, heroHref, heroPaths, takenHeroIds } from '#src/heroes.ts';
-import type { HeroSpec, Mastery } from '#src/heroes.ts';
-import { Registry } from '#src/registry.ts';
+import { describeUses, findHeroUses } from '#src/mods/artifact-usage.ts';
+import { assets } from '#src/game/assets.ts';
+import { addHero, removeHero, updateHero } from '#src/mods/creature-mod.ts';
+import { refPath } from '#src/mods/dwellings.ts';
+import { HERO_DIR, artOf, heroHref, heroPaths, takenHeroIds } from '#src/mods/heroes.ts';
+import type { HeroSpec, Mastery } from '#src/mods/heroes.ts';
+import { Registry } from '#src/schema/registry.ts';
 
 // Rosters and presets come from the plain data root, not the mounted chain:
 // install resolves the donor's documents there, so offering a mod's own

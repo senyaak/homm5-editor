@@ -5,8 +5,8 @@
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, renameSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { watchMapDir } from '../src/watch.ts';
-import type { DirChange } from '../src/watch.ts';
+import { watchMapDir } from '../src/map/watch.ts';
+import type { DirChange } from '../src/map/watch.ts';
 
 const DEBOUNCE = 60;
 const SETTLE = 400; // comfortably past debounce, even on a loaded machine

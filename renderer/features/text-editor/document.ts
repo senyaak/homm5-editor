@@ -15,9 +15,9 @@ import { markDirty } from '#core/dirty.ts';
 import { mountCodeEditor } from '#features/text-editor/code-editor.ts';
 import { loadScriptContext, scriptContextNote } from '#features/text-editor/context.ts';
 import { mapTreeOpen, refreshMapTree } from '#features/inspector/tree.ts';
-import type { LuaDiagnostic } from '#src/lua-lint.ts';
+import type { LuaDiagnostic } from '#src/script/lua-lint.ts';
 import type { CodeEditor } from '#features/text-editor/code-editor.ts';
-import { TOWN_BONUSES } from '#src/town-bonuses.ts';
+import { TOWN_BONUSES } from '#src/schema/town-bonuses.ts';
 /** A ref row's control: the path, then an ✎ button opening the text editor. */
 export function fileRefControl(href: string, label: string, commit: (v: string) => void): HTMLElement {
   const wrap = document.createElement('span'); wrap.style.display = 'contents';

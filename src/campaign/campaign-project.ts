@@ -14,10 +14,10 @@
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { newCampaignBody, newMission, newPoolHero, newBonus, loadCampaign, saveCampaign } from './campaign.ts';
-import { loadMap } from './map.ts';
-import { find, children, parse, setAttr, setText, childText, clearElement } from './xml.ts';
-import type { XmlElement } from './xml.ts';
-import type { ProjectFile } from './new-map.ts';
+import { loadMap } from '../map/map.ts';
+import { find, children, parse, setAttr, setText, childText, clearElement } from '../format/xml.ts';
+import type { XmlElement } from '../format/xml.ts';
+import type { ProjectFile } from '../map/new-map.ts';
 
 /** The descriptor's file name, in the project and in the archive alike. */
 export const DESCRIPTOR = 'campaign.xdb';

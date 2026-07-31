@@ -35,8 +35,8 @@ import { setShowBlocked, showBlocked } from '#viewport/overlays.ts';
 import { cliffsOn, setCliffAmount, setGroundScale } from '#viewport/splat.ts';
 import { isTyping, renderer, scene, setTopView } from '#viewport/stage.ts';
 import { asTileSpace, sea } from '#viewport/terrain-mesh.ts';
-import type { TreeData } from '#src/tree.ts';
-import type { Path as TreePath } from '#src/tree.ts';
+import type { TreeData } from '#src/schema/tree.ts';
+import type { Path as TreePath } from '#src/schema/tree.ts';
 import * as THREE from 'three';
 /** One region, as the panel and the overlay need it. */
 interface RegionInfo {

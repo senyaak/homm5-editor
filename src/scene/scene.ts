@@ -22,16 +22,16 @@
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { deflateSync } from 'node:zlib';
-import { parseTerrain, readHeights, readTextureLayers, readMask, readGroundFlags, readWaterPlane, readPassability, FLAG_WATER } from './terrain.ts';
+import { parseTerrain, readHeights, readTextureLayers, readMask, readGroundFlags, readWaterPlane, readPassability, FLAG_WATER } from '../terrain/terrain.ts';
 import { extractMeshes, readGeometryRefFromModelXdb } from './geometry.ts';
-import { decodeDDS } from './dds.ts';
-import { toAssets } from './assets.ts';
-import type { Assets } from './assets.ts';
-import { loadMap } from './map.ts';
-import type { HommMap, PointLightDef } from './map.ts';
-import type { Terrain, TextureLayer } from './terrain.ts';
+import { decodeDDS } from '../format/dds.ts';
+import { toAssets } from '../game/assets.ts';
+import type { Assets } from '../game/assets.ts';
+import { loadMap } from '../map/map.ts';
+import type { HommMap, PointLightDef } from '../map/map.ts';
+import type { Terrain, TextureLayer } from '../terrain/terrain.ts';
 import type { Mesh, MeshOptions } from './geometry.ts';
-import { GrannyFile } from './gr2.ts';
+import { GrannyFile } from '../format/gr2.ts';
 import { bakeClip, inverseBindMatrices, readAnimations, readSkeletons } from './animation.ts';
 import type { Animation, BakedClip, Skeleton } from './animation.ts';
 

@@ -16,8 +16,8 @@
 
 import { resolve } from 'node:path';
 
-import { PEFile } from '../../src/pe.ts';
-import { functionBody } from '../../src/disasm.ts';
+import { PEFile } from '../../src/exe/pe.ts';
+import { functionBody } from '../../src/exe/disasm.ts';
 
 const args = process.argv.slice(2);
 const flagValue = (name: string): string | undefined => {

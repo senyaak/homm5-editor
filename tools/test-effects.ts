@@ -12,7 +12,7 @@
 
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { parseEffect } from '../src/effects.ts';
+import { parseEffect } from '../src/scene/effects.ts';
 
 const dataRoot = process.env.HOMM5_DATA || join(import.meta.dirname, '..', 'data-unpacked');
 const DIR = join(dataRoot, 'bin', 'effects');

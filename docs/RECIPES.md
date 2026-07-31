@@ -85,7 +85,7 @@ them, and the completion will have them ready.
 
 The reference is [SCRIPT_API.md](SCRIPT_API.md) — **our own**, hand-written and
 grown as missions turn up new calls, with a description, typed arguments and an
-example for each. Add to it by editing `src/script-api-curated.ts` and running
+example for each. Add to it by editing `src/script/script-api-curated.ts` and running
 `npm run build-api`. What we have not written up yet is listed at the end of that
 doc as bare signatures (from the manual) — a to-do list. The calls you reach for
 most, drawn from C1M1's own script:
@@ -107,7 +107,7 @@ most, drawn from C1M1's own script:
 
 Some calls the campaigns use are engine built-ins the manuals never documented —
 the tutorial/combat-runtime `WaitForTutorialMessageBox`, `combatReadyPerson`,
-`setATB`, … We can still write them up in `src/script-api-curated.ts` from what a
+`setATB`, … We can still write them up in `src/script/script-api-curated.ts` from what a
 script does (that is what `source: 'observed'` marks — `GiveExp` is one). Until
 one is written up the editor cannot complete it, so type it by hand; the linter
 will not flag it, because a name it does not know is not the same as a name that is

@@ -16,10 +16,10 @@ import { api } from '#core/ipc.ts';
 import { roster } from '#core/rosters.ts';
 import { dataAt, leafRow, setMapPath } from '#features/inspector/tree.ts';
 import { fileRefControl } from '#features/text-editor/document.ts';
-import { controlOf, deref, mapSchema, resolveSchemaAtPath } from '#src/schema.ts';
-import type { TreeData } from '#src/tree.ts';
+import { controlOf, deref, mapSchema, resolveSchemaAtPath } from '#src/schema/schema.ts';
+import type { TreeData } from '#src/schema/tree.ts';
 import { markDirty } from '#core/dirty.ts';
-import type { Path as TreePath } from '#src/tree.ts';
+import type { Path as TreePath } from '#src/schema/tree.ts';
 const MP_TABS: { id: string; label: string }[] = [
   { id: 'general', label: 'General' }, { id: 'players', label: 'Players' },
   { id: 'teams', label: 'Teams' }, { id: 'heroes', label: 'Heroes' },

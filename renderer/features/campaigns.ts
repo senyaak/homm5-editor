@@ -14,7 +14,7 @@ import { $, $input, $select, $button, fillSelect } from '#core/dom.ts';
 import { ask, modDialog } from '#core/dialog.ts';
 import { api } from '#core/ipc.ts';
 import { roster } from '#core/rosters.ts';
-import { TOWN_BONUSES } from '#src/town-bonuses.ts';
+import { TOWN_BONUSES } from '#src/schema/town-bonuses.ts';
 import type { CampaignDoc, CampaignListEntry, CampaignMissionDto, MapListEntry, RosterEntryDTO } from '#electron/ipc.ts';
 
 /** The campaign being edited, and which mission row is selected. */

@@ -5,8 +5,8 @@
 // that the two agree except this. So the checks are about the FORMAT — the
 // exact shape those forty lines of C expect — rather than about the numbers.
 
-import { EFFECTS_FILE, effectsOf, readEffects, writeEffects } from '../src/artifact-effects.ts';
-import { artifactNumbers } from '../src/artifacts.ts';
+import { EFFECTS_FILE, effectsOf, readEffects, writeEffects } from '../src/mods/artifact-effects.ts';
+import { artifactNumbers } from '../src/mods/artifacts.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {

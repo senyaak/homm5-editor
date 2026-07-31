@@ -26,8 +26,8 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { join } from 'node:path';
 import { DATA, REPO_ROOT } from '../launch.ts';
 import { newMap, settle } from '../tiles.ts';
-import { parseTerrain } from '../../src/terrain.ts';
-import type { Terrain } from '../../src/terrain.ts';
+import { parseTerrain } from '../../src/terrain/terrain.ts';
+import type { Terrain } from '../../src/terrain/terrain.ts';
 import { bar } from '../bar.ts';
 
 export const NAME = 'e2e Reconstruct C1M1';

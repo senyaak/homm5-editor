@@ -22,13 +22,13 @@ import { join, posix } from 'node:path';
 import {
   addCreature, buildCreatureMod, creatureLimit, creaturePaths, dataPath, dataReader,
   MOD_MANIFEST, newCreatureMod, packCreatureMod, readCreatureModBuffer, writeCreatureMod,
-} from '../src/creature-mod.ts';
-import { assets } from '../src/assets.ts';
-import { Registry } from '../src/registry.ts';
-import { findEditorRoot, listPlaceable } from '../src/objects.ts';
-import type { CreatureMod, DataReader, ModFile } from '../src/creature-mod.ts';
-import { blankStats, creatureRoot, readStats, SHIPPED_CREATURES } from '../src/creatures.ts';
-import { readEntries } from '../src/pak.ts';
+} from '../src/mods/creature-mod.ts';
+import { assets } from '../src/game/assets.ts';
+import { Registry } from '../src/schema/registry.ts';
+import { findEditorRoot, listPlaceable } from '../src/map/objects.ts';
+import type { CreatureMod, DataReader, ModFile } from '../src/mods/creature-mod.ts';
+import { blankStats, creatureRoot, readStats, SHIPPED_CREATURES } from '../src/mods/creatures.ts';
+import { readEntries } from '../src/format/pak.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {

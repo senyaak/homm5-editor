@@ -14,9 +14,9 @@ Sources: `Editor Documentation/HOMM5_A2_Script_Functions.pdf`,
 gives a CodeMirror editor with Lua highlighting and completion from three
 sources:
 
-- **The engine API** — `src/script-api.json`, 204 functions with their parameter
+- **The engine API** — `src/script/script-api.json`, 204 functions with their parameter
   lists. It is MERGED (`npm run build-api`) from two sources: our own hand-written
-  reference `src/script-api-curated.ts` (24 functions so far, with real
+  reference `src/script/script-api-curated.ts` (24 functions so far, with real
   descriptions — the popup shows them) and, as a fallback, the raw signatures
   pulled from the shipped manuals by `npm run script-api` (needs `pdftotext`).
   The readable form is `docs/SCRIPT_API.md`. These functions are implemented in
@@ -47,7 +47,7 @@ game writes for them.
 A map script is never compiled anywhere we can watch. The engine loads the chunk
 at run time and, if it is malformed, silently refuses it — no message, no line
 number, the mission just does not script. So the editor lints as you type
-(`src/lua-lint.ts`), and the verdict sits beside the file's name: **✓ no errors**,
+(`src/script/lua-lint.ts`), and the verdict sits beside the file's name: **✓ no errors**,
 or **⚠ 2 errors**, with a red mark in the gutter on each offending line.
 
 What it flags as an **error** is exactly what the parser rejects, and nothing

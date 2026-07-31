@@ -17,9 +17,9 @@
 
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { GrannyFile } from '../src/gr2.ts';
-import { checkSkeleton, readSkeletons } from '../src/animation.ts';
-import type { Skeleton } from '../src/animation.ts';
+import { GrannyFile } from '../src/format/gr2.ts';
+import { checkSkeleton, readSkeletons } from '../src/scene/animation.ts';
+import type { Skeleton } from '../src/scene/animation.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {

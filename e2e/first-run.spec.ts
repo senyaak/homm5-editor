@@ -27,11 +27,11 @@ import { test, expect } from '@playwright/test';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { classify } from '../src/exe-unwrap.ts';
-import { extensionState } from '../src/extension.ts';
-import { firstRun, installState, isReady } from '../src/first-run.ts';
-import type { Install } from '../src/first-run.ts';
-import { MOD_DIR, readModPaths } from '../src/mod-paths.ts';
+import { classify } from '../src/exe/exe-unwrap.ts';
+import { extensionState } from '../src/mods/extension.ts';
+import { firstRun, installState, isReady } from '../src/game/first-run.ts';
+import type { Install } from '../src/game/first-run.ts';
+import { MOD_DIR, readModPaths } from '../src/game/mod-paths.ts';
 import { REPO_ROOT } from './launch.ts';
 import { LIVE, REAL_GAME } from './mods.ts';
 

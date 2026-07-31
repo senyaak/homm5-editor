@@ -11,7 +11,7 @@ import * as THREE from 'three';
 
 import { uiPrefs } from '#core/prefs.ts';
 import type { Floor3D } from '#core/state.ts';
-import { UNITS_PER_TILE as U } from '#src/units.ts';
+import { UNITS_PER_TILE as U } from '#src/scene/units.ts';
 import { geomParts } from '#viewport/geoms.ts';
 import { uSunDir, uSunCol, uAmbCol, uLmGain } from '#viewport/lighting.ts';
 import { partTexture } from '#viewport/materials.ts';

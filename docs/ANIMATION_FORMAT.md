@@ -171,7 +171,7 @@ when the game data is not unpacked.
 * `npm run test-oodle` — the decompressor, against the game's own duplicate: a
   skeleton stored packed under `bin/Skeletons/` and again plain inside the
   animation that plays on it must come out identical, bone for bone. **This is
-  the one that decides whether a change to `src/oodle.ts` is right** — a failure
+  the one that decides whether a change to `src/format/oodle.ts` is right** — a failure
   count is not a measure of correctness here, and optimising for one has already
   produced a decoder that threw nothing and corrupted everything (OODLE1_FORMAT.md).
 * `npm run test-gr2` — the format, against redundancies the data itself carries:

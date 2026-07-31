@@ -10,7 +10,7 @@ import { rmSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { buildRenderer } from '../tools/build-renderer.ts';
-import { modDir } from '../src/mod-paths.ts';
+import { modDir } from '../src/game/mod-paths.ts';
 import { hasFixture, NEED_FIXTURE, ALLOW_NO_FIXTURE } from './c1m1/shared.ts';
 import { E2E_GAME, REPO_ROOT } from './launch.ts';
 import { LIVE, openModGameRoot, REAL_GAME } from './mods.ts';

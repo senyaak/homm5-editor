@@ -28,11 +28,11 @@
 //     a placed object against the measured map and reports every field that
 //     still differs.
 
-import { find, setText, setAttr, clearElement } from './xml.ts';
-import type { XmlElement, XmlNode } from './xml.ts';
-import { objectSchema, objectProps, deref } from './schema.ts';
-import type { FieldSchema, RegistryName } from './schema.ts';
-import type { FieldOrder } from './typespec.ts';
+import { find, setText, setAttr, clearElement } from '../format/xml.ts';
+import type { XmlElement, XmlNode } from '../format/xml.ts';
+import { objectSchema, objectProps, deref } from '../schema/schema.ts';
+import type { FieldSchema, RegistryName } from '../schema/schema.ts';
+import type { FieldOrder } from '../schema/typespec.ts';
 
 /**
  * A measured default, as written in the schema.

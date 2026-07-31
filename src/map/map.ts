@@ -20,8 +20,8 @@
 // are reached via the object's `el` DOM node and land as typed accessors in the
 // Phase 4 "parity" work; Phase 1's job is a faithful, enumerable, editable model.
 
-import { parse, serialize, find, findAll, children, text, childText, setText, setAttr } from './xml.ts';
-import type { XmlElement, XmlNode } from './xml.ts';
+import { parse, serialize, find, findAll, children, text, childText, setText, setAttr } from '../format/xml.ts';
+import type { XmlElement, XmlNode } from '../format/xml.ts';
 import { applyDefaults } from './defaults.ts';
 import type { DefaultsOptions } from './defaults.ts';
 

@@ -8,7 +8,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { assets, baseRoot, singleRoot, toAssets } from '../src/assets.ts';
+import { assets, baseRoot, singleRoot, toAssets } from '../src/game/assets.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {

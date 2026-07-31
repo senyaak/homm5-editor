@@ -6,11 +6,11 @@
 // maps by map-tag; bundling those maps is the packer's job (not here).
 
 import campaignSchemaJson from './campaign.schema.json' with { type: 'json' };
-import type { HasDefs, FieldSchema } from './schema.ts';
-import { deref } from './schema.ts';
-import { buildEntity, buildItem } from './skeleton.ts';
-import { parse, serialize, find, setText } from './xml.ts';
-import type { XmlElement } from './xml.ts';
+import type { HasDefs, FieldSchema } from '../schema/schema.ts';
+import { deref } from '../schema/schema.ts';
+import { buildEntity, buildItem } from '../schema/skeleton.ts';
+import { parse, serialize, find, setText } from '../format/xml.ts';
+import type { XmlElement } from '../format/xml.ts';
 
 /** The campaign schema, typed as both a $defs root and a buildable field. */
 export const campaignSchema = campaignSchemaJson as unknown as HasDefs & FieldSchema;

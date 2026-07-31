@@ -8,7 +8,7 @@
 
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { listPaks, unpackData } from '../src/unpack.ts';
+import { listPaks, unpackData } from '../src/game/unpack.ts';
 
 const args = process.argv.slice(2);
 const flag = (name: string): boolean => args.includes(name);

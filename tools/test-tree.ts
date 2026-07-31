@@ -5,11 +5,11 @@
 
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { loadMap } from '../src/map.ts';
-import { readTree, nodeAt, setPath, addStringItem, addRefItem, removeItem, appendItem, indentText, setList } from '../src/tree.ts';
-import { mapSchema, resolveSchemaAtPath, deref } from '../src/schema.ts';
-import { buildItem, isBuildable } from '../src/skeleton.ts';
-import { children, find } from '../src/xml.ts';
+import { loadMap } from '../src/map/map.ts';
+import { readTree, nodeAt, setPath, addStringItem, addRefItem, removeItem, appendItem, indentText, setList } from '../src/schema/tree.ts';
+import { mapSchema, resolveSchemaAtPath, deref } from '../src/schema/schema.ts';
+import { buildItem, isBuildable } from '../src/schema/skeleton.ts';
+import { children, find } from '../src/format/xml.ts';
 
 const dataRoot = process.argv[2] ?? 'data-unpacked';
 

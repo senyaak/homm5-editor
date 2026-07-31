@@ -20,7 +20,7 @@ import { launchEditor, REPO_ROOT } from './launch.ts';
 import type { Launched } from './launch.ts';
 import { newMap, settle } from './tiles.ts';
 import { catalogEntry, degOf, pickObject, placeAtTile, setPlacement, sharedKey } from './objects.ts';
-import { loadMap } from '../src/map.ts';
+import { loadMap } from '../src/map/map.ts';
 import { bar } from './bar.ts';
 
 let ed: Launched;

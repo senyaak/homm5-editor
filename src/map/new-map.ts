@@ -8,7 +8,7 @@
 // editor's own blanks in tools/test-new-map.ts.
 
 import { buildBlankMap } from './blank-map.ts';
-import { buildBlankTerrain } from './terrain-blank.ts';
+import { buildBlankTerrain } from '../terrain/terrain-blank.ts';
 
 /** Everything New Map needs: a name, a size, level count, and the rosters. */
 export interface NewMapOptions {

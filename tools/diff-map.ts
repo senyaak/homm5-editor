@@ -14,13 +14,13 @@
 // Usage: npm run diff-map _tmp/fixtures/C1M1/C1M1.xdb <ours>/map.xdb
 
 import { readFileSync } from 'node:fs';
-import { loadMap } from '../src/map.ts';
-import type { HommMap } from '../src/map.ts';
-import { readTree } from '../src/tree.ts';
-import type { TreeData } from '../src/tree.ts';
-import { buildBlankMap } from '../src/blank-map.ts';
-import { mapSchema, resolveSchemaAtPath } from '../src/schema.ts';
-import { defaultFor } from '../src/skeleton.ts';
+import { loadMap } from '../src/map/map.ts';
+import type { HommMap } from '../src/map/map.ts';
+import { readTree } from '../src/schema/tree.ts';
+import type { TreeData } from '../src/schema/tree.ts';
+import { buildBlankMap } from '../src/map/blank-map.ts';
+import { mapSchema, resolveSchemaAtPath } from '../src/schema/schema.ts';
+import { defaultFor } from '../src/schema/skeleton.ts';
 
 const [refPath, ourPath] = process.argv.slice(2);
 if (!refPath || !ourPath) {

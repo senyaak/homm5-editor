@@ -13,11 +13,11 @@ import { roster } from '#core/rosters.ts';
 import { nameRefInput, selectFrom } from '#features/inspector/controls.ts';
 import { entityRefControl } from '#features/inspector/refs.ts';
 import { fileRefControl, scriptRefControl, specRefControl } from '#features/text-editor/document.ts';
-import { classOf, controlOf, deref, mapSchema, objectProps, objectSchema } from '#src/schema.ts';
-import type { FieldSchema, HasDefs } from '#src/schema.ts';
-import type { TreeData } from '#src/tree.ts';
+import { classOf, controlOf, deref, mapSchema, objectProps, objectSchema } from '#src/schema/schema.ts';
+import type { FieldSchema, HasDefs } from '#src/schema/schema.ts';
+import type { TreeData } from '#src/schema/tree.ts';
 import { markDirty } from '#core/dirty.ts';
-import type { Path as TreePath } from '#src/tree.ts';
+import type { Path as TreePath } from '#src/schema/tree.ts';
 /**
  * What the tree is currently editing.
  *

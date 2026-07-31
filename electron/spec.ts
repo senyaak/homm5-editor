@@ -6,9 +6,9 @@
 // box becomes a dropdown that refuses nothing the game accepts.
 
 import { gameData } from '#electron/paths.ts';
-import { fieldOrder, fieldValues, readTypeSpec, typesXmlPath } from '#src/typespec.ts';
-import type { FieldOrder, SpecType } from '#src/typespec.ts';
-import { objectProps } from '#src/schema.ts';
+import { fieldOrder, fieldValues, readTypeSpec, typesXmlPath } from '#src/schema/typespec.ts';
+import type { FieldOrder, SpecType } from '#src/schema/typespec.ts';
+import { objectProps } from '#src/schema/schema.ts';
 
 /**
  * The game's own type spec, read once per run.

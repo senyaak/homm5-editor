@@ -17,9 +17,9 @@
 import { closeSync, mkdirSync, openSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
-import { readEntryFrom, readIndex } from './pak.ts';
-import type { ZipIndexEntry } from './pak.ts';
-import { MOD_EXT, modDir } from './mod-paths.ts';
+import { readEntryFrom, readIndex } from '../format/pak.ts';
+import type { ZipIndexEntry } from '../format/pak.ts';
+import { MOD_EXT, modDir } from '../game/mod-paths.ts';
 
 /** A map the picker can offer. */
 export interface MapSource {

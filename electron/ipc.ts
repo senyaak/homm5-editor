@@ -5,17 +5,17 @@
 // `window.editor`. Type-only module: nothing here emits, so both the ESM main
 // process and the CommonJS preload can import from it.
 
-import type { Scene, SplatData, TileInfo, Instance, GeomData } from '../src/scene.ts';
-import type { ProjectStatus } from '../src/project.ts';
-import type { TypeCounts, ObjectProp } from '../src/map.ts';
-import type { CreatureStats } from '../src/creatures.ts';
-import type { PaletteEntry, RecolorOps } from '../src/recolor.ts';
+import type { Scene, SplatData, TileInfo, Instance, GeomData } from '../src/scene/scene.ts';
+import type { ProjectStatus } from '../src/map/project.ts';
+import type { TypeCounts, ObjectProp } from '../src/map/map.ts';
+import type { CreatureStats } from '../src/mods/creatures.ts';
+import type { PaletteEntry, RecolorOps } from '../src/format/recolor.ts';
 
-export type { ObjectProp } from '../src/map.ts';
-export type { CreatureStats } from '../src/creatures.ts';
-export type { PaletteEntry, RecolorOps } from '../src/recolor.ts';
-import type { PlaceableObject } from '../src/objects.ts';
-export type { PlaceableObject } from '../src/objects.ts';
+export type { ObjectProp } from '../src/map/map.ts';
+export type { CreatureStats } from '../src/mods/creatures.ts';
+export type { PaletteEntry, RecolorOps } from '../src/format/recolor.ts';
+import type { PlaceableObject } from '../src/map/objects.ts';
+export type { PlaceableObject } from '../src/map/objects.ts';
 
 /**
  * One map on offer (`maps:list`) — ours out of `H5E/`, or the game's own out of
@@ -1286,7 +1286,7 @@ export interface EditorApi {
    * Typed arrays, shipped binary via structured clone — never part of the
    * scene JSON. Unresolvable uids are simply absent.
    */
-  fx(uids: string[]): Promise<Record<string, import('../src/effects.ts').FxTransfer>>;
+  fx(uids: string[]): Promise<Record<string, import('../src/scene/effects.ts').FxTransfer>>;
   /**
    * Subscribe to external edits of the open map folder. Fires once per settled
    * burst of writes; our own saves never fire it.

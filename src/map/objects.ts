@@ -22,9 +22,9 @@
 
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { join, dirname, relative, sep } from 'node:path';
-import { toAssets } from './assets.ts';
-import type { Assets } from './assets.ts';
-import { Registry } from './registry.ts';
+import { toAssets } from '../game/assets.ts';
+import type { Assets } from '../game/assets.ts';
+import { Registry } from '../schema/registry.ts';
 
 /** One entry of the object palette. */
 export interface PlaceableObject {

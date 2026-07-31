@@ -17,7 +17,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   MAX_IMM8, ORIGINAL_ARTIFACTS, SITES_FILE, findArtifactSites, patchArtifactLimit, readArtifactLimit,
-} from '../src/artifact-limit.ts';
+} from '../src/exe/artifact-limit.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {

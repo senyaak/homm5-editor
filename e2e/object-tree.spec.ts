@@ -17,8 +17,8 @@ import { launchEditor, REPO_ROOT } from './launch.ts';
 import type { Launched } from './launch.ts';
 import { newMap, settle } from './tiles.ts';
 import { pickObject, placeAtTile } from './objects.ts';
-import { loadMap } from '../src/map.ts';
-import { find, children, text } from '../src/xml.ts';
+import { loadMap } from '../src/map/map.ts';
+import { find, children, text } from '../src/format/xml.ts';
 import { bar } from './bar.ts';
 
 let ed: Launched;

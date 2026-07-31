@@ -14,16 +14,16 @@ import { findObject, need } from '#electron/state.ts';
 import type { Session } from '#electron/state.ts';
 import { readFileSync } from 'node:fs';
 import { dirname, join, sep } from 'node:path';
-import { decodeDDS } from '#src/dds.ts';
-import { createField } from '#src/defaults.ts';
-import { donorFor } from '#src/donors.ts';
-import { MapObject } from '#src/map.ts';
-import type { ObjectProp } from '#src/map.ts';
-import { iconPathFor, listPlaceable, readIconFile } from '#src/objects.ts';
-import { pngDataUri } from '#src/scene.ts';
-import { controlOf, deref, objectProps, objectSchema } from '#src/schema.ts';
-import type { FieldSchema, RegistryName } from '#src/schema.ts';
-import { find } from '#src/xml.ts';
+import { decodeDDS } from '#src/format/dds.ts';
+import { createField } from '#src/map/defaults.ts';
+import { donorFor } from '#src/map/donors.ts';
+import { MapObject } from '#src/map/map.ts';
+import type { ObjectProp } from '#src/map/map.ts';
+import { iconPathFor, listPlaceable, readIconFile } from '#src/map/objects.ts';
+import { pngDataUri } from '#src/scene/scene.ts';
+import { controlOf, deref, objectProps, objectSchema } from '#src/schema/schema.ts';
+import type { FieldSchema, RegistryName } from '#src/schema/schema.ts';
+import { find } from '#src/format/xml.ts';
 
 /** The object catalogue, scanned once — 1466 small files is not a per-call cost. */
 let catalogCache: ReturnType<typeof listPlaceable> | null = null;

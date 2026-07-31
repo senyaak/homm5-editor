@@ -33,7 +33,7 @@ const DOCS = process.argv[2]
 // The RAW extraction — signatures only, a reference the merge falls back on. The
 // completion source and the readable doc are built from this plus our own curated
 // reference by tools/build-api.ts.
-const OUT = join(ROOT, 'src', 'script-api-extracted.json');
+const OUT = join(ROOT, 'src', 'script', 'script-api-extracted.json');
 const TMP = join(ROOT, '_tmp', 'script-api');
 
 /** The two manuals, base game first — the supplement's version of a shared

@@ -13,9 +13,9 @@
 // Usage: npm run diff-objects _tmp/fixtures/C1M1/C1M1.xdb <ours>/map.xdb
 
 import { readFileSync } from 'node:fs';
-import { loadMap } from '../src/map.ts';
-import type { HommMap, MapObject } from '../src/map.ts';
-import { objectProps, deref, objectSchema } from '../src/schema.ts';
+import { loadMap } from '../src/map/map.ts';
+import type { HommMap, MapObject } from '../src/map/map.ts';
+import { objectProps, deref, objectSchema } from '../src/schema/schema.ts';
 
 const [refPath, ourPath] = process.argv.slice(2);
 if (!refPath || !ourPath) {

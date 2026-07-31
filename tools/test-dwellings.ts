@@ -18,14 +18,14 @@
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { addDwelling, buildCreatureMod, dataReader, newCreatureMod } from '../src/creature-mod.ts';
-import { MESSAGE_SLOTS, dwellingPaths, footprintOf, refPath, tilesOf } from '../src/dwellings.ts';
-import type { DwellingSpec, Footprint, Tile } from '../src/dwellings.ts';
-import { SHIPPED_CREATURES } from '../src/creatures.ts';
-import { assets } from '../src/assets.ts';
-import { findEditorRoot, listPlaceable } from '../src/objects.ts';
-import { allFields, parseTypeSpec } from '../src/typespec.ts';
-import { children, find, parse, text } from '../src/xml.ts';
+import { addDwelling, buildCreatureMod, dataReader, newCreatureMod } from '../src/mods/creature-mod.ts';
+import { MESSAGE_SLOTS, dwellingPaths, footprintOf, refPath, tilesOf } from '../src/mods/dwellings.ts';
+import type { DwellingSpec, Footprint, Tile } from '../src/mods/dwellings.ts';
+import { SHIPPED_CREATURES } from '../src/mods/creatures.ts';
+import { assets } from '../src/game/assets.ts';
+import { findEditorRoot, listPlaceable } from '../src/map/objects.ts';
+import { allFields, parseTypeSpec } from '../src/schema/typespec.ts';
+import { children, find, parse, text } from '../src/format/xml.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {

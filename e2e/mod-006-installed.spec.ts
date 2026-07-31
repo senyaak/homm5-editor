@@ -21,14 +21,14 @@ import { join } from 'node:path';
 import {
   BOOTS, creatureTextures, MOD, modGameRoot, PALACE, PIECES, SHARPSHOOTER, UNDEAD_KING,
 } from './mods.ts';
-import { readEntries } from '../src/pak.ts';
-import { modFile } from '../src/mod-paths.ts';
-import { readCreatureMod } from '../src/creature-mod.ts';
-import { EFFECTS_FILE, readEffects } from '../src/artifact-effects.ts';
-import { COMMON_SCRIPT, SCRIPT_DIR } from '../src/artifact-scripts.ts';
-import { ORIGINAL_ARTIFACTS, readArtifactLimit, SITES_FILE } from '../src/artifact-limit.ts';
-import type { Site } from '../src/artifact-limit.ts';
-import { ORIGINAL_LIMIT, readExe } from '../src/creature-limit.ts';
+import { readEntries } from '../src/format/pak.ts';
+import { modFile } from '../src/game/mod-paths.ts';
+import { readCreatureMod } from '../src/mods/creature-mod.ts';
+import { EFFECTS_FILE, readEffects } from '../src/mods/artifact-effects.ts';
+import { COMMON_SCRIPT, SCRIPT_DIR } from '../src/mods/artifact-scripts.ts';
+import { ORIGINAL_ARTIFACTS, readArtifactLimit, SITES_FILE } from '../src/exe/artifact-limit.ts';
+import type { Site } from '../src/exe/artifact-limit.ts';
+import { ORIGINAL_LIMIT, readExe } from '../src/exe/creature-limit.ts';
 
 // mod-005's install, because it is the last to write and the only one that ends
 // with all four kinds in it. Live, every spec shares one install anyway.

@@ -17,7 +17,7 @@ import * as THREE from 'three';
 
 import { heightOn, tileCenter } from '#core/coords.ts';
 import type { Floor3D, GeomBatch } from '#core/state.ts';
-import type { Instance } from '#src/scene.ts';
+import type { Instance } from '#src/scene/scene.ts';
 import { worldGeos, worldMats } from '#viewport/geoms.ts';
 import { addIdle, clearIdle } from '#viewport/idle.ts';
 import { syncFootprints } from '#viewport/overlays.ts';

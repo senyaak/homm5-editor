@@ -62,7 +62,7 @@ project.json
       See docs/TERRAIN_FORMAT.md.
 - [x] Passability plane — the third vertex-sized u8 plane after height, `0`
       blocked / `1` walkable. Identified by correlation across all 232 maps;
-      read and written by `src/terrain.ts` ✅
+      read and written by `src/terrain/terrain.ts` ✅
 - [x] `.pak`/`.h5m`/`.h5c`/`.h5u` — ZIP read **and write** — `src/pak.js` ✅
       (content-identical round trip, validated against Python's zipfile)
 
@@ -243,7 +243,7 @@ placing new ones from a palette.
       object, opened with "Tree…" in the object panel. Structures — a hero's
       army, a capture trigger, a monster's reward resources — have no honest
       text box, and the answer is not a panel per type: `ArmySlot`, `Resources`
-      and `Trigger` are declared once in `src/objects.schema.json` `$defs`, and
+      and `Trigger` are declared once in `src/schema/objects.schema.json` `$defs`, and
       one renderer reads them wherever they appear. Also fixed on the way: a
       reference field (`href`) could be read and never written, and the panel
       ignored `x-file` where the tree honoured it ✅
@@ -252,21 +252,21 @@ placing new ones from a palette.
       object itself rather than a per-type table. Editors inferred from the
       value (bool/number/enum/text); structures and asset refs are shown, not
       edited. Typed per-type editors (army, buildings) remain Phase 4 ✅
-- [x] Terrain writing: masks, flags, heights and the river plane — `src/terrain.ts`
-      `writeTerrain`, with `src/terrain-edit.ts` as the editable document ✅
+- [x] Terrain writing: masks, flags, heights and the river plane — `src/terrain/terrain.ts`
+      `writeTerrain`, with `src/terrain/terrain-edit.ts` as the editable document ✅
 - [x] Tile brush: paint the selected ground tile, sizes 1/3/5/7. Applied to the
       GPU masks for feedback and to the authoritative bytes in one message per
       stroke ✅
 - [x] Height brush: raise/lower with a radial falloff, live remeshing, and the
       water/ground flag transitions at height 0. Digging a basin raises a sea
       without a reload ✅
-- [x] Adding a texture layer for a tile the map does not carry — `src/terrain-layer.ts`.
+- [x] Adding a texture layer for a tile the map does not carry — `src/terrain/terrain-layer.ts`.
       Splices the record and grows every enclosing block; the size encoding's
       width flag was decoded to make this writable ✅
-- [x] Giving a from-scratch map its passability plane — `src/terrain-plane.ts`.
+- [x] Giving a from-scratch map its passability plane — `src/terrain/terrain-plane.ts`.
       A blank declares the slot `0 × 0` and leaves it empty, so the first mask
       stroke fills it in; the record walk is shared with the layer splice
-      (`src/terrain-records.ts`) ✅
+      (`src/terrain/terrain-records.ts`) ✅
 - [x] River brushes (Water/Bog/LavaFlow): sink the bed below its banks and write
       the half-tile river plane ✅
 - [x] Passability grid (red blocked / blue navigable / clear walkable) + the
@@ -341,7 +341,7 @@ placing new ones from a palette.
         filling the rest. The bar keeps a single button, which reads as what is
         armed. Only the current mode's settings are shown; the header used to
         carry all nine at once, tier picker and river strength included.
-- [x] Object palette + drag and drop — `src/objects.ts`. Catalogue from the
+- [x] Object palette + drag and drop — `src/map/objects.ts`. Catalogue from the
       1466 `_(AdvMapObjectLink)` files, groups from `Editor/MapFilters.xml`,
       icons from `Editor/IconCache`. Placing clones an object of the same type
       already on the map; with no donor a skeleton is written and the caller is
@@ -354,7 +354,7 @@ placing new ones from a palette.
       across types, game versions and mods — and the **schema gives the values**.
       They are not guesses: measured with `npm run object-defaults` off a map
       made in the original for the purpose, all 21 types, written as JSON Schema
-      `default` in `src/objects.schema.json` and applied by `src/defaults.ts`.
+      `default` in `src/schema/objects.schema.json` and applied by `src/map/defaults.ts`.
       See docs/OBJECT_DEFAULTS.md. What that turned up: a new creature stack is
       `Amount` **0**, not the "obviously 1" this item used to assume (0 = sized
       by difficulty); a town's guild-spell list defaults to EVERY spell, an
@@ -367,7 +367,7 @@ placing new ones from a palette.
       anything the schema does not declare.
 - [x] ✅ **The game ships its own type spec** — `<data>/types.xml`: 739 types,
       3293 fields with type ids, chunk ids and constraints, and 1092 declared
-      DefaultValues. Read by `src/typespec.ts` at test time. It **confirms 29 of
+      DefaultValues. Read by `src/schema/typespec.ts` at test time. It **confirms 29 of
       our defaults with no conflicts**, an independent source saying what the
       ENGINE expects against a map saying what the EDITOR writes. It does not
       replace the measurement — the defaults that make a new object usable are
@@ -380,7 +380,7 @@ placing new ones from a palette.
       against the measurement. It found two real bugs on its first run, neither
       of which any unit test could see (see below), which is the argument for
       testing the product rather than the parts.
-- [x] ✅ **Field sets from the spec** (2026-07-22) — `src/typespec.ts` resolves
+- [x] ✅ **Field sets from the spec** (2026-07-22) — `src/schema/typespec.ts` resolves
       inheritance (`BaseType` names a type's `__ServerPtr`, not its `TypeID`) and
       returns the ordered field list at every depth, so:
       - a placed object gets a field its DONOR's game version predates, written
@@ -400,7 +400,7 @@ placing new ones from a palette.
 - [x] ✅ **Enum members from the spec** (2026-07-22) — a field whose values the
       game closes is now a dropdown over the FULL legal set, not a text box and
       not a list guessed from what shipped maps happen to use. 24 object fields,
-      1393 options, resolved through `src/typespec.ts` (`fieldValues`), served
+      1393 options, resolved through `src/schema/typespec.ts` (`fieldValues`), served
       by `spec:values` and cached per type. Lists resolve too: `spellIDs` points
       at an anonymous `TYPE_TYPE_ARRAY` whose element is `SpellID`, 353 members.
       The dropdown keeps a value the spec does not list rather than dropping it
@@ -480,7 +480,7 @@ them.
 - [x] ✅ Editor component — CodeMirror 6, Lua via the legacy stream mode
 - [x] ✅ HoMM V API definitions (from `HOMM5_A2_Script_Functions.pdf` /
       `HOMM5_A2_IDs_for_Scripts.pdf`) → 204 functions (203 extracted + our curated),
-      `npm run script-api` → `src/script-api.json`
+      `npm run script-api` → `src/script/script-api.json`
 - [x] ✅ **Name completion in Lua** — the map's own objects, regions and
       objectives, offered inside string literals where the API takes them
       (all three: see "The script editor" above)
@@ -489,7 +489,7 @@ them.
       binds the ref, **✎** opens the code (`script:new` / `script:resolve`). Same
       shape reaches a hero's `CombatScript`. Closed the last `diff-map` difference
       on C1M1. Per-object trigger UI (beyond the field) is still to come.
-- [x] ✅ **Lint the script** (2026-07-23) — `src/lua-lint.ts`, live in the editor
+- [x] ✅ **Lint the script** (2026-07-23) — `src/script/lua-lint.ts`, live in the editor
       with the count beside the file name and gutter marks. Errors are what the
       engine's parser rejects (unbalanced `end`/brackets, unterminated strings) —
       structural only, because our API list is partial and flagging an unknown
@@ -536,9 +536,9 @@ structures mean and how they are played).
 - [x] ✅ Skeletal animation decoded — it is RAD's Granny **GR2**, not our own
       container, and the skeleton travels *inside* the animation file rather
       than in `bin/Skeletons/`. The vertex-to-bone binding was in our mesh
-      container all along (`src/gr2.ts`, `src/animation.ts`)
+      container all along (`src/format/gr2.ts`, `src/scene/animation.ts`)
 - [x] ✅ Oodle1, the compression the rest of the library hides behind, ported
-      (`src/oodle.ts`) — byte-exact against the game's own granny2.dll on all
+      (`src/format/oodle.ts`) — byte-exact against the game's own granny2.dll on all
       2839 packed files and every idle clip, after the decay-gate rule was read
       out of the DLL's disassembly (docs/OODLE1_FORMAT.md §4.4)
 - [x] ✅ Skinned playback in the Three.js scene (`renderer/skinning.ts`), one
@@ -625,16 +625,16 @@ the text editor; the two kinds of file call each other by function name.
 Done 2026-07-24, verified in game: a campaign built here loads from Modifications
 and carries a levelled hero from mission to mission. See `docs/CAMPAIGNS.md`.
 
-- [x] ✅ Parser/editor for `*.(Campaign).xdb` — `src/campaign.ts` +
-      `src/campaign.schema.json` (field order mirrors an editor-made campaign,
-      which the unit suite asserts), project model in `src/campaign-project.ts`
+- [x] ✅ Parser/editor for `*.(Campaign).xdb` — `src/campaign/campaign.ts` +
+      `src/campaign/campaign.schema.json` (field order mirrors an editor-made campaign,
+      which the unit suite asserts), project model in `src/campaign/campaign-project.ts`
 - [x] ✅ Mission list, ordering, unlocks, carried-over heroes — the campaign and
       mission dialogs in `renderer/app.ts`; reordering renumbers the handovers
 - [x] ✅ Mission start bonuses (army/artifact/resources/building/spell) — 0 or
       exactly 3 slots, `E_BONUS_NONE` included
 - [x] ✅ Intro/outro text, briefings, map bindings — flat UTF-16LE texts; the
       mission names its map by data-root path, no map inside the archive
-- [x] ✅ Building `.h5c` — `src/campaign-pack.ts` → `<game>/UserCampaigns/`
+- [x] ✅ Building `.h5c` — `src/campaign/campaign-pack.ts` → `<game>/UserCampaigns/`
 - [ ] ⬜ Custom Hall of Fame results, dependent campaigns (fields exist in the
       schema, no UI)
 
@@ -649,7 +649,7 @@ and carries a levelled hero from mission to mission. See `docs/CAMPAIGNS.md`.
 - [x] **The mount patterns are repointed at a folder of our own** — all five
       now read `H5E/*` in our copy of the executable, so nothing installed for
       somebody else's mod is read at all and a map of ours is `H5E/*.h5m`.
-      `src/mod-paths.ts`, `npm run mod-paths`; the mechanism is written up in
+      `src/game/mod-paths.ts`, `npm run mod-paths`; the mechanism is written up in
       docs/ENGINE_INTERNALS.md ✅
 - [ ] 🔴 **HIGH — the engine mounts plain `.zip` too.** The fifth pattern was
       `UserMODs/*.zip` as shipped, so an ordinary zip is a mod — no renaming, no
@@ -688,9 +688,9 @@ Two constraints shape the design, both learned the hard way:
   one file, and a mod replaces files rather than merging them — so two mods each adding one
   creature do not compose.
 
-- [x] ✅ **Creature registry in the project** (2026-07-26) — `src/creatures.ts` is the
+- [x] ✅ **Creature registry in the project** (2026-07-26) — `src/mods/creatures.ts` is the
       record (stats written over the game's null creature, and read back out), and
-      `src/creature-mod.ts` is the mod: the three shipped files it edits, the five files and
+      `src/mods/creature-mod.ts` is the mod: the three shipped files it edits, the five files and
       the art each creature gets, and the pack. A project is a folder holding `units.json`;
       `tools/units-mod.ts` builds one and reports what is installed. Ids are assigned on the
       way in and the list is append-only, because a creature's NUMBER is what maps and saves
@@ -720,7 +720,7 @@ Two constraints shape the design, both learned the hard way:
       resolved assets against one unpacked data root, so with the creature mod installed it
       still showed a game without it: the army picker offered 180 of 181, and a map that
       placed the new creature **dropped the object from the scene** with no error at all.
-      Assets now resolve through a chain of roots (`src/assets.ts`) — the mounted creature
+      Assets now resolve through a chain of roots (`src/game/assets.ts`) — the mounted creature
       mods over the data, topmost wins, which is the game's own rule one file at a time.
       Folder scans walk every root and dedupe, since a mod adding an object does not replace
       the folder it sits in. `mountCreatureMods` unpacks the installed ones on demand, cached
@@ -730,7 +730,7 @@ Two constraints shape the design, both learned the hard way:
       Only mods that add creatures are mounted. Closer to the game would be all of
       `UserMODs/`, but a stock install keeps a 284 MB cutscene archive in there and a mod
       that only replaces a texture changes nothing the editor has to resolve.
-- [x] ✅ **Patch the executable from the editor** (2026-07-26) — `src/creature-limit.ts`,
+- [x] ✅ **Patch the executable from the editor** (2026-07-26) — `src/exe/creature-limit.ts`,
       moved here from the port so the offsets have one home. It identifies the build by
       signature, refuses unless every site reads what it should, and writes a copy beside the
       original. A DRM-wrapped build is detected and explained rather than attempted.
@@ -765,7 +765,7 @@ Two constraints shape the design, both learned the hard way:
       becomes. A pixel belongs to the nearest cluster and only remapped clusters change; the
       target gives hue and saturation, the pixel keeps its own lightness, which is where the
       drawing lives. Global hue/saturation/lightness/tint apply on top. Preview and rewrite
-      run the same arithmetic (`src/recolor.ts`), so what the canvases show is what lands in
+      run the same arithmetic (`src/format/recolor.ts`), so what the canvases show is what lands in
       the archive; alpha is never touched, being the silhouette cut-out.
 
       **Proved in the running game** (2026-07-28): the port's Sharpshooter, its turquoise
@@ -830,7 +830,7 @@ map. See `docs/LOCALIZATION.md`.
 - [x] ✅ **Export as `<language>`** (2026-07-23) — packs a single-language `.h5m`
       where each `name.txt` holds that language's text (falling back to the base
       when a translation is missing); the tagged files and the sidecar never ship.
-      `exportLocalized` in `src/project.ts`, `loc:export`, a button per language in
+      `exportLocalized` in `src/map/project.ts`, `loc:export`, a button per language in
       the Localize dialog. Normal Pack is refused on a localized map (it would ship
       no plain text). `e2e/localization.spec.ts` reads the archive back.
 - [ ] ⬜ Import the game's own text archives (`All_campaigns.texts_*.h5u`) to pull
@@ -842,7 +842,7 @@ map. See `docs/LOCALIZATION.md`.
       window, open `map.xdb` → live 3D scene, select and drag an object → edit
       through `map.js`, Save, Pack `.h5m`, dirty indicator. `npm start` ✅
       (the main pipeline is covered by an `HOMM5_SMOKE` smoke test) 🔨
-- [x] **External-change watcher** (`src/watch.ts`): the open map folder is
+- [x] **External-change watcher** (`src/map/watch.ts`): the open map folder is
       hashed and watched, so edits from the original editor raise a "reload?"
       banner instead of being silently overwritten. Our own saves resync the
       baseline, so they never self-trigger ✅
@@ -858,7 +858,7 @@ map. See `docs/LOCALIZATION.md`.
       list, and `--setup` reopens it ✅
 - [ ] ⬜ Projects and recent maps
 - [ ] ⬜ Auto-detect the install (Steam/Uplay/registry) — setup asks for now,
-      and unpacks into a folder of the user's choosing (`src/unpack.ts`)
+      and unpacks into a folder of the user's choosing (`src/game/unpack.ts`)
 - [ ] ⬜ Performance (workers for parsing/packing, asset streaming). The frame
       side is measured and planned in
       [SLICE_fx_performance.md](SLICE_fx_performance.md): the particle effects
@@ -907,7 +907,7 @@ Round-trip (load→save→identical) is the cheap complementary net.
       New Map had **nowhere to record "this tile is blocked"**. It turned out not
       to need an insert — the format reserves the slot and a blank leaves it
       declared `0 × 0` — so the first mask stroke fills it in
-      (`src/terrain-plane.ts`, `npm run test-terrain-plane`). C1M1 blocks 4939 of
+      (`src/terrain/terrain-plane.ts`, `npm run test-terrain-plane`). C1M1 blocks 4939 of
       its 9409 tiles, painted as 424 Rect runs in 18 seconds.
 
 ---

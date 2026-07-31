@@ -7,10 +7,10 @@
 //   4. Edit locality: moving one object changes only that object's bytes.
 //   5. Remove: dropping an object removes exactly its <Item>.
 
-import { parse, serialize, childText } from '../src/xml.ts';
-import { loadMap } from '../src/map.ts';
+import { parse, serialize, childText } from '../src/format/xml.ts';
+import { loadMap } from '../src/map/map.ts';
 import { readFileSync, existsSync } from 'node:fs';
-import { mapFilesUnder } from '../src/map-source.ts';
+import { mapFilesUnder } from '../src/map/map-source.ts';
 
 let failures = 0;
 const ok = (cond, msg) => { console.log(`${cond ? 'ok  ' : 'FAIL'} ${msg}`); if (!cond) failures++; };

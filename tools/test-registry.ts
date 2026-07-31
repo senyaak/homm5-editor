@@ -5,9 +5,9 @@
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { Registry } from '../src/registry.ts';
-import { loadMap } from '../src/map.ts';
-import { find, children, text } from '../src/xml.ts';
+import { Registry } from '../src/schema/registry.ts';
+import { loadMap } from '../src/map/map.ts';
+import { find, children, text } from '../src/format/xml.ts';
 
 const dataRoot = process.argv[2] ?? 'data-unpacked';
 const reg = new Registry(dataRoot);

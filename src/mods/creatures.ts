@@ -13,8 +13,8 @@
 //
 // This module is only the record. creature-mod.ts is the mod that carries it.
 
-import { find, childText, parse, serialize, setText, setAttr, children, clearElement } from './xml.ts';
-import type { XmlElement } from './xml.ts';
+import { find, childText, parse, serialize, setText, setAttr, children, clearElement } from '../format/xml.ts';
+import type { XmlElement } from '../format/xml.ts';
 
 /**
  * How many creatures the shipped game counts to, and so the first id a mod may

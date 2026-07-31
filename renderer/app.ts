@@ -46,13 +46,13 @@ import { makeLightMap, bakeLightMap, markLightsDirty } from '#viewport/point-lig
 import { upgradeToSplat, projectBatch, applyProjectedMaterials, setGroundScale, setCliffAmount, cliffsOn, disposeSplats } from '#viewport/splat.ts';
 import { applyAmbient, refreshLighting, sun, uSunDir, uSunCol, uAmbCol, uLmGain, uFxTint } from '#viewport/lighting.ts';
 import type { Floor3D, World, Selection, GeomBatch } from '#core/state.ts';
-import { UNITS_PER_TILE as U } from '#src/units.ts';
-import { tierOf, RAMP_BIT, TIER_STEP } from '#src/terrain.ts';
-import type { Scene, Floor, Instance, SplatData, TileInfo, GeomData, GeomPart, Footprint, SkinnedGeom, AmbientData, FxInstancePayload } from '#src/scene.ts';
+import { UNITS_PER_TILE as U } from '#src/scene/units.ts';
+import { tierOf, RAMP_BIT, TIER_STEP } from '#src/terrain/terrain.ts';
+import type { Scene, Floor, Instance, SplatData, TileInfo, GeomData, GeomPart, Footprint, SkinnedGeom, AmbientData, FxInstancePayload } from '#src/scene/scene.ts';
 import { createFxSystem } from '#viewport/particles.ts';
 import type { FxSystem } from '#viewport/particles.ts';
 import type { MapListEntry, ExternalChange, ModListEntry, PlaceableObject, RosterEntryDTO, LocResult, CampaignDoc, CampaignListEntry, CampaignMissionDto, CreatureStats, PaletteEntry, RecolorOps } from '#electron/ipc.ts';
-import { recolorPixels } from '#src/recolor.ts';
+import { recolorPixels } from '#src/format/recolor.ts';
 import { addInstanceToScene, armObject, armed, placeAt, initPalettes, initObjectFilters } from '#features/palettes.ts';
 import { loadMapPath, session } from '#features/map-session.ts';
 import type { OpenedMap } from '#features/map-session.ts';
@@ -63,10 +63,10 @@ import { closeMap, initPicker, openViaDialog, renderMapList, CLICK_SLOP, initShe
 import { clearWorld, setActiveFloor } from '#viewport/world.ts';
 import { setRegionDraw } from '#features/regions.ts';
 
-import { artLabels } from '#src/heroes.ts';
-import type { ObjectProp } from '#src/map.ts';
-import { objectProps, deref, controlOf, objectSchema, mapSchema, resolveSchemaAtPath, classOf, schemaForClass } from '#src/schema.ts';
-import type { FieldSchema, HasDefs } from '#src/schema.ts';
+import { artLabels } from '#src/mods/heroes.ts';
+import type { ObjectProp } from '#src/map/map.ts';
+import { objectProps, deref, controlOf, objectSchema, mapSchema, resolveSchemaAtPath, classOf, schemaForClass } from '#src/schema/schema.ts';
+import type { FieldSchema, HasDefs } from '#src/schema/schema.ts';
 import { deselect, renderExList, renderExplorer, selectById, updatePanel } from '#features/selection.ts';
 import { isDirty, markDirty } from '#core/dirty.ts';
 import { stepHistory, updateHistoryUI } from '#features/history.ts';
@@ -75,14 +75,14 @@ import { loadProps } from '#features/inspector/panel.ts';
 import { MAP_TREE, closeMapTree, dataAt, mapTreeOpen, mtOpen, showAdvanced, openMapTree, pathKey, refreshMapTree, treeTarget } from '#features/inspector/tree.ts';
 import { loadLocState, loc } from '#features/localization.ts';
 import { openTextEdit, refreshScriptContext } from '#features/text-editor/document.ts';
-import { TOWN_BONUSES } from '#src/town-bonuses.ts';
-import type { TreeData, Path as TreePath } from '#src/tree.ts';
+import { TOWN_BONUSES } from '#src/schema/town-bonuses.ts';
+import type { TreeData, Path as TreePath } from '#src/schema/tree.ts';
 import { makeIdle, poseIdle } from '#viewport/skinning.ts';
 import type { IdleObject } from '#viewport/skinning.ts';
 import { mountCodeEditor } from '#features/text-editor/code-editor.ts';
 import { loadScriptContext, scriptContextNote, forgetScriptContext } from '#features/text-editor/context.ts';
 import type { CodeEditor } from '#features/text-editor/code-editor.ts';
-import type { LuaDiagnostic } from '#src/lua-lint.ts';
+import type { LuaDiagnostic } from '#src/script/lua-lint.ts';
 
 type MapEntry = MapListEntry & { cat: string };
 

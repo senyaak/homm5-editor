@@ -18,9 +18,9 @@ import { objectTree, openMapTree } from '#features/inspector/tree.ts';
 import { fileRefControl, specRefControl } from '#features/text-editor/document.ts';
 import { syncInstance } from '#viewport/instancing.ts';
 import { syncFootprints } from '#viewport/overlays.ts';
-import type { ObjectProp } from '#src/map.ts';
-import { classOf, controlOf } from '#src/schema.ts';
-import type { FieldSchema } from '#src/schema.ts';
+import type { ObjectProp } from '#src/map/map.ts';
+import { classOf, controlOf } from '#src/schema/schema.ts';
+import type { FieldSchema } from '#src/schema/schema.ts';
 import { markDirty } from '#core/dirty.ts';
 import { degOf, deleteSelected, rotateSelected, snap90, updatePanel } from '#features/selection.ts';
 /** A text input with a <datalist> of names defined elsewhere in the map — a

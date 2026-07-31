@@ -18,7 +18,7 @@ import type { Launched } from './launch.ts';
 import { tmpdir } from 'node:os';
 import { newMap } from './tiles.ts';
 import { DATA } from './launch.ts';
-import { readEntries } from '../src/pak.ts';
+import { readEntries } from '../src/format/pak.ts';
 import { bar } from './bar.ts';
 
 let ed: Launched;

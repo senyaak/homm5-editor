@@ -14,7 +14,7 @@ import { mountCodeEditor } from '#features/text-editor/code-editor.ts';
 import type { CodeEditor } from '#features/text-editor/code-editor.ts';
 import { loadScriptContext, scriptContextNote } from '#features/text-editor/context.ts';
 import { doc, docDialog, langOf, openTextEdit, docEdited } from '#features/text-editor/document.ts';
-import type { LuaDiagnostic } from '#src/lua-lint.ts';
+import type { LuaDiagnostic } from '#src/script/lua-lint.ts';
 import { markDirty } from '#core/dirty.ts';
 import type { LocResult } from '#electron/ipc.ts';
 interface LocLangDef { code: string; name: string }

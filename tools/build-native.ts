@@ -16,7 +16,7 @@
 import { copyFileSync, mkdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
-import { EXTENSION_DLL, buildExtension } from '../src/extension.ts';
+import { EXTENSION_DLL, buildExtension } from '../src/mods/extension.ts';
 
 const here = resolve(import.meta.dirname, '..');
 const args = process.argv.slice(2);

@@ -16,11 +16,11 @@ import type { Launched } from './launch.ts';
 import {
   creatureTextures, hueDist, installCreatureHeadless, modGameRoot,
 } from './mods.ts';
-import { readEntries } from '../src/pak.ts';
-import { modFile } from '../src/mod-paths.ts';
+import { readEntries } from '../src/format/pak.ts';
+import { modFile } from '../src/game/mod-paths.ts';
 import { readFileSync } from 'node:fs';
 import { MOD, SHARPSHOOTER } from './mods.ts';
-import { extractPalette } from '../src/recolor.ts';
+import { extractPalette } from '../src/format/recolor.ts';
 
 let ed: Launched;
 

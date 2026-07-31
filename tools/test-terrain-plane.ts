@@ -13,10 +13,10 @@ import { existsSync, readFileSync } from 'node:fs';
 import {
   parseTerrain, readHeights, readGroundFlags, readTextureLayers, readMask, readWaterPlane,
   readPassability, writeTerrain, BLOCKED, PASSABLE,
-} from '../src/terrain.ts';
-import { buildBlankTerrain } from '../src/terrain-blank.ts';
-import { addPassabilityPlane } from '../src/terrain-plane.ts';
-import { addTextureLayer } from '../src/terrain-layer.ts';
+} from '../src/terrain/terrain.ts';
+import { buildBlankTerrain } from '../src/terrain/terrain-blank.ts';
+import { addPassabilityPlane } from '../src/terrain/terrain-plane.ts';
+import { addTextureLayer } from '../src/terrain/terrain-layer.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {

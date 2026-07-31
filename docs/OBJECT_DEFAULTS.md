@@ -369,15 +369,15 @@ zeroed, putting the boat inside the building.
 ## Where these live now
 
 Not in this file — it is the explanation, not the source. The values are JSON
-Schema `default` keywords in `src/objects.schema.json`, beside the `title` and
-`x-widget` of the field they belong to, and `src/defaults.ts` applies them to a
+Schema `default` keywords in `src/schema/objects.schema.json`, beside the `title` and
+`x-widget` of the field they belong to, and `src/map/defaults.ts` applies them to a
 newly placed object. One place, read by both the placement code and the property
 panel.
 
 The split that makes it work: the **donor** (a real object of the same type,
-from this map or a shipped one — `src/donors.ts`) supplies the FIELD SET, which
+from this map or a shipped one — `src/map/donors.ts`) supplies the FIELD SET, which
 differs per type, per game version and per mod; the **schema** supplies the
-VALUES. Hence two rules in `src/defaults.ts`:
+VALUES. Hence two rules in `src/map/defaults.ts`:
 
 - a field the donor does not have is never created — the donor is the authority
   on what this type carries here, and it is also why one `Editable` default
@@ -412,7 +412,7 @@ placement time.
 
 `<game>/data/types.xml` is the engine's type system: 739 types, 3293 fields,
 each with its type id, chunk id, constraints — and for 1092 of them a
-`DefaultValue`. It is read by `src/typespec.ts` at test time (never copied into
+`DefaultValue`. It is read by `src/schema/typespec.ts` at test time (never copied into
 the repository) and checked by `tools/test-defaults.ts`.
 
 **Where the spec speaks, it confirms the measurement — 29 defaults, no

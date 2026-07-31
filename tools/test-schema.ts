@@ -8,10 +8,10 @@
 
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { mapSchema, deref, controlOf, resolveRef } from '../src/schema.ts';
-import type { FieldSchema, RegistryName } from '../src/schema.ts';
-import { loadMap } from '../src/map.ts';
-import { children } from '../src/xml.ts';
+import { mapSchema, deref, controlOf, resolveRef } from '../src/schema/schema.ts';
+import type { FieldSchema, RegistryName } from '../src/schema/schema.ts';
+import { loadMap } from '../src/map/map.ts';
+import { children } from '../src/format/xml.ts';
 
 const dataRoot = process.argv[2] ?? 'data-unpacked';
 

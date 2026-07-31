@@ -27,8 +27,8 @@ import type { Launched } from '../launch.ts';
 import { settle } from '../tiles.ts';
 import { MAP_DIR, FIXTURE, openMap, requireFixture } from './shared.ts';
 import { openTree, reveal, treeValue } from '../tree.ts';
-import { loadMap } from '../../src/map.ts';
-import { readTree } from '../../src/tree.ts';
+import { loadMap } from '../../src/map/map.ts';
+import { readTree } from '../../src/schema/tree.ts';
 import { bar } from '../bar.ts';
 
 let ed: Launched;

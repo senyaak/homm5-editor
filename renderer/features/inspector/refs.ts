@@ -18,12 +18,12 @@ import { closeMapProps, mapDialog, mapPropsOpen, openMapProps } from '#features/
 import { closeMapTree, collapseTree, dataAt, expandTree, inferField, leafControl, mapTreeOpen, mtDialog, mtExpanded, showAdvanced, openMapTree, refreshMapTree } from '#features/inspector/tree.ts';
 import { locBareOf, loc, locVariant } from '#features/localization.ts';
 import { isTyping } from '#viewport/stage.ts';
-import { classOf, controlOf, deref, mapSchema, objectSchema, schemaForClass } from '#src/schema.ts';
-import type { FieldSchema, HasDefs } from '#src/schema.ts';
-import type { TreeData } from '#src/tree.ts';
+import { classOf, controlOf, deref, mapSchema, objectSchema, schemaForClass } from '#src/schema/schema.ts';
+import type { FieldSchema, HasDefs } from '#src/schema/schema.ts';
+import type { TreeData } from '#src/schema/tree.ts';
 import { markDirty } from '#core/dirty.ts';
 import { stepHistory } from '#features/history.ts';
-import type { Path as TreePath } from '#src/tree.ts';
+import type { Path as TreePath } from '#src/schema/tree.ts';
 import type { RosterEntryDTO } from '#electron/ipc.ts';
 import { degOf, deleteSelected, rotateSelected, snap90 } from '#features/selection.ts';
 const pickDialog = (): HTMLDialogElement => {

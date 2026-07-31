@@ -8,7 +8,7 @@
 import { $, $input, $select, $button, fillSelect } from '#core/dom.ts';
 import { ask, modDialog, openOnTop } from '#core/dialog.ts';
 import { api } from '#core/ipc.ts';
-import { artLabels } from '#src/heroes.ts';
+import { artLabels } from '#src/mods/heroes.ts';
 import { pickPreset } from '#features/mods/preset.ts';
 import { modRow, NL } from '#features/mods/shared.ts';
 import type { ModListEntry, RosterEntryDTO } from '#electron/ipc.ts';

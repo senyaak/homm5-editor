@@ -3,7 +3,7 @@
 // valid element rather than an empty one the engine would choke on. The shape
 // and the defaults come from the schema (src/schema.ts); nothing is guessed.
 
-import type { XmlElement, XmlNode } from './xml.ts';
+import type { XmlElement, XmlNode } from '../format/xml.ts';
 import type { FieldSchema, HasDefs } from './schema.ts';
 import { deref } from './schema.ts';
 

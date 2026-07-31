@@ -13,10 +13,10 @@ import { gameData, gameRoot } from '#electron/paths.ts';
 import { state } from '#electron/state.ts';
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
-import { missionMapDir, packCampaign } from '#src/campaign-pack.ts';
-import { CAMPAIGN_TEXTS, addMission, buildNewCampaignProject, handOnTo, hasEntryPoint, heroScriptName, loadCampaignProject, missionTexts, missions, placedHeroes, readBonuses, readHeroesPool, readProjectText, removeMission, saveCampaignProject, writeBonuses, writeHeroesPool, writeProjectText } from '#src/campaign-project.ts';
-import { modFile } from '#src/mod-paths.ts';
-import { childText, find, setText } from '#src/xml.ts';
+import { missionMapDir, packCampaign } from '#src/campaign/campaign-pack.ts';
+import { CAMPAIGN_TEXTS, addMission, buildNewCampaignProject, handOnTo, hasEntryPoint, heroScriptName, loadCampaignProject, missionTexts, missions, placedHeroes, readBonuses, readHeroesPool, readProjectText, removeMission, saveCampaignProject, writeBonuses, writeHeroesPool, writeProjectText } from '#src/campaign/campaign-project.ts';
+import { modFile } from '#src/game/mod-paths.ts';
+import { childText, find, setText } from '#src/format/xml.ts';
 
 /** Where campaign projects live, mirroring <data>/Maps for map projects. */
 const campaignsDir = (): string => join(gameData(), 'Campaigns');

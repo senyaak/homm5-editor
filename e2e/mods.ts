@@ -14,19 +14,19 @@ import {
   installCreatureMod, MOD_STEM, newCreatureMod, packCreatureMod, readCreatureMod,
   removeArtifact, removeArtifactSet, removeCreature, removeDwelling, removeHero,
   updateArtifact, updateArtifactSet,
-} from '../src/creature-mod.ts';
-import type { ArtifactSlot } from '../src/artifacts.ts';
-import type { CreatureMod } from '../src/creature-mod.ts';
-import { creatureSources } from '../src/registry.ts';
-import { assets } from '../src/assets.ts';
-import { blankStats } from '../src/creatures.ts';
-import { SHIPPED_EXE } from '../src/creature-limit.ts';
-import { firstRun } from '../src/first-run.ts';
-import { readEntries } from '../src/pak.ts';
-import { ensureModDir, modFile } from '../src/mod-paths.ts';
-import { decodeDDSBuffer } from '../src/dds.ts';
-import { writeEffectsFile } from '../src/extension.ts';
-import { effectsOf } from '../src/artifact-effects.ts';
+} from '../src/mods/creature-mod.ts';
+import type { ArtifactSlot } from '../src/mods/artifacts.ts';
+import type { CreatureMod } from '../src/mods/creature-mod.ts';
+import { creatureSources } from '../src/schema/registry.ts';
+import { assets } from '../src/game/assets.ts';
+import { blankStats } from '../src/mods/creatures.ts';
+import { SHIPPED_EXE } from '../src/exe/creature-limit.ts';
+import { firstRun } from '../src/game/first-run.ts';
+import { readEntries } from '../src/format/pak.ts';
+import { ensureModDir, modFile } from '../src/game/mod-paths.ts';
+import { decodeDDSBuffer } from '../src/format/dds.ts';
+import { writeEffectsFile } from '../src/mods/extension.ts';
+import { effectsOf } from '../src/mods/artifact-effects.ts';
 
 /**
  * `--noRemove`: do the work in the REAL install and leave it standing.

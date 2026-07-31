@@ -10,7 +10,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   listPlaceable, readObjectGroups, findEditorRoot, iconPathFor, readIconFile,
-} from '../src/objects.ts';
+} from '../src/map/objects.ts';
 
 let failures = 0;
 function ok(cond: unknown, msg: string): void {

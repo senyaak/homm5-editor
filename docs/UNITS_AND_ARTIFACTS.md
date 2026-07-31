@@ -5,8 +5,8 @@ mod is, what the two dialogs do, and where the recolour pipeline stops.
 
 The format work behind it — why the mod carries copies of three shipped files,
 why an id is a NUMBER, why the executable has to be patched — lives in
-`src/creature-mod.ts`, `src/creatures.ts`, `src/artifacts.ts`,
-`src/creature-limit.ts` and `src/artifact-limit.ts`, each documented at its head.
+`src/mods/creature-mod.ts`, `src/mods/creatures.ts`, `src/mods/artifacts.ts`,
+`src/exe/creature-limit.ts` and `src/exe/artifact-limit.ts`, each documented at its head.
 The write-up of the discovery is [NEW_CREATURES.md](NEW_CREATURES.md), written
 in the Heroes III port and moved here with the mechanism it describes.
 This file is about the editor.
@@ -40,7 +40,7 @@ provenance are not recoverable from the game's own formats.
 Session-free — no map has to be open, because a mod is game-global.
 
 **The donor is a preset, not a costume.** Picking a creature reads it whole
-(`creaturePreset` in `src/registry.ts`): its record through the reference table
+(`creaturePreset` in `src/schema/registry.ts`): its record through the reference table
 for the stats, its `CreatureVisual`'s refs for the name, description and ability
 line, and both source documents for the four art hrefs. Every field in the form
 fills in, and what you author is the difference.
@@ -104,7 +104,7 @@ Two things differ from creatures:
 - **The artifact ceiling is also in the executable**, and finding that out cost
   three wrong answers: raising the table's declared size in `types.xml` is enough
   for the game to *read* a hundred artifacts and not enough for it to *use* the
-  ones past 97. `src/artifact-limit.ts` patches the two sites, and because an
+  ones past 97. `src/exe/artifact-limit.ts` patches the two sites, and because an
   already-patched executable holds a round number whose accessor bytes are no
   longer unique, it leaves a note beside itself
   (`bin/H5_Game_H5E.artifact-sites.json`). **That note belongs with the
@@ -121,7 +121,7 @@ nothing shipped is touched and reverting is rebuilding on the donor.
 
 A global hue turn paints the skin along with the cloak, which is rarely what
 anyone wants. So the dialog opens with the textures' palette
-(`extractPalette` in `src/recolor.ts`): a 24-bin hue histogram over the visible
+(`extractPalette` in `src/format/recolor.ts`): a 24-bin hue histogram over the visible
 pixels, merged into runs around the peaks, the largest kept, plus one **neutral**
 cluster for everything below 12% saturation, where a hue means nothing.
 

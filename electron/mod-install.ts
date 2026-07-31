@@ -10,15 +10,15 @@ import type { ModsInstallSetPayload } from '#electron/ipc.ts';
 import { gameData } from '#electron/paths.ts';
 import { rmSync } from 'node:fs';
 import { basename } from 'node:path';
-import { EFFECT_STATS, effectsOf } from '#src/artifact-effects.ts';
-import type { EffectRow, EffectStat, SetEffect } from '#src/artifact-effects.ts';
-import type { ArtifactExeResult } from '#src/artifact-limit.ts';
-import { artifactNumbers } from '#src/artifacts.ts';
-import type { ExeResult } from '#src/creature-limit.ts';
-import { MOD_STEM, buildCreatureMod, dataReader, findCreatureMods, installCreatureMod, newCreatureMod, packCreatureMod } from '#src/creature-mod.ts';
-import type { BuildReport, CreatureMod, Installed } from '#src/creature-mod.ts';
-import { writeEffectsFile } from '#src/extension.ts';
-import { MOD_DIR, modFile } from '#src/mod-paths.ts';
+import { EFFECT_STATS, effectsOf } from '#src/mods/artifact-effects.ts';
+import type { EffectRow, EffectStat, SetEffect } from '#src/mods/artifact-effects.ts';
+import type { ArtifactExeResult } from '#src/exe/artifact-limit.ts';
+import { artifactNumbers } from '#src/mods/artifacts.ts';
+import type { ExeResult } from '#src/exe/creature-limit.ts';
+import { MOD_STEM, buildCreatureMod, dataReader, findCreatureMods, installCreatureMod, newCreatureMod, packCreatureMod } from '#src/mods/creature-mod.ts';
+import type { BuildReport, CreatureMod, Installed } from '#src/mods/creature-mod.ts';
+import { writeEffectsFile } from '#src/mods/extension.ts';
+import { MOD_DIR, modFile } from '#src/game/mod-paths.ts';
 
 /**
  * OUR mod: the one manifest-carrying archive in our folder, or a fresh one under

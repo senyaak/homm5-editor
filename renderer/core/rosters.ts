@@ -5,7 +5,7 @@
 // the fetch, per name, so a dozen dropdowns built in one render pass ask once.
 
 import { api } from '#core/ipc.ts';
-import { schemaForClass } from '#src/schema.ts';
+import { schemaForClass } from '#src/schema/schema.ts';
 import type { RosterEntryDTO } from '#electron/ipc.ts';
 
 /** Roster entries per name, fetched once from the main process and cached. */

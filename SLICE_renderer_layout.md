@@ -1,13 +1,13 @@
 # SLICE — The renderer stops being one file, and the rest follows
 
-> **Status:** the renderer is done and green (2026-07-30) and so is the main
-> process (2026-07-31). `renderer/app.ts` went from 8996 lines to 803, and
-> `electron/main.ts` from 3011 to 187; both layouts are in
-> [CONTRIBUTING.md](CONTRIBUTING.md) → *Layout*. What is left is the 66 flat
-> files under `src/` and `renderer/index.html` (2023 lines, 30 `<dialog>`s).
-> This file carries the rules that made both splits survivable, so the next
-> pass does not rediscover them. Retire it when src/ is done and its layout is
-> in CONTRIBUTING.
+> **Status:** the renderer, the main process and `src/` are all done and green
+> (2026-07-30 / 07-31). `renderer/app.ts` went from 8996 lines to 803,
+> `electron/main.ts` from 3011 to 187, and `src/`'s 66 flat files into ten
+> folders; all three layouts are in [CONTRIBUTING.md](CONTRIBUTING.md) →
+> *Layout*. What is left is `renderer/index.html` (2023 lines, 30 `<dialog>`s),
+> and it needs a build step before it needs a move. This file carries the rules
+> that made the three passes survivable, so the last one does not rediscover
+> them. Retire it when index.html is split too.
 
 Reading first: [CONTRIBUTING.md](CONTRIBUTING.md) (the layout and the import
 rules as they stand), and §1.д of [SLICE_diagnostics.md](SLICE_diagnostics.md),
@@ -48,11 +48,27 @@ channel module; what two of them need lives one layer down (that rule is what
 moved `readLoc` and `buildAndInstall` out of the channels that happened to hold
 them).
 
+`src/` is grouped by what each file KNOWS rather than by layer, because it is a
+library and not an application: `format/` (bytes, no game meaning), `game/`
+(where the install is and what it mounts), `map/`, `terrain/`, `scene/`,
+`schema/`, `mods/`, `exe/`, `campaign/`, `script/`. The grouping turns out to
+be a real dependency order without being made one — `format/` imports nothing
+else in src and everything else imports it; `terrain/` and `script/` import
+nothing across a folder at all. The three edges that point "backwards" are each
+a fact about the game, not a mistake: the roster reads a creature document, the
+first-run install puts the extension in, and the scene builder loads a map.
+
 Imports go through package.json subpath aliases — `#core/…`, `#viewport/…`,
 `#features/…`, `#src/…`, `#electron/…`. Node's strip-mode and esbuild both
 resolve them (`tools/test-idle.ts` imports `#viewport/skinning.ts` and passes,
 and the main process now boots entirely on them), so a file can move without
 rewriting every path that mentions it.
+
+With ONE exception, which is a rule and not an oversight: inside `src/` the
+imports are relative. src is loaded by four runtimes — Node for `tools/`,
+Electron for the main process, esbuild for the renderer bundle, and Playwright's
+own loader for the e2e suite — and a relative path is the only form all four
+resolve without being told how. `tools/` and `e2e/` reach into it the same way.
 
 ## 2. The rules that made it work
 
@@ -136,17 +152,22 @@ And in the main process:
   `ipcMain.handle` before anything registers — which the old file got right by
   accident of ordering, and which is now a comment and a list of calls.
 
+And in `src/`, where the answer was that almost nothing had to change:
+
+- Exactly ONE file in 62 knew where it sat on disk (`project.ts`, walking up to
+  `package.json` for the editor version). That is the whole reason a 67-file
+  move came down to three hand edits — the other two being `tools/build-api.ts`
+  and `tools/script-api.ts`, which build a path to `src/script-api.json` out of
+  string parts a specifier rewrite cannot see. Grep for `import.meta` BEFORE
+  moving anything; it is the only thing that can silently survive a typecheck
+  and fail at runtime.
+- `format/` imports nothing else in src, and `terrain/` and `script/` import
+  nothing across a folder — which nobody designed. Grouping by what a file
+  knows produced a dependency order for free.
+
 ## 4. What is left
 
-4.1. **`src/`, 66 files flat.** Group by what they know: `src/format/` (pak,
-gr2, dds, oodle, xml, pe, disasm), `src/map/` (map, objects, terrain*, scene,
-geometry), `src/mods/` (creature-mod, artifacts*, heroes, dwellings),
-`src/exe/`. Mechanical, but it touches every import in the repo and every
-`tools/test-*`, so it wants its own pass with nothing else in flight. The
-aliases make it cheaper than it was: a file that moves inside `src/` only
-changes the tail of `#src/…`.
-
-4.2. **`renderer/index.html`, 2023 lines, 30 `<dialog>`s.** The riskiest, and
+**`renderer/index.html`, 2023 lines, 30 `<dialog>`s.** The riskiest, and
 the reason it is last: every id in it is load-bearing for the e2e suite, and
 the app has no templating step. Moving markup means adding one (concatenation
 at build time, `renderer/parts/<name>.html`), which is a build change on top of
@@ -166,6 +187,10 @@ runs too early. Both show up as the app not booting, and the fastest read on
 that is `renderer/harness.html` — open it, and `#fatal` carries the message
 (the harness stub has no `gpuSoftware`, so it stops there of its own accord;
 anything BEFORE that line is a real failure).
+
+A move inside `src/` has its own cheap check: `grep -rn "import.meta" src/`.
+A file that computes a path from its own location is the one kind of breakage
+that typechecks cleanly and fails at runtime, and there is exactly one of them.
 
 For the main process the two cheap checks are worth doing before any test run,
 because both answer in seconds:

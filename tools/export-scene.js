@@ -11,9 +11,9 @@
 
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { deflateSync } from 'node:zlib';
-import { parseTerrain, readHeights } from '../src/terrain.ts';
-import { extractMeshes, readGeometryRefFromModelXdb } from '../src/geometry.ts';
-import { decodeDDS } from '../src/dds.ts';
+import { parseTerrain, readHeights } from '../src/terrain/terrain.ts';
+import { extractMeshes, readGeometryRefFromModelXdb } from '../src/scene/geometry.ts';
+import { decodeDDS } from '../src/format/dds.ts';
 
 const [mapXdb, out] = process.argv.slice(2);
 const DATA = 'data-unpacked';

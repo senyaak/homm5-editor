@@ -12,8 +12,8 @@
 // by Kind ("idle00") pointing at a <BasicSkelAnim> whose uid names the file
 // under bin/animations. See docs/ANIMATION_FORMAT.md.
 
-import { GrannyFile } from './gr2.ts';
-import type { GR2Ref, GrannyTransform, TypeMember } from './gr2.ts';
+import { GrannyFile } from '../format/gr2.ts';
+import type { GR2Ref, GrannyTransform, TypeMember } from '../format/gr2.ts';
 import type { SkinBinding } from './geometry.ts';
 
 /** One bone: its rest transform, and its parent's index (-1 for the root). */

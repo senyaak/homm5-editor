@@ -14,11 +14,11 @@
 
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { mapFilesUnder } from '../src/map-source.ts';
-import { readTypeSpec, typesXmlPath, fieldValues, valuesAtPath, enums } from '../src/typespec.ts';
-import { objectSchema, objectProps, deref } from '../src/schema.ts';
-import { loadMap } from '../src/map.ts';
-import { children, text } from '../src/xml.ts';
+import { mapFilesUnder } from '../src/map/map-source.ts';
+import { readTypeSpec, typesXmlPath, fieldValues, valuesAtPath, enums } from '../src/schema/typespec.ts';
+import { objectSchema, objectProps, deref } from '../src/schema/schema.ts';
+import { loadMap } from '../src/map/map.ts';
+import { children, text } from '../src/format/xml.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {

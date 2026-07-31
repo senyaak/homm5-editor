@@ -18,8 +18,8 @@ import { removeFromBatch, syncInstance } from '#viewport/instancing.ts';
 import { syncFootprints } from '#viewport/overlays.ts';
 import { markLightsDirty } from '#viewport/point-lights.ts';
 import { camera, controls, scene } from '#viewport/stage.ts';
-import type { Instance } from '#src/scene.ts';
-import { UNITS_PER_TILE as U } from '#src/units.ts';
+import type { Instance } from '#src/scene/scene.ts';
+import { UNITS_PER_TILE as U } from '#src/scene/units.ts';
 
 /** Category chip meaning 'no filter', used as both label and key. */
 export const ALL = 'All';

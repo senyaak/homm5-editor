@@ -14,11 +14,11 @@ import { api } from '#core/ipc.ts';
 import { state } from '#core/state.ts';
 import { fieldRow, rowShell, selectFrom, setProp } from '#features/inspector/controls.ts';
 import { dataAt, expandTree, objectTree, openMapTree } from '#features/inspector/tree.ts';
-import type { ObjectProp } from '#src/map.ts';
-import { controlOf, deref, objectProps, objectSchema } from '#src/schema.ts';
-import type { FieldSchema } from '#src/schema.ts';
-import type { TreeData } from '#src/tree.ts';
-import type { Path as TreePath } from '#src/tree.ts';
+import type { ObjectProp } from '#src/map/map.ts';
+import { controlOf, deref, objectProps, objectSchema } from '#src/schema/schema.ts';
+import type { FieldSchema } from '#src/schema/schema.ts';
+import type { TreeData } from '#src/schema/tree.ts';
+import type { Path as TreePath } from '#src/schema/tree.ts';
 /** Which object the visible property list belongs to, so a stale reply is dropped. */
 let propsFor: string | null = null;
 

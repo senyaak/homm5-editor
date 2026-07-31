@@ -1,6 +1,6 @@
 # Oodle1 decompression — notes
 
-Status: **ported** (`src/oodle.ts`), byte-exact against the game's own decoder
+Status: **ported** (`src/format/oodle.ts`), byte-exact against the game's own decoder
 on every packed section in the library — all 2839 files, all 5678 sections.
 Oodle1 is RAD Game Tools' old LZ-over-adaptive-arithmetic codec, and it is what
 the compressed sections of a Granny GR2 are packed with — every file under

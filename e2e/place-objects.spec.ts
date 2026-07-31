@@ -22,10 +22,10 @@ import { existsSync, readFileSync, rmSync, cpSync } from 'node:fs';
 import { join } from 'node:path';
 import { launchEditor, REPO_ROOT } from './launch.ts';
 import type { Launched } from './launch.ts';
-import { loadMap } from '../src/map.ts';
-import { parse, find, serialize } from '../src/xml.ts';
-import { objectProps } from '../src/schema.ts';
-import type { XmlElement } from '../src/xml.ts';
+import { loadMap } from '../src/map/map.ts';
+import { parse, find, serialize } from '../src/format/xml.ts';
+import { objectProps } from '../src/schema/schema.ts';
+import type { XmlElement } from '../src/format/xml.ts';
 import { bar } from './bar.ts';
 
 let ed: Launched;

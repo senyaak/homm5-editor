@@ -5,8 +5,8 @@ in the original editor specifically to isolate one mechanic at a time. Every
 claim below is backed by a measurement, and the numbers are quoted so they can
 be re-checked.
 
-Reader: `src/terrain.ts`. Writer: `src/terrain-blank.ts` (from scratch),
-`writeTerrain` in `src/terrain.ts` (in-place edits). Consumer: `src/scene.ts`.
+Reader: `src/terrain/terrain.ts`. Writer: `src/terrain/terrain-blank.ts` (from scratch),
+`writeTerrain` in `src/terrain/terrain.ts` (in-place edits). Consumer: `src/scene/scene.ts`.
 
 ---
 
@@ -80,7 +80,7 @@ marker `00 00 02 00 05 00`. Measured across all 282 shipped `GroundTerrain.bin`:
 
 A **fresh blank** carries `0d`, `0e`, `0f` and `10` all empty — 51 bytes in
 total. So the passability plane is not missing from a new map so much as left
-declared `0 × 0`; filling in that slot is what `src/terrain-plane.ts` does.
+declared `0 × 0`; filling in that slot is what `src/terrain/terrain-plane.ts` does.
 
 The one byte in `0e` is 0 on a blank and varies across shipped maps (0, 1, 8, 9,
 24 … 248). Its **low bit tracks whether the `10` block follows** — 279 of 282
@@ -235,7 +235,7 @@ as well.
 
 ## Synthesizing a file from scratch (New Map)
 
-`src/terrain-blank.ts` (`buildBlankTerrain(tiles)`) writes a complete blank
+`src/terrain/terrain-blank.ts` (`buildBlankTerrain(tiles)`) writes a complete blank
 `GroundTerrain.bin` for any New Map size (72…320), byte-for-byte identical to the
 editor's own output. A fresh map is the **simplest** instance of the container:
 
@@ -275,7 +275,7 @@ paint it" cannot reach an authored map by overwriting alone:
 | file length | 103 384 | 217 340 |
 
 Both close now. Layers are added by `addTextureLayer`; the passability plane by
-`addPassabilityPlane` (`src/terrain-plane.ts`), which fills in the empty `0f`
+`addPassabilityPlane` (`src/terrain/terrain-plane.ts`), which fills in the empty `0f`
 slot the blank leaves — see the trailer above. `writeTerrain` still only
 overwrites planes that are already there, so the plane is created once, on the
 first mask stroke (`TerrainDoc.setPassable`), and overwritten in place after

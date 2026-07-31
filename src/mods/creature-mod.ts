@@ -46,20 +46,20 @@ import { createHash } from 'node:crypto';
 import { basename, dirname, join, posix } from 'node:path';
 import { SHIPPED_CREATURES, NULL_CREATURE, blankStats, creatureRoot, readStats, setCreatureRefs, writeStats } from './creatures.ts';
 import type { CreatureStats } from './creatures.ts';
-import { serialize, setAttr } from './xml.ts';
-import { extract, readEntries, readEntryFrom, readIndex, writeArchive } from './pak.ts';
-import type { ZipEntry, ZipIndexEntry } from './pak.ts';
+import { serialize, setAttr } from '../format/xml.ts';
+import { extract, readEntries, readEntryFrom, readIndex, writeArchive } from '../format/pak.ts';
+import type { ZipEntry, ZipIndexEntry } from '../format/pak.ts';
 import { MESSAGE_SLOTS, dwellingDoc, dwellingLink, dwellingPaths, footprintOf, isRef, refPath } from './dwellings.ts';
-import { extractMeshesStructured, placeGeometry, positionsBox, wideBase } from './geometry.ts';
-import type { BBox } from './geometry.ts';
+import { extractMeshesStructured, placeGeometry, positionsBox, wideBase } from '../scene/geometry.ts';
+import type { BBox } from '../scene/geometry.ts';
 import type { DwellingPaths, DwellingSpec, Footprint } from './dwellings.ts';
-import { parseTypeSpec } from './typespec.ts';
-import type { SpecType } from './typespec.ts';
-import { setCreatureLimit } from './creature-limit.ts';
-import { MOD_DIR, ensureModDir, modFile } from './mod-paths.ts';
-import { ORIGINAL_ARTIFACTS, setArtifactLimit } from './artifact-limit.ts';
-import type { ArtifactExeResult } from './artifact-limit.ts';
-import type { ExeResult } from './creature-limit.ts';
+import { parseTypeSpec } from '../schema/typespec.ts';
+import type { SpecType } from '../schema/typespec.ts';
+import { setCreatureLimit } from '../exe/creature-limit.ts';
+import { MOD_DIR, ensureModDir, modFile } from '../game/mod-paths.ts';
+import { ORIGINAL_ARTIFACTS, setArtifactLimit } from '../exe/artifact-limit.ts';
+import type { ArtifactExeResult } from '../exe/artifact-limit.ts';
+import type { ExeResult } from '../exe/creature-limit.ts';
 import {
   ARTIFACT_CLASS, SHIPPED_ARTIFACTS, artifactLink, artifactPaths, artifactRecord, artifactSharedDoc,
   boardMaterial, boardModel,
@@ -67,11 +67,11 @@ import {
 import type { ArtifactSpec } from './artifacts.ts';
 import type { SetEffect } from './artifact-effects.ts';
 import { COMMON_SCRIPT, patchCommonScript, setScriptFiles } from './artifact-scripts.ts';
-import { readGif } from './gif.ts';
-import { decodeDDSBuffer } from './dds.ts';
-import { isIdentity, recolorPixels } from './recolor.ts';
-import type { RecolorOps } from './recolor.ts';
-import { fitSquare, textureDoc, writeDDS } from './texture.ts';
+import { readGif } from '../format/gif.ts';
+import { decodeDDSBuffer } from '../format/dds.ts';
+import { isIdentity, recolorPixels } from '../format/recolor.ts';
+import type { RecolorOps } from '../format/recolor.ts';
+import { fitSquare, textureDoc, writeDDS } from '../format/texture.ts';
 import { artOf, heroArtDir, heroDoc, heroLink, heroPaths, repointArt } from './heroes.ts';
 import type { HeroSpec } from './heroes.ts';
 

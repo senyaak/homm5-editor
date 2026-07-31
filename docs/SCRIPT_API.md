@@ -1,7 +1,7 @@
 # Script API
 
 **Generated** by `npm run build-api` — do not edit by hand. Write functions up
-in `src/script-api-curated.ts` (the source of truth) and re-run.
+in `src/script/script-api-curated.ts` (the source of truth) and re-run.
 
 This is OUR reference, written by hand and grown as missions turn up new calls,
 because the shipped manuals are the only published list and they are crooked
@@ -435,7 +435,7 @@ Trigger(REGION_ENTER_AND_STOP_TRIGGER, "d2", "Dialog2");
 
 180 functions the extraction found that we have not documented in our
 own words yet. Signature is the manual's; when one turns up in a mission, move it
-into `src/script-api-curated.ts` with a real description.
+into `src/script/script-api-curated.ts` with a real description.
 
 ### ADVMAP
 

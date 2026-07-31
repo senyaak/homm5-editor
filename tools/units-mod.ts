@@ -26,14 +26,14 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { MOD_DIR, modDir } from '../src/mod-paths.ts';
+import { MOD_DIR, modDir } from '../src/game/mod-paths.ts';
 import {
   buildCreatureMod, creatureLimit, dataReader, findCreatureMods, installCreatureMod, MOD_MANIFEST,
   packCreatureMod, readCreatureMod, writeCreatureMod,
-} from '../src/creature-mod.ts';
-import type { CreatureMod } from '../src/creature-mod.ts';
-import { PATCHED_EXE, readExe } from '../src/creature-limit.ts';
-import { SHIPPED_CREATURES } from '../src/creatures.ts';
+} from '../src/mods/creature-mod.ts';
+import type { CreatureMod } from '../src/mods/creature-mod.ts';
+import { PATCHED_EXE, readExe } from '../src/exe/creature-limit.ts';
+import { SHIPPED_CREATURES } from '../src/mods/creatures.ts';
 
 const args = process.argv.slice(2);
 const command = args[0];

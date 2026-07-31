@@ -26,9 +26,9 @@ import {
   currentRegions, drawRegion, openRegions, removeRegion, setRegionColour, setRegionName,
 } from '../regions.ts';
 import type { RegionSpec } from '../regions.ts';
-import { loadMap } from '../../src/map.ts';
-import { readTree } from '../../src/tree.ts';
-import type { TreeData } from '../../src/tree.ts';
+import { loadMap } from '../../src/map/map.ts';
+import { readTree } from '../../src/schema/tree.ts';
+import type { TreeData } from '../../src/schema/tree.ts';
 import { bar } from '../bar.ts';
 
 let ed: Launched;

@@ -23,9 +23,9 @@ import { MAP_DIR, FIXTURE, openMap, requireFixture } from './shared.ts';
 import {
   listLength, openTree, pickEntityRef, removeItem, setTreeTextRef, setTreeValue, treeValue,
 } from '../tree.ts';
-import { loadMap } from '../../src/map.ts';
-import { readTree } from '../../src/tree.ts';
-import type { TreeData } from '../../src/tree.ts';
+import { loadMap } from '../../src/map/map.ts';
+import { readTree } from '../../src/schema/tree.ts';
+import type { TreeData } from '../../src/schema/tree.ts';
 import { bar } from '../bar.ts';
 
 let ed: Launched;

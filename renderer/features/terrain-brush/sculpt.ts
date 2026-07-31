@@ -30,10 +30,10 @@ import type { Floor3D } from '#core/state.ts';
 import { brush, commitMask, groundPointAtClient, maskAt, stroke, strokeVerts, tileUnderCursor, updateBrushCursor, vertexAtClient } from '#features/terrain-brush/brush.ts';
 import { controls, renderer } from '#viewport/stage.ts';
 import { remeshFloor } from '#viewport/terrain-mesh.ts';
-import { RAMP_BIT, TIER_STEP, tierOf } from '#src/terrain.ts';
+import { RAMP_BIT, TIER_STEP, tierOf } from '#src/terrain/terrain.ts';
 import { saveUiPrefs } from '#core/prefs.ts';
 import { setPalette } from '#features/palettes.ts';
-import { UNITS_PER_TILE as U } from '#src/units.ts';
+import { UNITS_PER_TILE as U } from '#src/scene/units.ts';
 import type { BrushMode } from '#features/terrain-brush/brush.ts';
 /** Tiles that behave as river brushes. They live under the Water folder. */
 const isRiverTile = (path: string): boolean => /\/_\(AdvMapTile\)\/Water\//.test(path);

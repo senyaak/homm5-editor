@@ -11,9 +11,9 @@ import { record } from '#electron/edits.ts';
 import type { AddItemPayload, MapPropsResult, MapTreeResult, ObjectAddItemPayload, ObjectEditResult, ObjectRemoveItemPayload, ObjectSetPathPayload, ObjectTreePayload, ObjectTreeResult, RemoveItemPayload2, SetListPayload, SetMapPropPayload, SetPathPayload } from '#electron/ipc.ts';
 import { readSidecarText } from '#electron/sidecar.ts';
 import { findObject, need } from '#electron/state.ts';
-import { deref, mapSchema, objectSchema, resolveObjectPath, resolveSchemaAtPath } from '#src/schema.ts';
-import { buildItem, isBuildable } from '#src/skeleton.ts';
-import { addRefItem, addStringItem, appendItem, indentText, nodeAt, readTree, removeItem, setList, setPath } from '#src/tree.ts';
+import { deref, mapSchema, objectSchema, resolveObjectPath, resolveSchemaAtPath } from '#src/schema/schema.ts';
+import { buildItem, isBuildable } from '#src/schema/skeleton.ts';
+import { addRefItem, addStringItem, appendItem, indentText, nodeAt, readTree, removeItem, setList, setPath } from '#src/schema/tree.ts';
 
 /** Wire this domain onto ipcMain. Called once, from main. */
 export function registerTree(): void {

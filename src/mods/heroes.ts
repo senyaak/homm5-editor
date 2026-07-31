@@ -51,8 +51,8 @@
 // at all. So false means every tavern of his faction may offer him, and true
 // means he exists only where he is placed by hand or by script.
 
-import { childText, find, parse, serialize, setText } from './xml.ts';
-import type { XmlElement, XmlNode } from './xml.ts';
+import { childText, find, parse, serialize, setText } from '../format/xml.ts';
+import type { XmlElement, XmlNode } from '../format/xml.ts';
 
 /** The line ending every shipped document uses, and so does ours. */
 const EOL = '\r\n';

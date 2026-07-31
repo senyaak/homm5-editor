@@ -162,7 +162,7 @@ functionality, not by filename.
 - **Passability plane absent from a blank entirely** — inserting a plane was not
   implemented (`docs/TERRAIN_FORMAT.md`). First real tool gap of this stage, and
   it turned out to be a slot the format already reserves rather than an insert:
-  closed by `src/terrain-plane.ts` (stage 5 below).
+  closed by `src/terrain/terrain-plane.ts` (stage 5 below).
 
 ### The shape cannot be recovered as a formula (measured)
 
@@ -424,7 +424,7 @@ mountains around it are masked rather than merely steep — laid down as 424
 horizontal runs with the Rect brush, in 18 seconds. The gap was never an insert:
 comparing a blank's trailer against the mission's, the plane is a slot the format
 already reserves and a new map leaves declared `0 × 0`, so the first mask stroke
-fills it in (`src/terrain-plane.ts`). Nothing else in the file moves, which the
+fills it in (`src/terrain/terrain-plane.ts`). Nothing else in the file moves, which the
 stage checks by re-comparing every earlier plane and `tools/test-terrain-plane.ts`
 by rebuilding blanks at three sizes.
 
@@ -480,7 +480,7 @@ treasure is custom. Plus four sign messages and six army stacks. `npm run
 diff-objects` is clean: every object matched, every field equal.
 
 The fields go in through the property panel and the panel's controls come from
-the schema (`src/objects.schema.json`) — an enum becomes a dropdown of what the
+the schema (`src/schema/objects.schema.json`) — an enum becomes a dropdown of what the
 game's own spec allows, a boolean a checkbox, a creature a roster picker. What
 the panel could not express was structures, and the answer is not a hand-written
 hero panel: the **object tree** is the map-settings tree pointed at one object,
@@ -492,7 +492,7 @@ Three real gaps closed on the way, all of them things a person would hit:
 - **A reference field could be read and not written.** `MapObject.setProp`
   refused anything carrying an `href`, so a sign's message — which is most of
   what a sign is — was uneditable. It writes the attribute now, the same rule
-  `src/tree.ts` already used.
+  `src/schema/tree.ts` already used.
 - **The panel ignored `x-file`,** falling through to a read-only row, while the
   tree gave the same field a New/browse/edit control. One schema flag, one
   control, both places.
@@ -566,7 +566,7 @@ byte-for-byte — is written into the map folder, and the map is saved. `npm run
 diff-map` is now **0 differences**: the whole `<AdvMapDesc>` reproduced.
 
 The stage doubles as the proof of the editor's own reason to exist. There is no
-compiler to run a script through, so the editor lints it live (`src/lua-lint.ts`):
+compiler to run a script through, so the editor lints it live (`src/script/lua-lint.ts`):
 the count sits beside the file name, gutter marks on the broken lines. The spec
 opens the real 500-line `MapScript.lua` (lints clean — the load-bearing case,
 since a linter that reddens working code is worse than none), then appends two

@@ -59,7 +59,7 @@ be where the lobby looks.
 ## Which copy wins
 
 Given one path in more than one mounted archive, the game takes the **newest
-member** — see `writeArchive` in `src/pak.ts`, which stamps the current time for
+member** — see `writeArchive` in `src/format/pak.ts`, which stamps the current time for
 exactly this reason. Members dated at the ZIP epoch are read and then silently
 ignored, so an archive can be mounted, correct and completely without effect.
 `UserMODs/` is applied after everything in `data/`, including the addon's own
@@ -69,11 +69,11 @@ ignored, so an archive can be mounted, correct and completely without effect.
 
 - **A campaign can ship self-contained.** The files a mod carries — `types.xml`,
   `GameMechanics/RefTables/Creatures.xdb`, `UI/UIGameRoot.(UIGameRoot).xdb`, the
-  creature's own files and art (`src/creature-mod.ts`) — can go **inside** the
+  creature's own files and art (`src/mods/creature-mod.ts`) — can go **inside** the
   `.h5c` or the `.h5m` instead of a separate `.h5u` the player has to install.
   One file to hand over. A raised creature ceiling still needs a patched
   executable; that part is not data and no archive can carry it, which is why
-  installing a mod writes both at once (`src/creature-limit.ts`).
+  installing a mod writes both at once (`src/exe/creature-limit.ts`).
 - **A stray file breaks every map, not its own.** Anything that ends up in an
   `.h5m` outside `Maps/…` overrides the game globally for the whole session. Pack
   exactly the map's own tree.
@@ -86,7 +86,7 @@ ignored, so an archive can be mounted, correct and completely without effect.
   creature mod installed and the editor reading only `data-unpacked`, the army
   picker offered 180 of 181 creatures and a map that placed the 181st **dropped
   the object from the scene** — no error, just an absent unit. So the editor
-  resolves through a CHAIN of roots (`src/assets.ts`), the mounted mods over the
+  resolves through a CHAIN of roots (`src/game/assets.ts`), the mounted mods over the
   data, which is the same "topmost wins" rule one file at a time. Folder scans
   walk every root and dedupe, because a mod adding an object does not replace the
   folder it sits in — and there are three separate lists to get right, each with
@@ -149,10 +149,10 @@ none of this, which is the off switch.
 
 ## Where the code is
 
-- `src/pak.ts` — `writeArchive`, member naming and the timestamp rule.
-- `src/project.ts` — `packProject`, which decides what goes into an archive.
-- `src/creature-mod.ts` — what a units mod carries and why, and
+- `src/format/pak.ts` — `writeArchive`, member naming and the timestamp rule.
+- `src/map/project.ts` — `packProject`, which decides what goes into an archive.
+- `src/mods/creature-mod.ts` — what a units mod carries and why, and
   `mountCreatureMods`, which unpacks the installed ones for the editor to read.
-- `src/assets.ts` — the root chain the editor resolves through, so it sees the
+- `src/game/assets.ts` — the root chain the editor resolves through, so it sees the
   installed game rather than the shipped one.
 - `electron/paths.ts` — `mountedAssets`, where the chain is assembled per map.

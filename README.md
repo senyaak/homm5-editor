@@ -37,7 +37,7 @@ get a live 3D scene you sculpt, paint, populate, script and pack.
   `<Priority>`, sea derived from the ground-flag plane, painted river brushes,
   vertical cut faces where ground kinds meet, rock-textured cliffs, and both
   floors. Write-up: [docs/TERRAIN_FORMAT.md](docs/TERRAIN_FORMAT.md).
-- **`GroundTerrain.bin`** (`src/terrain.ts`): reads heights, texture layer masks,
+- **`GroundTerrain.bin`** (`src/terrain/terrain.ts`): reads heights, texture layer masks,
   ground flags, passability and the river plane, and writes every one of them
   back. Planes are fixed-size, so a write is a byte-for-byte overwrite in place
   and the output differs only where asked. Round-trip tested on real maps
@@ -58,7 +58,7 @@ get a live 3D scene you sculpt, paint, populate, script and pack.
   alone (real ground blends — C1M1's weights sum to 510 at a vertex as often as
   not), goes onto the GPU masks for immediate feedback and into the main process,
   which owns the bytes that get saved. Picking a tile the map lacks splices in a
-  new layer (`src/terrain-layer.ts`) — the one terrain edit that moves bytes
+  new layer (`src/terrain/terrain-layer.ts`) — the one terrain edit that moves bytes
   rather than overwriting them.
 - **River brushes** (Water, Bog, LavaFlow): these are not ordinary tiles. A stroke
   writes the half-tile river plane — which is what makes a river a river to the
@@ -96,7 +96,7 @@ get a live 3D scene you sculpt, paint, populate, script and pack.
   maps use is offered, and an unlisted (modded) value is kept rather than dropped.
 - **Object tree** ("Tree…"): the structures a text box can't honestly hold — a
   hero's army, a capture trigger, a monster's reward — rendered from `$defs`
-  declared once in `src/objects.schema.json`, wherever they appear.
+  declared once in `src/schema/objects.schema.json`, wherever they appear.
 - Every object edit runs through the same path-addressed, recorded API, so it
   shares undo / dirty / save.
 - **Idle animation**, off by default. The **Idle stance** button cycles
@@ -119,7 +119,7 @@ get a live 3D scene you sculpt, paint, populate, script and pack.
 
 ### Map properties, model & scripting
 
-- **`map.xdb` model** (`src/map.ts`, `src/xml.ts`): loss-less XML DOM —
+- **`map.xdb` model** (`src/map/map.ts`, `src/format/xml.ts`): loss-less XML DOM —
   `serialize(parse(x)) === x` on every sample map — with a typed object model over
   it. Editing an object rewrites exactly one line; deletion is surgical.
 - **Undo/redo** (`Ctrl+Z` / `Ctrl+Shift+Z` / `Ctrl+Y`): not a command model — an
@@ -142,7 +142,7 @@ get a live 3D scene you sculpt, paint, populate, script and pack.
   manuals, `npm run script-api`), the game's own scripts, and *this* map's names —
   objects, regions, objectives — offered inside string literals where the API takes
   them. **New** on the map's `MapScript` row creates the `.lua` + its `.xdb` wrapper
-  and binds it. A **structural linter** (`src/lua-lint.ts`) marks what the engine's
+  and binds it. A **structural linter** (`src/script/lua-lint.ts`) marks what the engine's
   parser rejects — unbalanced `end`/brackets, unterminated strings — live in the
   gutter; it deliberately does *not* flag unknown names (our API list is partial;
   completion prevents mistyped names instead).
@@ -162,7 +162,7 @@ get a live 3D scene you sculpt, paint, populate, script and pack.
   `HOMM5_UNPACK_TO` moves the working copies somewhere of your choosing, at their
   in-game path, which is what the e2e suite runs with; it changes nothing about
   what is saved or where a build lands.
-- **One folder, ours** ([src/mod-paths.ts](src/mod-paths.ts)): our copy of the
+- **One folder, ours** ([src/game/mod-paths.ts](src/game/mod-paths.ts)): our copy of the
   executable reads `<game>/H5E/` and none of the five folders the shipped game
   scans, so nothing anyone else installed is mounted. A map of ours is
   `H5E/<name>.h5m`; **New map…** writes one at once, and everything the editor
@@ -178,8 +178,8 @@ get a live 3D scene you sculpt, paint, populate, script and pack.
   rather than for its own mission — so a campaign can ship its mod inside itself,
   and a stray file in a map overrides the game for every other map. Which copy of
   a path wins is decided by member date, which is why packing stamps a real one.
-- **New creatures, artifacts and dwellings** (`src/creature-mod.ts`,
-  `src/artifacts.ts`, `src/dwellings.ts`, [docs/UNITS_AND_ARTIFACTS.md](docs/UNITS_AND_ARTIFACTS.md)) —
+- **New creatures, artifacts and dwellings** (`src/mods/creature-mod.ts`,
+  `src/mods/artifacts.ts`, `src/mods/dwellings.ts`, [docs/UNITS_AND_ARTIFACTS.md](docs/UNITS_AND_ARTIFACTS.md)) —
   **Units…** and **Artifacts…** in the toolbar build and install one from the
   window: pick a shipped creature or artifact as a **preset** and its every field
   loads (stats, texts, abilities, the four art documents / slot, rank, prices,
@@ -193,12 +193,12 @@ get a live 3D scene you sculpt, paint, populate, script and pack.
   carry is the **creature ceiling**: 180 is compiled into the executable, and an id
   above it is read and silently ignored. So installing sets it — one action writes
   the archive and the ceiling, they have to agree exactly, and a `bin/H5_Game_H5E.exe`
-  already patched to any number goes to any other in place (`src/creature-limit.ts`,
+  already patched to any number goes to any other in place (`src/exe/creature-limit.ts`,
   `npm run creature-limit` to look). Steam's own executable is DRM-wrapped, so its
   code cannot be read or patched at all; `npm run unwrap-exe` makes the copy that
   can — copying it when it is already clean (GOG, retail) and unwrapping it with
   Steamless when it is not, never overwriting a copy that already carries a
-  ceiling (`src/exe-unwrap.ts`).
+  ceiling (`src/exe/exe-unwrap.ts`).
 - **Adventure-map buildings** ([docs/mapPlaceables/buildings/BUILDINGS.md](docs/mapPlaceables/buildings/BUILDINGS.md)): what a
   building *is* before an editor for them exists. A behaviour is one of the 128
   `BuildingType` values compiled into the executable, bound either by a `<Type>`
@@ -215,7 +215,7 @@ get a live 3D scene you sculpt, paint, populate, script and pack.
   [docs/ENGINE_INTERNALS.md](docs/ENGINE_INTERNALS.md), read out of the binary
   with the tools in `tools/reverse/`. Giving our own artifacts real properties is
   planned in [SLICE_artifact_effects.md](SLICE_artifact_effects.md).
-- **External-change watcher** (`src/watch.ts`): the original Nival editor can be
+- **External-change watcher** (`src/map/watch.ts`): the original Nival editor can be
   open on the same folder. When it saves, a banner offers to take its version.
   Content hashes, not timestamps, so our own saves never self-trigger.
 - **Localization** (`docs/LOCALIZATION.md`): the game reads *one* language (the ref
@@ -291,7 +291,7 @@ answers go in `settings.json` under the user's app-data folder, and
 `homm5-editor.exe --setup` reopens the screen when they go stale.
 
 Then that screen **prepares the install** — four steps, and the editor is only
-worth opening once they are done ([src/first-run.ts](src/first-run.ts)):
+worth opening once they are done ([src/game/first-run.ts](src/game/first-run.ts)):
 
 1. the archives unpacked into a tree we can read;
 2. a readable copy of the executable (`bin/H5_Game_H5E.exe`) — the shipped one is
@@ -428,7 +428,7 @@ edges** on reconstruction.
 - **UVs** are the first 4 bytes of the attribute stream (`tag3`): 2×int16 ÷ 2048
   (V ∈ [0,1], U tiles). Confirmed by UV continuity across shared edges.
 - **Normals** are computed from geometry — the packed ones are imprecise.
-- **Textures** are `.dds` (DXT1/3/5 and uncompressed), decoded by `src/dds.ts`.
+- **Textures** are `.dds` (DXT1/3/5 and uncompressed), decoded by `src/format/dds.ts`.
 
 - **Skeletons and animations** are a different format altogether — RAD's Granny
   **GR2** ([docs/GR2_FORMAT.md](docs/GR2_FORMAT.md)), a self-describing container

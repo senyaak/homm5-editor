@@ -12,13 +12,13 @@ import { enumValues } from '#electron/spec.ts';
 import { APP_ROOT, gameData, gameRoot, isConfigured } from '#electron/paths.ts';
 import { existsSync } from 'node:fs';
 import { basename } from 'node:path';
-import { EFFECT_STATS } from '#src/artifact-effects.ts';
-import { HERO_STAT_NAMES } from '#src/artifacts.ts';
-import { assets } from '#src/assets.ts';
-import { findCreatureMods } from '#src/creature-mod.ts';
-import { builtDll, extensionState, installExtension } from '#src/extension.ts';
-import { HERO_CLASS, artChoices } from '#src/heroes.ts';
-import { Registry, artifactPreset, creatureAbilities, creatureAbilityNames, creaturePreset } from '#src/registry.ts';
+import { EFFECT_STATS } from '#src/mods/artifact-effects.ts';
+import { HERO_STAT_NAMES } from '#src/mods/artifacts.ts';
+import { assets } from '#src/game/assets.ts';
+import { findCreatureMods } from '#src/mods/creature-mod.ts';
+import { builtDll, extensionState, installExtension } from '#src/mods/extension.ts';
+import { HERO_CLASS, artChoices } from '#src/mods/heroes.ts';
+import { Registry, artifactPreset, creatureAbilities, creatureAbilityNames, creaturePreset } from '#src/schema/registry.ts';
 
 /** Wire this domain onto ipcMain. Called once, from main. */
 export function registerModsList(): void {

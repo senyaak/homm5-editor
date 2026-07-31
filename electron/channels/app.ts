@@ -10,7 +10,7 @@ import { state } from '#electron/state.ts';
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { PATCHED_EXE } from '#src/creature-limit.ts';
+import { PATCHED_EXE } from '#src/exe/creature-limit.ts';
 
 /** The graphics answer behind `gpuReport` — see EditorApi. */
 async function gpuReport(): Promise<string> {

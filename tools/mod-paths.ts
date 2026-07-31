@@ -12,8 +12,8 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { PATCHED_EXE, SHIPPED_EXE } from '../src/creature-limit.ts';
-import { LITERALS, MOD_DIR, MOD_EXT, readModPaths, setModPaths } from '../src/mod-paths.ts';
+import { PATCHED_EXE, SHIPPED_EXE } from '../src/exe/creature-limit.ts';
+import { LITERALS, MOD_DIR, MOD_EXT, readModPaths, setModPaths } from '../src/game/mod-paths.ts';
 
 const args = process.argv.slice(2);
 const flag = (name: string): string | undefined => {

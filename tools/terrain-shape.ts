@@ -16,7 +16,7 @@ import { join } from 'node:path';
 import {
   parseTerrain, readHeights, readGroundFlags, readPassability, readTextureLayers,
   readWaterPlane, tierOf, RAMP_BIT,
-} from '../src/terrain.ts';
+} from '../src/terrain/terrain.ts';
 
 const args = process.argv.slice(2);
 if (!args.length) {

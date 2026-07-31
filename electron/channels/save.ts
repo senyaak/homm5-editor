@@ -17,10 +17,10 @@ import type { Session } from '#electron/state.ts';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, sep } from 'node:path';
-import { readManifest , status} from '#src/project.ts';
-import { buildMapTag } from '#src/map-tag.ts';
-import { MOD_EXT, modFile } from '#src/mod-paths.ts';
-import { exportLocalized, packProject, writeManifest } from '#src/project.ts';
+import { readManifest , status} from '#src/map/project.ts';
+import { buildMapTag } from '#src/map/map-tag.ts';
+import { MOD_EXT, modFile } from '#src/game/mod-paths.ts';
+import { exportLocalized, packProject, writeManifest } from '#src/map/project.ts';
 
 /**
  * Where this map has to sit inside its .h5m.

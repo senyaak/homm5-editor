@@ -25,7 +25,7 @@ import { createHash } from 'node:crypto';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
-import { extract } from './pak.ts';
+import { extract } from '../format/pak.ts';
 
 /** The game's own executable. Read, never written. */
 export const SHIPPED_EXE = join('bin', 'H5_Game.exe');

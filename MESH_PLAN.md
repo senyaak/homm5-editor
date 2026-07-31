@@ -198,9 +198,9 @@ coordinate systems. Dividing would also have meant multiplying back on save,
 putting a factor in the path that writes `GroundTerrain.bin`.
 
 So the renderer now builds its world in the game's units instead. Nothing in the
-data layer is converted: `src/scene.ts` hands over heights, geometry and
+data layer is converted: `src/scene/scene.ts` hands over heights, geometry and
 particle bounds exactly as stored, and positions as the tile indices they are.
-`src/units.ts` holds the one constant, and the renderer applies it — grid-built
+`src/scene/units.ts` holds the one constant, and the renderer applies it — grid-built
 meshes (ground, sea, passability overlays, brush cursor) get a transform via
 `asTileSpace`, object instances are placed at `tile * UNITS_PER_TILE`, and the
 two places that turn a ray hit back into a tile divide. **The save path is

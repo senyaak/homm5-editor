@@ -179,10 +179,10 @@ building.
 
 | file | what it does |
 | --- | --- |
-| `src/campaign.schema.json` | the `<Campaign>` schema — **property order matters**, these are serialized structs |
-| `src/campaign.ts` | build / load / save a descriptor (and strip empty hrefs) |
-| `src/campaign-project.ts` | the project folder: texts, the mission list, hero pools, bonuses |
-| `src/campaign-pack.ts` | `packCampaign` → `.h5c`, and `campaignMaps` (which `.h5m` you still owe) |
+| `src/campaign/campaign.schema.json` | the `<Campaign>` schema — **property order matters**, these are serialized structs |
+| `src/campaign/campaign.ts` | build / load / save a descriptor (and strip empty hrefs) |
+| `src/campaign/campaign-project.ts` | the project folder: texts, the mission list, hero pools, bonuses |
+| `src/campaign/campaign-pack.ts` | `packCampaign` → `.h5c`, and `campaignMaps` (which `.h5m` you still owe) |
 | `electron/channels/campaigns.ts` | the `campaign:*` IPC, including resolving a map's heroes to their characters |
 | `renderer/app.ts` | the three dialogs |
 | `tools/test-campaign.ts` | the format checks, held against a real editor-made campaign when one is present |

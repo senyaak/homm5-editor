@@ -18,12 +18,12 @@
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { CURATED } from '../src/script-api-curated.ts';
-import type { ApiDoc } from '../src/script-api-curated.ts';
+import { CURATED } from '../src/script/script-api-curated.ts';
+import type { ApiDoc } from '../src/script/script-api-curated.ts';
 
 const ROOT = join(import.meta.dirname, '..');
-const EXTRACTED = join(ROOT, 'src', 'script-api-extracted.json');
-const OUT = join(ROOT, 'src', 'script-api.json');
+const EXTRACTED = join(ROOT, 'src', 'script', 'script-api-extracted.json');
+const OUT = join(ROOT, 'src', 'script', 'script-api.json');
 const DOC = join(ROOT, 'docs', 'SCRIPT_API.md');
 
 /** The completion source shape — what script:context serves to the editor. */

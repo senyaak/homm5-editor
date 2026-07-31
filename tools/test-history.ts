@@ -9,9 +9,9 @@
 
 import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { mapFilesUnder } from '../src/map-source.ts';
-import { diff, apply, History, storeSteps, loadSteps } from '../src/history.ts';
-import type { Step } from '../src/history.ts';
+import { mapFilesUnder } from '../src/map/map-source.ts';
+import { diff, apply, History, storeSteps, loadSteps } from '../src/map/history.ts';
+import type { Step } from '../src/map/history.ts';
 
 let failures = 0;
 function ok(name: string, cond: boolean, detail = ''): void {
@@ -152,8 +152,8 @@ console.log('\n--- against the real map model ---');
 if (!maps.length) {
   console.log('  (no sample maps unpacked — skipping)');
 } else {
-  const { loadMap } = await import('../src/map.ts');
-  const { donorFor } = await import('../src/donors.ts');
+  const { loadMap } = await import('../src/map/map.ts');
+  const { donorFor } = await import('../src/map/donors.ts');
 
   for (const f of maps.slice(0, 3)) {
     const name = f.split(/[\\/]/).slice(-2)[0];
@@ -242,7 +242,7 @@ console.log('\n--- against the real terrain document ---');
 // stroke has to come back exactly, including the ground flags that travel with
 // the heights.
 {
-  const { TerrainDoc } = await import('../src/terrain-edit.ts');
+  const { TerrainDoc } = await import('../src/terrain/terrain-edit.ts');
   const { copyFileSync, mkdtempSync } = await import('node:fs');
   const { tmpdir } = await import('node:os');
 
@@ -314,7 +314,7 @@ console.log('\n--- against the real terrain document ---');
   // plane does not exist yet and gets filled in, so undo has to walk back over
   // a file that grew — the case a run-diff of equal-length buffers cannot do.
   {
-    const { buildBlankTerrain } = await import('../src/terrain-blank.ts');
+    const { buildBlankTerrain } = await import('../src/terrain/terrain-blank.ts');
     const { writeFileSync } = await import('node:fs');
     const dir = mkdtempSync(join(tmpdir(), 'homm5-hist-blank-'));
     const path = join(dir, 'GroundTerrain.bin');

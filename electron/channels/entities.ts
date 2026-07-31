@@ -13,12 +13,12 @@ import { need, state } from '#electron/state.ts';
 import type { Session } from '#electron/state.ts';
 import { copyFileSync, existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import type { RosterEntry } from '#src/registry.ts';
-import { deref, schemaForClass } from '#src/schema.ts';
-import { buildEntity } from '#src/skeleton.ts';
-import { children, find, parse, serialize, text } from '#src/xml.ts';
-import { readTree, setPath } from '#src/tree.ts';
-import type { XmlElement, XmlNode } from '#src/xml.ts';
+import type { RosterEntry } from '#src/schema/registry.ts';
+import { deref, schemaForClass } from '#src/schema/schema.ts';
+import { buildEntity } from '#src/schema/skeleton.ts';
+import { children, find, parse, serialize, text } from '#src/format/xml.ts';
+import { readTree, setPath } from '#src/schema/tree.ts';
+import type { XmlElement, XmlNode } from '#src/format/xml.ts';
 
 /**
  * Entities that live BESIDE the map, listed first.

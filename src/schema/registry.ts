@@ -18,12 +18,12 @@
 
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, basename, relative, sep } from 'node:path';
-import { parse, find, children, childText } from './xml.ts';
-import type { XmlElement } from './xml.ts';
-import { toAssets } from './assets.ts';
-import type { Assets } from './assets.ts';
-import { readStats } from './creatures.ts';
-import type { CreatureStats } from './creatures.ts';
+import { parse, find, children, childText } from '../format/xml.ts';
+import type { XmlElement } from '../format/xml.ts';
+import { toAssets } from '../game/assets.ts';
+import type { Assets } from '../game/assets.ts';
+import { readStats } from '../mods/creatures.ts';
+import type { CreatureStats } from '../mods/creatures.ts';
 
 /** One choice in a picker: an engine id (or a ref href) and a display label. */
 export interface RosterEntry {

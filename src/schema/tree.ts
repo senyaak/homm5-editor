@@ -7,8 +7,8 @@
 // nth <Item> of a list. Kept deliberately schema-free — it moves values by
 // position in the DOM; the schema (src/schema.ts) decides how each is shown.
 
-import type { XmlElement, XmlNode } from './xml.ts';
-import { children, find, text, setText, setAttr } from './xml.ts';
+import type { XmlElement, XmlNode } from '../format/xml.ts';
+import { children, find, text, setText, setAttr } from '../format/xml.ts';
 
 /** A step into the tree: a field name, or a list index. */
 export type PathStep = string | number;

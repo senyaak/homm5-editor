@@ -23,8 +23,8 @@
 // See docs/ARTIFACTS.md.
 
 import type { EffectStat } from './artifact-effects.ts';
-import { allFields } from './typespec.ts';
-import type { SpecType } from './typespec.ts';
+import { allFields } from '../schema/typespec.ts';
+import type { SpecType } from '../schema/typespec.ts';
 
 /**
  * How many artifacts the game ships with — the number a mod's own start after.
