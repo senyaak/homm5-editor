@@ -20,6 +20,7 @@ import { MOD_STEM } from './mod-files.ts';
 import type { CreatureStats } from './creatures.ts';
 import type { ArtifactSpec } from './artifacts.ts';
 import type { SetEffect } from './artifact-effects.ts';
+import type { BuildingSpec } from './buildings.ts';
 import type { DwellingSpec } from './dwellings.ts';
 import type { HeroSpec } from './heroes.ts';
 import type { RecolorOps } from '../format/recolor.ts';
@@ -103,6 +104,17 @@ export interface CreatureMod {
    * dwellings needs no patched game at all. See src/dwellings.ts.
    */
   dwellings: DwellingSpec[];
+  /**
+   * Everything else a hero walks up to — the sixteen classes of
+   * docs/mapPlaceables/buildings/BUILDINGS.md, a dwelling among them.
+   *
+   * Like a dwelling it costs the game nothing global: no reference table, no
+   * ceiling, no patched executable, just a document picking one of the 128
+   * behaviours compiled into the game. Unlike the old dwellings it is
+   * SELF-CONTAINED — art, sounds, effects and every line of text are its own
+   * copies, so all of it can be edited. See src/mods/buildings.ts.
+   */
+  buildings: BuildingSpec[];
   /**
    * Things a hero wears. Like creatures they hold a NUMBER and extend a
    * reference table, so the list is append-only for the same reason — but
@@ -189,7 +201,10 @@ export interface ModArtifactSet extends ArtifactSetSpec {
 
 /** A fresh, empty mod. */
 export function newCreatureMod(stem = MOD_STEM): CreatureMod {
-  return { version: 1, stem, first: SHIPPED_CREATURES, creatures: [], dwellings: [], artifacts: [], sets: [], heroes: [] };
+  return {
+    version: 1, stem, first: SHIPPED_CREATURES,
+    creatures: [], dwellings: [], buildings: [], artifacts: [], sets: [], heroes: [],
+  };
 }
 
 /**
@@ -399,6 +414,36 @@ export function removeCreature(mod: CreatureMod, id: string): ModCreature {
   const removed = mod.creatures.splice(at, 1)[0]!;
   mod.creatures.forEach((c, i) => { c.number = mod.first + i; });
   return removed;
+}
+
+/**
+ * Append a building. Like a dwelling it holds no id, so order is cosmetic; the
+ * file stem is what has to be unique, since it names its folder in the mod.
+ */
+export function addBuilding(mod: CreatureMod, spec: BuildingSpec): BuildingSpec {
+  if (!mod.buildings) mod.buildings = [];
+  const file = spec.file.trim();
+  if (!file) throw new Error('a building needs an identifier');
+  if (mod.buildings.some((b) => b.file === file)) {
+    throw new Error(`two buildings cannot both be "${file}"`);
+  }
+  mod.buildings.push(spec);
+  return spec;
+}
+
+/** Change a building already in the mod, keeping its place in the list. */
+export function updateBuilding(mod: CreatureMod, file: string, spec: BuildingSpec): BuildingSpec {
+  const at = (mod.buildings ?? []).findIndex((b) => b.file === file);
+  if (at < 0) throw new Error(`${file} is not in the mod`);
+  if (spec.file !== file) throw new Error(`a building cannot be renamed — ${file} names its folder and its files`);
+  mod.buildings[at] = spec;
+  return spec;
+}
+
+export function removeBuilding(mod: CreatureMod, file: string): BuildingSpec {
+  const at = (mod.buildings ?? []).findIndex((b) => b.file === file);
+  if (at < 0) throw new Error(`${file} is not in the mod`);
+  return mod.buildings.splice(at, 1)[0]!;
 }
 
 /** Append a dwelling. Unlike a creature it holds no id, so order is cosmetic. */

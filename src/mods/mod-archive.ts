@@ -303,6 +303,7 @@ function reconstruct(types: string, table: string): CreatureMod {
     // is his own file, and which donor he was built from is the manifest's to
     // remember.
     dwellings: [],
+    buildings: [],
     artifacts: [],
     sets: [],
     heroes: [],

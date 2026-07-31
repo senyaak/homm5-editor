@@ -12,6 +12,8 @@
 
 import { createHash } from 'node:crypto';
 import { posix } from 'node:path';
+import { children, parse, text as textOf } from '../format/xml.ts';
+import type { XmlElement } from '../format/xml.ts';
 import { decodeDDSBuffer } from '../format/dds.ts';
 import { recolorPixels } from '../format/recolor.ts';
 import { writeDDS } from '../format/texture.ts';
@@ -134,17 +136,21 @@ export function copyArt(seeds: string[], dest: string, read: DataReader, salt: s
     if (!rel.toLowerCase().endsWith('.xdb')) { files.set(at.get(rel)!, data); continue; }
     let text = data.toString('latin1');
 
-    // Its binary, under a uid of ours.
-    const kind = rootName(text);
-    const uid = /<uid>([0-9A-Fa-f-]{36})<\/uid>/.exec(text);
-    const bin = kind ? UID_BINS[kind] : undefined;
-    if (bin && uid) {
-      const blob = read(`${bin}/${uid[1]}`);
-      if (blob) {
-        const fresh = uidFor(`${salt}:${rel}`);
-        files.set(`${bin}/${fresh}`, blob);
-        text = text.replace(uid[0], `<uid>${fresh}</uid>`);
-      }
+    // Every binary this document keys, under uids of ours.
+    //
+    // NOT just the root's. A creature's mesh and skeleton are documents of their
+    // own, but a BUILDING carries them INLINE — `<Geometry href="#n:inline(…)">`
+    // right inside its `Model.xdb`, each with its own `<uid>` and its own file
+    // under `bin/…`. Reading the root's uid alone copied a building's model
+    // without the mesh it is made of: present, correct, and invisible.
+    for (const owner of uidOwners(text)) {
+      const blob = read(`${owner.bin}/${owner.uid}`);
+      if (!blob) continue;
+      // The document's OWN uid keeps the key it always had, so every mod built
+      // before this walked inline bodies rebuilds to the same bytes.
+      const fresh = uidFor(owner.root ? `${salt}:${rel}` : `${salt}:${rel}:${owner.uid}`);
+      files.set(`${owner.bin}/${fresh}`, blob);
+      text = text.replace(`<uid>${owner.uid}</uid>`, `<uid>${fresh}</uid>`);
     }
 
     // Absolute hrefs into the copied set. Relative ones already resolve.
@@ -196,6 +202,41 @@ export function resolve(from: string, href: string): string | null {
 /** A document's root element name, past the XML declaration. */
 function rootName(text: string): string | null {
   return /<([A-Za-z_][\w.-]*)[\s>/]/.exec(text.replace(/<\?[\s\S]*?\?>/g, ''))?.[1] ?? null;
+}
+
+/** One binary a document keys: which folder it lives in, and under what uid. */
+interface UidOwner {
+  bin: string;
+  uid: string;
+  /** The document's own, as opposed to something written inline inside it. */
+  root: boolean;
+}
+
+/**
+ * Every element in the document that owns a `bin/…` file, with its uid.
+ *
+ * Walked as a TREE rather than matched with a regex, because the elements nest:
+ * a `<Geometry>` holds an `<AIGeometry>`, each with a `<uid>` of its own, and
+ * whichever `<uid>` comes first in the text is not reliably the outer one.
+ */
+function uidOwners(text: string): UidOwner[] {
+  let doc;
+  try { doc = parse(text); } catch { return []; }
+  const out: UidOwner[] = [];
+  const rootEl = children(doc).find((c) => c.type === 'element');
+  const walk = (el: XmlElement): void => {
+    const bin = UID_BINS[el.name];
+    if (bin) {
+      // The wrapper around an inline body carries no uid of its own; the body
+      // does, as a direct child.
+      const uid = children(el).find((c) => c.name === 'uid');
+      const value = uid ? textOf(uid).trim() : '';
+      if (/^[0-9A-Fa-f-]{36}$/.test(value)) out.push({ bin, uid: value, root: el === rootEl });
+    }
+    for (const kid of children(el)) walk(kid);
+  };
+  if (rootEl) walk(rootEl);
+  return out;
 }
 
 /**

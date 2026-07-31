@@ -70,6 +70,7 @@ import {
   ARTIFACT_TABLE, DEFAULT_STATS, STARTUP_SCRIPT, buildArtifacts, buildArtifactSets,
   patchArtifactTable, patchArtifactTypes, patchDefaultStats, patchSetTypes, patchStartupScript,
 } from './artifact-files.ts';
+import { buildBuildings } from './building-files.ts';
 import { buildDwellings } from './dwelling-files.ts';
 import { buildHeroes } from './hero-files.ts';
 
@@ -116,8 +117,8 @@ export function creaturePaths(c: CreatureSpec): {
  * a test.
  */
 export function buildCreatureMod(mod: CreatureMod, read: DataReader): BuildReport {
-  if (!mod.creatures.length && !mod.dwellings.length && !mod.artifacts?.length
-    && !mod.sets?.length && !mod.heroes?.length) {
+  if (!mod.creatures.length && !mod.dwellings.length && !mod.buildings?.length
+    && !mod.artifacts?.length && !mod.sets?.length && !mod.heroes?.length) {
     throw new Error('the mod is empty');
   }
   const limit = creatureLimit(mod);
@@ -180,6 +181,7 @@ export function buildCreatureMod(mod: CreatureMod, read: DataReader): BuildRepor
   }
 
   files.push(...buildDwellings(mod.dwellings, read));
+  files.push(...buildBuildings(mod.buildings ?? [], read));
   files.push(...buildArtifacts(mod.artifacts ?? [], read));
   files.push(...buildArtifactSets(mod.sets ?? []));
   files.push(...buildHeroes(mod.heroes ?? [], read));
