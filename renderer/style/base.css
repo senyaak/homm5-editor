@@ -1,0 +1,14 @@
+html, body { margin: 0; height: 100%; overflow: hidden;
+  background: #0d1014; color: #c9d1d9; font: 13px/1.5 system-ui, sans-serif; }
+
+/* Dark, thin scrollbars — the platform default is a wide light bar that
+   reads as broken chrome inside these panels. */
+* { scrollbar-width: thin; scrollbar-color: #30363d transparent; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #30363d; border-radius: 6px;
+  border: 2px solid transparent; background-clip: content-box; }
+::-webkit-scrollbar-thumb:hover { background: #484f58; background-clip: content-box; }
+::-webkit-scrollbar-corner { background: transparent; }
+#app { position: fixed; inset: 0; }
+canvas { display: block; }

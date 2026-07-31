@@ -1,0 +1,59 @@
+  <div id="panel">
+    <h3 id="p-type">—</h3>
+    <div class="row"><span class="k">id</span><span class="v" id="p-id">—</span></div>
+    <!-- Position and facing are EDITABLE, not just reported. Dragging lands on
+         the tile grid and the buttons turn in quarter steps, which is how a map
+         is built by hand — but a shipped mission is not all on the grid: C1M1
+         puts 218 of its 2645 objects at a fraction of a tile and 368 at one of
+         80 free angles. Alt-drag places freely; these boxes are how an exact
+         value is set. -->
+    <div class="row"><span class="k">x, y</span>
+      <span class="v">
+        <input id="p-x" type="number" step="0.001" title="tile position, fractions allowed">
+        <input id="p-y" type="number" step="0.001" title="tile position, fractions allowed">
+      </span>
+    </div>
+    <div class="row"><span class="k">rot</span>
+      <span class="v"><input id="p-rot" type="number" step="0.001" min="0" max="360"
+             title="facing in degrees; the file keeps radians">°</span>
+    </div>
+    <div class="row"><span class="k">shared</span><span class="v" id="p-shared" style="font-size:11px">—</span></div>
+    <!-- Quarter turns only, matching the game: an object rotates in 90° steps
+         about its anchor tile, so it stays put. A shipped object placed at an
+         odd angle keeps that angle until the user turns it — snapping happens on
+         the rotate action, never on mere selection, so nothing jumps when
+         clicked. -->
+    <div class="prow">
+      <input id="p-rotslider" type="range" min="0" max="359" step="1" value="0"
+             title="turn the selected object; the buttons snap to quarter turns">
+      <button id="p-rotl" title="rotate 90° left">⟲</button>
+      <button id="p-rotr" title="rotate 90° right">⟳</button>
+    </div>
+    <!-- Everything this object carries, not only the fields a text box can
+         hold: a hero's army, a capture trigger, a monster's reward resources
+         are structures, and they open in the same schema-typed tree the map's
+         own settings use. -->
+    <div class="prow">
+      <button id="p-tree" title="edit every field of this object as a tree">Tree…</button>
+      <button id="p-del" class="danger" title="delete this object (Del)">Delete object</button>
+    </div>
+    <!-- Simple fields read from the object itself, so every type shows what it
+         actually carries rather than what a hand-written table remembered. -->
+    <div id="p-props"></div>
+    <div class="hint">Drag a selected object to move it on the grid, <b>Alt</b>-drag to place it freely. <b>[</b> / <b>]</b> rotate, <b>Del</b> deletes. Wheel / right-drag: camera.</div>
+  </div>
+
+  <div id="empty">
+    <h1>homm5-editor</h1>
+    <p>Pick a map from the list, or open a <code>map.xdb</code> yourself.</p>
+    <div id="picker">
+      <div class="head">
+        <input id="search" type="text" placeholder="find map…" autocomplete="off">
+        <button id="newmap2">New map…</button>
+        <button id="open2">Open file…</button>
+      </div>
+      <div id="cats"></div>
+      <div id="maplist"><div class="empty">loading…</div></div>
+      <div class="foot" id="picker-foot"></div>
+    </div>
+  </div>

@@ -21,7 +21,7 @@ import { UNITS_PER_TILE as U } from '#src/scene/units.ts';
  * placeholder for good. That is how this shipped, and the message a user got was
  * nothing. The context is genuinely required (the whole editor is the 3D view),
  * so this does not try to carry on without one; it just makes the failure name
- * itself, and index.html's trap puts it on screen.
+ * itself, and the trap in renderer/parts/fatal.html puts it on screen.
  */
 function makeRenderer(): THREE.WebGLRenderer {
   try {

@@ -1,0 +1,19 @@
+  <!-- Asking before something irreversible, in a dialog of OURS.
+       `confirm()` is a native window: in Electron it blocks the renderer, so a
+       test that reaches one waits for a click nobody will make and dies by
+       timeout — and it looks nothing like the rest of the app. A <dialog> is
+       the whole fix: it stacks on top of whatever is open, Esc means no, and a
+       spec can read the question and press the button. -->
+  <dialog id="ask">
+    <div class="mp-card">
+      <div class="mp-head">
+        <span class="mp-title" id="ask-title">Confirm</span>
+        <button id="ask-x" title="close (Esc)">✕</button>
+      </div>
+      <div class="mp-body on-body"><div id="ask-text" class="ask-text"></div></div>
+      <div class="de-foot">
+        <button id="ask-no" class="ghost">Cancel</button>
+        <button id="ask-yes">Yes</button>
+      </div>
+    </div>
+  </dialog>

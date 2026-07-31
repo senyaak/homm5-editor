@@ -106,7 +106,7 @@ const api = {
   installExtension: () => ipcRenderer.invoke('mods:install-extension'),
   modTextures: (creature) => ipcRenderer.invoke('mods:textures', { creature }),
   recolorMod: (p) => ipcRenderer.invoke('mods:recolor', p),
-  // Diagnostics for the fatal-error screen in index.html. That screen shows up
+  // Diagnostics for the fatal-error screen (renderer/parts/fatal.html). It shows up
   // when the renderer module died, so these two are all it can still call —
   // preload has its own context and survives.
   gpuReport: () => ipcRenderer.invoke('app:gpu-report'),

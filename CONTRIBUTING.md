@@ -58,7 +58,11 @@ electron/   the main process. main.ts is the boot — switches, window, the
               spec.ts    the game's types.xml, parsed once
               channels/  one module per domain, each exporting register()
               preload.cjs the bridge (plain CommonJS — see below)
-renderer/   the UI (bundled by esbuild from app.ts) + index.html:
+renderer/   the UI. page.html + parts/ + style/ are assembled into index.html,
+            and app.ts is bundled into app.js — both by build-renderer:
+              page.html  the shell: the <link>s and one @include per part
+              parts/     the markup, one file per screen; dialogs/ per feature
+              style/     the stylesheet, one file per section, in cascade order
               core/      what every screen shares — dom, ipc, dialog, prefs,
                          state (the loaded world + selection), coords, rosters
               viewport/  the drawing — stage (context, cameras, controls),
@@ -102,6 +106,17 @@ its handlers in an exported `register()` that main.ts calls. A module that did
 it at file scope works right up until something tidies away an import it looked
 unused from — and then the screen is dead markup, or the channel answers "no
 handler registered", with nothing anywhere saying why.
+
+**The page is assembled, not templated.** `renderer/index.html` is generated
+and gitignored, like `app.js`: edit `renderer/page.html`, `renderer/parts/*` or
+`renderer/style/*` and rebuild. `<!-- @include parts/x.html -->` is replaced by
+that file verbatim — one level, no nesting, no expressions. This is not a step
+towards a template language (§1.2.а of SLICE_diagnostics: no framework); it
+exists because HTML has no include of its own and the markup has to BE there
+before app.js runs. The e2e suite finds its elements in the static page, and so
+does the failure trap. Adding a screen means a part, a stylesheet, an
+`@include` line and a `<link>` — a missing part throws at build time rather
+than leaving a hole.
 
 ## Conventions that matter
 

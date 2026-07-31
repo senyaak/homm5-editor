@@ -1,0 +1,76 @@
+/* top toolbar */
+/* The controls can outrun a narrow window; let the bar scroll sideways
+   rather than clip the buttons off the right edge with no way to reach them.
+   overflow-y hidden so the horizontal scrollbar never forces a vertical one. */
+#bar { position: fixed; left: 0; right: 0; top: 0; height: 40px; display: flex;
+  align-items: center; gap: 8px; padding: 0 12px; background: #161b22cc;
+  backdrop-filter: blur(6px); border-bottom: 1px solid #21262d; z-index: 10;
+  overflow-x: auto; overflow-y: hidden; }
+/* A thin bar so the 10px default scrollbar does not eat into the button row. */
+#bar::-webkit-scrollbar { height: 6px; }
+#bar button { background: #21262d; color: #c9d1d9; border: 1px solid #30363d;
+  border-radius: 6px; padding: 5px 12px; cursor: pointer; font-size: 13px;
+  flex-shrink: 0; white-space: nowrap; }
+#bar button:hover { background: #30363d; }
+#bar button:disabled { opacity: .4; cursor: default; }
+#bar button.on { background: #1f6feb33; border-color: #1f6feb; color: #cbe0ff; }
+#scalewrap, #seawrap { display: flex; align-items: center; gap: 6px; font-size: 12px;
+  color: #8b949e; flex-shrink: 0; white-space: nowrap; }
+#texscale, #sealevel { width: 110px; }
+#texscaleval, #sealevelval { font-variant-numeric: tabular-nums; color: #c9d1d9; min-width: 30px; }
+/* The map name can be long; let it ellipsize rather than push buttons out. */
+#title { font-weight: 600; color: #e6edf3; margin-right: 6px; flex: 0 1 auto;
+  min-width: 70px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#dirty { margin-left: auto; font-size: 12px; color: #8b949e; flex-shrink: 0;
+  white-space: nowrap; }
+#dirty.on { color: #e3b341; }
+
+/* --- two bars in one ----------------------------------------------------
+   The window has two jobs and the bar had been carrying both at once, in a
+   single row of two dozen controls. It now shows one at a time: with no map
+   open the four editors the start screen exists for, and with one open the
+   tools that work on it. Both halves stay in the markup and only their
+   visibility swaps — building the row fresh each time would mean the same
+   button under two identities, and the state a toggle carries in its label
+   would have to be reapplied to whichever copy happened to be on screen.
+
+   The Map menu belongs to neither half: New, Open and Close read the same on
+   both screens, and Save and Pack are simply dead until there is something
+   to save. */
+body.nomap .maponly, body:not(.nomap) .nomaponly { display: none !important; }
+/* The working panels answer to the same switch. Hidden by the class rather
+   than by their own setters, because whether each of them is open is the
+   user's standing choice — several of those setters persist it — and closing
+   a map must not be mistaken for the user closing the panel. Taking the
+   class off brings them all back exactly as they were left. */
+body.nomap #explorer, body.nomap #palette, body.nomap #objpal,
+body.nomap #regions, body.nomap #maptree, body.nomap #panel,
+body.nomap #help, body.nomap #passlegend { display: none !important; }
+
+/* --- menus -------------------------------------------------------------
+   Native popovers: the platform gives light-dismiss, Esc, focus handling and
+   the top layer, and anchor positioning puts each menu under its own button
+   without measuring anything by hand. */
+#bar .menubtn::after { content: '▾'; margin-left: 6px; font-size: 10px; color: #8b949e; }
+/* The button reads as pressed while its own menu is down. */
+#bar .menubtn:has(+ .menupop:popover-open) { background: #30363d; border-color: #484f58; }
+.menupop { position: fixed; margin: 0; inset: auto;
+  top: calc(anchor(bottom) + 6px); left: anchor(left);
+  /* A menu near the right edge opens leftwards rather than off-screen. */
+  position-try-fallbacks: flip-inline;
+  min-width: 210px; max-height: calc(100vh - 60px); overflow-y: auto;
+  padding: 6px; background: #161b22f2; backdrop-filter: blur(8px);
+  border: 1px solid #30363d; border-radius: 8px; color: #c9d1d9;
+  box-shadow: 0 10px 28px #00000077; display: none; }
+.menupop:popover-open { display: flex; flex-direction: column; gap: 2px; }
+/* Menu items are rows, not pills — they have to override the bar's own look. */
+#bar .menupop button { display: block; width: 100%; text-align: left;
+  background: transparent; border: 1px solid transparent; border-radius: 6px;
+  padding: 5px 10px; font-size: 13px; }
+#bar .menupop button:hover:not(:disabled) { background: #30363d; }
+#bar .menupop button.on { background: #1f6feb33; border-color: #1f6feb; color: #cbe0ff; }
+.menupop hr { border: 0; border-top: 1px solid #21262d; margin: 4px 2px; width: 100%; }
+/* The sliders keep their own layout, stacked into the menu's column. */
+.menupop #scalewrap, .menupop #seawrap { padding: 3px 10px; }
+/* Where the menus and the working buttons end and the panel toggles begin. */
+.barsep { flex: 0 0 1px; align-self: stretch; margin: 8px 2px; background: #30363d; }

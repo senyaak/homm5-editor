@@ -1,0 +1,18 @@
+  <!-- Choosing a preset: a list you search, not a dropdown of 118. Shared by
+       the units and the heroes forms — the question is the same one, "which
+       shipped thing should this start from", and so is the answer's shape. -->
+  <dialog id="presetpick">
+    <div class="mp-card um-card" style="max-width:520px">
+      <div class="mp-head">
+        <span class="mp-title" id="pp-title">Use preset</span>
+        <button id="pp-x" title="close (Esc)">✕</button>
+      </div>
+      <div class="mp-body on-body um-body">
+        <input id="pp-search" type="search" placeholder="search…" autocomplete="off" spellcheck="false" style="width:100%">
+        <div id="pp-list" class="um-mods" style="max-height:50vh;overflow:auto;margin-top:8px"></div>
+      </div>
+      <div class="de-foot">
+        <button id="pp-cancel" class="ghost">Cancel</button>
+      </div>
+    </div>
+  </dialog>

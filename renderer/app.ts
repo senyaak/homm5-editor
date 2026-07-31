@@ -92,7 +92,7 @@ declare global {
     view: ViewApi;
     /**
      * Set once, by the last line of this module. Absent means the module never
-     * reached its end — index.html's trap watches for that, since a boot that
+     * reached its end — the trap in renderer/parts/fatal.html watches for that, since a boot that
      * hangs rather than throws raises no event to catch.
      */
     __booted?: true;
@@ -798,6 +798,6 @@ initHeroesMod();
 initUnitsMod();
 
 // The finish line. Everything above ran, so the window is wired and the render
-// loop is turning; index.html's watchdog stands down. Keep this last — moved
+// loop is turning; the page's watchdog stands down. Keep this last — moved
 // earlier, it would vouch for handlers that had not been attached yet.
 window.__booted = true;

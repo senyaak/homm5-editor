@@ -1,0 +1,154 @@
+  <!-- artifacts: the same mod, its artifact side — the Units dialog's sibling.
+       An artifact needs no patched creature ceiling, but it has its own in the
+       same executable (src/artifact-limit.ts); install handles both. -->
+  <dialog id="artsmod">
+    <div class="mp-card um-card">
+      <div class="mp-head">
+        <span class="mp-title">Artifacts</span>
+        <button id="am-close" title="close (Esc)">✕</button>
+      </div>
+      <div class="mp-body on-body um-body">
+        <fieldset>
+          <legend>Installed</legend>
+          <!-- Side by side, not stacked: a set is made OF the artifacts beside
+               it, and choosing members while the list of them is off screen is
+               the awkward part. -->
+          <div class="am-columns">
+            <div>
+              <div id="am-list" class="um-mods"></div>
+              <div class="de-foot" style="padding:8px 0 0;justify-content:flex-start">
+                <button id="am-new">New artifact…</button>
+              </div>
+            </div>
+            <div>
+              <div id="as-list" class="um-mods"></div>
+              <div class="de-foot" style="padding:8px 0 0;justify-content:flex-start">
+                <button id="as-new" class="ghost">New set…</button>
+              </div>
+            </div>
+          </div>
+        </fieldset>
+        <!-- Sets live inside this dialog, not beside it: they belong to the same
+             archive, and their members are the artifacts listed above. What a set
+             gives a hero is NOT here — that is native code, and no arrangement of
+             data can express it (docs/ARTIFACT_EFFECTS.md). -->
+        <!-- As with creatures: the result of a build stays with the list the
+             form closes back to. -->
+        <div id="am-note" class="um-note"></div>
+        <div id="am-err" class="on-err"></div>
+      </div>
+      <div class="de-foot">
+        <button id="am-cancel" class="ghost">Close</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- A form of its own, opened ON TOP of the list it belongs to. The list is a
+       list; making and changing things happens here, where Cancel means what it
+       says and closing loses nothing else. -->
+  <dialog id="artedit">
+    <div class="mp-card um-card">
+      <div class="mp-head">
+        <span class="mp-title" id="artedit-title">New artifact</span>
+        <button id="artedit-x" title="close (Esc)">✕</button>
+      </div>
+      <div class="mp-body on-body um-body">
+        <fieldset>
+          <legend id="am-legend">New artifact</legend>
+          <div id="am-editing" class="um-editing"></div>
+          <div class="on-body um-form">
+            <label class="on-row um-span"><span>Preset</span><select id="am-donor" title="an artifact to start from — every field below loads from it"></select></label>
+            <label class="on-row"><span>Files</span><input id="am-file" type="text" spellcheck="false" autocomplete="off" placeholder="file stem, e.g. UndertakersAmulet" title="the stem of every file generated for it; the ID fills itself from it"></label>
+            <label class="on-row"><span>ID</span><input id="am-id" type="text" spellcheck="false" autocomplete="off" placeholder="ARTIFACT_…" title="what maps, saves and scripts store — pick once, never reuse"></label>
+            <label class="on-row"><span>Name</span><input id="am-name" type="text" autocomplete="off"></label>
+            <label class="on-row um-span"><span>Description</span><input id="am-desc" type="text" autocomplete="off"></label>
+            <label class="on-row"><span>Slot</span>
+              <select id="am-slot" title="where a hero wears it; INVENTORY is the backpack">
+                <option>HEAD</option><option>NECK</option><option>SHOULDERS</option><option>CHEST</option>
+                <option>PRIMARY</option><option>SECONDARY</option><option>FINGER</option><option>FEET</option>
+                <option>MISCSLOT1</option><option>INVENTORY</option>
+              </select>
+            </label>
+            <label class="on-row"><span>Rank</span>
+              <select id="am-rank" title="which random-artifact rolls can produce it">
+                <option>ARTF_CLASS_MINOR</option><option>ARTF_CLASS_MAJOR</option><option>ARTF_CLASS_RELIC</option>
+              </select>
+            </label>
+            <div class="um-stats">
+              <label>Cost<input id="am-cost" type="number" value="0" title="what a market sells it for"></label>
+              <label>AI value<input id="am-ai" type="number" value="0" title="how much an AI hero wants it; shipped relics sit around 500"></label>
+              <label>Board tiles<input id="am-board" type="number" value="1" min="1" title="with no map model, the artifact stands as a flat board of its icon this many tiles wide"></label>
+              <label class="nm-check" style="align-self:end" title="whether random-artifact rolls may produce it"><input id="am-sell" type="checkbox"> Rollable</label>
+            </div>
+            <!-- Everything the artifact GIVES, in one list. Six of them the
+                 record itself holds (Attack … Luck); the rest have nowhere to
+                 live in the game's data and go to a file the native extension
+                 reads, which is what the line below is about. Which side of
+                 that line a bonus falls on is our problem, not the author's —
+                 they are all "what it gives", so they are all rows here.
+                 Rows rather than a field per stat because the list grows with
+                 the reverse engineering and an artifact uses one or two. -->
+            <div class="on-row um-span" style="align-items:flex-start">
+              <span>Gives</span>
+              <div style="flex:1;min-width:0">
+                <div id="am-effects" class="as-counts"></div>
+                <button id="am-effect-add" class="um-recolor" style="margin:6px 0 0" title="a stat the record holds, or a bonus only the extension can add">+ bonus</button>
+              </div>
+            </div>
+            <div id="am-ext" class="um-span um-warn"></div>
+            <label class="on-row um-art um-span"><span>Icon</span><input id="am-icon" type="text" spellcheck="false" autocomplete="off" title="href of the 64x64 hero-screen icon — usually the donor's"></label>
+            <label class="on-row um-art um-span"><span>Map model</span><input id="am-model" type="text" spellcheck="false" autocomplete="off" placeholder="empty → a flat board of the icon" title="href of the model lying on the map; referenced, not copied"></label>
+          </div>
+        </fieldset>
+        <div id="ae-err" class="on-err"></div>
+      </div>
+      <div class="de-foot">
+        <button id="artedit-cancel" class="ghost">Cancel</button>
+        <button id="am-ok">Build &amp; install</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="setedit">
+    <div class="mp-card um-card">
+      <div class="mp-head">
+        <span class="mp-title" id="setedit-title">New set</span>
+        <button id="setedit-x" title="close (Esc)">✕</button>
+      </div>
+      <div class="mp-body on-body um-body">
+        <fieldset>
+          <legend>New set</legend>
+          <div class="on-body um-form">
+            <label class="on-row"><span>Files</span><input id="as-file" type="text" spellcheck="false" autocomplete="off" placeholder="file stem, e.g. UndeadKing" title="the stem of the set's text files; the effect id fills itself from it"></label>
+            <label class="on-row"><span>Effect</span><input id="as-effect" type="text" spellcheck="false" autocomplete="off" placeholder="ARTFSET_EFFECT_…" title="ours, appended after the game's eleven — one of theirs is refused"></label>
+            <label class="on-row"><span>Name</span><input id="as-name" type="text" autocomplete="off"></label>
+            <label class="on-row um-span"><span>Description</span><input id="as-desc" type="text" autocomplete="off"></label>
+            <label class="on-row um-span" style="align-items:flex-start"><span>Members</span>
+              <div id="as-members" class="as-members" title="two or more; a set of one never combines"></div>
+            </label>
+            <label class="on-row um-span" style="align-items:flex-start"><span>Worn</span>
+              <div id="as-counts" class="as-counts" title="what the tooltip says at each number of pieces worn; one piece is not a set, so the first is normally blank"></div>
+            </label>
+            <!-- What the set GIVES. Not data of the game's: its own <Effect> is
+                 one of eleven behaviours compiled into the executable, so ours
+                 goes to the file the extension reads. The threshold is ours
+                 too — the extension counts the worn members itself. -->
+            <div class="on-row um-span" style="align-items:flex-start">
+              <span>Effects</span>
+              <div style="flex:1;min-width:0">
+                <div id="as-effects" class="as-counts"></div>
+                <button id="as-effect-add" class="um-recolor" style="margin:6px 0 0" title="a bonus the engine has no field for, or a script the set runs on an event">+ effect</button>
+              </div>
+            </div>
+            <div id="as-ext" class="um-span um-warn"></div>
+          </div>
+        </fieldset>
+        <div id="as-note" class="um-note"></div>
+        <div id="as-err" class="on-err"></div>
+      </div>
+      <div class="de-foot">
+        <button id="setedit-cancel" class="ghost">Cancel</button>
+        <button id="as-ok">Build &amp; install</button>
+      </div>
+    </div>
+  </dialog>

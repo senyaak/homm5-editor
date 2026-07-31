@@ -1,0 +1,59 @@
+/* Units/Artifacts dialogs: installed mod contents and the new-thing form */
+#unitsmod, #artsmod, #heroesmod, #heroedit, #presetpick { padding: 0; border: 0; background: transparent; max-width: 94vw; overflow: visible; }
+/* The appearance fold: a summary that reads as a row of the form, and rows
+   inside it that line up with the ones above. */
+.he-art > summary { cursor: pointer; padding: 6px 0; color: #9fb4c7; font-size: 12px; }
+.he-art > summary:hover { color: #d6e6f2; }
+.he-art > label { margin-top: 4px; }
+.he-art select { flex: 1; min-width: 0; }
+button.he-file { margin-left: 6px; flex: 0 0 auto; }
+#unitsmod::backdrop, #artsmod::backdrop, #heroesmod::backdrop, #heroedit::backdrop, #presetpick::backdrop { background: #0d1014cc; }
+.um-body select[multiple] { flex: 1; min-width: 0; background: #0d1014; border: 1px solid #30363d;
+  border-radius: 6px; padding: 4px 6px; color: #c9d1d9; font-size: 12px; }
+.um-art input { font-size: 11px; color: #8b949e; }
+.um-art input:focus { color: #c9d1d9; }
+/* Wide and stretchy: the forms hold a lot of fields and screens have the
+   room — two columns for the short rows, full width for the long ones. */
+.um-card { width: min(1100px, 94vw); }
+.um-body { max-height: 80vh; overflow: auto; }
+.um-body .on-row span { flex: 0 0 78px; }
+.um-form { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 18px; }
+.um-form > .um-span, .um-form > .um-stats { grid-column: 1 / -1; }
+.um-mods { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #c9d1d9; }
+/* one installed thing: what it is, then what can be done to it */
+.um-item { display: flex; align-items: center; gap: 8px; padding: 3px 0;
+  border-bottom: 1px solid #21262d; }
+.um-item .grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.um-item .num { color: #6e7681; font-variant-numeric: tabular-nums; }
+.um-editing { color: #d29922; font-size: 11px; min-height: 14px; }
+.um-mods i { color: #8b949e; font-style: normal; }
+.um-empty { color: #6e7681; font-size: 12px; }
+.am-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 20px; align-items: start; }
+.am-columns > div { min-width: 0; }
+.um-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 6px 10px; }
+.um-stats label { display: flex; flex-direction: column; gap: 2px; font-size: 11px; color: #8b949e; }
+.um-stats input { background: #0d1014; border: 1px solid #30363d; border-radius: 6px;
+  padding: 5px 8px; color: #c9d1d9; font-size: 12px; width: 100%; box-sizing: border-box; }
+.um-stats input:focus { outline: none; border-color: #1f6feb; }
+.um-note { color: #3fb950; font-size: 11px; min-height: 14px; white-space: pre-line; word-break: break-all; }
+/* the set pane: members are picked from a list rather than typed, because a
+   misspelt id builds cleanly and simply never combines */
+.as-members { display: flex; flex-direction: column; gap: 3px; max-height: 180px; overflow: auto;
+  border: 1px solid #30363d; border-radius: 6px; padding: 6px 8px; background: #0d1014; }
+.as-members label { display: flex; align-items: center; gap: 7px; font-size: 12px; color: #c9d1d9;
+  cursor: pointer; }
+.as-members label i { color: #8b949e; font-style: normal; font-size: 11px; }
+.ask-text { white-space: pre-wrap; max-width: 520px; font-size: 12px; line-height: 1.5; }
+/* The same editor the map's scripts are written in, in a dialog of its own. */
+.ss-text { border: 1px solid #30363d; border-radius: 4px; overflow: hidden; }
+.ss-text .cm-editor { height: 340px; font-size: 12px; }
+.ss-text .cm-scroller { overflow: auto; }
+.as-counts { display: flex; flex-direction: column; gap: 4px; }
+.as-counts label { display: flex; align-items: center; gap: 8px; font-size: 11px; color: #8b949e; }
+.as-counts label span { flex: 0 0 96px; }
+.as-counts input { flex: 1; min-width: 0; background: #0d1014; border: 1px solid #30363d;
+  border-radius: 6px; padding: 5px 8px; color: #c9d1d9; font-size: 12px; }
+.um-warn { color: #d29922; font-size: 11px; }
+.um-recolor { margin-left: 8px; background: #21262d; color: #c9d1d9; border: 1px solid #30363d;
+  border-radius: 6px; padding: 2px 8px; font-size: 11px; cursor: pointer; }
+.um-recolor:hover { background: #30363d; }

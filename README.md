@@ -9,8 +9,10 @@ mission click by click (see *Testing* below).
 
 TypeScript throughout. Node 24 — and the Node 24.18 inside Electron 43 — strip
 types natively, so `src/`, `electron/` and `tools/` run their `.ts` straight off
-disk with no build step; only `renderer/` is bundled (esbuild), because a browser
-cannot strip types. `tsconfig.json` is therefore type-check only.
+disk with no build step; only `renderer/` is built — esbuild bundles its code,
+because a browser cannot strip types, and the same step assembles its page from
+`renderer/page.html` and `renderer/parts/`, because HTML has no include of its
+own. `tsconfig.json` is therefore type-check only.
 
 One exception worth knowing: `electron/preload.cjs` must stay JavaScript.
 Electron reads a preload verbatim and never applies Node's type-stripping hook,

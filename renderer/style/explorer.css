@@ -1,0 +1,23 @@
+/* object explorer sidebar (categories + object list for the loaded map) */
+#explorer { position: fixed; left: 0; top: 40px; bottom: 0; width: 284px; z-index: 12;
+  background: #0f141aee; border-right: 1px solid #21262d; backdrop-filter: blur(6px);
+  display: flex; flex-direction: column; }
+#explorer .ex-head { padding: 8px; border-bottom: 1px solid #21262d; }
+#ex-search { width: 100%; box-sizing: border-box; background: #0d1014; border: 1px solid #30363d;
+  border-radius: 6px; padding: 7px 10px; color: #c9d1d9; font-size: 13px; }
+/* No inner scrollbar here: a second scroll area nested in the sidebar reads
+   as broken. The chips wrap and the list below takes whatever is left. */
+#ex-cats { display: flex; gap: 6px; padding: 8px; flex-wrap: wrap; flex-shrink: 0;
+  border-bottom: 1px solid #21262d; }
+#ex-cats .chip { padding: 3px 9px; border: 1px solid #30363d; border-radius: 999px;
+  background: #0d1014; color: #8b949e; cursor: pointer; font-size: 11px; white-space: nowrap; }
+#ex-cats .chip.on { background: #1f6feb33; border-color: #1f6feb; color: #cbe0ff; }
+#ex-list { flex: 1; overflow-y: auto; }
+#ex-list .exrow { padding: 5px 10px; cursor: pointer; display: flex; justify-content: space-between;
+  gap: 8px; border-bottom: 1px solid #161b22; font-size: 12px; }
+#ex-list .exrow:hover { background: #1b2230; }
+#ex-list .exrow.sel { background: #1f6feb44; }
+#ex-list .exrow .nm { color: #e6edf3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#ex-list .exrow .co { color: #6e7681; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+#ex-list .empty { padding: 12px; color: #6e7681; text-align: center; }
+#explorer .ex-foot { padding: 6px 10px; border-top: 1px solid #21262d; color: #6e7681; font-size: 11px; }

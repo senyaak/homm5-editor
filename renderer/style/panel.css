@@ -1,0 +1,54 @@
+/* selection / info panel */
+#panel { position: fixed; right: 12px; top: 52px; width: 260px;
+  background: #161b22ee; border: 1px solid #21262d; border-radius: 8px;
+  padding: 12px 14px; z-index: 10; display: none; }
+#panel h3 { margin: 0 0 8px; font-size: 13px; color: #e6edf3; }
+#panel .row { display: flex; justify-content: space-between; margin: 3px 0; }
+#panel .k { color: #8b949e; } #panel .v { color: #c9d1d9; font-variant-numeric: tabular-nums; }
+/* Position and facing are typed in, so they are inputs sitting where the
+   readout used to be — narrow enough that x and y still share the row. */
+#panel .v input[type=number] { width: 64px; background: #0d1014; border: 1px solid #30363d;
+  border-radius: 5px; padding: 2px 4px; color: #c9d1d9; font-size: 11px;
+  font-variant-numeric: tabular-nums; }
+#panel .v input:focus { outline: none; border-color: #1f6feb; }
+#panel .hint { margin-top: 10px; font-size: 11px; color: #6e7681; }
+#panel .prow { display: flex; gap: 6px; align-items: center; margin-top: 8px; }
+#panel .prow input[type=range] { flex: 1; min-width: 0; }
+#panel .prow button { background: #21262d; color: #c9d1d9; border: 1px solid #30363d;
+  border-radius: 6px; padding: 4px 9px; cursor: pointer; font-size: 12px; }
+#panel .prow button:hover { background: #30363d; }
+/* Deletion has no undo yet, so it does not look like the other buttons. */
+#panel .prow button.danger { flex: 1; color: #f85149; border-color: #f8514955; }
+#panel .prow button.danger:hover { background: #f8514922; border-color: #f85149; }
+/* Property list. Capped and scrollable: a monster carries ~20 fields and a
+   town far more, and a panel taller than the window cannot be reached. */
+#p-props { margin-top: 10px; max-height: 40vh; overflow-y: auto; }
+#p-props .ph, .mp-body .ph { font-size: 11px; color: #6e7681; text-transform: uppercase;
+  letter-spacing: .04em; margin: 8px 0 4px; }
+#p-props .pf, .mp-body .pf { display: flex; align-items: center; gap: 6px; margin: 2px 0; }
+#p-props .pf label, .mp-body .pf label { flex: 0 0 96px; color: #8b949e; font-size: 11px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#p-props .pf input[type=text], #p-props .pf input[type=number],
+.mp-body .pf input[type=text], .mp-body .pf input[type=number] { flex: 1; min-width: 0;
+  background: #0d1014; border: 1px solid #30363d; border-radius: 5px;
+  padding: 3px 6px; color: #c9d1d9; font-size: 11px; }
+#p-props .pf input:focus, .mp-body .pf input:focus { outline: none; border-color: #1f6feb; }
+/* Schema-driven dropdowns (enum / registry pickers). */
+#p-props .pf select, .mp-body .pf select { flex: 1; min-width: 0; background: #0d1014;
+  border: 1px solid #30363d; border-radius: 5px; padding: 3px 6px; color: #c9d1d9;
+  font-size: 11px; cursor: pointer; }
+#p-props .pf select:focus, .mp-body .pf select:focus { outline: none; border-color: #1f6feb; }
+#p-props .pf select:disabled, .mp-body .pf select:disabled { opacity: .6; }
+#p-props .pf select option, .mp-body .pf select option { background: #161b22; color: #c9d1d9; }
+/* Asset references are shown, not edited: typing a path by hand is not an
+   honest editor for them. RTL so a long path shows its telling end. */
+#p-props .pf .ro, .mp-body .pf .ro { flex: 1; min-width: 0; color: #6e7681; font-size: 10px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; }
+/* A field the type has but this object does not carry yet: shown dimmed
+   until it is set, so it does not read as a field whose value is empty. */
+#p-props .pf.absent label { color: #6e7681; font-style: italic; }
+#p-props .pf.absent input { border-style: dashed; }
+/* A read-only plain value (a null ref, a dimension) — muted, but left to
+   right, unlike the path shown in .ro. */
+.mp-body .pf .rov { flex: 1; min-width: 0; color: #6e7681; font-size: 11px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

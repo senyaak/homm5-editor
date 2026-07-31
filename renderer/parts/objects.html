@@ -1,0 +1,20 @@
+  <!-- object palette: the original editor's Objects tab -->
+  <div id="objpal" style="display:none">
+    <div class="pal-head">
+      <span class="pal-title">Objects</span>
+      <select id="obj-cat"></select>
+    </div>
+    <div class="obj-tools">
+      <input id="obj-search" type="text" placeholder="find object…" autocomplete="off">
+      <!-- 49 of the 1466 entries ask to be hidden: tests and dev props. They are
+           read either way, so showing them is a checkbox rather than a rebuild. -->
+      <label class="obj-hidden" title="show entries marked HideInEditor (tests, dev props)">
+        <input id="obj-hidden" type="checkbox"> hidden
+      </label>
+    </div>
+    <div id="obj-grid"></div>
+    <div class="pal-foot">
+      <div id="obj-sel">no object selected</div>
+      <div class="pal-note">click to arm, then click the map</div>
+    </div>
+  </div>

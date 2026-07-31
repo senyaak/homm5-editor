@@ -1,0 +1,14 @@
+  <!-- Shown only while software rendering is on. The way back out: the mode is
+       remembered across restarts, and it is chosen on a machine that could not
+       start at all, so nothing else would ever tell the user it is still costing
+       them the GPU. -->
+  <div id="gpunote" hidden>
+    <span>Drawing in software — slower than the GPU. Turned on because this machine gave no 3D context.</span>
+    <button id="gpunote-off">Try the GPU again</button>
+  </div>
+
+  <div id="loading"><div class="box"><div class="spin"></div><span id="loadmsg">loading map…</span></div></div>
+
+  <div id="hud"></div>
+
+  <div id="app"></div>

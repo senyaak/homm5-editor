@@ -1,0 +1,157 @@
+  <!-- units: the game-global creature mods. Lists what UserMODs adds and adds a
+       creature to a mod — the window over src/creature-mod.ts, the same blocks
+       tools/units-mod.ts drives from the command line. Game-global on purpose:
+       a mod is UserMODs plus the executable's ceiling, nothing of the open map,
+       so the dialog works with no map loaded. -->
+  <dialog id="unitsmod">
+    <div class="mp-card um-card">
+      <div class="mp-head">
+        <span class="mp-title">Units</span>
+        <button id="um-close" title="close (Esc)">✕</button>
+      </div>
+      <div class="mp-body on-body um-body">
+        <fieldset>
+          <legend>Installed mods</legend>
+          <div id="um-list" class="um-mods"></div>
+          <div id="um-conflict" class="um-warn"></div>
+        </fieldset>
+        <div class="de-foot" style="padding:0;justify-content:flex-start">
+          <button id="um-new">New creature…</button>
+        </div>
+        <!-- What the last build did. It belongs to the LIST, not to the form:
+             the form closes when a build succeeds, and a message written into a
+             dialog that is closing is a message nobody reads. -->
+        <div id="um-note" class="um-note"></div>
+        <div id="um-err" class="on-err"></div>
+      </div>
+      <div class="de-foot">
+        <button id="um-cancel" class="ghost">Close</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- A form of its own, opened ON TOP of the list it belongs to. The list is a
+       list; making and changing things happens here, where Cancel means what it
+       says and closing loses nothing else. -->
+  <dialog id="unitedit">
+    <div class="mp-card um-card">
+      <div class="mp-head">
+        <span class="mp-title" id="unitedit-title">New creature</span>
+        <button id="unitedit-x" title="close (Esc)">✕</button>
+      </div>
+      <div class="mp-body on-body um-body">
+        <fieldset>
+          <legend id="um-legend">New creature</legend>
+          <div id="um-editing" class="um-editing"></div>
+          <div class="on-body um-form">
+            <!-- The donor IS the preset: picking one loads its every field —
+                 stats, texts, abilities, the four art documents — and the form
+                 then edits the difference. The mod is always OURS (the one
+                 manifest-carrying archive in UserMODs); there is nothing to
+                 choose about where a creature goes. -->
+            <!-- A button, not a field: a preset is something you DO once, and a
+                 select sitting in the form reads as "this creature's donor" —
+                 which is exactly the idea this stopped being. -->
+            <div class="on-row um-span">
+              <span>Preset</span>
+              <span id="um-donor-name" class="um-note" style="flex:1;min-width:0">nothing yet — the form is blank</span>
+              <button id="um-donor-pick" class="ghost" title="fill every field below from a shipped creature; each stays editable afterwards">Use preset…</button>
+              <input id="um-donor" type="hidden">
+            </div>
+            <!-- One string, two jobs, as with a hero: it names his files and it
+                 is what the CREATURE_ id is made of — and that id is what maps,
+                 saves and scripts store, so it is shown rather than hidden. -->
+            <label class="on-row"><span>Identifier</span><input id="um-file" type="text" spellcheck="false" autocomplete="off" placeholder="unique id, e.g. Sharpshooter" title="the creature's unique identifier: its files are named after it and its CREATURE_ id is made from it. Refused if any creature already has it — the game's own included."></label>
+            <label class="on-row"><span>Stored as</span><input id="um-id" type="text" spellcheck="false" autocomplete="off" readonly title="what maps, saves and scripts store. Made from the identifier — pick once, never reuse."></label>
+            <label class="on-row"><span>Name</span><input id="um-name" type="text" autocomplete="off"></label>
+            <label class="on-row"><span>Town</span><select id="um-town" title="the creature's home town — TOWN_NO_TYPE for a neutral"></select></label>
+            <label class="on-row um-span"><span>Description</span><input id="um-desc" type="text" autocomplete="off"></label>
+            <!-- Added one at a time, by name. The line the hire dialog prints is
+                 NOT typed here: it is built from these when the creature is
+                 built, so it cannot drift from what the creature can do. -->
+            <div class="on-row um-span" style="align-items:flex-start">
+              <span>Abilities</span>
+              <div style="flex:1;min-width:0">
+                <div id="um-abilities" class="as-counts"></div>
+                <button id="um-ability-add" class="um-recolor" style="margin:6px 0 0" title="one of the engine's own abilities; the printed line is made from these">+ ability</button>
+                <div id="um-abil-preview" class="um-note" style="margin-top:6px"></div>
+              </div>
+            </div>
+            <div class="um-stats">
+              <label>Attack<input id="um-attack" type="number" value="1"></label>
+              <label>Defence<input id="um-defence" type="number" value="1"></label>
+              <label>Min dmg<input id="um-mindmg" type="number" value="1"></label>
+              <label>Max dmg<input id="um-maxdmg" type="number" value="1"></label>
+              <label>Health<input id="um-health" type="number" value="1"></label>
+              <label>Speed<input id="um-speed" type="number" value="4"></label>
+              <label>Initiative<input id="um-init" type="number" value="10"></label>
+              <label>Shots<input id="um-shots" type="number" value="0" title="0 for a melee creature"></label>
+              <label>Range<input id="um-range" type="number" value="0" title="0 = ordinary ranged; -1 = no distance penalty (the Sharp Shooter's)"></label>
+              <label>Growth/week<input id="um-growth" type="number" value="1"></label>
+              <label>Gold<input id="um-gold" type="number" value="100"></label>
+              <label>Tier<input id="um-tier" type="number" value="1" min="1" max="7"></label>
+              <label>Exp<input id="um-exp" type="number" value="1"></label>
+              <label>Power<input id="um-power" type="number" value="1" title="what the AI values one at"></label>
+              <label>Size<input id="um-size" type="number" value="1" min="1" max="2" title="1 small, 2 large (two tiles square in combat)"></label>
+              <label>Command<input id="um-command" type="number" value="10" title="how long the hire dialog waits before it will command them; shipped 7–10"></label>
+              <label class="nm-check" style="align-self:end"><input id="um-fly" type="checkbox"> Flying</label>
+            </div>
+          </div>
+        </fieldset>
+        <fieldset>
+          <legend>Appearance</legend>
+          <p class="um-note" style="margin:0 0 6px">Copied into the creature's own folder when it is built, so recolouring one never reaches the original.</p>
+          <div class="on-body">
+            <!-- These are COPIED into the mod, so pointing one at another file
+                 (a recolour, another model) changes just that piece. -->
+            <label class="on-row um-art um-span"><span>Character</span><input id="um-art-character" type="text" spellcheck="false" autocomplete="off" title="what fights: the combat model with its arena animations"><button class="ghost um-pick" data-for="um-art-character" title="choose a file of your own; it is copied into the creature's folder when it is built">File…</button></label>
+            <label class="on-row um-art um-span"><span>Model</span><input id="um-art-model" type="text" spellcheck="false" autocomplete="off" title="what stands on the adventure map"><button class="ghost um-pick" data-for="um-art-model" title="choose a file of your own; it is copied into the creature's folder when it is built">File…</button></label>
+            <label class="on-row um-art um-span"><span>Anim set</span><input id="um-art-animset" type="text" spellcheck="false" autocomplete="off" title="the adventure-map animations"><button class="ghost um-pick" data-for="um-art-animset" title="choose a file of your own; it is copied into the creature's folder when it is built">File…</button></label>
+            <label class="on-row um-art um-span"><span>Icon</span><input id="um-art-icon" type="text" spellcheck="false" autocomplete="off" title="the hire and army icon — a creature without one stops the game"><button class="ghost um-pick" data-for="um-art-icon" title="choose a file of your own; it is copied into the creature's folder when it is built">File…</button></label>
+          </div>
+        </fieldset>
+        <div id="ue-err" class="on-err"></div>
+      </div>
+      <div class="de-foot">
+        <button id="unitedit-cancel" class="ghost">Cancel</button>
+        <button id="um-ok">Build &amp; install</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- recolor: a mod creature's textures, repainted. The textures are the
+       MOD'S OWN copies (the art closure put them there), so nothing shipped is
+       touched and reverting is re-picking the donor. Preview and rewrite run
+       the same arithmetic — src/recolor.ts — so what you see is what lands. -->
+  <dialog id="recolor">
+    <div class="mp-card um-card">
+      <div class="mp-head">
+        <span class="mp-title" id="rc-title">Recolor</span>
+        <button id="rc-close" title="close (Esc)">✕</button>
+      </div>
+      <div class="mp-body on-body um-body">
+        <div id="rc-previews" class="rc-previews"></div>
+        <!-- The palette: the textures' dominant colours, each remappable on
+             its own — the cloak goes grey, the skin stays skin. The sliders
+             below still apply, on top, to everything. -->
+        <fieldset>
+          <legend>Palette — repaint a colour, leave the rest</legend>
+          <div id="rc-palette" class="rc-palette"></div>
+        </fieldset>
+        <div class="um-stats rc-controls">
+          <label>Hue °<input id="rc-hue" type="number" value="0" min="-180" max="180" title="rotate every colour around the wheel"></label>
+          <label>Saturation %<input id="rc-sat" type="number" value="100" min="0" max="300" title="0 is grey, 100 leaves it, 300 triples it"></label>
+          <label>Lightness %<input id="rc-light" type="number" value="0" min="-100" max="100"></label>
+          <label>Tint<input id="rc-tint" type="color" value="#808080" title="blend every pixel toward this colour, keeping the shading"></label>
+          <label>Tint %<input id="rc-tintk" type="number" value="0" min="0" max="100" title="how far toward the tint colour"></label>
+          <label>Preset<button id="rc-grey" title="saturation to zero — the quick grey">Grey</button></label>
+        </div>
+        <div id="rc-note" class="um-note"></div>
+        <div id="rc-err" class="on-err"></div>
+      </div>
+      <div class="de-foot">
+        <button id="rc-cancel" class="ghost">Close</button>
+        <button id="rc-ok">Repaint &amp; save</button>
+      </div>
+    </div>
+  </dialog>

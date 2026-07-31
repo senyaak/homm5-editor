@@ -1,0 +1,67 @@
+/* text editor dialog — the "Edit" button on a text reference */
+#docedit { padding: 0; border: 0; background: transparent; max-width: 92vw; max-height: 86vh; overflow: visible; }
+#docedit::backdrop { background: #0d1014cc; }
+.de-card { width: min(640px, 92vw); }
+/* A script is read as a whole, not through a letterbox: an editor opened on
+   one takes the room a file of code needs. A one-line name.txt keeps the
+   narrow card. */
+.de-card.wide { width: min(1100px, 94vw); }
+.de-body { padding: 0; }
+.de-text { height: 46vh; overflow: hidden; background: #0d1014;
+  border-top: 1px solid #21262d; border-bottom: 1px solid #21262d; }
+.de-card.wide .de-text { height: 70vh; }
+/* CodeMirror brings its own dark theme (one-dark); these only make it sit
+   flush in the card and match the app's own background. */
+.de-text .cm-editor { height: 100%; }
+.de-text .cm-editor.cm-focused { outline: none; }
+.de-text .cm-scroller { overflow: auto; }
+.de-text .cm-gutters { background: #0d1014; border-right: 1px solid #21262d; }
+.de-text .cm-content, .de-text .cm-gutter { background: #0d1014; }
+/* Which file, and what the editor is completing from — shown in the head so
+   "no completion" is never a silent state. */
+#de-info { color: #6e7681; font-size: 11px; margin: 0 10px 0 auto; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 0 1 auto; }
+#docedit .mp-head > button { flex: none; }
+/* the linter's verdict, beside the file's name: red for errors a parser
+   would reject, amber for a "did you mean", dim green when the script is clean */
+.de-lint { font-size: 11px; margin-left: 10px; white-space: nowrap; flex: none; }
+.de-lint.err { color: #f85149; }
+.de-lint.warn { color: #d29922; }
+.de-lint.ok { color: #3fb950; opacity: .7; }
+/* language tabs: author every localization here, export one at a time */
+.de-langs { display: flex; align-items: center; gap: 4px; padding: 6px 10px 0; flex-wrap: wrap; }
+.de-langs[hidden] { display: none; }
+.de-langs button { font-size: 12px; padding: 3px 10px; border: 1px solid #21262d; border-bottom: none;
+  border-radius: 5px 5px 0 0; background: #161b22; color: #8b949e; cursor: pointer; }
+.de-langs button.active { background: #0d1014; color: #e6edf3; border-color: #30363d; }
+.de-langs button.untranslated { font-style: italic; opacity: .8; }
+.de-langs button.untranslated::after { content: ' ·'; color: #d29922; }
+.de-langs .de-addlang { margin-left: 4px; border-radius: 5px; border: 1px dashed #30363d; color: #6e7681; }
+/* the reference source, dimmed, while translating an empty variant */
+.de-ref { font-size: 12px; color: #6e7681; background: #0d1014; border-top: 1px solid #21262d;
+  padding: 5px 10px; max-height: 4.5em; overflow: auto; white-space: pre-wrap; }
+.de-ref b { color: #8b949e; font-weight: 600; }
+/* the localization dialog */
+.lz-card { min-width: 420px; max-width: 92vw; }
+#lz-body { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; font-size: 13px; }
+#lz-body .lz-row { display: flex; align-items: center; gap: 8px; }
+#lz-body .lz-langs { display: flex; flex-direction: column; gap: 4px; }
+#lz-body .lz-lang { display: flex; align-items: center; gap: 8px; padding: 4px 8px; background: #161b22;
+  border: 1px solid #21262d; border-radius: 5px; }
+#lz-body .lz-lang .lz-base { color: #3fb950; font-size: 11px; }
+#lz-body .lz-lang .lz-export { margin-left: auto; font-size: 11px; }
+#lz-body .lz-lang .lz-rm { color: #f85149; cursor: pointer; background: none; border: none; }
+#lz-body .lz-note { color: #6e7681; font-size: 12px; }
+
+/* the script list: every .lua the map folder carries */
+#scriptpick .sp-list { display: flex; flex-direction: column; gap: 2px; padding: 6px; }
+#scriptpick .sp-list button { text-align: left; background: #161b22; color: #c9d1d9;
+  border: 1px solid #21262d; border-radius: 6px; padding: 6px 9px; cursor: pointer;
+  font: 12px/1.4 ui-monospace, monospace; }
+#scriptpick .sp-list button:hover { background: #21262d; border-color: #30363d; }
+#scriptpick .sp-empty { color: #6e7681; font-size: 12px; padding: 10px 12px; line-height: 1.4; }
+.de-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 10px 14px; border-top: 1px solid #21262d; }
+.de-foot button { background: #238636; color: #fff; border: 0; border-radius: 6px;
+  padding: 6px 16px; cursor: pointer; font-size: 13px; }
+.de-foot button.ghost { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; }
+.de-foot button.ghost:hover { background: #30363d; }

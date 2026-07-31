@@ -1,0 +1,16 @@
+/* entity edit dialog — the referenced object's own typed fields */
+#entedit { padding: 0; border: 0; background: transparent; max-width: 92vw; max-height: 86vh; overflow: visible; }
+#entedit::backdrop { background: #0d1014cc; }
+.ee-card { width: min(560px, 92vw); }
+.ee-body { max-height: 60vh; overflow-y: auto; }
+.ee-note { padding: 8px 14px 0; font-size: 11px; color: #d29922; }
+.ee-form-ro { opacity: .75; }
+/* a structured reference row: current value + …/New/Edit buttons */
+.mt-ref { display: flex; align-items: center; gap: 4px; min-width: 0; flex: 1; }
+.mt-ref .rv { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  background: #0d1014; border: 1px solid #30363d; border-radius: 6px; padding: 3px 8px;
+  color: #c9d1d9; font-size: 12px; }
+.mt-ref button { flex: 0 0 auto; background: #21262d; border: 1px solid #30363d; color: #c9d1d9;
+  border-radius: 6px; padding: 3px 7px; cursor: pointer; font-size: 11px; }
+.mt-ref button:hover:not(:disabled) { background: #30363d; }
+.mt-ref button:disabled { opacity: .4; cursor: default; }

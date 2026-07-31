@@ -1,6 +1,6 @@
 // Element lookups every panel and dialog in the renderer shares.
 //
-// Every id these take is hard-coded in index.html, so a miss is a typo caught on
+// Every id these take is hard-coded in the page (renderer/parts/), so a miss is a typo caught on
 // first load rather than a runtime condition worth handling at each call site —
 // hence throwing accessors instead of `as HTMLInputElement` casts.
 

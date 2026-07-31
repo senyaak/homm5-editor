@@ -1,0 +1,14 @@
+  <!-- map tree: the whole <AdvMapDesc> as a schema-typed, editable tree -->
+  <div id="maptree" style="display:none">
+    <div class="mt-head">
+      <span class="mt-title" id="mt-title">Map tree</span>
+      <label class="mt-adv" title="show deep/rare structures"><input id="mt-adv" type="checkbox"> advanced</label>
+      <button id="mt-expand" title="expand to a window">⤢</button>
+      <button id="mt-close" title="close">✕</button>
+    </div>
+    <div id="maptree-body"></div>
+  </div>
+
+  <!-- The tree, expanded: #maptree is moved in here (and back out) so the same
+       DOM — and every test selector — is untouched; this only gives it room. -->
+  <dialog id="mt-dialog"></dialog>

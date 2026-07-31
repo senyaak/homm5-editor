@@ -7,7 +7,9 @@ data-unpacked/
 # ...and any copy of it set aside by hand. It is game content either way.
 data-unpacked.*/
 
-# built from renderer/app.ts by esbuild
+# built by tools/build-renderer.ts: the page assembled from renderer/page.html
+# + renderer/parts/, and the bundle esbuild makes of renderer/app.ts
+renderer/index.html
 renderer/app.js
 renderer/app.js.map
 renderer/harness.html

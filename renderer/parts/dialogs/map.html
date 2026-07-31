@@ -1,0 +1,53 @@
+  <!-- map settings dialog: General (curated) + All fields (full property tree).
+       A native <dialog>, so the modality, backdrop, Esc-to-close and focus
+       handling come from the platform rather than hand-rolled. -->
+  <dialog id="mapprops">
+    <div class="mp-card">
+      <div class="mp-head">
+        <span class="mp-title">Map Properties</span>
+        <button id="mp-close" title="close (Esc)">✕</button>
+      </div>
+      <div class="mp-tabs" id="mp-tabs"></div>
+      <div id="mp-body" class="mp-body"></div>
+    </div>
+  </dialog>
+
+  <!-- Create New Map — the original's startup dialog, field for field: a name, a
+       two-level toggle, the map type and the seven fixed sizes. The type is the
+       one thing map.xdb does not record, so it only decides which folder under
+       Maps the project lands in. -->
+  <dialog id="newmap">
+    <div class="mp-card on-card">
+      <div class="mp-head">
+        <span class="mp-title">Create New Map</span>
+        <button id="nm-close" title="close (Esc)">✕</button>
+      </div>
+      <div class="mp-body on-body">
+        <label class="on-row"><span>Name</span><input id="nm-name" type="text" spellcheck="false" autocomplete="off" value="New Map"></label>
+        <label class="nm-check"><input id="nm-two" type="checkbox"> Two Level Map</label>
+        <label class="on-row"><span>Type</span>
+          <select id="nm-type">
+            <option value="single">Single Scenario</option>
+            <option value="multi">Multiplayer Arena</option>
+          </select>
+        </label>
+        <label class="on-row"><span>Size</span>
+          <select id="nm-size">
+            <option value="72">Tiny (72×72)</option>
+            <option value="96" selected>Small (96×96)</option>
+            <option value="136">Medium (136×136)</option>
+            <option value="176">Large (176×176)</option>
+            <option value="216">Extra Large (216×216)</option>
+            <option value="256">Huge (256×256)</option>
+            <option value="320">Impossible (320×320)</option>
+          </select>
+        </label>
+        <div id="nm-where" class="nm-where"></div>
+        <div id="nm-err" class="on-err"></div>
+      </div>
+      <div class="de-foot">
+        <button id="nm-cancel" class="ghost">Cancel</button>
+        <button id="nm-ok">Create</button>
+      </div>
+    </div>
+  </dialog>

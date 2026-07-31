@@ -1,0 +1,56 @@
+  <!-- text editor for a referenced text file (name.txt, a rumour, …) -->
+  <dialog id="docedit">
+    <div class="mp-card de-card">
+      <div class="mp-head">
+        <span class="mp-title" id="de-title">Text</span>
+        <span id="de-lint" class="de-lint"></span>
+        <span id="de-info"></span>
+        <button id="de-close" title="close (Esc)">✕</button>
+      </div>
+      <!-- Language tabs (text files only): the map is authored in every language
+           side by side here, and exported one language at a time. -->
+      <div id="de-langs" class="de-langs" hidden></div>
+      <!-- The editor mounts here (renderer/code-editor.ts): CodeMirror, with Lua
+           highlighting and completion when the file is a script. -->
+      <div class="mp-body de-body"><div id="de-text" class="de-text"></div></div>
+      <!-- The reference text, shown while translating so the source is in view. -->
+      <div id="de-ref" class="de-ref" hidden></div>
+      <div class="de-foot">
+        <button id="de-cancel" class="ghost">Cancel</button>
+        <button id="de-save">Save</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- the map's own Lua: what a mission's script stage works on -->
+  <dialog id="scriptpick">
+    <div class="mp-card de-card">
+      <div class="mp-head">
+        <span class="mp-title">Scripts</span>
+        <button id="sp-close" title="close (Esc)">✕</button>
+      </div>
+      <div class="mp-body" style="padding:0"><div id="sp-list" class="sp-list"></div></div>
+    </div>
+  </dialog>
+
+  <!-- Lua is written in the editor, never in a box among fields. A set's script
+       opens here, on top of the set form, with the same CodeMirror the map's
+       scripts use: highlighting, completion over the engine's API and ours, and
+       the linter in the gutter. -->
+  <dialog id="setscript">
+    <div class="mp-card um-card">
+      <div class="mp-head">
+        <span class="mp-title">Set script</span>
+        <button id="ss-x" title="close (Esc)">✕</button>
+      </div>
+      <div class="mp-body on-body">
+        <div id="ss-info" class="um-note"></div>
+        <div id="ss-text" class="ss-text"></div>
+        <div id="ss-lint" class="de-lint"></div>
+      </div>
+      <div class="de-foot">
+        <button id="ss-cancel" class="ghost">Cancel</button>
+        <button id="ss-ok">Done</button>
+      </div>
+    </div>
+  </dialog>

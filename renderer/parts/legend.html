@@ -1,0 +1,22 @@
+  <!-- Legend for the grid overlay: the passability wash (three states, because
+       "blocked" and "you cannot walk here" are not the same question) and, after
+       the divider, a building's footprint tiles. -->
+  <div id="passlegend" style="display:none">
+    <span><i class="sw blocked"></i>blocked</span>
+    <span><i class="sw navigable"></i>navigable (boat)</span>
+    <span><i class="sw walk"></i>walkable</span>
+    <i class="sep"></i>
+    <span><i class="sw fp-block"></i>build blocked</span>
+    <span><i class="sw fp-active"></i>active</span>
+    <span><i class="sw fp-hole"></i>hole</span>
+    <span><i class="sw fp-pass"></i>passable</span>
+  </div>
+
+  <div id="help" style="display:none">WASD move (Shift faster) · middle-drag pan · left-drag orbit · wheel zoom</div>
+
+  <!-- shown when another editor writes to the open map folder -->
+  <div id="extchange" style="display:none">
+    <div class="txt"><b>Map changed on disk.</b> <span id="extchange-what"></span></div>
+    <button id="extchange-reload">Reload</button>
+    <button id="extchange-ignore" class="ghost">Keep mine</button>
+  </div>

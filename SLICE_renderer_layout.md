@@ -1,13 +1,12 @@
 # SLICE — The renderer stops being one file, and the rest follows
 
-> **Status:** the renderer, the main process and `src/` are all done and green
-> (2026-07-30 / 07-31). `renderer/app.ts` went from 8996 lines to 803,
-> `electron/main.ts` from 3011 to 187, and `src/`'s 66 flat files into ten
-> folders; all three layouts are in [CONTRIBUTING.md](CONTRIBUTING.md) →
-> *Layout*. What is left is `renderer/index.html` (2023 lines, 30 `<dialog>`s),
-> and it needs a build step before it needs a move. This file carries the rules
-> that made the three passes survivable, so the last one does not rediscover
-> them. Retire it when index.html is split too.
+> **Status:** DONE (2026-07-30 / 07-31), and this file can be retired once its
+> rules have been read once more by whoever comes next. `renderer/app.ts` went
+> from 8996 lines to 803, `electron/main.ts` from 3011 to 187, `src/`'s 66 flat
+> files into ten folders, and `renderer/index.html`'s 2023 lines into a shell,
+> 20 parts and 20 stylesheets. Every layout is in
+> [CONTRIBUTING.md](CONTRIBUTING.md) → *Layout*; what is left below is the four
+> rules that made the passes survivable and the checks that proved each one.
 
 Reading first: [CONTRIBUTING.md](CONTRIBUTING.md) (the layout and the import
 rules as they stand), and §1.д of [SLICE_diagnostics.md](SLICE_diagnostics.md),
@@ -165,14 +164,39 @@ And in `src/`, where the answer was that almost nothing had to change:
   nothing across a folder — which nobody designed. Grouping by what a file
   knows produced a dependency order for free.
 
-## 4. What is left
+## 4. The page, which was the one that needed a build step first
 
-**`renderer/index.html`, 2023 lines, 30 `<dialog>`s.** The riskiest, and
-the reason it is last: every id in it is load-bearing for the e2e suite, and
-the app has no templating step. Moving markup means adding one (concatenation
-at build time, `renderer/parts/<name>.html`), which is a build change on top of
-a move. §1.2.а of SLICE_diagnostics still holds — no framework, no template
-language.
+`renderer/index.html` is now GENERATED — gitignored, like `app.js`, and built
+by the same script from `renderer/page.html` (the shell), `renderer/parts/`
+(20 files: one per screen, dialogs grouped by the feature that drives them) and
+`renderer/style/` (20 stylesheets, in cascade order, linked rather than
+inlined so DevTools has a filename to show).
+
+`<!-- @include parts/x.html -->` is replaced by that file verbatim. One level,
+no nesting, no expressions — §1.2.а of SLICE_diagnostics still holds, and this
+is not a step towards a template language. It exists because HTML has no
+include of its own and the markup has to BE there before app.js runs: the e2e
+suite finds its elements in the static page, and so does the failure trap.
+
+Two things made a 2000-line page safe to take apart:
+
+- **Move verbatim, then prove it.** Every line kept its indentation, so the
+  assembled page could be checked against the original: same 792 stylesheet
+  lines, same markup lines with none lost and none gained, same 403 ids. The
+  check found a real bug on the first run — the splitter walked backwards over
+  comment SYNTAX to find each block's leading comment and so took only the last
+  line of every wrapped one, dropping 45 lines of prose. Starting each block
+  where the previous one ended instead cannot lose anything.
+- **Order matters for the stylesheet, not for the dialogs.** The CSS was cut
+  only at section boundaries and reassembled in the same order; the `<dialog>`s
+  were regrouped freely, which is safe because they are hidden until
+  `showModal()` and nothing in the stylesheet reaches from one to another
+  (checked before moving any: no sibling combinators). The overlays and `#app`
+  stayed last, where their stacking order is decided.
+
+Then the harness answered the question the tests cannot: all 20 stylesheets
+loaded (448 rules), `#bar` still computes to a fixed bar at z-index 10, every
+panel keeps its z-index, and eight dialogs opened to correctly sized cards.
 
 ## 5. How to verify a pass
 
@@ -182,11 +206,14 @@ which is what makes this safe to do in steps. Then `npm test` (44 suites) and
 Do NOT reach for the full `npx playwright test`: the reconstruction chain adds
 20+ minutes and covers nothing this work can break that the fast suite does not.
 
-One thing typecheck cannot see: a module that is never imported, or wiring that
-runs too early. Both show up as the app not booting, and the fastest read on
-that is `renderer/harness.html` — open it, and `#fatal` carries the message
-(the harness stub has no `gpuSoftware`, so it stops there of its own accord;
-anything BEFORE that line is a real failure).
+One thing typecheck cannot see: a module that is never imported, wiring that
+runs too early, or markup that did not make it into the page. All of them show
+up as the app not booting or a screen that is not there, and the fastest read
+is `npm run harness` — `#fatal` carries the message (the harness stub has no
+`gpuSoftware`, so it stops there of its own accord with `__booted === true`;
+anything BEFORE that line is a real failure). It is also where a CSS question
+gets answered without launching Electron: computed styles, z-indexes and a
+dialog's geometry are all one `javascript_tool` call away.
 
 A move inside `src/` has its own cheap check: `grep -rn "import.meta" src/`.
 A file that computes a path from its own location is the one kind of breakage

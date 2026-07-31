@@ -25,7 +25,7 @@ instinct applied to runs).
 
 1.1. **In:**
 
-- а) **A test that no `id` is used twice.** Read `renderer/index.html`, pull
+- а) **A test that no `id` is used twice.** Read `renderer/parts/*`, pull
   every `id="…"`, fail on a repeat, naming both places. Today it passes at
   323/323 — the two duplicates are already gone — so it lands green and stays a
   guard rather than a chore. This is the whole mechanism, not a nicety on top of
@@ -55,11 +55,11 @@ instinct applied to runs).
   its own slice — see [SLICE_renderer_layout.md](SLICE_renderer_layout.md).
   `renderer/app.ts` is 803 lines rather than 8676, and the sections live under
   `renderer/{core,viewport,features}`. The measurement in §5.3 held: the
-  dialogs were never the unit, the sections were. The markup did NOT move —
-  `renderer/index.html` still carries all 30 `<dialog>`s, because moving it
-  needs a templating step this slice deliberately does not add (§1.2.а), and
-  the deeply-wired sections named in §1.2.д turned out to be movable after all
-  once shared state was put on named objects.
+  dialogs were never the unit, the sections were. The markup followed a day
+  later — `renderer/index.html` is assembled from `renderer/page.html` and
+  `renderer/parts/`, which needed the build step §1.2.а allowed for and no
+  more than that. The deeply-wired sections named in §1.2.д turned out to be
+  movable after all once shared state was put on named objects.
 - е) **A crash dialog that ends in a filed ticket.** For UNHANDLED errors only:
   copy the details, open the log, or open a prefilled
   `github.com/senyaak/homm5-editor/issues/new?title=…&body=…` carrying version,
@@ -71,7 +71,9 @@ instinct applied to runs).
 
 - а) A framework. No React, no Vue, no build-time templating language. The split
   is files and a build step that concatenates them; the DOM code stays what it
-  is.
+  is. **This is what shipped** (2026-07-31): `<!-- @include parts/x.html -->`,
+  replaced verbatim, one level deep — see
+  [SLICE_renderer_layout.md](SLICE_renderer_layout.md) §4.
 - б) Telemetry of any kind. Nothing leaves the machine without a person pressing
   a button in their own browser.
 - в) ~~Restructuring `electron/main.ts` (2671 lines). It has the same smell and
@@ -152,7 +154,7 @@ paths with a user name in them, and the person reads it before it goes anywhere.
 | --- | --- |
 | [tools/test-renderer-ids.ts](tools/test-renderer-ids.ts) *(new)* | §1.1(а). Parses the markup, fails on a repeated `id`, naming both lines. Registered in `package.json` so `npm test` runs it. |
 | [renderer/app.ts](renderer/app.ts) | `$()` grows the dev-only duplicate check (§1.1(б)); the three loose sections leave for `renderer/<name>.ts` (§1.1(д)); the five `.catch(() => {})` report instead of swallowing (§6.5). |
-| [renderer/index.html](renderer/index.html) | Gains a CSP (§6.2); keeps the shell as the dialogs move out to `renderer/parts/`. |
+| [renderer/page.html](renderer/page.html) | Gains a CSP (§6.2). The shell, now that the dialogs have moved out to `renderer/parts/` (done). |
 | [electron/log.ts](electron/log.ts) *(new)* | §1.1(в). Opens the run's file, subscribes to both processes, writes tagged lines. |
 | [electron/crash.ts](electron/crash.ts) *(new)* | §1.1(е). The dialog, the signature-per-session rule, the issue URL, the debugger check. |
 | [electron/main.ts](electron/main.ts) | Calls both at startup, before the window; the `[ipc]` and `[perf]` lines stop going out as errors (§6.1). |
@@ -232,7 +234,7 @@ is red on day one for things that are not defects.
 leave through `console.error` in `electron/main.ts`, and they are timings. Move
 the measurements to `console.log`; leave `console.error` to failures.
 
-6.2. **No CSP.** `renderer/index.html` carries no
+6.2. **No CSP.** `renderer/page.html` carries no
 `http-equiv="Content-Security-Policy"`, which is why every single run prints
 Electron's security warning. The warning is right; the fix is the header, not a
 flag.

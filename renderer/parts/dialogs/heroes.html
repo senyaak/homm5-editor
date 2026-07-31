@@ -1,0 +1,127 @@
+  <!-- heroes: the same mod again, and the cheapest side of it. A hero extends
+       no table, holds no number and moves no ceiling — he is three files at a
+       path nobody owns (src/mods/heroes.ts). So this dialog installs without ever
+       touching the executable, unlike its two siblings. -->
+  <dialog id="heroesmod">
+    <div class="mp-card um-card">
+      <div class="mp-head">
+        <span class="mp-title">Heroes</span>
+        <button id="hm-close" title="close (Esc)">✕</button>
+      </div>
+      <div class="mp-body on-body um-body">
+        <fieldset>
+          <legend>Installed</legend>
+          <div id="hm-list" class="um-mods"></div>
+          <div class="de-foot" style="padding:8px 0 0;justify-content:flex-start">
+            <button id="hm-new">New hero…</button>
+          </div>
+        </fieldset>
+        <div id="hm-note" class="um-note"></div>
+        <div id="hm-err" class="on-err"></div>
+      </div>
+      <div class="de-foot">
+        <button id="hm-cancel" class="ghost">Close</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- The form, opened on top of the list, exactly as an artifact's is. -->
+  <!-- A form of its own, opened ON TOP of the list it belongs to. The list is a
+       list; making and changing things happens here, where Cancel means what it
+       says and closing loses nothing else. -->
+  <dialog id="heroedit">
+    <div class="mp-card um-card">
+      <div class="mp-head">
+        <span class="mp-title" id="heroedit-title">New hero</span>
+        <button id="heroedit-x" title="close (Esc)">✕</button>
+      </div>
+      <div class="mp-body on-body um-body">
+        <fieldset>
+          <legend>New hero</legend>
+          <div class="on-body um-form">
+            <!-- A new hero is written from nothing; this only SEEDS the form.
+                 Picking one fills every field below with that hero's values,
+                 and every one of them stays editable afterwards — nothing is
+                 taken from him behind the author's back. -->
+            <div class="on-row um-span">
+              <span>Preset</span>
+              <span id="he-preset-name" class="um-note" style="flex:1;min-width:0">nothing yet — the form is blank</span>
+              <button id="he-preset-pick" class="ghost" title="fill every field below from a shipped hero; each stays editable afterwards">Use preset…</button>
+              <input id="he-preset" type="hidden">
+            </div>
+            <label class="on-row um-span"><span>Identifier</span><input id="he-id" type="text" spellcheck="false" autocomplete="off" placeholder="unique id, e.g. H3Gem" title="the hero's unique identifier: a campaign carries him between missions by it, a script names him with it, and his files are called after it. Refused if any hero already has it — the game's own included."></label>
+            <label class="on-row"><span>Name</span><input id="he-name" type="text" autocomplete="off"></label>
+            <label class="on-row um-span"><span>Biography</span><input id="he-bio" type="text" autocomplete="off"></label>
+            <label class="on-row"><span>Faction</span><select id="he-town" title="whose tavern offers him; picking one picks the class, since the game has one class per faction"></select></label>
+            <label class="on-row"><span>Class</span><select id="he-class" title="one per faction, and what a level up offers is keyed to it"></select></label>
+            <!-- What a specialization DOES is compiled against its enum value
+                 and bound to no faction, so a Sylvan hero may hold a Necropolis
+                 one and get its behaviour. The words stay the lender's, though,
+                 which is what the two fields under it are for. -->
+            <label class="on-row"><span>Specialization</span><select id="he-spec" title="any faction's: what it does is keyed to the value, not to the race"></select></label>
+            <label class="on-row"><span>Spec. name</span><input id="he-spec-name" type="text" autocomplete="off" placeholder="empty → the donor's words"></label>
+            <label class="on-row um-span"><span>Spec. text</span><input id="he-spec-desc" type="text" autocomplete="off" placeholder="what the specialization does, in words"></label>
+            <!-- The racial slot. It need NOT hold the faction's racial skill:
+                 the shipped Erasial is a Demon Lord holding Logistics there. -->
+            <label class="on-row"><span>Racial slot</span><select id="he-primary" title="the skill he starts with in the racial slot — it need not be his faction's"></select></label>
+            <label class="on-row"><span>at</span>
+              <select id="he-primary-mastery">
+                <option>MASTERY_BASIC</option><option>MASTERY_ADVANCED</option><option>MASTERY_EXPERT</option>
+              </select>
+            </label>
+            <div class="um-stats">
+              <label>Offence<input id="he-off" type="number" value="0"></label>
+              <label>Defence<input id="he-def" type="number" value="0"></label>
+              <label>Spellpower<input id="he-sp" type="number" value="0"></label>
+              <label>Knowledge<input id="he-kn" type="number" value="0"></label>
+            </div>
+            <label class="on-row"><span>Skill</span><select id="he-skill" title="a starting secondary skill, beside the racial one"></select></label>
+            <label class="on-row"><span>at</span>
+              <select id="he-skill-mastery">
+                <option>MASTERY_BASIC</option><option>MASTERY_ADVANCED</option><option>MASTERY_EXPERT</option>
+              </select>
+            </label>
+            <label class="on-row"><span>Perk</span><select id="he-perk" title="a perk he starts with"></select></label>
+            <label class="on-row"><span>Spell</span><select id="he-spell" title="a spell he knows from the start"></select></label>
+            <div class="um-stats">
+              <label class="nm-check" title="he brings a ballista"><input id="he-ballista" type="checkbox"> Ballista</label>
+              <label class="nm-check" title="he brings a first aid tent"><input id="he-tent" type="checkbox"> First aid tent</label>
+              <label class="nm-check" title="he brings an ammo cart"><input id="he-ammo" type="checkbox"> Ammo cart</label>
+              <!-- The flag that decides whether he is a person or a fixture: the
+                   64 shipped heroes with it false are exactly the 64 a map
+                   offers when its hero roster is fully checked. -->
+              <label class="nm-check" title="a scenario hero is in no tavern pool — he exists only where he is placed by hand or by script"><input id="he-scenario" type="checkbox"> Scenario hero</label>
+            </div>
+            <!-- What he LOOKS like, folded away: a hero is authored by his
+                 faction, his specialization and his skills, and the model he
+                 wears is a different question that most heroes never ask. Seven
+                 more fields are the same in all 118 shipped heroes (the
+                 visibility type, the flyby message, WaterBased and the rest),
+                 so they are not here at all — the preset supplies them. -->
+            <details class="um-span he-art">
+              <summary>Appearance — model, animations, portraits</summary>
+              <label class="on-row um-span"><span>Model</span><select id="he-model" title="the adventure-map model"></select><button class="ghost he-file" data-for="he-model" title="choose a file of your own; it is copied into the hero's folder when he is built">File…</button></label>
+              <label class="on-row um-span"><span>Animations</span><select id="he-animset" title="the animation set the model plays"></select><button class="ghost he-file" data-for="he-animset" title="choose a file of your own; it is copied into the hero's folder when he is built">File…</button></label>
+              <label class="on-row um-span"><span>Arena</span><select id="he-arena" title="the character that fights in the combat screen"></select><button class="ghost he-file" data-for="he-arena" title="choose a file of your own; it is copied into the hero's folder when he is built">File…</button></label>
+              <label class="on-row um-span"><span>Arena (melee)</span><select id="he-arena-melee" title="its melee variant, where the hero has one"></select><button class="ghost he-file" data-for="he-arena-melee" title="choose a file of your own; it is copied into the hero's folder when he is built">File…</button></label>
+              <label class="on-row um-span"><span>Adventure</span><select id="he-adventure" title="the character that walks the adventure map"></select><button class="ghost he-file" data-for="he-adventure" title="choose a file of your own; it is copied into the hero's folder when he is built">File…</button></label>
+              <label class="on-row um-span"><span>Combat visual</span><select id="he-combat" title="what the combat screen draws him from"></select><button class="ghost he-file" data-for="he-combat" title="choose a file of your own; it is copied into the hero's folder when he is built">File…</button></label>
+              <label class="on-row um-span"><span>Selection</span><select id="he-selection" title="the marker drawn under him when selected"></select><button class="ghost he-file" data-for="he-selection" title="choose a file of your own; it is copied into the hero's folder when he is built">File…</button></label>
+              <label class="on-row um-span"><span>Trace</span><select id="he-trace" title="the footprints he leaves behind"></select><button class="ghost he-file" data-for="he-trace" title="choose a file of your own; it is copied into the hero's folder when he is built">File…</button></label>
+              <label class="on-row um-span"><span>Camera</span><select id="he-camera" title="his own camera in the hero screen, where he has one"></select><button class="ghost he-file" data-for="he-camera" title="choose a file of your own; it is copied into the hero's folder when he is built">File…</button></label>
+              <label class="on-row um-span"><span>Icon 128</span><select id="he-icon128" title="the large icon some heroes carry beside the portrait"></select><button class="ghost he-file" data-for="he-icon128" title="choose a file of your own; it is copied into the hero's folder when he is built">File…</button></label>
+              <label class="on-row um-span"><span>Music</span><select id="he-music" title="the music his presence brings"></select><button class="ghost he-file" data-for="he-music" title="choose a file of your own; it is copied into the hero's folder when he is built">File…</button></label>
+              <label class="on-row um-span"><span>Portrait</span><select id="he-face" title="the 128x128 portrait"></select><button class="ghost he-file" data-for="he-face" title="choose a file of your own; it is copied into the hero's folder when he is built">File…</button></label>
+              <label class="on-row um-span"><span>Portrait 64</span><select id="he-face-small" title="the 64x64 portrait"></select><button class="ghost he-file" data-for="he-face-small" title="choose a file of your own; it is copied into the hero's folder when he is built">File…</button></label>
+              <label class="on-row um-span"><span>Spec. icon</span><select id="he-spec-icon" title="the specialization's icon"></select><button class="ghost he-file" data-for="he-spec-icon" title="choose a file of your own; it is copied into the hero's folder when he is built">File…</button></label>
+            </details>
+          </div>
+        </fieldset>
+        <div id="he-err" class="on-err"></div>
+      </div>
+      <div class="de-foot">
+        <button id="heroedit-cancel" class="ghost">Cancel</button>
+        <button id="he-ok">Build &amp; install</button>
+      </div>
+    </div>
+  </dialog>

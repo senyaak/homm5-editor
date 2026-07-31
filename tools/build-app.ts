@@ -50,10 +50,12 @@ for (const f of ['preload.cjs', 'setup-preload.cjs']) {
   cpSync(join(root, 'electron', f), join(out, 'electron', f));
 }
 
-// The UI: two entry pages and the renderer bundle. The dev-only pages
-// (harness, scene-view, terrain-view) are not part of the app.
-for (const f of ['index.html', 'setup.html', 'app.js', 'app.js.map']) {
-  cpSync(join(root, 'renderer', f), join(out, 'renderer', f));
+// The UI: two entry pages and the renderer bundle. index.html is the ASSEMBLED
+// page (buildRenderer wrote it above from renderer/page.html and parts/), so
+// the parts themselves do not ship — but the stylesheets it links do. The
+// dev-only pages (harness, scene-view, terrain-view) are not part of the app.
+for (const f of ['index.html', 'setup.html', 'app.js', 'app.js.map', 'style']) {
+  cpSync(join(root, 'renderer', f), join(out, 'renderer', f), { recursive: true });
 }
 
 // The manifest Electron reads on startup. `type: module` because main.js is

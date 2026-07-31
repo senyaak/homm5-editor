@@ -1,0 +1,3 @@
+/* New Map dialog: the two-level toggle and the "where it lands" hint */
+#newmap { padding: 0; border: 0; background: transparent; max-width: 92vw; overflow: visible; }
+#newmap::backdrop { background: #0d1014cc; }

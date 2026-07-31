@@ -1,0 +1,19 @@
+/* recolor dialog: texture previews and the colour controls */
+#recolor { padding: 0; border: 0; background: transparent; max-width: 94vw; overflow: visible; }
+#recolor::backdrop { background: #0d1014cc; }
+.rc-previews { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-start; }
+.rc-previews canvas { width: min(256px, 40vw); height: auto; border: 1px solid #30363d;
+  border-radius: 6px; background: #161b22; image-rendering: auto; }
+.rc-controls button { background: #21262d; color: #c9d1d9; border: 1px solid #30363d;
+  border-radius: 6px; padding: 5px 10px; font-size: 12px; cursor: pointer; }
+.rc-controls button:hover { background: #30363d; }
+.rc-controls input[type=color] { width: 100%; height: 28px; padding: 0; border: 1px solid #30363d;
+  border-radius: 6px; background: #0d1014; }
+.rc-palette { display: flex; gap: 14px; flex-wrap: wrap; }
+.rc-swatch { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #8b949e; }
+.rc-swatch .from { width: 26px; height: 26px; border-radius: 6px; border: 1px solid #30363d; }
+.rc-swatch input[type=color] { width: 34px; height: 28px; padding: 0; border: 1px solid #30363d;
+  border-radius: 6px; background: #0d1014; }
+.nm-check { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #c9d1d9;
+  cursor: pointer; }
+.nm-where { font-size: 11px; color: #6e7681; word-break: break-all; }
