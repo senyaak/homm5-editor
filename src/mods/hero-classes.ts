@@ -27,17 +27,24 @@
 //           <dependenciesIDs><Item>HERO_SKILL_FIRST_AID</Item></dependenciesIDs></Item>
 //     …
 //
-// A class absent from that list cannot take the perk at any weight — which is
-// why the Ranger has no «Чумная палатка» (`HERO_SKILL_LAST_AID` lists the demon
-// lord, the necromancer, the warlock and the barbarian, and nobody else). So a
-// class of ours reaches a shipped perk by being ADDED to that perk's list, which
-// is what `allowedPerks` below is, and 37 of the 115 perks that carry
-// prerequisites ask different classes for different things — hence a dependency
-// list per entry rather than one for all.
+// An EMPTY list is not a closed door but an open one: 75 of the 194 perks carry
+// none, and those are the ones any class that has the branch may take. It is a
+// list with names in it that shuts everybody else out — which is why the Ranger
+// has no «Чумная палатка» (`HERO_SKILL_LAST_AID` lists the demon lord, the
+// necromancer, the warlock and the barbarian, and nobody else). So a class of
+// ours reaches a shipped perk by being ADDED to that perk's list, which is what
+// `allowedPerks` below is, and 37 of the 115 that carry prerequisites ask
+// different classes for different things — hence a dependency list per entry
+// rather than one for all.
 //
-// The `<HeroClass>` field ON a perk is NOT that gate and must not be mistaken
-// for it: `HERO_SKILL_TRIPLE_BALLISTA` carries `HERO_CLASS_KNIGHT` and is
-// available to all eight. It marks whose branch the perk is drawn in.
+// The `<HeroClass>` field ON a perk is a different thing from that list, and the
+// two must not be confused. On a perk of a COMMON branch it is decoration —
+// `HERO_SKILL_TRIPLE_BALLISTA` carries `HERO_CLASS_KNIGHT` and all eight classes
+// are in its list — and it marks whose art the icon was drawn for. On a
+// SKILLTYPE_CLASS_PERK of a RACIAL branch it is the ownership that matters,
+// because the branch itself is one class's: Multishot names the Ranger, carries
+// no prerequisites at all, and no other class can reach it, since no other class
+// has Avenger to hang it from. A perk of ours is that second kind.
 //
 // THE RACIAL SKILL IS BOUND THE SAME WAY, from the skill's side: of the 27
 // `SKILLTYPE_SKILL` entries exactly eight carry a class in `<HeroClass>` —
@@ -320,4 +327,101 @@ export function patchSkillPrerequisites(skills: string, classes: readonly ModHer
     }
   }
   return t;
+}
+
+// --- reading the game's own, which is what the form is built from ---------------
+
+/** A shipped class, as the form offers it to be copied from. */
+export interface ClassDonor {
+  id: string;
+  /** The href of its name, which the caller resolves — texts are UTF-16 files. */
+  nameRef: string;
+  skills: SkillWeight[];
+  attributes: AttributeWeights;
+  preferredSpells: string[];
+}
+
+/**
+ * Every class in the table, weights and all.
+ *
+ * What the donor button copies. `HERO_CLASS_NONE` comes back like the rest — it
+ * is a real entry with nothing in it, and hiding it here would be this module
+ * deciding what a form may show.
+ */
+export function readClasses(table: string): ClassDonor[] {
+  const out: ClassDonor[] = [];
+  for (const block of table.split('<ID>').slice(1)) {
+    const id = block.slice(0, block.indexOf('<'));
+    if (!id.startsWith('HERO_CLASS_')) continue;
+    const record = block.slice(0, block.indexOf('</obj>') + 1);
+    const a = /<OffenceProb>(\d+)[\s\S]*?<DefenceProb>(\d+)[\s\S]*?<SpellpowerProb>(\d+)[\s\S]*?<KnowledgeProb>(\d+)/
+      .exec(record);
+    out.push({
+      id,
+      nameRef: /<NameFileRef href="([^"]*)"/.exec(record)?.[1] ?? '',
+      skills: [...record.matchAll(/<SkillID>(\w+)<\/SkillID>\s*<Prob>(\d+)<\/Prob>/g)]
+        .map((m) => ({ skill: m[1]!, prob: +m[2]! })),
+      attributes: {
+        offence: a ? +a[1]! : 0,
+        defence: a ? +a[2]! : 0,
+        spellpower: a ? +a[3]! : 0,
+        knowledge: a ? +a[4]! : 0,
+      },
+      preferredSpells: [...(/<PreferredSpellsFromSpellShop>([\s\S]*?)<\/PreferredSpellsFromSpellShop>/.exec(record)?.[1]
+        ?? '').matchAll(/<Item>(\w+)<\/Item>/g)].map((m) => m[1]!),
+    });
+  }
+  return out;
+}
+
+/** A perk, as the availability lists show it. */
+export interface PerkInfo {
+  id: string;
+  /** The skill whose branch it hangs off — what groups the list. */
+  branch: string;
+  /** The classes that may take it today. Ours appears here once it is allowed. */
+  classes: string[];
+  /** What most of them must hold first, which is what a new entry starts from. */
+  dependencies: string[];
+}
+
+/**
+ * Every perk in the skill table, with the gate that governs it.
+ *
+ * A perk is anything with a `BasicSkillID` other than `HERO_SKILL_NONE` — which
+ * is the table's own way of saying it hangs off something, and is steadier than
+ * the four SKILLTYPE_ values (the racial branches' perks are CLASS_PERK, the
+ * common branches' are STANDART or SPECIAL, and the eight barbarian ones are
+ * neither).
+ */
+export function readPerks(skills: string): PerkInfo[] {
+  const out: PerkInfo[] = [];
+  for (const block of skills.split('<ID>').slice(1)) {
+    const id = block.slice(0, block.indexOf('<'));
+    if (!id.startsWith('HERO_SKILL_')) continue;
+    const record = block.slice(0, block.indexOf('</obj>') + 1);
+    const branch = /<BasicSkillID>(\w+)<\/BasicSkillID>/.exec(record)?.[1] ?? 'HERO_SKILL_NONE';
+    if (branch === 'HERO_SKILL_NONE') continue;
+    const pre = /<SkillPrerequisites>([\s\S]*?)<\/SkillPrerequisites>/.exec(record)?.[1] ?? '';
+    out.push({
+      id,
+      branch,
+      classes: [...pre.matchAll(/<Class>(HERO_CLASS_\w+)<\/Class>/g)].map((m) => m[1]!),
+      dependencies: commonestDependencies(pre),
+    });
+  }
+  return out;
+}
+
+/** The commonest dependency list in a prerequisites block. */
+function commonestDependencies(block: string): string[] {
+  const counts = new Map<string, number>();
+  for (const m of block.matchAll(/<dependenciesIDs>([\s\S]*?)<\/dependenciesIDs>/g)) {
+    const list = [...m[1]!.matchAll(/<Item>(HERO_SKILL_\w+)<\/Item>/g)].map((x) => x[1]!).join(',');
+    counts.set(list, (counts.get(list) ?? 0) + 1);
+  }
+  let best = '';
+  let most = 0;
+  for (const [list, n] of counts) if (n > most) { best = list; most = n; }
+  return best ? best.split(',') : [];
 }
