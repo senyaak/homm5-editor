@@ -13,6 +13,7 @@ import { APP_ROOT, gameData, gameRoot, isConfigured } from '#electron/paths.ts';
 import { existsSync } from 'node:fs';
 import { basename } from 'node:path';
 import { EFFECT_STATS } from '#src/mods/artifact-effects.ts';
+import { SPECIALIZATION_STATS } from '#src/mods/specializations.ts';
 import { HERO_STAT_NAMES } from '#src/mods/artifacts.ts';
 import { assets } from '#src/game/assets.ts';
 import { findCreatureMods } from '#src/mods/mod-archive.ts';
@@ -55,6 +56,7 @@ export function registerModsList(): void {
       // `?? []` for the same reason the sets have it: a mod installed before
       // buildings existed has a manifest without the field, and it stays listable.
       buildings: (f.mod.buildings ?? []).map((b) => ({ ...b })),
+      specializations: (f.mod.specializations ?? []).map((s) => ({ ...s })),
       artifacts: (f.mod.artifacts ?? []).map((a) => ({
         id: a.id, number: a.number, name: a.name, description: a.description,
         slot: a.slot, rank: a.rank, cost: a.cost, aiValue: a.aiValue,
@@ -85,6 +87,7 @@ export function registerModsList(): void {
       donors: r.creatures(),
       artifactDonors: r.artifacts(),
       effectStats: [...EFFECT_STATS],
+      specializationStats: [...SPECIALIZATION_STATS],
       heroStats: [...HERO_STAT_NAMES],
       abilities: creatureAbilities(assets([gameData()])),
       abilityNames: creatureAbilityNames(assets([gameData()])),

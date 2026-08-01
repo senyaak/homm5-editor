@@ -16,12 +16,17 @@
 //   AdvMapHero/OverrideMask, which covers stats, skills, spells and machines
 //   and stops there);
 //
-//   her specialization is HERO_SPEC_EMPIRIC — the Necropolis embalmer, whose
-//   first aid tent heals five more per hero level. A specialization's effect is
-//   compiled against its enum VALUE and bound to no faction, so a Sylvan hero
-//   gets the Necropolis behaviour; what does not come with it are the words,
-//   which is why the form has its own name and text for one. It is also the
-//   closest thing Heroes V has to Gem's own Heroes III specialty, First Aid.
+//   her specialization is OURS. The game's nearest is HERO_SPEC_EMPIRIC, the
+//   Necropolis embalmer whose first aid tent heals five more per hero level;
+//   Heroes III's Gem gets five PERCENT more per level, which is the same thing
+//   at expert War Machines and less at every mastery below it. So the run
+//   authors the specialization first — one entry appended to an enum, plus a
+//   row in the file the native extension reads, because the executable does
+//   nothing at all with a value it has never heard of.
+//
+// The two are in one spec because they are one window and one story: a
+// specialization exists to be given to a hero, and the thing worth checking is
+// that the value the enum gained is the value his document names.
 
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -29,11 +34,14 @@ import { test, expect } from '@playwright/test';
 import { launchEditor, REPO_ROOT } from './launch.ts';
 import { settled } from './trace.ts';
 import type { Launched } from './launch.ts';
-import { modGameRoot, readInstalledMod } from './mods.ts';
+import { GEM_SPEC, modGameRoot, readInstalledMod } from './mods.ts';
+import { EFFECTS_FILE, readSpecializations } from '../src/mods/artifact-effects.ts';
+import { SHIPPED_SPECIALIZATIONS } from '../src/mods/specializations.ts';
 import { modFile } from '../src/game/mod-paths.ts';
 import { MOD_STEM } from '../src/mods/mod-files.ts';
 import { heroPaths } from '../src/mods/heroes.ts';
 import { readEntries } from '../src/format/pak.ts';
+import { decodeDDSBuffer } from '../src/format/dds.ts';
 import { PATCHED_EXE, readExe } from '../src/exe/creature-limit.ts';
 
 let ed: Launched;
@@ -51,10 +59,21 @@ const GEM = {
   biography: 'A sorceress of Enroth, newly come to AvLee and its druids.',
   town: 'TOWN_PRESERVE',
   heroClass: 'HERO_CLASS_RANGER',
-  /** The Necropolis embalmer: the tent heals five more per level. */
-  spec: 'HERO_SPEC_EMPIRIC',
+  /** Ours, authored by the test below: the tent grows 5% per hero level. */
+  spec: GEM_SPEC.id,
   specName: 'Field Medic',
   specText: 'With every level the first aid tent heals 5 more points of damage.',
+  /**
+   * Her own face and her own icon, as DRAWINGS — the mod builds the textures.
+   *
+   * This is the difference between a hero who looks like himself and one who
+   * looks like his preset: art is copied from the donor into his folder, so a
+   * portrait painted over that copy comes back as Ossir's the next time the mod
+   * is built. A picture is re-read on every build, and lives in `assets/` where
+   * the checkout carries it.
+   */
+  portrait: join(REPO_ROOT, 'assets', 'heroes', 'gem.gif'),
+  specPicture: join(REPO_ROOT, 'assets', 'specializations', 'first_aid.gif'),
 };
 
 /** What the executable's creature ceiling was before this spec ran. */
@@ -103,7 +122,7 @@ test('the dialog opens, and the donor decides the faction', async () => {
 
   // Any faction's specialization is on offer, because the effect is keyed to
   // the value and not to the race — that is what lets an elf be an embalmer.
-  await expect(page.locator(`#he-spec option[value="${GEM.spec}"]`)).toHaveCount(1);
+  await expect(page.locator('#he-spec option[value="HERO_SPEC_EMPIRIC"]')).toHaveCount(1);
   // And the racial slot offers every skill, not just this faction's racial one:
   // the shipped Erasial is a Demon Lord holding Logistics there.
   await expect(page.locator('#he-primary option[value="HERO_SKILL_LOGISTICS"]')).toHaveCount(1);
@@ -139,6 +158,80 @@ test('it will not build a hero who is missing what he needs', async () => {
   await expect(page.locator('#heroedit')).toBeHidden();
 });
 
+/** The specialization form's own refusal — what addSpecialization throws for. */
+test('it will not build a specialization missing what it needs', async () => {
+  const { page } = ed;
+  if (!(await page.locator('#heroesmod').isVisible())) await page.locator('#heroesbtn').click();
+  await page.locator('#hs-new').click();
+  await expect(page.locator('#specedit')).toBeVisible();
+
+  await expect(page.locator('#hs-ok')).toBeDisabled();
+  await expect(page.locator('#hs-missing')).toHaveText(/identifier.*name/);
+  await expect(page.locator('#specedit .req')).toHaveCount(2);
+
+  await page.locator('#hs-id').fill('HERO_SPEC_E2E_REFUSED');
+  await expect(page.locator('#hs-ok')).toBeDisabled();
+  await page.locator('#hs-name').fill('Отказник');
+  await expect(page.locator('#hs-ok')).toBeEnabled();
+  await expect(page.locator('#hs-missing')).toHaveText('');
+
+  await page.locator('#specedit-cancel').click();
+  await expect(page.locator('#specedit')).toBeHidden();
+});
+
+test('authors the specialization Gem will hold', async () => {
+  test.setTimeout(3 * 60_000);
+  const { page } = ed;
+  if (!(await page.locator('#heroesmod').isVisible())) await page.locator('#heroesbtn').click();
+  await page.locator('#hs-new').click();
+  await expect(page.locator('#specedit')).toBeVisible();
+
+  await page.locator('#hs-id').fill(GEM_SPEC.id);
+  await page.locator('#hs-name').fill(GEM_SPEC.name);
+  await page.locator('#hs-desc').fill(GEM_SPEC.description);
+  // Typed rather than chosen: the button beside it opens the system's file
+  // dialog, which a spec cannot drive, and this field is what it writes into.
+  await page.locator('#hs-pic').fill(GEM_SPEC.picture);
+  // What it GIVES, and the only place in the whole editor that can say it: no
+  // arrangement of the game's data expresses a specialization's effect.
+  await page.locator('#hs-stat').selectOption(GEM_SPEC.effect.stat);
+  await page.locator('#hs-percent').fill(String(GEM_SPEC.effect.percentPerLevel));
+
+  const note = await settled(page, 'installing the specialization', '#hm-note', '#hs-err',
+    () => page.locator('#hs-ok').click());
+  expect(note).toContain('Installed');
+  // The VALUE is the useful half: it is what the extension's config names it
+  // by, and the first one after the 84 the game ships.
+  expect(note).toContain(`value ${SHIPPED_SPECIALIZATIONS}`);
+  await expect(page.locator('#hs-list')).toContainText(GEM_SPEC.name);
+  await expect(page.locator('#hs-list')).toContainText('tent +5% per level');
+
+  // The manifest, the enum entry in the archive's types.xml, and the row beside
+  // the executable — the three halves of one specialization, and any two of
+  // them without the third is a specialization that does nothing.
+  const mod = readInstalledMod(GAME);
+  const ours = (mod.specializations ?? [])[0];
+  expect(ours, 'the manifest remembers it').toBeTruthy();
+  expect(ours!.number).toBe(SHIPPED_SPECIALIZATIONS);
+  expect(ours!.effect).toEqual(GEM_SPEC.effect);
+
+  const entries = readEntries(readFileSync(modFile(GAME, 'mod', MOD_STEM)));
+  const types = entries.find((e) => e.name.replace(/\\/g, '/') === 'types.xml');
+  expect(types, 'the archive carries the patched types.xml').toBeTruthy();
+  const xml = types!.data.toString('latin1');
+  expect(xml).toContain(`<Name>${GEM_SPEC.id}</Name>`);
+  expect(xml).toContain(`<Value>${SHIPPED_SPECIALIZATIONS}</Value>`);
+  // And it is inside the specialization enum, not merely somewhere in the file.
+  const at = xml.indexOf('<TypeName>HeroSpecialization</TypeName>');
+  expect(xml.indexOf(`<Name>${GEM_SPEC.id}</Name>`)).toBeGreaterThan(at);
+  expect(xml.indexOf(`<Name>${GEM_SPEC.id}</Name>`)).toBeLessThan(xml.indexOf('</Entries>', at));
+
+  const rows = readSpecializations(readFileSync(join(GAME, EFFECTS_FILE), 'latin1'));
+  expect(rows, 'the extension is told, or the value does nothing at all').toEqual([
+    { stat: 'tent', specialization: SHIPPED_SPECIALIZATIONS, percentPerLevel: 5 },
+  ]);
+});
+
 test('authors Gem and installs her', async () => {
   test.setTimeout(3 * 60_000);
   const { page } = ed;
@@ -148,10 +241,22 @@ test('authors Gem and installs her', async () => {
   await page.locator('#he-name').fill(GEM.name);
   await page.locator('#he-bio').fill(GEM.biography);
 
-  // The borrowed specialization, and the words it does not bring with it.
+  // OURS, offered beside the game's own 84 and marked as ours — without this
+  // the form could install a specialization nobody could ever be given.
+  await expect(page.locator(`#he-spec option[value="${GEM.spec}"]`)).toHaveText(/ours/);
   await page.locator('#he-spec').selectOption(GEM.spec);
+  // Words of her own on top of the specialization's: a specialization carries
+  // what its heroes SHOULD say, and a hero may still say something else.
   await page.locator('#he-spec-name').fill(GEM.specName);
   await page.locator('#he-spec-desc').fill(GEM.specText);
+  // Her own icon, beside the words it belongs to. Typed as a path rather than
+  // chosen through the button next to it: the button opens the system's file
+  // dialog, which a spec cannot drive, and the field is what it writes into.
+  await page.locator('#he-spec-pic').fill(GEM.specPicture);
+  // Her face lives under the fold with the rest of the appearance, so the fold
+  // has to be opened first — the same click a person makes.
+  await page.locator('#heroedit details.he-art summary').click();
+  await page.locator('#he-portrait-pic').fill(GEM.portrait);
 
   // Her Heroes III kit, as near as Heroes V has it: the tent she is specialised
   // in, the War Machines that carry it, and First Aid on top.
@@ -217,6 +322,26 @@ test('the archive holds her, and nothing of the game\'s', async () => {
   const donorModel = modelOf(readFileSync(join(dataRoot, GEM.donorPath), 'utf8'));
   expect(modelOf(xml), 'the same model, at her own path')
     .toBe(`/${p.dir}/art${donorModel}`);
+  // HER FACE, and not the donor's. The art walk copies Ossir's portrait into
+  // her folder like the rest of his looks; a picture of her own overrules it,
+  // and the document has to name what was BUILT rather than what was copied —
+  // otherwise every rebuild quietly restores his face over hers.
+  for (const f of [p.faceDDS, p.faceXDB, p.faceSmallDDS, p.faceSmallXDB, p.specIconDDS, p.specIconXDB]) {
+    expect(names, `${f} is in the archive`).toContain(f);
+  }
+  const hrefOf = (field: string): string =>
+    new RegExp(`<${field} href="([^"]+)"`).exec(xml)?.[1] ?? '';
+  expect(hrefOf('FaceTexture')).toBe(`/${p.faceXDB}#xpointer(/Texture)`);
+  expect(hrefOf('FaceTextureSmall')).toBe(`/${p.faceSmallXDB}#xpointer(/Texture)`);
+  expect(hrefOf('SpecializationIcon')).toBe(`/${p.specIconXDB}#xpointer(/Texture)`);
+  // And the sizes the hero screen asks for. 128 is the one worth checking: the
+  // drawing is 58x64, so it had to be enlarged, and `fitSquare` alone would
+  // have left it a small picture in the middle of a large black square.
+  const dds = (path: string) => decodeDDSBuffer(entries.find((e) => e.name === path)!.data);
+  expect(dds(p.faceDDS).width, 'the portrait fills the frame').toBe(128);
+  expect(dds(p.faceSmallDDS).width).toBe(64);
+  expect(dds(p.specIconDDS).width).toBe(64);
+
   // And the copy is really in the archive, with its binary under a uid of ours.
   expect(names).toContain(`${p.dir}/art/Characters/Heroes/Ranger_LOD.xdb`);
   const bins = names.filter((n) => n.startsWith('bin/'));
@@ -246,6 +371,11 @@ test('an installed hero opens for editing, whole', async () => {
   await expect(page.locator('#he-perk')).toHaveValue('HERO_SKILL_FIRST_AID');
   await expect(page.locator('#he-tent')).toBeChecked();
   await expect(page.locator('#he-model')).toHaveValue(/Ranger_LOD/);
+  // The pictures too. A field the form does not carry back is written as
+  // whatever the box holds, and for these that means a hero who loses his face
+  // by having his Knowledge corrected.
+  await expect(page.locator('#he-portrait-pic')).toHaveValue(GEM.portrait);
+  await expect(page.locator('#he-spec-pic')).toHaveValue(GEM.specPicture);
 
   // Change one thing and save: the rest must survive the round trip.
   await page.locator('#he-kn').fill('4');
@@ -257,6 +387,23 @@ test('an installed hero opens for editing, whole', async () => {
   expect(gem.stats?.knowledge).toBe(4);
   expect(gem.specializationName, 'the words a summary would have lost').toBe(GEM.specName);
   expect(gem.perks).toEqual(['HERO_SKILL_FIRST_AID']);
+  expect(gem.portrait, 'and the face she was built with').toBe(GEM.portrait);
+  expect(gem.specializationPicture).toBe(GEM.specPicture);
+});
+
+test('a specialization a hero still holds cannot be taken away', async () => {
+  const { page } = ed;
+  if (!(await page.locator('#heroesmod').isVisible())) await page.locator('#heroesbtn').click();
+  const row = page.locator('#hs-list .um-item', { hasText: GEM_SPEC.name }).first();
+  await expect(row).toBeVisible();
+  await row.locator('button', { hasText: '×' }).click();
+  await page.locator('#ask button', { hasText: 'Remove' }).click();
+
+  // Refused, and the refusal names WHO is holding it — a hero left naming a
+  // value the enum no longer declares is a parse error, not a hero without a
+  // specialization, so this is caught rather than repaired afterwards.
+  await expect(page.locator('#hm-err')).toContainText(GEM.id);
+  expect((readInstalledMod(GAME).specializations ?? []).length, 'and it is still there').toBe(1);
 });
 
 test('removing says what would break, and Cancel means no', async () => {

@@ -215,7 +215,7 @@ function newArtifact(): void {
  * its six stats. Saying so here is the difference between "it does not work"
  * and "it is not installed", which look identical in game.
  */
-export async function showExtensionState(where: 'am-ext' | 'as-ext' = 'am-ext'): Promise<void> {
+export async function showExtensionState(where: 'am-ext' | 'as-ext' | 'hs-ext' = 'am-ext'): Promise<void> {
   const box = $(where);
   box.textContent = '';
   const st = await api.extensionStatus();

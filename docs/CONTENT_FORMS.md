@@ -22,6 +22,7 @@ Every one of these forms ends in a channel that throws:
 | `the hero needs an identifier` | …a hero with none |
 | `a preset is required — a new hero starts from the shape of a shipped one` | …and with no preset |
 | `a set of 1 never combines` | a set with one member |
+| `HERO_SPEC_… is not a usable specialization id` / `a specialization needs a name` | a specialization |
 | `the identifier is required` / `a building needs a model` | a building |
 | `the campaign needs a name` / `the map needs a name` | a campaign, a map |
 
@@ -65,6 +66,7 @@ will happily show. Marking those would train people to ignore the star.
 | artifact | files, id, name, icon |
 | artifact set | files, effect, name, two members |
 | hero | preset\*, identifier, name |
+| specialization | identifier, name |
 | building | identifier, model, name, + the class's own (a dwelling's `creatures`) |
 | campaign | name (and Create in the list, which used to answer an empty box by doing nothing) |
 | new map | name |
@@ -74,7 +76,8 @@ it was built from, so asking for a preset again would be a refusal invented by
 the form rather than one the build makes.
 
 Each form has a refusal test beside its authoring one — `mod-001`, `mod-003`
-(twice: the artifact and the set), `mod-004`, `mod-005`, `campaign.spec.ts`.
+(twice: the artifact and the set), `mod-004` (twice: the hero and his
+specialization), `mod-005`, `campaign.spec.ts`.
 
 ## 2. A form must carry back everything it writes
 

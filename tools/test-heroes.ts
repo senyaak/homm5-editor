@@ -29,6 +29,7 @@ import { artLabels, HERO_CLASS, heroDoc, heroHref, heroInternalName, heroPaths, 
 import type { HeroSpec } from '../src/mods/heroes.ts';
 import { allFields, parseTypeSpec } from '../src/schema/typespec.ts';
 import { children, find, parse, text } from '../src/format/xml.ts';
+import { decodeDDSBuffer } from '../src/format/dds.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {
@@ -36,7 +37,9 @@ function check(name: string, ok: boolean, detail = ''): void {
   if (!ok) failures++;
 }
 
-const dataRoot = process.argv[2] ?? process.env.HOMM5_DATA ?? join(import.meta.dirname, '..', 'data-unpacked');
+/** The checkout, which is where the pictures a hero is built from live. */
+const REPO = join(import.meta.dirname, '..');
+const dataRoot = process.argv[2] ?? process.env.HOMM5_DATA ?? join(REPO, 'data-unpacked');
 if (!existsSync(join(dataRoot, 'types.xml'))) {
   console.log(`no unpacked data at ${dataRoot} — nothing to compare against`);
   process.exit(0);
@@ -65,6 +68,11 @@ const GEM: HeroSpec = {
   perks: ['HERO_SKILL_FIRST_AID'],
   spells: ['SPELL_LIGHTNING_BOLT'],
   machines: { firstAidTent: true },
+  // A face of her own, drawn rather than borrowed. The art walk copies the
+  // donor's portrait into her folder along with the rest of his looks, so
+  // without this she wears his face and every rebuild puts it back.
+  portrait: join(REPO, 'assets', 'heroes', 'gem.gif'),
+  specializationPicture: join(REPO, 'assets', 'specializations', 'first_aid.gif'),
 };
 
 const p = heroPaths(GEM);
@@ -270,6 +278,24 @@ const heroXml = files.find((f) => f.path === p.shared)!.data.toString('latin1');
 check('the document points at the copies, not the shipped files',
   /<Model href="\/Heroes\/H3Gem\/art\//.test(heroXml),
   /<Model href="([^"]*)"/.exec(heroXml)?.[1]);
+
+// Her own face, built from a picture rather than copied from the donor. The
+// document must name what was BUILT: the copy of Ossir's portrait is in her
+// folder too, and pointing at that is how a hero silently keeps his preset's
+// face through every rebuild.
+for (const [what, path] of [['portrait', p.faceDDS], ['its texture doc', p.faceXDB],
+  ['the small portrait', p.faceSmallDDS], ['the specialization icon', p.specIconDDS]] as const) {
+  check(`the mod carries her own ${what}`, paths.includes(path), path);
+}
+for (const [field, want] of [['FaceTexture', p.faceXDB], ['FaceTextureSmall', p.faceSmallXDB],
+  ['SpecializationIcon', p.specIconXDB]] as const) {
+  const href = new RegExp(`<${field} href="([^"]+)"`).exec(heroXml)?.[1] ?? '';
+  check(`${field} names it`, href === `/${want}#xpointer(/Texture)`, href);
+}
+check('the portrait was enlarged to fill the frame, not left small in it', (() => {
+  const image = decodeDDSBuffer(files.find((f) => f.path === p.faceDDS)!.data);
+  return image.width === 128 && image.height === 128;
+})());
 
 // Binaries are keyed by uid, so a copy needs one of its own — sharing the
 // donor's would mean editing our mesh edited the shipped hero's.

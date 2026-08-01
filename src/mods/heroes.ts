@@ -221,6 +221,23 @@ export interface HeroSpec {
   face?: string;
   /** href of the 64x64 portrait. Omitted, the donor's. */
   faceSmall?: string;
+  /**
+   * A PICTURE to build his face from — a path on disk, not an href.
+   *
+   * The difference from `face` is who does the work: an href points at a texture
+   * that already exists, while this is a drawing (a `.gif`, as `assets/` keeps
+   * them) that the mod turns into the pair the game reads — a `.dds` and the
+   * `.(Texture).xdb` beside it — at BOTH sizes the hero screen wants. Given, it
+   * decides `FaceTexture` and `FaceTextureSmall`, and whatever those two hrefs
+   * said is ignored.
+   *
+   * This is what a hero of ours needs and a borrowed portrait cannot give: as
+   * long as his face is a copy of the donor's, rebuilding the mod restores the
+   * donor's face over anything painted on top.
+   */
+  portrait?: string;
+  /** The same for the specialization's icon: a picture, built into a texture. */
+  specializationPicture?: string;
 }
 
 /** Every path a hero owns in the mod. */
@@ -234,6 +251,17 @@ export interface HeroPaths {
   /** Where his specialization's own texts go, when he does not borrow them. */
   specName: string;
   specDescription: string;
+  /**
+   * The textures built from his own pictures — each a `.dds` and the `.xdb`
+   * that says how to read it. They sit in his folder like everything else of
+   * his, so nothing outside the mod can be reached by changing them.
+   */
+  faceDDS: string;
+  faceXDB: string;
+  faceSmallDDS: string;
+  faceSmallXDB: string;
+  specIconDDS: string;
+  specIconXDB: string;
 }
 
 /** Where each of a hero's files goes. */
@@ -247,8 +275,17 @@ export function heroPaths(spec: Pick<HeroSpec, 'id'>): HeroPaths {
     biography: `${dir}/${spec.id}_Bio.txt`,
     specName: `${dir}/${spec.id}_SpecName.txt`,
     specDescription: `${dir}/${spec.id}_SpecDesc.txt`,
+    faceDDS: `${dir}/${spec.id}_Face.(Texture).dds`,
+    faceXDB: `${dir}/${spec.id}_Face.(Texture).xdb`,
+    faceSmallDDS: `${dir}/${spec.id}_Face64.(Texture).dds`,
+    faceSmallXDB: `${dir}/${spec.id}_Face64.(Texture).xdb`,
+    specIconDDS: `${dir}/${spec.id}_SpecIcon.(Texture).dds`,
+    specIconXDB: `${dir}/${spec.id}_SpecIcon.(Texture).xdb`,
   };
 }
+
+/** The href a document uses to reach one of the textures above. */
+export const textureHref = (path: string): string => `/${path}#xpointer(/Texture)`;
 
 /** The href a map, a pool or a group points at to reach this hero. */
 export function heroHref(p: HeroPaths): string {

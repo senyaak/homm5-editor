@@ -6,14 +6,22 @@
 
 import { dialog, ipcMain } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
-import type { ModsInstallHeroPayload, ModsInstallHeroResult, ModsRemovePayload, ModsRemoveResult, ModsUsesResult } from '#electron/ipc.ts';
+import type {
+  ModsInstallHeroPayload, ModsInstallHeroResult, ModsInstallSpecPayload, ModsInstallSpecResult,
+  ModsRemovePayload, ModsRemoveResult, ModsUsesResult,
+} from '#electron/ipc.ts';
 import { buildAndInstall, ourMod } from '#electron/mod-install.ts';
 import { gameData, gameRoot, isConfigured } from '#electron/paths.ts';
 import { state } from '#electron/state.ts';
 import { basename, join } from 'node:path';
 import { describeUses, findHeroUses } from '#src/mods/artifact-usage.ts';
 import { assets } from '#src/game/assets.ts';
-import { addHero, removeHero, updateHero } from '#src/mods/mod-model.ts';
+import {
+  addHero, addSpecialization, removeHero, removeSpecialization, updateHero, updateSpecialization,
+} from '#src/mods/mod-model.ts';
+import { takenSpecializations } from '#src/mods/specializations.ts';
+import type { SpecializationSpec, SpecializationStat } from '#src/mods/specializations.ts';
+import { TYPES } from '#src/mods/mod-files.ts';
 import { refPath } from '#src/mods/dwellings.ts';
 import { HERO_DIR, artOf, heroHref, heroPaths, takenHeroIds } from '#src/mods/heroes.ts';
 import type { HeroSpec, Mastery } from '#src/mods/heroes.ts';
@@ -53,6 +61,9 @@ function heroSpecOf(p: ModsInstallHeroPayload): HeroSpec {
     ...(p.specializationName ? { specializationName: p.specializationName } : {}),
     ...(p.specializationDescription ? { specializationDescription: p.specializationDescription } : {}),
     ...(p.specializationIcon ? { specializationIcon: p.specializationIcon } : {}),
+    // Pictures, not hrefs: the mod builds the textures and points him at them.
+    ...(p.portrait?.trim() ? { portrait: p.portrait.trim() } : {}),
+    ...(p.specializationPicture?.trim() ? { specializationPicture: p.specializationPicture.trim() } : {}),
     ...(p.primarySkill?.skill ? { primarySkill: {
       skill: p.primarySkill.skill, mastery: (p.primarySkill.mastery || 'MASTERY_BASIC') as Mastery,
     } } : {}),
@@ -66,6 +77,27 @@ function heroSpecOf(p: ModsInstallHeroPayload): HeroSpec {
     ...(p.scenarioHero !== undefined ? { scenarioHero: !!p.scenarioHero } : {}),
     ...(p.face ? { face: p.face } : {}),
     ...(p.faceSmall ? { faceSmall: p.faceSmall } : {}),
+  };
+}
+
+/**
+ * One payload, one spec — the same shape the hero side has, and for the reason.
+ *
+ * A percentage of zero is no effect at all, and a row that adds nothing is
+ * indistinguishable in game from a row that was never written, so it is dropped
+ * here rather than carried into the config file as a lie.
+ */
+function specOf(p: ModsInstallSpecPayload): SpecializationSpec {
+  const percent = Number(p.effect?.percentPerLevel) || 0;
+  return {
+    id: p.id.trim(),
+    name: p.name.trim(),
+    description: p.description,
+    ...(p.picture?.trim() ? { picture: p.picture.trim() } : {}),
+    ...(p.icon?.trim() ? { icon: p.icon.trim() } : {}),
+    ...(p.effect?.stat && percent
+      ? { effect: { stat: p.effect.stat as SpecializationStat, percentPerLevel: percent } }
+      : {}),
   };
 }
 
@@ -98,6 +130,20 @@ export function registerModHeroes(): void {
     // Inside his own folder, under the name it came with: everything of his in
     // one place is the point of giving him a folder at all.
     return { href: `/${HERO_DIR}/${id || 'hero'}/${basename(from)}`, from };
+  });
+
+  // A drawing, kept as a PATH. Nothing is copied and no texture is written
+  // here: the pair the game reads is built when the hero is, which is why the
+  // same picture can be edited and the mod rebuilt without touching the form.
+  ipcMain.handle('mods:pick-picture', async (): Promise<string> => {
+    const opts = {
+      title: 'Choose a picture',
+      properties: ['openFile' as const],
+      filters: [{ name: 'Pictures', extensions: ['gif'] }, { name: 'All files', extensions: ['*'] }],
+    };
+    const w = state.win;
+    const r = await (w ? dialog.showOpenDialog(w, opts) : dialog.showOpenDialog(opts));
+    return r.canceled ? '' : r.filePaths[0] ?? '';
   });
 
   // Adding and changing are the same form and the same fields; what differs is
@@ -138,6 +184,47 @@ export function registerModHeroes(): void {
     const gone = removeHero(mod, id);
     // No ceiling to bring back down and no table to shorten — a hero was never
     // counted anywhere. Rebuilding is only so his files leave the archive.
+    const { installed } = buildAndInstall(g, mod);
+    return { archive: installed.archive, removed: gone.id };
+  });
+
+  // Specializations. They live in this file because they are a hero's, and
+  // because nothing else in the editor can hold one: the value is written into
+  // a hero's document and into the file the extension reads, and both of those
+  // are here already.
+  ipcMain.handle('mods:install-specialization', async (_e: IpcMainInvokeEvent, p: ModsInstallSpecPayload): Promise<ModsInstallSpecResult> => {
+    const g = gameRoot();
+    if (!g) throw new Error('no game install configured — a mod needs a folder to install into');
+    if (!isConfigured()) throw new Error('no data root configured');
+    const mod = ourMod(g);
+    // Every name the game's own enum holds, so ours cannot shadow one: a
+    // duplicate entry is not an error the game reports, it is a value that
+    // resolves to whichever the parser saw first.
+    const types = assets([gameData()]).text(TYPES) ?? '';
+    const spec = addSpecialization(mod, specOf(p), takenSpecializations(types));
+    const { installed } = buildAndInstall(g, mod);
+    return { archive: installed.archive, number: spec.number };
+  });
+
+  ipcMain.handle('mods:update-specialization', async (_e: IpcMainInvokeEvent, p: ModsInstallSpecPayload): Promise<ModsInstallSpecResult> => {
+    const g = gameRoot();
+    if (!g) throw new Error('no game install configured');
+    if (!isConfigured()) throw new Error('no data root configured');
+    const mod = ourMod(g);
+    const spec = updateSpecialization(mod, p.id.trim(), specOf(p));
+    const { installed } = buildAndInstall(g, mod);
+    return { archive: installed.archive, number: spec.number };
+  });
+
+  ipcMain.handle('mods:remove-specialization', async (_e: IpcMainInvokeEvent, { id }: ModsRemovePayload): Promise<ModsRemoveResult> => {
+    const g = gameRoot();
+    if (!g) throw new Error('no game install configured');
+    if (!isConfigured()) throw new Error('no data root configured');
+    const mod = ourMod(g);
+    // Refused while a hero of the mod holds it — see removeSpecialization. A
+    // hero left naming a value the enum no longer declares is a parse error and
+    // not "no specialization", so this is the one place to catch it.
+    const gone = removeSpecialization(mod, id);
     const { installed } = buildAndInstall(g, mod);
     return { archive: installed.archive, removed: gone.id };
   });

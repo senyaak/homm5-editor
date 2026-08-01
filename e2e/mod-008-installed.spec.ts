@@ -24,8 +24,9 @@ import {
 import { readEntries } from '../src/format/pak.ts';
 import { modFile } from '../src/game/mod-paths.ts';
 import { readCreatureMod } from '../src/mods/mod-archive.ts';
+import { heroPaths } from '../src/mods/heroes.ts';
 import { BUILDING_CLASSES } from '../src/mods/buildings.ts';
-import { EFFECTS_FILE, readEffects } from '../src/mods/artifact-effects.ts';
+import { EFFECTS_FILE, readEffects, readSpecializations } from '../src/mods/artifact-effects.ts';
 import { COMMON_SCRIPT, SCRIPT_DIR } from '../src/mods/artifact-scripts.ts';
 import { ORIGINAL_ARTIFACTS, readArtifactLimit, SITES_FILE } from '../src/exe/artifact-limit.ts';
 import type { Site } from '../src/exe/artifact-limit.ts';
@@ -74,6 +75,42 @@ test('the archive carries what the run authored', () => {
   // script drives, deliberately not offered — must not have crept back in.
   expect([...new Set((mod.buildings ?? []).map((b) => b.className))].sort())
     .toEqual(BUILDING_CLASSES.map((c) => c.shared).sort());
+
+  // And Gem with her own face on. This is the END of the chain, which is the
+  // only place the question can be answered: mod-004 authors her with a
+  // portrait and then removes her, the map fixture puts her back, and a
+  // fixture that forgot the pictures would leave a Gem wearing Ossir's face
+  // with every earlier spec still green.
+  const gem = (mod.heroes ?? []).find((h) => h.id === 'H3Gem');
+  expect(gem, 'the hero the map stands on').toBeTruthy();
+  const p = heroPaths(gem!);
+  const names = members();
+  for (const f of [p.faceDDS, p.faceXDB, p.faceSmallDDS, p.faceSmallXDB, p.specIconDDS, p.specIconXDB]) {
+    expect(names.has(f), `${f} survived the whole run`).toBe(true);
+  }
+
+  // And the specialization she holds, which is a value the game has never heard
+  // of: it exists only as an entry appended to the enum in the types.xml THIS
+  // archive carries. A hero naming one that is not declared there is a parse
+  // error rather than a hero without a specialization, so the two are checked
+  // together or not at all.
+  const ours = (mod.specializations ?? []).find((s) => s.id === gem!.specialization);
+  expect(ours, `${gem!.specialization} is one of ours`).toBeTruthy();
+  const types = members().get('types.xml')?.toString('latin1') ?? '';
+  expect(types, 'the archive carries the patched types.xml').toBeTruthy();
+  const at = types.indexOf('<TypeName>HeroSpecialization</TypeName>');
+  const entry = types.indexOf(`<Name>${ours!.id}</Name>`);
+  expect(entry, 'the enum declares it').toBeGreaterThan(at);
+  expect(entry, '...inside the specialization enum, not merely in the file')
+    .toBeLessThan(types.indexOf('</Entries>', at));
+  expect(types.slice(entry, entry + 200)).toContain(`<Value>${ours!.number}</Value>`);
+
+  // The words a hero screen prints. A specialization of ours carries what its
+  // heroes should say and the build writes it onto each of them — unless the
+  // hero overrode it, which is the other half of the same rule, so what is
+  // expected is read off the record rather than written down twice.
+  expect(decode(members().get(p.specName)!))
+    .toBe(gem!.specializationName || ours!.name);
 });
 
 test('and the words a player reads are the ones we wrote', () => {
@@ -115,6 +152,18 @@ test('the extension is told about every piece, and only about ours', () => {
     },
   ]);
   expect(rows[PIECES.length - 1]?.amount, 'the boots grant what they say').toBe(BOOTS.necromancy);
+
+  // And the specialization's row, in the same file and its own grammar. Without
+  // it the enum entry is a name on a hero screen: the executable's own
+  // arithmetic knows nothing about a value it was not compiled against, and the
+  // tent would heal exactly what it heals for anybody else.
+  const mod = readCreatureMod(ARCHIVE)!.mod;
+  const specs = readSpecializations(readFileSync(path, 'latin1'));
+  expect(specs).toEqual((mod.specializations ?? [])
+    .filter((s) => s.effect?.percentPerLevel)
+    .map((s) => ({
+      stat: s.effect!.stat, specialization: s.number, percentPerLevel: s.effect!.percentPerLevel,
+    })));
 });
 
 test('the set brought its script, and the global one still loads it', () => {

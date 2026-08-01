@@ -73,6 +73,7 @@ import {
 import { buildBuildings } from './building-files.ts';
 import { buildDwellings } from './dwelling-files.ts';
 import { buildHeroes } from './hero-files.ts';
+import { patchSpecializationTypes } from './specializations.ts';
 
 /** The camera the hire dialog uses. CREATURE_UNKNOWN already sits on this one. */
 const HIRE_CAMERA = '/Cameras/Interface/HireCreatures.(Camera).xdb#xpointer(/Camera)';
@@ -184,7 +185,7 @@ export function buildCreatureMod(mod: CreatureMod, read: DataReader): BuildRepor
   files.push(...buildBuildings(mod.buildings ?? [], read));
   files.push(...buildArtifacts(mod.artifacts ?? [], read));
   files.push(...buildArtifactSets(mod.sets ?? []));
-  files.push(...buildHeroes(mod.heroes ?? [], read));
+  files.push(...buildHeroes(mod.heroes ?? [], read, mod.specializations ?? []));
 
   // Only creatures need the game's own files touched: the enum and the id→number
   // map in types.xml, the reference table the ceiling indexes, and the hire
@@ -197,11 +198,16 @@ export function buildCreatureMod(mod: CreatureMod, read: DataReader): BuildRepor
   // would otherwise ship two types.xml and the second would win whole.
   const artifacts = mod.artifacts ?? [];
   const sets = mod.sets ?? [];
-  if (mod.creatures.length || artifacts.length || sets.length) {
+  const specializations = mod.specializations ?? [];
+  if (mod.creatures.length || artifacts.length || sets.length || specializations.length) {
     let types = mustRead(read, TYPES);
     if (mod.creatures.length) types = patchTypes(types, mod, limit);
     if (artifacts.length) types = patchArtifactTypes(types, artifacts);
     if (sets.length) types = patchSetTypes(types, sets);
+    // A specialization is one enum entry and nothing else — no table to extend,
+    // no size to retune, and no executable to patch. It is the whole of what
+    // the data can say about one; what it DOES comes from the extension.
+    if (specializations.length) types = patchSpecializationTypes(types, specializations);
     files.push({ path: TYPES, data: Buffer.from(types, 'latin1') });
   }
   if (mod.creatures.length) {

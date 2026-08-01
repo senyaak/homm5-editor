@@ -11,8 +11,8 @@ import { join } from 'node:path';
 import { DATA, REPO_ROOT } from './launch.ts';
 import { buildCreatureMod } from '../src/mods/creature-mod.ts';
 import {
-  addArtifact, addArtifactSet, addBuilding, addCreature, addHero, newCreatureMod,
-  removeArtifact, removeArtifactSet, removeBuilding, removeCreature, removeHero,
+  addArtifact, addArtifactSet, addBuilding, addCreature, addHero, addSpecialization, newCreatureMod,
+  removeArtifact, removeArtifactSet, removeBuilding, removeCreature, removeHero, removeSpecialization,
   updateArtifact, updateArtifactSet,
 } from '../src/mods/mod-model.ts';
 import type { BuildingSpec } from '../src/mods/buildings.ts';
@@ -29,7 +29,8 @@ import { readEntries } from '../src/format/pak.ts';
 import { ensureModDir, modFile } from '../src/game/mod-paths.ts';
 import { decodeDDSBuffer } from '../src/format/dds.ts';
 import { writeEffectsFile } from '../src/mods/extension.ts';
-import { effectsOf } from '../src/mods/artifact-effects.ts';
+import { effectsOf, specializationRowsOf } from '../src/mods/artifact-effects.ts';
+import { takenSpecializations } from '../src/mods/specializations.ts';
 
 /**
  * `--noRemove`: do the work in the REAL install and leave it standing.
@@ -389,6 +390,23 @@ export function removeGameRoot(dir: string): void {
 export const GEM_FILE = 'H3Gem';
 
 /**
+ * The specialization mod-004 authors and gives her — Heroes III's own.
+ *
+ * The game's nearest equivalent is HERO_SPEC_EMPIRIC, which adds a flat five
+ * per hero level to the first aid tent; hers adds five PERCENT of it, which is
+ * the same thing at expert War Machines and less at every mastery below. That
+ * difference is the whole reason a specialization of our own exists, and the
+ * percentage is what the native extension is told through its config file.
+ */
+export const GEM_SPEC = {
+  id: 'HERO_SPEC_H3_FIRST_AID',
+  name: 'First Aid',
+  description: 'The first aid tent grows five percent stronger with every level of the hero.',
+  picture: join(ASSETS, 'specializations', 'first_aid.gif'),
+  effect: { stat: 'tent' as const, percentPerLevel: 5 },
+};
+
+/**
  * What mod-005 names its buildings with — one per class: `E2eBuilding`,
  * `E2eMine`, `E2eShrine`… They are named after the CLASSES rather than listed
  * anywhere, so a live run clears them by this prefix.
@@ -405,6 +423,9 @@ const OURS = {
   // leftovers and the dialog refused the name — which is exactly what the
   // clearing is for.
   heroes: [GEM_FILE],
+  // And the specialization he holds. Cleared AFTER him, always: one a hero
+  // still names cannot be taken out, and it is the model that says so.
+  specializations: [GEM_SPEC.id],
 };
 
 /**
@@ -443,23 +464,30 @@ export function clearFixture(gameRoot: string): void {
   for (const file of OURS.heroes) {
     if ((mod.heroes ?? []).some((h) => h.id === file)) { removeHero(mod, file); touched = true; }
   }
+  // After the heroes, and only then: removeSpecialization refuses one that is
+  // still held, which is the rule and not an obstacle to work around.
+  for (const id of OURS.specializations) {
+    if ((mod.specializations ?? []).some((s) => s.id === id)) { removeSpecialization(mod, id); touched = true; }
+  }
   if (!touched) return;
   // Nothing left but the manifest: an archive of nothing is not a mod, and
   // building one throws. This is the ordinary case in a throwaway install,
   // where the fixtures ARE the whole mod — and it stayed hidden until a spec
   // ran live against an install holding nothing else.
   const empty = !mod.creatures.length && !mod.dwellings.length && !(mod.buildings ?? []).length
-    && !(mod.artifacts ?? []).length && !(mod.sets ?? []).length && !(mod.heroes ?? []).length;
+    && !(mod.artifacts ?? []).length && !(mod.sets ?? []).length && !(mod.heroes ?? []).length
+    && !(mod.specializations ?? []).length;
   if (empty) {
     rmSync(archive, { force: true });
-    writeEffectsFile(gameRoot, []);
+    writeEffectsFile(gameRoot, [], []);
     return;
   }
   const report = buildCreatureMod(mod, dataReader(DATA));
   installCreatureMod(gameRoot, mod, packCreatureMod(report));
   // An artifact taken out has to stop granting its bonus: the file is written
   // from what is LEFT, never appended to.
-  writeEffectsFile(gameRoot, effectsOf(mod.artifacts ?? [], mod.sets ?? []));
+  writeEffectsFile(gameRoot, effectsOf(mod.artifacts ?? [], mod.sets ?? []),
+    specializationRowsOf(mod.specializations ?? []));
 }
 
 /**
@@ -556,6 +584,11 @@ export function installMapFixture(gameRoot: string): CreatureMod {
   // her in mod-004; this is the same hero built the same way, for a run that
   // starts at the map. Added when missing and left alone when she is there,
   // like the creature above.
+  // Her specialization first: a hero naming one the enum does not declare is a
+  // parse error rather than a hero without a specialization.
+  if (!(mod.specializations ?? []).some((s) => s.id === GEM_SPEC.id)) {
+    addSpecialization(mod, GEM_SPEC, takenSpecializations(readFileSync(join(DATA, 'types.xml'), 'latin1')));
+  }
   if (!(mod.heroes ?? []).some((h) => h.id === GEM_FILE)) {
     addHero(mod, {
       id: GEM_FILE,
@@ -564,14 +597,21 @@ export function installMapFixture(gameRoot: string): CreatureMod {
       basedOn: 'MapObjects/Preserve/Ossir.(AdvMapHeroShared).xdb',
       town: 'TOWN_PRESERVE',
       heroClass: 'HERO_CLASS_RANGER',
-      specialization: 'HERO_SPEC_EMPIRIC',
-      specializationName: 'Field Medic',
-      specializationDescription: 'With every level the first aid tent heals 5 more points of damage.',
+      // Ours, and with NO words of her own: a specialization of the mod carries
+      // the name and the text it wants its heroes to use, and the build writes
+      // them onto every hero holding it. The dialog's Gem overrides them in
+      // mod-004, which is the other half of the same rule.
+      specialization: GEM_SPEC.id,
       primarySkill: { skill: 'HERO_SKILL_AVENGER', mastery: 'MASTERY_BASIC' },
       stats: { offence: 0, defence: 1, spellpower: 2, knowledge: 2 },
       skills: [{ skill: 'HERO_SKILL_WAR_MACHINES', mastery: 'MASTERY_BASIC' }],
       perks: ['HERO_SKILL_FIRST_AID'],
       machines: { firstAidTent: true },
+      // Her own face and icon, exactly as the dialog gives them. Left out, a run
+      // that authored her through the form and then reached the map spec ends
+      // with a Gem wearing Ossir's face: this fixture would not have rebuilt
+      // them, and nothing else would have said so.
+      portrait: join(ASSETS, 'heroes', 'gem.gif'),
     });
   }
 
@@ -603,7 +643,8 @@ export function installMapFixture(gameRoot: string): CreatureMod {
   // grants nothing — which is what happened to the boots: the dialog writes this
   // file, a fixture that skipped it left one piece of the set inert while its
   // own description promised 15%.
-  writeEffectsFile(gameRoot, effectsOf(mod.artifacts ?? [], mod.sets ?? []));
+  writeEffectsFile(gameRoot, effectsOf(mod.artifacts ?? [], mod.sets ?? []),
+    specializationRowsOf(mod.specializations ?? []));
   return mod;
 }
 

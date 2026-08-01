@@ -15,7 +15,11 @@
 // WHAT IT HOOKS, for now. `CNecromancy::RaisePercent` — one function, called
 // once, that sums base + skill + perk + amplifiers + grail + pendant + set. Its
 // last term is "count worn pieces of set 5, if at least 4 add a number from
-// data"; ours is the same shape with our set and our number.
+// data"; ours is the same shape with our set and our number. The dark energy
+// ceiling is the same again, one object up. And the first aid tent, which is
+// where a SPECIALIZATION of ours enters — the same bargain one rung down: an
+// enum value the executable has never heard of, and a term added where the
+// engine sums its own.
 //
 // ONE ADDRESS, AND ONLY ONE. The hero arrives as `this`, and the engine asks
 // how many pieces of a set are worn through the hero's OWN vtable (+0x328), so
@@ -54,6 +58,38 @@ static const BYTE RAISE_COST_HEAD[5] = { 0x51, 0x53, 0x55, 0x56, 0x57 };
 /** `CountEquipped(collection, artifactId)`, and the bytes that say it is. */
 #define COUNT_EQUIPPED_RVA 0x74c270u
 static const BYTE COUNT_EQUIPPED_HEAD[5] = { 0x53, 0x8B, 0x19, 0x56, 0x57 };
+
+// ---------------------------------------------------------------------------
+// The first aid tent — where a SPECIALIZATION of ours enters the arithmetic.
+//
+// WHAT THE TENT IS WORTH, and the only place it is decided:
+//
+//   amount = { 10, 20, 50, 100 }[war machines mastery]
+//          + 5 * hero level, if his specialization is HERO_SPEC_EMPIRIC (36)
+//
+// Read off the code at 0x77fca0: a four-case jump table writing the constants,
+// then `push 24h; call [vtable+294h]` — "does this hero hold specialization 36"
+// — and inside that branch `lea eax,[eax+eax*4]`, which is the ×5.
+//
+// Two things about it are worth keeping, because each cost a run to learn. The
+// number a mastery produces is an INDEX into that table and nothing more, so
+// multiplying it walks off the end and the engine falls back to a constant —
+// the tent BREAKS rather than strengthens. And the prediction the tooltip shows
+// is computed by different code than the effect, so only the battle log says
+// what happened.
+//
+// Both of the tent's spells come through this one number: `GetSpellPower` at
+// 0x9c96d0 answers for machine type 3 with the owner's War Machines mastery for
+// the heal (0xBD) and for the plague (0x160) alike — which is what the shipped
+// Empiric text claims in words. So one term of ours reaches both, and the perk
+// whose identifier reads `LAST_AID` and whose name in game is «Чумная палатка»
+// needs nothing of its own.
+//
+// Signature, from the call site at 0xb82d16: two out-parameters in ecx and edx,
+// then the unit and the mastery on the stack. Its first five bytes are two
+// whole instructions, so an ordinary detour fits.
+#define TENT_AMOUNT_RVA 0x77fca0u
+static const BYTE TENT_AMOUNT_HEAD[5] = { 0x8B, 0x44, 0x24, 0x08, 0x56 };
 
 // ---------------------------------------------------------------------------
 // Dark energy — the necromancer's pool, and the second thing we add to.
@@ -202,6 +238,34 @@ typedef struct {
 static Row g_rows[MAX_ROWS];
 static int g_rowCount = 0;
 
+/**
+ * Which sum a SPECIALIZATION row belongs to. One so far, and one place in the
+ * executable behind it: the first aid tent's amount.
+ */
+typedef enum { SPEC_STAT_TENT = 0, SPEC_STAT_COUNT = 1 } SpecStat;
+
+static const char *const SPEC_STAT_NAMES[SPEC_STAT_COUNT] = { "tent" };
+
+/**
+ * One term a specialization adds: while a hero holds this value, add this many
+ * percent of the engine's own number for every level he has.
+ *
+ * Nothing is worn and nothing is counted, which is why it is not a Row with
+ * different words. The subject is a value of the `HeroSpecialization` enum —
+ * a number the executable has never heard of, since every shipped one is
+ * compiled against a literal — and the question we ask about it is the engine's
+ * own `HasSpecialization`, so no id of ours has to be reachable from the code.
+ */
+typedef struct {
+  int stat;
+  int specialization;
+  int percentPerLevel;
+} SpecRow;
+
+#define MAX_SPEC_ROWS 16
+static SpecRow g_specRows[MAX_SPEC_ROWS];
+static int g_specRowCount = 0;
+
 static RaiseFn g_original = NULL;
 static CostFn g_originalCost = NULL;
 static PlayerFn g_originalRefill = NULL;
@@ -334,6 +398,28 @@ static void load_config(void) {
 
     //   <stat> artifact <id> <amount>
     //   <stat> set <worn> <amount> <id> <id> …
+    //   <stat> specialization <value> <percent per hero level>
+    //
+    // The specialization rows are tried FIRST and against their own stat names:
+    // they share nothing with the artifact rows but the file, and a line that
+    // belongs to neither grammar is skipped by both.
+    {
+      const char *q = line;
+      SpecRow s;
+      s.stat = -1;
+      for (int i = 0; i < SPEC_STAT_COUNT; i++) {
+        if (take_word(&q, stop, SPEC_STAT_NAMES[i])) { s.stat = i; break; }
+      }
+      if (s.stat >= 0) {
+        if (!take_word(&q, stop, "specialization")) continue;
+        if (!read_int(&q, stop, &s.specialization)) continue;
+        if (!read_int(&q, stop, &s.percentPerLevel)) continue;
+        if (s.specialization < 0 || !s.percentPerLevel) continue;
+        if (g_specRowCount < MAX_SPEC_ROWS) g_specRows[g_specRowCount++] = s;
+        continue;
+      }
+    }
+
     Row r;
     const char *q = line;
     r.stat = -1;
@@ -366,6 +452,7 @@ static void load_config(void) {
     if (g_rowCount < MAX_ROWS) g_rows[g_rowCount++] = r;
   }
   log_num("config rows: ", g_rowCount);
+  log_num("specialization rows: ", g_specRowCount);
 }
 
 // ---------------------------------------------------------------------------
@@ -824,6 +911,137 @@ static int install_necromancy(void) {
   return 1;
 }
 
+// ---------------------------------------------------------------------------
+// The first aid tent: the term a specialization of ours adds.
+
+/**
+ * The tent's amount, and what we add to it.
+ *
+ * The two out-parameters are filled by the engine first, so `*amount` on the
+ * way back is ITS number — the mastery's table entry, plus five per level if
+ * the hero happens to hold Empiric. Ours is a percentage OF that, per level:
+ * five percent is Heroes III's Gem, and at expert mastery it comes to exactly
+ * what the engine's own specialization gives, because five per level is five
+ * percent of a hundred.
+ *
+ * A percentage of the engine's number rather than of a table of our own, for
+ * the same reason every other term here is written that way: the engine does
+ * its arithmetic untouched and ours follows, so nothing has to be kept in step
+ * with it.
+ *
+ * IT ALSO LOGS, bounded. Reading numbers off the battle screen and repeating
+ * them is how three runs went, and it is where the "5" that really meant
+ * "nothing left to heal" cost an evening — so the terms are written down here,
+ * where they are known, rather than inferred from what the tent appeared to do.
+ */
+typedef void(__fastcall *TentAmountFn)(int *amount, int *second, void *unit, int mastery);
+static TentAmountFn g_tentAmount = NULL;
+static int g_amountLogged = 0;
+
+/** How a combat unit hands over the hero behind it, as the engine asks at 0xb7fcee. */
+#define VT_UNIT_OWNER 0x18u
+#define VT_OWNER_HERO 0x0Cu
+/** `HasSpecialization(id)` — the question the tent asks about Empiric. */
+#define VT_HAS_SPECIALIZATION 0x294u
+/** The hero's level, as the tent reads it inside that branch. */
+#define VT_HERO_LEVEL 0x23Cu
+
+typedef void *(__thiscall *GetterFn)(void *self);
+typedef int(__fastcall *HasSpecFn)(void *hero, void *unused, int spec);
+typedef int(__thiscall *LevelFn)(void *hero);
+
+/** The hero a combat unit belongs to, reached the way the engine reaches him. */
+static void *unit_hero(void *unit) {
+  if (!unit) return NULL;
+  void *owner = ((GetterFn)(*(void ***)unit)[VT_UNIT_OWNER / 4])(unit);
+  if (!owner) return NULL;
+  return ((GetterFn)(*(void ***)owner)[VT_OWNER_HERO / 4])(owner);
+}
+
+/**
+ * The hero's OTHER `this` — the one his level and specialization answer on.
+ *
+ * Both questions the tent asks go through a virtual base rather than the hero's
+ * primary vtable, and the engine spells the adjustment out at 0xb7fd00:
+ *
+ *     ecx = hero + 4 + *(int *)(*(void **)(hero + 4) + 8)
+ *
+ * Calling those slots on the plain pointer is what crashed the battle: the
+ * vtable read there belongs to something else entirely. The rule from
+ * docs/ENGINE_INTERNALS.md holds here too — make the call the way the engine
+ * makes it, and no address has to be guessed.
+ */
+static void *hero_virtual_base(void *hero) {
+  BYTE *h = (BYTE *)hero;
+  void *table = *(void **)(h + 4);
+  if (!table) return NULL;
+  return h + 4 + *(int *)((BYTE *)table + 8);
+}
+
+/** Is this address inside the executable's code? A wrong slot is not called. */
+static int points_at_code(void *fn) {
+  BYTE *base = (BYTE *)GetModuleHandleW(NULL);
+  IMAGE_DOS_HEADER *dos = (IMAGE_DOS_HEADER *)base;
+  IMAGE_NT_HEADERS *nt = (IMAGE_NT_HEADERS *)(base + dos->e_lfanew);
+  IMAGE_SECTION_HEADER *s = IMAGE_FIRST_SECTION(nt);
+  DWORD rva = (DWORD)((BYTE *)fn - base);
+  for (WORD i = 0; i < nt->FileHeader.NumberOfSections; i++, s++) {
+    if (!(s->Characteristics & IMAGE_SCN_MEM_EXECUTE)) continue;
+    if (rva >= s->VirtualAddress && rva < s->VirtualAddress + s->Misc.VirtualSize) return 1;
+  }
+  return 0;
+}
+
+static void __fastcall tent_amount_hook(int *amount, int *second, void *unit, int mastery) {
+  g_tentAmount(amount, second, unit, mastery);
+  int engine = *amount;
+
+  // Whose tent it is, and what he holds. Both questions answer on the virtual
+  // base rather than on the hero pointer, and a slot that does not point at
+  // code is not called — the two rules that keep this out of the battle's way.
+  //
+  // A number of zero or less is still LOGGED and only not added to: "the engine
+  // said nothing" is one of the answers worth seeing, and a hook that goes
+  // quiet in exactly that case is a hook that looks uninstalled.
+  void *hero = engine > 0 ? unit_hero(unit) : NULL;
+  void *self = hero ? hero_virtual_base(hero) : NULL;
+  int level = -1, add = 0, matched = -1;
+  if (self) {
+    void **vt = *(void ***)self;
+    void *levelFn = vt[VT_HERO_LEVEL / 4];
+    void *specFn = vt[VT_HAS_SPECIALIZATION / 4];
+    if (points_at_code(levelFn) && points_at_code(specFn)) {
+      level = ((LevelFn)levelFn)(self);
+      for (int i = 0; i < g_specRowCount; i++) {
+        if (g_specRows[i].stat != SPEC_STAT_TENT) continue;
+        if (!((HasSpecFn)specFn)(self, NULL, g_specRows[i].specialization)) continue;
+        matched = g_specRows[i].specialization;
+        // Truncated, deliberately: the engine's number is an integer and so is
+        // what it hands the healing. A first level hero with a basic tent gains
+        // nothing, which is what "five percent of ten" comes to.
+        add += engine * g_specRows[i].percentPerLevel * level / 100;
+      }
+    }
+  }
+  if (add > 0) *amount = engine + add;
+
+  if (g_amountLogged++ >= 24) return;
+  log_line("tent:");
+  log_num("      mastery       ", mastery);
+  log_num("      engine said   ", engine);
+  log_num("      hero level    ", level);
+  log_num("      our spec      ", matched);
+  log_num("      we add        ", add);
+  log_num("      amount        ", *amount);
+  log_num("      second        ", *second);
+}
+
+static void install_tent_term(void) {
+  g_tentAmount = (TentAmountFn)detour(TENT_AMOUNT_RVA, TENT_AMOUNT_HEAD,
+                                      &tent_amount_hook, "first aid tent");
+  if (g_tentAmount) log_line("first aid tent hook installed");
+}
+
 /** Every hook the config asks for. A stat with no rows is not hooked at all. */
 static int install_hooks(void) {
   // Read by address, never written — but a wrong one would be CALLED with a
@@ -850,6 +1068,18 @@ static int install_hooks(void) {
   return installed;
 }
 
+/** The hooks the specialization rows ask for — none, when there are none. */
+static int install_specialization_hooks(void) {
+  int installed = 0;
+  for (int i = 0; i < g_specRowCount; i++) {
+    if (g_specRows[i].stat != SPEC_STAT_TENT) continue;
+    install_tent_term();
+    installed++;
+    break;
+  }
+  return installed;
+}
+
 BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   (void)reserved;
   if (reason != DLL_PROCESS_ATTACH) return TRUE;
@@ -863,6 +1093,7 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   // user from an artifact that carries one.
   install_lua_functions();
   install_energy_getter();
+  if (g_specRowCount) install_specialization_hooks();
   return TRUE;
 }
 

@@ -10,7 +10,7 @@ import type { ModsInstallSetPayload } from '#electron/ipc.ts';
 import { gameData } from '#electron/paths.ts';
 import { rmSync } from 'node:fs';
 import { basename } from 'node:path';
-import { EFFECT_STATS, effectsOf } from '#src/mods/artifact-effects.ts';
+import { EFFECT_STATS, effectsOf, specializationRowsOf } from '#src/mods/artifact-effects.ts';
 import type { EffectRow, EffectStat, SetEffect } from '#src/mods/artifact-effects.ts';
 import type { ArtifactExeResult } from '#src/exe/artifact-limit.ts';
 import { artifactNumbers } from '#src/mods/artifacts.ts';
@@ -62,7 +62,8 @@ function modEffects(mod: CreatureMod): EffectRow[] {
  */
 function modIsEmpty(mod: CreatureMod): boolean {
   return !mod.creatures.length && !mod.dwellings.length && !(mod.buildings ?? []).length
-    && !(mod.artifacts ?? []).length && !(mod.sets ?? []).length && !(mod.heroes ?? []).length;
+    && !(mod.artifacts ?? []).length && !(mod.sets ?? []).length && !(mod.heroes ?? []).length
+    && !(mod.specializations ?? []).length;
 }
 
 /**
@@ -82,7 +83,7 @@ export function buildAndInstall(g: string, mod: CreatureMod): { installed: Insta
   if (modIsEmpty(mod)) {
     const archive = modFile(g, 'mod', mod.stem);
     rmSync(archive, { force: true });
-    writeEffectsFile(g, []);
+    writeEffectsFile(g, [], []);
     return {
       installed: { archive, creatures: null, artifacts: null },
       report: { files: [], limit: 0 },
@@ -91,7 +92,7 @@ export function buildAndInstall(g: string, mod: CreatureMod): { installed: Insta
   const report = buildCreatureMod(mod, dataReader(gameData()));
   const archive = packCreatureMod(report);
   const installed = installCreatureMod(g, mod, archive);
-  writeEffectsFile(g, modEffects(mod));
+  writeEffectsFile(g, modEffects(mod), specializationRowsOf(mod.specializations ?? []));
   return { installed, report };
 }
 

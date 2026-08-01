@@ -15,6 +15,7 @@
 
 import { SHIPPED_CREATURES, blankStats } from './creatures.ts';
 import { SHIPPED_ARTIFACTS } from './artifacts.ts';
+import { SHIPPED_SPECIALIZATIONS } from './specializations.ts';
 import { ORIGINAL_ARTIFACTS } from '../exe/artifact-limit.ts';
 import { MOD_STEM } from './mod-files.ts';
 import type { CreatureStats } from './creatures.ts';
@@ -23,6 +24,7 @@ import type { SetEffect } from './artifact-effects.ts';
 import type { BuildingSpec } from './buildings.ts';
 import type { DwellingSpec } from './dwellings.ts';
 import type { HeroSpec } from './heroes.ts';
+import type { ModSpecialization, SpecializationSpec } from './specializations.ts';
 import type { RecolorOps } from '../format/recolor.ts';
 import type { ArtSlot } from './mod-art.ts';
 
@@ -148,6 +150,17 @@ export interface CreatureMod {
    * and the game's own files stay untouched. See src/heroes.ts.
    */
   heroes: HeroSpec[];
+  /**
+   * Specializations of our own — one enum entry apiece, and the cheapest thing
+   * in the archive that still holds a NUMBER.
+   *
+   * Cheaper than an artifact: the enum's size is declared nowhere, so nothing
+   * has to be retuned and no executable patched. What a value costs instead is
+   * that the executable does nothing with it — every shipped specialization's
+   * behaviour is compiled against its own value — so an effect comes from the
+   * native extension, exactly as a set's does. See src/mods/specializations.ts.
+   */
+  specializations?: ModSpecialization[];
 }
 
 /** One in a mod: a spec plus the id number it holds. */
@@ -211,7 +224,71 @@ export function newCreatureMod(stem = MOD_STEM): CreatureMod {
   return {
     version: 1, stem, first: SHIPPED_CREATURES,
     creatures: [], dwellings: [], buildings: [], artifacts: [], sets: [], heroes: [],
+    specializations: [],
   };
+}
+
+/**
+ * Append a specialization and give it the next enum value.
+ *
+ * APPEND-ONLY, like an artifact and a set: a hero names his specialization by
+ * NAME, but the extension's config identifies the term by the number and a save
+ * in progress stores it, so inserting ahead of one repoints everything after it.
+ *
+ * `taken` is what the game's own enum already holds — read it off types.xml
+ * with takenSpecializations(). A duplicate `<Name>` in an enum is not something
+ * the game reports; it is a value that resolves to whichever entry the parser
+ * saw first.
+ */
+export function addSpecialization(
+  mod: CreatureMod, spec: SpecializationSpec, taken: ReadonlySet<string> = new Set(),
+): ModSpecialization {
+  if (!mod.specializations) mod.specializations = [];
+  if (!/^HERO_SPEC_[A-Z0-9_]+$/.test(spec.id)) throw new Error(`${spec.id} is not a usable specialization id`);
+  if (taken.has(spec.id)) throw new Error(`${spec.id} is the game's own specialization`);
+  if (mod.specializations.some((s) => s.id === spec.id)) throw new Error(`${spec.id} is already in the mod`);
+  if (!spec.name.trim()) throw new Error(`${spec.id}: a specialization needs a name`);
+  const s: ModSpecialization = { ...spec, number: SHIPPED_SPECIALIZATIONS + mod.specializations.length };
+  mod.specializations.push(s);
+  return s;
+}
+
+/**
+ * Change one already in the mod, keeping its value.
+ *
+ * The id may not move, for the reason an artifact's may not: it is what a
+ * hero's document names, and renaming it here would leave every hero holding it
+ * pointing at a value that no longer exists.
+ */
+export function updateSpecialization(
+  mod: CreatureMod, id: string, spec: SpecializationSpec,
+): ModSpecialization {
+  const at = (mod.specializations ?? []).findIndex((s) => s.id === id);
+  if (at < 0) throw new Error(`${id} is not in the mod`);
+  if (spec.id !== id) throw new Error(`a specialization cannot be renamed — ${id} is what heroes name`);
+  const updated: ModSpecialization = { ...spec, number: mod.specializations![at]!.number };
+  mod.specializations![at] = updated;
+  return updated;
+}
+
+/**
+ * Take one out of the mod, and close the gap behind it.
+ *
+ * What it breaks is any hero of the mod who holds it: his `<Specialization>`
+ * would name a value the enum no longer declares, which the game reads as a
+ * parse error and not as "no specialization". So the heroes holding it are
+ * REFUSED rather than quietly orphaned — the same rule the artifact side
+ * follows by listing the maps that name an artifact before it is dropped.
+ */
+export function removeSpecialization(mod: CreatureMod, id: string): ModSpecialization {
+  const list = mod.specializations ?? [];
+  const at = list.findIndex((s) => s.id === id);
+  if (at < 0) throw new Error(`${id} is not in the mod`);
+  const held = (mod.heroes ?? []).filter((h) => h.specialization === id).map((h) => h.id);
+  if (held.length) throw new Error(`${id} is held by ${held.join(', ')} — change them first`);
+  const gone = list.splice(at, 1)[0]!;
+  list.forEach((s, i) => { s.number = SHIPPED_SPECIALIZATIONS + i; });
+  return gone;
 }
 
 /**

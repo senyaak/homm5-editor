@@ -772,6 +772,11 @@ export interface ModListEntry {
   /** Its heroes. They extend nothing, so this list is the only trace of them. */
   heroes: ModHeroDTO[];
   /**
+   * Its specializations. One enum entry apiece and no file of their own, so
+   * like the sets this list is the only place they can be seen from.
+   */
+  specializations: ModSpecializationDTO[];
+  /**
    * Its buildings — everything a hero walks up to, one of sixteen classes each.
    *
    * The WHOLE building, for the reason a hero is whole here: this list is where
@@ -829,8 +834,51 @@ export interface ModHeroDTO {
   scenarioHero?: boolean;
   face?: string;
   faceSmall?: string;
+  /** The pictures he was built from, so the form can show them back. */
+  portrait?: string;
+  specializationPicture?: string;
   /** What he wears, slot by slot. */
   art?: Record<string, string>;
+}
+
+/**
+ * One specialization of an installed mod — the whole record, as everywhere else
+ * here, because this list is where editing it starts.
+ */
+export interface ModSpecializationDTO {
+  /** `HERO_SPEC_…`, ours. */
+  id: string;
+  /** The enum value it holds, appended after the game's 84. */
+  number: number;
+  name: string;
+  description: string;
+  /** A drawing on disk its icon is built from. */
+  picture?: string;
+  /** Or an href to a texture that already exists. */
+  icon?: string;
+  /**
+   * What it gives, and where. Absent means words and a picture — which is what
+   * every value the executable does not know does anyway, and a real thing to
+   * want while a port is being written.
+   */
+  effect?: { stat: string; percentPerLevel: number };
+}
+
+/** Payload of `mods:install-specialization` and of the update beside it. */
+export interface ModsInstallSpecPayload {
+  id: string;
+  name: string;
+  description: string;
+  picture?: string;
+  icon?: string;
+  effect?: { stat: string; percentPerLevel: number };
+}
+
+/** What installing one produced. */
+export interface ModsInstallSpecResult {
+  archive: string;
+  /** The enum value it was given — what the extension's config names it by. */
+  number: number;
 }
 
 /** Result of `mods:list`. */
@@ -854,6 +902,12 @@ export interface ModsFormDataResult {
    * where to append our term, and an artifact uses one or two of them.
    */
   effectStats: string[];
+  /**
+   * The same list for specializations, and separate because the two share
+   * nothing: an artifact's term is flat and worn, a specialization's is a
+   * percentage per hero level. One entry so far — the first aid tent.
+   */
+  specializationStats: string[];
   /**
    * The six an artifact record can hold, offered in the same list as the
    * bonuses above — the form does not care which side of the line one is on.
@@ -1150,6 +1204,14 @@ export interface ModsInstallHeroPayload {
   /** href of a 128x128 portrait, and of the 64x64. Omitted, the preset's face. */
   face?: string;
   faceSmall?: string;
+  /**
+   * A picture on disk to build his face from, at both sizes — given, it decides
+   * the two hrefs above. This is how a hero gets a face of his OWN: a borrowed
+   * one is a copy of the preset's, and every rebuild puts the preset's back.
+   */
+  portrait?: string;
+  /** The same for the specialization's icon. */
+  specializationPicture?: string;
   /** Files of the author's own: href inside the mod → where the file is now. */
   ownFiles?: Record<string, string>;
 }
@@ -1379,6 +1441,12 @@ export interface EditorApi {
   removeHero(p: ModsRemovePayload): Promise<ModsRemoveResult>;
   /** Which maps reach this hero — ask BEFORE removing him. */
   heroUses(p: ModsRemovePayload): Promise<ModsUsesResult>;
+  /** Add a specialization to OUR mod: one enum entry, and a term if it gives one. */
+  installSpecialization(p: ModsInstallSpecPayload): Promise<ModsInstallSpecResult>;
+  /** Change one already in the mod. Its id and its value do not move. */
+  updateSpecialization(p: ModsInstallSpecPayload): Promise<ModsInstallSpecResult>;
+  /** Take one out. Refused while a hero of the mod still holds it. */
+  removeSpecialization(p: ModsRemovePayload): Promise<ModsRemoveResult>;
   /** What one shipped hero wears, slot by slot — the preset seeding the form. */
   heroArtOf(hero: string): Promise<Record<string, string>>;
   /**
@@ -1389,6 +1457,14 @@ export interface EditorApi {
    * form leaves nothing behind.
    */
   pickHeroFile(p: { id: string; slot: string }): Promise<{ href: string; from: string }>;
+  /**
+   * Choose a PICTURE — a drawing the mod builds a texture from.
+   *
+   * Returns the path and nothing else, and copies nothing: the texture is made
+   * when the thing that wears it is built, so editing the drawing and
+   * rebuilding is all it takes to change a face. Empty when cancelled.
+   */
+  pickPicture(): Promise<string>;
   /** Change an artifact already in the mod. Its id and number do not move. */
   updateArtifact(p: ModsInstallArtifactPayload): Promise<ModsInstallArtifactResult>;
   /** Change a set already in the mod. Its effect value does not move. */

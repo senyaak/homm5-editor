@@ -81,7 +81,15 @@ async function fillHeroForm(): Promise<void> {
   const asOptions = (v: string[] = []): { id: string; label: string }[] => v.map((id) => ({ id, label: id }));
   fillHeroSelect('he-town', asOptions(values.TownType));
   fillHeroSelect('he-class', asOptions(values.Class));
-  fillHeroSelect('he-spec', asOptions(values.Specialization), true);
+  // The game's 84, and ours after them. Ours are not in types.xml as the
+  // editor reads it — that is the game's copy, and the mod's entry only exists
+  // in the one the archive carries — so without this a specialization we made
+  // could be installed and never given to anybody.
+  const own = (await api.listMods()).mods.flatMap((m) => m.specializations ?? []);
+  fillHeroSelect('he-spec', [
+    ...asOptions(values.Specialization),
+    ...own.map((s) => ({ id: s.id, label: `${s.name || s.id} (ours)` })),
+  ], true);
 
   // Skills and perks come out of one table (Skills.xdb holds both), so both
   // pickers are offered the whole of it rather than a guess at which is which.
@@ -222,6 +230,11 @@ async function editHero(id: string): Promise<void> {
   $input('he-tent').checked = !!h.machines?.firstAidTent;
   $input('he-ammo').checked = !!h.machines?.ammoCart;
   $input('he-scenario').checked = !!h.scenarioHero;
+  // The pictures he was built from, carried back like everything else: a form
+  // that shows a record has to show ALL of it, or saving writes back whatever
+  // the box happened to hold (docs/CONTENT_FORMS.md §2).
+  $input('he-portrait-pic').value = h.portrait ?? '';
+  $input('he-spec-pic').value = h.specializationPicture ?? '';
   // His looks as he was BUILT, not as the preset would seed them: an edit that
   // silently put the preset's model back would undo a choice without a word.
   for (const [slot, id2] of Object.entries(HE_ART_FIELDS)) {
@@ -294,6 +307,10 @@ async function submitHeroMod(): Promise<void> {
       ...($select('he-face').value ? { face: $select('he-face').value } : {}),
       ...($select('he-face-small').value ? { faceSmall: $select('he-face-small').value } : {}),
       ...($select('he-spec-icon').value ? { specializationIcon: $select('he-spec-icon').value } : {}),
+      // A picture wins over the href beside it: it is the more specific answer
+      // to the same question, and the builder points him at what it makes.
+      ...($input('he-portrait-pic').value.trim() ? { portrait: $input('he-portrait-pic').value.trim() } : {}),
+      ...($input('he-spec-pic').value.trim() ? { specializationPicture: $input('he-spec-pic').value.trim() } : {}),
       // Appearance rides as one object: the fields are all the same shape, and
       // the builder leaves any slot the form did not fill as the preset has it.
       ...(Object.keys(heOwnFiles).length ? { ownFiles: heOwnFiles } : {}),
@@ -352,6 +369,10 @@ export function initHeroesMod(): void {
     $input('he-id').value = '';
     $input('he-preset').value = '';
     $input('he-name').value = '';
+    // New clears the pictures too, or the next hero is built with this one's
+    // face — the same trap the creature's preset fell into.
+    $input('he-portrait-pic').value = '';
+    $input('he-spec-pic').value = '';
     $('he-preset-name').textContent = 'nothing yet — the form is blank';
     gateHero().rewatch();
     modDialog('heroedit').showModal();
@@ -383,6 +404,17 @@ export function initHeroesMod(): void {
           el.append(new Option(`${artLabel(picked.href)} (yours)`, picked.href));
         }
         el.value = picked.href;
+      })().catch((e) => { $('he-err').textContent = e instanceof Error ? e.message : String(e); });
+    };
+  }
+  // A picture is chosen by PATH and kept as one: the texture is built when the
+  // hero is, so the same drawing can be re-read after it is edited, and a
+  // checkout that carries `assets/` builds the same face on any machine.
+  for (const btn of document.querySelectorAll<HTMLButtonElement>('button.he-picture')) {
+    btn.onclick = () => {
+      void (async () => {
+        const picked = await api.pickPicture();
+        if (picked) $input(btn.dataset.for!).value = picked;
       })().catch((e) => { $('he-err').textContent = e instanceof Error ? e.message : String(e); });
     };
   }

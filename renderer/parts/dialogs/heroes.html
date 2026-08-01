@@ -11,9 +11,23 @@
       <div class="mp-body on-body um-body">
         <fieldset>
           <legend>Installed</legend>
-          <div id="hm-list" class="um-mods"></div>
-          <div class="de-foot" style="padding:8px 0 0;justify-content:flex-start">
-            <button id="hm-new">New hero…</button>
+          <!-- Side by side, as the artifacts and their sets are, and for the
+               same reason: a specialization is a hero's, it is chosen from the
+               form beside it, and picking one while its list is off screen is
+               the awkward part. -->
+          <div class="am-columns">
+            <div>
+              <div id="hm-list" class="um-mods"></div>
+              <div class="de-foot" style="padding:8px 0 0;justify-content:flex-start">
+                <button id="hm-new">New hero…</button>
+              </div>
+            </div>
+            <div>
+              <div id="hs-list" class="um-mods"></div>
+              <div class="de-foot" style="padding:8px 0 0;justify-content:flex-start">
+                <button id="hs-new" class="ghost">New specialization…</button>
+              </div>
+            </div>
           </div>
         </fieldset>
         <div id="hm-note" class="um-note"></div>
@@ -61,6 +75,11 @@
             <label class="on-row"><span>Specialization</span><select id="he-spec" title="any faction's: what it does is keyed to the value, not to the race"></select></label>
             <label class="on-row"><span>Spec. name</span><input id="he-spec-name" type="text" autocomplete="off" placeholder="empty → the donor's words"></label>
             <label class="on-row um-span"><span>Spec. text</span><input id="he-spec-desc" type="text" autocomplete="off" placeholder="what the specialization does, in words"></label>
+            <!-- Beside the words it belongs to, not under Appearance: a
+                 specialization is named, described and drawn in one breath. The
+                 mod builds the texture from this drawing, so the icon select
+                 under Appearance is only for pointing at one that exists. -->
+            <label class="on-row um-span"><span>Spec. picture</span><input id="he-spec-pic" type="text" autocomplete="off" placeholder="a drawing to build its icon from — assets/specializations/first_aid.gif" title="a picture on disk; the mod builds the icon from it"><button class="ghost he-picture" data-for="he-spec-pic" title="choose a picture">Picture…</button></label>
             <!-- The racial slot. It need NOT hold the faction's racial skill:
                  the shipped Erasial is a Demon Lord holding Logistics there. -->
             <label class="on-row"><span>Racial slot</span><select id="he-primary" title="the skill he starts with in the racial slot — it need not be his faction's"></select></label>
@@ -114,6 +133,12 @@
               <label class="on-row um-span"><span>Portrait</span><select id="he-face" title="the 128x128 portrait"></select><button class="ghost he-file" data-for="he-face" title="choose a file of your own; it is copied into the hero's folder when he is built">File…</button></label>
               <label class="on-row um-span"><span>Portrait 64</span><select id="he-face-small" title="the 64x64 portrait"></select><button class="ghost he-file" data-for="he-face-small" title="choose a file of your own; it is copied into the hero's folder when he is built">File…</button></label>
               <label class="on-row um-span"><span>Spec. icon</span><select id="he-spec-icon" title="the specialization's icon"></select><button class="ghost he-file" data-for="he-spec-icon" title="choose a file of your own; it is copied into the hero's folder when he is built">File…</button></label>
+              <!-- A picture is not a texture: these take a drawing (.gif) and
+                   the mod builds the game's own texture from it, at both sizes.
+                   Given, they decide the three selects above — which is the only
+                   way a hero keeps a face of his own, since a borrowed one is a
+                   copy of the preset's and every rebuild restores it. -->
+              <label class="on-row um-span"><span>Portrait picture</span><input id="he-portrait-pic" type="text" placeholder="a drawing to build his face from — assets/heroes/gem.gif" title="a picture on disk; the mod builds the 128 and 64 portraits from it"><button class="ghost he-picture" data-for="he-portrait-pic" title="choose a picture">Picture…</button></label>
             </details>
           </div>
         </fieldset>
@@ -123,6 +148,46 @@
       <div class="de-foot">
         <button id="heroedit-cancel" class="ghost">Cancel</button>
         <button id="he-ok">Build &amp; install</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- A specialization of our own: one entry in an enum, and a term the native
+       extension adds where the engine sums its own. The words and the picture
+       are written onto every hero who holds it, because that is where the game
+       keeps them (src/mods/specializations.ts). -->
+  <dialog id="specedit">
+    <div class="mp-card um-card">
+      <div class="mp-head">
+        <span class="mp-title" id="specedit-title">New specialization</span>
+        <button id="specedit-x" title="close (Esc)">✕</button>
+      </div>
+      <div class="mp-body on-body um-body">
+        <fieldset>
+          <legend>New specialization</legend>
+          <div class="on-body um-form">
+            <label class="on-row um-span"><span>Identifier<b class="req">*</b></span><input id="hs-id" type="text" spellcheck="false" autocomplete="off" placeholder="HERO_SPEC_…" title="ours, appended after the game's 84 — one of theirs is refused. A hero's document names it, so it cannot be renamed afterwards."></label>
+            <label class="on-row"><span>Name<b class="req">*</b></span><input id="hs-name" type="text" autocomplete="off" title="what the hero screen prints; a hero may still override it"></label>
+            <label class="on-row um-span"><span>Description</span><input id="hs-desc" type="text" autocomplete="off" placeholder="what it does, in words"></label>
+            <label class="on-row um-span"><span>Picture</span><input id="hs-pic" type="text" autocomplete="off" placeholder="a drawing to build its icon from — assets/specializations/first_aid.gif" title="a picture on disk; the mod builds the icon from it for every hero holding this"><button class="ghost hs-picture" data-for="hs-pic" title="choose a picture">Picture…</button></label>
+            <!-- What it GIVES. Nothing in the game's data can express this: every
+                 shipped specialization's behaviour is compiled against its own
+                 enum value, and ours is a value the executable has never heard
+                 of. So this row goes to the file the extension reads, and the
+                 list is short because it grows by reverse engineering — one
+                 entry per place in the executable we have found and hooked. -->
+            <label class="on-row"><span>Adds to</span><select id="hs-stat" title="which of the engine's own sums our term enters"></select></label>
+            <label class="on-row"><span>% per level</span><input id="hs-percent" type="number" value="0" min="-100" max="100" title="percentage points of the engine's own number, for every level the hero has. Five is Heroes III's Gem — and at expert mastery it comes to exactly what the game's own Empiric gives, since five per level is five percent of a hundred."></label>
+            <div id="hs-ext" class="um-span um-warn"></div>
+            <div class="um-note um-span">A specialization with no percentage is words and a picture, which is what every value the executable does not know does anyway — and a real thing to want while a port is being written.</div>
+          </div>
+        </fieldset>
+        <div id="hs-missing" class="um-missing"></div>
+        <div id="hs-err" class="on-err"></div>
+      </div>
+      <div class="de-foot">
+        <button id="specedit-cancel" class="ghost">Cancel</button>
+        <button id="hs-ok">Build &amp; install</button>
       </div>
     </div>
   </dialog>

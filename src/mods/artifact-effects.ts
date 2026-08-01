@@ -1,5 +1,7 @@
 // What an artifact does beyond its six stats — the file the native extension
-// reads.
+// reads. And, since it is one file and one reader, what a SPECIALIZATION of
+// ours does too: the two are the same bargain one rung apart, an identifier the
+// executable has never heard of and a term added where it sums its own.
 //
 // The six stats an artifact record carries are the only ones the game's own
 // data can express. Everything else a shipped artifact does is compiled into
@@ -62,6 +64,26 @@ export interface EffectRow {
   name?: string;
 }
 
+/**
+ * One term a SPECIALIZATION adds — the second kind of row in the same file.
+ *
+ * It is not an artifact row with different words: nothing is worn and nothing
+ * is counted. The subject is a value of the `HeroSpecialization` enum, the
+ * question the extension asks is the engine's own `HasSpecialization`, and the
+ * amount is per hero LEVEL rather than flat. So it is its own shape, written on
+ * its own line, and each reader below ignores the other's lines.
+ */
+export interface SpecializationRow {
+  /** Which sum it enters. See SPECIALIZATION_STATS in src/mods/specializations.ts. */
+  stat: string;
+  /** The enum VALUE the hero carries — what the executable knows it by. */
+  specialization: number;
+  /** Percentage points of the engine's own number, per level of the hero. */
+  percentPerLevel: number;
+  /** For the comment beside it — the file is meant to be read. */
+  name?: string;
+}
+
 /** A row for one artifact: the common case, written in the short form. */
 function isSingle(r: EffectRow): boolean {
   return r.artifacts.length === 1 && r.threshold <= 1;
@@ -75,13 +97,16 @@ function isSingle(r: EffectRow): boolean {
  * leaving it in makes the file lie about what is in effect. So is a row with
  * no members, which can only come of a set whose pieces did not resolve.
  */
-export function writeEffects(rows: readonly EffectRow[]): string {
+export function writeEffects(
+  rows: readonly EffectRow[], specializations: readonly SpecializationRow[] = [],
+): string {
   const lines = [
-    '# Artifact effects, written by the editor - see src/artifact-effects.ts.',
+    '# Effects the editor added, written by it - see src/mods/artifact-effects.ts.',
     '# The game does not read this; the extension beside it does.',
     '#',
     '#   <stat> artifact <id> <amount>',
     '#   <stat> set <worn> <amount> <id> <id> ...',
+    '#   <stat> specialization <value> <percent per hero level>',
     '',
   ];
   for (const r of rows) {
@@ -90,6 +115,10 @@ export function writeEffects(rows: readonly EffectRow[]): string {
     lines.push(isSingle(r)
       ? `${r.stat} artifact ${r.artifacts[0]} ${r.amount}${comment}`
       : `${r.stat} set ${r.threshold} ${r.amount} ${r.artifacts.join(' ')}${comment}`);
+  }
+  for (const s of specializations) {
+    if (!s.percentPerLevel) continue;
+    lines.push(`${s.stat} specialization ${s.specialization} ${s.percentPerLevel}${s.name ? `   # ${s.name}` : ''}`);
   }
   return `${lines.join('\r\n')}\r\n`;
 }
@@ -115,6 +144,44 @@ export function readEffects(text: string): EffectRow[] {
         amount: Number(set[3]),
       });
     }
+  }
+  return rows;
+}
+
+/**
+ * The specialization rows of the same file. A separate pass over the same text
+ * because the two shapes share nothing but the file they live in, and each
+ * reader here already ignores every line it does not understand.
+ */
+export function readSpecializations(text: string): SpecializationRow[] {
+  const rows: SpecializationRow[] = [];
+  for (const line of text.split(/\r?\n/)) {
+    if (line.trimStart().startsWith('#')) continue;
+    const body = line.split('#')[0] ?? '';
+    const m = /^\s*(\w+)\s+specialization\s+(\d+)\s+(-?\d+)\s*$/.exec(body);
+    if (m) rows.push({ stat: m[1]!, specialization: Number(m[2]), percentPerLevel: Number(m[3]) });
+  }
+  return rows;
+}
+
+/** A specialization of a mod, as far as its effect is concerned. */
+export interface EffectSpecialization {
+  id: string;
+  number: number;
+  effect?: { stat: string; percentPerLevel: number };
+}
+
+/** The rows a mod's specializations imply — one per specialization that gives something. */
+export function specializationRowsOf(specs: readonly EffectSpecialization[]): SpecializationRow[] {
+  const rows: SpecializationRow[] = [];
+  for (const s of specs) {
+    if (!s.effect?.percentPerLevel) continue;
+    rows.push({
+      stat: s.effect.stat,
+      specialization: s.number,
+      percentPerLevel: s.effect.percentPerLevel,
+      name: s.id,
+    });
   }
   return rows;
 }

@@ -16,8 +16,11 @@ publish.
 
 ```
 assets/
-  artifacts/    pictures an artifact can be built from — .gif, 58x64
-  maps/         reference maps the specs rebuild and compare against
+  artifacts/         pictures an artifact can be built from — .gif, 58x64
+  heroes/            portraits — .gif, 58x64, as Heroes III drew them
+  specializations/   the icon a specialization shows on the hero screen
+  skills/            the icon a skill shows, for skills we have yet to make
+  maps/              reference maps the specs rebuild and compare against
 ```
 
 ### artifacts/
@@ -35,6 +38,21 @@ An artifact takes one as its `picture` and the mod builds the game's own 64x64
 texture from it — `src/format/gif.ts` reads the file, `src/format/texture.ts` writes the
 texture — so the specs exercise that path rather than borrowing a shipped icon.
 The Artifacts dialog takes the same files in its Icon field.
+
+### heroes/, specializations/, skills/
+
+Gem, the pilot of the Heroes III port, and the First Aid she is a specialist in
+— same provenance as the artifacts, drawn as Heroes III had them.
+
+| file | what it is |
+| --- | --- |
+| `heroes/gem.gif` | her portrait, 58x64 — the size the game's own 128x128 and 64x64 faces are built from |
+| `specializations/first_aid.gif` | the icon her specialization shows |
+| `skills/first_aid.gif` | the icon for a First Aid SKILL, which does not exist yet |
+
+A portrait is the one picture that has to grow: the hero screen's frame is
+128x128 and the drawing is 58x64, so it is doubled by whole pixels rather than
+resampled — `fitSquare` only ever scales down, and for the same reason.
 
 ### maps/
 
