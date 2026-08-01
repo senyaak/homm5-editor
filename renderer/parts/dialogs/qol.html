@@ -1,0 +1,26 @@
+  <!-- Quality of life: how the GAME plays, not what a map contains.
+       A panel of its own rather than a tab of the mod dialogs, because nothing
+       in here builds an archive or touches an open map — it writes one config
+       file beside the executable, which the extension reads at startup. Every
+       flag is off in an install that never opened this. -->
+  <dialog id="qolcfg">
+    <div class="mp-card" style="max-width:560px">
+      <div class="mp-head">
+        <span class="mp-title">Game settings</span>
+        <button id="qol-x" title="close (Esc)">✕</button>
+      </div>
+      <div class="mp-body on-body">
+        <!-- Said before anything is ticked, not after Apply: without the
+             extension in the install this whole panel writes a file that
+             nothing will ever read. -->
+        <div id="qol-warn" class="qol-warn" hidden></div>
+        <div id="qol-list" class="qol-list"></div>
+        <div id="qol-file" class="qol-file"></div>
+      </div>
+      <div class="de-foot">
+        <span id="qol-msg" class="qol-msg"></span>
+        <button id="qol-close" class="ghost">Close</button>
+        <button id="qol-apply">Apply</button>
+      </div>
+    </div>
+  </dialog>

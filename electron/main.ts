@@ -32,6 +32,7 @@ import { registerModHeroes } from '#electron/channels/mods-heroes.ts';
 import { registerModsList } from '#electron/channels/mods-list.ts';
 import { registerModTextures } from '#electron/channels/mods-textures.ts';
 import { registerObjects } from '#electron/channels/objects.ts';
+import { registerQol } from '#electron/channels/qol.ts';
 import { registerSave } from '#electron/channels/save.ts';
 import { registerScene } from '#electron/channels/scene.ts';
 import { registerTerrain } from '#electron/channels/terrain.ts';
@@ -152,6 +153,7 @@ registerModHeroes();
 registerModArtifacts();
 registerModBuildings();
 registerModTextures();
+registerQol();
 
 app.whenReady().then(async () => {
   // Nothing to read means nothing to edit, so setup comes first: it asks where

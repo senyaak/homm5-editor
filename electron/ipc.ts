@@ -450,6 +450,41 @@ export interface LaunchGameResult {
   exe: string;
 }
 
+/** Result of `qol:get` — what the game is set to do, read from the file itself. */
+export interface QolState {
+  /** Every flag this build knows, on or off. */
+  settings: Record<string, boolean>;
+  /** The file the extension reads, for the panel to name. */
+  file: string;
+  /**
+   * The install all of this is about.
+   *
+   * Named because the commonest failure here is not a broken switch but a
+   * window pointed at the wrong folder — a worktree whose launcher guessed the
+   * parent directory, say. "No copy of the executable" is a puzzle; the same
+   * sentence with the path in it answers itself.
+   */
+  install: string;
+  /** Is the extension installed at all? Nothing here works without it. */
+  extension: boolean;
+  /** Is there a copy of the executable to load it? */
+  patchedExe: boolean;
+}
+
+/** Result of `qol:apply` — what was written, and where. */
+export interface QolApplyResult {
+  file: string;
+  extension: boolean;
+  /** Why the extension could not be installed, when it could not. */
+  note?: string;
+  /** Game profiles switched to windowed mode, if borderless asked for it. */
+  windowed: string[];
+  /** Profiles with no such setting to change — said, not repaired. */
+  windowedSkipped: string[];
+  /** False when borderless was asked for and no game profile could be found. */
+  profilesFound: boolean;
+}
+
 /** Result of `terrain:tiles`. */
 export interface TerrainTilesResult {
   tiles: TileInfo[];
@@ -1504,6 +1539,19 @@ export interface EditorApi {
    * shipped one would start, and would show none of what the editor makes.
    */
   launchGame(): Promise<LaunchGameResult>;
+  /**
+   * The quality of life settings, read from the file the extension reads.
+   *
+   * Not from anything the editor remembers: that file is the state, it can be
+   * edited by hand, and a panel showing its own memory instead would disagree
+   * with the game the first time somebody did.
+   */
+  qolGet(): Promise<QolState>;
+  /**
+   * Write them, install the extension if it is not in yet, and set windowed
+   * mode when borderless asks for it. Safe to press twice.
+   */
+  qolApply(settings: Record<string, boolean>): Promise<QolApplyResult>;
   /** Is this run rendering through SwiftShader? See Settings.softwareRendering. */
   gpuSoftware(): Promise<boolean>;
   /**

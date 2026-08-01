@@ -40,6 +40,7 @@ import { initBuildingsMod } from '#features/mods/buildings.ts';
 import { initArtifactsMod } from '#features/mods/artifacts.ts';
 import { initArtifactSets } from '#features/mods/artifact-sets.ts';
 import { openCampaignList, initCampaigns } from '#features/campaigns.ts';
+import { initQol } from '#features/qol.ts';
 import { initPropertyPanel } from '#features/inspector/controls.ts';
 import { initRefs } from '#features/inspector/refs.ts';
 import { initTextEditor } from '#features/text-editor/document.ts';
@@ -809,6 +810,7 @@ initUnitsMod();
   initBuildingsMod();
   initArtifactsMod();
   initArtifactSets();
+initQol();
 
 // The finish line. Everything above ran, so the window is wired and the render
 // loop is turning; the page's watchdog stands down. Keep this last — moved

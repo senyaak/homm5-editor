@@ -371,6 +371,27 @@ static void log_num(const char *prefix, int value) {
   log_line(line);
 }
 
+/** The same, with a word instead of a number. Truncates rather than overruns. */
+static void log_text(const char *prefix, const char *text) {
+  char line[192];
+  int i = 0;
+  while (prefix[i] && i < 100) { line[i] = prefix[i]; i++; }
+  int j = 0;
+  while (text[j] && i < 190) line[i++] = text[j++];
+  line[i] = 0;
+  log_line(line);
+}
+
+static void log_hex(const char *prefix, DWORD value) {
+  static const char DIGITS[] = "0123456789abcdef";
+  char text[11];
+  text[0] = '0';
+  text[1] = 'x';
+  for (int i = 0; i < 8; i++) text[2 + i] = DIGITS[(value >> (28 - i * 4)) & 0xF];
+  text[10] = 0;
+  log_text(prefix, text);
+}
+
 // ---------------------------------------------------------------------------
 // Reading the config.
 
@@ -453,6 +474,64 @@ static void load_config(void) {
   }
   log_num("config rows: ", g_rowCount);
   log_num("specialization rows: ", g_specRowCount);
+}
+
+// ---------------------------------------------------------------------------
+// Quality of life — how somebody wants to PLAY, in a file of its own.
+//
+// A SECOND config rather than more rows in the first one, because the two have
+// different owners. The effects file is content: it belongs to what the editor
+// built and travels with it. These are a player's preference about his own
+// install, and a map of his has no business carrying them.
+//
+//   # comment
+//   borderless 1
+//
+// Every flag is OFF unless a line turns it on, and no file at all is the same
+// as every flag off — so an install that never opened the panel behaves exactly
+// as it did before, which is the whole promise of a quality of life mod.
+
+typedef enum { QOL_BORDERLESS = 0, QOL_OWN_PROFILE = 1, QOL_COUNT = 2 } QolFlag;
+
+static const char *const QOL_NAMES[QOL_COUNT] = { "borderless", "own-profile" };
+
+static int g_qol[QOL_COUNT];
+
+static void load_qol(void) {
+  WCHAR path[MAX_PATH];
+  beside_us(L"homm5-editor-qol.txt", path);
+  HANDLE h = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING,
+                         FILE_ATTRIBUTE_NORMAL, NULL);
+  if (h == INVALID_HANDLE_VALUE) return;
+
+  char buf[4096];
+  DWORD got = 0;
+  ReadFile(h, buf, sizeof(buf) - 1, &got, NULL);
+  CloseHandle(h);
+  buf[got] = 0;
+
+  const char *p = buf, *end = buf + got;
+  while (p < end) {
+    const char *line = p;
+    while (p < end && *p != '\n') p++;
+    const char *stop = p;
+    if (p < end) p++;
+    while (line < stop && (*line == ' ' || *line == '\t')) line++;
+    if (line >= stop || *line == '#') continue;
+    for (int i = 0; i < QOL_COUNT; i++) {
+      const char *q = line;
+      if (!take_word(&q, stop, QOL_NAMES[i])) continue;
+      // The name on its own means on: a hand-written file to try something out
+      // should not need to know that the number is what counts.
+      int on = 1;
+      read_int(&q, stop, &on);
+      g_qol[i] = on != 0;
+      break;
+    }
+  }
+  for (int i = 0; i < QOL_COUNT; i++) {
+    if (g_qol[i]) log_text("qol: ", QOL_NAMES[i]);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1080,6 +1159,378 @@ static int install_specialization_hooks(void) {
   return installed;
 }
 
+// ---------------------------------------------------------------------------
+// Borderless — the game's own window, without its frame.
+//
+// The game asks USER32 for one window and never revisits its style, so the
+// whole of the feature is answering that one call differently: take the frame
+// off, put the window at the corner of the screen and make it the size of it.
+//
+// IN THE IMPORT TABLE, not in the code. `CreateWindowExA` is imported by name,
+// beside `RegisterClassExA` and `DefWindowProcA` — the ordinary message loop —
+// so the call can be met where the loader wrote its address. One pointer is
+// replaced, no instruction is touched, and no address of the game's own is
+// needed at all: this is the one hook here that a different build cannot break.
+//
+// WHAT IT CANNOT DO ALONE. Exclusive fullscreen belongs to Direct3D, not to the
+// window: with `gfx_fullscreen = 1` the device takes the display and the frame
+// is beside the point. So the other half of borderless is that variable, which
+// is the editor's to write — the game keeps it in `profiles/*/user_a2.cfg`.
+
+typedef HWND(WINAPI *CreateWindowExAFn)(DWORD, LPCSTR, LPCSTR, DWORD, int, int, int, int,
+                                        HWND, HMENU, HINSTANCE, LPVOID);
+typedef BOOL(WINAPI *SetWindowPosFn)(HWND, HWND, int, int, int, int, UINT);
+typedef LONG(WINAPI *SetWindowLongAFn)(HWND, int, LONG);
+typedef int(WINAPI *MetricFn)(int);
+
+static CreateWindowExAFn g_createWindowExA = NULL;
+static SetWindowPosFn g_setWindowPos = NULL;
+static SetWindowLongAFn g_setWindowLongA = NULL;
+
+/**
+ * The window we took, so the two calls that could undo it know which it is.
+ *
+ * The game asks for its window with CW_USEDEFAULT and sizes it afterwards, once
+ * the device exists — so creation is where the FRAME is decided and something
+ * later decides the geometry. Both have to agree, or the window ends up without
+ * a border at whatever size the engine had in mind.
+ */
+static HWND g_mainWindow = NULL;
+static int g_screenW = 0;
+static int g_screenH = 0;
+
+/** The screen, asked for once and remembered. Zero if USER32 would not say. */
+static void screen_size(void) {
+  if (g_screenW && g_screenH) return;
+  HMODULE user32 = GetModuleHandleW(L"user32.dll");
+  MetricFn metric = user32 ? (MetricFn)GetProcAddress(user32, "GetSystemMetrics") : NULL;
+  if (!metric) return;
+  g_screenW = metric(SM_CXSCREEN);
+  g_screenH = metric(SM_CYSCREEN);
+}
+
+/** What a framed window is made of, and what we take off it. */
+#define WINDOW_FRAME (WS_CAPTION | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_SYSMENU)
+
+/**
+ * The slot in the import address table that holds `want`.
+ *
+ * The table is a list of pointers the loader filled in, so writing one here
+ * changes no code. A name can also be an ordinal, in which case there is no
+ * name to compare and the entry is skipped rather than guessed at.
+ */
+static void **find_import_slot(const char *want) {
+  BYTE *base = (BYTE *)GetModuleHandleW(NULL);
+  IMAGE_DOS_HEADER *dos = (IMAGE_DOS_HEADER *)base;
+  IMAGE_NT_HEADERS *nt = (IMAGE_NT_HEADERS *)(base + dos->e_lfanew);
+  IMAGE_DATA_DIRECTORY *dir = &nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT];
+  if (!dir->VirtualAddress) return NULL;
+
+  IMAGE_IMPORT_DESCRIPTOR *imp = (IMAGE_IMPORT_DESCRIPTOR *)(base + dir->VirtualAddress);
+  for (; imp->Name; imp++) {
+    // The names live in one array and the addresses in another, at the same
+    // index. A descriptor with no separate name array names them in place.
+    DWORD nameRva = imp->OriginalFirstThunk ? imp->OriginalFirstThunk : imp->FirstThunk;
+    DWORD *names = (DWORD *)(base + nameRva);
+    DWORD *slots = (DWORD *)(base + imp->FirstThunk);
+    for (int i = 0; names[i]; i++) {
+      if (names[i] & IMAGE_ORDINAL_FLAG32) continue;
+      const char *name = (const char *)(base + names[i] + 2); // past the hint
+      int j = 0;
+      while (want[j] && name[j] == want[j]) j++;
+      if (want[j] || name[j]) continue;
+      return (void **)&slots[i];
+    }
+  }
+  return NULL;
+}
+
+/**
+ * How many windows still say what they were asked for.
+ *
+ * The game makes one window that matters and several that do not, and which is
+ * which is a claim to CHECK rather than assume — so the first few are written
+ * down with the style and size they asked for, whether or not we changed them.
+ */
+static int g_windowsLogged = 0;
+static int g_borderlessDone = 0;
+
+static HWND WINAPI create_window_hook(DWORD exStyle, LPCSTR cls, LPCSTR title, DWORD style,
+                                      int x, int y, int w, int h, HWND parent, HMENU menu,
+                                      HINSTANCE inst, LPVOID param) {
+  // A class name can be an atom rather than a string — the low word of the
+  // pointer, with nothing to read at it — which is worth a check, since this
+  // runs for every window the process makes.
+  const char *clsText = (ULONG_PTR)cls > 0xFFFF ? cls : "(atom)";
+
+  // Top-level and framed is what the game's own window is. A child, a tooltip
+  // or a message box is neither, and none of them should be moved to the corner
+  // of the screen and made the size of it.
+  int top = !parent && !(style & WS_CHILD);
+  int framed = (style & WS_CAPTION) == WS_CAPTION;
+  int take = g_qol[QOL_BORDERLESS] && top && framed && !g_borderlessDone;
+
+  if (g_windowsLogged < 8) {
+    g_windowsLogged++;
+    log_text("window: class ", clsText);
+    log_text("        title ", (ULONG_PTR)title > 0xFFFF ? title : "(none)");
+    log_hex("        style ", style);
+    log_num("        width ", w);
+    log_num("        height ", h);
+    log_num("        top-level ", top);
+    log_num("        we take it ", take);
+  }
+
+  if (take) {
+    // The screen is asked for here rather than at load time: USER32 is mapped
+    // by then but its own initialisation may not have run, and this call is
+    // already inside the game's message loop, where everything is up.
+    screen_size();
+    if (g_screenW > 0 && g_screenH > 0) {
+      style = (style & ~(DWORD)WINDOW_FRAME) | WS_POPUP;
+      exStyle &= ~(DWORD)(WS_EX_WINDOWEDGE | WS_EX_CLIENTEDGE | WS_EX_DLGMODALFRAME);
+      x = 0;
+      y = 0;
+      w = g_screenW;
+      h = g_screenH;
+      g_borderlessDone = 1;
+      log_num("borderless: the window is now this wide ", g_screenW);
+      log_num("            and this tall ", g_screenH);
+    } else {
+      log_line("borderless: the screen size could not be asked for - leaving the window alone");
+      take = 0;
+    }
+  }
+
+  HWND made = g_createWindowExA(exStyle, cls, title, style, x, y, w, h, parent, menu, inst, param);
+  if (take && made) g_mainWindow = made;
+  return made;
+}
+
+/**
+ * Every move the game makes on its own window, and ours holding.
+ *
+ * It sizes the window after the device exists, so without this the frame comes
+ * off and the geometry goes back to whatever the engine had in mind — which is
+ * a frameless window in the corner of the screen rather than a borderless one.
+ *
+ * ONLY OUR WINDOW. Every other window of the process is passed through
+ * untouched: this hook sees them all, and the one thing worse than a border is
+ * a dialog dragged to the corner and stretched over the screen.
+ */
+static int g_posLogged = 0;
+
+static BOOL WINAPI set_window_pos_hook(HWND hwnd, HWND after, int x, int y, int cx, int cy, UINT flags) {
+  int ours = g_qol[QOL_BORDERLESS] && hwnd && hwnd == g_mainWindow;
+  if (ours && g_posLogged < 8) {
+    g_posLogged++;
+    log_num("setpos: x ", x);
+    log_num("        y ", y);
+    log_num("        cx ", cx);
+    log_num("        cy ", cy);
+    log_hex("        flags ", flags);
+  }
+  if (ours && g_screenW > 0 && g_screenH > 0) {
+    x = 0;
+    y = 0;
+    cx = g_screenW;
+    cy = g_screenH;
+    flags &= ~(UINT)(SWP_NOMOVE | SWP_NOSIZE);
+  }
+  return g_setWindowPos(hwnd, after, x, y, cx, cy, flags);
+}
+
+/**
+ * The style, if the game ever sets it again.
+ *
+ * Imported, so it is called somewhere; whether it is called on the window we
+ * took is what the log answers. Written to hold rather than to watch, because a
+ * frame that comes back halfway through a session is the same bug as one that
+ * never came off.
+ */
+static int g_styleLogged = 0;
+
+static LONG WINAPI set_window_long_hook(HWND hwnd, int index, LONG value) {
+  if (g_qol[QOL_BORDERLESS] && hwnd && hwnd == g_mainWindow && index == GWL_STYLE) {
+    if (g_styleLogged < 8) {
+      g_styleLogged++;
+      log_hex("setstyle: the game asked for ", (DWORD)value);
+    }
+    value = (LONG)(((DWORD)value & ~(DWORD)WINDOW_FRAME) | WS_POPUP);
+  }
+  return g_setWindowLongA(hwnd, index, value);
+}
+
+/**
+ * Meet one imported function with one of ours.
+ *
+ * What is verified before writing is that the slot still holds what the loader
+ * put there — `GetProcAddress` of the same name out of the same library — which
+ * is at once a check that this is the right slot and a check that nobody got
+ * here first. Returns the original, or null when it refused, so a caller can
+ * install nothing rather than install half of something.
+ *
+ * The library is asked for by handle rather than loaded: everything hooked here
+ * is a static import of the executable, so it is mapped before any of this
+ * runs, and calling `LoadLibrary` from `DllMain` is a way to deadlock the
+ * loader for no gain.
+ */
+static void *hook_import(const WCHAR *library, const char *name, void *ours) {
+  void **slot = find_import_slot(name);
+  if (!slot) {
+    log_text("hook: not imported by name - skipping ", name);
+    return NULL;
+  }
+  HMODULE lib = GetModuleHandleW(library);
+  void *real = lib ? (void *)GetProcAddress(lib, name) : NULL;
+  if (!real || *slot != real) {
+    log_text("hook: the import slot is not the library's own - skipping ", name);
+    return NULL;
+  }
+  DWORD old = 0;
+  if (!VirtualProtect(slot, sizeof(void *), PAGE_READWRITE, &old)) {
+    log_text("hook: could not make the import table writable for ", name);
+    return NULL;
+  }
+  *slot = ours;
+  VirtualProtect(slot, sizeof(void *), old, &old);
+  log_text("hook: installed ", name);
+  return real;
+}
+
+static void install_borderless(void) {
+  // The frame is decided at creation, so this one is the feature; without it
+  // there is nothing to hold and the other two are not worth installing.
+  g_createWindowExA = (CreateWindowExAFn)hook_import(L"user32.dll", "CreateWindowExA", &create_window_hook);
+  if (!g_createWindowExA) return;
+  // These two are what keeps it: the game sizes its window after the device
+  // exists, and it imports the call that would put a style back.
+  g_setWindowPos = (SetWindowPosFn)hook_import(L"user32.dll", "SetWindowPos", &set_window_pos_hook);
+  g_setWindowLongA = (SetWindowLongAFn)hook_import(L"user32.dll", "SetWindowLongA", &set_window_long_hook);
+}
+
+// ---------------------------------------------------------------------------
+// A user folder of our own — profiles, settings and saves beside the mod
+// instead of in Documents.
+//
+// WHAT THE GAME DOES. It asks Windows where Documents is and builds
+//
+//   <Documents>\My Games\<PRODUCT_NAME>\Profiles\<profile>\user_a2.cfg
+//
+// out of strings that sit together in .rdata. `SHGetFolderPathA` is a single
+// named import from SHELL32, so the whole redirection is one pointer in the
+// import table and none of the game's own path building is touched.
+//
+// WHY NOT REWRITE THE STRINGS, which is how the mod folder was moved: a string
+// patched in place must FIT where the shipped one was, and every replacement in
+// src/game/mod-paths.ts had to be shorter than what it replaced. An answer
+// given at runtime has no such bargain.
+//
+// WHY AT ALL. Our copy of the executable already reads and writes its own mod
+// folder, so a map or a mod of ours cannot disturb a plain install. Settings
+// and SAVES were the exception — shared through Documents by every install on
+// the machine, which is how an afternoon of testing came to rewrite the video
+// settings of the game somebody actually plays.
+//
+// NOTHING IS SEEDED. The folder starts empty: no profile, no saves, no hall of
+// fame. Copying the existing tree in would be one command and several ways to
+// go wrong, and whoever wants their campaign here can copy it themselves —
+// knowing, as we do not, which of their saves they mean.
+
+/** Documents. The flags above the low byte ask for creation and for defaults. */
+#define CSIDL_PERSONAL 0x0005
+#define CSIDL_MASK 0xFF
+
+typedef HRESULT(WINAPI *SHGetFolderPathAFn)(HWND, int, HANDLE, DWORD, LPSTR);
+
+static SHGetFolderPathAFn g_shGetFolderPath = NULL;
+
+/** `<install>\H5E\user`, in ANSI because that is what the call answers in. */
+static char g_userDir[MAX_PATH];
+
+/**
+ * Where our user folder is, worked out from where WE are.
+ *
+ * The DLL sits in `bin/` beside the executable, so the install is one level up
+ * and `H5E/` is the folder our build already calls its own. Derived rather than
+ * configured: an install that was moved or copied keeps working, and there is
+ * no second place for the answer to be wrong in.
+ */
+static void find_user_dir(HINSTANCE self) {
+  char path[MAX_PATH];
+  DWORD n = GetModuleFileNameA(self, path, MAX_PATH);
+  if (!n || n >= MAX_PATH) return;
+  // Off the file name, then off `bin\` — what is left ends with a separator.
+  while (n && path[n - 1] != '\\' && path[n - 1] != '/') n--;
+  if (n) n--;
+  while (n && path[n - 1] != '\\' && path[n - 1] != '/') n--;
+  if (!n) return;
+
+  const char *tail = "H5E\\user";
+  DWORD i = 0;
+  while (tail[i] && n + i < MAX_PATH - 1) { path[n + i] = tail[i]; i++; }
+  path[n + i] = 0;
+  for (DWORD j = 0; j <= n + i; j++) g_userDir[j] = path[j];
+}
+
+/** Make every level of the path that is not there yet. Failures are ignored:
+ *  a level that already exists fails the same way as one that cannot be made,
+ *  and the call that follows is what actually needs the folder. */
+static void make_dirs(const char *path) {
+  char work[MAX_PATH];
+  int i = 0;
+  while (path[i] && i < MAX_PATH - 1) { work[i] = path[i]; i++; }
+  work[i] = 0;
+  // From past `C:\`, so the root itself is never handed to CreateDirectory.
+  for (int j = 3; work[j]; j++) {
+    if (work[j] != '\\' && work[j] != '/') continue;
+    work[j] = 0;
+    CreateDirectoryA(work, NULL);
+    work[j] = '\\';
+  }
+  CreateDirectoryA(work, NULL);
+}
+
+/**
+ * Where Documents is, as far as the game is concerned.
+ *
+ * ONLY Documents. Every other folder the game asks for is passed through — this
+ * call serves several, and answering all of them with one path would put the
+ * game's idea of AppData wherever its idea of Documents went. Which ones are
+ * actually asked for is written down for the first few calls, because that is a
+ * claim about this executable rather than about Windows.
+ */
+static int g_folderLogged = 0;
+
+static HRESULT WINAPI sh_folder_hook(HWND owner, int csidl, HANDLE token, DWORD flags, LPSTR out) {
+  int which = csidl & CSIDL_MASK;
+  int ours = g_qol[QOL_OWN_PROFILE] && which == CSIDL_PERSONAL && out && g_userDir[0];
+  if (g_folderLogged < 8) {
+    g_folderLogged++;
+    log_num("folder: the game asked for csidl ", which);
+    log_num("        answered by us ", ours);
+  }
+  if (!ours) return g_shGetFolderPath(owner, csidl, token, flags, out);
+
+  // The caller is about to build a path under this and open files in it, so it
+  // has to exist — the real call creates it when asked, and so must ours.
+  make_dirs(g_userDir);
+  int i = 0;
+  while (g_userDir[i] && i < MAX_PATH - 1) { out[i] = g_userDir[i]; i++; }
+  out[i] = 0;
+  return 0; // S_OK
+}
+
+static void install_own_profile(HINSTANCE self) {
+  find_user_dir(self);
+  if (!g_userDir[0]) {
+    log_line("own profile: could not work out where we are - not redirecting");
+    return;
+  }
+  g_shGetFolderPath = (SHGetFolderPathAFn)hook_import(L"shell32.dll", "SHGetFolderPathA", &sh_folder_hook);
+  if (g_shGetFolderPath) log_text("own profile: our user folder is ", g_userDir);
+}
+
 BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   (void)reserved;
   if (reason != DLL_PROCESS_ATTACH) return TRUE;
@@ -1094,6 +1545,14 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   install_lua_functions();
   install_energy_getter();
   if (g_specRowCount) install_specialization_hooks();
+  // A player's own settings, read from their own file. The window has to be met
+  // before the game makes it, and the game makes it from its entry point — which
+  // is why this happens here and not on the first frame.
+  load_qol();
+  if (g_qol[QOL_BORDERLESS]) install_borderless();
+  // Before the game asks, which it does early: the profile it loads decides
+  // what the main menu already shows.
+  if (g_qol[QOL_OWN_PROFILE]) install_own_profile(self);
   return TRUE;
 }
 

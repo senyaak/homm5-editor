@@ -1,0 +1,70 @@
+/* The game settings panel. A list of switches, each with the price of using it
+   under its name — see renderer/features/qol.ts. */
+
+/* The dialog's OWN chrome, reset the way every other one here resets it. A
+   <dialog> that is not given these keeps the UA's white box and, worse, the
+   UA's text colour — which lands black on the dark card inside it. */
+#qolcfg {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #c9d1d9;
+  max-width: 92vw;
+  max-height: 82vh;
+}
+
+#qolcfg::backdrop { background: #0d1014cc; }
+
+.qol-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.qol-row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px 10px;
+  align-items: start;
+}
+
+.qol-row input {
+  margin: 3px 0 0;
+}
+
+.qol-name {
+  font-weight: 600;
+}
+
+/* What ticking it costs, in the same words the config file carries. */
+.qol-detail {
+  grid-column: 2;
+  opacity: 0.7;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+/* The same amber the mod dialogs warn in (.um-warn), rather than a box of its
+   own invention — one app, one way of saying "this will not work yet". */
+.qol-warn {
+  margin-bottom: 14px;
+  color: #d29922;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.qol-file,
+.qol-msg {
+  opacity: 0.6;
+  font-size: 11px;
+}
+
+.qol-file {
+  margin-top: 16px;
+  word-break: break-all;
+}
+
+.qol-msg {
+  margin-right: auto;
+  opacity: 0.75;
+}

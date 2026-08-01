@@ -13,7 +13,35 @@ one.
 
 ## Unreleased
 
-Nothing yet — this is where the next build's notes go.
+### Added
+
+- **Game settings — how the game plays, from a panel.** A new button beside
+  Play, offered with a map open or without, because none of this has anything to
+  do with what the window has loaded. Everything in it is off until you turn it
+  on, and an install that never opens it plays exactly as it did before.
+
+  - **Borderless window.** The game's own window without its frame, filling the
+    screen. It also sets windowed mode and the render size in your game profile,
+    because exclusive fullscreen has no frame to take off and a window the size
+    of the screen with a 1024x768 picture in it is a stretched one.
+  - **Keep settings and saves with the mod.** Profiles, key bindings, settings
+    and saves go to `H5E/user` inside the install instead of Documents, where
+    every copy of the game on the machine shares one set of them. It starts
+    empty: nothing is copied over, so the base game keeps its saves and this
+    build begins fresh.
+
+  Both are import-table hooks — one pointer each, no instruction of the game's
+  touched. See [docs/QOL.md](docs/QOL.md).
+
+### Fixed
+
+- **The editor no longer guesses where the game is when it has been told.**
+  `start-editor.bat` set `HOMM5_ROOT` to the directory above the checkout, which
+  is right when the repo sits inside the install and wrong everywhere else — and
+  because the environment outranks everything, that guess beat the folder the
+  setup window had recorded. The same guess still happens, in `paths.ts`, as the
+  last resort it was meant to be. Visible symptom: an editor that opened, listed
+  maps and edited them perfectly while insisting the install had no executable.
 
 ## 0.6.0 — 2026-07-31
 
