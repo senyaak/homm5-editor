@@ -78,6 +78,7 @@
     "test-artifact-limit": "node tools/test-artifact-limit.ts",
     "test-table-limit": "node tools/test-table-limit.ts",
     "test-hero-classes": "node tools/test-hero-classes.ts",
+    "test-hero-skills": "node tools/test-hero-skills.ts",
     "test-artifact-set": "node tools/test-artifact-set.ts",
     "test-artifact-effects": "node tools/test-artifact-effects.ts",
     "build-native": "node tools/build-native.ts",
