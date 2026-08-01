@@ -26,7 +26,7 @@ test.afterAll(async () => { await ed?.app.close(); });
 test('the editor opens a campaign scene and plays it', async () => {
   test.skip(!existsSync(join(GAME, 'UserMODs')) && !existsSync(join(DATA, SCENE)),
     'the campaigns\' scenes are not on this install');
-  const { page } = ed;
+  const { page, errors } = ed;
   test.setTimeout(180_000); // first open unpacks the scene and the camera library
 
   // The window first — it is where a scene is watched, and the viewport moves
@@ -105,9 +105,18 @@ test('the editor opens a campaign scene and plays it', async () => {
       scene: window.view.scene(),
       open: (document.getElementById('scene') as HTMLDialogElement).open,
       backOnPage: document.getElementById('app')!.contains(document.querySelector('canvas')!),
+      world: window.view.size(),
     };
   });
   expect(after.scene).toBeNull();
   expect(after.open).toBe(false);
   expect(after.backOnPage).toBe(true);
+  // …and the world goes with it: a scene left drawing behind the launcher looks
+  // like a broken background, not like a scene nobody closed.
+  expect(after.world).toBe(0);
+
+  // The effects a scene carries load without a map session — the arena's
+  // fireflies asked main for their baked keys and used to be told "no map
+  // loaded", which killed every effect in the scene.
+  expect(errors.filter((e) => /map:fx|no map loaded/.test(e))).toEqual([]);
 });

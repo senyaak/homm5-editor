@@ -13,7 +13,7 @@ import type { ActorView, ShotView } from '#src/dialog/play.ts';
 import type { SceneInfo } from '#electron/ipc.ts';
 import { api } from '#core/ipc.ts';
 import { $, $button, $input } from '#core/dom.ts';
-import { buildWorld } from '#viewport/world.ts';
+import { buildWorld, clearWorld } from '#viewport/world.ts';
 import { makeIdle, poseIdle } from '#viewport/skinning.ts';
 import type { IdleObject } from '#viewport/skinning.ts';
 import { camera, controls, fitViewport, renderer, scene as stage } from '#viewport/stage.ts';
@@ -109,9 +109,17 @@ export async function openScene(inner: string): Promise<SceneInfo> {
   return info;
 }
 
-/** Put the scene down and give the camera back to the map tools. */
+/**
+ * Put the scene down and give the camera back to the map tools.
+ *
+ * The WORLD goes with it. It has to: the launcher behind this is a page with
+ * nothing open, and a scene left on the GPU keeps drawing its arena behind that
+ * — grass and trees under the "pick a map" card, which reads as a broken
+ * background rather than as a scene nobody closed.
+ */
 export function closeScene(): void {
   clearActors();
+  clearWorld();
   playing.info = null;
   playing.shots = [];
   playing.running = false;
