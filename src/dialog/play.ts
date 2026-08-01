@@ -1,0 +1,169 @@
+// A scene, prepared for playing — the one place that turns documents into it.
+//
+// Two things want a scene ready to run: the editor's window and the standalone
+// page `tools/view-dialog-scene.ts` builds for looking at one without a window.
+// If they each assembled it, they would drift, and the page would stop being
+// evidence about what the editor does. So the assembly is here and they differ
+// only in what they draw with.
+//
+// What "prepared" means: the stage as the renderer's own scene payload, the
+// shots as camera paths already walked through src/dialog/camera.ts, and the
+// actors as arena rigs carrying the clips their scene names.
+
+import type { Assets } from '../game/assets.ts';
+import { buildScene } from '../scene/scene.ts';
+import type { Scene } from '../scene/payload.ts';
+import { dirOf, resolveHref } from '../scene/xdb.ts';
+import { actorRigs } from './actors.ts';
+import type { ActorRig } from './actors.ts';
+import { cameraShot, eyeOf, loadCamera, loadCameraSet, poseAt } from './camera.ts';
+import type { OrbitPose } from './camera.ts';
+import { loadDialogScene } from './dialog-scene.ts';
+import type { DialogScene } from './dialog-scene.ts';
+import { stageObjects } from './stage.ts';
+
+/** One sample of a shot's camera move: where the eye is and what it looks at. */
+export interface CameraSample {
+  eye: [number, number, number];
+  at: [number, number, number];
+  fov: number;
+}
+
+/** A shot, as the player needs it. */
+export interface ShotView {
+  index: number;
+  /** Seconds. What the shot lasts when its sound does not decide it. */
+  duration: number;
+  /** Reference to the spoken line's text file, as written. */
+  text: string;
+  /** Reference to the voice recording, as written. */
+  sound: string;
+  /** Who speaks — the link, which is also the key into `actors`. */
+  speaker: string;
+  /** The camera move, sampled; empty when the shot names no camera. */
+  camera: CameraSample[];
+  /** What each actor does during the shot, offset from its start. */
+  cues: Array<{ actor: string; kind: string; delay: number }>;
+}
+
+/** An actor, placed and rigged. */
+export interface ActorView extends ActorRig {
+  /** Tile position, as the file stores it. */
+  x: number;
+  y: number;
+  /** Facing, radians about Z. */
+  rot: number;
+}
+
+export interface ScenePlay {
+  scene: DialogScene;
+  /** The stage, as the renderer's payload — stage map plus the scene's objects. */
+  stage: Scene;
+  shots: ShotView[];
+  actors: ActorView[];
+  /** Objects the stage builder could not mesh, by href. */
+  skipped: string[];
+}
+
+export interface PlayOptions {
+  /** Samples per camera move. 24 is smooth at any shot length worth watching. */
+  samples?: number;
+  texSize?: number;
+  /** Samples per second for the baked clips. */
+  fps?: number;
+}
+
+/** Follow a camera-set href to the two poses at its ends. */
+function endsOf(data: Assets, scenePath: string, setHref: string): { move: ReturnType<typeof cameraShot> } | null {
+  const setPath = resolveHref(dirOf(scenePath), setHref);
+  const setText = data.text(setPath);
+  if (!setText) return null;
+  const set = loadCameraSet(setText);
+  const pose = (href: string): OrbitPose | null => {
+    const text = href && data.text(resolveHref(dirOf(setPath), href));
+    return text ? loadCamera(text) : null;
+  };
+  const start = pose(set.startCamera), finish = pose(set.finishCamera);
+  return start && finish ? { move: cameraShot(set, start, finish) } : null;
+}
+
+/**
+ * Read a scene and everything needed to play it.
+ *
+ * `scenePath` is data-root relative, as the game addresses it; `data` is the
+ * mounted chain it resolves through, so a scene unpacked into a workspace and
+ * one shipped in the data tree are read the same way.
+ */
+export function buildScenePlay(data: Assets, scenePath: string, options: PlayOptions = {}): ScenePlay {
+  const samples = options.samples ?? 24;
+  const text = data.text(scenePath);
+  if (!text) throw new Error(`no scene at ${scenePath}`);
+  const scene = loadDialogScene(text);
+
+  const objects = stageObjects(data, scenePath, scene);
+  const built = buildScene(data, data.path(resolveHref(dirOf(scenePath), scene.stage)), {
+    extraObjects: objects.map((o) => o.object),
+    ...(options.texSize ? { texSize: options.texSize } : {}),
+  });
+
+  const rigs = actorRigs(data, scene, objects, options.fps ? { fps: options.fps } : {});
+  const actors: ActorView[] = rigs.map((rig) => {
+    const placed = objects.find((o) => o.href === rig.href)?.object;
+    const pos = placed?.pos ?? { x: 0, y: 0, z: 0 };
+    return { ...rig, x: pos.x, y: pos.y, rot: placed?.rot ?? 0 };
+  });
+
+  // A cue names its actor either by the same href the sentence used or by the
+  // element id — `#xpointer(id(item_48F7…)/AdvMapHero)` — which is the only way
+  // to tell two inline actors apart, since their hrefs are identical. Both
+  // spellings are folded onto the actor's href, the key everything else uses.
+  const byId = new Map<string, string>();
+  for (const actor of actors) if (actor.id) byId.set(actor.id, actor.href);
+  const actorKey = (link: string): string => {
+    const id = /#xpointer\(id\(([^)]+)\)/.exec(link)?.[1];
+    return (id && byId.get(id)) || link;
+  };
+
+  const shots: ShotView[] = scene.shots.map((shot) => {
+    const speaker = shot.heroLink || shot.monsterLink;
+    const ends = shot.newCameraSet ? endsOf(data, scenePath, shot.newCameraSet) : null;
+    const camera: CameraSample[] = [];
+    if (ends) {
+      for (let i = 0; i <= samples; i++) {
+        const pose = poseAt(ends.move, i / samples);
+        const eye = eyeOf(pose);
+        camera.push({
+          eye: [eye.x, eye.y, eye.z],
+          at: [pose.anchor.x, pose.anchor.y, pose.anchor.z],
+          fov: pose.fov || 35,
+        });
+      }
+    }
+    const cues: ShotView['cues'] = [];
+    if (shot.animName) cues.push({ actor: actorKey(speaker), kind: shot.animName, delay: shot.animationDelay });
+    for (const anim of shot.animations) {
+      if (anim.animName) {
+        cues.push({
+          actor: actorKey(anim.heroLink || anim.monsterLink || speaker),
+          kind: anim.animName,
+          delay: anim.animationDelay,
+        });
+      }
+    }
+    return {
+      index: shot.index,
+      duration: shot.duration || 3,
+      text: shot.text,
+      sound: shot.sound,
+      speaker,
+      camera,
+      cues,
+    };
+  });
+
+  const skipped = objects
+    .filter((o) => !o.object.shared || built.resolver.resolve(o.object.shared) < 0)
+    .map((o) => o.href);
+
+  return { scene, stage: built.scene, shots, actors, skipped };
+}

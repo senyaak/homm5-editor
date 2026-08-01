@@ -15,14 +15,9 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { assets } from '../src/game/assets.ts';
-import { buildScene } from '../src/scene/scene.ts';
 import { extractMapFolder, gameArchives } from '../src/map/map-source.ts';
-import { dirOf, resolveHref } from '../src/scene/xdb.ts';
-import { loadDialogScene } from '../src/dialog/dialog-scene.ts';
-import { stageObjects } from '../src/dialog/stage.ts';
-import { actorRigs } from '../src/dialog/actors.ts';
-import { cameraShot, eyeOf, loadCamera, loadCameraSet, poseAt } from '../src/dialog/camera.ts';
-import type { OrbitPose } from '../src/dialog/camera.ts';
+import { dirOf } from '../src/scene/xdb.ts';
+import { buildScenePlay } from '../src/dialog/play.ts';
 
 const DATA = process.env.HOMM5_DATA ?? join(import.meta.dirname, '..', 'data-unpacked');
 const GAME = process.env.HOMM5_ROOT ?? resolve(DATA, '..', '..');
@@ -54,83 +49,18 @@ if (!existsSync(join(DATA, scenePath))) {
 }
 
 const data = assets(roots);
-const text = data.text(scenePath);
-if (!text) throw new Error(`no scene at ${scenePath}`);
-const scene = loadDialogScene(text);
-const stagePath = data.path(resolveHref(dirOf(scenePath), scene.stage));
-const objects = stageObjects(data, scenePath, scene);
-const { scene: payload } = buildScene(data, stagePath, { extraObjects: objects.map((o) => o.object) });
 
-// --- the shots, as the page needs them: two eyes and what they look at -------
+// Everything the page needs comes from the same assembly the editor's own
+// window uses (src/dialog/play.ts) — the point of this page is to be evidence
+// about what the editor does, which it stops being the moment it works the
+// scene out for itself.
 
-/** Follow a shot's camera set to the two poses at its ends. */
-function posesOf(setHref: string): { start: OrbitPose; finish: OrbitPose; set: ReturnType<typeof loadCameraSet> } | null {
-  const setPath = resolveHref(dirOf(scenePath), setHref);
-  const setText = data.text(setPath);
-  if (!setText) return null;
-  const set = loadCameraSet(setText);
-  const end = (href: string): OrbitPose | null => {
-    const t = href && data.text(resolveHref(dirOf(setPath), href));
-    return t ? loadCamera(t) : null;
-  };
-  const start = end(set.startCamera), finish = end(set.finishCamera);
-  return start && finish ? { start, finish, set } : null;
-}
-
-const shots = scene.shots.map((shot) => {
-  const pair = shot.newCameraSet ? posesOf(shot.newCameraSet) : null;
-  const path: Array<{ eye: number[]; at: number[]; fov: number }> = [];
-  if (pair) {
-    const move = cameraShot(pair.set, pair.start, pair.finish);
-    // Sampled here rather than in the page: the easing, the corrections and the
-    // extra turns are the player's arithmetic, and the page must not grow a
-    // second opinion about them.
-    for (let i = 0; i <= 24; i++) {
-      const pose = poseAt(move, i / 24);
-      const eye = eyeOf(pose);
-      path.push({ eye: [eye.x, eye.y, eye.z], at: [pose.anchor.x, pose.anchor.y, pose.anchor.z], fov: pose.fov || 35 });
-    }
-  }
-  return {
-    index: shot.index,
-    duration: shot.duration || 3,
-    speaker: (shot.heroLink || shot.monsterLink || '').split('#')[0] || '(nobody)',
-    line: shot.text,
-    path,
-  };
-});
-
-// --- the actors, rigged, with the clips this scene plays on them -------------
-
-const rigs = actorRigs(data, scene, objects);
-const actors = rigs.map((rig) => {
-  const placed = objects.find((o) => o.href === rig.href)?.object;
-  const pos = placed?.pos ?? { x: 0, y: 0, z: 0 };
-  return {
-    href: rig.href,
-    x: pos.x, y: pos.y, z: pos.z, rot: placed?.rot ?? 0,
-    geom: rig.geom,
-    clips: rig.clips,
-  };
-});
-
-// What each actor does during each shot: the speaker's own clip, plus every
-// CustomAnimation the shot hangs on somebody else. Delays are seconds from the
-// shot's start, and a negative one means the move begins before the line.
-const cues = scene.shots.map((shot) => {
-  const speaker = shot.heroLink || shot.monsterLink;
-  const out: Array<{ href: string; kind: string; delay: number }> = [];
-  if (shot.animName) out.push({ href: speaker, kind: shot.animName, delay: shot.animationDelay });
-  for (const anim of shot.animations) {
-    if (anim.animName) out.push({ href: anim.heroLink || anim.monsterLink || speaker, kind: anim.animName, delay: anim.animationDelay });
-  }
-  return out;
-});
-
-const framed = shots.filter((s) => s.path.length).length;
-const clipCount = actors.reduce((a, x) => a + Object.keys(x.clips).length, 0);
-console.log(`${inner}: ${shots.length} shots, ${framed} with a camera, ${payload.geoms.length} meshes, `
-  + `${actors.length} actors rigged with ${clipCount} clips`);
+const play = buildScenePlay(data, scenePath);
+const payload = play.stage;
+const framed = play.shots.filter((s) => s.camera.length).length;
+const clipCount = play.actors.reduce((a, x) => a + Object.keys(x.clips).length, 0);
+console.log(`${inner}: ${play.shots.length} shots, ${framed} with a camera, ${payload.geoms.length} meshes, `
+  + `${play.actors.length} actors rigged with ${clipCount} clips`);
 
 // --- the page ----------------------------------------------------------------
 
@@ -144,9 +74,8 @@ const html = `<!doctype html><html><head><meta charset="utf8"><title>${inner}</t
 <script>${three}</script>
 <script>
 const S=${JSON.stringify(payload)};
-const SHOTS=${JSON.stringify(shots)};
-const ACTORS=${JSON.stringify(actors)};
-const CUES=${JSON.stringify(cues)};
+const SHOTS=${JSON.stringify(play.shots)};
+const ACTORS=${JSON.stringify(play.actors)};
 const R=new THREE.WebGLRenderer({antialias:true,preserveDrawingBuffer:true});R.setSize(innerWidth,innerHeight);R.setPixelRatio(1);document.body.appendChild(R.domElement);
 const world=new THREE.Scene();world.background=new THREE.Color(0x0d1014);
 const cam=new THREE.PerspectiveCamera(35,innerWidth/innerHeight,0.5,4000);cam.up.set(0,0,1);
@@ -234,7 +163,7 @@ const rigged=ACTORS.map(a=>{
   mesh.bind(new THREE.Skeleton(bones,g.skin.bind.map(m=>new THREE.Matrix4().fromArray(m))),new THREE.Matrix4());
   mesh.frustumCulled=false;
   const still=groundAt.get(a.x+','+a.y);
-  mesh.position.set((a.x+0.5)*2,(a.y+0.5)*2,still?still.z:a.z);
+  mesh.position.set((a.x+0.5)*2,(a.y+0.5)*2,still?still.z:0);
   mesh.rotation.z=a.rot;
   mesh.scale.setScalar(g.scale||1);
   world.add(mesh);
@@ -266,8 +195,8 @@ function pose(rig,time){
 }
 function cueShot(n,at){
   for(const rig of rigged){rig.kind='idle00';rig.startsAt=0;}
-  for(const cue of (CUES[n]||[])){
-    const rig=byHref.get(cue.href);
+  for(const cue of ((SHOTS[n]||{}).cues||[])){
+    const rig=byHref.get(cue.actor);
     if(rig&&rig.clips[cue.kind]){rig.kind=cue.kind;rig.startsAt=cue.delay||0;}
   }
   for(const rig of rigged){rig.time=Math.max(0,(at||0)-rig.startsAt);pose(rig,rig.time);}
@@ -276,17 +205,17 @@ function cueShot(n,at){
 let shot=0,t=0,playing=false,last=performance.now();
 function place(){
   const s=SHOTS[shot];
-  if(!s||!s.path.length)return;
-  const k=Math.min(0.999,Math.max(0,t))*(s.path.length-1);
+  if(!s||!s.camera.length)return;
+  const k=Math.min(0.999,Math.max(0,t))*(s.camera.length-1);
   const i=Math.floor(k),f=k-i;
-  const a=s.path[i],b=s.path[Math.min(s.path.length-1,i+1)];
+  const a=s.camera[i],b=s.camera[Math.min(s.camera.length-1,i+1)];
   const mix=(u,v)=>u+(v-u)*f;
   cam.position.set(mix(a.eye[0],b.eye[0]),mix(a.eye[1],b.eye[1]),mix(a.eye[2],b.eye[2]));
   cam.lookAt(mix(a.at[0],b.at[0]),mix(a.at[1],b.at[1]),mix(a.at[2],b.at[2]));
   cam.fov=mix(a.fov,b.fov);cam.updateProjectionMatrix();
   document.getElementById('hud').innerHTML='<b>shot '+(shot+1)+'/'+SHOTS.length+'</b> · '+s.duration.toFixed(1)+'s · '+
-    s.speaker.split('/').pop()+' · t='+t.toFixed(2)+'<br>← → step · space '+(playing?'pause':'play');
-  document.getElementById('line').textContent=s.line.split('/').pop();
+    (s.speaker||'(nobody)').split('/').pop()+' · t='+t.toFixed(2)+'<br>← → step · space '+(playing?'pause':'play');
+  document.getElementById('line').textContent=(s.text||'').split('/').pop();
 }
 let cuedShot=-1;
 function sync(seconds){

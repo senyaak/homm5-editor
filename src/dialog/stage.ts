@@ -26,6 +26,16 @@ export interface StageObject {
   role: StageRole;
   /** Where it came from, for the inspector and for error messages. */
   href: string;
+  /**
+   * The `id` on the element that points at it, when it has one.
+   *
+   * An inline actor's href is the same four words for everybody —
+   * `#n:inline(AdvMapHero)` — so it cannot be the key. The animations in a shot
+   * address such an actor as `#xpointer(id(item_48F7…)/AdvMapHero)`, and this
+   * is that id: without it every cue aimed at an inline actor lands on nobody
+   * and the scene plays with everyone standing still.
+   */
+  id: string | null;
 }
 
 const KNOWN = new Set(OBJECT_TYPES);
@@ -68,7 +78,7 @@ export function stageObjects(data: Assets, scenePath: string, scene: DialogScene
   for (const item of objects ? children(objects) : []) {
     const href = item.attrs.href ?? '';
     const body = bodyOf(data, item, href, dir);
-    if (body) out.push({ object: new MapObject(item, body), role: 'prop', href });
+    if (body) out.push({ object: new MapObject(item, body), role: 'prop', href, id: item.attrs.id ?? null });
   }
 
   for (const shot of scene.shots) {
@@ -79,7 +89,7 @@ export function stageObjects(data: Assets, scenePath: string, scene: DialogScene
       // that element in the tree rather than re-parsing the text.
       const el = linkElement(scene, link);
       const body = el && bodyOf(data, el, link, dir);
-      if (body) out.push({ object: new MapObject(el ?? itemFor(link), body), role: 'actor', href: link });
+      if (body) out.push({ object: new MapObject(el ?? itemFor(link), body), role: 'actor', href: link, id: el?.attrs.id ?? null });
     }
   }
   return out;

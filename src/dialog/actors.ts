@@ -36,6 +36,8 @@ import type { StageObject } from './stage.ts';
 export interface ActorRig {
   /** The link the shots address them by — the key everything else joins on. */
   href: string;
+  /** The element id an inline actor's cues address them by, when it has one. */
+  id: string | null;
   /** Their arena mesh, skinned. */
   geom: GeomData;
   /** Baked clips by kind. Always holds `idle00` when the set has one. */
@@ -46,14 +48,22 @@ export interface ActorRig {
   missing: string[];
 }
 
-/** The clip kinds a scene plays on each actor, keyed by the actor's link. */
+/**
+ * The clip kinds a scene plays on each actor.
+ *
+ * Keyed by the link as written AND, where a cue addresses an actor by element
+ * id (`#xpointer(id(item_48F7…)/AdvMapHero)`), by that id — two inline actors
+ * share one href, so the id is the only thing that tells them apart. Keying by
+ * href alone left every inline actor's clips unbaked and standing in idle.
+ */
 export function clipsWanted(scene: DialogScene): Map<string, Set<string>> {
   const out = new Map<string, Set<string>>();
   const want = (link: string, kind: string): void => {
     if (!link || !kind) return;
-    const set = out.get(link) ?? new Set<string>();
+    const key = /#xpointer\(id\(([^)]+)\)/.exec(link)?.[1] ?? link;
+    const set = out.get(key) ?? new Set<string>();
     set.add(kind);
-    out.set(link, set);
+    out.set(key, set);
   };
   for (const shot of scene.shots) {
     const speaker = shot.heroLink || shot.monsterLink;
@@ -169,7 +179,11 @@ export function actorRigs(
 
     // Always the idle: it is what an actor does between the moments a scene
     // gives them something to do, and 1001 shots name it outright.
-    const ask = new Set<string>(['idle00', ...(wanted.get(item.href) ?? [])]);
+    const ask = new Set<string>([
+      'idle00',
+      ...(wanted.get(item.href) ?? []),
+      ...(item.id ? wanted.get(item.id) ?? [] : []),
+    ]);
     const clips: Record<string, BakedClip> = {};
     const missing: string[] = [];
     let bones: GeomData['skin'] | null = null;
@@ -192,7 +206,7 @@ export function actorRigs(
     geom.skin.clip = clips['idle00'] ?? Object.values(clips)[0] ?? null;
     if (scale !== 1) geom.scale = scale;
 
-    rigs.push({ href: item.href, geom, clips, available: [...kinds.keys()], missing });
+    rigs.push({ href: item.href, id: item.id, geom, clips, available: [...kinds.keys()], missing });
   }
   return rigs;
 }
