@@ -29,7 +29,7 @@ import { materialFor, partTexture } from '#viewport/materials.ts';
 import { terrainColor, asTileSpace, terrainGeometry, waterCells, waterGeometry, makeWaterMesh, WATER_ORDER, remeshFloor, sea } from '#viewport/terrain-mesh.ts';
 import { refreshBlocked, refreshFootprints, syncFootprints, setShowBlocked, showBlocked } from '#viewport/overlays.ts';
 import { advanceIdle, clearIdle, removeIdle, addIdle, idleMode, setIdleMode } from '#viewport/idle.ts';
-import { advanceScene, closeScene, openScene, playing, setPlaying, show } from '#features/dialog-scene.ts';
+import { advanceScene, closeScene, initDialogScenes, openScene, playing, setPlaying, show, syncScenePanel } from '#features/dialog-scene.ts';
 import type { SceneInfo } from '#electron/ipc.ts';
 import { roster, objectsOfClass, canCreateClass, mapNames, forgetClass } from '#core/rosters.ts';
 import { openRecolor, initRecolor } from '#features/mods/recolor.ts';
@@ -817,6 +817,7 @@ function bakePendingLights(now: number): void {
   // A scene drives the camera and its actors' clips; does nothing while the
   // window is showing a map.
   advanceScene(dt);
+  syncScenePanel();
   advanceFx(dt);
   bakePendingLights(now);
   renderer.render(scene, cam.active);
@@ -831,6 +832,7 @@ initShell();
 initPalettes();
 initObjectFilters();
 initRegions();
+initDialogScenes();
 initBrushPanel();
 initPropertyPanel();
 initRefs();

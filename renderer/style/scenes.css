@@ -1,0 +1,30 @@
+/* scenes — the same right-hand shell as regions and the palettes: what is armed
+   at the top, what it holds listed below. A shot list is long and read top to
+   bottom, so the rows are tight and the current one is the only bright thing. */
+#scenes { position: fixed; right: 0; top: 40px; bottom: 0; width: 300px; z-index: 12;
+  background: #0f141aee; border-left: 1px solid #21262d; backdrop-filter: blur(6px);
+  display: flex; flex-direction: column; }
+#scenes .pal-head { padding: 8px; border-bottom: 1px solid #21262d; display: flex;
+  gap: 8px; align-items: center; }
+#scenes .pal-title { color: #e6edf3; font-weight: 600; flex: 1; }
+#scenes .pal-head button, .sc-open button { background: #21262d; color: #c9d1d9;
+  border: 1px solid #30363d; border-radius: 6px; padding: 4px 10px; cursor: pointer;
+  font-size: 12px; white-space: nowrap; }
+#scenes .pal-head button:hover, .sc-open button:hover { background: #30363d; }
+#scenes .pal-head button.on { background: #1f6feb33; border-color: #1f6feb; color: #cbe0ff; }
+.sc-open { display: flex; gap: 6px; padding: 8px; border-bottom: 1px solid #21262d; }
+.sc-open input { flex: 1; min-width: 0; background: #0d1014; border: 1px solid #30363d;
+  border-radius: 5px; padding: 4px 7px; color: #c9d1d9; font-size: 12px; }
+.sc-open input:focus { outline: none; border-color: #1f6feb; }
+#sc-list { flex: 1; overflow-y: auto; padding: 6px; display: flex; flex-direction: column; gap: 2px; }
+#sc-list .shot { display: flex; gap: 7px; align-items: baseline; padding: 4px 6px;
+  border: 1px solid transparent; border-radius: 5px; cursor: pointer; font-size: 12px;
+  color: #8b949e; }
+#sc-list .shot:hover { background: #161b22; }
+#sc-list .shot.on { background: #1f6feb26; border-color: #1f6feb66; color: #e6edf3; }
+#sc-list .shot .n { color: #6e7681; font-variant-numeric: tabular-nums; min-width: 22px; text-align: right; }
+#sc-list .shot .who { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#sc-list .shot .dur { color: #6e7681; font-variant-numeric: tabular-nums; }
+#sc-list .shot .cued { color: #d29922; } /* this shot tells somebody to do something */
+#scenes .pal-foot { padding: 7px 10px; border-top: 1px solid #21262d; font-size: 11px;
+  color: #6e7681; line-height: 1.35; }

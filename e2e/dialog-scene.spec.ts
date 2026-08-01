@@ -55,7 +55,30 @@ test('the editor opens a campaign scene and plays it', async () => {
   await page.waitForFunction(() => (window.view.scene()?.at ?? 0) > 0.1, null, { timeout: 10_000 });
   await page.evaluate(() => window.view.playScene(false));
 
+  // The panel is the scene: a row per shot, the current one lit.
+  const panel = await page.evaluate(() => {
+    (document.getElementById('scenesbtn') as HTMLButtonElement).click();
+    const list = document.getElementById('sc-list')!;
+    return {
+      open: getComputedStyle(document.getElementById('scenes')!).display,
+      rows: list.childElementCount,
+      lit: [...list.children].findIndex((r) => r.classList.contains('on')),
+      info: document.getElementById('sc-info')!.textContent ?? '',
+    };
+  });
+  expect(panel.open).toBe('flex');
+  expect(panel.rows).toBe(73);
+  expect(panel.lit).toBe(62);
+  expect(panel.info).toContain('73 shots');
+
+  // Clicking a row is how a shot is chosen.
+  const picked = await page.evaluate(() => {
+    (document.getElementById('sc-list')!.children[7] as HTMLElement).click();
+    return window.view.scene()?.shot;
+  });
+  expect(picked).toBe(7);
+
   // And putting it down gives the map tools their camera back.
-  await page.evaluate(() => window.view.closeScene());
+  await page.evaluate(() => (document.getElementById('sc-close') as HTMLButtonElement).click());
   expect(await page.evaluate(() => window.view.scene())).toBeNull();
 });

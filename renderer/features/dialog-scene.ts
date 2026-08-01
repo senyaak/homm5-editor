@@ -12,6 +12,7 @@ import * as THREE from 'three';
 import type { ActorView, ShotView } from '#src/dialog/play.ts';
 import type { SceneInfo } from '#electron/ipc.ts';
 import { api } from '#core/ipc.ts';
+import { $, $button, $input } from '#core/dom.ts';
 import { buildWorld } from '#viewport/world.ts';
 import { makeIdle, poseIdle } from '#viewport/skinning.ts';
 import type { IdleObject } from '#viewport/skinning.ts';
@@ -171,4 +172,78 @@ export function advanceScene(dt: number): void {
 /** Start or stop playback. */
 export function setPlaying(on: boolean): void {
   playing.running = on && !!playing.info;
+}
+
+// --- the panel ---------------------------------------------------------------
+//
+// A scene IS its list of shots, so the panel is that list: one row per line of
+// dialogue, the current one lit, and clicking a row puts its camera on screen.
+// Everything else is two buttons, because everything else a scene needs — the
+// stage, the actors, the camera — is already on screen behind it.
+
+/** Show or hide the panel. */
+export function setScenePanel(on: boolean): void {
+  $('scenes').style.display = on ? 'flex' : 'none';
+  $button('scenesbtn').classList.toggle('on', on);
+}
+
+/** Redraw the shot list and the footer for whatever is open. */
+function renderPanel(): void {
+  const list = $('sc-list');
+  const info = playing.info;
+  if (!info) {
+    list.innerHTML = '';
+    $('sc-info').textContent = 'no scene open';
+    return;
+  }
+  if (list.childElementCount !== playing.shots.length) {
+    list.innerHTML = '';
+    for (const shot of playing.shots) {
+      const row = document.createElement('div');
+      row.className = 'shot';
+      // The speaker's file name is the only readable name a shot has until the
+      // line's own text is loaded — the text is a reference to a .txt beside
+      // the scene, and reading 73 of them to fill a list is not worth a frame.
+      const who = (shot.speaker.split('#')[0] ?? '').split('/').pop() || '(nobody)';
+      row.innerHTML = `<span class="n">${shot.index + 1}</span>`
+        + `<span class="who">${who.replace(/\.xdb$/, '')}</span>`
+        + (shot.cues.length ? `<span class="cued" title="${shot.cues.length} animation(s)">●</span>` : '')
+        + `<span class="dur">${shot.duration.toFixed(1)}s</span>`;
+      row.onclick = () => { show(shot.index, 0); renderPanel(); };
+      list.append(row);
+    }
+  }
+  [...list.children].forEach((row, i) => row.classList.toggle('on', i === playing.shot));
+  list.children[playing.shot]?.scrollIntoView({ block: 'nearest' });
+  $('sc-info').textContent = `${info.name} · ${info.shots} shots · ${info.placed} placed`
+    + (info.skipped ? ` · ${info.skipped} skipped` : '');
+  $button('sc-play').textContent = playing.running ? '❚❚ Pause' : '▶ Play';
+  $button('sc-play').classList.toggle('on', playing.running);
+}
+
+/** Wire the panel. Called once from app boot, like every other feature. */
+export function initDialogScenes(): void {
+  $button('scenesbtn').onclick = () => { setScenePanel($('scenes').style.display === 'none'); };
+  $button('sc-close').onclick = () => { closeScene(); renderPanel(); setScenePanel(false); };
+  $button('sc-load').onclick = async () => {
+    const path = $input('sc-path').value.trim();
+    if (!path) return;
+    $('sc-info').textContent = 'opening…';
+    try {
+      await openScene(path);
+    } catch (e) {
+      $('sc-info').textContent = e instanceof Error ? e.message : String(e);
+      return;
+    }
+    renderPanel();
+  };
+  $button('sc-play').onclick = () => { setPlaying(!playing.running); renderPanel(); };
+}
+
+/** Keep the list in step while a scene runs — called from the render loop. */
+export function syncScenePanel(): void {
+  if (!playing.info || !playing.running) return;
+  const list = $('sc-list');
+  const lit = [...list.children].findIndex((row) => row.classList.contains('on'));
+  if (lit !== playing.shot) renderPanel();
 }
