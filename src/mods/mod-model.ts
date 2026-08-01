@@ -16,6 +16,8 @@
 import { SHIPPED_CREATURES, blankStats } from './creatures.ts';
 import { SHIPPED_ARTIFACTS } from './artifacts.ts';
 import { SHIPPED_SPECIALIZATIONS } from './specializations.ts';
+import { SHIPPED_CLASSES, classProblems } from './hero-classes.ts';
+import { SHIPPED_SKILLS, skillProblems } from './hero-skills.ts';
 import { ORIGINAL_ARTIFACTS } from '../exe/artifact-limit.ts';
 import { MOD_STEM } from './mod-files.ts';
 import type { CreatureStats } from './creatures.ts';
@@ -25,6 +27,8 @@ import type { BuildingSpec } from './buildings.ts';
 import type { DwellingSpec } from './dwellings.ts';
 import type { HeroSpec } from './heroes.ts';
 import type { ModSpecialization, SpecializationSpec } from './specializations.ts';
+import type { HeroClassSpec, ModHeroClass } from './hero-classes.ts';
+import type { HeroSkillSpec, ModHeroSkill } from './hero-skills.ts';
 import type { RecolorOps } from '../format/recolor.ts';
 import type { ArtSlot } from './mod-art.ts';
 
@@ -161,6 +165,26 @@ export interface CreatureMod {
    * native extension, exactly as a set's does. See src/mods/specializations.ts.
    */
   specializations?: ModSpecialization[];
+  /**
+   * Hero classes of our own — the tenth, where the game ships nine.
+   *
+   * The dearest thing in the archive after a creature, and for the same reason:
+   * a reference table with a size declared three times in types.xml and once in
+   * the executable. What it buys is what nothing else can say — how often each
+   * skill is offered at a level up and how often each attribute grows.
+   * See src/mods/hero-classes.ts.
+   */
+  classes?: ModHeroClass[];
+  /**
+   * Skills of our own — a racial for a class of ours, and the perks of its
+   * branch.
+   *
+   * The same table shape as a class, and the same bargain a specialization
+   * makes: the game will show its name, its icon and its place in the tree, and
+   * do nothing whatever with it. What it DOES comes from the native extension.
+   * See src/mods/hero-skills.ts.
+   */
+  skills?: ModHeroSkill[];
 }
 
 /** One in a mod: a spec plus the id number it holds. */
@@ -224,8 +248,114 @@ export function newCreatureMod(stem = MOD_STEM): CreatureMod {
   return {
     version: 1, stem, first: SHIPPED_CREATURES,
     creatures: [], dwellings: [], buildings: [], artifacts: [], sets: [], heroes: [],
-    specializations: [],
+    specializations: [], classes: [], skills: [],
   };
+}
+
+/**
+ * Append a class and give it the next enum value.
+ *
+ * APPEND-ONLY, like everything else that holds a number: a hero's document
+ * names his class by NAME, but the executable compares the VALUE and the
+ * reference table is indexed by it, so inserting ahead of one repoints every
+ * class after it and every hero holding them.
+ *
+ * `taken` is what the game's own enum already holds — takenClasses() reads it
+ * off types.xml. A duplicate `<Name>` resolves to whichever entry the parser
+ * saw first, which the game does not report.
+ */
+export function addHeroClass(
+  mod: CreatureMod, spec: HeroClassSpec, taken: ReadonlySet<string> = new Set(),
+): ModHeroClass {
+  if (!mod.classes) mod.classes = [];
+  if (taken.has(spec.id)) throw new Error(`${spec.id} is the game's own class`);
+  if (mod.classes.some((c) => c.id === spec.id)) throw new Error(`${spec.id} is already in the mod`);
+  const problems = classProblems(spec);
+  if (problems.length) throw new Error(`${spec.id}: ${problems.join('; ')}`);
+  const c: ModHeroClass = { ...spec, number: SHIPPED_CLASSES + mod.classes.length };
+  mod.classes.push(c);
+  return c;
+}
+
+/** Change one already in the mod, keeping its value. */
+export function updateHeroClass(mod: CreatureMod, id: string, spec: HeroClassSpec): ModHeroClass {
+  const at = (mod.classes ?? []).findIndex((c) => c.id === id);
+  if (at < 0) throw new Error(`${id} is not in the mod`);
+  if (spec.id !== id) throw new Error(`a class cannot be renamed — ${id} is what heroes name`);
+  const problems = classProblems(spec);
+  if (problems.length) throw new Error(`${id}: ${problems.join('; ')}`);
+  const updated: ModHeroClass = { ...spec, number: mod.classes![at]!.number };
+  mod.classes![at] = updated;
+  return updated;
+}
+
+/**
+ * Take one out, and close the gap behind it.
+ *
+ * Refused while a hero of the mod is of it, and while a skill of the mod is
+ * bound to it: both would be left naming a value the enum no longer declares,
+ * which the game reads as a parse error rather than as "no class".
+ */
+export function removeHeroClass(mod: CreatureMod, id: string): ModHeroClass {
+  const list = mod.classes ?? [];
+  const at = list.findIndex((c) => c.id === id);
+  if (at < 0) throw new Error(`${id} is not in the mod`);
+  const heroes = (mod.heroes ?? []).filter((h) => h.heroClass === id).map((h) => h.id);
+  if (heroes.length) throw new Error(`${id} is the class of ${heroes.join(', ')} — change them first`);
+  const skills = (mod.skills ?? []).filter((s) => s.heroClass === id).map((s) => s.id);
+  if (skills.length) throw new Error(`${id} owns ${skills.join(', ')} — remove those first`);
+  const gone = list.splice(at, 1)[0]!;
+  list.forEach((c, i) => { c.number = SHIPPED_CLASSES + i; });
+  return gone;
+}
+
+/** Append a skill and give it the next enum value. Append-only, as a class is. */
+export function addHeroSkill(
+  mod: CreatureMod, spec: HeroSkillSpec, taken: ReadonlySet<string> = new Set(),
+): ModHeroSkill {
+  if (!mod.skills) mod.skills = [];
+  if (taken.has(spec.id)) throw new Error(`${spec.id} is the game's own skill`);
+  if (mod.skills.some((s) => s.id === spec.id)) throw new Error(`${spec.id} is already in the mod`);
+  const problems = skillProblems(spec);
+  if (problems.length) throw new Error(`${spec.id}: ${problems.join('; ')}`);
+  const s: ModHeroSkill = { ...spec, number: SHIPPED_SKILLS + mod.skills.length };
+  mod.skills.push(s);
+  return s;
+}
+
+/** Change one already in the mod, keeping its value. */
+export function updateHeroSkill(mod: CreatureMod, id: string, spec: HeroSkillSpec): ModHeroSkill {
+  const at = (mod.skills ?? []).findIndex((s) => s.id === id);
+  if (at < 0) throw new Error(`${id} is not in the mod`);
+  if (spec.id !== id) throw new Error(`a skill cannot be renamed — ${id} is what classes and heroes name`);
+  const problems = skillProblems(spec);
+  if (problems.length) throw new Error(`${id}: ${problems.join('; ')}`);
+  const updated: ModHeroSkill = { ...spec, number: SHIPPED_SKILLS + at };
+  mod.skills![at] = updated;
+  return updated;
+}
+
+/**
+ * Take one out, and close the gap behind it.
+ *
+ * Three things can be left pointing at a skill that no longer exists, and all
+ * three are refused rather than repaired: a hero holding it in his racial slot,
+ * a class weighting it, and a perk of ours hanging off it.
+ */
+export function removeHeroSkill(mod: CreatureMod, id: string): ModHeroSkill {
+  const list = mod.skills ?? [];
+  const at = list.findIndex((s) => s.id === id);
+  if (at < 0) throw new Error(`${id} is not in the mod`);
+  const heroes = (mod.heroes ?? []).filter((h) => h.primarySkill?.skill === id || h.skills?.some((k) => k.skill === id))
+    .map((h) => h.id);
+  if (heroes.length) throw new Error(`${id} is held by ${heroes.join(', ')} — change them first`);
+  const classes = (mod.classes ?? []).filter((c) => c.skills.some((w) => w.skill === id)).map((c) => c.id);
+  if (classes.length) throw new Error(`${id} is weighted by ${classes.join(', ')} — change them first`);
+  const branch = list.filter((s) => s.basicSkill === id).map((s) => s.id);
+  if (branch.length) throw new Error(`${id} carries ${branch.join(', ')} — remove those first`);
+  const gone = list.splice(at, 1)[0]!;
+  list.forEach((s, i) => { s.number = SHIPPED_SKILLS + i; });
+  return gone;
 }
 
 /**

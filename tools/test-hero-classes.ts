@@ -16,6 +16,9 @@ import {
   defaultDependencies, patchClassTable, patchClassTypes, patchSkillPrerequisites, takenClasses,
 } from '../src/mods/hero-classes.ts';
 import type { ModHeroClass } from '../src/mods/hero-classes.ts';
+import { addHeroClass, addHeroSkill, newCreatureMod } from '../src/mods/mod-model.ts';
+import { buildCreatureMod } from '../src/mods/creature-mod.ts';
+import { dataReader } from '../src/mods/mod-files.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {
@@ -200,6 +203,49 @@ function entryOf(skills_: string, id: string): string {
   const start = skills_.lastIndexOf('<Item>', at);
   const end = skills_.indexOf('</Item>', skills_.indexOf('</obj>', at));
   return skills_.slice(start, end);
+}
+
+// --- the whole mod ---------------------------------------------------------------
+//
+// The point of the module is a file set the game can mount, so the last check is
+// the build itself: a mod of one class and its racial, and what comes out.
+
+{
+  const mod = newCreatureMod();
+  addHeroClass(mod, WITCH, takenClasses(types));
+  addHeroSkill(mod, {
+    id: 'HERO_SKILL_TENT_MASTER',
+    kind: 'racial',
+    heroClass: WITCH.id,
+    name: 'Мастер палатки',
+    description: 'Палатка первой помощи может быть использована чаще.',
+    aiRace: 'Sylvan',
+  }, new Set());
+  const report = buildCreatureMod(mod, dataReader(dataRoot));
+  const paths = report.files.map((f) => f.path.replace(/\\/g, '/'));
+
+  check('the archive carries the two tables and types.xml',
+    ['types.xml', CLASS_TABLE, SKILL_TABLE].every((p) => paths.includes(p)),
+    paths.filter((p) => p.endsWith('.xml') || p.endsWith('.xdb')).join(' '));
+  check('and the class name, where the game keeps class names',
+    paths.includes('GameMechanics/RefTables/HeroClass/HeroClassWitch.txt'));
+  check('and the skill\'s four names and four descriptions',
+    paths.filter((p) => p.startsWith('Text/Game/Skills/Ours/TENT_MASTER/')).length === 8,
+    String(paths.filter((p) => p.startsWith('Text/Game/Skills/Ours/')).length));
+
+  // ONE Skills.xdb: our skill was appended and the plague tent opened to the
+  // Witch in the same copy, or one of the two edits would be lost whole.
+  const skillsFile = report.files.find((f) => f.path === SKILL_TABLE)!.data.toString('latin1');
+  check('one Skills.xdb holds both edits',
+    skillsFile.includes('<ID>HERO_SKILL_TENT_MASTER</ID>')
+    && skillsFile.slice(skillsFile.indexOf('<ID>HERO_SKILL_LAST_AID</ID>')).includes('<Class>HERO_CLASS_WITCH</Class>'),
+    String(report.files.filter((f) => f.path === SKILL_TABLE).length));
+  check('and only one copy of it is in the archive',
+    report.files.filter((f) => f.path === SKILL_TABLE).length === 1);
+
+  const text = report.files.find((f) => f.path.endsWith('HeroClassWitch.txt'))!.data;
+  check('texts are UTF-16, as every text the game reads is',
+    text[0] === 0xff && text[1] === 0xfe, `${text[0]?.toString(16)} ${text[1]?.toString(16)}`);
 }
 
 console.log(failures ? `\n${failures} failure(s)` : '\nall good');

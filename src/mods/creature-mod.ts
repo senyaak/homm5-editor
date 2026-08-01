@@ -74,6 +74,10 @@ import { buildBuildings } from './building-files.ts';
 import { buildDwellings } from './dwelling-files.ts';
 import { buildHeroes } from './hero-files.ts';
 import { patchSpecializationTypes } from './specializations.ts';
+import {
+  CLASS_TABLE, classNameFile, patchClassTable, patchClassTypes, patchSkillPrerequisites,
+} from './hero-classes.ts';
+import { SKILL_TABLE, patchSkillTable, patchSkillTypes, skillTexts } from './hero-skills.ts';
 
 /** The camera the hire dialog uses. CREATURE_UNKNOWN already sits on this one. */
 const HIRE_CAMERA = '/Cameras/Interface/HireCreatures.(Camera).xdb#xpointer(/Camera)';
@@ -124,7 +128,7 @@ export function buildCreatureMod(mod: CreatureMod, read: DataReader): BuildRepor
   // it is usually authored afterwards.
   if (!mod.creatures.length && !mod.dwellings.length && !mod.buildings?.length
     && !mod.artifacts?.length && !mod.sets?.length && !mod.heroes?.length
-    && !mod.specializations?.length) {
+    && !mod.specializations?.length && !mod.classes?.length && !mod.skills?.length) {
     throw new Error('the mod is empty');
   }
   const limit = creatureLimit(mod);
@@ -204,7 +208,13 @@ export function buildCreatureMod(mod: CreatureMod, read: DataReader): BuildRepor
   const artifacts = mod.artifacts ?? [];
   const sets = mod.sets ?? [];
   const specializations = mod.specializations ?? [];
-  if (mod.creatures.length || artifacts.length || sets.length || specializations.length) {
+  // A class and a skill are reference tables like the creatures': the size is
+  // declared three times in types.xml and once in the executable, and all four
+  // move together or the game reads a table it will not use.
+  const classes = mod.classes ?? [];
+  const skills = mod.skills ?? [];
+  if (mod.creatures.length || artifacts.length || sets.length || specializations.length
+    || classes.length || skills.length) {
     let types = mustRead(read, TYPES);
     if (mod.creatures.length) types = patchTypes(types, mod, limit);
     if (artifacts.length) types = patchArtifactTypes(types, artifacts);
@@ -213,7 +223,29 @@ export function buildCreatureMod(mod: CreatureMod, read: DataReader): BuildRepor
     // no size to retune, and no executable to patch. It is the whole of what
     // the data can say about one; what it DOES comes from the extension.
     if (specializations.length) types = patchSpecializationTypes(types, specializations);
+    if (classes.length) types = patchClassTypes(types, classes);
+    if (skills.length) types = patchSkillTypes(types, skills);
     files.push({ path: TYPES, data: Buffer.from(types, 'latin1') });
+  }
+  if (classes.length) {
+    files.push({
+      path: CLASS_TABLE,
+      data: Buffer.from(patchClassTable(mustRead(read, CLASS_TABLE), classes), 'latin1'),
+    });
+    for (const c of classes) files.push({ path: classNameFile(c).path, data: utf16(c.name) });
+  }
+  // ONE Skills.xdb, however many reasons there are to edit it: a mod that
+  // shipped two copies would keep whichever the archive listed last, and the
+  // other edit would be gone without a word. Ours are appended first, then the
+  // shipped perks our classes were allowed are opened to them.
+  if (skills.length || classes.some((c) => c.allowedPerks?.length)) {
+    let table = mustRead(read, SKILL_TABLE);
+    if (skills.length) table = patchSkillTable(table, skills);
+    table = patchSkillPrerequisites(table, classes);
+    files.push({ path: SKILL_TABLE, data: Buffer.from(table, 'latin1') });
+    for (const s of skills) {
+      for (const f of skillTexts(s)) files.push({ path: f.path, data: utf16(f.text) });
+    }
   }
   if (mod.creatures.length) {
     files.push({ path: REF_TABLE, data: Buffer.from(patchRefTable(mustRead(read, REF_TABLE), mod, read), 'latin1') });

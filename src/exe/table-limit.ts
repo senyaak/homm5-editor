@@ -41,6 +41,10 @@
 // FOUND BY PATTERN, NEVER BY ADDRESS — the discipline the two older ceilings
 // arrived at after a build mismatch cost two rounds.
 
+import { existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { PATCHED_EXE, SHIPPED_EXE } from './creature-limit.ts';
+
 /** A reference table whose size the executable carries. */
 export interface TableSpec {
   /** What it is called when something has to be said to a person. */
@@ -184,4 +188,44 @@ export function patchTableLimit(buf: Buffer, table: TableSpec, limit: number): T
   if (reading.site.width === 1) data.writeUInt8(limit, reading.site.at);
   else data.writeUInt32LE(limit, reading.site.at);
   return { data, from: reading.limit, to: limit, written: true };
+}
+
+/** What one call to `setTableLimit` did. */
+export interface TableExeResult {
+  path: string;
+  what: string;
+  from: number;
+  to: number;
+  changed: boolean;
+  created: boolean;
+}
+
+/**
+ * Put a table's ceiling at `limit`, in OUR copy of the executable.
+ *
+ * The shipped one is never written to — that is what makes a mod something you
+ * turn off by launching the other file — so the first call copies it. The same
+ * bargain, and the same failure to report plainly, as the two older ceilings:
+ * a game that is open holds the file, and "cannot write" then means "close it".
+ */
+export function setTableLimit(gameRoot: string, table: TableSpec, limit: number): TableExeResult {
+  const target = join(gameRoot, PATCHED_EXE);
+  const shipped = join(gameRoot, SHIPPED_EXE);
+  const created = !existsSync(target);
+  const source = created ? shipped : target;
+  if (!existsSync(source)) throw new Error(`no executable at ${source}`);
+
+  const patch = patchTableLimit(readFileSync(source), table, limit);
+  if (!patch.written && !created) {
+    return { path: target, what: table.what, from: patch.from, to: patch.to, changed: false, created: false };
+  }
+  const temp = `${target}.new`;
+  writeFileSync(temp, patch.data);
+  try {
+    renameSync(temp, target);
+  } catch (e) {
+    try { unlinkSync(temp); } catch { /* the message below is what matters */ }
+    throw new Error(`cannot write ${target} — close the game first (${e instanceof Error ? e.message : String(e)})`);
+  }
+  return { path: target, what: table.what, from: patch.from, to: patch.to, changed: true, created };
 }
