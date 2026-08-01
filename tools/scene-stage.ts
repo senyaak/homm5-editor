@@ -16,6 +16,7 @@ import { extractMapFolder, gameArchives } from '../src/map/map-source.ts';
 import { dirOf, resolveHref } from '../src/scene/xdb.ts';
 import { loadDialogScene } from '../src/dialog/dialog-scene.ts';
 import { stageObjects } from '../src/dialog/stage.ts';
+import { actorRigs } from '../src/dialog/actors.ts';
 
 const DATA = process.env.HOMM5_DATA ?? join(import.meta.dirname, '..', 'data-unpacked');
 const GAME = process.env.HOMM5_ROOT ?? resolve(DATA, '..', '..');
@@ -69,4 +70,15 @@ for (const { object, role, href } of objects) {
   const shared = object.shared;
   if (shared && built.resolver.resolve(shared) >= 0) continue;
   console.log(`  skipped  ${role} ${href} — ${shared ? `no mesh for ${shared.split('#')[0]}` : 'no <Shared>'}`);
+}
+
+// The actors' own rigs: not the adventure model with its one idle, but the
+// arena character and the clips this scene names on it.
+const rigs = actorRigs(data, scene, objects);
+console.log(`  actors   ${rigs.length} rigged`);
+for (const rig of rigs) {
+  const baked = Object.keys(rig.clips);
+  console.log(`    ${rig.href.split('#')[0].padEnd(24)} ${rig.geom.skin?.bones.length ?? 0} bones · `
+    + `${baked.length}/${rig.available.length} clips baked (${baked.join(', ')})`
+    + (rig.missing.length ? ` · missing ${rig.missing.join(', ')}` : ''));
 }

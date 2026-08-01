@@ -97,6 +97,12 @@ Two storage styles, both in use, both to be preserved on save:
 
 The addon's scenes prefer the first, the original campaigns' the second.
 
+Two more things a player has to get right, both found by drawing it: the
+DISPLAY SCALE rides on the clip skeleton's root the same way a creature's does
+(without it an arena hero is ten times too big — a boot filling the frame), and
+an actor's stored `z` is 0, so the ground has to come from the stage rather
+than the file, or they stand buried to the waist.
+
 **A scene actor is the ARENA model, not the adventure one.** The link resolves
 to an `AdvMapHeroShared`, and what a scene plays comes from
 `HeroCharacterArena` → `*.(Character).xdb` → `ArenaAnimSet` — 17 clips
@@ -208,6 +214,9 @@ going quietly green.
   (`BuildSceneOptions.extraObjects`). There is no second renderer.
 * `tools/test-dialog-scene.ts` — the corpus checks and the census above.
 * `tools/camera-shape.ts` — the convention measurement.
+* `src/dialog/actors.ts` — an actor's ARENA rig: the character's own mesh and
+  only the clips this scene names on it, baked. The adventure path is untouched
+  (`src/scene/skin.ts` still reads idle and only idle).
 * `tools/view-dialog-scene.ts` — a self-contained page that plays the scene
   through its own cameras, arrow keys to step the shots. This is how the camera
   convention was confirmed by eye, and how a scene is looked at before the

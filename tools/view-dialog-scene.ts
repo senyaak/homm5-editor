@@ -20,6 +20,7 @@ import { extractMapFolder, gameArchives } from '../src/map/map-source.ts';
 import { dirOf, resolveHref } from '../src/scene/xdb.ts';
 import { loadDialogScene } from '../src/dialog/dialog-scene.ts';
 import { stageObjects } from '../src/dialog/stage.ts';
+import { actorRigs } from '../src/dialog/actors.ts';
 import { cameraShot, eyeOf, loadCamera, loadCameraSet, poseAt } from '../src/dialog/camera.ts';
 import type { OrbitPose } from '../src/dialog/camera.ts';
 
@@ -99,8 +100,37 @@ const shots = scene.shots.map((shot) => {
   };
 });
 
+// --- the actors, rigged, with the clips this scene plays on them -------------
+
+const rigs = actorRigs(data, scene, objects);
+const actors = rigs.map((rig) => {
+  const placed = objects.find((o) => o.href === rig.href)?.object;
+  const pos = placed?.pos ?? { x: 0, y: 0, z: 0 };
+  return {
+    href: rig.href,
+    x: pos.x, y: pos.y, z: pos.z, rot: placed?.rot ?? 0,
+    geom: rig.geom,
+    clips: rig.clips,
+  };
+});
+
+// What each actor does during each shot: the speaker's own clip, plus every
+// CustomAnimation the shot hangs on somebody else. Delays are seconds from the
+// shot's start, and a negative one means the move begins before the line.
+const cues = scene.shots.map((shot) => {
+  const speaker = shot.heroLink || shot.monsterLink;
+  const out: Array<{ href: string; kind: string; delay: number }> = [];
+  if (shot.animName) out.push({ href: speaker, kind: shot.animName, delay: shot.animationDelay });
+  for (const anim of shot.animations) {
+    if (anim.animName) out.push({ href: anim.heroLink || anim.monsterLink || speaker, kind: anim.animName, delay: anim.animationDelay });
+  }
+  return out;
+});
+
 const framed = shots.filter((s) => s.path.length).length;
-console.log(`${inner}: ${shots.length} shots, ${framed} with a camera, ${payload.geoms.length} meshes`);
+const clipCount = actors.reduce((a, x) => a + Object.keys(x.clips).length, 0);
+console.log(`${inner}: ${shots.length} shots, ${framed} with a camera, ${payload.geoms.length} meshes, `
+  + `${actors.length} actors rigged with ${clipCount} clips`);
 
 // --- the page ----------------------------------------------------------------
 
@@ -115,6 +145,8 @@ const html = `<!doctype html><html><head><meta charset="utf8"><title>${inner}</t
 <script>
 const S=${JSON.stringify(payload)};
 const SHOTS=${JSON.stringify(shots)};
+const ACTORS=${JSON.stringify(actors)};
+const CUES=${JSON.stringify(cues)};
 const R=new THREE.WebGLRenderer({antialias:true,preserveDrawingBuffer:true});R.setSize(innerWidth,innerHeight);R.setPixelRatio(1);document.body.appendChild(R.domElement);
 const world=new THREE.Scene();world.background=new THREE.Color(0x0d1014);
 const cam=new THREE.PerspectiveCamera(35,innerWidth/innerHeight,0.5,4000);cam.up.set(0,0,1);
@@ -161,12 +193,84 @@ world.add(new THREE.Mesh(tg,new THREE.MeshLambertMaterial({vertexColors:true,sid
 // and a tile is 2 units, so a model goes at the CENTRE of its cell — (t+0.5)·2
 // — while its mesh and the terrain heights are already in world units. The only
 // scale is the creature one a clip's root bone carries.
+// An actor stands on the stage twice over: the scene builder placed their
+// ADVENTURE model with the props, and the rig below draws the arena one that
+// can act. Only the second is wanted, so the first is dropped by the tile it
+// stands on.
+// The still copy also carries what the scene file does NOT: the GROUND under
+// the actor. An actor's stored z is 0, and placing the rig at that buries it
+// to the waist — the scene builder already worked the height out for the copy
+// standing on the same tile, so the rig takes it from there.
+const actorTiles=new Set(ACTORS.map(a=>a.x+','+a.y));
+const groundAt=new Map();
+for(const it of fl.instances)if(actorTiles.has(it.x+','+it.y))groundAt.set(it.x+','+it.y,it);
 for(const it of fl.instances){
+  if(actorTiles.has(it.x+','+it.y))continue;
   const m=new THREE.Mesh(geos[it.g],mats[it.g].length?mats[it.g]:grey);
   m.position.set((it.x+0.5)*2,(it.y+0.5)*2,it.z);
   m.rotation.z=it.r;
   m.scale.setScalar(S.geoms[it.g].scale||1);
   world.add(m);
+}
+
+// The rigged actors: one skeleton each, because two actors are at different
+// points of their own clips even when it is the same clip.
+const rigged=ACTORS.map(a=>{
+  const g=a.geom;
+  const b=new THREE.BufferGeometry();
+  b.setAttribute('position',new THREE.BufferAttribute(new Float32Array(g.pos),3));
+  if(g.uv)b.setAttribute('uv',new THREE.BufferAttribute(new Float32Array(g.uv),2));
+  if(g.nrm)b.setAttribute('normal',new THREE.BufferAttribute(new Float32Array(g.nrm),3));
+  b.setIndex(g.idx);
+  if(!g.nrm)b.computeVertexNormals();
+  (g.parts||[]).forEach((p,i)=>b.addGroup(p.start,p.count,i));
+  b.setAttribute('skinIndex',new THREE.Uint16BufferAttribute(g.skin.index,4));
+  b.setAttribute('skinWeight',new THREE.Float32BufferAttribute(g.skin.weight,4));
+  const bones=g.skin.bones.map(x=>{const bone=new THREE.Bone();bone.name=x.name;
+    bone.position.set(x.pos[0],x.pos[1],x.pos[2]);
+    bone.quaternion.set(x.quat[0],x.quat[1],x.quat[2],x.quat[3]);return bone;});
+  const mesh=new THREE.SkinnedMesh(b,(g.parts||[]).map(materialFor));
+  g.skin.bones.forEach((x,i)=>{(x.parent>=0?bones[x.parent]:mesh).add(bones[i]);});
+  mesh.bind(new THREE.Skeleton(bones,g.skin.bind.map(m=>new THREE.Matrix4().fromArray(m))),new THREE.Matrix4());
+  mesh.frustumCulled=false;
+  const still=groundAt.get(a.x+','+a.y);
+  mesh.position.set((a.x+0.5)*2,(a.y+0.5)*2,still?still.z:a.z);
+  mesh.rotation.z=a.rot;
+  mesh.scale.setScalar(g.scale||1);
+  world.add(mesh);
+  return {href:a.href,mesh,bones,clips:a.clips,kind:'idle00',time:0,startsAt:0};
+});
+const byHref=new Map(rigged.map(r=>[r.href,r]));
+
+const _qa=new THREE.Quaternion(),_qb=new THREE.Quaternion();
+function pose(rig,time){
+  const clip=rig.clips[rig.kind]||rig.clips['idle00'];
+  if(!clip)return;
+  const n=clip.times.length;if(!n)return;
+  const span=clip.duration||1;
+  // A named clip plays ONCE and holds its last frame; the idle loops. A scene
+  // that let \`death\` loop would have its corpses stand back up.
+  const at=rig.kind==='idle00'?((time%span)+span)%span:Math.max(0,Math.min(span,time));
+  const f=Math.min(n-1,Math.max(0,at/span*(n-1)));
+  const i0=Math.min(n-1,Math.floor(f)),i1=Math.min(n-1,i0+1),t=f-i0;
+  rig.bones.forEach((bone,bi)=>{
+    const rot=clip.rotations[bi],pos=clip.positions[bi];
+    if(rot){_qa.set(rot[i0*4],rot[i0*4+1],rot[i0*4+2],rot[i0*4+3]);
+      _qb.set(rot[i1*4],rot[i1*4+1],rot[i1*4+2],rot[i1*4+3]);
+      bone.quaternion.slerpQuaternions(_qa,_qb,t);}
+    if(pos){bone.position.set(
+      pos[i0*3]+(pos[i1*3]-pos[i0*3])*t,
+      pos[i0*3+1]+(pos[i1*3+1]-pos[i0*3+1])*t,
+      pos[i0*3+2]+(pos[i1*3+2]-pos[i0*3+2])*t);}
+  });
+}
+function cueShot(n,at){
+  for(const rig of rigged){rig.kind='idle00';rig.startsAt=0;}
+  for(const cue of (CUES[n]||[])){
+    const rig=byHref.get(cue.href);
+    if(rig&&rig.clips[cue.kind]){rig.kind=cue.kind;rig.startsAt=cue.delay||0;}
+  }
+  for(const rig of rigged){rig.time=Math.max(0,(at||0)-rig.startsAt);pose(rig,rig.time);}
 }
 
 let shot=0,t=0,playing=false,last=performance.now();
@@ -184,20 +288,32 @@ function place(){
     s.speaker.split('/').pop()+' · t='+t.toFixed(2)+'<br>← → step · space '+(playing?'pause':'play');
   document.getElementById('line').textContent=s.line.split('/').pop();
 }
+let cuedShot=-1;
+function sync(seconds){
+  const s=SHOTS[shot];
+  if(cuedShot!==shot){cuedShot=shot;cueShot(shot,seconds);}
+  else for(const rig of rigged){rig.time=Math.max(0,seconds-rig.startsAt);pose(rig,rig.time);}
+}
 addEventListener('keydown',e=>{
   if(e.key==='ArrowRight'){shot=(shot+1)%SHOTS.length;t=0;}
   else if(e.key==='ArrowLeft'){shot=(shot-1+SHOTS.length)%SHOTS.length;t=0;}
   else if(e.key===' '){playing=!playing;e.preventDefault();}
-  place();
+  place();sync(t*((SHOTS[shot]||{duration:3}).duration||3));
 });
-place();
+place();sync(0);
 // Rendering a chosen shot and handing back the pixels, for looking at this
 // page from outside a display — the same sink trick the geometry viewer uses.
-window.snap=function(n,at){shot=Math.max(0,Math.min(SHOTS.length-1,n|0));t=at===undefined?0.5:at;place();R.render(world,cam);
+window.snap=function(n,at){
+  // A pane that is not on screen has no size, and a zero-sized canvas hands
+  // back a six-character data URL. The frame asked for is rendered at a fixed
+  // size instead of at the window's.
+  if(!R.domElement.width||!R.domElement.height){R.setSize(1280,720,false);cam.aspect=1280/720;cam.updateProjectionMatrix();}
+  shot=Math.max(0,Math.min(SHOTS.length-1,n|0));t=at===undefined?0.5:at;place();
+  cuedShot=-1;sync(t*((SHOTS[shot]||{duration:3}).duration||3));R.render(world,cam);
   return fetch('/sink?n='+shot,{method:'POST',body:R.domElement.toDataURL('image/png')}).then(r=>r.text());};
 (function loop(now){requestAnimationFrame(loop);
   const dt=(now-last)/1000;last=now;
-  if(playing){const s=SHOTS[shot];t+=dt/(s?s.duration||3:3);if(t>=1){t=0;shot=(shot+1)%SHOTS.length;}place();}
+  if(playing){const s=SHOTS[shot];const span=(s?s.duration||3:3);t+=dt/span;if(t>=1){t=0;shot=(shot+1)%SHOTS.length;}place();sync(t*span);}
   R.render(world,cam);
 })(performance.now());
 </script></body></html>`;

@@ -24,6 +24,12 @@ import { readEntries } from '../src/format/pak.ts';
 import { loadDialogScene, saveDialogScene } from '../src/dialog/dialog-scene.ts';
 import { cameraShot, eyeOf, loadCamera, loadCameraSet, poseAt, poseFrom } from '../src/dialog/camera.ts';
 import { dirOf, resolveHref } from '../src/scene/xdb.ts';
+import { assets } from '../src/game/assets.ts';
+import { buildScene } from '../src/scene/scene.ts';
+import { extractMapFolder, gameArchives } from '../src/map/map-source.ts';
+import { stageObjects } from '../src/dialog/stage.ts';
+import { actorRigs } from '../src/dialog/actors.ts';
+import { mkdirSync } from 'node:fs';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {
@@ -437,6 +443,56 @@ for (const doc of docs.filter((d) => d.root === 'DSceneCameraSet')) {
 }
 check('a move starts and ends exactly on its two cameras', worstEnd < 1e-9,
   `${shotsChecked} moves, worst drift ${worstEnd.toExponential(1)}`);
+
+
+// ---------------------------------------------------------------------------
+// 7. The scene the campaign actually plays, drawn
+// ---------------------------------------------------------------------------
+//
+// Everything above reads documents. This builds C1M1's opening the way the
+// editor will: unpack its folder out of the archives, mount it over the data
+// root, hand the stage and the scene's own objects to the scene builder, and
+// rig the actors off their arena characters. It is the check that the parts
+// still meet — a scene that parses perfectly and cannot be drawn is no use.
+
+const SHOWCASE = 'DialogScenes/C1/M1/D1';
+const showcasePath = `${SHOWCASE}/DialogScene.xdb`;
+if (!byPath.has(showcasePath)) {
+  console.log(`  (${SHOWCASE} is not in this run — it ships inside All_campaigns.data.h5u)`);
+} else {
+  const workspace = join(import.meta.dirname, '..', '_tmp', 'scene-stage');
+  const roots = [DATA];
+  if (!existsSync(join(DATA, showcasePath))) {
+    mkdirSync(workspace, { recursive: true });
+    const mods = join(GAME, 'UserMODs');
+    const archives = [...gameArchives(GAME), ...(existsSync(mods)
+      ? readdirSync(mods).filter((f) => /\.h5u$/i.test(f)).sort().map((f) => join(mods, f)) : [])];
+    if (!existsSync(join(workspace, showcasePath))) extractMapFolder(archives, SHOWCASE, workspace);
+    if (!existsSync(join(DATA, 'Dialogs')) && !existsSync(join(workspace, 'Dialogs'))) {
+      extractMapFolder(archives, 'Dialogs', workspace);
+    }
+    roots.unshift(workspace);
+  }
+  const data = assets(roots);
+  const scene = loadDialogScene(data.text(showcasePath)!);
+  const objects = stageObjects(data, showcasePath, scene);
+  const built = buildScene(data, data.path(resolveHref(dirOf(showcasePath), scene.stage)),
+    { extraObjects: objects.map((o) => o.object) });
+  const placed = built.scene.floors.reduce((a, f) => a + f.instances.length, 0);
+  check('C1M1 D1 builds into a drawable stage', placed > 600 && built.skipped <= 1,
+    `${built.scene.geoms.length} meshes, ${placed} placed, ${built.skipped} skipped`);
+
+  const rigs = actorRigs(data, scene, objects);
+  const baked = rigs.reduce((a, r) => a + Object.keys(r.clips).length, 0);
+  check('its actors rig off their ARENA characters', rigs.length === 8 && baked >= 15,
+    `${rigs.length} actors, ${baked} clips baked, ${rigs[0]?.geom.skin?.bones.length ?? 0} bones on the first`);
+  // The adventure set holds idle00 and move; anything past those could only
+  // have come from the arena one, which is why an actor is resolved twice.
+  const beyond = rigs.flatMap((r) => Object.keys(r.clips)).filter((k) => k !== 'idle00' && k !== 'move');
+  check('and play clips the adventure set does not have', beyond.length > 0, beyond.join(', ') || 'none');
+  const unmet = rigs.flatMap((r) => r.missing);
+  check('every clip the scene names is in the set it plays from', unmet.length === 0, unmet.join(', '));
+}
 
 console.log(`\n${failures ? `\x1b[31m${failures} failed\x1b[0m` : '\x1b[32mall checks passed\x1b[0m'}`);
 process.exit(failures ? 1 : 0);
