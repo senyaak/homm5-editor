@@ -104,7 +104,7 @@ static const BYTE TENT_AMOUNT_HEAD[5] = { 0x8B, 0x44, 0x24, 0x08, 0x56 };
 // in the whole executable, which is why this needs three hooks and not one:
 // the refill, the recalculation that clamps the pool to the ceiling, and the
 // bar that draws it. Nothing else reads them; the accessor below is how the
-// bar asks. See docs/ENGINE_INTERNALS.md.
+// bar asks. See docs/engineInternals/NECROMANCY.md.
 
 /** `CPlayer::RefillNecroEnergy` — recompute the ceiling, then fill to it. */
 #define REFILL_ENERGY_RVA 0x8066d0u

@@ -137,7 +137,7 @@ export interface CreatureMod {
    * counts our worn pieces, names the set and draws its tooltip without any
    * code. What it will not do is give the set an EFFECT: every shipped set's
    * behaviour is compiled against its enum value, and ours is a value the
-   * executable has never heard of. See docs/ENGINE_INTERNALS.md.
+   * executable has never heard of. See docs/engineInternals/ARTIFACTS_AND_EQUIPMENT.md.
    */
   sets: ModArtifactSet[];
   /**

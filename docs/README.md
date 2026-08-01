@@ -1,7 +1,9 @@
 # Documentation
 
 One document per subject. Flat files are about a *format* or a *mechanism*;
-`mapPlaceables/` is about the things a map is made of, one folder per kind.
+`mapPlaceables/` is about the things a map is made of, one folder per kind, and
+`engineInternals/` is what was read out of the executable, one subsystem per
+file behind [ENGINE_INTERNALS.md](ENGINE_INTERNALS.md).
 
 ## Map placeables
 
@@ -43,7 +45,7 @@ mod documents below; they move here as each gets written up.
 - [NEW_CREATURES.md](NEW_CREATURES.md) — a creature, including the ceiling in the executable.
 - [ARTIFACTS.md](ARTIFACTS.md) — an artifact, start to finish.
 - [ARTIFACT_EFFECTS.md](ARTIFACT_EFFECTS.md) — what data, script and the exe each control.
-- [ENGINE_INTERNALS.md](ENGINE_INTERNALS.md) — read out of the binary: where a mod can cut in.
+- [ENGINE_INTERNALS.md](ENGINE_INTERNALS.md) — read out of the binary: how to read it, the rules that hold everywhere, and an index into `engineInternals/` (artifacts and equipment, necromancy, specializations, Lua, mods and maps, our extension).
 - [EXE_LUA_REGISTRY.md](EXE_LUA_REGISTRY.md) — the Lua functions the executable registers.
 - [ARCHIVES.md](ARCHIVES.md) — a map, a campaign and a mod are one thing to the engine.
 - [CAMPAIGNS.md](CAMPAIGNS.md) — binding maps into a story, and what carries over between them.

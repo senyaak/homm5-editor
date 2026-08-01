@@ -34,7 +34,7 @@ Regenerate with `node tools/reverse/lua-registry.ts`.
 reached through an accessor (`mov eax,<table>; ret`), so the extension hands the
 engine a copy with its own rows appended. How, and what a registered function
 has to look like, is in
-[ENGINE_INTERNALS.md](ENGINE_INTERNALS.md#how-lua-functions-are-registered);
+[engineInternals/LUA.md](engineInternals/LUA.md);
 what ours do is in [SCRIPT_API.md](SCRIPT_API.md) under *Ours*.
 
 

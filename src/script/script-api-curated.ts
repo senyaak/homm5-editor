@@ -58,7 +58,7 @@ export const CURATED: ApiDoc[] = [
   // adds them to the table the engine hands Lua — a map that runs without the
   // extension will find them nil, which is why a script that calls one should
   // check it is there first. See
-  // docs/ENGINE_INTERNALS.md for how they are registered.
+  // docs/engineInternals/LUA.md for how they are registered.
   {
     name: 'RestoreDarkEnergy', category: 'Ours', source: 'extension',
     summary: "Fill a player's dark energy back up to its ceiling.",

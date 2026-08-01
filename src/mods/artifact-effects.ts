@@ -37,7 +37,7 @@ export const EFFECTS_FILE = join('bin', 'homm5-editor-effects.txt');
  *   `energy` — the ceiling of the player's dark energy pool, which the engine
  *     itself refills to the brim every week. A property of the PLAYER, so rows
  *     are answered for every hero of theirs and added up, the way an extra
- *     Necromancy Amplifier would be. See docs/ENGINE_INTERNALS.md.
+ *     Necromancy Amplifier would be. See docs/engineInternals/NECROMANCY.md.
  */
 export const EFFECT_STATS = ['necromancy', 'energy'] as const;
 export type EffectStat = (typeof EFFECT_STATS)[number];

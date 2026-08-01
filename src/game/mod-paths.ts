@@ -6,7 +6,7 @@
 // The five sit together in `.rdata` and go into ONE list, handed to ONE provider
 // (0x5bd0f0 builds it, 0x953fb0 takes it) — so the kinds are a convention and
 // not a mechanism. That is why a `.h5m` can override any path in the game, which
-// this editor has relied on for a while: see docs/ENGINE_INTERNALS.md.
+// this editor has relied on for a while: see docs/engineInternals/MODS_AND_MAPS.md.
 //
 // WHY MOVE THEM. Everything anyone ever installed for another mod sits in those
 // folders, and the game reads all of it, every launch, whatever it contains. Our

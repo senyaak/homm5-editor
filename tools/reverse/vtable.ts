@@ -11,7 +11,7 @@
 //
 // A class with multiple inheritance has several vtables — they are all listed,
 // primary first, because which one a call goes through depends on the
-// subobject. See docs/ENGINE_INTERNALS.md, where this found the hero's stat
+// subobject. See docs/engineInternals/ARTIFACTS_AND_EQUIPMENT.md, where this found the hero's stat
 // getters.
 
 import { resolve } from 'node:path';
