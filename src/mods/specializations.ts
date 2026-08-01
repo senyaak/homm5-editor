@@ -17,7 +17,7 @@
 // specialization of ours is two halves that have to agree: the enum entry here,
 // and a term the native extension adds where the engine sums its own
 // (src/mods/artifact-effects.ts writes the config, native/homm5-editor.c reads
-// it). See docs/ENGINE_INTERNALS.md and SLICE_hero_specializations.md.
+// it). See docs/ENGINE_INTERNALS.md, "Hero specializations are the same again".
 //
 // WHERE ITS WORDS LIVE. Not here — on the HERO, because that is where the game
 // keeps them. Two heroes may hold one specialization and describe it
