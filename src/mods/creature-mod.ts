@@ -118,8 +118,13 @@ export function creaturePaths(c: CreatureSpec): {
  * a test.
  */
 export function buildCreatureMod(mod: CreatureMod, read: DataReader): BuildReport {
+  // A specialization counts, and leaving it out of this list made a mod holding
+  // one and nothing else "empty" — which is a real thing to build: an enum entry
+  // plus a row for the extension is the whole of one, and the hero who will hold
+  // it is usually authored afterwards.
   if (!mod.creatures.length && !mod.dwellings.length && !mod.buildings?.length
-    && !mod.artifacts?.length && !mod.sets?.length && !mod.heroes?.length) {
+    && !mod.artifacts?.length && !mod.sets?.length && !mod.heroes?.length
+    && !mod.specializations?.length) {
     throw new Error('the mod is empty');
   }
   const limit = creatureLimit(mod);
