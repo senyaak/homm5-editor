@@ -56,6 +56,11 @@ src/        the core — format decoders and the game model, by what each file
               exe/      the executable: pe, disasm, exe-*, lua-registry, and
                         the two ceiling patchers
               campaign/ campaign, campaign-project, campaign-pack
+              dialog/   dialog scenes: dialog-scene (the document), camera (the
+                        orbit poses a shot travels between), stage (the props
+                        and actors a scene puts on its map), actors (their arena
+                        rigs and clips), play (the one assembly both the window
+                        and the standalone viewer run on)
               script/   the engine's Lua: lua-lint + the API the editor
                         completes from
 electron/   the main process. main.ts is the boot — switches, window, the

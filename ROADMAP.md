@@ -628,10 +628,16 @@ Format (surveyed 2026-07-23, 250 scenes shipped under `DialogScenes/`):
       skinned bodies with their arena clips, and a shot drives the camera
       (`e2e/dialog-scene.spec.ts`). Still to come: the line timings from the
       voice files, walks along `MovePoints`, and effects in shot
-- [ ] ⬜ **Shipped scenes as the proving ground** (Сеня, 2026-07-27): open a
-      scene a campaign actually plays — Isabell's first mission — inside the
-      editor, watch it, edit it, watch again. The 250 scenes under
-      `DialogScenes/` are both the test corpus and the reason to build this
+- [x] ✅ **Shipped scenes as the proving ground** (Сеня, 2026-07-27): C1M1's
+      opening — the one the campaign we rebuild with tests actually plays —
+      opens from the Scenes… window, unpacked out of the campaign archive the
+      way a shipped map is, and runs: 73 shots, 657 props, 8 actors on their
+      arena rigs. Editing it is the stage above; watching it is done. All 251
+      scenes stay the corpus the format checks run against
+- [ ] ⬜ The rest of what a shot carries: the voice recording (`bin/SoundsLoc`
+      is Ogg, `bin/Sounds` is WAV — Chromium plays both, so this is timing
+      rather than decoding), walks along `MovePoints`, placed effects, and the
+      per-shot ambient light
 
 ### Model editing (far future, smallest step first)
 

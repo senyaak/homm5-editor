@@ -13,7 +13,33 @@ one.
 
 ## Unreleased
 
-Nothing yet — this is where the next build's notes go.
+### Added
+
+- **Dialog scenes — the cutscenes a campaign plays — open and play in the
+  editor.** `Scenes…` on the launcher lists what the game ships (251 of them,
+  the original campaigns' unpacked out of their archive the way a shipped map
+  is) and opens one in a window of its own: the arena it is staged on, the
+  props it brings, its actors on their ARENA rigs rather than their adventure
+  models, and the shots down the side. Pick a shot and the camera goes exactly
+  where that shot's camera is; press play and it walks the move, actors playing
+  the clips the scene names on them.
+
+  The game's own editor cannot make these — its manual says outright that
+  script-based movies are "not a process intended for an unprepared user" — so
+  the format had to be measured rather than read: `docs/DIALOG_SCENES.md` has
+  what a scene is made of, how often each field is actually used, and how the
+  camera's angles turned out to be meant (`npm run camera-shape`).
+
+  Editing is not here yet: a scene opens, plays and closes without being
+  written back. What it already proves is the whole risky half — that a scene
+  resolves, draws and frames the way the game frames it.
+
+### Fixed
+
+- Baked effects no longer need an open map. `bin/effects/<uid>` is a global
+  asset, but the handler that serves it demanded a map session, so every
+  campfire and firefly in a dialog scene asked for its keys and was told "no
+  map loaded".
 
 ## 0.6.0 — 2026-07-31
 
