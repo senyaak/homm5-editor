@@ -212,6 +212,20 @@ going quietly green.
 * `src/dialog/stage.ts` — the scene's own cast and set dressing as map objects,
   placed on the stage map through the existing scene builder
   (`BuildSceneOptions.extraObjects`). There is no second renderer.
+
+  A scene's `<objects>` are plain hrefs with **no `<Item id>`** on them, unlike
+  a map's, and that broke the drawing of every one of them: the renderer looked
+  an object's transform up by its id, and three.js seeds an instance buffer with
+  IDENTITY matrices, so 523 of 657 props and creature stacks were drawn at the
+  world origin — a heap in the corner of the arena, and the field they belong on
+  bare. Handles are now keyed by the instance itself (`Floor3D.meshes`);
+  selection still addresses objects by id, so scene objects are drawn and picked
+  but not yet addressable by name.
+
+  A scene also builds with `animate: true` unconditionally. On a map the idle
+  stance is a setting, off by default, because it costs a draw call per creature
+  — in a scene the armies standing behind the two heroes are half the frame, and
+  unanimated they hold the bind pose with their arms straight out.
 * `tools/test-dialog-scene.ts` — the corpus checks and the census above.
 * `tools/camera-shape.ts` — the convention measurement.
 * `src/dialog/actors.ts` — an actor's ARENA rig: the character's own mesh and

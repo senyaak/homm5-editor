@@ -14,6 +14,8 @@ import type { SceneInfo } from '#electron/ipc.ts';
 import { api } from '#core/ipc.ts';
 import { $, $button, $input } from '#core/dom.ts';
 import { buildWorld, clearWorld } from '#viewport/world.ts';
+import { idleMode, setIdleMode } from '#viewport/idle.ts';
+import type { IdleMode } from '#viewport/idle.ts';
 import { makeIdle, poseIdle } from '#viewport/skinning.ts';
 import type { IdleObject } from '#viewport/skinning.ts';
 import { camera, controls, fitViewport, renderer, scene as stage } from '#viewport/stage.ts';
@@ -27,6 +29,9 @@ interface Player {
   kind: string;
   from: number;
 }
+
+/** The idle-stance setting a scene borrowed, to be given back when it closes. */
+let modeBefore: IdleMode | null = null;
 
 /** The scene on screen, or null when the window is back to maps. */
 export const playing = {
@@ -87,6 +92,13 @@ function clearActors(): void {
 export async function openScene(inner: string): Promise<SceneInfo> {
   const { stage: payload, shots, actors, info } = await api.openScene({ inner });
   clearActors();
+  // The stage arrives with its creatures' bones (src/dialog/play.ts asks for
+  // them unconditionally), and the mode is what decides whether buildWorld
+  // gives them an animated body. `all` rather than `visible`: a shot cuts to
+  // wherever it likes, and a stack that stopped being posed off screen would be
+  // caught mid-nothing the moment the camera lands on it.
+  if (!modeBefore) modeBefore = idleMode();
+  setIdleMode('all');
   buildWorld(payload);
 
   for (const actor of actors) {
@@ -124,6 +136,9 @@ export function closeScene(): void {
   playing.shots = [];
   playing.running = false;
   controls.enabled = true;
+  // The idle mode is the map editor's setting, borrowed for as long as a scene
+  // is up; a map opened after one must find it as its owner left it.
+  if (modeBefore) { setIdleMode(modeBefore); modeBefore = null; }
 }
 
 /** Point the camera where the shot says, `t` running 0 to 1 through the move. */

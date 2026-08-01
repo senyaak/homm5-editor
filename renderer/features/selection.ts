@@ -23,8 +23,20 @@ import { UNITS_PER_TILE as U } from '#src/scene/units.ts';
 
 /** Category chip meaning 'no filter', used as both label and key. */
 export const ALL = 'All';
+/**
+ * The handle of the object with this id, on the visible floor.
+ *
+ * Handles are keyed by their instance, not by an id — a dialog scene's objects
+ * have none (see Floor3D.meshes) — so addressing one by id is a scan. It runs
+ * on a click and on an explorer row, never per frame.
+ */
+export function meshById(id: string): THREE.Mesh | null {
+  for (const [inst, mesh] of activeFloor().meshes) if (inst.id === id) return mesh;
+  return null;
+}
+
 export function selectById(id: string): void {
-  const mesh = activeFloor().meshes.get(id);
+  const mesh = meshById(id);
   if (!mesh) return;
   state.selected = { id, mesh, inst: mesh.userData.inst };
   if (!state.boxHelper) { state.boxHelper = new THREE.BoxHelper(mesh, 0x4fd1c5); scene.add(state.boxHelper); }
@@ -126,7 +138,7 @@ export function renderExList(): void {
       const id = it.id;
       if (!id) return;
       selectById(id);
-      const m = activeFloor().meshes.get(id);
+      const m = meshById(id);
       if (m) frameObject(m);
     };
     frag.appendChild(div);
@@ -232,7 +244,7 @@ export async function deleteSelected(): Promise<void> {
   // the two copies agreeing rather than showing a deletion that did not happen.
   const fl = activeFloor();
   fl.group.remove(mesh);
-  fl.meshes.delete(id);
+  fl.meshes.delete(inst);
   removeFromBatch(fl, inst);
   removeIdle(fl, inst);
   removeFx(fl, inst);

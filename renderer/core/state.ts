@@ -63,8 +63,15 @@ export interface Floor3D {
    * Per-object handles for picking and editing. Deliberately NOT in the scene:
    * `batches` does the drawing, and these exist to be raycast, dragged and
    * boxed. The raycaster gets them as an explicit list.
+   *
+   * Keyed by the INSTANCE, not by its id. A handle belongs to the object, and
+   * not every object has an id: a dialog scene's `<objects>` are plain hrefs
+   * with no `<Item id>` on them, and keyed by id all 657 of them shared one
+   * entry and none of them got a transform written into its batch slot — a
+   * scene drew its actors on an empty field. Selection still addresses objects
+   * by id, which is what `meshById` is for.
    */
-  meshes: Map<string, THREE.Mesh>;
+  meshes: Map<Instance, THREE.Mesh>;
   /** One instanced draw per model. See buildBatches. */
   batches: Map<number, GeomBatch>;
   /**

@@ -41,6 +41,21 @@ one.
   campfire and firefly in a dialog scene asked for its keys and was told "no
   map loaded".
 
+- **A dialog scene now draws its cast where they stand.** C1M1's opening played
+  its eight speaking actors on an empty field: the two armies and 600-odd pieces
+  of set dressing were being drawn on top of each other at the corner of the
+  arena. An object's transform was fetched by its `<Item id>`, and a scene's
+  objects have none — three.js starts an instance buffer at identity, so the
+  ones that never got a transform were not missing, they were at the origin.
+
+- The armies in a scene move. Idle animation is a map setting and off by
+  default; a scene turns it on for as long as it is up, instead of showing the
+  crowd frozen in the bind pose with their arms straight out.
+
+- Undo no longer shrinks every creature on the map. Rebuilding a floor's objects
+  left the display scale off the handles it made, so a hero who had been
+  three-quarter height came back full size.
+
 ## 0.6.0 — 2026-07-31
 
 ### Added

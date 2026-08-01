@@ -122,30 +122,16 @@ world.add(new THREE.Mesh(tg,new THREE.MeshLambertMaterial({vertexColors:true,sid
 // and a tile is 2 units, so a model goes at the CENTRE of its cell — (t+0.5)·2
 // — while its mesh and the terrain heights are already in world units. The only
 // scale is the creature one a clip's root bone carries.
-// An actor stands on the stage twice over: the scene builder placed their
-// ADVENTURE model with the props, and the rig below draws the arena one that
-// can act. Only the second is wanted, so the first is dropped by the tile it
-// stands on.
-// The still copy also carries what the scene file does NOT: the GROUND under
-// the actor. An actor's stored z is 0, and placing the rig at that buries it
-// to the waist — the scene builder already worked the height out for the copy
-// standing on the same tile, so the rig takes it from there.
-const actorTiles=new Set(ACTORS.map(a=>a.x+','+a.y));
-const groundAt=new Map();
-for(const it of fl.instances)if(actorTiles.has(it.x+','+it.y))groundAt.set(it.x+','+it.y,it);
-for(const it of fl.instances){
-  if(actorTiles.has(it.x+','+it.y))continue;
-  const m=new THREE.Mesh(geos[it.g],mats[it.g].length?mats[it.g]:grey);
-  m.position.set((it.x+0.5)*2,(it.y+0.5)*2,it.z);
-  m.rotation.z=it.r;
-  m.scale.setScalar(S.geoms[it.g].scale||1);
-  world.add(m);
-}
-
-// The rigged actors: one skeleton each, because two actors are at different
-// points of their own clips even when it is the same clip.
-const rigged=ACTORS.map(a=>{
-  const g=a.geom;
+// Nothing is filtered here: an actor is on the stage twice over — their still
+// ADVENTURE copy among the props and the rig that can act — and buildScenePlay
+// has already taken the first out of the payload, along with the GROUND height
+// it was carrying (the scene file stores 0 for an actor's z, which would bury
+// them to the waist). Dropping them again by tile HERE cost the props standing
+// on the same square, which for a hero in a thicket is several bushes.
+// One skinned body from a geom that carries bones. Actors and creature stacks
+// are built the same way and differ only in what they can play: an actor has
+// the clips their scene names, a stack has the one idle its model ships with.
+function rigOf(g,clips){
   const b=new THREE.BufferGeometry();
   b.setAttribute('position',new THREE.BufferAttribute(new Float32Array(g.pos),3));
   if(g.uv)b.setAttribute('uv',new THREE.BufferAttribute(new Float32Array(g.uv),2));
@@ -162,11 +148,42 @@ const rigged=ACTORS.map(a=>{
   g.skin.bones.forEach((x,i)=>{(x.parent>=0?bones[x.parent]:mesh).add(bones[i]);});
   mesh.bind(new THREE.Skeleton(bones,g.skin.bind.map(m=>new THREE.Matrix4().fromArray(m))),new THREE.Matrix4());
   mesh.frustumCulled=false;
-  mesh.position.set((a.x+0.5)*2,(a.y+0.5)*2,a.z);
-  mesh.rotation.z=a.rot;
-  mesh.scale.setScalar(g.scale||1);
   world.add(mesh);
-  return {href:a.href,mesh,bones,clips:a.clips,kind:'idle00',time:0,startsAt:0};
+  return {mesh,bones,clips,kind:'idle00',time:0,startsAt:0};
+}
+
+// The crowd: a creature stack with bones gets a body of its own and loops its
+// idle, phase-shifted so a row of identical demons is not breathing in unison.
+// Unanimated they stand in the bind pose with their arms straight out, which is
+// half the frame in a scene where two heroes argue in front of their armies.
+const crowd=[];
+for(const it of fl.instances){
+  const g=S.geoms[it.g];
+  if(g.skin&&g.skin.clip){
+    const rig=rigOf(g,{idle00:g.skin.clip});
+    rig.mesh.position.set((it.x+0.5)*2,(it.y+0.5)*2,it.z);
+    rig.mesh.rotation.z=it.r;
+    rig.mesh.scale.setScalar(g.scale||1);
+    rig.time=crowd.length*0.37;
+    crowd.push(rig);
+    continue;
+  }
+  const m=new THREE.Mesh(geos[it.g],mats[it.g].length?mats[it.g]:grey);
+  m.position.set((it.x+0.5)*2,(it.y+0.5)*2,it.z);
+  m.rotation.z=it.r;
+  m.scale.setScalar(g.scale||1);
+  world.add(m);
+}
+
+// The rigged actors: one skeleton each, because two actors are at different
+// points of their own clips even when it is the same clip.
+const rigged=ACTORS.map(a=>{
+  const rig=rigOf(a.geom,a.clips);
+  rig.href=a.href;
+  rig.mesh.position.set((a.x+0.5)*2,(a.y+0.5)*2,a.z);
+  rig.mesh.rotation.z=a.rot;
+  rig.mesh.scale.setScalar(a.geom.scale||1);
+  return rig;
 });
 const byHref=new Map(rigged.map(r=>[r.href,r]));
 
@@ -218,9 +235,12 @@ function place(){
 }
 let cuedShot=-1;
 function sync(seconds){
-  const s=SHOTS[shot];
   if(cuedShot!==shot){cuedShot=shot;cueShot(shot,seconds);}
   else for(const rig of rigged){rig.time=Math.max(0,seconds-rig.startsAt);pose(rig,rig.time);}
+  // The crowd keeps its own clock: their idles loop through the whole scene and
+  // owe nothing to which shot is up, and the offsets they started at are what
+  // keeps them out of unison.
+  for(const rig of crowd)pose(rig,rig.time+seconds);
 }
 addEventListener('keydown',e=>{
   if(e.key==='ArrowRight'){shot=(shot+1)%SHOTS.length;t=0;}

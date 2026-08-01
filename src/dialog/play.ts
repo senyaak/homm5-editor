@@ -111,6 +111,12 @@ export function buildScenePlay(data: Assets, scenePath: string, options: PlayOpt
   const objects = stageObjects(data, scenePath, scene);
   const built = buildScene(data, data.path(resolveHref(dirOf(scenePath), scene.stage)), {
     extraObjects: objects.map((o) => o.object),
+    // A map animates its creatures only if the setting asks — it is an editing
+    // surface and one draw call per creature is a real cost. A scene is a film:
+    // the armies watching the two heroes argue are half of what is on screen,
+    // and unanimated they stand in the bind pose with their arms straight out.
+    animate: true,
+    ...(options.fps ? { animationFps: options.fps } : {}),
     ...(options.texSize ? { texSize: options.texSize } : {}),
   });
 
@@ -123,9 +129,14 @@ export function buildScenePlay(data: Assets, scenePath: string, options: PlayOpt
   const actors: ActorView[] = rigs.map((rig) => {
     const placed = objects.find((o) => o.href === rig.href)?.object;
     const pos = placed?.pos ?? { x: 0, y: 0, z: 0 };
+    // Matched on the model as well as the tile: an actor stands among the set
+    // dressing, and by tile alone the first thing found on their square is as
+    // likely to be the bush beside them — which would then be the thing taken
+    // off the stage, leaving the still hero standing inside the rigged one.
+    const model = placed?.shared?.split('#')[0] ?? null;
     let z = 0;
     for (const floor of built.scene.floors) {
-      const at = floor.instances.findIndex((i) => i.x === pos.x && i.y === pos.y);
+      const at = floor.instances.findIndex((i) => i.x === pos.x && i.y === pos.y && i.shared === model);
       if (at < 0) continue;
       z = floor.instances[at]!.z;
       floor.instances.splice(at, 1);

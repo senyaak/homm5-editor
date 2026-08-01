@@ -289,7 +289,7 @@ export function addInstanceToScene(inst: Instance, geom: { index: number; data: 
   mesh.userData.inst = inst;
   // The handle stays out of the scene, as in buildFloor; the batch draws it.
   mesh.updateMatrixWorld();
-  fl.meshes.set(inst.id, mesh);
+  fl.meshes.set(inst, mesh);
   // An object placed now animates as readily as one loaded with the map, and
   // only joins the batch when it does not.
   if (!addIdle(fl.objGroup, fl.idle, inst, mesh, fl.idle.length * 0.37)) addToBatch(fl, inst, mesh);

@@ -368,6 +368,17 @@ interface ViewApi {
    */
   idle(): { mode: IdleMode; animated: number; time: number; geoms: number[]; skinned: number[]; fx: number };
   /**
+   * The batched draws on the visible floor: how many slots they hold, and how
+   * many of those draw their object somewhere other than where the payload puts
+   * it.
+   *
+   * Nothing else can see this. A slot nobody writes keeps the identity matrix
+   * three.js seeds the buffer with, so the object is not missing — it is drawn
+   * at the world origin, in a heap with every other unplaced one, while its own
+   * tile stands empty. Counted as placed, geometry resolved, on screen, wrong.
+   */
+  batched(): { slots: number; misplaced: number };
+  /**
    * The lighting actually applied to the scene right now — preset or fallback,
    * and whether the background is the map's sky. Lighting has no other
    * observable surface: a preset that fails to load just leaves the fallback
@@ -605,6 +616,24 @@ const view: ViewApi = {
     let lit = 0;
     for (let i = 0; i < data.length; i += 4) if (data[i]! | data[i + 1]! | data[i + 2]!) lit++;
     return { count, litTexels: lit };
+  },
+  batched() {
+    const fl = state.world ? activeFloor() : null;
+    if (!fl) return { slots: 0, misplaced: 0 };
+    const m = new THREE.Matrix4(), at = new THREE.Vector3();
+    let slots = 0, misplaced = 0;
+    for (const b of fl.batches.values()) {
+      for (let i = 0; i < b.im.count; i++) {
+        const inst = b.at[i];
+        if (!inst) continue;
+        slots++;
+        b.im.getMatrixAt(i, m);
+        at.setFromMatrixPosition(m);
+        const dx = at.x - tileCenter(inst.x), dy = at.y - tileCenter(inst.y), dz = at.z - inst.z;
+        if (Math.hypot(dx, dy, dz) > 1e-3) misplaced++;
+      }
+    }
+    return { slots, misplaced };
   },
   pending() { return pendingCommits; },
   opened() { return session.openedMap; },

@@ -22,7 +22,7 @@ import type { IdleObject } from '#viewport/skinning.ts';
 import { disposeSplats, upgradeToSplat } from '#viewport/splat.ts';
 import { cam, camera, controls, scene, syncTopCamera } from '#viewport/stage.ts';
 import { asTileSpace, makeWaterMesh, terrainGeometry } from '#viewport/terrain-mesh.ts';
-import type { Floor, Scene } from '#src/scene/payload.ts';
+import type { Floor, Instance, Scene } from '#src/scene/payload.ts';
 import * as THREE from 'three';
 import { UNITS_PER_TILE as U } from '#src/scene/units.ts';
 export function clearWorld(): void {
@@ -75,7 +75,7 @@ export function buildFloor(floor: Floor, geos: THREE.BufferGeometry[], mats: THR
   objGroup.visible = state.showObjects;
   group.add(objGroup);
 
-  const meshes = new Map();
+  const meshes = new Map<Instance, THREE.Mesh>();
   for (const it of floor.instances) {
     const m = new THREE.Mesh(geos[it.g], mats[it.g]);
     // Tile index out to where the tile actually is; z is already a world height.
@@ -87,14 +87,14 @@ export function buildFloor(floor: Floor, geos: THREE.BufferGeometry[], mats: THR
     // drawing is done by the instanced meshes below. Its world matrix still has
     // to be current, because the raycaster and the selection box read it.
     m.updateMatrixWorld();
-    meshes.set(it.id, m);
+    meshes.set(it, m);
   }
   // Whatever takes an animated body drops out of the batched list: the two draw
   // the same model, and left in both an object would show its idle and its bind
   // pose at once, in the same place.
   const idle: IdleObject[] = [];
   const still = floor.instances.filter((it, i) => {
-    const handle = it.id === null ? null : meshes.get(it.id);
+    const handle = meshes.get(it);
     return !(handle && addIdle(objGroup, idle, it, handle, i * 0.37));
   });
   const batches = buildBatches(still, meshes, geos, mats, objGroup);

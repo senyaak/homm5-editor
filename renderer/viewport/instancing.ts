@@ -18,7 +18,7 @@ import * as THREE from 'three';
 import { heightOn, tileCenter } from '#core/coords.ts';
 import type { Floor3D, GeomBatch } from '#core/state.ts';
 import type { Instance } from '#src/scene/payload.ts';
-import { worldGeos, worldMats } from '#viewport/geoms.ts';
+import { geomScale, worldGeos, worldMats } from '#viewport/geoms.ts';
 import { addIdle, clearIdle } from '#viewport/idle.ts';
 import { syncFootprints } from '#viewport/overlays.ts';
 import { markLightsDirty } from '#viewport/point-lights.ts';
@@ -29,7 +29,7 @@ const BATCH_HEADROOM = 8;
 /** Write an object's transform into its slot of the instance buffer. */
 export function syncInstance(fl: Floor3D, inst: Instance): void {
   const batch = fl.batches.get(inst.g);
-  const mesh = inst.id === null ? null : fl.meshes.get(inst.id);
+  const mesh = fl.meshes.get(inst);
   // If the object carries designer point lights, its pool follows it (rebaked
   // by the render loop, throttled, so a drag doesn't bake per mousemove).
   markLightsDirty(fl, inst);
@@ -128,7 +128,7 @@ export function addToBatch(fl: Floor3D, inst: Instance, mesh: THREE.Mesh): void 
 /** Group a floor's objects by model and draw each group in one call. */
 export function buildBatches(
   instances: Instance[],
-  meshes: Map<string, THREE.Mesh>,
+  meshes: Map<Instance, THREE.Mesh>,
   geos: THREE.BufferGeometry[],
   mats: THREE.Material[][],
   objGroup: THREE.Group,
@@ -151,7 +151,11 @@ export function buildBatches(
     list.forEach((it, i) => {
       batch.slot.set(it, i);
       batch.at[i] = it;
-      const mesh = it.id === null ? null : meshes.get(it.id);
+      const mesh = meshes.get(it);
+      // A slot nobody writes keeps the IDENTITY three.js seeds the buffer with,
+      // which draws the model at the world origin rather than not at all — so
+      // an object that never gets its transform does not go missing, it joins a
+      // heap in the corner of the map, and the place it belongs looks empty.
       if (mesh) im.setMatrixAt(i, mesh.matrixWorld);
     });
     im.instanceMatrix.needsUpdate = true;
@@ -177,7 +181,6 @@ export function replaceInstances(fl: Floor3D, instances: Instance[]): void {
   clearIdle(fl.objGroup, fl.idle);
   fl.instances = instances;
   for (const it of instances) {
-    if (it.id === null) continue;
     const geo = worldGeos[it.g], mat = worldMats[it.g];
     if (!geo || !mat) continue;
     // The map stores no height, so an object lands on whatever ground is under
@@ -186,12 +189,16 @@ export function replaceInstances(fl: Floor3D, instances: Instance[]): void {
     const m = new THREE.Mesh(geo, mat);
     m.position.set(tileCenter(it.x), tileCenter(it.y), it.z);
     m.rotation.z = it.r;
+    // The creature display scale rides the handle, as it does in buildFloor and
+    // in the palette's placement — left off, an undo shrank every creature on
+    // the map back to authoring size.
+    m.scale.setScalar(geomScale.get(it.g) ?? 1);
     m.userData.inst = it;
     m.updateMatrixWorld();
-    fl.meshes.set(it.id, m);
+    fl.meshes.set(it, m);
   }
   const still = instances.filter((it, i) => {
-    const handle = it.id === null ? null : fl.meshes.get(it.id);
+    const handle = fl.meshes.get(it);
     return !(handle && addIdle(fl.objGroup, fl.idle, it, handle, i * 0.37));
   });
   const batches = buildBatches(still, fl.meshes, worldGeos, worldMats, fl.objGroup);

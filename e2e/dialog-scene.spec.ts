@@ -39,6 +39,22 @@ test('the editor opens a campaign scene and plays it', async () => {
   // 600-odd things placed on it.
   expect(info.placed).toBeGreaterThan(600);
 
+  // …and each of them is drawn WHERE it stands. A scene's objects carry no
+  // `<Item id>` — they are plain hrefs — and the renderer used to fetch an
+  // object's transform by that id, so 523 of the 657 got none and were drawn at
+  // the world origin instead: the armies and the set dressing in one heap in the
+  // corner of the arena, the field they belong on bare. `placed` counted them
+  // all, and every other number agreed; only where they are says otherwise.
+  const drawn = await page.evaluate(() => ({ ...window.view.batched(), idle: window.view.idle() }));
+  expect(drawn.slots).toBeGreaterThan(500);
+  expect(drawn.misplaced).toBe(0);
+  // The crowd is alive. On a map the idle stance is a setting and off by
+  // default, which for a scene left the armies watching the two heroes standing
+  // in the bind pose with their arms straight out; a scene turns it on for as
+  // long as it is up. They are the creature stacks, not the eight rigged
+  // actors, which are skinned separately and are not in this count.
+  expect(drawn.idle.animated).toBeGreaterThan(30);
+
   const opened = await page.evaluate(() => window.view.scene());
   expect(opened?.actors.length).toBe(8);
   // Nothing is cued on the opening shot, so everybody stands in their idle.
