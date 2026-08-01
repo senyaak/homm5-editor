@@ -65,10 +65,13 @@ test('the editor opens a campaign scene and plays it', async () => {
     const list = document.getElementById('sc-list')!;
     const view = document.getElementById('sc-view')!;
     const canvas = document.querySelector('canvas')!;
+    const dlg = (document.getElementById('scene') as HTMLDialogElement).getBoundingClientRect();
     return {
       open: (document.getElementById('scene') as HTMLDialogElement).open,
       hosted: view.contains(canvas),
       drawn: [canvas.clientWidth > 200, canvas.clientHeight > 200],
+      fills: [dlg.width >= innerWidth - 2, dlg.height >= innerHeight - 2],
+      canvasTall: canvas.clientHeight > innerHeight * 0.8,
       rows: list.childElementCount,
       lit: [...list.children].findIndex((r) => r.classList.contains('on')),
       info: document.getElementById('sc-info')!.textContent ?? '',
@@ -77,6 +80,13 @@ test('the editor opens a campaign scene and plays it', async () => {
   expect(panel.open).toBe(true);
   expect(panel.hosted).toBe(true);
   expect(panel.drawn).toEqual([true, true]);
+  // It takes the whole window: what is behind is the launcher — a menu of other
+  // editors — and any of it showing round the edges reads as the scene being
+  // played into the main screen.
+  expect(panel.fills).toEqual([true, true]);
+  // …and the picture fills what is left after the shot list, rather than being
+  // a small canvas in a big hole.
+  expect(panel.canvasTall).toBe(true);
   expect(panel.rows).toBe(73);
   expect(panel.lit).toBe(62);
   expect(panel.info).toContain('73 shots');
