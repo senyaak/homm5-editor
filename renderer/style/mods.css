@@ -30,6 +30,9 @@ button.he-file { margin-left: 6px; flex: 0 0 auto; }
 .um-empty { color: #6e7681; font-size: 12px; }
 .am-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 20px; align-items: start; }
 .am-columns > div { min-width: 0; }
+/* one pane per tab in the Heroes window; the open one carries .on */
+.hm-pane { display: none; }
+.hm-pane.on { display: block; }
 .um-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 6px 10px; }
 .um-stats label { display: flex; flex-direction: column; gap: 2px; font-size: 11px; color: #8b949e; }
 .um-stats input { background: #0d1014; border: 1px solid #30363d; border-radius: 6px;

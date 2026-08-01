@@ -9,24 +9,25 @@
         <button id="hm-close" title="close (Esc)">✕</button>
       </div>
       <div class="mp-body on-body um-body">
+        <!-- One tab per side, as the Buildings window has. The two lists stood
+             side by side while there were two; a class of our own and a skill of
+             our own are authored here too, and four columns is not a layout.
+             Each pane is filled by whoever owns it — the bar is built in
+             features/mods/hero-tabs.ts and knows nothing about them. -->
+        <div id="hm-tabs" class="mp-tabs"></div>
         <fieldset>
-          <legend>Installed</legend>
-          <!-- Side by side, as the artifacts and their sets are, and for the
-               same reason: a specialization is a hero's, it is chosen from the
-               form beside it, and picking one while its list is off screen is
-               the awkward part. -->
-          <div class="am-columns">
-            <div>
-              <div id="hm-list" class="um-mods"></div>
-              <div class="de-foot" style="padding:8px 0 0;justify-content:flex-start">
-                <button id="hm-new">New hero…</button>
-              </div>
+          <legend id="hm-legend">Installed</legend>
+          <div id="hm-about" class="um-note"></div>
+          <div id="hm-pane-heroes" class="hm-pane">
+            <div id="hm-list" class="um-mods"></div>
+            <div class="de-foot" style="padding:8px 0 0;justify-content:flex-start">
+              <button id="hm-new">New hero…</button>
             </div>
-            <div>
-              <div id="hs-list" class="um-mods"></div>
-              <div class="de-foot" style="padding:8px 0 0;justify-content:flex-start">
-                <button id="hs-new" class="ghost">New specialization…</button>
-              </div>
+          </div>
+          <div id="hm-pane-specs" class="hm-pane">
+            <div id="hs-list" class="um-mods"></div>
+            <div class="de-foot" style="padding:8px 0 0;justify-content:flex-start">
+              <button id="hs-new">New specialization…</button>
             </div>
           </div>
         </fieldset>

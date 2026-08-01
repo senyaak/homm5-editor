@@ -86,9 +86,23 @@ test.beforeAll(async () => {
 });
 test.afterAll(async () => { await ed?.app.close(); });
 
+/**
+ * Open the Heroes window on one of its tabs.
+ *
+ * The window holds several lists and shows one at a time, so the tab has to be
+ * chosen before anything in it can be clicked — a pane that is not open is not
+ * visible, and Playwright will not click what nobody can see.
+ */
+async function openHeroes(page: Launched['page'], tab: 'Heroes' | 'Specializations'): Promise<void> {
+  if (!(await page.locator('#heroesmod').isVisible())) await page.locator('#heroesbtn').click();
+  await expect(page.locator('#heroesmod')).toBeVisible();
+  await page.locator('#hm-tabs button', { hasText: tab }).click();
+  await expect(page.locator('#hm-legend')).toContainText(tab);
+}
+
 /** Open Heroes… and the form on top of it, with the donor chosen. */
 async function openWithDonor(page: Launched['page']): Promise<void> {
-  if (!(await page.locator('#heroesmod').isVisible())) await page.locator('#heroesbtn').click();
+  await openHeroes(page, 'Heroes');
   if (!(await page.locator('#heroedit').isVisible())) await page.locator('#hm-new').click();
   // The preset is a BUTTON: press it, pick from the list it opens. It is an
   // action done once, not a field the hero carries.
@@ -105,8 +119,7 @@ async function openWithDonor(page: Launched['page']): Promise<void> {
 
 test('the dialog opens, and the donor decides the faction', async () => {
   const { page } = ed;
-  await page.locator('#heroesbtn').click();
-  await expect(page.locator('#heroesmod')).toBeVisible();
+  await openHeroes(page, 'Heroes');
   await expect(page.locator('#hm-list')).toContainText(/No heroes installed|Gem/);
 
   await openWithDonor(page);
@@ -133,7 +146,7 @@ test('it will not build a hero who is missing what he needs', async () => {
   const { page } = ed;
   // Same as the other two: the form is modal over the list that holds New.
   if (await page.locator('#heroedit').isVisible()) await page.locator('#heroedit-cancel').click();
-  if (!(await page.locator('#heroesmod').isVisible())) await page.locator('#heroesbtn').click();
+  await openHeroes(page, 'Heroes');
   await page.locator('#hm-new').click();
   await expect(page.locator('#heroedit')).toBeVisible();
 
@@ -161,7 +174,7 @@ test('it will not build a hero who is missing what he needs', async () => {
 /** The specialization form's own refusal — what addSpecialization throws for. */
 test('it will not build a specialization missing what it needs', async () => {
   const { page } = ed;
-  if (!(await page.locator('#heroesmod').isVisible())) await page.locator('#heroesbtn').click();
+  await openHeroes(page, 'Specializations');
   await page.locator('#hs-new').click();
   await expect(page.locator('#specedit')).toBeVisible();
 
@@ -182,7 +195,7 @@ test('it will not build a specialization missing what it needs', async () => {
 test('authors the specialization Gem will hold', async () => {
   test.setTimeout(3 * 60_000);
   const { page } = ed;
-  if (!(await page.locator('#heroesmod').isVisible())) await page.locator('#heroesbtn').click();
+  await openHeroes(page, 'Specializations');
   await page.locator('#hs-new').click();
   await expect(page.locator('#specedit')).toBeVisible();
 
@@ -351,7 +364,7 @@ test('the archive holds her, and nothing of the game\'s', async () => {
 
 test('an installed hero opens for editing, whole', async () => {
   const { page } = ed;
-  if (!(await page.locator('#heroesmod').isVisible())) await page.locator('#heroesbtn').click();
+  await openHeroes(page, 'Heroes');
   // The list is where editing starts: one row per hero, with the two things
   // that can be done to him.
   const row = page.locator('#hm-list .um-item', { hasText: 'Gem' }).first();
@@ -393,7 +406,7 @@ test('an installed hero opens for editing, whole', async () => {
 
 test('a specialization a hero still holds cannot be taken away', async () => {
   const { page } = ed;
-  if (!(await page.locator('#heroesmod').isVisible())) await page.locator('#heroesbtn').click();
+  await openHeroes(page, 'Specializations');
   const row = page.locator('#hs-list .um-item', { hasText: GEM_SPEC.name }).first();
   await expect(row).toBeVisible();
   await row.locator('button', { hasText: '×' }).click();
@@ -408,7 +421,7 @@ test('a specialization a hero still holds cannot be taken away', async () => {
 
 test('removing says what would break, and Cancel means no', async () => {
   const { page } = ed;
-  if (!(await page.locator('#heroesmod').isVisible())) await page.locator('#heroesbtn').click();
+  await openHeroes(page, 'Heroes');
   const row = page.locator('#hm-list .um-item', { hasText: 'Gem' }).first();
   await row.locator('button', { hasText: '×' }).click();
 

@@ -10,6 +10,7 @@ import { ask, modDialog, openOnTop } from '#core/dialog.ts';
 import { api } from '#core/ipc.ts';
 import { artLabels } from '#src/mods/heroes.ts';
 import { pickPreset } from '#features/mods/preset.ts';
+import { drawHeroTabs, registerHeroTab } from '#features/mods/hero-tabs.ts';
 import { modRow, NL } from '#features/mods/shared.ts';
 import { requireFilled } from '#core/form-gate.ts';
 import type { ModListEntry, RosterEntryDTO } from '#electron/ipc.ts';
@@ -347,6 +348,20 @@ let heOwnFiles: Record<string, string> = {};
 
 /** Bind the hero list and form to their markup. */
 export function initHeroesMod(): void {
+  // The window's first tab. Registered here rather than listed in hero-tabs.ts,
+  // so the file that owns heroes is the only one that has to know they exist.
+  registerHeroTab({
+    id: 'heroes',
+    label: 'Heroes',
+    about: 'A hero costs the game nothing global: no id, no ceiling, no patched executable.',
+    pane: 'hm-pane-heroes',
+    onShow: () => {
+      void refreshHeroList().catch((e: unknown) => {
+        $('hm-err').textContent = e instanceof Error ? e.message : String(e);
+      });
+    },
+  });
+
   $('heroesbtn').onclick = () => {
     $('hm-err').textContent = '';
     $('hm-note').textContent = '';
@@ -354,7 +369,10 @@ export function initHeroesMod(): void {
     const report = (e: unknown): void => {
       $('hm-err').textContent = e instanceof Error ? e.message : String(e);
     };
-    void refreshHeroList().catch(report);
+    // The bar refreshes the OPEN tab's list; the form's own selects are filled
+    // whichever tab that is, because the hero form is opened from the list and
+    // from an edit alike.
+    drawHeroTabs();
     heFormReady = fillHeroForm();
     void heFormReady.catch(report);
   };

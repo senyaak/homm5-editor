@@ -7,15 +7,18 @@
 // artifact set's does, and why an effect with no extension installed is a
 // number nobody will ever see.
 //
-// It lives inside the Heroes dialog, beside the list of heroes, exactly as the
-// artifact sets live beside the artifacts: a specialization exists to be given
-// to a hero, and choosing one while its list is off screen is the awkward part.
+// It lives inside the Heroes window, as a tab of its own: a specialization
+// exists to be given to a hero, so it is authored where heroes are. It stood
+// beside the hero list in a second column while those were the only two things
+// the window held; the class and the skill coming next made that a layout that
+// could not grow (features/mods/hero-tabs.ts).
 
 import { $, $input, $select, $button, fillSelect } from '#core/dom.ts';
 import { ask, modDialog, openOnTop } from '#core/dialog.ts';
 import { api } from '#core/ipc.ts';
 import { requireFilled } from '#core/form-gate.ts';
 import { modRow } from '#features/mods/shared.ts';
+import { registerHeroTab } from '#features/mods/hero-tabs.ts';
 import { showExtensionState } from '#features/mods/artifacts.ts';
 import type { ModListEntry } from '#electron/ipc.ts';
 
@@ -162,13 +165,20 @@ async function refreshSpecList(): Promise<void> {
 
 /** Bind the list and the form to their markup. */
 export function initSpecializations(): void {
-  // The Heroes button opens the dialog this list is in, and heroes.ts already
-  // owns its `onclick`. A listener rather than a second assignment: both lists
-  // want refreshing, and neither is the other's business.
-  $('heroesbtn').addEventListener('click', () => {
-    void refreshSpecList().catch((e: unknown) => {
-      $('hm-err').textContent = e instanceof Error ? e.message : String(e);
-    });
+  // A tab of the Heroes window, registered from here — heroes.ts owns the button
+  // that opens it and neither list is the other's business. The list is read
+  // when this tab is opened rather than when the window is, so a window opened
+  // on the heroes never reads the mods for a list nobody is looking at.
+  registerHeroTab({
+    id: 'specializations',
+    label: 'Specializations',
+    about: 'One entry in an enum — and an effect only where the extension has been taught to add one.',
+    pane: 'hm-pane-specs',
+    onShow: () => {
+      void refreshSpecList().catch((e: unknown) => {
+        $('hm-err').textContent = e instanceof Error ? e.message : String(e);
+      });
+    },
   });
   $('hs-new').onclick = newSpec;
   $('specedit-x').onclick = () => modDialog('specedit').close();
