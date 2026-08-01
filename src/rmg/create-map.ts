@@ -17,6 +17,21 @@
 // nothing to do with the code being wrong. Which is why this phase is worth its
 // own file despite deciding two integers.
 //
+// UNVERIFIED, and load-bearing only on the paths no reference run has taken:
+// which template fields the ranges come from. The code reads `[edi+0x78]`,
+// `[edi+0x7c]`, `[edi+0x80]` and `[edi+0x84]`, and this port calls them
+// MinMapSize/MaxMapSize/MinPlayers/MaxPlayers — inferred from the order the
+// fields appear in the XML, not from the structure layout, which has not been
+// recovered yet. Two things say the guess is at least self-consistent: the
+// `MaxPlayers == 1` test at 0xeab537 behaves for a two-player template, and the
+// values are only read when the operator supplied nothing, which none of runs
+// 3-5 did. Confirm before trusting a drawn player count or size.
+//
+// A related thing IS pinned down: the size that reaches the map is an index
+// into a table at 0xff291c — 72, 96, 136, 176, 216, 256, 320 tiles — and the
+// reference map is 96×96, index 1. The template's own 5..14 range therefore is
+// NOT an index into that table, and what it is remains open.
+//
 // The clamp afterwards is copied as written, not as expected:
 //
 //     if (size > MaxMapSize || size < MinMapSize) size = MinMapSize

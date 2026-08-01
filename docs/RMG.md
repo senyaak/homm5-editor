@@ -348,8 +348,35 @@ poison the one counter currently worth trusting.
 
 **And the races are not here.** The prediction from run 4 was wrong: `CreateMap`
 decides players and size only. Whatever draws Inferno-and-Academy against
-Fortress-and-Dungeon happens later — `LoadTemplate` (6 draws) is the next
-suspect.
+Fortress-and-Dungeon happens later.
+
+#### Map sizes, pinned down
+
+The size that reaches the map is an index into a table at `0xff291c`:
+
+| index | 0 | 1 | 2 | 3 | 4 | 5 | 6 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| tiles | 72 | **96** | 136 | 176 | 216 | 256 | 320 |
+
+The reference map is 96×96, so index 1 — and the map is always square, both
+dimensions read the same entry. Past index 6 the table is other data.
+
+#### What is a guess, and marked as one
+
+Which template fields the ranges come from. The phase reads `[edi+0x78]`
+through `[edi+0x84]`, and this port calls them
+MinMapSize/MaxMapSize/MinPlayers/MaxPlayers — **inferred from the order the
+fields appear in the XML**, not recovered from the structure layout. The field
+names do live in the executable (`0xfbda5c` onwards), but they are pushed by
+generated reader code, so the offsets are not simply next to them; getting them
+out needs the writes that follow each read, not the `lea`s around them.
+
+It costs nothing today: those values are read only when the operator supplied
+neither players nor size, and runs 3-5 all supplied both. It costs everything
+the first time a map is generated without them. Confirm before that.
+
+Note also that the template's own 5..14 size range is **not** an index into the
+table above — 96 tiles is index 1. What that range measures is open.
 
 ## Tools
 
