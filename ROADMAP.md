@@ -623,9 +623,11 @@ Format (surveyed 2026-07-23, 250 scenes shipped under `DialogScenes/`):
 - [ ] ⬜ Scene editor: actors and props placed by clicking, the camera captured
       from the current view, move paths drawn on the ground (the region tool's
       gesture), lines and durations in a timeline
-- [ ] ⬜ **Player** — play the scene inside the app: camera interpolation,
-      moves, animations, the line timings. The point of the animation work
-      above; until then the editor can only be verified by launching the game
+- [x] ✅ **Player** — the scene plays inside the app: `view.openScene()` builds
+      it through the same `buildWorld` a map goes through, the actors are
+      skinned bodies with their arena clips, and a shot drives the camera
+      (`e2e/dialog-scene.spec.ts`). Still to come: the line timings from the
+      voice files, walks along `MovePoints`, and effects in shot
 - [ ] ⬜ **Shipped scenes as the proving ground** (Сеня, 2026-07-27): open a
       scene a campaign actually plays — Isabell's first mission — inside the
       editor, watch it, edit it, watch again. The 250 scenes under

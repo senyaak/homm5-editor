@@ -29,6 +29,8 @@ import { materialFor, partTexture } from '#viewport/materials.ts';
 import { terrainColor, asTileSpace, terrainGeometry, waterCells, waterGeometry, makeWaterMesh, WATER_ORDER, remeshFloor, sea } from '#viewport/terrain-mesh.ts';
 import { refreshBlocked, refreshFootprints, syncFootprints, setShowBlocked, showBlocked } from '#viewport/overlays.ts';
 import { advanceIdle, clearIdle, removeIdle, addIdle, idleMode, setIdleMode } from '#viewport/idle.ts';
+import { advanceScene, closeScene, openScene, playing, setPlaying, show } from '#features/dialog-scene.ts';
+import type { SceneInfo } from '#electron/ipc.ts';
 import { roster, objectsOfClass, canCreateClass, mapNames, forgetClass } from '#core/rosters.ts';
 import { openRecolor, initRecolor } from '#features/mods/recolor.ts';
 import { pickPreset, initPresetPicker } from '#features/mods/preset.ts';
@@ -340,6 +342,22 @@ interface ViewApi {
   /** Cells per side of the river plane, or 0 when no map is open. */
   cells(): number;
   /** The active floor's live heights and ground kinds — what the app believes. */
+  /**
+   * Open a dialog scene in this viewport, by its folder
+   * (`DialogScenes/C1/M1/D1`). The map tools stay where they are; the scene
+   * takes the camera until closeScene().
+   */
+  openScene(inner: string): Promise<SceneInfo>;
+  closeScene(): void;
+  /** Show one shot, optionally partway into it (seconds). */
+  showShot(index: number, at?: number): void;
+  /** Run the scene from where it stands, or stop it. */
+  playScene(on: boolean): void;
+  /** What is on screen: the scene, which shot, and what each actor is playing. */
+  scene(): (SceneInfo & {
+    shot: number; at: number; running: boolean;
+    actors: Array<{ href: string; kind: string }>;
+  }) | null;
   heights(): number[];
   kinds(): number[];
   /**
@@ -592,6 +610,22 @@ const view: ViewApi = {
   opened() { return session.openedMap; },
   open(path) { return loadMapPath(path); },
   editText(href) { return openTextEdit(href, href); },
+  // --- dialog scenes --------------------------------------------------------
+  // A scene is played in this same viewport, so the handful of calls that drive
+  // one ride on the same test surface as the rest of the view.
+  openScene(inner) { return openScene(inner); },
+  closeScene() { closeScene(); },
+  showShot(index, at) { show(index, at ?? 0); },
+  playScene(on) { setPlaying(on); },
+  scene() {
+    return playing.info ? {
+      ...playing.info,
+      shot: playing.shot,
+      at: playing.at,
+      running: playing.running,
+      actors: playing.players.map((p) => ({ href: p.actor.href, kind: p.kind })),
+    } : null;
+  },
   heights() { return state.world ? Array.from(activeFloor().heights) : []; },
   kinds() { return state.world && activeFloor().flags ? Array.from(activeFloor().flags!) : []; },
   size() { return state.world ? activeFloor().V - 1 : 0; },
@@ -780,6 +814,9 @@ function bakePendingLights(now: number): void {
   controls.update();
   if (cam.top) syncTopCamera(); // follow pan/zoom + the orbit target each frame
   advanceIdle(dt);
+  // A scene drives the camera and its actors' clips; does nothing while the
+  // window is showing a map.
+  advanceScene(dt);
   advanceFx(dt);
   bakePendingLights(now);
   renderer.render(scene, cam.active);

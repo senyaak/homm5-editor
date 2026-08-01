@@ -15,6 +15,7 @@ export type { ObjectProp } from '../src/map/map.ts';
 export type { CreatureStats } from '../src/mods/creatures.ts';
 export type { PaletteEntry, RecolorOps } from '../src/format/recolor.ts';
 import type { PlaceableObject } from '../src/map/objects.ts';
+import type { ActorView, ShotView } from '../src/dialog/play.ts';
 export type { PlaceableObject } from '../src/map/objects.ts';
 
 /**
@@ -116,6 +117,38 @@ export interface NewMapResult {
 }
 
 /** Result of `map:load`. */
+/** Which scene to open — its folder, data-root relative, as the game addresses it. */
+export interface SceneOpenPayload {
+  /** e.g. `DialogScenes/C1/M1/D1`. */
+  inner: string;
+}
+
+/** What a scene is, for the window that plays it. */
+export interface SceneInfo {
+  inner: string;
+  name: string;
+  /** The map the scene uses as scenery. */
+  stage: string;
+  shots: number;
+  placed: number;
+  skipped: number;
+}
+
+/**
+ * A scene, ready to play.
+ *
+ * `stage` is an ordinary scene payload, so the viewport draws it with the same
+ * `buildWorld` a map goes through — the actors are NOT in it (their still
+ * copies are taken out), because they are drawn from their own rigs and those
+ * carry more than one clip.
+ */
+export interface SceneOpenResult {
+  stage: Scene;
+  shots: ShotView[];
+  actors: ActorView[];
+  info: SceneInfo;
+}
+
 export interface MapLoadResult {
   scene: Scene;
   info: MapInfo;
@@ -1275,6 +1308,8 @@ export interface EditorApi {
   /** `stock` takes ONE map out of the game's own archives, which hold many. */
   openArchive(path: string, inner?: string, stock?: boolean): Promise<OpenArchiveResult>;
   loadMap(path: string): Promise<MapLoadResult>;
+  /** Open a dialog scene by its folder — see SceneOpenResult. */
+  openScene(p: SceneOpenPayload): Promise<SceneOpenResult>;
   /**
    * Put the open map down: the file watcher stops and the session goes.
    *

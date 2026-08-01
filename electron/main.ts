@@ -34,6 +34,7 @@ import { registerModTextures } from '#electron/channels/mods-textures.ts';
 import { registerObjects } from '#electron/channels/objects.ts';
 import { registerSave } from '#electron/channels/save.ts';
 import { registerScene } from '#electron/channels/scene.ts';
+import { registerDialogScenes } from '#electron/channels/dialog-scenes.ts';
 import { registerTerrain } from '#electron/channels/terrain.ts';
 import { registerText } from '#electron/channels/text.ts';
 import { registerTree } from '#electron/channels/tree.ts';
@@ -137,6 +138,7 @@ function createWindow(): void {
 registerApp();
 registerMaps();
 registerScene();
+registerDialogScenes();
 registerObjects();
 registerEntities();
 registerTree();

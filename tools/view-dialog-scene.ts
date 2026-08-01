@@ -162,8 +162,7 @@ const rigged=ACTORS.map(a=>{
   g.skin.bones.forEach((x,i)=>{(x.parent>=0?bones[x.parent]:mesh).add(bones[i]);});
   mesh.bind(new THREE.Skeleton(bones,g.skin.bind.map(m=>new THREE.Matrix4().fromArray(m))),new THREE.Matrix4());
   mesh.frustumCulled=false;
-  const still=groundAt.get(a.x+','+a.y);
-  mesh.position.set((a.x+0.5)*2,(a.y+0.5)*2,still?still.z:0);
+  mesh.position.set((a.x+0.5)*2,(a.y+0.5)*2,a.z);
   mesh.rotation.z=a.rot;
   mesh.scale.setScalar(g.scale||1);
   world.add(mesh);

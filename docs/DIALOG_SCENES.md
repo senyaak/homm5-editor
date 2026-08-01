@@ -217,6 +217,15 @@ going quietly green.
 * `src/dialog/actors.ts` — an actor's ARENA rig: the character's own mesh and
   only the clips this scene names on it, baked. The adventure path is untouched
   (`src/scene/skin.ts` still reads idle and only idle).
+* `src/dialog/play.ts` — the one assembly: documents in, a stage payload, the
+  shots' camera moves and the rigged actors out. The window and the standalone
+  page both call it, so they cannot drift.
+* `electron/channels/dialog-scenes.ts` + `renderer/features/dialog-scene.ts` —
+  the scene in the editor's own viewport. The stage goes through `buildWorld`,
+  the same call a map goes through; the actors through `makeIdle`/`poseIdle`,
+  the same skinning the map's idles use; the shot drives the camera while the
+  orbit controls stand down. Driven by `view.openScene / showShot / playScene`,
+  covered by `e2e/dialog-scene.spec.ts`.
 * `tools/view-dialog-scene.ts` — a self-contained page that plays the scene
   through its own cameras, arrow keys to step the shots. This is how the camera
   convention was confirmed by eye, and how a scene is looked at before the

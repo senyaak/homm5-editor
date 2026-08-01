@@ -51,6 +51,14 @@ export interface ActorView extends ActorRig {
   /** Tile position, as the file stores it. */
   x: number;
   y: number;
+  /**
+   * World height to stand at.
+   *
+   * NOT from the file: an actor's stored z is 0, and the ground under their
+   * tile is what the stage build worked out for the still copy of them. Placed
+   * at the stored value they stand buried to the waist.
+   */
+  z: number;
   /** Facing, radians about Z. */
   rot: number;
 }
@@ -106,11 +114,24 @@ export function buildScenePlay(data: Assets, scenePath: string, options: PlayOpt
     ...(options.texSize ? { texSize: options.texSize } : {}),
   });
 
+  // An actor is on the stage twice at this point: the scene builder placed
+  // their ADVENTURE model along with the props, and the rig below is the arena
+  // one that can act. Only the second is wanted, so the still copy is taken out
+  // of the payload here rather than left for each consumer to hide — its
+  // height, which the builder worked out and the file does not carry, is kept.
   const rigs = actorRigs(data, scene, objects, options.fps ? { fps: options.fps } : {});
   const actors: ActorView[] = rigs.map((rig) => {
     const placed = objects.find((o) => o.href === rig.href)?.object;
     const pos = placed?.pos ?? { x: 0, y: 0, z: 0 };
-    return { ...rig, x: pos.x, y: pos.y, rot: placed?.rot ?? 0 };
+    let z = 0;
+    for (const floor of built.scene.floors) {
+      const at = floor.instances.findIndex((i) => i.x === pos.x && i.y === pos.y);
+      if (at < 0) continue;
+      z = floor.instances[at]!.z;
+      floor.instances.splice(at, 1);
+      break;
+    }
+    return { ...rig, x: pos.x, y: pos.y, z, rot: placed?.rot ?? 0 };
   });
 
   // A cue names its actor either by the same href the sentence used or by the
