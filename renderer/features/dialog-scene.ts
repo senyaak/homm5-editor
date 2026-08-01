@@ -16,7 +16,7 @@ import { $, $button, $input } from '#core/dom.ts';
 import { buildWorld } from '#viewport/world.ts';
 import { makeIdle, poseIdle } from '#viewport/skinning.ts';
 import type { IdleObject } from '#viewport/skinning.ts';
-import { camera, controls, scene as stage } from '#viewport/stage.ts';
+import { camera, controls, fitViewport, renderer, scene as stage } from '#viewport/stage.ts';
 import { UNITS_PER_TILE as U } from '#src/scene/units.ts';
 
 /** One actor on stage: their skinned body and the clips this scene can play. */
@@ -76,7 +76,14 @@ function clearActors(): void {
   playing.players = [];
 }
 
-/** Open a scene by its folder, e.g. `DialogScenes/C1/M1/D1`. */
+/**
+ * Open a scene by its folder, e.g. `DialogScenes/C1/M1/D1`.
+ *
+ * The stage REPLACES whatever world is on the GPU — it goes through the same
+ * `buildWorld` a map does, and there is one world. That is why the way in is a
+ * launcher button (hidden while a map is open) rather than something reachable
+ * mid-edit: a scene is watched instead of a map, not on top of one.
+ */
 export async function openScene(inner: string): Promise<SceneInfo> {
   const { stage: payload, shots, actors, info } = await api.openScene({ inner });
   clearActors();
@@ -174,17 +181,36 @@ export function setPlaying(on: boolean): void {
   playing.running = on && !!playing.info;
 }
 
-// --- the panel ---------------------------------------------------------------
+// --- the window --------------------------------------------------------------
 //
-// A scene IS its list of shots, so the panel is that list: one row per line of
-// dialogue, the current one lit, and clicking a row puts its camera on screen.
-// Everything else is two buttons, because everything else a scene needs — the
-// stage, the actors, the camera — is already on screen behind it.
+// A scene gets a window of its own rather than a panel over the launcher: it is
+// not a tool for the thing behind it, it is a film. There is only one WebGL
+// context in the app, so the viewport MOVES into the dialog while it is open
+// and goes back to the page when it closes — the scene is drawn by the same
+// renderer, the same world, the same skinning as a map.
+//
+// Inside it, the scene IS its list of shots: a row per line of dialogue, the
+// current one lit, clicking one puts its camera on screen.
 
-/** Show or hide the panel. */
-export function setScenePanel(on: boolean): void {
-  $('scenes').style.display = on ? 'flex' : 'none';
-  $button('scenesbtn').classList.toggle('on', on);
+/** Where the canvas lives when no scene is open. */
+const pageHost = (): HTMLElement => $('app');
+
+let watchSize: ResizeObserver | null = null;
+
+/** Move the viewport into the dialog (or back), and fit it to its new box. */
+function hostViewport(inDialog: boolean): void {
+  const host = inDialog ? $('sc-view') : pageHost();
+  if (renderer.domElement.parentElement !== host) host.append(renderer.domElement);
+  watchSize?.disconnect();
+  watchSize = null;
+  if (inDialog) {
+    // The dialog is sized in vw/vh, so the host changes with the window and
+    // with nothing else — but it also has no size at all until it is shown,
+    // which is why this observes rather than measures once.
+    watchSize = new ResizeObserver(() => fitViewport());
+    watchSize.observe(host);
+  }
+  fitViewport();
 }
 
 /** Redraw the shot list and the footer for whatever is open. */
@@ -202,8 +228,8 @@ function renderPanel(): void {
       const row = document.createElement('div');
       row.className = 'shot';
       // The speaker's file name is the only readable name a shot has until the
-      // line's own text is loaded — the text is a reference to a .txt beside
-      // the scene, and reading 73 of them to fill a list is not worth a frame.
+      // line itself is read — the text is a reference to a .txt beside the
+      // scene, and reading 73 of them to fill a list is not worth a frame.
       const who = (shot.speaker.split('#')[0] ?? '').split('/').pop() || '(nobody)';
       row.innerHTML = `<span class="n">${shot.index + 1}</span>`
         + `<span class="who">${who.replace(/\.xdb$/, '')}</span>`
@@ -221,10 +247,34 @@ function renderPanel(): void {
   $button('sc-play').classList.toggle('on', playing.running);
 }
 
-/** Wire the panel. Called once from app boot, like every other feature. */
+/** Open the scene window. */
+export function openSceneWindow(): void {
+  const dlg = $('scene') as HTMLDialogElement;
+  if (dlg.open) return;
+  dlg.showModal();
+  hostViewport(true);
+  renderPanel();
+}
+
+/** Close it: the scene goes down and the viewport goes back to the page. */
+export function closeSceneWindow(): void {
+  const dlg = $('scene') as HTMLDialogElement;
+  closeScene();
+  renderPanel();
+  hostViewport(false);
+  if (dlg.open) dlg.close();
+}
+
+/** Wire the window. Called once from app boot, like every other feature. */
 export function initDialogScenes(): void {
-  $button('scenesbtn').onclick = () => { setScenePanel($('scenes').style.display === 'none'); };
-  $button('sc-close').onclick = () => { closeScene(); renderPanel(); setScenePanel(false); };
+  const dlg = $('scene') as HTMLDialogElement;
+  $button('scenesbtn').onclick = () => openSceneWindow();
+  $button('sc-close').onclick = () => closeSceneWindow();
+  // Esc closes a native dialog on its own; the scene has to come down with it.
+  dlg.addEventListener('close', () => {
+    if (playing.info) { closeScene(); renderPanel(); }
+    hostViewport(false);
+  });
   $button('sc-load').onclick = async () => {
     const path = $input('sc-path').value.trim();
     if (!path) return;

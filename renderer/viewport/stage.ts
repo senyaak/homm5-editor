@@ -143,11 +143,25 @@ export function keyPan(dt: number): void {
   controls.target.add(panVec);
 }
 
-addEventListener('resize', () => {
-  camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth, innerHeight);
+/**
+ * Fit the drawing surface to whatever the canvas is sitting in.
+ *
+ * Usually that is the window, and this is the resize handler. It is not always:
+ * the scene player moves this same canvas into its dialog, and there the size
+ * that matters is the box it was moved into — measuring the window instead
+ * draws a full-screen picture into a smaller hole and crops it.
+ */
+export function fitViewport(): void {
+  const host = renderer.domElement.parentElement;
+  const w = host && host.id !== 'app' ? host.clientWidth : innerWidth;
+  const h = host && host.id !== 'app' ? host.clientHeight : innerHeight;
+  if (w < 1 || h < 1) return;
+  camera.aspect = w / h; camera.updateProjectionMatrix();
+  renderer.setSize(w, h, host?.id === 'app');
   syncTopCamera(); // keep the plan-view frustum matched to the new aspect
-});
+}
+
+addEventListener('resize', fitViewport);
 
 /** What the raycaster and the pointer handlers share. */
 export const raycaster = new THREE.Raycaster();

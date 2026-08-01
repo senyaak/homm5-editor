@@ -1,0 +1,21 @@
+  <!-- Dialog scenes — the campaigns' cutscenes, watched in a window of their
+       own. The editor's viewport moves in here while it is open (there is one
+       WebGL context, and a scene is drawn by the same one a map is), and goes
+       back where it came from on close. -->
+  <dialog id="scene">
+    <div class="mp-card sc-card">
+      <div class="mp-head">
+        <span class="mp-title">Scene</span>
+        <input id="sc-path" type="text" spellcheck="false" autocomplete="off"
+               value="DialogScenes/C1/M1/D1" title="the scene's folder, as the game addresses it">
+        <button id="sc-load">Open</button>
+        <button id="sc-play" title="play from the current shot">▶ Play</button>
+        <button id="sc-close" title="close (Esc)">✕</button>
+      </div>
+      <div class="mp-body sc-body">
+        <div id="sc-view" class="sc-view"></div>
+        <div id="sc-list" class="sc-list"></div>
+      </div>
+      <div class="de-foot"><div id="sc-info">no scene open</div></div>
+    </div>
+  </dialog>

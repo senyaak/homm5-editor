@@ -29,6 +29,9 @@ test('the editor opens a campaign scene and plays it', async () => {
   const { page } = ed;
   test.setTimeout(180_000); // first open unpacks the scene and the camera library
 
+  // The window first — it is where a scene is watched, and the viewport moves
+  // into it. Opening one without it works too; the button is the way in.
+  await page.evaluate(() => (document.getElementById('scenesbtn') as HTMLButtonElement).click());
   const info = await page.evaluate((s) => window.view.openScene(s), SCENE);
   expect(info.shots).toBe(73);
   expect(info.stage).toContain('SmallSpecialArena_Grass');
@@ -55,18 +58,25 @@ test('the editor opens a campaign scene and plays it', async () => {
   await page.waitForFunction(() => (window.view.scene()?.at ?? 0) > 0.1, null, { timeout: 10_000 });
   await page.evaluate(() => window.view.playScene(false));
 
-  // The panel is the scene: a row per shot, the current one lit.
+  // The window is the scene: a row per shot, the current one lit, and the
+  // viewport moved inside it — there is one canvas in the app and the scene is
+  // drawn by it, so it has to be in the dialog while the dialog is up.
   const panel = await page.evaluate(() => {
-    (document.getElementById('scenesbtn') as HTMLButtonElement).click();
     const list = document.getElementById('sc-list')!;
+    const view = document.getElementById('sc-view')!;
+    const canvas = document.querySelector('canvas')!;
     return {
-      open: getComputedStyle(document.getElementById('scenes')!).display,
+      open: (document.getElementById('scene') as HTMLDialogElement).open,
+      hosted: view.contains(canvas),
+      drawn: [canvas.clientWidth > 200, canvas.clientHeight > 200],
       rows: list.childElementCount,
       lit: [...list.children].findIndex((r) => r.classList.contains('on')),
       info: document.getElementById('sc-info')!.textContent ?? '',
     };
   });
-  expect(panel.open).toBe('flex');
+  expect(panel.open).toBe(true);
+  expect(panel.hosted).toBe(true);
+  expect(panel.drawn).toEqual([true, true]);
   expect(panel.rows).toBe(73);
   expect(panel.lit).toBe(62);
   expect(panel.info).toContain('73 shots');
@@ -78,7 +88,16 @@ test('the editor opens a campaign scene and plays it', async () => {
   });
   expect(picked).toBe(7);
 
-  // And putting it down gives the map tools their camera back.
-  await page.evaluate(() => (document.getElementById('sc-close') as HTMLButtonElement).click());
-  expect(await page.evaluate(() => window.view.scene())).toBeNull();
+  // Closing puts the viewport back on the page and the scene down.
+  const after = await page.evaluate(() => {
+    (document.getElementById('sc-close') as HTMLButtonElement).click();
+    return {
+      scene: window.view.scene(),
+      open: (document.getElementById('scene') as HTMLDialogElement).open,
+      backOnPage: document.getElementById('app')!.contains(document.querySelector('canvas')!),
+    };
+  });
+  expect(after.scene).toBeNull();
+  expect(after.open).toBe(false);
+  expect(after.backOnPage).toBe(true);
 });

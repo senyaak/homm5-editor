@@ -221,7 +221,9 @@ going quietly green.
   shots' camera moves and the rigged actors out. The window and the standalone
   page both call it, so they cannot drift.
 * `electron/channels/dialog-scenes.ts` + `renderer/features/dialog-scene.ts` —
-  the scene in the editor's own viewport. The stage goes through `buildWorld`,
+  the scene in the editor's own viewport, in a window of its own: the one
+  canvas the app has moves into the dialog while it is open and goes back to
+  the page on close. The stage goes through `buildWorld`,
   the same call a map goes through; the actors through `makeIdle`/`poseIdle`,
   the same skinning the map's idles use; the shot drives the camera while the
   orbit controls stand down. Driven by `view.openScene / showShot / playScene`,
