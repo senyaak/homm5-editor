@@ -179,7 +179,10 @@ typedef struct {
 
 typedef void *(__fastcall *LuaFn)(void *ctx);
 
+/** The jump we write. The head we DISPLACE can be longer — see `detour`. */
 #define DETOUR_LEN 5
+/** As much of a head as a trampoline has room for, jump home included. */
+#define MAX_HEAD_LEN 16
 #define MAX_ROWS 64
 /** Members of one set. The game's longest is eight (the Dragonish). */
 #define MAX_MEMBERS 12
@@ -491,9 +494,14 @@ static void load_config(void) {
 // as every flag off — so an install that never opened the panel behaves exactly
 // as it did before, which is the whole promise of a quality of life mod.
 
-typedef enum { QOL_BORDERLESS = 0, QOL_OWN_PROFILE = 1, QOL_COUNT = 2 } QolFlag;
+typedef enum {
+  QOL_BORDERLESS = 0,
+  QOL_OWN_PROFILE = 1,
+  QOL_QUICK_SPLIT = 2,
+  QOL_COUNT = 3
+} QolFlag;
 
-static const char *const QOL_NAMES[QOL_COUNT] = { "borderless", "own-profile" };
+static const char *const QOL_NAMES[QOL_COUNT] = { "borderless", "own-profile", "quick-split" };
 
 static int g_qol[QOL_COUNT];
 
@@ -729,19 +737,43 @@ static int __fastcall raise_cost_hook(void *hero, void *what) {
 // Installing it.
 
 /**
- * Overwrite the first five bytes with a jump to us, and keep a trampoline that
- * runs those bytes and jumps back.
+ * Overwrite the head of a function with a jump to us, and keep a trampoline
+ * that runs the bytes we displaced and jumps back.
  *
- * The five are a whole number of instructions in this build, which is checked
- * before anything is written: a detour that splits an instruction corrupts the
- * function rather than replacing it, and the crash lands somewhere else
- * entirely.
+ * `headLen` is how many bytes the trampoline takes, and it must be a WHOLE
+ * number of instructions — five is only the size of the jump. A detour that
+ * splits an instruction corrupts the function rather than replacing it, and the
+ * crash lands somewhere else entirely, so the caller counts the boundary out of
+ * a disassembly and the bytes are compared before anything is written.
+ *
+ * Only relocatable heads: nothing displaced may be a `call`/`jmp rel32`, whose
+ * meaning is its distance from where it sits.
  */
-static void *detour(DWORD rva, const BYTE *head, void *hook, const char *what) {
+static void *detour_relocated(DWORD rva, const BYTE *head, const BYTE *skip, int headLen,
+                              void *hook, const char *what);
+
+/** A detour where every byte of the head is the compiler's, not the loader's. */
+static void *detour(DWORD rva, const BYTE *head, int headLen, void *hook, const char *what) {
+  return detour_relocated(rva, head, NULL, headLen, hook, what);
+}
+
+/**
+ * As `detour`, but with the bytes that the LOADER may have rewritten skipped.
+ *
+ * An instruction naming an absolute address carries that address in its
+ * operand, and relocation rewrites the operand wherever the image did not get
+ * its preferred base. Those bytes are still copied to the trampoline — the copy
+ * takes what is actually there — but comparing them against what the
+ * disassembly said would refuse a function that is perfectly correct. `skip`
+ * marks them: non-zero means "this byte is the loader's business, not ours".
+ */
+static void *detour_relocated(DWORD rva, const BYTE *head, const BYTE *skip, int headLen,
+                              void *hook, const char *what) {
   // The RVA, added to wherever the loader actually put the image — the game's
   // preferred base is 0x400000 but nothing guarantees it got that one.
   BYTE *target = (BYTE *)GetModuleHandleW(NULL) + rva;
-  for (int i = 0; i < DETOUR_LEN; i++) {
+  for (int i = 0; i < headLen; i++) {
+    if (skip && skip[i]) continue;
     if (target[i] != head[i]) {
       char msg[96];
       int n = 0;
@@ -755,22 +787,29 @@ static void *detour(DWORD rva, const BYTE *head, void *hook, const char *what) {
     }
   }
 
+  if (headLen < DETOUR_LEN || headLen > MAX_HEAD_LEN) {
+    log_line("the head to displace is not a length we can take - not hooking");
+    return NULL;
+  }
+
   BYTE *tramp = (BYTE *)VirtualAlloc(NULL, 32, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
   if (!tramp) { log_line("no memory for the trampoline"); return NULL; }
-  for (int i = 0; i < DETOUR_LEN; i++) tramp[i] = target[i];
-  tramp[DETOUR_LEN] = 0xE9;
-  *(DWORD *)(tramp + DETOUR_LEN + 1) =
-      (DWORD)(target + DETOUR_LEN) - (DWORD)(tramp + DETOUR_LEN + 5);
+  for (int i = 0; i < headLen; i++) tramp[i] = target[i];
+  tramp[headLen] = 0xE9;
+  *(DWORD *)(tramp + headLen + 1) = (DWORD)(target + headLen) - (DWORD)(tramp + headLen + 5);
 
   DWORD old = 0;
-  if (!VirtualProtect(target, DETOUR_LEN, PAGE_EXECUTE_READWRITE, &old)) {
+  if (!VirtualProtect(target, headLen, PAGE_EXECUTE_READWRITE, &old)) {
     log_line("could not make the code writable");
     return NULL;
   }
   target[0] = 0xE9;
-  *(DWORD *)(target + 1) = (DWORD)hook - ((DWORD)target + 5);
-  VirtualProtect(target, DETOUR_LEN, old, &old);
-  FlushInstructionCache(GetCurrentProcess(), target, DETOUR_LEN);
+  *(DWORD *)(target + 1) = (DWORD)hook - ((DWORD)target + DETOUR_LEN);
+  // What is left of the head is never reached — the jump leaves before it — but
+  // a patched image that disassembles cleanly is worth five bytes of nothing.
+  for (int i = DETOUR_LEN; i < headLen; i++) target[i] = 0x90;
+  VirtualProtect(target, headLen, old, &old);
+  FlushInstructionCache(GetCurrentProcess(), target, headLen);
   return tramp;
 }
 
@@ -842,11 +881,11 @@ static int __fastcall energy_getter_hook(void *player) {
 
 /** The dark energy ceiling: two detours and one replaced slot. */
 static int install_energy(void) {
-  g_originalRefill = (PlayerFn)detour(REFILL_ENERGY_RVA, REFILL_ENERGY_HEAD, &refill_energy_hook, "energy refill");
+  g_originalRefill = (PlayerFn)detour(REFILL_ENERGY_RVA, REFILL_ENERGY_HEAD, 5, &refill_energy_hook, "energy refill");
   if (!g_originalRefill) return 0;
   // Without this one the engine takes back what the refill gave, the next time
   // anything makes it recompute — so it is not optional.
-  g_originalRecalc = (PlayerFn)detour(RECALC_ENERGY_RVA, RECALC_ENERGY_HEAD, &recalc_energy_hook, "energy recalc");
+  g_originalRecalc = (PlayerFn)detour(RECALC_ENERGY_RVA, RECALC_ENERGY_HEAD, 5, &recalc_energy_hook, "energy recalc");
   if (!g_originalRecalc) return 0;
   // The bar. A failure here leaves the pool right and the number under it
   // short, which is worth saying out loud but not worth refusing to run for.
@@ -982,11 +1021,11 @@ static int install_lua_functions(void) {
 
 /** The necromancy percentage: one detour, plus the cost we only watch. */
 static int install_necromancy(void) {
-  g_original = (RaiseFn)detour(RAISE_PERCENT_RVA, RAISE_PERCENT_HEAD, &raise_percent_hook, "raise percent");
+  g_original = (RaiseFn)detour(RAISE_PERCENT_RVA, RAISE_PERCENT_HEAD, 5, &raise_percent_hook, "raise percent");
   if (!g_original) return 0;
   // Watching only, and a failure here is not fatal: the percentage is the part
   // that has to work.
-  g_originalCost = (CostFn)detour(RAISE_COST_RVA, RAISE_COST_HEAD, &raise_cost_hook, "raise cost");
+  g_originalCost = (CostFn)detour(RAISE_COST_RVA, RAISE_COST_HEAD, 5, &raise_cost_hook, "raise cost");
   return 1;
 }
 
@@ -1116,7 +1155,7 @@ static void __fastcall tent_amount_hook(int *amount, int *second, void *unit, in
 }
 
 static void install_tent_term(void) {
-  g_tentAmount = (TentAmountFn)detour(TENT_AMOUNT_RVA, TENT_AMOUNT_HEAD,
+  g_tentAmount = (TentAmountFn)detour(TENT_AMOUNT_RVA, TENT_AMOUNT_HEAD, 5,
                                       &tent_amount_hook, "first aid tent");
   if (g_tentAmount) log_line("first aid tent hook installed");
 }
@@ -1531,6 +1570,117 @@ static void install_own_profile(HINSTANCE self) {
   if (g_shGetFolderPath) log_text("own profile: our user folder is ", g_userDir);
 }
 
+// ---------------------------------------------------------------------------
+// Quick split — a held key and a click, instead of the slider.
+//
+// The slider window is left exactly as it was. What this is about is the CLICK:
+// a key held while a stack is clicked should move creatures out of it there and
+// then, without a window and without a second click at a target.
+//
+// WHERE A CLICK IS. Dragging in this UI is a three-state machine — Ready,
+// Prepare, Drag. Pressing over a stack leaves Ready and remembers what was
+// under the cursor; Prepare then becomes Drag either because the mouse moved or
+// because the button was RELEASED, and both arrive at the same function. That
+// is why a plain click already picks a stack up in this game, and it is why one
+// hook there catches a click and a drag alike.
+//
+// WHAT THE CLICK HAS IN ITS HANDS is the question this build asks and does not
+// yet answer. The state points at the drag helper, and the helper at a
+// descriptor holding the client screen, an id for what was picked, and the
+// object that maps positions to elements. Which of those names a SLOT of an
+// army — and how another slot of the same army is named — is a claim about a
+// running game, so it is logged rather than guessed at, the same way the third
+// window, `CW_USEDEFAULT` and the re-applied style were settled.
+//
+// So with this on, the game plays exactly as it did; a modifier and a click
+// write a paragraph to the log. See docs/QOL.md.
+
+/** `CDNDStatePrepare::OnPick` — reached by a move and by a release alike. */
+#define DND_PICK_RVA 0x3d1b10u
+#define DND_PICK_HEAD_LEN 7
+static const BYTE DND_PICK_HEAD[DND_PICK_HEAD_LEN] = {
+  0x56, 0x57, 0x8B, 0xF9, 0x8B, 0x77, 0x0C
+};
+
+/** The helper the state works through, the widget it picked, and its name. */
+#define DND_STATE_HELPER 0x0Cu
+#define DND_HELPER_PICKED 0x1Cu
+#define DND_HELPER_WIDGET 0x0Cu
+#define WIDGET_NAME 0x78u
+
+typedef int(__fastcall *DndPickFn)(void *state, void *edx, void *arg);
+typedef SHORT(WINAPI *KeyStateFn)(int);
+
+static DndPickFn g_dndPick = NULL;
+static KeyStateFn g_keyState = NULL;
+static int g_clicksLogged = 0;
+
+/** Is this key down NOW — at the click, which is when the answer is wanted. */
+static int held(int vk) { return g_keyState && (g_keyState(vk) & 0x8000) != 0; }
+
+/** How much of what `p` points at may be read — its committed pages, capped. */
+static DWORD readable(void *p, DWORD want) {
+  MEMORY_BASIC_INFORMATION region;
+  if (!p || (DWORD)p < 0x10000) return 0;
+  if (VirtualQuery(p, &region, sizeof(region)) != sizeof(region)) return 0;
+  if (region.State != MEM_COMMIT) return 0;
+  if (region.Protect & (PAGE_NOACCESS | PAGE_GUARD)) return 0;
+  DWORD left = (DWORD)((BYTE *)region.BaseAddress + region.RegionSize - (BYTE *)p);
+  return left < want ? left : want;
+}
+
+/** The engine's own test that one of these pointers still points. */
+static int pointer_alive(void *p) {
+  if (readable(p, 8) < 8) return 0;
+  BYTE *block = *(BYTE **)((BYTE *)p + 4);
+  if (readable(block, 8) < 8) return 0;
+  DWORD at = *(DWORD *)(block + 4);
+  if (readable((BYTE *)p + at, 12) < 12) return 0;
+  return *(int *)((BYTE *)p + at + 8) >= 0;
+}
+
+static int __fastcall dnd_pick_hook(void *state, void *edx, void *arg) {
+  (void)edx;
+  int ctrl = held(VK_CONTROL);
+  int shift = held(VK_SHIFT);
+  int alt = held(VK_MENU);
+
+  if ((ctrl || shift || alt) && g_clicksLogged < 20) {
+    g_clicksLogged++;
+    void *helper = *(void **)((BYTE *)state + DND_STATE_HELPER);
+    helper = (readable(helper, DND_HELPER_PICKED + 4) >= DND_HELPER_PICKED + 4)
+      ? *(void **)((BYTE *)helper + DND_HELPER_PICKED) : NULL;
+    log_line("click: with a key held");
+    log_num("       ctrl ", ctrl);
+    log_num("       shift ", shift);
+    log_num("       alt ", alt);
+    if (helper && pointer_alive(helper)) {
+      void *widget = *(void **)((BYTE *)helper + DND_HELPER_WIDGET);
+      // A slot says which slot it is by what it is CALLED: the screens name
+      // these `Slot_1` upwards, and the executable keeps that very list of
+      // names to look the widgets up by. So the name is both the number of
+      // the slot clicked and the way to reach a different one.
+      const char *name = (readable(widget, WIDGET_NAME + 4) >= WIDGET_NAME + 4)
+        ? *(const char **)((BYTE *)widget + WIDGET_NAME) : NULL;
+      if (readable((void *)name, 32) >= 32) log_text("       the slot clicked is called ", name);
+      else log_line("       the slot clicked has no readable name");
+    }
+  }
+  return g_dndPick(state, NULL, arg);
+}
+
+static void install_quick_split(void) {
+  HMODULE user32 = GetModuleHandleW(L"user32.dll");
+  g_keyState = user32 ? (KeyStateFn)GetProcAddress(user32, "GetAsyncKeyState") : NULL;
+  if (!g_keyState) {
+    log_line("quick split: USER32 will not say which keys are down - not hooking");
+    return;
+  }
+  g_dndPick = (DndPickFn)detour(DND_PICK_RVA, DND_PICK_HEAD, DND_PICK_HEAD_LEN,
+                                &dnd_pick_hook, "drag and drop pick");
+  if (g_dndPick) log_line("quick split: watching clicks made with a key held");
+}
+
 BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   (void)reserved;
   if (reason != DLL_PROCESS_ATTACH) return TRUE;
@@ -1553,6 +1703,9 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   // Before the game asks, which it does early: the profile it loads decides
   // what the main menu already shows.
   if (g_qol[QOL_OWN_PROFILE]) install_own_profile(self);
+  // Code of the game's own, so unlike the two above it can only be written once
+  // the image is there to write on — which at DLL_PROCESS_ATTACH it is.
+  if (g_qol[QOL_QUICK_SPLIT]) install_quick_split();
   return TRUE;
 }
 

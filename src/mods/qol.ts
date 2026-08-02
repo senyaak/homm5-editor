@@ -53,6 +53,13 @@ export const QOL_FLAGS = [
       + ' Documents, where every copy of the game on this machine shares one set of them. Starts empty:'
       + ' nothing is copied over, so the base game keeps its saves and this build begins fresh.',
   },
+  {
+    name: 'quick-split',
+    title: 'Split a stack with a held key (being measured)',
+    detail: 'Clicking an army slot with Ctrl, Shift or Alt held will split it without the slider'
+      + ' window. This build does not move anything yet: it writes what the click had in its hands'
+      + ' to bin/homm5-editor.log, which is what the splitting itself is waiting on.',
+  },
 ] as const;
 
 export type QolName = (typeof QOL_FLAGS)[number]['name'];
