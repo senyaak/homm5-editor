@@ -1622,9 +1622,40 @@ static const BYTE DND_PICK_HEAD[DND_PICK_HEAD_LEN] = {
 #define SLOT_NAME_STRIDE 12u
 #define SLOT_COUNT 7
 #define WINDOW_FIND_BY_NAME 0x94u
-/** The window a slot widget belongs to, and the type that window must be. */
-#define WIDGET_WINDOW 0x48u
-#define WINDOW_SIMPLE_VTABLE_RVA 0xb62eb0u
+/**
+ * WHERE THE RECEIVER COMES FROM: the game, not from us.
+ *
+ * Looking a slot up by name is `+0x94`, and in this hierarchy that slot holds a
+ * VIRTUAL INHERITANCE THUNK — it adjusts `this` by a displacement stored just
+ * before the subobject (`sub ecx,[ecx-4]`) and jumps to the real search. Called
+ * with a pointer to the start of an object, it reads the heap's own bookkeeping
+ * as a displacement and takes the game down with it. Twice.
+ *
+ * So the pointer has to be one the compiler made for that call, and there is a
+ * place where the game hands one over: the screen builds its slot list by
+ * finding the window named `Army` and passing it to the function below, which
+ * then looks `Slot_1`..`Slot_7` up inside it. Taking the argument there gets a
+ * receiver that is right by construction, and the seven widgets with it.
+ */
+#define BUILD_SLOTS_RVA 0x352760u
+#define BUILD_SLOTS_HEAD_LEN 9
+static const BYTE BUILD_SLOTS_HEAD[BUILD_SLOTS_HEAD_LEN] = {
+  0x83, 0xEC, 0x40, 0x64, 0xA1, 0x2C, 0x00, 0x00, 0x00
+};
+
+/**
+ * The slots of every army on screen, not merely the last one.
+ *
+ * A screen builds more than one: the hero's own and whatever it is standing
+ * next to. Keeping only the last one is why a click on a slot matched nothing —
+ * it belonged to the army that had been overwritten. Which army a slot is in
+ * matters for its own sake too: creatures may only be moved within one.
+ */
+#define ARMY_MAX 4
+static void *g_slotWidget[ARMY_MAX][SLOT_COUNT];
+/** The `CArmyView` each set of slots belongs to — where the numbers live. */
+static void *g_armyView[ARMY_MAX];
+static int g_armiesKnown = 0;
 /** What the helper and the thing it picked have to BE for their fields to mean
  *  what we read them as. The helper is generic — the same drag carries
  *  artifacts, and a town screen lays its own out differently — so reading a
@@ -1643,14 +1674,40 @@ static int g_clicksLogged = 0;
 /** Is this key down NOW — at the click, which is when the answer is wanted. */
 static int held(int vk) { return g_keyState && (g_keyState(vk) & 0x8000) != 0; }
 
-/** How much of what `p` points at may be read — its committed pages, capped. */
+/**
+ * How much of what `p` points at may be read — its committed pages, capped.
+ *
+ * WITH A MEMORY OF WHERE IT HAS BEEN. Asking Windows about a page is a system
+ * call, and a search that walks an object graph asks tens of thousands of times
+ * for a single click; without this the game visibly stops while we look around.
+ * The answers are per-region and the regions repeat, so a handful of them
+ * remembered turns nearly all of those calls into a comparison.
+ */
+#define REGIONS_REMEMBERED 16
+static struct { BYTE *begin, *end; int usable; } g_region[REGIONS_REMEMBERED];
+static int g_regionsKnown = 0;
+static int g_regionNext = 0;
+
 static DWORD readable(void *p, DWORD want) {
-  MEMORY_BASIC_INFORMATION region;
   if (!p || (DWORD)p < 0x10000) return 0;
+  BYTE *at = (BYTE *)p;
+  for (int i = 0; i < g_regionsKnown; i++) {
+    if (at < g_region[i].begin || at >= g_region[i].end) continue;
+    if (!g_region[i].usable) return 0;
+    DWORD left = (DWORD)(g_region[i].end - at);
+    return left < want ? left : want;
+  }
+
+  MEMORY_BASIC_INFORMATION region;
   if (VirtualQuery(p, &region, sizeof(region)) != sizeof(region)) return 0;
-  if (region.State != MEM_COMMIT) return 0;
-  if (region.Protect & (PAGE_NOACCESS | PAGE_GUARD)) return 0;
-  DWORD left = (DWORD)((BYTE *)region.BaseAddress + region.RegionSize - (BYTE *)p);
+  int usable = region.State == MEM_COMMIT && !(region.Protect & (PAGE_NOACCESS | PAGE_GUARD));
+  int slot = g_regionsKnown < REGIONS_REMEMBERED ? g_regionsKnown++ : g_regionNext;
+  if (g_regionsKnown == REGIONS_REMEMBERED) g_regionNext = (g_regionNext + 1) % REGIONS_REMEMBERED;
+  g_region[slot].begin = (BYTE *)region.BaseAddress;
+  g_region[slot].end = (BYTE *)region.BaseAddress + region.RegionSize;
+  g_region[slot].usable = usable;
+  if (!usable) return 0;
+  DWORD left = (DWORD)(g_region[slot].end - at);
   return left < want ? left : want;
 }
 
@@ -1665,11 +1722,171 @@ static int pointer_alive(void *p) {
 }
 
 typedef void *(__fastcall *FindByNameFn)(void *self, void *edx, void *name, int flag);
+typedef int(__fastcall *BuildSlotsFn)(void *self, void *edx, void *army);
+
+/**
+ * A name, in the shape the engine's lookup expects: begin, end, and the end of
+ * the room it was given. The game builds one of these on the stack for every
+ * such call; ours points at a literal, which the lookup only ever reads.
+ */
+typedef struct { const char *begin, *end, *capacity; } EngineString;
+
+static void engine_string(EngineString *out, const char *text) {
+  DWORD n = 0;
+  while (text[n]) n++;
+  out->begin = text;
+  out->end = text + n;
+  out->capacity = text + n;
+}
+
+static BuildSlotsFn g_buildSlots = NULL;
+
+/**
+ * The army window, on its way to being asked for its slots — so ask first.
+ *
+ * The call made here is the one the game itself makes three instructions later,
+ * with the same receiver and the same names. If that is wrong, the game was
+ * about to be wrong too; and the log says what the window was before a single
+ * call is made, so a crash still names the thing that caused it.
+ */
+static int __fastcall build_slots_hook(void *self, void *edx, void *army) {
+  (void)edx;
+  BYTE *base = (BYTE *)GetModuleHandleW(NULL);
+  log_hex("army: the screen is building its slots from window ", (DWORD)army);
+  if (readable(army, 4) >= 4) log_hex("      which is of type ", *(DWORD *)army - (DWORD)base);
+  // AFTER the screen has run, not before. The seven names are a lazy static,
+  // and the branch that fills them in is inside this very function — asking
+  // first got seven nothings, which is what asking before the answer exists
+  // looks like.
+  int result = g_buildSlots(self, NULL, army);
+  if (readable(army, 4) >= 4) {
+    // ONE LEVEL DOWN. The slots are not children of `Army`: the screen finds
+    // `Attributes` and `ArmyStacks` inside it first, and the seven slots live
+    // in the latter. Asking `Army` for them answers nothing at all, politely,
+    // which is how a wrong receiver looks when the call itself is right.
+    EngineString name;
+    engine_string(&name, "ArmyStacks");
+    FindByNameFn find = (*(FindByNameFn **)army)[WINDOW_FIND_BY_NAME / 4];
+    void *stacks = find(army, NULL, &name, 0);
+    log_hex("      its ArmyStacks is ", (DWORD)stacks);
+    if (readable(stacks, 4) >= 4) {
+      // Oldest out first, so a screen that builds more armies than we hold
+      // keeps the ones it built most recently rather than refusing the news.
+      if (g_armiesKnown == ARMY_MAX) {
+        for (int a = 1; a < ARMY_MAX; a++) {
+          for (int i = 0; i < SLOT_COUNT; i++) g_slotWidget[a - 1][i] = g_slotWidget[a][i];
+          g_armyView[a - 1] = g_armyView[a];
+        }
+        g_armiesKnown--;
+      }
+      int army_index = g_armiesKnown++;
+      g_armyView[army_index] = self;
+      FindByNameFn findSlot = (*(FindByNameFn **)stacks)[WINDOW_FIND_BY_NAME / 4];
+      log_num("      this is army ", army_index + 1);
+      for (int i = 0; i < SLOT_COUNT; i++) {
+        g_slotWidget[army_index][i] = findSlot(stacks, NULL,
+                                               base + SLOT_NAMES_RVA + (DWORD)i * SLOT_NAME_STRIDE, 0);
+        log_num("      slot ", i + 1);
+        log_hex("           is widget ", (DWORD)g_slotWidget[army_index][i]);
+      }
+    }
+  }
+  return result;
+}
+
+
+/** Does this read as text — printable, ended, and not one stray letter. */
+static int looks_like_text(const char *s, DWORD room) {
+  DWORD i = 0;
+  for (; i < room; i++) {
+    if (s[i] == 0) break;
+    if (s[i] < 0x20 || (BYTE)s[i] > 0x7E) return 0;
+  }
+  return i >= 1 && i < room;
+}
+
+/** The same, for the wide text a localised interface actually stores. */
+static int wide_text(const WCHAR *w, DWORD room, char *out, DWORD outRoom) {
+  DWORD i = 0;
+  DWORD max = room / 2;
+  for (; i < max && i + 1 < outRoom; i++) {
+    if (w[i] == 0) break;
+    if (w[i] < 0x20 || w[i] > 0x7E) return 0;
+    out[i] = (char)w[i];
+  }
+  out[i] = 0;
+  return i >= 1 && i < max;
+}
+
+/** Whatever text an object is carrying, inline or one pointer away. */
+static void log_words(const char *what, void *obj) {
+  DWORD room = readable(obj, 0x80);
+  for (DWORD off = 4; off + 4 <= room; off += 4) {
+    void *field = *(void **)((BYTE *)obj + off);
+    DWORD inner = readable(field, 0x40);
+    if (!inner) continue;
+    char wide[40];
+    if (looks_like_text((const char *)field, inner)) {
+      log_num(what, (int)off);
+      log_text("            says ", (const char *)field);
+    } else if (wide_text((const WCHAR *)field, inner, wide, sizeof(wide))) {
+      log_num(what, (int)off);
+      log_text("            says, in wide text, ", wide);
+    }
+  }
+}
+
+/** The game's own objects, as opposed to their pictures. */
+#define ARMY_VTABLE_RVA 0xbde824u
+#define HERO_VTABLE_RVA 0xbc69fcu
+
+/**
+ * Hunt for an object of a given type, a couple of pointers out.
+ *
+ * The army view is full of windows, labels and buttons and does not obviously
+ * hold the army; the numbers a split needs are in `NWorld`, not in `NUI`. So
+ * rather than read the class out of the disassembly field by field, look for
+ * the vtable — an object of exactly one type, wherever it is reached from.
+ */
+static void *first_of_type(void *root, DWORD wantRva, int depth) {
+  DWORD want = (DWORD)(BYTE *)GetModuleHandleW(NULL) + wantRva;
+  DWORD room = readable(root, 0x200);
+  for (DWORD off = 0; off + 4 <= room; off += 4) {
+    void *field = *(void **)((BYTE *)root + off);
+    if (readable(field, 4) < 4) continue;
+    if (*(DWORD *)field == want) return field;
+    if (depth > 0) {
+      void *deeper = first_of_type(field, wantRva, depth - 1);
+      if (deeper) return deeper;
+    }
+  }
+  return NULL;
+}
+
+static void find_type(const char *what, void *root, DWORD wantRva, int depth) {
+  DWORD want = (DWORD)(BYTE *)GetModuleHandleW(NULL) + wantRva;
+  DWORD room = readable(root, 0x200);
+  for (DWORD off = 0; off + 4 <= room; off += 4) {
+    void *field = *(void **)((BYTE *)root + off);
+    if (readable(field, 4) >= 4 && *(DWORD *)field == want) {
+      log_num(what, (int)off);
+      log_hex("            is the one we want, at ", (DWORD)field);
+      continue;
+    }
+    if (depth > 0) {
+      char deeper[64];
+      int n = 0;
+      while (what[n] && n < 40) { deeper[n] = what[n]; n++; }
+      deeper[n++] = ' '; deeper[n++] = '>'; deeper[n] = 0;
+      if (readable(field, 4) >= 4) find_type(deeper, field, wantRva, depth - 1);
+    }
+  }
+}
 
 /** Every pointer an object holds, and the type of whatever it points at. */
-static void log_types(const char *what, void *obj) {
+static void log_types(const char *what, void *obj, DWORD want) {
   DWORD base = (DWORD)GetModuleHandleW(NULL);
-  DWORD room = readable(obj, 0x100);
+  DWORD room = readable(obj, want);
   for (DWORD off = 4; off + 4 <= room; off += 4) {
     void *field = *(void **)((BYTE *)obj + off);
     if (readable(field, 4) < 4) continue;
@@ -1726,14 +1943,44 @@ static int __fastcall dnd_pick_hook(void *state, void *edx, void *arg) {
       // different function altogether, and calling that one crashed the game.
       // A type that is not the one measured means we are wrong about the
       // layout, and being wrong should cost a log line, not the session.
-      // NOTHING IS CALLED HERE, and that is the point. Twice now a vtable slot
+      // Which slot this is, by matching what the screen was handed when it
+      // built them. No searching, no names, no guessing at a receiver.
+      log_hex("       the widget clicked ", (DWORD)widget);
+      for (int a = 0; a < g_armiesKnown; a++) {
+        for (int i = 0; i < SLOT_COUNT; i++) {
+          if (g_slotWidget[a][i] != widget) continue;
+          log_num("       this is army ", a + 1);
+          log_num("            and slot ", i + 1);
+          // The view that owns these slots is the nearest thing to the army
+          // itself; what it keeps decides where "which slots are empty" and
+          // "how many are in this one" are going to be read from.
+          // The seven labels the view keeps at +8 upwards are the numbers the
+          // player is looking at: what is in each slot, and nothing at all
+          // where a slot is empty. Reading those is reading the game's own
+          // answer, and it is the last thing the four gestures need.
+          // THE OWNER, not whatever is lying nearby. Hunting the army by its
+          // type around the view found nothing, and it was the wrong question
+          // anyway: a slot belongs to a hero, and the hero is what holds the
+          // creatures. So find the hero this screen is showing, and the army
+          // in it.
+          void *client = *(void **)((BYTE *)helper + DND_HELPER_CLIENT);
+          void *hero = first_of_type(client, HERO_VTABLE_RVA, 2);
+          log_hex("       the hero on this screen ", (DWORD)hero);
+          if (hero) {
+            void *army = first_of_type(hero, ARMY_VTABLE_RVA, 1);
+            log_hex("       and its army ", (DWORD)army);
+            if (army) find_type("       within the army", army, ARMY_VTABLE_RVA, 0);
+          }
+        }
+      }
+      // NOTHING ELSE IS CALLED HERE, and that is the point. Twice now a vtable slot
       // number was taken from the class that uses it and called on a class that
       // merely has one — `+0x94` is a lookup on the window the hero screen
       // walks, and something else entirely on the screen and on this button.
       // A slot number means one thing inside one hierarchy and nothing across
       // hierarchies, so the receiver has to be identified in the disassembly
       // before the call is written, not guessed at and tried on a running game.
-      log_types("       the widget", widget);
+      log_types("       the widget", widget, 0x100);
       // A slot says which slot it is by what it is CALLED: the screens name
       // these `Slot_1` upwards, and the executable keeps that very list of
       // names to look the widgets up by. So the name is both the number of
@@ -1757,6 +2004,8 @@ static void install_quick_split(void) {
   g_dndPick = (DndPickFn)detour(DND_PICK_RVA, DND_PICK_HEAD, DND_PICK_HEAD_LEN,
                                 &dnd_pick_hook, "drag and drop pick");
   if (g_dndPick) log_line("quick split: watching clicks made with a key held");
+  g_buildSlots = (BuildSlotsFn)detour(BUILD_SLOTS_RVA, BUILD_SLOTS_HEAD, BUILD_SLOTS_HEAD_LEN,
+                                      &build_slots_hook, "army slot list");
 }
 
 BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
