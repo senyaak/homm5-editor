@@ -165,6 +165,49 @@ test('the editor opens a campaign scene and plays it', async () => {
   expect(fallen.tall).toBeGreaterThan(1);
   expect(fallen.top).toBeLessThan(fallen.tall / 2);
 
+  // A clip that ends somewhere the idle cannot follow HOLDS there. A royal
+  // griffin's `specability1` is the first half of a dive — it takes off and
+  // leaves him in the air, and `specability2` is what brings him down — so
+  // handing back to the idle when it runs out does not blend, it teleports him
+  // to the ground. Which clips those are is measured when the scene opens
+  // (pose the last frame, pose the idle, compare where the body is), not listed
+  // by name: nobody would think to list a griffin's special ability.
+  const flight = await page.evaluate(() => {
+    const griffin = (): { top: number; kind: string } | undefined =>
+      window.view.scene()?.actors.find((a) => a.href.startsWith('Royal_Griffin'));
+    window.view.showShot(6, 0);
+    const standing = griffin()?.top ?? 0;
+    window.view.showShot(6, 1.4);
+    const up = griffin()?.top ?? 0;
+    window.view.showShot(7, 0.5); // the clip is over — and he is still up there
+    const held = griffin();
+    return { standing, up, after: held?.top ?? 0, kind: held?.kind };
+  });
+  expect(flight.up).toBeGreaterThan(flight.standing + 1);
+  expect(flight.kind).toBe('specability1');
+  expect(flight.after).toBeGreaterThan(flight.standing + 1);
+
+  // The fire an inferno soldier burns with is not a moment in the scene, it is
+  // what that creature IS: it hangs off their IDLE clip and is alight from the
+  // first frame to the last. On a map it rides the adventure body — which a
+  // scene takes off the field to make room for the arena rig, so the demons
+  // stood there cold.
+  const alight = await page.evaluate(() => {
+    window.view.showShot(8, 1.8);
+    const lit = (window.view.scene()?.actors ?? []).filter((a) => a.fire > 0);
+    return {
+      count: lit.length,
+      worstOff: Math.max(0, ...lit.map((a) => a.fireOff)),
+      who: [...new Set(lit.map((a) => a.href.split('.')[0]))].sort(),
+    };
+  });
+  expect(alight.count).toBeGreaterThan(10);
+  expect(alight.who).toContain('Horned_Demon');
+  // …and it is ON them. The systems are built against an identity frame and the
+  // actor's own is applied each time they are placed, so a fire that was never
+  // placed sits at the world origin rather than being invisible.
+  expect(alight.worstOff).toBeLessThan(0.01);
+
   // …and a shot is lit by its own preset. The battle that opens the scene — 36
   // shots of it — overrides the scene's daylight with `InfernoArena`, a red key
   // light over black shade; the parley that follows keeps the scene's own. Read

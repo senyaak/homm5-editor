@@ -102,9 +102,11 @@ and the player holds one time value for the whole scene. Read a scene as a row
 of islands, as this one was at first, and every one of those cues is dropped on
 the floor: the armies simply never act.
 
-A clip **runs once and is over**; the actor goes back to idling. The exception
-is death (`death*`, `defeat*`), which holds its last frame until something cues
-that actor again — shot 23 resurrects a paladin killed in shot 15.
+A clip **runs once and is over**; the actor goes back to idling. Two kinds hold
+their last frame instead, until something cues that actor again (shot 23
+resurrects a paladin killed in shot 15): death (`death*`, `defeat*`), and any
+clip that ENDS somewhere the idle cannot follow — see "a clip that ends
+somewhere else" below.
 
 ### Which clip, by name or by number
 
@@ -434,6 +436,28 @@ going quietly green.
   earlier shots for the deaths, and a delay compared against `playing.at`), and
   it is the only reading under which a delay of 6.7 in a three-second shot means
   anything.
+
+  **A clip that ends somewhere else HOLDS there.** A royal griffin's
+  `specability1` is the first half of a dive: it takes off and leaves him three
+  units up, and `specability2` is what brings him down. An arch devil's
+  `moveStart` sinks him into the ground he gates out of. Handing either back to
+  the idle when it runs out does not blend, it teleports — the griffin springs
+  into the air and reappears standing. Which clips those are is MEASURED when
+  the scene opens, once per character: pose the clip at its last frame, pose the
+  idle at its first, and compare where the body is. Half a unit apart is a jump
+  you can see; a `happy` or an `attack` ends exactly where it started. Naming
+  them would not have worked — nobody would think to list a griffin's special
+  ability beside `death`.
+
+  **An actor burns with their own idle effect.** The fire an inferno soldier
+  stands in hangs off the IDLE clip (`idle00` → `BasicSkelAnim` → `<Effect>`)
+  and is alight from the scene's first frame to its last, cued or not — the same
+  rule `clipEffectParticles` follows on a map, which shows the mist on a frozen
+  dragon. A scene needs its own copy of it: on a map the effect rides the
+  ADVENTURE body, and a scene takes that body off the field to make room for the
+  arena rig, so the demons stood there cold. It follows them when they march
+  (built against an identity frame, the actor's own applied on top each time
+  they are placed) and is NOT scaled with them.
 
   **A clip brings its own effect.** `BasicSkelAnim` names an `<Effect>` beside
   its Granny file, and that is where a caster's own fire lives: the blue glow

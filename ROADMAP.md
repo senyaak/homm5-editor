@@ -632,6 +632,12 @@ Format (surveyed 2026-07-23, 250 scenes shipped under `DialogScenes/`):
       whose colour is a baked blob like an animation's — is not drawn at all,
       and 46 of the 298 placed effects fly a path (`MovePoints` with a
       `MovementSpeed`) that we leave them sitting at the start of
+- [x] ✅ **A pose that ends elsewhere holds, and a demon burns** (2026-08-02):
+      a clip whose last frame leaves the body somewhere the idle does not have
+      it (a griffin's take-off, an arch devil sinking into his gate) teleports
+      rather than blends when handed back — measured per character at open, not
+      listed by name. And an actor's IDLE effect burns through the whole scene:
+      on a map it rides the adventure body, which a scene takes off the field
 - [x] ✅ **The cast is all there, and it walks** (2026-08-02): an actor can be
       declared INSIDE the animation that moves them, and 1517 of the shipped
       scenes' 1814 inline actors are — read only from `<objects>` and the spoken

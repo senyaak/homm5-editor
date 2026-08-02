@@ -141,6 +141,16 @@ export interface ActorView extends ActorRig {
   z: number;
   /** Facing, radians about Z. */
   rot: number;
+  /**
+   * The effect their IDLE clip carries — the fire an inferno soldier burns with.
+   *
+   * Always on, like the map's: a creature's flames do not wait to be cued, and
+   * `clipEffectParticles` shows them on a frozen dragon too. A scene needs its
+   * own copy because the actor's still adventure body — which is what carries
+   * this on a map — is taken off the stage to make room for the arena rig, and
+   * the fire went off the field with it.
+   */
+  idleFx: FxInstancePayload[];
 }
 
 export interface ScenePlay {
@@ -225,7 +235,10 @@ export function buildScenePlay(data: Assets, scenePath: string, options: PlayOpt
       floor.instances.splice(at, 1);
       break;
     }
-    return { ...rig, x: pos.x, y: pos.y, z, rot: placed?.rot ?? 0 };
+    // idleFx once the effect reader below exists — it needs the same cache the
+    // shots' effects go through, so one fire is read once however many soldiers
+    // are burning with it.
+    return { ...rig, x: pos.x, y: pos.y, z, rot: placed?.rot ?? 0, idleFx: [] };
   });
 
   // A cue says WHICH clip either by name or by position in the actor's own
@@ -264,6 +277,8 @@ export function buildScenePlay(data: Assets, scenePath: string, options: PlayOpt
     fxCache.set(href, built);
     return built;
   };
+
+  for (const actor of actors) actor.idleFx = effectOf(actor.clipEffects['idle00'] ?? '').fx;
 
   // The scene's own light replaces the arena's on every floor: the stage is
   // borrowed scenery and the preset is part of the scene, not of the map.

@@ -365,6 +365,10 @@ interface ViewApi {
       top: number;
       /** Where they are standing now, world units — a walk moves this. */
       pos: [number, number, number];
+      /** Particle systems their idle clip keeps alight on them. */
+      fire: number;
+      /** How far the furthest of those is from where they stand. */
+      fireOff: number;
     }>;
     /** Particle systems the current shot is firing (see cueShotFx). */
     fx: number;

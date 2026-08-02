@@ -40,6 +40,13 @@ interface Player {
   /** The walk they are on or have finished, and when it began. */
   walk: WalkPath | null;
   walkAt: number;
+  /** Their idle clip's effect, burning wherever they are. */
+  fire: Array<{ system: FxSystem; local: THREE.Matrix4 }>;
+  /**
+   * Clips whose last frame leaves the body somewhere the idle does not have it,
+   * so letting one end would TELEPORT them. Measured, not named — see holdsAt.
+   */
+  holds: Set<string>;
   /**
    * What is actually on screen — the cued clip while it runs, `idle00` once it
    * is out. Written by `poseAll`, so the inspector and the tests read the pose
@@ -57,6 +64,9 @@ interface Player {
  * `happy` for the rest of the scene, and anyone cued again later (shot 23
  * resurrects a paladin killed in shot 15) gets up, because only the most recent
  * cue counts.
+ *
+ * A name is not the whole of it — see `holdsAt`, which measures the same thing
+ * and catches the clips nobody would think to list.
  */
 const TERMINAL = /^(death|defeat)/;
 
@@ -119,9 +129,58 @@ function bodyOf(actor: ActorView): { geometry: THREE.BufferGeometry; material: T
   return body;
 }
 
+/** Highest and lowest bone of an actor as posed now, relative to their feet. */
+function bodySpan(p: Player): [number, number] {
+  p.idle.mesh.updateMatrixWorld(true);
+  let lo = Infinity, hi = -Infinity;
+  for (const b of p.idle.bones) {
+    _bone.setFromMatrixPosition(b.matrixWorld);
+    lo = Math.min(lo, _bone.z);
+    hi = Math.max(hi, _bone.z);
+  }
+  const base = p.idle.mesh.position.z;
+  return [lo - base, hi - base];
+}
+
+/**
+ * Which of an actor's clips END somewhere the idle cannot follow.
+ *
+ * A royal griffin's `specability1` is the FIRST HALF of a dive: it takes off
+ * and leaves him three units up, and `specability2` brings him down. An arch
+ * devil's `moveStart` sinks him into the ground he gates out of. Letting either
+ * hand back to the idle at the end of its run does not blend, it TELEPORTS —
+ * the griffin springs into the air and reappears standing.
+ *
+ * So it is measured, once per character when the scene opens: pose the clip at
+ * its last frame, pose the idle at its first, and compare where the body is.
+ * Half a unit apart is a jump you can see; a `happy` or an `attack` ends
+ * exactly where it started and reads as 0.
+ */
+function holdsAt(p: Player): Set<string> {
+  const out = new Set<string>();
+  const idle = p.actor.clips['idle00'];
+  if (!idle) return out;
+  const was = p.idle.skin.clip;
+  p.idle.skin.clip = idle;
+  poseIdle(p.idle, 0, true);
+  const [lo0, hi0] = bodySpan(p);
+  for (const [kind, clip] of Object.entries(p.actor.clips)) {
+    if (kind === 'idle00') continue;
+    p.idle.skin.clip = clip;
+    poseIdle(p.idle, clip.duration, false);
+    const [lo, hi] = bodySpan(p);
+    if (Math.max(Math.abs(lo - lo0), Math.abs(hi - hi0)) > 0.5) out.add(kind);
+  }
+  p.idle.skin.clip = was;
+  return out;
+}
+
 /** Take the actors off the stage — called before another scene, and on close. */
 function clearActors(): void {
-  for (const p of playing.players) p.idle.mesh.removeFromParent();
+  for (const p of playing.players) {
+    p.idle.mesh.removeFromParent();
+    for (const f of p.fire) { f.system.mesh.removeFromParent(); f.system.dispose(); }
+  }
   // The geometry belongs to the bank, not to the mesh: several figures share
   // one, and disposing it per mesh would free it out from under its twins.
   for (const body of bodies.values()) {
@@ -227,6 +286,8 @@ function effectSpan(fired: ShotView['effects'][number]): number {
   return span;
 }
 
+const _frame = new THREE.Matrix4();
+const _one = new THREE.Vector3(1, 1, 1);
 const _q = new THREE.Quaternion();
 const _axis = new THREE.Vector3(0, 0, 1);
 const _v = new THREE.Vector3();
@@ -286,6 +347,7 @@ const _bone = new THREE.Vector3();
 
 export const actorKinds = (): Array<{
   href: string; key: string; kind: string; top: number; pos: [number, number, number];
+  fire: number; fireOff: number;
 }> => playing.players.map((p) => {
   // How tall they are standing right now, in world units above their own feet.
   // The clip NAME does not say whether the pose is being held or replayed, and
@@ -303,6 +365,13 @@ export const actorKinds = (): Array<{
     // off the mesh rather than off the actor: the actor is where the file put
     // them, the mesh is where the scene has walked them to.
     pos: p.idle.mesh.position.toArray() as [number, number, number],
+    fire: p.fire.length,
+    // …and how far their own fire is from them, which is the only way to see
+    // that it FOLLOWS: a count says a system exists, not that it is on the man.
+    fireOff: p.fire.reduce((worst, f) => {
+      _bone.setFromMatrixPosition(f.system.mesh.matrix);
+      return Math.max(worst, _bone.distanceTo(p.idle.mesh.position));
+    }, 0),
   };
 });
 
@@ -366,17 +435,47 @@ export async function openScene(inner: string): Promise<SceneInfo> {
     idle.mesh.rotation.z = actor.rot;
     idle.mesh.scale.setScalar(actor.geom.scale ?? 1);
     stage.add(idle.mesh);
-    playing.players.push({ actor, idle, kind: 'idle00', at: null, walk: null, walkAt: 0, showing: 'idle00' });
+    playing.players.push({
+      actor, idle, kind: 'idle00', at: null, walk: null, walkAt: 0, showing: 'idle00',
+      fire: [], holds: new Set<string>(),
+    });
+  }
+  // One measurement per CHARACTER — the six swordsmen of a kind share a clip
+  // set, and posing a skeleton 45 times to learn the same thing is waste.
+  const measured = new Map<ActorView['clips'], Set<string>>();
+  for (const p of playing.players) {
+    let known = measured.get(p.actor.clips);
+    if (!known) { known = holdsAt(p); measured.set(p.actor.clips, known); }
+    p.holds = known;
   }
 
   // The scene's light came down on the floors (src/dialog/play.ts); remember it
   // as what a shot without one of its own falls back to.
   sceneLight = state.world ? activeFloor().ambient : null;
 
-  // Every effect any shot can fire, baked, in one round trip — a shot cues in
-  // the middle of playback and cannot wait for IPC.
-  const uids = [...new Set(shots.flatMap((s) => s.effects.flatMap((e) => e.fx.map((f) => f.uid))))];
+  // Every effect the scene can show, baked, in one round trip — a shot cues in
+  // the middle of playback and cannot wait for IPC. The actors' own fires are
+  // in here too: they are alight from the moment the scene opens.
+  const uids = [...new Set([
+    ...shots.flatMap((s) => s.effects.flatMap((e) => e.fx.map((f) => f.uid))),
+    ...actors.flatMap((a) => a.idleFx.map((f) => f.uid)),
+  ])];
   fxBank = uids.length ? await api.fx(uids) : {};
+
+  // …and lit. An actor's idle effect is not a moment in the scene, it is what
+  // that creature IS — the fire an inferno soldier stands in burns through
+  // every shot, and follows them when they march.
+  playing.players.forEach((p, i) => {
+    for (const fx of p.actor.idleFx) {
+      const baked = fxBank[fx.uid];
+      if (!baked?.particles.length) continue;
+      // Spread, unlike a spell: forty demons whose flames flicker in lockstep
+      // read as one animation played forty times, which is what they are.
+      const { system } = createFxSystem(fx, baked, new THREE.Matrix4(), i * 0.37, uFxTint);
+      stage.add(system.mesh);
+      p.fire.push({ system, local: system.mesh.matrix.clone() });
+    }
+  });
 
   playing.info = info;
   playing.shots = shots;
@@ -496,11 +595,23 @@ function place(p: Player, T: number): void {
   if (!p.walk) {
     mesh.position.set((p.actor.x + 0.5) * U, (p.actor.y + 0.5) * U, p.actor.z);
     mesh.rotation.z = p.actor.rot;
-    return;
+  } else {
+    const now = walkAt(p.walk, T - p.walkAt);
+    mesh.position.set(now.pos[0], now.pos[1], now.pos[2]);
+    mesh.rotation.z = now.rot;
   }
-  const now = walkAt(p.walk, T - p.walkAt);
-  mesh.position.set(now.pos[0], now.pos[1], now.pos[2]);
-  mesh.rotation.z = now.rot;
+  if (!p.fire.length) return;
+  // Their own fire goes where they go. Built against an identity frame, so what
+  // the system holds after `createFxSystem` is the instance's own offset and
+  // this is the actor's frame applied on top of it, once per frame.
+  // Position and facing only: the actor's DISPLAY SCALE is not the effect's.
+  // The phoenix's flames are baked full size around a 0.37 bird and that is
+  // the game's picture — small bird, towering fire (see clipEffectParticles).
+  _frame.compose(mesh.position, mesh.quaternion, _one);
+  for (const f of p.fire) {
+    f.system.mesh.matrix.multiplyMatrices(_frame, f.local);
+    f.system.update(T);
+  }
 }
 
 /** Put every actor where their clip says they are, at the current moment. */
@@ -522,8 +633,9 @@ function poseAll(): void {
       && T - p.walkAt < p.walk.times[p.walk.times.length - 1]!;
     // A cue OF the idle is idling — played as a one-shot it would run its cycle
     // from the cue and then hand over to the looping copy, a visible hitch.
+    const held = TERMINAL.test(p.kind) || p.holds.has(p.kind);
     const over = !walking && (!cued || p.kind === 'idle00'
-      || (T - p.at! >= cued.duration && !TERMINAL.test(p.kind)));
+      || (T - p.at! >= cued.duration && !held));
     const play = over && idle ? { clip: idle, time: T, loop: true } : null;
     const clip = play?.clip ?? cued;
     if (!clip) continue;

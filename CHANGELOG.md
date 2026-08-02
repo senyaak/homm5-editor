@@ -36,6 +36,19 @@ one.
 
 ### Fixed
 
+- **A griffin that takes off stays up.** A clip whose last frame leaves the body
+  somewhere the idle does not have it was handed back to the idle anyway, which
+  teleports rather than blends: the royal griffin sprang into the air and
+  reappeared standing, the arch devil rose back out of the ground he had just
+  gated into. Those clips hold their last frame now, and which ones they are is
+  measured when the scene opens rather than listed by name.
+
+- **Inferno soldiers are on fire again.** A creature's flames hang off its IDLE
+  animation and burn whether or not anything cues it. On a map they ride the
+  adventure body — which a scene takes off the field to make room for the rig
+  that can act, so a scene's demons stood there cold. They burn wherever the
+  actor is now, marching included.
+
 - **A scene's actors march.** 922 cues in the shipped scenes carry a path of
   tiles to walk, and nobody walked any of them: the actor stood on their first
   tile playing the walk cycle on the spot. The pace is not in the scene file —
