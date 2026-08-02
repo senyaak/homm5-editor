@@ -17,7 +17,11 @@ import { artifactNumbers } from '#src/mods/artifacts.ts';
 import type { ExeResult } from '#src/exe/creature-limit.ts';
 import { buildCreatureMod } from '#src/mods/creature-mod.ts';
 import { findCreatureMods, installCreatureMod, packCreatureMod } from '#src/mods/mod-archive.ts';
-import { newCreatureMod } from '#src/mods/mod-model.ts';
+// The emptiness test lives with the model, beside the things it counts: it was
+// written out twice and the second copy went stale the moment a new kind
+// arrived — installing the first class of a mod deleted the archive and
+// reported success.
+import { modIsEmpty, newCreatureMod } from '#src/mods/mod-model.ts';
 import { MOD_STEM, dataReader } from '#src/mods/mod-files.ts';
 import type { CreatureMod } from '#src/mods/mod-model.ts';
 import type { Installed } from '#src/mods/mod-archive.ts';
@@ -53,20 +57,6 @@ function modEffects(mod: CreatureMod): EffectRow[] {
 }
 
 /**
- * Nothing left in it — the state removing the last of something leaves.
- *
- * EVERY kind has to be counted here. Miss one and installing the first of that
- * kind reads as "the mod is now empty": the archive is deleted, and the caller
- * is handed the same success it would get from a build, so the window says it
- * installed something that is not there.
- */
-function modIsEmpty(mod: CreatureMod): boolean {
-  return !mod.creatures.length && !mod.dwellings.length && !(mod.buildings ?? []).length
-    && !(mod.artifacts ?? []).length && !(mod.sets ?? []).length && !(mod.heroes ?? []).length
-    && !(mod.specializations ?? []).length;
-}
-
-/**
  * Build the mod, pack it, install it — the shared tail of both installs.
  *
  * The effects file is rewritten here, from the WHOLE mod, rather than beside
@@ -85,9 +75,9 @@ export function buildAndInstall(g: string, mod: CreatureMod): { installed: Insta
     rmSync(archive, { force: true });
     writeEffectsFile(g, [], []);
     return {
-      installed: { archive, creatures: null, artifacts: null },
-      report: { files: [], limit: 0 },
-    } as unknown as { installed: Installed; report: BuildReport };
+      installed: { archive, exe: null, artifacts: null, tables: [] },
+      report: { files: [], limit: 0, art: {}, missing: [] },
+    };
   }
   const report = buildCreatureMod(mod, dataReader(gameData()));
   const archive = packCreatureMod(report);

@@ -253,6 +253,21 @@ export function newCreatureMod(stem = MOD_STEM): CreatureMod {
 }
 
 /**
+ * Nothing in it at all — the state removing the last of something leaves.
+ *
+ * ONE function because there were two, and they drifted the moment a new kind
+ * arrived: the builder refused to build a mod holding only a specialization,
+ * and the installer went further and DELETED the archive of a mod holding only
+ * a class while telling the window it had installed one. Every kind has to be
+ * counted, so every kind is counted here and nowhere else.
+ */
+export function modIsEmpty(mod: CreatureMod): boolean {
+  return !mod.creatures.length && !mod.dwellings.length && !(mod.buildings ?? []).length
+    && !(mod.artifacts ?? []).length && !(mod.sets ?? []).length && !(mod.heroes ?? []).length
+    && !(mod.specializations ?? []).length && !(mod.classes ?? []).length && !(mod.skills ?? []).length;
+}
+
+/**
  * Append a class and give it the next enum value.
  *
  * APPEND-ONLY, like everything else that holds a number: a hero's document

@@ -11,10 +11,14 @@ import { join } from 'node:path';
 import { DATA, REPO_ROOT } from './launch.ts';
 import { buildCreatureMod } from '../src/mods/creature-mod.ts';
 import {
-  addArtifact, addArtifactSet, addBuilding, addCreature, addHero, addSpecialization, newCreatureMod,
-  removeArtifact, removeArtifactSet, removeBuilding, removeCreature, removeHero, removeSpecialization,
+  addArtifact, addArtifactSet, addBuilding, addCreature, addHero, addHeroClass, addHeroSkill,
+  addSpecialization, newCreatureMod,
+  removeArtifact, removeArtifactSet, removeBuilding, removeCreature, removeHero, removeHeroClass,
+  removeHeroSkill, removeSpecialization,
   updateArtifact, updateArtifactSet,
 } from '../src/mods/mod-model.ts';
+import { takenClasses } from '../src/mods/hero-classes.ts';
+import { takenSkills } from '../src/mods/hero-skills.ts';
 import type { BuildingSpec } from '../src/mods/buildings.ts';
 import { installCreatureMod, packCreatureMod, readCreatureMod } from '../src/mods/mod-archive.ts';
 import { MOD_STEM, dataReader } from '../src/mods/mod-files.ts';
@@ -407,6 +411,52 @@ export const GEM_SPEC = {
 };
 
 /**
+ * The class mod-004 authors and builds her as — Heroes III's own.
+ *
+ * Gem had a class nobody else in that game had: the Witch, a Druid by every
+ * number and a different word on the screen. Here it is the tenth entry in a
+ * table the game sizes at nine, and the numbers are hers rather than the
+ * Ranger's — a medic who casts, with the war machines that carry her tent at
+ * the top of what a level up offers.
+ *
+ * These weights are the FINAL ones, her own racial included. mod-004 authors
+ * the class before the skill exists (nothing can weight a skill that is not
+ * there yet) and comes back to it afterwards; this fixture writes the end state
+ * in one go, because it is not testing the order — it is making the hero the
+ * map spec places.
+ */
+export const WITCH = {
+  id: 'HERO_CLASS_WITCH',
+  name: 'Колдунья',
+  attributes: { offence: 10, defence: 25, spellpower: 35, knowledge: 30 },
+  weights: {
+    HERO_SKILL_TENT_MASTER: 10,
+    HERO_SKILL_WAR_MACHINES: 15,
+    HERO_SKILL_LIGHT_MAGIC: 12,
+    HERO_SKILL_LEARNING: 12,
+    HERO_SKILL_LUCK: 10,
+    HERO_SKILL_LOGISTICS: 8,
+    HERO_SKILL_SUMMONING_MAGIC: 8,
+    HERO_SKILL_SORCERY: 8,
+    HERO_SKILL_LEADERSHIP: 6,
+    HERO_SKILL_DEFENCE: 5,
+    HERO_SKILL_DESTRUCTIVE_MAGIC: 3,
+    HERO_SKILL_DARK_MAGIC: 2,
+    HERO_SKILL_OFFENCE: 1,
+    HERO_SKILL_AVENGER: 0,
+  } as Record<string, number>,
+  /** «Чумная палатка», which the Ranger cannot have and she can. */
+  perk: 'HERO_SKILL_LAST_AID',
+};
+
+/** Her racial: the tent, which is what she is in both games. */
+export const TENT_MASTER = {
+  id: 'HERO_SKILL_TENT_MASTER',
+  name: 'Мастер палатки',
+  description: 'Палатка первой помощи служит дольше в её руках.',
+};
+
+/**
  * What mod-005 names its buildings with — one per class: `E2eBuilding`,
  * `E2eMine`, `E2eShrine`… They are named after the CLASSES rather than listed
  * anywhere, so a live run clears them by this prefix.
@@ -426,6 +476,10 @@ const OURS = {
   // And the specialization he holds. Cleared AFTER him, always: one a hero
   // still names cannot be taken out, and it is the model that says so.
   specializations: [GEM_SPEC.id],
+  // The class she IS and the racial she holds. Cleared after her for the same
+  // reason and in the same order — a class owning a skill refuses to go first.
+  skills: [TENT_MASTER.id],
+  classes: [WITCH.id],
 };
 
 /**
@@ -466,6 +520,12 @@ export function clearFixture(gameRoot: string): void {
   }
   // After the heroes, and only then: removeSpecialization refuses one that is
   // still held, which is the rule and not an obstacle to work around.
+  for (const id of OURS.skills) {
+    if ((mod.skills ?? []).some((s) => s.id === id)) { removeHeroSkill(mod, id); touched = true; }
+  }
+  for (const id of OURS.classes) {
+    if ((mod.classes ?? []).some((c) => c.id === id)) { removeHeroClass(mod, id); touched = true; }
+  }
   for (const id of OURS.specializations) {
     if ((mod.specializations ?? []).some((s) => s.id === id)) { removeSpecialization(mod, id); touched = true; }
   }
@@ -589,6 +649,7 @@ export function installMapFixture(gameRoot: string): CreatureMod {
   if (!(mod.specializations ?? []).some((s) => s.id === GEM_SPEC.id)) {
     addSpecialization(mod, GEM_SPEC, takenSpecializations(readFileSync(join(DATA, 'types.xml'), 'latin1')));
   }
+  ensureWitch(mod);
   if (!(mod.heroes ?? []).some((h) => h.id === GEM_FILE)) {
     addHero(mod, {
       id: GEM_FILE,
@@ -596,13 +657,13 @@ export function installMapFixture(gameRoot: string): CreatureMod {
       biography: 'A sorceress of Enroth, newly come to AvLee and its druids.',
       basedOn: 'MapObjects/Preserve/Ossir.(AdvMapHeroShared).xdb',
       town: 'TOWN_PRESERVE',
-      heroClass: 'HERO_CLASS_RANGER',
+      heroClass: WITCH.id,
       // Ours, and with NO words of her own: a specialization of the mod carries
       // the name and the text it wants its heroes to use, and the build writes
       // them onto every hero holding it. The dialog's Gem overrides them in
       // mod-004, which is the other half of the same rule.
       specialization: GEM_SPEC.id,
-      primarySkill: { skill: 'HERO_SKILL_AVENGER', mastery: 'MASTERY_BASIC' },
+      primarySkill: { skill: TENT_MASTER.id, mastery: 'MASTERY_BASIC' },
       stats: { offence: 0, defence: 1, spellpower: 2, knowledge: 2 },
       skills: [{ skill: 'HERO_SKILL_WAR_MACHINES', mastery: 'MASTERY_BASIC' }],
       perks: ['HERO_SKILL_FIRST_AID'],
@@ -648,7 +709,63 @@ export function installMapFixture(gameRoot: string): CreatureMod {
   return mod;
 }
 
+/**
+ * Her class and her racial, added to `mod` when they are not in it.
+ *
+ * Before the hero, always: a hero naming a class or a skill the enum does not
+ * declare is a parse error, not a hero without one — the same rule the
+ * specialization follows. The class before the skill, for the same reason one
+ * step down: a racial belongs to a class.
+ *
+ * Its own function because two callers want it and neither is the other's:
+ * the map fixture builds the whole mod headless, and the heroes spec needs the
+ * two to exist before it can select them in the form when it runs on its own.
+ */
+export function ensureWitch(mod: CreatureMod): void {
+  const types = readFileSync(join(DATA, 'types.xml'), 'latin1');
+  if (!(mod.classes ?? []).some((c) => c.id === WITCH.id)) {
+    addHeroClass(mod, {
+      id: WITCH.id,
+      name: WITCH.name,
+      attributes: WITCH.attributes,
+      skills: Object.entries(WITCH.weights).map(([skill, prob]) => ({ skill, prob })),
+      allowedPerks: [{ perk: WITCH.perk, dependencies: ['HERO_SKILL_FIRST_AID'] }],
+    }, takenClasses(types));
+  }
+  if (!(mod.skills ?? []).some((s) => s.id === TENT_MASTER.id)) {
+    addHeroSkill(mod, {
+      id: TENT_MASTER.id,
+      kind: 'racial',
+      heroClass: WITCH.id,
+      name: TENT_MASTER.name,
+      description: TENT_MASTER.description,
+      aiRace: 'Sylvan',
+    }, takenSkills(types));
+  }
+}
+
+/**
+ * The same two, built into an install that has none — the heroes spec's
+ * prerequisite when it runs alone.
+ *
+ * A prerequisite, not a test: authoring them through the forms is the class
+ * spec's subject, and it runs first when the whole chain runs. Left out, a
+ * heroes run on its own has no class to make Gem, which reads as the form being
+ * broken rather than as a spec run out of order.
+ */
+export function installWitchFixture(gameRoot: string): void {
+  const archive = modFile(gameRoot, 'mod', MOD);
+  const found = existsSync(archive) ? readCreatureMod(archive) : null;
+  const mod = found?.mod ?? newCreatureMod(MOD);
+  if ((mod.classes ?? []).some((c) => c.id === WITCH.id)
+    && (mod.skills ?? []).some((s) => s.id === TENT_MASTER.id)) return;
+  ensureWitch(mod);
+  const report = buildCreatureMod(mod, dataReader(DATA));
+  installCreatureMod(gameRoot, mod, packCreatureMod(report));
+}
+
 /** Our mod, read back off the install. */
+
 export function readInstalledMod(gameRoot: string): CreatureMod {
   const found = readCreatureMod(modFile(gameRoot, 'mod', MOD));
   if (!found) throw new Error(`no mod at ${modFile(gameRoot, 'mod', MOD)}`);
