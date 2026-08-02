@@ -1628,6 +1628,12 @@ static const BYTE SHOW_IN_PANEL_HEAD[SHOW_IN_PANEL_HEAD_LEN] = {
  */
 typedef int(__fastcall *OnDropFn)(void *self, void *edx, void *fromWidget, void *fromStack,
                                   void *toWidget, void *toStack);
+static OnDropFn g_onDrop = NULL;
+/** Whether the drop being watched is one of ours or one the player made. */
+static int g_ours = 0;
+#define ON_DROP_RVA 0x355e10u
+#define ON_DROP_HEAD_LEN 6
+static const BYTE ON_DROP_HEAD[ON_DROP_HEAD_LEN] = { 0x83, 0xEC, 0x30, 0x53, 0x55, 0x56 };
 /** Which army the last modified click landed in, so the log can name slots. */
 static int g_army = -1;
 
@@ -1650,8 +1656,17 @@ static int g_army = -1;
 static const BYTE SPLIT_SHOW_HEAD[SPLIT_SHOW_HEAD_LEN] = {
   0x8B, 0x54, 0x24, 0x04, 0x83, 0xEC, 0x18
 };
-/** `CCommonDragStackController` — the only one whose slots we have measured. */
-#define COMMON_CONTROLLER_VTABLE_RVA 0xb75cd0u
+/**
+ * A controller is recognised by WHAT IT DOES, not by which class it is.
+ *
+ * The hero screen's is a `CHeroDragStackController` and the shared one is a
+ * `CCommonDragStackController`; checking for the latter rejected our own case
+ * for a whole evening. Both carry the same two implementations, which is what
+ * the OK button calls, so that is the test: validate at +0x10 and carry out at
+ * +0x14, being these exact functions.
+ */
+#define CONTROLLER_VALIDATE_FN 0x483270u
+#define CONTROLLER_EXECUTE_FN 0x4832e0u
 #define CONTROLLER_VALIDATE 0x10u
 #define CONTROLLER_EXECUTE 0x14u
 /** What the controller says about the stack: how many there are, in all. */
@@ -1667,6 +1682,31 @@ static const BYTE SPLIT_SHOW_HEAD[SPLIT_SHOW_HEAD_LEN] = {
  * and what to build it FROM is measured here, from a drag made by hand that
  * does open the window.
  */
+/**
+ * The OK button of the split window, which is the whole of splitting:
+ *
+ *     controller = dialog[0x128];  howMany = dialog[0x118]
+ *     if (controller->+0x10(howMany)) controller->+0x14(howMany)
+ *
+ * So `Validate` and `Execute` were right, and what is missing is the
+ * CONTROLLER: a drag by hand makes one, and the drop we call ourselves does
+ * not. Both are watched here so the difference can be read off rather than
+ * guessed at — the mistake all along was measuring the drag and never the
+ * split.
+ */
+#define SPLIT_OK_RVA 0x3f84a0u
+// NINE bytes, not eight: `push esi`, `mov esi,ecx`, `mov ecx,[esi+128h]`. Eight
+// cuts the last instruction in half and the trampoline runs into rubbish.
+#define SPLIT_OK_HEAD_LEN 9
+static const BYTE SPLIT_OK_HEAD[SPLIT_OK_HEAD_LEN] = {
+  0x56, 0x8B, 0xF1, 0x8B, 0x8E, 0x28, 0x01, 0x00, 0x00
+};
+#define DIALOG_CONTROLLER 0x128u
+#define DIALOG_HOW_MANY 0x118u
+
+typedef int(__fastcall *SplitOkFn)(void *dialog, void *edx, void *arg);
+static SplitOkFn g_splitOk = NULL;
+
 #define MAKE_CONTROLLER_RVA 0x3f8310u
 #define MAKE_CONTROLLER_HEAD_LEN 6
 static const BYTE MAKE_CONTROLLER_HEAD[MAKE_CONTROLLER_HEAD_LEN] = {
@@ -2075,6 +2115,46 @@ static void log_known(const char *what, void *p) {
     if (g_slotWidget[g_army][i] == p) log_num("            the widget of slot ", i + 1);
 }
 
+static int __fastcall split_ok_hook(void *dialog, void *edx, void *arg) {
+  (void)edx;
+  void *controller = *(void **)((BYTE *)dialog + DIALOG_CONTROLLER);
+  log_line("ok: the split window was accepted");
+  log_num("      creatures asked for ", *(int *)((BYTE *)dialog + DIALOG_HOW_MANY));
+  log_hex("      by controller ", (DWORD)controller);
+  if (readable(controller, 4) >= 4)
+    log_hex("           of type ", *(DWORD *)controller - (DWORD)(BYTE *)GetModuleHandleW(NULL));
+  return g_splitOk(dialog, NULL, arg);
+}
+
+static int __fastcall drop_watch_hook(void *self, void *edx, void *fromWidget, void *fromStack,
+                                      void *toWidget, void *toStack) {
+  (void)edx;
+  // WHAT THE DROP BRANCHES ON. Its first act is to read a mode — from +0x1C8
+  // or +0x48 depending on a flag at +0x344 — and to take a different path
+  // entirely unless it is 1. The arguments a hand drag passes are the same
+  // ones we pass, so if the two differ at all, they differ here.
+  log_line(g_ours ? "drop: ours" : "drop: by hand");
+  {
+    DWORD flag = readable((BYTE *)self + 0x344, 1) ? *((BYTE *)self + 0x344) : 0xFF;
+    DWORD where = flag ? 0x1C8u : 0x48u;
+    log_num("      the flag at 0x344 ", (int)flag);
+    // The drop's other branch reads a byte at [this-0x174 + 0x4B8]. If the
+    // engine is looking at the keyboard, this is where it would have put the
+    // answer — Ctrl and Shift should disagree about it.
+    BYTE *other = (BYTE *)self - 0x174 + 0x4B8;
+    if (readable(other, 1)) log_num("      the byte at 0x4B8 ", (int)*other);
+    if (readable((BYTE *)self + where, 4) >= 4)
+      log_num("      the mode it reads ", *(int *)((BYTE *)self + where));
+  }
+  log_known("      from widget ", fromWidget);
+  log_hex("      from stack ", (DWORD)fromStack);
+  log_known("      to widget ", toWidget);
+  log_hex("      to stack ", (DWORD)toStack);
+  int answer = g_onDrop(self, NULL, fromWidget, fromStack, toWidget, toStack);
+  log_num("      it answered ", answer);
+  return answer;
+}
+
 static void *__fastcall make_controller_hook(void *ecx, void *edx, void *a1, void *a2, void *a3,
                                              void *a4, void *a5, void *a6) {
   log_line("controller: one is being built");
@@ -2093,9 +2173,16 @@ static void *__fastcall make_controller_hook(void *ecx, void *edx, void *a1, voi
 
 static int __fastcall split_show_hook(void *self, void *edx, void *controller) {
   (void)edx;
+  // Does this window even come through here? The address is inherited from an
+  // earlier session and has never once been seen to fire, which would explain
+  // why answering it achieved nothing.
   Wanted asked = g_pendingLeft > 0 ? g_pending : WANT_NOTHING;
   if (g_pendingLeft > 0) g_pendingLeft--;
-  if (asked != WANT_NOTHING && is_a(controller, COMMON_CONTROLLER_VTABLE_RVA)) {
+  BYTE *base = (BYTE *)GetModuleHandleW(NULL);
+  int is_one_of_ours = readable(controller, 4) >= 4
+    && (*(DWORD **)controller)[CONTROLLER_VALIDATE / 4] == (DWORD)(base + CONTROLLER_VALIDATE_FN)
+    && (*(DWORD **)controller)[CONTROLLER_EXECUTE / 4] == (DWORD)(base + CONTROLLER_EXECUTE_FN);
+  if (asked != WANT_NOTHING && is_one_of_ours) {
     int total = *(int *)((BYTE *)controller + CONTROLLER_TOTAL);
     int wanted = asked == WANT_ONE ? 1 : total / 2;
     ControllerAskFn allowed = (*(ControllerAskFn **)controller)[CONTROLLER_VALIDATE / 4];
@@ -2175,10 +2262,18 @@ static int __fastcall dnd_pick_hook(void *state, void *edx, void *arg) {
       // Alt — gathering every stack of one creature back into one — is not here
       // yet. It needs to know WHICH creature each slot holds, and the field
       // that looked like it holds a file path for one slot in three.
-      // NOTHING IS MOVED this round: the point is to watch a drag the player
-      // makes, which does build a controller, and see what it is built from.
       int did = 0;
-      (void)drop; (void)client; (void)alt; (void)stack;
+      g_pending = ctrl ? WANT_ONE : WANT_HALF;
+      for (int i = 0; i < SLOT_COUNT; i++) {
+        if (stack[i]) continue;
+        g_pendingLeft++;
+        g_ours = 1;
+        drop(client, NULL, g_slotWidget[army][from], stack[from], g_slotWidget[army][i], NULL);
+        g_ours = 0;
+        did++;
+        if (!(ctrl && shift)) break;      // one free slot, unless filling them all
+      }
+      (void)alt;
       // The click is called off the way the engine calls one off, so no stack
       // is left hanging on the cursor with the split already made.
       if (did) {
@@ -2201,6 +2296,10 @@ static void install_quick_split(void) {
   g_dndPick = (DndPickFn)detour(DND_PICK_RVA, DND_PICK_HEAD, DND_PICK_HEAD_LEN,
                                 &dnd_pick_hook, "drag and drop pick");
   if (g_dndPick) log_line("quick split: watching clicks made with a key held");
+  g_splitOk = (SplitOkFn)detour(SPLIT_OK_RVA, SPLIT_OK_HEAD, SPLIT_OK_HEAD_LEN,
+                                &split_ok_hook, "the split window's OK");
+  g_onDrop = (OnDropFn)detour(ON_DROP_RVA, ON_DROP_HEAD, ON_DROP_HEAD_LEN,
+                              &drop_watch_hook, "a drop by hand");
   g_makeController = (MakeControllerFn)detour(MAKE_CONTROLLER_RVA, MAKE_CONTROLLER_HEAD,
                                               MAKE_CONTROLLER_HEAD_LEN, &make_controller_hook,
                                               "building a controller");

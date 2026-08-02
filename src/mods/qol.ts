@@ -55,11 +55,11 @@ export const QOL_FLAGS = [
   },
   {
     name: 'quick-split',
-    title: 'Split a stack with a held key (not finished)',
-    detail: 'Meant for clicking a stack with Ctrl, Shift or both held to split it without the slider'
-      + ' window. It does not move anything yet: the click finds its army and its slot and writes'
-      + ' what it would do to bin/homm5-editor.log. Turning it on changes nothing about how the'
-      + ' game plays.',
+    title: 'Split a stack with a held key',
+    detail: 'Click a stack with Shift held to put half of it in the first free slot, or with Ctrl and'
+      + ' Shift together to put one creature into every free slot. No slider window appears. A click'
+      + ' with no key held picks the stack up as before, and dragging still opens the window. Ctrl on'
+      + ' its own is not done yet — it moves the whole stack.',
   },
 ] as const;
 
