@@ -1092,10 +1092,14 @@ typedef int(__thiscall *LevelFn)(void *hero);
 
 /** The hero a combat unit belongs to, reached the way the engine reaches him. */
 static void *unit_hero(void *unit) {
-  if (!unit) return NULL;
-  void *owner = ((GetterFn)(*(void ***)unit)[VT_UNIT_OWNER / 4])(unit);
-  if (!owner) return NULL;
-  return ((GetterFn)(*(void ***)owner)[VT_OWNER_HERO / 4])(owner);
+  if (!readable(unit, 4)) return NULL;
+  void **vt = *(void ***)unit;
+  if (!readable(vt, VT_UNIT_OWNER + 4) || !points_at_code(vt[VT_UNIT_OWNER / 4])) return NULL;
+  void *owner = ((GetterFn)vt[VT_UNIT_OWNER / 4])(unit);
+  if (!readable(owner, 4)) return NULL;
+  void **ovt = *(void ***)owner;
+  if (!readable(ovt, VT_OWNER_HERO + 4) || !points_at_code(ovt[VT_OWNER_HERO / 4])) return NULL;
+  return ((GetterFn)ovt[VT_OWNER_HERO / 4])(owner);
 }
 
 /**
@@ -1142,12 +1146,13 @@ static void __fastcall tent_amount_hook(int *amount, int *second, void *unit, in
   // A number of zero or less is still LOGGED and only not added to: "the engine
   // said nothing" is one of the answers worth seeing, and a hook that goes
   // quiet in exactly that case is a hook that looks uninstalled.
-  // Resolved whatever the engine said the healing was worth: the charges are a
-  // different question from the amount, and a tent that healed nobody this turn
-  // still spent a use.
-  void *hero = unit_hero(unit);
+  // `engine > 0` GUARDS THE WALK, and that is not a shortcut. This function has
+  // two call sites, and asking the other one's unit for its owner ends the
+  // battle — measured, by removing the test on the grounds that resolving a
+  // hero could not hurt. A tent whose amount is nothing is not a tent acting.
+  void *hero = engine > 0 ? unit_hero(unit) : NULL;
   tent_charges_term(unit, hero);
-  void *self = engine > 0 && hero ? hero_virtual_base(hero) : NULL;
+  void *self = hero ? hero_virtual_base(hero) : NULL;
   int level = -1, add = 0, matched = -1;
   if (self) {
     void **vt = *(void ***)self;
