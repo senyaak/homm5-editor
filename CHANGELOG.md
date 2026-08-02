@@ -13,6 +13,10 @@ one.
 
 ## Unreleased
 
+Nothing yet — this is where the next build's notes go.
+
+## 0.7.0 — 2026-08-02
+
 ### Added
 
 - **Game settings — how the game plays, from a panel.** A new button beside

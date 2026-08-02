@@ -1,6 +1,6 @@
 {
   "name": "homm5-editor",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "private": true,
   "type": "module",
   "description": "Experimental map/campaign editor for Heroes of Might and Magic 5 (Tribes of the East)",
