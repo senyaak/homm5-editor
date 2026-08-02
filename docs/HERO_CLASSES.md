@@ -300,11 +300,21 @@ Seven of the eight ask for exactly three; the Warlock's asks for six.
 
 ## What her skills DO is not this file
 
-A record here gives a skill a name, an icon and a place in the tree. The
-arithmetic is the extension's half, and it belongs to the thing being changed
-rather than to the class holding the skill: «Мастер палатки» and its three perks
-are all about one war machine, and they are written up in
+A record here gives a skill a name, an icon and a place in the tree. What it does
+comes from one of **two** halves, and which one depends on whether the skill
+changes a NUMBER or acts at a MOMENT:
+
+- a number the engine computes — a term the native extension appends, which is
+  what `effects` on the record carries
+  ([engineInternals/EXTENSION.md](engineInternals/EXTENSION.md));
+- a moment — Lua, which the engine hands out already, so it costs no reverse
+  engineering at all. The skill carries the script, the mod carries the file, and
+  the game's global script carries one line loading it
+  (`src/mods/skill-scripts.ts`, [NAMES_AND_SCRIPTING.md](NAMES_AND_SCRIPTING.md)).
+
+Either way it belongs to the thing being changed rather than to the class holding
+the skill: «Мастер палатки» and its three perks are all about one war machine,
+and they are written up in
 [engineInternals/FIRST_AID_TENT.md](engineInternals/FIRST_AID_TENT.md) — what the
-tent is worth, how many uses it has, where a term of ours joins each, and where
-the three perks will have to go. How a skill CARRIES such a term is in
-[engineInternals/EXTENSION.md](engineInternals/EXTENSION.md).
+tent is worth, how many uses it has, where a term of ours joins each, and how the
+third perk was written as Lua on both sides of a battle.

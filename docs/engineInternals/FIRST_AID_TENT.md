@@ -1,7 +1,8 @@
 # The first aid tent
 
 *Answers: what the tent is worth, how many times it may be used, where each of
-those two numbers is decided, and how a term of ours joins them.*
+those two numbers is decided, how a term of ours joins them, and how the branch's
+one scripted perk reaches a battle from outside it.*
 
 Its own file because it is its own mechanism. The material was written down
 twice, in the two documents that happened to be open when it was found — the
@@ -156,7 +157,7 @@ only a hero with a tent reaches. `push 2; call [hero_vtable+0x174]` inside
   count) and `0x368` (scripted necromancy level) in
   [../ENGINE_INTERNALS.md](../ENGINE_INTERNALS.md).
 
-## The branch's three perks, and where each will have to go
+## The branch's three perks: one written, two waiting
 
 The Witch's «Мастер палатки» branch — see [../HERO_CLASSES.md](../HERO_CLASSES.md)
 for the class and the records.
@@ -167,8 +168,8 @@ controller for scripted battles, attached to a hero by `SetHeroCombatScript`, pe
 hero and per map, and it has no event for "the tent healed somebody". Both are
 extension work, and the amount hook is already standing in the right place.
 
-**The third is written, and it is Lua on both sides.** «Запасной комплект»: a
-tent destroyed in a battle is back afterwards. The difficulty was never the
+**The third WORKS — confirmed in game on 2026-08-02 — and it is Lua on both
+sides.** «Запасной комплект»: a tent destroyed in a battle is back afterwards. The difficulty was never the
 rebuilding — it is knowing there was a tent to rebuild, because after the battle
 "no tent" and "never had one" look the same.
 
@@ -202,3 +203,9 @@ a design:
   a shipped map have no name. It cannot see a battle against a hero at all.
 - **Nothing needed to be overridden.** The block runs when the battle is built,
   so it just looks; the game's own death hooks stay the game's.
+
+And one that the working perk answers: **the name a battle knows a hero by is the
+name the map knows him by.** `GetHeroName(GetAttackerHero())` in the battle and
+`GetSavedCombatArmyHero(index, side)` on the map agree, which is what the game
+variable's key is built from — had they disagreed the perk would have done
+nothing, silently, and the key would have had to move to the player instead.

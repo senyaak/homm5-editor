@@ -317,7 +317,7 @@ export function initHeroSkills(): void {
   registerHeroTab({
     id: 'skills',
     label: 'Skills',
-    about: 'A racial for a class of ours, or a perk of its branch — words and an icon until the extension is taught what it does.',
+    about: 'A racial for a class of ours, or a perk of its branch — words and an icon until it is given a term the extension adds, or Lua at a moment the engine hands out.',
     pane: 'hm-pane-skills',
     onShow: () => {
       void refreshSkillList().catch((e: unknown) => {

@@ -508,9 +508,13 @@ export const TENT_MASTER = {
  * the shipped Multishot hangs off Avenger: the branch IS the gate, because no
  * other class has it.
  *
- * All three are words and an icon for now, like the racial: what they do is the
- * extension's half. They are written down here because deciding what a branch
- * offers is a design decision and belongs where the class is described.
+ * Two of the three are words and an icon for now: they happen INSIDE a battle,
+ * at the moment the tent acts, which no script can see — the extension's half.
+ * The third, «Запасной комплект», is done, and it is Lua: what it needs is a
+ * moment, and the engine hands moments out already.
+ *
+ * They are written down here because deciding what a branch offers is a design
+ * decision and belongs where the class is described.
  */
 /**
  * «Запасной комплект», the battle half: was there a tent when the fighting

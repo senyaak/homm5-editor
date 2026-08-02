@@ -45,7 +45,7 @@ mod documents below; they move here as each gets written up.
 - [NEW_CREATURES.md](NEW_CREATURES.md) — a creature, including the ceiling in the executable.
 - [ARTIFACTS.md](ARTIFACTS.md) — an artifact, start to finish.
 - [HERO_CLASSES.md](HERO_CLASSES.md) — a hero class and a skill of our own: what a class decides (and what it does not), how a racial is bound, what gates a perk, and the places a table's size is declared. What such a skill DOES is the mechanism's own page.
-- [engineInternals/FIRST_AID_TENT.md](engineInternals/FIRST_AID_TENT.md) — the first aid tent as a mechanism: what it heals, how many uses it has, and where a term of ours joins each.
+- [engineInternals/FIRST_AID_TENT.md](engineInternals/FIRST_AID_TENT.md) — the first aid tent as a mechanism: what it heals, how many uses it has, where a term of ours joins each, and how the branch's scripted perk was written as Lua on both sides of a battle.
 - [ARTIFACT_EFFECTS.md](ARTIFACT_EFFECTS.md) — what data, script and the exe each control.
 - [ENGINE_INTERNALS.md](ENGINE_INTERNALS.md) — read out of the binary: how to read it, the rules that hold everywhere, and an index into `engineInternals/` (artifacts and equipment, necromancy, specializations, Lua, mods and maps, our extension).
 - [EXE_LUA_REGISTRY.md](EXE_LUA_REGISTRY.md) — the Lua functions the executable registers.
