@@ -1320,6 +1320,26 @@ static void *__fastcall machine_ctor_hook(void *self, void *edx, void *a1, void 
  * and subtracting. Being on the list is what makes it once: the constructor puts
  * each tent there exactly one time.
  */
+/**
+ * The object a combat hero's SKILLS answer on — one virtual call further along.
+ *
+ * `unit_hero` stops where the engine's own code stops when it wants the hero
+ * himself, and that pointer is right for everything the tent already asks. It is
+ * NOT the one skills answer on: at 0xdc9705 the engine gets the hero exactly the
+ * way we do and then makes one more call, slot 0, before asking `[+0x174]` for a
+ * mastery. Skipping that step is calling a real function on the wrong object —
+ * `points_at_code` is happy, the slot holds code, and the battle ends.
+ *
+ * Which is why this is the third crash of the same family and the last: make the
+ * call the way the engine makes it, all of it, not most of it.
+ */
+static void *hero_for_skills(void *hero) {
+  if (!readable(hero, 4)) return NULL;
+  void **vt = *(void ***)hero;
+  if (!readable(vt, 4) || !points_at_code(vt[0])) return NULL;
+  return ((GetterFn)vt[0])(hero);
+}
+
 static void tent_charges_term(void *unit, void *hero) {
   if (!unit || !hero) return;
   void *m = (BYTE *)unit - MACHINE_AS_UNIT;
@@ -1333,7 +1353,7 @@ static void tent_charges_term(void *unit, void *hero) {
   if (!found || !readable((BYTE *)m + MACHINE_CHARGES, 4)) return;
 
   int *charges = (int *)((BYTE *)m + MACHINE_CHARGES);
-  int add = hero_term(hero, STAT_TENT_CHARGES, 0);
+  int add = hero_term(hero_for_skills(hero), STAT_TENT_CHARGES, 0);
   // Only upwards. A row worth less than nothing would take away uses the hero
   // paid for, and a tent that cannot act at all is a bug that looks like ours.
   if (add <= 0) return;
