@@ -373,7 +373,22 @@ API is a controller for scripted battles — attached to a hero by
 `SetHeroCombatScript`, per hero and per map — and it has no event for "the tent
 healed somebody". Both are extension work.
 
-**The third is adventure-map shaped**, and Lua can have it: a tent destroyed in
+**The branch has no ultimate yet**, and that is a deliberate later. Every class
+ships exactly one — `SKILLTYPE_UINQUE_PERK`, eight of them — and the shape is
+regular enough to copy without any new reverse engineering:
+
+```
+HERO_SKILL_ABSOLUTE_LUCK   HERO_CLASS_RANGER   basic: HERO_SKILL_AVENGER
+  <- ELVEN_LUCK, ROAD_HOME, ELITE_CASTERS      (the branch's own three perks)
+```
+
+So a Witch's ultimate is one more record hanging off `HERO_SKILL_TENT_MASTER`
+with the three perks below as its `dependenciesIDs` — the case the prerequisite
+list is actually FOR, and the one place a list of ours is not the branch itself.
+Seven of the eight ask for exactly three; the Warlock's asks for six. What it
+DOES is the extension's half again, like everything else here.
+
+**The third perk is adventure-map shaped**, and Lua can have it: a tent destroyed in
 a battle is rebuilt afterwards. `COMBAT_RESULTS_TRIGGER` fires after a combat
 with the combat index; `GetSavedCombatArmyHero` names the heroes,
 `HasHeroSkill` asks whether one holds the perk, and
