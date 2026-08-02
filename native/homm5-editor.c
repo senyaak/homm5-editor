@@ -1871,8 +1871,22 @@ typedef struct {
   int count;
 } SlotState;
 
+/** How many entries the army's own vector had, for the log: if it is shorter
+ *  than the slots on screen, an emptied slot is REMOVED from it and a slot
+ *  number is not an index into it. */
+static int g_stacksSeen = 0;
+
 static void read_army(void *army, SlotState *out) {
   void *owner = army_owner(army);
+  g_stacksSeen = 0;
+  {
+    NoArgFn get = (NoArgFn)vtable_entry(owner, OWNER_STACKS);
+    void *list = get ? get(owner, NULL) : NULL;
+    if (readable(list, 8) >= 8) {
+      BYTE **begin = *(BYTE ***)list, **end = *(BYTE ***)((BYTE *)list + 4);
+      if (end >= begin) g_stacksSeen = (int)(end - begin);
+    }
+  }
   for (int i = 0; i < SLOT_COUNT; i++) {
     void *s = owner ? stack_in(owner, i) : NULL;
     int room = (int)readable(s, STACK_COUNT + 4);
@@ -2095,7 +2109,19 @@ static int __fastcall dnd_pick_hook(void *state, void *edx, void *arg) {
   Plan plan;
   plan.moves = 0;
   read_army(army_of(part, side), plan.slot);
-  if (plan.slot[from].type < 0) return g_dndPick(state, NULL, arg);
+  SlotState before[SLOT_COUNT];
+  for (int i = 0; i < SLOT_COUNT; i++) before[i] = plan.slot[i];
+  if (plan.slot[from].type < 0) {
+    // The picture says there is a stack here and the army says there is not.
+    // Worth a line of its own: it is the one shape of failure that says the
+    // slot numbers on screen are not the ones the army is keeping.
+    if (g_clicksLogged < 40) {
+      g_clicksLogged++;
+      log_num("click: nothing in slot ", from + 1);
+      log_num("       stacks in the army's own list ", g_stacksSeen);
+    }
+    return g_dndPick(state, NULL, arg);
+  }
   int held_here = plan.slot[from].count;
 
   if (alt) gather(&plan, from);
@@ -2112,9 +2138,20 @@ static int __fastcall dnd_pick_hook(void *state, void *edx, void *arg) {
     log_num("       shift ", shift);
     log_num("       alt ", alt);
     log_num("       army ", side + 1);
-    log_num("       slot ", from + 1);
+    log_num("       clicked slot ", from + 1);
     log_num("       holding ", held_here);
-    log_num("       moves planned ", plan.moves);
+    log_num("       stacks in the army's own list ", g_stacksSeen);
+    for (int i = 0; i < SLOT_COUNT; i++) {
+      if (before[i].type < 0) continue;
+      log_num("       in slot ", i + 1);
+      log_num("            of creature ", before[i].type);
+      log_num("            there are ", before[i].count);
+    }
+    for (int i = 0; i < plan.moves; i++) {
+      log_num("       move out of slot ", plan.move[i].from + 1);
+      log_num("               into slot ", plan.move[i].to + 1);
+      log_num("               leaving it with ", plan.move[i].want);
+    }
     log_num("       moves made ", did);
   }
 
