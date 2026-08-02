@@ -70,23 +70,6 @@ one.
 
 ### Fixed
 
-- **Installing the first class of a mod no longer deletes the mod.** Two places
-  asked whether a mod was empty and only one of them had heard of a class, so a
-  mod holding a class and nothing else was judged empty, its archive removed —
-  and the window still said "Installed Колдунья as value 9", over a folder with
-  nothing in it. There is one such counter now, and both the builder and the
-  installer ask it.
-
-- **The last three perks of a skill are offered at a level up.** The game
-  registers the size of its skill table in one place and counts it in another;
-  the editor only moved the first, so a table that loaded perfectly well was
-  walked as though it were four entries shorter. The racial worked — a racial is
-  handed out by class, not looked up — and the three perks past the old ceiling
-  were simply never offered.
-
-- **A mod holding one specialization is not an empty mod,** and is no longer
-  treated as one.
-
 - **The editor no longer guesses where the game is when it has been told.**
   `start-editor.bat` set `HOMM5_ROOT` to the directory above the checkout, which
   is right when the repo sits inside the install and wrong everywhere else — and
