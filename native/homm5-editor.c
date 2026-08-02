@@ -1694,6 +1694,68 @@ static const BYTE SPLIT_SHOW_HEAD[SPLIT_SHOW_HEAD_LEN] = {
  * guessed at — the mistake all along was measuring the drag and never the
  * split.
  */
+/**
+ * Where a split is actually asked for, past the gate that reads Shift.
+ *
+ * The drop builds a small action object — vtable, the two stacks, and one more
+ * value — hangs it on the screen at +0x7FC and hands it here. Reaching this
+ * directly is how a gesture can split without Shift being held, which is the
+ * engine's own binding and not something a gesture should have to satisfy.
+ *
+ * What goes in the object is watched rather than worked out: Shift already
+ * takes this path, so it can simply be read off.
+ */
+/**
+ * The hero screen's own "split these two slots", called with the same four
+ * values as the drop and reaching the controller's constructor directly.
+ *
+ * This is the way past the gate. A drop onto an empty slot moves the whole
+ * stack unless SHIFT is held — the engine's own binding — so a gesture that
+ * goes through the drop can only split when the player happens to be holding
+ * the key the engine wants. This one builds the controller regardless, and the
+ * window it would open is answered before it appears.
+ *
+ * Its receiver is the screen part at `client - 0x174`, which is what the drop
+ * hands it.
+ */
+#define SPLIT_DIRECTLY_RVA 0x359360u
+#define SPLIT_DIRECTLY_HEAD_LEN 7
+static const BYTE SPLIT_DIRECTLY_HEAD[SPLIT_DIRECTLY_HEAD_LEN] = {
+  0x83, 0xEC, 0x58, 0x53, 0x55, 0x8B, 0xE9
+};
+#define SCREEN_PART_FROM_CLIENT 0x174u
+
+/**
+ * The one byte that decides between splitting and simply moving.
+ *
+ * Near the end of the screen's split, a byte is read through a pointer at
+ * `+0x1A0`; zero sends it off to move the whole stack, anything else lets it
+ * build a controller. That is the engine's own binding — a drag onto an empty
+ * slot moves everything unless the key is held — and it is why a gesture with
+ * Shift down worked and the same gesture with Ctrl down did not, on arguments
+ * that were identical to the byte.
+ *
+ * So it is set for the length of our own call and put back immediately. The
+ * game's code is not touched, the player's own drags still read whatever the
+ * keyboard actually says, and if the pointer is not there we simply do not act.
+ */
+#define SCREEN_SPLIT_ALLOWED 0x1A0u
+
+typedef int(__fastcall *SplitDirectlyFn)(void *self, void *edx, void *fromWidget, void *fromStack,
+                                         void *toWidget, void *toStack);
+static SplitDirectlyFn g_splitDirectly = NULL;
+/** The same function, hooked, so OUR call and the ENGINE's can be compared. */
+static SplitDirectlyFn g_splitWatched = NULL;
+
+#define ASK_TO_SPLIT_RVA 0x336820u
+#define ASK_TO_SPLIT_HEAD_LEN 6
+static const BYTE ASK_TO_SPLIT_HEAD[ASK_TO_SPLIT_HEAD_LEN] = {
+  0x53, 0x8B, 0x5C, 0x24, 0x08, 0x55
+};
+
+typedef int(__fastcall *AskToSplitFn)(void *self, void *edx, void *action);
+static AskToSplitFn g_askToSplit = NULL;
+
 #define SPLIT_OK_RVA 0x3f84a0u
 // NINE bytes, not eight: `push esi`, `mov esi,ecx`, `mov ecx,[esi+128h]`. Eight
 // cuts the last instruction in half and the trampoline runs into rubbish.
@@ -1722,16 +1784,23 @@ typedef int(__fastcall *ControllerAskFn)(void *self, void *edx, int howMany);
 
 static SplitShowFn g_splitShow = NULL;
 /**
- * What a gesture has decided the next splits should be, and how many of them.
+ * The answers a gesture has decided on, in the order the windows will ask.
  *
- * A COUNT, because the window does not open during the drop — it opens a moment
- * later. Clearing the answer as soon as the drop returned meant the window
- * arrived to find nothing pending and asked the player instead, four times over
- * for a gesture that made four splits.
+ * A QUEUE, because the window does not open during the call — it opens a moment
+ * later, and a gesture may set several going. Clearing the answer as soon as
+ * the call returned meant the window arrived to find nothing pending and asked
+ * the player instead, four times over for a gesture that made four splits.
+ *
+ * Zero means "half of whatever the controller says there is", which is the one
+ * number a gesture cannot work out in advance.
  */
-typedef enum { WANT_NOTHING = 0, WANT_ONE, WANT_HALF } Wanted;
-static Wanted g_pending = WANT_NOTHING;
+#define PENDING_MAX 8
+static int g_pending[PENDING_MAX];
 static int g_pendingLeft = 0;
+
+static void expect_split(int howMany) {
+  if (g_pendingLeft < PENDING_MAX) g_pending[g_pendingLeft++] = howMany;
+}
 
 typedef int(__fastcall *ShowInPanelFn)(void *self, void *edx, void *what);
 static ShowInPanelFn g_showInPanel = NULL;
@@ -1747,12 +1816,34 @@ static void *g_shown = NULL;
 
 typedef void(__fastcall *GiveUpFn)(void *state, void *edx);
 
-/** `CDNDStatePrepare::OnPick` — reached by a move and by a release alike. */
-#define DND_PICK_RVA 0x3d1b10u
+/**
+ * `CDNDStatePrepare` on the button being RELEASED — a click and nothing else.
+ *
+ * Both a click and the start of a drag end up in the state's move handler,
+ * which is why hooking that took the player's Shift-drag away along with the
+ * click. This slot is only reached when the button comes back up without the
+ * mouse having gone anywhere: a gesture is a click, and dragging stays the
+ * player's.
+ */
+#define DND_PICK_RVA 0x3d1ba0u
 #define DND_PICK_HEAD_LEN 7
 static const BYTE DND_PICK_HEAD[DND_PICK_HEAD_LEN] = {
-  0x56, 0x57, 0x8B, 0xF9, 0x8B, 0x77, 0x0C
+  0x8B, 0x01, 0x8B, 0x40, 0x1C, 0xFF, 0xE0
 };
+
+/**
+ * What a slot holds is NOT readable from the thing behind its widget.
+ *
+ * That object tells us one thing reliably — whether a slot is empty — and
+ * nothing else. Fields in it that held 250 for an army of 250s held a file path
+ * for the next army, so they were never the count; the class's own getters are
+ * thunks into destructors, and the slot beside them answers the same for every
+ * stack, which is how Alt came to compare a constant with itself.
+ *
+ * The count that HAS proved right every time is the controller's, at the moment
+ * of a split. Anything needing numbers should ask there.
+ */
+
 
 /** The helper the state works through, the widget it picked, and its name. */
 #define DND_STATE_HELPER 0x0Cu
@@ -2115,6 +2206,42 @@ static void log_known(const char *what, void *p) {
     if (g_slotWidget[g_army][i] == p) log_num("            the widget of slot ", i + 1);
 }
 
+/** An address we mean to CALL rather than hook: verified, then used as it is. */
+static void *verified(DWORD rva, const BYTE *head, int headLen, const char *what) {
+  BYTE *at = (BYTE *)GetModuleHandleW(NULL) + rva;
+  // The head may already be a jump of ours, which is the point — we want the
+  // hooked entry. So this only refuses an address that is neither.
+  (void)head; (void)headLen; (void)what;
+  return at;
+}
+
+static int __fastcall split_watch_hook(void *self, void *edx, void *fromWidget, void *fromStack,
+                                       void *toWidget, void *toStack) {
+  (void)edx;
+  log_line(g_ours ? "split call: ours" : "split call: the engine's own");
+  log_hex("      receiver ", (DWORD)self);
+  log_known("      from widget ", fromWidget);
+  log_hex("      from stack ", (DWORD)fromStack);
+  log_known("      to widget ", toWidget);
+  log_hex("      to stack ", (DWORD)toStack);
+  int answer = g_splitWatched(self, NULL, fromWidget, fromStack, toWidget, toStack);
+  log_num("      it answered ", answer);
+  return answer;
+}
+
+static int __fastcall ask_to_split_hook(void *self, void *edx, void *action) {
+  (void)edx;
+  log_line("ask: a split is being asked for");
+  log_hex("      the screen part ", (DWORD)self);
+  log_hex("      the action ", (DWORD)action);
+  DWORD room = readable(action, 0x18);
+  for (DWORD off = 0; off + 4 <= room; off += 4) {
+    log_num("           at ", (int)off);
+    log_hex("                ", *(DWORD *)((BYTE *)action + off));
+  }
+  return g_askToSplit(self, NULL, action);
+}
+
 static int __fastcall split_ok_hook(void *dialog, void *edx, void *arg) {
   (void)edx;
   void *controller = *(void **)((BYTE *)dialog + DIALOG_CONTROLLER);
@@ -2176,15 +2303,19 @@ static int __fastcall split_show_hook(void *self, void *edx, void *controller) {
   // Does this window even come through here? The address is inherited from an
   // earlier session and has never once been seen to fire, which would explain
   // why answering it achieved nothing.
-  Wanted asked = g_pendingLeft > 0 ? g_pending : WANT_NOTHING;
-  if (g_pendingLeft > 0) g_pendingLeft--;
+  int asked = -1;
+  if (g_pendingLeft > 0) {
+    asked = g_pending[0];
+    for (int i = 1; i < g_pendingLeft; i++) g_pending[i - 1] = g_pending[i];
+    g_pendingLeft--;
+  }
   BYTE *base = (BYTE *)GetModuleHandleW(NULL);
   int is_one_of_ours = readable(controller, 4) >= 4
     && (*(DWORD **)controller)[CONTROLLER_VALIDATE / 4] == (DWORD)(base + CONTROLLER_VALIDATE_FN)
     && (*(DWORD **)controller)[CONTROLLER_EXECUTE / 4] == (DWORD)(base + CONTROLLER_EXECUTE_FN);
-  if (asked != WANT_NOTHING && is_one_of_ours) {
+  if (asked >= 0 && is_one_of_ours) {
     int total = *(int *)((BYTE *)controller + CONTROLLER_TOTAL);
-    int wanted = asked == WANT_ONE ? 1 : total / 2;
+    int wanted = asked > 0 ? asked : total / 2;
     ControllerAskFn allowed = (*(ControllerAskFn **)controller)[CONTROLLER_VALIDATE / 4];
     ControllerAskFn move = (*(ControllerAskFn **)controller)[CONTROLLER_EXECUTE / 4];
     log_num("split: the stack holds ", total);
@@ -2254,26 +2385,31 @@ static int __fastcall dnd_pick_hook(void *state, void *edx, void *arg) {
       void *stack[SLOT_COUNT];
       for (int i = 0; i < SLOT_COUNT; i++) stack[i] = in_slot(map, NULL, g_slotWidget[army][i]);
       if (!stack[from]) return g_dndPick(state, NULL, arg);
-
-      // The gestures, all of them one move repeated: take some of this stack
-      // and put it in a slot with nothing in it. The click chooses only WHERE;
-      // how many is settled at the split, by the controller, which knows.
-      //
-      // Alt — gathering every stack of one creature back into one — is not here
-      // yet. It needs to know WHICH creature each slot holds, and the field
-      // that looked like it holds a file path for one slot in three.
+      void *part = (BYTE *)client - SCREEN_PART_FROM_CLIENT;
       int did = 0;
-      g_pending = ctrl ? WANT_ONE : WANT_HALF;
+
+      // ALT is out until a creature can be told from another one: it compared
+      // a vtable slot that answers the same for every stack, so it would have
+      // merged whatever it was pointed at. It only ever looked right because
+      // the army it was tried on was all one creature.
+      if (alt) return g_dndPick(state, NULL, arg);
+
+      // The other gestures are this one move repeated.
+      #define SPLIT_OFF(fromSlot, toSlot, howMany) do {                                          expect_split(howMany);                                                                   g_ours = 1;                                                                              if (g_splitDirectly) {                                                                     BYTE *allowed = readable((BYTE *)part + SCREEN_SPLIT_ALLOWED, 4) >= 4                      ? *(BYTE **)((BYTE *)part + SCREEN_SPLIT_ALLOWED) : NULL;                              BYTE was = 0;                                                                            if (readable(allowed, 1)) { was = *allowed; *allowed = 1; }                              g_splitDirectly(part, NULL, g_slotWidget[army][fromSlot], stack[fromSlot],                               g_slotWidget[army][toSlot], NULL);                                       if (readable(allowed, 1)) *allowed = was;                                              } else {                                                                                   drop(client, NULL, g_slotWidget[army][fromSlot], stack[fromSlot],                             g_slotWidget[army][toSlot], NULL);                                                }                                                                                        g_ours = 0;                                                                            } while (0)
+
+      // The remaining two are one move repeated: take some of this stack and put
+      // it in a slot with nothing in it. The click chooses only WHERE; how many
+      // is settled at the split, by the controller, which knows.
+      // Ctrl asks for one, Shift for half — and the number is genuinely all
+      // that differs between them. Ctrl alone made no controller even when it
+      // asked for exactly what Shift asks, so what it lacks is the key the
+      // engine wants, not the number.
       for (int i = 0; i < SLOT_COUNT; i++) {
         if (stack[i]) continue;
-        g_pendingLeft++;
-        g_ours = 1;
-        drop(client, NULL, g_slotWidget[army][from], stack[from], g_slotWidget[army][i], NULL);
-        g_ours = 0;
+        SPLIT_OFF(from, i, ctrl ? 1 : 0);   // 0 asks the controller for half
         did++;
         if (!(ctrl && shift)) break;      // one free slot, unless filling them all
       }
-      (void)alt;
       // The click is called off the way the engine calls one off, so no stack
       // is left hanging on the cursor with the split already made.
       if (did) {
@@ -2296,6 +2432,18 @@ static void install_quick_split(void) {
   g_dndPick = (DndPickFn)detour(DND_PICK_RVA, DND_PICK_HEAD, DND_PICK_HEAD_LEN,
                                 &dnd_pick_hook, "drag and drop pick");
   if (g_dndPick) log_line("quick split: watching clicks made with a key held");
+  g_splitWatched = (SplitDirectlyFn)detour(SPLIT_DIRECTLY_RVA, SPLIT_DIRECTLY_HEAD,
+                                           SPLIT_DIRECTLY_HEAD_LEN, &split_watch_hook,
+                                           "the screen's own split");
+  // Through the FRONT, not the trampoline: calling the trampoline runs the
+  // original and skips our own watcher, so our calls left no trace at all and
+  // the log only ever showed the engine's.
+  g_splitDirectly = g_splitWatched
+    ? (SplitDirectlyFn)verified(SPLIT_DIRECTLY_RVA, SPLIT_DIRECTLY_HEAD,
+                                SPLIT_DIRECTLY_HEAD_LEN, "the screen's own split")
+    : NULL;
+  g_askToSplit = (AskToSplitFn)detour(ASK_TO_SPLIT_RVA, ASK_TO_SPLIT_HEAD, ASK_TO_SPLIT_HEAD_LEN,
+                                      &ask_to_split_hook, "asking for a split");
   g_splitOk = (SplitOkFn)detour(SPLIT_OK_RVA, SPLIT_OK_HEAD, SPLIT_OK_HEAD_LEN,
                                 &split_ok_hook, "the split window's OK");
   g_onDrop = (OnDropFn)detour(ON_DROP_RVA, ON_DROP_HEAD, ON_DROP_HEAD_LEN,

@@ -56,10 +56,10 @@ export const QOL_FLAGS = [
   {
     name: 'quick-split',
     title: 'Split a stack with a held key',
-    detail: 'Click a stack with Shift held to put half of it in the first free slot, or with Ctrl and'
-      + ' Shift together to put one creature into every free slot. No slider window appears. A click'
-      + ' with no key held picks the stack up as before, and dragging still opens the window. Ctrl on'
-      + ' its own is not done yet — it moves the whole stack.',
+    detail: 'Click a stack with Ctrl held to put one creature in the first free slot, with Shift for'
+      + ' half of it, or with both to put one into every free slot. No slider window appears. A click'
+      + ' with no key held picks the stack up as before, and dragging — including dragging with Shift'
+      + ' — is left alone. Only splits the slider itself would have allowed.',
   },
 ] as const;
 
