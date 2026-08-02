@@ -167,3 +167,57 @@ export function attachAnimation(
     };
   } catch { drop(); }
 }
+
+/** One clip baked against a model's bind pose, with the rig it plays on. */
+export interface BakedRig {
+  clip: BakedClip;
+  bones: NonNullable<GeomData['skin']>['bones'];
+  bind: number[][];
+  /** The display scale the clip's own root carries — see below. */
+  scale: number;
+}
+
+/**
+ * Bake a named clip onto a model, given the clip's own `BasicSkelAnim`.
+ *
+ * `attachAnimation` above does this for the ONE clip an adventure object idles
+ * with, and finds it by walking the shared's AnimSet. Two callers need the same
+ * work for a clip they already hold the document of and for several clips of
+ * one model: a scene's actors (any of seventeen arena clips) and an effect's
+ * `<Models>` (each names a `<SkelAnim>` of its own). They bake the same way or
+ * they drift, so the walking and the baking are separate calls.
+ *
+ * Null whenever the chain breaks — no uid, no file in `bin/animations`, a
+ * Granny file that will not open, an empty skeleton.
+ */
+export function bakeCharacterClip(
+  data: Assets, animXml: string, model: { xml: string; rel: string } | null, fps: number,
+): BakedRig | null {
+  const uid = animXml.match(/<uid>([0-9A-Fa-f-]{36})<\/uid>/)?.[1];
+  if (!uid) return null;
+  const bin = data.path(join('bin', 'animations', uid.toUpperCase()));
+  if (!existsSync(bin)) return null;
+  const file = GrannyFile.open(readFileSync(bin));
+  if (!file || file.isUnreadable) return null;
+  const animation = readAnimations(file)[0];
+  const own = readSkeletons(file)[0];
+  if (!animation || !own?.bones.length) return null;
+  // The bind pose is the MODEL's when it has one — the clip's own skeleton is
+  // the pose the clip starts from, and for an arena clip that is nowhere near
+  // the pose the mesh was skinned in (modelBindSkeleton says what that costs).
+  const skeleton = modelBindSkeleton(model, data, animation) ?? own;
+  return {
+    clip: bakeClip(skeleton, animation, fps),
+    // The DISPLAY SCALE rides on the clip skeleton's root, as it does for a
+    // creature on the map: the mesh is authored at one size and the game shows
+    // it through the rig. An arena hero comes out ten times too big without it
+    // — a boot filling the frame is what that looks like.
+    scale: Number(own.bones[0]?.rest.scaleShear?.[0] ?? 1) || 1,
+    bones: skeleton.bones.map((b) => ({
+      name: b.name, parent: b.parentIndex,
+      pos: b.rest.position.map((v) => +v.toFixed(5)),
+      quat: b.rest.orientation.map((v) => +v.toFixed(6)),
+    })),
+    bind: inverseBindMatrices(skeleton).map((m) => m.map((v) => +v.toFixed(6))),
+  };
+}

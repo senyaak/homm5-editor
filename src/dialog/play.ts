@@ -14,7 +14,9 @@ import type { Assets } from '../game/assets.ts';
 import { buildScene } from '../scene/scene.ts';
 import type { AmbientData, FxInstancePayload, GeomData, Scene } from '../scene/payload.ts';
 import { loadAmbient } from '../scene/ambient.ts';
-import { modelsOfEffect, particlesOfEffect } from '../scene/object-effects.ts';
+import { effectDuration, modelsOfEffect, particlesOfEffect } from '../scene/object-effects.ts';
+import type { EffectModel } from '../scene/object-effects.ts';
+import { UNITS_PER_TILE as U } from '../scene/units.ts';
 import { dirOf, resolveHref } from '../scene/xdb.ts';
 import { actorRigs } from './actors.ts';
 import type { ActorRig } from './actors.ts';
@@ -34,6 +36,18 @@ export interface CameraSample {
 /** A shot, as the player needs it. */
 export interface ShotView {
   index: number;
+  /**
+   * Seconds from the top of the scene at which this shot begins.
+   *
+   * A scene is ONE clock, not a row of islands. Its shots schedule things
+   * outside their own window all the time — of the 7296 cues and effects the
+   * shipped scenes schedule, 1034 start after their shot has ended and 870
+   * before it begins — because a delay is measured from the shot's start and
+   * nothing stops it running past the end. Shot 6 of C1M1's opening lasts three
+   * seconds and tells a marksman to shoot at 6.7: read one shot at a time, he
+   * never shoots at all.
+   */
+  start: number;
   /** Seconds. What the shot lasts when its sound does not decide it. */
   duration: number;
   /** Reference to the spoken line's text file, as written. */
@@ -44,8 +58,8 @@ export interface ShotView {
   speaker: string;
   /** The camera move, sampled; empty when the shot names no camera. */
   camera: CameraSample[];
-  /** What each actor does during the shot, offset from its start. */
-  cues: Array<{ actor: string; kind: string; delay: number }>;
+  /** What the shot tells its actors to do: `delay` from its start, `at` from the scene's. */
+  cues: Array<{ actor: string; kind: string; delay: number; at: number }>;
   /** The light this shot asks for, or null to keep the scene's. */
   ambient: ShotLight;
   /**
@@ -62,7 +76,10 @@ export interface ShotView {
 
 /** One firing of an effect inside a shot, resolved to what the renderer plays. */
 export interface ShotEffectView {
+  /** Seconds from the shot's start, as the file writes it — often negative. */
   delay: number;
+  /** Seconds from the scene's start. This is when it actually goes off. */
+  at: number;
   pos: [number, number, number];
   rot: number;
   /** Reference as written, for the inspector. */
@@ -70,14 +87,18 @@ export interface ShotEffectView {
   /** The effect's particle systems; empty when the chain does not resolve. */
   fx: FxInstancePayload[];
   /**
-   * The effect's own geometry, placed in its local frame.
+   * The effect's own geometry, placed and animated in its local frame.
    *
    * An effect is not only sparks: nine of the twelve C1M1's opening fires carry
    * `<Models>` — the glowing column a hero casts inside, the meteors of a
    * meteor shower (nineteen of them). Left out, the spells were the smoke
    * without the fire.
    */
-  models: GeomData[];
+  models: EffectModel[];
+  /** Seconds a model of this effect stays up when it names no length of its own. */
+  duration: number;
+  /** True when the scene did not fire this — an actor's own clip did. */
+  fromClip?: boolean;
 }
 
 /**
@@ -218,17 +239,24 @@ export function buildScenePlay(data: Assets, scenePath: string, options: PlayOpt
   // down to the same baked keys. Read once per href.
   const texSize = options.texSize ?? 128;
   const readXdb = (href: string): string | null => data.text(href.split('#')[0]!.replace(/^\//, ''));
-  const fxCache = new Map<string, { fx: FxInstancePayload[]; models: GeomData[] }>();
-  const effectOf = (href: string): { fx: FxInstancePayload[]; models: GeomData[] } => {
-    if (!href) return { fx: [], models: [] };
+  interface BuiltEffect { fx: FxInstancePayload[]; models: EffectModel[]; duration: number }
+  const none: BuiltEffect = { fx: [], models: [], duration: 0 };
+  const fxCache = new Map<string, BuiltEffect>();
+  const effectOf = (href: string): BuiltEffect => {
+    if (!href) return none;
     const known = fxCache.get(href);
     if (known) return known;
     const rel = resolveHref(dirOf(scenePath), href);
     const xml = data.text(rel);
     const doc = xml ? { xml, dir: dirOf(rel) } : null;
     const built = doc
-      ? { fx: particlesOfEffect(doc, data, texSize), models: modelsOfEffect(doc, data, readXdb, texSize) }
-      : { fx: [], models: [] };
+      ? {
+        fx: particlesOfEffect(doc, data, texSize),
+        models: modelsOfEffect(doc, data, readXdb, texSize,
+          { animate: true, ...(options.fps ? { fps: options.fps } : {}) }),
+        duration: effectDuration(doc.xml),
+      }
+      : none;
     fxCache.set(href, built);
     return built;
   };
@@ -244,7 +272,13 @@ export function buildScenePlay(data: Assets, scenePath: string, options: PlayOpt
   const sceneLight = lightOf(scene.ambientLight);
   if (sceneLight) for (const floor of built.scene.floors) floor.ambient = sceneLight;
 
+  // Where each actor stands, for the effects their own clips bring with them.
+  const standing = new Map(actors.map((a) => [a.href, a]));
+
+  let clock = 0;
   const shots: ShotView[] = scene.shots.map((shot) => {
+    const start = clock;
+    clock += shot.duration || 3;
     const speaker = shot.heroLink || shot.monsterLink;
     const ends = shot.newCameraSet ? endsOf(data, scenePath, shot.newCameraSet) : null;
     const camera: CameraSample[] = [];
@@ -261,10 +295,36 @@ export function buildScenePlay(data: Assets, scenePath: string, options: PlayOpt
       }
     }
     const cues: ShotView['cues'] = [];
+    const effects: ShotEffectView[] = shot.effects.map((e) => ({
+      delay: e.delay,
+      at: start + e.delay,
+      pos: [e.pos.x, e.pos.y, e.pos.z] as [number, number, number],
+      rot: e.rot,
+      href: e.effect,
+      ...effectOf(e.effect),
+    }));
     const cue = (link: string, name: string, index: number, delay: number): void => {
       const actor = actorKey(link);
       const kind = clipOf(actor, name, index);
-      if (kind) cues.push({ actor, kind, delay });
+      if (!kind) return;
+      cues.push({ actor, kind, delay, at: start + delay });
+      // A clip brings its own effect — the blue fire that runs up a knight's
+      // sword as he casts. Fired here, at the actor and at the cue's moment,
+      // rather than as a thing of its own: it is the same "an effect goes off
+      // at a place and a time" the scene's own CustomEffects are, and one
+      // machine playing both is one machine to get right.
+      const href = standing.get(actor)?.clipEffects[kind];
+      if (!href) return;
+      const on = standing.get(actor)!;
+      effects.push({
+        delay,
+        at: start + delay,
+        pos: [(on.x + 0.5) * U, (on.y + 0.5) * U, on.z],
+        rot: on.rot,
+        href,
+        fromClip: true,
+        ...effectOf(href),
+      });
     };
     cue(speaker, shot.animName, shot.actorAnimationIndex, shot.animationDelay);
     for (const anim of shot.animations) {
@@ -272,6 +332,7 @@ export function buildScenePlay(data: Assets, scenePath: string, options: PlayOpt
     }
     return {
       index: shot.index,
+      start,
       duration: shot.duration || 3,
       text: shot.text,
       sound: shot.sound,
@@ -279,13 +340,7 @@ export function buildScenePlay(data: Assets, scenePath: string, options: PlayOpt
       camera,
       cues,
       ambient: lightOf(shot.customAmbientLight),
-      effects: shot.effects.map((e) => ({
-        delay: e.delay,
-        pos: [e.pos.x, e.pos.y, e.pos.z] as [number, number, number],
-        rot: e.rot,
-        href: e.effect,
-        ...effectOf(e.effect),
-      })),
+      effects,
     };
   });
 

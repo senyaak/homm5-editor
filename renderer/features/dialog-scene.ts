@@ -31,26 +31,34 @@ import { UNITS_PER_TILE as U } from '#src/scene/units.ts';
 interface Player {
   actor: ActorView;
   idle: IdleObject;
-  /** What they are playing now. */
+  /** The last clip the scene cued on them. */
   kind: string;
+  /** Scene time that clip started at, or null when nobody has cued them yet. */
+  at: number | null;
   /**
-   * Seconds into THIS shot at which the clip starts, or null when it was cued
-   * by an earlier one and is over — the fallen holding their last frame.
+   * What is actually on screen — the cued clip while it runs, `idle00` once it
+   * is out. Written by `poseAll`, so the inspector and the tests read the pose
+   * that is being drawn rather than the intention behind it.
    */
-  from: number | null;
+  showing: string;
 }
 
 /**
  * Clips that a body does not get up from.
  *
- * A cue lasts as long as its shot and then the actor goes back to idling —
- * except this: a scene kills people, and the swordsmen cut down in one shot are
- * still lying there in the next. Anything else held past its shot would freeze
- * a hero in the last frame of `happy` for the rest of the scene, and anyone
- * cued again later (shot 23 resurrects a paladin killed in shot 15) gets up,
- * because only the most recent cue counts.
+ * A clip runs once and the actor goes back to idling — except this: a scene
+ * kills people, and the swordsmen cut down in one shot are still lying there
+ * ten shots later. Anything else held would freeze a hero in the last frame of
+ * `happy` for the rest of the scene, and anyone cued again later (shot 23
+ * resurrects a paladin killed in shot 15) gets up, because only the most recent
+ * cue counts.
  */
 const TERMINAL = /^(death|defeat)/;
+
+/** Where the scene's one clock stands: seconds from the top of shot 0. */
+function now(): number {
+  return (playing.shots[playing.shot]?.start ?? 0) + playing.at;
+}
 
 /** The idle-stance setting a scene borrowed, to be given back when it closes. */
 let modeBefore: IdleMode | null = null;
@@ -133,10 +141,17 @@ let sceneLight: AmbientData | null = null;
 
 /** Baked keys for every effect the open scene can fire, by uid. */
 let fxBank: Record<string, FxTransfer> = {};
-/** Systems belonging to the shot on screen, with when each starts. */
-let shotFx: Array<{ system: FxSystem; from: number }> = [];
-/** An effect's own geometry, which appears and goes with the sparks. */
-let shotModels: Array<{ mesh: THREE.Mesh; from: number }> = [];
+/** Systems alive around the shot on screen, with the scene time each starts at. */
+let shotFx: Array<{ system: FxSystem; at: number }> = [];
+/**
+ * An effect's own geometry, which appears and goes with the sparks.
+ *
+ * `until` is what stops it. A particle train dies out on its own — the bake
+ * knows how long a copy lives and how many there are — but a model has no such
+ * clock, and the praying hands of a Prayer stood inside the soldier they were
+ * cast on for the rest of the scene until this was here.
+ */
+let shotModels: Array<{ mesh: THREE.Mesh; idle: IdleObject | null; at: number; until: number }> = [];
 
 function clearShotFx(): void {
   for (const s of shotFx) { s.system.mesh.removeFromParent(); s.system.dispose(); }
@@ -158,7 +173,7 @@ function clearShotFx(): void {
  * part are saying. Read as ordinary scenery they come out as grey solids in the
  * middle of the effect.
  */
-function effectMesh(g: GeomData): THREE.Mesh | null {
+function effectMesh(g: GeomData): { mesh: THREE.Mesh; idle: IdleObject | null } | null {
   if (!g.pos.length || !g.idx.length) return null;
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(g.pos), 3));
@@ -166,6 +181,12 @@ function effectMesh(g: GeomData): THREE.Mesh | null {
   if (g.nrm) geometry.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(g.nrm), 3));
   geometry.setIndex(g.idx);
   if (!g.nrm) geometry.computeVertexNormals();
+  // An effect model is animated as often as not — the meteor falls, the ice
+  // bolt drops, the Prayer's hands rise out of the ground they start under.
+  if (g.skin?.clip) {
+    geometry.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(g.skin.index, 4));
+    geometry.setAttribute('skinWeight', new THREE.Float32BufferAttribute(g.skin.weight, 4));
+  }
   const loader = new THREE.TextureLoader();
   const material = (g.parts ?? []).map((part) => {
     let map: THREE.Texture | null = null;
@@ -190,33 +211,62 @@ function effectMesh(g: GeomData): THREE.Mesh | null {
     return m as THREE.Material;
   });
   (g.parts ?? []).forEach((part, i) => geometry.addGroup(part.start, part.count, i));
-  const mesh = new THREE.Mesh(geometry, material);
-  if (g.scale && g.scale !== 1) mesh.scale.setScalar(g.scale);
-  return mesh;
+  const idle = g.skin?.clip ? makeIdle({ ...g.skin }, geometry, material) : null;
+  return { mesh: idle?.mesh ?? new THREE.Mesh(geometry, material), idle };
 }
 
-/** Build the systems for a shot; they play from their own delay. */
+/** How long one firing of an effect can be on screen — its longest part. */
+function effectSpan(fired: ShotView['effects'][number]): number {
+  let span = fired.duration;
+  for (const m of fired.models) span = Math.max(span, m.life || fired.duration);
+  return span;
+}
+
+const _q = new THREE.Quaternion();
+const _axis = new THREE.Vector3(0, 0, 1);
+const _v = new THREE.Vector3();
+
+/**
+ * Build every effect that can be seen while this shot is on screen.
+ *
+ * Not only the shot's own: a delay is measured from the shot that WRITES the
+ * effect, and it runs past the end as happily as it starts before the
+ * beginning — the gating flash of shot 14 is written at -0.3 seconds, which is
+ * in shot 13. So the window is what decides, and what a shot fires is scanned
+ * for across the whole scene.
+ */
 function cueShotFx(shot: ShotView): void {
   clearShotFx();
+  const from = shot.start, to = shot.start + shot.duration;
   const m4 = new THREE.Matrix4();
-  for (const fired of shot.effects) {
-    m4.makeRotationZ(fired.rot).setPosition(fired.pos[0], fired.pos[1], fired.pos[2]);
-    for (const fx of fired.fx) {
-      const baked = fxBank[fx.uid];
-      if (!baked?.particles.length) continue;
-      // No phase spread: eight copies of one spell over a line of soldiers are
-      // meant to go off together, unlike thirty campfires on a map.
-      const { system } = createFxSystem(fx, baked, m4, 0, uFxTint);
-      stage.add(system.mesh);
-      shotFx.push({ system, from: fired.delay });
-    }
-    for (const model of fired.models) {
-      const mesh = effectMesh(model);
-      if (!mesh) continue;
-      mesh.position.set(fired.pos[0], fired.pos[1], fired.pos[2]);
-      mesh.rotation.z = fired.rot;
-      stage.add(mesh);
-      shotModels.push({ mesh, from: fired.delay });
+  for (const s of playing.shots) {
+    for (const fired of s.effects) {
+      if (fired.at >= to || fired.at + effectSpan(fired) <= from) continue;
+      m4.makeRotationZ(fired.rot).setPosition(fired.pos[0], fired.pos[1], fired.pos[2]);
+      for (const fx of fired.fx) {
+        const baked = fxBank[fx.uid];
+        if (!baked?.particles.length) continue;
+        // No phase spread: eight copies of one spell over a line of soldiers are
+        // meant to go off together, unlike thirty campfires on a map.
+        const { system } = createFxSystem(fx, baked, m4, 0, uFxTint);
+        stage.add(system.mesh);
+        shotFx.push({ system, at: fired.at });
+      }
+      _q.setFromAxisAngle(_axis, fired.rot);
+      for (const model of fired.models) {
+        const built = effectMesh(model.geom);
+        if (!built) continue;
+        // The model's place INSIDE the effect, then the effect's on the stage.
+        _v.set(model.pos[0], model.pos[1], model.pos[2]).applyQuaternion(_q);
+        built.mesh.position.set(fired.pos[0] + _v.x, fired.pos[1] + _v.y, fired.pos[2] + _v.z);
+        built.mesh.quaternion.copy(_q)
+          .multiply(new THREE.Quaternion(model.quat[0], model.quat[1], model.quat[2], model.quat[3]));
+        built.mesh.scale.setScalar(model.scale * (model.geom.scale ?? 1));
+        stage.add(built.mesh);
+        shotModels.push({
+          ...built, at: fired.at, until: fired.at + (model.life || fired.duration),
+        });
+      }
     }
   }
   if (shotFx.length || shotModels.length) advanceShotFx();
@@ -240,27 +290,35 @@ export const actorKinds = (): Array<{ href: string; kind: string; top: number }>
     _bone.setFromMatrixPosition(b.matrixWorld);
     top = Math.max(top, _bone.z - p.actor.z);
   }
-  return { href: p.actor.href, kind: p.from === null || playing.at >= p.from ? p.kind : 'idle00', top };
+  return { href: p.actor.href, kind: p.showing, top };
 });
 
-/** How many effect systems the shot on screen is playing — for tests. */
-export const shotFxCount = (): number => shotFx.length;
+// Both counts are of what is ON SCREEN, not of what has been built: an effect
+// is built for the whole window a shot can see it in and drawn only for the
+// moment it is up, and "built" would report a spell that has already gone out.
 
-/** How many pieces of effect GEOMETRY it is drawing — likewise. */
-export const shotModelCount = (): number => shotModels.length;
+/** How many effect systems are being drawn right now — for tests. */
+export const shotFxCount = (): number => shotFx.reduce((n, s) => n + (s.system.mesh.visible ? 1 : 0), 0);
+
+/** How many pieces of effect GEOMETRY are — likewise. */
+export const shotModelCount = (): number => shotModels.reduce((n, m) => n + (m.mesh.visible ? 1 : 0), 0);
 
 /** Put every live system where its own clock says it is. */
 function advanceShotFx(): void {
+  const T = now();
   for (const s of shotFx) {
     // An effect that has not gone off yet is not drawn at all. Held at time
     // zero it shows the recording's first frame — for a spell that is the flash
     // at the caster's hands, sitting on the field for three seconds before the
     // spell is cast.
-    const at = playing.at - s.from;
+    const at = T - s.at;
     s.system.mesh.visible = at >= 0;
     if (at >= 0) s.system.update(at);
   }
-  for (const m of shotModels) m.mesh.visible = playing.at >= m.from;
+  for (const m of shotModels) {
+    m.mesh.visible = T >= m.at && T < m.until;
+    if (m.mesh.visible && m.idle) poseIdle(m.idle, T - m.at, false);
+  }
 }
 
 /**
@@ -295,7 +353,7 @@ export async function openScene(inner: string): Promise<SceneInfo> {
     idle.mesh.rotation.z = actor.rot;
     idle.mesh.scale.setScalar(actor.geom.scale ?? 1);
     stage.add(idle.mesh);
-    playing.players.push({ actor, idle, kind: 'idle00', from: 0 });
+    playing.players.push({ actor, idle, kind: 'idle00', at: null, showing: 'idle00' });
   }
 
   // The scene's light came down on the floors (src/dialog/play.ts); remember it
@@ -367,21 +425,6 @@ export function show(index: number, at = 0): void {
   playing.shot = ((index % shots.length) + shots.length) % shots.length;
   playing.at = at;
   const shot = shots[playing.shot]!;
-  const of = (href: string): Player | undefined => playing.players.find((x) => x.actor.href === href);
-
-  for (const p of playing.players) { p.kind = 'idle00'; p.from = 0; }
-  // The last thing each actor was told to do before this shot. Only the most
-  // recent counts, and only a TERMINAL one carries over (see above).
-  const before = new Map<string, string>();
-  for (let i = 0; i < playing.shot; i++) for (const cue of shots[i]!.cues) before.set(cue.actor, cue.kind);
-  for (const [actor, kind] of before) {
-    const p = TERMINAL.test(kind) ? of(actor) : undefined;
-    if (p?.actor.clips[kind]) { p.kind = kind; p.from = null; }
-  }
-  for (const cue of shot.cues) {
-    const p = of(cue.actor);
-    if (p && p.actor.clips[cue.kind]) { p.kind = cue.kind; p.from = cue.delay || 0; }
-  }
   poseAll();
   cueShotFx(shot);
   // The shot's own light, or the scene's. Set on the floor rather than applied
@@ -399,26 +442,52 @@ export function show(index: number, at = 0): void {
   renderPanel();
 }
 
+/**
+ * Hand every actor the last thing the scene told them to do.
+ *
+ * Every cue in the scene is a moment on one clock, so this is a scan for the
+ * latest one at or before now rather than a per-shot handout. That is what
+ * makes an actor's timing right at all: a cue can be written into a shot it
+ * does not fit in, and reading only the current shot's dropped every one of
+ * those on the floor.
+ */
+function cueAll(T: number): void {
+  for (const p of playing.players) { p.kind = 'idle00'; p.at = null; }
+  const of = new Map(playing.players.map((p) => [p.actor.href, p]));
+  for (const shot of playing.shots) {
+    for (const cue of shot.cues) {
+      if (cue.at > T) continue;
+      const p = of.get(cue.actor);
+      if (!p || !p.actor.clips[cue.kind]) continue;
+      if (p.at !== null && cue.at < p.at) continue;
+      p.kind = cue.kind;
+      p.at = cue.at;
+    }
+  }
+}
+
 /** Put every actor where their clip says they are, at the current moment. */
 function poseAll(): void {
+  const T = now();
+  cueAll(T);
   for (const p of playing.players) {
-    // Until the cue's delay is up the actor is still idling. Held at time zero
-    // of the clip instead, they stand in its FIRST FRAME — three seconds of a
-    // swordsman frozen mid-swing before he swings, which reads as a broken
-    // model rather than as a cue that has not come yet.
-    const waiting = p.from !== null && playing.at < p.from;
-    const kind = waiting ? 'idle00' : p.kind;
-    const clip = p.actor.clips[kind] ?? p.actor.clips['idle00'];
+    // A clip runs once from the moment it was cued and then the actor goes back
+    // to idling — unless it is one nobody gets up from (TERMINAL), which holds
+    // its last frame for the rest of the scene. An actor nobody has cued yet
+    // idles too; held at frame zero of a clip that has not started they would
+    // stand mid-swing waiting for it.
+    const cued = p.at === null ? null : p.actor.clips[p.kind];
+    const idle = p.actor.clips['idle00'];
+    // A cue OF the idle is idling — played as a one-shot it would run its cycle
+    // from the cue and then hand over to the looping copy, a visible hitch.
+    const over = !cued || p.kind === 'idle00'
+      || (T - p.at! >= cued.duration && !TERMINAL.test(p.kind));
+    const play = over && idle ? { clip: idle, time: T, loop: true } : null;
+    const clip = play?.clip ?? cued;
     if (!clip) continue;
+    p.showing = play ? 'idle00' : p.kind;
     p.idle.skin.clip = clip;
-    // The idle loops on the scene's own clock; a clip a shot plays runs once
-    // from its delay and then holds. One cued by an EARLIER shot is already
-    // over, so it holds from the first frame this shot is on screen.
-    const loop = kind === 'idle00';
-    const time = loop ? playing.at
-      : p.from === null ? clip.duration
-        : Math.min(playing.at - p.from, clip.duration);
-    poseIdle(p.idle, time, loop);
+    poseIdle(p.idle, play ? play.time : Math.min(T - p.at!, clip.duration), !!play);
   }
 }
 

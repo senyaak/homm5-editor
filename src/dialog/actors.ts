@@ -19,15 +19,12 @@
 // seventeen; C1M1's opening asks four of them of Isabell, and baking the rest
 // would be thirteen Granny files read to be thrown away.
 
-import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import type { Assets } from '../game/assets.ts';
-import { GrannyFile } from '../format/gr2.ts';
-import { bakeClip, inverseBindMatrices, readAnimations, readSkeletons } from '../scene/animation.ts';
 import type { BakedClip } from '../scene/animation.ts';
 import { decodeModelGeom } from '../scene/model-geom.ts';
 import type { GeomData } from '../scene/payload.ts';
-import { modelBindSkeleton } from '../scene/skin.ts';
+import { bakeCharacterClip } from '../scene/skin.ts';
+import type { BakedRig } from '../scene/skin.ts';
 import { dirOf, resolveHref } from '../scene/xdb.ts';
 import type { DialogScene } from './dialog-scene.ts';
 import type { StageObject } from './stage.ts';
@@ -44,6 +41,17 @@ export interface ActorRig {
   clips: Record<string, BakedClip>;
   /** Every kind the arena set offers, whether baked or not — for the UI. */
   available: string[];
+  /**
+   * The effect a clip brings with it, by kind, as a data-root path.
+   *
+   * A clip is not only movement: `BasicSkelAnim` names an `<Effect>` beside its
+   * Granny file, and that is where a spell's own fire lives — the blue glow that
+   * runs up a knight's sword as he casts is `Characters/Heroes/Knight/buff.xdb`,
+   * named by the `buff` clip and by nothing in the scene. 45 of the 132 cues in
+   * C1M1's opening play a clip that carries one, so a third of what the scene
+   * does was happening in silence.
+   */
+  clipEffects: Record<string, string>;
   /** What the scene asked for and the set does not have. */
   missing: string[];
 }
@@ -158,43 +166,6 @@ function clipIndex(setXml: string, setDir: string): Map<string, string> {
   return out;
 }
 
-/** Read and bake one clip, or null when anything along the chain is missing. */
-function bake(
-  data: Assets, animPath: string, model: { xml: string; rel: string }, fps: number,
-): { clip: BakedClip; bones: GeomData['skin']; scale: number } | null {
-  const uid = data.text(animPath)?.match(/<uid>([0-9A-Fa-f-]{36})<\/uid>/)?.[1];
-  if (!uid) return null;
-  const bin = data.path(join('bin', 'animations', uid.toUpperCase()));
-  if (!existsSync(bin)) return null;
-  const file = GrannyFile.open(readFileSync(bin));
-  if (!file || file.isUnreadable) return null;
-  const animation = readAnimations(file)[0];
-  const own = readSkeletons(file)[0];
-  if (!animation || !own?.bones.length) return null;
-  // The bind pose is the MODEL's when it has one — the clip's own skeleton is
-  // the pose the clip starts from, and for an arena clip that is nowhere near
-  // the pose the mesh was skinned in (src/scene/skin.ts says what that costs).
-  const skeleton = modelBindSkeleton(model, data, animation) ?? own;
-  return {
-    clip: bakeClip(skeleton, animation, fps),
-    // The DISPLAY SCALE rides on the clip skeleton's root, as it does for a
-    // creature on the map: the mesh is authored at one size and the game shows
-    // it through the rig. An arena hero comes out ten times too big without it
-    // — a boot filling the frame is what that looks like.
-    scale: Number(own.bones[0]?.rest.scaleShear?.[0] ?? 1) || 1,
-    bones: {
-      index: [], weight: [],
-      bones: skeleton.bones.map((b) => ({
-        name: b.name, parent: b.parentIndex,
-        pos: b.rest.position.map((v) => +v.toFixed(5)),
-        quat: b.rest.orientation.map((v) => +v.toFixed(6)),
-      })),
-      bind: inverseBindMatrices(skeleton).map((m) => m.map((v) => +v.toFixed(6))),
-      clip: null,
-    },
-  };
-}
-
 export interface ActorOptions {
   /** Samples per second when baking (default 15, as the map's idle uses). */
   fps?: number;
@@ -280,24 +251,31 @@ export function actorRigs(
     if (!geom?.skin) continue;
 
     const clips: Record<string, BakedClip> = {};
+    const clipEffects: Record<string, string> = {};
     const missing: string[] = [];
-    let bones: GeomData['skin'] | null = null;
+    let rig: BakedRig | null = null;
     let scale = 1;
     for (const kind of part.ask) {
       const path = part.kinds.get(kind);
       if (!path) { if (kind !== 'idle00') missing.push(kind); continue; }
-      const baked = bake(data, path, { xml: modelXml, rel: modelRel }, fps);
+      const animXml = data.text(path);
+      const baked = animXml ? bakeCharacterClip(data, animXml, { xml: modelXml, rel: modelRel }, fps) : null;
       if (!baked) { missing.push(kind); continue; }
       clips[kind] = baked.clip;
-      if (!bones) { bones = baked.bones; scale = baked.scale; }
+      const effect = animXml?.match(/<Effect href="([^"]+)"/)?.[1];
+      // Kept as a data-root path so the caller can resolve it without knowing
+      // which folder the clip came from — a scene's own effects are written
+      // that way too, and both go through the same reader.
+      if (effect) clipEffects[kind] = '/' + resolveHref(dirOf(path), effect);
+      if (!rig) { rig = baked; scale = baked.scale; }
     }
-    if (!bones) continue;
+    if (!rig) continue;
 
     // The mesh's bone indices only mean anything against this bone list; a
     // mismatch does not look like a small error, it tears the model apart.
-    if (geom.skin.index.some((b) => b >= bones.bones.length)) continue;
-    geom.skin.bones = bones.bones;
-    geom.skin.bind = bones.bind;
+    if (geom.skin.index.some((b) => b >= rig.bones.length)) continue;
+    geom.skin.bones = rig.bones;
+    geom.skin.bind = rig.bind;
     geom.skin.clip = clips['idle00'] ?? Object.values(clips)[0] ?? null;
     if (scale !== 1) geom.scale = scale;
 
@@ -305,7 +283,7 @@ export function actorRigs(
     // structured clone keeps shared references shared, so the payload carries
     // the mesh once, and the renderer can build one THREE geometry for all.
     for (const item of part.on) {
-      rigs.push({ href: item.href, id: item.id, geom, clips, available: part.order, missing });
+      rigs.push({ href: item.href, id: item.id, geom, clips, clipEffects, available: part.order, missing });
     }
   }
   return rigs;

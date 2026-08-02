@@ -87,6 +87,25 @@ Fields in the order the game declares them (`DialogScene` in `types.xml`):
 and — for a walk — `MovePoints` in TILES with a `FinalAngle` to end on.
 Corpus-wide there are 5578 of them and 769 placed effects.
 
+### A scene is one clock
+
+A delay is measured from the start of the shot that writes it, and **nothing
+keeps it inside that shot.** Of the 7296 cues and effects the shipped scenes
+schedule, **1034 start after their shot has ended and 870 before it begins** —
+better than a quarter of everything a scene does. Shot 6 of C1M1's opening lasts
+three seconds and tells a marksman to shoot at 6.7 (he shoots in shot 8); shot
+14's gating flash is written at −0.3, which is in shot 13.
+
+So a shot's `duration` decides only when the NEXT line starts. Everything else
+runs on the scene's clock — the sum of the durations before it plus the delay —
+and the player holds one time value for the whole scene. Read a scene as a row
+of islands, as this one was at first, and every one of those cues is dropped on
+the floor: the armies simply never act.
+
+A clip **runs once and is over**; the actor goes back to idling. The exception
+is death (`death*`, `defeat*`), which holds its last frame until something cues
+that actor again — shot 23 resurrects a paladin killed in shot 15.
+
 ### Which clip, by name or by number
 
 A cue says which clip two ways and the shipped scenes use both:
@@ -348,16 +367,33 @@ going quietly green.
   hidden rather than held at frame zero (a spell's flash sitting on the field
   before it is cast).
 
-  **A one-shot clip HOLDS its last frame, and a death outlives its shot.** Two
-  separate faults had the fallen getting up. The poser wrapped every clip like a
-  loop, and a one-shot clamped to its own duration is `span % span` — frame
-  ZERO, a corpse standing to attention. And a cue was forgotten when its shot
-  ended, so the swordsmen cut down in shot 13 were back on their feet in shot
-  14. What carries over is only `death`/`defeat` (holding `happy` would freeze a
-  hero in a grin for the rest of the scene) and only until the actor's next cue,
-  which is how the paladin killed in shot 15 gets up when shot 23 resurrects
-  him. A shot is shown from a standing start, so this is worked out by walking
-  the shots before it rather than accumulated as they run.
+  **A one-shot clip runs once, and a death outlives its shot.** Two separate
+  faults had the fallen getting up. The poser wrapped every clip like a loop,
+  and a one-shot clamped to its own duration is `span % span` — frame ZERO, a
+  corpse standing to attention. And a cue was forgotten when its shot ended, so
+  the swordsmen cut down in shot 13 were back on their feet in shot 14. What
+  carries over is only `death`/`defeat` (holding `happy` would freeze a hero in
+  a grin for the rest of the scene) and only until the actor's next cue, which
+  is how the paladin killed in shot 15 gets up when shot 23 resurrects him.
+
+  **The whole scene runs on one clock** (see "A scene is one clock" above). Cues
+  and effects carry an absolute `at` alongside the `delay` the file writes, and
+  showing a shot at a moment is showing the SCENE at `shot.start + at`: every
+  actor gets the latest cue at or before that instant, wherever it was written,
+  and a shot builds the effects of any shot whose window overlaps its own. This
+  is one rule where there were three (a per-shot handout, a walk back over
+  earlier shots for the deaths, and a delay compared against `playing.at`), and
+  it is the only reading under which a delay of 6.7 in a three-second shot means
+  anything.
+
+  **A clip brings its own effect.** `BasicSkelAnim` names an `<Effect>` beside
+  its Granny file, and that is where a caster's own fire lives: the blue glow
+  that runs up a knight's sword as he casts is `Heroes/Knight/buff.xdb`, named
+  by the `buff` clip and by nothing in the scene at all. 45 of the 132 cues in
+  C1M1's opening play a clip that carries one — a third of what the scene does
+  was happening in silence. They are fired at the actor, at the cue's moment,
+  through the same path the scene's own `CustomEffects` take: one machine for
+  both is one machine to get right.
 
   **An effect brings its own geometry.** `<Models>` on an effect is a real mesh
   — the ice crystal of an ice bolt, the four burning panels of the gate an arch
@@ -367,12 +403,28 @@ going quietly green.
   drawn unlit: read as ordinary scenery they come out as grey solids sitting in
   the middle of the sparks.
 
-  Two pieces of an effect are still missing and both are visible. A model can
-  carry a `<SkelAnim>` (nine bones for the ice bolt, thirteen for the prayer)
-  and we draw it in its bind pose, so the crystal hangs in the air instead of
-  falling. And `<Lights>` — a `LightInstance` pointing at an `AnimLight`, whose
-  colour and intensity are a baked blob like an animation's — is not drawn at
-  all. [~]
+  **A model plays its own clip, and it ENDS.** Every `ModelInstance` in the
+  shipped library names a `<SkelAnim>` — nine bones for the ice bolt, thirteen
+  for the prayer — baked onto it the way an actor's clip is, so the crystal
+  falls instead of hanging in the air. That clip is also what says how long the
+  model is up: `CycleCount` cycles of `CycleLength` seconds, and since every
+  shipped instance leaves the length at 0, one cycle is the clip's own duration.
+  Nothing else can end it — a particle train dies out because the bake knows how
+  many copies there are and how long one lives, but a model has no such clock,
+  and the praying hands of a Prayer stood inside the soldier they were cast on
+  for the rest of the scene. Where a model names no clip, the effect's own
+  `<Duration>` is the fallback (2.5 in 1781 of the 1814 shipped effects — it is
+  the editor's default, which is why it is a fallback and not the rule).
+
+  Still missing, and visible. An effect's `<Lights>` — a `LightInstance`
+  pointing at an `AnimLight`, whose colour and intensity are a baked blob like
+  an animation's — is not drawn at all. And 46 of the 298 placed effects fly a
+  path (`MovePoints` in world units with a `MovementSpeed` and a
+  `ConstantPitch`); we put them at their start and leave them there. None of the
+  46 are in C1M1's opening, so a marksman's arrow there is not in the scene file
+  at all — if the game shows one it comes from the creature's own `AnimShot`
+  (`GameMechanics/Shot/…` → `MissileShot`: a model, a speed, and offsets from
+  the shooter), fired at a target no scene document names. [~]
 * `tools/test-dialog-scene.ts` — the corpus checks and the census above.
 * `tools/camera-shape.ts` — the convention measurement.
 * `src/dialog/actors.ts` — an actor's ARENA rig: the character's own mesh and

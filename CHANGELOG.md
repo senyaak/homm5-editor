@@ -36,6 +36,28 @@ one.
 
 ### Fixed
 
+- **A scene now runs on one clock, so a quarter of what it does stops being
+  dropped.** A cue's delay is measured from the shot that writes it and nothing
+  keeps it inside that shot: of the 7296 cues and effects the shipped scenes
+  schedule, 1034 start after their shot has ended and 870 before it begins.
+  Played a shot at a time, none of those ever happened — which is why the
+  marksman in C1M1's opening never shot (his cue is 6.7 seconds into a
+  three-second shot) and the priest's blessing was cut off after a third of a
+  second. Everything is placed on the scene's own clock now, and a clip that
+  runs out hands the actor back to idling instead of freezing on its last frame.
+
+- **An actor's animation brings its own effect.** A clip names an `<Effect>`
+  beside its Granny file, and that is where a caster's fire lives — the blue
+  glow that runs up a knight's sword as he casts is his `buff` clip's, named
+  nowhere in the scene. 45 of the 132 cues in C1M1's opening play a clip that
+  carries one, so a third of what the scene did was happening in silence.
+
+- **A spell's geometry moves, and then goes away.** Every model an effect places
+  carries a skeletal clip of its own — the ice bolt falls now instead of hanging
+  in the air — and that clip is also what ends it. Without one nothing did: the
+  praying hands of a Prayer stayed standing inside the soldier they were cast on
+  for the rest of the scene.
+
 - **A shot's camera no longer laps its subject.** `Direction` on a camera set
   says which way the heading travels, not "go the long way round" — read the
   wrong way, 583 of the shipped moves swung most of a circle instead of 150.

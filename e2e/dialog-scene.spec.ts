@@ -68,30 +68,71 @@ test('the editor opens a campaign scene and plays it', async () => {
   // cued, the Haven line three seconds in and the demons at six. Every one of
   // them is written as an INDEX into that creature's own animation set with no
   // name beside it, so reading names alone leaves the field standing still.
+  // Read at two moments, because a clip is over when it is over: the eight
+  // saluting at three seconds have finished by the time the other eight start.
   const salute = await page.evaluate(() => {
+    const acting = (): Array<{ href: string; kind: string }> =>
+      window.view.scene()?.actors.filter((a) => a.kind !== 'idle00') ?? [];
+    window.view.showShot(4, 3.2);
+    const first = acting();
     window.view.showShot(4, 6.5);
-    const acting = window.view.scene()?.actors.filter((a) => a.kind !== 'idle00') ?? [];
-    return { count: acting.length, kinds: [...new Set(acting.map((a) => a.kind))].sort() };
+    const second = acting();
+    return {
+      first: first.length, second: second.length,
+      who: new Set([...first, ...second].map((a) => a.href)).size,
+      kinds: [...new Set([...first, ...second].map((a) => a.kind))].sort(),
+    };
   });
-  expect(salute.count).toBe(16);
+  expect(salute.first).toBe(8);
+  expect(salute.second).toBe(8);
+  expect(salute.who).toBe(16);
   expect(salute.kinds).toContain('happy');
 
-  // A shot fires its own effects — the spellwork the scene is made of — and
-  // they belong to the shot, so they go away with it. Shot 2 is the Prayer over
-  // Isabell's line of soldiers: eight copies, one per soldier.
-  const spell = await page.evaluate(() => {
-    window.view.showShot(2, 1);
-    const lit = window.view.scene()?.fx ?? 0;
-    window.view.showShot(1, 0); // no effects of its own
-    return { lit, after: window.view.scene()?.fx ?? 0 };
+  // A cue is a moment on the SCENE's clock, not on its shot's. A delay is
+  // measured from the shot that writes it and nothing stops it running past the
+  // end: shot 6 lasts three seconds and tells the marksman to shoot at 6.7,
+  // which lands in shot 8. Read one shot at a time — as this did — he never
+  // shoots at all, and neither do 1033 other cues in the shipped scenes.
+  const late = await page.evaluate(() => {
+    window.view.showShot(8, 1.8);
+    return window.view.scene()?.actors.find((a) => a.href.startsWith('Marksman.xdb'))?.kind;
   });
-  expect(spell.lit).toBe(8);
-  expect(spell.after).toBe(0);
+  expect(late).toBe('rangeattack');
+
+  // A shot fires its own effects — the spellwork the scene is made of. Shot 2
+  // is the Prayer over Isabell's line of soldiers: eight copies, one per
+  // soldier, three seconds in. Before that there is the cast itself, and THAT
+  // is not in the scene file at all — a clip carries an effect of its own
+  // (`BasicSkelAnim` → `<Effect>`), and the blue fire running up the knight's
+  // sword is his `buff` clip's. Anything alight at 0.2 seconds can only be it.
+  const spell = await page.evaluate(() => {
+    window.view.showShot(2, 0.2);
+    const casting = window.view.scene()?.fx ?? 0;
+    window.view.showShot(2, 3.5);
+    const prayer = window.view.scene() ?? { fx: 0, fxModels: 0 };
+    return { casting, lit: prayer.fx, models: prayer.fxModels };
+  });
+  expect(spell.casting).toBeGreaterThan(0);
+  expect(spell.lit).toBeGreaterThanOrEqual(8);
 
   // An effect is not only sparks. Nine of the twelve this scene fires carry
   // `<Models>` — the ice crystal of an ice bolt, the burning gate an arch devil
   // steps out of, the meteors of a meteor shower — and without them a spell was
-  // the smoke and none of the fire.
+  // the smoke and none of the fire. Eight praying hands here, one per soldier.
+  expect(spell.models).toBe(8);
+
+  // …and they END. A model has no particle train's die-out to stop it: left
+  // alone, the hands of a Prayer stood inside the soldier they were cast on for
+  // the rest of the scene. Its `<SkelAnim>` is two seconds long and the
+  // instance asks for one cycle, so half a second into the next shot they are
+  // gone — while the effect is still BUILT, which is why this counts what is
+  // drawn rather than what was made.
+  const gone = await page.evaluate(() => {
+    window.view.showShot(3, 0.5);
+    return window.view.scene()?.fxModels ?? 0;
+  });
+  expect(gone).toBe(0);
+
   const solid = await page.evaluate(() => {
     window.view.showShot(14, 1); // the gating, four pieces of it
     return window.view.scene()?.fxModels ?? 0;

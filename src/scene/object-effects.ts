@@ -24,7 +24,9 @@ import { pngDataUri } from '../format/png.ts';
 import { readAnimations, readSkeletons } from './animation.ts';
 import { particleTextureUris, textureDataUri } from './materials.ts';
 import { decodeModelGeom, transformGeom } from './model-geom.ts';
-import { followHref, listItems, readVec3, readQuat, resolveHref, dirOf } from './xdb.ts';
+import { bakeCharacterClip } from './skin.ts';
+import type { BakedRig } from './skin.ts';
+import { followHref, listItems, readAsset, readVec3, readQuat, resolveHref, dirOf } from './xdb.ts';
 import type { Assets } from '../game/assets.ts';
 import type { ReadXdb } from './xdb.ts';
 import type { GeomData, FxInstancePayload } from './payload.ts';
@@ -397,24 +399,60 @@ export function effectModelGeoms(
   if (!effHref) return [];
   const sharedDir = dirOf(resolveHref('', sharedHref));
   const effect = followHref(data, sharedXml, sharedDir, effHref);
-  return effect ? modelsOfEffect(effect, data, readXdb, texSize) : [];
+  if (!effect) return [];
+  // A map draws these still, so the instance's placement is folded into the
+  // vertices and the object carries one geometry per model, as it always has.
+  return modelsOfEffect(effect, data, readXdb, texSize).map((m) => {
+    transformGeom(m.geom, m.pos, m.quat, m.scale);
+    return m.geom;
+  });
+}
+
+/** One `<Models>` entry of an effect: geometry, where it sits, how long it lasts. */
+export interface EffectModel {
+  /**
+   * The model, UNTRANSFORMED. An animated one cannot have its placement folded
+   * into the vertices — the skinning is against the bind pose — so the
+   * transform travels beside it and whoever draws it applies both.
+   */
+  geom: GeomData;
+  pos: [number, number, number];
+  quat: [number, number, number, number];
+  scale: number;
+  /**
+   * Seconds the model is on screen, 0 when the file names no end.
+   *
+   * `CycleCount` copies of `CycleLength` seconds — and where the length is left
+   * at 0, which is every shipped instance, one cycle is the `<SkelAnim>`'s own
+   * length. This is what ends a spell: a model has no particle system's die-out
+   * to stop it, so left unbounded the praying hands of a Prayer stay standing
+   * in the soldier they were cast on for the rest of the scene.
+   */
+  life: number;
 }
 
 /**
- * The same, for an effect document already in hand.
+ * The models an effect places, for an effect document already in hand.
  *
  * A dialog scene fires effects at a PLACE rather than hanging them off an
  * object, so it has no shared to follow — and nine of the twelve effects
  * C1M1's opening fires carry models (the meteor shower carries nineteen).
  * Without them a spell is its sparks and nothing else: the blue column a hero
  * casts inside is a model, not a particle system.
+ *
+ * With `animate`, each instance's `<SkelAnim>` is baked onto the model the way
+ * an actor's clip is, and rides out in `geom.skin.clip`. It is not decoration:
+ * every effect model in the shipped library names one, and the geometry sits at
+ * the pose the clip STARTS from — the ice bolt hanging in the air where it
+ * should be falling, the Prayer's hands three units under their own origin.
  */
 export function modelsOfEffect(
   effect: { xml: string; dir: string }, data: Assets, readXdb: ReadXdb, texSize: number,
-): GeomData[] {
+  options: { fps?: number; animate?: boolean } = {},
+): EffectModel[] {
   const block = effect.xml.match(/<Models>([\s\S]*?)<\/Models>/)?.[1];
   if (!block) return [];
-  const out: GeomData[] = [];
+  const out: EffectModel[] = [];
   for (const item of listItems(block)) {
     const href = item.attrs.match(/href="([^"]+)"/)?.[1];
     if (!href) continue;
@@ -432,15 +470,52 @@ export function modelsOfEffect(
     const modelRel = '/' + resolveHref(inst.dir, modelHref);
     const model = readXdb(modelRel);
     if (!model) continue;
-    const g = decodeModelGeom(model, modelRel, data, readXdb, texSize);
+    const g = decodeModelGeom(model, modelRel, data, readXdb, texSize,
+      options.animate ? { skin: true } : undefined);
     if (!g) continue;
-    transformGeom(
-      g,
-      readVec3(inst.xml, 'Position') ?? [0, 0, 0],
-      readQuat(inst.xml, 'Rotation') ?? [0, 0, 0, 1],
-      +(inst.xml.match(/<Scale>([-+.\deE]+)<\/Scale>/)?.[1] ?? 1) || 1,
-    );
-    out.push(g);
+    let life = 0;
+    if (options.animate && g.skin) {
+      const baked = bakeModelInstance(inst, { xml: model, rel: modelRel }, data, options.fps ?? 15);
+      if (baked && !g.skin.index.some((b) => b >= baked.rig.bones.length)) {
+        g.skin.bones = baked.rig.bones;
+        g.skin.bind = baked.rig.bind;
+        g.skin.clip = baked.rig.clip;
+        if (baked.rig.scale !== 1) g.scale = baked.rig.scale;
+        life = baked.life;
+      } else {
+        // No clip, or one addressing a rig this mesh was not skinned to. The
+        // still mesh is the honest fallback; a mismatched bone list does not
+        // look like a small error, it tears the model apart.
+        delete g.skin;
+      }
+    }
+    out.push({
+      geom: g,
+      pos: readVec3(inst.xml, 'Position') ?? [0, 0, 0],
+      quat: readQuat(inst.xml, 'Rotation') ?? [0, 0, 0, 1],
+      scale: +(inst.xml.match(/<Scale>([-+.\deE]+)<\/Scale>/)?.[1] ?? 1) || 1,
+      life,
+    });
   }
   return out;
+}
+
+/** A ModelInstance's `<SkelAnim>`, baked, with the seconds it plays for. */
+function bakeModelInstance(
+  inst: { xml: string; dir: string }, model: { xml: string; rel: string }, data: Assets, fps: number,
+): { rig: BakedRig; life: number } | null {
+  const skelHref = inst.xml.match(/<SkelAnim href="([^"]+)"/)?.[1];
+  if (!skelHref) return null;
+  const animXml = readAsset(data, resolveHref(inst.dir, skelHref));
+  if (!animXml) return null;
+  const rig = bakeCharacterClip(data, animXml, model, fps);
+  if (!rig) return null;
+  const cycles = +(inst.xml.match(/<CycleCount>([-\d]+)<\/CycleCount>/)?.[1] ?? 1);
+  const length = +(inst.xml.match(/<CycleLength>([-+.\deE]+)<\/CycleLength>/)?.[1] ?? 0) || rig.clip.duration;
+  return { rig, life: cycles > 0 ? cycles * length : 0 };
+}
+
+/** How long an effect stays up when nothing inside it says otherwise. */
+export function effectDuration(effectXml: string): number {
+  return +(effectXml.match(/<Duration>([-+.\deE]+)<\/Duration>/)?.[1] ?? 0) || 0;
 }

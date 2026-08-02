@@ -275,6 +275,26 @@ check('a scene loaded and saved through the document model is unchanged', reload
 check('the document model reads every sentence', shotsRead === sentences, `${shotsRead} of ${sentences}`);
 console.log(`    ${animationsRead} actor animations, ${effectsRead} placed effects across the corpus`);
 
+// A delay is measured from the shot that writes it, and nothing keeps it inside
+// that shot: read a scene as a row of islands and better than a quarter of what
+// it schedules is dropped on the floor — the shot ends before the cue arrives,
+// or the cue is written before the shot begins. Which is why the player runs
+// the whole scene on ONE clock.
+let cued = 0, late = 0, early = 0;
+for (const scene of scenes) {
+  for (const shot of loadDialogScene(scene.text).shots) {
+    const span = shot.duration || 3;
+    const delays = [
+      ...(shot.animName || shot.actorAnimationIndex >= 0 ? [shot.animationDelay] : []),
+      ...shot.animations.map((a) => a.animationDelay),
+      ...shot.effects.map((e) => e.delay),
+    ];
+    for (const d of delays) { cued++; if (d > span) late++; else if (d < 0) early++; }
+  }
+}
+check('a cue is a moment in the SCENE, not in its shot', late > 0 && early > 0,
+  `${late} of ${cued} start after their shot has ended, ${early} before it begins`);
+
 const d1 = byPath.get('DialogScenes/C1/M1/D1/DialogScene.xdb');
 if (!d1) console.log('  (C1M1 D1 is not in this run — it ships inside All_campaigns.data.h5u)');
 else {
@@ -545,6 +565,34 @@ if (!byPath.has(showcasePath)) {
   const unplayable = play.shots.flatMap((s) => s.cues).filter((c) => !known.get(c.actor)?.clips[c.kind]);
   check('every cue lands on an actor who has that clip', unplayable.length === 0,
     unplayable.slice(0, 5).map((c) => `${c.actor.split('#')[0]}:${c.kind}`).join(', ') || `${cued} cues`);
+
+  // Every shot's start on the scene's clock, and every cue with it. Nothing to
+  // measure here — either the sums are right or the whole timeline is off — but
+  // the numbers say how far outside their own shot the scene reaches.
+  const spilled = play.shots.flatMap((s) => [...s.cues, ...s.effects]
+    .filter((c) => c.at < s.start || c.at >= s.start + s.duration));
+  check('and lands where the scene\'s own clock puts it',
+    play.shots[0]!.start === 0 && spilled.length > 0,
+    `${spilled.length} of ${cued + play.shots.reduce((a, s) => a + s.effects.length, 0)}`
+    + ` fall outside the shot that writes them; the scene runs `
+    + `${play.shots.at(-1)!.start + play.shots.at(-1)!.duration}s`);
+
+  // An animation carries an effect of its own — the blue fire that runs up a
+  // knight's sword as he casts is his `buff` clip's, not the scene's. A third
+  // of what this scene does was happening in silence without them.
+  const fired = play.shots.flatMap((s) => s.effects);
+  const ofClips = fired.filter((e) => e.fromClip);
+  check('an actor\'s clip brings its own effect', ofClips.length > fired.length / 3,
+    `${ofClips.length} of ${fired.length} firings come from a clip, not from the scene`);
+
+  // …and every piece of geometry a spell puts on the field knows when to go.
+  // Left without one they stay: the praying hands of a Prayer stood inside the
+  // soldier they were cast on for the rest of the scene.
+  const models = fired.flatMap((e) => e.models);
+  const endless = models.filter((m) => !m.life);
+  check('an effect model plays its own clip and ends', models.length > 0 && endless.length === 0,
+    `${models.length} models, ${models.filter((m) => m.geom.skin?.clip).length} animated,`
+    + ` shortest ${Math.min(...models.map((m) => m.life)).toFixed(2)}s`);
 }
 
 console.log(`\n${failures ? `\x1b[31m${failures} failed\x1b[0m` : '\x1b[32mall checks passed\x1b[0m'}`);

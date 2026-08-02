@@ -628,11 +628,21 @@ Format (surveyed 2026-07-23, 250 scenes shipped under `DialogScenes/`):
       skinned bodies with their arena clips, and a shot drives the camera
       (`e2e/dialog-scene.spec.ts`). Still to come: the line timings from the
       voice files and walks along `MovePoints`
-- [ ] ⬜ The rest of an effect: a `<Models>` entry can carry its own
-      `<SkelAnim>` (nine bones for an ice bolt) and is drawn in the pose it
-      starts in, so the crystal hangs where it appears instead of falling; and
-      `<Lights>` — a LightInstance at an AnimLight, whose colour is a baked blob
-      like an animation's — is not drawn at all
+- [ ] ⬜ The rest of an effect: `<Lights>` — a LightInstance at an AnimLight,
+      whose colour is a baked blob like an animation's — is not drawn at all,
+      and 46 of the 298 placed effects fly a path (`MovePoints` with a
+      `MovementSpeed`) that we leave them sitting at the start of
+- [x] ✅ **A scene is one clock, and a spell knows when it is over**
+      (2026-08-02): a delay is measured from the shot that writes it and runs
+      straight past its end — 1034 of the shipped scenes' 7296 cues start after
+      their shot has finished and 870 before it begins, so a quarter of
+      everything a scene does was being dropped (the marksman cued 6.7 seconds
+      into a three-second shot never shot at all). The player holds one time for
+      the whole scene now. With it: a clip carries an `<Effect>` of its own —
+      the blue fire on a knight's sword as he casts, 45 of C1M1's 132 cues — and
+      an effect's models play their own `<SkelAnim>` and END on it, which is
+      what finally took the Prayer's glowing hands back out of the soldiers they
+      were cast on
 - [x] ✅ **Everybody on the field acts** (2026-08-02): a cue names its clip by a
       POSITION in that actor's own animation set far more often than by name
       (132 cues against 40 in C1M1's opening, and every one of the armies'), an
