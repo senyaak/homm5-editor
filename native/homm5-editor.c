@@ -1607,6 +1607,31 @@ static const BYTE DND_PICK_HEAD[DND_PICK_HEAD_LEN] = {
 #define DND_HELPER_PICKED 0x1Cu
 #define DND_HELPER_WIDGET 0x0Cu
 #define WIDGET_NAME 0x78u
+#define DND_HELPER_CLIENT 0x08u
+
+/**
+ * The screen, its slots, and the one call that gets from one to the other.
+ *
+ * The hero screen looks its own slots up by name — a loop over seven static
+ * names twelve bytes apart, each handed to the screen's `+0x94`, which answers
+ * with the widget. So the clicked widget does not have to explain itself: ask
+ * for all seven and see which one it is. That is the slot number, and the same
+ * call reaches every OTHER slot, which is where creatures have to go.
+ */
+#define SLOT_NAMES_RVA 0xd10628u
+#define SLOT_NAME_STRIDE 12u
+#define SLOT_COUNT 7
+#define WINDOW_FIND_BY_NAME 0x94u
+/** The window a slot widget belongs to, and the type that window must be. */
+#define WIDGET_WINDOW 0x48u
+#define WINDOW_SIMPLE_VTABLE_RVA 0xb62eb0u
+/** What the helper and the thing it picked have to BE for their fields to mean
+ *  what we read them as. The helper is generic — the same drag carries
+ *  artifacts, and a town screen lays its own out differently — so reading a
+ *  field without first asking what the object is gets a slot name one run and
+ *  a fragment of code the next. Both happened. */
+#define DND_HELPER_VTABLE_RVA 0xb6db14u
+#define MS_BUTTON_VTABLE_RVA 0xbec6c4u
 
 typedef int(__fastcall *DndPickFn)(void *state, void *edx, void *arg);
 typedef SHORT(WINAPI *KeyStateFn)(int);
@@ -1639,6 +1664,30 @@ static int pointer_alive(void *p) {
   return *(int *)((BYTE *)p + at + 8) >= 0;
 }
 
+typedef void *(__fastcall *FindByNameFn)(void *self, void *edx, void *name, int flag);
+
+/** Every pointer an object holds, and the type of whatever it points at. */
+static void log_types(const char *what, void *obj) {
+  DWORD base = (DWORD)GetModuleHandleW(NULL);
+  DWORD room = readable(obj, 0x100);
+  for (DWORD off = 4; off + 4 <= room; off += 4) {
+    void *field = *(void **)((BYTE *)obj + off);
+    if (readable(field, 4) < 4) continue;
+    DWORD vtable = *(DWORD *)field;
+    // Only things that look like objects: a vtable lives inside the image.
+    if (vtable <= base || vtable - base > 0x1000000) continue;
+    log_num(what, (int)off);
+    log_hex("            points at something of type ", vtable - base);
+  }
+}
+
+
+/** Is this the type we measured — and so are its fields where we think? */
+static int is_a(void *obj, DWORD vtableRva) {
+  if (readable(obj, 4) < 4) return 0;
+  return *(DWORD *)obj == (DWORD)(BYTE *)GetModuleHandleW(NULL) + vtableRva;
+}
+
 static int __fastcall dnd_pick_hook(void *state, void *edx, void *arg) {
   (void)edx;
   int ctrl = held(VK_CONTROL);
@@ -1654,8 +1703,43 @@ static int __fastcall dnd_pick_hook(void *state, void *edx, void *arg) {
     log_num("       ctrl ", ctrl);
     log_num("       shift ", shift);
     log_num("       alt ", alt);
-    if (helper && pointer_alive(helper)) {
+    if (!is_a(helper, DND_HELPER_VTABLE_RVA)) {
+      log_line("       not the drag helper we know - reading nothing");
+    } else if (!pointer_alive(helper)) {
+      log_line("       the drag helper is already gone - reading nothing");
+    } else {
       void *widget = *(void **)((BYTE *)helper + DND_HELPER_WIDGET);
+      if (!is_a(widget, MS_BUTTON_VTABLE_RVA)) {
+        log_line("       what was picked is not a slot button - leaving it alone");
+        log_hex("       it is of type ", readable(widget, 4) >= 4
+          ? *(DWORD *)widget - (DWORD)(BYTE *)GetModuleHandleW(NULL) : 0);
+        return g_dndPick(state, NULL, arg);
+      }
+      // WHICH SLOT WAS CLICKED, asked rather than deduced. The window this
+      // widget belongs to can look a slot up by name, and the screens name
+      // them `Slot_1` upwards; so ask for all seven and see which one this is.
+      // That is the slot number and, in the same call, the way to reach every
+      // OTHER slot — which is where creatures have to go.
+      //
+      // The receiver is checked before it is called. Looking a name up is a
+      // method of the WINDOW; the same slot number on the SCREEN is a
+      // different function altogether, and calling that one crashed the game.
+      // A type that is not the one measured means we are wrong about the
+      // layout, and being wrong should cost a log line, not the session.
+      BYTE *base = (BYTE *)GetModuleHandleW(NULL);
+      void *window = (readable(widget, WIDGET_WINDOW + 4) >= WIDGET_WINDOW + 4)
+        ? *(void **)((BYTE *)widget + WIDGET_WINDOW) : NULL;
+      if (readable(window, 4) < 4 || *(DWORD *)window != (DWORD)base + WINDOW_SIMPLE_VTABLE_RVA) {
+        log_line("       the widget does not belong to the window we know - asking nothing");
+      } else {
+        FindByNameFn find = (*(FindByNameFn **)window)[WINDOW_FIND_BY_NAME / 4];
+        for (int i = 0; i < SLOT_COUNT; i++) {
+          void *found = find(window, NULL, base + SLOT_NAMES_RVA + (DWORD)i * SLOT_NAME_STRIDE, 0);
+          log_num("       slot ", i + 1);
+          log_hex("            is widget ", (DWORD)found);
+          if (found && found == widget) log_line("            and this is the one clicked");
+        }
+      }
       // A slot says which slot it is by what it is CALLED: the screens name
       // these `Slot_1` upwards, and the executable keeps that very list of
       // names to look the widgets up by. So the name is both the number of
