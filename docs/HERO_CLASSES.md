@@ -292,13 +292,46 @@ quantity already exists in data — `GameMechanics/RefTables/WarMachines.xdb`,
 `WAR_MACHINE_FIRST_AID_TENT`, `<Shots>3</Shots>`. So "uses" is not a number we
 invent; it is a field, and the shipped tent has three. Editing it in the mod
 would change it for every hero in the game, so the per-hero term belongs where
-the machine is set up for a battle, in the extension. Two nearby places are
-already read and written up in
+the machine is set up for a battle, in the extension.
+
+*Found since, and this is the site rather than the neighbourhood.* Addresses are
+in-memory, RVA + 0x400000, as everything in this file:
+
+```
+CCombatWarMachine ctor            0xdc9730   the only caller is 0xd53f48
+  [this+0xA8] = the world CWarMachine        its type is at +0x1C, tent = 3
+  switch (type)                              jump table at 0xdc9a90, index type-1
+  [this+0xB0] = CWarMachine::GetShots()      0xabbc20 — ONE caller, this one
+CWarMachine::GetShots              0xabbc20   record(type)->[0x44], i.e. <Shots>
+  record by type                   0xb27650
+```
+
+and `+0xB0` is the counter the tent actually spends, read and written nowhere
+else worth naming:
+
+```
+0xdc9dc8  cmp dword ptr [esi-1Ch],0     may it act at all
+0xdc9f06  cmp dword ptr [esi-1Ch],0     may it cast THIS spell (0xBD or 0x160)
+0xdc9f59  add dword ptr [esi-1Ch],-1    it just did
+```
+
+(`-0x1C` because those three are interface methods and `this` arrives adjusted;
+the same field, reached from the other side.) Three gates read the field
+directly rather than through the accessor, so **the only worthwhile hook is the
+one that fills it** — `0xabbc20`, whose single caller is that constructor. What
+is not established yet is how to reach the HERO from there: the door we have
+goes the other way, `hero->vtable[0x70](machineType)` — "does he have this
+machine", which is what Lua's `HasHeroWarMachine` calls. So the next step is a
+LOGGING detour, not a working one.
+
+Two nearby places were already written up in
 [engineInternals/SPECIALIZATIONS.md](engineInternals/SPECIALIZATIONS.md):
 `0x77fca0` computes what the tent is worth (`{10,20,50,100}[war machines
 mastery]`, plus five per hero level for `HERO_SPEC_EMPIRIC`), and
-`CCombatWarMachine::GetSpellPower` at `0x9c96d0` answers for machine type 3 —
-that is the neighbourhood, not the site.
+`CCombatWarMachine::GetSpellPower` at `0x9c96d0` answers for machine type 3.
+That one is worth reading for another reason: it fetches the owner's mastery
+with `push 2; call [hero_vtable+0x174]`, and 2 is `HERO_SKILL_WAR_MACHINES` —
+the engine asking the very question our skill rows now ask.
 
 **Two of the perks happen inside a battle**, at the moment the tent acts: the
 cleanse and the random blessing. Lua cannot see that moment. The combat script
