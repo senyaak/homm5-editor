@@ -297,14 +297,29 @@ export function patchSkillTable(table: string, skills: readonly ModHeroSkill[]):
       `\t\t<HeroClass>${s.heroClass}</HeroClass>`,
       '\t\t<spellBuffs/>',
       `\t\t<BasicSkillID>${racial ? 'HERO_SKILL_NONE' : s.basicSkill}</BasicSkillID>`,
-      // A perk of a branch of OURS names our class here — the same gate that
-      // keeps the Ranger out of the plague tent, written from the other side.
-      ...(!racial && s.prerequisites?.length ? [
+      // A PERK OF OURS ALWAYS NAMES ITS CLASS HERE, and that is measured rather
+      // than copied. The shipped Multishot hangs off Avenger with an EMPTY
+      // prerequisite list, so ours were written the same way — and were never
+      // offered at a level up, while the plague tent, which our class reaches by
+      // being added to ITS list, was offered at once. Same class, same hero,
+      // same launch; the difference between the two records is this element.
+      //
+      // Which says what an empty list really means: not "open to everybody" but
+      // "ask the compiled route" — and for a SKILLTYPE_CLASS_PERK that route is
+      // the `<HeroClass>` field, matched against the classes the executable was
+      // built with. Ours is a value it has never heard of, so the only door left
+      // open to us is the one written in data. See docs/HERO_CLASSES.md.
+      //
+      // The dependency defaults to the BRANCH: a perk of a racial branch is
+      // reachable once the racial is held, which is what the branch meant back
+      // when it was doing the gating by itself.
+      ...(!racial ? [
         '\t\t<SkillPrerequisites>',
         '\t\t\t<Item>',
         `\t\t\t\t<Class>${s.heroClass}</Class>`,
         '\t\t\t\t<dependenciesIDs>',
-        ...s.prerequisites.map((d) => `\t\t\t\t\t<Item>${d}</Item>`),
+        ...(s.prerequisites?.length ? s.prerequisites : [s.basicSkill!])
+          .map((d) => `\t\t\t\t\t<Item>${d}</Item>`),
         '\t\t\t\t</dependenciesIDs>',
         '\t\t\t</Item>',
         '\t\t</SkillPrerequisites>',

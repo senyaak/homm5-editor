@@ -196,37 +196,45 @@ and does nothing whatever. So a skill of ours is two halves — the record here,
 and a term the native extension adds — and until the second half exists the
 words are a promise.
 
-## Open: a perk of ours is never offered
+## A perk of ours has to name its class
 
-**The state on 2026-08-02.** The class works, its weights work, the racial is
-held and shown with its own icons and its own words per level. The three perks
-of its branch are installed and are never offered at a level up.
+The three perks of the Witch's branch were written the way the shipped Multishot
+is — `SKILLTYPE_CLASS_PERK`, `BasicSkillID` naming the branch, and an EMPTY
+`SkillPrerequisites`, since the branch is one class's and nobody else can reach
+it. They were never offered at a level up. In the same launch, on the same hero,
+the **plague tent was offered** — and the only thing that had been done to it was
+adding `<Class>HERO_CLASS_WITCH</Class>` to its own prerequisite list.
 
-What has been ruled out:
+That is the whole experiment, and it says what an empty list means:
 
-- **The record.** Ours and the shipped Multishot are field-for-field identical
-  in shape — same `SKILLTYPE_CLASS_PERK`, same empty `SkillPrerequisites`, same
-  `BasicSkillID` naming the branch, same two textures, same one name and one
-  description. Only the ids and the hrefs differ.
-- **A second registration.** Over the whole data root, `HERO_SKILL_MULTISHOT`
-  occurs in `Skills.xdb`, in `types.xml` (the enum, as every id does), and in
-  four maps that hand it to a preset hero. Nothing REGISTERS a perk anywhere
-  else — not a UI file, not a wheel, not a list per class.
-- **The table's size.** The executable counts to 225 and the racial at 221 loads
-  and works, so ids past the shipped 221 are not invisible as such.
+> An empty `SkillPrerequisites` does not mean "open to everybody". It means
+> **ask the compiled route** — and for a class perk that route is the
+> `<HeroClass>` field, matched against the classes the executable was built
+> with. A class it has never heard of loses every such comparison.
 
-What is left, in the order worth testing:
+So the door left open to a class of ours is the one written in data, and a perk
+of the mod always names its class in its own gate, with the branch as the
+dependency:
 
-1. **A second compiled bound on the OFFER path.** The racial is on the hero
-   because his document names it; nothing has to offer it. A loop bounded by 221
-   where the level up collects candidates would show exactly this symptom. The
-   discriminating observation is whether OUR RACIAL can be advanced to its second
-   level by a level up — if it cannot, the bound is real.
-2. **A compiled perk list per branch.** If the engine knows which perks belong to
-   Avenger rather than reading `BasicSkillID`, ours belong to nothing.
-3. **Something the class must declare.** Nothing in the class record mentions
-   perks, but the nine shipped classes are the only sample and all of them have a
-   racial the engine already knows.
+```xml
+<SkillPrerequisites>
+  <Item><Class>HERO_CLASS_WITCH</Class>
+        <dependenciesIDs><Item>HERO_SKILL_TENT_MASTER</Item></dependenciesIDs></Item>
+</SkillPrerequisites>
+```
 
-The next probe is (1), and it is a question a person with the game open answers
-in one level up.
+Two things were ruled out on the way, and both are worth keeping:
+
+- **It is not the id being past the shipped count.** The racial is 221, one past
+  the shipped 221 skills, and it is offered, taken and advanced through its
+  levels. Ids above the old ceiling are ordinary once the ceiling moves.
+- **It is not a missing registration.** Over the whole data root a perk is named
+  in `Skills.xdb`, in `types.xml` (the enum, as every id is), and in four maps
+  that hand it to a preset hero. Nothing registers a perk anywhere else — no UI
+  file, no wheel, no list per class.
+
+The general shape of this is the same one specializations taught: **data reaches
+a value the executable never heard of; compiled comparisons do not.** Anything
+in the game that works by "the engine knows which class this belongs to" has to
+be re-said in data for a class of ours, and anything that works by arithmetic
+compiled against an id has to be re-said in the extension.

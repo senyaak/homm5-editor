@@ -1,8 +1,10 @@
 // Validates a skill of our own — a racial and the perks of its branch.
 //
 // Measured against the shipped table throughout: the shape of a racial is the
-// Avenger's shape, the shape of a perk is Multishot's, and the count the code
-// believes in is counted rather than trusted.
+// Avenger's shape, the shape of a perk is the plague tent's — a perk whose
+// prerequisites NAME the classes that may take it, which is the shape ours must
+// have and Multishot's empty one is not (docs/HERO_CLASSES.md) — and the count
+// the code believes in is counted rather than trusted.
 //
 //   node tools/test-hero-skills.ts [dataRoot]
 
@@ -107,13 +109,23 @@ const CLEANSE: ModHeroSkill = {
   check('a racial of ours has the Avenger\'s fields, in order', ours.join(',') === avenger.join(','),
     ours.join(',') === avenger.join(',') ? '' : `${ours.join(',')} vs ${avenger.join(',')}`);
 
-  // Multishot asks for nothing, so the comparison is against a perk of ours that
-  // asks for nothing either — the prerequisites block is checked on its own below.
-  const bare = patchSkillTable(table, [{ ...CLEANSE, prerequisites: [] }]);
-  const perk = fieldsOf(entryOf(bare, CLEANSE.id));
-  const multishot = fieldsOf(entryOf(table, 'HERO_SKILL_MULTISHOT'));
-  check('and a perk of ours has Multishot\'s', perk.join(',') === multishot.join(','),
-    perk.join(',') === multishot.join(',') ? '' : `${perk.join(',')} vs ${multishot.join(',')}`);
+  // The plague tent, and NOT Multishot. A perk of ours always names its class in
+  // its own prerequisites: the empty list Multishot carries means "ask the
+  // compiled route", and that route has never heard of our class — measured, by
+  // a launch where the plague tent was offered to her and three perks written
+  // Multishot's way were not. So the shipped record to match is one with a class
+  // list in it.
+  const perk = fieldsOf(entryOf(t, CLEANSE.id));
+  const plague = fieldsOf(entryOf(table, 'HERO_SKILL_LAST_AID'));
+  // It lists four classes and ours lists one, so the repeated pair is folded.
+  const gate = (f: string[]): string => f.join(',').replace(/(Class,dependenciesIDs,)+/, '$1');
+  check('and a perk of ours has the plague tent\'s fields, in order',
+    gate(perk) === gate(plague), gate(perk) === gate(plague) ? '' : `${gate(perk)} vs ${gate(plague)}`);
+  check('with its own class in the gate, which is what makes it reachable',
+    entryOf(t, CLEANSE.id).includes(`<Class>${CLEANSE.heroClass}</Class>`));
+  check('and the branch as what it asks for',
+    new RegExp(`<Class>${CLEANSE.heroClass}</Class>\\s*<dependenciesIDs>\\s*<Item>${TENT.id}</Item>`)
+      .test(entryOf(t, CLEANSE.id)));
 
   const tent = entryOf(t, TENT.id);
   check('the racial names its class', tent.includes(`<HeroClass>${TENT.heroClass}</HeroClass>`));
