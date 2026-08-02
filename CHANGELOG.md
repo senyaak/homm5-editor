@@ -36,6 +36,23 @@ one.
 
 ### Fixed
 
+- **A scene's actors march.** 922 cues in the shipped scenes carry a path of
+  tiles to walk, and nobody walked any of them: the actor stood on their first
+  tile playing the walk cycle on the spot. The pace is not in the scene file —
+  every one of the 922 leaves it at 0 and it comes off the `move` clip itself —
+  and neither is the starting point, which is wherever the actor is when the
+  walk begins. Where a walk leaves them is where they are for the rest of the
+  scene, five shots later.
+
+- **Most of a scene's cast was missing.** An actor can be declared INSIDE the
+  animation that moves them (`#n:inline(AdvMapMonster)` with the whole body in
+  the link), and 1517 of the shipped scenes' 1814 inline actors are written that
+  way. Read only from the object list and the spoken lines, as this was, and
+  A2C3/M4/S1 opened with 9 figures on the field instead of 138 — the army that
+  marches into it was not there at all. Inline actors are also told apart
+  properly now: their hrefs are identical, so cues aimed at them all landed on
+  whichever was read first.
+
 - **A scene now runs on one clock, so a quarter of what it does stops being
   dropped.** A cue's delay is measured from the shot that writes it and nothing
   keeps it inside that shot: of the 7296 cues and effects the shipped scenes

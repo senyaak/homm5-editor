@@ -31,7 +31,9 @@ import type { StageObject } from './stage.ts';
 
 /** A scene actor: their arena mesh, and the clips this scene plays on it. */
 export interface ActorRig {
-  /** The link the shots address them by — the key everything else joins on. */
+  /** The name everything joins on — see `actorRef` in dialog-scene.ts. */
+  key: string;
+  /** The link as written, for the inspector. */
   href: string;
   /** The element id an inline actor's cues address them by, when it has one. */
   id: string | null;
@@ -52,6 +54,16 @@ export interface ActorRig {
    * does was happening in silence.
    */
   clipEffects: Record<string, string>;
+  /**
+   * How fast a clip carries the actor over the ground, in world units a second.
+   *
+   * On the CLIP, not on the cue: every one of the 922 walks in the shipped
+   * scenes writes `MovementSpeed` 0 and leaves the pace to `move` itself, which
+   * declares it (`<MovementSpeed>` on the BasicSkelAnim, 5.7 for a footman,
+   * 9.29 for a demon lord). `SpeedFactor` is folded in — it is the rate the
+   * engine plays the clip at, and the two have to agree or the feet slide.
+   */
+  clipSpeed: Record<string, number>;
   /** What the scene asked for and the set does not have. */
   missing: string[];
 }
@@ -65,10 +77,9 @@ export interface Wanted {
 /**
  * The clip kinds a scene plays on each actor.
  *
- * Keyed by the link as written AND, where a cue addresses an actor by element
- * id (`#xpointer(id(item_48F7…)/AdvMapHero)`), by that id — two inline actors
- * share one href, so the id is the only thing that tells them apart. Keying by
- * href alone left every inline actor's clips unbaked and standing in idle.
+ * Keyed by `actorRef` — the element id where an actor has one, the href where
+ * that is all there is. Two inline actors share one href, so keying by href
+ * left every inline actor's clips unbaked and standing in idle.
  *
  * A cue names its clip one of two ways and a scene uses both: `AnimName`, or
  * `ActorAnimationIndex` / `AnimationIndex` — a position in the actor's own
@@ -82,15 +93,14 @@ export interface Wanted {
  */
 export function clipsWanted(scene: DialogScene): Map<string, Wanted> {
   const out = new Map<string, Wanted>();
-  const at = (link: string): Wanted | null => {
-    if (!link) return null;
-    const key = /#xpointer\(id\(([^)]+)\)/.exec(link)?.[1] ?? link;
+  const at = (key: string): Wanted | null => {
+    if (!key) return null;
     const known = out.get(key) ?? { names: new Set<string>(), indices: new Set<number>() };
     out.set(key, known);
     return known;
   };
-  const want = (link: string, kind: string, index: number): void => {
-    const w = at(link);
+  const want = (key: string, kind: string, index: number): void => {
+    const w = at(key);
     if (!w) return;
     // The name wins where both are written. It has to: an index left over from
     // an earlier edit is common (of the 590 cues that write both a name and a
@@ -100,10 +110,9 @@ export function clipsWanted(scene: DialogScene): Map<string, Wanted> {
     else if (index >= 0) w.indices.add(index);
   };
   for (const shot of scene.shots) {
-    const speaker = shot.heroLink || shot.monsterLink;
-    want(speaker, shot.animName, shot.actorAnimationIndex);
+    want(shot.actor, shot.animName, shot.actorAnimationIndex);
     for (const anim of shot.animations) {
-      want(anim.heroLink || anim.monsterLink || speaker, anim.animName, anim.animationIndex);
+      want(anim.actor || shot.actor, anim.animName, anim.animationIndex);
     }
   }
   return out;
@@ -209,9 +218,7 @@ export function actorRigs(
   const cast = new Map<string, Cast>();
   const casting: Cast[] = [];
   for (const item of stage) {
-    // An inline actor is addressed by href in their own sentence and by element
-    // id in everyone else's, so both spellings are asked for and merged.
-    const asked = [wanted.get(item.href), item.id ? wanted.get(item.id) : undefined].filter((w) => !!w);
+    const asked = [wanted.get(item.key)].filter((w) => !!w);
     if (item.role !== 'actor' && !asked.length) continue;
     const sharedHref = item.object.shared;
     const character = sharedHref ? arenaCharacter(data, sharedHref) : null;
@@ -252,6 +259,7 @@ export function actorRigs(
 
     const clips: Record<string, BakedClip> = {};
     const clipEffects: Record<string, string> = {};
+    const clipSpeed: Record<string, number> = {};
     const missing: string[] = [];
     let rig: BakedRig | null = null;
     let scale = 1;
@@ -267,6 +275,9 @@ export function actorRigs(
       // which folder the clip came from — a scene's own effects are written
       // that way too, and both go through the same reader.
       if (effect) clipEffects[kind] = '/' + resolveHref(dirOf(path), effect);
+      const pace = +(animXml?.match(/<MovementSpeed>([-+.\deE]+)</)?.[1] ?? 0);
+      const rate = +(animXml?.match(/<SpeedFactor>([-+.\deE]+)</)?.[1] ?? 1) || 1;
+      if (pace > 0) clipSpeed[kind] = pace * rate;
       if (!rig) { rig = baked; scale = baked.scale; }
     }
     if (!rig) continue;
@@ -283,7 +294,10 @@ export function actorRigs(
     // structured clone keeps shared references shared, so the payload carries
     // the mesh once, and the renderer can build one THREE geometry for all.
     for (const item of part.on) {
-      rigs.push({ href: item.href, id: item.id, geom, clips, clipEffects, available: part.order, missing });
+      rigs.push({
+        key: item.key, href: item.href, id: item.id,
+        geom, clips, clipEffects, clipSpeed, available: part.order, missing,
+      });
     }
   }
   return rigs;

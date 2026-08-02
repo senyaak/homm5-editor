@@ -16,6 +16,7 @@ import type { XmlElement } from '../format/xml.ts';
 import { MapObject, OBJECT_TYPES } from '../map/map.ts';
 import type { Assets } from '../game/assets.ts';
 import { dirOf, resolveHref } from '../scene/xdb.ts';
+import { actorRef } from './dialog-scene.ts';
 import type { DialogScene } from './dialog-scene.ts';
 
 /** What an object on the stage is there for. */
@@ -27,7 +28,7 @@ export interface StageObject {
   /** Where it came from, for the inspector and for error messages. */
   href: string;
   /**
-   * The `id` on the element that points at it, when it has one.
+   * The `id` on the element that declares it, when it has one.
    *
    * An inline actor's href is the same four words for everybody —
    * `#n:inline(AdvMapHero)` — so it cannot be the key. The animations in a shot
@@ -36,14 +37,11 @@ export interface StageObject {
    * and the scene plays with everyone standing still.
    */
   id: string | null;
+  /** The one name everything joins on — see `actorRef`. */
+  key: string;
 }
 
 const KNOWN = new Set(OBJECT_TYPES);
-
-/** A stand-in `<Item>` wrapper for an object that lives in its own file. */
-function itemFor(href: string): XmlElement {
-  return { type: 'element', name: 'Item', rawAttrs: ` href="${href}"`, attrs: { href }, children: [], selfClose: true };
-}
 
 /**
  * Resolve one href to the object body it names.
@@ -64,10 +62,19 @@ function bodyOf(data: Assets, from: XmlElement, href: string, baseDir: string): 
 
 /**
  * Every object a scene puts on its stage: the set dressing it lists, then the
- * actors its lines speak through.
+ * actors it moves.
  *
  * An actor named by several lines is placed ONCE — the same hero speaks
  * fourteen times in a row and is one figure on the field, not fourteen.
+ *
+ * A link element does not only POINT at an actor, it can BE the declaration:
+ * `href="#n:inline(AdvMapMonster)"` with an `id` and the whole body inside it.
+ * That is how 1814 of the shipped scenes' actors are written — and not only in
+ * a sentence: 1517 of those are inside a `CustomAnimation`, which declares its
+ * the same way, which is most of the cast in a scene like A2C3/M4/S1 (79 of its
+ * walks are people nothing else in the file mentions). Read only from
+ * `<objects>` and the sentences, as this did, and those figures are not on the
+ * field at all: nobody to walk, nobody to fall.
  */
 export function stageObjects(data: Assets, scenePath: string, scene: DialogScene): StageObject[] {
   const dir = dirOf(scenePath);
@@ -83,43 +90,52 @@ export function stageObjects(data: Assets, scenePath: string, scene: DialogScene
     const href = item.attrs.href ?? '';
     const body = bodyOf(data, item, href, dir);
     if (!body) continue;
-    const at: StageObject = { object: new MapObject(item, body), role: 'prop', href, id: item.attrs.id ?? null };
+    const at: StageObject = {
+      object: new MapObject(item, body), role: 'prop', href,
+      id: item.attrs.id ?? null, key: actorRef(item),
+    };
     out.push(at);
     if (href && !href.startsWith('#')) byPath.set(href, at);
   }
 
-  for (const shot of scene.shots) {
-    for (const link of [shot.heroLink, shot.monsterLink]) {
-      if (!link || placed.has(link)) continue;
-      placed.add(link);
-      // A speaker is USUALLY also in `<objects>` — all seven of C1M1's are.
-      // That is one figure listed twice, not two, so the entry already made is
-      // promoted rather than a second one added: placed twice, an actor stands
-      // inside their own still adventure copy, and the scene plays with two
-      // heroes in every close-up (the second one never blinking).
-      const known = byPath.get(link);
-      if (known) { known.role = 'actor'; continue; }
-      // An inline actor is written inside the sentence's link element, so find
-      // that element in the tree rather than re-parsing the text.
-      const el = linkElement(scene, link);
-      const body = el && bodyOf(data, el, link, dir);
-      if (!body) continue;
-      out.push({
-        object: new MapObject(el ?? itemFor(link), body), role: 'actor', href: link, id: el?.attrs.id ?? null,
-      });
-    }
+  for (const el of linkElements(scene)) {
+    const href = el.attrs.href ?? '';
+    const key = actorRef(el);
+    if (!href || placed.has(key)) continue;
+    placed.add(key);
+    // A speaker is USUALLY also in `<objects>` — all seven of C1M1's are. That
+    // is one figure listed twice, not two, so the entry already made is
+    // promoted rather than a second one added: placed twice, an actor stands
+    // inside their own still adventure copy, and the scene plays with two
+    // heroes in every close-up (the second one never blinking).
+    const known = byPath.get(href);
+    if (known) { known.role = 'actor'; known.key = key; continue; }
+    // `#xpointer(id(…))` is a MENTION of a declaration made somewhere else in
+    // the file; the declaration itself carries the body and is reached in its
+    // own turn, so a mention places nothing.
+    const body = bodyOf(data, el, href, dir);
+    if (!body) continue;
+    out.push({
+      object: new MapObject(el, body), role: 'actor', href, id: el.attrs.id ?? null, key,
+    });
   }
   return out;
 }
 
-/** The `<heroLink>`/`<monsterLink>` element carrying a given href. */
-function linkElement(scene: DialogScene, href: string): XmlElement | null {
+/** Every `<heroLink>`/`<monsterLink>` in the scene, in document order. */
+function linkElements(scene: DialogScene): XmlElement[] {
+  const out: XmlElement[] = [];
+  const both = (el: XmlElement): void => {
+    for (const name of ['heroLink', 'monsterLink']) {
+      const at = find(el, name);
+      if (at) out.push(at);
+    }
+  };
   const sentences = find(scene.root, 'sentences');
   for (const item of sentences ? children(sentences) : []) {
-    for (const name of ['heroLink', 'monsterLink']) {
-      const el = find(item, name);
-      if (el && el.attrs.href === href) return el;
-    }
+    both(item);
+    const anims = find(item, 'CustomAnimations');
+    for (const a of anims ? children(anims) : []) both(a);
   }
-  return null;
+  return out;
 }

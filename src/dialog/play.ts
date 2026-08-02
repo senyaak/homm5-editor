@@ -23,8 +23,10 @@ import type { ActorRig } from './actors.ts';
 import { cameraShot, eyeOf, loadCamera, loadCameraSet, poseAt, targetOf } from './camera.ts';
 import type { OrbitPose } from './camera.ts';
 import { loadDialogScene } from './dialog-scene.ts';
-import type { DialogScene } from './dialog-scene.ts';
+import type { DialogScene, Point2 } from './dialog-scene.ts';
 import { stageObjects } from './stage.ts';
+import { walkAt } from './walk.ts';
+import type { WalkPath } from './walk.ts';
 
 /** One sample of a shot's camera move: where the eye is and what it looks at. */
 export interface CameraSample {
@@ -59,7 +61,7 @@ export interface ShotView {
   /** The camera move, sampled; empty when the shot names no camera. */
   camera: CameraSample[];
   /** What the shot tells its actors to do: `delay` from its start, `at` from the scene's. */
-  cues: Array<{ actor: string; kind: string; delay: number; at: number }>;
+  cues: Cue[];
   /** The light this shot asks for, or null to keep the scene's. */
   ambient: ShotLight;
   /**
@@ -72,6 +74,19 @@ export interface ShotView {
    * NEGATIVE — an effect that begins before its line does).
    */
   effects: ShotEffectView[];
+}
+
+/** One thing a shot tells one actor to do. */
+export interface Cue {
+  /** Who — the key `actorRef` gives, which is what the rigs are keyed by. */
+  actor: string;
+  kind: string;
+  /** Seconds from the shot's start, as the file writes it. */
+  delay: number;
+  /** Seconds from the scene's start. This is when it happens. */
+  at: number;
+  /** Where the cue carries them, when it is a walk. */
+  walk?: WalkPath;
 }
 
 /** One firing of an effect inside a shot, resolved to what the renderer plays. */
@@ -195,7 +210,7 @@ export function buildScenePlay(data: Assets, scenePath: string, options: PlayOpt
     ...(options.texSize ? { texSize: options.texSize } : {}),
   });
   const actors: ActorView[] = rigs.map((rig) => {
-    const placed = objects.find((o) => o.href === rig.href)?.object;
+    const placed = objects.find((o) => o.key === rig.key)?.object;
     const pos = placed?.pos ?? { x: 0, y: 0, z: 0 };
     // Matched on the model as well as the tile: an actor stands among the set
     // dressing, and by tile alone the first thing found on their square is as
@@ -213,24 +228,13 @@ export function buildScenePlay(data: Assets, scenePath: string, options: PlayOpt
     return { ...rig, x: pos.x, y: pos.y, z, rot: placed?.rot ?? 0 };
   });
 
-  // A cue names its actor either by the same href the sentence used or by the
-  // element id — `#xpointer(id(item_48F7…)/AdvMapHero)` — which is the only way
-  // to tell two inline actors apart, since their hrefs are identical. Both
-  // spellings are folded onto the actor's href, the key everything else uses.
-  const byId = new Map<string, string>();
-  for (const actor of actors) if (actor.id) byId.set(actor.id, actor.href);
-  const actorKey = (link: string): string => {
-    const id = /#xpointer\(id\(([^)]+)\)/.exec(link)?.[1];
-    return (id && byId.get(id)) || link;
-  };
-
   // A cue says WHICH clip either by name or by position in the actor's own
   // AnimSet, and the armies are cued by position only. The name wins where both
   // are written — an index beside a name is usually left over from an edit.
-  const byHref = new Map(actors.map((a) => [a.href, a]));
+  const byKey = new Map(actors.map((a) => [a.key, a]));
   const clipOf = (key: string, name: string, index: number): string => {
     if (name) return name;
-    const rig = byHref.get(key);
+    const rig = byKey.get(key);
     return (index >= 0 && rig?.available[index]) || '';
   };
 
@@ -273,13 +277,16 @@ export function buildScenePlay(data: Assets, scenePath: string, options: PlayOpt
   if (sceneLight) for (const floor of built.scene.floors) floor.ambient = sceneLight;
 
   // Where each actor stands, for the effects their own clips bring with them.
-  const standing = new Map(actors.map((a) => [a.href, a]));
+  const standing = new Map(actors.map((a) => [a.key, a]));
+
+  /** A walk as the file writes it, waiting for a start point and a clock. */
+  interface Walk { tiles: Point2[]; angle: number }
+  const pending: Array<{ cue: Cue; tiles: Point2[]; angle: number }> = [];
 
   let clock = 0;
   const shots: ShotView[] = scene.shots.map((shot) => {
     const start = clock;
     clock += shot.duration || 3;
-    const speaker = shot.heroLink || shot.monsterLink;
     const ends = shot.newCameraSet ? endsOf(data, scenePath, shot.newCameraSet) : null;
     const camera: CameraSample[] = [];
     if (ends) {
@@ -303,32 +310,17 @@ export function buildScenePlay(data: Assets, scenePath: string, options: PlayOpt
       href: e.effect,
       ...effectOf(e.effect),
     }));
-    const cue = (link: string, name: string, index: number, delay: number): void => {
-      const actor = actorKey(link);
+    const cue = (actor: string, name: string, index: number, delay: number, walk?: Walk): void => {
       const kind = clipOf(actor, name, index);
       if (!kind) return;
-      cues.push({ actor, kind, delay, at: start + delay });
-      // A clip brings its own effect — the blue fire that runs up a knight's
-      // sword as he casts. Fired here, at the actor and at the cue's moment,
-      // rather than as a thing of its own: it is the same "an effect goes off
-      // at a place and a time" the scene's own CustomEffects are, and one
-      // machine playing both is one machine to get right.
-      const href = standing.get(actor)?.clipEffects[kind];
-      if (!href) return;
-      const on = standing.get(actor)!;
-      effects.push({
-        delay,
-        at: start + delay,
-        pos: [(on.x + 0.5) * U, (on.y + 0.5) * U, on.z],
-        rot: on.rot,
-        href,
-        fromClip: true,
-        ...effectOf(href),
-      });
+      const entry: Cue = { actor, kind, delay, at: start + delay };
+      cues.push(entry);
+      if (walk?.tiles.length) pending.push({ cue: entry, ...walk });
     };
-    cue(speaker, shot.animName, shot.actorAnimationIndex, shot.animationDelay);
+    cue(shot.actor, shot.animName, shot.actorAnimationIndex, shot.animationDelay);
     for (const anim of shot.animations) {
-      cue(anim.heroLink || anim.monsterLink || speaker, anim.animName, anim.animationIndex, anim.animationDelay);
+      cue(anim.actor || shot.actor, anim.animName, anim.animationIndex, anim.animationDelay,
+        { tiles: anim.movePoints, angle: anim.finalAngle });
     }
     return {
       index: shot.index,
@@ -336,13 +328,95 @@ export function buildScenePlay(data: Assets, scenePath: string, options: PlayOpt
       duration: shot.duration || 3,
       text: shot.text,
       sound: shot.sound,
-      speaker,
+      speaker: shot.actor,
       camera,
       cues,
       ambient: lightOf(shot.customAmbientLight),
       effects,
     };
   });
+
+  // --- walks -----------------------------------------------------------------
+  //
+  // Resolved in TIME order and once: a walk starts wherever the actor is when
+  // it begins, which is where the walk before it left them.
+
+  const floor = built.scene.floors[0];
+  /** The ground under a tile, sampled the way the scene builder samples it. */
+  const groundAt = (x: number, y: number): number => {
+    if (!floor) return 0;
+    const V = floor.V;
+    const ix = Math.max(0, Math.min(V - 1, Math.round(x)));
+    const iy = Math.max(0, Math.min(V - 1, Math.round(y)));
+    return floor.heights[iy * V + ix] ?? 0;
+  };
+  const world = (x: number, y: number): [number, number, number] =>
+    [(x + 0.5) * U, (y + 0.5) * U, groundAt(x, y)];
+
+  const here = new Map(actors.map((a) => [a.key, { x: a.x, y: a.y, rot: a.rot }]));
+  for (const { cue, tiles, angle } of [...pending].sort((a, b) => a.cue.at - b.cue.at)) {
+    const from = here.get(cue.actor);
+    const rig = standing.get(cue.actor);
+    if (!from || !rig) continue;
+    const steps = [{ x: from.x, y: from.y }, ...tiles];
+    const path = steps.map((p) => world(p.x, p.y));
+    // The clip's own pace. Nothing else declares one, so a clip that does not
+    // either (a `move` authored in place) walks at the corpus median instead of
+    // teleporting: WRONG is visible and fixable, instant is neither.
+    const speed = rig.clipSpeed[cue.kind] || 6;
+    const times = [0];
+    const headings: number[] = [];
+    for (let i = 1; i < path.length; i++) {
+      const dx = path[i]![0] - path[i - 1]![0], dy = path[i]![1] - path[i - 1]![1];
+      times.push(times[i - 1]! + Math.hypot(dx, dy) / speed);
+      // Facing, in the convention `<Rot>` uses: zero along +y, growing toward
+      // +x. Measured off C1M1's two armies, which face each other across the
+      // field — the Haven line at the low x end is written at 1.571 (+x) and
+      // the Inferno line at 4.712 (−x).
+      headings.push(Math.hypot(dx, dy) < 1e-6 ? (headings[i - 2] ?? from.rot) : Math.atan2(dx, dy));
+    }
+    // FinalAngle is DEGREES in the same convention: over the 157 walks whose
+    // actor and cue both name a non-zero angle, the difference between the two
+    // read that way piles up at zero (69 of them inside 15°) — the actor was
+    // already placed facing where the walk leaves them.
+    cue.walk = {
+      path, times, headings,
+      rot: angle ? angle * Math.PI / 180 : headings.at(-1) ?? from.rot,
+    };
+    const last = steps.at(-1)!;
+    here.set(cue.actor, { x: last.x, y: last.y, rot: cue.walk.rot });
+  }
+
+  // --- the effects an actor's own clip brings ---------------------------------
+  //
+  // After the walks, because a caster who has walked casts from where they
+  // ended up. Fired at the actor and at the cue's moment, through the same path
+  // the scene's own CustomEffects take: one machine playing both is one machine
+  // to get right.
+  const placeAt = (key: string, t: number): { pos: [number, number, number]; rot: number } | null => {
+    const rig = standing.get(key);
+    if (!rig) return null;
+    let out = { pos: world(rig.x, rig.y), rot: rig.rot };
+    let last = -Infinity;
+    for (const shot of shots) {
+      for (const c of shot.cues) {
+        if (c.actor !== key || !c.walk || c.at > t || c.at < last) continue;
+        last = c.at;
+        out = walkAt(c.walk, t - c.at);
+      }
+    }
+    return out;
+  };
+  for (const shot of shots) {
+    for (const c of shot.cues) {
+      const href = standing.get(c.actor)?.clipEffects[c.kind];
+      const on = href ? placeAt(c.actor, c.at) : null;
+      if (!href || !on) continue;
+      shot.effects.push({
+        delay: c.delay, at: c.at, pos: on.pos, rot: on.rot, href, fromClip: true, ...effectOf(href),
+      });
+    }
+  }
 
   const skipped = objects
     .filter((o) => !o.object.shared || built.resolver.resolve(o.object.shared) < 0)

@@ -10,6 +10,8 @@
 
 import * as THREE from 'three';
 import type { ActorView, ShotView } from '#src/dialog/play.ts';
+import { walkAt } from '#src/dialog/walk.ts';
+import type { WalkPath } from '#src/dialog/walk.ts';
 import type { FxTransfer } from '#src/scene/effects.ts';
 import { createFxSystem } from '#viewport/particles.ts';
 import type { FxSystem } from '#viewport/particles.ts';
@@ -35,6 +37,9 @@ interface Player {
   kind: string;
   /** Scene time that clip started at, or null when nobody has cued them yet. */
   at: number | null;
+  /** The walk they are on or have finished, and when it began. */
+  walk: WalkPath | null;
+  walkAt: number;
   /**
    * What is actually on screen — the cued clip while it runs, `idle00` once it
    * is out. Written by `poseAll`, so the inspector and the tests read the pose
@@ -279,7 +284,9 @@ function cueShotFx(shot: ShotView): void {
  */
 const _bone = new THREE.Vector3();
 
-export const actorKinds = (): Array<{ href: string; kind: string; top: number }> => playing.players.map((p) => {
+export const actorKinds = (): Array<{
+  href: string; key: string; kind: string; top: number; pos: [number, number, number];
+}> => playing.players.map((p) => {
   // How tall they are standing right now, in world units above their own feet.
   // The clip NAME does not say whether the pose is being held or replayed, and
   // that is the whole of the bug where a body played its death and then stood
@@ -288,9 +295,15 @@ export const actorKinds = (): Array<{ href: string; kind: string; top: number }>
   let top = 0;
   for (const b of p.idle.bones) {
     _bone.setFromMatrixPosition(b.matrixWorld);
-    top = Math.max(top, _bone.z - p.actor.z);
+    top = Math.max(top, _bone.z - p.idle.mesh.position.z);
   }
-  return { href: p.actor.href, kind: p.showing, top };
+  return {
+    href: p.actor.href, key: p.actor.key, kind: p.showing, top,
+    // Where they are STANDING, which a walk moves and nothing else does. Read
+    // off the mesh rather than off the actor: the actor is where the file put
+    // them, the mesh is where the scene has walked them to.
+    pos: p.idle.mesh.position.toArray() as [number, number, number],
+  };
 });
 
 // Both counts are of what is ON SCREEN, not of what has been built: an effect
@@ -353,7 +366,7 @@ export async function openScene(inner: string): Promise<SceneInfo> {
     idle.mesh.rotation.z = actor.rot;
     idle.mesh.scale.setScalar(actor.geom.scale ?? 1);
     stage.add(idle.mesh);
-    playing.players.push({ actor, idle, kind: 'idle00', at: null, showing: 'idle00' });
+    playing.players.push({ actor, idle, kind: 'idle00', at: null, walk: null, walkAt: 0, showing: 'idle00' });
   }
 
   // The scene's light came down on the floors (src/dialog/play.ts); remember it
@@ -452,18 +465,42 @@ export function show(index: number, at = 0): void {
  * those on the floor.
  */
 function cueAll(T: number): void {
-  for (const p of playing.players) { p.kind = 'idle00'; p.at = null; }
-  const of = new Map(playing.players.map((p) => [p.actor.href, p]));
+  for (const p of playing.players) { p.kind = 'idle00'; p.at = null; p.walk = null; p.walkAt = 0; }
+  const of = new Map(playing.players.map((p) => [p.actor.key, p]));
   for (const shot of playing.shots) {
     for (const cue of shot.cues) {
       if (cue.at > T) continue;
       const p = of.get(cue.actor);
-      if (!p || !p.actor.clips[cue.kind]) continue;
+      if (!p) continue;
+      // A walk is remembered even when its clip is not playable: where the
+      // scene left an actor is where they are for the rest of it, and losing
+      // that would snap them back to their first tile the moment they arrive.
+      if (cue.walk && (!p.walk || cue.at >= p.walkAt)) { p.walk = cue.walk; p.walkAt = cue.at; }
+      if (!p.actor.clips[cue.kind]) continue;
       if (p.at !== null && cue.at < p.at) continue;
       p.kind = cue.kind;
       p.at = cue.at;
     }
   }
+}
+
+/**
+ * Stand an actor where the scene has walked them to by now.
+ *
+ * Where they stand is not a property of a shot — a walk in shot 5 leaves them
+ * somewhere, and that is where they are in shot 40. So the position comes off
+ * the same clock the clips do rather than being set once when the scene opens.
+ */
+function place(p: Player, T: number): void {
+  const mesh = p.idle.mesh;
+  if (!p.walk) {
+    mesh.position.set((p.actor.x + 0.5) * U, (p.actor.y + 0.5) * U, p.actor.z);
+    mesh.rotation.z = p.actor.rot;
+    return;
+  }
+  const now = walkAt(p.walk, T - p.walkAt);
+  mesh.position.set(now.pos[0], now.pos[1], now.pos[2]);
+  mesh.rotation.z = now.rot;
 }
 
 /** Put every actor where their clip says they are, at the current moment. */
@@ -478,16 +515,23 @@ function poseAll(): void {
     // stand mid-swing waiting for it.
     const cued = p.at === null ? null : p.actor.clips[p.kind];
     const idle = p.actor.clips['idle00'];
+    // A walk LOOPS for as long as it lasts: `move` is ONE stride and the actor
+    // takes as many as the distance needs, so it is the one cued clip that does
+    // not run out after a single pass.
+    const walking = cued !== null && p.walk !== null
+      && T - p.walkAt < p.walk.times[p.walk.times.length - 1]!;
     // A cue OF the idle is idling — played as a one-shot it would run its cycle
     // from the cue and then hand over to the looping copy, a visible hitch.
-    const over = !cued || p.kind === 'idle00'
-      || (T - p.at! >= cued.duration && !TERMINAL.test(p.kind));
+    const over = !walking && (!cued || p.kind === 'idle00'
+      || (T - p.at! >= cued.duration && !TERMINAL.test(p.kind)));
     const play = over && idle ? { clip: idle, time: T, loop: true } : null;
     const clip = play?.clip ?? cued;
     if (!clip) continue;
     p.showing = play ? 'idle00' : p.kind;
     p.idle.skin.clip = clip;
-    poseIdle(p.idle, play ? play.time : Math.min(T - p.at!, clip.duration), !!play);
+    if (walking) poseIdle(p.idle, T - p.at!, true);
+    else poseIdle(p.idle, play ? play.time : Math.min(T - p.at!, clip.duration), !!play);
+    place(p, T);
   }
 }
 

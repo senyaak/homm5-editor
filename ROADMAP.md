@@ -627,11 +627,19 @@ Format (surveyed 2026-07-23, 250 scenes shipped under `DialogScenes/`):
       it through the same `buildWorld` a map goes through, the actors are
       skinned bodies with their arena clips, and a shot drives the camera
       (`e2e/dialog-scene.spec.ts`). Still to come: the line timings from the
-      voice files and walks along `MovePoints`
+      voice files
 - [ ] ⬜ The rest of an effect: `<Lights>` — a LightInstance at an AnimLight,
       whose colour is a baked blob like an animation's — is not drawn at all,
       and 46 of the 298 placed effects fly a path (`MovePoints` with a
       `MovementSpeed`) that we leave them sitting at the start of
+- [x] ✅ **The cast is all there, and it walks** (2026-08-02): an actor can be
+      declared INSIDE the animation that moves them, and 1517 of the shipped
+      scenes' 1814 inline actors are — read only from `<objects>` and the spoken
+      lines, A2C3/M4/S1 had 9 figures on the field instead of 138. With them,
+      the 922 walks: `MovePoints` is a list of tiles with no pace (that is on
+      the `move` clip) and no starting point (that is wherever the last walk
+      left them), and `FinalAngle` is degrees in the same convention `<Rot>`
+      uses — zero along +y, growing toward +x, measured off C1M1's two armies
 - [x] ✅ **A scene is one clock, and a spell knows when it is over**
       (2026-08-02): a delay is measured from the shot that writes it and runs
       straight past its end — 1034 of the shipped scenes' 7296 cues start after

@@ -356,7 +356,16 @@ interface ViewApi {
   /** What is on screen: the scene, which shot, and what each actor is playing. */
   scene(): (SceneInfo & {
     shot: number; at: number; running: boolean;
-    actors: Array<{ href: string; kind: string; /** Height of the highest bone above their feet, world units. */ top: number }>;
+    actors: Array<{
+      href: string;
+      /** The name cues join on — the element id where the actor has one. */
+      key: string;
+      kind: string;
+      /** Height of the highest bone above their feet, world units. */
+      top: number;
+      /** Where they are standing now, world units — a walk moves this. */
+      pos: [number, number, number];
+    }>;
     /** Particle systems the current shot is firing (see cueShotFx). */
     fx: number;
     /** Pieces of effect geometry it is drawing alongside them. */

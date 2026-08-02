@@ -295,6 +295,50 @@ for (const scene of scenes) {
 check('a cue is a moment in the SCENE, not in its shot', late > 0 && early > 0,
   `${late} of ${cued} start after their shot has ended, ${early} before it begins`);
 
+// A link does not only POINT at an actor — it can BE the declaration, body and
+// all, and not only in a sentence: a CustomAnimation declares its own. Read
+// only from `<objects>` and the sentences and most of a scene's cast is not on
+// the field at all.
+let byFile = 0, byIdRef = 0, declared = 0, declaredInAnim = 0;
+for (const scene of scenes) {
+  const root = find(parse(scene.text), 'DialogScene');
+  const sentences = root && find(root, 'sentences');
+  for (const shot of sentences ? children(sentences) : []) {
+    const anims = find(shot, 'CustomAnimations');
+    const groups: Array<[XmlElement, boolean]> = [[shot, false]];
+    for (const a of anims ? children(anims) : []) groups.push([a, true]);
+    for (const [el, inAnim] of groups) {
+      for (const name of ['heroLink', 'monsterLink']) {
+        const href = find(el, name)?.attrs.href;
+        if (!href) continue;
+        if (href.startsWith('#n:inline')) { declared++; if (inAnim) declaredInAnim++; }
+        else if (href.startsWith('#xpointer')) byIdRef++;
+        else byFile++;
+      }
+    }
+  }
+}
+check('an actor can be declared inside the link that names them',
+  declared > byFile && declaredInAnim > 0,
+  `${declared} declared inline (${declaredInAnim} of them inside a CustomAnimation),`
+  + ` ${byIdRef} mentioned by element id, ${byFile} in a file of their own`);
+
+// A walk is a list of TILES and nothing else: no pace, no starting point, and
+// (unlike an ordinary cue) always a clip named outright.
+let walks = 0, paced = 0, unnamed = 0;
+for (const scene of scenes) {
+  for (const shot of loadDialogScene(scene.text).shots) {
+    for (const a of shot.animations) {
+      if (!a.movePoints.length) continue;
+      walks++;
+      if (a.movementSpeed) paced++;
+      if (!a.animName) unnamed++;
+    }
+  }
+}
+check('a walk brings no pace of its own', walks > 0 && paced === 0 && unnamed === 0,
+  `${walks} walks, ${paced} with a MovementSpeed, ${unnamed} without a clip name`);
+
 const d1 = byPath.get('DialogScenes/C1/M1/D1/DialogScene.xdb');
 if (!d1) console.log('  (C1M1 D1 is not in this run — it ships inside All_campaigns.data.h5u)');
 else {
@@ -534,6 +578,40 @@ if (!byPath.has(showcasePath)) {
   check('nobody on the stage is placed twice', twice.length === 0,
     twice.length ? twice.join(', ') : `${objects.length} figures, each once`);
 
+  // Which way does `<Rot>` point? A walk has to know, because an actor faces
+  // the way they are going — and the two armies drawn up across this field from
+  // each other say it outright. Measured against the three other readings of
+  // the same two numbers, not assumed.
+  const sides = objects
+    .filter((o) => /MapObjects\/(Haven|Inferno)\//.test(o.object.shared ?? ''))
+    .map((o) => ({ haven: /Haven/.test(o.object.shared!), x: o.object.pos?.x ?? 0, y: o.object.pos?.y ?? 0, rot: o.object.rot }));
+  const readings: Record<string, (dx: number, dy: number) => number> = {
+    'atan2(dx,dy)': (dx, dy) => Math.atan2(dx, dy),
+    'atan2(dy,dx)': (dx, dy) => Math.atan2(dy, dx),
+    '-atan2(dx,dy)': (dx, dy) => -Math.atan2(dx, dy),
+    '-atan2(dy,dx)': (dx, dy) => -Math.atan2(dy, dx),
+  };
+  const facing: Record<string, number> = {};
+  let facingOff = 0;
+  for (const me of sides) {
+    let near = null, best = Infinity;
+    for (const other of sides) {
+      if (other.haven === me.haven) continue;
+      const d = Math.hypot(other.x - me.x, other.y - me.y);
+      if (d < best) { best = d; near = other; }
+    }
+    if (!near || best > 20) continue;
+    facingOff++;
+    for (const [name, read] of Object.entries(readings)) {
+      const d = ((read(near.x - me.x, near.y - me.y) - me.rot + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
+      if (Math.abs(d - Math.PI) < Math.PI / 2) facing[name] = (facing[name] ?? 0) + 1;
+    }
+  }
+  const ranked = Object.entries(facing).sort((a, b) => b[1] - a[1]);
+  check('a facing is zero along +y and grows toward +x — the two armies say so',
+    ranked[0]?.[0] === 'atan2(dx,dy)' && (ranked[0]?.[1] ?? 0) > 0.9 * facingOff,
+    ranked.map(([k, v]) => `${k} ${v}`).join(', ') + ` of ${facingOff} facing an enemy`);
+
   const rigs = actorRigs(data, scene, objects);
   const baked = rigs.reduce((a, r) => a + Object.keys(r.clips).length, 0);
   // Eight speak; the rest are the armies behind them, cued by index alone.
@@ -561,10 +639,10 @@ if (!byPath.has(showcasePath)) {
     + s.animations.filter((x) => x.animName).length, 0);
   check('a shot cues its actors by index as well as by name', cued > named * 2,
     `${cued} cues over ${play.shots.length} shots, only ${named} of them written as a name`);
-  const known = new Map(play.actors.map((a) => [a.href, a]));
+  const known = new Map(play.actors.map((a) => [a.key, a]));
   const unplayable = play.shots.flatMap((s) => s.cues).filter((c) => !known.get(c.actor)?.clips[c.kind]);
   check('every cue lands on an actor who has that clip', unplayable.length === 0,
-    unplayable.slice(0, 5).map((c) => `${c.actor.split('#')[0]}:${c.kind}`).join(', ') || `${cued} cues`);
+    unplayable.slice(0, 5).map((c) => `${c.actor}:${c.kind}`).join(', ') || `${cued} cues`);
 
   // Every shot's start on the scene's clock, and every cue with it. Nothing to
   // measure here — either the sums are right or the whole timeline is off — but

@@ -134,13 +134,28 @@ on: `Creatures.xdb` → `Creature.Visual` → `CreatureVisual.AnimCharacter` →
 
 ## Actors
 
-Two storage styles, both in use, both to be preserved on save:
+Three ways of naming one, all in heavy use, all to be preserved on save:
 
-* **inline** (133 shots) — the whole `AdvMapHero` is written inside the scene,
-  `href="#n:inline(AdvMapHero)"`, the same convention a map uses for objects;
-* **a sibling file** (1742 shots) — `href="Agrael.xdb#xpointer(/AdvMapHero)"`.
+* **declared inline** (1814 links) — the whole `AdvMapHero`/`AdvMapMonster` is
+  written INSIDE the link element, `href="#n:inline(AdvMapHero)"` with an `id`,
+  the same convention a map uses for its objects;
+* **mentioned by element id** (4621) —
+  `href="#xpointer(id(item_48F7…)/AdvMapHero)"`, pointing at one of those;
+* **a sibling file** (1443) — `href="Agrael.xdb#xpointer(/AdvMapHero)"`.
 
-The addon's scenes prefer the first, the original campaigns' the second.
+The addon's scenes prefer the first, the original campaigns' the last.
+
+**A declaration is not only made in a sentence.** 1517 of the 1814 are inside a
+`CustomAnimation` — the actor exists because something animates them and for no
+other reason. Read only from `<objects>` and the sentences, as this did at
+first, and most of a scene's cast is not on the field at all: A2C3/M4/S1 came
+out with 9 figures instead of 138, and its marching army had nobody in it.
+
+**The element id is the identity, not the href.** `#n:inline(AdvMapMonster)` is
+the same four words for every inline actor in the file, so joining cues to
+actors on the href puts a whole scene's cast onto whichever one was read first.
+Everything downstream joins on one key (`actorRef`): the id where the element
+has one, the path where that is all there is.
 
 **A figure the scene lists AND speaks through is one figure.** All seven of
 C1M1's file-backed actors are in `<objects>` as well as on a `heroLink`, and
@@ -173,6 +188,40 @@ routinely name clips it does not have.
 What the corpus actually asks for, most used first: `idle00` (1001), `move`
 (903), `death` (741), `happy` (617), `attack00` (498), `spneutral` (334),
 `rangeattack` (196), `hit` (173), `cast` (161).
+
+### Walking
+
+922 cues carry `MovePoints` — a list of TILES the actor is to be at, in order.
+What the file does **not** carry is either end of the arithmetic:
+
+* **no pace.** Every one of the 922 writes `MovementSpeed` 0. The pace is on
+  the CLIP: `<MovementSpeed>` on the `BasicSkelAnim` (5.7 world units a second
+  for a footman, 5.95 for an archer, 9.29 for a demon lord), times its
+  `<SpeedFactor>` — the rate the engine plays the clip at, which has to be in
+  the product or the feet slide. A walk in C1M1's sister scene A2C3/M4/S1 then
+  comes to 8–9 seconds across 60-odd units, inside its 12-second shot.
+* **no starting point.** A walk begins wherever the actor is standing at that
+  moment, which is where the walk before it left them. So the whole scene's
+  walks are resolved in TIME order, once, in `buildScenePlay`.
+
+`FinalAngle` is where they end up facing, **in degrees** — 341 of the values
+exceed 7, and the largest is 355. It is the same angle `<Rot>` writes in
+radians: over the 157 walks whose actor and cue both name a non-zero one, the
+difference piles up at zero (69 of them within 15°), the actor having been
+placed facing where the walk leaves them.
+
+**A facing is zero along +y and grows toward +x** (`atan2(dx, dy)`). Measured,
+not assumed: C1M1's two armies are drawn up across the field from each other,
+and of the 42 figures with an enemy within 20 tiles, 40 face them under that
+reading. The three other ways of arranging the same two numbers get 13, 11 and
+2. A walking actor turns along each leg, and holds `FinalAngle` on arrival.
+
+Where they end up is not a property of the shot: a walk in shot 3 is where the
+actor stands in shot 8, so position comes off the scene's clock like everything
+else rather than being set once when the scene opens.
+
+`move` is ONE stride, so it is the one cued clip that loops for as long as its
+walk lasts instead of running out after a single pass.
 
 ## Cameras
 

@@ -274,3 +274,59 @@ test('the editor opens a campaign scene and plays it', async () => {
   // loaded", which killed every effect in the scene.
   expect(errors.filter((e) => /map:fx|no map loaded/.test(e))).toEqual([]);
 });
+
+// C1M1's opening never moves anybody off their tile — the whole battle is
+// fought standing still. Marching is the other half of what a scene does, and
+// most of it lives in the addon's scenes.
+const MARCH = 'DialogScenes/A2C3/M4/S1';
+
+test('a scene walks its actors, and they stay where it leaves them', async () => {
+  test.skip(!existsSync(join(DATA, MARCH)) && !existsSync(join(GAME, 'data')),
+    'the addon\'s scenes are not on this install');
+  const { page } = ed;
+  test.setTimeout(180_000);
+
+  const info = await page.evaluate((s) => window.view.openScene(s), MARCH);
+  expect(info.shots).toBe(13);
+
+  // Most of this scene's cast is declared INSIDE a CustomAnimation — an
+  // `#n:inline(AdvMapMonster)` link with the whole body in it. Read only from
+  // `<objects>` and the sentences, as this was, and the field is nearly empty:
+  // the marching army is not there to march.
+  const cast = await page.evaluate(() => window.view.scene()?.actors.length ?? 0);
+  expect(cast).toBeGreaterThan(100);
+
+  // Shot 3 is the march. `MovePoints` is a list of tiles with no pace and no
+  // starting point: the pace comes off the `move` clip (every one of the 922
+  // walks in the shipped scenes writes MovementSpeed 0) and the start is
+  // wherever the actor is standing when it begins.
+  const march = await page.evaluate(() => {
+    const at = (shot: number, t: number): Map<string, [number, number, number]> => {
+      window.view.showShot(shot, t);
+      return new Map((window.view.scene()?.actors ?? []).map((a) => [a.key, a.pos]));
+    };
+    const moved = (from: Map<string, number[]>, to: Map<string, number[]>): number => {
+      let n = 0;
+      for (const [k, p] of from) {
+        const q = to.get(k);
+        if (q && Math.hypot(q[0]! - p[0]!, q[1]! - p[1]!) > 1) n++;
+      }
+      return n;
+    };
+    const start = at(3, 0);
+    const midway = at(3, 6);
+    const walking = window.view.scene()?.actors.filter((a) => a.kind === 'move').length ?? 0;
+    const later = at(8, 0);
+    return { during: moved(start, midway), walking, after: moved(start, later) };
+  });
+  expect(march.during).toBeGreaterThan(20);
+  // …and they are playing `move` while they do it, looping it: one stride is
+  // under two seconds and the march takes nine.
+  expect(march.walking).toBeGreaterThan(20);
+  // Where a walk leaves an actor is where they ARE, five shots later. Position
+  // is not a property of a shot, so it comes off the scene's clock like
+  // everything else rather than being set once when the scene opens.
+  expect(march.after).toBeGreaterThanOrEqual(march.during);
+
+  await page.evaluate(() => (document.getElementById('sc-close') as HTMLButtonElement).click());
+});

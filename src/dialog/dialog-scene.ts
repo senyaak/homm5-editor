@@ -58,6 +58,8 @@ export interface ShotAnimation {
   /** Who — an href at the actor, inline (`#xpointer(id(item_…)…)`) or a file. */
   heroLink: string;
   monsterLink: string;
+  /** Who, as the one key everything joins on. See `actorRef`. */
+  actor: string;
   /** Position in the actor's AnimSet, or -1 for none. `animName` wins. */
   animationIndex: number;
   animationDelay: number;
@@ -90,6 +92,8 @@ export interface Shot {
   /** The speaker. Inline in the scene, or in a file beside it — both are used. */
   heroLink: string;
   monsterLink: string;
+  /** The speaker, as the one key everything joins on. See `actorRef`. */
+  actor: string;
   monsterCustomName: string;
   /** The pre-ToE camera field. Still filled in 171 shots; NewCameraSet wins. */
   cameraSet: string;
@@ -140,6 +144,36 @@ export interface DialogScene {
 }
 
 const href = (el: XmlElement | null, name: string): string => find(el ?? ({} as XmlElement), name)?.attrs.href ?? '';
+
+/**
+ * Who a link points at, as ONE string everything downstream can join on.
+ *
+ * A scene names an actor three ways and all three are in heavy use: an href at a
+ * file beside it (1443 links), an element id (`#xpointer(id(item_…)/AdvMapHero)`,
+ * 4621), and the whole actor written INSIDE the link element (`#n:inline(…)`
+ * plus an `id`, 1814 — of which 1517 are inside a `CustomAnimation`).
+ *
+ * The href alone cannot be the key: `#n:inline(AdvMapMonster)` is the same four
+ * words for every inline actor in the file, so joining on it puts a whole
+ * scene's cast onto whichever one was read first. The element id is what tells
+ * them apart, and an `#xpointer` reference is a mention of exactly that id — so
+ * both fold onto the id, and only a path stands for itself.
+ */
+export function actorRef(el: XmlElement | null): string {
+  const link = el?.attrs.href ?? '';
+  if (el?.attrs.id) return `#${el.attrs.id}`;
+  const id = /#xpointer\(id\(([^)]+)\)/.exec(link)?.[1];
+  return id ? `#${id}` : link;
+}
+
+/** `actorRef` for whichever of a pair of links is filled in. */
+function refOf(el: XmlElement, ...names: string[]): string {
+  for (const name of names) {
+    const at = find(el, name);
+    if (at?.attrs.href) return actorRef(at);
+  }
+  return '';
+}
 const num = (el: XmlElement, name: string): number => Number(childText(el, name)) || 0;
 const bool = (el: XmlElement, name: string): boolean => childText(el, name).trim() === 'true';
 
@@ -165,6 +199,7 @@ function readShot(item: XmlElement, index: number): Shot {
     sound: href(item, 'sound'),
     heroLink: href(item, 'heroLink'),
     monsterLink: href(item, 'monsterLink'),
+    actor: refOf(item, 'heroLink', 'monsterLink'),
     monsterCustomName: href(item, 'MonsterCustomName'),
     cameraSet: href(item, 'cameraSet'),
     newCameraSet: href(item, 'NewCameraSet'),
@@ -194,6 +229,7 @@ function readShot(item: XmlElement, index: number): Shot {
     animations: items(item, 'CustomAnimations').map((a) => ({
       heroLink: href(a, 'heroLink'),
       monsterLink: href(a, 'monsterLink'),
+      actor: refOf(a, 'heroLink', 'monsterLink'),
       // -1 when unwritten, as the shot's own index is: 0 is a real position in
       // the actor's set, so a missing field must not read as "play the first".
       animationIndex: Number(childText(a, 'AnimationIndex') || -1),
