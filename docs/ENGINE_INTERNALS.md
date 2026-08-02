@@ -14,7 +14,8 @@ beside it, because they are read one at a time and the pile was 700 lines.
 | --- | --- |
 | [engineInternals/ARTIFACTS_AND_EQUIPMENT.md](engineInternals/ARTIFACTS_AND_EQUIPMENT.md) | How the engine knows what a hero is wearing; sets addressed by enum value; the one function everything goes through; the 54 artifacts whose behaviour is compiled by id. |
 | [engineInternals/NECROMANCY.md](engineInternals/NECROMANCY.md) | What the raise percentage and the dark energy ceiling are made of, and which of their terms are data. |
-| [engineInternals/SPECIALIZATIONS.md](engineInternals/SPECIALIZATIONS.md) | What a hero specialization is in the data and in the code, and the first aid tent's whole arithmetic. |
+| [engineInternals/SPECIALIZATIONS.md](engineInternals/SPECIALIZATIONS.md) | What a hero specialization is in the data and in the code, and the shape of the term one of ours adds. |
+| [engineInternals/FIRST_AID_TENT.md](engineInternals/FIRST_AID_TENT.md) | The tent: what it heals, how many uses it has, where each number is decided, and reaching a hero from a war machine. |
 | [engineInternals/LUA.md](engineInternals/LUA.md) | How the script API is registered, why the manuals disagree with it, and what adding a function costs. |
 | [engineInternals/MODS_AND_MAPS.md](engineInternals/MODS_AND_MAPS.md) | Where the game looks for mods, why a map archive can override anything, and where the generator writes. |
 | [engineInternals/EXTENSION.md](engineInternals/EXTENSION.md) | The three layers of our own extension, and what we deliberately do not do. |
@@ -130,5 +131,3 @@ subsystem in the files above.
 - Which vtable slots `0x174` (skill mastery), `0x328` (set count) and
   `0x368` (scripted necromancy level) belong to — naming that class would make
   every hook here easier to write.
-- What the second number beside the first aid tent's amount decides. It moves
-  with the mastery and it is not the healing.

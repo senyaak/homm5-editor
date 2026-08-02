@@ -282,100 +282,11 @@ other half: *a compiled COUNT is a comparison too*, and it will not announce
 itself. When something of ours is inert, ask what the exe would have to count
 before asking what the record says.
 
-## The effects, and where each of them will have to go
+## The ultimate perk, which the branch does not have yet
 
-None of the four skills does anything yet. This is what the next pass starts
-from, so it is written down rather than remembered.
-
-**The racial: one more use of the first aid tent per level of the skill.** The
-quantity already exists in data — `GameMechanics/RefTables/WarMachines.xdb`,
-`WAR_MACHINE_FIRST_AID_TENT`, `<Shots>3</Shots>`. So "uses" is not a number we
-invent; it is a field, and the shipped tent has three. Editing it in the mod
-would change it for every hero in the game, so the per-hero term belongs where
-the machine is set up for a battle, in the extension.
-
-*Found since, and this is the site rather than the neighbourhood.* Addresses are
-in-memory, RVA + 0x400000, as everything in this file:
-
-```
-CCombatWarMachine ctor            0xdc9730   the only caller is 0xd53f48
-  [this+0xA8] = the world CWarMachine        its type is at +0x1C, tent = 3
-  switch (type)                              jump table at 0xdc9a90, index type-1
-  [this+0xB0] = CWarMachine::GetShots()      0xabbc20 — ONE caller, this one
-CWarMachine::GetShots              0xabbc20   record(type)->[0x44], i.e. <Shots>
-  record by type                   0xb27650
-```
-
-and `+0xB0` is the counter the tent actually spends, read and written nowhere
-else worth naming:
-
-```
-0xdc9dc8  cmp dword ptr [esi-1Ch],0     may it act at all
-0xdc9f06  cmp dword ptr [esi-1Ch],0     may it cast THIS spell (0xBD or 0x160)
-0xdc9f59  add dword ptr [esi-1Ch],-1    it just did
-```
-
-(`-0x1C` because those three are interface methods and `this` arrives adjusted;
-the same field, reached from the other side.) Three gates read the field
-directly rather than through the accessor, so **the only worthwhile hook is the
-one that fills it**, and the constructor is where the object exists.
-
-*Done, and confirmed in game*: basic mastery gives the tent four uses, advanced
-five. `tent_charges` is a stat a skill — or an artifact — can carry.
-
-**Two hooks, because the moment that has the number and the moment that has the
-hero are not the same one.** The constructor (`0xdc9730`) only writes the tent's
-pointer into a small ring; the raise happens in the tent's amount hook, where the
-engine hands over a live unit. Asking a machine for its owner inside its own
-constructor ends the battle — the object is a moment old and has no owner yet,
-and no guard helps, because the slot holds a real function and the fault is
-inside it. Being on the ring is what makes the raise happen once, and the total
-is the same either way: the gate has already let the tent act, so three charges
-plus ours is the same number of uses whether the bonus lands before the first
-spend or just after it.
-
-Four crashed battles paid for this section. Every one was the same mistake in a
-different coat — **the call was made almost the way the engine makes it**:
-
-- **Arity from the `ret`, never from the call site.** The constructor ends
-  `ret 18h`: six stack arguments. Counting pushes at its one call site gives
-  five, because the sixth is a `push 1` put down five instructions early with a
-  virtual call in between that takes its `this` in ecx and nothing off the stack.
-  A hook one argument short cleans four bytes less than the caller left, and the
-  stack is wrong from the first war machine built.
-- **`engine > 0` was a guard, not an early-out.** The amount function has two
-  call sites and only one hands over a unit whose owner can be asked for.
-- **Skills answer one virtual call further along.** At `0xdc9705` the engine
-  takes the hero exactly as `unit_hero` does — `[+0x18]` for the owner, `[+0x0C]`
-  for the hero — and then makes one more call, **slot 0**, before asking
-  `[+0x174]` for a mastery. That pointer is right for everything else the tent
-  asks of a hero, and wrong for this. Named by the cleanest evidence of the whole
-  session: attacking with Gem crashed and attacking with anyone else did not, so
-  the fault was in the one path only a hero with a tent reaches.
-
-And the one thing that was measured rather than reasoned: **the unit sits at
-`machine + 0xCC`**. The probe printed the constructor's machine and the `unit`
-the amount hook receives, same battle, and the two numbers were 204 apart — the
-`0xCC` the disassembly writes as `lea ecx,[esi-0CCh]`.
-
-Two nearby places were already written up in
-[engineInternals/SPECIALIZATIONS.md](engineInternals/SPECIALIZATIONS.md):
-`0x77fca0` computes what the tent is worth (`{10,20,50,100}[war machines
-mastery]`, plus five per hero level for `HERO_SPEC_EMPIRIC`), and
-`CCombatWarMachine::GetSpellPower` at `0x9c96d0` answers for machine type 3.
-That one is worth reading for another reason: it fetches the owner's mastery
-with `push 2; call [hero_vtable+0x174]`, and 2 is `HERO_SKILL_WAR_MACHINES` —
-the engine asking the very question our skill rows now ask.
-
-**Two of the perks happen inside a battle**, at the moment the tent acts: the
-cleanse and the random blessing. Lua cannot see that moment. The combat script
-API is a controller for scripted battles — attached to a hero by
-`SetHeroCombatScript`, per hero and per map — and it has no event for "the tent
-healed somebody". Both are extension work.
-
-**The branch has no ultimate yet**, and that is a deliberate later. Every class
-ships exactly one — `SKILLTYPE_UINQUE_PERK`, eight of them — and the shape is
-regular enough to copy without any new reverse engineering:
+A deliberate later, written down so it does not have to be rediscovered. Every
+class ships exactly one — `SKILLTYPE_UINQUE_PERK`, eight of them — and the shape
+is regular enough to copy without any new reverse engineering:
 
 ```
 HERO_SKILL_ABSOLUTE_LUCK   HERO_CLASS_RANGER   basic: HERO_SKILL_AVENGER
@@ -385,14 +296,15 @@ HERO_SKILL_ABSOLUTE_LUCK   HERO_CLASS_RANGER   basic: HERO_SKILL_AVENGER
 So a Witch's ultimate is one more record hanging off `HERO_SKILL_TENT_MASTER`
 with the three perks below as its `dependenciesIDs` — the case the prerequisite
 list is actually FOR, and the one place a list of ours is not the branch itself.
-Seven of the eight ask for exactly three; the Warlock's asks for six. What it
-DOES is the extension's half again, like everything else here.
+Seven of the eight ask for exactly three; the Warlock's asks for six.
 
-**The third perk is adventure-map shaped**, and Lua can have it: a tent destroyed in
-a battle is rebuilt afterwards. `COMBAT_RESULTS_TRIGGER` fires after a combat
-with the combat index; `GetSavedCombatArmyHero` names the heroes,
-`HasHeroSkill` asks whether one holds the perk, and
-`HasHeroWarMachine` / `GiveHeroWarMachine` do the rest. It belongs in the mod's
-own `scripts/advmap-common.lua`, which runs on **every** adventure map, the
-game's own included, and where triggers stack rather than replace — both
-measured, in [NAMES_AND_SCRIPTING.md](NAMES_AND_SCRIPTING.md).
+## What her skills DO is not this file
+
+A record here gives a skill a name, an icon and a place in the tree. The
+arithmetic is the extension's half, and it belongs to the thing being changed
+rather than to the class holding the skill: «Мастер палатки» and its three perks
+are all about one war machine, and they are written up in
+[engineInternals/FIRST_AID_TENT.md](engineInternals/FIRST_AID_TENT.md) — what the
+tent is worth, how many uses it has, where a term of ours joins each, and where
+the three perks will have to go. How a skill CARRIES such a term is in
+[engineInternals/EXTENSION.md](engineInternals/EXTENSION.md).
