@@ -328,6 +328,10 @@ static int points_at_code(void *fn);
 
 /** Append text to the log beside the DLL. Silent if it cannot. */
 static void log_line(const char *text);
+/** Whether `n` bytes at `p` can be read without taking the process down. */
+static int readable(const void *p, SIZE_T n);
+/** Whether an address is inside the executable's code — a wrong slot is not called. */
+static int points_at_code(void *fn);
 
 static void num_to_dec(int v, char *out, int *len) {
   char tmp[12];
@@ -578,11 +582,16 @@ static int g_traceLeft = 24;
  * "worn" and costs us no check of our own.
  */
 static int hero_term(void *hero, int stat, int trace) {
-  if (!hero) return 0;
+  // Every read guarded, every slot checked. The two older callers hand over a
+  // hero the engine just gave them and could do without this; the tent charges
+  // reach for one at a moment nothing promises there is one, and an unguarded
+  // walk from there is what killed a battle before the log could say a word.
+  if (!readable(hero, 4)) return 0;
   void **vtable = *(void ***)hero;
+  if (!readable(vtable, VT_SKILL_MASTERY + 4)) return 0;
   int added = 0;
 
-  if (g_countEquipped) {
+  if (g_countEquipped && points_at_code(vtable[VT_WORN_ARTIFACTS / 4])) {
     void *worn = ((WornFn)vtable[VT_WORN_ARTIFACTS / 4])(hero);
     if (worn) {
       for (int i = 0; i < g_rowCount; i++) {
@@ -1062,6 +1071,9 @@ static int install_necromancy(void) {
  * "nothing left to heal" cost an evening — so the terms are written down here,
  * where they are known, rather than inferred from what the tent appeared to do.
  */
+/** The tent's charges, raised once when it first acts — defined below. */
+static void tent_charges_term(void *unit, void *hero);
+
 typedef void(__fastcall *TentAmountFn)(int *amount, int *second, void *unit, int mastery);
 static TentAmountFn g_tentAmount = NULL;
 static int g_amountLogged = 0;
@@ -1130,8 +1142,12 @@ static void __fastcall tent_amount_hook(int *amount, int *second, void *unit, in
   // A number of zero or less is still LOGGED and only not added to: "the engine
   // said nothing" is one of the answers worth seeing, and a hook that goes
   // quiet in exactly that case is a hook that looks uninstalled.
-  void *hero = engine > 0 ? unit_hero(unit) : NULL;
-  void *self = hero ? hero_virtual_base(hero) : NULL;
+  // Resolved whatever the engine said the healing was worth: the charges are a
+  // different question from the amount, and a tent that healed nobody this turn
+  // still spent a use.
+  void *hero = unit_hero(unit);
+  tent_charges_term(unit, hero);
+  void *self = engine > 0 && hero ? hero_virtual_base(hero) : NULL;
   int level = -1, add = 0, matched = -1;
   if (self) {
     void **vt = *(void ***)self;
@@ -1169,6 +1185,9 @@ static void __fastcall tent_amount_hook(int *amount, int *second, void *unit, in
 }
 
 static void install_tent_term(void) {
+  // Two reasons want this one hook — a specialization's percentage and a
+  // skill's charges — so it is installed once and asked twice.
+  if (g_tentAmount) return;
   g_tentAmount = (TentAmountFn)detour(TENT_AMOUNT_RVA, TENT_AMOUNT_HEAD,
                                       &tent_amount_hook, "first aid tent");
   if (g_tentAmount) log_line("first aid tent hook installed");
@@ -1246,6 +1265,31 @@ typedef void *(__fastcall *MachineCtorFn)(void *self, void *edx, void *a1, void 
 static MachineCtorFn g_machineCtor = NULL;
 static int g_machineLogged = 0;
 
+/**
+ * Tents built and not yet topped up.
+ *
+ * WHY A LIST INSTEAD OF DOING IT THERE AND THEN. The charges have to be raised
+ * per HERO, and the constructor is a place where no hero can be safely asked
+ * for: the object is a moment old, nothing promises it has been given an owner,
+ * and calling `GetOwner` on it killed the battle before a single line reached
+ * the log. Guards do not help — the slot holds a real function, and the fault is
+ * inside it.
+ *
+ * So the constructor only writes down a pointer, which cannot fail, and the
+ * raise happens the first time that tent ACTS — in the amount hook below, where
+ * the engine hands over a live unit and the hero has been reachable all along.
+ * The arithmetic comes out the same either way: the gate has already let the
+ * tent act, so three charges plus ours is the same number of uses whether the
+ * bonus lands before the first spend or just after it.
+ *
+ * Eight is far more than a battle needs — one tent a side — and the oldest is
+ * dropped rather than growing the list, because a tent that never acted is a
+ * tent that never needed the charges.
+ */
+#define PENDING_TENTS 8
+static void *g_pendingTents[PENDING_TENTS];
+static int g_pendingAt = 0;
+
 static void *__fastcall machine_ctor_hook(void *self, void *edx, void *a1, void *a2, void *a3,
                                           void *a4, unsigned a5, void *a6) {
   void *m = g_machineCtor(self, edx, a1, a2, a3, a4, a5, a6);
@@ -1256,19 +1300,44 @@ static void *__fastcall machine_ctor_hook(void *self, void *edx, void *a1, void 
   if (*(int *)((BYTE *)world + WORLD_MACHINE_TYPE) != MACHINE_TYPE_TENT) return m;
   if (!readable((BYTE *)m + MACHINE_CHARGES, 4)) return m;
 
+  g_pendingTents[g_pendingAt++ & (PENDING_TENTS - 1)] = m;
+  if (g_machineLogged++ >= 8) return m;
+  log_line("tent built:");
+  log_num("  the engine filled ", *(int *)((BYTE *)m + MACHINE_CHARGES));
+  return m;
+}
+
+/**
+ * The raise, done once, at the first moment this tent is known to be whole.
+ *
+ * `unit` is the tent's combat object 0xCC bytes along — measured, by printing
+ * the constructor's pointer and this one into the same log in the same battle
+ * and subtracting. Being on the list is what makes it once: the constructor puts
+ * each tent there exactly one time.
+ */
+static void tent_charges_term(void *unit, void *hero) {
+  if (!unit || !hero) return;
+  void *m = (BYTE *)unit - MACHINE_AS_UNIT;
+  int found = 0;
+  for (int i = 0; i < PENDING_TENTS; i++) {
+    if (g_pendingTents[i] != m) continue;
+    g_pendingTents[i] = NULL;
+    found = 1;
+    break;
+  }
+  if (!found || !readable((BYTE *)m + MACHINE_CHARGES, 4)) return;
+
   int *charges = (int *)((BYTE *)m + MACHINE_CHARGES);
-  void *hero = unit_hero((BYTE *)m + MACHINE_AS_UNIT);
   int add = hero_term(hero, STAT_TENT_CHARGES, 0);
   // Only upwards. A row worth less than nothing would take away uses the hero
   // paid for, and a tent that cannot act at all is a bug that looks like ours.
-  if (add > 0) *charges += add;
-
-  if (g_machineLogged++ >= 8) return m;
-  log_line("tent built:");
-  log_num("  the engine filled ", *charges - (add > 0 ? add : 0));
-  log_num("  we add            ", add);
-  log_num("  charges           ", *charges);
-  return m;
+  if (add <= 0) return;
+  *charges += add;
+  if (g_machineLogged <= 8) {
+    log_line("tent charges:");
+    log_num("  we add   ", add);
+    log_num("  charges  ", *charges);
+  }
 }
 
 /** Installed only when something asks for the sum it adds to. */
@@ -1304,8 +1373,11 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   install_lua_functions();
   install_energy_getter();
   if (g_specRowCount) install_specialization_hooks();
-  if (rows_for(STAT_TENT_CHARGES) && install_machine_charges()) {
-    log_line("first aid tent charges hook installed");
+  if (rows_for(STAT_TENT_CHARGES)) {
+    // Both halves, or neither: the constructor notes the tent down and the
+    // amount hook is where the note is redeemed.
+    install_tent_term();
+    if (install_machine_charges()) log_line("first aid tent charges hook installed");
   }
   return TRUE;
 }
