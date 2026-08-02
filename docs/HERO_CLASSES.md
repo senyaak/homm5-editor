@@ -208,9 +208,10 @@ What has been ruled out:
   in shape — same `SKILLTYPE_CLASS_PERK`, same empty `SkillPrerequisites`, same
   `BasicSkillID` naming the branch, same two textures, same one name and one
   description. Only the ids and the hrefs differ.
-- **A second registration.** `HERO_SKILL_MULTISHOT` occurs in exactly one file
-  in the whole data root, `Skills.xdb`. Perks are not listed anywhere else — not
-  in a UI file, not in a wheel, not per class.
+- **A second registration.** Over the whole data root, `HERO_SKILL_MULTISHOT`
+  occurs in `Skills.xdb`, in `types.xml` (the enum, as every id does), and in
+  four maps that hand it to a preset hero. Nothing REGISTERS a perk anywhere
+  else — not a UI file, not a wheel, not a list per class.
 - **The table's size.** The executable counts to 225 and the racial at 221 loads
   and works, so ids past the shipped 221 are not invisible as such.
 
