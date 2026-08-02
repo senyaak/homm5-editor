@@ -80,8 +80,17 @@ export function modGameRoot(): string {
 export const ASSETS = join(REPO_ROOT, 'assets');
 const ART = join(ASSETS, 'artifacts');
 
-/** The real install the checkout sits in — where the executable comes from. */
-export const REAL_GAME = join(REPO_ROOT, '..');
+/**
+ * The install the executable is copied out of — the checkout's own, by default.
+ *
+ * `HOMM5_ROOT` FIRST, the same variable `E2E_GAME` already reads. A checkout
+ * that sits inside the game needs nothing; a WORKTREE does not sit inside one —
+ * its parent is wherever the worktrees are kept — and this went looking for
+ * `bin/H5_Game.exe` there, found none, prepared no install, and every mod stage
+ * then failed inside the app with "no executable at …/_tmp/e2e-mod-game/bin",
+ * which names the copy rather than the missing original.
+ */
+export const REAL_GAME = process.env.HOMM5_ROOT || join(REPO_ROOT, '..');
 /** The archive the dialogs always create: OUR mod, never a choice. */
 export const MOD = MOD_STEM;
 
