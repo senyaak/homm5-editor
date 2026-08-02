@@ -415,6 +415,47 @@ static void log_num(const char *prefix, int value) {
   log_line(line);
 }
 
+/**
+ * Whether `n` bytes at `p` can be read without taking the process down.
+ *
+ * The first version of this probe walked the owner chain from the constructor's
+ * object and killed the battle. `points_at_code` cannot save a walk like that:
+ * it filters the pointer it is HANDED, and the fault was in fetching that
+ * pointer from a vtable that is not one. So nothing is dereferenced now without
+ * asking the kernel first, and — the real fix — nothing is CALLED at all.
+ */
+static int readable(const void *p, SIZE_T n) {
+  MEMORY_BASIC_INFORMATION mbi;
+  if (!p) return 0;
+  if (!VirtualQuery(p, &mbi, sizeof mbi)) return 0;
+  if (mbi.State != MEM_COMMIT) return 0;
+  if (mbi.Protect & (PAGE_NOACCESS | PAGE_GUARD)) return 0;
+  SIZE_T left = (SIZE_T)((BYTE *)mbi.BaseAddress + mbi.RegionSize - (BYTE *)p);
+  return left >= n;
+}
+
+/** A pointer and whatever it starts with — a vtable address, if it is an object. */
+static void log_object(const char *what, void *p) {
+  char line[160];
+  int i = 0;
+  while (what[i] && i < 60) { line[i] = what[i]; i++; }
+  int n = 0;
+  num_to_dec((int)(DWORD)p, line + i, &n);
+  i += n;
+  if (readable(p, 8)) {
+    const char *sep = "  vt+0 ";
+    for (int j = 0; sep[j]; j++) line[i++] = sep[j];
+    num_to_dec((int)((DWORD *)p)[0], line + i, &n);
+    i += n;
+    const char *sep2 = "  vt+4 ";
+    for (int j = 0; sep2[j]; j++) line[i++] = sep2[j];
+    num_to_dec((int)((DWORD *)p)[1], line + i, &n);
+    i += n;
+  }
+  line[i] = 0;
+  log_line(line);
+}
+
 // ---------------------------------------------------------------------------
 // Reading the config.
 
@@ -1118,6 +1159,11 @@ static void __fastcall tent_amount_hook(int *amount, int *second, void *unit, in
   log_num("      we add        ", add);
   log_num("      amount        ", *amount);
   log_num("      second        ", *second);
+  // The two pointers the war machine probe is looking for. This walk is the one
+  // that WORKS, so whichever number the constructor also printed is the route
+  // from a freshly built machine to its hero.
+  log_object("      unit        ", unit);
+  log_object("      hero        ", hero);
 }
 
 static void install_tent_term(void) {
@@ -1187,48 +1233,30 @@ typedef void *(__fastcall *MachineCtorFn)(void *self, void *edx, void *a1, void 
 static MachineCtorFn g_machineCtor = NULL;
 static int g_machineLogged = 0;
 
-/** The hero behind an object, if this base is one the engine's chain accepts. */
-static void *hero_from(void *base) {
-  if (!base) return NULL;
-  void **vt = *(void ***)base;
-  if (!vt || !points_at_code(vt[VT_UNIT_OWNER / 4])) return NULL;
-  void *owner = ((GetterFn)vt[VT_UNIT_OWNER / 4])(base);
-  if (!owner) return NULL;
-  void **ovt = *(void ***)owner;
-  if (!ovt || !points_at_code(ovt[VT_OWNER_HERO / 4])) return NULL;
-  return ((GetterFn)ovt[VT_OWNER_HERO / 4])(owner);
-}
-
-/** What that hero answers about a skill — 2 is War Machines, a value we can predict. */
-static int mastery_of(void *hero, int skill) {
-  if (!hero) return -1;
-  void **vt = *(void ***)hero;
-  if (!vt || !points_at_code(vt[VT_SKILL_MASTERY / 4])) return -2;
-  return ((SkillMasteryFn)vt[VT_SKILL_MASTERY / 4])(hero, skill);
-}
-
 static void *__fastcall machine_ctor_hook(void *self, void *edx, void *a1, void *a2, void *a3,
                                           void *a4, unsigned a5) {
   void *m = g_machineCtor(self, edx, a1, a2, a3, a4, a5);
-  if (!m || g_machineLogged >= 24) return m;
+  (void)a5;
+  if (!m || g_machineLogged >= 8) return m;
+  if (!readable((BYTE *)m + MACHINE_WORLD, 4)) return m;
 
   void *world = *(void **)((BYTE *)m + MACHINE_WORLD);
-  int type = world ? *(int *)((BYTE *)world + WORLD_MACHINE_TYPE) : -1;
-  if (type != MACHINE_TYPE_TENT) return m;
+  if (!readable((BYTE *)world + WORLD_MACHINE_TYPE, 4)) return m;
+  if (*(int *)((BYTE *)world + WORLD_MACHINE_TYPE) != MACHINE_TYPE_TENT) return m;
 
   g_machineLogged++;
   log_line("tent built:");
   log_num("  charges the engine filled ", *(int *)((BYTE *)m + MACHINE_CHARGES));
-  // Two candidate bases, because which one the engine's own walk starts from is
-  // exactly the question. Whichever answers a mastery between 0 and 4 is the one.
-  void *heroAt0 = hero_from(m);
-  void *heroAt4 = hero_from((BYTE *)m + 4);
-  log_num("  from +0: war machines mastery ", mastery_of(heroAt0, 2));
-  log_num("  from +4: war machines mastery ", mastery_of(heroAt4, 2));
-  for (int i = 0; i < g_skillRowCount; i++) {
-    log_num("  from +0: our skill ", mastery_of(heroAt0, g_skillRows[i].skill));
-    log_num("  from +4: our skill ", mastery_of(heroAt4, g_skillRows[i].skill));
-  }
+  // Pointers only. One of these leads to the hero, and which one is answered by
+  // the tent's own hook printing the hero it resolves when the tent acts — the
+  // two numbers meet in this log rather than in a guess.
+  log_object("  machine     ", m);
+  log_object("  world       ", world);
+  log_object("  ctor this   ", self);
+  log_object("  ctor arg 1  ", a1);
+  log_object("  ctor arg 2  ", a2);
+  log_object("  ctor arg 3  ", a3);
+  log_object("  ctor arg 4  ", a4);
   return m;
 }
 
