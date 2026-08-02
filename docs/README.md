@@ -44,6 +44,7 @@ mod documents below; they move here as each gets written up.
 - [ARTIFACTS.md](ARTIFACTS.md) — an artifact, start to finish.
 - [ARTIFACT_EFFECTS.md](ARTIFACT_EFFECTS.md) — what data, script and the exe each control.
 - [ENGINE_INTERNALS.md](ENGINE_INTERNALS.md) — read out of the binary: where a mod can cut in.
+- [UI_INTERNALS.md](UI_INTERNALS.md) — how a screen is put together: what a click is, how a screen finds its parts.
 - [QOL.md](QOL.md) — settings that change how the game plays, and the import-table hooks behind them.
 - [EXE_LUA_REGISTRY.md](EXE_LUA_REGISTRY.md) — the Lua functions the executable registers.
 - [ARCHIVES.md](ARCHIVES.md) — a map, a campaign and a mod are one thing to the engine.
