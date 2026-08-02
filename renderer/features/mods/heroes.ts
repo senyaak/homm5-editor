@@ -10,6 +10,7 @@ import { ask, modDialog, openOnTop } from '#core/dialog.ts';
 import { api } from '#core/ipc.ts';
 import { artLabels } from '#src/mods/heroes.ts';
 import { pickPreset } from '#features/mods/preset.ts';
+import { drawHeroTabs, registerHeroTab } from '#features/mods/hero-tabs.ts';
 import { modRow, NL } from '#features/mods/shared.ts';
 import { requireFilled } from '#core/form-gate.ts';
 import type { ModListEntry, RosterEntryDTO } from '#electron/ipc.ts';
@@ -80,14 +81,32 @@ async function fillHeroForm(): Promise<void> {
 
   const asOptions = (v: string[] = []): { id: string; label: string }[] => v.map((id) => ({ id, label: id }));
   fillHeroSelect('he-town', asOptions(values.TownType));
-  fillHeroSelect('he-class', asOptions(values.Class));
-  fillHeroSelect('he-spec', asOptions(values.Specialization), true);
+  // The game's nine classes and its 221 skills come out of types.xml as the
+  // EDITOR reads it — the game's own copy, where a class of the mod does not
+  // exist. Ours live only in the archive's copy, so without this a hero could
+  // not be given the class or the racial he was made for.
+  const ours = (await api.listMods()).mods;
+  fillHeroSelect('he-class', [
+    ...asOptions(values.Class),
+    ...ours.flatMap((m) => m.classes ?? []).map((c) => ({ id: c.id, label: `${c.name || c.id} (ours)` })),
+  ]);
+  // The game's 84 specializations, and ours after them — same reason.
+  const own = ours.flatMap((m) => m.specializations ?? []);
+  fillHeroSelect('he-spec', [
+    ...asOptions(values.Specialization),
+    ...own.map((s) => ({ id: s.id, label: `${s.name || s.id} (ours)` })),
+  ], true);
 
   // Skills and perks come out of one table (Skills.xdb holds both), so both
-  // pickers are offered the whole of it rather than a guess at which is which.
-  fillHeroSelect('he-primary', skills, true);
-  fillHeroSelect('he-skill', skills, true);
-  fillHeroSelect('he-perk', skills, true);
+  // pickers are offered the whole of it rather than a guess at which is which —
+  // and ours are appended for the third time, for the third copy of the reason.
+  const allSkills = [
+    ...skills,
+    ...ours.flatMap((m) => m.skills ?? []).map((k) => ({ id: k.id, label: `${k.name || k.id} (ours)` })),
+  ];
+  fillHeroSelect('he-primary', allSkills, true);
+  fillHeroSelect('he-skill', allSkills, true);
+  fillHeroSelect('he-perk', allSkills, true);
   fillHeroSelect('he-spell', spells, true);
 
   // Appearance: what the shipped heroes actually wear in each slot. The label
@@ -222,6 +241,11 @@ async function editHero(id: string): Promise<void> {
   $input('he-tent').checked = !!h.machines?.firstAidTent;
   $input('he-ammo').checked = !!h.machines?.ammoCart;
   $input('he-scenario').checked = !!h.scenarioHero;
+  // The pictures he was built from, carried back like everything else: a form
+  // that shows a record has to show ALL of it, or saving writes back whatever
+  // the box happened to hold (docs/CONTENT_FORMS.md §2).
+  $input('he-portrait-pic').value = h.portrait ?? '';
+  $input('he-spec-pic').value = h.specializationPicture ?? '';
   // His looks as he was BUILT, not as the preset would seed them: an edit that
   // silently put the preset's model back would undo a choice without a word.
   for (const [slot, id2] of Object.entries(HE_ART_FIELDS)) {
@@ -294,6 +318,10 @@ async function submitHeroMod(): Promise<void> {
       ...($select('he-face').value ? { face: $select('he-face').value } : {}),
       ...($select('he-face-small').value ? { faceSmall: $select('he-face-small').value } : {}),
       ...($select('he-spec-icon').value ? { specializationIcon: $select('he-spec-icon').value } : {}),
+      // A picture wins over the href beside it: it is the more specific answer
+      // to the same question, and the builder points him at what it makes.
+      ...($input('he-portrait-pic').value.trim() ? { portrait: $input('he-portrait-pic').value.trim() } : {}),
+      ...($input('he-spec-pic').value.trim() ? { specializationPicture: $input('he-spec-pic').value.trim() } : {}),
       // Appearance rides as one object: the fields are all the same shape, and
       // the builder leaves any slot the form did not fill as the preset has it.
       ...(Object.keys(heOwnFiles).length ? { ownFiles: heOwnFiles } : {}),
@@ -330,6 +358,20 @@ let heOwnFiles: Record<string, string> = {};
 
 /** Bind the hero list and form to their markup. */
 export function initHeroesMod(): void {
+  // The window's first tab. Registered here rather than listed in hero-tabs.ts,
+  // so the file that owns heroes is the only one that has to know they exist.
+  registerHeroTab({
+    id: 'heroes',
+    label: 'Heroes',
+    about: 'A hero costs the game nothing global: no id, no ceiling, no patched executable.',
+    pane: 'hm-pane-heroes',
+    onShow: () => {
+      void refreshHeroList().catch((e: unknown) => {
+        $('hm-err').textContent = e instanceof Error ? e.message : String(e);
+      });
+    },
+  });
+
   $('heroesbtn').onclick = () => {
     $('hm-err').textContent = '';
     $('hm-note').textContent = '';
@@ -337,7 +379,10 @@ export function initHeroesMod(): void {
     const report = (e: unknown): void => {
       $('hm-err').textContent = e instanceof Error ? e.message : String(e);
     };
-    void refreshHeroList().catch(report);
+    // The bar refreshes the OPEN tab's list; the form's own selects are filled
+    // whichever tab that is, because the hero form is opened from the list and
+    // from an edit alike.
+    drawHeroTabs();
     heFormReady = fillHeroForm();
     void heFormReady.catch(report);
   };
@@ -352,6 +397,10 @@ export function initHeroesMod(): void {
     $input('he-id').value = '';
     $input('he-preset').value = '';
     $input('he-name').value = '';
+    // New clears the pictures too, or the next hero is built with this one's
+    // face — the same trap the creature's preset fell into.
+    $input('he-portrait-pic').value = '';
+    $input('he-spec-pic').value = '';
     $('he-preset-name').textContent = 'nothing yet — the form is blank';
     gateHero().rewatch();
     modDialog('heroedit').showModal();
@@ -383,6 +432,17 @@ export function initHeroesMod(): void {
           el.append(new Option(`${artLabel(picked.href)} (yours)`, picked.href));
         }
         el.value = picked.href;
+      })().catch((e) => { $('he-err').textContent = e instanceof Error ? e.message : String(e); });
+    };
+  }
+  // A picture is chosen by PATH and kept as one: the texture is built when the
+  // hero is, so the same drawing can be re-read after it is edited, and a
+  // checkout that carries `assets/` builds the same face on any machine.
+  for (const btn of document.querySelectorAll<HTMLButtonElement>('button.he-picture')) {
+    btn.onclick = () => {
+      void (async () => {
+        const picked = await api.pickPicture();
+        if (picked) $input(btn.dataset.for!).value = picked;
       })().catch((e) => { $('he-err').textContent = e instanceof Error ? e.message : String(e); });
     };
   }

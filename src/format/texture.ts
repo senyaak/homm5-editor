@@ -102,6 +102,36 @@ export function textureDoc(o: {
 }
 
 /**
+ * The picture at a whole multiple of its size — every pixel becoming a square
+ * block of them.
+ *
+ * The counterpart to `fitSquare`'s refusal to enlarge, and the exception that
+ * refusal leaves: a hero's portrait is drawn at 58x64 and his frame is 128x128,
+ * so it has to grow or sit lost in the middle of a black field. Doubling by
+ * whole pixels is the one enlargement that invents nothing — no blend, no
+ * half-tone along an edge the artist drew sharp — which is the same reason
+ * fitSquare will not interpolate downwards.
+ */
+export function magnify(image: Image, times: number): Image {
+  if (times <= 1) return image;
+  const width = image.width * times;
+  const height = image.height * times;
+  const rgba = new Uint8Array(width * height * 4);
+  for (let y = 0; y < height; y++) {
+    const sy = Math.floor(y / times);
+    for (let x = 0; x < width; x++) {
+      const from = (sy * image.width + Math.floor(x / times)) * 4;
+      const to = (y * width + x) * 4;
+      rgba[to] = image.rgba[from]!;
+      rgba[to + 1] = image.rgba[from + 1]!;
+      rgba[to + 2] = image.rgba[from + 2]!;
+      rgba[to + 3] = image.rgba[from + 3]!;
+    }
+  }
+  return { width, height, rgba };
+}
+
+/**
  * The picture on a square canvas of `size`, centred, with the edges left clear.
  *
  * Nearest-neighbour, and scaling only DOWN. The pictures this exists for are

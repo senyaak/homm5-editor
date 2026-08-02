@@ -26,7 +26,7 @@ from `name.txt`/`desc.txt` at its root.
 **In our build those five read `H5E/*` instead** — every kind keeping the
 extension the game gave it, so a map of ours is still a `.h5m` — and nothing
 installed for anybody else's mod is mounted. What is patched, and where the map
-browser gets its list from, is in [ENGINE_INTERNALS.md](ENGINE_INTERNALS.md);
+browser gets its list from, is in [engineInternals/MODS_AND_MAPS.md](engineInternals/MODS_AND_MAPS.md);
 everything below is about the mechanism itself and holds either way.
 
 That grouping is where the static evidence stops. The executable has a `.bind`
@@ -117,7 +117,7 @@ H5E/*.h5p    duel presets
 
 - **Maps** — written by **Pack**, by **New map…** (which creates one straight
   away), and by the game's own random map generator, whose output folder is
-  patched with the same switch (ENGINE_INTERNALS.md).
+  patched with the same switch (engineInternals/MODS_AND_MAPS.md).
 - **Campaigns** — a campaign carries no maps; each mission names one by path and
   the game finds it in whatever archive of ours ships it.
 - **The mod** — `homm5-editor.h5u`: new creatures, dwellings, artifacts and their

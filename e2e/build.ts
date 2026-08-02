@@ -11,6 +11,7 @@ import { join } from 'node:path';
 
 import { buildRenderer } from '../tools/build-renderer.ts';
 import { modDir } from '../src/game/mod-paths.ts';
+import { checkDeclared, clearAll } from './artifacts.ts';
 import { hasFixture, NEED_FIXTURE, ALLOW_NO_FIXTURE } from './c1m1/shared.ts';
 import { E2E_GAME, REPO_ROOT } from './launch.ts';
 import { LIVE, openModGameRoot, REAL_GAME } from './mods.ts';
@@ -18,12 +19,21 @@ import { LIVE, openModGameRoot, REAL_GAME } from './mods.ts';
 export default async function build(): Promise<void> {
   await buildRenderer();
 
-  // A run starts with an empty install. A map is a file now, and the app refuses
-  // to write over one — so an archive left by the last run makes New Map fail in
-  // the next, in a spec that has nothing to do with it. Only ever the suite's
-  // own throwaway install: a real one handed over in HOMM5_ROOT is left alone.
+  // A run starts clean. A map is a file now and the app refuses to write over
+  // one, so an archive left by the last run makes New Map fail in the next, in a
+  // spec that has nothing to do with it.
+  //
+  // The suite's own throwaway install goes wholesale — nothing in it is anyone
+  // else's. A REAL one handed over in HOMM5_ROOT is a player's folder, so only
+  // what the suite makes comes out of it, by name: see e2e/artifacts.ts, which
+  // also refuses to start a run that makes a name it has not been told about.
+  checkDeclared();
   if (E2E_GAME.startsWith(join(REPO_ROOT, '_tmp'))) {
     rmSync(modDir(E2E_GAME), { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  }
+  const gone = clearAll();
+  if (gone.length) {
+    console.warn(`\n[e2e] cleared ${gone.length} thing(s) the last run left:\n  ${gone.join('\n  ')}\n`);
   }
 
   // The mod stages share ONE install and run as a chain — the creature, its

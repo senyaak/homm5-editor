@@ -9,11 +9,38 @@
         <button id="hm-close" title="close (Esc)">✕</button>
       </div>
       <div class="mp-body on-body um-body">
+        <!-- One tab per side, as the Buildings window has. The two lists stood
+             side by side while there were two; a class of our own and a skill of
+             our own are authored here too, and four columns is not a layout.
+             Each pane is filled by whoever owns it — the bar is built in
+             features/mods/hero-tabs.ts and knows nothing about them. -->
+        <div id="hm-tabs" class="mp-tabs"></div>
         <fieldset>
-          <legend>Installed</legend>
-          <div id="hm-list" class="um-mods"></div>
-          <div class="de-foot" style="padding:8px 0 0;justify-content:flex-start">
-            <button id="hm-new">New hero…</button>
+          <legend id="hm-legend">Installed</legend>
+          <div id="hm-about" class="um-note"></div>
+          <div id="hm-pane-heroes" class="hm-pane">
+            <div id="hm-list" class="um-mods"></div>
+            <div class="de-foot" style="padding:8px 0 0;justify-content:flex-start">
+              <button id="hm-new">New hero…</button>
+            </div>
+          </div>
+          <div id="hm-pane-specs" class="hm-pane">
+            <div id="hs-list" class="um-mods"></div>
+            <div class="de-foot" style="padding:8px 0 0;justify-content:flex-start">
+              <button id="hs-new">New specialization…</button>
+            </div>
+          </div>
+          <div id="hm-pane-classes" class="hm-pane">
+            <div id="hc-list" class="um-mods"></div>
+            <div class="de-foot" style="padding:8px 0 0;justify-content:flex-start">
+              <button id="hc-new">New class…</button>
+            </div>
+          </div>
+          <div id="hm-pane-skills" class="hm-pane">
+            <div id="hk-list" class="um-mods"></div>
+            <div class="de-foot" style="padding:8px 0 0;justify-content:flex-start">
+              <button id="hk-new">New skill…</button>
+            </div>
           </div>
         </fieldset>
         <div id="hm-note" class="um-note"></div>
@@ -61,6 +88,11 @@
             <label class="on-row"><span>Specialization</span><select id="he-spec" title="any faction's: what it does is keyed to the value, not to the race"></select></label>
             <label class="on-row"><span>Spec. name</span><input id="he-spec-name" type="text" autocomplete="off" placeholder="empty → the donor's words"></label>
             <label class="on-row um-span"><span>Spec. text</span><input id="he-spec-desc" type="text" autocomplete="off" placeholder="what the specialization does, in words"></label>
+            <!-- Beside the words it belongs to, not under Appearance: a
+                 specialization is named, described and drawn in one breath. The
+                 mod builds the texture from this drawing, so the icon select
+                 under Appearance is only for pointing at one that exists. -->
+            <label class="on-row um-span"><span>Spec. picture</span><input id="he-spec-pic" type="text" autocomplete="off" placeholder="a drawing to build its icon from — assets/specializations/first_aid.gif" title="a picture on disk; the mod builds the icon from it"><button class="ghost he-picture" data-for="he-spec-pic" title="choose a picture">Picture…</button></label>
             <!-- The racial slot. It need NOT hold the faction's racial skill:
                  the shipped Erasial is a Demon Lord holding Logistics there. -->
             <label class="on-row"><span>Racial slot</span><select id="he-primary" title="the skill he starts with in the racial slot — it need not be his faction's"></select></label>
@@ -114,6 +146,12 @@
               <label class="on-row um-span"><span>Portrait</span><select id="he-face" title="the 128x128 portrait"></select><button class="ghost he-file" data-for="he-face" title="choose a file of your own; it is copied into the hero's folder when he is built">File…</button></label>
               <label class="on-row um-span"><span>Portrait 64</span><select id="he-face-small" title="the 64x64 portrait"></select><button class="ghost he-file" data-for="he-face-small" title="choose a file of your own; it is copied into the hero's folder when he is built">File…</button></label>
               <label class="on-row um-span"><span>Spec. icon</span><select id="he-spec-icon" title="the specialization's icon"></select><button class="ghost he-file" data-for="he-spec-icon" title="choose a file of your own; it is copied into the hero's folder when he is built">File…</button></label>
+              <!-- A picture is not a texture: these take a drawing (.gif) and
+                   the mod builds the game's own texture from it, at both sizes.
+                   Given, they decide the three selects above — which is the only
+                   way a hero keeps a face of his own, since a borrowed one is a
+                   copy of the preset's and every rebuild restores it. -->
+              <label class="on-row um-span"><span>Portrait picture</span><input id="he-portrait-pic" type="text" placeholder="a drawing to build his face from — assets/heroes/gem.gif" title="a picture on disk; the mod builds the 128 and 64 portraits from it"><button class="ghost he-picture" data-for="he-portrait-pic" title="choose a picture">Picture…</button></label>
             </details>
           </div>
         </fieldset>
@@ -123,6 +161,222 @@
       <div class="de-foot">
         <button id="heroedit-cancel" class="ghost">Cancel</button>
         <button id="he-ok">Build &amp; install</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- A specialization of our own: one entry in an enum, and a term the native
+       extension adds where the engine sums its own. The words and the picture
+       are written onto every hero who holds it, because that is where the game
+       keeps them (src/mods/specializations.ts). -->
+  <dialog id="specedit">
+    <div class="mp-card um-card">
+      <div class="mp-head">
+        <span class="mp-title" id="specedit-title">New specialization</span>
+        <button id="specedit-x" title="close (Esc)">✕</button>
+      </div>
+      <div class="mp-body on-body um-body">
+        <fieldset>
+          <legend>New specialization</legend>
+          <div class="on-body um-form">
+            <label class="on-row um-span"><span>Identifier<b class="req">*</b></span><input id="hs-id" type="text" spellcheck="false" autocomplete="off" placeholder="HERO_SPEC_…" title="ours, appended after the game's 84 — one of theirs is refused. A hero's document names it, so it cannot be renamed afterwards."></label>
+            <label class="on-row"><span>Name<b class="req">*</b></span><input id="hs-name" type="text" autocomplete="off" title="what the hero screen prints; a hero may still override it"></label>
+            <label class="on-row um-span"><span>Description</span><input id="hs-desc" type="text" autocomplete="off" placeholder="what it does, in words"></label>
+            <label class="on-row um-span"><span>Picture</span><input id="hs-pic" type="text" autocomplete="off" placeholder="a drawing to build its icon from — assets/specializations/first_aid.gif" title="a picture on disk; the mod builds the icon from it for every hero holding this"><button class="ghost hs-picture" data-for="hs-pic" title="choose a picture">Picture…</button></label>
+            <!-- What it GIVES. Nothing in the game's data can express this: every
+                 shipped specialization's behaviour is compiled against its own
+                 enum value, and ours is a value the executable has never heard
+                 of. So this row goes to the file the extension reads, and the
+                 list is short because it grows by reverse engineering — one
+                 entry per place in the executable we have found and hooked. -->
+            <label class="on-row"><span>Adds to</span><select id="hs-stat" title="which of the engine's own sums our term enters"></select></label>
+            <label class="on-row"><span>% per level</span><input id="hs-percent" type="number" value="0" min="-100" max="100" title="percentage points of the engine's own number, for every level the hero has. Five is Heroes III's Gem — and at expert mastery it comes to exactly what the game's own Empiric gives, since five per level is five percent of a hundred."></label>
+            <div id="hs-ext" class="um-span um-warn"></div>
+            <div class="um-note um-span">A specialization with no percentage is words and a picture, which is what every value the executable does not know does anyway — and a real thing to want while a port is being written.</div>
+          </div>
+        </fieldset>
+        <div id="hs-missing" class="um-missing"></div>
+        <div id="hs-err" class="on-err"></div>
+      </div>
+      <div class="de-foot">
+        <button id="specedit-cancel" class="ghost">Cancel</button>
+        <button id="hs-ok">Build &amp; install</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- A class of our own: the tenth, where the game ships nine. Four fields
+       decide it, and two of them are distributions — so the form is two
+       sections, one per question a class answers (src/mods/hero-classes.ts).
+
+       PRIORITIES is what the class itself holds: how often each skill is
+       offered at a level up, and how often each attribute grows. Both sum to a
+       hundred in all nine shipped classes, so both totals are shown and the
+       build refuses anything else.
+
+       AVAILABILITY is not on the class at all — it is a gate on each PERK, as a
+       list of classes. Hence two sides and a button between them: moving a perk
+       left writes our class into its list, with the dependencies the other
+       classes need already filled in. -->
+  <dialog id="classedit">
+    <div class="mp-card um-card">
+      <div class="mp-head">
+        <span class="mp-title" id="classedit-title">New class</span>
+        <button id="classedit-x" title="close (Esc)">✕</button>
+      </div>
+      <div class="mp-body on-body um-body">
+        <fieldset>
+          <legend>The class</legend>
+          <div class="on-body um-form">
+            <div class="on-row um-span">
+              <span>Donor</span>
+              <span id="hc-donor-name" class="um-note" style="flex:1;min-width:0">nothing yet — the form is blank</span>
+              <button id="hc-donor-pick" class="ghost" title="fill the weights, the attributes and the allowed perks from a shipped class; every one of them stays editable">Fill from…</button>
+              <input id="hc-donor" type="hidden">
+            </div>
+            <label class="on-row um-span"><span>Identifier<b class="req">*</b></span><input id="hc-id" type="text" spellcheck="false" autocomplete="off" placeholder="HERO_CLASS_…" title="ours, appended after the game's nine. A hero's document names it, so it cannot be renamed afterwards."></label>
+            <label class="on-row"><span>Name<b class="req">*</b></span><input id="hc-name" type="text" autocomplete="off" title="what the hero screen prints under his portrait"></label>
+          </div>
+        </fieldset>
+        <fieldset>
+          <legend>Priorities</legend>
+          <div class="um-note">How often a level up offers each skill, and how often each attribute grows. Both add up to a hundred — a total under it leaves a range that answers nothing, over it leaves the end of the list unreachable.</div>
+          <div class="on-body um-form">
+            <div class="um-span"><b>Skills</b> <span id="hc-skill-total" class="um-note" style="display:inline"></span></div>
+            <div id="hc-skills" class="hc-weights um-span"></div>
+            <div class="um-span"><b>Attributes</b> <span id="hc-attr-total" class="um-note" style="display:inline"></span></div>
+            <div class="um-stats um-span">
+              <label>Offence<input id="hc-off" type="number" value="0" min="0" max="100"></label>
+              <label>Defence<input id="hc-def" type="number" value="0" min="0" max="100"></label>
+              <label>Spellpower<input id="hc-sp" type="number" value="0" min="0" max="100"></label>
+              <label>Knowledge<input id="hc-kn" type="number" value="0" min="0" max="100"></label>
+            </div>
+          </div>
+        </fieldset>
+        <fieldset>
+          <legend>Perk availability</legend>
+          <div class="um-note">Left is what this class may take. A perk with no class list at all is open to everyone already, and is not here.</div>
+          <div class="hc-sides">
+            <div>
+              <div class="um-note">Allowed</div>
+              <select id="hc-allowed" multiple size="10"></select>
+            </div>
+            <div class="hc-buttons">
+              <button id="hc-allow" class="ghost" title="give the selected perks to this class">&#8592;</button>
+              <button id="hc-deny" class="ghost" title="take the selected perks away from this class">&#8594;</button>
+            </div>
+            <div>
+              <div class="um-note">Not allowed</div>
+              <select id="hc-denied" multiple size="10"></select>
+            </div>
+          </div>
+        </fieldset>
+        <div id="hc-missing" class="um-missing"></div>
+        <div id="hc-err" class="on-err"></div>
+      </div>
+      <div class="de-foot">
+        <button id="classedit-cancel" class="ghost">Cancel</button>
+        <button id="hc-ok">Build &amp; install</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- A skill of our own: a racial for a class of ours, or a perk of its branch.
+       Four levels for a racial — the fourth is the one an artifact grants — so
+       it is named and described four times, and one name given is enough: the
+       level is appended. What it DOES is not here and cannot be; the executable
+       does nothing with a value it was not compiled against, so the effect comes
+       from the native extension. -->
+  <dialog id="skilledit">
+    <div class="mp-card um-card">
+      <div class="mp-head">
+        <span class="mp-title" id="skilledit-title">New skill</span>
+        <button id="skilledit-x" title="close (Esc)">✕</button>
+      </div>
+      <div class="mp-body on-body um-body">
+        <fieldset>
+          <legend>New skill</legend>
+          <div class="on-body um-form">
+            <label class="on-row um-span"><span>Identifier<b class="req">*</b></span><input id="hk-id" type="text" spellcheck="false" autocomplete="off" placeholder="HERO_SKILL_…" title="ours, appended after the game's 221. Classes and heroes name it, so it cannot be renamed afterwards."></label>
+            <label class="on-row"><span>Kind</span>
+              <select id="hk-kind" title="a racial is a class's own skill with four levels; a perk hangs off one">
+                <option value="racial">Racial skill</option>
+                <option value="perk">Perk of a branch</option>
+              </select>
+            </label>
+            <label class="on-row"><span>Class<b class="req">*</b></span><select id="hk-class" title="the class this belongs to — one of ours"></select></label>
+            <label class="on-row"><span>Name<b class="req">*</b></span><input id="hk-name" type="text" autocomplete="off" title="a racial is named at four levels; one name here becomes «name I…IV»"></label>
+            <label class="on-row um-span"><span>Description</span><input id="hk-desc" type="text" autocomplete="off" placeholder="what it does, in words"></label>
+            <!-- A racial is drawn four times and a perk twice (grey, lit), so
+                 the pictures are a row apiece rather than one field: a skill
+                 ported from Heroes III has a drawing per level and the last one
+                 given fills whatever is left. One row filled is one texture for
+                 all of them, which is the ordinary case. -->
+            <label class="on-row um-span hk-pic-row"><span id="hk-pic-label-1">Picture I</span><input id="hk-pic-1" type="text" autocomplete="off" placeholder="a drawing to build its icon from — assets/skills/h3_first_aid_1.png" title="a picture on disk, PNG or GIF; the mod builds the game's texture from it"><button class="ghost hk-picture" data-for="hk-pic-1" title="choose a picture">Picture…</button></label>
+            <label class="on-row um-span hk-pic-row"><span id="hk-pic-label-2">Picture II</span><input id="hk-pic-2" type="text" autocomplete="off" placeholder="empty → the one above is used"><button class="ghost hk-picture" data-for="hk-pic-2" title="choose a picture">Picture…</button></label>
+            <label class="on-row um-span hk-pic-row"><span id="hk-pic-label-3">Picture III</span><input id="hk-pic-3" type="text" autocomplete="off" placeholder="empty → the one above is used"><button class="ghost hk-picture" data-for="hk-pic-3" title="choose a picture">Picture…</button></label>
+            <label class="on-row um-span hk-pic-row"><span id="hk-pic-label-4">Picture IV</span><input id="hk-pic-4" type="text" autocomplete="off" placeholder="empty → the one above is used"><button class="ghost hk-picture" data-for="hk-pic-4" title="choose a picture">Picture…</button></label>
+            <label class="on-row um-span hk-perk"><span>Branch</span><select id="hk-branch" title="the skill this perk hangs off — a racial of ours"></select></label>
+            <label class="on-row um-span hk-perk"><span>Needs first</span><select id="hk-needs" title="what the hero must already hold to be offered this perk"></select></label>
+            <div class="um-note um-span">The game will show its name, its icon and its place in the tree, and do nothing whatever with it: every shipped skill's arithmetic is compiled against its own value. What it DOES comes from one of the two below — a term the native extension adds to a sum the engine computes, or Lua at a moment the engine already hands out.</div>
+          </div>
+        </fieldset>
+        <fieldset>
+          <legend>What it adds</legend>
+          <div class="on-body">
+            <!-- The same list an artifact's bonuses come from, because it is the
+                 same file and the same reader: each entry is a place in the
+                 executable where we found where to append our term. The hero is
+                 asked for his mastery of the skill and the amount is multiplied
+                 by it, so this is "per level", the way a specialization's is per
+                 level of the hero. -->
+            <div id="hk-effects" class="as-counts"></div>
+            <button id="hk-effect-add" class="um-recolor" style="margin:6px 0 0" title="a sum the extension knows how to append to">+ bonus</button>
+            <div class="um-note" style="margin-top:6px">per level of mastery, so an expert skill gives three times this. Necromancy is in percentage points, dark energy in ceiling points. Needs the extension installed.</div>
+          </div>
+        </fieldset>
+        <fieldset>
+          <legend>What it does at a moment</legend>
+          <div class="on-body">
+            <!-- The other kind of skill: one whose content is an EVENT rather
+                 than a number — "after a battle", "at the start of a day". The
+                 engine hands those to Lua already, so they cost no reverse
+                 engineering at all. Two scripts and not one, because a battle is
+                 another Lua context with another function table: what crosses
+                 between them is SetGameVar/GetGameVar. -->
+            <label class="on-row um-span"><span>On the map</span><button id="hk-script" class="ghost" title="Lua that runs on every adventure map — triggers, heroes, war machines">Script…</button><span id="hk-script-note" class="um-note"></span></label>
+            <label class="on-row um-span"><span>In a battle</span><button id="hk-combat-script" class="ghost" title="Lua that runs when a battle is built — what only the battle can be asked">Script…</button><span id="hk-combat-note" class="um-note"></span></label>
+            <div class="um-note">Runs everywhere, the game's own maps included, and only decides anything for a hero holding this skill — that check is the script's first line.</div>
+          </div>
+        </fieldset>
+        <div id="hk-missing" class="um-missing"></div>
+        <div id="hk-err" class="on-err"></div>
+      </div>
+      <div class="de-foot">
+        <button id="skilledit-cancel" class="ghost">Cancel</button>
+        <button id="hk-ok">Build &amp; install</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- A skill's Lua, on top of the skill form — the same CodeMirror the map's
+       scripts and a set's script use. One dialog serves both halves: which one
+       is open is in its title, because the two are written against different
+       function tables and confusing them is the mistake worth preventing. -->
+  <dialog id="skillscript">
+    <div class="mp-card um-card">
+      <div class="mp-head">
+        <span class="mp-title" id="ks-title">Skill script</span>
+        <button id="ks-x" title="close (Esc)">✕</button>
+      </div>
+      <div class="mp-body on-body">
+        <div id="ks-info" class="um-note"></div>
+        <div id="ks-text" class="ss-text"></div>
+        <div id="ks-lint" class="de-lint"></div>
+      </div>
+      <div class="de-foot">
+        <button id="ks-cancel" class="ghost">Cancel</button>
+        <button id="ks-ok">Done</button>
       </div>
     </div>
   </dialog>

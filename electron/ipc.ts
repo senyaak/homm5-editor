@@ -483,6 +483,41 @@ export interface LaunchGameResult {
   exe: string;
 }
 
+/** Result of `qol:get` — what the game is set to do, read from the file itself. */
+export interface QolState {
+  /** Every flag this build knows, on or off. */
+  settings: Record<string, boolean>;
+  /** The file the extension reads, for the panel to name. */
+  file: string;
+  /**
+   * The install all of this is about.
+   *
+   * Named because the commonest failure here is not a broken switch but a
+   * window pointed at the wrong folder — a worktree whose launcher guessed the
+   * parent directory, say. "No copy of the executable" is a puzzle; the same
+   * sentence with the path in it answers itself.
+   */
+  install: string;
+  /** Is the extension installed at all? Nothing here works without it. */
+  extension: boolean;
+  /** Is there a copy of the executable to load it? */
+  patchedExe: boolean;
+}
+
+/** Result of `qol:apply` — what was written, and where. */
+export interface QolApplyResult {
+  file: string;
+  extension: boolean;
+  /** Why the extension could not be installed, when it could not. */
+  note?: string;
+  /** Game profiles switched to windowed mode, if borderless asked for it. */
+  windowed: string[];
+  /** Profiles with no such setting to change — said, not repaired. */
+  windowedSkipped: string[];
+  /** False when borderless was asked for and no game profile could be found. */
+  profilesFound: boolean;
+}
+
 /** Result of `terrain:tiles`. */
 export interface TerrainTilesResult {
   tiles: TileInfo[];
@@ -805,6 +840,21 @@ export interface ModListEntry {
   /** Its heroes. They extend nothing, so this list is the only trace of them. */
   heroes: ModHeroDTO[];
   /**
+   * Its specializations. One enum entry apiece and no file of their own, so
+   * like the sets this list is the only place they can be seen from.
+   */
+  specializations: ModSpecializationDTO[];
+  /**
+   * Its hero classes and its skills — the two reference tables the editor can
+   * extend besides the creatures' and the artifacts'.
+   *
+   * Whole, like the heroes and for the same reason: the form is filled from
+   * this list, and a class is thirteen weights and a set of opened perks that
+   * nothing else in the archive records.
+   */
+  classes: ModHeroClassDTO[];
+  skills: ModHeroSkillDTO[];
+  /**
    * Its buildings — everything a hero walks up to, one of sixteen classes each.
    *
    * The WHOLE building, for the reason a hero is whole here: this list is where
@@ -862,11 +912,172 @@ export interface ModHeroDTO {
   scenarioHero?: boolean;
   face?: string;
   faceSmall?: string;
+  /** The pictures he was built from, so the form can show them back. */
+  portrait?: string;
+  specializationPicture?: string;
   /** What he wears, slot by slot. */
   art?: Record<string, string>;
 }
 
+/**
+ * One specialization of an installed mod — the whole record, as everywhere else
+ * here, because this list is where editing it starts.
+ */
+export interface ModSpecializationDTO {
+  /** `HERO_SPEC_…`, ours. */
+  id: string;
+  /** The enum value it holds, appended after the game's 84. */
+  number: number;
+  name: string;
+  description: string;
+  /** A drawing on disk its icon is built from. */
+  picture?: string;
+  /** Or an href to a texture that already exists. */
+  icon?: string;
+  /**
+   * What it gives, and where. Absent means words and a picture — which is what
+   * every value the executable does not know does anyway, and a real thing to
+   * want while a port is being written.
+   */
+  effect?: { stat: string; percentPerLevel: number };
+}
+
+/** Payload of `mods:install-specialization` and of the update beside it. */
+export interface ModsInstallSpecPayload {
+  id: string;
+  name: string;
+  description: string;
+  picture?: string;
+  icon?: string;
+  effect?: { stat: string; percentPerLevel: number };
+}
+
+/** What installing one produced. */
+export interface ModsInstallSpecResult {
+  archive: string;
+  /** The enum value it was given — what the extension's config names it by. */
+  number: number;
+}
+
+/** One row of a class's priorities: a skill and its share of the hundred. */
+export interface SkillWeightDTO { skill: string; prob: number }
+
+/** A shipped perk opened to a class of ours, with what it asks of him. */
+export interface AllowedPerkDTO { perk: string; dependencies: string[] }
+
+/** A class of the mod, as the list reports it. */
+export interface ModHeroClassDTO {
+  id: string;
+  number: number;
+  name: string;
+  skills: SkillWeightDTO[];
+  attributes: { offence: number; defence: number; spellpower: number; knowledge: number };
+  preferredSpells?: string[];
+  allowedPerks?: AllowedPerkDTO[];
+}
+
+/** A skill of the mod, as the list reports it. */
+export interface ModHeroSkillDTO {
+  id: string;
+  number: number;
+  kind: 'racial' | 'perk';
+  heroClass: string;
+  name: string;
+  names?: string[];
+  description: string;
+  descriptions?: string[];
+  commonDescription?: string;
+  icons?: string[];
+  picture?: string;
+  pictures?: string[];
+  basicSkill?: string;
+  prerequisites?: string[];
+  aiRace?: string;
+  /** What the extension adds per level of mastery held. */
+  effects?: Record<string, number>;
+  /** Its adventure-map Lua, so the form reopens on what was written. */
+  script?: string;
+  /** And its battle-side half. */
+  combatScript?: string;
+}
+
+/** Payload of `mods:install-class` and of the update beside it. */
+export interface ModsInstallClassPayload {
+  id: string;
+  name: string;
+  skills: SkillWeightDTO[];
+  attributes: { offence: number; defence: number; spellpower: number; knowledge: number };
+  preferredSpells?: string[];
+  allowedPerks?: AllowedPerkDTO[];
+}
+
+/** What installing a class produced. */
+export interface ModsInstallClassResult {
+  archive: string;
+  /** Its enum value — the tenth class is 9, and the executable compares that. */
+  number: number;
+}
+
+/** Payload of `mods:install-skill` and of the update beside it. */
+export interface ModsInstallSkillPayload {
+  id: string;
+  kind: 'racial' | 'perk';
+  heroClass: string;
+  name: string;
+  names?: string[];
+  description: string;
+  descriptions?: string[];
+  commonDescription?: string;
+  icons?: string[];
+  /** A drawing on disk to build its icon from — the mod builds the texture. */
+  picture?: string;
+  /** Or one per level, when the levels are drawn differently. */
+  pictures?: string[];
+  basicSkill?: string;
+  prerequisites?: string[];
+  aiRace?: string;
+  /** What the extension adds per level of mastery — `{ necromancy: 5 }`. */
+  effects?: Record<string, number>;
+  /** Lua that runs on every adventure map — for a perk whose content is an event. */
+  script?: string;
+  /** And the half of it that has to run inside a battle, where the other cannot see. */
+  combatScript?: string;
+}
+
+/** What installing a skill produced. */
+export interface ModsInstallSkillResult { archive: string; number: number }
+
+/** Everything the class form is built from — read off the game's own two tables. */
+export interface ModsClassDataResult {
+  /**
+   * The skills a class may weight: the twelve common ones, the eight shipped
+   * racials, and any racial of the mod. Named where the game names them.
+   */
+  skills: RosterEntryDTO[];
+  /** Every perk, with the branch it belongs to and the gate that governs it. */
+  perks: Array<{
+    id: string;
+    name: string;
+    branch: string;
+    /** The classes that may take it today — ours appears once it is allowed. */
+    classes: string[];
+    /** What most of them must hold first: where a new entry starts. */
+    dependencies: string[];
+  }>;
+  /** The shipped classes, weights and all — what the donor button copies. */
+  donors: Array<{
+    id: string;
+    name: string;
+    skills: SkillWeightDTO[];
+    attributes: { offence: number; defence: number; spellpower: number; knowledge: number };
+    preferredSpells: string[];
+    /** The perks that class may take, so a donor brings its availability too. */
+    perks: AllowedPerkDTO[];
+  }>;
+}
+
 /** Result of `mods:list`. */
+
 export interface ModsListResult {
   /** The game install the mods live in, or null when none is configured. */
   gameRoot: string | null;
@@ -887,6 +1098,12 @@ export interface ModsFormDataResult {
    * where to append our term, and an artifact uses one or two of them.
    */
   effectStats: string[];
+  /**
+   * The same list for specializations, and separate because the two share
+   * nothing: an artifact's term is flat and worn, a specialization's is a
+   * percentage per hero level. One entry so far — the first aid tent.
+   */
+  specializationStats: string[];
   /**
    * The six an artifact record can hold, offered in the same list as the
    * bonuses above — the form does not care which side of the line one is on.
@@ -1183,6 +1400,14 @@ export interface ModsInstallHeroPayload {
   /** href of a 128x128 portrait, and of the 64x64. Omitted, the preset's face. */
   face?: string;
   faceSmall?: string;
+  /**
+   * A picture on disk to build his face from, at both sizes — given, it decides
+   * the two hrefs above. This is how a hero gets a face of his OWN: a borrowed
+   * one is a copy of the preset's, and every rebuild puts the preset's back.
+   */
+  portrait?: string;
+  /** The same for the specialization's icon. */
+  specializationPicture?: string;
   /** Files of the author's own: href inside the mod → where the file is now. */
   ownFiles?: Record<string, string>;
 }
@@ -1414,6 +1639,26 @@ export interface EditorApi {
   removeHero(p: ModsRemovePayload): Promise<ModsRemoveResult>;
   /** Which maps reach this hero — ask BEFORE removing him. */
   heroUses(p: ModsRemovePayload): Promise<ModsUsesResult>;
+  /** Add a specialization to OUR mod: one enum entry, and a term if it gives one. */
+  installSpecialization(p: ModsInstallSpecPayload): Promise<ModsInstallSpecResult>;
+  /** Change one already in the mod. Its id and its value do not move. */
+  updateSpecialization(p: ModsInstallSpecPayload): Promise<ModsInstallSpecResult>;
+  /** Take one out. Refused while a hero of the mod still holds it. */
+  removeSpecialization(p: ModsRemovePayload): Promise<ModsRemoveResult>;
+  /** Add a class to OUR mod: a tenth entry in a table the game sizes at nine. */
+  installHeroClass(p: ModsInstallClassPayload): Promise<ModsInstallClassResult>;
+  /** Change one already in the mod. Its id and its value do not move. */
+  updateHeroClass(p: ModsInstallClassPayload): Promise<ModsInstallClassResult>;
+  /** Take one out. Refused while a hero is of it or a skill belongs to it. */
+  removeHeroClass(p: ModsRemovePayload): Promise<ModsRemoveResult>;
+  /** Add a skill: a racial for a class of ours, or a perk of its branch. */
+  installHeroSkill(p: ModsInstallSkillPayload): Promise<ModsInstallSkillResult>;
+  /** Change one already in the mod. */
+  updateHeroSkill(p: ModsInstallSkillPayload): Promise<ModsInstallSkillResult>;
+  /** Take one out. Refused while a hero, a class or a perk still names it. */
+  removeHeroSkill(p: ModsRemovePayload): Promise<ModsRemoveResult>;
+  /** The skills, the perks and the shipped classes the class form is built from. */
+  classData(): Promise<ModsClassDataResult>;
   /** What one shipped hero wears, slot by slot — the preset seeding the form. */
   heroArtOf(hero: string): Promise<Record<string, string>>;
   /**
@@ -1424,6 +1669,14 @@ export interface EditorApi {
    * form leaves nothing behind.
    */
   pickHeroFile(p: { id: string; slot: string }): Promise<{ href: string; from: string }>;
+  /**
+   * Choose a PICTURE — a drawing the mod builds a texture from.
+   *
+   * Returns the path and nothing else, and copies nothing: the texture is made
+   * when the thing that wears it is built, so editing the drawing and
+   * rebuilding is all it takes to change a face. Empty when cancelled.
+   */
+  pickPicture(): Promise<string>;
   /** Change an artifact already in the mod. Its id and number do not move. */
   updateArtifact(p: ModsInstallArtifactPayload): Promise<ModsInstallArtifactResult>;
   /** Change a set already in the mod. Its effect value does not move. */
@@ -1463,6 +1716,19 @@ export interface EditorApi {
    * shipped one would start, and would show none of what the editor makes.
    */
   launchGame(): Promise<LaunchGameResult>;
+  /**
+   * The quality of life settings, read from the file the extension reads.
+   *
+   * Not from anything the editor remembers: that file is the state, it can be
+   * edited by hand, and a panel showing its own memory instead would disagree
+   * with the game the first time somebody did.
+   */
+  qolGet(): Promise<QolState>;
+  /**
+   * Write them, install the extension if it is not in yet, and set windowed
+   * mode when borderless asks for it. Safe to press twice.
+   */
+  qolApply(settings: Record<string, boolean>): Promise<QolApplyResult>;
   /** Is this run rendering through SwiftShader? See Settings.softwareRendering. */
   gpuSoftware(): Promise<boolean>;
   /**

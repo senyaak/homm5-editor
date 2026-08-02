@@ -155,6 +155,73 @@ one.
   `InfernoArena`, the parley that follows by daylight — and the sun, the shading
   and the tint on the particles all follow it.
 
+## 0.7.0 — 2026-08-02
+
+### Added
+
+- **Game settings — how the game plays, from a panel.** A new button beside
+  Play, offered with a map open or without, because none of this has anything to
+  do with what the window has loaded. Everything in it is off until you turn it
+  on, and an install that never opens it plays exactly as it did before.
+
+  - **Borderless window.** The game's own window without its frame, filling the
+    screen. It also sets windowed mode and the render size in your game profile,
+    because exclusive fullscreen has no frame to take off and a window the size
+    of the screen with a 1024x768 picture in it is a stretched one.
+  - **Keep settings and saves with the mod.** Profiles, key bindings, settings
+    and saves go to `H5E/user` inside the install instead of Documents, where
+    every copy of the game on the machine shares one set of them. It starts
+    empty: nothing is copied over, so the base game keeps its saves and this
+    build begins fresh.
+  - **Split a stack with a held key.** Clicking an army slot with **Ctrl** puts
+    one creature in the first free slot — or, on a stack of one, puts it back
+    with its own kind. **Shift** evens out every stack of that creature and adds
+    one more each click: 12 becomes 6 and 6, then 4, 4 and 4; uneven stacks are
+    levelled first, so 12 and 5 become 9 and 8 before they become 6, 6 and 5.
+    Stacks of a single creature are left where they are — they are scouts, and
+    you put them there. **Alt** gathers them all back into the one you clicked,
+    and **Ctrl+Shift** puts one creature into every free slot. No slider window
+    appears, and a click with no key held picks the stack up exactly as before —
+    dragging is untouched, slider and all.
+
+  The first two are import-table hooks — one pointer each, no instruction of the
+  game's touched. See [docs/QOL.md](docs/QOL.md), and
+  [docs/UI_INTERNALS.md](docs/UI_INTERNALS.md) for how a screen is put together.
+
+- **Hero classes and skills of your own.** The Heroes window has tabs now, and
+  two of them are new: a class, and a skill for it to own. A class decides what
+  the hero screen calls him, how often each skill is offered at a level up and
+  how the four attributes grow — and a skill of yours can be his racial, with
+  its own icon, its own words at each level of mastery, and perks to grow into.
+  A class takes its skills with it: put one in a mod and everything it owns
+  travels with it. Confirmed in game — Gem stands on a map as a Колдунья holding
+  a racial nobody shipped. See [docs/HERO_CLASSES.md](docs/HERO_CLASSES.md).
+
+- **A perk can actually do something,** in either of two ways. It can add a term
+  to a sum the engine computes — the tent master gives the first aid tent a use
+  per level of mastery, four at basic and five at advanced — or it can carry Lua
+  and run at a moment the engine already hands out, which is how a tent
+  destroyed in a battle is standing again afterwards. The second needs no
+  extension at all. See
+  [docs/engineInternals/FIRST_AID_TENT.md](docs/engineInternals/FIRST_AID_TENT.md).
+
+- **A hero can have a face of his own, and a specialization of his own.** Give
+  the specialization pictures and the mod builds the game's own textures from
+  them on every build — both portrait sizes and the specialization icon — so a
+  drawing painted over a preset's art is no longer replaced by the preset's on
+  the next build. The specialization itself is a value the game was never
+  compiled against, and it answers in a battle.
+
+### Fixed
+
+- **The editor no longer guesses where the game is when it has been told.**
+  `start-editor.bat` set `HOMM5_ROOT` to the directory above the checkout, which
+  is right when the repo sits inside the install and wrong everywhere else — and
+  because the environment outranks everything, that guess beat the folder the
+  setup window had recorded. The same guess still happens, in `paths.ts`, as the
+  last resort it was meant to be. Visible symptom: an editor that opened, listed
+  maps and edited them perfectly while insisting the install had no executable.
+
 ## 0.6.0 — 2026-07-31
 
 ### Added

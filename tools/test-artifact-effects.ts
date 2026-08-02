@@ -5,7 +5,9 @@
 // that the two agree except this. So the checks are about the FORMAT — the
 // exact shape those forty lines of C expect — rather than about the numbers.
 
-import { EFFECTS_FILE, effectsOf, readEffects, writeEffects } from '../src/mods/artifact-effects.ts';
+import {
+  EFFECTS_FILE, effectsOf, readEffects, readSkillEffects, skillRowsOf, writeEffects,
+} from '../src/mods/artifact-effects.ts';
 import { artifactNumbers } from '../src/mods/artifacts.ts';
 
 let failures = 0;
@@ -96,6 +98,45 @@ const withSet = effectsOf(
 check('a set names its members by number, the mod\'s own and the game\'s',
   withSet.length === 1 && withSet[0]!.artifacts.join() === '97,98,71', JSON.stringify(withSet));
 check('and it carries the threshold it was given', withSet[0]!.threshold === 2);
+
+// --- a skill, the third subject ------------------------------------------------
+//
+// It enters the same sums an artifact does and shares their stat names, so the
+// C recognises it by the word after the stat. Which is why the two shapes have
+// to stay distinguishable at exactly that point, and why this checks the line
+// rather than only the round trip.
+
+const skillText = writeEffects([], [], [
+  { stat: 'necromancy', skill: 221, amountPerMastery: 5, name: 'HERO_SKILL_TENT_MASTER' },
+  { stat: 'energy', skill: 222, amountPerMastery: -2 },
+  { stat: 'energy', skill: 223, amountPerMastery: 0 },
+]);
+const skillLines = skillText.split('\r\n');
+check('a skill row is stat, the word, the value, the amount',
+  /^necromancy skill 221 5 {3}# HERO_SKILL_TENT_MASTER$/.test(
+    skillLines.find((l) => l.startsWith('necromancy skill')) ?? ''),
+  skillLines.find((l) => l.startsWith('necromancy skill')) ?? '(none)');
+check('a negative amount survives here too', skillLines.includes('energy skill 222 -2'));
+check('and one that adds nothing is dropped', !skillText.includes('223'));
+
+const readBack = readSkillEffects(skillText);
+check('it reads back to what was written',
+  readBack.length === 2 && readBack[0]!.skill === 221 && readBack[0]!.amountPerMastery === 5
+  && readBack[1]!.stat === 'energy' && readBack[1]!.amountPerMastery === -2, JSON.stringify(readBack));
+// Each reader ignores what it does not understand, which is the only thing
+// keeping three grammars in one file honest.
+check('the artifact reader passes over skill rows', readEffects(skillText).length === 0);
+check('and the skill reader passes over artifact rows', readSkillEffects(text + setText).length === 0);
+check('an unknown stat is ignored here too', readSkillEffects('luck skill 1 5\n').length === 0);
+
+const skillRows = skillRowsOf([
+  { id: 'HERO_SKILL_A', number: 221, effects: { necromancy: 5, energy: 20 } },
+  { id: 'HERO_SKILL_B', number: 222 },
+  { id: 'HERO_SKILL_C', number: 223, effects: { necromancy: 0 } },
+]);
+check('a skill gives one row per stat it adds to',
+  skillRows.length === 2 && skillRows.every((r) => r.skill === 221), JSON.stringify(skillRows));
+check('and each carries the id as its comment', skillRows[0]!.name === 'HERO_SKILL_A');
 
 // Half a set counted combines early, which is worse than not combining at all.
 const unresolved = effectsOf(

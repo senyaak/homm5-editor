@@ -8,12 +8,95 @@
 
 
 
+import { basename } from 'node:path';
 import { readFileSync } from 'node:fs';
-import { artOf, heroArtDir, heroDoc, heroLink, heroPaths, repointArt } from './heroes.ts';
+import { artOf, heroArtDir, heroDoc, heroLink, heroPaths, repointArt, textureHref } from './heroes.ts';
+
+import { fitSquare, magnify, textureDoc, writeDDS } from '../format/texture.ts';
+import { readPicture } from '../format/png.ts';
 import { copyArt } from './mod-art.ts';
 import { mustRead, utf16 } from './mod-files.ts';
-import type { HeroSpec } from './heroes.ts';
+import type { HeroPaths, HeroSpec } from './heroes.ts';
+import type { ModSpecialization } from './specializations.ts';
+import type { Image } from '../format/gif.ts';
 import type { DataReader, ModFile } from './mod-files.ts';
+
+/**
+ * One picture, as the pair the game reads.
+ *
+ * The artifact side does exactly this for its icons; the only thing added here
+ * is that a portrait may have to GROW — see `magnify`. Enlargement is by whole
+ * pixels and only when the picture is smaller than the canvas, so an icon that
+ * already fits is placed rather than touched.
+ */
+export function texturePair(picture: string, size: number, dds: string, xdb: string): ModFile[] {
+  let image: Image = readPicture(readFileSync(picture), basename(picture));
+  const times = Math.floor(size / Math.max(image.width, image.height));
+  if (times > 1) image = magnify(image, times);
+  const fitted = fitSquare(image, size);
+  return [
+    { path: dds, data: writeDDS(fitted) },
+    {
+      path: xdb,
+      data: Buffer.from(textureDoc({
+        dds: basename(dds),
+        width: fitted.width,
+        height: fitted.height,
+        // The picture's NAME, not the author's filesystem — the same rule the
+        // artifact icons follow, and for the same reason.
+        source: basename(picture),
+      }), 'latin1'),
+    },
+  ];
+}
+
+/**
+ * His own face and specialization icon, built from pictures — and the hrefs
+ * that have to point at them.
+ *
+ * Returned rather than applied, because the document is written from the spec:
+ * what this hands back is merged into the spec BEFORE `heroDoc` reads it, so
+ * the document comes out already naming his own textures instead of naming the
+ * donor's and being corrected afterwards.
+ */
+function ownPictures(h: HeroSpec, p: HeroPaths): { files: ModFile[]; hrefs: Partial<HeroSpec> } {
+  const files: ModFile[] = [];
+  const hrefs: Partial<HeroSpec> = {};
+  if (h.portrait) {
+    files.push(...texturePair(h.portrait, 128, p.faceDDS, p.faceXDB));
+    files.push(...texturePair(h.portrait, 64, p.faceSmallDDS, p.faceSmallXDB));
+    hrefs.face = textureHref(p.faceXDB);
+    hrefs.faceSmall = textureHref(p.faceSmallXDB);
+  }
+  if (h.specializationPicture) {
+    files.push(...texturePair(h.specializationPicture, 64, p.specIconDDS, p.specIconXDB));
+    hrefs.specializationIcon = textureHref(p.specIconXDB);
+  }
+  return { files, hrefs };
+}
+
+/**
+ * A hero holding a specialization of the mod's, with its words and picture
+ * filled in — unless he brought his own.
+ *
+ * The game keeps a specialization's name, description and icon on the HERO and
+ * not with the specialization, which is why a Sylvan hero borrowing a Necropolis
+ * one is described as an embalmer. That is the right place for an override and
+ * the wrong place for a default: a specialization of OURS knows what it is
+ * called, and every hero holding it should say the same thing without anyone
+ * retyping it. So this fills the three fields and steps back.
+ */
+function withSpecialization(h: HeroSpec, specs: readonly ModSpecialization[]): HeroSpec {
+  const spec = specs.find((s) => s.id === h.specialization);
+  if (!spec) return h;
+  return {
+    ...h,
+    specializationName: h.specializationName || spec.name,
+    specializationDescription: h.specializationDescription || spec.description,
+    specializationPicture: h.specializationPicture || spec.picture,
+    specializationIcon: h.specializationIcon || spec.icon,
+  };
+}
 
 /**
  * The files every hero contributes: his document, his name and his biography.
@@ -25,11 +108,18 @@ import type { DataReader, ModFile } from './mod-files.ts';
  * to recolour nobody has asked for yet; the day a hero wants his own look, the
  * copying already exists for creatures and this is where it hooks in.
  */
-export function buildHeroes(heroes: readonly HeroSpec[], read: DataReader): ModFile[] {
+export function buildHeroes(
+  heroes: readonly HeroSpec[], read: DataReader, specializations: readonly ModSpecialization[] = [],
+): ModFile[] {
   const files: ModFile[] = [];
-  for (const h of heroes) {
+  for (const spec of heroes) {
+    const h = withSpecialization(spec, specializations);
     const p = heroPaths(h);
-    let doc = heroDoc(h, mustRead(read, h.basedOn), p);
+    // His own pictures first: the document is written from the spec, so the
+    // hrefs they produce have to be in it before it is written.
+    const pictures = ownPictures(h, p);
+    files.push(...pictures.files);
+    let doc = heroDoc({ ...h, ...pictures.hrefs }, mustRead(read, h.basedOn), p);
 
     // His looks, copied into his own folder — the same closure walk a creature
     // gets, and for the same reason: with the art inside, recolouring a texture
@@ -39,7 +129,12 @@ export function buildHeroes(heroes: readonly HeroSpec[], read: DataReader): ModF
     //
     // Files the author brought are NOT seeds: they are already in his folder,
     // and walking them would copy whatever they point at back out of the game.
-    const own = new Set(Object.keys(h.ownFiles ?? {}).map((href) => href.replace(/^\/+/, '')));
+    const own = new Set([
+      ...Object.keys(h.ownFiles ?? {}),
+      // The textures just built are his too, and for the same reason must not
+      // be walked: they live in the mod, and the reader here reads the GAME.
+      ...pictures.files.map((f) => f.path),
+    ].map((href) => href.replace(/^\/+/, '')));
     const seeds = Object.values(artOf(doc))
       .map((href) => href.split('#')[0]!.replace(/^\/+/, ''))
       .filter((rel) => rel && !own.has(rel));

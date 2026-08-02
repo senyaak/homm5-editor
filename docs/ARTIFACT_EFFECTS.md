@@ -208,7 +208,7 @@ tooltips, per-count texts and icons all work from the entry alone. Its
   2026-07-28**: the twelfth value parses, the eleventh set is reached — there is
   no compiled ceiling on sets — it is named on the hero screen, and the game
   counts the worn pieces itself. **This is the route the port takes** — see
-  [ENGINE_INTERNALS.md](ENGINE_INTERNALS.md#the-shape-of-our-own-extension).
+  [engineInternals/EXTENSION.md](engineInternals/EXTENSION.md).
 - **`ARTFSET_EFFECT_CUSTOM`** (value 0) — the developers' own slot for "no
   predefined effect, add it with scripts", per the field's description in
   `types.xml`, and confirmed unused by the 25 call sites in code. Fine for a
@@ -256,7 +256,7 @@ handler slot per trigger kind; a map's own script would take it).
 
 | call | gives |
 |---|---|
-| `HasArtefact(hero, id, onlyEquipped=0)` | possession. **The third argument is real but undocumented** — with 1 the engine checks only the equipped slots and never opens the backpack (read out of the code, [ENGINE_INTERNALS.md](ENGINE_INTERNALS.md#hasartefact-has-a-third-argument-worn-versus-carried)). Worn-state detection therefore needs no set at all |
+| `HasArtefact(hero, id, onlyEquipped=0)` | possession. **The third argument is real but undocumented** — with 1 the engine checks only the equipped slots and never opens the backpack (read out of the code, [engineInternals/ARTIFACTS_AND_EQUIPMENT.md](engineInternals/ARTIFACTS_AND_EQUIPMENT.md#hasartefact-has-a-third-argument-worn-versus-carried)). Worn-state detection therefore needs no set at all |
 | `GetArtifactSetItemsCount(hero, setID, onlyCombined=1)` | **worn count** of a set's members; `onlyCombined=0` counts the backpack too. Useful for tiered set bonuses |
 | `GiveArtefact(hero, id, bindToHero=0)` | grant; `bindToHero=1` makes it untransferable |
 | `RemoveArtefact(hero, id)` | take away (errors if absent — guard with `HasArtefact`) |
@@ -352,13 +352,13 @@ counted on its own.
 |---|---|
 | ±primary stats, luck, morale while worn | script (poll + `ChangeHeroStat`), fully reversible |
 | +movement, +mana, daily gold/resources | script, natural fits (`STAT_MOVE_POINTS`, `SetPlayerResource` on new day) |
-| +% necromancy on a new artifact | **natively, via our own set and a hook.** The raise percentage is one sum ([ENGINE_INTERNALS.md](ENGINE_INTERNALS.md#the-necromancy-percentage-in-full)) whose last term is already "worn pieces of a set ≥ threshold → add a number from data"; our own term is the same twenty bytes with our own set id and number. Script fallback for a hero *without* the skill: `MakeHeroNecromancer` (the engine consults it only when the skill is 0) |
+| +% necromancy on a new artifact | **natively, via our own set and a hook.** The raise percentage is one sum ([engineInternals/NECROMANCY.md](engineInternals/NECROMANCY.md#the-necromancy-percentage-in-full)) whose last term is already "worn pieces of a set ≥ threshold → add a number from data"; our own term is the same twenty bytes with our own set id and number. Script fallback for a hero *without* the skill: `MakeHeroNecromancer` (the engine consults it only when the skill is 0) |
 | grant a spell / skill while worn | one-way only — no removal calls; treat as permanent (NAF's compromise) |
 | activated artifact power | `ControlHeroCustomAbility` + `CUSTOM_ABILITY_TRIGGER` |
 | +% fire (or any element) damage | **impossible for a new id.** Exe-only (the Trident/Icicle/Cape family); no damage hook in any script API |
 | ATB/initiative effects, combat-start spell casts | combat script, via undocumented `setATB` / `UnitCast*` (single-player; signatures to be probed) |
 | new set with own thresholds/behaviour | **done.** Membership and texts are data; the BONUS is a row the extension reads and the THRESHOLD is ours, because the extension counts the worn members itself rather than asking the engine's set accessor (which answers 0 for an effect of ours). "Two of three" is expressible, which no shipped effect is. What the set does on an EVENT is a script it carries — [artifact-scripts.ts](../src/mods/artifact-scripts.ts) |
-| dark energy grants | **done, natively.** There is no setter because the engine does not set the pool: it keeps a CEILING of four numbers and fills to it. A term of ours is a fifth ([ENGINE_INTERNALS.md](ENGINE_INTERNALS.md#dark-energy-in-full)), and `RestoreDarkEnergy(player)` — a Lua function the extension registers — asks a player to refill out of turn. Seen in game 2026-07-29 |
+| dark energy grants | **done, natively.** There is no setter because the engine does not set the pool: it keeps a CEILING of four numbers and fills to it. A term of ours is a fifth ([engineInternals/NECROMANCY.md](engineInternals/NECROMANCY.md#dark-energy-in-full)), and `RestoreDarkEnergy(player)` — a Lua function the extension registers — asks a player to refill out of turn. Seen in game 2026-07-29 |
 | backpack-passive artifact | trivially scriptable — poll `HasArtefact` and skip the worn check (NAF ships this as a feature) |
 | auto-combining artifacts | script: detect all parts via `HasArtefact`, `RemoveArtefact` them, `GiveArtefact` the combined one (NAF does exactly this, with a one-day delay) |
 
@@ -392,7 +392,7 @@ Sources: [NAF thread](https://forum.heroesworld.ru/showthread.php?t=12252),
 3. Append an `<Item>` to `<ArtifactSets><Sets>` in our override of
    `DefaultStats.xdb` using that effect: members, texts, per-count icons.
 4. Supply the behaviour. Natively via a hook is the target
-   ([ENGINE_INTERNALS.md](ENGINE_INTERNALS.md#the-shape-of-our-own-extension));
+   ([engineInternals/EXTENSION.md](engineInternals/EXTENSION.md));
    a Lua thread polling `GetArtifactSetItemsCount(hero, ourId, 1)` and
    applying `ChangeHeroStat` deltas is the stopgap that needs no native code,
    with the seams listed above (no equip event, script must undo its own

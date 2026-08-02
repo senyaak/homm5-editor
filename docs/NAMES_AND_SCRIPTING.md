@@ -134,6 +134,38 @@ which the binary agrees with — it allocates a 0x1C-byte record per call
 how a single field is written. An earlier note here said the opposite and led to
 a design built on a polling thread; the thread is not needed.
 
+### The battle has one too, and it is loaded at the other end
+
+`scripts/combat-startup.lua` **begins** with `doFile("/scripts/combat-common.lua")`
+and then declares the vocabulary every combat script is written against —
+`IsWarMachine`, `GetAttackerHero`, and the empty hooks a scripted battle
+overrides (`AttackerWarMachineDeath` and the rest, all of them `function f() end`).
+
+That order is the whole difference between the two files. On the adventure map
+the mod's code goes in `advmap-common.lua`, which is loaded LAST; in a battle the
+same file is loaded FIRST, so anything of ours written there is overwritten by
+the declarations a moment later. A mod's battle code therefore goes at the **end
+of its own copy of `combat-startup.lua`** — which is what `src/mods/skill-scripts.ts`
+generates.
+
+Two more things worth knowing before writing any:
+
+- **A battle loads exactly one scripted script**, whoever set it — the hero's
+  `CombatScript`, the monster's, or the argument to `StartCombat`. The loader
+  (`0x6528b0`) does combat-startup → `createCombatAliases();` → one script out of
+  the battle object's `+0x2A0`, and ends. Four such sites exist, one per kind of
+  battle; all four have the same shape.
+- **Our block redefines nothing.** It is straight-line code at the end of the
+  file: by the time it runs the battle is built and can simply be asked what is
+  in it, and no global of the game's changes hands. Overriding a death hook would
+  work — no shipped script in `Maps/` defines one — but it would be a name of
+  theirs holding a function of ours for no gain.
+
+The two contexts cannot see each other's functions (`docs/EXE_LUA_REGISTRY.md`,
+tables 1-2 against table 3). What crosses is `SetGameVar`/`GetGameVar`: each
+context registers its own pair over one store, so "the battle writes it down and
+the map reads it back" is the way a perk asks a battle anything.
+
 There is no log to read any of this from: the game writes none — `print` goes to
 its console and `Documents\My Games\…` holds only `Profiles`. A probe has to
 show its answer in something the game draws, and a round number of gold is the

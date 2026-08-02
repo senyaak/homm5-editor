@@ -12,6 +12,7 @@
 import { expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { step } from './trace.ts';
+import { screenOf } from './tiles.ts';
 import { closeDoc, writeDoc } from './text-doc.ts';
 
 /** Compare shared references by what they point at; case and slash vary. */
@@ -73,7 +74,37 @@ async function armObject(page: Page, shared: string): Promise<void> {
 /** Click the map at tile (x, y) to place the armed object. */
 export async function placeAtTile(page: Page, x: number, y: number): Promise<void> {
   return step(`place at ${x},${y}`, async () => {
-    const at = await page.evaluate(([tx, ty]) => window.view.tileToScreen(tx!, ty!), [x, y]);
+    // Through screenOf, which scrolls the view when the tile is not on it. A
+    // 72x72 map does not fit the viewport, and clicking the raw projection of a
+    // tile that is off screen lands outside the canvas and places NOTHING —
+    // silently, since a click on nothing is not an error. That showed up as
+    // "placing … added one object: received []" the first time an object was
+    // asked for past the right edge, and it would have been every map wide
+    // enough to scroll.
+    // Where the tile is, and whether the CLICK can reach it.
+    //
+    // Two ways it cannot, and both place nothing at all — silently, because a
+    // click that lands on something else is not an error:
+    //
+    //   the tile is off screen. `screenOf` handles that by scrolling, which is
+    //     why this goes through it rather than through tileToScreen directly.
+    //   the pixel is COVERED by a panel. The object palette is open while
+    //     objects are being placed and the properties panel opens beside it, so
+    //     a tile toward the edge projects to a pixel that belongs to a div. The
+    //     picking ray does not care — it is arithmetic on the canvas — so the
+    //     tile looks perfectly pickable right up until the click goes to the
+    //     palette instead. Centring the view moves the tile out from under it.
+    let at = await screenOf(page, x, y);
+    const covering = async (): Promise<string> => page.evaluate(([px, py]) => {
+      const el = document.elementFromPoint(px!, py!);
+      return el instanceof HTMLCanvasElement ? '' : (el?.id || el?.tagName || 'nothing');
+    }, [at.x, at.y]);
+    if (await covering()) {
+      await page.evaluate(([tx, ty]) => window.view.focus(tx!, ty!), [x, y]);
+      at = await screenOf(page, x, y);
+    }
+    const over = await covering();
+    expect(over, `(${x},${y}) projects onto #${over}, not the map — the click would go there`).toBe('');
     await page.mouse.move(at.x, at.y);
     await page.mouse.down();
     await page.mouse.up();

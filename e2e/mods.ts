@@ -11,10 +11,14 @@ import { join } from 'node:path';
 import { DATA, REPO_ROOT } from './launch.ts';
 import { buildCreatureMod } from '../src/mods/creature-mod.ts';
 import {
-  addArtifact, addArtifactSet, addBuilding, addCreature, addHero, newCreatureMod,
-  removeArtifact, removeArtifactSet, removeBuilding, removeCreature, removeHero,
+  addArtifact, addArtifactSet, addBuilding, addCreature, addHero, addHeroClass, addHeroSkill,
+  addSpecialization, modIsEmpty, newCreatureMod,
+  removeArtifact, removeArtifactSet, removeBuilding, removeCreature, removeHero, removeHeroClass,
+  removeSpecialization,
   updateArtifact, updateArtifactSet,
 } from '../src/mods/mod-model.ts';
+import { takenClasses } from '../src/mods/hero-classes.ts';
+import { takenSkills } from '../src/mods/hero-skills.ts';
 import type { BuildingSpec } from '../src/mods/buildings.ts';
 import { installCreatureMod, packCreatureMod, readCreatureMod } from '../src/mods/mod-archive.ts';
 import { MOD_STEM, dataReader } from '../src/mods/mod-files.ts';
@@ -29,7 +33,8 @@ import { readEntries } from '../src/format/pak.ts';
 import { ensureModDir, modFile } from '../src/game/mod-paths.ts';
 import { decodeDDSBuffer } from '../src/format/dds.ts';
 import { writeEffectsFile } from '../src/mods/extension.ts';
-import { effectsOf } from '../src/mods/artifact-effects.ts';
+import { effectsOf, skillRowsOf, specializationRowsOf } from '../src/mods/artifact-effects.ts';
+import { takenSpecializations } from '../src/mods/specializations.ts';
 
 /**
  * `--noRemove`: do the work in the REAL install and leave it standing.
@@ -75,8 +80,17 @@ export function modGameRoot(): string {
 export const ASSETS = join(REPO_ROOT, 'assets');
 const ART = join(ASSETS, 'artifacts');
 
-/** The real install the checkout sits in — where the executable comes from. */
-export const REAL_GAME = join(REPO_ROOT, '..');
+/**
+ * The install the executable is copied out of — the checkout's own, by default.
+ *
+ * `HOMM5_ROOT` FIRST, the same variable `E2E_GAME` already reads. A checkout
+ * that sits inside the game needs nothing; a WORKTREE does not sit inside one —
+ * its parent is wherever the worktrees are kept — and this went looking for
+ * `bin/H5_Game.exe` there, found none, prepared no install, and every mod stage
+ * then failed inside the app with "no executable at …/_tmp/e2e-mod-game/bin",
+ * which names the copy rather than the missing original.
+ */
+export const REAL_GAME = process.env.HOMM5_ROOT || join(REPO_ROOT, '..');
 /** The archive the dialogs always create: OUR mod, never a choice. */
 export const MOD = MOD_STEM;
 
@@ -389,6 +403,217 @@ export function removeGameRoot(dir: string): void {
 export const GEM_FILE = 'H3Gem';
 
 /**
+ * The specialization mod-004 authors and gives her — Heroes III's own.
+ *
+ * The game's nearest equivalent is HERO_SPEC_EMPIRIC, which adds a flat five
+ * per hero level to the first aid tent; hers adds five PERCENT of it, which is
+ * the same thing at expert War Machines and less at every mastery below. That
+ * difference is the whole reason a specialization of our own exists, and the
+ * percentage is what the native extension is told through its config file.
+ */
+export const GEM_SPEC = {
+  id: 'HERO_SPEC_H3_FIRST_AID',
+  name: 'First Aid',
+  description: 'The first aid tent grows five percent stronger with every level of the hero.',
+  picture: join(ASSETS, 'specializations', 'first_aid.gif'),
+  effect: { stat: 'tent' as const, percentPerLevel: 5 },
+};
+
+/**
+ * The class mod-004 authors and builds her as — Heroes III's own.
+ *
+ * Gem had a class nobody else in that game had: the Witch, a Druid by every
+ * number and a different word on the screen. Here it is the tenth entry in a
+ * table the game sizes at nine, and the numbers are hers rather than the
+ * Ranger's — a medic who casts, with the war machines that carry her tent at
+ * the top of what a level up offers.
+ *
+ * These weights are the FINAL ones, her own racial included. mod-004 authors
+ * the class before the skill exists (nothing can weight a skill that is not
+ * there yet) and comes back to it afterwards; this fixture writes the end state
+ * in one go, because it is not testing the order — it is making the hero the
+ * map spec places.
+ */
+export const WITCH = {
+  id: 'HERO_CLASS_WITCH',
+  name: 'Колдунья',
+  attributes: { offence: 10, defence: 25, spellpower: 35, knowledge: 30 },
+  weights: {
+    HERO_SKILL_TENT_MASTER: 10,
+    HERO_SKILL_WAR_MACHINES: 15,
+    HERO_SKILL_LIGHT_MAGIC: 12,
+    HERO_SKILL_LEARNING: 12,
+    HERO_SKILL_LUCK: 10,
+    HERO_SKILL_LOGISTICS: 8,
+    HERO_SKILL_SUMMONING_MAGIC: 8,
+    HERO_SKILL_SORCERY: 8,
+    HERO_SKILL_LEADERSHIP: 6,
+    HERO_SKILL_DEFENCE: 5,
+    HERO_SKILL_DESTRUCTIVE_MAGIC: 3,
+    HERO_SKILL_DARK_MAGIC: 2,
+    HERO_SKILL_OFFENCE: 1,
+    HERO_SKILL_AVENGER: 0,
+  } as Record<string, number>,
+  /** «Чумная палатка», which the Ranger cannot have and she can. */
+  perk: 'HERO_SKILL_LAST_AID',
+};
+
+/**
+ * Her racial: the tent, which is what she is in both games.
+ *
+ * Named and described four times, because the shipped racials are and because
+ * the hero screen prints one per level — four identical lines read as a skill
+ * that never advanced. What it will DO is one more use of the first aid tent
+ * per level of the skill, which is the extension's half and not written yet;
+ * the words say what it is for, not what it currently manages.
+ */
+export const TENT_MASTER = {
+  id: 'HERO_SKILL_TENT_MASTER',
+  name: 'Мастер палатки',
+  names: [
+    'Мастер палатки (новичок)',
+    'Обученный мастер палатки',
+    'Искусный мастер палатки',
+    'Непревзойдённый мастер палатки',
+  ],
+  description: 'Палатка первой помощи получает дополнительные использования.',
+  descriptions: [
+    'Уникальный навык колдуньи. Палатка первой помощи получает +1 использование в бою.',
+    'Уникальный навык колдуньи. Палатка первой помощи получает +2 использования в бою.',
+    'Уникальный навык колдуньи. Палатка первой помощи получает +3 использования в бою.',
+    'Уникальный навык колдуньи. Палатка первой помощи получает +4 использования в бою.',
+  ],
+  commonDescription: 'Уникальный навык колдуньи. Палатка первой помощи получает одно дополнительное '
+    + 'использование в бою за каждый уровень навыка — до четырёх на высшем уровне мастерства.',
+  /**
+   * Heroes III's own first aid, one drawing per level.
+   *
+   * Three, because that game had three levels of it; Heroes V draws a racial
+   * four times and the fourth repeats the third, which is what the shipped War
+   * Machines icons do for the same reason.
+   */
+  pictures: [
+    join(ASSETS, 'skills', 'h3_first_aid_1.png'),
+    join(ASSETS, 'skills', 'h3_first_aid_2.png'),
+    join(ASSETS, 'skills', 'h3_first_aid_3.png'),
+  ],
+  /**
+   * And what it DOES: one more use of the tent for each level of mastery.
+   *
+   * The words above promised this before anything could deliver it. The
+   * extension adds the term where the engine fills the machine's charges, and
+   * multiplies by the mastery the hero holds — so the four descriptions are
+   * literally the four values of one row.
+   */
+  effects: { tent_charges: 1 },
+};
+
+/**
+ * The three perks of her branch — what a level up offers once she has the
+ * racial.
+ *
+ * A branch with no perks is a branch that never grows, which is what the first
+ * launch showed. Each hangs off the racial and asks for nothing else, exactly as
+ * the shipped Multishot hangs off Avenger: the branch IS the gate, because no
+ * other class has it.
+ *
+ * Two of the three are words and an icon for now: they happen INSIDE a battle,
+ * at the moment the tent acts, which no script can see — the extension's half.
+ * The third, «Запасной комплект», is done, and it is Lua: what it needs is a
+ * moment, and the engine hands moments out already.
+ *
+ * They are written down here because deciding what a branch offers is a design
+ * decision and belongs where the class is described.
+ */
+/**
+ * «Запасной комплект», the battle half: was there a tent when the fighting
+ * started?
+ *
+ * Straight-line code, and that is the point — it runs once, when the battle has
+ * been built, so it can simply look. The game's own death hooks stay the game's:
+ * we do not need to be told when the tent dies, only whether it existed.
+ */
+const SPARE_KIT_IN_BATTLE = [
+  '-- Was there a tent when the fighting started? Only the battle can say.',
+  'local attacker = GetAttackerHero();',
+  'if attacker ~= nil then',
+  '\tif GetAttackerWarMachine(WAR_MACHINE_FIRST_AID_TENT) ~= nil then',
+  '\t\tSetGameVar("h5e.tent."..GetHeroName(attacker), "1");',
+  '\tend;',
+  'end;',
+  'local defender = GetDefenderHero();',
+  'if defender ~= nil then',
+  '\tif GetDefenderWarMachine(WAR_MACHINE_FIRST_AID_TENT) ~= nil then',
+  '\t\tSetGameVar("h5e.tent."..GetHeroName(defender), "1");',
+  '\tend;',
+  'end;',
+].join('\n');
+
+/**
+ * And the map half, which is where the perk actually happens.
+ *
+ * Both sides of the battle, because a tent is lost by whoever retreated as well
+ * as by the winner. The variable is cleared whether or not anything was given
+ * back: it says "there was a tent in the last battle", and letting it stand
+ * would hand this hero a tent after every battle for the rest of the game.
+ */
+const SPARE_KIT_ON_THE_MAP = [
+  'function SpareKit_AfterCombat(combatIndex)',
+  '\tfor side = 0, 1 do',
+  '\t\tlocal hero = GetSavedCombatArmyHero(combatIndex, side);',
+  '\t\tif hero ~= nil then',
+  '\t\t\tif GetGameVar("h5e.tent."..hero, "") == "1" then',
+  '\t\t\t\tif HasHeroSkill(hero, HERO_SKILL_SPARE_KIT) then',
+  '\t\t\t\t\tif not HasHeroWarMachine(hero, WAR_MACHINE_FIRST_AID_TENT) then',
+  '\t\t\t\t\t\tGiveHeroWarMachine(hero, WAR_MACHINE_FIRST_AID_TENT);',
+  '\t\t\t\t\tend;',
+  '\t\t\t\tend;',
+  '\t\t\t\tSetGameVar("h5e.tent."..hero, "");',
+  '\t\t\tend;',
+  '\t\tend;',
+  '\tend;',
+  'end;',
+  '',
+  'Trigger(COMBAT_RESULTS_TRIGGER, "SpareKit_AfterCombat");',
+].join('\n');
+
+export const TENT_PERKS = [
+  {
+    id: 'HERO_SKILL_CLEAN_BANDAGE',
+    name: 'Чистая повязка',
+    description: 'Палатка первой помощи снимает с отряда отрицательные эффекты, когда лечит его.',
+    label: 'clean',
+  },
+  {
+    id: 'HERO_SKILL_HEALING_BREW',
+    name: 'Целебный настой',
+    description: 'Палатка первой помощи накладывает на вылеченный отряд случайный положительный эффект.',
+    label: 'buff',
+  },
+  {
+    id: 'HERO_SKILL_SPARE_KIT',
+    name: 'Запасной комплект',
+    description: 'Разрушенная в бою палатка первой помощи восстанавливается после сражения.',
+    label: 'fix',
+    // The one of the three that is NOT waiting for the extension: its content is
+    // a moment, and the engine hands moments to Lua. Two halves, because after
+    // the battle "no tent" and "never had one" look the same — only the battle
+    // can tell them apart, and a game variable is what crosses back.
+    combatScript: SPARE_KIT_IN_BATTLE,
+    script: SPARE_KIT_ON_THE_MAP,
+  },
+].map((p) => ({
+  ...p,
+  // DRAFTS: the game's own tent with the word stamped on it, grey and lit, made
+  // by tools/label-icon.ts. Three drawings that differ only in what they mean is
+  // not something anybody wants to draw twice before the effects even exist.
+  pictures: [
+    join(ASSETS, 'skills', `perk_${p.label}_grey.png`),
+    join(ASSETS, 'skills', `perk_${p.label}.png`),
+  ],
+}));
+
+/**
  * What mod-005 names its buildings with — one per class: `E2eBuilding`,
  * `E2eMine`, `E2eShrine`… They are named after the CLASSES rather than listed
  * anywhere, so a live run clears them by this prefix.
@@ -405,6 +630,13 @@ const OURS = {
   // leftovers and the dialog refused the name — which is exactly what the
   // clearing is for.
   heroes: [GEM_FILE],
+  // And the specialization he holds. Cleared AFTER him, always: one a hero
+  // still names cannot be taken out, and it is the model that says so.
+  specializations: [GEM_SPEC.id],
+  // The class she IS, which takes its own racial with it — the class is the
+  // whole and the skill is part of it. Cleared after her, like the
+  // specialization: a class a hero is still of cannot be taken out.
+  classes: [WITCH.id],
 };
 
 /**
@@ -443,23 +675,33 @@ export function clearFixture(gameRoot: string): void {
   for (const file of OURS.heroes) {
     if ((mod.heroes ?? []).some((h) => h.id === file)) { removeHero(mod, file); touched = true; }
   }
+  // After the heroes, and only then: removeSpecialization refuses one that is
+  // still held, which is the rule and not an obstacle to work around.
+  for (const id of OURS.classes) {
+    if ((mod.classes ?? []).some((c) => c.id === id)) { removeHeroClass(mod, id); touched = true; }
+  }
+  for (const id of OURS.specializations) {
+    if ((mod.specializations ?? []).some((s) => s.id === id)) { removeSpecialization(mod, id); touched = true; }
+  }
   if (!touched) return;
   // Nothing left but the manifest: an archive of nothing is not a mod, and
   // building one throws. This is the ordinary case in a throwaway install,
   // where the fixtures ARE the whole mod — and it stayed hidden until a spec
   // ran live against an install holding nothing else.
-  const empty = !mod.creatures.length && !mod.dwellings.length && !(mod.buildings ?? []).length
-    && !(mod.artifacts ?? []).length && !(mod.sets ?? []).length && !(mod.heroes ?? []).length;
-  if (empty) {
+  //
+  // The model's own test, not a copy of it. There have been three of these and
+  // two went stale the moment a new kind of content arrived.
+  if (modIsEmpty(mod)) {
     rmSync(archive, { force: true });
-    writeEffectsFile(gameRoot, []);
+    writeEffectsFile(gameRoot, [], []);
     return;
   }
   const report = buildCreatureMod(mod, dataReader(DATA));
   installCreatureMod(gameRoot, mod, packCreatureMod(report));
   // An artifact taken out has to stop granting its bonus: the file is written
   // from what is LEFT, never appended to.
-  writeEffectsFile(gameRoot, effectsOf(mod.artifacts ?? [], mod.sets ?? []));
+  writeEffectsFile(gameRoot, effectsOf(mod.artifacts ?? [], mod.sets ?? []),
+    specializationRowsOf(mod.specializations ?? []), skillRowsOf(mod.skills ?? []));
 }
 
 /**
@@ -556,6 +798,12 @@ export function installMapFixture(gameRoot: string): CreatureMod {
   // her in mod-004; this is the same hero built the same way, for a run that
   // starts at the map. Added when missing and left alone when she is there,
   // like the creature above.
+  // Her specialization first: a hero naming one the enum does not declare is a
+  // parse error rather than a hero without a specialization.
+  if (!(mod.specializations ?? []).some((s) => s.id === GEM_SPEC.id)) {
+    addSpecialization(mod, GEM_SPEC, takenSpecializations(readFileSync(join(DATA, 'types.xml'), 'latin1')));
+  }
+  ensureWitch(mod);
   if (!(mod.heroes ?? []).some((h) => h.id === GEM_FILE)) {
     addHero(mod, {
       id: GEM_FILE,
@@ -563,15 +811,22 @@ export function installMapFixture(gameRoot: string): CreatureMod {
       biography: 'A sorceress of Enroth, newly come to AvLee and its druids.',
       basedOn: 'MapObjects/Preserve/Ossir.(AdvMapHeroShared).xdb',
       town: 'TOWN_PRESERVE',
-      heroClass: 'HERO_CLASS_RANGER',
-      specialization: 'HERO_SPEC_EMPIRIC',
-      specializationName: 'Field Medic',
-      specializationDescription: 'With every level the first aid tent heals 5 more points of damage.',
-      primarySkill: { skill: 'HERO_SKILL_AVENGER', mastery: 'MASTERY_BASIC' },
+      heroClass: WITCH.id,
+      // Ours, and with NO words of her own: a specialization of the mod carries
+      // the name and the text it wants its heroes to use, and the build writes
+      // them onto every hero holding it. The dialog's Gem overrides them in
+      // mod-004, which is the other half of the same rule.
+      specialization: GEM_SPEC.id,
+      primarySkill: { skill: TENT_MASTER.id, mastery: 'MASTERY_BASIC' },
       stats: { offence: 0, defence: 1, spellpower: 2, knowledge: 2 },
       skills: [{ skill: 'HERO_SKILL_WAR_MACHINES', mastery: 'MASTERY_BASIC' }],
       perks: ['HERO_SKILL_FIRST_AID'],
       machines: { firstAidTent: true },
+      // Her own face and icon, exactly as the dialog gives them. Left out, a run
+      // that authored her through the form and then reached the map spec ends
+      // with a Gem wearing Ossir's face: this fixture would not have rebuilt
+      // them, and nothing else would have said so.
+      portrait: join(ASSETS, 'heroes', 'gem.gif'),
     });
   }
 
@@ -603,11 +858,81 @@ export function installMapFixture(gameRoot: string): CreatureMod {
   // grants nothing — which is what happened to the boots: the dialog writes this
   // file, a fixture that skipped it left one piece of the set inert while its
   // own description promised 15%.
-  writeEffectsFile(gameRoot, effectsOf(mod.artifacts ?? [], mod.sets ?? []));
+  writeEffectsFile(gameRoot, effectsOf(mod.artifacts ?? [], mod.sets ?? []),
+    specializationRowsOf(mod.specializations ?? []), skillRowsOf(mod.skills ?? []));
   return mod;
 }
 
+/**
+ * Her class and her racial, added to `mod` when they are not in it.
+ *
+ * Before the hero, always: a hero naming a class or a skill the enum does not
+ * declare is a parse error, not a hero without one — the same rule the
+ * specialization follows. The class before the skill, for the same reason one
+ * step down: a racial belongs to a class.
+ *
+ * Its own function because two callers want it and neither is the other's:
+ * the map fixture builds the whole mod headless, and the heroes spec needs the
+ * two to exist before it can select them in the form when it runs on its own.
+ */
+export function ensureWitch(mod: CreatureMod): void {
+  const types = readFileSync(join(DATA, 'types.xml'), 'latin1');
+  if (!(mod.classes ?? []).some((c) => c.id === WITCH.id)) {
+    addHeroClass(mod, {
+      id: WITCH.id,
+      name: WITCH.name,
+      attributes: WITCH.attributes,
+      skills: Object.entries(WITCH.weights).map(([skill, prob]) => ({ skill, prob })),
+      allowedPerks: [{ perk: WITCH.perk, dependencies: ['HERO_SKILL_FIRST_AID'] }],
+    }, takenClasses(types));
+  }
+  if (!(mod.skills ?? []).some((s) => s.id === TENT_MASTER.id)) {
+    addHeroSkill(mod, {
+      ...TENT_MASTER,
+      kind: 'racial',
+      heroClass: WITCH.id,
+      aiRace: 'Sylvan',
+    }, takenSkills(types));
+  }
+  // And the branch's perks, after the racial they hang off.
+  for (const perk of TENT_PERKS) {
+    if ((mod.skills ?? []).some((s) => s.id === perk.id)) continue;
+    addHeroSkill(mod, {
+      id: perk.id,
+      name: perk.name,
+      description: perk.description,
+      pictures: perk.pictures,
+      kind: 'perk',
+      heroClass: WITCH.id,
+      basicSkill: TENT_MASTER.id,
+      // Only one of the three carries any, and it carries both halves.
+      ...('script' in perk ? { script: perk.script, combatScript: perk.combatScript } : {}),
+    }, takenSkills(types));
+  }
+}
+
+/**
+ * The same two, built into an install that has none — the heroes spec's
+ * prerequisite when it runs alone.
+ *
+ * A prerequisite, not a test: authoring them through the forms is the class
+ * spec's subject, and it runs first when the whole chain runs. Left out, a
+ * heroes run on its own has no class to make Gem, which reads as the form being
+ * broken rather than as a spec run out of order.
+ */
+export function installWitchFixture(gameRoot: string): void {
+  const archive = modFile(gameRoot, 'mod', MOD);
+  const found = existsSync(archive) ? readCreatureMod(archive) : null;
+  const mod = found?.mod ?? newCreatureMod(MOD);
+  if ((mod.classes ?? []).some((c) => c.id === WITCH.id)
+    && (mod.skills ?? []).some((s) => s.id === TENT_MASTER.id)) return;
+  ensureWitch(mod);
+  const report = buildCreatureMod(mod, dataReader(DATA));
+  installCreatureMod(gameRoot, mod, packCreatureMod(report));
+}
+
 /** Our mod, read back off the install. */
+
 export function readInstalledMod(gameRoot: string): CreatureMod {
   const found = readCreatureMod(modFile(gameRoot, 'mod', MOD));
   if (!found) throw new Error(`no mod at ${modFile(gameRoot, 'mod', MOD)}`);

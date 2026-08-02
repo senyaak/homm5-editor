@@ -1,7 +1,7 @@
 # Script API
 
 **Generated** by `npm run build-api` — do not edit by hand. Write functions up
-in `src/script/script-api-curated.ts` (the source of truth) and re-run.
+in `src/script-api-curated.ts` (the source of truth) and re-run.
 
 This is OUR reference, written by hand and grown as missions turn up new calls,
 because the shipped manuals are the only published list and they are crooked
@@ -427,7 +427,7 @@ Bind (or clear) a handler for a world event. Pass nil as the function to unbind.
 Trigger(REGION_ENTER_AND_STOP_TRIGGER, "d2", "Dialog2");
 ```
 
-> The handler is named by STRING, not passed as a value, and the engine calls it when the event fires.
+> The handler is named by STRING, not passed as a value, and the engine calls it when the event fires. There are SEVENTEEN types and no more — the engine decides on one `cmp ebx,10h` at 0x5f27cb — and the game's own scripts declare sixteen of them: type 10 is real, undeclared, and a TOWN trigger (it refuses an object that is not a town). None of the seventeen is "a battle is starting"; COMBAT_RESULTS_TRIGGER fires afterwards. Handlers STACK rather than replace, so one set from a mod's advmap-common.lua survives a map setting its own.
 
 ---
 
@@ -435,7 +435,7 @@ Trigger(REGION_ENTER_AND_STOP_TRIGGER, "d2", "Dialog2");
 
 180 functions the extraction found that we have not documented in our
 own words yet. Signature is the manual's; when one turns up in a mission, move it
-into `src/script/script-api-curated.ts` with a real description.
+into `src/script-api-curated.ts` with a real description.
 
 ### ADVMAP
 

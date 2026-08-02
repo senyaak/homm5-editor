@@ -13,3 +13,4 @@ in step; if a slice ever disagrees with them, the slice is the stale one.
 | Slice | What it did | Landed |
 | --- | --- | --- |
 | [SLICE_renderer_layout.md](SLICE_renderer_layout.md) | Cut the four files nobody could hold in their head — `renderer/app.ts` (8996 lines), `electron/main.ts` (3011), the 66 flat files of `src/`, and `renderer/index.html` (2023) — into layers, and wrote down the four rules that made it survivable. | 2026-07-31 |
+| [SLICE_hero_specializations.md](SLICE_hero_specializations.md) | Gave the editor a hero specialization of its OWN — one entry appended to an enum the game declares no size for, and a term the extension adds where the engine sums its own. Read the first aid tent's whole arithmetic to find where that term goes, and proved value 84 in a battle. | 2026-08-01 |
