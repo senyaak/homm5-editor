@@ -320,22 +320,43 @@ the same field, reached from the other side.) Three gates read the field
 directly rather than through the accessor, so **the only worthwhile hook is the
 one that fills it**, and the constructor is where the object exists.
 
-*Done.* The extension detours `0xdc9730`, and `tent_charges` is a stat a skill —
-or an artifact — can carry. Two things had to be measured rather than reasoned,
-and each cost a battle:
+*Done, and confirmed in game*: basic mastery gives the tent four uses, advanced
+five. `tent_charges` is a stat a skill — or an artifact — can carry.
 
-- **The hero sits at `machine + 0xCC`.** The object the constructor returns is
-  not a pointer the engine's owner-walk understands; this class has several
-  bases and a vtable apiece. What settled it was printing both pointers into one
-  log — the constructor's machine and the `unit` the tent's amount hook receives
-  in the same battle — and subtracting: 204 bytes, which is the `0xCC` the
-  disassembly writes as `lea ecx,[esi-0CCh]`.
-- **The constructor takes SIX stack arguments, and the call site shows five.**
-  It ends `ret 18h`. The sixth is a `push 1` put down five instructions early
-  with a virtual call in between that takes its `this` in ecx and nothing off the
-  stack. A hook one argument short cleans four bytes less than the caller left
-  and the battle dies at the first war machine built — twice, before the arity
-  was read off the `ret` instead of counted at the call.
+**Two hooks, because the moment that has the number and the moment that has the
+hero are not the same one.** The constructor (`0xdc9730`) only writes the tent's
+pointer into a small ring; the raise happens in the tent's amount hook, where the
+engine hands over a live unit. Asking a machine for its owner inside its own
+constructor ends the battle — the object is a moment old and has no owner yet,
+and no guard helps, because the slot holds a real function and the fault is
+inside it. Being on the ring is what makes the raise happen once, and the total
+is the same either way: the gate has already let the tent act, so three charges
+plus ours is the same number of uses whether the bonus lands before the first
+spend or just after it.
+
+Four crashed battles paid for this section. Every one was the same mistake in a
+different coat — **the call was made almost the way the engine makes it**:
+
+- **Arity from the `ret`, never from the call site.** The constructor ends
+  `ret 18h`: six stack arguments. Counting pushes at its one call site gives
+  five, because the sixth is a `push 1` put down five instructions early with a
+  virtual call in between that takes its `this` in ecx and nothing off the stack.
+  A hook one argument short cleans four bytes less than the caller left, and the
+  stack is wrong from the first war machine built.
+- **`engine > 0` was a guard, not an early-out.** The amount function has two
+  call sites and only one hands over a unit whose owner can be asked for.
+- **Skills answer one virtual call further along.** At `0xdc9705` the engine
+  takes the hero exactly as `unit_hero` does — `[+0x18]` for the owner, `[+0x0C]`
+  for the hero — and then makes one more call, **slot 0**, before asking
+  `[+0x174]` for a mastery. That pointer is right for everything else the tent
+  asks of a hero, and wrong for this. Named by the cleanest evidence of the whole
+  session: attacking with Gem crashed and attacking with anyone else did not, so
+  the fault was in the one path only a hero with a tent reaches.
+
+And the one thing that was measured rather than reasoned: **the unit sits at
+`machine + 0xCC`**. The probe printed the constructor's machine and the `unit`
+the amount hook receives, same battle, and the two numbers were 204 apart — the
+`0xCC` the disassembly writes as `lea ecx,[esi-0CCh]`.
 
 Two nearby places were already written up in
 [engineInternals/SPECIALIZATIONS.md](engineInternals/SPECIALIZATIONS.md):
