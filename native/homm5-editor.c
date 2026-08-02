@@ -1152,6 +1152,93 @@ static int install_hooks(void) {
   return installed;
 }
 
+// ---------------------------------------------------------------------------
+// A PROBE, and nothing else: where the first aid tent's charges come from.
+//
+// The tent spends a counter at CCombatWarMachine +0xB0, filled once by its
+// constructor from `CWarMachine::GetShots` — the record's `<Shots>`, three for
+// the tent. Three gates read that field DIRECTLY (0xdc9dc8, 0xdc9f06 and the
+// spend at 0xdc9f59), so the only hook worth having is the one that fills it,
+// and the constructor is where the object exists. See docs/HERO_CLASSES.md.
+//
+// What is NOT established is how to reach the hero from there, which is the
+// whole point of this: the first aid tent's amount hook below gets a combat
+// unit whose vtable is at +0, and THIS object's vtables are written at +4,
+// +0xA0, +0xCC and more — virtual bases — so the pointer the constructor
+// returns is a different shape from the one `unit_hero` knows how to walk.
+//
+// So this changes nothing. It calls the original, reads what it wrote, and
+// tries the owner chain from a couple of candidate bases with the same
+// guard the tent hook uses — a slot that does not point at code is not called.
+// Twenty-four lines in the log and then silence.
+#define MACHINE_CTOR_RVA 0x9c9730u
+static const BYTE MACHINE_CTOR_HEAD[5] = { 0x83, 0x7C, 0x24, 0x18, 0x00 };
+
+/** Where the constructor puts the world machine, and the charges it filled. */
+#define MACHINE_WORLD 0xA8u
+#define MACHINE_CHARGES 0xB0u
+/** The world machine's type: 3 is the first aid tent. */
+#define WORLD_MACHINE_TYPE 0x1Cu
+#define MACHINE_TYPE_TENT 3
+
+/** `this` in ecx, the ignored edx of a thiscall, then its five stack arguments. */
+typedef void *(__fastcall *MachineCtorFn)(void *self, void *edx, void *a1, void *a2, void *a3,
+                                          void *a4, unsigned a5);
+static MachineCtorFn g_machineCtor = NULL;
+static int g_machineLogged = 0;
+
+/** The hero behind an object, if this base is one the engine's chain accepts. */
+static void *hero_from(void *base) {
+  if (!base) return NULL;
+  void **vt = *(void ***)base;
+  if (!vt || !points_at_code(vt[VT_UNIT_OWNER / 4])) return NULL;
+  void *owner = ((GetterFn)vt[VT_UNIT_OWNER / 4])(base);
+  if (!owner) return NULL;
+  void **ovt = *(void ***)owner;
+  if (!ovt || !points_at_code(ovt[VT_OWNER_HERO / 4])) return NULL;
+  return ((GetterFn)ovt[VT_OWNER_HERO / 4])(owner);
+}
+
+/** What that hero answers about a skill — 2 is War Machines, a value we can predict. */
+static int mastery_of(void *hero, int skill) {
+  if (!hero) return -1;
+  void **vt = *(void ***)hero;
+  if (!vt || !points_at_code(vt[VT_SKILL_MASTERY / 4])) return -2;
+  return ((SkillMasteryFn)vt[VT_SKILL_MASTERY / 4])(hero, skill);
+}
+
+static void *__fastcall machine_ctor_hook(void *self, void *edx, void *a1, void *a2, void *a3,
+                                          void *a4, unsigned a5) {
+  void *m = g_machineCtor(self, edx, a1, a2, a3, a4, a5);
+  if (!m || g_machineLogged >= 24) return m;
+
+  void *world = *(void **)((BYTE *)m + MACHINE_WORLD);
+  int type = world ? *(int *)((BYTE *)world + WORLD_MACHINE_TYPE) : -1;
+  if (type != MACHINE_TYPE_TENT) return m;
+
+  g_machineLogged++;
+  log_line("tent built:");
+  log_num("  charges the engine filled ", *(int *)((BYTE *)m + MACHINE_CHARGES));
+  // Two candidate bases, because which one the engine's own walk starts from is
+  // exactly the question. Whichever answers a mastery between 0 and 4 is the one.
+  void *heroAt0 = hero_from(m);
+  void *heroAt4 = hero_from((BYTE *)m + 4);
+  log_num("  from +0: war machines mastery ", mastery_of(heroAt0, 2));
+  log_num("  from +4: war machines mastery ", mastery_of(heroAt4, 2));
+  for (int i = 0; i < g_skillRowCount; i++) {
+    log_num("  from +0: our skill ", mastery_of(heroAt0, g_skillRows[i].skill));
+    log_num("  from +4: our skill ", mastery_of(heroAt4, g_skillRows[i].skill));
+  }
+  return m;
+}
+
+/** The probe, installed whether or not anything asks for a bonus. */
+static int install_machine_probe(void) {
+  g_machineCtor = (MachineCtorFn)detour(MACHINE_CTOR_RVA, MACHINE_CTOR_HEAD,
+                                        &machine_ctor_hook, "war machine ctor");
+  return g_machineCtor != NULL;
+}
+
 /** The hooks the specialization rows ask for — none, when there are none. */
 static int install_specialization_hooks(void) {
   int installed = 0;
@@ -1178,6 +1265,8 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   install_lua_functions();
   install_energy_getter();
   if (g_specRowCount) install_specialization_hooks();
+  // Reads and reports; changes nothing. Goes when the charges are real.
+  if (install_machine_probe()) log_line("war machine probe installed");
   return TRUE;
 }
 
