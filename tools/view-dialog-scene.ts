@@ -67,6 +67,12 @@ const clipCount = play.actors.reduce((a, x) => a + Object.keys(x.clips).length, 
 console.log(`${inner}: ${play.shots.length} shots, ${framed} with a camera, ${payload.geoms.length} meshes, `
   + `${play.actors.length} actors rigged with ${clipCount} clips`);
 
+const meshList = [...new Set(play.actors.map((a) => a.geom))];
+const clipList = [...new Set(play.actors.map((a) => a.clips))];
+const actorList = play.actors.map((a) => ({
+  ...a, geom: meshList.indexOf(a.geom), clips: clipList.indexOf(a.clips),
+}));
+
 // --- the page ----------------------------------------------------------------
 
 const three = readFileSync(join(REPO, 'node_modules', 'three', 'build', 'three.min.js'), 'utf8');
@@ -80,7 +86,13 @@ const html = `<!doctype html><html><head><meta charset="utf8"><title>${inner}</t
 <script>
 const S=${JSON.stringify(payload)};
 const SHOTS=${JSON.stringify(play.shots)};
-const ACTORS=${JSON.stringify(play.actors)};
+// Meshes and clip sets are SHARED between figures of one character (six
+// swordsmen of a kind are one of each), and JSON does not know that — written
+// straight out, C1M1's opening is a 140 MB page instead of a 60 MB one. So they
+// are listed once and the actors carry indices into the lists.
+const MESHES=${JSON.stringify(meshList)};
+const CLIPSETS=${JSON.stringify(clipList)};
+const ACTORS=${JSON.stringify(actorList)}.map(a=>({...a,geom:MESHES[a.geom],clips:CLIPSETS[a.clips]}));
 const R=new THREE.WebGLRenderer({antialias:true,preserveDrawingBuffer:true});R.setSize(innerWidth,innerHeight);R.setPixelRatio(1);document.body.appendChild(R.domElement);
 const world=new THREE.Scene();world.background=new THREE.Color(0x0d1014);
 const cam=new THREE.PerspectiveCamera(35,innerWidth/innerHeight,0.5,4000);cam.up.set(0,0,1);

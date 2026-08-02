@@ -15,7 +15,7 @@ import { createFxSystem } from '#viewport/particles.ts';
 import type { FxSystem } from '#viewport/particles.ts';
 import { refreshLighting, uFxTint } from '#viewport/lighting.ts';
 import { activeFloor, state } from '#core/state.ts';
-import type { AmbientData } from '#src/scene/payload.ts';
+import type { AmbientData, GeomData } from '#src/scene/payload.ts';
 import type { SceneInfo } from '#electron/ipc.ts';
 import { api } from '#core/ipc.ts';
 import { $, $button, $input } from '#core/dom.ts';
@@ -51,10 +51,20 @@ export const playing = {
   running: false,
 };
 
-/** Geometry and materials for one actor, built the way the world builds its own. */
+/**
+ * Geometry and materials for one actor, built the way the world builds its own.
+ *
+ * Cached on the PAYLOAD's geom, which the six swordsmen of one kind share (see
+ * src/dialog/actors.ts) — one upload each rather than one per figure. Kept in a
+ * plain map so closing a scene can dispose what it built.
+ */
+const bodies = new Map<GeomData, { geometry: THREE.BufferGeometry; material: THREE.Material[] }>();
+
 function bodyOf(actor: ActorView): { geometry: THREE.BufferGeometry; material: THREE.Material[] } | null {
   const g = actor.geom;
   if (!g.skin) return null;
+  const known = bodies.get(g);
+  if (known) return known;
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(g.pos), 3));
   if (g.uv) geometry.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(g.uv), 2));
@@ -75,15 +85,21 @@ function bodyOf(actor: ActorView): { geometry: THREE.BufferGeometry; material: T
     return m as THREE.Material;
   });
   (g.parts ?? []).forEach((part, i) => geometry.addGroup(part.start, part.count, i));
-  return { geometry, material };
+  const body = { geometry, material };
+  bodies.set(g, body);
+  return body;
 }
 
 /** Take the actors off the stage — called before another scene, and on close. */
 function clearActors(): void {
-  for (const p of playing.players) {
-    p.idle.mesh.removeFromParent();
-    p.idle.mesh.geometry.dispose();
+  for (const p of playing.players) p.idle.mesh.removeFromParent();
+  // The geometry belongs to the bank, not to the mesh: several figures share
+  // one, and disposing it per mesh would free it out from under its twins.
+  for (const body of bodies.values()) {
+    body.geometry.dispose();
+    for (const m of body.material) m.dispose();
   }
+  bodies.clear();
   playing.players = [];
 }
 
@@ -130,15 +146,28 @@ function cueShotFx(shot: ShotView): void {
   if (at) advanceShotFx();
 }
 
+/**
+ * What each actor is playing at this instant, for the inspector and the tests.
+ *
+ * Not simply the cue: a cue has a delay, and until it is up the actor is idling.
+ */
+export const actorKinds = (): Array<{ href: string; kind: string }> => playing.players.map((p) => ({
+  href: p.actor.href, kind: playing.at >= p.from ? p.kind : 'idle00',
+}));
+
 /** How many effect systems the shot on screen is playing — for tests. */
 export const shotFxCount = (): number => shotFx.length;
 
 /** Put every live system where its own clock says it is. */
 function advanceShotFx(): void {
   for (const s of shotFx) {
-    // Before its delay the effect has not started; held at zero it shows the
-    // first frame of the recording rather than popping in halfway.
-    s.system.update(Math.max(0, playing.at - s.from));
+    // An effect that has not gone off yet is not drawn at all. Held at time
+    // zero it shows the recording's first frame — for a spell that is the flash
+    // at the caster's hands, sitting on the field for three seconds before the
+    // spell is cast.
+    const at = playing.at - s.from;
+    s.system.mesh.visible = at >= 0;
+    if (at >= 0) s.system.update(at);
   }
 }
 
@@ -164,7 +193,11 @@ export async function openScene(inner: string): Promise<SceneInfo> {
 
   for (const actor of actors) {
     const body = bodyOf(actor);
-    const idle = body && actor.geom.skin ? makeIdle(actor.geom.skin, body.geometry, body.material) : null;
+    // A COPY of the skin: the clip lives on it and `poseAll` swaps that clip
+    // per figure, while the payload's skin is shared by every figure of the
+    // same character — one swordsman drawing his sword would swing all six.
+    const skin = actor.geom.skin ? { ...actor.geom.skin } : null;
+    const idle = body && skin ? makeIdle(skin, body.geometry, body.material) : null;
     if (!idle) continue;
     idle.mesh.position.set((actor.x + 0.5) * U, (actor.y + 0.5) * U, actor.z);
     idle.mesh.rotation.z = actor.rot;
@@ -255,18 +288,28 @@ export function show(index: number, at = 0): void {
     refreshLighting();
   }
   aim(shot, at / (shot.duration || 1));
+  // The list of shots IS the open scene — which row is lit says which shot is
+  // on screen, so it is redrawn from here rather than by whoever happened to
+  // call. Once per shot, not per frame: the row click, the API and playback's
+  // own step all come through here.
+  renderPanel();
 }
 
 /** Put every actor where their clip says they are, at the current moment. */
 function poseAll(): void {
   for (const p of playing.players) {
-    const clip = p.actor.clips[p.kind] ?? p.actor.clips['idle00'];
+    // Until the cue's delay is up the actor is still idling. Held at time zero
+    // of the clip instead, they stand in its FIRST FRAME — three seconds of a
+    // swordsman frozen mid-swing before he swings, which reads as a broken
+    // model rather than as a cue that has not come yet.
+    const cued = playing.at >= p.from;
+    const clip = (cued ? p.actor.clips[p.kind] : null) ?? p.actor.clips['idle00'];
     if (!clip) continue;
     p.idle.skin.clip = clip;
-    const time = Math.max(0, playing.at - p.from);
+    const time = cued ? playing.at - p.from : playing.at;
     // A named clip plays once and holds its last frame; the idle loops. Letting
     // `death` loop would have the fallen stand back up every few seconds.
-    poseIdle(p.idle, p.kind === 'idle00' ? time : Math.min(time, clip.duration));
+    poseIdle(p.idle, !cued || p.kind === 'idle00' ? time : Math.min(time, clip.duration));
   }
 }
 
@@ -339,7 +382,7 @@ function renderPanel(): void {
         + `<span class="who">${who.replace(/\.xdb$/, '')}</span>`
         + (shot.cues.length ? `<span class="cued" title="${shot.cues.length} animation(s)">●</span>` : '')
         + `<span class="dur">${shot.duration.toFixed(1)}s</span>`;
-      row.onclick = () => { show(shot.index, 0); renderPanel(); };
+      row.onclick = () => show(shot.index, 0);
       list.append(row);
     }
   }
@@ -387,17 +430,7 @@ export function initDialogScenes(): void {
       await openScene(path);
     } catch (e) {
       $('sc-info').textContent = e instanceof Error ? e.message : String(e);
-      return;
     }
-    renderPanel();
   };
   $button('sc-play').onclick = () => { setPlaying(!playing.running); renderPanel(); };
-}
-
-/** Keep the list in step while a scene runs — called from the render loop. */
-export function syncScenePanel(): void {
-  if (!playing.info || !playing.running) return;
-  const list = $('sc-list');
-  const lit = [...list.children].findIndex((row) => row.classList.contains('on'));
-  if (lit !== playing.shot) renderPanel();
 }

@@ -29,6 +29,7 @@ import { buildScene } from '../src/scene/scene.ts';
 import { extractMapFolder, gameArchives } from '../src/map/map-source.ts';
 import { stageObjects } from '../src/dialog/stage.ts';
 import { actorRigs } from '../src/dialog/actors.ts';
+import { buildScenePlay } from '../src/dialog/play.ts';
 import { mkdirSync } from 'node:fs';
 
 let failures = 0;
@@ -482,16 +483,45 @@ if (!byPath.has(showcasePath)) {
   check('C1M1 D1 builds into a drawable stage', placed > 600 && built.skipped <= 1,
     `${built.scene.geoms.length} meshes, ${placed} placed, ${built.skipped} skipped`);
 
+  // A figure the scene both LISTS and SPEAKS THROUGH is one figure. Placed
+  // twice, an actor stands inside their own still adventure copy and every
+  // close-up has two of them — which is how it looked before this held.
+  const paths = objects.map((o) => o.href).filter((h) => h && !h.startsWith('#'));
+  const twice = paths.filter((h, i) => paths.indexOf(h) !== i);
+  check('nobody on the stage is placed twice', twice.length === 0,
+    twice.length ? twice.join(', ') : `${objects.length} figures, each once`);
+
   const rigs = actorRigs(data, scene, objects);
   const baked = rigs.reduce((a, r) => a + Object.keys(r.clips).length, 0);
-  check('its actors rig off their ARENA characters', rigs.length === 8 && baked >= 15,
+  // Eight speak; the rest are the armies behind them, cued by index alone.
+  check('its actors rig off their ARENA characters', rigs.length === 45 && baked >= 15,
     `${rigs.length} actors, ${baked} clips baked, ${rigs[0]?.geom.skin?.bones.length ?? 0} bones on the first`);
   // The adventure set holds idle00 and move; anything past those could only
   // have come from the arena one, which is why an actor is resolved twice.
   const beyond = rigs.flatMap((r) => Object.keys(r.clips)).filter((k) => k !== 'idle00' && k !== 'move');
-  check('and play clips the adventure set does not have', beyond.length > 0, beyond.join(', ') || 'none');
+  check('and play clips the adventure set does not have', beyond.length > 0, `${beyond.length} clips`);
   const unmet = rigs.flatMap((r) => r.missing);
   check('every clip the scene names is in the set it plays from', unmet.length === 0, unmet.join(', '));
+  // One mesh per CHARACTER, however many figures of it stand on the field:
+  // six swordsmen of a kind are one decode and one thing sent to the renderer.
+  const meshes = new Set(rigs.map((r) => r.geom));
+  check('figures of one character share their mesh', meshes.size < rigs.length,
+    `${meshes.size} meshes for ${rigs.length} figures`);
+
+  // What the shots ask of them. Most cues name no clip at all — they carry an
+  // index into the actor's own set — so counting cues is what tells whether
+  // that reading works at all: by name alone C1M1's opening moves nobody in 34
+  // of its 73 shots and never moves an army.
+  const play = buildScenePlay(data, showcasePath, { samples: 2, texSize: 8 });
+  const cued = play.shots.reduce((a, s) => a + s.cues.length, 0);
+  const named = scene.shots.reduce((a, s) => a + (s.animName ? 1 : 0)
+    + s.animations.filter((x) => x.animName).length, 0);
+  check('a shot cues its actors by index as well as by name', cued > named * 2,
+    `${cued} cues over ${play.shots.length} shots, only ${named} of them written as a name`);
+  const known = new Map(play.actors.map((a) => [a.href, a]));
+  const unplayable = play.shots.flatMap((s) => s.cues).filter((c) => !known.get(c.actor)?.clips[c.kind]);
+  check('every cue lands on an actor who has that clip', unplayable.length === 0,
+    unplayable.slice(0, 5).map((c) => `${c.actor.split('#')[0]}:${c.kind}`).join(', ') || `${cued} cues`);
 }
 
 console.log(`\n${failures ? `\x1b[31m${failures} failed\x1b[0m` : '\x1b[32mall checks passed\x1b[0m'}`);

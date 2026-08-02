@@ -628,6 +628,14 @@ Format (surveyed 2026-07-23, 250 scenes shipped under `DialogScenes/`):
       skinned bodies with their arena clips, and a shot drives the camera
       (`e2e/dialog-scene.spec.ts`). Still to come: the line timings from the
       voice files and walks along `MovePoints`
+- [x] ✅ **Everybody on the field acts** (2026-08-02): a cue names its clip by a
+      POSITION in that actor's own animation set far more often than by name
+      (132 cues against 40 in C1M1's opening, and every one of the armies'), an
+      actor is anyone the scene moves rather than only whoever speaks (8 speak,
+      45 act), and a hero the scene both lists and speaks through is one figure
+      — read as two, an unblinking still copy stood inside every close-up. With
+      that, the shot's camera also had to be defended from the orbit controls,
+      which rebuilt it a frame after each aim
 - [x] ✅ **The picture the game plays** (2026-08-02): the camera turned out to
       be on the wrong side of its own rod, so every close-up filmed the back of
       somebody's head; a shot fires its own `<effects>`; and a scene is lit by

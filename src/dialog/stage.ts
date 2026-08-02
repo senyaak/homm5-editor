@@ -72,24 +72,41 @@ function bodyOf(data: Assets, from: XmlElement, href: string, baseDir: string): 
 export function stageObjects(data: Assets, scenePath: string, scene: DialogScene): StageObject[] {
   const dir = dirOf(scenePath);
   const out: StageObject[] = [];
-  const seen = new Set<string>();
+  // Only a PATH identifies a figure. `#n:inline(AdvMapStatic)` is what 130 of
+  // C1M1's props are written as, and it says nothing about which one this is —
+  // so an inline object is never looked up here, only ever added.
+  const byPath = new Map<string, StageObject>();
+  const placed = new Set<string>();
 
   const objects = find(scene.root, 'objects');
   for (const item of objects ? children(objects) : []) {
     const href = item.attrs.href ?? '';
     const body = bodyOf(data, item, href, dir);
-    if (body) out.push({ object: new MapObject(item, body), role: 'prop', href, id: item.attrs.id ?? null });
+    if (!body) continue;
+    const at: StageObject = { object: new MapObject(item, body), role: 'prop', href, id: item.attrs.id ?? null };
+    out.push(at);
+    if (href && !href.startsWith('#')) byPath.set(href, at);
   }
 
   for (const shot of scene.shots) {
     for (const link of [shot.heroLink, shot.monsterLink]) {
-      if (!link || seen.has(link)) continue;
-      seen.add(link);
+      if (!link || placed.has(link)) continue;
+      placed.add(link);
+      // A speaker is USUALLY also in `<objects>` — all seven of C1M1's are.
+      // That is one figure listed twice, not two, so the entry already made is
+      // promoted rather than a second one added: placed twice, an actor stands
+      // inside their own still adventure copy, and the scene plays with two
+      // heroes in every close-up (the second one never blinking).
+      const known = byPath.get(link);
+      if (known) { known.role = 'actor'; continue; }
       // An inline actor is written inside the sentence's link element, so find
       // that element in the tree rather than re-parsing the text.
       const el = linkElement(scene, link);
       const body = el && bodyOf(data, el, link, dir);
-      if (body) out.push({ object: new MapObject(el ?? itemFor(link), body), role: 'actor', href: link, id: el?.attrs.id ?? null });
+      if (!body) continue;
+      out.push({
+        object: new MapObject(el ?? itemFor(link), body), role: 'actor', href: link, id: el?.attrs.id ?? null,
+      });
     }
   }
   return out;

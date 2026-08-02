@@ -58,6 +58,7 @@ export interface ShotAnimation {
   /** Who — an href at the actor, inline (`#xpointer(id(item_…)…)`) or a file. */
   heroLink: string;
   monsterLink: string;
+  /** Position in the actor's AnimSet, or -1 for none. `animName` wins. */
   animationIndex: number;
   animationDelay: number;
   animName: string;
@@ -193,7 +194,9 @@ function readShot(item: XmlElement, index: number): Shot {
     animations: items(item, 'CustomAnimations').map((a) => ({
       heroLink: href(a, 'heroLink'),
       monsterLink: href(a, 'monsterLink'),
-      animationIndex: num(a, 'AnimationIndex'),
+      // -1 when unwritten, as the shot's own index is: 0 is a real position in
+      // the actor's set, so a missing field must not read as "play the first".
+      animationIndex: Number(childText(a, 'AnimationIndex') || -1),
       animationDelay: num(a, 'AnimationDelay'),
       animName: childText(a, 'AnimName'),
       movePoints: items(a, 'MovePoints').map(point2),

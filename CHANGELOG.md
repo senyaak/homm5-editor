@@ -36,6 +36,23 @@ one.
 
 ### Fixed
 
+- **A scene's armies move, and there is one of each hero.** Three things were
+  wrong at once and each hid the others. A cue usually says WHICH clip by a
+  number — a position in that actor's own animation set — and only sometimes by
+  name; reading names alone left the heroes still through half of C1M1's
+  opening and its armies still through all of it. An actor was taken to be
+  whoever speaks, so the sixteen creatures saluting Isabell's speech were never
+  rigged to play anything. And a hero the scene both lists and speaks through
+  was placed twice, which put a second, unblinking copy of every hero inside the
+  first — two demon lords in every close-up of one.
+- **A shot's camera stayed put between shots.** The orbit controls rebuild the
+  camera from their own state every frame, and switching them off does not stop
+  that, so any shot that was not actively playing was aimed and then thrown away
+  a frame later: stepping through a scene showed the map's viewpoint each time,
+  with the spellwork and the animations going off out of frame.
+- A cue that has not fired yet no longer shows: an actor idles until their
+  delay is up instead of standing in the first frame of the clip to come, and an
+  effect stays hidden instead of holding its opening flash on the field.
 - Baked effects no longer need an open map. `bin/effects/<uid>` is a global
   asset, but the handler that serves it demanded a map session, so every
   campfire and firefly in a dialog scene asked for its keys and was told "no

@@ -29,7 +29,7 @@ import { materialFor, partTexture } from '#viewport/materials.ts';
 import { terrainColor, asTileSpace, terrainGeometry, waterCells, waterGeometry, makeWaterMesh, WATER_ORDER, remeshFloor, sea } from '#viewport/terrain-mesh.ts';
 import { refreshBlocked, refreshFootprints, syncFootprints, setShowBlocked, showBlocked } from '#viewport/overlays.ts';
 import { advanceIdle, clearIdle, removeIdle, addIdle, idleMode, setIdleMode } from '#viewport/idle.ts';
-import { advanceScene, closeScene, initDialogScenes, openScene, playing, setPlaying, shotFxCount, show, syncScenePanel } from '#features/dialog-scene.ts';
+import { actorKinds, advanceScene, closeScene, initDialogScenes, openScene, playing, setPlaying, shotFxCount, show } from '#features/dialog-scene.ts';
 import type { SceneInfo } from '#electron/ipc.ts';
 import { roster, objectsOfClass, canCreateClass, mapNames, forgetClass } from '#core/rosters.ts';
 import { openRecolor, initRecolor } from '#features/mods/recolor.ts';
@@ -359,6 +359,8 @@ interface ViewApi {
     actors: Array<{ href: string; kind: string }>;
     /** Particle systems the current shot is firing (see cueShotFx). */
     fx: number;
+    /** Where the camera is — the shot owns it while a scene is up. */
+    eye: [number, number, number];
   }) | null;
   heights(): number[];
   kinds(): number[];
@@ -668,8 +670,9 @@ const view: ViewApi = {
       shot: playing.shot,
       at: playing.at,
       running: playing.running,
-      actors: playing.players.map((p) => ({ href: p.actor.href, kind: p.kind })),
+      actors: actorKinds(),
       fx: shotFxCount(),
+      eye: cam.active.position.toArray() as [number, number, number],
     } : null;
   },
   heights() { return state.world ? Array.from(activeFloor().heights) : []; },
@@ -857,13 +860,17 @@ function bakePendingLights(now: number): void {
   keyPan(dt);
   // Resolve at most one deferred hover pick per frame (see hoverEv).
   if (hoverEv) { updateHoverCursor(tileUnderCursor(hoverEv)); hoverEv = null; }
-  controls.update();
+  // Not while a scene is up: the SHOT owns the camera then. `enabled = false`
+  // stops the controls reading input but not `update()` re-deriving the camera
+  // from its own orbit state, which put the camera back a frame after every
+  // shot that was not actively playing — step through a scene and every frame
+  // was the map's viewpoint, however carefully the shot had been aimed.
+  if (!playing.info) controls.update();
   if (cam.top) syncTopCamera(); // follow pan/zoom + the orbit target each frame
   advanceIdle(dt);
   // A scene drives the camera and its actors' clips; does nothing while the
   // window is showing a map.
   advanceScene(dt);
-  syncScenePanel();
   advanceFx(dt);
   bakePendingLights(now);
   renderer.render(scene, cam.active);

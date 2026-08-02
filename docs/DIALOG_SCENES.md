@@ -83,9 +83,35 @@ Fields in the order the game declares them (`DialogScene` in `types.xml`):
 | `StopAmbient` / `StopMusic` | 45 / 188 | |
 | `DynamicCamera` | never off | all 2386 leave it true |
 
-`CustomAnimations` is what makes a scene move: an actor link, a clip name, a
-delay, and — for a walk — `MovePoints` in TILES with a `FinalAngle` to end on.
+`CustomAnimations` is what makes a scene move: an actor link, a clip, a delay,
+and — for a walk — `MovePoints` in TILES with a `FinalAngle` to end on.
 Corpus-wide there are 5578 of them and 769 placed effects.
+
+### Which clip, by name or by number
+
+A cue says which clip two ways and the shipped scenes use both:
+
+* `AnimName` — the kind, as the AnimSet spells it (`happy`, `stir01`);
+* `ActorAnimationIndex` on the shot, `AnimationIndex` on a `CustomAnimation` —
+  **a position in that actor's own AnimSet, counted in file order.**
+
+The index is the commoner of the two by far. C1M1's opening writes a name in 40
+of its cues and an index in all 132 of them, and every animation it hands to the
+armies — sixteen creatures saluting Isabell's speech in one shot — is an index
+with no name beside it. Reading names alone leaves the heroes still through half
+the scene and the armies still through all of it.
+
+**The name wins where both are written.** 590 cues carry a name and a non-zero
+index; 534 of them agree with the set's file order (the runner-up reading,
+alphabetical, gets 383). The 56 that disagree, and the 4008 more that write
+index 0 beside a name that is not the set's first clip, are indices left behind
+by an edit — the name is never stale.
+
+A creature's set is reached the long way round. A hero's shared names
+`HeroCharacterArena` outright; an `AdvMapMonsterShared` carries only the
+adventure model and a `<Creature>` enum, and its arena body is four documents
+on: `Creatures.xdb` → `Creature.Visual` → `CreatureVisual.AnimCharacter` →
+`Character`.
 
 ## Actors
 
@@ -96,6 +122,21 @@ Two storage styles, both in use, both to be preserved on save:
 * **a sibling file** (1742 shots) — `href="Agrael.xdb#xpointer(/AdvMapHero)"`.
 
 The addon's scenes prefer the first, the original campaigns' the second.
+
+**A figure the scene lists AND speaks through is one figure.** All seven of
+C1M1's file-backed actors are in `<objects>` as well as on a `heroLink`, and
+read as two they are placed twice: the still adventure copy standing inside the
+rig that can act, so every close-up has two of the same hero in it and one of
+them never blinks. Only a PATH identifies, mind — `#n:inline(AdvMapStatic)` is
+what 130 of that scene's props are written as and says nothing about which.
+
+**An actor is anyone the scene MOVES, not only whoever speaks.** Most of what a
+shot animates is the armies drawn up behind the two heroes, and a creature left
+in the crowd can only ever loop its idle. C1M1's opening speaks through 8
+figures and animates 45. They are read per CHARACTER rather than per figure —
+six swordsmen of a kind are one mesh and one set of clips, shared by reference
+all the way to the GPU, which is the difference between a 60 MB payload and a
+140 MB one.
 
 Two more things a player has to get right, both found by drawing it: the
 DISPLAY SCALE rides on the clip skeleton's root the same way a creature's does
@@ -279,6 +320,22 @@ going quietly green.
   stance is a setting, off by default, because it costs a draw call per creature
   — in a scene the armies standing behind the two heroes are half the frame, and
   unanimated they hold the bind pose with their arms straight out.
+
+  **The shot owns the camera, including between shots.** The orbit controls
+  re-derive the camera from their own state every frame and `enabled = false`
+  does not stop `update()` doing it — so a shot that was not actively playing
+  was aimed and then overwritten one frame later, and stepping through a scene
+  showed the map's viewpoint over and over, with the effects and the animations
+  going off somewhere off screen. The loop skips `controls.update()` while a
+  scene is up. A test for this has to read the camera in the SAME turn as the
+  aim: read a turn later it is already the drifted one and the check passes on a
+  camera that has been thrown away.
+
+  **A cue that has not fired yet is not shown.** Until its delay is up an actor
+  idles rather than standing in the first frame of the clip to come (three
+  seconds of a swordsman frozen mid-swing before he swings), and an effect is
+  hidden rather than held at frame zero (a spell's flash sitting on the field
+  before it is cast).
 * `tools/test-dialog-scene.ts` — the corpus checks and the census above.
 * `tools/camera-shape.ts` — the convention measurement.
 * `src/dialog/actors.ts` — an actor's ARENA rig: the character's own mesh and

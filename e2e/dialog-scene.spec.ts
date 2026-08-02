@@ -48,17 +48,33 @@ test('the editor opens a campaign scene and plays it', async () => {
   const drawn = await page.evaluate(() => ({ ...window.view.batched(), idle: window.view.idle() }));
   expect(drawn.slots).toBeGreaterThan(500);
   expect(drawn.misplaced).toBe(0);
-  // The crowd is alive. On a map the idle stance is a setting and off by
-  // default, which for a scene left the armies watching the two heroes standing
-  // in the bind pose with their arms straight out; a scene turns it on for as
-  // long as it is up. They are the creature stacks, not the eight rigged
-  // actors, which are skinned separately and are not in this count.
-  expect(drawn.idle.animated).toBeGreaterThan(30);
-
   const opened = await page.evaluate(() => window.view.scene());
-  expect(opened?.actors.length).toBe(8);
+
+  // Nobody on the field stands in the bind pose with their arms straight out.
+  // A figure is alive one of two ways: as a rigged actor, if a shot ever moves
+  // them, or in the crowd, which needs the idle stance turned on — a map
+  // setting, off by default, that a scene borrows for as long as it is up.
+  expect(drawn.idle.mode).toBe('all');
+  expect(drawn.idle.animated + (opened?.actors.length ?? 0)).toBeGreaterThan(40);
+
+  // Eight figures speak; the other 37 are the soldiers the shots animate —
+  // an actor is anyone the scene MOVES, and a stack left in the crowd can only
+  // ever loop its idle.
+  expect(opened?.actors.length).toBe(45);
   // Nothing is cued on the opening shot, so everybody stands in their idle.
   expect(opened?.actors.every((a) => a.kind === 'idle00')).toBe(true);
+
+  // Shot 4 is Isabell's speech, and both armies answer it: sixteen creatures
+  // cued, the Haven line three seconds in and the demons at six. Every one of
+  // them is written as an INDEX into that creature's own animation set with no
+  // name beside it, so reading names alone leaves the field standing still.
+  const salute = await page.evaluate(() => {
+    window.view.showShot(4, 6.5);
+    const acting = window.view.scene()?.actors.filter((a) => a.kind !== 'idle00') ?? [];
+    return { count: acting.length, kinds: [...new Set(acting.map((a) => a.kind))].sort() };
+  });
+  expect(salute.count).toBe(16);
+  expect(salute.kinds).toContain('happy');
 
   // A shot fires its own effects — the spellwork the scene is made of — and
   // they belong to the shot, so they go away with it. Shot 2 is the Prayer over
@@ -98,6 +114,21 @@ test('the editor opens a campaign scene and plays it', async () => {
   });
   expect(framing.shot).toBe(62);
   expect(framing.acting.length).toBeGreaterThan(0);
+
+  // …and the camera STAYS where the shot put it. The orbit controls re-derive
+  // it from their own state every frame, and being disabled does not stop that
+  // — so a shot that was not actively playing was aimed and then overwritten
+  // one FRAME later, and stepping through a scene showed the map's viewpoint
+  // over and over. Which is why `before` is read in the same turn as the aim:
+  // read a turn later it is already the drifted one, and the check passes on a
+  // camera that has been thrown away.
+  const held = await page.evaluate(async () => {
+    window.view.showShot(62, 0.6);
+    const before = window.view.scene()?.eye;
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(r))));
+    return { before, after: window.view.scene()?.eye };
+  });
+  expect(held.after).toEqual(held.before);
 
   // Running it advances on its own.
   await page.evaluate(() => window.view.playScene(true));

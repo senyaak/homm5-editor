@@ -160,7 +160,10 @@ export function buildScenePlay(data: Assets, scenePath: string, options: PlayOpt
   // one that can act. Only the second is wanted, so the still copy is taken out
   // of the payload here rather than left for each consumer to hide — its
   // height, which the builder worked out and the file does not carry, is kept.
-  const rigs = actorRigs(data, scene, objects, options.fps ? { fps: options.fps } : {});
+  const rigs = actorRigs(data, scene, objects, {
+    ...(options.fps ? { fps: options.fps } : {}),
+    ...(options.texSize ? { texSize: options.texSize } : {}),
+  });
   const actors: ActorView[] = rigs.map((rig) => {
     const placed = objects.find((o) => o.href === rig.href)?.object;
     const pos = placed?.pos ?? { x: 0, y: 0, z: 0 };
@@ -189,6 +192,16 @@ export function buildScenePlay(data: Assets, scenePath: string, options: PlayOpt
   const actorKey = (link: string): string => {
     const id = /#xpointer\(id\(([^)]+)\)/.exec(link)?.[1];
     return (id && byId.get(id)) || link;
+  };
+
+  // A cue says WHICH clip either by name or by position in the actor's own
+  // AnimSet, and the armies are cued by position only. The name wins where both
+  // are written — an index beside a name is usually left over from an edit.
+  const byHref = new Map(actors.map((a) => [a.href, a]));
+  const clipOf = (key: string, name: string, index: number): string => {
+    if (name) return name;
+    const rig = byHref.get(key);
+    return (index >= 0 && rig?.available[index]) || '';
   };
 
   // One effect is fired by many shots — eight copies of Prayer over a line of
@@ -234,15 +247,14 @@ export function buildScenePlay(data: Assets, scenePath: string, options: PlayOpt
       }
     }
     const cues: ShotView['cues'] = [];
-    if (shot.animName) cues.push({ actor: actorKey(speaker), kind: shot.animName, delay: shot.animationDelay });
+    const cue = (link: string, name: string, index: number, delay: number): void => {
+      const actor = actorKey(link);
+      const kind = clipOf(actor, name, index);
+      if (kind) cues.push({ actor, kind, delay });
+    };
+    cue(speaker, shot.animName, shot.actorAnimationIndex, shot.animationDelay);
     for (const anim of shot.animations) {
-      if (anim.animName) {
-        cues.push({
-          actor: actorKey(anim.heroLink || anim.monsterLink || speaker),
-          kind: anim.animName,
-          delay: anim.animationDelay,
-        });
-      }
+      cue(anim.heroLink || anim.monsterLink || speaker, anim.animName, anim.animationIndex, anim.animationDelay);
     }
     return {
       index: shot.index,
