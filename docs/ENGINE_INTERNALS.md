@@ -54,6 +54,16 @@ compilation, **every address in these documents is a landmark for a pattern
 search, never a constant to hardcode** — the same discipline the creature and
 artifact ceiling patchers already follow.
 
+**A reference table's size is one site, and it is found by the table's own
+name.** The registration routine has the same shape for every table — the path
+string, then a `push <count>`, then the call — so the hero class and skill
+ceilings were found without a single new address
+([HERO_CLASSES.md](HERO_CLASSES.md)). The twelve one-line `mov eax,N; ret`
+accessors that sit beside the creature ceiling are **referenced by nothing at
+all** — searched for calls, jumps and pointers over the whole image — so they
+are out-of-line copies of a size that was inlined at every real use, and the
+newer patcher leaves them alone.
+
 Tooling, all TypeScript: `src/exe/pe.ts` (sections, addresses, strings,
 references), `src/exe/disasm.ts` (iced-x86), `src/exe/lua-registry.ts`, and the
 commands in `tools/reverse/` — `lua-registry.ts` regenerates

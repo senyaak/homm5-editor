@@ -1,0 +1,231 @@
+# Hero classes and skills
+
+*Answers: what a class decides and what it does not, how a skill is bound to
+one, what gates a perk, what a table of either costs the game, and which half of
+all this the executable will not do for us.*
+
+The tenth class loads and a hero can be of it: measured in game on 2026-08-02,
+with Gem standing on a map as a Колдунья holding a racial of ours. What is
+written down here is what that took and what it cost.
+
+## A class, in the data
+
+One record in `GameMechanics/RefTables/HeroClass.xdb`, and four fields is the
+whole of it:
+
+| field | what it decides |
+|---|---|
+| `NameFileRef` | what the hero screen calls him |
+| `SkillsProbs` | how often each skill is offered at a level up |
+| `AttributeProbs` | how often each of the four attributes grows |
+| `PreferredSpellsFromSpellShop` | what the class would rather buy |
+
+**Morale is not among them**, and neither is anything else people expect a class
+to hold. The penalty for a mixed army is computed by the executable from the
+stacks' own `TownType`; the class does not enter it. There is no field for
+movement, none for growth, none for the town.
+
+### The regularity is the specification
+
+All nine shipped classes carry **exactly thirteen** skill weights summing to
+**exactly 100**, and four attribute weights summing to **exactly 100**:
+
+```
+KNIGHT       13 weights, sum 100 | 30/45/10/15
+RANGER       13 weights, sum 100 | 15/45/10/30
+WIZARD       13 weights, sum 100 | 10/15/30/45
+DEMON_LORD   13 weights, sum 100 | 45/10/15/30
+NECROMANCER  13 weights, sum 100 | 10/30/45/15
+WARLOCK      13 weights, sum 100 | 30/10/45/15
+RUNEMAGE     13 weights, sum 100 | 20/30/30/20
+BARBARIAN    13 weights, sum 100 | 45/35/5/15
+```
+
+Thirteen is not a coincidence either: it is the **twelve common skills every
+class lists** — logistics, luck, learning, leadership, defence, offence,
+sorcery, light, dark, destructive, summoning, war machines — plus that class's
+own racial. No class is denied a common skill. A class does not choose WHICH
+skills exist for it; it chooses how often each is offered, and a weight of zero
+is how "never" is spelled.
+
+Both sums are distributions the engine walks, so both are checked before a class
+is written: under a hundred leaves a range that answers nothing, over it leaves
+the tail of the list unreachable. `classProblems()` refuses either.
+
+## The racial skill is bound from the skill's side
+
+There is no table of racials and no field on a class saying which is his. Of the
+27 `SKILLTYPE_SKILL` entries in `Skills.xdb`, exactly eight carry a class in
+`<HeroClass>`:
+
+| skill | class |
+|---|---|
+| `HERO_SKILL_TRAINING` | Knight |
+| `HERO_SKILL_GATING` | Demon Lord |
+| `HERO_SKILL_NECROMANCY` | Necromancer |
+| `HERO_SKILL_AVENGER` | Ranger |
+| `HERO_SKILL_ARTIFICIER` | Wizard |
+| `HERO_SKILL_INVOCATION` | Warlock |
+| `HERO_SKILL_RUNELORE` | Runemage |
+| `HERO_SKILL_DEMONIC_RAGE` | Barbarian |
+
+The other nineteen are `HERO_CLASS_NONE`. **The skill names the class, and that
+is the entire binding** — so a racial of ours is a skill of ours carrying our
+class.
+
+A racial is drawn and named **four times**, one per mastery, and the fourth is
+`MASTERY_EXTRA_EXPERT` — the level an artifact grants. A common skill has three,
+which is why its fourth texture entry repeats the third. The `Texture` list of a
+racial has five entries: an empty one for `MASTERY_NONE`, then the four.
+
+## What gates a perk
+
+Not the class record. The gate is on the **perk**, as a list of classes with the
+dependencies each of them needs:
+
+```xml
+<ID>HERO_SKILL_LAST_AID</ID>            <!-- «Чумная палатка» -->
+<BasicSkillID>HERO_SKILL_WAR_MACHINES</BasicSkillID>
+<SkillPrerequisites>
+  <Item><Class>HERO_CLASS_DEMON_LORD</Class>
+        <dependenciesIDs><Item>HERO_SKILL_FIRST_AID</Item></dependenciesIDs></Item>
+  <Item><Class>HERO_CLASS_NECROMANCER</Class> …
+  <Item><Class>HERO_CLASS_WARLOCK</Class> …
+  <Item><Class>HERO_CLASS_BARBARIAN</Class> …
+</SkillPrerequisites>
+```
+
+Four classes, and the Ranger is not one of them — which is exactly why a Ranger
+never gets a plague tent, at any weight. Three things about that list:
+
+- **An empty list is an OPEN door, not a closed one.** 75 of the 194 perks carry
+  none, and those are free to any class that has the branch. It is a list *with
+  names in it* that shuts everybody else out.
+- **The dependencies are per class.** 37 of the 115 perks that carry
+  prerequisites ask different classes for different things — the demon lord
+  needs demonic fire for the triple ballista and everybody else only needs the
+  ballista.
+- **A class of ours reaches a shipped perk by being added to that list**, which
+  is one `<Item>` and no executable at all.
+
+### `<HeroClass>` on a perk is a different thing
+
+On a perk of a **common** branch it is decoration: `HERO_SKILL_TRIPLE_BALLISTA`
+carries `HERO_CLASS_KNIGHT` and all eight classes are in its prerequisites — it
+marks whose art the icon was drawn for. On a `SKILLTYPE_CLASS_PERK` of a
+**racial** branch it is the ownership that matters, because the branch itself
+belongs to one class: Multishot names the Ranger, carries no prerequisites at
+all, and no other class can reach it since no other class has Avenger to hang it
+from. A perk of ours is that second kind.
+
+## What a table of either costs
+
+Both are reference tables with a declared size, and the size is written **four**
+times. Miss one and the game either ignores what the mod added or refuses to
+start:
+
+1. `types.xml` — the enum's entry list (`<Item>HERO_CLASS_WITCH</Item>`);
+2. `types.xml` — the name→number map the executable compares against;
+3. `types.xml` — the table type's `ref_table_num_objs` **and** the `objects`
+   field's `MinElements`/`MaxElements`;
+4. the executable — the count pushed where the table is registered.
+
+The shipped counts are **9 classes** and **221 skills**.
+
+### Finding the count in the executable
+
+The registration routine has ONE shape for every table:
+
+```
+mov edx, <the table's path string>     ; "/GameMechanics/RefTables/X.xdb"
+…copy the path onto the heap…
+push <count>                           ; imm8 or imm32
+push …, push …, push <type name>
+call <register>
+```
+
+So a table is identified by its own path — unique in the image — and the count
+is the first `push` after the reference to it. Checked on all four tables the
+editor extends (creatures, artifacts, hero classes, skills). `src/exe/table-limit.ts`
+patches by that pattern, never by address.
+
+**The one-line accessors are not patched, and should not be.** Twelve
+`mov eax,N; ret` functions sit together at `0xa9ef30`…`0xa9f330`, one per table,
+and the creature and artifact patchers both write theirs. Two things say they do
+not matter: **nothing references them** — not a call, not a jump, not a pointer
+anywhere in the image, searched for all twelve — and **the value cannot identify
+the table**: `mov eax,9; ret` fits the hero class table and the player colour
+table equally, and both declare 9.
+
+## What the editor does with all this
+
+| file | what it owns |
+|---|---|
+| `src/mods/hero-classes.ts` | the record, the enum, the table, the perk gate, reading the shipped nine |
+| `src/mods/hero-skills.ts` | a racial or a perk of ours: the record, its texts, its icons |
+| `src/exe/table-limit.ts` | the count in the executable, for any table |
+| `renderer/features/mods/hero-classes.ts` | the class form — priorities and availability |
+| `renderer/features/mods/hero-skills.ts` | the skill form |
+| `renderer/features/mods/hero-tabs.ts` | the Heroes window's tabs; each side registers its own |
+
+The class form is the two questions a class answers. **Priorities** is a weight
+per skill and one per attribute, both totalled as they are typed. **Availability**
+is the two sides of the perk gate with a button between them, and a perk with no
+class list at all is in neither — moving it would write an entry that CLOSED it
+to everyone else. The donor button fills all of it from a shipped class.
+
+Ownership, in the model: **a class owns its skills**. The skill names the class
+and the class weights the skill, so refusing both ways is a knot nobody can
+untie; removing a class removes what hangs off it, and removing a skill a class
+still weights says which class to remove instead. A hero stays refused either
+way — he is not part of the class.
+
+The whole chain is authored through the window by
+`e2e/mod-004-classes-create.spec.ts`, and `e2e/mod-004-heroes-create.spec.ts`
+builds Gem out of what it made. The order there is the real constraint: class,
+then skill, then back to the class to weight it, because neither can name the
+other before it exists.
+
+## What the executable will not do for us
+
+Every shipped skill's arithmetic is compiled against its own enum value, exactly
+as a specialization's is
+([engineInternals/SPECIALIZATIONS.md](engineInternals/SPECIALIZATIONS.md)). A
+value it was not compiled against has a name, an icon and a place in the tree,
+and does nothing whatever. So a skill of ours is two halves — the record here,
+and a term the native extension adds — and until the second half exists the
+words are a promise.
+
+## Open: a perk of ours is never offered
+
+**The state on 2026-08-02.** The class works, its weights work, the racial is
+held and shown with its own icons and its own words per level. The three perks
+of its branch are installed and are never offered at a level up.
+
+What has been ruled out:
+
+- **The record.** Ours and the shipped Multishot are field-for-field identical
+  in shape — same `SKILLTYPE_CLASS_PERK`, same empty `SkillPrerequisites`, same
+  `BasicSkillID` naming the branch, same two textures, same one name and one
+  description. Only the ids and the hrefs differ.
+- **A second registration.** `HERO_SKILL_MULTISHOT` occurs in exactly one file
+  in the whole data root, `Skills.xdb`. Perks are not listed anywhere else — not
+  in a UI file, not in a wheel, not per class.
+- **The table's size.** The executable counts to 225 and the racial at 221 loads
+  and works, so ids past the shipped 221 are not invisible as such.
+
+What is left, in the order worth testing:
+
+1. **A second compiled bound on the OFFER path.** The racial is on the hero
+   because his document names it; nothing has to offer it. A loop bounded by 221
+   where the level up collects candidates would show exactly this symptom. The
+   discriminating observation is whether OUR RACIAL can be advanced to its second
+   level by a level up — if it cannot, the bound is real.
+2. **A compiled perk list per branch.** If the engine knows which perks belong to
+   Avenger rather than reading `BasicSkillID`, ours belong to nothing.
+3. **Something the class must declare.** Nothing in the class record mentions
+   perks, but the nine shipped classes are the only sample and all of them have a
+   racial the engine already knows.
+
+The next probe is (1), and it is a question a person with the game open answers
+in one level up.
