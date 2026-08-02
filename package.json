@@ -94,6 +94,7 @@
     "lua-registry": "node tools/reverse/lua-registry.ts",
     "test-lua-registry": "node tools/reverse/lua-registry.ts --check",
     "test-artifact-scripts": "node tools/test-artifact-scripts.ts",
+    "test-skill-scripts": "node tools/test-skill-scripts.ts",
     "e2e-live": "node tools/e2e-live.ts"
   },
   "dependencies": {

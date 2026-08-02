@@ -22,10 +22,25 @@ import { registerHeroTab } from '#features/mods/hero-tabs.ts';
 import { forgetClassData } from '#features/mods/hero-classes.ts';
 import { effectStats, ensureEffectStats, modRow } from '#features/mods/shared.ts';
 import { requireFilled } from '#core/form-gate.ts';
+import { mountCodeEditor } from '#features/text-editor/code-editor.ts';
+import type { CodeEditor } from '#features/text-editor/code-editor.ts';
+import { loadScriptContext, scriptContextNote, scriptContextReady } from '#features/text-editor/context.ts';
+import { skillStarter } from '#src/mods/skill-scripts.ts';
 import type { ModListEntry } from '#electron/ipc.ts';
 
 /** The one being changed, or '' when the form is making a new one. */
 let editingSkill = '';
+
+/**
+ * The two scripts the form is holding, kept out of the DOM.
+ *
+ * Lua is written in an editor, never in an input among fields, so the form has
+ * nowhere to keep the text but here — the same arrangement the set form has.
+ */
+const scripts: Record<Side, string> = { map: '', combat: '' };
+
+/** Which context a script belongs to: the adventure map, or a battle. */
+type Side = 'map' | 'combat';
 
 let gate: { check: () => void; rewatch: () => void } | null = null;
 const gateSkill = (): { check: () => void; rewatch: () => void } => (gate ??= requireFilled({
@@ -175,6 +190,9 @@ async function editSkill(id: string): Promise<void> {
   $select('hk-class').value = s.heroClass;
   $select('hk-branch').value = s.basicSkill ?? '';
   $select('hk-needs').value = s.prerequisites?.[0] ?? '';
+  scripts.map = s.script ?? '';
+  scripts.combat = s.combatScript ?? '';
+  showScripts();
   showKind();
   gateSkill().rewatch();
   openOnTop('skilledit');
@@ -218,6 +236,11 @@ async function submitSkill(): Promise<void> {
         ...(needs ? { prerequisites: [needs] } : {}),
       } : {}),
       effects: skillEffects(),
+      // Sent whatever they hold, blank included: emptying the editor is how a
+      // skill stops carrying a script, and an install that only ever sent text
+      // would leave the old one in the mod for good.
+      script: scripts.map,
+      combatScript: scripts.combat,
     };
     const r = editingSkill ? await api.updateHeroSkill(p) : await api.installHeroSkill(p);
     $('hm-note').textContent = `${editingSkill ? 'Updated' : 'Installed'} ${p.name} as value ${r.number} in ${r.archive}`;
@@ -229,6 +252,64 @@ async function submitSkill(): Promise<void> {
   } catch (e) {
     $('hk-err').textContent = e instanceof Error ? e.message : String(e);
   }
+}
+
+let skillScriptEditor: CodeEditor | null = null;
+/** Which half is open, so Done knows what it is keeping. */
+let editingSide: Side = 'map';
+
+/** What the two buttons say: whether there is a script, and how long it is. */
+function showScripts(): void {
+  for (const side of ['map', 'combat'] as Side[]) {
+    const text = scripts[side].trim();
+    const lines = text ? text.split(/\r?\n/).filter((l) => l.trim() && !l.trim().startsWith('--')).length : 0;
+    $(side === 'map' ? 'hk-script-note' : 'hk-combat-note').textContent =
+      text ? `${lines} line${lines === 1 ? '' : 's'}` : 'none';
+  }
+}
+
+/**
+ * A skill's script, in the editor — on top of the skill form, never inside it.
+ *
+ * The same CodeMirror the map's scripts use, mounted once and lazily: most
+ * skills are a number in a sum and never open this at all. The completion
+ * sources are fetched when a MAP opens and this window works without one, so
+ * they are asked for here too.
+ */
+function openSkillScript(side: Side): void {
+  editingSide = side;
+  if (!scriptContextReady()) {
+    void loadScriptContext()
+      .then(() => { $('ks-info').textContent = scriptContextNote(); })
+      .catch(() => { $('ks-info').textContent = 'no completion available'; });
+  }
+  if (!skillScriptEditor) {
+    skillScriptEditor = mountCodeEditor($('ks-text'), () => closeSkillScript(true), (diags) => {
+      const errors = diags.filter((d) => d.severity === 'error').length;
+      const el = $('ks-lint');
+      el.className = 'de-lint ' + (errors ? 'err' : diags.length ? 'warn' : 'ok');
+      el.textContent = errors ? `⚠ ${errors} error${errors === 1 ? '' : 's'}`
+        : diags.length ? `⚠ ${diags.length} warning${diags.length === 1 ? '' : 's'}` : '✓ no errors';
+    });
+  }
+  // An empty half opens on the shape it has: what the head declares for it, and
+  // — on the map — that a function nothing triggers never runs. The battle side
+  // has no hook to show, which is the thing worth saying there.
+  if (!scripts[side].trim()) {
+    scripts[side] = skillStarter($input('hk-id').value.trim(), side);
+    $('hk-err').textContent = '';
+  }
+  $('ks-title').textContent = side === 'map' ? 'Skill script — on the adventure map' : 'Skill script — inside a battle';
+  $('ks-info').textContent = scriptContextNote();
+  skillScriptEditor.setDoc(scripts[side], 'lua');
+  openOnTop('skillscript');
+  skillScriptEditor.focus();
+}
+
+function closeSkillScript(keep: boolean): void {
+  if (keep && skillScriptEditor) scripts[editingSide] = skillScriptEditor.getDoc();
+  showScripts();
+  modDialog('skillscript').close();
 }
 
 /** Bind the tab, the list and the form to their markup. */
@@ -255,6 +336,9 @@ export function initHeroSkills(): void {
     $input('hk-desc').value = '';
     for (const id of PICTURES) $input(id).value = '';
     $('hk-effects').innerHTML = '';
+    scripts.map = '';
+    scripts.combat = '';
+    showScripts();
     $select('hk-kind').value = 'racial';
     showKind();
     gateSkill().rewatch();
@@ -277,6 +361,11 @@ export function initHeroSkills(): void {
       })().catch((e) => { $('hk-err').textContent = e instanceof Error ? e.message : String(e); });
     };
   }
+  $('hk-script').onclick = () => openSkillScript('map');
+  $('hk-combat-script').onclick = () => openSkillScript('combat');
+  $('ks-ok').onclick = () => closeSkillScript(true);
+  $('ks-cancel').onclick = () => closeSkillScript(false);
+  $('ks-x').onclick = () => closeSkillScript(false);
   $('skilledit-x').onclick = () => modDialog('skilledit').close();
   $('skilledit-cancel').onclick = () => modDialog('skilledit').close();
   $('hk-ok').onclick = () => { void submitSkill(); };

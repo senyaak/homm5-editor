@@ -279,6 +279,11 @@ export function registerModHeroes(): void {
     // the same filter an artifact's effects go through, and for the same
     // reason: a zero row is a row that lies about being in effect.
     ...(effectsFrom(p.effects) ? { effects: effectsFrom(p.effects)! } : {}),
+    // Blank is absent, on both sides: a skill carrying an empty script would
+    // have the mod replace one of the game's two global Lua files to load a
+    // file with nothing in it.
+    ...(p.script?.trim() ? { script: p.script } : {}),
+    ...(p.combatScript?.trim() ? { combatScript: p.combatScript } : {}),
   });
 
   /** The mod, or a refusal saying which of the two configurations is missing. */

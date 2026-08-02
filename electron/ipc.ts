@@ -927,6 +927,10 @@ export interface ModHeroSkillDTO {
   aiRace?: string;
   /** What the extension adds per level of mastery held. */
   effects?: Record<string, number>;
+  /** Its adventure-map Lua, so the form reopens on what was written. */
+  script?: string;
+  /** And its battle-side half. */
+  combatScript?: string;
 }
 
 /** Payload of `mods:install-class` and of the update beside it. */
@@ -966,6 +970,10 @@ export interface ModsInstallSkillPayload {
   aiRace?: string;
   /** What the extension adds per level of mastery — `{ necromancy: 5 }`. */
   effects?: Record<string, number>;
+  /** Lua that runs on every adventure map — for a perk whose content is an event. */
+  script?: string;
+  /** And the half of it that has to run inside a battle, where the other cannot see. */
+  combatScript?: string;
 }
 
 /** What installing a skill produced. */

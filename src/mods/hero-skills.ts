@@ -163,6 +163,24 @@ export interface HeroSkillSpec {
    * (0…4) and the amount is multiplied by it. See src/mods/artifact-effects.ts.
    */
   effects?: Partial<Record<EffectStat, number>>;
+  /**
+   * Lua that runs on every adventure map, for what a sum cannot express.
+   *
+   * `effects` above reaches numbers the engine computes; this reaches MOMENTS —
+   * "after a battle", "at the start of a day" — which the engine already hands
+   * to Lua and which no arithmetic can stand in for. The head naming this
+   * skill's id is generated; everything else is the author's.
+   */
+  script?: string;
+  /**
+   * The same, inside a battle: another context, another function table.
+   *
+   * A battle's Lua cannot see the adventure map's calls or the other way round;
+   * what crosses is `SetGameVar`/`GetGameVar`, which both contexts register over
+   * one store. So the pair is how a perk asks a battle something and answers on
+   * the map — see src/mods/skill-scripts.ts.
+   */
+  combatScript?: string;
 }
 
 /** One in a mod: a skill plus the enum value it holds. */

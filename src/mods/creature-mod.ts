@@ -58,6 +58,9 @@ import { NULL_CREATURE, creatureRoot, setCreatureRefs, writeStats } from './crea
 import { serialize, setAttr } from '../format/xml.ts';
 import { parseTypeSpec } from '../schema/typespec.ts';
 import { COMMON_SCRIPT, patchCommonScript, setScriptFiles } from './artifact-scripts.ts';
+import {
+  COMBAT_STARTUP, patchCombatStartup, skillCombatScripts, skillMapScripts, skillScriptFiles,
+} from './skill-scripts.ts';
 import { isIdentity } from '../format/recolor.ts';
 import { EOL, count, hrefOf, insertAfterLine, insertBeforeLine, once, retune, setHref } from './xml-edit.ts';
 import { MOD_MANIFEST, REF_TABLE, TYPES, UI_ROOT, mustRead, utf16 } from './mod-files.ts';
@@ -263,18 +266,31 @@ export function buildCreatureMod(mod: CreatureMod, read: DataReader): BuildRepor
       path: DEFAULT_STATS,
       data: Buffer.from(patchDefaultStats(mustRead(read, DEFAULT_STATS), sets), 'latin1'),
     });
-    // A set that carries Lua brings two more files: its own script, and the
-    // game's global one with a line loading it. Both only when there is a
-    // script — a mod that replaces advmap-common.lua for nothing is a mod that
-    // can only break something.
-    const scripts = setScriptFiles(sets);
-    for (const f of scripts) files.push({ path: f.path, data: Buffer.from(f.text, 'latin1') });
-    if (scripts.length) {
-      files.push({
-        path: COMMON_SCRIPT,
-        data: Buffer.from(patchCommonScript(mustRead(read, COMMON_SCRIPT), sets), 'latin1'),
-      });
-    }
+  }
+
+  // Lua, from whatever in the mod carries any: a set that reacts to something, a
+  // skill whose content is an event rather than a number. Each contributes its
+  // own file, and the game's global script gets a line loading it — but only
+  // when there is something to load, because a mod that replaces
+  // advmap-common.lua for nothing is a mod that can only break something.
+  //
+  // Two global scripts, not one, and they are not interchangeable: the adventure
+  // map's runs on every map, the battle's inside every battle, and a skill can
+  // want both halves (src/mods/skill-scripts.ts).
+  const scripts = [...setScriptFiles(sets), ...skillScriptFiles(skills)];
+  for (const f of scripts) files.push({ path: f.path, data: Buffer.from(f.text, 'latin1') });
+  const onTheMap = skillMapScripts(skills);
+  if (setScriptFiles(sets).length || onTheMap.length) {
+    files.push({
+      path: COMMON_SCRIPT,
+      data: Buffer.from(patchCommonScript(mustRead(read, COMMON_SCRIPT), sets, onTheMap), 'latin1'),
+    });
+  }
+  if (skillCombatScripts(skills).length) {
+    files.push({
+      path: COMBAT_STARTUP,
+      data: Buffer.from(patchCombatStartup(mustRead(read, COMBAT_STARTUP), skills), 'latin1'),
+    });
   }
 
   // Last, so it records the art each slot actually resolved to.

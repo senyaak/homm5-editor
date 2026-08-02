@@ -335,12 +335,48 @@
             <div class="um-note" style="margin-top:6px">per level of mastery, so an expert skill gives three times this. Necromancy is in percentage points, dark energy in ceiling points. Needs the extension installed.</div>
           </div>
         </fieldset>
+        <fieldset>
+          <legend>What it does at a moment</legend>
+          <div class="on-body">
+            <!-- The other kind of skill: one whose content is an EVENT rather
+                 than a number — "after a battle", "at the start of a day". The
+                 engine hands those to Lua already, so they cost no reverse
+                 engineering at all. Two scripts and not one, because a battle is
+                 another Lua context with another function table: what crosses
+                 between them is SetGameVar/GetGameVar. -->
+            <label class="on-row um-span"><span>On the map</span><button id="hk-script" class="ghost" title="Lua that runs on every adventure map — triggers, heroes, war machines">Script…</button><span id="hk-script-note" class="um-note"></span></label>
+            <label class="on-row um-span"><span>In a battle</span><button id="hk-combat-script" class="ghost" title="Lua that runs when a battle is built — what only the battle can be asked">Script…</button><span id="hk-combat-note" class="um-note"></span></label>
+            <div class="um-note">Runs everywhere, the game's own maps included, and only decides anything for a hero holding this skill — that check is the script's first line.</div>
+          </div>
+        </fieldset>
         <div id="hk-missing" class="um-missing"></div>
         <div id="hk-err" class="on-err"></div>
       </div>
       <div class="de-foot">
         <button id="skilledit-cancel" class="ghost">Cancel</button>
         <button id="hk-ok">Build &amp; install</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- A skill's Lua, on top of the skill form — the same CodeMirror the map's
+       scripts and a set's script use. One dialog serves both halves: which one
+       is open is in its title, because the two are written against different
+       function tables and confusing them is the mistake worth preventing. -->
+  <dialog id="skillscript">
+    <div class="mp-card um-card">
+      <div class="mp-head">
+        <span class="mp-title" id="ks-title">Skill script</span>
+        <button id="ks-x" title="close (Esc)">✕</button>
+      </div>
+      <div class="mp-body on-body">
+        <div id="ks-info" class="um-note"></div>
+        <div id="ks-text" class="ss-text"></div>
+        <div id="ks-lint" class="de-lint"></div>
+      </div>
+      <div class="de-foot">
+        <button id="ks-cancel" class="ghost">Cancel</button>
+        <button id="ks-ok">Done</button>
       </div>
     </div>
   </dialog>
