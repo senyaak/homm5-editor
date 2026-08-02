@@ -61,6 +61,15 @@ the value never has to be reachable from compiled code. **Adding a subject costs
 a config row and a virtual call; adding a SUM costs a detour**, because a sum is
 a place in the executable that has to be found.
 
+The sums, and where each one is appended to:
+
+| sum | where | whose |
+|---|---|---|
+| `necromancy` | `CNecromancy::RaisePercent` `0xc77850` | a hero's |
+| `energy` | the ceiling's three sites, `0xc066d0` / `0xc06670` / the bar | a player's |
+| `tent_charges` | the war machine constructor `0xdc9730` | a hero's |
+| `tent` (specializations only, so far) | the tent's amount `0xb7fca0` | a hero's |
+
 The skill door is the one every question about a hero's skills goes through: the
 Lua `HasHeroSkill` calls it and compares against zero, `GetHeroSkillMastery`
 returns it unchanged, and both do it in the same three instructions (`0x5d1656`,

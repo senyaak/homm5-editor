@@ -39,8 +39,13 @@ export const EFFECTS_FILE = join('bin', 'homm5-editor-effects.txt');
  *     itself refills to the brim every week. A property of the PLAYER, so rows
  *     are answered for every hero of theirs and added up, the way an extra
  *     Necromancy Amplifier would be. See docs/engineInternals/NECROMANCY.md.
+ *   `tent_charges` — how many times a first aid tent may be used in a battle.
+ *     The record says three (`WarMachines.xdb`, `<Shots>`); the engine copies
+ *     that into the combat machine once, when it builds it, and every gate reads
+ *     the copy directly. So this is added there, to the machine of the hero who
+ *     brought it. A property of the HERO, like the necromancy percentage.
  */
-export const EFFECT_STATS = ['necromancy', 'energy'] as const;
+export const EFFECT_STATS = ['necromancy', 'energy', 'tent_charges'] as const;
 export type EffectStat = (typeof EFFECT_STATS)[number];
 
 /**

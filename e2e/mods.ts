@@ -12,7 +12,7 @@ import { DATA, REPO_ROOT } from './launch.ts';
 import { buildCreatureMod } from '../src/mods/creature-mod.ts';
 import {
   addArtifact, addArtifactSet, addBuilding, addCreature, addHero, addHeroClass, addHeroSkill,
-  addSpecialization, newCreatureMod,
+  addSpecialization, modIsEmpty, newCreatureMod,
   removeArtifact, removeArtifactSet, removeBuilding, removeCreature, removeHero, removeHeroClass,
   removeSpecialization,
   updateArtifact, updateArtifactSet,
@@ -33,7 +33,7 @@ import { readEntries } from '../src/format/pak.ts';
 import { ensureModDir, modFile } from '../src/game/mod-paths.ts';
 import { decodeDDSBuffer } from '../src/format/dds.ts';
 import { writeEffectsFile } from '../src/mods/extension.ts';
-import { effectsOf, specializationRowsOf } from '../src/mods/artifact-effects.ts';
+import { effectsOf, skillRowsOf, specializationRowsOf } from '../src/mods/artifact-effects.ts';
 import { takenSpecializations } from '../src/mods/specializations.ts';
 
 /**
@@ -488,6 +488,15 @@ export const TENT_MASTER = {
     join(ASSETS, 'skills', 'h3_first_aid_2.png'),
     join(ASSETS, 'skills', 'h3_first_aid_3.png'),
   ],
+  /**
+   * And what it DOES: one more use of the tent for each level of mastery.
+   *
+   * The words above promised this before anything could deliver it. The
+   * extension adds the term where the engine fills the machine's charges, and
+   * multiplies by the mastery the hero holds — so the four descriptions are
+   * literally the four values of one row.
+   */
+  effects: { tent_charges: 1 },
 };
 
 /**
@@ -608,10 +617,10 @@ export function clearFixture(gameRoot: string): void {
   // building one throws. This is the ordinary case in a throwaway install,
   // where the fixtures ARE the whole mod — and it stayed hidden until a spec
   // ran live against an install holding nothing else.
-  const empty = !mod.creatures.length && !mod.dwellings.length && !(mod.buildings ?? []).length
-    && !(mod.artifacts ?? []).length && !(mod.sets ?? []).length && !(mod.heroes ?? []).length
-    && !(mod.specializations ?? []).length;
-  if (empty) {
+  //
+  // The model's own test, not a copy of it. There have been three of these and
+  // two went stale the moment a new kind of content arrived.
+  if (modIsEmpty(mod)) {
     rmSync(archive, { force: true });
     writeEffectsFile(gameRoot, [], []);
     return;
@@ -621,7 +630,7 @@ export function clearFixture(gameRoot: string): void {
   // An artifact taken out has to stop granting its bonus: the file is written
   // from what is LEFT, never appended to.
   writeEffectsFile(gameRoot, effectsOf(mod.artifacts ?? [], mod.sets ?? []),
-    specializationRowsOf(mod.specializations ?? []));
+    specializationRowsOf(mod.specializations ?? []), skillRowsOf(mod.skills ?? []));
 }
 
 /**
@@ -779,7 +788,7 @@ export function installMapFixture(gameRoot: string): CreatureMod {
   // file, a fixture that skipped it left one piece of the set inert while its
   // own description promised 15%.
   writeEffectsFile(gameRoot, effectsOf(mod.artifacts ?? [], mod.sets ?? []),
-    specializationRowsOf(mod.specializations ?? []));
+    specializationRowsOf(mod.specializations ?? []), skillRowsOf(mod.skills ?? []));
   return mod;
 }
 

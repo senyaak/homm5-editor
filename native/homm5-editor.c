@@ -231,10 +231,12 @@ static CountEquippedFn g_countEquipped = NULL;
  * `necromancy` is a HERO's — the engine asks about one hero and the row is
  * answered for that hero. `energy` is a PLAYER's, so its rows are answered for
  * every hero of theirs and added up, the way another Amplifier would be.
+ * `tent_charges` is a hero's again, asked once when his first aid tent is built
+ * for a battle.
  */
-typedef enum { STAT_NECROMANCY = 0, STAT_ENERGY = 1, STAT_COUNT = 2 } Stat;
+typedef enum { STAT_NECROMANCY = 0, STAT_ENERGY = 1, STAT_TENT_CHARGES = 2, STAT_COUNT = 3 } Stat;
 
-static const char *const STAT_NAMES[STAT_COUNT] = { "necromancy", "energy" };
+static const char *const STAT_NAMES[STAT_COUNT] = { "necromancy", "energy", "tent_charges" };
 
 /**
  * One term: while these artifacts are worn, add this much.
@@ -1207,22 +1209,25 @@ static int install_hooks(void) {
 // spend at 0xdc9f59), so the only hook worth having is the one that fills it,
 // and the constructor is where the object exists. See docs/HERO_CLASSES.md.
 //
-// What is NOT established is how to reach the hero from there, which is the
-// whole point of this: the first aid tent's amount hook below gets a combat
-// unit whose vtable is at +0, and THIS object's vtables are written at +4,
-// +0xA0, +0xCC and more — virtual bases — so the pointer the constructor
-// returns is a different shape from the one `unit_hero` knows how to walk.
+// THE HERO IS AT +0xCC, and that was measured rather than reasoned. The object
+// the constructor returns is not the pointer `unit_hero` knows how to walk —
+// this class has several bases and each has its own vtable — so the probe that
+// came before this printed both pointers into the log and let them meet there:
+// one battle, machine 389628672 out of the constructor and unit 389628876 into
+// the tent's amount hook. Two hundred and four bytes apart, which is the same
+// 0xCC the disassembly writes as `lea ecx,[esi-0CCh]`.
 //
-// So this changes nothing. It calls the original, reads what it wrote, and
-// tries the owner chain from a couple of candidate bases with the same
-// guard the tent hook uses — a slot that does not point at code is not called.
-// Twenty-four lines in the log and then silence.
+// Everything else here is guarded rather than trusted: the reads go through
+// `readable`, the virtual calls through `points_at_code`, and a hero we cannot
+// reach means no bonus rather than a battle that ends early.
 #define MACHINE_CTOR_RVA 0x9c9730u
 static const BYTE MACHINE_CTOR_HEAD[5] = { 0x83, 0x7C, 0x24, 0x18, 0x00 };
 
 /** Where the constructor puts the world machine, and the charges it filled. */
 #define MACHINE_WORLD 0xA8u
 #define MACHINE_CHARGES 0xB0u
+/** And the base the engine's own walk to the owner starts from. */
+#define MACHINE_AS_UNIT 0xCCu
 /** The world machine's type: 3 is the first aid tent. */
 #define WORLD_MACHINE_TYPE 0x1Cu
 #define MACHINE_TYPE_TENT 3
@@ -1244,32 +1249,30 @@ static int g_machineLogged = 0;
 static void *__fastcall machine_ctor_hook(void *self, void *edx, void *a1, void *a2, void *a3,
                                           void *a4, unsigned a5, void *a6) {
   void *m = g_machineCtor(self, edx, a1, a2, a3, a4, a5, a6);
-  if (!m || g_machineLogged >= 8) return m;
-  if (!readable((BYTE *)m + MACHINE_WORLD, 4)) return m;
+  if (!m || !readable((BYTE *)m + MACHINE_WORLD, 4)) return m;
 
   void *world = *(void **)((BYTE *)m + MACHINE_WORLD);
   if (!readable((BYTE *)world + WORLD_MACHINE_TYPE, 4)) return m;
   if (*(int *)((BYTE *)world + WORLD_MACHINE_TYPE) != MACHINE_TYPE_TENT) return m;
+  if (!readable((BYTE *)m + MACHINE_CHARGES, 4)) return m;
 
-  g_machineLogged++;
+  int *charges = (int *)((BYTE *)m + MACHINE_CHARGES);
+  void *hero = unit_hero((BYTE *)m + MACHINE_AS_UNIT);
+  int add = hero_term(hero, STAT_TENT_CHARGES, 0);
+  // Only upwards. A row worth less than nothing would take away uses the hero
+  // paid for, and a tent that cannot act at all is a bug that looks like ours.
+  if (add > 0) *charges += add;
+
+  if (g_machineLogged++ >= 8) return m;
   log_line("tent built:");
-  log_num("  charges the engine filled ", *(int *)((BYTE *)m + MACHINE_CHARGES));
-  // Pointers only. One of these leads to the hero, and which one is answered by
-  // the tent's own hook printing the hero it resolves when the tent acts — the
-  // two numbers meet in this log rather than in a guess.
-  log_object("  machine     ", m);
-  log_object("  world       ", world);
-  log_object("  ctor this   ", self);
-  log_object("  ctor arg 1  ", a1);
-  log_object("  ctor arg 2  ", a2);
-  log_object("  ctor arg 3  ", a3);
-  log_object("  ctor arg 4  ", a4);
-  log_object("  ctor arg 6  ", a6);
+  log_num("  the engine filled ", *charges - (add > 0 ? add : 0));
+  log_num("  we add            ", add);
+  log_num("  charges           ", *charges);
   return m;
 }
 
-/** The probe, installed whether or not anything asks for a bonus. */
-static int install_machine_probe(void) {
+/** Installed only when something asks for the sum it adds to. */
+static int install_machine_charges(void) {
   g_machineCtor = (MachineCtorFn)detour(MACHINE_CTOR_RVA, MACHINE_CTOR_HEAD,
                                         &machine_ctor_hook, "war machine ctor");
   return g_machineCtor != NULL;
@@ -1301,8 +1304,9 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   install_lua_functions();
   install_energy_getter();
   if (g_specRowCount) install_specialization_hooks();
-  // Reads and reports; changes nothing. Goes when the charges are real.
-  if (install_machine_probe()) log_line("war machine probe installed");
+  if (rows_for(STAT_TENT_CHARGES) && install_machine_charges()) {
+    log_line("first aid tent charges hook installed");
+  }
   return TRUE;
 }
 

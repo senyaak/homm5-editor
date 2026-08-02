@@ -318,11 +318,24 @@ else worth naming:
 (`-0x1C` because those three are interface methods and `this` arrives adjusted;
 the same field, reached from the other side.) Three gates read the field
 directly rather than through the accessor, so **the only worthwhile hook is the
-one that fills it** — `0xabbc20`, whose single caller is that constructor. What
-is not established yet is how to reach the HERO from there: the door we have
-goes the other way, `hero->vtable[0x70](machineType)` — "does he have this
-machine", which is what Lua's `HasHeroWarMachine` calls. So the next step is a
-LOGGING detour, not a working one.
+one that fills it**, and the constructor is where the object exists.
+
+*Done.* The extension detours `0xdc9730`, and `tent_charges` is a stat a skill —
+or an artifact — can carry. Two things had to be measured rather than reasoned,
+and each cost a battle:
+
+- **The hero sits at `machine + 0xCC`.** The object the constructor returns is
+  not a pointer the engine's owner-walk understands; this class has several
+  bases and a vtable apiece. What settled it was printing both pointers into one
+  log — the constructor's machine and the `unit` the tent's amount hook receives
+  in the same battle — and subtracting: 204 bytes, which is the `0xCC` the
+  disassembly writes as `lea ecx,[esi-0CCh]`.
+- **The constructor takes SIX stack arguments, and the call site shows five.**
+  It ends `ret 18h`. The sixth is a `push 1` put down five instructions early
+  with a virtual call in between that takes its `this` in ecx and nothing off the
+  stack. A hook one argument short cleans four bytes less than the caller left
+  and the battle dies at the first war machine built — twice, before the arity
+  was read off the `ret` instead of counted at the call.
 
 Two nearby places were already written up in
 [engineInternals/SPECIALIZATIONS.md](engineInternals/SPECIALIZATIONS.md):
