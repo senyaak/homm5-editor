@@ -259,9 +259,23 @@ moment those callers are, and what `[vt+0xC8]` asks, are unread. What is certain
 is the gate, and it is the shipped perk.
 
 **Ring of Machine Affinity** — "the tent heals twice as much", plus a shot each
-to ballista and catapult and +4 attack to shooters from the ammo cart. Whatever
-it does to the healing sum happens where our own term goes, so it is worth
-reading before adding another one.
+to ballista and catapult and +4 attack to shooters from the ammo cart. The
+doubling is the LAST thing the amount function does, after everything else it
+computes:
+
+```
+0xb7fd33  call [hero vtable+0]      the object his skills answer on
+0xb7fd47  call [that vtable+0x314]  and if it says more than nothing
+0xb7fd53  add eax,eax               the amount doubles
+```
+
+A term of ours that raises the tent's own number — `tent_healing` does, the way
+the mastery raises it to a hundred — has to be doubled by the same thing, and
+our hook runs after that instruction. So the extension asks the very same
+question and applies the same factor itself: at expert with the ring, engine 200
+plus ours 100, which is (100 + 50) × 2. A term written as a PERCENT of the
+engine's number needs nothing of the sort — the doubling is already inside the
+number it is a percentage of.
 
 ## The branch's four perks
 
@@ -276,6 +290,22 @@ are computed in one function:
 | «Целебный настой» | `tent_healing 50` | the amount hook, after the engine's own sum |
 | «Чистая повязка» | `tent_cleanse 2` | the amount hook's SECOND out-parameter |
 | «Полевой госпиталь» | `tent_mana 2` | mana counted at `0xb74300`, charges at `+0xB0` |
+
+**Why «Полевой госпиталь» is not Lua**, though the rule is that whatever Lua
+reaches is written in Lua. It reaches neither half:
+
+- **Nothing writes a war machine's uses.** The battle context registers 58
+  functions and exactly one of them is about machines — `GetWarMachineType`.
+  The counter is `machine+0xB0` and the three gates read it directly, so there
+  is not even an accessor to register against.
+- **An ordinary battle never calls the script again.** `DoPrepare`, `DoStart`,
+  `UnitMove` and `UnitDeath` are all guarded by one flag on the combat object,
+  `[+0x4F0]`, which is cleared when it is built (`0x65ac6c`) and set only after
+  a script has been attached (`0x65af0b`, right after `0x7223e0` answers yes).
+  A mod's battle tail runs ONCE, when the battle is built, and nothing calls it
+  afterwards — so there is no moment to notice mana in either. (`StartThread`
+  and `Sleep` are registered and would give a poll; they would still have
+  nothing to write.)
 
 **The first set of three was thrown away**, and the lesson is worth more than
 they were: two of them asked for what the engine does by itself — the rebuild IS

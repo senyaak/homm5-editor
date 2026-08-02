@@ -1268,6 +1268,16 @@ static int g_amountLogged = 0;
 #define VT_HAS_SPECIALIZATION 0x294u
 /** The hero's level, as the tent reads it inside that branch. */
 #define VT_HERO_LEVEL 0x23Cu
+/**
+ * The question that makes the engine DOUBLE the tent's healing.
+ *
+ * The last thing `0x77fca0` does: ask the object his skills answer on this, and
+ * if it says anything above zero, `add eax,eax` (`0xb7fd47`…`0xb7fd53`). The
+ * Ring of Machine Affinity is what its own description promises to double, and
+ * we do not have to know that — asking the same question is enough to be
+ * doubled by the same thing.
+ */
+#define VT_TENT_DOUBLED 0x314u
 
 typedef void *(__thiscall *GetterFn)(void *self);
 typedef int(__fastcall *HasSpecFn)(void *hero, void *unused, int spec);
@@ -1358,11 +1368,25 @@ static void __fastcall tent_amount_hook(int *amount, int *second, void *unit, in
     }
   }
   // And what his SKILLS add to the same number: points rather than percent, so
-  // a perk is worth the same at every mastery of War Machines. It lands AFTER
-  // the engine's own arithmetic, which means the Ring of Machine Affinity does
-  // not double it — the ring's doubling is the last thing this function does
-  // (`add eax,eax` at 0xb7fd53), and everything of ours comes after that.
+  // a perk is worth the same at every mastery of War Machines.
+  //
+  // DOUBLED WHEN THE ENGINE DOUBLES, which is the whole reason this is not just
+  // `+ flat`. A perk that adds fifty is raising the tent's own number, exactly
+  // as the mastery raises it to a hundred — so whatever multiplies that number
+  // has to multiply ours. The engine's own doubling is the last thing this
+  // function does and it comes after everything we can reach, so we ask the
+  // question it asks (`[+0x314]` on the object his skills answer on) and apply
+  // the same factor ourselves. At expert with the ring: engine 200, ours 100,
+  // and 300 is (100 + 50) × 2.
   int flat = skills ? hero_term(skills, STAT_TENT_HEALING, 0) : 0;
+  int doubled = 0;
+  if (flat && skills) {
+    void **vt = *(void ***)skills;
+    if (readable(vt, VT_TENT_DOUBLED + 4) && points_at_code(vt[VT_TENT_DOUBLED / 4])) {
+      doubled = ((LevelFn)vt[VT_TENT_DOUBLED / 4])(skills) > 0;
+    }
+    if (doubled) flat += flat;
+  }
   int total = engine + add + flat;
   // A negative row is allowed to mean a curse, but a negative AMOUNT is not
   // something the engine is ever handed by itself.
@@ -1394,6 +1418,7 @@ static void __fastcall tent_amount_hook(int *amount, int *second, void *unit, in
   log_num("      our spec      ", matched);
   log_num("      we add        ", add);
   log_num("      our skills add", flat);
+  log_num("      doubled       ", doubled);
   log_num("      cleanse up to ", threshold);
   log_num("      amount        ", *amount);
   log_num("      second        ", *second);

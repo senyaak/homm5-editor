@@ -45,9 +45,10 @@ export const EFFECTS_FILE = join('bin', 'homm5-editor-effects.txt');
  *     the copy directly. So this is added there, to the machine of the hero who
  *     brought it. A property of the HERO, like the necromancy percentage.
  *   `tent_healing` — POINTS added to what one use of the tent is worth, on top
- *     of the {10,20,50,100} its owner's War Machines mastery is worth. Added
- *     after the engine's own arithmetic, so the Ring of Machine Affinity does
- *     not double it.
+ *     of the {10,20,50,100} its owner's War Machines mastery is worth. It is the
+ *     tent's own number being raised, so whatever doubles that number doubles
+ *     this too — the extension asks the same question the engine asks before its
+ *     own doubling and applies the same factor.
  *   `tent_health` — PERCENT added to the tent's own hit points, which the engine
  *     decides in a place of its own and where its own perk already multiplies
  *     them. Percent rather than points, because the number it applies to already
