@@ -1595,6 +1595,118 @@ static void install_own_profile(HINSTANCE self) {
 // So with this on, the game plays exactly as it did; a modifier and a click
 // write a paragraph to the log. See docs/QOL.md.
 
+/**
+ * `CHeroScreen2::Show(what)` — the panel is told what to display, and then
+ * builds itself from it. Taking the argument here is the same move that found
+ * the slot widgets: the game hands the object over, so it does not have to be
+ * hunted for. Scanning for the army by its vtable found nothing across three
+ * tables, two roots and eight kilobytes, which is a long way to be told that
+ * proximity in memory is not ownership.
+ */
+#define SHOW_IN_PANEL_RVA 0x354060u
+#define SHOW_IN_PANEL_HEAD_LEN 8
+static const BYTE SHOW_IN_PANEL_HEAD[SHOW_IN_PANEL_HEAD_LEN] = {
+  0x83, 0xEC, 0x18, 0x53, 0x8B, 0x5C, 0x24, 0x20
+};
+
+/**
+ * `OnDrop` — what a screen does when a stack is dropped on a slot, and what a
+ * gesture calls to move creatures without one being dragged.
+ *
+ * FOUR arguments, ending in `ret 10h`: the source widget, what stands in it,
+ * the target widget, and what stands in that — nothing, for an empty slot.
+ * Reading a fifth is what crashed the game every time it was called: the hook
+ * took four bytes more off the stack than the caller had put on, so the crash
+ * came AFTER the call returned, the phantom argument changed between two drops
+ * because it was memory past the end of the arguments, and a deferred call did
+ * nothing at all. One `ret` says all of that; it was worth reading before
+ * guessing at what the arguments meant.
+ *
+ * It is reached through the client's own table (`+4` of the drag-client
+ * subobject), so each screen gets its own — the hero screen's is not the one
+ * the other eleven share.
+ */
+typedef int(__fastcall *OnDropFn)(void *self, void *edx, void *fromWidget, void *fromStack,
+                                  void *toWidget, void *toStack);
+/** Which army the last modified click landed in, so the log can name slots. */
+static int g_army = -1;
+
+/**
+ * `CSplitStack::Show(controller)` — the last thing before the slider window.
+ *
+ * A gesture does its moving through the game's own drop, which for an empty
+ * target ends here. So the number the slider would have been dragged to is
+ * given to the controller directly and no window opens. Nothing else is
+ * changed: a drag the player makes has no number pending, and the window
+ * appears exactly as it always did.
+ *
+ * The controller is the authority on what is allowed — it carries how many
+ * must stay behind, how few may move and how many there are, and validates a
+ * number against them. We choose one and ask; nothing is split that the slider
+ * could not have reached.
+ */
+#define SPLIT_SHOW_RVA 0x3f8fb0u
+#define SPLIT_SHOW_HEAD_LEN 7
+static const BYTE SPLIT_SHOW_HEAD[SPLIT_SHOW_HEAD_LEN] = {
+  0x8B, 0x54, 0x24, 0x04, 0x83, 0xEC, 0x18
+};
+/** `CCommonDragStackController` — the only one whose slots we have measured. */
+#define COMMON_CONTROLLER_VTABLE_RVA 0xb75cd0u
+#define CONTROLLER_VALIDATE 0x10u
+#define CONTROLLER_EXECUTE 0x14u
+/** What the controller says about the stack: how many there are, in all. */
+#define CONTROLLER_TOTAL 0x28u
+
+/**
+ * The controller factory — where a source slot and a target slot become the
+ * thing that can actually move creatures.
+ *
+ * Our own drop never reaches it: dropping onto an empty slot moves the whole
+ * stack and no controller is made, which is why answering the window achieved
+ * nothing — there was no window. So the controller has to be built directly,
+ * and what to build it FROM is measured here, from a drag made by hand that
+ * does open the window.
+ */
+#define MAKE_CONTROLLER_RVA 0x3f8310u
+#define MAKE_CONTROLLER_HEAD_LEN 6
+static const BYTE MAKE_CONTROLLER_HEAD[MAKE_CONTROLLER_HEAD_LEN] = {
+  0x53, 0x56, 0xFF, 0x74, 0x24, 0x20
+};
+
+typedef void *(__fastcall *MakeControllerFn)(void *ecx, void *edx, void *a1, void *a2, void *a3,
+                                             void *a4, void *a5, void *a6);
+static MakeControllerFn g_makeController = NULL;
+
+typedef int(__fastcall *SplitShowFn)(void *self, void *edx, void *controller);
+typedef int(__fastcall *ControllerAskFn)(void *self, void *edx, int howMany);
+
+static SplitShowFn g_splitShow = NULL;
+/**
+ * What a gesture has decided the next splits should be, and how many of them.
+ *
+ * A COUNT, because the window does not open during the drop — it opens a moment
+ * later. Clearing the answer as soon as the drop returned meant the window
+ * arrived to find nothing pending and asked the player instead, four times over
+ * for a gesture that made four splits.
+ */
+typedef enum { WANT_NOTHING = 0, WANT_ONE, WANT_HALF } Wanted;
+static Wanted g_pending = WANT_NOTHING;
+static int g_pendingLeft = 0;
+
+typedef int(__fastcall *ShowInPanelFn)(void *self, void *edx, void *what);
+static ShowInPanelFn g_showInPanel = NULL;
+/** What the army panel was last told to show — the thing that HAS the army. */
+static void *g_shown = NULL;
+
+#define SLOT_COUNT 7
+
+#define SLOT_COUNT 7
+
+/** The state's own way back to Ready — how a click is called off. */
+#define DND_STATE_GIVE_UP 0x2Cu
+
+typedef void(__fastcall *GiveUpFn)(void *state, void *edx);
+
 /** `CDNDStatePrepare::OnPick` — reached by a move and by a release alike. */
 #define DND_PICK_RVA 0x3d1b10u
 #define DND_PICK_HEAD_LEN 7
@@ -1620,7 +1732,6 @@ static const BYTE DND_PICK_HEAD[DND_PICK_HEAD_LEN] = {
  */
 #define SLOT_NAMES_RVA 0xd10628u
 #define SLOT_NAME_STRIDE 12u
-#define SLOT_COUNT 7
 #define WINDOW_FIND_BY_NAME 0x94u
 /**
  * WHERE THE RECEIVER COMES FROM: the game, not from us.
@@ -1722,6 +1833,23 @@ static int pointer_alive(void *p) {
 }
 
 typedef void *(__fastcall *FindByNameFn)(void *self, void *edx, void *name, int flag);
+typedef void *(__fastcall *HeroPartFn)(void *self, void *edx);
+/** The object map's "what stands behind this widget", and what it answers with. */
+#define DND_HELPER_MAP 0x10u
+#define SLOT_CONTENTS 0x28u
+/**
+ * A slot answers with nothing when it is empty — measured on all seven, and the
+ * one thing about that object we rely on. What is INSIDE it we do not read: the
+ * fields that hold 250 for two slots of an army hold a file path for the third,
+ * so the layout is not what it appears to be, and a gesture acting on a number
+ * it has not confirmed is what crashed the game.
+ *
+ * How many are in a stack comes from the controller instead, at the moment of
+ * the split, where it is authoritative anyway.
+ */
+typedef void *(__fastcall *InSlotFn)(void *self, void *edx, void *widget);
+typedef void *(__fastcall *OwnerOfFn)(void *self, void *edx, void *element);
+typedef void *(__fastcall *SlotsOfFn)(void *self, void *edx);
 typedef int(__fastcall *BuildSlotsFn)(void *self, void *edx, void *army);
 
 /**
@@ -1848,15 +1976,34 @@ static void log_words(const char *what, void *obj) {
  * rather than read the class out of the disassembly field by field, look for
  * the vtable — an object of exactly one type, wherever it is reached from.
  */
-static void *first_of_type(void *root, DWORD wantRva, int depth) {
+/**
+ * Is this an object, or merely somewhere the same vtable address is written?
+ *
+ * A match inside the executable's own image is the second: the tables, the RTTI
+ * and every static that names a class hold that pointer too, and one of them
+ * answered as "the hero" for a while. An instance is on the heap.
+ */
+static int in_the_image(void *p) {
+  BYTE *base = (BYTE *)GetModuleHandleW(NULL);
+  return (BYTE *)p >= base && (BYTE *)p < base + 0x1200000;
+}
+
+// HOW FAR IN TO LOOK. These objects are not small: the hero carries containers
+// at offsets past 0x1000, so a search that stops at 0x200 answers "not there"
+// about a place it never reached.
+static void *first_of_type(void *root, DWORD wantRva, int depth, DWORD want_room) {
   DWORD want = (DWORD)(BYTE *)GetModuleHandleW(NULL) + wantRva;
-  DWORD room = readable(root, 0x200);
+  DWORD room = readable(root, want_room);
   for (DWORD off = 0; off + 4 <= room; off += 4) {
+    // EMBEDDED, not merely pointed at. A class held by value puts its vtable
+    // in the middle of the owner rather than behind a pointer, so the army of
+    // a hero may never be a field to follow — it may BE part of the hero.
+    if (*(DWORD *)((BYTE *)root + off) == want) return (BYTE *)root + off;
     void *field = *(void **)((BYTE *)root + off);
     if (readable(field, 4) < 4) continue;
-    if (*(DWORD *)field == want) return field;
+    if (*(DWORD *)field == want && !in_the_image(field)) return field;
     if (depth > 0) {
-      void *deeper = first_of_type(field, wantRva, depth - 1);
+      void *deeper = first_of_type(field, wantRva, depth - 1, 0x200);
       if (deeper) return deeper;
     }
   }
@@ -1865,10 +2012,15 @@ static void *first_of_type(void *root, DWORD wantRva, int depth) {
 
 static void find_type(const char *what, void *root, DWORD wantRva, int depth) {
   DWORD want = (DWORD)(BYTE *)GetModuleHandleW(NULL) + wantRva;
-  DWORD room = readable(root, 0x200);
+  DWORD room = readable(root, 0x2000);
   for (DWORD off = 0; off + 4 <= room; off += 4) {
+    if (*(DWORD *)((BYTE *)root + off) == want) {
+      log_num(what, (int)off);
+      log_line("            embedded, right there");
+      continue;
+    }
     void *field = *(void **)((BYTE *)root + off);
-    if (readable(field, 4) >= 4 && *(DWORD *)field == want) {
+    if (readable(field, 4) >= 4 && *(DWORD *)field == want && !in_the_image(field)) {
       log_num(what, (int)off);
       log_hex("            is the one we want, at ", (DWORD)field);
       continue;
@@ -1905,6 +2057,61 @@ static int is_a(void *obj, DWORD vtableRva) {
   return *(DWORD *)obj == (DWORD)(BYTE *)GetModuleHandleW(NULL) + vtableRva;
 }
 
+static int __fastcall show_in_panel_hook(void *self, void *edx, void *what) {
+  (void)edx;
+  g_shown = what;
+  log_hex("panel: it is being told to show ", (DWORD)what);
+  if (readable(what, 4) >= 4)
+    log_hex("       which is of type ", *(DWORD *)what - (DWORD)(BYTE *)GetModuleHandleW(NULL));
+  return g_showInPanel(self, NULL, what);
+}
+
+
+/** Say what a pointer is, if it is one of the slots or stacks we know. */
+static void log_known(const char *what, void *p) {
+  log_hex(what, (DWORD)p);
+  if (g_army < 0) return;
+  for (int i = 0; i < SLOT_COUNT; i++)
+    if (g_slotWidget[g_army][i] == p) log_num("            the widget of slot ", i + 1);
+}
+
+static void *__fastcall make_controller_hook(void *ecx, void *edx, void *a1, void *a2, void *a3,
+                                             void *a4, void *a5, void *a6) {
+  log_line("controller: one is being built");
+  log_known("      ecx ", ecx);
+  log_known("      edx ", edx);
+  log_known("      first ", a1);
+  log_known("      second ", a2);
+  log_known("      third ", a3);
+  log_known("      fourth ", a4);
+  log_known("      fifth ", a5);
+  log_known("      sixth ", a6);
+  void *made = g_makeController(ecx, edx, a1, a2, a3, a4, a5, a6);
+  log_hex("      and it is ", (DWORD)made);
+  return made;
+}
+
+static int __fastcall split_show_hook(void *self, void *edx, void *controller) {
+  (void)edx;
+  Wanted asked = g_pendingLeft > 0 ? g_pending : WANT_NOTHING;
+  if (g_pendingLeft > 0) g_pendingLeft--;
+  if (asked != WANT_NOTHING && is_a(controller, COMMON_CONTROLLER_VTABLE_RVA)) {
+    int total = *(int *)((BYTE *)controller + CONTROLLER_TOTAL);
+    int wanted = asked == WANT_ONE ? 1 : total / 2;
+    ControllerAskFn allowed = (*(ControllerAskFn **)controller)[CONTROLLER_VALIDATE / 4];
+    ControllerAskFn move = (*(ControllerAskFn **)controller)[CONTROLLER_EXECUTE / 4];
+    log_num("split: the stack holds ", total);
+    if (wanted > 0 && allowed(controller, NULL, wanted)) {
+      move(controller, NULL, wanted);
+      log_num("       moved, without asking, ", wanted);
+    } else {
+      log_num("       refused, so nothing moved: ", wanted);
+    }
+    return 0;
+  }
+  return g_splitShow(self, NULL, controller);
+}
+
 static int __fastcall dnd_pick_hook(void *state, void *edx, void *arg) {
   (void)edx;
   int ctrl = held(VK_CONTROL);
@@ -1913,6 +2120,9 @@ static int __fastcall dnd_pick_hook(void *state, void *edx, void *arg) {
 
   if ((ctrl || shift || alt) && g_clicksLogged < 20) {
     g_clicksLogged++;
+    // A click with no key held is the player's own; nothing of ours is owed an
+    // answer any more, and a window they open should be their window.
+    if (!ctrl && !shift && !alt) g_pendingLeft = 0;
     void *helper = *(void **)((BYTE *)state + DND_STATE_HELPER);
     helper = (readable(helper, DND_HELPER_PICKED + 4) >= DND_HELPER_PICKED + 4)
       ? *(void **)((BYTE *)helper + DND_HELPER_PICKED) : NULL;
@@ -1935,60 +2145,47 @@ static int __fastcall dnd_pick_hook(void *state, void *edx, void *arg) {
       // WHICH SLOT WAS CLICKED, asked rather than deduced. The window this
       // widget belongs to can look a slot up by name, and the screens name
       // them `Slot_1` upwards; so ask for all seven and see which one this is.
-      // That is the slot number and, in the same call, the way to reach every
-      // OTHER slot — which is where creatures have to go.
+      // WHICH SLOT was clicked: the widget, matched against what the screen
+      // was handed when it built its slots. No names, no searching.
+      int army = -1, from = -1;
+      for (int a = 0; a < g_armiesKnown && army < 0; a++)
+        for (int i = 0; i < SLOT_COUNT; i++)
+          if (g_slotWidget[a][i] == widget) { army = a; from = i; break; }
+      if (army < 0) return g_dndPick(state, NULL, arg);
+      g_army = army;
+
+      // WHAT IS IN EVERY SLOT, asked the way the drop asks it: the object map
+      // answers what stands behind a widget, and an empty slot answers with
+      // nothing. That is both "where may creatures go" and "how many are here".
+      void *map = *(void **)((BYTE *)helper + DND_HELPER_MAP);
+      if (readable(map, 4) < 4) return g_dndPick(state, NULL, arg);
+      InSlotFn in_slot = (*(InSlotFn **)map)[SLOT_CONTENTS / 4];
+      void *client = *(void **)((BYTE *)helper + DND_HELPER_CLIENT);
+      if (readable(client, 8) < 8) return g_dndPick(state, NULL, arg);
+      OnDropFn drop = (*(OnDropFn **)client)[1];
+
+      void *stack[SLOT_COUNT];
+      for (int i = 0; i < SLOT_COUNT; i++) stack[i] = in_slot(map, NULL, g_slotWidget[army][i]);
+      if (!stack[from]) return g_dndPick(state, NULL, arg);
+
+      // The gestures, all of them one move repeated: take some of this stack
+      // and put it in a slot with nothing in it. The click chooses only WHERE;
+      // how many is settled at the split, by the controller, which knows.
       //
-      // The receiver is checked before it is called. Looking a name up is a
-      // method of the WINDOW; the same slot number on the SCREEN is a
-      // different function altogether, and calling that one crashed the game.
-      // A type that is not the one measured means we are wrong about the
-      // layout, and being wrong should cost a log line, not the session.
-      // Which slot this is, by matching what the screen was handed when it
-      // built them. No searching, no names, no guessing at a receiver.
-      log_hex("       the widget clicked ", (DWORD)widget);
-      for (int a = 0; a < g_armiesKnown; a++) {
-        for (int i = 0; i < SLOT_COUNT; i++) {
-          if (g_slotWidget[a][i] != widget) continue;
-          log_num("       this is army ", a + 1);
-          log_num("            and slot ", i + 1);
-          // The view that owns these slots is the nearest thing to the army
-          // itself; what it keeps decides where "which slots are empty" and
-          // "how many are in this one" are going to be read from.
-          // The seven labels the view keeps at +8 upwards are the numbers the
-          // player is looking at: what is in each slot, and nothing at all
-          // where a slot is empty. Reading those is reading the game's own
-          // answer, and it is the last thing the four gestures need.
-          // THE OWNER, not whatever is lying nearby. Hunting the army by its
-          // type around the view found nothing, and it was the wrong question
-          // anyway: a slot belongs to a hero, and the hero is what holds the
-          // creatures. So find the hero this screen is showing, and the army
-          // in it.
-          void *client = *(void **)((BYTE *)helper + DND_HELPER_CLIENT);
-          void *hero = first_of_type(client, HERO_VTABLE_RVA, 2);
-          log_hex("       the hero on this screen ", (DWORD)hero);
-          if (hero) {
-            void *army = first_of_type(hero, ARMY_VTABLE_RVA, 1);
-            log_hex("       and its army ", (DWORD)army);
-            if (army) find_type("       within the army", army, ARMY_VTABLE_RVA, 0);
-          }
-        }
+      // Alt — gathering every stack of one creature back into one — is not here
+      // yet. It needs to know WHICH creature each slot holds, and the field
+      // that looked like it holds a file path for one slot in three.
+      // NOTHING IS MOVED this round: the point is to watch a drag the player
+      // makes, which does build a controller, and see what it is built from.
+      int did = 0;
+      (void)drop; (void)client; (void)alt; (void)stack;
+      // The click is called off the way the engine calls one off, so no stack
+      // is left hanging on the cursor with the split already made.
+      if (did) {
+        GiveUpFn give_up = (*(GiveUpFn **)state)[DND_STATE_GIVE_UP / 4];
+        give_up(state, NULL);
+        return 1;
       }
-      // NOTHING ELSE IS CALLED HERE, and that is the point. Twice now a vtable slot
-      // number was taken from the class that uses it and called on a class that
-      // merely has one — `+0x94` is a lookup on the window the hero screen
-      // walks, and something else entirely on the screen and on this button.
-      // A slot number means one thing inside one hierarchy and nothing across
-      // hierarchies, so the receiver has to be identified in the disassembly
-      // before the call is written, not guessed at and tried on a running game.
-      log_types("       the widget", widget, 0x100);
-      // A slot says which slot it is by what it is CALLED: the screens name
-      // these `Slot_1` upwards, and the executable keeps that very list of
-      // names to look the widgets up by. So the name is both the number of
-      // the slot clicked and the way to reach a different one.
-      const char *name = (readable(widget, WIDGET_NAME + 4) >= WIDGET_NAME + 4)
-        ? *(const char **)((BYTE *)widget + WIDGET_NAME) : NULL;
-      if (readable((void *)name, 32) >= 32) log_text("       the slot clicked is called ", name);
-      else log_line("       the slot clicked has no readable name");
     }
   }
   return g_dndPick(state, NULL, arg);
@@ -2004,6 +2201,14 @@ static void install_quick_split(void) {
   g_dndPick = (DndPickFn)detour(DND_PICK_RVA, DND_PICK_HEAD, DND_PICK_HEAD_LEN,
                                 &dnd_pick_hook, "drag and drop pick");
   if (g_dndPick) log_line("quick split: watching clicks made with a key held");
+  g_makeController = (MakeControllerFn)detour(MAKE_CONTROLLER_RVA, MAKE_CONTROLLER_HEAD,
+                                              MAKE_CONTROLLER_HEAD_LEN, &make_controller_hook,
+                                              "building a controller");
+  g_splitShow = (SplitShowFn)detour(SPLIT_SHOW_RVA, SPLIT_SHOW_HEAD, SPLIT_SHOW_HEAD_LEN,
+                                    &split_show_hook, "the split window");
+  g_showInPanel = (ShowInPanelFn)detour(SHOW_IN_PANEL_RVA, SHOW_IN_PANEL_HEAD,
+                                        SHOW_IN_PANEL_HEAD_LEN, &show_in_panel_hook,
+                                        "what the panel shows");
   g_buildSlots = (BuildSlotsFn)detour(BUILD_SLOTS_RVA, BUILD_SLOTS_HEAD, BUILD_SLOTS_HEAD_LEN,
                                       &build_slots_hook, "army slot list");
 }
