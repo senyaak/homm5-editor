@@ -23,20 +23,34 @@
 // creature table, the artifact table, the hero class table and the skill table
 // alike — checked on all four in the Steam build.
 //
-// THE ACCESSOR IS NOT PATCHED HERE, and that is deliberate. Twelve one-line
-// `mov eax,N; ret` functions sit together at 0xa9ef30…0xa9f330, one per table,
-// and creature-limit and artifact-limit both write theirs. Two things say they
-// do not matter:
+// A TABLE MAY ALSO HAVE A LIVE COUNT ACCESSOR, and missing it costs a whole
+// evening. Twelve one-line `mov eax,N; ret` functions sit together at
+// 0xa9ef30…0xa9f330, one per table, and NOTHING in the image references any of
+// them — searched for calls, jumps and pointers. That much was measured, and it
+// is why the registration alone was patched at first.
 //
-//   NOTHING REFERENCES THEM. Not a call, not a jump, not a pointer anywhere in
-//     the image — searched for all twelve. They are out-of-line copies of a size
-//     that was inlined at every real use.
-//   THE VALUE CANNOT IDENTIFY THE TABLE. `mov eax,9; ret` fits the hero class
-//     table and the player colour table equally, and both declare 9. Writing the
-//     wrong one would retune something that was never asked about.
+// It is also why the conclusion "these one-liners are dead" was drawn too wide.
+// The skill table has another one, far from that block, at 0xb1ef80, and fifteen
+// call sites reach it:
 //
-// Patching the registration alone is therefore both sufficient and safe, and the
-// probe that proves the first half is a game that starts with a tenth class.
+//   0x5d1b1b  test ebx,ebx          ; the skill id
+//   0x5d1b1d  js   <refuse>
+//   0x5d1b23  call 0xb1ef80         ; mov eax,0DDh ; ret   — 221
+//   0x5d1b28  cmp  ebx,eax
+//   0x5d1b2a  jge  <refuse>
+//
+// and the rest are `for (i = 0; i < that; i++) skill(i)` loops in the skill
+// manager — which is exactly the walk that decides what a level-up may offer. A
+// table registered as 225 long whose accessor still says 221 loads fine, shows
+// the racial fine (a racial is handed out by class, not looked up by id) and
+// silently offers no perk past the shipped ones. That was the bug.
+//
+// So the accessor is found rather than assumed, and only when it identifies
+// itself: a one-liner returning this table's count WITH callers. `mov eax,9;
+// ret` fits the hero class table and the player colour table equally — but
+// neither is called by anything, so there is nothing to choose between and
+// nothing to write. If two live ones ever return the same number, this refuses
+// instead of guessing.
 //
 // FOUND BY PATTERN, NEVER BY ADDRESS — the discipline the two older ceilings
 // arrived at after a build mismatch cost two rounds.
@@ -153,12 +167,97 @@ export function readTableLimit(buf: Buffer, table: TableSpec): TableReading {
   };
 }
 
+/** Every section's file range and where it is mapped, read once. */
+function mapSections(buf: Buffer): { raw: number; size: number; virtual: number }[] {
+  const pe = buf.readUInt32LE(0x3c);
+  if (buf.toString('latin1', pe, pe + 4) !== 'PE\0\0') return [];
+  const base = buf.readUInt32LE(pe + 0x34);
+  const count = buf.readUInt16LE(pe + 6);
+  const table = pe + 24 + buf.readUInt16LE(pe + 20);
+  const out = [];
+  for (let i = 0; i < count; i++) {
+    const at = table + 40 * i;
+    out.push({
+      raw: buf.readUInt32LE(at + 20),
+      size: buf.readUInt32LE(at + 16),
+      virtual: base + buf.readUInt32LE(at + 12),
+    });
+  }
+  return out;
+}
+
+/** An out-of-line `mov eax,N; ret` the code calls to ask how long the table is. */
+export interface CountAccessor {
+  /** File offset of the immediate, as with a load site. */
+  at: number;
+  /** Where it lives in memory — worth reporting, since it is how it was found. */
+  address: number;
+  /** How many `call` sites reach it. Zero means dead, and dead means leave it. */
+  callers: number;
+}
+
+/**
+ * The accessor this table's count is read through, if it has a live one.
+ *
+ * Several values are looked for — the count the game ships with, the count we are
+ * about to write, and whatever the registration says right now — so an executable
+ * already patched, or patched only halfway, still finds its own accessor rather
+ * than reporting none. Only accessors something calls are considered; the twelve
+ * dead copies would otherwise make every table look ambiguous.
+ */
+export function findCountAccessor(buf: Buffer, table: TableSpec, ...counts: number[]): CountAccessor | null {
+  const wanted = new Set([table.shipped, ...counts]);
+  const at = mapSections(buf);
+  const address = (off: number): number | null => {
+    for (const s of at) if (off >= s.raw && off < s.raw + s.size) return s.virtual + (off - s.raw);
+    return null;
+  };
+
+  // A section's virtual size can run past what the file holds, and the last
+  // instruction of a section is as real as the first — so the end is clamped and
+  // the bounds are inclusive.
+  const ends = new Map(at.map((s) => [s, Math.min(s.raw + s.size, buf.length)]));
+
+  const candidates = new Map<number, number>();   // address -> file offset of the immediate
+  for (const s of at) {
+    for (let i = s.raw; i <= ends.get(s)! - 9; i++) {
+      if (buf[i] !== 0xb8 || !wanted.has(buf.readUInt32LE(i + 1))) continue;
+      // A `ret` close behind, which is what makes it an accessor and not the
+      // first instruction of something that happens to load the same number.
+      if (!buf.subarray(i + 5, i + 9).includes(0xc3)) continue;
+      const va = address(i);
+      if (va !== null) candidates.set(va, i + 1);
+    }
+  }
+  if (!candidates.size) return null;
+
+  const callers = new Map<number, number>();
+  for (const s of at) {
+    for (let i = s.raw; i <= ends.get(s)! - 5; i++) {
+      if (buf[i] !== 0xe8) continue;
+      const from = address(i);
+      if (from === null) continue;
+      const target = (from + 5 + buf.readInt32LE(i + 1)) >>> 0;
+      if (candidates.has(target)) callers.set(target, (callers.get(target) ?? 0) + 1);
+    }
+  }
+
+  const live = [...callers.keys()];
+  if (!live.length) return null;
+  if (live.length > 1) {
+    throw new Error(`${live.length} live accessors return the ${table.what} count — cannot tell which is this table's`);
+  }
+  return { at: candidates.get(live[0]!)!, address: live[0]!, callers: callers.get(live[0]!)! };
+}
+
 export interface TablePatch {
   data: Buffer;
   from: number;
   to: number;
   /** False when the executable already said this. */
   written: boolean;
+  /** The accessor, when this table has a live one and it was retuned too. */
+  accessor: CountAccessor | null;
 }
 
 /**
@@ -184,10 +283,17 @@ export function patchTableLimit(buf: Buffer, table: TableSpec, limit: number): T
     throw new Error(`this build pushes the ${table.what} count as one byte, so it cannot hold ${limit} (${MAX_IMM8} at most)`);
   }
   const data = Buffer.from(buf);
-  if (reading.limit === limit) return { data, from: reading.limit, to: limit, written: false };
   if (reading.site.width === 1) data.writeUInt8(limit, reading.site.at);
   else data.writeUInt32LE(limit, reading.site.at);
-  return { data, from: reading.limit, to: limit, written: true };
+
+  // The registration and the accessor are two independent numbers, and either can
+  // already be right — the executable in the install had 225 pushed and 221
+  // returned for a day. So both are written, and "written" means either moved.
+  const accessor = findCountAccessor(data, table, limit, reading.limit);
+  if (accessor) data.writeUInt32LE(limit, accessor.at);
+
+  const written = reading.limit !== limit || (accessor !== null && buf.readUInt32LE(accessor.at) !== limit);
+  return { data, from: reading.limit, to: limit, written, accessor };
 }
 
 /** What one call to `setTableLimit` did. */
@@ -198,6 +304,8 @@ export interface TableExeResult {
   to: number;
   changed: boolean;
   created: boolean;
+  /** Where the second number was, when the table keeps one. */
+  accessor: number | null;
 }
 
 /**
@@ -216,8 +324,9 @@ export function setTableLimit(gameRoot: string, table: TableSpec, limit: number)
   if (!existsSync(source)) throw new Error(`no executable at ${source}`);
 
   const patch = patchTableLimit(readFileSync(source), table, limit);
+  const accessor = patch.accessor?.address ?? null;
   if (!patch.written && !created) {
-    return { path: target, what: table.what, from: patch.from, to: patch.to, changed: false, created: false };
+    return { path: target, what: table.what, from: patch.from, to: patch.to, changed: false, created: false, accessor };
   }
   const temp = `${target}.new`;
   writeFileSync(temp, patch.data);
@@ -227,5 +336,5 @@ export function setTableLimit(gameRoot: string, table: TableSpec, limit: number)
     try { unlinkSync(temp); } catch { /* the message below is what matters */ }
     throw new Error(`cannot write ${target} — close the game first (${e instanceof Error ? e.message : String(e)})`);
   }
-  return { path: target, what: table.what, from: patch.from, to: patch.to, changed: true, created };
+  return { path: target, what: table.what, from: patch.from, to: patch.to, changed: true, created, accessor };
 }

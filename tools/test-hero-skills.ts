@@ -1,9 +1,9 @@
 // Validates a skill of our own — a racial and the perks of its branch.
 //
-// Measured against the shipped table throughout: the shape of a racial is the
-// Avenger's shape, the shape of a perk is the plague tent's — a perk whose
-// prerequisites NAME the classes that may take it, which is the shape ours must
-// have and Multishot's empty one is not (docs/HERO_CLASSES.md) — and the count
+// Measured against the shipped table throughout: a racial has the Avenger's
+// shape, the first perk of a branch has Multishot's — narrowed to one class by
+// the `HeroClass` field, asking for nothing else — and a perk further along has
+// the plague tent's, with a class and the perks it wants before it. The count
 // the code believes in is counted rather than trusted.
 //
 //   node tools/test-hero-skills.ts [dataRoot]
@@ -45,16 +45,24 @@ const TENT: ModHeroSkill = {
   aiRace: 'Sylvan',
 };
 
-/** The first perk of that branch. */
+/** The first perk of that branch: holding the branch is all it asks. */
 const CLEANSE: ModHeroSkill = {
   id: 'HERO_SKILL_TENT_CLEANSING',
   number: SHIPPED_SKILLS + 1,
   kind: 'perk',
   heroClass: 'HERO_CLASS_WITCH',
   basicSkill: TENT.id,
-  prerequisites: [TENT.id],
   name: 'Целебные травы',
   description: 'Палатка первой помощи снимает с отряда отрицательные эффекты.',
+};
+
+/** And one further along, which does name a perk before it. */
+const BREW: ModHeroSkill = {
+  ...CLEANSE,
+  id: 'HERO_SKILL_TENT_BREW',
+  number: SHIPPED_SKILLS + 2,
+  prerequisites: [CLEANSE.id],
+  name: 'Целебный настой',
 };
 
 // --- what the shipped table says -----------------------------------------------
@@ -87,45 +95,48 @@ const CLEANSE: ModHeroSkill = {
 // --- types.xml -------------------------------------------------------------------
 
 {
-  const t = patchSkillTypes(types, [TENT, CLEANSE]);
+  const t = patchSkillTypes(types, [TENT, CLEANSE, BREW]);
   check('the enum gains both', t.includes(`<Item>${TENT.id}</Item>`) && t.includes(`<Item>${CLEANSE.id}</Item>`));
   check('numbered after the shipped ones',
     new RegExp(`<Name>${TENT.id}</Name>\\s*<Value>${SHIPPED_SKILLS}</Value>`).test(t));
   const at = t.indexOf('<TypeName>Table_HeroSkill_SkillID</TypeName>');
   const decl = t.slice(at, at + 4000);
-  check('and the table is declared two longer', decl.includes('<Data>223</Data>')
-    && decl.includes('<MinElements>223</MinElements>') && decl.includes('<MaxElements>223</MaxElements>'));
+  check('and the table is declared three longer', decl.includes('<Data>224</Data>')
+    && decl.includes('<MinElements>224</MinElements>') && decl.includes('<MaxElements>224</MaxElements>'));
 }
 
 // --- the table --------------------------------------------------------------------
 
 {
-  const t = patchSkillTable(table, [TENT, CLEANSE]);
+  const t = patchSkillTable(table, [TENT, CLEANSE, BREW]);
   const ids = [...t.matchAll(/<ID>(HERO_SKILL_\w+)<\/ID>/g)].map((m) => m[1]!);
-  check('the table gains exactly two', ids.length === SHIPPED_SKILLS + 2, `${ids.length}`);
+  check('the table gains exactly three', ids.length === SHIPPED_SKILLS + 3, `${ids.length}`);
 
   const ours = fieldsOf(entryOf(t, TENT.id));
   const avenger = fieldsOf(entryOf(table, 'HERO_SKILL_AVENGER'));
   check('a racial of ours has the Avenger\'s fields, in order', ours.join(',') === avenger.join(','),
     ours.join(',') === avenger.join(',') ? '' : `${ours.join(',')} vs ${avenger.join(',')}`);
 
-  // The plague tent, and NOT Multishot. A perk of ours always names its class in
-  // its own prerequisites: the empty list Multishot carries means "ask the
-  // compiled route", and that route has never heard of our class — measured, by
-  // a launch where the plague tent was offered to her and three perks written
-  // Multishot's way were not. So the shipped record to match is one with a class
-  // list in it.
+  // Multishot: the first perk of a racial branch, narrowed to one class by the
+  // `HeroClass` field and asking for nothing else.
   const perk = fieldsOf(entryOf(t, CLEANSE.id));
+  const multishot = fieldsOf(entryOf(table, 'HERO_SKILL_MULTISHOT'));
+  check('a first perk of ours has Multishot\'s fields, in order', perk.join(',') === multishot.join(','),
+    perk.join(',') === multishot.join(',') ? '' : `${perk.join(',')} vs ${multishot.join(',')}`);
+  check('and asks for nothing beyond the branch', entryOf(t, CLEANSE.id).includes('<SkillPrerequisites/>'));
+
+  // And one that does ask, in the plague tent's shape: a class, and perks under it.
+  const later = fieldsOf(entryOf(t, BREW.id));
   const plague = fieldsOf(entryOf(table, 'HERO_SKILL_LAST_AID'));
   // It lists four classes and ours lists one, so the repeated pair is folded.
   const gate = (f: string[]): string => f.join(',').replace(/(Class,dependenciesIDs,)+/, '$1');
-  check('and a perk of ours has the plague tent\'s fields, in order',
-    gate(perk) === gate(plague), gate(perk) === gate(plague) ? '' : `${gate(perk)} vs ${gate(plague)}`);
-  check('with its own class in the gate, which is what makes it reachable',
-    entryOf(t, CLEANSE.id).includes(`<Class>${CLEANSE.heroClass}</Class>`));
-  check('and the branch as what it asks for',
-    new RegExp(`<Class>${CLEANSE.heroClass}</Class>\\s*<dependenciesIDs>\\s*<Item>${TENT.id}</Item>`)
-      .test(entryOf(t, CLEANSE.id)));
+  check('a later perk has the plague tent\'s fields, in order',
+    gate(later) === gate(plague), gate(later) === gate(plague) ? '' : `${gate(later)} vs ${gate(plague)}`);
+  check('with its own class in the gate',
+    new RegExp(`<Class>${BREW.heroClass}</Class>\\s*<dependenciesIDs>\\s*<Item>${CLEANSE.id}</Item>`)
+      .test(entryOf(t, BREW.id)));
+  check('and the branch itself is refused as a prerequisite',
+    skillProblems({ ...BREW, prerequisites: [TENT.id] }).some((p) => p.includes('the branch itself')));
 
   const tent = entryOf(t, TENT.id);
   check('the racial names its class', tent.includes(`<HeroClass>${TENT.heroClass}</HeroClass>`));
@@ -143,8 +154,8 @@ const CLEANSE: ModHeroSkill = {
 
   const cleanse = entryOf(t, CLEANSE.id);
   check('the perk hangs off the racial', cleanse.includes(`<BasicSkillID>${TENT.id}</BasicSkillID>`));
-  check('and lets our class take it, which is the whole gate',
-    /<Class>HERO_CLASS_WITCH<\/Class>\s*<dependenciesIDs>\s*<Item>HERO_SKILL_TENT_MASTER</.test(cleanse));
+  check('and is narrowed to our class by the field the shipped ones use',
+    cleanse.includes('<HeroClass>HERO_CLASS_WITCH</HeroClass>'));
 
   let refused = false;
   try { patchSkillTable(t, [TENT]); } catch { refused = true; }

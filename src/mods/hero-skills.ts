@@ -213,6 +213,11 @@ export function skillProblems(skill: HeroSkillSpec): string[] {
   if (!skill.name.trim()) out.push('the skill has no name');
   if (!/^HERO_CLASS_[A-Z0-9_]+$/.test(skill.heroClass)) out.push(`${skill.heroClass} is not a HERO_CLASS_…`);
   if (skill.kind === 'perk' && !skill.basicSkill) out.push('a perk needs the skill its branch hangs off');
+  // Holding the branch is what `BasicSkillID` already says; a dependency names a
+  // perk that has to come first, and in the shipped table it always does.
+  if (skill.basicSkill && skill.prerequisites?.includes(skill.basicSkill)) {
+    out.push(`${skill.basicSkill} is the branch itself, not a perk to ask for first`);
+  }
   const want = skill.kind === 'racial' ? 4 : 2;
   if (skill.icons && skill.icons.length !== want) {
     out.push(`${skill.kind === 'racial' ? 'a racial' : 'a perk'} takes ${want} icons, not ${skill.icons.length}`);
@@ -297,29 +302,25 @@ export function patchSkillTable(table: string, skills: readonly ModHeroSkill[]):
       `\t\t<HeroClass>${s.heroClass}</HeroClass>`,
       '\t\t<spellBuffs/>',
       `\t\t<BasicSkillID>${racial ? 'HERO_SKILL_NONE' : s.basicSkill}</BasicSkillID>`,
-      // A PERK OF OURS ALWAYS NAMES ITS CLASS HERE, and that is measured rather
-      // than copied. The shipped Multishot hangs off Avenger with an EMPTY
-      // prerequisite list, so ours were written the same way — and were never
-      // offered at a level up, while the plague tent, which our class reaches by
-      // being added to ITS list, was offered at once. Same class, same hero,
-      // same launch; the difference between the two records is this element.
+      // THE FIRST PERK OF A BRANCH ASKS FOR NOTHING, which is Multishot's shape
+      // and every other first perk's: holding the branch is the requirement, and
+      // `BasicSkillID` above already says which branch. `<HeroClass>` is what
+      // narrows a SKILLTYPE_CLASS_PERK to one class, and it is plain data, so
+      // our tenth class works there like any other.
       //
-      // Which says what an empty list really means: not "open to everybody" but
-      // "ask the compiled route" — and for a SKILLTYPE_CLASS_PERK that route is
-      // the `<HeroClass>` field, matched against the classes the executable was
-      // built with. Ours is a value it has never heard of, so the only door left
-      // open to us is the one written in data. See docs/HERO_CLASSES.md.
-      //
-      // The dependency defaults to the BRANCH: a perk of a racial branch is
-      // reachable once the racial is held, which is what the branch meant back
-      // when it was doing the gating by itself.
-      ...(!racial ? [
+      // A LIST HERE IS FOR PERKS THAT COME LATER, and only for perks: across the
+      // shipped table every id that appears in a `dependenciesIDs` is itself a
+      // perk — 119 of them, not one base skill. Writing the branch's own skill
+      // into the list, which is what this used to do, asks the game a question it
+      // is never asked anywhere else. That was not what kept ours hidden either
+      // (the skill count in the executable was — see src/exe/table-limit.ts), so
+      // the shipped shape is what stands. See docs/HERO_CLASSES.md.
+      ...(!racial && s.prerequisites?.length ? [
         '\t\t<SkillPrerequisites>',
         '\t\t\t<Item>',
         `\t\t\t\t<Class>${s.heroClass}</Class>`,
         '\t\t\t\t<dependenciesIDs>',
-        ...(s.prerequisites?.length ? s.prerequisites : [s.basicSkill!])
-          .map((d) => `\t\t\t\t\t<Item>${d}</Item>`),
+        ...s.prerequisites.map((d) => `\t\t\t\t\t<Item>${d}</Item>`),
         '\t\t\t\t</dependenciesIDs>',
         '\t\t\t</Item>',
         '\t\t</SkillPrerequisites>',

@@ -13,7 +13,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
-  HERO_CLASS_TABLE, HERO_SKILL_TABLE, MAX_IMM8, findLoadSite, patchTableLimit, readTableLimit,
+  HERO_CLASS_TABLE, HERO_SKILL_TABLE, MAX_IMM8, findCountAccessor, findLoadSite, patchTableLimit, readTableLimit,
 } from '../src/exe/table-limit.ts';
 import type { TableSpec } from '../src/exe/table-limit.ts';
 
@@ -23,8 +23,17 @@ function check(name: string, ok: boolean, detail = ''): void {
   if (!ok) failures++;
 }
 
-/** A miniature executable: PE header, one section, the string, and the push. */
-function tinyExe(table: TableSpec, o: { count?: number; noPush?: boolean; decoy?: boolean } = {}): Buffer {
+/**
+ * A miniature executable: PE header, one section, the string, and the push.
+ *
+ * `accessors` adds out-of-line `mov eax,count; ret` functions, `called` says how
+ * many of them something calls. A table's second number is only its own when
+ * exactly one live one returns it, so both halves have to be forgeable here.
+ */
+function tinyExe(
+  table: TableSpec,
+  o: { count?: number; noPush?: boolean; decoy?: boolean; accessors?: number; called?: number } = {},
+): Buffer {
   const count = o.count ?? table.shipped;
   const BASE = 0x400000;
   const SECTION_VA = 0x1000;
@@ -34,6 +43,18 @@ function tinyExe(table: TableSpec, o: { count?: number; noPush?: boolean; decoy?
   // A decoy first: another table's registration, with its own count. The search
   // must not drift onto it — which is what anchoring on the path buys.
   if (o.decoy) body.push(0x6a, 0x7b, 0x68, 0x63, 0, 0, 0);
+
+  // The accessors come first, before anything that ends in a call: the tail
+  // below is `call <the next byte>`, and with the accessors after it that call
+  // landed on one of them and made a fixture that meant to have none live.
+  const accessors: number[] = [];
+  for (let i = 0; i < (o.accessors ?? 0); i++) {
+    const imm = Buffer.alloc(4);
+    imm.writeUInt32LE(count);
+    accessors.push(BASE + SECTION_VA + body.length);
+    body.push(0xb8, ...imm, 0xc3, 0x90, 0x90, 0x90, 0x90);   // mov eax,count; ret
+  }
+
   const name = Buffer.from(`${table.path}\0`, 'latin1');
   const nameAt = body.length;
   const address = BASE + SECTION_VA + nameAt;
@@ -54,6 +75,14 @@ function tinyExe(table: TableSpec, o: { count?: number; noPush?: boolean; decoy?
     }
   }
   body.push(0x50, 0xe8, 0, 0, 0, 0);              // push eax; call
+
+  // And the calls that make some of the accessors live.
+  for (let i = 0; i < (o.called ?? 0); i++) {
+    const from = BASE + SECTION_VA + body.length;
+    const rel = Buffer.alloc(4);
+    rel.writeInt32LE(accessors[i]! - (from + 5));
+    body.push(0xe8, ...rel);                                 // call the i-th one
+  }
 
   const buf = Buffer.alloc(HEADER + Math.max(0x200, body.length));
   buf.writeUInt32LE(0x80, 0x3c);
@@ -84,12 +113,9 @@ for (const table of [HERO_CLASS_TABLE, HERO_SKILL_TABLE]) {
     const want = table.shipped + 4;
     const patched = patchTableLimit(tinyExe(table), table, want);
     check('a patch takes', patched.written && readTableLimit(patched.data, table).limit === want);
-    // Nothing else may move: this is code, and a stray byte is a game that does
-    // not start.
     const before = tinyExe(table);
-    let differing = 0;
-    for (let i = 0; i < before.length; i++) if (before[i] !== patched.data[i]) differing++;
-    check('and touches nothing else', differing <= 4, `${differing} bytes differ`);
+    check('and touches nothing else', differing(before, patched.data) <= 4,
+      `${differing(before, patched.data)} bytes differ`);
     const again = patchTableLimit(patched.data, table, want);
     check('patching to what it already says writes nothing', !again.written);
   }
@@ -106,6 +132,43 @@ for (const table of [HERO_CLASS_TABLE, HERO_SKILL_TABLE]) {
     try { patchTableLimit(tinyExe(table), table, MAX_IMM8 + 1); } catch { refused = true; }
     check('a ceiling too big for a one-byte push is refused', refused);
   }
+
+  // --- the second number ---------------------------------------------------
+  {
+    const want = table.shipped + 4;
+    const dead = tinyExe(table, { accessors: 2, called: 0 });
+    check('an accessor nothing calls is not this table\'s', findCountAccessor(dead, table, want) === null);
+    const p = patchTableLimit(dead, table, want);
+    check('and a patch leaves both of them alone', differing(dead, p.data) <= 4,
+      `${differing(dead, p.data)} bytes differ`);
+
+    const live = tinyExe(table, { accessors: 2, called: 1 });
+    const found = findCountAccessor(live, table, want);
+    check('the one that is called is', found !== null && found.callers === 1);
+    const q = patchTableLimit(live, table, want);
+    check('and a patch moves both numbers',
+      q.written && readTableLimit(q.data, table).limit === want
+      && q.accessor !== null && q.data.readUInt32LE(q.accessor.at) === want);
+    check('while the dead one is still where it was', differing(live, q.data) <= 8,
+      `${differing(live, q.data)} bytes differ`);
+
+    // Raising it again: the accessor no longer says the shipped number, and has
+    // to be found by what the registration says instead.
+    const r = patchTableLimit(q.data, table, want + 1);
+    check('and raising it again finds the accessor by what it now says',
+      r.accessor !== null && r.data.readUInt32LE(r.accessor.at) === want + 1);
+
+    let refused = false;
+    try { findCountAccessor(tinyExe(table, { accessors: 2, called: 2 }), table, want); } catch { refused = true; }
+    check('two live accessors returning the same number are refused, not guessed', refused);
+  }
+}
+
+/** How many bytes moved — this is code, and a stray byte is a game that dies. */
+function differing(before: Buffer, after: Buffer): number {
+  let n = 0;
+  for (let i = 0; i < before.length; i++) if (before[i] !== after[i]) n++;
+  return n;
 }
 
 // --- the real thing, read only ------------------------------------------------
@@ -118,8 +181,12 @@ for (const exe of ['bin/H5_Game_H5E.exe', 'bin/H5_Game.exe']) {
   console.log(`\n${exe}:`);
   for (const table of [HERO_CLASS_TABLE, HERO_SKILL_TABLE]) {
     const r = readTableLimit(buf, table);
-    if (r.wrapped) check(`${table.what}: reported as wrapped, not as unknown`, true);
-    else check(`${table.what}: the count is found`, r.limit !== null, `${r.limit}`);
+    if (r.wrapped) { check(`${table.what}: reported as wrapped, not as unknown`, true); continue; }
+    check(`${table.what}: the count is found`, r.limit !== null, `${r.limit}`);
+    // Said out loud because it is the thing that was missed once: the skill
+    // table has a second number and the class table does not.
+    const a = findCountAccessor(buf, table, r.limit ?? table.shipped);
+    console.log(`        accessor: ${a ? `0x${a.address.toString(16)}, ${a.callers} caller(s)` : 'none'}`);
   }
 }
 

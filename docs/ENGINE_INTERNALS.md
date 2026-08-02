@@ -54,15 +54,21 @@ compilation, **every address in these documents is a landmark for a pattern
 search, never a constant to hardcode** — the same discipline the creature and
 artifact ceiling patchers already follow.
 
-**A reference table's size is one site, and it is found by the table's own
-name.** The registration routine has the same shape for every table — the path
+**A reference table's size is found by the table's own name — but it is not one
+site.** The registration routine has the same shape for every table — the path
 string, then a `push <count>`, then the call — so the hero class and skill
 ceilings were found without a single new address
-([HERO_CLASSES.md](HERO_CLASSES.md)). The twelve one-line `mov eax,N; ret`
-accessors that sit beside the creature ceiling are **referenced by nothing at
-all** — searched for calls, jumps and pointers over the whole image — so they
-are out-of-line copies of a size that was inlined at every real use, and the
-newer patcher leaves them alone.
+([HERO_CLASSES.md](HERO_CLASSES.md)). A table may ALSO be counted by an
+out-of-line `mov eax,N; ret` that the code calls, and that number is as binding
+as the pushed one: the skill table's sits at `0xb1ef80` with fifteen callers, and
+until it moved, three perks of ours loaded, showed and were never once offered.
+
+The twelve such one-liners beside the creature ceiling really are referenced by
+nothing — searched for calls, jumps and pointers. **That fact was twice turned
+into the wrong rule**: first "artifacts have no compiled ceiling"
+([ARTIFACTS.md](ARTIFACTS.md)), then "the skill accessor is dead too". The
+accessor that matters is somewhere else each time, so the patcher searches for
+one with callers instead of assuming.
 
 Tooling, all TypeScript: `src/exe/pe.ts` (sections, addresses, strings,
 references), `src/exe/disasm.ts` (iced-x86), `src/exe/lua-registry.ts`, and the

@@ -120,15 +120,17 @@ from. A perk of ours is that second kind.
 
 ## What a table of either costs
 
-Both are reference tables with a declared size, and the size is written **four**
-times. Miss one and the game either ignores what the mod added or refuses to
-start:
+Both are reference tables with a declared size, and the size is written **four
+times, and for the skill table five**. Miss one and the game either ignores what
+the mod added or refuses to start:
 
 1. `types.xml` — the enum's entry list (`<Item>HERO_CLASS_WITCH</Item>`);
 2. `types.xml` — the name→number map the executable compares against;
 3. `types.xml` — the table type's `ref_table_num_objs` **and** the `objects`
    field's `MinElements`/`MaxElements`;
-4. the executable — the count pushed where the table is registered.
+4. the executable — the count pushed where the table is registered;
+5. the executable — an out-of-line `mov eax,N; ret` the code calls, **when the
+   table has a live one**. The skill table does and the class table does not.
 
 The shipped counts are **9 classes** and **221 skills**.
 
@@ -149,13 +151,36 @@ is the first `push` after the reference to it. Checked on all four tables the
 editor extends (creatures, artifacts, hero classes, skills). `src/exe/table-limit.ts`
 patches by that pattern, never by address.
 
-**The one-line accessors are not patched, and should not be.** Twelve
-`mov eax,N; ret` functions sit together at `0xa9ef30`…`0xa9f330`, one per table,
-and the creature and artifact patchers both write theirs. Two things say they do
-not matter: **nothing references them** — not a call, not a jump, not a pointer
-anywhere in the image, searched for all twelve — and **the value cannot identify
-the table**: `mov eax,9; ret` fits the hero class table and the player colour
-table equally, and both declare 9.
+### The second number, which cost an evening
+
+Twelve one-line `mov eax,N; ret` functions sit together at `0xa9ef30`…`0xa9f330`,
+one per table, and the creature and artifact patchers both write theirs.
+**Nothing references any of the twelve** — not a call, not a jump, not a pointer,
+searched for all of them. From that the conclusion "these one-liners are dead"
+was drawn, and it was drawn too wide.
+
+The skill table has **another one**, far from that block, at `0xb1ef80`, and
+fifteen call sites reach it:
+
+```
+0x5d1b1b  test ebx,ebx        ; the skill id
+0x5d1b1d  js   <refuse>
+0x5d1b23  call 0xb1ef80       ; mov eax,0DDh ; ret   — 221
+0x5d1b28  cmp  ebx,eax
+0x5d1b2a  jge  <refuse>       ; id past the count: no such skill
+```
+
+That one is inside `GiveHeroSkill`; the rest are `for (i = 0; i < that; i++)`
+walks of the skill manager, which is how the game enumerates what a hero could be
+offered. A table registered as 225 long whose accessor still says 221 **loads
+fine, shows the racial fine, and silently offers no perk past the shipped ones**.
+
+So `src/exe/table-limit.ts` now finds it rather than assuming, and only when it
+identifies itself: a one-liner returning this table's count **that something
+calls**. `mov eax,9; ret` fits the hero class table and the player colour table
+equally — but nothing calls either, so there is nothing to choose between and
+nothing to write. Two live ones returning the same number would be refused rather
+than guessed at.
 
 ## What the editor does with all this
 
@@ -196,48 +221,57 @@ and does nothing whatever. So a skill of ours is two halves — the record here,
 and a term the native extension adds — and until the second half exists the
 words are a promise.
 
-## A perk of ours has to name its class
+## Why the perks were not offered, and what it was not
 
 The three perks of the Witch's branch were written the way the shipped Multishot
-is — `SKILLTYPE_CLASS_PERK`, `BasicSkillID` naming the branch, and an EMPTY
-`SkillPrerequisites`, since the branch is one class's and nobody else can reach
-it. They were never offered at a level up. In the same launch, on the same hero,
-the **plague tent was offered** — and the only thing that had been done to it was
-adding `<Class>HERO_CLASS_WITCH</Class>` to its own prerequisite list.
+is — `SKILLTYPE_CLASS_PERK`, `BasicSkillID` naming the branch, an empty
+`SkillPrerequisites` — and were never offered at a level up. The racial above
+them worked perfectly: taken, named, advanced through all four levels.
 
-That is the whole experiment, and it says what an empty list means:
+**The cause was the accessor above**: the game's walk over "every skill there is"
+stopped at 221, so ids 222–224 did not exist to it. The racial survived that
+because a racial is handed to a hero by his class, not looked up by id. One
+number, patched, and the branch is reachable.
 
-> An empty `SkillPrerequisites` does not mean "open to everybody". It means
-> **ask the compiled route** — and for a class perk that route is the
-> `<HeroClass>` field, matched against the classes the executable was built
-> with. A class it has never heard of loses every such comparison.
-
-So the door left open to a class of ours is the one written in data, and a perk
-of the mod always names its class in its own gate, with the branch as the
-dependency:
+Which makes the shape of a perk of ours the shipped shape after all:
 
 ```xml
-<SkillPrerequisites>
-  <Item><Class>HERO_CLASS_WITCH</Class>
-        <dependenciesIDs><Item>HERO_SKILL_TENT_MASTER</Item></dependenciesIDs></Item>
-</SkillPrerequisites>
+<SkillType>SKILLTYPE_CLASS_PERK</SkillType>
+<HeroClass>HERO_CLASS_WITCH</HeroClass>      <!-- whose branch this is -->
+<BasicSkillID>HERO_SKILL_TENT_MASTER</BasicSkillID>
+<SkillPrerequisites/>                        <!-- holding the branch is enough -->
 ```
 
-Two things were ruled out on the way, and both are worth keeping:
+### The detour, kept because the reasoning was sound and wrong
 
-- **It is not the id being past the shipped count.** The racial is 221, one past
-  the shipped 221 skills, and it is offered, taken and advanced through its
-  levels. Ids above the old ceiling are ordinary once the ceiling moves.
-- **It is not a missing registration.** Over the whole data root a perk is named
-  in `Skills.xdb`, in `types.xml` (the enum, as every id is), and in four maps
-  that hand it to a preset hero. Nothing registers a perk anywhere else — no UI
-  file, no wheel, no list per class.
+In between, the plague tent — a shipped perk with a class list — **was** offered
+to her after `<Class>HERO_CLASS_WITCH</Class>` was added to it, while ours were
+not. That looked like an A/B with one variable, and it produced a rule: "an empty
+list means ask the compiled route, so a perk of ours must name its class". Both
+observations were real; the inference was not. The plague tent's id is 194, below
+the ceiling, and that — not its list — is why it was reachable. **Two records
+differing in one element can still differ in a third thing neither of them
+mentions.**
 
-The general shape of this is the same one specializations taught: **data reaches
-a value the executable never heard of; compiled comparisons do not.** Anything
-in the game that works by "the engine knows which class this belongs to" has to
-be re-said in data for a class of ours, and anything that works by arithmetic
-compiled against an id has to be re-said in the extension.
+The gate rule that survives, and it is the useful one:
+
+- **An empty `SkillPrerequisites` is an open door**, narrowed only by
+  `BasicSkillID` (you hold the branch) and, on a class perk, `<HeroClass>`. That
+  field is plain data, so our tenth class works there like any other.
+- **A list is for perks that come later.** Across the shipped table every id
+  named in a `dependenciesIDs` is itself a perk — 119 of them, not one base
+  skill. Writing the branch's own skill into the list asks the game a question it
+  is never asked anywhere else, so `skillProblems` refuses it.
+
+Still worth keeping from the detour: **a perk is registered nowhere else.** Over
+the whole data root a perk is named in `Skills.xdb`, in `types.xml`, and in four
+maps that hand it to a preset hero. No UI file, no wheel, no list per class.
+
+The general shape specializations taught still holds — **data reaches a value the
+executable never heard of; compiled comparisons do not** — and this adds the
+other half: *a compiled COUNT is a comparison too*, and it will not announce
+itself. When something of ours is inert, ask what the exe would have to count
+before asking what the record says.
 
 ## The effects, and where each of them will have to go
 

@@ -72,7 +72,9 @@ async function fillSkillForm(): Promise<void> {
   // form's business, because there the gate is the perk's class list.
   const racials = skills.filter((s) => s.kind === 'racial').map((s) => ({ id: s.id, label: s.name || s.id }));
   fillSelect($select('hk-branch'), racials, $select('hk-branch').value);
-  fillSelect($select('hk-needs'), [{ id: '', label: '— nothing but the branch' }, ...racials,
+  // Perks only, and never the branch: holding the branch is what BasicSkillID
+  // already says, and no shipped perk asks for a base skill by name.
+  fillSelect($select('hk-needs'), [{ id: '', label: '— nothing but the branch' },
     ...skills.filter((s) => s.kind === 'perk').map((s) => ({ id: s.id, label: s.name || s.id }))],
   $select('hk-needs').value);
   gateSkill().check();
