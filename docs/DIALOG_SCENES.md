@@ -299,6 +299,20 @@ going quietly green.
   through its own cameras, arrow keys to step the shots. This is how the camera
   convention was confirmed by eye, and how a scene is looked at before the
   editor has a window for one.
+
+  Two calls on it, and they are the instruments this feature was debugged with:
+  `snap(shot, t)` renders one frame, `sheet(from, to)` renders **every** shot
+  tiled and labelled onto a single image. Both POST the PNG to `/sink`, so a
+  headless browser can drive them. The sheet is the one that matters: a whole
+  scene at a glance shows what a frame at a time hides, and it is what caught a
+  camera that was pointing 180° wrong after two rounds of scoring against 4578
+  poses had missed it.
+
+* `view.snapshot()` in the app — renders the current frame and hands back a PNG
+  data URL. The only way to see what the **editor** draws: an Electron window
+  capture comes back without the WebGL layer, and reading the canvas after the
+  frame comes back blank, because the drawing buffer is cleared on present. So
+  it draws again and reads in the same task.
 * `tools/scene-stage.ts` — builds a scene headless and reports what drew.
   C1M1's opening comes out as 53 meshes and 665 placed objects with ONE
   skipped: `Sunflowers.(AdvMapStaticShared)`, which is one of the game's own
@@ -310,7 +324,18 @@ of the archives into a workspace that mirrors its data path, and that workspace
 is mounted over the data root. Then every href in it resolves normally — the
 absolute ones at the arena, the relative ones at its own files.
 
-Open, in rough order of when it will bite: what `DynamicCamera` does when
-nothing ever turns it off [~], `Absolute=false` anchors and a camera's own
-`Rot` [~], whether the easing between two poses is the smoothstep assumed here
-[~], and whether a custom scene can be listed in the game's replay viewer [~].
+Open, in rough order of when it will bite: **the sky** — every preset names a
+`<Sky>` cube texture and nothing draws it, so a scene's horizon is black where
+the game's is a red sunset; the **voice recordings** and the timings they
+imply; **walks** along `MovePoints`; what `DynamicCamera` does, which the
+corpus cannot say because it is on in all 981 shots that resolve to an actor
+[~]; whether `Absolute` means anything beyond intent, now that the set is known
+to carry the placement [~]; whether the easing between two poses is the
+smoothstep assumed here [~]; and whether a custom scene can be listed in the
+game's replay viewer [~].
+
+Two shots of C1M1 (42 and 47, both Godric's) put the eye within half a unit of
+the actor who speaks them, so the camera stands inside his horse. The reading
+is right everywhere else and the corpus says this happens in 1% of shots either
+way round, so it is recorded rather than fixed — the likely answer is something
+that pushes the eye off an obstruction, which nothing here does yet. [~]

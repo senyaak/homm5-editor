@@ -627,7 +627,16 @@ Format (surveyed 2026-07-23, 250 scenes shipped under `DialogScenes/`):
       it through the same `buildWorld` a map goes through, the actors are
       skinned bodies with their arena clips, and a shot drives the camera
       (`e2e/dialog-scene.spec.ts`). Still to come: the line timings from the
-      voice files, walks along `MovePoints`, and effects in shot
+      voice files and walks along `MovePoints`
+- [x] ✅ **The picture the game plays** (2026-08-02): the camera turned out to
+      be on the wrong side of its own rod, so every close-up filmed the back of
+      somebody's head; a shot fires its own `<effects>`; and a scene is lit by
+      its own preset with a per-shot override, not by the arena it borrows.
+      Two instruments came out of it and both stay: `view.snapshot()` renders a
+      frame of the APP and hands back the PNG (an Electron window capture comes
+      back without the WebGL layer), and `sheet(from, to)` in the viewer tiles
+      every shot of a scene onto one image — which is what found the camera
+      after two rounds of corpus scoring could not
 - [x] ✅ **Shipped scenes as the proving ground** (Сеня, 2026-07-27): C1M1's
       opening — the one the campaign we rebuild with tests actually plays —
       opens from the Scenes… window, unpacked out of the campaign archive the
@@ -636,8 +645,13 @@ Format (surveyed 2026-07-23, 250 scenes shipped under `DialogScenes/`):
       scenes stay the corpus the format checks run against
 - [ ] ⬜ The rest of what a shot carries: the voice recording (`bin/SoundsLoc`
       is Ogg, `bin/Sounds` is WAV — Chromium plays both, so this is timing
-      rather than decoding), walks along `MovePoints`, placed effects, and the
-      per-shot ambient light
+      rather than decoding) and walks along `MovePoints` (`ShotAnimation` has
+      them; nothing walks yet)
+- [ ] ⬜ The sky. Every ambient preset names a `<Sky>` cube texture and
+      `loadAmbient` ignores it on purpose — on the adventure map it is a
+      reflection map the camera never shows. A scene's camera looks at the
+      horizon, so ours is black where the game's is a red sunset. Six DDS faces
+      into a `THREE.CubeTexture` as the scene background
 
 ### Model editing (far future, smallest step first)
 
