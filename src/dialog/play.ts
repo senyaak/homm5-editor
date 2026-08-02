@@ -16,7 +16,7 @@ import type { Scene } from '../scene/payload.ts';
 import { dirOf, resolveHref } from '../scene/xdb.ts';
 import { actorRigs } from './actors.ts';
 import type { ActorRig } from './actors.ts';
-import { cameraShot, eyeOf, loadCamera, loadCameraSet, poseAt } from './camera.ts';
+import { cameraShot, eyeOf, loadCamera, loadCameraSet, poseAt, targetOf } from './camera.ts';
 import type { OrbitPose } from './camera.ts';
 import { loadDialogScene } from './dialog-scene.ts';
 import type { DialogScene } from './dialog-scene.ts';
@@ -164,9 +164,10 @@ export function buildScenePlay(data: Assets, scenePath: string, options: PlayOpt
       for (let i = 0; i <= samples; i++) {
         const pose = poseAt(ends.move, i / samples);
         const eye = eyeOf(pose);
+        const at = targetOf(pose);
         camera.push({
           eye: [eye.x, eye.y, eye.z],
-          at: [pose.anchor.x, pose.anchor.y, pose.anchor.z],
+          at: [at.x, at.y, at.z],
           fov: pose.fov || 35,
         });
       }

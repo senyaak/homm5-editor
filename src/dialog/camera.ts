@@ -86,6 +86,28 @@ export interface CameraShot {
 export const YAW_ZERO: 'x' | 'y' = 'y';
 export const YAW_SIGN = -1;
 
+/**
+ * Which end of the rod the eye is on — settled by looking, not by counting.
+ *
+ * This is yaw plus HALF A TURN, so none of the four candidates above could see
+ * it: they are mirrorings, and every one of them leaves the eye on the same
+ * side. Nor could the in-frame score, for a reason worth remembering — most
+ * shots anchor ON their speaker, and a camera orbiting a point keeps whatever
+ * is at that point in frame from either side of it. Both readings scored 22%.
+ *
+ * What separates them is WHICH SIDE of the actor you end up on. Read the other
+ * way round, C1M1's opening films the backs of everybody's heads: Isabell's
+ * hood for twelve shots running, the knight from behind his horse, and the
+ * speaker's counterpart instead of the speaker. Read this way the same shots
+ * are the frames the game plays — the mounted Isabell with her banner-bearer,
+ * Godrik face-on, the demon lord over his nightmares.
+ *
+ * `tools/view-dialog-scene.ts` renders all 73 shots onto one contact sheet,
+ * which is what made a 180° error obvious in one glance after two rounds of
+ * measurement had missed it.
+ */
+const ROD_SIGN = -1;
+
 const ZERO: Point3 = { x: 0, y: 0, z: 0 };
 
 const num = (el: XmlElement | null, name: string): number => (el ? Number(childText(el, name)) || 0 : 0);
@@ -188,12 +210,51 @@ export function eyeOf(pose: OrbitPose): Point3 {
   // Negative pitch means the eye is above the anchor — see the header.
   const up = -pose.pitch;
   const flat = Math.cos(up);
+  const rod = pose.rod * ROD_SIGN;
   return {
-    x: pose.anchor.x + pose.rod * u.x * flat,
-    y: pose.anchor.y + pose.rod * u.y * flat,
+    x: pose.anchor.x + rod * u.x * flat,
+    y: pose.anchor.y + rod * u.y * flat,
     z: pose.anchor.z + pose.rod * Math.sin(up),
   };
 }
+
+/**
+ * The point the camera looks at — the anchor, except when it is standing on it.
+ *
+ * Four of C1M1's shots have a rod of exactly zero: the eye IS the anchor, and
+ * "look at the anchor" is then a direction of zero length, which leaves the
+ * camera pointing wherever it last pointed. The angles still say which way it
+ * faces, so the target is taken a unit along them instead.
+ */
+export function targetOf(pose: OrbitPose): Point3 {
+  const eye = eyeOf(pose);
+  if (Math.abs(pose.rod) > 1e-4) return { ...pose.anchor };
+  // The same direction the rod runs in, a unit along: with the eye at the
+  // anchor there is no rod to take it from, but the angles still say which way
+  // the camera faces.
+  const u = heading(pose.yaw);
+  const up = -pose.pitch;
+  const flat = Math.cos(up);
+  return {
+    x: eye.x - ROD_SIGN * u.x * flat,
+    y: eye.y - ROD_SIGN * u.y * flat,
+    z: eye.z - Math.sin(up),
+  };
+}
+
+// WHAT `Absolute` TURNED OUT TO BE. Half of C1M1's second act is written with
+// `Absolute=false` and an anchor of (0, 0, z), which reads as "somewhere near
+// the origin" and looks like a bug waiting to be fixed. It is not: the SET that
+// points at such a camera carries the placement, and carries it as the subject's
+// own tile and facing —
+//
+//     C1M1D1Ga1  StartCameraDiff 83, 65   StartCorrectionRot 3.1811   (Godrik)
+//     C1M1D1BA1  StartCameraDiff 81, 77   StartCorrectionRot 6.2043   (the demon)
+//
+// — so the pose is a framing ("this high, this far, at this angle to them") and
+// the set says who it is of. `poseAt` already adds both. Placing the camera on
+// the speaker HERE as well moves it twice and throws it off the map, which is
+// what trying it did.
 
 /**
  * The pose that puts the camera at `eye` looking at `anchor` — "use what I am
@@ -204,7 +265,9 @@ export function poseFrom(eye: Point3, anchor: Point3, fov = 35, roll = 0): Orbit
   const rod = Math.hypot(dx, dy, dz);
   const flat = Math.hypot(dx, dy);
   const up = Math.atan2(dz, flat);
-  const a = YAW_ZERO === 'x' ? Math.atan2(dy, dx) : Math.atan2(dx, dy);
+  // The heading runs the way the rod does, which is back towards the anchor.
+  const hx = ROD_SIGN * dx, hy = ROD_SIGN * dy;
+  const a = YAW_ZERO === 'x' ? Math.atan2(hy, hx) : Math.atan2(hx, hy);
   return { rod, pitch: -up, yaw: YAW_SIGN * a, roll, fov, anchor: { ...anchor } };
 }
 

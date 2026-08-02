@@ -379,6 +379,16 @@ interface ViewApi {
    */
   batched(): { slots: number; misplaced: number };
   /**
+   * The frame as it stands, as a PNG data URL.
+   *
+   * The only way to LOOK at what the app draws. An Electron window screenshot
+   * comes back without the WebGL layer, and reading the canvas after the fact
+   * comes back blank — the drawing buffer is cleared on present. So the frame is
+   * drawn again here and read in the same task, which is the one moment it is
+   * still there.
+   */
+  snapshot(): string;
+  /**
    * The lighting actually applied to the scene right now — preset or fallback,
    * and whether the background is the map's sky. Lighting has no other
    * observable surface: a preset that fails to load just leaves the fallback
@@ -634,6 +644,10 @@ const view: ViewApi = {
       }
     }
     return { slots, misplaced };
+  },
+  snapshot() {
+    renderer.render(scene, cam.active);
+    return renderer.domElement.toDataURL('image/png');
   },
   pending() { return pendingCommits; },
   opened() { return session.openedMap; },

@@ -11,6 +11,11 @@
 //
 // three.min.js is inlined: no dev server, no bundle, no IPC. Arrow keys step
 // through the shots, space plays them at their own durations.
+//
+// From a console — or from a headless browser with a server that takes the
+// POST — `snap(shot, t)` hands back one frame and `sheet(from, to)` hands back
+// all of them tiled and labelled. The sheet is the instrument that matters —
+// see the comment on `sheet` itself.
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -251,6 +256,30 @@ addEventListener('keydown',e=>{
 place();sync(0);
 // Rendering a chosen shot and handing back the pixels, for looking at this
 // page from outside a display — the same sink trick the geometry viewer uses.
+// Every shot at once, tiled and labelled, posted as one image.
+//
+//   sheet(0, 36, 6, 320, 180)
+//
+// One frame at a time hides what a whole scene shows immediately. The camera
+// convention was out by half a turn for a week — two rounds of scoring against
+// the corpus could not see it, because most shots orbit their speaker and keep
+// them in frame from either side — and one sheet of 36 thumbnails settled it:
+// every shot was the back of somebody's head.
+window.sheet=async function(from,to,cols,w,h){
+  cols=cols||6; w=w||320; h=h||180;
+  const n=to-from, rows=Math.ceil(n/cols);
+  const c=document.createElement('canvas'); c.width=cols*w; c.height=rows*h;
+  const g=c.getContext('2d'); g.fillStyle='#111'; g.fillRect(0,0,c.width,c.height);
+  R.setSize(w,h,false); cam.aspect=w/h; cam.updateProjectionMatrix();
+  for(let i=0;i<n;i++){
+    shot=from+i; t=0.5; place(); cuedShot=-1; sync(t*((SHOTS[shot]||{duration:3}).duration||3));
+    R.render(world,cam);
+    g.drawImage(R.domElement,(i%cols)*w,Math.floor(i/cols)*h,w,h);
+    g.fillStyle='#fff'; g.font='16px monospace';
+    g.fillText(String(shot),(i%cols)*w+6,Math.floor(i/cols)*h+20);
+  }
+  return fetch('/sink?n=sheet'+from,{method:'POST',body:c.toDataURL('image/png')}).then(r=>r.text());
+};
 window.snap=function(n,at){
   // A pane that is not on screen has no size, and a zero-sized canvas hands
   // back a six-character data URL. The frame asked for is rendered at a fixed

@@ -128,7 +128,19 @@ function ground(stage: { V: number; h: Float32Array }, wx: number, wy: number): 
   return stage.h[y * stage.V + x] ?? null;
 }
 
-interface Convention { frame: 'horizon' | 'zenith'; pitchSign: 1 | -1; yawZero: 'x' | 'y'; yawSign: 1 | -1 }
+interface Convention {
+  frame: 'horizon' | 'zenith'; pitchSign: 1 | -1; yawZero: 'x' | 'y'; yawSign: 1 | -1;
+  /**
+   * Which end of the rod the eye is on.
+   *
+   * The dimension the first pass missed, and it is not one of the yaw
+   * candidates: flipping this is yaw plus HALF A TURN, while {x,y}×{+,-} are
+   * mirrorings. Miss it and a close-up puts the camera where the actor is
+   * standing, looking away from them — which is exactly what the knight's shots
+   * did.
+   */
+  rodSign?: 1 | -1;
+}
 
 function eyeOf(p: Pose, c: Convention): [number, number, number] {
   const a = c.yawSign * p.yaw;
@@ -137,7 +149,8 @@ function eyeOf(p: Pose, c: Convention): [number, number, number] {
   const [flat, up] = c.frame === 'horizon'
     ? [Math.cos(pitch), Math.sin(pitch)]
     : [Math.sin(pitch), Math.cos(pitch)];
-  return [p.ax + p.rod * ux * flat, p.ay + p.rod * uy * flat, p.az + p.rod * up];
+  const rod = p.rod * (c.rodSign ?? 1);
+  return [p.ax + rod * ux * flat, p.ay + rod * uy * flat, p.az + p.rod * up];
 }
 
 const results: Array<{ c: Convention; above: number; onStage: number }> = [];
@@ -200,7 +213,7 @@ for (const r of [...results].sort((a, b) => b.above - a.above)) {
 // the camera orbits the speaker they are in frame whichever way it faces — so
 // those are dropped, and what is left is the shots that had to be aimed.
 
-interface Aimed { pose: Pose; actor: { x: number; y: number; z: number } }
+interface Aimed { pose: Pose; actor: { x: number; y: number; z: number }; dynamic: boolean }
 const aimed: Aimed[] = [];
 for (const [path, text] of texts) {
   if (!text.includes('<DialogScene>') && !text.includes('<DialogScene ')) continue;
@@ -233,6 +246,7 @@ for (const [path, text] of texts) {
     const anchor = cpos && find(cpos, 'Anchor');
     if (!anchor) return;
     aimed.push({
+      dynamic: shot.dynamicCamera,
       pose: {
         rod: Number(childText(cpos, 'Rod')), pitch: Number(childText(cpos, 'Pitch')),
         yaw: Number(childText(cpos, 'Yaw')),
@@ -252,21 +266,83 @@ for (const [path, text] of texts) {
 
 const offActor = aimed.filter((a) => Math.hypot(a.pose.ax - a.actor.x, a.pose.ay - a.actor.y) > 6);
 console.log(`\n  ${aimed.length} shots resolve to an actor and a camera; ${offActor.length} of them are aimed somewhere other than at the speaker`);
-console.log('  is the speaker inside the 35° frame?');
+console.log('  is the speaker inside the 35° frame, and is the eye clear of them?');
+console.log('    convention                all shots        aimed-away      eye inside the speaker');
+for (const rodSign of [1, -1] as const) {
+  for (const yawZero of ['x', 'y'] as const) {
+    for (const yawSign of [1, -1] as const) {
+      const c: Convention = { frame: 'horizon', pitchSign: -1, yawZero, yawSign, rodSign };
+      let all = 0, away = 0, onTop = 0;
+      const inFrame = (a: Aimed): boolean => {
+        const [ex, ey, ez] = eyeOf(a.pose, c);
+        const look = [a.pose.ax - ex, a.pose.ay - ey, a.pose.az - ez];
+        const to = [a.actor.x - ex, a.actor.y - ey, a.actor.z - ez];
+        const dot = look[0] * to[0] + look[1] * to[1] + look[2] * to[2];
+        const cos = dot / (Math.hypot(...look) * Math.hypot(...to) || 1);
+        return Math.acos(Math.min(1, Math.max(-1, cos))) < (35 / 2) * Math.PI / 180;
+      };
+      for (const a of aimed) {
+        if (inFrame(a)) all++;
+        // A camera standing where the actor stands is not a shot of them, it is
+        // a shot from inside their head — and it costs nothing to notice.
+        const [ex, ey] = eyeOf(a.pose, c);
+        if (Math.hypot(ex - a.actor.x, ey - a.actor.y) < 1.5) onTop++;
+      }
+      for (const a of offActor) if (inFrame(a)) away++;
+      const pc = (n: number, of: number) => `${((n / (of || 1)) * 100).toFixed(1)}%`.padStart(6);
+      console.log(`    rod ${rodSign > 0 ? '+' : '-'}, yaw from ${yawZero.toUpperCase()} ${yawSign > 0 ? '+' : '-'}`.padEnd(30)
+        + `${pc(all, aimed.length)} ${String(all).padStart(5)}   ${pc(away, offActor.length)} ${String(away).padStart(5)}`
+        + `   ${pc(onTop, aimed.length)} ${String(onTop).padStart(5)}`);
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// …or is the anchor the EYE?
+// ---------------------------------------------------------------------------
+//
+// Everything above assumes the anchor is what the camera looks at and the rod
+// swings the eye around it. The knight's close-ups say otherwise: read that
+// way, his camera lands ON him, half a unit from where he stands, looking off
+// at nothing. Read the other way — the eye AT the anchor, the rod pointing at
+// what it films — the same numbers put him dead centre at seven units.
+//
+// Both readings use the same three fields, so only the corpus can choose.
+
+console.log('\n  …or is the ANCHOR the eye and the rod the reach to what it films?');
+console.log('    convention                all shots        aimed-away      anchor above ground');
 for (const yawZero of ['x', 'y'] as const) {
   for (const yawSign of [1, -1] as const) {
-    let inFrame = 0;
-    for (const a of offActor) {
-      const [ex, ey, ez] = eyeOf(a.pose, { frame: 'horizon', pitchSign: -1, yawZero, yawSign });
-      const look = [a.pose.ax - ex, a.pose.ay - ey, a.pose.az - ez];
-      const to = [a.actor.x - ex, a.actor.y - ey, a.actor.z - ez];
-      const dot = look[0] * to[0] + look[1] * to[1] + look[2] * to[2];
-      const cos = dot / (Math.hypot(...look) * Math.hypot(...to) || 1);
-      if (Math.acos(Math.min(1, Math.max(-1, cos))) < (35 / 2) * Math.PI / 180) inFrame++;
+    for (const rodSign of [1, -1] as const) {
+      const c: Convention = { frame: 'horizon', pitchSign: -1, yawZero, yawSign, rodSign };
+      let all = 0, away = 0;
+      const inFrame = (a: Aimed): boolean => {
+        // The eye is the anchor; the far end of the rod is what it looks at.
+        const [tx, ty, tz] = eyeOf(a.pose, c);
+        const ex = a.pose.ax, ey = a.pose.ay, ez = a.pose.az;
+        const look = [tx - ex, ty - ey, tz - ez];
+        const to = [a.actor.x - ex, a.actor.y - ey, a.actor.z - ez];
+        const dot = look[0] * to[0] + look[1] * to[1] + look[2] * to[2];
+        const cos = dot / (Math.hypot(...look) * Math.hypot(...to) || 1);
+        return Math.acos(Math.min(1, Math.max(-1, cos))) < (35 / 2) * Math.PI / 180;
+      };
+      for (const a of aimed) if (inFrame(a)) all++;
+      for (const a of offActor) if (inFrame(a)) away++;
+      const pc = (n: number, of: number) => `${((n / (of || 1)) * 100).toFixed(1)}%`.padStart(6);
+      console.log(`    eye at anchor, yaw ${yawZero.toUpperCase()}${yawSign > 0 ? '+' : '-'} rod ${rodSign > 0 ? '+' : '-'}`.padEnd(30)
+        + `${pc(all, aimed.length)} ${String(all).padStart(5)}   ${pc(away, offActor.length)} ${String(away).padStart(5)}`);
     }
-    const pc = ((inFrame / (offActor.length || 1)) * 100).toFixed(1);
-    console.log(`    yaw from ${yawZero.toUpperCase()} ${yawSign > 0 ? '+' : '-'}   ${pc.padStart(5)}%  ${inFrame}`);
   }
+}
+{
+  const hs: number[] = [];
+  for (const p of usable) {
+    const g = ground(stageAt(p.stage)!, p.ax, p.ay);
+    if (g !== null) hs.push(p.az - g);
+  }
+  hs.sort((a, b) => a - b);
+  const at = (q: number) => hs[Math.floor((hs.length - 1) * q)]!.toFixed(1).padStart(7);
+  console.log(`    the anchor itself sits   p10 ${at(0.1)}  median ${at(0.5)}  p90 ${at(0.9)} above the ground`);
 }
 
 const closeUps = usable.filter((p) => Math.abs(p.rod) < 20);
@@ -283,5 +359,58 @@ for (const frame of ['horizon', 'zenith'] as const) {
     heights.sort((a, b) => a - b);
     const at = (q: number) => heights[Math.floor((heights.length - 1) * q)]!.toFixed(1).padStart(7);
     console.log(`    pitch from ${frame.padEnd(8)} ${pitchSign > 0 ? '+' : '-'}   p10 ${at(0.1)}  median ${at(0.5)}  p90 ${at(0.9)}`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Do the anchors and the actors live in the same frame at all?
+// ---------------------------------------------------------------------------
+//
+// A cheap check with a lot of power: how often does the anchor land ON the
+// speaker? If the two are written in the same axes it should happen often (a
+// close-up orbits its subject); if one of them is mirrored it should happen at
+// chance. The mirror worth testing is Y, because a map's rows are the one thing
+// an exporter flips.
+
+{
+  const V = 72; // the arenas are all this, and the mirror is about the middle
+  const near = (dx: number, dy: number): boolean => Math.hypot(dx, dy) < 6;
+  let same = 0, flipped = 0;
+  for (const a of aimed) {
+    if (near(a.pose.ax - a.actor.x, a.pose.ay - a.actor.y)) same++;
+    if (near(a.pose.ax - a.actor.x, a.pose.ay - (V * 2 - a.actor.y))) flipped++;
+  }
+  const pc = (n: number) => `${((n / (aimed.length || 1)) * 100).toFixed(1)}%`.padStart(6);
+  console.log('\n  is the anchor on the speaker (within 3 tiles)?');
+  console.log(`    actors as placed   ${pc(same)} ${same}`);
+  console.log(`    actors mirrored in Y ${pc(flipped)} ${flipped}`);
+}
+
+// ---------------------------------------------------------------------------
+// What DynamicCamera does
+// ---------------------------------------------------------------------------
+//
+// The flag is on in most shots and nothing here reads it. The guess worth
+// testing is the one its name makes: that the stored pose is a starting
+// suggestion and the game AIMS IT AT THE SPEAKER at runtime. If so, the shots
+// with the flag OFF are the ones whose stored aim is the final one, and only
+// they should frame their speaker at any rate worth having.
+
+{
+  const c: Convention = { frame: 'horizon', pitchSign: -1, yawZero: 'y', yawSign: -1 };
+  const inFrame = (a: Aimed): boolean => {
+    const [ex, ey, ez] = eyeOf(a.pose, c);
+    const look = [a.pose.ax - ex, a.pose.ay - ey, a.pose.az - ez];
+    const to = [a.actor.x - ex, a.actor.y - ey, a.actor.z - ez];
+    const dot = look[0] * to[0] + look[1] * to[1] + look[2] * to[2];
+    const cos = dot / (Math.hypot(...look) * Math.hypot(...to) || 1);
+    return Math.acos(Math.min(1, Math.max(-1, cos))) < (35 / 2) * Math.PI / 180;
+  };
+  console.log('\n  does the speaker land in frame, split by DynamicCamera?');
+  for (const on of [false, true]) {
+    const group = aimed.filter((a) => a.dynamic === on);
+    const hit = group.filter(inFrame).length;
+    const pc = ((hit / (group.length || 1)) * 100).toFixed(1).padStart(5);
+    console.log(`    DynamicCamera ${on ? 'on ' : 'off'}   ${pc}%  ${hit} of ${group.length}`);
   }
 }
