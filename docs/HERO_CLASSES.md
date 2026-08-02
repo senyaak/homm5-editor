@@ -238,3 +238,36 @@ a value the executable never heard of; compiled comparisons do not.** Anything
 in the game that works by "the engine knows which class this belongs to" has to
 be re-said in data for a class of ours, and anything that works by arithmetic
 compiled against an id has to be re-said in the extension.
+
+## The effects, and where each of them will have to go
+
+None of the four skills does anything yet. This is what the next pass starts
+from, so it is written down rather than remembered.
+
+**The racial: one more use of the first aid tent per level of the skill.** The
+quantity already exists in data — `GameMechanics/RefTables/WarMachines.xdb`,
+`WAR_MACHINE_FIRST_AID_TENT`, `<Shots>3</Shots>`. So "uses" is not a number we
+invent; it is a field, and the shipped tent has three. Editing it in the mod
+would change it for every hero in the game, so the per-hero term belongs where
+the machine is set up for a battle, in the extension. Two nearby places are
+already read and written up in
+[engineInternals/SPECIALIZATIONS.md](engineInternals/SPECIALIZATIONS.md):
+`0x77fca0` computes what the tent is worth (`{10,20,50,100}[war machines
+mastery]`, plus five per hero level for `HERO_SPEC_EMPIRIC`), and
+`CCombatWarMachine::GetSpellPower` at `0x9c96d0` answers for machine type 3 —
+that is the neighbourhood, not the site.
+
+**Two of the perks happen inside a battle**, at the moment the tent acts: the
+cleanse and the random blessing. Lua cannot see that moment. The combat script
+API is a controller for scripted battles — attached to a hero by
+`SetHeroCombatScript`, per hero and per map — and it has no event for "the tent
+healed somebody". Both are extension work.
+
+**The third is adventure-map shaped**, and Lua can have it: a tent destroyed in
+a battle is rebuilt afterwards. `COMBAT_RESULTS_TRIGGER` fires after a combat
+with the combat index; `GetSavedCombatArmyHero` names the heroes,
+`HasHeroSkill` asks whether one holds the perk, and
+`HasHeroWarMachine` / `GiveHeroWarMachine` do the rest. It belongs in the mod's
+own `scripts/advmap-common.lua`, which runs on **every** adventure map, the
+game's own included, and where triggers stack rather than replace — both
+measured, in [NAMES_AND_SCRIPTING.md](NAMES_AND_SCRIPTING.md).
