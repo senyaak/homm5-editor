@@ -13,7 +13,15 @@ one.
 
 ## Unreleased
 
-Nothing yet — this is where the next build's notes go.
+### Added
+
+- **Four more things a skill of yours can do to a first aid tent.** The
+  extension already gave it extra uses; it can now also make the machine itself
+  tougher (`tent_health`, percent), heal for more (`tent_healing`, points),
+  strip stronger curses off whoever it heals (`tent_cleanse`, levels) and give a
+  use back for mana its owner spends in the battle (`tent_mana`, charges per
+  hundred points). All four are rows in the skill form, keyed on the skill's own
+  id, and three of them cost the game nothing it was not already computing.
 
 ## 0.7.0 — 2026-08-02
 

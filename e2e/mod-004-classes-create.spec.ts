@@ -36,8 +36,6 @@ import { PATCHED_EXE } from '../src/exe/creature-limit.ts';
 import { HERO_CLASS_TABLE, HERO_SKILL_TABLE, readTableLimit } from '../src/exe/table-limit.ts';
 import { CLASS_TABLE, SHIPPED_CLASSES } from '../src/mods/hero-classes.ts';
 import { SHIPPED_SKILLS, SKILL_TABLE } from '../src/mods/hero-skills.ts';
-import { COMMON_SCRIPT, SCRIPT_DIR } from '../src/mods/artifact-scripts.ts';
-import { COMBAT_STARTUP } from '../src/mods/skill-scripts.ts';
 import { EFFECTS_FILE, readSkillEffects } from '../src/mods/artifact-effects.ts';
 
 let ed: Launched;
@@ -216,40 +214,13 @@ test('authors her racial skill, and gives it its weight', async () => {
     // out of reach and the second once it is taken.
     await page.locator('#hk-pic-1').fill(perk.pictures[0]!);
     await page.locator('#hk-pic-2').fill(perk.pictures[1]!);
-    // One of the three does not wait for the extension: its content is a
-    // MOMENT, and the engine hands moments to Lua. Two halves, written in the
-    // same editor a map script gets, because the battle is a Lua context of its
-    // own and only it can answer "was there a tent".
-    if ('script' in perk) {
-      await page.locator('#hk-script').click();
-      await expect(page.locator('#skillscript')).toBeVisible();
-      // Not an empty box: an untouched half opens on the shape it has, naming
-      // the id the head declares and saying that a function nothing triggers
-      // never runs.
-      await expect(page.locator('#ks-title')).toContainText('adventure map');
-      const mapCode = page.locator('#ks-text .cm-content');
-      await expect(mapCode).toContainText(`HasHeroSkill(hero, ${perk.id})`);
-      await expect(page.locator('#ks-lint'), 'and the starter parses').toHaveText('✓ no errors');
-      await mapCode.fill(perk.script!);
-      await expect(page.locator('#ks-lint')).toHaveText('✓ no errors');
-      await page.locator('#ks-ok').click();
-      await expect(page.locator('#skillscript')).toBeHidden();
-
-      await page.locator('#hk-combat-script').click();
-      await expect(page.locator('#skillscript')).toBeVisible();
-      await expect(page.locator('#ks-title')).toContainText('battle');
-      const combatCode = page.locator('#ks-text .cm-content');
-      // The battle starter shows no hook at all, and says why: the file runs
-      // once, when the battle has been built.
-      await expect(combatCode).toContainText('Runs ONCE');
-      await combatCode.fill(perk.combatScript!);
-      await expect(page.locator('#ks-lint')).toHaveText('✓ no errors');
-      await page.locator('#ks-ok').click();
-      await expect(page.locator('#skillscript')).toBeHidden();
-      // The form says what it is holding without opening either again.
-      await expect(page.locator('#hk-script-note')).toHaveText(/\d+ lines/);
-      await expect(page.locator('#hk-combat-note')).toHaveText(/\d+ lines/);
-    }
+    // And what it DOES, which for every one of the four is a term the extension
+    // adds to a sum the engine computes. A perk with no row is a name and a
+    // drawing, which is what all three of the first set were.
+    const [stat, amount] = Object.entries(perk.effects)[0]!;
+    await page.locator('#hk-effect-add').click();
+    await page.locator('#hk-effects .hk-effect-stat').last().selectOption(stat);
+    await page.locator('#hk-effects .hk-effect-amount').last().fill(String(amount));
     const said = await settled(page, `installing ${perk.name}`, '#hm-note', '#hk-err',
       () => page.locator('#hk-ok').click());
     expect(said).toContain('Installed');
@@ -258,46 +229,49 @@ test('authors her racial skill, and gives it its weight', async () => {
   {
     const branch = (readInstalledMod(GAME).skills ?? []).filter((s) => s.kind === 'perk');
     expect(branch.map((s) => s.id).sort()).toEqual(TENT_PERKS.map((p) => p.id).sort());
-    expect(branch.every((s) => s.basicSkill === TENT.id), 'all three hang off the racial').toBe(true);
+    expect(branch.every((s) => s.basicSkill === TENT.id), 'all four hang off the racial').toBe(true);
 
-    // And the scripted one reached the game, which takes four files and two of
-    // them are the game's own. This is the whole delivery of the perk: a mod
-    // that carries the scripts and loses either global file does nothing, and
-    // says nothing about it either.
-    // The one of the three whose content is a moment rather than a number.
-    const SPARE_KIT = TENT_PERKS.find((p) => 'script' in p)!;
-    const scripted = branch.find((s) => s.id === SPARE_KIT.id)!;
-    expect(scripted.script, 'the map half is recorded in the mod').toContain('COMBAT_RESULTS_TRIGGER');
-    expect(scripted.combatScript, 'and the battle half').toContain('GetAttackerWarMachine');
-    const files = new Map(readEntries(readFileSync(modFile(GAME, 'mod', MOD_STEM)))
-      .map((e) => [e.name.split('\\').join('/'), e.data.toString('latin1')] as const));
-    const stem = SPARE_KIT.id.replace('HERO_SKILL_', '');
-    const onMap = files.get(`${SCRIPT_DIR}/${stem}.lua`);
-    const inBattle = files.get(`${SCRIPT_DIR}/${stem}-combat.lua`);
-    expect(onMap, 'the perk brought its map script').toBeTruthy();
-    expect(inBattle, 'and its battle script').toBeTruthy();
-    // The head is generated because the number is the build's to know: a script
-    // naming 224 by hand goes wrong the day a skill is added before it.
-    expect(onMap).toContain(`${SPARE_KIT.id} = ${SHIPPED_SKILLS + 1 + TENT_PERKS.indexOf(SPARE_KIT)};`);
-    expect(inBattle).toContain('WAR_MACHINE_FIRST_AID_TENT = 3;');
-
-    const common = files.get(COMMON_SCRIPT);
-    expect(common, 'the map half is loaded on every adventure map').toContain(`doFile("/${SCRIPT_DIR}/${stem}.lua");`);
-    expect(common, "and the game's own helpers are still in it").toContain('function SetPlayerStartResource(');
-
-    const combat = files.get(COMBAT_STARTUP);
-    expect(combat, 'the battle half is loaded in every battle').toContain(`doFile("/${SCRIPT_DIR}/${stem}-combat.lua");`);
-    // WHERE it is loaded is the whole difficulty: combat-startup.lua loads
-    // combat-common.lua on its FIRST line and declares the empty hooks
-    // afterwards, so anything of ours placed earlier is overwritten by them.
-    expect(combat!.indexOf(`doFile("/${SCRIPT_DIR}/${stem}-combat.lua");`))
-      .toBeGreaterThan(combat!.lastIndexOf('function DefenderWarMachineDeath('));
-    expect(combat, 'the vocabulary every combat script is written against survives')
-      .toContain('function GetAttackerHero()');
-    // And it takes no name of theirs: our tail is straight-line code.
-    const tail = combat!.slice(combat!.lastIndexOf('-- --- homm5-editor'));
-    expect(tail).not.toMatch(/^\s*function\s/m);
+    // And each of them reached the file the extension reads, keyed on the number
+    // the enum gave it. This is the whole delivery of a perk of ours: the record
+    // above is a name, an icon and a place in the tree, and the row is what makes
+    // it do anything at all.
+    const numbers = new Map(branch.map((s) => [s.id, s.number] as const));
+    const wanted = TENT_PERKS.map((p) => {
+      const [stat, amount] = Object.entries(p.effects)[0]!;
+      return { stat, skill: numbers.get(p.id)!, amountPerMastery: amount };
+    });
+    const written = readSkillEffects(readFileSync(join(GAME, EFFECTS_FILE), 'latin1'));
+    for (const row of wanted) expect(written).toContainEqual(row);
   }
+
+  // A skill can also carry LUA — a script for the adventure map and one for a
+  // battle — and nothing in this branch does any more. The first set of perks
+  // used it and was thrown away for asking the engine to do what it already
+  // does; the editor's half survived that and is opened here on purpose, so it
+  // does not quietly stop working while no content of ours has a use for it.
+  // Both halves are cancelled, because a perk carrying a script that does
+  // nothing is exactly the mistake this branch was rewritten to undo.
+  await page.locator('#hk-list .um-item', { hasText: TENT_PERKS[0]!.name }).first()
+    .locator('button', { hasText: '✎' }).click();
+  await expect(page.locator('#skilledit')).toBeVisible();
+  for (const [button, title, says] of [
+    ['#hk-script', 'adventure map', `HasHeroSkill(hero, ${TENT_PERKS[0]!.id})`],
+    ['#hk-combat-script', 'battle', 'Runs ONCE'],
+  ] as const) {
+    await page.locator(button).click();
+    await expect(page.locator('#skillscript')).toBeVisible();
+    await expect(page.locator('#ks-title')).toContainText(title);
+    // Not an empty box: an untouched half opens on the shape it has, and the
+    // shape parses.
+    await expect(page.locator('#ks-text .cm-content')).toContainText(says);
+    await expect(page.locator('#ks-lint'), 'and the starter parses').toHaveText('✓ no errors');
+    await page.locator('#ks-cancel').click();
+    await expect(page.locator('#skillscript')).toBeHidden();
+  }
+  await page.locator('#skilledit-cancel').click();
+  await expect(page.locator('#skilledit')).toBeHidden();
+  expect((readInstalledMod(GAME).skills ?? []).find((s) => s.id === TENT_PERKS[0]!.id)?.script,
+    'and nothing was left behind by looking').toBeFalsy();
 
   // Now it can be weighted, which it could not be a minute ago: the class form
   // offers the skills the two tables hold, and it was in neither.
@@ -339,10 +313,15 @@ test('and a skill can carry a bonus the extension adds', async () => {
     await expect(page.locator('#skilledit')).toBeVisible();
   };
 
+  /** Every row but the branch's perks — what this test is about is the racial. */
+  const racialRows = (): ReturnType<typeof readSkillEffects> =>
+    rows().filter((r) => r.skill === SHIPPED_SKILLS);
+
   // What it was authored with, per level of mastery: the amount is written as
   // typed and the extension multiplies, the way a specialization's is per level
   // of the hero.
-  expect(rows()).toEqual([{ stat: 'tent_charges', skill: SHIPPED_SKILLS, amountPerMastery: 1 }]);
+  expect(racialRows()).toEqual([{ stat: 'tent_charges', skill: SHIPPED_SKILLS, amountPerMastery: 1 }]);
+  expect(rows().length, "and the four perks' rows are beside it").toBe(1 + TENT_PERKS.length);
 
   await editRacial();
   await expect(page.locator('#hk-effects label'), 'the row came back into the form').toHaveCount(1);
@@ -367,7 +346,7 @@ test('and a skill can carry a bonus the extension adds', async () => {
   await page.locator('#hk-effects .hk-effect-amount').first().fill('0');
   expect(await settled(page, 'taking it off again', '#hm-note', '#hk-err',
     () => page.locator('#hk-ok').click())).toContain('Updated');
-  expect(rows()).toEqual([{ stat: 'tent_charges', skill: SHIPPED_SKILLS, amountPerMastery: 1 }]);
+  expect(racialRows()).toEqual([{ stat: 'tent_charges', skill: SHIPPED_SKILLS, amountPerMastery: 1 }]);
   expect((readInstalledMod(GAME).skills ?? []).find((s) => s.id === TENT.id)?.effects)
     .toEqual({ tent_charges: 1 });
 });

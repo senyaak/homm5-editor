@@ -235,11 +235,28 @@ static CountEquippedFn g_countEquipped = NULL;
  * answered for that hero. `energy` is a PLAYER's, so its rows are answered for
  * every hero of theirs and added up, the way another Amplifier would be.
  * `tent_charges` is a hero's again, asked once when his first aid tent is built
- * for a battle.
+ * for a battle, and so are the four beside it: `tent_healing` is points added to
+ * what one use of the tent is worth, `tent_cleanse` levels added to the worst
+ * effect it can lift off the stack it heals, `tent_health` percent added to the
+ * machine's own hit points, and `tent_mana` charges given back per hundred
+ * points of mana its owner spends. All four are the tent's, and three of them
+ * are answered in one function — see docs/engineInternals/FIRST_AID_TENT.md.
  */
-typedef enum { STAT_NECROMANCY = 0, STAT_ENERGY = 1, STAT_TENT_CHARGES = 2, STAT_COUNT = 3 } Stat;
+typedef enum {
+  STAT_NECROMANCY = 0,
+  STAT_ENERGY = 1,
+  STAT_TENT_CHARGES = 2,
+  STAT_TENT_HEALING = 3,
+  STAT_TENT_HEALTH = 4,
+  STAT_TENT_CLEANSE = 5,
+  STAT_TENT_MANA = 6,
+  STAT_COUNT = 7
+} Stat;
 
-static const char *const STAT_NAMES[STAT_COUNT] = { "necromancy", "energy", "tent_charges" };
+static const char *const STAT_NAMES[STAT_COUNT] = {
+  "necromancy", "energy", "tent_charges", "tent_healing", "tent_health",
+  "tent_cleanse", "tent_mana",
+};
 
 /**
  * One term: while these artifacts are worn, add this much.
@@ -1234,7 +1251,11 @@ static int install_necromancy(void) {
  * where they are known, rather than inferred from what the tent appeared to do.
  */
 /** The tent's charges, raised once when it first acts — defined below. */
-static void tent_charges_term(void *unit, void *hero);
+static void tent_charges_term(void *unit, void *skills);
+/** The object a combat hero's SKILLS answer on — defined below, with its why. */
+static void *hero_for_skills(void *hero);
+/** Remember a tent and every pointer its owner answers on — defined below. */
+static void note_tent(void *unit, void *hero, void *base, void *skills);
 
 typedef void(__fastcall *TentAmountFn)(int *amount, int *second, void *unit, int mastery);
 static TentAmountFn g_tentAmount = NULL;
@@ -1313,7 +1334,10 @@ static void __fastcall tent_amount_hook(int *amount, int *second, void *unit, in
   // battle — measured, by removing the test on the grounds that resolving a
   // hero could not hurt. A tent whose amount is nothing is not a tent acting.
   void *hero = engine > 0 ? unit_hero(unit) : NULL;
-  tent_charges_term(unit, hero);
+  // One walk, two questions: the charges and the healing are both a SKILL's, and
+  // a skill answers on the object one virtual call past the hero.
+  void *skills = hero ? hero_for_skills(hero) : NULL;
+  tent_charges_term(unit, skills);
   void *self = hero ? hero_virtual_base(hero) : NULL;
   int level = -1, add = 0, matched = -1;
   if (self) {
@@ -1333,7 +1357,34 @@ static void __fastcall tent_amount_hook(int *amount, int *second, void *unit, in
       }
     }
   }
-  if (add > 0) *amount = engine + add;
+  // And what his SKILLS add to the same number: points rather than percent, so
+  // a perk is worth the same at every mastery of War Machines. It lands AFTER
+  // the engine's own arithmetic, which means the Ring of Machine Affinity does
+  // not double it — the ring's doubling is the last thing this function does
+  // (`add eax,eax` at 0xb7fd53), and everything of ours comes after that.
+  int flat = skills ? hero_term(skills, STAT_TENT_HEALING, 0) : 0;
+  int total = engine + add + flat;
+  // A negative row is allowed to mean a curse, but a negative AMOUNT is not
+  // something the engine is ever handed by itself.
+  if (total < 0) total = 0;
+  if (add || flat) *amount = total;
+
+  // THE SECOND OUT-PARAMETER IS THE CLEANSE THRESHOLD, and this is where it was
+  // finally named. The engine fills it with {0,0,1,3} by mastery and then walks
+  // the effects on the healed stack, asking of each one whether its spell's
+  // level is at most this number (`0xc78910`, and the same comparison in the
+  // tooltip at 0xb82dd3). So a perk that lifts stronger curses is this number
+  // raised — no place of its own to find, and nothing else in the engine to
+  // teach. It is also why war machines alone never reach level 4 and 5 effects.
+  int cleanse = skills ? hero_term(skills, STAT_TENT_CLEANSE, 0) : 0;
+  int threshold = *second;
+  if (cleanse > 0) {
+    threshold += cleanse;
+    *second = threshold;
+  }
+  // And the ultimate's half that gives the charges back: the tent is known here
+  // and the mana is counted where it is spent.
+  if (skills) note_tent(unit, hero, self, skills);
 
   if (g_amountLogged++ >= 24) return;
   log_line("tent:");
@@ -1342,6 +1393,8 @@ static void __fastcall tent_amount_hook(int *amount, int *second, void *unit, in
   log_num("      hero level    ", level);
   log_num("      our spec      ", matched);
   log_num("      we add        ", add);
+  log_num("      our skills add", flat);
+  log_num("      cleanse up to ", threshold);
   log_num("      amount        ", *amount);
   log_num("      second        ", *second);
   // The two pointers the war machine probe is looking for. This walk is the one
@@ -1502,8 +1555,8 @@ static void *hero_for_skills(void *hero) {
   return ((GetterFn)vt[0])(hero);
 }
 
-static void tent_charges_term(void *unit, void *hero) {
-  if (!unit || !hero) return;
+static void tent_charges_term(void *unit, void *skills) {
+  if (!unit || !skills) return;
   void *m = (BYTE *)unit - MACHINE_AS_UNIT;
   int found = 0;
   for (int i = 0; i < PENDING_TENTS; i++) {
@@ -1515,7 +1568,7 @@ static void tent_charges_term(void *unit, void *hero) {
   if (!found || !readable((BYTE *)m + MACHINE_CHARGES, 4)) return;
 
   int *charges = (int *)((BYTE *)m + MACHINE_CHARGES);
-  int add = hero_term(hero_for_skills(hero), STAT_TENT_CHARGES, 0);
+  int add = hero_term(skills, STAT_TENT_CHARGES, 0);
   // Only upwards. A row worth less than nothing would take away uses the hero
   // paid for, and a tent that cannot act at all is a bug that looks like ours.
   if (add <= 0) return;
@@ -1532,6 +1585,217 @@ static int install_machine_charges(void) {
   g_machineCtor = (MachineCtorFn)detour(MACHINE_CTOR_RVA, MACHINE_CTOR_HEAD, DETOUR_LEN,
                                         &machine_ctor_hook, "war machine ctor");
   return g_machineCtor != NULL;
+}
+
+// ---------------------------------------------------------------------------
+// How much the machine itself can take — the second number a first aid tent has.
+//
+// `CWarMachine::GetHealth` is the ONLY place a war machine's hit points are
+// decided, and it is shaped like the sum every other term of ours joins:
+//
+//     hp  = record-><Health>                       // 100 for the tent
+//         + GetSkillMastery(WAR_MACHINES) * WarMachines_HealthBonusPerSkillTrained
+//     switch (type - 1)                            // jump table at 0xabc148
+//       tent → if the hero holds HERO_SKILL_FIRST_AID, hp *= the perk multiplier
+//
+// So "a perk makes the machine tougher" is a shape the engine already has, and
+// ours is a second multiplier applied to the number it arrives at — which is why
+// the row is a PERCENT rather than points: doubling the hit points of a tent
+// whose owner is an expert of War Machines should be worth more than doubling a
+// novice's, exactly as the shipped perk is.
+//
+// `this` is the WORLD machine (the one the combat machine keeps at +0xA8), so
+// its type is at the same +0x1C the constructor hook reads, and the hero is the
+// function's one stack argument — the object skills answer on directly, because
+// the engine asks it for a mastery through `[vtable+0x174]` two instructions in.
+#define MACHINE_HEALTH_RVA 0x6bc040u
+/** `push ecx; push ebx; push ebp; mov ebp,[esp+10h]` — seven bytes, four whole
+ *  instructions, and none of them relocated. */
+#define MACHINE_HEALTH_HEAD_LEN 7
+static const BYTE MACHINE_HEALTH_HEAD[MACHINE_HEALTH_HEAD_LEN] = {
+  0x51, 0x53, 0x55, 0x8B, 0x6C, 0x24, 0x10,
+};
+
+typedef int(__fastcall *MachineHealthFn)(void *machine, void *edx, void *hero);
+static MachineHealthFn g_machineHealth = NULL;
+static int g_healthLogged = 0;
+
+static int __fastcall machine_health_hook(void *machine, void *edx, void *hero) {
+  int engine = g_machineHealth(machine, edx, hero);
+  // The tent alone. The function answers for all four machines and a hero who
+  // brought a ballista has no business gaining from a perk about bandages.
+  if (engine <= 0 || !hero) return engine;
+  if (!readable((BYTE *)machine + WORLD_MACHINE_TYPE, 4)) return engine;
+  if (*(int *)((BYTE *)machine + WORLD_MACHINE_TYPE) != MACHINE_TYPE_TENT) return engine;
+
+  int percent = hero_term(hero, STAT_TENT_HEALTH, 0);
+  int add = engine * percent / 100;
+  int total = engine + add;
+  if (total < 1) total = 1;
+  if (add && g_healthLogged++ < 8) {
+    log_line("tent health:");
+    log_num("  the engine said ", engine);
+    log_num("  our percent     ", percent);
+    log_num("  hit points      ", total);
+  }
+  return add ? total : engine;
+}
+
+// ---------------------------------------------------------------------------
+// The ultimate: mana spent in a battle, paid back as uses of the tent.
+//
+// TWO HALVES, and the one that had to be found is the counting. Every change to
+// a caster's mana inside a battle goes through ONE command —
+// `CSetCombatCasterMana`, whose whole `Execute` is "take the caster out of the
+// command and hand it the number the command carries" (0xb74300). It is a
+// networked command, which is exactly why it is a funnel: a multiplayer game
+// cannot afford a second route that the other side would not hear about.
+//
+//     [cmd+0x0C]  the caster        [cmd+0x10]  what his mana becomes
+//     [caster vtable +0x234]  what it is now    +0x22C  set it
+//
+// The pair of slots is the engine's own: a mana-draining spell reads +0x234,
+// adds, and writes +0x22C on the same object twice over (0xb78929, 0xb78949).
+// So "how much did he spend" is the difference between what we read before the
+// command runs and what the command is about to write — no second guess, and
+// nothing of ours has to know what a spell costs.
+//
+// GIVING IT BACK needs the tent, and the tent knows its hero rather than the
+// other way round. So the amount hook writes down every tent it sees together
+// with the three pointers its owner answers on, and the counting side matches
+// the caster against all three. Which of them it is has never been measured, and
+// a table of three costs nothing — see the log line, which says what matched.
+#define TENTS_KNOWN 4
+static struct {
+  void *machine;  /**< the combat war machine, whose charges are at +0xB0 */
+  void *hero;     /**< as `unit_hero` reaches him */
+  void *base;     /**< his virtual base — level and specialization answer here */
+  void *skills;   /**< one call further along — his skills answer here */
+} g_tents[TENTS_KNOWN];
+static int g_tentAt = 0;
+
+/**
+ * What one caster has spent this battle, and how much of it we have paid for.
+ *
+ * `given` rather than a remainder, because the rate is read afresh every time:
+ * the honest question is "how many charges has all of this spending earned",
+ * and what is owed is that minus what has already been handed over.
+ */
+#define CASTERS_WATCHED 4
+static struct { void *caster; int spent; int given; } g_casters[CASTERS_WATCHED];
+static int g_casterAt = 0;
+static int g_manaLogged = 0;
+
+static void note_tent(void *unit, void *hero, void *base, void *skills) {
+  void *m = (BYTE *)unit - MACHINE_AS_UNIT;
+  // That this really is a tent is asked here rather than assumed: what gets
+  // written later is `+0xB0` of this object, and the charges hook has the
+  // pending list to keep it honest where this has nothing.
+  if (!readable((BYTE *)m + MACHINE_WORLD, 4)) return;
+  void *world = *(void **)((BYTE *)m + MACHINE_WORLD);
+  if (!readable((BYTE *)world + WORLD_MACHINE_TYPE, 4)) return;
+  if (*(int *)((BYTE *)world + WORLD_MACHINE_TYPE) != MACHINE_TYPE_TENT) return;
+  for (int i = 0; i < TENTS_KNOWN; i++) if (g_tents[i].machine == m) return;
+  int at = g_tentAt++ & (TENTS_KNOWN - 1);
+  g_tents[at].machine = m;
+  g_tents[at].hero = hero;
+  g_tents[at].base = base;
+  g_tents[at].skills = skills;
+}
+
+/** The tent of the hero this caster is, or nothing when he brought none. */
+static int tent_of_caster(void *caster) {
+  for (int i = 0; i < TENTS_KNOWN; i++) {
+    if (!g_tents[i].machine) continue;
+    if (caster == g_tents[i].hero || caster == g_tents[i].base || caster == g_tents[i].skills) return i;
+  }
+  return -1;
+}
+
+/** Mana spent by this caster, and the charges it has earned him so far. */
+static void note_mana(void *caster, int spent) {
+  int at = -1;
+  for (int i = 0; i < CASTERS_WATCHED; i++) if (g_casters[i].caster == caster) { at = i; break; }
+  if (at < 0) {
+    at = g_casterAt++ & (CASTERS_WATCHED - 1);
+    g_casters[at].caster = caster;
+    g_casters[at].spent = 0;
+    g_casters[at].given = 0;
+  }
+  g_casters[at].spent += spent;
+
+  int tent = tent_of_caster(caster);
+  if (tent < 0) return;
+  // The rate is the hero's, asked the way every other row of ours is asked, and
+  // it is per HUNDRED points so that a level of mastery can be worth a sensible
+  // fraction of a charge rather than a whole one.
+  int rate = hero_term(g_tents[tent].skills, STAT_TENT_MANA, 0);
+  if (rate <= 0) return;
+  int earned = g_casters[at].spent * rate / 100;
+  int owed = earned - g_casters[at].given;
+  if (owed <= 0) return;
+  if (!readable((BYTE *)g_tents[tent].machine + MACHINE_CHARGES, 4)) return;
+  *(int *)((BYTE *)g_tents[tent].machine + MACHINE_CHARGES) += owed;
+  g_casters[at].given = earned;
+  if (g_manaLogged++ >= 16) return;
+  log_line("tent mana:");
+  log_num("  spent in all ", g_casters[at].spent);
+  log_num("  charges back ", owed);
+}
+
+#define CASTER_MANA_RVA 0x774300u
+static const BYTE CASTER_MANA_HEAD[DETOUR_LEN] = { 0x8B, 0xD1, 0x8B, 0x4A, 0x0C };
+/** Where the command keeps the caster and the number it is about to write. */
+#define MANA_CMD_CASTER 0x0Cu
+#define MANA_CMD_VALUE 0x10u
+/** And how the caster answers about his own mana. */
+#define VT_CASTER_MANA 0x234u
+
+typedef char(__fastcall *CasterManaFn)(void *cmd, void *edx);
+typedef int(__thiscall *ManaGetterFn)(void *caster);
+static CasterManaFn g_casterMana = NULL;
+
+/** What the caster's mana is at this moment, or -1 if he will not say. */
+static int caster_mana(void *caster) {
+  if (!readable(caster, 4)) return -1;
+  void **vt = *(void ***)caster;
+  if (!readable(vt, VT_CASTER_MANA + 4)) return -1;
+  void *fn = vt[VT_CASTER_MANA / 4];
+  if (!points_at_code(fn)) return -1;
+  int mana = ((ManaGetterFn)fn)(caster);
+  // A number no hero has. Reading the wrong slot would answer something, and
+  // "something" must not be allowed to look like spending.
+  return mana < 0 || mana > 100000 ? -1 : mana;
+}
+
+static char __fastcall caster_mana_hook(void *cmd, void *edx) {
+  void *caster = NULL;
+  int before = -1, after = -1;
+  if (readable((BYTE *)cmd + MANA_CMD_VALUE, 4)) {
+    caster = *(void **)((BYTE *)cmd + MANA_CMD_CASTER);
+    after = *(int *)((BYTE *)cmd + MANA_CMD_VALUE);
+    before = caster_mana(caster);
+  }
+  char ok = g_casterMana(cmd, edx);
+  // Only downwards: the same command hands mana BACK, and a hero drinking from
+  // a well has not earned anything.
+  if (ok && caster && before >= 0 && before > after) note_mana(caster, before - after);
+  return ok;
+}
+
+/** Installed only when a row asks for it — one detour, and nothing else. */
+static int install_caster_mana(void) {
+  g_casterMana = (CasterManaFn)detour(CASTER_MANA_RVA, CASTER_MANA_HEAD, DETOUR_LEN,
+                                      &caster_mana_hook, "combat caster mana");
+  return g_casterMana != NULL;
+}
+
+/** Installed only when a row asks for it — one detour, and nothing else. */
+static int install_machine_health(void) {
+  g_machineHealth = (MachineHealthFn)detour(MACHINE_HEALTH_RVA, MACHINE_HEALTH_HEAD,
+                                            MACHINE_HEALTH_HEAD_LEN, &machine_health_hook,
+                                            "war machine health");
+  return g_machineHealth != NULL;
 }
 
 /** The hooks the specialization rows ask for — none, when there are none. */
@@ -2602,6 +2866,18 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
     // amount hook is where the note is redeemed.
     install_tent_term();
     if (install_machine_charges()) log_line("first aid tent charges hook installed");
+  }
+  // The healing, the cleanse and the ultimate's tent all share the charges'
+  // hook — it is the same function, asked more questions — and the machine's own
+  // hit points are decided elsewhere.
+  if (rows_for(STAT_TENT_HEALING) || rows_for(STAT_TENT_CLEANSE) || rows_for(STAT_TENT_MANA)) {
+    install_tent_term();
+  }
+  if (rows_for(STAT_TENT_MANA) && install_caster_mana()) {
+    log_line("combat caster mana hook installed");
+  }
+  if (rows_for(STAT_TENT_HEALTH) && install_machine_health()) {
+    log_line("first aid tent health hook installed");
   }
   // A player's own settings, read from their own file. The window has to be met
   // before the game makes it, and the game makes it from its entry point — which

@@ -1,10 +1,15 @@
 # The Witch's tent branch, second attempt
 
-*What her four perks will be, why the first three were thrown away, and where in
+*What her four perks are, why the first three were thrown away, and where in
 the executable each of the new ones lands.*
 
 Addresses are in-memory (RVA + 0x400000). Everything here was read out of the
-game's own data and executable on 2026-08-02; nothing is implemented yet.
+game's own data and executable on 2026-08-02.
+
+**All four are written** — `TENT_PERKS` in `e2e/mods.ts`, four stats in
+`src/mods/artifact-effects.ts`, two new detours in `native/homm5-editor.c`. What
+is left is a battle: nothing below has been seen in game yet, and the log lines
+are there to be read rather than reasoned about.
 
 ## Why the first three were dropped
 
@@ -83,35 +88,53 @@ choosing where in the sum ours goes.
 
 ### 3. Cleanse effects up to level 5 (war machines alone reach 3)
 
-The mechanism EXISTS. In the tooltip path the engine walks the effects on the
-target and compares each effect's level against a threshold
-(`cmp eax,[esp+1Ch]` in the loop at `0xb82db0`), then picks between
-`COMBAT_FAT_HEAL`, `COMBAT_FAT_HEAL_REMOVE_CURSE`,
-`COMBAT_FAT_HEAL_RESURRECT` and `COMBAT_FAT_HEAL_RESURRECT_REMOVE_CURSE`.
-`0xb573a0` sits beside it and is called from two more places (`0xb864d1`,
-`0xb86654`) which look like the APPLY path rather than the tooltip.
+**The threshold was in our hands the whole time: it is the amount function's
+SECOND out-parameter**, the one the extension has been passing through untouched
+since the specialization landed, and the page that carried it said "what it
+decides is unknown".
 
-**Open**: name the function that yields the threshold. Once named, the perk is
-"raise a number", which is the kind of change we already know how to make.
+`0x77fca0` fills `{10,20,50,100}` and `{0,0,1,3}` by mastery. The apply path
+tests the second against zero before it walks anything (`0xb7a983`) and then
+hands it to `0xc78910` per effect, which ends `call 0xad4b70` — the effect's
+spell record, its `<Level>` — and `cmp eax,[esp+0Ch]; jg` → no. The tooltip
+makes the same comparison at `0xb82dd3`, which is why the words and the deed
+agree.
+
+So the perk is `*second += 2`, in a hook that was already standing. **The lesson
+is the same one as the dropped perks, one turn further along**: what a function
+already hands you is worth reading before looking for a place to hook.
 
 ### 4. Ultimate — one charge back per 50 mana spent
 
-The only new point in the set. Two halves:
+The only new point in the set, and it turned out to be one command:
 
-- **spending mana**: a hook we have never looked for. Find where a hero's mana is
-  deducted in combat and accumulate there.
-- **giving a charge**: already known — the counter is `[machine+0xB0]`, read at
-  `0xdc9dc8`/`0xdc9f06` and spent at `0xdc9f59`, and our `tent_charges` term
-  already writes it.
+- **spending mana**: `CSetCombatCasterMana::Execute` (`0xb74300`) is the single
+  funnel for every mana change inside a battle — it is a NETWORKED command, and
+  a multiplayer game cannot afford a second route. It carries the caster at
+  `+0x0C` and the new value at `+0x10`; what it was before comes off the caster
+  himself through `[vtable+0x234]`, the getter the engine pairs with `+0x22C` in
+  its own mana-draining spell (`0xb78929`).
+- **giving a charge**: already known — the counter is `[machine+0xB0]`, and our
+  `tent_charges` term already writes it.
+- **the join between them**: a tent knows its hero, not the other way round, so
+  the amount hook writes each tent down beside the three pointers its owner
+  answers on and the counting side matches the caster against all three. Which
+  one it is has not been measured — the log says, in one battle.
 
 Native rather than scripted: an event into Lua is worth introducing when more
 than one thing wants it — which is true of `Hit`, not of this.
 
-## Order
+## What actually happened
 
-1 and 2 first (both are edits to functions already hooked), then 3 (one search),
-then 4. Before any of it: take the three old perks out of the mod and rewrite —
-not delete — the specs that author them.
+The order held (1 and 2 first, both edits to a function already hooked), and
+then 3 and 4 collapsed into far less work than the plan expected: **three of the
+four perks land in ONE detour**, because the tent's amount function answers
+three questions and we had only been reading one of them.
+
+Left to do, and it is a battle rather than a keyboard: does a perk answer 1
+through `GetSkillMastery` (every amount here assumes so), does the caster in the
+mana command match one of the three pointers, and does the health multiplier
+reach a tent that is already standing when the perk is taken.
 
 ## Still worth knowing, from the same session
 

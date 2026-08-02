@@ -69,6 +69,15 @@ The sums, and where each one is appended to:
 | `energy` | the ceiling's three sites, `0xc066d0` / `0xc06670` / the bar | a player's |
 | `tent_charges` | noted at the war machine constructor `0xdc9730`, raised at the tent's amount `0xb7fca0` ([FIRST_AID_TENT.md](FIRST_AID_TENT.md)) | a hero's |
 | `tent` (specializations only, so far) | the tent's amount `0xb7fca0` ([FIRST_AID_TENT.md](FIRST_AID_TENT.md)) | a hero's |
+| `tent_healing` | the same function, added after everything it does | a hero's |
+| `tent_cleanse` | the same function's SECOND out-parameter, which is the worst effect the tent may lift | a hero's |
+| `tent_health` | `CWarMachine::GetHealth` `0xabc040`, percent of its number | a hero's |
+| `tent_mana` | mana counted at `CSetCombatCasterMana::Execute` `0xb74300`, charges given at `machine+0xB0` | a hero's |
+
+Four of those six are the same page's subject and three of them share one
+detour, which is the shape worth noticing: **a sum costs a detour, and a
+function that already answers several questions costs none at all.** The tent's
+amount fills two out-parameters and we now write to both.
 
 The skill door is the one every question about a hero's skills goes through: the
 Lua `HasHeroSkill` calls it and compares against zero, `GetHeroSkillMastery`

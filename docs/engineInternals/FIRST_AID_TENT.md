@@ -147,11 +147,66 @@ only a hero with a tent reaches. `push 2; call [hero_vtable+0x174]` inside
 `GetSpellPower` is the engine asking the very same question — 2 is
 `HERO_SKILL_WAR_MACHINES`.
 
+## The second out-parameter is the CLEANSE THRESHOLD
+
+Open for two weeks, and the answer was one call site away. `0x77fca0` fills two
+numbers, `{10,20,50,100}` and `{0,0,1,3}` by mastery, and the second is the
+worst effect the tent may lift off the stack it heals:
+
+```
+the apply path   0xb7a983  cmp dword ptr [esp+20h],0    is it worth walking at all
+                 0xb7a9d0  push it, per effect, into 0xc78910
+0xc78910         ... call 0xad4b70   the effect's spell record -> its <Level>
+                 0xc7897c  cmp eax,[esp+0Ch]; jg -> no
+the tooltip      0xb82dd3  the same comparison, so the words agree with the deed
+```
+
+So a war machine alone never touches a level 4 or 5 curse, and "the tent
+cleanses better" is that number raised — no place of its own to find, and the
+hook that raises it has been standing since the specialization. `0xc78910` also
+refuses a handful of effects by id before it ever asks the level, which is the
+engine's own list of what nothing may dispel.
+
+## What a war machine can take
+
+`CWarMachine::GetHealth`, `0xabc040`, and the only place it is decided:
+
+```
+this = the WORLD machine (+0x1C is its type), the hero is the one stack argument
+hp  = record-><Health> (+0x4C)                 100 for the tent
+    + GetSkillMastery(2) * settings[0x124]     WarMachines_HealthBonusPerSkillTrained
+switch (type - 1)                              jump table 0xabc148
+  tent → if the hero holds skill 22, hp = (float)hp * settings[0x128]
+```
+
+The hero arrives as the object his SKILLS answer on — the engine asks him for a
+mastery through `[vtable+0x174]` two instructions in — which is one walk less
+than the amount hook needs. `tent_health` is a percent of what it returns.
+
+## Mana spent in a battle
+
+Every change to a caster's mana inside a battle goes through one networked
+command, which is what makes it a funnel — a multiplayer game cannot afford a
+second route the other side would not hear about.
+
+```
+CSetCombatCasterMana::Execute   0xb74300
+  [cmd+0x0C] the caster   [cmd+0x10] what his mana becomes
+  [caster vtable +0x234] what it is now      +0x22C set it
+```
+
+The pair of slots is the engine's own: a mana-draining spell reads `+0x234`,
+adds, writes `+0x22C`, twice over on two casters (`0xb78929`, `0xb78949`). So
+"how much did he spend" is what it was before the command minus what the command
+writes, and nothing of ours has to know what a spell costs.
+
+Giving it back needs the tent, and a tent knows its hero rather than the other
+way round — so the amount hook writes down each tent beside the three pointers
+its owner answers on, and the counting side matches the caster against all
+three. Which one it is has not been measured; the log says.
+
 ## Still open
 
-- **The second out-parameter.** `0x77fca0` fills two, and only the first is the
-  healing. The second moves with the mastery and what it decides is unknown; the
-  extension passes it through untouched.
 - **Which class owns vtable slot `0x174`.** Naming it would make every hook that
   asks about a hero's skills easier to write — the same wish as `0x328` (set
   count) and `0x368` (scripted necromancy level) in
@@ -208,28 +263,33 @@ to ballista and catapult and +4 attack to shooters from the ammo cart. Whatever
 it does to the healing sum happens where our own term goes, so it is worth
 reading before adding another one.
 
-## The branch's three perks: one written, two waiting
+## The branch's four perks
 
 The Witch's «Мастер палатки» branch — see [../HERO_CLASSES.md](../HERO_CLASSES.md)
-for the class and the records.
+for the class and the records, and `TENT_PERKS` in `e2e/mods.ts` for the words.
+Every one of them is a NUMBER the engine already computes, and three of the four
+are computed in one function:
 
-**Two happen inside a battle**, at the moment the tent acts: the cleanse and the
-random blessing. Lua cannot see that moment — the combat script API is a
-controller for scripted battles, attached to a hero by `SetHeroCombatScript`, per
-hero and per map, and it has no event for "the tent healed somebody". Both are
-extension work, and the amount hook is already standing in the right place.
+| perk | row | where it lands |
+|---|---|---|
+| «Крепкая палатка» | `tent_health 100` | `0xabc040`, percent of the hit points |
+| «Целебный настой» | `tent_healing 50` | the amount hook, after the engine's own sum |
+| «Чистая повязка» | `tent_cleanse 2` | the amount hook's SECOND out-parameter |
+| «Полевой госпиталь» | `tent_mana 2` | mana counted at `0xb74300`, charges at `+0xB0` |
 
-**The third was built, ran in game on 2026-08-02 — and is being dropped,
-because it repeats the shipped «Первая помощь» above.** The tent came back in
-that battle and we could not tell whose doing it was: the hero could hold skill
-22, and the engine rebuilds it for free. A run with our perk and WITHOUT the
-shipped one would settle it; we are not spending it, because the perk is going
-anyway.
+**The first set of three was thrown away**, and the lesson is worth more than
+they were: two of them asked for what the engine does by itself — the rebuild IS
+the shipped «Первая помощь» (above), and the cleanse is the threshold this page
+now names. Ten minutes in `DefaultStats.xdb` and the tooltip strings would have
+saved both. Read what the engine does with a thing BEFORE designing a perk for
+it.
 
-Kept here because the mechanism outlived the perk. «Запасной комплект»: a tent
-destroyed in a battle is back afterwards. The difficulty was never the
-rebuilding — it is knowing there was a tent to rebuild, because after the battle
-"no tent" and "never had one" look the same.
+The Lua the dropped perk was built in is kept — a skill can carry a map script
+and a battle script (`src/mods/skill-scripts.ts`), and nothing in the mod uses
+it. What that perk measured, kept because the mechanism outlived it:
+«Запасной комплект», a tent destroyed in a battle back afterwards. The
+difficulty was never the rebuilding — it is knowing there was a tent to rebuild,
+because after the battle "no tent" and "never had one" look the same.
 
 The answer is that the battle knows, and can be asked without being told
 anything:

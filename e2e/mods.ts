@@ -509,7 +509,7 @@ export const TENT_MASTER = {
 };
 
 /**
- * The three perks of her branch — what a level up offers once she has the
+ * The four perks of her branch — what a level up offers once she has the
  * racial.
  *
  * A branch with no perks is a branch that never grows, which is what the first
@@ -517,90 +517,59 @@ export const TENT_MASTER = {
  * the shipped Multishot hangs off Avenger: the branch IS the gate, because no
  * other class has it.
  *
- * Two of the three are words and an icon for now: they happen INSIDE a battle,
- * at the moment the tent acts, which no script can see — the extension's half.
- * The third, «Запасной комплект», is done, and it is Lua: what it needs is a
- * moment, and the engine hands moments out already.
+ * THESE ARE THE SECOND SET. The first three were designed before anybody read
+ * what the engine already does with a first aid tent, and two of them asked for
+ * what it does by itself: «Запасной комплект» (a destroyed tent is rebuilt) IS
+ * the shipped «Первая помощь», and cleansing is something the tent already does
+ * up to a level the engine decides. The Lua both halves were built in is not
+ * thrown away — a skill can still carry a map script and a battle script, and
+ * `tools/test-skill-scripts.ts` keeps that honest — but nothing in this mod uses
+ * it, because every one of the four below is a NUMBER the engine computes and
+ * the extension appends to. See SLICE_tent_branch.md.
+ *
+ * Each row's `effects` is the whole of what it does: a config line for the
+ * native extension, keyed on the skill's own enum value, multiplied by the
+ * mastery the hero holds — which for a perk is one.
  *
  * They are written down here because deciding what a branch offers is a design
  * decision and belongs where the class is described.
  */
-/**
- * «Запасной комплект», the battle half: was there a tent when the fighting
- * started?
- *
- * Straight-line code, and that is the point — it runs once, when the battle has
- * been built, so it can simply look. The game's own death hooks stay the game's:
- * we do not need to be told when the tent dies, only whether it existed.
- */
-const SPARE_KIT_IN_BATTLE = [
-  '-- Was there a tent when the fighting started? Only the battle can say.',
-  'local attacker = GetAttackerHero();',
-  'if attacker ~= nil then',
-  '\tif GetAttackerWarMachine(WAR_MACHINE_FIRST_AID_TENT) ~= nil then',
-  '\t\tSetGameVar("h5e.tent."..GetHeroName(attacker), "1");',
-  '\tend;',
-  'end;',
-  'local defender = GetDefenderHero();',
-  'if defender ~= nil then',
-  '\tif GetDefenderWarMachine(WAR_MACHINE_FIRST_AID_TENT) ~= nil then',
-  '\t\tSetGameVar("h5e.tent."..GetHeroName(defender), "1");',
-  '\tend;',
-  'end;',
-].join('\n');
-
-/**
- * And the map half, which is where the perk actually happens.
- *
- * Both sides of the battle, because a tent is lost by whoever retreated as well
- * as by the winner. The variable is cleared whether or not anything was given
- * back: it says "there was a tent in the last battle", and letting it stand
- * would hand this hero a tent after every battle for the rest of the game.
- */
-const SPARE_KIT_ON_THE_MAP = [
-  'function SpareKit_AfterCombat(combatIndex)',
-  '\tfor side = 0, 1 do',
-  '\t\tlocal hero = GetSavedCombatArmyHero(combatIndex, side);',
-  '\t\tif hero ~= nil then',
-  '\t\t\tif GetGameVar("h5e.tent."..hero, "") == "1" then',
-  '\t\t\t\tif HasHeroSkill(hero, HERO_SKILL_SPARE_KIT) then',
-  '\t\t\t\t\tif not HasHeroWarMachine(hero, WAR_MACHINE_FIRST_AID_TENT) then',
-  '\t\t\t\t\t\tGiveHeroWarMachine(hero, WAR_MACHINE_FIRST_AID_TENT);',
-  '\t\t\t\t\tend;',
-  '\t\t\t\tend;',
-  '\t\t\t\tSetGameVar("h5e.tent."..hero, "");',
-  '\t\t\tend;',
-  '\t\tend;',
-  '\tend;',
-  'end;',
-  '',
-  'Trigger(COMBAT_RESULTS_TRIGGER, "SpareKit_AfterCombat");',
-].join('\n');
-
 export const TENT_PERKS = [
   {
-    id: 'HERO_SKILL_CLEAN_BANDAGE',
-    name: 'Чистая повязка',
-    description: 'Палатка первой помощи снимает с отряда отрицательные эффекты, когда лечит его.',
-    label: 'clean',
+    id: 'HERO_SKILL_STURDY_TENT',
+    name: 'Крепкая палатка',
+    description: 'Палатка первой помощи вдвое прочнее.',
+    label: 'fix',
+    // Percent of the hit points the engine arrives at, which already carry the
+    // owner's War Machines mastery and the shipped perk's own doubling.
+    effects: { tent_health: 100 },
   },
   {
     id: 'HERO_SKILL_HEALING_BREW',
     name: 'Целебный настой',
-    description: 'Палатка первой помощи накладывает на вылеченный отряд случайный положительный эффект.',
+    description: 'Палатка первой помощи восстанавливает на 50 единиц здоровья больше.',
     label: 'buff',
+    effects: { tent_healing: 50 },
   },
   {
-    id: 'HERO_SKILL_SPARE_KIT',
-    name: 'Запасной комплект',
-    description: 'Разрушенная в бою палатка первой помощи восстанавливается после сражения.',
-    label: 'fix',
-    // The one of the three that is NOT waiting for the extension: its content is
-    // a moment, and the engine hands moments to Lua. Two halves, because after
-    // the battle "no tent" and "never had one" look the same — only the battle
-    // can tell them apart, and a game variable is what crosses back.
-    combatScript: SPARE_KIT_IN_BATTLE,
-    script: SPARE_KIT_ON_THE_MAP,
+    id: 'HERO_SKILL_CLEAN_BANDAGE',
+    name: 'Чистая повязка',
+    description: 'Палатка первой помощи снимает с вылеченного отряда заклинания на два уровня '
+      + 'сильнее обычного — вплоть до пятого при высшем мастерстве машин.',
+    label: 'clean',
+    // The engine's own threshold is {0,0,1,3} by mastery, so two more is 5 at
+    // expert and nothing a war machine could otherwise touch.
+    effects: { tent_cleanse: 2 },
+  },
+  {
+    id: 'HERO_SKILL_FIELD_HOSPITAL',
+    name: 'Полевой госпиталь',
+    description: 'За каждые 50 единиц маны, потраченной в бою, палатка первой помощи получает '
+      + 'дополнительное использование.',
+    label: 'field',
+    // Two charges per hundred points spent is one per fifty; the rate is per
+    // hundred so that a level of mastery can be worth a fraction of a charge.
+    effects: { tent_mana: 2 },
   },
 ].map((p) => ({
   ...p,
@@ -905,8 +874,9 @@ export function ensureWitch(mod: CreatureMod): void {
       kind: 'perk',
       heroClass: WITCH.id,
       basicSkill: TENT_MASTER.id,
-      // Only one of the three carries any, and it carries both halves.
-      ...('script' in perk ? { script: perk.script, combatScript: perk.combatScript } : {}),
+      // What it DOES, which for all four is a term the extension adds to a sum
+      // the engine computes. Without this the perk is a name and a drawing.
+      effects: perk.effects,
     }, takenSkills(types));
   }
 }
