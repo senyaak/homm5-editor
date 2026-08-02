@@ -36,6 +36,7 @@ import { PATCHED_EXE } from '../src/exe/creature-limit.ts';
 import { HERO_CLASS_TABLE, HERO_SKILL_TABLE, readTableLimit } from '../src/exe/table-limit.ts';
 import { CLASS_TABLE, SHIPPED_CLASSES } from '../src/mods/hero-classes.ts';
 import { SHIPPED_SKILLS, SKILL_TABLE } from '../src/mods/hero-skills.ts';
+import { EFFECTS_FILE, readSkillEffects } from '../src/mods/artifact-effects.ts';
 
 let ed: Launched;
 const GAME = modGameRoot();
@@ -236,4 +237,51 @@ test('authors her racial skill, and gives it its weight', async () => {
   const weights = (readInstalledMod(GAME).classes ?? [])[0]!.skills;
   expect(weights.find((w) => w.skill === TENT.id)?.prob, 'her own skill is offered').toBe(10);
   expect(weights.reduce((n, w) => n + w.prob, 0)).toBe(100);
+});
+
+/**
+ * A skill as a SUBJECT of the extension, the way an artifact and a
+ * specialization already are.
+ *
+ * Necromancy on a first aid tent is nobody's design — it is the stat that was
+ * reachable, and the point here is the wiring: a row typed in the form reaches
+ * the file the extension reads, keyed on the skill's value, and typing a zero
+ * takes it back out. So the bonus is put on and then taken off again, and the
+ * mod the other specs build is left exactly as it was.
+ */
+test('and a skill can carry a bonus the extension adds', async () => {
+  const { page } = ed;
+  const effects = join(GAME, EFFECTS_FILE);
+  const editRacial = async (): Promise<void> => {
+    await openHeroes(page, 'Skills');
+    await page.locator('#hk-list .um-item', { hasText: TENT.name }).first()
+      .locator('button', { hasText: '✎' }).click();
+    await expect(page.locator('#skilledit')).toBeVisible();
+  };
+
+  await editRacial();
+  await page.locator('#hk-effect-add').click();
+  await page.locator('#hk-effects .hk-effect-stat').first().selectOption('necromancy');
+  await page.locator('#hk-effects .hk-effect-amount').first().fill('5');
+  expect(await settled(page, 'giving the skill a bonus', '#hm-note', '#hk-err',
+    () => page.locator('#hk-ok').click())).toContain('Updated');
+
+  // Per level of mastery — the amount is written as typed and the extension
+  // multiplies, the way a specialization's is per level of the hero.
+  expect(readFileSync(effects, 'latin1')).toContain(`necromancy skill ${SHIPPED_SKILLS} 5`);
+  expect((readInstalledMod(GAME).skills ?? []).find((s) => s.id === TENT.id)?.effects)
+    .toEqual({ necromancy: 5 });
+
+  // And back off. A row worth nothing is dropped rather than written, because in
+  // game a zero row and a row that was never read look the same.
+  await editRacial();
+  await expect(page.locator('#hk-effects .hk-effect-amount'), 'the bonus came back into the form')
+    .toHaveValue('5');
+  await page.locator('#hk-effects .hk-effect-amount').first().fill('0');
+  expect(await settled(page, 'taking it off again', '#hm-note', '#hk-err',
+    () => page.locator('#hk-ok').click())).toContain('Updated');
+  // Through the reader rather than by looking for the word: the file's own
+  // header names every shape it can hold, comment included.
+  expect(readSkillEffects(readFileSync(effects, 'latin1'))).toEqual([]);
+  expect((readInstalledMod(GAME).skills ?? []).find((s) => s.id === TENT.id)?.effects).toBeUndefined();
 });

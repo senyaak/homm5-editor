@@ -44,6 +44,44 @@ change a percentage, drop an effect — all of it is editing data in the editor,
 not rebuilding a DLL. This is the requirement that decides the DLL's design,
 so it belongs in the first version, not a later one.
 
+## Three subjects, one shape
+
+*As built.* A term has a SUBJECT (what the hero has) and a SUM (where it lands).
+The two are independent, and only one of them is expensive.
+
+| subject | what the extension asks | the question's door |
+|---|---|---|
+| an artifact, or a set of them | how many are worn | `CountEquipped`, `0xb4c270`, through the hero's vtable `+0x74` |
+| a specialization | does he hold this value | `HasSpecialization`, hero's virtual base `+0x294` |
+| a skill | what mastery does he have of it | `GetSkillMastery`, hero's vtable `+0x174`, 0…4 |
+
+Each subject is a value the executable was never built with, and each is asked
+about through a question the engine already answers about values it knows — so
+the value never has to be reachable from compiled code. **Adding a subject costs
+a config row and a virtual call; adding a SUM costs a detour**, because a sum is
+a place in the executable that has to be found.
+
+The skill door is the one every question about a hero's skills goes through: the
+Lua `HasHeroSkill` calls it and compares against zero, `GetHeroSkillMastery`
+returns it unchanged, and both do it in the same three instructions (`0x5d1656`,
+`0x5d18b6`). Mastery makes the amount naturally per-level — a row says what one
+level is worth and the extension multiplies, the way a specialization's amount
+is per level of the hero.
+
+The file is `bin/homm5-editor-effects.txt`, four grammars in one flat text:
+
+```
+<stat> artifact <id> <amount>
+<stat> set <worn> <amount> <id> <id> ...
+<stat> skill <value> <amount per level of mastery>
+<stat> specialization <value> <percent per hero level>
+```
+
+Each reader ignores every line it does not understand, which is what keeps four
+grammars in one file honest. `src/mods/artifact-effects.ts` writes it and
+`tools/test-artifact-effects.ts` is the only thing checking that the two ends
+agree — there is a C parser at the other end with no library behind it.
+
 New Lua functions (registered by the same DLL, following the convention above)
 are the third face of the same table: useful for a map or campaign to
 read and adjust bonuses at runtime. But they should not be how the *artifact*

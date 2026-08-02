@@ -1,7 +1,8 @@
 // What an artifact does beyond its six stats — the file the native extension
-// reads. And, since it is one file and one reader, what a SPECIALIZATION of
-// ours does too: the two are the same bargain one rung apart, an identifier the
-// executable has never heard of and a term added where it sums its own.
+// reads. And, since it is one file and one reader, what a SPECIALIZATION and a
+// SKILL of ours do too: all three are the same bargain a subject apart, an
+// identifier the executable has never heard of and a term added where it sums
+// its own.
 //
 // The six stats an artifact record carries are the only ones the game's own
 // data can express. Everything else a shipped artifact does is compiled into
@@ -84,6 +85,32 @@ export interface SpecializationRow {
   name?: string;
 }
 
+/**
+ * One term a SKILL of ours adds — the third kind of row in the same file.
+ *
+ * The same bargain as a specialization, one subject over: a value of the
+ * `HeroSkill` enum the executable was not built with, and a question the engine
+ * already knows how to answer about it. That question is the hero's own
+ * `GetSkillMastery` — the single slot `HasHeroSkill` and `GetHeroSkillMastery`
+ * both go through — so it answers 0 for a hero without the skill and 1…4 for
+ * one who has it, and the amount is per level of MASTERY the way a
+ * specialization's is per level of the hero.
+ *
+ * It enters the same sums an artifact does, because the extension asks it in the
+ * same place: `necromancy` is answered for the one hero, `energy` for every hero
+ * of the player. Which is what the engine already does with the necromancy skill
+ * itself — a term keyed on a skill is not a new shape to it, only a new value.
+ */
+export interface SkillRow {
+  stat: EffectStat;
+  /** The enum VALUE the hero's skills answer to. */
+  skill: number;
+  /** Percentage points, or energy, for EACH level of mastery held. */
+  amountPerMastery: number;
+  /** For the comment beside it — the file is meant to be read. */
+  name?: string;
+}
+
 /** A row for one artifact: the common case, written in the short form. */
 function isSingle(r: EffectRow): boolean {
   return r.artifacts.length === 1 && r.threshold <= 1;
@@ -98,7 +125,9 @@ function isSingle(r: EffectRow): boolean {
  * no members, which can only come of a set whose pieces did not resolve.
  */
 export function writeEffects(
-  rows: readonly EffectRow[], specializations: readonly SpecializationRow[] = [],
+  rows: readonly EffectRow[],
+  specializations: readonly SpecializationRow[] = [],
+  skills: readonly SkillRow[] = [],
 ): string {
   const lines = [
     '# Effects the editor added, written by it - see src/mods/artifact-effects.ts.',
@@ -106,6 +135,7 @@ export function writeEffects(
     '#',
     '#   <stat> artifact <id> <amount>',
     '#   <stat> set <worn> <amount> <id> <id> ...',
+    '#   <stat> skill <value> <amount per level of mastery>',
     '#   <stat> specialization <value> <percent per hero level>',
     '',
   ];
@@ -115,6 +145,10 @@ export function writeEffects(
     lines.push(isSingle(r)
       ? `${r.stat} artifact ${r.artifacts[0]} ${r.amount}${comment}`
       : `${r.stat} set ${r.threshold} ${r.amount} ${r.artifacts.join(' ')}${comment}`);
+  }
+  for (const s of skills) {
+    if (!s.amountPerMastery) continue;
+    lines.push(`${s.stat} skill ${s.skill} ${s.amountPerMastery}${s.name ? `   # ${s.name}` : ''}`);
   }
   for (const s of specializations) {
     if (!s.percentPerLevel) continue;
@@ -160,6 +194,39 @@ export function readSpecializations(text: string): SpecializationRow[] {
     const body = line.split('#')[0] ?? '';
     const m = /^\s*(\w+)\s+specialization\s+(\d+)\s+(-?\d+)\s*$/.exec(body);
     if (m) rows.push({ stat: m[1]!, specialization: Number(m[2]), percentPerLevel: Number(m[3]) });
+  }
+  return rows;
+}
+
+/** The skill rows of the same file, read the same way and as separately. */
+export function readSkillEffects(text: string): SkillRow[] {
+  const rows: SkillRow[] = [];
+  for (const line of text.split(/\r?\n/)) {
+    if (line.trimStart().startsWith('#')) continue;
+    const body = line.split('#')[0] ?? '';
+    const m = /^\s*(\w+)\s+skill\s+(\d+)\s+(-?\d+)\s*$/.exec(body);
+    const stat = m?.[1] as EffectStat | undefined;
+    if (!m || !stat || !EFFECT_STATS.includes(stat)) continue;
+    rows.push({ stat, skill: Number(m[2]), amountPerMastery: Number(m[3]) });
+  }
+  return rows;
+}
+
+/** A skill of a mod, as far as its effects are concerned. */
+export interface EffectSkill {
+  id: string;
+  number: number;
+  effects?: Partial<Record<EffectStat, number>>;
+}
+
+/** The rows a mod's skills imply — one per skill and stat that gives something. */
+export function skillRowsOf(skills: readonly EffectSkill[]): SkillRow[] {
+  const rows: SkillRow[] = [];
+  for (const s of skills) {
+    for (const stat of EFFECT_STATS) {
+      const amount = s.effects?.[stat];
+      if (amount) rows.push({ stat, skill: s.number, amountPerMastery: amount, name: s.id });
+    }
   }
   return rows;
 }

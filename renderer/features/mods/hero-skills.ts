@@ -20,7 +20,7 @@ import { modDialog, openOnTop, ask } from '#core/dialog.ts';
 import { api } from '#core/ipc.ts';
 import { registerHeroTab } from '#features/mods/hero-tabs.ts';
 import { forgetClassData } from '#features/mods/hero-classes.ts';
-import { modRow } from '#features/mods/shared.ts';
+import { effectStats, ensureEffectStats, modRow } from '#features/mods/shared.ts';
 import { requireFilled } from '#core/form-gate.ts';
 import type { ModListEntry } from '#electron/ipc.ts';
 
@@ -55,6 +55,50 @@ function showKind(): void {
   });
 }
 
+/**
+ * One "what it adds" row: a sum the extension knows, and how much per mastery.
+ *
+ * A list you add to rather than a field per stat, the same as an artifact's —
+ * the stats come from the main process because each one is a place in the
+ * executable where we found where to append our term, and the form should not
+ * have to be edited when another is found. Only the extension's stats are
+ * offered: a skill record has no fields of its own to write into.
+ */
+function addSkillEffectRow(stat = '', amount = ''): void {
+  const row = document.createElement('label');
+  const select = document.createElement('select');
+  for (const s of effectStats) {
+    const option = document.createElement('option');
+    option.value = option.textContent = s;
+    select.appendChild(option);
+  }
+  if (stat) select.value = stat;
+  select.className = 'hk-effect-stat';
+  const value = document.createElement('input');
+  value.type = 'number';
+  value.value = amount || '0';
+  value.className = 'hk-effect-amount';
+  value.title = 'per level of mastery; negative takes away';
+  const drop = document.createElement('button');
+  drop.className = 'um-recolor';
+  drop.textContent = '×';
+  drop.title = 'remove this bonus';
+  drop.onclick = () => row.remove();
+  row.append(select, value, drop);
+  $('hk-effects').appendChild(row);
+}
+
+/** What those rows say. A zero is dropped by the main process, not here. */
+function skillEffects(): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const row of $('hk-effects').querySelectorAll('label')) {
+    const stat = row.querySelector<HTMLSelectElement>('.hk-effect-stat')?.value;
+    const amount = Number(row.querySelector<HTMLInputElement>('.hk-effect-amount')?.value) || 0;
+    if (stat) out[stat] = (out[stat] ?? 0) + amount;
+  }
+  return out;
+}
+
 /** What the picture rows currently hold, trailing blanks dropped. */
 function pictures(): string[] {
   const all = PICTURES.map((id) => $input(id).value.trim());
@@ -64,6 +108,7 @@ function pictures(): string[] {
 
 /** Fill the three selects from what the mod already holds. */
 async function fillSkillForm(): Promise<void> {
+  await ensureEffectStats();
   const { mods } = await api.listMods();
   const classes = mods.flatMap((m) => m.classes ?? []);
   const skills = mods.flatMap((m) => m.skills ?? []);
@@ -123,6 +168,10 @@ async function editSkill(id: string): Promise<void> {
   const drawn = s.pictures?.length ? s.pictures : s.picture ? [s.picture] : [];
   PICTURES.forEach((id, i) => { $input(id).value = drawn[i] ?? ''; });
   await fillSkillForm();
+  // After the form is filled, not before: a row's select is built from the
+  // stats the extension knows, and those arrive with everything else.
+  $('hk-effects').innerHTML = '';
+  for (const [stat, amount] of Object.entries(s.effects ?? {})) addSkillEffectRow(stat, String(amount));
   $select('hk-class').value = s.heroClass;
   $select('hk-branch').value = s.basicSkill ?? '';
   $select('hk-needs').value = s.prerequisites?.[0] ?? '';
@@ -168,6 +217,7 @@ async function submitSkill(): Promise<void> {
         basicSkill: $select('hk-branch').value,
         ...(needs ? { prerequisites: [needs] } : {}),
       } : {}),
+      effects: skillEffects(),
     };
     const r = editingSkill ? await api.updateHeroSkill(p) : await api.installHeroSkill(p);
     $('hm-note').textContent = `${editingSkill ? 'Updated' : 'Installed'} ${p.name} as value ${r.number} in ${r.archive}`;
@@ -204,6 +254,7 @@ export function initHeroSkills(): void {
     $input('hk-name').value = '';
     $input('hk-desc').value = '';
     for (const id of PICTURES) $input(id).value = '';
+    $('hk-effects').innerHTML = '';
     $select('hk-kind').value = 'racial';
     showKind();
     gateSkill().rewatch();
@@ -213,6 +264,10 @@ export function initHeroSkills(): void {
     });
   };
 
+  $('hk-effect-add').onclick = () => {
+    void ensureEffectStats().then(() => addSkillEffectRow())
+      .catch((e: unknown) => { $('hk-err').textContent = e instanceof Error ? e.message : String(e); });
+  };
   $select('hk-kind').addEventListener('change', showKind);
   for (const btn of document.querySelectorAll<HTMLButtonElement>('button.hk-picture')) {
     btn.onclick = () => {

@@ -46,6 +46,7 @@
 // nobody asked for.
 
 import { count, insertAfterLine, insertBeforeLine, once, retune } from './xml-edit.ts';
+import type { EffectStat } from './artifact-effects.ts';
 
 /** How many the game ships. Ours are appended after. */
 export const SHIPPED_SKILLS = 221;
@@ -152,6 +153,16 @@ export interface HeroSkillSpec {
    * scores it zero — which is right for a skill only a scripted hero will hold.
    */
   aiRace?: string;
+  /**
+   * What it adds to a sum the executable computes, per level of mastery.
+   *
+   * The record above gives a skill a name, an icon and a place in the tree and
+   * nothing else — every shipped skill's arithmetic is compiled against its own
+   * enum value, so a value of ours does nothing on its own. These are the sums
+   * the extension can append to; the hero is asked for his mastery of the skill
+   * (0…4) and the amount is multiplied by it. See src/mods/artifact-effects.ts.
+   */
+  effects?: Partial<Record<EffectStat, number>>;
 }
 
 /** One in a mod: a skill plus the enum value it holds. */

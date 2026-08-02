@@ -10,7 +10,7 @@ import type { ModsInstallSetPayload } from '#electron/ipc.ts';
 import { gameData } from '#electron/paths.ts';
 import { rmSync } from 'node:fs';
 import { basename } from 'node:path';
-import { EFFECT_STATS, effectsOf, specializationRowsOf } from '#src/mods/artifact-effects.ts';
+import { EFFECT_STATS, effectsOf, skillRowsOf, specializationRowsOf } from '#src/mods/artifact-effects.ts';
 import type { EffectRow, EffectStat, SetEffect } from '#src/mods/artifact-effects.ts';
 import type { ArtifactExeResult } from '#src/exe/artifact-limit.ts';
 import { artifactNumbers } from '#src/mods/artifacts.ts';
@@ -82,7 +82,9 @@ export function buildAndInstall(g: string, mod: CreatureMod): { installed: Insta
   const report = buildCreatureMod(mod, dataReader(gameData()));
   const archive = packCreatureMod(report);
   const installed = installCreatureMod(g, mod, archive);
-  writeEffectsFile(g, modEffects(mod), specializationRowsOf(mod.specializations ?? []));
+  writeEffectsFile(
+    g, modEffects(mod), specializationRowsOf(mod.specializations ?? []), skillRowsOf(mod.skills ?? []),
+  );
   return { installed, report };
 }
 

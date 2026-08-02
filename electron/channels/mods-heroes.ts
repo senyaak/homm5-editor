@@ -12,7 +12,7 @@ import type {
   ModsInstallSpecPayload, ModsInstallSpecResult,
   ModsRemovePayload, ModsRemoveResult, ModsUsesResult,
 } from '#electron/ipc.ts';
-import { buildAndInstall, ourMod } from '#electron/mod-install.ts';
+import { buildAndInstall, effectsFrom, ourMod } from '#electron/mod-install.ts';
 import { gameData, gameRoot, isConfigured } from '#electron/paths.ts';
 import { state } from '#electron/state.ts';
 import { basename, join } from 'node:path';
@@ -275,6 +275,10 @@ export function registerModHeroes(): void {
     ...(p.basicSkill ? { basicSkill: p.basicSkill } : {}),
     ...(p.prerequisites?.length ? { prerequisites: p.prerequisites } : {}),
     ...(p.aiRace ? { aiRace: p.aiRace } : {}),
+    // Only the stats the extension knows, and only when they are not zero —
+    // the same filter an artifact's effects go through, and for the same
+    // reason: a zero row is a row that lies about being in effect.
+    ...(effectsFrom(p.effects) ? { effects: effectsFrom(p.effects)! } : {}),
   });
 
   /** The mod, or a refusal saying which of the two configurations is missing. */

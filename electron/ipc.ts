@@ -925,6 +925,8 @@ export interface ModHeroSkillDTO {
   basicSkill?: string;
   prerequisites?: string[];
   aiRace?: string;
+  /** What the extension adds per level of mastery held. */
+  effects?: Record<string, number>;
 }
 
 /** Payload of `mods:install-class` and of the update beside it. */
@@ -962,6 +964,8 @@ export interface ModsInstallSkillPayload {
   basicSkill?: string;
   prerequisites?: string[];
   aiRace?: string;
+  /** What the extension adds per level of mastery — `{ necromancy: 5 }`. */
+  effects?: Record<string, number>;
 }
 
 /** What installing a skill produced. */

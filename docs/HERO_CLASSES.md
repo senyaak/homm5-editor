@@ -221,6 +221,15 @@ and does nothing whatever. So a skill of ours is two halves — the record here,
 and a term the native extension adds — and until the second half exists the
 words are a promise.
 
+**Two sums it can already reach**, because the extension had already found where
+to append to them: the necromancy percentage and the dark energy ceiling. The
+skill form carries them, the hero is asked for his mastery through the same slot
+the engine's own `HasHeroSkill` uses, and the amount is per level of that
+mastery. A skill is the third subject of one mechanism — see
+[engineInternals/EXTENSION.md](engineInternals/EXTENSION.md), "Three subjects,
+one shape". Everything else a skill of ours might do still costs a detour of its
+own, which is what the next section is about.
+
 ## Why the perks were not offered, and what it was not
 
 The three perks of the Witch's branch were written the way the shipped Multishot
