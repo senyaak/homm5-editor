@@ -169,3 +169,85 @@ of that log contradicting what seemed obvious.
 The panel is covered without a game by `e2e/qol-panel.spec.ts`. It sets
 `HOMM5_DOCUMENTS` at a tree of its own — without that, running the suite would
 edit the game profile of whoever ran it.
+
+## The army in the interface
+
+Written down because it took a dozen runs to establish and almost none of it is
+guessable from the outside. It is about the army panel, but the shape is the
+engine's own and applies to any screen a mod wants to reach into.
+
+### A click on a stack is not an event
+
+There is no message for it. `slot_click` and `slot_dbl_click` exist as UI
+message names, and screens like the market handle them — but in the hero screen
+a click on a stack never becomes a message at all: `CHeroScreen2`'s message
+handler saw exactly one message across a run spent clicking stacks, and it came
+from a dialog.
+
+What handles it is **drag and drop**, as a three-state machine:
+
+| | |
+|---|---|
+| `CDNDStateReady` | pressing over something remembers what is under the cursor |
+| `CDNDStatePrepare` | becomes Drag when the mouse MOVES **or** when the button is released |
+| `CDNDStateDrag` | releasing here is the drop |
+
+Both of Prepare's exits arrive at one function (`+0x1c`, with `+0x24` tail
+jumping into it), which is why a plain click already picks a stack up in this
+game — and why a single hook there catches a click and a drag alike. It is also
+why the first click and the second are different functions: picking up is
+Prepare, putting down is Drag.
+
+### Where the slots are
+
+Not in a field of the screen. A scan for the clicked widget across the screen's
+own fields, and one indirection past them, found only "the last thing touched".
+The slots are windows, found by name, three deep:
+
+```
+the screen's root window
+  └── "Army"
+        ├── "Attributes"
+        └── "ArmyStacks"
+              └── "Slot_1" … "Slot_7"
+```
+
+The executable keeps that very list of names as seven static strings twelve
+bytes apart (`Slot_1` at 0x1110628), built lazily — asking for them before the
+screen has run answers with seven nothings.
+
+Looking a child up by name is `+0x94`, taking `{begin, end, capacity}` and a
+flag. **It cannot be called on a pointer of our choosing.** In this hierarchy
+that vtable slot holds a virtual-inheritance thunk (`sub ecx,[ecx-4]`), which
+adjusts `this` by a displacement stored just before the subobject; given the
+start of an object it reads the heap's own bookkeeping and takes the game down.
+Twice, here. The way to get a receiver that is right by construction is to take
+one the compiler made: hook the function the screen uses to build its slot list
+and use the window it was handed.
+
+A screen builds **more than one** army — the hero's and whoever it is standing
+next to — so keeping only the last one means a click on the other matches
+nothing.
+
+### What is in a slot
+
+Still open. Two answers that looked obvious and are not:
+
+- the seven `CWindowStaticText` the army view holds at `+8` upwards are not
+  where the numbers live, in narrow or in wide text;
+- `NWorld::CArmy` is not reachable within two pointers of the army view.
+
+The next thing to try is the owner rather than the neighbourhood: the hero the
+screen is showing, and the army in it. Which is the question to have asked
+first — a slot belongs to a hero, and proximity in memory is not ownership.
+
+### On probes
+
+Reading an object's fields without first asking what the object IS gives a slot
+name on one run and a fragment of code on the next: the drag helper is generic,
+and a town screen lays out differently from a hero screen. Match the vtable
+before reading a field.
+
+And a search across an object graph must not ask Windows about every pointer it
+meets — that is a system call each, tens of thousands per click, and the game
+stops while it happens.
