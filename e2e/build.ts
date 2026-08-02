@@ -6,7 +6,7 @@
 // test written against it would fail for a reason that has nothing to do with
 // the code being tested. Cost is a fraction of a second per run.
 
-import { rmSync } from 'node:fs';
+import { existsSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { buildRenderer } from '../tools/build-renderer.ts';
@@ -20,10 +20,30 @@ export default async function build(): Promise<void> {
 
   // A run starts with an empty install. A map is a file now, and the app refuses
   // to write over one — so an archive left by the last run makes New Map fail in
-  // the next, in a spec that has nothing to do with it. Only ever the suite's
-  // own throwaway install: a real one handed over in HOMM5_ROOT is left alone.
+  // the next, in a spec that has nothing to do with it.
   if (E2E_GAME.startsWith(join(REPO_ROOT, '_tmp'))) {
     rmSync(modDir(E2E_GAME), { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  } else {
+    // A REAL install, handed over in HOMM5_ROOT: the folder is the player's, so
+    // the run takes out only what the suite itself makes. Every name it uses
+    // begins with `e2e `, which is the guard the specs' own cleanups already
+    // rest on — "a name no real map would have".
+    //
+    // AND IT SAYS SO. A run that is killed part-way — the first failure stops
+    // the rest, and Playwright does not finish the cleanups of the specs that
+    // had already passed — leaves those files behind, and the next run then
+    // fails in whichever spec happens to want that name, reporting "already
+    // exists" about something the person watching never asked for. This turns
+    // that into one line at the start, before any test has run.
+    const dir = modDir(E2E_GAME);
+    const left = existsSync(dir) ? readdirSync(dir).filter((f) => f.startsWith('e2e ')) : [];
+    for (const f of left) {
+      rmSync(join(dir, f), { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    }
+    if (left.length) {
+      console.warn(`\n[e2e] AN EARLIER RUN DID NOT FINISH — it left ${left.length} of its own`
+        + ` files in ${dir}, and they have been removed:\n  ${left.join('\n  ')}\n`);
+    }
   }
 
   // The mod stages share ONE install and run as a chain — the creature, its
