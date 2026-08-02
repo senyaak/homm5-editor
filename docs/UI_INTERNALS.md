@@ -203,3 +203,23 @@ The answer is a plan: decide the whole gesture on a copy of the army kept here,
 then send the moves in order. Commands carry no counts, so they mean the same
 thing whenever the engine gets round to them, and only the FIRST of them can
 usefully be put to `Validate`.
+
+### Giving a stack away whole is not a split
+
+`CHeroScreen::Split` is only half named that. Its first act is to read one byte —
+the engine's Shift binding, the thing that turns a drop into an offer to divide —
+and when it is clear the function takes an entirely different branch: compare the
+two creatures, and build a **merge**, a different and smaller command than the
+split one.
+
+That is the only command the army panel knows how to draw the result of. A split
+command told to hand over everything leaves its source holding nothing, which the
+panel never has to cope with otherwise, and it goes on drawing the slot: six
+stacks on screen where the army has five, until the screen is reopened. The army
+itself was right the whole time, which is why the log kept saying so.
+
+So each half of the feature uses the engine's own door: a merge goes through that
+function with the byte cleared for the call and put back after, and only a real
+division of a stack goes through a controller of ours. Which is also the answer
+to the Shift binding — the gesture means the same thing whatever the player is
+leaning on.

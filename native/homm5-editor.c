@@ -1684,6 +1684,42 @@ static MakeControllerFn g_makeController = NULL;
 typedef int(__fastcall *ControllerAskFn)(void *self, void *edx, int howMany);
 typedef void *(__fastcall *NoArgFn)(void *self, void *edx);
 
+/**
+ * `CHeroScreen::Split` — and it is only half named that.
+ *
+ * GIVING A STACK AWAY WHOLE IS NOT A SPLIT, and the engine knows it: this
+ * function looks at one byte first and takes an entirely different branch when
+ * splitting is not on. That branch compares the two creatures and builds a
+ * MERGE — a different, smaller command than the split one, and the only one the
+ * army panel knows how to draw the result of.
+ *
+ * A split command told to hand over everything leaves the source at nothing,
+ * which the panel never has to cope with otherwise, and it goes on drawing the
+ * slot: six stacks on screen where the army has five, until the screen is
+ * reopened. So a merge of ours goes through here, and only a real division of a
+ * stack goes through a controller of our own.
+ *
+ * The byte is the engine's Shift binding — held, it turns a drop into an offer
+ * to split. Ours is cleared for the call and put back after, so a gesture means
+ * the same thing whatever the player is leaning on.
+ */
+#define SCREEN_SPLIT_RVA 0x359360u
+#define SCREEN_SPLIT_HEAD_LEN 7
+static const BYTE SCREEN_SPLIT_HEAD[SCREEN_SPLIT_HEAD_LEN] = {
+  0x83, 0xEC, 0x58, 0x53, 0x55, 0x8B, 0xE9
+};
+#define SCREEN_SPLIT_ALLOWED 0x1A0u
+
+typedef int(__fastcall *ScreenSplitFn)(void *self, void *edx, void *fromWidget, void *fromStack,
+                                       void *toWidget, void *toStack);
+static ScreenSplitFn g_screenSplit = NULL;
+
+/** The drag's own map from a widget to the handle a drop deals in — which is
+ *  not the stack itself, and is what that call wants. */
+#define DND_HELPER_MAP 0x10u
+#define SLOT_CONTENTS 0x28u
+typedef void *(__fastcall *InSlotFn)(void *self, void *edx, void *widget);
+
 // --- the click -------------------------------------------------------------
 
 /**
@@ -1875,6 +1911,17 @@ typedef struct {
  *  than the slots on screen, an emptied slot is REMOVED from it and a slot
  *  number is not an index into it. */
 static int g_stacksSeen = 0;
+/**
+ * Whether a slot has a stack OBJECT in it, whatever that object says.
+ *
+ * Which is not the same question as whether it holds creatures, and the
+ * difference is what is being measured. A merge of ours is a split command told
+ * to hand over everything, so the source ends at nothing — and a split was never
+ * meant to empty its source. If the engine leaves the emptied stack in place at
+ * zero where its own merge would have removed it, that leftover is what the
+ * panel has been drawing.
+ */
+static int g_hasEntry[SLOT_COUNT];
 
 static void read_army(void *army, SlotState *out) {
   void *owner = army_owner(army);
@@ -1890,6 +1937,7 @@ static void read_army(void *army, SlotState *out) {
   for (int i = 0; i < SLOT_COUNT; i++) {
     void *s = owner ? stack_in(owner, i) : NULL;
     int room = (int)readable(s, STACK_COUNT + 4);
+    g_hasEntry[i] = s != NULL;
     out[i].type = room >= (int)(STACK_COUNT + 4) ? *(int *)((BYTE *)s + STACK_TYPE) : -1;
     out[i].count = room >= (int)(STACK_COUNT + 4) ? *(int *)((BYTE *)s + STACK_COUNT) : 0;
     if (out[i].count <= 0) { out[i].type = -1; out[i].count = 0; }
@@ -1920,6 +1968,9 @@ typedef struct {
   int from, to;
   /** What the target is to end up holding — see CONTROLLER_TOTAL. */
   int want;
+  /** The source is left with nothing, so this is a merge and goes to the
+   *  engine's own — see SCREEN_SPLIT_RVA. */
+  int whole;
 } Move;
 
 typedef struct {
@@ -1934,6 +1985,7 @@ static void plan_move(Plan *p, int from, int to, int howMany) {
   p->move[p->moves].from = from;
   p->move[p->moves].to = to;
   p->move[p->moves].want = p->slot[to].count + howMany;
+  p->move[p->moves].whole = howMany == p->slot[from].count;
   p->moves++;
   p->slot[to].type = p->slot[from].type;
   p->slot[to].count += howMany;
@@ -1989,11 +2041,42 @@ static int set_target(void *part, int fromSide, int fromSlot, int toSide, int to
   return 1;
 }
 
+/**
+ * Give a stack away whole, the way the engine does it — a merge, not a split.
+ *
+ * Everything the call needs it looks up itself from the two widgets; what it
+ * cannot look up is the handle behind them, which is the drag's business and
+ * comes from the drag's own map.
+ */
+static int merge_whole(void *part, void *map, void *array, int from, int to) {
+  if (!g_screenSplit) return 0;
+  void *fromWidget = entry_widget(array, from), *toWidget = entry_widget(array, to);
+  InSlotFn in_slot = (InSlotFn)vtable_entry(map, SLOT_CONTENTS);
+  if (!fromWidget || !toWidget || !in_slot) return 0;
+  void *fromStack = in_slot(map, NULL, fromWidget);
+  if (!fromStack) return 0;
+  void *toStack = in_slot(map, NULL, toWidget);
+
+  BYTE *allowed = readable((BYTE *)part + SCREEN_SPLIT_ALLOWED, 4) >= 4
+    ? *(BYTE **)((BYTE *)part + SCREEN_SPLIT_ALLOWED) : NULL;
+  int poke = readable(allowed, 1) != 0;
+  BYTE was = poke ? *allowed : 0;
+  if (poke) *allowed = 0;
+  g_screenSplit(part, NULL, fromWidget, fromStack, toWidget, toStack);
+  if (poke) *allowed = was;
+  return 1;
+}
+
 /** Send a plan, in order. */
-static int carry_out(void *part, int side, const Plan *p) {
+static int carry_out(void *part, int side, void *map, const Plan *p) {
+  void *array = slots_of(part, side);
   int did = 0;
   for (int i = 0; i < p->moves; i++) {
-    if (!set_target(part, side, p->move[i].from, side, p->move[i].to, p->move[i].want, i == 0)) break;
+    const Move *m = &p->move[i];
+    int done = m->whole
+      ? merge_whole(part, map, array, m->from, m->to)
+      : set_target(part, side, m->from, side, m->to, m->want, i == 0);
+    if (!done) break;
     did++;
   }
   return did;
@@ -2119,6 +2202,7 @@ static int __fastcall dnd_pick_hook(void *state, void *edx, void *arg) {
       g_clicksLogged++;
       log_num("click: nothing in slot ", from + 1);
       log_num("       stacks in the army's own list ", g_stacksSeen);
+      if (g_hasEntry[from]) log_line("       though a stack still stands there, holding nothing");
     }
     return g_dndPick(state, NULL, arg);
   }
@@ -2129,7 +2213,9 @@ static int __fastcall dnd_pick_hook(void *state, void *edx, void *arg) {
   else if (held_here > 1) put_one_out(&plan, from, ctrl && shift);
   else if (ctrl && !shift) put_one_back(&plan, from);
 
-  int did = carry_out(part, side, &plan);
+  void *map = readable((BYTE *)helper + DND_HELPER_MAP, 4) >= 4
+    ? *(void **)((BYTE *)helper + DND_HELPER_MAP) : NULL;
+  int did = carry_out(part, side, map, &plan);
 
   if (g_clicksLogged < 40) {
     g_clicksLogged++;
@@ -2142,15 +2228,20 @@ static int __fastcall dnd_pick_hook(void *state, void *edx, void *arg) {
     log_num("       holding ", held_here);
     log_num("       stacks in the army's own list ", g_stacksSeen);
     for (int i = 0; i < SLOT_COUNT; i++) {
-      if (before[i].type < 0) continue;
+      if (before[i].type < 0 && !g_hasEntry[i]) continue;
       log_num("       in slot ", i + 1);
+      if (before[i].type < 0) {
+        log_line("            a stack still stands here, holding nothing");
+        continue;
+      }
       log_num("            of creature ", before[i].type);
       log_num("            there are ", before[i].count);
     }
     for (int i = 0; i < plan.moves; i++) {
       log_num("       move out of slot ", plan.move[i].from + 1);
       log_num("               into slot ", plan.move[i].to + 1);
-      log_num("               leaving it with ", plan.move[i].want);
+      if (plan.move[i].whole) log_line("               all of it, as a merge");
+      else log_num("               leaving it with ", plan.move[i].want);
     }
     log_num("       moves made ", did);
   }
@@ -2173,6 +2264,8 @@ static void install_quick_split(void) {
   g_makeController = (MakeControllerFn)code_at(MAKE_CONTROLLER_RVA, MAKE_CONTROLLER_HEAD,
                                                MAKE_CONTROLLER_HEAD_LEN, "the split controller");
   if (!g_makeController) return;
+  g_screenSplit = (ScreenSplitFn)code_at(SCREEN_SPLIT_RVA, SCREEN_SPLIT_HEAD, SCREEN_SPLIT_HEAD_LEN,
+                                         "the screen's own split");
   g_dndPick = (DndPickFn)detour(DND_PICK_RVA, DND_PICK_HEAD, DND_PICK_HEAD_LEN,
                                 &dnd_pick_hook, "drag and drop pick");
   if (g_dndPick) log_line("quick split: watching clicks made with a key held");
