@@ -812,6 +812,16 @@ export interface ModListEntry {
    */
   specializations: ModSpecializationDTO[];
   /**
+   * Its hero classes and its skills — the two reference tables the editor can
+   * extend besides the creatures' and the artifacts'.
+   *
+   * Whole, like the heroes and for the same reason: the form is filled from
+   * this list, and a class is thirteen weights and a set of opened perks that
+   * nothing else in the archive records.
+   */
+  classes: ModHeroClassDTO[];
+  skills: ModHeroSkillDTO[];
+  /**
    * Its buildings — everything a hero walks up to, one of sixteen classes each.
    *
    * The WHOLE building, for the reason a hero is whole here: this list is where
@@ -916,7 +926,125 @@ export interface ModsInstallSpecResult {
   number: number;
 }
 
+/** One row of a class's priorities: a skill and its share of the hundred. */
+export interface SkillWeightDTO { skill: string; prob: number }
+
+/** A shipped perk opened to a class of ours, with what it asks of him. */
+export interface AllowedPerkDTO { perk: string; dependencies: string[] }
+
+/** A class of the mod, as the list reports it. */
+export interface ModHeroClassDTO {
+  id: string;
+  number: number;
+  name: string;
+  skills: SkillWeightDTO[];
+  attributes: { offence: number; defence: number; spellpower: number; knowledge: number };
+  preferredSpells?: string[];
+  allowedPerks?: AllowedPerkDTO[];
+}
+
+/** A skill of the mod, as the list reports it. */
+export interface ModHeroSkillDTO {
+  id: string;
+  number: number;
+  kind: 'racial' | 'perk';
+  heroClass: string;
+  name: string;
+  names?: string[];
+  description: string;
+  descriptions?: string[];
+  commonDescription?: string;
+  icons?: string[];
+  picture?: string;
+  pictures?: string[];
+  basicSkill?: string;
+  prerequisites?: string[];
+  aiRace?: string;
+  /** What the extension adds per level of mastery held. */
+  effects?: Record<string, number>;
+  /** Its adventure-map Lua, so the form reopens on what was written. */
+  script?: string;
+  /** And its battle-side half. */
+  combatScript?: string;
+}
+
+/** Payload of `mods:install-class` and of the update beside it. */
+export interface ModsInstallClassPayload {
+  id: string;
+  name: string;
+  skills: SkillWeightDTO[];
+  attributes: { offence: number; defence: number; spellpower: number; knowledge: number };
+  preferredSpells?: string[];
+  allowedPerks?: AllowedPerkDTO[];
+}
+
+/** What installing a class produced. */
+export interface ModsInstallClassResult {
+  archive: string;
+  /** Its enum value — the tenth class is 9, and the executable compares that. */
+  number: number;
+}
+
+/** Payload of `mods:install-skill` and of the update beside it. */
+export interface ModsInstallSkillPayload {
+  id: string;
+  kind: 'racial' | 'perk';
+  heroClass: string;
+  name: string;
+  names?: string[];
+  description: string;
+  descriptions?: string[];
+  commonDescription?: string;
+  icons?: string[];
+  /** A drawing on disk to build its icon from — the mod builds the texture. */
+  picture?: string;
+  /** Or one per level, when the levels are drawn differently. */
+  pictures?: string[];
+  basicSkill?: string;
+  prerequisites?: string[];
+  aiRace?: string;
+  /** What the extension adds per level of mastery — `{ necromancy: 5 }`. */
+  effects?: Record<string, number>;
+  /** Lua that runs on every adventure map — for a perk whose content is an event. */
+  script?: string;
+  /** And the half of it that has to run inside a battle, where the other cannot see. */
+  combatScript?: string;
+}
+
+/** What installing a skill produced. */
+export interface ModsInstallSkillResult { archive: string; number: number }
+
+/** Everything the class form is built from — read off the game's own two tables. */
+export interface ModsClassDataResult {
+  /**
+   * The skills a class may weight: the twelve common ones, the eight shipped
+   * racials, and any racial of the mod. Named where the game names them.
+   */
+  skills: RosterEntryDTO[];
+  /** Every perk, with the branch it belongs to and the gate that governs it. */
+  perks: Array<{
+    id: string;
+    name: string;
+    branch: string;
+    /** The classes that may take it today — ours appears once it is allowed. */
+    classes: string[];
+    /** What most of them must hold first: where a new entry starts. */
+    dependencies: string[];
+  }>;
+  /** The shipped classes, weights and all — what the donor button copies. */
+  donors: Array<{
+    id: string;
+    name: string;
+    skills: SkillWeightDTO[];
+    attributes: { offence: number; defence: number; spellpower: number; knowledge: number };
+    preferredSpells: string[];
+    /** The perks that class may take, so a donor brings its availability too. */
+    perks: AllowedPerkDTO[];
+  }>;
+}
+
 /** Result of `mods:list`. */
+
 export interface ModsListResult {
   /** The game install the mods live in, or null when none is configured. */
   gameRoot: string | null;
@@ -1482,6 +1610,20 @@ export interface EditorApi {
   updateSpecialization(p: ModsInstallSpecPayload): Promise<ModsInstallSpecResult>;
   /** Take one out. Refused while a hero of the mod still holds it. */
   removeSpecialization(p: ModsRemovePayload): Promise<ModsRemoveResult>;
+  /** Add a class to OUR mod: a tenth entry in a table the game sizes at nine. */
+  installHeroClass(p: ModsInstallClassPayload): Promise<ModsInstallClassResult>;
+  /** Change one already in the mod. Its id and its value do not move. */
+  updateHeroClass(p: ModsInstallClassPayload): Promise<ModsInstallClassResult>;
+  /** Take one out. Refused while a hero is of it or a skill belongs to it. */
+  removeHeroClass(p: ModsRemovePayload): Promise<ModsRemoveResult>;
+  /** Add a skill: a racial for a class of ours, or a perk of its branch. */
+  installHeroSkill(p: ModsInstallSkillPayload): Promise<ModsInstallSkillResult>;
+  /** Change one already in the mod. */
+  updateHeroSkill(p: ModsInstallSkillPayload): Promise<ModsInstallSkillResult>;
+  /** Take one out. Refused while a hero, a class or a perk still names it. */
+  removeHeroSkill(p: ModsRemovePayload): Promise<ModsRemoveResult>;
+  /** The skills, the perks and the shipped classes the class form is built from. */
+  classData(): Promise<ModsClassDataResult>;
   /** What one shipped hero wears, slot by slot — the preset seeding the form. */
   heroArtOf(hero: string): Promise<Record<string, string>>;
   /**

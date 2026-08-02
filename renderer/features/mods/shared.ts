@@ -100,6 +100,20 @@ export function fillModSelect(sel: HTMLSelectElement, entries: { id: string; nam
   }
 }
 
+/**
+ * Just the extension's stats, for a form outside the two windows below.
+ *
+ * The Heroes window has its own lists and never calls `fillModForms`, but a
+ * skill can carry a bonus the same way an artifact can — and the list of what
+ * the extension knows how to add belongs to the extension, not to a window. The
+ * fetch behind it is cached, so asking again costs nothing.
+ */
+export async function ensureEffectStats(): Promise<void> {
+  const data = await modFormData();
+  effectStats = data.effectStats;
+  heroStats = data.heroStats;
+}
+
 export async function fillModForms(): Promise<void> {
   const data = await modFormData();
   {

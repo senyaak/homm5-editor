@@ -31,7 +31,7 @@ Single Player → Campaign, not a `.h5u` mod, and without touching
 **Which folder depends on which executable.** The shipped game scans
 `<game>/UserCampaigns/`; our copy scans `<game>/H5E/` and nothing else, so that
 is where the editor writes and where a campaign of ours belongs (see
-[ENGINE_INTERNALS.md](ENGINE_INTERNALS.md), "Where the game looks for mods").
+[engineInternals/MODS_AND_MAPS.md](engineInternals/MODS_AND_MAPS.md)).
 The archive's own contents are the same either way — the folder it sits in is
 not part of it.
 

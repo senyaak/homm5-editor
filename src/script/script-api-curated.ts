@@ -58,7 +58,7 @@ export const CURATED: ApiDoc[] = [
   // adds them to the table the engine hands Lua — a map that runs without the
   // extension will find them nil, which is why a script that calls one should
   // check it is there first. See
-  // docs/ENGINE_INTERNALS.md for how they are registered.
+  // docs/engineInternals/LUA.md for how they are registered.
   {
     name: 'RestoreDarkEnergy', category: 'Ours', source: 'extension',
     summary: "Fill a player's dark energy back up to its ceiling.",
@@ -129,7 +129,11 @@ export const CURATED: ApiDoc[] = [
       { name: 'functionName', type: 'string | nil', desc: 'Name of the Lua function to call, as a string; nil removes the handler.' },
     ],
     example: 'Trigger(REGION_ENTER_AND_STOP_TRIGGER, "d2", "Dialog2");',
-    notes: 'The handler is named by STRING, not passed as a value, and the engine calls it when the event fires.',
+    notes: 'The handler is named by STRING, not passed as a value, and the engine calls it when the event fires. '
+      + 'There are SEVENTEEN types and no more — the engine decides on one `cmp ebx,10h` at 0x5f27cb — and the game\'s '
+      + 'own scripts declare sixteen of them: type 10 is real, undeclared, and a TOWN trigger (it refuses an object '
+      + 'that is not a town). None of the seventeen is "a battle is starting"; COMBAT_RESULTS_TRIGGER fires afterwards. '
+      + 'Handlers STACK rather than replace, so one set from a mod\'s advmap-common.lua survives a map setting its own.',
   },
 
   // --- Objects on the map --------------------------------------------------

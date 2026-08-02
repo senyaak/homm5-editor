@@ -18,7 +18,7 @@ import { dirname, join } from 'node:path';
 
 import { addImport, imports } from '../exe/exe-import.ts';
 import { EFFECTS_FILE, writeEffects } from './artifact-effects.ts';
-import type { EffectRow, SpecializationRow } from './artifact-effects.ts';
+import type { EffectRow, SkillRow, SpecializationRow } from './artifact-effects.ts';
 
 export const EXTENSION_DLL = 'homm5-editor.dll';
 /** The export the import table names. Never called — the point is `DllMain`. */
@@ -146,10 +146,13 @@ export function installExtension(gameRoot: string, editorRoot: string): InstallR
  * says plainly that nothing is in effect.
  */
 export function writeEffectsFile(
-  gameRoot: string, rows: readonly EffectRow[], specializations: readonly SpecializationRow[] = [],
+  gameRoot: string,
+  rows: readonly EffectRow[],
+  specializations: readonly SpecializationRow[] = [],
+  skills: readonly SkillRow[] = [],
 ): string {
   const path = join(gameRoot, EFFECTS_FILE);
   mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, writeEffects(rows, specializations), 'latin1');
+  writeFileSync(path, writeEffects(rows, specializations, skills), 'latin1');
   return path;
 }

@@ -160,6 +160,52 @@ const PLACES = {
   ],
 };
 
+/**
+ * The proving ground, added AFTER the map has held against the original.
+ *
+ * Not decoration and not content: it is what makes this map usable as a test
+ * bed for anything that depends on a hero's LEVEL or on his army taking
+ * damage — a specialization scaling per level, a war machine, a skill. Twice
+ * now it has been added by hand to the packed map, and twice the next run of
+ * this spec repacked the map and washed it away. So it is generated.
+ *
+ * Two rows of learning stones north of the heroes, on tiles nothing else uses,
+ * and a ladder of neutral stacks along the bottom of the map, from fodder to
+ * something with teeth. Everything the original carries sits between rows 37
+ * and 47; the buildings of mod-005 take the bottom LEFT (x 6…38 at y 48, 56,
+ * 64) and the shipyard's bay the bottom middle — so the stacks go right of
+ * them, and the stones above.
+ */
+/** What Gem is placed with — three stacks of the mod's own creature. */
+const GEM_ARMY = [250, 250, 250];
+
+const STONE = '/MapObjects/Learning_Stone.(AdvMapBuildingShared).xdb';
+const STONES: readonly [number, number][] = [
+  [28, 34], [30, 34], [32, 34], [34, 34], [36, 34], [38, 34],
+  [28, 36], [30, 36], [32, 36], [34, 36], [36, 36], [38, 36],
+];
+
+/**
+ * Ten stacks, deliberately different creatures rather than ten of one.
+ *
+ * A tent is tested by what it has to mend, and that differs by what hit the
+ * army: shooters wound from afar, a hydra takes a stack apart, a lich kills
+ * outright. Amounts grow left to right and top to bottom, so a hero can start
+ * at the west end and work along as he levels.
+ */
+const FOES: readonly { shared: string; x: number; y: number; amount: number }[] = [
+  { shared: '/MapObjects/Haven/Peasant.(AdvMapMonsterShared).xdb', x: 44, y: 56, amount: 300 },
+  { shared: '/MapObjects/Necropolis/Sceleton_Archer.(AdvMapMonsterShared).xdb', x: 49, y: 56, amount: 150 },
+  { shared: '/MapObjects/Haven/Footman.(AdvMapMonsterShared).xdb', x: 54, y: 56, amount: 120 },
+  { shared: '/MapObjects/Stronghold/Centaur.(AdvMapMonsterShared).xdb', x: 59, y: 56, amount: 100 },
+  { shared: '/MapObjects/Preserve/Sprite.(AdvMapMonsterShared).xdb', x: 64, y: 56, amount: 140 },
+  { shared: '/MapObjects/Haven/Griffin.(AdvMapMonsterShared).xdb', x: 44, y: 60, amount: 70 },
+  { shared: '/MapObjects/Inferno/Cerberi.(AdvMapMonsterShared).xdb', x: 49, y: 60, amount: 60 },
+  { shared: '/MapObjects/Dungeon/Minotaur.(AdvMapMonsterShared).xdb', x: 54, y: 60, amount: 45 },
+  { shared: '/MapObjects/Necropolis/Vampire.(AdvMapMonsterShared).xdb', x: 59, y: 60, amount: 40 },
+  { shared: '/MapObjects/Dungeon/Hydra.(AdvMapMonsterShared).xdb', x: 64, y: 60, amount: 20 },
+];
+
 function cleanup(): void {
   // Live, nothing is swept: the install is the game, the packed map is the
   // point, and the working tree beside it is what a person would have left.
@@ -504,6 +550,21 @@ test('and Gem stands on it, in red', async () => {
   await setObjectProp(page, 'PlayerID', 'PLAYER_1');
   void id;
 
+  // And an army, through the same structured Army row the other three heroes
+  // use. Not decoration: a hero with a first aid tent and nothing to heal
+  // cannot answer any question this map exists to ask, and the stacks the next
+  // test puts along the bottom are there to be fought.
+  const army = page.locator('#p-props .pf', { has: page.locator('label', { hasText: /^Army$/ }) });
+  await army.locator('button.struct-edit').click();
+  await expect(page.locator('#mt-dialog')).toBeVisible();
+  for (let slot = 0; slot < GEM_ARMY.length; slot++) {
+    await addItem(page, ['armySlots']);
+    await setTreeValue(page, ['armySlots', slot, 'Creature'], SHARPSHOOTER);
+    await setTreeValue(page, ['armySlots', slot, 'Count'], String(GEM_ARMY[slot]));
+  }
+  await page.locator('#mt-close').click();
+  await expect(page.locator('#mt-dialog')).toBeHidden();
+
   await bar(page, '#save');
   await hudSays(page, /saved/i, 60_000);
 
@@ -515,12 +576,74 @@ test('and Gem stands on it, in red', async () => {
   // happily start at the hero before her and still match.
   const gem = xml.split('<AdvMapHero>').find((part) => part.includes('H3Gem')) ?? '';
   expect(gem, 'the placed hero is red').toContain('<PlayerID>PLAYER_1</PlayerID>');
+  expect((gem.match(new RegExp(`<Creature>${SHARPSHOOTER}</Creature>`, 'g')) ?? []).length,
+    'and she has an army to lose').toBe(GEM_ARMY.length);
 
   await bar(page, '#pack');
   await hudSays(page, /^packed → /, 60_000);
   const packed = readEntries(readFileSync(ARCHIVE))
     .find((e) => e.name.replace(/\\/g, '/').endsWith('map.xdb'))!;
   expect(packed.data.toString('latin1'), 'the packed map carries her too').toContain('H3Gem');
+});
+
+test('and a proving ground for her: stones to level on, enemies to fight', async () => {
+  test.setTimeout(10 * 60_000);
+  const { page } = ed;
+  // Plan view for the same reason the passability stroke uses it: at oblique
+  // angles the projection and the picking ray can disagree by a tile, and
+  // clickTile rightly refuses a click that would land on the wrong one.
+  await planView(page);
+
+  for (const [x, y] of STONES) {
+    await pickObject(page, STONE);
+    await placeOne(page, STONE, x, y);
+  }
+
+  for (const f of FOES) {
+    await pickObject(page, f.shared);
+    await placeOne(page, f.shared, f.x, f.y);
+    // The same four the original's own stacks carry: a fixed count that does
+    // not grow week to week, and a stack that never offers to join — a test bed
+    // whose numbers drift is a test bed that answers a different question every
+    // time it is walked into.
+    await setObjectProp(page, 'Custom', 'true');
+    await setObjectProp(page, 'Amount', String(f.amount));
+    await setObjectProp(page, 'DoesNotGrow', 'true');
+    await setObjectProp(page, 'Courage', 'MONSTER_COURAGE_ALWAYS_FIGHT');
+  }
+
+  await bar(page, '#save');
+  await hudSays(page, /saved/i, 60_000);
+
+  // Read back off the file the game reads, not off the panel that wrote it.
+  const xml = readFileSync(join(MAP_DIR, 'map.xdb'), 'latin1');
+  const stones = (xml.match(/Learning_Stone/g) ?? []).length;
+  expect(stones, 'every stone is in the saved map').toBe(STONES.length);
+  // Each stack by its own definition: ten stacks of one creature would place
+  // and save just as happily, and prove nothing about the ladder.
+  const missing = FOES.filter((f) => !xml.includes(f.shared)).map((f) => f.shared);
+  expect(missing, 'stacks the saved map does not name').toEqual([]);
+  // And the amounts really landed — `Custom` false would leave the game to roll
+  // its own number, which is the quiet way a fixed test bed stops being one.
+  //
+  // Asked as "SOME block carries both", not "the block naming this creature":
+  // the map already has two Peasant stacks of the original's, so the first
+  // block naming a Peasant is one of THEIRS, at their count. That read as our
+  // stack having the wrong amount.
+  const blocks = xml.split('<AdvMapMonster>');
+  for (const f of FOES) {
+    const ours = blocks.some((b) => b.includes(f.shared)
+      && b.includes('<Custom>true</Custom>')
+      && b.includes(`<Amount>${f.amount}</Amount>`));
+    expect(ours, `a custom stack of ${f.amount} × ${f.shared}`).toBe(true);
+  }
+
+  await bar(page, '#pack');
+  await hudSays(page, /^packed → /, 60_000);
+  const packed = readEntries(readFileSync(ARCHIVE))
+    .find((e) => e.name.replace(/\\/g, '/').endsWith('map.xdb'))!;
+  expect((packed.data.toString('latin1').match(/Learning_Stone/g) ?? []).length,
+    'and the packed map carries them too').toBe(STONES.length);
 });
 
 /**

@@ -11,8 +11,9 @@
 import { basename } from 'node:path';
 import { readFileSync } from 'node:fs';
 import { artOf, heroArtDir, heroDoc, heroLink, heroPaths, repointArt, textureHref } from './heroes.ts';
-import { readGif } from '../format/gif.ts';
+
 import { fitSquare, magnify, textureDoc, writeDDS } from '../format/texture.ts';
+import { readPicture } from '../format/png.ts';
 import { copyArt } from './mod-art.ts';
 import { mustRead, utf16 } from './mod-files.ts';
 import type { HeroPaths, HeroSpec } from './heroes.ts';
@@ -28,8 +29,8 @@ import type { DataReader, ModFile } from './mod-files.ts';
  * pixels and only when the picture is smaller than the canvas, so an icon that
  * already fits is placed rather than touched.
  */
-function texturePair(picture: string, size: number, dds: string, xdb: string): ModFile[] {
-  let image: Image = readGif(readFileSync(picture));
+export function texturePair(picture: string, size: number, dds: string, xdb: string): ModFile[] {
+  let image: Image = readPicture(readFileSync(picture), basename(picture));
   const times = Math.floor(size / Math.max(image.width, image.height));
   if (times > 1) image = magnify(image, times);
   const fitted = fitSquare(image, size);

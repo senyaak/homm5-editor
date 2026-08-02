@@ -16,6 +16,8 @@
 import { SHIPPED_CREATURES, blankStats } from './creatures.ts';
 import { SHIPPED_ARTIFACTS } from './artifacts.ts';
 import { SHIPPED_SPECIALIZATIONS } from './specializations.ts';
+import { SHIPPED_CLASSES, classProblems } from './hero-classes.ts';
+import { SHIPPED_SKILLS, skillProblems } from './hero-skills.ts';
 import { ORIGINAL_ARTIFACTS } from '../exe/artifact-limit.ts';
 import { MOD_STEM } from './mod-files.ts';
 import type { CreatureStats } from './creatures.ts';
@@ -25,6 +27,8 @@ import type { BuildingSpec } from './buildings.ts';
 import type { DwellingSpec } from './dwellings.ts';
 import type { HeroSpec } from './heroes.ts';
 import type { ModSpecialization, SpecializationSpec } from './specializations.ts';
+import type { HeroClassSpec, ModHeroClass } from './hero-classes.ts';
+import type { HeroSkillSpec, ModHeroSkill } from './hero-skills.ts';
 import type { RecolorOps } from '../format/recolor.ts';
 import type { ArtSlot } from './mod-art.ts';
 
@@ -137,7 +141,7 @@ export interface CreatureMod {
    * counts our worn pieces, names the set and draws its tooltip without any
    * code. What it will not do is give the set an EFFECT: every shipped set's
    * behaviour is compiled against its enum value, and ours is a value the
-   * executable has never heard of. See docs/ENGINE_INTERNALS.md.
+   * executable has never heard of. See docs/engineInternals/ARTIFACTS_AND_EQUIPMENT.md.
    */
   sets: ModArtifactSet[];
   /**
@@ -161,6 +165,26 @@ export interface CreatureMod {
    * native extension, exactly as a set's does. See src/mods/specializations.ts.
    */
   specializations?: ModSpecialization[];
+  /**
+   * Hero classes of our own — the tenth, where the game ships nine.
+   *
+   * The dearest thing in the archive after a creature, and for the same reason:
+   * a reference table with a size declared three times in types.xml and once in
+   * the executable. What it buys is what nothing else can say — how often each
+   * skill is offered at a level up and how often each attribute grows.
+   * See src/mods/hero-classes.ts.
+   */
+  classes?: ModHeroClass[];
+  /**
+   * Skills of our own — a racial for a class of ours, and the perks of its
+   * branch.
+   *
+   * The same table shape as a class, and the same bargain a specialization
+   * makes: the game will show its name, its icon and its place in the tree, and
+   * do nothing whatever with it. What it DOES comes from the native extension.
+   * See src/mods/hero-skills.ts.
+   */
+  skills?: ModHeroSkill[];
 }
 
 /** One in a mod: a spec plus the id number it holds. */
@@ -224,8 +248,150 @@ export function newCreatureMod(stem = MOD_STEM): CreatureMod {
   return {
     version: 1, stem, first: SHIPPED_CREATURES,
     creatures: [], dwellings: [], buildings: [], artifacts: [], sets: [], heroes: [],
-    specializations: [],
+    specializations: [], classes: [], skills: [],
   };
+}
+
+/**
+ * Nothing in it at all — the state removing the last of something leaves.
+ *
+ * ONE function because there were two, and they drifted the moment a new kind
+ * arrived: the builder refused to build a mod holding only a specialization,
+ * and the installer went further and DELETED the archive of a mod holding only
+ * a class while telling the window it had installed one. Every kind has to be
+ * counted, so every kind is counted here and nowhere else.
+ */
+export function modIsEmpty(mod: CreatureMod): boolean {
+  return !mod.creatures.length && !mod.dwellings.length && !(mod.buildings ?? []).length
+    && !(mod.artifacts ?? []).length && !(mod.sets ?? []).length && !(mod.heroes ?? []).length
+    && !(mod.specializations ?? []).length && !(mod.classes ?? []).length && !(mod.skills ?? []).length;
+}
+
+/**
+ * Append a class and give it the next enum value.
+ *
+ * APPEND-ONLY, like everything else that holds a number: a hero's document
+ * names his class by NAME, but the executable compares the VALUE and the
+ * reference table is indexed by it, so inserting ahead of one repoints every
+ * class after it and every hero holding them.
+ *
+ * `taken` is what the game's own enum already holds — takenClasses() reads it
+ * off types.xml. A duplicate `<Name>` resolves to whichever entry the parser
+ * saw first, which the game does not report.
+ */
+export function addHeroClass(
+  mod: CreatureMod, spec: HeroClassSpec, taken: ReadonlySet<string> = new Set(),
+): ModHeroClass {
+  if (!mod.classes) mod.classes = [];
+  if (taken.has(spec.id)) throw new Error(`${spec.id} is the game's own class`);
+  if (mod.classes.some((c) => c.id === spec.id)) throw new Error(`${spec.id} is already in the mod`);
+  const problems = classProblems(spec);
+  if (problems.length) throw new Error(`${spec.id}: ${problems.join('; ')}`);
+  const c: ModHeroClass = { ...spec, number: SHIPPED_CLASSES + mod.classes.length };
+  mod.classes.push(c);
+  return c;
+}
+
+/** Change one already in the mod, keeping its value. */
+export function updateHeroClass(mod: CreatureMod, id: string, spec: HeroClassSpec): ModHeroClass {
+  const at = (mod.classes ?? []).findIndex((c) => c.id === id);
+  if (at < 0) throw new Error(`${id} is not in the mod`);
+  if (spec.id !== id) throw new Error(`a class cannot be renamed — ${id} is what heroes name`);
+  const problems = classProblems(spec);
+  if (problems.length) throw new Error(`${id}: ${problems.join('; ')}`);
+  const updated: ModHeroClass = { ...spec, number: mod.classes![at]!.number };
+  mod.classes![at] = updated;
+  return updated;
+}
+
+/**
+ * Take one out, and the skills that belong to it with it.
+ *
+ * THE CLASS IS THE WHOLE, and its racial is part of it: the skill names the
+ * class and the class weights the skill, so neither can be taken out first
+ * without leaving the other naming something the enum no longer declares — a
+ * parse error, not a class or a skill missing. Refusing both ways is a knot
+ * nobody can untie, so removing the class removes what hangs off it, and
+ * removing a skill a class still weights says to remove the class instead.
+ *
+ * A HERO is different and is still refused: he is not part of the class, he is
+ * a character who happens to be of it, and what to make him instead is his
+ * author's decision rather than this function's.
+ */
+export function removeHeroClass(mod: CreatureMod, id: string): ModHeroClass {
+  const list = mod.classes ?? [];
+  const at = list.findIndex((c) => c.id === id);
+  if (at < 0) throw new Error(`${id} is not in the mod`);
+  const heroes = (mod.heroes ?? []).filter((h) => h.heroClass === id).map((h) => h.id);
+  if (heroes.length) throw new Error(`${id} is the class of ${heroes.join(', ')} — change them first`);
+  const skills = mod.skills ?? [];
+  // Its own skills go first, and the weights naming them go with the record
+  // being spliced out — which is why there is no sum left half-written.
+  for (const owned of skills.filter((s) => s.heroClass === id)) {
+    const held = (mod.heroes ?? []).filter((h) => h.primarySkill?.skill === owned.id
+      || h.skills?.some((k) => k.skill === owned.id)).map((h) => h.id);
+    if (held.length) throw new Error(`${owned.id} is held by ${held.join(', ')} — change them first`);
+    skills.splice(skills.indexOf(owned), 1);
+  }
+  skills.forEach((s, i) => { s.number = SHIPPED_SKILLS + i; });
+  const gone = list.splice(at, 1)[0]!;
+  list.forEach((c, i) => { c.number = SHIPPED_CLASSES + i; });
+  return gone;
+}
+
+/** Append a skill and give it the next enum value. Append-only, as a class is. */
+export function addHeroSkill(
+  mod: CreatureMod, spec: HeroSkillSpec, taken: ReadonlySet<string> = new Set(),
+): ModHeroSkill {
+  if (!mod.skills) mod.skills = [];
+  if (taken.has(spec.id)) throw new Error(`${spec.id} is the game's own skill`);
+  if (mod.skills.some((s) => s.id === spec.id)) throw new Error(`${spec.id} is already in the mod`);
+  const problems = skillProblems(spec);
+  if (problems.length) throw new Error(`${spec.id}: ${problems.join('; ')}`);
+  const s: ModHeroSkill = { ...spec, number: SHIPPED_SKILLS + mod.skills.length };
+  mod.skills.push(s);
+  return s;
+}
+
+/** Change one already in the mod, keeping its value. */
+export function updateHeroSkill(mod: CreatureMod, id: string, spec: HeroSkillSpec): ModHeroSkill {
+  const at = (mod.skills ?? []).findIndex((s) => s.id === id);
+  if (at < 0) throw new Error(`${id} is not in the mod`);
+  if (spec.id !== id) throw new Error(`a skill cannot be renamed — ${id} is what classes and heroes name`);
+  const problems = skillProblems(spec);
+  if (problems.length) throw new Error(`${id}: ${problems.join('; ')}`);
+  const updated: ModHeroSkill = { ...spec, number: SHIPPED_SKILLS + at };
+  mod.skills![at] = updated;
+  return updated;
+}
+
+/**
+ * Take one out, and close the gap behind it.
+ *
+ * Three things can be left pointing at a skill that no longer exists, and all
+ * three are refused rather than repaired: a hero holding it in his racial slot,
+ * a class weighting it, and a perk of ours hanging off it.
+ */
+export function removeHeroSkill(mod: CreatureMod, id: string): ModHeroSkill {
+  const list = mod.skills ?? [];
+  const at = list.findIndex((s) => s.id === id);
+  if (at < 0) throw new Error(`${id} is not in the mod`);
+  const heroes = (mod.heroes ?? []).filter((h) => h.primarySkill?.skill === id || h.skills?.some((k) => k.skill === id))
+    .map((h) => h.id);
+  if (heroes.length) throw new Error(`${id} is held by ${heroes.join(', ')} — change them first`);
+  // A weight naming a skill that is gone is the same parse error the class is,
+  // and dropping the weight silently would leave the hundred short. The class
+  // owns its racial, so the way out is to take the class out — which takes this
+  // with it (removeHeroClass).
+  const classes = (mod.classes ?? []).filter((c) => c.skills.some((w) => w.skill === id)).map((c) => c.id);
+  if (classes.length) {
+    throw new Error(`${id} is weighted by ${classes.join(', ')} — remove the class, which takes its own skills with it`);
+  }
+  const branch = list.filter((s) => s.basicSkill === id).map((s) => s.id);
+  if (branch.length) throw new Error(`${id} carries ${branch.join(', ')} — remove those first`);
+  const gone = list.splice(at, 1)[0]!;
+  list.forEach((s, i) => { s.number = SHIPPED_SKILLS + i; });
+  return gone;
 }
 
 /**

@@ -24,9 +24,22 @@
 //   row in the file the native extension reads, because the executable does
 //   nothing at all with a value it has never heard of.
 //
-// The two are in one spec because they are one window and one story: a
-// specialization exists to be given to a hero, and the thing worth checking is
-// that the value the enum gained is the value his document names.
+// AND SHE IS A CLASS OF HER OWN. Heroes III gave Gem a class nobody else had —
+// the Witch, a Druid by every number and a different word on the screen. Here it
+// is a tenth entry in a table the game sizes at nine, so the run authors it too,
+// and the two things a class actually decides are what the form fills in: how
+// often a level up offers each skill, and how often each attribute grows. Her
+// racial is ours as well, which is why the order below is class, then skill,
+// then back to the class to weight it — a skill cannot belong to a class that
+// does not exist, and a class cannot weight a skill that does not either.
+//
+// Along the way she gets «Чумная палатка», which the Ranger cannot have: that
+// gate is a list of classes on the PERK, and one move between the two sides of
+// the availability section is the whole of it.
+//
+// They are in one spec because they are one window and one story: every one of
+// these exists to be given to a hero, and the thing worth checking is that the
+// value each table gained is the value her document names.
 
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -34,7 +47,7 @@ import { test, expect } from '@playwright/test';
 import { launchEditor, REPO_ROOT } from './launch.ts';
 import { settled } from './trace.ts';
 import type { Launched } from './launch.ts';
-import { GEM_SPEC, modGameRoot, readInstalledMod } from './mods.ts';
+import { GEM_SPEC, TENT_MASTER, WITCH, installWitchFixture, modGameRoot, readInstalledMod } from './mods.ts';
 import { EFFECTS_FILE, readSpecializations } from '../src/mods/artifact-effects.ts';
 import { SHIPPED_SPECIALIZATIONS } from '../src/mods/specializations.ts';
 import { modFile } from '../src/game/mod-paths.ts';
@@ -58,7 +71,12 @@ const GEM = {
   name: 'Gem',
   biography: 'A sorceress of Enroth, newly come to AvLee and its druids.',
   town: 'TOWN_PRESERVE',
-  heroClass: 'HERO_CLASS_RANGER',
+  /** What the DONOR implies — one class per faction, and Ossir is a Ranger. */
+  presetClass: 'HERO_CLASS_RANGER',
+  /** What she is built as: her own class, which mod-004-classes authors. */
+  heroClass: WITCH.id,
+  /** And her own racial, in the slot the Avenger would have had. */
+  racial: TENT_MASTER.id,
   /** Ours, authored by the test below: the tent grows 5% per hero level. */
   spec: GEM_SPEC.id,
   specName: 'Field Medic',
@@ -82,13 +100,32 @@ let ceilingBefore: number | null = null;
 test.beforeAll(async () => {
   const exe = join(GAME, PATCHED_EXE);
   ceilingBefore = existsSync(exe) ? readExe(readFileSync(exe)).limit : null;
+  // The class and the racial Gem is made of. Authored through the forms by
+  // mod-004-classes, which runs first when the chain runs; built headless here
+  // when it did not, so a heroes run on its own is a heroes run and not a
+  // report that the class form is broken.
+  installWitchFixture(GAME);
   ed = await launchEditor({ HOMM5_ROOT: GAME });
 });
 test.afterAll(async () => { await ed?.app.close(); });
 
+/**
+ * Open the Heroes window on one of its tabs.
+ *
+ * The window holds several lists and shows one at a time, so the tab has to be
+ * chosen before anything in it can be clicked — a pane that is not open is not
+ * visible, and Playwright will not click what nobody can see.
+ */
+async function openHeroes(page: Launched['page'], tab: 'Heroes' | 'Specializations' | 'Classes' | 'Skills'): Promise<void> {
+  if (!(await page.locator('#heroesmod').isVisible())) await page.locator('#heroesbtn').click();
+  await expect(page.locator('#heroesmod')).toBeVisible();
+  await page.locator('#hm-tabs button', { hasText: tab }).click();
+  await expect(page.locator('#hm-legend')).toContainText(tab);
+}
+
 /** Open Heroes… and the form on top of it, with the donor chosen. */
 async function openWithDonor(page: Launched['page']): Promise<void> {
-  if (!(await page.locator('#heroesmod').isVisible())) await page.locator('#heroesbtn').click();
+  await openHeroes(page, 'Heroes');
   if (!(await page.locator('#heroedit').isVisible())) await page.locator('#hm-new').click();
   // The preset is a BUTTON: press it, pick from the list it opens. It is an
   // action done once, not a field the hero carries.
@@ -105,14 +142,13 @@ async function openWithDonor(page: Launched['page']): Promise<void> {
 
 test('the dialog opens, and the donor decides the faction', async () => {
   const { page } = ed;
-  await page.locator('#heroesbtn').click();
-  await expect(page.locator('#heroesmod')).toBeVisible();
+  await openHeroes(page, 'Heroes');
   await expect(page.locator('#hm-list')).toContainText(/No heroes installed|Gem/);
 
   await openWithDonor(page);
   // One class per faction: choosing where he comes from chooses what he is.
   await expect(page.locator('#he-town')).toHaveValue(GEM.town);
-  await expect(page.locator('#he-class')).toHaveValue(GEM.heroClass);
+  await expect(page.locator('#he-class')).toHaveValue(GEM.presetClass);
 
   // The preset seeded her looks, and they are the shipped hero's own — under
   // the fold, where appearance belongs: a hero is authored by his faction and
@@ -133,7 +169,7 @@ test('it will not build a hero who is missing what he needs', async () => {
   const { page } = ed;
   // Same as the other two: the form is modal over the list that holds New.
   if (await page.locator('#heroedit').isVisible()) await page.locator('#heroedit-cancel').click();
-  if (!(await page.locator('#heroesmod').isVisible())) await page.locator('#heroesbtn').click();
+  await openHeroes(page, 'Heroes');
   await page.locator('#hm-new').click();
   await expect(page.locator('#heroedit')).toBeVisible();
 
@@ -161,7 +197,7 @@ test('it will not build a hero who is missing what he needs', async () => {
 /** The specialization form's own refusal — what addSpecialization throws for. */
 test('it will not build a specialization missing what it needs', async () => {
   const { page } = ed;
-  if (!(await page.locator('#heroesmod').isVisible())) await page.locator('#heroesbtn').click();
+  await openHeroes(page, 'Specializations');
   await page.locator('#hs-new').click();
   await expect(page.locator('#specedit')).toBeVisible();
 
@@ -182,7 +218,7 @@ test('it will not build a specialization missing what it needs', async () => {
 test('authors the specialization Gem will hold', async () => {
   test.setTimeout(3 * 60_000);
   const { page } = ed;
-  if (!(await page.locator('#heroesmod').isVisible())) await page.locator('#heroesbtn').click();
+  await openHeroes(page, 'Specializations');
   await page.locator('#hs-new').click();
   await expect(page.locator('#specedit')).toBeVisible();
 
@@ -260,7 +296,12 @@ test('authors Gem and installs her', async () => {
 
   // Her Heroes III kit, as near as Heroes V has it: the tent she is specialised
   // in, the War Machines that carry it, and First Aid on top.
-  await page.locator('#he-primary').selectOption('HERO_SKILL_AVENGER');
+  // Her class and her racial are OURS, offered beside the game's own and marked
+  // so — without this a class could be installed and nobody could ever be it.
+  await expect(page.locator(`#he-class option[value="${GEM.heroClass}"]`)).toHaveText(/ours/);
+  await page.locator('#he-class').selectOption(GEM.heroClass);
+  await expect(page.locator(`#he-primary option[value="${GEM.racial}"]`)).toHaveText(/ours/);
+  await page.locator('#he-primary').selectOption(GEM.racial);
   await page.locator('#he-skill').selectOption('HERO_SKILL_WAR_MACHINES');
   await page.locator('#he-perk').selectOption('HERO_SKILL_FIRST_AID');
   await page.locator('#he-tent').check();
@@ -311,7 +352,8 @@ test('the archive holds her, and nothing of the game\'s', async () => {
   expect(xml).toContain('<InternalName>H3Gem</InternalName>');
   expect(xml).toContain(`<Specialization>${GEM.spec}</Specialization>`);
   expect(xml).toContain('<ScenarioHero>false</ScenarioHero>');
-  expect(xml).toContain('<SkillID>HERO_SKILL_AVENGER</SkillID>');
+  expect(xml).toContain(`<Class>${GEM.heroClass}</Class>`);
+  expect(xml).toContain(`<SkillID>${GEM.racial}</SkillID>`);
   // The appearance the preset seeded was WRITTEN, not merely displayed.
   expect(xml).toMatch(/<Model href="[^"]*Ranger_LOD/);
   // COPIED, not referenced: her body is Ossir's model, but the archive carries
@@ -351,7 +393,7 @@ test('the archive holds her, and nothing of the game\'s', async () => {
 
 test('an installed hero opens for editing, whole', async () => {
   const { page } = ed;
-  if (!(await page.locator('#heroesmod').isVisible())) await page.locator('#heroesbtn').click();
+  await openHeroes(page, 'Heroes');
   // The list is where editing starts: one row per hero, with the two things
   // that can be done to him.
   const row = page.locator('#hm-list .um-item', { hasText: 'Gem' }).first();
@@ -393,7 +435,7 @@ test('an installed hero opens for editing, whole', async () => {
 
 test('a specialization a hero still holds cannot be taken away', async () => {
   const { page } = ed;
-  if (!(await page.locator('#heroesmod').isVisible())) await page.locator('#heroesbtn').click();
+  await openHeroes(page, 'Specializations');
   const row = page.locator('#hs-list .um-item', { hasText: GEM_SPEC.name }).first();
   await expect(row).toBeVisible();
   await row.locator('button', { hasText: '×' }).click();
@@ -408,7 +450,7 @@ test('a specialization a hero still holds cannot be taken away', async () => {
 
 test('removing says what would break, and Cancel means no', async () => {
   const { page } = ed;
-  if (!(await page.locator('#heroesmod').isVisible())) await page.locator('#heroesbtn').click();
+  await openHeroes(page, 'Heroes');
   const row = page.locator('#hm-list .um-item', { hasText: 'Gem' }).first();
   await row.locator('button', { hasText: '×' }).click();
 

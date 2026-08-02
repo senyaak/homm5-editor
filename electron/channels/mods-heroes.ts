@@ -7,18 +7,28 @@
 import { dialog, ipcMain } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
 import type {
-  ModsInstallHeroPayload, ModsInstallHeroResult, ModsInstallSpecPayload, ModsInstallSpecResult,
+  ModsClassDataResult, ModsInstallClassPayload, ModsInstallClassResult,
+  ModsInstallHeroPayload, ModsInstallHeroResult, ModsInstallSkillPayload, ModsInstallSkillResult,
+  ModsInstallSpecPayload, ModsInstallSpecResult,
   ModsRemovePayload, ModsRemoveResult, ModsUsesResult,
 } from '#electron/ipc.ts';
-import { buildAndInstall, ourMod } from '#electron/mod-install.ts';
+import { buildAndInstall, effectsFrom, ourMod } from '#electron/mod-install.ts';
 import { gameData, gameRoot, isConfigured } from '#electron/paths.ts';
 import { state } from '#electron/state.ts';
 import { basename, join } from 'node:path';
 import { describeUses, findHeroUses } from '#src/mods/artifact-usage.ts';
 import { assets } from '#src/game/assets.ts';
 import {
-  addHero, addSpecialization, removeHero, removeSpecialization, updateHero, updateSpecialization,
+  addHero, addHeroClass, addHeroSkill, removeHero, removeHeroClass, removeHeroSkill,
+  removeSpecialization, addSpecialization, updateHero, updateHeroClass, updateHeroSkill,
+  updateSpecialization,
 } from '#src/mods/mod-model.ts';
+import {
+  CLASS_TABLE, SKILL_TABLE, readClasses, readPerks, takenClasses,
+} from '#src/mods/hero-classes.ts';
+import type { HeroClassSpec } from '#src/mods/hero-classes.ts';
+import { takenSkills } from '#src/mods/hero-skills.ts';
+import type { HeroSkillSpec } from '#src/mods/hero-skills.ts';
 import { takenSpecializations } from '#src/mods/specializations.ts';
 import type { SpecializationSpec, SpecializationStat } from '#src/mods/specializations.ts';
 import { TYPES } from '#src/mods/mod-files.ts';
@@ -227,6 +237,148 @@ export function registerModHeroes(): void {
     const gone = removeSpecialization(mod, id);
     const { installed } = buildAndInstall(g, mod);
     return { archive: installed.archive, removed: gone.id };
+  });
+
+
+  // Classes and skills. In this file for the reason specializations are: both
+  // are a HERO's, both are named by his document, and the mod they go into is
+  // already open here.
+  //
+  // One payload, one spec, as the hero side does it — the field that stops being
+  // carried is always the one nobody remembers to check.
+  const classSpecOf = (p: ModsInstallClassPayload): HeroClassSpec => ({
+    id: p.id.trim(),
+    name: p.name,
+    skills: p.skills.map((w) => ({ skill: w.skill, prob: Number(w.prob) || 0 })),
+    attributes: {
+      offence: Number(p.attributes.offence) || 0,
+      defence: Number(p.attributes.defence) || 0,
+      spellpower: Number(p.attributes.spellpower) || 0,
+      knowledge: Number(p.attributes.knowledge) || 0,
+    },
+    ...(p.preferredSpells?.length ? { preferredSpells: p.preferredSpells } : {}),
+    ...(p.allowedPerks?.length ? { allowedPerks: p.allowedPerks } : {}),
+  });
+
+  const skillSpecOf = (p: ModsInstallSkillPayload): HeroSkillSpec => ({
+    id: p.id.trim(),
+    kind: p.kind,
+    heroClass: p.heroClass,
+    name: p.name,
+    ...(p.names?.length ? { names: p.names } : {}),
+    description: p.description,
+    ...(p.descriptions?.length ? { descriptions: p.descriptions } : {}),
+    ...(p.commonDescription ? { commonDescription: p.commonDescription } : {}),
+    ...(p.icons?.length ? { icons: p.icons } : {}),
+    ...(p.picture?.trim() ? { picture: p.picture.trim() } : {}),
+    ...(p.pictures?.length ? { pictures: p.pictures.filter((x) => x.trim()) } : {}),
+    ...(p.basicSkill ? { basicSkill: p.basicSkill } : {}),
+    ...(p.prerequisites?.length ? { prerequisites: p.prerequisites } : {}),
+    ...(p.aiRace ? { aiRace: p.aiRace } : {}),
+    // Only the stats the extension knows, and only when they are not zero —
+    // the same filter an artifact's effects go through, and for the same
+    // reason: a zero row is a row that lies about being in effect.
+    ...(effectsFrom(p.effects) ? { effects: effectsFrom(p.effects)! } : {}),
+    // Blank is absent, on both sides: a skill carrying an empty script would
+    // have the mod replace one of the game's two global Lua files to load a
+    // file with nothing in it.
+    ...(p.script?.trim() ? { script: p.script } : {}),
+    ...(p.combatScript?.trim() ? { combatScript: p.combatScript } : {}),
+  });
+
+  /** The mod, or a refusal saying which of the two configurations is missing. */
+  const openMod = (): { g: string; mod: ReturnType<typeof ourMod> } => {
+    const g = gameRoot();
+    if (!g) throw new Error('no game install configured — a mod needs a folder to install into');
+    if (!isConfigured()) throw new Error('no data root configured');
+    return { g, mod: ourMod(g) };
+  };
+
+  ipcMain.handle('mods:install-class', async (_e: IpcMainInvokeEvent, p: ModsInstallClassPayload): Promise<ModsInstallClassResult> => {
+    const { g, mod } = openMod();
+    const types = assets([gameData()]).text(TYPES) ?? '';
+    const spec = addHeroClass(mod, classSpecOf(p), takenClasses(types));
+    const { installed } = buildAndInstall(g, mod);
+    return { archive: installed.archive, number: spec.number };
+  });
+
+  ipcMain.handle('mods:update-class', async (_e: IpcMainInvokeEvent, p: ModsInstallClassPayload): Promise<ModsInstallClassResult> => {
+    const { g, mod } = openMod();
+    const spec = updateHeroClass(mod, p.id.trim(), classSpecOf(p));
+    const { installed } = buildAndInstall(g, mod);
+    return { archive: installed.archive, number: spec.number };
+  });
+
+  ipcMain.handle('mods:remove-class', async (_e: IpcMainInvokeEvent, { id }: ModsRemovePayload): Promise<ModsRemoveResult> => {
+    const { g, mod } = openMod();
+    const gone = removeHeroClass(mod, id);
+    const { installed } = buildAndInstall(g, mod);
+    return { archive: installed.archive, removed: gone.id };
+  });
+
+  ipcMain.handle('mods:install-skill', async (_e: IpcMainInvokeEvent, p: ModsInstallSkillPayload): Promise<ModsInstallSkillResult> => {
+    const { g, mod } = openMod();
+    const types = assets([gameData()]).text(TYPES) ?? '';
+    const spec = addHeroSkill(mod, skillSpecOf(p), takenSkills(types));
+    const { installed } = buildAndInstall(g, mod);
+    return { archive: installed.archive, number: spec.number };
+  });
+
+  ipcMain.handle('mods:update-skill', async (_e: IpcMainInvokeEvent, p: ModsInstallSkillPayload): Promise<ModsInstallSkillResult> => {
+    const { g, mod } = openMod();
+    const spec = updateHeroSkill(mod, p.id.trim(), skillSpecOf(p));
+    const { installed } = buildAndInstall(g, mod);
+    return { archive: installed.archive, number: spec.number };
+  });
+
+  ipcMain.handle('mods:remove-skill', async (_e: IpcMainInvokeEvent, { id }: ModsRemovePayload): Promise<ModsRemoveResult> => {
+    const { g, mod } = openMod();
+    const gone = removeHeroSkill(mod, id);
+    const { installed } = buildAndInstall(g, mod);
+    return { archive: installed.archive, removed: gone.id };
+  });
+
+  // What the class form is built from. Read off the game's own two tables rather
+  // than described here: the weights a donor copies, the perks and the gate on
+  // each of them are facts about the install, and a list kept in the renderer
+  // would be a second copy of them to drift.
+  ipcMain.handle('mods:class-data', async (): Promise<ModsClassDataResult> => {
+    if (!isConfigured()) throw new Error('no data root configured');
+    const data = assets([gameData()]);
+    const classTable = data.text(CLASS_TABLE) ?? '';
+    const skillTable = data.text(SKILL_TABLE) ?? '';
+    const registry = new Registry(gameData());
+    const named = new Map(registry.skills().map((s) => [s.id, s.name || s.id]));
+    const perks = readPerks(skillTable);
+    const perkIds = new Set(perks.map((p) => p.id));
+    // The mod's own skills, which the game's data root knows nothing about: a
+    // racial of ours exists only inside the archive, and a class that could not
+    // weight it could not offer it at a level up either.
+    const g = gameRoot();
+    const ourSkills = g ? (ourMod(g).skills ?? []) : [];
+    return {
+      // A class weights SKILLS, not perks — the thirteen rows of the shipped
+      // classes are the twelve common skills and one racial, and no perk is
+      // among them.
+      skills: [
+        ...registry.skills().filter((s) => !perkIds.has(s.id))
+          .map((s) => ({ id: s.id, ...(s.name ? { name: s.name } : {}) })),
+        ...ourSkills.filter((s) => s.kind === 'racial')
+          .map((s) => ({ id: s.id, name: `${s.name || s.id} (ours)` })),
+      ],
+      perks: perks.map((p) => ({ ...p, name: named.get(p.id) ?? p.id })),
+      donors: readClasses(classTable).map((c) => ({
+        id: c.id,
+        // The record's href is relative to the table it sits beside, which is
+        // why this is not a data path until the table's folder is put in front.
+        name: c.nameRef ? (data.text(`GameMechanics/RefTables/${c.nameRef}`) ?? c.id) : c.id,
+        skills: c.skills,
+        attributes: c.attributes,
+        preferredSpells: c.preferredSpells,
+        perks: perks.filter((p) => p.classes.includes(c.id))
+          .map((p) => ({ perk: p.id, dependencies: p.dependencies })),
+      })),
+    };
   });
 
   // Which maps reach this hero — asked BEFORE he is removed, and exact: a map

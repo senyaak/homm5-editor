@@ -1,26 +1,35 @@
 # SLICE — A specialization of our own
 
-> **Status:** BUILT, and not yet proven in game. The editor makes a
-> specialization of its own end to end — `HERO_SPEC_H3_FIRST_AID` = 84 in the
-> enum, its words and icon written onto every hero holding it, and a row in the
-> extension's config that adds **+5% of the tent's own number per hero level**.
-> Gem holds it instead of the borrowed `HERO_SPEC_EMPIRIC`. The whole live
-> chain passes (48 tests) and the installed archive carries the enum entry.
+> **Status: LANDED, 01.08.2026.** The editor makes a specialization of its own
+> end to end — `HERO_SPEC_H3_FIRST_AID` = 84 appended to the enum, its words and
+> icon written onto every hero holding it, and a row in the extension's config
+> that adds **+5% of the first aid tent's own number per hero level**. Gem holds
+> it instead of the borrowed `HERO_SPEC_EMPIRIC`.
 >
-> What is left is the one thing no test can answer: **does the game accept an
-> 85th value, and does the tent grow?** One launch settles both — the
-> extension's log writes every term. Until it has, this file stays; after it,
-> the findings fold into [docs/ENGINE_INTERNALS.md](docs/ENGINE_INTERNALS.md).
+> **Proven in game**, which was the one thing no test could answer. The
+> extension's log, from a battle:
 >
-> Note the arithmetic before reading the numbers in game: **at expert War
-> Machines the two specializations coincide** — five per level is five percent
-> of a hundred — and ours is weaker at every mastery below, which is exactly
-> what Heroes III does. A first-level hero with a basic tent gains nothing at
-> all, because 5% of 10 truncates to zero.
+> ```
+> tent:
+>       mastery       1        <- basic war machines
+>       engine said   20
+>       hero level    1
+>       our spec      84       <- the engine answered about OUR value
+>       we add        1        <- 20 x 5% x 1
+>       amount        21
+> ```
+>
+> So the parser accepts an 85th value, the hero carries it, and the engine's own
+> `HasSpecialization` recognises it. 24 calls in one battle, all identical: both
+> of the tent's spells draw on the one number, as measured.
+>
+> The durable half of this is now
+> [docs/ENGINE_INTERNALS.md](../ENGINE_INTERNALS.md); what stays here is why the
+> shape is what it is.
 
-Reading first: [SLICE_artifact_effects.md](SLICE_artifact_effects.md) (the same
-three layers, one rung down), [docs/ENGINE_INTERNALS.md](docs/ENGINE_INTERNALS.md)
-(what the binary does), [docs/CONTENT_FORMS.md](docs/CONTENT_FORMS.md) (what a
+Reading first: [SLICE_artifact_effects.md](../../SLICE_artifact_effects.md) (the same
+three layers, one rung down), [docs/ENGINE_INTERNALS.md](../ENGINE_INTERNALS.md)
+(what the binary does), [docs/CONTENT_FORMS.md](../CONTENT_FORMS.md) (what a
 window that MAKES something has to do).
 
 ---
@@ -111,7 +120,7 @@ row or a rebuild would silently drop it — the boots' bug a third time; and
 2.1. **In:**
 
 - а) **A specialization is a thing the editor MAKES** — its own window or tab,
-  in the shape [docs/CONTENT_FORMS.md](docs/CONTENT_FORMS.md) fixes: identifier,
+  in the shape [docs/CONTENT_FORMS.md](../CONTENT_FORMS.md) fixes: identifier,
   name, description, icon picture, effect and its numbers; stars on what the
   build refuses; a refusal test beside the authoring one.
 - б) **Data:** `types.xml` gains `HERO_SPEC_<OURS> = 84` (the same edit

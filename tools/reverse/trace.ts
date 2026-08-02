@@ -136,7 +136,7 @@ switch (command) {
     // this answers "who touches this field AT ALL", which is the question when
     // the field is one number rather than a record — the dark energy pool has
     // five such places in the whole executable, and reading all five is what
-    // showed there is no setter to find. See docs/ENGINE_INTERNALS.md.
+    // showed there is no setter to find. See docs/engineInternals/NECROMANCY.md.
     if (args.includes('--all')) {
       console.log(`${hits.length} instruction(s) touch those offsets`);
       for (const h of hits) {

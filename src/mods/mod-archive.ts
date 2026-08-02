@@ -14,6 +14,9 @@ import { basename, dirname, join } from 'node:path';
 import { extract, readEntries, readEntryFrom, readIndex, writeArchive } from '../format/pak.ts';
 import { MOD_DIR, ensureModDir, modFile } from '../game/mod-paths.ts';
 import { setArtifactLimit } from '../exe/artifact-limit.ts';
+import { HERO_CLASS_TABLE, HERO_SKILL_TABLE, setTableLimit } from '../exe/table-limit.ts';
+import { SHIPPED_CLASSES } from './hero-classes.ts';
+import { SHIPPED_SKILLS } from './hero-skills.ts';
 import { setCreatureLimit } from '../exe/creature-limit.ts';
 import { SHIPPED_CREATURES, creatureRoot, readStats } from './creatures.ts';
 import { artifactLimit, creatureLimit } from './mod-model.ts';
@@ -21,6 +24,7 @@ import { MOD_MANIFEST, MOD_STEM, REF_TABLE, TYPES } from './mod-files.ts';
 import { hrefOf } from './xml-edit.ts';
 import type { ZipEntry, ZipIndexEntry } from '../format/pak.ts';
 import type { ArtifactExeResult } from '../exe/artifact-limit.ts';
+import type { TableExeResult } from '../exe/table-limit.ts';
 import type { ExeResult } from '../exe/creature-limit.ts';
 import type { ArtSlot } from './mod-art.ts';
 import type { BuildReport } from './mod-files.ts';
@@ -62,6 +66,11 @@ export interface Installed {
    * format gives every appearance of deciding by itself and does not.
    */
   artifacts: ArtifactExeResult | null;
+  /**
+   * And the two newer ones — the hero class and skill tables — each present only
+   * when the mod put something in that table.
+   */
+  tables: TableExeResult[];
 }
 
 /**
@@ -87,10 +96,17 @@ export function installCreatureMod(gameRoot: string, mod: CreatureMod, archive: 
   const artifacts = mod.artifacts?.length
     ? setArtifactLimit(gameRoot, artifactLimit(mod))
     : null;
+  // The hero class and skill tables are the same story a third and fourth time,
+  // and they are patched through the generic module rather than a copy of it —
+  // the registration site has one shape for every table (src/exe/table-limit.ts).
+  const tables = [
+    mod.classes?.length ? setTableLimit(gameRoot, HERO_CLASS_TABLE, SHIPPED_CLASSES + mod.classes.length) : null,
+    mod.skills?.length ? setTableLimit(gameRoot, HERO_SKILL_TABLE, SHIPPED_SKILLS + mod.skills.length) : null,
+  ].filter((r): r is TableExeResult => r !== null);
   ensureModDir(gameRoot);
   const target = modFile(gameRoot, 'mod', mod.stem);
   writeFileSync(target, archive);
-  return { archive: target, exe, artifacts };
+  return { archive: target, exe, artifacts, tables };
 }
 
 // --- reading a built mod back -------------------------------------------------

@@ -30,6 +30,9 @@ button.he-file { margin-left: 6px; flex: 0 0 auto; }
 .um-empty { color: #6e7681; font-size: 12px; }
 .am-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 20px; align-items: start; }
 .am-columns > div { min-width: 0; }
+/* one pane per tab in the Heroes window; the open one carries .on */
+.hm-pane { display: none; }
+.hm-pane.on { display: block; }
 .um-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 6px 10px; }
 .um-stats label { display: flex; flex-direction: column; gap: 2px; font-size: 11px; color: #8b949e; }
 .um-stats input { background: #0d1014; border: 1px solid #30363d; border-radius: 6px;
@@ -63,3 +66,13 @@ button.he-file { margin-left: 6px; flex: 0 0 auto; }
 .um-recolor { margin-left: 8px; background: #21262d; color: #c9d1d9; border: 1px solid #30363d;
   border-radius: 6px; padding: 2px 8px; font-size: 11px; cursor: pointer; }
 .um-recolor:hover { background: #30363d; }
+/* the class form: a weight per skill, and the two sides of perk availability */
+.hc-weights { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 4px 12px; }
+.hc-weights label { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #8b949e; }
+.hc-weights label span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hc-weights input { width: 56px; background: #0d1014; border: 1px solid #30363d; border-radius: 6px;
+  padding: 4px 6px; color: #c9d1d9; font-size: 12px; }
+.hc-sides { display: grid; grid-template-columns: 1fr auto 1fr; gap: 8px; align-items: center; }
+.hc-sides select { width: 100%; background: #0d1014; border: 1px solid #30363d; border-radius: 6px;
+  color: #c9d1d9; font-size: 12px; padding: 4px; }
+.hc-buttons { display: flex; flex-direction: column; gap: 6px; }

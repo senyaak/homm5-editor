@@ -31,6 +31,9 @@ import { COMMON_SCRIPT, SCRIPT_DIR } from '../src/mods/artifact-scripts.ts';
 import { ORIGINAL_ARTIFACTS, readArtifactLimit, SITES_FILE } from '../src/exe/artifact-limit.ts';
 import type { Site } from '../src/exe/artifact-limit.ts';
 import { ORIGINAL_LIMIT, readExe } from '../src/exe/creature-limit.ts';
+import { HERO_CLASS_TABLE, HERO_SKILL_TABLE, findCountAccessor, readTableLimit } from '../src/exe/table-limit.ts';
+import { SHIPPED_CLASSES } from '../src/mods/hero-classes.ts';
+import { SHIPPED_SKILLS } from '../src/mods/hero-skills.ts';
 
 // mod-007's install, because it is the last to write and the only one that ends
 // with all four kinds in it. Live, every spec shares one install anyway.
@@ -214,6 +217,19 @@ test('and the executable counts exactly what is installed', () => {
   expect(readExe(bytes).limit).toBe(ORIGINAL_LIMIT + found.mod.creatures.length);
   const noted = JSON.parse(readFileSync(join(GAME, SITES_FILE), 'utf8')) as Site[];
   expect(readArtifactLimit(bytes, noted).limit).toBe(ORIGINAL_ARTIFACTS + (found.mod.artifacts ?? []).length);
+
+  const classes = SHIPPED_CLASSES + (found.mod.classes ?? []).length;
+  const skills = SHIPPED_SKILLS + (found.mod.skills ?? []).length;
+  expect(readTableLimit(bytes, HERO_CLASS_TABLE).limit).toBe(classes);
+  expect(readTableLimit(bytes, HERO_SKILL_TABLE).limit).toBe(skills);
+
+  // And the skill table's SECOND number, which is the one the game walks the
+  // table by: with this left at 221 every perk of ours loaded and none was ever
+  // offered. The class table has no live accessor, so there is nothing to check.
+  const accessor = findCountAccessor(bytes, HERO_SKILL_TABLE, skills);
+  expect(accessor, 'the skill count accessor').not.toBeNull();
+  expect(bytes.readUInt32LE(accessor!.at)).toBe(skills);
+  expect(findCountAccessor(bytes, HERO_CLASS_TABLE, classes)).toBeNull();
 });
 
 // Nothing is swept here. The stages share one install, and it is reset by the

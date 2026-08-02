@@ -10,7 +10,7 @@
 // and `[default]` marking an optional argument. `GiveArtefact` carries
 // `snn[0]`, which is the manual's `GiveArtefact(hero, id, [bindToHero = 0])`.
 //
-// docs/EXE_LUA_REGISTRY.md is generated from this; docs/ENGINE_INTERNALS.md
+// docs/EXE_LUA_REGISTRY.md is generated from this; docs/engineInternals/LUA.md
 // says what it was used for.
 
 import { PEFile } from './pe.ts';

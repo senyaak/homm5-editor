@@ -119,3 +119,32 @@ There is no compiler to run, so the proof is: the linter is clean, the map packs
 and it loads and plays in the game. For a reconstruction, `npm run diff-map`
 confirms the `MapScript` binding matches the original
 ([E2E_RECONSTRUCTION.md](E2E_RECONSTRUCTION.md)).
+
+## Give a hero a class of his own
+
+Four things, in this order, and the order is the constraint rather than a
+preference: a skill cannot belong to a class that does not exist yet, and a
+class cannot weight a skill that does not either.
+
+1. **The class** — Heroes → Classes → New class. Fill it from a shipped one,
+   then say what is yours: thirteen weights adding to a hundred, four attributes
+   adding to a hundred. Both totals are shown as you type and the build refuses
+   anything else, because the engine walks both as distributions.
+2. **Its racial** — Heroes → Skills → New skill, kind *racial*, class yours. A
+   racial is drawn and named four times; give it a picture per level if the
+   levels look different, one if they do not, none to borrow the War Machines
+   set.
+3. **Back to the class**, to give the racial its weight — it did not exist a
+   minute ago, so it could not be weighted then.
+4. **The perks of its branch** — New skill, kind *perk*, branch the racial.
+   They need nothing else: the branch is the gate, since no other class has it.
+
+To let the class take a SHIPPED perk that its neighbours cannot — the plague
+tent, say — open the class again and move the perk to the left in *Perk
+availability*. That writes your class into the perk's own list of classes, with
+the dependencies the others already need. A perk that is in neither list is open
+to everybody already.
+
+What none of this does is give a skill an EFFECT. See
+[HERO_CLASSES.md](HERO_CLASSES.md) — the arithmetic is compiled against the
+values the game was built with, and ours has to come from the extension.

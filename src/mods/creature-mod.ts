@@ -58,13 +58,16 @@ import { NULL_CREATURE, creatureRoot, setCreatureRefs, writeStats } from './crea
 import { serialize, setAttr } from '../format/xml.ts';
 import { parseTypeSpec } from '../schema/typespec.ts';
 import { COMMON_SCRIPT, patchCommonScript, setScriptFiles } from './artifact-scripts.ts';
+import {
+  COMBAT_STARTUP, patchCombatStartup, skillCombatScripts, skillMapScripts, skillScriptFiles,
+} from './skill-scripts.ts';
 import { isIdentity } from '../format/recolor.ts';
 import { EOL, count, hrefOf, insertAfterLine, insertBeforeLine, once, retune, setHref } from './xml-edit.ts';
 import { MOD_MANIFEST, REF_TABLE, TYPES, UI_ROOT, mustRead, utf16 } from './mod-files.ts';
 import type { BuildReport, DataReader, ModFile } from './mod-files.ts';
 import { ART_FIELD, ART_SLOTS, copyArt, dataPath, repaint, uidFor } from './mod-art.ts';
 import type { ArtSlot } from './mod-art.ts';
-import { FIRST_RECORD_ID, LAST_SHIPPED, creatureLimit } from './mod-model.ts';
+import { FIRST_RECORD_ID, LAST_SHIPPED, creatureLimit, modIsEmpty } from './mod-model.ts';
 import type { CreatureMod, CreatureSpec, ModCreature } from './mod-model.ts';
 import {
   ARTIFACT_TABLE, DEFAULT_STATS, STARTUP_SCRIPT, buildArtifacts, buildArtifactSets,
@@ -72,8 +75,12 @@ import {
 } from './artifact-files.ts';
 import { buildBuildings } from './building-files.ts';
 import { buildDwellings } from './dwelling-files.ts';
-import { buildHeroes } from './hero-files.ts';
+import { buildHeroes, texturePair } from './hero-files.ts';
 import { patchSpecializationTypes } from './specializations.ts';
+import {
+  CLASS_TABLE, classNameFile, patchClassTable, patchClassTypes, patchSkillPrerequisites,
+} from './hero-classes.ts';
+import { SKILL_TABLE, patchSkillTable, patchSkillTypes, skillPictures, skillTexts } from './hero-skills.ts';
 
 /** The camera the hire dialog uses. CREATURE_UNKNOWN already sits on this one. */
 const HIRE_CAMERA = '/Cameras/Interface/HireCreatures.(Camera).xdb#xpointer(/Camera)';
@@ -118,10 +125,7 @@ export function creaturePaths(c: CreatureSpec): {
  * a test.
  */
 export function buildCreatureMod(mod: CreatureMod, read: DataReader): BuildReport {
-  if (!mod.creatures.length && !mod.dwellings.length && !mod.buildings?.length
-    && !mod.artifacts?.length && !mod.sets?.length && !mod.heroes?.length) {
-    throw new Error('the mod is empty');
-  }
+  if (modIsEmpty(mod)) throw new Error('the mod is empty');
   const limit = creatureLimit(mod);
   const files: ModFile[] = [];
   const art: Record<string, number> = {};
@@ -199,7 +203,13 @@ export function buildCreatureMod(mod: CreatureMod, read: DataReader): BuildRepor
   const artifacts = mod.artifacts ?? [];
   const sets = mod.sets ?? [];
   const specializations = mod.specializations ?? [];
-  if (mod.creatures.length || artifacts.length || sets.length || specializations.length) {
+  // A class and a skill are reference tables like the creatures': the size is
+  // declared three times in types.xml and once in the executable, and all four
+  // move together or the game reads a table it will not use.
+  const classes = mod.classes ?? [];
+  const skills = mod.skills ?? [];
+  if (mod.creatures.length || artifacts.length || sets.length || specializations.length
+    || classes.length || skills.length) {
     let types = mustRead(read, TYPES);
     if (mod.creatures.length) types = patchTypes(types, mod, limit);
     if (artifacts.length) types = patchArtifactTypes(types, artifacts);
@@ -208,7 +218,33 @@ export function buildCreatureMod(mod: CreatureMod, read: DataReader): BuildRepor
     // no size to retune, and no executable to patch. It is the whole of what
     // the data can say about one; what it DOES comes from the extension.
     if (specializations.length) types = patchSpecializationTypes(types, specializations);
+    if (classes.length) types = patchClassTypes(types, classes);
+    if (skills.length) types = patchSkillTypes(types, skills);
     files.push({ path: TYPES, data: Buffer.from(types, 'latin1') });
+  }
+  if (classes.length) {
+    files.push({
+      path: CLASS_TABLE,
+      data: Buffer.from(patchClassTable(mustRead(read, CLASS_TABLE), classes), 'latin1'),
+    });
+    for (const c of classes) files.push({ path: classNameFile(c).path, data: utf16(c.name) });
+  }
+  // ONE Skills.xdb, however many reasons there are to edit it: a mod that
+  // shipped two copies would keep whichever the archive listed last, and the
+  // other edit would be gone without a word. Ours are appended first, then the
+  // shipped perks our classes were allowed are opened to them.
+  if (skills.length || classes.some((c) => c.allowedPerks?.length)) {
+    let table = mustRead(read, SKILL_TABLE);
+    if (skills.length) table = patchSkillTable(table, skills);
+    table = patchSkillPrerequisites(table, classes);
+    files.push({ path: SKILL_TABLE, data: Buffer.from(table, 'latin1') });
+    for (const s of skills) {
+      for (const f of skillTexts(s)) files.push({ path: f.path, data: utf16(f.text) });
+      // Its own icons, built from the drawings the same way a hero's face is.
+      for (const drawn of skillPictures(s)) {
+        files.push(...texturePair(drawn.picture, 64, drawn.file.dds, drawn.file.xdb));
+      }
+    }
   }
   if (mod.creatures.length) {
     files.push({ path: REF_TABLE, data: Buffer.from(patchRefTable(mustRead(read, REF_TABLE), mod, read), 'latin1') });
@@ -230,18 +266,31 @@ export function buildCreatureMod(mod: CreatureMod, read: DataReader): BuildRepor
       path: DEFAULT_STATS,
       data: Buffer.from(patchDefaultStats(mustRead(read, DEFAULT_STATS), sets), 'latin1'),
     });
-    // A set that carries Lua brings two more files: its own script, and the
-    // game's global one with a line loading it. Both only when there is a
-    // script — a mod that replaces advmap-common.lua for nothing is a mod that
-    // can only break something.
-    const scripts = setScriptFiles(sets);
-    for (const f of scripts) files.push({ path: f.path, data: Buffer.from(f.text, 'latin1') });
-    if (scripts.length) {
-      files.push({
-        path: COMMON_SCRIPT,
-        data: Buffer.from(patchCommonScript(mustRead(read, COMMON_SCRIPT), sets), 'latin1'),
-      });
-    }
+  }
+
+  // Lua, from whatever in the mod carries any: a set that reacts to something, a
+  // skill whose content is an event rather than a number. Each contributes its
+  // own file, and the game's global script gets a line loading it — but only
+  // when there is something to load, because a mod that replaces
+  // advmap-common.lua for nothing is a mod that can only break something.
+  //
+  // Two global scripts, not one, and they are not interchangeable: the adventure
+  // map's runs on every map, the battle's inside every battle, and a skill can
+  // want both halves (src/mods/skill-scripts.ts).
+  const scripts = [...setScriptFiles(sets), ...skillScriptFiles(skills)];
+  for (const f of scripts) files.push({ path: f.path, data: Buffer.from(f.text, 'latin1') });
+  const onTheMap = skillMapScripts(skills);
+  if (setScriptFiles(sets).length || onTheMap.length) {
+    files.push({
+      path: COMMON_SCRIPT,
+      data: Buffer.from(patchCommonScript(mustRead(read, COMMON_SCRIPT), sets, onTheMap), 'latin1'),
+    });
+  }
+  if (skillCombatScripts(skills).length) {
+    files.push({
+      path: COMBAT_STARTUP,
+      data: Buffer.from(patchCombatStartup(mustRead(read, COMBAT_STARTUP), skills), 'latin1'),
+    });
   }
 
   // Last, so it records the art each slot actually resolved to.

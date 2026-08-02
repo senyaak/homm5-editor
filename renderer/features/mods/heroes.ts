@@ -10,6 +10,7 @@ import { ask, modDialog, openOnTop } from '#core/dialog.ts';
 import { api } from '#core/ipc.ts';
 import { artLabels } from '#src/mods/heroes.ts';
 import { pickPreset } from '#features/mods/preset.ts';
+import { drawHeroTabs, registerHeroTab } from '#features/mods/hero-tabs.ts';
 import { modRow, NL } from '#features/mods/shared.ts';
 import { requireFilled } from '#core/form-gate.ts';
 import type { ModListEntry, RosterEntryDTO } from '#electron/ipc.ts';
@@ -80,22 +81,32 @@ async function fillHeroForm(): Promise<void> {
 
   const asOptions = (v: string[] = []): { id: string; label: string }[] => v.map((id) => ({ id, label: id }));
   fillHeroSelect('he-town', asOptions(values.TownType));
-  fillHeroSelect('he-class', asOptions(values.Class));
-  // The game's 84, and ours after them. Ours are not in types.xml as the
-  // editor reads it — that is the game's copy, and the mod's entry only exists
-  // in the one the archive carries — so without this a specialization we made
-  // could be installed and never given to anybody.
-  const own = (await api.listMods()).mods.flatMap((m) => m.specializations ?? []);
+  // The game's nine classes and its 221 skills come out of types.xml as the
+  // EDITOR reads it — the game's own copy, where a class of the mod does not
+  // exist. Ours live only in the archive's copy, so without this a hero could
+  // not be given the class or the racial he was made for.
+  const ours = (await api.listMods()).mods;
+  fillHeroSelect('he-class', [
+    ...asOptions(values.Class),
+    ...ours.flatMap((m) => m.classes ?? []).map((c) => ({ id: c.id, label: `${c.name || c.id} (ours)` })),
+  ]);
+  // The game's 84 specializations, and ours after them — same reason.
+  const own = ours.flatMap((m) => m.specializations ?? []);
   fillHeroSelect('he-spec', [
     ...asOptions(values.Specialization),
     ...own.map((s) => ({ id: s.id, label: `${s.name || s.id} (ours)` })),
   ], true);
 
   // Skills and perks come out of one table (Skills.xdb holds both), so both
-  // pickers are offered the whole of it rather than a guess at which is which.
-  fillHeroSelect('he-primary', skills, true);
-  fillHeroSelect('he-skill', skills, true);
-  fillHeroSelect('he-perk', skills, true);
+  // pickers are offered the whole of it rather than a guess at which is which —
+  // and ours are appended for the third time, for the third copy of the reason.
+  const allSkills = [
+    ...skills,
+    ...ours.flatMap((m) => m.skills ?? []).map((k) => ({ id: k.id, label: `${k.name || k.id} (ours)` })),
+  ];
+  fillHeroSelect('he-primary', allSkills, true);
+  fillHeroSelect('he-skill', allSkills, true);
+  fillHeroSelect('he-perk', allSkills, true);
   fillHeroSelect('he-spell', spells, true);
 
   // Appearance: what the shipped heroes actually wear in each slot. The label
@@ -347,6 +358,20 @@ let heOwnFiles: Record<string, string> = {};
 
 /** Bind the hero list and form to their markup. */
 export function initHeroesMod(): void {
+  // The window's first tab. Registered here rather than listed in hero-tabs.ts,
+  // so the file that owns heroes is the only one that has to know they exist.
+  registerHeroTab({
+    id: 'heroes',
+    label: 'Heroes',
+    about: 'A hero costs the game nothing global: no id, no ceiling, no patched executable.',
+    pane: 'hm-pane-heroes',
+    onShow: () => {
+      void refreshHeroList().catch((e: unknown) => {
+        $('hm-err').textContent = e instanceof Error ? e.message : String(e);
+      });
+    },
+  });
+
   $('heroesbtn').onclick = () => {
     $('hm-err').textContent = '';
     $('hm-note').textContent = '';
@@ -354,7 +379,10 @@ export function initHeroesMod(): void {
     const report = (e: unknown): void => {
       $('hm-err').textContent = e instanceof Error ? e.message : String(e);
     };
-    void refreshHeroList().catch(report);
+    // The bar refreshes the OPEN tab's list; the form's own selects are filled
+    // whichever tab that is, because the hero form is opened from the list and
+    // from an edit alike.
+    drawHeroTabs();
     heFormReady = fillHeroForm();
     void heFormReady.catch(report);
   };

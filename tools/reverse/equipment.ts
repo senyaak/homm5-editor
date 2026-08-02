@@ -5,7 +5,8 @@
 // The answer to that question is the whole of what the executable hardcodes per
 // artifact id: a new id gets none of it, which is why a new artifact arrives
 // without properties. The catalogue printed here is the table in
-// docs/ENGINE_INTERNALS.md, so it can be checked rather than trusted.
+// docs/engineInternals/ARTIFACTS_AND_EQUIPMENT.md, so it can be checked rather
+// than trusted.
 //
 // The query is one function — `CountEquipped`, `0xb4c270` in this build — walked
 // to from the hero's vtable at +0x74. Call sites are grouped by the function
