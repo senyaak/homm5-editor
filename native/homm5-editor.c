@@ -1227,16 +1227,23 @@ static const BYTE MACHINE_CTOR_HEAD[5] = { 0x83, 0x7C, 0x24, 0x18, 0x00 };
 #define WORLD_MACHINE_TYPE 0x1Cu
 #define MACHINE_TYPE_TENT 3
 
-/** `this` in ecx, the ignored edx of a thiscall, then its five stack arguments. */
+/**
+ * `this` in ecx, the ignored edx of a thiscall, then its SIX stack arguments.
+ *
+ * Six because the function says so: it ends `ret 18h`, and twenty-four bytes is
+ * six dwords. Counting the pushes at the one call site gave five, and being one
+ * short cost two crashed battles — the hook cleaned four bytes less than the
+ * caller had put there, and the stack was wrong from the first war machine
+ * built. Read the arity off the RETURN, never off the call site.
+ */
 typedef void *(__fastcall *MachineCtorFn)(void *self, void *edx, void *a1, void *a2, void *a3,
-                                          void *a4, unsigned a5);
+                                          void *a4, unsigned a5, void *a6);
 static MachineCtorFn g_machineCtor = NULL;
 static int g_machineLogged = 0;
 
 static void *__fastcall machine_ctor_hook(void *self, void *edx, void *a1, void *a2, void *a3,
-                                          void *a4, unsigned a5) {
-  void *m = g_machineCtor(self, edx, a1, a2, a3, a4, a5);
-  (void)a5;
+                                          void *a4, unsigned a5, void *a6) {
+  void *m = g_machineCtor(self, edx, a1, a2, a3, a4, a5, a6);
   if (!m || g_machineLogged >= 8) return m;
   if (!readable((BYTE *)m + MACHINE_WORLD, 4)) return m;
 
@@ -1257,6 +1264,7 @@ static void *__fastcall machine_ctor_hook(void *self, void *edx, void *a1, void 
   log_object("  ctor arg 2  ", a2);
   log_object("  ctor arg 3  ", a3);
   log_object("  ctor arg 4  ", a4);
+  log_object("  ctor arg 6  ", a6);
   return m;
 }
 
