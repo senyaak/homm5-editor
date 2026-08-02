@@ -30,6 +30,18 @@
               <button id="hs-new">New specialization…</button>
             </div>
           </div>
+          <div id="hm-pane-classes" class="hm-pane">
+            <div id="hc-list" class="um-mods"></div>
+            <div class="de-foot" style="padding:8px 0 0;justify-content:flex-start">
+              <button id="hc-new">New class…</button>
+            </div>
+          </div>
+          <div id="hm-pane-skills" class="hm-pane">
+            <div id="hk-list" class="um-mods"></div>
+            <div class="de-foot" style="padding:8px 0 0;justify-content:flex-start">
+              <button id="hk-new">New skill…</button>
+            </div>
+          </div>
         </fieldset>
         <div id="hm-note" class="um-note"></div>
         <div id="hm-err" class="on-err"></div>
@@ -189,6 +201,123 @@
       <div class="de-foot">
         <button id="specedit-cancel" class="ghost">Cancel</button>
         <button id="hs-ok">Build &amp; install</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- A class of our own: the tenth, where the game ships nine. Four fields
+       decide it, and two of them are distributions — so the form is two
+       sections, one per question a class answers (src/mods/hero-classes.ts).
+
+       PRIORITIES is what the class itself holds: how often each skill is
+       offered at a level up, and how often each attribute grows. Both sum to a
+       hundred in all nine shipped classes, so both totals are shown and the
+       build refuses anything else.
+
+       AVAILABILITY is not on the class at all — it is a gate on each PERK, as a
+       list of classes. Hence two sides and a button between them: moving a perk
+       left writes our class into its list, with the dependencies the other
+       classes need already filled in. -->
+  <dialog id="classedit">
+    <div class="mp-card um-card">
+      <div class="mp-head">
+        <span class="mp-title" id="classedit-title">New class</span>
+        <button id="classedit-x" title="close (Esc)">✕</button>
+      </div>
+      <div class="mp-body on-body um-body">
+        <fieldset>
+          <legend>The class</legend>
+          <div class="on-body um-form">
+            <div class="on-row um-span">
+              <span>Donor</span>
+              <span id="hc-donor-name" class="um-note" style="flex:1;min-width:0">nothing yet — the form is blank</span>
+              <button id="hc-donor-pick" class="ghost" title="fill the weights, the attributes and the allowed perks from a shipped class; every one of them stays editable">Fill from…</button>
+              <input id="hc-donor" type="hidden">
+            </div>
+            <label class="on-row um-span"><span>Identifier<b class="req">*</b></span><input id="hc-id" type="text" spellcheck="false" autocomplete="off" placeholder="HERO_CLASS_…" title="ours, appended after the game's nine. A hero's document names it, so it cannot be renamed afterwards."></label>
+            <label class="on-row"><span>Name<b class="req">*</b></span><input id="hc-name" type="text" autocomplete="off" title="what the hero screen prints under his portrait"></label>
+          </div>
+        </fieldset>
+        <fieldset>
+          <legend>Priorities</legend>
+          <div class="um-note">How often a level up offers each skill, and how often each attribute grows. Both add up to a hundred — a total under it leaves a range that answers nothing, over it leaves the end of the list unreachable.</div>
+          <div class="on-body um-form">
+            <div class="um-span"><b>Skills</b> <span id="hc-skill-total" class="um-note" style="display:inline"></span></div>
+            <div id="hc-skills" class="hc-weights um-span"></div>
+            <div class="um-span"><b>Attributes</b> <span id="hc-attr-total" class="um-note" style="display:inline"></span></div>
+            <div class="um-stats um-span">
+              <label>Offence<input id="hc-off" type="number" value="0" min="0" max="100"></label>
+              <label>Defence<input id="hc-def" type="number" value="0" min="0" max="100"></label>
+              <label>Spellpower<input id="hc-sp" type="number" value="0" min="0" max="100"></label>
+              <label>Knowledge<input id="hc-kn" type="number" value="0" min="0" max="100"></label>
+            </div>
+          </div>
+        </fieldset>
+        <fieldset>
+          <legend>Perk availability</legend>
+          <div class="um-note">Left is what this class may take. A perk with no class list at all is open to everyone already, and is not here.</div>
+          <div class="hc-sides">
+            <div>
+              <div class="um-note">Allowed</div>
+              <select id="hc-allowed" multiple size="10"></select>
+            </div>
+            <div class="hc-buttons">
+              <button id="hc-allow" class="ghost" title="give the selected perks to this class">&#8592;</button>
+              <button id="hc-deny" class="ghost" title="take the selected perks away from this class">&#8594;</button>
+            </div>
+            <div>
+              <div class="um-note">Not allowed</div>
+              <select id="hc-denied" multiple size="10"></select>
+            </div>
+          </div>
+        </fieldset>
+        <div id="hc-missing" class="um-missing"></div>
+        <div id="hc-err" class="on-err"></div>
+      </div>
+      <div class="de-foot">
+        <button id="classedit-cancel" class="ghost">Cancel</button>
+        <button id="hc-ok">Build &amp; install</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- A skill of our own: a racial for a class of ours, or a perk of its branch.
+       Four levels for a racial — the fourth is the one an artifact grants — so
+       it is named and described four times, and one name given is enough: the
+       level is appended. What it DOES is not here and cannot be; the executable
+       does nothing with a value it was not compiled against, so the effect comes
+       from the native extension. -->
+  <dialog id="skilledit">
+    <div class="mp-card um-card">
+      <div class="mp-head">
+        <span class="mp-title" id="skilledit-title">New skill</span>
+        <button id="skilledit-x" title="close (Esc)">✕</button>
+      </div>
+      <div class="mp-body on-body um-body">
+        <fieldset>
+          <legend>New skill</legend>
+          <div class="on-body um-form">
+            <label class="on-row um-span"><span>Identifier<b class="req">*</b></span><input id="hk-id" type="text" spellcheck="false" autocomplete="off" placeholder="HERO_SKILL_…" title="ours, appended after the game's 221. Classes and heroes name it, so it cannot be renamed afterwards."></label>
+            <label class="on-row"><span>Kind</span>
+              <select id="hk-kind" title="a racial is a class's own skill with four levels; a perk hangs off one">
+                <option value="racial">Racial skill</option>
+                <option value="perk">Perk of a branch</option>
+              </select>
+            </label>
+            <label class="on-row"><span>Class<b class="req">*</b></span><select id="hk-class" title="the class this belongs to — one of ours"></select></label>
+            <label class="on-row"><span>Name<b class="req">*</b></span><input id="hk-name" type="text" autocomplete="off" title="a racial is named at four levels; one name here becomes «name I…IV»"></label>
+            <label class="on-row um-span"><span>Description</span><input id="hk-desc" type="text" autocomplete="off" placeholder="what it does, in words"></label>
+            <label class="on-row um-span hk-perk"><span>Branch</span><select id="hk-branch" title="the skill this perk hangs off — a racial of ours"></select></label>
+            <label class="on-row um-span hk-perk"><span>Needs first</span><select id="hk-needs" title="what the hero must already hold to be offered this perk"></select></label>
+            <div class="um-note um-span">The game will show its name, its icon and its place in the tree, and do nothing whatever with it: every shipped skill's arithmetic is compiled against its own value. What it DOES comes from the native extension.</div>
+          </div>
+        </fieldset>
+        <div id="hk-missing" class="um-missing"></div>
+        <div id="hk-err" class="on-err"></div>
+      </div>
+      <div class="de-foot">
+        <button id="skilledit-cancel" class="ghost">Cancel</button>
+        <button id="hk-ok">Build &amp; install</button>
       </div>
     </div>
   </dialog>

@@ -24,9 +24,22 @@
 //   row in the file the native extension reads, because the executable does
 //   nothing at all with a value it has never heard of.
 //
-// The two are in one spec because they are one window and one story: a
-// specialization exists to be given to a hero, and the thing worth checking is
-// that the value the enum gained is the value his document names.
+// AND SHE IS A CLASS OF HER OWN. Heroes III gave Gem a class nobody else had —
+// the Witch, a Druid by every number and a different word on the screen. Here it
+// is a tenth entry in a table the game sizes at nine, so the run authors it too,
+// and the two things a class actually decides are what the form fills in: how
+// often a level up offers each skill, and how often each attribute grows. Her
+// racial is ours as well, which is why the order below is class, then skill,
+// then back to the class to weight it — a skill cannot belong to a class that
+// does not exist, and a class cannot weight a skill that does not either.
+//
+// Along the way she gets «Чумная палатка», which the Ranger cannot have: that
+// gate is a list of classes on the PERK, and one move between the two sides of
+// the availability section is the whole of it.
+//
+// They are in one spec because they are one window and one story: every one of
+// these exists to be given to a hero, and the thing worth checking is that the
+// value each table gained is the value her document names.
 
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -43,6 +56,9 @@ import { heroPaths } from '../src/mods/heroes.ts';
 import { readEntries } from '../src/format/pak.ts';
 import { decodeDDSBuffer } from '../src/format/dds.ts';
 import { PATCHED_EXE, readExe } from '../src/exe/creature-limit.ts';
+import { HERO_CLASS_TABLE, HERO_SKILL_TABLE, readTableLimit } from '../src/exe/table-limit.ts';
+import { CLASS_TABLE, SHIPPED_CLASSES } from '../src/mods/hero-classes.ts';
+import { SHIPPED_SKILLS, SKILL_TABLE } from '../src/mods/hero-skills.ts';
 
 let ed: Launched;
 const GAME = modGameRoot();
@@ -58,7 +74,12 @@ const GEM = {
   name: 'Gem',
   biography: 'A sorceress of Enroth, newly come to AvLee and its druids.',
   town: 'TOWN_PRESERVE',
-  heroClass: 'HERO_CLASS_RANGER',
+  /** What the DONOR implies — one class per faction, and Ossir is a Ranger. */
+  presetClass: 'HERO_CLASS_RANGER',
+  /** What she is built as: her own class, authored two tests below. */
+  heroClass: 'HERO_CLASS_WITCH',
+  /** And her own racial, in the slot the Avenger would have had. */
+  racial: 'HERO_SKILL_TENT_MASTER',
   /** Ours, authored by the test below: the tent grows 5% per hero level. */
   spec: GEM_SPEC.id,
   specName: 'Field Medic',
@@ -74,6 +95,49 @@ const GEM = {
    */
   portrait: join(REPO_ROOT, 'assets', 'heroes', 'gem.gif'),
   specPicture: join(REPO_ROOT, 'assets', 'specializations', 'first_aid.gif'),
+};
+
+/**
+ * The Witch: Gem's class in Heroes III, and ours in Heroes V.
+ *
+ * Not a copy of the Ranger — she starts from his numbers and then says
+ * something else with them. Coldness aside, the shape is the game's own: thirteen
+ * weights adding to a hundred, four attributes adding to a hundred.
+ */
+const WITCH = {
+  id: 'HERO_CLASS_WITCH',
+  name: 'Колдунья',
+  /** Offence, defence, spellpower, knowledge — a medic who casts, not a bowman. */
+  attributes: { 'hc-off': 10, 'hc-def': 25, 'hc-sp': 35, 'hc-kn': 30 },
+  /**
+   * Hers, over the donor's. The Avenger goes to nothing — she is not one — and
+   * the war machines that carry her tent take its place at the top. Her own
+   * racial cannot be weighted yet: it does not exist until the test after this.
+   */
+  weights: {
+    HERO_SKILL_AVENGER: 0,
+    HERO_SKILL_WAR_MACHINES: 25,
+    HERO_SKILL_LIGHT_MAGIC: 12,
+    HERO_SKILL_LEARNING: 12,
+    HERO_SKILL_LUCK: 10,
+    HERO_SKILL_LOGISTICS: 8,
+    HERO_SKILL_SUMMONING_MAGIC: 8,
+    HERO_SKILL_SORCERY: 8,
+    HERO_SKILL_LEADERSHIP: 6,
+    HERO_SKILL_DEFENCE: 5,
+    HERO_SKILL_DESTRUCTIVE_MAGIC: 3,
+    HERO_SKILL_DARK_MAGIC: 2,
+    HERO_SKILL_OFFENCE: 1,
+  },
+  /** «Чумная палатка» — four classes may pitch one, and the Ranger is not one. */
+  perk: 'HERO_SKILL_LAST_AID',
+};
+
+/** Her racial: the tent, which is what she is in both games. */
+const TENT = {
+  id: 'HERO_SKILL_TENT_MASTER',
+  name: 'Мастер палатки',
+  description: 'Палатка первой помощи служит дольше в её руках.',
 };
 
 /** What the executable's creature ceiling was before this spec ran. */
@@ -93,7 +157,7 @@ test.afterAll(async () => { await ed?.app.close(); });
  * chosen before anything in it can be clicked — a pane that is not open is not
  * visible, and Playwright will not click what nobody can see.
  */
-async function openHeroes(page: Launched['page'], tab: 'Heroes' | 'Specializations'): Promise<void> {
+async function openHeroes(page: Launched['page'], tab: 'Heroes' | 'Specializations' | 'Classes' | 'Skills'): Promise<void> {
   if (!(await page.locator('#heroesmod').isVisible())) await page.locator('#heroesbtn').click();
   await expect(page.locator('#heroesmod')).toBeVisible();
   await page.locator('#hm-tabs button', { hasText: tab }).click();
@@ -125,7 +189,7 @@ test('the dialog opens, and the donor decides the faction', async () => {
   await openWithDonor(page);
   // One class per faction: choosing where he comes from chooses what he is.
   await expect(page.locator('#he-town')).toHaveValue(GEM.town);
-  await expect(page.locator('#he-class')).toHaveValue(GEM.heroClass);
+  await expect(page.locator('#he-class')).toHaveValue(GEM.presetClass);
 
   // The preset seeded her looks, and they are the shipped hero's own — under
   // the fold, where appearance belongs: a hero is authored by his faction and
@@ -245,6 +309,139 @@ test('authors the specialization Gem will hold', async () => {
   ]);
 });
 
+test('authors the class Gem will be', async () => {
+  test.setTimeout(3 * 60_000);
+  const { page } = ed;
+  await openHeroes(page, 'Classes');
+  await page.locator('#hc-new').click();
+  await expect(page.locator('#classedit')).toBeVisible();
+
+  // A class of ours is not a copy — but it starts from one, exactly as a hero
+  // starts from a donor: thirteen weights and four attributes are a lot to type
+  // when eight sensible sets of them ship with the game.
+  await page.locator('#hc-donor-pick').click();
+  await expect(page.locator('#presetpick')).toBeVisible();
+  await page.locator('#pp-search').fill('RANGER');
+  await page.locator('#pp-list button', { hasText: 'RANGER' }).first().click();
+  await expect(page.locator('#presetpick')).toBeHidden();
+  // The donor's numbers arrived, both sums intact.
+  await expect(page.locator('#hc-skill-total')).toHaveText(/100/);
+  await expect(page.locator('#hc-attr-total')).toHaveText(/100/);
+  await expect(page.locator('#hc-skills input[data-skill="HERO_SKILL_AVENGER"]')).toHaveValue('10');
+
+  await page.locator('#hc-id').fill(WITCH.id);
+  await page.locator('#hc-name').fill(WITCH.name);
+
+  // Her own priorities, over the donor's. The Ranger's racial goes to nothing —
+  // she is not an Avenger — and the ten points it held go where she lives: the
+  // war machines that carry the tent.
+  for (const [skill, prob] of Object.entries(WITCH.weights)) {
+    await page.locator(`#hc-skills input[data-skill="${skill}"]`).fill(String(prob));
+  }
+  for (const [id, value] of Object.entries(WITCH.attributes)) await page.locator(`#${id}`).fill(String(value));
+  await expect(page.locator('#hc-skill-total')).toHaveText('100 ✓');
+  await expect(page.locator('#hc-attr-total')).toHaveText('100 ✓');
+
+  // The plague tent: four classes may pitch one and the Ranger is not among
+  // them, which is the whole reason the availability section exists. One move
+  // is the difference, and the dependency it will ask for comes with it.
+  await expect(page.locator(`#hc-allowed option[value="${WITCH.perk}"]`)).toHaveCount(0);
+  await page.locator('#hc-denied').selectOption(WITCH.perk);
+  await page.locator('#hc-allow').click();
+  await expect(page.locator(`#hc-allowed option[value="${WITCH.perk}"]`)).toHaveCount(1);
+  await expect(page.locator(`#hc-allowed option[value="${WITCH.perk}"]`)).toHaveAttribute('title', /FIRST_AID/);
+
+  const note = await settled(page, 'installing the class', '#hm-note', '#hc-err',
+    () => page.locator('#hc-ok').click());
+  expect(note).toContain('Installed');
+  // The VALUE is what a hero's document resolves to and what the ceiling covers.
+  expect(note).toContain(`value ${SHIPPED_CLASSES}`);
+  await expect(page.locator('#hc-list')).toContainText(WITCH.name);
+
+  // The four halves of one class, and any three without the fourth is a game
+  // that either ignores it or refuses to start.
+  const mod = readInstalledMod(GAME);
+  const ours = (mod.classes ?? [])[0];
+  expect(ours, 'the manifest remembers it').toBeTruthy();
+  expect(ours!.number).toBe(SHIPPED_CLASSES);
+  expect(ours!.allowedPerks?.map((p) => p.perk)).toContain(WITCH.perk);
+
+  const entries = readEntries(readFileSync(modFile(GAME, 'mod', MOD_STEM)));
+  const at = (name: string): string =>
+    entries.find((e) => e.name.replace(/\\/g, '/') === name)!.data.toString('latin1');
+  const types = at('types.xml');
+  expect(types, 'the enum gained it').toContain(`<Item>${WITCH.id}</Item>`);
+  expect(types, 'and so did the name→number map').toMatch(
+    new RegExp(`<Name>${WITCH.id}</Name>\\s*<Value>${SHIPPED_CLASSES}</Value>`));
+  const table = at(CLASS_TABLE);
+  expect([...table.matchAll(/<ID>HERO_CLASS_\w+<\/ID>/g)], 'ten entries where the game ships nine')
+    .toHaveLength(SHIPPED_CLASSES + 1);
+  const skills = at(SKILL_TABLE);
+  const plague = skills.slice(skills.indexOf('<ID>HERO_SKILL_LAST_AID</ID>'));
+  expect(plague.slice(0, plague.indexOf('</obj>')), 'the perk lets her in')
+    .toContain(`<Class>${WITCH.id}</Class>`);
+
+  // And the executable, which is the half no archive can carry: a table read
+  // past the compiled count is a table the game ignores.
+  const exe = readFileSync(join(GAME, PATCHED_EXE));
+  expect(readTableLimit(exe, HERO_CLASS_TABLE).limit, 'our copy of the game counts to ten')
+    .toBe(SHIPPED_CLASSES + 1);
+});
+
+test('authors her racial skill, and gives it its weight', async () => {
+  test.setTimeout(3 * 60_000);
+  const { page } = ed;
+  await openHeroes(page, 'Skills');
+  await page.locator('#hk-new').click();
+  await expect(page.locator('#skilledit')).toBeVisible();
+
+  await page.locator('#hk-id').fill(TENT.id);
+  await page.locator('#hk-kind').selectOption('racial');
+  // It belongs to a class of OURS — the only kind a racial of ours can belong
+  // to, since the binding is the skill naming the class.
+  await page.locator('#hk-class').selectOption(WITCH.id);
+  await page.locator('#hk-name').fill(TENT.name);
+  await page.locator('#hk-desc').fill(TENT.description);
+
+  const note = await settled(page, 'installing the skill', '#hm-note', '#hk-err',
+    () => page.locator('#hk-ok').click());
+  expect(note).toContain('Installed');
+  expect(note).toContain(`value ${SHIPPED_SKILLS}`);
+  await expect(page.locator('#hk-list')).toContainText(TENT.name);
+
+  const entries = readEntries(readFileSync(modFile(GAME, 'mod', MOD_STEM)));
+  const at = (name: string): string =>
+    entries.find((e) => e.name.replace(/\\/g, '/') === name)!.data.toString('latin1');
+  expect(at('types.xml')).toMatch(new RegExp(`<Name>${TENT.id}</Name>\\s*<Value>${SHIPPED_SKILLS}</Value>`));
+  const table = at(SKILL_TABLE);
+  expect(table).toContain(`<ID>${TENT.id}</ID>`);
+  // A racial names its class, and that is the entire binding — there is no
+  // table of racials anywhere in the game's data.
+  const entry = table.slice(table.indexOf(`<ID>${TENT.id}</ID>`));
+  expect(entry.slice(0, entry.indexOf('</obj>'))).toContain(`<HeroClass>${WITCH.id}</HeroClass>`);
+  const exe = readFileSync(join(GAME, PATCHED_EXE));
+  expect(readTableLimit(exe, HERO_SKILL_TABLE).limit).toBe(SHIPPED_SKILLS + 1);
+
+  // Now it can be weighted, which it could not be a minute ago: the class form
+  // offers the skills the two tables hold, and it was in neither.
+  await openHeroes(page, 'Classes');
+  await page.locator('#hc-list .um-item', { hasText: WITCH.name }).first()
+    .locator('button', { hasText: '✎' }).click();
+  await expect(page.locator('#classedit')).toBeVisible();
+  const racial = page.locator(`#hc-skills input[data-skill="${TENT.id}"]`);
+  await expect(racial, 'a skill of ours is one a class may weight').toHaveCount(1);
+  await racial.fill('10');
+  await page.locator('#hc-skills input[data-skill="HERO_SKILL_WAR_MACHINES"]').fill('15');
+  await expect(page.locator('#hc-skill-total')).toHaveText('100 ✓');
+
+  const updated = await settled(page, 'reweighting the class', '#hm-note', '#hc-err',
+    () => page.locator('#hc-ok').click());
+  expect(updated).toContain('Updated');
+  const weights = (readInstalledMod(GAME).classes ?? [])[0]!.skills;
+  expect(weights.find((w) => w.skill === TENT.id)?.prob, 'her own skill is offered').toBe(10);
+  expect(weights.reduce((n, w) => n + w.prob, 0)).toBe(100);
+});
+
 test('authors Gem and installs her', async () => {
   test.setTimeout(3 * 60_000);
   const { page } = ed;
@@ -273,7 +470,12 @@ test('authors Gem and installs her', async () => {
 
   // Her Heroes III kit, as near as Heroes V has it: the tent she is specialised
   // in, the War Machines that carry it, and First Aid on top.
-  await page.locator('#he-primary').selectOption('HERO_SKILL_AVENGER');
+  // Her class and her racial are OURS, offered beside the game's own and marked
+  // so — without this a class could be installed and nobody could ever be it.
+  await expect(page.locator(`#he-class option[value="${GEM.heroClass}"]`)).toHaveText(/ours/);
+  await page.locator('#he-class').selectOption(GEM.heroClass);
+  await expect(page.locator(`#he-primary option[value="${GEM.racial}"]`)).toHaveText(/ours/);
+  await page.locator('#he-primary').selectOption(GEM.racial);
   await page.locator('#he-skill').selectOption('HERO_SKILL_WAR_MACHINES');
   await page.locator('#he-perk').selectOption('HERO_SKILL_FIRST_AID');
   await page.locator('#he-tent').check();
@@ -324,7 +526,8 @@ test('the archive holds her, and nothing of the game\'s', async () => {
   expect(xml).toContain('<InternalName>H3Gem</InternalName>');
   expect(xml).toContain(`<Specialization>${GEM.spec}</Specialization>`);
   expect(xml).toContain('<ScenarioHero>false</ScenarioHero>');
-  expect(xml).toContain('<SkillID>HERO_SKILL_AVENGER</SkillID>');
+  expect(xml).toContain(`<Class>${GEM.heroClass}</Class>`);
+  expect(xml).toContain(`<SkillID>${GEM.racial}</SkillID>`);
   // The appearance the preset seeded was WRITTEN, not merely displayed.
   expect(xml).toMatch(/<Model href="[^"]*Ranger_LOD/);
   // COPIED, not referenced: her body is Ossir's model, but the archive carries

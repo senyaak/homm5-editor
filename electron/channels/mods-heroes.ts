@@ -340,12 +340,21 @@ export function registerModHeroes(): void {
     const named = new Map(registry.skills().map((s) => [s.id, s.name || s.id]));
     const perks = readPerks(skillTable);
     const perkIds = new Set(perks.map((p) => p.id));
+    // The mod's own skills, which the game's data root knows nothing about: a
+    // racial of ours exists only inside the archive, and a class that could not
+    // weight it could not offer it at a level up either.
+    const g = gameRoot();
+    const ourSkills = g ? (ourMod(g).skills ?? []) : [];
     return {
       // A class weights SKILLS, not perks — the thirteen rows of the shipped
       // classes are the twelve common skills and one racial, and no perk is
       // among them.
-      skills: registry.skills().filter((s) => !perkIds.has(s.id))
-        .map((s) => ({ id: s.id, ...(s.name ? { name: s.name } : {}) })),
+      skills: [
+        ...registry.skills().filter((s) => !perkIds.has(s.id))
+          .map((s) => ({ id: s.id, ...(s.name ? { name: s.name } : {}) })),
+        ...ourSkills.filter((s) => s.kind === 'racial')
+          .map((s) => ({ id: s.id, name: `${s.name || s.id} (ours)` })),
+      ],
       perks: perks.map((p) => ({ ...p, name: named.get(p.id) ?? p.id })),
       donors: readClasses(classTable).map((c) => ({
         id: c.id,

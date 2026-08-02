@@ -777,6 +777,16 @@ export interface ModListEntry {
    */
   specializations: ModSpecializationDTO[];
   /**
+   * Its hero classes and its skills — the two reference tables the editor can
+   * extend besides the creatures' and the artifacts'.
+   *
+   * Whole, like the heroes and for the same reason: the form is filled from
+   * this list, and a class is thirteen weights and a set of opened perks that
+   * nothing else in the archive records.
+   */
+  classes: ModHeroClassDTO[];
+  skills: ModHeroSkillDTO[];
+  /**
    * Its buildings — everything a hero walks up to, one of sixteen classes each.
    *
    * The WHOLE building, for the reason a hero is whole here: this list is where
@@ -886,6 +896,34 @@ export interface SkillWeightDTO { skill: string; prob: number }
 
 /** A shipped perk opened to a class of ours, with what it asks of him. */
 export interface AllowedPerkDTO { perk: string; dependencies: string[] }
+
+/** A class of the mod, as the list reports it. */
+export interface ModHeroClassDTO {
+  id: string;
+  number: number;
+  name: string;
+  skills: SkillWeightDTO[];
+  attributes: { offence: number; defence: number; spellpower: number; knowledge: number };
+  preferredSpells?: string[];
+  allowedPerks?: AllowedPerkDTO[];
+}
+
+/** A skill of the mod, as the list reports it. */
+export interface ModHeroSkillDTO {
+  id: string;
+  number: number;
+  kind: 'racial' | 'perk';
+  heroClass: string;
+  name: string;
+  names?: string[];
+  description: string;
+  descriptions?: string[];
+  commonDescription?: string;
+  icons?: string[];
+  basicSkill?: string;
+  prerequisites?: string[];
+  aiRace?: string;
+}
 
 /** Payload of `mods:install-class` and of the update beside it. */
 export interface ModsInstallClassPayload {

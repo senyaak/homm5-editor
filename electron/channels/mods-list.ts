@@ -57,6 +57,8 @@ export function registerModsList(): void {
       // buildings existed has a manifest without the field, and it stays listable.
       buildings: (f.mod.buildings ?? []).map((b) => ({ ...b })),
       specializations: (f.mod.specializations ?? []).map((s) => ({ ...s })),
+      classes: (f.mod.classes ?? []).map((c) => ({ ...c })),
+      skills: (f.mod.skills ?? []).map((s) => ({ ...s })),
       artifacts: (f.mod.artifacts ?? []).map((a) => ({
         id: a.id, number: a.number, name: a.name, description: a.description,
         slot: a.slot, rank: a.rank, cost: a.cost, aiValue: a.aiValue,
