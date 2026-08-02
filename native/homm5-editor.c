@@ -1726,20 +1726,14 @@ static int __fastcall dnd_pick_hook(void *state, void *edx, void *arg) {
       // different function altogether, and calling that one crashed the game.
       // A type that is not the one measured means we are wrong about the
       // layout, and being wrong should cost a log line, not the session.
-      BYTE *base = (BYTE *)GetModuleHandleW(NULL);
-      void *window = (readable(widget, WIDGET_WINDOW + 4) >= WIDGET_WINDOW + 4)
-        ? *(void **)((BYTE *)widget + WIDGET_WINDOW) : NULL;
-      if (readable(window, 4) < 4 || *(DWORD *)window != (DWORD)base + WINDOW_SIMPLE_VTABLE_RVA) {
-        log_line("       the widget does not belong to the window we know - asking nothing");
-      } else {
-        FindByNameFn find = (*(FindByNameFn **)window)[WINDOW_FIND_BY_NAME / 4];
-        for (int i = 0; i < SLOT_COUNT; i++) {
-          void *found = find(window, NULL, base + SLOT_NAMES_RVA + (DWORD)i * SLOT_NAME_STRIDE, 0);
-          log_num("       slot ", i + 1);
-          log_hex("            is widget ", (DWORD)found);
-          if (found && found == widget) log_line("            and this is the one clicked");
-        }
-      }
+      // NOTHING IS CALLED HERE, and that is the point. Twice now a vtable slot
+      // number was taken from the class that uses it and called on a class that
+      // merely has one — `+0x94` is a lookup on the window the hero screen
+      // walks, and something else entirely on the screen and on this button.
+      // A slot number means one thing inside one hierarchy and nothing across
+      // hierarchies, so the receiver has to be identified in the disassembly
+      // before the call is written, not guessed at and tried on a running game.
+      log_types("       the widget", widget);
       // A slot says which slot it is by what it is CALLED: the screens name
       // these `Slot_1` upwards, and the executable keeps that very list of
       // names to look the widgets up by. So the name is both the number of
