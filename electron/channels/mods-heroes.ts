@@ -270,6 +270,8 @@ export function registerModHeroes(): void {
     ...(p.descriptions?.length ? { descriptions: p.descriptions } : {}),
     ...(p.commonDescription ? { commonDescription: p.commonDescription } : {}),
     ...(p.icons?.length ? { icons: p.icons } : {}),
+    ...(p.picture?.trim() ? { picture: p.picture.trim() } : {}),
+    ...(p.pictures?.length ? { pictures: p.pictures.filter((x) => x.trim()) } : {}),
     ...(p.basicSkill ? { basicSkill: p.basicSkill } : {}),
     ...(p.prerequisites?.length ? { prerequisites: p.prerequisites } : {}),
     ...(p.aiRace ? { aiRace: p.aiRace } : {}),

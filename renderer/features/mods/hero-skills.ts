@@ -37,10 +37,29 @@ const gateSkill = (): { check: () => void; rewatch: () => void } => (gate ??= re
   extra: () => ($select('hk-class').value ? [] : ['a class of ours to belong to']),
 }));
 
-/** A perk needs a branch and something to ask for; a racial needs neither. */
+/** The picture rows, in the order the record wants them. */
+const PICTURES = ['hk-pic-1', 'hk-pic-2', 'hk-pic-3', 'hk-pic-4'];
+
+/**
+ * A perk needs a branch and something to ask for; a racial needs neither. And
+ * the two are drawn differently: four levels against a grey/lit pair.
+ */
 function showKind(): void {
   const perk = $select('hk-kind').value === 'perk';
   for (const el of document.querySelectorAll<HTMLElement>('.hk-perk')) el.style.display = perk ? '' : 'none';
+  const rows = document.querySelectorAll<HTMLElement>('.hk-pic-row');
+  const labels = perk ? ['Picture (grey)', 'Picture (lit)'] : ['Picture I', 'Picture II', 'Picture III', 'Picture IV'];
+  rows.forEach((row, i) => {
+    row.style.display = i < labels.length ? '' : 'none';
+    $(`hk-pic-label-${i + 1}`).textContent = labels[i] ?? '';
+  });
+}
+
+/** What the picture rows currently hold, trailing blanks dropped. */
+function pictures(): string[] {
+  const all = PICTURES.map((id) => $input(id).value.trim());
+  while (all.length && !all[all.length - 1]) all.pop();
+  return all;
 }
 
 /** Fill the three selects from what the mod already holds. */
@@ -99,6 +118,8 @@ async function editSkill(id: string): Promise<void> {
   $select('hk-kind').value = s.kind;
   $input('hk-name').value = s.name;
   $input('hk-desc').value = s.description;
+  const drawn = s.pictures?.length ? s.pictures : s.picture ? [s.picture] : [];
+  PICTURES.forEach((id, i) => { $input(id).value = drawn[i] ?? ''; });
   await fillSkillForm();
   $select('hk-class').value = s.heroClass;
   $select('hk-branch').value = s.basicSkill ?? '';
@@ -133,9 +154,17 @@ async function submitSkill(): Promise<void> {
       heroClass: $select('hk-class').value,
       name: $input('hk-name').value,
       description: $input('hk-desc').value,
+      // One row filled is one texture for every level; more than one is a
+      // drawing per level, and the record repeats the last to fill the rest.
+      ...(pictures().length === 1 ? { picture: pictures()[0]! } : {}),
+      ...(pictures().length > 1 ? { pictures: pictures() } : {}),
+      // A perk of a branch of ours needs NOTHING written down: the branch is
+      // the gate, because no other class has it — which is exactly the shape
+      // the shipped Multishot has under Avenger. Something named here is an
+      // extra condition on top of that.
       ...(kind === 'perk' ? {
         basicSkill: $select('hk-branch').value,
-        ...(needs ? { prerequisites: [needs] } : { prerequisites: [$select('hk-branch').value] }),
+        ...(needs ? { prerequisites: [needs] } : {}),
       } : {}),
     };
     const r = editingSkill ? await api.updateHeroSkill(p) : await api.installHeroSkill(p);
@@ -172,6 +201,7 @@ export function initHeroSkills(): void {
     $input('hk-id').value = '';
     $input('hk-name').value = '';
     $input('hk-desc').value = '';
+    for (const id of PICTURES) $input(id).value = '';
     $select('hk-kind').value = 'racial';
     showKind();
     gateSkill().rewatch();
@@ -182,6 +212,14 @@ export function initHeroSkills(): void {
   };
 
   $select('hk-kind').addEventListener('change', showKind);
+  for (const btn of document.querySelectorAll<HTMLButtonElement>('button.hk-picture')) {
+    btn.onclick = () => {
+      void (async () => {
+        const picked = await api.pickPicture();
+        if (picked) $input(btn.dataset.for!).value = picked;
+      })().catch((e) => { $('hk-err').textContent = e instanceof Error ? e.message : String(e); });
+    };
+  }
   $('skilledit-x').onclick = () => modDialog('skilledit').close();
   $('skilledit-cancel').onclick = () => modDialog('skilledit').close();
   $('hk-ok').onclick = () => { void submitSkill(); };

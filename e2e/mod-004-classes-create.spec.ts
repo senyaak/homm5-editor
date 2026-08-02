@@ -28,7 +28,7 @@ import { test, expect } from '@playwright/test';
 import { launchEditor } from './launch.ts';
 import { settled } from './trace.ts';
 import type { Launched } from './launch.ts';
-import { TENT_MASTER as TENT, WITCH, modGameRoot, readInstalledMod } from './mods.ts';
+import { TENT_MASTER as TENT, TENT_PERKS, WITCH, modGameRoot, readInstalledMod } from './mods.ts';
 import { modFile } from '../src/game/mod-paths.ts';
 import { MOD_STEM } from '../src/mods/mod-files.ts';
 import { readEntries } from '../src/format/pak.ts';
@@ -163,6 +163,13 @@ test('authors her racial skill, and gives it its weight', async () => {
   await page.locator('#hk-class').selectOption(WITCH.id);
   await page.locator('#hk-name').fill(TENT.name);
   await page.locator('#hk-desc').fill(TENT.description);
+  // A drawing per level, which is what a racial ported out of Heroes III has:
+  // that game drew first aid three times, this one draws a racial four, and the
+  // last picture given fills the fourth. Typed rather than chosen — the button
+  // beside each row opens the system's file dialog, which a spec cannot drive.
+  for (let i = 0; i < TENT.pictures.length; i++) {
+    await page.locator(`#hk-pic-${i + 1}`).fill(TENT.pictures[i]!);
+  }
 
   const note = await settled(page, 'installing the skill', '#hm-note', '#hk-err',
     () => page.locator('#hk-ok').click());
@@ -182,6 +189,34 @@ test('authors her racial skill, and gives it its weight', async () => {
   expect(entry.slice(0, entry.indexOf('</obj>'))).toContain(`<HeroClass>${WITCH.id}</HeroClass>`);
   const exe = readFileSync(join(GAME, PATCHED_EXE));
   expect(readTableLimit(exe, HERO_SKILL_TABLE).limit).toBe(SHIPPED_SKILLS + 1);
+
+  // The branch's perks, which is what a level up offers once she has the racial.
+  // A branch with no perks never grows, and each of these hangs off the racial
+  // and asks for nothing else — the branch IS the gate, since no other class has
+  // it (the shipped Multishot sits under Avenger exactly so).
+  for (const perk of TENT_PERKS) {
+    await page.locator('#hk-new').click();
+    await expect(page.locator('#skilledit')).toBeVisible();
+    await page.locator('#hk-id').fill(perk.id);
+    await page.locator('#hk-kind').selectOption('perk');
+    await page.locator('#hk-class').selectOption(WITCH.id);
+    await page.locator('#hk-branch').selectOption(TENT.id);
+    await page.locator('#hk-name').fill(perk.name);
+    await page.locator('#hk-desc').fill(perk.description);
+    // Grey and lit, in that order: the game draws the first when the perk is
+    // out of reach and the second once it is taken.
+    await page.locator('#hk-pic-1').fill(perk.pictures[0]!);
+    await page.locator('#hk-pic-2').fill(perk.pictures[1]!);
+    const said = await settled(page, `installing ${perk.name}`, '#hm-note', '#hk-err',
+      () => page.locator('#hk-ok').click());
+    expect(said).toContain('Installed');
+  }
+  await expect(page.locator('#hk-list')).toContainText(TENT_PERKS[0]!.name);
+  {
+    const branch = (readInstalledMod(GAME).skills ?? []).filter((s) => s.kind === 'perk');
+    expect(branch.map((s) => s.id).sort()).toEqual(TENT_PERKS.map((p) => p.id).sort());
+    expect(branch.every((s) => s.basicSkill === TENT.id), 'all three hang off the racial').toBe(true);
+  }
 
   // Now it can be weighted, which it could not be a minute ago: the class form
   // offers the skills the two tables hold, and it was in neither.

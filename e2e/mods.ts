@@ -449,12 +449,89 @@ export const WITCH = {
   perk: 'HERO_SKILL_LAST_AID',
 };
 
-/** Her racial: the tent, which is what she is in both games. */
+/**
+ * Her racial: the tent, which is what she is in both games.
+ *
+ * Named and described four times, because the shipped racials are and because
+ * the hero screen prints one per level — four identical lines read as a skill
+ * that never advanced. What it will DO is one more use of the first aid tent
+ * per level of the skill, which is the extension's half and not written yet;
+ * the words say what it is for, not what it currently manages.
+ */
 export const TENT_MASTER = {
   id: 'HERO_SKILL_TENT_MASTER',
   name: 'Мастер палатки',
-  description: 'Палатка первой помощи служит дольше в её руках.',
+  names: [
+    'Мастер палатки (новичок)',
+    'Обученный мастер палатки',
+    'Искусный мастер палатки',
+    'Непревзойдённый мастер палатки',
+  ],
+  description: 'Палатка первой помощи получает дополнительные использования.',
+  descriptions: [
+    'Уникальный навык колдуньи. Палатка первой помощи получает +1 использование в бою.',
+    'Уникальный навык колдуньи. Палатка первой помощи получает +2 использования в бою.',
+    'Уникальный навык колдуньи. Палатка первой помощи получает +3 использования в бою.',
+    'Уникальный навык колдуньи. Палатка первой помощи получает +4 использования в бою.',
+  ],
+  commonDescription: 'Уникальный навык колдуньи. Палатка первой помощи получает одно дополнительное '
+    + 'использование в бою за каждый уровень навыка — до четырёх на высшем уровне мастерства.',
+  /**
+   * Heroes III's own first aid, one drawing per level.
+   *
+   * Three, because that game had three levels of it; Heroes V draws a racial
+   * four times and the fourth repeats the third, which is what the shipped War
+   * Machines icons do for the same reason.
+   */
+  pictures: [
+    join(ASSETS, 'skills', 'h3_first_aid_1.png'),
+    join(ASSETS, 'skills', 'h3_first_aid_2.png'),
+    join(ASSETS, 'skills', 'h3_first_aid_3.png'),
+  ],
 };
+
+/**
+ * The three perks of her branch — what a level up offers once she has the
+ * racial.
+ *
+ * A branch with no perks is a branch that never grows, which is what the first
+ * launch showed. Each hangs off the racial and asks for nothing else, exactly as
+ * the shipped Multishot hangs off Avenger: the branch IS the gate, because no
+ * other class has it.
+ *
+ * All three are words and an icon for now, like the racial: what they do is the
+ * extension's half. They are written down here because deciding what a branch
+ * offers is a design decision and belongs where the class is described.
+ */
+export const TENT_PERKS = [
+  {
+    id: 'HERO_SKILL_CLEAN_BANDAGE',
+    name: 'Чистая повязка',
+    description: 'Палатка первой помощи снимает с отряда отрицательные эффекты, когда лечит его.',
+    label: 'clean',
+  },
+  {
+    id: 'HERO_SKILL_HEALING_BREW',
+    name: 'Целебный настой',
+    description: 'Палатка первой помощи накладывает на вылеченный отряд случайный положительный эффект.',
+    label: 'buff',
+  },
+  {
+    id: 'HERO_SKILL_SPARE_KIT',
+    name: 'Запасной комплект',
+    description: 'Разрушенная в бою палатка первой помощи восстанавливается после сражения.',
+    label: 'fix',
+  },
+].map((p) => ({
+  ...p,
+  // DRAFTS: the game's own tent with the word stamped on it, grey and lit, made
+  // by tools/label-icon.ts. Three drawings that differ only in what they mean is
+  // not something anybody wants to draw twice before the effects even exist.
+  pictures: [
+    join(ASSETS, 'skills', `perk_${p.label}_grey.png`),
+    join(ASSETS, 'skills', `perk_${p.label}.png`),
+  ],
+}));
 
 /**
  * What mod-005 names its buildings with — one per class: `E2eBuilding`,
@@ -731,12 +808,23 @@ export function ensureWitch(mod: CreatureMod): void {
   }
   if (!(mod.skills ?? []).some((s) => s.id === TENT_MASTER.id)) {
     addHeroSkill(mod, {
-      id: TENT_MASTER.id,
+      ...TENT_MASTER,
       kind: 'racial',
       heroClass: WITCH.id,
-      name: TENT_MASTER.name,
-      description: TENT_MASTER.description,
       aiRace: 'Sylvan',
+    }, takenSkills(types));
+  }
+  // And the branch's perks, after the racial they hang off.
+  for (const perk of TENT_PERKS) {
+    if ((mod.skills ?? []).some((s) => s.id === perk.id)) continue;
+    addHeroSkill(mod, {
+      id: perk.id,
+      name: perk.name,
+      description: perk.description,
+      pictures: perk.pictures,
+      kind: 'perk',
+      heroClass: WITCH.id,
+      basicSkill: TENT_MASTER.id,
     }, takenSkills(types));
   }
 }

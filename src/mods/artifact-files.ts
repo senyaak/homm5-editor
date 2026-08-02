@@ -11,7 +11,6 @@
 
 import { readFileSync } from 'node:fs';
 import { basename } from 'node:path';
-import { readGif } from '../format/gif.ts';
 import { fitSquare, textureDoc, writeDDS } from '../format/texture.ts';
 import { placeGeometry, positionsBox } from '../scene/geometry.ts';
 import { parseTypeSpec } from '../schema/typespec.ts';
@@ -21,6 +20,7 @@ import {
 } from './artifacts.ts';
 import { refPath } from './dwellings.ts';
 import { uidFor } from './mod-art.ts';
+import { readPicture } from '../format/png.ts';
 import { TYPES, mustRead, mustReadBytes, utf16 } from './mod-files.ts';
 import { SHIPPED_SET_EFFECTS } from './mod-model.ts';
 import { retuneBox } from './model-box.ts';
@@ -97,7 +97,7 @@ export function buildArtifacts(artifacts: readonly ModArtifact[], read: DataRead
     // The icon first: a board is made OF it, so it has to exist by then.
     if (a.picture) {
       const source = readFileSync(a.picture);
-      const image = fitSquare(readGif(source), 64);
+      const image = fitSquare(readPicture(source, 'the artifact icon'), 64);
       files.push({ path: p.iconDDS, data: writeDDS(image) });
       files.push({
         path: p.icon,

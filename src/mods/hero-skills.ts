@@ -36,13 +36,14 @@
 // So a skill of ours is authored here and taught to do something in the native
 // extension, and the two halves are built together or the skill is decoration.
 //
-// ICONS ARE HREFS, not pictures. A hero's portrait and a specialization's icon
-// are built from a drawing because each hero wants his own; a skill wants four
-// consistent ones and usually wants to look like the branch it belongs to, so
-// this points at textures that already exist. Nothing stops a drawing later —
-// it is the same texture builder — and until then a skill that names none
-// borrows the War Machines icons, which is honest for a branch about a tent and
-// visible from the first launch.
+// ICONS COME THREE WAYS, and the order is what a skill wants said first: a
+// PICTURE of its own, built into the game's texture the way a hero's portrait
+// and a specialization's icon are; or HREFS at textures that already exist, for
+// a skill content to look like the branch it belongs to; or nothing, and it
+// borrows the War Machines set, which is honest for a branch about a tent and
+// visible from the first launch. One picture serves all four levels: the game
+// tells them apart by their names, and four drawings of the same tent is work
+// nobody asked for.
 
 import { count, insertAfterLine, insertBeforeLine, once, retune } from './xml-edit.ts';
 
@@ -121,6 +122,24 @@ export interface HeroSkillSpec {
   commonDescription?: string;
   /** Icons, as hrefs: four for a racial, two (grey, lit) for a perk. */
   icons?: string[];
+  /**
+   * A drawing to build its icon from — a path on disk, as `assets/` keeps them.
+   *
+   * Wins over `icons`: a skill with a picture of its own has said what it wants
+   * to look like. Re-read on every build, so editing the drawing and rebuilding
+   * is the whole loop. Either format the editor reads — PNG or GIF.
+   */
+  picture?: string;
+  /**
+   * One drawing per level, where the levels really look different.
+   *
+   * Heroes III drew first aid three times and Heroes V draws its racials four,
+   * so a racial ported from one to the other has three pictures and a fourth
+   * level to fill: the last one given is repeated rather than left blank, which
+   * is what the shipped War Machines icons do too (a common skill has three
+   * levels and the fourth entry repeats the third).
+   */
+  pictures?: string[];
   /** For a perk: the skill its branch hangs off — a racial of ours. */
   basicSkill?: string;
   /** For a perk: what the class must already hold. */
@@ -142,6 +161,41 @@ export interface ModHeroSkill extends HeroSkillSpec {
 
 /** The eight races the AI values are keyed by, in the shipped order. */
 const AI_RACES = ['Haven', 'Sylvan', 'Academy', 'Dungeon', 'Necropolis', 'Inferno', 'Fortress', 'Stronghold'];
+
+/**
+ * Where a skill's own icon is built, and the href the record points at it by.
+ *
+ * `level` is 1…4 for a racial drawn per level; without one there is a single
+ * texture and every level points at it.
+ */
+export function skillIconFile(skill: HeroSkillSpec, level?: number): {
+  dds: string; xdb: string; href: string;
+} {
+  const stem = skill.id.replace(/^HERO_SKILL_/, '');
+  const dir = `Textures/HeroScreen/Ours/${stem}`;
+  const name = level ? `${stem}_${level}` : stem;
+  return { dds: `${dir}/${name}.dds`, xdb: `${dir}/${name}.xdb`, href: `/${dir}/${name}.xdb#xpointer(/Texture)` };
+}
+
+/**
+ * The pictures a skill is drawn from, one per texture it needs.
+ *
+ * Four for a racial, two for a perk (grey and lit), and the last picture given
+ * fills whatever is left — three drawings for four levels is the ordinary case
+ * when a Heroes III skill is being ported.
+ */
+export function skillPictures(skill: HeroSkillSpec): { picture: string; file: ReturnType<typeof skillIconFile> }[] {
+  const want = skill.kind === 'racial' ? 4 : 2;
+  const given = skill.pictures?.length ? skill.pictures : skill.picture ? [skill.picture] : [];
+  if (!given.length) return [];
+  // One picture and no list means one texture for all of them: naming it per
+  // level would write the same bytes four times.
+  if (given.length === 1) return [{ picture: given[0]!, file: skillIconFile(skill) }];
+  return Array.from({ length: want }, (_, i) => ({
+    picture: given[Math.min(i, given.length - 1)]!,
+    file: skillIconFile(skill, i + 1),
+  }));
+}
 
 /** Where one of its texts goes, and the href pointing at it. */
 export function skillTextFile(skill: HeroSkillSpec, what: 'Name' | 'Description', level?: number): {
@@ -210,7 +264,13 @@ export function patchSkillTable(table: string, skills: readonly ModHeroSkill[]):
     const problems = skillProblems(s);
     if (problems.length) throw new Error(`${s.id}: ${problems.join('; ')}`);
     const racial = s.kind === 'racial';
-    const icons = s.icons ?? (racial ? DEFAULT_SKILL_ICONS : DEFAULT_PERK_ICONS);
+    // Its own drawings first, then hrefs it named, then the borrowed set.
+    const drawn = skillPictures(s);
+    const icons = drawn.length
+      ? (drawn.length === 1
+        ? new Array(racial ? 4 : 2).fill(drawn[0]!.file.href) as string[]
+        : drawn.map((d) => d.file.href))
+      : (s.icons ?? (racial ? DEFAULT_SKILL_ICONS : DEFAULT_PERK_ICONS));
     const levels = racial ? [1, 2, 3, 4] : [undefined];
     return [
       '<Item>',

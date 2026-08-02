@@ -72,12 +72,12 @@ import {
 } from './artifact-files.ts';
 import { buildBuildings } from './building-files.ts';
 import { buildDwellings } from './dwelling-files.ts';
-import { buildHeroes } from './hero-files.ts';
+import { buildHeroes, texturePair } from './hero-files.ts';
 import { patchSpecializationTypes } from './specializations.ts';
 import {
   CLASS_TABLE, classNameFile, patchClassTable, patchClassTypes, patchSkillPrerequisites,
 } from './hero-classes.ts';
-import { SKILL_TABLE, patchSkillTable, patchSkillTypes, skillTexts } from './hero-skills.ts';
+import { SKILL_TABLE, patchSkillTable, patchSkillTypes, skillPictures, skillTexts } from './hero-skills.ts';
 
 /** The camera the hire dialog uses. CREATURE_UNKNOWN already sits on this one. */
 const HIRE_CAMERA = '/Cameras/Interface/HireCreatures.(Camera).xdb#xpointer(/Camera)';
@@ -237,6 +237,10 @@ export function buildCreatureMod(mod: CreatureMod, read: DataReader): BuildRepor
     files.push({ path: SKILL_TABLE, data: Buffer.from(table, 'latin1') });
     for (const s of skills) {
       for (const f of skillTexts(s)) files.push({ path: f.path, data: utf16(f.text) });
+      // Its own icons, built from the drawings the same way a hero's face is.
+      for (const drawn of skillPictures(s)) {
+        files.push(...texturePair(drawn.picture, 64, drawn.file.dds, drawn.file.xdb));
+      }
     }
   }
   if (mod.creatures.length) {

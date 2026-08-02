@@ -920,6 +920,8 @@ export interface ModHeroSkillDTO {
   descriptions?: string[];
   commonDescription?: string;
   icons?: string[];
+  picture?: string;
+  pictures?: string[];
   basicSkill?: string;
   prerequisites?: string[];
   aiRace?: string;
@@ -953,6 +955,10 @@ export interface ModsInstallSkillPayload {
   descriptions?: string[];
   commonDescription?: string;
   icons?: string[];
+  /** A drawing on disk to build its icon from — the mod builds the texture. */
+  picture?: string;
+  /** Or one per level, when the levels are drawn differently. */
+  pictures?: string[];
   basicSkill?: string;
   prerequisites?: string[];
   aiRace?: string;

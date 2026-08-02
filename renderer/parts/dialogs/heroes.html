@@ -307,6 +307,15 @@
             <label class="on-row"><span>Class<b class="req">*</b></span><select id="hk-class" title="the class this belongs to — one of ours"></select></label>
             <label class="on-row"><span>Name<b class="req">*</b></span><input id="hk-name" type="text" autocomplete="off" title="a racial is named at four levels; one name here becomes «name I…IV»"></label>
             <label class="on-row um-span"><span>Description</span><input id="hk-desc" type="text" autocomplete="off" placeholder="what it does, in words"></label>
+            <!-- A racial is drawn four times and a perk twice (grey, lit), so
+                 the pictures are a row apiece rather than one field: a skill
+                 ported from Heroes III has a drawing per level and the last one
+                 given fills whatever is left. One row filled is one texture for
+                 all of them, which is the ordinary case. -->
+            <label class="on-row um-span hk-pic-row"><span id="hk-pic-label-1">Picture I</span><input id="hk-pic-1" type="text" autocomplete="off" placeholder="a drawing to build its icon from — assets/skills/h3_first_aid_1.png" title="a picture on disk, PNG or GIF; the mod builds the game's texture from it"><button class="ghost hk-picture" data-for="hk-pic-1" title="choose a picture">Picture…</button></label>
+            <label class="on-row um-span hk-pic-row"><span id="hk-pic-label-2">Picture II</span><input id="hk-pic-2" type="text" autocomplete="off" placeholder="empty → the one above is used"><button class="ghost hk-picture" data-for="hk-pic-2" title="choose a picture">Picture…</button></label>
+            <label class="on-row um-span hk-pic-row"><span id="hk-pic-label-3">Picture III</span><input id="hk-pic-3" type="text" autocomplete="off" placeholder="empty → the one above is used"><button class="ghost hk-picture" data-for="hk-pic-3" title="choose a picture">Picture…</button></label>
+            <label class="on-row um-span hk-pic-row"><span id="hk-pic-label-4">Picture IV</span><input id="hk-pic-4" type="text" autocomplete="off" placeholder="empty → the one above is used"><button class="ghost hk-picture" data-for="hk-pic-4" title="choose a picture">Picture…</button></label>
             <label class="on-row um-span hk-perk"><span>Branch</span><select id="hk-branch" title="the skill this perk hangs off — a racial of ours"></select></label>
             <label class="on-row um-span hk-perk"><span>Needs first</span><select id="hk-needs" title="what the hero must already hold to be offered this perk"></select></label>
             <div class="um-note um-span">The game will show its name, its icon and its place in the tree, and do nothing whatever with it: every shipped skill's arithmetic is compiled against its own value. What it DOES comes from the native extension.</div>
