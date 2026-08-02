@@ -88,6 +88,42 @@ test('the editor opens a campaign scene and plays it', async () => {
   expect(spell.lit).toBe(8);
   expect(spell.after).toBe(0);
 
+  // An effect is not only sparks. Nine of the twelve this scene fires carry
+  // `<Models>` — the ice crystal of an ice bolt, the burning gate an arch devil
+  // steps out of, the meteors of a meteor shower — and without them a spell was
+  // the smoke and none of the fire.
+  const solid = await page.evaluate(() => {
+    window.view.showShot(14, 1); // the gating, four pieces of it
+    return window.view.scene()?.fxModels ?? 0;
+  });
+  expect(solid).toBeGreaterThan(0);
+
+  // The fallen stay down. Two things had them getting up: a one-shot clip was
+  // wrapped like a loop, so clamping it to its own duration landed on frame ZERO
+  // — a corpse standing to attention — and a cue was forgotten when its shot
+  // ended, so the swordsmen cut down in shot 13 were on their feet in shot 14.
+  // …and they have to be measured as POSES, not as clip names: a name says what
+  // was cued, and both faults left the right name on a figure standing up.
+  const swordsman = 'Swordsman.xdb#xpointer(/AdvMapMonster)';
+  const fallen = await page.evaluate((who) => {
+    window.view.showShot(0, 0); // before any of it, on his feet
+    const tall = window.view.scene()?.actors.find((a) => a.href === who)?.top ?? 0;
+    window.view.showShot(14, 0.5);
+    const s = window.view.scene();
+    const down = s?.actors.find((a) => a.href === who);
+    return {
+      tall,
+      dead: s?.actors.filter((a) => /^(death|defeat)/.test(a.kind)).length ?? 0,
+      kind: down?.kind, top: down?.top ?? 0,
+    };
+  }, swordsman);
+  expect(fallen.dead).toBeGreaterThan(0);
+  expect(fallen.kind).toBe('death');
+  // The highest joint of a standing swordsman is a unit and a half up; lying
+  // down it is a few tenths.
+  expect(fallen.tall).toBeGreaterThan(1);
+  expect(fallen.top).toBeLessThan(fallen.tall / 2);
+
   // …and a shot is lit by its own preset. The battle that opens the scene — 36
   // shots of it — overrides the scene's daylight with `InfernoArena`, a red key
   // light over black shade; the parley that follows keeps the scene's own. Read

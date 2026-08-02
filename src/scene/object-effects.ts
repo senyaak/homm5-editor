@@ -397,7 +397,21 @@ export function effectModelGeoms(
   if (!effHref) return [];
   const sharedDir = dirOf(resolveHref('', sharedHref));
   const effect = followHref(data, sharedXml, sharedDir, effHref);
-  if (!effect) return [];
+  return effect ? modelsOfEffect(effect, data, readXdb, texSize) : [];
+}
+
+/**
+ * The same, for an effect document already in hand.
+ *
+ * A dialog scene fires effects at a PLACE rather than hanging them off an
+ * object, so it has no shared to follow — and nine of the twelve effects
+ * C1M1's opening fires carry models (the meteor shower carries nineteen).
+ * Without them a spell is its sparks and nothing else: the blue column a hero
+ * casts inside is a model, not a particle system.
+ */
+export function modelsOfEffect(
+  effect: { xml: string; dir: string }, data: Assets, readXdb: ReadXdb, texSize: number,
+): GeomData[] {
   const block = effect.xml.match(/<Models>([\s\S]*?)<\/Models>/)?.[1];
   if (!block) return [];
   const out: GeomData[] = [];

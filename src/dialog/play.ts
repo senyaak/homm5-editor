@@ -12,9 +12,9 @@
 
 import type { Assets } from '../game/assets.ts';
 import { buildScene } from '../scene/scene.ts';
-import type { AmbientData, FxInstancePayload, Scene } from '../scene/payload.ts';
+import type { AmbientData, FxInstancePayload, GeomData, Scene } from '../scene/payload.ts';
 import { loadAmbient } from '../scene/ambient.ts';
-import { particlesOfEffect } from '../scene/object-effects.ts';
+import { modelsOfEffect, particlesOfEffect } from '../scene/object-effects.ts';
 import { dirOf, resolveHref } from '../scene/xdb.ts';
 import { actorRigs } from './actors.ts';
 import type { ActorRig } from './actors.ts';
@@ -69,6 +69,15 @@ export interface ShotEffectView {
   href: string;
   /** The effect's particle systems; empty when the chain does not resolve. */
   fx: FxInstancePayload[];
+  /**
+   * The effect's own geometry, placed in its local frame.
+   *
+   * An effect is not only sparks: nine of the twelve C1M1's opening fires carry
+   * `<Models>` — the glowing column a hero casts inside, the meteors of a
+   * meteor shower (nineteen of them). Left out, the spells were the smoke
+   * without the fire.
+   */
+  models: GeomData[];
 }
 
 /**
@@ -207,16 +216,21 @@ export function buildScenePlay(data: Assets, scenePath: string, options: PlayOpt
   // One effect is fired by many shots — eight copies of Prayer over a line of
   // soldiers, four of a succubus hit — and each is the same chain of documents
   // down to the same baked keys. Read once per href.
-  const fxCache = new Map<string, FxInstancePayload[]>();
-  const effectFx = (href: string): FxInstancePayload[] => {
-    if (!href) return [];
+  const texSize = options.texSize ?? 128;
+  const readXdb = (href: string): string | null => data.text(href.split('#')[0]!.replace(/^\//, ''));
+  const fxCache = new Map<string, { fx: FxInstancePayload[]; models: GeomData[] }>();
+  const effectOf = (href: string): { fx: FxInstancePayload[]; models: GeomData[] } => {
+    if (!href) return { fx: [], models: [] };
     const known = fxCache.get(href);
     if (known) return known;
     const rel = resolveHref(dirOf(scenePath), href);
     const xml = data.text(rel);
-    const list = xml ? particlesOfEffect({ xml, dir: dirOf(rel) }, data, options.texSize ?? 128) : [];
-    fxCache.set(href, list);
-    return list;
+    const doc = xml ? { xml, dir: dirOf(rel) } : null;
+    const built = doc
+      ? { fx: particlesOfEffect(doc, data, texSize), models: modelsOfEffect(doc, data, readXdb, texSize) }
+      : { fx: [], models: [] };
+    fxCache.set(href, built);
+    return built;
   };
 
   // The scene's own light replaces the arena's on every floor: the stage is
@@ -270,7 +284,7 @@ export function buildScenePlay(data: Assets, scenePath: string, options: PlayOpt
         pos: [e.pos.x, e.pos.y, e.pos.z] as [number, number, number],
         rot: e.rot,
         href: e.effect,
-        fx: effectFx(e.effect),
+        ...effectOf(e.effect),
       })),
     };
   });

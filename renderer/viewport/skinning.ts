@@ -68,19 +68,24 @@ const _a = new THREE.Quaternion();
 const _b = new THREE.Quaternion();
 
 /**
- * Put an object's bones where its clip says they are at `time`, looping.
+ * Put an object's bones where its clip says they are at `time`.
  *
  * The clip is already sampled onto an even grid (src/animation.ts bakes the
  * B-splines away), so this is a lookup and a blend — linear between
- * neighbouring samples, spherical for the rotations.
+ * neighbouring samples, spherical for the rotations. `loop` is what an idle
+ * does; a clip a scene plays once holds its last frame instead.
  */
-export function poseIdle(idle: IdleObject, time: number): void {
+export function poseIdle(idle: IdleObject, time: number, loop = true): void {
   const clip = idle.skin.clip;
   if (!clip) return;
   const n = clip.times.length;
   if (!n) return;
   const span = clip.duration || 1;
-  const at = ((time % span) + span) % span;
+  // A one-shot HOLDS its last frame. Wrapped like a loop it does not merely
+  // repeat: `time` clamped to the duration is exactly `span`, and `span % span`
+  // is zero — so a clip played to its end lands on its FIRST frame, and the
+  // creatures cut down in a scene stood straight back up.
+  const at = loop ? ((time % span) + span) % span : Math.min(Math.max(0, time), span);
   // Even spacing is what makes this a division rather than a search.
   const f = Math.min(n - 1, Math.max(0, at / span * (n - 1)));
   const i0 = Math.min(n - 1, Math.floor(f));

@@ -36,6 +36,20 @@ one.
 
 ### Fixed
 
+- **A shot's camera no longer laps its subject.** `Direction` on a camera set
+  says which way the heading travels, not "go the long way round" — read the
+  wrong way, 583 of the shipped moves swung most of a circle instead of 150.
+  Agrael's first cast, a straight pull-back from his face to his whole army,
+  orbited him.
+- **An effect brings its own geometry.** Nine of the twelve effects C1M1's
+  opening fires carry `<Models>` — the ice crystal of an ice bolt, the burning
+  gate an arch devil steps through — and only their sparks were drawn. (Two
+  pieces are still missing: a model that carries its own skeletal animation is
+  drawn in the pose it starts in, and an effect's `<Lights>` are not drawn.)
+- **The fallen stay down.** A clip played once was wrapped like a loop, so
+  clamping it to its own length landed on frame zero — a corpse standing to
+  attention — and a death was forgotten when its shot ended, so the swordsmen
+  cut down in one shot were on their feet in the next.
 - **A scene's armies move, and there is one of each hero.** Three things were
   wrong at once and each hid the others. A cue usually says WHICH clip by a
   number — a position in that actor's own animation set — and only sometimes by

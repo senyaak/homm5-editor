@@ -246,6 +246,17 @@ from the angles instead (`targetOf`).
 Four cameras carry a **negative** `Rod` — the same eye written with the heading
 turned around.
 
+`Direction` is **which way the heading travels, not "the long way round"**: 1
+means the yaw grows, 0 that it shrinks. Over the 1248 sets whose two ends face
+differently it agrees with the short way round in 1089, so most of the time it
+only says out loud what the two angles already imply; the 150 that disagree are
+the shots that really do swing behind somebody, and a sweep past half a turn
+should be about that rare. Read as a "go the other way" flag it is not merely
+wrong on those — every set with Direction 1 and a heading that grows swung 330°
+the wrong side, which is 583 laps instead of 150. Senya caught it in the
+picture: Agrael's first cast is a straight pull-back in the game (rod 9 → 38,
+heading +30°) and ours orbited the demon.
+
 ## Sound
 
 A `<sound>` reference resolves to a `Sound` document whose `<uid>` names a blob:
@@ -336,6 +347,32 @@ going quietly green.
   seconds of a swordsman frozen mid-swing before he swings), and an effect is
   hidden rather than held at frame zero (a spell's flash sitting on the field
   before it is cast).
+
+  **A one-shot clip HOLDS its last frame, and a death outlives its shot.** Two
+  separate faults had the fallen getting up. The poser wrapped every clip like a
+  loop, and a one-shot clamped to its own duration is `span % span` — frame
+  ZERO, a corpse standing to attention. And a cue was forgotten when its shot
+  ended, so the swordsmen cut down in shot 13 were back on their feet in shot
+  14. What carries over is only `death`/`defeat` (holding `happy` would freeze a
+  hero in a grin for the rest of the scene) and only until the actor's next cue,
+  which is how the paladin killed in shot 15 gets up when shot 23 resurrects
+  him. A shot is shown from a standing start, so this is worked out by walking
+  the shots before it rather than accumulated as they run.
+
+  **An effect brings its own geometry.** `<Models>` on an effect is a real mesh
+  — the ice crystal of an ice bolt, the four burning panels of the gate an arch
+  devil steps out of, nineteen meteors in a meteor shower — and nine of the
+  twelve effects C1M1's opening fires carry one. Every part of every one of them
+  is `AM_TRANSPARENT` and self-illuminated, and most are additive, so they are
+  drawn unlit: read as ordinary scenery they come out as grey solids sitting in
+  the middle of the sparks.
+
+  Two pieces of an effect are still missing and both are visible. A model can
+  carry a `<SkelAnim>` (nine bones for the ice bolt, thirteen for the prayer)
+  and we draw it in its bind pose, so the crystal hangs in the air instead of
+  falling. And `<Lights>` — a `LightInstance` pointing at an `AnimLight`, whose
+  colour and intensity are a baked blob like an animation's — is not drawn at
+  all. [~]
 * `tools/test-dialog-scene.ts` — the corpus checks and the census above.
 * `tools/camera-shape.ts` — the convention measurement.
 * `src/dialog/actors.ts` — an actor's ARENA rig: the character's own mesh and

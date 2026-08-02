@@ -445,6 +445,29 @@ for (const doc of docs.filter((d) => d.root === 'DSceneCameraSet')) {
 check('a move starts and ends exactly on its two cameras', worstEnd < 1e-9,
   `${shotsChecked} moves, worst drift ${worstEnd.toExponential(1)}`);
 
+// `Direction` is which WAY the heading goes, not "take the long way round".
+// Read the other way it agreed with the two angles for a quarter of the sets
+// and sent the rest 330° round the wrong side — Agrael's first cast, a straight
+// pull-back in the game, orbited him. Under the right reading a sweep past half
+// a turn is the rare deliberate one: the shot that swings behind somebody.
+let sweeps = 0, laps = 0, agrees = 0, turning = 0;
+for (const doc of docs.filter((d) => d.root === 'DSceneCameraSet')) {
+  const set = loadCameraSet(doc.text);
+  const startDoc = set.startCamera && byPath.get(resolveHref(dirOf(doc.path), set.startCamera));
+  const finishDoc = set.finishCamera && byPath.get(resolveHref(dirOf(doc.path), set.finishCamera));
+  if (!startDoc || !finishDoc || set.ignoreYawDiff || set.circles) continue;
+  const shot = cameraShot(set, loadCamera(startDoc.text), loadCamera(finishDoc.text));
+  const swept = Math.abs(poseAt(shot, 1).yaw - poseAt(shot, 0).yaw);
+  if (swept < 1e-9) continue;
+  sweeps++;
+  if (swept > Math.PI) laps++;
+  turning++;
+  const plain = Math.abs(shot.finish.yaw + shot.finishCorrectionRot - shot.start.yaw - shot.startCorrectionRot);
+  if ((plain < Math.PI ? plain : 2 * Math.PI - plain) - swept > -1e-9) agrees++;
+}
+check('a camera sweep is a turn, not a lap', laps < sweeps / 4,
+  `${sweeps} sets turn at all, ${laps} of them past half a turn; the flag agrees with the short way in ${agrees}`);
+
 
 // ---------------------------------------------------------------------------
 // 7. The scene the campaign actually plays, drawn

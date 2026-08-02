@@ -278,12 +278,27 @@ const mix = (a: number, b: number, t: number): number => a + (b - a) * t;
 const mixPoint = (a: Point3, b: Point3, t: number): Point3 =>
   ({ x: mix(a.x, b.x, t), y: mix(a.y, b.y, t), z: mix(a.z, b.z, t) });
 
+/** The same angle, brought into (-π, π]. */
+function shortest(a: number): number {
+  const t = (a + Math.PI) % (2 * Math.PI);
+  return (t <= 0 ? t + 2 * Math.PI : t) - Math.PI;
+}
+
 /**
  * The pose partway through a shot, `t` running 0 to 1.
  *
  * Yaw is the only axis with a choice in it: the two ends can be any number of
  * turns apart, `IgnoreYawDiff` says to hold the start heading, `Direction`
  * picks the way round, and `Circles` adds whole turns on top.
+ *
+ * `Direction` is the WAY THE YAW GOES, not "take the long way round": 1 means
+ * the heading increases, 0 that it decreases. Measured over the 346 sets whose
+ * two ends face differently at all, it agrees with the short way round in 290
+ * of them — so most of the time it is only saying out loud what the two angles
+ * already imply, and the 56 that disagree are the shots that really do swing
+ * behind somebody. Read as a "go the other way" flag instead, all 150 sets with
+ * Direction 1 and a heading that grows swung 330° the wrong way round: Agrael's
+ * first cast, which in the game is a straight pull-back, orbited the demon.
  */
 export function poseAt(shot: CameraShot, t: number): OrbitPose {
   const k = shot.uniform ? t : ease(Math.min(1, Math.max(0, t)));
@@ -293,10 +308,14 @@ export function poseAt(shot: CameraShot, t: number): OrbitPose {
 
   let yaw = startYaw;
   if (!shot.ignoreYawDiff) {
-    let delta = finishYaw - startYaw;
-    // Turn the short way unless the set asked for the other one.
-    if (shot.direction) delta -= Math.sign(delta || 1) * 2 * Math.PI;
-    yaw = startYaw + (delta + Math.sign(delta || 1) * 2 * Math.PI * shot.circles) * k;
+    let delta = shortest(finishYaw - startYaw);
+    // Ends that face the same way do not turn, whatever the flag says.
+    if (Math.abs(delta) > 1e-9) {
+      if (shot.direction && delta < 0) delta += 2 * Math.PI;
+      if (!shot.direction && delta > 0) delta -= 2 * Math.PI;
+    }
+    const way = shot.direction ? 1 : -1;
+    yaw = startYaw + (delta + way * 2 * Math.PI * shot.circles) * k;
   }
 
   return {

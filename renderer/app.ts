@@ -29,7 +29,7 @@ import { materialFor, partTexture } from '#viewport/materials.ts';
 import { terrainColor, asTileSpace, terrainGeometry, waterCells, waterGeometry, makeWaterMesh, WATER_ORDER, remeshFloor, sea } from '#viewport/terrain-mesh.ts';
 import { refreshBlocked, refreshFootprints, syncFootprints, setShowBlocked, showBlocked } from '#viewport/overlays.ts';
 import { advanceIdle, clearIdle, removeIdle, addIdle, idleMode, setIdleMode } from '#viewport/idle.ts';
-import { actorKinds, advanceScene, closeScene, initDialogScenes, openScene, playing, setPlaying, shotFxCount, show } from '#features/dialog-scene.ts';
+import { actorKinds, advanceScene, closeScene, initDialogScenes, openScene, playing, setPlaying, shotFxCount, shotModelCount, show } from '#features/dialog-scene.ts';
 import type { SceneInfo } from '#electron/ipc.ts';
 import { roster, objectsOfClass, canCreateClass, mapNames, forgetClass } from '#core/rosters.ts';
 import { openRecolor, initRecolor } from '#features/mods/recolor.ts';
@@ -356,9 +356,11 @@ interface ViewApi {
   /** What is on screen: the scene, which shot, and what each actor is playing. */
   scene(): (SceneInfo & {
     shot: number; at: number; running: boolean;
-    actors: Array<{ href: string; kind: string }>;
+    actors: Array<{ href: string; kind: string; /** Height of the highest bone above their feet, world units. */ top: number }>;
     /** Particle systems the current shot is firing (see cueShotFx). */
     fx: number;
+    /** Pieces of effect geometry it is drawing alongside them. */
+    fxModels: number;
     /** Where the camera is — the shot owns it while a scene is up. */
     eye: [number, number, number];
   }) | null;
@@ -672,6 +674,7 @@ const view: ViewApi = {
       running: playing.running,
       actors: actorKinds(),
       fx: shotFxCount(),
+      fxModels: shotModelCount(),
       eye: cam.active.position.toArray() as [number, number, number],
     } : null;
   },
