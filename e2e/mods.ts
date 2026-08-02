@@ -14,7 +14,7 @@ import {
   addArtifact, addArtifactSet, addBuilding, addCreature, addHero, addHeroClass, addHeroSkill,
   addSpecialization, newCreatureMod,
   removeArtifact, removeArtifactSet, removeBuilding, removeCreature, removeHero, removeHeroClass,
-  removeHeroSkill, removeSpecialization,
+  removeSpecialization,
   updateArtifact, updateArtifactSet,
 } from '../src/mods/mod-model.ts';
 import { takenClasses } from '../src/mods/hero-classes.ts';
@@ -476,9 +476,9 @@ const OURS = {
   // And the specialization he holds. Cleared AFTER him, always: one a hero
   // still names cannot be taken out, and it is the model that says so.
   specializations: [GEM_SPEC.id],
-  // The class she IS and the racial she holds. Cleared after her for the same
-  // reason and in the same order — a class owning a skill refuses to go first.
-  skills: [TENT_MASTER.id],
+  // The class she IS, which takes its own racial with it — the class is the
+  // whole and the skill is part of it. Cleared after her, like the
+  // specialization: a class a hero is still of cannot be taken out.
   classes: [WITCH.id],
 };
 
@@ -520,9 +520,6 @@ export function clearFixture(gameRoot: string): void {
   }
   // After the heroes, and only then: removeSpecialization refuses one that is
   // still held, which is the rule and not an obstacle to work around.
-  for (const id of OURS.skills) {
-    if ((mod.skills ?? []).some((s) => s.id === id)) { removeHeroSkill(mod, id); touched = true; }
-  }
   for (const id of OURS.classes) {
     if ((mod.classes ?? []).some((c) => c.id === id)) { removeHeroClass(mod, id); touched = true; }
   }

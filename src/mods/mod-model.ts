@@ -305,11 +305,18 @@ export function updateHeroClass(mod: CreatureMod, id: string, spec: HeroClassSpe
 }
 
 /**
- * Take one out, and close the gap behind it.
+ * Take one out, and the skills that belong to it with it.
  *
- * Refused while a hero of the mod is of it, and while a skill of the mod is
- * bound to it: both would be left naming a value the enum no longer declares,
- * which the game reads as a parse error rather than as "no class".
+ * THE CLASS IS THE WHOLE, and its racial is part of it: the skill names the
+ * class and the class weights the skill, so neither can be taken out first
+ * without leaving the other naming something the enum no longer declares — a
+ * parse error, not a class or a skill missing. Refusing both ways is a knot
+ * nobody can untie, so removing the class removes what hangs off it, and
+ * removing a skill a class still weights says to remove the class instead.
+ *
+ * A HERO is different and is still refused: he is not part of the class, he is
+ * a character who happens to be of it, and what to make him instead is his
+ * author's decision rather than this function's.
  */
 export function removeHeroClass(mod: CreatureMod, id: string): ModHeroClass {
   const list = mod.classes ?? [];
@@ -317,8 +324,16 @@ export function removeHeroClass(mod: CreatureMod, id: string): ModHeroClass {
   if (at < 0) throw new Error(`${id} is not in the mod`);
   const heroes = (mod.heroes ?? []).filter((h) => h.heroClass === id).map((h) => h.id);
   if (heroes.length) throw new Error(`${id} is the class of ${heroes.join(', ')} — change them first`);
-  const skills = (mod.skills ?? []).filter((s) => s.heroClass === id).map((s) => s.id);
-  if (skills.length) throw new Error(`${id} owns ${skills.join(', ')} — remove those first`);
+  const skills = mod.skills ?? [];
+  // Its own skills go first, and the weights naming them go with the record
+  // being spliced out — which is why there is no sum left half-written.
+  for (const owned of skills.filter((s) => s.heroClass === id)) {
+    const held = (mod.heroes ?? []).filter((h) => h.primarySkill?.skill === owned.id
+      || h.skills?.some((k) => k.skill === owned.id)).map((h) => h.id);
+    if (held.length) throw new Error(`${owned.id} is held by ${held.join(', ')} — change them first`);
+    skills.splice(skills.indexOf(owned), 1);
+  }
+  skills.forEach((s, i) => { s.number = SHIPPED_SKILLS + i; });
   const gone = list.splice(at, 1)[0]!;
   list.forEach((c, i) => { c.number = SHIPPED_CLASSES + i; });
   return gone;
@@ -364,8 +379,14 @@ export function removeHeroSkill(mod: CreatureMod, id: string): ModHeroSkill {
   const heroes = (mod.heroes ?? []).filter((h) => h.primarySkill?.skill === id || h.skills?.some((k) => k.skill === id))
     .map((h) => h.id);
   if (heroes.length) throw new Error(`${id} is held by ${heroes.join(', ')} — change them first`);
+  // A weight naming a skill that is gone is the same parse error the class is,
+  // and dropping the weight silently would leave the hundred short. The class
+  // owns its racial, so the way out is to take the class out — which takes this
+  // with it (removeHeroClass).
   const classes = (mod.classes ?? []).filter((c) => c.skills.some((w) => w.skill === id)).map((c) => c.id);
-  if (classes.length) throw new Error(`${id} is weighted by ${classes.join(', ')} — change them first`);
+  if (classes.length) {
+    throw new Error(`${id} is weighted by ${classes.join(', ')} — remove the class, which takes its own skills with it`);
+  }
   const branch = list.filter((s) => s.basicSkill === id).map((s) => s.id);
   if (branch.length) throw new Error(`${id} carries ${branch.join(', ')} — remove those first`);
   const gone = list.splice(at, 1)[0]!;
