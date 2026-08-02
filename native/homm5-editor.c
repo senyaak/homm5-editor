@@ -1885,14 +1885,63 @@ static void read_army(void *army, SlotState *out) {
 // --- moving creatures ------------------------------------------------------
 
 /**
+ * A GESTURE IS DECIDED BEFORE ANY OF IT IS DONE.
+ *
+ * What a slot holds does not change while a gesture runs. `Execute` hands the
+ * engine a command carrying two slot numbers and a number, and it is carried
+ * out later — until then the army reads exactly as it did. So a gesture that
+ * looked at the slots between its own moves saw the state it started from and
+ * worked the next move out as if the last had not happened: that is how Alt
+ * gathered one stack and stopped, and how an even split of 4, 4, 4 became
+ * 8, 0, 4.
+ *
+ * Hence a plan. The arithmetic is done here, on a copy of the army that we keep
+ * ourselves, and what comes out is a list of moves that are right in the order
+ * they are sent. Commands carry no counts, so they mean the same thing whenever
+ * the engine gets round to them.
+ */
+#define MAX_MOVES 16
+
+typedef struct {
+  int from, to;
+  /** What the target is to end up holding — see CONTROLLER_TOTAL. */
+  int want;
+} Move;
+
+typedef struct {
+  SlotState slot[SLOT_COUNT];
+  Move move[MAX_MOVES];
+  int moves;
+} Plan;
+
+/** Hand this many creatures over — on paper, where the arithmetic is ours. */
+static void plan_move(Plan *p, int from, int to, int howMany) {
+  if (p->moves >= MAX_MOVES || howMany <= 0 || howMany > p->slot[from].count) return;
+  p->move[p->moves].from = from;
+  p->move[p->moves].to = to;
+  p->move[p->moves].want = p->slot[to].count + howMany;
+  p->moves++;
+  p->slot[to].type = p->slot[from].type;
+  p->slot[to].count += howMany;
+  p->slot[from].count -= howMany;
+  if (!p->slot[from].count) p->slot[from].type = -1;
+}
+
+/**
  * Leave the target slot holding exactly `want`, and the source the rest.
  *
  * The one thing this feature does to the game. Everything above it is
  * arithmetic on numbers we have read; this is the engine's own command, built
  * the way the OK button builds it, so the screen, the network and the save all
  * learn about it the way they always did.
+ *
+ * `judge` asks the engine whether it would allow this. Only the FIRST move of a
+ * gesture may be asked: after that the controller is answering about a state
+ * the engine has not caught up with, and its answer is no about the wrong
+ * question.
  */
-static int set_target(void *part, int fromSide, int fromSlot, int toSide, int toSlot, int want) {
+static int set_target(void *part, int fromSide, int fromSlot, int toSide, int toSlot, int want,
+                      int judge) {
   if (!g_makeController || want < 0) return 0;
   void *fromArmy = army_of(part, fromSide), *toArmy = army_of(part, toSide);
   if (!fromArmy || !toArmy) return 0;
@@ -1912,35 +1961,39 @@ static int set_target(void *part, int fromSide, int fromSlot, int toSide, int to
 
   void *c = g_makeController(block, NULL);
   if (readable(c, CONTROLLER_TOTAL + 4) < CONTROLLER_TOTAL + 4) return 0;
-  // Zero means the pair was refused: an empty source, or two different
-  // creatures. Both are questions answered here rather than asked of the UI.
-  if (*(int *)((BYTE *)c + CONTROLLER_TOTAL) < want) return 0;
   ControllerAskFn allowed = (ControllerAskFn)vtable_entry(c, CONTROLLER_VALIDATE);
   ControllerAskFn apply = (ControllerAskFn)vtable_entry(c, CONTROLLER_EXECUTE);
-  if (!allowed || !apply || !allowed(c, NULL, want)) return 0;
+  if (!allowed || !apply) return 0;
+  if (judge) {
+    // Zero total means the pair was refused: an empty source, or two different
+    // creatures. Both are questions answered by our own reading of the army,
+    // but this is the engine agreeing with it before anything is sent.
+    if (*(int *)((BYTE *)c + CONTROLLER_TOTAL) < want) return 0;
+    if (!allowed(c, NULL, want)) return 0;
+  }
   apply(c, NULL, want);
   return 1;
 }
 
-/** Hand `howMany` over to a slot that already holds `hasNow`. */
-static int hand_over(void *part, int side, int fromSlot, int toSlot, int hasNow, int howMany) {
-  return set_target(part, side, fromSlot, side, toSlot, hasNow + howMany);
+/** Send a plan, in order. */
+static int carry_out(void *part, int side, const Plan *p) {
+  int did = 0;
+  for (int i = 0; i < p->moves; i++) {
+    if (!set_target(part, side, p->move[i].from, side, p->move[i].to, p->move[i].want, i == 0)) break;
+    did++;
+  }
+  return did;
 }
 
 // --- the gestures ----------------------------------------------------------
 
 /** Ctrl on a stack of more than one: a single creature into the first free slot. */
-static int put_one_out(void *part, int side, int from, const SlotState *slot, int everyFreeSlot) {
-  int spare = slot[from].count - 1;
-  int did = 0;
-  for (int i = 0; i < SLOT_COUNT && spare > 0; i++) {
-    if (slot[i].type >= 0) continue;
-    if (!hand_over(part, side, from, i, 0, 1)) break;
-    did++;
-    spare--;
-    if (!everyFreeSlot) break;
+static void put_one_out(Plan *p, int from, int everyFreeSlot) {
+  for (int i = 0; i < SLOT_COUNT; i++) {
+    if (p->slot[i].type >= 0 || p->slot[from].count < 2) continue;
+    plan_move(p, from, i, 1);
+    if (!everyFreeSlot) return;
   }
-  return did;
 }
 
 /**
@@ -1949,25 +2002,21 @@ static int put_one_out(void *part, int side, int from, const SlotState *slot, in
  * The gesture reads the same either way — "this single creature is in the wrong
  * place" — and which way it goes is a question the stack itself answers.
  */
-static int put_one_back(void *part, int side, int from, const SlotState *slot) {
+static void put_one_back(Plan *p, int from) {
   int home = -1;
   for (int i = 0; i < SLOT_COUNT; i++) {
-    if (i == from || slot[i].type != slot[from].type) continue;
-    if (home < 0 || slot[i].count > slot[home].count) home = i;
+    if (i == from || p->slot[i].type != p->slot[from].type) continue;
+    if (home < 0 || p->slot[i].count > p->slot[home].count) home = i;
   }
-  return home >= 0 && hand_over(part, side, from, home, slot[home].count, 1);
+  if (home >= 0) plan_move(p, from, home, 1);
 }
 
 /** Alt: every stack of this creature into the clicked one. */
-static int gather(void *part, int side, int into, const SlotState *slot) {
-  int has = slot[into].count, did = 0;
+static void gather(Plan *p, int into) {
   for (int i = 0; i < SLOT_COUNT; i++) {
-    if (i == into || slot[i].type != slot[into].type) continue;
-    if (!hand_over(part, side, i, into, has, slot[i].count)) continue;
-    has += slot[i].count;
-    did++;
+    if (i == into || p->slot[i].type != p->slot[into].type) continue;
+    plan_move(p, i, into, p->slot[i].count);
   }
-  return did;
 }
 
 /**
@@ -1987,49 +2036,36 @@ static int gather(void *part, int side, int into, const SlotState *slot) {
  * "how many the target ends up with" and "how many cross" are the same number,
  * so nothing here has to reason about the pair.
  */
-static int spread(void *part, int side, int from, const SlotState *slot) {
+static void spread(Plan *p, int from) {
   int member[SLOT_COUNT], members = 0, total = 0, most = 0, least = 0;
   for (int i = 0; i < SLOT_COUNT; i++) {
-    if (slot[i].type != slot[from].type || slot[i].count < 2) continue;
-    if (!members || slot[i].count > most) most = slot[i].count;
-    if (!members || slot[i].count < least) least = slot[i].count;
-    total += slot[i].count;
+    if (p->slot[i].type != p->slot[from].type || p->slot[i].count < 2) continue;
+    if (!members || p->slot[i].count > most) most = p->slot[i].count;
+    if (!members || p->slot[i].count < least) least = p->slot[i].count;
+    total += p->slot[i].count;
     member[members++] = i;
   }
-  if (!members) return 0;
+  if (!members) return;
 
-  int free_slots = 0;
-  for (int i = 0; i < SLOT_COUNT; i++) if (slot[i].type < 0) free_slots++;
+  // Where a stack may go: the ones this creature already has, and the free ones.
+  int target[SLOT_COUNT], targets = 0;
+  for (int i = 0; i < members; i++) if (member[i] != from) target[targets++] = member[i];
+  for (int i = 0; i < SLOT_COUNT; i++) if (p->slot[i].type < 0) target[targets++] = i;
 
   // Level first, then grow: one more stack only once the ones there are even.
   int level = most - least <= 1;
   int parts = level ? members + 1 : members;
-  if (parts > members + free_slots) parts = members + free_slots;
+  if (parts > targets + 1) parts = targets + 1;
   if (parts > total) parts = total;
-  // Nothing to do rather than a move that changes nothing: even stacks with no
+  // Nothing at all rather than a move that changes nothing: even stacks with no
   // free slot to grow into, or a lone creature that cannot be halved.
-  if (parts < 2 || (level && parts == members)) return 0;
+  if (parts < 2 || (level && parts == members)) return;
 
-  // Gather.
-  int has = slot[from].count, did = 0;
-  for (int i = 0; i < members; i++) {
-    if (member[i] == from) continue;
-    if (!hand_over(part, side, member[i], from, has, slot[member[i]].count)) return 0;
-    has += slot[member[i]].count;
-    did++;
-  }
+  for (int i = 0; i < members; i++)
+    if (member[i] != from) plan_move(p, member[i], from, p->slot[member[i]].count);
 
-  // Deal: the emptied slots first, so stacks stay where the player put them.
-  int target[SLOT_COUNT], targets = 0;
-  for (int i = 0; i < members; i++) if (member[i] != from) target[targets++] = member[i];
-  for (int i = 0; i < SLOT_COUNT; i++) if (slot[i].type < 0) target[targets++] = i;
-
-  int base = has / parts, over = has % parts;
-  for (int p = 1; p < parts && p - 1 < targets; p++) {
-    if (!hand_over(part, side, from, target[p - 1], 0, base + (p < over ? 1 : 0))) break;
-    did++;
-  }
-  return did;
+  int base = total / parts, over = total % parts;
+  for (int i = 1; i < parts; i++) plan_move(p, from, target[i - 1], base + (i < over ? 1 : 0));
 }
 
 static int __fastcall dnd_pick_hook(void *state, void *edx, void *arg) {
@@ -2056,21 +2092,18 @@ static int __fastcall dnd_pick_hook(void *state, void *edx, void *arg) {
   int side = 0, from = -1;
   if (!find_slot(part, widget, &side, &from)) return g_dndPick(state, NULL, arg);
 
-  void *army = army_of(part, side);
-  SlotState slot[SLOT_COUNT];
-  read_army(army, slot);
-  if (slot[from].type < 0) return g_dndPick(state, NULL, arg);
+  Plan plan;
+  plan.moves = 0;
+  read_army(army_of(part, side), plan.slot);
+  if (plan.slot[from].type < 0) return g_dndPick(state, NULL, arg);
+  int held_here = plan.slot[from].count;
 
-  int did;
-  if (alt) {
-    did = gather(part, side, from, slot);
-  } else if (shift && !ctrl) {
-    did = spread(part, side, from, slot);
-  } else if (slot[from].count > 1) {
-    did = put_one_out(part, side, from, slot, ctrl && shift);
-  } else {
-    did = ctrl && !shift ? put_one_back(part, side, from, slot) : 0;
-  }
+  if (alt) gather(&plan, from);
+  else if (shift && !ctrl) spread(&plan, from);
+  else if (held_here > 1) put_one_out(&plan, from, ctrl && shift);
+  else if (ctrl && !shift) put_one_back(&plan, from);
+
+  int did = carry_out(part, side, &plan);
 
   if (g_clicksLogged < 40) {
     g_clicksLogged++;
@@ -2080,13 +2113,14 @@ static int __fastcall dnd_pick_hook(void *state, void *edx, void *arg) {
     log_num("       alt ", alt);
     log_num("       army ", side + 1);
     log_num("       slot ", from + 1);
-    log_num("       holding ", slot[from].count);
+    log_num("       holding ", held_here);
+    log_num("       moves planned ", plan.moves);
     log_num("       moves made ", did);
   }
 
-  if (!did) return g_dndPick(state, NULL, arg);
-  // Called off the way the engine calls a click off, so no stack is left
-  // hanging on the cursor with the split already made.
+  // Called off whatever came of it: the key says this click was a gesture, and
+  // a gesture that had nothing to do should still not leave a stack hanging on
+  // the cursor. Picking one up is what a click with NO key held is for.
   GiveUpFn give_up = (GiveUpFn)vtable_entry(state, DND_STATE_GIVE_UP);
   if (give_up) give_up(state, NULL);
   return 1;

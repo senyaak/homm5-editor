@@ -186,3 +186,20 @@ For the record, since two of them look like doors and are not:
   "offer to split". Anything that moves creatures through the drop inherits
   whatever the keyboard is doing at that moment; a controller built directly does
   not, and that is reason enough on its own.
+
+### And it does not happen while you watch
+
+`Execute` hands over a command — two slot numbers and a number, no counts — and
+the army goes on reading exactly as it did. By the next click it is up to date;
+within the one call that sent it, nothing has moved.
+
+So a gesture cannot look at the army between its own moves. One that does works
+the second move out as though the first had not happened, and the controller it
+builds for it is judging a state that has not arrived: `Validate` says no, to
+the wrong question. Alt gathering one stack of five and stopping, and an even
+split of 4, 4, 4 coming out as 8, 0, 4, were both this.
+
+The answer is a plan: decide the whole gesture on a copy of the army kept here,
+then send the moves in order. Commands carry no counts, so they mean the same
+thing whenever the engine gets round to them, and only the FIRST of them can
+usefully be put to `Validate`.
