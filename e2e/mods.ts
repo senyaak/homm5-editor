@@ -512,6 +512,58 @@ export const TENT_MASTER = {
  * extension's half. They are written down here because deciding what a branch
  * offers is a design decision and belongs where the class is described.
  */
+/**
+ * «Запасной комплект», the battle half: was there a tent when the fighting
+ * started?
+ *
+ * Straight-line code, and that is the point — it runs once, when the battle has
+ * been built, so it can simply look. The game's own death hooks stay the game's:
+ * we do not need to be told when the tent dies, only whether it existed.
+ */
+const SPARE_KIT_IN_BATTLE = [
+  '-- Was there a tent when the fighting started? Only the battle can say.',
+  'local attacker = GetAttackerHero();',
+  'if attacker ~= nil then',
+  '\tif GetAttackerWarMachine(WAR_MACHINE_FIRST_AID_TENT) ~= nil then',
+  '\t\tSetGameVar("h5e.tent."..GetHeroName(attacker), "1");',
+  '\tend;',
+  'end;',
+  'local defender = GetDefenderHero();',
+  'if defender ~= nil then',
+  '\tif GetDefenderWarMachine(WAR_MACHINE_FIRST_AID_TENT) ~= nil then',
+  '\t\tSetGameVar("h5e.tent."..GetHeroName(defender), "1");',
+  '\tend;',
+  'end;',
+].join('\n');
+
+/**
+ * And the map half, which is where the perk actually happens.
+ *
+ * Both sides of the battle, because a tent is lost by whoever retreated as well
+ * as by the winner. The variable is cleared whether or not anything was given
+ * back: it says "there was a tent in the last battle", and letting it stand
+ * would hand this hero a tent after every battle for the rest of the game.
+ */
+const SPARE_KIT_ON_THE_MAP = [
+  'function SpareKit_AfterCombat(combatIndex)',
+  '\tfor side = 0, 1 do',
+  '\t\tlocal hero = GetSavedCombatArmyHero(combatIndex, side);',
+  '\t\tif hero ~= nil then',
+  '\t\t\tif GetGameVar("h5e.tent."..hero, "") == "1" then',
+  '\t\t\t\tif HasHeroSkill(hero, HERO_SKILL_SPARE_KIT) then',
+  '\t\t\t\t\tif not HasHeroWarMachine(hero, WAR_MACHINE_FIRST_AID_TENT) then',
+  '\t\t\t\t\t\tGiveHeroWarMachine(hero, WAR_MACHINE_FIRST_AID_TENT);',
+  '\t\t\t\t\tend;',
+  '\t\t\t\tend;',
+  '\t\t\t\tSetGameVar("h5e.tent."..hero, "");',
+  '\t\t\tend;',
+  '\t\tend;',
+  '\tend;',
+  'end;',
+  '',
+  'Trigger(COMBAT_RESULTS_TRIGGER, "SpareKit_AfterCombat");',
+].join('\n');
+
 export const TENT_PERKS = [
   {
     id: 'HERO_SKILL_CLEAN_BANDAGE',
@@ -530,6 +582,12 @@ export const TENT_PERKS = [
     name: 'Запасной комплект',
     description: 'Разрушенная в бою палатка первой помощи восстанавливается после сражения.',
     label: 'fix',
+    // The one of the three that is NOT waiting for the extension: its content is
+    // a moment, and the engine hands moments to Lua. Two halves, because after
+    // the battle "no tent" and "never had one" look the same — only the battle
+    // can tell them apart, and a game variable is what crosses back.
+    combatScript: SPARE_KIT_IN_BATTLE,
+    script: SPARE_KIT_ON_THE_MAP,
   },
 ].map((p) => ({
   ...p,
@@ -834,6 +892,8 @@ export function ensureWitch(mod: CreatureMod): void {
       kind: 'perk',
       heroClass: WITCH.id,
       basicSkill: TENT_MASTER.id,
+      // Only one of the three carries any, and it carries both halves.
+      ...('script' in perk ? { script: perk.script, combatScript: perk.combatScript } : {}),
     }, takenSkills(types));
   }
 }
