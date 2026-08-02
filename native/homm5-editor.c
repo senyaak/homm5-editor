@@ -1769,6 +1769,60 @@ static const BYTE SPLIT_OK_HEAD[SPLIT_OK_HEAD_LEN] = {
 typedef int(__fastcall *SplitOkFn)(void *dialog, void *edx, void *arg);
 static SplitOkFn g_splitOk = NULL;
 
+/**
+ * The controller factory itself — eight values in, a controller out.
+ *
+ * This is the door to a primitive of our own: a controller built here and told
+ * `Execute` moves creatures with no window, no drag and no regard for which key
+ * is held. Everything so far has gone through the interface instead, which is
+ * why each attempt could only be judged by running the game and looking.
+ *
+ * What to pass is measured, not reasoned about, from the splits that already
+ * work.
+ */
+/**
+ * `CHeroDragStackController`'s constructor: ONE argument, a block of fields.
+ *
+ * The generic factory is never called on this screen — the hero screen builds
+ * its own controller straight from here. So the primitive this feature wants is
+ * exactly this: fill the block, get a controller, tell it Execute. No window,
+ * no drag, no key. What goes in the block is measured from a split that works.
+ */
+#define MAKE_HERO_RVA 0x412190u
+#define MAKE_HERO_HEAD_LEN 6
+static const BYTE MAKE_HERO_HEAD[MAKE_HERO_HEAD_LEN] = { 0x56, 0x57, 0x6A, 0x40, 0x8B, 0xF9 };
+
+typedef void *(__fastcall *MakeHeroFn)(void *block, void *edx);
+static MakeHeroFn g_makeHero = NULL;
+
+/**
+ * A CONTROLLER OF OUR OWN.
+ *
+ * Of the nine fields the constructor is given, exactly two ever change: the
+ * slot moved FROM and the slot moved TO. The rest describe the screen and hold
+ * still. So one real split, whatever made it, hands over everything needed —
+ * and from then on any two slots can be paired by writing two numbers.
+ *
+ * That is the whole feature's foundation, and it is why the gestures no longer
+ * touch drag and drop, windows, or the keyboard: they work out what should
+ * happen, and this makes it happen.
+ */
+#define BLOCK_SIZE 0x24u
+#define BLOCK_FROM 12u
+#define BLOCK_TO 24u
+static BYTE g_block[BLOCK_SIZE];
+static int g_blockKnown = 0;
+
+#define MAKE_RAW_RVA 0x482b90u
+#define MAKE_RAW_HEAD_LEN 7
+static const BYTE MAKE_RAW_HEAD[MAKE_RAW_HEAD_LEN] = {
+  0x53, 0x56, 0x57, 0x6A, 0x3C, 0x8B, 0xFA
+};
+
+typedef void *(__fastcall *MakeRawFn)(void *ecx, void *edx, void *a1, void *a2, void *a3,
+                                      void *a4, void *a5, void *a6);
+static MakeRawFn g_makeRaw = NULL;
+
 #define MAKE_CONTROLLER_RVA 0x3f8310u
 #define MAKE_CONTROLLER_HEAD_LEN 6
 static const BYTE MAKE_CONTROLLER_HEAD[MAKE_CONTROLLER_HEAD_LEN] = {
@@ -1784,22 +1838,50 @@ typedef int(__fastcall *ControllerAskFn)(void *self, void *edx, int howMany);
 
 static SplitShowFn g_splitShow = NULL;
 /**
- * The answers a gesture has decided on, in the order the windows will ask.
+ * The answers a gesture is waiting to give, in the order the windows will ask.
  *
- * A QUEUE, because the window does not open during the call — it opens a moment
- * later, and a gesture may set several going. Clearing the answer as soon as
- * the call returned meant the window arrived to find nothing pending and asked
- * the player instead, four times over for a gesture that made four splits.
+ * A QUEUE, because the window opens AFTER the call that asks for the split
+ * returns — an answer taken away immediately is an answer that never arrives,
+ * and the window appears and asks the player instead. What leaked into the
+ * player's own Shift-drag was never a real split's answer: it was a PROBE
+ * whose window never opened, because the two slots held different creatures.
+ * Those are taken back explicitly.
  *
- * Zero means "half of whatever the controller says there is", which is the one
- * number a gesture cannot work out in advance.
+ * Zero means "half of whatever the controller says there is". A NEGATIVE number
+ * below the probe means "one N-th of what is left, rounded up" — which is how
+ * equal stacks are made without knowing any sizes in advance: hand out a third
+ * of what remains, then a half of what remains, and everything comes out level
+ * give or take one. Sizes cannot be asked for anyway; asking a free slot how
+ * big a stack is MOVES it there.
  */
-#define PENDING_MAX 8
-static int g_pending[PENDING_MAX];
-static int g_pendingLeft = 0;
+#define PROBE (-1)
+#define NOTHING_PENDING (-99)
+/** "One N-th of what is left", N being counted down in `g_partsLeft`. */
+#define EVEN (-2)
+/** "Leave exactly N behind" — the controller knows what it is holding, so the
+ *  number to hand over is its business, not ours. This is the only rule the
+ *  even split needs: every stack is told what to end up with. */
+#define LEAVE(n) (-1000 - (n))
 
-static void expect_split(int howMany) {
-  if (g_pendingLeft < PENDING_MAX) g_pending[g_pendingLeft++] = howMany;
+static int g_pending = NOTHING_PENDING;
+static int g_pendingTimes = 0;
+static int g_partsLeft = 0;
+static int g_probeTotal = 0;
+static int g_probeAnswered = 0;
+/** A controller's first four fields: the two armies, and the two slots. */
+static void *g_probeParts[4];
+
+/** Answer the next `times` windows with this, and then stop answering. */
+static void expect_split(int howMany, int times) {
+  g_pending = howMany;
+  g_pendingTimes = times;
+}
+
+/** An answer nobody came for. Only a probe leaves one — when the two slots
+ *  hold different creatures the engine opens no window at all. */
+static void nobody_asked(void) {
+  g_pending = NOTHING_PENDING;
+  g_pendingTimes = 0;
 }
 
 typedef int(__fastcall *ShowInPanelFn)(void *self, void *edx, void *what);
@@ -2282,6 +2364,61 @@ static int __fastcall drop_watch_hook(void *self, void *edx, void *fromWidget, v
   return answer;
 }
 
+static void *__fastcall make_hero_hook(void *block, void *edx) {
+  (void)edx;
+  if (readable(block, BLOCK_SIZE) >= BLOCK_SIZE) {
+    for (DWORD i = 0; i < BLOCK_SIZE; i++) g_block[i] = ((BYTE *)block)[i];
+    g_blockKnown = 1;
+  }
+  return g_makeHero(block, NULL);
+}
+
+/** A controller for these two slots, or nothing if the engine will not pair
+ *  them — which is itself the answer to "is that the same creature". */
+static void *controller_for(int fromSlot, int toSlot) {
+  if (!g_blockKnown || !g_makeHero) return NULL;
+  BYTE block[BLOCK_SIZE];
+  for (DWORD i = 0; i < BLOCK_SIZE; i++) block[i] = g_block[i];
+  *(int *)(block + BLOCK_FROM) = fromSlot;
+  *(int *)(block + BLOCK_TO) = toSlot;
+  return g_makeHero(block, NULL);
+}
+
+/** How many are in a slot, asked by pairing it with another and reading the
+ *  answer. Nothing happens: a controller only moves creatures when told to. */
+static int stack_size(int slot, int against) {
+  void *c = controller_for(slot, against);
+  return c && readable(c, CONTROLLER_TOTAL + 4) >= CONTROLLER_TOTAL + 4
+    ? *(int *)((BYTE *)c + CONTROLLER_TOTAL) : 0;
+}
+
+/** Move exactly this many out of one slot and into another. */
+static int move_creatures(int fromSlot, int toSlot, int howMany) {
+  void *c = controller_for(fromSlot, toSlot);
+  if (!c || howMany <= 0) return 0;
+  ControllerAskFn allowed = (*(ControllerAskFn **)c)[CONTROLLER_VALIDATE / 4];
+  ControllerAskFn move = (*(ControllerAskFn **)c)[CONTROLLER_EXECUTE / 4];
+  if (!allowed(c, NULL, howMany)) return 0;
+  move(c, NULL, howMany);
+  return 1;
+}
+
+static void *__fastcall make_raw_hook(void *ecx, void *edx, void *a1, void *a2, void *a3,
+                                      void *a4, void *a5, void *a6) {
+  log_line("factory: a controller is being made");
+  log_hex("      ecx ", (DWORD)ecx);
+  log_hex("      edx ", (DWORD)edx);
+  log_hex("      1 ", (DWORD)a1);
+  log_hex("      2 ", (DWORD)a2);
+  log_hex("      3 ", (DWORD)a3);
+  log_hex("      4 ", (DWORD)a4);
+  log_hex("      5 ", (DWORD)a5);
+  log_hex("      6 ", (DWORD)a6);
+  void *made = g_makeRaw(ecx, edx, a1, a2, a3, a4, a5, a6);
+  log_hex("      out ", (DWORD)made);
+  return made;
+}
+
 static void *__fastcall make_controller_hook(void *ecx, void *edx, void *a1, void *a2, void *a3,
                                              void *a4, void *a5, void *a6) {
   log_line("controller: one is being built");
@@ -2300,22 +2437,48 @@ static void *__fastcall make_controller_hook(void *ecx, void *edx, void *a1, voi
 
 static int __fastcall split_show_hook(void *self, void *edx, void *controller) {
   (void)edx;
-  // Does this window even come through here? The address is inherited from an
-  // earlier session and has never once been seen to fire, which would explain
-  // why answering it achieved nothing.
-  int asked = -1;
-  if (g_pendingLeft > 0) {
-    asked = g_pending[0];
-    for (int i = 1; i < g_pendingLeft; i++) g_pending[i - 1] = g_pending[i];
-    g_pendingLeft--;
-  }
+  // The answer waits here until a window comes for it, however long that takes.
+  // Taking it back when the call returned meant it was gone before the window
+  // arrived, and the window then asked the player — which is exactly the window
+  // a gesture exists to avoid.
+  int asked = g_pendingTimes > 0 ? g_pending : NOTHING_PENDING;
+  if (g_pendingTimes > 0 && --g_pendingTimes == 0) g_pending = NOTHING_PENDING;
   BYTE *base = (BYTE *)GetModuleHandleW(NULL);
   int is_one_of_ours = readable(controller, 4) >= 4
     && (*(DWORD **)controller)[CONTROLLER_VALIDATE / 4] == (DWORD)(base + CONTROLLER_VALIDATE_FN)
     && (*(DWORD **)controller)[CONTROLLER_EXECUTE / 4] == (DWORD)(base + CONTROLLER_EXECUTE_FN);
-  if (asked >= 0 && is_one_of_ours) {
+  if (asked == PROBE) {
+    // A PROBE NEVER PUTS A WINDOW ON SCREEN, whoever built the controller.
+    // Pairing two occupied slots makes one of a class we do not recognise, so
+    // the question was being passed straight through and the player got a
+    // window for every other stack in the army — which is how a question came
+    // to look like an instruction.
+    if (is_one_of_ours) {
+      g_probeTotal = *(int *)((BYTE *)controller + CONTROLLER_TOTAL);
+      // WHAT A CONTROLLER IS MADE OF. The command that actually moves creatures
+      // is built out of these, so a controller of our own — built without a
+      // window, a drag or a held key — is the primitive this feature has been
+      // missing. Written down here because a probe is the one place a genuine
+      // one can be looked at without anything happening.
+      for (int i = 0; i < 4; i++)
+        g_probeParts[i] = *(void **)((BYTE *)controller + 8 + i * 4);
+    }
+    g_probeAnswered = 1;
+    return 0;
+  }
+  if (asked != PROBE && asked != NOTHING_PENDING && is_one_of_ours) {
     int total = *(int *)((BYTE *)controller + CONTROLLER_TOTAL);
-    int wanted = asked > 0 ? asked : total / 2;
+    // EVEN deals out one N-th of what is LEFT each time, so the stacks come out
+    // level give or take one without any size having been known in advance.
+    int wanted = asked;
+    if (asked <= -1000) {
+      wanted = total - (-1000 - asked);
+    } else if (asked == EVEN) {
+      wanted = g_partsLeft > 1 ? (total + g_partsLeft - 1) / g_partsLeft : total;
+      if (g_partsLeft > 1) g_partsLeft--;
+    } else if (asked == 0) {
+      wanted = total / 2;
+    }
     ControllerAskFn allowed = (*(ControllerAskFn **)controller)[CONTROLLER_VALIDATE / 4];
     ControllerAskFn move = (*(ControllerAskFn **)controller)[CONTROLLER_EXECUTE / 4];
     log_num("split: the stack holds ", total);
@@ -2338,9 +2501,6 @@ static int __fastcall dnd_pick_hook(void *state, void *edx, void *arg) {
 
   if ((ctrl || shift || alt) && g_clicksLogged < 20) {
     g_clicksLogged++;
-    // A click with no key held is the player's own; nothing of ours is owed an
-    // answer any more, and a window they open should be their window.
-    if (!ctrl && !shift && !alt) g_pendingLeft = 0;
     void *helper = *(void **)((BYTE *)state + DND_STATE_HELPER);
     helper = (readable(helper, DND_HELPER_PICKED + 4) >= DND_HELPER_PICKED + 4)
       ? *(void **)((BYTE *)helper + DND_HELPER_PICKED) : NULL;
@@ -2388,28 +2548,121 @@ static int __fastcall dnd_pick_hook(void *state, void *edx, void *arg) {
       void *part = (BYTE *)client - SCREEN_PART_FROM_CLIENT;
       int did = 0;
 
-      // ALT is out until a creature can be told from another one: it compared
-      // a vtable slot that answers the same for every stack, so it would have
-      // merged whatever it was pointed at. It only ever looked right because
-      // the army it was tried on was all one creature.
-      if (alt) return g_dndPick(state, NULL, arg);
-
       // The other gestures are this one move repeated.
-      #define SPLIT_OFF(fromSlot, toSlot, howMany) do {                                          expect_split(howMany);                                                                   g_ours = 1;                                                                              if (g_splitDirectly) {                                                                     BYTE *allowed = readable((BYTE *)part + SCREEN_SPLIT_ALLOWED, 4) >= 4                      ? *(BYTE **)((BYTE *)part + SCREEN_SPLIT_ALLOWED) : NULL;                              BYTE was = 0;                                                                            if (readable(allowed, 1)) { was = *allowed; *allowed = 1; }                              g_splitDirectly(part, NULL, g_slotWidget[army][fromSlot], stack[fromSlot],                               g_slotWidget[army][toSlot], NULL);                                       if (readable(allowed, 1)) *allowed = was;                                              } else {                                                                                   drop(client, NULL, g_slotWidget[army][fromSlot], stack[fromSlot],                             g_slotWidget[army][toSlot], NULL);                                                }                                                                                        g_ours = 0;                                                                            } while (0)
+      #define SPLIT_NOW(fromSlot, toSlot) do {                                                                                                             g_ours = 1;                                                                              if (g_splitDirectly) {                                                                     BYTE *allowed = readable((BYTE *)part + SCREEN_SPLIT_ALLOWED, 4) >= 4                      ? *(BYTE **)((BYTE *)part + SCREEN_SPLIT_ALLOWED) : NULL;                              BYTE was = 0;                                                                            if (readable(allowed, 1)) { was = *allowed; *allowed = 1; }                              g_splitDirectly(part, NULL, g_slotWidget[army][fromSlot], stack[fromSlot],                               g_slotWidget[army][toSlot], stack[toSlot]);                                       if (readable(allowed, 1)) *allowed = was;                                              } else {                                                                                   drop(client, NULL, g_slotWidget[army][fromSlot], stack[fromSlot],                             g_slotWidget[army][toSlot], stack[toSlot]);                                                }                                                                                        g_ours = 0;                                                                            } while (0)
 
-      // The remaining two are one move repeated: take some of this stack and put
-      // it in a slot with nothing in it. The click chooses only WHERE; how many
-      // is settled at the split, by the controller, which knows.
-      // Ctrl asks for one, Shift for half — and the number is genuinely all
-      // that differs between them. Ctrl alone made no controller even when it
-      // asked for exactly what Shift asks, so what it lacks is the key the
-      // engine wants, not the number.
-      for (int i = 0; i < SLOT_COUNT; i++) {
-        if (stack[i]) continue;
-        SPLIT_OFF(from, i, ctrl ? 1 : 0);   // 0 asks the controller for half
-        did++;
-        if (!(ctrl && shift)) break;      // one free slot, unless filling them all
+      // Arming and doing, kept apart. The window opens AFTER the call returns,
+      // so a series of splits has to arm one answer for all of them; arming
+      // again before each one overwrote the answer the first window had not
+      // come for yet, and only one of the splits ever happened.
+      #define SPLIT_OFF(fromSlot, toSlot, howMany) do { expect_split(howMany, 1); SPLIT_NOW(fromSlot, toSlot); } while (0)
+
+
+
+      // ALT asks each slot a question instead of reading it. A controller is
+      // what knows how many are in a stack, and it can be built and then told
+      // that nothing is wanted — so every slot can be asked its size without a
+      // creature moving. Whether a controller is made at all for a pair of
+      // OCCUPIED slots is the other half of the question: if the engine only
+      // makes one when the two hold the same creature, that is the test Alt
+      // needs, and this run is what says whether it does.
+      // ASKING WITHOUT MOVING, twice over. A controller is built and then told
+      // nothing is wanted, so the window never opens and no creature moves.
+      // Against a FREE slot it answers how many are in a stack; against an
+      // OCCUPIED one it answers only if the two hold the same creature, which
+      // is the engine's own knowledge — it is why dragging onto a different
+      // creature never offers to split.
+      //
+      // The queue is cleared around every probe: an unanswered one left behind
+      // an entry that the player's next Shift-drag then swallowed, and their
+      // window silently became a plain move.
+      #define ASK(slot, against) do {                                                            g_probeAnswered = 0; g_probeTotal = 0;                                SPLIT_OFF(slot, against, PROBE);                                                       if (!g_probeAnswered) nobody_asked();                                                 } while (0)
+
+      if (alt) {
+        // CAN THESE TWO BE PUT TOGETHER? The controller knows a stack's size —
+        // that much is settled — but not which creature it is, and the object
+        // behind a widget cannot be read at all. So the question is asked the
+        // other way round: build a controller for this slot and an OCCUPIED
+        // one. If the engine only makes one when the creatures match, that is
+        // the test, and this run is what says whether it does.
+        for (int i = 0; i < SLOT_COUNT; i++) {
+          if (i == from || !stack[i]) continue;
+          ASK(i, from);
+          if (!g_probeAnswered) continue;          // a different creature
+          drop(client, NULL, g_slotWidget[army][i], stack[i],
+               g_slotWidget[army][from], stack[from]);
+          did++;
+        }
+        log_num("gather: stacks merged into this one ", did);
+        if (!did) return g_dndPick(state, NULL, arg);
+        GiveUpFn give_up = (*(GiveUpFn **)state)[DND_STATE_GIVE_UP / 4];
+        give_up(state, NULL);
+        return 1;
       }
+
+
+      // SHIFT is the "smart" split the HD mod for Heroes 3 has: every stack of
+      // this creature ends up the same size give or take one, and each click
+      // makes one more of them — half, then thirds, then quarters.
+      //
+      // Nothing is measured. The stacks of this creature are gathered into the
+      // clicked one, which is safe, and then dealt back out as "a third of what
+      // is left", "a half of what is left" — the controller knows what is left
+      // at each step, and the sizes come out level without a single size ever
+      // being asked for. Which matters: asking a FREE slot how big a stack is
+      // moves the stack into it, which is what made this duplicate stacks.
+      // EVERY GESTURE FROM HERE ON IS ARITHMETIC. Which slots hold the same
+      // creature, how many are in each, and what each should end up with — all
+      // decided here, and each move made by one call that cannot be talked out
+      // of it by a held key or a window.
+      int spare = -1;
+      for (int i = 0; i < SLOT_COUNT && spare < 0; i++) if (!stack[i]) spare = i;
+      if (spare < 0 || !g_blockKnown) return g_dndPick(state, NULL, arg);
+
+      int size[SLOT_COUNT], same[SLOT_COUNT], n = 0, total = 0;
+      for (int i = 0; i < SLOT_COUNT; i++) {
+        same[i] = 0;
+        size[i] = stack[i] ? stack_size(i, spare) : 0;
+      }
+      if (!size[from]) return g_dndPick(state, NULL, arg);
+      total = size[from];
+      for (int i = 0; i < SLOT_COUNT; i++) {
+        if (i == from || !stack[i]) continue;
+        if (!controller_for(i, from)) continue;         // a different creature
+        same[i] = 1;
+        n++;
+        total += size[i];
+      }
+
+      if (shift && !ctrl) {
+        // One more stack than there is now, all the same size give or take one.
+        int parts = n + 2;
+        if (parts > total) parts = total;
+        if (parts < 2) return g_dndPick(state, NULL, arg);
+        int base = total / parts, over = total % parts, given = 0;
+
+        int want = base + (given++ < over ? 1 : 0);
+        if (size[from] > want) did += move_creatures(from, spare, size[from] - want);
+        for (int i = 0; i < SLOT_COUNT; i++) {
+          if (!same[i]) continue;
+          want = base + (given++ < over ? 1 : 0);
+          if (size[i] > want) did += move_creatures(i, spare, size[i] - want);
+        }
+        log_num("even: stacks were ", n + 1);
+        log_num("      holding in all ", total);
+        log_num("      moves made ", did);
+      } else {
+        // Ctrl puts one creature in the first free slot; with Shift as well,
+        // one into every free slot there is.
+        for (int i = 0; i < SLOT_COUNT; i++) {
+          if (stack[i]) continue;
+          if (!move_creatures(from, i, 1)) break;
+          did++;
+          if (!(ctrl && shift)) break;
+        }
+        log_num("split: single creatures put out ", did);
+      }
+
       // The click is called off the way the engine calls one off, so no stack
       // is left hanging on the cursor with the split already made.
       if (did) {
@@ -2448,6 +2701,10 @@ static void install_quick_split(void) {
                                 &split_ok_hook, "the split window's OK");
   g_onDrop = (OnDropFn)detour(ON_DROP_RVA, ON_DROP_HEAD, ON_DROP_HEAD_LEN,
                               &drop_watch_hook, "a drop by hand");
+  g_makeHero = (MakeHeroFn)detour(MAKE_HERO_RVA, MAKE_HERO_HEAD, MAKE_HERO_HEAD_LEN,
+                                  &make_hero_hook, "the hero screen's controller");
+  g_makeRaw = (MakeRawFn)detour(MAKE_RAW_RVA, MAKE_RAW_HEAD, MAKE_RAW_HEAD_LEN,
+                                &make_raw_hook, "the controller factory");
   g_makeController = (MakeControllerFn)detour(MAKE_CONTROLLER_RVA, MAKE_CONTROLLER_HEAD,
                                               MAKE_CONTROLLER_HEAD_LEN, &make_controller_hook,
                                               "building a controller");
