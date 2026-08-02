@@ -12,7 +12,9 @@
 
 import type { Assets } from '../game/assets.ts';
 import { buildScene } from '../scene/scene.ts';
-import type { Scene } from '../scene/payload.ts';
+import type { AmbientData, FxInstancePayload, Scene } from '../scene/payload.ts';
+import { loadAmbient } from '../scene/ambient.ts';
+import { particlesOfEffect } from '../scene/object-effects.ts';
 import { dirOf, resolveHref } from '../scene/xdb.ts';
 import { actorRigs } from './actors.ts';
 import type { ActorRig } from './actors.ts';
@@ -44,7 +46,40 @@ export interface ShotView {
   camera: CameraSample[];
   /** What each actor does during the shot, offset from its start. */
   cues: Array<{ actor: string; kind: string; delay: number }>;
+  /** The light this shot asks for, or null to keep the scene's. */
+  ambient: ShotLight;
+  /**
+   * Effects the shot fires at a place on the stage — not on an actor.
+   *
+   * This is the spellwork a scene is made of: the Prayer that lights up
+   * Isabell's line of soldiers, the Bloodlust that turns Agrael's army red, the
+   * ice bolt that lands on it. `pos` is already in world units, as the file
+   * writes it, and `delay` is seconds from the start of the shot (it can be
+   * NEGATIVE — an effect that begins before its line does).
+   */
+  effects: ShotEffectView[];
 }
+
+/** One firing of an effect inside a shot, resolved to what the renderer plays. */
+export interface ShotEffectView {
+  delay: number;
+  pos: [number, number, number];
+  rot: number;
+  /** Reference as written, for the inspector. */
+  href: string;
+  /** The effect's particle systems; empty when the chain does not resolve. */
+  fx: FxInstancePayload[];
+}
+
+/**
+ * The light a shot is lit by, when it names one of its own.
+ *
+ * A scene names an ambient preset and 41 of C1M1's 73 shots override it — this
+ * is how the picture changes with the story: the arena's daylight for Isabell's
+ * army, `InfernoArena` for the demons, and the sky with them. Under the stage
+ * map's own preset alone every shot of a scene looks the same.
+ */
+export type ShotLight = AmbientData | null;
 
 /** An actor, placed and rigged. */
 export interface ActorView extends ActorRig {
@@ -156,6 +191,32 @@ export function buildScenePlay(data: Assets, scenePath: string, options: PlayOpt
     return (id && byId.get(id)) || link;
   };
 
+  // One effect is fired by many shots — eight copies of Prayer over a line of
+  // soldiers, four of a succubus hit — and each is the same chain of documents
+  // down to the same baked keys. Read once per href.
+  const fxCache = new Map<string, FxInstancePayload[]>();
+  const effectFx = (href: string): FxInstancePayload[] => {
+    if (!href) return [];
+    const known = fxCache.get(href);
+    if (known) return known;
+    const rel = resolveHref(dirOf(scenePath), href);
+    const xml = data.text(rel);
+    const list = xml ? particlesOfEffect({ xml, dir: dirOf(rel) }, data, options.texSize ?? 128) : [];
+    fxCache.set(href, list);
+    return list;
+  };
+
+  // The scene's own light replaces the arena's on every floor: the stage is
+  // borrowed scenery and the preset is part of the scene, not of the map.
+  const lightCache = new Map<string, ShotLight>();
+  const lightOf = (href: string): ShotLight => {
+    if (!href) return null;
+    if (!lightCache.has(href)) lightCache.set(href, loadAmbient(data, href.split('#')[0]!));
+    return lightCache.get(href) ?? null;
+  };
+  const sceneLight = lightOf(scene.ambientLight);
+  if (sceneLight) for (const floor of built.scene.floors) floor.ambient = sceneLight;
+
   const shots: ShotView[] = scene.shots.map((shot) => {
     const speaker = shot.heroLink || shot.monsterLink;
     const ends = shot.newCameraSet ? endsOf(data, scenePath, shot.newCameraSet) : null;
@@ -191,6 +252,14 @@ export function buildScenePlay(data: Assets, scenePath: string, options: PlayOpt
       speaker,
       camera,
       cues,
+      ambient: lightOf(shot.customAmbientLight),
+      effects: shot.effects.map((e) => ({
+        delay: e.delay,
+        pos: [e.pos.x, e.pos.y, e.pos.z] as [number, number, number],
+        rot: e.rot,
+        href: e.effect,
+        fx: effectFx(e.effect),
+      })),
     };
   });
 

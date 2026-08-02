@@ -56,6 +56,22 @@ one.
   left the display scale off the handles it made, so a hero who had been
   three-quarter height came back full size.
 
+- **A scene's camera was on the wrong side of its own rod**, so every close-up
+  filmed the back of somebody's head — Isabell's hood for twelve shots running,
+  Godric from behind his horse, the listener instead of the speaker. C1M1's
+  opening now plays the frames the game plays. Four shots whose rod is exactly
+  zero, which left the camera pointing wherever it last pointed, aim properly.
+
+- **A shot fires its own effects**, which is most of what a scene does: the
+  Prayer over Isabell's line of soldiers, the Bloodlust that turns Agrael's army
+  red, the ice bolt that lands on it, the gating of the arch devil. They start
+  at their own delay from the line and go away with the shot.
+
+- **A scene is lit by itself**, not by the arena it borrows. The scene names a
+  preset and a shot can override it — the battle that opens C1M1 is lit by
+  `InfernoArena`, the parley that follows by daylight — and the sun, the shading
+  and the tint on the particles all follow it.
+
 ## 0.6.0 — 2026-07-31
 
 ### Added

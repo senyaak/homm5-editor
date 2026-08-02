@@ -60,6 +60,36 @@ test('the editor opens a campaign scene and plays it', async () => {
   // Nothing is cued on the opening shot, so everybody stands in their idle.
   expect(opened?.actors.every((a) => a.kind === 'idle00')).toBe(true);
 
+  // A shot fires its own effects — the spellwork the scene is made of — and
+  // they belong to the shot, so they go away with it. Shot 2 is the Prayer over
+  // Isabell's line of soldiers: eight copies, one per soldier.
+  const spell = await page.evaluate(() => {
+    window.view.showShot(2, 1);
+    const lit = window.view.scene()?.fx ?? 0;
+    window.view.showShot(1, 0); // no effects of its own
+    return { lit, after: window.view.scene()?.fx ?? 0 };
+  });
+  expect(spell.lit).toBe(8);
+  expect(spell.after).toBe(0);
+
+  // …and a shot is lit by its own preset. The battle that opens the scene — 36
+  // shots of it — overrides the scene's daylight with `InfernoArena`, a red key
+  // light over black shade; the parley that follows keeps the scene's own. Read
+  // only from the stage map's preset, as a map would, every shot looks alike.
+  const light = await page.evaluate(() => {
+    window.view.showShot(40, 0); // the parley: the scene's own daylight
+    const day = window.view.ambientState().sun;
+    window.view.showShot(14, 0); // the battle: the gating demon lord
+    return { day, inferno: window.view.ambientState().sun };
+  });
+  expect(light.inferno).not.toEqual(light.day);
+  // Red key light: more red than green and blue together.
+  expect(light.inferno[0]!).toBeGreaterThan(light.inferno[1]! + light.inferno[2]!);
+  // The scene's own is a warm daylight, so 'redder' is a matter of degree: the
+  // battle's key light is three times as red-biased as the parley's.
+  const bias = (c: number[]): number => c[0]! / (c[1]! + c[2]!);
+  expect(bias(light.inferno)).toBeGreaterThan(2 * bias(light.day));
+
   // A shot that cues somebody: the camera moves, and one actor stops idling.
   const framing = await page.evaluate(() => {
     window.view.showShot(62, 0.6);

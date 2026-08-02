@@ -29,7 +29,7 @@ import { materialFor, partTexture } from '#viewport/materials.ts';
 import { terrainColor, asTileSpace, terrainGeometry, waterCells, waterGeometry, makeWaterMesh, WATER_ORDER, remeshFloor, sea } from '#viewport/terrain-mesh.ts';
 import { refreshBlocked, refreshFootprints, syncFootprints, setShowBlocked, showBlocked } from '#viewport/overlays.ts';
 import { advanceIdle, clearIdle, removeIdle, addIdle, idleMode, setIdleMode } from '#viewport/idle.ts';
-import { advanceScene, closeScene, initDialogScenes, openScene, playing, setPlaying, show, syncScenePanel } from '#features/dialog-scene.ts';
+import { advanceScene, closeScene, initDialogScenes, openScene, playing, setPlaying, shotFxCount, show, syncScenePanel } from '#features/dialog-scene.ts';
 import type { SceneInfo } from '#electron/ipc.ts';
 import { roster, objectsOfClass, canCreateClass, mapNames, forgetClass } from '#core/rosters.ts';
 import { openRecolor, initRecolor } from '#features/mods/recolor.ts';
@@ -357,6 +357,8 @@ interface ViewApi {
   scene(): (SceneInfo & {
     shot: number; at: number; running: boolean;
     actors: Array<{ href: string; kind: string }>;
+    /** Particle systems the current shot is firing (see cueShotFx). */
+    fx: number;
   }) | null;
   heights(): number[];
   kinds(): number[];
@@ -667,6 +669,7 @@ const view: ViewApi = {
       at: playing.at,
       running: playing.running,
       actors: playing.players.map((p) => ({ href: p.actor.href, kind: p.kind })),
+      fx: shotFxCount(),
     } : null;
   },
   heights() { return state.world ? Array.from(activeFloor().heights) : []; },

@@ -150,10 +150,46 @@ every candidate against the 4578 poses whose stage terrain is at hand:
   the opening shot of C1M1 films a rock face, under this one it opens on the
   forest and later frames Isabell with Godric behind her.
 
-A note on scoring, because the first attempt got it wrong: rewarding a camera
-for *not being buried* rewards it for being high, and every zenith reading
-scored 90-92% for exactly that reason. What separates framing from hovering is
-the eye height on close-ups, not the not-buried count.
+* **The eye is at `anchor − rod`, not `anchor + rod`.** This one no amount of
+  scoring found, and it is worth understanding why. The four yaw candidates are
+  mirrorings; this is yaw plus *half a turn*, which is not among them. And the
+  in-frame score cannot see it at all — most shots anchor ON their speaker, and
+  a camera orbiting a point frames whatever is at that point from either side
+  of it, so the two readings scored 22.7% and 21.9%, a coin toss. What settled
+  it was rendering all 73 shots of C1M1 onto **one contact sheet**
+  (`sheet(0, 73)` in the viewer): the wrong reading films the backs of
+  everybody's heads — Isabell's hood for twelve shots running, Godric from
+  behind his horse, the listener instead of the speaker — and the right one is
+  the frames the game plays.
+
+Two notes on scoring, because both attempts got something wrong:
+
+* Rewarding a camera for *not being buried* rewards it for being high, and
+  every zenith reading scored 90-92% for exactly that reason. What separates
+  framing from hovering is the eye height on close-ups, not the not-buried
+  count.
+* A metric can be blind rather than wrong. The in-frame score answered a real
+  question and was simply incapable of seeing a 180° error. **Before trusting
+  one, break the thing it measures on purpose and check that it goes red.**
+
+### Absolute, and what it is relative to
+
+`Absolute` is false in 162 cameras, and in half of C1M1's second act. Their
+anchor is `(0, 0, z)`, which reads as a bug and is not: the **set** carries the
+placement, as the subject's own tile and facing —
+
+    C1M1D1Ga1   StartCameraDiff 83, 65   StartCorrectionRot 3.1811   (Godric)
+    C1M1D1BA1   StartCameraDiff 81, 77   StartCorrectionRot 6.2043   (the demon)
+
+— so the camera document is a *framing* ("this high, this far, at this angle to
+them") and the set says who it is of. Both are added in `poseAt`, which is all
+the handling these need. Placing such a camera on the speaker as well moves it
+twice and throws it off the map. [~] Whether `Absolute` changes anything beyond
+documenting the intent is still open — nothing reads the flag.
+
+A `Rod` of exactly zero happens (four shots in C1M1): the eye is then AT the
+anchor, and "look at the anchor" is a direction of zero length. The aim comes
+from the angles instead (`targetOf`).
 
 ### What a set does between its two ends
 
@@ -221,6 +257,23 @@ going quietly green.
   bare. Handles are now keyed by the instance itself (`Floor3D.meshes`);
   selection still addresses objects by id, so scene objects are drawn and picked
   but not yet addressable by name.
+
+  A scene fires its own **effects** (`<effects>` on a shot, 769 across the
+  corpus): an effect href, a place in world units, and a delay in seconds from
+  the line — which can be negative. These are the spellwork a scene is made of
+  and they belong to the moment, so they are built when a shot is cued and taken
+  down with it, rather than riding a floor the way an object's campfire does.
+  C1M1's opening: eight Prayers over Isabell's soldiers, eight Bloodlusts over
+  Agrael's, the ice bolt that lands on them, a Gating for the arch devil.
+
+  A scene is **lit by itself**, not by the arena it borrows.
+  `CustomSceneAmbientLight` replaces the stage map's preset on every floor, and
+  `CustomAmbientLight` on a shot overrides that for as long as the shot is up —
+  in C1M1's opening the 36 shots of the battle are `InfernoArena` (a red key
+  light over black shade) and the 37 of the parley that follows are the scene's
+  own daylight. Applied by writing the floor's `ambient` and calling
+  `refreshLighting`, so the terrain shader, the point-light gain and the tint
+  the particles are drawn with all follow one value.
 
   A scene also builds with `animate: true` unconditionally. On a map the idle
   stance is a setting, off by default, because it costs a draw call per creature

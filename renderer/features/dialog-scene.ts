@@ -10,6 +10,12 @@
 
 import * as THREE from 'three';
 import type { ActorView, ShotView } from '#src/dialog/play.ts';
+import type { FxTransfer } from '#src/scene/effects.ts';
+import { createFxSystem } from '#viewport/particles.ts';
+import type { FxSystem } from '#viewport/particles.ts';
+import { refreshLighting, uFxTint } from '#viewport/lighting.ts';
+import { activeFloor, state } from '#core/state.ts';
+import type { AmbientData } from '#src/scene/payload.ts';
 import type { SceneInfo } from '#electron/ipc.ts';
 import { api } from '#core/ipc.ts';
 import { $, $button, $input } from '#core/dom.ts';
@@ -81,6 +87,61 @@ function clearActors(): void {
   playing.players = [];
 }
 
+// --- what a shot fires ---------------------------------------------------------
+//
+// A shot's effects are not the objects' effects: they belong to the MOMENT, at
+// a place on the stage and a delay from the line — the Prayer over Isabell's
+// soldiers, the Bloodlust that turns Agrael's army red, the ice bolt that lands
+// on it. They live only as long as their shot, so they are built when one is
+// cued and taken down when it changes, rather than riding the floor like an
+// object's campfire does.
+
+/** The scene's own light, to fall back on when a shot names none. */
+let sceneLight: AmbientData | null = null;
+
+/** Baked keys for every effect the open scene can fire, by uid. */
+let fxBank: Record<string, FxTransfer> = {};
+/** Systems belonging to the shot on screen, with when each starts. */
+let shotFx: Array<{ system: FxSystem; from: number }> = [];
+
+function clearShotFx(): void {
+  for (const s of shotFx) { s.system.mesh.removeFromParent(); s.system.dispose(); }
+  shotFx = [];
+}
+
+/** Build the systems for a shot; they play from their own delay. */
+function cueShotFx(shot: ShotView): void {
+  clearShotFx();
+  const m4 = new THREE.Matrix4();
+  let at = 0;
+  for (const fired of shot.effects) {
+    m4.makeRotationZ(fired.rot).setPosition(fired.pos[0], fired.pos[1], fired.pos[2]);
+    for (const fx of fired.fx) {
+      const baked = fxBank[fx.uid];
+      if (!baked?.particles.length) continue;
+      // No phase spread: eight copies of one spell over a line of soldiers are
+      // meant to go off together, unlike thirty campfires on a map.
+      const { system } = createFxSystem(fx, baked, m4, 0, uFxTint);
+      stage.add(system.mesh);
+      shotFx.push({ system, from: fired.delay });
+      at++;
+    }
+  }
+  if (at) advanceShotFx();
+}
+
+/** How many effect systems the shot on screen is playing — for tests. */
+export const shotFxCount = (): number => shotFx.length;
+
+/** Put every live system where its own clock says it is. */
+function advanceShotFx(): void {
+  for (const s of shotFx) {
+    // Before its delay the effect has not started; held at zero it shows the
+    // first frame of the recording rather than popping in halfway.
+    s.system.update(Math.max(0, playing.at - s.from));
+  }
+}
+
 /**
  * Open a scene by its folder, e.g. `DialogScenes/C1/M1/D1`.
  *
@@ -112,6 +173,15 @@ export async function openScene(inner: string): Promise<SceneInfo> {
     playing.players.push({ actor, idle, kind: 'idle00', from: 0 });
   }
 
+  // The scene's light came down on the floors (src/dialog/play.ts); remember it
+  // as what a shot without one of its own falls back to.
+  sceneLight = state.world ? activeFloor().ambient : null;
+
+  // Every effect any shot can fire, baked, in one round trip — a shot cues in
+  // the middle of playback and cannot wait for IPC.
+  const uids = [...new Set(shots.flatMap((s) => s.effects.flatMap((e) => e.fx.map((f) => f.uid))))];
+  fxBank = uids.length ? await api.fx(uids) : {};
+
   playing.info = info;
   playing.shots = shots;
   playing.running = false;
@@ -131,6 +201,9 @@ export async function openScene(inner: string): Promise<SceneInfo> {
  */
 export function closeScene(): void {
   clearActors();
+  clearShotFx();
+  fxBank = {};
+  sceneLight = null;
   clearWorld();
   playing.info = null;
   playing.shots = [];
@@ -173,6 +246,14 @@ export function show(index: number, at = 0): void {
     if (p && p.actor.clips[cue.kind]) { p.kind = cue.kind; p.from = cue.delay || 0; }
   }
   poseAll();
+  cueShotFx(shot);
+  // The shot's own light, or the scene's. Set on the floor rather than applied
+  // directly so everything that reads it agrees — the terrain shader's sun and
+  // ambient, the point-light gain and the tint the particles are drawn with.
+  if (state.world) {
+    activeFloor().ambient = shot.ambient ?? sceneLight;
+    refreshLighting();
+  }
   aim(shot, at / (shot.duration || 1));
 }
 
@@ -196,7 +277,7 @@ export function advanceScene(dt: number): void {
   if (!shot) return;
   const next = playing.at + dt;
   if (next >= (shot.duration || 3)) show(playing.shot + 1, 0);
-  else { playing.at = next; poseAll(); aim(shot, next / (shot.duration || 1)); }
+  else { playing.at = next; poseAll(); advanceShotFx(); aim(shot, next / (shot.duration || 1)); }
 }
 
 /** Start or stop playback. */
