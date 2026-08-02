@@ -157,6 +157,57 @@ only a hero with a tent reaches. `push 2; call [hero_vtable+0x174]` inside
   count) and `0x368` (scripted necromancy level) in
   [../ENGINE_INTERNALS.md](../ENGINE_INTERNALS.md).
 
+## What the engine already does with a tent
+
+Read before designing a perk for it — two of our first three asked for things
+this list already contains. The branch's second attempt is in
+[../../SLICE_tent_branch.md](../../SLICE_tent_branch.md).
+
+**Health**, at `0xabc040`, the only place a war machine's is decided:
+
+```
+hp  = record->[0x4C]                       // <Health>, 100 for the tent
+    + GetSkillMastery(2) * settings[0x124] // WarMachines_HealthBonusPerSkillTrained = 100
+switch (type - 1)                          // jump table 0xabc148
+  tent → if the hero holds HERO_SKILL_FIRST_AID (22), hp *= settings[0x128]
+  ballista → skill 23, catapult → skill 24, same shape
+```
+
+Both numbers are DATA — `GameMechanics/RPGStats/DefaultStats.xdb`,
+`WarMachines_HealthBonusPerSkillTrained` (100) and
+`WarMachines_PerkSpecificHealthMultiplier` (2). So "a perk multiplies a machine's
+health" is a shape the engine already has.
+
+**Cleansing.** The tent removes curses, and the engine picks between
+`COMBAT_FAT_HEAL`, `COMBAT_FAT_HEAL_REMOVE_CURSE`, `COMBAT_FAT_HEAL_RESURRECT`
+and `COMBAT_FAT_HEAL_RESURRECT_REMOVE_CURSE` (`0xb82e1a` and just after). The
+loop at `0xb82db0` walks the effects on the target and compares each one's level
+against a threshold — which is the number a perk of ours would raise.
+
+**Rebuilt after a battle, and it is the SHIPPED perk.** «Первая помощь»
+(`HERO_SKILL_FIRST_AID`, 22) says so itself: «Умение, которое позволяет
+управлять палаткой первой помощи. Если в бою палатка была уничтожена, то после
+сражения она будет восстановлена.» The code is at `0xac4ae0`, a small method
+whose whole body is that condition:
+
+```
+0xac4ae0  ask [this+0xF8] — the owner — whether he holds skill 22
+0xac4b01  push 11h; call [vt+0x174]   a second question about the unit
+0xac4b14  call [vt+0xC8]              a yes/no about it — the machine's state
+0xac4b27  allocate 0x24 bytes, init via 0xace8f0(1), and hand the result
+0xac4b55  to 0xbf96b0 through [this+0x17C] — a queue rather than a direct rebuild
+```
+
+Four callers (`0xac4be3`, `0xac4c1a`, `0xac5568`, `0xac7ab5`), all in the same
+family — the army/owner side rather than the battle. **Not finished**: which
+moment those callers are, and what `[vt+0xC8]` asks, are unread. What is certain
+is the gate, and it is the shipped perk.
+
+**Ring of Machine Affinity** — "the tent heals twice as much", plus a shot each
+to ballista and catapult and +4 attack to shooters from the ammo cart. Whatever
+it does to the healing sum happens where our own term goes, so it is worth
+reading before adding another one.
+
 ## The branch's three perks: one written, two waiting
 
 The Witch's «Мастер палатки» branch — see [../HERO_CLASSES.md](../HERO_CLASSES.md)
@@ -168,8 +219,15 @@ controller for scripted battles, attached to a hero by `SetHeroCombatScript`, pe
 hero and per map, and it has no event for "the tent healed somebody". Both are
 extension work, and the amount hook is already standing in the right place.
 
-**The third WORKS — confirmed in game on 2026-08-02 — and it is Lua on both
-sides.** «Запасной комплект»: a tent destroyed in a battle is back afterwards. The difficulty was never the
+**The third was built, ran in game on 2026-08-02 — and is being dropped,
+because it repeats the shipped «Первая помощь» above.** The tent came back in
+that battle and we could not tell whose doing it was: the hero could hold skill
+22, and the engine rebuilds it for free. A run with our perk and WITHOUT the
+shipped one would settle it; we are not spending it, because the perk is going
+anyway.
+
+Kept here because the mechanism outlived the perk. «Запасной комплект»: a tent
+destroyed in a battle is back afterwards. The difficulty was never the
 rebuilding — it is knowing there was a tent to rebuild, because after the battle
 "no tent" and "never had one" look the same.
 
