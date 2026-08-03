@@ -1,8 +1,8 @@
 # Map lighting (`Lights/_(AmbientLight)`, map `pointLights`, `bin/Lights`) — notes
 
-Status: **the per-map ambient preset is read and applied, and the designers'
-point lights pool on the ground.** The editor lights a map with the map's own
-preset — sun colour and direction, ambient and shade — and bakes the ~hundreds
+Status: **the per-map ambient preset is read and applied, everything is lit by
+the game's own sum, and the designers' point lights pool on the ground.** The
+editor lights a map with the map's own preset — sun colour and direction, ambient and shade — and bakes the ~hundreds
 of per-object point lights a map carries (the violet glow under an underground
 crystal) into a lightmap the terrain adds on top. Point lights inside effects
 (`AnimLight` → `bin/Lights`) are located but not yet decoded; they are part of
@@ -42,39 +42,93 @@ highlight blobs for glossy REFLECTIONS. Drawn as a background they look like
 lens flares pasted on the void — the game's adventure camera never shows a sky,
 and the editor keeps its neutral backdrop. **[OK]**
 
-## 2. The gamma trap: why GAIN is 2^2.2 and not 2 **[OK]**
+## 2. One light model, in gamma space **[OK]**
 
-The game's fixed-function pipeline multiplies colours in **gamma space** —
-`albedo · (Ambient + Light·N·L) · 2`, the era's modulate-×2 (`Whitening`) —
-while three.js lights in linear space. Multiplication commutes with a pure
-power transfer function, so a gamma-space factor k is a linear-space factor
-k^2.2: the honest ×2 renders every day map as dusk, and the editor's three.js
-lights run at `2^2.2 ≈ 4.6` instead.
+Every surface the game draws ends the same way:
 
-The terrain does not go through three.js lighting at all — the splat shader
-works on raw (gamma) texture values, so it gets the game's own formula
-verbatim: `col · (uAmb + uSunCol·|N·sunDir|) · 2`, with the preset colours
-passed in raw. Same for the terrain-projected building mounds, which must
-shade exactly like the ground they borrow their texture from. Arithmetic
-cross-check on A1C1M1 plan view: measured tile brightness matches
-`tile × (amb + sun·0.82) × 2` to within the mixed-tile noise. The three
-uniforms are shared objects mutated in place (`uSunDir`/`uSunCol`/`uAmbCol` in
-renderer/app.ts), so a floor switch recolours every terrain material without
-touching it.
+```
+albedo · (Ambient + Light·N·L) · Whitening,   clamped to 1
+```
 
-How the four colours map onto three.js lights: sun = `LightColor` from its
-Pitch/Yaw; hemisphere = `AmbientColor` (sky side) down to `ShadeColor` (the
-underside reaches the faces the game paints with shade); plus a small constant
-floor so decoded props with broken normals never go black.
+multiplied in **gamma space on the raw texel** — no sRGB decode going in, no
+encode coming out. `Whitening` is the era's modulate-×2 and comes from the
+preset: 2 when `<Whitening>` is true, 1 when it is false (260 of the 291
+shipped presets have it on, 31 have it off — it is not a constant).
 
-## 3. Sun direction **[~]**
+That is read out of the executable rather than guessed. The shipped shaders are
+embedded in it as **assembler text**, 115 of them, assembled at run time by
+`d3dx9_25.dll` — scan for the `vs.1.1` / `ps.2.0` blocks and they read out
+whole. The object one, with its shadow-map lookup trimmed away:
 
-`Pitch` counts from the **zenith**, not the horizon: presets carry 35–50, and
-read as elevation those made flat ground catch barely half the sun — every
-shipped day map rendered as dusk. `Yaw` is taken as degrees around +Z from +X,
-counter-clockwise. The pitch reading is backed by the brightness arithmetic
-(§2); which axis yaw counts from, and which way it turns, has no reachable
-ground truth yet — judged by eye against the game.
+```
+texld r2, t0, s0          ; the texture
+mul   r3, v0, r2          ; × the LIT vertex colour
+mul_sat r0, r3, c7.x      ; × Whitening, clamped
+mul   r1.rgb, v1, r2      ; × the SHADOWED vertex colour
+mul_sat r1.rgb, r1, c7.x
+lrp   r1.rgb, r4, r1, r0  ; pick between them by the shadow map
+```
+
+Two interpolated colours per vertex, a lit one and a shadowed one, each
+multiplied by the texel and by `c7.x`, each clamped. The terrain shader is the
+same shape with the two colours coming from vertex attributes `v4`/`v5`.
+
+The editor runs that sum for **everything**: the terrain splat always did, and
+since 08.2026 so do objects, actors and props (`gameLit` in
+renderer/viewport/materials.ts patches the end of three.js's fragment shader
+rather than replacing the material, so skinning and instancing survive). The
+uniforms `uSunDir`/`uSunCol`/`uAmbCol`/`uWhiten` are shared objects mutated in
+place, so a floor switch recolours every material without touching one.
+
+**Why it cannot be left to three.js.** three.js lights in LINEAR space, and
+against a gamma-authored preset that is not a brightness difference but a
+colour one. The Inferno arena's sun, `0.635/0.267/0.141`, decodes to
+`0.361/0.058/0.018`: the green channel loses a factor of four and a warm sun
+becomes a red one. C1M1's knights came out salmon-pink over ground that was
+fine, because the ground already ran this sum and they did not. The old
+workaround — three.js lights at `2^2.2 ≈ 4.6`, so that a gamma ×2 came out
+right after the linear round trip — fixed the level and could not fix the hue.
+
+## 2a. What the running game says **[OK]**
+
+A throwaway DLL (a scratch copy of `native/homm5-editor.c`, never committed)
+patched the D3D9 device vtable and watched a whole play-through of C1M1's
+opening scene. It reports:
+
+| watched | answer |
+| --- | --- |
+| `D3DRS_LIGHTING` | **0** — Direct3D's own lighting is off |
+| `SetLight`, `SetMaterial` | never called, not once |
+| `D3DRS_AMBIENT` | never set |
+| every vs/ps constant, searched for the preset's exact numbers | **no colour of any preset ever arrives** |
+| `vs c35` | the sun DIRECTION does arrive |
+| `vs c29` | a grey scalar that sweeps 1.0 → 0.564 → 0.220 — a fade, not a colour |
+
+So the two vertex colours are computed by the engine on the CPU, at load, and
+written into the vertex buffer; only the direction and the fade travel as
+constants. The formula above is therefore the END of the pipeline, proven, and
+the per-vertex term is inferred from it rather than read.
+
+One trap worth remembering: the hunt first "found" `AmbientColor` in `c29` and
+in `ps c0`. That preset's ambient is grey (0.345×3) and matched a fade scalar
+passing through it. A grey triple identifies nothing — only the colours whose
+channels differ can answer where a preset went.
+
+## 3. Sun direction **[OK]**
+
+`Pitch` counts from the **zenith**, not the horizon, and `Yaw` is degrees
+around +Z from +X, counter-clockwise:
+
+```
+sunDir = (sin(Pitch)·cos(Yaw), sin(Pitch)·sin(Yaw), cos(Pitch))
+```
+
+Measured, not judged by eye. For Pitch 35 / Yaw 40 the editor computes
+`(0.439, 0.369, 0.819)`; the probe in the running game read `vs c35` as
+`(-0.439, -0.369, 0.819)` under the same preset — the same vector, negated,
+because the engine hands the shader the direction light TRAVELS and the shader
+uses `-(N·c35)`. Three decimals, all three components. This was `[~]` until
+that run.
 
 ## 3a. Designer point lights (`<pointLights>` on placed objects) **[OK]**
 
@@ -147,16 +201,24 @@ Still simplified:
 
 ## 5. Verification
 
-* `npx playwright test ambient-light` — the real app: opening A1C1M1 turns the
-  preset's exact colours up in `view.ambientState()` (terrain uniforms raw,
-  three.js sun converted), with the sun unit-length at the pitch/yaw the
-  preset names; before any map, the fallback look. Skips itself without the
-  game data.
+* `npx playwright test object-light` — the sum itself, by arithmetic.
+  `view.shadeProbe(albedo, normal)` draws ONE known albedo under ONE known
+  normal into a 1x1 target and reads the pixel back; the test computes what the
+  loaded preset says it should be and compares. Every term separates: a normal
+  facing away isolates Ambient, halving the albedo must halve the pixel (which
+  it would not in linear space), and a white albedo proves the clamp. Checked
+  by sabotage both ways — dropping `Whitening` moves a channel by 65, decoding
+  the texture as sRGB moves it by 74.
+* `npx playwright test ambient-light` — the handoff: opening A2C1M1 turns the
+  preset's exact colours up in `view.ambientState()`, raw, with the sun
+  unit-length at the pitch/yaw the preset names; before any map, the fallback
+  look. Skips itself without the game data. (It named A1C1M1 until 08.2026 — a
+  path that is not in the unpacked data, so it had been skipping itself on
+  every run instead of checking anything.)
 * `npx playwright test point-lights` — opening A2C1M2 and switching to the
   underground bakes its 68 lights; asserted on the LIT AREA, not just a flag,
   because the texel count scales with radius² and a misread unit would move
   it 4× — `view.pointLights()`.
-* The gamma reasoning and the zenith reading of Pitch are checked by
-  arithmetic against measured pixels (§2), not by a test — a change to either
-  shows up as every day map rendering dark, which is exactly what both bugs
-  looked like.
+* The shape of the sum and the sun direction are read out of the executable and
+  out of the running game (§2, §2a) rather than tested here: no change in the
+  editor can alter what the game does, so there is nothing for a test to guard.

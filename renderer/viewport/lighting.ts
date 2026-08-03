@@ -1,11 +1,17 @@
-// The map's AmbientLight preset, as three lights and a handful of uniforms.
+// The map's AmbientLight preset, as a handful of uniforms — and three three.js
+// lights that no longer light anything the game draws.
 //
-// Mapping the game's four-colour model onto three lights: the sun carries
-// LightColor from its Pitch/Yaw; the hemisphere spans AmbientColor (sky side)
-// down to ShadeColor (the colour the game paints surfaces facing away from the
-// sun — three.js has no shade term, but a hemisphere's underside reaches the
-// same faces); a small constant floor stays so decoded props with broken
-// normals never go black.
+// ONE LIGHT MODEL. The game has one, and it is not three.js's. Its own shaders
+// (read out of the executable, docs/LIGHTING.md §2) end every surface the same
+// way — `saturate(vertexColour · texel · Whitening)`, multiplied in GAMMA space
+// on the raw texel — and a probe in the running game says Direct3D's lighting
+// is switched off entirely and no preset colour ever reaches a shader constant.
+// So the terrain shader's formula is not a terrain formula, it is THE formula,
+// and everything else is shaded with it too (renderer/viewport/materials.ts).
+//
+// The three lights below stay only as a floor for anything the editor draws
+// that is not the game's content — gizmos, handles, a mesh with no material of
+// its own. Nothing the preset is about goes through them any more.
 
 import * as THREE from 'three';
 
@@ -45,6 +51,12 @@ export const uAmbCol = { value: new THREE.Color(0.31, 0.31, 0.31) };
 // The Light toggle's reach into the terrain: 1 = the baked designer point
 // lights add in, 0 = they don't (flat editing light keeps pools off too).
 export const uLmGain = { value: 1 };
+/**
+ * The preset's `<Whitening>`, as the factor the sum is multiplied by before it
+ * is clamped: 2 on, 1 off. Was a `2.0` written into the terrain shader, which
+ * is right for 260 of the 291 shipped presets and wrong for the other 31.
+ */
+export const uWhiten = { value: 2 };
 // Scene light on L_LIT particle instances (docs/EFFECTS_FORMAT.md §5): the
 // terrain's own gamma-space sum at full incidence, 2·(amb + sun) clamped to
 // 1 — daylight leaves lit smoke alone, a night preset darkens it while the
@@ -64,6 +76,7 @@ export function applyAmbient(a: AmbientData | null): void {
     uSunCol.value.setRGB(0.25, 0.25, 0.25);
     uAmbCol.value.setRGB(0.31, 0.31, 0.31);
     uFxTint.value.setRGB(1, 1, 1);
+    uWhiten.value = 2;
     return;
   }
   const [lr, lg, lb] = a.light as [number, number, number];
@@ -84,8 +97,10 @@ export function applyAmbient(a: AmbientData | null): void {
   uSunDir.value.copy(sun.position);
   uSunCol.value.setRGB(lr, lg, lb); // raw, no conversion: gamma-space shader
   uAmbCol.value.setRGB(ar, ag, ab);
+  uWhiten.value = a.whiten;
+  const w = a.whiten;
   uFxTint.value.setRGB(
-    Math.min(1, 2 * (ar + lr)), Math.min(1, 2 * (ag + lg)), Math.min(1, 2 * (ab + lb)));
+    Math.min(1, w * (ar + lr)), Math.min(1, w * (ag + lg)), Math.min(1, w * (ab + lb)));
 }
 
 /**

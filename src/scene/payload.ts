@@ -337,6 +337,12 @@ export interface AmbientData {
   pitch: number;
   /** Sun heading around +Z, degrees. */
   yaw: number;
+  /**
+   * What the lit colour is multiplied by before it is clamped — the era's
+   * modulate-×2, from the preset's `<Whitening>`: 2 when it is on, 1 when it is
+   * not. Not a constant: 31 of the 291 shipped presets turn it off.
+   */
+  whiten: number;
 }
 
 /** The renderable scene — this is the payload that crosses the IPC boundary. */

@@ -36,6 +36,38 @@ one.
 
 ### Fixed
 
+- **Everything on a map is lit the way the game lights it, not the way three.js
+  does.** The ground always ran the game's own sum; objects, actors and props
+  went through three.js's linear lighting instead, and against a preset authored
+  in gamma that is a colour error, not a brightness one. The Inferno arena's
+  warm sun `0.635/0.267/0.141` decodes to `0.361/0.058/0.018` — the green
+  channel loses a factor of four — so C1M1's knights came out salmon-pink over
+  grass that looked fine, and every tree stood a shade too dark beside the hill
+  it grew on. One sum now, for all of it: `albedo · (Ambient + Light·N·L) ·
+  Whitening`, clamped, multiplied on the raw texel.
+
+  It is not a guess about the era. The game's shaders are embedded in its
+  executable as assembler text, and the object one reads
+  `mul r3, v0, r2` / `mul_sat r0, r3, c7.x` — texture, vertex colour,
+  multiplier, clamp. A scratch DLL watching the running game adds that Direct3D
+  lighting is switched off, that `SetLight` is never called once, and that no
+  preset colour ever reaches a shader constant. The same run measured the sun
+  direction the engine hands its shaders and it matched the editor's to three
+  decimals, which promotes "Pitch counts from the zenith" from a good guess to a
+  measurement. `docs/LIGHTING.md` §2, §2a, §3.
+
+- **`<Whitening>` is read from the preset instead of assumed.** The ×2 was
+  written into the terrain shader as a constant. It is a per-preset switch, and
+  31 of the 291 shipped presets turn it off — those were rendering twice as
+  bright as the game shows them.
+
+- **A test that had never run.** `ambient-light.spec.ts` opened
+  `Maps/Scenario/A1C1M1`, which is not in the unpacked data at all, so it
+  skipped itself on every run while reporting green. It opens A2C1M1 now, and
+  a new `object-light.spec.ts` checks the sum by arithmetic — one known albedo
+  under one known normal, read back a pixel at a time, and verified by
+  deliberately breaking both the multiplier and the colour space.
+
 - **A griffin that takes off stays up.** A clip whose last frame leaves the body
   somewhere the idle does not have it was handed back to the idle anyway, which
   teleports rather than blends: the royal griffin sprang into the air and

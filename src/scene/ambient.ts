@@ -39,6 +39,9 @@ export function loadAmbient(data: Assets, href: string | null): AmbientData | nu
       light, ambient, shade,
       pitch: +(xml.match(/<Pitch>([^<]*)/)?.[1] ?? 45),
       yaw: +(xml.match(/<Yaw>([^<]*)/)?.[1] ?? 0),
+      // The era's modulate-×2, and a real per-preset switch rather than a
+      // constant: 260 of the 291 shipped presets have it on, 31 have it off.
+      whiten: /<Whitening>false</.test(xml) ? 1 : 2,
     };
   } catch { return null; }
 }

@@ -16,7 +16,9 @@ import { launchEditor, REPO_ROOT } from './launch.ts';
 import type { Launched } from './launch.ts';
 
 const DATA = process.env.HOMM5_DATA || join(REPO_ROOT, 'data-unpacked');
-const MAP = join(DATA, 'Maps', 'Scenario', 'A1C1M1', 'map.xdb');
+// A2C1M1, not A1C1M1: the first campaign's maps are not in the unpacked data
+// at all, so this skipped itself on every run instead of checking anything.
+const MAP = join(DATA, 'Maps', 'Scenario', 'A2C1M1', 'map.xdb');
 
 let ed: Launched;
 test.beforeAll(async () => { ed = await launchEditor(); });
@@ -42,12 +44,14 @@ test('opening a map applies its AmbientLight preset', async () => {
   });
 
   const after = await page.evaluate(() => window.view.ambientState());
-  // A1C1M1 names /Lights/_(AmbientLight)/AdvMap/C1M1.xdb: LightColor
-  // (0.545, 0.459, 0.38), Pitch 35, Yaw 40. The terrain uniforms carry the
-  // raw preset colours; the three.js sun carries them converted to linear.
+  // A2C1M1 names /Lights/_(AmbientLight)/AdvMap/Addon2/A2C1M1.xdb: LightColor
+  // (0.392, 0.322, 0.275), AmbientColor (0.188, 0.2, 0.255), Whitening on,
+  // Pitch 35, Yaw 40. The uniforms carry the preset's own numbers, raw — the
+  // sum they feed runs in the game's gamma space, so nothing is converted.
   expect(after.preset).toBe(true);
-  expect(after.terrain.sun).toEqual([0.545, 0.459, 0.38]);
+  expect(after.terrain.sun).toEqual([0.392, 0.322, 0.275]);
   expect(after.terrain.amb).toEqual([0.188, 0.2, 0.255]);
+  expect(after.terrain.whiten).toBe(2);
   // Sun direction: pitch from the zenith, yaw 40° around +Z, unit length.
   const [x, y, z] = after.sunPos as [number, number, number];
   expect(z).toBeCloseTo(Math.cos(35 * Math.PI / 180), 2);

@@ -25,7 +25,7 @@ import { state, activeFloor } from '#core/state.ts';
 import { tileCenter, heightOn, heightAt } from '#core/coords.ts';
 import { renderer, scene, camera, controls, topCamera, cam, keys, isTyping, raycaster, ptr, syncTopCamera, setTopView, keyPan, DEFAULT_BG } from '#viewport/stage.ts';
 import { worldGeos, worldMats, geomParts, geomScale, geomFootprint, geomSkin, geomFx, registerGeom, buildGeos } from '#viewport/geoms.ts';
-import { materialFor, partTexture } from '#viewport/materials.ts';
+import { materialFor, partTexture, shadeProbe } from '#viewport/materials.ts';
 import { terrainColor, asTileSpace, terrainGeometry, waterCells, waterGeometry, makeWaterMesh, WATER_ORDER, remeshFloor, sea } from '#viewport/terrain-mesh.ts';
 import { refreshBlocked, refreshFootprints, syncFootprints, setShowBlocked, showBlocked } from '#viewport/overlays.ts';
 import { advanceIdle, clearIdle, removeIdle, addIdle, idleMode, setIdleMode } from '#viewport/idle.ts';
@@ -54,7 +54,7 @@ import { syncInstance, removeFromBatch, addToBatch, buildBatches, replaceInstanc
 import { loadFx, advanceFx, spawnFx, removeFx } from '#viewport/fx.ts';
 import { makeLightMap, bakeLightMap, markLightsDirty } from '#viewport/point-lights.ts';
 import { upgradeToSplat, projectBatch, applyProjectedMaterials, setGroundScale, setCliffAmount, cliffsOn, disposeSplats } from '#viewport/splat.ts';
-import { applyAmbient, refreshLighting, sun, uSunDir, uSunCol, uAmbCol, uLmGain, uFxTint } from '#viewport/lighting.ts';
+import { applyAmbient, refreshLighting, sun, uSunDir, uSunCol, uAmbCol, uLmGain, uFxTint, uWhiten } from '#viewport/lighting.ts';
 import type { Floor3D, World, Selection, GeomBatch } from '#core/state.ts';
 import { UNITS_PER_TILE as U } from '#src/scene/units.ts';
 import { tierOf, RAMP_BIT, TIER_STEP } from '#src/terrain/terrain.ts';
@@ -417,7 +417,12 @@ interface ViewApi {
    * observable surface: a preset that fails to load just leaves the fallback
    * look, which a screenshot alone cannot tell apart from a dim preset.
    */
-  ambientState(): { preset: boolean; sun: number[]; sunPos: number[]; terrain: { amb: number[]; sun: number[] } };
+  ambientState(): {
+    preset: boolean; sun: number[]; sunPos: number[];
+    terrain: { amb: number[]; sun: number[]; whiten: number };
+  };
+  /** What one lit surface comes out as, 0..255 — see shadeProbe. */
+  shadeProbe(albedo: number[], normal: number[]): number[];
   /**
    * The active floor's designer point lights: how many the floor carries and
    * how many lightmap texels their bake actually lit. A wrong offset/radius
@@ -605,8 +610,12 @@ const view: ViewApi = {
       terrain: {
         amb: uAmbCol.value.toArray().map((v) => +v.toFixed(3)),
         sun: uSunCol.value.toArray().map((v) => +v.toFixed(3)),
+        whiten: uWhiten.value,
       },
     };
+  },
+  shadeProbe(albedo, normal) {
+    return shadeProbe(albedo as [number, number, number], normal as [number, number, number]);
   },
   fxSystems() {
     const fl = state.world ? activeFloor() : null;
