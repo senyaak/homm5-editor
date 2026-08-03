@@ -1,7 +1,7 @@
 // Run e2e specs against the REAL install and leave everything they make.
 //
 //   node tools/e2e-live.ts e2e/mod-003-artifacts-create.spec.ts
-//   node tools/e2e-live.ts e2e/mod-001-units-create.spec.ts e2e/mod-007-sharpshooter-map.spec.ts
+//   node tools/e2e-live.ts e2e/mod-001-units-create.spec.ts e2e/mod-007-sharpshooter/
 //   npm run e2e-live -- e2e/mod-003-artifacts-create.spec.ts
 //
 // Not called `test-…`: `npm test` runs every script with that prefix as a
