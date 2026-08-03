@@ -39,6 +39,44 @@ only measured, it has to be so: a stack raised from the dead would otherwise
 have to be written back out again, and a summoned one would have to be written
 out and then taken away.
 
+## What a stack is worth, mid-battle
+
+The creature info panel reads `5 /15` over a wounded stack, and that number is
+**not kept anywhere**. Seven sweeps of memory went looking for a word that was
+17 and became less — across a kilobyte and a half around every
+`CCombatCreature`, forwards and backwards, as whole numbers and as fractions —
+and there is no such word. It is asked for, and the asking is three virtual
+calls:
+
+| on `CCombatCreature` | |
+|---|---|
+| `vt[0x1A8]` | what one whole creature of this stack is worth |
+| `vt[0x1D4]` | what is left in the one at the FRONT — the number being looked for |
+| `vt[0x1D8]` | how many are standing |
+
+Found where the answer is USED rather than where it might be stored, which is
+the whole lesson: `0xb57310` decides how many creatures a blow kills, and its
+entire body is
+
+```
+dead = damage / vt[0x1A8]
+     + (damage % vt[0x1A8] >= vt[0x1D4] ? 1 : 0)      capped at vt[0x1D8]
+```
+
+Each term can mean only one thing, and a battle confirmed all three at once:
+blows of 6, 7 and 6 on three separate stacks left them reading 11, 10 and 11
+out of 17, while a stack of peasants read 3 out of 3 and counted 33, 23, 11, 0.
+
+**`vt[0x1A8]` already carries the bonuses.** It answered 17 for marksmen whose
+own record says 15, the two coming from the necromancer's Stamina. So a health
+bar takes its full length from here and never from the creature record, or it
+would be short for everyone with that skill.
+
+**Ask through the slot, never by offset.** Every slot of this class begins
+`sub ecx,[ecx-4]` — a virtual-base adjustor — so a field read at a fixed
+distance from the pointer the screen hands out is a field of something else.
+That is what the seven sweeps were reading.
+
 A battle reaches the world **once**, through a command:
 
 ```
