@@ -30,6 +30,7 @@ import { extractMapFolder, gameArchives } from '../src/map/map-source.ts';
 import { stageObjects } from '../src/dialog/stage.ts';
 import { actorRigs } from '../src/dialog/actors.ts';
 import { buildScenePlay } from '../src/dialog/play.ts';
+import { PLAYER_COLOURS } from '../src/scene/colour-models.ts';
 import { mkdirSync } from 'node:fs';
 
 let failures = 0;
@@ -671,6 +672,29 @@ if (!byPath.has(showcasePath)) {
   check('an effect model plays its own clip and ends', models.length > 0 && endless.length === 0,
     `${models.length} models, ${models.filter((m) => m.geom.skin?.clip).length} animated,`
     + ` shortest ${Math.min(...models.map((m) => m.life)).toFixed(2)}s`);
+
+  // A hero has nine bodies, one per player colour, and the top-level <Model> is
+  // the WHITE one — so drawing that gives every hero of every player a white
+  // banner. The data says the list is the colour enum twice over: nine PCOLOR_*
+  // values, and nine <Item>s on every character that has any.
+  const chars = walk(join(DATA, 'Characters'))
+    .map((p) => readFileSync(p, 'utf8'))
+    .filter((x) => x.includes('<ColourModels>'));
+  const nine = chars.filter((x) =>
+    (x.match(/<ColourModels>([\s\S]*?)<\/ColourModels>/)?.[1]?.match(/<Item href/g) ?? []).length
+      === PLAYER_COLOURS.length);
+  check('a coloured body is named once per player colour', chars.length > 0 && nine.length === chars.length,
+    `${chars.length} characters carry <ColourModels>, ${nine.length} of them with`
+    + ` ${PLAYER_COLOURS.length} entries — the length of the PCOLOR enum`);
+
+  // And the two commanders of this scene wear the two colours their PlayerIDs
+  // ask for. Agrael is PLAYER_1 and Isabell PLAYER_2 on an arena whose eight
+  // players are every one of them PCOLOR_NEUTRAL, so the number is all there is
+  // — and blue is the banner the game shows her carrying.
+  const worn = play.actors.map((a) => a.model).filter((m) => /Heroes\//.test(m));
+  check('and a hero wears the one his player flies',
+    worn.some((m) => /Knight_Blue/.test(m)) && worn.some((m) => /DemonLord_Red/.test(m)),
+    [...new Set(worn.map((m) => m.split('/').pop()))].join(', '));
 }
 
 console.log(`\n${failures ? `\x1b[31m${failures} failed\x1b[0m` : '\x1b[32mall checks passed\x1b[0m'}`);

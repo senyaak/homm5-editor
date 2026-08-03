@@ -26,6 +26,7 @@ import type { GeomData } from '../scene/payload.ts';
 import { bakeCharacterClip } from '../scene/skin.ts';
 import type { BakedRig } from '../scene/skin.ts';
 import { dirOf, resolveHref } from '../scene/xdb.ts';
+import { colourModelHref, colourOfPlayer } from '../scene/colour-models.ts';
 import type { DialogScene } from './dialog-scene.ts';
 import type { StageObject } from './stage.ts';
 
@@ -39,6 +40,15 @@ export interface ActorRig {
   id: string | null;
   /** Their arena mesh, skinned. */
   geom: GeomData;
+  /**
+   * The model that mesh came out of, as a data-root path.
+   *
+   * Worth carrying because the character alone does not decide it: a hero has
+   * nine bodies and the one drawn is his owner's colour (src/scene/colour-
+   * models.ts). Two figures of the same class in one scene can be two different
+   * models, and this says which.
+   */
+  model: string;
   /** Baked clips by kind. Always holds `idle00` when the set has one. */
   clips: Record<string, BakedClip>;
   /** Every kind the arena set offers, whether baked or not — for the UI. */
@@ -224,9 +234,16 @@ export function actorRigs(
     const character = sharedHref ? arenaCharacter(data, sharedHref) : null;
     if (!character) continue;
 
-    let part = cast.get(character.rel);
+    // A hero's body comes in nine colours and the top-level <Model> is the
+    // WHITE one (src/scene/colour-models.ts), so the character alone does not
+    // identify a mesh — Agrael and Isabell are the same Knight or DemonLord
+    // document in two different bodies. The colour joins the key.
+    const colour = colourOfPlayer(item.object.player);
+    const castKey = `${character.rel}|${colour}`;
+    let part = cast.get(castKey);
     if (!part) {
-      const modelHref = character.xml.match(/<Model href="([^"]+)"/)?.[1];
+      const modelHref = colourModelHref(character.xml, colour)
+        ?? character.xml.match(/<Model href="([^"]+)"/)?.[1];
       const modelRel = modelHref ? resolveHref(dirOf(character.rel), modelHref) : null;
       const modelXml = modelRel ? data.text(modelRel) : null;
       if (!modelRel || !modelXml) continue;
@@ -237,7 +254,7 @@ export function actorRigs(
       // Always the idle: it is what an actor does between the moments a scene
       // gives them something to do, and 1001 shots name it outright.
       part = { modelRel, modelXml, kinds, order: [...kinds.keys()], ask: new Set(['idle00']), on: [] };
-      cast.set(character.rel, part);
+      cast.set(castKey, part);
       casting.push(part);
     }
     part.on.push(item);
@@ -295,7 +312,7 @@ export function actorRigs(
     // the mesh once, and the renderer can build one THREE geometry for all.
     for (const item of part.on) {
       rigs.push({
-        key: item.key, href: item.href, id: item.id,
+        key: item.key, href: item.href, id: item.id, model: part.modelRel,
         geom, clips, clipEffects, clipSpeed, available: part.order, missing,
       });
     }

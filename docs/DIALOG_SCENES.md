@@ -191,6 +191,43 @@ What the corpus actually asks for, most used first: `idle00` (1001), `move`
 (903), `death` (741), `happy` (617), `attack00` (498), `spneutral` (334),
 `rangeattack` (196), `hit` (173), `cast` (161).
 
+**And a hero has NINE bodies, one per player colour.** Beside the character's
+`<Model>` sits a `<ColourModels>` list:
+
+```
+<Model href="/_(Model)/Heroes/Knight.(Model).xdb"/>
+<ColourModels>
+  <Item href="/_(Model)/Heroes/Knight_White.xdb"/>
+  <Item href="/_(Model)/Heroes/Knight_Red.xdb"/>
+  <Item href="/_(Model)/Heroes/Knight_Blue.xdb"/>   …nine of them
+```
+
+They are whole models, not a palette: each names its own flag material and its
+own texture (`Knight-flag_Blue` → `Flags/Heroes/Haven/Flag_dark_blue.dds`). The
+top-level `<Model>` is the WHITE one, so drawing it flies a white banner over
+every hero of every player — which under a warm preset reads as a washed-out
+grey-blue, and was the visible symptom.
+
+The index is the `PCOLOR_*` enum, and the data says so twice: `Types.xml`
+declares nine values, and all 17 characters that carry the list carry exactly
+nine entries in the same order (NEUTRAL/White, RED, BLUE, GREEN, YELLOW,
+ORANGE, TEAL, PURPLE, BROWN/Tan — seven names match outright, the two that do
+not are synonyms). Which colour a `PLAYER_n` flies comes from the map's own
+player table where it names one; a dialog scene's ARENA names none — all eight
+players are `PCOLOR_NEUTRAL` and inactive — so the player's number is what is
+left, PLAYER_1 red and PLAYER_2 blue. C1M1's opening stages Agrael as PLAYER_1
+and Isabell as PLAYER_2, and blue is the banner the game shows her carrying.
+
+Not every hero has coloured bodies: `Isabel_Flagless`, `Godric_Flagless` and
+`Beatrice_DS` are bespoke models with no list, and fall back to `<Model>`,
+which is theirs.
+
+**Still white on the adventure map.** The same list hangs off the LOD
+(adventure) characters, and the map view does not read it — a placed hero flies
+the colourless banner whoever owns him. The change is bigger there: the map's
+geometry cache is keyed by the shared href alone, and colour would make one
+shared into up to nine meshes.
+
 ### Walking
 
 922 cues carry `MovePoints` — a list of TILES the actor is to be at, in order.

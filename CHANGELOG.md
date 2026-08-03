@@ -56,6 +56,19 @@ one.
   decimals, which promotes "Pitch counts from the zenith" from a good guess to a
   measurement. `docs/LIGHTING.md` §2, §2a, §3.
 
+- **A hero in a scene flies his own colours.** Isabell's banner came out a
+  washed grey-blue where the game shows bright blue, and it was neither the
+  light nor the texture: a hero has NINE bodies, one per player colour, and the
+  `<Model>` beside the list is the white one. We were drawing the white one for
+  everybody. The colour is chosen by the owner's `PlayerID` now — the map's own
+  player table where it names a colour, the player's number where it does not,
+  which is every dialog-scene arena. Agrael rides red, Isabell blue, and the
+  seventeen characters that have coloured bodies all have exactly nine, which is
+  the length of the `PCOLOR` enum. Heroes with a bespoke model and no list
+  (`Isabel_Flagless`, `Beatrice_DS`) keep it. The adventure map still draws the
+  colourless one — same bug, bigger change, written down in
+  `docs/DIALOG_SCENES.md`.
+
 - **`<Whitening>` is read from the preset instead of assumed.** The ×2 was
   written into the terrain shader as a constant. It is a per-preset switch, and
   31 of the 291 shipped presets turn it off — those were rendering twice as
