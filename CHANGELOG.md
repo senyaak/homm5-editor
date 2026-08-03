@@ -54,6 +54,22 @@ one.
   for the two things that are about the machine and hold no path (software
   rendering, whether idles animate).
 
+- **The suites and `run-test-and-keep.bat` are told where the game is too.**
+  Three of them had kept their own copy of the guess we just took out of the
+  editor: `test-pak` opened the literal `../data/GEmaps.pak`, the Lua registry
+  check read `../bin/H5_Game_H5E.exe`, and `test-terrain` parsed two `.bin`
+  files under `_tmp/probes/` that nothing creates — someone had put them there
+  by hand once, so that suite passed on one machine and crashed on every other.
+  All three now take `HOMM5_ROOT` / `HOMM5_DATA`, and the terrain samples come
+  out of the unpacked data root like every other suite's do.
+
+  `run-test-and-keep.bat` — the live run that builds the mod into a real
+  install and leaves it there — no longer treats the directory above the
+  checkout as the game. It reads `HOMM5_ROOT`, falls back to the `.env` beside
+  it, and REFUSES to run when neither says: a wrong install here is not a
+  crash, it is a full mod authored into a folder nobody meant, reported as
+  success.
+
 ### Fixed
 
 - **The editor says which folders it settled on, and which answer it used.** It

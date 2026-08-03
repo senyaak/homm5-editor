@@ -21,7 +21,9 @@ const flag = (name: string): string | undefined => {
 const editor = resolve(import.meta.dirname, '..', '..');
 // The editor usually sits inside the install; HOMM5_GAME covers a checkout that
 // does not (a worktree, say), the way HOMM5_DATA does for unpacked data.
-const gameRoot = process.env.HOMM5_GAME ?? resolve(editor, '..');
+// HOMM5_ROOT is the name the editor and every other suite use; HOMM5_GAME is
+// kept because this script had it first and scripts elsewhere pass it.
+const gameRoot = process.env.HOMM5_ROOT ?? process.env.HOMM5_GAME ?? resolve(editor, '..');
 const exePath = flag('exe') ?? resolve(gameRoot, 'bin', 'H5_Game_H5E.exe');
 const docPath = flag('out') ?? resolve(editor, 'docs', 'EXE_LUA_REGISTRY.md');
 

@@ -3,11 +3,25 @@
 //  2. read heights and sanity-check the range
 //  3. edit round-trip: raise every vertex by +1.0, write, re-parse, and confirm
 //     the values read back AND that only the height byte-range changed.
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { parseTerrain, readHeights, writeHeights, readTextureLayers, tilePathAt } from '../src/terrain/terrain.ts';
 
+// The samples are two shipped maps' terrain, taken from the unpacked data root
+// — the same folder every other suite reads. They used to be two files under
+// `_tmp/probes/` that nothing creates: whoever first ran this had copied them
+// there by hand, so the suite passed on that machine and crashed on every
+// other, which is the opposite of what a test is for.
+const DATA = process.env.HOMM5_DATA ?? 'data-unpacked';
 const samples = process.argv.slice(2);
-if (samples.length === 0) samples.push('_tmp/probes/A2M3_GroundTerrain.bin', '_tmp/probes/A2M6_GroundTerrain.bin');
+if (samples.length === 0) {
+  samples.push(`${DATA}/Maps/Multiplayer/A2M3/GroundTerrain.bin`, `${DATA}/Maps/Multiplayer/A2M6/GroundTerrain.bin`);
+}
+for (const path of samples) {
+  if (!existsSync(path)) {
+    console.error(`no terrain to check at ${path} — set HOMM5_DATA to an unpacked data root, or name .bin files as arguments`);
+    process.exit(1);
+  }
+}
 
 let failures = 0;
 for (const path of samples) {

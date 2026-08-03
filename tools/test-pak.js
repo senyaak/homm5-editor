@@ -13,7 +13,10 @@ import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 
-const PAK = '../data/GEmaps.pak';
+// Told where the game is, like everything else. It used to be the literal
+// '../data/GEmaps.pak' — the checkout's parent — which is a game folder only
+// when the checkout happens to sit inside the install, and never for a worktree.
+const PAK = join(process.env.HOMM5_ROOT ?? '..', 'data', 'GEmaps.pak');
 const sha1 = (b) => createHash('sha1').update(b).digest('hex');
 let failures = 0;
 const ok = (cond, msg) => { console.log(`${cond ? 'ok  ' : 'FAIL'} ${msg}`); if (!cond) failures++; };

@@ -50,12 +50,42 @@ if not exist node_modules (
   if errorlevel 1 goto :fail
 )
 
+REM WHICH install. Told, never guessed: HOMM5_ROOT from the environment, or from
+REM the .env beside this file -- the same two answers the editor itself takes
+REM (electron/paths.ts). It used to be the literal "..", the directory above the
+REM checkout, which is the install only when the checkout sits inside one, and is
+REM never right for a worktree. A wrong guess here does not crash: the run authors
+REM the whole mod into a folder nobody meant and reports success. So there is no
+REM fallback at all -- unset is a refusal to run.
+if not defined HOMM5_ROOT (
+  if exist "%~dp0.env" (
+    for /f "usebackq eol=# tokens=1,* delims==" %%A in ("%~dp0.env") do (
+      if /i "%%A"=="HOMM5_ROOT" set "HOMM5_ROOT=%%B"
+    )
+  )
+)
+if not defined HOMM5_ROOT (
+  echo.
+  echo  Nobody said where the game is, so this will not run.
+  echo.
+  echo  Say it in one of two ways:
+  echo      set HOMM5_ROOT=D:\Games\Heroes 5       ^(this shell only^)
+  echo      or a HOMM5_ROOT= line in %~dp0.env     ^(every run^)
+  echo.
+  echo  Starting the editor once writes that .env for you: its setup screen asks
+  echo  for the folder and does the four steps.
+  echo.
+  goto :fail
+)
+echo  Working in: %HOMM5_ROOT%
+
 REM The mod is installed INTO the patched executable's install: the archive and
 REM the ceilings in that copy have to agree exactly. Without it there is nothing
 REM to install into, and the first run is what makes it.
-if not exist "..\bin\H5_Game_H5E.exe" (
+if not exist "%HOMM5_ROOT%\bin\H5_Game_H5E.exe" (
   echo.
-  echo  This install has not been prepared yet -- no ..\bin\H5_Game_H5E.exe.
+  echo  This install has not been prepared yet -- no bin\H5_Game_H5E.exe under
+  echo  %HOMM5_ROOT%
   echo  Start the editor once and let its setup screen do the four steps:
   echo.
   echo      start-editor.bat        ^(or: npm start^)
@@ -80,8 +110,8 @@ if errorlevel 1 goto :fail
 echo.
 echo ===========================================================================
 echo  Done. What the run left in the game:
-echo    %~dp0..\H5E\homm5-editor.h5u
-echo    %~dp0..\H5E\Sharpshooter Test.h5m
+echo    %HOMM5_ROOT%\H5E\homm5-editor.h5u
+echo    %HOMM5_ROOT%\H5E\Sharpshooter Test.h5m
 echo.
 echo  Launch bin\H5_Game_H5E.exe to see them. The shipped bin\H5_Game.exe reads
 echo  none of it, which is the way to turn all of it off.
@@ -92,6 +122,6 @@ exit /b 0
 :fail
 echo.
 echo  The run did not finish. Nothing was cleaned up, so what it did get to is
-echo  still in ..\H5E\ -- read the failure above before running it again.
+echo  still in %HOMM5_ROOT%\H5E\ -- read the failure above before running it again.
 pause
 exit /b 1
