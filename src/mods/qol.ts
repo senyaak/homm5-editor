@@ -67,10 +67,11 @@ export const QOL_FLAGS = [
     name: 'stack-health-bar',
     title: 'A health bar on the stack plate',
     detail: 'In a battle, the plate over a stack carries a bar showing how much health the creature'
-      + ' at the front of it has left — the one currently being hit, not the stack as a whole.'
-      + ' Shown on every stack, yours and the enemy\'s, damaged or not. Not finished: where a'
-      + ' fighting creature keeps its wound is still being looked for, so this switch does nothing'
-      + ' on screen yet.',
+      + ' at the front of it has left — the one currently being hit, not the stack as a whole,'
+      + ' like the HotA bar in Heroes III. Shown on every stack, yours and the enemy\'s. Applying'
+      + ' this also writes H5E/homm5-editor-qol.h5u, the archive the bar\'s strips live in, and'
+      + ' turning it off deletes that archive again — the strips are drawn by the game itself,'
+      + ' so a config line alone would not take them off the screen.',
   },
   {
     name: 'stack-losses',

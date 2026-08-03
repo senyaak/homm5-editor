@@ -19,6 +19,8 @@ enabled.
 | `native/homm5-editor.c` | reads it at load, installs only what it asks for. |
 | `src/mods/qol.ts` | the flags and their words — no I/O, so the panel can import it. |
 | `src/mods/qol-file.ts` | reading and writing that file. |
+| `src/mods/qol-ui.ts` | the health bar's archive, built from the install's own `data.pak`. |
+| `H5E/homm5-editor-qol.h5u` | that archive in the install — written and removed by apply, following the flag. |
 | `src/game/video-config.ts` | the game's own video settings, in its own profile. |
 | `electron/channels/qol.ts` | `qol:get` and `qol:apply`. |
 | `renderer/features/qol.ts` | the panel. |
@@ -146,6 +148,32 @@ somebody actually plays.
 
 With this on, the panel writes video settings into our profile rather than the
 shared one, which closes the same hole from the editor's side.
+
+## `stack-losses` and `stack-health-bar`
+
+The battle plates: Shift shows `now / at the start` on every stack's number,
+and a bar under the plate shows what the creature at the front has left. How
+both work — the detours, the health accessors, the widths — is a page of its
+own: [engineInternals/STACK_PLATE.md](engineInternals/STACK_PLATE.md).
+
+What belongs HERE is the part `qol:apply` owns: the bar is **half archive**.
+Its two strips are child windows declared in `H5E/homm5-editor-qol.h5u`, and
+the game draws them at their declared size whether or not the extension runs.
+So the archive follows the flag — written on apply when the bar is on, deleted
+when it is off — or a config line alone would leave a bar on the screen of
+somebody who turned it off. The build lives in `src/mods/qol-ui.ts`
+(`tools/qol-ui.ts` is the same build by hand), and it is made from the
+install's own `data.pak`, so every field we do not set is what the engine
+already reads elsewhere.
+
+## Plans
+
+**The bar's own settings** — colour and texture of the strips, maybe their
+height. The values sit in one place today (`stripTexture(...)` calls in
+`src/mods/qol-ui.ts`), so the feature is a settings surface, not a rebuild.
+When it happens it gets its OWN home — a section of its own in the panel and
+its own lines in the config, not more fields squeezed into the existing flags —
+and the archive is simply rebuilt from those values on apply.
 
 ## Adding a flag
 

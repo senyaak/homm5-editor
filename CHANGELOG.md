@@ -13,7 +13,18 @@ one.
 
 ## Unreleased
 
-Nothing yet — this is where the next build's notes go.
+### Added
+
+- **Game settings — two more battle switches.**
+  - **A health bar on the stack plate.** In a battle every stack's plate
+    carries a bar showing what the creature at the front has left — the one
+    being hit, not the stack as a whole, like the HotA bar in Heroes III.
+    Bright green on near-black, sized to the plate every frame. Applying the
+    flag writes `H5E/homm5-editor-qol.h5u` (the strips are the game's own
+    child windows) and turning it off deletes it again.
+  - **Losses on the plate while Shift is held.** Every plate reads
+    `now / at the start of the battle` — 53 of the 59 that walked in reads
+    `53/59`. Costs nothing while the key is up.
 
 ## 0.7.0 — 2026-08-02
 

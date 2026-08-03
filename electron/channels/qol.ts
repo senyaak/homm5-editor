@@ -15,6 +15,7 @@ import { APP_ROOT, gameRoot } from '#electron/paths.ts';
 import { isQolName } from '#src/mods/qol.ts';
 import type { QolSettings } from '#src/mods/qol.ts';
 import { qolPath, readQol, writeQolFile } from '#src/mods/qol-file.ts';
+import { removeQolArchive, writeQolArchive } from '#src/mods/qol-ui.ts';
 import { profilesRoot, setResolution, setWindowed } from '#src/game/video-config.ts';
 import { extensionState, installExtension } from '#src/mods/extension.ts';
 import { MOD_DIR } from '#src/game/mod-paths.ts';
@@ -79,12 +80,25 @@ export function registerQol(): void {
     const file = writeQolFile(g, wanted);
 
     let extension = false;
-    let note = '';
+    const notes: string[] = [];
     try {
       extension = installExtension(g, APP_ROOT).installed;
     } catch (e) {
-      note = e instanceof Error ? e.message : String(e);
+      notes.push(e instanceof Error ? e.message : String(e));
     }
+
+    // The health bar is half archive: the strips it sizes are child windows,
+    // and the engine draws them at their declared size whether or not any
+    // extension runs. So the archive FOLLOWS THE FLAG — written when the bar is
+    // asked for, deleted when it is not — or a switch turned off would leave a
+    // bar of fixed width on the screen. See src/mods/qol-ui.ts.
+    try {
+      if (wanted['stack-health-bar']) writeQolArchive(g);
+      else removeQolArchive(g);
+    } catch (e) {
+      notes.push(e instanceof Error ? e.message : String(e));
+    }
+    const note = notes.join('; ');
 
     // Borderless without windowed mode is a switch that does nothing: with
     // exclusive fullscreen the display belongs to Direct3D and there is no

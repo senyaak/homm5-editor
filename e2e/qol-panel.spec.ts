@@ -16,9 +16,11 @@
 // it, applying borderless would edit the game profile of whoever ran the suite.
 
 import { test, expect } from '@playwright/test';
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { REPO_ROOT, launchEditor } from './launch.ts';
+import { writeArchive } from '#src/format/pak.ts';
+import { QOL_ARCHIVE } from '#src/mods/qol-ui.ts';
 
 /** An install with no patched executable — nothing here can take effect in it. */
 const BARE = join(REPO_ROOT, '_tmp', 'e2e-qol-bare');
@@ -28,6 +30,7 @@ const PROFILE = join(DOCS, 'My Games', 'Heroes of Might and Magic V — Tribes o
   'Profiles', 'Player', 'user_a2.cfg');
 
 const QOL_FILE = join(BARE, 'bin', 'homm5-editor-qol.txt');
+const ARCHIVE = join(BARE, QOL_ARCHIVE);
 
 test.beforeAll(() => {
   rmSync(BARE, { recursive: true, force: true });
@@ -37,6 +40,29 @@ test.beforeAll(() => {
   // Shaped like the game's own: the two lines borderless cares about, and one
   // it must leave alone.
   writeFileSync(PROFILE, 'setvar gfx_gamma = 1\nsetvar gfx_fullscreen = 1\nsetvar gfx_resolution = 1024x768\n', 'utf8');
+  // A data.pak of the right SHAPE, because the health-bar archive is built out
+  // of the install's own: the four files the build copies fields from, each cut
+  // to the pattern it is read by. The build only patches strings and repaints
+  // pixels, so stand-ins prove the plumbing without a two-gigabyte fixture.
+  mkdirSync(join(BARE, 'data'), { recursive: true });
+  writeFileSync(join(BARE, 'data', 'data.pak'), writeArchive([
+    {
+      name: 'UI/CombatArena-FPP-2/StackInfo.(WindowMSButtonShared).xdb',
+      data: Buffer.from('<?xml version="1.0"?><WindowMSButtonShared><Children>\n'
+        + '\t<Item href="/UI/CombatArena/StackInfo/StackText.(WindowTextView).xdb#xpointer(/WindowTextView)"/>\n'
+        + '</Children></WindowMSButtonShared>', 'utf8'),
+    },
+    // 128 bytes of DDS header, 15x15 BGRA pixels — the sizes the repaint assumes.
+    { name: 'Textures/Interface/CombatArena/StackInfo/Positive.dds', data: Buffer.alloc(128 + 15 * 15 * 4) },
+    {
+      name: 'Textures/Interface/CombatArena/StackInfo/Positive.xdb',
+      data: Buffer.from('<?xml version="1.0"?><Texture><SrcName href="x.tga"/><DestName href="x.dds"/></Texture>', 'utf8'),
+    },
+    {
+      name: 'UI/AdventureScreen/StackInfo/Positive.(BackgroundTiledTexture).xdb',
+      data: Buffer.from('<?xml version="1.0"?><BackgroundTiledTexture><Texture href="x.xdb"/></BackgroundTiledTexture>', 'utf8'),
+    },
+  ]));
 });
 test.afterAll(() => {
   rmSync(BARE, { recursive: true, force: true });
@@ -108,6 +134,36 @@ test('applying writes the file the extension reads, and the profile @nodata', as
     expect(profile, 'windowed mode is set').toMatch(/^setvar gfx_fullscreen = 0$/m);
     expect(profile, 'the render size follows the screen').toMatch(/^setvar gfx_resolution = \d+x\d+$/m);
     expect(profile, 'nothing else in the profile moved').toContain('setvar gfx_gamma = 1');
+  } finally {
+    await ed.app.close();
+  }
+});
+
+test('the battle-plate flags reach the file, and the bar its archive @nodata', async () => {
+  const ed = await launchEditor({ HOMM5_ROOT: BARE, HOMM5_DOCUMENTS: DOCS });
+  try {
+    await ed.page.locator('#qolbtn').click();
+    await ed.page.locator('#qol-stack-health-bar').check();
+    await ed.page.locator('#qol-stack-losses').check();
+    await ed.page.locator('#qol-apply').click();
+    await expect(ed.page.locator('#qol-msg')).toContainText('settings written', { timeout: 30_000 });
+
+    const written = readFileSync(QOL_FILE, 'utf8');
+    expect(written, 'the bar is on in the file').toMatch(/^stack-health-bar 1$/m);
+    expect(written, 'and the losses beside it').toMatch(/^stack-losses 1$/m);
+
+    // The half of the bar the config line cannot carry: the strips are child
+    // windows in an archive, drawn by the game itself, so applying the flag
+    // must put that archive into the install...
+    expect(existsSync(ARCHIVE), 'the archive is written beside the flag').toBe(true);
+
+    // ...and taking the flag back must take the archive with it, or the bar
+    // stays on the screen of somebody who turned it off.
+    await ed.page.locator('#qol-stack-health-bar').uncheck();
+    await ed.page.locator('#qol-apply').click();
+    await expect.poll(() => existsSync(ARCHIVE), { timeout: 30_000 }).toBe(false);
+    expect(readFileSync(QOL_FILE, 'utf8'), 'while the other flag keeps its line')
+      .toMatch(/^stack-losses 1$/m);
   } finally {
     await ed.app.close();
   }
