@@ -37,22 +37,23 @@ interface Tok { kind: TokKind; text: string; from: number; to: number }
 const OPENERS = new Set(['function', 'if', 'do']);
 
 /**
- * `return;` — a semicolon straight after `return` — and why it has a rule.
+ * `return;` — a semicolon straight after `return` — and why it earns a rule.
  *
- * In Lua 4 `return` is not an ordinary statement: it ends a block, and the
- * optional `;` that may follow any other statement is not part of it. Lua 5
- * accepts `return;`, every modern reference shows it, and nothing about the line
- * looks wrong — which is exactly why this cost a day. The game's own console is
- * what named it:
+ * Lua 4 does not take it. Lua 5 does, every modern reference shows it, and the
+ * line looks like every other statement — which is why it cost a day. The game's
+ * own console named it, dead on:
  *
  *     (Script) ERROR: expected;   last token read: `;' at line 2
  *
- * The whole FILE fails to compile, not the function; and while our code sat
- * inside the game's `combat-startup.lua`, it took every declaration in that file
- * down with it — `IsAttacker`, `UnitDeath`, the lot. See
- * docs/NAMES_AND_SCRIPTING.md.
+ * The whole FILE fails to compile, not the function. And while our battle code
+ * sat inside the game's `combat-startup.lua`, it took every declaration in that
+ * file with it — `IsAttacker`, `UnitDeath`, the aliases — so the game's own
+ * battle scripting was quietly broken by a mod, and it looked like anything
+ * except a misplaced semicolon. Write `return` bare, and last in its block.
  */
-const RETURN_SEMICOLON = "';' after 'return' — Lua 4 rejects the whole file; write a bare `return`";
+const RETURN_SEMICOLON =
+  "';' after 'return' — Lua 4 rejects the whole file; write a bare `return`";
+
 
 /**
  * Split Lua into tokens, with strings and comments swallowed whole.

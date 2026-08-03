@@ -425,7 +425,11 @@ static void beside_us(const WCHAR *name, WCHAR *out) {
   out[i] = 0;
 }
 
+/** Say it in the game's own console too, while a battle can be spoken to. */
+static void console_line(const char *text);
+
 static void log_line(const char *text) {
+  console_line(text);
   WCHAR path[MAX_PATH];
   beside_us(L"homm5-editor.log", path);
   HANDLE h = CreateFileW(path, FILE_APPEND_DATA, FILE_SHARE_READ, NULL, OPEN_ALWAYS,
@@ -1197,10 +1201,44 @@ static void *__fastcall lua_combat_test(void *ctx) {
 }
 
 
+#define MACHINE_CHARGES_EARLY 0xB0u
+
+
+/** The tent this battle built last — what `H5ETentCharge()` hands a use to. */
+static void *g_lastTent = NULL;
+
+/**
+ * One more use for the tent, asked for by a script. NO ARGUMENTS, deliberately.
+ *
+ * This is the half of the ultimate that Lua cannot do: the charges live at
+ * `machine+0xB0` and no registered function of the game's touches them. What
+ * Lua CAN do is watch the mana — `GetUnitManaPoints` is in its own vocabulary,
+ * and every unit's turn arrives as `UnitMove`. So the script counts and this
+ * writes, and neither side needs the thing it does not have — which is also why
+ * this takes no arguments: reading them means reimplementing the engine's
+ * parser, and the perk does not need to.
+ *
+ * ITS LIMIT, stated rather than discovered later: with no arguments it cannot be
+ * told WHOSE tent, so the use goes to the last one built. One tent a side is the
+ * normal case and the stand has one; telling them apart waits for arguments.
+ */
+static void *__fastcall lua_tent_charge(void *ctx) {
+  (void)ctx;
+  if (!g_lastTent || !readable((BYTE *)g_lastTent + MACHINE_CHARGES_EARLY, 4)) {
+    log_line("H5ETentCharge: no tent to give a use to");
+    return NULL;
+  }
+  int *charges = (int *)((BYTE *)g_lastTent + MACHINE_CHARGES_EARLY);
+  *charges += 1;
+  log_num("H5ETentCharge: the tent now has ", *charges);
+  return NULL;
+}
+
 static LuaEntry g_ourCombatFunctions[MAX_LUA_FUNCTIONS] = {
   { "H5ECombatTest", &lua_combat_test },
+  { "H5ETentCharge", &lua_tent_charge },
 };
-static int g_ourCombatFunctionCount = 1;
+static int g_ourCombatFunctionCount = 2;
 
 /**
  * Give the engine a table of our own: theirs, plus ours, plus the terminator.
@@ -1510,6 +1548,40 @@ static void *__fastcall run_line_hook(void *host, void *edx, const char *source)
   return result;
 }
 
+/**
+ * The same lines, in the game's own console — Senya's ask, and a good one.
+ *
+ * The log file answers questions after the fact; the console answers them while
+ * the battle is on screen, which is the difference between "run it again and
+ * I'll look" and "I saw it". It goes out as `print`, the one Lua call that
+ * reaches the console, through the same slot every battle line goes through.
+ *
+ * Only while a battle is up — outside one there is no host to speak to, and the
+ * file keeps its record either way. The guard against re-entry is not optional:
+ * `run_line_hook` logs what it sees, and logging through it would be a loop.
+ */
+static int g_inConsole = 0;
+
+static void console_line(const char *text) {
+  if (g_inConsole || !g_battleHost || !g_runLine) return;
+  g_inConsole = 1;
+  char line[240];
+  int at = 0;
+  const char *head = "print(\"h5e: ";
+  while (*head) line[at++] = *head++;
+  // A quote of ours inside would end the string early and leave the console
+  // reading our line as Lua; there are none today, and this keeps it that way.
+  for (int i = 0; text[i] && at < (int)sizeof line - 8; i++) {
+    line[at++] = text[i] == '"' ? '\'' : text[i];
+  }
+  line[at++] = '"';
+  line[at++] = ')';
+  line[at++] = ';';
+  line[at] = 0;
+  g_runLine(g_battleHost, NULL, line);
+  g_inConsole = 0;
+}
+
 /** Put ours in the slot, once, and keep theirs to call. */
 static void take_over_run_line(void *host) {
   if (g_runLine || !readable(host, 4)) return;
@@ -1791,6 +1863,31 @@ static void __fastcall tent_amount_hook(int *amount, int *second, void *unit, in
   // methods entirely, reached through virtual-base thunks (`sub ecx,[ecx-4]`),
   // and calling one ended the battle. Same mistake in a new coat: a slot that
   // holds real code is not a promise that the object is the right one.
+  //
+  // SO WE PRINT, AND CALL NOTHING. The mana command at 0x774300 is hooked and
+  // has never fired in a single battle — measured, with a hero who had 300 mana
+  // and spells to spend it on — so a cast does not go that way and the caster
+  // has to be found from this side. `unit_hero` walks the unit's owner (`+0x18`)
+  // and then asks THAT for the adventure hero (`+0x0C`); the owner it passes
+  // through is the combat-side object, and the Lua `GetUnitManaPoints` asks a
+  // combat unit for its mana through `+0x234`. If the owner's slot holds a small
+  // field reader, it is the getter, and its neighbour `+0x22C` is where a spell
+  // pays for itself. Both are logged as RVAs, to be read off disk rather than
+  // trusted in flight.
+  if (readable(unit, 4)) {
+    void **uvt = *(void ***)unit;
+    if (readable(uvt, VT_UNIT_OWNER + 4) && points_at_code(uvt[VT_UNIT_OWNER / 4])) {
+      void *owner = ((GetterFn)uvt[VT_UNIT_OWNER / 4])(unit);
+      if (readable(owner, 4)) {
+        void **ovt = *(void ***)owner;
+        if (readable(ovt, VT_CASTER_MANA + 4)) {
+          BYTE *base = (BYTE *)GetModuleHandleW(NULL);
+          log_hex("      owner set mana rva ", (DWORD)((BYTE *)ovt[VT_CASTER_SET_MANA / 4] - base));
+          log_hex("      owner get mana rva ", (DWORD)((BYTE *)ovt[VT_CASTER_MANA / 4] - base));
+        }
+      }
+    }
+  }
 }
 
 static void install_tent_term(void) {
@@ -1910,6 +2007,7 @@ static void *__fastcall machine_ctor_hook(void *self, void *edx, void *a1, void 
   if (!readable((BYTE *)m + MACHINE_CHARGES, 4)) return m;
 
   g_pendingTents[g_pendingAt++ & (PENDING_TENTS - 1)] = m;
+  g_lastTent = m;
   if (g_machineLogged++ >= 8) return m;
   log_line("tent built:");
   log_num("  the engine filled ", *(int *)((BYTE *)m + MACHINE_CHARGES));

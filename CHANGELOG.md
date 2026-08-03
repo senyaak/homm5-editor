@@ -19,9 +19,11 @@ one.
   extension already gave it extra uses; it can now also make the machine itself
   tougher (`tent_health`, percent), heal for more (`tent_healing`, points),
   strip stronger curses off whoever it heals (`tent_cleanse`, levels) and give a
-  use back for mana its owner spends in the battle (`tent_mana`, charges per
-  hundred points). All four are rows in the skill form, keyed on the skill's own
-  id, and three of them cost the game nothing it was not already computing.
+  use back for mana its owner spends in the battle. The first three are rows in
+  the skill form, keyed on the skill's own id, and cost the game nothing it was
+  not already computing; the fourth turned out to belong half in Lua — a hero's
+  mana is not spent through anything the extension could hook, but the battle's
+  own vocabulary reads it. All four ran in a battle on 2026-08-03.
 
 - **A battle can be spoken to, and can answer.** Two halves, both measured in
   game rather than argued about:
@@ -32,9 +34,13 @@ one.
     extension registers.
   - **Triggers, with arguments.** `H5ESetCombatTrigger(kind, handler)` in a
     battle script, and the extension calls every handler registered for a moment
-    — `H5E_COMBAT_STARTED` now, `H5E_HERO_MANA_CHANGED(now, before)` with it.
-    Handlers stack, so two perks may want the same moment. It works in an
-    ORDINARY battle, not only a scripted one. See docs/COMBAT_API.md.
+    — `H5E_COMBAT_STARTED` and `H5E_MANA_SPENT(spent, side)`. Handlers stack, so
+    two perks may want the same moment. It works in an ORDINARY battle, not only
+    a scripted one. See docs/COMBAT_API.md.
+  - **And one function the other way: `H5ETentCharge()`**, which hands the first
+    aid tent another use. It is what makes the mana trigger worth having — the
+    watching is done in Lua, which can read mana, and the writing in the
+    extension, which is the only side that can reach a war machine's uses.
 
 ### Fixed
 

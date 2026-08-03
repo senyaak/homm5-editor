@@ -164,9 +164,22 @@ if (shippedCombat === null) {
   // generated file is checked here rather than in a battle.
   check('the runtime file passes the linter', luaDiagnostics(runtime.text).length === 0,
     JSON.stringify(luaDiagnostics(runtime.text).slice(0, 1)));
-  // And it does not take a name the game owns: the block is straight-line code.
+  // And it does not take a name the game owns: what we append to the game's own
+  // file is one `doFile` line, nothing else.
   check('and it redefines nothing of the game\'s',
     !/^\s*function\s/m.test(combat.slice(shippedCombat.trimEnd().length)));
+  // THE ONE NAME OF THEIRS THE RUNTIME DOES TAKE, and the rule that makes it
+  // safe. `UnitMove` is how a battle announces every unit's turn — the only
+  // recurring moment there is — so the mana watch has to sit on it. Taking it
+  // means CHAINING: keep the old function, call it, and hand back what it
+  // returned. The engine runs `Callback(n, UnitMove(name))`, so a wrapper that
+  // swallows the answer turns every turn into "Not enough arguments"; that is
+  // measured, in game, and this is what stops it coming back.
+  const wrap = runtime.text.slice(runtime.text.indexOf('H5E_OLD_UNIT_MOVE'));
+  check('the mana watch chains UnitMove rather than replacing it',
+    wrap.includes('H5E_OLD_UNIT_MOVE = UnitMove;')
+      && wrap.includes('H5E_OLD_UNIT_MOVE(unitName)')
+      && /return answer\s*\r?\nend;/.test(wrap));
   check('the patched combat startup passes the linter', luaDiagnostics(combat).length === 0,
     JSON.stringify(luaDiagnostics(combat).slice(0, 1)));
 }

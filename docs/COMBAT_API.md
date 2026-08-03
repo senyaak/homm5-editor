@@ -61,9 +61,66 @@ H5ESetCombatTrigger(H5E_COMBAT_STARTED, MyHandler);
 | constant | when | arguments |
 |---|---|---|
 | `H5E_COMBAT_STARTED` | the battle begins, after everything a mod loaded is loaded | — |
-| `H5E_HERO_MANA_CHANGED` | a combat caster's mana changes, up or down | `now, before` |
+| `H5E_MANA_SPENT` | a hero's mana went DOWN, noticed on the next unit's turn | `spent`, `side` (0 attacker, 1 defender) |
 
-## Three things that cost a day between them
+**`H5E_MANA_SPENT` is watched from Lua, and that is the interesting part.** The
+extension hooked `CSetCombatCasterMana` (`0xb74300`) first, on the reasoning that
+a network command is where mana changes — and it never fired once, in a dozen
+battles, with a hero who had 300 mana and spells to spend it on. A cast does not
+go that way.
+
+What does work needs no reverse engineering at all: the battle's own vocabulary
+reads mana (`GetUnitManaPoints("attacker-hero")`), and every unit's turn arrives
+as `UnitMove` — in ordinary battles, not only scripted ones. So the runtime wraps
+`UnitMove`, compares each hero's mana with what it saw last time, and fires this
+trigger for the difference. Only downwards, and the value is stored either way:
+mana comes back — a well, an artifact, a skill — and a perk that counted those
+would pay a hero for standing still.
+
+### The functions we register into the battle's table
+
+| function | what it does |
+|---|---|
+| `H5ETentCharge()` | one more use for the first aid tent |
+| `H5ECombatTest()` | writes a line into `bin/homm5-editor.log` — the probe that proved this whole path |
+
+**No arguments, deliberately.** Reading one means reproducing a registered
+function's prologue — two heap strings, a format like `"sn"`, and the engine's
+parser at `0xa454d0` — and the perk did not need it. The cost is stated rather
+than discovered: with no arguments the extension cannot be told WHOSE tent, so
+the use goes to the last one built. One tent a side is the ordinary case.
+
+This is the division the whole design turns on: **Lua reads what only Lua can
+read, the extension writes what only it can write.** No registered function of
+the game's touches a war machine's uses (`machine+0xB0`), and the DLL cannot read
+a Lua argument yet — so the watching goes where the answers are and the writing
+goes where the memory is, and neither half needs the thing it lacks.
+
+## Four things that cost a day between them
+
+**Wrapping one of the game's hooks means returning its answer.** The engine does
+not call `UnitMove` for its side effect — it runs
+`Callback(n, UnitMove("attacker-hero"))`, and the value IS the point. Our wrapper
+called the original and dropped what it gave back, and every turn in the battle
+became:
+
+```
+(Script) ERROR: Not enough arguments when calling function Callback.
+```
+
+So a wrapper keeps the old function, calls it, and hands its result on:
+
+```lua
+H5E_OLD_UNIT_MOVE = UnitMove;
+function UnitMove(unitName)
+	local answer = nil;
+	if H5E_OLD_UNIT_MOVE ~= nil then answer = H5E_OLD_UNIT_MOVE(unitName); end;
+	H5ECheckMana();
+	return answer
+end;
+```
+
+(`return answer`, no semicolon, last in the block — see the rule below.)
 
 **`return;` fails the whole file.** In Lua 4 `return` ends a block and the `;`
 that may follow any other statement is not part of it. Lua 5 accepts it, every

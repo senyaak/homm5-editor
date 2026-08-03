@@ -242,6 +242,7 @@ export const COMBAT_TRIGGER_RUNTIME = [
   '-- list keeps its own count and a handler is a function, not a name.',
   'H5E_COMBAT_STARTED = 1;',
   'H5E_HERO_MANA_CHANGED = 2;',
+  'H5E_MANA_SPENT = 3;',
   'H5E_COMBAT_TRIGGERS = {};',
   '',
   'function H5ESetCombatTrigger(kind, handler)',
@@ -269,5 +270,62 @@ export const COMBAT_TRIGGER_RUNTIME = [
   '\t\t\ti = i + 1;',
   '\t\tend;',
   '\tend;',
+  'end;',
+  '',
+  // WHO WATCHES THE MANA, and why it is Lua rather than the extension.
+  //
+  // A spell paid for in combat does not go through the command the extension
+  // hooked (`CSetCombatCasterMana`, measured across a dozen battles: never once).
+  // But the battle's own vocabulary reads mana — `GetUnitManaPoints` — and every
+  // unit's turn arrives here as `UnitMove`, in ordinary battles, not only
+  // scripted ones. So the watching is done where the answers already are, and
+  // what Lua cannot do — write a war machine's uses — is one call into ours.
+  //
+  // The engine's `UnitMove` is CHAINED, never replaced: it dispatches to the
+  // hooks a combat script may have overridden, and dropping that would break
+  // every scripted battle in the game.
+  '-- The mana watch: whose turn it is does not matter, only what changed.',
+  'H5E_MANA_NAMES = { "attacker-hero", "defender-hero" };',
+  'H5E_MANA_SEEN = { -1, -1 };',
+  '',
+  'function H5ECheckMana()',
+  '\tlocal i = 1;',
+  '\twhile i <= 2 do',
+  '\t\tlocal now = GetUnitManaPoints(H5E_MANA_NAMES[i]);',
+  '\t\tif now ~= nil then',
+  '\t\t\tlocal before = H5E_MANA_SEEN[i];',
+  // Only downwards, and the value is ALWAYS stored: mana comes back too — a
+  // well, an artifact, a skill — and a perk that counted those would pay the
+  // hero for standing still.
+  // IT SAYS WHAT IT SEES, in the game's own console. The watch is silent by
+  // construction — a charge is only handed out per hundred mana — and a silent
+  // watch cannot be told from one that never ran. `print` is Lua's own, so this
+  // costs the extension nothing.
+  '\t\t\tif before ~= now then',
+  '\t\t\t\tprint("h5e: mana " .. H5E_MANA_NAMES[i] .. " " .. before .. " -> " .. now);',
+  '\t\t\tend;',
+  '\t\t\tif before >= 0 and now < before then',
+  '\t\t\t\tH5EFire(H5E_MANA_SPENT, before - now, i - 1);',
+  '\t\t\tend;',
+  '\t\t\tH5E_MANA_SEEN[i] = now;',
+  '\t\tend;',
+  '\t\ti = i + 1;',
+  '\tend;',
+  'end;',
+  '',
+  // AND IT HANDS BACK WHAT THE ORIGINAL HANDED BACK. The engine does not call
+  // this hook for its side effect — it calls `Callback(n, UnitMove(name))`, so
+  // the value IS the point. Swallowing it turned every turn into "Not enough
+  // arguments when calling function Callback". Wrapping a hook means returning
+  // its answer as much as it means calling it.
+  //
+  // `return r` with no semicolon after it: Lua 4 refuses `return;`, and this is
+  // the last statement of the function for the same reason.
+  'H5E_OLD_UNIT_MOVE = UnitMove;',
+  'function UnitMove(unitName)',
+  '\tlocal answer = nil;',
+  '\tif H5E_OLD_UNIT_MOVE ~= nil then answer = H5E_OLD_UNIT_MOVE(unitName); end;',
+  '\tH5ECheckMana();',
+  '\treturn answer',
   'end;',
 ];
