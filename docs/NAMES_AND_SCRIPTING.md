@@ -164,6 +164,22 @@ Two more things worth knowing before writing any:
   battle's Lua hangs off it (with it clear, `CCombat::LoadScripts` returns having
   loaded nothing at all, so there would be no `combat-startup.lua` and no tail).
   So "a scripted battle" is not a mode a fight is in; it is every fight.
+- **THE FILE IS ONE CHUNK, and that is a trap with teeth.** The engine reads it
+  whole and hands the text to the script host in a single call, so anything wrong
+  anywhere in it fails every declaration it makes — the game's own included. A
+  mod that appends its code there and gets one token wrong breaks battle
+  scripting for the entire game, and it looks exactly like "my perk does
+  nothing". Measured, 2026-08-03: with our block inside, a battle answered that
+  it had neither `IsAttacker` nor `UnitDeath`. What we add now is ONE `doFile`
+  line, and our code is a file of its own — a separate chunk, a separate blast
+  radius.
+- **`return;` is a syntax error here.** Lua 4 ends a block with `return` and does
+  not take the `;` that may follow any other statement; Lua 5 does, every
+  reference shows it, and the line looks perfect. The game's console said
+  `expected; last token read: `;'`. `src/script/lua-lint.ts` knows it now.
+- **`doFile` is queued, not run where it stands.** The statement after it runs
+  BEFORE the file does, so anything that depends on a loaded file must wait for a
+  later moment — `createCombatAliases();` is too early, `DoStart()` is not.
 - **Our block redefines nothing.** It is straight-line code at the end of the
   file: by the time it runs the battle is built and can simply be asked what is
   in it, and no global of the game's changes hands. Overriding a death hook would

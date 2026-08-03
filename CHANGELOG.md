@@ -30,11 +30,27 @@ one.
     handed over by an accessor of exactly the shape the adventure map's is, so
     the same routine extends both — a script inside a battle can call what the
     extension registers.
-  - **`H5ECombatStarted()`** — define it at the end of a mod's
-    `combat-startup.lua` and the extension calls it once per battle, after
-    everything the mod declared is declared. It works in an ORDINARY battle, not
-    only a scripted one: a battle always builds a script host, which is what the
-    probe was for.
+  - **Triggers, with arguments.** `H5ESetCombatTrigger(kind, handler)` in a
+    battle script, and the extension calls every handler registered for a moment
+    — `H5E_COMBAT_STARTED` now, `H5E_HERO_MANA_CHANGED(now, before)` with it.
+    Handlers stack, so two perks may want the same moment. It works in an
+    ORDINARY battle, not only a scripted one. See docs/COMBAT_API.md.
+
+### Fixed
+
+- **A mod could break battle scripting for the whole game, silently.** Our battle
+  code used to be appended to the game's own `combat-startup.lua`, which the
+  engine compiles as ONE chunk — so a single bad token in ours failed every
+  declaration that file makes (`IsAttacker`, `UnitDeath`, the vocabulary every
+  combat script in the game is written against). Our code now lives in a file of
+  its own, loaded by one added line, and a mistake in it can only cost itself.
+
+- **The Lua linter knows two rules it did not.** `return;` — legal in Lua 5,
+  rejected by the Lua 4 the game runs, and it fails the whole FILE. And the
+  standard library the game does not register at all: `tinsert`, `getn`,
+  `tostring`, `pairs`, and `dofile` — which is the sharp one, since the engine's
+  own is `doFile`. Generated battle scripts are linted in the test suite now,
+  rather than in a battle.
 
 ## 0.7.0 — 2026-08-02
 

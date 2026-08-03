@@ -194,7 +194,7 @@ static const BYTE ENERGY_GETTER_HEAD[7] = { 0x8B, 0x81, 0x38, 0x06, 0x00, 0x00, 
 #define LUA_MOV_EAX_IMM 0xB8
 #define LUA_RET 0xC3
 /** How many of ours can be added. Room to grow; the table is ours to size. */
-#define MAX_LUA_FUNCTIONS 8
+#define MAX_LUA_FUNCTIONS 16
 
 /** One row of a registration table, exactly as the engine lays it out. */
 typedef struct {
@@ -1196,6 +1196,7 @@ static void *__fastcall lua_combat_test(void *ctx) {
   return NULL;
 }
 
+
 static LuaEntry g_ourCombatFunctions[MAX_LUA_FUNCTIONS] = {
   { "H5ECombatTest", &lua_combat_test },
 };
@@ -1384,13 +1385,85 @@ typedef void *(__fastcall *RunLineFn)(void *host, void *edx, const char *source)
 static RunLineFn g_runLine = NULL;
 static int g_lineLogged = 0;
 
-/** The engine's own line, run once the startup file and our tail are in. */
-static const char ALIASES_LINE[] = "createCombatAliases();";
+/**
+ * The engine's own line we ride on — and it is NOT the one that looks right.
+ *
+ * `createCombatAliases();` comes straight after the startup file and reads like
+ * the moment everything is in place. It is not: a `doFile` inside a chunk is
+ * QUEUED, not run where it stands, so at that instant our own file has not
+ * executed yet and every name in it is still nil. Measured — the extension asked
+ * for `H5EFire` there and the console said "Value was NIL when getting global".
+ *
+ * `DoStart()` is the engine's own "the battle begins", it runs after everything
+ * queued before it, and it is the honest name for the event besides.
+ */
+static const char START_LINE[] = "DoStart()";
+
+/** Whether `text` holds `word` anywhere in its first `limit` bytes. */
+static int contains(const char *text, const char *word, int limit) {
+  for (int i = 0; i < limit && text[i]; i++) {
+    int j = 0;
+    while (word[j] && text[i + j] == word[j]) j++;
+    if (!word[j]) return 1;
+  }
+  return 0;
+}
 
 /** Whether `text` begins with `word` — no CRT, and none needed. */
 static int begins_with(const char *text, const char *word) {
   while (*word) { if (*text != *word) return 0; text++; word++; }
   return 1;
+}
+
+/**
+ * The battle we are in, so an event that has no host in its hands can find one.
+ *
+ * The mana command knows the caster and nothing about the fight he is in; the
+ * host it needs is the one built for that fight, and a battle builds exactly
+ * one. Every use is guarded — a stale pointer answers "no live Lua state" and
+ * the event is dropped rather than fired at a dead battle.
+ */
+static void *g_battleHost = NULL;
+static int g_firedLogged = 0;
+
+/** Trigger kinds, mirrored in the Lua the mod carries (src/mods/skill-scripts.ts). */
+#define TRIGGER_COMBAT_STARTED 1
+#define TRIGGER_HERO_MANA_CHANGED 2
+
+/**
+ * Fire one of ours, with up to three numbers.
+ *
+ * ARGUMENTS ARE FREE IN THIS DIRECTION and that is the whole trick: the engine
+ * runs source, so an argument is text. Its own `UnitMove("%s")` is the same
+ * thing with a name pasted in. Reading an argument BACK out of Lua is the
+ * expensive direction — it goes through the engine's own parser — and nothing
+ * here needs it: the vocabulary a script registers with is ordinary Lua, in the
+ * tail of `combat-startup.lua`.
+ */
+static void fire_trigger(int kind, int argc, int a, int b, int c) {
+  if (!g_runLine || !g_battleHost) return;
+  if (!readable((BYTE *)g_battleHost + 0x1C, 4) || !*(DWORD *)((BYTE *)g_battleHost + 0x1C)) return;
+
+  char line[200];
+  int at = 0;
+  // The `else` is a PROBE, and it earns its place: the log line below is written
+  // before the source runs, so on its own it cannot tell "the script has our
+  // runtime and ran it" from "H5EFire was nil and nothing happened". This makes
+  // the two different lines in the log.
+  const char *head = "if H5EFire ~= nil then H5EFire(";
+  while (*head) line[at++] = *head++;
+  const int args[3] = { a, b, c };
+  for (int i = 0; i < argc + 1; i++) {
+    if (i) line[at++] = ',';
+    int len = 0;
+    num_to_dec(i ? args[i - 1] : kind, line + at, &len);
+    at += len;
+  }
+  const char *tail = "); end;";
+  while (*tail) line[at++] = *tail++;
+  line[at] = 0;
+  if (g_firedLogged++ < 16) log_text("battle fires: ", line);
+  g_runLine(g_battleHost, NULL, line);
 }
 
 /**
@@ -1404,11 +1477,36 @@ static int begins_with(const char *text, const char *word) {
  */
 static void *__fastcall run_line_hook(void *host, void *edx, const char *source) {
   void *result = g_runLine(host, edx, source);
-  if (!source || !readable(source, sizeof ALIASES_LINE)) return result;
-  if (!begins_with(source, ALIASES_LINE)) return result;
-  if (g_lineLogged++ < 8) log_line("battle: the vocabulary is up, our turn");
-  g_runLine(host, NULL, "if H5ECombatStarted ~= nil then H5ECombatStarted(); end; "
-                        "if H5ECombatTest ~= nil then H5ECombatTest(); end;");
+  // EVERY line a battle runs, the first few of them, because the question left
+  // over from the last run is which combat-startup.lua the game actually read —
+  // ours, with the trigger runtime in its tail, or the shipped one. The loader
+  // composes a `doFile("…")` out of the path, so the answer is in this stream.
+  if (g_lineLogged < 12 && source && readable(source, 8)) {
+    g_lineLogged++;
+    log_text("battle runs: ", source);
+    // THE TAIL, not the head. A whole file arrives here as one string, and the
+    // two copies of `combat-startup.lua` — the game's and ours — begin with the
+    // same 7894 bytes; what tells them apart is only at the end. Reading the
+    // head answered nothing for two runs.
+    // Readability asked ONCE for the whole span, not per byte: `readable` calls
+    // VirtualQuery, and eight thousand of those before every battle is the pause
+    // that showed up on the loading screen. Measured by the person playing, which
+    // is the only place a hook's cost is ever visible.
+    int len = 0;
+    int span = readable(source, 16384) ? 16384 : readable(source, 1024) ? 1024 : 64;
+    while (len < span && source[len]) len++;
+    if (len > 400) {
+      log_num("     source length ", len);
+      log_text("     source ends:  ", source + len - 120);
+    }
+  }
+  // The host that ran this line is the host of the battle now being built, and
+  // it is worth remembering before the moment we actually fire on.
+  g_battleHost = host;
+  if (!source || !readable(source, 160)) return result;
+  if (!contains(source, START_LINE, 150)) return result;
+  log_line("battle: it has begun, and everything queued before it has run");
+  fire_trigger(TRIGGER_COMBAT_STARTED, 0, 0, 0, 0);
   return result;
 }
 
@@ -1511,6 +1609,16 @@ static void note_tent(void *unit, void *hero, void *base, void *skills);
 typedef void(__fastcall *TentAmountFn)(int *amount, int *second, void *unit, int mastery);
 static TentAmountFn g_tentAmount = NULL;
 static int g_amountLogged = 0;
+
+/**
+ * How a combat caster answers about his own mana: read it, and set it.
+ *
+ * The pair is the engine's own — the mana command uses `+0x22C` to write and a
+ * mana-draining spell `+0x234` to read.
+ */
+#define VT_CASTER_MANA 0x234u
+#define VT_CASTER_SET_MANA 0x22Cu
+static int caster_mana(void *caster);
 
 /** How a combat unit hands over the hero behind it, as the engine asks at 0xb7fcee. */
 #define VT_UNIT_OWNER 0x18u
@@ -1678,6 +1786,11 @@ static void __fastcall tent_amount_hook(int *amount, int *second, void *unit, in
   // from a freshly built machine to its hero.
   log_object("      unit        ", unit);
   log_object("      hero        ", hero);
+  // AND ONE THING THIS HERO MUST NOT BE ASKED. `+0x22C` and `+0x234` are the
+  // slots the mana command uses on ITS caster; on this object they are two other
+  // methods entirely, reached through virtual-base thunks (`sub ecx,[ecx-4]`),
+  // and calling one ended the battle. Same mistake in a new coat: a slot that
+  // holds real code is not a promise that the object is the right one.
 }
 
 static void install_tent_term(void) {
@@ -2024,8 +2137,6 @@ static const BYTE CASTER_MANA_HEAD[DETOUR_LEN] = { 0x8B, 0xD1, 0x8B, 0x4A, 0x0C 
 /** Where the command keeps the caster and the number it is about to write. */
 #define MANA_CMD_CASTER 0x0Cu
 #define MANA_CMD_VALUE 0x10u
-/** And how the caster answers about his own mana. */
-#define VT_CASTER_MANA 0x234u
 
 typedef char(__fastcall *CasterManaFn)(void *cmd, void *edx);
 typedef int(__thiscall *ManaGetterFn)(void *caster);
@@ -2053,9 +2164,22 @@ static char __fastcall caster_mana_hook(void *cmd, void *edx) {
     before = caster_mana(caster);
   }
   char ok = g_casterMana(cmd, edx);
+  // Said out loud, bounded: "the command never came" and "it came and we made
+  // nothing of it" are different faults, and a hook that only speaks when it
+  // acts cannot tell them apart. A spell cast with no line here means the mana
+  // does not travel this way at all.
+  if (g_manaLogged < 16) {
+    log_line("caster mana command:");
+    log_num("  was ", before);
+    log_num("  now ", after);
+  }
   // Only downwards: the same command hands mana BACK, and a hero drinking from
   // a well has not earned anything.
   if (ok && caster && before >= 0 && before > after) note_mana(caster, before - after);
+  // The script hears about it either way, up or down — what a perk of somebody
+  // else's makes of a hero being GIVEN mana is not ours to decide here. New
+  // first, as the name says: `H5EFire(2, now, before)`.
+  if (ok && caster && before >= 0) fire_trigger(TRIGGER_HERO_MANA_CHANGED, 2, after, before, 0);
   return ok;
 }
 
@@ -3153,9 +3277,11 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   if (rows_for(STAT_TENT_HEALING) || rows_for(STAT_TENT_CLEANSE) || rows_for(STAT_TENT_MANA)) {
     install_tent_term();
   }
-  if (rows_for(STAT_TENT_MANA) && install_caster_mana()) {
-    log_line("combat caster mana hook installed");
-  }
+  // Not only for the row that spends it: mana changing hands is an EVENT a
+  // script can ask for (`H5E_HERO_MANA_CHANGED`), and a trigger nobody has
+  // registered for costs one comparison in the fired path. Hooked always, and
+  // the log says so once.
+  if (install_caster_mana()) log_line("combat caster mana hook installed");
   if (rows_for(STAT_TENT_HEALTH) && install_machine_health()) {
     log_line("first aid tent health hook installed");
   }

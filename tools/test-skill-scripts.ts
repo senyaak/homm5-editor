@@ -10,7 +10,8 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import {
-  COMBAT_STARTUP, patchCombatStartup, skillCombatScripts, skillMapScripts, skillScriptFiles,
+  COMBAT_RUNTIME, COMBAT_STARTUP, combatRuntimeFile, patchCombatStartup, skillCombatScripts,
+  skillMapScripts, skillScriptFiles,
 } from '../src/mods/skill-scripts.ts';
 import { SCRIPT_DIR, patchCommonScript } from '../src/mods/artifact-scripts.ts';
 import { luaDiagnostics } from '../src/script/lua-lint.ts';
@@ -135,9 +136,12 @@ try {
   shippedCombat = null;
 }
 
-check('a mod with no battle script leaves combat-startup.lua alone',
-  patchCombatStartup('doFile("/scripts/combat-common.lua")\n', [bare])
-  === 'doFile("/scripts/combat-common.lua")\n');
+// ONE LINE, whatever the mod carries. Our own code lives in its own file now,
+// because the engine compiles combat-startup.lua as a single chunk: a mistake in
+// ours used to take every declaration the GAME makes in that file down with it.
+check('what we add to combat-startup.lua is one doFile',
+  patchCombatStartup('doFile("/scripts/combat-common.lua")\n', [bare]).trimEnd()
+  === `doFile("/scripts/combat-common.lua")\r\n\r\n-- homm5-editor\r\ndoFile("/${COMBAT_RUNTIME}");`);
 
 if (shippedCombat === null) {
   console.log(`  skip  the shipped combat-startup.lua is not unpacked (${gameRoot})`);
@@ -149,8 +153,17 @@ if (shippedCombat === null) {
   // The reason for the tail, stated as a test: our doFile has to come after the
   // declarations, or the file we load is undone by them.
   check('our load comes after the game\'s declarations',
-    combat.indexOf(`doFile("/${SCRIPT_DIR}/SPARE_KIT-combat.lua");`)
+    combat.indexOf(`doFile("/${COMBAT_RUNTIME}");`)
       > combat.lastIndexOf('function DefenderWarMachineDeath('));
+  // And the file behind that line: the runtime, then a doFile per skill.
+  const runtime = combatRuntimeFile([SPARE_KIT]);
+  check('the runtime file loads the skill\'s own battle script',
+    runtime.text.includes(`doFile("/${SCRIPT_DIR}/SPARE_KIT-combat.lua");`));
+  // THE TEST THAT WOULD HAVE SAVED A DAY. A `return;` in this file compiled
+  // nowhere and the game said nothing; the linter knows that rule now, so a
+  // generated file is checked here rather than in a battle.
+  check('the runtime file passes the linter', luaDiagnostics(runtime.text).length === 0,
+    JSON.stringify(luaDiagnostics(runtime.text).slice(0, 1)));
   // And it does not take a name the game owns: the block is straight-line code.
   check('and it redefines nothing of the game\'s',
     !/^\s*function\s/m.test(combat.slice(shippedCombat.trimEnd().length)));

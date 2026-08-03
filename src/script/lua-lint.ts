@@ -37,6 +37,24 @@ interface Tok { kind: TokKind; text: string; from: number; to: number }
 const OPENERS = new Set(['function', 'if', 'do']);
 
 /**
+ * `return;` — a semicolon straight after `return` — and why it has a rule.
+ *
+ * In Lua 4 `return` is not an ordinary statement: it ends a block, and the
+ * optional `;` that may follow any other statement is not part of it. Lua 5
+ * accepts `return;`, every modern reference shows it, and nothing about the line
+ * looks wrong — which is exactly why this cost a day. The game's own console is
+ * what named it:
+ *
+ *     (Script) ERROR: expected;   last token read: `;' at line 2
+ *
+ * The whole FILE fails to compile, not the function; and while our code sat
+ * inside the game's `combat-startup.lua`, it took every declaration in that file
+ * down with it — `IsAttacker`, `UnitDeath`, the lot. See
+ * docs/NAMES_AND_SCRIPTING.md.
+ */
+const RETURN_SEMICOLON = "';' after 'return' — Lua 4 rejects the whole file; write a bare `return`";
+
+/**
  * Split Lua into tokens, with strings and comments swallowed whole.
  *
  * Only three things matter downstream — keywords, brackets and whether a string
@@ -103,8 +121,10 @@ function tokenize(src: string): Tok[] {
       toks.push({ kind: 'word', text: src.slice(from, i), from, to: i });
       continue;
     }
-    // Brackets are the only punctuation the structural pass reads.
-    if ('(){}[]'.includes(c)) {
+    // Brackets, and the statement separator: the one rule below needs to know
+    // whether a `;` follows a `return`, and by here comments and strings are
+    // already swallowed, so no match of it can be a false one.
+    if ('(){}[];'.includes(c)) {
       toks.push({ kind: 'punct', text: c, from: i, to: i + 1 });
     }
     i++;
@@ -129,12 +149,14 @@ export function luaDiagnostics(src: string): LuaDiagnostic[] {
   const brackets: { char: string; from: number }[] = [];
   const blocks: { word: string; from: number; to: number }[] = [];
 
-  for (const t of toks) {
+  for (let at = 0; at < toks.length; at++) {
+    const t = toks[at]!;
     if (t.kind === 'string-bad') {
       out.push({ from: t.from, to: Math.min(t.to, t.from + 40), severity: 'error', message: 'unterminated string' });
       continue;
     }
     if (t.kind === 'punct') {
+      if (t.text === ';') continue;
       if (t.text === '(' || t.text === '{' || t.text === '[') {
         brackets.push({ char: t.text, from: t.from });
       } else {
@@ -148,6 +170,22 @@ export function luaDiagnostics(src: string): LuaDiagnostic[] {
       continue;
     }
     if (t.kind !== 'word') continue;
+    // A name this engine does not have, called as a function.
+    if (ABSENT_BUILTINS.has(t.text)) {
+      const next = toks[at + 1];
+      if (next && next.kind === 'punct' && (next.text === '(' || next.text === '{')) {
+        out.push({
+          from: t.from, to: t.to, severity: 'warning',
+          message: `the game registers no Lua standard library — '${t.text}' does not exist here`,
+        });
+      }
+    }
+    if (t.text === 'return') {
+      const next = toks[at + 1];
+      if (next && next.kind === 'punct' && next.text === ';') {
+        out.push({ from: t.from, to: next.to, severity: 'error', message: RETURN_SEMICOLON });
+      }
+    }
     if (OPENERS.has(t.text) || t.text === 'repeat') {
       blocks.push({ word: t.text, from: t.from, to: t.to });
     } else if (t.text === 'end') {
@@ -176,14 +214,36 @@ export function luaDiagnostics(src: string): LuaDiagnostic[] {
   return out;
 }
 
-/** Lua's own globals a script may call without the map defining them. */
+/**
+ * Lua's own globals a script may call without the map defining them.
+ *
+ * SHORT, because this game registers almost none of the standard library. Every
+ * name here was found as a string in the executable; the ones that are NOT there
+ * are in ABSENT_BUILTINS below, and calling one of those is a certain failure
+ * rather than a maybe.
+ */
 const LUA_BUILTINS = new Set([
-  'print', 'type', 'tostring', 'tonumber', 'pairs', 'ipairs', 'next', 'error',
-  'assert', 'pcall', 'setmetatable', 'getmetatable', 'rawget', 'rawset', 'select',
-  'unpack', 'format', 'strlen', 'strsub', 'strfind', 'gsub', 'tinsert', 'tremove',
-  'getn', 'random', 'floor', 'ceil', 'abs', 'mod', 'min', 'max', 'sqrt',
+  'print', 'type', 'next', 'error', 'format', 'sort',
+  'floor', 'ceil', 'abs', 'mod', 'min', 'max', 'sqrt', 'random',
+  'getglobal', 'setglobal',
 ]);
 
+/**
+ * And the ones this engine does NOT have, though every Lua reference lists them.
+ *
+ * Read out of the executable: a function Lua can call must exist there as a
+ * string, and not one of these does. So `tinsert(t, v)` is not a portability
+ * question — it is a call to nil, and the handler dies where it stands.
+ *
+ * `dofile` earns its place twice over: the engine's own is `doFile`, capital F,
+ * and the lowercase spelling every Lua tutorial uses silently does nothing.
+ */
+const ABSENT_BUILTINS = new Set([
+  'tinsert', 'tremove', 'getn', 'setn', 'foreach', 'foreachi',
+  'tostring', 'tonumber', 'strfind', 'strsub', 'strlen', 'gsub',
+  'rawget', 'rawset', 'pairs', 'ipairs', 'pcall', 'assert', 'unpack',
+  'setmetatable', 'dofile',
+]);
 /** Levenshtein, capped: we only care whether it is ≤ 2. */
 function editDistance(a: string, b: string, cap: number): number {
   if (Math.abs(a.length - b.length) > cap) return cap + 1;

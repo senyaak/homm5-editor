@@ -59,7 +59,8 @@ import { serialize, setAttr } from '../format/xml.ts';
 import { parseTypeSpec } from '../schema/typespec.ts';
 import { COMMON_SCRIPT, patchCommonScript, setScriptFiles } from './artifact-scripts.ts';
 import {
-  COMBAT_STARTUP, patchCombatStartup, skillCombatScripts, skillMapScripts, skillScriptFiles,
+  COMBAT_STARTUP, combatRuntimeFile, patchCombatStartup, skillCombatScripts, skillMapScripts,
+  skillScriptFiles,
 } from './skill-scripts.ts';
 import { isIdentity } from '../format/recolor.ts';
 import { EOL, count, hrefOf, insertAfterLine, insertBeforeLine, once, retune, setHref } from './xml-edit.ts';
@@ -286,11 +287,19 @@ export function buildCreatureMod(mod: CreatureMod, read: DataReader): BuildRepor
       data: Buffer.from(patchCommonScript(mustRead(read, COMMON_SCRIPT), sets, onTheMap), 'latin1'),
     });
   }
-  if (skillCombatScripts(skills).length) {
+  // Carried for the trigger runtime as well as for the scripts: a skill may want
+  // a moment inside a battle without carrying a file of its own, and the
+  // vocabulary that lets it say so lives in this file's tail.
+  if (skillCombatScripts(skills).length || skills.length) {
+    // Two files: the game's own with one line added, and ours behind that line.
+    // Separate chunks — see COMBAT_RUNTIME in src/mods/skill-scripts.ts for what
+    // sharing one chunk with the game cost.
+    const runtime = combatRuntimeFile(skills);
     files.push({
       path: COMBAT_STARTUP,
       data: Buffer.from(patchCombatStartup(mustRead(read, COMBAT_STARTUP), skills), 'latin1'),
     });
+    files.push({ path: runtime.path, data: Buffer.from(runtime.text, 'latin1') });
   }
 
   // Last, so it records the art each slot actually resolved to.

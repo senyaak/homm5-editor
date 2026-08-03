@@ -34,6 +34,25 @@ ok(clean('newfunc = function() %func( %p1 ) end'), '4.0 %upvalue and anonymous f
 ok(clean('s = "a string with ) and end and } inside"'), 'brackets and keywords inside a string are ignored');
 ok(clean('-- if without end in a comment\nx = 1'), 'a keyword in a comment is ignored');
 ok(clean('x = [[ a long string ] with ) brackets ]]'), 'a long string is swallowed whole');
+ok(clean('function f() if x then return end; y = 1 end'), 'a bare `return` inside an if is fine');
+
+// The one that cost a day in game: Lua 5 takes `return;`, Lua 4 fails the whole
+// FILE on it — and in a mod that file was the game's own combat-startup.lua, so
+// every battle declaration in it went too. The game's console named the token.
+console.log('=== a semicolon after return ===');
+ok(msgs('function f() if x then return; end; y = 1 end').length === 1, "`return;` is an error");
+ok(clean('-- return; in a comment\nx = 1'), 'not in a comment');
+ok(clean('x = "return;"'), 'not in a string');
+
+// The engine registers almost no standard library — read out of the executable,
+// where a callable name has to exist as a string and these do not. `dofile` is
+// the sharpest: the engine's own is `doFile`, and the lowercase spelling every
+// tutorial uses is a call to nil.
+console.log('=== names this engine does not have ===');
+ok(msgs('tinsert(t, 1)').length === 1, 'tinsert does not exist here');
+ok(msgs('dofile("/scripts/x.lua")').length === 1, 'nor does lowercase dofile');
+ok(clean('doFile("/scripts/x.lua")'), 'but doFile does');
+ok(clean('x = pairs'), 'and a bare name that is never called is left alone');
 
 console.log('\n=== the errors a parser would reject ===');
 ok(msgs('function f() return 1').includes("'function' without matching 'end'"), 'a function with no end');
