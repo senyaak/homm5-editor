@@ -222,11 +222,15 @@ Not every hero has coloured bodies: `Isabel_Flagless`, `Godric_Flagless` and
 `Beatrice_DS` are bespoke models with no list, and fall back to `<Model>`,
 which is theirs.
 
-**Still white on the adventure map.** The same list hangs off the LOD
-(adventure) characters, and the map view does not read it — a placed hero flies
-the colourless banner whoever owns him. The change is bigger there: the map's
-geometry cache is keyed by the shared href alone, and colour would make one
-shared into up to nine meshes.
+**Still white on the adventure map — open, and on the roadmap.** The same list
+hangs off the LOD (adventure) characters, and the map view does not read it: a
+placed hero flies the colourless banner whoever owns him, and so do caravans and
+entry points, which are placeable too. The lookup is already written
+(`src/scene/colour-models.ts`); what is not is the geometry cache, which is
+keyed by the shared href alone — colour turns one shared into up to nine meshes,
+and `map:idle-skins` replays that index through a fresh resolver and silently
+drops anything whose index moves. Roughly two hours, and that replay is the part
+that earns them.
 
 ### Walking
 
@@ -580,10 +584,16 @@ of the archives into a workspace that mirrors its data path, and that workspace
 is mounted over the data root. Then every href in it resolves normally — the
 absolute ones at the arena, the relative ones at its own files.
 
-Open, in rough order of when it will bite: **the sky** — every preset names a
-`<Sky>` cube texture and nothing draws it, so a scene's horizon is black where
-the game's is a red sunset; the **voice recordings** and the timings they
-imply; **walks** along `MovePoints`; what `DynamicCamera` does, which the
+Open, in rough order of when it will bite: **how much of a SHOT's
+`CustomAmbientLight` the game really uses** — 34 of C1M1's 73 shots override the
+day preset with an inferno one and the game stays daylit, two more name an
+all-zero preset and the game does darken there, and the sun direction provably
+never changes across three probed runs; **the sky** — a preset's `<Sky>` is
+reflection blobs, but its `<SkyDome>` names a real drawable model
+(`/_(Model)/SkyDomes/SkyDome1.(Model).xdb`, a self-illuminated dome; 88 presets
+leave it empty, the rest name one of a dozen), and nothing draws it, so a
+scene's horizon is black where the game's is a sunset; the **voice recordings**
+and the timings they imply; what `DynamicCamera` does, which the
 corpus cannot say because it is on in all 981 shots that resolve to an actor
 [~]; whether `Absolute` means anything beyond intent, now that the set is known
 to carry the placement [~]; whether the easing between two poses is the

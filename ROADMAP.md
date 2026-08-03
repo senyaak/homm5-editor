@@ -95,11 +95,37 @@ project.json
 - [ ] ⬜ Render ALL object types, not just static decor; for creatures/heroes on
       GR2 skeletons a static bind pose or billboard icon is enough
 - [x] ✅ Map lighting from the map's OWN `AmbientLight` preset, per floor —
-      sun colour/direction, ambient, shade, a dark underground. Two findings
-      the picture depended on: the game multiplies colours in gamma space
-      (its ×2 = three.js's ×4.6), and Pitch counts from the zenith. The
+      sun colour/direction, ambient, shade, a dark underground. The
       preset's `<Sky>` is reflection blobs, not a sky — the adventure map has
       none. docs/LIGHTING.md (2026-07-27)
+- [x] ✅ ONE light model, and it is the game's: `albedo · (Ambient + Light·N·L)
+      · Whitening`, clamped, multiplied in gamma space on the raw texel. The
+      ground always ran it; objects and actors went through three.js's linear
+      lighting, which against a gamma-authored preset is a COLOUR error —
+      knights came out salmon-pink. Read out of the executable (its shaders are
+      embedded as assembler text) and confirmed by a probe in the running game:
+      Direct3D lighting off, `SetLight` never called, no preset colour in any
+      shader constant, and the sun direction matching ours to three decimals.
+      `<Whitening>` is per-preset (31 of 291 turn it off), not a constant.
+      docs/LIGHTING.md §2, §2a (2026-08-03)
+- [ ] ⬜ **A hero on the ADVENTURE MAP flies the colourless banner.** A hero has
+      nine bodies, one per player colour, and the `<Model>` beside
+      `<ColourModels>` is the white one — done for dialog scenes, not for the
+      map. Also caravans and entry points, which are placeable. The work is not
+      the lookup (that exists, `src/scene/colour-models.ts`) but the geometry
+      cache: it is keyed by the shared href alone, so colour turns one shared
+      into up to nine meshes, and `map:idle-skins` replays that index through a
+      fresh resolver and drops anything whose index moves. ~2h.
+      docs/DIALOG_SCENES.md → Actors
+- [ ] ⬜ **Does a SHOT's `CustomAmbientLight` reach the picture, and how much of
+      it?** 34 of C1M1's 73 shots override the scene's day preset with an
+      inferno one and the game still shows daylight; two more name an all-zero
+      preset and the game DOES darken there. So something of it lands and
+      something does not — the sun direction provably never changes (three full
+      runs, probed). Prime suspect: the engine reduces a per-shot preset to the
+      grey scalar `vs c29`, which sweeps 1.0 → 0.564 → 0.220 over a scene.
+      Until this is settled the editor applies the override in full, which is
+      why inferno shots render warmer than the game's
 - [x] ✅ Particle effects play — `bin/effects` decoded as a BAKED Maya
       simulation (birth/death + 30fps keys per particle; 1.69M particles,
       whole library byte-complete) and drawn as instanced billboards fed over
