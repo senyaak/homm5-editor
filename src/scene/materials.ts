@@ -18,6 +18,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { decodeDDS } from '../format/dds.ts';
 import { pngDataUri } from '../format/png.ts';
+import { resampleTo, shrinkToFit } from '../format/texture.ts';
 import { resolveHref, dirOf } from './xdb.ts';
 import type { Assets } from '../game/assets.ts';
 import type { Mesh } from './geometry.ts';
@@ -157,27 +158,81 @@ function meshMaterialIndex(model: string, meshCount: number, materialCount: numb
   return out;
 }
 
-export function textureDataUri(model: string, data: Assets, size: number, href?: string): { uri: string; hasAlpha: boolean; opaque: boolean } | null {
+/**
+ * The longest side an embedded texture is reduced to, unless a caller says
+ * otherwise. One constant rather than the four separate `?? 128` defaults it
+ * replaces — a scene, a map, an actor rig and an effect all have to agree, or
+ * the same texture arrives twice at two sizes and neither cache helps.
+ *
+ * 512 because that is the size the art is authored at: 512 and 1024 skins are
+ * 15% of the shipped textures and they are the ones a camera gets close to.
+ * The cap only ever REDUCES — the 64x64 majority is untouched by it — so
+ * raising it costs nothing on the textures it does not apply to.
+ */
+export const TEXTURE_CAP = 512;
+
+interface DecodedTexture { uri: string; hasAlpha: boolean; opaque: boolean }
+
+/**
+ * Textures already decoded, by file and cap.
+ *
+ * A scene names the same texture over and over: C1M1's opening asks for 4659
+ * and there are 296 distinct ones behind them. Without this, every mesh wearing
+ * a texture decodes, reduces and PNG-encodes it again — which was most of the
+ * build, and most of what got worse when the cap went up.
+ *
+ * Bounded, and evicting the oldest first, because the main process lives as
+ * long as the editor does and every map opened would otherwise stay resident.
+ * The budget is generous next to one scene's worth (23 MB at this cap) so that
+ * a build never evicts inside itself.
+ */
+const decoded = new Map<string, DecodedTexture | null>();
+const DECODED_BUDGET = 128 * 1024 * 1024;
+let decodedBytes = 0;
+
+function remember(key: string, value: DecodedTexture | null): DecodedTexture | null {
+  decoded.set(key, value);
+  decodedBytes += value ? value.uri.length : 0;
+  for (const old of decoded.keys()) {
+    if (decodedBytes <= DECODED_BUDGET) break;
+    if (old === key) break;                    // never evict what was just asked for
+    decodedBytes -= decoded.get(old)?.uri.length ?? 0;
+    decoded.delete(old);
+  }
+  return value;
+}
+
+/**
+ * One material's texture as the renderer takes it: a PNG data URI, plus the two
+ * things about its alpha that decide how the part is drawn.
+ *
+ * `cap` is the longest side allowed, not the size produced — see `shrinkToFit`.
+ */
+export function textureDataUri(model: string, data: Assets, cap: number, href?: string): DecodedTexture | null {
   try {
     const t = href ? [href, href] : model.match(/<Texture href="([^"]+?)(?:#[^"]*)?"/); if (!t) return null;
     const tx = readFileSync(data.path(t[1].split('#')[0]), 'utf8');
     const dest = tx.match(/<DestName href="([^"]+)"/); if (!dest) return null;
     const ddsPath = data.path(join(dirname(t[1].split('#')[0]), dest[1]));
     if (!existsSync(ddsPath)) return null;
-    const img = decodeDDS(ddsPath);
-    const out = new Uint8Array(size * size * 4);
+    const key = `${ddsPath}|${cap}`;
+    const known = decoded.get(key);
+    if (known !== undefined) return known;
+    const img = shrinkToFit(decodeDDS(ddsPath), cap);
     let hasAlpha = false, solidTexels = 0;
-    for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
-      const sx = x * img.width / size | 0, sy = y * img.height / size | 0, si = (sy * img.width + sx) * 4, o = (y * size + x) * 4;
-      out[o] = img.rgba[si]; out[o + 1] = img.rgba[si + 1]; out[o + 2] = img.rgba[si + 2];
-      const a = img.rgba[si + 3]; out[o + 3] = a;
+    for (let i = 3; i < img.rgba.length; i += 4) {
+      const a = img.rgba[i]!;
       if (a < 200) hasAlpha = true;
       if (a > 128) solidTexels++;
     }
     // Half the texels opaque is far from either measured case (a solid rock
     // skin sits at 96%, a feathered overlay at 11%), so where the line lands
     // between them does not matter.
-    return { uri: pngDataUri(size, size, out), hasAlpha, opaque: solidTexels > size * size * 0.5 };
+    return remember(key, {
+      uri: pngDataUri(img.width, img.height, img.rgba),
+      hasAlpha,
+      opaque: solidTexels > img.width * img.height * 0.5,
+    });
   } catch { return null; }
 }
 
@@ -194,16 +249,20 @@ export function particleTextureUris(data: Assets, size: number, href: string): {
     if (!dest) return null;
     const ddsPath = data.path(join(dirname(href.split('#')[0]!), dest[1]!));
     if (!existsSync(ddsPath)) return null;
-    const img = decodeDDS(ddsPath);
-    const c = new Uint8Array(size * size * 4);
-    const a = new Uint8Array(size * size * 4);
-    for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
-      const sx = x * img.width / size | 0, sy = y * img.height / size | 0;
-      const si = (sy * img.width + sx) * 4, o = (y * size + x) * 4;
-      c[o] = img.rgba[si]!; c[o + 1] = img.rgba[si + 1]!; c[o + 2] = img.rgba[si + 2]!; c[o + 3] = 255;
+    const raw = decodeDDS(ddsPath);
+    // Down to the atlas cell and no further: `size` is a ceiling on each side
+    // rather than the shape produced, so a small frame is not blown up into
+    // four times the bytes on its way to a canvas that would scale it anyway.
+    const img = resampleTo(raw, Math.min(size, raw.width), Math.min(size, raw.height));
+    const n = img.width * img.height;
+    const c = new Uint8Array(n * 4);
+    const a = new Uint8Array(n * 4);
+    for (let i = 0; i < n; i++) {
+      const si = i * 4;
+      c[si] = img.rgba[si]!; c[si + 1] = img.rgba[si + 1]!; c[si + 2] = img.rgba[si + 2]!; c[si + 3] = 255;
       const av = img.rgba[si + 3]!;
-      a[o] = av; a[o + 1] = av; a[o + 2] = av; a[o + 3] = 255;
+      a[si] = av; a[si + 1] = av; a[si + 2] = av; a[si + 3] = 255;
     }
-    return { c: pngDataUri(size, size, c), a: pngDataUri(size, size, a) };
+    return { c: pngDataUri(img.width, img.height, c), a: pngDataUri(img.width, img.height, a) };
   } catch { return null; }
 }

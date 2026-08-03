@@ -17,6 +17,7 @@ import { join } from 'node:path';
 import { assets } from '#src/game/assets.ts';
 import { extractMapFolder, gameArchives } from '#src/map/map-source.ts';
 import { buildScenePlay } from '#src/dialog/play.ts';
+import { packTextures } from '#src/scene/tex-table.ts';
 import type { SceneOpenPayload, SceneOpenResult } from '#electron/ipc.ts';
 import { gameData, gameRoot, mountedAssets, tmpRoot } from '#electron/paths.ts';
 
@@ -65,10 +66,15 @@ export function registerDialogScenes(): void {
       + `${play.shots.length} shots, ${play.stage.geoms.length} meshes, ${placed} placed, `
       + `${play.actors.length} actors, ${clips} clips`);
 
+    // One picture per texture on the wire, not one per mesh wearing it — the
+    // difference is 85 MB against 21 for this scene. The renderer puts them
+    // back the moment it has them.
+    const packed = packTextures([play.stage, play.shots, play.actors] as const);
     return {
-      stage: play.stage,
-      shots: play.shots,
-      actors: play.actors,
+      stage: packed.payload[0],
+      shots: packed.payload[1],
+      actors: packed.payload[2],
+      textures: packed.textures,
       info: {
         inner,
         name: inner.split('/').slice(-3).join('/'),

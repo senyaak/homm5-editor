@@ -42,6 +42,16 @@ import type { GeomData, FxInstancePayload } from './payload.ts';
 // sit around (320, 284) — so honouring it would fling half the placeholders
 // across the map.
 
+/**
+ * Edge of one particle FRAME, which is the model cap's business and not the
+ * caller's: the renderer packs a frame table into an atlas of 128-wide cells
+ * (viewport/particles.ts), so a frame decoded any larger is only scaled back
+ * down by a canvas — paid for once in the payload and again in the atlas. A
+ * puff of smoke is also the last thing in a scene that wants a hero's texel
+ * budget.
+ */
+const PARTICLE_FRAME = 128;
+
 /** Size of a particle's bounding box, from the hex-packed <Bound>. */
 function particleBound(xml: string): [number, number, number] | null {
   const hex = xml.match(/<Bound>([0-9a-fA-F]{56})<\/Bound>/)?.[1];
@@ -218,7 +228,7 @@ export function particlesOfEffect(
       const textures = listItems(texBlock).map((t) => {
         const href = t.attrs.match(/href="([^"]+)"/)?.[1];
         if (!href) return null;
-        return particleTextureUris(data, texSize, '/' + resolveHref(instance.dir, href));
+        return particleTextureUris(data, PARTICLE_FRAME, '/' + resolveHref(instance.dir, href));
       });
       if (!textures.some(Boolean)) continue;
 

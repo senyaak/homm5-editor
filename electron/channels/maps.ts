@@ -26,6 +26,7 @@ import { initProject, MANIFEST_NAME, openProject, packProject, pickMapRel, readM
 import { History } from '#src/map/history.ts';
 import { Registry } from '#src/schema/registry.ts';
 import { buildScene } from '#src/scene/scene.ts';
+import { packTextures } from '#src/scene/tex-table.ts';
 import { MAP_SIZES } from '#src/terrain/terrain-blank.ts';
 import { watchMapDir } from '#src/map/watch.ts';
 
@@ -370,8 +371,13 @@ export function registerMaps(): void {
     if (tilesNamed) console.log(`[load] tile set: named ${tilesNamed} tile(s) the terrain paints with`);
     const placed = scene.floors.reduce((a, f) => a + f.instances.length, 0);
     console.log(`[perf] map:load buildScene ${(tScene - tStart) | 0}ms · total ${(performance.now() - tStart) | 0}ms · geoms ${scene.geoms.length}, placed ${placed}, skipped ${skipped}`);
+    // See src/scene/tex-table.ts: a map wears the same tree texture on every
+    // tree, and the clone across to the renderer would carry each copy. The
+    // `scene` kept here is the unpacked one — the resolver holds its geoms.
+    const packed = packTextures(scene);
     return {
-      scene,
+      scene: packed.payload,
+      textures: packed.textures,
       info: {
         name: basename(mapDir),
         mapPath,

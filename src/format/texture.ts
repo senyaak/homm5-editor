@@ -1,4 +1,5 @@
-// Making a texture the game will load.
+// Making a texture the game will load, and the picture arithmetic either side
+// of that needs — `magnify`, `fitSquare`, `shrinkToFit`.
 //
 // The game reads `.dds` beside a `.(Texture).xdb` that says how to read it, and
 // the pair has to agree: the xdb declares the size and the format, the dds
@@ -126,6 +127,86 @@ export function magnify(image: Image, times: number): Image {
       rgba[to + 1] = image.rgba[from + 1]!;
       rgba[to + 2] = image.rgba[from + 2]!;
       rgba[to + 3] = image.rgba[from + 3]!;
+    }
+  }
+  return { width, height, rgba };
+}
+
+/**
+ * The picture in its own shape, no bigger than `cap` on either side, with every
+ * source texel that lands in a target one AVERAGED into it.
+ *
+ * This is what the renderer's models are textured from, and it is written the
+ * way it is because of what it replaced. The old path took ONE source texel per
+ * target texel onto a fixed 128x128 SQUARE: a 512x512 hero skin threw away 15
+ * of every 16 texels — Isabel's face is a quarter of her atlas, so it arrived
+ * about 50 texels across — and a 512x256 skin was squashed into a square
+ * besides. At the distance a dialog scene puts the camera, that is the mush
+ * Senya reported. Averaging is also exactly what a mip level is, so a texture
+ * reduced here and one the GPU reduces further from it agree.
+ *
+ * It never ENLARGES: a 64x64 skin under a cap of 512 comes back untouched
+ * rather than as four times the bytes carrying no more detail. Most shipped
+ * textures are that way round — 64x64 is the commonest size in the game.
+ *
+ * RGB is averaged in proportion to ALPHA, and only falls back to a plain mean
+ * where the whole box is transparent. A DXT1 cutout stores its transparent
+ * texels as BLACK, so a leaf edge mixed with the void behind it comes out
+ * fringed in black otherwise — which is the one thing alpha-tested foliage
+ * shows off.
+ */
+export function shrinkToFit(image: Image, cap: number): Image {
+  let width = image.width;
+  let height = image.height;
+  // Halving, so a power-of-two texture stays one and the box below is a whole
+  // number of texels wide. The aspect ratio rides along.
+  while (width > cap || height > cap) {
+    width = Math.max(1, width >> 1);
+    height = Math.max(1, height >> 1);
+  }
+  return resampleTo(image, width, height);
+}
+
+/**
+ * The picture at exactly these dimensions, by averaging — the arithmetic behind
+ * `shrinkToFit`, and the shape a particle atlas needs, which is square whatever
+ * the texture's own proportions are.
+ *
+ * For REDUCTION only. Asked to enlarge it returns the picture it was given:
+ * every enlargement here would be invention, and the two callers both have
+ * somewhere better to do it (the GPU's sampler, a canvas drawing into a cell).
+ */
+export function resampleTo(image: Image, width: number, height: number): Image {
+  if (width >= image.width && height >= image.height) return image;
+  const src = image.rgba;
+  const rgba = new Uint8Array(width * height * 4);
+  for (let y = 0; y < height; y++) {
+    const y0 = Math.floor(y * image.height / height);
+    const y1 = Math.max(y0 + 1, Math.floor((y + 1) * image.height / height));
+    for (let x = 0; x < width; x++) {
+      const x0 = Math.floor(x * image.width / width);
+      const x1 = Math.max(x0 + 1, Math.floor((x + 1) * image.width / width));
+      let r = 0, g = 0, b = 0, a = 0, weight = 0, n = 0;
+      let plainR = 0, plainG = 0, plainB = 0;
+      for (let sy = y0; sy < y1; sy++) {
+        for (let sx = x0; sx < x1; sx++) {
+          const from = (sy * image.width + sx) * 4;
+          const av = src[from + 3]!;
+          r += src[from]! * av; g += src[from + 1]! * av; b += src[from + 2]! * av;
+          plainR += src[from]!; plainG += src[from + 1]!; plainB += src[from + 2]!;
+          a += av; weight += av; n++;
+        }
+      }
+      // Rounded, not truncated: a typed array truncates towards zero on the way
+      // in, and a whole texture a half-step darker than its own average is a
+      // gamma error nobody would go looking for.
+      const to = (y * width + x) * 4;
+      if (weight) {
+        rgba[to] = r / weight + 0.5; rgba[to + 1] = g / weight + 0.5; rgba[to + 2] = b / weight + 0.5;
+      } else {
+        rgba[to] = plainR / n + 0.5; rgba[to + 1] = plainG / n + 0.5; rgba[to + 2] = plainB / n + 0.5;
+      }
+      rgba[to + 3] = a / n + 0.5;
     }
   }
   return { width, height, rgba };

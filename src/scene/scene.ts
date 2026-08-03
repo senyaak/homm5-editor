@@ -40,6 +40,7 @@ import { followHref, resolveHref, dirOf } from './xdb.ts';
 import { terrainColors, buildSplat } from './splat.ts';
 import { buildWater, riverVertices, SEA_LEVEL } from './water.ts';
 import { loadAmbient } from './ambient.ts';
+import { TEXTURE_CAP } from './materials.ts';
 import { decodeModelGeom, mergeGeom } from './model-geom.ts';
 import { effectGeom, effectParticles, effectModelGeoms, clipEffectParticles } from './object-effects.ts';
 import { attachAnimation } from './skin.ts';
@@ -148,7 +149,7 @@ export function parseFootprint(sharedXml: string): Footprint | null {
   return fp;
 }
 
-export function createGeomResolver(root: string | Assets, texSize = 128, options: SceneAnimationOptions = {}): GeomResolver {
+export function createGeomResolver(root: string | Assets, texSize = TEXTURE_CAP, options: SceneAnimationOptions = {}): GeomResolver {
   const data = toAssets(root);
   const readXdb: ReadXdb = (href) => {
     const p = data.path(href.split('#')[0]!);
@@ -250,7 +251,7 @@ export function createGeomResolver(root: string | Assets, texSize = 128, options
 /**
  * @param root the mounted asset chain, or one unpacked data root (MapObjects/, bin/…)
  * @param mapXdbPath absolute path to the map's map.xdb (its folder holds GroundTerrain.bin)
- * @param opt.texSize downsample size for embedded textures (default 128)
+ * @param opt.texSize longest side an embedded texture is reduced to (default TEXTURE_CAP)
  * @returns { map, scene, skipped, resolver } — map is the HommMap model (kept for
  *   editing) and resolver stays alive so objects placed later can be meshed
  *   without rebuilding the scene.
@@ -264,7 +265,7 @@ export function buildScene(
   root: string | Assets, mapXdbPath: string, opt: BuildSceneOptions = {},
 ): { map: HommMap; skipped: number; scene: Scene; resolver: GeomResolver } {
   const data = toAssets(root);
-  const texSize = opt.texSize || 128;
+  const texSize = opt.texSize || TEXTURE_CAP;
   const readXdb: ReadXdb = (href) => {
     const p = data.path(href.split('#')[0]);
     return existsSync(p) ? readFileSync(p, 'utf8') : null;

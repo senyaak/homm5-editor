@@ -24,6 +24,8 @@ import { $, $button, $input } from '#core/dom.ts';
 import { buildWorld, clearWorld } from '#viewport/world.ts';
 import { idleMode, setIdleMode } from '#viewport/idle.ts';
 import type { IdleMode } from '#viewport/idle.ts';
+import { unpackTextures } from '#src/scene/tex-table.ts';
+import { materialFor } from '#viewport/materials.ts';
 import { makeIdle, poseIdle } from '#viewport/skinning.ts';
 import type { IdleObject } from '#viewport/skinning.ts';
 import { camera, controls, fitViewport, renderer, scene as stage } from '#viewport/stage.ts';
@@ -112,17 +114,11 @@ function bodyOf(actor: ActorView): { geometry: THREE.BufferGeometry; material: T
   if (!g.nrm) geometry.computeVertexNormals();
   geometry.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(g.skin.index, 4));
   geometry.setAttribute('skinWeight', new THREE.Float32BufferAttribute(g.skin.weight, 4));
-  const loader = new THREE.TextureLoader();
-  const material = (g.parts ?? []).map((part) => {
-    if (!part.tex) return new THREE.MeshLambertMaterial({ color: 0x8a8f98, side: THREE.DoubleSide });
-    const map = loader.load(part.tex);
-    map.wrapS = map.wrapT = THREE.RepeatWrapping;
-    map.flipY = false;
-    const m = new THREE.MeshLambertMaterial({ map, side: THREE.DoubleSide });
-    if (part.alphaMode === 'AM_ALPHA_TEST') m.alphaTest = 0.5;
-    else if (part.alphaMode && part.alphaMode !== 'AM_OPAQUE') m.transparent = true;
-    return m as THREE.Material;
-  });
+  // Through the same `materialFor` the stage's props go through, rather than a
+  // second reading of the same fields: an actor stands ON that stage, and a
+  // scene where the hero is shaded by three.js's lighting and the grass under
+  // her by the game's is a scene where she does not belong to it.
+  const material = (g.parts ?? []).map(materialFor);
   (g.parts ?? []).forEach((part, i) => geometry.addGroup(part.start, part.count, i));
   const body = { geometry, material };
   bodies.set(g, body);
@@ -251,29 +247,7 @@ function effectMesh(g: GeomData): { mesh: THREE.Mesh; idle: IdleObject | null } 
     geometry.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(g.skin.index, 4));
     geometry.setAttribute('skinWeight', new THREE.Float32BufferAttribute(g.skin.weight, 4));
   }
-  const loader = new THREE.TextureLoader();
-  const material = (g.parts ?? []).map((part) => {
-    let map: THREE.Texture | null = null;
-    if (part.tex) {
-      map = loader.load(part.tex);
-      map.wrapS = map.wrapT = THREE.RepeatWrapping;
-      map.flipY = false;
-    }
-    const m = part.selfIllum || part.additive
-      ? new THREE.MeshBasicMaterial({ map, side: THREE.DoubleSide })
-      : new THREE.MeshLambertMaterial({ map, side: THREE.DoubleSide }) as THREE.Material;
-    if (part.additive) {
-      (m as THREE.MeshBasicMaterial).blending = THREE.AdditiveBlending;
-      m.transparent = true;
-      m.depthWrite = false;
-    } else if (part.alphaMode === 'AM_ALPHA_TEST') {
-      (m as THREE.MeshBasicMaterial).alphaTest = 0.5;
-    } else if (part.alphaMode && part.alphaMode !== 'AM_OPAQUE') {
-      m.transparent = true;
-      m.depthWrite = part.opaque;
-    }
-    return m as THREE.Material;
-  });
+  const material = (g.parts ?? []).map(materialFor);
   (g.parts ?? []).forEach((part, i) => geometry.addGroup(part.start, part.count, i));
   const idle = g.skin?.clip ? makeIdle({ ...g.skin }, geometry, material) : null;
   return { mesh: idle?.mesh ?? new THREE.Mesh(geometry, material), idle };
@@ -412,7 +386,11 @@ function advanceShotFx(): void {
  * mid-edit: a scene is watched instead of a map, not on top of one.
  */
 export async function openScene(inner: string): Promise<SceneInfo> {
-  const { stage: payload, shots, actors, info } = await api.openScene({ inner });
+  const { stage: payload, shots, actors, info, textures } = await api.openScene({ inner });
+  // The textures travelled once each and the payload holds handles into that
+  // table; nothing below this line should ever meet one. See
+  // src/scene/tex-table.ts.
+  unpackTextures([payload, shots, actors], textures);
   clearActors();
   // The stage arrives with its creatures' bones (src/dialog/play.ts asks for
   // them unconditionally), and the mode is what decides whether buildWorld

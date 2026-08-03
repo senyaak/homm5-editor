@@ -107,6 +107,12 @@ export function partTexture(src: string): THREE.Texture {
   const tx = texLoader.load(src);
   tx.wrapS = tx.wrapT = THREE.RepeatWrapping;
   tx.flipY = false;
+  // Anisotropic filtering, at whatever the card allows. Every surface a scene
+  // shows at a slant — the ground under a shot, a wall running away from the
+  // camera, the flat of a blade — is sampled along its short axis by a plain
+  // mip chain, so it blurs in the one direction the picture is longest. It
+  // costs a sampler flag and nothing in the payload.
+  tx.anisotropy = renderer.capabilities.getMaxAnisotropy();
   return tx;
 }
 

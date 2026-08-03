@@ -28,6 +28,7 @@
     "mesh-audit": "node tools/mesh-audit.ts",
     "test-objects": "node tools/test-objects.ts",
     "test-scene": "node tools/test-scene.ts",
+  "test-textures": "node tools/test-textures.ts",
     "test-registry": "node tools/test-registry.ts",
     "test-schema": "node tools/test-schema.ts",
     "test-campaign": "node tools/test-campaign.ts",

@@ -10,6 +10,7 @@ import { $, $button, $input } from '#core/dom.ts';
 import { api } from '#core/ipc.ts';
 import { uiPrefs } from '#core/prefs.ts';
 import { state } from '#core/state.ts';
+import { unpackTextures } from '#src/scene/tex-table.ts';
 import { updateHistoryUI } from '#features/history.ts';
 import { loadLocState, loc } from '#features/localization.ts';
 import { allTiles, initObjectPalette, renderPalette, setPalette, tiles } from '#features/palettes.ts';
@@ -58,7 +59,10 @@ export async function loadMapPath(path: string | null, archive: string | null = 
     // The heavy lifting is in the main process (mesh/texture decode), so the
     // renderer's own thread is free to keep the spinner turning while it runs.
     const tReq = performance.now();
-    const { scene: S, info, history, idleAnimation } = await api.loadMap(path);
+    const { scene: S, info, history, idleAnimation, textures } = await api.loadMap(path);
+    // The pictures came once each and the scene holds handles into that table
+    // — see src/scene/tex-table.ts. Put them back before anything draws.
+    unpackTextures(S, textures);
     const tLoad = performance.now();
     // The scene says which mode it was BUILT for, and that is what the view
     // follows: a map built without bones cannot be animated by asking nicely.

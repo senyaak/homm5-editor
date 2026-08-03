@@ -36,6 +36,31 @@ one.
 
 ### Fixed
 
+- **Models are textured at the size the art was drawn at, instead of at
+  128×128.** Every texture in a payload was point-sampled onto a fixed 128-pixel
+  SQUARE, whatever it had been: a hero's 512×512 skin lost fifteen of every
+  sixteen texels — a face that is a quarter of its atlas arrived about fifty
+  texels across — and a 512×256 one was squashed out of shape besides. On a map
+  that mostly reads as soft; in a dialog scene, where the camera stands a metre
+  from somebody's face, it is mush. Textures now come at their own shape and
+  their own size up to 512 a side, reduced by AVERAGING rather than by throwing
+  texels away, and the transparent black a DXT1 cutout stores is weighted out of
+  that average, so foliage no longer wears a dark fringe. Anisotropic filtering
+  is on, which is what the ground under a low shot needed.
+
+  It costs nothing to load, because two things paid for it: a texture is now
+  decoded once per file rather than once per mesh wearing it (C1M1's opening
+  dialog names 4659 textures and has 299), and each one crosses to the window
+  once rather than once per reference. That scene's payload was 183 MB and is
+  163 MB — with four times the texture detail — and builds in 6 seconds where it
+  took 8.
+
+- **An actor in a dialog scene is shaded like the stage they stand on.** The
+  scene player built its own materials, so the heroes and the armies went
+  through three.js's lighting while the grass under them went through the
+  game's — the same mismatch fixed for maps below, still in the one window where
+  everybody is a close-up.
+
 - **Everything on a map is lit the way the game lights it, not the way three.js
   does.** The ground always ran the game's own sum; objects, actors and props
   went through three.js's linear lighting instead, and against a preset authored

@@ -39,7 +39,8 @@ src/        the core — format decoders and the game model, by what each file
                         defaults, watch, project, history
               terrain/  GroundTerrain.bin — its own format, its own six files
               scene/    a map + its assets turned into something drawable:
-                        scene (the walk) + payload (what crosses IPC), xdb,
+                        scene (the walk) + payload (what crosses IPC) +
+                        tex-table (each texture crossing it once), xdb,
                         model-geom, materials, object-effects, skin, splat,
                         water, ambient, geometry, animation, effects, units
               schema/   typed editing: schema, typespec, tree, skeleton,

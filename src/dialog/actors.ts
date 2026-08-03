@@ -21,6 +21,7 @@
 
 import type { Assets } from '../game/assets.ts';
 import type { BakedClip } from '../scene/animation.ts';
+import { TEXTURE_CAP } from '../scene/materials.ts';
 import { decodeModelGeom } from '../scene/model-geom.ts';
 import type { GeomData } from '../scene/payload.ts';
 import { bakeCharacterClip } from '../scene/skin.ts';
@@ -204,7 +205,7 @@ export function actorRigs(
   data: Assets, scene: DialogScene, stage: StageObject[], options: ActorOptions = {},
 ): ActorRig[] {
   const fps = options.fps ?? 15;
-  const texSize = options.texSize ?? 128;
+  const texSize = options.texSize ?? TEXTURE_CAP;
   const wanted = clipsWanted(scene);
   const readXdb = (href: string): string | null => data.text(href.split('#')[0]!.replace(/^\//, ''));
 

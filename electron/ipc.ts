@@ -147,10 +147,18 @@ export interface SceneOpenResult {
   shots: ShotView[];
   actors: ActorView[];
   info: SceneInfo;
+  /**
+   * The pictures this payload's textures were replaced by handles from. See
+   * src/scene/tex-table.ts — the renderer puts them back before drawing
+   * anything, and nothing else ever sees a packed payload.
+   */
+  textures: string[];
 }
 
 export interface MapLoadResult {
   scene: Scene;
+  /** The pictures behind the scene's texture handles — see SceneOpenResult. */
+  textures: string[];
   info: MapInfo;
   status: ProjectStatus;
   /**

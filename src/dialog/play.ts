@@ -14,6 +14,7 @@ import type { Assets } from '../game/assets.ts';
 import { buildScene } from '../scene/scene.ts';
 import type { AmbientData, FxInstancePayload, GeomData, Scene } from '../scene/payload.ts';
 import { loadAmbient } from '../scene/ambient.ts';
+import { TEXTURE_CAP } from '../scene/materials.ts';
 import { effectDuration, modelsOfEffect, particlesOfEffect } from '../scene/object-effects.ts';
 import type { EffectModel } from '../scene/object-effects.ts';
 import { UNITS_PER_TILE as U } from '../scene/units.ts';
@@ -254,7 +255,7 @@ export function buildScenePlay(data: Assets, scenePath: string, options: PlayOpt
   // One effect is fired by many shots — eight copies of Prayer over a line of
   // soldiers, four of a succubus hit — and each is the same chain of documents
   // down to the same baked keys. Read once per href.
-  const texSize = options.texSize ?? 128;
+  const texSize = options.texSize ?? TEXTURE_CAP;
   const readXdb = (href: string): string | null => data.text(href.split('#')[0]!.replace(/^\//, ''));
   interface BuiltEffect { fx: FxInstancePayload[]; models: EffectModel[]; duration: number }
   const none: BuiltEffect = { fx: [], models: [], duration: 0 };
