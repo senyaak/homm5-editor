@@ -12,6 +12,13 @@ import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
   testDir: 'e2e',
+  // The C1M1 reconstruction is NOT part of the ordinary suite. It is a
+  // different kind of test — a release gate that rebuilds a whole shipped
+  // campaign mission, minutes of work over an extracted fixture, measuring the
+  // editor's completeness rather than guarding a change. So a bare
+  // `playwright test` never picks it up; `npm run test-e2e` (tools/e2e-full.ts)
+  // sets PW_C1M1 and runs everything, which is what a release is gated on.
+  testIgnore: process.env.PW_C1M1 ? [] : ['**/c1m1/**'],
   // The app loads a BUILT renderer bundle; without this the suite tests
   // whatever app.js was last left on disk. See e2e/build.ts.
   globalSetup: './e2e/build.ts',

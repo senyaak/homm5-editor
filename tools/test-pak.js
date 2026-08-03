@@ -13,7 +13,12 @@ import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 
-const PAK = '../data/GEmaps.pak';
+// The sample lives in the game's data. A checkout inside the install finds it
+// one level up; a WORKTREE does not sit inside one, so HOMM5_GAME says where
+// the game is — the same variable every other game-reading tool honours.
+const PAK = process.env.HOMM5_GAME
+  ? join(process.env.HOMM5_GAME, 'data', 'GEmaps.pak')
+  : '../data/GEmaps.pak';
 const sha1 = (b) => createHash('sha1').update(b).digest('hex');
 let failures = 0;
 const ok = (cond, msg) => { console.log(`${cond ? 'ok  ' : 'FAIL'} ${msg}`); if (!cond) failures++; };

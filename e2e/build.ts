@@ -53,7 +53,10 @@ export default async function build(): Promise<void> {
   // the mod ships, unpacked once by `npm run extract-fixture C1M1`. Without that
   // tree those stages fail by design (a silent skip reads as a pass); this note
   // tells you why before the failures scroll by, and how to opt into skipping.
-  if (!hasFixture()) {
+  // Only when the reconstruction is actually in this run (PW_C1M1, the release
+  // gate) — an ordinary run never reaches those stages, so the note would be
+  // noise about a suite that is not running.
+  if (process.env.PW_C1M1 && !hasFixture()) {
     const skipping = !!process.env[ALLOW_NO_FIXTURE];
     console.warn(
       `\n[e2e] no C1M1 fixture — ${NEED_FIXTURE}\n` +
