@@ -106,6 +106,38 @@ read and adjust bonuses at runtime. But they should not be how the *artifact*
 works — an artifact whose bonus depends on a script running is exactly the
 seam we are trying not to have.
 
+## A battle can be spoken to
+
+*Measured in game on 2026-08-03, three battles, each answering one thing.*
+
+Two contexts, one routine. The adventure map's Lua table and the BATTLE's are
+each handed over by five bytes of the same shape — `mov eax,<table>; ret`, at
+`0x5ce710` and `0x601480` — so `install_lua_table` extends either. A function of
+ours is therefore callable from inside a fight, where the two contexts otherwise
+share nothing but the game variables.
+
+**Calling INTO a battle needs no Lua C API.** The engine talks to a script by
+running source: `DoPrepare()`, `UnitMove("%s")` — text, handed to the host. Our
+own event is a string like any other, and it is asked for by name rather than
+called, because nothing declares it:
+
+```
+if H5ECombatStarted ~= nil then H5ECombatStarted(); end;
+```
+
+**The one funnel, and why it is not an address.** Every line a battle runs goes
+through the script host's vtable slot 0 (a forwarder: `this = [this+0x1C]`, the
+Lua engine, then its own slot 0). We take that slot from the LIVE vtable when
+the host is built (`0xa44bc0`) and put ours in it, keeping theirs — so the four
+kinds of battle all arrive, inlined loaders included, and no address of ours can
+go stale. **The game's image is relocatable** (`DYNAMIC_BASE` in its header), so
+a pointer printed from the DLL is a runtime one and means nothing on disk; log
+RVAs, not addresses.
+
+**The moment is `createCombatAliases();`** — the engine runs it right after
+`combat-startup.lua`, whose end is where a mod's battle code lives, so by then
+everything the mod defined is defined.
+
 **Two cheap experiments were worth running first**, because each answered a
 question the design rests on. Both have since been answered, and the answers
 are why the rest of this held up:

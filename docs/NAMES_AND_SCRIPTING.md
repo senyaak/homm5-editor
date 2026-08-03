@@ -154,7 +154,16 @@ Two more things worth knowing before writing any:
   `CombatScript`, the monster's, or the argument to `StartCombat`. The loader
   (`0x6528b0`) does combat-startup → `createCombatAliases();` → one script out of
   the battle object's `+0x2A0`, and ends. Four such sites exist, one per kind of
-  battle; all four have the same shape.
+  battle; all four have the same shape — but only ONE of them is that function.
+  The other three carry the same code INLINED, which a hook on the named loader
+  discovers by never firing (measured, 2026-08-03: two ordinary battles, no
+  hit, while the tent's hooks in the same fight reported normally).
+- **An ordinary battle has a script host**, and that is what makes any of this
+  reach a mod. `0x65af0b` — inside one of the inlined paths — is
+  `mov byte ptr [ebp+4F0h],1`: the flag is set outright, and everything about a
+  battle's Lua hangs off it (with it clear, `CCombat::LoadScripts` returns having
+  loaded nothing at all, so there would be no `combat-startup.lua` and no tail).
+  So "a scripted battle" is not a mode a fight is in; it is every fight.
 - **Our block redefines nothing.** It is straight-line code at the end of the
   file: by the time it runs the battle is built and can simply be asked what is
   in it, and no global of the game's changes hands. Overriding a death hook would

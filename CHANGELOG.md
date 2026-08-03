@@ -23,6 +23,19 @@ one.
   hundred points). All four are rows in the skill form, keyed on the skill's own
   id, and three of them cost the game nothing it was not already computing.
 
+- **A battle can be spoken to, and can answer.** Two halves, both measured in
+  game rather than argued about:
+
+  - **Lua functions of ours now reach a fight.** The battle's vocabulary is
+    handed over by an accessor of exactly the shape the adventure map's is, so
+    the same routine extends both — a script inside a battle can call what the
+    extension registers.
+  - **`H5ECombatStarted()`** — define it at the end of a mod's
+    `combat-startup.lua` and the extension calls it once per battle, after
+    everything the mod declared is declared. It works in an ORDINARY battle, not
+    only a scripted one: a battle always builds a script host, which is what the
+    probe was for.
+
 ## 0.7.0 — 2026-08-02
 
 ### Added

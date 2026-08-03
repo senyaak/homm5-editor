@@ -183,6 +183,14 @@ static const BYTE ENERGY_GETTER_HEAD[7] = { 0x8B, 0x81, 0x38, 0x06, 0x00, 0x00, 
 
 /** `mov eax,<adventure-map table>; ret`, and the two bytes that say it is. */
 #define LUA_TABLE_ACCESSOR_RVA 0x1ce710u
+/**
+ * And the battle's, which is the same five bytes at another address.
+ *
+ * `0x601480: mov eax,0x108dfb0; ret` — 53 functions, the vocabulary a combat
+ * script is written against. One code site names that table and this is it, so
+ * the battle's Lua is extended exactly as the map's is.
+ */
+#define LUA_COMBAT_TABLE_ACCESSOR_RVA 0x201480u
 #define LUA_MOV_EAX_IMM 0xB8
 #define LUA_RET 0xC3
 /** How many of ours can be added. Room to grow; the table is ours to size. */
@@ -1176,16 +1184,40 @@ static LuaEntry g_ourFunctions[MAX_LUA_FUNCTIONS] = {
 static int g_ourFunctionCount = 2;
 
 /**
+ * The same proof, one context over: a battle's script can reach us.
+ *
+ * It takes no arguments deliberately. Reading one would mean going through the
+ * engine's argument parser, and this function exists to answer a question that
+ * has nothing to do with arguments — whether a battle runs our code at all.
+ */
+static void *__fastcall lua_combat_test(void *ctx) {
+  (void)ctx;
+  log_line("lua: H5ECombatTest() was called from inside a battle");
+  return NULL;
+}
+
+static LuaEntry g_ourCombatFunctions[MAX_LUA_FUNCTIONS] = {
+  { "H5ECombatTest", &lua_combat_test },
+};
+static int g_ourCombatFunctionCount = 1;
+
+/**
  * Give the engine a table of our own: theirs, plus ours, plus the terminator.
  *
  * The four bytes rewritten are the accessor's immediate, and the address that
  * was in them is where the engine's own table is — read rather than assumed, so
  * a build that loads at another base still finds it.
+ *
+ * TWO CONTEXTS, ONE ROUTINE. The adventure map's table and the BATTLE's are
+ * handed over by accessors of the same five bytes (`mov eax,<table>; ret`) at
+ * two addresses, so the map's vocabulary and the battle's are extended the same
+ * way. That is what makes a function of ours callable from inside a fight, where
+ * the two contexts otherwise share nothing but the game variables.
  */
-static int install_lua_functions(void) {
-  BYTE *accessor = (BYTE *)GetModuleHandleW(NULL) + LUA_TABLE_ACCESSOR_RVA;
+static int install_lua_table(DWORD rva, const LuaEntry *ours, int count, const char *what) {
+  BYTE *accessor = (BYTE *)GetModuleHandleW(NULL) + rva;
   if (accessor[0] != LUA_MOV_EAX_IMM || accessor[5] != LUA_RET) {
-    log_line("the lua table accessor is not the shape we know - not registering");
+    log_text("the lua table accessor is not the shape we know - not registering: ", what);
     return 0;
   }
 
@@ -1193,28 +1225,247 @@ static int install_lua_functions(void) {
   int n = 0;
   while (theirs[n].name || theirs[n].fn) n++;
 
-  LuaEntry *ours = (LuaEntry *)VirtualAlloc(
-      NULL, (n + g_ourFunctionCount + 1) * sizeof(LuaEntry),
-      MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-  if (!ours) { log_line("no memory for the lua table"); return 0; }
+  LuaEntry *ext = (LuaEntry *)VirtualAlloc(NULL, (n + count + 1) * sizeof(LuaEntry),
+                                           MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+  if (!ext) { log_line("no memory for the lua table"); return 0; }
 
-  for (int i = 0; i < n; i++) ours[i] = theirs[i];
-  for (int i = 0; i < g_ourFunctionCount; i++) ours[n + i] = g_ourFunctions[i];
-  ours[n + g_ourFunctionCount].name = NULL;
-  ours[n + g_ourFunctionCount].fn = NULL;
+  for (int i = 0; i < n; i++) ext[i] = theirs[i];
+  for (int i = 0; i < count; i++) ext[n + i] = ours[i];
+  ext[n + count].name = NULL;
+  ext[n + count].fn = NULL;
 
   DWORD old = 0;
   if (!VirtualProtect(accessor + 1, sizeof(void *), PAGE_EXECUTE_READWRITE, &old)) {
     log_line("could not make the lua accessor writable");
     return 0;
   }
-  *(LuaEntry **)(accessor + 1) = ours;
+  *(LuaEntry **)(accessor + 1) = ext;
   VirtualProtect(accessor + 1, sizeof(void *), old, &old);
   FlushInstructionCache(GetCurrentProcess(), accessor, 6);
 
-  log_num("lua: the engine's table had ", n);
-  log_num("lua: functions of ours added: ", g_ourFunctionCount);
+  log_text("lua: extended the table of the ", what);
+  log_num("     the engine's had ", n);
+  log_num("     ours added:      ", count);
   return 1;
+}
+
+static int install_lua_functions(void) {
+  int done = install_lua_table(LUA_TABLE_ACCESSOR_RVA, g_ourFunctions, g_ourFunctionCount,
+                               "adventure map");
+  done += install_lua_table(LUA_COMBAT_TABLE_ACCESSOR_RVA, g_ourCombatFunctions,
+                            g_ourCombatFunctionCount, "battle");
+  return done;
+}
+
+// ---------------------------------------------------------------------------
+// Saying something to a battle's script.
+//
+// The engine talks to a battle by running SOURCE rather than through Lua's C
+// API: at `0x720b9d` it pushes the text `DoPrepare()` and hands it to a runner,
+// and `UnitMove("%s")` is the same thing with a name substituted. An event of
+// our own is therefore a string like any other — no stack of theirs to balance,
+// no state of theirs to find — which is this file's rule everywhere else: make
+// the call the way the engine makes it.
+//
+// WHAT A BATTLE MUST HAVE for any of it to work, and it is the same condition
+// that decides whether a mod's `combat-startup.lua` runs at all.
+// `CCombat::LoadScripts` (`0x652870`) opens by asking for the script host and
+// returns having loaded nothing when the battle has none:
+//
+//     cmp [esi+4F0h],dl        ; has this battle a script host
+//     cmovne edx,esi
+//     test edx,edx / je out    ; no host -> no startup file, no tail, no us
+//     cmp [edx+1D0h],0 / je out
+//
+// So the hook below is a PROBE before it is a trigger: it writes down what that
+// flag says in a real, ordinary battle. Reading took this as far as it goes —
+// the flag is set from somewhere else, and only a fight can say whether an
+// unscripted one has a host.
+#define COMBAT_LOAD_SCRIPTS_RVA 0x252870u
+static const BYTE COMBAT_LOAD_SCRIPTS_HEAD[5] = { 0x83, 0xEC, 0x18, 0x33, 0xD2 };
+
+/** The runner: the host as `this`, the source, and an optional `%s` for it. */
+#define RUN_SOURCE_RVA 0x644cf0u
+static const BYTE RUN_SOURCE_HEAD[6] = { 0x83, 0xEC, 0x18, 0x57, 0x8B, 0xF9 };
+
+/** The script host is a base INSIDE the battle, not a pointer it holds. */
+#define COMBAT_SCRIPT_HOST 0x1B4u
+#define COMBAT_HAS_SCRIPT 0x4F0u
+#define COMBAT_SCRIPT_STATE 0x1D0u
+
+typedef void(__fastcall *LoadScriptsFn)(void *combat, void *edx);
+typedef void(__fastcall *RunSourceFn)(void *host, void *edx, const char *source, const char *arg);
+
+static LoadScriptsFn g_loadScripts = NULL;
+static RunSourceFn g_runSource = NULL;
+static int g_combatLogged = 0;
+
+/**
+ * Run one line of Lua inside a battle, guarded the way the engine guards it.
+ *
+ * Everything is checked before the call and nothing is assumed: no host, no
+ * call. A battle that cannot hear us is not an error — it is the answer to the
+ * question this was written to ask.
+ */
+static void combat_run(void *combat, const char *source, const char *arg) {
+  if (!g_runSource || !combat) return;
+  if (!readable((BYTE *)combat + COMBAT_HAS_SCRIPT, 1)) return;
+  if (!*((BYTE *)combat + COMBAT_HAS_SCRIPT)) return;
+  void *host = (BYTE *)combat + COMBAT_SCRIPT_HOST;
+  // The runner reads `[this+0x1C]` first thing and does nothing without it.
+  if (!readable(host, 0x20)) return;
+  g_runSource(host, NULL, source, arg);
+}
+
+/**
+ * A name is ASKED FOR rather than called: `if f ~= nil then f(); end;`.
+ *
+ * Ours is not a hook the engine declares, so nothing promises a script defines
+ * it — and calling a nil is a Lua error in a context with no console to print
+ * it to. The engine gets away with `DoPrepare()` because `combat-startup.lua`
+ * declares every one of its hooks empty first.
+ */
+static void __fastcall load_scripts_hook(void *combat, void *edx) {
+  g_loadScripts(combat, edx);
+
+  if (g_combatLogged++ < 8) {
+    log_line("battle scripts loaded:");
+    log_num("  has a script host ",
+            readable((BYTE *)combat + COMBAT_HAS_SCRIPT, 1) ? *((BYTE *)combat + COMBAT_HAS_SCRIPT) : -1);
+    log_hex("  state             ",
+            readable((BYTE *)combat + COMBAT_SCRIPT_STATE, 4)
+              ? *(DWORD *)((BYTE *)combat + COMBAT_SCRIPT_STATE) : 0);
+  }
+  combat_run(combat, "if H5ECombatStarted ~= nil then H5ECombatStarted(); end; "
+                     "if H5ECombatTest ~= nil then H5ECombatTest(); end;", NULL);
+}
+
+/**
+ * The other end of the same question: where a battle's script host is BUILT.
+ *
+ * The first probe hooked `CCombat::LoadScripts` and never fired, which was an
+ * answer of its own — three of the four battle kinds do not call it, they carry
+ * the same code inlined. `0x65af0b` is one of those, and it is the interesting
+ * one: `mov byte ptr [ebp+4F0h],1` sets the flag outright and then loads
+ * `combat-startup.lua` in place, so a battle down that path always has a host.
+ *
+ * `0xa44bc0` is the host's own init and that path's only caller, and it is
+ * where the Lua state (`[host+0x1C]`, the very field the runner tests) is
+ * filled. So this hook sees the host at the earliest moment it can be spoken
+ * to — before the startup file, which is why what it says is worth having:
+ *
+ *   - whether an ordinary battle gets here AT ALL;
+ *   - the address behind the host's vtable slot 0, which is the one funnel every
+ *     line of Lua a battle ever runs goes through, inlined paths included. With
+ *     it the trigger stops depending on which of the four kinds of battle it is.
+ */
+#define COMBAT_HOST_INIT_RVA 0x644bc0u
+static const BYTE COMBAT_HOST_INIT_HEAD[6] = { 0x56, 0x8B, 0xF1, 0x57, 0x85, 0xF6 };
+
+typedef void *(__fastcall *HostInitFn)(void *host, void *edx);
+static HostInitFn g_hostInit = NULL;
+static int g_hostLogged = 0;
+
+/**
+ * Every line a battle ever runs goes through the host's vtable slot 0.
+ *
+ * Taken from the LIVE vtable rather than from an address of ours: the game's
+ * image is relocatable (`DYNAMIC_BASE` is set in its header), so the pointer the
+ * probe printed was a runtime one and meant nothing on disk. Reading the slot
+ * where the engine reads it needs no address at all, and swapping it is how the
+ * engine itself would replace an implementation — the same move as the dark
+ * energy bar's accessor.
+ *
+ * ONE SWAP SERVES EVERY BATTLE: the vtable belongs to the class, not to the
+ * fight, so the four kinds of battle — the one that calls `LoadScripts` and the
+ * three that carry it inlined — all arrive here.
+ */
+typedef void *(__fastcall *RunLineFn)(void *host, void *edx, const char *source);
+static RunLineFn g_runLine = NULL;
+static int g_lineLogged = 0;
+
+/** The engine's own line, run once the startup file and our tail are in. */
+static const char ALIASES_LINE[] = "createCombatAliases();";
+
+/** Whether `text` begins with `word` — no CRT, and none needed. */
+static int begins_with(const char *text, const char *word) {
+  while (*word) { if (*text != *word) return 0; text++; word++; }
+  return 1;
+}
+
+/**
+ * The moment a perk can be written against.
+ *
+ * `combat-startup.lua` is loaded first and our tail is the end of it, so by the
+ * time the engine runs `createCombatAliases();` everything a mod defined is
+ * defined. That is where our own event goes — and it is asked for by name,
+ * because nothing declares it and calling a nil is an error into a context with
+ * no console.
+ */
+static void *__fastcall run_line_hook(void *host, void *edx, const char *source) {
+  void *result = g_runLine(host, edx, source);
+  if (!source || !readable(source, sizeof ALIASES_LINE)) return result;
+  if (!begins_with(source, ALIASES_LINE)) return result;
+  if (g_lineLogged++ < 8) log_line("battle: the vocabulary is up, our turn");
+  g_runLine(host, NULL, "if H5ECombatStarted ~= nil then H5ECombatStarted(); end; "
+                        "if H5ECombatTest ~= nil then H5ECombatTest(); end;");
+  return result;
+}
+
+/** Put ours in the slot, once, and keep theirs to call. */
+static void take_over_run_line(void *host) {
+  if (g_runLine || !readable(host, 4)) return;
+  void **vt = *(void ***)host;
+  if (!readable(vt, 4) || !points_at_code(vt[0])) return;
+  DWORD old = 0;
+  if (!VirtualProtect(vt, sizeof(void *), PAGE_READWRITE, &old)) {
+    log_line("could not make the battle host's vtable writable");
+    return;
+  }
+  g_runLine = (RunLineFn)vt[0];
+  vt[0] = &run_line_hook;
+  VirtualProtect(vt, sizeof(void *), old, &old);
+  log_hex("battle: every line now comes past us; theirs is at rva ",
+          (DWORD)((BYTE *)g_runLine - (BYTE *)GetModuleHandleW(NULL)));
+}
+
+static void *__fastcall host_init_hook(void *host, void *edx) {
+  void *result = g_hostInit(host, edx);
+  if (g_hostLogged++ < 8) {
+    log_line("battle script host built:");
+    log_object("  host        ", host);
+    if (readable(host, 4)) {
+      void **vt = *(void ***)host;
+      if (readable(vt, 4)) log_hex("  runs source ", (DWORD)vt[0]);
+    }
+    log_hex("  lua state   ", readable((BYTE *)host + 0x1C, 4) ? *(DWORD *)((BYTE *)host + 0x1C) : 0);
+  }
+  // And the reason this hook stays now that it has answered: the host is the
+  // only thing that names the function every line of Lua goes through, and it
+  // has just been built.
+  take_over_run_line(host);
+  return result;
+}
+
+/** The battle's side of the extension: one detour, one address only read. */
+static int install_combat_scripts(void) {
+  BYTE *runner = (BYTE *)GetModuleHandleW(NULL) + RUN_SOURCE_RVA;
+  for (int i = 0; i < (int)sizeof RUN_SOURCE_HEAD; i++) {
+    if (runner[i] != RUN_SOURCE_HEAD[i]) {
+      log_line("the script runner is not the shape we know - a battle will not be spoken to");
+      return 0;
+    }
+  }
+  g_runSource = (RunSourceFn)runner;
+  // Both ends, because one battle in four goes through the first and the rest
+  // carry it inlined. Neither is required for the other to be useful.
+  g_loadScripts = (LoadScriptsFn)detour(COMBAT_LOAD_SCRIPTS_RVA, COMBAT_LOAD_SCRIPTS_HEAD,
+                                        sizeof COMBAT_LOAD_SCRIPTS_HEAD, &load_scripts_hook,
+                                        "battle script loader");
+  g_hostInit = (HostInitFn)detour(COMBAT_HOST_INIT_RVA, COMBAT_HOST_INIT_HEAD,
+                                  sizeof COMBAT_HOST_INIT_HEAD, &host_init_hook,
+                                  "battle script host");
+  return g_loadScripts != NULL || g_hostInit != NULL;
 }
 
 /** The necromancy percentage: one detour, plus the cost we only watch. */
@@ -2884,6 +3135,10 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   // any artifact asks for a bonus, and a script that calls one is a different
   // user from an artifact that carries one.
   install_lua_functions();
+  // The same argument, one context over — and the one thing here that a battle
+  // has to answer for itself, so it says what it saw whether or not anything
+  // asked. See "Saying something to a battle's script" above.
+  if (install_combat_scripts()) log_line("battles will be spoken to");
   install_energy_getter();
   if (g_specRowCount) install_specialization_hooks();
   if (rows_for(STAT_TENT_CHARGES)) {
