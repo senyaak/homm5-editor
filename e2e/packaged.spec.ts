@@ -23,11 +23,11 @@ test.skip(!existsSync(EXE), 'no packaged build — run `npm run dist` first');
 test.describe.configure({ mode: 'serial' });
 
 /**
- * Launch the exe with a settings folder of its own.
+ * Launch the exe with a per-user folder of its own.
  *
- * Without this the packaged app would read (and write) the same settings.json a
- * dev run uses, so a test could either be handed a configured editor it meant to
- * find unconfigured, or leave the developer's own setup rewritten behind it.
+ * A packaged build that cannot write beside itself keeps its `.env` in that
+ * folder, so without this a test could be handed a configured editor it meant
+ * to find unconfigured — or leave one behind for the next run.
  */
 async function launchPackaged(env: Record<string, string>): Promise<{ app: ElectronApplication; userData: string }> {
   const userData = mkdtempSync(join(tmpdir(), 'homm5-packaged-'));

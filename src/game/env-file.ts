@@ -1,20 +1,21 @@
 // The one file that says where this machine keeps things.
 //
 // WHAT IT IS FOR. Every path the editor needs outside itself — the game, the
-// unpacked data — differs per machine and belongs in no commit. They were
-// environment variables, which meant a terminal that had exported them, and
-// therefore worked for the person who typed them and nobody else: the e2e suite
-// got them from `start-editor.bat`, the tools guessed from the checkout's
-// position, and a second machine had neither.
+// unpacked data — differs per machine and belongs in no commit. This file, the
+// environment, and the command line are now the WHOLE of how those are decided
+// (electron/paths.ts): there is no fourth answer and no guess behind them.
 //
-// WHAT IT IS NOT FOR. It does not decide anything. The setup window's picker is
-// the only place an install is ever chosen; this file fills that picker's fields
-// in, so the answer is one Enter away instead of one folder walk. Nothing here
-// is read as "the game is there" — only as "start looking there".
+// It used to fill the setup window's fields in and decide nothing, while paths
+// were remembered in a settings.json shared by every checkout, every worktree
+// and the packaged build — with two "the folder above this one" guesses ranked
+// ABOVE it. Which folder a run had actually settled on was then unknowable from
+// outside, and a wrong one is silent: the map opens, everything a mod supplies
+// is on it, the game's own objects are not, and the tile list is empty. One
+// file per checkout, written where it can be read, replaces all of that.
 //
-// PRECEDENCE. A variable already in the environment wins: an explicit
-// `HOMM5_ROOT=… npm start` is someone saying something about this one run, and a
-// file must not talk over it.
+// PRECEDENCE. The command line beats the environment beats this file. Each is
+// more specific to this one run than the next: `--game=…` is about this launch,
+// `HOMM5_ROOT=… npm start` about this shell, the file about this checkout.
 //
 // THE APP READS IT AND THE TESTS DO NOT, on purpose. `HOMM5_ROOT` means two
 // different things either side of that line: to the editor it is "the install",
@@ -24,8 +25,11 @@
 // turn that default off for good, on one machine, invisibly. So the suite keeps
 // its explicit variables and this is loaded by electron/paths.ts alone.
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+
+/** Windows line endings: this file is read and edited in Notepad as often as not. */
+const EOL = '\r\n';
 
 /** The file, relative to the editor's root. Never committed — see `.env.example`. */
 export const ENV_FILE = '.env';
@@ -60,6 +64,35 @@ export function parseEnvFile(text: string): Record<string, string> {
     out[key] = value;
   }
   return out;
+}
+
+/**
+ * Write the file, replacing whatever was there.
+ *
+ * The setup window's picker calls this, which is what makes the picker's answer
+ * durable without a settings file: the same file a developer edits by hand is
+ * the one the window writes, so there is one place to look either way.
+ *
+ * Comments in a hand-edited file do not survive — the header below is written
+ * fresh every time. That is the trade for a writer small enough to trust.
+ */
+export function writeEnvFile(editorRoot: string, values: Partial<Record<EnvKey, string>>): string {
+  const path = join(editorRoot, ENV_FILE);
+  const lines = [
+    "# Where this machine keeps the game. Written by the editor's setup window,",
+    '# and safe to edit by hand. Not committed — see .env.example.',
+    '#',
+    '# This file DECIDES: the editor reads nothing else, and guesses nothing.',
+    '# A variable exported in your shell wins over it, and --game=/--data= on the',
+    '# command line wins over both.',
+  ];
+  for (const [key, note] of Object.entries(ENV_KEYS)) {
+    const value = values[key as EnvKey];
+    if (!value) continue;
+    lines.push('', `# ${note}`, `${key}=${value}`);
+  }
+  writeFileSync(path, lines.join(EOL) + EOL, 'utf8');
+  return path;
 }
 
 export interface LoadedEnv {

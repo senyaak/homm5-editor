@@ -34,16 +34,34 @@ one.
   written back. What it already proves is the whole risky half — that a scene
   resolves, draws and frames the way the game frames it.
 
+### Changed
+
+- **Where the game is comes from `.env` or the command line, and from nothing
+  else.** There were four answers for the data root and three for the game: the
+  environment, the checkout's own folder, a `settings.json` in the user's
+  app-data — shared by every checkout, every worktree and the packaged build at
+  once — and two "the folder above this one" guesses, one of which outranked the
+  settings. No run ever said which had won, and a wrong one is silent in the
+  worst way: the map opens, everything a MOD supplies is on it, the game's own
+  objects are not, and the tile list is empty. That reads as a broken map, a
+  broken build, or deleted files.
+
+  Now: `--game=` / `--data=` beats `HOMM5_ROOT` / `HOMM5_DATA`, which `.env`
+  beside the build fills in — and there is nothing behind that. Nobody said, and
+  the setup window asks and writes the `.env` itself, so the picker's answer and
+  the file a developer edits are the same file. One per checkout, which is what
+  lets a worktree work against its own copy of the game. `settings.json` stays
+  for the two things that are about the machine and hold no path (software
+  rendering, whether idles animate).
+
 ### Fixed
 
-- **The editor says which folders it settled on, and which answer it used.** Four
-  candidates decide the data root and three the game, and a wrong answer never
-  announced itself: the map opens, everything a MOD supplies appears, the game's
-  own objects do not, the tile list is empty — which reads as a broken map or a
-  broken build, and is a path. It now prints one `[roots]` block at startup
-  naming each folder and where it came from (environment/`.env`, this
-  checkout, `settings.json`, or a guess), and says so loudly when the data root
-  holds no `MapObjects/` at all.
+- **The editor says which folders it settled on, and which answer it used.** It
+  prints one `[roots]` block at startup naming each folder and who chose it, and
+  says so loudly when the data root holds neither `MapObjects/` nor
+  `bin/Geometries` — the state in which a map shows only what a mod supplies.
+  Printed before the setup gate, because the run that most needs to know is the
+  one about to refuse to open.
 
 - **An animated creature is checked for standing where the map puts it.** The
   placement assertion only ever covered the batched draws, and a creature with

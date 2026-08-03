@@ -7,11 +7,11 @@
 // is not a game is refused before anything long starts, and that the env file
 // fills fields in without ever talking over the environment it is read into.
 
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
-import { ENV_KEYS, loadEnvFile, parseEnvFile } from '../src/game/env-file.ts';
+import { ENV_KEYS, loadEnvFile, parseEnvFile, writeEnvFile } from '../src/game/env-file.ts';
 import { STEPS, firstRun, installState, isReady } from '../src/game/first-run.ts';
 import type { Install } from '../src/game/first-run.ts';
 
@@ -105,6 +105,26 @@ check('and the mod folder is pointed at last, when there is a copy to point',
       env.HOMM5_DATA === 'also from the file', env.HOMM5_DATA);
     check('...and the report names only what it actually set',
       r.applied.join() === 'HOMM5_DATA', r.applied.join());
+
+    // The setup window writes this file and nothing else, so what it writes has
+    // to come back the same — a path with spaces and backslashes included,
+    // which is every Steam install on Windows.
+    const game = String.raw`C:\Games\Steam\steamapps\common\Heroes of Might and Magic 5 Tribes of the East`;
+    const data = join(game, 'homm5-editor', 'data-unpacked');
+    const written = writeEnvFile(dir, { HOMM5_ROOT: game, HOMM5_DATA: data });
+    check('the setup window writes the file the editor reads', written === join(dir, '.env'));
+    const back = parseEnvFile(readFileSync(written, 'utf8'));
+    check('a Windows path survives the round trip whole',
+      back.HOMM5_ROOT === game && back.HOMM5_DATA === data, `${back.HOMM5_ROOT} | ${back.HOMM5_DATA}`);
+    const after: NodeJS.ProcessEnv = {};
+    loadEnvFile(dir, after);
+    check('...and reading it back sets exactly those two',
+      after.HOMM5_ROOT === game && after.HOMM5_DATA === data);
+    // Half an answer writes half a file rather than an empty assignment: a
+    // `HOMM5_DATA=` line would read as "said, and said nothing".
+    writeEnvFile(dir, { HOMM5_ROOT: game });
+    check('a key with no value is left out, not written empty',
+      !readFileSync(join(dir, '.env'), 'utf8').includes('HOMM5_DATA'));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

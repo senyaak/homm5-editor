@@ -4,11 +4,17 @@
 // Runs before the editor's window exists, because an editor with nothing to read
 // is not worth opening — no models, no textures, no rosters, an empty map list.
 //
-// THE PICKER DECIDES. Every path comes from this window and nowhere else. The
-// environment (and `.env` beside the checkout) fills the two fields in so the
-// answer is one Enter away, but nothing is ever taken as settled without the
-// person in front of it saying so. Everything downstream — the four steps, the
-// e2e suite, the tools — is handed its folders; none of them go looking.
+// THE PICKER DECIDES, and what it decides it WRITES: the two folders go into
+// `.env` beside this build, which is where the editor reads them from on every
+// later run (electron/paths.ts). There is no settings file behind it and no
+// folder anybody guesses, so this window is not merely the first way an install
+// is chosen — it is the only one, and its answer is a file a person can open.
+//
+// The fields arrive filled in from that same `.env` (or the environment, or
+// `--game=`/`--data=`), so a re-run is one Enter. Nothing is taken as settled
+// without the person in front of it saying so: an existing tree is unpacked
+// over rather than trusted, which is what makes "the files are right" a fact
+// instead of a hope.
 //
 // WHAT IT DOES ONCE THE PATHS ARE IN: src/first-run.ts, all four steps, with the
 // window showing which are already true. It used to do only the first of them
@@ -24,7 +30,8 @@ import { existsSync } from 'node:fs';
 import { firstRun, installState } from '../src/game/first-run.ts';
 import type { FirstRunResult, Install, Progress, StepState } from '../src/game/first-run.ts';
 import { looksLikeGameFolder } from '../src/game/unpack.ts';
-import { APP_ROOT, defaultDataRoot, gameData, gameRoot, preloadPath, reload, rendererFile, saveSettings } from './paths.ts';
+import { writeEnvFile } from '../src/game/env-file.ts';
+import { APP_ROOT, defaultDataRoot, envFileHome, gameData, gameRoot, preloadPath, reload, rendererFile } from './paths.ts';
 
 /** What the setup window shows when it opens. */
 export interface SetupState {
@@ -153,7 +160,14 @@ export function runSetup(): Promise<boolean> {
       }));
 
     ipcMain.handle('setup:finish', async (_e, p: { gameRoot: string; dataRoot: string }): Promise<boolean> => {
-      saveSettings({ gameRoot: p.gameRoot, dataRoot: p.dataRoot });
+      // Into `.env` beside this build, which is the only place folders are read
+      // from — see the head of electron/paths.ts. Written AND applied to this
+      // process: the file is for the next run, and the variables are for this
+      // one, since `reload()` re-reads the environment rather than the file.
+      const path = writeEnvFile(envFileHome(), { HOMM5_ROOT: p.gameRoot, HOMM5_DATA: p.dataRoot });
+      process.env.HOMM5_ROOT = p.gameRoot;
+      process.env.HOMM5_DATA = p.dataRoot;
+      console.log(`[setup] wrote ${path}`);
       reload();
       finish(true);
       return true;

@@ -87,7 +87,6 @@ function createWindow(): void {
   // Hoisted so the rest of the function sees a non-null window without
   // re-narrowing the mutable shared `state.win` after every call.
   const w = state.win;
-  reportRoots();
   w.setMenuBarVisibility(false);
   // Renderer failures, in the terminal that launched the app. Until this was
   // here, a renderer that died on its first line left no trace anywhere the
@@ -166,6 +165,9 @@ app.whenReady().then(async () => {
   // answers are wrong (the game moved, the data root was deleted, the install
   // was never prepared) and the editor would otherwise open onto an empty map
   // list or a game that cannot load what it makes.
+  // Before the gate, not after it: the run that most needs to know which folder
+  // it settled on is the one that is about to refuse to open because of it.
+  reportRoots();
   if (!isConfigured() || process.argv.includes('--setup')) {
     const ok = await runSetup();
     if (!ok) { app.quit(); return; }

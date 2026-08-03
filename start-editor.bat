@@ -34,27 +34,17 @@ if "%HOMM5_DATA%"=="" (
   if exist "samples\paks\data\MapObjects" set "HOMM5_DATA=%~dp0samples\paks\data"
 )
 
-rem The game folder is NOT guessed here, on purpose.
+rem The game folder is NOT set here, and no longer guessed anywhere.
 rem
-rem It used to be: this repo normally sits inside the install, so the directory
-rem above it is the game -- which is how the editor finds Editor\MapFilters.xml
-rem and Editor\IconCache for the object palette. But putting that in HOMM5_ROOT
-rem made a GUESS look like an explicit answer, and electron/paths.ts ranks the
-rem environment above `.env`, above what the setup window wrote into
-rem settings.json, above everything. So the guess beat the answer established
-rem when somebody pointed the editor at their install and prepared it -- and
-rem those two are one act: the folder that holds the game is the folder the
-rem patched executable is made in.
+rem It used to be guessed: this repo normally sits inside the install, so the
+rem directory above it was taken for the game. A git worktree lives outside the
+rem install and the directory above it holds no game at all -- and the guess was
+rem silent, so a run could read a folder nobody meant it to and simply show a map
+rem with none of the game's objects on it.
 rem
-rem paths.ts already makes exactly this guess -- `join(APP_ROOT, '..')` when
-rem unpackaged -- as its LAST resort, after the settings. Leaving it only there
-rem is the whole fix: the same answer when nothing else is known, and out of the
-rem way when something is.
-rem
-rem What made it visible: a git worktree lives outside the install, so the
-rem directory above it holds no game at all. The editor still opened -- it gates
-rem on the DATA root, which was configured -- and only a panel that needs the
-rem executable noticed.
+rem electron/paths.ts now takes its folders from `--game=`/`--data=`, from the
+rem environment, or from `.env` beside this file -- and from nothing else. If none
+rem of those says, the setup window asks and writes the `.env`.
 
 rem npm is a .cmd shim, so without `call` this batch would end right here.
 call npm start
