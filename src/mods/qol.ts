@@ -63,6 +63,23 @@ export const QOL_FLAGS = [
       + ' Ctrl+Shift puts one creature into every free slot. No slider window appears. A click with no'
       + ' key held picks the stack up as before, and dragging is left alone entirely.',
   },
+  {
+    name: 'stack-health-bar',
+    title: 'A health bar on the stack plate',
+    detail: 'In a battle, the plate over a stack carries a bar showing how much health the creature'
+      + ' at the front of it has left — the one currently being hit, not the stack as a whole.'
+      + ' Shown on every stack, yours and the enemy\'s, damaged or not. Not finished: where a'
+      + ' fighting creature keeps its wound is still being looked for, so this switch does nothing'
+      + ' on screen yet.',
+  },
+  {
+    name: 'stack-losses',
+    title: 'Losses on the plate while Shift is held',
+    detail: 'Hold Shift in a battle and every plate reads "now / at the start of the battle", so 53'
+      + ' of the 59 that walked in reads 53/59. Counted per battle and from the moment it began, so'
+      + ' a stack raised past what it started with reads above it rather than being trimmed to fit.'
+      + ' Costs nothing while the key is up — the number is the game\'s own until it is held.',
+  },
 ] as const;
 
 export type QolName = (typeof QOL_FLAGS)[number]['name'];

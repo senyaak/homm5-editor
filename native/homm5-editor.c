@@ -647,10 +647,14 @@ typedef enum {
   QOL_BORDERLESS = 0,
   QOL_OWN_PROFILE = 1,
   QOL_QUICK_SPLIT = 2,
-  QOL_COUNT = 3
+  QOL_STACK_HEALTH = 3,
+  QOL_STACK_LOSSES = 4,
+  QOL_COUNT = 5
 } QolFlag;
 
-static const char *const QOL_NAMES[QOL_COUNT] = { "borderless", "own-profile", "quick-split" };
+static const char *const QOL_NAMES[QOL_COUNT] = {
+  "borderless", "own-profile", "quick-split", "stack-health-bar", "stack-losses"
+};
 
 static int g_qol[QOL_COUNT];
 
@@ -2106,6 +2110,16 @@ static int g_clicksLogged = 0;
 /** Is this key down NOW — at the click, which is when the answer is wanted. */
 static int held(int vk) { return g_keyState && (g_keyState(vk) & 0x8000) != 0; }
 
+/** USER32's answer to that, got once. Two features want it and either may be
+ *  turned on without the other, so neither installer may own it. */
+static int have_key_state(void) {
+  if (!g_keyState) {
+    HMODULE user32 = GetModuleHandleW(L"user32.dll");
+    g_keyState = user32 ? (KeyStateFn)GetProcAddress(user32, "GetAsyncKeyState") : NULL;
+  }
+  return g_keyState != NULL;
+}
+
 
 /** The engine's own test that one of its refcounted pointers still points. */
 static int pointer_alive(void *p) {
@@ -2130,7 +2144,7 @@ static void *code_at(DWORD rva, const BYTE *head, int headLen, const char *what)
   BYTE *at = (BYTE *)GetModuleHandleW(NULL) + rva;
   for (int i = 0; i < headLen; i++) {
     if (at[i] == head[i]) continue;
-    log_text("quick split: this is not the function measured: ", what);
+    log_text("this is not the function measured: ", what);
     return NULL;
   }
   return at;
@@ -2567,9 +2581,7 @@ static int __fastcall dnd_pick_hook(void *state, void *edx, void *arg) {
 }
 
 static void install_quick_split(void) {
-  HMODULE user32 = GetModuleHandleW(L"user32.dll");
-  g_keyState = user32 ? (KeyStateFn)GetProcAddress(user32, "GetAsyncKeyState") : NULL;
-  if (!g_keyState) {
+  if (!have_key_state()) {
     log_line("quick split: USER32 will not say which keys are down - not hooking");
     return;
   }
@@ -2581,6 +2593,208 @@ static void install_quick_split(void) {
   g_dndPick = (DndPickFn)detour(DND_PICK_RVA, DND_PICK_HEAD, DND_PICK_HEAD_LEN,
                                 &dnd_pick_hook, "drag and drop pick");
   if (g_dndPick) log_line("quick split: watching clicks made with a key held");
+}
+
+// ---------------------------------------------------------------------------
+// The plate over a stack in a battle.
+//
+// WHAT THE PLATE IS. The number over a creature's head is `ID_STACKINFO_WINDOW`
+// in UI/UIGameRoot.(UIGameRoot).xdb — a four-state button declared by
+// UI/CombatArena-FPP-2/StackInfo.(WindowMSButtonShared).xdb, with exactly one
+// child, `Text`, and its four backgrounds in UI/AdventureScreen/StackInfo. So
+// the widget is DATA: a health bar beside the number is a child window added in
+// an archive of ours, and only its WIDTH would have to come from here.
+//
+// HOW THE NUMBER GETS THERE. Three functions, and the reconnaissance that found
+// them is written up in docs/engineInternals/COMBAT.md:
+//
+//   0x739c40   place ONE plate: `this` is the window, and the second stack
+//              argument is the number it will show.
+//   0x7c0ed0   that number as the player reads it — the text key
+//              CREATURES_NUMBER with `count` put in, and "2K" above a thousand.
+//              ONE caller in the whole image, and it is the line above.
+//   0x4dc940   a string of the engine's own taking a C string.
+//
+// So the text on a plate, and nothing else in the game, is ours to write. That
+// one caller is what makes this cheap: no test of "is this a plate", no state
+// to keep about which screen is up.
+//
+// WHAT IS STILL MISSING, and it is the health bar's half: which combat creature
+// a plate stands for. The placement call carries the window and the number and
+// nothing else, and the `CCreature` the screen's own walk carries is the stack
+// on the map — its whole object was printed, and a wound is not in it. So the
+// losses are done here and the bar is not: see the docs for where that goes
+// next.
+
+/** Place one plate. `sub esp,1Ch / push ebx / push ebp / mov ebp,ecx`. */
+#define PLATE_SHOW_RVA 0x339c40u
+#define PLATE_SHOW_HEAD_LEN 7
+static const BYTE PLATE_SHOW_HEAD[PLATE_SHOW_HEAD_LEN] = {
+  0x83, 0xEC, 0x1C, 0x53, 0x55, 0x8B, 0xE9
+};
+/** `mov eax,fs:[2Ch]` and `sub esp,0Ch`. The absolute in the first is a segment
+ *  offset rather than an address in the image, so nothing here is relocated. */
+#define COUNT_TEXT_RVA 0x3c0ed0u
+#define COUNT_TEXT_HEAD_LEN 9
+static const BYTE COUNT_TEXT_HEAD[COUNT_TEXT_HEAD_LEN] = {
+  0x64, 0xA1, 0x2C, 0x00, 0x00, 0x00, 0x83, 0xEC, 0x0C
+};
+/** `CFinishCombat`'s apply — the one door a battle leaves by. Seven bytes,
+ *  stopping before the short jump, whose meaning is where it sits. */
+#define FINISH_COMBAT_RVA 0x773230u
+#define FINISH_COMBAT_HEAD_LEN 7
+static const BYTE FINISH_COMBAT_HEAD[FINISH_COMBAT_HEAD_LEN] = {
+  0x8B, 0xD1, 0x8B, 0x4A, 0x10, 0x85, 0xC9
+};
+
+typedef void(__fastcall *PlateShowFn)(void *window, int shown, int first, int number,
+                                      int x, int y);
+typedef void *(__fastcall *CountTextFn)(int number, int thousands);
+typedef int(__fastcall *FinishCombatFn)(void *command, void *edx);
+
+static PlateShowFn g_plateShow = NULL;
+static CountTextFn g_countText = NULL;
+static FinishCombatFn g_finishCombat = NULL;
+
+/**
+ * What each plate held when we first saw it, which is what it walked in with.
+ *
+ * KEYED ON THE WINDOW, because that is all the placement call carries. Within
+ * one battle a window belongs to one stack — the screen makes them once, by
+ * row, and keeps them — so the key holds for exactly as long as the answer is
+ * wanted. Across battles it would not, which is what the finish hook is for.
+ */
+#define PLATES_REMEMBERED 32
+static struct { void *window; int start; } g_plateWalkedIn[PLATES_REMEMBERED];
+static int g_platesKnown = 0;
+
+/** The plate being drawn right now, for the text hook, which is called from
+ *  inside the placement and has no other way to know whose number it is. */
+static int g_plateStart = 0;
+static int g_platesLogged = 0;
+static int g_textLogged = 0;
+
+/** Is Shift down — asked at most once a tick rather than once per plate per
+ *  frame, which at fourteen stacks and sixty frames is eight hundred times a
+ *  second for an answer that cannot change that often. */
+static DWORD g_shiftAskedAt = 0;
+static int g_shiftDown = 0;
+
+static int shift_now(void) {
+  DWORD tick = GetTickCount();
+  if (tick != g_shiftAskedAt) {
+    g_shiftAskedAt = tick;
+    g_shiftDown = held(VK_SHIFT);
+  }
+  return g_shiftDown;
+}
+
+static int walked_in_with(void *window, int number) {
+  for (int i = 0; i < g_platesKnown; i++)
+    if (g_plateWalkedIn[i].window == window) return g_plateWalkedIn[i].start;
+  if (g_platesKnown < PLATES_REMEMBERED) {
+    g_plateWalkedIn[g_platesKnown].window = window;
+    g_plateWalkedIn[g_platesKnown].start = number;
+    g_platesKnown++;
+  }
+  return number;
+}
+
+/**
+ * The number on the plate, with what the stack started the battle with beside
+ * it while Shift is held.
+ *
+ * The engine's own text is built first and then replaced rather than skipped:
+ * what comes back is a static string of the game's, and letting it be filled
+ * the usual way is what keeps the object in the state the rest of the frame
+ * expects. Its buffer is freed before ours goes in, because the assignment
+ * does not free — the engine only ever assigns to a string that is empty.
+ */
+static void *__fastcall count_text_hook(int number, int thousands) {
+  void *text = g_countText(number, thousands);
+  if (!g_qol[QOL_STACK_LOSSES] || !g_plateStart || !shift_now()) return text;
+  if (!readable(text, 12)) return text;
+  // A few, and only for the key being held: the first battle with this on is
+  // the one that says whether a plate's baseline is the stack's own.
+  int say = g_textLogged < 8 ? ++g_textLogged : 0;
+  if (say) {
+    log_num("shift: the plate shows ", number);
+    log_num("       it walked in with ", g_plateStart);
+  }
+
+  char both[32];
+  int at = 0, digits = 0;
+  num_to_dec(number, both, &digits);
+  at += digits;
+  both[at++] = '/';
+  num_to_dec(g_plateStart, both + at, &digits);
+  at += digits;
+  both[at] = 0;
+  if (say) log_text("       ours reads ", both);
+
+  // THE STRING IS WIDE, and two crashes were that and nothing else. The text is
+  // built by a `%d` that lives in the image as `25 00 64 00` — UTF-16 — so a
+  // narrow assignment into it, and narrow bytes written into its buffer, both
+  // left the window holding something that is not a string, and the game died
+  // in the drawing rather than here. The tell was in the log the whole time:
+  // one character `6` measured TWO bytes long.
+  //
+  // WRITTEN WHERE IT ALREADY IS. No allocation, no free: the first attempt did
+  // both through the engine's own allocator and changed its state under a
+  // frame that was still running, and the room was never wanted anyway — a
+  // one-digit count sits in thirty bytes. What comes out is the object the
+  // engine built, holding what it held, only longer.
+  //
+  // `end` EXCLUDES the terminator: the engine's own string constructor copies
+  // the characters, stops before the zero, and leaves end at begin + length.
+  void **string = (void **)text;
+  WCHAR *begin = (WCHAR *)string[0];
+  int room = begin ? (int)((char *)string[2] - (char *)begin) : 0;
+  if (!begin || room < (at + 1) * 2) {
+    if (say) log_num("       no room in it, bytes ", room);
+    return text;
+  }
+  // Digits and a slash, so widening each is the whole of the conversion.
+  for (int i = 0; i <= at; i++) begin[i] = (WCHAR)(BYTE)both[i];
+  string[1] = (char *)begin + at * 2;
+  return text;
+}
+
+static void __fastcall plate_show_hook(void *window, int shown, int first, int number,
+                                       int x, int y) {
+  int known = g_platesKnown;
+  g_plateStart = walked_in_with(window, number);
+  if (known != g_platesKnown && g_platesLogged < 8) {
+    g_platesLogged++;
+    log_hex("plate: a new one at ", (DWORD)window);
+    log_num("       walked in with ", g_plateStart);
+  }
+  g_plateShow(window, shown, first, number, x, y);
+  // Only while the engine is inside that call is the answer this plate's.
+  g_plateStart = 0;
+}
+
+static int __fastcall finish_combat_hook(void *command, void *edx) {
+  // A battle is over, so these windows are about to stand for other stacks —
+  // and this command is the only way out of a battle there is. See
+  // docs/engineInternals/COMBAT.md.
+  g_platesKnown = 0;
+  return g_finishCombat(command, edx);
+}
+
+static void install_stack_plates(void) {
+  if (!have_key_state()) {
+    log_line("stack plates: USER32 will not say which keys are down - not hooking");
+    return;
+  }
+  g_countText = (CountTextFn)detour(COUNT_TEXT_RVA, COUNT_TEXT_HEAD, COUNT_TEXT_HEAD_LEN,
+                                    &count_text_hook, "the count as text");
+  g_plateShow = (PlateShowFn)detour(PLATE_SHOW_RVA, PLATE_SHOW_HEAD, PLATE_SHOW_HEAD_LEN,
+                                    &plate_show_hook, "one plate");
+  g_finishCombat = (FinishCombatFn)detour(FINISH_COMBAT_RVA, FINISH_COMBAT_HEAD,
+                                          FINISH_COMBAT_HEAD_LEN, &finish_combat_hook,
+                                          "the end of a battle");
+  if (g_countText && g_plateShow) log_line("stack plates: losses shown while Shift is held");
 }
 
 BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
@@ -2614,6 +2828,7 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   // Code of the game's own, so unlike the two above it can only be written once
   // the image is there to write on — which at DLL_PROCESS_ATTACH it is.
   if (g_qol[QOL_QUICK_SPLIT]) install_quick_split();
+  if (g_qol[QOL_STACK_HEALTH] || g_qol[QOL_STACK_LOSSES]) install_stack_plates();
   return TRUE;
 }
 
