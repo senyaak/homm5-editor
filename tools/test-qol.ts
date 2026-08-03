@@ -24,6 +24,8 @@ import { join } from 'node:path';
 
 import { QOL_FILE, QOL_FLAGS, isQolName } from '../src/mods/qol.ts';
 import { readQol, writeQolFile } from '../src/mods/qol-file.ts';
+import { QOL_ARCHIVE, buildQolArchive, removeQolArchive, writeQolArchive } from '../src/mods/qol-ui.ts';
+import { readEntries, writeArchive } from '../src/format/pak.ts';
 import { profilesRoot, setResolution, setWindowed, userConfigs } from '../src/game/video-config.ts';
 
 let failures = 0;
@@ -127,6 +129,69 @@ const res = setResolution(profiles, 2560, 1440);
 check('the render size is written in the game\'s own form',
   readFileSync(withVideo, 'utf8') === 'setvar gfx_resolution = 2560x1440\n');
 check('a profile without the line is skipped there too', res.skipped.length === 1);
+
+// --- the health bar's archive ------------------------------------------------
+//
+// Built out of the install's own data.pak, so the check hands it a stand-in of
+// the right shapes — the same four files the e2e fixture fakes — and reads the
+// archive back. What matters is what the engine will read: the plate must list
+// the strips as children, the fill must OUTRANK the track (higher priority
+// draws on top — the lesson that cost a battle of "the bar never shrinks"),
+// and the fill's pixels must be the one flat colour with clear corners,
+// because at two pixels tall a nine-slice border would BE the whole bar.
+
+{
+  const fakeDds = Buffer.alloc(128 + 15 * 15 * 4);
+  const pak = writeArchive([
+    {
+      name: 'UI/CombatArena-FPP-2/StackInfo.(WindowMSButtonShared).xdb',
+      data: Buffer.from('<WindowMSButtonShared><Children>\n\t<Item href="/UI/CombatArena/StackInfo/'
+        + 'StackText.(WindowTextView).xdb#xpointer(/WindowTextView)"/>\n</Children></WindowMSButtonShared>', 'utf8'),
+    },
+    { name: 'Textures/Interface/CombatArena/StackInfo/Positive.dds', data: fakeDds },
+    {
+      name: 'Textures/Interface/CombatArena/StackInfo/Positive.xdb',
+      data: Buffer.from('<Texture><SrcName href="x.tga"/><DestName href="x.dds"/></Texture>', 'utf8'),
+    },
+    {
+      name: 'UI/AdventureScreen/StackInfo/Positive.(BackgroundTiledTexture).xdb',
+      data: Buffer.from('<BackgroundTiledTexture><Texture href="x.xdb"/></BackgroundTiledTexture>', 'utf8'),
+    },
+  ]);
+
+  const entries = new Map(readEntries(buildQolArchive(pak)).map((e) => [e.name, e.data]));
+  check('the archive holds all eleven records', entries.size === 11);
+
+  const plate = entries.get('UI/CombatArena-FPP-2/StackInfo.(WindowMSButtonShared).xdb')?.toString('utf8') ?? '';
+  check('the plate lists the text and both strips as children',
+    plate.includes('StackText.(WindowTextView)') && plate.includes('HealthTrack.(WindowSimple)')
+    && plate.includes('HealthFill.(WindowSimple)'));
+
+  const priorityOf = (name: string): number =>
+    Number(entries.get(`UI/CombatArena-FPP-2/${name}.(WindowSimple).xdb`)?.toString('utf8')
+      .match(/<Priority>(-?\d+)<\/Priority>/)?.[1] ?? NaN);
+  check('the fill outranks the track, so green draws over dark',
+    priorityOf('HealthFill') > priorityOf('HealthTrack'));
+
+  const fill = entries.get('Textures/Interface/H5E/HealthFill.dds');
+  const px = (x: number, y: number): number[] =>
+    fill ? [...fill.subarray(128 + (y * 15 + x) * 4, 128 + (y * 15 + x) * 4 + 4)] : [];
+  check('the fill is one flat bright colour, edge and middle alike',
+    !!fill && px(7, 7).join() === px(7, 0).join() && (px(7, 7)[1] ?? 0) > 0xC0);
+  check('with only the corners left clear', px(0, 0)[3] === 0 && px(14, 14)[3] === 0
+    && px(7, 7)[3] === 0xff);
+  check('and the header is the shipped one, byte for byte',
+    !!fill && fill.subarray(0, 128).equals(fakeDds.subarray(0, 128)));
+
+  // The install half: written where the game mounts it, and removable.
+  mkdirSync(join(game, 'data'), { recursive: true });
+  writeFileSync(join(game, 'data', 'data.pak'), pak);
+  const wrote = writeQolArchive(game);
+  check('the archive lands in H5E, where archives are mounted from',
+    wrote === join(game, QOL_ARCHIVE) && existsSync(wrote));
+  check('and taking it back out reports there was one to take',
+    removeQolArchive(game) && !existsSync(wrote) && !removeQolArchive(game));
+}
 
 rmSync(SCRATCH, { recursive: true, force: true });
 

@@ -194,6 +194,6 @@ installed, and the interesting ones say what they saw. Three of the findings
 above (the third window, `CW_USEDEFAULT`, the style being re-applied) came out
 of that log contradicting what seemed obvious.
 
-The panel is covered without a game by `e2e/qol-panel.spec.ts`. It sets
+The panel is covered without a game by `e2e/qol-001-panel.spec.ts`. It sets
 `HOMM5_DOCUMENTS` at a tree of its own — without that, running the suite would
 edit the game profile of whoever ran it.
