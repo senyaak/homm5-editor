@@ -115,6 +115,22 @@ interface Roots {
   gameData: string;
   editorRoot: string | null;
   tmpRoot: string;
+  /** Which of the candidates below answered, per root — see `reportRoots`. */
+  from: { gameRoot: string; gameData: string; editorRoot: string };
+}
+
+/**
+ * The first candidate that has an answer, and the name of where it came from.
+ *
+ * Named, because four fallbacks with no way to see which one won is how an
+ * editor comes to read a folder nobody meant it to. A map then opens with
+ * every object the mod supplies and none of the game's, the tile list is empty,
+ * and nothing anywhere says why — the whole of an afternoon, and the answer was
+ * a path.
+ */
+function first<T extends string>(...cands: Array<[string, T | null | undefined | '']>): [T | null, string] {
+  for (const [where, value] of cands) if (value) return [value, where];
+  return [null, 'nothing'];
 }
 
 let cache: Roots | null = null;
@@ -126,21 +142,33 @@ function resolveRoots(): Roots {
   // The checkout's own tree, when there is a checkout and it holds one.
   const inRepo = dev && looksLikeDataRoot(join(APP_ROOT, 'data-unpacked')) ? join(APP_ROOT, 'data-unpacked') : '';
 
-  const gameRoot = process.env.HOMM5_ROOT || (inRepo ? join(APP_ROOT, '..') : null) || s.gameRoot
-    || (dev ? join(APP_ROOT, '..') : null);
+  const [gameRoot, gameRootFrom] = first(
+    ['HOMM5_ROOT (environment or .env)', process.env.HOMM5_ROOT],
+    ['the folder above this checkout, which holds its own data-unpacked', inRepo ? join(APP_ROOT, '..') : null],
+    ['settings.json', s.gameRoot],
+    ['the folder above this checkout', dev ? join(APP_ROOT, '..') : null],
+  );
 
   // The data root: what models, textures, tiles and rosters resolve against. A
   // .h5m map archive does NOT contain these — they ship in the game's paks — so
   // assets always resolve here, never against the map folder.
-  const gameData = process.env.HOMM5_DATA || inRepo || s.dataRoot || (dev ? join(APP_ROOT, 'data-unpacked') : '');
+  const [gameDataOrNull, gameDataFrom] = first(
+    ['HOMM5_DATA (environment or .env)', process.env.HOMM5_DATA],
+    ["this checkout's own data-unpacked", inRepo],
+    ['settings.json', s.dataRoot],
+    ["this checkout's data-unpacked, which does not look like one", dev ? join(APP_ROOT, 'data-unpacked') : ''],
+  );
+  const gameData = gameDataOrNull ?? '';
 
   // The editor's own config — MapFilters.xml and IconCache — is NOT under the
   // data root: those files are loose beside the game install while the object
   // catalogue's link files ship inside the paks. Two roots, neither implying
   // the other. The walk upwards is the fallback for when nobody said.
-  const editorRoot = process.env.HOMM5_EDITOR
-    || (gameRoot ? findEditorRoot(gameRoot) : null)
-    || (gameData ? findEditorRoot(gameData) : null);
+  const [editorRoot, editorRootFrom] = first(
+    ['HOMM5_EDITOR (environment or .env)', process.env.HOMM5_EDITOR],
+    ['beside the game', gameRoot ? findEditorRoot(gameRoot) : null],
+    ['beside the data', gameData ? findEditorRoot(gameData) : null],
+  );
 
   // Scratch space: unpacked archives, undo history — everything the editor
   // keeps for itself. In the repo it goes in the checkout, where it is findable
@@ -148,7 +176,10 @@ function resolveRoots(): Roots {
   // own, so there it goes where the OS says. Nothing in here is precious.
   const tmpRoot = dev ? join(APP_ROOT, '_tmp') : join(app.getPath('userData'), '_tmp');
 
-  return { gameRoot, gameData, editorRoot, tmpRoot };
+  return {
+    gameRoot, gameData, editorRoot, tmpRoot,
+    from: { gameRoot: gameRootFrom, gameData: gameDataFrom, editorRoot: editorRootFrom },
+  };
 }
 
 function roots(): Roots {
@@ -190,6 +221,29 @@ export function mountedAssets(base: string): Assets {
     }
   }
   return assets([...over, base]);
+}
+
+/**
+ * Say out loud which folders this run settled on, and which candidate answered.
+ *
+ * Printed once at startup because the editor had no way of telling anyone. Four
+ * candidates decide the data root, three the game, and a wrong answer does not
+ * announce itself: the map opens, the objects the MOD supplies appear, the
+ * game's own do not, and the tile list is empty. That reads as a broken map or
+ * a broken build, and it is a path.
+ */
+export function reportRoots(): void {
+  const r = roots();
+  const say = (what: string, value: string | null, where: string): void =>
+    console.log(`[roots] ${what.padEnd(6)} ${value ?? '(none)'}   ← ${where}`);
+  say('game', r.gameRoot, r.from.gameRoot);
+  say('data', r.gameData || null, r.from.gameData);
+  say('editor', r.editorRoot, r.from.editorRoot);
+  say('tmp', r.tmpRoot, 'this build');
+  if (r.gameData && !looksLikeDataRoot(r.gameData)) {
+    console.error(`[roots] ${r.gameData} holds no MapObjects/ and no bin/Geometries — `
+      + 'nothing of the game will resolve out of it, so a map will show only what a mod supplies');
+  }
 }
 
 /** The Heroes 5 install, when it is known. */

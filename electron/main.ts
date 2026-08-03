@@ -16,7 +16,7 @@ import type { IpcMainInvokeEvent } from 'electron';
 import { dirname } from 'node:path';
 import { buildScene } from '#src/scene/scene.ts';
 import { initProject } from '#src/map/project.ts';
-import { isConfigured, mountedAssets, preloadPath, readSettings, rendererFile } from '#electron/paths.ts';
+import { isConfigured, mountedAssets, preloadPath, readSettings, rendererFile, reportRoots } from '#electron/paths.ts';
 import { closeSetup, runSetup } from '#electron/setup.ts';
 import { assetRootFor, state } from '#electron/state.ts';
 import { registerApp } from '#electron/channels/app.ts';
@@ -87,6 +87,7 @@ function createWindow(): void {
   // Hoisted so the rest of the function sees a non-null window without
   // re-narrowing the mutable shared `state.win` after every call.
   const w = state.win;
+  reportRoots();
   w.setMenuBarVisibility(false);
   // Renderer failures, in the terminal that launched the app. Until this was
   // here, a renderer that died on its first line left no trace anywhere the

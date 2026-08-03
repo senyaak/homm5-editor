@@ -36,6 +36,20 @@ one.
 
 ### Fixed
 
+- **The editor says which folders it settled on, and which answer it used.** Four
+  candidates decide the data root and three the game, and a wrong answer never
+  announced itself: the map opens, everything a MOD supplies appears, the game's
+  own objects do not, the tile list is empty — which reads as a broken map or a
+  broken build, and is a path. It now prints one `[roots]` block at startup
+  naming each folder and where it came from (environment/`.env`, this
+  checkout, `settings.json`, or a guess), and says so loudly when the data root
+  holds no `MapObjects/` at all.
+
+- **An animated creature is checked for standing where the map puts it.** The
+  placement assertion only ever covered the batched draws, and a creature with
+  an idle leaves the batch entirely — so `misplaced: 0` was silence about half
+  the map. `view.idle()` now answers the same question for the animated bodies.
+
 - **An object the editor cannot mesh is NAMED, not counted.** A map that opened
   one object short said `no model 1` and nothing else — for eleven objects, with
   no way to tell which of them was missing or why. It now says the href it

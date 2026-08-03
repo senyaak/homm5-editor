@@ -389,7 +389,16 @@ interface ViewApi {
    * the furthest of them has run. The clock is what says the loop is turning —
    * a skeleton that is built but never stepped looks identical from outside.
    */
-  idle(): { mode: IdleMode; animated: number; time: number; geoms: number[]; skinned: number[]; fx: number };
+  idle(): {
+    mode: IdleMode; animated: number; time: number; geoms: number[]; skinned: number[]; fx: number;
+    /**
+     * Animated bodies standing somewhere other than where the payload puts
+     * them — the same question `batched` answers for the instanced draws, and
+     * for the same reason. A creature with an idle leaves the batch entirely,
+     * so `misplaced: 0` over there says nothing at all about it.
+     */
+    misplaced: number;
+  };
   /**
    * The batched draws on the visible floor: how many slots they hold, and how
    * many of those draw their object somewhere other than where the payload puts
@@ -600,6 +609,12 @@ const view: ViewApi = {
       geoms: [...new Set(fl?.idle.map((o) => (o.mesh.userData.inst as Instance).g) ?? [])].sort((a, b) => a - b),
       skinned: [...geomSkin.keys()].sort((a, b) => a - b),
       fx: fl?.fx.length ?? 0,
+      misplaced: (fl?.idle ?? []).filter((o) => {
+        const inst = o.mesh.userData.inst as Instance;
+        return Math.hypot(o.mesh.position.x - tileCenter(inst.x),
+          o.mesh.position.y - tileCenter(inst.y),
+          o.mesh.position.z - inst.z) > 1e-3;
+      }).length,
     };
   },
   ambientState() {
