@@ -452,14 +452,25 @@ export interface BakedClip {
  * second, and sampling at the authored 60 fps quadruples the payload for
  * motion nobody can see at that distance.
  *
- * Untracked bones are baked too, holding their rest value, so the renderer can
- * drive every bone from one clip rather than special-casing the gaps.
+ * Untracked bones are baked too, so the renderer can drive every bone from one
+ * clip rather than special-casing the gaps. The value they hold comes from the
+ * ANIMATION's own skeleton (`poseRest`) when one is given, not from `skeleton`:
+ * a channel the clip does not drive holds the stance the clip was AUTHORED in,
+ * which is what that skeleton records. The two rests differ on real assets —
+ * the DemonLord path props (Cross01 and its five siblings) are meshed and
+ * skinned LYING FLAT, their model skeleton's rest is the STANDING pose, and
+ * their idle drives no channel at all: the engine shows them through the
+ * inverse bind (flat) times the clip's own stance (identity) — upright. Baked
+ * against the model's rest instead, inverse bind and pose cancelled and every
+ * cross on the field lay invisible under the grass.
  */
-export function bakeClip(skeleton: Skeleton, animation: Animation, fps = 15): BakedClip {
+export function bakeClip(skeleton: Skeleton, animation: Animation, fps = 15, poseRest?: Skeleton): BakedClip {
   const tracks = new Map<string, TransformTrack>();
   for (const group of animation.groups) {
     for (const track of group.tracks) tracks.set(track.name, track);
   }
+  const stance = new Map<string, GrannyTransform>();
+  for (const bone of poseRest?.bones ?? []) stance.set(bone.name, bone.rest);
   const count = Math.max(2, Math.ceil(animation.duration * fps) + 1);
   const times: number[] = [];
   for (let i = 0; i < count; i++) times.push(animation.duration * i / (count - 1));
@@ -469,17 +480,18 @@ export function bakeClip(skeleton: Skeleton, animation: Animation, fps = 15): Ba
   const positions: number[][] = [];
   for (const bone of skeleton.bones) {
     const track = tracks.get(bone.name);
+    const rest = stance.get(bone.name) ?? bone.rest;
     const rot: number[] = [];
     const pos: number[] = [];
     for (const t of times) {
       if (track && track.orientation.dim === 4) {
         sampleQuaternion(track.orientation, t, scratch);
         rot.push(scratch[0]!, scratch[1]!, scratch[2]!, scratch[3]!);
-      } else rot.push(...bone.rest.orientation);
+      } else rot.push(...rest.orientation);
       if (track && track.position.dim === 3) {
         sampleCurve(track.position, t, scratch);
         pos.push(scratch[0]!, scratch[1]!, scratch[2]!);
-      } else pos.push(...bone.rest.position);
+      } else pos.push(...rest.position);
     }
     rotations.push(rot);
     positions.push(pos);

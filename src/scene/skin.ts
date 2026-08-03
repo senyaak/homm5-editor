@@ -155,9 +155,9 @@ export function attachAnimation(
     // slerp between such samples takes the short way each time, which reads as
     // jerking. Resample faster until steps are sane; the payload only grows
     // for the clips that need it.
-    let clip = bakeClip(skeleton, animation, fps);
+    let clip = bakeClip(skeleton, animation, fps, animSkeleton);
     for (let f = fps * 2; f <= 60 && worstSampleStep(clip) > 45; f *= 2) {
-      clip = bakeClip(skeleton, animation, f);
+      clip = bakeClip(skeleton, animation, f, animSkeleton);
     }
     geom.skin.clip = {
       duration: clip.duration,
@@ -207,7 +207,9 @@ export function bakeCharacterClip(
   // the pose the mesh was skinned in (modelBindSkeleton says what that costs).
   const skeleton = modelBindSkeleton(model, data, animation) ?? own;
   return {
-    clip: bakeClip(skeleton, animation, fps),
+    // Bind from the model's skeleton, stance from the clip's own — see bakeClip
+    // on why the two must not be conflated (the flat-skinned path props).
+    clip: bakeClip(skeleton, animation, fps, own),
     // The DISPLAY SCALE rides on the clip skeleton's root, as it does for a
     // creature on the map: the mesh is authored at one size and the game shows
     // it through the rig. An arena hero comes out ten times too big without it

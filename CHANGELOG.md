@@ -72,6 +72,17 @@ one.
 
 ### Fixed
 
+- **The impaled-body totem stands beside the arch devil in C1M1's opening,
+  instead of lying invisible under the grass.** The DemonLord path props
+  (Cross01 and its five siblings) are meshed and skinned lying flat; the model
+  skeleton's rest pose is the STANDING stance, and their idle clip drives no
+  channel at all. Baking a silent channel against the model's rest made the
+  inverse bind and the pose cancel, so the mesh stayed as authored — flat,
+  a hand's breadth below the turf. A channel the clip does not drive now holds
+  the clip's own skeleton's stance (the pose the clip was authored in), which
+  is what the engine's inverse-bind arithmetic expects — the crosses stand,
+  lean and all, on the map view and in scenes alike.
+
 - **The editor says which folders it settled on, and which answer it used.** It
   prints one `[roots]` block at startup naming each folder and who chose it, and
   says so loudly when the data root holds neither `MapObjects/` nor
