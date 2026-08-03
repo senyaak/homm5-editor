@@ -2696,6 +2696,20 @@ static int g_platesKnown = 0;
 static int g_plateStart = 0;
 static int g_platesLogged = 0;
 static int g_textLogged = 0;
+static int g_barsLogged = 0;
+
+/** The bar's half of this, which is written below because it needs the fighting
+ *  stacks, and used here because the plate is placed here. */
+static void log_pair(const char *prefix, int first, const char *between, int second);
+static int bar_fraction(int number, int *front, int *whole);
+static void *child_named(void *window, const char *name);
+static int window_wide(void *window);
+static void make_wide(void *window, int wide, int tall);
+extern int g_unitCount;
+/** What the strips leave clear at each end, and how tall they are — the same
+ *  two numbers the archive declares them with. */
+#define BAR_MARGIN 1
+#define BAR_TALL 2
 /** How many plates still owe a line, so that the numbers on screen are written
  *  down beside the words of a fighting creature that might be them. Set by the
  *  reconnaissance below, which runs one frame ahead of the plates it wants. */
@@ -2796,6 +2810,20 @@ static void __fastcall plate_show_hook(void *window, int shown, int first, int n
     log_num("       walked in with ", g_plateStart);
   }
   g_plateShow(window, shown, first, number, x, y);
+  // AFTER the engine has placed it, because the plate takes its width from the
+  // text it was just given, and the bar takes its width from the plate.
+  // THE WIDTH IS NOT SET YET, and nothing here asks the plate anything, because
+  // both ways of asking took the game down on the first plate of a battle:
+  //
+  //   vt[0x0C] on the object      answered a heap address where a width belonged
+  //   vt[0x0C] on the interface   crashed before it answered at all
+  //
+  // The engine asks it of a child it has just put through a dynamic cast, and
+  // until that cast is made the way it makes it — `__RTDynamicCast` with the
+  // two type descriptors it passes — the receiver is a guess, and a guess at a
+  // receiver is what UI_INTERNALS.md warns takes the game down. What already
+  // works and is worth keeping: both strips are FOUND by name on the plate the
+  // engine hands over, and the stack behind that plate is matched by its count.
   // Only while the engine is inside that call is the answer this plate's.
   g_plateStart = 0;
 }
@@ -2926,16 +2954,139 @@ static void watch_unit(void *unit, int index) {
   log_pair("          out of ", whole, ", and there are ", many);
 }
 
+// --- the bar itself --------------------------------------------------------
+//
+// The plate is a button and the bar is two child windows of it, declared in
+// `homm5-editor-qol.h5u` — see tools/qol-ui.ts. All that is left for here is
+// the width, and the three calls it takes are the three the engine makes on
+// this very window a few instructions apart:
+//
+//   vt[0x94]  a child by name, on the receiver adjusted for the virtual base
+//   vt[0x0C]  how big a window is, on the plain pointer
+//   vt[0x58]  make it this big, on the adjusted one again
+//
+// TWO RECEIVERS, and which is which is not a choice: the placement call reaches
+// the "Text" child through `obj + 4 + [[obj+4]+8]` and then asks its size
+// through `[obj]` without any adjustment at all. Getting that backwards is the
+// crash ENGINE_INTERNALS.md warns about, so both are copied rather than reasoned.
+
+/** A child by name. */
+#define WINDOW_CHILD 0x94u
+/** How big it is — into a point the caller lends it. */
+#define WINDOW_SIZE 0x0Cu
+/** Make it this big. Five values on the stack, the last a mask of which of them
+ *  to take; the engine passes 0x0C for a size and leaves the position alone. */
+#define WINDOW_PLACE 0x58u
+#define WINDOW_PLACE_SIZE_ONLY 0x0Cu
+
+typedef void *(__fastcall *ChildFn)(void *self, void *edx, void *name, int flag);
+typedef int *(__fastcall *SizeFn)(void *self, void *edx, int *into);
+typedef void(__fastcall *PlaceFn)(void *self, void *edx, int x, int y, float wide, float tall,
+                                  int mask);
+
+/** The subobject the engine talks to for children and placement. */
+static void *window_base(void *window) {
+  if (readable_bytes(window, 8) < 8) return NULL;
+  BYTE *block = *(BYTE **)((BYTE *)window + 4);
+  if (readable_bytes(block, 12) < 12) return NULL;
+  return (BYTE *)window + 4 + *(int *)(block + 8);
+}
+
+/**
+ * A named child of a window, asked for the way the engine asks.
+ *
+ * The name is a string of the engine's shape — begin, end, one past the room —
+ * built on our stack, since nothing is kept and nothing is freed.
+ */
+static void *child_named(void *window, const char *name) {
+  void *base = window_base(window);
+  ChildFn find = (ChildFn)vtable_entry(base, WINDOW_CHILD);
+  if (!find) return NULL;
+  char text[24];
+  int n = 0;
+  while (name[n] && n < 22) { text[n] = name[n]; n++; }
+  text[n] = 0;
+  void *held[3];
+  held[0] = text;
+  held[1] = text + n;
+  held[2] = text + n + 1;
+  return find(base, NULL, held, 0);
+}
+
+/**
+ * How wide a window is.
+ *
+ * ON THE INTERFACE, not on the object. The engine asks this of a child it has
+ * just put through a dynamic cast to `IWindow`, and a cast like that IS the
+ * adjustment — asking the raw pointer instead answered with a heap address
+ * where a width belonged, which is how this was caught.
+ */
+static int window_wide(void *window) {
+  void *base = window_base(window);
+  SizeFn size = (SizeFn)vtable_entry(base, WINDOW_SIZE);
+  if (!size) return 0;
+  int into[4] = { 0, 0, 0, 0 };
+  int *got = size(base, NULL, into);
+  if (readable_bytes(got, 8) < 8) return 0;
+  // Sanity, because a wrong slot answers with something and it is never small:
+  // a plate is tens of points across, never thousands and never negative.
+  return got[0] > 0 && got[0] < 4096 ? got[0] : 0;
+}
+
+static void make_wide(void *window, int wide, int tall) {
+  void *base = window_base(window);
+  PlaceFn place = (PlaceFn)vtable_entry(base, WINDOW_PLACE);
+  if (place) place(base, NULL, 0, 0, (float)wide, (float)tall, WINDOW_PLACE_SIZE_ONLY);
+}
+
+/**
+ * The stacks on the field, as the frame being drawn has them.
+ *
+ * Kept only for as long as that one call, because the plates are placed from
+ * inside it: a plate carries its COUNT and nothing else, and a fighting stack
+ * can be asked for the same number, so the two are matched on it. Ambiguous
+ * when two stacks are the same size, which is why each is taken once and in
+ * order — the plates are placed in the order this list is walked.
+ */
+static void **g_units = NULL;
+int g_unitCount = 0;
+static BYTE g_unitTaken[UNIT_MAX];
+
+/** Which stack this plate is showing, and what its front creature has left. */
+static int bar_fraction(int number, int *front, int *whole) {
+  for (int i = 0; i < g_unitCount; i++) {
+    if (g_unitTaken[i]) continue;
+    void *unit = g_units[i];
+    if (!readable_bytes(unit, 8)) continue;
+    if (ask_creature(unit, CREATURE_HOW_MANY) != number) continue;
+    int left = ask_creature(unit, CREATURE_FRONT_HEALTH);
+    int full = ask_creature(unit, CREATURE_WHOLE_HEALTH);
+    if (left < 0 || full <= 0) return 0;
+    g_unitTaken[i] = 1;
+    *front = left;
+    *whole = full;
+    return 1;
+  }
+  return 0;
+}
+
 static void __fastcall battle_plates_hook(void *self, void *edx, void *a1, void *units,
                                           void *a3, void *screen, void *a5, void *a6, void *a7) {
-  if (g_unitChangesLeft > 0 && readable(units, 8)) {
+  void **was = g_units;
+  int wasCount = g_unitCount;
+  if (readable(units, 8)) {
     BYTE *begin = *(BYTE **)units;
     BYTE *end = *(BYTE **)((BYTE *)units + 4);
     int count = end > begin ? (int)((end - begin) / 4) : 0;
     if (count > UNIT_MAX) count = UNIT_MAX;
-    for (int i = 0; i < count; i++) watch_unit(*(void **)(begin + i * 4), i);
+    g_units = (void **)begin;
+    g_unitCount = count;
+    for (int i = 0; i < count; i++) g_unitTaken[i] = 0;
+    if (g_unitChangesLeft > 0) for (int i = 0; i < count; i++) watch_unit(g_units[i], i);
   }
   g_battlePlates(self, NULL, a1, units, a3, screen, a5, a6, a7);
+  g_units = was;
+  g_unitCount = wasCount;
 }
 
 static int __fastcall finish_combat_hook(void *command, void *edx) {

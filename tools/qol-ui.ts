@@ -44,7 +44,7 @@ const BAR_DIR = 'UI/CombatArena-FPP-2';
  * frame — but they have to be SOMETHING, because a window the engine never
  * heard the size of is a window it will not draw at all.
  */
-const strip = (name: string, background: string, priority: number): string =>
+const strip = (name: string, background: string, priority: number, ownSize = true): string =>
   `<?xml version="1.0" encoding="UTF-8"?>
 <WindowSimple>
 	<ClassTypeID>285700801</ClassTypeID>
@@ -75,7 +75,7 @@ const strip = (name: string, background: string, priority: number): string =>
 				<x>22</x>
 				<y>2</y>
 			</First>
-			<Second>true</Second>
+			<Second>${ownSize}</Second>
 		</Size>
 		<LowerMargin>
 			<First>
@@ -106,7 +106,7 @@ const strip = (name: string, background: string, priority: number): string =>
 const OUR_FILL = '/UI/CombatArena-FPP-2/HealthFill.(BackgroundTiledTexture).xdb#xpointer(/BackgroundTiledTexture)';
 const SHIPPED_TRACK = '/UI/AdventureScreen/StackInfo/Normal.(BackgroundTiledTexture).xdb#xpointer(/BackgroundTiledTexture)';
 
-const stripShared = (background: string): string =>
+const stripShared = (background: string, ownSize = true): string =>
   `<?xml version="1.0" encoding="UTF-8"?>
 <WindowSimpleShared>
 	<Crap>false</Crap>
@@ -137,7 +137,7 @@ const stripShared = (background: string): string =>
 				<x>22</x>
 				<y>2</y>
 			</First>
-			<Second>true</Second>
+			<Second>${ownSize}</Second>
 		</Size>
 		<LowerMargin>
 			<First>
@@ -236,9 +236,9 @@ const OUR_TEXTURE = 'Textures/Interface/H5E/HealthFill';
 
 const entries: ZipEntry[] = [
   { name: PLATE, data: Buffer.from(plate(shipped), 'utf8') },
-  { name: `${BAR_DIR}/HealthTrack.(WindowSimple).xdb`, data: Buffer.from(strip('HealthTrack', 'Normal', 2), 'utf8') },
-  { name: `${BAR_DIR}/HealthTrack.(WindowSimpleShared).xdb`, data: Buffer.from(stripShared(SHIPPED_TRACK), 'utf8') },
-  { name: `${BAR_DIR}/HealthFill.(WindowSimple).xdb`, data: Buffer.from(strip('HealthFill', 'Positive', 1), 'utf8') },
+  { name: `${BAR_DIR}/HealthTrack.(WindowSimple).xdb`, data: Buffer.from(strip('HealthTrack', SHIPPED_TRACK, 2, false), 'utf8') },
+  { name: `${BAR_DIR}/HealthTrack.(WindowSimpleShared).xdb`, data: Buffer.from(stripShared(SHIPPED_TRACK, false), 'utf8') },
+  { name: `${BAR_DIR}/HealthFill.(WindowSimple).xdb`, data: Buffer.from(strip('HealthFill', OUR_FILL, 1), 'utf8') },
   { name: `${BAR_DIR}/HealthFill.(WindowSimpleShared).xdb`, data: Buffer.from(stripShared(OUR_FILL), 'utf8') },
   // The bar's own green: the game's header, our pixels, and the two records
   // that name it — each copied off the shipped Positive so that every field we
