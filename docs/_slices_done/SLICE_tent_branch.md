@@ -145,7 +145,7 @@ Senya's design; mine was to keep looking for the setter.
 
 So the ultimate is half Lua and half native, and the division is now the shape
 every later perk should start from: **watch where the answers already are, write
-where the memory is**. It is written up in [docs/COMBAT_API.md](docs/COMBAT_API.md).
+where the memory is**. It is written up in [docs/api/combat.md](../api/combat.md).
 
 **What the perks cost in the end**: one detour (`0x77fca0`) carrying three terms,
 one more for the machine's health (`0xabc040`), the trigger runtime, and one

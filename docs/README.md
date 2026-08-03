@@ -1,9 +1,17 @@
 # Documentation
 
 One document per subject. Flat files are about a *format* or a *mechanism*;
-`mapPlaceables/` is about the things a map is made of, one folder per kind, and
+`mapPlaceables/` is about the things a map is made of, one folder per kind;
 `engineInternals/` is what was read out of the executable, one subsystem per
-file behind [ENGINE_INTERNALS.md](ENGINE_INTERNALS.md).
+file behind [ENGINE_INTERNALS.md](ENGINE_INTERNALS.md); and `api/` is reference
+only — what a mod may CALL, with the reasons kept out of it.
+
+## The API we add
+
+- [api/README.md](api/README.md) — the folder, and what belongs in it.
+- [api/combat.md](api/combat.md) — inside a battle: triggers a script can hook
+  and the functions the extension registers. Its engine side is
+  [engineInternals/BATTLE_SCRIPTING.md](engineInternals/BATTLE_SCRIPTING.md).
 
 ## Map placeables
 

@@ -36,7 +36,7 @@ one.
     battle script, and the extension calls every handler registered for a moment
     — `H5E_COMBAT_STARTED` and `H5E_MANA_SPENT(spent, side)`. Handlers stack, so
     two perks may want the same moment. It works in an ORDINARY battle, not only
-    a scripted one. See docs/COMBAT_API.md.
+    a scripted one. See docs/api/combat.md.
   - **And one function the other way: `H5ETentCharge()`**, which hands the first
     aid tent another use. It is what makes the mana trigger worth having — the
     watching is done in Lua, which can read mana, and the writing in the
