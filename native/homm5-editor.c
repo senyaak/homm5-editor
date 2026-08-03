@@ -2700,12 +2700,7 @@ static int g_barsLogged = 0;
 
 /** The bar's half of this, which is written below because it needs the fighting
  *  stacks, and used here because the plate is placed here. */
-static void log_pair(const char *prefix, int first, const char *between, int second);
-static int bar_fraction(int number, int *front, int *whole);
-static void *child_named(void *window, const char *name);
-static int window_wide(void *window);
-static void make_wide(void *window, int wide, int tall);
-extern int g_unitCount;
+static void bar_follow_plate(void *window, int number);
 /** What the strips leave clear at each end, and how tall they are — the same
  *  two numbers the archive declares them with. */
 #define BAR_MARGIN 1
@@ -2812,19 +2807,7 @@ static void __fastcall plate_show_hook(void *window, int shown, int first, int n
   g_plateShow(window, shown, first, number, x, y);
   // AFTER the engine has placed it, because the plate takes its width from the
   // text it was just given, and the bar takes its width from the plate.
-  // THE WIDTH IS NOT SET YET, and nothing here asks the plate anything, because
-  // both ways of asking took the game down on the first plate of a battle:
-  //
-  //   vt[0x0C] on the object      answered a heap address where a width belonged
-  //   vt[0x0C] on the interface   crashed before it answered at all
-  //
-  // The engine asks it of a child it has just put through a dynamic cast, and
-  // until that cast is made the way it makes it — `__RTDynamicCast` with the
-  // two type descriptors it passes — the receiver is a guess, and a guess at a
-  // receiver is what UI_INTERNALS.md warns takes the game down. What already
-  // works and is worth keeping: both strips are FOUND by name on the plate the
-  // engine hands over, and the stack behind that plate is matched by its count.
-  // Only while the engine is inside that call is the answer this plate's.
+  bar_follow_plate(window, number);
   g_plateStart = 0;
 }
 
@@ -2958,31 +2941,56 @@ static void watch_unit(void *unit, int index) {
 //
 // The plate is a button and the bar is two child windows of it, declared in
 // `homm5-editor-qol.h5u` — see tools/qol-ui.ts. All that is left for here is
-// the width, and the three calls it takes are the three the engine makes on
-// this very window a few instructions apart:
+// the width, and every call below is one the engine makes on this very window
+// a few instructions apart, receivers and all — read at 0x739ce3..0x739dc6:
 //
-//   vt[0x94]  a child by name, on the receiver adjusted for the virtual base
-//   vt[0x0C]  how big a window is, on the plain pointer
-//   vt[0x58]  make it this big, on the adjusted one again
+//   vt[0x94]  a child by name, on the window's virtual base. What comes back
+//             is an IWindow* — the descriptors the engine then hands to
+//             `__RTDynamicCast` say so: `.?AUIWindow@@` to `.?AUITextView@@`.
+//   the cast  VCRUNTIME140.dll's `__RTDynamicCast`, cdecl, NULL when the
+//             child is not a text view — no test of a vtable, no guess.
+//   vt[0x0C]  ON THE CAST RESULT, plain: how big the text is. A slot of
+//             ITextView, not of IWindow — asking anything else this question
+//             is the "heap address where a width belonged" of two runs ago.
+//   vt[0x50]  the margins, on the virtual base — four out-pointers, each
+//             optional, `ret 10h`. The plate's width is the text's plus twice
+//             the first of them: `lea edi,[edi+eax*2]`.
+//   vt[0x58]  make it this big, on the virtual base — five stack values,
+//             `ret 14h` in the body at 0xE35920, so x and y are FLOATS like
+//             the size, and the last is a mask of which values to take.
 //
-// TWO RECEIVERS, and which is which is not a choice: the placement call reaches
-// the "Text" child through `obj + 4 + [[obj+4]+8]` and then asks its size
-// through `[obj]` without any adjustment at all. Getting that backwards is the
-// crash ENGINE_INTERNALS.md warns about, so both are copied rather than reasoned.
+// ONE RECEIVER RULE. The base slots (0x50, 0x58, 0x94) ride the virtual base:
+// their entries all begin `sub ecx,[ecx-4]`, so the receiver must be the
+// IWindow subobject itself. vt[0x94]'s return already IS that pointer, and the
+// engine re-deriving it from the cast result — `ebx + 4 + [[ebx+4]+8]` — must
+// land on the very same one. That equality is CHECKED at run time below before
+// any width is set, because both crashes this feature has caused were a
+// receiver assumed rather than copied.
 
 /** A child by name. */
 #define WINDOW_CHILD 0x94u
-/** How big it is — into a point the caller lends it. */
-#define WINDOW_SIZE 0x0Cu
+/** The margins around a window's content, each out-pointer optional. */
+#define WINDOW_MARGINS 0x50u
 /** Make it this big. Five values on the stack, the last a mask of which of them
  *  to take; the engine passes 0x0C for a size and leaves the position alone. */
 #define WINDOW_PLACE 0x58u
 #define WINDOW_PLACE_SIZE_ONLY 0x0Cu
+/** How big a TEXT VIEW's text is — a slot of ITextView, only valid on what the
+ *  dynamic cast answered. Into a point the caller lends it. */
+#define TEXTVIEW_SIZE 0x0Cu
+
+/** The two RTTI descriptors the engine's own cast names, image-relative. */
+#define TYPE_IWINDOW_RVA 0xCAAF54u
+#define TYPE_ITEXTVIEW_RVA 0xCAB114u
 
 typedef void *(__fastcall *ChildFn)(void *self, void *edx, void *name, int flag);
 typedef int *(__fastcall *SizeFn)(void *self, void *edx, int *into);
-typedef void(__fastcall *PlaceFn)(void *self, void *edx, int x, int y, float wide, float tall,
-                                  int mask);
+typedef void(__fastcall *MarginsFn)(void *self, void *edx, int *lowX, int *lowY, int *upX,
+                                    int *upY);
+typedef void(__fastcall *PlaceFn)(void *self, void *edx, float x, float y, float wide,
+                                  float tall, int mask);
+typedef void *(__cdecl *DynamicCastFn)(void *obj, int vfDelta, void *srcType, void *dstType,
+                                       int isReference);
 
 /** The subobject the engine talks to for children and placement. */
 static void *window_base(void *window) {
@@ -3013,30 +3021,44 @@ static void *child_named(void *window, const char *name) {
   return find(base, NULL, held, 0);
 }
 
-/**
- * How wide a window is.
- *
- * ON THE INTERFACE, not on the object. The engine asks this of a child it has
- * just put through a dynamic cast to `IWindow`, and a cast like that IS the
- * adjustment — asking the raw pointer instead answered with a heap address
- * where a width belonged, which is how this was caught.
- */
-static int window_wide(void *window) {
-  void *base = window_base(window);
-  SizeFn size = (SizeFn)vtable_entry(base, WINDOW_SIZE);
+/** The engine's own dynamic cast — imported by the executable from
+ *  VCRUNTIME140.dll, so asked of the loader rather than read out of the image. */
+static void *as_text_view(void *child) {
+  static DynamicCastFn cast = NULL;
+  if (!cast) {
+    HMODULE crt = GetModuleHandleW(L"VCRUNTIME140.dll");
+    cast = crt ? (DynamicCastFn)GetProcAddress(crt, "__RTDynamicCast") : NULL;
+    if (!cast) return NULL;
+  }
+  BYTE *image = (BYTE *)GetModuleHandleW(NULL);
+  return cast(child, 0, image + TYPE_IWINDOW_RVA, image + TYPE_ITEXTVIEW_RVA, 0);
+}
+
+/** How wide the text on the plate is — of the CAST RESULT, nothing else. */
+static int text_width(void *view) {
+  SizeFn size = (SizeFn)vtable_entry(view, TEXTVIEW_SIZE);
   if (!size) return 0;
-  int into[4] = { 0, 0, 0, 0 };
-  int *got = size(base, NULL, into);
-  if (readable_bytes(got, 8) < 8) return 0;
+  int into[2] = { 0, 0 };
+  int *got = size(view, NULL, into);
+  if (!got || readable_bytes(got, 8) < 8) return 0;
   // Sanity, because a wrong slot answers with something and it is never small:
   // a plate is tens of points across, never thousands and never negative.
   return got[0] > 0 && got[0] < 4096 ? got[0] : 0;
 }
 
-static void make_wide(void *window, int wide, int tall) {
-  void *base = window_base(window);
+/** What the plate adds around its text on each side. */
+static int lower_margin(void *base) {
+  MarginsFn ask = (MarginsFn)vtable_entry(base, WINDOW_MARGINS);
+  int x = 0;
+  if (ask) ask(base, NULL, &x, NULL, NULL, NULL);
+  return x >= 0 && x < 64 ? x : 0;
+}
+
+/** Make a strip this wide, leaving where it sits alone. */
+static void make_wide(void *base, int wide) {
   PlaceFn place = (PlaceFn)vtable_entry(base, WINDOW_PLACE);
-  if (place) place(base, NULL, 0, 0, (float)wide, (float)tall, WINDOW_PLACE_SIZE_ONLY);
+  if (place) place(base, NULL, 0.0f, 0.0f, (float)wide, (float)BAR_TALL,
+                   WINDOW_PLACE_SIZE_ONLY);
 }
 
 /**
@@ -3068,6 +3090,74 @@ static int bar_fraction(int number, int *front, int *whole) {
     return 1;
   }
   return 0;
+}
+
+/** How many plates get their arithmetic written down, first battle only. */
+static int g_barLogged = 0;
+
+/**
+ * The strips sized to the plate the engine just placed.
+ *
+ * The plate's width is not asked of it — it is computed the way the engine
+ * computes it three instructions after placing the text: the text's size plus
+ * twice the margin. Both come from calls the engine makes on the same objects
+ * in the same frame, so there is nothing here it would not have answered.
+ *
+ * THE SELF-CHECK before any width is set: the placement pass reaches vt[0x58]
+ * through `cast + 4 + [[cast+4]+8]`, and vt[0x94] hands us its receivers
+ * directly only if that derivation lands back on the pointer the search
+ * returned. For the text child both pointers are in hand, so they are compared
+ * — equal means our strip receivers are the engine's, unequal means they are
+ * guesses again, and this feature has already crashed twice on a guessed
+ * receiver. Then it walks away rather than calls.
+ */
+static void bar_follow_plate(void *window, int number) {
+  if (!g_qol[QOL_STACK_HEALTH]) return;
+  void *text = child_named(window, "Text");
+  void *track = child_named(window, "HealthTrack");
+  void *fill = child_named(window, "HealthFill");
+  if (!text || !track || !fill) return;
+  void *view = as_text_view(text);
+  if (!view) return;
+  if (window_base(view) != text) {
+    if (g_barLogged < 1) {
+      g_barLogged = 8;
+      log_hex("bar: the search returned   ", (DWORD)text);
+      log_hex("     the cast derives      ", (DWORD)window_base(view));
+      log_line("     not the same pointer - widths stay unset");
+    }
+    return;
+  }
+  int wide = text_width(view);
+  if (!wide) return;
+  int plate = wide + 2 * lower_margin(text);
+  int trackWide = plate - 2 * BAR_MARGIN;
+  if (trackWide < 4) return;
+  // -1 means LEAVE THE FILL ALONE. A plate can be placed more than once a
+  // frame, and only one of those calls wins the stack — the count match is
+  // take-once. A miss in a battle must therefore not touch the fill, or the
+  // losing call writes a full bar over the fraction the winning call just set.
+  // A miss with no battle behind it (the preparation screen) is different:
+  // there is no damage to show, so the fill honestly follows the track.
+  int fillWide = -1;
+  int front = 0, whole = 0;
+  if (bar_fraction(number, &front, &whole)) {
+    fillWide = (int)((long long)trackWide * front / whole);
+    // Nine-slice: anything narrower than its own two borders draws as noise.
+    if (fillWide < 3) fillWide = front > 0 ? 3 : 0;
+    if (front != whole && g_barLogged < 24) {
+      g_barLogged++;
+      log_pair("bar: the one in front has ", front, " of ", whole);
+      log_pair("     so the fill takes ", fillWide, " of ", trackWide);
+    }
+  } else if (g_unitCount == 0) {
+    fillWide = trackWide;
+  } else if (g_barLogged < 24) {
+    g_barLogged++;
+    log_pair("bar: no stack claimed the count ", number, " among ", g_unitCount);
+  }
+  make_wide(track, trackWide);
+  if (fillWide > 0) make_wide(fill, fillWide);
 }
 
 static void __fastcall battle_plates_hook(void *self, void *edx, void *a1, void *units,

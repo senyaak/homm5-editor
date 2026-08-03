@@ -1,12 +1,11 @@
 # The plate over a stack in a battle
 
 *Answers: what the number over a creature's head is made of, how its text comes
-to be ours, how a bar was added beside it, and the one thing still missing.*
+to be ours, and how a health bar was added beside it.*
 
-Two quality of life switches live here — `stack-losses` (done) and
-`stack-health-bar` (half done). Addresses are from our unwrapped
-`bin/H5_Game_H5E.exe` and are landmarks, not constants; see
-[../ENGINE_INTERNALS.md](../ENGINE_INTERNALS.md).
+Two quality of life switches live here — `stack-losses` and `stack-health-bar`,
+both done. Addresses are from our unwrapped `bin/H5_Game_H5E.exe` and are
+landmarks, not constants; see [../ENGINE_INTERNALS.md](../ENGINE_INTERNALS.md).
 
 **The image is RELOCATED.** It loaded at `0x650000` in every run, so a pointer
 logged from inside the game is `0x250000` above the address the disassembly
@@ -84,34 +83,59 @@ needs to know nothing about either.
 ## The bar
 
 Two child windows declared in `homm5-editor-qol.h5u`, built by
-`tools/qol-ui.ts` out of the shipped files: a dark track and a bright green
-fill, plus a texture of our own because the shipped `Positive` is meant for
-tinting a whole badge and reads as almost nothing two pixels tall.
+`src/mods/qol-ui.ts` (by hand: `tools/qol-ui.ts`) out of the shipped files: a
+night-black track and a bright green fill, both textures our own. Applying the
+settings writes the archive when the flag is on and deletes it when it is off,
+because the strips draw with no extension in sight.
 
 Its own archive rather than `homm5-editor.h5u`: it overrides two interface
 files and extends no reference table, so it has no business inside twenty-six
 megabytes of content rebuilt for other reasons.
 
-**What works**: both strips are found on the plate by name — `vt[0x94]` on the
-receiver adjusted for the virtual base, exactly as the placement call reaches
-`Text` — and the stack behind a plate is matched by its count.
+Both strips are found on the plate by name — `vt[0x94]` on the receiver
+adjusted for the virtual base, exactly as the placement call reaches `Text` —
+and the stack behind a plate is matched by its count, each taken once per
+pass.
 
-### What is missing: the width
+### The width — reading the engine's own moves at 0x739ce3
 
-`vt[0x58]` sets it, and the engine calls it on a child it has just put through
-`__RTDynamicCast` to `IWindow` (`0x94AB92`, descriptors `0x10AAF54` and
-`0x10AB114`). Both shortcuts around that cast failed:
+The crashes stopped the day every call was copied rather than reasoned:
 
-| | |
-|---|---|
-| `vt[0x0C]` on the object | answered a heap address where a width belonged |
-| `vt[0x0C]` on the adjusted receiver | crashed before answering |
+- **`vt[0x94]` returns an `IWindow*` already.** The descriptors the engine
+  hands `__RTDynamicCast` right after say so: `.?AUIWindow@@` (0x10AAF54) to
+  `.?AUITextView@@` (0x10AB114). The cast itself is imported —
+  `VCRUNTIME140.dll!__RTDynamicCast`, cdecl, five arguments — so the extension
+  asks the loader for it instead of calling into the image.
+- **Two vtables, and which slot lives where is everything.** The base slots
+  ride the virtual base and every entry begins `sub ecx,[ecx-4]`: `0x94` child
+  by name (`ret 8`), `0x50` margins (four optional out-pointers, `ret 10h`),
+  `0x58` set placement. "How big is the text" (`0x0C`, `ret 4`) is a slot of
+  **ITextView**, valid only on the cast result — calling that offset on
+  anything else was the "heap address where a width belonged".
+- **`vt[0x58]` takes five stack values and its body says `ret 14h`** — so x
+  and y are floats like the size, and the fifth is a mask of which values to
+  take (`0x0C` = size only). Its arity read from the call site was the crash;
+  read from the `ret`, the sixth time this lesson was paid for here.
+- **The plate's width is never asked** — it is computed the way the engine
+  computes it three instructions later: text size plus twice the first margin
+  (`lea edi,[edi+eax*2]`).
+- **A self-check instead of an assumption**: the engine re-derives its
+  placement receiver from the cast result as `cast + 4 + [[cast+4]+8]`. For
+  the Text child both that and the `vt[0x94]` answer are in hand, so they are
+  compared every pass — unequal means the strip receivers would be guesses,
+  and the widths stay unset with one line in the log.
 
-So the next step is not another guess at a receiver — it is to make the cast
-the way the engine makes it, and to take `vt[0x58]`'s arity from its `ret`
-rather than from its call site. That last mistake has now been paid for five
-times in this repository.
+The fill is the track's width times `front / whole` from the accessors in
+[COMBAT.md](COMBAT.md). A miss in the count matching **leaves the fill alone**:
+a plate can be placed more than once a frame and the match is take-once, so a
+losing pass writing "full" would undo the winning one. A miss with no battle
+behind it (the deployment screen) honestly draws the bar full.
 
-Until then the strips draw at the size the archive gives them, which is visible
-the moment Shift is held: the plate grows to fit the longer text and they do
-not follow.
+### Two lessons the pixels taught
+
+- **Higher `Priority` draws on top** — the shipped tooltip sits at 1,000,000
+  and the tutorial hint at 2,000,000. With the track above the fill the bar
+  never visibly shrank; a wound only dimmed it through the translucent dark.
+- **At two pixels tall a nine-slice is all border.** The strips' textures are
+  one flat colour with clear corners; any darker border ring IS the whole bar
+  at that height, which is why the first green read as dim.
