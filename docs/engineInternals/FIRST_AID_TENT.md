@@ -216,7 +216,7 @@ three. Which one it is has not been measured; the log says.
 
 Read before designing a perk for it — two of our first three asked for things
 this list already contains. The branch's second attempt is in
-[../../SLICE_tent_branch.md](../../SLICE_tent_branch.md).
+[../_slices_done/SLICE_tent_branch.md](../_slices_done/SLICE_tent_branch.md).
 
 **Health**, at `0xabc040`, the only place a war machine's is decided:
 

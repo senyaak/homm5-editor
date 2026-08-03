@@ -131,10 +131,31 @@ then 3 and 4 collapsed into far less work than the plan expected: **three of the
 four perks land in ONE detour**, because the tent's amount function answers
 three questions and we had only been reading one of them.
 
-Left to do, and it is a battle rather than a keyboard: does a perk answer 1
-through `GetSkillMastery` (every amount here assumes so), does the caster in the
-mana command match one of the three pointers, and does the health multiplier
-reach a tent that is already standing when the perk is taken.
+Three of them ran in a battle the same day. The fourth — the ultimate — did not,
+and the plan was wrong about it in a way worth keeping:
+
+**The mana command was never the path.** `CSetCombatCasterMana` (`0xb74300`) was
+hooked on the reasoning that combat mana changes through a network command, and
+it did not fire once — a dozen battles, a hero with 300 mana and spells to spend.
+The lesson is not about that address. It is that the perk needed **no address at
+all**: the battle's own Lua reads mana (`GetUnitManaPoints`), every unit's turn
+arrives as `UnitMove` in ordinary battles, and the only thing Lua cannot do —
+write `machine+0xB0` — is one argument-less call into the extension.
+Senya's design; mine was to keep looking for the setter.
+
+So the ultimate is half Lua and half native, and the division is now the shape
+every later perk should start from: **watch where the answers already are, write
+where the memory is**. It is written up in [docs/COMBAT_API.md](docs/COMBAT_API.md).
+
+**What the perks cost in the end**: one detour (`0x77fca0`) carrying three terms,
+one more for the machine's health (`0xabc040`), the trigger runtime, and one
+registered function. No new enum, no data file of the game's edited.
+
+**And two of the day's four battles were spent on things that were not perks at
+all** — a `return;` that failed a whole file, and a hero record whose
+`OverrideMask` of 0 quietly ignored every stat the stand wrote. Both are written
+down where the next person meets them: the linter, and
+[docs/OBJECT_DEFAULTS.md](docs/OBJECT_DEFAULTS.md).
 
 ## Still worth knowing, from the same session
 
