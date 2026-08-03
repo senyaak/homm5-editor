@@ -153,7 +153,26 @@ There is no mode to turn on.
   parser at `0xa454d0` plus the two heap strings it checks against; a job of its
   own, and its mistakes crash a battle.
 - **`Hit` / `Spell` / `Death`** — combat is already an event bus in C++
-  (`CCombatEvent` and its twelve descendants), which is where those attach.
+  (`CCombatEvent` and its twelve descendants), which is where those attach. This
+  is the one the dragon that roars when struck is waiting for.
+- **A multiplayer battle refuses scripts.** `Warning: console script commands are
+  not allowed` / `scripts are not allowed` (the strings are at `0xf60fac` and
+  `0xf597a0`, pushed from `0x6d9d2f`, `0x65b064`, `0x84c7a7`). Everything on this
+  page therefore holds for a single-player fight and is untested in a
+  multiplayer one — which also means a perk of ours would quietly do nothing
+  there. Nobody has read what gates it yet.
+- **The native `tent_mana` row is dead weight.** It is still in the config the
+  editor writes (`tent_mana skill <id> <n>`) and the extension still reads it,
+  but the sum it was meant to join lives behind the mana command that never
+  fires. The working ultimate is the Lua watch above. Either the row goes or the
+  extension learns to count mana itself; leaving a stat in the skill form that
+  does nothing is the worse of the two.
+- **Linting a call against the engine's own signature.** The argument formats of
+  all 306 registered functions are already extracted (`src/script/script-api.json`,
+  from the executable), so "wrong number of arguments" is checkable without
+  reading the binary again. What the formats do NOT carry is the RETURN value —
+  `UnitMove` had to be learned from a battle — so those are ours to write down as
+  we meet them.
 
 The engine internals behind all of this are in
 [engineInternals/EXTENSION.md](engineInternals/EXTENSION.md) («A battle can be
