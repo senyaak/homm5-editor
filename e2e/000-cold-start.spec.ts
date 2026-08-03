@@ -25,6 +25,18 @@
 // `a2p1-data.pak` is 13 MB, carries both markers a data root is recognised by,
 // and unpacks in seconds. What is under test is the path, not the throughput.
 //
+// LIVE (`npm run e2e-live`, HOMM5_NO_REMOVE) does it to the REAL install, the
+// way every live spec works in the real install: what OUR engine writes is
+// taken out first — the patched executable, the extension, the qol config and
+// its archive, the whole unpacked data tree — and the setup window rebuilds it
+// all from the real archives, every pak this time. What is deliberately NOT
+// touched: the game's own files, `H5E/` itself (maps and saves live there) and
+// `H5E/homm5-editor.h5u` (authored content; a first run does not author). The
+// qol config and archive are not rebuilt either — reapplying the game settings
+// from the panel is the way back. Settings still go to a userData of the
+// spec's own: what a live run promises to leave standing is the INSTALL, not
+// an edit to the editor's own remembered configuration.
+//
 // The file is named 000 so it runs before everything: the suite is serial, and
 // the one test that starts from nothing belongs in front of the tests that
 // start from something.
@@ -33,35 +45,50 @@ import { test, expect } from '@playwright/test';
 import { copyFileSync, existsSync, mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { REPO_ROOT, launchEditor } from './launch.ts';
-import { LIVE, REAL_GAME } from './mods.ts';
+import { DATA, REPO_ROOT, launchEditor } from './launch.ts';
+import { LIVE, REAL_GAME, liveHome } from './mods.ts';
 
-/** The install this makes, wipes and makes again. Never anything else. */
-const HOME = join(REPO_ROOT, '_tmp', 'e2e-cold-start');
+/** The install this wipes and remakes: a sandbox, or — live — the real one. */
+const HOME = liveHome('e2e-cold-start');
 /** Where the app keeps what it remembers — settings.json lands HERE. */
 const USERDATA = join(REPO_ROOT, '_tmp', 'e2e-cold-start-userdata');
-const DATA_ROOT = join(HOME, 'data-unpacked');
+const DATA_ROOT = LIVE ? DATA : join(HOME, 'data-unpacked');
 
 const PAK = 'a2p1-data.pak';
 const SHIPPED = join('bin', 'H5_Game.exe');
 const PATCHED = join('bin', 'H5_Game_H5E.exe');
 
+/** What our engine writes into an install, by name — what a cold start owes. */
+const OURS = [
+  PATCHED,
+  join('bin', 'homm5-editor.dll'),
+  join('bin', 'homm5-editor-qol.txt'),
+  join('H5E', 'homm5-editor-qol.h5u'),
+];
+
 /**
- * A Heroes 5 install with nothing done to it — and no memory of one either.
+ * A Heroes 5 install with nothing of ours done to it — and no memory of one.
  *
- * It wipes what it is given, so it may only ever be given a throwaway — the
- * same one-word mistake `prepareGameRoot` guards against, and the same guard.
+ * The sandbox is wiped whole and given what Steam gives: the wrapped
+ * executable and one archive. The real install — live only — loses exactly
+ * `OURS` and the unpacked tree, nothing else: it is somebody's, and the guard
+ * that a wholesale wipe stays under `_tmp` is the same one-word-mistake guard
+ * `prepareGameRoot` uses.
  */
 function bareWorld(): void {
-  for (const dir of [HOME, USERDATA]) {
-    if (!dir.startsWith(join(REPO_ROOT, '_tmp'))) {
-      throw new Error(`this wipes what it prepares — ${dir} is not under _tmp`);
-    }
-    rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  rmSync(USERDATA, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  mkdirSync(USERDATA, { recursive: true });
+  if (LIVE) {
+    for (const f of OURS) rmSync(join(HOME, f), { force: true });
+    rmSync(DATA_ROOT, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    return;
   }
+  if (!HOME.startsWith(join(REPO_ROOT, '_tmp'))) {
+    throw new Error(`this wipes what it prepares — ${HOME} is not under _tmp`);
+  }
+  rmSync(HOME, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   mkdirSync(join(HOME, 'bin'), { recursive: true });
   mkdirSync(join(HOME, 'data'), { recursive: true });
-  mkdirSync(USERDATA, { recursive: true });
   copyFileSync(join(REAL_GAME, SHIPPED), join(HOME, SHIPPED));
   copyFileSync(join(REAL_GAME, 'data', PAK), join(HOME, 'data', PAK));
 }
@@ -73,17 +100,19 @@ test.beforeAll(() => {
 });
 
 test.afterAll(() => {
+  rmSync(USERDATA, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   if (LIVE) {
-    console.warn(`\n[e2e] left the cold-start install at ${HOME}\n`);
+    console.warn(`\n[e2e] cold start rebuilt the live install at ${HOME} — the qol config and`
+      + ' archive were taken out and are NOT rebuilt here: reapply the game settings from the panel.\n');
     return;
   }
   rmSync(HOME, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
-  rmSync(USERDATA, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
 test('from nothing to an open editor, through the setup window', async () => {
-  // Steamless over a 14 MB executable plus an unpack: minutes, not seconds.
-  test.setTimeout(10 * 60_000);
+  // Steamless over a 14 MB executable plus an unpack: minutes, not seconds —
+  // and live the unpack is every pak the game ships, not the 13 MB stand-in.
+  test.setTimeout((LIVE ? 30 : 10) * 60_000);
 
   bareWorld();
 
@@ -113,7 +142,7 @@ test('from nothing to an open editor, through the setup window', async () => {
     // for is the outcome the person waits for — the start button coming alive.
     await setup.locator('#prepare').click();
     await expect(setup.locator('#start'), 'everything was prepared')
-      .toBeEnabled({ timeout: 9 * 60_000 });
+      .toBeEnabled({ timeout: (LIVE ? 28 : 9) * 60_000 });
     await expect(setup.locator('#steps .four.done'), 'all four steps say done').toHaveCount(4);
 
     // What the steps left on disk, by name — the same four things the editor

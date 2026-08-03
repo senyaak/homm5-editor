@@ -60,6 +60,20 @@ import { takenSpecializations } from '../src/mods/specializations.ts';
 export const LIVE = !!process.env.HOMM5_NO_REMOVE;
 
 /**
+ * The install a spec works in: its own sandbox — or, live, the real one.
+ *
+ * ONE selector for every spec that can go live, so the flag means one thing
+ * everywhere: live is the real install and nothing swept up, isolated is a
+ * throwaway under `_tmp`. A spec whose SUBJECT is a bare world — the first-run
+ * chain that wipes its whole folder, the settings panel asserting what an
+ * unprepared install says — has no live target to offer and stays sandboxed;
+ * for those, live only means the sandbox is left to look at.
+ */
+export function liveHome(sandbox: string): string {
+  return LIVE ? REAL_GAME : join(REPO_ROOT, '_tmp', sandbox);
+}
+
+/**
  * The install every mod spec works in — ONE of them, either way.
  *
  * The stages are a chain: mod-001 authors the creature, mod-002 paints it,
@@ -73,7 +87,7 @@ export const LIVE = !!process.env.HOMM5_NO_REMOVE;
  * did not run.
  */
 export function modGameRoot(): string {
-  return LIVE ? REAL_GAME : join(REPO_ROOT, '_tmp', 'e2e-mod-game');
+  return liveHome('e2e-mod-game');
 }
 
 /** Pictures and reference maps that travel with the checkout — assets/README.md. */
