@@ -78,8 +78,16 @@ export interface MapInfo {
   floors: FloorSummary[];
   /** Total instances placed across all floors. */
   placed: number;
-  /** Objects the scene builder could not resolve a mesh for. */
-  skipped: number;
+  /**
+   * Objects the scene builder could not resolve a mesh for, BY HREF.
+   *
+   * The href and not just the tally, because a tally is not something anyone
+   * can act on: a map saved against an older build of the editor's own mod
+   * still points at `/Dwellings/<name>/…` for a dwelling that moved to
+   * `/Buildings/`, and it comes up one object short with nothing on screen
+   * saying which one or why.
+   */
+  skipped: string[];
   /**
    * Tiles added to the map's `<tiles>` list on open, because its terrain paints
    * with them and the list did not name them.

@@ -127,7 +127,19 @@ export async function loadMapPath(path: string | null, archive: string | null = 
     const floorsTxt = info.floors.length > 1
       ? ' · floors: ' + info.floors.map((f) => `${FLOOR_LABEL[f.name] || f.name} ${f.objects}`).join(', ')
       : '';
-    $('hud').textContent = `${total} objects · placed ${info.placed}, no model ${info.skipped} · ${S.geoms.length} meshes${floorsTxt}`;
+    // What did not mesh is NAMED, not counted. An object on the map and not on
+    // the screen is otherwise a hunt through the tree: the one that sent Senya
+    // looking was a dwelling whose mod had moved it from `/Dwellings/` to
+    // `/Buildings/`, and "no model 1" is the whole of what the editor said.
+    // The FOLDER as well as the name: what is wrong is usually where the file
+    // is looked for, not what it is called.
+    const shown = info.skipped.slice(0, 3).map((h) => h.split('#')[0] ?? h);
+    const more = info.skipped.length - shown.length;
+    const missing = shown.length
+      ? `, no model for ${shown.join(', ')}${more ? ` and ${more} more` : ''}`
+      : '';
+    $('hud').textContent = `${total} objects · placed ${info.placed}${missing} · ${S.geoms.length} meshes${floorsTxt}`;
+    if (info.skipped.length) console.warn('[map] no model for:', info.skipped);
     // The map's tile set is derived from the terrain's layers, and opening a map
     // whose list had fallen behind repairs it. That is a real change to the
     // document, so it counts as unsaved work rather than vanishing quietly.

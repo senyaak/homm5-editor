@@ -568,8 +568,9 @@ if (!byPath.has(showcasePath)) {
   const built = buildScene(data, data.path(resolveHref(dirOf(showcasePath), scene.stage)),
     { extraObjects: objects.map((o) => o.object) });
   const placed = built.scene.floors.reduce((a, f) => a + f.instances.length, 0);
-  check('C1M1 D1 builds into a drawable stage', placed > 600 && built.skipped <= 1,
-    `${built.scene.geoms.length} meshes, ${placed} placed, ${built.skipped} skipped`);
+  check('C1M1 D1 builds into a drawable stage', placed > 600 && built.skipped.length <= 1,
+    `${built.scene.geoms.length} meshes, ${placed} placed, ${built.skipped.length} skipped${
+      built.skipped.length ? ' (' + built.skipped.join(', ') + ')' : ''}`);
 
   // A figure the scene both LISTS and SPEAKS THROUGH is one figure. Placed
   // twice, an actor stands inside their own still adventure copy and every

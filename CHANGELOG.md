@@ -36,6 +36,16 @@ one.
 
 ### Fixed
 
+- **An object the editor cannot mesh is NAMED, not counted.** A map that opened
+  one object short said `no model 1` and nothing else — for eleven objects, with
+  no way to tell which of them was missing or why. It now says the href it
+  looked for, on the status line and again in the terminal. The case that found
+  this: two maps saved in July point at
+  `/Dwellings/SharpshooterPalace/…`, which the editor's own mod stopped writing
+  when dwellings became one of the sixteen building classes and moved under
+  `/Buildings/` — so rebuilding the mod moved a file out from under maps that
+  named it, and the dwelling quietly left the map.
+
 - **Models are textured at the size the art was drawn at, instead of at
   128×128.** Every texture in a payload was point-sampled onto a fixed 128-pixel
   SQUARE, whatever it had been: a hero's 512×512 skin lost fifteen of every

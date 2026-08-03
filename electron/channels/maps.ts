@@ -370,7 +370,10 @@ export function registerMaps(): void {
     const tilesNamed = syncMapTiles(session, layerPaths);
     if (tilesNamed) console.log(`[load] tile set: named ${tilesNamed} tile(s) the terrain paints with`);
     const placed = scene.floors.reduce((a, f) => a + f.instances.length, 0);
-    console.log(`[perf] map:load buildScene ${(tScene - tStart) | 0}ms · total ${(performance.now() - tStart) | 0}ms · geoms ${scene.geoms.length}, placed ${placed}, skipped ${skipped}`);
+    console.log(`[perf] map:load buildScene ${(tScene - tStart) | 0}ms · total ${(performance.now() - tStart) | 0}ms · geoms ${scene.geoms.length}, placed ${placed}, skipped ${skipped.length}`);
+    // Named, one per line: an object that is on the map and not on the screen
+    // is a bug hunt, and the href is most of the answer to it.
+    for (const href of skipped) console.log(`[load] no model for ${href} — the object is on the map and not on the screen`);
     // See src/scene/tex-table.ts: a map wears the same tree texture on every
     // tree, and the clone across to the renderer would carry each copy. The
     // `scene` kept here is the unpacked one — the resolver holds its geoms.

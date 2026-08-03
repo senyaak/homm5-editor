@@ -62,7 +62,7 @@ console.log(`  scene    ${scene.shots.length} shots, ${props} props, ${objects.l
 
 const built = buildScene(data, stagePath, { extraObjects: objects.map((o) => o.object) });
 const placed = built.scene.floors.reduce((a, f) => a + f.instances.length, 0);
-console.log(`  drawn    ${built.map.tileX}x${built.map.tileY}, ${built.scene.geoms.length} meshes, ${placed} placed, ${built.skipped} skipped`);
+console.log(`  drawn    ${built.map.tileX}x${built.map.tileY}, ${built.scene.geoms.length} meshes, ${placed} placed, ${built.skipped.length} skipped`);
 
 // Name what did not make it. A count alone reads as rounding; the href says
 // whether a prop is missing its model or the scene points at nothing.

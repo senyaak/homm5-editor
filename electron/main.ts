@@ -184,7 +184,7 @@ async function runSmoke(mapPath: string): Promise<void> {
     const { map, scene, skipped } = buildScene(mountedAssets(assetRootFor(mapPath)), mapPath);
     initProject(dirname(mapPath));
     const placed = scene.floors.reduce((a, f) => a + f.instances.length, 0);
-    console.log(`SMOKE ok: ${map.tileX}x${map.tileY}, geoms ${scene.geoms.length}, floors ${scene.floors.length}, placed ${placed}, skipped ${skipped}`);
+    console.log(`SMOKE ok: ${map.tileX}x${map.tileY}, geoms ${scene.geoms.length}, floors ${scene.floors.length}, placed ${placed}, skipped ${skipped.length}`);
     app.exit(0);
   } catch (e) { console.error('SMOKE fail:', e instanceof Error ? e.message : String(e)); app.exit(1); }
 }

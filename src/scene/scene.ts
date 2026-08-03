@@ -16,8 +16,16 @@
 //   bbox + <Texture>) -> bin/Geometries/<uid> + .dds
 //
 // buildScene is deliberately tolerant: objects whose assets don't resolve are
-// skipped (counted in `.skipped`), never fatal — real maps reference thousands
-// of assets and a few always fail to decode.
+// skipped (LISTED in `.skipped`, by href), never fatal — real maps reference
+// thousands of assets and a few always fail to decode.
+//
+// By href, not by count, because a count is a number nobody can act on. A map
+// saved against an earlier build of the editor's own mod pointed at
+// `/Dwellings/SharpshooterPalace/…`, which that mod stopped writing when
+// dwellings became one of the sixteen building classes and moved under
+// `/Buildings/`. The dwelling vanished from the map, and all anyone was told
+// was "no model 1" — for one object out of eleven, on a map that has no other
+// way to say which.
 //
 // What is left here is the WALK — the map, the floors, the resolver and its
 // cache. Each thing the walk needs decoded has its own module beside this one:
@@ -252,7 +260,8 @@ export function createGeomResolver(root: string | Assets, texSize = TEXTURE_CAP,
  * @param root the mounted asset chain, or one unpacked data root (MapObjects/, bin/…)
  * @param mapXdbPath absolute path to the map's map.xdb (its folder holds GroundTerrain.bin)
  * @param opt.texSize longest side an embedded texture is reduced to (default TEXTURE_CAP)
- * @returns { map, scene, skipped, resolver } — map is the HommMap model (kept for
+ * @returns { map, scene, skipped (the hrefs that did not mesh), resolver } —
+ *   map is the HommMap model (kept for
  *   editing) and resolver stays alive so objects placed later can be meshed
  *   without rebuilding the scene.
  *   scene = { geoms, floors:[{ name, V, heights, instances }] }. A map can have a
@@ -263,7 +272,7 @@ export function createGeomResolver(root: string | Assets, texSize = TEXTURE_CAP,
  */
 export function buildScene(
   root: string | Assets, mapXdbPath: string, opt: BuildSceneOptions = {},
-): { map: HommMap; skipped: number; scene: Scene; resolver: GeomResolver } {
+): { map: HommMap; skipped: string[]; scene: Scene; resolver: GeomResolver } {
   const data = toAssets(root);
   const texSize = opt.texSize || TEXTURE_CAP;
   const readXdb: ReadXdb = (href) => {
@@ -320,13 +329,13 @@ export function buildScene(
 
   // --- place objects onto their own floor's terrain ---
   const floorInstances: Instance[][] = [[], []];
-  let skipped = 0;
+  const skipped: string[] = [];
   for (const obj of [...map.objects, ...(opt.extraObjects ?? [])]) {
     const shared = obj.shared;
     const pos = obj.pos;
-    if (!shared || !pos) { skipped++; continue; }
+    if (!shared || !pos) { skipped.push(shared ?? `${obj.type} (no <Shared>)`); continue; }
     const gi = resolveGeom(shared);
-    if (gi < 0) { skipped++; continue; }
+    if (gi < 0) { skipped.push(shared); continue; }
     const floor = obj.floor === 1 && terrains[1] ? 1 : 0;
     const lights = obj.pointLights;
     floorInstances[floor].push({
