@@ -15,6 +15,26 @@ one.
 
 ### Added
 
+- **Two rules fixes from H5_DLL.** Ported from dredknight's
+  [H5_DLL](https://github.com/dredknight/H5_DLL) with his permission, each one
+  byte in a jump table:
+  - **Encourage works on a stack immune to magic.** A Knight's Encourage only
+    moves a friendly stack's turn up, but the game runs it through the check
+    that refuses a spell against an immune target — so it is refused by your own
+    creature's immunity. The ability's own description says nothing about magic.
+  - **Forgetting Barbarian Learning takes its bonuses back.** The switch that
+    undoes what a skill granted has a case for Learning and none for Barbarian
+    Learning, which falls through to "do nothing"; this points it at the case
+    Learning already uses.
+
+  Their addresses are not his: that patch targets the retail build, ours is
+  compiled for SSE, and each site was found again by the **shape** of the switch
+  it lives in. `tools/test-fixes.ts` checks every such byte against the
+  installed executable, and finds the patches by walking the C rather than by a
+  list kept by hand. His Agility fix is deliberately **not** ported — he
+  withdrew it himself once the ability's in-game text turned out to describe the
+  behaviour it "fixed".
+
 - **Game settings — a Fixes tab.** The panel splits into *Quality of life* (how
   you want to play) and *Fixes* (bugs of the shipped game taken out), with the
   fixes grouped — crashes, mechanics, battle AI — and an *Enable every fix*

@@ -189,6 +189,18 @@ This is the first one that writes **the game's own code**, so:
   `tools/test-combat-ai.ts` rather than left to be noticed in a battle, and
   `bin/homm5-editor.log` says how many of the three went in.
 
+## The rules fixes
+
+`encourage-fix` and `barbarian-learning-fix` are the first of dredknight's
+H5_DLL ported here, each one byte in a jump table. What they are, how they were
+found again in our build, and which of his we did **not** port and why:
+[engineInternals/RULES_FIXES.md](engineInternals/RULES_FIXES.md).
+
+Every byte any of these writes is checked against the installed executable by
+`tools/test-fixes.ts`, which finds the patches by walking the
+`overwrite_code(...)` calls in `native/` — so a fix added later is checked
+without that tool being touched.
+
 ## Applying while the game is open
 
 Everything applied here is written into `bin`, and Windows will not let a file

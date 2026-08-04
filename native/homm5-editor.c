@@ -76,6 +76,8 @@
 #include "qol/quick-split-gestures.c"
 #include "qol/stack-plates.c"
 #include "qol/combat-ai.c"
+#include "qol/fix-encourage.c"
+#include "qol/fix-barbarian-learning.c"
 
 BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   (void)reserved;
@@ -131,6 +133,10 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   // with the flag clear not a byte of the image is touched, which is what makes
   // this switch the game's own behaviour rather than a mode of ours.
   if (g_qol[QOL_COMBAT_AI_FIX]) install_combat_ai_fix();
+  // Rules the shipped game gets wrong, each a byte of its own — see
+  // docs/engineInternals/RULES_FIXES.md.
+  if (g_qol[QOL_ENCOURAGE_FIX]) install_encourage_fix();
+  if (g_qol[QOL_BARBARIAN_LEARNING_FIX]) install_barbarian_learning_fix();
   return TRUE;
 }
 

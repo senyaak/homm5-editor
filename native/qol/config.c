@@ -26,12 +26,14 @@ typedef enum {
   QOL_STACK_HEALTH = 3,
   QOL_STACK_LOSSES = 4,
   QOL_COMBAT_AI_FIX = 5,
-  QOL_COUNT = 6
+  QOL_ENCOURAGE_FIX = 6,
+  QOL_BARBARIAN_LEARNING_FIX = 7,
+  QOL_COUNT = 8
 } QolFlag;
 
 static const char *const QOL_NAMES[QOL_COUNT] = {
   "borderless", "own-profile", "quick-split", "stack-health-bar", "stack-losses",
-  "combat-ai-fix"
+  "combat-ai-fix", "encourage-fix", "barbarian-learning-fix"
 };
 
 static int g_qol[QOL_COUNT];

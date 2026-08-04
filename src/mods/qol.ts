@@ -121,6 +121,29 @@ export const QOL_FLAGS = [
     credit: 'Uses the work of CombatAIFix v1.1 by RedHavenHero'
       + ' — https://forum.heroesworld.ru/showthread.php?t=15624',
   },
+  {
+    name: 'encourage-fix',
+    tab: 'fixes',
+    group: 'mechanics',
+    title: 'Encourage works on a stack immune to magic',
+    detail: 'A Knight\'s Encourage only moves a friendly stack\'s turn up — but the game runs it through'
+      + ' the check that refuses a spell against an immune target, so it is refused by your OWN'
+      + ' creature being immune to magic. The ability\'s own description says nothing about magic. This'
+      + ' takes it out of that check; the other five abilities the check covers are left alone.',
+    credit: 'Uses the work of H5_DLL by dredknight, with permission'
+      + ' — https://github.com/dredknight/H5_DLL',
+  },
+  {
+    name: 'barbarian-learning-fix',
+    tab: 'fixes',
+    group: 'mechanics',
+    title: 'Forgetting Barbarian Learning takes its bonuses back',
+    detail: 'The switch that undoes what a skill granted has a case for Learning and none for'
+      + ' Barbarian Learning, which falls through to "do nothing" — so a barbarian who loses the skill'
+      + ' keeps the primary stats it gave him. This points it at the case Learning already uses.',
+    credit: 'Uses the work of H5_DLL by dredknight, with permission'
+      + ' — https://github.com/dredknight/H5_DLL',
+  },
 ] as const;
 
 export type QolName = (typeof QOL_FLAGS)[number]['name'];
