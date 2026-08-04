@@ -72,6 +72,18 @@ one.
 
 ### Fixed
 
+- **Terrain-object grass stands in the ground and wears its own dark green,
+  instead of glowing lime scribble.** The grass props are `P_STATIC` particle
+  systems — 33 blade-clump cards per patch, one position key each, all on the
+  ground plane — and the game plants them upright. Played as full camera-facing
+  billboards every card tipped toward a low camera and the clumps piled into a
+  luminous web; tinted by the baked colour ×2 and blended straight, their soft
+  edges ADDED green over the scene. A static system now stands its quads
+  vertically (yaw follows the camera so a clump never degenerates to an edge),
+  anchors them by the instance's `<Pivot>`, and draws the texel's own colour
+  premultiplied by alpha — the game's look, per its `mov r0.rgb, t0` shader.
+  Fire, smoke and every moving effect keep the old path untouched.
+
 - **Maps and scenes are as bright as the game — the lighting multiplier is the
   shaders' own ×4, not ×2 and not the preset's Whitening switch.** The game's
   ps.1.1 shaders write the modulate as an instruction modifier

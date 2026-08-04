@@ -284,6 +284,13 @@ export function particlesOfEffect(
         endCycle: +(inst.match(/<EndCycle>([-\d.eE]+)</)?.[1] ?? 0) || 0,
         cycleCount: +(inst.match(/<CycleCount>([-\d.eE]+)</)?.[1] ?? 0) || 0,
         lit: /<Light>L_LIT<\/Light>/.test(inst),
+        ...(/<Static>P_STATIC<\/Static>/.test(inst) ? {
+          static: true,
+          pivot: [
+            +(inst.match(/<Pivot>\s*<x>([-\d.eE]+)</)?.[1] ?? 0) || 0,
+            +(inst.match(/<Pivot>[\s\S]*?<y>([-\d.eE]+)</)?.[1] ?? 0) || 0,
+          ],
+        } : {}),
         textures,
       });
     } catch { /* one broken instance must not take the object's other instances down */ }

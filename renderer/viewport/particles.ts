@@ -55,7 +55,7 @@ const loadImg = (src: string): Promise<HTMLImageElement | null> =>
  * exactly what fire IS in this art — would arrive black in a single image.
  */
 async function buildAtlas(
-  textures: ({ c: string; a: string } | null)[], cell = 128,
+  textures: ({ c: string; a: string } | null)[], cell = 128, rawColor = false,
 ): Promise<{ tex: THREE.Texture; alpha: THREE.Texture; cols: number; rows: number }> {
   const cols = Math.max(1, Math.ceil(Math.sqrt(textures.length)));
   const rows = Math.max(1, Math.ceil(textures.length / cols));
@@ -79,7 +79,10 @@ async function buildAtlas(
     tex.minFilter = THREE.LinearFilter;
     return tex;
   };
-  return { tex: await make((t) => t.c, true), alpha: await make((t) => t.a, false), cols, rows };
+  // A static system's colour stays RAW: its texel goes to the framebuffer
+  // as-authored (the terrain's gamma convention). Decoded as sRGB it would be
+  // re-encoded on the way out and the grass would brighten past the game's.
+  return { tex: await make((t) => t.c, !rawColor), alpha: await make((t) => t.a, false), cols, rows };
 }
 
 const VERT = `
@@ -96,6 +99,38 @@ void main() {
   vec2 corner = position.xy * aSizeRot.xy;
   c.xy += vec2(corner.x * cr - corner.y * sr, corner.x * sr + corner.y * cr);
   gl_Position = projectionMatrix * c;
+  vUv = uv;
+  vColor = aColor;
+  vTex = aTex;
+}`;
+
+// A P_STATIC system is standing scenery — the terrain-object grass. Its quads
+// stand UPRIGHT in the world (a cylindrical billboard: yaw follows the camera
+// so a clump never degenerates to an edge, pitch stays vertical), anchored per
+// the instance's <Pivot> ((0,-1) = bottom edge, a blade grows up from where it
+// stands), rolled by the baked rotation. Full camera-facing quads are what
+// turned a field of grass into glowing scribble: seen from a low camera every
+// card tipped toward the lens and the clumps piled into a web.
+const VERT_STATIC = `
+in vec3 aCenter;
+in vec3 aSizeRot;
+in vec4 aColor;
+in float aTex;
+uniform vec2 uPivot;
+out vec2 vUv;
+out vec4 vColor;
+out float vTex;
+void main() {
+  vec3 center = (modelMatrix * vec4(aCenter, 1.0)).xyz;
+  vec3 toCam = cameraPosition - center;
+  vec2 h = toCam.xy;
+  h = dot(h, h) > 1e-8 ? normalize(h) : vec2(1.0, 0.0);
+  vec3 rightW = vec3(-h.y, h.x, 0.0);
+  float cr = cos(aSizeRot.z), sr = sin(aSizeRot.z);
+  vec2 corner = (position.xy - 0.5 * uPivot) * aSizeRot.xy;
+  vec2 rc = vec2(corner.x * cr - corner.y * sr, corner.x * sr + corner.y * cr);
+  vec3 world = center + rightW * rc.x + vec3(0.0, 0.0, 1.0) * rc.y;
+  gl_Position = projectionMatrix * viewMatrix * vec4(world, 1.0);
   vUv = uv;
   vColor = aColor;
   vTex = aTex;
@@ -131,6 +166,32 @@ void main() {
   float a = s.a * vColor.a;
   if (a < 0.003 && max(rgb.r, max(rgb.g, rgb.b)) < 0.004) discard;
   outColor = vec4(rgb, a);
+}`;
+
+// The static-scenery end of it: the game's candidate shader (0xc77e94) leaves
+// the texel's rgb UNTOUCHED — no baked-colour tint, no modulate — and uses the
+// particle colour only through its alpha. Grass in the game is exactly the
+// texture's own dark green. The texel is premultiplied by alpha here because
+// the material blends ONE / ONE_MINUS_SRC_ALPHA: without it every soft edge
+// ADDS its colour over the scene, which is where the neon glow came from.
+const FRAG_STATIC = `
+precision highp float;
+uniform sampler2D uAtlas;
+uniform sampler2D uAlpha;
+uniform vec2 uGrid;
+in vec2 vUv;
+in vec4 vColor;
+in float vTex;
+out vec4 outColor;
+void main() {
+  if (vTex < -0.5) discard;
+  float t = floor(vTex + 0.5);
+  float col = mod(t, uGrid.x), row = floor(t / uGrid.x);
+  vec2 uv = vec2(col + vUv.x, (uGrid.y - 1.0 - row) + vUv.y) / uGrid;
+  vec4 s = vec4(texture(uAtlas, uv).rgb, texture(uAlpha, uv).r);
+  float a = s.a * vColor.a;
+  if (a < 0.01) discard;
+  outColor = vec4(s.rgb * a, a);
 }`;
 
 /** Strides of the flat [frame, ...values] channel arrays. */
@@ -199,8 +260,8 @@ export function createFxSystem(
 
   const mat = new THREE.ShaderMaterial({
     glslVersion: THREE.GLSL3,
-    vertexShader: VERT,
-    fragmentShader: FRAG,
+    vertexShader: fx.static ? VERT_STATIC : VERT,
+    fragmentShader: fx.static ? FRAG_STATIC : FRAG,
     uniforms: {
       uAtlas: { value: null },
       uAlpha: { value: null },
@@ -208,6 +269,7 @@ export function createFxSystem(
       // Shared by reference: the app mutates the lit tint in place when the
       // preset (or the Light toggle) changes, like the terrain uniforms.
       uTint: fx.lit ? litTint : WHITE_TINT,
+      ...(fx.static ? { uPivot: { value: new THREE.Vector2(fx.pivot?.[0] ?? 0, fx.pivot?.[1] ?? 0) } } : {}),
     },
     transparent: true,
     depthWrite: false,
@@ -233,7 +295,7 @@ export function createFxSystem(
   mesh.matrix.multiplyMatrices(objectMatrix, local);
   mesh.renderOrder = 3; // over the water sheet and the ground overlay
 
-  const ready = buildAtlas(fx.textures).then(({ tex, alpha, cols, rows }) => {
+  const ready = buildAtlas(fx.textures, 128, !!fx.static).then(({ tex, alpha, cols, rows }) => {
     mat.uniforms.uAtlas!.value = tex;
     mat.uniforms.uAlpha!.value = alpha;
     (mat.uniforms.uGrid!.value as THREE.Vector2).set(cols, rows);
