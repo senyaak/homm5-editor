@@ -172,13 +172,14 @@ skeleton, the same rule position and rotation follow. `BakedClip.scales` is
 **absent** when every bone stays at unit scale, which is most creature clips —
 they are the bulk of the payload and pay nothing.
 
-**The root's scale is NOT the clip's.** Every caller hoists it out as the
-model's display scale and puts it on the mesh (`GeomData.scale`: phoenix 0.37,
-griffin 1.5), so bone 0 is divided by that same number on the way into the bake.
-Baked in twice, a phoenix comes out at 0.37² of its size. A check on the effect
-models cannot see this — theirs all happen to rest at 1 — so it lives in
-`test-idle.ts` against real creatures, where sabotaging the division turns it
-red.
+**The root's scale is NOT the clip's to carry.** It is the model's display
+scale, which every caller hoists onto the mesh instead (`GeomData.scale`, and
+docs/EFFECTS_FORMAT.md §2 for what it is and why the effects around a creature
+do not take it). So bone 0 is divided by that same number on the way into the
+bake — applied at both ends it multiplies in twice, and a creature comes out at
+the square of its scale. A check on the effect models cannot see this, because
+theirs all happen to rest at 1: it lives in `test-idle.ts` against real
+creatures, where sabotaging the division turns it red.
 
 **The bind-matrix trap, since it cost a debugging round.** three.js's shader
 computes `bindMatrixInverse * Σ w (bone.matrixWorld * boneInverse) * bindMatrix *

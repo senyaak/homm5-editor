@@ -78,7 +78,9 @@ on these instances:
   the placed mesh; the effect stays unscaled — the phoenix's flames are baked
   full-size around the 0.37 bird, which is the game's own look (small bird,
   towering fire). Bone-glued instances compose the scale through the bone
-  chain, so the eye glow of a scaled head stays on the head.
+  chain, so the eye glow of a scaled head stays on the head. Because the mesh
+  carries it, the baked clip must not: bone 0's scale is divided by it on the
+  way into the bake (docs/ANIMATION_FORMAT.md §5).
 
 `<Lights>` (`LightInstance` → `AnimLight` → `bin/Lights/<uid>`, the Nival
 container, 98 files) is deliberately parked: of the 532 effects reachable from

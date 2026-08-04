@@ -546,6 +546,12 @@ going quietly green.
   `<Duration>` is the fallback (2.5 in 1781 of the 1814 shipped effects — it is
   the editor's default, which is why it is a fallback and not the rule).
 
+  And the clip's SCALE is what most of these models are actually doing: a
+  meteor impact is one small quad that swells and settles, the gating vortex a
+  cylinder that opens around the caster. Baked without that channel they stood
+  at bind size — cards in the grass, a knot of ribbons — which is the shape
+  this bug took on screen (docs/ANIMATION_FORMAT.md §5).
+
   Still missing, and visible. An effect's `<Lights>` — a `LightInstance`
   pointing at an `AnimLight`, whose colour and intensity are a baked blob like
   an animation's — is not drawn at all. And 46 of the 298 placed effects fly a
