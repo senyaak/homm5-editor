@@ -22,6 +22,7 @@ import { addItem, reveal, setTreeValue } from './tree.ts';
 import { DATA } from './launch.ts';
 import { MOD, SHARPSHOOTER, clearMap, modGameRoot, readInstalledMod } from './mods.ts';
 import { readExe } from '../src/exe/creature-limit.ts';
+import { readEntries } from '../src/format/pak.ts';
 import { modFile } from '../src/game/mod-paths.ts';
 
 let ed: Launched;
@@ -225,13 +226,17 @@ test('an installed creature opens for editing, whole', async () => {
   await expect(page.locator('#unitsmod')).toBeHidden();
 });
 
-test('the dragon tag reaches the file the extension reads, and leaves it', async () => {
+test('the dragon tag rides in the record, and the config names the ability', async () => {
   const { page } = ed;
   const effects = join(GAME, 'bin', 'homm5-editor-effects.txt');
   const dragonLine = (): string | undefined => (existsSync(effects)
     ? readFileSync(effects, 'latin1').split(/\r?\n/).find((l) => l.startsWith('dragon'))
     : undefined);
-  expect(dragonLine(), 'nothing is a dragon before this test').toBeUndefined();
+  // The line is the ability's NUMBER, not a list of creatures — so it is there
+  // as soon as the mod ships the ability, whether or not anything carries it.
+  // What the tag decides is what the creature's own record says.
+  expect(dragonLine(), 'the install says which ability means dragon')
+    .toMatch(/^dragon-ability \d+$/);
 
   if (!(await page.locator('#unitsmod').isVisible())) await page.locator('#unitsbtn').click();
   const row = page.locator('#um-list .um-item', { hasText: SHARPSHOOTER.name }).first();
@@ -252,11 +257,18 @@ test('the dragon tag reaches the file the extension reads, and leaves it', async
 
   const tagged = readInstalledMod(GAME).creatures[0]!;
   expect(tagged.stats.abilities, 'the tag rides in the record').toContain('ABILITY_DRAGON');
-  expect(dragonLine(), 'and the install compiles it into one line')
-    .toBe(`dragon ${tagged.number}`);
+  // And the mod really ships the ability the record names — an id with no object
+  // behind it is an id the game reads as nothing.
+  const inside = new Map(readEntries(readFileSync(modFile(GAME, 'mod', MOD)))
+    .map((e) => [e.name.replace(/\\/g, '/'), e.data]));
+  expect(inside.get('GameMechanics/RefTables/CombatAbilities.xdb')?.toString('latin1'),
+    'the ability is an object in the table the mod carries').toContain('<ID>ABILITY_DRAGON</ID>');
+  expect(inside.get('types.xml')?.toString('latin1'), 'and the map the loader resolves through')
+    .toContain('<Name>ABILITY_DRAGON</Name>');
 
-  // Taking it off must take the line off too — a stale line would keep a rune
-  // refusing a creature that no longer claims to be a dragon.
+  // Taking it off leaves the record without it. The config line stays, because
+  // it names the ABILITY and the ability is still there — what changed is what
+  // this creature says about itself, which is where the answer comes from.
   await row.locator('button', { hasText: '✎' }).click();
   await expect(page.locator('#unitedit')).toBeVisible();
   await page.locator('#um-abilities label', { has: page.locator('option:checked') })
@@ -268,7 +280,8 @@ test('the dragon tag reaches the file the extension reads, and leaves it', async
 
   const plain = readInstalledMod(GAME).creatures[0]!;
   expect(plain.stats.abilities).not.toContain('ABILITY_DRAGON');
-  expect(dragonLine(), 'and the line is gone with it').toBeUndefined();
+  expect(dragonLine(), 'and the ability is still named, since it still exists')
+    .toMatch(/^dragon-ability \d+$/);
 
   await page.locator('#um-cancel').click();
   await expect(page.locator('#unitsmod')).toBeHidden();

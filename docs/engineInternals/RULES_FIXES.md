@@ -285,13 +285,28 @@ mov eax,[eax+0x100] / test eax,eax / cmovz eax,esi / nop / nop
 **And the thirteenth dragon.** The table is four ids compiled into the
 executable, so the fix above ends exactly where the shipped game ends: a dragon
 of the editor's is not in it and never can be. So a creature of ours says it for
-itself, with a creature ability of ours — `ABILITY_DRAGON`, a real one, added to
-the `CombatAbilities` table and to types.xml the way an artifact is added, and
-doing nothing whatever, since nothing in the engine asks about it. Installing
-the mod writes the creatures carrying it into the extension's config as
-`dragon <id> …`, and the one place the question IS asked (`0xDA0759`) is pointed
-at us: the engine's answer first, our list after it. With no such creature, that
-call is left alone. See [../NEW_CREATURES.md](../NEW_CREATURES.md).
+itself, the way it says it is undead — with an ABILITY in its own record.
+`ABILITY_DRAGON` is a real one, added to the `CombatAbilities` table and to
+types.xml the way an artifact is added, and doing nothing whatever, since
+nothing in the engine asks about it. See [../NEW_CREATURES.md](../NEW_CREATURES.md).
+
+**And we ask the creature, not a list.** The one place the question is asked
+(`0xDA0759`) is pointed at us: the engine's answer first — the table, now with
+its fallback — and the creature's own abilities after it. The only thing the
+extension cannot work out is which NUMBER the ability got, since that is decided
+when the mod is built, so the config carries that one number
+(`dragon-ability <n>`) and nothing else. Give the ability another number and the
+line moves with it.
+
+**Where a record keeps its abilities is measured, not assumed.** They are a
+vector — `begin` and `end` pointers, four bytes an entry, the shape the engine's
+own accessor at `0xABA730` reads a record's vector with. The offset is found
+once, on the first question, by looking: the Fire Dragon (104) carries exactly
+Elemental (12), Immunity to Fire (21), Fire Shield (62) and Fire Breath (76), in
+that order and nothing else, so the record is searched for the pointer pair
+whose contents are those four. One hit is the offset, and the log says which.
+No hit means the data under us is not what was measured — and then this answers
+nothing rather than dereferencing a guess.
 
 **Not a transliteration.** dredknight's patch throws the table away and answers
 `tier >= 7`. That covers the same four, but it makes a dragon of every other

@@ -54,9 +54,10 @@ one.
 - **A creature of yours can say it is a dragon.** The Rune of the Dragon Form is
   refused on dragons, and the engine knows which creatures those are from four
   ids compiled into it — enough for the twelve the game ships, blind to a
-  thirteenth. Tag a creature of yours with Дракон and installing writes it into
-  the extension's config, where the rune's question now goes: the engine's own
-  answer first, yours after it. With nothing tagged, not a byte of that call is
+  thirteenth. Tag a creature of yours with Дракон and the rune refuses it too:
+  the extension asks the creature whether it carries that ability, the way the
+  engine asks whether it is undead, and the install only has to say which number
+  the ability got. With no ability in the mod, not a byte of that call is
   touched.
 
 - **Dragon Form is refused on a dragon that never upgraded.** The rune says it

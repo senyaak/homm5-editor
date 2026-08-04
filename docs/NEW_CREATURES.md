@@ -545,9 +545,10 @@ that carries them is installed and reads them out of the data afterwards.
 **What the dragon tag is for.** The Rune of the Dragon Form ends its description with
 *"(неприменимо к драконам)"*, and the engine decides what a dragon is from four ids compiled
 into the executable — enough for the twelve dragons the game ships, and blind to a
-thirteenth. Installing writes the creatures carrying the tag into
-`bin/homm5-editor-effects.txt` as one line (`dragon 201 204`), and the extension answers the
-rune with the engine's own answer *or* that list, behind the `dragon-form-fix` switch. See
+thirteenth. The extension asks the creature itself whether it carries the tag, the way the
+engine asks whether it is undead; the only thing the install has to tell it is which NUMBER
+the ability got (`dragon-ability 175` in `bin/homm5-editor-effects.txt`), because that is
+decided when the mod is built. See
 [engineInternals/RULES_FIXES.md](engineInternals/RULES_FIXES.md).
 
 ## Trying it: `tools/make-test-map.ts`

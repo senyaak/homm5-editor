@@ -150,7 +150,7 @@ export function writeEffects(
   rows: readonly EffectRow[],
   specializations: readonly SpecializationRow[] = [],
   skills: readonly SkillRow[] = [],
-  dragons: readonly number[] = [],
+  dragonAbility?: number,
 ): string {
   const lines = [
     '# Effects the editor added, written by it - see src/mods/artifact-effects.ts.',
@@ -160,13 +160,16 @@ export function writeEffects(
     '#   <stat> set <worn> <amount> <id> <id> ...',
     '#   <stat> skill <value> <amount per level of mastery>',
     '#   <stat> specialization <value> <percent per hero level>',
-    '#   dragon <creature id> <creature id> ...',
+    '#   dragon-ability <number>',
     '',
   ];
-  // A creature of ours that carries the dragon tag. Not a term added to a sum
-  // like the rest of the file: it answers a QUESTION the engine asks about a
-  // creature, and the engine's own answer stands for the twelve it ships.
-  if (dragons.length) lines.push(`dragon ${[...dragons].sort((a, b) => a - b).join(' ')}`);
+  // The NUMBER of the ability that means "this creature is a dragon" — not a
+  // list of creatures, and not a term added to a sum like the rest of the file.
+  // The extension asks the creature itself whether it carries this one, so the
+  // only thing it cannot work out for itself is which number the ability got:
+  // that is decided here, when the mod is built, and travels in this line. Move
+  // the ability and the line moves with it.
+  if (dragonAbility !== undefined) lines.push(`dragon-ability ${dragonAbility}`);
   for (const r of rows) {
     if (!r.amount || !r.artifacts.length) continue;
     const comment = r.name ? `   # ${r.name}` : '';
@@ -240,16 +243,14 @@ export function readSkillEffects(text: string): SkillRow[] {
   return rows;
 }
 
-/** The creatures the file calls dragons, read back the same separate way. */
-export function readDragons(text: string): number[] {
-  const ids: number[] = [];
+/** The number the file gives the dragon ability, read back the same separate way. */
+export function readDragonAbility(text: string): number | undefined {
   for (const line of text.split(/\r?\n/)) {
     if (line.trimStart().startsWith('#')) continue;
-    const body = line.split('#')[0] ?? '';
-    const m = /^\s*dragon((?:\s+\d+)+)\s*$/.exec(body);
-    if (m) ids.push(...m[1]!.trim().split(/\s+/).map(Number));
+    const m = /^\s*dragon-ability\s+(\d+)\s*$/.exec(line.split('#')[0] ?? '');
+    if (m) return Number(m[1]);
   }
-  return ids;
+  return undefined;
 }
 
 /** A skill of a mod, as far as its effects are concerned. */

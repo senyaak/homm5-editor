@@ -32,23 +32,21 @@ static void load_config(void) {
     //   <stat> artifact <id> <amount>
     //   <stat> set <worn> <amount> <id> <id> …
     //   <stat> specialization <value> <percent per hero level>
-    //   dragon <creature id> <creature id> …
+    //   dragon-ability <number>
     //
-    // The dragon line names no stat and adds to no sum — it answers a question
-    // about a creature — so it is taken first, on its own word, and every other
-    // reader below sees a line that begins with nothing they know.
+    // The dragon line names no stat and adds to no sum — it says which ability
+    // number means "dragon", and the creature itself says whether it has it —
+    // so it is taken first, on its own word, and every other reader below sees a
+    // line that begins with nothing they know.
     {
       const char *q = line;
-      if (take_word(&q, stop, "dragon")) {
-        int id = 0;
-        while (g_dragonCount < MAX_DRAGONS && read_int(&q, stop, &id)) {
-          if (id > 0) g_dragons[g_dragonCount++] = id;
-        }
+      if (take_word(&q, stop, "dragon-ability")) {
+        int n = 0;
+        if (read_int(&q, stop, &n) && n > 0) g_dragonAbility = n;
         continue;
       }
     }
 
-    //
     // The specialization rows are tried FIRST and against their own stat names:
     // they share nothing with the artifact rows but the file, and a line that
     // belongs to neither grammar is skipped by both.
@@ -116,6 +114,6 @@ static void load_config(void) {
   log_num("config rows: ", g_rowCount);
   log_num("skill rows: ", g_skillRowCount);
   log_num("specialization rows: ", g_specRowCount);
-  log_num("creatures called dragons: ", g_dragonCount);
+  if (g_dragonAbility) log_num("the ability that means dragon: ", g_dragonAbility);
 }
 

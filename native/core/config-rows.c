@@ -118,17 +118,17 @@ static SpecRow g_specRows[MAX_SPEC_ROWS];
 static int g_specRowCount = 0;
 
 /**
- * The creatures the editor calls dragons — `dragon <id> <id> …`, one line.
+ * The number of the ability that means "this creature is a dragon" —
+ * `dragon-ability <n>`, one line.
  *
- * Not a term added to a sum like every row above it: it ANSWERS a question the
- * engine asks about a creature, and the engine answers it for the twelve it
- * ships all by itself (see qol/fix-dragon-form.c). This is the thirteenth and
- * anything after it — a creature of the editor's, carrying an ability id of
- * ours in its own record, which the game reads as ABILITY_NONE and ignores.
+ * Not a term added to a sum like every row above it, and not a list of
+ * creatures either: a creature says what it is in its OWN record, the way it
+ * says it is undead, and we ask it. The one thing that cannot be worked out
+ * here is which number the editor gave that ability when it built the mod — so
+ * that number, and nothing else, is what the line carries. Move the ability and
+ * the line moves with it.
  */
-#define MAX_DRAGONS 32
-static int g_dragons[MAX_DRAGONS];
-static int g_dragonCount = 0;
+static int g_dragonAbility = 0;
 
 static RaiseFn g_original = NULL;
 static CostFn g_originalCost = NULL;
