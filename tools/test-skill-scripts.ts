@@ -7,7 +7,7 @@
 // line it came with.
 
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { join } from 'node:path';
 
 import {
   COMBAT_STARTUP, patchCombatStartup, skillCombatScripts, skillMapScripts, skillScriptFiles,
@@ -15,6 +15,7 @@ import {
 import { SCRIPT_DIR, patchCommonScript } from '../src/mods/artifact-scripts.ts';
 import { luaDiagnostics } from '../src/script/lua-lint.ts';
 import type { ModHeroSkill } from '../src/mods/hero-skills.ts';
+import { dataDir } from './game-dir.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {
@@ -127,10 +128,10 @@ check('the patched common script passes the linter', luaDiagnostics(common).leng
 // the empty hooks afterwards, so anything of ours placed earlier is overwritten
 // a moment later by a declaration that does nothing.
 
-const gameRoot = process.env.HOMM5_GAME ?? resolve(import.meta.dirname, '..', '..');
+const shippedCombatAt = join(dataDir(), COMBAT_STARTUP);
 let shippedCombat: string | null = null;
 try {
-  shippedCombat = readFileSync(resolve(import.meta.dirname, '..', 'data-unpacked', COMBAT_STARTUP), 'latin1');
+  shippedCombat = readFileSync(shippedCombatAt, 'latin1');
 } catch {
   shippedCombat = null;
 }
@@ -140,7 +141,7 @@ check('a mod with no battle script leaves combat-startup.lua alone',
   === 'doFile("/scripts/combat-common.lua")\n');
 
 if (shippedCombat === null) {
-  console.log(`  skip  the shipped combat-startup.lua is not unpacked (${gameRoot})`);
+  console.log(`  skip  the shipped combat-startup.lua is not unpacked (${shippedCombatAt})`);
 } else {
   const combat = patchCombatStartup(shippedCombat, [SPARE_KIT]);
   check('every line the game ships is still there', combat.startsWith(shippedCombat.trimEnd()));

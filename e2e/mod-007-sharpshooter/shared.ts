@@ -32,13 +32,11 @@ import { editStruct, placeAtTile, setPlacement, setTextRef } from '../objects.ts
 import { addValueItem, setTreeTextRef, setTreeValue } from '../tree.ts';
 import { readEntries } from '../../src/format/pak.ts';
 import { MOD_EXT, modFile } from '../../src/game/mod-paths.ts';
-import { installMapFixture, LIVE, modGameRoot, PALACE_SHARED } from '../mods.ts';
+import { installMapFixture, LIVE, modGameRoot, PALACE_SHARED, REAL_GAME } from '../mods.ts';
 
 export const DATA = process.env.HOMM5_DATA || join(REPO_ROOT, 'data-unpacked');
 /** This run's own game install: the fixture mod goes here, the archive comes out here. */
 export const GAME = modGameRoot();
-/** The real install the checkout sits in — the source of the mod and the original. */
-export const REAL_GAME = join(REPO_ROOT, '..');
 /**
  * The map this stage rebuilds.
  *

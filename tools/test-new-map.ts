@@ -12,6 +12,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { buildNewMapProject } from '../src/map/new-map.ts';
 import { Registry } from '../src/schema/registry.ts';
+import { dataDir } from './game-dir.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {
@@ -86,7 +87,7 @@ function testAgainstOracles(dir: string, dataRoot: string): void {
 testSelfContained();
 
 const dir = process.argv[2] || process.env.HOMM5_BLANKS;
-const dataRoot = process.env.HOMM5_DATA || join(import.meta.dirname, '..', 'data-unpacked');
+const dataRoot = dataDir();
 if (dir && existsSync(dir) && existsSync(join(dataRoot, 'GameMechanics'))) testAgainstOracles(dir, dataRoot);
 else console.log('\n(no blank projects + game data — pass a dir and set HOMM5_DATA for the byte-exact check)');
 

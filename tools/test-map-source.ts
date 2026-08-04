@@ -12,6 +12,7 @@ import { join, resolve } from 'node:path';
 import { extractMapFolder, gameArchives, listOurMaps, listStockMaps } from '../src/map/map-source.ts';
 import { ensureModDir, modFile } from '../src/game/mod-paths.ts';
 import { writeArchive } from '../src/format/pak.ts';
+import { gameDirIfAny } from './game-dir.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {
@@ -110,8 +111,13 @@ try {
 
 // --- the real install, read only ------------------------------------------------
 
-const gameRoot = process.env.HOMM5_GAME ?? resolve(import.meta.dirname, '..', '..');
-if (existsSync(join(gameRoot, 'data'))) {
+// Said, never guessed from the checkout's position (tools/game-dir.ts); with
+// nothing said, the install half is skipped in so many words below.
+const gameRoot = gameDirIfAny();
+if (!gameRoot) {
+  console.log('  skip  the real install — pass --game <dir> or set HOMM5_GAME');
+}
+if (gameRoot && existsSync(join(gameRoot, 'data'))) {
   const started = performance.now();
   const stock = listStockMaps(gameRoot);
   const ms = (performance.now() - started) | 0;

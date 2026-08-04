@@ -15,6 +15,7 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { gameDirIfAny } from './game-dir.ts';
 import {
   MAX_IMM8, ORIGINAL_ARTIFACTS, SITES_FILE, findArtifactSites, patchArtifactLimit, readArtifactLimit,
 } from '../src/exe/artifact-limit.ts';
@@ -123,9 +124,12 @@ function tinyExe(o: { count?: number; imm32?: boolean; accessor?: boolean } = {}
 
 // --- the real thing, read only ------------------------------------------------
 
-const gameRoot = join(import.meta.dirname, '..', '..');
-for (const exe of ['bin/H5_Game_H5E.exe', 'bin/H5_Game.exe']) {
-  const path = join(gameRoot, exe);
+// Said, never guessed from the checkout's position (tools/game-dir.ts); with
+// nothing said, the real executables are skipped in so many words.
+const gameRoot = gameDirIfAny();
+if (!gameRoot) console.log('  skip  the real executables — pass --game <dir> or set HOMM5_GAME');
+for (const exe of gameRoot ? ['bin/H5_Game_H5E.exe', 'bin/H5_Game.exe'] : []) {
+  const path = join(gameRoot!, exe);
   if (!existsSync(path)) continue;
   const r = readArtifactLimit(readFileSync(path));
   if (r.wrapped) {
@@ -137,7 +141,7 @@ for (const exe of ['bin/H5_Game_H5E.exe', 'bin/H5_Game.exe']) {
     // An executable already patched to a round number can no longer find its own
     // accessor — `mov eax,100; ret` occurs four times in the real one — which is
     // the whole reason the offsets are noted beside it when they ARE found.
-    const noted = join(gameRoot, SITES_FILE);
+    const noted = join(gameRoot!, SITES_FILE);
     check(`${exe} is patched, so its places are in the note beside it`, existsSync(noted),
       `the search found ${r.sites.length} of 2, and ${SITES_FILE} is missing`);
   }

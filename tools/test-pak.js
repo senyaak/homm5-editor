@@ -12,13 +12,17 @@ import { readFileSync, writeFileSync, appendFileSync, mkdirSync, statSync, rmSyn
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
+import { gameDirIfAny } from './game-dir.ts';
 
-// The sample lives in the game's data. A checkout inside the install finds it
-// one level up; a WORKTREE does not sit inside one, so HOMM5_GAME says where
-// the game is — the same variable every other game-reading tool honours.
-const PAK = process.env.HOMM5_GAME
-  ? join(process.env.HOMM5_GAME, 'data', 'GEmaps.pak')
-  : '../data/GEmaps.pak';
+// The sample lives in the game's data, and where the game is is SAID, never
+// guessed from the checkout's position (tools/game-dir.ts). Nothing said means
+// this suite skips in so many words — its subject needs the real sample.
+const game = gameDirIfAny();
+if (!game) {
+  console.log('skip — the GEmaps.pak sample lives in the game; pass --game <dir> or set HOMM5_GAME');
+  process.exit(0);
+}
+const PAK = join(game, 'data', 'GEmaps.pak');
 const sha1 = (b) => createHash('sha1').update(b).digest('hex');
 let failures = 0;
 const ok = (cond, msg) => { console.log(`${cond ? 'ok  ' : 'FAIL'} ${msg}`); if (!cond) failures++; };

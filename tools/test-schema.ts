@@ -12,8 +12,9 @@ import { mapSchema, deref, controlOf, resolveRef } from '../src/schema/schema.ts
 import type { FieldSchema, RegistryName } from '../src/schema/schema.ts';
 import { loadMap } from '../src/map/map.ts';
 import { children } from '../src/format/xml.ts';
+import { dataDir } from './game-dir.ts';
 
-const dataRoot = process.argv[2] ?? 'data-unpacked';
+const dataRoot = process.argv[2] ?? dataDir();
 
 /**
  * Any map the data root has, preferring a rich one.

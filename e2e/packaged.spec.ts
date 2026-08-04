@@ -15,6 +15,7 @@ import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { REPO_ROOT } from './launch.ts';
+import { REAL_GAME } from './mods.ts';
 
 const EXE = join(REPO_ROOT, 'dist', 'homm5-editor-win32-x64', 'homm5-editor.exe');
 const DATA = process.env.HOMM5_DATA || join(REPO_ROOT, 'data-unpacked');
@@ -88,7 +89,8 @@ test('and finishing setup opens the editor, without a second launch', async () =
     void setup.evaluate(({ game, data }) => {
       const w = window as unknown as { setup: { finish: (g: string, d: string) => Promise<boolean> } };
       void w.setup.finish(game, data);
-    }, { game: join(REPO_ROOT, '..'), data: DATA }).catch(() => { /* the page is gone; that is the point */ });
+    // The real install, said out loud — never the checkout's parent.
+    }, { game: REAL_GAME, data: DATA }).catch(() => { /* the page is gone; that is the point */ });
 
     // The editor window, in this run. Destroying the setup window left the app
     // with no windows open for an instant, and it took that as its cue to quit:

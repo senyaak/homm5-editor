@@ -8,6 +8,7 @@
 
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { dataDir } from './game-dir.ts';
 import {
   listPlaceable, readObjectGroups, findEditorRoot, iconPathFor, readIconFile,
 } from '../src/map/objects.ts';
@@ -21,7 +22,7 @@ function skip(msg: string): void { console.log(`skip  ${msg}`); }
 
 const DATA = process.env.HOMM5_DATA
   || 'C:/Games/Steam/steamapps/common/Heroes of Might and Magic 5 Tribes of the East/data';
-const SAMPLES = join(import.meta.dirname, '..', 'data-unpacked');
+const SAMPLES = dataDir();
 
 // The link files ship in the paks, so the unpacked tree has them even
 // though they have no Editor folder.
@@ -65,7 +66,7 @@ if (existsSync(join(SAMPLES, 'MapObjects', '_(AdvMapObjectLink)'))) {
 // dropdown holding nothing but All and Other, and no icons at all.
 //
 // So the check that matters is from the DEFAULT root, not from a convenient one.
-const DEFAULT_DATA = join(import.meta.dirname, '..', 'data-unpacked');
+const DEFAULT_DATA = dataDir();
 if (existsSync(join(DEFAULT_DATA, 'MapObjects'))) {
   const found = findEditorRoot(DEFAULT_DATA);
   // Only meaningful on a machine that has the game; elsewhere there is nothing

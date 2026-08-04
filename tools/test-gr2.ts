@@ -23,6 +23,7 @@ import {
 } from '../src/scene/animation.ts';
 import { extractMeshesStructured, readGeometryRefFromModelXdb } from '../src/scene/geometry.ts';
 import { createGeomResolver } from '../src/scene/scene.ts';
+import { dataDir } from './game-dir.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {
@@ -30,7 +31,7 @@ function check(name: string, ok: boolean, detail = ''): void {
   if (!ok) failures++;
 }
 
-const dataRoot = process.env.HOMM5_DATA || join(import.meta.dirname, '..', 'data-unpacked');
+const dataRoot = dataDir();
 const animDir = join(dataRoot, 'bin', 'animations');
 if (!existsSync(animDir)) {
   console.log('\n(no game data — set HOMM5_DATA or run `npm run unpack-data`; skipping)');

@@ -30,9 +30,10 @@ import { mapFilesUnder } from '../src/map/map-source.ts';
 import { loadMap } from '../src/map/map.ts';
 import { children, text } from '../src/format/xml.ts';
 import { readEntries, readIndex } from '../src/format/pak.ts';
+import { dataDir, gameDir } from './game-dir.ts';
 
 const args = process.argv.slice(2);
-const root = args.find((a) => !a.startsWith('--')) ?? 'data-unpacked';
+const root = args.find((a) => !a.startsWith('--')) ?? dataDir();
 const asMarkdown = args.includes('--md');
 const onlyType = /^--type=(\w+)$/.exec(args.find((a) => a.startsWith('--type=')) ?? '')?.[1];
 
@@ -123,7 +124,7 @@ function shippedMapPaths(dir: string): Set<string> | null {
 // The game install is the folder above the editor, unless told otherwise.
 const onlyShipped = args.includes('--only-shipped');
 const paksDir = process.env.HOMM5_PAKS
-  || (args.find((a) => a.startsWith('--paks='))?.slice('--paks='.length) ?? join(import.meta.dirname, '..', '..', 'data'));
+  || (args.find((a) => a.startsWith('--paks='))?.slice('--paks='.length) ?? join(gameDir(), 'data'));
 const shipped = onlyShipped ? shippedMapPaths(paksDir) : null;
 
 const sources: { where: string; xml: string }[] = [];

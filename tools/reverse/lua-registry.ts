@@ -10,6 +10,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { PEFile } from '../../src/exe/pe.ts';
+import { gameDirIfAny } from '../game-dir.ts';
 import { describeSignature, readLuaRegistry } from '../../src/exe/lua-registry.ts';
 
 const args = process.argv.slice(2);
@@ -19,10 +20,20 @@ const flag = (name: string): string | undefined => {
 };
 
 const editor = resolve(import.meta.dirname, '..', '..');
-// The editor usually sits inside the install; HOMM5_GAME covers a checkout that
-// does not (a worktree, say), the way HOMM5_DATA does for unpacked data.
-const gameRoot = process.env.HOMM5_GAME ?? resolve(editor, '..');
-const exePath = flag('exe') ?? resolve(gameRoot, 'bin', 'H5_Game_H5E.exe');
+// Said, never guessed from the checkout's position (tools/game-dir.ts). The
+// --check mode runs inside `npm test`, so with nothing said it SKIPS in so
+// many words rather than failing every machine that has not set HOMM5_GAME.
+const game = gameDirIfAny();
+const exePath = flag('exe') ?? (game ? resolve(game, 'bin', 'H5_Game_H5E.exe') : null);
+if (!exePath) {
+  const how = 'pass --exe <file>, --game <dir>, or set HOMM5_GAME';
+  if (process.argv.includes('--check')) {
+    console.log(`skip — no executable said (${how})`);
+    process.exit(0);
+  }
+  console.error(`where is the executable? ${how}`);
+  process.exit(2);
+}
 const docPath = flag('out') ?? resolve(editor, 'docs', 'EXE_LUA_REGISTRY.md');
 
 const pe = PEFile.read(exePath);

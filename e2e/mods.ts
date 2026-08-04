@@ -97,14 +97,18 @@ const ART = join(ASSETS, 'artifacts');
 /**
  * The install the executable is copied out of — the checkout's own, by default.
  *
- * `HOMM5_ROOT` FIRST, the same variable `E2E_GAME` already reads. A checkout
- * that sits inside the game needs nothing; a WORKTREE does not sit inside one —
- * its parent is wherever the worktrees are kept — and this went looking for
- * `bin/H5_Game.exe` there, found none, prepared no install, and every mod stage
- * then failed inside the app with "no executable at …/_tmp/e2e-mod-game/bin",
- * which names the copy rather than the missing original.
+ * `HOMM5_ROOT` FIRST, the same variable `E2E_GAME` already reads — that is the
+ * live mode's meaning of it. `HOMM5_GAME` covers the worktree that wants its
+ * sandboxes built FROM a real install without also playing IN it: the tools'
+ * variable, the same answer. NEVER the checkout's parent: a worktree's parent
+ * is wherever worktrees are kept, and the guess went looking for
+ * `bin/H5_Game.exe` there, found none, prepared no install, and every mod
+ * stage then failed inside the app with "no executable at …/e2e-mod-game/bin",
+ * which names the copy rather than the missing original. Empty means nobody
+ * said: every use already checks for the files it needs and says what is
+ * missing, and an empty root fails those checks the honest way.
  */
-export const REAL_GAME = process.env.HOMM5_ROOT || join(REPO_ROOT, '..');
+export const REAL_GAME = process.env.HOMM5_ROOT || process.env.HOMM5_GAME || '';
 /** The archive the dialogs always create: OUR mod, never a choice. */
 export const MOD = MOD_STEM;
 

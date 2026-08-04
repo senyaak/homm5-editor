@@ -19,6 +19,7 @@ import { readTypeSpec, typesXmlPath, fieldValues, valuesAtPath, enums } from '..
 import { objectSchema, objectProps, deref } from '../src/schema/schema.ts';
 import { loadMap } from '../src/map/map.ts';
 import { children, text } from '../src/format/xml.ts';
+import { dataDir } from './game-dir.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {
@@ -26,7 +27,7 @@ function check(name: string, ok: boolean, detail = ''): void {
   if (!ok) failures++;
 }
 
-const dataRoot = process.argv[2] ?? 'data-unpacked';
+const dataRoot = process.argv[2] ?? dataDir();
 const specPath = typesXmlPath(dataRoot);
 if (!specPath) {
   console.log(`(no types.xml under ${dataRoot} — skipping)`);

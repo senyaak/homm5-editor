@@ -32,12 +32,18 @@ import { join } from 'node:path';
 import { readEntries } from '../../src/format/pak.ts';
 import { modFile } from '../../src/game/mod-paths.ts';
 import { hudSays, launchEditor, REPO_ROOT } from '../launch.ts';
+import { REAL_GAME } from '../mods.ts';
 import type { Launched } from '../launch.ts';
 import { DATA } from '../launch.ts';
 import { MAP_DIR, NAME, NEED_FIXTURE, requireFixture } from './shared.ts';
 import { bar } from '../bar.ts';
 
 const KEEP = !!process.env.HOMM5_NO_REMOVE_MAP;
+// Keeping the map means putting it where the GAME reads — and where the game
+// is is said, never guessed from the checkout's position (tools/game-dir.ts).
+if (KEEP && !REAL_GAME) {
+  throw new Error('keeping the packed map needs the real install — set HOMM5_ROOT or HOMM5_GAME');
+}
 const MAP_XDB = join(MAP_DIR, 'map.xdb');
 const FIXTURE_DIR = join(REPO_ROOT, '_tmp', 'fixtures', 'C1M1');
 const FIXTURE_XDB = join(FIXTURE_DIR, 'C1M1.xdb');
@@ -47,7 +53,7 @@ const FIXTURE_XDB = join(FIXTURE_DIR, 'C1M1.xdb');
 // throwaway default stays under the test data root, beside where every other
 // spec packs.
 const ARCHIVE = KEEP
-  ? modFile(join(REPO_ROOT, '..'), 'map', NAME)
+  ? modFile(REAL_GAME, 'map', NAME)
   : join(DATA, 'Maps', 'SingleMissions', `${NAME}.h5m`);
 
 let ed: Launched;

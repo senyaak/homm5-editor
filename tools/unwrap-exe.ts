@@ -15,6 +15,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { CLEAN_EXE, SHIPPED_EXE, STEAMLESS, classify, ensureCleanExe } from '../src/exe/exe-unwrap.ts';
+import { gameDir } from './game-dir.ts';
 
 const args = process.argv.slice(2);
 const flag = (name: string): string | undefined => {
@@ -23,7 +24,7 @@ const flag = (name: string): string | undefined => {
 };
 
 /** The install this editor sits in, when it sits in one. */
-const game = flag('game') ?? resolve(import.meta.dirname, '..', '..');
+const game = gameDir();
 
 if (args.includes('--check')) {
   for (const rel of [SHIPPED_EXE, CLEAN_EXE]) {

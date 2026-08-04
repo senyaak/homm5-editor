@@ -30,6 +30,7 @@ import type { HeroSpec } from '../src/mods/heroes.ts';
 import { allFields, parseTypeSpec } from '../src/schema/typespec.ts';
 import { children, find, parse, text } from '../src/format/xml.ts';
 import { decodeDDSBuffer } from '../src/format/dds.ts';
+import { dataDir } from './game-dir.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {
@@ -39,7 +40,7 @@ function check(name: string, ok: boolean, detail = ''): void {
 
 /** The checkout, which is where the pictures a hero is built from live. */
 const REPO = join(import.meta.dirname, '..');
-const dataRoot = process.argv[2] ?? process.env.HOMM5_DATA ?? join(REPO, 'data-unpacked');
+const dataRoot = process.argv[2] ?? dataDir();
 if (!existsSync(join(dataRoot, 'types.xml'))) {
   console.log(`no unpacked data at ${dataRoot} — nothing to compare against`);
   process.exit(0);

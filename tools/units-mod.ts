@@ -34,6 +34,7 @@ import { MOD_MANIFEST, dataReader } from '../src/mods/mod-files.ts';
 import type { CreatureMod } from '../src/mods/mod-model.ts';
 import { PATCHED_EXE, readExe } from '../src/exe/creature-limit.ts';
 import { SHIPPED_CREATURES } from '../src/mods/creatures.ts';
+import { dataDir } from './game-dir.ts';
 
 const args = process.argv.slice(2);
 const command = args[0];
@@ -124,7 +125,7 @@ if (command === 'build') {
     process.exit(1);
   }
   const mod = JSON.parse(readFileSync(manifest, 'utf8')) as CreatureMod;
-  const data = flag('data') ?? process.env.HOMM5_DATA ?? join(here, 'data-unpacked');
+  const data = flag('data') ?? dataDir();
   if (!existsSync(data)) {
     console.error(`no unpacked game data at ${data} — point at one with --data or HOMM5_DATA`);
     process.exit(1);

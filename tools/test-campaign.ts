@@ -25,6 +25,7 @@ import {
 import { readEntries } from '../src/format/pak.ts';
 import { find, setAttr } from '../src/format/xml.ts';
 import type { XmlElement } from '../src/format/xml.ts';
+import { dataDir } from './game-dir.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {
@@ -191,7 +192,7 @@ function testProject(): void {
 // data when it is there: the reconstructed C1M1 holds Isabell, and the game's
 // own Isabell document is what says she is called "Isabell".
 function testHeroesAgainstMaps(): void {
-  const data = process.env.HOMM5_DATA || 'data-unpacked';
+  const data = dataDir();
   const isabell = join(data, 'MapObjects', 'Haven', 'Isabell.(AdvMapHeroShared).xdb');
   if (existsSync(isabell)) {
     console.log('\nAGAINST THE GAME DATA');

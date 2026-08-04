@@ -31,6 +31,7 @@ import type { CreatureMod } from '../src/mods/mod-model.ts';
 import type { DataReader, ModFile } from '../src/mods/mod-files.ts';
 import { blankStats, creatureRoot, readStats, SHIPPED_CREATURES } from '../src/mods/creatures.ts';
 import { readEntries } from '../src/format/pak.ts';
+import { dataDir } from './game-dir.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {
@@ -382,7 +383,7 @@ check('an empty mod is refused (there is nothing to open a slot for)',
 
 // ---- 2. against the real Sharp Shooter ---------------------------------------
 
-const dataRoot = process.env.HOMM5_DATA ?? join(import.meta.dirname, '..', 'data-unpacked');
+const dataRoot = dataDir();
 if (!existsSync(join(dataRoot, 'types.xml'))) {
   console.log(`\nskipping the real-data checks — no unpacked data at ${dataRoot}`);
 } else {

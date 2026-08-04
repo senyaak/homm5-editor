@@ -7,16 +7,7 @@
 // the panel could not call a tool. This wrapper is for working on the bar
 // without opening the editor — same output, same path.
 
-import { join, resolve } from 'node:path';
-
 import { writeQolArchive } from '#src/mods/qol-ui.ts';
+import { gameDir } from './game-dir.ts';
 
-const here = resolve(import.meta.dirname, '..');
-const args = process.argv.slice(2);
-const flag = (name: string): string | undefined => {
-  const i = args.indexOf(`--${name}`);
-  return i >= 0 ? args[i + 1] : undefined;
-};
-
-const game = resolve(flag('game') ?? process.env.HOMM5_GAME ?? join(here, '..'));
-console.log(`wrote ${writeQolArchive(game)}`);
+console.log(`wrote ${writeQolArchive(gameDir())}`);

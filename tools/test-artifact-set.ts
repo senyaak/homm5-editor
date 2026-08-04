@@ -23,6 +23,7 @@ import { join } from 'node:path';
 import { buildCreatureMod } from '../src/mods/creature-mod.ts';
 import { addArtifactSet, newCreatureMod } from '../src/mods/mod-model.ts';
 import { dataReader } from '../src/mods/mod-files.ts';
+import { dataDir } from './game-dir.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {
@@ -58,7 +59,7 @@ function check(name: string, ok: boolean, detail = ''): void {
     `got ${mod.sets[0]!.number}`);
 }
 
-const dataRoot = process.env.HOMM5_DATA ?? join(import.meta.dirname, '..', 'data-unpacked');
+const dataRoot = dataDir();
 if (!existsSync(join(dataRoot, 'types.xml'))) {
   console.log(`no unpacked data at ${dataRoot} — skipping the rest`);
   console.log(failures ? `\n${failures} failure(s)` : '\nall good');

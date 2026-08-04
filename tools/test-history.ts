@@ -12,6 +12,7 @@ import { join } from 'node:path';
 import { mapFilesUnder } from '../src/map/map-source.ts';
 import { diff, apply, History, storeSteps, loadSteps } from '../src/map/history.ts';
 import type { Step } from '../src/map/history.ts';
+import { dataDir } from './game-dir.ts';
 
 let failures = 0;
 function ok(name: string, cond: boolean, detail = ''): void {
@@ -204,7 +205,7 @@ if (!maps.length) {
 
     // Add: the reverse shape, and the one whose donor XML is largest.
     const type = 'AdvMapStatic';
-    const donor = donorFor('data-unpacked', type);
+    const donor = donorFor(dataDir(), type);
     edit('add object', () => {
       map.addObject({
         type, shared: '/MapObjects/Spruce.(AdvMapStaticShared).xdb#xpointer(/AdvMapStaticShared)',

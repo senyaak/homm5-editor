@@ -95,7 +95,10 @@ function bareWorld(): void {
 
 test.beforeAll(() => {
   for (const f of [join(REAL_GAME, SHIPPED), join(REAL_GAME, 'data', PAK)]) {
-    if (!existsSync(f)) throw new Error(`the cold start needs a real install to copy from — no ${f}`);
+    if (!existsSync(f)) {
+      throw new Error(`the cold start needs a real install to copy from — no ${f}`
+        + (REAL_GAME ? '' : ' (nobody said where the game is: set HOMM5_ROOT or HOMM5_GAME)'));
+    }
   }
 });
 

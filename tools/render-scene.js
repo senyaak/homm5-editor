@@ -9,10 +9,11 @@ import { deflateSync } from 'node:zlib';
 import { parseTerrain, readHeights } from '../src/terrain/terrain.ts';
 import { extractMeshes, readGeometryRefFromModelXdb } from '../src/scene/geometry.ts';
 import { decodeDDS } from '../src/format/dds.ts';
+import { dataDir } from './game-dir.ts';
 
 const [mapXdb, out, Ws, Hs] = process.argv.slice(2);
 const W = +(Ws || 1000), Ht = +(Hs || 680);
-const DATA = 'data-unpacked';
+const DATA = dataDir();
 const readXdb = (h) => { const p = DATA + h.split('#')[0]; return existsSync(p) ? readFileSync(p, 'utf8') : null; };
 
 // ---- gather scene (world-space triangles) ----
