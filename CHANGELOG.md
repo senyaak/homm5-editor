@@ -53,6 +53,38 @@ one.
     watching is done in Lua, which can read mana, and the writing in the
     extension, which is the only side that can reach a war machine's uses.
 
+### Changed
+
+- **Where the game is, is SAID — never guessed.** Every tool takes `--game` or
+  `HOMM5_GAME` (and the unpacked-data cache `--data` or `HOMM5_DATA`), through
+  one resolver, `tools/game-dir.ts`; a tool with nothing said refuses — or, in
+  a test suite, skips in so many words — instead of proceeding into a made-up
+  path. The old guess, "the checkout's parent", was only ever right when the
+  repo sat inside the install, and a worktree paid for it with failures three
+  calls away from the reason. The e2e suite follows: a worktree now builds its
+  sandboxes FROM a real install (`HOMM5_GAME`) without also playing IN it
+  (`HOMM5_ROOT`).
+
+- **The C1M1 reconstruction is a release gate, not a test run.** It rebuilds a
+  whole shipped mission over an extracted fixture — minutes that measure the
+  editor's completeness, not a change. A bare `playwright test` (and so
+  `test-e2e-fast`, and what `npm test` runs) never picks it up; `npm run
+  test-e2e` sets `PW_C1M1` and runs everything, which is what a release is
+  gated on.
+
+- **The extension's source is a folder of features.** `native/homm5-editor.c`
+  is now 133 lines of includes over `core/`, `combat/`, `lua/` and `qol/` —
+  still one translation unit, so every `static` stays `static` and the build
+  does not change; the cut is proved by the DLL coming out byte-for-byte
+  identical.
+
+- **The suite can start from nothing, and the specs found their shelves.**
+  `e2e/000-cold-start` walks the real setup window from a bare install to an
+  open editor — sandboxed, or live against the real install with only OUR
+  things taken out first. The game-settings specs are their own numbered
+  family (`qol-00X`), and the sharpshooter stage is a folder of three sittings
+  the way the C1M1 stages are.
+
 ### Fixed
 
 - **A mod could break battle scripting for the whole game, silently.** Our battle
