@@ -24,11 +24,15 @@
 // and with it clear not a byte of the image is written. See qol/config.c.
 
 /**
- * The stack's worth to the AI, with the ability-0x1D term multiplied ONCE.
+ * The stack's worth to the AI, with the Deflect Arrows term multiplied ONCE.
  *
- * The function scores one creature stack for a spell about to be cast, and its
- * every term has the same shape: work out a per-creature figure, multiply by how
- * many creatures there are. The 0x1D term is the only one that multiplies twice
+ * The ids asked through vtable+0x28 are the engine's own spell/effect registry
+ * (types.xml, 353 entries): 0x1D is SPELL_DEFLECT_ARROWS, and the neighbours in
+ * this function are Phantom, Celestial Shield, Rune of Etherealness and
+ * Invisibility — the function scores one creature stack for a spell about to be
+ * cast, effect by effect. Every term has the same shape: work out a
+ * per-creature figure, multiply by how many creatures there are. The Deflect
+ * Arrows term is the only one that multiplies twice
  *
  *   xmm1 = n*k/(1-r) + (1-k)*n     <- n is already in both halves
  *   xmm1 = xmm1 * n                <- and here it is again
@@ -42,17 +46,23 @@ static const BYTE WORTH_SQUARED[4] = { 0xF3, 0x0F, 0x59, 0xCA };
 static const BYTE WORTH_LINEAR[4] = { 0x90, 0x90, 0x90, 0x90 };
 
 /**
- * Casting considered even when the caster has ability 0x41.
+ * Casting considered even under COUNTERSPELL (0x41 in the same registry).
  *
- * The loop that decides what to cast asks the hero's spellbook holder for the
- * spell it is about to weigh, then asks the SPELL for ability 0x41 and abandons
- * the whole evaluation when it answers yes — jumping clean over the block that
- * asks what the spell would be worth (+0x244) and what it would cost (+0x40).
- * A spell that never gets weighed never gets cast, which is why an enemy hero
- * with a full book would stand there casting nothing all battle.
+ * The loop that decides what to cast reaches an object of the opposing side and
+ * asks it for SPELL_ABILITY_COUNTERSPELL; a yes abandons the evaluation
+ * entirely — jumping clean over the block that asks what the spell would be
+ * worth (+0x244) and what it would cost (+0x40). The engine's reasoning is
+ * visible ("my cast would be countered, so why weigh it") and it is WRONG as
+ * play: a counterspell is spent when it fires, so casting into it burns it,
+ * while refusing keeps the caster silent for as long as it is up. A spell that
+ * never gets weighed never gets cast, which is an enemy hero standing through
+ * a battle with a full book.
  *
  * `test eax,eax` and the near jump are what go, eight bytes together, so the
- * evaluation below them is reached whatever the answer was.
+ * evaluation below them is reached whatever the answer was. Not "weigh it with
+ * a penalty", which would be the ideal and needs new code rather than fewer
+ * bytes — a detour here is possible with the machinery in core/detour.c if the
+ * blunt version misplays in practice.
  */
 #define AI_SPELL_BAILOUT_RVA 0x972555u
 static const BYTE BAILOUT_TAKEN[8] = { 0x85, 0xC0, 0x0F, 0x85, 0x91, 0x00, 0x00, 0x00 };

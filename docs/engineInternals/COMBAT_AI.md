@@ -27,8 +27,24 @@ same order.
 
 - The **scoring function** — one stack's worth to a spell — is `0xBFBA50` there
   and `0xD71AB0` here. Both end in `ret 18h`, both call vtable `+0x84`, `+0x1E0`
-  and `+0x198`, and both ask about abilities `0x28`, `0x100`, `0x22`, `0x1D`
+  and `+0x198`, and both ask about effects `0x28`, `0x100`, `0x22`, `0x1D`
   and `0x13D` in that order.
+
+The ids asked through vtable `+0x28` are the engine's own spell/effect registry
+— the 353-entry enum in `types.xml`, `SPELL_NONE` through the ability effects:
+
+| id | name |
+|---|---|
+| `0x1D` | `SPELL_DEFLECT_ARROWS` |
+| `0x22` | `SPELL_CELESTIAL_SHIELD` |
+| `0x28` | `SPELL_PHANTOM` |
+| `0x41` | `SPELL_ABILITY_COUNTERSPELL` |
+| `0x100` | `SPELL_RUNE_OF_ETHEREALNESS` |
+| `0x13D` | `SPELL_ABILITY_INVISIBILITY` |
+
+That the id space is this enum is not a guess: the function at `0xBC6270` asks
+for `0x22` and then logs *"Celectial shield: damage reduced by"* (sic, the
+engine's own typo) about what it found.
 - Its **caller**, the loop over the stacks, is `0xBFBE50` there and `0xD71FF0`
   here.
 - The **plan constructor** is `0x8D7550` there and `0xD7F730` here: zero the
@@ -46,7 +62,7 @@ same order.
 `0xD71E9C`, RVA `0x971E9C`, four bytes.
 
 Every term in the score has one shape: a per-creature figure, multiplied by how
-many creatures there are. The term guarded by ability `0x1D` multiplies twice:
+many creatures there are. The Deflect Arrows term multiplies twice:
 
 ```
 xmm1 = n*k/(1-r) + (1-k)*n     ; n is already in both halves
@@ -61,12 +77,20 @@ target. The second `mulss` goes; the arithmetic either side of it is untouched.
 
 `0xD72555`, RVA `0x972555`, eight bytes.
 
-The loop that decides what to cast fetches the spell, asks it about ability
-`0x41`, and on yes jumps clean over the block that asks what the spell would be
-worth (`+0x244`) and what it would cost (`+0x40`). A spell that is never weighed
-is never cast — which is what an enemy hero standing through a battle with a full
-book looks like from the outside, and why fifth-circle spells in particular were
-never seen.
+The loop that decides what to cast reaches an object of the opposing side, asks
+it for `SPELL_ABILITY_COUNTERSPELL`, and on yes jumps clean over the block that
+asks what the spell would be worth (`+0x244`) and what it would cost (`+0x40`).
+A spell that is never weighed is never cast — which is what an enemy hero
+standing through a battle with a full book looks like from the outside.
+
+The engine's reasoning is visible, and it is wrong as *play* rather than as
+code: "my cast would be countered, so why weigh it". A counterspell is **spent**
+when it fires, so casting into it burns it for the cost of one (ideally cheap)
+spell — while refusing to cast keeps the caster silent for as long as it is up,
+which is exactly what the check does. Deleting it makes the AI cast into
+counterspells rather than be muted by them; the *ideal* fix — weigh the spell
+with a penalty so a cheap one gets sacrificed first — needs new code rather than
+fewer bytes, and stays possible through a detour if the blunt version misplays.
 
 `test eax,eax` and the near jump that follows it are what go, so the evaluation
 below is reached whatever the answer was.
@@ -85,8 +109,12 @@ This is the one of the three whose **consumer we have not read end to end**. Wha
 is known: the shape above, that the copy constructor carries the field across
 (`0xD7EE49`), that a reset method zeroes it (`0xD76682`), and that two plans
 comparing equal on it is part of how the AI decides two plans are the same one
-(`0xD7DED2`). The fix's own changelog calls this change *"lowered the priority of
-the counterspell"*.
+(`0xD7DED2`).
+
+The fix's changelog has one v1.1 line, *"lowered the priority of the
+counterspell"* — with `0x41` decoded that line reads as patch 2 (the
+counterspell bail-out losing its absolute say), not this one, though which of
+the three landed in which version is the author's to know.
 
 Note that our build's constructor writes **2** where the disassembly of the
 patched one shows 0. Their original value is not recoverable from a patched file
