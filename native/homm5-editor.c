@@ -80,6 +80,7 @@
 #include "qol/fix-barbarian-learning.c"
 #include "qol/fix-snare-crash.c"
 #include "qol/fix-payback.c"
+#include "qol/fix-dragon-form.c"
 
 BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   (void)reserved;
@@ -141,6 +142,7 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   if (g_qol[QOL_BARBARIAN_LEARNING_FIX]) install_barbarian_learning_fix();
   if (g_qol[QOL_SNARE_CRASH_FIX]) install_snare_fix();
   if (g_qol[QOL_PAYBACK_FIX]) install_payback_fix();
+  if (g_qol[QOL_DRAGON_FORM_FIX]) install_dragon_form_fix();
   return TRUE;
 }
 

@@ -159,6 +159,20 @@ export const QOL_FLAGS = [
       + ' — https://github.com/dredknight/H5_DLL',
   },
   {
+    name: 'dragon-form-fix',
+    tab: 'fixes',
+    group: 'mechanics',
+    title: 'Dragon Form is refused on a dragon that never upgraded',
+    detail: 'The Rune of the Dragon Form says it does not apply to dragons, and the game refuses it —'
+      + ' by asking the creature for its BASE creature and looking that up in a table of the four'
+      + ' dragons. A creature that is a base itself has no base, so the lookup falls out of range and'
+      + ' a Bone, Green, Deep or Fire Dragon is told it is not a dragon. Everywhere else the engine'
+      + ' reads a base creature it falls back to the creature itself; this writes that missing'
+      + ' fallback in. Upgraded dragons were refused before and still are.',
+    credit: 'Uses the work of H5_DLL by dredknight, with permission'
+      + ' — https://github.com/dredknight/H5_DLL',
+  },
+  {
     name: 'payback-fix',
     tab: 'fixes',
     group: 'mechanics',

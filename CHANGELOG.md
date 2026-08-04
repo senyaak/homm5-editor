@@ -31,6 +31,16 @@ one.
   inlined that function and allocated its registers differently. Both copies our
   compiler emitted are patched.
 
+- **Dragon Form is refused on a dragon that never upgraded.** The rune says it
+  does not apply to dragons, and the game refuses it — by asking the creature
+  for its *base* creature and looking that up in a table of the four dragons. A
+  creature that is a base itself has no base, so the lookup falls out of range
+  and a Bone, Green, Deep or Fire Dragon is told it is not a dragon. Everywhere
+  else the engine reads a base creature it falls back to the creature itself;
+  that missing fallback is now written in. Upgraded dragons were refused before
+  and still are. dredknight's fix answers "tier ≥ 7" instead, which would also
+  refuse the rune on an Archangel or a Titan in a dwarf's army.
+
 - **Payback stops paying for spells that worked.** Payback returns a spell's
   mana and moves the hero's turn up when a stack RESISTS it — but the cast keeps
   one byte for "the spell did nothing" and the three spells that put an obstacle

@@ -202,6 +202,52 @@ say.
 His file is `ArcaneRenewalFix.cpp`; that is Heroes 5.5's name for the perk, and
 the shipped game calls it Payback.
 
+## Dragon Form, offered to a dragon that never upgraded
+
+`0xABC9FC`, RVA `0x6BC9FC`, thirteen bytes.
+
+The Rune of the Dragon Form gives a stack +100% attack and defence and +50%
+magic resistance for a turn, and its description ends *"(неприменимо к
+драконам)"*. The refusal has a string of its own —
+`COMBAT_RUNIC_SPELL_CANT_DRAGONFORM`, *"Драконье обличье неприменимо к
+драконам"* — and one function decides it: `IsDragon` (`0xABC9F0`), called from
+exactly one place (`0xDA0759`).
+
+It answers from a table of four ids at `0xABCA30`: Bone (41), Green (55), Deep
+(83), Fire (104). But **it does not look up the id it was given.** It looks up
+`[record+0x100]` — the creature's BASE creature — which is `CREATURE_UNKNOWN`
+for a creature that is a base itself. `add eax,-0x29` then takes zero out of
+range, `ja` answers "not a dragon", and the four the table names are the four it
+cannot catch. Upgraded dragons are caught correctly: Magma's base is Fire,
+Rainbow's is Green.
+
+**How `+0x100` was read.** By the idiom around it. Reading a base creature in
+this executable is always two steps — `[record+0x100]`, and when that is zero
+the creature's own id from `[unit+0x1C]`, the same `+0x1C` handed to `IsDragon`.
+Three copies of it in our build, eighteen in retail:
+
+```bash
+node tools/reverse/match.ts find <exe> c0 "8B800001000085C075:1"
+```
+
+`IsDragon` has the first half and not the second. That is the whole bug, and it
+is also the fix.
+
+**Thirteen bytes, and eleven wanted.** The record is already in `eax` — fetched
+four instructions up, tested against null, untouched since — so
+`mov ecx,esi / call GetCreature / mov eax,[eax+0x100]` is the same fetch done
+twice. Dropping the repeat pays for the fallback with two bytes to spare:
+
+```
+mov eax,[eax+0x100] / test eax,eax / cmovz eax,esi / nop / nop
+```
+
+**Not a transliteration.** dredknight's patch throws the table away and answers
+`tier >= 7`. That covers the same four, but it makes a dragon of every other
+tier-7 creature: an Archangel or a Titan in a dwarf's army would be refused a
+rune the shipped game allows. The rune's text says dragons, and the engine
+already knows which creatures those are — it was only asking the wrong one.
+
 ## What is not done
 
 Proving the effects in a running game. The patches are verified as bytes and the
