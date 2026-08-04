@@ -183,10 +183,18 @@ static const BYTE ENERGY_GETTER_HEAD[7] = { 0x8B, 0x81, 0x38, 0x06, 0x00, 0x00, 
 
 /** `mov eax,<adventure-map table>; ret`, and the two bytes that say it is. */
 #define LUA_TABLE_ACCESSOR_RVA 0x1ce710u
+/**
+ * And the battle's, which is the same five bytes at another address.
+ *
+ * `0x601480: mov eax,0x108dfb0; ret` — 53 functions, the vocabulary a combat
+ * script is written against. One code site names that table and this is it, so
+ * the battle's Lua is extended exactly as the map's is.
+ */
+#define LUA_COMBAT_TABLE_ACCESSOR_RVA 0x201480u
 #define LUA_MOV_EAX_IMM 0xB8
 #define LUA_RET 0xC3
 /** How many of ours can be added. Room to grow; the table is ours to size. */
-#define MAX_LUA_FUNCTIONS 8
+#define MAX_LUA_FUNCTIONS 16
 
 /** One row of a registration table, exactly as the engine lays it out. */
 typedef struct {
@@ -235,11 +243,28 @@ static CountEquippedFn g_countEquipped = NULL;
  * answered for that hero. `energy` is a PLAYER's, so its rows are answered for
  * every hero of theirs and added up, the way another Amplifier would be.
  * `tent_charges` is a hero's again, asked once when his first aid tent is built
- * for a battle.
+ * for a battle, and so are the four beside it: `tent_healing` is points added to
+ * what one use of the tent is worth, `tent_cleanse` levels added to the worst
+ * effect it can lift off the stack it heals, `tent_health` percent added to the
+ * machine's own hit points, and `tent_mana` charges given back per hundred
+ * points of mana its owner spends. All four are the tent's, and three of them
+ * are answered in one function — see docs/engineInternals/FIRST_AID_TENT.md.
  */
-typedef enum { STAT_NECROMANCY = 0, STAT_ENERGY = 1, STAT_TENT_CHARGES = 2, STAT_COUNT = 3 } Stat;
+typedef enum {
+  STAT_NECROMANCY = 0,
+  STAT_ENERGY = 1,
+  STAT_TENT_CHARGES = 2,
+  STAT_TENT_HEALING = 3,
+  STAT_TENT_HEALTH = 4,
+  STAT_TENT_CLEANSE = 5,
+  STAT_TENT_MANA = 6,
+  STAT_COUNT = 7
+} Stat;
 
-static const char *const STAT_NAMES[STAT_COUNT] = { "necromancy", "energy", "tent_charges" };
+static const char *const STAT_NAMES[STAT_COUNT] = {
+  "necromancy", "energy", "tent_charges", "tent_healing", "tent_health",
+  "tent_cleanse", "tent_mana",
+};
 
 /**
  * One term: while these artifacts are worn, add this much.
@@ -400,7 +425,11 @@ static void beside_us(const WCHAR *name, WCHAR *out) {
   out[i] = 0;
 }
 
+/** Say it in the game's own console too, while a battle can be spoken to. */
+static void console_line(const char *text);
+
 static void log_line(const char *text) {
+  console_line(text);
   WCHAR path[MAX_PATH];
   beside_us(L"homm5-editor.log", path);
   HANDLE h = CreateFileW(path, FILE_APPEND_DATA, FILE_SHARE_READ, NULL, OPEN_ALWAYS,
@@ -1163,16 +1192,75 @@ static LuaEntry g_ourFunctions[MAX_LUA_FUNCTIONS] = {
 static int g_ourFunctionCount = 2;
 
 /**
+ * The same proof, one context over: a battle's script can reach us.
+ *
+ * It takes no arguments deliberately. Reading one would mean going through the
+ * engine's argument parser, and this function exists to answer a question that
+ * has nothing to do with arguments — whether a battle runs our code at all.
+ */
+static void *__fastcall lua_combat_test(void *ctx) {
+  (void)ctx;
+  log_line("lua: H5ECombatTest() was called from inside a battle");
+  return NULL;
+}
+
+
+#define MACHINE_CHARGES_EARLY 0xB0u
+
+
+/** The tent this battle built last — what `H5ETentCharge()` hands a use to. */
+static void *g_lastTent = NULL;
+
+/**
+ * One more use for the tent, asked for by a script. NO ARGUMENTS, deliberately.
+ *
+ * This is the half of the ultimate that Lua cannot do: the charges live at
+ * `machine+0xB0` and no registered function of the game's touches them. What
+ * Lua CAN do is watch the mana — `GetUnitManaPoints` is in its own vocabulary,
+ * and every unit's turn arrives as `UnitMove`. So the script counts and this
+ * writes, and neither side needs the thing it does not have — which is also why
+ * this takes no arguments: reading them means reimplementing the engine's
+ * parser, and the perk does not need to.
+ *
+ * ITS LIMIT, stated rather than discovered later: with no arguments it cannot be
+ * told WHOSE tent, so the use goes to the last one built. One tent a side is the
+ * normal case and the stand has one; telling them apart waits for arguments.
+ */
+static void *__fastcall lua_tent_charge(void *ctx) {
+  (void)ctx;
+  if (!g_lastTent || !readable((BYTE *)g_lastTent + MACHINE_CHARGES_EARLY, 4)) {
+    log_line("H5ETentCharge: no tent to give a use to");
+    return NULL;
+  }
+  int *charges = (int *)((BYTE *)g_lastTent + MACHINE_CHARGES_EARLY);
+  *charges += 1;
+  log_num("H5ETentCharge: the tent now has ", *charges);
+  return NULL;
+}
+
+static LuaEntry g_ourCombatFunctions[MAX_LUA_FUNCTIONS] = {
+  { "H5ECombatTest", &lua_combat_test },
+  { "H5ETentCharge", &lua_tent_charge },
+};
+static int g_ourCombatFunctionCount = 2;
+
+/**
  * Give the engine a table of our own: theirs, plus ours, plus the terminator.
  *
  * The four bytes rewritten are the accessor's immediate, and the address that
  * was in them is where the engine's own table is — read rather than assumed, so
  * a build that loads at another base still finds it.
+ *
+ * TWO CONTEXTS, ONE ROUTINE. The adventure map's table and the BATTLE's are
+ * handed over by accessors of the same five bytes (`mov eax,<table>; ret`) at
+ * two addresses, so the map's vocabulary and the battle's are extended the same
+ * way. That is what makes a function of ours callable from inside a fight, where
+ * the two contexts otherwise share nothing but the game variables.
  */
-static int install_lua_functions(void) {
-  BYTE *accessor = (BYTE *)GetModuleHandleW(NULL) + LUA_TABLE_ACCESSOR_RVA;
+static int install_lua_table(DWORD rva, const LuaEntry *ours, int count, const char *what) {
+  BYTE *accessor = (BYTE *)GetModuleHandleW(NULL) + rva;
   if (accessor[0] != LUA_MOV_EAX_IMM || accessor[5] != LUA_RET) {
-    log_line("the lua table accessor is not the shape we know - not registering");
+    log_text("the lua table accessor is not the shape we know - not registering: ", what);
     return 0;
   }
 
@@ -1180,28 +1268,378 @@ static int install_lua_functions(void) {
   int n = 0;
   while (theirs[n].name || theirs[n].fn) n++;
 
-  LuaEntry *ours = (LuaEntry *)VirtualAlloc(
-      NULL, (n + g_ourFunctionCount + 1) * sizeof(LuaEntry),
-      MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-  if (!ours) { log_line("no memory for the lua table"); return 0; }
+  LuaEntry *ext = (LuaEntry *)VirtualAlloc(NULL, (n + count + 1) * sizeof(LuaEntry),
+                                           MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+  if (!ext) { log_line("no memory for the lua table"); return 0; }
 
-  for (int i = 0; i < n; i++) ours[i] = theirs[i];
-  for (int i = 0; i < g_ourFunctionCount; i++) ours[n + i] = g_ourFunctions[i];
-  ours[n + g_ourFunctionCount].name = NULL;
-  ours[n + g_ourFunctionCount].fn = NULL;
+  for (int i = 0; i < n; i++) ext[i] = theirs[i];
+  for (int i = 0; i < count; i++) ext[n + i] = ours[i];
+  ext[n + count].name = NULL;
+  ext[n + count].fn = NULL;
 
   DWORD old = 0;
   if (!VirtualProtect(accessor + 1, sizeof(void *), PAGE_EXECUTE_READWRITE, &old)) {
     log_line("could not make the lua accessor writable");
     return 0;
   }
-  *(LuaEntry **)(accessor + 1) = ours;
+  *(LuaEntry **)(accessor + 1) = ext;
   VirtualProtect(accessor + 1, sizeof(void *), old, &old);
   FlushInstructionCache(GetCurrentProcess(), accessor, 6);
 
-  log_num("lua: the engine's table had ", n);
-  log_num("lua: functions of ours added: ", g_ourFunctionCount);
+  log_text("lua: extended the table of the ", what);
+  log_num("     the engine's had ", n);
+  log_num("     ours added:      ", count);
   return 1;
+}
+
+static int install_lua_functions(void) {
+  int done = install_lua_table(LUA_TABLE_ACCESSOR_RVA, g_ourFunctions, g_ourFunctionCount,
+                               "adventure map");
+  done += install_lua_table(LUA_COMBAT_TABLE_ACCESSOR_RVA, g_ourCombatFunctions,
+                            g_ourCombatFunctionCount, "battle");
+  return done;
+}
+
+// ---------------------------------------------------------------------------
+// Saying something to a battle's script.
+//
+// The engine talks to a battle by running SOURCE rather than through Lua's C
+// API: at `0x720b9d` it pushes the text `DoPrepare()` and hands it to a runner,
+// and `UnitMove("%s")` is the same thing with a name substituted. An event of
+// our own is therefore a string like any other — no stack of theirs to balance,
+// no state of theirs to find — which is this file's rule everywhere else: make
+// the call the way the engine makes it.
+//
+// WHAT A BATTLE MUST HAVE for any of it to work, and it is the same condition
+// that decides whether a mod's `combat-startup.lua` runs at all.
+// `CCombat::LoadScripts` (`0x652870`) opens by asking for the script host and
+// returns having loaded nothing when the battle has none:
+//
+//     cmp [esi+4F0h],dl        ; has this battle a script host
+//     cmovne edx,esi
+//     test edx,edx / je out    ; no host -> no startup file, no tail, no us
+//     cmp [edx+1D0h],0 / je out
+//
+// So the hook below is a PROBE before it is a trigger: it writes down what that
+// flag says in a real, ordinary battle. Reading took this as far as it goes —
+// the flag is set from somewhere else, and only a fight can say whether an
+// unscripted one has a host.
+#define COMBAT_LOAD_SCRIPTS_RVA 0x252870u
+static const BYTE COMBAT_LOAD_SCRIPTS_HEAD[5] = { 0x83, 0xEC, 0x18, 0x33, 0xD2 };
+
+/** The runner: the host as `this`, the source, and an optional `%s` for it. */
+#define RUN_SOURCE_RVA 0x644cf0u
+static const BYTE RUN_SOURCE_HEAD[6] = { 0x83, 0xEC, 0x18, 0x57, 0x8B, 0xF9 };
+
+/** The script host is a base INSIDE the battle, not a pointer it holds. */
+#define COMBAT_SCRIPT_HOST 0x1B4u
+#define COMBAT_HAS_SCRIPT 0x4F0u
+#define COMBAT_SCRIPT_STATE 0x1D0u
+
+typedef void(__fastcall *LoadScriptsFn)(void *combat, void *edx);
+typedef void(__fastcall *RunSourceFn)(void *host, void *edx, const char *source, const char *arg);
+
+static LoadScriptsFn g_loadScripts = NULL;
+static RunSourceFn g_runSource = NULL;
+static int g_combatLogged = 0;
+
+/**
+ * Run one line of Lua inside a battle, guarded the way the engine guards it.
+ *
+ * Everything is checked before the call and nothing is assumed: no host, no
+ * call. A battle that cannot hear us is not an error — it is the answer to the
+ * question this was written to ask.
+ */
+static void combat_run(void *combat, const char *source, const char *arg) {
+  if (!g_runSource || !combat) return;
+  if (!readable((BYTE *)combat + COMBAT_HAS_SCRIPT, 1)) return;
+  if (!*((BYTE *)combat + COMBAT_HAS_SCRIPT)) return;
+  void *host = (BYTE *)combat + COMBAT_SCRIPT_HOST;
+  // The runner reads `[this+0x1C]` first thing and does nothing without it.
+  if (!readable(host, 0x20)) return;
+  g_runSource(host, NULL, source, arg);
+}
+
+/**
+ * A name is ASKED FOR rather than called: `if f ~= nil then f(); end;`.
+ *
+ * Ours is not a hook the engine declares, so nothing promises a script defines
+ * it — and calling a nil is a Lua error in a context with no console to print
+ * it to. The engine gets away with `DoPrepare()` because `combat-startup.lua`
+ * declares every one of its hooks empty first.
+ */
+static void __fastcall load_scripts_hook(void *combat, void *edx) {
+  g_loadScripts(combat, edx);
+
+  if (g_combatLogged++ < 8) {
+    log_line("battle scripts loaded:");
+    log_num("  has a script host ",
+            readable((BYTE *)combat + COMBAT_HAS_SCRIPT, 1) ? *((BYTE *)combat + COMBAT_HAS_SCRIPT) : -1);
+    log_hex("  state             ",
+            readable((BYTE *)combat + COMBAT_SCRIPT_STATE, 4)
+              ? *(DWORD *)((BYTE *)combat + COMBAT_SCRIPT_STATE) : 0);
+  }
+  combat_run(combat, "if H5ECombatStarted ~= nil then H5ECombatStarted(); end; "
+                     "if H5ECombatTest ~= nil then H5ECombatTest(); end;", NULL);
+}
+
+/**
+ * The other end of the same question: where a battle's script host is BUILT.
+ *
+ * The first probe hooked `CCombat::LoadScripts` and never fired, which was an
+ * answer of its own — three of the four battle kinds do not call it, they carry
+ * the same code inlined. `0x65af0b` is one of those, and it is the interesting
+ * one: `mov byte ptr [ebp+4F0h],1` sets the flag outright and then loads
+ * `combat-startup.lua` in place, so a battle down that path always has a host.
+ *
+ * `0xa44bc0` is the host's own init and that path's only caller, and it is
+ * where the Lua state (`[host+0x1C]`, the very field the runner tests) is
+ * filled. So this hook sees the host at the earliest moment it can be spoken
+ * to — before the startup file, which is why what it says is worth having:
+ *
+ *   - whether an ordinary battle gets here AT ALL;
+ *   - the address behind the host's vtable slot 0, which is the one funnel every
+ *     line of Lua a battle ever runs goes through, inlined paths included. With
+ *     it the trigger stops depending on which of the four kinds of battle it is.
+ */
+#define COMBAT_HOST_INIT_RVA 0x644bc0u
+static const BYTE COMBAT_HOST_INIT_HEAD[6] = { 0x56, 0x8B, 0xF1, 0x57, 0x85, 0xF6 };
+
+typedef void *(__fastcall *HostInitFn)(void *host, void *edx);
+static HostInitFn g_hostInit = NULL;
+static int g_hostLogged = 0;
+
+/**
+ * Every line a battle ever runs goes through the host's vtable slot 0.
+ *
+ * Taken from the LIVE vtable rather than from an address of ours: the game's
+ * image is relocatable (`DYNAMIC_BASE` is set in its header), so the pointer the
+ * probe printed was a runtime one and meant nothing on disk. Reading the slot
+ * where the engine reads it needs no address at all, and swapping it is how the
+ * engine itself would replace an implementation — the same move as the dark
+ * energy bar's accessor.
+ *
+ * ONE SWAP SERVES EVERY BATTLE: the vtable belongs to the class, not to the
+ * fight, so the four kinds of battle — the one that calls `LoadScripts` and the
+ * three that carry it inlined — all arrive here.
+ */
+typedef void *(__fastcall *RunLineFn)(void *host, void *edx, const char *source);
+static RunLineFn g_runLine = NULL;
+static int g_lineLogged = 0;
+
+/**
+ * The engine's own line we ride on — and it is NOT the one that looks right.
+ *
+ * `createCombatAliases();` comes straight after the startup file and reads like
+ * the moment everything is in place. It is not: a `doFile` inside a chunk is
+ * QUEUED, not run where it stands, so at that instant our own file has not
+ * executed yet and every name in it is still nil. Measured — the extension asked
+ * for `H5EFire` there and the console said "Value was NIL when getting global".
+ *
+ * `DoStart()` is the engine's own "the battle begins", it runs after everything
+ * queued before it, and it is the honest name for the event besides.
+ */
+static const char START_LINE[] = "DoStart()";
+
+/** Whether `text` holds `word` anywhere in its first `limit` bytes. */
+static int contains(const char *text, const char *word, int limit) {
+  for (int i = 0; i < limit && text[i]; i++) {
+    int j = 0;
+    while (word[j] && text[i + j] == word[j]) j++;
+    if (!word[j]) return 1;
+  }
+  return 0;
+}
+
+/** Whether `text` begins with `word` — no CRT, and none needed. */
+static int begins_with(const char *text, const char *word) {
+  while (*word) { if (*text != *word) return 0; text++; word++; }
+  return 1;
+}
+
+/**
+ * The battle we are in, so an event that has no host in its hands can find one.
+ *
+ * The mana command knows the caster and nothing about the fight he is in; the
+ * host it needs is the one built for that fight, and a battle builds exactly
+ * one. Every use is guarded — a stale pointer answers "no live Lua state" and
+ * the event is dropped rather than fired at a dead battle.
+ */
+static void *g_battleHost = NULL;
+static int g_firedLogged = 0;
+
+/** Trigger kinds, mirrored in the Lua the mod carries (src/mods/skill-scripts.ts). */
+#define TRIGGER_COMBAT_STARTED 1
+#define TRIGGER_HERO_MANA_CHANGED 2
+
+/**
+ * Fire one of ours, with up to three numbers.
+ *
+ * ARGUMENTS ARE FREE IN THIS DIRECTION and that is the whole trick: the engine
+ * runs source, so an argument is text. Its own `UnitMove("%s")` is the same
+ * thing with a name pasted in. Reading an argument BACK out of Lua is the
+ * expensive direction — it goes through the engine's own parser — and nothing
+ * here needs it: the vocabulary a script registers with is ordinary Lua, in the
+ * tail of `combat-startup.lua`.
+ */
+static void fire_trigger(int kind, int argc, int a, int b, int c) {
+  if (!g_runLine || !g_battleHost) return;
+  if (!readable((BYTE *)g_battleHost + 0x1C, 4) || !*(DWORD *)((BYTE *)g_battleHost + 0x1C)) return;
+
+  char line[200];
+  int at = 0;
+  // The `else` is a PROBE, and it earns its place: the log line below is written
+  // before the source runs, so on its own it cannot tell "the script has our
+  // runtime and ran it" from "H5EFire was nil and nothing happened". This makes
+  // the two different lines in the log.
+  const char *head = "if H5EFire ~= nil then H5EFire(";
+  while (*head) line[at++] = *head++;
+  const int args[3] = { a, b, c };
+  for (int i = 0; i < argc + 1; i++) {
+    if (i) line[at++] = ',';
+    int len = 0;
+    num_to_dec(i ? args[i - 1] : kind, line + at, &len);
+    at += len;
+  }
+  const char *tail = "); end;";
+  while (*tail) line[at++] = *tail++;
+  line[at] = 0;
+  if (g_firedLogged++ < 16) log_text("battle fires: ", line);
+  g_runLine(g_battleHost, NULL, line);
+}
+
+/**
+ * The moment a perk can be written against.
+ *
+ * `combat-startup.lua` is loaded first and our tail is the end of it, so by the
+ * time the engine runs `createCombatAliases();` everything a mod defined is
+ * defined. That is where our own event goes — and it is asked for by name,
+ * because nothing declares it and calling a nil is an error into a context with
+ * no console.
+ */
+static void *__fastcall run_line_hook(void *host, void *edx, const char *source) {
+  void *result = g_runLine(host, edx, source);
+  // EVERY line a battle runs, the first few of them, because the question left
+  // over from the last run is which combat-startup.lua the game actually read —
+  // ours, with the trigger runtime in its tail, or the shipped one. The loader
+  // composes a `doFile("…")` out of the path, so the answer is in this stream.
+  if (g_lineLogged < 12 && source && readable(source, 8)) {
+    g_lineLogged++;
+    log_text("battle runs: ", source);
+    // THE TAIL, not the head. A whole file arrives here as one string, and the
+    // two copies of `combat-startup.lua` — the game's and ours — begin with the
+    // same 7894 bytes; what tells them apart is only at the end. Reading the
+    // head answered nothing for two runs.
+    // Readability asked ONCE for the whole span, not per byte: `readable` calls
+    // VirtualQuery, and eight thousand of those before every battle is the pause
+    // that showed up on the loading screen. Measured by the person playing, which
+    // is the only place a hook's cost is ever visible.
+    int len = 0;
+    int span = readable(source, 16384) ? 16384 : readable(source, 1024) ? 1024 : 64;
+    while (len < span && source[len]) len++;
+    if (len > 400) {
+      log_num("     source length ", len);
+      log_text("     source ends:  ", source + len - 120);
+    }
+  }
+  // The host that ran this line is the host of the battle now being built, and
+  // it is worth remembering before the moment we actually fire on.
+  g_battleHost = host;
+  if (!source || !readable(source, 160)) return result;
+  if (!contains(source, START_LINE, 150)) return result;
+  log_line("battle: it has begun, and everything queued before it has run");
+  fire_trigger(TRIGGER_COMBAT_STARTED, 0, 0, 0, 0);
+  return result;
+}
+
+/**
+ * The same lines, in the game's own console — Senya's ask, and a good one.
+ *
+ * The log file answers questions after the fact; the console answers them while
+ * the battle is on screen, which is the difference between "run it again and
+ * I'll look" and "I saw it". It goes out as `print`, the one Lua call that
+ * reaches the console, through the same slot every battle line goes through.
+ *
+ * Only while a battle is up — outside one there is no host to speak to, and the
+ * file keeps its record either way. The guard against re-entry is not optional:
+ * `run_line_hook` logs what it sees, and logging through it would be a loop.
+ */
+static int g_inConsole = 0;
+
+static void console_line(const char *text) {
+  if (g_inConsole || !g_battleHost || !g_runLine) return;
+  g_inConsole = 1;
+  char line[240];
+  int at = 0;
+  const char *head = "print(\"h5e: ";
+  while (*head) line[at++] = *head++;
+  // A quote of ours inside would end the string early and leave the console
+  // reading our line as Lua; there are none today, and this keeps it that way.
+  for (int i = 0; text[i] && at < (int)sizeof line - 8; i++) {
+    line[at++] = text[i] == '"' ? '\'' : text[i];
+  }
+  line[at++] = '"';
+  line[at++] = ')';
+  line[at++] = ';';
+  line[at] = 0;
+  g_runLine(g_battleHost, NULL, line);
+  g_inConsole = 0;
+}
+
+/** Put ours in the slot, once, and keep theirs to call. */
+static void take_over_run_line(void *host) {
+  if (g_runLine || !readable(host, 4)) return;
+  void **vt = *(void ***)host;
+  if (!readable(vt, 4) || !points_at_code(vt[0])) return;
+  DWORD old = 0;
+  if (!VirtualProtect(vt, sizeof(void *), PAGE_READWRITE, &old)) {
+    log_line("could not make the battle host's vtable writable");
+    return;
+  }
+  g_runLine = (RunLineFn)vt[0];
+  vt[0] = &run_line_hook;
+  VirtualProtect(vt, sizeof(void *), old, &old);
+  log_hex("battle: every line now comes past us; theirs is at rva ",
+          (DWORD)((BYTE *)g_runLine - (BYTE *)GetModuleHandleW(NULL)));
+}
+
+static void *__fastcall host_init_hook(void *host, void *edx) {
+  void *result = g_hostInit(host, edx);
+  if (g_hostLogged++ < 8) {
+    log_line("battle script host built:");
+    log_object("  host        ", host);
+    if (readable(host, 4)) {
+      void **vt = *(void ***)host;
+      if (readable(vt, 4)) log_hex("  runs source ", (DWORD)vt[0]);
+    }
+    log_hex("  lua state   ", readable((BYTE *)host + 0x1C, 4) ? *(DWORD *)((BYTE *)host + 0x1C) : 0);
+  }
+  // And the reason this hook stays now that it has answered: the host is the
+  // only thing that names the function every line of Lua goes through, and it
+  // has just been built.
+  take_over_run_line(host);
+  return result;
+}
+
+/** The battle's side of the extension: one detour, one address only read. */
+static int install_combat_scripts(void) {
+  BYTE *runner = (BYTE *)GetModuleHandleW(NULL) + RUN_SOURCE_RVA;
+  for (int i = 0; i < (int)sizeof RUN_SOURCE_HEAD; i++) {
+    if (runner[i] != RUN_SOURCE_HEAD[i]) {
+      log_line("the script runner is not the shape we know - a battle will not be spoken to");
+      return 0;
+    }
+  }
+  g_runSource = (RunSourceFn)runner;
+  // Both ends, because one battle in four goes through the first and the rest
+  // carry it inlined. Neither is required for the other to be useful.
+  g_loadScripts = (LoadScriptsFn)detour(COMBAT_LOAD_SCRIPTS_RVA, COMBAT_LOAD_SCRIPTS_HEAD,
+                                        sizeof COMBAT_LOAD_SCRIPTS_HEAD, &load_scripts_hook,
+                                        "battle script loader");
+  g_hostInit = (HostInitFn)detour(COMBAT_HOST_INIT_RVA, COMBAT_HOST_INIT_HEAD,
+                                  sizeof COMBAT_HOST_INIT_HEAD, &host_init_hook,
+                                  "battle script host");
+  return g_loadScripts != NULL || g_hostInit != NULL;
 }
 
 /** The necromancy percentage: one detour, plus the cost we only watch. */
@@ -1238,11 +1676,25 @@ static int install_necromancy(void) {
  * where they are known, rather than inferred from what the tent appeared to do.
  */
 /** The tent's charges, raised once when it first acts — defined below. */
-static void tent_charges_term(void *unit, void *hero);
+static void tent_charges_term(void *unit, void *skills);
+/** The object a combat hero's SKILLS answer on — defined below, with its why. */
+static void *hero_for_skills(void *hero);
+/** Remember a tent and every pointer its owner answers on — defined below. */
+static void note_tent(void *unit, void *hero, void *base, void *skills);
 
 typedef void(__fastcall *TentAmountFn)(int *amount, int *second, void *unit, int mastery);
 static TentAmountFn g_tentAmount = NULL;
 static int g_amountLogged = 0;
+
+/**
+ * How a combat caster answers about his own mana: read it, and set it.
+ *
+ * The pair is the engine's own — the mana command uses `+0x22C` to write and a
+ * mana-draining spell `+0x234` to read.
+ */
+#define VT_CASTER_MANA 0x234u
+#define VT_CASTER_SET_MANA 0x22Cu
+static int caster_mana(void *caster);
 
 /** How a combat unit hands over the hero behind it, as the engine asks at 0xb7fcee. */
 #define VT_UNIT_OWNER 0x18u
@@ -1251,6 +1703,16 @@ static int g_amountLogged = 0;
 #define VT_HAS_SPECIALIZATION 0x294u
 /** The hero's level, as the tent reads it inside that branch. */
 #define VT_HERO_LEVEL 0x23Cu
+/**
+ * The question that makes the engine DOUBLE the tent's healing.
+ *
+ * The last thing `0x77fca0` does: ask the object his skills answer on this, and
+ * if it says anything above zero, `add eax,eax` (`0xb7fd47`…`0xb7fd53`). The
+ * Ring of Machine Affinity is what its own description promises to double, and
+ * we do not have to know that — asking the same question is enough to be
+ * doubled by the same thing.
+ */
+#define VT_TENT_DOUBLED 0x314u
 
 typedef void *(__thiscall *GetterFn)(void *self);
 typedef int(__fastcall *HasSpecFn)(void *hero, void *unused, int spec);
@@ -1317,7 +1779,10 @@ static void __fastcall tent_amount_hook(int *amount, int *second, void *unit, in
   // battle — measured, by removing the test on the grounds that resolving a
   // hero could not hurt. A tent whose amount is nothing is not a tent acting.
   void *hero = engine > 0 ? unit_hero(unit) : NULL;
-  tent_charges_term(unit, hero);
+  // One walk, two questions: the charges and the healing are both a SKILL's, and
+  // a skill answers on the object one virtual call past the hero.
+  void *skills = hero ? hero_for_skills(hero) : NULL;
+  tent_charges_term(unit, skills);
   void *self = hero ? hero_virtual_base(hero) : NULL;
   int level = -1, add = 0, matched = -1;
   if (self) {
@@ -1337,7 +1802,48 @@ static void __fastcall tent_amount_hook(int *amount, int *second, void *unit, in
       }
     }
   }
-  if (add > 0) *amount = engine + add;
+  // And what his SKILLS add to the same number: points rather than percent, so
+  // a perk is worth the same at every mastery of War Machines.
+  //
+  // DOUBLED WHEN THE ENGINE DOUBLES, which is the whole reason this is not just
+  // `+ flat`. A perk that adds fifty is raising the tent's own number, exactly
+  // as the mastery raises it to a hundred — so whatever multiplies that number
+  // has to multiply ours. The engine's own doubling is the last thing this
+  // function does and it comes after everything we can reach, so we ask the
+  // question it asks (`[+0x314]` on the object his skills answer on) and apply
+  // the same factor ourselves. At expert with the ring: engine 200, ours 100,
+  // and 300 is (100 + 50) × 2.
+  int flat = skills ? hero_term(skills, STAT_TENT_HEALING, 0) : 0;
+  int doubled = 0;
+  if (flat && skills) {
+    void **vt = *(void ***)skills;
+    if (readable(vt, VT_TENT_DOUBLED + 4) && points_at_code(vt[VT_TENT_DOUBLED / 4])) {
+      doubled = ((LevelFn)vt[VT_TENT_DOUBLED / 4])(skills) > 0;
+    }
+    if (doubled) flat += flat;
+  }
+  int total = engine + add + flat;
+  // A negative row is allowed to mean a curse, but a negative AMOUNT is not
+  // something the engine is ever handed by itself.
+  if (total < 0) total = 0;
+  if (add || flat) *amount = total;
+
+  // THE SECOND OUT-PARAMETER IS THE CLEANSE THRESHOLD, and this is where it was
+  // finally named. The engine fills it with {0,0,1,3} by mastery and then walks
+  // the effects on the healed stack, asking of each one whether its spell's
+  // level is at most this number (`0xc78910`, and the same comparison in the
+  // tooltip at 0xb82dd3). So a perk that lifts stronger curses is this number
+  // raised — no place of its own to find, and nothing else in the engine to
+  // teach. It is also why war machines alone never reach level 4 and 5 effects.
+  int cleanse = skills ? hero_term(skills, STAT_TENT_CLEANSE, 0) : 0;
+  int threshold = *second;
+  if (cleanse > 0) {
+    threshold += cleanse;
+    *second = threshold;
+  }
+  // And the ultimate's half that gives the charges back: the tent is known here
+  // and the mana is counted where it is spent.
+  if (skills) note_tent(unit, hero, self, skills);
 
   if (g_amountLogged++ >= 24) return;
   log_line("tent:");
@@ -1346,6 +1852,9 @@ static void __fastcall tent_amount_hook(int *amount, int *second, void *unit, in
   log_num("      hero level    ", level);
   log_num("      our spec      ", matched);
   log_num("      we add        ", add);
+  log_num("      our skills add", flat);
+  log_num("      doubled       ", doubled);
+  log_num("      cleanse up to ", threshold);
   log_num("      amount        ", *amount);
   log_num("      second        ", *second);
   // The two pointers the war machine probe is looking for. This walk is the one
@@ -1353,6 +1862,36 @@ static void __fastcall tent_amount_hook(int *amount, int *second, void *unit, in
   // from a freshly built machine to its hero.
   log_object("      unit        ", unit);
   log_object("      hero        ", hero);
+  // AND ONE THING THIS HERO MUST NOT BE ASKED. `+0x22C` and `+0x234` are the
+  // slots the mana command uses on ITS caster; on this object they are two other
+  // methods entirely, reached through virtual-base thunks (`sub ecx,[ecx-4]`),
+  // and calling one ended the battle. Same mistake in a new coat: a slot that
+  // holds real code is not a promise that the object is the right one.
+  //
+  // SO WE PRINT, AND CALL NOTHING. The mana command at 0x774300 is hooked and
+  // has never fired in a single battle — measured, with a hero who had 300 mana
+  // and spells to spend it on — so a cast does not go that way and the caster
+  // has to be found from this side. `unit_hero` walks the unit's owner (`+0x18`)
+  // and then asks THAT for the adventure hero (`+0x0C`); the owner it passes
+  // through is the combat-side object, and the Lua `GetUnitManaPoints` asks a
+  // combat unit for its mana through `+0x234`. If the owner's slot holds a small
+  // field reader, it is the getter, and its neighbour `+0x22C` is where a spell
+  // pays for itself. Both are logged as RVAs, to be read off disk rather than
+  // trusted in flight.
+  if (readable(unit, 4)) {
+    void **uvt = *(void ***)unit;
+    if (readable(uvt, VT_UNIT_OWNER + 4) && points_at_code(uvt[VT_UNIT_OWNER / 4])) {
+      void *owner = ((GetterFn)uvt[VT_UNIT_OWNER / 4])(unit);
+      if (readable(owner, 4)) {
+        void **ovt = *(void ***)owner;
+        if (readable(ovt, VT_CASTER_MANA + 4)) {
+          BYTE *base = (BYTE *)GetModuleHandleW(NULL);
+          log_hex("      owner set mana rva ", (DWORD)((BYTE *)ovt[VT_CASTER_SET_MANA / 4] - base));
+          log_hex("      owner get mana rva ", (DWORD)((BYTE *)ovt[VT_CASTER_MANA / 4] - base));
+        }
+      }
+    }
+  }
 }
 
 static void install_tent_term(void) {
@@ -1472,6 +2011,7 @@ static void *__fastcall machine_ctor_hook(void *self, void *edx, void *a1, void 
   if (!readable((BYTE *)m + MACHINE_CHARGES, 4)) return m;
 
   g_pendingTents[g_pendingAt++ & (PENDING_TENTS - 1)] = m;
+  g_lastTent = m;
   if (g_machineLogged++ >= 8) return m;
   log_line("tent built:");
   log_num("  the engine filled ", *(int *)((BYTE *)m + MACHINE_CHARGES));
@@ -1506,8 +2046,8 @@ static void *hero_for_skills(void *hero) {
   return ((GetterFn)vt[0])(hero);
 }
 
-static void tent_charges_term(void *unit, void *hero) {
-  if (!unit || !hero) return;
+static void tent_charges_term(void *unit, void *skills) {
+  if (!unit || !skills) return;
   void *m = (BYTE *)unit - MACHINE_AS_UNIT;
   int found = 0;
   for (int i = 0; i < PENDING_TENTS; i++) {
@@ -1519,7 +2059,7 @@ static void tent_charges_term(void *unit, void *hero) {
   if (!found || !readable((BYTE *)m + MACHINE_CHARGES, 4)) return;
 
   int *charges = (int *)((BYTE *)m + MACHINE_CHARGES);
-  int add = hero_term(hero_for_skills(hero), STAT_TENT_CHARGES, 0);
+  int add = hero_term(skills, STAT_TENT_CHARGES, 0);
   // Only upwards. A row worth less than nothing would take away uses the hero
   // paid for, and a tent that cannot act at all is a bug that looks like ours.
   if (add <= 0) return;
@@ -1536,6 +2076,228 @@ static int install_machine_charges(void) {
   g_machineCtor = (MachineCtorFn)detour(MACHINE_CTOR_RVA, MACHINE_CTOR_HEAD, DETOUR_LEN,
                                         &machine_ctor_hook, "war machine ctor");
   return g_machineCtor != NULL;
+}
+
+// ---------------------------------------------------------------------------
+// How much the machine itself can take — the second number a first aid tent has.
+//
+// `CWarMachine::GetHealth` is the ONLY place a war machine's hit points are
+// decided, and it is shaped like the sum every other term of ours joins:
+//
+//     hp  = record-><Health>                       // 100 for the tent
+//         + GetSkillMastery(WAR_MACHINES) * WarMachines_HealthBonusPerSkillTrained
+//     switch (type - 1)                            // jump table at 0xabc148
+//       tent → if the hero holds HERO_SKILL_FIRST_AID, hp *= the perk multiplier
+//
+// So "a perk makes the machine tougher" is a shape the engine already has, and
+// ours is a second multiplier applied to the number it arrives at — which is why
+// the row is a PERCENT rather than points: doubling the hit points of a tent
+// whose owner is an expert of War Machines should be worth more than doubling a
+// novice's, exactly as the shipped perk is.
+//
+// `this` is the WORLD machine (the one the combat machine keeps at +0xA8), so
+// its type is at the same +0x1C the constructor hook reads, and the hero is the
+// function's one stack argument — the object skills answer on directly, because
+// the engine asks it for a mastery through `[vtable+0x174]` two instructions in.
+#define MACHINE_HEALTH_RVA 0x6bc040u
+/** `push ecx; push ebx; push ebp; mov ebp,[esp+10h]` — seven bytes, four whole
+ *  instructions, and none of them relocated. */
+#define MACHINE_HEALTH_HEAD_LEN 7
+static const BYTE MACHINE_HEALTH_HEAD[MACHINE_HEALTH_HEAD_LEN] = {
+  0x51, 0x53, 0x55, 0x8B, 0x6C, 0x24, 0x10,
+};
+
+typedef int(__fastcall *MachineHealthFn)(void *machine, void *edx, void *hero);
+static MachineHealthFn g_machineHealth = NULL;
+static int g_healthLogged = 0;
+
+static int __fastcall machine_health_hook(void *machine, void *edx, void *hero) {
+  int engine = g_machineHealth(machine, edx, hero);
+  // The tent alone. The function answers for all four machines and a hero who
+  // brought a ballista has no business gaining from a perk about bandages.
+  if (engine <= 0 || !hero) return engine;
+  if (!readable((BYTE *)machine + WORLD_MACHINE_TYPE, 4)) return engine;
+  if (*(int *)((BYTE *)machine + WORLD_MACHINE_TYPE) != MACHINE_TYPE_TENT) return engine;
+
+  int percent = hero_term(hero, STAT_TENT_HEALTH, 0);
+  int add = engine * percent / 100;
+  int total = engine + add;
+  if (total < 1) total = 1;
+  if (add && g_healthLogged++ < 8) {
+    log_line("tent health:");
+    log_num("  the engine said ", engine);
+    log_num("  our percent     ", percent);
+    log_num("  hit points      ", total);
+  }
+  return add ? total : engine;
+}
+
+// ---------------------------------------------------------------------------
+// The ultimate: mana spent in a battle, paid back as uses of the tent.
+//
+// TWO HALVES, and the one that had to be found is the counting. Every change to
+// a caster's mana inside a battle goes through ONE command —
+// `CSetCombatCasterMana`, whose whole `Execute` is "take the caster out of the
+// command and hand it the number the command carries" (0xb74300). It is a
+// networked command, which is exactly why it is a funnel: a multiplayer game
+// cannot afford a second route that the other side would not hear about.
+//
+//     [cmd+0x0C]  the caster        [cmd+0x10]  what his mana becomes
+//     [caster vtable +0x234]  what it is now    +0x22C  set it
+//
+// The pair of slots is the engine's own: a mana-draining spell reads +0x234,
+// adds, and writes +0x22C on the same object twice over (0xb78929, 0xb78949).
+// So "how much did he spend" is the difference between what we read before the
+// command runs and what the command is about to write — no second guess, and
+// nothing of ours has to know what a spell costs.
+//
+// GIVING IT BACK needs the tent, and the tent knows its hero rather than the
+// other way round. So the amount hook writes down every tent it sees together
+// with the three pointers its owner answers on, and the counting side matches
+// the caster against all three. Which of them it is has never been measured, and
+// a table of three costs nothing — see the log line, which says what matched.
+#define TENTS_KNOWN 4
+static struct {
+  void *machine;  /**< the combat war machine, whose charges are at +0xB0 */
+  void *hero;     /**< as `unit_hero` reaches him */
+  void *base;     /**< his virtual base — level and specialization answer here */
+  void *skills;   /**< one call further along — his skills answer here */
+} g_tents[TENTS_KNOWN];
+static int g_tentAt = 0;
+
+/**
+ * What one caster has spent this battle, and how much of it we have paid for.
+ *
+ * `given` rather than a remainder, because the rate is read afresh every time:
+ * the honest question is "how many charges has all of this spending earned",
+ * and what is owed is that minus what has already been handed over.
+ */
+#define CASTERS_WATCHED 4
+static struct { void *caster; int spent; int given; } g_casters[CASTERS_WATCHED];
+static int g_casterAt = 0;
+static int g_manaLogged = 0;
+
+static void note_tent(void *unit, void *hero, void *base, void *skills) {
+  void *m = (BYTE *)unit - MACHINE_AS_UNIT;
+  // That this really is a tent is asked here rather than assumed: what gets
+  // written later is `+0xB0` of this object, and the charges hook has the
+  // pending list to keep it honest where this has nothing.
+  if (!readable((BYTE *)m + MACHINE_WORLD, 4)) return;
+  void *world = *(void **)((BYTE *)m + MACHINE_WORLD);
+  if (!readable((BYTE *)world + WORLD_MACHINE_TYPE, 4)) return;
+  if (*(int *)((BYTE *)world + WORLD_MACHINE_TYPE) != MACHINE_TYPE_TENT) return;
+  for (int i = 0; i < TENTS_KNOWN; i++) if (g_tents[i].machine == m) return;
+  int at = g_tentAt++ & (TENTS_KNOWN - 1);
+  g_tents[at].machine = m;
+  g_tents[at].hero = hero;
+  g_tents[at].base = base;
+  g_tents[at].skills = skills;
+}
+
+/** The tent of the hero this caster is, or nothing when he brought none. */
+static int tent_of_caster(void *caster) {
+  for (int i = 0; i < TENTS_KNOWN; i++) {
+    if (!g_tents[i].machine) continue;
+    if (caster == g_tents[i].hero || caster == g_tents[i].base || caster == g_tents[i].skills) return i;
+  }
+  return -1;
+}
+
+/** Mana spent by this caster, and the charges it has earned him so far. */
+static void note_mana(void *caster, int spent) {
+  int at = -1;
+  for (int i = 0; i < CASTERS_WATCHED; i++) if (g_casters[i].caster == caster) { at = i; break; }
+  if (at < 0) {
+    at = g_casterAt++ & (CASTERS_WATCHED - 1);
+    g_casters[at].caster = caster;
+    g_casters[at].spent = 0;
+    g_casters[at].given = 0;
+  }
+  g_casters[at].spent += spent;
+
+  int tent = tent_of_caster(caster);
+  if (tent < 0) return;
+  // The rate is the hero's, asked the way every other row of ours is asked, and
+  // it is per HUNDRED points so that a level of mastery can be worth a sensible
+  // fraction of a charge rather than a whole one.
+  int rate = hero_term(g_tents[tent].skills, STAT_TENT_MANA, 0);
+  if (rate <= 0) return;
+  int earned = g_casters[at].spent * rate / 100;
+  int owed = earned - g_casters[at].given;
+  if (owed <= 0) return;
+  if (!readable((BYTE *)g_tents[tent].machine + MACHINE_CHARGES, 4)) return;
+  *(int *)((BYTE *)g_tents[tent].machine + MACHINE_CHARGES) += owed;
+  g_casters[at].given = earned;
+  if (g_manaLogged++ >= 16) return;
+  log_line("tent mana:");
+  log_num("  spent in all ", g_casters[at].spent);
+  log_num("  charges back ", owed);
+}
+
+#define CASTER_MANA_RVA 0x774300u
+static const BYTE CASTER_MANA_HEAD[DETOUR_LEN] = { 0x8B, 0xD1, 0x8B, 0x4A, 0x0C };
+/** Where the command keeps the caster and the number it is about to write. */
+#define MANA_CMD_CASTER 0x0Cu
+#define MANA_CMD_VALUE 0x10u
+
+typedef char(__fastcall *CasterManaFn)(void *cmd, void *edx);
+typedef int(__thiscall *ManaGetterFn)(void *caster);
+static CasterManaFn g_casterMana = NULL;
+
+/** What the caster's mana is at this moment, or -1 if he will not say. */
+static int caster_mana(void *caster) {
+  if (!readable(caster, 4)) return -1;
+  void **vt = *(void ***)caster;
+  if (!readable(vt, VT_CASTER_MANA + 4)) return -1;
+  void *fn = vt[VT_CASTER_MANA / 4];
+  if (!points_at_code(fn)) return -1;
+  int mana = ((ManaGetterFn)fn)(caster);
+  // A number no hero has. Reading the wrong slot would answer something, and
+  // "something" must not be allowed to look like spending.
+  return mana < 0 || mana > 100000 ? -1 : mana;
+}
+
+static char __fastcall caster_mana_hook(void *cmd, void *edx) {
+  void *caster = NULL;
+  int before = -1, after = -1;
+  if (readable((BYTE *)cmd + MANA_CMD_VALUE, 4)) {
+    caster = *(void **)((BYTE *)cmd + MANA_CMD_CASTER);
+    after = *(int *)((BYTE *)cmd + MANA_CMD_VALUE);
+    before = caster_mana(caster);
+  }
+  char ok = g_casterMana(cmd, edx);
+  // Said out loud, bounded: "the command never came" and "it came and we made
+  // nothing of it" are different faults, and a hook that only speaks when it
+  // acts cannot tell them apart. A spell cast with no line here means the mana
+  // does not travel this way at all.
+  if (g_manaLogged < 16) {
+    log_line("caster mana command:");
+    log_num("  was ", before);
+    log_num("  now ", after);
+  }
+  // Only downwards: the same command hands mana BACK, and a hero drinking from
+  // a well has not earned anything.
+  if (ok && caster && before >= 0 && before > after) note_mana(caster, before - after);
+  // The script hears about it either way, up or down — what a perk of somebody
+  // else's makes of a hero being GIVEN mana is not ours to decide here. New
+  // first, as the name says: `H5EFire(2, now, before)`.
+  if (ok && caster && before >= 0) fire_trigger(TRIGGER_HERO_MANA_CHANGED, 2, after, before, 0);
+  return ok;
+}
+
+/** Installed only when a row asks for it — one detour, and nothing else. */
+static int install_caster_mana(void) {
+  g_casterMana = (CasterManaFn)detour(CASTER_MANA_RVA, CASTER_MANA_HEAD, DETOUR_LEN,
+                                      &caster_mana_hook, "combat caster mana");
+  return g_casterMana != NULL;
+}
+
+/** Installed only when a row asks for it — one detour, and nothing else. */
+static int install_machine_health(void) {
+  g_machineHealth = (MachineHealthFn)detour(MACHINE_HEALTH_RVA, MACHINE_HEALTH_HEAD,
+                                            MACHINE_HEALTH_HEAD_LEN, &machine_health_hook,
+                                            "war machine health");
+  return g_machineHealth != NULL;
 }
 
 /** The hooks the specialization rows ask for — none, when there are none. */
@@ -3222,6 +3984,10 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   // any artifact asks for a bonus, and a script that calls one is a different
   // user from an artifact that carries one.
   install_lua_functions();
+  // The same argument, one context over — and the one thing here that a battle
+  // has to answer for itself, so it says what it saw whether or not anything
+  // asked. See "Saying something to a battle's script" above.
+  if (install_combat_scripts()) log_line("battles will be spoken to");
   install_energy_getter();
   if (g_specRowCount) install_specialization_hooks();
   if (rows_for(STAT_TENT_CHARGES)) {
@@ -3229,6 +3995,20 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
     // amount hook is where the note is redeemed.
     install_tent_term();
     if (install_machine_charges()) log_line("first aid tent charges hook installed");
+  }
+  // The healing, the cleanse and the ultimate's tent all share the charges'
+  // hook — it is the same function, asked more questions — and the machine's own
+  // hit points are decided elsewhere.
+  if (rows_for(STAT_TENT_HEALING) || rows_for(STAT_TENT_CLEANSE) || rows_for(STAT_TENT_MANA)) {
+    install_tent_term();
+  }
+  // Not only for the row that spends it: mana changing hands is an EVENT a
+  // script can ask for (`H5E_HERO_MANA_CHANGED`), and a trigger nobody has
+  // registered for costs one comparison in the fired path. Hooked always, and
+  // the log says so once.
+  if (install_caster_mana()) log_line("combat caster mana hook installed");
+  if (rows_for(STAT_TENT_HEALTH) && install_machine_health()) {
+    log_line("first aid tent health hook installed");
   }
   // A player's own settings, read from their own file. The window has to be met
   // before the game makes it, and the game makes it from its entry point — which

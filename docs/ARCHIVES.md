@@ -65,6 +65,19 @@ ignored, so an archive can be mounted, correct and completely without effect.
 `UserMODs/` is applied after everything in `data/`, including the addon's own
 `a2p1-*` paks.
 
+## Which list a map appears in is its FOLDER
+
+`Maps/SingleMissions/<name>/` or `Maps/Multiplayer/<name>/`, and nothing else —
+the two kinds of `map-tag.xdb` are identical field for field (compared against
+the shipped `A1L1`: same `teams`, same `CustomGameMap`, same everything). A map
+whose members sit under `SingleMissions` will not show in the multiplayer lobby
+however its players are configured; moving the same members under `Multiplayer`
+is the whole change. Measured 2026-08-03.
+
+Whether a human may take a side is separate and is in the map, not the tag:
+each player's `CanBeHumanPlayer` in `map.xdb`. Both are needed — the folder to be
+listed, the flags to be playable.
+
 ## What follows for us
 
 - **A campaign can ship self-contained.** The files a mod carries — `types.xml`,

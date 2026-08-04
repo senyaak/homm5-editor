@@ -26,6 +26,49 @@ one.
     `now / at the start of the battle` — 53 of the 59 that walked in reads
     `53/59`. Costs nothing while the key is up.
 
+- **Four more things a skill of yours can do to a first aid tent.** The
+  extension already gave it extra uses; it can now also make the machine itself
+  tougher (`tent_health`, percent), heal for more (`tent_healing`, points),
+  strip stronger curses off whoever it heals (`tent_cleanse`, levels) and give a
+  use back for mana its owner spends in the battle. The first three are rows in
+  the skill form, keyed on the skill's own id, and cost the game nothing it was
+  not already computing; the fourth turned out to belong half in Lua — a hero's
+  mana is not spent through anything the extension could hook, but the battle's
+  own vocabulary reads it. All four ran in a battle on 2026-08-03.
+
+- **A battle can be spoken to, and can answer.** Two halves, both measured in
+  game rather than argued about:
+
+  - **Lua functions of ours now reach a fight.** The battle's vocabulary is
+    handed over by an accessor of exactly the shape the adventure map's is, so
+    the same routine extends both — a script inside a battle can call what the
+    extension registers.
+  - **Triggers, with arguments.** `H5ESetCombatTrigger(kind, handler)` in a
+    battle script, and the extension calls every handler registered for a moment
+    — `H5E_COMBAT_STARTED` and `H5E_MANA_SPENT(spent, side)`. Handlers stack, so
+    two perks may want the same moment. It works in an ORDINARY battle, not only
+    a scripted one. See docs/api/combat.md.
+  - **And one function the other way: `H5ETentCharge()`**, which hands the first
+    aid tent another use. It is what makes the mana trigger worth having — the
+    watching is done in Lua, which can read mana, and the writing in the
+    extension, which is the only side that can reach a war machine's uses.
+
+### Fixed
+
+- **A mod could break battle scripting for the whole game, silently.** Our battle
+  code used to be appended to the game's own `combat-startup.lua`, which the
+  engine compiles as ONE chunk — so a single bad token in ours failed every
+  declaration that file makes (`IsAttacker`, `UnitDeath`, the vocabulary every
+  combat script in the game is written against). Our code now lives in a file of
+  its own, loaded by one added line, and a mistake in it can only cost itself.
+
+- **The Lua linter knows two rules it did not.** `return;` — legal in Lua 5,
+  rejected by the Lua 4 the game runs, and it fails the whole FILE. And the
+  standard library the game does not register at all: `tinsert`, `getn`,
+  `tostring`, `pairs`, and `dofile` — which is the sharp one, since the engine's
+  own is `doFile`. Generated battle scripts are linted in the test suite now,
+  rather than in a battle.
+
 ## 0.7.0 — 2026-08-02
 
 ### Added

@@ -147,8 +147,28 @@ Everything zero and every list empty, gated by `OverrideMask` 0: the hero is
 whatever its `Shared` definition says. `Editable` is not a set of starting stats
 but a set of **overrides**, and the mask says which of them count — so writing
 stats into a new hero without touching the mask would change nothing, and
-clearing the mask on an edited hero silently reverts them. Worth confirming
-which bit means which field before the hero property panel is built.
+clearing the mask on an edited hero silently reverts them.
+
+**Which bit means which field — measured 2026-08-03**, across the 110 shipped
+maps: every hero with a non-zero mask, against which of its `Editable` fields is
+actually filled in. Eighteen distinct values, and they line up as
+
+| bit | value | what it lets through |
+|---|---|---|
+| 0 | 1 | `NameFileRef` (and the biography with it) |
+| 3 | 8 | `skills` |
+| 4 · 5 | 16 · 32 | the four stats, and the war machines |
+| 6 | 64 | `perkIDs` and `spellIDs` |
+
+so **120** is "everything except the name", which is the value to write when the
+editor overrides a hero and does not mean to replace what he is called. This was
+not academic: a stand built with the mask left at 0 gave both heroes their
+record's 20 mana and none of the spells written into them, and read in game as
+"the enemy AI refuses to cast".
+
+One more thing the mask does NOT cover: a hero's RACIAL skill is not a line in
+`skills`. It is his `PrimarySkill`, and the map object carries only its level, in
+`PrimarySkillMastery` beside the mask.
 
 `armySlots` empty means the hero comes with its class's default army, not with
 no army — same shape as the monster's `Custom` false.

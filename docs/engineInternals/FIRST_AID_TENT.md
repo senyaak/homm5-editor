@@ -147,31 +147,179 @@ only a hero with a tent reaches. `push 2; call [hero_vtable+0x174]` inside
 `GetSpellPower` is the engine asking the very same question — 2 is
 `HERO_SKILL_WAR_MACHINES`.
 
+## The second out-parameter is the CLEANSE THRESHOLD
+
+Open for two weeks, and the answer was one call site away. `0x77fca0` fills two
+numbers, `{10,20,50,100}` and `{0,0,1,3}` by mastery, and the second is the
+worst effect the tent may lift off the stack it heals:
+
+```
+the apply path   0xb7a983  cmp dword ptr [esp+20h],0    is it worth walking at all
+                 0xb7a9d0  push it, per effect, into 0xc78910
+0xc78910         ... call 0xad4b70   the effect's spell record -> its <Level>
+                 0xc7897c  cmp eax,[esp+0Ch]; jg -> no
+the tooltip      0xb82dd3  the same comparison, so the words agree with the deed
+```
+
+So a war machine alone never touches a level 4 or 5 curse, and "the tent
+cleanses better" is that number raised — no place of its own to find, and the
+hook that raises it has been standing since the specialization. `0xc78910` also
+refuses a handful of effects by id before it ever asks the level, which is the
+engine's own list of what nothing may dispel.
+
+## What a war machine can take
+
+`CWarMachine::GetHealth`, `0xabc040`, and the only place it is decided:
+
+```
+this = the WORLD machine (+0x1C is its type), the hero is the one stack argument
+hp  = record-><Health> (+0x4C)                 100 for the tent
+    + GetSkillMastery(2) * settings[0x124]     WarMachines_HealthBonusPerSkillTrained
+switch (type - 1)                              jump table 0xabc148
+  tent → if the hero holds skill 22, hp = (float)hp * settings[0x128]
+```
+
+The hero arrives as the object his SKILLS answer on — the engine asks him for a
+mastery through `[vtable+0x174]` two instructions in — which is one walk less
+than the amount hook needs. `tent_health` is a percent of what it returns.
+
+## Mana spent in a battle
+
+Every change to a caster's mana inside a battle goes through one networked
+command, which is what makes it a funnel — a multiplayer game cannot afford a
+second route the other side would not hear about.
+
+```
+CSetCombatCasterMana::Execute   0xb74300
+  [cmd+0x0C] the caster   [cmd+0x10] what his mana becomes
+  [caster vtable +0x234] what it is now      +0x22C set it
+```
+
+The pair of slots is the engine's own: a mana-draining spell reads `+0x234`,
+adds, writes `+0x22C`, twice over on two casters (`0xb78929`, `0xb78949`). So
+"how much did he spend" is what it was before the command minus what the command
+writes, and nothing of ours has to know what a spell costs.
+
+Giving it back needs the tent, and a tent knows its hero rather than the other
+way round — so the amount hook writes down each tent beside the three pointers
+its owner answers on, and the counting side matches the caster against all
+three. Which one it is has not been measured; the log says.
+
 ## Still open
 
-- **The second out-parameter.** `0x77fca0` fills two, and only the first is the
-  healing. The second moves with the mastery and what it decides is unknown; the
-  extension passes it through untouched.
 - **Which class owns vtable slot `0x174`.** Naming it would make every hook that
   asks about a hero's skills easier to write — the same wish as `0x328` (set
   count) and `0x368` (scripted necromancy level) in
   [../ENGINE_INTERNALS.md](../ENGINE_INTERNALS.md).
 
-## The branch's three perks: one written, two waiting
+## What the engine already does with a tent
+
+Read before designing a perk for it — two of our first three asked for things
+this list already contains. The branch's second attempt is in
+[../_slices_done/SLICE_tent_branch.md](../_slices_done/SLICE_tent_branch.md).
+
+**Health**, at `0xabc040`, the only place a war machine's is decided:
+
+```
+hp  = record->[0x4C]                       // <Health>, 100 for the tent
+    + GetSkillMastery(2) * settings[0x124] // WarMachines_HealthBonusPerSkillTrained = 100
+switch (type - 1)                          // jump table 0xabc148
+  tent → if the hero holds HERO_SKILL_FIRST_AID (22), hp *= settings[0x128]
+  ballista → skill 23, catapult → skill 24, same shape
+```
+
+Both numbers are DATA — `GameMechanics/RPGStats/DefaultStats.xdb`,
+`WarMachines_HealthBonusPerSkillTrained` (100) and
+`WarMachines_PerkSpecificHealthMultiplier` (2). So "a perk multiplies a machine's
+health" is a shape the engine already has.
+
+**Cleansing.** The tent removes curses, and the engine picks between
+`COMBAT_FAT_HEAL`, `COMBAT_FAT_HEAL_REMOVE_CURSE`, `COMBAT_FAT_HEAL_RESURRECT`
+and `COMBAT_FAT_HEAL_RESURRECT_REMOVE_CURSE` (`0xb82e1a` and just after). The
+loop at `0xb82db0` walks the effects on the target and compares each one's level
+against a threshold — which is the number a perk of ours would raise.
+
+**Rebuilt after a battle, and it is the SHIPPED perk.** «Первая помощь»
+(`HERO_SKILL_FIRST_AID`, 22) says so itself: «Умение, которое позволяет
+управлять палаткой первой помощи. Если в бою палатка была уничтожена, то после
+сражения она будет восстановлена.» The code is at `0xac4ae0`, a small method
+whose whole body is that condition:
+
+```
+0xac4ae0  ask [this+0xF8] — the owner — whether he holds skill 22
+0xac4b01  push 11h; call [vt+0x174]   a second question about the unit
+0xac4b14  call [vt+0xC8]              a yes/no about it — the machine's state
+0xac4b27  allocate 0x24 bytes, init via 0xace8f0(1), and hand the result
+0xac4b55  to 0xbf96b0 through [this+0x17C] — a queue rather than a direct rebuild
+```
+
+Four callers (`0xac4be3`, `0xac4c1a`, `0xac5568`, `0xac7ab5`), all in the same
+family — the army/owner side rather than the battle. **Not finished**: which
+moment those callers are, and what `[vt+0xC8]` asks, are unread. What is certain
+is the gate, and it is the shipped perk.
+
+**Ring of Machine Affinity** — "the tent heals twice as much", plus a shot each
+to ballista and catapult and +4 attack to shooters from the ammo cart. The
+doubling is the LAST thing the amount function does, after everything else it
+computes:
+
+```
+0xb7fd33  call [hero vtable+0]      the object his skills answer on
+0xb7fd47  call [that vtable+0x314]  and if it says more than nothing
+0xb7fd53  add eax,eax               the amount doubles
+```
+
+A term of ours that raises the tent's own number — `tent_healing` does, the way
+the mastery raises it to a hundred — has to be doubled by the same thing, and
+our hook runs after that instruction. So the extension asks the very same
+question and applies the same factor itself: at expert with the ring, engine 200
+plus ours 100, which is (100 + 50) × 2. A term written as a PERCENT of the
+engine's number needs nothing of the sort — the doubling is already inside the
+number it is a percentage of.
+
+## The branch's four perks
 
 The Witch's «Мастер палатки» branch — see [../HERO_CLASSES.md](../HERO_CLASSES.md)
-for the class and the records.
+for the class and the records, and `TENT_PERKS` in `e2e/mods.ts` for the words.
+Every one of them is a NUMBER the engine already computes, and three of the four
+are computed in one function:
 
-**Two happen inside a battle**, at the moment the tent acts: the cleanse and the
-random blessing. Lua cannot see that moment — the combat script API is a
-controller for scripted battles, attached to a hero by `SetHeroCombatScript`, per
-hero and per map, and it has no event for "the tent healed somebody". Both are
-extension work, and the amount hook is already standing in the right place.
+| perk | row | where it lands |
+|---|---|---|
+| «Крепкая палатка» | `tent_health 100` | `0xabc040`, percent of the hit points |
+| «Целебный настой» | `tent_healing 50` | the amount hook, after the engine's own sum |
+| «Чистая повязка» | `tent_cleanse 2` | the amount hook's SECOND out-parameter |
+| «Полевой госпиталь» | `tent_mana 2` | mana counted at `0xb74300`, charges at `+0xB0` |
 
-**The third WORKS — confirmed in game on 2026-08-02 — and it is Lua on both
-sides.** «Запасной комплект»: a tent destroyed in a battle is back afterwards. The difficulty was never the
-rebuilding — it is knowing there was a tent to rebuild, because after the battle
-"no tent" and "never had one" look the same.
+**Why «Полевой госпиталь» is not Lua**, though the rule is that whatever Lua
+reaches is written in Lua. It reaches neither half:
+
+- **Nothing writes a war machine's uses.** The battle context registers 58
+  functions and exactly one of them is about machines — `GetWarMachineType`.
+  The counter is `machine+0xB0` and the three gates read it directly, so there
+  is not even an accessor to register against.
+- **An ordinary battle never calls the script again.** `DoPrepare`, `DoStart`,
+  `UnitMove` and `UnitDeath` are all guarded by one flag on the combat object,
+  `[+0x4F0]`, which is cleared when it is built (`0x65ac6c`) and set only after
+  a script has been attached (`0x65af0b`, right after `0x7223e0` answers yes).
+  A mod's battle tail runs ONCE, when the battle is built, and nothing calls it
+  afterwards — so there is no moment to notice mana in either. (`StartThread`
+  and `Sleep` are registered and would give a poll; they would still have
+  nothing to write.)
+
+**The first set of three was thrown away**, and the lesson is worth more than
+they were: two of them asked for what the engine does by itself — the rebuild IS
+the shipped «Первая помощь» (above), and the cleanse is the threshold this page
+now names. Ten minutes in `DefaultStats.xdb` and the tooltip strings would have
+saved both. Read what the engine does with a thing BEFORE designing a perk for
+it.
+
+The Lua the dropped perk was built in is kept — a skill can carry a map script
+and a battle script (`src/mods/skill-scripts.ts`), and nothing in the mod uses
+it. What that perk measured, kept because the mechanism outlived it:
+«Запасной комплект», a tent destroyed in a battle back afterwards. The
+difficulty was never the rebuilding — it is knowing there was a tent to rebuild,
+because after the battle "no tent" and "never had one" look the same.
 
 The answer is that the battle knows, and can be asked without being told
 anything:

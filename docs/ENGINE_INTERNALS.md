@@ -20,6 +20,7 @@ beside it, because they are read one at a time and the pile was 700 lines.
 | [engineInternals/LUA.md](engineInternals/LUA.md) | How the script API is registered, why the manuals disagree with it, and what adding a function costs. |
 | [engineInternals/MODS_AND_MAPS.md](engineInternals/MODS_AND_MAPS.md) | Where the game looks for mods, why a map archive can override anything, and where the generator writes. |
 | [engineInternals/EXTENSION.md](engineInternals/EXTENSION.md) | The three layers of our own extension, and what we deliberately do not do. |
+| [engineInternals/BATTLE_SCRIPTING.md](engineInternals/BATTLE_SCRIPTING.md) | How the extension reaches a fight's Lua, the moment it fires on, and what a mod must not do to `combat-startup.lua`. Its reference side is [api/combat.md](api/combat.md). |
 
 The companion documents, which are about what data and script can express
 rather than about the binary: [ARTIFACT_EFFECTS.md](ARTIFACT_EFFECTS.md),
