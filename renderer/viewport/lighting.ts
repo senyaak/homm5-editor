@@ -52,12 +52,13 @@ export const uAmbCol = { value: new THREE.Color(0.31, 0.31, 0.31) };
 // lights add in, 0 = they don't (flat editing light keeps pools off too).
 export const uLmGain = { value: 1 };
 /**
- * The modulate the sum is multiplied by before it is clamped — the constant ×4
- * of the game's own ps.1.1 shaders (`mul_x4_sat r0.rgb, v0, t0`; the ×4 sits
- * in the instruction modifier, not in any constant or preset). It was read as
- * a ×2 for a while, then as the preset's `<Whitening>` switch — both render a
- * dusk where the game shows noon; src/scene/ambient.ts has the two screenshot
- * measurements. Kept as a uniform because the flat editing light drives it.
+ * The ×4 the game's ps.1.1 shaders apply as an instruction modifier
+ * (`mul_x4_sat r0.rgb, v0, t0`). It never acts alone: the sum was doubled and
+ * SATURATED INTO A BYTE on the CPU, then halved into oD0 for headroom (c29 =
+ * 0.5, seen live by the probe), so the shaders that consume this uniform cap
+ * the product at 2 — `min(sum · uWhiten, 2)`, a texel at most doubled.
+ * src/scene/ambient.ts has the full measurement; kept as a uniform because
+ * the flat editing light drives it.
  */
 export const uWhiten = { value: 4 };
 // Scene light on L_LIT particle instances (docs/EFFECTS_FORMAT.md §5): the

@@ -39,17 +39,20 @@ export function loadAmbient(data: Assets, href: string | null): AmbientData | nu
       light, ambient, shade,
       pitch: +(xml.match(/<Pitch>([^<]*)/)?.[1] ?? 45),
       yaw: +(xml.match(/<Yaw>([^<]*)/)?.[1] ?? 0),
-      // The modulate factor is a CONSTANT ×4 — the game's own ps.1.1 shaders
-      // say `mul_x4_sat r0.rgb, v0, t0` (×4, in the instruction modifier, not
-      // in any constant) — and it is NOT the preset's <Whitening> switch,
-      // which an earlier reading took for a ×2-on/off. Two screenshot pairs
-      // measure it: the Sharpshooter map (default preset, Whitening=false)
-      // renders grass at tex·0.83 under ×2 while the game shows tex·1.66 —
-      // exactly the missing doubling — and C1M1's day scene puts tree
-      // backsides at amb·4 = 0.75, the game's bright canopy, where ×2 gave a
-      // dusk. The same ×4 explains the "game ignores dark presets" puzzle:
-      // the Inferno arena's 0.345 ambient saturates to 1 under ×4, so most
-      // dark presets LOOK daylit, while the two all-zero ones stay black.
+      // ×4, capped at a NET ×2 of the texel: light = min(4·sum, 2). Measured
+      // from both ends of the game's own shader chain: the CPU doubles the
+      // sum and saturates it into a colour byte (that is the clamp — nothing
+      // survives past 1.0 there), the vertex shader halves it back for
+      // headroom (`mul r4.xyz, r4.w, c29` — the probe in the running game
+      // sees c29 arrive as 0.5), and the ps.1.1 pixel shader's
+      // `mul_x4_sat r0.rgb, v0, t0` restores ×4. Net: min(2·sum, 1)·2.
+      // Every simpler reading failed a side-by-side with the game: the
+      // <Whitening> switch halved Whitening-off maps (the default preset
+      // included — dusk where the game shows noon), a bare ×2 was the same
+      // dusk, and an uncapped ×4 washed day presets to white (C1M1's day
+      // preset sums to 0.663; 2.65× the texel is not the game's picture,
+      // capped 2.0× is). No SetPixelShaderConstantF ever touches c7 — the
+      // ps.2.0 shader quoted in older notes is not the path the game runs.
       whiten: 4,
     };
   } catch { return null; }

@@ -104,7 +104,7 @@ void main() {
   // pools half a tile off their objects.
   float d = abs(dot(n, normalize(uSunDir)));
   vec3 pl = texture(uLm, vWorld * uInvTiles).rgb * uLmGain;
-  outColor = vec4(col * (uAmb + uSunCol * d + pl) * uWhiten, 1.0);
+  outColor = vec4(col * min((uAmb + uSunCol * d + pl) * uWhiten, vec3(2.0)), 1.0);
 }`;
 
 const loadImg = (src: string): Promise<HTMLImageElement> => new Promise((res, rej) => {
@@ -241,7 +241,7 @@ void main() {
   // own mapping, so the pools land where the terrain draws them.
   float d = abs(dot(normalize(vNrm), normalize(uSunDir)));
   vec3 pl = texture(uLm, vGrid).rgb * uLmGain;
-  outColor = vec4(col * (uAmb + uSunCol * d + pl) * uWhiten, 1.0);
+  outColor = vec4(col * min((uAmb + uSunCol * d + pl) * uWhiten, vec3(2.0)), 1.0);
 }`;
 
 /**

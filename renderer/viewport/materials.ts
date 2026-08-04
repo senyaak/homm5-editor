@@ -73,9 +73,15 @@ function gameLit(m: THREE.Material, lit: boolean): void {
     // "unlit with a bright light": it blew the arena's grass tufts out to a
     // solid acid-green hedge, because a texel authored to be shown at face
     // value went out at twice that.
+    // The product caps at 2: the CPU doubles the sum and SATURATES it into a
+    // colour byte, the vertex shader halves it back for headroom (c29 = 0.5,
+    // seen live by the probe), and the pixel shader's mul_x4 restores ×4 —
+    // so light = min(4·sum, 2), a texel at most doubled. The cap is what
+    // keeps a hot day preset (C1M1's sums to 0.663) from washing every texel
+    // to white, and the ×4 under it is what keeps a mild one from dusk.
     const sum = lit
       ? `vec3 sunV = normalize((viewMatrix * vec4(uSunDir, 0.0)).xyz);
-         vec3 light = (uAmbCol + uSunCol * max(dot(normalize(normal), sunV), 0.0)) * uWhiten;`
+         vec3 light = min((uAmbCol + uSunCol * max(dot(normalize(normal), sunV), 0.0)) * uWhiten, vec3(2.0));`
       : `vec3 light = vec3(1.0);`;
     shader.fragmentShader = shader.fragmentShader
       .replace('void main() {', `uniform vec3 uSunDir; uniform vec3 uSunCol;

@@ -61,8 +61,11 @@ test('an object is lit by the game\'s own sum, not by three.js', async () => {
   expect(w).toBe(4);
 
   /** The game's sum for one channel, as a byte. */
+  // The light term caps at 2 — the CPU doubles the sum into a saturating
+  // colour byte and the shader restores it (docs/LIGHTING.md §2) — so a texel
+  // is at most doubled however bright the preset runs.
   const shade = (albedo: number, i: number, ndl: number) =>
-    Math.round(Math.min(1, albedo * (amb[i]! + sun[i]! * ndl) * w) * 255);
+    Math.round(Math.min(1, albedo * Math.min((amb[i]! + sun[i]! * ndl) * w, 2)) * 255);
 
   // Flat ground's normal: N·L is the sun's height, which is cos(Pitch) because
   // Pitch counts from the zenith — the probe inside the game confirmed that

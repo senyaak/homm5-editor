@@ -84,17 +84,17 @@ one.
   premultiplied by alpha — the game's look, per its `mov r0.rgb, t0` shader.
   Fire, smoke and every moving effect keep the old path untouched.
 
-- **Maps and scenes are as bright as the game — the lighting multiplier is the
-  shaders' own ×4, not ×2 and not the preset's Whitening switch.** The game's
-  ps.1.1 shaders write the modulate as an instruction modifier
-  (`mul_x4_sat r0.rgb, v0, t0`), so every earlier reading — a ×2 constant,
-  then `<Whitening>` as a 2-or-1 switch — rendered a dusk where the game
-  shows noon: the Sharpshooter map came out at exactly half the game's
-  brightness, and C1M1's day scene stood its trees in the dark. The same ×4
-  also explains why the game looks daylit under the Inferno arena's "dark"
-  battle preset: its 0.345 ambient saturates to full brightness under ×4,
-  while the all-zero presets — the one case the game visibly darkens — stay
-  black under any multiplier.
+- **Maps and scenes are lit like the game: the light term is ×4, capped at
+  doubling the texel — `min(4·(amb + sun·N·L), 2)`.** Measured from both ends
+  of the game's own shader chain: the CPU doubles the sum and saturates it
+  into a colour byte (the cap), the vertex shader halves it back for headroom
+  (`c29`, seen arriving as 0.5 by the probe in the running game), and the
+  ps.1.1 pixel shader's `mul_x4_sat` restores ×4. Every simpler reading
+  failed a side-by-side: the preset's `<Whitening>` as a 2-or-1 switch halved
+  every Whitening-off map (the default preset included — the Sharpshooter
+  test map rendered at dusk against the game's noon), and an uncapped ×4
+  washed day presets toward white. The probe also shows the game never sets
+  the ps.2.0 shader's c7.x constant — that shader is not the path it runs.
 
 - **The impaled-body totem stands beside the arch devil in C1M1's opening,
   instead of lying invisible under the grass.** The DemonLord path props

@@ -47,12 +47,21 @@ and the editor keeps its neutral backdrop. **[OK]**
 Every surface the game draws ends the same way:
 
 ```
-albedo · (Ambient + Light·N·L) · Whitening,   clamped to 1
+albedo · min(4·(Ambient + Light·N·L), 2),   clamped to 1
 ```
 
 multiplied in **gamma space on the raw texel** — no sRGB decode going in, no
-encode coming out. The multiplier is a **constant ×4**, written into the
-ps.1.1 shaders as an instruction modifier rather than into any constant:
+encode coming out. The ×4 and its cap at 2 are one mechanism, a range packed
+through an 8-bit pipe, measured from both ends of the shader chain:
+
+* The CPU computes the sum, **doubles it and saturates it into a colour
+  byte** — that byte is where the cap lives: nothing survives past 1.0.
+* The vertex shader **halves it back** for headroom — `mul r4.xyz, r4.w, c29;
+  mul oD0.xyz, v4, r4`, and the SetVertexShaderConstantF probe in the running
+  game sees **c29 arrive as (0.5, 0.5, 0.5, 0.5)**. oD0 itself clamps to
+  [0,1], which is the point of the halving: it carries values up to 2.
+* The ps.1.1 pixel shader **restores ×4** — as an instruction modifier, not a
+  constant:
 
 ```
 mul_x4_sat r0.rgb, v0, t0    ; texel × lit vertex colour, ×4, clamped
@@ -60,19 +69,24 @@ mul_x4_sat r1.rgb, v1, t0    ; same for the shadowed colour
 lrp r0.rgb, t1, r1, r0       ; picked by the shadow map
 ```
 
-Two earlier readings — a ×2, then the preset's `<Whitening>` switch (2 on,
-1 off) — both render a dusk where the game shows noon. Measured on two
-screenshot pairs of the same spots: the Sharpshooter map (default preset,
-`Whitening=false`) has the editor at `tex·0.83` under ×2 against the game's
-`tex·1.66`, exactly the missing doubling; C1M1's day scene puts tree
-backsides at `amb·4 = 0.75` — the game's bright canopy — where ×2 gave 0.38.
-The ×4 also dissolves §6's old "the game ignores dark presets" puzzle: the
-Inferno arena preset's 0.345 ambient SATURATES to 1 under ×4, so most "dark"
-presets look daylit in the game too, while the two all-zero presets (the one
-case the game visibly darkens) stay black under any multiplier. What
-`<Whitening>` actually switches is still unidentified; it is not this factor.
-The ps.2.0 object shader's `c7.x` is presumably set to the same 4 at runtime
-— unverified, a probe hooking SetPixelShaderConstantF would settle it.
+Net: `min(2·sum, 1) · 2` — a texel is at most DOUBLED, and reaches that
+ceiling once the sum passes 0.5, which every day preset does. The probe run
+also shows **no SetPixelShaderConstantF ever touches c7** — the ps.2.0 object
+shader with `c7.x`, quoted in earlier revisions of this section, is not the
+path the game runs.
+
+Every simpler reading failed a side-by-side with the game, one per direction.
+The preset's `<Whitening>` as a 2-or-1 switch halved every Whitening-off map
+— the DEFAULT preset included: the Sharpshooter test map rendered at
+`tex·0.42` against the game's `tex·1.66` (its sum is 0.415; ×4 = 1.66, under
+the cap). A bare ×2 was the same dusk. An uncapped ×4 matched that map but
+washed day presets toward white — C1M1's day preset sums to 0.663, and 2.65×
+the texel blows out everything past 96, which is not the game's picture;
+capped 2.0× is. What `<Whitening>` actually switches is still unidentified;
+it is not this multiplier. The old §6 puzzle ("the game ignores dark battle
+presets") thins to arithmetic: the Inferno arena's 0.345 ambient alone is
+1.38× the texel, its sun side caps at 2 — daylit-looking — while the all-zero
+presets, the one case the game visibly darkens, stay black under any factor.
 
 That is read out of the executable rather than guessed. The shipped shaders are
 embedded in it as **assembler text**, 115 of them, assembled at run time by
