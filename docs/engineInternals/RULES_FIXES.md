@@ -303,5 +303,13 @@ nothing here automates that.
   claimed bug against the game's own words before porting.
 - **OneStackSplit** — a change, not a fix, and `quick-split` covers the same
   ground on our side.
+- **EliteCastersFix** — his own file calls it a *Change*: Elite Casters halves
+  what a creature caster pays, and he narrows that to the four magic schools so
+  it stops applying to abilities. The perk's text says *"потратят только
+  половину маны, которая требуется на создание заклинания"* and does not draw
+  that line — and the line makes no difference anyway: **not one creature
+  ability in the shipped data has a mana cost at all** (every `TrainedCost`
+  under `Spell/Creature_Abilities` is zero), so there is nothing for the
+  halving to be wrong about. A change with no effect is not worth a switch.
 - **CombatAIFix** — already ours, found independently; see
   [COMBAT_AI.md](COMBAT_AI.md).
