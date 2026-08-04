@@ -14,7 +14,18 @@ shipped is the baked result of running them — each particle's birth and death,
 and keyframes for position, rotation, size, colour and texture frame, sampled
 at 30 fps (a handful of files use 24/25/15). There is **no emitter logic to
 reverse**: spawn rates, forces, turbulence — all of it is already applied in
-the data. Playback is interpolation, and it is exact by construction.
+the data, and playback is interpolation.
+
+Be careful how far that is claimed. What is proven is about the FILE: every byte
+of every shipped effect is accounted for (`tools/test-effects.ts`), so the
+recording is complete and nothing unread could be a simulation input. It does
+NOT follow that the engine plays the recording untouched — it has knobs that
+reach into effects at run time (`gfx_particles`, `gfx_effect_alpha_treshold`, a
+fixed-function fallback path), and some of what this editor does around the
+recording is our own invention rather than something read (the per-placement
+phase spread, our alpha discard thresholds). Wind is the one such question
+already closed: the format carries `<WindAffected>` on every effect and it is
+`false` on all 1814. The rest is SLICE_effects_probe.md §7.
 
 The scale of what shipped: 1.69 million particles, 41.8 million keys across
 1924 files. The largest file (573 KB) records 2592 particles.

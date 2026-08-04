@@ -42,10 +42,11 @@ wrong in a row before that (the `<Whitening>` switch, a bare ×2, an uncapped
 ×4). The tooling is already ours: own copy of the exe, detours, a Zig build, and
 live constant reads.
 
-**What this slice deliberately does NOT do:** port the engine's particle
-simulator. The bake already IS the simulation — that is the discovery the whole
-format rests on (EFFECTS_FORMAT §1) — so the questions are all about *state and
-timing per draw call*, not about physics.
+**What this slice plans not to do, and how sure that is.** It does not port a
+particle simulator, on the working assumption that the bake IS the recording and
+playback is interpolation. That assumption is **half verified**, and the half
+that is not is written out in §7 with the checks that would kill it — because
+"the file says so" is exactly the reasoning that produced the three bugs above.
 
 ## 2. The questions, in the order they pay
 
@@ -69,7 +70,11 @@ timing per draw call*, not about physics.
    apply the particle convention (`ONE / ONE_MINUS_SRC_ALPHA`, straight colour)
    to particles and material flags to effect models. Confirm both, and find out
    what `AddPlaced` really turns into.
-5. **Cheap while we are in there:** does anything animate a material's texture
+5. **Is the bake played as recorded?** — the assumption this whole plan rests
+   on, and §7 says how far it is actually verified. Read from the same log: how
+   many particles the engine draws against how many our decode expects, what
+   alpha reference it sets, and whether draws arrive sorted.
+6. **Cheap while we are in there:** does anything animate a material's texture
    *frame* on a model (the meteor trail's stretch is a bone, but the fire on it
    may be a frame sequence), and are effect `<Lights>` (parked, 8 of 532
    adventure-reachable effects) fed to D3D at all.
@@ -128,3 +133,49 @@ Known broken or unknown, and why it is in this slice: the gating panels' lattice
 (no UV motion), the particle colour shader, the standing-quad discriminator
 being an inference, effect `<Lights>` unfed, and the 46 of 298 placed effects
 that fly a `MovePoints` path and are drawn at their start point.
+
+## 7. "The bake is the simulation" — what is proven and what is assumed
+
+Senya pushed back on this being stated as settled, and the pushback was right:
+it is two claims, and only one of them is established.
+
+**Established, on the file side.** Every byte of every one of the ~1921 shipped
+`bin/effects` files is accounted for by our parser (`tools/test-effects.ts`
+checks the directory's own claims: blocks contiguous, no byte covered twice, no
+key outside its particle's lifetime). So there is no unread channel that could
+be a simulation input, and each particle's keys really do span its whole life.
+The recording is complete AS a recording.
+
+**Not established, on the engine side** — whether anything is applied on top of
+it at run time. What was checked while writing this, and what it says:
+
+* **Wind: answered, and the answer is no.** The format carries `<WindAffected>`
+  and `<WindPower>` on every effect — and `WindAffected` is `false` on all 1814,
+  with `WindPower` 1 on all 1814. A mechanism nothing shipped uses. (Note this
+  constant is the *useful* kind, unlike `<Static>`: a field that is false
+  everywhere answers the question, a field that is `P_STATIC` everywhere cannot.)
+* **`gfx_particles` — open.** The game's own profile carries
+  `setvar gfx_particles = 1`, one of 80 `gfx_*` vars in the executable. Whether
+  it is a boolean, a density fraction, or a quality tier that subsamples what
+  gets played is unknown, and a density tier would mean the engine does NOT play
+  the bake as recorded.
+* **`gfx_effect_alpha_treshold` — open, and we invented our own.** The engine has
+  a configurable alpha threshold for effects (0 in this profile). Our shaders
+  discard below hand-picked 0.003 / 0.01 (`renderer/viewport/particles.ts`),
+  which is our number, not the engine's.
+* **More than one draw path exists.** `fx_nopixelshaders` and `fx_tnl_mode` say
+  the engine has a fixed-function fallback, so question 2 above is not "which
+  shader" but "which shader under which mode" — the probe must record the mode
+  it ran in, or the answer is only true for this machine.
+* **The phase spread is ours.** Forty demons whose fires flicker in lockstep
+  read as one animation played forty times, so each placement is offset by
+  `i * 0.37` (`renderer/viewport/fx.ts`). Nothing was ever read that says the
+  engine does this, or with what offset.
+* **Sorting is unknown.** Whether the engine depth-sorts particles per draw is
+  not something we have looked at; it changes how overlapping smoke reads.
+
+All of these fall out of the same log the probe already has to produce — draw
+counts against our expected counts (`gfx_particles`), the alpha ref and test
+state (`gfx_effect_alpha_treshold`), the bound shader plus the mode, and the
+order draws arrive in (sorting). Flipping the two config vars between runs and
+diffing the log is the cheap experiment for the first two.
