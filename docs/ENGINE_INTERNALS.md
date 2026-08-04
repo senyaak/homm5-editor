@@ -79,8 +79,11 @@ commands in `tools/reverse/` — `lua-registry.ts` regenerates
 [EXE_LUA_REGISTRY.md](EXE_LUA_REGISTRY.md) from the binary and
 `npm run test-lua-registry` fails if the two have drifted apart; `vtable.ts`
 goes from an RTTI class name to its vtables; `trace.ts` disassembles, finds
-callers, and intersects what several functions reach. See that folder's README
-for why iced-x86 and not capstone.
+callers, and intersects what several functions reach; `match.ts` finds the same
+code in a DIFFERENT build of the game — by a jump table's shape, by byte needles
+over every function, or by scoring candidates against a reference function's
+behaviour (see engineInternals/RULES_FIXES.md, which is what it was written
+for). See that folder's README for why iced-x86 and not capstone.
 
 ## How the extension's source is laid out
 
@@ -92,7 +95,9 @@ a header and stays invisible outside the DLL, which with one exported symbol
 and no C runtime is the point. The folders group by subject: `core/` (log,
 detours, calling the engine by hand, the config), `lua/` (registering
 functions, speaking to a battle), `combat/` (the terms: tent, dark energy),
-`qol/` (borderless, own profile, quick split, the stack plates). A file sees
+`qol/` (borderless, own profile, quick split, the stack plates, and the
+`fix-*.c` that write over the game's own code — see engineInternals/COMBAT_AI.md
+and engineInternals/RULES_FIXES.md). A file sees
 what was included before it and nothing after, so the include list is the
 order of need, not the alphabet. The split was proved by bytes: the DLL built
 from the pieces is identical to the one built from the single file.

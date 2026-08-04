@@ -186,7 +186,7 @@ This is the first one that writes **the game's own code**, so:
   them is still better off with the other two.
 - That refusal is **silent from the outside**: the game plays on with the AI it
   always had. So the addresses are checked against the installed executable by
-  `tools/test-combat-ai.ts` rather than left to be noticed in a battle, and
+  `tools/test-fixes.ts` rather than left to be noticed in a battle, and
   `bin/homm5-editor.log` says how many of the three went in.
 
 ## The rules fixes

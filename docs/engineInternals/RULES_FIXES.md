@@ -14,6 +14,20 @@ patch is a replacement `um.dll` that writes absolute addresses of the **retail**
 where that one is x87, so not one address survives. Each fix is found again here
 by what the code does.
 
+## The tool
+
+`tools/reverse/match.ts` is the three ways of finding the same code in a
+different build, and every claim below was made with it:
+
+```bash
+node tools/reverse/match.ts table <exeA> <vaA> <exeB> <vaB> <len>
+node tools/reverse/match.ts find <exe> <maxFnLen> <hex:count> [hex:count…]
+node tools/reverse/match.ts fingerprint <refExe> <refVA> <exe> <va…>
+```
+
+The retail executable to compare against is the one shipped inside
+`CombatAIFix_v1.1.zip`; H5_DLL patches that same build.
+
 ## The method: a switch has a shape
 
 Two of these are entries in a **jump-table switch** — `cmp` a bound, index a
@@ -22,18 +36,29 @@ builds in a way that code is not:
 
 - The **byte table is data**, and often identical between builds. Encourage's was
   found by searching our executable for the retail table's 195 bytes: one hit.
+  Try this first — one hit is an answer, and no tool is needed for it.
 - When the tables *do* differ, their **shape** survives: which ids share a case,
-  and which sit on the default. Two builds number the cases differently — ours
-  deduplicates identical bodies where retail keeps them apart — but the grouping
-  is the switch's own structure. Barbarian Learning's table was matched that way
-  (13 groups against 15, differing exactly where our compiler merged bodies).
+  and which sit on the default (`match.ts table`). Two builds number the cases
+  differently — ours deduplicates identical bodies where retail keeps them apart
+  — but the grouping is the switch's own structure. Barbarian Learning's table
+  was matched that way (13 groups against 15, differing exactly where our
+  compiler merged bodies).
 
 The snare's crash has no table, and was found a third way: by **fingerprint**.
 The reference function's sequence of virtual-call slots, notable immediates and
 `ret` form — `V6c V6c V0 C V1c V6c V0 C V6c V1d8 M48 M68 I19 Vc C Re4` — is what
 a recompilation keeps when it throws away registers, encodings and addresses.
-Filtering our `.text` for functions calling slot `+0x6C` three times and `+0x1D8`
-once left two candidates out of 400 000; the better scored 88%.
+`match.ts find` over our `.text` for functions calling slot `+0x6C` three times
+and `+0x1D8` once left two candidates out of 400 000, and `match.ts fingerprint`
+scored them 88% and 34%:
+
+```bash
+node tools/reverse/match.ts find <ours> c0 "FF??6C:3" "FF??D8010000:1"
+node tools/reverse/match.ts fingerprint <retail> 9bb340 <ours> dc3220 dc3090
+```
+
+The 34% one is not a miss: it is the retail function's *caller*, with the
+function inlined into it — which is how both copies came to light.
 
 `tools/test-fixes.ts` then checks every patch against the installed executable.
 It finds them by walking the `overwrite_code(...)` calls in `native/` and

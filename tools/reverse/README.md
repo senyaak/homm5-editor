@@ -23,6 +23,11 @@ node tools/reverse/trace.ts field 0x44 0x48 --min 2    # who reads these offsets
 node tools/reverse/trace.ts field 0x638 --all         # every instruction, ungrouped
 
 node tools/reverse/equipment.ts                   # every behaviour keyed on an artifact id
+
+# the same code in ANOTHER build — see docs/engineInternals/RULES_FIXES.md
+node tools/reverse/match.ts table <a> b55f8c <b> c1ea48 b8    # a switch by its shape
+node tools/reverse/match.ts find <exe> c0 "FF??6C:3"          # functions whose bytes fit
+node tools/reverse/match.ts fingerprint <a> 9bb340 <b> dc3090 # score by what it does
 ```
 
 `field --all` is what closed dark energy: the pool is ONE int, so grouping had
@@ -52,3 +57,10 @@ also a decoder rather than a binding, so there is no native build step.
 compilation, so anything found here is the starting point for a pattern search
 — the discipline `src/creature-limit.ts` and `src/artifact-limit.ts` already
 follow.
+
+`match.ts` is that discipline turned into a tool, and it was written because
+somebody else's bugfix patch names addresses in the RETAIL build while ours is
+compiled for SSE — a megabyte of code apart, not one address in common. Its
+three commands are the three things that survive recompilation: a switch's
+grouping, a function's rare byte sequences, and the order of the virtual slots
+it calls. Registers, encodings and addresses are exactly what it ignores.

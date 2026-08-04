@@ -137,7 +137,7 @@ instruction by instruction.
 
 ## How this is kept honest
 
-`tools/test-combat-ai.ts` reads the addresses and the byte rows out of the C
+`tools/test-fixes.ts` reads the addresses and the byte rows out of the C
 source and checks them against the installed `bin/H5_Game_H5E.exe`. It matters
 because the failure mode is **silent**: the extension refuses to write when the
 bytes are not the ones it knows, the game plays on with the AI it always had, and
@@ -147,7 +147,7 @@ the switch in the panel does nothing. The check also asserts the same row does
 Run it with the game said out loud:
 
 ```bash
-node tools/test-combat-ai.ts --game "<install>"
+node tools/test-fixes.ts --game "<install>"
 ```
 
 ## What is not done

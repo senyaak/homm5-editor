@@ -15,6 +15,12 @@ one.
 
 ### Added
 
+- **A tool for finding the same code in another build.**
+  `tools/reverse/match.ts` compares a jump table's shape, filters `.text` for
+  functions matching byte needles, and scores candidates against a reference
+  function by what it does rather than by its bytes. It is how every fix above
+  was located, and it is what makes the rest of that patch set portable.
+
 - **No more crash when a wall is summoned onto a snare.** Summoning an Arcane
   Crystal or a Blade Barrier onto a snared tile ended the battle: the snare asks
   the tile for the creature standing there and uses the answer without looking,
