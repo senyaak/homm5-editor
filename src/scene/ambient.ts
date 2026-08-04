@@ -39,9 +39,18 @@ export function loadAmbient(data: Assets, href: string | null): AmbientData | nu
       light, ambient, shade,
       pitch: +(xml.match(/<Pitch>([^<]*)/)?.[1] ?? 45),
       yaw: +(xml.match(/<Yaw>([^<]*)/)?.[1] ?? 0),
-      // The era's modulate-×2, and a real per-preset switch rather than a
-      // constant: 260 of the 291 shipped presets have it on, 31 have it off.
-      whiten: /<Whitening>false</.test(xml) ? 1 : 2,
+      // The modulate factor is a CONSTANT ×4 — the game's own ps.1.1 shaders
+      // say `mul_x4_sat r0.rgb, v0, t0` (×4, in the instruction modifier, not
+      // in any constant) — and it is NOT the preset's <Whitening> switch,
+      // which an earlier reading took for a ×2-on/off. Two screenshot pairs
+      // measure it: the Sharpshooter map (default preset, Whitening=false)
+      // renders grass at tex·0.83 under ×2 while the game shows tex·1.66 —
+      // exactly the missing doubling — and C1M1's day scene puts tree
+      // backsides at amb·4 = 0.75, the game's bright canopy, where ×2 gave a
+      // dusk. The same ×4 explains the "game ignores dark presets" puzzle:
+      // the Inferno arena's 0.345 ambient saturates to 1 under ×4, so most
+      // dark presets LOOK daylit, while the two all-zero ones stay black.
+      whiten: 4,
     };
   } catch { return null; }
 }

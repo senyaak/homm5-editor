@@ -52,11 +52,14 @@ export const uAmbCol = { value: new THREE.Color(0.31, 0.31, 0.31) };
 // lights add in, 0 = they don't (flat editing light keeps pools off too).
 export const uLmGain = { value: 1 };
 /**
- * The preset's `<Whitening>`, as the factor the sum is multiplied by before it
- * is clamped: 2 on, 1 off. Was a `2.0` written into the terrain shader, which
- * is right for 260 of the 291 shipped presets and wrong for the other 31.
+ * The modulate the sum is multiplied by before it is clamped — the constant ×4
+ * of the game's own ps.1.1 shaders (`mul_x4_sat r0.rgb, v0, t0`; the ×4 sits
+ * in the instruction modifier, not in any constant or preset). It was read as
+ * a ×2 for a while, then as the preset's `<Whitening>` switch — both render a
+ * dusk where the game shows noon; src/scene/ambient.ts has the two screenshot
+ * measurements. Kept as a uniform because the flat editing light drives it.
  */
-export const uWhiten = { value: 2 };
+export const uWhiten = { value: 4 };
 // Scene light on L_LIT particle instances (docs/EFFECTS_FORMAT.md §5): the
 // terrain's own gamma-space sum at full incidence, 2·(amb + sun) clamped to
 // 1 — daylight leaves lit smoke alone, a night preset darkens it while the
@@ -76,7 +79,7 @@ export function applyAmbient(a: AmbientData | null): void {
     uSunCol.value.setRGB(0.25, 0.25, 0.25);
     uAmbCol.value.setRGB(0.31, 0.31, 0.31);
     uFxTint.value.setRGB(1, 1, 1);
-    uWhiten.value = 2;
+    uWhiten.value = 4;
     return;
   }
   const [lr, lg, lb] = a.light as [number, number, number];

@@ -51,7 +51,7 @@ test('opening a map applies its AmbientLight preset', async () => {
   expect(after.preset).toBe(true);
   expect(after.terrain.sun).toEqual([0.392, 0.322, 0.275]);
   expect(after.terrain.amb).toEqual([0.188, 0.2, 0.255]);
-  expect(after.terrain.whiten).toBe(2);
+  expect(after.terrain.whiten).toBe(4);
   // Sun direction: pitch from the zenith, yaw 40° around +Z, unit length.
   const [x, y, z] = after.sunPos as [number, number, number];
   expect(z).toBeCloseTo(Math.cos(35 * Math.PI / 180), 2);

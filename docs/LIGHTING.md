@@ -51,9 +51,28 @@ albedo · (Ambient + Light·N·L) · Whitening,   clamped to 1
 ```
 
 multiplied in **gamma space on the raw texel** — no sRGB decode going in, no
-encode coming out. `Whitening` is the era's modulate-×2 and comes from the
-preset: 2 when `<Whitening>` is true, 1 when it is false (260 of the 291
-shipped presets have it on, 31 have it off — it is not a constant).
+encode coming out. The multiplier is a **constant ×4**, written into the
+ps.1.1 shaders as an instruction modifier rather than into any constant:
+
+```
+mul_x4_sat r0.rgb, v0, t0    ; texel × lit vertex colour, ×4, clamped
+mul_x4_sat r1.rgb, v1, t0    ; same for the shadowed colour
+lrp r0.rgb, t1, r1, r0       ; picked by the shadow map
+```
+
+Two earlier readings — a ×2, then the preset's `<Whitening>` switch (2 on,
+1 off) — both render a dusk where the game shows noon. Measured on two
+screenshot pairs of the same spots: the Sharpshooter map (default preset,
+`Whitening=false`) has the editor at `tex·0.83` under ×2 against the game's
+`tex·1.66`, exactly the missing doubling; C1M1's day scene puts tree
+backsides at `amb·4 = 0.75` — the game's bright canopy — where ×2 gave 0.38.
+The ×4 also dissolves §6's old "the game ignores dark presets" puzzle: the
+Inferno arena preset's 0.345 ambient SATURATES to 1 under ×4, so most "dark"
+presets look daylit in the game too, while the two all-zero presets (the one
+case the game visibly darkens) stay black under any multiplier. What
+`<Whitening>` actually switches is still unidentified; it is not this factor.
+The ps.2.0 object shader's `c7.x` is presumably set to the same 4 at runtime
+— unverified, a probe hooking SetPixelShaderConstantF would settle it.
 
 That is read out of the executable rather than guessed. The shipped shaders are
 embedded in it as **assembler text**, 115 of them, assembled at run time by

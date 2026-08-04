@@ -72,6 +72,18 @@ one.
 
 ### Fixed
 
+- **Maps and scenes are as bright as the game — the lighting multiplier is the
+  shaders' own ×4, not ×2 and not the preset's Whitening switch.** The game's
+  ps.1.1 shaders write the modulate as an instruction modifier
+  (`mul_x4_sat r0.rgb, v0, t0`), so every earlier reading — a ×2 constant,
+  then `<Whitening>` as a 2-or-1 switch — rendered a dusk where the game
+  shows noon: the Sharpshooter map came out at exactly half the game's
+  brightness, and C1M1's day scene stood its trees in the dark. The same ×4
+  also explains why the game looks daylit under the Inferno arena's "dark"
+  battle preset: its 0.345 ambient saturates to full brightness under ×4,
+  while the all-zero presets — the one case the game visibly darkens — stay
+  black under any multiplier.
+
 - **The impaled-body totem stands beside the arch devil in C1M1's opening,
   instead of lying invisible under the grass.** The DemonLord path props
   (Cross01 and its five siblings) are meshed and skinned lying flat; the model

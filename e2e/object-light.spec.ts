@@ -57,8 +57,8 @@ test('an object is lit by the game\'s own sum, not by three.js', async () => {
   const { amb, sun } = seen.amb.terrain;
   const w = seen.amb.terrain.whiten;
   const dir = seen.amb.sunPos as [number, number, number];
-  // Whitening is on, like 260 of the 291 shipped presets.
-  expect(w).toBe(2);
+  // The modulate is the constant ×4 of the ps.1.1 shaders (mul_x4_sat).
+  expect(w).toBe(4);
 
   /** The game's sum for one channel, as a byte. */
   const shade = (albedo: number, i: number, ndl: number) =>
