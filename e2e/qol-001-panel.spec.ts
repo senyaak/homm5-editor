@@ -118,6 +118,28 @@ test('the panel opens from the bar with everything off @nodata', async () => {
     await expect(ed.page.locator('#qol-borderless'), 'and opening it ticks nothing')
       .not.toBeChecked();
 
+    // The second tab: fixes, grouped, with a master switch. Preferences and
+    // fixes are lines in the same file, but they are different KINDS of line —
+    // the tab is what says so.
+    await expect(ed.page.locator('#qol-fixes'), 'the fixes start hidden').toBeHidden();
+    await ed.page.locator('#qol-tab-fixes').click();
+    await expect(ed.page.locator('#qol-fixes'), 'the tab shows them').toBeVisible();
+    await expect(ed.page.locator('#qol-list'), 'and hides the preferences').toBeHidden();
+    await expect(ed.page.locator('#qol-combat-ai-fix'), 'the AI fix lives here now').toBeVisible();
+    await expect(ed.page.locator('.qol-group').filter({ hasText: 'Battle AI' }),
+      'under its group heading').toBeVisible();
+    // A heading with no rows under it is an empty promise — only groups that
+    // have a fix are shown at all.
+    await expect(ed.page.locator('.qol-group')).toHaveCount(1);
+
+    // The master: every fix at once, and it mirrors the rows both ways.
+    const master = ed.page.locator('#qol-all-fixes');
+    await expect(master, 'the master starts off').not.toBeChecked();
+    await master.check();
+    await expect(ed.page.locator('#qol-combat-ai-fix'), 'checking it checks the fixes').toBeChecked();
+    await ed.page.locator('#qol-combat-ai-fix').uncheck();
+    await expect(master, 'and unchecking a fix takes the master with it').not.toBeChecked();
+
     // A flag that is somebody else's work says so on the row, not only in the
     // repository: the mark is beside the name and its tooltip names them and
     // where they published it. Asserted because a credit nobody can see is the
@@ -130,6 +152,8 @@ test('the panel opens from the bar with everything off @nodata', async () => {
     await expect(credit, 'and where to find it')
       .toHaveAttribute('title', /forum\.heroesworld\.ru\/showthread\.php\?t=15624/);
     // Only where there IS a credit — an (i) on every row would say nothing.
+    await ed.page.locator('#qol-tab-qol').click();
+    await expect(ed.page.locator('#qol-list'), 'the first tab comes back').toBeVisible();
     await expect(ed.page.locator('.qol-row', { has: ed.page.locator('#qol-borderless') })
       .locator('.qol-credit'), 'and our own flags carry none').toHaveCount(0);
 
@@ -203,6 +227,7 @@ test('the battle-plate flags reach the file, and the bar its archive @nodata', a
     await expect.poll(() => existsSync(ARCHIVE), { timeout: 30_000 }).toBe(false);
     expect(readFileSync(QOL_FILE, 'utf8'), 'while the other flag keeps its line')
       .toMatch(/^stack-losses 1$/m);
+    expect(ed.errors, 'and nothing was thrown along the way').toEqual([]);
   } finally {
     await ed.app.close();
   }
@@ -218,6 +243,7 @@ test('the panel shows what the install says, not what it remembers @nodata', asy
     await ed.page.locator('#qolbtn').click();
     await expect(ed.page.locator('#qol-own-profile'), 'what the file turned on is on').toBeChecked();
     await expect(ed.page.locator('#qol-borderless'), 'what it turned off is off').not.toBeChecked();
+    expect(ed.errors, 'and nothing was thrown along the way').toEqual([]);
   } finally {
     await ed.app.close();
   }

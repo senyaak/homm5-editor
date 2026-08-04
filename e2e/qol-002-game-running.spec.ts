@@ -87,6 +87,8 @@ test('applying with the game open says so instead of failing on a temp file @nod
   const ed = await launchEditor({ HOMM5_ROOT: GAME, HOMM5_DOCUMENTS: DOCS });
   try {
     await ed.page.locator('#qolbtn').click();
+    // The AI fix lives on the second tab now.
+    await ed.page.locator('#qol-tab-fixes').click();
     await ed.page.locator('#qol-combat-ai-fix').check();
 
     await whileLocked(OURS, async () => {

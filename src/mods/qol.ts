@@ -42,10 +42,25 @@ export const QOL_FILE = 'bin/homm5-editor-qol.txt';
  * it is and where they published it. It is shown as an (i) beside the name and
  * written into the config file's comments, so the acknowledgement travels with
  * the install rather than living only in this repository.
+ *
+ * `tab` splits the panel: `qol` is how somebody wants to PLAY — taste, every
+ * entry a matter of preference — while `fixes` are bugs of the shipped game
+ * taken out, which is why that tab has an "all of them" switch and this one
+ * does not: turning every fix on is a reasonable default, turning every
+ * preference on is not a thing. Fixes carry a `group` (see FIX_GROUPS).
  */
+
+export const FIX_GROUPS = [
+  { id: 'crashes', title: 'Crashes' },
+  { id: 'mechanics', title: 'Mechanics' },
+  { id: 'ai', title: 'Battle AI' },
+] as const;
+
+export type FixGroup = (typeof FIX_GROUPS)[number]['id'];
 export const QOL_FLAGS = [
   {
     name: 'borderless',
+    tab: 'qol',
     title: 'Borderless window',
     detail: 'The game window without its frame, filling the screen. Needs windowed mode:'
       + ' exclusive fullscreen belongs to Direct3D and has no frame to take off, so applying'
@@ -53,6 +68,7 @@ export const QOL_FLAGS = [
   },
   {
     name: 'own-profile',
+    tab: 'qol',
     title: 'Keep settings and saves with the mod',
     detail: 'Profiles, key bindings, settings and saves go to H5E/user inside the install, instead of'
       + ' Documents, where every copy of the game on this machine shares one set of them. Starts empty:'
@@ -60,6 +76,7 @@ export const QOL_FLAGS = [
   },
   {
     name: 'quick-split',
+    tab: 'qol',
     title: 'Split a stack with a held key',
     detail: 'Click an army slot with Ctrl held to put one creature in the first free slot — or, on a'
       + ' stack of one, to put it back with its own kind. Shift evens the stacks of that creature out'
@@ -70,6 +87,7 @@ export const QOL_FLAGS = [
   },
   {
     name: 'stack-health-bar',
+    tab: 'qol',
     title: 'A health bar on the stack plate',
     detail: 'In a battle, the plate over a stack carries a bar showing how much health the creature'
       + ' at the front of it has left — the one currently being hit, not the stack as a whole,'
@@ -80,6 +98,7 @@ export const QOL_FLAGS = [
   },
   {
     name: 'stack-losses',
+    tab: 'qol',
     title: 'Losses on the plate while Shift is held',
     detail: 'Hold Shift in a battle and every plate reads "now / at the start of the battle", so 53'
       + ' of the 59 that walked in reads 53/59. Counted per battle and from the moment it began, so'
@@ -88,6 +107,8 @@ export const QOL_FLAGS = [
   },
   {
     name: 'combat-ai-fix',
+    tab: 'fixes',
+    group: 'ai',
     title: 'Fix the battle AI\'s spellcasting',
     detail: 'Three bugs in the AI that decides what to do in a battle, taken out of the executable in'
       + ' memory: spells with no creature target — mass spells, summons — ranked below every targeted'

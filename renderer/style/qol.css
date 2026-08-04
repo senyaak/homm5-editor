@@ -21,6 +21,12 @@
   gap: 10px;
 }
 
+/* `display: flex` above beats the `hidden` attribute's own display: none, and
+   the tabs hide the lists exactly that way — so say it explicitly. */
+.qol-list[hidden] {
+  display: none;
+}
+
 /* Shut, a row is one line: the switch, the name, and a fold. */
 .qol-row {
   display: flex;
@@ -42,6 +48,30 @@
 }
 
 .qol-name {
+  font-weight: 600;
+}
+
+/* A group of fixes: crashes, mechanics, the AI. Small caps over the rows. */
+.qol-group {
+  margin: 10px 0 2px;
+  font-size: 11px;
+  color: #6e7681;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.qol-group:first-child {
+  margin-top: 0;
+}
+
+/* Every fix at once — a master over the group lists, set apart from the rows. */
+.qol-all {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 8px;
+  margin-bottom: 2px;
+  border-bottom: 1px solid #21262d;
   font-weight: 600;
 }
 

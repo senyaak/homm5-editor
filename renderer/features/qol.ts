@@ -12,71 +12,122 @@
 import { $, $button } from '#core/dom.ts';
 import { modDialog } from '#core/dialog.ts';
 import { api } from '#core/ipc.ts';
-import { QOL_FLAGS } from '#src/mods/qol.ts';
+import { FIX_GROUPS, QOL_FLAGS } from '#src/mods/qol.ts';
 
 /** The checkbox belonging to each flag, built once when the panel first opens. */
 const boxes = new Map<string, HTMLInputElement>();
+
+/** The fixes' own switches, for the "every fix" master to read and write. */
+const fixBoxes: HTMLInputElement[] = [];
+/** The master itself — NOT in `boxes`: it is a hand on the other switches, not
+ *  a line in the config file, and apply() writes everything `boxes` holds. */
+let allFixes: HTMLInputElement | null = null;
+
+/** One flag as a row: the switch, the name, the credit, the folded detail. */
+function buildRow(flag: (typeof QOL_FLAGS)[number], into: HTMLElement): void {
+  // A div holding a label, rather than one big label. The detail folds away
+  // into a <details>, and inside a label its summary would toggle the switch
+  // every time somebody opened it — so only the tickable part is the label.
+  const row = document.createElement('div');
+  row.className = 'qol-row';
+  const head = document.createElement('label');
+  head.className = 'qol-head';
+
+  const box = document.createElement('input');
+  box.type = 'checkbox';
+  box.id = `qol-${flag.name}`;
+
+  const name = document.createElement('span');
+  name.className = 'qol-name';
+  name.textContent = flag.title;
+
+  // Somebody else's work, said beside the name rather than buried in the
+  // detail: a mark that is there only when there is a credit to give, and the
+  // whole acknowledgement — who, and where they published it — in its tooltip.
+  // A span rather than a link because nothing in this app opens a browser, and
+  // one switch is not the place to start; the address is there to be read.
+  if ('credit' in flag && flag.credit) {
+    const mark = document.createElement('span');
+    mark.className = 'qol-credit';
+    mark.textContent = 'ⓘ';
+    mark.title = flag.credit;
+    name.append(' ', mark);
+  }
+
+  // The price of ticking it, in the same words the config file carries — so
+  // the two never drift and neither has to be trusted over the other.
+  //
+  // FOLDED AWAY. Every one of these is a paragraph, and six paragraphs is a
+  // panel somebody scrolls past to reach the switches. Shut, the list is six
+  // lines and reads as a list; the words are one click away for the flag being
+  // decided about, which is the only one they are wanted for.
+  const detail = document.createElement('details');
+  detail.className = 'qol-detail';
+  const summary = document.createElement('summary');
+  summary.textContent = 'What this does';
+  const body = document.createElement('span');
+  body.textContent = flag.detail;
+  detail.append(summary, body);
+
+  head.append(box, name);
+  row.append(head, detail);
+  into.append(row);
+  boxes.set(flag.name, box);
+}
+
+/** All fixes on, all off, or the mix in between — said on the master switch. */
+function syncAllFixes(): void {
+  if (!allFixes) return;
+  const on = fixBoxes.filter((b) => b.checked).length;
+  allFixes.checked = on === fixBoxes.length && on > 0;
+  allFixes.indeterminate = on > 0 && on < fixBoxes.length;
+}
 
 function buildRows(): void {
   if (boxes.size) return;
   const list = $('qol-list');
   list.innerHTML = '';
   for (const flag of QOL_FLAGS) {
-    // A div holding a label, rather than one big label. The detail folds away
-    // into a <details>, and inside a label its summary would toggle the switch
-    // every time somebody opened it — so only the tickable part is the label.
-    const row = document.createElement('div');
-    row.className = 'qol-row';
-    const head = document.createElement('label');
-    head.className = 'qol-head';
-
-    const box = document.createElement('input');
-    box.type = 'checkbox';
-    box.id = `qol-${flag.name}`;
-
-    const name = document.createElement('span');
-    name.className = 'qol-name';
-    name.textContent = flag.title;
-
-    // Somebody else's work, said beside the name rather than buried in the
-    // detail: a mark that is there only when there is a credit to give, and the
-    // whole acknowledgement — who, and where they published it — in its tooltip.
-    // A span rather than a link because nothing in this app opens a browser, and
-    // one switch is not the place to start; the address is there to be read.
-    if ('credit' in flag && flag.credit) {
-      const mark = document.createElement('span');
-      mark.className = 'qol-credit';
-      mark.textContent = 'ⓘ';
-      mark.title = flag.credit;
-      name.append(' ', mark);
-    }
-
-    // The price of ticking it, in the same words the config file carries — so
-    // the two never drift and neither has to be trusted over the other.
-    //
-    // FOLDED AWAY. Every one of these is a paragraph, and six paragraphs is a
-    // panel somebody scrolls past to reach the switches. Shut, the list is six
-    // lines and reads as a list; the words are one click away for the flag being
-    // decided about, which is the only one they are wanted for.
-    const detail = document.createElement('details');
-    detail.className = 'qol-detail';
-    const summary = document.createElement('summary');
-    summary.textContent = 'What this does';
-    const body = document.createElement('span');
-    body.textContent = flag.detail;
-    detail.append(summary, body);
-
-    head.append(box, name);
-    row.append(head, detail);
-    list.append(row);
-    boxes.set(flag.name, box);
+    if (flag.tab === 'qol') buildRow(flag, list);
   }
+
+  // The fixes, under their group headings — a heading only when the group has
+  // a row, so the panel never shows an empty promise of crashes fixed.
+  const groups = $('qol-fixes-groups');
+  groups.innerHTML = '';
+  for (const group of FIX_GROUPS) {
+    const flags = QOL_FLAGS.filter((f) => f.tab === 'fixes' && f.group === group.id);
+    if (!flags.length) continue;
+    const heading = document.createElement('div');
+    heading.className = 'qol-group';
+    heading.textContent = group.title;
+    groups.append(heading);
+    for (const flag of flags) buildRow(flag, groups);
+  }
+  for (const flag of QOL_FLAGS) {
+    if (flag.tab === 'fixes') {
+      const box = boxes.get(flag.name);
+      if (box) {
+        fixBoxes.push(box);
+        box.addEventListener('change', syncAllFixes);
+      }
+    }
+  }
+
+  // The master switch: every fix at once.
+  allFixes = $('qol-all-fixes') as HTMLInputElement;
+  allFixes.addEventListener('change', () => {
+    for (const b of fixBoxes) b.checked = allFixes!.checked;
+    allFixes!.indeterminate = false;
+  });
 }
 
 /** Read the install and show what it says. */
 async function refresh(): Promise<void> {
   const state = await api.qolGet();
   for (const [name, box] of boxes) box.checked = !!state.settings[name];
+  // The master mirrors the install like everything else on the panel.
+  syncAllFixes();
 
   const warn = $('qol-warn');
   // Nothing in this panel works without the extension, and saying so after
@@ -153,4 +204,15 @@ export function initQol(): void {
   const close = (): void => { modDialog('qolcfg').close(); };
   $button('qol-close').onclick = close;
   $button('qol-x').onclick = close;
+
+  // Two tabs over one config: the lists swap, the warn, file and Apply stay —
+  // they are about the whole file, whichever half is being looked at.
+  const showFixes = (fixes: boolean): void => {
+    $('qol-list').hidden = fixes;
+    $('qol-fixes').hidden = !fixes;
+    $button('qol-tab-qol').classList.toggle('on', !fixes);
+    $button('qol-tab-fixes').classList.toggle('on', fixes);
+  };
+  $button('qol-tab-qol').onclick = () => { showFixes(false); };
+  $button('qol-tab-fixes').onclick = () => { showFixes(true); };
 }

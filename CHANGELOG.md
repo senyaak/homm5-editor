@@ -15,6 +15,14 @@ one.
 
 ### Added
 
+- **Game settings — a Fixes tab.** The panel splits into *Quality of life* (how
+  you want to play) and *Fixes* (bugs of the shipped game taken out), with the
+  fixes grouped — crashes, mechanics, battle AI — and an *Enable every fix*
+  master switch, which only that tab gets: all fixes on is a reasonable
+  default, all preferences on is not a thing. The battle-AI fix moved there.
+  The port of dredknight's H5_DLL fixes lands on this tab fix by fix, with the
+  author's permission.
+
 - **The game settings panel reads as a list.** Each switch's paragraph folds
   away behind *What this does*, and a switch that is somebody else's work
   carries an (i) naming them and where they published it — in the config file's

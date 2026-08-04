@@ -230,13 +230,32 @@ When it happens it gets its OWN home — a section of its own in the panel and
 its own lines in the config, not more fields squeezed into the existing flags —
 and the archive is simply rebuilt from those values on apply.
 
+## The two tabs
+
+The panel splits into **Quality of life** and **Fixes**, and the split is a
+statement about the lines, not just layout: QoL is how somebody wants to play —
+taste, every entry a preference — while fixes are bugs of the shipped game taken
+out. That is why the Fixes tab has an *Enable every fix* master (all of them on
+is a reasonable default) and the QoL tab does not (all preferences on is not a
+thing). Both halves are lines in the same config file; the master itself is a
+hand on the other switches, never a line of its own.
+
+Fixes carry a `group` — crashes, mechanics, battle AI (`FIX_GROUPS` in
+`src/mods/qol.ts`) — and the panel shows a heading only for groups that have a
+row. The port of dredknight's H5_DLL fixes lands here fix by fix, with the
+author's permission (Discord, 2026-08-03); every fix is verified against the
+game's own texts before it is ported, because one of theirs (Agility) turned
+out to contradict the ability's own description and was dropped by its author.
+
 ## Adding a flag
 
 1. A name in `QOL_NAMES` and a `QolFlag` value in `native/qol/config.c`, and
    the code it turns on.
 2. An entry in `QOL_FLAGS` in `src/mods/qol.ts` — `title` for the panel,
-   `detail` for what ticking it COSTS. Both go into the config file's comments,
-   so the file explains itself away from the editor.
+   `detail` for what ticking it COSTS, `tab` for which half it is, `group` when
+   the tab is `fixes`, `credit` when the work is somebody else's. Title and
+   detail go into the config file's comments, so the file explains itself away
+   from the editor.
 3. Nothing in the panel: it builds its rows from that list.
 
 `test-qol` fails if the two lists disagree.
