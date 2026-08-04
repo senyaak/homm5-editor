@@ -55,6 +55,7 @@ import { loadFx, advanceFx, spawnFx, removeFx } from '#viewport/fx.ts';
 import { makeLightMap, bakeLightMap, markLightsDirty } from '#viewport/point-lights.ts';
 import { upgradeToSplat, projectBatch, applyProjectedMaterials, setGroundScale, setCliffAmount, cliffsOn, disposeSplats } from '#viewport/splat.ts';
 import { applyAmbient, refreshLighting, sun, uSunDir, uSunCol, uAmbCol, uLmGain, uFxTint, uWhiten } from '#viewport/lighting.ts';
+import { initSky } from '#viewport/sky.ts';
 import type { Floor3D, World, Selection, GeomBatch } from '#core/state.ts';
 import { UNITS_PER_TILE as U } from '#src/scene/units.ts';
 import { tierOf, RAMP_BIT, TIER_STEP } from '#src/terrain/terrain.ts';
@@ -926,6 +927,7 @@ function bakePendingLights(now: number): void {
 // type would then be wired, and one whose last export stopped being used would
 // silently stop being.
 initShell();
+initSky(); // before any world: applyAmbient runs on every load and floor switch
 initPalettes();
 initObjectFilters();
 initRegions();

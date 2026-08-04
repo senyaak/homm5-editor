@@ -517,6 +517,22 @@ going quietly green.
   drawn unlit: read as ordinary scenery they come out as grey solids sitting in
   the middle of the sparks.
 
+  **The preset's sky dome is the horizon.** An AmbientLight preset's `<Sky>` is
+  reflection blobs, but its `<SkyDome>` names a drawable model — `SkyDome1` is
+  a 250-unit skybox cube, the arena skies are spheres, and their materials
+  already say how to draw them: every part self-lit (`L_SELFILLUM`) and
+  depth-ignoring (`IgnoreZBuffer`). The dome is decoded WITH the light that
+  names it (`loadAmbient`'s `geo` option puts it on `AmbientData.dome`) and
+  drawn as a backdrop (`renderer/viewport/sky.ts`): painted before everything,
+  no depth test, riding the camera — a sky is a direction, not a place. Because
+  it rides the light it swaps per SHOT with the rest of the override, and that
+  is where this scene's red sky comes from: the scene's own preset names the
+  day cube, and the 34 inferno overrides name the red sphere the game shows.
+  It sits on its own render layer, so the plan view (which would be looking at
+  the dome's underside) and the layer-0 raycaster never meet it. The same
+  mechanism serves a plain map — the floor's preset carries its dome, and the
+  editor's horizon stopped being void there too.
+
   **A model plays its own clip, and it ENDS.** Every `ModelInstance` in the
   shipped library names a `<SkelAnim>` — nine bones for the ice bolt, thirteen
   for the prayer — baked onto it the way an actor's clip is, so the crystal
@@ -588,11 +604,9 @@ Open, in rough order of when it will bite: **how much of a SHOT's
 `CustomAmbientLight` the game really uses** — 34 of C1M1's 73 shots override the
 day preset with an inferno one and the game stays daylit, two more name an
 all-zero preset and the game does darken there, and the sun direction provably
-never changes across three probed runs; **the sky** — a preset's `<Sky>` is
-reflection blobs, but its `<SkyDome>` names a real drawable model
-(`/_(Model)/SkyDomes/SkyDome1.(Model).xdb`, a self-illuminated dome; 88 presets
-leave it empty, the rest name one of a dozen), and nothing draws it, so a
-scene's horizon is black where the game's is a sunset; the **voice recordings**
+never changes across three probed runs — the SKY at least is known to follow
+the override (the game shows the inferno sphere's red over this field, and so
+does the editor now); the **voice recordings**
 and the timings they imply; what `DynamicCamera` does, which the
 corpus cannot say because it is on in all 981 shots that resolve to an actor
 [~]; whether `Absolute` means anything beyond intent, now that the set is known

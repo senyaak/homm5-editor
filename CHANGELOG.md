@@ -34,6 +34,17 @@ one.
   written back. What it already proves is the whole risky half — that a scene
   resolves, draws and frames the way the game frames it.
 
+- **The sky is drawn: a lighting preset's `<SkyDome>` model stands behind the
+  world, in scenes and on maps alike.** The horizon used to be void — black
+  behind C1M1's opening where the game shows a red inferno sunset, because the
+  dome the preset names was read for nothing. It is decoded with the preset
+  and drawn the way its own materials ask (self-lit, depth ignored, painted
+  first, riding the camera), and it follows a shot's light override — the red
+  sky over that field IS the override's sphere, swapped in with the rest of
+  the inferno preset while the scene's own preset names the blue day cube.
+  Tilt the map editor's camera to the horizon and the same dome is there,
+  from the floor's own preset.
+
 ### Changed
 
 - **Where the game is comes from `.env` or the command line, and from nothing

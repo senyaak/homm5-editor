@@ -286,7 +286,7 @@ export function buildScenePlay(data: Assets, scenePath: string, options: PlayOpt
   const lightCache = new Map<string, ShotLight>();
   const lightOf = (href: string): ShotLight => {
     if (!href) return null;
-    if (!lightCache.has(href)) lightCache.set(href, loadAmbient(data, href.split('#')[0]!));
+    if (!lightCache.has(href)) lightCache.set(href, loadAmbient(data, href.split('#')[0]!, { readXdb, texSize }));
     return lightCache.get(href) ?? null;
   };
   const sceneLight = lightOf(scene.ambientLight);

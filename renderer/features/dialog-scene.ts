@@ -118,7 +118,7 @@ function bodyOf(actor: ActorView): { geometry: THREE.BufferGeometry; material: T
   // second reading of the same fields: an actor stands ON that stage, and a
   // scene where the hero is shaded by three.js's lighting and the grass under
   // her by the game's is a scene where she does not belong to it.
-  const material = (g.parts ?? []).map(materialFor);
+  const material = (g.parts ?? []).map((p) => materialFor(p));
   (g.parts ?? []).forEach((part, i) => geometry.addGroup(part.start, part.count, i));
   const body = { geometry, material };
   bodies.set(g, body);
@@ -247,7 +247,7 @@ function effectMesh(g: GeomData): { mesh: THREE.Mesh; idle: IdleObject | null } 
     geometry.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(g.skin.index, 4));
     geometry.setAttribute('skinWeight', new THREE.Float32BufferAttribute(g.skin.weight, 4));
   }
-  const material = (g.parts ?? []).map(materialFor);
+  const material = (g.parts ?? []).map((p) => materialFor(p));
   (g.parts ?? []).forEach((part, i) => geometry.addGroup(part.start, part.count, i));
   const idle = g.skin?.clip ? makeIdle({ ...g.skin }, geometry, material) : null;
   return { mesh: idle?.mesh ?? new THREE.Mesh(geometry, material), idle };

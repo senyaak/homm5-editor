@@ -95,6 +95,10 @@ void main() {`)
   m.customProgramCacheKey = () => (lit ? 'game-lit' : 'game-unlit');
 }
 
+// The stand-in for a sky-dome part whose texture did not resolve: draw nothing
+// there. `visible` on a material skips just that geometry group.
+const skyHole = new THREE.MeshBasicMaterial({ visible: false });
+
 const greyMat = new THREE.MeshLambertMaterial({ side: THREE.DoubleSide });
 // Written into the working space raw, not through the hex constructor: these
 // are the gamma numbers the shader below multiplies, and three would decode a
@@ -131,13 +135,16 @@ export function partTexture(src: string): THREE.Texture {
  * plate is a nearly black texture at alpha 33/255, and drawn opaque it is the
  * grey slab under the building instead of a soft shadow on the grass.
  */
-export function materialFor(part: GeomPart): THREE.Material {
-  if (!part.tex) return greyMat;
+export function materialFor(part: GeomPart, sky = false): THREE.Material {
+  // A sky-dome part with no texture must vanish, not grey out: the dome rides
+  // the camera with depth ignored, so a grey stand-in here is not a grey prop
+  // in the distance but a wall across the whole frame.
+  if (!part.tex) return sky ? skyHole : greyMat;
   // Cached per texture AND mode: the same image is used both ways in places.
   // Flatness is in the key because it changes the material: the same texture in
   // the same blend mode is a depth-writing body on one mesh and a decal on
   // another.
-  const key = `${part.alphaMode}|${part.projectOnTerrain ? 'proj' : 'own'}|${part.opaque ? 'body' : 'sheer'}|${part.additive ? 'add' : ''}${part.selfIllum ? 'lit' : ''}|${part.tex}`;
+  const key = `${sky ? 'sky|' : ''}${part.alphaMode}|${part.projectOnTerrain ? 'proj' : 'own'}|${part.opaque ? 'body' : 'sheer'}|${part.additive ? 'add' : ''}${part.selfIllum ? 'lit' : ''}|${part.tex}`;
   const hit = texCache.get(key);
   if (hit) return hit;
   const tx = partTexture(part.tex);
@@ -194,6 +201,13 @@ export function materialFor(part: GeomPart): THREE.Material {
   if (part.additive) {
     m.blending = THREE.AdditiveBlending;
     m.transparent = true;
+    m.depthWrite = false;
+  }
+  // A sky-dome part is a backdrop, not scenery: its materials declare
+  // IgnoreZBuffer, so it neither tests nor writes depth — the mesh is painted
+  // first (negative renderOrder) and the whole world lays over it.
+  if (sky) {
+    m.depthTest = false;
     m.depthWrite = false;
   }
   texCache.set(key, m);

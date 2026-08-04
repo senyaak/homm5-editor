@@ -351,6 +351,14 @@ export interface AmbientData {
    * not. Not a constant: 31 of the 291 shipped presets turn it off.
    */
   whiten: number;
+  /**
+   * The preset's `<SkyDome>` model, decoded — a self-illuminated dome
+   * (SkyDome1 is a 250-unit skybox cube, the arenas are spheres) the game
+   * draws behind everything, and the reason a scene's horizon is a sunset
+   * rather than black. 88 shipped presets name none; absent/null then, and
+   * also for callers that don't ask for it decoded (loadAmbient's `geo`).
+   */
+  dome?: GeomData | null;
 }
 
 /** The renderable scene — this is the payload that crosses the IPC boundary. */

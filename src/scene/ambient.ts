@@ -6,7 +6,9 @@
 // editor does not attempt.
 
 import { readFileSync, existsSync } from 'node:fs';
+import { decodeModelGeom } from './model-geom.ts';
 import type { Assets } from '../game/assets.ts';
+import type { ReadXdb } from './xdb.ts';
 import type { AmbientData } from './payload.ts';
 
 const DEFAULT_AMBIENT = '/Lights/_(AmbientLight)/0_Default_AmbientLight.xdb';
@@ -16,15 +18,25 @@ const ambientVec3 = (xml: string, tag: string): number[] | null => {
   return m ? [+m[1]!, +m[2]!, +m[3]!] : null;
 };
 
-export function loadAmbient(data: Assets, href: string | null): AmbientData | null {
+/** What loadAmbient needs beyond the colours: how to decode the sky dome model. */
+export interface AmbientGeomOptions { readXdb: ReadXdb; texSize: number }
+
+export function loadAmbient(data: Assets, href: string | null, geo?: AmbientGeomOptions): AmbientData | null {
   try {
     const p = data.path((href ?? DEFAULT_AMBIENT).split('#')[0]!);
     if (!existsSync(p)) {
       // A named preset that is missing falls back to the stock default — the
       // floor should still light like a map, just not like THIS map.
-      return href ? loadAmbient(data, null) : null;
+      return href ? loadAmbient(data, null, geo) : null;
     }
     const xml = readFileSync(p, 'utf8');
+    // The preset's <SkyDome>: a real drawable model (unlike its <Sky>, below) —
+    // the backdrop the game draws behind everything. Decoded like any placed
+    // object's model; its materials already say the rest (L_SELFILLUM,
+    // IgnoreZBuffer). 88 shipped presets name none.
+    const domeHref = xml.match(/<SkyDome\s+href="([^"#]+)/)?.[1] ?? null;
+    const domeXml = geo && domeHref ? geo.readXdb(domeHref) : null;
+    const dome = domeXml && geo ? decodeModelGeom(domeXml, domeHref!, data, geo.readXdb, geo.texSize) : null;
     const light = ambientVec3(xml, 'LightColor');
     const ambient = ambientVec3(xml, 'AmbientColor');
     const shade = ambientVec3(xml, 'ShadeColor');
@@ -54,6 +66,7 @@ export function loadAmbient(data: Assets, href: string | null): AmbientData | nu
       // capped 2.0× is). No SetPixelShaderConstantF ever touches c7 — the
       // ps.2.0 shader quoted in older notes is not the path the game runs.
       whiten: 4,
+      ...(dome ? { dome } : {}),
     };
   } catch { return null; }
 }

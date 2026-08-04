@@ -646,6 +646,19 @@ if (!byPath.has(showcasePath)) {
   check('every cue lands on an actor who has that clip', unplayable.length === 0,
     unplayable.slice(0, 5).map((c) => `${c.actor}:${c.kind}`).join(', ') || `${cued} cues`);
 
+  // A preset's <SkyDome> comes down DECODED with its light: the scene's day
+  // preset names the skybox cube and the inferno overrides name the red
+  // sphere — that sphere is the sky the game shows over this field. Every
+  // part of a dome is self-illuminated, which is what lets the renderer draw
+  // it as a backdrop rather than a lit body.
+  const sceneDome = play.stage.floors[0]?.ambient?.dome;
+  const shotDomes = [...new Set(play.shots.map((s) => s.ambient?.dome).filter((d) => !!d))];
+  check('a preset\'s sky dome rides its light, decoded and self-lit',
+    !!sceneDome && shotDomes.length > 0
+      && [sceneDome, ...shotDomes].every((d) => d!.parts.length > 0 && d!.parts.every((p) => p.selfIllum)),
+    `scene dome ${sceneDome ? sceneDome.pos.length / 3 + ' verts' : 'MISSING'}, `
+    + `${shotDomes.length} distinct shot dome(s)`);
+
   // Every shot's start on the scene's clock, and every cue with it. Nothing to
   // measure here — either the sums are right or the whole timeline is off — but
   // the numbers say how far outside their own shot the scene reaches.

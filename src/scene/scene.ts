@@ -366,7 +366,7 @@ export function buildScene(
       passable: t.passable,
       water: t.water,
       splat: t.splat,
-      ambient: loadAmbient(data, map.ambientLightRef(f)),
+      ambient: loadAmbient(data, map.ambientLightRef(f), { readXdb, texSize }),
       instances: floorInstances[f] ?? [],
     });
   }

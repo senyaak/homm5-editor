@@ -19,6 +19,7 @@ import { buildBatches } from '#viewport/instancing.ts';
 import { applyAmbient, refreshLighting } from '#viewport/lighting.ts';
 import { bakeLightMap, makeLightMap } from '#viewport/point-lights.ts';
 import type { IdleObject } from '#viewport/skinning.ts';
+import { clearSky } from '#viewport/sky.ts';
 import { disposeSplats, upgradeToSplat } from '#viewport/splat.ts';
 import { cam, camera, controls, scene, syncTopCamera } from '#viewport/stage.ts';
 import { asTileSpace, makeWaterMesh, terrainGeometry } from '#viewport/terrain-mesh.ts';
@@ -27,6 +28,7 @@ import * as THREE from 'three';
 import { UNITS_PER_TILE as U } from '#src/scene/units.ts';
 export function clearWorld(): void {
   disposeSplats();
+  clearSky(); // dome meshes are keyed by this world's payload objects
   if (state.world) for (const fl of state.world.floors) {
     scene.remove(fl.group);
     // An InstancedMesh owns a GPU buffer of its own beyond the shared geometry;

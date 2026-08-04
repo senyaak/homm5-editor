@@ -68,8 +68,15 @@ export const uWhiten = { value: 4 };
 // every fx system; flat editing light resets it to white.
 export const uFxTint = { value: new THREE.Color(1, 1, 1) };
 
+// Whoever draws FROM the preset beyond these uniforms (the sky dome) registers
+// here rather than being imported: materials.ts already imports this module for
+// the uniforms, so lighting reaching back into mesh-building would be a cycle.
+const ambientHooks: Array<(a: AmbientData | null) => void> = [];
+export function onAmbient(fn: (a: AmbientData | null) => void): void { ambientHooks.push(fn); }
+
 /** Apply a floor's lighting preset, or the flat fallback when there is none. */
 export function applyAmbient(a: AmbientData | null): void {
+  for (const fn of ambientHooks) fn(a);
   scene.background = DEFAULT_BG;
   if (!a) {
     hemi.color.set(0xdfeaff); hemi.groundColor.set(0x555044); hemi.intensity = 1.15;

@@ -44,7 +44,7 @@ export const geomFx = new Map<number, FxInstancePayload[]>();
  */
 export function registerGeom(index: number, g: GeomData): void {
   worldGeos[index] = geometryFor(g);
-  worldMats[index] = g.parts.map(materialFor);
+  worldMats[index] = g.parts.map((p) => materialFor(p));
   geomParts.set(index, g.parts);
   geomFootprint.set(index, g.footprint ?? null);
   // Only a model with a clip is worth remembering: the binding alone poses

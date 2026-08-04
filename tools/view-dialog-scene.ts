@@ -72,6 +72,11 @@ const clipList = [...new Set(play.actors.map((a) => a.clips))];
 const actorList = play.actors.map((a) => ({
   ...a, geom: meshList.indexOf(a.geom), clips: clipList.indexOf(a.clips),
 }));
+// A shot's light is shared too (34 of C1M1's 73 shots name the same inferno
+// preset), and it now carries the preset's decoded sky dome — written straight
+// out that dome would repeat per shot.
+const lightList = [...new Set(play.shots.map((s) => s.ambient).filter(Boolean))];
+const shotList = play.shots.map((s) => ({ ...s, ambient: s.ambient ? lightList.indexOf(s.ambient) : -1 }));
 
 // --- the page ----------------------------------------------------------------
 
@@ -85,7 +90,8 @@ const html = `<!doctype html><html><head><meta charset="utf8"><title>${inner}</t
 <script>${three}</script>
 <script>
 const S=${JSON.stringify(payload)};
-const SHOTS=${JSON.stringify(play.shots)};
+const LIGHTS=${JSON.stringify(lightList)};
+const SHOTS=${JSON.stringify(shotList)}.map(s=>({...s,ambient:s.ambient>=0?LIGHTS[s.ambient]:null}));
 // Meshes and clip sets are SHARED between figures of one character (six
 // swordsmen of a kind are one of each), and JSON does not know that — written
 // straight out, C1M1's opening is a 140 MB page instead of a 60 MB one. So they
@@ -123,6 +129,42 @@ const geos=S.geoms.map(g=>{
   return b;
 });
 const mats=S.geoms.map(g=>(g.parts||[]).map(materialFor));
+
+// The sky dome the shot's preset (or the scene's) names: painted first with
+// depth ignored and glued to the camera, the way the editor draws it
+// (renderer/viewport/sky.ts). The page's materialFor makes a fresh material
+// per textured part, so flipping its depth flags touches nobody else.
+const domes=new Map();
+function domeOf(g){
+  let mesh=domes.get(g);
+  if(mesh)return mesh;
+  const b=new THREE.BufferGeometry();
+  b.setAttribute('position',new THREE.BufferAttribute(new Float32Array(g.pos),3));
+  if(g.uv)b.setAttribute('uv',new THREE.BufferAttribute(new Float32Array(g.uv),2));
+  b.setIndex(g.idx);
+  (g.parts||[]).forEach((p,i)=>b.addGroup(p.start,p.count,i));
+  const ms=(g.parts||[]).map(p=>{
+    const m=materialFor(p);
+    if(m===grey)return new THREE.MeshBasicMaterial({visible:false}); // no texture = a hole, not a wall
+    m.depthTest=false;m.depthWrite=false;return m;
+  });
+  mesh=new THREE.Mesh(b,ms);
+  mesh.renderOrder=-1;mesh.frustumCulled=false;
+  domes.set(g,mesh);
+  return mesh;
+}
+let domeShown=null;
+function showDome(a){
+  const want=a&&a.dome?domeOf(a.dome):null;
+  if(want===domeShown)return;
+  if(domeShown)world.remove(domeShown);
+  if(want)world.add(want);
+  domeShown=want;
+}
+function draw(){
+  if(domeShown)domeShown.position.copy(cam.position);
+  R.render(world,cam);
+}
 
 const fl=S.floors[0];
 const V=fl.V,H=fl.heights;
@@ -238,6 +280,8 @@ function cueShot(n,at){
 let shot=0,t=0,playing=false,last=performance.now();
 function place(){
   const s=SHOTS[shot];
+  // The shot's own sky, or the scene's — same fallback the light itself takes.
+  showDome((s&&s.ambient)||fl.ambient);
   if(!s||!s.camera.length)return;
   const k=Math.min(0.999,Math.max(0,t))*(s.camera.length-1);
   const i=Math.floor(k),f=k-i;
@@ -285,7 +329,7 @@ window.sheet=async function(from,to,cols,w,h){
   R.setSize(w,h,false); cam.aspect=w/h; cam.updateProjectionMatrix();
   for(let i=0;i<n;i++){
     shot=from+i; t=0.5; place(); cuedShot=-1; sync(t*((SHOTS[shot]||{duration:3}).duration||3));
-    R.render(world,cam);
+    draw();
     g.drawImage(R.domElement,(i%cols)*w,Math.floor(i/cols)*h,w,h);
     g.fillStyle='#fff'; g.font='16px monospace';
     g.fillText(String(shot),(i%cols)*w+6,Math.floor(i/cols)*h+20);
@@ -298,12 +342,12 @@ window.snap=function(n,at){
   // size instead of at the window's.
   if(!R.domElement.width||!R.domElement.height){R.setSize(1280,720,false);cam.aspect=1280/720;cam.updateProjectionMatrix();}
   shot=Math.max(0,Math.min(SHOTS.length-1,n|0));t=at===undefined?0.5:at;place();
-  cuedShot=-1;sync(t*((SHOTS[shot]||{duration:3}).duration||3));R.render(world,cam);
+  cuedShot=-1;sync(t*((SHOTS[shot]||{duration:3}).duration||3));draw();
   return fetch('/sink?n='+shot,{method:'POST',body:R.domElement.toDataURL('image/png')}).then(r=>r.text());};
 (function loop(now){requestAnimationFrame(loop);
   const dt=(now-last)/1000;last=now;
   if(playing){const s=SHOTS[shot];const span=(s?s.duration||3:3);t+=dt/span;if(t>=1){t=0;shot=(shot+1)%SHOTS.length;}place();sync(t*span);}
-  R.render(world,cam);
+  draw();
 })(performance.now());
 </script></body></html>`;
 
