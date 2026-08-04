@@ -95,6 +95,16 @@ one.
   premultiplied by alpha — the game's look, per its `mov r0.rgb, t0` shader.
   Fire, smoke and every moving effect keep the old path untouched.
 
+- **Every particle effect was drawn mirrored, and grass grew roots-up.** A
+  particle frame is authored with the art's "up" as the image's BOTTOM row, and
+  the quad sampled it the other way — measured on the two families whose up is
+  unmistakable: a grass clump keeps its dense base in the image's top half with
+  the blades hanging off it, and a candle flame is widest along its top rows and
+  tapers to a point at the bottom. On fire the flip is invisible (a flame reads
+  as a flame upside down, which is how it survived the whole particle pass); on
+  grass it is a lawn of blades pointing at the sky. Now flipped once, for every
+  instance, so fire and smoke rise from their base too.
+
 - **Maps and scenes are lit like the game: the light term is ×4, capped at
   doubling the texel — `min(4·(amb + sun·N·L), 2)`.** Measured from both ends
   of the game's own shader chain: the CPU doubles the sum and saturates it

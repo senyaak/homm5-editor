@@ -261,7 +261,22 @@ export function createFxSystem(
   const quad = new THREE.PlaneGeometry(1, 1);
   geo.index = quad.index;
   geo.setAttribute('position', quad.getAttribute('position'));
-  geo.setAttribute('uv', quad.getAttribute('uv'));
+  // A PARTICLE FRAME IS AUTHORED UPSIDE DOWN: the art's "up" is the image's
+  // BOTTOM row, so the quad's v runs the other way from three's (which puts
+  // v = 1 at the top corner). Measured on the two families whose up is
+  // unmistakable, and they agree: a grass clump has its dense base in the
+  // image's TOP half (alpha mass 657k against 142k) with the blades hanging
+  // down, and a candle flame is widest along the top rows and tapers to a
+  // point at the bottom (the last rows are empty). Left unflipped, every
+  // effect is drawn mirrored — invisible on a fire, which reads as fire
+  // either way, and unmistakable on grass: a lawn of blades pointing at the
+  // sky, roots in the air. The corpus at large cannot settle this (379 of 900
+  // frames are top-heavy, 209 bottom-heavy, the rest even) because most
+  // particles are round puffs with no up at all, which is why the two
+  // asymmetric families are the measurement.
+  const uv = quad.getAttribute('uv').clone();
+  for (let i = 0; i < uv.count; i++) uv.setY(i, 1 - uv.getY(i));
+  geo.setAttribute('uv', uv);
   const aCenter = new THREE.InstancedBufferAttribute(new Float32Array(n * 3), 3);
   const aSizeRot = new THREE.InstancedBufferAttribute(new Float32Array(n * 3), 3);
   const aColor = new THREE.InstancedBufferAttribute(new Float32Array(n * 4), 4);

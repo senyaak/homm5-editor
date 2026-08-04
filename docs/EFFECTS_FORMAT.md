@@ -168,6 +168,28 @@ smoke frames in the same instance. Two consequences worth knowing:
   was. Each frame therefore ships as TWO images — colour with alpha forced
   opaque, and the real alpha as a grayscale — recombined in the shader.
 
+**A frame is authored UPSIDE DOWN.** The art's "up" is the image's BOTTOM row,
+so the quad's `v` runs the other way from three.js's (which puts `v = 1` at the
+top corner) — `createFxSystem` flips the quad's UVs once, for every instance.
+The corpus at large cannot say this (379 of 900 effect textures are top-heavy,
+209 bottom-heavy, the rest even: most particles are round puffs with no up at
+all), so it is measured on the two families whose up is unmistakable, and they
+agree:
+
+* a grass clump (`Textures/Effects/TerrainObjects/Grass01.dds`) carries its
+  dense base in the image's TOP half — alpha mass 657k against 142k — with the
+  blades hanging down from it;
+* a candle flame (`FireSequence/Candle/Fire00.dds`) is widest along its top
+  rows and tapers to a point toward the bottom, the last rows empty.
+
+Unflipped, every effect draws mirrored. On fire that is invisible — a flame
+reads as a flame either way, which is why this survived the whole particle
+pass — and on vegetation it is unmistakable: a lawn of blades pointing at the
+sky with their roots in the air, which is how Senya spotted it. The DDS decode
+is NOT the culprit and was checked before touching anything: a skybox side
+(`SkyDomes/SkyDome1/sky1.tga.dds`) decodes with the deep blue at the top and
+the pale haze at the horizon, so row 0 of the file really is the image's top.
+
 **The recording is a one-shot, and the loop is a TRIGGER TRAIN.** In 1911 of
 1921 files the population ramps from zero and dies back to zero (only 10 have
 the pre-warmed negative births) — the baked file is not a loop, it is one
