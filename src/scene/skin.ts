@@ -164,6 +164,9 @@ export function attachAnimation(
       times: clip.times.map((v) => +v.toFixed(4)),
       rotations: clip.rotations.map((r) => r.map((v) => +v.toFixed(5))),
       positions: clip.positions.map((p) => p.map((v) => +v.toFixed(4))),
+      // Only the clips that leave unit scale carry this at all (bakeClip), so
+      // rounding a copy that is not there must not invent one.
+      ...(clip.scales ? { scales: clip.scales.map((s) => s.map((v) => +v.toFixed(4))) } : {}),
     };
   } catch { drop(); }
 }

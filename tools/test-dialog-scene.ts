@@ -646,6 +646,29 @@ if (!byPath.has(showcasePath)) {
   check('every cue lands on an actor who has that clip', unplayable.length === 0,
     unplayable.slice(0, 5).map((c) => `${c.actor}:${c.kind}`).join(', ') || `${cued} cues`);
 
+  // FOR A WHOLE FAMILY OF EFFECTS THE SCALE IS THE ANIMATION. A meteor's
+  // impact ring is authored as one small quad that swells ×78 and settles back;
+  // baked without the scaleShear channel it was a card lying on the grass that
+  // never moved, and the gating vortex a knot of ribbons around the caster.
+  // Checked on the shot that casts MeteorShower, and checked at both ends: the
+  // clip must carry a swell, and the ROOT bone must NOT — every caller hoists
+  // the root's scale onto the mesh as the model's display scale, and baked in
+  // twice a phoenix comes out at 0.37² of its size.
+  const meteor = play.shots[20]!.effects.find((e) => /MeteorShower/.test(e.href));
+  const swells = (meteor?.models ?? []).filter((m) => {
+    const s = m.geom.skin?.clip?.scales;
+    if (!s) return false;
+    return s.some((bone) => bone.some((v) => v > 2));
+  });
+  const rootsMoved = (meteor?.models ?? []).filter((m) => {
+    const root = m.geom.skin?.clip?.scales?.[0];
+    return root?.some((v) => Math.abs(v - 1) > 0.01);
+  });
+  check('an effect model swells the way its clip says, and its root does not',
+    !!meteor && swells.length === meteor.models.length && rootsMoved.length === 0,
+    `${swells.length} of ${meteor?.models.length ?? 0} models carry a swell,`
+    + ` ${rootsMoved.length} carry it on the root (must be 0)`);
+
   // A preset's <SkyDome> comes down DECODED with its light: the scene's day
   // preset names the skybox cube and the inferno overrides name the red
   // sphere — that sphere is the sky the game shows over this field. Every

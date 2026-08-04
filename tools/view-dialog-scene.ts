@@ -258,7 +258,7 @@ function pose(rig,time){
   const f=Math.min(n-1,Math.max(0,at/span*(n-1)));
   const i0=Math.min(n-1,Math.floor(f)),i1=Math.min(n-1,i0+1),t=f-i0;
   rig.bones.forEach((bone,bi)=>{
-    const rot=clip.rotations[bi],pos=clip.positions[bi];
+    const rot=clip.rotations[bi],pos=clip.positions[bi],scl=clip.scales&&clip.scales[bi];
     if(rot){_qa.set(rot[i0*4],rot[i0*4+1],rot[i0*4+2],rot[i0*4+3]);
       _qb.set(rot[i1*4],rot[i1*4+1],rot[i1*4+2],rot[i1*4+3]);
       bone.quaternion.slerpQuaternions(_qa,_qb,t);}
@@ -266,6 +266,12 @@ function pose(rig,time){
       pos[i0*3]+(pos[i1*3]-pos[i0*3])*t,
       pos[i0*3+1]+(pos[i1*3+1]-pos[i0*3+1])*t,
       pos[i0*3+2]+(pos[i1*3+2]-pos[i0*3+2])*t);}
+    // Present only on clips that leave unit scale, and for effects it is often
+    // the whole animation (an impact ring swelling, a vortex opening).
+    if(scl){bone.scale.set(
+      scl[i0*3]+(scl[i1*3]-scl[i0*3])*t,
+      scl[i0*3+1]+(scl[i1*3+1]-scl[i0*3+1])*t,
+      scl[i0*3+2]+(scl[i1*3+2]-scl[i0*3+2])*t);}
   });
 }
 function cueShot(n,at){

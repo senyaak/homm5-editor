@@ -439,6 +439,28 @@ export interface BakedClip {
   rotations: number[][];
   /** Per bone: 3 floats per sample. */
   positions: number[][];
+  /**
+   * Per bone: 3 floats per sample — the diagonal of the `scaleShear` 3x3.
+   * Absent when the clip leaves every bone at unit scale, which is the common
+   * case and what keeps a creature idle from paying for this.
+   *
+   * WHY IT HAS TO BE HERE. For a whole family of effects the scale IS the
+   * animation: a meteor's impact ring swells from 0.10 to 7.85 and settles
+   * back to 0.50, a gating vortex from 0.5 to 2.5. Baked without it, they were
+   * drawn at bind size and simply stood there — the impact "rings" were small
+   * flat cards, the vortex a knot of ribbons around the caster. Nor is it only
+   * the animated ones: of 427 clips sampled, 83 animate the scale (the worst
+   * growing ×509) and another 172 hold a CONSTANT non-unit scale, which a
+   * poser that assumes 1 gets wrong just as badly — the falling meteor's own
+   * bone sits at (1, 1, 0.5), and drawn unsquashed its trail stretched into a
+   * beam from the ground to the sky.
+   *
+   * The DIAGONAL, not the 3x3: three.js's bones carry a Vector3 scale, and
+   * real shear is rare and small in this library — 11 of the 256 clips that
+   * carry a scaleShear track at all have any off-diagonal term above 0.01,
+   * the worst 0.304. Those 11 are drawn without their shear.
+   */
+  scales?: number[][];
 }
 
 /**
@@ -471,6 +493,14 @@ export function bakeClip(skeleton: Skeleton, animation: Animation, fps = 15, pos
   }
   const stance = new Map<string, GrannyTransform>();
   for (const bone of poseRest?.bones ?? []) stance.set(bone.name, bone.rest);
+  // The ROOT's scale is NOT the clip's to carry: every caller hoists it out as
+  // the model's display scale and puts it on the mesh (a phoenix is authored at
+  // 2.7× the size the game draws it — see bakeCharacterClip). Baked in here as
+  // well it would apply twice, and the phoenix would come out at 0.37² of its
+  // size. So bone 0 is divided by that same number, which leaves the mesh
+  // scale times this equal to what the file says — and keeps an ANIMATED root
+  // animated, since only its rest value is divided out.
+  const hoisted = Number((poseRest ?? skeleton).bones[0]?.rest.scaleShear?.[0] ?? 1) || 1;
   const count = Math.max(2, Math.ceil(animation.duration * fps) + 1);
   const times: number[] = [];
   for (let i = 0; i < count; i++) times.push(animation.duration * i / (count - 1));
@@ -478,11 +508,21 @@ export function bakeClip(skeleton: Skeleton, animation: Animation, fps = 15, pos
   const scratch: number[] = [];
   const rotations: number[][] = [];
   const positions: number[][] = [];
-  for (const bone of skeleton.bones) {
+  const scales: number[][] = [];
+  // Whether any bone ever leaves unit scale. Nothing is shipped when none does:
+  // that is most creature clips, and they are the bulk of the payload.
+  let scaled = false;
+  for (const [index, bone] of skeleton.bones.entries()) {
     const track = tracks.get(bone.name);
     const rest = stance.get(bone.name) ?? bone.rest;
     const rot: number[] = [];
     const pos: number[] = [];
+    const scl: number[] = [];
+    // A channel the clip does not drive holds the stance the clip was authored
+    // in — the same rule as position and rotation, and it matters more here:
+    // 172 of 427 sampled clips never MOVE the scale but sit at a constant
+    // non-unit one, which is a squash the model is meant to be drawn with.
+    const restScale = restDiagonal(rest.scaleShear);
     for (const t of times) {
       if (track && track.orientation.dim === 4) {
         sampleQuaternion(track.orientation, t, scratch);
@@ -492,11 +532,24 @@ export function bakeClip(skeleton: Skeleton, animation: Animation, fps = 15, pos
         sampleCurve(track.position, t, scratch);
         pos.push(scratch[0]!, scratch[1]!, scratch[2]!);
       } else pos.push(...rest.position);
+      const div = index === 0 ? hoisted : 1;
+      if (track && track.scaleShear.dim === 9) {
+        sampleCurve(track.scaleShear, t, scratch);
+        scl.push(scratch[0]! / div, scratch[4]! / div, scratch[8]! / div);
+      } else scl.push(restScale[0] / div, restScale[1] / div, restScale[2] / div);
     }
+    for (const v of scl) if (Math.abs(v - 1) > 1e-4) { scaled = true; break; }
     rotations.push(rot);
     positions.push(pos);
+    scales.push(scl);
   }
-  return { duration: animation.duration, times, rotations, positions };
+  return { duration: animation.duration, times, rotations, positions, ...(scaled ? { scales } : {}) };
+}
+
+/** The diagonal of a rest `scaleShear`, defaulting to unit when it is absent. */
+function restDiagonal(s: ArrayLike<number> | undefined): [number, number, number] {
+  if (!s || s.length < 9) return [1, 1, 1];
+  return [Number(s[0]) || 1, Number(s[4]) || 1, Number(s[8]) || 1];
 }
 
 /** Whether a frame matrix is the identity, within float32 noise. */

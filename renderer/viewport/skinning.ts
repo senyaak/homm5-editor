@@ -92,7 +92,7 @@ export function poseIdle(idle: IdleObject, time: number, loop = true): void {
   const i1 = Math.min(n - 1, i0 + 1);
   const t = f - i0;
   idle.bones.forEach((bone, b) => {
-    const rot = clip.rotations[b], pos = clip.positions[b];
+    const rot = clip.rotations[b], pos = clip.positions[b], scl = clip.scales?.[b];
     if (rot) {
       _a.set(rot[i0 * 4]!, rot[i0 * 4 + 1]!, rot[i0 * 4 + 2]!, rot[i0 * 4 + 3]!);
       _b.set(rot[i1 * 4]!, rot[i1 * 4 + 1]!, rot[i1 * 4 + 2]!, rot[i1 * 4 + 3]!);
@@ -103,6 +103,16 @@ export function poseIdle(idle: IdleObject, time: number, loop = true): void {
         pos[i0 * 3]! + (pos[i1 * 3]! - pos[i0 * 3]!) * t,
         pos[i0 * 3 + 1]! + (pos[i1 * 3 + 1]! - pos[i0 * 3 + 1]!) * t,
         pos[i0 * 3 + 2]! + (pos[i1 * 3 + 2]! - pos[i0 * 3 + 2]!) * t,
+      );
+    }
+    // Only present when the clip actually leaves unit scale (BakedClip.scales),
+    // and for a whole family of effects it is the whole animation: a meteor's
+    // impact ring swelling ×78, a gating vortex opening around the caster.
+    if (scl) {
+      bone.scale.set(
+        scl[i0 * 3]! + (scl[i1 * 3]! - scl[i0 * 3]!) * t,
+        scl[i0 * 3 + 1]! + (scl[i1 * 3 + 1]! - scl[i0 * 3 + 1]!) * t,
+        scl[i0 * 3 + 2]! + (scl[i1 * 3 + 2]! - scl[i0 * 3 + 2]!) * t,
       );
     }
   });

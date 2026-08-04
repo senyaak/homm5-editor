@@ -121,5 +121,34 @@ check('the clip moves the mesh', motion > size * 0.01, `largest move ${(motion /
 check('and does not tear it apart', motion < size, `largest move ${motion.toFixed(2)} against a ${size.toFixed(2)} model`);
 check('every vertex stays near the model', reach < size * 3, `furthest ${reach.toFixed(2)} units from the origin`);
 
+// --- 4. the display scale is applied ONCE ------------------------------------
+//
+// A creature is authored at one size and drawn at another: the scale rides on
+// the clip skeleton's ROOT, and every caller hoists it onto the mesh
+// (GeomData.scale — a phoenix at 0.37, a griffin at 1.5). The clip must
+// therefore NOT carry it too, or it multiplies in twice and the phoenix comes
+// out at 0.37² of its size.
+//
+// This is here rather than beside the effects because only a creature can show
+// it: the effect models whose swell made scale-baking necessary all happen to
+// have a root at 1, so a check on those passes either way — it was written,
+// sabotaged, and stayed green, which is exactly the blind metric to avoid.
+const scaledRoots: string[] = [];
+for (const shared of [
+  '/MapObjects/Neutral/Phoenix.(AdvMapMonsterShared).xdb',
+  '/MapObjects/Inferno/ArchDevil.(AdvMapMonsterShared).xdb',
+  '/MapObjects/Neutral/Earth_Elemental.(AdvMapMonsterShared).xdb',
+]) {
+  const i = resolver.resolve(shared);
+  if (i < 0) continue;
+  const g = resolver.geoms[i]!;
+  const root = g.skin?.clip?.scales?.[0];
+  const off = root?.find((v) => Math.abs(v - 1) > 0.01);
+  if (off !== undefined) scaledRoots.push(`${shared.split('/').pop()} root ${off.toFixed(3)} with display scale ${g.scale ?? 1}`);
+}
+console.log('\ndisplay scale');
+check('a creature\'s clip leaves its root at unit scale', scaledRoots.length === 0,
+  scaledRoots.join('; ') || 'the root scale is on the mesh alone');
+
 console.log(failures ? `\n${failures} check(s) failed` : '\nall checks passed');
 process.exit(failures ? 1 : 0);

@@ -152,6 +152,34 @@ times from a single matrix buffer, and every copy poses independently — so it
 leaves its batch and becomes its own `SkinnedMesh` (`renderer/skinning.ts`).
 One draw call each, which is why the middle mode exists.
 
+**A baked clip carries SCALE, and for effects it is the whole animation.** The
+bake started as position + rotation, which is all a walking creature needs, and
+that quietly broke a family of effects whose entire motion is a swell: a meteor
+impact ring is one small quad authored to grow from 0.10 to 7.85 and settle at
+0.50, a gating vortex opens from 0.5 to 2.5 around the caster. Drawn at bind
+size they were cards lying on the grass that never moved, and a knot of ribbons
+around the caster. It is not only the animated ones either: of 427 clips
+sampled, **83 animate the scale** (worst growth ×509) and another **172 hold a
+constant non-unit scale** — the falling meteor's own bone rests at (1, 1, 0.5)
+and stretches to ×2.9 during its fall, so drawn unsquashed its trail was a beam
+from the ground to the sky.
+
+What is baked is the **diagonal** of the `scaleShear` 3x3, because three.js's
+bones carry a Vector3: of the 256 sampled clips that carry a scaleShear track,
+**11** have any off-diagonal term above 0.01 (worst 0.304), and those are drawn
+without their shear. Untracked bones take the scale from the ANIMATION's own
+skeleton, the same rule position and rotation follow. `BakedClip.scales` is
+**absent** when every bone stays at unit scale, which is most creature clips —
+they are the bulk of the payload and pay nothing.
+
+**The root's scale is NOT the clip's.** Every caller hoists it out as the
+model's display scale and puts it on the mesh (`GeomData.scale`: phoenix 0.37,
+griffin 1.5), so bone 0 is divided by that same number on the way into the bake.
+Baked in twice, a phoenix comes out at 0.37² of its size. A check on the effect
+models cannot see this — theirs all happen to rest at 1 — so it lives in
+`test-idle.ts` against real creatures, where sabotaging the division turns it
+red.
+
 **The bind-matrix trap, since it cost a debugging round.** three.js's shader
 computes `bindMatrixInverse * Σ w (bone.matrixWorld * boneInverse) * bindMatrix *
 p` and then applies `modelViewMatrix`. The bones are children of the mesh, so

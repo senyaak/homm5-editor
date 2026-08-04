@@ -95,6 +95,19 @@ one.
   premultiplied by alpha — the game's look, per its `mov r0.rgb, t0` shader.
   Fire, smoke and every moving effect keep the old path untouched.
 
+- **Spell effects that swell now swell: a baked clip carries scale.** The bake
+  read position and rotation, which is everything a walking creature needs and
+  nothing a shockwave does. So a meteor shower's impacts were small cards lying
+  in the grass instead of rings expanding out of each strike (their quads are
+  authored to grow ×78 and settle back), the arch devil's gating vortex a knot
+  of ribbons around him instead of a column opening up, and the falling meteors
+  stretched into beams from the ground to the sky — their trail rests squashed
+  to half height and our poser drew it at full. Of 427 clips sampled, 83 animate
+  their scale and another 172 sit at a constant non-unit one, so this was
+  quietly wrong across the whole effect library. Creatures are untouched: their
+  display scale still rides on the mesh alone, and a test on real creatures
+  fails if the clip ever carries it too.
+
 - **Every particle effect was drawn mirrored, and grass grew roots-up.** A
   particle frame is authored with the art's "up" as the image's BOTTOM row, and
   the quad sampled it the other way — measured on the two families whose up is
