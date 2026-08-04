@@ -40,6 +40,14 @@ one.
   already maps an empowered id to the spell it is a version of; it is now asked
   that. At the first site the answer was already sitting in a register, unused.
 
+- **A map to watch the rule fixes in.** Every one of them is verified as bytes,
+  and none of them can be verified that way as BEHAVIOUR — "the knight's own
+  dragons refuse Encourage" is a thing to watch in a battle. So the e2e suite
+  builds one: `fix-001-rules-map` packs a Rules Test map into the install with
+  every fix off, one hero per fix standing in front of the stack he is meant to
+  fight, and `fix-002-rules-on` turns them all on and touches nothing else. Play
+  it between the two runs; docs/FIX_TEST_MAP.md is the list of what changes.
+
 - **Master of Fire halves the defence it is halving.** The perk says a creature
   caught by Fireball, Firewall or Armageddon loses 50% of its defence for a
   turn. The game read the defence when the spell landed, halved that, and

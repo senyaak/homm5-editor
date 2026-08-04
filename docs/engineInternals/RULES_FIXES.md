@@ -468,12 +468,26 @@ following next:
   calling a slot on the wrong vtable in the middle of a battle is exactly the
   failure this page's discipline exists to avoid.
 
-## What is not done
+## Watching them in a battle
 
-Proving the effects in a running game. The patches are verified as bytes and the
-extension logs what it installed (`bin/homm5-editor.log`), but "the barbarian
-loses the stats when he forgets the skill" is a thing to watch in a battle, and
-nothing here automates that.
+The patches are verified as bytes and the extension logs what it installed
+(`bin/homm5-editor.log`), but "the barbarian loses the stats when he forgets the
+skill" is a thing to watch in a battle, and nothing automates that.
+
+What there is instead is a map and a list: `e2e/fix-001-rules-map` builds the
+**Rules Test** map into the install with every fix OFF, and
+`e2e/fix-002-rules-on` turns them all on and touches nothing else. Play it
+between the two runs — the map is the constant and the flags are the variable,
+which is the only arrangement in which "it is fixed" means anything. One hero
+per fix, each standing in front of the stack he is meant to fight;
+[../FIX_TEST_MAP.md](../FIX_TEST_MAP.md) is what to do with each of them and
+what changes.
+
+**Nothing on this page has been watched in a running game yet.** The map is the
+means to; the observations are still to come.
+
+One entry on that list has no trigger on the map: Barbarian Learning needs the
+skill REMOVED, and nothing placed there removes one.
 
 ## Not ported, and why
 
