@@ -31,6 +31,15 @@ one.
   inlined that function and allocated its registers differently. Both copies our
   compiler emitted are patched.
 
+- **Payback stops paying for spells that worked.** Payback returns a spell's
+  mana and moves the hero's turn up when a stack RESISTS it — but the cast keeps
+  one byte for "the spell did nothing" and the three spells that put an obstacle
+  on the field never clear it. So Arcane Crystal, Summon Hive and Blade Barrier
+  were cast, stood on the field, and were refunded in full every time. The byte
+  is now cleared where all three place their last tile; a resisted spell still
+  pays back. dredknight's file calls this the Arcane Renewal fix, which is what
+  Heroes 5.5 renamed the perk to.
+
 - **Two rules fixes from H5_DLL.** Ported from dredknight's
   [H5_DLL](https://github.com/dredknight/H5_DLL) with his permission, each one
   byte in a jump table:

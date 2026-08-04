@@ -158,6 +158,19 @@ export const QOL_FLAGS = [
     credit: 'Uses the work of H5_DLL by dredknight, with permission'
       + ' — https://github.com/dredknight/H5_DLL',
   },
+  {
+    name: 'payback-fix',
+    tab: 'fixes',
+    group: 'mechanics',
+    title: 'Payback does not pay for a spell that worked',
+    detail: 'Payback returns the mana when a stack RESISTS a spell — but the cast keeps one byte for'
+      + ' "the spell did nothing", and the three spells that put an obstacle on the field never clear'
+      + ' it. So Arcane Crystal, Summon Hive and Blade Barrier are cast, stand on the field, and are'
+      + ' refunded in full with the hero\'s turn moved up, every time. This clears the byte where all'
+      + ' three place their last tile; a resisted spell still pays back.',
+    credit: 'Uses the work of H5_DLL by dredknight, with permission'
+      + ' — https://github.com/dredknight/H5_DLL',
+  },
 ] as const;
 
 export type QolName = (typeof QOL_FLAGS)[number]['name'];

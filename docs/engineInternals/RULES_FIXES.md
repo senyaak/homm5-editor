@@ -160,6 +160,48 @@ to skill 3 is what makes this readable rather than guessed at.
 default. Whether it grants what Learning grants has not been checked here, and
 the fix this comes from does not touch it.
 
+## Payback, paid out for a spell that worked
+
+`0xB7F90D`, RVA `0x77F90D`, ten bytes — five of them a jump that buys five more.
+
+The cast (`0xB7EA00`) keeps one byte on its stack, `[esp+0x13]`, meaning *the
+spell did nothing*. It is set to 1 at `0xB7EAE5`, right before the dispatch, and
+copied out to the caller in the tail (`0xB7FAFB`). A damage spell clears it —
+`sete` on the total, so zero damage counts as nothing. The three spells that put
+an **obstacle** on the field never touch it, and it goes home still saying 1.
+
+The caller reads that as a resisted spell: `cmp byte ptr [esp+13h],0` at
+`0xB764DE` and `0xB768CD`, then "Payback!", the whole cost back, and the hero's
+turn moved up. Cast an Arcane Crystal with the perk and it is free.
+
+**What the game says**: *"Если заклинание не подействовало на отряд существ
+благодаря их сопротивлению магии, то герою возвращается вся потраченная на
+заклятие мана, и его следующий ход наступает раньше."* Mana comes back when a
+stack **resisted**. Nothing resisted a crystal that is standing there.
+
+**How it was found.** `"Payback!"` is in the image once (`0xFBC97C`) and pushed
+from three places; the two that matter sit three instructions below the byte's
+test, and the call above them — `0xB7EA00` — is the cast this fix is about. A
+string with one use is the cheapest anchor there is, and it needed none of the
+tooling.
+
+**One place for three spells.** Ids `0x11A`–`0x11C` index a four-entry jump
+table at `0xB7FC8C`: Arcane Crystal and Summon Hive share a body at `0xB7F8F4`,
+and Blade Barrier lays its three tiles at `0xB7F917` before jumping back into
+that body for the last of them. So all three leave through the same
+`call 0xD54520` — put the obstacle down — and the `jmp` to the tail after it.
+
+**Ten bytes, and five wanted.** dredknight writes the clear over the retail
+build's last placement call, where his compiler left room. Between our call and
+our tail there are exactly ten bytes and no room at all, so the `jmp` becomes a
+jump to ten bytes of ours: clear the byte, jump on to the tail it was going to
+anyway. Nothing is displaced and the stack is untouched — the tail reads
+`[esp+0x13]` at exactly the `esp` we hand it, which is what makes this safe to
+say.
+
+His file is `ArcaneRenewalFix.cpp`; that is Heroes 5.5's name for the perk, and
+the shipped game calls it Payback.
+
 ## What is not done
 
 Proving the effects in a running game. The patches are verified as bytes and the
