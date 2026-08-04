@@ -159,6 +159,21 @@ export const QOL_FLAGS = [
       + ' — https://github.com/dredknight/H5_DLL',
   },
   {
+    name: 'empowered-armageddon-fix',
+    tab: 'fixes',
+    group: 'mechanics',
+    title: 'Empowered Armageddon is an Armageddon',
+    detail: 'A Wizard\'s Empowered Spells perk casts a spell with an id of its own, and the code that'
+      + ' resolves the impact asks three questions about the spell by that raw id: whether to do the'
+      + ' local damage at the point of impact, whether to hit war machines, and how to damage the'
+      + ' tiles around it. All three answer no, so the empowered version costs double mana and is the'
+      + ' weaker spell — though its own description promises damage to war machines. The engine'
+      + ' already maps an empowered id to the spell it is a version of; this asks it that question'
+      + ' instead. At the first site the answer was already in a register, unused.',
+    credit: 'Uses the work of H5_DLL by dredknight, with permission'
+      + ' — https://github.com/dredknight/H5_DLL',
+  },
+  {
     name: 'dragon-form-fix',
     tab: 'fixes',
     group: 'mechanics',

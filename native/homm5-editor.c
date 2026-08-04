@@ -81,6 +81,7 @@
 #include "qol/fix-snare-crash.c"
 #include "qol/fix-payback.c"
 #include "qol/fix-dragon-form.c"
+#include "qol/fix-empowered-armageddon.c"
 
 BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   (void)reserved;
@@ -143,6 +144,7 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   if (g_qol[QOL_SNARE_CRASH_FIX]) install_snare_fix();
   if (g_qol[QOL_PAYBACK_FIX]) install_payback_fix();
   if (g_qol[QOL_DRAGON_FORM_FIX]) install_dragon_form_fix();
+  if (g_qol[QOL_EMPOWERED_ARMAGEDDON_FIX]) install_empowered_armageddon_fix();
   return TRUE;
 }
 

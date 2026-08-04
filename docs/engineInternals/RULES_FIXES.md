@@ -202,6 +202,46 @@ say.
 His file is `ArcaneRenewalFix.cpp`; that is Heroes 5.5's name for the perk, and
 the shipped game calls it Payback.
 
+## Empowered Armageddon, which the impact code does not recognise
+
+`0xD60E26` (eight bytes, one of them the fix), `0xD60EA6` and `0xD610B7`.
+
+`SPELL_EMPOWERED_ARMAGEDDON` is id 232 and `SPELL_ARMAGEDDON` is id 10. The
+engine knows they are one spell: `0xAD44C0` maps every empowered id to the spell
+it is a version of — a jump table at `0xAD4294` over ids 223…330, where 232
+answers `mov eax,0Ah` — and the cast dispatcher uses it, which is how both reach
+the same impact function (`0xD60C30`).
+
+That function then asks three questions about the spell, and asks all three of
+the **raw** id:
+
+| where | question | when the answer is no |
+|---|---|---|
+| `0xD60E29` | is this Armageddon? | the damage at the point of impact is zero |
+| `0xD60EA6` | is this Armageddon? | a target with no creature — a war machine — is skipped |
+| `0xD610BA` | is this Armageddon? | the tiles around the impact take another path |
+
+So the empowered spell costs double the mana, hits for 50% more, and is the
+weaker one in every way the code decides by id. Its own description promises
+*"урон всем существам **и боевым машинам**"*.
+
+**The first site is one byte.** `0xAD44C0` is called four instructions above it
+and its answer is still in `eax`, live and used two instructions below; the
+comparison reads the raw id out of `ecx` instead. `cmp ecx,0Ah` becomes
+`cmp eax,0Ah` — `F9` to `F8` — and `ecx` keeps the raw id, which the call below
+still wants.
+
+**The other two ask.** Each jumps to a stub that calls `0xAD44C0` and jumps on
+to whichever of that site's two continuations the answer picks. The spell object
+is in `esi` at both, `0xAD44C0` preserves `esi`, and both continuations reload
+every other register the stub touches — except at the third site, whose
+else-branch pushes the raw id it loaded, so there the ask is bracketed by
+`push eax` / `pop eax` (a `pop` leaves the flags alone).
+
+dredknight's version hard-codes 232 beside 10 at the second and third sites, and
+at the first removes the comparison altogether — which would give the local
+damage to every spell that shares this code, Holy Word among them.
+
 ## Dragon Form, offered to a dragon that never upgraded
 
 `0xABC9FC`, RVA `0x6BC9FC`, thirteen bytes.

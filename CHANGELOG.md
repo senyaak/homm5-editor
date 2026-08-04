@@ -31,6 +31,15 @@ one.
   inlined that function and allocated its registers differently. Both copies our
   compiler emitted are patched.
 
+- **Empowered Armageddon is an Armageddon.** The empowered spell has an id of
+  its own, and the code that resolves the impact asks three questions about the
+  spell by that raw id — whether to do the local damage at the point of impact,
+  whether to hit war machines, and how to damage the tiles around it. All three
+  answered no, so the empowered version cost double mana and was the weaker
+  spell, though its own description promises damage to war machines. The engine
+  already maps an empowered id to the spell it is a version of; it is now asked
+  that. At the first site the answer was already sitting in a register, unused.
+
 - **Dragon Form is refused on a dragon that never upgraded.** The rune says it
   does not apply to dragons, and the game refuses it — by asking the creature
   for its *base* creature and looking that up in a table of the four dragons. A

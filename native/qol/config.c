@@ -31,13 +31,14 @@ typedef enum {
   QOL_SNARE_CRASH_FIX = 8,
   QOL_PAYBACK_FIX = 9,
   QOL_DRAGON_FORM_FIX = 10,
-  QOL_COUNT = 11
+  QOL_EMPOWERED_ARMAGEDDON_FIX = 11,
+  QOL_COUNT = 12
 } QolFlag;
 
 static const char *const QOL_NAMES[QOL_COUNT] = {
   "borderless", "own-profile", "quick-split", "stack-health-bar", "stack-losses",
   "combat-ai-fix", "encourage-fix", "barbarian-learning-fix", "snare-crash-fix",
-  "payback-fix", "dragon-form-fix"
+  "payback-fix", "dragon-form-fix", "empowered-armageddon-fix"
 };
 
 static int g_qol[QOL_COUNT];
