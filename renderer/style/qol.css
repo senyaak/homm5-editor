@@ -36,6 +36,14 @@
   font-weight: 600;
 }
 
+/* Whose work a flag is, when it is not ours. Quiet enough not to compete with
+   the name it follows, and marked as carrying more on hover. */
+.qol-credit {
+  opacity: 0.55;
+  font-weight: 400;
+  cursor: help;
+}
+
 /* What ticking it costs, in the same words the config file carries. */
 .qol-detail {
   grid-column: 2;

@@ -33,6 +33,19 @@ function buildRows(): void {
     name.className = 'qol-name';
     name.textContent = flag.title;
 
+    // Somebody else's work, said beside the name rather than buried in the
+    // detail: a mark that is there only when there is a credit to give, and the
+    // whole acknowledgement — who, and where they published it — in its tooltip.
+    // A span rather than a link because nothing in this app opens a browser, and
+    // one switch is not the place to start; the address is there to be read.
+    if ('credit' in flag && flag.credit) {
+      const mark = document.createElement('span');
+      mark.className = 'qol-credit';
+      mark.textContent = 'ⓘ';
+      mark.title = flag.credit;
+      name.append(' ', mark);
+    }
+
     // The price of ticking it, in the same words the config file carries — so
     // the two never drift and neither has to be trusted over the other.
     const detail = document.createElement('span');

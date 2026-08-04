@@ -101,6 +101,21 @@ test('the panel opens from the bar with everything off @nodata', async () => {
       await expect(boxes.nth(i), 'and starts off').not.toBeChecked();
     }
 
+    // A flag that is somebody else's work says so on the row, not only in the
+    // repository: the mark is beside the name and its tooltip names them and
+    // where they published it. Asserted because a credit nobody can see is the
+    // same as no credit at all.
+    const credit = ed.page.locator('.qol-row', { has: ed.page.locator('#qol-combat-ai-fix') })
+      .locator('.qol-credit');
+    await expect(credit, 'the credited flag carries a mark').toBeVisible();
+    await expect(credit, 'and the tooltip names whose work it is')
+      .toHaveAttribute('title', /CombatAIFix v1\.1 by RedHavenHero/);
+    await expect(credit, 'and where to find it')
+      .toHaveAttribute('title', /forum\.heroesworld\.ru\/showthread\.php\?t=15624/);
+    // Only where there IS a credit — an (i) on every row would say nothing.
+    await expect(ed.page.locator('.qol-row', { has: ed.page.locator('#qol-borderless') })
+      .locator('.qol-credit'), 'and our own flags carry none').toHaveCount(0);
+
     // An install with no copy of the executable cannot load the extension, and
     // saying so afterwards would be saying it too late.
     await expect(ed.page.locator('#qol-warn'), 'an unprepared install is called out').toBeVisible();

@@ -58,6 +58,9 @@ export function writeQolFile(gameRoot: string, settings: QolSettings): string {
   ];
   for (const f of QOL_FLAGS) {
     lines.push(`# ${f.title} — ${f.detail}`);
+    // Whose work it is, where there is somebody to name. In the file as well as
+    // in the panel, so the acknowledgement travels with the install.
+    if ('credit' in f && f.credit) lines.push(`# ${f.credit}`);
     lines.push(`${f.name} ${settings[f.name] ? 1 : 0}`);
     lines.push('');
   }

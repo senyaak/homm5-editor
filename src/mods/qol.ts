@@ -37,6 +37,11 @@ export const QOL_FILE = 'bin/homm5-editor-qol.txt';
  * where a flag's PRICE goes — borderless is not free, it needs the game out of
  * exclusive fullscreen, and somebody deciding whether to tick it should read
  * that before rather than discover it after.
+ *
+ * `credit` is for a flag that is somebody ELSE'S work found again here — whose
+ * it is and where they published it. It is shown as an (i) beside the name and
+ * written into the config file's comments, so the acknowledgement travels with
+ * the install rather than living only in this repository.
  */
 export const QOL_FLAGS = [
   {
@@ -90,6 +95,8 @@ export const QOL_FLAGS = [
       + ' every other reason to pick a target, and a plan\'s rank starting at the least urgent value it'
       + ' has. Found again in this build from RedHeavenHero\'s CombatAIFix v1.1, which names the same'
       + ' three changes in a different one. Nothing is written to the image while this is off.',
+    credit: 'Uses the work of CombatAIFix v1.1 by RedHavenHero'
+      + ' — https://forum.heroesworld.ru/showthread.php?t=15624',
   },
 ] as const;
 
