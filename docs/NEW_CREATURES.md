@@ -512,31 +512,43 @@ second upgrade. Worth knowing that the model's texture is named `T3_Elf_Sniper-h
 reuses the Grand Elf's skin, so up close it looks like an elf, and that is the game's own
 Sharp Shooter looking like that, not our copy going wrong. A recolour is still open.
 
-## An ability of ours: saying a creature is a dragon
+## Abilities of our own, and the first of them: `ABILITY_DRAGON`
 
-`ABILITY_DRAGON` is in the ability picker, last in the list, and it is not an ability. It is
-a **tag**: the only way a creature of ours can answer a question the executable decides from
-a table of four ids compiled into it.
+**Almost no ability in this game is code.** A creature's `<Abilities>` is a list of ids in
+its record, and the engine asks *"does this creature have that one"* wherever it matters —
+`ABILITY_UNDEAD` is not a behaviour, it is a flag that resurrection, morale and the mind
+spells each look at separately. So an ability nothing asks about does nothing at all, which
+is exactly what a **tag** needs to be.
 
-The question is the Rune of the Dragon Form's — its description ends *"(неприменимо к
-драконам)"* and the game refuses it with a string of its own. The engine's answer comes from
-`IsDragon`, four base-dragon ids and their upgrades, and a creature of ours can never be in
-that table. So it says so itself, in the game's own vocabulary: one more `<Item>` in
-`<Abilities>`, carried in the record, surviving a reopen of the mod like every other stat.
+Adding one costs the same three global things an artifact costs, and no executable at all:
 
-**Safe to ship.** The executable maps an ability name to an id with an unrolled chain of
-string comparisons whose last answer is `xor eax,eax` — a name it does not know becomes
-`ABILITY_NONE`, which nothing asks about. The game loads the creature and ignores the tag,
-exactly as it would ignore a typo. Nothing of the engine is patched to make the tag exist,
-and the hire dialog does not print it: a tag is not something a player has.
+| what | where |
+|---|---|
+| the enum item and the name→number entry | `types.xml` |
+| the size the table declares | `types.xml`, `ref_table_num_objs` on `Table_CreatureAbility_CombatAbility` |
+| the object, with its caption and description | `GameMechanics/RefTables/CombatAbilities.xdb` |
 
-**Who acts on it.** Installing the mod writes the creatures that carry it into
-`bin/homm5-editor-effects.txt` as one line — `dragon 201 204` — and the extension answers the
+Creatures and artifacts also need a ceiling raised inside `H5_Game.exe`, because the engine
+counts those two for itself. Abilities it does not: the table is loaded by the generic
+loader from a descriptor of type name and path, and its size comes from types.xml.
+
+**Names ARE resolved from data.** The executable holds a compiled chain of ability names —
+and one of creature names beside it — but our creatures work, which is what proves that
+chain is not the loader's path: the xdb loader resolves an enum item through the name→number
+map in types.xml. A name only in the data is a name the game reads as nothing; a name in the
+map is an ability, with a number, and the second tag is simply the next number.
+
+`src/mods/ability-files.ts` owns this, and `EDITOR_ABILITIES` is the list — append-only,
+because the number is what a creature's record stores. The picker offers them before the mod
+that carries them is installed and reads them out of the data afterwards.
+
+**What the dragon tag is for.** The Rune of the Dragon Form ends its description with
+*"(неприменимо к драконам)"*, and the engine decides what a dragon is from four ids compiled
+into the executable — enough for the twelve dragons the game ships, and blind to a
+thirteenth. Installing writes the creatures carrying the tag into
+`bin/homm5-editor-effects.txt` as one line (`dragon 201 204`), and the extension answers the
 rune with the engine's own answer *or* that list, behind the `dragon-form-fix` switch. See
 [engineInternals/RULES_FIXES.md](engineInternals/RULES_FIXES.md).
-
-This is the shape to copy for any future question of the same kind: a name the game reads as
-nothing, a line in the config, and one call in the executable answered by us.
 
 ## Trying it: `tools/make-test-map.ts`
 

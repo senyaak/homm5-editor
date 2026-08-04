@@ -238,17 +238,13 @@ test('the dragon tag reaches the file the extension reads, and leaves it', async
   await row.locator('button', { hasText: '✎' }).click();
   await expect(page.locator('#unitedit')).toBeVisible();
 
-  // The tag is offered like any other ability, and is the only entry whose
-  // label says what it is for rather than what the creature can do.
+  // Offered like any other ability, because it IS one — an ability of the
+  // editor's own, which the picker offers before the mod carrying it exists.
   await page.locator('#um-ability-add').click();
   const added = page.locator('#um-abilities .um-ability-id').last();
   await added.selectOption('ABILITY_DRAGON');
-  // And it is not offered to the player: the hire dialog's line is built from
-  // the same list, and the preview is what that line will say. Checked against
-  // the LABEL the picker shows, since that is what the line would print — a
-  // check against the id would pass while the line said "Dragon — a tag: …".
-  await expect(page.locator('#um-abil-preview')).toContainText('Hire dialog will print:');
-  await expect(page.locator('#um-abil-preview')).not.toContainText('a tag');
+  // And under the caption a player will read, not under its id.
+  await expect(page.locator('#um-abil-preview')).toContainText('Дракон');
 
   let note = await settled(page, 'saving the tagged creature', '#um-note', '#ue-err',
     () => page.locator('#um-ok').click());

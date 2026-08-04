@@ -40,14 +40,24 @@ one.
   already maps an empowered id to the spell it is a version of; it is now asked
   that. At the first site the answer was already sitting in a register, unused.
 
-- **A creature of yours can say it is a dragon.** `ABILITY_DRAGON` is offered
-  last in the ability picker and is not an ability: it is a tag, and the only
-  way a creature of ours can answer a question the executable decides from four
-  ids compiled into it. The game reads the name as `ABILITY_NONE` and ignores it
-  — nothing of the engine is patched to make the tag exist, and the hire dialog
-  does not print it — while installing the mod writes the creatures carrying it
-  into the extension's config, and the Rune of the Dragon Form refuses them.
-  Without the tag on anything, not a byte of that call is touched.
+- **Creature abilities of the editor's own, and the first of them: Дракон.**
+  Almost no ability in this game is code — a creature's `<Abilities>` is a list
+  of ids, and the engine asks "does it have that one" where it matters, which is
+  why Undead is a flag rather than a behaviour. So an ability nothing asks about
+  does nothing, and that is what a tag is. Adding one costs what an artifact
+  costs and no executable at all: the enum and the name→number entry in
+  types.xml, the size the table declares, and an object with a caption and a
+  description in `CombatAbilities.xdb`. `ABILITY_DRAGON` is the first; the
+  picker offers it before the mod carrying it is installed and reads it out of
+  the data afterwards, and the next tag is simply the next number.
+
+- **A creature of yours can say it is a dragon.** The Rune of the Dragon Form is
+  refused on dragons, and the engine knows which creatures those are from four
+  ids compiled into it — enough for the twelve the game ships, blind to a
+  thirteenth. Tag a creature of yours with Дракон and installing writes it into
+  the extension's config, where the rune's question now goes: the engine's own
+  answer first, yours after it. With nothing tagged, not a byte of that call is
+  touched.
 
 - **Dragon Form is refused on a dragon that never upgraded.** The rune says it
   does not apply to dragons, and the game refuses it — by asking the creature

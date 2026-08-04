@@ -26,28 +26,26 @@ export const SHIPPED_CREATURES = 180;
 export const NULL_CREATURE = 'GameMechanics/Creature/Creatures/None.xdb';
 
 /**
- * "This creature is a dragon" — an ability id of ours, carried in the record.
+ * "This creature is a dragon" — a creature ability of the editor's own.
  *
- * The engine decides what a dragon is from a table of four ids compiled into
- * the executable (Bone, Green, Deep, Fire) and their upgrades, which is enough
- * for the twelve the game ships and blind to the thirteenth. A creature of ours
- * cannot join that table, so it says so itself, in the game's own vocabulary:
- * one more `<Item>` in `<Abilities>`.
+ * A real one, with a number, a caption and a description, added the way an
+ * artifact is added: an entry in the `CombatAbilities` table, the enum and the
+ * name→number map in types.xml, and the size that table declares. See
+ * ability-files.ts, which owns all of that; this is only the id, because the
+ * record reader and writer here are the lowest thing that needs to name it.
  *
- * SAFE TO SHIP. The executable maps an ability name to its id with an unrolled
- * chain of string comparisons (`0xBE1A30`) whose last answer is `xor eax,eax` —
- * a name it does not know becomes `ABILITY_NONE`, which nothing asks about. So
- * the game loads a creature carrying this and ignores it, exactly as it ignores
- * a typo, while our own tools read it. Nothing of the engine's is patched to
- * make the tag exist.
+ * WHAT IT DOES: nothing. Almost no ability in this game is code — a creature's
+ * `<Abilities>` is a list of ids, and the engine asks "does it have that one"
+ * where it matters, which is why `ABILITY_UNDEAD` is a flag rather than a
+ * behaviour. Nothing in the engine asks about this one, so it changes nothing
+ * by itself.
  *
- * WHO READS IT. The install writes the creatures that carry it into the
- * extension's config as `dragon <id> …`, and the extension answers the rune's
- * "is this a dragon?" with the engine's own answer OR that list. See
+ * WHO ASKS. The Rune of the Dragon Form: the engine decides what a dragon is
+ * from four ids compiled into the executable, which covers the twelve the game
+ * ships and can never cover a thirteenth. The install writes the creatures
+ * carrying this into the extension's config as `dragon <id> …`, and the
+ * extension answers the rune with the engine's own answer OR that list. See
  * docs/engineInternals/RULES_FIXES.md.
- *
- * It is deliberately NOT printed in the hire dialog: a tag is not an ability a
- * player has, and the line the dialog prints is built from the same list.
  */
 export const DRAGON_TAG = 'ABILITY_DRAGON';
 

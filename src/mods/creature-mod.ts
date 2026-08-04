@@ -54,7 +54,8 @@
 //                    the same job for the other three kinds of content
 
 import { join } from 'node:path';
-import { DRAGON_TAG, NULL_CREATURE, creatureRoot, setCreatureRefs, writeStats } from './creatures.ts';
+import { ABILITY_TABLE, EDITOR_ABILITIES, abilityTexts, patchAbilityTable, patchAbilityTypes } from './ability-files.ts';
+import { NULL_CREATURE, creatureRoot, setCreatureRefs, writeStats } from './creatures.ts';
 import { serialize, setAttr } from '../format/xml.ts';
 import { parseTypeSpec } from '../schema/typespec.ts';
 import { COMMON_SCRIPT, patchCommonScript, setScriptFiles } from './artifact-scripts.ts';
@@ -221,7 +222,19 @@ export function buildCreatureMod(mod: CreatureMod, read: DataReader): BuildRepor
     if (specializations.length) types = patchSpecializationTypes(types, specializations);
     if (classes.length) types = patchClassTypes(types, classes);
     if (skills.length) types = patchSkillTypes(types, skills);
+    // The editor's own creature abilities — tags, which do nothing until
+    // something asks about them. Shipped with any mod that has creatures, so
+    // that the id a creature's record names always exists in the table beside
+    // it. See ability-files.ts.
+    if (mod.creatures.length) types = patchAbilityTypes(types, EDITOR_ABILITIES);
     files.push({ path: TYPES, data: Buffer.from(types, 'latin1') });
+  }
+  if (mod.creatures.length) {
+    files.push({
+      path: ABILITY_TABLE,
+      data: Buffer.from(patchAbilityTable(mustRead(read, ABILITY_TABLE), EDITOR_ABILITIES), 'latin1'),
+    });
+    files.push(...abilityTexts(EDITOR_ABILITIES));
   }
   if (classes.length) {
     files.push({
@@ -332,10 +345,6 @@ const TEXT_END = String.fromCharCode(0);
  * its own texts is honoured exactly as the game would honour it.
  */
 function abilityLine(read: DataReader, abilities: readonly string[]): string {
-  // Ours, and not an ability: it says the creature is a dragon so that a rune
-  // can refuse it, and the hire dialog has no business printing it. See
-  // DRAGON_TAG in creatures.ts.
-  abilities = abilities.filter((id) => id !== DRAGON_TAG);
   if (!abilities.length) return '';
   const table = read('GameMechanics/RefTables/CombatAbilities.xdb')?.toString('utf8') ?? '';
   const named = new Map<string, string>();
