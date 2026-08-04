@@ -438,6 +438,36 @@ tier-7 creature: an Archangel or a Titan in a dwarf's army would be refused a
 rune the shipped game allows. The rune's text says dragons, and the engine
 already knows which creatures those are — it was only asking the wrong one.
 
+## Imbue Ballista, still open
+
+The perk says the ballista's shots carry the ranger's enchantment and that this
+costs him MANA — *"Все снаряды баллисты будут нести чары рейнджера, поэтому
+запас маны последнего будет уменьшаться."* Nothing about his turn. dredknight's
+`ImbueBalistaAtbFix.cpp` says it costs the hero his ATB as well, and fixes it by
+saving the hero's ATB before the enchantment is cast and writing it back after.
+
+**The site is found.** `0xBC1573` asks the hero for `HERO_SKILL_IMBUE_BALLISTA`
+(113) after checking that the shooter is the ballista, and `0xBC15A0` is the
+cast — `call 0xB7B320`, our copy of the retail `0x97EA20`, which has three
+callers and so cannot be changed as a whole. The hero is in `[esp+0x10]` there.
+
+**What is missing is one thing: where that object keeps its ATB.** His stub
+reaches it by arithmetic on negative offsets from an intermediate subobject
+(`[X-0x68]`, then the pointer at `[-0x70]`, then `[hero+0x1C]`), which is a
+claim about his build's layout and transfers to nothing. The leads worth
+following next:
+
+- Lua's `setATB` (`0x607B80`) queues a `CSetATBValue` command (vtable
+  `0xF558CC`); its `Execute` (`0xB74620`) calls `unit->vt[0x18C]` with a float.
+- On `CCombatHero`'s primary vtable (`0xFDFB34`), `+0x18C` is `0xB5A310` — one
+  stack argument, `ret 4` — and `+0x184` is `0xB59980`, a float getter. Together
+  they would be a save and a restore with no arithmetic at all.
+- But the object at the imbue site is **not** a `CCombatHero*`: the perk is
+  asked through a virtual base, `(esi+4) + [[esi+4]+8]`. Which class it is, and
+  whether that interface carries the same two slots, is the open question — and
+  calling a slot on the wrong vtable in the middle of a battle is exactly the
+  failure this page's discipline exists to avoid.
+
 ## What is not done
 
 Proving the effects in a running game. The patches are verified as bytes and the
