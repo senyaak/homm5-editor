@@ -56,6 +56,13 @@ export interface EditorAbility {
  * creature's record stores, so moving one renames what an installed creature
  * carries. A new tag goes at the end and takes the next number.
  *
+ * AND NOT DELETABLE. These are the editor's own, not a mod's: a rule of ours
+ * asks about them by id (the Rune of the Dragon Form asks about this one), and
+ * a creature already built names the number. So whatever authors abilities
+ * later — the tab in ROADMAP — shows these and offers neither deletion nor
+ * renumbering; what it adds goes after them. `tools/test-abilities.ts` pins the
+ * numbers so that a later edit here fails a test instead of a saved mod.
+ *
  * `ABILITY_DRAGON` is the first, and the shape of all of them: nothing in the
  * engine asks about it, so it does nothing at all — except where we ask. The
  * Rune of the Dragon Form is the asking (see docs/engineInternals/RULES_FIXES.md);

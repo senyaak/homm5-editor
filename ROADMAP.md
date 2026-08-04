@@ -848,6 +848,14 @@ Two constraints shape the design, both learned the hard way:
         of the Units & Artifacts window: id, caption, description. Numbers continue after
         ours and the list is append-only, because the number is what a creature's record
         stores. The picker already offers what is not installed yet, so nothing there changes.
+
+        **The editor's own are shown and not deletable** — neither removed nor renumbered.
+        A rule of ours asks about them by id (the Rune of the Dragon Form asks about
+        `ABILITY_DRAGON`), and a creature already built names the number, so deleting one
+        would leave saved creatures pointing at an id that no longer exists and would move
+        every id after it. `tools/test-abilities.ts` pins the numbers, so an edit to
+        `EDITOR_ABILITIES` fails a test rather than a saved mod; the tab has to refuse the
+        same thing in the UI, where a person would otherwise try it.
       - **The Lua question.** The game has no "does this creature have that ability" of its
         own — the executable's registry has only `ControlHeroCustomAbility`, and that is about
         a hero — so a script cannot read a tag today. The extension already registers

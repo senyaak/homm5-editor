@@ -83,6 +83,16 @@ check('numbered from the shipped count, consecutively',
 check('every one has a caption and a description',
   EDITOR_ABILITIES.every((a) => !!a.name && !!a.description && !!a.file));
 check('the dragon tag is one of them', EDITOR_ABILITIES.some((a) => a.id === DRAGON_TAG));
+// PINNED, not merely consecutive. The number is what a built creature's record
+// stores and what the rune's answer is keyed on, so it may never move — deleting
+// one of ours, or reordering the list, would renumber a saved mod's creatures
+// silently. This is the check that turns that into a red test instead.
+check('and it is number 175, where it will stay',
+  EDITOR_ABILITIES.find((a) => a.id === DRAGON_TAG)?.number === 175,
+  String(EDITOR_ABILITIES.find((a) => a.id === DRAGON_TAG)?.number));
+check('the ids of ours are unique and none was dropped',
+  new Set(EDITOR_ABILITIES.map((a) => a.id)).size === EDITOR_ABILITIES.length
+  && EDITOR_ABILITIES.some((a) => a.id === DRAGON_TAG));
 
 // --- one ability ---------------------------------------------------------------
 
