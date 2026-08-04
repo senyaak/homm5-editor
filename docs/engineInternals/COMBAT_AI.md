@@ -73,53 +73,67 @@ So sixty creatures are worth nine hundred times two creatures rather than
 thirty times, and this one term drowns out every other reason to prefer a
 target. The second `mulss` goes; the arithmetic either side of it is untouched.
 
-### 2. A spell abandoned before it is ever weighed
+### 2. A hero's magic, deleted from the army's value by a counterspell
 
 `0xD72555`, RVA `0x972555`, eight bytes.
 
-The loop that decides what to cast reaches an object of the opposing side, asks
-it for `SPELL_ABILITY_COUNTERSPELL`, and on yes jumps clean over the block that
-asks what the spell would be worth (`+0x244`) and what it would cost (`+0x40`).
-A spell that is never weighed is never cast — which is what an enemy hero
-standing through a battle with a full book looks like from the outside.
+The function this sits in (`0xD71FF0`) values one **side** of a battle, and its
+builder (`0xD73230`) makes one such block per side: every stack goes through the
+scorer of §1, and then the hero's magic enters as a factor — the spellbook
+summed through `+0x244`, something of the hero's added through `+0x40`, folded
+into the army total as a multiplier (`out+0x14`, initialised to 1.0f). The
+check asks for `SPELL_ABILITY_COUNTERSPELL` and skips that whole factor while
+one is up: a countered hero's magic counts for nothing.
 
-The engine's reasoning is visible, and it is wrong as *play* rather than as
-code: "my cast would be countered, so why weigh it". A counterspell is **spent**
-when it fires, so casting into it burns it for the cost of one (ideally cheap)
-spell — while refusing to cast keeps the caster silent for as long as it is up,
-which is exactly what the check does. Deleting it makes the AI cast into
-counterspells rather than be muted by them; the *ideal* fix — weigh the spell
-with a penalty so a cheap one gets sacrificed first — needs new code rather than
-fewer bytes, and stays possible through a detour if the blunt version misplays.
+Which reads sensibly — and plays terribly, because these valuations are what
+spell plans are *judged against*. With the check in, a counterspell in force
+"deletes" the enemy hero's entire magic factor from their army's worth, so
+casting one looks worth that whole factor, every turn, for the price of one
+spell. That is the AI everyone remembers recasting counterspell instead of
+fighting. With the check gone, the valuation no longer moves with counterspell
+at all, and the spell is left to be judged by what it actually does — which is
+why the fix's one v1.1 changelog line, *"lowered the priority of the
+counterspell"*, is this patch.
 
-`test eax,eax` and the near jump that follows it are what go, so the evaluation
-below is reached whatever the answer was.
+`test eax,eax` and the near jump that follows it are what go, so the factor
+below is counted whatever the answer was.
 
-### 3. A plan's rank started at the bottom
+### 3. A plan with no creature targets, ranked with the best
 
 `0xD7F769 + 6`, RVA `0x97F769`, the immediate of one `mov`.
 
-A combat plan carries a rank of 0, 1 or 2 at `+0xAC`. The loop that fills the
-plan in only ever **lowers** it — `cmp` / `cmovl`, at `0xD777EF`, a running
-minimum over every candidate walked. The constructor's value is therefore the
-*identity* of that minimum, and at 2 a plan whose walk turns up nothing keeps the
-rank of the least urgent thing the AI can do. Zero instead.
+A combat plan carries a rank at `+0xAC`: the class of the best creature among
+its targets. `0xD776E0` computes it — a running minimum (`cmp`/`cmovl`, at
+`0xD777EF`) over the plan's candidate creatures, each classed 0, 1 or 2 by
+whether it answers to a hero (`vt+0x6C`, `vt+0x58`), whether it is a `PHANTOM`
+(effect `0x28` again), and relative power. The plan comparator (`0xD7D610`)
+settles on rank before almost anything else: ranks differing decides the
+ordering right there (`0xD7DED2` → `setg` at `0xD7DF30`).
 
-This is the one of the three whose **consumer we have not read end to end**. What
-is known: the shape above, that the copy constructor carries the field across
-(`0xD7EE49`), that a reset method zeroes it (`0xD76682`), and that two plans
-comparing equal on it is part of how the AI decides two plans are the same one
-(`0xD7DED2`).
+As the identity of a minimum, the constructor's 2 is **correct arithmetic** —
+but a plan whose spell has no creature targets at all walks an empty list and
+keeps it. Mass spells with no aim, summons, counterspell: rank 2, loser to
+nearly every targeted plan, its spells never cast. That is where "the enemy
+never casts its high circles" comes from — the high circles are where the
+targetless spells live — and it matches the fix's own description: mass spells
+used more actively, the summons finally seen.
 
-The fix's changelog has one v1.1 line, *"lowered the priority of the
-counterspell"* — with `0x41` decoded that line reads as patch 2 (the
-counterspell bail-out losing its absolute say), not this one, though which of
-the three landed in which version is the author's to know.
+Zero instead: a targetless plan competes in the best class, and what decides is
+the worth actually computed for it. **Not a repair of the arithmetic — a
+reclassification** of "no targets" from "worst" to "best". It is the blunt end
+of the fix, and it is *why* patch 2 exists: ranked competitive, counterspell
+(targetless too) needed its inflated worth taken away in the same breath.
 
 Note that our build's constructor writes **2** where the disassembly of the
 patched one shows 0. Their original value is not recoverable from a patched file
 — one byte was overwritten — but the surrounding code is identical, so 2 is
 almost certainly what it was there too.
+
+What is read, and what is inferred: the valuation builder, the rank computer and
+the comparator's rank short-cut are read from the disassembly; that lower rank
+wins the comparison is inferred from the behaviour the fix demonstrably changes
+(targetless spells going from never cast to cast) rather than proved
+instruction by instruction.
 
 ## How this is kept honest
 

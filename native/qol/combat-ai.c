@@ -46,43 +46,47 @@ static const BYTE WORTH_SQUARED[4] = { 0xF3, 0x0F, 0x59, 0xCA };
 static const BYTE WORTH_LINEAR[4] = { 0x90, 0x90, 0x90, 0x90 };
 
 /**
- * Casting considered even under COUNTERSPELL (0x41 in the same registry).
+ * A hero's magic counted into the army's value even under COUNTERSPELL.
  *
- * The loop that decides what to cast reaches an object of the opposing side and
- * asks it for SPELL_ABILITY_COUNTERSPELL; a yes abandons the evaluation
- * entirely — jumping clean over the block that asks what the spell would be
- * worth (+0x244) and what it would cost (+0x40). The engine's reasoning is
- * visible ("my cast would be countered, so why weigh it") and it is WRONG as
- * play: a counterspell is spent when it fires, so casting into it burns it,
- * while refusing keeps the caster silent for as long as it is up. A spell that
- * never gets weighed never gets cast, which is an enemy hero standing through
- * a battle with a full book.
+ * The function this sits in values one SIDE of a battle: every stack through
+ * the scorer above, and then the hero — a factor built from the spellbook
+ * (+0x244 summed, +0x40 added) multiplied into the army total. The check asks
+ * for SPELL_ABILITY_COUNTERSPELL (0x41 in the same registry) and skips that
+ * whole factor while one is up: a countered hero's magic counts for nothing.
+ *
+ * Which reads sensibly and plays terribly, because these valuations are what
+ * spells are JUDGED against: with the check in, having a counterspell up
+ * "deletes" the enemy hero's entire magic factor from their army's worth, so
+ * casting one looks worth that whole factor — every turn, for one spell. That
+ * is the AI that keeps recasting counterspell instead of fighting. With the
+ * check gone the valuation no longer moves with counterspell at all, and the
+ * spell is left to be judged by what it actually does. The fix's own v1.1
+ * changelog line — "lowered the priority of the counterspell" — is this patch.
  *
  * `test eax,eax` and the near jump are what go, eight bytes together, so the
- * evaluation below them is reached whatever the answer was. Not "weigh it with
- * a penalty", which would be the ideal and needs new code rather than fewer
- * bytes — a detour here is possible with the machinery in core/detour.c if the
- * blunt version misplays in practice.
+ * factor below them is counted whatever the answer was.
  */
 #define AI_SPELL_BAILOUT_RVA 0x972555u
 static const BYTE BAILOUT_TAKEN[8] = { 0x85, 0xC0, 0x0F, 0x85, 0x91, 0x00, 0x00, 0x00 };
 static const BYTE BAILOUT_GONE[8] = { 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90 };
 
 /**
- * The plan's rank, started at the bottom rather than the top.
+ * A plan with no creature targets, ranked with the best rather than the worst.
  *
- * A combat plan carries a rank of 0, 1 or 2 at +0xAC, and the loop that fills
- * the plan in only ever LOWERS it — `cmp/cmovl`, a running minimum over every
- * candidate it walks. The constructor's starting value is therefore the identity
- * of that minimum, and at 2 a plan with no candidates to lower it keeps the
- * rank of the least urgent thing the AI can do.
+ * A combat plan carries a rank at +0xAC: the class of the best creature among
+ * its targets, a running minimum over 0, 1 and 2 (which class a creature is
+ * depends on its master, on PHANTOM, and on relative power — 0xD776E0). As the
+ * identity of a minimum the constructor's 2 is CORRECT arithmetic — but a plan
+ * whose spell has no creature targets at all walks an empty list and keeps it.
+ * Mass spells with no aim, summons, counterspell: rank 2, and the plan
+ * comparator settles on rank before almost anything else, so the targetless
+ * plan loses to nearly every targeted one and its spells go uncast.
  *
- * Zero instead, and the minimum can no longer be raised by an empty walk. This
- * is the change the fix's own changelog calls "lowered the priority of the
- * counterspell", and it is the one of the three whose consumer we have not read
- * end to end — what is known is the shape above, that the copy constructor
- * carries the field across, and that two plans comparing equal on it is part of
- * how the AI decides two plans are the same one.
+ * Zero instead: a targetless plan competes in the best class, and what decides
+ * is the worth actually computed for it. Not a repair of the arithmetic — a
+ * reclassification of "no targets" from "worst" to "best", which is the blunt
+ * end of this fix, and the reason the counterspell patch above exists: ranked
+ * competitive, counterspell needed its inflated worth taken away too.
  *
  * Only the immediate is written, and only its low byte differs.
  */

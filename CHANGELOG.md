@@ -22,18 +22,20 @@ one.
 
 - **Game settings — the battle AI's spellcasting, fixed.** A new switch,
   `combat-ai-fix`, takes three bugs out of the code that decides what the AI
-  does in a battle: a spell it abandons before ever weighing — which is why an
-  enemy hero with a full book stands there casting nothing, fifth-circle spells
-  most visibly — a stack's worth counted as its size **squared**, which drowns
-  out every other reason to prefer a target, and a plan's rank started at the
-  least urgent value it has. Found again in our build from RedHeavenHero's
-  CombatAIFix v1.1, which names the same three changes in a different build of
-  3.1; nothing could be copied, since that one is compiled for x87 where ours
-  uses SSE. The first switch that writes the game's own code: with it off not a
-  byte of the image is touched, every site is compared against the bytes we
-  measured before anything is written, and `tools/test-combat-ai.ts` checks
-  those addresses against the installed executable — the failure mode is a
-  switch that silently does nothing.
+  does in a battle: a plan with no creature targets — mass spells, summons —
+  ranked below every targeted one and so never cast, which is why the enemy's
+  high circles were never seen; a counterspell "deleting" the enemy hero's
+  whole magic factor from the army valuation, which made casting one look worth
+  that entire factor and is the AI everyone remembers recasting it instead of
+  fighting; and a stack's worth counted as its size **squared** under Deflect
+  Arrows, drowning out every other reason to prefer a target. Found again in
+  our build from RedHeavenHero's CombatAIFix v1.1, which makes the same three
+  changes in a different build of 3.1; nothing could be copied, since that one
+  is compiled for x87 where ours uses SSE. The first switch that writes the
+  game's own code: with it off not a byte of the image is touched, every site
+  is compared against the bytes we measured before anything is written, and
+  `tools/test-combat-ai.ts` checks those addresses against the installed
+  executable — the failure mode is a switch that silently does nothing.
 
 - **The game being open is a sentence now, not an `EBUSY`.** Everything the
   editor installs goes into `bin`, and Windows will not let those files be
