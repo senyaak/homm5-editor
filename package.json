@@ -42,6 +42,7 @@
     "test-heroes": "node tools/test-heroes.ts",
     "test-specializations": "node tools/test-specializations.ts",
     "test-qol": "node tools/test-qol.ts",
+    "test-combat-ai": "node tools/test-combat-ai.ts",
     "test-creature-limit": "node tools/test-creature-limit.ts",
     "units-mod": "node tools/units-mod.ts",
     "creature-limit": "node tools/creature-limit.ts",

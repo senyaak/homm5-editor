@@ -75,6 +75,7 @@
 #include "core/call.c"
 #include "qol/quick-split-gestures.c"
 #include "qol/stack-plates.c"
+#include "qol/combat-ai.c"
 
 BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   (void)reserved;
@@ -126,6 +127,10 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   // the image is there to write on — which at DLL_PROCESS_ATTACH it is.
   if (g_qol[QOL_QUICK_SPLIT]) install_quick_split();
   if (g_qol[QOL_STACK_HEALTH] || g_qol[QOL_STACK_LOSSES]) install_stack_plates();
+  // Code of the game's own again, and the whole feature is the writing of it:
+  // with the flag clear not a byte of the image is touched, which is what makes
+  // this switch the game's own behaviour rather than a mode of ours.
+  if (g_qol[QOL_COMBAT_AI_FIX]) install_combat_ai_fix();
   return TRUE;
 }
 

@@ -136,6 +136,39 @@ static int replace_vtable_entry(DWORD rva, const BYTE *head, int headLen, void *
   return 1;
 }
 
+/**
+ * Overwrite code in place — no jump, no trampoline, nothing called.
+ *
+ * The smallest way in there is, and the only one for a change that is a DELETION:
+ * an instruction the compiler emitted and the game would be better without. A
+ * detour cannot express that — it would have to jump out, do nothing and jump
+ * back — and a vtable slot is the wrong shape entirely, since what is being
+ * changed sits in the middle of a function rather than at its front.
+ *
+ * The bytes that must be there are given in full, and `after` is the same length:
+ * so a build this was not measured on is refused rather than mangled, and what
+ * the patch DOES can be read here as one line against another.
+ */
+static int overwrite_code(DWORD rva, const BYTE *before, const BYTE *after, int len,
+                          const char *what) {
+  BYTE *target = (BYTE *)GetModuleHandleW(NULL) + rva;
+  for (int i = 0; i < len; i++) {
+    if (target[i] == before[i]) continue;
+    log_text("not the bytes we know, leaving it alone: ", what);
+    return 0;
+  }
+
+  DWORD old = 0;
+  if (!VirtualProtect(target, len, PAGE_EXECUTE_READWRITE, &old)) {
+    log_text("could not make the code writable: ", what);
+    return 0;
+  }
+  for (int i = 0; i < len; i++) target[i] = after[i];
+  VirtualProtect(target, len, old, &old);
+  FlushInstructionCache(GetCurrentProcess(), target, len);
+  return 1;
+}
+
 typedef int(__thiscall *EnergyGetterFn)(void *player);
 typedef void(__thiscall *RefillFn)(void *player);
 

@@ -166,6 +166,29 @@ somebody who turned it off. The build lives in `src/mods/qol-ui.ts`
 install's own `data.pak`, so every field we do not set is what the engine
 already reads elsewhere.
 
+## `combat-ai-fix`
+
+Three bugs in the code that decides what the AI does in a battle, written over
+in memory at load time: a spell abandoned before it is ever weighed (which is
+what a hero standing through a battle with a full book looks like), a stack's
+worth counted as its size **squared**, and a plan's rank started at the least
+urgent value it has. The reconnaissance — how each was found again in our build
+from a fix published against a different one — is a page of its own:
+[engineInternals/COMBAT_AI.md](engineInternals/COMBAT_AI.md).
+
+What belongs HERE is what makes it a *flag* rather than a patched executable.
+This is the first one that writes **the game's own code**, so:
+
+- With the flag clear, not one byte of the image is written. Off is the game as
+  shipped, exactly, and there is no second executable to keep in step.
+- Every site is compared against the bytes we measured before anything is
+  written, and each of the three goes in on its own — a build that moved one of
+  them is still better off with the other two.
+- That refusal is **silent from the outside**: the game plays on with the AI it
+  always had. So the addresses are checked against the installed executable by
+  `tools/test-combat-ai.ts` rather than left to be noticed in a battle, and
+  `bin/homm5-editor.log` says how many of the three went in.
+
 ## Plans
 
 **The bar's own settings** — colour and texture of the strips, maybe their

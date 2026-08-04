@@ -81,6 +81,16 @@ export const QOL_FLAGS = [
       + ' a stack raised past what it started with reads above it rather than being trimmed to fit.'
       + ' Costs nothing while the key is up — the number is the game\'s own until it is held.',
   },
+  {
+    name: 'combat-ai-fix',
+    title: 'Fix the battle AI\'s spellcasting',
+    detail: 'Three bugs in the AI that decides what to do in a battle, taken out of the executable in'
+      + ' memory: a spell the enemy hero abandons unevaluated — which is why a hero with a full book'
+      + ' stands there casting nothing — a stack\'s worth counted as its size SQUARED, which drowns out'
+      + ' every other reason to pick a target, and a plan\'s rank starting at the least urgent value it'
+      + ' has. Found again in this build from RedHeavenHero\'s CombatAIFix v1.1, which names the same'
+      + ' three changes in a different one. Nothing is written to the image while this is off.',
+  },
 ] as const;
 
 export type QolName = (typeof QOL_FLAGS)[number]['name'];
