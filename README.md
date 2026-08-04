@@ -117,7 +117,10 @@ get a live 3D scene you sculpt, paint, populate, script and pack.
   ([docs/EFFECTS_FORMAT.md](docs/EFFECTS_FORMAT.md)). What they cost was never
   counted until it was: on a shipped map they outweigh the entire rest of the
   scene in draw calls, per-frame CPU and texture memory. Measured and planned in
-  [SLICE_fx_performance.md](SLICE_fx_performance.md).
+  [SLICE_fx_performance.md](SLICE_fx_performance.md). What the engine does with
+  an effect that the files cannot say — whether a UV scrolls, which shader is
+  bound, what makes a quad stand upright — is to be read out of the running game
+  rather than inferred: [SLICE_effects_probe.md](SLICE_effects_probe.md).
 
 ### Map properties, model & scripting
 
