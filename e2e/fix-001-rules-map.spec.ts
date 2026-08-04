@@ -19,7 +19,7 @@ import { closeEditor, hudSays, launchEditor } from './launch.ts';
 import type { Launched } from './launch.ts';
 import { bar } from './bar.ts';
 import { readEntries } from '../src/format/pak.ts';
-import { prepareGameRoot } from './mods.ts';
+import { LIVE, clearMap, prepareGameRoot } from './mods.ts';
 import {
   ARCHIVE, DATA, FIXES_UNDER_TEST, GAME, HEROES, MAP_DIR, NAME, OPPONENT, OVERRIDE_ALL, TILES,
 } from './fixes.ts';
@@ -30,7 +30,20 @@ let ed: Launched;
 test.beforeAll(async () => {
   test.skip(!existsSync(join(DATA, 'MapObjects')), 'needs the game data');
   // A map is a file in an install, so there has to be one to pack into.
-  await prepareGameRoot(GAME);
+  //
+  // ISOLATED, that install is built from nothing. LIVE, it is the real one and
+  // is left alone: `prepareGameRoot` DELETES what it prepares and refuses
+  // anything outside `_tmp` for exactly that reason, so live only checks that
+  // there is a game there — the extension is refreshed by the panel's Apply at
+  // the end of this test, which is the door a person uses anyway.
+  if (LIVE) {
+    expect(existsSync(join(GAME, 'bin', 'H5_Game.exe')), `no game at ${GAME}`).toBeTruthy();
+  } else {
+    await prepareGameRoot(GAME);
+  }
+  // Both halves: New Map refuses to write over a packed map that is already
+  // there, so a second run would stop before it started.
+  clearMap(GAME, DATA, NAME);
   rmSync(MAP_DIR, { recursive: true, force: true });
   ed = await launchEditor({ HOMM5_ROOT: GAME });
 });
@@ -166,8 +179,14 @@ test('the Rules Test map is built and packed, with every fix off', async () => {
   await page.locator('#qolbtn').click();
   await expect(page.locator('#qolcfg')).toBeVisible();
   await page.locator('#qol-tab-fixes').click();
+  // TURNED off, not merely expected to be. The panel shows what the install
+  // says, and live that is whatever was left on last time — a fix already on
+  // would make this run show the fixed behaviour, which is the one thing it
+  // must not show. The preferences on the other tab are left exactly as they
+  // are: they are the player's, and none of them is under test here.
   for (const flag of FIXES_UNDER_TEST) {
-    await expect(page.locator(`#qol-${flag}`), `${flag} starts off`).not.toBeChecked();
+    await page.locator(`#qol-${flag}`).uncheck();
+    await expect(page.locator(`#qol-${flag}`), `${flag} is off`).not.toBeChecked();
   }
   await page.locator('#qol-apply').click();
   await expect(page.locator('#qol-msg')).toContainText(/settings written|installed/i, { timeout: 60_000 });
