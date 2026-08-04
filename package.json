@@ -37,6 +37,7 @@
     "test-history": "node tools/test-history.ts",
     "test-assets": "node tools/test-assets.ts",
     "test-creature-mod": "node tools/test-creature-mod.ts",
+    "test-abilities": "node tools/test-abilities.ts",
     "test-dwellings": "node tools/test-dwellings.ts",
     "test-buildings": "node tools/test-buildings.ts",
     "test-heroes": "node tools/test-heroes.ts",
