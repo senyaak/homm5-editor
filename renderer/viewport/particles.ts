@@ -104,7 +104,9 @@ void main() {
   vTex = aTex;
 }`;
 
-// A P_STATIC system is standing scenery — the terrain-object grass. Its quads
+// A STANDING system (derived from its bake in createFxSystem — every particle
+// alive the whole loop, no channel moving, enough of them to be vegetation) —
+// the terrain-object grass. Its quads
 // stand UPRIGHT in the world (a cylindrical billboard: yaw follows the camera
 // so a clump never degenerates to an edge, pitch stays vertical), anchored per
 // the instance's <Pivot> ((0,-1) = bottom edge, a blade grows up from where it
@@ -221,6 +223,19 @@ export function createFxSystem(
   fx: FxInstancePayload, baked: FxTransfer, objectMatrix: THREE.Matrix4, phase: number,
   litTint: { value: THREE.Color } = WHITE_TINT,
 ): { system: FxSystem; ready: Promise<void> } {
+  // STANDING SCENERY, derived from the bake rather than from any XML flag
+  // (the instances' <Static> says P_STATIC on all 2709 shipped and separates
+  // nothing): a system whose every particle exists for the whole loop and
+  // never moves a channel, with enough of them to be a patch of vegetation
+  // rather than a lone glow card. The terrain-object grass is 33 one-key
+  // blade clumps; a portal's still glow is 1-2 cards and stays a billboard.
+  // Standing quads get the upright shader and the texel's own colour —
+  // moving effects (fire, surf, wall crashes) keep the billboard path.
+  const recFramesAll = baked.duration * baked.rate;
+  const standing = baked.particles.length >= 8 && baked.particles.every((p) =>
+    p.birth <= 0 && p.death >= recFramesAll - 1
+    && p.pos.length <= 4 && p.rot.length <= 2 && p.size.length <= 3
+    && p.color.length <= 5 && p.tex.length <= 2);
   const recFrames = Math.max(1, baked.duration * baked.rate);
   // One copy's length in real (playback) seconds: `<Speed>` scales the
   // instance's clock, so 0.8 plays the recording at 0.8× and it lasts longer.
@@ -260,8 +275,8 @@ export function createFxSystem(
 
   const mat = new THREE.ShaderMaterial({
     glslVersion: THREE.GLSL3,
-    vertexShader: fx.static ? VERT_STATIC : VERT,
-    fragmentShader: fx.static ? FRAG_STATIC : FRAG,
+    vertexShader: standing ? VERT_STATIC : VERT,
+    fragmentShader: standing ? FRAG_STATIC : FRAG,
     uniforms: {
       uAtlas: { value: null },
       uAlpha: { value: null },
@@ -269,7 +284,7 @@ export function createFxSystem(
       // Shared by reference: the app mutates the lit tint in place when the
       // preset (or the Light toggle) changes, like the terrain uniforms.
       uTint: fx.lit ? litTint : WHITE_TINT,
-      ...(fx.static ? { uPivot: { value: new THREE.Vector2(fx.pivot?.[0] ?? 0, fx.pivot?.[1] ?? 0) } } : {}),
+      ...(standing ? { uPivot: { value: new THREE.Vector2(fx.pivot?.[0] ?? 0, fx.pivot?.[1] ?? 0) } } : {}),
     },
     transparent: true,
     depthWrite: false,
@@ -295,7 +310,7 @@ export function createFxSystem(
   mesh.matrix.multiplyMatrices(objectMatrix, local);
   mesh.renderOrder = 3; // over the water sheet and the ground overlay
 
-  const ready = buildAtlas(fx.textures, 128, !!fx.static).then(({ tex, alpha, cols, rows }) => {
+  const ready = buildAtlas(fx.textures, 128, standing).then(({ tex, alpha, cols, rows }) => {
     mat.uniforms.uAtlas!.value = tex;
     mat.uniforms.uAlpha!.value = alpha;
     (mat.uniforms.uGrid!.value as THREE.Vector2).set(cols, rows);

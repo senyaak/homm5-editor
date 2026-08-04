@@ -229,15 +229,12 @@ export interface FxInstancePayload {
    */
   lit: boolean;
   /**
-   * `<Static>P_STATIC</Static>` — the system is standing scenery, not motion:
-   * the terrain-object grass is 33 blade-clump cards with one position key
-   * each, all on the ground plane, alive for the whole loop. The game plants
-   * these UPRIGHT; played as camera-facing billboards they tip over with the
-   * camera and a field of grass reads as glowing scribble. `pivot` is the
-   * instance's `<Pivot>` in quad units ((0,-1) anchors the bottom edge, so a
-   * blade grows up from where it stands).
+   * The instance's `<Pivot>`, in quad units — (0,-1) anchors the bottom edge,
+   * so a blade of grass grows up from where it stands. Only the standing-
+   * scenery path reads it (a system whose BAKE never moves — the renderer
+   * derives that; the XML's `<Static>` is P_STATIC on every instance shipped
+   * and distinguishes nothing).
    */
-  static?: boolean;
   pivot?: number[];
   /**
    * Frame table the baked texture indices point into; null = empty slot.
