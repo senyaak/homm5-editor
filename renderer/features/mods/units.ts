@@ -19,6 +19,7 @@ import { pickPreset } from '#features/mods/preset.ts';
 import { idFrom, listActions, openModDialog, refreshModLists, umAbilities } from '#features/mods/shared.ts';
 import { requireFilled } from '#core/form-gate.ts';
 import type { CreatureStats } from '#electron/ipc.ts';
+import { DRAGON_TAG } from '#src/mods/creatures.ts';
 
 
 /** Form input id → the CreatureStats field it fills. */
@@ -150,7 +151,10 @@ function addAbilityRow(id = ''): void {
 /** What the hire dialog will print, shown as it is being decided. */
 function showAbilityLine(): void {
   const names = new Map(umAbilities.map((a) => [a.id, a.name || a.id]));
-  const line = chosenAbilities().map((id) => names.get(id) ?? id).join(', ');
+  // The dragon tag is left out, because the build leaves it out: it decides
+  // what a rune may be cast on, and this line is what a player reads.
+  const line = chosenAbilities().filter((id) => id !== DRAGON_TAG)
+    .map((id) => names.get(id) ?? id).join(', ');
   $('um-abil-preview').textContent = line ? `Hire dialog will print: ${line}` : '';
 }
 

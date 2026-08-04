@@ -40,6 +40,15 @@ one.
   already maps an empowered id to the spell it is a version of; it is now asked
   that. At the first site the answer was already sitting in a register, unused.
 
+- **A creature of yours can say it is a dragon.** `ABILITY_DRAGON` is offered
+  last in the ability picker and is not an ability: it is a tag, and the only
+  way a creature of ours can answer a question the executable decides from four
+  ids compiled into it. The game reads the name as `ABILITY_NONE` and ignores it
+  — nothing of the engine is patched to make the tag exist, and the hire dialog
+  does not print it — while installing the mod writes the creatures carrying it
+  into the extension's config, and the Rune of the Dragon Form refuses them.
+  Without the tag on anything, not a byte of that call is touched.
+
 - **Dragon Form is refused on a dragon that never upgraded.** The rune says it
   does not apply to dragons, and the game refuses it — by asking the creature
   for its *base* creature and looking that up in a table of the four dragons. A

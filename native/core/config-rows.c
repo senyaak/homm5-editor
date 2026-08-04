@@ -117,6 +117,19 @@ typedef struct {
 static SpecRow g_specRows[MAX_SPEC_ROWS];
 static int g_specRowCount = 0;
 
+/**
+ * The creatures the editor calls dragons — `dragon <id> <id> …`, one line.
+ *
+ * Not a term added to a sum like every row above it: it ANSWERS a question the
+ * engine asks about a creature, and the engine answers it for the twelve it
+ * ships all by itself (see qol/fix-dragon-form.c). This is the thirteenth and
+ * anything after it — a creature of the editor's, carrying an ability id of
+ * ours in its own record, which the game reads as ABILITY_NONE and ignores.
+ */
+#define MAX_DRAGONS 32
+static int g_dragons[MAX_DRAGONS];
+static int g_dragonCount = 0;
+
 static RaiseFn g_original = NULL;
 static CostFn g_originalCost = NULL;
 static PlayerFn g_originalRefill = NULL;

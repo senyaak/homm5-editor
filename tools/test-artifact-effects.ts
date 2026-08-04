@@ -6,7 +6,7 @@
 // exact shape those forty lines of C expect — rather than about the numbers.
 
 import {
-  EFFECTS_FILE, effectsOf, readEffects, readSkillEffects, skillRowsOf, writeEffects,
+  EFFECTS_FILE, effectsOf, readDragons, readEffects, readSkillEffects, skillRowsOf, writeEffects,
 } from '../src/mods/artifact-effects.ts';
 import { artifactNumbers } from '../src/mods/artifacts.ts';
 
@@ -149,6 +149,26 @@ const unresolved = effectsOf(
 );
 check('a set with a member that does not resolve produces no row',
   unresolved.length === 0, JSON.stringify(unresolved));
+
+// --- the dragon line ---------------------------------------------------------
+//
+// The one line of this file that answers a question instead of adding a term:
+// which creatures of ours a rune must refuse. Its reader in C takes the word
+// `dragon` first and reads numbers to the end of the line, so the format checks
+// are that the word is first, the ids are plain and sorted, and that no line is
+// written at all when there is nothing to say.
+
+const dragonText = writeEffects([], [], [], [201, 199]);
+const dragonLine = dragonText.split('\r\n').find((l) => l.startsWith('dragon'));
+check('a tagged creature becomes one dragon line', dragonLine === 'dragon 199 201', String(dragonLine));
+check('and reading it back gives the numbers', JSON.stringify(readDragons(dragonText)) === '[199,201]',
+  JSON.stringify(readDragons(dragonText)));
+check('no tagged creature writes no line',
+  !writeEffects([]).split('\r\n').some((l) => l.startsWith('dragon')));
+check('the other readers ignore it',
+  readEffects(dragonText).length === 0 && readSkillEffects(dragonText).length === 0);
+check('and it ignores theirs',
+  readDragons('necromancy artifact 97 5\r\nenergy set 2 150 97 98\r\n').length === 0);
 
 // --- where a shipped member's number comes from ------------------------------
 //

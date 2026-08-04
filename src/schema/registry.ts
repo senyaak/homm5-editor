@@ -22,7 +22,7 @@ import { parse, find, children, childText } from '../format/xml.ts';
 import type { XmlElement } from '../format/xml.ts';
 import { toAssets } from '../game/assets.ts';
 import type { Assets } from '../game/assets.ts';
-import { readStats } from '../mods/creatures.ts';
+import { DRAGON_TAG, readStats } from '../mods/creatures.ts';
 import type { CreatureStats } from '../mods/creatures.ts';
 
 /** One choice in a picker: an engine id (or a ref href) and a display label. */
@@ -453,9 +453,15 @@ export function creatureAbilityNames(data: Assets): RosterEntry[] {
     const name = m[2] ? gameText(data, m[2]) : '';
     if (name) named.set(m[1]!, name);
   }
-  return creatureAbilities(data)
-    .filter((id) => id !== 'ABILITY_NONE')
-    .map((id) => ({ id, name: named.get(id) ?? id }));
+  return [
+    ...creatureAbilities(data)
+      .filter((id) => id !== 'ABILITY_NONE')
+      .map((id) => ({ id, name: named.get(id) ?? id })),
+    // Ours, and offered last because it is not an ability: it is how a creature
+    // of ours says it is a dragon, which no table in the data can say for it.
+    // See DRAGON_TAG — the game reads this name as ABILITY_NONE and ignores it.
+    { id: DRAGON_TAG, name: 'Dragon — a tag: the Dragon Form rune refuses it' },
+  ];
 }
 
 /**
@@ -467,7 +473,9 @@ export function creatureAbilityNames(data: Assets): RosterEntry[] {
  */
 export function abilitiesLine(data: Assets, abilities: readonly string[]): string {
   const names = new Map(creatureAbilityNames(data).map((a) => [a.id, a.name!]));
-  return abilities.map((id) => names.get(id) ?? id).join(', ');
+  // The dragon tag is ours and is not an ability: it decides what a rune may be
+  // cast on, and a player reading the hire dialog has no use for it.
+  return abilities.filter((id) => id !== DRAGON_TAG).map((id) => names.get(id) ?? id).join(', ');
 }
 
 /**

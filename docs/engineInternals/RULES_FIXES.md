@@ -282,6 +282,17 @@ twice. Dropping the repeat pays for the fallback with two bytes to spare:
 mov eax,[eax+0x100] / test eax,eax / cmovz eax,esi / nop / nop
 ```
 
+**And the thirteenth dragon.** The table is four ids compiled into the
+executable, so the fix above ends exactly where the shipped game ends: a dragon
+of the editor's is not in it and never can be. So a creature of ours says it for
+itself — `ABILITY_DRAGON`, an ability id of ours in the creature's own record,
+which the game's name-to-id parser (`0xBE1A30`, ending in `xor eax,eax`) reads
+as `ABILITY_NONE` and ignores. Installing the mod writes the creatures carrying
+it into the extension's config as `dragon <id> …`, and the one place the
+question is asked (`0xDA0759`) is pointed at us: the engine's answer first, our
+list after it. With no such creature, that call is left alone. See
+[../NEW_CREATURES.md](../NEW_CREATURES.md).
+
 **Not a transliteration.** dredknight's patch throws the table away and answers
 `tier >= 7`. That covers the same four, but it makes a dragon of every other
 tier-7 creature: an Archangel or a Titan in a dwarf's army would be refused a

@@ -54,7 +54,7 @@
 //                    the same job for the other three kinds of content
 
 import { join } from 'node:path';
-import { NULL_CREATURE, creatureRoot, setCreatureRefs, writeStats } from './creatures.ts';
+import { DRAGON_TAG, NULL_CREATURE, creatureRoot, setCreatureRefs, writeStats } from './creatures.ts';
 import { serialize, setAttr } from '../format/xml.ts';
 import { parseTypeSpec } from '../schema/typespec.ts';
 import { COMMON_SCRIPT, patchCommonScript, setScriptFiles } from './artifact-scripts.ts';
@@ -332,6 +332,10 @@ const TEXT_END = String.fromCharCode(0);
  * its own texts is honoured exactly as the game would honour it.
  */
 function abilityLine(read: DataReader, abilities: readonly string[]): string {
+  // Ours, and not an ability: it says the creature is a dragon so that a rune
+  // can refuse it, and the hire dialog has no business printing it. See
+  // DRAGON_TAG in creatures.ts.
+  abilities = abilities.filter((id) => id !== DRAGON_TAG);
   if (!abilities.length) return '';
   const table = read('GameMechanics/RefTables/CombatAbilities.xdb')?.toString('utf8') ?? '';
   const named = new Map<string, string>();

@@ -25,6 +25,32 @@ export const SHIPPED_CREATURES = 180;
 /** The game's null creature — the shortest complete `Creature` document there is. */
 export const NULL_CREATURE = 'GameMechanics/Creature/Creatures/None.xdb';
 
+/**
+ * "This creature is a dragon" — an ability id of ours, carried in the record.
+ *
+ * The engine decides what a dragon is from a table of four ids compiled into
+ * the executable (Bone, Green, Deep, Fire) and their upgrades, which is enough
+ * for the twelve the game ships and blind to the thirteenth. A creature of ours
+ * cannot join that table, so it says so itself, in the game's own vocabulary:
+ * one more `<Item>` in `<Abilities>`.
+ *
+ * SAFE TO SHIP. The executable maps an ability name to its id with an unrolled
+ * chain of string comparisons (`0xBE1A30`) whose last answer is `xor eax,eax` —
+ * a name it does not know becomes `ABILITY_NONE`, which nothing asks about. So
+ * the game loads a creature carrying this and ignores it, exactly as it ignores
+ * a typo, while our own tools read it. Nothing of the engine's is patched to
+ * make the tag exist.
+ *
+ * WHO READS IT. The install writes the creatures that carry it into the
+ * extension's config as `dragon <id> …`, and the extension answers the rune's
+ * "is this a dragon?" with the engine's own answer OR that list. See
+ * docs/engineInternals/RULES_FIXES.md.
+ *
+ * It is deliberately NOT printed in the hire dialog: a tag is not an ability a
+ * player has, and the line the dialog prints is built from the same list.
+ */
+export const DRAGON_TAG = 'ABILITY_DRAGON';
+
 /** The seven resources a creature can cost, in the order `<Cost>` lists them. */
 export const COST_RESOURCES = ['Wood', 'Ore', 'Mercury', 'Crystal', 'Sulfur', 'Gem', 'Gold'] as const;
 

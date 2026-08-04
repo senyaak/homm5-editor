@@ -16,6 +16,7 @@ import type { ArtifactExeResult } from '#src/exe/artifact-limit.ts';
 import { artifactNumbers } from '#src/mods/artifacts.ts';
 import type { ExeResult } from '#src/exe/creature-limit.ts';
 import { buildCreatureMod } from '#src/mods/creature-mod.ts';
+import { DRAGON_TAG } from '#src/mods/creatures.ts';
 import { findCreatureMods, installCreatureMod, packCreatureMod } from '#src/mods/mod-archive.ts';
 // The emptiness test lives with the model, beside the things it counts: it was
 // written out twice and the second copy went stale the moment a new kind
@@ -57,6 +58,19 @@ function modEffects(mod: CreatureMod): EffectRow[] {
 }
 
 /**
+ * The mod's creatures that call themselves dragons, by the number a battle
+ * knows them under.
+ *
+ * The tag is an `<Item>` in the creature's own `<Abilities>` (DRAGON_TAG), so
+ * it travels with the record and survives reopening the mod; here it becomes
+ * the one line of the config the extension reads when a rune asks whether the
+ * stack in front of it is a dragon.
+ */
+function modDragons(mod: CreatureMod): number[] {
+  return mod.creatures.filter((c) => c.stats.abilities.includes(DRAGON_TAG)).map((c) => c.number);
+}
+
+/**
  * Build the mod, pack it, install it — the shared tail of both installs.
  *
  * The effects file is rewritten here, from the WHOLE mod, rather than beside
@@ -84,6 +98,7 @@ export function buildAndInstall(g: string, mod: CreatureMod): { installed: Insta
   const installed = installCreatureMod(g, mod, archive);
   writeEffectsFile(
     g, modEffects(mod), specializationRowsOf(mod.specializations ?? []), skillRowsOf(mod.skills ?? []),
+    modDragons(mod),
   );
   return { installed, report };
 }

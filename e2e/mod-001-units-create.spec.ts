@@ -225,6 +225,59 @@ test('an installed creature opens for editing, whole', async () => {
   await expect(page.locator('#unitsmod')).toBeHidden();
 });
 
+test('the dragon tag reaches the file the extension reads, and leaves it', async () => {
+  const { page } = ed;
+  const effects = join(GAME, 'bin', 'homm5-editor-effects.txt');
+  const dragonLine = (): string | undefined => (existsSync(effects)
+    ? readFileSync(effects, 'latin1').split(/\r?\n/).find((l) => l.startsWith('dragon'))
+    : undefined);
+  expect(dragonLine(), 'nothing is a dragon before this test').toBeUndefined();
+
+  if (!(await page.locator('#unitsmod').isVisible())) await page.locator('#unitsbtn').click();
+  const row = page.locator('#um-list .um-item', { hasText: SHARPSHOOTER.name }).first();
+  await row.locator('button', { hasText: '✎' }).click();
+  await expect(page.locator('#unitedit')).toBeVisible();
+
+  // The tag is offered like any other ability, and is the only entry whose
+  // label says what it is for rather than what the creature can do.
+  await page.locator('#um-ability-add').click();
+  const added = page.locator('#um-abilities .um-ability-id').last();
+  await added.selectOption('ABILITY_DRAGON');
+  // And it is not offered to the player: the hire dialog's line is built from
+  // the same list, and the preview is what that line will say. Checked against
+  // the LABEL the picker shows, since that is what the line would print — a
+  // check against the id would pass while the line said "Dragon — a tag: …".
+  await expect(page.locator('#um-abil-preview')).toContainText('Hire dialog will print:');
+  await expect(page.locator('#um-abil-preview')).not.toContainText('a tag');
+
+  let note = await settled(page, 'saving the tagged creature', '#um-note', '#ue-err',
+    () => page.locator('#um-ok').click());
+  expect(note).toMatch(/installed|updated/i);
+
+  const tagged = readInstalledMod(GAME).creatures[0]!;
+  expect(tagged.stats.abilities, 'the tag rides in the record').toContain('ABILITY_DRAGON');
+  expect(dragonLine(), 'and the install compiles it into one line')
+    .toBe(`dragon ${tagged.number}`);
+
+  // Taking it off must take the line off too — a stale line would keep a rune
+  // refusing a creature that no longer claims to be a dragon.
+  await row.locator('button', { hasText: '✎' }).click();
+  await expect(page.locator('#unitedit')).toBeVisible();
+  await page.locator('#um-abilities label', { has: page.locator('option:checked') })
+    .filter({ has: page.locator('.um-ability-id') }).last().locator('button').click();
+  await expect(page.locator('#um-abilities .um-ability-id')).toHaveCount(3);
+  note = await settled(page, 'saving it back', '#um-note', '#ue-err',
+    () => page.locator('#um-ok').click());
+  expect(note).toMatch(/installed|updated/i);
+
+  const plain = readInstalledMod(GAME).creatures[0]!;
+  expect(plain.stats.abilities).not.toContain('ABILITY_DRAGON');
+  expect(dragonLine(), 'and the line is gone with it').toBeUndefined();
+
+  await page.locator('#um-cancel').click();
+  await expect(page.locator('#unitsmod')).toBeHidden();
+});
+
 test('a fresh map offers the new creature in the army picker', async () => {
   test.setTimeout(3 * 60_000);
   const { page } = ed;

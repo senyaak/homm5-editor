@@ -512,6 +512,32 @@ second upgrade. Worth knowing that the model's texture is named `T3_Elf_Sniper-h
 reuses the Grand Elf's skin, so up close it looks like an elf, and that is the game's own
 Sharp Shooter looking like that, not our copy going wrong. A recolour is still open.
 
+## An ability of ours: saying a creature is a dragon
+
+`ABILITY_DRAGON` is in the ability picker, last in the list, and it is not an ability. It is
+a **tag**: the only way a creature of ours can answer a question the executable decides from
+a table of four ids compiled into it.
+
+The question is the Rune of the Dragon Form's — its description ends *"(неприменимо к
+драконам)"* and the game refuses it with a string of its own. The engine's answer comes from
+`IsDragon`, four base-dragon ids and their upgrades, and a creature of ours can never be in
+that table. So it says so itself, in the game's own vocabulary: one more `<Item>` in
+`<Abilities>`, carried in the record, surviving a reopen of the mod like every other stat.
+
+**Safe to ship.** The executable maps an ability name to an id with an unrolled chain of
+string comparisons whose last answer is `xor eax,eax` — a name it does not know becomes
+`ABILITY_NONE`, which nothing asks about. The game loads the creature and ignores the tag,
+exactly as it would ignore a typo. Nothing of the engine is patched to make the tag exist,
+and the hire dialog does not print it: a tag is not something a player has.
+
+**Who acts on it.** Installing the mod writes the creatures that carry it into
+`bin/homm5-editor-effects.txt` as one line — `dragon 201 204` — and the extension answers the
+rune with the engine's own answer *or* that list, behind the `dragon-form-fix` switch. See
+[engineInternals/RULES_FIXES.md](engineInternals/RULES_FIXES.md).
+
+This is the shape to copy for any future question of the same kind: a name the game reads as
+nothing, a line in the config, and one call in the executable answered by us.
+
 ## Trying it: `tools/make-test-map.ts`
 
 Two heroes on opposing teams with a stack each, and a neutral stack between them. Built by

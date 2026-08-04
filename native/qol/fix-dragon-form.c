@@ -57,7 +57,57 @@ static const BYTE DRAGON_BASE_OR_SELF[13] = {
   0x8B, 0x80, 0x00, 0x01, 0x00, 0x00, 0x85, 0xC0, 0x0F, 0x44, 0xC6, 0x90, 0x90
 };
 
+// ---------------------------------------------------------------------------
+// AND THE THIRTEENTH DRAGON. The table above is four ids compiled into the
+// executable, and a creature of the editor's can never be in it — so the fix
+// above ends exactly where the shipped game ends, and a new dragon takes the
+// rune it should refuse.
+//
+// So a creature says it for itself. `ABILITY_DRAGON` is an ability id of ours
+// carried in the creature's own record; the executable's name-to-id parser ends
+// in `xor eax,eax`, so it reads that name as `ABILITY_NONE` and ignores it,
+// while the editor writes the creatures that carry it into our config as
+// `dragon <id> …`. See src/mods/creatures.ts.
+//
+// The question is asked from ONE place (`0xDA0759`, three instructions above
+// the refusal string), so that call is the whole hook: ours answers the
+// engine's answer first — the table, now with its fallback — and our own list
+// after it. With no such creature the call is left alone.
+
+/** `mov ecx,[eax+0x1C] / call IsDragon / test al,al` — the one place it is asked. */
+#define DRAGON_ASKED_RVA 0x9a0756u
+/** The engine's own, which we still ask first. */
+#define DRAGON_IS_DRAGON_RVA 0x6bc9f0u
+
+static const BYTE DRAGON_ASKS_ENGINE[10] = {
+  0x8B, 0x48, 0x1C, 0xE8, 0x92, 0xC2, 0xD1, 0xFF, 0x84, 0xC0
+};
+/** The same, asking us. The four zeroes are filled in when we know where we are. */
+static BYTE DRAGON_ASKS_US[10] = {
+  0x8B, 0x48, 0x1C, 0xE8, 0x00, 0x00, 0x00, 0x00, 0x84, 0xC0
+};
+
+typedef int(__fastcall *IsDragonFn)(int creature, int unused);
+static IsDragonFn g_engineIsDragon = NULL;
+
+/** The engine's answer, or ours: a creature the editor tagged as a dragon. */
+static int __fastcall our_is_dragon(int creature, int unused) {
+  (void)unused;
+  if (g_engineIsDragon && g_engineIsDragon(creature, 0)) return 1;
+  for (int i = 0; i < g_dragonCount; i++) if (g_dragons[i] == creature) return 1;
+  return 0;
+}
+
 static void install_dragon_form_fix(void) {
   overwrite_code(DRAGON_BASE_RVA, DRAGON_BASE_ONLY, DRAGON_BASE_OR_SELF,
                  sizeof DRAGON_BASE_ONLY, "the dragon a rune asks about");
+
+  // Nothing of ours to say, nothing of the image touched.
+  if (!g_dragonCount) return;
+  BYTE *base = (BYTE *)GetModuleHandleW(NULL);
+  g_engineIsDragon = (IsDragonFn)(base + DRAGON_IS_DRAGON_RVA);
+  *(DWORD *)(DRAGON_ASKS_US + 4) =
+      (DWORD)&our_is_dragon - ((DWORD)(base + DRAGON_ASKED_RVA) + 8);
+  overwrite_code(DRAGON_ASKED_RVA, DRAGON_ASKS_ENGINE, DRAGON_ASKS_US,
+                 sizeof DRAGON_ASKS_ENGINE, "who else is a dragon");
 }
