@@ -82,6 +82,21 @@ goes from an RTTI class name to its vtables; `trace.ts` disassembles, finds
 callers, and intersects what several functions reach. See that folder's README
 for why iced-x86 and not capstone.
 
+## How the extension's source is laid out
+
+`native/homm5-editor.c` is the ROOT of one translation unit: it holds the
+story, the `#include <windows.h>`, a list of `#include "….c"` lines, and
+`DllMain`. Every included file is a whole `.c` spliced in place — the compiler
+still sees a single file, so every `static` helper and global is shared without
+a header and stays invisible outside the DLL, which with one exported symbol
+and no C runtime is the point. The folders group by subject: `core/` (log,
+detours, calling the engine by hand, the config), `lua/` (registering
+functions, speaking to a battle), `combat/` (the terms: tent, dark energy),
+`qol/` (borderless, own profile, quick split, the stack plates). A file sees
+what was included before it and nothing after, so the include list is the
+order of need, not the alphabet. The split was proved by bytes: the DLL built
+from the pieces is identical to the one built from the single file.
+
 ## The rules that hold everywhere here
 
 Each of these was learned by breaking something, and each applies to every

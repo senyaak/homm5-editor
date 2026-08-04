@@ -16,7 +16,7 @@ enabled.
 | | |
 |---|---|
 | `bin/homm5-editor-qol.txt` | the config. Flat text, one flag per line. |
-| `native/homm5-editor.c` | reads it at load, installs only what it asks for. |
+| `native/qol/*.c` | one file per flag, plus `config.c` that reads the file at load and installs only what it asks for. Pieces of the extension's one translation unit — see docs/ENGINE_INTERNALS.md. |
 | `src/mods/qol.ts` | the flags and their words — no I/O, so the panel can import it. |
 | `src/mods/qol-file.ts` | reading and writing that file. |
 | `src/mods/qol-ui.ts` | the health bar's archive, built from the install's own `data.pak`. |
@@ -177,7 +177,7 @@ and the archive is simply rebuilt from those values on apply.
 
 ## Adding a flag
 
-1. A name in `QOL_NAMES` and a `QolFlag` value in `native/homm5-editor.c`, and
+1. A name in `QOL_NAMES` and a `QolFlag` value in `native/qol/config.c`, and
    the code it turns on.
 2. An entry in `QOL_FLAGS` in `src/mods/qol.ts` — `title` for the panel,
    `detail` for what ticking it COSTS. Both go into the config file's comments,

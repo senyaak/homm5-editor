@@ -7,7 +7,7 @@
 //
 //   the FILE — what is written is what the C reader's grammar accepts, and what
 //     it accepts comes back as what was written.
-//   the NAMES — every flag the panel offers is a flag native/homm5-editor.c
+//   the NAMES — every flag the panel offers is a flag native/qol/config.c
 //     knows, and the file name is the one it opens. A flag added on one side
 //     only is a switch that silently does nothing, which is exactly the failure
 //     this feature must not have.
@@ -74,7 +74,7 @@ check('isQolName refuses what is not ours', !isQolName('nosuchflag') && isQolNam
 
 // --- the two halves agreeing ------------------------------------------------
 
-const c = readFileSync(join(REPO, 'native', 'homm5-editor.c'), 'utf8');
+const c = readFileSync(join(REPO, 'native', 'qol', 'config.c'), 'utf8');
 
 check('the extension opens the file this writes', c.includes('homm5-editor-qol.txt'));
 check('the path here names the same file', QOL_FILE.endsWith('homm5-editor-qol.txt'));
