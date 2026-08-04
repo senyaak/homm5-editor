@@ -174,6 +174,22 @@ export const QOL_FLAGS = [
       + ' — https://github.com/dredknight/H5_DLL',
   },
   {
+    name: 'master-of-fire-fix',
+    tab: 'fixes',
+    group: 'mechanics',
+    title: 'Master of Fire halves the defence it is halving',
+    detail: 'The perk says a creature caught by Fireball, Firewall or Armageddon loses 50% of its'
+      + ' defence for a turn. The game reads the defence when the spell lands, halves that, and'
+      + ' subtracts the resulting NUMBER for as long as the effect runs — so the two agree only'
+      + ' while nothing else touches the creature\'s defence. Buff it after the fireball and it lost'
+      + ' less than half; let a buff expire and it can lose everything it had. The half is now taken'
+      + ' where the defence is summed, so it follows. On the turn the spell lands with nothing else'
+      + ' moving, the number is exactly the one the shipped game produced. Creatures with Броня are'
+      + ' exempt, as they were.',
+    credit: 'Uses the work of H5_DLL by dredknight, with permission'
+      + ' — https://github.com/dredknight/H5_DLL',
+  },
+  {
     name: 'book-of-power-fix',
     tab: 'fixes',
     group: 'mechanics',

@@ -83,6 +83,7 @@
 #include "qol/fix-dragon-form.c"
 #include "qol/fix-empowered-armageddon.c"
 #include "qol/fix-book-of-power.c"
+#include "qol/fix-master-of-fire.c"
 
 BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   (void)reserved;
@@ -147,6 +148,7 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   if (g_qol[QOL_DRAGON_FORM_FIX]) install_dragon_form_fix();
   if (g_qol[QOL_EMPOWERED_ARMAGEDDON_FIX]) install_empowered_armageddon_fix();
   if (g_qol[QOL_BOOK_OF_POWER_FIX]) install_book_of_power_fix();
+  if (g_qol[QOL_MASTER_OF_FIRE_FIX]) install_master_of_fire_fix();
   return TRUE;
 }
 

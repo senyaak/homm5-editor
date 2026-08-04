@@ -243,6 +243,69 @@ dredknight's version hard-codes 232 beside 10 at the second and third sites, and
 at the first removes the comparison altogether — which would give the local
 damage to every spell that shares this code, Holy Word among them.
 
+## Master of Fire, halving a defence that has since moved
+
+`0xD52CC0` and `0xB66800`, RVA `0x952CC0` and `0x766800`, twenty-four bytes and
+five.
+
+**What the game says**: *"Существа, на которых подействовали эти заклинания,
+лишаются 50% защиты на один ход."* A creature the spell caught has half its
+defence for a turn — a proportion, held for as long as the effect is.
+
+The engine writes it down as a **subtraction**. When a fire spell lands
+(`0xBD1560`: the hero has `HERO_SKILL_MASTER_OF_FIRE` (44), the creature is not
+`ABILITY_ARMORED` (85) and has no `SPELL_SKILL_FIRE_PROTECTION` (97)), it reads
+the creature's defence, adds back whatever an earlier fire effect took, halves
+what is left and hands that NUMBER to `SPELL_EFFECT_FIRE_DAMAGE` (202). The walk
+over a creature's effects (`0xD52900`) then subtracts the number unchanged:
+
+```
+sub eax,0Bh / cmp eax,0F9h / movzx eax,[eax+0D52C18h] / jmp [eax*4+0D52BECh]
+  case 1:  test dl,dl / jne default / sub ebx,[effect+20h]
+```
+
+`dl` is *"this creature is Armored"*, asked once at the top of the walk — the
+exemption Броня's own text promises (*"невосприимчиво ко всем заклинаниям и
+эффектам, снижающим «Защиту»"*). Two ids sit on that case:
+`SPELL_EFFECT_ARMOR_CRUSHING` (179) and `SPELL_EFFECT_FIRE_DAMAGE` (202).
+
+So the stored number and the promised proportion agree only while nothing else
+touches the creature's defence. A Stone Skin cast after the fireball, a defence
+buff expiring, the hero's defence changing — any of them leaves a subtraction
+that is no longer half of anything. Buff the creature and it lost less than
+half; let a buff expire and it can lose everything it had.
+
+**Two changes, and the second is where the first went.** One byte of the case
+table sends 202 to the default, so nothing is subtracted (`SPELL_EFFECT_ARMOR_CRUSHING`
+keeps its case; only fire moves). Then the defence getter — `0xB66530`, the one
+that sums a creature's defence, and the only caller of the walk above — halves
+at the end. Its last act is `pop edi / xor eax,eax / test ebx,ebx / … cmovg`,
+the clamp at zero; those five bytes become a jump to seventy of ours, which ask
+the creature for `SPELL_EFFECT_FIRE_DAMAGE` and for `ABILITY_ARMORED` through
+the same vtable walk the getter uses two instructions above, halve, and run the
+clamp we displaced.
+
+**The same number, only later.** The shipped code subtracts `trunc(D/2)`, which
+LEAVES `D − trunc(D/2)`, so ours computes `ebx − (ebx >> 1)` rather than
+`ebx >> 1`. On the turn a fireball lands with nothing else moving, that is
+exactly the defence the shipped game produced, odd numbers included. What
+changes is only that the half follows the defence. dredknight's is `shr ebx,1`,
+one point lower on an odd defence.
+
+**Neither half is written unless both can be.** Half of this fix is worse than
+none: with only the table written the perk does nothing, and with only the
+getter written a creature would lose the stored number *and* half of what is
+left. So both rows are read before either is written.
+
+**How it was found.** The retail addresses name a byte in a table and a hook in
+a function, and neither survives; both were found from what they do.
+`match.ts find` for functions calling vtable slots `+0x28C` and `+0x24C`
+narrowed 400 000 to eleven, and `match.ts fingerprint` against the retail walk
+scored `0xD52900` at 49% with the rest at 11% — the gap, not the number, is the
+answer. The getter is then the walk's only caller, and the case table's entry
+for 202 is arithmetic: our build indexes it by `id − 11` where retail uses
+`id − 0x8C`.
+
 ## The Book of Power, whose knowledge buys no mana
 
 `0xC2F0E5` and `0xC2F100`, RVA `0x82F0E5` and `0x82F100`, five bytes each.

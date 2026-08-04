@@ -40,6 +40,17 @@ one.
   already maps an empowered id to the spell it is a version of; it is now asked
   that. At the first site the answer was already sitting in a register, unused.
 
+- **Master of Fire halves the defence it is halving.** The perk says a creature
+  caught by Fireball, Firewall or Armageddon loses 50% of its defence for a
+  turn. The game read the defence when the spell landed, halved that, and
+  subtracted the resulting number for as long as the effect ran — so the two
+  agreed only while nothing else touched the creature's defence. Buff it after
+  the fireball and it lost less than half; let a buff expire and it could lose
+  everything it had. The half is now taken where the defence is summed, so it
+  follows; on the turn the spell lands with nothing else moving the number is
+  exactly the one the shipped game produced. Creatures with Броня are exempt, as
+  they were.
+
 - **The Book of Power's knowledge buys mana.** The artifact gives +1 to spell
   power and knowledge, +2 with Advanced Education and +3 with Expert — a bonus
   that depends on a skill, so the engine grants it through a special case rather
