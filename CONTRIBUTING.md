@@ -81,8 +81,9 @@ renderer/   the UI. page.html + parts/ + style/ are assembled into index.html,
               core/      what every screen shares — dom, ipc, dialog, prefs,
                          state (the loaded world + selection), coords, rosters
               viewport/  the drawing — stage (context, cameras, controls),
-                         lighting, materials, geoms, splat, terrain-mesh,
-                         instancing, idle, fx, point-lights, overlays
+                         lighting, sky (the preset's dome), materials, geoms,
+                         splat, terrain-mesh, instancing, idle, fx,
+                         point-lights, overlays
               features/  one folder or file per screen — shell (toolbar,
                          panels, picker), map-session, selection, history,
                          inspector/ (panel, controls, tree, map-props, refs),
