@@ -23,7 +23,7 @@ import { test, expect } from '@playwright/test';
 import { spawn } from 'node:child_process';
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { REPO_ROOT, launchEditor } from './launch.ts';
+import { REPO_ROOT, closeEditor, launchEditor } from './launch.ts';
 
 // The whole subject is Windows sharing semantics — what a loaded image denies,
 // and what the editor does about it. There is nothing to assert elsewhere.
@@ -113,13 +113,11 @@ test('applying with the game open says so instead of failing on a temp file @nod
     const written = readFileSync(QOL_FILE, 'utf8');
     expect(written, 'the setting is saved anyway').toMatch(/^combat-ai-fix 1$/m);
 
-    // A LOCKED FILE IS AN EXPECTED STATE, not a broken renderer. Nothing here
-    // may throw — an apply that reported the right sentence and left an
-    // uncaught error behind is still a bug, and this is the assertion that
-    // tells the two apart without waiting out a timeout somewhere else.
-    expect(ed.errors, 'and nothing was thrown along the way').toEqual([]);
+    // A LOCKED FILE IS AN EXPECTED STATE, not a broken renderer — and an apply
+    // that reported the right sentence while leaving an uncaught error behind
+    // is still a bug. `closeEditor` is what tells the two apart.
   } finally {
-    await ed.app.close();
+    await closeEditor(ed);
   }
 });
 
@@ -139,8 +137,7 @@ test('the unmodded game being open stops nothing @nodata', async () => {
       await expect(msg, 'and the game\'s own file is not mistaken for ours')
         .not.toContainText('the game is running');
     });
-    expect(ed.errors, 'and nothing was thrown along the way').toEqual([]);
   } finally {
-    await ed.app.close();
+    await closeEditor(ed);
   }
 });

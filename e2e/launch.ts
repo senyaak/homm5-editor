@@ -4,7 +4,7 @@
 // repo root, which runs electron/main.ts (Node strips its types). Playwright
 // finds the electron binary from the installed `electron` package.
 
-import { _electron as electron } from '@playwright/test';
+import { _electron as electron, expect } from '@playwright/test';
 import { note } from './trace.ts';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -100,6 +100,28 @@ export async function launchEditor(env: Record<string, string> = {}, args: strin
   app.process().stderr?.on('data', collect);
   await page.waitForLoadState('domcontentloaded');
   return { app, page, errors, log };
+}
+
+/**
+ * Close the editor, and FAIL if the renderer threw anything while it was open.
+ *
+ * A spec that only asserts on what the screen says can pass over a renderer
+ * that died: a dead one keeps the whole static page, so every locator still
+ * resolves and every message that was already written is still there. The
+ * errors array is the one thing that tells the difference — and asking for it
+ * at the end of every test is the sort of line that gets forgotten, so this
+ * closes AND checks, and specs call it instead of `ed.app.close()`.
+ *
+ * `allow` is for the specs that provoke a throw on purpose (the WebGL one):
+ * anything matching is dropped, anything else still fails.
+ */
+export async function closeEditor(ed: Launched, allow?: RegExp): Promise<void> {
+  const unexpected = allow ? ed.errors.filter((e) => !allow.test(e)) : ed.errors;
+  try {
+    await ed.app.close();
+  } finally {
+    expect(unexpected, 'the renderer threw nothing while this ran').toEqual([]);
+  }
 }
 
 /**

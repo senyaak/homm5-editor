@@ -18,7 +18,7 @@
 import { test, expect } from '@playwright/test';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { REPO_ROOT, launchEditor } from './launch.ts';
+import { REPO_ROOT, closeEditor, launchEditor } from './launch.ts';
 import { writeArchive } from '#src/format/pak.ts';
 import { QOL_ARCHIVE } from '#src/mods/qol-ui.ts';
 
@@ -166,12 +166,12 @@ test('the panel opens from the bar with everything off @nodata', async () => {
     await expect(ed.page.locator('#qol-warn'), 'and named').toContainText(BARE);
 
     // An unprepared install is a state the panel is meant to REPORT, so nothing
-    // in getting here may have thrown. Asserted rather than assumed: a renderer
-    // that died at the top of the bundle keeps the whole static page, and every
-    // expectation above would pass over its wreckage.
-    expect(ed.errors, 'and nothing was thrown along the way').toEqual([]);
+    // in getting here may have thrown — which `closeEditor` checks, here and in
+    // every other test: a renderer that died at the top of the bundle keeps the
+    // whole static page, and every expectation above would pass over its
+    // wreckage.
   } finally {
-    await ed.app.close();
+    await closeEditor(ed);
   }
 });
 
@@ -196,9 +196,8 @@ test('applying writes the file the extension reads, and the profile @nodata', as
     expect(profile, 'windowed mode is set').toMatch(/^setvar gfx_fullscreen = 0$/m);
     expect(profile, 'the render size follows the screen').toMatch(/^setvar gfx_resolution = \d+x\d+$/m);
     expect(profile, 'nothing else in the profile moved').toContain('setvar gfx_gamma = 1');
-    expect(ed.errors, 'and nothing was thrown along the way').toEqual([]);
   } finally {
-    await ed.app.close();
+    await closeEditor(ed);
   }
 });
 
@@ -227,9 +226,8 @@ test('the battle-plate flags reach the file, and the bar its archive @nodata', a
     await expect.poll(() => existsSync(ARCHIVE), { timeout: 30_000 }).toBe(false);
     expect(readFileSync(QOL_FILE, 'utf8'), 'while the other flag keeps its line')
       .toMatch(/^stack-losses 1$/m);
-    expect(ed.errors, 'and nothing was thrown along the way').toEqual([]);
   } finally {
-    await ed.app.close();
+    await closeEditor(ed);
   }
 });
 
@@ -243,8 +241,7 @@ test('the panel shows what the install says, not what it remembers @nodata', asy
     await ed.page.locator('#qolbtn').click();
     await expect(ed.page.locator('#qol-own-profile'), 'what the file turned on is on').toBeChecked();
     await expect(ed.page.locator('#qol-borderless'), 'what it turned off is off').not.toBeChecked();
-    expect(ed.errors, 'and nothing was thrown along the way').toEqual([]);
   } finally {
-    await ed.app.close();
+    await closeEditor(ed);
   }
 });
