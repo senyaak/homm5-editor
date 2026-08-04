@@ -122,6 +122,20 @@ export const QOL_FLAGS = [
       + ' — https://forum.heroesworld.ru/showthread.php?t=15624',
   },
   {
+    name: 'snare-crash-fix',
+    tab: 'fixes',
+    group: 'crashes',
+    title: 'No crash when a wall is summoned onto a snare',
+    detail: 'Summoning an Arcane Crystal or a Blade Barrier onto a tile that already holds a snare ends'
+      + ' the battle: the snare asks the tile for the creature standing there and uses the answer'
+      + ' without looking, and an obstacle is not a creature. This tests the answer and lets the snare'
+      + ' do nothing when there is nobody to catch — the same "nothing happened" the engine already'
+      + ' returns from that code. Ours diverges from the original fix, which lands in a tail with an'
+      + ' uninitialised register: see docs/engineInternals/RULES_FIXES.md.',
+    credit: 'Follows the work of H5_DLL by dredknight, with permission'
+      + ' — https://github.com/dredknight/H5_DLL',
+  },
+  {
     name: 'encourage-fix',
     tab: 'fixes',
     group: 'mechanics',

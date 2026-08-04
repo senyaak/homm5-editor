@@ -15,6 +15,16 @@ one.
 
 ### Added
 
+- **No more crash when a wall is summoned onto a snare.** Summoning an Arcane
+  Crystal or a Blade Barrier onto a snared tile ended the battle: the snare asks
+  the tile for the creature standing there and uses the answer without looking,
+  and an obstacle is not a creature. The snare now does nothing when there is
+  nobody to catch — the "nothing happened" the engine already returns from that
+  code. dredknight's fix for the same bug lands in a tail with an uninitialised
+  register instead; ours could not be a transliteration anyway, since our build
+  inlined that function and allocated its registers differently. Both copies our
+  compiler emitted are patched.
+
 - **Two rules fixes from H5_DLL.** Ported from dredknight's
   [H5_DLL](https://github.com/dredknight/H5_DLL) with his permission, each one
   byte in a jump table:

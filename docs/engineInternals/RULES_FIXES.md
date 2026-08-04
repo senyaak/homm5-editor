@@ -16,7 +16,7 @@ by what the code does.
 
 ## The method: a switch has a shape
 
-Both of these are entries in a **jump-table switch** — `cmp` a bound, index a
+Two of these are entries in a **jump-table switch** — `cmp` a bound, index a
 byte table, jump through a table of addresses. That makes them findable across
 builds in a way that code is not:
 
@@ -28,10 +28,57 @@ builds in a way that code is not:
   is the switch's own structure. Barbarian Learning's table was matched that way
   (13 groups against 15, differing exactly where our compiler merged bodies).
 
+The snare's crash has no table, and was found a third way: by **fingerprint**.
+The reference function's sequence of virtual-call slots, notable immediates and
+`ret` form — `V6c V6c V0 C V1c V6c V0 C V6c V1d8 M48 M68 I19 Vc C Re4` — is what
+a recompilation keeps when it throws away registers, encodings and addresses.
+Filtering our `.text` for functions calling slot `+0x6C` three times and `+0x1D8`
+once left two candidates out of 400 000; the better scored 88%.
+
 `tools/test-fixes.ts` then checks every patch against the installed executable.
 It finds them by walking the `overwrite_code(...)` calls in `native/` and
 resolving the names each call hands it, so **a fix added tomorrow is checked
 tomorrow** — a list kept by hand is a list that forgets.
+
+## A wall summoned onto a snare — the crash
+
+`0xDC30A6` and `0xDC3236`, RVA `0x9C30A6` and `0x9C3236`, fifteen bytes each.
+
+The snare asks whatever stepped on it for the creature standing there — a
+virtual getter at slot `+0x6C`, called four times over the function — and
+dereferences the answer without testing it. Arcane Crystal and Blade Barrier are
+summoned **obstacles**, not creatures: the getter returns null, `mov edx,[eax]`
+reads address zero, and the battle ends.
+
+**This one is not a transliteration.** dredknight's writes fourteen bytes over
+the retail build: it tests the first call's answer and, when null, jumps over the
+damage arithmetic into the tail — where `ebx` was never initialised, so the
+damage applied is whatever the caller happened to leave in it. Our build inlined
+the function, allocated its registers differently and put its tail elsewhere;
+the same work plus a test and a jump does not fit in the bytes available.
+
+So ours tests the same answer and jumps to the function's **own "nothing
+happened" exit** — the `xor eax,eax` return the engine already uses there. The
+three later calls that dereference the same null are skipped with it, nothing
+stale is read, and no number is invented.
+
+It fits because the **second call is dropped**: both calls ask the same object
+the same getter one instruction apart, which the retail fix already assumes when
+it tests the first answer and lets the second be dereferenced. Those three bytes,
+plus one saved by `xchg eax,ecx` in place of `mov ecx,eax`, pay for the test and
+the `je` exactly:
+
+```
+test eax,eax / je <exit> / mov esi,eax / xchg eax,ecx / mov edx,[ecx] / call [edx]
+```
+
+**Both copies are patched.** Our compiler emitted this code twice — inlined into
+its only caller (`0xDC3090`, the live one) and standing alone (`0xDC3220`, ending
+in `ret 4` where the caller ends in `ret 8`). The standalone has no `call`, no
+`jmp` and no pointer to it anywhere in the image, which is every measure
+available from outside — but *"no reference I can find"* is a weaker claim than
+*"no reference"*, and a second verified write costs nothing. The extension logs
+how many of the two took.
 
 ## Encourage, refused by an immune target
 

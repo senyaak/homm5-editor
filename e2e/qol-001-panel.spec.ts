@@ -130,11 +130,14 @@ test('the panel opens from the bar with everything off @nodata', async () => {
       'under its group heading').toBeVisible();
     await expect(ed.page.locator('.qol-group').filter({ hasText: 'Mechanics' }),
       'and the rules fixes under theirs').toBeVisible();
-    // A heading with no rows under it is an empty promise — only groups that
-    // have a fix are shown at all, and nothing yet fixes a crash.
-    await expect(ed.page.locator('.qol-group')).toHaveCount(2);
     await expect(ed.page.locator('.qol-group').filter({ hasText: 'Crashes' }),
-      'the empty group is not offered').toHaveCount(0);
+      'and the crash fix first of all').toBeVisible();
+    // A heading with no rows under it is an empty promise — only groups that
+    // have a fix are shown at all.
+    await expect(ed.page.locator('.qol-group')).toHaveCount(3);
+    // Crashes lead: the order is FIX_GROUPS', not the flags' own.
+    await expect(ed.page.locator('.qol-group').first(), 'crashes lead the list')
+      .toHaveText('Crashes');
 
     // The master: every fix at once, and it mirrors the rows both ways.
     const master = ed.page.locator('#qol-all-fixes');
