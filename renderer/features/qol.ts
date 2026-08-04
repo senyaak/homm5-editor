@@ -22,8 +22,13 @@ function buildRows(): void {
   const list = $('qol-list');
   list.innerHTML = '';
   for (const flag of QOL_FLAGS) {
-    const row = document.createElement('label');
+    // A div holding a label, rather than one big label. The detail folds away
+    // into a <details>, and inside a label its summary would toggle the switch
+    // every time somebody opened it — so only the tickable part is the label.
+    const row = document.createElement('div');
     row.className = 'qol-row';
+    const head = document.createElement('label');
+    head.className = 'qol-head';
 
     const box = document.createElement('input');
     box.type = 'checkbox';
@@ -48,11 +53,21 @@ function buildRows(): void {
 
     // The price of ticking it, in the same words the config file carries — so
     // the two never drift and neither has to be trusted over the other.
-    const detail = document.createElement('span');
+    //
+    // FOLDED AWAY. Every one of these is a paragraph, and six paragraphs is a
+    // panel somebody scrolls past to reach the switches. Shut, the list is six
+    // lines and reads as a list; the words are one click away for the flag being
+    // decided about, which is the only one they are wanted for.
+    const detail = document.createElement('details');
     detail.className = 'qol-detail';
-    detail.textContent = flag.detail;
+    const summary = document.createElement('summary');
+    summary.textContent = 'What this does';
+    const body = document.createElement('span');
+    body.textContent = flag.detail;
+    detail.append(summary, body);
 
-    row.append(box, name, detail);
+    head.append(box, name);
+    row.append(head, detail);
     list.append(row);
     boxes.set(flag.name, box);
   }
@@ -97,7 +112,14 @@ async function apply(): Promise<void> {
     const said: string[] = ['settings written'];
     // Written but inert: the answers are kept, and the reason they cannot take
     // effect yet is the thing to say rather than a silent success.
-    if (!result.extension) said.push(result.note || 'the extension is not installed — nothing will read this yet');
+    //
+    // A NOTE IS SHOWN WHENEVER THERE IS ONE, not only when the extension is
+    // missing. The two came apart with the running-game check: a game that is
+    // open leaves an already-installed extension installed — `extension` is
+    // perfectly true — and the one thing worth saying is that nothing in the
+    // install was touched. Tied to the flag, that sentence was dropped.
+    if (result.note) said.push(result.note);
+    else if (!result.extension) said.push('the extension is not installed — nothing will read this yet');
     if (result.windowed.length) {
       said.push(`windowed mode set in ${result.windowed.length} game profile(s)`);
     }

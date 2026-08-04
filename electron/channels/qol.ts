@@ -18,6 +18,7 @@ import { qolPath, readQol, writeQolFile } from '#src/mods/qol-file.ts';
 import { removeQolArchive, writeQolArchive } from '#src/mods/qol-ui.ts';
 import { profilesRoot, setResolution, setWindowed } from '#src/game/video-config.ts';
 import { extensionState, installExtension } from '#src/mods/extension.ts';
+import { heldByRunningGame } from '#src/game/running.ts';
 import { MOD_DIR } from '#src/game/mod-paths.ts';
 import { PATCHED_EXE } from '#src/exe/creature-limit.ts';
 
@@ -81,10 +82,22 @@ export function registerQol(): void {
 
     let extension = false;
     const notes: string[] = [];
-    try {
-      extension = installExtension(g, APP_ROOT).installed;
-    } catch (e) {
-      notes.push(e instanceof Error ? e.message : String(e));
+    // A GAME THAT IS OPEN IS NOT A FAILED INSTALL. It holds the executable and
+    // the extension beside it, so neither can be written — but an install that
+    // already has them is still installed, and reporting it as missing would
+    // send somebody to fix what is not broken. So the state is READ rather than
+    // reasserted, and what is said is the one thing to do about it.
+    const held = heldByRunningGame(g);
+    if (held) {
+      extension = extensionState(g).installed;
+      notes.push(`the game is running and has ${held} open — the settings are saved,`
+        + ' but nothing in the install was touched. Close the game and apply again.');
+    } else {
+      try {
+        extension = installExtension(g, APP_ROOT).installed;
+      } catch (e) {
+        notes.push(e instanceof Error ? e.message : String(e));
+      }
     }
 
     // The health bar is half archive: the strips it sizes are child windows,
@@ -92,8 +105,13 @@ export function registerQol(): void {
     // extension runs. So the archive FOLLOWS THE FLAG — written when the bar is
     // asked for, deleted when it is not — or a switch turned off would leave a
     // bar of fixed width on the screen. See src/mods/qol-ui.ts.
+    //
+    // Skipped entirely while the game is open: the archive is MOUNTED by a
+    // running game, so writing or deleting it would fail — and the sentence
+    // above has already said what to do about that.
     try {
-      if (wanted['stack-health-bar']) writeQolArchive(g);
+      if (held) { /* said above; nothing in the install is touched */ }
+      else if (wanted['stack-health-bar']) writeQolArchive(g);
       else removeQolArchive(g);
     } catch (e) {
       notes.push(e instanceof Error ? e.message : String(e));

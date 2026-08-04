@@ -30,6 +30,7 @@
 import { copyFileSync, existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PATCHED_EXE, SHIPPED_EXE } from './creature-limit.ts';
+import { refuseIfRunning } from '../game/running.ts';
 
 /** How many artifacts the game ships with, and so what the sites hold unpatched. */
 export const ORIGINAL_ARTIFACTS = 97;
@@ -260,6 +261,7 @@ export function setArtifactLimit(gameRoot: string, limit: number): ArtifactExeRe
   const created = !existsSync(target);
   const source = created ? shipped : target;
   if (!existsSync(source)) throw new Error(`no executable at ${source}`);
+  refuseIfRunning(gameRoot, 'cannot set the artifact ceiling');
 
   const buf = readFileSync(source);
   // Search first — it is the truth about the file. The note only fills in what

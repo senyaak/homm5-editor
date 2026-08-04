@@ -31,6 +31,8 @@
 import { copyFileSync, existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { refuseIfRunning } from '../game/running.ts';
+
 /** What the shipped executables count up to. */
 export const ORIGINAL_LIMIT = 180;
 
@@ -321,6 +323,11 @@ export function setCreatureLimit(gameRoot: string, limit: number): ExeResult {
   const created = !existsSync(target);
   const source = created ? shipped : target;
   if (!existsSync(source)) throw new Error(`no executable at ${source}`);
+  // Asked before fourteen megabytes are read and written for nothing. The catch
+  // around the rename stays as the backstop — the game can be started in the
+  // second between this answer and that write — but the ordinary case now says
+  // what is wrong before doing any work.
+  refuseIfRunning(gameRoot, 'cannot set the creature ceiling');
 
   const buf = readFileSync(source);
   let patch: Patch;

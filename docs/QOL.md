@@ -189,6 +189,38 @@ This is the first one that writes **the game's own code**, so:
   `tools/test-combat-ai.ts` rather than left to be noticed in a battle, and
   `bin/homm5-editor.log` says how many of the three went in.
 
+## Applying while the game is open
+
+Everything applied here is written into `bin`, and Windows will not let a file
+be replaced while a process holds it. Until this was handled, the panel met that
+as whatever Node threw — `EBUSY` about a path ending in `.new`, from a button
+that said Apply.
+
+`src/game/running.ts` asks the question the way the writes will meet it: can our
+own executable be opened for writing. **The files, not the process list** — a
+lock is what actually stops a write, and naming executables answers a different
+question (yes for a copy elsewhere on the disk, no for one started before the
+rename that holds the file anyway). It is also the same test the game itself
+makes: its refusal to run beside the map editor is a file it cannot open.
+
+**Only ours.** `H5_Game.exe` is never written to by anything here, so somebody
+playing the unmodded game is no reason to refuse; the two can be open at once.
+What is asked about is `bin/H5_Game_H5E.exe` and the extension beside it.
+
+Applying then **saves the settings and touches nothing in the install**, and
+says so. A running game is not a failed install: one that already has the
+extension still has it, so the state is read rather than reasserted — reporting
+it as missing would send somebody to fix what is not broken.
+
+`e2e/qol-002-game-running.spec.ts` covers it by holding the same lock a running
+game holds. Not with `fs.openSync`: Node opens files on Windows with every share
+mode set, so a handle it hands out denies nothing — the first version of that
+spec watched an apply succeed while it believed the file was locked. The loader
+opens an image for read and delete and **not** for writing, and `FileShare` from
+.NET is set to exactly that. `None` is the obvious thing to reach for and is
+wrong: it denies readers too, and the editor reads the executable to see whether
+it already names the extension.
+
 ## Plans
 
 **The bar's own settings** — colour and texture of the strips, maybe their

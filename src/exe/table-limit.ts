@@ -58,6 +58,7 @@
 import { existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PATCHED_EXE, SHIPPED_EXE } from './creature-limit.ts';
+import { refuseIfRunning } from '../game/running.ts';
 
 /** A reference table whose size the executable carries. */
 export interface TableSpec {
@@ -322,6 +323,7 @@ export function setTableLimit(gameRoot: string, table: TableSpec, limit: number)
   const created = !existsSync(target);
   const source = created ? shipped : target;
   if (!existsSync(source)) throw new Error(`no executable at ${source}`);
+  refuseIfRunning(gameRoot, `cannot set the ${table.what} ceiling`);
 
   const patch = patchTableLimit(readFileSync(source), table, limit);
   const accessor = patch.accessor?.address ?? null;

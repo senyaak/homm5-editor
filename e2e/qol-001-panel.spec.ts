@@ -101,6 +101,23 @@ test('the panel opens from the bar with everything off @nodata', async () => {
       await expect(boxes.nth(i), 'and starts off').not.toBeChecked();
     }
 
+    // The detail is FOLDED: six paragraphs open at once is a panel somebody
+    // scrolls past to reach the switches. Shut on open, and the words are there
+    // when the fold is used — asserted both ways, since a fold that opens onto
+    // nothing looks identical to one nobody clicked.
+    const fold = ed.page.locator('.qol-row', { has: ed.page.locator('#qol-borderless') })
+      .locator('.qol-detail');
+    await expect(fold, 'the detail starts folded away').not.toHaveAttribute('open', /.*/);
+    await expect(fold.locator('span'), 'so its words are not on the screen yet').toBeHidden();
+    await fold.locator('summary').click();
+    await expect(fold.locator('span'), 'and the fold opens onto them').toBeVisible();
+    await expect(fold.locator('span'), 'the same words the config file carries')
+      .toContainText('exclusive fullscreen');
+    // Opening it must not have ticked anything: the fold lives outside the
+    // label for exactly this reason, and a summary inside one toggles the box.
+    await expect(ed.page.locator('#qol-borderless'), 'and opening it ticks nothing')
+      .not.toBeChecked();
+
     // A flag that is somebody else's work says so on the row, not only in the
     // repository: the mark is beside the name and its tooltip names them and
     // where they published it. Asserted because a credit nobody can see is the
@@ -123,6 +140,12 @@ test('the panel opens from the bar with everything off @nodata', async () => {
     // And WHICH install, because the same sentence without it reads as a broken
     // panel when the real fault is a window pointed at the wrong folder.
     await expect(ed.page.locator('#qol-warn'), 'and named').toContainText(BARE);
+
+    // An unprepared install is a state the panel is meant to REPORT, so nothing
+    // in getting here may have thrown. Asserted rather than assumed: a renderer
+    // that died at the top of the bundle keeps the whole static page, and every
+    // expectation above would pass over its wreckage.
+    expect(ed.errors, 'and nothing was thrown along the way').toEqual([]);
   } finally {
     await ed.app.close();
   }
@@ -149,6 +172,7 @@ test('applying writes the file the extension reads, and the profile @nodata', as
     expect(profile, 'windowed mode is set').toMatch(/^setvar gfx_fullscreen = 0$/m);
     expect(profile, 'the render size follows the screen').toMatch(/^setvar gfx_resolution = \d+x\d+$/m);
     expect(profile, 'nothing else in the profile moved').toContain('setvar gfx_gamma = 1');
+    expect(ed.errors, 'and nothing was thrown along the way').toEqual([]);
   } finally {
     await ed.app.close();
   }

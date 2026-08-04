@@ -15,6 +15,11 @@ one.
 
 ### Added
 
+- **The game settings panel reads as a list.** Each switch's paragraph folds
+  away behind *What this does*, and a switch that is somebody else's work
+  carries an (i) naming them and where they published it — in the config file's
+  comments too, so the acknowledgement travels with the install.
+
 - **Game settings — the battle AI's spellcasting, fixed.** A new switch,
   `combat-ai-fix`, takes three bugs out of the code that decides what the AI
   does in a battle: a spell it abandons before ever weighing — which is why an
@@ -29,6 +34,15 @@ one.
   measured before anything is written, and `tools/test-combat-ai.ts` checks
   those addresses against the installed executable — the failure mode is a
   switch that silently does nothing.
+
+- **The game being open is a sentence now, not an `EBUSY`.** Everything the
+  editor installs goes into `bin`, and Windows will not let those files be
+  replaced while the game holds them — which used to surface as a message about
+  a temporary file with a `.new` suffix, from a button that said Apply. The
+  ceilings and the extension now ask first and say which file is held and what
+  to do; applying settings saves them and leaves the install alone, rather than
+  half-writing it. Only **our** build counts: `H5_Game.exe` is never written to,
+  so playing the unmodded game stops nothing.
 
 - **Game settings — two more battle switches.**
   - **A health bar on the stack plate.** In a battle every stack's plate

@@ -18,18 +18,27 @@
 .qol-list {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 10px;
 }
 
+/* Shut, a row is one line: the switch, the name, and a fold. */
 .qol-row {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 8px 10px;
-  align-items: start;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* Only the tickable part is a label — the fold below must not toggle it. */
+.qol-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
 }
 
 .qol-row input {
-  margin: 3px 0 0;
+  margin: 0;
+  flex: none;
+  align-self: center;
 }
 
 .qol-name {
@@ -44,12 +53,31 @@
   cursor: help;
 }
 
-/* What ticking it costs, in the same words the config file carries. */
+/* What ticking it costs, in the same words the config file carries — folded
+   away, so the list reads as a list and the words are one click from the flag
+   being decided about. Indented to the name above it, not to the checkbox. */
 .qol-detail {
-  grid-column: 2;
+  margin-left: 26px;
   opacity: 0.7;
   font-size: 12px;
   line-height: 1.45;
+}
+
+.qol-detail > summary {
+  cursor: pointer;
+  opacity: 0.75;
+  font-size: 11px;
+  list-style-position: outside;
+  user-select: none;
+}
+
+.qol-detail > summary:hover {
+  opacity: 1;
+}
+
+.qol-detail > span {
+  display: block;
+  padding: 4px 0 2px;
 }
 
 /* The same amber the mod dialogs warn in (.um-warn), rather than a box of its

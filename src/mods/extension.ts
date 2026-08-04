@@ -17,6 +17,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileS
 import { dirname, join } from 'node:path';
 
 import { addImport, imports } from '../exe/exe-import.ts';
+import { refuseIfRunning } from '../game/running.ts';
 import { EFFECTS_FILE, writeEffects } from './artifact-effects.ts';
 import type { EffectRow, SkillRow, SpecializationRow } from './artifact-effects.ts';
 
@@ -97,7 +98,16 @@ function namesUs(exe: string): boolean {
   const key = `${stat.size}:${stat.mtimeMs}`;
   const seen = importedCache.get(exe);
   if (seen?.key === key) return seen.imported;
-  const imported = imports(readFileSync(exe)).includes(EXTENSION_DLL.toLowerCase());
+  // A file at that name that cannot be read as one is not an error HERE. This
+  // is a question — "does it name us" — asked every time the panel opens, and a
+  // truncated copy or somebody's junk under that name would otherwise throw
+  // "not a PE file" out of a dialog that was only trying to show some
+  // checkboxes. It does not name us; that is the whole answer. Installing is
+  // where an unreadable executable still fails loudly, and should.
+  let imported = false;
+  try {
+    imported = imports(readFileSync(exe)).includes(EXTENSION_DLL.toLowerCase());
+  } catch { /* not something we can read — so not something that names us */ }
   importedCache.set(exe, { key, imported });
   return imported;
 }
@@ -130,6 +140,10 @@ export function installExtension(gameRoot: string, editorRoot: string): InstallR
   if (!existsSync(exe)) {
     throw new Error(`no ${exe} — the extension loads through our copy of the executable, not the game's`);
   }
+  // Before either write, not between them. A running game holds both of these
+  // and the copy would fail with a sentence about EBUSY; worse, whichever of the
+  // two succeeded first would leave the install half installed.
+  refuseIfRunning(gameRoot, 'cannot install the extension');
 
   copyFileSync(built, join(gameRoot, 'bin', EXTENSION_DLL));
   const { buf, added } = addImport(readFileSync(exe), EXTENSION_DLL, EXTENSION_ENTRY);
