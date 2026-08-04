@@ -40,6 +40,16 @@ one.
   already maps an empowered id to the spell it is a version of; it is now asked
   that. At the first site the answer was already sitting in a register, unused.
 
+- **The Book of Power's knowledge buys mana.** The artifact gives +1 to spell
+  power and knowledge, +2 with Advanced Education and +3 with Expert — a bonus
+  that depends on a skill, so the engine grants it through a special case rather
+  than through the path an ordinary artifact takes. That path recomputes the
+  hero's maximum mana whenever knowledge changes; the special case did not, so
+  the knowledge appeared on the hero screen and the mana did not follow. It
+  showed up after a level up, which is when Education changes the bonus on its
+  own. The engine's own recomputation now runs in that case too, both when the
+  artifact goes on and when it comes off.
+
 - **Creature abilities of the editor's own, and the first of them: Дракон.**
   Almost no ability in this game is code — a creature's `<Abilities>` is a list
   of ids, and the engine asks "does it have that one" where it matters, which is

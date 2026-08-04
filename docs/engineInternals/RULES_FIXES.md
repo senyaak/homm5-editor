@@ -35,8 +35,9 @@ byte table, jump through a table of addresses. That makes them findable across
 builds in a way that code is not:
 
 - The **byte table is data**, and often identical between builds. Encourage's was
-  found by searching our executable for the retail table's 195 bytes: one hit.
-  Try this first — one hit is an answer, and no tool is needed for it.
+  found by searching our executable for the retail table's 195 bytes: one hit;
+  the Book of Power's, for its 92. Try this first — one hit is an answer, and no
+  tool is needed for it.
 - When the tables *do* differ, their **shape** survives: which ids share a case,
   and which sit on the default (`match.ts table`). Two builds number the cases
   differently — ours deduplicates identical bodies where retail keeps them apart
@@ -241,6 +242,66 @@ else-branch pushes the raw id it loaded, so there the ask is bracketed by
 dredknight's version hard-codes 232 beside 10 at the second and third sites, and
 at the first removes the comparison altogether — which would give the local
 damage to every spell that shares this code, Holy Word among them.
+
+## The Book of Power, whose knowledge buys no mana
+
+`0xC2F0E5` and `0xC2F100`, RVA `0x82F0E5` and `0x82F100`, five bytes each.
+
+One function puts an artifact on a hero and takes it off again (`0xC2EE80`,
+`this` in `edi`). Its main path walks the six primary stats in order — attack
+`+0x64`, defence `+0x68`, spell power `+0x6C`, knowledge `+0x70`, morale `+0x74`,
+luck `+0x78` — and the knowledge one is the only one that does anything else:
+
+```
+add [edi+70h],eax                  the bonus
+mov eax,[edi+1Ch] / call [eax+1Ch]     GetKnowledge — the hero's, in full
+push eax / call [eax+130h]             the mana that knowledge buys
+mov [edi+15Ch],eax
+call 0xBB49C0                      this hero changed
+```
+
+`+0x1C` is the knowledge getter named in
+[ARTIFACTS_AND_EQUIPMENT.md](ARTIFACTS_AND_EQUIPMENT.md). The engine's
+one-stat-at-a-time setters say the same thing twice over: `0xC1FFE9` adds to
+`+0x70` and recomputes `+0x15C`, `0xC1FFD7` adds to `+0x6C` and does not. So
+**"knowledge changed, recompute the mana" is the engine's own rule**, and those
+two sites are the only places in the image that write `+0x15C` after a call
+through `+0x130`.
+
+The Book of Power does not go down that path. Its bonus depends on a SKILL, so
+it is one of seven special cases in a switch below (`0xC2F0B7`, case 5 of the
+table at `0xC2F148`): ask the hero his mastery of Learning (`vt+0x174`, skill 3),
+floor it at 1, write it to a knowledge slot of its own at `+0x25C`, mark the hero
+changed, return. The other six special cases sit on `+0x250`, `+0x254`, `+0x258`,
+`+0x260` and `+0x264` — the same six stats in the same order — and knowledge is
+the only one of them that needed the recomputation.
+
+**What the game says**: *"Добавляет +1 к «Колдовству» и «Знанию», если у героя
+еще нет навыков из области «Образование». Добавляет +2 … или +3, если у героя
+есть «Высшее образование»."* Knowledge in the plain sense the rest of the game
+gives it, and everywhere else in the game knowledge is mana.
+
+**Why a level up is when it shows.** The case refuses to run when `+0x25C` is
+already positive (`cmp [edi+25Ch],0 / jg exit`), so a re-grant has to be a
+removal followed by a grant — which is what taking Education does. Both branches
+end with `call 0xBB49C0` and neither recomputes, so the number on the hero screen
+moves and the mana ball does not.
+
+**Both branches, five bytes each.** There is no room in front of either call, so
+those five bytes become a jump to forty of ours: the engine's own six
+instructions, the call we displaced, and a jump back to the epilogue the branch
+was going to anyway. Nothing is displaced and the stack is untouched.
+
+**How it was found.** The switch's byte table is 92 bytes and IDENTICAL between
+the builds — one hit in ours (`0xC2F168`), which put the jump table in front of
+it, and the two tables' entries in the same order named the case. The method the
+top of this page recommends, and the second fix it has answered outright.
+
+dredknight's `BookOfPowerLevelUp.cpp` lifts the same six instructions from the
+same function. Two differences: his stub restores `this` with `mov ecx,[ebp]`
+where the code it replaces had `mov ecx,ebp`, and both of his hooks return to
+the *other* branch's epilogue — harmless only because the two epilogues are
+identical.
 
 ## Dragon Form, offered to a dragon that never upgraded
 

@@ -174,6 +174,21 @@ export const QOL_FLAGS = [
       + ' — https://github.com/dredknight/H5_DLL',
   },
   {
+    name: 'book-of-power-fix',
+    tab: 'fixes',
+    group: 'mechanics',
+    title: 'The Book of Power\'s knowledge buys mana',
+    detail: 'The Book of Power gives +1 to spell power and knowledge, or +2 with Advanced Education'
+      + ' and +3 with Expert — a bonus that depends on a skill, so it is granted by a special case'
+      + ' rather than by the path an ordinary artifact takes. That path recomputes the hero\'s'
+      + ' maximum mana whenever knowledge changes; the special case does not, so the knowledge shows'
+      + ' on the hero screen and the mana does not follow. It is noticed after a level up, which is'
+      + ' when Education changes the bonus on its own. This runs the engine\'s own recomputation in'
+      + ' the case that lacks it, both when the artifact is put on and when it comes off.',
+    credit: 'Uses the work of H5_DLL by dredknight, with permission'
+      + ' — https://github.com/dredknight/H5_DLL',
+  },
+  {
     name: 'dragon-form-fix',
     tab: 'fixes',
     group: 'mechanics',
