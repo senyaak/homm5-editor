@@ -154,7 +154,12 @@ async function placeHero(page: Launched['page'], kit: Kit, player: string): Prom
  */
 const mainHeroRef = (id: string): string => `#xpointer(id(${id})/AdvMapHero)`;
 
-test('the map spec is one the game can build @nodata', () => {
+// NOT `@nodata`, though it was tagged that way for a while and should not have
+// been: it reads the game's own skill and creature tables and its MapObjects,
+// and this file's `beforeAll` copies an executable before any of it runs. The
+// data-free door to these questions is `npm run test-fix-map`, which needs no
+// install and no fixture; this one is the gate in front of the build.
+test('the map spec is one the game can build', () => {
   // The last gate before an evening is spent on it. Every failure this catches
   // is SILENT — a perk the hero does not qualify for is dropped without a word,
   // the map is written, it loads, and the hero simply does not have it. That is
