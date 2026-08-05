@@ -65,7 +65,14 @@ can see.
 So: start any battle — the stack in front of him will do — and
 
 1. let his trappers lay a snare, on a tile you can see;
-2. cast **Arcane Crystal** or **Blade Barrier** onto that tile.
+2. cast **«Кристалл тайного»** (Arcane Crystal) or **«Стена мечей»** (Blade
+   Barrier) onto that tile.
+
+**If the obstacle simply stands there and nothing happens**, the snare did not
+FIRE, and that is the thing to chase rather than the fix: the crash is in the
+code a snare runs when it goes off — it asks the tile for the creature standing
+there and an obstacle is not one. A snare that ignores its owner's own summon
+never reaches that code. See docs/engineInternals/RULES_FIXES.md.
 
 - **off** — the battle ends. That is the whole bug: the game drops out of the
   fight.
@@ -76,8 +83,16 @@ the only one that can cost you the rest of the run.
 
 ### 2. `payback-fix` — the same warlock, same battle
 
-He has **Payback**, and Arcane Crystal, Summon Hive and Blade Barrier. Watch the
-mana ball and the turn order as you cast one of the three.
+He has **Payback** — `HERO_SKILL_PAYBACK`, a Dark Magic perk the shipped game
+shows as **«Темное восполнение»**: *"Если заклинание не подействовало на отряд
+существ благодаря их сопротивлению магии, то герою возвращается вся потраченная
+на заклятие мана, и его следующий ход наступает раньше."* Mana back when a stack
+RESISTS. (dredknight's file calls it the Arcane Renewal fix, which is Heroes
+5.5's name and is nearer the Russian one than "Payback" is.)
+
+He also has the three spells that put an obstacle on the field: **«Кристалл
+тайного»** (Arcane Crystal), **«Стена мечей»** (Blade Barrier) and **«Призыв
+улья»** (Summon Hive). Watch the mana ball and the turn order as you cast one.
 
 - **off** — "Payback!", the whole cost comes back, and his turn moves up. Every
   time, for a spell that is standing on the field.
