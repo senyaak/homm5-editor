@@ -165,6 +165,42 @@ static HWND WINAPI create_window_hook(DWORD exStyle, LPCSTR cls, LPCSTR title, D
  */
 static int g_posLogged = 0;
 
+typedef BOOL(WINAPI *WindowFn)(HWND);
+static int g_broughtForward = 0;
+
+/**
+ * In front, once, when the game first places its window.
+ *
+ * A FRAMED window comes up in front because Windows activates it; a `WS_POPUP`
+ * one at the corner of the screen does not, and the game — which never asked for
+ * a popup — never says otherwise. So it starts full-screen-sized BEHIND whatever
+ * was there, which looks like it failed to start.
+ *
+ * The moment is the game's first `SetWindowPos` on that window rather than its
+ * creation: at creation there is nothing on screen to be in front of, and
+ * `SetForegroundWindow` on a window that is not yet shown does nothing.
+ *
+ * TOPMOST and straight back out of it, which is the way to raise a window
+ * without leaving it above everything for the rest of the session — the frame is
+ * a preference, "always on top" is not. Then the foreground call for the
+ * keyboard. Both through the ORIGINAL SetWindowPos, or this would meet itself.
+ */
+static void bring_to_front(HWND hwnd) {
+  if (g_broughtForward || !hwnd) return;
+  g_broughtForward = 1;
+  const UINT keep = SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW;
+  if (g_setWindowPos) {
+    g_setWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, keep);
+    g_setWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, keep);
+  }
+  HMODULE user32 = GetModuleHandleW(L"user32.dll");
+  WindowFn top = user32 ? (WindowFn)GetProcAddress(user32, "BringWindowToTop") : NULL;
+  WindowFn fore = user32 ? (WindowFn)GetProcAddress(user32, "SetForegroundWindow") : NULL;
+  if (top) top(hwnd);
+  if (fore) fore(hwnd);
+  log_line("borderless: the window was brought to the front");
+}
+
 static BOOL WINAPI set_window_pos_hook(HWND hwnd, HWND after, int x, int y, int cx, int cy, UINT flags) {
   int ours = g_qol[QOL_BORDERLESS] && hwnd && hwnd == g_mainWindow;
   if (ours && g_posLogged < 8) {
@@ -182,7 +218,13 @@ static BOOL WINAPI set_window_pos_hook(HWND hwnd, HWND after, int x, int y, int 
     cy = g_screenH;
     flags &= ~(UINT)(SWP_NOMOVE | SWP_NOSIZE);
   }
-  return g_setWindowPos(hwnd, after, x, y, cx, cy, flags);
+  BOOL done = g_setWindowPos(hwnd, after, x, y, cx, cy, flags);
+  // After the move, not before: the window is where it belongs by then, and
+  // raising it is the last thing the first placement should do. Once only —
+  // stealing the foreground every time the game touches its own window would
+  // be a worse manner than the one this fixes.
+  if (ours) bring_to_front(hwnd);
+  return done;
 }
 
 /**

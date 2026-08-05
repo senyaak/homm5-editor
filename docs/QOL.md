@@ -80,7 +80,15 @@ Three hooks, and all three are needed — established by log, not by guessing:
   right one and leaves the splash alone.
 - **`SetWindowPos`** — the window is created with `CW_USEDEFAULT` and sized
   afterwards, once the device exists. Without this the frame comes off and the
-  geometry goes back to whatever the engine had in mind.
+  geometry goes back to whatever the engine had in mind. It is also where the
+  window is **brought to the front**, once: Windows activates a framed window on
+  creation and does not activate a `WS_POPUP` one, and the game never asked for a
+  popup, so without this it comes up screen-sized *behind* whatever was already
+  there and reads as a game that failed to start. Done at the first placement
+  rather than at creation, because there is nothing to be in front of yet and
+  `SetForegroundWindow` on an unshown window does nothing — and TOPMOST then
+  straight back out of it, which raises a window without leaving it above
+  everything for the rest of the session.
 - **`SetWindowLongA`** — the game re-applies its style (`0x10CF0000`, which adds
   `WS_THICKFRAME`) after creation. A frame that returns halfway through a
   session is the same bug as one that never came off.

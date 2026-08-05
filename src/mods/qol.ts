@@ -62,9 +62,11 @@ export const QOL_FLAGS = [
     name: 'borderless',
     tab: 'qol',
     title: 'Borderless window',
-    detail: 'The game window without its frame, filling the screen. Needs windowed mode:'
-      + ' exclusive fullscreen belongs to Direct3D and has no frame to take off, so applying'
-      + ' this also sets gfx_fullscreen = 0 in your game profile.',
+    detail: 'The game window without its frame, filling the screen, and brought to the front when'
+      + ' it opens — a frameless window is not activated the way a framed one is, so without that'
+      + ' it starts behind whatever was already on screen. Needs windowed mode: exclusive'
+      + ' fullscreen belongs to Direct3D and has no frame to take off, so applying this also sets'
+      + ' gfx_fullscreen = 0 in your game profile.',
   },
   {
     name: 'own-profile',
