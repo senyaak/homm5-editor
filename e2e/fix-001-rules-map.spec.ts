@@ -139,6 +139,7 @@ async function placeHero(page: Launched['page'], kit: Kit, player: string): Prom
     }
   }
   if (kit.artifact) await place(page, kit.artifact.shared, kit.artifact.at.x, kit.artifact.at.y);
+  for (const b of kit.nearby ?? []) await place(page, b.shared, b.at.x, b.at.y);
   return id;
 }
 

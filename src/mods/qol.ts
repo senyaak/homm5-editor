@@ -214,7 +214,8 @@ export const QOL_FLAGS = [
       + ' dragons. A creature that is a base itself has no base, so the lookup falls out of range and'
       + ' a Bone, Green, Deep or Fire Dragon is told it is not a dragon. Everywhere else the engine'
       + ' reads a base creature it falls back to the creature itself; this writes that missing'
-      + ' fallback in. Upgraded dragons were refused before and still are.',
+      + ' fallback in. Upgraded dragons were refused before and still are. A rune is cast on a'
+      + ' creature of the Dwarves, so the Fire Dragon is the one this can be seen on.',
     credit: 'Uses the work of H5_DLL by dredknight, with permission'
       + ' — https://github.com/dredknight/H5_DLL',
   },

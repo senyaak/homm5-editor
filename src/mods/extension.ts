@@ -164,10 +164,9 @@ export function writeEffectsFile(
   rows: readonly EffectRow[],
   specializations: readonly SpecializationRow[] = [],
   skills: readonly SkillRow[] = [],
-  dragonAbility?: number,
 ): string {
   const path = join(gameRoot, EFFECTS_FILE);
   mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, writeEffects(rows, specializations, skills, dragonAbility), 'latin1');
+  writeFileSync(path, writeEffects(rows, specializations, skills), 'latin1');
   return path;
 }

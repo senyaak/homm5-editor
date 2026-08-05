@@ -84,11 +84,10 @@ check('every one has a caption and a description',
   EDITOR_ABILITIES.every((a) => !!a.name && !!a.description && !!a.file));
 check('the dragon tag is one of them', EDITOR_ABILITIES.some((a) => a.id === DRAGON_TAG));
 // The number is what a built creature's record stores, so the list is
-// append-only — but it is NOT pinned here, and deliberately: the extension is
-// told which number the dragon ability got, in the config the install writes
-// (`dragon-ability <n>`), so giving it another one moves that line with it and
-// breaks nothing. What must hold is that the numbers follow the shipped count
-// in order, which is what makes them match the table the mod ships.
+// append-only — but it is NOT pinned here, and deliberately: nothing in the
+// engine asks about an ability of ours, so a different number breaks nothing.
+// What must hold is that the numbers follow the shipped count in order, which
+// is what makes them match the table the mod ships.
 check('the ids of ours are unique and none was dropped',
   new Set(EDITOR_ABILITIES.map((a) => a.id)).size === EDITOR_ABILITIES.length
   && EDITOR_ABILITIES.some((a) => a.id === DRAGON_TAG));

@@ -110,6 +110,13 @@ export interface Kit {
   foe?: { shared: string; at: { x: number; y: number }; count?: number };
   /** An artifact on the ground beside him, for the fixes that need one. */
   artifact?: { shared: string; at: { x: number; y: number } };
+  /**
+   * Buildings standing behind him, for the fixes that need the hero CHANGED
+   * rather than the battle watched — a mentor to forget a skill at, dolmens to
+   * take a level from. Placed like anything else; they are only listed apart
+   * because the row behind the heroes is where they fit.
+   */
+  nearby?: { shared: string; at: { x: number; y: number } }[];
 }
 
 const M = {
@@ -123,6 +130,30 @@ const monster = (race: string, name: string): string =>
 
 /** Peasants: something to fight that will not end the battle in one turn. */
 const PEASANTS = monster('Haven', 'Peasant');
+
+/**
+ * The Mentor — «Ментор», *"здесь любой герой может полностью сменить все умения
+ * и способности, полученные им прежде"*.
+ *
+ * Which is the only way to run the Barbarian Learning test at all: that fix is
+ * about what a hero KEEPS after the skill is gone, and nothing else on a map
+ * takes a skill back off him.
+ */
+const MENTOR = '/MapObjects/H5A2/SpellMentor.xdb';
+
+/**
+ * The Dolmen of Knowledge — «Дольмен знания», *"Единовременно добавляет +1000
+ * единиц опыта герою"*. One visit each, so several.
+ *
+ * Levels are the instrument twice over: the scholar has to raise Education for
+ * the Book of Power's bonus to move on its own, and the barbarian needs a level
+ * before there is anything to forget.
+ */
+const DOLMEN = '/MapObjects/Learning_Stone.(AdvMapBuildingShared).xdb';
+
+/** A row of dolmens behind a hero, two tiles apart so they do not overlap. */
+const dolmens = (from: number, count: number, y = 13): { shared: string; at: { x: number; y: number } }[] =>
+  Array.from({ length: count }, (_, i) => ({ shared: DOLMEN, at: { x: from + i * 2, y } }));
 
 /**
  * A hundred zombies, for the two heroes who cast **Armageddon**.
@@ -304,6 +335,11 @@ export const HEROES: Kit[] = [
     stats: { offence: 10, defence: 10, spellpower: 1, knowledge: 1 },
     army: [{ creature: 'CREATURE_GOBLIN', count: 40 }],
     foe: { shared: PEASANTS, at: { x: 48, y: 7 } },
+    // The MENTOR is what makes this test possible at all — the fix is about
+    // what he keeps after the skill is taken back off him, and nothing else on
+    // a map takes a skill off a hero. The dolmens are for the level he needs
+    // before there is anything to forget.
+    nearby: [{ shared: MENTOR, at: { x: 48, y: 13 } }, ...dolmens(42, 3)],
   },
   {
     key: 'scholar',
@@ -319,6 +355,10 @@ export const HEROES: Kit[] = [
     // Picked up rather than worn, so the mana can be read before and after.
     artifact: { shared: '/MapObjects/Artifacts/H5A2/Book_Of_Power.xdb', at: { x: 57, y: 10 } },
     foe: { shared: PEASANTS, at: { x: 56, y: 7 } },
+    // Six dolmens, because the step that shows this fix is a LEVEL: Education
+    // going from Basic to Advanced moves the book's bonus from +1 to +2 on its
+    // own, and that is where the mana was left behind.
+    nearby: dolmens(54, 6),
   },
 ];
 

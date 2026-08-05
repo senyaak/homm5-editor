@@ -228,16 +228,6 @@ test('an installed creature opens for editing, whole', async () => {
 
 test('the dragon tag rides in the record, and the config names the ability', async () => {
   const { page } = ed;
-  const effects = join(GAME, 'bin', 'homm5-editor-effects.txt');
-  const dragonLine = (): string | undefined => (existsSync(effects)
-    ? readFileSync(effects, 'latin1').split(/\r?\n/).find((l) => l.startsWith('dragon'))
-    : undefined);
-  // The line is the ability's NUMBER, not a list of creatures — so it is there
-  // as soon as the mod ships the ability, whether or not anything carries it.
-  // What the tag decides is what the creature's own record says.
-  expect(dragonLine(), 'the install says which ability means dragon')
-    .toMatch(/^dragon-ability \d+$/);
-
   if (!(await page.locator('#unitsmod').isVisible())) await page.locator('#unitsbtn').click();
   const row = page.locator('#um-list .um-item', { hasText: SHARPSHOOTER.name }).first();
   await row.locator('button', { hasText: '✎' }).click();
@@ -280,8 +270,6 @@ test('the dragon tag rides in the record, and the config names the ability', asy
 
   const plain = readInstalledMod(GAME).creatures[0]!;
   expect(plain.stats.abilities).not.toContain('ABILITY_DRAGON');
-  expect(dragonLine(), 'and the ability is still named, since it still exists')
-    .toMatch(/^dragon-ability \d+$/);
 
   await page.locator('#um-cancel').click();
   await expect(page.locator('#unitsmod')).toBeHidden();

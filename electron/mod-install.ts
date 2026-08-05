@@ -59,22 +59,6 @@ function modEffects(mod: CreatureMod): EffectRow[] {
 }
 
 /**
- * The number the dragon tag got, when this mod ships the ability at all.
- *
- * Not a list of creatures: the extension asks a creature whether it carries the
- * ability, the way the engine asks about any other one. The only thing it
- * cannot work out for itself is which NUMBER that ability was given, because
- * that is decided when the mod is built — so that number, and nothing else,
- * travels in the config.
- *
- * A mod with no creatures ships no abilities either, and then there is nothing
- * to say and no call in the executable to redirect.
- */
-function dragonAbilityNumber(mod: CreatureMod): number | undefined {
-  return mod.creatures.length ? editorAbility(DRAGON_TAG)?.number : undefined;
-}
-
-/**
  * Build the mod, pack it, install it — the shared tail of both installs.
  *
  * The effects file is rewritten here, from the WHOLE mod, rather than beside
@@ -102,7 +86,6 @@ export function buildAndInstall(g: string, mod: CreatureMod): { installed: Insta
   const installed = installCreatureMod(g, mod, archive);
   writeEffectsFile(
     g, modEffects(mod), specializationRowsOf(mod.specializations ?? []), skillRowsOf(mod.skills ?? []),
-    dragonAbilityNumber(mod),
   );
   return { installed, report };
 }

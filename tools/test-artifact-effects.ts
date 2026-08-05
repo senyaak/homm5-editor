@@ -6,7 +6,7 @@
 // exact shape those forty lines of C expect — rather than about the numbers.
 
 import {
-  EFFECTS_FILE, effectsOf, readDragonAbility, readEffects, readSkillEffects, skillRowsOf, writeEffects,
+  EFFECTS_FILE, effectsOf, readEffects, readSkillEffects, skillRowsOf, writeEffects,
 } from '../src/mods/artifact-effects.ts';
 import { artifactNumbers } from '../src/mods/artifacts.ts';
 
@@ -149,26 +149,6 @@ const unresolved = effectsOf(
 );
 check('a set with a member that does not resolve produces no row',
   unresolved.length === 0, JSON.stringify(unresolved));
-
-// --- the dragon line ---------------------------------------------------------
-//
-// The one line of this file that answers a question instead of adding a term,
-// and it carries a NUMBER rather than a list: which ability means "dragon". A
-// creature says whether it has that ability in its own record, the way it says
-// it is undead, so nothing here enumerates creatures — and if the ability is
-// ever given another number, this line is what moves.
-
-const dragonText = writeEffects([], [], [], 176);
-const dragonLine = dragonText.split('\r\n').find((l) => l.startsWith('dragon'));
-check('the ability number becomes one line', dragonLine === 'dragon-ability 176', String(dragonLine));
-check('and reading it back gives that number', readDragonAbility(dragonText) === 176,
-  String(readDragonAbility(dragonText)));
-check('no ability writes no line',
-  !writeEffects([]).split('\r\n').some((l) => l.startsWith('dragon')));
-check('the other readers ignore it',
-  readEffects(dragonText).length === 0 && readSkillEffects(dragonText).length === 0);
-check('and it ignores theirs',
-  readDragonAbility('necromancy artifact 97 5\r\nenergy set 2 150 97 98\r\n') === undefined);
 
 // --- where a shipped member's number comes from ------------------------------
 //

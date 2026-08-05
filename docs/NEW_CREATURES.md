@@ -542,14 +542,15 @@ map is an ability, with a number, and the second tag is simply the next number.
 because the number is what a creature's record stores. The picker offers them before the mod
 that carries them is installed and reads them out of the data afterwards.
 
-**What the dragon tag is for.** The Rune of the Dragon Form ends its description with
-*"(неприменимо к драконам)"*, and the engine decides what a dragon is from four ids compiled
-into the executable — enough for the twelve dragons the game ships, and blind to a
-thirteenth. The extension asks the creature itself whether it carries the tag, the way the
-engine asks whether it is undead; the only thing the install has to tell it is which NUMBER
-the ability got (`dragon-ability 175` in `bin/homm5-editor-effects.txt`), because that is
-decided when the mod is built. See
-[engineInternals/RULES_FIXES.md](engineInternals/RULES_FIXES.md).
+**What `ABILITY_DRAGON` is.** A TAG and nothing more: an ability with a number, a caption
+and a description, carried in a creature's own record and asked about by nothing in the
+engine. It is the worked example of the paragraph above — what adding an ability of ours
+costs, and what it does, which is nothing until something asks.
+
+It is deliberately not wired to the Rune of the Dragon Form. That fix repairs the engine's
+own question (see [engineInternals/RULES_FIXES.md](engineInternals/RULES_FIXES.md)), and a
+rune can only be cast on a creature of the Dwarves anyway, so a tag on a creature of yours
+would answer a question the game never asks of it.
 
 ## Trying it: `tools/make-test-map.ts`
 

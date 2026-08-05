@@ -150,7 +150,6 @@ export function writeEffects(
   rows: readonly EffectRow[],
   specializations: readonly SpecializationRow[] = [],
   skills: readonly SkillRow[] = [],
-  dragonAbility?: number,
 ): string {
   const lines = [
     '# Effects the editor added, written by it - see src/mods/artifact-effects.ts.',
@@ -160,16 +159,8 @@ export function writeEffects(
     '#   <stat> set <worn> <amount> <id> <id> ...',
     '#   <stat> skill <value> <amount per level of mastery>',
     '#   <stat> specialization <value> <percent per hero level>',
-    '#   dragon-ability <number>',
     '',
   ];
-  // The NUMBER of the ability that means "this creature is a dragon" — not a
-  // list of creatures, and not a term added to a sum like the rest of the file.
-  // The extension asks the creature itself whether it carries this one, so the
-  // only thing it cannot work out for itself is which number the ability got:
-  // that is decided here, when the mod is built, and travels in this line. Move
-  // the ability and the line moves with it.
-  if (dragonAbility !== undefined) lines.push(`dragon-ability ${dragonAbility}`);
   for (const r of rows) {
     if (!r.amount || !r.artifacts.length) continue;
     const comment = r.name ? `   # ${r.name}` : '';
@@ -241,16 +232,6 @@ export function readSkillEffects(text: string): SkillRow[] {
     rows.push({ stat, skill: Number(m[2]), amountPerMastery: Number(m[3]) });
   }
   return rows;
-}
-
-/** The number the file gives the dragon ability, read back the same separate way. */
-export function readDragonAbility(text: string): number | undefined {
-  for (const line of text.split(/\r?\n/)) {
-    if (line.trimStart().startsWith('#')) continue;
-    const m = /^\s*dragon-ability\s+(\d+)\s*$/.exec(line.split('#')[0] ?? '');
-    if (m) return Number(m[1]);
-  }
-  return undefined;
 }
 
 /** A skill of a mod, as far as its effects are concerned. */

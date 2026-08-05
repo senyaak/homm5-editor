@@ -117,19 +117,6 @@ typedef struct {
 static SpecRow g_specRows[MAX_SPEC_ROWS];
 static int g_specRowCount = 0;
 
-/**
- * The number of the ability that means "this creature is a dragon" —
- * `dragon-ability <n>`, one line.
- *
- * Not a term added to a sum like every row above it, and not a list of
- * creatures either: a creature says what it is in its OWN record, the way it
- * says it is undead, and we ask it. The one thing that cannot be worked out
- * here is which number the editor gave that ability when it built the mod — so
- * that number, and nothing else, is what the line carries. Move the ability and
- * the line moves with it.
- */
-static int g_dragonAbility = 0;
-
 static RaiseFn g_original = NULL;
 static CostFn g_originalCost = NULL;
 static PlayerFn g_originalRefill = NULL;

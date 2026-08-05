@@ -218,8 +218,9 @@ The **Book of Power** lies one tile east of him. He has Education at Basic.
 
 1. Note his maximum mana on the hero screen.
 2. Pick the book up — knowledge goes up, and so should the mana.
-3. Fight something, take a level, and raise **Education** to Advanced. The book's
-   bonus goes from +1 to +2 on its own.
+3. Take a level and raise **Education** to Advanced — six **Дольмены знания**
+   stand behind him, +1000 experience each, so this needs no fighting. The
+   book's bonus goes from +1 to +2 on its own.
 
 - **off** — the knowledge on the hero screen moves and the mana ball does not
   follow. Step 3 is where it is most visible, which is why the original fix is
@@ -230,16 +231,18 @@ The **Book of Power** lies one tile east of him. He has Education at Basic.
 
 ### 8. `barbarian-learning-fix` — the barbarian
 
-He carries **Barbarian Learning**. Note his primary stats, then have the skill
-removed — a Memory Mentor, or anything else that makes a hero forget a skill.
+He carries **Barbarian Learning**, and the **Ментор** stands right behind him —
+*"здесь любой герой может полностью сменить все умения и способности,
+полученные им прежде"*. That is what makes this test possible: the fix is about
+what a hero KEEPS after the skill is taken off, and nothing else on a map takes
+a skill off a hero. Three **Дольмены знания** to his west give him the level he
+needs first.
+
+1. Note his primary stats.
+2. Visit the Mentor and drop Barbarian Learning.
 
 - **off** — the skill is gone and the stats it granted stay.
 - **on** — they come back off with it.
-
-**This one has no in-game trigger on the map yet.** Nothing on it removes a
-skill, so unless you have a save or a mentor to hand, this is the one entry on
-the list that cannot be walked through — noted here rather than left to be
-discovered in front of the game.
 
 ### 9. `combat-ai-fix` — the opponent at the east end
 

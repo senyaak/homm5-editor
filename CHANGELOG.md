@@ -76,18 +76,10 @@ one.
   does nothing, and that is what a tag is. Adding one costs what an artifact
   costs and no executable at all: the enum and the name→number entry in
   types.xml, the size the table declares, and an object with a caption and a
-  description in `CombatAbilities.xdb`. `ABILITY_DRAGON` is the first; the
-  picker offers it before the mod carrying it is installed and reads it out of
-  the data afterwards, and the next tag is simply the next number.
-
-- **A creature of yours can say it is a dragon.** The Rune of the Dragon Form is
-  refused on dragons, and the engine knows which creatures those are from four
-  ids compiled into it — enough for the twelve the game ships, blind to a
-  thirteenth. Tag a creature of yours with Дракон and the rune refuses it too:
-  the extension asks the creature whether it carries that ability, the way the
-  engine asks whether it is undead, and the install only has to say which number
-  the ability got. With no ability in the mod, not a byte of that call is
-  touched.
+  description in `CombatAbilities.xdb`. `ABILITY_DRAGON` is the first and is a
+  worked example rather than a behaviour; the picker offers it before the mod
+  carrying it is installed and reads it out of the data afterwards, and the next
+  tag is simply the next number.
 
 - **Dragon Form is refused on a dragon that never upgraded.** The rune says it
   does not apply to dragons, and the game refuses it — by asking the creature
