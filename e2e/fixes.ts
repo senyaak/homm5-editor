@@ -163,6 +163,9 @@ const dolmens = (from: number, count: number, y = 13): { shared: string; at: { x
  * — a defence that should be half, war machines that should be hurt. Zombies
  * are slow and fat, and a hundred of them survive the spell and keep standing
  * for the second cast.
+ *
+ * The ranger takes the same stack with `count` raised, for a third reason: he
+ * needs the battle to LAST. See his kit.
  */
 const ZOMBIES = { shared: monster('Necropolis', 'Zombie'), count: 100 };
 
@@ -320,8 +323,15 @@ export const HEROES: Kit[] = [
     spells: ['SPELL_FIREBALL'],
     stats: { offence: 10, defence: 5, spellpower: 10, knowledge: 30 },
     ballista: true,
-    army: [{ creature: 'CREATURE_MARKSMAN', count: 30 }],
-    foe: { shared: PEASANTS, at: { x: 40, y: 7 } },
+    // ROUNDS are the instrument here, and only here. Every other hero on this
+    // map has one thing to see and can see it in a turn; this one is READ OFF A
+    // LOG that a ballista writes once per shot, and six lines want six rounds.
+    // So both sides are seven hundred zombies: slow, fat, and hitting each
+    // other for about a tenth of a stack a round, which is a battle that lasts
+    // and cannot be ended early by accident. Peasants and thirty marksmen were
+    // over before the ballista had said anything twice.
+    army: [{ creature: 'CREATURE_ZOMBIE', count: 700 }],
+    foe: { ...ZOMBIES, count: 700, at: { x: 40, y: 7 } },
   },
   {
     key: 'barbarian',

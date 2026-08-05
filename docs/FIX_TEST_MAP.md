@@ -260,8 +260,15 @@ what the AI *prefers*, not a rule that either fires or does not.
 
 ### 10. Imbue Ballista — the ranger
 
-He has **Imbue Arrow**, **Imbue Ballista** and a ballista. Fight something and
-let the ballista shoot.
+He has **Imbue Arrow**, **Imbue Ballista** and a ballista — Ballista off War
+Machines, Imbue Arrow off Avenger, and Imbue Ballista off War Machines wanting
+both of those first, all of it at Expert, so the game grants every one of them.
+
+**Both sides are seven hundred zombies**, and that is the instrument: this is
+the only hero on the map whose result is read off a LOG rather than seen in a
+turn, and a ballista writes one line per shot. Seven hundred a side is about
+eight rounds, which is eight shots — enough to fill the six lines twice over.
+Fight it and let the ballista shoot; there is nothing to do but attack.
 
 The perk says the shots carry his enchantment and that this costs him **mana** —
 *"запас маны последнего будет уменьшаться"* — and nothing about his turn.
