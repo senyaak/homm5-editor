@@ -158,8 +158,15 @@ export const HEROES: Kit[] = [
     // every time, until the payback fix.
     spells: ['SPELL_ARCANE_CRYSTAL', 'SPELL_SUMMON_HIVE', 'SPELL_BLADE_BARRIER'],
     stats: { offence: 5, defence: 5, spellpower: 15, knowledge: 30 },
-    army: [{ creature: 'CREATURE_MARKSMAN', count: 30 }],
-    // Goblin Trappers lay the snares an obstacle has to be summoned onto.
+    army: [
+      { creature: 'CREATURE_MARKSMAN', count: 30 },
+      // HIS OWN trappers, which is the whole trick. A snare is invisible to
+      // whoever it is laid against, so trappers on the other side put them on
+      // tiles you cannot see and there is nothing to aim a crystal at. Your own
+      // you can see — lay one, then summon onto it.
+      { creature: 'CREATURE_GOBLIN_TRAPPER', count: 20 },
+    ],
+    // Anything to fight; the snare comes from his own side of the field.
     foe: { shared: monster('Stronghold', 'Goblin_Trapper'), at: { x: 24, y: 7 } },
   },
   {
@@ -248,13 +255,6 @@ export const OPPONENT: Kit = {
     // the AI valued at the SQUARE of its size.
     { creature: 'CREATURE_GRAND_ELF', count: 30 },
     { creature: 'CREATURE_DRUID', count: 20 },
-    // Trappers HERE, and not only in the neutral stack the warlock can attack,
-    // because a snare has to be laid on a tile SOMEBODY CHOSE. Their snares are
-    // invisible to whoever they are laid against, so against the AI there is
-    // nothing to aim a crystal at — you would be guessing at a tile the AI
-    // picked and cannot see. In a hotseat game this stack is yours to move: lay
-    // the snare where you like, take the other side's turn, cast onto it.
-    { creature: 'CREATURE_GOBLIN_TRAPPER', count: 20 },
   ],
 };
 

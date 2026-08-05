@@ -49,37 +49,23 @@ computer's.
 | `ranger` | Sylvan | Imbue Ballista — the bug, not a fix |
 | `barbarian` | Stronghold | Barbarian Learning |
 | `scholar` | Haven | the Book of Power |
-| `opponent` | Sylvan, PLAYER_2 | the battle AI — and, in hotseat, the trappers |
-
-Both slots are human-playable, so the same map can be started either way: as a
-single-player game, where the opponent is the AI and the battle-AI test means
-something, or as **hotseat**, where you drive both sides and can set up the
-snare. Nothing about the map changes between the two — only the mode you pick.
+| `opponent` | Sylvan, PLAYER_2 | the battle AI |
 
 ---
 
 ## The list
 
-### 1. `snare-crash-fix` — the warlock, in a HOTSEAT game
+### 1. `snare-crash-fix` — the warlock, with his OWN Goblin Trappers
 
-**Start this map as hotseat and take both sides.** A snare is invisible to
-whoever it is laid against, so played normally there is nothing to aim at: the
-trappers put them where the AI chose and you would be guessing at tiles you
-cannot see. Driving both sides removes the guess entirely — and it needs no
-script and no mod, only the game's own two-player mode.
+The trick is that the trappers are in **his army**, not on the other side. A
+snare is invisible to whoever it is laid against, so trappers you are fighting
+put them on tiles you cannot see and there is nothing to aim at. Your own you
+can see.
 
-The opponent hero at the east end carries a stack of **Goblin Trappers**. Walk
-the warlock into him, and in the battle:
+So: start any battle — the stack in front of him will do — and
 
-1. on the trappers' turn, lay a snare on a tile you pick — anywhere you will
-   remember, a corner is easiest;
-2. on the warlock's turn, cast **Arcane Crystal** or **Blade Barrier** onto that
-   same tile.
-
-The neutral trapper stack in front of the warlock is left where it is: it is a
-battle to spend a spell in for the payback test below, and if the AI happens to
-lay a snare under one of your obstacles it will crash there too — but that is
-luck, and the hotseat route is the one that reproduces.
+1. let his trappers lay a snare, on a tile you can see;
+2. cast **Arcane Crystal** or **Blade Barrier** onto that tile.
 
 - **off** — the battle ends. That is the whole bug: the game drops out of the
   fight.
