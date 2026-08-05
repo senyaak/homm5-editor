@@ -23,7 +23,7 @@ import * as THREE from 'three';
 import { state } from '#core/state.ts';
 import type { AmbientData } from '#src/scene/payload.ts';
 import { onAmbient } from '#viewport/lighting.ts';
-import { controls, renderer, scene } from '#viewport/stage.ts';
+import { cam, camera, controls, renderer, scene } from '#viewport/stage.ts';
 
 /**
  * The caster is its OWN light, and contributes none.
@@ -40,15 +40,21 @@ const caster = new THREE.DirectionalLight(0xffffff, 0);
 scene.add(caster, caster.target);
 
 /**
- * How far across the shadow map reaches, world units.
+ * How far across the shadow map reaches, world units — and it follows the zoom.
  *
- * The engine re-fits its own map to what the camera can see — the probe caught
- * it 125 and 250 units across in one run — because a fixed map over a whole
- * 300-tile floor would spend every texel on ground nobody is looking at. Same
- * reasoning, one size: 160 units is 80 tiles, comfortably past the far edge of
- * a normal working zoom, and at 2048 texels that is 12 texels per world unit.
+ * The engine re-fits its own map to what the camera can see: the probe caught
+ * it 125 and then 250 units across in the same run. A fixed size cannot do the
+ * job here either, and both ways of getting it wrong are visible. Too small and
+ * shadows stop dead at a circle around the orbit target while the rest of the
+ * floor stands in flat sun; too large and a 2048 map spread over a 300-tile
+ * floor gives a tree four texels to be drawn with.
+ *
+ * So it is derived from the view each frame and clamped: 40 units is 20 tiles,
+ * closer than the camera can get, and 400 is the whole of most floors at 5
+ * texels per world unit.
  */
-const EXTENT = 160;
+const MIN_EXTENT = 40, MAX_EXTENT = 400;
+let extent = 160;
 const MAP_SIZE = 2048;
 /** How far up the light sits. Only the near/far planes care; the light is directional. */
 const DISTANCE = 400;
@@ -70,9 +76,8 @@ export function initShadows(): void {
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   caster.castShadow = true;
   caster.shadow.mapSize.set(MAP_SIZE, MAP_SIZE);
-  const c = caster.shadow.camera;
-  c.left = -EXTENT; c.right = EXTENT; c.top = EXTENT; c.bottom = -EXTENT;
-  c.near = 1; c.far = DISTANCE * 2;
+  caster.shadow.camera.near = 1;
+  caster.shadow.camera.far = DISTANCE * 2;
   // Bias against self-shadowing, and it has to be this loose because the
   // shipped meshes are drawn DoubleSide: a wall's back face sits in the map at
   // its own depth, so every front face is a hair behind something. The normal
@@ -111,13 +116,25 @@ const up = new THREE.Vector3();
 export function updateShadowCamera(): void {
   if (!caster.castShadow) return;
   target.copy(controls.target);
+  // How much ground the view covers: the plan camera says so outright, and the
+  // perspective one is measured from how far it is standing back. Both name
+  // their HALF-HEIGHT, and a window is wider than it is tall — the frustum has
+  // to reach the corners or the shadows stop before the edge of the frame.
+  const half = cam.top ? cam.half : camera.position.distanceTo(controls.target)
+    * Math.tan(camera.fov * Math.PI / 360);
+  const want = Math.min(MAX_EXTENT, Math.max(MIN_EXTENT, half * Math.max(1, camera.aspect) * 1.6));
+  if (Math.abs(want - extent) > extent * 0.05) { // hysteresis: a wheel notch must not re-fit every frame
+    extent = want;
+    const c = caster.shadow.camera;
+    c.left = -extent; c.right = extent; c.top = extent; c.bottom = -extent;
+  }
   // The light's frame: `dir` is its z, and three builds x/y from the world up
   // the same way `Object3D.lookAt` does.
   right.set(0, 0, 1).cross(dir);
   if (right.lengthSq() < 1e-6) right.set(1, 0, 0);
   right.normalize();
   up.copy(dir).cross(right).normalize();
-  const texel = (2 * EXTENT) / MAP_SIZE;
+  const texel = (2 * extent) / MAP_SIZE;
   const snap = (v: THREE.Vector3): void => {
     const a = Math.round(target.dot(v) / texel) * texel - target.dot(v);
     target.addScaledVector(v, a);
@@ -139,15 +156,16 @@ export function updateShadowCamera(): void {
  * does not read those flags yet, so the majority answer is used for all. The
  * terrain is a receiver only: a heightfield casting into a map indexed along
  * the sun shadows itself along every slope, and the ground's own shading
- * already darkens what faces away.
+ * already darkens what faces away. So is the water sheet — it is a transparent
+ * surface, and a lake that shadowed its own bed would be a black lake.
  */
-export function markShadowRoles(root: THREE.Object3D, terrain: THREE.Object3D | null): void {
+export function markShadowRoles(root: THREE.Object3D, ...receiveOnly: Array<THREE.Object3D | null>): void {
   root.traverse((o) => {
     if (!(o instanceof THREE.Mesh)) return;
     o.castShadow = true;
     o.receiveShadow = true;
   });
-  if (terrain) terrain.traverse((o) => { if (o instanceof THREE.Mesh) o.castShadow = false; });
+  for (const o of receiveOnly) o?.traverse((m) => { if (m instanceof THREE.Mesh) m.castShadow = false; });
 }
 
 // --- receiving in a shader of our own ---------------------------------------
@@ -217,7 +235,7 @@ export function shadowState(): { on: boolean; dir: number[]; extent: number; siz
   return {
     on: !!(state.world && caster.castShadow),
     dir: [dir.x, dir.y, dir.z],
-    extent: EXTENT,
+    extent: +extent.toFixed(1),
     size: MAP_SIZE,
   };
 }

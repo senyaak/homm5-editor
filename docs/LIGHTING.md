@@ -489,11 +489,19 @@ and it brings the alpha test for foliage, skinning and instancing along, none of
 which a hand-rolled pass would have. The 8-bit depth and the warp are the
 engine's precision budget, not its picture.
 
+Kept, though: the map re-fits itself to what the camera can see, which is what
+the engine does too (the probe caught its own 125 and then 250 units across in
+one run). Ours is 1.6× the view's half-extent, clamped to 40–400 world units, so
+a 2048 map spends its texels where the work is. A fixed size fails visibly in
+both directions — shadows stopping at a circle around the orbit target, or a
+tree drawn with four texels.
+
 Also not reproduced, and worth knowing when a shadow looks wrong: the engine
 decides caster and receiver per MATERIAL and our decoder does not read those
-flags, so everything drawn does both — except the terrain, which receives only.
-A heightfield casting into a map indexed along the sun shadows itself down every
-slope, and the ground's own `max(N·L, 0)` already darkens what faces away.
+flags, so everything drawn does both — except the terrain and the water sheet,
+which receive only. A heightfield casting into a map indexed along the sun
+shadows itself down every slope, and the ground's own `max(N·L, 0)` already
+darkens what faces away.
 
 Verified in `e2e/shadows.spec.ts`, by the only measurement that can fail
 usefully: the same frame with the pass on and off, differing only where a shadow

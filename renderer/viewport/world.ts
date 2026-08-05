@@ -114,7 +114,7 @@ export function buildFloor(floor: Floor, geos: THREE.BufferGeometry[], mats: THR
   // After the batches and the animated bodies exist, so both are covered — the
   // drawing is done by the instanced meshes, not by the pick handles, and only
   // what is IN the group is walked.
-  markShadowRoles(group, terrainMesh);
+  markShadowRoles(group, terrainMesh, waterMesh);
   return fl;
 }
 
