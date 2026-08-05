@@ -145,6 +145,24 @@ arrive zero-length (`repairZeroNormals`) — averaging every normal over the fac
 at a vertex smooths the hard edges a modeller put there. UVs are read by
 `extractMeshes`; `tools/mesh-to-obj.js` emits a full `v`/`vt`/`vn` OBJ.
 
+**Which faces are drawn: `<Is2Sided>`.** A `<Material>` carries it beside
+`<AlphaMode>` and `<AddPlaced>`, and it is false in **11209** of the 11639
+shipped materials — the engine culls the faces turned away, and only 430
+materials ask for both sides (foliage cards, banners, grass tufts: a single
+sheet of triangles that has to be seen from behind). It is not a saving, it is
+part of the picture: a camera INSIDE a body sees straight through it, because
+its near faces are behind the eye and its far ones are turned away. Four of
+C1M1's dialogue cameras pull back into the ridge of mountains that lines the
+arena — shot 22 has the eye five units inside `Mountain12x12` — and drawn
+two-sided those shots are the inside of a rock rather than the scene.
+
+The culled side is the counter-clockwise-out one three.js keeps by default:
+every closed body on that stage has a **positive signed volume** (Mountain12x12
+1089, Mountain10x10 391, the Sanctuary 54), and the negative ones are the sheets
+of grass, which are the two-sided materials anyway. Per-triangle winding
+compared against the *authored* normals is a much weaker signal — 65% agreement
+whichever kind of part it is measured on — so the volume is what settles it.
+
 Textures are `.dds` — 1024² **DXT3** for the mountain. `src/dds.js` decodes
 DXT1/3/5 to RGBA. `tools/render-textured.js` samples the texture per face and
 proves the mesh + UVs + texture all line up (see the rendered previews).

@@ -84,7 +84,7 @@ export function lightGlowCard(): GeomData {
     uv: [0, 1, 1, 1, 1, 0, 0, 0],
     nrm: [0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0],
     idx: [0, 1, 2, 0, 2, 3],
-    parts: [{ start: 0, count: 6, tex: t, alphaMode: 'AM_TRANSPARENT', projectOnTerrain: false, flat: false, opaque: false, terrainProjected: false, additive: true, selfIllum: true }],
+    parts: [{ start: 0, count: 6, tex: t, alphaMode: 'AM_TRANSPARENT', projectOnTerrain: false, flat: false, opaque: false, terrainProjected: false, additive: true, selfIllum: true, twoSided: true }],
   };
 }
 
@@ -150,7 +150,7 @@ export function effectGeom(
     idx: [0, 1, 2, 0, 2, 3],
     // A particle stand-in is a glow: draw it additive and full-bright so it
     // reads as light, the way the game's particles do, not as a dark grey decal.
-    parts: [{ start: 0, count: 6, tex: t.uri, alphaMode: 'AM_TRANSPARENT', projectOnTerrain: false, flat: false, opaque: false, terrainProjected: false, additive: true, selfIllum: true }],
+    parts: [{ start: 0, count: 6, tex: t.uri, alphaMode: 'AM_TRANSPARENT', projectOnTerrain: false, flat: false, opaque: false, terrainProjected: false, additive: true, selfIllum: true, twoSided: true }],
   };
 }
 

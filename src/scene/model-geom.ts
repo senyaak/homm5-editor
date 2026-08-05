@@ -340,6 +340,7 @@ export function addGeom(geoms: GeomData[], meshes: Mesh[], model: string, modelH
       terrainProjected: (mats[mi]?.projectOnTerrain ?? false) && isSheer,
       additive: mats[mi]?.additive ?? false,
       selfIllum: mats[mi]?.selfIllum ?? false,
+      twoSided: mats[mi]?.twoSided ?? false,
     });
     start += count;
   }

@@ -112,7 +112,9 @@ function materialFor(p){
   if(!p.tex)return grey;
   const tx=loader.load(p.tex);tx.wrapS=tx.wrapT=THREE.RepeatWrapping;tx.flipY=false;
   const m=p.selfIllum?new THREE.MeshBasicMaterial({map:tx}):new THREE.MeshLambertMaterial({map:tx});
-  m.side=THREE.DoubleSide;
+  // Culled unless the material says otherwise, as the editor does it and as the
+  // engine does: a shot whose eye is inside a mountain sees through it.
+  m.side=p.twoSided?THREE.DoubleSide:THREE.FrontSide;
   if(p.alphaMode==='AM_ALPHA_TEST'){m.alphaTest=0.5;}
   else if(p.alphaMode!=='AM_OPAQUE'){m.transparent=true;m.depthWrite=!!p.opaque;}
   if(p.additive){m.blending=THREE.AdditiveBlending;m.transparent=true;m.depthWrite=false;}

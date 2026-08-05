@@ -86,11 +86,14 @@ export function initShadows(): void {
   caster.shadow.mapSize.set(MAP_SIZE, MAP_SIZE);
   caster.shadow.camera.near = 1;
   caster.shadow.camera.far = DISTANCE * 2;
-  // Bias against self-shadowing, and it has to be this loose because the
-  // shipped meshes are drawn DoubleSide: a wall's back face sits in the map at
-  // its own depth, so every front face is a hair behind something. The normal
-  // bias is what actually does the work — a constant one large enough to clear
-  // that would detach the shadow from its object's feet.
+  // Bias against self-shadowing. These two were measured when every mesh was
+  // drawn DoubleSide — a wall's back face sat in the map at its own depth, so
+  // every front face was a hair behind something — and the culling that came in
+  // with `<Is2Sided>` (materials.ts) makes three render the BACK faces into the
+  // map instead, which is the usual cure for that acne. So this is looser than
+  // it now needs to be; it is left alone because tightening it is a measurement
+  // of its own (e2e/shadows.spec.ts scores the direction, not the offset) and a
+  // constant bias large enough to matter detaches a shadow from its feet.
   caster.shadow.bias = -0.0005;
   caster.shadow.normalBias = 0.6;
   enabled = true;

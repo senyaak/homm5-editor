@@ -99,6 +99,21 @@ export interface GeomPart {
    * game never shows.
    */
   selfIllum: boolean;
+  /**
+   * Draw the back faces as well — the material's own `<Is2Sided>`.
+   *
+   * The engine culls them otherwise, and that is not a saving but part of the
+   * picture: a camera INSIDE a body sees straight through it, because its near
+   * faces are behind the eye and its far ones are turned away. C1M1's dialogue
+   * pulls back into the ridge of mountains that lines the arena four times over
+   * — shot 22 has the eye 5 units inside Mountain12x12 — and drawn two-sided
+   * those shots are the inside of a rock instead of the archangel.
+   *
+   * Rare and real: 430 of the 11639 shipped materials set it, and they are the
+   * things a single sheet of triangles has to be seen from both sides —
+   * foliage cards, banners, the grass tufts.
+   */
+  twoSided: boolean;
 }
 
 /**

@@ -94,6 +94,16 @@ one.
 
 ### Fixed
 
+- **A shot filmed from inside a hill shows the scene, not the inside of the
+  hill.** Every model was drawn with both of its faces, and the engine draws
+  only the ones facing you: `<Is2Sided>` is false on 11209 of the 11639 shipped
+  materials, and the 430 that ask for both are the flat things — foliage cards,
+  banners, grass. It matters wherever a camera stands inside something, which
+  in a dialogue is normal: a wide shot of a small arena has nowhere to pull back
+  to except the ridge of mountains around it, and four of C1M1's cameras do
+  exactly that. Shot 22 — the archangel, five units inside `Mountain12x12` —
+  came out as a wall of rock. Now the material says which faces to draw, so the
+  ridge is there from outside and gone from within.
 - **Models are lit the way the game lights them, and stop coming out in
   patches.** Three things were wrong at once and each is now measured rather
   than modelled. The **normal** was read from the wrong byte of the render

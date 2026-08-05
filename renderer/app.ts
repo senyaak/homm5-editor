@@ -383,6 +383,21 @@ interface ViewApi {
     /** Where the camera is — the shot owns it while a scene is up. */
     eye: [number, number, number];
   }) | null;
+  /**
+   * What stands between the shot's camera and one actor — the props the ray
+   * from the eye to their chest passes through, nearest first.
+   *
+   * The one thing a picture of a scene cannot be asked in words: shot 22 of
+   * C1M1 came out as a wall of rock, and every number the app reports about it
+   * — the camera, the placements, the actors — was right. The eye is five units
+   * INSIDE the ridge of mountains that lines the arena, and the engine culls
+   * back faces, so from in there the ridge is not drawn at all. Drawn
+   * two-sided it was the inside of a rock instead of the archangel.
+   *
+   * This reads through the same materials the frame does (three's raycaster
+   * honours `side`), so it moves with that decision rather than describing it.
+   */
+  sightline(href: string): { to: number; hits: Array<{ name: string; at: number }> } | null;
   heights(): number[];
   kinds(): number[];
   /**
@@ -735,6 +750,33 @@ const view: ViewApi = {
       fxModels: shotModelCount(),
       eye: cam.active.position.toArray() as [number, number, number],
     } : null;
+  },
+  sightline(href) {
+    const fl = state.world ? activeFloor() : null;
+    const actor = actorKinds().find((a) => a.href.startsWith(href));
+    if (!fl || !actor) return null;
+    const eye = cam.active.position.clone();
+    // At their chest, not their feet: the ground and the grass in front of them
+    // are between the camera and their boots in any correct frame.
+    const to = new THREE.Vector3(actor.pos[0], actor.pos[1], actor.pos[2] + actor.top * 0.7);
+    const dir = to.clone().sub(eye);
+    const span = dir.length();
+    // Stopping short of the actor keeps them out of their own answer; a private
+    // raycaster keeps the near/far off the one the pointer uses.
+    const ray = new THREE.Raycaster(eye, dir.normalize(), 0.05, Math.max(0.1, span - 0.5));
+    const hits = ray.intersectObjects<THREE.Mesh>([...fl.meshes.values(), fl.terrainMesh], false);
+    const seen = new Set<string>();
+    const named: Array<{ name: string; at: number }> = [];
+    for (const h of hits) {
+      const inst = h.object.userData.inst as Instance | undefined;
+      const name = (inst?.shared ?? 'terrain').split('/').pop() ?? '';
+      // One line per thing rather than per triangle: a tree is a dozen hits.
+      if (seen.has(name)) continue;
+      seen.add(name);
+      named.push({ name, at: +h.distance.toFixed(2) });
+      if (named.length === 5) break;
+    }
+    return { to: +span.toFixed(2), hits: named };
   },
   heights() { return state.world ? Array.from(activeFloor().heights) : []; },
   kinds() { return state.world && activeFloor().flags ? Array.from(activeFloor().flags!) : []; },

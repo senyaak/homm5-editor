@@ -343,6 +343,17 @@ A `Rod` of exactly zero happens (four shots in C1M1): the eye is then AT the
 anchor, and "look at the anchor" is a direction of zero length. The aim comes
 from the angles instead (`targetOf`).
 
+**A camera may stand inside the scenery, and that is intended.** Four of C1M1's
+shots put the eye inside the ridge of mountains that lines the arena — shot 22
+is five units into `Mountain12x12`, and shots 15, 16 and 23 into the same ridge
+— because a wide shot of a small arena has nowhere else to pull back to. What
+makes those frames the scene rather than the inside of a rock is that the engine
+**culls back faces** (`<Is2Sided>`, docs/GEOMETRY_FORMAT.md §5): from within a
+body, its near faces are behind the eye and its far ones are turned away, so it
+is not drawn at all. `view.sightline(actor)` is the probe for this — it casts
+from the shot's eye through the same materials the frame uses and names what it
+passes through (e2e/dialog-scene.spec.ts).
+
 ### What a set does between its two ends
 
 | Flag | How the corpus uses it |

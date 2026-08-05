@@ -572,6 +572,22 @@ if (!byPath.has(showcasePath)) {
     `${built.scene.geoms.length} meshes, ${placed} placed, ${built.skipped.length} skipped${
       built.skipped.length ? ' (' + built.skipped.join(', ') + ')' : ''}`);
 
+  // Which faces are drawn, read off each material's `<Is2Sided>`. It decides
+  // what a camera standing INSIDE a body sees: shot 22 pulls back five units
+  // into the ridge that lines this arena, and the engine's culling is what
+  // leaves the archangel visible from in there rather than the inside of a
+  // rock. Both halves are checked, because "cull everything" would fix that
+  // shot and flatten every sheet of grass on the field.
+  const stageParts = built.scene.geoms.flatMap((g) => g.parts);
+  const twoSided = stageParts.filter((p) => p.twoSided).length;
+  const mountains = built.scene.floors.flatMap((f) => f.instances)
+    .filter((i) => /Mountain\d/.test(i.shared ?? ''))
+    .flatMap((i) => built.scene.geoms[i.g]?.parts ?? []);
+  check('a material says which of its faces are drawn, and the ridge is culled',
+    mountains.length > 0 && mountains.every((p) => !p.twoSided)
+      && twoSided > 0 && twoSided < stageParts.length / 2,
+    `${mountains.length} mountain parts, all culled; ${twoSided} of ${stageParts.length} stage parts two-sided`);
+
   // A figure the scene both LISTS and SPEAKS THROUGH is one figure. Placed
   // twice, an actor stands inside their own still adventure copy and every
   // close-up has two of them — which is how it looked before this held.

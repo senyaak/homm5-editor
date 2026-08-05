@@ -226,6 +226,21 @@ test('the editor opens a campaign scene and plays it', async () => {
   const bias = (c: number[]): number => c[0]! / (c[1]! + c[2]!);
   expect(bias(light.inferno)).toBeGreaterThan(2 * bias(light.day));
 
+  // …and the shot can be SEEN. Four of this scene's cameras pull back into the
+  // ridge of mountains that lines the arena — shot 22 has the eye five units
+  // inside Mountain12x12 — and every other number about it is right: the camera
+  // is where the file puts it, the mountain where the map does. What decides
+  // whether that frame is the archangel or the inside of a rock is which faces
+  // are drawn, and the engine culls the ones turned away (`<Is2Sided>` is false
+  // on 11209 of the 11639 shipped materials). Measured as a sightline rather
+  // than looked at: the frame was WRONG for a week and looked deliberate.
+  const sight = await page.evaluate(() => {
+    window.view.showShot(22, 0.5);
+    return window.view.sightline('Archangel.1');
+  });
+  expect(sight?.to).toBeGreaterThan(10);
+  expect(sight?.hits.map((h) => h.name)).toEqual([]);
+
   // A shot that cues somebody: the camera moves, and one actor stops idling.
   const framing = await page.evaluate(() => {
     window.view.showShot(62, 0.6);

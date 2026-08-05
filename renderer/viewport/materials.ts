@@ -141,6 +141,9 @@ void main() {`)
 // there. `visible` on a material skips just that geometry group.
 const skyHole = new THREE.MeshBasicMaterial({ visible: false });
 
+// Two-sided on purpose, unlike the textured parts below: this is the stand-in
+// for a part whose texture did not resolve, and a stand-in that can also be
+// invisible from one side is a worse witness than a grey face.
 const greyMat = new THREE.MeshLambertMaterial({ side: THREE.DoubleSide });
 // Written into the working space raw, not through the hex constructor: these
 // are the gamma numbers the shader below multiplies, and three would decode a
@@ -186,17 +189,26 @@ export function materialFor(part: GeomPart, sky = false): THREE.Material {
   // Flatness is in the key because it changes the material: the same texture in
   // the same blend mode is a depth-writing body on one mesh and a decal on
   // another.
-  const key = `${sky ? 'sky|' : ''}${part.alphaMode}|${part.projectOnTerrain ? 'proj' : 'own'}|${part.opaque ? 'body' : 'sheer'}|${part.additive ? 'add' : ''}${part.selfIllum ? 'lit' : ''}|${part.tex}`;
+  const key = `${sky ? 'sky|' : ''}${part.alphaMode}|${part.projectOnTerrain ? 'proj' : 'own'}|${part.opaque ? 'body' : 'sheer'}|${part.additive ? 'add' : ''}${part.selfIllum ? 'lit' : ''}${part.twoSided ? '2s' : ''}|${part.tex}`;
   const hit = texCache.get(key);
   if (hit) return hit;
   const tx = partTexture(part.tex);
   tx.colorSpace = DIFFUSE_SPACE;
+  // Back faces are CULLED unless the material asks for both, because that is
+  // what the engine does — and what a camera standing inside a mountain needs:
+  // culled, the ridge C1M1 pulls back into is not there to be seen from within;
+  // drawn, its inside fills the frame (payload.ts, GeomPart.twoSided). The
+  // shipped winding is counter-clockwise-out, which is the side three keeps:
+  // every closed body on that stage has a positive signed volume (the mountains
+  // 1089 and 391, the sanctuary 54), and only the sheets of grass — which are
+  // the two-sided ones anyway — come out negative.
+  const side = part.twoSided ? THREE.DoubleSide : THREE.FrontSide;
   // A self-illuminated part (L_SELFILLUM: portal runes, spell auras) emits its
   // own colour, so it uses an unlit material — a Lambert would drop it into
   // shadow the game never shows.
   const m: THREE.MeshBasicMaterial | THREE.MeshLambertMaterial = part.selfIllum
-    ? new THREE.MeshBasicMaterial({ map: tx, side: THREE.DoubleSide })
-    : new THREE.MeshLambertMaterial({ map: tx, side: THREE.DoubleSide });
+    ? new THREE.MeshBasicMaterial({ map: tx, side })
+    : new THREE.MeshLambertMaterial({ map: tx, side });
   // Lambert for the lit parts only because its fragment shader is the one that
   // brings a normal along; the lighting it computes with it is thrown away.
   gameLit(m, !part.selfIllum);

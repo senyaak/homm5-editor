@@ -31,9 +31,14 @@ export interface MaterialInfo {
   projectOnTerrain: boolean;
   additive: boolean;
   selfIllum: boolean;
+  /** `<Is2Sided>`: draw the back faces too. False in 11209 of the 11639 shipped
+   *  materials, so a culled face is the norm and a two-sided one the exception. */
+  twoSided: boolean;
 }
 
-const NO_MATERIAL: MaterialInfo = { tex: null, alphaMode: 'AM_OPAQUE', projectOnTerrain: false, additive: false, selfIllum: false };
+const NO_MATERIAL: MaterialInfo = {
+  tex: null, alphaMode: 'AM_OPAQUE', projectOnTerrain: false, additive: false, selfIllum: false, twoSided: false,
+};
 
 /**
  * Read one material, following an external <Item href> when it is not inline.
@@ -51,6 +56,7 @@ function materialInfo(itemXml: string, data: Assets, baseDir: string): MaterialI
       projectOnTerrain: /<ProjectOnTerrain>\s*true\s*<\/ProjectOnTerrain>/.test(xml),
       additive: /<AddPlaced>\s*true\s*<\/AddPlaced>/.test(xml),
       selfIllum: /<LightingMode>\s*L_SELFILLUM\s*<\/LightingMode>/.test(xml),
+      twoSided: /<Is2Sided>\s*true\s*<\/Is2Sided>/.test(xml),
     };
   };
   if (/<Material\b/.test(itemXml)) return read(itemXml, baseDir);
