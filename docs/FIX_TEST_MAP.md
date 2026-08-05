@@ -129,6 +129,22 @@ So: cast **Armageddon** (it hits your own stacks as well), then on the **druids'
 turn have them cast **Stone Skin** on a stack of yours that the fire caught. Read
 that stack's defence in its tooltip after each step.
 
+**Read all four numbers, in order.** With the fix on and a stack whose defence
+is 12, a Stone Skin worth +4 gives:
+
+| when | reads | why |
+|---|---|---|
+| before anything | 12 | |
+| the fire lands | 6 | 12 − ⌊12/2⌋ |
+| Stone Skin cast | 8 | 16 − ⌊16/2⌋ — the half FOLLOWED the buff |
+| the fire expires | **16** | the buff is still on; it outlives the fire |
+
+That last row looks wrong and is not: **16 is higher than the 12 you started
+with because Stone Skin is still running.** If you want to watch the removal on
+its own, cast the Armageddon and nothing else — when the effect expires the
+defence must come back to exactly what it was, and any other number is a real
+fault.
+
 - **off** — the fire took a fixed number away when it landed, so after Stone Skin
   the stack has *more* than half its defence. The debuff no longer means 50%.
 - **on** — the defence reads half of whatever it currently is, Stone Skin
