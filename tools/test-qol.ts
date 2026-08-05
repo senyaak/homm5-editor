@@ -26,6 +26,7 @@ import { QOL_FILE, QOL_FLAGS, isQolName } from '../src/mods/qol.ts';
 import { readQol, writeQolFile } from '../src/mods/qol-file.ts';
 import { QOL_ARCHIVE, buildQolArchive, removeQolArchive, writeQolArchive } from '../src/mods/qol-ui.ts';
 import { readEntries, writeArchive } from '../src/format/pak.ts';
+import type { ZipEntry } from '../src/format/pak.ts';
 import { profilesRoot, setResolution, setWindowed, userConfigs } from '../src/game/video-config.ts';
 
 let failures = 0;
@@ -142,7 +143,8 @@ check('a profile without the line is skipped there too', res.skipped.length === 
 
 {
   const fakeDds = Buffer.alloc(128 + 15 * 15 * 4);
-  const pak = writeArchive([
+  // The four files the build takes out of the install's own data.
+  const shipped: ZipEntry[] = [
     {
       name: 'UI/CombatArena-FPP-2/StackInfo.(WindowMSButtonShared).xdb',
       data: Buffer.from('<WindowMSButtonShared><Children>\n\t<Item href="/UI/CombatArena/StackInfo/'
@@ -157,9 +159,15 @@ check('a profile without the line is skipped there too', res.skipped.length === 
       name: 'UI/AdventureScreen/StackInfo/Positive.(BackgroundTiledTexture).xdb',
       data: Buffer.from('<BackgroundTiledTexture><Texture href="x.xdb"/></BackgroundTiledTexture>', 'utf8'),
     },
-  ]);
+  ];
 
-  const entries = new Map(readEntries(buildQolArchive(pak)).map((e) => [e.name, e.data]));
+  // A LOOKUP, not an archive, and that is the seam's whole point: the shipping
+  // caller opens `data.pak` and pulls four members through its central
+  // directory, because reading all 1.4 GB of it and inflating every member
+  // froze the application. A stand-in that had to be a Buffer would have kept
+  // the old shape alive here while the real path used a different one.
+  const find = (name: string): Buffer | undefined => shipped.find((e) => e.name === name)?.data;
+  const entries = new Map(readEntries(buildQolArchive(find)).map((e) => [e.name, e.data]));
   check('the archive holds all eleven records', entries.size === 11);
 
   const plate = entries.get('UI/CombatArena-FPP-2/StackInfo.(WindowMSButtonShared).xdb')?.toString('utf8') ?? '';
@@ -183,9 +191,11 @@ check('a profile without the line is skipped there too', res.skipped.length === 
   check('and the header is the shipped one, byte for byte',
     !!fill && fill.subarray(0, 128).equals(fakeDds.subarray(0, 128)));
 
-  // The install half: written where the game mounts it, and removable.
+  // The install half: written where the game mounts it, and removable. This is
+  // the one that goes through the REAL route — a pak on disk, opened and read
+  // member by member — so the lookup above cannot be the only shape ever tried.
   mkdirSync(join(game, 'data'), { recursive: true });
-  writeFileSync(join(game, 'data', 'data.pak'), pak);
+  writeFileSync(join(game, 'data', 'data.pak'), writeArchive(shipped));
   const wrote = writeQolArchive(game);
   check('the archive lands in H5E, where archives are mounted from',
     wrote === join(game, QOL_ARCHIVE) && existsSync(wrote));
