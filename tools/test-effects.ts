@@ -13,8 +13,9 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseEffect } from '../src/scene/effects.ts';
+import { dataDir } from './game-dir.ts';
 
-const dataRoot = process.env.HOMM5_DATA || join(import.meta.dirname, '..', 'data-unpacked');
+const dataRoot = dataDir();
 const DIR = join(dataRoot, 'bin', 'effects');
 if (!existsSync(DIR)) {
   console.log('test-effects: no bin/effects under the data root — skipping');

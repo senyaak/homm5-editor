@@ -14,6 +14,7 @@ import { resolve } from 'node:path';
 
 import { PATCHED_EXE, SHIPPED_EXE } from '../src/exe/creature-limit.ts';
 import { LITERALS, MOD_DIR, MOD_EXT, readModPaths, setModPaths } from '../src/game/mod-paths.ts';
+import { gameDir } from './game-dir.ts';
 
 const args = process.argv.slice(2);
 const flag = (name: string): string | undefined => {
@@ -22,7 +23,7 @@ const flag = (name: string): string | undefined => {
 };
 
 /** The install this editor sits in, when it sits in one. */
-const game = flag('game') ?? resolve(import.meta.dirname, '..', '..');
+const game = gameDir();
 const set = flag('set');
 
 if (!set) {

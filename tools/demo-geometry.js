@@ -7,8 +7,9 @@
 
 import { readFileSync } from 'node:fs';
 import { extractPositionArrays, readGeometryRefFromModelXdb } from '../src/scene/geometry.ts';
+import { dataDir } from './game-dir.ts';
 
-const DATA = 'data-unpacked';
+const DATA = dataDir();
 const modelXdb = `${DATA}/_(Model)/TerrainObjects/Grass/Mountains/Mounting12x12_1.(Model).xdb`;
 
 const ref = readGeometryRefFromModelXdb(readFileSync(modelXdb, 'utf8'));

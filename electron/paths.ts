@@ -76,6 +76,14 @@ export function envFileHome(): string {
 loadEnvFile(APP_ROOT);
 if (app.isPackaged) loadEnvFile(app.getPath('userData'));
 
+// A userData of one's own, before anything asks for it. Everything the app
+// remembers between runs — settings.json above all — lives under this path,
+// shared by every way of opening the editor on this machine. The cold-start
+// spec walks the real setup window to the end, and its "Open the editor"
+// SAVES; without this override that save would repoint the editor somebody
+// actually uses at a sandbox that is deleted a second later.
+if (process.env.HOMM5_USERDATA) app.setPath('userData', process.env.HOMM5_USERDATA);
+
 /** The preload bridge for a window. Stays .cjs — see preload.cjs. */
 export const preloadPath = (name: string): string => join(APP_ROOT, 'electron', name);
 

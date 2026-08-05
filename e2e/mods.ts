@@ -60,6 +60,20 @@ import { takenSpecializations } from '../src/mods/specializations.ts';
 export const LIVE = !!process.env.HOMM5_NO_REMOVE;
 
 /**
+ * The install a spec works in: its own sandbox — or, live, the real one.
+ *
+ * ONE selector for every spec that can go live, so the flag means one thing
+ * everywhere: live is the real install and nothing swept up, isolated is a
+ * throwaway under `_tmp`. A spec whose SUBJECT is a bare world — the first-run
+ * chain that wipes its whole folder, the settings panel asserting what an
+ * unprepared install says — has no live target to offer and stays sandboxed;
+ * for those, live only means the sandbox is left to look at.
+ */
+export function liveHome(sandbox: string): string {
+  return LIVE ? REAL_GAME : join(REPO_ROOT, '_tmp', sandbox);
+}
+
+/**
  * The install every mod spec works in — ONE of them, either way.
  *
  * The stages are a chain: mod-001 authors the creature, mod-002 paints it,
@@ -73,7 +87,7 @@ export const LIVE = !!process.env.HOMM5_NO_REMOVE;
  * did not run.
  */
 export function modGameRoot(): string {
-  return LIVE ? REAL_GAME : join(REPO_ROOT, '_tmp', 'e2e-mod-game');
+  return liveHome('e2e-mod-game');
 }
 
 /** Pictures and reference maps that travel with the checkout — assets/README.md. */
@@ -83,14 +97,18 @@ const ART = join(ASSETS, 'artifacts');
 /**
  * The install the executable is copied out of — the checkout's own, by default.
  *
- * `HOMM5_ROOT` FIRST, the same variable `E2E_GAME` already reads. A checkout
- * that sits inside the game needs nothing; a WORKTREE does not sit inside one —
- * its parent is wherever the worktrees are kept — and this went looking for
- * `bin/H5_Game.exe` there, found none, prepared no install, and every mod stage
- * then failed inside the app with "no executable at …/_tmp/e2e-mod-game/bin",
- * which names the copy rather than the missing original.
+ * `HOMM5_ROOT` FIRST, the same variable `E2E_GAME` already reads — that is the
+ * live mode's meaning of it. `HOMM5_GAME` covers the worktree that wants its
+ * sandboxes built FROM a real install without also playing IN it: the tools'
+ * variable, the same answer. NEVER the checkout's parent: a worktree's parent
+ * is wherever worktrees are kept, and the guess went looking for
+ * `bin/H5_Game.exe` there, found none, prepared no install, and every mod
+ * stage then failed inside the app with "no executable at …/e2e-mod-game/bin",
+ * which names the copy rather than the missing original. Empty means nobody
+ * said: every use already checks for the files it needs and says what is
+ * missing, and an empty root fails those checks the honest way.
  */
-export const REAL_GAME = process.env.HOMM5_ROOT || join(REPO_ROOT, '..');
+export const REAL_GAME = process.env.HOMM5_ROOT || process.env.HOMM5_GAME || '';
 /** The archive the dialogs always create: OUR mod, never a choice. */
 export const MOD = MOD_STEM;
 
@@ -509,7 +527,7 @@ export const TENT_MASTER = {
 };
 
 /**
- * The three perks of her branch — what a level up offers once she has the
+ * The four perks of her branch — what a level up offers once she has the
  * racial.
  *
  * A branch with no perks is a branch that never grows, which is what the first
@@ -517,90 +535,59 @@ export const TENT_MASTER = {
  * the shipped Multishot hangs off Avenger: the branch IS the gate, because no
  * other class has it.
  *
- * Two of the three are words and an icon for now: they happen INSIDE a battle,
- * at the moment the tent acts, which no script can see — the extension's half.
- * The third, «Запасной комплект», is done, and it is Lua: what it needs is a
- * moment, and the engine hands moments out already.
+ * THESE ARE THE SECOND SET. The first three were designed before anybody read
+ * what the engine already does with a first aid tent, and two of them asked for
+ * what it does by itself: «Запасной комплект» (a destroyed tent is rebuilt) IS
+ * the shipped «Первая помощь», and cleansing is something the tent already does
+ * up to a level the engine decides. The Lua both halves were built in is not
+ * thrown away — a skill can still carry a map script and a battle script, and
+ * `tools/test-skill-scripts.ts` keeps that honest — but nothing in this mod uses
+ * it, because every one of the four below is a NUMBER the engine computes and
+ * the extension appends to. See SLICE_tent_branch.md.
+ *
+ * Each row's `effects` is the whole of what it does: a config line for the
+ * native extension, keyed on the skill's own enum value, multiplied by the
+ * mastery the hero holds — which for a perk is one.
  *
  * They are written down here because deciding what a branch offers is a design
  * decision and belongs where the class is described.
  */
-/**
- * «Запасной комплект», the battle half: was there a tent when the fighting
- * started?
- *
- * Straight-line code, and that is the point — it runs once, when the battle has
- * been built, so it can simply look. The game's own death hooks stay the game's:
- * we do not need to be told when the tent dies, only whether it existed.
- */
-const SPARE_KIT_IN_BATTLE = [
-  '-- Was there a tent when the fighting started? Only the battle can say.',
-  'local attacker = GetAttackerHero();',
-  'if attacker ~= nil then',
-  '\tif GetAttackerWarMachine(WAR_MACHINE_FIRST_AID_TENT) ~= nil then',
-  '\t\tSetGameVar("h5e.tent."..GetHeroName(attacker), "1");',
-  '\tend;',
-  'end;',
-  'local defender = GetDefenderHero();',
-  'if defender ~= nil then',
-  '\tif GetDefenderWarMachine(WAR_MACHINE_FIRST_AID_TENT) ~= nil then',
-  '\t\tSetGameVar("h5e.tent."..GetHeroName(defender), "1");',
-  '\tend;',
-  'end;',
-].join('\n');
-
-/**
- * And the map half, which is where the perk actually happens.
- *
- * Both sides of the battle, because a tent is lost by whoever retreated as well
- * as by the winner. The variable is cleared whether or not anything was given
- * back: it says "there was a tent in the last battle", and letting it stand
- * would hand this hero a tent after every battle for the rest of the game.
- */
-const SPARE_KIT_ON_THE_MAP = [
-  'function SpareKit_AfterCombat(combatIndex)',
-  '\tfor side = 0, 1 do',
-  '\t\tlocal hero = GetSavedCombatArmyHero(combatIndex, side);',
-  '\t\tif hero ~= nil then',
-  '\t\t\tif GetGameVar("h5e.tent."..hero, "") == "1" then',
-  '\t\t\t\tif HasHeroSkill(hero, HERO_SKILL_SPARE_KIT) then',
-  '\t\t\t\t\tif not HasHeroWarMachine(hero, WAR_MACHINE_FIRST_AID_TENT) then',
-  '\t\t\t\t\t\tGiveHeroWarMachine(hero, WAR_MACHINE_FIRST_AID_TENT);',
-  '\t\t\t\t\tend;',
-  '\t\t\t\tend;',
-  '\t\t\t\tSetGameVar("h5e.tent."..hero, "");',
-  '\t\t\tend;',
-  '\t\tend;',
-  '\tend;',
-  'end;',
-  '',
-  'Trigger(COMBAT_RESULTS_TRIGGER, "SpareKit_AfterCombat");',
-].join('\n');
-
 export const TENT_PERKS = [
   {
-    id: 'HERO_SKILL_CLEAN_BANDAGE',
-    name: 'Чистая повязка',
-    description: 'Палатка первой помощи снимает с отряда отрицательные эффекты, когда лечит его.',
-    label: 'clean',
+    id: 'HERO_SKILL_STURDY_TENT',
+    name: 'Крепкая палатка',
+    description: 'Палатка первой помощи вдвое прочнее.',
+    label: 'fix',
+    // Percent of the hit points the engine arrives at, which already carry the
+    // owner's War Machines mastery and the shipped perk's own doubling.
+    effects: { tent_health: 100 },
   },
   {
     id: 'HERO_SKILL_HEALING_BREW',
     name: 'Целебный настой',
-    description: 'Палатка первой помощи накладывает на вылеченный отряд случайный положительный эффект.',
+    description: 'Палатка первой помощи восстанавливает на 50 единиц здоровья больше.',
     label: 'buff',
+    effects: { tent_healing: 50 },
   },
   {
-    id: 'HERO_SKILL_SPARE_KIT',
-    name: 'Запасной комплект',
-    description: 'Разрушенная в бою палатка первой помощи восстанавливается после сражения.',
-    label: 'fix',
-    // The one of the three that is NOT waiting for the extension: its content is
-    // a moment, and the engine hands moments to Lua. Two halves, because after
-    // the battle "no tent" and "never had one" look the same — only the battle
-    // can tell them apart, and a game variable is what crosses back.
-    combatScript: SPARE_KIT_IN_BATTLE,
-    script: SPARE_KIT_ON_THE_MAP,
+    id: 'HERO_SKILL_CLEAN_BANDAGE',
+    name: 'Чистая повязка',
+    description: 'Палатка первой помощи снимает с вылеченного отряда заклинания на два уровня '
+      + 'сильнее обычного — вплоть до пятого при высшем мастерстве машин.',
+    label: 'clean',
+    // The engine's own threshold is {0,0,1,3} by mastery, so two more is 5 at
+    // expert and nothing a war machine could otherwise touch.
+    effects: { tent_cleanse: 2 },
+  },
+  {
+    id: 'HERO_SKILL_FIELD_HOSPITAL',
+    name: 'Полевой госпиталь',
+    description: 'За каждые 50 единиц маны, потраченной в бою, палатка первой помощи получает '
+      + 'дополнительное использование.',
+    label: 'field',
+    // Two charges per hundred points spent is one per fifty; the rate is per
+    // hundred so that a level of mastery can be worth a fraction of a charge.
+    effects: { tent_mana: 2 },
   },
 ].map((p) => ({
   ...p,
@@ -646,10 +633,25 @@ const OURS = {
  * before the editor became the mod's only writer, and no dialog can make them
  * again. Rebuilding it from the fixture alone would delete them without a word.
  */
+/**
+ * Where the mod archive is kept before this run takes anything out of it.
+ *
+ * ONE slot, overwritten each time: this is an undo for the clear that just
+ * happened, not a history. It exists because the clear is not always as small
+ * as it sounds — a mod that holds nothing but the fixtures ends up EMPTY, and
+ * an empty mod is deleted, which is twenty-six megabytes and four minutes of
+ * rebuilding for a run that only meant to reset a chain.
+ */
+export const MOD_BACKUP = join(REPO_ROOT, '_tmp', 'mod-backup', `${MOD_STEM}.before-clear.h5u`);
+
 export function clearFixture(gameRoot: string): void {
   const archive = modFile(gameRoot, 'mod', MOD);
   const found = existsSync(archive) ? readCreatureMod(archive) : null;
   if (!found) return;
+  // Before anything is taken out — the copy is worth nothing if it is made
+  // after the decision to delete.
+  mkdirSync(join(REPO_ROOT, '_tmp', 'mod-backup'), { recursive: true });
+  copyFileSync(archive, MOD_BACKUP);
   const mod = found.mod;
   let touched = false;
   // The set first: it names the artifacts, and a set whose members are gone is
@@ -905,8 +907,9 @@ export function ensureWitch(mod: CreatureMod): void {
       kind: 'perk',
       heroClass: WITCH.id,
       basicSkill: TENT_MASTER.id,
-      // Only one of the three carries any, and it carries both halves.
-      ...('script' in perk ? { script: perk.script, combatScript: perk.combatScript } : {}),
+      // What it DOES, which for all four is a term the extension adds to a sum
+      // the engine computes. Without this the perk is a name and a drawing.
+      effects: perk.effects,
     }, takenSkills(types));
   }
 }

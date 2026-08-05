@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
 import { CLEAN_EXE, SHIPPED_EXE, classify, ensureCleanExe } from '../src/exe/exe-unwrap.ts';
+import { gameDirIfAny } from './game-dir.ts';
 
 let failures = 0;
 const check = (what: string, ok: boolean, detail = ''): void => {
@@ -45,10 +46,12 @@ check('something that is not a PE reads as clean',
 
 // The install this editor sits in, when it sits in one — the real files are the
 // only place the two states can be seen together.
-const game = resolve(import.meta.dirname, '..', '..');
-const shipped = join(game, SHIPPED_EXE);
-const clean = join(game, CLEAN_EXE);
-if (existsSync(shipped) && existsSync(clean)) {
+// Said, never guessed from the checkout's position (tools/game-dir.ts).
+const game = gameDirIfAny();
+if (!game) console.log('  skip  the real install — pass --game <dir> or set HOMM5_GAME');
+const shipped = game ? join(game, SHIPPED_EXE) : '';
+const clean = game ? join(game, CLEAN_EXE) : '';
+if (game && existsSync(shipped) && existsSync(clean)) {
   check('this install\'s shipped executable is wrapped',
     classify(readFileSync(shipped)) === 'wrapped', 'a Steam copy');
   check('this install\'s _H5E copy is clean',

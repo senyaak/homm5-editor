@@ -19,6 +19,7 @@ import { readFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { decodeDDSBuffer } from '../src/format/dds.ts';
 import { pngDataUri, readPicture } from '../src/format/png.ts';
+import { dataDir } from './game-dir.ts';
 
 /** 3×5 glyphs, one string of five rows per character. `#` is ink. */
 const FONT: Record<string, string[]> = {
@@ -49,7 +50,7 @@ if (!source || !label || !out) {
 }
 
 const REPO = join(import.meta.dirname, '..');
-const dataRoot = process.env.HOMM5_DATA ?? join(REPO, 'data-unpacked');
+const dataRoot = dataDir();
 const path = resolve(source.startsWith('/') || source.includes(':') ? source : join(dataRoot, source));
 const bytes = readFileSync(path);
 const image = path.toLowerCase().endsWith('.dds') ? decodeDDSBuffer(bytes) : readPicture(bytes, source);

@@ -26,6 +26,7 @@ import type { BuildingSpec } from '../src/mods/buildings.ts';
 import { dataReader } from '../src/mods/mod-files.ts';
 import { addBuilding, newCreatureMod } from '../src/mods/mod-model.ts';
 import { allFields, parseTypeSpec } from '../src/schema/typespec.ts';
+import { dataDir } from './game-dir.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {
@@ -33,7 +34,7 @@ function check(name: string, ok: boolean, detail = ''): void {
   if (!ok) failures++;
 }
 
-const dataRoot = process.argv[2] ?? process.env.HOMM5_DATA ?? join(import.meta.dirname, '..', 'data-unpacked');
+const dataRoot = process.argv[2] ?? dataDir();
 if (!existsSync(join(dataRoot, 'types.xml'))) {
   console.log(`no unpacked data at ${dataRoot} — nothing to compare against`);
   process.exit(0);

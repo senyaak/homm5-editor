@@ -7,7 +7,7 @@
 //
 //   the FILE — what is written is what the C reader's grammar accepts, and what
 //     it accepts comes back as what was written.
-//   the NAMES — every flag the panel offers is a flag native/homm5-editor.c
+//   the NAMES — every flag the panel offers is a flag native/qol/config.c
 //     knows, and the file name is the one it opens. A flag added on one side
 //     only is a switch that silently does nothing, which is exactly the failure
 //     this feature must not have.
@@ -20,10 +20,13 @@
 //   node tools/test-qol.ts
 
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 
 import { QOL_FILE, QOL_FLAGS, isQolName } from '../src/mods/qol.ts';
 import { readQol, writeQolFile } from '../src/mods/qol-file.ts';
+import { QOL_ARCHIVE, buildQolArchive, removeQolArchive, writeQolArchive } from '../src/mods/qol-ui.ts';
+import { readEntries } from '../src/format/pak.ts';
+import type { ZipEntry } from '../src/format/pak.ts';
 import { profilesRoot, setResolution, setWindowed, userConfigs } from '../src/game/video-config.ts';
 
 let failures = 0;
@@ -72,7 +75,7 @@ check('isQolName refuses what is not ours', !isQolName('nosuchflag') && isQolNam
 
 // --- the two halves agreeing ------------------------------------------------
 
-const c = readFileSync(join(REPO, 'native', 'homm5-editor.c'), 'utf8');
+const c = readFileSync(join(REPO, 'native', 'qol', 'config.c'), 'utf8');
 
 check('the extension opens the file this writes', c.includes('homm5-editor-qol.txt'));
 check('the path here names the same file', QOL_FILE.endsWith('homm5-editor-qol.txt'));
@@ -127,6 +130,85 @@ const res = setResolution(profiles, 2560, 1440);
 check('the render size is written in the game\'s own form',
   readFileSync(withVideo, 'utf8') === 'setvar gfx_resolution = 2560x1440\n');
 check('a profile without the line is skipped there too', res.skipped.length === 1);
+
+// --- the health bar's archive ------------------------------------------------
+//
+// Built out of the install's own data.pak, so the check hands it a stand-in of
+// the right shapes — the same four files the e2e fixture fakes — and reads the
+// archive back. What matters is what the engine will read: the plate must list
+// the strips as children, the fill must OUTRANK the track (higher priority
+// draws on top — the lesson that cost a battle of "the bar never shrinks"),
+// and the fill's pixels must be the one flat colour with clear corners,
+// because at two pixels tall a nine-slice border would BE the whole bar.
+
+{
+  const fakeDds = Buffer.alloc(128 + 15 * 15 * 4);
+  // The four files the build takes out of the install's own data.
+  const shipped: ZipEntry[] = [
+    {
+      name: 'UI/CombatArena-FPP-2/StackInfo.(WindowMSButtonShared).xdb',
+      data: Buffer.from('<WindowMSButtonShared><Children>\n\t<Item href="/UI/CombatArena/StackInfo/'
+        + 'StackText.(WindowTextView).xdb#xpointer(/WindowTextView)"/>\n</Children></WindowMSButtonShared>', 'utf8'),
+    },
+    { name: 'Textures/Interface/CombatArena/StackInfo/Positive.dds', data: fakeDds },
+    {
+      name: 'Textures/Interface/CombatArena/StackInfo/Positive.xdb',
+      data: Buffer.from('<Texture><SrcName href="x.tga"/><DestName href="x.dds"/></Texture>', 'utf8'),
+    },
+    {
+      name: 'UI/AdventureScreen/StackInfo/Positive.(BackgroundTiledTexture).xdb',
+      data: Buffer.from('<BackgroundTiledTexture><Texture href="x.xdb"/></BackgroundTiledTexture>', 'utf8'),
+    },
+  ];
+
+  // A LOOKUP, not an archive, and that is the seam's whole point: the shipping
+  // caller opens `data.pak` and pulls four members through its central
+  // directory, because reading all 1.4 GB of it and inflating every member
+  // froze the application. A stand-in that had to be a Buffer would have kept
+  // the old shape alive here while the real path used a different one.
+  const find = (name: string): Buffer | undefined => shipped.find((e) => e.name === name)?.data;
+  const entries = new Map(readEntries(buildQolArchive(find)).map((e) => [e.name, e.data]));
+  check('the archive holds all eleven records', entries.size === 11);
+
+  const plate = entries.get('UI/CombatArena-FPP-2/StackInfo.(WindowMSButtonShared).xdb')?.toString('utf8') ?? '';
+  check('the plate lists the text and both strips as children',
+    plate.includes('StackText.(WindowTextView)') && plate.includes('HealthTrack.(WindowSimple)')
+    && plate.includes('HealthFill.(WindowSimple)'));
+
+  const priorityOf = (name: string): number =>
+    Number(entries.get(`UI/CombatArena-FPP-2/${name}.(WindowSimple).xdb`)?.toString('utf8')
+      .match(/<Priority>(-?\d+)<\/Priority>/)?.[1] ?? NaN);
+  check('the fill outranks the track, so green draws over dark',
+    priorityOf('HealthFill') > priorityOf('HealthTrack'));
+
+  const fill = entries.get('Textures/Interface/H5E/HealthFill.dds');
+  const px = (x: number, y: number): number[] =>
+    fill ? [...fill.subarray(128 + (y * 15 + x) * 4, 128 + (y * 15 + x) * 4 + 4)] : [];
+  check('the fill is one flat bright colour, edge and middle alike',
+    !!fill && px(7, 7).join() === px(7, 0).join() && (px(7, 7)[1] ?? 0) > 0xC0);
+  check('with only the corners left clear', px(0, 0)[3] === 0 && px(14, 14)[3] === 0
+    && px(7, 7)[3] === 0xff);
+  check('and the header is the shipped one, byte for byte',
+    !!fill && fill.subarray(0, 128).equals(fakeDds.subarray(0, 128)));
+
+  // The install half, through the REAL route: the four files laid out as the
+  // unpacked data root holds them, and the archive written into the install.
+  // TWO ROOTS, and the test keeps them apart on purpose — the data does not
+  // live under the install, and a stand-in that put it there would let a
+  // version that reached from one to the other pass.
+  const data = join(SCRATCH, 'data-unpacked');
+  for (const e of shipped) {
+    mkdirSync(dirname(join(data, e.name)), { recursive: true });
+    writeFileSync(join(data, e.name), e.data);
+  }
+  const wrote = writeQolArchive(game, data);
+  check('the archive lands in H5E, where archives are mounted from',
+    wrote === join(game, QOL_ARCHIVE) && existsSync(wrote));
+  check('and no archive of the game\'s was opened to build it',
+    !existsSync(join(game, 'data', 'data.pak')));
+  check('and taking it back out reports there was one to take',
+    removeQolArchive(game) && !existsSync(wrote) && !removeQolArchive(game));
+}
 
 rmSync(SCRATCH, { recursive: true, force: true });
 

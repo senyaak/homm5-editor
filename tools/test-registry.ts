@@ -8,8 +8,9 @@ import { join } from 'node:path';
 import { Registry } from '../src/schema/registry.ts';
 import { loadMap } from '../src/map/map.ts';
 import { find, children, text } from '../src/format/xml.ts';
+import { dataDir } from './game-dir.ts';
 
-const dataRoot = process.argv[2] ?? 'data-unpacked';
+const dataRoot = process.argv[2] ?? dataDir();
 const reg = new Registry(dataRoot);
 
 const spells = reg.spells();

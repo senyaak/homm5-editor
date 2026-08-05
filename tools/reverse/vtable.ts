@@ -17,6 +17,7 @@
 import { resolve } from 'node:path';
 
 import { PEFile } from '../../src/exe/pe.ts';
+import { gameDir } from '../game-dir.ts';
 import { functionBody } from '../../src/exe/disasm.ts';
 
 const args = process.argv.slice(2);
@@ -26,9 +27,8 @@ const flagValue = (name: string): string | undefined => {
 };
 const positional = args.filter((a, i) => !a.startsWith('--') && !args[i - 1]?.startsWith('--'));
 
-const editor = resolve(import.meta.dirname, '..', '..');
-const gameRoot = process.env.HOMM5_GAME ?? resolve(editor, '..');
-const pe = PEFile.read(flagValue('exe') ?? resolve(gameRoot, 'bin', 'H5_Game_H5E.exe'));
+// Said, never guessed from the checkout's position (tools/game-dir.ts).
+const pe = PEFile.read(flagValue('exe') ?? resolve(gameDir(), 'bin', 'H5_Game_H5E.exe'));
 
 const fragment = flagValue('list') ?? positional[0];
 if (!fragment) {

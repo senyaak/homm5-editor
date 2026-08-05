@@ -54,12 +54,14 @@
 //                    the same job for the other three kinds of content
 
 import { join } from 'node:path';
+import { ABILITY_TABLE, EDITOR_ABILITIES, abilityTexts, patchAbilityTable, patchAbilityTypes } from './ability-files.ts';
 import { NULL_CREATURE, creatureRoot, setCreatureRefs, writeStats } from './creatures.ts';
 import { serialize, setAttr } from '../format/xml.ts';
 import { parseTypeSpec } from '../schema/typespec.ts';
 import { COMMON_SCRIPT, patchCommonScript, setScriptFiles } from './artifact-scripts.ts';
 import {
-  COMBAT_STARTUP, patchCombatStartup, skillCombatScripts, skillMapScripts, skillScriptFiles,
+  COMBAT_STARTUP, combatRuntimeFile, patchCombatStartup, skillCombatScripts, skillMapScripts,
+  skillScriptFiles,
 } from './skill-scripts.ts';
 import { isIdentity } from '../format/recolor.ts';
 import { EOL, count, hrefOf, insertAfterLine, insertBeforeLine, once, retune, setHref } from './xml-edit.ts';
@@ -220,7 +222,19 @@ export function buildCreatureMod(mod: CreatureMod, read: DataReader): BuildRepor
     if (specializations.length) types = patchSpecializationTypes(types, specializations);
     if (classes.length) types = patchClassTypes(types, classes);
     if (skills.length) types = patchSkillTypes(types, skills);
+    // The editor's own creature abilities — tags, which do nothing until
+    // something asks about them. Shipped with any mod that has creatures, so
+    // that the id a creature's record names always exists in the table beside
+    // it. See ability-files.ts.
+    if (mod.creatures.length) types = patchAbilityTypes(types, EDITOR_ABILITIES);
     files.push({ path: TYPES, data: Buffer.from(types, 'latin1') });
+  }
+  if (mod.creatures.length) {
+    files.push({
+      path: ABILITY_TABLE,
+      data: Buffer.from(patchAbilityTable(mustRead(read, ABILITY_TABLE), EDITOR_ABILITIES), 'latin1'),
+    });
+    files.push(...abilityTexts(EDITOR_ABILITIES));
   }
   if (classes.length) {
     files.push({
@@ -286,11 +300,19 @@ export function buildCreatureMod(mod: CreatureMod, read: DataReader): BuildRepor
       data: Buffer.from(patchCommonScript(mustRead(read, COMMON_SCRIPT), sets, onTheMap), 'latin1'),
     });
   }
-  if (skillCombatScripts(skills).length) {
+  // Carried for the trigger runtime as well as for the scripts: a skill may want
+  // a moment inside a battle without carrying a file of its own, and the
+  // vocabulary that lets it say so lives in this file's tail.
+  if (skillCombatScripts(skills).length || skills.length) {
+    // Two files: the game's own with one line added, and ours behind that line.
+    // Separate chunks — see COMBAT_RUNTIME in src/mods/skill-scripts.ts for what
+    // sharing one chunk with the game cost.
+    const runtime = combatRuntimeFile(skills);
     files.push({
       path: COMBAT_STARTUP,
       data: Buffer.from(patchCombatStartup(mustRead(read, COMBAT_STARTUP), skills), 'latin1'),
     });
+    files.push({ path: runtime.path, data: Buffer.from(runtime.text, 'latin1') });
   }
 
   // Last, so it records the art each slot actually resolved to.

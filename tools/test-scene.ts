@@ -16,6 +16,7 @@ import { join } from 'node:path';
 import { buildScene } from '../src/scene/scene.ts';
 import { listItems } from '../src/scene/xdb.ts';
 import type { GeomData } from '../src/scene/payload.ts';
+import { dataDir } from './game-dir.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {
@@ -81,7 +82,7 @@ function testEffectModelScale(root: string, mapPath: string): void {
 
 testListItems();
 
-const root = process.env.HOMM5_DATA || join(import.meta.dirname, '..', 'data-unpacked');
+const root = dataDir();
 const mapPath = process.argv[2] || process.env.HOMM5_SCENE_MAP;
 if (mapPath && existsSync(mapPath) && existsSync(join(root, 'MapObjects'))) testEffectModelScale(root, mapPath);
 else console.log('\n(pass a map.xdb with a Mystical Garden on it, plus game data, for the effect-model check)');

@@ -9,12 +9,23 @@
         <span class="mp-title">Game settings</span>
         <button id="qol-x" title="close (Esc)">✕</button>
       </div>
+      <!-- Two tabs, one file: preferences and bug fixes are both lines in the
+           same config, but the FIXES are not taste — that tab has an "all of
+           them" switch and this one does not, which is the whole difference. -->
+      <div class="mp-tabs">
+        <button id="qol-tab-qol" class="mp-tab on">Quality of life</button>
+        <button id="qol-tab-fixes" class="mp-tab">Fixes</button>
+      </div>
       <div class="mp-body on-body">
         <!-- Said before anything is ticked, not after Apply: without the
              extension in the install this whole panel writes a file that
              nothing will ever read. -->
         <div id="qol-warn" class="qol-warn" hidden></div>
         <div id="qol-list" class="qol-list"></div>
+        <div id="qol-fixes" class="qol-list" hidden>
+          <label class="qol-all"><input id="qol-all-fixes" type="checkbox"> Enable every fix</label>
+          <div id="qol-fixes-groups"></div>
+        </div>
         <div id="qol-file" class="qol-file"></div>
       </div>
       <div class="de-foot">

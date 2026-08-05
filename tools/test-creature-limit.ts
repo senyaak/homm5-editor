@@ -18,8 +18,9 @@ import {
   setCreatureLimit,
 } from '../src/exe/creature-limit.ts';
 import type { Build } from '../src/exe/creature-limit.ts';
+import { gameDirIfAny } from './game-dir.ts';
 
-const game = resolve(process.argv[2] ?? join(import.meta.dirname, '..', '..'));
+const game = process.argv[2] ? resolve(process.argv[2]) : gameDirIfAny();
 
 let failed = 0;
 let skipped = 0;
@@ -193,6 +194,13 @@ check('a ceiling below the shipped one is refused', () => {
 });
 
 // --- the real thing ----------------------------------------------------------
+
+// Said, never guessed from the checkout's position (tools/game-dir.ts).
+if (!game) {
+  skip('the real install', 'pass a game dir, --game <dir>, or set HOMM5_GAME');
+  console.log(`\n${failed ? `${failed} FAILED` : 'all checks passed'}${skipped ? `, ${skipped} skipped` : ''}`);
+  process.exit(failed ? 1 : 0);
+}
 
 console.log(`\nthe install at ${game}`);
 

@@ -1,0 +1,321 @@
+# The Rules Test map — what to look at, and when
+
+Every rule fix in `native/qol/fix-*.c` is verified as **bytes**: `npm run
+test-fixes` reads the installed executable and says each patch is aimed where it
+claims. Nothing automated can say *"the barbarian loses the stats when he
+forgets the skill"* — that is a thing to watch in a battle. This is the map to
+watch it in, and the list of what to watch.
+
+The map is built by the e2e suite, so it is the same map every time and it is
+built by the editor under test:
+
+```bash
+HOMM5_GAME="<game>" HOMM5_NO_REMOVE=1 npx playwright test e2e/fix-001-rules-map.spec.ts
+```
+
+`HOMM5_NO_REMOVE=1` is what puts it in the **real** install (`<game>/H5E/Rules
+Test.h5m`); without it the whole thing happens in a throwaway under `_tmp`,
+which is right for checking that the spec still works and useless for playing.
+
+## The shape of the experiment
+
+**001 builds the map and turns every fix OFF. 002 turns every fix ON and
+touches nothing else.** So:
+
+1. run `fix-001-rules-map`, play the map, walk down the list below and see each
+   bug;
+2. run `fix-002-rules-on`, play the *same* map again, walk down the list and see
+   each one gone.
+
+The map is the constant and the flags are the variable. That is the only
+arrangement in which "it is fixed" means anything — rebuild the map between the
+two and a hero who came out slightly different reads as a fix that worked.
+
+`e2e/fixes.ts` is the plan: which hero carries which perk and why. Nothing about
+the kit lives in the specs.
+
+**Before either run, the plan is checked against the game's own files** —
+`npm run test-fix-map`, a second, no install needed:
+
+- a perk the hero will not be granted (the class, the parent skill, the perks
+  that come first — read out of `Skills.xdb`);
+- a creature id or a shared record that is not there;
+- a fix with no hero standing for it, or a hero standing for a flag `002` never
+  asserts went on;
+- two things placed on one tile;
+- a battle too short for a fix whose result is read from the log.
+
+Every one of those fails **silently** in the game: the map is written, it loads,
+and the thing you came to watch is not there. It has cost a play-through before
+— the warlock was given Payback with no Dark Magic to hang it on. `fix-001` asks
+the same questions before it builds anything.
+
+## Who is standing where
+
+Eight heroes in a row along the south of the map, each two tiles in front of the
+stack he is meant to fight. Red is yours; the one at the east end is the
+computer's.
+
+| hero | race | what he is for |
+|---|---|---|
+| `wizard` | Academy | Master of Fire |
+| `knight` | Haven | Encourage |
+| `warlock` | Dungeon | Payback, the snare crash, Empowered Armageddon |
+| `runemage` | Fortress | Dragon Form |
+| `ranger` | Sylvan | Imbue Ballista — the fix, and the bug it claims |
+| `barbarian` | Stronghold | Barbarian Learning |
+| `scholar` | Haven | the Book of Power |
+| `opponent` | Sylvan, PLAYER_2 | the battle AI — and the trappers, in hotseat |
+
+---
+
+## The list
+
+### 1. `snare-crash-fix` — the warlock against the opponent, in HOTSEAT
+
+**Start this map as a hotseat game.** Two things were measured in a real battle,
+and between them they rule out every simpler arrangement:
+
+- **a snare does not fire on its own side.** Give the warlock his own trappers
+  and his crystal lands on their snare, both sit on the tile, and nothing
+  happens. The trap never goes off, so the crash's code is never reached.
+- **a neutral stack of trappers does not lay snares at all.** So attacking a
+  wandering stack of them gives nothing to aim at either.
+
+What is left is a snare laid by the other PLAYER, on a tile you chose — which is
+what hotseat is for. The opponent hero at the east end carries the trappers.
+Walk the warlock into him, and in the battle:
+
+1. on the trappers' turn, lay a snare on a tile you will remember;
+2. on the warlock's turn, cast **«Кристалл тайного»** (Arcane Crystal) or
+   **«Стена мечей»** (Blade Barrier) onto that same tile.
+
+The rest of the list plays as an ordinary single-player game, where the opponent
+is the computer — which is what the battle-AI test needs. The map is the same
+either way; only the mode differs.
+
+- **off** — the battle ends. That is the whole bug: the game drops out of the
+  fight.
+- **on** — the obstacle goes down and the battle carries on.
+
+Do this one first: it is the only one whose failure mode is a crash, so it is
+the only one that can cost you the rest of the run.
+
+### 2. `payback-fix` — the same warlock, same battle
+
+He has **Payback** — `HERO_SKILL_PAYBACK`, a Dark Magic perk the shipped game
+shows as **«Темное восполнение»**: *"Если заклинание не подействовало на отряд
+существ благодаря их сопротивлению магии, то герою возвращается вся потраченная
+на заклятие мана, и его следующий ход наступает раньше."* Mana back when a stack
+RESISTS. (dredknight's file calls it the Arcane Renewal fix, which is Heroes
+5.5's name and is nearer the Russian one than "Payback" is.)
+
+He also has the three spells that put an obstacle on the field: **«Кристалл
+тайного»** (Arcane Crystal), **«Стена мечей»** (Blade Barrier) and **«Призыв
+улья»** (Summon Hive). Watch the mana ball and the turn order as you cast one.
+
+- **off** — "Payback!", the whole cost comes back, and his turn moves up. Every
+  time, for a spell that is standing on the field.
+- **on** — the mana is spent and stays spent. A spell a stack actually *resists*
+  still pays back, which is worth one cast at a real target to confirm.
+
+### 3. `encourage-fix` — the knight
+
+His army holds three **Black Dragons**, which are immune to magic. In a battle,
+use **Encourage** on them.
+
+- **off** — refused, "immune". His own dragons refuse an ability that only moves
+  their turn up.
+- **on** — it works. Try it on the Swordsmen too, before and after: nothing about
+  them should change.
+
+### 4. `master-of-fire-fix` — the wizard
+
+Two things in his kit are the instrument, and neither is obvious:
+
+- he fights **100 zombies**, because an Armageddon leaves nothing of a peasant
+  stack and this is read off a stack that is still standing;
+- he has **100 druids**, because the defence has to be raised *while the fire
+  effect is still on* — and the effect lasts **one turn**, so the hero who cast
+  the Armageddon cannot also cast the buff in time. A creature caster can:
+  `CREATURE_DRUID` knows **Stone Skin**, and acts in the same round on its own
+  initiative.
+
+So: cast **Armageddon** (it hits your own stacks as well), then on the **druids'**
+turn have them cast **Stone Skin** on a stack of yours that the fire caught. Read
+that stack's defence in its tooltip after each step.
+
+**Read all four numbers, in order.** With the fix on and a stack whose defence
+is 12, a Stone Skin worth +4 gives:
+
+| when | reads | why |
+|---|---|---|
+| before anything | 12 | |
+| the fire lands | 6 | 12 − ⌊12/2⌋ |
+| Stone Skin cast | 8 | 16 − ⌊16/2⌋ — the half FOLLOWED the buff |
+| the fire expires | **16** | the buff is still on; it outlives the fire |
+
+That last row looks wrong and is not: **16 is higher than the 12 you started
+with because Stone Skin is still running.** If you want to watch the removal on
+its own, cast the Armageddon and nothing else — when the effect expires the
+defence must come back to exactly what it was, and any other number is a real
+fault.
+
+- **off** — the fire took a fixed number away when it landed, so after Stone Skin
+  the stack has *more* than half its defence. The debuff no longer means 50%.
+- **on** — the defence reads half of whatever it currently is, Stone Skin
+  included. On the turn the fire lands with nothing else moving, the number is
+  the same as it was before the fix — that is the point, only the drift is gone.
+
+The reverse case is the ugly one and worth reproducing: let a defence buff
+*expire* while the fire effect is still on, and off the fix the stack can lose
+everything it had.
+
+### 5. `empowered-armageddon-fix` — the WARLOCK
+
+Not the wizard: **Empowered Spells is the Warlock's class perk**, and a perk
+whose class does not match is one the game quietly declines to grant. So the
+Armageddon test sits with Payback and the snare, on the Dungeon hero.
+
+He has **Empowered Spells**, so his Armageddon is cast in its empowered form
+(double mana, +50% damage). He also carries a **ballista**, and so does the
+enemy hero if you fight one.
+
+- **off** — the war machines take nothing, and the tile the spell lands on takes
+  no local damage. The empowered version is the weaker spell in every way the
+  code decides by id, though its own description promises damage to war
+  machines.
+- **on** — war machines take damage and the point of impact does too.
+
+Cast the plain Armageddon as well (turn Empowered Spells off in the battle if the
+interface lets you, or compare against the enemy hero's): the plain one was
+always right, and it must stay exactly as it was.
+
+### 6. `dragon-form-fix` — the runemage
+
+**A rune can only be cast on a creature of the Dwarves** — measured in a battle,
+not derived — and that decides the whole test: of the four base dragons the
+engine's table names, only the **Fire Dragon** is dwarven, so it is the only one
+the fix can be seen on.
+
+Mind the names, because they cross: **«Огненные драконы»** is the BASE
+(`CREATURE_FIRE_DRAGON`, the one the bug is about) and **«Лавовые драконы»** is
+its UPGRADE (`CREATURE_MAGMA_DRAGON`). «Драконы Арката» is the other upgrade.
+
+His army is therefore four dwarven stacks and the three unreachable dragons:
+
+| stack | off | on |
+|---|---|---|
+| **Огненные драконы** (base) | rune is offered — **the bug** | refused |
+| **Лавовые драконы** (upgrade) | refused | refused |
+| **Драконы Арката** (upgrade) | refused | refused |
+| **Таны** (no dragon) | works | **still works** |
+| Bone / Green / Deep | not castable at all — they are not dwarven | same |
+
+That last row is there so the "dwarves only" claim can be re-checked rather than
+remembered: if a rune is offered on a Bone Dragon, this table is wrong.
+
+In a battle, cast the **Rune of the Dragon Form** on each.
+
+He carries the rune itself, not just Runelore: a rune is a spell and is learnt
+like one, so the skill alone would leave him with nothing to cast. It costs
+1 wood and 1 sulfur per cast rather than mana, out of the resources the game
+starts you with.
+
+- **off** — the **Огненные драконы** accept the rune, whose own description says
+  *"неприменимо к драконам"*.
+- **on** — they are refused, and the **Таны still accept it**. That second half
+  matters: the original fix answers "tier ≥ 7" instead, which would refuse the
+  rune on any tier-7 creature the shipped game allows it on.
+
+### 7. `book-of-power-fix` — the scholar
+
+The **Book of Power** lies one tile east of him. He has Education at Basic.
+
+1. Note his maximum mana on the hero screen.
+2. Pick the book up — knowledge goes up, and so should the mana.
+3. Take a level and raise **Education** to Advanced — six **Дольмены знания**
+   stand behind him, +1000 experience each, so this needs no fighting. The
+   book's bonus goes from +1 to +2 on its own.
+
+- **off** — the knowledge on the hero screen moves and the mana ball does not
+  follow. Step 3 is where it is most visible, which is why the original fix is
+  called "level up".
+- **on** — the maximum mana follows the knowledge, both when the book is picked
+  up and when Education changes what it grants. Drop the book again and the mana
+  falls back.
+
+### 8. `barbarian-learning-fix` — the barbarian
+
+He carries **Barbarian Learning**, and the **Ментор** stands right behind him —
+*"здесь любой герой может полностью сменить все умения и способности,
+полученные им прежде"*. That is what makes this test possible: the fix is about
+what a hero KEEPS after the skill is taken off, and nothing else on a map takes
+a skill off a hero. Three **Дольмены знания** to his west give him the level he
+needs first.
+
+1. Note his primary stats.
+2. Visit the Mentor and drop Barbarian Learning.
+
+- **off** — the skill is gone and the stats it granted stay.
+- **on** — they come back off with it.
+
+### 9. `combat-ai-fix` — the opponent at the east end
+
+Attack him. He has Destructive and Summoning Magic at Expert, mass spells, a
+summon, and a stack of **Grand Elves**, which carry Deflect Arrows.
+
+- **off** — he never casts the mass spells or the summon: a spell with no
+  creature target ranked below every targeted plan. He does cast Deflect Arrows,
+  repeatedly, instead of fighting.
+- **on** — the mass spells and the summon appear in what he does, and he stops
+  recasting the counterspell.
+
+This is the one to judge over several battles rather than one: it is a change in
+what the AI *prefers*, not a rule that either fires or does not.
+
+### 10. Imbue Ballista — the ranger
+
+He has **Imbue Arrow**, **Imbue Ballista** and a ballista — Ballista off War
+Machines, Imbue Arrow off Avenger, and Imbue Ballista off War Machines wanting
+both of those first, all of it at Expert, so the game grants every one of them.
+
+**Both sides are five hundred Air Elementals**, and that is the instrument.
+This is the only hero on the map whose result is read off a LOG rather than seen
+in a turn, and a ballista writes one line per shot — but the first two battles
+came back with the hero's reading identical every shot, which is what a live
+value in a still battle looks like AND what a misread value looks like.
+Elementals act at initiative 17 to the hero's 10, so the bar keeps turning
+between shots. Five hundred a side is about five rounds. Fight it and let the
+ballista shoot; there is nothing to do but attack.
+
+The perk says the shots carry his enchantment and that this costs him **mana** —
+*"запас маны последнего будет уменьшаться"* — and nothing about his turn.
+
+**Watch the hero's own marker on the turn bar**, and watch it in BOTH runs.
+
+- **off** — it slides back when the ballista fires. That is the bug.
+- **on** — it stays where it was.
+
+**Do not judge this one from the log alone.** With the fix on, the log of a
+fixed game says the turn was never taken — which reads exactly like "there is no
+bug here", and on this fix it very nearly ended in the switch being deleted. The
+off run is the only half that can see the bug at all.
+
+The lines, when they come, are in the battle console and in
+`bin/homm5-editor.log`, in thousandths (`3600` is `3.6`):
+
+- `the cast moved the hero's turn to …` / `put back where it was, …` — a shot
+  where the fix did something;
+- `the cast cost the hero no turn, still …` — a shot where there was nothing to
+  put back. Both are budgeted separately, so a run of quiet shots cannot use up
+  the room the interesting ones need.
+
+---
+
+## While you are in there
+
+The quality-of-life flags are not on this list and are not turned on by 002, but
+any of these battles is where they would be judged: the health bar and the
+Shift-held losses on a stack plate, and Ctrl/Shift/Alt on an army slot for the
+quick split. `docs/QOL.md` says what each promises.

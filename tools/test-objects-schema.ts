@@ -11,8 +11,9 @@ import { loadMap } from '../src/map/map.ts';
 import { children } from '../src/format/xml.ts';
 import { readTypeSpec, typesXmlPath } from '../src/schema/typespec.ts';
 import type { SpecField, SpecType } from '../src/schema/typespec.ts';
+import { dataDir } from './game-dir.ts';
 
-const dataRoot = process.argv[2] ?? 'data-unpacked';
+const dataRoot = process.argv[2] ?? dataDir();
 const VALID_REGISTRIES: RegistryName[] = ['spells', 'artifacts', 'heroes', 'races', 'ambientLights', 'creatures', 'skills', 'birds', 'winds', 'weathers'];
 
 let problems = 0;

@@ -8,9 +8,10 @@
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { extractMeshes, readGeometryRefFromModelXdb } from '../src/scene/geometry.ts';
+import { dataDir } from './game-dir.ts';
 
 const [modelXdb, out] = process.argv.slice(2);
-const DATA = 'data-unpacked';
+const DATA = dataDir();
 
 const ref = readGeometryRefFromModelXdb(readFileSync(modelXdb, 'utf8'));
 if (!ref) { console.log('no geometry ref in', modelXdb); process.exit(1); }

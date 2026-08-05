@@ -16,6 +16,8 @@ import type { ArtifactExeResult } from '#src/exe/artifact-limit.ts';
 import { artifactNumbers } from '#src/mods/artifacts.ts';
 import type { ExeResult } from '#src/exe/creature-limit.ts';
 import { buildCreatureMod } from '#src/mods/creature-mod.ts';
+import { DRAGON_TAG } from '#src/mods/creatures.ts';
+import { editorAbility } from '#src/mods/ability-files.ts';
 import { findCreatureMods, installCreatureMod, packCreatureMod } from '#src/mods/mod-archive.ts';
 // The emptiness test lives with the model, beside the things it counts: it was
 // written out twice and the second copy went stale the moment a new kind

@@ -225,7 +225,7 @@ against the install this checkout sits in and keeps what they make — the patch
 executable, `H5E/homm5-editor.h5u`, and any map a spec packed:
 
 ```
-npm run e2e-live -- e2e/mod-007-sharpshooter-map.spec.ts
+npm run e2e-live -- e2e/mod-007-sharpshooter/
 ```
 
 That is also how a fixture map gets rebuilt after you have edited it by hand: the

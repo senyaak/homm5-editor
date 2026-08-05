@@ -15,6 +15,7 @@ import { findCreatureMods, installCreatureMod } from '../src/mods/mod-archive.ts
 import { newCreatureMod } from '../src/mods/mod-model.ts';
 import { MOD_MANIFEST } from '../src/mods/mod-files.ts';
 import { writeArchive } from '../src/format/pak.ts';
+import { gameDirIfAny } from './game-dir.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {
@@ -126,9 +127,12 @@ function fakeRdata(): Buffer {
 
 // --- the real thing, read only ------------------------------------------------
 
-const gameRoot = process.env.HOMM5_GAME ?? resolve(import.meta.dirname, '..', '..');
-for (const rel of [join('bin', 'H5_Game.exe'), join('bin', 'H5_Game_H5E.exe')]) {
-  const path = join(gameRoot, rel);
+// Said, never guessed from the checkout's position (tools/game-dir.ts); with
+// nothing said, the real executables are skipped in so many words.
+const gameRoot = gameDirIfAny();
+if (!gameRoot) console.log('  skip  the real executables — pass --game <dir> or set HOMM5_GAME');
+for (const rel of gameRoot ? [join('bin', 'H5_Game.exe'), join('bin', 'H5_Game_H5E.exe')] : []) {
+  const path = join(gameRoot!, rel);
   if (!existsSync(path)) continue;
   const buf = readFileSync(path);
   const r = readModPaths(buf);

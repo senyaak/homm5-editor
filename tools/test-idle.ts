@@ -18,6 +18,7 @@ import { join } from 'node:path';
 import * as THREE from 'three';
 import { createGeomResolver } from '../src/scene/scene.ts';
 import { makeIdle, poseIdle } from '#viewport/skinning.ts';
+import { dataDir } from './game-dir.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {
@@ -25,7 +26,7 @@ function check(name: string, ok: boolean, detail = ''): void {
   if (!ok) failures++;
 }
 
-const dataRoot = process.env.HOMM5_DATA || join(import.meta.dirname, '..', 'data-unpacked');
+const dataRoot = dataDir();
 if (!existsSync(join(dataRoot, 'MapObjects'))) {
   console.log('\n(no game data — set HOMM5_DATA or run `npm run unpack-data`; skipping)');
   process.exit(0);

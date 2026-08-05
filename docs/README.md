@@ -1,9 +1,17 @@
 # Documentation
 
 One document per subject. Flat files are about a *format* or a *mechanism*;
-`mapPlaceables/` is about the things a map is made of, one folder per kind, and
+`mapPlaceables/` is about the things a map is made of, one folder per kind;
 `engineInternals/` is what was read out of the executable, one subsystem per
-file behind [ENGINE_INTERNALS.md](ENGINE_INTERNALS.md).
+file behind [ENGINE_INTERNALS.md](ENGINE_INTERNALS.md); and `api/` is reference
+only — what a mod may CALL, with the reasons kept out of it.
+
+## The API we add
+
+- [api/README.md](api/README.md) — the folder, and what belongs in it.
+- [api/combat.md](api/combat.md) — inside a battle: triggers a script can hook
+  and the functions the extension registers. Its engine side is
+  [engineInternals/BATTLE_SCRIPTING.md](engineInternals/BATTLE_SCRIPTING.md).
 
 ## Map placeables
 
@@ -49,6 +57,7 @@ mod documents below; they move here as each gets written up.
 - [ARTIFACT_EFFECTS.md](ARTIFACT_EFFECTS.md) — what data, script and the exe each control.
 - [ENGINE_INTERNALS.md](ENGINE_INTERNALS.md) — read out of the binary: how to read it, the rules that hold everywhere, and an index into `engineInternals/` (artifacts and equipment, necromancy, specializations, Lua, mods and maps, our extension).
 - [UI_INTERNALS.md](UI_INTERNALS.md) — how a screen is put together: what a click is, how a screen finds its parts, and what moves creatures between them.
+- [engineInternals/COMBAT.md](engineInternals/COMBAT.md) — a battle and the one command it leaves by: why a quick battle is the same battle, why nothing reaches the world until `CFinishCombat`, and four things that were tried to make a fought battle refusable.
 - [QOL.md](QOL.md) — settings that change how the game plays, and the import-table hooks behind them.
 - [EXE_LUA_REGISTRY.md](EXE_LUA_REGISTRY.md) — the Lua functions the executable registers.
 - [ARCHIVES.md](ARCHIVES.md) — a map, a campaign and a mod are one thing to the engine.

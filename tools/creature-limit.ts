@@ -15,6 +15,7 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { gameDir } from './game-dir.ts';
 import {
   BUILDS, ORIGINAL_LIMIT, PATCHED_EXE, SHIPPED_EXE, readExe, setCreatureLimit, showBytes,
 } from '../src/exe/creature-limit.ts';
@@ -26,8 +27,6 @@ const flag = (name: string): string | undefined => {
 };
 const positional = args.filter((a, i, all) => !a.startsWith('--') && !all[i - 1]?.startsWith('--'));
 
-/** The install this editor sits in, when it sits in one. */
-const defaultGame = resolve(import.meta.dirname, '..', '..');
 
 if (positional[0] === 'inspect') {
   const path = positional[1];
@@ -51,7 +50,8 @@ if (positional[0] === 'inspect') {
   process.exit(r.problems.length ? 1 : 0);
 }
 
-const game = flag('game') ?? defaultGame;
+// Said, never guessed from the checkout's position (tools/game-dir.ts).
+const game = gameDir();
 const set = flag('set');
 
 if (!set) {

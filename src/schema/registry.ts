@@ -22,6 +22,7 @@ import { parse, find, children, childText } from '../format/xml.ts';
 import type { XmlElement } from '../format/xml.ts';
 import { toAssets } from '../game/assets.ts';
 import type { Assets } from '../game/assets.ts';
+import { EDITOR_ABILITIES } from '../mods/ability-files.ts';
 import { readStats } from '../mods/creatures.ts';
 import type { CreatureStats } from '../mods/creatures.ts';
 
@@ -453,9 +454,18 @@ export function creatureAbilityNames(data: Assets): RosterEntry[] {
     const name = m[2] ? gameText(data, m[2]) : '';
     if (name) named.set(m[1]!, name);
   }
-  return creatureAbilities(data)
+  const fromData = creatureAbilities(data)
     .filter((id) => id !== 'ABILITY_NONE')
     .map((id) => ({ id, name: named.get(id) ?? id }));
+  // The editor's own, offered before any mod is installed — a creature cannot
+  // be tagged with an ability that is only in the mod it is being added to. Once
+  // the mod IS installed they come out of the data like every other one, so they
+  // are appended only where they are not already.
+  const have = new Set(fromData.map((a) => a.id));
+  return [
+    ...fromData,
+    ...EDITOR_ABILITIES.filter((a) => !have.has(a.id)).map((a) => ({ id: a.id, name: a.name })),
+  ];
 }
 
 /**

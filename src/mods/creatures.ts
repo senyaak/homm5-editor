@@ -25,6 +25,30 @@ export const SHIPPED_CREATURES = 180;
 /** The game's null creature — the shortest complete `Creature` document there is. */
 export const NULL_CREATURE = 'GameMechanics/Creature/Creatures/None.xdb';
 
+/**
+ * "This creature is a dragon" — a creature ability of the editor's own.
+ *
+ * A real one, with a number, a caption and a description, added the way an
+ * artifact is added: an entry in the `CombatAbilities` table, the enum and the
+ * name→number map in types.xml, and the size that table declares. See
+ * ability-files.ts, which owns all of that; this is only the id, because the
+ * record reader and writer here are the lowest thing that needs to name it.
+ *
+ * WHAT IT DOES: nothing. Almost no ability in this game is code — a creature's
+ * `<Abilities>` is a list of ids, and the engine asks "does it have that one"
+ * where it matters, which is why `ABILITY_UNDEAD` is a flag rather than a
+ * behaviour. Nothing in the engine asks about this one, so it changes nothing
+ * by itself.
+ *
+ * WHO ASKS. The Rune of the Dragon Form: the engine decides what a dragon is
+ * from four ids compiled into the executable, which covers the twelve the game
+ * ships and can never cover a thirteenth. The install writes the creatures
+ * carrying this into the extension's config as `dragon <id> …`, and the
+ * extension answers the rune with the engine's own answer OR that list. See
+ * docs/engineInternals/RULES_FIXES.md.
+ */
+export const DRAGON_TAG = 'ABILITY_DRAGON';
+
 /** The seven resources a creature can cost, in the order `<Cost>` lists them. */
 export const COST_RESOURCES = ['Wood', 'Ore', 'Mercury', 'Crystal', 'Sulfur', 'Gem', 'Gold'] as const;
 

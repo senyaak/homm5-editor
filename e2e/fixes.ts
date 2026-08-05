@@ -1,0 +1,471 @@
+// The Rules Test map: one battle per fix, and the plan that describes it.
+//
+// WHY IT EXISTS. Every rule fix in `native/qol/fix-*.c` is verified as BYTES —
+// `tools/test-fixes.ts` reads the installed executable and says the patch is
+// aimed where it says. Nothing in the suite can say "the barbarian loses the
+// stats when he forgets the skill", because that is a thing to watch in a
+// battle. This map is what you watch it in.
+//
+// HOW IT IS MEANT TO BE USED — the reason it is two stages and not one:
+//
+//   001  builds the map and packs it into the install with every fix OFF.
+//        Play it: each hero below reproduces one shipped bug.
+//   002  turns every fix ON, and touches nothing else. Play the SAME map:
+//        each hero now shows the fixed behaviour.
+//
+// So the map is the constant and the flags are the variable, which is the only
+// way "it is fixed" means anything. docs/FIX_TEST_MAP.md is the checklist —
+// what to do with each hero, and what changes between the two runs.
+//
+// WHAT IS HERE is the plan: the literal constants that read like the map. The
+// specs drive the app; nothing about which hero carries which perk lives in
+// them.
+
+import { join } from 'node:path';
+
+import { REPO_ROOT } from './launch.ts';
+import { modFile } from '../src/game/mod-paths.ts';
+import { liveHome } from './mods.ts';
+import type { QolName } from '../src/mods/qol.ts';
+
+/** The unpacked data the map is built against — the suite's own answer. */
+export const DATA = process.env.HOMM5_DATA || join(REPO_ROOT, 'data-unpacked');
+/** The install the map is packed into: a sandbox, or the real one when live. */
+export const GAME = liveHome('e2e-fix-game');
+
+export const NAME = 'Rules Test';
+/**
+ * A **Multiplayer Arena**, not a single scenario — the folder is the type.
+ *
+ * The snare test needs hotseat, and the game only offers a map for hotseat if
+ * it is under `Maps/Multiplayer`. Nothing else about the map changes: it still
+ * plays single-player against the computer, which is what the battle-AI test
+ * wants, because both player slots are human-playable either way.
+ */
+export const MAP_DIR = join(DATA, 'Maps', 'Multiplayer', NAME);
+export const ARCHIVE = modFile(GAME, 'map', NAME);
+/** Room for eight heroes in a row with their foes in front of them. */
+export const TILES = 72;
+
+/**
+ * Which of the `Editable` fields the game reads.
+ *
+ * Measured rather than guessed: across the shipped maps, `32` never appears
+ * without skills, perks and primary stats, `16` never without a war machine,
+ * and the four heroes carrying the full set — skills, perks, spells, artifacts,
+ * stats and a ballista — all carry `120`. An army is written at mask 0 too, so
+ * that one is not gated at all. A stat written without the mask changes
+ * nothing, silently, which is the trap this constant exists to avoid.
+ */
+export const OVERRIDE_ALL = 120;
+
+/**
+ * The player slots the map uses, and the colours they take.
+ *
+ * A new map declares eight of them and every one is `ActivePlayer false`, which
+ * is a map with NO PLAYERS: the game offers nothing to start it as. Placing a
+ * hero owned by PLAYER_1 does not turn the slot on — the object says who owns
+ * it, the slot says whether that owner exists. Measured against the shipped
+ * missions, where the slots in use are the active ones (A2S4 has three active
+ * and all of them still `PCOLOR_NEUTRAL`, so the colour is presentation and the
+ * flag is the thing).
+ */
+export const PLAYERS = [
+  { slot: 0, colour: 'PCOLOR_RED' },
+  { slot: 1, colour: 'PCOLOR_BLUE' },
+];
+
+export interface Skill { id: string; mastery: string }
+
+/** One hero, the bug he is standing there to show, and what he is made of. */
+export interface Kit {
+  /** Short name for the checklist and the test output. */
+  key: string;
+  /**
+   * Which fixes this hero is the test bed for — the panel's own names.
+   *
+   * Typed rather than loose so a flag that does not exist is a COMPILE error:
+   * the whole point of a hero is that a fix has somebody watching it, and a
+   * misspelt name is a fix with nobody, which reads as a fix with somebody.
+   */
+  fixes: QolName[];
+  /** The shared hero record — the race decides which racial abilities work. */
+  shared: string;
+  /**
+   * The class that record belongs to, so the kit can be CHECKED against the
+   * game's own rules before the map is built: a perk names the class allowed to
+   * take it, the skill it hangs off, and the perks that come before it, and a
+   * hero handed one he does not qualify for simply does not get it — silently,
+   * with the map looking perfectly fine. See `checkKits` in the spec.
+   */
+  heroClass: string;
+  at: { x: number; y: number };
+  /**
+   * Secondary skills, **the class's racial one first**.
+   *
+   * `Editable/skills` REPLACES the shared hero's list, and the game reads it in
+   * order into slots of which the first is the racial's. List War Machines
+   * before Avenger and the ranger's hero screen shows the two swapped — which
+   * is what happened, and what a play-through found rather than this file.
+   *
+   * Not a style rule: measured across every hero record the game ships. Of the
+   * 118 with a skill list, 117 put the racial first and not one puts it
+   * anywhere else; the 118th has no racial at all. `map-checks.ts` asks the
+   * game's own table which skill that is, so the rule needs no list here.
+   */
+  skills?: Skill[];
+  perks?: string[];
+  spells?: string[];
+  army: { creature: string; count: number }[];
+  /** Primary stats, high enough that a battle lasts long enough to watch. */
+  stats?: { offence?: number; defence?: number; spellpower?: number; knowledge?: number };
+  ballista?: boolean;
+  /**
+   * What he fights: a stack standing in front of him.
+   *
+   * `count` pins the size. Without one the stack is written `Custom false` and
+   * the game rolls its own number, which is fine for something to hit and no
+   * good when the stack has to SURVIVE a spell to be read afterwards.
+   */
+  foe?: { shared: string; at: { x: number; y: number }; count?: number };
+  /** An artifact on the ground beside him, for the fixes that need one. */
+  artifact?: { shared: string; at: { x: number; y: number } };
+  /**
+   * Buildings standing behind him, for the fixes that need the hero CHANGED
+   * rather than the battle watched — a mentor to forget a skill at, dolmens to
+   * take a level from. Placed like anything else; they are only listed apart
+   * because the row behind the heroes is where they fit.
+   */
+  nearby?: { shared: string; at: { x: number; y: number } }[];
+}
+
+const M = {
+  basic: 'MASTERY_BASIC', advanced: 'MASTERY_ADVANCED', expert: 'MASTERY_EXPERT',
+};
+
+const hero = (race: string, name: string): string =>
+  `/MapObjects/${race}/${name}.(AdvMapHeroShared).xdb`;
+const monster = (race: string, name: string): string =>
+  `/MapObjects/${race}/${name}.(AdvMapMonsterShared).xdb`;
+
+/** Peasants: something to fight that will not end the battle in one turn. */
+const PEASANTS = monster('Haven', 'Peasant');
+
+/**
+ * The Mentor — «Ментор», *"здесь любой герой может полностью сменить все умения
+ * и способности, полученные им прежде"*.
+ *
+ * Which is the only way to run the Barbarian Learning test at all: that fix is
+ * about what a hero KEEPS after the skill is gone, and nothing else on a map
+ * takes a skill back off him.
+ */
+const MENTOR = '/MapObjects/H5A2/SpellMentor.xdb';
+
+/**
+ * The Dolmen of Knowledge — «Дольмен знания», *"Единовременно добавляет +1000
+ * единиц опыта герою"*. One visit each, so several.
+ *
+ * Levels are the instrument twice over: the scholar has to raise Education for
+ * the Book of Power's bonus to move on its own, and the barbarian needs a level
+ * before there is anything to forget.
+ */
+const DOLMEN = '/MapObjects/Learning_Stone.(AdvMapBuildingShared).xdb';
+
+/** A row of dolmens behind a hero, two tiles apart so they do not overlap. */
+const dolmens = (from: number, count: number, y = 13): { shared: string; at: { x: number; y: number } }[] =>
+  Array.from({ length: count }, (_, i) => ({ shared: DOLMEN, at: { x: from + i * 2, y } }));
+
+/**
+ * A hundred zombies, for the two heroes who cast **Armageddon**.
+ *
+ * Peasants are wiped out by it before anything can be read off them, and both
+ * Armageddon tests are about reading something off a stack that is still there
+ * — a defence that should be half, war machines that should be hurt. Zombies
+ * are slow and fat, and a hundred of them survive the spell and keep standing
+ * for the second cast.
+ *
+ */
+const ZOMBIES = { shared: monster('Necropolis', 'Zombie'), count: 100 };
+
+/**
+ * Five hundred Air Elementals, for the ranger — on BOTH sides.
+ *
+ * His fix is read off a turn bar, so what his battle needs is not length but
+ * MOVEMENT: a bar that visibly churns between one ballista shot and the next.
+ * Elementals have initiative 17 where a zombie has 7, so they take roughly two
+ * and a half turns to the hero's one and the bar never sits still.
+ *
+ * The price is that the battle is shorter — five hundred of them hit for about
+ * 3000, which is a fifth of the other five hundred (30 health each), so it runs
+ * five rounds or so against the zombies' eight. Five ballista shots is still
+ * more than enough for what the log has to say, and a bar that moves is worth
+ * more here than three extra rounds of a bar that does not.
+ */
+const AIR_ELEMENTALS = { shared: monster('Neutral', 'Air_Elemental'), count: 500 };
+
+/**
+ * The row of heroes, west to east.
+ *
+ * Each stands two tiles south of the stack he is meant to fight, so a battle is
+ * one click away and no hero can wander into another's foe by accident.
+ */
+export const HEROES: Kit[] = [
+  {
+    key: 'wizard',
+    heroClass: 'HERO_CLASS_WIZARD',
+    fixes: ['master-of-fire-fix'],
+    shared: hero('Academy', 'Astral'),
+    at: { x: 8, y: 10 },
+    skills: [{ id: 'HERO_SKILL_DESTRUCTIVE_MAGIC', mastery: M.expert }],
+    // Master of Fire only. Empowered Spells is the WARLOCK's class perk, not
+    // the Academy's — it went to the warlock with the Armageddon test, because
+    // a perk whose class does not match is a perk the game does not grant.
+    perks: ['HERO_SKILL_MASTER_OF_FIRE'],
+    // Armageddon to hit everything including the war machines, Fireball for a
+    // single stack. Stone Skin is in the book to read the spell's own numbers
+    // from, but it is not what moves the defence in this test — see the druids.
+    spells: ['SPELL_ARMAGEDDON', 'SPELL_FIREBALL', 'SPELL_STONESKIN'],
+    stats: { offence: 5, defence: 5, spellpower: 20, knowledge: 30 },
+    // A tent of his own, so an Armageddon has a war machine to prove itself on.
+    ballista: true,
+    army: [
+      { creature: 'CREATURE_MARKSMAN', count: 30 },
+      { creature: 'CREATURE_SWORDSMAN', count: 30 },
+      // THE DRUIDS ARE THE INSTRUMENT. Master of Fire takes the defence for one
+      // TURN, and a hero casts once a turn — so the hero who cast the
+      // Armageddon cannot also raise a defence while the effect is still on,
+      // and the difference the fix is about never appears. A creature caster
+      // can: `CREATURE_DRUID` knows `SPELL_STONESKIN` (with Lightning Bolt),
+      // checked in GameMechanics/Creature/Creatures/Preserve/Druid.xdb, and it
+      // acts in the same round on its own initiative.
+      { creature: 'CREATURE_DRUID', count: 100 },
+    ],
+    // Zombies, because peasants do not survive an Armageddon and this test is
+    // read off a stack that is still standing.
+    foe: { ...ZOMBIES, at: { x: 8, y: 7 } },
+  },
+  {
+    key: 'knight',
+    heroClass: 'HERO_CLASS_KNIGHT',
+    fixes: ['encourage-fix'],
+    shared: hero('Haven', 'Alaric'),
+    at: { x: 16, y: 10 },
+    // Encourage hangs off Leadership, and for a Knight it wants Recruitment
+    // (Leadership) and Holy Charge (Training) before it — so both skills are
+    // here, and the two perks in front of it.
+    skills: [
+      // The racial FIRST — see the note on Kit.skills.
+      { id: 'HERO_SKILL_TRAINING', mastery: M.expert },
+      { id: 'HERO_SKILL_LEADERSHIP', mastery: M.expert },
+    ],
+    // The Black Dragons are what he cannot use it on until the fix, being
+    // immune to magic.
+    perks: ['HERO_SKILL_RECRUITMENT', 'HERO_SKILL_HOLY_CHARGE', 'HERO_SKILL_ENCOURAGE'],
+    stats: { offence: 10, defence: 10, spellpower: 5, knowledge: 5 },
+    army: [
+      { creature: 'CREATURE_BLACK_DRAGON', count: 3 },
+      { creature: 'CREATURE_SWORDSMAN', count: 30 },
+    ],
+    foe: { shared: PEASANTS, at: { x: 16, y: 7 } },
+  },
+  {
+    key: 'warlock',
+    heroClass: 'HERO_CLASS_WARLOCK',
+    // Empowered Armageddon is HIS, not the wizard's: Empowered Spells is the
+    // Warlock's class perk. Three fixes on one hero, which is fine — they are
+    // three different spells.
+    fixes: ['payback-fix', 'snare-crash-fix', 'empowered-armageddon-fix'],
+    shared: hero('Dungeon', 'Almegir'),
+    at: { x: 24, y: 10 },
+    skills: [
+      // Empowered Spells hangs off the Warlock's own Invocation, which is his
+      // racial and so goes first — see the note on Kit.skills.
+      { id: 'HERO_SKILL_INVOCATION', mastery: M.expert },
+      { id: 'HERO_SKILL_SUMMONING_MAGIC', mastery: M.expert },
+      // Payback hangs off Dark Magic and wants Master of Curses before it.
+      { id: 'HERO_SKILL_DARK_MAGIC', mastery: M.expert },
+    ],
+    perks: ['HERO_SKILL_MASTER_OF_CURSES', 'HERO_SKILL_PAYBACK', 'HERO_SKILL_EMPOWERED_SPELLS'],
+    // The three that put an obstacle on the field — free every time until the
+    // payback fix — and the Armageddon that Empowered Spells turns into the
+    // second one, with an id of its own.
+    spells: ['SPELL_ARCANE_CRYSTAL', 'SPELL_SUMMON_HIVE', 'SPELL_BLADE_BARRIER',
+      'SPELL_ARMAGEDDON'],
+    stats: { offence: 5, defence: 5, spellpower: 15, knowledge: 40 },
+    // A war machine of his own, so an empowered Armageddon has one to prove
+    // itself on — that is the half of the fix you can see.
+    ballista: true,
+    army: [{ creature: 'CREATURE_MARKSMAN', count: 30 }],
+    // Zombies as well: he casts the empowered Armageddon, and it has to leave
+    // something standing to be read. The snare does NOT come from here — see
+    // OPPONENT below, and the two things measured in a real battle that between
+    // them rule out every simpler arrangement.
+    foe: { ...ZOMBIES, at: { x: 24, y: 7 } },
+  },
+  {
+    key: 'runemage',
+    heroClass: 'HERO_CLASS_RUNEMAGE',
+    fixes: ['dragon-form-fix'],
+    shared: hero('Dwarves', 'Bersy'),
+    at: { x: 32, y: 10 },
+    skills: [{ id: 'HERO_SKILL_RUNELORE', mastery: M.expert }],
+    // THE RUNE ITSELF. Runelore says he may cast runes; it does not give him
+    // one, any more than Destructive Magic gives a hero Fireball. A rune is a
+    // spell — `MAGIC_SCHOOL_RUNIC`, level 5, so Runelore at Expert — and it is
+    // learnt like one. Without this line he stands there with the skill and
+    // nothing to cast, which is how this hero went out the first time.
+    //
+    // It costs a resource per cast rather than mana (1 wood, 1 sulfur), and the
+    // map declares no starting resources — the game's own starting amounts
+    // cover it many times over.
+    spells: ['SPELL_RUNE_OF_DRAGONFORM'],
+    stats: { offence: 10, defence: 10, spellpower: 10, knowledge: 10 },
+    // MEASURED IN A BATTLE: a rune can only be cast on a creature of the
+    // DWARVES. So of the four base dragons the engine's table names — Bone
+    // (41), Green (55), Deep (83), Fire (104) — only the **Fire Dragon** can
+    // ever be handed one, and it is the only one the fix is visible on. The
+    // other three are here so that claim can be re-checked rather than
+    // remembered; if a rune is offered on them, this comment is wrong.
+    //
+    // Then the dwarven controls, which is what this hero was missing:
+    //   Magma («Лавовые драконы») and Lava («Драконы Арката») are the two
+    //     upgrades, whose base IS Fire — refused before the fix and after;
+    //   Thane is no dragon at all and must stay castable, or the fix would
+    //     have broken the rune rather than aimed it.
+    army: [
+      { creature: 'CREATURE_FIRE_DRAGON', count: 3 },
+      { creature: 'CREATURE_MAGMA_DRAGON', count: 3 },
+      { creature: 'CREATURE_LAVA_DRAGON', count: 3 },
+      { creature: 'CREATURE_THANE', count: 3 },
+      { creature: 'CREATURE_BONE_DRAGON', count: 3 },
+      { creature: 'CREATURE_GREEN_DRAGON', count: 3 },
+      { creature: 'CREATURE_DEEP_DRAGON', count: 3 },
+    ],
+    foe: { shared: PEASANTS, at: { x: 32, y: 7 } },
+  },
+  {
+    key: 'ranger',
+    heroClass: 'HERO_CLASS_RANGER',
+    fixes: ['imbue-ballista-fix'],
+    shared: hero('Preserve', 'Diraya'),
+    at: { x: 40, y: 10 },
+    // Imbue Ballista wants Ballista (War Machines) and Imbue Arrow (Avenger)
+    // before it, so both trees are here.
+    skills: [
+      // Avenger is the Ranger's racial and goes first — listed second, the game
+      // put War Machines in the racial's place and the hero screen showed the
+      // two swapped. See the note on Kit.skills.
+      { id: 'HERO_SKILL_AVENGER', mastery: M.expert },
+      { id: 'HERO_SKILL_WAR_MACHINES', mastery: M.expert },
+    ],
+    perks: ['HERO_SKILL_BALLISTA', 'HERO_SKILL_IMBUE_ARROW', 'HERO_SKILL_IMBUE_BALLISTA'],
+    spells: ['SPELL_FIREBALL'],
+    stats: { offence: 10, defence: 5, spellpower: 10, knowledge: 30 },
+    ballista: true,
+    // THE TURN BAR is the instrument here, and only here. Every other hero on
+    // this map has one thing to see and sees it in a turn; this one is read off
+    // a log a ballista writes once per shot, and off where the hero sits on the
+    // bar between one shot and the next. Peasants and thirty marksmen were over
+    // before the ballista had said anything twice; seven hundred zombies lasted
+    // but barely moved the bar, and the hero's reading came back identical on
+    // all six shots — which is exactly what a value we were misreading would
+    // also do. Elementals at initiative 17 against his 10 keep it turning.
+    army: [{ creature: 'CREATURE_AIR_ELEMENTAL', count: 500 }],
+    foe: { ...AIR_ELEMENTALS, at: { x: 40, y: 7 } },
+  },
+  {
+    key: 'barbarian',
+    heroClass: 'HERO_CLASS_BARBARIAN',
+    fixes: ['barbarian-learning-fix'],
+    shared: hero('Stronghold', 'Hero1'),
+    at: { x: 48, y: 10 },
+    // A SKILL, not a perk — `SKILLTYPE_SKILL`, with no parent. Listed among the
+    // perks it was simply not granted.
+    skills: [{ id: 'HERO_SKILL_BARBARIAN_LEARNING', mastery: M.expert }],
+    stats: { offence: 10, defence: 10, spellpower: 1, knowledge: 1 },
+    army: [{ creature: 'CREATURE_GOBLIN', count: 40 }],
+    foe: { shared: PEASANTS, at: { x: 48, y: 7 } },
+    // The MENTOR is what makes this test possible at all — the fix is about
+    // what he keeps after the skill is taken back off him, and nothing else on
+    // a map takes a skill off a hero. The dolmens are for the level he needs
+    // before there is anything to forget.
+    nearby: [{ shared: MENTOR, at: { x: 48, y: 13 } }, ...dolmens(42, 3)],
+  },
+  {
+    key: 'scholar',
+    heroClass: 'HERO_CLASS_KNIGHT',
+    fixes: ['book-of-power-fix'],
+    shared: hero('Haven', 'Axel'),
+    at: { x: 56, y: 10 },
+    // Learning at BASIC: the book gives +1 while he has no Education and +2 at
+    // Advanced, so raising it is what makes the mana move — or fail to.
+    skills: [{ id: 'HERO_SKILL_LEARNING', mastery: M.basic }],
+    stats: { offence: 5, defence: 5, spellpower: 10, knowledge: 10 },
+    army: [{ creature: 'CREATURE_SWORDSMAN', count: 30 }],
+    // Picked up rather than worn, so the mana can be read before and after.
+    artifact: { shared: '/MapObjects/Artifacts/H5A2/Book_Of_Power.xdb', at: { x: 57, y: 10 } },
+    foe: { shared: PEASANTS, at: { x: 56, y: 7 } },
+    // Six dolmens, because the step that shows this fix is a LEVEL: Education
+    // going from Basic to Advanced moves the book's bonus from +1 to +2 on its
+    // own, and that is where the mana was left behind.
+    nearby: dolmens(54, 6),
+  },
+];
+
+/**
+ * The computer's hero, and the only one on the map that is not the player's.
+ *
+ * The battle AI's three bugs are about what a hero the AI drives decides to
+ * cast, so there has to be one: a full spell book, a stack worth defending and
+ * enough mana to keep casting. Nothing about him is special otherwise.
+ */
+export const OPPONENT: Kit = {
+  key: 'opponent',
+  heroClass: 'HERO_CLASS_RANGER',
+  fixes: ['combat-ai-fix'],
+  shared: hero('Preserve', 'Elleshar'),
+  at: { x: 64, y: 10 },
+  skills: [
+    { id: 'HERO_SKILL_DESTRUCTIVE_MAGIC', mastery: M.expert },
+    { id: 'HERO_SKILL_SUMMONING_MAGIC', mastery: M.expert },
+  ],
+  spells: [
+    // Mass spells and a summon — the plans the AI ranked below every targeted
+    // one and so never cast — and Deflect Arrows, whose stack it valued at the
+    // square of its size.
+    'SPELL_ARMAGEDDON', 'SPELL_MASS_HASTE', 'SPELL_MASS_SLOW',
+    'SPELL_SUMMON_ELEMENTALS', 'SPELL_DEFLECT_ARROWS', 'SPELL_FIREBALL',
+  ],
+  stats: { offence: 10, defence: 10, spellpower: 20, knowledge: 40 },
+  army: [
+    // The Grand Elf is the stack that carries Deflect Arrows, which is the one
+    // the AI valued at the SQUARE of its size.
+    { creature: 'CREATURE_GRAND_ELF', count: 30 },
+    { creature: 'CREATURE_DRUID', count: 20 },
+    // The trappers, and this is the ONLY place they work. Two things were
+    // measured in a real battle and between them they close off everything
+    // simpler:
+    //
+    //   a snare does not fire on its own side — the warlock's own trappers laid
+    //     one and his crystal stood on top of it, both on the tile, nothing;
+    //   a NEUTRAL stack of trappers does not lay snares at all.
+    //
+    // So the snare has to be laid by a stack that belongs to the other PLAYER,
+    // and it has to be laid where you can aim at it. Start the map as HOTSEAT
+    // and both halves are yours: lay the snare with this stack, take the
+    // warlock's turn, summon onto that tile.
+    { creature: 'CREATURE_GOBLIN_TRAPPER', count: 20 },
+  ],
+};
+
+/**
+ * Every fix flag the map is a test bed for, in the order the heroes stand.
+ *
+ * Typed the same way and for the same reason: this list is what `002` asserts
+ * went on, and a typo in it would assert nothing about a flag nobody has.
+ */
+export const FIXES_UNDER_TEST: QolName[] = [
+  'combat-ai-fix', 'snare-crash-fix', 'encourage-fix', 'barbarian-learning-fix',
+  'payback-fix', 'dragon-form-fix', 'empowered-armageddon-fix', 'book-of-power-fix',
+  'master-of-fire-fix', 'imbue-ballista-fix',
+];

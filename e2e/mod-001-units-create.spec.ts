@@ -22,6 +22,7 @@ import { addItem, reveal, setTreeValue } from './tree.ts';
 import { DATA } from './launch.ts';
 import { MOD, SHARPSHOOTER, clearMap, modGameRoot, readInstalledMod } from './mods.ts';
 import { readExe } from '../src/exe/creature-limit.ts';
+import { readEntries } from '../src/format/pak.ts';
 import { modFile } from '../src/game/mod-paths.ts';
 
 let ed: Launched;
@@ -221,6 +222,55 @@ test('an installed creature opens for editing, whole', async () => {
 
   // Put the window back the way it was found: these are modal dialogs, and the
   // next test clicks a button that is underneath them.
+  await page.locator('#um-cancel').click();
+  await expect(page.locator('#unitsmod')).toBeHidden();
+});
+
+test('the dragon tag rides in the record, and the config names the ability', async () => {
+  const { page } = ed;
+  if (!(await page.locator('#unitsmod').isVisible())) await page.locator('#unitsbtn').click();
+  const row = page.locator('#um-list .um-item', { hasText: SHARPSHOOTER.name }).first();
+  await row.locator('button', { hasText: '✎' }).click();
+  await expect(page.locator('#unitedit')).toBeVisible();
+
+  // Offered like any other ability, because it IS one — an ability of the
+  // editor's own, which the picker offers before the mod carrying it exists.
+  await page.locator('#um-ability-add').click();
+  const added = page.locator('#um-abilities .um-ability-id').last();
+  await added.selectOption('ABILITY_DRAGON');
+  // And under the caption a player will read, not under its id.
+  await expect(page.locator('#um-abil-preview')).toContainText('Дракон');
+
+  let note = await settled(page, 'saving the tagged creature', '#um-note', '#ue-err',
+    () => page.locator('#um-ok').click());
+  expect(note).toMatch(/installed|updated/i);
+
+  const tagged = readInstalledMod(GAME).creatures[0]!;
+  expect(tagged.stats.abilities, 'the tag rides in the record').toContain('ABILITY_DRAGON');
+  // And the mod really ships the ability the record names — an id with no object
+  // behind it is an id the game reads as nothing.
+  const inside = new Map(readEntries(readFileSync(modFile(GAME, 'mod', MOD)))
+    .map((e) => [e.name.replace(/\\/g, '/'), e.data]));
+  expect(inside.get('GameMechanics/RefTables/CombatAbilities.xdb')?.toString('latin1'),
+    'the ability is an object in the table the mod carries').toContain('<ID>ABILITY_DRAGON</ID>');
+  expect(inside.get('types.xml')?.toString('latin1'), 'and the map the loader resolves through')
+    .toContain('<Name>ABILITY_DRAGON</Name>');
+
+  // Taking it off leaves the record without it. The config line stays, because
+  // it names the ABILITY and the ability is still there — what changed is what
+  // this creature says about itself, which is where the answer comes from.
+  await row.locator('button', { hasText: '✎' }).click();
+  await expect(page.locator('#unitedit')).toBeVisible();
+  await page.locator('#um-abilities label', { has: page.locator('option:checked') })
+    .filter({ has: page.locator('.um-ability-id') }).last().locator('button').click();
+  await expect(page.locator('#um-abilities .um-ability-id')).toHaveCount(3);
+  note = await settled(page, 'saving it back', '#um-note', '#ue-err',
+    () => page.locator('#um-ok').click());
+  expect(note).toMatch(/installed|updated/i);
+
+  const plain = readInstalledMod(GAME).creatures[0]!;
+  expect(plain.stats.abilities).not.toContain('ABILITY_DRAGON');
+
   await page.locator('#um-cancel').click();
   await expect(page.locator('#unitsmod')).toBeHidden();
 });

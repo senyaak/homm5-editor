@@ -62,6 +62,195 @@ one.
   "follow the sun" sentinel rather than an angle, and the thirteen shipped
   presets that aim their shadows elsewhere get their own direction.
 
+- **Imbue Ballista costs the ranger mana, not his turn.** The perk says the
+  ballista's shots carry his enchantment and that his mana pays for them, and
+  says nothing about his turn — but they took his turn as well: play a ranger
+  without this and his marker on the turn bar slides back every time the
+  ballista fires. The enchantment now runs between two readings of that value
+  and the old one goes back if it moved.
+
+- **A tool for finding the same code in another build.**
+  `tools/reverse/match.ts` compares a jump table's shape, filters `.text` for
+  functions matching byte needles, and scores candidates against a reference
+  function by what it does rather than by its bytes. It is how every fix above
+  was located, and it is what makes the rest of that patch set portable.
+
+- **No more crash when a wall is summoned onto a snare.** Summoning an Arcane
+  Crystal or a Blade Barrier onto a snared tile ended the battle: the snare asks
+  the tile for the creature standing there and uses the answer without looking,
+  and an obstacle is not a creature. The snare now does nothing when there is
+  nobody to catch — the "nothing happened" the engine already returns from that
+  code. dredknight's fix for the same bug lands in a tail with an uninitialised
+  register instead; ours could not be a transliteration anyway, since our build
+  inlined that function and allocated its registers differently. Both copies our
+  compiler emitted are patched.
+
+- **Empowered Armageddon is an Armageddon.** The empowered spell has an id of
+  its own, and the code that resolves the impact asks three questions about the
+  spell by that raw id — whether to do the local damage at the point of impact,
+  whether to hit war machines, and how to damage the tiles around it. All three
+  answered no, so the empowered version cost double mana and was the weaker
+  spell, though its own description promises damage to war machines. The engine
+  already maps an empowered id to the spell it is a version of; it is now asked
+  that. At the first site the answer was already sitting in a register, unused.
+
+- **A map to watch the rule fixes in.** Every one of them is verified as bytes,
+  and none of them can be verified that way as BEHAVIOUR — "the knight's own
+  dragons refuse Encourage" is a thing to watch in a battle. So the e2e suite
+  builds one: `fix-001-rules-map` packs a Rules Test map into the install with
+  every fix off, one hero per fix standing in front of the stack he is meant to
+  fight, and `fix-002-rules-on` turns them all on and touches nothing else. Play
+  it between the two runs; docs/FIX_TEST_MAP.md is the list of what changes.
+
+- **Master of Fire halves the defence it is halving.** The perk says a creature
+  caught by Fireball, Firewall or Armageddon loses 50% of its defence for a
+  turn. The game read the defence when the spell landed, halved that, and
+  subtracted the resulting number for as long as the effect ran — so the two
+  agreed only while nothing else touched the creature's defence. Buff it after
+  the fireball and it lost less than half; let a buff expire and it could lose
+  everything it had. The half is now taken where the defence is summed, so it
+  follows; on the turn the spell lands with nothing else moving the number is
+  exactly the one the shipped game produced. Creatures with Броня are exempt, as
+  they were.
+
+- **The Book of Power's knowledge buys mana.** The artifact gives +1 to spell
+  power and knowledge, +2 with Advanced Education and +3 with Expert — a bonus
+  that depends on a skill, so the engine grants it through a special case rather
+  than through the path an ordinary artifact takes. That path recomputes the
+  hero's maximum mana whenever knowledge changes; the special case did not, so
+  the knowledge appeared on the hero screen and the mana did not follow. It
+  showed up after a level up, which is when Education changes the bonus on its
+  own. The engine's own recomputation now runs in that case too, both when the
+  artifact goes on and when it comes off.
+
+- **Creature abilities of the editor's own, and the first of them: Дракон.**
+  Almost no ability in this game is code — a creature's `<Abilities>` is a list
+  of ids, and the engine asks "does it have that one" where it matters, which is
+  why Undead is a flag rather than a behaviour. So an ability nothing asks about
+  does nothing, and that is what a tag is. Adding one costs what an artifact
+  costs and no executable at all: the enum and the name→number entry in
+  types.xml, the size the table declares, and an object with a caption and a
+  description in `CombatAbilities.xdb`. `ABILITY_DRAGON` is the first and is a
+  worked example rather than a behaviour; the picker offers it before the mod
+  carrying it is installed and reads it out of the data afterwards, and the next
+  tag is simply the next number.
+
+- **Dragon Form is refused on a dragon that never upgraded.** The rune says it
+  does not apply to dragons, and the game refuses it — by asking the creature
+  for its *base* creature and looking that up in a table of the four dragons. A
+  creature that is a base itself has no base, so the lookup falls out of range
+  and a Bone, Green, Deep or Fire Dragon is told it is not a dragon. Everywhere
+  else the engine reads a base creature it falls back to the creature itself;
+  that missing fallback is now written in. Upgraded dragons were refused before
+  and still are. dredknight's fix answers "tier ≥ 7" instead, which would also
+  refuse the rune on an Archangel or a Titan in a dwarf's army.
+
+- **Payback stops paying for spells that worked.** Payback returns a spell's
+  mana and moves the hero's turn up when a stack RESISTS it — but the cast keeps
+  one byte for "the spell did nothing" and the three spells that put an obstacle
+  on the field never clear it. So Arcane Crystal, Summon Hive and Blade Barrier
+  were cast, stood on the field, and were refunded in full every time. The byte
+  is now cleared where all three place their last tile; a resisted spell still
+  pays back. dredknight's file calls this the Arcane Renewal fix, which is what
+  Heroes 5.5 renamed the perk to.
+
+- **Two rules fixes from H5_DLL.** Ported from dredknight's
+  [H5_DLL](https://github.com/dredknight/H5_DLL) with his permission, each one
+  byte in a jump table:
+  - **Encourage works on a stack immune to magic.** A Knight's Encourage only
+    moves a friendly stack's turn up, but the game runs it through the check
+    that refuses a spell against an immune target — so it is refused by your own
+    creature's immunity. The ability's own description says nothing about magic.
+  - **Forgetting Barbarian Learning takes its bonuses back.** The switch that
+    undoes what a skill granted has a case for Learning and none for Barbarian
+    Learning, which falls through to "do nothing"; this points it at the case
+    Learning already uses.
+
+  Their addresses are not his: that patch targets the retail build, ours is
+  compiled for SSE, and each site was found again by the **shape** of the switch
+  it lives in. `tools/test-fixes.ts` checks every such byte against the
+  installed executable, and finds the patches by walking the C rather than by a
+  list kept by hand. His Agility fix is deliberately **not** ported — he
+  withdrew it himself once the ability's in-game text turned out to describe the
+  behaviour it "fixed".
+
+- **Game settings — a Fixes tab.** The panel splits into *Quality of life* (how
+  you want to play) and *Fixes* (bugs of the shipped game taken out), with the
+  fixes grouped — crashes, mechanics, battle AI — and an *Enable every fix*
+  master switch, which only that tab gets: all fixes on is a reasonable
+  default, all preferences on is not a thing. The battle-AI fix moved there.
+  The port of dredknight's H5_DLL fixes lands on this tab fix by fix, with the
+  author's permission.
+
+- **The game settings panel reads as a list.** Each switch's paragraph folds
+  away behind *What this does*, and a switch that is somebody else's work
+  carries an (i) naming them and where they published it — in the config file's
+  comments too, so the acknowledgement travels with the install.
+
+- **Game settings — the battle AI's spellcasting, fixed.** A new switch,
+  `combat-ai-fix`, takes three bugs out of the code that decides what the AI
+  does in a battle: a plan with no creature targets — mass spells, summons —
+  ranked below every targeted one and so never cast, which is why the enemy's
+  high circles were never seen; a counterspell "deleting" the enemy hero's
+  whole magic factor from the army valuation, which made casting one look worth
+  that entire factor and is the AI everyone remembers recasting it instead of
+  fighting; and a stack's worth counted as its size **squared** under Deflect
+  Arrows, drowning out every other reason to prefer a target. Found again in
+  our build from RedHeavenHero's CombatAIFix v1.1, which makes the same three
+  changes in a different build of 3.1; nothing could be copied, since that one
+  is compiled for x87 where ours uses SSE. The first switch that writes the
+  game's own code: with it off not a byte of the image is touched, every site
+  is compared against the bytes we measured before anything is written, and
+  `tools/test-combat-ai.ts` checks those addresses against the installed
+  executable — the failure mode is a switch that silently does nothing.
+
+- **The game being open is a sentence now, not an `EBUSY`.** Everything the
+  editor installs goes into `bin`, and Windows will not let those files be
+  replaced while the game holds them — which used to surface as a message about
+  a temporary file with a `.new` suffix, from a button that said Apply. The
+  ceilings and the extension now ask first and say which file is held and what
+  to do; applying settings saves them and leaves the install alone, rather than
+  half-writing it. Only **our** build counts: `H5_Game.exe` is never written to,
+  so playing the unmodded game stops nothing.
+
+- **Game settings — two more battle switches.**
+  - **A health bar on the stack plate.** In a battle every stack's plate
+    carries a bar showing what the creature at the front has left — the one
+    being hit, not the stack as a whole, like the HotA bar in Heroes III.
+    Bright green on near-black, sized to the plate every frame. Applying the
+    flag writes `H5E/homm5-editor-qol.h5u` (the strips are the game's own
+    child windows) and turning it off deletes it again.
+  - **Losses on the plate while Shift is held.** Every plate reads
+    `now / at the start of the battle` — 53 of the 59 that walked in reads
+    `53/59`. Costs nothing while the key is up.
+
+- **Four more things a skill of yours can do to a first aid tent.** The
+  extension already gave it extra uses; it can now also make the machine itself
+  tougher (`tent_health`, percent), heal for more (`tent_healing`, points),
+  strip stronger curses off whoever it heals (`tent_cleanse`, levels) and give a
+  use back for mana its owner spends in the battle. The first three are rows in
+  the skill form, keyed on the skill's own id, and cost the game nothing it was
+  not already computing; the fourth turned out to belong half in Lua — a hero's
+  mana is not spent through anything the extension could hook, but the battle's
+  own vocabulary reads it. All four ran in a battle on 2026-08-03.
+
+- **A battle can be spoken to, and can answer.** Two halves, both measured in
+  game rather than argued about:
+
+  - **Lua functions of ours now reach a fight.** The battle's vocabulary is
+    handed over by an accessor of exactly the shape the adventure map's is, so
+    the same routine extends both — a script inside a battle can call what the
+    extension registers.
+  - **Triggers, with arguments.** `H5ESetCombatTrigger(kind, handler)` in a
+    battle script, and the extension calls every handler registered for a moment
+    — `H5E_COMBAT_STARTED` and `H5E_MANA_SPENT(spent, side)`. Handlers stack, so
+    two perks may want the same moment. It works in an ORDINARY battle, not only
+    a scripted one. See docs/api/combat.md.
+  - **And one function the other way: `H5ETentCharge()`**, which hands the first
+    aid tent another use. It is what makes the mana trigger worth having — the
+    watching is done in Lua, which can read mana, and the writing in the
+    extension, which is the only side that can reach a war machine's uses.
+
 ### Changed
 
 - **Opening a scene no longer stops the editor.** Assembling one — reading the
@@ -99,21 +288,46 @@ one.
   for the two things that are about the machine and hold no path (software
   rendering, whether idles animate).
 
-- **The suites and `run-test-and-keep.bat` are told where the game is too.**
-  Three of them had kept their own copy of the guess we just took out of the
-  editor: `test-pak` opened the literal `../data/GEmaps.pak`, the Lua registry
-  check read `../bin/H5_Game_H5E.exe`, and `test-terrain` parsed two `.bin`
-  files under `_tmp/probes/` that nothing creates — someone had put them there
-  by hand once, so that suite passed on one machine and crashed on every other.
-  All three now take `HOMM5_ROOT` / `HOMM5_DATA`, and the terrain samples come
-  out of the unpacked data root like every other suite's do.
+- **`run-test-and-keep.bat` is told where the game is.** The live run that
+  builds the mod into a real install and leaves it there no longer treats the
+  directory above the checkout as the game. It reads `HOMM5_ROOT`, falls back
+  to the `.env` beside it, and REFUSES to run when neither says: a wrong
+  install here is not a crash, it is a full mod authored into a folder nobody
+  meant, reported as success.
 
-  `run-test-and-keep.bat` — the live run that builds the mod into a real
-  install and leaves it there — no longer treats the directory above the
-  checkout as the game. It reads `HOMM5_ROOT`, falls back to the `.env` beside
-  it, and REFUSES to run when neither says: a wrong install here is not a
-  crash, it is a full mod authored into a folder nobody meant, reported as
-  success.
+- **Where the game is, is SAID — never guessed.** Every tool takes `--game`,
+  `HOMM5_GAME` or `HOMM5_ROOT` (and the unpacked-data cache `--data` or
+  `HOMM5_DATA`), through one resolver, `tools/game-dir.ts`; a tool with nothing
+  said refuses — or, in a test suite, skips in so many words — instead of
+  proceeding into a made-up path. The old guess, "the checkout's parent", was
+  only ever right when the repo sat inside the install, and a worktree paid for
+  it with failures three calls away from the reason. Three suites had kept a
+  copy of that guess: `test-pak` opened the literal `../data/GEmaps.pak`, the
+  Lua registry check read `../bin/H5_Game_H5E.exe`, and `test-terrain` parsed
+  two `.bin` files under `_tmp/probes/` that nothing creates — someone had put
+  them there by hand once, so that suite passed on one machine and crashed on
+  every other. The e2e suite follows: a worktree now builds its sandboxes FROM
+  a real install without also playing IN it.
+
+- **The C1M1 reconstruction is a release gate, not a test run.** It rebuilds a
+  whole shipped mission over an extracted fixture — minutes that measure the
+  editor's completeness, not a change. A bare `playwright test` (and so
+  `test-e2e-fast`, and what `npm test` runs) never picks it up; `npm run
+  test-e2e` sets `PW_C1M1` and runs everything, which is what a release is
+  gated on.
+
+- **The extension's source is a folder of features.** `native/homm5-editor.c`
+  is now 133 lines of includes over `core/`, `combat/`, `lua/` and `qol/` —
+  still one translation unit, so every `static` stays `static` and the build
+  does not change; the cut is proved by the DLL coming out byte-for-byte
+  identical.
+
+- **The suite can start from nothing, and the specs found their shelves.**
+  `e2e/000-cold-start` walks the real setup window from a bare install to an
+  open editor — sandboxed, or live against the real install with only OUR
+  things taken out first. The game-settings specs are their own numbered
+  family (`qol-00X`), and the sharpshooter stage is a folder of three sittings
+  the way the C1M1 stages are.
 
 ### Fixed
 
@@ -412,6 +626,49 @@ one.
   preset and a shot can override it — the battle that opens C1M1 is lit by
   `InfernoArena`, the parley that follows by daylight — and the sun, the shading
   and the tint on the particles all follow it.
+
+- **Apply no longer freezes the editor while it builds the health bar.** The
+  archive is made out of four files of the game's own, and it was getting them
+  by reading all 1.4 GB of `data.pak` into memory and decompressing every one of
+  its 84 312 members to pick out four. That ran in the main process, so the
+  whole application stopped answering for as long as it took — minutes, and
+  three and a half gigabytes of memory. It now takes those four out of the
+  unpacked data the editor already keeps, which is where everything else in the
+  app reads them from: **6 ms and 10 MB**, and the same eleven records byte for
+  byte. No archive of the game's is opened at all.
+
+- **Apply in the game settings panel cannot be started twice at once.** It
+  installs the extension and rewrites game profiles — most of a minute on a real
+  install — and it used to look exactly as unpressed while it worked, so the
+  natural thing to do while waiting was press it again and have a second Apply
+  writing the same files as the first. It now goes dead and says *applying…*
+  until the work is finished, and comes back afterwards even if it failed.
+
+- **A live e2e run no longer resets a mod it has nothing to do with.** The mod
+  stages run as a chain over one install, so the suite put that install back to
+  the chain's starting state in its GLOBAL setup — which meant every run did it,
+  including a run of one unrelated spec. Live, "the starting state" is the
+  player's installed mod with the authored content taken back out of it, and a
+  mod holding nothing else is then deleted: twenty-six megabytes, four minutes
+  of rebuilding, and an install left holding maps that point at content which is
+  no longer there — which the game loads, and dies on. The reset now happens
+  only for a run that can contain a mod stage, and says so when it does not. The
+  archive is also copied to `_tmp/mod-backup/` before anything is taken out of
+  it, so the same mistake is undoable rather than merely regrettable.
+
+- **A mod could break battle scripting for the whole game, silently.** Our battle
+  code used to be appended to the game's own `combat-startup.lua`, which the
+  engine compiles as ONE chunk — so a single bad token in ours failed every
+  declaration that file makes (`IsAttacker`, `UnitDeath`, the vocabulary every
+  combat script in the game is written against). Our code now lives in a file of
+  its own, loaded by one added line, and a mistake in it can only cost itself.
+
+- **The Lua linter knows two rules it did not.** `return;` — legal in Lua 5,
+  rejected by the Lua 4 the game runs, and it fails the whole FILE. And the
+  standard library the game does not register at all: `tinsert`, `getn`,
+  `tostring`, `pairs`, and `dofile` — which is the sharp one, since the engine's
+  own is `doFile`. Generated battle scripts are linted in the test suite now,
+  rather than in a battle.
 
 ## 0.7.0 — 2026-08-02
 

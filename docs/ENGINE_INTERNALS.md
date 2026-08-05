@@ -15,10 +15,12 @@ beside it, because they are read one at a time and the pile was 700 lines.
 | [engineInternals/ARTIFACTS_AND_EQUIPMENT.md](engineInternals/ARTIFACTS_AND_EQUIPMENT.md) | How the engine knows what a hero is wearing; sets addressed by enum value; the one function everything goes through; the 54 artifacts whose behaviour is compiled by id. |
 | [engineInternals/NECROMANCY.md](engineInternals/NECROMANCY.md) | What the raise percentage and the dark energy ceiling are made of, and which of their terms are data. |
 | [engineInternals/SPECIALIZATIONS.md](engineInternals/SPECIALIZATIONS.md) | What a hero specialization is in the data and in the code, and the shape of the term one of ours adds. |
+| [engineInternals/STACK_PLATE.md](engineInternals/STACK_PLATE.md) | The number over a creature in a battle: what it is made of, how its text becomes ours, and the health bar beside it. |
 | [engineInternals/FIRST_AID_TENT.md](engineInternals/FIRST_AID_TENT.md) | The tent: what it heals, how many uses it has, where each number is decided, and reaching a hero from a war machine. |
 | [engineInternals/LUA.md](engineInternals/LUA.md) | How the script API is registered, why the manuals disagree with it, and what adding a function costs. |
 | [engineInternals/MODS_AND_MAPS.md](engineInternals/MODS_AND_MAPS.md) | Where the game looks for mods, why a map archive can override anything, and where the generator writes. |
 | [engineInternals/EXTENSION.md](engineInternals/EXTENSION.md) | The three layers of our own extension, and what we deliberately do not do. |
+| [engineInternals/BATTLE_SCRIPTING.md](engineInternals/BATTLE_SCRIPTING.md) | How the extension reaches a fight's Lua, the moment it fires on, and what a mod must not do to `combat-startup.lua`. Its reference side is [api/combat.md](api/combat.md). |
 
 The companion documents, which are about what data and script can express
 rather than about the binary: [ARTIFACT_EFFECTS.md](ARTIFACT_EFFECTS.md),
@@ -77,8 +79,28 @@ commands in `tools/reverse/` — `lua-registry.ts` regenerates
 [EXE_LUA_REGISTRY.md](EXE_LUA_REGISTRY.md) from the binary and
 `npm run test-lua-registry` fails if the two have drifted apart; `vtable.ts`
 goes from an RTTI class name to its vtables; `trace.ts` disassembles, finds
-callers, and intersects what several functions reach. See that folder's README
-for why iced-x86 and not capstone.
+callers, and intersects what several functions reach; `match.ts` finds the same
+code in a DIFFERENT build of the game — by a jump table's shape, by byte needles
+over every function, or by scoring candidates against a reference function's
+behaviour (see engineInternals/RULES_FIXES.md, which is what it was written
+for). See that folder's README for why iced-x86 and not capstone.
+
+## How the extension's source is laid out
+
+`native/homm5-editor.c` is the ROOT of one translation unit: it holds the
+story, the `#include <windows.h>`, a list of `#include "….c"` lines, and
+`DllMain`. Every included file is a whole `.c` spliced in place — the compiler
+still sees a single file, so every `static` helper and global is shared without
+a header and stays invisible outside the DLL, which with one exported symbol
+and no C runtime is the point. The folders group by subject: `core/` (log,
+detours, calling the engine by hand, the config), `lua/` (registering
+functions, speaking to a battle), `combat/` (the terms: tent, dark energy),
+`qol/` (borderless, own profile, quick split, the stack plates, and the
+`fix-*.c` that write over the game's own code — see engineInternals/COMBAT_AI.md
+and engineInternals/RULES_FIXES.md). A file sees
+what was included before it and nothing after, so the include list is the
+order of need, not the alphabet. The split was proved by bytes: the DLL built
+from the pieces is identical to the one built from the single file.
 
 ## The rules that hold everywhere here
 

@@ -14,9 +14,10 @@ import { deflateSync } from 'node:zlib';
 import { parseTerrain, readHeights } from '../src/terrain/terrain.ts';
 import { extractMeshes, readGeometryRefFromModelXdb } from '../src/scene/geometry.ts';
 import { decodeDDS } from '../src/format/dds.ts';
+import { dataDir } from './game-dir.ts';
 
 const [mapXdb, out] = process.argv.slice(2);
-const DATA = 'data-unpacked';
+const DATA = dataDir();
 const readXdb = (href) => { const p = DATA + href.split('#')[0]; return existsSync(p) ? readFileSync(p, 'utf8') : null; };
 
 // --- terrain ---

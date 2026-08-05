@@ -9,6 +9,7 @@
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { listPaks, unpackData } from '../src/game/unpack.ts';
+import { dataDir as cacheDir, gameDirIfAny } from './game-dir.ts';
 
 const args = process.argv.slice(2);
 const flag = (name: string): boolean => args.includes(name);
@@ -18,11 +19,16 @@ const value = (name: string): string | undefined => {
 };
 const positional = args.filter((a, i) => !a.startsWith('--') && !(i > 0 && args[i - 1]!.startsWith('--')));
 
-// Default to the install this repo sits inside, which is how the editor's own
-// launcher finds the game.
-const gameDir = resolve(positional[0] || join(import.meta.dirname, '..', '..'));
+// The game is SAID — the positional argument, --game, or HOMM5_GAME — never
+// guessed from the checkout's position (tools/game-dir.ts).
+const said = positional[0] || gameDirIfAny();
+if (!said) {
+  console.error('where is the game? pass the game directory, --game <dir>, or set HOMM5_GAME');
+  process.exit(2);
+}
+const gameDir = resolve(said);
 const dataDir = join(gameDir, 'data');
-const outDir = resolve(value('--out') || join(import.meta.dirname, '..', 'data-unpacked'));
+const outDir = resolve(value('--out') || cacheDir());
 const dry = flag('--dry');
 const force = flag('--force');
 

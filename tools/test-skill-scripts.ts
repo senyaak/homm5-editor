@@ -7,14 +7,16 @@
 // line it came with.
 
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { join } from 'node:path';
 
 import {
-  COMBAT_STARTUP, patchCombatStartup, skillCombatScripts, skillMapScripts, skillScriptFiles,
+  COMBAT_RUNTIME, COMBAT_STARTUP, combatRuntimeFile, patchCombatStartup, skillCombatScripts,
+  skillMapScripts, skillScriptFiles,
 } from '../src/mods/skill-scripts.ts';
 import { SCRIPT_DIR, patchCommonScript } from '../src/mods/artifact-scripts.ts';
 import { luaDiagnostics } from '../src/script/lua-lint.ts';
 import type { ModHeroSkill } from '../src/mods/hero-skills.ts';
+import { dataDir } from './game-dir.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {
@@ -127,20 +129,23 @@ check('the patched common script passes the linter', luaDiagnostics(common).leng
 // the empty hooks afterwards, so anything of ours placed earlier is overwritten
 // a moment later by a declaration that does nothing.
 
-const gameRoot = process.env.HOMM5_GAME ?? resolve(import.meta.dirname, '..', '..');
+const shippedCombatAt = join(dataDir(), COMBAT_STARTUP);
 let shippedCombat: string | null = null;
 try {
-  shippedCombat = readFileSync(resolve(import.meta.dirname, '..', 'data-unpacked', COMBAT_STARTUP), 'latin1');
+  shippedCombat = readFileSync(shippedCombatAt, 'latin1');
 } catch {
   shippedCombat = null;
 }
 
-check('a mod with no battle script leaves combat-startup.lua alone',
-  patchCombatStartup('doFile("/scripts/combat-common.lua")\n', [bare])
-  === 'doFile("/scripts/combat-common.lua")\n');
+// ONE LINE, whatever the mod carries. Our own code lives in its own file now,
+// because the engine compiles combat-startup.lua as a single chunk: a mistake in
+// ours used to take every declaration the GAME makes in that file down with it.
+check('what we add to combat-startup.lua is one doFile',
+  patchCombatStartup('doFile("/scripts/combat-common.lua")\n', [bare]).trimEnd()
+  === `doFile("/scripts/combat-common.lua")\r\n\r\n-- homm5-editor\r\ndoFile("/${COMBAT_RUNTIME}");`);
 
 if (shippedCombat === null) {
-  console.log(`  skip  the shipped combat-startup.lua is not unpacked (${gameRoot})`);
+  console.log(`  skip  the shipped combat-startup.lua is not unpacked (${shippedCombatAt})`);
 } else {
   const combat = patchCombatStartup(shippedCombat, [SPARE_KIT]);
   check('every line the game ships is still there', combat.startsWith(shippedCombat.trimEnd()));
@@ -149,11 +154,46 @@ if (shippedCombat === null) {
   // The reason for the tail, stated as a test: our doFile has to come after the
   // declarations, or the file we load is undone by them.
   check('our load comes after the game\'s declarations',
-    combat.indexOf(`doFile("/${SCRIPT_DIR}/SPARE_KIT-combat.lua");`)
+    combat.indexOf(`doFile("/${COMBAT_RUNTIME}");`)
       > combat.lastIndexOf('function DefenderWarMachineDeath('));
-  // And it does not take a name the game owns: the block is straight-line code.
+  // And the file behind that line: the runtime, then a doFile per skill.
+  const runtime = combatRuntimeFile([SPARE_KIT]);
+  check('the runtime file loads the skill\'s own battle script',
+    runtime.text.includes(`doFile("/${SCRIPT_DIR}/SPARE_KIT-combat.lua");`));
+  // THE TEST THAT WOULD HAVE SAVED A DAY. A `return;` in this file compiled
+  // nowhere and the game said nothing; the linter knows that rule now, so a
+  // generated file is checked here rather than in a battle.
+  check('the runtime file passes the linter', luaDiagnostics(runtime.text).length === 0,
+    JSON.stringify(luaDiagnostics(runtime.text).slice(0, 1)));
+  // And it does not take a name the game owns: what we append to the game's own
+  // file is one `doFile` line, nothing else.
   check('and it redefines nothing of the game\'s',
     !/^\s*function\s/m.test(combat.slice(shippedCombat.trimEnd().length)));
+  // THE ONE NAME OF THEIRS THE RUNTIME DOES TAKE, and the rule that makes it
+  // safe. `UnitMove` is how a battle announces every unit's turn — the only
+  // recurring moment there is — so the mana watch has to sit on it. Taking it
+  // means CHAINING: keep the old function, call it, and hand back what it
+  // returned. The engine runs `Callback(n, UnitMove(name))`, so a wrapper that
+  // swallows the answer turns every turn into "Not enough arguments"; that is
+  // measured, in game, and this is what stops it coming back.
+  const wrap = runtime.text.slice(runtime.text.indexOf('H5E_OLD_UNIT_MOVE'));
+  check('the mana watch chains UnitMove rather than replacing it',
+    wrap.includes('H5E_OLD_UNIT_MOVE = UnitMove;')
+      && wrap.includes('H5E_OLD_UNIT_MOVE(unitName)')
+      && /return answer\s*\r?\nend;/.test(wrap));
+  // AND IT ASKS WHETHER HE IS THERE. `GetUnitManaPoints` on a name that is not
+  // in this battle RAISES — it does not hand back nil — and the game prints
+  // «Unit "defender-hero" is not exists» in red over the battle every turn. Most
+  // battles are against a wandering stack and have no defending hero at all.
+  //
+  // The noise is the small half. A raise ends the function where it stands, so
+  // whichever hero is asked AFTER the missing one is never read: attack a hero
+  // with a neutral stack and the watch dies before it reaches the one who is
+  // really there. `exist` is the engine's own question and answers 1 or nil.
+  const watch = runtime.text.slice(runtime.text.indexOf('function H5ECheckMana'));
+  const guarded = watch.indexOf('exist(H5E_MANA_NAMES[i])');
+  check('the mana watch asks whether the hero is in this battle before reading him',
+    guarded >= 0 && guarded < watch.indexOf('GetUnitManaPoints'));
   check('the patched combat startup passes the linter', luaDiagnostics(combat).length === 0,
     JSON.stringify(luaDiagnostics(combat).slice(0, 1)));
 }

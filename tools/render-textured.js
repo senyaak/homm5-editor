@@ -8,9 +8,10 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { extractMeshes, readGeometryRefFromModelXdb } from '../src/scene/geometry.ts';
 import { decodeDDS } from '../src/format/dds.ts';
+import { dataDir } from './game-dir.ts';
 
 const [modelXdb, ddsPath, out] = process.argv.slice(2);
-const DATA = 'data-unpacked';
+const DATA = dataDir();
 
 const ref = readGeometryRefFromModelXdb(readFileSync(modelXdb, 'utf8'));
 const bin = readFileSync(`${DATA}/bin/Geometries/${ref.uid}`);

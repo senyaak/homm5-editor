@@ -13,6 +13,7 @@ import { join } from 'node:path';
 import { buildBlankMap } from '../src/map/blank-map.ts';
 import { loadMap } from '../src/map/map.ts';
 import { Registry } from '../src/schema/registry.ts';
+import { dataDir } from './game-dir.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {
@@ -90,7 +91,7 @@ function testAgainstOracles(dir: string, dataRoot: string): void {
 testSelfContained();
 
 const dir = process.argv[2] || process.env.HOMM5_BLANKS;
-const dataRoot = process.env.HOMM5_DATA || join(import.meta.dirname, '..', 'data-unpacked');
+const dataRoot = dataDir();
 if (dir && existsSync(dir) && existsSync(join(dataRoot, 'GameMechanics'))) testAgainstOracles(dir, dataRoot);
 else console.log('\n(no blank oracles + game data — pass a blanks dir and set HOMM5_DATA for the byte-exact check)');
 

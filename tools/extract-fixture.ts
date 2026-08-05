@@ -11,6 +11,7 @@
 import { openSync, closeSync, statSync, existsSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { readIndex, readEntryFrom } from '../src/format/pak.ts';
+import { gameDir as saidGameDir } from './game-dir.ts';
 
 const args = process.argv.slice(2);
 const value = (name: string): string | undefined => {
@@ -25,7 +26,8 @@ if (!/^C\d+M\d+$/.test(mission)) {
   process.exit(1);
 }
 
-const gameDir = resolve(value('--game') || join(import.meta.dirname, '..', '..'));
+// Said, never guessed from the checkout's position (tools/game-dir.ts).
+const gameDir = saidGameDir();
 const archive = join(gameDir, 'UserMODs', 'All_campaigns.data.h5u');
 const outDir = resolve(value('--out') || join(import.meta.dirname, '..', '_tmp', 'fixtures', mission));
 

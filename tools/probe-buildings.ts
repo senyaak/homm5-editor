@@ -38,6 +38,7 @@ import { footprintOf, tilesOf } from '../src/mods/dwellings.ts';
 import type { Footprint, Tile } from '../src/mods/dwellings.ts';
 import { allFields, fieldOrder, parseTypeSpec } from '../src/schema/typespec.ts';
 import type { SpecType } from '../src/schema/typespec.ts';
+import { dataDir } from './game-dir.ts';
 
 const EOL = '\r\n';
 
@@ -48,7 +49,7 @@ const REMOVE = args.includes('--remove');
 const rest = args.filter((a) => a !== '--remove');
 /** The map the buildings are added to: a `.h5m` in the install's H5E folder. */
 const MAP_STEM = rest[0] ?? 'Straker Atk';
-const DATA = rest[1] ?? process.env.HOMM5_DATA ?? join(REPO, 'data-unpacked');
+const DATA = rest[1] ?? dataDir();
 /** The install the checkout sits in — where the mod and the map are written. */
 const GAME = join(REPO, '..');
 

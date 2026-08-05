@@ -22,6 +22,11 @@
 // AND IT CLEANS UP. The sandbox goes at the end, like every other throwaway
 // install the suite makes — unless `HOMM5_NO_REMOVE` is set (`npm run e2e-live`),
 // which is the switch that says "leave me something to look at".
+//
+// SANDBOXED EVEN LIVE, on purpose: `freshInstall` wipes its folder whole, so it
+// may never be handed the real one — and the bare world it builds IS the
+// subject here. The spec that does a cold start to the real install, through
+// the real window, is 000-cold-start.spec.ts; see `liveHome` in mods.ts.
 
 import { test, expect } from '@playwright/test';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync } from 'node:fs';

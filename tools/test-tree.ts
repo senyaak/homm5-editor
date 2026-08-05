@@ -10,8 +10,9 @@ import { readTree, nodeAt, setPath, addStringItem, addRefItem, removeItem, appen
 import { mapSchema, resolveSchemaAtPath, deref } from '../src/schema/schema.ts';
 import { buildItem, isBuildable } from '../src/schema/skeleton.ts';
 import { children, find } from '../src/format/xml.ts';
+import { dataDir } from './game-dir.ts';
 
-const dataRoot = process.argv[2] ?? 'data-unpacked';
+const dataRoot = process.argv[2] ?? dataDir();
 
 /**
  * Any map the data root has, preferring a rich one.

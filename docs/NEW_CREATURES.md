@@ -512,6 +512,46 @@ second upgrade. Worth knowing that the model's texture is named `T3_Elf_Sniper-h
 reuses the Grand Elf's skin, so up close it looks like an elf, and that is the game's own
 Sharp Shooter looking like that, not our copy going wrong. A recolour is still open.
 
+## Abilities of our own, and the first of them: `ABILITY_DRAGON`
+
+**Almost no ability in this game is code.** A creature's `<Abilities>` is a list of ids in
+its record, and the engine asks *"does this creature have that one"* wherever it matters —
+`ABILITY_UNDEAD` is not a behaviour, it is a flag that resurrection, morale and the mind
+spells each look at separately. So an ability nothing asks about does nothing at all, which
+is exactly what a **tag** needs to be.
+
+Adding one costs the same three global things an artifact costs, and no executable at all:
+
+| what | where |
+|---|---|
+| the enum item and the name→number entry | `types.xml` |
+| the size the table declares | `types.xml`, `ref_table_num_objs` on `Table_CreatureAbility_CombatAbility` |
+| the object, with its caption and description | `GameMechanics/RefTables/CombatAbilities.xdb` |
+
+Creatures and artifacts also need a ceiling raised inside `H5_Game.exe`, because the engine
+counts those two for itself. Abilities it does not: the table is loaded by the generic
+loader from a descriptor of type name and path, and its size comes from types.xml.
+
+**Names ARE resolved from data.** The executable holds a compiled chain of ability names —
+and one of creature names beside it — but our creatures work, which is what proves that
+chain is not the loader's path: the xdb loader resolves an enum item through the name→number
+map in types.xml. A name only in the data is a name the game reads as nothing; a name in the
+map is an ability, with a number, and the second tag is simply the next number.
+
+`src/mods/ability-files.ts` owns this, and `EDITOR_ABILITIES` is the list — append-only,
+because the number is what a creature's record stores. The picker offers them before the mod
+that carries them is installed and reads them out of the data afterwards.
+
+**What `ABILITY_DRAGON` is.** A TAG and nothing more: an ability with a number, a caption
+and a description, carried in a creature's own record and asked about by nothing in the
+engine. It is the worked example of the paragraph above — what adding an ability of ours
+costs, and what it does, which is nothing until something asks.
+
+It is deliberately not wired to the Rune of the Dragon Form. That fix repairs the engine's
+own question (see [engineInternals/RULES_FIXES.md](engineInternals/RULES_FIXES.md)), and a
+rune can only be cast on a creature of the Dwarves anyway, so a tag on a creature of yours
+would answer a question the game never asks of it.
+
 ## Trying it: `tools/make-test-map.ts`
 
 Two heroes on opposing teams with a stack each, and a neutral stack between them. Built by

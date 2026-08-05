@@ -16,6 +16,7 @@
 // file, down to the nesting that made `ref_table_num_objs` hard to splice (its
 // number sits in a <Data> inside a <Data>).
 
+import { ABILITY_TABLE } from '../src/mods/ability-files.ts';
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, posix } from 'node:path';
@@ -31,6 +32,7 @@ import type { CreatureMod } from '../src/mods/mod-model.ts';
 import type { DataReader, ModFile } from '../src/mods/mod-files.ts';
 import { blankStats, creatureRoot, readStats, SHIPPED_CREATURES } from '../src/mods/creatures.ts';
 import { readEntries } from '../src/format/pak.ts';
+import { dataDir } from './game-dir.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {
@@ -89,8 +91,19 @@ function miniature(): Map<string, Buffer> {
 \t\t\t\t<Item>CREATURE_CYCLOP_BLOODEYED</Item>\r
 \t\t\t</Values>\r
 \t\t</Item>\r
+\t\t<Item>\r
+\t\t\t<Name>ECombatAbility</Name>\r
+\t\t\t<Values>\r
+\t\t\t\t<Item>ABILITY_NONE</Item>\r
+\t\t\t\t<Item>ABILITY_DESTRUCTION_MAGIC_MAGNETISM</Item>\r
+\t\t\t</Values>\r
+\t\t</Item>\r
 \t</Enums>\r
 \t<Values>\r
+\t\t<Item>\r
+\t\t\t<Name>ABILITY_DESTRUCTION_MAGIC_MAGNETISM</Name>\r
+\t\t\t<Value>174</Value>\r
+\t\t</Item>\r
 \t\t<Item>\r
 \t\t\t<Name>CREATURE_UNKNOWN</Name>\r
 \t\t\t<Value>0</Value>\r
@@ -114,8 +127,34 @@ function miniature(): Map<string, Buffer> {
 \t\t\t\t</Item>\r
 \t\t\t</Params>\r
 \t\t</Item>\r
+\t\t<Item>\r
+\t\t\t<TypeName>Table_CreatureAbility_CombatAbility</TypeName>\r
+\t\t\t<Params>\r
+\t\t\t\t<Item>\r
+\t\t\t\t\t<Key>ref_table_num_objs</Key>\r
+\t\t\t\t\t<Data>\r
+\t\t\t\t\t\t<Data>175</Data>\r
+\t\t\t\t\t</Data>\r
+\t\t\t\t</Item>\r
+\t\t\t</Params>\r
+\t\t</Item>\r
 \t</Tables>\r
 </TypeSystem>`,
+
+    'GameMechanics/RefTables/CombatAbilities.xdb': `<?xml version="1.0" encoding="UTF-8"?>\r
+<Table_CreatureAbility_CombatAbility>\r
+\t<objects>\r
+\t\t<Item>\r
+\t\t\t<ID>ABILITY_NONE</ID>\r
+\t\t\t<obj>\r
+\t\t\t\t<CombatLogTexts/>\r
+\t\t\t\t<NameFileRef href=""/>\r
+\t\t\t\t<DescriptionFileRef href=""/>\r
+\t\t\t\t<ActivatedSpell>SPELL_NONE</ActivatedSpell>\r
+\t\t\t</obj>\r
+\t\t</Item>\r
+\t</objects>\r
+</Table_CreatureAbility_CombatAbility>`,
 
     'GameMechanics/RefTables/Creatures.xdb': `<?xml version="1.0" encoding="UTF-8"?>\r
 <Table_Creature_CreatureType>\r
@@ -274,6 +313,22 @@ check('ref_table_num_objs was retuned', types.includes('<Data>3</Data>'));
 check('MaxElements was retuned', types.includes('<MaxElements>3</MaxElements>'));
 check('MinElements was left alone (it is a floor)', types.includes('<MinElements>2</MinElements>'));
 
+// The editor's own abilities: tags, which cost the same three things an
+// artifact costs and no executable at all. Shipped with any mod that has
+// creatures, so the id a record names always exists in the table beside it.
+check('the ability enum gained ours', types.includes('<Item>ABILITY_DRAGON</Item>'));
+check('and its name→number entry',
+  /<Name>ABILITY_DRAGON<\/Name>\r?\n\s*<Value>175<\/Value>/.test(types));
+check('the ability table\'s declared size grew by one', types.includes('<Data>176</Data>'));
+const abilities = asText(files, ABILITY_TABLE);
+check('the ability table gained the object', abilities.includes('<ID>ABILITY_DRAGON</ID>'));
+check('pointing at texts the mod carries',
+  abilities.includes('Creature_abilities/H5E/Dragon_name.txt')
+  && files.has('Text/Game/Creatures/Creature_abilities/H5E/Dragon_name.txt'));
+check('the caption is the game\'s own UTF-16',
+  files.get('Text/Game/Creatures/Creature_abilities/H5E/Dragon_name.txt')?.toString('utf16le', 2)
+    .startsWith('Дракон') === true);
+
 // The ref table — one entry per creature, each with its own inline object.
 const table = asText(files, 'GameMechanics/RefTables/Creatures.xdb');
 check('the table has shipped + added entries', [...table.matchAll(/<ID>CREATURE_/g)].length === 3);
@@ -382,7 +437,7 @@ check('an empty mod is refused (there is nothing to open a slot for)',
 
 // ---- 2. against the real Sharp Shooter ---------------------------------------
 
-const dataRoot = process.env.HOMM5_DATA ?? join(import.meta.dirname, '..', 'data-unpacked');
+const dataRoot = dataDir();
 if (!existsSync(join(dataRoot, 'types.xml'))) {
   console.log(`\nskipping the real-data checks — no unpacked data at ${dataRoot}`);
 } else {

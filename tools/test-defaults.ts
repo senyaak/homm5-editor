@@ -38,6 +38,7 @@ import { objectProps, objectSchema, mapSchema } from '../src/schema/schema.ts';
 import type { FieldSchema } from '../src/schema/schema.ts';
 import { readTypeSpec, declaredDefaults, typesXmlPath } from '../src/schema/typespec.ts';
 import type { XmlElement } from '../src/format/xml.ts';
+import { dataDir } from './game-dir.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {
@@ -247,7 +248,7 @@ function testAgainstSpec(dataRoot: string): void {
 // The committed measurement always; a live map too, when one is pointed at —
 // which is how a drift between the fixture and the map that made it would show.
 testAgainstReference(fixtureBodies(), 'the measured fixture');
-testAgainstSpec(process.env.HOMM5_DATA || join(import.meta.dirname, '..', 'data-unpacked'));
+testAgainstSpec(dataDir());
 const refMap = process.env.HOMM5_DEFAULTS_MAP || process.argv[2];
 if (refMap && existsSync(refMap)) testAgainstReference(referenceBodies(refMap), refMap);
 

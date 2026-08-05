@@ -44,8 +44,25 @@ export const EFFECTS_FILE = join('bin', 'homm5-editor-effects.txt');
  *     that into the combat machine once, when it builds it, and every gate reads
  *     the copy directly. So this is added there, to the machine of the hero who
  *     brought it. A property of the HERO, like the necromancy percentage.
+ *   `tent_healing` — POINTS added to what one use of the tent is worth, on top
+ *     of the {10,20,50,100} its owner's War Machines mastery is worth. It is the
+ *     tent's own number being raised, so whatever doubles that number doubles
+ *     this too — the extension asks the same question the engine asks before its
+ *     own doubling and applies the same factor.
+ *   `tent_health` — PERCENT added to the tent's own hit points, which the engine
+ *     decides in a place of its own and where its own perk already multiplies
+ *     them. Percent rather than points, because the number it applies to already
+ *     grows with the owner's mastery.
+ *   `tent_cleanse` — LEVELS added to the worst effect the tent can lift off the
+ *     stack it heals. The engine's own number is {0,0,1,3} by mastery and it
+ *     compares each effect's spell level against it, so war machines alone never
+ *     reach a level 4 or 5 curse.
+ *   `tent_mana` — charges given back per HUNDRED points of mana its owner spends
+ *     in the battle. Two is one charge per fifty.
  */
-export const EFFECT_STATS = ['necromancy', 'energy', 'tent_charges'] as const;
+export const EFFECT_STATS = [
+  'necromancy', 'energy', 'tent_charges', 'tent_healing', 'tent_health', 'tent_cleanse', 'tent_mana',
+] as const;
 export type EffectStat = (typeof EFFECT_STATS)[number];
 
 /**

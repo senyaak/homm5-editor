@@ -28,7 +28,10 @@ export function registerTree(): void {
 
   ipcMain.handle('map:set-path', async (_e: IpcMainInvokeEvent, p: SetPathPayload): Promise<ObjectEditResult> => {
     const session = need();
-    const done = record(session, `set ${p.path.join('.')}`, { map: true }, () => setPath(session.map.desc, p.path, p.value));
+    // An empty reference is written `<MainHero/>` and carries no href to notice,
+    // so the schema is asked whether this field is one — see setPath.
+    const isRef = !!resolveSchemaAtPath(mapSchema, p.path)?.['x-ref'];
+    const done = record(session, `set ${p.path.join('.')}`, { map: true }, () => setPath(session.map.desc, p.path, p.value, isRef));
     if (!done) throw new Error(`cannot set ${p.path.join('.')}`);
     return { ok: true };
   });
@@ -77,7 +80,9 @@ export function registerTree(): void {
   ipcMain.handle('object:set-path', async (_e: IpcMainInvokeEvent, p: ObjectSetPathPayload): Promise<ObjectEditResult> => {
     const session = need();
     const obj = findObject(session, p.id);
-    const done = record(session, `set ${p.path.join('.')}`, { map: true }, () => setPath(obj.el, p.path, p.value));
+    // The same question the map's own set-path asks, for the same reason.
+    const isRef = !!resolveObjectPath(obj.type, p.path)?.['x-ref'];
+    const done = record(session, `set ${p.path.join('.')}`, { map: true }, () => setPath(obj.el, p.path, p.value, isRef));
     if (!done) throw new Error(`cannot set ${p.path.join('.')}`);
     return { ok: true };
   });

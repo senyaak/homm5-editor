@@ -16,6 +16,7 @@ import {
   HERO_CLASS_TABLE, HERO_SKILL_TABLE, MAX_IMM8, findCountAccessor, findLoadSite, patchTableLimit, readTableLimit,
 } from '../src/exe/table-limit.ts';
 import type { TableSpec } from '../src/exe/table-limit.ts';
+import { gameDirIfAny } from './game-dir.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {
@@ -173,9 +174,12 @@ function differing(before: Buffer, after: Buffer): number {
 
 // --- the real thing, read only ------------------------------------------------
 
-const gameRoot = join(import.meta.dirname, '..', '..');
-for (const exe of ['bin/H5_Game_H5E.exe', 'bin/H5_Game.exe']) {
-  const path = join(gameRoot, exe);
+// Said, never guessed from the checkout's position (tools/game-dir.ts); with
+// nothing said, the real executables are skipped in so many words.
+const gameRoot = gameDirIfAny();
+if (!gameRoot) console.log('  skip  the real executables — pass --game <dir> or set HOMM5_GAME');
+for (const exe of gameRoot ? ['bin/H5_Game_H5E.exe', 'bin/H5_Game.exe'] : []) {
+  const path = join(gameRoot!, exe);
   if (!existsSync(path)) continue;
   const buf = readFileSync(path);
   console.log(`\n${exe}:`);

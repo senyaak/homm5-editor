@@ -929,6 +929,37 @@ Two constraints shape the design, both learned the hard way:
       - **Team colour**: creatures carry none (checked — the two materials are plain diffuse
         maps), but flags and banners do, and those are the objects where a player-colour
         layer is real.
+- [ ] ⬜ **Abilities of your own — a tab beside the creatures, and a Lua question.**
+      `src/mods/ability-files.ts` already adds them: an ability costs the enum item and the
+      name→number entry in `types.xml`, the size that table declares, and an object with a
+      caption and a description in `CombatAbilities.xdb` — and **no executable at all**, since
+      the engine counts creatures and artifacts for itself but loads this table generically.
+      `ABILITY_DRAGON` is the first and is hardcoded in `EDITOR_ABILITIES`. Two steps left,
+      and they are the ones that make it a feature rather than one tag:
+      - **The tab.** Abilities become another list on the mod (`creatures`, `artifacts`,
+        `sets`, `skills`, `classes`, `specializations` — one more), authored in a second tab
+        of the Units & Artifacts window: id, caption, description. Numbers continue after
+        ours and the list is append-only, because the number is what a creature's record
+        stores. The picker already offers what is not installed yet, so nothing there changes.
+
+        **The editor's own are shown and not deletable** — neither removed nor renumbered.
+        A rule of ours asks about them by id (the Rune of the Dragon Form asks about
+        `ABILITY_DRAGON`), and a creature already built names the number, so deleting one
+        would leave saved creatures pointing at an id that no longer exists and would move
+        every id after it. `tools/test-abilities.ts` pins the numbers, so an edit to
+        `EDITOR_ABILITIES` fails a test rather than a saved mod; the tab has to refuse the
+        same thing in the UI, where a person would otherwise try it.
+      - **The Lua question.** The game has no "does this creature have that ability" of its
+        own — the executable's registry has only `ControlHeroCustomAbility`, and that is about
+        a hero — so a script cannot read a tag today. The extension already registers
+        functions of its own in both tables (`EditorTest`, `RestoreDarkEnergy`), so this is
+        one more, and it is what turns a tag from a thing the extension asks about into a
+        thing a MAP can ask about.
+
+      Why it is worth doing: almost no ability in this game is code. The engine asks "does
+      this creature have that one" where it matters, which is why Undead is a flag rather
+      than a behaviour — so an ability nobody asks about is exactly what a tag is, and the
+      question can then be asked from a rule of ours, from a script, or from both.
 - [ ] ⬜ **Model picker** over `Characters/Creatures/**` and `_(Model)/**`, with a preview —
       the renderer can already draw geometry.
 - [ ] ⬜ **Fetch Steamless on request**, pinned and checksummed, never "latest":

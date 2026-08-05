@@ -16,6 +16,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
 import { addImport, imports } from '../src/exe/exe-import.ts';
+import { gameDirIfAny } from './game-dir.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {
@@ -23,7 +24,13 @@ function check(name: string, ok: boolean, detail = ''): void {
   if (!ok) failures++;
 }
 
-const gameRoot = process.env.HOMM5_GAME ?? resolve(import.meta.dirname, '..', '..');
+// Said, never guessed from the checkout's position (tools/game-dir.ts) — and
+// nothing said skips the suite in so many words, since its subject is the exe.
+const gameRoot = gameDirIfAny();
+if (!gameRoot) {
+  console.log('no game said — pass --game <dir> or set HOMM5_GAME; skipping');
+  process.exit(0);
+}
 const exe = join(gameRoot, 'bin', 'H5_Game_H5E.exe');
 if (!existsSync(exe)) {
   console.log(`no ${exe} — run npm run unwrap-exe first; skipping`);
