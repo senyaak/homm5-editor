@@ -45,6 +45,18 @@ const TREE = 'DialogScenes/';
 /** `<anything>/DialogScene.xdb`, in either slash. */
 const SCENE_IN_ARCHIVE = /^(.+)[\\/]DialogScene\.xdb$/i;
 
+/**
+ * The OTHER kind of cutscene: a Maya-baked `AnimScene`, a list of roles with a
+ * clip each and the camera among them (docs/DIALOG_SCENES.md, top).
+ *
+ * Counted, not offered — the editor cannot play one. It is here because the
+ * archive named `All_campaigns.cutscenes.h5u` holds six of these and not one
+ * dialog scene, and answering 272 MB of cutscenes with "no scene" is a true
+ * sentence that reads as a broken reader. Saying which kind is in there is the
+ * difference between "nothing here" and "nothing of THIS kind here".
+ */
+const ANIM_IN_ARCHIVE = /[\\/]([^\\/]*)\.\(AnimScene\)\.xdb$/i;
+
 /** The document that makes a folder a scene. */
 export const SCENE_FILE = 'DialogScene.xdb';
 
@@ -59,6 +71,14 @@ const nameOf = (inner: string): string => (inner.startsWith(TREE) ? inner.slice(
 /** True when this path is a file worth opening as a container of scenes. */
 export const isArchive = (path: string): boolean => MOUNTABLE.test(path);
 
+/** What one file turned out to hold. */
+export interface FileScenes {
+  /** Dialog scenes — the ones this editor opens. */
+  scenes: SceneSource[];
+  /** Baked AnimScenes, by folder. Named so the window can say what IS in there. */
+  anim: string[];
+}
+
 /**
  * Every scene inside one archive, from its listing alone.
  *
@@ -66,20 +86,29 @@ export const isArchive = (path: string): boolean => MOUNTABLE.test(path);
  * file with no scene in it is an empty list, which is a normal answer for a map
  * that has none.
  */
-export function listScenesIn(file: string): SceneSource[] {
+export function listScenesIn(file: string): FileScenes {
   let index: ZipIndexEntry[];
   const fd = openSync(file, 'r');
   try { index = readIndex(fd, statSync(file).size); } finally { closeSync(fd); }
   const byInner = new Map<string, SceneSource>();
+  const anim = new Set<string>();
   for (const e of index) {
     const m = SCENE_IN_ARCHIVE.exec(e.name);
-    if (!m) continue;
+    if (!m) {
+      if (ANIM_IN_ARCHIVE.test(e.name)) {
+        anim.add(e.name.replace(/\\/g, '/').split('/').slice(0, -1).join('/'));
+      }
+      continue;
+    }
     const inner = m[1]!.replace(/\\/g, '/');
     // One entry per folder: an archive that carries a scene twice over (a patch
     // built on top of an older member) still offers it once.
     if (!byInner.has(inner.toLowerCase())) byInner.set(inner.toLowerCase(), { inner, name: nameOf(inner) });
   }
-  return [...byInner.values()].sort((a, b) => a.name.localeCompare(b.name));
+  return {
+    scenes: [...byInner.values()].sort((a, b) => a.name.localeCompare(b.name)),
+    anim: [...anim].sort(),
+  };
 }
 
 const archivesIn = (dir: string): string[] => {

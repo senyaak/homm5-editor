@@ -387,12 +387,30 @@ function advanceShotFx(): void {
  * mid-edit: a scene is watched instead of a map, not on top of one.
  */
 export async function openScene(inner: string, file?: string): Promise<SceneInfo> {
+  // A stopwatch per stage of the open. The main process reports its own half
+  // (`[perf] scene:open`); this is the half that happens in the window, which
+  // is the half that can stop it painting.
+  const marks: Array<[string, number]> = [];
+  let mark = performance.now();
+  const took = (what: string): void => { marks.push([what, performance.now() - mark]); mark = performance.now(); };
+  /**
+   * Let the window draw.
+   *
+   * Between the pieces of the build, not inside them: the point is that the
+   * spinner keeps spinning and the list stays scrollable while a scene comes
+   * up, and a frame boundary is where the browser gets to do that.
+   */
+  const breathe = (): Promise<void> => new Promise((r) => { requestAnimationFrame(() => r()); });
+
   const { stage: payload, shots, actors, info, textures } = await api.openScene(file ? { inner, file } : { inner });
+  took('build+transfer');
   // The textures travelled once each and the payload holds handles into that
   // table; nothing below this line should ever meet one. See
   // src/scene/tex-table.ts.
   unpackTextures([payload, shots, actors], textures);
+  took('textures');
   clearActors();
+  await breathe();
   // The stage arrives with its creatures' bones (src/dialog/play.ts asks for
   // them unconditionally), and the mode is what decides whether buildWorld
   // gives them an animated body. `all` rather than `visible`: a shot cuts to
@@ -401,8 +419,15 @@ export async function openScene(inner: string, file?: string): Promise<SceneInfo
   if (!modeBefore) modeBefore = idleMode();
   setIdleMode('all');
   buildWorld(payload);
+  took('world');
+  await breathe();
 
+  // The actors, a few at a time. Forty-five skinned bodies is the longest
+  // stretch of this after the world itself, and each one is independent — so
+  // the loop hands the frame back every few rather than holding it for all.
+  let since = 0;
   for (const actor of actors) {
+    if (++since >= 8) { since = 0; await breathe(); }
     const body = bodyOf(actor);
     // A COPY of the skin: the clip lives on it and `poseAll` swaps that clip
     // per figure, while the payload's skin is shared by every figure of the
@@ -423,14 +448,25 @@ export async function openScene(inner: string, file?: string): Promise<SceneInfo
       fire: [], holds: new Set<string>(),
     });
   }
+  took('actors');
+  await breathe();
   // One measurement per CHARACTER — the six swordsmen of a kind share a clip
   // set, and posing a skeleton 45 times to learn the same thing is waste.
   const measured = new Map<ActorView['clips'], Set<string>>();
+  since = 0;
   for (const p of playing.players) {
     let known = measured.get(p.actor.clips);
-    if (!known) { known = holdsAt(p); measured.set(p.actor.clips, known); }
+    if (!known) {
+      // Posing every clip of a character to see which ones move the body: the
+      // expensive half of this, and the reason it counts fresh measurements
+      // rather than players when deciding to breathe.
+      if (++since >= 4) { since = 0; await breathe(); }
+      known = holdsAt(p);
+      measured.set(p.actor.clips, known);
+    }
     p.holds = known;
   }
+  took('clip measurement');
 
   // The scene's light came down on the floors (src/dialog/play.ts); remember it
   // as what a shot without one of its own falls back to.
@@ -444,6 +480,7 @@ export async function openScene(inner: string, file?: string): Promise<SceneInfo
     ...actors.flatMap((a) => a.idleFx.map((f) => f.uid)),
   ])];
   fxBank = uids.length ? await api.fx(uids) : {};
+  took('effects');
 
   // …and lit. An actor's idle effect is not a moment in the scene, it is what
   // that creature IS — the fire an inferno soldier stands in burns through
@@ -466,6 +503,8 @@ export async function openScene(inner: string, file?: string): Promise<SceneInfo
   // The shot owns the camera while a scene is up.
   controls.enabled = false;
   show(0, 0);
+  took('first shot');
+  console.log(`[perf] scene in the window: ${marks.map(([w, ms]) => `${w} ${ms | 0}ms`).join(' · ')}`);
   return info;
 }
 
@@ -706,9 +745,16 @@ function renderCatalogue(): void {
     list.append(row);
   }
   const where = source.file.split(/[\\/]/).pop() ?? source.file;
+  // An empty list says which KIND was missing, and what the file holds instead.
+  // A file of baked AnimScenes — `All_campaigns.cutscenes.h5u` is six of them
+  // and no dialog scene — answered with a bare "no scene" reads as a reader
+  // that failed on it.
+  const alsoAnim = source.anim.length
+    ? ` · ${source.anim.length} baked AnimScene(s) here, which this window does not play`
+    : '';
   $('sc-info').textContent = source.scenes.length
-    ? `${shown.length}${q && shown.length !== source.scenes.length ? ` of ${source.scenes.length}` : ''} scene(s) in ${where}`
-    : `no scene in ${where}`;
+    ? `${shown.length}${q && shown.length !== source.scenes.length ? ` of ${source.scenes.length}` : ''} scene(s) in ${where}${alsoAnim}`
+    : `no dialog scene in ${where}${alsoAnim || ' — nothing of either kind in it'}`;
 }
 
 /** The file the window is looking in, and what it found there. */

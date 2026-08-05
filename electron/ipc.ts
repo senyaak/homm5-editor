@@ -151,6 +151,15 @@ export interface ScenesInFileResult {
   /** The same path when it is an archive; empty when the file IS a scene. */
   archive: string;
   scenes: SceneSource[];
+  /**
+   * Baked AnimScenes in the same file, by folder — counted, not offered.
+   *
+   * The editor plays dialog scenes and not these, and `All_campaigns.
+   * cutscenes.h5u` is 272 MB of exactly the other kind: six of them and no
+   * dialog scene at all. Reported so the window can say which sort of cutscene
+   * it found instead of "no scene", which reads as a reader that failed.
+   */
+  anim: string[];
 }
 
 /** What a scene is, for the window that plays it. */

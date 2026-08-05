@@ -44,6 +44,21 @@ await build({
   sourcemap: true,
 });
 
+// The scene builder is a SECOND entry point, not part of that bundle: it is
+// forked as its own process (electron/scene-jobs.ts), so it needs a file of its
+// own to be forked as. Beside main.js in electron/, which is where the fork
+// path looks for it in a packaged app.
+await build({
+  entryPoints: [join(root, 'electron', 'scene-worker.ts')],
+  bundle: true,
+  format: 'esm',
+  platform: 'node',
+  target: 'node22',
+  external: ['electron'],
+  outfile: join(out, 'electron', 'scene-worker.js'),
+  sourcemap: true,
+});
+
 // The preloads stay as they are: Electron's preload loader takes plain CommonJS
 // and does not strip types, which is why they are .cjs in the first place.
 for (const f of ['preload.cjs', 'setup-preload.cjs']) {

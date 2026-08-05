@@ -766,10 +766,12 @@ if (!byPath.has(showcasePath)) {
   const containers = existsSync(GAME) ? sceneArchives(GAME) : [];
   const started = performance.now();
   const found = new Map<string, string[]>();
+  const animOnly: string[] = [];
   for (const file of containers) {
-    let scenes;
-    try { scenes = listScenesIn(file); } catch { continue; }
-    if (scenes.length) found.set(file, scenes.map((s) => s.inner));
+    let held;
+    try { held = listScenesIn(file); } catch { continue; }
+    if (held.scenes.length) found.set(file, held.scenes.map((s) => s.inner));
+    else if (held.anim.length) animOnly.push(`${file.split(/[\\/]/).pop()} (${held.anim.length})`);
   }
   const ms = performance.now() - started;
   const total = [...found.values()].reduce((a, x) => a + x.length, 0);
@@ -800,6 +802,14 @@ if (!byPath.has(showcasePath)) {
     scenes.filter((s) => !s.startsWith('DialogScenes/')).map((s) => `${file.split(/[\\/]/).pop()}:${s}`));
   check('a scene can live in a map\'s own folder, and is found there',
     inMaps.length > 0, inMaps.join(', ') || 'none on this install');
+
+  // An archive with no dialog scene is not the same as an archive with nothing
+  // in it. `All_campaigns.cutscenes.h5u` — 272 MB, named for cutscenes — holds
+  // six Maya-baked AnimScenes (`Maps/Cutscenes/<mission>/_.(AnimScene).xdb`)
+  // and not one DialogScene, so the window has something to say about it other
+  // than "no scene", which reads as a reader that failed on the file.
+  check('a file of the OTHER kind of cutscene is recognised as such',
+    animOnly.length > 0, animOnly.join(', ') || 'none on this install');
 
   // The promise the whole module rests on: a dozen archives, one of them 1.3 GB,
   // answered from their central directories. Unpacking to list would be seconds.

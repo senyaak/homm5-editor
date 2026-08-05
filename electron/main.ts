@@ -18,6 +18,7 @@ import { buildScene } from '#src/scene/scene.ts';
 import { initProject } from '#src/map/project.ts';
 import { isConfigured, mountedAssets, preloadPath, readSettings, rendererFile, reportRoots } from '#electron/paths.ts';
 import { closeSetup, runSetup } from '#electron/setup.ts';
+import { stopSceneBuilder } from '#electron/scene-jobs.ts';
 import { assetRootFor, state } from '#electron/state.ts';
 import { registerApp } from '#electron/channels/app.ts';
 import { registerCampaigns } from '#electron/channels/campaigns.ts';
@@ -193,4 +194,7 @@ async function runSmoke(mapPath: string): Promise<void> {
 }
 
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
-app.on('will-quit', () => { state.session?.watch.stop(); });
+// The scene builder is a child process of ours, so it goes when we do — an
+// orphan holding a 200 MB payload outliving the window is not a thing anyone
+// would think to look for.
+app.on('will-quit', () => { state.session?.watch.stop(); stopSceneBuilder(); });

@@ -459,6 +459,21 @@ so out loud rather than going quietly green.
   is byte-identical for everything untouched. All 251 scenes round-trip.
 * `src/dialog/camera.ts` — pose to eye and back (which is what "use what I am
   looking at" is), and the travel between two poses.
+* `src/dialog/open-scene.ts` + `electron/scene-jobs.ts` — the open itself, run
+  OFF the main process. Assembling C1M1's opening is ~6.5s of reading, meshing
+  and baking; in the main process those seconds belong to nobody else, because
+  it is single-threaded, and the whole app goes deaf. It runs in a
+  `utilityProcess` now — a Node child with no Electron API, which is why every
+  path it works from arrives in the job rather than being asked for — and the
+  window builds its own half (actors, clip measurements, effects) a few at a
+  time, handing back the frame in between. `HOMM5_SCENE_INLINE=1` puts it back
+  in the main process, which is how `e2e/scene-thread.spec.ts` proves its
+  measurement is measuring something: 42 answers during a build against 8.
+
+  What is left is the transfer — ~21 MB across two process boundaries, ~2s,
+  most of it arrays of numbers being serialized and parsed. Geometry on typed
+  arrays, or a `MessagePort` from the child straight to the window, is where
+  that goes next. [~]
 * `src/dialog/scene-source.ts` — what a FILE holds. The window is opened on a
   file, the way a map is: an archive (`.h5m .h5u .h5c .h5p .pak`) is read by its
   central directory alone, and every `…/DialogScene.xdb` in it is offered — so

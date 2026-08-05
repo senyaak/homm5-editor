@@ -12,15 +12,11 @@
 
 import { dialog, ipcMain } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
-import { existsSync, mkdirSync } from 'node:fs';
-import { basename, dirname, join, relative, resolve } from 'node:path';
-import { assets } from '#src/game/assets.ts';
-import { extractMapFolder } from '#src/map/map-source.ts';
-import { buildScenePlay } from '#src/dialog/play.ts';
-import { ARCHIVE_EXT, isArchive, listScenesIn, sceneArchives, SCENE_FILE } from '#src/dialog/scene-source.ts';
-import { packTextures } from '#src/scene/tex-table.ts';
+import { basename, dirname, relative, resolve } from 'node:path';
+import { ARCHIVE_EXT, isArchive, listScenesIn, SCENE_FILE } from '#src/dialog/scene-source.ts';
 import type { SceneOpenPayload, SceneOpenResult, ScenesInFileResult } from '#electron/ipc.ts';
-import { gameData, gameRoot, mountedAssets, tmpRoot } from '#electron/paths.ts';
+import { gameData, gameRoot, tmpRoot } from '#electron/paths.ts';
+import { buildSceneOffThread, ensureChild } from '#electron/scene-jobs.ts';
 import { state } from '#electron/state.ts';
 
 /** Slashes forward, no trailing one — how a scene folder is written everywhere here. */
@@ -69,10 +65,15 @@ export function registerDialogScenes(): void {
   // is one scene, itself.
   ipcMain.handle('scene:in-file', async (_e: IpcMainInvokeEvent, file: string): Promise<ScenesInFileResult> => {
     const t0 = performance.now();
+    // Somebody looking in a file is somebody about to open a scene: start the
+    // builder now, so its ~200ms of startup is spent while they are reading the
+    // list rather than added to the first open.
+    ensureChild();
     if (isArchive(file)) {
-      const scenes = listScenesIn(file);
-      console.log(`[perf] scene:in-file ${(performance.now() - t0) | 0}ms · ${scenes.length} in ${basename(file)}`);
-      return { file, archive: file, scenes };
+      const { scenes, anim } = listScenesIn(file);
+      console.log(`[perf] scene:in-file ${(performance.now() - t0) | 0}ms · ${scenes.length} in ${basename(file)}`
+        + (anim.length ? ` (+${anim.length} AnimScene)` : ''));
+      return { file, archive: file, scenes, anim };
     }
     if (basename(file).toLowerCase() !== SCENE_FILE.toLowerCase()) {
       throw new Error(`${basename(file)} is neither an archive nor a ${SCENE_FILE}`);
@@ -80,76 +81,25 @@ export function registerDialogScenes(): void {
     const data = gameData();
     if (!data) throw new Error('no data root configured');
     const { inner } = sceneOnDisk(file, data);
-    return { file, archive: '', scenes: [{ inner, name: inner.split('/').slice(-3).join('/') }] };
+    return { file, archive: '', anim: [], scenes: [{ inner, name: inner.split('/').slice(-3).join('/') }] };
   });
 
+  // Assembled somewhere else — this handler only says WHERE things are and
+  // waits. Seven seconds of meshing in the main process is seven seconds in
+  // which no other channel answers; see electron/scene-jobs.ts.
   ipcMain.handle('scene:open', async (_e: IpcMainInvokeEvent, p: SceneOpenPayload): Promise<SceneOpenResult> => {
     const data = gameData();
     if (!data) throw new Error('no data root configured');
-    const t0 = performance.now();
     // A scene picked as a FILE brings its own root: the folder it was found in,
     // which is not necessarily anywhere the install can see.
     const onDisk = p.file && !isArchive(p.file) ? sceneOnDisk(p.file, data) : null;
-    const inner = clean(onDisk?.inner ?? p.inner);
-    const scenePath = `${inner}/${SCENE_FILE}`;
-
-    const roots = [data];
-    if (onDisk?.root) roots.unshift(onDisk.root);
-    else if (!existsSync(join(data, scenePath))) {
-      // Unpacked at its IN-GAME path, so every href in the scene — the absolute
-      // one at the arena and the relative ones at its own props — resolves
-      // through the same chain it would in the game.
-      const game = gameRoot();
-      const workspace = join(tmpRoot(), 'scenes');
-      mkdirSync(workspace, { recursive: true });
-      // Out of the archive the user pointed at, when they pointed at one: a map
-      // that carries its own scene must give up THAT scene, not the copy of the
-      // same path some other archive happens to hold.
-      const archives = p.file && isArchive(p.file) ? [p.file] : [];
-      if (!archives.length && !game) throw new Error(`${inner} is not unpacked and the game is not configured`);
-      if (!existsSync(join(workspace, scenePath))) {
-        extractMapFolder(archives.length ? archives : sceneArchives(game!), inner, workspace);
-      }
-      // The shared camera library the campaigns' shots point into. Extracted
-      // once, from the INSTALL rather than from the file the user opened — the
-      // library is not in the map that carries a scene, and half the shots of a
-      // campaign scene frame nothing without it. Best-effort: a scene of one's
-      // own points at its own cameras and must still open on an install that
-      // has no such library.
-      if (game && !existsSync(join(data, 'Dialogs')) && !existsSync(join(workspace, 'Dialogs'))) {
-        try { extractMapFolder(sceneArchives(game), 'Dialogs', workspace); }
-        catch (e) { console.warn('[scene] no shared camera library:', e instanceof Error ? e.message : String(e)); }
-      }
-      roots.unshift(workspace);
-    }
-
-    // Mods over the data root, as everywhere else, with the workspace on top.
-    const mounted = mountedAssets(data);
-    const chain = assets([...roots.slice(0, -1), ...mounted.roots]);
-    const play = buildScenePlay(chain, scenePath);
-    const placed = play.stage.floors.reduce((a, f) => a + f.instances.length, 0);
-    const clips = play.actors.reduce((a, x) => a + Object.keys(x.clips).length, 0);
-    console.log(`[perf] scene:open ${(performance.now() - t0) | 0}ms · ${inner} · `
-      + `${play.shots.length} shots, ${play.stage.geoms.length} meshes, ${placed} placed, `
-      + `${play.actors.length} actors, ${clips} clips`);
-
-    // One picture per texture on the wire, not one per mesh wearing it — the
-    // difference is 85 MB against 21 for this scene. The renderer puts them
-    // back the moment it has them.
-    const packed = packTextures([play.stage, play.shots, play.actors] as const);
-    return {
-      stage: packed.payload[0],
-      shots: packed.payload[1],
-      actors: packed.payload[2],
-      textures: packed.textures,
-      info: {
-        inner,
-        name: inner.split('/').slice(-3).join('/'),
-        stage: play.scene.stage.split('#')[0] ?? '',
-        shots: play.shots.length,
-        placed,
-        skipped: play.skipped.length,
-      },
-    };
+    return await buildSceneOffThread({
+      inner: clean(onDisk?.inner ?? p.inner),
+      data,
+      game: gameRoot(),
+      tmp: tmpRoot(),
+      ...(p.file ? { file: p.file } : {}),
+      ...(onDisk?.root ? { root: onDisk.root } : {}),
+    }) as SceneOpenResult;
   });
 }

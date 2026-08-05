@@ -64,6 +64,23 @@ one.
 
 ### Changed
 
+- **Opening a scene no longer stops the editor.** Assembling one — reading the
+  archives, meshing 600-odd props, baking 214 clips — is about six seconds, and
+  it used to happen in the main process, which is single-threaded: for those six
+  seconds nothing else answered. The map list, the object panel, the file
+  watcher, a second window: all of them waited, which from outside is
+  indistinguishable from a hang. It runs in a background process of its own now
+  (Electron's `utilityProcess`), and the window keeps its own hands free too —
+  the actors, their clip measurements and the effects are built a few at a time
+  with the frame handed back in between.
+
+  Measured, and the measurement is checked by breaking it: while a scene comes
+  up the app answers 42 of 42 pings, against 8 with the background process
+  disabled (`HOMM5_SCENE_INLINE=1`, which exists so the test can prove it is
+  measuring something — `e2e/scene-thread.spec.ts`). What is left is the payload
+  itself: 21 MB crossing two process boundaries, about two seconds, and the
+  window is briefly busy parsing it.
+
 - **Where the game is comes from `.env` or the command line, and from nothing
   else.** There were four answers for the data root and three for the game: the
   environment, the checkout's own folder, a `settings.json` in the user's
