@@ -295,32 +295,46 @@ Still simplified:
   Shared templates have none — the shipped maps' designers added them by
   hand); a lights editor is Phase 4 property-panel work.
 
-## 3b. Shadows — what is measured so far, and what is still open
+## 3b. Shadows — the whole mechanism, measured
 
-The editor draws none yet. This records the mechanism as it has been read out of
-the executable and the running game, so the implementation is not designed on
-guesses. **Everything marked [OK] here is measured; the open question is named
-at the end and is not to be filled in by plausibility.**
+Read out of the executable and out of one run of the running game, so the
+implementation is not designed on guesses. **Everything marked [OK] is
+measured.**
+
+The short of it: the shadow map is **one texture over the world's ground
+plane**, addressed not by the fragment's own column but by its column *sheared
+along the sun* — so a lookup is "which sun ray am I on". What it stores is the
+HEIGHT of the caster on that ray, in units of `MaxShadowHeight`; a fragment is
+in shadow when something on its ray is recorded as higher than itself.
 
 **An object is shaded by TWO baked colours, and the shadow picks between them.
-[OK]** The object pixel shader (`0xc78694` and its family, ps.1.1) is:
+[OK]** The object pixel shader (file offset `0xc77f48` and its family, ps.1.1):
 
 ```
 tex t0                          ; the texture
 tex t1                          ; the shadow map
-texcoord t2                     ; where this fragment is in it, and how deep
-mul_x4_sat r0.rgb, v0, t0       ; LIT colour x texel
-+add_x4_sat r0.a, t1, -t2.z     ; the depth test: map depth vs this fragment's
-mul_x4_sat r1.rgb, v1, t0       ; SHADOWED colour x texel
+texcoord t2                     ; where this fragment is in it, and how high
+mul_x4_sat r0.rgb, v0, t0       ; SHADOWED colour x texel   (v0 = oD0, see below)
++add_x4_sat r0.a, t1, -t2.z     ; the height test: what the map holds, minus mine
+mul_x4_sat r1.rgb, v1, t0       ; LIT colour x texel
 +add r0.a, c4, r0               ; ...with a bias
 lrp r1.rgb, t1, r1, r0          ; blend the two by the shadow map's rgb
-cnd r0.rgb, r0.a, r0, r1        ; ...or take the lit one outright if in front
+cnd r0.rgb, r0.a, r0, r1        ; ...or take the SHADOWED one outright
 +mul r0.a, t0.a, v0.a
 ```
 
 So a shadow is not "multiply by something dark": it is a **lerp toward a second
 colour the vertex already carries**, and a variant of the same shader
-(`0xc781f4`) does only the lerp with no depth test at all.
+(`0xc78190`) does only the lerp with no height test at all.
+
+Read the last two lines together and the two channels of the map turn out to do
+different jobs. `lrp` takes the LIT end as the map's rgb rises, so **rgb is the
+footprint** — where a caster drew, softly. `cnd` then overrides with the
+SHADOWED colour whenever `r0.a > 0.5`, and `r0.a` is `4·sat(map − mine) + c4`:
+**alpha is the caster's height**, and it forces full shadow for anything under
+it. A back face never triggers the override — the vertex shader adds 1 to its
+own height (below), which no map value can beat, so a surface already facing
+away from the sun is left to the soft term and cannot shadow-acne itself.
 
 **Both colours come out of the vertex stream, and nothing computes them on the
 GPU. [OK]** The vertex shader (`0xc693a4`):
@@ -329,12 +343,28 @@ GPU. [OK]** The vertex shader (`0xc693a4`):
 mul r4.w, v4.w, c30.y
 mad r4.w, v5.w, c30.x, r4.w     ; one weight out of two light STATES (c30)
 mul r4.xyz, r4.w, c29           ; c29 = the scene fade, 1 when nothing fades
-mul oD0.xyz, v4, r4             ; lit
-mul oD1.xyz, v5, r4             ; shadowed
+mul oD0.xyz, v4, r4             ; shadowed
+mul oD1.xyz, v5, r4             ; lit
 dp3 r5.x, r1, c35               ; the normal against the sun
 sge r7.y, -r5.x, c35.w          ; faces away -> 1
-dp4 r7.x, v0, c24               ; depth in the shadow map's plane
-add oT2, r7.x, r7.y             ; ...so a back face never lights itself
+dp4 r7.x, v0, c24               ; this fragment's own height, scaled
+add oT2, r7.x, r7.y             ; ...+1, so a back face is never overridden
+```
+
+and, a few instructions above it in the same shader, the lookup itself:
+
+```
+dp4 r8.x, v0, c25               ; u — a row of the projection, world position
+dp4 r8.y, v0, c26               ; v
+mad r9.xy, r8.xy, r8.xy, c3.z   ; the warp: t -> t.log2(t^2+k)/sqrt(t^2+k)
+logp r10, r9.x                  ;   k = c3.z = 7, more texels near the origin
+mul r8.x, r8.x, r10.z
+logp r10, r9.y
+mul r8.y, r8.y, r10.z
+rsq r9.x, r9.x
+rsq r9.y, r9.y
+mul r8.xy, r8.xy, r9.xy
+mad oT1.xy, r8.xy, c27.xy, c27.zw   ; scale and bias into the texture
 ```
 
 **The runtime vertex, read from the declaration in the running game. [OK]**
@@ -373,19 +403,66 @@ of the reflection table at `0x9bdd00`, in case another of them is wanted:
 `LightColor` +0x64, `AmbientColor` +0x70, `ShadeColor` +0x7c,
 `IncidentShadowColor` +0x88, `GroundAmbientColor` +0x128, `ShadowColor` +0xfc.
 
-**Still open: the shadow texture itself** — what draws into it, at what
-resolution, and how `MaxShadowHeight` bounds it. The vertex shader's
-`dp4 r7.x, v0, c24` and the `c25`/`c26` pair say the lookup is a **top-down**
-projection of world x/y with the fragment's HEIGHT as the compared depth, which
-is why the shadow map's alpha reads as "the height up to which this column is
-shadowed". That is the next thing to measure, and the editor's own
-`bakeLightMap` — a per-floor texture over the ground plane — is the shape the
-implementation will take.
+**What fills the map. [OK]** Eight vertex shaders in the executable share one
+shape (`0xc663c8`, `0xc66798`, `0xc66a28`, `0xc66cd8`, `0xc670d8`, `0xc67358`,
+`0xc67728`, `0xc679d8` — warped and plain, colour-out and texcoord-out):
 
-Also carried by the preset and unread: `ShadowPitch`/`ShadowYaw` (100/100 where
-the sun is 35/40 — a separate direction), `ShadowColor`, `MaxShadowHeight` 20,
+```
+dp4 r0.x, v0, c25               ; the same two rows as the lookup
+dp4 r0.y, v0, c26
+  (the same warp, in the four warped variants)
+mad oPos.xy, r0.xy, c27.xy, c27.zw  ; c27 is (2,-2,-1,1) here: into CLIP space
+dp4 oPos.z, v0, c17             ; what the z-buffer sorts casters by
+dp4 oD0.w, v0, c24              ; and what is STORED: the caster's own height
+mov oD0.xyz, c1                 ; rgb: the flat footprint colour
+```
+
+Which is the same projection as the lookup, drawn instead of read. `c27` is the
+only register that differs between the two passes — `(2, −2, −1, 1)` when the
+map is being drawn into (unit square → clip space) and `(1, 1, 0, 0)` when it is
+being read. Known because the probe reports a watched register only when its
+value CHANGES: `c27` reports twice in a row with those two values, and `c24`,
+`c25`, `c26` do not report in between although the uploader (`0x57e260`) sends
+all five together. Both passes therefore address the map identically, which is
+the point — a lookup is only "which sun ray am I on" if the filler agrees.
+
+**The three rows, out of the running game. [OK]** In A2C1M1, whose preset has
+`MaxShadowHeight` 20 and a sun at Pitch 35 / Yaw 40 (`c35` = −0.439, −0.369,
+0.819):
+
+| register | value | what it is |
+|---|---|---|
+| `c24` | 0, 0, **0.050**, 0 | height ÷ `MaxShadowHeight` — 0.05 = 1/20 |
+| `c23` | 0, 0, 0.050, 0.010 | the same row with the fill pass's bias |
+| `c25` | 0, −0.009, −0.004, 0.910 | u = −0.009·(y + 0.451·z) + 0.910 |
+| `c26` | 0.008, 0, 0.004, 0.084 | v = 0.008·(x + 0.536·z) + 0.084 |
+
+**The z terms are the sun.** Projecting a point down its sun ray onto z = 0 is
+`x + z·(−Lx/Lz)`, `y + z·(−Ly/Lz)` = `x + 0.536·z`, `y + 0.451·z` for that
+sun — which is what the ratios in the rows are, to the thousandth the probe
+prints. So the map is a picture of the ground *taken along the sun*, and the two
+scales (0.008 and 0.009 here) are it re-fitting itself to what the camera can
+see — the same run caught 0.004 and 0.005 in later frames, 125 to 250 world
+units across.
+
+**`MaxShadowHeight` is at `+0x134`, and zero means 20** — the fallback is
+hard-coded at `0x51b01e`. That single number is the whole vertical range the
+map's 8-bit alpha has to spend, which is why it is a preset field at all.
+
+**`ShadowPitch` / `ShadowYaw` = 100 means "follow the sun". [OK]** Not an angle:
+`0x51ac98` compares `ShadowPitch` against 100.0 and, on equal, copies the sun
+direction computed a few instructions earlier straight into the shadow slot.
+Only on any other value does it build a second direction — same π/180, same
+sin/cos, same negated z as §2a. 295 of the 308 shipped presets carry 100/100,
+and of the 13 that do not, `TestProg` carries 40/80 with a sun of 40/80.
+Reading 100 as degrees would have tilted every shadow on every shipped map.
+
+Also carried by the preset and unread: `ShadowColor` (0,0,0 on all 308 — a
+default that discriminates nothing, and `mov oD0.xyz, c1` in the fill pass is
+where it would land), `GroundAmbientColor` (0,0,0 on all 308 likewise),
 `ShadowsMaxDetailLength` 10, and the cloud shadows (`CloudTex`, `CloudSize`,
-`CloudDir`, `CloudSpeed`, and `CCopyShadowsAndCloudsEffect`). Materials say who
+`CloudDir`, `CloudSpeed`, and `CCopyShadowsAndCloudsEffect`) — those ride in the
+same map's rgb, which is the channel the editor does not fill. Materials say who
 takes part, and the flags discriminate: `CastShadow` true on 10062 of 11639,
 `ReceiveShadow` on 10156 — while `BackFaceCastShadow` is false on all 11639 and
 therefore answers nothing.
