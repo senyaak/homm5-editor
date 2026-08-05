@@ -14,19 +14,18 @@
  * and the cosine the vertical one. Reading it as elevation renders every
  * shipped day map as dusk.
  *
- * `Yaw` counts from **+X**, CLOCKWISE seen from above — so on a map drawn with
- * +X east and +Y north, Yaw 40 puts the light in the south-east and drops the
- * shadows to the north-west, which is what the game shows.
+ * `Yaw` counts from **−X**, which is what the probe read out of the running
+ * game (`vs c35` = (−0.439, −0.369, 0.819) under Pitch 35 / Yaw 40 — see
+ * docs/LIGHTING.md §3). On a map drawn with +X east and +Y north that stands
+ * the light in the SOUTH-WEST and drops the shadows to the north-east, which is
+ * where they belong in the editor's picture.
  *
- * The y flip is the whole difference from the naive reading, and it is not a
- * turn: the two axes disagree, not the angle. Read anticlockwise, the same 40
- * lands north-east. Half a turn was tried too (a yaw from −X, on the strength
- * of `vs c35` reading (−0.439, −0.369, 0.819) in the running game — see
- * docs/LIGHTING.md §3) and lit maps from the north. Which of the two ends is
- * being misread — the constant's frame, or which way the editor lays the map's
- * y axis on the screen — is not settled yet.
+ * Both alternatives were tried against that picture and both were wrong: the
+ * plain yaw-from-+X lights from the north-east and throws shadows south-west,
+ * and a clockwise yaw (mirrored y) lights from the south-east and throws them
+ * north-west.
  */
 export function sunDirection(pitchDeg: number, yawDeg: number): [number, number, number] {
   const p = pitchDeg * Math.PI / 180, y = yawDeg * Math.PI / 180;
-  return [Math.sin(p) * Math.cos(y), -Math.sin(p) * Math.sin(y), Math.cos(p)];
+  return [-Math.sin(p) * Math.cos(y), -Math.sin(p) * Math.sin(y), Math.cos(p)];
 }

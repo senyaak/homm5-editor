@@ -29,8 +29,8 @@ const DATA = process.env.HOMM5_DATA || join(REPO_ROOT, 'data-unpacked');
 const MAP = join(DATA, 'Maps', 'Scenario', 'A2C1M1', 'map.xdb');
 /** Half-height of the plan frustum, in tiles — close enough that a shadow is many pixels long. */
 const ZOOM = 14;
-/** A2C1M1's preset: Pitch 35 / Yaw 40, pointing AT the light — south-east (§3). */
-const SUN = [0.439, -0.369];
+/** A2C1M1's preset: Pitch 35 / Yaw 40, pointing AT the light — south-west (§3). */
+const SUN = [-0.439, -0.369];
 
 let ed: Launched;
 test.beforeAll(async () => { ed = await launchEditor(); });
