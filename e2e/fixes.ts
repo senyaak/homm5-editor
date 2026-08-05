@@ -239,6 +239,16 @@ export const HEROES: Kit[] = [
     shared: hero('Dwarves', 'Bersy'),
     at: { x: 32, y: 10 },
     skills: [{ id: 'HERO_SKILL_RUNELORE', mastery: M.expert }],
+    // THE RUNE ITSELF. Runelore says he may cast runes; it does not give him
+    // one, any more than Destructive Magic gives a hero Fireball. A rune is a
+    // spell — `MAGIC_SCHOOL_RUNIC`, level 5, so Runelore at Expert — and it is
+    // learnt like one. Without this line he stands there with the skill and
+    // nothing to cast, which is how this hero went out the first time.
+    //
+    // It costs a resource per cast rather than mana (1 wood, 1 sulfur), and the
+    // map declares no starting resources — the game's own starting amounts
+    // cover it many times over.
+    spells: ['SPELL_RUNE_OF_DRAGONFORM'],
     stats: { offence: 10, defence: 10, spellpower: 10, knowledge: 10 },
     // The four the engine's table names, each a BASE creature — the ones it
     // cannot catch — plus an Archangel, which is tier 7 and not a dragon.

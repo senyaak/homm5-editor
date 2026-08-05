@@ -181,6 +181,11 @@ His army is a **Bone, Green, Deep and Fire Dragon** — the four the engine's ow
 table names, all of them base creatures — and an **Archangel**. In a battle, cast
 the **Rune of the Dragon Form** on each.
 
+He carries the rune itself, not just Runelore: a rune is a spell and is learnt
+like one, so the skill alone would leave him with nothing to cast. It costs
+1 wood and 1 sulfur per cast rather than mana, out of the resources the game
+starts you with.
+
 - **off** — every one of the four dragons accepts the rune. Its own description
   says *"неприменимо к драконам"*.
 - **on** — all four are refused, and the **Archangel still accepts it**. That
