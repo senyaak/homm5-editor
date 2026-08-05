@@ -405,12 +405,40 @@ been tested. [~]
 
 ## Where the corpus is
 
-Not all of it is on disk. The addon's scenes unpack from `data/*.pak`; every
-`C1..C6` and `A1C*` scene, and the whole `Dialogs/` camera library, live inside
-`UserMODs/All_campaigns.data.h5u`, with their texts in
-`All_campaigns.texts_en.h5u`. A run that cannot see `UserMODs` grades a quarter
-of the material — `tools/test-dialog-scene.ts` says so out loud rather than
-going quietly green.
+**A scene is not part of a map.** It is a folder in the global data tree, and
+nothing else: of the 251 shipped scenes, every `DialogScene.xdb` is under
+`DialogScenes/`, and not one lives inside a map's own folder or a `.h5m`. A map
+only *names* one, from its script —
+
+```lua
+StartDialogScene("/DialogScenes/A2C1/M1/S1/DialogScene.xdb#xpointer(/DialogScene)", "callback", "autosave")
+```
+
+— so the two are joined by that path string alone. The tree's top level is the
+campaign the scene was written for (`C1`…`C6` original, `A1C*` Hammers of Fate,
+`A2C*` Tribes of the East, plus `A2Single` for the addon's single missions),
+then the mission, then the scene: `DialogScenes/<C>/<M>/<S>/`. Nothing enforces
+that naming — it is where the authors put them.
+
+Which archive each lives in:
+
+| Archive | Scenes | |
+|---|---|---|
+| `UserMODs/All_campaigns.data.h5u` | 185 | `C1..C6`, `A1C*`, **and** the shared `Dialogs/Cameras` + `Dialogs/CameraSet` library (3198 documents) |
+| `data/data.pak` | 62 | the addon's `A2C*`, each keeping its cameras **inside its own scene folder** |
+| `data/a2p1-data.pak` | 4 | patch |
+
+Texts travel in the parallel `*-texts*` archives, the voice lines as
+`bin/Sounds` blobs in `All_campaigns.dialogscenes_en.h5u`. A run that cannot see
+`UserMODs` grades a quarter of the material — `tools/test-dialog-scene.ts` says
+so out loud rather than going quietly green.
+
+Since a map archive is mounted globally like any other (docs/ARCHIVES.md), a
+custom map should be able to carry `DialogScenes/<own>/…` of its own and start
+it by that path. Not tested yet. [~]
+
+`All_campaigns.cutscenes.h5u` is the OTHER kind — `Maps/Cutscenes` and
+`Scenes/C1M5_NikolayDeath`, the Maya-baked AnimScenes of the table above.
 
 ## What the editor has so far
 
