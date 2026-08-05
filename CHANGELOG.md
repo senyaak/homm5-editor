@@ -239,6 +239,18 @@ one.
 
 ### Fixed
 
+- **A live e2e run no longer resets a mod it has nothing to do with.** The mod
+  stages run as a chain over one install, so the suite put that install back to
+  the chain's starting state in its GLOBAL setup — which meant every run did it,
+  including a run of one unrelated spec. Live, "the starting state" is the
+  player's installed mod with the authored content taken back out of it, and a
+  mod holding nothing else is then deleted: twenty-six megabytes, four minutes
+  of rebuilding, and an install left holding maps that point at content which is
+  no longer there — which the game loads, and dies on. The reset now happens
+  only for a run that can contain a mod stage, and says so when it does not. The
+  archive is also copied to `_tmp/mod-backup/` before anything is taken out of
+  it, so the same mistake is undoable rather than merely regrettable.
+
 - **A mod could break battle scripting for the whole game, silently.** Our battle
   code used to be appended to the game's own `combat-startup.lua`, which the
   engine compiles as ONE chunk — so a single bad token in ours failed every

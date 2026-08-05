@@ -633,10 +633,25 @@ const OURS = {
  * before the editor became the mod's only writer, and no dialog can make them
  * again. Rebuilding it from the fixture alone would delete them without a word.
  */
+/**
+ * Where the mod archive is kept before this run takes anything out of it.
+ *
+ * ONE slot, overwritten each time: this is an undo for the clear that just
+ * happened, not a history. It exists because the clear is not always as small
+ * as it sounds — a mod that holds nothing but the fixtures ends up EMPTY, and
+ * an empty mod is deleted, which is twenty-six megabytes and four minutes of
+ * rebuilding for a run that only meant to reset a chain.
+ */
+export const MOD_BACKUP = join(REPO_ROOT, '_tmp', 'mod-backup', `${MOD_STEM}.before-clear.h5u`);
+
 export function clearFixture(gameRoot: string): void {
   const archive = modFile(gameRoot, 'mod', MOD);
   const found = existsSync(archive) ? readCreatureMod(archive) : null;
   if (!found) return;
+  // Before anything is taken out — the copy is worth nothing if it is made
+  // after the decision to delete.
+  mkdirSync(join(REPO_ROOT, '_tmp', 'mod-backup'), { recursive: true });
+  copyFileSync(archive, MOD_BACKUP);
   const mod = found.mod;
   let touched = false;
   // The set first: it names the artifacts, and a set whose members are gone is
