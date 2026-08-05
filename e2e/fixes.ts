@@ -33,7 +33,15 @@ export const DATA = process.env.HOMM5_DATA || join(REPO_ROOT, 'data-unpacked');
 export const GAME = liveHome('e2e-fix-game');
 
 export const NAME = 'Rules Test';
-export const MAP_DIR = join(DATA, 'Maps', 'SingleMissions', NAME);
+/**
+ * A **Multiplayer Arena**, not a single scenario — the folder is the type.
+ *
+ * The snare test needs hotseat, and the game only offers a map for hotseat if
+ * it is under `Maps/Multiplayer`. Nothing else about the map changes: it still
+ * plays single-player against the computer, which is what the battle-AI test
+ * wants, because both player slots are human-playable either way.
+ */
+export const MAP_DIR = join(DATA, 'Maps', 'Multiplayer', NAME);
 export const ARCHIVE = modFile(GAME, 'map', NAME);
 /** Room for eight heroes in a row with their foes in front of them. */
 export const TILES = 72;

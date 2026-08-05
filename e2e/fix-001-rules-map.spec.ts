@@ -144,6 +144,10 @@ test('the Rules Test map is built and packed, with every fix off', async () => {
   // --- a new map, through its own dialog ---
   await bar(page, '#newmapbtn');
   await page.locator('#nm-name').fill(NAME);
+  // A Multiplayer Arena: the type IS the folder the map is packed into, and the
+  // game only offers a map for hotseat from under Maps/Multiplayer. It still
+  // plays single-player against the computer for the rest of the list.
+  await page.locator('#nm-type').selectOption('multi');
   await page.locator('#nm-size').selectOption(String(TILES));
   await page.locator('#nm-ok').click();
   await expect(page.locator('#newmap')).toBeHidden({ timeout: 60_000 });
