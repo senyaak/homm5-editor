@@ -73,7 +73,14 @@ const dir = new THREE.Vector3(0.45, 0.35, 0.82);
  */
 export function initShadows(): void {
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  // HARD, because the engine's edge is hard. Its pixel shader takes ONE sample
+  // of the map and decides with `cnd` — a binary pick between the lit and the
+  // shadowed colour, with nothing between them (docs/LIGHTING.md §3b). Soft
+  // PCF was put here first and it is not a small difference: it is nine taps of
+  // blur the game never draws, and Senya spotted it against the real picture.
+  // (The engine does have a soft term — the map's rgb footprint, bilinear —
+  // but that channel carries the cloud shadows and is not filled here.)
+  renderer.shadowMap.type = THREE.BasicShadowMap;
   caster.castShadow = true;
   caster.shadow.mapSize.set(MAP_SIZE, MAP_SIZE);
   caster.shadow.camera.near = 1;

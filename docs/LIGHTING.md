@@ -489,6 +489,13 @@ and it brings the alpha test for foliage, skinning and instancing along, none of
 which a hand-rolled pass would have. The 8-bit depth and the warp are the
 engine's precision budget, not its picture.
 
+The EDGE is hard, and that is a decision rather than a default. The engine takes
+one sample of the map and decides with `cnd`: lit or shadowed, nothing between.
+Soft PCF went in first and Senya caught it against the game's own picture — nine
+taps of blur the engine never draws. (It does have a soft term, the map's rgb
+footprint sampled bilinearly, but that is the channel the cloud shadows ride in
+and the one not filled here.)
+
 Kept, though: the map re-fits itself to what the camera can see, which is what
 the engine does too (the probe caught its own 125 and then 250 units across in
 one run). Ours is 1.6× the view's half-extent, clamped to 40–400 world units, so
