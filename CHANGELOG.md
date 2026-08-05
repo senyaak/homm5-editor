@@ -16,9 +16,15 @@ one.
 ### Added
 
 - **Dialog scenes — the cutscenes a campaign plays — open and play in the
-  editor.** `Scenes…` on the launcher lists what the game ships (251 of them,
-  the original campaigns' unpacked out of their archive the way a shipped map
-  is) and opens one in a window of its own: the arena it is staged on, the
+  editor.** `Scenes…` on the launcher asks for a FILE, the way opening a map
+  does, and lists the scenes inside it: point at
+  `UserMODs/All_campaigns.data.h5u` for the original campaigns' 185, at
+  `data.pak` for the addon's, or at a map of your own for the ones it carries —
+  an archive is read by its listing alone, so even the 1.3 GB one answers
+  instantly and unpacks nothing until a scene is picked. A `DialogScene.xdb`
+  can be opened directly too, wherever it sits.
+
+  What opens is a window of its own: the arena the scene is staged on, the
   props it brings, its actors on their ARENA rigs rather than their adventure
   models, and the shots down the side. Pick a shot and the camera goes exactly
   where that shot's camera is; press play and it walks the move, actors playing

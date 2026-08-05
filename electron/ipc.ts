@@ -16,6 +16,7 @@ export type { CreatureStats } from '../src/mods/creatures.ts';
 export type { PaletteEntry, RecolorOps } from '../src/format/recolor.ts';
 import type { PlaceableObject } from '../src/map/objects.ts';
 import type { ActorView, ShotView } from '../src/dialog/play.ts';
+import type { SceneSource } from '../src/dialog/scene-source.ts';
 export type { PlaceableObject } from '../src/map/objects.ts';
 
 /**
@@ -125,10 +126,31 @@ export interface NewMapResult {
 }
 
 /** Result of `map:load`. */
-/** Which scene to open — its folder, data-root relative, as the game addresses it. */
+/** Which scene to open — its folder, as the game addresses it, and where from. */
 export interface SceneOpenPayload {
   /** e.g. `DialogScenes/C1/M1/D1`. */
   inner: string;
+  /**
+   * The file it was found in, when the user pointed at one: an archive to
+   * unpack this scene out of, or the `DialogScene.xdb` itself. Without it the
+   * scene is looked for in the data tree and then across the install.
+   */
+  file?: string;
+}
+
+/**
+ * Result of `scene:in-file` — the scenes one file holds.
+ *
+ * See src/dialog/scene-source.ts: an archive answers from its central directory
+ * alone, so asking what is inside `data.pak` costs a seek rather than an
+ * unpacking.
+ */
+export interface ScenesInFileResult {
+  /** What was asked about. */
+  file: string;
+  /** The same path when it is an archive; empty when the file IS a scene. */
+  archive: string;
+  scenes: SceneSource[];
 }
 
 /** What a scene is, for the window that plays it. */
@@ -1549,6 +1571,10 @@ export interface EditorApi {
   /** `stock` takes ONE map out of the game's own archives, which hold many. */
   openArchive(path: string, inner?: string, stock?: boolean): Promise<OpenArchiveResult>;
   loadMap(path: string): Promise<MapLoadResult>;
+  /** Ask for a file to take scenes from — an archive, or a scene document. */
+  pickSceneFile(): Promise<string | null>;
+  /** What scenes that file holds. */
+  scenesInFile(file: string): Promise<ScenesInFileResult>;
   /** Open a dialog scene by its folder — see SceneOpenResult. */
   openScene(p: SceneOpenPayload): Promise<SceneOpenResult>;
   /**

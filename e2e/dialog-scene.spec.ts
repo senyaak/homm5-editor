@@ -18,6 +18,8 @@ import type { Launched } from './launch.ts';
 const SCENE = 'DialogScenes/C1/M1/D1';
 const GAME = process.env.HOMM5_ROOT || join(REPO_ROOT, '..');
 const DATA = process.env.HOMM5_DATA || join(REPO_ROOT, 'data-unpacked');
+/** The archive the original campaigns' 185 scenes travel in. */
+const CAMPAIGNS = join(GAME, 'UserMODs', 'All_campaigns.data.h5u');
 
 let ed: Launched;
 test.beforeAll(async () => { ed = await launchEditor(); });
@@ -32,6 +34,36 @@ test('the editor opens a campaign scene and plays it', async () => {
   // The window first — it is where a scene is watched, and the viewport moves
   // into it. Opening one without it works too; the button is the way in.
   await page.evaluate(() => (document.getElementById('scenesbtn') as HTMLButtonElement).click());
+
+  // …on nothing, until a FILE is named. A scene is opened the way a map is:
+  // point at an archive and the window lists what is inside it, from that
+  // archive's own directory with nothing unpacked (src/dialog/scene-source.ts).
+  // The campaigns' archive holds 185, so a list that comes back with a handful
+  // is one that read the wrong thing. (`openSceneFile` is what the Open file…
+  // button calls once the OS dialog has answered — the one step a test cannot
+  // drive.)
+  expect(await page.evaluate(() => document.querySelectorAll('#sc-list .shot.scene').length)).toBe(0);
+  const listed = await page.evaluate((f) => window.view.openSceneFile(f), CAMPAIGNS);
+  expect(listed.scenes.length).toBeGreaterThan(150);
+  expect(listed.scenes.some((s) => s.inner === SCENE)).toBe(true);
+  const rows = await page.evaluate(() => document.querySelectorAll('#sc-list .shot.scene').length);
+  expect(rows).toBe(listed.scenes.length);
+
+  // The filter narrows the list, and picking a row is what opens a scene.
+  const chosen = await page.evaluate(() => {
+    const find = document.getElementById('sc-find') as HTMLInputElement;
+    find.value = 'C1/M1/D1';
+    find.dispatchEvent(new Event('input'));
+    const shown = [...document.querySelectorAll('#sc-list .shot.scene')];
+    const row = shown.find((r) => r.querySelector('.who')?.textContent === 'C1/M1/D1');
+    (row as HTMLElement | undefined)?.click();
+    return { narrowed: shown.length, found: !!row };
+  });
+  expect(chosen.found).toBe(true);
+  expect(chosen.narrowed).toBeLessThan(rows);
+  await page.waitForFunction(() => !!window.view.scene(), null, { timeout: 120_000 });
+  expect(await page.evaluate(() => window.view.scene()?.inner)).toBe(SCENE);
+
   const info = await page.evaluate((s) => window.view.openScene(s), SCENE);
   expect(info.shots).toBe(73);
   expect(info.stage).toContain('SmallSpecialArena_Grass');

@@ -405,20 +405,36 @@ been tested. [~]
 
 ## Where the corpus is
 
-**A scene is not part of a map.** It is a folder in the global data tree, and
-nothing else: of the 251 shipped scenes, every `DialogScene.xdb` is under
-`DialogScenes/`, and not one lives inside a map's own folder or a `.h5m`. A map
-only *names* one, from its script —
+**A scene is a folder, and a map only names it.** It is not part of a map the
+way its terrain is — nothing in `map.xdb` points at a scene. A map *names* one,
+from its script —
 
 ```lua
 StartDialogScene("/DialogScenes/A2C1/M1/S1/DialogScene.xdb#xpointer(/DialogScene)", "callback", "autosave")
 ```
 
-— so the two are joined by that path string alone. The tree's top level is the
-campaign the scene was written for (`C1`…`C6` original, `A1C*` Hammers of Fate,
-`A2C*` Tribes of the East, plus `A2Single` for the addon's single missions),
-then the mission, then the scene: `DialogScenes/<C>/<M>/<S>/`. Nothing enforces
-that naming — it is where the authors put them.
+— so the two are joined by that path string alone, and the folder can be
+anywhere the archives put it.
+
+The campaigns put theirs in a shared tree: top level the campaign the scene was
+written for (`C1`…`C6` original, `A1C*` Hammers of Fate, `A2C*` Tribes of the
+East, plus `A2Single` for the addon's single missions), then the mission, then
+the scene — `DialogScenes/<C>/<M>/<S>/`. **That is convention, not a rule**, and
+two shipped counterexamples say so:
+
+* `Maps/SmallSpecialArenas/SmallSpecialArena_Grass_Custom/DialogScene.xdb` —
+  one of the 251, sitting in an arena's own folder inside `data.pak`.
+* `Maps/12.h5m` — a map made in the ORIGINAL editor, carrying
+  `Maps/SingleMissions/12/test_start_scene/DialogScene.xdb` and a second beside
+  it, next to `Editor/Builder/DialogSceneBuilder.xdb`. So a scene really does
+  travel inside the map's own archive, at the map's own path, and the original
+  editor is what wrote it there.
+
+Which means **a scene can be made on its own and shipped with a map**: a map
+archive is mounted globally like any other (docs/ARCHIVES.md), so the folder
+lands in the data tree wherever it is written, and `StartDialogScene` finds it
+by that path. Whether the game then PLAYS one carried this way is not something
+we have run yet. [~]
 
 Which archive each lives in:
 
@@ -433,10 +449,6 @@ Texts travel in the parallel `*-texts*` archives, the voice lines as
 `UserMODs` grades a quarter of the material — `tools/test-dialog-scene.ts` says
 so out loud rather than going quietly green.
 
-Since a map archive is mounted globally like any other (docs/ARCHIVES.md), a
-custom map should be able to carry `DialogScenes/<own>/…` of its own and start
-it by that path. Not tested yet. [~]
-
 `All_campaigns.cutscenes.h5u` is the OTHER kind — `Maps/Cutscenes` and
 `Scenes/C1M5_NikolayDeath`, the Maya-baked AnimScenes of the table above.
 
@@ -447,6 +459,16 @@ it by that path. Not tested yet. [~]
   is byte-identical for everything untouched. All 251 scenes round-trip.
 * `src/dialog/camera.ts` — pose to eye and back (which is what "use what I am
   looking at" is), and the travel between two poses.
+* `src/dialog/scene-source.ts` — what a FILE holds. The window is opened on a
+  file, the way a map is: an archive (`.h5m .h5u .h5c .h5p .pak`) is read by its
+  central directory alone, and every `…/DialogScene.xdb` in it is offered — so
+  asking what is inside the 1.3 GB `data.pak` costs a seek and unpacks nothing.
+  Pointing at a `DialogScene.xdb` itself opens that one; if it sits outside the
+  data tree its parent is mounted as an asset root, so the actors and cameras
+  written beside it resolve while `/Dialogs/…` and the arena still come from the
+  install. Sweeping the whole install instead was the first shape of this and
+  the wrong one — 253 entries, the one scene somebody had just written lost
+  among the campaigns'.
 * `src/dialog/stage.ts` — the scene's own cast and set dressing as map objects,
   placed on the stage map through the existing scene builder
   (`BuildSceneOptions.extraObjects`). There is no second renderer.

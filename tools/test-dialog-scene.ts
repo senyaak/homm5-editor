@@ -30,6 +30,7 @@ import { extractMapFolder, gameArchives } from '../src/map/map-source.ts';
 import { stageObjects } from '../src/dialog/stage.ts';
 import { actorRigs } from '../src/dialog/actors.ts';
 import { buildScenePlay } from '../src/dialog/play.ts';
+import { listScenesIn, sceneArchives } from '../src/dialog/scene-source.ts';
 import { PLAYER_COLOURS } from '../src/scene/colour-models.ts';
 import { mkdirSync } from 'node:fs';
 
@@ -748,6 +749,62 @@ if (!byPath.has(showcasePath)) {
   check('and a hero wears the one his player flies',
     worn.some((m) => /Knight_Blue/.test(m)) && worn.some((m) => /DemonLord_Red/.test(m)),
     [...new Set(worn.map((m) => m.split('/').pop()))].join(', '));
+}
+
+// --- the catalogue -----------------------------------------------------------
+//
+// What the picker offers, and the promise under it: the archives' DIRECTORIES
+// are read, never their contents. Everything above proves a scene survives the
+// editor once it is open; this proves the editor can find it without unpacking
+// the install first.
+
+{
+  // Every archive this install has, asked what scenes are in it. The suite has
+  // already read the scene DOCUMENTS out of the same archives above, so the two
+  // counts have to agree — a finder that quietly skips a container looks exactly
+  // like a working one with a short list.
+  const containers = existsSync(GAME) ? sceneArchives(GAME) : [];
+  const started = performance.now();
+  const found = new Map<string, string[]>();
+  for (const file of containers) {
+    let scenes;
+    try { scenes = listScenesIn(file); } catch { continue; }
+    if (scenes.length) found.set(file, scenes.map((s) => s.inner));
+  }
+  const ms = performance.now() - started;
+  const total = [...found.values()].reduce((a, x) => a + x.length, 0);
+  console.log(`\n  ${containers.length} archives read in ${ms | 0}ms — ${total} scenes in ${found.size} of them`);
+  for (const [file, scenes] of found) console.log(`    ${String(scenes.length).padStart(4)}  ${file.split(/[\\/]/).pop()}`);
+
+  const offered = new Set([...found.values()].flat().map((p) => p.toLowerCase()));
+  // What the suite read out of ARCHIVES (rather than off disk) must be found:
+  // a document read from an archive is named `<file>:<entry>`, a disk one by
+  // its own path.
+  const fromArchives = new Set(docs
+    .filter((d) => d.name !== d.path && /\/DialogScene\.xdb$/i.test(d.path))
+    .map((d) => d.path.replace(/\/DialogScene\.xdb$/i, '').toLowerCase()));
+  const missed = [...fromArchives].filter((p) => !offered.has(p));
+  check('every scene this suite read out of an archive is findable in one',
+    fromArchives.size > 0 && missed.length === 0,
+    `${fromArchives.size} read, ${offered.size} findable${missed.length ? `, missing ${missed.slice(0, 3).join(', ')}` : ''}`);
+
+  // A folder is one entry however many members an archive holds under it.
+  const dupes = [...found.values()].filter((s) => new Set(s.map((x) => x.toLowerCase())).size !== s.length);
+  check('a folder is one entry, whatever an archive holds under it', dupes.length === 0);
+
+  // And a scene is NOT only ever in the shared `DialogScenes/` tree: a map's
+  // own folder can hold one, which is what a scene of ours would do.
+  // `Maps/12.h5m` carries two, beside the original editor's
+  // `Editor/Builder/DialogSceneBuilder.xdb`.
+  const inMaps = [...found].flatMap(([file, scenes]) =>
+    scenes.filter((s) => !s.startsWith('DialogScenes/')).map((s) => `${file.split(/[\\/]/).pop()}:${s}`));
+  check('a scene can live in a map\'s own folder, and is found there',
+    inMaps.length > 0, inMaps.join(', ') || 'none on this install');
+
+  // The promise the whole module rests on: a dozen archives, one of them 1.3 GB,
+  // answered from their central directories. Unpacking to list would be seconds.
+  check('and finds them from the archives\' names alone', !containers.length || ms < 5000,
+    `${ms | 0}ms for ${containers.length} archives`);
 }
 
 console.log(`\n${failures ? `\x1b[31m${failures} failed\x1b[0m` : '\x1b[32mall checks passed\x1b[0m'}`);

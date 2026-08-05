@@ -18,7 +18,7 @@ import type { FxSystem } from '#viewport/particles.ts';
 import { refreshLighting, uFxTint } from '#viewport/lighting.ts';
 import { activeFloor, state } from '#core/state.ts';
 import type { AmbientData, GeomData } from '#src/scene/payload.ts';
-import type { SceneInfo } from '#electron/ipc.ts';
+import type { SceneInfo, ScenesInFileResult } from '#electron/ipc.ts';
 import { api } from '#core/ipc.ts';
 import { $, $button, $input } from '#core/dom.ts';
 import { markShadowRoles } from '#viewport/shadows.ts';
@@ -386,8 +386,8 @@ function advanceShotFx(): void {
  * launcher button (hidden while a map is open) rather than something reachable
  * mid-edit: a scene is watched instead of a map, not on top of one.
  */
-export async function openScene(inner: string): Promise<SceneInfo> {
-  const { stage: payload, shots, actors, info, textures } = await api.openScene({ inner });
+export async function openScene(inner: string, file?: string): Promise<SceneInfo> {
+  const { stage: payload, shots, actors, info, textures } = await api.openScene(file ? { inner, file } : { inner });
   // The textures travelled once each and the payload holds handles into that
   // table; nothing below this line should ever meet one. See
   // src/scene/tex-table.ts.
@@ -677,13 +677,76 @@ function hostViewport(inDialog: boolean): void {
   fitViewport();
 }
 
+/**
+ * The file the window is looking in, and what it holds.
+ *
+ * A file at a time, not the whole install: an archive is read by its central
+ * directory alone (`scene:in-file`, src/dialog/scene-source.ts), so pointing at
+ * a 1.3 GB `data.pak` is a seek — and pointing at the map you are working on
+ * lists the two scenes in it instead of the campaigns' 250.
+ */
+let source: ScenesInFileResult | null = null;
+
+/** The scenes of the open file — shown while no scene is playing. */
+function renderCatalogue(): void {
+  const list = $('sc-list');
+  list.replaceChildren();
+  if (!source) {
+    $('sc-info').textContent = 'open a file to see the scenes in it — an archive (.h5m, .h5u, .pak) or a DialogScene.xdb';
+    return;
+  }
+  const q = $input('sc-find').value.trim().toLowerCase();
+  const shown = q ? source.scenes.filter((s) => s.name.toLowerCase().includes(q)) : source.scenes;
+  for (const s of shown) {
+    const row = document.createElement('div');
+    row.className = 'shot scene';
+    row.innerHTML = `<span class="who">${s.name}</span>`;
+    row.title = s.inner;
+    row.onclick = () => { void pick(s.inner); };
+    list.append(row);
+  }
+  const where = source.file.split(/[\\/]/).pop() ?? source.file;
+  $('sc-info').textContent = source.scenes.length
+    ? `${shown.length}${q && shown.length !== source.scenes.length ? ` of ${source.scenes.length}` : ''} scene(s) in ${where}`
+    : `no scene in ${where}`;
+}
+
+/**
+ * Look in a file: an archive, or a scene document itself.
+ *
+ * Exposed on the view because a test cannot drive the OS file dialog — the
+ * button asks for a path and calls this with it, and a test calls it with one.
+ */
+export async function openSceneFile(file: string): Promise<ScenesInFileResult> {
+  $('sc-info').textContent = `reading ${file}…`;
+  source = await api.scenesInFile(file);
+  $input('sc-find').value = '';
+  renderCatalogue();
+  // One scene in the file is not a choice; open it.
+  if (source.scenes.length === 1) await pick(source.scenes[0]!.inner);
+  return source;
+}
+
+/** Open one from the list, saying so while it takes its seconds. */
+async function pick(inner: string): Promise<void> {
+  $('sc-info').textContent = `opening ${inner}…`;
+  try {
+    await openScene(inner, source?.file);
+  } catch (e) {
+    $('sc-info').textContent = e instanceof Error ? e.message : String(e);
+    return;
+  }
+  renderPanel();
+}
+
 /** Redraw the shot list and the footer for whatever is open. */
 function renderPanel(): void {
   const list = $('sc-list');
   const info = playing.info;
+  $button('sc-back').hidden = !info;
+  $button('sc-play').hidden = !info;
   if (!info) {
-    list.innerHTML = '';
-    $('sc-info').textContent = 'no scene open';
+    renderCatalogue();
     return;
   }
   if (list.childElementCount !== playing.shots.length) {
@@ -711,7 +774,7 @@ function renderPanel(): void {
   $button('sc-play').classList.toggle('on', playing.running);
 }
 
-/** Open the scene window. */
+/** Open the scene window — on whatever file it was last looking in. */
 export function openSceneWindow(): void {
   const dlg = $('scene') as HTMLDialogElement;
   if (dlg.open) return;
@@ -739,15 +802,18 @@ export function initDialogScenes(): void {
     if (playing.info) { closeScene(); renderPanel(); }
     hostViewport(false);
   });
-  $button('sc-load').onclick = async () => {
-    const path = $input('sc-path').value.trim();
-    if (!path) return;
-    $('sc-info').textContent = 'opening…';
+  $button('sc-file').onclick = async () => {
+    const file = await api.pickSceneFile();
+    if (!file) return;
     try {
-      await openScene(path);
+      await openSceneFile(file);
     } catch (e) {
       $('sc-info').textContent = e instanceof Error ? e.message : String(e);
     }
   };
+  // Back to the list: the scene comes DOWN, because the viewport holds one
+  // world and the next pick replaces it anyway.
+  $button('sc-back').onclick = () => { closeScene(); renderPanel(); };
+  $input('sc-find').oninput = () => { if (!playing.info) renderCatalogue(); };
   $button('sc-play').onclick = () => { setPlaying(!playing.running); renderPanel(); };
 }

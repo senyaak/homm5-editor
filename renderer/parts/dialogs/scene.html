@@ -6,9 +6,10 @@
     <div class="mp-card sc-card">
       <div class="mp-head">
         <span class="mp-title">Scene</span>
-        <input id="sc-path" type="text" spellcheck="false" autocomplete="off"
-               value="DialogScenes/C1/M1/D1" title="the scene's folder, as the game addresses it">
-        <button id="sc-load">Open</button>
+        <button id="sc-file" title="open a file and see the scenes in it — an archive (.h5m, .h5u, .h5c, .pak) or a DialogScene.xdb">Open file…</button>
+        <button id="sc-back" title="back to the scenes of the open file">‹ Scenes</button>
+        <input id="sc-find" type="search" spellcheck="false" autocomplete="off"
+               placeholder="find a scene in this file" title="filter the list by folder">
         <button id="sc-play" title="play from the current shot">▶ Play</button>
         <button id="sc-close" title="close (Esc)">✕</button>
       </div>

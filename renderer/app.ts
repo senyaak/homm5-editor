@@ -29,8 +29,8 @@ import { materialFor, partTexture, shadeProbe } from '#viewport/materials.ts';
 import { terrainColor, asTileSpace, terrainGeometry, waterCells, waterGeometry, makeWaterMesh, WATER_ORDER, remeshFloor, sea } from '#viewport/terrain-mesh.ts';
 import { refreshBlocked, refreshFootprints, syncFootprints, setShowBlocked, showBlocked } from '#viewport/overlays.ts';
 import { advanceIdle, clearIdle, removeIdle, addIdle, idleMode, setIdleMode } from '#viewport/idle.ts';
-import { actorKinds, advanceScene, closeScene, initDialogScenes, openScene, playing, setPlaying, shotFxCount, shotModelCount, show } from '#features/dialog-scene.ts';
-import type { SceneInfo } from '#electron/ipc.ts';
+import { actorKinds, advanceScene, closeScene, initDialogScenes, openScene, openSceneFile, playing, setPlaying, shotFxCount, shotModelCount, show } from '#features/dialog-scene.ts';
+import type { SceneInfo, ScenesInFileResult } from '#electron/ipc.ts';
 import { roster, objectsOfClass, canCreateClass, mapNames, forgetClass } from '#core/rosters.ts';
 import { openRecolor, initRecolor } from '#features/mods/recolor.ts';
 import { pickPreset, initPresetPicker } from '#features/mods/preset.ts';
@@ -354,6 +354,14 @@ interface ViewApi {
    * takes the camera until closeScene().
    */
   openScene(inner: string): Promise<SceneInfo>;
+  /**
+   * Look in a file — an archive or a `DialogScene.xdb` — and list its scenes
+   * into the window, opening it when the file holds exactly one.
+   *
+   * The button behind this asks the OS for the path first, which is the one
+   * step a test cannot drive; this takes the path instead.
+   */
+  openSceneFile(file: string): Promise<ScenesInFileResult>;
   closeScene(): void;
   /** Show one shot, optionally partway into it (seconds). */
   showShot(index: number, at?: number): void;
@@ -736,6 +744,7 @@ const view: ViewApi = {
   // A scene is played in this same viewport, so the handful of calls that drive
   // one ride on the same test surface as the rest of the view.
   openScene(inner) { return openScene(inner); },
+  openSceneFile(file) { return openSceneFile(file); },
   closeScene() { closeScene(); },
   showShot(index, at) { show(index, at ?? 0); },
   playScene(on) { setPlaying(on); },
