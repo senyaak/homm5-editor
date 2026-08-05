@@ -18,6 +18,7 @@ import { join } from 'node:path';
 import { closeEditor, hudSays, launchEditor } from './launch.ts';
 import type { Launched } from './launch.ts';
 import { bar } from './bar.ts';
+import { pickObject, placeAtTile } from './objects.ts';
 import { readEntries } from '../src/format/pak.ts';
 import { LIVE, clearMap, prepareGameRoot } from './mods.ts';
 import {
@@ -51,27 +52,25 @@ test.beforeAll(async () => {
 test.afterAll(async () => { if (ed) await closeEditor(ed); });
 
 /**
- * Place one object and hand back the id the map gave it.
+ * Place one object THROUGH THE PALETTE, and hand back the id the map gave it.
  *
- * The shared record is named with the **xpointer** the palette's own hrefs
- * carry: `…(AdvMapHeroShared).xdb#xpointer(/AdvMapHeroShared)`. Without the
- * fragment the game cannot resolve the record and the object is not there at
- * all — which it reports as "PlayerN has no heroes and no towns", and then as
- * "Start player does not exist". The editor takes the bare path without
- * complaint and calls the object complete, so this is written once, here.
+ * Arm a swatch, click the map — which is the only way that proves anything.
+ * Calling `addObject` with a path typed out here builds a map by a route no
+ * person takes, and the first attempt did exactly that: every `Shared` href
+ * went in without its `#xpointer(/…Shared)` fragment, the game could resolve
+ * none of the records, and both players owned nothing. The palette's own hrefs
+ * carry the fragment, so armed from the catalogue it cannot be got wrong.
  */
-async function place(page: Launched['page'], type: string, shared: string,
-                     x: number, y: number): Promise<string> {
-  const href = shared.includes('#') ? shared : `${shared}#xpointer(/${type}Shared)`;
-  const id = await page.evaluate(async (p) => {
-    const r = await window.editor.addObject({ type: p.type, shared: p.shared, x: p.x, y: p.y, floor: 0, r: 0 });
-    return { id: r.instance.id as string, complete: r.complete };
-  }, { type, shared: href, x, y });
-  // A hero placed with no donor to copy comes out without the Editable block
-  // this whole map is made of, and everything below would then write into
-  // nothing. Said here, where it names the object rather than the symptom.
-  expect(id.complete, `${shared} was placed with all its fields`).toBeTruthy();
-  return id.id;
+async function place(page: Launched['page'], shared: string, x: number, y: number): Promise<string> {
+  await pickObject(page, shared);
+  const before = new Set((await page.evaluate(() => window.view.objects())).map((o) => o.id));
+  await placeAtTile(page, x, y);
+  const after = await page.evaluate(() => window.view.objects());
+  const added = after.filter((o) => !before.has(o.id));
+  expect(added, `placing ${shared} added one object`).toHaveLength(1);
+  const id = added[0]!.id;
+  await page.evaluate((oid) => window.view.select(oid), id);
+  return id;
 }
 
 const setPath = (page: Launched['page'], id: string, path: (string | number)[], value: string) =>
@@ -84,7 +83,7 @@ const addItem = (page: Launched['page'], id: string, path: (string | number)[], 
 
 /** A hero, his kit, and the stack he is standing in front of. */
 async function placeHero(page: Launched['page'], kit: Kit, player: string): Promise<string> {
-  const id = await place(page, 'AdvMapHero', kit.shared, kit.at.x, kit.at.y);
+  const id = await place(page, kit.shared, kit.at.x, kit.at.y);
   await setPath(page, id, ['PlayerID'], player);
   // Named, so a script or a later stage can address him, and so the checklist
   // and the map agree on what to call him.
@@ -111,10 +110,8 @@ async function placeHero(page: Launched['page'], kit: Kit, player: string): Prom
   if (st.knowledge !== undefined) await setPath(page, id, ['Editable', 'Knowledge'], String(st.knowledge));
   if (kit.ballista) await setPath(page, id, ['Editable', 'Ballista'], 'true');
 
-  if (kit.foe) await place(page, 'AdvMapMonster', kit.foe.shared, kit.foe.at.x, kit.foe.at.y);
-  if (kit.artifact) {
-    await place(page, 'AdvMapArtifact', kit.artifact.shared, kit.artifact.at.x, kit.artifact.at.y);
-  }
+  if (kit.foe) await place(page, kit.foe.shared, kit.foe.at.x, kit.foe.at.y);
+  if (kit.artifact) await place(page, kit.artifact.shared, kit.artifact.at.x, kit.artifact.at.y);
   return id;
 }
 
