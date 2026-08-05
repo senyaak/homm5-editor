@@ -331,6 +331,23 @@ one.
 
 ### Fixed
 
+- **A live run puts the mod chain back to its start, and says "everything" in
+  one word.** Two halves of the same miss. The suite decides whether to reset
+  the chain by reading the command line — it runs before there are any test
+  files to look at — and it read the argument as a STRING: `e2e/`, which is
+  every spec there is, mentions no stage by name and so counted as a run about
+  something else. The reset was skipped, and mod-001 failed on finding the last
+  run's creature still installed, 93 specs from the end. A folder is read from
+  disk now, and `tools/e2e-live.ts --all` passes no filter at all, which is the
+  documented way to mean the whole suite; the bare form still refuses, since
+  running every spec against an install is a thing to say out loud.
+
+  And the reset itself is wholesale: the installed mod is taken away, not
+  disassembled. Taking out exactly our own things meant a list of every kind of
+  content to keep up to date forever, and it bought nothing — a live run happens
+  in the copy of the game this checkout sits in. A copy goes to
+  `_tmp/mod-backup/` first, so it is one file-copy from back.
+
 - **A test run no longer rewrites the `.env` your own editor reads.** The cold
   start is the one spec that drives the real setup window to its end, and that
   end writes down where the game is — into the file beside the build, which is

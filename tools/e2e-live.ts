@@ -2,6 +2,7 @@
 //
 //   node tools/e2e-live.ts e2e/mod-003-artifacts-create.spec.ts
 //   node tools/e2e-live.ts e2e/mod-001-units-create.spec.ts e2e/mod-007-sharpshooter/
+//   node tools/e2e-live.ts --all          every spec, the way an ordinary run does
 //   npm run e2e-live -- e2e/mod-003-artifacts-create.spec.ts
 //
 // Not called `test-…`: `npm test` runs every script with that prefix as a
@@ -29,13 +30,28 @@
 
 import { spawnSync } from 'node:child_process';
 
-const specs = process.argv.slice(2).filter((a) => a !== '--noRemove');
-if (!specs.length) {
+// `--all` passes NO filter on, which is not the same as passing `e2e/`. The
+// suite's global setup has only this command line to read, and it puts the mod
+// chain back to its start for a run that could contain it — no filter means the
+// whole suite and it does; `e2e/` is the same set of specs and says so nowhere.
+// The bare form still refuses: running every spec against somebody's install is
+// a thing to say out loud, not to reach by forgetting an argument.
+const args = process.argv.slice(2).filter((a) => a !== '--noRemove');
+const all = args.includes('--all');
+const specs = args.filter((a) => a !== '--all');
+if (!all && !specs.length) {
   console.error('usage: node tools/e2e-live.ts <spec…>   (e.g. e2e/mod-003-artifacts-create.spec.ts)');
+  console.error('       node tools/e2e-live.ts --all     every spec, C1M1 aside');
+  process.exit(2);
+}
+if (all && specs.length) {
+  console.error('--all is every spec; naming some as well says two different things');
   process.exit(2);
 }
 
-console.log(`live run — the real install, nothing removed:\n  ${specs.join('\n  ')}\n`);
+console.log(all
+  ? 'live run — the real install, nothing removed: every spec (C1M1 aside)\n'
+  : `live run — the real install, nothing removed:\n  ${specs.join('\n  ')}\n`);
 const r = spawnSync('npx', ['playwright', 'test', ...specs], {
   stdio: 'inherit',
   env: { ...process.env, HOMM5_NO_REMOVE: '1' },

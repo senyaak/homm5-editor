@@ -6,7 +6,7 @@
 // test written against it would fail for a reason that has nothing to do with
 // the code being tested. Cost is a fraction of a second per run.
 
-import { rmSync } from 'node:fs';
+import { existsSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { buildRenderer } from '../tools/build-renderer.ts';
@@ -29,11 +29,24 @@ import { LIVE, openModGameRoot, REAL_GAME } from './mods.ts';
  * `mod-` is a stage of it. Only a run that names files and none of them a mod
  * stage is treated as unrelated — which is the case that must not pay for the
  * chain's reset, and the only one worth being sure about.
+ *
+ * A filter can also name a FOLDER, and then the string says nothing: `e2e/` is
+ * every spec there is and mentions no stage by name. Read from disk instead of
+ * from the argument. Guessing from the string cost a live run — the chain was
+ * not put back to its start, and mod-001 failed on finding last week's creature
+ * still installed, 93 specs from the end of a 6-minute run.
  */
-function runHasModStages(): boolean {
-  const filters = process.argv.slice(2).filter((a) => !a.startsWith('-')
+function modSpecsUnder(filter: string): boolean {
+  const at = join(REPO_ROOT, filter);
+  if (!existsSync(at) || !statSync(at).isDirectory()) return false;
+  return readdirSync(at, { recursive: true })
+    .some((e) => { const s = String(e); return s.includes('mod-') && s.endsWith('.spec.ts'); });
+}
+
+export function runHasModStages(argv: readonly string[] = process.argv.slice(2)): boolean {
+  const filters = argv.filter((a) => !a.startsWith('-')
     && (a.includes('spec') || a.includes('e2e') || a.includes('mod-') || a.includes('c1m1')));
-  return filters.length === 0 || filters.some((f) => f.includes('mod-'));
+  return filters.length === 0 || filters.some((f) => f.includes('mod-') || modSpecsUnder(f));
 }
 
 export default async function build(): Promise<void> {

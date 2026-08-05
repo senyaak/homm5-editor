@@ -7,14 +7,13 @@
 // copied three times.
 
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { DATA, REPO_ROOT } from './launch.ts';
 import { buildCreatureMod } from '../src/mods/creature-mod.ts';
 import {
   addArtifact, addArtifactSet, addBuilding, addCreature, addHero, addHeroClass, addHeroSkill,
-  addSpecialization, modIsEmpty, newCreatureMod,
-  removeArtifact, removeArtifactSet, removeBuilding, removeCreature, removeHero, removeHeroClass,
-  removeSpecialization,
+  addSpecialization, newCreatureMod,
+  removeBuilding,
   updateArtifact, updateArtifactSet,
 } from '../src/mods/mod-model.ts';
 import { takenClasses } from '../src/mods/hero-classes.ts';
@@ -52,10 +51,11 @@ import { takenSpecializations } from '../src/mods/specializations.ts';
  * the same switch for its map for a while (`--noRemoveMap`), and this is that
  * idea for everything a mod spec installs.
  *
- * A live run still starts from a known state: OUR things are taken out of the
- * installed mod first, so the spec authors them from nothing the way it does in
- * a fresh install. Everything else in the archive is left alone — dwellings the
- * editor cannot yet author would be gone for good.
+ * A live run still starts from a known state: the installed mod is taken away
+ * whole before the chain runs, so the specs author it from nothing the way they
+ * do in a fresh install. A copy goes to MOD_BACKUP first — the install is this
+ * checkout's own copy of the game, asked for by name, and one file-copy is the
+ * whole of the way back.
  */
 export const LIVE = !!process.env.HOMM5_NO_REMOVE;
 
@@ -382,7 +382,7 @@ export async function prepareGameRoot(dir: string): Promise<void> {
  * the stage before: they share one install and one archive.
  */
 export async function openModGameRoot(): Promise<void> {
-  if (LIVE) { clearFixture(REAL_GAME); return; }
+  if (LIVE) { clearInstalledMod(REAL_GAME); return; }
   // A machine with no game cannot have one prepared. That is not a failure to
   // report: the data-free half of the suite (`--grep @nodata`, which is what
   // GitHub runs) touches no mod install at all, and the stages that DO need one
@@ -601,109 +601,37 @@ export const TENT_PERKS = [
 }));
 
 /**
- * What mod-005 names its buildings with — one per class: `E2eBuilding`,
- * `E2eMine`, `E2eShrine`… They are named after the CLASSES rather than listed
- * anywhere, so a live run clears them by this prefix.
- */
-export const E2E_BUILDING = 'E2e';
-
-/** Everything the fixtures author, so a live run can start where a fresh one does. */
-const OURS = {
-  creatures: [SHARPSHOOTER.id],
-  buildings: [PALACE.file],
-  artifacts: [AMULET.id, CLOAK.id, BOOTS.id],
-  sets: [UNDEAD_KING.effect],
-  // The hero mod-004 authors. Without him here a second live run met his own
-  // leftovers and the dialog refused the name — which is exactly what the
-  // clearing is for.
-  heroes: [GEM_FILE],
-  // And the specialization he holds. Cleared AFTER him, always: one a hero
-  // still names cannot be taken out, and it is the model that says so.
-  specializations: [GEM_SPEC.id],
-  // The class she IS, which takes its own racial with it — the class is the
-  // whole and the skill is part of it. Cleared after her, like the
-  // specialization: a class a hero is still of cannot be taken out.
-  classes: [WITCH.id],
-};
-
-/**
- * Take the fixtures out of an installed mod, leaving the rest of it alone.
+ * Where the mod archive is kept before a run takes it away.
  *
- * The rest matters: the archive in a real game also carries dwellings authored
- * before the editor became the mod's only writer, and no dialog can make them
- * again. Rebuilding it from the fixture alone would delete them without a word.
- */
-/**
- * Where the mod archive is kept before this run takes anything out of it.
- *
- * ONE slot, overwritten each time: this is an undo for the clear that just
- * happened, not a history. It exists because the clear is not always as small
- * as it sounds — a mod that holds nothing but the fixtures ends up EMPTY, and
- * an empty mod is deleted, which is twenty-six megabytes and four minutes of
- * rebuilding for a run that only meant to reset a chain.
+ * ONE slot, overwritten each time: an undo for the clear that just happened,
+ * not a history. The clear itself is wholesale — see below — so this copy is
+ * the only way back to what was installed a minute ago.
  */
 export const MOD_BACKUP = join(REPO_ROOT, '_tmp', 'mod-backup', `${MOD_STEM}.before-clear.h5u`);
 
-export function clearFixture(gameRoot: string): void {
+/**
+ * Take the installed mod away, whole, so the chain starts where a fresh one does.
+ *
+ * WHOLESALE, not piece by piece. This used to take out exactly the fixtures and
+ * write the rest back, on the theory that the archive may carry things no dialog
+ * can author again and the install is somebody else's. It is not somebody
+ * else's: a live run happens in the copy of the game this checkout sits in, and
+ * it is asked for by name. What the careful version cost was a list of every kind
+ * of content, to be kept up to date forever — and the run that showed this up
+ * failed BECAUSE the reset never ran at all. Skipped beats blunt in no direction.
+ *
+ * A copy goes to MOD_BACKUP first, so the archive is one file-copy from back. The
+ * effects file goes with it: it names artifacts and specializations that are no
+ * longer installed.
+ */
+export function clearInstalledMod(gameRoot: string): void {
   const archive = modFile(gameRoot, 'mod', MOD);
-  const found = existsSync(archive) ? readCreatureMod(archive) : null;
-  if (!found) return;
-  // Before anything is taken out — the copy is worth nothing if it is made
-  // after the decision to delete.
-  mkdirSync(join(REPO_ROOT, '_tmp', 'mod-backup'), { recursive: true });
+  if (!existsSync(archive)) return;
+  // Before the delete, not after — a copy made afterwards copies nothing.
+  mkdirSync(dirname(MOD_BACKUP), { recursive: true });
   copyFileSync(archive, MOD_BACKUP);
-  const mod = found.mod;
-  let touched = false;
-  // The set first: it names the artifacts, and a set whose members are gone is
-  // a tooltip pointing at nothing.
-  for (const effect of OURS.sets) {
-    if ((mod.sets ?? []).some((s) => s.effect === effect)) { removeArtifactSet(mod, effect); touched = true; }
-  }
-  for (const id of OURS.artifacts) {
-    if ((mod.artifacts ?? []).some((a) => a.id === id)) { removeArtifact(mod, id); touched = true; }
-  }
-  // The palace by name, and mod-005's one-per-class by their prefix: those are
-  // named after the classes rather than listed anywhere, and a live run that
-  // left them behind met "two buildings cannot both be E2eBuilding" the next
-  // time round — with the form still open and nothing saying why.
-  for (const b of [...(mod.buildings ?? [])]) {
-    if (!OURS.buildings.includes(b.file) && !b.file.startsWith(E2E_BUILDING)) continue;
-    removeBuilding(mod, b.file);
-    touched = true;
-  }
-  for (const id of OURS.creatures) {
-    if (mod.creatures.some((c) => c.id === id)) { removeCreature(mod, id); touched = true; }
-  }
-  for (const file of OURS.heroes) {
-    if ((mod.heroes ?? []).some((h) => h.id === file)) { removeHero(mod, file); touched = true; }
-  }
-  // After the heroes, and only then: removeSpecialization refuses one that is
-  // still held, which is the rule and not an obstacle to work around.
-  for (const id of OURS.classes) {
-    if ((mod.classes ?? []).some((c) => c.id === id)) { removeHeroClass(mod, id); touched = true; }
-  }
-  for (const id of OURS.specializations) {
-    if ((mod.specializations ?? []).some((s) => s.id === id)) { removeSpecialization(mod, id); touched = true; }
-  }
-  if (!touched) return;
-  // Nothing left but the manifest: an archive of nothing is not a mod, and
-  // building one throws. This is the ordinary case in a throwaway install,
-  // where the fixtures ARE the whole mod — and it stayed hidden until a spec
-  // ran live against an install holding nothing else.
-  //
-  // The model's own test, not a copy of it. There have been three of these and
-  // two went stale the moment a new kind of content arrived.
-  if (modIsEmpty(mod)) {
-    rmSync(archive, { force: true });
-    writeEffectsFile(gameRoot, [], []);
-    return;
-  }
-  const report = buildCreatureMod(mod, dataReader(DATA));
-  installCreatureMod(gameRoot, mod, packCreatureMod(report));
-  // An artifact taken out has to stop granting its bonus: the file is written
-  // from what is LEFT, never appended to.
-  writeEffectsFile(gameRoot, effectsOf(mod.artifacts ?? [], mod.sets ?? []),
-    specializationRowsOf(mod.specializations ?? []), skillRowsOf(mod.skills ?? []));
+  rmSync(archive, { force: true });
+  writeEffectsFile(gameRoot, [], []);
 }
 
 /**
