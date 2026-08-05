@@ -115,13 +115,19 @@ use **Encourage** on them.
 
 ### 4. `master-of-fire-fix` — the wizard
 
-He fights **100 zombies**, and that is deliberate: an Armageddon leaves nothing
-of a peasant stack, and everything below is read off a stack that is still
-standing. Both Armageddon casters have them.
+Two things in his kit are the instrument, and neither is obvious:
 
-Cast **Armageddon** (it hits your own stacks as well) and then **Stone Skin** on
-a stack of yours that the fire caught. Read that stack's defence in its tooltip
-after each cast.
+- he fights **100 zombies**, because an Armageddon leaves nothing of a peasant
+  stack and this is read off a stack that is still standing;
+- he has **100 druids**, because the defence has to be raised *while the fire
+  effect is still on* — and the effect lasts **one turn**, so the hero who cast
+  the Armageddon cannot also cast the buff in time. A creature caster can:
+  `CREATURE_DRUID` knows **Stone Skin**, and acts in the same round on its own
+  initiative.
+
+So: cast **Armageddon** (it hits your own stacks as well), then on the **druids'**
+turn have them cast **Stone Skin** on a stack of yours that the fire caught. Read
+that stack's defence in its tooltip after each step.
 
 - **off** — the fire took a fixed number away when it landed, so after Stone Skin
   the stack has *more* than half its defence. The debuff no longer means 50%.

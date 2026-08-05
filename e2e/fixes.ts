@@ -154,8 +154,8 @@ export const HEROES: Kit[] = [
     // a perk whose class does not match is a perk the game does not grant.
     perks: ['HERO_SKILL_MASTER_OF_FIRE'],
     // Armageddon to hit everything including the war machines, Fireball for a
-    // single stack, Stone Skin to move a defence AFTER the fire landed on it —
-    // which is the whole point of the Master of Fire fix.
+    // single stack. Stone Skin is in the book to read the spell's own numbers
+    // from, but it is not what moves the defence in this test — see the druids.
     spells: ['SPELL_ARMAGEDDON', 'SPELL_FIREBALL', 'SPELL_STONESKIN'],
     stats: { offence: 5, defence: 5, spellpower: 20, knowledge: 30 },
     // A tent of his own, so an Armageddon has a war machine to prove itself on.
@@ -163,6 +163,14 @@ export const HEROES: Kit[] = [
     army: [
       { creature: 'CREATURE_MARKSMAN', count: 30 },
       { creature: 'CREATURE_SWORDSMAN', count: 30 },
+      // THE DRUIDS ARE THE INSTRUMENT. Master of Fire takes the defence for one
+      // TURN, and a hero casts once a turn — so the hero who cast the
+      // Armageddon cannot also raise a defence while the effect is still on,
+      // and the difference the fix is about never appears. A creature caster
+      // can: `CREATURE_DRUID` knows `SPELL_STONESKIN` (with Lightning Bolt),
+      // checked in GameMechanics/Creature/Creatures/Preserve/Druid.xdb, and it
+      // acts in the same round on its own initiative.
+      { creature: 'CREATURE_DRUID', count: 100 },
     ],
     // Zombies, because peasants do not survive an Armageddon and this test is
     // read off a stack that is still standing.
