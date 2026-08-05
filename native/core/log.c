@@ -24,6 +24,39 @@ static void beside_us(const WCHAR *name, WCHAR *out) {
   out[i] = 0;
 }
 
+/**
+ * A whole file beside us, NUL-terminated, or null if there is none.
+ *
+ * WHOLE, and that is the point. Both configs used to be read into a buffer of a
+ * size somebody guessed — 4 KB for the quality-of-life flags — and the file
+ * grew: every flag now carries its description and its credit as comments, and
+ * at 8 KB the last flags in it were past the end of the buffer. They were not
+ * refused, they were never SEEN, so `payback-fix 1` sat in the file and the log
+ * did not list it and nothing in the game changed. A guessed size fails
+ * silently and fails later, which is the worst way to fail.
+ *
+ * `*size` comes back with the length. Free with `VirtualFree(p, 0, MEM_RELEASE)`.
+ */
+static char *read_beside_us(const WCHAR *name, DWORD *size) {
+  WCHAR path[MAX_PATH];
+  beside_us(name, path);
+  HANDLE h = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING,
+                         FILE_ATTRIBUTE_NORMAL, NULL);
+  if (h == INVALID_HANDLE_VALUE) return NULL;
+  DWORD len = GetFileSize(h, NULL);
+  if (len == INVALID_FILE_SIZE) { CloseHandle(h); return NULL; }
+  char *buf = (char *)VirtualAlloc(NULL, len + 1, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+  if (!buf) { CloseHandle(h); return NULL; }
+  DWORD got = 0;
+  // One call is enough for a file on disk, and a short read is still a file we
+  // can parse — it is the CAP that was the bug, not the loop.
+  ReadFile(h, buf, len, &got, NULL);
+  CloseHandle(h);
+  buf[got] = 0;
+  *size = got;
+  return buf;
+}
+
 /** Say it in the game's own console too, while a battle can be spoken to. */
 static void console_line(const char *text);
 

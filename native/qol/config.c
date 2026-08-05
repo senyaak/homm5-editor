@@ -47,17 +47,12 @@ static const char *const QOL_NAMES[QOL_COUNT] = {
 static int g_qol[QOL_COUNT];
 
 static void load_qol(void) {
-  WCHAR path[MAX_PATH];
-  beside_us(L"homm5-editor-qol.txt", path);
-  HANDLE h = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING,
-                         FILE_ATTRIBUTE_NORMAL, NULL);
-  if (h == INVALID_HANDLE_VALUE) return;
-
-  char buf[4096];
+  // The WHOLE file. It used to be 4 KB of it, and the file is twice that — each
+  // flag carries its description and its credit as comments — so the flags at
+  // the end were never read at all. See read_beside_us.
   DWORD got = 0;
-  ReadFile(h, buf, sizeof(buf) - 1, &got, NULL);
-  CloseHandle(h);
-  buf[got] = 0;
+  char *buf = read_beside_us(L"homm5-editor-qol.txt", &got);
+  if (!buf) return;
 
   const char *p = buf, *end = buf + got;
   while (p < end) {
@@ -78,6 +73,11 @@ static void load_qol(void) {
       break;
     }
   }
+  VirtualFree(buf, 0, MEM_RELEASE);
+  // How much was read, said out loud. A flag that does not take effect is
+  // answered first by "did the file even reach that far" — which is the
+  // question nobody could ask while the answer was a buffer size in here.
+  log_num("qol: bytes read: ", (int)got);
   for (int i = 0; i < QOL_COUNT; i++) {
     if (g_qol[i]) log_text("qol: ", QOL_NAMES[i]);
   }

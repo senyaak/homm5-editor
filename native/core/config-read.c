@@ -8,17 +8,12 @@
 // Reading the config.
 
 static void load_config(void) {
-  WCHAR path[MAX_PATH];
-  beside_us(L"homm5-editor-effects.txt", path);
-  HANDLE h = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING,
-                         FILE_ATTRIBUTE_NORMAL, NULL);
-  if (h == INVALID_HANDLE_VALUE) { log_line("no config beside the dll - nothing to add"); return; }
-
-  char buf[8192];
+  // The whole file, however long it is. This one had 8 KB where the flags file
+  // had 4, and the flags file outgrew its buffer in silence — a row past the
+  // end is not refused, it is never seen. See read_beside_us.
   DWORD got = 0;
-  ReadFile(h, buf, sizeof(buf) - 1, &got, NULL);
-  CloseHandle(h);
-  buf[got] = 0;
+  char *buf = read_beside_us(L"homm5-editor-effects.txt", &got);
+  if (!buf) { log_line("no config beside the dll - nothing to add"); return; }
 
   const char *p = buf, *end = buf + got;
   while (p < end) {
@@ -111,6 +106,7 @@ static void load_config(void) {
     if (r.threshold < 1) r.threshold = 1;
     if (g_rowCount < MAX_ROWS) g_rows[g_rowCount++] = r;
   }
+  VirtualFree(buf, 0, MEM_RELEASE);
   log_num("config rows: ", g_rowCount);
   log_num("skill rows: ", g_skillRowCount);
   log_num("specialization rows: ", g_specRowCount);
