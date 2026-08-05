@@ -39,15 +39,26 @@ test('the editor opens a campaign scene and plays it', async () => {
   // point at an archive and the window lists what is inside it, from that
   // archive's own directory with nothing unpacked (src/dialog/scene-source.ts).
   // The campaigns' archive holds 185, so a list that comes back with a handful
-  // is one that read the wrong thing. (`openSceneFile` is what the Open file…
-  // button calls once the OS dialog has answered — the one step a test cannot
-  // drive.)
+  // is one that read the wrong thing.
   expect(await page.evaluate(() => document.querySelectorAll('#sc-list .shot.scene').length)).toBe(0);
-  const listed = await page.evaluate((f) => window.view.openSceneFile(f), CAMPAIGNS);
-  expect(listed.scenes.length).toBeGreaterThan(150);
-  expect(listed.scenes.some((s) => s.inner === SCENE)).toBe(true);
+
+  // Through the BUTTON, not past it. The one step a test cannot drive is the
+  // OS file dialog, so that — and only that — is answered for it, in the main
+  // process where it lives. Everything after the answer is the real path:
+  // Open file… → scene:pick-file → scene:in-file → the rows. Calling
+  // `openSceneFile` directly, which is what this test did first, proves the
+  // listing works and says nothing about whether the button is wired to it.
+  await ed.app.evaluate(({ dialog }, file) => {
+    dialog.showOpenDialog = (async () => ({ canceled: false, filePaths: [file] })) as typeof dialog.showOpenDialog;
+  }, CAMPAIGNS);
+  await page.evaluate(() => (document.getElementById('sc-file') as HTMLButtonElement).click());
+  await page.waitForFunction(() => document.querySelectorAll('#sc-list .shot.scene').length > 0, null, { timeout: 60_000 });
+  const listed = await page.evaluate(() => window.view.sceneFile());
+  expect(listed?.file).toBe(CAMPAIGNS);
+  expect(listed!.scenes.length).toBeGreaterThan(150);
+  expect(listed!.scenes.some((s) => s.inner === SCENE)).toBe(true);
   const rows = await page.evaluate(() => document.querySelectorAll('#sc-list .shot.scene').length);
-  expect(rows).toBe(listed.scenes.length);
+  expect(rows).toBe(listed!.scenes.length);
 
   // The filter narrows the list, and picking a row is what opens a scene.
   const chosen = await page.evaluate(() => {

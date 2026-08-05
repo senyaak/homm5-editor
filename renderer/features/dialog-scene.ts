@@ -711,6 +711,9 @@ function renderCatalogue(): void {
     : `no scene in ${where}`;
 }
 
+/** The file the window is looking in, and what it found there. */
+export const sceneFile = (): ScenesInFileResult | null => source;
+
 /**
  * Look in a file: an archive, or a scene document itself.
  *

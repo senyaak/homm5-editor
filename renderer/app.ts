@@ -29,7 +29,7 @@ import { materialFor, partTexture, shadeProbe } from '#viewport/materials.ts';
 import { terrainColor, asTileSpace, terrainGeometry, waterCells, waterGeometry, makeWaterMesh, WATER_ORDER, remeshFloor, sea } from '#viewport/terrain-mesh.ts';
 import { refreshBlocked, refreshFootprints, syncFootprints, setShowBlocked, showBlocked } from '#viewport/overlays.ts';
 import { advanceIdle, clearIdle, removeIdle, addIdle, idleMode, setIdleMode } from '#viewport/idle.ts';
-import { actorKinds, advanceScene, closeScene, initDialogScenes, openScene, openSceneFile, playing, setPlaying, shotFxCount, shotModelCount, show } from '#features/dialog-scene.ts';
+import { actorKinds, advanceScene, closeScene, initDialogScenes, openScene, openSceneFile, playing, sceneFile, setPlaying, shotFxCount, shotModelCount, show } from '#features/dialog-scene.ts';
 import type { SceneInfo, ScenesInFileResult } from '#electron/ipc.ts';
 import { roster, objectsOfClass, canCreateClass, mapNames, forgetClass } from '#core/rosters.ts';
 import { openRecolor, initRecolor } from '#features/mods/recolor.ts';
@@ -362,6 +362,8 @@ interface ViewApi {
    * step a test cannot drive; this takes the path instead.
    */
   openSceneFile(file: string): Promise<ScenesInFileResult>;
+  /** The file the window is looking in, and its scenes; null before one is named. */
+  sceneFile(): ScenesInFileResult | null;
   closeScene(): void;
   /** Show one shot, optionally partway into it (seconds). */
   showShot(index: number, at?: number): void;
@@ -745,6 +747,7 @@ const view: ViewApi = {
   // one ride on the same test surface as the rest of the view.
   openScene(inner) { return openScene(inner); },
   openSceneFile(file) { return openSceneFile(file); },
+  sceneFile() { return sceneFile(); },
   closeScene() { closeScene(); },
   showShot(index, at) { show(index, at ?? 0); },
   playScene(on) { setPlaying(on); },
