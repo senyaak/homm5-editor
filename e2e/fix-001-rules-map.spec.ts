@@ -21,7 +21,8 @@ import { bar } from './bar.ts';
 import { readEntries } from '../src/format/pak.ts';
 import { LIVE, clearMap, prepareGameRoot } from './mods.ts';
 import {
-  ARCHIVE, DATA, FIXES_UNDER_TEST, GAME, HEROES, MAP_DIR, NAME, OPPONENT, OVERRIDE_ALL, TILES,
+  ARCHIVE, DATA, FIXES_UNDER_TEST, GAME, HEROES, MAP_DIR, NAME, OPPONENT, OVERRIDE_ALL, PLAYERS,
+  TILES,
 } from './fixes.ts';
 import type { Kit } from './fixes.ts';
 
@@ -118,6 +119,18 @@ test('the Rules Test map is built and packed, with every fix off', async () => {
   await expect(page.locator('#newmap')).toBeHidden({ timeout: 60_000 });
   await expect(page.locator('#title')).toContainText(NAME, { timeout: 120_000 });
 
+  // --- the players the map is for ---
+  //
+  // A new map's eight slots are all off, and a hero owned by PLAYER_1 does not
+  // turn one on: the object says who owns it, the slot says whether that owner
+  // exists. Without this the game offers nothing to start the map as.
+  for (const p of PLAYERS) {
+    await page.evaluate(async (q) => {
+      await window.editor.setMapPath({ path: ['players', q.slot, 'ActivePlayer'], value: 'true' });
+      await window.editor.setMapPath({ path: ['players', q.slot, 'Colour'], value: q.colour });
+    }, p);
+  }
+
   // --- the row of heroes, each with his bug in front of him ---
   for (const kit of HEROES) {
     await placeHero(page, kit, 'PLAYER_1');
@@ -132,6 +145,11 @@ test('the Rules Test map is built and packed, with every fix off', async () => {
   // --- what landed on disk, since a field that did not reach the file is a
   // hero who plays as the shipped game's own and a run that proves nothing ---
   const xml = readFileSync(join(MAP_DIR, 'map.xdb'), 'latin1');
+  // A map whose slots are all off loads and offers nobody to play it, which is
+  // a failure with no error in it — so it is asserted rather than assumed.
+  expect((xml.match(/<ActivePlayer>true<\/ActivePlayer>/g) ?? []).length,
+    'the map has players at all').toBe(PLAYERS.length);
+
   const blocks = xml.split('<AdvMapHero>').slice(1)
     .map((part) => part.slice(0, part.indexOf('</AdvMapHero>')));
   expect(blocks, 'every hero of the plan is in the file').toHaveLength(HEROES.length + 1);

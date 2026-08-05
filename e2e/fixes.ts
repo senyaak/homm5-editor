@@ -50,6 +50,22 @@ export const TILES = 72;
  */
 export const OVERRIDE_ALL = 120;
 
+/**
+ * The player slots the map uses, and the colours they take.
+ *
+ * A new map declares eight of them and every one is `ActivePlayer false`, which
+ * is a map with NO PLAYERS: the game offers nothing to start it as. Placing a
+ * hero owned by PLAYER_1 does not turn the slot on — the object says who owns
+ * it, the slot says whether that owner exists. Measured against the shipped
+ * missions, where the slots in use are the active ones (A2S4 has three active
+ * and all of them still `PCOLOR_NEUTRAL`, so the colour is presentation and the
+ * flag is the thing).
+ */
+export const PLAYERS = [
+  { slot: 0, colour: 'PCOLOR_RED' },
+  { slot: 1, colour: 'PCOLOR_BLUE' },
+];
+
 export interface Skill { id: string; mastery: string }
 
 /** One hero, the bug he is standing there to show, and what he is made of. */
