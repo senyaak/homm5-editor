@@ -56,6 +56,7 @@ import { makeLightMap, bakeLightMap, markLightsDirty } from '#viewport/point-lig
 import { upgradeToSplat, projectBatch, applyProjectedMaterials, setGroundScale, setCliffAmount, cliffsOn, disposeSplats } from '#viewport/splat.ts';
 import { applyAmbient, refreshLighting, sun, uSunDir, uSunCol, uAmbCol, uShadeCol, uLmGain, uFxTint, uWhiten } from '#viewport/lighting.ts';
 import { initSky } from '#viewport/sky.ts';
+import { initShadows, setShadows, shadowState, updateShadowCamera } from '#viewport/shadows.ts';
 import type { Floor3D, World, Selection, GeomBatch } from '#core/state.ts';
 import { UNITS_PER_TILE as U } from '#src/scene/units.ts';
 import { tierOf, RAMP_BIT, TIER_STEP } from '#src/terrain/terrain.ts';
@@ -434,6 +435,15 @@ interface ViewApi {
   /** What one lit surface comes out as, 0..255 — see shadeProbe. */
   shadeProbe(albedo: number[], normal: number[]): number[];
   /**
+   * The shadow pass: whether it is running and along which direction. A
+   * screenshot cannot tell "no shadows because the preset says so" from "no
+   * shadows because the map never rendered", and the direction is the half of
+   * it that a wrong `ShadowPitch` reading would move.
+   */
+  shadowState(): { on: boolean; dir: number[]; extent: number; size: number };
+  /** Switch the shadow pass off, to see what it was contributing. */
+  shadows(on: boolean): void;
+  /**
    * The active floor's designer point lights: how many the floor carries and
    * how many lightmap texels their bake actually lit. A wrong offset/radius
    * reading would still light SOMETHING, so tests assert on both together
@@ -634,6 +644,11 @@ const view: ViewApi = {
   shadeProbe(albedo, normal) {
     return shadeProbe(albedo as [number, number, number], normal as [number, number, number]);
   },
+  shadowState() {
+    const s = shadowState();
+    return { ...s, dir: s.dir.map((v) => +v.toFixed(3)) };
+  },
+  shadows(on) { setShadows(on); },
   fxSystems() {
     const fl = state.world ? activeFloor() : null;
     if (!fl) return [];
@@ -919,6 +934,7 @@ function bakePendingLights(now: number): void {
   advanceScene(dt);
   advanceFx(dt);
   bakePendingLights(now);
+  updateShadowCamera(); // after controls.update(): it follows the orbit target
   renderer.render(scene, cam.active);
 })();
 
@@ -929,6 +945,7 @@ function bakePendingLights(now: number): void {
 // silently stop being.
 initShell();
 initSky(); // before any world: applyAmbient runs on every load and floor switch
+initShadows(); // and before any material compiles: shadow chunks are compiled in
 initPalettes();
 initObjectFilters();
 initRegions();

@@ -41,6 +41,20 @@ export function loadAmbient(data: Assets, href: string | null, geo?: AmbientGeom
     const ambient = ambientVec3(xml, 'AmbientColor');
     const shade = ambientVec3(xml, 'ShadeColor');
     if (!light || !ambient || !shade) return null;
+    // The fourth colour: the sun end of the same three-way mix for a surface
+    // the sun does not reach. A preset that names none is shaded as if the
+    // shadow were as bright as the sun, i.e. no shadow at all — so falling back
+    // to `light` is the safe reading of a missing field.
+    const incident = ambientVec3(xml, 'IncidentShadowColor') ?? light;
+    const num = (tag: string, fallback: number): number => {
+      const v = +(xml.match(new RegExp(`<${tag}>([^<]*)`))?.[1] ?? NaN);
+      return Number.isFinite(v) ? v : fallback;
+    };
+    const pitch = num('Pitch', 45), yaw = num('Yaw', 0);
+    // 100 is the engine's "follow the sun" sentinel, not an angle (§3b).
+    const shadowPitch = num('ShadowPitch', 100), shadowYaw = num('ShadowYaw', 100);
+    const followsSun = shadowPitch === 100;
+    const maxShadowHeight = num('MaxShadowHeight', 0) || 20;
 
     // NOT read: the preset's <Sky> cubemap. Every adventure-map preset points
     // at the same /Textures/RefMaps set, and those are blurred highlight blobs
@@ -48,9 +62,11 @@ export function loadAmbient(data: Assets, href: string | null, geo?: AmbientGeom
     // camera never shows a sky. Drawn as a background they look like lens
     // flares pasted on the void.
     return {
-      light, ambient, shade,
-      pitch: +(xml.match(/<Pitch>([^<]*)/)?.[1] ?? 45),
-      yaw: +(xml.match(/<Yaw>([^<]*)/)?.[1] ?? 0),
+      light, ambient, shade, incident,
+      pitch, yaw,
+      shadowPitch: followsSun ? pitch : shadowPitch,
+      shadowYaw: followsSun ? yaw : shadowYaw,
+      maxShadowHeight,
       // ×4, capped at a NET ×2 of the texel: light = min(4·sum, 2). Measured
       // from both ends of the game's own shader chain: the CPU doubles the
       // sum and saturates it into a colour byte (that is the clamp — nothing

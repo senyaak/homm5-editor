@@ -21,6 +21,7 @@ import type { AmbientData, GeomData } from '#src/scene/payload.ts';
 import type { SceneInfo } from '#electron/ipc.ts';
 import { api } from '#core/ipc.ts';
 import { $, $button, $input } from '#core/dom.ts';
+import { markShadowRoles } from '#viewport/shadows.ts';
 import { buildWorld, clearWorld } from '#viewport/world.ts';
 import { idleMode, setIdleMode } from '#viewport/idle.ts';
 import type { IdleMode } from '#viewport/idle.ts';
@@ -413,6 +414,10 @@ export async function openScene(inner: string): Promise<SceneInfo> {
     idle.mesh.rotation.z = actor.rot;
     idle.mesh.scale.setScalar(actor.geom.scale ?? 1);
     stage.add(idle.mesh);
+    // An actor stands on the stage like an object stands on a map, so it casts
+    // and receives like one. Effects do not: an additive glow drawn into the
+    // shadow map would put a solid blob on the ground under every spell.
+    markShadowRoles(idle.mesh, null);
     playing.players.push({
       actor, idle, kind: 'idle00', at: null, walk: null, walkAt: 0, showing: 'idle00',
       fire: [], holds: new Set<string>(),

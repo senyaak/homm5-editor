@@ -13,11 +13,13 @@ import { uiPrefs } from '#core/prefs.ts';
 import type { Floor3D } from '#core/state.ts';
 import { UNITS_PER_TILE as U } from '#src/scene/units.ts';
 import { geomParts } from '#viewport/geoms.ts';
-import { uSunDir, uSunCol, uAmbCol, uShadeCol, uLmGain, uWhiten } from '#viewport/lighting.ts';
+import { uSunDir, uSunCol, uAmbCol, uShadeCol, uIncidentCol, uLmGain, uWhiten } from '#viewport/lighting.ts';
 import { partTexture } from '#viewport/materials.ts';
+import { SHADOW_FRAG_PARS, SHADOW_VERT_PARS, shadowUniforms, shadowVert } from '#viewport/shadows.ts';
 import { renderer } from '#viewport/stage.ts';
 
 const SPLAT_VERT = `
+${SHADOW_VERT_PARS}
 out vec2 vGrid;   // 0..1 across the map -> mask lookup
 out vec2 vWorld;  // tile coords -> tiled ground lookup
 out vec3 vNrm;    // world-space normal (lighting must not swim with the camera)
@@ -33,11 +35,13 @@ void main() {
   // whole artefact this scaling exists to remove. The inverse transpose is the
   // transform that gets it right, and it costs one 3x3 inverse per vertex.
   vNrm = normalize(transpose(inverse(mat3(modelMatrix))) * normal);
+${shadowVert('modelMatrix * vec4(position, 1.0)', 'vNrm')}
   gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
 }`;
 
 const splatFrag = (groups: number, layers: number): string => `
 precision highp sampler2DArray;
+${SHADOW_FRAG_PARS}
 uniform sampler2DArray uGround;
 uniform sampler2DArray uMask;
 uniform sampler2D uRock;
@@ -45,6 +49,7 @@ uniform float uScale;
 uniform float uRockScale;
 uniform float uCliff;   // 0 disables the rock blend entirely
 uniform vec3 uSunDir; uniform vec3 uSunCol; uniform vec3 uAmb; uniform vec3 uShade;
+uniform vec3 uIncident;
 uniform float uWhiten;
 uniform sampler2D uLm;  // baked designer point lights (bakeLightMap)
 uniform float uInvTiles;
@@ -101,9 +106,15 @@ void main() {
   // The lightmap spans the TILES (vWorld/tiles), not vGrid: vGrid is nudged
   // half a texel to hit the V-wide mask's texel centers and would smear the
   // pools half a tile off their objects.
+  // In shadow the sun end of that mix becomes IncidentShadowColor — the same
+  // substitution the objects make (renderer/viewport/materials.ts), because the
+  // engine makes it for every surface: it bakes both colours into every vertex.
+  // The ground is where a shadow is actually seen, so this is the half of the
+  // feature that shows.
   float ndl = dot(n, normalize(uSunDir));
+  vec3 sunEnd = mix(uIncident, uSunCol, sunlitHere());
   vec3 pl = texture(uLm, vWorld * uInvTiles).rgb * uLmGain;
-  outColor = vec4(col * ((uAmb + max(ndl, 0.0) * (uSunCol - uAmb)
+  outColor = vec4(col * ((uAmb + max(ndl, 0.0) * (sunEnd - uAmb)
                                + max(-ndl, 0.0) * (uShade - uAmb) + pl) * uWhiten), 1.0);
 }`;
 
@@ -178,6 +189,7 @@ export function disposeSplats(): void {
 // the mound (11%) from the mountain (96%).
 
 const PROJ_VERT = `
+${SHADOW_VERT_PARS}
 out vec2 vGrid;   // 0..1 across the map -> mask lookup
 out vec2 vWorld;  // tile coords -> tiled ground lookup
 out vec2 vUv;     // the part's own uv, for its darkening texture
@@ -200,17 +212,20 @@ void main() {
   vGrid = grid / uMapSide;
   vWorld = grid;
   vUv = uv;
+${shadowVert('world', 'vNrm')}
   gl_Position = projectionMatrix * viewMatrix * world;
 }`;
 
 const projFrag = (groups: number, layers: number): string => `
 precision highp sampler2DArray;
+${SHADOW_FRAG_PARS}
 uniform sampler2DArray uGround;
 uniform sampler2DArray uMask;
 uniform sampler2D uOverlay;
 uniform float uScale;
 uniform float uHasOverlay;
 uniform vec3 uSunDir; uniform vec3 uSunCol; uniform vec3 uAmb; uniform vec3 uShade;
+uniform vec3 uIncident;
 uniform float uWhiten;
 uniform sampler2D uLm;
 uniform float uLmGain;
@@ -241,8 +256,9 @@ void main() {
   // Here vGrid is exactly grid/tiles (see PROJ_VERT), which is the lightmap's
   // own mapping, so the pools land where the terrain draws them.
   float ndl = dot(normalize(vNrm), normalize(uSunDir));
+  vec3 sunEnd = mix(uIncident, uSunCol, sunlitHere());
   vec3 pl = texture(uLm, vGrid).rgb * uLmGain;
-  outColor = vec4(col * ((uAmb + max(ndl, 0.0) * (uSunCol - uAmb)
+  outColor = vec4(col * ((uAmb + max(ndl, 0.0) * (sunEnd - uAmb)
                                + max(-ndl, 0.0) * (uShade - uAmb) + pl) * uWhiten), 1.0);
 }`;
 
@@ -282,6 +298,7 @@ export function projectBatch(fl: Floor3D, g: number): void {
       vertexShader: PROJ_VERT,
       fragmentShader: projFrag(s.maskGroups.length, s.layerCount),
       uniforms: {
+        ...shadowUniforms(),
         uGround: splatMat.uniforms.uGround!,
         uMask: splatMat.uniforms.uMask!,
         uScale: splatMat.uniforms.uScale!,
@@ -290,8 +307,9 @@ export function projectBatch(fl: Floor3D, g: number): void {
         uMapSide: { value: s.V - 1 },
         uUnits: { value: U },
         uLm: { value: fl.lightMap }, uLmGain,
-        uSunDir, uSunCol, uAmb: uAmbCol, uShade: uShadeCol, uWhiten,
+        uSunDir, uSunCol, uAmb: uAmbCol, uShade: uShadeCol, uIncident: uIncidentCol, uWhiten,
       },
+      lights: true, // what makes three define the shadow chunks and fill them
       side: THREE.DoubleSide,
       // The mound IS the ground, and the building's entrance and floor sit ON
       // it: where they are coplanar the two flickered green/dark as the camera
@@ -345,13 +363,15 @@ export async function upgradeToSplat(fl: Floor3D): Promise<void> {
     vertexShader: SPLAT_VERT,
     fragmentShader: splatFrag(s.maskGroups.length, s.layerCount),
     uniforms: {
+      ...shadowUniforms(),
       uGround: { value: ground }, uMask: { value: masks },
       uRock: { value: rock }, uCliff: { value: rock ? cliffAmount : 0 },
       uScale: { value: texScale },
       uRockScale: { value: texScale / U },
       uLm: { value: fl.lightMap }, uInvTiles: { value: 1 / (s.V - 1) }, uLmGain,
-      uSunDir, uSunCol, uAmb: uAmbCol, uShade: uShadeCol, uWhiten,
+      uSunDir, uSunCol, uAmb: uAmbCol, uShade: uShadeCol, uIncident: uIncidentCol, uWhiten,
     },
+    lights: true,
     side: THREE.DoubleSide,
   });
   fl.maskTex = masks; // the brush writes into this and flips needsUpdate

@@ -18,6 +18,7 @@ import { addIdle } from '#viewport/idle.ts';
 import { buildBatches } from '#viewport/instancing.ts';
 import { applyAmbient, refreshLighting } from '#viewport/lighting.ts';
 import { bakeLightMap, makeLightMap } from '#viewport/point-lights.ts';
+import { markShadowRoles } from '#viewport/shadows.ts';
 import type { IdleObject } from '#viewport/skinning.ts';
 import { clearSky } from '#viewport/sky.ts';
 import { disposeSplats, upgradeToSplat } from '#viewport/splat.ts';
@@ -110,6 +111,10 @@ export function buildFloor(floor: Floor, geos: THREE.BufferGeometry[], mats: THR
     lightMap: makeLightMap(V), lightsDirty: false,
   };
   bakeLightMap(fl); // cheap when nothing on the floor carries lights
+  // After the batches and the animated bodies exist, so both are covered — the
+  // drawing is done by the instanced meshes, not by the pick handles, and only
+  // what is IN the group is walked.
+  markShadowRoles(group, terrainMesh);
   return fl;
 }
 

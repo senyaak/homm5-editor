@@ -59,6 +59,17 @@ export const uAmbCol = { value: new THREE.Color(0.31, 0.31, 0.31) };
  * arrived with the vertex-colour measurement (docs/LIGHTING.md §2).
  */
 export const uShadeCol = { value: new THREE.Color(0.31, 0.31, 0.31) };
+/**
+ * `IncidentShadowColor` — what stands in for `LightColor` where the sun does
+ * not reach.
+ *
+ * A shadow in this engine is not a darkening: the same three-way mix is
+ * evaluated twice per surface, once with `LightColor` at the sun end and once
+ * with this, and the shadow map picks between the two results
+ * (docs/LIGHTING.md §3b). So it is a COLOUR, not a factor — 0.145/0.180/0.271
+ * on the commonest day preset, a cold blue against a warm sun.
+ */
+export const uIncidentCol = { value: new THREE.Color(0.55, 0.55, 0.55) };
 // The Light toggle's reach into the terrain: 1 = the baked designer point
 // lights add in, 0 = they don't (flat editing light keeps pools off too).
 export const uLmGain = { value: 1 };
@@ -108,6 +119,7 @@ export function applyAmbient(a: AmbientData | null): void {
     uSunCol.value.setRGB(0.55, 0.55, 0.55);
     uAmbCol.value.setRGB(0.31, 0.31, 0.31);
     uShadeCol.value.setRGB(0.31, 0.31, 0.31);
+    uIncidentCol.value.setRGB(0.55, 0.55, 0.55); // no preset, no shadow contrast
     uFxTint.value.setRGB(1, 1, 1);
     uWhiten.value = 4;
     return;
@@ -139,6 +151,8 @@ export function applyAmbient(a: AmbientData | null): void {
   uSunCol.value.setRGB(lr, lg, lb); // raw, no conversion: gamma-space shader
   uAmbCol.value.setRGB(ar, ag, ab);
   uShadeCol.value.setRGB(sr, sg, sb);
+  const [ir, ig, ib] = a.incident as [number, number, number];
+  uIncidentCol.value.setRGB(ir, ig, ib);
   // Not `a.whiten`: the multiplier is the pipeline's ×4 and the preset's
   // <Whitening> flag does not reach it. See the uniform above.
   uWhiten.value = 4;

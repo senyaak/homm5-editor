@@ -45,6 +45,17 @@ one.
   Tilt the map editor's camera to the horizon and the same dome is there,
   from the floor's own preset.
 
+- **Objects cast shadows, in scenes and on maps.** A field of trees used to sit
+  on the grass with nothing under it; now the sun throws each one across the
+  ground, and the actors of a cutscene stand in their own. A shadow here is not
+  a darkening — the engine evaluates its whole light mix a second time with
+  `IncidentShadowColor` in place of `LightColor` and picks between the two
+  results, so shadowed ground goes the preset's own cold blue rather than
+  simply dim, which is what the game's picture does. Which way they fall comes
+  from the preset as well: `ShadowPitch`/`ShadowYaw` of 100 is the engine's
+  "follow the sun" sentinel rather than an angle, and the thirteen shipped
+  presets that aim their shadows elsewhere get their own direction.
+
 ### Changed
 
 - **Where the game is comes from `.env` or the command line, and from nothing

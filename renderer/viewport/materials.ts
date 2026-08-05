@@ -8,7 +8,7 @@
 
 import * as THREE from 'three';
 
-import { uSunDir, uSunCol, uAmbCol, uShadeCol, uWhiten } from '#viewport/lighting.ts';
+import { uSunDir, uSunCol, uAmbCol, uShadeCol, uIncidentCol, uWhiten } from '#viewport/lighting.ts';
 import { renderer } from '#viewport/stage.ts';
 import type { GeomData, GeomPart } from '#src/scene/payload.ts';
 
@@ -66,6 +66,7 @@ function gameLit(m: THREE.Material, lit: boolean): void {
     shader.uniforms.uAmbCol = uAmbCol;
     shader.uniforms.uWhiten = uWhiten;
     shader.uniforms.uShadeCol = uShadeCol;
+    shader.uniforms.uIncidentCol = uIncidentCol;
     // Lit: the sun arrives in WORLD space (it is the map's, not the camera's)
     // while a fragment normal is in view space, so it is turned on the way in.
     //
@@ -94,15 +95,39 @@ function gameLit(m: THREE.Material, lit: boolean): void {
     // keep one winding — a quarter of the peasant's 2252 triangles are wound
     // against their own authored normal. The game never flips anything: it
     // computes the vertex colour from the authored normal on the CPU.
+    // IN SHADOW, the same sum is evaluated a second time with
+    // `IncidentShadowColor` where `LightColor` was, and the shadow map picks
+    // between the two — the engine bakes both into the vertex and its pixel
+    // shader's `cnd` chooses (docs/LIGHTING.md §3b). A shadow here is therefore
+    // a different COLOUR, not a darker one, and the ambient and shade ends of
+    // the mix are untouched: a face already turned away from the sun looks the
+    // same in shadow as out of it, which is also why back faces need no special
+    // case the way the engine's own `oT2 + 1` gives them.
+    //
+    // `getShadow` is three's, and the mask it returns is the same question the
+    // engine's height test asks — see renderer/viewport/shadows.ts for why the
+    // two maps are the same map. Guarded on NUM_DIR_LIGHT_SHADOWS because the
+    // program is compiled without it whenever the sun does not cast (no preset)
+    // or the mesh does not receive.
     const sum = lit
       ? `vec3 sunV = normalize((viewMatrix * vec4(uSunDir, 0.0)).xyz);
          float ndl = dot(normalize(vNormal), sunV);
-         vec3 light = (uAmbCol + max(ndl, 0.0) * (uSunCol - uAmbCol)
+         float sunlit = 1.0;
+         #if defined( USE_SHADOWMAP ) && NUM_DIR_LIGHT_SHADOWS > 0
+           if (receiveShadow) {
+             DirectionalLightShadow dls = directionalLightShadows[0];
+             sunlit = getShadow(directionalShadowMap[0], dls.shadowMapSize, dls.shadowBias,
+                                dls.shadowRadius, vDirectionalShadowCoord[0]);
+           }
+         #endif
+         vec3 sunEnd = mix(uIncidentCol, uSunCol, sunlit);
+         vec3 light = (uAmbCol + max(ndl, 0.0) * (sunEnd - uAmbCol)
                                 + max(-ndl, 0.0) * (uShadeCol - uAmbCol)) * uWhiten;`
       : `vec3 light = vec3(1.0);`;
     shader.fragmentShader = shader.fragmentShader
       .replace('void main() {', `uniform vec3 uSunDir; uniform vec3 uSunCol;
-uniform vec3 uAmbCol; uniform vec3 uShadeCol; uniform float uWhiten;
+uniform vec3 uAmbCol; uniform vec3 uShadeCol; uniform vec3 uIncidentCol;
+uniform float uWhiten;
 void main() {`)
       .replace('#include <colorspace_fragment>', `${sum}
   gl_FragColor = vec4(min(diffuseColor.rgb * light, vec3(1.0)), diffuseColor.a);`);

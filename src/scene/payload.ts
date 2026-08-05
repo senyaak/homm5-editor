@@ -341,10 +341,28 @@ export interface AmbientData {
   ambient: number[];
   /** Colour of surfaces facing away from the sun (`ShadeColor`). */
   shade: number[];
+  /** Colour of surfaces the sun does not reach (`IncidentShadowColor`). */
+  incident: number[];
   /** Sun elevation above the horizon, degrees. */
   pitch: number;
   /** Sun heading around +Z, degrees. */
   yaw: number;
+  /**
+   * Where the shadows come from — the sun's own angles unless the preset says
+   * otherwise. `ShadowPitch`/`ShadowYaw` are 100/100 on 295 of the 308 shipped
+   * presets and 100 is not an angle: the engine compares against it and copies
+   * the sun direction when it matches (docs/LIGHTING.md §3b). Resolved here, so
+   * nothing downstream has to know about the sentinel.
+   */
+  shadowPitch: number;
+  shadowYaw: number;
+  /**
+   * The vertical range the shadow map spends its precision on
+   * (`MaxShadowHeight`), world units. A caster higher than this above the
+   * ground it shadows runs out of map. 20 where the preset says 0 — the
+   * engine's own fallback.
+   */
+  maxShadowHeight: number;
   /**
    * What the lit colour is multiplied by before it is clamped — the era's
    * modulate-×2, from the preset's `<Whitening>`: 2 when it is on, 1 when it is

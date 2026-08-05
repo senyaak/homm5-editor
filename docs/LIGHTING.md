@@ -299,7 +299,7 @@ Still simplified:
 
 Read out of the executable and out of one run of the running game, so the
 implementation is not designed on guesses. **Everything marked [OK] is
-measured.**
+measured**; §3c is what the editor draws with it.
 
 The short of it: the shadow map is **one texture over the world's ground
 plane**, addressed not by the fragment's own column but by its column *sheared
@@ -467,6 +467,40 @@ takes part, and the flags discriminate: `CastShadow` true on 10062 of 11639,
 `ReceiveShadow` on 10156 — while `BackFaceCastShadow` is false on all 11639 and
 therefore answers nothing.
 
+## 3c. What the editor draws instead **[OK]**
+
+`renderer/viewport/shadows.ts`. The MECHANISM above is reproduced; the
+parametrisation is not, and the difference is deliberate.
+
+Reproduced: the direction (the preset's, sentinel resolved), the question asked
+per fragment ("is anything on my sun ray above me"), and — the part that shows —
+what a shadow DOES to a surface. It substitutes: the same three-way mix runs a
+second time with `IncidentShadowColor` where `LightColor` was, and the fragment
+takes one or the other. Objects go through `gameLit` in
+renderer/viewport/materials.ts, the ground and the ground-projected parts
+through the splat's own shaders, and all three sample one map.
+
+Not reproduced: the sheared top-down parametrisation, its 8-bit depth over
+`MaxShadowHeight`, its logarithmic texel warp (`c3.z` = 7), and the map's rgb
+footprint channel with the cloud shadows in it. A shear that turns the map's u/v
+into "which sun ray" is exactly what an ordinary light-space shadow map already
+is, so three.js's `DirectionalLight` shadow is the same map with even texels —
+and it brings the alpha test for foliage, skinning and instancing along, none of
+which a hand-rolled pass would have. The 8-bit depth and the warp are the
+engine's precision budget, not its picture.
+
+Also not reproduced, and worth knowing when a shadow looks wrong: the engine
+decides caster and receiver per MATERIAL and our decoder does not read those
+flags, so everything drawn does both — except the terrain, which receives only.
+A heightfield casting into a map indexed along the sun shadows itself down every
+slope, and the ground's own `max(N·L, 0)` already darkens what faces away.
+
+Verified in `e2e/shadows.spec.ts`, by the only measurement that can fail
+usefully: the same frame with the pass on and off, differing only where a shadow
+was drawn, and the objects' own screen positions slid over that difference to
+find the offset that overlaps best. That offset is the direction — and reading
+it by eye instead got it backwards twice in one sitting.
+
 ## 4. Not the map view's problem
 
 * `PWLpic.dds` next to a map is its **loading screen**, a staged cinematic —
@@ -488,6 +522,13 @@ therefore answers nothing.
   it would not in linear space), and a white albedo proves the clamp. Checked
   by sabotage both ways — dropping `Whitening` moves a channel by 65, decoding
   the texture as sRGB moves it by 74.
+* `npx playwright test shadows` — that shadows are drawn at all, and which way
+  they fall. On/off frames of the same plan view differ only where the pass
+  darkened something; the objects' own screen positions (the plan camera is
+  orthographic about a named target, so the mapping is exact) are slid over that
+  difference and the best-overlapping offset is the direction. It lands 5° off
+  the preset's sun on A2C1M1. Checked by sabotage: flipping the sign of the
+  direction in `shadows.ts` takes the agreement from +0.995 to −0.945.
 * `npx playwright test ambient-light` — the handoff: opening A2C1M1 turns the
   preset's exact colours up in `view.ambientState()`, raw, with the sun
   unit-length at the pitch/yaw the preset names; before any map, the fallback
