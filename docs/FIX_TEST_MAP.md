@@ -49,16 +49,37 @@ computer's.
 | `ranger` | Sylvan | Imbue Ballista — the bug, not a fix |
 | `barbarian` | Stronghold | Barbarian Learning |
 | `scholar` | Haven | the Book of Power |
-| `opponent` | Sylvan, PLAYER_2 | the battle AI |
+| `opponent` | Sylvan, PLAYER_2 | the battle AI — and, in hotseat, the trappers |
+
+Both slots are human-playable, so the same map can be started either way: as a
+single-player game, where the opponent is the AI and the battle-AI test means
+something, or as **hotseat**, where you drive both sides and can set up the
+snare. Nothing about the map changes between the two — only the mode you pick.
 
 ---
 
 ## The list
 
-### 1. `snare-crash-fix` — the warlock, against the Goblin Trappers
+### 1. `snare-crash-fix` — the warlock, in a HOTSEAT game
 
-Attack the trappers. They lay snares at the start of the battle; cast **Arcane
-Crystal** or **Blade Barrier** onto a tile that already holds one.
+**Start this map as hotseat and take both sides.** A snare is invisible to
+whoever it is laid against, so played normally there is nothing to aim at: the
+trappers put them where the AI chose and you would be guessing at tiles you
+cannot see. Driving both sides removes the guess entirely — and it needs no
+script and no mod, only the game's own two-player mode.
+
+The opponent hero at the east end carries a stack of **Goblin Trappers**. Walk
+the warlock into him, and in the battle:
+
+1. on the trappers' turn, lay a snare on a tile you pick — anywhere you will
+   remember, a corner is easiest;
+2. on the warlock's turn, cast **Arcane Crystal** or **Blade Barrier** onto that
+   same tile.
+
+The neutral trapper stack in front of the warlock is left where it is: it is a
+battle to spend a spell in for the payback test below, and if the AI happens to
+lay a snare under one of your obstacles it will crash there too — but that is
+luck, and the hotseat route is the one that reproduces.
 
 - **off** — the battle ends. That is the whole bug: the game drops out of the
   fight.

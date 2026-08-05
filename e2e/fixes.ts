@@ -248,6 +248,13 @@ export const OPPONENT: Kit = {
     // the AI valued at the SQUARE of its size.
     { creature: 'CREATURE_GRAND_ELF', count: 30 },
     { creature: 'CREATURE_DRUID', count: 20 },
+    // Trappers HERE, and not only in the neutral stack the warlock can attack,
+    // because a snare has to be laid on a tile SOMEBODY CHOSE. Their snares are
+    // invisible to whoever they are laid against, so against the AI there is
+    // nothing to aim a crystal at — you would be guessing at a tile the AI
+    // picked and cannot see. In a hotseat game this stack is yours to move: lay
+    // the snare where you like, take the other side's turn, cast onto it.
+    { creature: 'CREATURE_GOBLIN_TRAPPER', count: 20 },
   ],
 };
 
