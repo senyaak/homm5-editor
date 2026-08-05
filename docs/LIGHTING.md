@@ -195,9 +195,32 @@ around +Z, counted from **−X** — half a circle away from the obvious reading
 sunDir = (−sin(Pitch)·cos(Yaw), −sin(Pitch)·sin(Yaw), cos(Pitch))     toward the light
 ```
 
-Measured, not judged by eye. Under Pitch 35 / Yaw 40 the probe in the running
-game reads `vs c35` — the vector the object shader dots the normal against — as
-`(-0.439, -0.369, 0.819)`, three decimals on all three components.
+**Read out of the code**, at `0x51aa30`–`0x51abb0`, which is the only place in
+the executable that multiplies a field by π/180 with Pitch and Yaw beside it:
+
+```
+[obj+0xa4] * pi/180      -> pitch in radians
+[obj+0xa8] * pi/180      -> yaw in radians
+x = cos(yaw) * sin(pitch)
+y = sin(yaw) * sin(pitch)
+z = -cos(pitch)                  ; xorps with a sign mask at 0x51aba0
+```
+
+The two calls are import thunks and the import table names them outright —
+`0x94AC04` is `sin`, `0x94ABFE` is `cos`, so there is nothing left to assume.
+`z` comes out NEGATIVE, so what that code builds is the direction the light
+TRAVELS; the vector above, the one to dot a normal against, is its negation.
+Pitch counting from the zenith falls straight out of it too: the sine makes the
+horizontal part and the cosine the vertical one.
+
+The same routine does it for **two** presets and weights the results — that is
+the light-state crossfade `c30` carries, and it is why a scene can change its
+lighting smoothly.
+
+Confirmed independently: under Pitch 35 / Yaw 40 the probe in the running game
+reads `vs c35` as `(-0.439, -0.369, 0.819)`, three decimals on all three
+components, and a fit over the game's own baked vertices lands on the same
+direction at R² 0.999 across four unrelated meshes.
 
 **The half-circle was missed once, and the way it was missed is the lesson.**
 Sin and cos of the preset give `(+0.439, +0.369, +0.819)`; the run above was
