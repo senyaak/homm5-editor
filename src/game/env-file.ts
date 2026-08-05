@@ -24,6 +24,10 @@
 // game folder (e2e/launch.ts). A file that quietly set it for every run would
 // turn that default off for good, on one machine, invisibly. So the suite keeps
 // its explicit variables and this is loaded by electron/paths.ts alone.
+//
+// The one spec that cannot avoid the file — the cold start, which walks the real
+// setup window to its end — says `--setup-test` and gets `.env.test` for both
+// halves (`envFileName` below).
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -33,6 +37,26 @@ const EOL = '\r\n';
 
 /** The file, relative to the editor's root. Never committed — see `.env.example`. */
 export const ENV_FILE = '.env';
+
+/** The one a `--setup-test` run reads and writes instead. Never committed either. */
+export const ENV_FILE_TEST = '.env.test';
+
+/**
+ * Which of the two this run uses.
+ *
+ * The cold-start spec drives the REAL setup window to its end, and that end
+ * writes — there is no way to walk that path without a file being written. Sent
+ * at the checkout's `.env` it rewrites the one the developer's editor reads, with
+ * the paths of a sandbox the same run deletes on the way out; the file then
+ * survives, names nothing, and the next `npm start` opens setup as if the machine
+ * were new. So the run says which file it is talking about.
+ *
+ * A FLAG rather than a variable or a marker file, because a flag is about one
+ * launch and cannot be left behind: a `.env.test` forgotten in a checkout is
+ * inert, since nothing without the flag ever opens it.
+ */
+export const envFileName = (argv: readonly string[] = process.argv): string =>
+  argv.includes('--setup-test') ? ENV_FILE_TEST : ENV_FILE;
 
 /** The keys this file is allowed to carry, and what each one means. */
 export const ENV_KEYS = {
@@ -77,7 +101,7 @@ export function parseEnvFile(text: string): Record<string, string> {
  * fresh every time. That is the trade for a writer small enough to trust.
  */
 export function writeEnvFile(editorRoot: string, values: Partial<Record<EnvKey, string>>): string {
-  const path = join(editorRoot, ENV_FILE);
+  const path = join(editorRoot, envFileName());
   const lines = [
     "# Where this machine keeps the game. Written by the editor's setup window,",
     '# and safe to edit by hand. Not committed — see .env.example.',
@@ -110,7 +134,7 @@ export interface LoadedEnv {
  * build that has no such file at all).
  */
 export function loadEnvFile(editorRoot: string, env: NodeJS.ProcessEnv = process.env): LoadedEnv {
-  const path = join(editorRoot, ENV_FILE);
+  const path = join(editorRoot, envFileName());
   if (!existsSync(path)) return { applied: [] };
   const applied: string[] = [];
   for (const [key, value] of Object.entries(parseEnvFile(readFileSync(path, 'utf8')))) {

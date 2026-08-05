@@ -331,6 +331,17 @@ one.
 
 ### Fixed
 
+- **A test run no longer rewrites the `.env` your own editor reads.** The cold
+  start is the one spec that drives the real setup window to its end, and that
+  end writes down where the game is — into the file beside the build, which is
+  the developer's. It had been overwriting it with the paths of the sandbox the
+  same run deletes on the way out, so afterwards the file named a folder that no
+  longer existed and the next `npm start` opened setup as if the machine were
+  new. A green run did it too; the failure it was noticed through was a
+  different one. `--setup-test` gives that run a file of its own (`.env.test`,
+  read and written both), and the spec now checks what setup actually leaves —
+  including that the checkout's file was not touched.
+
 - **A shot filmed from inside a hill shows the scene, not the inside of the
   hill.** Every model was drawn with both of its faces, and the engine draws
   only the ones facing you: `<Is2Sided>` is false on 11209 of the 11639 shipped

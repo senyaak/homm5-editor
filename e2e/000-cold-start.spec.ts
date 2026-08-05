@@ -9,10 +9,13 @@
 //
 // So this one takes everything away first. The sandbox holds what Steam leaves
 // and nothing else: the wrapped executable and one archive. No unpacked data,
-// no patched copy, no extension, no H5E, no settings — and the app is pointed
-// at a userData of its own, because the setup window's "Open the editor" SAVES
-// what was picked, and the settings it must save are the sandbox's, not those
-// of the editor somebody actually uses (HOMM5_USERDATA, electron/paths.ts).
+// no patched copy, no extension, no H5E, no settings — and the app is given a
+// userData and an env file of ITS OWN, because the setup window's "Open the
+// editor" SAVES what was picked, and what it saves has to be the sandbox's:
+// HOMM5_USERDATA for the remembered settings, `--setup-test` for the `.env`
+// (`.env.test`, src/game/env-file.ts). Without the second one this spec rewrote
+// the checkout's real `.env` with the paths of the sandbox it deletes on the way
+// out — a file that then survived naming nothing.
 //
 // Then it does what a person does. Open the editor; setup appears instead,
 // with both folders already in the fields (the env fills them in — the picker
@@ -42,16 +45,19 @@
 // start from something.
 
 import { test, expect } from '@playwright/test';
-import { copyFileSync, existsSync, mkdirSync, rmSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { DATA, REPO_ROOT, launchEditor } from './launch.ts';
 import { LIVE, REAL_GAME, liveHome } from './mods.ts';
+import { ENV_FILE_TEST } from '../src/game/env-file.ts';
 
 /** The install this wipes and remakes: a sandbox, or — live — the real one. */
 const HOME = liveHome('e2e-cold-start');
 /** Where the app keeps what it remembers — settings.json lands HERE. */
 const USERDATA = join(REPO_ROOT, '_tmp', 'e2e-cold-start-userdata');
+/** What setup writes instead of the checkout's `.env` — see the head of this file. */
+const ENV_AT = join(REPO_ROOT, ENV_FILE_TEST);
 const DATA_ROOT = LIVE ? DATA : join(HOME, 'data-unpacked');
 
 const PAK = 'a2p1-data.pak';
@@ -78,6 +84,10 @@ const OURS = [
 function bareWorld(): void {
   rmSync(USERDATA, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   mkdirSync(USERDATA, { recursive: true });
+  // Cleared here rather than swept up afterwards: what a run leaves behind is
+  // what there is to look at when it fails, and this one is inert without the
+  // flag that names it.
+  rmSync(ENV_AT, { force: true });
   if (LIVE) {
     for (const f of OURS) rmSync(join(HOME, f), { force: true });
     rmSync(DATA_ROOT, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
@@ -124,7 +134,7 @@ test('from nothing to an open editor, through the setup window', async () => {
     HOMM5_DATA: DATA_ROOT,
     HOMM5_UNPACK_TO: DATA_ROOT,
     HOMM5_USERDATA: USERDATA,
-  });
+  }, ['--setup-test']);
   try {
     // With nothing to read, the first window is setup — not the editor.
     const setup = ed.page;
@@ -164,9 +174,15 @@ test('from nothing to an open editor, through the setup window', async () => {
     await expect(editor.locator('#qolbtn'), 'the editor is up, toolbar and all')
       .toBeVisible({ timeout: 30_000 });
 
-    // And what it remembered, it remembered in the sandbox's own userData —
-    // the file exists here, so it was not written over anybody's real one.
-    expect(existsSync(join(USERDATA, 'settings.json')), 'settings were saved where told').toBe(true);
+    // And what it was told, it wrote down — the folders, which is the whole of
+    // what the editor reads next time. In the run's own file, not the
+    // checkout's: the answer here names a sandbox and is true for this run only.
+    expect(existsSync(ENV_AT), 'the answer was written down where told').toBe(true);
+    const said = readFileSync(ENV_AT, 'utf8');
+    expect(said, 'and it is the install this run prepared').toContain(`HOMM5_ROOT=${HOME}`);
+    expect(said, 'with the data root beside it').toContain(`HOMM5_DATA=${DATA_ROOT}`);
+    expect(existsSync(join(REPO_ROOT, '.env')) && readFileSync(join(REPO_ROOT, '.env'), 'utf8').includes(HOME),
+      'and the checkout\'s own .env was left alone').toBe(false);
   } finally {
     await ed.app.close();
   }
