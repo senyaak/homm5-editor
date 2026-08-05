@@ -25,10 +25,10 @@
 // The track is the dark one at full width, the fill is the green one clipped to
 // what the creature at the front has left, and the frame comes free with both.
 
-import { closeSync, existsSync, mkdirSync, openSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
-import { readEntryFrom, readIndex, writeArchive } from '#src/format/pak.ts';
+import { writeArchive } from '#src/format/pak.ts';
 import type { ZipEntry } from '#src/format/pak.ts';
 
 /** The archive in an install, relative to the game root. Its own file for the
@@ -224,17 +224,16 @@ function stripPixels(shipped: Buffer, b: number, g: number, r: number, a: number
  * pixels, so a stand-in with the right shapes proves the plumbing without a real
  * install.
  *
- * It used to take the pak as a Buffer and walk it with `readEntries`, which is
- * the whole 1.4 GB read in and every one of its members inflated to find four:
- * three and a half gigabytes and a minute of a main process that could not
- * repaint, on every Apply with the health bar on. `pak.ts` says so where
- * `readIndex` is declared; this simply asks for what it needs.
+ * It used to take `data.pak` as a Buffer and walk it with `readEntries`: the
+ * whole 1.4 GB read in and every one of its 84 312 members inflated to find
+ * four. Three and a half gigabytes and minutes of a main process that could not
+ * repaint, on every Apply with the health bar on.
  */
 export function buildQolArchive(fetch: (name: string) => Buffer | undefined): Buffer {
   const need = new Map<string, Buffer>();
   for (const w of WANTED) {
     const data = fetch(w);
-    if (!data) throw new Error(`${w} is not in data.pak — nothing to build the health bar on`);
+    if (!data) throw new Error(`${w} is not in the unpacked data — nothing to build the health bar on`);
     need.set(w, data);
   }
 
@@ -277,26 +276,26 @@ export function buildQolArchive(fetch: (name: string) => Buffer | undefined): Bu
 }
 
 /**
- * The archive written into an install, from that install's own data.
+ * The archive written into an install, out of the UNPACKED data.
  *
- * Through the central directory and four `readEntryFrom` calls, never the whole
- * pak: `data.pak` is 1.4 GB, this needs four files out of it, and Apply runs in
- * the main process where a read that size is the entire application frozen for
- * the duration.
+ * FOUR FILES OFF DISK, and no archive opened at all. The editor unpacks the
+ * game's paks once — that cache is what every model, texture and roster in the
+ * app already resolves against (`electron/paths.ts`, the data root) — so a
+ * feature that goes back to `data.pak` is a second way of reading the same
+ * bytes, and the slow one. This one froze the whole application: it read all
+ * 1.4 GB and inflated all 84 312 members to pick out four, in the main process,
+ * on every Apply with the health bar on.
+ *
+ * `dataRoot` is that cache and is passed in rather than guessed: it is not
+ * under the install — the two are configured apart (HOMM5_DATA and HOMM5_ROOT)
+ * — and a function that reached for one from the other would be inventing the
+ * relationship.
  */
-export function writeQolArchive(gameRoot: string): string {
-  const pakPath = join(gameRoot, 'data', 'data.pak');
-  const fd = openSync(pakPath, 'r');
-  let built: Buffer;
-  try {
-    const index = new Map(readIndex(fd, statSync(pakPath).size).map((e) => [e.name, e]));
-    built = buildQolArchive((name) => {
-      const at = index.get(name);
-      return at ? readEntryFrom(fd, at) : undefined;
-    });
-  } finally {
-    closeSync(fd);
-  }
+export function writeQolArchive(gameRoot: string, dataRoot: string): string {
+  const built = buildQolArchive((name) => {
+    const at = join(dataRoot, name);
+    return existsSync(at) ? readFileSync(at) : undefined;
+  });
   const out = join(gameRoot, QOL_ARCHIVE);
   mkdirSync(dirname(out), { recursive: true });
   writeFileSync(out, built);

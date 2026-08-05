@@ -17,9 +17,8 @@
 
 import { test, expect } from '@playwright/test';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { REPO_ROOT, closeEditor, launchEditor } from './launch.ts';
-import { writeArchive } from '#src/format/pak.ts';
 import { QOL_ARCHIVE } from '#src/mods/qol-ui.ts';
 
 /** An install with no patched executable — nothing here can take effect in it. */
@@ -31,6 +30,8 @@ const PROFILE = join(DOCS, 'My Games', 'Heroes of Might and Magic V — Tribes o
 
 const QOL_FILE = join(BARE, 'bin', 'homm5-editor-qol.txt');
 const ARCHIVE = join(BARE, QOL_ARCHIVE);
+/** The unpacked data the archive is built from — NOT under the install. */
+const DATA = join(REPO_ROOT, '_tmp', 'e2e-qol-data');
 
 test.beforeAll(() => {
   rmSync(BARE, { recursive: true, force: true });
@@ -40,12 +41,16 @@ test.beforeAll(() => {
   // Shaped like the game's own: the two lines borderless cares about, and one
   // it must leave alone.
   writeFileSync(PROFILE, 'setvar gfx_gamma = 1\nsetvar gfx_fullscreen = 1\nsetvar gfx_resolution = 1024x768\n', 'utf8');
-  // A data.pak of the right SHAPE, because the health-bar archive is built out
-  // of the install's own: the four files the build copies fields from, each cut
-  // to the pattern it is read by. The build only patches strings and repaints
-  // pixels, so stand-ins prove the plumbing without a two-gigabyte fixture.
-  mkdirSync(join(BARE, 'data'), { recursive: true });
-  writeFileSync(join(BARE, 'data', 'data.pak'), writeArchive([
+  // The four files the health-bar archive copies fields from, laid out as the
+  // UNPACKED data root holds them — which is where the build reads them, and
+  // the only place it reads anything: no pak is opened.
+  //
+  // A DATA ROOT OF ITS OWN, handed to the app as HOMM5_DATA. Without it the app
+  // falls back to the checkout's real `data-unpacked`, and this test passed
+  // against the developer's own game data while claiming to prove a build from
+  // a fixture — which is what it did for one commit, until it was looked at.
+  rmSync(DATA, { recursive: true, force: true });
+  for (const f of [
     {
       name: 'UI/CombatArena-FPP-2/StackInfo.(WindowMSButtonShared).xdb',
       data: Buffer.from('<?xml version="1.0"?><WindowMSButtonShared><Children>\n'
@@ -62,15 +67,23 @@ test.beforeAll(() => {
       name: 'UI/AdventureScreen/StackInfo/Positive.(BackgroundTiledTexture).xdb',
       data: Buffer.from('<?xml version="1.0"?><BackgroundTiledTexture><Texture href="x.xdb"/></BackgroundTiledTexture>', 'utf8'),
     },
-  ]));
+  ]) {
+    mkdirSync(dirname(join(DATA, f.name)), { recursive: true });
+    writeFileSync(join(DATA, f.name), f.data);
+  }
+  // And the marker that makes it a data ROOT rather than four loose files:
+  // `looksLikeDataRoot` asks for MapObjects, and the app decides it has never
+  // been set up without one — the bar does not even get drawn.
+  mkdirSync(join(DATA, 'MapObjects'), { recursive: true });
 });
 test.afterAll(() => {
   rmSync(BARE, { recursive: true, force: true });
   rmSync(DOCS, { recursive: true, force: true });
+  rmSync(DATA, { recursive: true, force: true });
 });
 
 test('the panel opens from the bar with everything off @nodata', async () => {
-  const ed = await launchEditor({ HOMM5_ROOT: BARE, HOMM5_DOCUMENTS: DOCS });
+  const ed = await launchEditor({ HOMM5_ROOT: BARE, HOMM5_DOCUMENTS: DOCS, HOMM5_DATA: DATA });
   try {
     const btn = ed.page.locator('#qolbtn');
     await expect(btn, 'the button is in the bar').toBeVisible();
@@ -183,7 +196,7 @@ test('the panel opens from the bar with everything off @nodata', async () => {
 });
 
 test('applying writes the file the extension reads, and the profile @nodata', async () => {
-  const ed = await launchEditor({ HOMM5_ROOT: BARE, HOMM5_DOCUMENTS: DOCS });
+  const ed = await launchEditor({ HOMM5_ROOT: BARE, HOMM5_DOCUMENTS: DOCS, HOMM5_DATA: DATA });
   try {
     await ed.page.locator('#qolbtn').click();
     await ed.page.locator('#qol-borderless').check();
@@ -209,7 +222,7 @@ test('applying writes the file the extension reads, and the profile @nodata', as
 });
 
 test('the battle-plate flags reach the file, and the bar its archive @nodata', async () => {
-  const ed = await launchEditor({ HOMM5_ROOT: BARE, HOMM5_DOCUMENTS: DOCS });
+  const ed = await launchEditor({ HOMM5_ROOT: BARE, HOMM5_DOCUMENTS: DOCS, HOMM5_DATA: DATA });
   try {
     await ed.page.locator('#qolbtn').click();
     await ed.page.locator('#qol-stack-health-bar').check();
@@ -243,7 +256,7 @@ test('the panel shows what the install says, not what it remembers @nodata', asy
   // agreeing with the file rather than with anything it kept from last time.
   writeFileSync(QOL_FILE, '# by hand\nborderless 0\nown-profile 1\n', 'utf8');
 
-  const ed = await launchEditor({ HOMM5_ROOT: BARE, HOMM5_DOCUMENTS: DOCS });
+  const ed = await launchEditor({ HOMM5_ROOT: BARE, HOMM5_DOCUMENTS: DOCS, HOMM5_DATA: DATA });
   try {
     await ed.page.locator('#qolbtn').click();
     await expect(ed.page.locator('#qol-own-profile'), 'what the file turned on is on').toBeChecked();
@@ -266,7 +279,7 @@ test('Apply cannot be running twice at once @nodata', async () => {
   // click can start a second run, and the answer has to be no while the first
   // is still going and yes once it is done — a button that stays dead after the
   // work finishes is its own bug.
-  const ed = await launchEditor({ HOMM5_ROOT: BARE, HOMM5_DOCUMENTS: DOCS });
+  const ed = await launchEditor({ HOMM5_ROOT: BARE, HOMM5_DOCUMENTS: DOCS, HOMM5_DATA: DATA });
   try {
     await ed.page.locator('#qolbtn').click();
     await expect(ed.page.locator('#qolcfg')).toBeVisible();

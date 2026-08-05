@@ -11,7 +11,7 @@ import type { IpcMainInvokeEvent } from 'electron';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import type { QolApplyResult, QolState } from '#electron/ipc.ts';
-import { APP_ROOT, gameRoot } from '#electron/paths.ts';
+import { APP_ROOT, gameData, gameRoot } from '#electron/paths.ts';
 import { isQolName } from '#src/mods/qol.ts';
 import type { QolSettings } from '#src/mods/qol.ts';
 import { qolPath, readQol, writeQolFile } from '#src/mods/qol-file.ts';
@@ -111,7 +111,7 @@ export function registerQol(): void {
     // above has already said what to do about that.
     try {
       if (held) { /* said above; nothing in the install is touched */ }
-      else if (wanted['stack-health-bar']) writeQolArchive(g);
+      else if (wanted['stack-health-bar']) writeQolArchive(g, gameData());
       else removeQolArchive(g);
     } catch (e) {
       notes.push(e instanceof Error ? e.message : String(e));

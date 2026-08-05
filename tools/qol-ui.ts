@@ -8,6 +8,8 @@
 // without opening the editor — same output, same path.
 
 import { writeQolArchive } from '#src/mods/qol-ui.ts';
-import { gameDir } from './game-dir.ts';
+import { dataDir, gameDir } from './game-dir.ts';
 
-console.log(`wrote ${writeQolArchive(gameDir())}`);
+// The install to write into and the unpacked data to build from: two roots,
+// said separately, the way the app resolves them (electron/paths.ts).
+console.log(`wrote ${writeQolArchive(gameDir(), dataDir())}`);

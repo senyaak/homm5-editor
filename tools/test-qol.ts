@@ -20,12 +20,12 @@
 //   node tools/test-qol.ts
 
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 
 import { QOL_FILE, QOL_FLAGS, isQolName } from '../src/mods/qol.ts';
 import { readQol, writeQolFile } from '../src/mods/qol-file.ts';
 import { QOL_ARCHIVE, buildQolArchive, removeQolArchive, writeQolArchive } from '../src/mods/qol-ui.ts';
-import { readEntries, writeArchive } from '../src/format/pak.ts';
+import { readEntries } from '../src/format/pak.ts';
 import type { ZipEntry } from '../src/format/pak.ts';
 import { profilesRoot, setResolution, setWindowed, userConfigs } from '../src/game/video-config.ts';
 
@@ -191,14 +191,21 @@ check('a profile without the line is skipped there too', res.skipped.length === 
   check('and the header is the shipped one, byte for byte',
     !!fill && fill.subarray(0, 128).equals(fakeDds.subarray(0, 128)));
 
-  // The install half: written where the game mounts it, and removable. This is
-  // the one that goes through the REAL route — a pak on disk, opened and read
-  // member by member — so the lookup above cannot be the only shape ever tried.
-  mkdirSync(join(game, 'data'), { recursive: true });
-  writeFileSync(join(game, 'data', 'data.pak'), writeArchive(shipped));
-  const wrote = writeQolArchive(game);
+  // The install half, through the REAL route: the four files laid out as the
+  // unpacked data root holds them, and the archive written into the install.
+  // TWO ROOTS, and the test keeps them apart on purpose — the data does not
+  // live under the install, and a stand-in that put it there would let a
+  // version that reached from one to the other pass.
+  const data = join(SCRATCH, 'data-unpacked');
+  for (const e of shipped) {
+    mkdirSync(dirname(join(data, e.name)), { recursive: true });
+    writeFileSync(join(data, e.name), e.data);
+  }
+  const wrote = writeQolArchive(game, data);
   check('the archive lands in H5E, where archives are mounted from',
     wrote === join(game, QOL_ARCHIVE) && existsSync(wrote));
+  check('and no archive of the game\'s was opened to build it',
+    !existsSync(join(game, 'data', 'data.pak')));
   check('and taking it back out reports there was one to take',
     removeQolArchive(game) && !existsSync(wrote) && !removeQolArchive(game));
 }

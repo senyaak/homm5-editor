@@ -243,8 +243,10 @@ one.
   by reading all 1.4 GB of `data.pak` into memory and decompressing every one of
   its 84 312 members to pick out four. That ran in the main process, so the
   whole application stopped answering for as long as it took — minutes, and
-  three and a half gigabytes of memory. It now reads the archive's directory and
-  pulls the four: **82 ms and 38 MB**, and the same archive byte for byte.
+  three and a half gigabytes of memory. It now takes those four out of the
+  unpacked data the editor already keeps, which is where everything else in the
+  app reads them from: **6 ms and 10 MB**, and the same eleven records byte for
+  byte. No archive of the game's is opened at all.
 
 - **Apply in the game settings panel cannot be started twice at once.** It
   installs the extension and rewrites game profiles — most of a minute on a real
