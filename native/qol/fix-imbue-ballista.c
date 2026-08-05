@@ -59,6 +59,18 @@
 #define IMBUE_CAST_RVA 0x77b320u
 /** `CCombatHero`'s combat-unit vtable — the only pointer we act on. */
 #define HERO_UNIT_VTABLE_RVA 0xbdfc04u
+/**
+ * `CCombatCreature`'s, which we only ever READ — and only to keep ourselves
+ * honest.
+ *
+ * The first battle came back with the hero's reading identical on all six
+ * shots, and a number that never moves cannot be told from a number that is not
+ * the one we think. The defender is the same interface (its `+0x184` and
+ * `+0x18C` reach the same two implementations, by thunks adjusting `0x94`
+ * instead of `0x68`) and it is a creature stack taking hits, so ITS value moves
+ * if anything does. Printed beside the hero's, it is the control.
+ */
+#define CREATURE_UNIT_VTABLE_RVA 0xbbbca8u
 /** On that vtable: the object holding the ATB, and the setter. */
 #define UNIT_ATB_HOLDER_SLOT 0x184u
 #define UNIT_SET_ATB_SLOT 0x18cu
@@ -118,6 +130,16 @@ static int __fastcall imbue_ballista_hook(void *caster, void *target, void *a1, 
   } else if (g_imbueSaid < IMBUE_LINES) {
     g_imbueSaid++;
     log_num("imbue ballista: the cast cost the hero no turn, still ", (int)(before * 1000.0f));
+    // THE CONTROL, and the reason it is here: the first battle said "no turn
+    // taken" six times with the same number every time, which is what a live
+    // deterministic value looks like AND what a value we are misreading looks
+    // like. The defender is a stack being shot at, so its own reading moves if
+    // these accessors read anything at all. Read, never written.
+    void **theirs = readable(target, sizeof(void *)) ? *(void ***)target : NULL;
+    if (theirs == (void **)(base + CREATURE_UNIT_VTABLE_RVA)) {
+      float *his = unit_atb(target, theirs);
+      if (his) log_num("                the stack he shot reads ", (int)(*his * 1000.0f));
+    }
   }
   return damage;
 }
