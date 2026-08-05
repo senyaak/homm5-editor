@@ -30,11 +30,12 @@ import { QOL_FLAGS } from '../src/mods/qol.ts';
  *
  * Rounds are the instrument for exactly one hero. The ranger's fix reports
  * itself once per ballista shot and says six things at most; everything else on
- * this map is seen in a turn. Seven hundred zombies a side take about a tenth of
- * each other off per round, so the battle runs about eight rounds — eight shots,
- * six lines, with room to spare. Drop the count to make the map build faster and
- * the battle ends before the log has said anything twice, which looks exactly
- * like a fix that did not fire. Hence a floor, and hence this comment.
+ * this map is seen in a turn. Five hundred Air Elementals a side take about a
+ * fifth of each other off per round, so the battle runs five rounds or so —
+ * five shots, and the bar keeps moving between them because they act at
+ * initiative 17 to the hero's 10. Drop the count to make the map build faster
+ * and the battle ends before the log has said anything twice, which looks
+ * exactly like a fix that did not fire. Hence a floor, and hence this comment.
  */
 export const LOG_READ_ARMY = 500;
 

@@ -184,10 +184,24 @@ const dolmens = (from: number, count: number, y = 13): { shared: string; at: { x
  * are slow and fat, and a hundred of them survive the spell and keep standing
  * for the second cast.
  *
- * The ranger takes the same stack with `count` raised, for a third reason: he
- * needs the battle to LAST. See his kit.
  */
 const ZOMBIES = { shared: monster('Necropolis', 'Zombie'), count: 100 };
+
+/**
+ * Five hundred Air Elementals, for the ranger — on BOTH sides.
+ *
+ * His fix is read off a turn bar, so what his battle needs is not length but
+ * MOVEMENT: a bar that visibly churns between one ballista shot and the next.
+ * Elementals have initiative 17 where a zombie has 7, so they take roughly two
+ * and a half turns to the hero's one and the bar never sits still.
+ *
+ * The price is that the battle is shorter — five hundred of them hit for about
+ * 3000, which is a fifth of the other five hundred (30 health each), so it runs
+ * five rounds or so against the zombies' eight. Five ballista shots is still
+ * more than enough for what the log has to say, and a bar that moves is worth
+ * more here than three extra rounds of a bar that does not.
+ */
+const AIR_ELEMENTALS = { shared: monster('Neutral', 'Air_Elemental'), count: 500 };
 
 /**
  * The row of heroes, west to east.
@@ -348,15 +362,16 @@ export const HEROES: Kit[] = [
     spells: ['SPELL_FIREBALL'],
     stats: { offence: 10, defence: 5, spellpower: 10, knowledge: 30 },
     ballista: true,
-    // ROUNDS are the instrument here, and only here. Every other hero on this
-    // map has one thing to see and can see it in a turn; this one is READ OFF A
-    // LOG that a ballista writes once per shot, and six lines want six rounds.
-    // So both sides are seven hundred zombies: slow, fat, and hitting each
-    // other for about a tenth of a stack a round, which is a battle that lasts
-    // and cannot be ended early by accident. Peasants and thirty marksmen were
-    // over before the ballista had said anything twice.
-    army: [{ creature: 'CREATURE_ZOMBIE', count: 700 }],
-    foe: { ...ZOMBIES, count: 700, at: { x: 40, y: 7 } },
+    // THE TURN BAR is the instrument here, and only here. Every other hero on
+    // this map has one thing to see and sees it in a turn; this one is read off
+    // a log a ballista writes once per shot, and off where the hero sits on the
+    // bar between one shot and the next. Peasants and thirty marksmen were over
+    // before the ballista had said anything twice; seven hundred zombies lasted
+    // but barely moved the bar, and the hero's reading came back identical on
+    // all six shots — which is exactly what a value we were misreading would
+    // also do. Elementals at initiative 17 against his 10 keep it turning.
+    army: [{ creature: 'CREATURE_AIR_ELEMENTAL', count: 500 }],
+    foe: { ...AIR_ELEMENTALS, at: { x: 40, y: 7 } },
   },
   {
     key: 'barbarian',

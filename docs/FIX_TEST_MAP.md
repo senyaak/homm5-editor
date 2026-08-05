@@ -280,11 +280,14 @@ He has **Imbue Arrow**, **Imbue Ballista** and a ballista — Ballista off War
 Machines, Imbue Arrow off Avenger, and Imbue Ballista off War Machines wanting
 both of those first, all of it at Expert, so the game grants every one of them.
 
-**Both sides are seven hundred zombies**, and that is the instrument: this is
-the only hero on the map whose result is read off a LOG rather than seen in a
-turn, and a ballista writes one line per shot. Seven hundred a side is about
-eight rounds, which is eight shots — enough to fill the six lines twice over.
-Fight it and let the ballista shoot; there is nothing to do but attack.
+**Both sides are five hundred Air Elementals**, and that is the instrument.
+This is the only hero on the map whose result is read off a LOG rather than seen
+in a turn, and a ballista writes one line per shot — but the first two battles
+came back with the hero's reading identical every shot, which is what a live
+value in a still battle looks like AND what a misread value looks like.
+Elementals act at initiative 17 to the hero's 10, so the bar keeps turning
+between shots. Five hundred a side is about five rounds. Fight it and let the
+ballista shoot; there is nothing to do but attack.
 
 The perk says the shots carry his enchantment and that this costs him **mana** —
 *"запас маны последнего будет уменьшаться"* — and nothing about his turn.
