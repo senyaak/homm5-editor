@@ -54,11 +54,17 @@ export function nodeAt(root: XmlElement, path: Path): XmlElement | null {
  * Set a leaf's value. Writes the href when the target carries one (a reference),
  * the text otherwise. False when the path misses or lands on a structure —
  * a structure has no single value to set.
+ *
+ * `isRef` is for the case the element cannot answer for itself: an empty
+ * reference is written `<MainHero/>`, with no href attribute to notice, and
+ * setting it as TEXT produces a field the game reads as blank while the editor
+ * shows it filled in. The schema knows which fields are references (`x-ref`),
+ * so the caller that has the schema says so.
  */
-export function setPath(root: XmlElement, path: Path, value: string): boolean {
+export function setPath(root: XmlElement, path: Path, value: string, isRef = false): boolean {
   const el = nodeAt(root, path);
   if (!el || children(el).length) return false;
-  if (el.attrs.href !== undefined) setAttr(el, 'href', value);
+  if (isRef || el.attrs.href !== undefined) setAttr(el, 'href', value);
   else setText(el, value);
   return true;
 }

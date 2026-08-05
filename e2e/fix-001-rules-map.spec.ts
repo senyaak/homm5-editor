@@ -73,7 +73,7 @@ const addItem = (page: Launched['page'], id: string, path: (string | number)[], 
     { id, path, value });
 
 /** A hero, his kit, and the stack he is standing in front of. */
-async function placeHero(page: Launched['page'], kit: Kit, player: string): Promise<void> {
+async function placeHero(page: Launched['page'], kit: Kit, player: string): Promise<string> {
   const id = await place(page, 'AdvMapHero', kit.shared, kit.at.x, kit.at.y);
   await setPath(page, id, ['PlayerID'], player);
   // Named, so a script or a later stage can address him, and so the checklist
@@ -105,7 +105,19 @@ async function placeHero(page: Launched['page'], kit: Kit, player: string): Prom
   if (kit.artifact) {
     await place(page, 'AdvMapArtifact', kit.artifact.shared, kit.artifact.at.x, kit.artifact.at.y);
   }
+  return id;
 }
+
+/**
+ * The player's starting position, as the shipped maps write it.
+ *
+ * `MainHero` points INTO the map — at the `<Item id="item_…">` wrapping a hero
+ * that is standing on it — not at a hero file. Across the shipped missions the
+ * first player always has one of these or a `MainTown`, and the others often
+ * have neither, which is what "Start player does not exist on map" is about: the
+ * player the map starts as has nowhere to start.
+ */
+const mainHeroRef = (id: string): string => `#xpointer(id(${id})/AdvMapHero)`;
 
 test('the Rules Test map is built and packed, with every fix off', async () => {
   test.setTimeout(10 * 60_000);
@@ -132,12 +144,24 @@ test('the Rules Test map is built and packed, with every fix off', async () => {
   }
 
   // --- the row of heroes, each with his bug in front of him ---
+  const placed: string[] = [];
   for (const kit of HEROES) {
-    await placeHero(page, kit, 'PLAYER_1');
+    placed.push(await placeHero(page, kit, 'PLAYER_1'));
     console.log(`  ${kit.key} — ${kit.fixes.join(', ')}`);
   }
-  await placeHero(page, OPPONENT, 'PLAYER_2');
+  const opponentId = await placeHero(page, OPPONENT, 'PLAYER_2');
   console.log(`  ${OPPONENT.key} — ${OPPONENT.fixes.join(', ')}`);
+
+  // --- where each side starts ---
+  //
+  // Without this the map loads and dies with "Start player does not exist": an
+  // active slot is a player who exists, and a main hero is where that player
+  // begins. The first of the row for red, the opponent for blue.
+  for (const [i, id] of [placed[0]!, opponentId].entries()) {
+    await page.evaluate(async (q) => {
+      await window.editor.setMapPath({ path: ['players', q.slot, 'MainHero'], value: q.href });
+    }, { slot: PLAYERS[i]!.slot, href: mainHeroRef(id) });
+  }
 
   await bar(page, '#save');
   await hudSays(page, /saved/i, 120_000);
@@ -149,6 +173,14 @@ test('the Rules Test map is built and packed, with every fix off', async () => {
   // a failure with no error in it — so it is asserted rather than assumed.
   expect((xml.match(/<ActivePlayer>true<\/ActivePlayer>/g) ?? []).length,
     'the map has players at all').toBe(PLAYERS.length);
+  // And each of them starts somewhere that is actually on the map — a MainHero
+  // written as TEXT rather than as an href reads as blank to the game and looks
+  // filled in here, which is the failure this asserts against.
+  const starts = [...xml.matchAll(/<MainHero href="#xpointer\(id\((item_[^)]+)\)/g)].map((m) => m[1]!);
+  expect(starts, 'both sides have a starting hero').toHaveLength(PLAYERS.length);
+  for (const id of starts) {
+    expect(xml, `${id} is an object on the map`).toContain(`id="${id}"`);
+  }
 
   const blocks = xml.split('<AdvMapHero>').slice(1)
     .map((part) => part.slice(0, part.indexOf('</AdvMapHero>')));
