@@ -26,6 +26,7 @@ import { join } from 'node:path';
 import { REPO_ROOT } from './launch.ts';
 import { modFile } from '../src/game/mod-paths.ts';
 import { liveHome } from './mods.ts';
+import type { QolName } from '../src/mods/qol.ts';
 
 /** The unpacked data the map is built against — the suite's own answer. */
 export const DATA = process.env.HOMM5_DATA || join(REPO_ROOT, 'data-unpacked');
@@ -80,8 +81,14 @@ export interface Skill { id: string; mastery: string }
 export interface Kit {
   /** Short name for the checklist and the test output. */
   key: string;
-  /** Which fixes this hero is the test bed for. */
-  fixes: string[];
+  /**
+   * Which fixes this hero is the test bed for — the panel's own names.
+   *
+   * Typed rather than loose so a flag that does not exist is a COMPILE error:
+   * the whole point of a hero is that a fix has somebody watching it, and a
+   * misspelt name is a fix with nobody, which reads as a fix with somebody.
+   */
+  fixes: QolName[];
   /** The shared hero record — the race decides which racial abilities work. */
   shared: string;
   /**
@@ -418,8 +425,13 @@ export const OPPONENT: Kit = {
   ],
 };
 
-/** Every fix flag the map is a test bed for, in the order the heroes stand. */
-export const FIXES_UNDER_TEST = [
+/**
+ * Every fix flag the map is a test bed for, in the order the heroes stand.
+ *
+ * Typed the same way and for the same reason: this list is what `002` asserts
+ * went on, and a typo in it would assert nothing about a flag nobody has.
+ */
+export const FIXES_UNDER_TEST: QolName[] = [
   'combat-ai-fix', 'snare-crash-fix', 'encourage-fix', 'barbarian-learning-fix',
   'payback-fix', 'dragon-form-fix', 'empowered-armageddon-fix', 'book-of-power-fix',
   'master-of-fire-fix', 'imbue-ballista-fix',

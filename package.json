@@ -44,6 +44,7 @@
     "test-specializations": "node tools/test-specializations.ts",
     "test-qol": "node tools/test-qol.ts",
     "test-fixes": "node tools/test-fixes.ts",
+    "test-fix-map": "node tools/test-fix-map.ts",
     "test-creature-limit": "node tools/test-creature-limit.ts",
     "units-mod": "node tools/units-mod.ts",
     "creature-limit": "node tools/creature-limit.ts",

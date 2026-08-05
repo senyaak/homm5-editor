@@ -19,7 +19,7 @@ import { closeEditor, hudSays, launchEditor } from './launch.ts';
 import type { Launched } from './launch.ts';
 import { bar } from './bar.ts';
 import { pickObject, placeAtTile } from './objects.ts';
-import { kitComplaints, skillRules } from './perk-rules.ts';
+import { mapComplaints } from './map-checks.ts';
 import { readEntries } from '../src/format/pak.ts';
 import { LIVE, clearMap, prepareGameRoot } from './mods.ts';
 import {
@@ -154,14 +154,17 @@ async function placeHero(page: Launched['page'], kit: Kit, player: string): Prom
  */
 const mainHeroRef = (id: string): string => `#xpointer(id(${id})/AdvMapHero)`;
 
-test('every kit is one the game will actually grant @nodata', () => {
-  // Before the map is built, because a perk the hero does not qualify for is
-  // dropped in SILENCE — the map is written, it loads, and the hero simply does
-  // not have it. That is a play-through spent watching nothing, and it is what
-  // happened: the warlock was given Payback with no Dark Magic to hang it on.
-  const rules = skillRules(DATA);
-  const complaints = [...HEROES, OPPONENT].flatMap((kit) => kitComplaints(kit, rules));
-  expect(complaints, 'the game\'s own skill table says otherwise').toEqual([]);
+test('the map spec is one the game can build @nodata', () => {
+  // The last gate before an evening is spent on it. Every failure this catches
+  // is SILENT — a perk the hero does not qualify for is dropped without a word,
+  // the map is written, it loads, and the hero simply does not have it. That is
+  // what happened: the warlock was given Payback with no Dark Magic to hang it
+  // on, and it cost a whole play-through to notice.
+  //
+  // The questions live in `map-checks.ts` and are asked in `npm test` too,
+  // where they cost a second and need neither an install nor this fixture. This
+  // is the second door, not the only one.
+  expect(mapComplaints(DATA), 'the game\'s own files say otherwise').toEqual([]);
 });
 
 test('the Rules Test map is built and packed, with every fix off', async () => {

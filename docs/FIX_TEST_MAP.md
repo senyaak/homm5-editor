@@ -34,6 +34,22 @@ two and a hero who came out slightly different reads as a fix that worked.
 `e2e/fixes.ts` is the plan: which hero carries which perk and why. Nothing about
 the kit lives in the specs.
 
+**Before either run, the plan is checked against the game's own files** —
+`npm run test-fix-map`, a second, no install needed:
+
+- a perk the hero will not be granted (the class, the parent skill, the perks
+  that come first — read out of `Skills.xdb`);
+- a creature id or a shared record that is not there;
+- a fix with no hero standing for it, or a hero standing for a flag `002` never
+  asserts went on;
+- two things placed on one tile;
+- a battle too short for a fix whose result is read from the log.
+
+Every one of those fails **silently** in the game: the map is written, it loads,
+and the thing you came to watch is not there. It has cost a play-through before
+— the warlock was given Payback with no Dark Magic to hang it on. `fix-001` asks
+the same questions before it builds anything.
+
 ## Who is standing where
 
 Eight heroes in a row along the south of the map, each two tiles in front of the
