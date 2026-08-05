@@ -28,10 +28,13 @@ test('opening a map applies its AmbientLight preset', async () => {
   test.skip(!existsSync(MAP), 'no shipped maps under the data root');
   const { page, errors } = ed;
 
-  // Before any map: the fallback look, terrain lit by its old constants.
+  // Before any map: the fallback look. Its three colours are the ends of the
+  // same mix a preset drives — sun and shade equal to ambient would be flat
+  // light, so the sun end sits above it.
   const before = await page.evaluate(() => window.view.ambientState());
   expect(before.preset).toBe(false);
-  expect(before.terrain.sun).toEqual([0.25, 0.25, 0.25]);
+  expect(before.terrain.sun).toEqual([0.55, 0.55, 0.55]);
+  expect(before.terrain.amb).toEqual([0.31, 0.31, 0.31]);
 
   await page.evaluate((p) => window.view.open(p), MAP);
   await page.waitForFunction(() => window.view.size() > 0);
@@ -51,11 +54,19 @@ test('opening a map applies its AmbientLight preset', async () => {
   expect(after.preset).toBe(true);
   expect(after.terrain.sun).toEqual([0.392, 0.322, 0.275]);
   expect(after.terrain.amb).toEqual([0.188, 0.2, 0.255]);
-  expect(after.terrain.whiten).toBe(4);
-  // Sun direction: pitch from the zenith, yaw 40° around +Z, unit length.
+  // The multiplier is the pipeline's fixed ×2 and does not come from the
+  // preset — its <Whitening> flag reaches nothing in this path.
+  expect(after.terrain.whiten).toBe(2);
+  // A2C1M1's ShadeColor, the end of the mix the editor had missing entirely.
+  expect(after.terrain.shade).toEqual([0.149, 0.157, 0.216]);
+  // Sun direction: pitch from the zenith, yaw counted from −X, unit length —
+  // so Yaw 40 points at 220°, which is what the running game hands its own
+  // shader (docs/LIGHTING.md §3). The azimuth is asserted, not just the
+  // magnitudes: reading three matching decimals and not the SIGNS is exactly
+  // how this pointed the wrong way across 62 of the 73 adventure presets.
   const [x, y, z] = after.sunPos as [number, number, number];
   expect(z).toBeCloseTo(Math.cos(35 * Math.PI / 180), 2);
-  expect(Math.atan2(y, x) * 180 / Math.PI).toBeCloseTo(40, 1);
+  expect(Math.atan2(y, x) * 180 / Math.PI).toBeCloseTo(40 - 180, 1);
   expect(Math.hypot(x, y, z)).toBeCloseTo(1, 3);
 
   expect(errors).toEqual([]);

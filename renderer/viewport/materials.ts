@@ -8,7 +8,7 @@
 
 import * as THREE from 'three';
 
-import { uSunDir, uSunCol, uAmbCol, uWhiten } from '#viewport/lighting.ts';
+import { uSunDir, uSunCol, uAmbCol, uShadeCol, uWhiten } from '#viewport/lighting.ts';
 import { renderer } from '#viewport/stage.ts';
 import type { GeomData, GeomPart } from '#src/scene/payload.ts';
 
@@ -34,15 +34,15 @@ const DIFFUSE_SPACE = THREE.NoColorSpace;
  * Shade a material the way the game does, instead of the way three.js does.
  *
  * WHAT THE GAME DOES, and how that is known. Its object shader is in the
- * executable as assembler text (docs/LIGHTING.md §2): it samples the texture,
- * multiplies by an interpolated vertex colour, multiplies by a constant, and
- * clamps — `mul r3, v0, r2` then `mul_sat r0, r3, c7.x`. A probe inside the
- * running game (the same document, §2a) adds that `D3DRS_LIGHTING` is 0, that
+ * executable as assembler text (docs/LIGHTING.md §2): it samples the texture
+ * and multiplies by an interpolated vertex COLOUR — `mul_x4_sat r0.rgb, v0, t0`.
+ * A probe inside the running game adds that `D3DRS_LIGHTING` is 0, that
  * `SetLight` and `SetMaterial` are never called at all, and that no preset
- * colour ever arrives in a shader constant. So there is no second lighting
- * model hiding anywhere: a surface is `albedo · light · Whitening`, clamped,
- * with every multiply in GAMMA space on the raw texel — exactly the sum the
- * terrain shader has always used here.
+ * colour ever reaches a shader constant: the colour is baked per vertex by the
+ * CPU at load. The same probe then read 390,000 of those baked vertices back
+ * out of the vertex buffer, which is where the mix below comes from — a
+ * surface is `albedo · mix · 2`, clamped, every multiply in GAMMA space on the
+ * raw texel.
  *
  * WHY NOT LEAVE IT TO THREE.JS. Because three.js lights in LINEAR space, and
  * that is not a brightness difference, it is a colour one. A preset's sun is
@@ -65,27 +65,44 @@ function gameLit(m: THREE.Material, lit: boolean): void {
     shader.uniforms.uSunCol = uSunCol;
     shader.uniforms.uAmbCol = uAmbCol;
     shader.uniforms.uWhiten = uWhiten;
+    shader.uniforms.uShadeCol = uShadeCol;
     // Lit: the sun arrives in WORLD space (it is the map's, not the camera's)
     // while a fragment normal is in view space, so it is turned on the way in.
     //
     // Unlit: a self-illuminated part emits its own colour and is written as it
-    // lies in the file — no sun, and no Whitening either. Doubling it is not
-    // "unlit with a bright light": it blew the arena's grass tufts out to a
-    // solid acid-green hedge, because a texel authored to be shown at face
-    // value went out at twice that.
-    // The product caps at 2: the CPU doubles the sum and SATURATES it into a
-    // colour byte, the vertex shader halves it back for headroom (c29 = 0.5,
-    // seen live by the probe), and the pixel shader's mul_x4 restores ×4 —
-    // so light = min(4·sum, 2), a texel at most doubled. The cap is what
-    // keeps a hot day preset (C1M1's sums to 0.663) from washing every texel
-    // to white, and the ×4 under it is what keeps a mild one from dusk.
+    // lies in the file — no sun. Doubling it is not "unlit with a bright
+    // light": it blew the arena's grass tufts out to a solid acid-green hedge,
+    // because a texel authored to be shown at face value went out at twice that.
+    //
+    // THE MIX, and it is measured rather than modelled. The engine bakes this
+    // colour per vertex on the CPU; the probe read 390,000 of them out of the
+    // vertex buffer and fitted them (docs/LIGHTING.md §2). `LightColor` is not
+    // a term ADDED to ambient — it is the colour a surface facing the sun is
+    // turned INTO, and `ShadeColor` is the colour of one facing away:
+    //
+    //   colour = Ambient + max(N·L,0)·(Light − Ambient) + max(−N·L,0)·(Shade − Ambient)
+    //
+    // Every coefficient of that fit landed on a preset field to the byte, R²
+    // 0.999–1.000, and the flat ground it predicts (42/50/73 and 55/65/84)
+    // is what the buffer holds for flat ground. The old
+    // `min(4·(Ambient + Light·N·L), 2)` was wrong in structure, not in tuning:
+    // it had no `ShadeColor` at all, and its cap doubled every texel of every
+    // day preset.
+    //
+    // `vNormal`, not three's `normal`: a double-sided material flips the normal
+    // on back faces (`normal * faceDirection`), and the shipped meshes do not
+    // keep one winding — a quarter of the peasant's 2252 triangles are wound
+    // against their own authored normal. The game never flips anything: it
+    // computes the vertex colour from the authored normal on the CPU.
     const sum = lit
       ? `vec3 sunV = normalize((viewMatrix * vec4(uSunDir, 0.0)).xyz);
-         vec3 light = min((uAmbCol + uSunCol * max(dot(normalize(normal), sunV), 0.0)) * uWhiten, vec3(2.0));`
+         float ndl = dot(normalize(vNormal), sunV);
+         vec3 light = (uAmbCol + max(ndl, 0.0) * (uSunCol - uAmbCol)
+                                + max(-ndl, 0.0) * (uShadeCol - uAmbCol)) * uWhiten;`
       : `vec3 light = vec3(1.0);`;
     shader.fragmentShader = shader.fragmentShader
       .replace('void main() {', `uniform vec3 uSunDir; uniform vec3 uSunCol;
-uniform vec3 uAmbCol; uniform float uWhiten;
+uniform vec3 uAmbCol; uniform vec3 uShadeCol; uniform float uWhiten;
 void main() {`)
       .replace('#include <colorspace_fragment>', `${sum}
   gl_FragColor = vec4(min(diffuseColor.rgb * light, vec3(1.0)), diffuseColor.a);`);

@@ -54,18 +54,27 @@ test('an object is lit by the game\'s own sum, not by three.js', async () => {
     dark: window.view.shadeProbe([0.1, 0.1, 0.1], [0, 0, 1]),
   }));
 
-  const { amb, sun } = seen.amb.terrain;
+  const { amb, sun, shade: shadeCol } = seen.amb.terrain;
   const w = seen.amb.terrain.whiten;
   const dir = seen.amb.sunPos as [number, number, number];
-  // The modulate is the constant ×4 of the ps.1.1 shaders (mul_x4_sat).
-  expect(w).toBe(4);
+  // The whole chain is a constant ×2: the CPU writes the mixed colour into the
+  // vertex as a plain byte, the vertex shader halves it (c29), the pixel
+  // shader's mul_x4_sat puts four back.
+  expect(w).toBe(2);
 
-  /** The game's sum for one channel, as a byte. */
-  // The light term caps at 2 — the CPU doubles the sum into a saturating
-  // colour byte and the shader restores it (docs/LIGHTING.md §2) — so a texel
-  // is at most doubled however bright the preset runs.
-  const shade = (albedo: number, i: number, ndl: number) =>
-    Math.round(Math.min(1, albedo * Math.min((amb[i]! + sun[i]! * ndl) * w, 2)) * 255);
+  /**
+   * The game's vertex colour for one channel, as a byte.
+   *
+   * A MIX between three preset colours, not a sum — `LightColor` is what a
+   * surface facing the sun becomes, `ShadeColor` what one facing away becomes,
+   * and `AmbientColor` the middle. Read out of the running game's vertex
+   * buffer and fitted over 390,000 vertices (docs/LIGHTING.md §2).
+   */
+  const shade = (albedo: number, i: number, ndl: number) => {
+    const mix = amb[i]! + Math.max(ndl, 0) * (sun[i]! - amb[i]!)
+                        + Math.max(-ndl, 0) * (shadeCol[i]! - amb[i]!);
+    return Math.round(Math.min(1, albedo * mix * w) * 255);
+  };
 
   // Flat ground's normal: N·L is the sun's height, which is cos(Pitch) because
   // Pitch counts from the zenith — the probe inside the game confirmed that
@@ -73,9 +82,12 @@ test('an object is lit by the game\'s own sum, not by three.js', async () => {
   const ndl = dir[2];
   for (let i = 0; i < 3; i++) {
     expect(Math.abs(seen.up[i]! - shade(0.5, i, ndl))).toBeLessThanOrEqual(1);
-    // Facing away leaves Ambient alone — no wraparound, no hemisphere floor.
-    expect(Math.abs(seen.away[i]! - shade(0.5, i, 0))).toBeLessThanOrEqual(1);
     expect(Math.abs(seen.dark[i]! - shade(0.1, i, ndl))).toBeLessThanOrEqual(1);
+    // A normal pointing straight DOWN is the ShadeColor end of the mix, and it
+    // is asserted separately because that is the term the editor had missing
+    // altogether: with it dropped this probe reads AmbientColor, and on the
+    // shipped menu preset the two differ by 43 in green.
+    expect(Math.abs(seen.away[i]! - shade(0.5, i, -ndl))).toBeLessThanOrEqual(1);
   }
 
   // Halving the albedo halves the pixel: the multiply is in gamma space. Under
@@ -85,9 +97,16 @@ test('an object is lit by the game\'s own sum, not by three.js', async () => {
     expect(seen.dark[i]! / Math.max(1, seen.up[i]!)).toBeCloseTo(0.2, 1);
   }
 
-  // Whitening times a bright albedo overflows, and the game clamps rather than
-  // rolls over or tone-maps.
-  expect(seen.white[0]).toBe(255);
+  // A white albedo is the top of the range, and it is asserted against the same
+  // formula rather than against 255. It USED to be 255 here, and that was the
+  // old model showing: `min(4·sum, 2)` drove every day preset into the clamp,
+  // so the brightest thing on screen and a merely bright thing came out the
+  // same white. Under the measured mix this preset's lit ground reaches ×0.71,
+  // and nothing clamps — which is why the game's maps have shading in them at
+  // all. The clamp itself is still there for a preset that does overflow.
+  for (let i = 0; i < 3; i++) {
+    expect(Math.abs(seen.white[i]! - shade(1, i, ndl))).toBeLessThanOrEqual(1);
+  }
 
   expect(errors).toEqual([]);
 });

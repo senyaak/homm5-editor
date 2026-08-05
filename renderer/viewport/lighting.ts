@@ -46,21 +46,35 @@ const AMBIENT_GAIN = Math.pow(2, 2.2);
 // on raw texture values, like the game did); the defaults reproduce the old
 // hard-coded look, `0.62 + 0.5·d = 2·(0.31 + 0.25·d)`.
 export const uSunDir = { value: new THREE.Vector3(0.45, 0.35, 0.82) };
-export const uSunCol = { value: new THREE.Color(0.25, 0.25, 0.25) };
+/** `LightColor` — the colour a surface facing the sun is turned INTO, not a term added to it. */
+export const uSunCol = { value: new THREE.Color(0.55, 0.55, 0.55) };
+/** `AmbientColor` — what a surface edge-on to the sun gets, and the middle of the mix. */
 export const uAmbCol = { value: new THREE.Color(0.31, 0.31, 0.31) };
+/**
+ * `ShadeColor` — the other pole: what a surface facing AWAY from the sun gets.
+ *
+ * Never used here until 08.2026, and it is not a small term: on the shipped
+ * menu preset it is `0.255/0.443/0.506` against an ambient of
+ * `0.259/0.275/0.349` — a sky-blue that lifts every upward-facing surface. It
+ * arrived with the vertex-colour measurement (docs/LIGHTING.md §2).
+ */
+export const uShadeCol = { value: new THREE.Color(0.31, 0.31, 0.31) };
 // The Light toggle's reach into the terrain: 1 = the baked designer point
 // lights add in, 0 = they don't (flat editing light keeps pools off too).
 export const uLmGain = { value: 1 };
 /**
- * The ×4 the game's ps.1.1 shaders apply as an instruction modifier
- * (`mul_x4_sat r0.rgb, v0, t0`). It never acts alone: the sum was doubled and
- * SATURATED INTO A BYTE on the CPU, then halved into oD0 for headroom (c29 =
- * 0.5, seen live by the probe), so the shaders that consume this uniform cap
- * the product at 2 — `min(sum · uWhiten, 2)`, a texel at most doubled.
- * src/scene/ambient.ts has the full measurement; kept as a uniform because
- * the flat editing light drives it.
+ * What the vertex colour multiplies the texel by, and it is a CONSTANT 2.
+ *
+ * The chain, all of it measured: the CPU writes the mixed colour into the
+ * vertex as a plain byte (no doubling — `AmbientColor` arrives as its own
+ * 66/70/89), the vertex shader halves it (`c29 = 0.5`, read live), and the
+ * pixel shader's `mul_x4_sat` puts back four. Net ×2, saturated, with no
+ * `Whitening` anywhere in the path — the switch this uniform is named after
+ * turned out not to be this multiplier at all.
+ *
+ * Kept as a uniform because the flat editing light drives it.
  */
-export const uWhiten = { value: 4 };
+export const uWhiten = { value: 2 };
 // Scene light on L_LIT particle instances (docs/EFFECTS_FORMAT.md §5): the
 // terrain's own gamma-space sum at full incidence, 2·(amb + sun) clamped to
 // 1 — daylight leaves lit smoke alone, a night preset darkens it while the
@@ -84,10 +98,11 @@ export function applyAmbient(a: AmbientData | null): void {
     sun.color.set(0xfff0d8); sun.intensity = 0.9;
     sun.position.set(0.6, 0.4, 1);
     uSunDir.value.set(0.45, 0.35, 0.82);
-    uSunCol.value.setRGB(0.25, 0.25, 0.25);
+    uSunCol.value.setRGB(0.55, 0.55, 0.55);
     uAmbCol.value.setRGB(0.31, 0.31, 0.31);
+    uShadeCol.value.setRGB(0.31, 0.31, 0.31);
     uFxTint.value.setRGB(1, 1, 1);
-    uWhiten.value = 4;
+    uWhiten.value = 2;
     return;
   }
   const [lr, lg, lb] = a.light as [number, number, number];
@@ -99,8 +114,16 @@ export function applyAmbient(a: AmbientData | null): void {
   // read as elevation those made flat ground catch barely half the sun and
   // every shipped day map rendered as dusk (the engine's own PWL preview of
   // the same maps shows bright noon grass).
+  //
+  // The AZIMUTH is turned half a circle from the naive reading, and that is
+  // measured: under Pitch 35 / Yaw 40 the probe in the running game reads
+  // `vs c35` — the vector the object shader dots the normal against — as
+  // (-0.439, -0.369, 0.819), while sin/cos of the preset give (+0.439, +0.369,
+  // +0.819). Only x and y flip; z does not, so this is not "the same vector
+  // negated" (a light travelling with z UP would be a sun under the ground) but
+  // a yaw counted from the opposite direction. See docs/LIGHTING.md §3.
   const p = a.pitch * Math.PI / 180, yw = a.yaw * Math.PI / 180;
-  sun.position.set(Math.sin(p) * Math.cos(yw), Math.sin(p) * Math.sin(yw), Math.cos(p));
+  sun.position.set(-Math.sin(p) * Math.cos(yw), -Math.sin(p) * Math.sin(yw), Math.cos(p));
   hemi.color.setRGB(ar, ag, ab, THREE.SRGBColorSpace);
   hemi.groundColor.setRGB(sr, sg, sb, THREE.SRGBColorSpace);
   hemi.intensity = AMBIENT_GAIN;
@@ -108,10 +131,13 @@ export function applyAmbient(a: AmbientData | null): void {
   uSunDir.value.copy(sun.position);
   uSunCol.value.setRGB(lr, lg, lb); // raw, no conversion: gamma-space shader
   uAmbCol.value.setRGB(ar, ag, ab);
-  uWhiten.value = a.whiten;
-  const w = a.whiten;
-  uFxTint.value.setRGB(
-    Math.min(1, w * (ar + lr)), Math.min(1, w * (ag + lg)), Math.min(1, w * (ab + lb)));
+  uShadeCol.value.setRGB(sr, sg, sb);
+  // Not `a.whiten`: the multiplier is the pipeline's fixed ×2 and the preset's
+  // <Whitening> flag does not reach it. See the uniform above.
+  uWhiten.value = 2;
+  // Lit particles take the scene's light at full incidence, which under the
+  // mix is simply LightColor doubled.
+  uFxTint.value.setRGB(Math.min(1, 2 * lr), Math.min(1, 2 * lg), Math.min(1, 2 * lb));
 }
 
 /**

@@ -13,7 +13,7 @@ import { uiPrefs } from '#core/prefs.ts';
 import type { Floor3D } from '#core/state.ts';
 import { UNITS_PER_TILE as U } from '#src/scene/units.ts';
 import { geomParts } from '#viewport/geoms.ts';
-import { uSunDir, uSunCol, uAmbCol, uLmGain, uWhiten } from '#viewport/lighting.ts';
+import { uSunDir, uSunCol, uAmbCol, uShadeCol, uLmGain, uWhiten } from '#viewport/lighting.ts';
 import { partTexture } from '#viewport/materials.ts';
 import { renderer } from '#viewport/stage.ts';
 
@@ -44,7 +44,8 @@ uniform sampler2D uRock;
 uniform float uScale;
 uniform float uRockScale;
 uniform float uCliff;   // 0 disables the rock blend entirely
-uniform vec3 uSunDir; uniform vec3 uSunCol; uniform vec3 uAmb; uniform float uWhiten;
+uniform vec3 uSunDir; uniform vec3 uSunCol; uniform vec3 uAmb; uniform vec3 uShade;
+uniform float uWhiten;
 uniform sampler2D uLm;  // baked designer point lights (bakeLightMap)
 uniform float uInvTiles;
 uniform float uLmGain;  // the Light toggle: 0 turns the pools off
@@ -97,14 +98,13 @@ void main() {
   // modulate-×2 (the preset's colours are authored around 0.2-0.55 with it in
   // mind), and the baked designer lights join the sum before it, like the
   // engine's own vertex lights would.
-  // abs(), not max(): the terrain is DoubleSide and a generated wall normal may
-  // point into the cliff, which would otherwise pin the face at ambient.
   // The lightmap spans the TILES (vWorld/tiles), not vGrid: vGrid is nudged
   // half a texel to hit the V-wide mask's texel centers and would smear the
   // pools half a tile off their objects.
-  float d = abs(dot(n, normalize(uSunDir)));
+  float ndl = dot(n, normalize(uSunDir));
   vec3 pl = texture(uLm, vWorld * uInvTiles).rgb * uLmGain;
-  outColor = vec4(col * min((uAmb + uSunCol * d + pl) * uWhiten, vec3(2.0)), 1.0);
+  outColor = vec4(col * ((uAmb + max(ndl, 0.0) * (uSunCol - uAmb)
+                               + max(-ndl, 0.0) * (uShade - uAmb) + pl) * uWhiten), 1.0);
 }`;
 
 const loadImg = (src: string): Promise<HTMLImageElement> => new Promise((res, rej) => {
@@ -210,7 +210,8 @@ uniform sampler2DArray uMask;
 uniform sampler2D uOverlay;
 uniform float uScale;
 uniform float uHasOverlay;
-uniform vec3 uSunDir; uniform vec3 uSunCol; uniform vec3 uAmb; uniform float uWhiten;
+uniform vec3 uSunDir; uniform vec3 uSunCol; uniform vec3 uAmb; uniform vec3 uShade;
+uniform float uWhiten;
 uniform sampler2D uLm;
 uniform float uLmGain;
 in vec2 vGrid; in vec2 vWorld; in vec2 vUv; in vec3 vNrm;
@@ -239,9 +240,10 @@ void main() {
   // shaded differently from the flat around it reads as a decal, not a hump.
   // Here vGrid is exactly grid/tiles (see PROJ_VERT), which is the lightmap's
   // own mapping, so the pools land where the terrain draws them.
-  float d = abs(dot(normalize(vNrm), normalize(uSunDir)));
+  float ndl = dot(normalize(vNrm), normalize(uSunDir));
   vec3 pl = texture(uLm, vGrid).rgb * uLmGain;
-  outColor = vec4(col * min((uAmb + uSunCol * d + pl) * uWhiten, vec3(2.0)), 1.0);
+  outColor = vec4(col * ((uAmb + max(ndl, 0.0) * (uSunCol - uAmb)
+                               + max(-ndl, 0.0) * (uShade - uAmb) + pl) * uWhiten), 1.0);
 }`;
 
 /**
@@ -288,7 +290,7 @@ export function projectBatch(fl: Floor3D, g: number): void {
         uMapSide: { value: s.V - 1 },
         uUnits: { value: U },
         uLm: { value: fl.lightMap }, uLmGain,
-        uSunDir, uSunCol, uAmb: uAmbCol, uWhiten,
+        uSunDir, uSunCol, uAmb: uAmbCol, uShade: uShadeCol, uWhiten,
       },
       side: THREE.DoubleSide,
       // The mound IS the ground, and the building's entrance and floor sit ON
@@ -348,7 +350,7 @@ export async function upgradeToSplat(fl: Floor3D): Promise<void> {
       uScale: { value: texScale },
       uRockScale: { value: texScale / U },
       uLm: { value: fl.lightMap }, uInvTiles: { value: 1 / (s.V - 1) }, uLmGain,
-      uSunDir, uSunCol, uAmb: uAmbCol, uWhiten,
+      uSunDir, uSunCol, uAmb: uAmbCol, uShade: uShadeCol, uWhiten,
     },
     side: THREE.DoubleSide,
   });

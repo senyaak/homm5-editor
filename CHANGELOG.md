@@ -83,6 +83,20 @@ one.
 
 ### Fixed
 
+- **Models are lit the way the game lights them, and stop coming out in
+  patches.** Three things were wrong at once and each is now measured rather
+  than modelled. The **normal** was read from the wrong byte of the render
+  vertex: the trailing twelve bytes are a tangent BASIS and the decoder took
+  the second of the three, so every model was lit by a vector lying in its own
+  surface — a peasant's shirt came out with neighbouring panels at different
+  brightnesses. The **light direction** was half a circle off, which on 62 of
+  the 73 adventure presets is the same wrong direction. And the **formula**
+  itself had the wrong shape: `LightColor` is not a term added to ambient but
+  the colour a sun-facing surface is turned INTO, `ShadeColor` (never used
+  here before) is the other end, and the multiplier is a flat ×2 rather than a
+  capped ×4. All three come out of the running game's own vertex buffer —
+  390,000 baked vertices, fitted at R² 0.999, every coefficient landing on a
+  preset field to the byte (docs/LIGHTING.md §2).
 - **Terrain-object grass stands in the ground and wears its own dark green,
   instead of glowing lime scribble.** The grass props are `P_STATIC` particle
   systems — 33 blade-clump cards per patch, one position key each, all on the

@@ -637,9 +637,21 @@ function decodeMeshGroup(b: Buffer, start: number, end: number, options: MeshOpt
     // taking rather than recomputing: computeVertexNormals averages over the
     // faces meeting at a vertex, which smooths every hard edge a modeller put
     // there and leaves a building evenly lit and flat-looking.
-    if (stride >= 16) {
+    //
+    // The 20-byte render vertex ends in THREE packed byte triples, at 8, 12 and
+    // 16 — a tangent BASIS, not one vector, and the normal is the first of them.
+    // Which is which is measured, not assumed (`_tmp/normcensus.ts`): over 1790
+    // mesh groups the triple at 8 has mean dot 0.294 with the face normal of the
+    // triangles that use it, while the two after it sit at -0.050 and 0.005 —
+    // perpendicular, because they are the tangent and the binormal. Within one
+    // vertex all three are unit length and mutually orthogonal (mean |dot| 0.002
+    // between any pair), which is what says it is a basis at all. Reading 12
+    // lit every model by a vector lying IN its surface: the sun term then had
+    // nothing to do with which way a face pointed, and a peasant came out in
+    // patches, neighbouring panels of one shirt at different brightnesses.
+    if (stride >= 11) {
       for (let c = 0; c < 3; c++) {
-        normals[i * 3 + c] = (b[vertA.at + i * stride + 12 + c]! - 128) / 127;
+        normals[i * 3 + c] = (b[vertA.at + i * stride + 8 + c]! - 128) / 127;
       }
     }
     if (skin) {
@@ -726,7 +738,7 @@ function repairZeroNormals(positions: Float32Array, normals: Float32Array, indic
 // game reads: of the arrays a mesh group holds, exactly ONE carries coordinates.
 //
 //   tag 2  positions      float3 per position       <- transformed
-//   tag 3  render verts   u16 UV over 2048, then packed normals as bytes
+//   tag 3  render verts   u16 UV over 2048, then normal/tangent/binormal bytes
 //   tag 4  skin binding   float weights and bone indices per position
 //   tag 5/6 remap         u16 indices into tag 2
 //   tag 7  triangles      u16 indices into the remap

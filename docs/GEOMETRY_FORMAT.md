@@ -2,8 +2,9 @@
 
 Status: **textured meshes decoded**. Container grammar, vertex positions, the
 vertex-split remap, the triangle index buffer and **UVs** are decoded and
-verified (0 stray edges; UV edge-continuity confirmed). Normals are computed
-from geometry (the packed stored normals are imprecise). Textures (`.dds`,
+verified (0 stray edges; UV edge-continuity confirmed). The authored **normals**
+are read from the file too — the first of the three packed byte vectors each
+render vertex ends with, §5. Textures (`.dds`,
 DXT1/3/5) decode via `src/format/dds.ts`. The per-submesh material split is decoded
 too: a mesh that uses several materials stores each material's slice as its own
 group, and each group is emitted as its own mesh, one-to-one with the model's
@@ -120,11 +121,29 @@ Per render vertex the 20-byte attribute stream (tag3) is:
 |---|---|---|
 | 0–3 | **UV** | 2× int16 ÷ 2048 (V spans [0,1], U tiles). Confirmed by UV edge-continuity |
 | 4–7 | (zero / uv2 slot) | unused here |
-| 8–19 | packed normal / tangent / binormal | 3× (signed byte ×3 + pad); imprecise |
+| 8–11 | **normal** | byte ×3 + pad, `(b − 128) / 127` |
+| 12–15 | tangent | same packing |
+| 16–19 | binormal | same packing |
 
-Normals are **computed** from the triangle geometry instead of using the packed
-ones (`computeNormals` in `src/geometry.js`). UVs are read by `extractMeshes`;
-`tools/mesh-to-obj.js` emits a full `v`/`vt`/`vn` OBJ.
+**Which of the three is the normal is measured, not assumed** — and it had been
+assumed wrong until 08.2026, with the decoder reading byte 12. The measurement
+(`_tmp/normcensus.ts`): over 1790 mesh groups sampled from the shipped
+geometries, the triple at 8 has mean dot **0.294** with the face normal of the
+triangles that use it, while 12 and 16 sit at **−0.050** and **0.005** —
+perpendicular to the surface's normal, which is what a tangent and a binormal
+are. Inside one vertex all three decode to unit length for 100% of vertices and
+are mutually orthogonal (mean |dot| 0.002 between any pair): that is what says
+the trailing twelve bytes are a basis rather than three unrelated fields.
+
+Why the average is 0.294 rather than ~0.9: the shipped triangle lists do not
+keep a consistent winding, so a signed comparison against the face normal
+cancels on roughly a quarter of the faces. The ratio between the three
+candidates is the discriminator, not the absolute number.
+
+The decoder prefers these authored normals and recomputes only the ones that
+arrive zero-length (`repairZeroNormals`) — averaging every normal over the faces
+at a vertex smooths the hard edges a modeller put there. UVs are read by
+`extractMeshes`; `tools/mesh-to-obj.js` emits a full `v`/`vt`/`vn` OBJ.
 
 Textures are `.dds` — 1024² **DXT3** for the mountain. `src/dds.js` decodes
 DXT1/3/5 to RGBA. `tools/render-textured.js` samples the texture per face and

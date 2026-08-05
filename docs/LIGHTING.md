@@ -47,15 +47,56 @@ and the editor keeps its neutral backdrop. **[OK]**
 Every surface the game draws ends the same way:
 
 ```
-albedo · min(4·(Ambient + Light·N·L), 2),   clamped to 1
+albedo · 2 · mix,   clamped to 1
+
+mix = Ambient + max(N·L, 0)·(Light − Ambient) + max(−N·L, 0)·(Shade − Ambient)
 ```
 
 multiplied in **gamma space on the raw texel** — no sRGB decode going in, no
-encode coming out. The ×4 and its cap at 2 are one mechanism, a range packed
-through an 8-bit pipe, measured from both ends of the shader chain:
+encode coming out.
 
-* The CPU computes the sum, **doubles it and saturates it into a colour
-  byte** — that byte is where the cap lives: nothing survives past 1.0.
+**`LightColor` is not a term added to ambient.** It is the colour a surface
+facing the sun is turned INTO, `ShadeColor` is the colour of one facing away,
+and `AmbientColor` is the middle — a mix between three of the preset's fields,
+not a sum of two. The shadowed twin of the same vertex (§3b) is the identical
+mix with `IncidentShadowColor` in `LightColor`'s place.
+
+**How that is known**, and it is a measurement, not a model. The engine bakes
+this colour per vertex on the CPU at load and writes it into the vertex buffer,
+so a probe that hooks `IDirect3DVertexBuffer9::Lock`/`Unlock` and dumps every
+range the engine writes can read the answer straight out
+(`_tmp/probe/homm5-editor.c`, `_tmp/vbscan.ts`). From a 5 GB dump, 390,000
+shaded vertices were fitted against `Flat + Toward·max(N·L,0) + Away·max(−N·L,0)`
+over a grid of directions. The best direction is Pitch 35 / Yaw 220 at
+**R² 0.999–1.000**, and every coefficient lands on a preset field **to the
+byte**:
+
+| fitted term | bytes | preset field | bytes |
+|---|---|---|---|
+| Flat (N·L = 0) | 66 70 89 | `AmbientColor` | 66 70 89 |
+| at N·L = −1 | 65 113 129 | `ShadeColor` | 65 113 129 |
+| at N·L = +1, shadowed slot | 37 46 69 | `IncidentShadowColor` | 37 46 69 |
+| at N·L = +1, lit slot | 53 64 83 | `LightColor` | 53 64 83 |
+
+Checked against data the fit never saw: flat ground (normal +Z, N·L = 0.819)
+must come out 42/50/73 shadowed and 55/65/84 lit, and those are the bytes the
+buffer holds for flat ground.
+
+**What this replaced, and why it was wrong for a year.** The old reading was
+`albedo · min(4·(Ambient + Light·N·L), 2)`: no `ShadeColor` term at all, and a
+cap that every day preset drove straight into, so the brightest thing on screen
+and a merely bright thing came out the same white. It survived because it was
+tuned against screenshots until the *level* matched, and a wrong structure with
+a fitted constant can match a level. The lesson is the one this file keeps
+learning: fit against the engine's own numbers, and check the fit on a case it
+was not fitted to.
+
+The multiplier is a constant **×2**, and the preset's `<Whitening>` flag does
+not reach it — what that switch does is still unidentified. The chain, measured
+from both ends:
+
+* The CPU writes the mix into the vertex as a **plain byte**: `AmbientColor`
+  arrives as its own 66/70/89, undoubled.
 * The vertex shader **halves it back** for headroom — `mul r4.xyz, r4.w, c29;
   mul oD0.xyz, v4, r4`, and the SetVertexShaderConstantF probe in the running
   game sees **c29 arrive as (0.5, 0.5, 0.5, 0.5)**. oD0 itself clamps to
@@ -69,24 +110,12 @@ mul_x4_sat r1.rgb, v1, t0    ; same for the shadowed colour
 lrp r0.rgb, t1, r1, r0       ; picked by the shadow map
 ```
 
-Net: `min(2·sum, 1) · 2` — a texel is at most DOUBLED, and reaches that
-ceiling once the sum passes 0.5, which every day preset does. The probe run
+Net: `mix · 0.5 · 4` = `mix · 2`, saturated — and under a real preset it rarely
+saturates at all. A2C1M1's lit ground reaches ×0.71 of its texel, which is why
+the game's maps have shading in them rather than a white floor. The probe run
 also shows **no SetPixelShaderConstantF ever touches c7** — the ps.2.0 object
 shader with `c7.x`, quoted in earlier revisions of this section, is not the
 path the game runs.
-
-Every simpler reading failed a side-by-side with the game, one per direction.
-The preset's `<Whitening>` as a 2-or-1 switch halved every Whitening-off map
-— the DEFAULT preset included: the Sharpshooter test map rendered at
-`tex·0.42` against the game's `tex·1.66` (its sum is 0.415; ×4 = 1.66, under
-the cap). A bare ×2 was the same dusk. An uncapped ×4 matched that map but
-washed day presets toward white — C1M1's day preset sums to 0.663, and 2.65×
-the texel blows out everything past 96, which is not the game's picture;
-capped 2.0× is. What `<Whitening>` actually switches is still unidentified;
-it is not this multiplier. The old §6 puzzle ("the game ignores dark battle
-presets") thins to arithmetic: the Inferno arena's 0.345 ambient alone is
-1.38× the texel, its sun side caps at 2 — daylit-looking — while the all-zero
-presets, the one case the game visibly darkens, stay black under any factor.
 
 That is read out of the executable rather than guessed. The shipped shaders are
 embedded in it as **assembler text**, 115 of them, assembled at run time by
@@ -150,18 +179,30 @@ channels differ can answer where a preset went.
 ## 3. Sun direction **[OK]**
 
 `Pitch` counts from the **zenith**, not the horizon, and `Yaw` is degrees
-around +Z from +X, counter-clockwise:
+around +Z, counted from **−X** — half a circle away from the obvious reading:
 
 ```
-sunDir = (sin(Pitch)·cos(Yaw), sin(Pitch)·sin(Yaw), cos(Pitch))
+sunDir = (−sin(Pitch)·cos(Yaw), −sin(Pitch)·sin(Yaw), cos(Pitch))     toward the light
 ```
 
-Measured, not judged by eye. For Pitch 35 / Yaw 40 the editor computes
-`(0.439, 0.369, 0.819)`; the probe in the running game read `vs c35` as
-`(-0.439, -0.369, 0.819)` under the same preset — the same vector, negated,
-because the engine hands the shader the direction light TRAVELS and the shader
-uses `-(N·c35)`. Three decimals, all three components. This was `[~]` until
-that run.
+Measured, not judged by eye. Under Pitch 35 / Yaw 40 the probe in the running
+game reads `vs c35` — the vector the object shader dots the normal against — as
+`(-0.439, -0.369, 0.819)`, three decimals on all three components.
+
+**The half-circle was missed once, and the way it was missed is the lesson.**
+Sin and cos of the preset give `(+0.439, +0.369, +0.819)`; the run above was
+read as "the same vector, negated, because the engine hands the shader the
+direction light TRAVELS". Two of three signs fit that story and the third
+refutes it: **z does not flip**. A light travelling with z UP is a sun below the
+ground. The shader settles it on its own — `dp3 r5.x, r1, c35` then
+`sge r7.y, -r5.x, c35.w`, "the normal points away from c35, so mark it
+shadowed", only reads as sense if c35 points AT the light. So the elevation was
+right all along and the azimuth was pointing the opposite way, on 62 of the 73
+adventure presets at once (Pitch 35 / Yaw 40 is nearly the whole corpus — the
+sun is the same on almost every shipped map). Senya caught it from the picture:
+"in the game the light has never once come from anywhere but the north."
+
+Matching magnitudes to three decimals is not a match. Check every sign.
 
 ## 3a. Designer point lights (`<pointLights>` on placed objects) **[OK]**
 
@@ -220,6 +261,101 @@ Still simplified:
 * New objects placed from the palette carry no lights yet (the palette's
   Shared templates have none — the shipped maps' designers added them by
   hand); a lights editor is Phase 4 property-panel work.
+
+## 3b. Shadows — what is measured so far, and what is still open
+
+The editor draws none yet. This records the mechanism as it has been read out of
+the executable and the running game, so the implementation is not designed on
+guesses. **Everything marked [OK] here is measured; the open question is named
+at the end and is not to be filled in by plausibility.**
+
+**An object is shaded by TWO baked colours, and the shadow picks between them.
+[OK]** The object pixel shader (`0xc78694` and its family, ps.1.1) is:
+
+```
+tex t0                          ; the texture
+tex t1                          ; the shadow map
+texcoord t2                     ; where this fragment is in it, and how deep
+mul_x4_sat r0.rgb, v0, t0       ; LIT colour x texel
++add_x4_sat r0.a, t1, -t2.z     ; the depth test: map depth vs this fragment's
+mul_x4_sat r1.rgb, v1, t0       ; SHADOWED colour x texel
++add r0.a, c4, r0               ; ...with a bias
+lrp r1.rgb, t1, r1, r0          ; blend the two by the shadow map's rgb
+cnd r0.rgb, r0.a, r0, r1        ; ...or take the lit one outright if in front
++mul r0.a, t0.a, v0.a
+```
+
+So a shadow is not "multiply by something dark": it is a **lerp toward a second
+colour the vertex already carries**, and a variant of the same shader
+(`0xc781f4`) does only the lerp with no depth test at all.
+
+**Both colours come out of the vertex stream, and nothing computes them on the
+GPU. [OK]** The vertex shader (`0xc693a4`):
+
+```
+mul r4.w, v4.w, c30.y
+mad r4.w, v5.w, c30.x, r4.w     ; one weight out of two light STATES (c30)
+mul r4.xyz, r4.w, c29           ; c29 = 0.5, the headroom halving of §2
+mul oD0.xyz, v4, r4             ; lit
+mul oD1.xyz, v5, r4             ; shadowed
+dp3 r5.x, r1, c35               ; the normal against the sun
+sge r7.y, -r5.x, c35.w          ; faces away -> 1
+dp4 r7.x, v0, c24               ; depth in the shadow map's plane
+add oT2, r7.x, r7.y             ; ...so a back face never lights itself
+```
+
+**The runtime vertex, read from the declaration in the running game. [OK]**
+Stride 32, six elements:
+
+| offset | type | declared as | what it is |
+|---|---|---|---|
+| 0 | FLOAT3 | position0 | position |
+| 12 | D3DCOLOR | normal0 | normal, unbiased by `v·2.008 − 1.008` (c3) |
+| 16 | SHORT2 | texcoord0 | the diffuse UV |
+| 20 | SHORT2 | texcoord1 | the second UV set |
+| 24 | D3DCOLOR | tangent0 | **the SHADOWED colour** (`oD0`, the ps's `v0`) |
+| 28 | D3DCOLOR | tangent1 | **the LIT colour** (`oD1`, the ps's `v1`) |
+
+Which of the two is which was read backwards at first, from the register names
+alone. The data settles it: the +28 slot fits `LightColor` and +24 fits
+`IncidentShadowColor` (§2), and the pixel shader agrees — `cnd` takes `v0` when
+the fragment sits BELOW the height the shadow map recorded, which is what being
+inside a shadow means. So `lrp r1.rgb, t1, r1, r0` lerps from shadowed toward
+lit as the shadow texture rises: **t1 = 0 is full shadow, t1 = 1 is full sun.**
+
+The two colours ride in the slots a tangent basis would use, and they are typed
+`D3DCOLOR` — they are colours, not directions. That is worth holding beside
+[GEOMETRY_FORMAT.md](GEOMETRY_FORMAT.md) §5: the FILE's render vertex really
+does carry a normal and a real tangent basis, and the engine keeps the normal
+and the two UVs and **writes the baked light over the tangent slots** at load.
+Our decoder read the first of those slots as the normal for months.
+
+**What draws it.** Every object in a scene draws out of one 26 MB
+`D3DPOOL_DEFAULT`, dynamic, write-only vertex buffer.
+
+**What the CPU puts in those two colours — answered, §2.** Both are the same
+three-way mix; they differ only in which field the sun end of it reaches, and
+the editor now runs the lit one. The field offsets in `CAmbientLight`, read out
+of the reflection table at `0x9bdd00`, in case another of them is wanted:
+`LightColor` +0x64, `AmbientColor` +0x70, `ShadeColor` +0x7c,
+`IncidentShadowColor` +0x88, `GroundAmbientColor` +0x128, `ShadowColor` +0xfc.
+
+**Still open: the shadow texture itself** — what draws into it, at what
+resolution, and how `MaxShadowHeight` bounds it. The vertex shader's
+`dp4 r7.x, v0, c24` and the `c25`/`c26` pair say the lookup is a **top-down**
+projection of world x/y with the fragment's HEIGHT as the compared depth, which
+is why the shadow map's alpha reads as "the height up to which this column is
+shadowed". That is the next thing to measure, and the editor's own
+`bakeLightMap` — a per-floor texture over the ground plane — is the shape the
+implementation will take.
+
+Also carried by the preset and unread: `ShadowPitch`/`ShadowYaw` (100/100 where
+the sun is 35/40 — a separate direction), `ShadowColor`, `MaxShadowHeight` 20,
+`ShadowsMaxDetailLength` 10, and the cloud shadows (`CloudTex`, `CloudSize`,
+`CloudDir`, `CloudSpeed`, and `CCopyShadowsAndCloudsEffect`). Materials say who
+takes part, and the flags discriminate: `CastShadow` true on 10062 of 11639,
+`ReceiveShadow` on 10156 — while `BackFaceCastShadow` is false on all 11639 and
+therefore answers nothing.
 
 ## 4. Not the map view's problem
 

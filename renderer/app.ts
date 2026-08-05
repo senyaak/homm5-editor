@@ -54,7 +54,7 @@ import { syncInstance, removeFromBatch, addToBatch, buildBatches, replaceInstanc
 import { loadFx, advanceFx, spawnFx, removeFx } from '#viewport/fx.ts';
 import { makeLightMap, bakeLightMap, markLightsDirty } from '#viewport/point-lights.ts';
 import { upgradeToSplat, projectBatch, applyProjectedMaterials, setGroundScale, setCliffAmount, cliffsOn, disposeSplats } from '#viewport/splat.ts';
-import { applyAmbient, refreshLighting, sun, uSunDir, uSunCol, uAmbCol, uLmGain, uFxTint, uWhiten } from '#viewport/lighting.ts';
+import { applyAmbient, refreshLighting, sun, uSunDir, uSunCol, uAmbCol, uShadeCol, uLmGain, uFxTint, uWhiten } from '#viewport/lighting.ts';
 import { initSky } from '#viewport/sky.ts';
 import type { Floor3D, World, Selection, GeomBatch } from '#core/state.ts';
 import { UNITS_PER_TILE as U } from '#src/scene/units.ts';
@@ -429,7 +429,7 @@ interface ViewApi {
    */
   ambientState(): {
     preset: boolean; sun: number[]; sunPos: number[];
-    terrain: { amb: number[]; sun: number[]; whiten: number };
+    terrain: { amb: number[]; sun: number[]; shade: number[]; whiten: number };
   };
   /** What one lit surface comes out as, 0..255 — see shadeProbe. */
   shadeProbe(albedo: number[], normal: number[]): number[];
@@ -626,6 +626,7 @@ const view: ViewApi = {
       terrain: {
         amb: uAmbCol.value.toArray().map((v) => +v.toFixed(3)),
         sun: uSunCol.value.toArray().map((v) => +v.toFixed(3)),
+        shade: uShadeCol.value.toArray().map((v) => +v.toFixed(3)),
         whiten: uWhiten.value,
       },
     };
