@@ -50,13 +50,23 @@ test.beforeAll(async () => {
 });
 test.afterAll(async () => { if (ed) await closeEditor(ed); });
 
-/** Place one object and hand back the id the map gave it. */
+/**
+ * Place one object and hand back the id the map gave it.
+ *
+ * The shared record is named with the **xpointer** the palette's own hrefs
+ * carry: `…(AdvMapHeroShared).xdb#xpointer(/AdvMapHeroShared)`. Without the
+ * fragment the game cannot resolve the record and the object is not there at
+ * all — which it reports as "PlayerN has no heroes and no towns", and then as
+ * "Start player does not exist". The editor takes the bare path without
+ * complaint and calls the object complete, so this is written once, here.
+ */
 async function place(page: Launched['page'], type: string, shared: string,
                      x: number, y: number): Promise<string> {
+  const href = shared.includes('#') ? shared : `${shared}#xpointer(/${type}Shared)`;
   const id = await page.evaluate(async (p) => {
     const r = await window.editor.addObject({ type: p.type, shared: p.shared, x: p.x, y: p.y, floor: 0, r: 0 });
     return { id: r.instance.id as string, complete: r.complete };
-  }, { type, shared, x, y });
+  }, { type, shared: href, x, y });
   // A hero placed with no donor to copy comes out without the Editable block
   // this whole map is made of, and everything below would then write into
   // nothing. Said here, where it names the object rather than the symptom.
@@ -176,6 +186,12 @@ test('the Rules Test map is built and packed, with every fix off', async () => {
   // And each of them starts somewhere that is actually on the map — a MainHero
   // written as TEXT rather than as an href reads as blank to the game and looks
   // filled in here, which is the failure this asserts against.
+  // Every shared record resolvable — the whole map is objects pointing at
+  // records, and a bare path is an object the game does not have.
+  const bare = [...xml.matchAll(/<Shared href="([^"]*)"/g)].map((m) => m[1]!)
+    .filter((h) => !h.includes('#xpointer('));
+  expect(bare, 'every Shared href names what it points at').toEqual([]);
+
   const starts = [...xml.matchAll(/<MainHero href="#xpointer\(id\((item_[^)]+)\)/g)].map((m) => m[1]!);
   expect(starts, 'both sides have a starting hero').toHaveLength(PLAYERS.length);
   for (const id of starts) {
