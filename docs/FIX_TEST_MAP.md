@@ -42,9 +42,9 @@ computer's.
 
 | hero | race | what he is for |
 |---|---|---|
-| `wizard` | Academy | Master of Fire, Empowered Armageddon |
+| `wizard` | Academy | Master of Fire |
 | `knight` | Haven | Encourage |
-| `warlock` | Dungeon | Payback, and the snare crash |
+| `warlock` | Dungeon | Payback, the snare crash, Empowered Armageddon |
 | `runemage` | Fortress | Dragon Form |
 | `ranger` | Sylvan | Imbue Ballista — the bug, not a fix |
 | `barbarian` | Stronghold | Barbarian Learning |
@@ -55,24 +55,18 @@ computer's.
 
 ## The list
 
-### 1. `snare-crash-fix` — the warlock, with his OWN Goblin Trappers
+### 1. `snare-crash-fix` — the warlock, against the Goblin Trappers
 
-The trick is that the trappers are in **his army**, not on the other side. A
-snare is invisible to whoever it is laid against, so trappers you are fighting
-put them on tiles you cannot see and there is nothing to aim at. Your own you
-can see.
+Attack the stack in front of him. The snare has to be **theirs**: a snare does
+not fire on its own side, so an obstacle summoned onto your own does exactly
+nothing — it stands on top of it and the battle carries on. That is not the fix
+working, it is the trap never going off, and it is what happens if you try this
+with trappers of your own.
 
-So: start any battle — the stack in front of him will do — and
-
-1. let his trappers lay a snare, on a tile you can see;
-2. cast **«Кристалл тайного»** (Arcane Crystal) or **«Стена мечей»** (Blade
-   Barrier) onto that tile.
-
-**If the obstacle simply stands there and nothing happens**, the snare did not
-FIRE, and that is the thing to chase rather than the fix: the crash is in the
-code a snare runs when it goes off — it asks the tile for the creature standing
-there and an obstacle is not one. A snare that ignores its owner's own summon
-never reaches that code. See docs/engineInternals/RULES_FIXES.md.
+So the snare is the enemy's, and the tile is the part you have to find: cast
+**«Кристалл тайного»** (Arcane Crystal) or **«Стена мечей»** (Blade Barrier)
+onto tiles they have walked over or laid on. If the obstacle just stands there,
+that tile had no snare — try another.
 
 - **off** — the battle ends. That is the whole bug: the game drops out of the
   fight.
@@ -125,7 +119,11 @@ The reverse case is the ugly one and worth reproducing: let a defence buff
 *expire* while the fire effect is still on, and off the fix the stack can lose
 everything it had.
 
-### 5. `empowered-armageddon-fix` — the same wizard
+### 5. `empowered-armageddon-fix` — the WARLOCK
+
+Not the wizard: **Empowered Spells is the Warlock's class perk**, and a perk
+whose class does not match is one the game quietly declines to grant. So the
+Armageddon test sits with Payback and the snare, on the Dungeon hero.
 
 He has **Empowered Spells**, so his Armageddon is cast in its empowered form
 (double mana, +50% damage). He also carries a **ballista**, and so does the

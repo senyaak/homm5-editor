@@ -76,6 +76,14 @@ export interface Kit {
   fixes: string[];
   /** The shared hero record — the race decides which racial abilities work. */
   shared: string;
+  /**
+   * The class that record belongs to, so the kit can be CHECKED against the
+   * game's own rules before the map is built: a perk names the class allowed to
+   * take it, the skill it hangs off, and the perks that come before it, and a
+   * hero handed one he does not qualify for simply does not get it — silently,
+   * with the map looking perfectly fine. See `checkKits` in the spec.
+   */
+  heroClass: string;
   at: { x: number; y: number };
   skills?: Skill[];
   perks?: string[];
@@ -111,14 +119,15 @@ const PEASANTS = monster('Haven', 'Peasant');
 export const HEROES: Kit[] = [
   {
     key: 'wizard',
-    fixes: ['master-of-fire-fix', 'empowered-armageddon-fix'],
+    heroClass: 'HERO_CLASS_WIZARD',
+    fixes: ['master-of-fire-fix'],
     shared: hero('Academy', 'Astral'),
     at: { x: 8, y: 10 },
     skills: [{ id: 'HERO_SKILL_DESTRUCTIVE_MAGIC', mastery: M.expert }],
-    // Master of Fire is the perk under test; Empowered Spells is the Academy
-    // racial that casts the second Armageddon, the one with an id of its own.
-    perks: ['HERO_SKILL_MASTER_OF_FIRE', 'HERO_SKILL_EMPOWERED_SPELLS',
-      'HERO_SKILL_SECRETS_OF_DESTRUCTION'],
+    // Master of Fire only. Empowered Spells is the WARLOCK's class perk, not
+    // the Academy's — it went to the warlock with the Armageddon test, because
+    // a perk whose class does not match is a perk the game does not grant.
+    perks: ['HERO_SKILL_MASTER_OF_FIRE'],
     // Armageddon to hit everything including the war machines, Fireball for a
     // single stack, Stone Skin to move a defence AFTER the fire landed on it —
     // which is the whole point of the Master of Fire fix.
@@ -134,12 +143,20 @@ export const HEROES: Kit[] = [
   },
   {
     key: 'knight',
+    heroClass: 'HERO_CLASS_KNIGHT',
     fixes: ['encourage-fix'],
     shared: hero('Haven', 'Alaric'),
     at: { x: 16, y: 10 },
-    // Encourage is the Knight's own; the Black Dragons are what he cannot use
-    // it on until the fix, being immune to magic.
-    perks: ['HERO_SKILL_ENCOURAGE'],
+    // Encourage hangs off Leadership, and for a Knight it wants Recruitment
+    // (Leadership) and Holy Charge (Training) before it — so both skills are
+    // here, and the two perks in front of it.
+    skills: [
+      { id: 'HERO_SKILL_LEADERSHIP', mastery: M.expert },
+      { id: 'HERO_SKILL_TRAINING', mastery: M.expert },
+    ],
+    // The Black Dragons are what he cannot use it on until the fix, being
+    // immune to magic.
+    perks: ['HERO_SKILL_RECRUITMENT', 'HERO_SKILL_HOLY_CHARGE', 'HERO_SKILL_ENCOURAGE'],
     stats: { offence: 10, defence: 10, spellpower: 5, knowledge: 5 },
     army: [
       { creature: 'CREATURE_BLACK_DRAGON', count: 3 },
@@ -149,28 +166,40 @@ export const HEROES: Kit[] = [
   },
   {
     key: 'warlock',
-    fixes: ['payback-fix', 'snare-crash-fix'],
+    heroClass: 'HERO_CLASS_WARLOCK',
+    // Empowered Armageddon is HIS, not the wizard's: Empowered Spells is the
+    // Warlock's class perk. Three fixes on one hero, which is fine — they are
+    // three different spells.
+    fixes: ['payback-fix', 'snare-crash-fix', 'empowered-armageddon-fix'],
     shared: hero('Dungeon', 'Almegir'),
     at: { x: 24, y: 10 },
-    skills: [{ id: 'HERO_SKILL_SUMMONING_MAGIC', mastery: M.expert }],
-    perks: ['HERO_SKILL_PAYBACK'],
-    // The three spells that put an obstacle on the field — all of them free,
-    // every time, until the payback fix.
-    spells: ['SPELL_ARCANE_CRYSTAL', 'SPELL_SUMMON_HIVE', 'SPELL_BLADE_BARRIER'],
-    stats: { offence: 5, defence: 5, spellpower: 15, knowledge: 30 },
-    army: [
-      { creature: 'CREATURE_MARKSMAN', count: 30 },
-      // HIS OWN trappers, which is the whole trick. A snare is invisible to
-      // whoever it is laid against, so trappers on the other side put them on
-      // tiles you cannot see and there is nothing to aim a crystal at. Your own
-      // you can see — lay one, then summon onto it.
-      { creature: 'CREATURE_GOBLIN_TRAPPER', count: 20 },
+    skills: [
+      { id: 'HERO_SKILL_SUMMONING_MAGIC', mastery: M.expert },
+      // Payback hangs off Dark Magic and wants Master of Curses before it.
+      { id: 'HERO_SKILL_DARK_MAGIC', mastery: M.expert },
+      // …and Empowered Spells off the Warlock's own Invocation.
+      { id: 'HERO_SKILL_INVOCATION', mastery: M.expert },
     ],
-    // Anything to fight; the snare comes from his own side of the field.
+    perks: ['HERO_SKILL_MASTER_OF_CURSES', 'HERO_SKILL_PAYBACK', 'HERO_SKILL_EMPOWERED_SPELLS'],
+    // The three that put an obstacle on the field — free every time until the
+    // payback fix — and the Armageddon that Empowered Spells turns into the
+    // second one, with an id of its own.
+    spells: ['SPELL_ARCANE_CRYSTAL', 'SPELL_SUMMON_HIVE', 'SPELL_BLADE_BARRIER',
+      'SPELL_ARMAGEDDON'],
+    stats: { offence: 5, defence: 5, spellpower: 15, knowledge: 40 },
+    // A war machine of his own, so an empowered Armageddon has one to prove
+    // itself on — that is the half of the fix you can see.
+    ballista: true,
+    army: [{ creature: 'CREATURE_MARKSMAN', count: 30 }],
+    // The trappers are the ENEMY's, and they have to be: a snare does not fire
+    // on its own side, so the warlock's own trappers gave a crystal that simply
+    // stood on top of the snare and nothing else. It is their snare the
+    // obstacle has to be summoned onto.
     foe: { shared: monster('Stronghold', 'Goblin_Trapper'), at: { x: 24, y: 7 } },
   },
   {
     key: 'runemage',
+    heroClass: 'HERO_CLASS_RUNEMAGE',
     fixes: ['dragon-form-fix'],
     shared: hero('Dwarves', 'Bersy'),
     at: { x: 32, y: 10 },
@@ -189,11 +218,17 @@ export const HEROES: Kit[] = [
   },
   {
     key: 'ranger',
+    heroClass: 'HERO_CLASS_RANGER',
     fixes: ['imbue-ballista (not ported — the bug is what you are watching)'],
     shared: hero('Preserve', 'Diraya'),
     at: { x: 40, y: 10 },
-    skills: [{ id: 'HERO_SKILL_WAR_MACHINES', mastery: M.expert }],
-    perks: ['HERO_SKILL_IMBUE_ARROW', 'HERO_SKILL_IMBUE_BALLISTA'],
+    // Imbue Ballista wants Ballista (War Machines) and Imbue Arrow (Avenger)
+    // before it, so both trees are here.
+    skills: [
+      { id: 'HERO_SKILL_WAR_MACHINES', mastery: M.expert },
+      { id: 'HERO_SKILL_AVENGER', mastery: M.expert },
+    ],
+    perks: ['HERO_SKILL_BALLISTA', 'HERO_SKILL_IMBUE_ARROW', 'HERO_SKILL_IMBUE_BALLISTA'],
     spells: ['SPELL_FIREBALL'],
     stats: { offence: 10, defence: 5, spellpower: 10, knowledge: 30 },
     ballista: true,
@@ -202,16 +237,20 @@ export const HEROES: Kit[] = [
   },
   {
     key: 'barbarian',
+    heroClass: 'HERO_CLASS_BARBARIAN',
     fixes: ['barbarian-learning-fix'],
     shared: hero('Stronghold', 'Hero1'),
     at: { x: 48, y: 10 },
-    perks: ['HERO_SKILL_BARBARIAN_LEARNING'],
+    // A SKILL, not a perk — `SKILLTYPE_SKILL`, with no parent. Listed among the
+    // perks it was simply not granted.
+    skills: [{ id: 'HERO_SKILL_BARBARIAN_LEARNING', mastery: M.expert }],
     stats: { offence: 10, defence: 10, spellpower: 1, knowledge: 1 },
     army: [{ creature: 'CREATURE_GOBLIN', count: 40 }],
     foe: { shared: PEASANTS, at: { x: 48, y: 7 } },
   },
   {
     key: 'scholar',
+    heroClass: 'HERO_CLASS_KNIGHT',
     fixes: ['book-of-power-fix'],
     shared: hero('Haven', 'Axel'),
     at: { x: 56, y: 10 },
@@ -235,6 +274,7 @@ export const HEROES: Kit[] = [
  */
 export const OPPONENT: Kit = {
   key: 'opponent',
+  heroClass: 'HERO_CLASS_RANGER',
   fixes: ['combat-ai-fix'],
   shared: hero('Preserve', 'Elleshar'),
   at: { x: 64, y: 10 },
