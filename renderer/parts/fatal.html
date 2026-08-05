@@ -14,7 +14,13 @@
         shown = true;
         var el = document.createElement('div');
         el.id = 'fatal';
-        el.innerHTML = '<h2>The editor did not start</h2><p></p>'
+        // Two different accidents wear this screen. Before boot finishes, the
+        // window is a dead shell and "did not start" is the whole story. AFTER
+        // it — a map closing, a scene loading — the editor has been working for
+        // an hour, and telling its user it never started sends them looking at
+        // their graphics driver instead of at what they just did.
+        var late = !!window.__booted;
+        el.innerHTML = '<h2>' + (late ? 'The editor hit an error' : 'The editor did not start') + '</h2><p></p>'
           + '<div class="row"><button id="fatal-soft" hidden></button></div>'
           + '<pre></pre>'
           + '<div class="row"><button id="fatal-copy">Copy the details</button>'
@@ -37,7 +43,13 @@
         // second GPU) and they are indistinguishable from the message alone.
         // This puts the answer in the copyable block, so a report from someone
         // else's machine says which one it was.
-        if (window.editor && window.editor.gpuReport) {
+        //
+        // ONLY for a 3D failure. Pasted under an error that has nothing to do
+        // with graphics it is worse than nothing: it is the longest block on
+        // the screen, it reads like the diagnosis, and it sent us reading a
+        // healthy RTX 3080's feature list while the actual error — one line
+        // above it, from closing a map — went unquoted.
+        if (/WebGL|3D|context/i.test(what) && window.editor && window.editor.gpuReport) {
           window.editor.gpuReport().then(function (report) {
             var pre = el.querySelector('pre');
             pre.textContent = (pre.textContent ? pre.textContent + '\n\n' : '') + report;
