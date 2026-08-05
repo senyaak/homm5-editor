@@ -191,11 +191,10 @@ export const HEROES: Kit[] = [
     // itself on — that is the half of the fix you can see.
     ballista: true,
     army: [{ creature: 'CREATURE_MARKSMAN', count: 30 }],
-    // The trappers are the ENEMY's, and they have to be: a snare does not fire
-    // on its own side, so the warlock's own trappers gave a crystal that simply
-    // stood on top of the snare and nothing else. It is their snare the
-    // obstacle has to be summoned onto.
-    foe: { shared: monster('Stronghold', 'Goblin_Trapper'), at: { x: 24, y: 7 } },
+    // Peasants, like everyone else's. The snare does NOT come from here: see
+    // OPPONENT below, and the two things measured in a real battle that between
+    // them rule out every simpler arrangement.
+    foe: { shared: PEASANTS, at: { x: 24, y: 7 } },
   },
   {
     key: 'runemage',
@@ -295,6 +294,19 @@ export const OPPONENT: Kit = {
     // the AI valued at the SQUARE of its size.
     { creature: 'CREATURE_GRAND_ELF', count: 30 },
     { creature: 'CREATURE_DRUID', count: 20 },
+    // The trappers, and this is the ONLY place they work. Two things were
+    // measured in a real battle and between them they close off everything
+    // simpler:
+    //
+    //   a snare does not fire on its own side — the warlock's own trappers laid
+    //     one and his crystal stood on top of it, both on the tile, nothing;
+    //   a NEUTRAL stack of trappers does not lay snares at all.
+    //
+    // So the snare has to be laid by a stack that belongs to the other PLAYER,
+    // and it has to be laid where you can aim at it. Start the map as HOTSEAT
+    // and both halves are yours: lay the snare with this stack, take the
+    // warlock's turn, summon onto that tile.
+    { creature: 'CREATURE_GOBLIN_TRAPPER', count: 20 },
   ],
 };
 

@@ -49,24 +49,34 @@ computer's.
 | `ranger` | Sylvan | Imbue Ballista — the bug, not a fix |
 | `barbarian` | Stronghold | Barbarian Learning |
 | `scholar` | Haven | the Book of Power |
-| `opponent` | Sylvan, PLAYER_2 | the battle AI |
+| `opponent` | Sylvan, PLAYER_2 | the battle AI — and the trappers, in hotseat |
 
 ---
 
 ## The list
 
-### 1. `snare-crash-fix` — the warlock, against the Goblin Trappers
+### 1. `snare-crash-fix` — the warlock against the opponent, in HOTSEAT
 
-Attack the stack in front of him. The snare has to be **theirs**: a snare does
-not fire on its own side, so an obstacle summoned onto your own does exactly
-nothing — it stands on top of it and the battle carries on. That is not the fix
-working, it is the trap never going off, and it is what happens if you try this
-with trappers of your own.
+**Start this map as a hotseat game.** Two things were measured in a real battle,
+and between them they rule out every simpler arrangement:
 
-So the snare is the enemy's, and the tile is the part you have to find: cast
-**«Кристалл тайного»** (Arcane Crystal) or **«Стена мечей»** (Blade Barrier)
-onto tiles they have walked over or laid on. If the obstacle just stands there,
-that tile had no snare — try another.
+- **a snare does not fire on its own side.** Give the warlock his own trappers
+  and his crystal lands on their snare, both sit on the tile, and nothing
+  happens. The trap never goes off, so the crash's code is never reached.
+- **a neutral stack of trappers does not lay snares at all.** So attacking a
+  wandering stack of them gives nothing to aim at either.
+
+What is left is a snare laid by the other PLAYER, on a tile you chose — which is
+what hotseat is for. The opponent hero at the east end carries the trappers.
+Walk the warlock into him, and in the battle:
+
+1. on the trappers' turn, lay a snare on a tile you will remember;
+2. on the warlock's turn, cast **«Кристалл тайного»** (Arcane Crystal) or
+   **«Стена мечей»** (Blade Barrier) onto that same tile.
+
+The rest of the list plays as an ordinary single-player game, where the opponent
+is the computer — which is what the battle-AI test needs. The map is the same
+either way; only the mode differs.
 
 - **off** — the battle ends. That is the whole bug: the game drops out of the
   fight.
