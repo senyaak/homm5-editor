@@ -71,7 +71,32 @@ export function mapComplaints(dataRoot: string): string[] {
   const rules = skillRules(dataRoot);
   for (const kit of kits) said.push(...kitComplaints(kit, rules));
 
-  // 2. Every creature named is one the game has.
+  // 2. The class's racial skill comes first, when the kit lists it at all.
+  //
+  //    `Editable/skills` REPLACES the shared hero's list and the game reads it
+  //    into slots whose first is the racial's, so a racial listed second is a
+  //    hero screen with two skills swapped — silent, and found by playing.
+  //    Measured, not decided: of the 118 shipped hero records with a skill
+  //    list, 117 put the racial first, none put it anywhere else, and the last
+  //    has no racial. Which skill that is comes from the same table, so a class
+  //    added tomorrow needs nothing written here.
+  const racial = new Map<string, string>();
+  for (const rule of rules.values()) {
+    if (rule.kind !== 'SKILLTYPE_SKILL') continue;
+    if (!rule.heroClass || rule.heroClass === 'HERO_CLASS_NONE') continue;
+    racial.set(rule.heroClass, rule.id);
+  }
+  for (const kit of kits) {
+    const his = racial.get(kit.heroClass);
+    const listed = (kit.skills ?? []).map((s) => s.id);
+    const at = his ? listed.indexOf(his) : -1;
+    if (at > 0) {
+      said.push(`${kit.key}: ${his} is ${kit.heroClass}'s racial skill and is listed ${at + 1}`
+        + `, not first — the game puts ${listed[0]} in its slot and the two show up swapped`);
+    }
+  }
+
+  // 3. Every creature named is one the game has.
   const creatures = creatureIds(dataRoot);
   for (const kit of kits) {
     for (const stack of kit.army) {
@@ -81,7 +106,7 @@ export function mapComplaints(dataRoot: string): string[] {
     }
   }
 
-  // 3. Every shared record named is a file that is there. A path with a typo
+  // 4. Every shared record named is a file that is there. A path with a typo
   //    places NOTHING and says nothing about it.
   for (const kit of kits) {
     for (const { what, path } of sharedPaths(kit)) {
@@ -90,7 +115,7 @@ export function mapComplaints(dataRoot: string): string[] {
     }
   }
 
-  // 4. Every fix the panel offers has a hero standing for it, and every flag a
+  // 5. Every fix the panel offers has a hero standing for it, and every flag a
   //    kit claims is on the list 002 asserts went on. That a flag EXISTS is the
   //    type's job (`QolName`); what types cannot say is that the map and the
   //    panel still describe the same set — a fix added tomorrow with no hero is
@@ -113,7 +138,7 @@ export function mapComplaints(dataRoot: string): string[] {
     }
   }
 
-  // 5. Nothing stands where something else already does. The row is numbered by
+  // 6. Nothing stands where something else already does. The row is numbered by
   //    hand, and a hero on top of another hero's foe is a battle that starts
   //    itself.
   const taken = new Map<string, string>();
@@ -130,7 +155,7 @@ export function mapComplaints(dataRoot: string): string[] {
     }
   }
 
-  // 6. The battle that has to LAST, lasts. See LOG_READ_ARMY.
+  // 7. The battle that has to LAST, lasts. See LOG_READ_ARMY.
   for (const kit of kits) {
     if (!READ_FROM_THE_LOG.has(kit.key)) continue;
     const mine = kit.army.reduce((n, s) => n + s.count, 0);

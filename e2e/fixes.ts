@@ -100,6 +100,19 @@ export interface Kit {
    */
   heroClass: string;
   at: { x: number; y: number };
+  /**
+   * Secondary skills, **the class's racial one first**.
+   *
+   * `Editable/skills` REPLACES the shared hero's list, and the game reads it in
+   * order into slots of which the first is the racial's. List War Machines
+   * before Avenger and the ranger's hero screen shows the two swapped — which
+   * is what happened, and what a play-through found rather than this file.
+   *
+   * Not a style rule: measured across every hero record the game ships. Of the
+   * 118 with a skill list, 117 put the racial first and not one puts it
+   * anywhere else; the 118th has no racial at all. `map-checks.ts` asks the
+   * game's own table which skill that is, so the rule needs no list here.
+   */
   skills?: Skill[];
   perks?: string[];
   spells?: string[];
@@ -227,8 +240,9 @@ export const HEROES: Kit[] = [
     // (Leadership) and Holy Charge (Training) before it — so both skills are
     // here, and the two perks in front of it.
     skills: [
-      { id: 'HERO_SKILL_LEADERSHIP', mastery: M.expert },
+      // The racial FIRST — see the note on Kit.skills.
       { id: 'HERO_SKILL_TRAINING', mastery: M.expert },
+      { id: 'HERO_SKILL_LEADERSHIP', mastery: M.expert },
     ],
     // The Black Dragons are what he cannot use it on until the fix, being
     // immune to magic.
@@ -250,11 +264,12 @@ export const HEROES: Kit[] = [
     shared: hero('Dungeon', 'Almegir'),
     at: { x: 24, y: 10 },
     skills: [
+      // Empowered Spells hangs off the Warlock's own Invocation, which is his
+      // racial and so goes first — see the note on Kit.skills.
+      { id: 'HERO_SKILL_INVOCATION', mastery: M.expert },
       { id: 'HERO_SKILL_SUMMONING_MAGIC', mastery: M.expert },
       // Payback hangs off Dark Magic and wants Master of Curses before it.
       { id: 'HERO_SKILL_DARK_MAGIC', mastery: M.expert },
-      // …and Empowered Spells off the Warlock's own Invocation.
-      { id: 'HERO_SKILL_INVOCATION', mastery: M.expert },
     ],
     perks: ['HERO_SKILL_MASTER_OF_CURSES', 'HERO_SKILL_PAYBACK', 'HERO_SKILL_EMPOWERED_SPELLS'],
     // The three that put an obstacle on the field — free every time until the
@@ -323,8 +338,11 @@ export const HEROES: Kit[] = [
     // Imbue Ballista wants Ballista (War Machines) and Imbue Arrow (Avenger)
     // before it, so both trees are here.
     skills: [
-      { id: 'HERO_SKILL_WAR_MACHINES', mastery: M.expert },
+      // Avenger is the Ranger's racial and goes first — listed second, the game
+      // put War Machines in the racial's place and the hero screen showed the
+      // two swapped. See the note on Kit.skills.
       { id: 'HERO_SKILL_AVENGER', mastery: M.expert },
+      { id: 'HERO_SKILL_WAR_MACHINES', mastery: M.expert },
     ],
     perks: ['HERO_SKILL_BALLISTA', 'HERO_SKILL_IMBUE_ARROW', 'HERO_SKILL_IMBUE_BALLISTA'],
     spells: ['SPELL_FIREBALL'],

@@ -288,10 +288,27 @@ export const COMBAT_TRIGGER_RUNTIME = [
   'H5E_MANA_NAMES = { "attacker-hero", "defender-hero" };',
   'H5E_MANA_SEEN = { -1, -1 };',
   '',
+  // ASK WHETHER HE IS THERE FIRST. `GetUnitManaPoints` on a name that is not in
+  // this battle does not hand back nil — it RAISES, and the game prints
+  // «(Script) ERROR: Unit "defender-hero" is not exists» in red over the battle,
+  // every turn. Most battles are against a wandering stack, which has no hero at
+  // all, so that was most battles.
+  //
+  // Worse than the noise: a Lua error ends the function where it stands. The
+  // defender is asked second, so the attacker's mana was still counted and the
+  // damage looked cosmetic — but attack a hero WITH a neutral stack of your own
+  // and the missing one is asked first, and the whole watch dies before the
+  // hero who is really there is ever read.
+  //
+  // `exist` is the engine's own question, registered beside this one as
+  // `CombatUnitExist`, and it answers rather than raises.
   'function H5ECheckMana()',
   '\tlocal i = 1;',
   '\twhile i <= 2 do',
-  '\t\tlocal now = GetUnitManaPoints(H5E_MANA_NAMES[i]);',
+  '\t\tlocal now = nil;',
+  '\t\tif exist(H5E_MANA_NAMES[i]) then',
+  '\t\t\tnow = GetUnitManaPoints(H5E_MANA_NAMES[i]);',
+  '\t\tend;',
   '\t\tif now ~= nil then',
   '\t\t\tlocal before = H5E_MANA_SEEN[i];',
   // Only downwards, and the value is ALWAYS stored: mana comes back too — a

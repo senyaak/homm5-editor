@@ -181,6 +181,19 @@ if (shippedCombat === null) {
     wrap.includes('H5E_OLD_UNIT_MOVE = UnitMove;')
       && wrap.includes('H5E_OLD_UNIT_MOVE(unitName)')
       && /return answer\s*\r?\nend;/.test(wrap));
+  // AND IT ASKS WHETHER HE IS THERE. `GetUnitManaPoints` on a name that is not
+  // in this battle RAISES — it does not hand back nil — and the game prints
+  // «Unit "defender-hero" is not exists» in red over the battle every turn. Most
+  // battles are against a wandering stack and have no defending hero at all.
+  //
+  // The noise is the small half. A raise ends the function where it stands, so
+  // whichever hero is asked AFTER the missing one is never read: attack a hero
+  // with a neutral stack and the watch dies before it reaches the one who is
+  // really there. `exist` is the engine's own question and answers 1 or nil.
+  const watch = runtime.text.slice(runtime.text.indexOf('function H5ECheckMana'));
+  const guarded = watch.indexOf('exist(H5E_MANA_NAMES[i])');
+  check('the mana watch asks whether the hero is in this battle before reading him',
+    guarded >= 0 && guarded < watch.indexOf('GetUnitManaPoints'));
   check('the patched combat startup passes the linter', luaDiagnostics(combat).length === 0,
     JSON.stringify(luaDiagnostics(combat).slice(0, 1)));
 }
