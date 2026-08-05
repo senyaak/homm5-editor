@@ -292,18 +292,24 @@ ballista shoot; there is nothing to do but attack.
 The perk says the shots carry his enchantment and that this costs him **mana** —
 *"запас маны последнего будет уменьшаться"* — and nothing about his turn.
 
-**This is the one where the BUG is still unconfirmed**, so read the log rather
-than the turn bar. With the fix on, the first six shots of a battle print in the
-battle console and write into `bin/homm5-editor.log` one of two things:
+**Watch the hero's own marker on the turn bar**, and watch it in BOTH runs.
 
-- `imbue ballista: the cast moved the hero's turn to …` followed by `put back
-  where it was, …` — the bug is real, and those two numbers are the proof of it.
-- `imbue ballista: the cast cost the hero no turn, still …` — there is no bug
-  here, and the switch should come out the way AgilityFix never went in.
+- **off** — it slides back when the ballista fires. That is the bug.
+- **on** — it stays where it was.
 
-The numbers are thousandths (`3600` is `3.6`). With the fix off nothing is
-printed and nothing is patched, so the off run is only there to confirm the
-ranger plays as he always did.
+**Do not judge this one from the log alone.** With the fix on, the log of a
+fixed game says the turn was never taken — which reads exactly like "there is no
+bug here", and on this fix it very nearly ended in the switch being deleted. The
+off run is the only half that can see the bug at all.
+
+The lines, when they come, are in the battle console and in
+`bin/homm5-editor.log`, in thousandths (`3600` is `3.6`):
+
+- `the cast moved the hero's turn to …` / `put back where it was, …` — a shot
+  where the fix did something;
+- `the cast cost the hero no turn, still …` — a shot where there was nothing to
+  put back. Both are budgeted separately, so a run of quiet shots cannot use up
+  the room the interesting ones need.
 
 ---
 

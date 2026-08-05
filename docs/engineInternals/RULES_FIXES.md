@@ -469,10 +469,22 @@ does nothing at all unless the pointer's vtable is exactly `CCombatHero`'s
 `0xFDFC04`, so a slot number counted on one class is never called on another.
 `native/qol/fix-imbue-ballista.c`.
 
-**This one has not been watched yet**, and that is deliberate in the code: the
-first six shots of a battle write both readings to `bin/homm5-editor.log` and to
-the battle console. If they read the same, there is no bug here and the switch
-should be deleted, the way AgilityFix was never added.
+**Watched, 2026-08-05, and the bug is real.** Play the ranger with the flag OFF
+and his marker on the turn bar slides back when the ballista fires; with it on,
+it stays where it was.
+
+**It was nearly deleted on the way there, and that is the part worth keeping.**
+Two battles were logged before that, both with the flag ON — it had been
+installed before the first of them — so every line read *the cast cost the hero
+no turn*, and the file looked like proof that the claim was false. It was a
+fixed game reporting that nothing was wrong with it. Two things came out of it:
+
+- **the OFF run is not a formality.** On a fix that restores a value, the log of
+  an ON run cannot tell "nothing happened" from "we put it back", and only the
+  other half of the experiment can.
+- **the two outcomes are counted apart** (`g_imbueRestored`, `g_imbueQuiet`). One
+  shared budget meant six quiet shots spent it and every restore afterwards
+  happened in silence.
 
 ## Watching them in a battle
 
@@ -495,8 +507,9 @@ off), Empowered Armageddon, the Rune of the Dragon Form, the Book of Power and
 the battle AI (without the fix it cast Deflect Arrows against an army with no
 archers; with it, a fireball) all did in a battle what this page says they do.
 
-**Imbue Ballista is the one that has not been watched**, and it is the one whose
-BUG is unwatched rather than its fix — see its section above.
+**Imbue Ballista was watched the same day**, and it is the one that shows why
+the OFF run matters: with the fix already installed, its log says the bug does
+not happen. See its section above.
 
 One entry on that list has no trigger on the map: Barbarian Learning needs the
 skill REMOVED, and nothing placed there removes one.

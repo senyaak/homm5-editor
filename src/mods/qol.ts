@@ -199,10 +199,9 @@ export const QOL_FLAGS = [
     detail: 'The perk says the ballista\'s shots carry the ranger\'s enchantment and that his MANA'
       + ' pays for them — nothing about his turn. The enchantment is cast from inside the ballista\'s'
       + ' shot with the hero as its caster, and the report this follows says that takes his place on'
-      + ' the turn bar with it. The cast now runs between two readings of that value and the old one'
-      + ' is written back if it moved. THIS ONE IS UNWATCHED: nobody has yet seen the turn eaten, so'
-      + ' the first few shots of a battle say both readings in the log and in the battle console. If'
-      + ' they read the same, there is no bug here and this switch should go.',
+      + ' the turn bar with it, and it does: play a ranger without this and his marker slides back'
+      + ' every time the ballista fires. The cast now runs between two readings of that value and'
+      + ' the old one is written back if it moved.',
     credit: 'Uses the work of H5_DLL by dredknight, with permission'
       + ' — https://github.com/dredknight/H5_DLL',
   },

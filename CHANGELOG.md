@@ -17,12 +17,10 @@ one.
 
 - **Imbue Ballista costs the ranger mana, not his turn.** The perk says the
   ballista's shots carry his enchantment and that his mana pays for them, and
-  says nothing about his turn; the report this follows says the cast takes his
-  place on the turn bar as well. The enchantment now runs between two readings
-  of that value and the old one goes back if it moved. **Read the log for this
-  one**: the bug itself has not been seen yet, so the first six shots of a
-  battle say in the console and in `bin/homm5-editor.log` what the two readings
-  were — and if they are the same, this switch is coming out again.
+  says nothing about his turn — but they took his turn as well: play a ranger
+  without this and his marker on the turn bar slides back every time the
+  ballista fires. The enchantment now runs between two readings of that value
+  and the old one goes back if it moved.
 
 - **A tool for finding the same code in another build.**
   `tools/reverse/match.ts` compares a jump table's shape, filters `.text` for

@@ -47,11 +47,17 @@
 // again, and put the old value back ONLY IF IT MOVED, so a build where this
 // does not happen is a build we have not touched.
 //
-// AND THE BUG IS STILL UNWATCHED. Nobody has yet seen the ranger's turn eaten;
-// what is here is a mechanism plus a measurement. The first few shots say in
-// the log and in the battle console what the two readings were, which is what
-// turns "his description mentions only mana" into a number — and if they read
-// the same, this is an AgilityFix and belongs deleted rather than shipped.
+// WATCHED, 2026-08-05, and the bug is real: play the ranger with the flag off
+// and his marker on the turn bar slides back when the ballista fires; with it
+// on, it stays. That is the observation the claim needed.
+//
+// HOW IT WAS ALMOST DELETED ANYWAY, because the lesson is worth more than the
+// fix. Both logged battles were played with the flag ON — it had been installed
+// before the first of them — so the log was reporting a fixed game and every
+// line said the turn had not moved. Read as "the bug does not happen", that was
+// nearly an AgilityFix. A run of the map with the fix OFF is not a formality on
+// this one: it is the only half of the experiment that can see the bug at all,
+// and the log alone cannot tell the two halves apart.
 
 /** `call 0xB7B320` — cast the enchantment onto the ballista's shot. */
 #define IMBUE_CALL_RVA 0x7c15a0u
@@ -87,7 +93,20 @@ static const BYTE IMBUE_CALLS_THE_CAST[5] = { 0xE8, 0x7B, 0x9D, 0xFB, 0xFF };
 /** The same call through us; the four zeroes are the distance, filled in below. */
 static BYTE IMBUE_CALLS_US[5] = { 0xE8, 0x00, 0x00, 0x00, 0x00 };
 
-static int g_imbueSaid = 0;
+/**
+ * Counted APART, and that is the whole lesson of the first evening with this.
+ *
+ * One counter for both outcomes meant the first six shots used it up, and the
+ * six that happened to take no turn made the log read "this never happens" — on
+ * a run where the fix was ON and putting the value back on later shots, in
+ * silence, because the counter was spent. The conclusion drawn from that file
+ * was that the bug was not real and the fix should be deleted. It was real: turn
+ * the flag off and the ranger's marker slides back.
+ *
+ * So the interesting outcome gets a budget the boring one cannot spend.
+ */
+static int g_imbueRestored = 0;
+static int g_imbueQuiet = 0;
 
 /** Where this unit's ATB lives right now, or null if it cannot be read. */
 static float *unit_atb(void *unit, void **vt) {
@@ -120,15 +139,15 @@ static int __fastcall imbue_ballista_hook(void *caster, void *target, void *a1, 
 
   if (after != before) {
     ((SetAtbFn)vt[UNIT_SET_ATB_SLOT / 4])(caster, before);
-    if (g_imbueSaid < IMBUE_LINES) {
-      g_imbueSaid++;
+    if (g_imbueRestored < IMBUE_LINES) {
+      g_imbueRestored++;
       // Thousandths, because the log writes integers and the turn bar is a
       // fraction — 3600 here is 3.6 of whatever the engine counts in.
       log_num("imbue ballista: the cast moved the hero's turn to ", (int)(after * 1000.0f));
       log_num("imbue ballista: put back where it was, ", (int)(before * 1000.0f));
     }
-  } else if (g_imbueSaid < IMBUE_LINES) {
-    g_imbueSaid++;
+  } else if (g_imbueQuiet < IMBUE_LINES) {
+    g_imbueQuiet++;
     log_num("imbue ballista: the cast cost the hero no turn, still ", (int)(before * 1000.0f));
     // THE CONTROL, and the reason it is here: the first battle said "no turn
     // taken" six times with the same number every time, which is what a live
