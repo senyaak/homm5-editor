@@ -22,6 +22,7 @@ import * as THREE from 'three';
 
 import { state } from '#core/state.ts';
 import type { AmbientData } from '#src/scene/payload.ts';
+import { sunDirection } from '#src/scene/sun.ts';
 import { onAmbient } from '#viewport/lighting.ts';
 import { cam, camera, controls, renderer, scene } from '#viewport/stage.ts';
 
@@ -101,9 +102,10 @@ function applyShadowAmbient(a: AmbientData | null): void {
   // Not `pitch`/`yaw`: a preset may aim its shadows somewhere else entirely,
   // and 13 of the 308 shipped ones do (docs/LIGHTING.md §3b). `loadAmbient` has
   // already resolved the 100/100 sentinel, so these are angles either way.
-  const p = (a?.shadowPitch ?? 45) * Math.PI / 180;
-  const y = (a?.shadowYaw ?? 0) * Math.PI / 180;
-  dir.set(-Math.sin(p) * Math.cos(y), -Math.sin(p) * Math.sin(y), Math.cos(p));
+  // The SAME reading as the shading (sun.ts). A shadow falling away from a
+  // light that is lighting the other side is the one combination that is wrong
+  // whichever way the axis turns out to be, so these two never diverge.
+  dir.set(...sunDirection(a?.shadowPitch ?? 45, a?.shadowYaw ?? 0));
   // No preset means the flat editing light, which has no direction to cast
   // from: shadows off rather than shadows from a made-up sun.
   caster.castShadow = enabled && !!a;

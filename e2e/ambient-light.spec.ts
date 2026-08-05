@@ -59,14 +59,13 @@ test('opening a map applies its AmbientLight preset', async () => {
   expect(after.terrain.whiten).toBe(4);
   // A2C1M1's ShadeColor, the end of the mix the editor had missing entirely.
   expect(after.terrain.shade).toEqual([0.149, 0.157, 0.216]);
-  // Sun direction: pitch from the zenith, yaw counted from −X, unit length —
-  // so Yaw 40 points at 220°, which is what the running game hands its own
-  // shader (docs/LIGHTING.md §3). The azimuth is asserted, not just the
-  // magnitudes: reading three matching decimals and not the SIGNS is exactly
-  // how this pointed the wrong way across 62 of the 73 adventure presets.
+  // Sun direction: pitch from the zenith, yaw from +X, unit length — so Yaw 40
+  // points at 40°, the light coming from the south of the map as the game shows
+  // (docs/LIGHTING.md §3). The azimuth is asserted, not just the magnitudes:
+  // this axis has been round both ways, and only a signed check can tell.
   const [x, y, z] = after.sunPos as [number, number, number];
   expect(z).toBeCloseTo(Math.cos(35 * Math.PI / 180), 2);
-  expect(Math.atan2(y, x) * 180 / Math.PI).toBeCloseTo(40 - 180, 1);
+  expect(Math.atan2(y, x) * 180 / Math.PI).toBeCloseTo(40, 1);
   expect(Math.hypot(x, y, z)).toBeCloseTo(1, 3);
 
   expect(errors).toEqual([]);

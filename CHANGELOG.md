@@ -94,6 +94,12 @@ one.
 
 ### Fixed
 
+- **The sun comes from the side the game puts it on.** Its azimuth was read half
+  a circle round, so everything on a map was lit from the far side — a peasant
+  seen from the front had his lit half in shade and his shaded half in the sun.
+  The shadow pass follows the same reading, from one shared definition, so the
+  light and the shadows cannot end up on opposite sides again.
+
 - **Models are lit the way the game lights them, and stop coming out in
   patches.** Three things were wrong at once and each is now measured rather
   than modelled. The **normal** was read from the wrong byte of the render

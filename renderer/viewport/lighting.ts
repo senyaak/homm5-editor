@@ -16,6 +16,7 @@
 import * as THREE from 'three';
 
 import { state } from '#core/state.ts';
+import { sunDirection } from '#src/scene/sun.ts';
 import type { AmbientData } from '#src/scene/payload.ts';
 import { scene, DEFAULT_BG } from '#viewport/stage.ts';
 
@@ -134,15 +135,10 @@ export function applyAmbient(a: AmbientData | null): void {
   // every shipped day map rendered as dusk (the engine's own PWL preview of
   // the same maps shows bright noon grass).
   //
-  // The AZIMUTH is turned half a circle from the naive reading, and that is
-  // measured: under Pitch 35 / Yaw 40 the probe in the running game reads
-  // `vs c35` — the vector the object shader dots the normal against — as
-  // (-0.439, -0.369, 0.819), while sin/cos of the preset give (+0.439, +0.369,
-  // +0.819). Only x and y flip; z does not, so this is not "the same vector
-  // negated" (a light travelling with z UP would be a sun under the ground) but
-  // a yaw counted from the opposite direction. See docs/LIGHTING.md §3.
-  const p = a.pitch * Math.PI / 180, yw = a.yaw * Math.PI / 180;
-  sun.position.set(-Math.sin(p) * Math.cos(yw), -Math.sin(p) * Math.sin(yw), Math.cos(p));
+  // The AZIMUTH is the plain reading of Yaw, from +X — the light comes from the
+  // south, as the game shows. `sunDirection` holds the convention and why the
+  // probe's `vs c35` reads the other way round.
+  sun.position.set(...sunDirection(a.pitch, a.yaw));
   hemi.color.setRGB(ar, ag, ab, THREE.SRGBColorSpace);
   hemi.groundColor.setRGB(sr, sg, sb, THREE.SRGBColorSpace);
   hemi.intensity = AMBIENT_GAIN;

@@ -29,8 +29,8 @@ const DATA = process.env.HOMM5_DATA || join(REPO_ROOT, 'data-unpacked');
 const MAP = join(DATA, 'Maps', 'Scenario', 'A2C1M1', 'map.xdb');
 /** Half-height of the plan frustum, in tiles — close enough that a shadow is many pixels long. */
 const ZOOM = 14;
-/** A2C1M1's preset: Pitch 35 / Yaw 40, the direction the probe read in the running game. */
-const SUN = [-0.439, -0.369];
+/** A2C1M1's preset: Pitch 35 / Yaw 40, pointing AT the light (docs/LIGHTING.md §3). */
+const SUN = [0.439, 0.369];
 
 let ed: Launched;
 test.beforeAll(async () => { ed = await launchEditor(); });
@@ -55,7 +55,7 @@ test('objects cast shadows, and they fall away from the preset\'s sun', async ()
   const state = await page.evaluate(() => window.view.shadowState());
   expect(state.on).toBe(true);
   // The shadow direction is the sun's on this map (ShadowPitch 100 = "follow
-  // the sun"), and it points AT the light, like the engine's own c35.
+  // the sun"), and it points AT the light.
   expect(state.dir[0]).toBeCloseTo(SUN[0]!, 2);
   expect(state.dir[1]).toBeCloseTo(SUN[1]!, 2);
 
