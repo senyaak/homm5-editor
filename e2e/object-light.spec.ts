@@ -57,10 +57,10 @@ test('an object is lit by the game\'s own sum, not by three.js', async () => {
   const { amb, sun, shade: shadeCol } = seen.amb.terrain;
   const w = seen.amb.terrain.whiten;
   const dir = seen.amb.sunPos as [number, number, number];
-  // The whole chain is a constant ×2: the CPU writes the mixed colour into the
-  // vertex as a plain byte, the vertex shader halves it (c29), the pixel
-  // shader's mul_x4_sat puts four back.
-  expect(w).toBe(2);
+  // The whole chain is ×4: the CPU writes the mixed colour into the vertex as a
+  // plain byte, the vertex shader scales it by c29 — 1 except while a scene
+  // fades — and the pixel shader's mul_x4_sat multiplies by four and clamps.
+  expect(w).toBe(4);
 
   /**
    * The game's vertex colour for one channel, as a byte.
@@ -98,12 +98,10 @@ test('an object is lit by the game\'s own sum, not by three.js', async () => {
   }
 
   // A white albedo is the top of the range, and it is asserted against the same
-  // formula rather than against 255. It USED to be 255 here, and that was the
-  // old model showing: `min(4·sum, 2)` drove every day preset into the clamp,
-  // so the brightest thing on screen and a merely bright thing came out the
-  // same white. Under the measured mix this preset's lit ground reaches ×0.71,
-  // and nothing clamps — which is why the game's maps have shading in them at
-  // all. The clamp itself is still there for a preset that does overflow.
+  // formula rather than against a bare 255 — the formula carries the clamp, so
+  // this checks the clamp AND everything under it with one expectation. Under
+  // this preset a white texel does overflow (lit ground runs ×1.42) and a half
+  // one does not, which is what makes the pair worth asserting together.
   for (let i = 0; i < 3; i++) {
     expect(Math.abs(seen.white[i]! - shade(1, i, ndl))).toBeLessThanOrEqual(1);
   }

@@ -54,9 +54,9 @@ test('opening a map applies its AmbientLight preset', async () => {
   expect(after.preset).toBe(true);
   expect(after.terrain.sun).toEqual([0.392, 0.322, 0.275]);
   expect(after.terrain.amb).toEqual([0.188, 0.2, 0.255]);
-  // The multiplier is the pipeline's fixed ×2 and does not come from the
-  // preset — its <Whitening> flag reaches nothing in this path.
-  expect(after.terrain.whiten).toBe(2);
+  // The multiplier is the pipeline's ×4 and does not come from the preset —
+  // its <Whitening> flag reaches nothing in this path.
+  expect(after.terrain.whiten).toBe(4);
   // A2C1M1's ShadeColor, the end of the mix the editor had missing entirely.
   expect(after.terrain.shade).toEqual([0.149, 0.157, 0.216]);
   // Sun direction: pitch from the zenith, yaw counted from −X, unit length —

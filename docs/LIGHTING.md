@@ -91,18 +91,26 @@ a fitted constant can match a level. The lesson is the one this file keeps
 learning: fit against the engine's own numbers, and check the fit on a case it
 was not fitted to.
 
-The multiplier is a constant **×2**, and the preset's `<Whitening>` flag does
-not reach it — what that switch does is still unidentified. The chain, measured
-from both ends:
+The multiplier is **×4**, and the preset's `<Whitening>` flag does not reach it
+— what that switch does is still unidentified. The chain, measured from both
+ends:
 
 * The CPU writes the mix into the vertex as a **plain byte**: `AmbientColor`
   arrives as its own 66/70/89, undoubled.
-* The vertex shader **halves it back** for headroom — `mul r4.xyz, r4.w, c29;
-  mul oD0.xyz, v4, r4`, and the SetVertexShaderConstantF probe in the running
-  game sees **c29 arrive as (0.5, 0.5, 0.5, 0.5)**. oD0 itself clamps to
-  [0,1], which is the point of the halving: it carries values up to 2.
-* The ps.1.1 pixel shader **restores ×4** — as an instruction modifier, not a
-  constant:
+* The vertex shader scales it by `c29`, and **c29 is not a constant.** One probe
+  run caught it at 0.5 and this document called it "the halving" for a year; the
+  run that settled the mix caught it at **1.000, 0.564, 0.220 and 0.500 in one
+  session** — it is the scene FADE, and its steady state on a map is 1. Taking
+  one sample of a moving value as a constant made the editor render every map at
+  half the game's brightness, and it took Senya one look at a screenshot to say
+  so. The instruction is `mul r4.xyz, r4.w, c29;
+  mul oD0.xyz, v4, r4`, where `r4.w` is the vertex's own weight. §2a of this
+  same document had **already written down** that c29 "sweeps 1.0 → 0.564 →
+  0.220 — a fade, not a colour", and §2 went on using 0.5 as a constant anyway.
+  Two sections of one file disagreed for a year and neither was checked against
+  the other.
+* The ps.1.1 pixel shader multiplies by **four** — as an instruction modifier,
+  not a constant — and clamps:
 
 ```
 mul_x4_sat r0.rgb, v0, t0    ; texel × lit vertex colour, ×4, clamped
@@ -110,9 +118,11 @@ mul_x4_sat r1.rgb, v1, t0    ; same for the shadowed colour
 lrp r0.rgb, t1, r1, r0       ; picked by the shadow map
 ```
 
-Net: `mix · 0.5 · 4` = `mix · 2`, saturated — and under a real preset it rarely
-saturates at all. A2C1M1's lit ground reaches ×0.71 of its texel, which is why
-the game's maps have shading in them rather than a white floor. The probe run
+Net: `mix · 4`, saturated. A2C1M1's lit ground runs ×1.42 and clips while its
+shaded side runs ×0.75 — a bright floor with real shading on what faces away,
+which is the shape of the game's own picture. The independent check is
+photometric and predates all of this: the Sharpshooter map measured `tex·1.66`
+in the game against a mix of 0.415, and 4 × 0.415 = 1.66. The probe run
 also shows **no SetPixelShaderConstantF ever touches c7** — the ps.2.0 object
 shader with `c7.x`, quoted in earlier revisions of this section, is not the
 path the game runs.
@@ -295,7 +305,7 @@ GPU. [OK]** The vertex shader (`0xc693a4`):
 ```
 mul r4.w, v4.w, c30.y
 mad r4.w, v5.w, c30.x, r4.w     ; one weight out of two light STATES (c30)
-mul r4.xyz, r4.w, c29           ; c29 = 0.5, the headroom halving of §2
+mul r4.xyz, r4.w, c29           ; c29 = the scene fade, 1 when nothing fades
 mul oD0.xyz, v4, r4             ; lit
 mul oD1.xyz, v5, r4             ; shadowed
 dp3 r5.x, r1, c35               ; the normal against the sun

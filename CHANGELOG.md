@@ -92,11 +92,14 @@ one.
   brightnesses. The **light direction** was half a circle off, which on 62 of
   the 73 adventure presets is the same wrong direction. And the **formula**
   itself had the wrong shape: `LightColor` is not a term added to ambient but
-  the colour a sun-facing surface is turned INTO, `ShadeColor` (never used
-  here before) is the other end, and the multiplier is a flat ×2 rather than a
-  capped ×4. All three come out of the running game's own vertex buffer —
+  the colour a sun-facing surface is turned INTO, and `ShadeColor` — never used
+  here before — is the other end. All three come out of the running game's own
+  vertex buffer —
   390,000 baked vertices, fitted at R² 0.999, every coefficient landing on a
-  preset field to the byte (docs/LIGHTING.md §2).
+  preset field to the byte (docs/LIGHTING.md §2). The multiplier over that mix
+  is ×4: `c29`, which the vertex shader scales by, is the scene FADE and not a
+  constant — one old probe sample of 0.5 had been written down as a halving,
+  and rendering every map at half the game's brightness is what that cost.
 - **Terrain-object grass stands in the ground and wears its own dark green,
   instead of glowing lime scribble.** The grass props are `P_STATIC` particle
   systems — 33 blade-clump cards per patch, one position key each, all on the

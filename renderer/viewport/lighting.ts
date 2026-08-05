@@ -63,18 +63,25 @@ export const uShadeCol = { value: new THREE.Color(0.31, 0.31, 0.31) };
 // lights add in, 0 = they don't (flat editing light keeps pools off too).
 export const uLmGain = { value: 1 };
 /**
- * What the vertex colour multiplies the texel by, and it is a CONSTANT 2.
+ * What the vertex colour multiplies the texel by: **4**, saturated.
  *
  * The chain, all of it measured: the CPU writes the mixed colour into the
  * vertex as a plain byte (no doubling — `AmbientColor` arrives as its own
- * 66/70/89), the vertex shader halves it (`c29 = 0.5`, read live), and the
- * pixel shader's `mul_x4_sat` puts back four. Net ×2, saturated, with no
- * `Whitening` anywhere in the path — the switch this uniform is named after
- * turned out not to be this multiplier at all.
+ * 66/70/89), the vertex shader scales it by `c29`, and the pixel shader's
+ * `mul_x4_sat` multiplies by four and clamps.
  *
- * Kept as a uniform because the flat editing light drives it.
+ * `c29` IS NOT A CONSTANT, and reading it as one is what made this ×2 for an
+ * afternoon and every map half as bright as the game. One probe run had caught
+ * it at 0.5 and the number went into a document as the halving; the run that
+ * settled the mix caught it at **1.000, 0.564, 0.220 and 0.500 in the same
+ * session** — it is the scene FADE, and its steady state on a map is 1. The
+ * old photometric check agrees and always did: the Sharpshooter map measured
+ * `tex·1.66` in the game against a mix of 0.415, and 4 × 0.415 = 1.66.
+ *
+ * A single sample of a value that moves is not a constant. Kept as a uniform
+ * because the flat editing light drives it.
  */
-export const uWhiten = { value: 2 };
+export const uWhiten = { value: 4 };
 // Scene light on L_LIT particle instances (docs/EFFECTS_FORMAT.md §5): the
 // terrain's own gamma-space sum at full incidence, 2·(amb + sun) clamped to
 // 1 — daylight leaves lit smoke alone, a night preset darkens it while the
@@ -102,7 +109,7 @@ export function applyAmbient(a: AmbientData | null): void {
     uAmbCol.value.setRGB(0.31, 0.31, 0.31);
     uShadeCol.value.setRGB(0.31, 0.31, 0.31);
     uFxTint.value.setRGB(1, 1, 1);
-    uWhiten.value = 2;
+    uWhiten.value = 4;
     return;
   }
   const [lr, lg, lb] = a.light as [number, number, number];
@@ -132,12 +139,12 @@ export function applyAmbient(a: AmbientData | null): void {
   uSunCol.value.setRGB(lr, lg, lb); // raw, no conversion: gamma-space shader
   uAmbCol.value.setRGB(ar, ag, ab);
   uShadeCol.value.setRGB(sr, sg, sb);
-  // Not `a.whiten`: the multiplier is the pipeline's fixed ×2 and the preset's
+  // Not `a.whiten`: the multiplier is the pipeline's ×4 and the preset's
   // <Whitening> flag does not reach it. See the uniform above.
-  uWhiten.value = 2;
+  uWhiten.value = 4;
   // Lit particles take the scene's light at full incidence, which under the
   // mix is simply LightColor doubled.
-  uFxTint.value.setRGB(Math.min(1, 2 * lr), Math.min(1, 2 * lg), Math.min(1, 2 * lb));
+  uFxTint.value.setRGB(Math.min(1, 4 * lr), Math.min(1, 4 * lg), Math.min(1, 4 * lb));
 }
 
 /**
