@@ -240,6 +240,13 @@ one.
 
 ### Fixed
 
+- **Apply in the game settings panel cannot be started twice at once.** It
+  installs the extension and rewrites game profiles — most of a minute on a real
+  install — and it used to look exactly as unpressed while it worked, so the
+  natural thing to do while waiting was press it again and have a second Apply
+  writing the same files as the first. It now goes dead and says *applying…*
+  until the work is finished, and comes back afterwards even if it failed.
+
 - **A live e2e run no longer resets a mod it has nothing to do with.** The mod
   stages run as a chain over one install, so the suite put that install back to
   the chain's starting state in its GLOBAL setup — which meant every run did it,

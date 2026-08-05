@@ -252,3 +252,56 @@ test('the panel shows what the install says, not what it remembers @nodata', asy
     await closeEditor(ed);
   }
 });
+
+test('Apply cannot be running twice at once @nodata', async () => {
+  // WHY THIS IS A TEST AND NOT A GLANCE. Apply installs the extension and
+  // rewrites game profiles, which on a real install is most of a minute, and
+  // until this it was wired as `onclick = () => { void apply(); }` — start the
+  // work and forget it. The button looked unpressed the whole time, so the
+  // natural thing to do while waiting was press it again, and the second Apply
+  // wrote the same files as the first.
+  //
+  // The work is stood in for by something slow that counts its callers. What is
+  // under test is the BUTTON, not the install: the question is whether a second
+  // click can start a second run, and the answer has to be no while the first
+  // is still going and yes once it is done — a button that stays dead after the
+  // work finishes is its own bug.
+  const ed = await launchEditor({ HOMM5_ROOT: BARE, HOMM5_DOCUMENTS: DOCS });
+  try {
+    await ed.page.locator('#qolbtn').click();
+    await expect(ed.page.locator('#qolcfg')).toBeVisible();
+
+    // Slowed in the MAIN process, not the renderer: `window.editor` comes over
+    // contextBridge and its properties cannot be replaced from the page, so a
+    // stub there is an assignment that quietly does nothing — which is how this
+    // test first "passed" the wrong way round. The handler is re-registered the
+    // way the campaign specs replace `dialog.showSaveDialog`.
+    await ed.app.evaluate(async ({ ipcMain }) => {
+      const g = globalThis as unknown as { __applyCalls: number };
+      g.__applyCalls = 0;
+      const real = (ipcMain as unknown as { _invokeHandlers: Map<string, unknown> })
+        ._invokeHandlers.get('qol:apply') as (...a: unknown[]) => unknown;
+      ipcMain.removeHandler('qol:apply');
+      ipcMain.handle('qol:apply', async (e, arg) => {
+        g.__applyCalls++;
+        await new Promise((done) => setTimeout(done, 3000));
+        return real(e, arg);
+      });
+    });
+
+    const apply = ed.page.locator('#qol-apply');
+    await apply.click();
+    await expect(apply, 'it goes dead while the work runs').toBeDisabled();
+    // Three more presses, as fast as they can be sent, forced past the disabled
+    // state — a real user cannot click a disabled button, but a queued click
+    // and an impatient double are exactly what this exists to survive.
+    for (let i = 0; i < 3; i++) await apply.dispatchEvent('click');
+    expect(await ed.app.evaluate(() => (globalThis as unknown as { __applyCalls: number }).__applyCalls),
+      'and not one of them started a second Apply').toBe(1);
+
+    await expect(ed.page.locator('#qol-msg')).toContainText('settings written', { timeout: 30_000 });
+    await expect(apply, 'and it comes back when the work is done').toBeEnabled();
+  } finally {
+    await closeEditor(ed);
+  }
+});

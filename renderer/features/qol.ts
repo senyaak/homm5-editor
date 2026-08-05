@@ -9,7 +9,7 @@
 // an archive, patches a ceiling or touches an open map, which is why it is
 // offered with a map open and without, like Play.
 
-import { $, $button } from '#core/dom.ts';
+import { $, $button, onClickAsync } from '#core/dom.ts';
 import { modDialog } from '#core/dialog.ts';
 import { api } from '#core/ipc.ts';
 import { FIX_GROUPS, QOL_FLAGS } from '#src/mods/qol.ts';
@@ -200,7 +200,10 @@ export function openQol(): void {
 /** Wire the panel. Called once, from app.ts. */
 export function initQol(): void {
   $button('qolbtn').onclick = openQol;
-  $button('qol-apply').onclick = () => { void apply(); };
+  // Not `void apply()`: it installs the extension and rewrites game profiles,
+  // which is up to a minute of a button that looks unpressed. Two Applies
+  // writing the same files is what happens next.
+  onClickAsync('qol-apply', apply, 'applying…');
   const close = (): void => { modDialog('qolcfg').close(); };
   $button('qol-close').onclick = close;
   $button('qol-x').onclick = close;
