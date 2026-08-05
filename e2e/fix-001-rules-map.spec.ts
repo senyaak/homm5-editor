@@ -111,7 +111,17 @@ async function placeHero(page: Launched['page'], kit: Kit, player: string): Prom
   if (st.knowledge !== undefined) await setPath(page, id, ['Editable', 'Knowledge'], String(st.knowledge));
   if (kit.ballista) await setPath(page, id, ['Editable', 'Ballista'], 'true');
 
-  if (kit.foe) await place(page, kit.foe.shared, kit.foe.at.x, kit.foe.at.y);
+  if (kit.foe) {
+    const foe = await place(page, kit.foe.shared, kit.foe.at.x, kit.foe.at.y);
+    // A stack is written `Custom false` and the game rolls its own number for
+    // it. That is fine for something to hit and no good when the stack has to
+    // SURVIVE a spell and be read afterwards — so a kit that names a count
+    // says so, and both halves have to be set for either to mean anything.
+    if (kit.foe.count) {
+      await setPath(page, foe, ['Custom'], 'true');
+      await setPath(page, foe, ['Amount'], String(kit.foe.count));
+    }
+  }
   if (kit.artifact) await place(page, kit.artifact.shared, kit.artifact.at.x, kit.artifact.at.y);
   return id;
 }

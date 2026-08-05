@@ -115,6 +115,10 @@ use **Encourage** on them.
 
 ### 4. `master-of-fire-fix` — the wizard
 
+He fights **100 zombies**, and that is deliberate: an Armageddon leaves nothing
+of a peasant stack, and everything below is read off a stack that is still
+standing. Both Armageddon casters have them.
+
 Cast **Armageddon** (it hits your own stacks as well) and then **Stone Skin** on
 a stack of yours that the fire caught. Read that stack's defence in its tooltip
 after each cast.

@@ -100,8 +100,14 @@ export interface Kit {
   /** Primary stats, high enough that a battle lasts long enough to watch. */
   stats?: { offence?: number; defence?: number; spellpower?: number; knowledge?: number };
   ballista?: boolean;
-  /** What he fights: a stack standing in front of him. */
-  foe?: { shared: string; at: { x: number; y: number } };
+  /**
+   * What he fights: a stack standing in front of him.
+   *
+   * `count` pins the size. Without one the stack is written `Custom false` and
+   * the game rolls its own number, which is fine for something to hit and no
+   * good when the stack has to SURVIVE a spell to be read afterwards.
+   */
+  foe?: { shared: string; at: { x: number; y: number }; count?: number };
   /** An artifact on the ground beside him, for the fixes that need one. */
   artifact?: { shared: string; at: { x: number; y: number } };
 }
@@ -117,6 +123,17 @@ const monster = (race: string, name: string): string =>
 
 /** Peasants: something to fight that will not end the battle in one turn. */
 const PEASANTS = monster('Haven', 'Peasant');
+
+/**
+ * A hundred zombies, for the two heroes who cast **Armageddon**.
+ *
+ * Peasants are wiped out by it before anything can be read off them, and both
+ * Armageddon tests are about reading something off a stack that is still there
+ * — a defence that should be half, war machines that should be hurt. Zombies
+ * are slow and fat, and a hundred of them survive the spell and keep standing
+ * for the second cast.
+ */
+const ZOMBIES = { shared: monster('Necropolis', 'Zombie'), count: 100 };
 
 /**
  * The row of heroes, west to east.
@@ -147,7 +164,9 @@ export const HEROES: Kit[] = [
       { creature: 'CREATURE_MARKSMAN', count: 30 },
       { creature: 'CREATURE_SWORDSMAN', count: 30 },
     ],
-    foe: { shared: PEASANTS, at: { x: 8, y: 7 } },
+    // Zombies, because peasants do not survive an Armageddon and this test is
+    // read off a stack that is still standing.
+    foe: { ...ZOMBIES, at: { x: 8, y: 7 } },
   },
   {
     key: 'knight',
@@ -199,10 +218,11 @@ export const HEROES: Kit[] = [
     // itself on — that is the half of the fix you can see.
     ballista: true,
     army: [{ creature: 'CREATURE_MARKSMAN', count: 30 }],
-    // Peasants, like everyone else's. The snare does NOT come from here: see
+    // Zombies as well: he casts the empowered Armageddon, and it has to leave
+    // something standing to be read. The snare does NOT come from here — see
     // OPPONENT below, and the two things measured in a real battle that between
     // them rule out every simpler arrangement.
-    foe: { shared: PEASANTS, at: { x: 24, y: 7 } },
+    foe: { ...ZOMBIES, at: { x: 24, y: 7 } },
   },
   {
     key: 'runemage',
