@@ -19,6 +19,7 @@ import { createField } from '#src/map/defaults.ts';
 import { donorFor } from '#src/map/donors.ts';
 import { MapObject } from '#src/map/map.ts';
 import type { ObjectProp } from '#src/map/map.ts';
+import { objectRemoved, ownerGiven } from '#src/map/players.ts';
 import { iconPathFor, listPlaceable, readIconFile } from '#src/map/objects.ts';
 import { pngDataUri } from '#src/format/png.ts';
 import { controlOf, deref, objectProps, objectSchema } from '#src/schema/schema.ts';
@@ -241,7 +242,15 @@ export function registerObjects(): void {
         if (!order || !raw) return false;
         if (!createField(obj.el, p.name, order.names, isRef)) return false;
       }
-      return obj.setProp(p.name, p.value, isRef);
+      if (!obj.setProp(p.name, p.value, isRef)) return false;
+      // Giving something an owner is also a statement about the MAP: that owner
+      // has to exist for the game to offer him, and a hero has to be somewhere
+      // for him to start. Inside the same step, so one undo takes back the
+      // owner and the slot together (src/map/players.ts).
+      if (p.name === 'PlayerID') {
+        ownerGiven(session.map.desc, { id: obj.id ?? '', type: obj.type, player: p.value });
+      }
+      return true;
     });
     if (!done) throw new Error(`${p.name} is not a simple field of this object`);
     return { ok: true };
@@ -254,7 +263,20 @@ export function registerObjects(): void {
   ipcMain.handle('object:remove', async (_e: IpcMainInvokeEvent, { id }: RemoveObjectPayload): Promise<ObjectEditResult> => {
     const session = need();
     const obj = findObject(session, id);
-    const gone = record(session, 'delete object', { map: true }, () => session.map.remove(obj));
+    // Read BEFORE the removal: afterwards there is no object to ask whose it
+    // was, and `remaining` has to be the map without it — which is the same
+    // list minus this one.
+    const leaving = { id: obj.id ?? '', type: obj.type, player: obj.player };
+    const remaining = session.map.objects
+      .filter((o) => o !== obj)
+      .map((o) => ({ id: o.id ?? '', type: o.type, player: o.player }));
+    const gone = record(session, 'delete object', { map: true }, () => {
+      if (!session.map.remove(obj)) return false;
+      // A player whose main hero has just left needs another, and a player who
+      // now owns nothing at all is not a side any more (src/map/players.ts).
+      objectRemoved(session.map.desc, leaving, remaining);
+      return true;
+    });
     if (!gone) throw new Error(`could not remove ${id}`);
     return { ok: true };
   });

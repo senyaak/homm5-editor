@@ -11,6 +11,33 @@ would have seen.
 its section by version number, so this heading is inert until it is renamed to
 one.
 
+## Unreleased
+
+### Fixed
+
+- **A map made here can be played, without anyone remembering a field two
+  panels away.** An object's owner and the player slots were kept apart: a hero
+  given to PLAYER_1 belonged to somebody the game does not offer, because a
+  fresh map ships all eight slots off. The map loaded and there was nobody to
+  start it as — no error, nothing to read. Now giving anything an owner turns
+  that owner on, and a hero also becomes where that player begins when the slot
+  has no main hero yet; a chosen one is never taken over by the next hero
+  placed. Removing an object reads the rule backwards: the main hero leaving
+  hands the field to another hero of that player's or empties it, and a player
+  left owning nothing is turned off again. One undo takes back the owner and the
+  slot together.
+
+- **The Colour list was missing a colour.** Seven of the game's eight, in an
+  order of its own — `PCOLOR_YELLOW` was absent outright, so a yellow player
+  could not be made at all. It is the game's own list now, neutral first, the
+  way the original editor shows it.
+
+- **Main hero, main town and start hero are not files.** All three said "a
+  standalone document (its own file)" in the schema. Every shipped map that has
+  one writes an href INTO the map instead. Written as text the field looks
+  filled in here and reads as blank to the game, which kills the map on load
+  with "start player does not exist".
+
 ## 0.8.0 — 2026-08-06
 
 ### Added
