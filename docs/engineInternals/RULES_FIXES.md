@@ -418,35 +418,61 @@ tier-7 creature: an Archangel or a Titan in a dwarf's army would be refused a
 rune the shipped game allows. The rune's text says dragons, and the engine
 already knows which creatures those are — it was only asking the wrong one.
 
-## Imbue Ballista, still open
+## Imbue Ballista and the ranger's turn
 
 The perk says the ballista's shots carry the ranger's enchantment and that this
 costs him MANA — *"Все снаряды баллисты будут нести чары рейнджера, поэтому
 запас маны последнего будет уменьшаться."* Nothing about his turn. dredknight's
 `ImbueBalistaAtbFix.cpp` says it costs the hero his ATB as well, and fixes it by
-saving the hero's ATB before the enchantment is cast and writing it back after.
+saving the value before the enchantment is cast and writing it back after.
 
-**The site is found.** `0xBC1573` asks the hero for `HERO_SKILL_IMBUE_BALLISTA`
-(113) after checking that the shooter is the ballista, and `0xBC15A0` is the
-cast — `call 0xB7B320`, our copy of the retail `0x97EA20`, which has three
-callers and so cannot be changed as a whole. The hero is in `[esp+0x10]` there.
+**The site.** `0xBC00F0` resolves a hit. At `0xBC1573` it asks the shooter's
+owner for `HERO_SKILL_IMBUE_BALLISTA` (113), having already established that the
+shooter is the ballista, and `0xBC15A0` is the cast — `call 0xB7B320`, our copy
+of the retail `0x97EA20`, which has two other callers and so cannot be changed
+as a whole. The hero arrives as `shooter->vt[0x18]()->vt[0xC]()` and is walked to
+its virtual base — `(hero+4) + [[hero+4]+8]` — before the call, so `ecx` there
+holds the **combat-unit subobject** of a `CCombatHero`, vtable `0xFDFC04`.
 
-**What is missing is one thing: where that object keeps its ATB.** His stub
-reaches it by arithmetic on negative offsets from an intermediate subobject
-(`[X-0x68]`, then the pointer at `[-0x70]`, then `[hero+0x1C]`), which is a
-claim about his build's layout and transfers to nothing. The leads worth
-following next:
+**Where the ATB is**, which is the one fact that kept this unported. On that
+unit vtable, `+0x184` returns the object that holds the value and `+0x18C` sets
+it:
 
-- Lua's `setATB` (`0x607B80`) queues a `CSetATBValue` command (vtable
-  `0xF558CC`); its `Execute` (`0xB74620`) calls `unit->vt[0x18C]` with a float.
-- On `CCombatHero`'s primary vtable (`0xFDFB34`), `+0x18C` is `0xB5A310` — one
-  stack argument, `ret 4` — and `+0x184` is `0xB59980`, a float getter. Together
-  they would be a save and a restore with no arithmetic at all.
-- But the object at the imbue site is **not** a `CCombatHero*`: the perk is
-  asked through a virtual base, `(esi+4) + [[esi+4]+8]`. Which class it is, and
-  whether that interface carries the same two slots, is the open question — and
-  calling a slot on the wrong vtable in the middle of a battle is exactly the
-  failure this page's discipline exists to avoid.
+| | function | what it is |
+|---|---|---|
+| `+0x184` | `0xB62DC0` | `mov eax,[ecx-0x70]; ret` — the holder |
+| `+0x18C` | `0xB5ED60` | reads the old value from `[-0x70]`+`0x1C`, then writes |
+
+and the ATB itself is the float at `+0x1C` of what the getter returns. Both
+vtable entries are adjustor thunks; the hero's adjust by `0x68`.
+
+That is dredknight's chain, constant for constant — his `[X-0x68]` is the
+thunk's `sub ecx,0x68`, his `[-0x70]` is the getter's whole body, and his
+`[hero+0x1C]` is where the float sits. It had been written off as a claim about
+his build because **the slot was counted from the wrong vtable start**:
+`CCombatHero` has six vtables and `0xFDFB34`, the first, is `0x34` bytes long,
+so `+0x184` from there lands inside `0xFDFC04` at its `+0xB4` — a different pair
+of functions that look plausible and are not these. `CCombatCreature` reaches
+the SAME two implementations from ITS `+0x184` and `+0x18C` by thunks adjusting
+`0x94` instead: one interface, two classes. The imbue site itself uses that pair
+on the defender twenty instructions further down, at `0xBC16B4` and `0xBC16E0`.
+
+The lesson is cheap to state and was expensive here: **a vtable slot number is
+meaningless without the vtable's start and its length.** `vtable.ts` prints
+every vtable a class has; the one to count from is the one the slot falls
+inside.
+
+**How it is fixed.** The five bytes of the `call` are pointed at a hook of ours
+— the call, not the function — which reads the ATB, runs their cast unchanged,
+reads it again, and writes the old value back **only if it moved**. The hook
+does nothing at all unless the pointer's vtable is exactly `CCombatHero`'s
+`0xFDFC04`, so a slot number counted on one class is never called on another.
+`native/qol/fix-imbue-ballista.c`.
+
+**This one has not been watched yet**, and that is deliberate in the code: the
+first six shots of a battle write both readings to `bin/homm5-editor.log` and to
+the battle console. If they read the same, there is no bug here and the switch
+should be deleted, the way AgilityFix was never added.
 
 ## Watching them in a battle
 
@@ -463,8 +489,14 @@ per fix, each standing in front of the stack he is meant to fight;
 [../FIX_TEST_MAP.md](../FIX_TEST_MAP.md) is what to do with each of them and
 what changes.
 
-**Nothing on this page has been watched in a running game yet.** The map is the
-means to; the observations are still to come.
+**Watched, 2026-08-05.** Payback, Encourage on dragons, Master of Fire (13 → 7;
+with Stoneskin 22 → 11, half of it gone to the buff, and 13 again with the buff
+off), Empowered Armageddon, the Rune of the Dragon Form, the Book of Power and
+the battle AI (without the fix it cast Deflect Arrows against an army with no
+archers; with it, a fireball) all did in a battle what this page says they do.
+
+**Imbue Ballista is the one that has not been watched**, and it is the one whose
+BUG is unwatched rather than its fix — see its section above.
 
 One entry on that list has no trigger on the map: Barbarian Learning needs the
 skill REMOVED, and nothing placed there removes one.

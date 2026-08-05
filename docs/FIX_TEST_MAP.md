@@ -46,7 +46,7 @@ computer's.
 | `knight` | Haven | Encourage |
 | `warlock` | Dungeon | Payback, the snare crash, Empowered Armageddon |
 | `runemage` | Fortress | Dragon Form |
-| `ranger` | Sylvan | Imbue Ballista — the bug, not a fix |
+| `ranger` | Sylvan | Imbue Ballista — the fix, and the bug it claims |
 | `barbarian` | Stronghold | Barbarian Learning |
 | `scholar` | Haven | the Book of Power |
 | `opponent` | Sylvan, PLAYER_2 | the battle AI — and the trappers, in hotseat |
@@ -258,21 +258,26 @@ summon, and a stack of **Grand Elves**, which carry Deflect Arrows.
 This is the one to judge over several battles rather than one: it is a change in
 what the AI *prefers*, not a rule that either fires or does not.
 
-### 10. Imbue Ballista — the ranger, **not fixed**
+### 10. Imbue Ballista — the ranger
 
 He has **Imbue Arrow**, **Imbue Ballista** and a ballista. Fight something and
 let the ballista shoot.
 
 The perk says the shots carry his enchantment and that this costs him **mana** —
-*"запас маны последнего будет уменьшаться"* — and nothing about his turn. Watch
-the hero's own place on the turn bar when the ballista fires.
+*"запас маны последнего будет уменьшаться"* — and nothing about his turn.
 
-Nothing changes between the two runs: this fix is **not ported**, because the
-original recovers the hero from an intermediate object by arithmetic on negative
-offsets that transfers to no other build. What is missing is one fact — where
-that object keeps its ATB — and the leads are written down in
-[engineInternals/RULES_FIXES.md](engineInternals/RULES_FIXES.md). If you can see
-the hero's turn being eaten, that is the confirmation the claim needs.
+**This is the one where the BUG is still unconfirmed**, so read the log rather
+than the turn bar. With the fix on, the first six shots of a battle print in the
+battle console and write into `bin/homm5-editor.log` one of two things:
+
+- `imbue ballista: the cast moved the hero's turn to …` followed by `put back
+  where it was, …` — the bug is real, and those two numbers are the proof of it.
+- `imbue ballista: the cast cost the hero no turn, still …` — there is no bug
+  here, and the switch should come out the way AgilityFix never went in.
+
+The numbers are thousandths (`3600` is `3.6`). With the fix off nothing is
+printed and nothing is patched, so the off run is only there to confirm the
+ranger plays as he always did.
 
 ---
 

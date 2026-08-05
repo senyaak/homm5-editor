@@ -192,6 +192,21 @@ export const QOL_FLAGS = [
       + ' — https://github.com/dredknight/H5_DLL',
   },
   {
+    name: 'imbue-ballista-fix',
+    tab: 'fixes',
+    group: 'mechanics',
+    title: 'Imbue Ballista costs the ranger mana, not his turn',
+    detail: 'The perk says the ballista\'s shots carry the ranger\'s enchantment and that his MANA'
+      + ' pays for them — nothing about his turn. The enchantment is cast from inside the ballista\'s'
+      + ' shot with the hero as its caster, and the report this follows says that takes his place on'
+      + ' the turn bar with it. The cast now runs between two readings of that value and the old one'
+      + ' is written back if it moved. THIS ONE IS UNWATCHED: nobody has yet seen the turn eaten, so'
+      + ' the first few shots of a battle say both readings in the log and in the battle console. If'
+      + ' they read the same, there is no bug here and this switch should go.',
+    credit: 'Uses the work of H5_DLL by dredknight, with permission'
+      + ' — https://github.com/dredknight/H5_DLL',
+  },
+  {
     name: 'book-of-power-fix',
     tab: 'fixes',
     group: 'mechanics',

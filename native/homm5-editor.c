@@ -84,6 +84,7 @@
 #include "qol/fix-empowered-armageddon.c"
 #include "qol/fix-book-of-power.c"
 #include "qol/fix-master-of-fire.c"
+#include "qol/fix-imbue-ballista.c"
 
 BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   (void)reserved;
@@ -149,6 +150,7 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   if (g_qol[QOL_EMPOWERED_ARMAGEDDON_FIX]) install_empowered_armageddon_fix();
   if (g_qol[QOL_BOOK_OF_POWER_FIX]) install_book_of_power_fix();
   if (g_qol[QOL_MASTER_OF_FIRE_FIX]) install_master_of_fire_fix();
+  if (g_qol[QOL_IMBUE_BALLISTA_FIX]) install_imbue_ballista_fix();
   return TRUE;
 }
 

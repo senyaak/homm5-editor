@@ -307,7 +307,7 @@ export const HEROES: Kit[] = [
   {
     key: 'ranger',
     heroClass: 'HERO_CLASS_RANGER',
-    fixes: ['imbue-ballista (not ported — the bug is what you are watching)'],
+    fixes: ['imbue-ballista-fix'],
     shared: hero('Preserve', 'Diraya'),
     at: { x: 40, y: 10 },
     // Imbue Ballista wants Ballista (War Machines) and Imbue Arrow (Avenger)
@@ -412,5 +412,5 @@ export const OPPONENT: Kit = {
 export const FIXES_UNDER_TEST = [
   'combat-ai-fix', 'snare-crash-fix', 'encourage-fix', 'barbarian-learning-fix',
   'payback-fix', 'dragon-form-fix', 'empowered-armageddon-fix', 'book-of-power-fix',
-  'master-of-fire-fix',
+  'master-of-fire-fix', 'imbue-ballista-fix',
 ];
