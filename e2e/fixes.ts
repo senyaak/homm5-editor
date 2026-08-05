@@ -250,14 +250,26 @@ export const HEROES: Kit[] = [
     // cover it many times over.
     spells: ['SPELL_RUNE_OF_DRAGONFORM'],
     stats: { offence: 10, defence: 10, spellpower: 10, knowledge: 10 },
-    // The four the engine's table names, each a BASE creature — the ones it
-    // cannot catch — plus an Archangel, which is tier 7 and not a dragon.
+    // MEASURED IN A BATTLE: a rune can only be cast on a creature of the
+    // DWARVES. So of the four base dragons the engine's table names — Bone
+    // (41), Green (55), Deep (83), Fire (104) — only the **Fire Dragon** can
+    // ever be handed one, and it is the only one the fix is visible on. The
+    // other three are here so that claim can be re-checked rather than
+    // remembered; if a rune is offered on them, this comment is wrong.
+    //
+    // Then the dwarven controls, which is what this hero was missing:
+    //   Magma («Лавовые драконы») and Lava («Драконы Арката») are the two
+    //     upgrades, whose base IS Fire — refused before the fix and after;
+    //   Thane is no dragon at all and must stay castable, or the fix would
+    //     have broken the rune rather than aimed it.
     army: [
+      { creature: 'CREATURE_FIRE_DRAGON', count: 3 },
+      { creature: 'CREATURE_MAGMA_DRAGON', count: 3 },
+      { creature: 'CREATURE_LAVA_DRAGON', count: 3 },
+      { creature: 'CREATURE_THANE', count: 3 },
       { creature: 'CREATURE_BONE_DRAGON', count: 3 },
       { creature: 'CREATURE_GREEN_DRAGON', count: 3 },
       { creature: 'CREATURE_DEEP_DRAGON', count: 3 },
-      { creature: 'CREATURE_FIRE_DRAGON', count: 3 },
-      { creature: 'CREATURE_ARCHANGEL', count: 3 },
     ],
     foe: { shared: PEASANTS, at: { x: 32, y: 7 } },
   },

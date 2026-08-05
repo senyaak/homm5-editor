@@ -63,12 +63,28 @@ test.afterAll(async () => { if (ed) await closeEditor(ed); });
  * carry the fragment, so armed from the catalogue it cannot be got wrong.
  */
 async function place(page: Launched['page'], shared: string, x: number, y: number): Promise<string> {
-  await pickObject(page, shared);
-  const before = new Set((await page.evaluate(() => window.view.objects())).map((o) => o.id));
-  await placeAtTile(page, x, y);
-  const after = await page.evaluate(() => window.view.objects());
-  const added = after.filter((o) => !before.has(o.id));
-  expect(added, `placing ${shared} added one object`).toHaveLength(1);
+  // Clicked up to three times, because the click sometimes lands on nothing.
+  // `placeAtTile` projects the tile and, when a panel covers the pixel, centres
+  // the view and projects again — and the projection is read in the same breath
+  // as the camera is moved, so a camera that has not finished moving yields a
+  // pixel that belongs to another tile. It places nothing and says nothing,
+  // since a click on empty ground is not an error. It showed up as one run in
+  // three failing on a stack that had gone down a hundred times before.
+  //
+  // A bounded retry, not a loop: three misses in a row is a real failure and is
+  // reported as one, and two objects appearing from one click would be caught
+  // here too rather than quietly making a map nobody asked for.
+  let added: { id: string }[] = [];
+  for (let attempt = 1; attempt <= 3 && added.length !== 1; attempt++) {
+    await pickObject(page, shared);
+    const before = new Set((await page.evaluate(() => window.view.objects())).map((o) => o.id));
+    await placeAtTile(page, x, y);
+    added = (await page.evaluate(() => window.view.objects())).filter((o) => !before.has(o.id));
+    // Two from one click is a fault, not something to try again past.
+    expect(added.length, `one click on ${x},${y} put down ${added.length} objects`).toBeLessThan(2);
+  }
+  expect(added, `placing ${shared} at ${x},${y} put down one object, in three tries`)
+    .toHaveLength(1);
   const id = added[0]!.id;
   await page.evaluate((oid) => window.view.select(oid), id);
   return id;

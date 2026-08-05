@@ -177,20 +177,40 @@ always right, and it must stay exactly as it was.
 
 ### 6. `dragon-form-fix` — the runemage
 
-His army is a **Bone, Green, Deep and Fire Dragon** — the four the engine's own
-table names, all of them base creatures — and an **Archangel**. In a battle, cast
-the **Rune of the Dragon Form** on each.
+**A rune can only be cast on a creature of the Dwarves** — measured in a battle,
+not derived — and that decides the whole test: of the four base dragons the
+engine's table names, only the **Fire Dragon** is dwarven, so it is the only one
+the fix can be seen on.
+
+Mind the names, because they cross: **«Огненные драконы»** is the BASE
+(`CREATURE_FIRE_DRAGON`, the one the bug is about) and **«Лавовые драконы»** is
+its UPGRADE (`CREATURE_MAGMA_DRAGON`). «Драконы Арката» is the other upgrade.
+
+His army is therefore four dwarven stacks and the three unreachable dragons:
+
+| stack | off | on |
+|---|---|---|
+| **Огненные драконы** (base) | rune is offered — **the bug** | refused |
+| **Лавовые драконы** (upgrade) | refused | refused |
+| **Драконы Арката** (upgrade) | refused | refused |
+| **Таны** (no dragon) | works | **still works** |
+| Bone / Green / Deep | not castable at all — they are not dwarven | same |
+
+That last row is there so the "dwarves only" claim can be re-checked rather than
+remembered: if a rune is offered on a Bone Dragon, this table is wrong.
+
+In a battle, cast the **Rune of the Dragon Form** on each.
 
 He carries the rune itself, not just Runelore: a rune is a spell and is learnt
 like one, so the skill alone would leave him with nothing to cast. It costs
 1 wood and 1 sulfur per cast rather than mana, out of the resources the game
 starts you with.
 
-- **off** — every one of the four dragons accepts the rune. Its own description
-  says *"неприменимо к драконам"*.
-- **on** — all four are refused, and the **Archangel still accepts it**. That
-  second half matters: the original fix answers "tier ≥ 7" and would refuse a
-  rune the shipped game allows.
+- **off** — the **Огненные драконы** accept the rune, whose own description says
+  *"неприменимо к драконам"*.
+- **on** — they are refused, and the **Таны still accept it**. That second half
+  matters: the original fix answers "tier ≥ 7" instead, which would refuse the
+  rune on any tier-7 creature the shipped game allows it on.
 
 ### 7. `book-of-power-fix` — the scholar
 
