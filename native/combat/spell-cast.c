@@ -52,7 +52,7 @@ static const BYTE SPELL_DISPATCH_HEAD[SPELL_DISPATCH_LEN] = {
 #define FIRST_SPELL_OF_OURS 353
 
 /** How many casts print themselves. Enough for a battle, not for a session. */
-#define SPELL_CASTS_LOGGED 40
+#define SPELL_CASTS_LOGGED 12
 
 static int g_spellCastsLogged = 0;
 
@@ -148,19 +148,24 @@ static int __fastcall on_cast_command(void *self, void *edx) {
     if (spell >= FIRST_SPELL_OF_OURS) log_num("cast command: OURS, spell id ", spell);
     else log_num("cast command: the game's own, spell id ", spell);
   }
-  // WHAT THE COMMAND IS MADE OF, for ours only — because ours returns before it
-  // reaches the gate, and every one of the four early exits is a field of this
-  // block. `+0x20` is the caster the gate is handed first, `+0x24` the target,
-  // and both are refcounted pointers the function tests for life before use.
-  if (spell >= FIRST_SPELL_OF_OURS && readable_bytes(self, 0x3C) >= 0x3C) {
+  // WHAT THE COMMAND IS MADE OF — and for the GAME'S OWN spells too, which is
+  // the point. Ours comes in with a caster and no target and returns zero; the
+  // only way to know whether that is the fault is to see what a spell that works
+  // brings with it. A comparison of two blocks says in one run what reading the
+  // function has not.
+  int dump = g_castCommandsLogged <= SPELL_CASTS_LOGGED && readable_bytes(self, 0x3C) >= 0x3C;
+  if (dump) {
     log_hex("   caster +0x20 ", *(DWORD *)((BYTE *)self + 0x20));
     log_hex("   target +0x24 ", *(DWORD *)((BYTE *)self + 0x24));
     log_hex("   +0x0C ", *(DWORD *)((BYTE *)self + 0x0C));
+    log_hex("   +0x14 ", *(DWORD *)((BYTE *)self + 0x14));
+    log_hex("   +0x18 ", *(DWORD *)((BYTE *)self + 0x18));
     log_hex("   +0x28 ", *(DWORD *)((BYTE *)self + 0x28));
+    log_hex("   +0x30 ", *(DWORD *)((BYTE *)self + 0x30));
     log_hex("   +0x38 ", *(DWORD *)((BYTE *)self + 0x38));
   }
   int answer = g_castCommand(self, edx);
-  if (spell >= FIRST_SPELL_OF_OURS) log_num("   the command returned ", answer & 0xFF);
+  if (dump) log_num("   the command returned ", answer & 0xFF);
   return answer;
 }
 
