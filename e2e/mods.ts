@@ -676,6 +676,11 @@ export const DEATH_RIPPLE = {
    */
   script: [
     'function H3DeathRippleCast(caster)',
+    // INTO THE LOG, not only the console. `print` reaches the screen and nothing
+    // else, so a script that ran and a script that never loaded look the same
+    // afterwards; this one line is the extension's own and lands in
+    // bin/homm5-editor.log, where the cast itself is already recorded.
+    '\tH5ECombatTest();',
     '\tprint("h5e: death ripple cast");',
     '\tlocal sides = { GetAttackerCreatures(), GetDefenderCreatures() };',
     '\tlocal s = 1;',
