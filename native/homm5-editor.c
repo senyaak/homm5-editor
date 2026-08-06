@@ -69,6 +69,7 @@
 #include "combat/tent-charges.c"
 #include "combat/tent-health.c"
 #include "combat/tent-mana.c"
+#include "combat/spell-cast.c"
 #include "qol/borderless.c"
 #include "qol/own-profile.c"
 #include "qol/quick-split.c"
@@ -121,6 +122,12 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   // registered for costs one comparison in the fired path. Hooked always, and
   // the log says so once.
   if (install_caster_mana()) log_line("combat caster mana hook installed");
+  // What a battle actually casts, by id — the first half of carrying a spell of
+  // our own. It says whether an id the executable never heard of reaches the
+  // engine's resolver at all, which is the question everything above a new spell
+  // rests on. Unconditional, like the battle scripts and for the same reason: a
+  // log that has to be switched on says nothing on the run that mattered.
+  install_spell_log();
   if (rows_for(STAT_TENT_HEALTH) && install_machine_health()) {
     log_line("first aid tent health hook installed");
   }

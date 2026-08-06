@@ -67,6 +67,9 @@ computer's.
 | `scholar` | Haven | the Book of Power |
 | `opponent` | Sylvan, PLAYER_2 | the battle AI — and the trappers, in hotseat |
 
+Four of them — `wizard`, `knight`, `warlock`, `scholar` — also carry a spell of
+ours, which is an experiment rather than a fix; see [11](#11-волна-смерти--a-spell-of-ours-on-four-heroes).
+
 ---
 
 ## The list
@@ -310,6 +313,59 @@ The lines, when they come, are in the battle console and in
 - `the cast cost the hero no turn, still …` — a shot where there was nothing to
   put back. Both are budgeted separately, so a run of quiet shots cannot use up
   the room the interesting ones need.
+
+---
+
+## 11. Волна смерти — a spell of OURS, on four heroes
+
+Not a fix, and the only thing on this map that is not: an experiment riding
+along, because it wants exactly what this map already is — several heroes, one
+click each, one battle to watch.
+
+**What is being asked.** Whether a spell the executable was never compiled
+against survives the journey: into the hero's book, onto the page, through the
+click, into the engine's resolver. The spell is `SPELL_H3_DEATH_RIPPLE`, id 353,
+the first past the shipped 353; the mod declares it and `H5_Game_H5E.exe` counts
+354 spells. What it DOES is nothing at all yet, on purpose — the resolver
+dispatches on the id, and everything it does not know goes to the same tail as a
+spell that fizzled.
+
+**Who carries it, and why those four.** One variable, four values:
+
+| hero | Dark Magic | what his reading is for |
+|---|---|---|
+| `knight` | none | the school is not his at all — does the book still show it, and can the button be pressed |
+| `wizard` | Basic | |
+| `scholar` | Advanced | the three together say whether a spell's numbers are picked by mastery |
+| `warlock` | Expert | his already, for Payback |
+
+**What to do.** Start a battle with each — the stack in front of him will do —
+open the book, and look before clicking:
+
+1. **Is the page there at all**, with the name «Волна смерти» and the plague
+   icon it borrows? A missing icon and a missing spell look the same, which is
+   why it borrows one.
+2. **Is it greyed out?** This game greys a spell with nobody to cast it on. If
+   ours is grey with a field full of stacks, the answer is that the engine builds
+   a target list per id and ours has none — an answer about the mechanism, not
+   about the spell.
+3. **Press it.** Expect nothing to happen: no damage, no animation, the mana
+   spent (or refunded, on the warlock — Payback reads the same "did nothing" byte
+   the resolver leaves set).
+
+**Then send the log.** `bin/homm5-editor.log` has a line per cast — the first
+forty — saying which id was cast and whether it was ours:
+
+```
+cast: OURS, spell id 353
+cast: the game's own, spell id 10
+```
+
+- A line for our spell means the whole path works and only the effect is
+  missing, which is the good outcome: the next step is the bridge that hands the
+  cast to Lua.
+- **No line at all** means it never reached the resolver — the book, the target
+  list or the click refused it first — and that is where the next look goes.
 
 ---
 
