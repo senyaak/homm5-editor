@@ -181,13 +181,44 @@ if (target) {
 Two cases, both compiled against a literal, and `HasAbility` is a virtual on the
 stack (vtable `+0x28C`). Everything below the filter is where the rules live.
 
-So a spell of ours is made of two hooks and one row:
+## And the second dispatch, which the first run found
+
+With the branch borrowed the cast walked every stack on the field and the filter
+spared the undead — and every living stack took **zero**. The reason is one
+function EARLIER than the damage. `0xB7CE70` is "what is this spell worth at this
+power", asked once before the loop, and it is a switch on the number too:
+
+```
+edi = normalise(spellId)
+cmp edi,117h  /  je 0xB7CED1                   ; the ones that hurt
+lea eax,[edi-1] / cmp eax,0EEh / ja 0xB7CEBD   ; out of range
+jmp [eax*4+0xB7CF34]                           ; 21 in, 218 out
+…
+0xB7CEBD:  xor esi,esi                         ; a spell it does not know
+0xB7CED1:  ecx = the id ; push the power ; call 0xAD4EC0   ; READ THE RECORD
+```
+
+Twenty-one spells reach `0xB7CED1` — the nine destructive ones, Armageddon,
+Plague, both Words, the mines, the wasps and a few creature abilities. Everything
+else gets a hard zero. So **a new spell needs the branch AND the number**, and
+they are two different switches in two different functions.
+
+`0xAD4EC0` itself is generic: handed the id and the power it reads `<damage>` out
+of the loaded document, four entries by mastery. From there the numbers are the
+editor's.
+
+## What a spell of ours is made of
 
 | where | what |
 |---|---|
 | the dispatch stub `0x77eaf8` | for our ids, **jump into Unholy Word's branch** (`0xB7ED4A`) instead of returning to the comparison |
+| the worth stub `0x77ce8a` | for our ids, **jump to the branch that reads the record** (`0xB7CED1`) instead of falling to the zero |
 | the damage function `0x7861a0` | for our ids, answer **zero** for the kinds the mod says it spares, then let the engine do the rest |
 | `bin/homm5-editor-effects.txt` | `spell 353 spares 10 12 9` — the kinds, by ability NUMBER |
+
+Both stubs are the same shape, and both are safe to jump into: nothing between
+the comparison and the branch pushes, so the frame each branch reads is the frame
+it expects.
 
 Jumping into the branch is safe because the dispatch reaches it by a `jmp`, not
 a `call`, and everything the branch reads (`ebp`, `edi`, `[esp+68h]`,

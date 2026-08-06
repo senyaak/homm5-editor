@@ -568,3 +568,97 @@ static void install_spell_damage_filter(void) {
                                         "the spell's damage to one stack");
   if (g_spellDamage) log_line("a spell of ours will spare what its row says");
 }
+
+// ---------------------------------------------------------------------------
+// AND THE SECOND DISPATCH, WHICH IS WHERE THE FIRST RUN STOPPED.
+//
+// With the branch borrowed, a cast of ours walks every stack on the field and
+// the filter spares the undead — and every living stack takes ZERO. The reason
+// is one function earlier than the damage: `0xB7CE70` is "what is this spell
+// worth at this power", asked ONCE before the loop, and it is a switch on the
+// number too:
+//
+//   edi = normalise(spellId)
+//   cmp edi,117h  /  je 0xB7CED1                    ; the ones that hurt
+//   lea eax,[edi-1] / cmp eax,0EEh / ja 0xB7CEBD    ; out of range
+//   jmp [table]                                     ; 21 in, 218 out
+//   …
+//   0xB7CEBD:  xor esi,esi                          ; a spell I do not know
+//   0xB7CED1:  ecx = the id ; push the power ; call 0xAD4EC0   ; READ THE RECORD
+//
+// Twenty-one spells reach `0xB7CED1` — the nine destructive ones, Armageddon,
+// Plague, both Words, the mines, the wasps and a handful of creature abilities.
+// Everything else gets a hard zero, and that is the entire reason a spell of
+// ours did nothing after the branch worked: it had no damage to do.
+//
+// So the same trick again, at the same kind of place: for our ids, take the
+// branch that reads the record. `0xAD4EC0` is generic — it is handed the id and
+// the power and reads `<damage>` out of the loaded document, four entries by
+// mastery — so from there on the numbers are the ones the editor wrote.
+//
+// Safe to arrive by a jump: nothing between the comparison and that branch
+// pushes, so the frame `mov edx,[esp+14h]` reads is the frame it expects.
+
+/** `cmp edi,117h` — edi IS the spell id, and the switch is about to use it. */
+#define DAMAGE_LOOKUP_RVA 0x77ce8au
+#define DAMAGE_LOOKUP_LEN 6
+static const BYTE DAMAGE_LOOKUP_HEAD[DAMAGE_LOOKUP_LEN] = {
+  0x81, 0xFF, 0x17, 0x01, 0x00, 0x00
+};
+
+/** `mov edx,[esp+14h]` / `mov ecx,edi` — the branch that reads the record. */
+#define DAMAGE_FROM_RECORD_RVA 0x77ced1u
+#define DAMAGE_FROM_RECORD_MARK_LEN 6
+static const BYTE DAMAGE_FROM_RECORD_MARK[DAMAGE_FROM_RECORD_MARK_LEN] = {
+  0x8B, 0x54, 0x24, 0x14, 0x8B, 0xCF
+};
+
+/** Says what was asked about, so a zero has somewhere to be blamed. */
+static void __cdecl on_spell_power(int spell) {
+  if (spell >= FIRST_SPELL_OF_OURS) log_num("what is it worth? spell id ", spell);
+}
+
+#define POWER_STUB_LEN 37
+static BYTE POWER_STUB[POWER_STUB_LEN] = {
+  0x60,                                     // pushad
+  0x9C,                                     // pushfd
+  0x57,                                     // push edi        — the spell id
+  0xE8, 0x00, 0x00, 0x00, 0x00,             // call on_spell_power
+  0x83, 0xC4, 0x04,                         // add esp,4
+  0x9D,                                     // popfd
+  0x61,                                     // popad
+  0x81, 0xFF, 0x61, 0x01, 0x00, 0x00,       // cmp edi,161h    — 353, the first of ours
+  0x72, 0x05,                               // jb +5           — the game's own, carry on
+  0xE9, 0x00, 0x00, 0x00, 0x00,             // jmp <read the record>
+  0x81, 0xFF, 0x17, 0x01, 0x00, 0x00,       // cmp edi,117h    — displaced
+  0xE9, 0x00, 0x00, 0x00, 0x00,             // jmp back
+};
+
+static BYTE POWER_TO_STUB[DAMAGE_LOOKUP_LEN] = {
+  0xE9, 0x00, 0x00, 0x00, 0x00, 0x90
+};
+
+static void install_spell_power(void) {
+  BYTE *base = (BYTE *)GetModuleHandleW(NULL);
+  BYTE *branch = base + DAMAGE_FROM_RECORD_RVA;
+  for (int i = 0; i < DAMAGE_FROM_RECORD_MARK_LEN; i++) {
+    if (branch[i] == DAMAGE_FROM_RECORD_MARK[i]) continue;
+    log_line("the branch that reads a spell's damage is not where we left it - ours will do nothing");
+    return;
+  }
+  BYTE *stub = (BYTE *)VirtualAlloc(NULL, POWER_STUB_LEN, MEM_COMMIT | MEM_RESERVE,
+                                    PAGE_EXECUTE_READWRITE);
+  if (!stub) { log_line("spell power: no memory for the stub"); return; }
+  for (int i = 0; i < POWER_STUB_LEN; i++) stub[i] = POWER_STUB[i];
+  *(DWORD *)(stub + 4) = (DWORD)(void *)on_spell_power - (DWORD)(stub + 8);
+  *(DWORD *)(stub + 22) = (DWORD)branch - (DWORD)(stub + 26);
+  *(DWORD *)(stub + 33) =
+      (DWORD)(base + DAMAGE_LOOKUP_RVA + DAMAGE_LOOKUP_LEN) - (DWORD)(stub + POWER_STUB_LEN);
+  FlushInstructionCache(GetCurrentProcess(), stub, POWER_STUB_LEN);
+
+  *(DWORD *)(POWER_TO_STUB + 1) = (DWORD)stub - ((DWORD)(base + DAMAGE_LOOKUP_RVA) + 5);
+  if (overwrite_code(DAMAGE_LOOKUP_RVA, DAMAGE_LOOKUP_HEAD, POWER_TO_STUB, DAMAGE_LOOKUP_LEN,
+                     "the spell's own damage")) {
+    log_line("a spell of ours is worth what its document says");
+  }
+}

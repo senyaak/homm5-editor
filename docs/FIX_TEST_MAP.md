@@ -372,6 +372,9 @@ damage of ours, spell id 353
    the engine says 47
 ```
 
+- `what is it worth? spell id 353` is the second dispatch — without it the spell
+  is worth nothing and every stack takes zero however well the rest works, which
+  is exactly what the first run showed.
 - `the target is spared` is our filter, before the engine's arithmetic.
 - `the engine says 0` is the ENGINE sparing it — immunity, resistance, or a
   school the target is protected from. The two are different answers and are
