@@ -80,6 +80,15 @@ export interface SpellSpec {
   level: number;
   /** `MAGIC_SCHOOL_DARK`, `…_DESTRUCTIVE`, `…_ADVENTURE`, `…_SPECIAL`, … */
   school: string;
+  /**
+   * What a cast costs in MANA.
+   *
+   * The field is called `TrainedCost` in the document, which reads like a price
+   * at a guild and is not one: Magic Arrow (level 1) has 4, Plague (level 2) 6,
+   * Fireball (level 3) 10 — the mana every one of them costs. Left at zero, as
+   * this was at first, the spellbook prints a spell that is free.
+   */
+  manaCost: number;
   /** `TARGET_HOSTILE` / `TARGET_FRIEND` / `TARGET_NEUTRAL` — who may be picked. */
   target: string;
   /** Whether the player picks a target at all, and whether it hits an area. */
@@ -92,6 +101,15 @@ export interface SpellSpec {
   duration?: SpellAmount[];
   /** An icon that already exists, since a spell without one is a hole in the book. */
   icon?: string;
+  /**
+   * Or a drawing of its own — a path on disk, as `assets/` keeps them.
+   *
+   * Wins over `icon`, the way a skill's picture wins over its hrefs: a spell
+   * with art of its own has said what it wants to look like. Built into the
+   * game's own texture at 128×128, which is the size every shipped spell icon
+   * is, and re-read on every build so editing the drawing is the whole loop.
+   */
+  picture?: string;
   /**
    * What the extension does when it is cast — the name of a Lua function.
    *
@@ -111,13 +129,26 @@ export interface ModSpell extends SpellSpec {
   number: number;
 }
 
+/** The size every shipped spell icon is drawn at. */
+export const SPELL_ICON_SIZE = 128;
+
 /** Where a spell's own files sit inside the mod. */
-export function spellPaths(s: SpellSpec): { document: string; name: string; description: string } {
+export function spellPaths(s: SpellSpec): {
+  document: string; name: string; description: string; icon: string; iconDDS: string;
+} {
   return {
     document: `${SPELL_DIR}/${s.file}.xdb`,
     name: `${SPELL_TEXT_DIR}/${s.file}_Name.txt`,
     description: `${SPELL_TEXT_DIR}/${s.file}_Desc.txt`,
+    icon: `${SPELL_DIR}/${s.file}.(Texture).xdb`,
+    iconDDS: `${SPELL_DIR}/${s.file}.(Texture).dds`,
   };
+}
+
+/** The href a spell's document points its `<Texture>` at, or none. */
+export function spellIcon(s: SpellSpec): string {
+  if (s.picture) return `/${spellPaths(s).icon}#xpointer(/Texture)`;
+  return s.icon ?? '';
 }
 
 /** The four `<Item>` blocks of an amount list, padded from what was given. */
@@ -153,14 +184,15 @@ export function spellDocument(s: SpellSpec): string {
     '<Spell>',
     `\t<NameFileRef href="/${p.name}"/>`,
     `\t<LongDescriptionFileRef href="/${p.description}"/>`,
-    ...(s.icon ? [`\t<Texture href="${s.icon}"/>`] : ['\t<Texture/>']),
+    ...(spellIcon(s) ? [`\t<Texture href="${spellIcon(s)}"/>`] : ['\t<Texture/>']),
     '\t<EffectTexture/>',
     '\t<SpellBookPredictions/>',
     '\t<CombatLogTexts/>',
     `\t<Level>${s.level}</Level>`,
     `\t<MagicSchool>${s.school}</MagicSchool>`,
     '\t<RequiredHeroLevel>0</RequiredHeroLevel>',
-    '\t<TrainedCost>0</TrainedCost>',
+    // The mana, under the game's own name for it — see SpellSpec.manaCost.
+    `\t<TrainedCost>${s.manaCost}</TrainedCost>`,
     ...amounts('damage', s.damage).map((l) => `\t${l}`),
     ...amounts('duration', s.duration).map((l) => `\t${l}`),
     '\t<sSpellCost>',

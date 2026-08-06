@@ -128,6 +128,7 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   // rests on. Unconditional, like the battle scripts and for the same reason: a
   // log that has to be switched on says nothing on the run that mattered.
   install_spell_log();
+  install_cast_command_log();
   if (rows_for(STAT_TENT_HEALTH) && install_machine_health()) {
     log_line("first aid tent health hook installed");
   }

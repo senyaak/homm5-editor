@@ -626,9 +626,16 @@ export const TENT_PERKS = [
  * (9/12/15/30) as the reference for what a level-5 spell is worth, scaled down
  * for a level 2. They will want a pass once the damage is really landing.
  *
- * The icon is the shipped Plague's, borrowed: a spell with no texture is a hole
- * in the spellbook, and a hole is indistinguishable from the spell not being
- * there at all — which is the very thing the first run has to tell apart.
+ * ITS OWN ICON — Heroes III's, at `assets/spells/death-ripple.png`. The first
+ * run borrowed the shipped Plague's, which was right for what that run asked (a
+ * missing texture and a missing spell look the same in the book), and wrong to
+ * keep: the port's spell should look like the port's spell.
+ *
+ * AND ITS MANA, which the first run got wrong in a way worth writing down: the
+ * document's field is called `TrainedCost`, it reads like a price at a guild,
+ * and it is the mana a cast costs — Magic Arrow 4, Plague 6, Fireball 10. Ours
+ * was zero, so the book offered a free spell. Six, as the Plague has: same
+ * school, same level.
  */
 export const DEATH_RIPPLE = {
   id: 'SPELL_H3_DEATH_RIPPLE',
@@ -636,6 +643,7 @@ export const DEATH_RIPPLE = {
   name: 'Волна смерти',
   description: 'Волна смерти проходит по полю боя и ранит всё живое. Нежить она не трогает.',
   level: 2,
+  manaCost: 6,
   school: 'MAGIC_SCHOOL_DARK',
   // As Armageddon has it: everyone on the field is fair game, so there is
   // nobody to pick and no side to check.
@@ -648,7 +656,7 @@ export const DEATH_RIPPLE = {
     { base: 20, perPower: 20 },
     { base: 25, perPower: 25 },
   ],
-  icon: '/Textures/SpellBook______2618/Spells/Spell_Plague.xdb#xpointer(/Texture)',
+  picture: join(ASSETS, 'spells', 'death-ripple.png'),
 };
 
 /**

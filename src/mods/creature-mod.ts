@@ -84,7 +84,7 @@ import {
 } from './hero-classes.ts';
 import { SKILL_TABLE, patchSkillTable, patchSkillTypes, skillPictures, skillTexts } from './hero-skills.ts';
 import {
-  SPELL_TABLE_FILE, patchSpellTable, patchSpellTypes, spellDocument, spellPaths,
+  SPELL_ICON_SIZE, SPELL_TABLE_FILE, patchSpellTable, patchSpellTypes, spellDocument, spellPaths,
 } from './spells.ts';
 
 /** The camera the hire dialog uses. CREATURE_UNKNOWN already sits on this one. */
@@ -295,6 +295,10 @@ export function buildCreatureMod(mod: CreatureMod, read: DataReader): BuildRepor
       files.push({ path: p.document, data: Buffer.from(spellDocument(s), 'latin1') });
       files.push({ path: p.name, data: utf16(s.name) });
       files.push({ path: p.description, data: utf16(s.description) });
+      // Art of its own, built into the game's texture the way a hero's portrait
+      // and a skill's icon are — 128×128, which is what every shipped spell icon
+      // is drawn at.
+      if (s.picture) files.push(...texturePair(s.picture, SPELL_ICON_SIZE, p.iconDDS, p.icon));
     }
   }
 

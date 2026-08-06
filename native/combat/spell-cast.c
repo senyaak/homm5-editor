@@ -111,3 +111,48 @@ static void install_spell_log(void) {
     log_line("every spell cast will say what it was");
   }
 }
+
+// ---------------------------------------------------------------------------
+// ONE STEP EARLIER, because the first run came back with nothing.
+//
+// The dispatch above logged eighteen casts in a battle and not one of them was
+// ours: the spell is in the book, its page draws, the button takes a click —
+// and the engine's resolver never hears about it. So the question is no longer
+// "what does the resolver do with our id" but "where between the click and the
+// resolver is it dropped", and that wants a mark on the step in between.
+//
+// `CCastCombatSpellCmd::Execute` (0xB72790, the command's vtable +0x1C) is that
+// step: the command is what a click becomes, and it carries the spell id in its
+// own field `+0x10` — the same field the function tests against 0BDh two
+// instructions in. A line here and no line at the dispatch means the command was
+// built and refused; no line at all means the click never became a command, and
+// the next look is the book.
+
+#define CAST_COMMAND_RVA 0x772790u
+#define CAST_COMMAND_HEAD_LEN 6
+static const BYTE CAST_COMMAND_HEAD[CAST_COMMAND_HEAD_LEN] = {
+  0x83, 0xEC, 0x58, 0x53, 0x8B, 0xD9
+};
+/** The command's own copy of what is being cast. */
+#define CAST_COMMAND_SPELL 0x10u
+
+typedef int(__fastcall *CastCommandFn)(void *self, void *edx);
+static CastCommandFn g_castCommand = NULL;
+static int g_castCommandsLogged = 0;
+
+static int __fastcall on_cast_command(void *self, void *edx) {
+  if (g_castCommandsLogged < SPELL_CASTS_LOGGED) {
+    g_castCommandsLogged++;
+    int spell = readable_bytes(self, CAST_COMMAND_SPELL + 4) >= CAST_COMMAND_SPELL + 4
+        ? *(int *)((BYTE *)self + CAST_COMMAND_SPELL) : -1;
+    if (spell >= FIRST_SPELL_OF_OURS) log_num("cast command: OURS, spell id ", spell);
+    else log_num("cast command: the game's own, spell id ", spell);
+  }
+  return g_castCommand(self, edx);
+}
+
+static void install_cast_command_log(void) {
+  g_castCommand = (CastCommandFn)detour(CAST_COMMAND_RVA, CAST_COMMAND_HEAD, CAST_COMMAND_HEAD_LEN,
+                                        (void *)on_cast_command, "the combat cast command");
+  if (g_castCommand) log_line("every combat cast command will say what it carries");
+}

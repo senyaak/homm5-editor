@@ -41,6 +41,7 @@ const spell = addSpell(mod, {
   name: 'Волна смерти',
   description: 'Наносит урон всем живым существам на поле боя.',
   level: 2,
+  manaCost: 6,
   school: 'MAGIC_SCHOOL_DARK',
   target: 'TARGET_NEUTRAL',
   damage: [
@@ -49,6 +50,7 @@ const spell = addSpell(mod, {
     { base: 20, perPower: 20 },
     { base: 25, perPower: 25 },
   ],
+  picture: join(import.meta.dirname, '..', 'assets', 'spells', 'death-ripple.png'),
 });
 check('it took the first value past the shipped ones', spell.number === SHIPPED_SPELLS,
   `${spell.number}`);
@@ -88,8 +90,22 @@ check('with the school and level it was given',
 // three masteries has to repeat one rather than come out short.
 check('four damage entries, in order',
   (doc.match(/<Base>\d+<\/Base>/g) ?? []).slice(0, 4).join() === '<Base>10</Base>,<Base>15</Base>,<Base>20</Base>,<Base>25</Base>');
+// THE MANA, under the game's own misleading name for it. `TrainedCost` reads
+// like a price at a guild and is what a cast costs: Magic Arrow 4, Plague 6,
+// Fireball 10. Written as zero — which is what this did at first — the book
+// offers a free spell, and nothing anywhere says so.
+check('the mana it costs is in TrainedCost', doc.includes('<TrainedCost>6</TrainedCost>'));
 check('it names texts the mod carries',
   doc.includes(`href="/${p.name}"`) && files.has(p.name) && files.has(p.description));
+// Art of its own: the document points at a texture the mod carries, and both
+// halves of that texture are in it — an xdb naming a .dds that is not there is
+// a spell page with a hole in it, which looks exactly like no spell at all.
+check('its icon is the mod\'s own, in both halves',
+  doc.includes(`<Texture href="/${p.icon}#xpointer(/Texture)"/>`)
+  && files.has(p.icon) && files.has(p.iconDDS));
+check('and the texture is the size the game draws a spell at',
+  files.get(p.iconDDS)?.readUInt32LE(12) === 128 && files.get(p.iconDDS)?.readUInt32LE(16) === 128,
+  `${files.get(p.iconDDS)?.readUInt32LE(16)}x${files.get(p.iconDDS)?.readUInt32LE(12)}`);
 check('and those texts are the game\'s own UTF-16',
   files.get(p.name)?.toString('utf16le', 2) === 'Волна смерти');
 
