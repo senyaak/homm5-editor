@@ -163,6 +163,19 @@ static int __fastcall on_cast_command(void *self, void *edx) {
     log_hex("   +0x28 ", *(DWORD *)((BYTE *)self + 0x28));
     log_hex("   +0x30 ", *(DWORD *)((BYTE *)self + 0x30));
     log_hex("   +0x38 ", *(DWORD *)((BYTE *)self + 0x38));
+    // The engine's own liveness test on the caster, done here rather than
+    // guessed at: Execute reads `[caster+4]`, then `[that+4]` as a displacement,
+    // and refuses when the int at `caster + displacement + 8` is negative. It is
+    // the second of the four early exits and the only one we cannot see from the
+    // block alone.
+    BYTE *caster = (BYTE *)*(DWORD *)((BYTE *)self + 0x20);
+    if (readable_bytes(caster, 8) >= 8) {
+      DWORD *shape = (DWORD *)*(DWORD *)(caster + 4);
+      DWORD at = readable_bytes(shape, 8) >= 8 ? shape[1] : 0xFFFFFFFFu;
+      if (at != 0xFFFFFFFFu && readable_bytes(caster + at, 12) >= 12) {
+        log_num("   the caster's life count ", *(int *)(caster + at + 8));
+      } else log_line("   the caster's life count cannot be read");
+    }
   }
   int answer = g_castCommand(self, edx);
   if (dump) log_num("   the command returned ", answer & 0xFF);
