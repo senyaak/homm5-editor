@@ -142,6 +142,22 @@ static CastCommandFn g_castCommand = NULL;
 /** Non-zero while a command is executing — see the gate's log below. */
 static int g_inCastCommand = 0;
 
+/**
+ * Set while the gate is refusing WITH A REASON — and that is the whole point.
+ *
+ * The gate says no to a spell of ours because it has never heard of the number,
+ * and it does that silently: no reason pushed, no message. Its other refusals —
+ * immunity, no mana, a blocked spell — go through the funnel below first. So
+ * this flag tells "we do not know this spell" apart from "this may not be cast",
+ * and only the first is ours to overrule. Without it we answered yes to
+ * everything, and the ripple could be aimed at a black dragon — which is immune
+ * to magic, and which is exactly what the first run in the game found.
+ *
+ * Declared here rather than beside the funnel because this is one translation
+ * unit read top to bottom: the gate is above, and it is the reader.
+ */
+static int g_gateGaveAReason = 0;
+
 static int __fastcall on_cast_command(void *self, void *edx) {
   int spell = readable_bytes(self, CAST_COMMAND_SPELL + 4) >= CAST_COMMAND_SPELL + 4
       ? *(int *)((BYTE *)self + CAST_COMMAND_SPELL) : -1;
@@ -259,6 +275,7 @@ static int __fastcall on_cast_gate(void *ecx, void *block, void *a1, void *a2, i
                                    void *a4, void *a5, int a6, int a7) {
   int spell = readable_bytes(block, CAST_GATE_SPELL + 4) >= CAST_GATE_SPELL + 4
       ? *(int *)((BYTE *)block + CAST_GATE_SPELL) : -1;
+  g_gateGaveAReason = 0;
   int answer = g_castGate(ecx, block, a1, a2, a3, a4, a5, a6, a7);
   // THE FIRST HALF OF THE BRIDGE. A spell the executable was never compiled
   // against is refused here, silently, and the refusal is not about its
@@ -270,8 +287,13 @@ static int __fastcall on_cast_gate(void *ecx, void *block, void *a1, void *a2, i
   // Ours therefore answers for itself: yes. What that buys is everything the
   // engine does around a cast — the mana, the hero's turn, the animation — and
   // it costs nothing to the game's own spells, whose answer is left alone.
-  if (spell >= FIRST_SPELL_OF_OURS && g_inCastCommand && !(answer & 0xFF)) {
-    log_line("   ours — answering for it: yes");
+  // ONLY THE SILENT REFUSAL IS OURS TO OVERRULE. A named one is the engine
+  // applying a rule that has nothing to do with our number — a black dragon is
+  // immune to magic whatever the spell is — and answering yes over it would make
+  // ours the one spell in the game that ignores immunity.
+  if (spell >= FIRST_SPELL_OF_OURS && g_inCastCommand && !(answer & 0xFF)
+      && !g_gateGaveAReason) {
+    log_line("   ours, and refused without a reason — answering for it: yes");
     answer = 1;
   }
   // Only during a real cast — and OURS keeps its own budget, because one shared
@@ -316,6 +338,7 @@ static const BYTE GATE_REFUSAL_HEAD[GATE_REFUSAL_LEN] = {
 };
 
 static void __cdecl on_gate_refusal(const char *reason) {
+  g_gateGaveAReason = 1;
   log_text("   the gate refuses: ", reason && readable_bytes(reason, 4) >= 4 ? reason : "(unreadable)");
 }
 
