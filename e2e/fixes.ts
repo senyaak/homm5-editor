@@ -204,6 +204,35 @@ const ZOMBIES = { shared: monster('Necropolis', 'Zombie'), count: 100 };
 const AIR_ELEMENTALS = { shared: monster('Neutral', 'Air_Elemental'), count: 500 };
 
 /**
+ * **Волна смерти on four heroes, three of them with Dark Magic** — the first
+ * spell of ours, and the experiment it is here for.
+ *
+ * The four are one variable held at four values, so a single battle each says
+ * what a spell the executable never heard of actually does:
+ *
+ *   knight    the spell and NO Dark Magic — the school it belongs to is not his,
+ *             so this is what an unschooled caster gets, and whether the book
+ *             offers it at all
+ *   wizard    Dark Magic at BASIC
+ *   scholar   at ADVANCED
+ *   warlock   at EXPERT (his, already, for Payback)
+ *
+ * A spell's numbers are four, one per mastery, and the engine picks by the
+ * school the caster holds — so if our damage ever lands, these three say whether
+ * it is picked by mastery or always read from the first entry.
+ *
+ * AND THE QUESTION UNDER ALL OF IT: a spell with nobody to hit is greyed out in
+ * this game. If the engine decides that from a target list it builds itself, our
+ * spell may be unclickable however right its document is — which would be an
+ * answer about the mechanism rather than about the spell, and is the reason the
+ * knight is in the list at all.
+ */
+const DEATH_RIPPLE = 'SPELL_H3_DEATH_RIPPLE';
+
+/** Dark Magic, at the three masteries the four heroes spread across. */
+const DARK = (mastery: string): Skill => ({ id: 'HERO_SKILL_DARK_MAGIC', mastery });
+
+/**
  * The row of heroes, west to east.
  *
  * Each stands two tiles south of the stack he is meant to fight, so a battle is
@@ -216,7 +245,9 @@ export const HEROES: Kit[] = [
     fixes: ['master-of-fire-fix'],
     shared: hero('Academy', 'Astral'),
     at: { x: 8, y: 10 },
-    skills: [{ id: 'HERO_SKILL_DESTRUCTIVE_MAGIC', mastery: M.expert }],
+    // Dark Magic at BASIC — his half of the Death Ripple experiment; his own
+    // test needs Destructive, and the two live side by side.
+    skills: [{ id: 'HERO_SKILL_DESTRUCTIVE_MAGIC', mastery: M.expert }, DARK(M.basic)],
     // Master of Fire only. Empowered Spells is the WARLOCK's class perk, not
     // the Academy's — it went to the warlock with the Armageddon test, because
     // a perk whose class does not match is a perk the game does not grant.
@@ -224,7 +255,7 @@ export const HEROES: Kit[] = [
     // Armageddon to hit everything including the war machines, Fireball for a
     // single stack. Stone Skin is in the book to read the spell's own numbers
     // from, but it is not what moves the defence in this test — see the druids.
-    spells: ['SPELL_ARMAGEDDON', 'SPELL_FIREBALL', 'SPELL_STONESKIN'],
+    spells: ['SPELL_ARMAGEDDON', 'SPELL_FIREBALL', 'SPELL_STONESKIN', DEATH_RIPPLE],
     stats: { offence: 5, defence: 5, spellpower: 20, knowledge: 30 },
     // A tent of his own, so an Armageddon has a war machine to prove itself on.
     ballista: true,
@@ -261,7 +292,13 @@ export const HEROES: Kit[] = [
     // The Black Dragons are what he cannot use it on until the fix, being
     // immune to magic.
     perks: ['HERO_SKILL_RECRUITMENT', 'HERO_SKILL_HOLY_CHARGE', 'HERO_SKILL_ENCOURAGE'],
-    stats: { offence: 10, defence: 10, spellpower: 5, knowledge: 5 },
+    // The unschooled caster: our spell and no Dark Magic behind it. A knight
+    // still gets a spellbook, so the book is the thing being asked about here —
+    // whether the page appears, and whether the button can be pressed.
+    spells: [DEATH_RIPPLE],
+    // Knowledge enough for a couple of casts; he had five of each because
+    // Encourage needs no mana at all.
+    stats: { offence: 10, defence: 10, spellpower: 5, knowledge: 10 },
     army: [
       { creature: 'CREATURE_BLACK_DRAGON', count: 3 },
       { creature: 'CREATURE_SWORDSMAN', count: 30 },
@@ -289,8 +326,10 @@ export const HEROES: Kit[] = [
     // The three that put an obstacle on the field — free every time until the
     // payback fix — and the Armageddon that Empowered Spells turns into the
     // second one, with an id of its own.
+    // …and the Death Ripple at the top of the school: his Dark Magic is already
+    // Expert, so he is the fourth reading with no kit of his own to change.
     spells: ['SPELL_ARCANE_CRYSTAL', 'SPELL_SUMMON_HIVE', 'SPELL_BLADE_BARRIER',
-      'SPELL_ARMAGEDDON'],
+      'SPELL_ARMAGEDDON', DEATH_RIPPLE],
     stats: { offence: 5, defence: 5, spellpower: 15, knowledge: 40 },
     // A war machine of his own, so an empowered Armageddon has one to prove
     // itself on — that is the half of the fix you can see.
@@ -399,7 +438,9 @@ export const HEROES: Kit[] = [
     at: { x: 56, y: 10 },
     // Learning at BASIC: the book gives +1 while he has no Education and +2 at
     // Advanced, so raising it is what makes the mana move — or fail to.
-    skills: [{ id: 'HERO_SKILL_LEARNING', mastery: M.basic }],
+    // Dark Magic at ADVANCED — the middle reading of the Death Ripple.
+    skills: [{ id: 'HERO_SKILL_LEARNING', mastery: M.basic }, DARK(M.advanced)],
+    spells: [DEATH_RIPPLE],
     stats: { offence: 5, defence: 5, spellpower: 10, knowledge: 10 },
     army: [{ creature: 'CREATURE_SWORDSMAN', count: 30 }],
     // Picked up rather than worn, so the mana can be read before and after.

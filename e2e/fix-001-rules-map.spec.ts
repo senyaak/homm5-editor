@@ -21,7 +21,7 @@ import { bar } from './bar.ts';
 import { pickObject, placeAtTile } from './objects.ts';
 import { mapComplaints } from './map-checks.ts';
 import { readEntries } from '../src/format/pak.ts';
-import { LIVE, clearMap, prepareGameRoot } from './mods.ts';
+import { LIVE, clearMap, installSpellFixture, prepareGameRoot } from './mods.ts';
 import {
   ARCHIVE, DATA, FIXES_UNDER_TEST, GAME, HEROES, MAP_DIR, NAME, OPPONENT, OVERRIDE_ALL, PLAYERS,
   TILES,
@@ -44,6 +44,12 @@ test.beforeAll(async () => {
   } else {
     await prepareGameRoot(GAME);
   }
+  // The spells of ours, INTO THE INSTALL FIRST. A hero's `Editable/spells` names
+  // one by id, and an id types.xml does not declare is a map the game refuses
+  // to load — not a hero missing a spell. So the mod that declares them is
+  // installed before anything is built, and it adds to whatever the archive
+  // already holds rather than replacing it.
+  installSpellFixture(GAME);
   // Both halves: New Map refuses to write over a packed map that is already
   // there, so a second run would stop before it started.
   clearMap(GAME, DATA, NAME);

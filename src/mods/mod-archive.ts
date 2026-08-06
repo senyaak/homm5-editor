@@ -14,9 +14,10 @@ import { basename, dirname, join } from 'node:path';
 import { extract, readEntries, readEntryFrom, readIndex, writeArchive } from '../format/pak.ts';
 import { MOD_DIR, ensureModDir, modFile } from '../game/mod-paths.ts';
 import { setArtifactLimit } from '../exe/artifact-limit.ts';
-import { HERO_CLASS_TABLE, HERO_SKILL_TABLE, setTableLimit } from '../exe/table-limit.ts';
+import { HERO_CLASS_TABLE, HERO_SKILL_TABLE, SPELL_TABLE, setTableLimit } from '../exe/table-limit.ts';
 import { SHIPPED_CLASSES } from './hero-classes.ts';
 import { SHIPPED_SKILLS } from './hero-skills.ts';
+import { SHIPPED_SPELLS } from './spells.ts';
 import { setCreatureLimit } from '../exe/creature-limit.ts';
 import { SHIPPED_CREATURES, creatureRoot, readStats } from './creatures.ts';
 import { artifactLimit, creatureLimit } from './mod-model.ts';
@@ -102,6 +103,10 @@ export function installCreatureMod(gameRoot: string, mod: CreatureMod, archive: 
   const tables = [
     mod.classes?.length ? setTableLimit(gameRoot, HERO_CLASS_TABLE, SHIPPED_CLASSES + mod.classes.length) : null,
     mod.skills?.length ? setTableLimit(gameRoot, HERO_SKILL_TABLE, SHIPPED_SKILLS + mod.skills.length) : null,
+    // And a fifth. The spell table is the one with a LIVE accessor beside its
+    // registration, so both numbers move — setTableLimit does that itself, and
+    // it is the half the skill table lost a day to.
+    mod.spells?.length ? setTableLimit(gameRoot, SPELL_TABLE, SHIPPED_SPELLS + mod.spells.length) : null,
   ].filter((r): r is TableExeResult => r !== null);
   ensureModDir(gameRoot);
   const target = modFile(gameRoot, 'mod', mod.stem);

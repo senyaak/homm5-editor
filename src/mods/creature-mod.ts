@@ -83,6 +83,9 @@ import {
   CLASS_TABLE, classNameFile, patchClassTable, patchClassTypes, patchSkillPrerequisites,
 } from './hero-classes.ts';
 import { SKILL_TABLE, patchSkillTable, patchSkillTypes, skillPictures, skillTexts } from './hero-skills.ts';
+import {
+  SPELL_TABLE_FILE, patchSpellTable, patchSpellTypes, spellDocument, spellPaths,
+} from './spells.ts';
 
 /** The camera the hire dialog uses. CREATURE_UNKNOWN already sits on this one. */
 const HIRE_CAMERA = '/Cameras/Interface/HireCreatures.(Camera).xdb#xpointer(/Camera)';
@@ -210,8 +213,9 @@ export function buildCreatureMod(mod: CreatureMod, read: DataReader): BuildRepor
   // move together or the game reads a table it will not use.
   const classes = mod.classes ?? [];
   const skills = mod.skills ?? [];
+  const spells = mod.spells ?? [];
   if (mod.creatures.length || artifacts.length || sets.length || specializations.length
-    || classes.length || skills.length) {
+    || classes.length || skills.length || spells.length) {
     let types = mustRead(read, TYPES);
     if (mod.creatures.length) types = patchTypes(types, mod, limit);
     if (artifacts.length) types = patchArtifactTypes(types, artifacts);
@@ -222,6 +226,9 @@ export function buildCreatureMod(mod: CreatureMod, read: DataReader): BuildRepor
     if (specializations.length) types = patchSpecializationTypes(types, specializations);
     if (classes.length) types = patchClassTypes(types, classes);
     if (skills.length) types = patchSkillTypes(types, skills);
+    // A spell is a reference table too — and the one whose size types.xml states
+    // three times, `MinElements` included.
+    if (spells.length) types = patchSpellTypes(types, spells);
     // The editor's own creature abilities — tags, which do nothing until
     // something asks about them. Shipped with any mod that has creatures, so
     // that the id a creature's record names always exists in the table beside
@@ -275,6 +282,22 @@ export function buildCreatureMod(mod: CreatureMod, read: DataReader): BuildRepor
       data: Buffer.from(patchStartupScript(mustRead(read, STARTUP_SCRIPT), artifacts), 'latin1'),
     });
   }
+  // A spell of ours: its own document, its two texts, and a line in the table
+  // every spell in the game shares. The ceiling in the executable is set at
+  // install time, beside the class and skill ones (src/mods/mod-archive.ts).
+  if (spells.length) {
+    files.push({
+      path: SPELL_TABLE_FILE,
+      data: Buffer.from(patchSpellTable(mustRead(read, SPELL_TABLE_FILE), spells), 'latin1'),
+    });
+    for (const s of spells) {
+      const p = spellPaths(s);
+      files.push({ path: p.document, data: Buffer.from(spellDocument(s), 'latin1') });
+      files.push({ path: p.name, data: utf16(s.name) });
+      files.push({ path: p.description, data: utf16(s.description) });
+    }
+  }
+
   // ONE DefaultStats.xdb, for the same reason there is one types.xml: two copies
   // in one archive and the second wins whole, taking the other edit with it. A
   // set describes itself here, and a creature says what necromancy raises it as.

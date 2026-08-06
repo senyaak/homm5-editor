@@ -12,7 +12,7 @@ import { DATA, REPO_ROOT } from './launch.ts';
 import { buildCreatureMod } from '../src/mods/creature-mod.ts';
 import {
   addArtifact, addArtifactSet, addBuilding, addCreature, addHero, addHeroClass, addHeroSkill,
-  addSpecialization, newCreatureMod,
+  addSpecialization, addSpell, newCreatureMod, updateSpell,
   removeBuilding,
   updateArtifact, updateArtifactSet,
 } from '../src/mods/mod-model.ts';
@@ -34,6 +34,7 @@ import { decodeDDSBuffer } from '../src/format/dds.ts';
 import { writeEffectsFile } from '../src/mods/extension.ts';
 import { effectsOf, skillRowsOf, specializationRowsOf } from '../src/mods/artifact-effects.ts';
 import { takenSpecializations } from '../src/mods/specializations.ts';
+import { takenSpells } from '../src/mods/spells.ts';
 
 /**
  * `--noRemove`: do the work in the REAL install and leave it standing.
@@ -610,6 +611,47 @@ export const TENT_PERKS = [
 }));
 
 /**
+ * **Death Ripple**, Heroes III's — the first spell of our own.
+ *
+ * WHY IT IS THE ONE TO PORT FIRST. It has no target to pick, no animation to
+ * miss and one sentence of rules ("every living stack takes the damage, the
+ * undead do not"), so what a run of it answers is the question underneath: does
+ * the engine carry a spell it was never compiled against — into the book, onto
+ * the page, through the click — and what does it do when the cast arrives.
+ *
+ * The numbers are OURS, not Heroes III's transcribed: that game's ripple deals
+ * a flat amount plus spell power, on a scale where a hero has 10 power and a
+ * peasant 1 hit point. These follow the shape Heroes V uses for a damage spell
+ * — base and per-power, once per mastery of the school — with Armageddon's
+ * (9/12/15/30) as the reference for what a level-5 spell is worth, scaled down
+ * for a level 2. They will want a pass once the damage is really landing.
+ *
+ * The icon is the shipped Plague's, borrowed: a spell with no texture is a hole
+ * in the spellbook, and a hole is indistinguishable from the spell not being
+ * there at all — which is the very thing the first run has to tell apart.
+ */
+export const DEATH_RIPPLE = {
+  id: 'SPELL_H3_DEATH_RIPPLE',
+  file: 'H3DeathRipple',
+  name: 'Волна смерти',
+  description: 'Волна смерти проходит по полю боя и ранит всё живое. Нежить она не трогает.',
+  level: 2,
+  school: 'MAGIC_SCHOOL_DARK',
+  // As Armageddon has it: everyone on the field is fair game, so there is
+  // nobody to pick and no side to check.
+  target: 'TARGET_NEUTRAL',
+  aimed: false,
+  areaAttack: false,
+  damage: [
+    { base: 10, perPower: 10 },
+    { base: 15, perPower: 15 },
+    { base: 20, perPower: 20 },
+    { base: 25, perPower: 25 },
+  ],
+  icon: '/Textures/SpellBook______2618/Spells/Spell_Plague.xdb#xpointer(/Texture)',
+};
+
+/**
  * Where the mod archive is kept before a run takes it away.
  *
  * ONE slot, overwritten each time: an undo for the clear that just happened,
@@ -800,6 +842,33 @@ export function installMapFixture(gameRoot: string): CreatureMod {
   // own description promised 15%.
   writeEffectsFile(gameRoot, effectsOf(mod.artifacts ?? [], mod.sets ?? []),
     specializationRowsOf(mod.specializations ?? []), skillRowsOf(mod.skills ?? []));
+  return mod;
+}
+
+/**
+ * Put the spells of ours into the installed mod, and nothing else.
+ *
+ * Its own entry point because the rules map wants them without wanting the
+ * creature, the palace, the artifacts or Gem: that map is a stand for watching
+ * BEHAVIOUR, and every fixture it does not need is a way for it to differ from
+ * the map somebody plays. Added when missing and updated when there, so running
+ * it twice changes nothing.
+ *
+ * The spell must exist in the install BEFORE the map is built: a hero's
+ * `Editable/spells` names it by id, and an id types.xml does not declare is a
+ * map the game refuses rather than a hero without a spell.
+ */
+export function installSpellFixture(gameRoot: string): CreatureMod {
+  const archive = modFile(gameRoot, 'mod', MOD);
+  const mod = (existsSync(archive) ? readCreatureMod(archive)?.mod : null) ?? newCreatureMod(MOD);
+  const spec = { ...DEATH_RIPPLE };
+  if ((mod.spells ?? []).some((s) => s.id === DEATH_RIPPLE.id)) {
+    updateSpell(mod, DEATH_RIPPLE.id, spec);
+  } else {
+    addSpell(mod, spec, takenSpells(readFileSync(join(DATA, 'types.xml'), 'latin1')));
+  }
+  const report = buildCreatureMod(mod, dataReader(DATA));
+  installCreatureMod(gameRoot, mod, packCreatureMod(report));
   return mod;
 }
 

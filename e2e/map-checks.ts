@@ -24,6 +24,17 @@ import { FIXES_UNDER_TEST, HEROES, OPPONENT } from './fixes.ts';
 import type { Kit } from './fixes.ts';
 import { kitComplaints, skillRules } from './perk-rules.ts';
 import { QOL_FLAGS } from '../src/mods/qol.ts';
+import { takenSpells } from '../src/mods/spells.ts';
+import { DEATH_RIPPLE } from './mods.ts';
+
+/**
+ * Spells the MOD adds, which the shipped types.xml naturally does not list.
+ *
+ * One entry so far. It is here rather than inferred so that a typo in a kit is
+ * still caught: an unknown spell is an error, and a spell of ours is an error
+ * until it is written down as ours.
+ */
+const OUR_SPELLS = new Set<string>([DEATH_RIPPLE.id]);
 
 /**
  * How many creatures a side needs when the result is read from a LOG.
@@ -104,6 +115,21 @@ export function mapComplaints(dataRoot: string): string[] {
       if (!creatures.has(stack.creature)) {
         said.push(`${kit.key}: no such creature as ${stack.creature}`);
       }
+    }
+  }
+
+  // 3b. Every spell named is one the game has — or one the mod adds.
+  //
+  //     A hero's `Editable/spells` names a spell by id, and an id types.xml does
+  //     not declare is a map the game refuses to load: not a hero missing a
+  //     spell, the whole map. Spells of ours are legal here and the fixture
+  //     installs them before the map is built (installSpellFixture), so they are
+  //     named as what they are rather than left to look like typos.
+  const spells = takenSpells(readFileSync(join(dataRoot, 'types.xml'), 'latin1'));
+  for (const kit of kits) {
+    for (const spell of kit.spells ?? []) {
+      if (spells.has(spell) || OUR_SPELLS.has(spell)) continue;
+      said.push(`${kit.key}: no such spell as ${spell} — a map naming one is a map that will not load`);
     }
   }
 

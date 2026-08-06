@@ -18,6 +18,8 @@ import { SHIPPED_ARTIFACTS } from './artifacts.ts';
 import { SHIPPED_SPECIALIZATIONS } from './specializations.ts';
 import { SHIPPED_CLASSES, classProblems } from './hero-classes.ts';
 import { SHIPPED_SKILLS, skillProblems } from './hero-skills.ts';
+import { SHIPPED_SPELLS } from './spells.ts';
+import type { ModSpell, SpellSpec } from './spells.ts';
 import { ORIGINAL_ARTIFACTS } from '../exe/artifact-limit.ts';
 import { MOD_STEM } from './mod-files.ts';
 import type { CreatureStats } from './creatures.ts';
@@ -197,6 +199,16 @@ export interface CreatureMod {
    * See src/mods/hero-skills.ts.
    */
   skills?: ModHeroSkill[];
+  /**
+   * Spells of our own — one entry in the table every spell, hero ability and
+   * creature ability shares, plus the two numbers the executable keeps.
+   *
+   * The same bargain again, and the sharpest version of it: the game will put
+   * ours in the spellbook, name it, draw it and let it be cast, and the cast
+   * will do nothing, because what a spell DOES is compiled against its value.
+   * The extension catches the cast and hands it to Lua. See src/mods/spells.ts.
+   */
+  spells?: ModSpell[];
 }
 
 /** One in a mod: a spec plus the id number it holds. */
@@ -276,7 +288,8 @@ export function newCreatureMod(stem = MOD_STEM): CreatureMod {
 export function modIsEmpty(mod: CreatureMod): boolean {
   return !mod.creatures.length && !mod.dwellings.length && !(mod.buildings ?? []).length
     && !(mod.artifacts ?? []).length && !(mod.sets ?? []).length && !(mod.heroes ?? []).length
-    && !(mod.specializations ?? []).length && !(mod.classes ?? []).length && !(mod.skills ?? []).length;
+    && !(mod.specializations ?? []).length && !(mod.classes ?? []).length && !(mod.skills ?? []).length
+    && !(mod.spells ?? []).length;
 }
 
 /**
@@ -363,6 +376,38 @@ export function addHeroSkill(
   const s: ModHeroSkill = { ...spec, number: SHIPPED_SKILLS + mod.skills.length };
   mod.skills.push(s);
   return s;
+}
+
+/**
+ * Append a spell and give it the next enum value.
+ *
+ * Append-only for the reason every numbered thing here is: the NUMBER is what a
+ * hero's spellbook, a map and a save store, so a list that reshuffled would
+ * repoint every spell after the change — the game's own included, since ours sit
+ * after them in one table.
+ */
+export function addSpell(
+  mod: CreatureMod, spec: SpellSpec, taken: ReadonlySet<string> = new Set(),
+): ModSpell {
+  if (!mod.spells) mod.spells = [];
+  if (!/^SPELL_[A-Z0-9_]+$/.test(spec.id)) throw new Error(`${spec.id} is not a usable spell id`);
+  if (taken.has(spec.id)) throw new Error(`${spec.id} is the game's own spell`);
+  if (mod.spells.some((s) => s.id === spec.id)) throw new Error(`${spec.id} is already in the mod`);
+  if (!spec.file.trim()) throw new Error(`${spec.id}: a spell needs an identifier for its files`);
+  if (!spec.name.trim()) throw new Error(`${spec.id}: a spell needs a name`);
+  const s: ModSpell = { ...spec, number: SHIPPED_SPELLS + mod.spells.length };
+  mod.spells.push(s);
+  return s;
+}
+
+/** Change one already in the mod, keeping its value. */
+export function updateSpell(mod: CreatureMod, id: string, spec: SpellSpec): ModSpell {
+  const at = (mod.spells ?? []).findIndex((s) => s.id === id);
+  if (at < 0) throw new Error(`${id} is not in the mod`);
+  if (spec.id !== id) throw new Error(`a spell cannot be renamed — ${id} is what spellbooks store`);
+  const updated: ModSpell = { ...spec, number: SHIPPED_SPELLS + at };
+  mod.spells![at] = updated;
+  return updated;
 }
 
 /** Change one already in the mod, keeping its value. */
