@@ -25,7 +25,7 @@ import type { Kit } from './fixes.ts';
 import { kitComplaints, skillRules } from './perk-rules.ts';
 import { QOL_FLAGS } from '../src/mods/qol.ts';
 import { takenSpells } from '../src/mods/spells.ts';
-import { DEATH_RIPPLE } from './mods.ts';
+import { DEATH_RIPPLE, TEST_ARMAGEDDON } from './mods.ts';
 
 /**
  * Spells the MOD adds, which the shipped types.xml naturally does not list.
@@ -34,7 +34,7 @@ import { DEATH_RIPPLE } from './mods.ts';
  * still caught: an unknown spell is an error, and a spell of ours is an error
  * until it is written down as ours.
  */
-const OUR_SPELLS = new Set<string>([DEATH_RIPPLE.id]);
+const OUR_SPELLS = new Set<string>([DEATH_RIPPLE.id, TEST_ARMAGEDDON.id]);
 
 /**
  * How many creatures a side needs when the result is read from a LOG.

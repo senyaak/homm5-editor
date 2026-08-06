@@ -660,6 +660,45 @@ export const DEATH_RIPPLE = {
 };
 
 /**
+ * **A copy of Armageddon under an id of ours** — the control in the experiment.
+ *
+ * The gate refuses our Death Ripple silently while Armageddon, cast by the same
+ * hero in the same battle with a byte-identical command block, goes through. Two
+ * things could account for that and they call for opposite work:
+ *
+ *   the DOCUMENT — the school, the level, the target kind, the mana; then the
+ *     fix is to write the right fields and no code is needed;
+ *   the ID — the engine deciding what a spell may touch from a switch it was
+ *     compiled with; then nothing in data can help and the extension has to
+ *     carry the cast itself.
+ *
+ * So this one differs from Armageddon in exactly one thing: its number. Every
+ * field is copied from `Armageddon.xdb` — destructive, level 5, 20 mana, 9/12/15/30
+ * base and per-power, no target, no area. If it casts, the fields are the answer;
+ * if it is refused too, the id is, and the two runs cost one battle between them.
+ */
+export const TEST_ARMAGEDDON = {
+  id: 'SPELL_H3_TEST_ARMAGEDDON',
+  file: 'H3TestArmageddon',
+  name: 'Армагеддон (наш)',
+  description: 'Копия армагеддона под нашим номером — чтобы отделить поля документа от идентификатора.',
+  level: 5,
+  manaCost: 20,
+  school: 'MAGIC_SCHOOL_DESTRUCTIVE',
+  target: 'TARGET_NEUTRAL',
+  aimed: false,
+  areaAttack: false,
+  element: 'ELEMENT_FIRE',
+  damage: [
+    { base: 9, perPower: 9 },
+    { base: 12, perPower: 12 },
+    { base: 15, perPower: 15 },
+    { base: 30, perPower: 30 },
+  ],
+  icon: '/Textures/SpellBook______2618/Spells/Spell_Armageddon.xdb#xpointer(/Texture)',
+};
+
+/**
  * Where the mod archive is kept before a run takes it away.
  *
  * ONE slot, overwritten each time: an undo for the clear that just happened,
@@ -869,11 +908,12 @@ export function installMapFixture(gameRoot: string): CreatureMod {
 export function installSpellFixture(gameRoot: string): CreatureMod {
   const archive = modFile(gameRoot, 'mod', MOD);
   const mod = (existsSync(archive) ? readCreatureMod(archive)?.mod : null) ?? newCreatureMod(MOD);
-  const spec = { ...DEATH_RIPPLE };
-  if ((mod.spells ?? []).some((s) => s.id === DEATH_RIPPLE.id)) {
-    updateSpell(mod, DEATH_RIPPLE.id, spec);
-  } else {
-    addSpell(mod, spec, takenSpells(readFileSync(join(DATA, 'types.xml'), 'latin1')));
+  const taken = takenSpells(readFileSync(join(DATA, 'types.xml'), 'latin1'));
+  // Both of them, in this order and never reordered: the NUMBER is what a map
+  // stores, so the ripple stays 353 and the control 354 however often this runs.
+  for (const spec of [{ ...DEATH_RIPPLE }, { ...TEST_ARMAGEDDON }]) {
+    if ((mod.spells ?? []).some((s) => s.id === spec.id)) updateSpell(mod, spec.id, spec);
+    else addSpell(mod, spec, taken);
   }
   const report = buildCreatureMod(mod, dataReader(DATA));
   installCreatureMod(gameRoot, mod, packCreatureMod(report));

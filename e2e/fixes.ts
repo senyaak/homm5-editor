@@ -228,6 +228,8 @@ const AIR_ELEMENTALS = { shared: monster('Neutral', 'Air_Elemental'), count: 500
  * knight is in the list at all.
  */
 const DEATH_RIPPLE = 'SPELL_H3_DEATH_RIPPLE';
+/** The control: Armageddon's every field under a number of ours. */
+const TEST_ARMAGEDDON = 'SPELL_H3_TEST_ARMAGEDDON';
 
 /** Dark Magic, at the three masteries the four heroes spread across. */
 const DARK = (mastery: string): Skill => ({ id: 'HERO_SKILL_DARK_MAGIC', mastery });
@@ -255,7 +257,7 @@ export const HEROES: Kit[] = [
     // Armageddon to hit everything including the war machines, Fireball for a
     // single stack. Stone Skin is in the book to read the spell's own numbers
     // from, but it is not what moves the defence in this test — see the druids.
-    spells: ['SPELL_ARMAGEDDON', 'SPELL_FIREBALL', 'SPELL_STONESKIN', DEATH_RIPPLE],
+    spells: ['SPELL_ARMAGEDDON', 'SPELL_FIREBALL', 'SPELL_STONESKIN', DEATH_RIPPLE, TEST_ARMAGEDDON],
     stats: { offence: 5, defence: 5, spellpower: 20, knowledge: 30 },
     // A tent of his own, so an Armageddon has a war machine to prove itself on.
     ballista: true,
