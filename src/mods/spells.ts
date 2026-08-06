@@ -143,6 +143,57 @@ export interface ModSpell extends SpellSpec {
 /** The size every shipped spell icon is drawn at. */
 export const SPELL_ICON_SIZE = 128;
 
+/**
+ * The three flags that make a creature NOT living, and the one that makes it
+ * untouchable by magic.
+ *
+ * WHY THE LIVING ONE IS NOT IN THE LIST. `ABILITY_FLESH_AND_BLOOD` exists, has
+ * a name and a description, and is carried by NONE of the 191 creatures — the
+ * game prints «Живое существо» itself when none of the other three is there.
+ * Senya's screenshots show the three as one line each and never together, so
+ * the kind is one field with three values and the fourth is its absence.
+ *
+ * So a script of ours asks the same question the same way round: not "is it
+ * flesh and blood" — nothing would ever answer yes — but "is it none of these".
+ */
+export const NOT_LIVING = ['ABILITY_UNDEAD', 'ABILITY_ELEMENTAL', 'ABILITY_MECHANICAL'] as const;
+export const MAGIC_PROOF = 'ABILITY_IMMUNITY_TO_MAGIC';
+
+/**
+ * Lua lines declaring which creatures a battle script must skip — read out of
+ * the game's own creature records at build time.
+ *
+ * GENERATED, NEVER TYPED. The lists are what the data says today, so a creature
+ * the mod adds tomorrow is in them without anybody remembering to add it, and a
+ * creature the game patches is too. A hand-written list is a list that is wrong
+ * the first time anything changes.
+ */
+export function creatureKindLines(kinds: {
+  notLiving: readonly string[]; magicProof: readonly string[];
+}): string[] {
+  const table = (name: string, ids: readonly string[]): string[] => [
+    `${name} = {};`,
+    ...ids.map((id) => `${name}[${id}] = 1;`),
+  ];
+  return [
+    '-- Which creatures a spell of ours must skip. Generated from the game data',
+    '-- when the mod was built: the id is the key, so a lookup is one index.',
+    ...table('H5E_NOT_LIVING', kinds.notLiving),
+    ...table('H5E_MAGIC_PROOF', kinds.magicProof),
+    '',
+    '-- «Живое существо» is not a flag any creature carries — the game prints it',
+    '-- when none of the three kinds is there, so this asks it the same way.',
+    'function H5EIsLiving(creature)',
+    '\treturn H5E_NOT_LIVING[creature] == nil;',
+    'end;',
+    '',
+    'function H5EIsMagicProof(creature)',
+    '\treturn H5E_MAGIC_PROOF[creature] ~= nil;',
+    'end;',
+    '',
+  ];
+}
+
 /** Where a spell's battle script sits — beside the skills', loaded the same way. */
 export const spellScriptPath = (s: SpellSpec): string =>
   `scripts/homm5-editor/${s.file}-spell.lua`;

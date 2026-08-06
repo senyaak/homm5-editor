@@ -84,8 +84,8 @@ import {
 } from './hero-classes.ts';
 import { SKILL_TABLE, patchSkillTable, patchSkillTypes, skillPictures, skillTexts } from './hero-skills.ts';
 import {
-  SPELL_ICON_SIZE, SPELL_TABLE_FILE, patchSpellTable, patchSpellTypes, spellCombatScripts,
-  spellDocument, spellPaths, spellScriptFile,
+  MAGIC_PROOF, NOT_LIVING, SPELL_ICON_SIZE, SPELL_TABLE_FILE, creatureKindLines, patchSpellTable,
+  patchSpellTypes, spellCombatScripts, spellDocument, spellPaths, spellScriptFile,
 } from './spells.ts';
 
 /** The camera the hire dialog uses. CREATURE_UNKNOWN already sits on this one. */
@@ -347,7 +347,10 @@ export function buildCreatureMod(mod: CreatureMod, read: DataReader): BuildRepor
     // Two files: the game's own with one line added, and ours behind that line.
     // Separate chunks — see COMBAT_RUNTIME in src/mods/skill-scripts.ts for what
     // sharing one chunk with the game cost.
-    const runtime = combatRuntimeFile(skills, spellCombatScripts(spells));
+    // The kind tables ride with the runtime, because a spell's script is what
+    // reads them and both are rewritten by the same build.
+    const runtime = combatRuntimeFile(skills, spellCombatScripts(spells),
+      spells.length ? creatureKindLines(creatureKinds(read, mod)) : []);
     files.push({
       path: COMBAT_STARTUP,
       data: Buffer.from(patchCombatStartup(mustRead(read, COMBAT_STARTUP), skills), 'latin1'),
@@ -550,6 +553,38 @@ function patchTransformTable(stats: string, creatures: readonly ModCreature[]): 
   return insertBeforeLine(stats, close, raised.flatMap((c) => [
     '<Item>', `\t<Dead>${c.id}</Dead>`, `\t<Rise>${c.raisedAs}</Rise>`, '</Item>',
   ]));
+}
+
+/**
+ * Which creatures are not living, and which magic cannot touch — read out of
+ * the game's own records, plus whatever the mod adds.
+ *
+ * The reference table names a document per creature and the abilities live in
+ * that document, so this walks the table. A creature whose file cannot be read
+ * is treated as living: the flags are what make an exception, and inventing one
+ * from a missing file would make a spell skip a stack for no reason anybody
+ * could see.
+ */
+function creatureKinds(read: DataReader, mod: CreatureMod): {
+  notLiving: string[]; magicProof: string[];
+} {
+  const notLiving: string[] = [];
+  const magicProof: string[] = [];
+  const table = read(REF_TABLE)?.toString('latin1') ?? '';
+  for (const m of table.matchAll(/<ID>(CREATURE_\w+)<\/ID>\s*<Obj href="([^"#]+)/g)) {
+    const body = read(m[2]!.replace(/^\//, ''))?.toString('latin1');
+    if (!body) continue;
+    const abilities = /<Abilities>([\s\S]*?)<\/Abilities>/.exec(body)?.[1] ?? '';
+    if (NOT_LIVING.some((flag: string) => abilities.includes(flag))) notLiving.push(m[1]!);
+    if (abilities.includes(MAGIC_PROOF)) magicProof.push(m[1]!);
+  }
+  // And ours, which are not in the shipped table at all — the mod knows their
+  // abilities without reading anything.
+  for (const c of mod.creatures) {
+    if (NOT_LIVING.some((flag: string) => c.stats.abilities.includes(flag))) notLiving.push(c.id);
+    if (c.stats.abilities.includes(MAGIC_PROOF)) magicProof.push(c.id);
+  }
+  return { notLiving, magicProof };
 }
 
 /** UIGameRoot: one camera entry, listing every creature we added. */

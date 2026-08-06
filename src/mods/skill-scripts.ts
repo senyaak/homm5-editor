@@ -193,6 +193,8 @@ export const COMBAT_RUNTIME = `${SCRIPT_DIR}/combat.lua`;
 /** That file: the trigger runtime, then a doFile per battle script of ours. */
 export function combatRuntimeFile(
   skills: readonly ModHeroSkill[], spells: readonly string[] = [],
+  /** Lua the spells' scripts read — which creatures are living, which magic-proof. */
+  kinds: readonly string[] = [],
 ): { path: string; text: string } {
   return {
     path: COMBAT_RUNTIME,
@@ -202,6 +204,10 @@ export function combatRuntimeFile(
       '',
       ...COMBAT_TRIGGER_RUNTIME,
       '',
+      // What the game's data says about creatures, as tables — generated, so a
+      // creature added or patched tomorrow is in them without anybody editing a
+      // list. Above the scripts, because the scripts read them.
+      ...kinds,
       // A skill's battle script and a spell's are loaded the same way and from
       // the same place: the runtime is above them, so by the time either runs
       // `H5EOnSpellCast` and its neighbours are defined.
