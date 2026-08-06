@@ -84,6 +84,21 @@ export const HERO_SKILL_TABLE: TableSpec = {
   shipped: 221,
 };
 
+/**
+ * The spell table — every spell, hero ability and creature ability effect, in
+ * one list. `SPELL_NONE` = 0 through `SPELL_EFFECT_FIRST_AID_TENT_PLAGUE` = 352.
+ *
+ * Registered with a `push imm32`, so unlike the hero classes there is no 127 to
+ * bump into. It also has a LIVE accessor with twelve callers, which is the half
+ * that decides whether a spell past the shipped count is offered at all — the
+ * skill table taught that the expensive way.
+ */
+export const SPELL_TABLE: TableSpec = {
+  what: 'spells',
+  path: '/GameMechanics/RefTables/UndividedSpells.xdb',
+  shipped: 353,
+};
+
 /** Where the count sits in the file, and how wide the instruction holds it. */
 export interface LoadSite {
   /** File offset of the immediate itself, not of the opcode. */
