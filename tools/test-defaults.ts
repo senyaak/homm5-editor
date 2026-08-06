@@ -82,7 +82,7 @@ function testOverDonor(): void {
   console.log('\nDEFAULTS OVER A TUNED DONOR');
   const map = blankMap();
   const { object } = map.addObject({
-    type: 'AdvMapMonster', shared: '/MapObjects/New.xdb', x: 1, y: 2, donor: TUNED_MONSTER,
+    type: 'AdvMapMonster', shared: '/MapObjects/New.xdb#xpointer(/AdvMapMonsterShared)', x: 1, y: 2, donor: TUNED_MONSTER,
   });
   const f = (n: string): string => childText(object.el, n);
   check('Amount is 0, not the donor’s 4', f('Amount') === '0', f('Amount'));
@@ -108,14 +108,42 @@ function testOverDonor(): void {
   // And the placement's own values survive the defaults pass.
   check('position is the placement’s, not the donor’s',
     object.pos?.x === 1 && object.pos?.y === 2, JSON.stringify(object.pos));
-  check('shared is the placement’s', object.shared === '/MapObjects/New.xdb', String(object.shared));
+  // WHOLE, fragment and all: a `<Shared>` names the document AND the class in
+  // it, and the game resolves neither half alone — an object whose reference
+  // lost its `#xpointer` is not on the map, however complete it looks here.
+  check('shared is the placement’s, fragment and all',
+    object.shared === '/MapObjects/New.xdb#xpointer(/AdvMapMonsterShared)', String(object.shared));
+}
+
+/**
+ * A path with no class in it is refused, loudly.
+ *
+ * It used to be written down as given and the placement reported complete —
+ * and the game then said «PlayerN has no heroes and no towns», followed by
+ * «Start player does not exist», with the object simply not on the map. Three
+ * sentences, none of them about a missing `#xpointer`. Refusing where the
+ * mistake is made is the whole of the fix; the editor's own placements never
+ * hit it, since the palette hands its entry over whole.
+ */
+function testSharedIsWhole(): void {
+  console.log('\nA SHARED REFERENCE IS A DOCUMENT AND A CLASS');
+  const map = blankMap();
+  const place = (shared: string): string => {
+    try {
+      map.addObject({ type: 'AdvMapMonster', shared, x: 3, y: 3, donor: TUNED_MONSTER });
+      return '';
+    } catch (e) { return String((e as Error).message); }
+  };
+  check('a bare path is refused', place('/MapObjects/New.xdb').includes('#xpointer'));
+  check('and so is nothing at all', place('') !== '');
+  check('a whole href is placed', place('/MapObjects/New.xdb#xpointer(/AdvMapMonsterShared)') === '');
 }
 
 function testNaming(): void {
   console.log('\nNAMING');
   const map = blankMap();
   const place = (type: string, name?: string): string =>
-    map.addObject({ type, shared: '/x.xdb', x: 0, y: 0, donor: TUNED_MONSTER.replace(/AdvMapMonster/g, type), ...(name ? { name } : {}) }).object.name;
+    map.addObject({ type, shared: `/x.xdb#xpointer(/${type}Shared)`, x: 0, y: 0, donor: TUNED_MONSTER.replace(/AdvMapMonster/g, type), ...(name ? { name } : {}) }).object.name;
 
   check('a new object is never nameless', place('AdvMapMonster') === 'MONSTER_001');
   check('numbering continues per type', place('AdvMapMonster') === 'MONSTER_002');
@@ -179,7 +207,7 @@ function testAgainstReference(ref: Map<string, XmlElement>, what: string): void 
   for (const [type, refBody] of [...ref].sort()) {
     const map = blankMap();
     const donor = `<Item href="#n:inline(${type})">${serialize(refBody)}</Item>`;
-    const { object } = map.addObject({ type, shared: '/x.xdb', x: 0, y: 0, donor });
+    const { object } = map.addObject({ type, shared: `/x.xdb#xpointer(/${type}Shared)`, x: 0, y: 0, donor });
     // The reference object was placed and left alone, so donor === expected.
     const diffs: string[] = [];
     for (const name of Object.keys(objectProps(type))) {
@@ -199,6 +227,7 @@ function testAgainstReference(ref: Map<string, XmlElement>, what: string): void 
 
 testOverDonor();
 testNaming();
+testSharedIsWhole();
 
 /**
  * Against the GAME'S OWN SPEC — `<data>/types.xml`, which declares every type's

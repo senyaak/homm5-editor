@@ -189,7 +189,18 @@ test('holds against the original: objects, settings, terrain, texts', async () =
   const DELIBERATE = /diraya|sharpshooterpalace|no counterpart — 1\/(11|20)|never places — 1 of 10|the original does not — 1$/i;
   expect(gaps('diff-objects.ts', refXdb, ourXdb).filter((l) => !DELIBERATE.test(l)),
     'object differences beyond the one placement ours will not reproduce').toEqual([]);
-  expect(gaps('diff-map.ts', refXdb, ourXdb), 'setting differences').toEqual([]);
+  // And ONE deliberate setting difference: our map says where each player
+  // begins and the hand-made original does not. The editor writes MainHero when
+  // a hero is given an owner (src/map/players.ts) — an active player with no
+  // main hero is what "start player does not exist" is made of, so the original
+  // being empty here is the older, worse map, not the standard to match.
+  const MAIN_HERO = /players\[\d+\]\.MainHero: ref "" vs ours "#xpointer\(/;
+  const settings = gaps('diff-map.ts', refXdb, ourXdb);
+  // The block's own header goes only when EVERY player difference under it is
+  // that one — otherwise a real difference would be hidden by the same filter.
+  const onlyMainHero = settings.filter((l) => /players\[\d+\]\./.test(l)).every((l) => MAIN_HERO.test(l));
+  expect(settings.filter((l) => !(onlyMainHero && (MAIN_HERO.test(l) || /DIFF\s+players\b/.test(l)))),
+    'setting differences beyond the start each player now has').toEqual([]);
   // The terrain was never touched: the blank 72×72 the original started from.
   // Every DATA plane must match; the one allowed difference is the container's
   // byte length — the original's template carries trailer padding our splice

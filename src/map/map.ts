@@ -210,7 +210,12 @@ export class MapObject {
 export interface NewObject {
   /** Element name, e.g. 'AdvMapStatic'. */
   type: string;
-  /** Shared-definition href, straight from the palette entry. */
+  /**
+   * Shared-definition href, straight from the palette entry.
+   *
+   * A PATH ALONE IS NOT ONE. See sharedHref() — it is completed here, so a
+   * caller that has only the file may hand that over.
+   */
   shared: string;
   x: number;
   y: number;
@@ -667,8 +672,22 @@ export class HommMap {
     // A fresh identity: reusing the donor's id would give two objects the same
     // handle, and the renderer keys its meshes by it.
     setAttr(item, 'id', `item_${uuid()}`);
+    // REQUIRED, not skipped when absent. A `<Shared>` names the definition
+    // document AND the class inside it, and the game resolves nothing without
+    // both: the object is simply not on the map, and what you hear about it is
+    // «PlayerN has no heroes and no towns» and then «Start player does not
+    // exist», three sentences away from the cause. Every one of the 21
+    // placeable types carries the element in every shipped map — 217,681 of
+    // them, all with an `#xpointer`, none empty — so a body without one is a
+    // body we built wrong, and saying so here beats finding out in the game.
+    // What goes IN it is the palette's own href; see the caller.
     const shared = find(body, 'Shared');
-    if (shared) setAttr(shared, 'href', spec.shared);
+    if (!shared) throw new Error(`the ${spec.type} we built has no <Shared> field to point at a definition`);
+    if (!spec.shared.includes('#')) {
+      throw new Error(`a ${spec.type} needs the palette's own shared href, not just the path `
+        + `(${spec.shared}) — without the #xpointer the game does not resolve it`);
+    }
+    setAttr(shared, 'href', spec.shared);
     const obj = new MapObject(item, body, this);
     obj.setPos(spec.x, spec.y, spec.z ?? 0);
     obj.setRot(spec.r ?? 0);

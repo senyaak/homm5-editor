@@ -36,6 +36,33 @@ function catalog(): ReturnType<typeof listPlaceable> {
 }
 
 /**
+ * The palette's own shared href for what a caller asked to place.
+ *
+ * A `<Shared>` names a document AND the class inside it, and the game resolves
+ * neither half without the other. The palette carries the whole thing already —
+ * it is read out of each link file's `<Link href="…">`, and the object's TYPE is
+ * read back out of that same fragment (src/map/objects.ts). So the href is data
+ * we hold, not a string to assemble: given a bare path this looks up the entry
+ * it belongs to and hands over what the palette says.
+ *
+ * Placing through the window has always been fine — the palette hands its own
+ * entry over whole. What was not fine is a caller with only a path: a script, a
+ * spec, anything driving the IPC. That was written down bare and reported as a
+ * complete placement, and the map then had no such object on it at all.
+ */
+function paletteShared(shared: string, type: string): string {
+  if (shared.includes('#')) return shared;
+  const path = shared.replace(/\\/g, '/').replace(/^\/+/, '').toLowerCase();
+  const entry = catalog().objects.find((e) =>
+    e.shared.split('#')[0]!.replace(/^\/+/, '').toLowerCase() === path && e.type === type);
+  if (!entry) {
+    throw new Error(`no palette entry places a ${type} from ${shared} — a shared definition is `
+      + 'named by its document AND the class in it, and the palette is where that href comes from');
+  }
+  return entry.shared;
+}
+
+/**
  * Decode a texture a palette entry names, as a data URI.
  *
  * The href is a `.(Texture).xdb`, which is a description; the pixels are in the
@@ -185,7 +212,10 @@ export function registerObjects(): void {
   ipcMain.handle('object:add', async (_e: IpcMainInvokeEvent, p: AddObjectPayload): Promise<AddObjectResult> => {
     const session = need();
     const before = session.resolver.geoms.length;
-    const gi = session.resolver.resolve(p.shared);
+    // Whole, before anything is built out of it — the model and the map have to
+    // be resolved from the same reference, and the map's needs the fragment.
+    const shared = paletteShared(p.shared, p.type);
+    const gi = session.resolver.resolve(shared);
     if (gi < 0) throw new Error('this object has no model we can decode yet');
     // When this map has no object of the type to copy, borrow one from the
     // game's own maps rather than writing a half-empty skeleton.
@@ -196,7 +226,7 @@ export function registerObjects(): void {
     // "patch does not fit". This was the one mutating handler that skipped it.
     const { object, complete } = record(session, 'add object', { map: true }, () =>
       session.map.addObject({
-        type: p.type, shared: p.shared, x: p.x, y: p.y, floor: p.floor, r: p.r ?? 0,
+        type: p.type, shared, x: p.x, y: p.y, floor: p.floor, r: p.r ?? 0,
         roster: rosterFor(session),
         order: orderFor(p.type),
         ...(donor ? { donor } : {}),
@@ -204,7 +234,7 @@ export function registerObjects(): void {
     const geomData = session.resolver.geoms[gi];
     return {
       instance: {
-        id: object.id, type: object.type, g: gi, shared: p.shared.split('#')[0]!,
+        id: object.id, type: object.type, g: gi, shared: shared.split('#')[0]!,
         x: p.x, y: p.y, z: 0, r: p.r ?? 0,
       },
       geom: gi >= before && geomData ? { index: gi, data: geomData } : null,

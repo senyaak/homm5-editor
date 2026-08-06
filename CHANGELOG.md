@@ -27,6 +27,16 @@ one.
   left owning nothing is turned off again. One undo takes back the owner and the
   slot together.
 
+- **An object placed with only a path is refused, instead of quietly not being
+  on the map.** A `<Shared>` names the definition document AND the class inside
+  it; the game resolves neither half alone. A path with no `#xpointer` was
+  written down as given and the placement reported complete — and the object
+  then was not there, which the game reported as "PlayerN has no heroes and no
+  towns" and then "start player does not exist". Placing through the window was
+  never affected: the palette hands its entry over whole. Now a caller with only
+  a path gets it completed from the palette — the same href the editor reads —
+  and one that names nothing the palette places is told so.
+
 - **The Colour list was missing a colour.** Seven of the game's eight, in an
   order of its own — `PCOLOR_YELLOW` was absent outright, so a yellow player
   could not be made at all. It is the game's own list now, neutral first, the
