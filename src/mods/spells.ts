@@ -1,0 +1,241 @@
+// A spell of our own — the fourth thing in the archive that holds a NUMBER.
+//
+// WHERE A SPELL LIVES. One entry in `GameMechanics/RefTables/UndividedSpells.xdb`,
+// which holds all 353 of them — the spells proper, the hero abilities, the
+// creature abilities and the effects they leave behind, in one list. Unlike a
+// creature the entry is a PATH rather than an inline object, so a spell of ours
+// is a document the mod carries and one line pointing at it.
+//
+// WHAT IT COSTS, and it is the skill table's bargain exactly: the size is
+// declared three times in types.xml (`ref_table_num_objs`, `MinElements`,
+// `MaxElements` — the last two are EQUAL here, as with artifacts) and twice more
+// in the executable, where the registration pushes the count AND a live accessor
+// returns it (`src/exe/table-limit.ts`, SPELL_TABLE). Miss the accessor and the
+// game loads a longer table and offers nothing past the shipped count — which is
+// how the skill table silently lost its perks for a day.
+//
+// WHAT A SPELL DOES is not in its document. `Armageddon.xdb` carries the damage
+// per mastery, the school, the level, the target kind and the visuals — and says
+// nothing about hitting every stack on the field; its `IsAreaAttack` is even
+// false. The behaviour is compiled against the enum VALUE, the way a
+// specialization's and a skill's are, so a value the executable has never heard
+// of gets a name, an icon, a page in the spellbook and no effect at all.
+//
+// Which is why a spell of ours is two halves. This one is the DECLARATION; the
+// effect comes from the extension, where the cast is caught and handed to Lua —
+// see docs/engineInternals/SPELLS.md. The split is deliberate and it is what the
+// shipped `SPELL_ABILITY_CUSTOM1…4` do at four times the granularity: those are
+// four ids hardcoded in one jump table (`0xc2a1f0`), and a fifth was never
+// possible.
+
+import { EOL, count, insertAfterLine, insertBeforeLine, once, retune } from './xml-edit.ts';
+
+/** How many the game ships: `SPELL_NONE` = 0 … `SPELL_EFFECT_FIRST_AID_TENT_PLAGUE` = 352. */
+export const SHIPPED_SPELLS = 353;
+
+/** The reference table, its type as types.xml declares it, and the enum's name. */
+export const SPELL_TABLE_FILE = 'GameMechanics/RefTables/UndividedSpells.xdb';
+export const SPELL_TABLE_TYPE = 'Table_Spell_SpellID';
+export const SPELL_TYPE = 'SpellID';
+
+/** The last shipped entry — where ours are appended, in all three lists. */
+export const LAST_SHIPPED_SPELL = 'SPELL_EFFECT_FIRST_AID_TENT_PLAGUE';
+
+/** Where a spell of ours keeps its document and its words. */
+export const SPELL_DIR = 'GameMechanics/Spell/Ours';
+export const SPELL_TEXT_DIR = 'Text/Game/Spells/Ours';
+
+/**
+ * The four masteries a spell's numbers are given for, in the order the document
+ * lists them — none, basic, advanced, expert.
+ *
+ * The engine reads `<damage>` positionally, so four entries are written whatever
+ * the caller says; a spec that gives fewer repeats its last, which is what the
+ * shipped documents do for a spell that does not grow with the school.
+ */
+export const SPELL_MASTERIES = 4;
+
+/** One `<Item>` of `<damage>` or `<duration>`: a flat part and a per-power part. */
+export interface SpellAmount {
+  base: number;
+  perPower: number;
+}
+
+/** A spell to add to the mod. */
+export interface SpellSpec {
+  /** `SPELL_…`, ours. What a hero's spellbook, a map and Lua store — as a NUMBER. */
+  id: string;
+  /** The stem of its document and its texts, and its folder in the mod. */
+  file: string;
+  /** What the spellbook prints. */
+  name: string;
+  /** And what its page says. */
+  description: string;
+  /**
+   * 1…5, the spellbook's own rank — which decides the mana it costs and which
+   * mastery of the school lets a hero learn it. Zero is what the hero-ability
+   * spells use (`MAGIC_SCHOOL_SPECIAL`), and it is a real choice: a spell that
+   * comes from a specialization rather than from a guild.
+   */
+  level: number;
+  /** `MAGIC_SCHOOL_DARK`, `…_DESTRUCTIVE`, `…_ADVENTURE`, `…_SPECIAL`, … */
+  school: string;
+  /** `TARGET_HOSTILE` / `TARGET_FRIEND` / `TARGET_NEUTRAL` — who may be picked. */
+  target: string;
+  /** Whether the player picks a target at all, and whether it hits an area. */
+  aimed?: boolean;
+  areaAttack?: boolean;
+  /** `ELEMENT_NONE`, `ELEMENT_FIRE`, … — what resistances answer it. */
+  element?: string;
+  /** Its numbers per mastery. Fewer than four repeats the last. */
+  damage?: SpellAmount[];
+  duration?: SpellAmount[];
+  /** An icon that already exists, since a spell without one is a hole in the book. */
+  icon?: string;
+  /**
+   * What the extension does when it is cast — the name of a Lua function.
+   *
+   * The document above cannot say it: the engine picks a behaviour by the enum
+   * value it was compiled against. So the mod writes the pairing into the
+   * extension's config, the extension catches the cast and calls this, and the
+   * spell's actual content is a script. Absent, the spell is a page in the book
+   * that does nothing, which is a real thing to want while the words and the
+   * icon are being got right.
+   */
+  script?: string;
+}
+
+/** One in a mod: a spec plus the enum value it holds. */
+export interface ModSpell extends SpellSpec {
+  /** Assigned on the way in and never changed — the number is what saves store. */
+  number: number;
+}
+
+/** Where a spell's own files sit inside the mod. */
+export function spellPaths(s: SpellSpec): { document: string; name: string; description: string } {
+  return {
+    document: `${SPELL_DIR}/${s.file}.xdb`,
+    name: `${SPELL_TEXT_DIR}/${s.file}_Name.txt`,
+    description: `${SPELL_TEXT_DIR}/${s.file}_Desc.txt`,
+  };
+}
+
+/** The four `<Item>` blocks of an amount list, padded from what was given. */
+function amounts(tag: string, given: readonly SpellAmount[] | undefined): string[] {
+  const zero: SpellAmount = { base: 0, perPower: 0 };
+  const four = Array.from({ length: SPELL_MASTERIES },
+    (_, i) => given?.[i] ?? given?.[given.length - 1] ?? zero);
+  return [
+    `<${tag}>`,
+    ...four.flatMap((a) => [
+      '\t<Item>',
+      `\t\t<Base>${a.base}</Base>`,
+      `\t\t<PerPower>${a.perPower}</PerPower>`,
+      '\t</Item>',
+    ]),
+    `</${tag}>`,
+  ];
+}
+
+/**
+ * The `Spell` document itself — written out rather than copied from a shipped
+ * one, because unlike a creature there is nothing in it we do not set.
+ *
+ * `<visuals/>` is left empty on purpose: a visual is a document of the game's
+ * own naming particle systems and cameras, and an empty list is what the shipped
+ * `Custom1.xdb` and the Avatar of Death both carry. The spell is cast and
+ * nothing is drawn, which is honest until we have art of our own.
+ */
+export function spellDocument(s: SpellSpec): string {
+  const p = spellPaths(s);
+  const lines = [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<Spell>',
+    `\t<NameFileRef href="/${p.name}"/>`,
+    `\t<LongDescriptionFileRef href="/${p.description}"/>`,
+    ...(s.icon ? [`\t<Texture href="${s.icon}"/>`] : ['\t<Texture/>']),
+    '\t<EffectTexture/>',
+    '\t<SpellBookPredictions/>',
+    '\t<CombatLogTexts/>',
+    `\t<Level>${s.level}</Level>`,
+    `\t<MagicSchool>${s.school}</MagicSchool>`,
+    '\t<RequiredHeroLevel>0</RequiredHeroLevel>',
+    '\t<TrainedCost>0</TrainedCost>',
+    ...amounts('damage', s.damage).map((l) => `\t${l}`),
+    ...amounts('duration', s.duration).map((l) => `\t${l}`),
+    '\t<sSpellCost>',
+    ...['Wood', 'Ore', 'Mercury', 'Crystal', 'Sulfur', 'Gem', 'Gold']
+      .map((r) => `\t\t<${r}>0</${r}>`),
+    '\t</sSpellCost>',
+    `\t<IsAimed>${!!s.aimed}</IsAimed>`,
+    `\t<IsAreaAttack>${!!s.areaAttack}</IsAreaAttack>`,
+    '\t<CanSelectDead>false</CanSelectDead>',
+    `\t<Target>${s.target}</Target>`,
+    `\t<Element>${s.element ?? 'ELEMENT_NONE'}</Element>`,
+    '\t<DamageIsElemental>true</DamageIsElemental>',
+    '\t<visuals/>',
+    '\t<PresetPrice>-1</PresetPrice>',
+    '\t<AvailableForPresets>false</AvailableForPresets>',
+    '</Spell>',
+  ];
+  return lines.join(EOL) + EOL;
+}
+
+/**
+ * types.xml, the spell half: the enum list, the name→number map, and the size
+ * the table declares — all three, and the last is really two numbers.
+ *
+ * `MinElements` EQUALS `MaxElements` here, as it does for artifacts and unlike
+ * creatures, so both move. A mod that raised only the maximum would leave the
+ * table declaring it holds exactly 353 while carrying more.
+ */
+export function patchSpellTypes(types: string, spells: readonly ModSpell[]): string {
+  if (!spells.length) return types;
+  let t = types;
+
+  const enumAt = once(t, `<Item>${LAST_SHIPPED_SPELL}</Item>`, 'types.xml spell enum');
+  t = insertAfterLine(t, enumAt, spells.map((s) => `<Item>${s.id}</Item>`));
+
+  // The name→number map. The NUMBER is what a hero's spellbook, a map and a save
+  // store, so this list is append-only: reordering it repoints every spell after
+  // the change.
+  const mapAt = once(t, `<Name>${LAST_SHIPPED_SPELL}</Name>`, 'types.xml spell name→number map');
+  const itemEnd = t.indexOf('</Item>', mapAt);
+  if (itemEnd < 0) throw new Error('types.xml spell name→number map: the last entry has no </Item>');
+  t = insertAfterLine(t, itemEnd, spells.flatMap((s) => [
+    '<Item>', `\t<Name>${s.id}</Name>`, `\t<Value>${s.number}</Value>`, '</Item>',
+  ]));
+
+  const limit = SHIPPED_SPELLS + spells.length;
+  const table = once(t, `<TypeName>${SPELL_TABLE_TYPE}</TypeName>`, 'types.xml spell table');
+  const numObjs = t.indexOf('<Key>ref_table_num_objs</Key>', table);
+  if (numObjs < 0) throw new Error('types.xml spell table: no ref_table_num_objs');
+  t = retune(t, numObjs, 'Data', SHIPPED_SPELLS, limit, 'types.xml spell ref_table_num_objs');
+  t = retune(t, table, 'MinElements', SHIPPED_SPELLS, limit, 'types.xml spell MinElements');
+  return retune(t, table, 'MaxElements', SHIPPED_SPELLS, limit, 'types.xml spell MaxElements');
+}
+
+/** UndividedSpells.xdb: one entry per spell of ours, pointing at its document. */
+export function patchSpellTable(table: string, spells: readonly ModSpell[]): string {
+  if (!spells.length) return table;
+  const had = count(table, /<ID>SPELL_\w+<\/ID>/g);
+  if (had !== SHIPPED_SPELLS) {
+    throw new Error(`${SPELL_TABLE_FILE}: ${had} entries, expected ${SHIPPED_SPELLS}`);
+  }
+  const close = once(table, '</objects>', `${SPELL_TABLE_FILE} objects`);
+  return insertBeforeLine(table, close, spells.flatMap((s) => [
+    '<Item>',
+    `\t<ID>${s.id}</ID>`,
+    `\t<Obj href="/${spellPaths(s).document}#xpointer(/Spell)"/>`,
+    '</Item>',
+  ]));
+}
+
+/** Every spell name the game already answers to, read off types.xml. */
+export function takenSpells(types: string): Set<string> {
+  const at = types.indexOf(`<TypeName>${SPELL_TYPE}</TypeName>`);
+  if (at < 0) return new Set();
+  const end = types.indexOf('</Entries>', at);
+  const body = types.slice(at, end < 0 ? undefined : end);
+  return new Set([...body.matchAll(/<Name>(SPELL_\w+)<\/Name>/g)].map((m) => m[1]!));
+}
