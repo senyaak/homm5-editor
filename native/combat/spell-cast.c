@@ -260,6 +260,20 @@ static int __fastcall on_cast_gate(void *ecx, void *block, void *a1, void *a2, i
   int spell = readable_bytes(block, CAST_GATE_SPELL + 4) >= CAST_GATE_SPELL + 4
       ? *(int *)((BYTE *)block + CAST_GATE_SPELL) : -1;
   int answer = g_castGate(ecx, block, a1, a2, a3, a4, a5, a6, a7);
+  // THE FIRST HALF OF THE BRIDGE. A spell the executable was never compiled
+  // against is refused here, silently, and the refusal is not about its
+  // document: a copy of Armageddon differing in nothing but its number — same
+  // school, same level, same mana, the same two visuals — is refused exactly the
+  // same way. So the engine decides what a spell may touch from what it was
+  // built with, and no data can answer for a number it has never seen.
+  //
+  // Ours therefore answers for itself: yes. What that buys is everything the
+  // engine does around a cast — the mana, the hero's turn, the animation — and
+  // it costs nothing to the game's own spells, whose answer is left alone.
+  if (spell >= FIRST_SPELL_OF_OURS && g_inCastCommand && !(answer & 0xFF)) {
+    log_line("   ours — answering for it: yes");
+    answer = 1;
+  }
   // Only during a real cast — and OURS keeps its own budget, because one shared
   // one goes blind exactly when it matters. A session holds several battles, the
   // log is one file, and the casts of the battle before ours used the whole
