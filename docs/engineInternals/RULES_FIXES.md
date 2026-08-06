@@ -514,6 +514,20 @@ not happen. See its section above.
 One entry on that list has no trigger on the map: Barbarian Learning needs the
 skill REMOVED, and nothing placed there removes one.
 
+## Candidates, not yet looked into
+
+- **The zombie's Weakening Strike lands on a target immune to magic, and cannot
+  be dispelled.** Found in a battle on 2026-08-06: a black dragon — immune to
+  every spell — walks away from a zombie carrying Weakness, and nothing takes it
+  off. What is established so far is only how it is wired: `ABILITY_WEAKENING_STRIKE`
+  is a creature ability whose `ActivatedSpell` is `SPELL_NONE`, and no cast of
+  spell 15 (`SPELL_WEAKNESS`) appears in the log when it lands — so the engine
+  never asks the cast gate about it, which is why immunity does not apply. That
+  makes it a rule the engine applies rather than a check it forgets, and the
+  question to answer first is whether the effect it applies IS the spell's (in
+  which case immunity and dispel should both reach it) or an effect of its own
+  wearing the same name. Not fixed, not scoped: written down so it is not lost.
+
 ## Not ported, and why
 
 - **AgilityFix** — dredknight withdrew it himself: the ability's in-game text

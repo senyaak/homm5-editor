@@ -84,7 +84,8 @@ import {
 } from './hero-classes.ts';
 import { SKILL_TABLE, patchSkillTable, patchSkillTypes, skillPictures, skillTexts } from './hero-skills.ts';
 import {
-  SPELL_ICON_SIZE, SPELL_TABLE_FILE, patchSpellTable, patchSpellTypes, spellDocument, spellPaths,
+  SPELL_ICON_SIZE, SPELL_TABLE_FILE, patchSpellTable, patchSpellTypes, spellCombatScripts,
+  spellDocument, spellPaths, spellScriptFile,
 } from './spells.ts';
 
 /** The camera the hire dialog uses. CREATURE_UNKNOWN already sits on this one. */
@@ -334,11 +335,19 @@ export function buildCreatureMod(mod: CreatureMod, read: DataReader): BuildRepor
   // Carried for the trigger runtime as well as for the scripts: a skill may want
   // a moment inside a battle without carrying a file of its own, and the
   // vocabulary that lets it say so lives in this file's tail.
-  if (skillCombatScripts(skills).length || skills.length) {
+  // A SPELL OF OURS WANTS THE SAME RUNTIME, and more plainly than a skill does:
+  // the engine has no branch for its number, so what the cast does is entirely
+  // its script. The files go in beside the skills' and the runtime loads both.
+  for (const s of spells) {
+    if (!s.script?.trim()) continue;
+    const f = spellScriptFile(s);
+    files.push({ path: f.path, data: Buffer.from(f.text, 'latin1') });
+  }
+  if (skillCombatScripts(skills).length || skills.length || spellCombatScripts(spells).length) {
     // Two files: the game's own with one line added, and ours behind that line.
     // Separate chunks — see COMBAT_RUNTIME in src/mods/skill-scripts.ts for what
     // sharing one chunk with the game cost.
-    const runtime = combatRuntimeFile(skills);
+    const runtime = combatRuntimeFile(skills, spellCombatScripts(spells));
     files.push({
       path: COMBAT_STARTUP,
       data: Buffer.from(patchCombatStartup(mustRead(read, COMBAT_STARTUP), skills), 'latin1'),

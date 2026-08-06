@@ -191,7 +191,9 @@ export function patchCombatStartup(shipped: string, skills: readonly ModHeroSkil
 export const COMBAT_RUNTIME = `${SCRIPT_DIR}/combat.lua`;
 
 /** That file: the trigger runtime, then a doFile per battle script of ours. */
-export function combatRuntimeFile(skills: readonly ModHeroSkill[]): { path: string; text: string } {
+export function combatRuntimeFile(
+  skills: readonly ModHeroSkill[], spells: readonly string[] = [],
+): { path: string; text: string } {
   return {
     path: COMBAT_RUNTIME,
     text: [
@@ -200,7 +202,10 @@ export function combatRuntimeFile(skills: readonly ModHeroSkill[]): { path: stri
       '',
       ...COMBAT_TRIGGER_RUNTIME,
       '',
-      ...skillCombatScripts(skills).map((f) => `doFile("/${f}");`),
+      // A skill's battle script and a spell's are loaded the same way and from
+      // the same place: the runtime is above them, so by the time either runs
+      // `H5EOnSpellCast` and its neighbours are defined.
+      ...[...skillCombatScripts(skills), ...spells].map((f) => `doFile("/${f}");`),
       '',
     ].join(EOL),
   };
@@ -243,6 +248,11 @@ export const COMBAT_TRIGGER_RUNTIME = [
   'H5E_COMBAT_STARTED = 1;',
   'H5E_HERO_MANA_CHANGED = 2;',
   'H5E_MANA_SPENT = 3;',
+  // A SPELL OF OURS WAS CAST, and it is one event rather than one per spell:
+  // the number arrives as the first argument, so a script says which spell it
+  // cares about instead of the runtime growing a trigger per id. `H5EOnSpellCast`
+  // below is the sugar over it — the spell's own script is written against that.
+  'H5E_SPELL_CAST = 4;',
   'H5E_COMBAT_TRIGGERS = {};',
   '',
   'function H5ESetCombatTrigger(kind, handler)',
@@ -253,6 +263,19 @@ export const COMBAT_TRIGGER_RUNTIME = [
   '\tend;',
   '\tlist.count = list.count + 1;',
   '\tlist[list.count] = handler;',
+  'end;',
+  '',
+  // ONE SPELL, ONE HANDLER — the shape a spell of ours is written in. The
+  // extension fires H5E_SPELL_CAST with the number that was cast; this hands the
+  // handler only its own casts, so a spell's script never has to know that the
+  // event is shared.
+  // `%spell` and `%handler` are LUA 4's upvalues: an inner function sees the
+  // enclosing one's locals only through that prefix, and written plainly they
+  // would be nil at call time — the handler simply never fires, silently.
+  'function H5EOnSpellCast(spell, handler)',
+  '\tH5ESetCombatTrigger(H5E_SPELL_CAST, function(cast, caster)',
+  '\t\tif cast == %spell then %handler(caster); end;',
+  '\tend);',
   'end;',
   '',
   '-- Called by the extension, once per event.',

@@ -143,6 +143,32 @@ export interface ModSpell extends SpellSpec {
 /** The size every shipped spell icon is drawn at. */
 export const SPELL_ICON_SIZE = 128;
 
+/** Where a spell's battle script sits — beside the skills', loaded the same way. */
+export const spellScriptPath = (s: SpellSpec): string =>
+  `scripts/homm5-editor/${s.file}-spell.lua`;
+
+/** The scripts the combat runtime has to load, in the mod's own order. */
+export const spellCombatScripts = (spells: readonly ModSpell[]): string[] =>
+  spells.filter((s) => s.script?.trim()).map((s) => spellScriptPath(s));
+
+/**
+ * The file a spell's script becomes: a head saying what it is, then the author's
+ * own lines.
+ *
+ * The head declares the spell's NUMBER as a name, because that is what the
+ * runtime's `H5EOnSpellCast` is given and a script written against a bare 353
+ * would go stale the moment the mod's order changed.
+ */
+export function spellScriptFile(s: ModSpell): { path: string; text: string } {
+  const head = [
+    `-- ${s.id} — the battle script of a spell of ours.`,
+    '-- Generated head; everything below the line is the author\'s.',
+    `${s.id} = ${s.number};`,
+    '',
+  ].join(EOL);
+  return { path: spellScriptPath(s), text: head + (s.script ?? '').replace(/\r?\n/g, EOL) };
+}
+
 /** Where a spell's own files sit inside the mod. */
 export function spellPaths(s: SpellSpec): {
   document: string; name: string; description: string; icon: string; iconDDS: string;

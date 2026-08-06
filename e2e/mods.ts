@@ -661,6 +661,39 @@ export const DEATH_RIPPLE = {
   // nothing may be a spell the engine will not start. Its own art can come later
   // — what matters now is that the cast has something to play.
   visuals: ['/GameMechanics/Spell/Combat_Spells/DarkMagic/Plague.(SpellVisual).xdb#xpointer(/SpellVisual)'],
+  /**
+   * WHAT IT DOES, and it is a script because the engine has no branch for our
+   * number: the extension catches the cast and calls this.
+   *
+   * This first version only LOOKS — it walks both sides and prints what it
+   * found. Dealing the damage needs a hand the battle's own vocabulary does not
+   * have (it can read a stack and not hurt one), and a step that prints exactly
+   * what the next step will act on is how the two are told apart when the damage
+   * lands wrong.
+   *
+   * Lua 4, no standard library: no `for`-in, no `tostring` beyond concatenation,
+   * and `print` is the battle console.
+   */
+  script: [
+    'function H3DeathRippleCast(caster)',
+    '\tprint("h5e: death ripple cast");',
+    '\tlocal sides = { GetAttackerCreatures(), GetDefenderCreatures() };',
+    '\tlocal s = 1;',
+    '\twhile s <= 2 do',
+    '\t\tlocal units = sides[s];',
+    '\t\tif units ~= nil then',
+    '\t\t\tlocal i = 1;',
+    '\t\t\twhile units[i] ~= nil do',
+    '\t\t\t\tprint("h5e:   " .. units[i] .. " x" .. GetCreatureNumber(units[i]));',
+    '\t\t\t\ti = i + 1;',
+    '\t\t\tend;',
+    '\t\tend;',
+    '\t\ts = s + 1;',
+    '\tend;',
+    'end;',
+    '',
+    'H5EOnSpellCast(SPELL_H3_DEATH_RIPPLE, H3DeathRippleCast);',
+  ].join('\n'),
 };
 
 /**

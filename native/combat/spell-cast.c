@@ -59,10 +59,23 @@ static const BYTE SPELL_DISPATCH_HEAD[SPELL_DISPATCH_LEN] = {
 // session's own banner ("--- homm5-editor extension loaded") is where one run
 // ends and the next begins.
 
-/** Called from the stub with the id the dispatch is about to switch on. */
+/** The battle-side event a spell of ours is written against. */
+#define H5E_SPELL_CAST 4
+
+/**
+ * Called from the stub with the id the dispatch is about to switch on.
+ *
+ * THE SECOND HALF OF THE BRIDGE. For a number of ours the dispatch below has no
+ * branch and would send the cast to the tail that means "nothing happened", so
+ * the spell's own behaviour is run from here — as Lua, in the battle, through
+ * the same door every other event of ours goes through. What the script gets is
+ * the number; what it does with it is the spell.
+ */
 static void __cdecl on_spell_cast(int spell) {
-  if (spell >= FIRST_SPELL_OF_OURS) log_num("cast: OURS, spell id ", spell);
-  else log_num("cast: the game's own, spell id ", spell);
+  if (spell >= FIRST_SPELL_OF_OURS) {
+    log_num("cast: OURS, spell id ", spell);
+    fire_trigger(H5E_SPELL_CAST, 1, spell, 0, 0);
+  } else log_num("cast: the game's own, spell id ", spell);
 }
 
 /**
