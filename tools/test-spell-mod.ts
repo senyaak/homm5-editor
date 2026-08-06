@@ -51,6 +51,7 @@ const spell = addSpell(mod, {
     { base: 25, perPower: 25 },
   ],
   picture: join(import.meta.dirname, '..', 'assets', 'spells', 'death-ripple.png'),
+  visuals: ['/GameMechanics/Spell/Combat_Spells/DarkMagic/Plague.(SpellVisual).xdb#xpointer(/SpellVisual)'],
 });
 check('it took the first value past the shipped ones', spell.number === SHIPPED_SPELLS,
   `${spell.number}`);
@@ -95,6 +96,11 @@ check('four damage entries, in order',
 // Fireball 10. Written as zero — which is what this did at first — the book
 // offers a free spell, and nothing anywhere says so.
 check('the mana it costs is in TrainedCost', doc.includes('<TrainedCost>6</TrainedCost>'));
+// A cast with nothing to show may be a cast the engine will not start, so the
+// list is written when the spec gives one — and written ABSOLUTE, since the
+// shipped lists are relative to each spell's own folder and ours sits elsewhere.
+check('the visuals it borrows are listed absolute',
+  /<visuals>\s*<Item href="\/GameMechanics\/Spell\/[^"]+#xpointer\(\/SpellVisual\)"\/>\s*<\/visuals>/.test(doc));
 check('it names texts the mod carries',
   doc.includes(`href="/${p.name}"`) && files.has(p.name) && files.has(p.description));
 // Art of its own: the document points at a texture the mod carries, and both

@@ -99,6 +99,17 @@ export interface SpellSpec {
   /** Its numbers per mastery. Fewer than four repeats the last. */
   damage?: SpellAmount[];
   duration?: SpellAmount[];
+  /**
+   * What the cast SHOWS — hrefs at `SpellVisual` documents, in the engine's own
+   * order: the spell itself first, the hit second where a spell has one.
+   *
+   * A shipped spell's list is written RELATIVE to its own folder
+   * (`Armageddon.(SpellVisual).xdb#…`), and ours sits elsewhere, so these are
+   * absolute. Empty is legal — `Custom1.xdb` and the Avatar of Death both ship
+   * empty — but empty means the cast draws nothing, and "nothing to show" is a
+   * live candidate for why a cast of ours is refused.
+   */
+  visuals?: string[];
   /** An icon that already exists, since a spell without one is a hole in the book. */
   icon?: string;
   /**
@@ -172,10 +183,12 @@ function amounts(tag: string, given: readonly SpellAmount[] | undefined): string
  * The `Spell` document itself — written out rather than copied from a shipped
  * one, because unlike a creature there is nothing in it we do not set.
  *
- * `<visuals/>` is left empty on purpose: a visual is a document of the game's
- * own naming particle systems and cameras, and an empty list is what the shipped
- * `Custom1.xdb` and the Avatar of Death both carry. The spell is cast and
- * nothing is drawn, which is honest until we have art of our own.
+ * `<visuals>` is a list of `SpellVisual` documents — the animation the cast
+ * plays, and the hit where a spell has one. Empty is legal in the data (the
+ * shipped `Custom1.xdb` and the Avatar of Death both ship empty) and it was
+ * empty here at first, which turned out to be a real suspect: a cast with
+ * nothing to show may be a cast the engine declines to start. Ours borrow the
+ * shipped ones until there is art of our own.
  */
 export function spellDocument(s: SpellSpec): string {
   const p = spellPaths(s);
@@ -205,7 +218,9 @@ export function spellDocument(s: SpellSpec): string {
     `\t<Target>${s.target}</Target>`,
     `\t<Element>${s.element ?? 'ELEMENT_NONE'}</Element>`,
     '\t<DamageIsElemental>true</DamageIsElemental>',
-    '\t<visuals/>',
+    ...(s.visuals?.length
+      ? ['\t<visuals>', ...s.visuals.map((v) => `\t\t<Item href="${v}"/>`), '\t</visuals>']
+      : ['\t<visuals/>']),
     '\t<PresetPrice>-1</PresetPrice>',
     '\t<AvailableForPresets>false</AvailableForPresets>',
     '</Spell>',

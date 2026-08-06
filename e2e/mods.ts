@@ -657,6 +657,10 @@ export const DEATH_RIPPLE = {
     { base: 25, perPower: 25 },
   ],
   picture: join(ASSETS, 'spells', 'death-ripple.png'),
+  // The Plague's animation, borrowed: same school, and a spell that shows
+  // nothing may be a spell the engine will not start. Its own art can come later
+  // — what matters now is that the cast has something to play.
+  visuals: ['/GameMechanics/Spell/Combat_Spells/DarkMagic/Plague.(SpellVisual).xdb#xpointer(/SpellVisual)'],
 };
 
 /**
@@ -696,6 +700,15 @@ export const TEST_ARMAGEDDON = {
     { base: 30, perPower: 30 },
   ],
   icon: '/Textures/SpellBook______2618/Spells/Spell_Armageddon.xdb#xpointer(/Texture)',
+  // AND ITS VISUALS, which the first version of this control left out — so it
+  // was not a copy at all. A spell with nothing to show is a live candidate for
+  // "the engine declines to start the cast", and a control that differs in two
+  // things answers neither. Absolute, because the shipped list is relative to
+  // Armageddon's own folder and ours sits elsewhere.
+  visuals: [
+    '/GameMechanics/Spell/Combat_Spells/DestructiveMagic/Armageddon.(SpellVisual).xdb#xpointer(/SpellVisual)',
+    '/GameMechanics/Spell/Combat_Spells/DestructiveMagic/Armageddon_Hit.(SpellVisual).xdb#xpointer(/SpellVisual)',
+  ],
 };
 
 /**
