@@ -51,15 +51,16 @@ static const BYTE SPELL_DISPATCH_HEAD[SPELL_DISPATCH_LEN] = {
  */
 #define FIRST_SPELL_OF_OURS 353
 
-/** How many casts print themselves. Enough for a battle, not for a session. */
-#define SPELL_CASTS_LOGGED 12
-
-static int g_spellCastsLogged = 0;
+// NOTHING HERE IS RATIONED. Two runs were lost to a budget: the interface asks
+// the gate once per target the pointer crosses, and a session holds several
+// battles, so an allowance that looked generous was spent before the cast we
+// were watching. A probe that goes quiet exactly when it matters is worse than
+// no probe, and the file is cheap. Every cast, every verdict, every time — the
+// session's own banner ("--- homm5-editor extension loaded") is where one run
+// ends and the next begins.
 
 /** Called from the stub with the id the dispatch is about to switch on. */
 static void __cdecl on_spell_cast(int spell) {
-  if (g_spellCastsLogged >= SPELL_CASTS_LOGGED) return;
-  g_spellCastsLogged++;
   if (spell >= FIRST_SPELL_OF_OURS) log_num("cast: OURS, spell id ", spell);
   else log_num("cast: the game's own, spell id ", spell);
 }
@@ -138,24 +139,20 @@ static const BYTE CAST_COMMAND_HEAD[CAST_COMMAND_HEAD_LEN] = {
 
 typedef int(__fastcall *CastCommandFn)(void *self, void *edx);
 static CastCommandFn g_castCommand = NULL;
-static int g_castCommandsLogged = 0;
 /** Non-zero while a command is executing — see the gate's log below. */
 static int g_inCastCommand = 0;
 
 static int __fastcall on_cast_command(void *self, void *edx) {
   int spell = readable_bytes(self, CAST_COMMAND_SPELL + 4) >= CAST_COMMAND_SPELL + 4
       ? *(int *)((BYTE *)self + CAST_COMMAND_SPELL) : -1;
-  if (g_castCommandsLogged < SPELL_CASTS_LOGGED) {
-    g_castCommandsLogged++;
-    if (spell >= FIRST_SPELL_OF_OURS) log_num("cast command: OURS, spell id ", spell);
-    else log_num("cast command: the game's own, spell id ", spell);
-  }
+  if (spell >= FIRST_SPELL_OF_OURS) log_num("cast command: OURS, spell id ", spell);
+  else log_num("cast command: the game's own, spell id ", spell);
   // WHAT THE COMMAND IS MADE OF — and for the GAME'S OWN spells too, which is
   // the point. Ours comes in with a caster and no target and returns zero; the
   // only way to know whether that is the fault is to see what a spell that works
   // brings with it. A comparison of two blocks says in one run what reading the
   // function has not.
-  int dump = g_castCommandsLogged <= SPELL_CASTS_LOGGED && readable_bytes(self, 0x3C) >= 0x3C;
+  int dump = readable_bytes(self, 0x3C) >= 0x3C;
   if (dump) {
     log_hex("   caster +0x20 ", *(DWORD *)((BYTE *)self + 0x20));
     log_hex("   target +0x24 ", *(DWORD *)((BYTE *)self + 0x24));
@@ -257,19 +254,25 @@ static void log_spell_record(int spell) {
 typedef int(__fastcall *CastGateFn)(void *ecx, void *block, void *a1, void *a2, int a3,
                                     void *a4, void *a5, int a6, int a7);
 static CastGateFn g_castGate = NULL;
-static int g_castGatesLogged = 0;
 
 static int __fastcall on_cast_gate(void *ecx, void *block, void *a1, void *a2, int a3,
                                    void *a4, void *a5, int a6, int a7) {
   int spell = readable_bytes(block, CAST_GATE_SPELL + 4) >= CAST_GATE_SPELL + 4
       ? *(int *)((BYTE *)block + CAST_GATE_SPELL) : -1;
   int answer = g_castGate(ecx, block, a1, a2, a3, a4, a5, a6, a7);
-  // Only during a real cast, and for every spell rather than only ours: the
-  // question is why the same block passes with Armageddon's id and fails with
-  // ours, so both verdicts have to be in the same log.
-  if (g_inCastCommand && g_castGatesLogged < SPELL_CASTS_LOGGED) {
-    g_castGatesLogged++;
-    log_num("may it be cast? spell id ", spell);
+  // Only during a real cast — and OURS keeps its own budget, because one shared
+  // one goes blind exactly when it matters. A session holds several battles, the
+  // log is one file, and the casts of the battle before ours used the whole
+  // allowance twice now: first the interface's per-target questions, then the
+  // previous fight's spells. So a spell of ours prints every time and the game's
+  // own share a small quota beside it.
+  {
+    // WHERE THE QUESTION CAME FROM. The book greys a spell it cannot cast, and
+    // it decides that by asking this same routine before anything is pressed —
+    // so a verdict from the book and a verdict during a cast are different
+    // events and are named apart.
+    log_line(g_inCastCommand ? "may it be cast? (during the cast)" : "may it be cast? (from the book)");
+    log_num("   spell id ", spell);
     log_num("   the gate says ", answer & 0xFF);
     log_spell_record(spell);
   }
