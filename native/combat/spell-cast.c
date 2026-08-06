@@ -182,6 +182,38 @@ static const BYTE CAST_GATE_HEAD[CAST_GATE_HEAD_LEN] = {
 /** The spell id, in the block the gate's `edx` points at. */
 #define CAST_GATE_SPELL 0x04u
 
+/**
+ * `SpellRecord(id)` — the engine's own way from an id to the loaded document.
+ *
+ * One array indexed by the id, sixteen bytes a slot, and a null when the slot
+ * holds nothing. Worth asking ourselves rather than inferring: if this comes
+ * back null for our id then the game never loaded the document, and everything
+ * downstream is explained at once. The three fields below are the ones the gate
+ * and its neighbours read out of it.
+ */
+#define SPELL_RECORD_RVA 0x71eed0u
+#define SPELL_RECORD_SCHOOL 0x88u
+#define SPELL_RECORD_AIMED 0xCCu
+#define SPELL_RECORD_AREA 0xCDu
+
+typedef void *(__fastcall *SpellRecordFn)(int spell);
+static SpellRecordFn g_spellRecord = NULL;
+
+/** What the engine thinks our spell IS, printed once per cast. */
+static void log_spell_record(int spell) {
+  if (!g_spellRecord) return;
+  void *record = g_spellRecord(spell);
+  if (!record) { log_line("   the engine has NO record for it"); return; }
+  if (readable_bytes(record, SPELL_RECORD_AREA + 1) < SPELL_RECORD_AREA + 1) {
+    log_line("   the record is there but will not be read");
+    return;
+  }
+  // 0 destructive, 1 dark, 2 light, 3 summoning, 4 adventure, 5 runic, 7 special.
+  log_num("   school ", *(int *)((BYTE *)record + SPELL_RECORD_SCHOOL));
+  log_num("   needs a target ", *((BYTE *)record + SPELL_RECORD_AIMED));
+  log_num("   hits an area ", *((BYTE *)record + SPELL_RECORD_AREA));
+}
+
 typedef int(__fastcall *CastGateFn)(void *ecx, void *block, void *a1, void *a2, int a3,
                                     void *a4, void *a5, int a6, int a7);
 static CastGateFn g_castGate = NULL;
@@ -196,11 +228,19 @@ static int __fastcall on_cast_gate(void *ecx, void *block, void *a1, void *a2, i
     g_castGatesLogged++;
     log_num("may it be cast? spell id ", spell);
     log_num("   the gate says ", answer & 0xFF);
+    log_spell_record(spell);
   }
   return answer;
 }
 
 static void install_cast_gate_log(void) {
+  // Called, never hooked: this is the engine answering about its own data, so it
+  // is asked the way the engine asks — and the two bytes at its head are checked
+  // first, since an address of ours that has gone stale would be read as a spell
+  // the game does not have.
+  BYTE *record = (BYTE *)GetModuleHandleW(NULL) + SPELL_RECORD_RVA;
+  if (record[0] == 0x56 && record[1] == 0x8B) g_spellRecord = (SpellRecordFn)record;
+  else log_line("the spell record accessor is not where we left it");
   g_castGate = (CastGateFn)detour(CAST_GATE_RVA, CAST_GATE_HEAD, CAST_GATE_HEAD_LEN,
                                   (void *)on_cast_gate, "the cast's target check");
   if (g_castGate) log_line("a cast of ours will say whether the gate let it through");
