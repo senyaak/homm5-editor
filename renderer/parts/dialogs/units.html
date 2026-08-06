@@ -65,6 +65,11 @@
             <label class="on-row"><span>Stored as</span><input id="um-id" type="text" spellcheck="false" autocomplete="off" readonly title="what maps, saves and scripts store. Made from the identifier — pick once, never reuse."></label>
             <label class="on-row"><span>Name<b class="req">*</b></span><input id="um-name" type="text" autocomplete="off"></label>
             <label class="on-row"><span>Town</span><select id="um-town" title="the creature's home town — TOWN_NO_TYPE for a neutral"></select></label>
+            <!-- Not a stat and not on the creature's record: the game keeps one
+                 table of dead→risen pairs, and a creature outside it cannot be
+                 raised at all. Every shipped neutral is outside it, so a new
+                 creature is unraisable unless this says otherwise. -->
+            <label class="on-row"><span>Raised as</span><select id="um-raise" title="what necromancy raises this creature as. Nothing — the dead stay dead, which is what every shipped neutral does."></select></label>
             <label class="on-row um-span"><span>Description</span><input id="um-desc" type="text" autocomplete="off"></label>
             <!-- Added one at a time, by name. The line the hire dialog prints is
                  NOT typed here: it is built from these when the creature is

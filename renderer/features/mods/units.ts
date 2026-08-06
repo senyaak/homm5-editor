@@ -68,6 +68,10 @@ async function loadUnitPreset(): Promise<void> {
   for (const [input, key] of UM_STATS) $input(input).value = String(p.stats[key] ?? 0);
   $input('um-fly').checked = p.stats.flying;
   $select('um-town').value = p.stats.town;
+  // Part of being that creature, and the one part that is not on its record: a
+  // copy of a Grand Elf that came back unraisable would differ from its donor in
+  // a way no field on this form mentions.
+  $select('um-raise').value = p.raisedAs;
   // The preset's abilities, one row each — and the printed line follows them,
   // so it says what this creature can do rather than what the donor could.
   $('um-abilities').innerHTML = '';
@@ -99,6 +103,7 @@ async function submitUnitsMod(): Promise<void> {
       name: $input('um-name').value,
       description: $input('um-desc').value,
       donor: $input('um-donor').value,
+      raisedAs: $select('um-raise').value,
       stats,
       art,
     });
@@ -176,6 +181,7 @@ async function editCreature(id: string): Promise<void> {
   for (const [input, key] of UM_STATS) $input(input).value = String(c.stats[key] ?? 0);
   $input('um-fly').checked = !!c.stats.flying;
   $select('um-town').value = c.stats.town;
+  $select('um-raise').value = c.raisedAs ?? '';
   $('um-abilities').innerHTML = '';
   for (const a of c.stats.abilities ?? []) addAbilityRow(a);
   showAbilityLine();
@@ -208,6 +214,8 @@ function newCreature(): void {
   $('um-donor-name').textContent = 'nothing yet — the form is blank';
   for (const id of ['um-file', 'um-id', 'um-name', 'um-desc']) $input(id).value = '';
   for (const [input] of UM_ART) $input(input).value = '';
+  // Nothing raises a blank creature — the same default the game gives a neutral.
+  $select('um-raise').value = '';
   // A new creature has no abilities. Cleared here and not only on open, because
   // the form is reached again without closing it — author one, press New,
   // author the next — and a row left standing gives the second one the first

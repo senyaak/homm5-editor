@@ -310,6 +310,38 @@ export interface CreaturePreset {
    * model) without touching the rest.
    */
   art: Partial<Record<'character' | 'model' | 'animSet' | 'icon', string>>;
+  /**
+   * What necromancy raises the donor as, or empty when nothing does.
+   *
+   * Part of the preset because it is part of BEING that creature, and it is the
+   * one property that lives nowhere near its record: the game keeps a single
+   * table of dead→risen pairs and a creature outside it cannot be raised. A copy
+   * of a Grand Elf that came back unraisable would differ from its donor in a
+   * way nothing on the form mentions — which is exactly what happened to the
+   * Sharpshooter.
+   */
+  raisedAs: string;
+}
+
+/** Where the game keeps the pairs, and everything else it derives from stats. */
+const DEFAULT_STATS = 'GameMechanics/RPGStats/DefaultStats.xdb';
+
+/**
+ * Dead creature → what necromancy raises it as, read off `<TransformTable>`.
+ *
+ * The shipped table is 134 pairs: every faction creature and no other, so every
+ * NEUTRAL is unraisable by design. Read rather than assumed, and read from the
+ * MOUNTED chain, so a mod's own pairs are in it too.
+ */
+export function raiseTable(data: Assets): Map<string, string> {
+  const pairs = new Map<string, string>();
+  const text = data.text(DEFAULT_STATS);
+  if (!text) return pairs;
+  const table = /<TransformTable>([\s\S]*?)<\/TransformTable>/.exec(text);
+  if (!table) return pairs;
+  const item = /<Dead>(CREATURE_\w+)<\/Dead>\s*<Rise>(CREATURE_\w+)<\/Rise>/g;
+  for (const m of table[1]!.matchAll(item)) pairs.set(m[1]!, m[2]!);
+  return pairs;
 }
 
 /**
@@ -357,6 +389,7 @@ export function creaturePreset(data: Assets, id: string): CreaturePreset | null 
     name, description, abilitiesText,
     visualSource: refPath(visualHref), monsterSource: refPath(monsterHref),
     art,
+    raisedAs: raiseTable(data).get(id) ?? '',
   };
 }
 

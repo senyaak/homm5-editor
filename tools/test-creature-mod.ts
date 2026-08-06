@@ -26,7 +26,7 @@ import { packCreatureMod, readCreatureModBuffer, writeCreatureMod } from '../src
 import { dataPath } from '../src/mods/mod-art.ts';
 import { MOD_MANIFEST, dataReader } from '../src/mods/mod-files.ts';
 import { assets } from '../src/game/assets.ts';
-import { Registry } from '../src/schema/registry.ts';
+import { Registry, raiseTable } from '../src/schema/registry.ts';
 import { findEditorRoot, listPlaceable } from '../src/map/objects.ts';
 import type { CreatureMod } from '../src/mods/mod-model.ts';
 import type { DataReader, ModFile } from '../src/mods/mod-files.ts';
@@ -449,6 +449,7 @@ if (!existsSync(join(dataRoot, 'types.xml'))) {
     file: 'TestSharpshooter',
     name: 'Снайперы', description: 'test', abilitiesText: 'Shooter',
     stats: { ...blankStats(), attack: 12, shots: 32, range: -1, tier: 4, gold: 400 },
+    raisedAs: 'CREATURE_SKELETON_ARCHER',
     visualSource: 'GameMechanics/CreatureVisual/Creatures/Preserve/3rd/SharpShooter.(CreatureVisual).xdb',
     monsterSource: 'MapObjects/Preserve/Alt_upgrade/Sharpshooter.(AdvMapMonsterShared).xdb',
   });
@@ -488,6 +489,25 @@ if (!existsSync(join(dataRoot, 'types.xml'))) {
     }
   }
   check('every reference in the mod resolves', dangling.length === 0, dangling.slice(0, 4).join('; '));
+
+  // NECROMANCY IS A TABLE, not a property of the dead creature. The engine looks
+  // the fallen up in `<TransformTable>` and leaves anything it does not find
+  // where it fell — which is why every shipped neutral is unraisable and why a
+  // creature of ours was too, silently, until it said what it comes back as.
+  const stats = asText(realFiles, 'GameMechanics/RPGStats/DefaultStats.xdb');
+  check('DefaultStats.xdb is in the mod', !!stats);
+  check('our creature has a raise pair',
+    /<Dead>CREATURE_TEST_H3_SHARPSHOOTER<\/Dead>\r?\n\s*<Rise>CREATURE_SKELETON_ARCHER<\/Rise>/.test(stats));
+  check('the shipped 134 pairs are all still there',
+    (stats.match(/<Dead>CREATURE_\w+<\/Dead>/g) ?? []).length === 135);
+  // And the donor's own answer is what the form offers, read off the game's
+  // table rather than guessed from the tier: the two elf archers come back as
+  // skeleton archers and their druids as liches.
+  const shippedPairs = raiseTable(assets([dataRoot]));
+  check('the shipped table reads back', shippedPairs.size === 134, `${shippedPairs.size} pairs`);
+  check('the Sharp Shooter is raised as a skeleton archer',
+    shippedPairs.get('CREATURE_SHARP_SHOOTER') === 'CREATURE_SKELETON_ARCHER');
+  check('and a neutral is in no pair at all', !shippedPairs.has('CREATURE_MUMMY'));
 
   // A creature with no icon is the one thing the startup check will not forgive.
   const realVisual = asText(realFiles, creaturePaths(rc).visual);

@@ -76,6 +76,18 @@ export interface CreatureSpec {
    */
   donor?: string;
   /**
+   * What necromancy raises this creature as — `CREATURE_…`, or absent for a
+   * creature the dead of which stay dead.
+   *
+   * NOT a property of the creature's own record: the game keeps one table of
+   * pairs, `<TransformTable>` in `DefaultStats.xdb`, and a creature missing from
+   * it cannot be raised at all. That is by design for the shipped neutrals — the
+   * 134 pairs cover every faction creature and no other — and it is why a
+   * creature of ours is unraisable until it says so here. See
+   * docs/engineInternals/NECROMANCY.md.
+   */
+  raisedAs?: string;
+  /**
    * Art to use instead of what those two point at. Anything omitted is taken
    * from the source documents, so a bare spec already works.
    */

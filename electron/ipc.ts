@@ -811,6 +811,8 @@ export interface ModCreatureDTO {
   from?: Record<string, string>;
   /** The shipped creature it was copied from, so the form can show it again. */
   donor?: string;
+  /** What necromancy raises it as; absent when nothing does. */
+  raisedAs?: string;
 }
 
 /** One artifact of an installed mod, as `mods:list` reports it. */
@@ -1205,6 +1207,8 @@ export interface CreaturePresetDTO {
   visualSource: string;
   monsterSource: string;
   art: Partial<Record<'character' | 'model' | 'animSet' | 'icon', string>>;
+  /** What necromancy raises the donor as; empty when nothing does. */
+  raisedAs: string;
 }
 
 /** Result of `mods:artifact-preset` (mirrors src/registry.ts ArtifactPreset). */
@@ -1239,6 +1243,13 @@ export interface ModsInstallPayload {
   abilitiesText?: string;
   /** Donor creature id — its visual and its map stack are the starting point. */
   donor: string;
+  /**
+   * `CREATURE_…` necromancy raises this one as, or empty for none.
+   *
+   * Empty is what the game does to every creature it does not know: the raise
+   * table is a list of pairs and a creature outside it stays dead.
+   */
+  raisedAs?: string;
   stats: Partial<CreatureStats>;
   /** Art overrides per slot; anything omitted keeps the donor's file. */
   art?: Partial<Record<'character' | 'model' | 'animSet' | 'icon', string>>;

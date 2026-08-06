@@ -95,7 +95,9 @@ export function fillModSelect(sel: HTMLSelectElement, entries: { id: string; nam
     if (skipUnset && /_(NONE|UNKNOWN)$/.test(e.id)) continue;
     const o = document.createElement('option');
     o.value = e.id;
-    o.textContent = e.name ? `${e.name} (${e.id})` : e.id;
+    // An entry with no id is the list's "none" — it names itself and has no id
+    // to print in brackets after it.
+    o.textContent = e.name ? (e.id ? `${e.name} (${e.id})` : e.name) : e.id;
     sel.appendChild(o);
   }
 }
@@ -119,6 +121,10 @@ export async function fillModForms(): Promise<void> {
   {
     umAbilities = data.abilityNames;
     fillModSelect($select('um-town'), data.towns);
+    // Every creature, plus the blank the game's own neutrals hold: a raise pair
+    // may name any creature, so the choice is the whole roster rather than the
+    // fourteen the shipped table happens to use.
+    fillModSelect($select('um-raise'), [{ id: '', name: 'nothing — the dead stay dead' }, ...data.donors]);
   }
   effectStats = data.effectStats;
   heroStats = data.heroStats;

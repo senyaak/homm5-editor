@@ -275,11 +275,15 @@ export function buildCreatureMod(mod: CreatureMod, read: DataReader): BuildRepor
       data: Buffer.from(patchStartupScript(mustRead(read, STARTUP_SCRIPT), artifacts), 'latin1'),
     });
   }
-  if (sets.length) {
-    files.push({
-      path: DEFAULT_STATS,
-      data: Buffer.from(patchDefaultStats(mustRead(read, DEFAULT_STATS), sets), 'latin1'),
-    });
+  // ONE DefaultStats.xdb, for the same reason there is one types.xml: two copies
+  // in one archive and the second wins whole, taking the other edit with it. A
+  // set describes itself here, and a creature says what necromancy raises it as.
+  const raised = mod.creatures.filter((c) => c.raisedAs);
+  if (sets.length || raised.length) {
+    let stats = mustRead(read, DEFAULT_STATS);
+    if (sets.length) stats = patchDefaultStats(stats, sets);
+    stats = patchTransformTable(stats, mod.creatures);
+    files.push({ path: DEFAULT_STATS, data: Buffer.from(stats, 'latin1') });
   }
 
   // Lua, from whatever in the mod carries any: a set that reacts to something, a
@@ -472,6 +476,44 @@ function patchRefTable(table: string, mod: CreatureMod, read: DataReader): strin
   const now = count(t, /<ID>CREATURE_/g);
   if (now !== creatureLimit(mod)) throw new Error(`${REF_TABLE}: ended with ${now} entries, expected ${creatureLimit(mod)}`);
   return t;
+}
+
+/**
+ * How many pairs the shipped raise table holds.
+ *
+ * Checked rather than trusted, the way every other count here is: the file is
+ * the game's own and a mod that appended to a table of a different size would be
+ * editing something else.
+ */
+const SHIPPED_TRANSFORMS = 134;
+
+/**
+ * DefaultStats.xdb: one `<Dead>`/`<Rise>` pair per creature of ours that says
+ * what it is raised as.
+ *
+ * WHY A CREATURE OF OURS IS UNRAISABLE UNTIL THIS EXISTS. Necromancy does not
+ * work off the dead creature's own record — there is no field on it to set. The
+ * engine looks the creature up in this one table, and a creature it does not
+ * find is left where it fell. The shipped 134 pairs are every faction creature
+ * and nothing else, so every NEUTRAL is unraisable by design and a new creature
+ * inherits that silently: nothing is reported, the stack simply yields nothing.
+ *
+ * The pair is also where the answer to "what does it come back as" lives, which
+ * is why it is the creature's to state rather than derived from its tier — the
+ * shipped table raises the two elf archers as skeleton archers and their druids
+ * as liches, and no rule over the numbers produces that.
+ */
+function patchTransformTable(stats: string, creatures: readonly ModCreature[]): string {
+  const raised = creatures.filter((c) => c.raisedAs);
+  if (!raised.length) return stats;
+  const had = count(stats, /<Dead>CREATURE_\w+<\/Dead>/g);
+  if (had !== SHIPPED_TRANSFORMS) {
+    throw new Error(`${DEFAULT_STATS}: ${had} raise pairs, expected ${SHIPPED_TRANSFORMS}`);
+  }
+  const close = once(stats, '</TransformTable>', `${DEFAULT_STATS} raise table`);
+  return insertBeforeLine(stats, close, raised.flatMap((c) => [
+    '<Item>', `\t<Dead>${c.id}</Dead>`, `\t<Rise>${c.raisedAs}</Rise>`, '</Item>',
+  ]));
 }
 
 /** UIGameRoot: one camera entry, listing every creature we added. */

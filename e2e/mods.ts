@@ -128,6 +128,15 @@ export const SHARPSHOOTER = {
    */
   abilitiesLine: 'Усиленная стрела, Стрельба без штрафа',
   donor: 'CREATURE_SHARP_SHOOTER',
+  /**
+   * What necromancy raises them as — the donor's own answer.
+   *
+   * Not decoration: a creature outside the game's raise table cannot be raised
+   * at all, and every shipped NEUTRAL is outside it. Ours is a neutral, so
+   * without this it fell and yielded nothing, which reads in game as necromancy
+   * being broken rather than as a creature missing from a table.
+   */
+  raisedAs: 'CREATURE_SKELETON_ARCHER',
   stats: {
     'um-attack': '12', 'um-defence': '10', 'um-mindmg': '8', 'um-maxdmg': '10',
     'um-health': '15', 'um-speed': '9', 'um-init': '12', 'um-shots': '32',
@@ -692,6 +701,7 @@ export function installMapFixture(gameRoot: string): CreatureMod {
     id: SHARPSHOOTER.id, file: SHARPSHOOTER.file,
     name: SHARPSHOOTER.name, description: SHARPSHOOTER.description,
     stats: { ...blankStats(), ...SHARPSHOOTER.numbers },
+    raisedAs: SHARPSHOOTER.raisedAs,
     visualSource: sources.visual, monsterSource: sources.monster,
   };
   // ADDED when missing, and LEFT ALONE when it is there. Not updated: a rebuild

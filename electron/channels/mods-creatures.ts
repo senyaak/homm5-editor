@@ -47,6 +47,9 @@ function creatureSpecOf(p: ModsInstallPayload, keep?: CreatureSpec): CreatureSpe
     // Absent by default: the line is derived from the abilities at build time.
     ...(p.abilitiesText ? { abilitiesText: p.abilitiesText } : {}),
     stats: { ...blankStats(), ...p.stats },
+    // Absent rather than empty when nothing raises it: the manifest says what
+    // the creature HAS, and a blank pair in the game's table would name nothing.
+    ...(p.raisedAs?.trim() ? { raisedAs: p.raisedAs.trim() } : {}),
     visualSource, monsterSource,
     ...(donor || keep?.donor ? { donor: donor || keep!.donor! } : {}),
     ...(Object.keys(art).length ? { art } : {}),

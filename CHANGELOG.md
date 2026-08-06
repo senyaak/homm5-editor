@@ -15,6 +15,17 @@ one.
 
 ### Fixed
 
+- **A creature of yours can be raised by necromancy.** Which creature comes back
+  from the dead, and as what, is one table in the game's own files — 134
+  dead→risen pairs covering every faction creature and no other. A creature
+  outside it is left where it fell, with nothing said: our Sharpshooter, a
+  neutral like the Heroes III unit it ports, yielded a necromancer nothing at
+  all, which reads as necromancy being broken rather than as a missing row. A
+  creature now says what it is raised as, and the mod appends the pair. It is
+  part of the preset too, so a copy of a Grand Elf raises like a Grand Elf
+  without anybody having to know this table exists — and «nothing» is still a
+  choice, the one every shipped neutral makes.
+
 - **A map made here can be played, without anyone remembering a field two
   panels away.** An object's owner and the player slots were kept apart: a hero
   given to PLAYER_1 belonged to somebody the game does not offer, because a

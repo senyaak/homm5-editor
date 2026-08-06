@@ -71,6 +71,10 @@ test('the dialog opens clean, and the donor loads as a preset', async () => {
   await expect(page.locator('#um-name')).toHaveValue('Лесные стрелки');
   await expect(page.locator('#um-shots')).toHaveValue('16');
   await expect(page.locator('#um-town')).toHaveValue('TOWN_PRESERVE');
+  // Including what necromancy raises the donor as — which lives in a table of
+  // the game's own rather than on the creature, and so is the one thing a copy
+  // silently loses. Lost, the creature falls and yields nothing.
+  await expect(page.locator('#um-raise')).toHaveValue('CREATURE_SKELETON_ARCHER');
   // The donor's abilities arrive as ROWS, one each, named the way a player
   // reads them — and the line the hire dialog will print is shown as it is
   // decided, instead of being typed into a box beside them.
@@ -163,6 +167,11 @@ test('edits the difference and installs the creature', async () => {
   expect(c.stats.shots).toBe(32);
   expect(c.stats.range).toBe(-1);
   expect(c.stats.town).toBe('TOWN_NO_TYPE');
+  // A neutral that CAN be raised: the town says neutral, and the pair the donor
+  // brought says a necromancer still gets skeleton archers out of them. Every
+  // shipped neutral is outside that table, so this is the difference between our
+  // creature and the game's own — and it is the creature's to state.
+  expect(c.raisedAs).toBe(SHARPSHOOTER.raisedAs);
   // The donor's two abilities, plus the one added as a row.
   expect([...c.stats.abilities].sort())
     .toEqual(['ABILITY_NO_MELEE_PENALTY', 'ABILITY_NO_RANGE_PENALTY', 'ABILITY_PIERCING_ARROW']);
@@ -201,6 +210,7 @@ test('an installed creature opens for editing, whole', async () => {
   await expect(page.locator('#um-attack')).toHaveValue('12');
   await expect(page.locator('#um-shots')).toHaveValue('32');
   await expect(page.locator('#um-town')).toHaveValue('TOWN_NO_TYPE');
+  await expect(page.locator('#um-raise')).toHaveValue(SHARPSHOOTER.raisedAs);
   await expect(page.locator('#um-abilities .um-ability-id')).toHaveCount(3);
   await expect(page.locator('#um-art-icon')).toHaveValue(/Sharpshooter/);
 
@@ -216,6 +226,7 @@ test('an installed creature opens for editing, whole', async () => {
 
   const c = readInstalledMod(GAME).creatures[0]!;
   expect(c.stats.gold).toBe(450);
+  expect(c.raisedAs, 'the raise pair a summary would have lost').toBe(SHARPSHOOTER.raisedAs);
   expect(c.description, 'the words a summary would have lost').toBe(SHARPSHOOTER.description);
   expect([...c.stats.abilities].sort())
     .toEqual(['ABILITY_NO_MELEE_PENALTY', 'ABILITY_NO_RANGE_PENALTY', 'ABILITY_PIERCING_ARROW']);

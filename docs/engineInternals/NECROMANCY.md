@@ -50,6 +50,34 @@ data. Nothing about it is special-cased elsewhere in the engine. A term for
 our own set is the same twenty bytes reading our own number — which is the
 whole design, and the reason the next section is short.
 
+## Who can be raised at all, and as what
+
+Neither number above decides that. `<TransformTable>` in the `Necromancy` block
+of `DefaultStats.xdb` is a flat list of **dead → risen** pairs, and a creature
+that is not in it is not raised: no message, no zero in the tally, the stack
+simply yields nothing.
+
+The shipped table is **134 pairs — every faction creature, its upgrades
+included, and nothing else.** Every NEUTRAL is absent, which is the engine
+behaving as designed rather than a gap: mummies, elementals and wandering
+sharpshooters stay where they fell.
+
+Two things follow, and the second cost a bug.
+
+**What it comes back as is data, and not derivable from the numbers.** Both elf
+archers rise as skeleton archers, their druids as liches, a paladin as a vampire
+lord — fourteen distinct undead across the table, mapped by hand. No rule over
+tier or town reproduces it, so the pair has to be stated per creature.
+
+**A creature of ours inherits absence.** Our Sharpshooter is a neutral
+(`TOWN_NO_TYPE`, as Heroes III has it), so it was unraisable from the day it
+existed and nothing said so — it reads in game as necromancy being broken. A mod
+therefore appends its own pairs to this table: `raisedAs` on the creature spec,
+written by `patchTransformTable` in `src/mods/creature-mod.ts`, and the donor's
+own pair is part of the preset a new creature is copied from
+(`raiseTable` in `src/schema/registry.ts`), so a copy of a Grand Elf raises like
+one without anybody remembering to say it.
+
 ## Dark energy, in full
 
 There is no setter because there is no single value being set: the pool is

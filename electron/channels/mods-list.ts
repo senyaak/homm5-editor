@@ -40,6 +40,7 @@ export function registerModsList(): void {
         stats: c.stats,
         ...(c.from ? { from: c.from as Record<string, string> } : {}),
         ...(c.donor ? { donor: c.donor } : {}),
+        ...(c.raisedAs ? { raisedAs: c.raisedAs } : {}),
       })),
       // The effects ride along: the dialog fills its rows from this list, and an
       // artifact opened for editing without them saves none — so changing a price
