@@ -114,13 +114,20 @@ export async function launchEditor(env: Record<string, string> = {}, args: strin
  *
  * `allow` is for the specs that provoke a throw on purpose (the WebGL one):
  * anything matching is dropped, anything else still fails.
+ *
+ * READ AFTER THE CLOSE, not before. The list used to be taken at entry and
+ * asserted afterwards, so anything the renderer threw while shutting down was
+ * collected into the array and never looked at — and shutdown is exactly when a
+ * listener nobody unhooked, or a promise still in flight against a window that
+ * is going away, throws. The window between the two lines was the only part of
+ * a spec's life this could not see.
  */
 export async function closeEditor(ed: Launched, allow?: RegExp): Promise<void> {
-  const unexpected = allow ? ed.errors.filter((e) => !allow.test(e)) : ed.errors;
   try {
     await ed.app.close();
   } finally {
-    expect(unexpected, 'the renderer threw nothing while this ran').toEqual([]);
+    const unexpected = allow ? ed.errors.filter((e) => !allow.test(e)) : ed.errors;
+    expect(unexpected, 'the renderer threw nothing while this ran, closing included').toEqual([]);
   }
 }
 
