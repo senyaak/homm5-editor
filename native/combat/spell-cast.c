@@ -139,6 +139,8 @@ static const BYTE CAST_COMMAND_HEAD[CAST_COMMAND_HEAD_LEN] = {
 typedef int(__fastcall *CastCommandFn)(void *self, void *edx);
 static CastCommandFn g_castCommand = NULL;
 static int g_castCommandsLogged = 0;
+/** Non-zero while a command is executing — see the gate's log below. */
+static int g_inCastCommand = 0;
 
 static int __fastcall on_cast_command(void *self, void *edx) {
   int spell = readable_bytes(self, CAST_COMMAND_SPELL + 4) >= CAST_COMMAND_SPELL + 4
@@ -177,7 +179,14 @@ static int __fastcall on_cast_command(void *self, void *edx) {
       } else log_line("   the caster's life count cannot be read");
     }
   }
+  // The gate is asked from two places and only one of them is interesting: the
+  // interface asks it for every target the pointer passes over — twelve times in
+  // one battle, which is what ate the log budget and made the gate look as
+  // though it was never consulted during a cast at all. So it prints only while
+  // a command is actually executing.
+  g_inCastCommand++;
   int answer = g_castCommand(self, edx);
+  g_inCastCommand--;
   if (dump) log_num("   the command returned ", answer & 0xFF);
   return answer;
 }
@@ -255,7 +264,10 @@ static int __fastcall on_cast_gate(void *ecx, void *block, void *a1, void *a2, i
   int spell = readable_bytes(block, CAST_GATE_SPELL + 4) >= CAST_GATE_SPELL + 4
       ? *(int *)((BYTE *)block + CAST_GATE_SPELL) : -1;
   int answer = g_castGate(ecx, block, a1, a2, a3, a4, a5, a6, a7);
-  if (spell >= FIRST_SPELL_OF_OURS && g_castGatesLogged < SPELL_CASTS_LOGGED) {
+  // Only during a real cast, and for every spell rather than only ours: the
+  // question is why the same block passes with Armageddon's id and fails with
+  // ours, so both verdicts have to be in the same log.
+  if (g_inCastCommand && g_castGatesLogged < SPELL_CASTS_LOGGED) {
     g_castGatesLogged++;
     log_num("may it be cast? spell id ", spell);
     log_num("   the gate says ", answer & 0xFF);
