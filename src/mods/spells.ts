@@ -122,6 +122,25 @@ export interface SpellSpec {
    */
   picture?: string;
   /**
+   * The creature KINDS its damage passes over, by ability name.
+   *
+   * WHY THIS IS NOT IN THE DOCUMENT and not in the script either. The engine
+   * decides how much a spell does to one stack in one function, and that is
+   * where resistance, anti-magic, protection from a school and the combat log
+   * all live — so damage of ours has to come out of it, not beside it. That
+   * function carries the shipped kind filters itself, keyed on the spell's
+   * number: Unholy Word answers zero for `ABILITY_UNDEAD` and `ABILITY_DEMONIC`,
+   * Holy Word answers zero for everything BUT those. A number it was never
+   * compiled against has no such case, so the extension supplies ours — which
+   * means this list has to reach the extension, and the config file is how
+   * anything of ours reaches it.
+   *
+   * `NOT_LIVING` is the Death Ripple's own list, and it is written the way the
+   * game asks the question: there is no "is it alive" flag to test, only the
+   * three kinds whose absence the game prints as «Живое существо».
+   */
+  spares?: readonly string[];
+  /**
    * What the extension does when it is cast — the name of a Lua function.
    *
    * The document above cannot say it: the engine picks a behaviour by the enum

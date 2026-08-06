@@ -131,6 +131,7 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   install_cast_command_log();
   install_cast_gate_log();
   install_gate_refusal_log();
+  install_spell_damage_filter();
   if (rows_for(STAT_TENT_HEALTH) && install_machine_health()) {
     log_line("first aid tent health hook installed");
   }

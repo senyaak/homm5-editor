@@ -117,6 +117,43 @@ typedef struct {
 static SpecRow g_specRows[MAX_SPEC_ROWS];
 static int g_specRowCount = 0;
 
+/**
+ * One SPELL of ours, and the creature kinds its damage passes over.
+ *
+ * The fourth shape in this file and the first that is not a term added to a
+ * sum. The engine works out what a spell does to one stack in one function, and
+ * before any arithmetic it looks the spell's number up against the handful it
+ * was compiled with a rule for: Unholy Word answers zero for a stack carrying
+ * `ABILITY_UNDEAD` or `ABILITY_DEMONIC`, Holy Word answers zero for a stack
+ * carrying neither. A number of ours has no such case, so we answer for it —
+ * in the same function, before the engine's own arithmetic, so that resistance,
+ * anti-magic, protection from a school and the combat log all still apply to
+ * whatever is left.
+ *
+ * The abilities are NUMBERS because the question is the engine's own
+ * `HasAbility(int)` on the stack being hit. «Живое существо» is not among them
+ * and cannot be: no creature carries it, the game prints it when none of the
+ * three kinds is there — so "only the living" is written as sparing those three.
+ */
+#define MAX_SPARED 8
+typedef struct {
+  int spell;
+  int spares[MAX_SPARED];
+  int spareCount;
+} SpellRow;
+
+#define MAX_SPELL_ROWS 16
+static SpellRow g_spellRows[MAX_SPELL_ROWS];
+static int g_spellRowCount = 0;
+
+/** The row for one spell, or nothing — spells of ours without a filter hit all. */
+static const SpellRow *spell_row(int spell) {
+  for (int i = 0; i < g_spellRowCount; i++) {
+    if (g_spellRows[i].spell == spell) return &g_spellRows[i];
+  }
+  return NULL;
+}
+
 static RaiseFn g_original = NULL;
 static CostFn g_originalCost = NULL;
 static PlayerFn g_originalRefill = NULL;

@@ -21,7 +21,9 @@ import { bar } from './bar.ts';
 import { pickObject, placeAtTile } from './objects.ts';
 import { mapComplaints } from './map-checks.ts';
 import { readEntries } from '../src/format/pak.ts';
-import { LIVE, clearMap, installSpellFixture, prepareGameRoot } from './mods.ts';
+import { DEATH_RIPPLE, LIVE, clearMap, installSpellFixture, prepareGameRoot } from './mods.ts';
+import { EFFECTS_FILE, readSpellFilters } from '../src/mods/artifact-effects.ts';
+import { SHIPPED_SPELLS } from '../src/mods/spells.ts';
 import {
   ARCHIVE, DATA, FIXES_UNDER_TEST, GAME, HEROES, MAP_DIR, NAME, OPPONENT, OVERRIDE_ALL, PLAYERS,
   TILES,
@@ -176,6 +178,20 @@ test('the map spec is one the game can build', () => {
   // where they cost a second and need neither an install nor this fixture. This
   // is the second door, not the only one.
   expect(mapComplaints(DATA), 'the game\'s own files say otherwise').toEqual([]);
+});
+
+// The one part of a spell of ours that does NOT travel in the archive, asserted
+// where it lands. `installSpellFixture` above writes it; without the row the
+// ripple is cast, the engine deals its damage, and the undead take it too —
+// which reads as the spell being wrong rather than as a line that was not
+// written. Checked in the install, by the number, because that is what both the
+// engine and the extension go by.
+test('the spells of ours carry their filter into the install', () => {
+  const filters = readSpellFilters(readFileSync(join(GAME, EFFECTS_FILE), 'latin1'));
+  const ripple = filters.find((f) => f.spell === SHIPPED_SPELLS);
+  expect(ripple, `${DEATH_RIPPLE.id} has a row in ${EFFECTS_FILE}`).toBeTruthy();
+  expect(ripple!.spares, 'and it spares the undead, the elemental and the mechanical')
+    .toEqual([10, 12, 9]);
 });
 
 test('the Rules Test map is built and packed, with every fix off', async () => {

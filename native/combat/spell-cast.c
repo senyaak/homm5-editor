@@ -22,12 +22,12 @@
 // the Payback perk then reads as a resisted spell and refunds — see
 // qol/fix-payback.c. The two are the same byte.)
 //
-// WHAT THIS DOES, for now: says so out loud. Six bytes at the head of the
-// dispatch — `cmp ecx,115h`, and ecx IS the id at that instant — become a jump
-// to a stub of ours that logs the number and then does the comparison it
-// displaced. Nothing about the cast changes; this is the log that says whether
-// a spell of ours reaches the engine at all, which is the one thing a first run
-// has to answer before anything is built on top of it.
+// WHAT THIS DOES. Six bytes at the head of the dispatch — `cmp ecx,115h`, and
+// ecx IS the id at that instant — become a jump to a stub of ours. The stub logs
+// the number, hands a cast of ours to its script, and then either jumps into the
+// branch the word spells use (which is where the damage comes from — see "the
+// branch we borrow" below) or does the comparison it displaced and returns.
+// Nothing about the game's own spells changes.
 //
 // Written as an in-place stub rather than a detour on the function, because the
 // id is not an argument: it is fetched inside, and only from the dispatch
@@ -78,15 +78,60 @@ static void __cdecl on_spell_cast(int spell) {
   } else log_num("cast: the game's own, spell id ", spell);
 }
 
+// ---------------------------------------------------------------------------
+// AND THE BRANCH WE BORROW. Everything above gets the cast as far as the
+// dispatch and no further: the dispatch has no case for a number of ours, so
+// the cast falls out of the tail that means "nothing happened". The effect has
+// to come from somewhere, and it cannot come from us.
+//
+// WHY NOT FROM US. Damage in this game is not a subtraction. `0xB861A0` — the
+// one function that answers "how much does this spell do to that stack" —
+// applies magic resistance, the anti-magic that may be on the stack, protection
+// from the school, the caster's own terms, and writes the combat log line. A
+// number of ours arrived at by arithmetic of ours would bypass all five, and the
+// result would look exactly like our bugs.
+//
+// SO WE BORROW UNHOLY WORD'S. Its branch is six instructions:
+//
+//   0xB7ED4A  movss xmm0,[esp+68h]     ; the spell's power, from the frame
+//             mov edx,ebp              ; the caster
+//             mov ecx,[esp+18h]        ; the combat
+//             push … ; push edi        ; the frame's own arguments
+//             call 0xD60C30            ; every stack on the field, one by one
+//             mov byte ptr [esp+13h],0 ; it worked
+//             jmp 0xB7FAF0             ; the success tail
+//
+// and every register it reads is set BEFORE the dispatch, by the prologue, from
+// the cast's own block — none of it is Unholy Word's. `0xD60C30` itself takes
+// the spell id from that block (`+4`) rather than from an argument, so it stays
+// OURS all the way down: the damage comes off our document, the log line names
+// our spell, and the only thing left keyed on a number the executable knows is
+// the kind filter — which is what the config row supplies below.
+//
+// So the stub, having logged and fired the script, jumps there for our ids
+// instead of returning to the comparison. The stack is untouched: the dispatch
+// reaches that branch through a `jmp`, not a `call`, so arriving by another jmp
+// arrives with exactly the frame it expects.
+
+/** `movss xmm0,[esp+68h]` — the head of Unholy Word's branch, and the landmark. */
+#define WORD_BRANCH_RVA 0x77ed4au
+#define WORD_BRANCH_MARK_LEN 6
+static const BYTE WORD_BRANCH_MARK[WORD_BRANCH_MARK_LEN] = {
+  0xF3, 0x0F, 0x10, 0x44, 0x24, 0x68
+};
+
 /**
- * pushad / pushfd / call / popfd / popad, then the `cmp` we displaced and back.
+ * pushad / pushfd / call / popfd / popad, then either the branch we borrow or
+ * the `cmp` we displaced.
  *
  * The flags are saved and restored around the call and the comparison is done
  * AFTER, so the dispatch below reads flags set by its own instruction — a stub
  * that logged and then let the caller keep our flags would send every cast to
- * whichever branch our arithmetic happened to imply.
+ * whichever branch our arithmetic happened to imply. Our own comparison sits
+ * between them for the same reason: it is spent by the `jb` two bytes later and
+ * the displaced `cmp` sets the flags again for the engine.
  */
-#define SPELL_STUB_LEN 24
+#define SPELL_STUB_LEN 37
 static BYTE SPELL_STUB[SPELL_STUB_LEN] = {
   0x60,                                     // pushad
   0x9C,                                     // pushfd
@@ -95,6 +140,9 @@ static BYTE SPELL_STUB[SPELL_STUB_LEN] = {
   0x83, 0xC4, 0x04,                         // add esp,4
   0x9D,                                     // popfd
   0x61,                                     // popad
+  0x81, 0xF9, 0x61, 0x01, 0x00, 0x00,       // cmp ecx,161h    — 353, the first of ours
+  0x72, 0x05,                               // jb +5           — the game's own, carry on
+  0xE9, 0x00, 0x00, 0x00, 0x00,             // jmp <the word branch>
   0x81, 0xF9, 0x15, 0x01, 0x00, 0x00,       // cmp ecx,115h    — displaced
   0xE9, 0x00, 0x00, 0x00, 0x00,             // jmp back
 };
@@ -106,6 +154,17 @@ static BYTE SPELL_TO_STUB[SPELL_DISPATCH_LEN] = {
 
 static void install_spell_log(void) {
   BYTE *base = (BYTE *)GetModuleHandleW(NULL);
+  // The borrowed branch, checked before anything is written: an address of ours
+  // that has gone stale would send every cast of ours into the middle of some
+  // other instruction, and the crash would land in the battle rather than here.
+  BYTE *branch = base + WORD_BRANCH_RVA;
+  int borrow = 1;
+  for (int i = 0; i < WORD_BRANCH_MARK_LEN; i++) {
+    if (branch[i] != WORD_BRANCH_MARK[i]) borrow = 0;
+  }
+  if (!borrow) {
+    log_line("the word spells' branch is not where we left it - ours will do nothing");
+  }
   BYTE *stub = (BYTE *)VirtualAlloc(NULL, SPELL_STUB_LEN, MEM_COMMIT | MEM_RESERVE,
                                     PAGE_EXECUTE_READWRITE);
   if (!stub) { log_line("spell log: no memory for the stub"); return; }
@@ -113,8 +172,13 @@ static void install_spell_log(void) {
   // The call's distance is measured from the end of the call instruction, which
   // is the eighth byte of the stub.
   *(DWORD *)(stub + 4) = (DWORD)(void *)on_spell_cast - (DWORD)(stub + 8);
+  // The jump to the branch we borrow — byte 21, ending at 26. Without the
+  // landmark it becomes a jump to the next instruction, which is the same thing
+  // as not having it: our spells reach the dispatch and fall out of the tail.
+  if (borrow) *(DWORD *)(stub + 22) = (DWORD)branch - (DWORD)(stub + 26);
+  else *(DWORD *)(stub + 22) = 0;
   // And the jump home, from the end of the stub to just past what we displaced.
-  *(DWORD *)(stub + 20) =
+  *(DWORD *)(stub + 33) =
       (DWORD)(base + SPELL_DISPATCH_RVA + SPELL_DISPATCH_LEN) - (DWORD)(stub + SPELL_STUB_LEN);
   FlushInstructionCache(GetCurrentProcess(), stub, SPELL_STUB_LEN);
 
@@ -122,7 +186,8 @@ static void install_spell_log(void) {
       (DWORD)stub - ((DWORD)(base + SPELL_DISPATCH_RVA) + 5);
   if (overwrite_code(SPELL_DISPATCH_RVA, SPELL_DISPATCH_HEAD, SPELL_TO_STUB,
                      SPELL_DISPATCH_LEN, "the spell dispatch")) {
-    log_line("every spell cast will say what it was");
+    log_line(borrow ? "every spell cast will say what it was, and ours will land"
+                    : "every spell cast will say what it was");
   }
 }
 
@@ -417,4 +482,89 @@ static void install_cast_gate_log(void) {
   g_castGate = (CastGateFn)detour(CAST_GATE_RVA, CAST_GATE_HEAD, CAST_GATE_HEAD_LEN,
                                   (void *)on_cast_gate, "the cast's target check");
   if (g_castGate) log_line("a cast of ours will say whether the gate let it through");
+}
+
+// ---------------------------------------------------------------------------
+// WHAT A SPELL OF OURS MAY TOUCH.
+//
+// `CCombatSpell::DamageTo` (0xB861A0) is where the engine turns a spell, a
+// caster and a stack into a number, and its first act is the kind filter:
+//
+//   ebx = normalise(block->spellId)               ; 0xAD44C0
+//   if (target) {
+//     if (ebx == SPELL_UNHOLY_WORD) {             ; 21
+//       if (target->HasAbility(ABILITY_UNDEAD))  return 0;
+//       if (target->HasAbility(ABILITY_DEMONIC)) return 0;
+//     } else if (ebx == SPELL_HOLY_WORD) {        ; 35 — the same rule inverted
+//       if (!undead && !demonic && !demon-raged) return 0;
+//     }
+//   }
+//   … resistance, anti-magic, protection from the school, the combat log …
+//
+// Two cases, both compiled against a literal. A number of ours has none, so
+// every stack on the field is fair game — which is the Death Ripple damaging the
+// undead. The row in the config file says which kinds it must pass over, and
+// this answers zero for them BEFORE the engine's own arithmetic, exactly where
+// the engine answers zero for Unholy Word's. Everything after that point still
+// happens to whoever is left, which is the whole reason the damage is taken from
+// here rather than worked out by us.
+
+#define SPELL_DAMAGE_RVA 0x7861a0u
+#define SPELL_DAMAGE_HEAD_LEN 5
+static const BYTE SPELL_DAMAGE_HEAD[SPELL_DAMAGE_HEAD_LEN] = {
+  0x51, 0x53, 0x8B, 0xC2, 0x56
+};
+/** The spell id, in the block the function's `edx` points at. */
+#define SPELL_DAMAGE_SPELL 0x04u
+
+/**
+ * `CCombatUnit::HasAbility(int)` — the engine's own question about a stack, at
+ * vtable +0x28C.
+ *
+ * Asked rather than answered from a table of ours on purpose: this is the slot
+ * the engine itself calls three lines above, so whatever it counts — the
+ * creature's record, a spell that granted the kind, a form the stack has taken —
+ * is counted for us too, and a creature the mod adds needs nothing said about it.
+ */
+#define UNIT_HAS_ABILITY_SLOT 0x28Cu
+typedef BYTE(__thiscall *HasAbilityFn)(void *unit, int ability);
+
+static int unit_has_ability(void *unit, int ability) {
+  if (readable_bytes(unit, 4) < 4) return 0;
+  void **vtable = *(void ***)unit;
+  if (readable_bytes(vtable, UNIT_HAS_ABILITY_SLOT + 4) < UNIT_HAS_ABILITY_SLOT + 4) return 0;
+  HasAbilityFn has = (HasAbilityFn)vtable[UNIT_HAS_ABILITY_SLOT / 4];
+  if (!points_at_code((void *)has)) return 0;
+  return has(unit, ability) ? 1 : 0;
+}
+
+typedef int(__fastcall *SpellDamageFn)(int power, void *block, void *caster, void *target);
+static SpellDamageFn g_spellDamage = NULL;
+
+static int __fastcall on_spell_damage(int power, void *block, void *caster, void *target) {
+  int spell = readable_bytes(block, SPELL_DAMAGE_SPELL + 4) >= SPELL_DAMAGE_SPELL + 4
+      ? *(int *)((BYTE *)block + SPELL_DAMAGE_SPELL) : -1;
+  if (spell >= FIRST_SPELL_OF_OURS) {
+    const SpellRow *row = spell_row(spell);
+    log_num("damage of ours, spell id ", spell);
+    if (!row) log_line("   no filter row - it may touch anything");
+    for (int i = 0; row && i < row->spareCount; i++) {
+      if (!unit_has_ability(target, row->spares[i])) continue;
+      log_num("   the target is spared, ability ", row->spares[i]);
+      return 0;
+    }
+    int dealt = g_spellDamage(power, block, caster, target);
+    // AFTER the engine, not instead of it: this is the number resistance and
+    // anti-magic have already been applied to, and it is the one the stack loses.
+    log_num("   the engine says ", dealt);
+    return dealt;
+  }
+  return g_spellDamage(power, block, caster, target);
+}
+
+static void install_spell_damage_filter(void) {
+  g_spellDamage = (SpellDamageFn)detour(SPELL_DAMAGE_RVA, SPELL_DAMAGE_HEAD,
+                                        SPELL_DAMAGE_HEAD_LEN, (void *)on_spell_damage,
+                                        "the spell's damage to one stack");
+  if (g_spellDamage) log_line("a spell of ours will spare what its row says");
 }

@@ -132,6 +132,27 @@ export function patchAbilityTable(table: string, abilities: readonly EditorAbili
   ]));
 }
 
+/** The enum that names an ability, and whose VALUE the executable knows it by. */
+const ABILITY_TYPE = 'CombatAbility';
+
+/**
+ * Every ability the game answers to, by the number the executable holds.
+ *
+ * The NUMBER, not the name, because the readers are the executable's own: the
+ * engine's per-creature question is `HasAbility(int)`, and everything the
+ * extension asks about a creature's kind goes through it. types.xml carries the
+ * map twice — a bare list of names in the enum's items, and the name→value pairs
+ * this reads — and only the second says what a name is worth.
+ */
+export function abilityNumbers(types: string): Map<string, number> {
+  const at = types.indexOf(`<TypeName>${ABILITY_TYPE}</TypeName>`);
+  if (at < 0) return new Map();
+  const end = types.indexOf('</Entries>', at);
+  const body = types.slice(at, end < 0 ? undefined : end);
+  return new Map([...body.matchAll(/<Name>(ABILITY_\w+)<\/Name>\s*<Value>(\d+)<\/Value>/g)]
+    .map((m) => [m[1]!, Number(m[2])] as const));
+}
+
 /** The caption and the description, in the game's own UTF-16. */
 export function abilityTexts(abilities: readonly EditorAbility[]): ModFile[] {
   return abilities.flatMap((a) => [

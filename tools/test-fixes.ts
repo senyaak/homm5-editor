@@ -44,13 +44,19 @@ function sources(dir: string): string[] {
   return out;
 }
 
-/** One patch as the C declares it: where, and the two byte rows. */
+/**
+ * One claim about the file as the C declares it: where, and the byte rows.
+ *
+ * `after` only for a patch that WRITES. A detour writes a jump of its own
+ * making, and a landmark writes nothing at all — but all three say "these bytes
+ * are at this address", and that is the claim that goes stale.
+ */
 interface Patch {
   file: string;
   what: string;
   rva: number;
   before: number[];
-  after: number[];
+  after?: number[];
 }
 
 /** `static const BYTE NAME[n] = { 0x.., ... };` — the row, by its name. */
@@ -84,6 +90,26 @@ for (const path of sources(join(REPO, 'native'))) {
     check(`  ${what}: and the patch actually changes something`,
       before.some((b, i) => b !== after[i]));
     patches.push({ file, what, rva, before, after });
+  }
+
+  // AND EVERY OTHER ADDRESS THE FILE NAMES. `overwrite_code` is one of three
+  // ways in: a DETOUR replaces a function's head with a jump, and a LANDMARK is
+  // read and never written — the bytes that say "the branch we borrow is still
+  // the branch we borrow" before a stub is pointed at it. Neither goes through
+  // the call above, and eighteen detours were going unchecked; the same stale
+  // address that makes `overwrite_code` refuse silently makes a detour land in
+  // the middle of an instruction, and that one crashes a battle.
+  //
+  // Found by the naming rather than by a list: `#define X_RVA` with a byte row
+  // called `X_HEAD` or `X_MARK` beside it IS the declaration. A convention the
+  // files already follow, so a hook added tomorrow is checked tomorrow.
+  for (const m of source.matchAll(/#define\s+(\w+)_RVA\s+0x[0-9A-Fa-f]+u?/g)) {
+    const stem = m[1]!;
+    if (patches.some((p) => p.file === file && p.rva === rvaNamed(source, `${stem}_RVA`))) continue;
+    const before = bytesNamed(source, `${stem}_HEAD`) ?? bytesNamed(source, `${stem}_MARK`);
+    const rva = rvaNamed(source, `${stem}_RVA`);
+    if (!before || rva === null) continue;
+    patches.push({ file, what: stem, rva, before });
   }
 }
 check('there are patches to check at all', patches.length > 0, `${patches.length} found`);

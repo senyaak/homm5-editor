@@ -97,10 +97,11 @@ Three marks and one answer, all built up from the runs above:
 
 | where | what it does |
 |---|---|
-| the dispatch head `0x77eaf8` | logs every cast; for OUR ids fires the battle event |
+| the dispatch head `0x77eaf8` | logs every cast; for OUR ids fires the battle event and jumps into the branch below |
 | the command `0x772790` | logs the command's block and what it returned |
 | the gate `0x77b4c0` | logs the verdict, and ANSWERS YES for ours |
 | the gate's refusal funnel `0x77b51e` | logs the reason the engine names |
+| the damage function `0x7861a0` | for ours, spares the kinds the mod's row names |
 
 **Only the silent refusal is overruled.** The funnel raises a flag; a refusal
 that named a reason (`COMBAT_CANT_CAST_SPELL_IMMUNITY`, `COMBAT_NO_ENOUGH_MANA`,
@@ -141,34 +142,79 @@ battle runtime carries them as tables keyed by id: 37 not living, and the black
 dragon alone proof against magic. A script asks `H5EIsLiving(creature)`. A
 creature the mod adds is in them without anybody remembering.
 
-## What is not done yet, and the plan
+## The effect: the branch we borrow
 
-**The effect.** The battle's own vocabulary reads a stack and cannot hurt one,
-so the damage has to come from the engine — and it must, because **resistance,
-anti-magic, school protection and the combat log are all inside the engine's own
-routine**. Damage applied by hand would bypass every one of them.
+The battle's own vocabulary reads a stack and cannot hurt one, so the damage has
+to come from the engine — and it must, because **resistance, anti-magic, school
+protection and the combat log are all inside the engine's own routine**. Damage
+applied by hand would bypass every one of them and the result would look exactly
+like our bugs.
 
-The way in is Unholy Word's branch. Its `0xD60C30` is the "word" routine and the
-filter is NOT an argument: inside it there is a dispatch of its own
-(`jmp [ecx*4+0xD61290]`), it asks for the spell id (`0xAD44C0`) and compares
-against ability numbers (`cmp ecx,0Ah` — `ABILITY_UNDEAD`). So:
+`0xD60C30` is that routine — the one every mass spell that hits the whole field
+goes through. Reading it settled what it is and what it is not:
 
-1. **Give our ids a branch of their own** that does what Unholy Word's does:
-   call the routine, clear `[esp+13h]`, jump to `0xB7FAF0`. First version may
-   pass Unholy Word's own id to get real damage with the engine's rules, and its
-   filter (which also spares demons and orcs) — a run where the spell finally
-   *does* something.
-2. **Then our own filter**: find where `0xD60C30` decides a kind, and either
-   parameterise the call or carry our copy of that decision, so the ripple
-   spares only the undead (and elementals and machines, which are not living).
-3. **`H5EDamage(unit, amount)` for scripts that want to hit by themselves** —
+- It **takes the spell from the cast's own block** (`[ctx+4]`), never as an
+  argument. So a call made for our id stays ours all the way down: our damage
+  numbers, our name in the log.
+- It walks **every stack on the field**, alive or not, and asks two questions
+  per stack — one shared with Armageddon, one about distance.
+- Its inner `jmp [ecx*4+0xD61290]` is **not** a filter. The index array covers
+  ids 10…239 and holds two values, and the four that differ (Armageddon, Unholy
+  Word, Holy Word and the boss firewall) only pick a different **propagation
+  speed** out of the config (`cfg+0x9D4`) instead of the constant 10.0. Ours
+  falls outside the range and takes the constant, which is a hair of timing.
+
+The filter is one function further in. `0xB861A0` — "how much does this spell do
+to that stack" — opens with it:
+
+```
+ebx = normalise(block->spellId)              ; 0xAD44C0
+if (target) {
+  if (ebx == SPELL_UNHOLY_WORD)              ; 21
+    return 0 if HasAbility(ABILITY_UNDEAD) or HasAbility(ABILITY_DEMONIC)
+  if (ebx == SPELL_HOLY_WORD)                ; 35 — the same rule inverted
+    return 0 unless demon-raged, undead or demonic
+}
+… resistance, anti-magic, protection from the school, the combat log …
+```
+
+Two cases, both compiled against a literal, and `HasAbility` is a virtual on the
+stack (vtable `+0x28C`). Everything below the filter is where the rules live.
+
+So a spell of ours is made of two hooks and one row:
+
+| where | what |
+|---|---|
+| the dispatch stub `0x77eaf8` | for our ids, **jump into Unholy Word's branch** (`0xB7ED4A`) instead of returning to the comparison |
+| the damage function `0x7861a0` | for our ids, answer **zero** for the kinds the mod says it spares, then let the engine do the rest |
+| `bin/homm5-editor-effects.txt` | `spell 353 spares 10 12 9` — the kinds, by ability NUMBER |
+
+Jumping into the branch is safe because the dispatch reaches it by a `jmp`, not
+a `call`, and everything the branch reads (`ebp`, `edi`, `[esp+68h]`,
+`[esp+18h]`) is set by the prologue from the cast's own block — none of it is
+Unholy Word's. The branch also clears `[esp+13h]`, so ours stops paying its
+caster back.
+
+The row is the only part of a spell that does not travel in the archive: the
+game's data has no field for it and the engine has no case for our number.
+`writeModEffectsFile` writes the whole file from the manifest, in one place —
+there are four kinds of row now and three callers, and a caller that knew three
+of them silently deleted the fourth.
+
+## What is not done yet
+
+1. **`H5EDamage(unit, amount)` for scripts that want to hit by themselves** —
    our first function WITH arguments, through the engine's parser `0xa454d0`
    (a shipped function builds a format string like `"sn"` and its own name on
-   the heap and hands both over). Only worth it once the engine-side damage
-   works, because the parser is the fiddly part and the crash lands in a battle.
-4. **The gate's answer should become "is there anything to hit"** rather than a
+   the heap and hands both over). Worth it only for effects the borrowed branch
+   cannot express, because the parser is the fiddly part and the crash lands in
+   a battle.
+2. **The gate's answer should become "is there anything to hit"** rather than a
    flat yes, so the book greys our spell by itself the way it greys
    Resurrection.
+3. **A spell that is not a mass one.** Everything above is the word spells'
+   shape. An aimed spell would want a different branch borrowed, and which one
+   is a question for the spell after this.
 
 ## The stand
 

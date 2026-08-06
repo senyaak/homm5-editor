@@ -323,12 +323,15 @@ along, because it wants exactly what this map already is — several heroes, one
 click each, one battle to watch.
 
 **What is being asked.** Whether a spell the executable was never compiled
-against survives the journey: into the hero's book, onto the page, through the
-click, into the engine's resolver. The spell is `SPELL_H3_DEATH_RIPPLE`, id 353,
-the first past the shipped 353; the mod declares it and `H5_Game_H5E.exe` counts
-354 spells. What it DOES is nothing at all yet, on purpose — the resolver
-dispatches on the id, and everything it does not know goes to the same tail as a
-spell that fizzled.
+against does what it says. The spell is `SPELL_H3_DEATH_RIPPLE`, id 353, the
+first past the shipped 353; the mod declares it and `H5_Game_H5E.exe` counts 354.
+It should now **damage every living stack on the field and pass over the undead,
+the elementals and the machines** — the damage taken from the engine's own
+routine, so magic resistance, anti-magic and immunity all still apply to it.
+
+Beside it, `SPELL_H3_TEST_ARMAGEDDON` (id 354, on the wizard) is the control: the
+same machinery with NO filter row, so it should hit everything, undead included.
+Two spells in one battle say whether the filter is the thing doing the sparing.
 
 **Who carries it, and why those four.** One variable, four values:
 
@@ -345,27 +348,36 @@ open the book, and look before clicking:
 1. **Is the page there at all**, with the name «Волна смерти» and the plague
    icon it borrows? A missing icon and a missing spell look the same, which is
    why it borrows one.
-2. **Is it greyed out?** This game greys a spell with nobody to cast it on. If
-   ours is grey with a field full of stacks, the answer is that the engine builds
-   a target list per id and ours has none — an answer about the mechanism, not
-   about the spell.
-3. **Press it.** Expect nothing to happen: no damage, no animation, the mana
-   spent (or refunded, on the warlock — Payback reads the same "did nothing" byte
-   the resolver leaves set).
+2. **Is it greyed out?** Not yet asked of itself — the extension answers "yes,
+   it may be cast" for a spell the engine merely does not recognise, so ours is
+   never grey on that account. It IS still grey for the engine's own reasons
+   (not enough mana, a blocked spell), and those are left alone.
+3. **Press it, with something undead on the field.** Expect the living stacks to
+   take damage and the undead to take none — and the numbers to grow with the
+   caster's Dark Magic across the four heroes. A stack with anti-magic on it, or
+   a black dragon, should take nothing: that is the engine's rule, not ours, and
+   it applies because the damage comes from the engine.
+4. **Then the control**, on the wizard: Тестовый армагеддон should hit the undead
+   too. If both spare the undead the filter is not what is doing it; if neither
+   does, the row did not reach the extension.
 
-**Then send the log.** `bin/homm5-editor.log` has a line per cast — the first
-forty — saying which id was cast and whether it was ours:
+**Then send the log.** `bin/homm5-editor.log` has a line per cast and, for ours,
+a line per stack it was asked about:
 
 ```
 cast: OURS, spell id 353
-cast: the game's own, spell id 10
+damage of ours, spell id 353
+   the target is spared, ability 10
+damage of ours, spell id 353
+   the engine says 47
 ```
 
-- A line for our spell means the whole path works and only the effect is
-  missing, which is the good outcome: the next step is the bridge that hands the
-  cast to Lua.
-- **No line at all** means it never reached the resolver — the book, the target
-  list or the click refused it first — and that is where the next look goes.
+- `the target is spared` is our filter, before the engine's arithmetic.
+- `the engine says 0` is the ENGINE sparing it — immunity, resistance, or a
+  school the target is protected from. The two are different answers and are
+  named apart on purpose.
+- The load banner says `spell filter rows: 1`. Zero means the mod's row never
+  reached the extension and everything below it is meaningless.
 
 ---
 

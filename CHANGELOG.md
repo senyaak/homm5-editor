@@ -74,6 +74,22 @@ one.
 
 ### Added
 
+- **A spell of your own now DOES something.** Until this it was a page in the
+  spellbook: a name, an icon, a cost, and a cast the engine carried out to the
+  far end of and dropped, because what a spell does is compiled against the
+  number it was built with and ours is a number the game never heard of. It now
+  borrows the branch the game's own mass spells go through, so the damage is the
+  engine's: your document's numbers, the target's magic resistance, any
+  anti-magic on it, protection from the school, and a line in the combat log —
+  none of it arithmetic of ours going around the rules.
+
+  A spell also says what its damage passes over, by creature kind. «Живое
+  существо» is not a flag anything carries — the game prints it when a creature
+  is neither undead nor elemental nor mechanical — so a spell that hits
+  everything alive is written as one that spares those three, which is how the
+  engine asks the question about its own Unholy Word. The port of Heroes III's
+  Death Ripple is the first that does.
+
 - **Dialog scenes — the cutscenes a campaign plays — open and play in the
   editor.** `Scenes…` on the launcher asks for a FILE, the way opening a map
   does, and lists the scenes inside it: point at

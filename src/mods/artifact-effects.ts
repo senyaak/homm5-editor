@@ -133,6 +133,29 @@ export interface SkillRow {
   name?: string;
 }
 
+/**
+ * What a SPELL of ours does not touch — the fourth kind of row in the file.
+ *
+ * Not a term added to a sum, like the three above: the extension does not add
+ * anything here, it answers a question the engine asks itself. Before the engine
+ * works out what a spell does to one stack it looks up the spell's number and,
+ * for the handful it was compiled with a rule for, answers zero — Unholy Word
+ * for the undead and the demonic, Holy Word for everything that is neither. Ours
+ * has no such case in the executable, so the extension carries it, and this row
+ * is where the mod says which kinds it is.
+ *
+ * By ABILITY NUMBER, because the question the extension asks is the engine's own
+ * `HasAbility(int)` on the stack being hit. See SpellSpec.spares.
+ */
+export interface SpellFilterRow {
+  /** The `SpellID` value — what the engine knows the spell by. */
+  spell: number;
+  /** `CombatAbility` values; a stack carrying any of them takes no damage. */
+  spares: number[];
+  /** For the comment beside it — the file is meant to be read. */
+  name?: string;
+}
+
 /** A row for one artifact: the common case, written in the short form. */
 function isSingle(r: EffectRow): boolean {
   return r.artifacts.length === 1 && r.threshold <= 1;
@@ -150,6 +173,7 @@ export function writeEffects(
   rows: readonly EffectRow[],
   specializations: readonly SpecializationRow[] = [],
   skills: readonly SkillRow[] = [],
+  spells: readonly SpellFilterRow[] = [],
 ): string {
   const lines = [
     '# Effects the editor added, written by it - see src/mods/artifact-effects.ts.',
@@ -159,6 +183,7 @@ export function writeEffects(
     '#   <stat> set <worn> <amount> <id> <id> ...',
     '#   <stat> skill <value> <amount per level of mastery>',
     '#   <stat> specialization <value> <percent per hero level>',
+    '#   spell <id> spares <ability> <ability> ...',
     '',
   ];
   for (const r of rows) {
@@ -175,6 +200,10 @@ export function writeEffects(
   for (const s of specializations) {
     if (!s.percentPerLevel) continue;
     lines.push(`${s.stat} specialization ${s.specialization} ${s.percentPerLevel}${s.name ? `   # ${s.name}` : ''}`);
+  }
+  for (const s of spells) {
+    if (!s.spares.length) continue;
+    lines.push(`spell ${s.spell} spares ${s.spares.join(' ')}${s.name ? `   # ${s.name}` : ''}`);
   }
   return `${lines.join('\r\n')}\r\n`;
 }
@@ -234,6 +263,48 @@ export function readSkillEffects(text: string): SkillRow[] {
   return rows;
 }
 
+/** The spell filters of the same file, read the same way and as separately. */
+export function readSpellFilters(text: string): SpellFilterRow[] {
+  const rows: SpellFilterRow[] = [];
+  for (const line of text.split(/\r?\n/)) {
+    if (line.trimStart().startsWith('#')) continue;
+    const body = line.split('#')[0] ?? '';
+    const m = /^\s*spell\s+(\d+)\s+spares((?:\s+\d+)+)\s*$/.exec(body);
+    if (m) rows.push({ spell: Number(m[1]), spares: m[2]!.trim().split(/\s+/).map(Number) });
+  }
+  return rows;
+}
+
+/** A spell of a mod, as far as what its damage passes over is concerned. */
+export interface FilteredSpell {
+  id: string;
+  number: number;
+  spares?: readonly string[];
+}
+
+/**
+ * The rows a mod's spells imply — one per spell that spares anything.
+ *
+ * A name that types.xml does not know produces NO row at all, rather than a row
+ * missing one kind. A filter that spares two of its three kinds is a spell that
+ * damages the third, in game, silently — and that reads as the spell being wrong
+ * rather than as a row that failed to resolve. Nothing written is the louder
+ * failure: the extension prints how many rows it read.
+ */
+export function spellFilterRowsOf(
+  spells: readonly FilteredSpell[],
+  numberOf: (ability: string) => number | undefined,
+): SpellFilterRow[] {
+  const rows: SpellFilterRow[] = [];
+  for (const s of spells) {
+    if (!s.spares?.length) continue;
+    const spares = s.spares.map(numberOf);
+    if (spares.some((n) => n === undefined)) continue;
+    rows.push({ spell: s.number, spares: spares as number[], name: s.id });
+  }
+  return rows;
+}
+
 /** A skill of a mod, as far as its effects are concerned. */
 export interface EffectSkill {
   id: string;
@@ -273,6 +344,22 @@ export function specializationRowsOf(specs: readonly EffectSpecialization[]): Sp
     });
   }
   return rows;
+}
+
+/**
+ * A mod, as far as the extension's file is concerned — the four kinds together.
+ *
+ * Structural rather than the editor's own `CreatureMod`, because this module is
+ * about the FILE: it is read by the app's install, by the e2e fixture and by the
+ * tool that rebuilds the file alone, and none of them should have to agree on
+ * anything but the four lists.
+ */
+export interface EffectsMod {
+  artifacts?: readonly EffectArtifact[];
+  sets?: readonly EffectSet[];
+  specializations?: readonly EffectSpecialization[];
+  skills?: readonly EffectSkill[];
+  spells?: readonly FilteredSpell[];
 }
 
 /** An artifact of a mod, as far as its effects are concerned. */

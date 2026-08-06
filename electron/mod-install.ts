@@ -10,10 +10,9 @@ import type { ModsInstallSetPayload } from '#electron/ipc.ts';
 import { gameData } from '#electron/paths.ts';
 import { rmSync } from 'node:fs';
 import { basename } from 'node:path';
-import { EFFECT_STATS, effectsOf, skillRowsOf, specializationRowsOf } from '#src/mods/artifact-effects.ts';
-import type { EffectRow, EffectStat, SetEffect } from '#src/mods/artifact-effects.ts';
+import { EFFECT_STATS } from '#src/mods/artifact-effects.ts';
+import type { EffectStat, SetEffect } from '#src/mods/artifact-effects.ts';
 import type { ArtifactExeResult } from '#src/exe/artifact-limit.ts';
-import { artifactNumbers } from '#src/mods/artifacts.ts';
 import type { ExeResult } from '#src/exe/creature-limit.ts';
 import { buildCreatureMod } from '#src/mods/creature-mod.ts';
 import { DRAGON_TAG } from '#src/mods/creatures.ts';
@@ -28,7 +27,7 @@ import { MOD_STEM, dataReader } from '#src/mods/mod-files.ts';
 import type { CreatureMod } from '#src/mods/mod-model.ts';
 import type { Installed } from '#src/mods/mod-archive.ts';
 import type { BuildReport } from '#src/mods/mod-files.ts';
-import { writeEffectsFile } from '#src/mods/extension.ts';
+import { writeEffectsFile, writeModEffectsFile } from '#src/mods/extension.ts';
 import { MOD_DIR, modFile } from '#src/game/mod-paths.ts';
 
 /**
@@ -42,20 +41,6 @@ export function ourMod(g: string): CreatureMod {
     throw new Error(`more than one creature mod in ${MOD_DIR} (${ours.map((f) => basename(f.path)).join(', ')}) — they conflict; remove one first`);
   }
   return ours[0]?.mod ?? newCreatureMod(MOD_STEM);
-}
-
-/**
- * The extension's rows for the whole mod — its artifacts and its sets.
- *
- * A set names its members by id, and the extension counts them by number, so a
- * member the mod does not own is looked up in the game's own `types.xml`.
- */
-function modEffects(mod: CreatureMod): EffectRow[] {
-  let shipped: Map<string, number> | undefined;
-  return effectsOf(mod.artifacts ?? [], mod.sets ?? [], (id) => {
-    shipped ??= artifactNumbers(dataReader(gameData())('types.xml')?.toString('latin1') ?? '');
-    return shipped.get(id);
-  });
 }
 
 /**
@@ -84,9 +69,11 @@ export function buildAndInstall(g: string, mod: CreatureMod): { installed: Insta
   const report = buildCreatureMod(mod, dataReader(gameData()));
   const archive = packCreatureMod(report);
   const installed = installCreatureMod(g, mod, archive);
-  writeEffectsFile(
-    g, modEffects(mod), specializationRowsOf(mod.specializations ?? []), skillRowsOf(mod.skills ?? []),
-  );
+  // From the whole manifest, in one place, so a kind of row added tomorrow is
+  // written by every caller — see writeModEffectsFile. The names a mod uses for
+  // things it does not own (a shipped artifact in a set, an ability a spell
+  // spares) are numbers only types.xml knows, which is why it is handed over.
+  writeModEffectsFile(g, mod, dataReader(gameData())('types.xml')?.toString('latin1') ?? '');
   return { installed, report };
 }
 

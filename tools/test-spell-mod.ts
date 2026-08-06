@@ -16,8 +16,10 @@ import { addSpell, newCreatureMod } from '../src/mods/mod-model.ts';
 import { dataReader } from '../src/mods/mod-files.ts';
 import { readTableLimit, patchTableLimit, SPELL_TABLE } from '../src/exe/table-limit.ts';
 import {
-  SHIPPED_SPELLS, SPELL_TABLE_FILE, spellPaths, takenSpells,
+  NOT_LIVING, SHIPPED_SPELLS, SPELL_TABLE_FILE, spellPaths, takenSpells,
 } from '../src/mods/spells.ts';
+import { abilityNumbers } from '../src/mods/ability-files.ts';
+import { readSpellFilters, spellFilterRowsOf, writeEffects } from '../src/mods/artifact-effects.ts';
 import { dataDir, gameDirIfAny } from './game-dir.ts';
 
 let failures = 0;
@@ -123,6 +125,40 @@ check('and ours is not one of them', !taken.has(spell.id));
 let refused = false;
 try { addSpell(newCreatureMod('x'), { ...spell, id: 'SPELL_ARMAGEDDON' }, taken); } catch { refused = true; }
 check('a spell named after one of the game\'s own is refused', refused);
+
+// --- what its damage passes over ------------------------------------------------
+//
+// The only part of a spell that lives OUTSIDE the archive. The engine has no
+// case for a number of ours in the one function that works out what a spell does
+// to a stack, so the kinds it must spare travel in the config file the extension
+// reads — and a row that fails to resolve is a Death Ripple that damages the
+// undead, in game, quietly.
+
+const abilities = abilityNumbers(readFileSync(join(dataRoot, 'types.xml'), 'latin1'));
+check('the shipped abilities read back with their numbers', abilities.size > 150, `${abilities.size}`);
+check('and the three kinds are the numbers the engine compares against',
+  NOT_LIVING.map((a) => abilities.get(a)).join(',') === '10,12,9',
+  NOT_LIVING.map((a) => `${a}=${abilities.get(a)}`).join(' '));
+
+const filters = spellFilterRowsOf(
+  [{ id: spell.id, number: spell.number, spares: NOT_LIVING }], (a) => abilities.get(a));
+check('a spell that spares the three kinds writes one row', filters.length === 1);
+check('  by ability NUMBER, which is what the engine is asked',
+  filters[0]?.spares.join(' ') === '10 12 9', filters[0]?.spares.join(' '));
+check('a name types.xml does not know writes NOTHING rather than half a filter',
+  spellFilterRowsOf([{ id: spell.id, number: spell.number, spares: ['ABILITY_UNDEAD', 'ABILITY_NOPE'] }],
+    (a) => abilities.get(a)).length === 0);
+check('and a spell that spares nothing writes no row either',
+  spellFilterRowsOf([{ id: spell.id, number: spell.number }], (a) => abilities.get(a)).length === 0);
+
+const written = writeEffects([], [], [], filters);
+check('the file states it in the grammar the C parser reads',
+  new RegExp(`^spell ${spell.number} spares 10 12 9`, 'm').test(written), written.trim().split(/\r?\n/).pop());
+const back = readSpellFilters(written);
+check('and it reads back the same', back.length === 1 && back[0]!.spell === spell.number
+  && back[0]!.spares.join(' ') === '10 12 9');
+check('the other three kinds of row are not read as spell filters',
+  readSpellFilters(writeEffects([{ stat: 'necromancy', artifacts: [97], threshold: 1, amount: 30 }])).length === 0);
 
 // --- the executable's two numbers ---------------------------------------------
 

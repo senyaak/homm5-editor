@@ -48,6 +48,30 @@ static void load_config(void) {
       }
     }
 
+    //   spell <id> spares <ability> <ability> …
+    //
+    // Its own grammar, tried before the stat names and sharing none of them: it
+    // adds nothing to any sum, it answers a question the engine asks itself.
+    {
+      const char *q = line;
+      if (take_word(&q, stop, "spell")) {
+        SpellRow s;
+        s.spareCount = 0;
+        if (!read_int(&q, stop, &s.spell)) continue;
+        if (!take_word(&q, stop, "spares")) continue;
+        // Abilities to the end of the line; the trailing `# name` stops this by
+        // simply not being a number, which is why the writer puts it last.
+        while (s.spareCount < MAX_SPARED && read_int(&q, stop, &s.spares[s.spareCount])) {
+          s.spareCount++;
+        }
+        // A filter that spares nothing is a filter that does nothing, and it
+        // would read in the log as one that is in effect.
+        if (s.spell <= 0 || !s.spareCount) continue;
+        if (g_spellRowCount < MAX_SPELL_ROWS) g_spellRows[g_spellRowCount++] = s;
+        continue;
+      }
+    }
+
     Row r;
     const char *q = line;
     r.stat = -1;
@@ -95,6 +119,7 @@ static void load_config(void) {
   VirtualFree(buf, 0, MEM_RELEASE);
   log_num("config rows: ", g_rowCount);
   log_num("skill rows: ", g_skillRowCount);
-  log_num("specialization rows: ", g_specRowCount);
+  log_num("specialization rows: ", g_specRowCount);
+  log_num("spell filter rows: ", g_spellRowCount);
 }
 

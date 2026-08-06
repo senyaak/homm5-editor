@@ -31,10 +31,9 @@ import { firstRun } from '../src/game/first-run.ts';
 import { readEntries } from '../src/format/pak.ts';
 import { ensureModDir, modFile } from '../src/game/mod-paths.ts';
 import { decodeDDSBuffer } from '../src/format/dds.ts';
-import { writeEffectsFile } from '../src/mods/extension.ts';
-import { effectsOf, skillRowsOf, specializationRowsOf } from '../src/mods/artifact-effects.ts';
+import { writeEffectsFile, writeModEffectsFile } from '../src/mods/extension.ts';
 import { takenSpecializations } from '../src/mods/specializations.ts';
-import { takenSpells } from '../src/mods/spells.ts';
+import { NOT_LIVING, takenSpells } from '../src/mods/spells.ts';
 
 /**
  * `--noRemove`: do the work in the REAL install and leave it standing.
@@ -656,6 +655,13 @@ export const DEATH_RIPPLE = {
     { base: 20, perPower: 20 },
     { base: 25, perPower: 25 },
   ],
+  // WHAT IT PASSES OVER, which for the Death Ripple is its whole rule. There is
+  // no "living" flag to test — the game prints «Живое существо» when none of the
+  // three kinds is there — so "everything alive" is written as sparing the three.
+  // The extension answers zero for them in the engine's own damage function,
+  // where Unholy Word's rule sits, so what is left still goes through resistance,
+  // anti-magic and the combat log.
+  spares: NOT_LIVING,
   picture: join(ASSETS, 'spells', 'death-ripple.png'),
   // The Plague's animation, borrowed: same school, and a spell that shows
   // nothing may be a spell the engine will not start. Its own art can come later
@@ -933,14 +939,28 @@ export function installMapFixture(gameRoot: string): CreatureMod {
 
   const report = buildCreatureMod(mod, dataReader(DATA));
   installCreatureMod(gameRoot, mod, packCreatureMod(report));
-  // And the file the extension reads. The archive cannot hold a percentage on a
-  // skill, so an artifact installed without its row exists in the game and
-  // grants nothing — which is what happened to the boots: the dialog writes this
-  // file, a fixture that skipped it left one piece of the set inert while its
-  // own description promised 15%.
-  writeEffectsFile(gameRoot, effectsOf(mod.artifacts ?? [], mod.sets ?? []),
-    specializationRowsOf(mod.specializations ?? []), skillRowsOf(mod.skills ?? []));
+  writeModEffects(gameRoot, mod);
   return mod;
+}
+
+/**
+ * The file the extension reads, written from the WHOLE mod.
+ *
+ * Whole, and from one place, because the file is rewritten each time rather than
+ * appended to: a caller that knows about artifacts and not about spells silently
+ * removes every spell row the last caller wrote. Two fixtures install into the
+ * same archive and both end by writing this, which is exactly the shape that bug
+ * takes.
+ *
+ * The archive cannot hold any of it. A percentage on a skill, a term on a
+ * specialization, the kinds a spell passes over — none has a field in the game's
+ * own data, so a mod installed without this file is a mod whose pieces are all
+ * there and inert. Which is what happened to the boots: the dialog writes the
+ * file, a fixture that skipped it left one piece of the set granting nothing
+ * while its own description promised 15%.
+ */
+function writeModEffects(gameRoot: string, mod: CreatureMod): void {
+  writeModEffectsFile(gameRoot, mod, readFileSync(join(DATA, 'types.xml'), 'latin1'));
 }
 
 /**
@@ -968,6 +988,10 @@ export function installSpellFixture(gameRoot: string): CreatureMod {
   }
   const report = buildCreatureMod(mod, dataReader(DATA));
   installCreatureMod(gameRoot, mod, packCreatureMod(report));
+  // What a spell of ours passes over lives in this file and nowhere else — the
+  // document has no field for it and the engine has no case for our number.
+  // Without it the ripple damages the undead, in game, quietly.
+  writeModEffects(gameRoot, mod);
   return mod;
 }
 

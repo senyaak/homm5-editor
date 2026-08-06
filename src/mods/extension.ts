@@ -18,8 +18,14 @@ import { dirname, join } from 'node:path';
 
 import { addImport, imports } from '../exe/exe-import.ts';
 import { refuseIfRunning } from '../game/running.ts';
-import { EFFECTS_FILE, writeEffects } from './artifact-effects.ts';
-import type { EffectRow, SkillRow, SpecializationRow } from './artifact-effects.ts';
+import {
+  EFFECTS_FILE, effectsOf, skillRowsOf, specializationRowsOf, spellFilterRowsOf, writeEffects,
+} from './artifact-effects.ts';
+import type {
+  EffectRow, EffectsMod, SkillRow, SpecializationRow, SpellFilterRow,
+} from './artifact-effects.ts';
+import { artifactNumbers } from './artifacts.ts';
+import { abilityNumbers } from './ability-files.ts';
 
 export const EXTENSION_DLL = 'homm5-editor.dll';
 /** The export the import table names. Never called — the point is `DllMain`. */
@@ -164,9 +170,43 @@ export function writeEffectsFile(
   rows: readonly EffectRow[],
   specializations: readonly SpecializationRow[] = [],
   skills: readonly SkillRow[] = [],
+  spells: readonly SpellFilterRow[] = [],
 ): string {
   const path = join(gameRoot, EFFECTS_FILE);
   mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, writeEffects(rows, specializations, skills), 'latin1');
+  writeFileSync(path, writeEffects(rows, specializations, skills, spells), 'latin1');
   return path;
+}
+
+/**
+ * The same file, written from the WHOLE mod — the form every caller wants.
+ *
+ * There are four kinds of row now and three places that write the file, and the
+ * arithmetic was copied into each: the app's install, the e2e fixture, and the
+ * tool that rebuilds the file alone. A caller that knew about three kinds and
+ * not the fourth did not write a wrong row — it wrote the file WITHOUT the
+ * fourth, silently, over the rows another caller had just put there. Which is
+ * exactly what happened the day spells got a row of their own.
+ *
+ * `types` is the game's own `types.xml`, and it is asked for rather than read
+ * here so this stays a pure function of what the caller already has: the names
+ * a mod uses for things it does not own — a shipped artifact in a set, an
+ * ability a spell spares — are numbers only that file knows.
+ */
+export function writeModEffectsFile(gameRoot: string, mod: EffectsMod, types: string): string {
+  let artifacts: Map<string, number> | undefined;
+  let abilities: Map<string, number> | undefined;
+  return writeEffectsFile(
+    gameRoot,
+    effectsOf(mod.artifacts ?? [], mod.sets ?? [], (id) => {
+      artifacts ??= artifactNumbers(types);
+      return artifacts.get(id);
+    }),
+    specializationRowsOf(mod.specializations ?? []),
+    skillRowsOf(mod.skills ?? []),
+    spellFilterRowsOf(mod.spells ?? [], (name) => {
+      abilities ??= abilityNumbers(types);
+      return abilities.get(name);
+    }),
+  );
 }
