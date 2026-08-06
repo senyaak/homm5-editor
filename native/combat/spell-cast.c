@@ -156,3 +156,52 @@ static void install_cast_command_log(void) {
                                         (void *)on_cast_command, "the combat cast command");
   if (g_castCommand) log_line("every combat cast command will say what it carries");
 }
+
+// ---------------------------------------------------------------------------
+// AND THE GATE IN BETWEEN, because the second run narrowed it to one step.
+//
+// The command IS built with our id — "cast command: OURS, spell id 353", three
+// times — and the resolver still never hears of it. Between them
+// `CCastCombatSpellCmd::Execute` asks one question and returns on a no:
+//
+//   call 0xB7B4C0 ; test al,al ; je <the end>
+//
+// which is the routine carrying COMBAT_CANT_CAST_SPELL_ON_HERO and its
+// neighbours — "may this spell be applied here". Its second argument points at
+// the command's own block, and the spell id is that pointer's `+4`.
+//
+// So this logs the id it was asked about and the verdict it gave. A `no` names
+// the gate; a `yes` means the cast dies in one of the three id questions that
+// follow it (0xAD3E30, 0xAD4800, 0xAD40C0) and the next mark goes there.
+
+#define CAST_GATE_RVA 0x77b4c0u
+#define CAST_GATE_HEAD_LEN 6
+static const BYTE CAST_GATE_HEAD[CAST_GATE_HEAD_LEN] = {
+  0x83, 0xEC, 0x30, 0x53, 0x55, 0x56
+};
+/** The spell id, in the block the gate's `edx` points at. */
+#define CAST_GATE_SPELL 0x04u
+
+typedef int(__fastcall *CastGateFn)(void *ecx, void *block, void *a1, void *a2, int a3,
+                                    void *a4, void *a5, int a6, int a7);
+static CastGateFn g_castGate = NULL;
+static int g_castGatesLogged = 0;
+
+static int __fastcall on_cast_gate(void *ecx, void *block, void *a1, void *a2, int a3,
+                                   void *a4, void *a5, int a6, int a7) {
+  int spell = readable_bytes(block, CAST_GATE_SPELL + 4) >= CAST_GATE_SPELL + 4
+      ? *(int *)((BYTE *)block + CAST_GATE_SPELL) : -1;
+  int answer = g_castGate(ecx, block, a1, a2, a3, a4, a5, a6, a7);
+  if (spell >= FIRST_SPELL_OF_OURS && g_castGatesLogged < SPELL_CASTS_LOGGED) {
+    g_castGatesLogged++;
+    log_num("may it be cast? spell id ", spell);
+    log_num("   the gate says ", answer & 0xFF);
+  }
+  return answer;
+}
+
+static void install_cast_gate_log(void) {
+  g_castGate = (CastGateFn)detour(CAST_GATE_RVA, CAST_GATE_HEAD, CAST_GATE_HEAD_LEN,
+                                  (void *)on_cast_gate, "the cast's target check");
+  if (g_castGate) log_line("a cast of ours will say whether the gate let it through");
+}
