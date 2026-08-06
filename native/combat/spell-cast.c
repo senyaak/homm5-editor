@@ -141,14 +141,27 @@ static CastCommandFn g_castCommand = NULL;
 static int g_castCommandsLogged = 0;
 
 static int __fastcall on_cast_command(void *self, void *edx) {
+  int spell = readable_bytes(self, CAST_COMMAND_SPELL + 4) >= CAST_COMMAND_SPELL + 4
+      ? *(int *)((BYTE *)self + CAST_COMMAND_SPELL) : -1;
   if (g_castCommandsLogged < SPELL_CASTS_LOGGED) {
     g_castCommandsLogged++;
-    int spell = readable_bytes(self, CAST_COMMAND_SPELL + 4) >= CAST_COMMAND_SPELL + 4
-        ? *(int *)((BYTE *)self + CAST_COMMAND_SPELL) : -1;
     if (spell >= FIRST_SPELL_OF_OURS) log_num("cast command: OURS, spell id ", spell);
     else log_num("cast command: the game's own, spell id ", spell);
   }
-  return g_castCommand(self, edx);
+  // WHAT THE COMMAND IS MADE OF, for ours only — because ours returns before it
+  // reaches the gate, and every one of the four early exits is a field of this
+  // block. `+0x20` is the caster the gate is handed first, `+0x24` the target,
+  // and both are refcounted pointers the function tests for life before use.
+  if (spell >= FIRST_SPELL_OF_OURS && readable_bytes(self, 0x3C) >= 0x3C) {
+    log_hex("   caster +0x20 ", *(DWORD *)((BYTE *)self + 0x20));
+    log_hex("   target +0x24 ", *(DWORD *)((BYTE *)self + 0x24));
+    log_hex("   +0x0C ", *(DWORD *)((BYTE *)self + 0x0C));
+    log_hex("   +0x28 ", *(DWORD *)((BYTE *)self + 0x28));
+    log_hex("   +0x38 ", *(DWORD *)((BYTE *)self + 0x38));
+  }
+  int answer = g_castCommand(self, edx);
+  if (spell >= FIRST_SPELL_OF_OURS) log_num("   the command returned ", answer & 0xFF);
+  return answer;
 }
 
 static void install_cast_command_log(void) {
