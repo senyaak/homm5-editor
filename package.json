@@ -106,6 +106,7 @@
     "test-skill-scripts": "node tools/test-skill-scripts.ts",
     "test-e2e-setup": "node tools/test-e2e-setup.ts",
     "test-players": "node tools/test-players.ts",
+    "test-map-tag": "node tools/test-map-tag.ts",
     "e2e-live": "node tools/e2e-live.ts"
   },
   "dependencies": {

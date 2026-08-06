@@ -8,17 +8,23 @@
 // packed. The shipped maps keep the tag as a real file beside map.xdb; we build
 // it fresh at pack time instead, which cannot drift out of step with the map.
 //
-// The `<teams>` block is the one non-obvious part. Measured against the game's
-// own maps (Maps/Scenario/*, Maps/Multiplayer/*): it carries one <Item> per
-// player that occupies a lobby SLOT — an ACTIVE, coloured player (ActivePlayer
-// true and not PCOLOR_NEUTRAL) — and the value is the player's team, one-based
-// (Team 0 -> 1, Team 1 -> 2). This is the map's player count as the lobby sees
-// it, so it has to be exact: a solo mission whose only playable side is player 0
-// is a one-player map, and listing it as two never starts. A2C1M1's two active
-// coloured players on teams 0 and 1 give <Item>1</Item><Item>2</Item> (its third,
-// neutral-coloured player is a scripted side, not a slot); a seven-player
-// free-for-all gives seven <Item>1</Item>. An inactive coloured player — a fixed
-// AI enemy the mission places but the lobby cannot pick — is NOT a slot.
+// The `<teams>` block is the one non-obvious part, and it was read wrong for a
+// while: one <Item> per SIDE, holding how many players are in it — see
+// teamSizes() below. The old reading — one item per active COLOURED player,
+// holding the team number — fits 12 of the 69 shipped maps that carry a tag;
+// the corrected one fits 68, and the single map it does not fit is our own,
+// written by the rule it replaces.
+//
+// Both halves of the mistake matter. Colour is not a criterion at all: most
+// shipped maps leave every slot PCOLOR_NEUTRAL, so skipping neutrals wrote
+// `<teams/>` for them, and a tag claiming no sides is a map the lobby cannot
+// start. And a value is a COUNT, not a team number: A2M5's
+// <Item>2</Item><Item>2</Item> is two sides of two, matching its four active
+// players — read as team numbers it would be two players and the map would list
+// as half of itself.
+//
+// An inactive player is not a side either way — a fixed AI enemy the mission
+// places but the lobby cannot pick.
 
 import type { XmlElement } from '../format/xml.ts';
 import { readTree } from '../schema/tree.ts';
@@ -36,23 +42,56 @@ function scalar(desc: Record<string, TreeData>, key: string, fallback = ''): str
 }
 
 /**
+ * The `<teams>` block's numbers: one per SIDE, each the size of that side.
+ *
+ * Not one per player carrying a team number, which is what this used to write —
+ * an easy thing to read into `<Item>1</Item><Item>1</Item>` and wrong on 57 of
+ * the 69 shipped maps. A2M5 is the map that says it plainly: four active
+ * players, `<Item>2</Item><Item>2</Item>` — two sides of two, not two players
+ * on team 2.
+ *
+ * CustomTeams decides how the sides are drawn:
+ *
+ *   true   the `Team` field means it, and team 0 is a real team like any other.
+ *          A2C2M1's three actives are all team 0 and its tag is `[3]`.
+ *   false  the field is not being used, and every active player is a side of
+ *          his own. A2M10's six actives are all team 0 and its tag is
+ *          `[1,1,1,1,1,1]`.
+ *
+ * COLOUR HAS NOTHING TO DO WITH IT, which is the other half of the old rule and
+ * the more damaging one: it skipped `PCOLOR_NEUTRAL` players, and most shipped
+ * maps leave every slot neutral — A1L1 has four active neutral players and a
+ * tag of four sides. Skipping them wrote `<teams/>` for maps like it, and a map
+ * whose tag claims no sides is not a map the lobby can start.
+ *
+ * Measured against every shipped map that carries a tag: 68 of 69 agree. The
+ * one that does not is our own `Sharpshooter Test`, written by the rule this
+ * replaces.
+ */
+export function teamSizes(players: readonly TreeData[], customTeams: boolean): number[] {
+  const active: number[] = [];
+  for (const p of players) {
+    if (typeof p !== 'object' || p === null || Array.isArray(p)) continue;
+    if (p.ActivePlayer !== 'true') continue;
+    const team = parseInt(typeof p.Team === 'string' ? p.Team : '0', 10);
+    active.push(Number.isFinite(team) ? team : 0);
+  }
+  if (!customTeams) return active.map(() => 1);
+  const sizes = new Map<number, number>();
+  for (const team of active) sizes.set(team, (sizes.get(team) ?? 0) + 1);
+  return [...sizes.entries()].sort((a, b) => a[0] - b[0]).map(([, n]) => n);
+}
+
+/**
  * Build the `<AdvMapDescTag>` document for a map, as latin1-ready UTF-8 text.
  * `desc` is the map's AdvMapDesc element (`map.desc`).
  */
 export function buildMapTag(desc: XmlElement): string {
   const t = readTree(desc) as Record<string, TreeData>;
 
-  // One team entry per active, coloured (lobby-occupying) player, team one-based.
   const players = Array.isArray(t.players) ? t.players : [];
-  const teams: string[] = [];
-  for (const p of players) {
-    if (typeof p !== 'object' || Array.isArray(p)) continue;
-    if (p.ActivePlayer !== 'true') continue;
-    const colour = typeof p.Colour === 'string' ? p.Colour : '';
-    if (!colour || colour === 'PCOLOR_NEUTRAL') continue;
-    const team = parseInt(typeof p.Team === 'string' ? p.Team : '0', 10);
-    teams.push(`\t\t<Item>${Math.max(1, (Number.isFinite(team) ? team : 0) + 1)}</Item>`);
-  }
+  const teams = teamSizes(players, scalar(t, 'CustomTeams', 'false') === 'true')
+    .map((n) => `\t\t<Item>${n}</Item>`);
   const teamsBlock = teams.length ? `<teams>\n${teams.join('\n')}\n\t</teams>` : '<teams/>';
 
   // Thumbnails are optional and usually absent — a map without them lists with

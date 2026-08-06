@@ -27,6 +27,17 @@ one.
   left owning nothing is turned off again. One undo takes back the owner and the
   slot together.
 
+- **A packed map is listed as the game it is.** The `<teams>` block of a
+  map-tag was written by a rule that fits 12 of the 69 shipped maps: one entry
+  per active COLOURED player, holding the team number. It is one entry per
+  SIDE, holding how many players are in it — and colour has nothing to do with
+  it. Most shipped maps leave every slot neutral, so skipping neutrals wrote an
+  empty `<teams/>`, and a tag claiming no sides is a map the lobby cannot
+  start. `CustomTeams` decides how the sides are drawn: on, the `Team` field
+  means it and team 0 is a team like any other; off, every active player is a
+  side of his own. The corrected rule reproduces all 65 shipped tags exactly,
+  and `tools/test-map-tag.ts` checks it against every one of them rather than
+  against examples.
 - **An object placed with only a path is refused, instead of quietly not being
   on the map.** A `<Shared>` names the definition document AND the class inside
   it; the game resolves neither half alone. A path with no `#xpointer` was
