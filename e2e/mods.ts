@@ -756,6 +756,67 @@ export const TEST_ARMAGEDDON = {
 };
 
 /**
+ * **The same Armageddon twice more, differing in TWO BOOLEANS** — the experiment
+ * for the three damage shapes.
+ *
+ * The engine has one branch per shape, not per spell, and for damage there are
+ * exactly three: hit the whole field, hit an area around a point, hit one stack.
+ * What chooses between them is not something the extension had to invent — it is
+ * the two flags every spell document already carries, and they separate the
+ * shipped ones with nothing left over:
+ *
+ *   IsAimed  IsAreaAttack   the game's own
+ *   false    false          Armageddon, Holy Word, Unholy Word
+ *   true     true           Fireball, Frost Ring, Stone Spikes
+ *   true     false          Magic Arrow, Lightning Bolt, Implosion
+ *
+ * So these two are `TEST_ARMAGEDDON` with the flags changed and NOTHING ELSE —
+ * same school, level, mana, damage, element, icon and visuals. Three spells that
+ * differ in two booleans and behave in three ways is the whole claim, and one
+ * battle tests it: if the area one hits a patch and the aimed one hits a stack,
+ * the flags are the choice; if all three hit the field, they are not.
+ *
+ * Their numbers follow the ripple's and the control's and are never reordered —
+ * the NUMBER is what a map stores.
+ */
+export const TEST_ARMAGEDDON_AREA = {
+  ...TEST_ARMAGEDDON,
+  id: 'SPELL_H3_TEST_ARMAGEDDON_AREA',
+  file: 'H3TestArmageddonArea',
+  name: 'Армагеддон по области',
+  description: 'Тот же армагеддон, но с двумя флагами области — чтобы увидеть, что форму выбирают они.',
+  aimed: true,
+  areaAttack: true,
+};
+
+export const TEST_ARMAGEDDON_TARGET = {
+  ...TEST_ARMAGEDDON,
+  id: 'SPELL_H3_TEST_ARMAGEDDON_TARGET',
+  file: 'H3TestArmageddonTarget',
+  name: 'Армагеддон по цели',
+  description: 'Тот же армагеддон, но нацеливаемый на один отряд — третья форма урона.',
+  aimed: true,
+  areaAttack: false,
+};
+
+/**
+ * Every spell of ours the stand carries, IN THE ORDER THEY TAKE THEIR NUMBERS.
+ *
+ * APPEND-ONLY and never reordered: the number is what a map, a hero's book and a
+ * save store, so moving one repoints everything after it — the ripple is 353, the
+ * three Armageddons 354, 355 and 356, and they stay that whatever else is added.
+ *
+ * One list, because three places need it and they used to keep their own: the
+ * fixture that installs them, the map check that decides whether a spell named
+ * in a kit exists, and the spec that reads the shapes back. A kit naming a spell
+ * the fixture does not install is a map the game refuses to load, so the two
+ * lists drifting apart is not a small failure.
+ */
+export const OUR_SPELL_FIXTURES = [
+  DEATH_RIPPLE, TEST_ARMAGEDDON, TEST_ARMAGEDDON_AREA, TEST_ARMAGEDDON_TARGET,
+] as const;
+
+/**
  * Where the mod archive is kept before a run takes it away.
  *
  * ONE slot, overwritten each time: an undo for the clear that just happened,
@@ -980,9 +1041,7 @@ export function installSpellFixture(gameRoot: string): CreatureMod {
   const archive = modFile(gameRoot, 'mod', MOD);
   const mod = (existsSync(archive) ? readCreatureMod(archive)?.mod : null) ?? newCreatureMod(MOD);
   const taken = takenSpells(readFileSync(join(DATA, 'types.xml'), 'latin1'));
-  // Both of them, in this order and never reordered: the NUMBER is what a map
-  // stores, so the ripple stays 353 and the control 354 however often this runs.
-  for (const spec of [{ ...DEATH_RIPPLE }, { ...TEST_ARMAGEDDON }]) {
+  for (const spec of OUR_SPELL_FIXTURES.map((s) => ({ ...s }))) {
     if ((mod.spells ?? []).some((s) => s.id === spec.id)) updateSpell(mod, spec.id, spec);
     else addSpell(mod, spec, taken);
   }

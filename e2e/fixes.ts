@@ -230,6 +230,18 @@ const AIR_ELEMENTALS = { shared: monster('Neutral', 'Air_Elemental'), count: 500
 const DEATH_RIPPLE = 'SPELL_H3_DEATH_RIPPLE';
 /** The control: Armageddon's every field under a number of ours. */
 const TEST_ARMAGEDDON = 'SPELL_H3_TEST_ARMAGEDDON';
+/**
+ * And the same Armageddon with the two flags that pick a SHAPE changed.
+ *
+ * The engine has three damage shapes and one branch each, and what chooses
+ * between them is `IsAimed` and `IsAreaAttack` — the two the document already
+ * carries, which separate the shipped spells with nothing left over. These three
+ * differ in those two booleans and in nothing else, so one battle says whether
+ * the flags are really the choice: the plain one should cover the field, `_AREA`
+ * a patch around where it is pointed, `_TARGET` the single stack under it.
+ */
+const TEST_ARMAGEDDON_AREA = 'SPELL_H3_TEST_ARMAGEDDON_AREA';
+const TEST_ARMAGEDDON_TARGET = 'SPELL_H3_TEST_ARMAGEDDON_TARGET';
 
 /** Dark Magic, at the three masteries the four heroes spread across. */
 const DARK = (mastery: string): Skill => ({ id: 'HERO_SKILL_DARK_MAGIC', mastery });
@@ -257,7 +269,13 @@ export const HEROES: Kit[] = [
     // Armageddon to hit everything including the war machines, Fireball for a
     // single stack. Stone Skin is in the book to read the spell's own numbers
     // from, but it is not what moves the defence in this test — see the druids.
-    spells: ['SPELL_ARMAGEDDON', 'SPELL_FIREBALL', 'SPELL_STONESKIN', DEATH_RIPPLE, TEST_ARMAGEDDON],
+    // …and the three shapes of our own Armageddon, so the comparison is made by
+    // one hero in one battle: his own Armageddon and Fireball are right beside
+    // them in the book to hold each against the shipped spell it copies.
+    spells: [
+      'SPELL_ARMAGEDDON', 'SPELL_FIREBALL', 'SPELL_STONESKIN', DEATH_RIPPLE,
+      TEST_ARMAGEDDON, TEST_ARMAGEDDON_AREA, TEST_ARMAGEDDON_TARGET,
+    ],
     stats: { offence: 5, defence: 5, spellpower: 20, knowledge: 30 },
     // A tent of his own, so an Armageddon has a war machine to prove itself on.
     ballista: true,

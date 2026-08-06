@@ -333,6 +333,14 @@ Beside it, `SPELL_H3_TEST_ARMAGEDDON` (id 354, on the wizard) is the control: th
 same machinery with NO filter row, so it should hit everything, undead included.
 Two spells in one battle say whether the filter is the thing doing the sparing.
 
+**And the same Armageddon twice more, differing in two booleans.** The engine has
+three damage shapes and one branch each, and what picks between them is
+`IsAimed` and `IsAreaAttack` — flags the document already carries. So the wizard
+also holds `…_AREA` (355) and `…_TARGET` (356): identical to 354 in school,
+level, mana, damage, element, icon and visuals, and different only in those two.
+If the first covers the field, the second a patch where it is pointed, and the
+third the one stack under it, the flags are the choice.
+
 **Who carries it, and why those four.** One variable, four values:
 
 | hero | Dark Magic | what his reading is for |
@@ -357,9 +365,15 @@ open the book, and look before clicking:
    caster's Dark Magic across the four heroes. A stack with anti-magic on it, or
    a black dragon, should take nothing: that is the engine's rule, not ours, and
    it applies because the damage comes from the engine.
-4. **Then the control**, on the wizard: Тестовый армагеддон should hit the undead
+4. **Then the control**, on the wizard: «Армагеддон (наш)» should hit the undead
    too. If both spare the undead the filter is not what is doing it; if neither
    does, the row did not reach the extension.
+5. **Then the two twins**, also on the wizard. «Армагеддон по области» should ask
+   where to aim and hit a patch there; «Армагеддон по цели» should ask for a
+   stack and hit that one. Hold each against the shipped spell it copies — his
+   own Огненный шар and Магическая стрела are in the same book. If all three
+   cover the whole field, the flags are NOT what chooses the shape and the
+   extension is picking one branch for everything.
 
 **Then send the log.** `bin/homm5-editor.log` has a line per cast and, for ours,
 a line per stack it was asked about:
@@ -375,6 +389,9 @@ damage of ours, spell id 353
 - `what is it worth? spell id 353` is the second dispatch — without it the spell
   is worth nothing and every stack takes zero however well the rest works, which
   is exactly what the first run showed.
+- `shape: the whole field` / `an area` / `one stack` is what the two flags asked
+  for. `shape: NONE` means the record could not be read or that branch was not
+  recognised, and the spell will do nothing.
 - `the target is spared` is our filter, before the engine's arithmetic.
 - `the engine says 0` is the ENGINE sparing it — immunity, resistance, or a
   school the target is protected from. The two are different answers and are

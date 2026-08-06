@@ -24,6 +24,7 @@ import { join } from 'node:path';
 
 import { gameDirIfAny } from './game-dir.ts';
 import { PEFile } from '../src/exe/pe.ts';
+import { disassemble } from '../src/exe/disasm.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {
@@ -110,6 +111,57 @@ for (const path of sources(join(REPO, 'native'))) {
     const rva = rvaNamed(source, `${stem}_RVA`);
     if (!before || rva === null) continue;
     patches.push({ file, what: stem, rva, before });
+  }
+
+  // AND THE STUBS, WHICH ARE THE OTHER HALF OF THE SAME RISK.
+  //
+  // A stub is hand-assembled: bytes typed out in a comment-annotated array, and
+  // an installer that pokes relative distances into them at counted offsets.
+  // Nothing checks the counting. A stub one byte long in the wrong place still
+  // compiles, still installs, and executes garbage inside a battle — and the
+  // count moves whenever an instruction is added, which the indirect jump in
+  // spell-cast.c had just done.
+  //
+  // So: decode each `*_STUB` and require it to be WHOLE INSTRUCTIONS ending
+  // exactly at the length it declares. That is the property the counting rests
+  // on — every offset the installer writes is inside one of these instructions,
+  // and a miscount shows up here as a stub that runs past its end or stops
+  // short.
+  for (const m of source.matchAll(/(\w*STUB)\[(\w+)\]\s*=\s*\{/g)) {
+    const bytes = bytesNamed(source, m[1]!);
+    const size = m[2]!;
+    // The size is either a literal or a `#define` — and the defines here are
+    // written as plain decimal, unlike the addresses `rvaNamed` reads.
+    const declared = /^\d+$/.test(size) ? Number(size)
+      : Number(new RegExp(`#define\\s+${size}\\s+(\\d+)`).exec(source)?.[1] ?? NaN);
+    if (!bytes) continue;
+    check(`${file}: ${m[1]} declares its own length`, bytes.length === declared,
+      `${bytes.length} bytes, ${size} says ${declared}`);
+    let at = 0;
+    const boundaries = new Set<number>();
+    const jumps: { from: number; to: number }[] = [];
+    for (const ins of disassemble(Uint8Array.from(bytes), 0)) {
+      if (at >= bytes.length) break;
+      boundaries.add(at);
+      // A branch INSIDE the stub — its distance is typed out by hand and moves
+      // whenever an instruction between it and its target is added. The
+      // placeholders the installer overwrites read as a jump to the very next
+      // instruction, which is a boundary too, so they pass either way.
+      if (ins.branchTarget !== undefined) jumps.push({ from: at, to: ins.branchTarget });
+      at += ins.length;
+    }
+    boundaries.add(at);
+    check(`  ${m[1]}: decodes to whole instructions, ending exactly at its length`,
+      at === bytes.length, `ends at ${at} of ${bytes.length}`);
+    // Landing between two instructions is the failure a length check cannot see:
+    // the bytes stay the right number and the stub executes from the middle of
+    // an operand. Only the jumps that stay INSIDE are ours to judge — the one
+    // home leaves, and the installer writes its distance.
+    for (const j of jumps) {
+      if (j.to < 0 || j.to > bytes.length) continue;
+      check(`  ${m[1]}: the jump at ${j.from} lands on an instruction`, boundaries.has(j.to),
+        `it lands at ${j.to}`);
+    }
   }
 }
 check('there are patches to check at all', patches.length > 0, `${patches.length} found`);

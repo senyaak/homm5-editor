@@ -207,18 +207,56 @@ they are two different switches in two different functions.
 of the loaded document, four entries by mastery. From there the numbers are the
 editor's.
 
+## The three damage shapes, and what chooses between them
+
+The resolver has ONE branch per shape, not per spell. Following both of its
+switches, the whole table is 17 branches for 353 spells, and for damage there
+are exactly three:
+
+| branch | the game's own | what it does |
+|---|---|---|
+| `0xB7ED4A` | Armageddon, Holy Word, Unholy Word | every stack on the field |
+| `0xB7ED16` | Fireball, Frost Ring, Stone Spikes | an area around a point |
+| `0xB7F6DC` | Magic Arrow, Lightning Bolt, Ice Bolt, Implosion, Magic Fist | one stack |
+
+**What separates them is already in the document.** `IsAimed` and
+`IsAreaAttack` — the two flags the gate reads and the extension already had to
+hand — split the shipped spells with nothing left over:
+
+| `IsAimed` | `IsAreaAttack` | shape |
+|---|---|---|
+| false | false | the whole field |
+| true | true | an area |
+| true | false | one stack |
+
+So a spell of ours is pointed at the branch its own record implies. Nothing new
+is said anywhere: no field in the document, no row in the config, and in the
+editor it is two checkboxes that already exist.
+
+**The limit, before it bites.** The flags separate the three DAMAGE shapes and no
+more — Curse and Bless read `true`/`false` too, exactly like Magic Arrow, because
+they aim at one stack as well. The day a spell of ours puts an EFFECT on that
+stack instead of hurting it, the config row will have to say which shape it is.
+
 ## What a spell of ours is made of
 
 | where | what |
 |---|---|
-| the dispatch stub `0x77eaf8` | for our ids, **jump into Unholy Word's branch** (`0xB7ED4A`) instead of returning to the comparison |
+| the dispatch stub `0x77eaf8` | for our ids, **jump into the branch the record asks for** instead of returning to the comparison |
 | the worth stub `0x77ce8a` | for our ids, **jump to the branch that reads the record** (`0xB7CED1`) instead of falling to the zero |
 | the damage function `0x7861a0` | for our ids, answer **zero** for the kinds the mod says it spares, then let the engine do the rest |
 | `bin/homm5-editor-effects.txt` | `spell 353 spares 10 12 9` — the kinds, by ability NUMBER |
 
-Both stubs are the same shape, and both are safe to jump into: nothing between
-the comparison and the branch pushes, so the frame each branch reads is the frame
-it expects.
+Both stubs are the same shape, and every branch is safe to jump into: nothing
+between the comparison and the branch pushes, so the frame each reads is the
+frame it expects. The first stub's jump is INDIRECT, through a variable the C
+sets per cast, because which branch a cast wants is a question about its record.
+
+**The stubs are hand-assembled and now checked as such.** `tools/test-fixes.ts`
+decodes every `*_STUB` byte row: it must be whole instructions ending exactly at
+the length it declares, and every branch inside it must land on an instruction
+boundary. Both halves have already caught a real miscount — the offsets in the
+installer are counted by hand, and they move whenever an instruction is added.
 
 Jumping into the branch is safe because the dispatch reaches it by a `jmp`, not
 a `call`, and everything the branch reads (`ebp`, `edi`, `[esp+68h]`,

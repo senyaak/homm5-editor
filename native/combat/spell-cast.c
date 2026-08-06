@@ -63,23 +63,136 @@ static const BYTE SPELL_DISPATCH_HEAD[SPELL_DISPATCH_LEN] = {
 #define H5E_SPELL_CAST 4
 
 /**
+ * `SpellRecord(id)` — the engine's own way from an id to the loaded document.
+ *
+ * One array indexed by the id, sixteen bytes a slot, and a null when the slot
+ * holds nothing. Worth asking ourselves rather than inferring: if this comes
+ * back null for our id then the game never loaded the document, and everything
+ * downstream is explained at once. The three fields below are the ones the gate,
+ * its neighbours and the branch chooser read out of it.
+ */
+#define SPELL_RECORD_RVA 0x71eed0u
+#define SPELL_RECORD_SCHOOL 0x88u
+#define SPELL_RECORD_AIMED 0xCCu
+#define SPELL_RECORD_AREA 0xCDu
+
+typedef void *(__fastcall *SpellRecordFn)(int spell);
+static SpellRecordFn g_spellRecord = NULL;
+
+/** What the engine thinks our spell IS, printed once per cast. */
+static void log_spell_record(int spell) {
+  if (!g_spellRecord) return;
+  void *record = g_spellRecord(spell);
+  if (!record) { log_line("   the engine has NO record for it"); return; }
+  if (readable_bytes(record, SPELL_RECORD_AREA + 1) < SPELL_RECORD_AREA + 1) {
+    log_line("   the record is there but will not be read");
+    return;
+  }
+  // 0 destructive, 1 dark, 2 light, 3 summoning, 4 adventure, 5 runic, 7 special.
+  log_num("   school ", *(int *)((BYTE *)record + SPELL_RECORD_SCHOOL));
+  log_num("   needs a target ", *((BYTE *)record + SPELL_RECORD_AIMED));
+  log_num("   hits an area ", *((BYTE *)record + SPELL_RECORD_AREA));
+}
+
+// ---------------------------------------------------------------------------
+// WHICH SHAPE A SPELL OF OURS IS.
+//
+// The engine has one branch per SHAPE, not per spell, and for damage there are
+// exactly three. What separates them is not something we have to invent: it is
+// the two flags every spell document already carries, and they separate the
+// shipped ones cleanly.
+//
+//   IsAimed  IsAreaAttack   branch      the game's own
+//   -------  ------------   ---------   -------------------------------------
+//   false    false          0xB7ED4A    Armageddon, Holy Word, Unholy Word
+//   true     true           0xB7ED16    Fireball, Frost Ring, Stone Spikes
+//   true     false          0xB7F6DC    Magic Arrow, Lightning Bolt, Implosion
+//
+// So the editor's two checkboxes ARE the choice, and nothing new has to be said
+// anywhere: no field in the document, no row in the config. A spell of ours is
+// pointed at the branch its own record implies.
+//
+// THE LIMIT, written down before it bites. The flags separate the three DAMAGE
+// shapes and no more: Curse and Bless read `true`/`false` too, exactly like
+// Magic Arrow, because they aim at one stack as well. The day a spell of ours
+// puts an EFFECT on that stack instead of hurting it, the flags will not be
+// enough and the config row will have to say which shape it is. Until then this
+// is the whole rule and it needs no upkeep.
+
+/** The three branches, and the bytes each is recognised by. */
+#define WHOLE_FIELD_RVA 0x77ed4au
+#define WHOLE_FIELD_MARK_LEN 6
+static const BYTE WHOLE_FIELD_MARK[WHOLE_FIELD_MARK_LEN] = {
+  0xF3, 0x0F, 0x10, 0x44, 0x24, 0x68                          // movss xmm0,[esp+68h]
+};
+
+// Its first six bytes are the whole-field branch's first six — both begin by
+// loading the power off the frame — so the mark runs on to the instructions that
+// tell them apart. A six-byte mark here would pass at the wrong address.
+#define AN_AREA_RVA 0x77ed16u
+#define AN_AREA_MARK_LEN 14
+static const BYTE AN_AREA_MARK[AN_AREA_MARK_LEN] = {
+  0xF3, 0x0F, 0x10, 0x44, 0x24, 0x68,                         // movss xmm0,[esp+68h]
+  0x8D, 0x44, 0x24, 0x13,                                     // lea eax,[esp+13h]
+  0x8B, 0x54, 0x24, 0x14                                      // mov edx,[esp+14h]
+};
+
+#define ONE_STACK_RVA 0x77f6dcu
+#define ONE_STACK_MARK_LEN 10
+static const BYTE ONE_STACK_MARK[ONE_STACK_MARK_LEN] = {
+  0x8B, 0x03, 0x8B, 0xCB,                                     // mov eax,[ebx] / mov ecx,ebx
+  0x8B, 0x80, 0x08, 0x01, 0x00, 0x00                          // mov eax,[eax+108h]
+};
+
+/** Filled in at load time, once each — zero for one we could not recognise. */
+static BYTE *g_wholeField = NULL;
+static BYTE *g_anArea = NULL;
+static BYTE *g_oneStack = NULL;
+
+/**
+ * WHERE THE STUB JUMPS. Written per cast and read by the stub's own `jmp`.
+ *
+ * Zero means "not ours, or we could not tell" and the stub carries on into the
+ * comparison it displaced — which is what the engine would have done anyway. So
+ * a branch we failed to recognise costs the spell its effect and costs the game
+ * nothing, which is the right way round for a patch that runs inside a battle.
+ */
+static BYTE *g_ourBranch = NULL;
+
+/** The branch a spell's own record asks for. */
+static BYTE *branch_for(int spell) {
+  if (!g_spellRecord) return NULL;
+  void *record = g_spellRecord(spell);
+  if (!record || readable_bytes(record, SPELL_RECORD_AREA + 1) < SPELL_RECORD_AREA + 1) return NULL;
+  int aimed = *((BYTE *)record + SPELL_RECORD_AIMED);
+  int area = *((BYTE *)record + SPELL_RECORD_AREA);
+  if (!aimed) return g_wholeField;
+  return area ? g_anArea : g_oneStack;
+}
+
+/**
  * Called from the stub with the id the dispatch is about to switch on.
  *
  * THE SECOND HALF OF THE BRIDGE. For a number of ours the dispatch below has no
  * branch and would send the cast to the tail that means "nothing happened", so
  * the spell's own behaviour is run from here — as Lua, in the battle, through
- * the same door every other event of ours goes through. What the script gets is
- * the number; what it does with it is the spell.
+ * the same door every other event of ours goes through — and the stub is told
+ * which of the engine's own branches to jump into afterwards.
  */
 static void __cdecl on_spell_cast(int spell) {
-  if (spell >= FIRST_SPELL_OF_OURS) {
-    log_num("cast: OURS, spell id ", spell);
-    fire_trigger(H5E_SPELL_CAST, 1, spell, 0, 0);
-  } else log_num("cast: the game's own, spell id ", spell);
+  g_ourBranch = NULL;
+  if (spell < FIRST_SPELL_OF_OURS) { log_num("cast: the game's own, spell id ", spell); return; }
+  log_num("cast: OURS, spell id ", spell);
+  g_ourBranch = branch_for(spell);
+  if (g_ourBranch == g_wholeField && g_wholeField) log_line("   shape: the whole field");
+  else if (g_ourBranch == g_anArea && g_anArea) log_line("   shape: an area");
+  else if (g_ourBranch == g_oneStack && g_oneStack) log_line("   shape: one stack");
+  else log_line("   shape: NONE — it will do nothing");
+  fire_trigger(H5E_SPELL_CAST, 1, spell, 0, 0);
 }
 
 // ---------------------------------------------------------------------------
-// AND THE BRANCH WE BORROW. Everything above gets the cast as far as the
+// AND THE BRANCHES WE BORROW. Everything above gets the cast as far as the
 // dispatch and no further: the dispatch has no case for a number of ours, so
 // the cast falls out of the tail that means "nothing happened". The effect has
 // to come from somewhere, and it cannot come from us.
@@ -91,7 +204,8 @@ static void __cdecl on_spell_cast(int spell) {
 // number of ours arrived at by arithmetic of ours would bypass all five, and the
 // result would look exactly like our bugs.
 //
-// SO WE BORROW UNHOLY WORD'S. Its branch is six instructions:
+// SO WE BORROW THE ENGINE'S. Each branch is a handful of instructions — the
+// whole-field one is six:
 //
 //   0xB7ED4A  movss xmm0,[esp+68h]     ; the spell's power, from the frame
 //             mov edx,ebp              ; the caster
@@ -101,37 +215,36 @@ static void __cdecl on_spell_cast(int spell) {
 //             mov byte ptr [esp+13h],0 ; it worked
 //             jmp 0xB7FAF0             ; the success tail
 //
-// and every register it reads is set BEFORE the dispatch, by the prologue, from
-// the cast's own block — none of it is Unholy Word's. `0xD60C30` itself takes
-// the spell id from that block (`+4`) rather than from an argument, so it stays
-// OURS all the way down: the damage comes off our document, the log line names
-// our spell, and the only thing left keyed on a number the executable knows is
-// the kind filter — which is what the config row supplies below.
+// and every register any of the three reads is set BEFORE the dispatch, by the
+// prologue, from the cast's own block — none of it belongs to the spell whose
+// branch it is. The routines take the spell id from that block (`+4`) rather
+// than as an argument, so a cast of ours stays OURS all the way down: the
+// damage comes off our document, the log line names our spell, and the only
+// thing still keyed on a number the executable knows is the kind filter, which
+// is what the config row supplies below.
 //
-// So the stub, having logged and fired the script, jumps there for our ids
-// instead of returning to the comparison. The stack is untouched: the dispatch
-// reaches that branch through a `jmp`, not a `call`, so arriving by another jmp
-// arrives with exactly the frame it expects.
-
-/** `movss xmm0,[esp+68h]` — the head of Unholy Word's branch, and the landmark. */
-#define WORD_BRANCH_RVA 0x77ed4au
-#define WORD_BRANCH_MARK_LEN 6
-static const BYTE WORD_BRANCH_MARK[WORD_BRANCH_MARK_LEN] = {
-  0xF3, 0x0F, 0x10, 0x44, 0x24, 0x68
-};
+// So the stub, having logged and fired the script, jumps to whichever branch
+// the spell's own record asked for. The stack is untouched: the dispatch reaches
+// those branches through a `jmp`, not a `call`, so arriving by another jmp
+// arrives with exactly the frame each expects.
 
 /**
- * pushad / pushfd / call / popfd / popad, then either the branch we borrow or
+ * pushad / pushfd / call / popfd / popad, then either the branch we were told or
  * the `cmp` we displaced.
  *
  * The flags are saved and restored around the call and the comparison is done
  * AFTER, so the dispatch below reads flags set by its own instruction — a stub
  * that logged and then let the caller keep our flags would send every cast to
- * whichever branch our arithmetic happened to imply. Our own comparison sits
- * between them for the same reason: it is spent by the `jb` two bytes later and
- * the displaced `cmp` sets the flags again for the engine.
+ * whichever branch our arithmetic happened to imply. Our own test sits between
+ * them for the same reason: it is spent by the `je` two bytes later and the
+ * displaced `cmp` sets the flags again for the engine.
+ *
+ * The jump is INDIRECT, through `g_ourBranch`, because there are three branches
+ * and which one a cast wants is a question about its record. `on_spell_cast`
+ * has just answered it; a zero means "not ours, or we could not tell" and the
+ * stub carries on as though it were not there.
  */
-#define SPELL_STUB_LEN 37
+#define SPELL_STUB_LEN 39
 static BYTE SPELL_STUB[SPELL_STUB_LEN] = {
   0x60,                                     // pushad
   0x9C,                                     // pushfd
@@ -140,9 +253,9 @@ static BYTE SPELL_STUB[SPELL_STUB_LEN] = {
   0x83, 0xC4, 0x04,                         // add esp,4
   0x9D,                                     // popfd
   0x61,                                     // popad
-  0x81, 0xF9, 0x61, 0x01, 0x00, 0x00,       // cmp ecx,161h    — 353, the first of ours
-  0x72, 0x05,                               // jb +5           — the game's own, carry on
-  0xE9, 0x00, 0x00, 0x00, 0x00,             // jmp <the word branch>
+  0x83, 0x3D, 0x00, 0x00, 0x00, 0x00, 0x00, // cmp dword ptr [g_ourBranch],0
+  0x74, 0x06,                               // je +6           — not ours, carry on
+  0xFF, 0x25, 0x00, 0x00, 0x00, 0x00,       // jmp dword ptr [g_ourBranch]
   0x81, 0xF9, 0x15, 0x01, 0x00, 0x00,       // cmp ecx,115h    — displaced
   0xE9, 0x00, 0x00, 0x00, 0x00,             // jmp back
 };
@@ -152,19 +265,32 @@ static BYTE SPELL_TO_STUB[SPELL_DISPATCH_LEN] = {
   0xE9, 0x00, 0x00, 0x00, 0x00, 0x90
 };
 
+/**
+ * One branch, if its bytes are still the ones we mapped — otherwise nothing.
+ *
+ * Checked before anything is written, and refused rather than guessed at: an
+ * address of ours that has gone stale would send every cast of that shape into
+ * the middle of some other instruction, and the crash would land in a battle
+ * instead of here. A shape we cannot recognise costs its spells their effect and
+ * costs the game nothing, which is the right way round.
+ */
+static BYTE *borrow_branch(DWORD rva, const BYTE *mark, int len, const char *what) {
+  BYTE *at = (BYTE *)GetModuleHandleW(NULL) + rva;
+  for (int i = 0; i < len; i++) {
+    if (at[i] == mark[i]) continue;
+    log_text("the branch is not where we left it - spells of that shape will do nothing: ", what);
+    return NULL;
+  }
+  return at;
+}
+
 static void install_spell_log(void) {
   BYTE *base = (BYTE *)GetModuleHandleW(NULL);
-  // The borrowed branch, checked before anything is written: an address of ours
-  // that has gone stale would send every cast of ours into the middle of some
-  // other instruction, and the crash would land in the battle rather than here.
-  BYTE *branch = base + WORD_BRANCH_RVA;
-  int borrow = 1;
-  for (int i = 0; i < WORD_BRANCH_MARK_LEN; i++) {
-    if (branch[i] != WORD_BRANCH_MARK[i]) borrow = 0;
-  }
-  if (!borrow) {
-    log_line("the word spells' branch is not where we left it - ours will do nothing");
-  }
+  g_wholeField = borrow_branch(WHOLE_FIELD_RVA, WHOLE_FIELD_MARK, WHOLE_FIELD_MARK_LEN,
+                               "the whole field");
+  g_anArea = borrow_branch(AN_AREA_RVA, AN_AREA_MARK, AN_AREA_MARK_LEN, "an area");
+  g_oneStack = borrow_branch(ONE_STACK_RVA, ONE_STACK_MARK, ONE_STACK_MARK_LEN, "one stack");
+
   BYTE *stub = (BYTE *)VirtualAlloc(NULL, SPELL_STUB_LEN, MEM_COMMIT | MEM_RESERVE,
                                     PAGE_EXECUTE_READWRITE);
   if (!stub) { log_line("spell log: no memory for the stub"); return; }
@@ -172,13 +298,13 @@ static void install_spell_log(void) {
   // The call's distance is measured from the end of the call instruction, which
   // is the eighth byte of the stub.
   *(DWORD *)(stub + 4) = (DWORD)(void *)on_spell_cast - (DWORD)(stub + 8);
-  // The jump to the branch we borrow — byte 21, ending at 26. Without the
-  // landmark it becomes a jump to the next instruction, which is the same thing
-  // as not having it: our spells reach the dispatch and fall out of the tail.
-  if (borrow) *(DWORD *)(stub + 22) = (DWORD)branch - (DWORD)(stub + 26);
-  else *(DWORD *)(stub + 22) = 0;
+  // Both halves of the indirection name the same variable — the test at byte 13
+  // and the jump at byte 22 — and both take its ABSOLUTE address, because the
+  // stub lives in memory of its own and nothing relocates it.
+  *(DWORD *)(stub + 15) = (DWORD)(void *)&g_ourBranch;
+  *(DWORD *)(stub + 24) = (DWORD)(void *)&g_ourBranch;
   // And the jump home, from the end of the stub to just past what we displaced.
-  *(DWORD *)(stub + 33) =
+  *(DWORD *)(stub + 35) =
       (DWORD)(base + SPELL_DISPATCH_RVA + SPELL_DISPATCH_LEN) - (DWORD)(stub + SPELL_STUB_LEN);
   FlushInstructionCache(GetCurrentProcess(), stub, SPELL_STUB_LEN);
 
@@ -186,8 +312,7 @@ static void install_spell_log(void) {
       (DWORD)stub - ((DWORD)(base + SPELL_DISPATCH_RVA) + 5);
   if (overwrite_code(SPELL_DISPATCH_RVA, SPELL_DISPATCH_HEAD, SPELL_TO_STUB,
                      SPELL_DISPATCH_LEN, "the spell dispatch")) {
-    log_line(borrow ? "every spell cast will say what it was, and ours will land"
-                    : "every spell cast will say what it was");
+    log_line("every spell cast will say what it was, and ours will land");
   }
 }
 
@@ -313,37 +438,6 @@ static const BYTE CAST_GATE_HEAD[CAST_GATE_HEAD_LEN] = {
 /** The spell id, in the block the gate's `edx` points at. */
 #define CAST_GATE_SPELL 0x04u
 
-/**
- * `SpellRecord(id)` — the engine's own way from an id to the loaded document.
- *
- * One array indexed by the id, sixteen bytes a slot, and a null when the slot
- * holds nothing. Worth asking ourselves rather than inferring: if this comes
- * back null for our id then the game never loaded the document, and everything
- * downstream is explained at once. The three fields below are the ones the gate
- * and its neighbours read out of it.
- */
-#define SPELL_RECORD_RVA 0x71eed0u
-#define SPELL_RECORD_SCHOOL 0x88u
-#define SPELL_RECORD_AIMED 0xCCu
-#define SPELL_RECORD_AREA 0xCDu
-
-typedef void *(__fastcall *SpellRecordFn)(int spell);
-static SpellRecordFn g_spellRecord = NULL;
-
-/** What the engine thinks our spell IS, printed once per cast. */
-static void log_spell_record(int spell) {
-  if (!g_spellRecord) return;
-  void *record = g_spellRecord(spell);
-  if (!record) { log_line("   the engine has NO record for it"); return; }
-  if (readable_bytes(record, SPELL_RECORD_AREA + 1) < SPELL_RECORD_AREA + 1) {
-    log_line("   the record is there but will not be read");
-    return;
-  }
-  // 0 destructive, 1 dark, 2 light, 3 summoning, 4 adventure, 5 runic, 7 special.
-  log_num("   school ", *(int *)((BYTE *)record + SPELL_RECORD_SCHOOL));
-  log_num("   needs a target ", *((BYTE *)record + SPELL_RECORD_AIMED));
-  log_num("   hits an area ", *((BYTE *)record + SPELL_RECORD_AREA));
-}
 
 typedef int(__fastcall *CastGateFn)(void *ecx, void *block, void *a1, void *a2, int a3,
                                     void *a4, void *a5, int a6, int a7);

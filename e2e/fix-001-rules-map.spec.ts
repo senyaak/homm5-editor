@@ -21,9 +21,13 @@ import { bar } from './bar.ts';
 import { pickObject, placeAtTile } from './objects.ts';
 import { mapComplaints } from './map-checks.ts';
 import { readEntries } from '../src/format/pak.ts';
-import { DEATH_RIPPLE, LIVE, clearMap, installSpellFixture, prepareGameRoot } from './mods.ts';
+import {
+  DEATH_RIPPLE, LIVE, MOD, OUR_SPELL_FIXTURES, TEST_ARMAGEDDON, TEST_ARMAGEDDON_AREA,
+  TEST_ARMAGEDDON_TARGET, clearMap, installSpellFixture, prepareGameRoot,
+} from './mods.ts';
 import { EFFECTS_FILE, readSpellFilters } from '../src/mods/artifact-effects.ts';
-import { SHIPPED_SPELLS } from '../src/mods/spells.ts';
+import { SHIPPED_SPELLS, spellPaths } from '../src/mods/spells.ts';
+import { modFile } from '../src/game/mod-paths.ts';
 import {
   ARCHIVE, DATA, FIXES_UNDER_TEST, GAME, HEROES, MAP_DIR, NAME, OPPONENT, OVERRIDE_ALL, PLAYERS,
   TILES,
@@ -192,6 +196,36 @@ test('the spells of ours carry their filter into the install', () => {
   expect(ripple, `${DEATH_RIPPLE.id} has a row in ${EFFECTS_FILE}`).toBeTruthy();
   expect(ripple!.spares, 'and it spares the undead, the elemental and the mechanical')
     .toEqual([10, 12, 9]);
+});
+
+// AND THE SHAPE, WHICH IS THE OTHER THING THE DOCUMENT DECIDES.
+//
+// The extension picks which of the engine's three damage branches a cast of ours
+// jumps into from these two flags and nothing else — so a document that writes
+// them wrong is a spell of the wrong shape, and it is wrong SILENTLY: the cast
+// goes through, something is damaged, and only what got hit says which branch
+// ran. Asserted in the archive the game reads, not in the fixture that wrote it.
+test('each spell of ours carries the two flags that pick its shape', () => {
+  const entries = readEntries(readFileSync(modFile(GAME, 'mod', MOD)));
+  for (const spec of OUR_SPELL_FIXTURES) {
+    const want = spellPaths(spec).document.replace(/\\/g, '/');
+    const entry = entries.find((e) => e.name.replace(/\\/g, '/') === want);
+    expect(entry, `the archive carries ${want}`).toBeTruthy();
+    const doc = entry!.data.toString('latin1');
+    expect(doc, `${spec.id} is aimed: ${!!spec.aimed}`)
+      .toContain(`<IsAimed>${!!spec.aimed}</IsAimed>`);
+    expect(doc, `${spec.id} hits an area: ${!!spec.areaAttack}`)
+      .toContain(`<IsAreaAttack>${!!spec.areaAttack}</IsAreaAttack>`);
+  }
+  // And the three Armageddons really are one spell three ways — if they differed
+  // in anything else, a battle would not be telling us about the shape.
+  const [area, target] = [TEST_ARMAGEDDON_AREA, TEST_ARMAGEDDON_TARGET];
+  for (const twin of [area, target]) {
+    for (const field of ['level', 'manaCost', 'school', 'element', 'damage', 'visuals', 'icon'] as const) {
+      expect(JSON.stringify(twin[field]), `${twin.id} keeps Armageddon's ${field}`)
+        .toBe(JSON.stringify(TEST_ARMAGEDDON[field]));
+    }
+  }
 });
 
 test('the Rules Test map is built and packed, with every fix off', async () => {

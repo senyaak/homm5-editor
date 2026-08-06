@@ -90,6 +90,13 @@ one.
   engine asks the question about its own Unholy Word. The port of Heroes III's
   Death Ripple is the first that does.
 
+  **All three shapes of damage**, chosen by the two checkboxes a spell already
+  had: not aimed hits the whole field, aimed at an area hits a patch where you
+  point, aimed without an area hits the one stack under the cursor. Those are the
+  engine's own three, and the flags separate its own spells the same way —
+  Armageddon, Fireball and Magic Arrow, in that order. So a new damage spell of
+  any of the three shapes is now pure data.
+
 - **Dialog scenes — the cutscenes a campaign plays — open and play in the
   editor.** `Scenes…` on the launcher asks for a FILE, the way opening a map
   does, and lists the scenes inside it: point at

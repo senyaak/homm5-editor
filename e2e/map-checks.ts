@@ -25,16 +25,16 @@ import type { Kit } from './fixes.ts';
 import { kitComplaints, skillRules } from './perk-rules.ts';
 import { QOL_FLAGS } from '../src/mods/qol.ts';
 import { takenSpells } from '../src/mods/spells.ts';
-import { DEATH_RIPPLE, TEST_ARMAGEDDON } from './mods.ts';
+import { OUR_SPELL_FIXTURES } from './mods.ts';
 
 /**
  * Spells the MOD adds, which the shipped types.xml naturally does not list.
  *
- * One entry so far. It is here rather than inferred so that a typo in a kit is
- * still caught: an unknown spell is an error, and a spell of ours is an error
- * until it is written down as ours.
+ * Written down rather than inferred, so that a typo in a kit is still caught: an
+ * unknown spell is an error, and a spell of ours is an error until it is named
+ * here. The list is the fixture's, so it stays one place.
  */
-const OUR_SPELLS = new Set<string>([DEATH_RIPPLE.id, TEST_ARMAGEDDON.id]);
+const OUR_SPELLS = new Set<string>(OUR_SPELL_FIXTURES.map((s) => s.id));
 
 /**
  * How many creatures a side needs when the result is read from a LOG.
