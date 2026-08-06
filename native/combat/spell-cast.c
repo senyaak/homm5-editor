@@ -279,6 +279,83 @@ static int __fastcall on_cast_gate(void *ecx, void *block, void *a1, void *a2, i
   return answer;
 }
 
+// ---------------------------------------------------------------------------
+// AND THE REASON, IN THE ENGINE'S OWN WORDS.
+//
+// The gate says no to our spell — that much the log now shows. Every one of its
+// refusals ends the same way: push the NAME of the reason, jump to one place
+// that turns it into the message the player sees.
+//
+//   push 0FBCE28h            ; "COMBAT_NO_ENOUGH_MANA"
+//   jmp  0B7B51Eh
+//
+// So one mark on that funnel prints which of them fired, and the engine names
+// its own reason rather than us inferring it from a disassembly. The string is
+// the word on the stack when we arrive.
+#define GATE_REFUSAL_RVA 0x77b51eu
+#define GATE_REFUSAL_LEN 9
+// The call is a BACKWARD one — its displacement is negative (0xFF961419), which
+// is why the last byte is 0xFF and not the 0x00 a forward call would leave. The
+// byte test caught the guess, which is what it is for.
+static const BYTE GATE_REFUSAL_HEAD[GATE_REFUSAL_LEN] = {
+  0x8D, 0x4C, 0x24, 0x20, 0xE8, 0x19, 0x14, 0x96, 0xFF
+};
+
+static void __cdecl on_gate_refusal(const char *reason) {
+  log_text("   the gate refuses: ", reason && readable_bytes(reason, 4) >= 4 ? reason : "(unreadable)");
+}
+
+/**
+ * pushad / pushfd, read the reason from where the push left it, log, restore,
+ * then run the two instructions we displaced and jump back.
+ *
+ * The string sits at `[esp]` on arrival, so after pushad (32 bytes) and pushfd
+ * (4) it is at `[esp+36]`. The displaced `lea ecx,[esp+20h]` reads esp too,
+ * which is why the flags and the registers go back first — it must see the
+ * stack exactly as the engine left it.
+ */
+#define GATE_STUB_LEN 30
+static BYTE GATE_STUB[GATE_STUB_LEN] = {
+  0x60,                                     // pushad
+  0x9C,                                     // pushfd
+  0xFF, 0x74, 0x24, 0x24,                   // push dword ptr [esp+36]  — the reason
+  0xE8, 0x00, 0x00, 0x00, 0x00,             // call on_gate_refusal
+  0x83, 0xC4, 0x04,                         // add esp,4
+  0x9D,                                     // popfd
+  0x61,                                     // popad
+  0x8D, 0x4C, 0x24, 0x20,                   // lea ecx,[esp+20h]        — displaced
+  0xE8, 0x00, 0x00, 0x00, 0x00,             // call <the string ctor>   — displaced
+  0xE9, 0x00, 0x00, 0x00, 0x00,             // jmp back
+};
+
+static BYTE GATE_TO_STUB[GATE_REFUSAL_LEN] = {
+  0xE9, 0x00, 0x00, 0x00, 0x00, 0x90, 0x90, 0x90, 0x90
+};
+
+static void install_gate_refusal_log(void) {
+  BYTE *base = (BYTE *)GetModuleHandleW(NULL);
+  BYTE *target = base + GATE_REFUSAL_RVA;
+  BYTE *stub = (BYTE *)VirtualAlloc(NULL, GATE_STUB_LEN, MEM_COMMIT | MEM_RESERVE,
+                                    PAGE_EXECUTE_READWRITE);
+  if (!stub) { log_line("gate refusal log: no memory for the stub"); return; }
+  for (int i = 0; i < GATE_STUB_LEN; i++) stub[i] = GATE_STUB[i];
+  *(DWORD *)(stub + 7) = (DWORD)(void *)on_gate_refusal - (DWORD)(stub + 11);
+  // The displaced call is relative, so its target is worked out from where it
+  // SAT, not from where the copy sits: 0x8D4C2420 then E8 <rel32> at target+4.
+  DWORD callee = (DWORD)(target + 9) + *(DWORD *)(target + 5);
+  // The stub's own layout, counted out: the displaced call's operand is byte 21
+  // and its instruction ends at 25; the jump home is byte 26, ending at 30.
+  *(DWORD *)(stub + 21) = callee - (DWORD)(stub + 25);
+  *(DWORD *)(stub + 26) = (DWORD)(target + GATE_REFUSAL_LEN) - (DWORD)(stub + GATE_STUB_LEN);
+  FlushInstructionCache(GetCurrentProcess(), stub, GATE_STUB_LEN);
+
+  *(DWORD *)(GATE_TO_STUB + 1) = (DWORD)stub - ((DWORD)target + 5);
+  if (overwrite_code(GATE_REFUSAL_RVA, GATE_REFUSAL_HEAD, GATE_TO_STUB, GATE_REFUSAL_LEN,
+                     "the gate's refusal funnel")) {
+    log_line("a refused cast will name its reason");
+  }
+}
+
 static void install_cast_gate_log(void) {
   // Called, never hooked: this is the engine answering about its own data, so it
   // is asked the way the engine asks — and the two bytes at its head are checked
