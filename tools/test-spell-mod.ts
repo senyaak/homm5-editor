@@ -19,7 +19,7 @@ import {
   NOT_LIVING, SHIPPED_SPELLS, SPELL_TABLE_FILE, spellPaths, takenSpells,
 } from '../src/mods/spells.ts';
 import { abilityNumbers } from '../src/mods/ability-files.ts';
-import { readSpellFilters, spellFilterRowsOf, writeEffects } from '../src/mods/artifact-effects.ts';
+import { readSpellRows, spellRowsOf, writeEffects } from '../src/mods/artifact-effects.ts';
 import { dataDir, gameDirIfAny } from './game-dir.ts';
 
 let failures = 0;
@@ -140,25 +140,55 @@ check('and the three kinds are the numbers the engine compares against',
   NOT_LIVING.map((a) => abilities.get(a)).join(',') === '10,12,9',
   NOT_LIVING.map((a) => `${a}=${abilities.get(a)}`).join(' '));
 
-const filters = spellFilterRowsOf(
+const filters = spellRowsOf(
   [{ id: spell.id, number: spell.number, spares: NOT_LIVING }], (a) => abilities.get(a));
 check('a spell that spares the three kinds writes one row', filters.length === 1);
 check('  by ability NUMBER, which is what the engine is asked',
   filters[0]?.spares.join(' ') === '10 12 9', filters[0]?.spares.join(' '));
 check('a name types.xml does not know writes NOTHING rather than half a filter',
-  spellFilterRowsOf([{ id: spell.id, number: spell.number, spares: ['ABILITY_UNDEAD', 'ABILITY_NOPE'] }],
+  spellRowsOf([{ id: spell.id, number: spell.number, spares: ['ABILITY_UNDEAD', 'ABILITY_NOPE'] }],
     (a) => abilities.get(a)).length === 0);
 check('and a spell that spares nothing writes no row either',
-  spellFilterRowsOf([{ id: spell.id, number: spell.number }], (a) => abilities.get(a)).length === 0);
+  spellRowsOf([{ id: spell.id, number: spell.number }], (a) => abilities.get(a)).length === 0);
 
 const written = writeEffects([], [], [], filters);
 check('the file states it in the grammar the C parser reads',
   new RegExp(`^spell ${spell.number} spares 10 12 9`, 'm').test(written), written.trim().split(/\r?\n/).pop());
-const back = readSpellFilters(written);
+const back = readSpellRows(written);
 check('and it reads back the same', back.length === 1 && back[0]!.spell === spell.number
   && back[0]!.spares.join(' ') === '10 12 9');
-check('the other three kinds of row are not read as spell filters',
-  readSpellFilters(writeEffects([{ stat: 'necromancy', artifacts: [97], threshold: 1, amount: 30 }])).length === 0);
+check('the other three kinds of row are not read as spell rows',
+  readSpellRows(writeEffects([{ stat: 'necromancy', artifacts: [97], threshold: 1, amount: 30 }])).length === 0);
+
+// --- and the tiles it covers ----------------------------------------------------
+//
+// The other half of the same row, and the other thing the engine decides by a
+// switch on the number: `IsAreaAttack` says a spell hits an area and never says
+// which, and the default a number of ours lands on covers nothing at all. So the
+// shape travels here too — and it is not chosen from a menu, since the engine
+// builds its own lists by pushing one tile at a time.
+
+const CROSS = [
+  { x: 0, y: 0 }, { x: -1, y: 0 }, { x: 1, y: 0 }, { x: 0, y: -1 }, { x: 0, y: 1 },
+];
+const shaped = spellRowsOf([{ id: spell.id, number: spell.number, area: CROSS }],
+  (a) => abilities.get(a));
+check('a spell that names its tiles writes a row for them', shaped.length === 1);
+const shapedText = writeEffects([], [], [], shaped);
+check('  as pairs, with the comma a person reads it by',
+  new RegExp(`^spell ${spell.number} area 0,0 -1,0 1,0 0,-1 0,1`, 'm').test(shapedText),
+  shapedText.trim().split(/\r?\n/).pop());
+check('  and they read back, negatives and all',
+  JSON.stringify(readSpellRows(shapedText)[0]?.area) === JSON.stringify(CROSS));
+// Two lines about one spell are one row: they are two grammars because either
+// may be absent, not because they are two things.
+const bothText = writeEffects([], [], [],
+  spellRowsOf([{ id: spell.id, number: spell.number, spares: NOT_LIVING, area: CROSS }],
+    (a) => abilities.get(a)));
+const both = readSpellRows(bothText);
+check('a spell that says both writes two lines and reads back as one row',
+  both.length === 1 && both[0]!.spares.length === 3 && both[0]!.area.length === 5,
+  `${(bothText.match(/^spell /gm) ?? []).length} lines, ${both.length} row(s)`);
 
 // --- the executable's two numbers ---------------------------------------------
 

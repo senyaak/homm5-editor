@@ -20,7 +20,7 @@ import { gameDir, dataDir } from './game-dir.ts';
 import { readCreatureMod } from '../src/mods/mod-archive.ts';
 import { findCreatureMods } from '../src/mods/mod-archive.ts';
 import { writeModEffectsFile } from '../src/mods/extension.ts';
-import { readEffects, readSkillEffects, readSpecializations, readSpellFilters } from '../src/mods/artifact-effects.ts';
+import { readEffects, readSkillEffects, readSpecializations, readSpellRows } from '../src/mods/artifact-effects.ts';
 
 const game = gameDir();
 const ours = findCreatureMods(game).filter((f) => !f.reconstructed);
@@ -48,5 +48,5 @@ const path = writeModEffectsFile(game, mod, readFileSync(types, 'latin1'));
 const text = readFileSync(path, 'latin1');
 console.log(`${path}`);
 console.log(`  ${readEffects(text).length} artifact row(s), ${readSkillEffects(text).length} skill,`
-  + ` ${readSpecializations(text).length} specialization, ${readSpellFilters(text).length} spell filter`);
+  + ` ${readSpecializations(text).length} specialization, ${readSpellRows(text).length} spell`);
 for (const line of text.split(/\r?\n/)) if (line.trim() && !line.startsWith('#')) console.log(`    ${line}`);

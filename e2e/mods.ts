@@ -784,9 +784,31 @@ export const TEST_ARMAGEDDON_AREA = {
   id: 'SPELL_H3_TEST_ARMAGEDDON_AREA',
   file: 'H3TestArmageddonArea',
   name: 'Армагеддон по области',
-  description: 'Тот же армагеддон, но с двумя флагами области — чтобы увидеть, что форму выбирают они.',
+  description: 'Тот же армагеддон, но по области — и область у него своя, крестом.',
   aimed: true,
   areaAttack: true,
+  /**
+   * **A CROSS, which the game does not have** — and that is the point.
+   *
+   * Setting `IsAreaAttack` only says a spell hits an area; the shape is a switch
+   * on the number, one case per spell, and the default ours would land on covers
+   * nothing. The extension supplies the shape instead, from these offsets — and
+   * the engine builds its own lists by pushing one tile at a time, so ours is not
+   * chosen from a menu of the engine's.
+   *
+   * A 3×3 would prove less: it is what a fireball covers and what the engine's
+   * own default is, so seeing one would leave both explanations open. Nothing in
+   * the game covers a plus five tiles wide, so if that is what lands on the
+   * field, the shape came from here.
+   *
+   * (0,0) is the tile aimed at, and the grid is SQUARE — the engine's own
+   * "adjacent tiles" table is the eight offsets of a 3×3 block.
+   */
+  area: [
+    { x: 0, y: 0 },
+    { x: -1, y: 0 }, { x: 1, y: 0 }, { x: -2, y: 0 }, { x: 2, y: 0 },
+    { x: 0, y: -1 }, { x: 0, y: 1 }, { x: 0, y: -2 }, { x: 0, y: 2 },
+  ],
 };
 
 export const TEST_ARMAGEDDON_TARGET = {

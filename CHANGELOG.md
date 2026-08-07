@@ -95,9 +95,15 @@ one.
   point, aimed without an area hits the one stack under the cursor. Those are the
   engine's own three, and the flags separate its own spells the same way —
   Armageddon, Fireball and Magic Arrow, in that order. So a new damage spell of
-  any of the three shapes is now pure data. An area spell covers what a fireball
-  covers: how big an area is has no field in a spell document — it is the
-  engine's own business per spell — so ours borrows the plainest of its shapes.
+  any of the three shapes is now pure data.
+
+  **And an area spell says what area.** How big an area is has no field in a
+  spell document — the game decides it per spell, and what it would give one of
+  ours is nothing at all — so a spell of ours lists the tiles it covers, as
+  offsets from where it is aimed. Not from a menu: the game builds every one of
+  its own shapes by adding one tile at a time, so a spell of yours can cover a
+  cross, a line, a ring or whatever else. The battlefield is a square grid and
+  the offsets are plain (x, y).
 
 - **Dialog scenes — the cutscenes a campaign plays — open and play in the
   editor.** `Scenes…` on the launcher asks for a FILE, the way opening a map

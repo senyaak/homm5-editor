@@ -136,22 +136,65 @@ static int g_specRowCount = 0;
  * three kinds is there — so "only the living" is written as sparing those three.
  */
 #define MAX_SPARED 8
+
+/**
+ * AND THE TILES AN AREA SPELL COVERS, in the same row.
+ *
+ * `IsAreaAttack` in the document says a spell hits an area and never says WHAT
+ * area — there is no field for it in twenty-two, because the engine decides the
+ * shape by a switch on the spell's number, one case per spell. The 221 numbers
+ * that share its default get an empty list unless they are one of the twelve
+ * mass spells, so a spell of ours with the flag set would ask where to aim and
+ * then cover nothing at all.
+ *
+ * The shapes are not a fixed menu, though: the engine builds the list by
+ * pushing one tile at a time, and each of its shapes is only a different loop
+ * around that one call. So ours is a loop over the offsets written here — the
+ * aim point is (0,0), and a plain (dx, dy) is enough because the combat grid is
+ * SQUARE. The engine says so itself: its "adjacent tiles" table is the eight
+ * offsets of a 3×3 block, so a fireball is a 3×3 and nothing about the layout
+ * needs guessing.
+ */
+#define MAX_AREA 64
+
 typedef struct {
   int spell;
   int spares[MAX_SPARED];
   int spareCount;
+  /** Offsets from the aim point, as pairs. Empty leaves the engine's own shape. */
+  int areaX[MAX_AREA];
+  int areaY[MAX_AREA];
+  int areaCount;
 } SpellRow;
 
 #define MAX_SPELL_ROWS 16
 static SpellRow g_spellRows[MAX_SPELL_ROWS];
 static int g_spellRowCount = 0;
 
-/** The row for one spell, or nothing — spells of ours without a filter hit all. */
-static const SpellRow *spell_row(int spell) {
+/** The row for one spell, or nothing — spells of ours without a row hit all. */
+static SpellRow *spell_row(int spell) {
   for (int i = 0; i < g_spellRowCount; i++) {
     if (g_spellRows[i].spell == spell) return &g_spellRows[i];
   }
   return NULL;
+}
+
+/**
+ * The row for one spell, made if it is not there yet.
+ *
+ * A spell says two different things about itself on two lines — what its damage
+ * passes over, and what tiles it covers — because they are separate grammars and
+ * either may be absent. They belong to one spell, so they land in one row.
+ */
+static SpellRow *spell_row_for(int spell) {
+  SpellRow *row = spell_row(spell);
+  if (row) return row;
+  if (g_spellRowCount >= MAX_SPELL_ROWS) return NULL;
+  row = &g_spellRows[g_spellRowCount++];
+  row->spell = spell;
+  row->spareCount = 0;
+  row->areaCount = 0;
+  return row;
 }
 
 static RaiseFn g_original = NULL;

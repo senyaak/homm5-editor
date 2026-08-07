@@ -134,24 +134,33 @@ export interface SkillRow {
 }
 
 /**
- * What a SPELL of ours does not touch — the fourth kind of row in the file.
+ * What a SPELL of ours does not touch, and what it covers — the fourth kind of
+ * row in the file, written as two lines.
  *
- * Not a term added to a sum, like the three above: the extension does not add
- * anything here, it answers a question the engine asks itself. Before the engine
- * works out what a spell does to one stack it looks up the spell's number and,
- * for the handful it was compiled with a rule for, answers zero — Unholy Word
- * for the undead and the demonic, Holy Word for everything that is neither. Ours
- * has no such case in the executable, so the extension carries it, and this row
- * is where the mod says which kinds it is.
+ * Not a term added to a sum, like the three above: the extension adds nothing
+ * here, it answers two questions the engine asks itself and has no case of its
+ * own for our numbers.
  *
- * By ABILITY NUMBER, because the question the extension asks is the engine's own
- * `HasAbility(int)` on the stack being hit. See SpellSpec.spares.
+ *   `spares` — before the engine works out what a spell does to one stack it
+ *     looks the number up, and for the handful it was compiled with a rule for
+ *     it answers zero: Unholy Word for the undead and the demonic, Holy Word for
+ *     everything that is neither. By ABILITY NUMBER, because the question the
+ *     extension asks is the engine's own `HasAbility(int)`.
+ *   `area` — which tiles an `IsAreaAttack` spell covers, as offsets from the
+ *     point aimed at. Again a switch on the number, one case per spell, and the
+ *     default ours would land on covers NOTHING. It is not a menu: the engine
+ *     builds the list by pushing one tile at a time, so this is any set of tiles
+ *     at all. Plain (x, y) — the combat grid is square.
+ *
+ * See SpellSpec.spares and SpellSpec.area.
  */
-export interface SpellFilterRow {
+export interface SpellRow {
   /** The `SpellID` value — what the engine knows the spell by. */
   spell: number;
   /** `CombatAbility` values; a stack carrying any of them takes no damage. */
   spares: number[];
+  /** Offsets from the aim point, `(0,0)` being the tile itself. */
+  area: { x: number; y: number }[];
   /** For the comment beside it — the file is meant to be read. */
   name?: string;
 }
@@ -173,7 +182,7 @@ export function writeEffects(
   rows: readonly EffectRow[],
   specializations: readonly SpecializationRow[] = [],
   skills: readonly SkillRow[] = [],
-  spells: readonly SpellFilterRow[] = [],
+  spells: readonly SpellRow[] = [],
 ): string {
   const lines = [
     '# Effects the editor added, written by it - see src/mods/artifact-effects.ts.',
@@ -184,6 +193,7 @@ export function writeEffects(
     '#   <stat> skill <value> <amount per level of mastery>',
     '#   <stat> specialization <value> <percent per hero level>',
     '#   spell <id> spares <ability> <ability> ...',
+    '#   spell <id> area <dx>,<dy> <dx>,<dy> ...',
     '',
   ];
   for (const r of rows) {
@@ -201,9 +211,15 @@ export function writeEffects(
     if (!s.percentPerLevel) continue;
     lines.push(`${s.stat} specialization ${s.specialization} ${s.percentPerLevel}${s.name ? `   # ${s.name}` : ''}`);
   }
+  // A spell writes one line per thing it has to say, and says nothing when it
+  // has nothing: an empty list is the engine's own behaviour, and a row that
+  // states it would read in the log as one that is in effect.
   for (const s of spells) {
-    if (!s.spares.length) continue;
-    lines.push(`spell ${s.spell} spares ${s.spares.join(' ')}${s.name ? `   # ${s.name}` : ''}`);
+    const comment = s.name ? `   # ${s.name}` : '';
+    if (s.spares.length) lines.push(`spell ${s.spell} spares ${s.spares.join(' ')}${comment}`);
+    if (s.area.length) {
+      lines.push(`spell ${s.spell} area ${s.area.map((t) => `${t.x},${t.y}`).join(' ')}${comment}`);
+    }
   }
   return `${lines.join('\r\n')}\r\n`;
 }
@@ -263,44 +279,68 @@ export function readSkillEffects(text: string): SkillRow[] {
   return rows;
 }
 
-/** The spell filters of the same file, read the same way and as separately. */
-export function readSpellFilters(text: string): SpellFilterRow[] {
-  const rows: SpellFilterRow[] = [];
+/**
+ * The spell rows of the same file, read the same way and as separately.
+ *
+ * The two lines about one spell are gathered back into one row, because that is
+ * what they are: a spell that both spares the undead and covers a cross writes
+ * two lines and is one thing.
+ */
+export function readSpellRows(text: string): SpellRow[] {
+  const rows = new Map<number, SpellRow>();
+  const row = (id: number): SpellRow => {
+    const there = rows.get(id) ?? { spell: id, spares: [], area: [] };
+    rows.set(id, there);
+    return there;
+  };
   for (const line of text.split(/\r?\n/)) {
     if (line.trimStart().startsWith('#')) continue;
     const body = line.split('#')[0] ?? '';
-    const m = /^\s*spell\s+(\d+)\s+spares((?:\s+\d+)+)\s*$/.exec(body);
-    if (m) rows.push({ spell: Number(m[1]), spares: m[2]!.trim().split(/\s+/).map(Number) });
+    const spares = /^\s*spell\s+(\d+)\s+spares((?:\s+\d+)+)\s*$/.exec(body);
+    if (spares) row(Number(spares[1])).spares.push(...spares[2]!.trim().split(/\s+/).map(Number));
+    const area = /^\s*spell\s+(\d+)\s+area((?:\s+-?\d+,-?\d+)+)\s*$/.exec(body);
+    if (area) {
+      row(Number(area[1])).area.push(...area[2]!.trim().split(/\s+/).map((pair) => {
+        const [x, y] = pair.split(',').map(Number);
+        return { x: x!, y: y! };
+      }));
+    }
   }
-  return rows;
+  return [...rows.values()];
 }
 
-/** A spell of a mod, as far as what its damage passes over is concerned. */
+/** A spell of a mod, as far as the extension's file is concerned. */
 export interface FilteredSpell {
   id: string;
   number: number;
   spares?: readonly string[];
+  area?: readonly { x: number; y: number }[];
 }
 
 /**
- * The rows a mod's spells imply — one per spell that spares anything.
+ * The rows a mod's spells imply — one per spell that has anything to say.
  *
- * A name that types.xml does not know produces NO row at all, rather than a row
- * missing one kind. A filter that spares two of its three kinds is a spell that
- * damages the third, in game, silently — and that reads as the spell being wrong
- * rather than as a row that failed to resolve. Nothing written is the louder
- * failure: the extension prints how many rows it read.
+ * An ability name that types.xml does not know produces NO row at all, rather
+ * than a row missing one kind. A filter that spares two of its three kinds is a
+ * spell that damages the third, in game, silently — and that reads as the spell
+ * being wrong rather than as a row that failed to resolve. Nothing written is
+ * the louder failure: the extension prints how many rows it read.
  */
-export function spellFilterRowsOf(
+export function spellRowsOf(
   spells: readonly FilteredSpell[],
   numberOf: (ability: string) => number | undefined,
-): SpellFilterRow[] {
-  const rows: SpellFilterRow[] = [];
+): SpellRow[] {
+  const rows: SpellRow[] = [];
   for (const s of spells) {
-    if (!s.spares?.length) continue;
-    const spares = s.spares.map(numberOf);
+    if (!s.spares?.length && !s.area?.length) continue;
+    const spares = (s.spares ?? []).map(numberOf);
     if (spares.some((n) => n === undefined)) continue;
-    rows.push({ spell: s.number, spares: spares as number[], name: s.id });
+    rows.push({
+      spell: s.number,
+      spares: spares as number[],
+      area: (s.area ?? []).map((t) => ({ x: t.x, y: t.y })),
+      name: s.id,
+    });
   }
   return rows;
 }

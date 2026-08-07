@@ -49,25 +49,43 @@ static void load_config(void) {
     }
 
     //   spell <id> spares <ability> <ability> …
+    //   spell <id> area <dx>,<dy> <dx>,<dy> …
     //
-    // Its own grammar, tried before the stat names and sharing none of them: it
-    // adds nothing to any sum, it answers a question the engine asks itself.
+    // Their own grammar, tried before the stat names and sharing none of them:
+    // neither adds anything to a sum, both answer a question the engine asks
+    // itself. Two lines about one spell land in one row.
     {
       const char *q = line;
       if (take_word(&q, stop, "spell")) {
-        SpellRow s;
-        s.spareCount = 0;
-        if (!read_int(&q, stop, &s.spell)) continue;
-        if (!take_word(&q, stop, "spares")) continue;
-        // Abilities to the end of the line; the trailing `# name` stops this by
-        // simply not being a number, which is why the writer puts it last.
-        while (s.spareCount < MAX_SPARED && read_int(&q, stop, &s.spares[s.spareCount])) {
-          s.spareCount++;
+        int id = 0;
+        if (!read_int(&q, stop, &id) || id <= 0) continue;
+        if (take_word(&q, stop, "spares")) {
+          SpellRow *row = spell_row_for(id);
+          if (!row) continue;
+          // Abilities to the end of the line; the trailing `# name` stops this
+          // by simply not being a number, which is why the writer puts it last.
+          while (row->spareCount < MAX_SPARED
+                 && read_int(&q, stop, &row->spares[row->spareCount])) {
+            row->spareCount++;
+          }
+          continue;
         }
-        // A filter that spares nothing is a filter that does nothing, and it
-        // would read in the log as one that is in effect.
-        if (s.spell <= 0 || !s.spareCount) continue;
-        if (g_spellRowCount < MAX_SPELL_ROWS) g_spellRows[g_spellRowCount++] = s;
+        if (take_word(&q, stop, "area")) {
+          SpellRow *row = spell_row_for(id);
+          if (!row) continue;
+          // Pairs, `dx,dy`. The comma is read rather than required: it is there
+          // to be read by a person, and `read_int` stops at it either way.
+          while (row->areaCount < MAX_AREA) {
+            int x = 0, y = 0;
+            if (!read_int(&q, stop, &x)) break;
+            while (q < stop && (*q == ',' || *q == ' ' || *q == '\t')) q++;
+            if (!read_int(&q, stop, &y)) break;
+            row->areaX[row->areaCount] = x;
+            row->areaY[row->areaCount] = y;
+            row->areaCount++;
+          }
+          continue;
+        }
         continue;
       }
     }

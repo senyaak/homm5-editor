@@ -781,11 +781,14 @@ static void install_spell_power(void) {
 // with an empty list: it would have asked where to aim and then hit nothing at
 // all. The flag is the door, not the shape.
 //
-// WHAT WE BORROW: Fireball's case. It is the plain "a patch around the point"
-// of the three, where Frost Ring's is a ring and Stone Spikes' is its own thing.
-// A spell of ours that wants one of those will want the config row to say so —
-// the same place the kinds it spares are already named — but that is a spell
-// that does not exist yet, and one shape now beats a field nobody fills.
+// WHAT WE DO INSTEAD OF BORROWING ONE. The engine does not keep a menu of
+// shapes: it builds the list by pushing one tile at a time, and each of its
+// cases is only a different loop around that one call. So ours is a loop over
+// the offsets the mod wrote, and a spell of ours may cover anything.
+//
+// The offsets are plain (dx, dy) because the combat grid is SQUARE — the
+// engine's own "adjacent tiles" table is the eight offsets of a 3×3 block, so a
+// fireball is a 3×3 and none of this needs a word about hexes.
 //
 // ONLY AN AREA SPELL OF OURS GETS HERE. The whole-field and the one-stack shapes
 // both have `IsAreaAttack` false and neither is a mass spell, so the early exit
@@ -799,18 +802,74 @@ static const BYTE AREA_SHAPE_HEAD[AREA_SHAPE_LEN] = {
   0x81, 0xFF, 0x1A, 0x01, 0x00, 0x00
 };
 
-/** `lea eax,[ebp+0Ch]` / `mov ecx,ebx` / `push eax` — Fireball's own case. */
-#define FIREBALL_TILES_RVA 0x77c186u
-#define FIREBALL_TILES_MARK_LEN 6
-static const BYTE FIREBALL_TILES_MARK[FIREBALL_TILES_MARK_LEN] = {
-  0x8D, 0x45, 0x0C, 0x8B, 0xCB, 0x50
+/**
+ * `vector<Point>::push_back` — how the engine adds ONE tile to the list.
+ *
+ * Every shape it has is only a different loop around this call: the default is
+ * a 4×4 block, a fireball is the point plus the eight around it, a frost ring is
+ * those eight without the point. So a shape of ours is our own loop, and no menu
+ * of the engine's limits what a spell of ours may cover.
+ *
+ * A Point is two ints and the container is a plain vector — `sar ecx,3` on the
+ * capacity is the whole proof of the element size.
+ */
+#define ADD_TILE_RVA 0x184970u
+#define ADD_TILE_HEAD_LEN 6
+static const BYTE ADD_TILE_HEAD[ADD_TILE_HEAD_LEN] = {
+  0x83, 0xEC, 0x08, 0x53, 0x55, 0x8B                          // sub esp,8 / push ebx / push ebp
+};
+typedef void(__thiscall *AddTileFn)(void *tiles, const int *point);
+static AddTileFn g_addTile = NULL;
+
+/** `push [esp+14h]` — where the engine goes once the tiles are collected. */
+#define TILES_DONE_RVA 0x77c19bu
+#define TILES_DONE_MARK_LEN 8
+static const BYTE TILES_DONE_MARK[TILES_DONE_MARK_LEN] = {
+  0xFF, 0x74, 0x24, 0x14, 0x8B, 0x06, 0x8B, 0xCE
 };
 
-#define AREA_STUB_LEN 24
+/**
+ * The tiles a spell of ours covers: its own row, or the engine's own shape.
+ *
+ * A row with no offsets falls through to nothing here and the stub sends the
+ * cast to the tail with an empty list — which is what a spell that says it hits
+ * an area and does not say where would do anyway. The mod is expected to say.
+ */
+static void __cdecl our_tiles(int spell, void *tiles, int x, int y) {
+  SpellRow *row = spell_row(spell);
+  if (!row || !row->areaCount || !g_addTile) {
+    log_num("area: no tiles said for spell id ", spell);
+    return;
+  }
+  for (int i = 0; i < row->areaCount; i++) {
+    int point[2] = { x + row->areaX[i], y + row->areaY[i] };
+    g_addTile(tiles, point);
+  }
+}
+
+/**
+ * The stub: our ids collect their own tiles and join the engine at the tail.
+ *
+ * `edi` is the spell id, `ebx` the list being filled and `[ebp+0Ch]`/`[ebp+10h]`
+ * the point aimed at — all three set before the switch, so the arguments are
+ * read straight off the frame. Registers and flags go back untouched, because
+ * the tail reads `esi` and `ebx` exactly as the shipped cases leave them.
+ */
+#define AREA_STUB_LEN 44
 static BYTE AREA_STUB[AREA_STUB_LEN] = {
   0x81, 0xFF, 0x61, 0x01, 0x00, 0x00,       // cmp edi,161h    — 353, the first of ours
-  0x72, 0x05,                               // jb +5           — the game's own, carry on
-  0xE9, 0x00, 0x00, 0x00, 0x00,             // jmp <Fireball's tiles>
+  0x72, 0x19,                               // jb +25          — the game's own, carry on
+  0x60,                                     // pushad
+  0x9C,                                     // pushfd
+  0xFF, 0x75, 0x10,                         // push dword ptr [ebp+10h]   — y
+  0xFF, 0x75, 0x0C,                         // push dword ptr [ebp+0Ch]   — x
+  0x53,                                     // push ebx                   — the list
+  0x57,                                     // push edi                   — the spell id
+  0xE8, 0x00, 0x00, 0x00, 0x00,             // call our_tiles
+  0x83, 0xC4, 0x10,                         // add esp,16
+  0x9D,                                     // popfd
+  0x61,                                     // popad
+  0xE9, 0x00, 0x00, 0x00, 0x00,             // jmp <the tail>
   0x81, 0xFF, 0x1A, 0x01, 0x00, 0x00,       // cmp edi,11Ah    — displaced
   0xE9, 0x00, 0x00, 0x00, 0x00,             // jmp back
 };
@@ -821,25 +880,29 @@ static BYTE AREA_TO_STUB[AREA_SHAPE_LEN] = {
 
 static void install_area_shape(void) {
   BYTE *base = (BYTE *)GetModuleHandleW(NULL);
-  BYTE *tiles = borrow_branch(FIREBALL_TILES_RVA, FIREBALL_TILES_MARK, FIREBALL_TILES_MARK_LEN,
-                              "the tiles a fireball covers");
-  if (!tiles) return;
+  BYTE *tail = borrow_branch(TILES_DONE_RVA, TILES_DONE_MARK, TILES_DONE_MARK_LEN,
+                             "the tail an area spell joins");
+  BYTE *add = borrow_branch(ADD_TILE_RVA, ADD_TILE_HEAD, ADD_TILE_HEAD_LEN,
+                            "adding one tile to the list");
+  if (!tail || !add) return;
+  g_addTile = (AddTileFn)add;
+
   BYTE *stub = (BYTE *)VirtualAlloc(NULL, AREA_STUB_LEN, MEM_COMMIT | MEM_RESERVE,
                                     PAGE_EXECUTE_READWRITE);
   if (!stub) { log_line("area shape: no memory for the stub"); return; }
   for (int i = 0; i < AREA_STUB_LEN; i++) stub[i] = AREA_STUB[i];
-  // No log call here, and deliberately: the interface asks this routine for every
-  // tile the cursor crosses while an area spell is armed, so a line per question
-  // would bury the cast it belongs to. What the shape turned out to be is said
-  // once, at the cast, by `on_spell_cast`.
-  *(DWORD *)(stub + 9) = (DWORD)tiles - (DWORD)(stub + 13);
-  *(DWORD *)(stub + 20) =
+  // No log per question, deliberately: the interface asks this routine for every
+  // tile the cursor crosses while an area spell is armed, so a line each would
+  // bury the cast it belongs to. `our_tiles` speaks only when it has nothing.
+  *(DWORD *)(stub + 19) = (DWORD)(void *)our_tiles - (DWORD)(stub + 23);
+  *(DWORD *)(stub + 29) = (DWORD)tail - (DWORD)(stub + 33);
+  *(DWORD *)(stub + 40) =
       (DWORD)(base + AREA_SHAPE_RVA + AREA_SHAPE_LEN) - (DWORD)(stub + AREA_STUB_LEN);
   FlushInstructionCache(GetCurrentProcess(), stub, AREA_STUB_LEN);
 
   *(DWORD *)(AREA_TO_STUB + 1) = (DWORD)stub - ((DWORD)(base + AREA_SHAPE_RVA) + 5);
   if (overwrite_code(AREA_SHAPE_RVA, AREA_SHAPE_HEAD, AREA_TO_STUB, AREA_SHAPE_LEN,
                      "the tiles an area spell covers")) {
-    log_line("an area spell of ours covers what a fireball covers");
+    log_line("an area spell of ours covers the tiles its row names");
   }
 }

@@ -19,10 +19,10 @@ import { dirname, join } from 'node:path';
 import { addImport, imports } from '../exe/exe-import.ts';
 import { refuseIfRunning } from '../game/running.ts';
 import {
-  EFFECTS_FILE, effectsOf, skillRowsOf, specializationRowsOf, spellFilterRowsOf, writeEffects,
+  EFFECTS_FILE, effectsOf, skillRowsOf, specializationRowsOf, spellRowsOf, writeEffects,
 } from './artifact-effects.ts';
 import type {
-  EffectRow, EffectsMod, SkillRow, SpecializationRow, SpellFilterRow,
+  EffectRow, EffectsMod, SkillRow, SpecializationRow, SpellRow,
 } from './artifact-effects.ts';
 import { artifactNumbers } from './artifacts.ts';
 import { abilityNumbers } from './ability-files.ts';
@@ -170,7 +170,7 @@ export function writeEffectsFile(
   rows: readonly EffectRow[],
   specializations: readonly SpecializationRow[] = [],
   skills: readonly SkillRow[] = [],
-  spells: readonly SpellFilterRow[] = [],
+  spells: readonly SpellRow[] = [],
 ): string {
   const path = join(gameRoot, EFFECTS_FILE);
   mkdirSync(dirname(path), { recursive: true });
@@ -204,7 +204,7 @@ export function writeModEffectsFile(gameRoot: string, mod: EffectsMod, types: st
     }),
     specializationRowsOf(mod.specializations ?? []),
     skillRowsOf(mod.skills ?? []),
-    spellFilterRowsOf(mod.spells ?? [], (name) => {
+    spellRowsOf(mod.spells ?? [], (name) => {
       abilities ??= abilityNumbers(types);
       return abilities.get(name);
     }),

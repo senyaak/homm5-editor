@@ -141,6 +141,24 @@ export interface SpellSpec {
    */
   spares?: readonly string[];
   /**
+   * The tiles it covers, as offsets from the point aimed at — `IsAreaAttack`
+   * spells only.
+   *
+   * The document says a spell hits an AREA and never says which; there is no
+   * field for it in twenty-two, because the engine picks the shape by a switch
+   * on the spell's number, one case per spell, and the default it would give
+   * ours covers nothing at all.
+   *
+   * It is not a menu, though. The engine builds the list by pushing one tile at
+   * a time and every shape it has is a different loop around that call — so this
+   * is our loop, and a spell of ours may cover any set of tiles.
+   *
+   * Plain (x, y) offsets, and (0, 0) is the tile aimed at. The combat grid is
+   * SQUARE: the engine's own "adjacent tiles" table is the eight offsets of a
+   * 3×3 block, which is also what makes a fireball a 3×3.
+   */
+  area?: readonly { x: number; y: number }[];
+  /**
    * What the extension does when it is cast — the name of a Lua function.
    *
    * The document above cannot say it: the engine picks a behaviour by the enum

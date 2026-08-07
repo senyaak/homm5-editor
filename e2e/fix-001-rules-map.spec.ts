@@ -25,7 +25,7 @@ import {
   DEATH_RIPPLE, LIVE, MOD, OUR_SPELL_FIXTURES, TEST_ARMAGEDDON, TEST_ARMAGEDDON_AREA,
   TEST_ARMAGEDDON_TARGET, clearMap, installSpellFixture, prepareGameRoot,
 } from './mods.ts';
-import { EFFECTS_FILE, readSpellFilters } from '../src/mods/artifact-effects.ts';
+import { EFFECTS_FILE, readSpellRows } from '../src/mods/artifact-effects.ts';
 import { SHIPPED_SPELLS, spellPaths } from '../src/mods/spells.ts';
 import { modFile } from '../src/game/mod-paths.ts';
 import {
@@ -190,12 +190,19 @@ test('the map spec is one the game can build', () => {
 // which reads as the spell being wrong rather than as a line that was not
 // written. Checked in the install, by the number, because that is what both the
 // engine and the extension go by.
-test('the spells of ours carry their filter into the install', () => {
-  const filters = readSpellFilters(readFileSync(join(GAME, EFFECTS_FILE), 'latin1'));
-  const ripple = filters.find((f) => f.spell === SHIPPED_SPELLS);
+test('the spells of ours carry their row into the install', () => {
+  const rows = readSpellRows(readFileSync(join(GAME, EFFECTS_FILE), 'latin1'));
+  const ripple = rows.find((f) => f.spell === SHIPPED_SPELLS);
   expect(ripple, `${DEATH_RIPPLE.id} has a row in ${EFFECTS_FILE}`).toBeTruthy();
   expect(ripple!.spares, 'and it spares the undead, the elemental and the mechanical')
     .toEqual([10, 12, 9]);
+  // And the other half of the same row: what the area one covers. Its shape has
+  // nowhere else to live — the document says a spell hits an AREA and never
+  // which, and the shape a number of ours would fall to covers nothing at all.
+  const area = rows.find((f) => f.spell === SHIPPED_SPELLS + 2);
+  expect(area, `${TEST_ARMAGEDDON_AREA.id} has a row too`).toBeTruthy();
+  expect(area!.area, 'and it is the cross the fixture drew')
+    .toEqual(TEST_ARMAGEDDON_AREA.area);
 });
 
 // AND THE SHAPE, WHICH IS THE OTHER THING THE DOCUMENT DECIDES.

@@ -369,12 +369,13 @@ open the book, and look before clicking:
    too. If both spare the undead the filter is not what is doing it; if neither
    does, the row did not reach the extension.
 5. **Then the two twins**, also on the wizard. «Армагеддон по области» should ask
-   where to aim and hit **the same patch a fireball hits** — the area's own shape
-   is a third switch on the number and ours borrows Fireball's, so hold the two
-   against each other in the same battle. «Армагеддон по цели» should ask for a
+   where to aim and hit **a cross five tiles wide** — the area's own shape is a
+   third switch on the number, and the shape here is the mod's, not the engine's.
+   A cross is the point: nothing in the game covers one, so if that is what lands
+   on the field it came from the config row. «Армагеддон по цели» should ask for a
    stack and hit that one. If all three cover the whole field, the flags are NOT
    what chooses the shape; if the area one asks where to aim and then hits
-   nothing, it is the tiles that were not borrowed.
+   nothing, the tiles did not reach the extension.
 
 **Then send the log.** `bin/homm5-editor.log` has a line per cast and, for ours,
 a line per stack it was asked about:
@@ -397,8 +398,11 @@ damage of ours, spell id 353
 - `the engine says 0` is the ENGINE sparing it — immunity, resistance, or a
   school the target is protected from. The two are different answers and are
   named apart on purpose.
-- The load banner says `spell filter rows: 1`. Zero means the mod's row never
-  reached the extension and everything below it is meaningless.
+- The load banner says `spell filter rows: 2` — the ripple's kinds and the area
+  one's tiles. Fewer means a row never reached the extension, and everything
+  below it is meaningless.
+- `area: no tiles said for spell id 355` means the row is missing: the spell will
+  ask where to aim and then cover nothing.
 
 ---
 

@@ -258,10 +258,23 @@ that default is only for the twelve mass spells (`isMassSpell` = `0xAD40C0`,
 which is ids 210…221 mapped back to the spell they are a mass version of).
 
 So the flag is the DOOR, not the shape: a spell of ours with it set would ask
-where to aim and then cover no tiles at all. Ours borrows **Fireball's** case —
-the plain patch around the point, where Frost Ring's is a ring. A spell that
-wants a different one will want the config row to say so, in the same place the
-kinds it spares are already named.
+where to aim and then cover no tiles at all.
+
+**And the shapes are not a menu.** The engine builds each list by pushing one
+tile at a time — `vector<Point>::push_back` at `0x584970`, `__thiscall`, eight
+bytes an element — and every case it has is only a different loop around that
+call. A fireball is the point plus the eight around it; a frost ring is those
+eight without the point; the mass spells' default is a 4×4 block, both axes
+running −1…2.
+
+So ours is our own loop, over offsets the mod writes: `spell 355 area 0,0 -1,0
+1,0 …`, with `(0,0)` the tile aimed at. Any set of tiles at all.
+
+**The grid is SQUARE, and the engine says so.** Its "adjacent tiles" routine
+(`0xC0F3D0`) walks a table at `0x10910E8` holding eight pairs — `(0,-1) (0,1)
+(-1,0) (1,0) (1,-1) (1,1) (-1,-1) (-1,1)` — which is a 3×3 block without its
+centre. That is also what makes a fireball a 3×3. Plain (dx, dy) is the whole
+coordinate system; nothing here is hexagonal.
 
 Only an area spell of ours reaches that switch: the other two shapes have the
 flag false and are not mass spells, so the early exit turns them away first.
@@ -272,9 +285,9 @@ flag false and are not mass spells, so the early exit turns them away first.
 |---|---|
 | the dispatch stub `0x77eaf8` | for our ids, **jump into the branch the record asks for** instead of returning to the comparison |
 | the worth stub `0x77ce8a` | for our ids, **jump to the branch that reads the record** (`0xB7CED1`) instead of falling to the zero |
-| the shape stub `0x77be7f` | for our ids, **cover the tiles a fireball covers** (`0xB7C186`) instead of covering none |
+| the shape stub `0x77be7f` | for our ids, **push the tiles the row names** and join the engine at its tail |
 | the damage function `0x7861a0` | for our ids, answer **zero** for the kinds the mod says it spares, then let the engine do the rest |
-| `bin/homm5-editor-effects.txt` | `spell 353 spares 10 12 9` — the kinds, by ability NUMBER |
+| `bin/homm5-editor-effects.txt` | `spell 353 spares 10 12 9` — the kinds, by ability NUMBER<br>`spell 355 area 0,0 -1,0 …` — the tiles, as offsets |
 
 Both stubs are the same shape, and every branch is safe to jump into: nothing
 between the comparison and the branch pushes, so the frame each reads is the
