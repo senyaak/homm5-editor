@@ -391,6 +391,9 @@ damage of ours, spell id 353
 - `what is it worth? spell id 353` is the second dispatch — without it the spell
   is worth nothing and every stack takes zero however well the rest works, which
   is exactly what the first run showed.
+- `element the engine sees 2` is what every elemental rule will act on — the
+  protections and the three Master perks all go through that one accessor. Zero
+  means the record is not being read the way we think.
 - `shape: the whole field` / `an area` / `one stack` is what the two flags asked
   for. `shape: NONE` means the record could not be read or that branch was not
   recognised, and the spell will do nothing.

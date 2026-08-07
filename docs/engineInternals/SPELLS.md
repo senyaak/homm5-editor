@@ -286,6 +286,7 @@ flag false and are not mass spells, so the early exit turns them away first.
 | the dispatch stub `0x77eaf8` | for our ids, **jump into the branch the record asks for** instead of returning to the comparison |
 | the worth stub `0x77ce8a` | for our ids, **jump to the branch that reads the record** (`0xB7CED1`) instead of falling to the zero |
 | the shape stub `0x77be7f` | for our ids, **push the tiles the row names** and join the engine at its tail |
+| the damaging stub `0x7d0e88` | for our ids, answer **yes** to "does this spell deal damage" |
 | the damage function `0x7861a0` | for our ids, answer **zero** for the kinds the mod says it spares, then let the engine do the rest |
 | `bin/homm5-editor-effects.txt` | `spell 353 spares 10 12 9` — the kinds, by ability NUMBER<br>`spell 355 area 0,0 -1,0 …` — the tiles, as offsets |
 
@@ -311,6 +312,36 @@ game's data has no field for it and the engine has no case for our number.
 `writeModEffectsFile` writes the whole file from the manifest, in one place —
 there are four kinds of row now and three callers, and a caller that knew three
 of them silently deleted the fourth.
+
+## Data or a switch: which is which
+
+The pattern is worth stating, because it decides how much work a new property is.
+
+**A switch on the NUMBER** — needs a case of ours, one stub each. Four so far, and
+all four are about CHOOSING A BEHAVIOUR:
+
+| what it decides | where |
+|---|---|
+| what the spell does | `0xB7EA00`, the resolver |
+| what it is worth | `0xB7CE70` |
+| which tiles an area covers | `0xB7BE30` |
+| whether it deals damage at all | `0xBD0E80` — nine callers |
+
+**Read from the RECORD** — works for a spell of ours with no code at all, because
+the engine reads the document the same way for every id. Everything about
+VALUES AND PROPERTIES is here: school, level, mana, the four damage entries,
+`IsAimed`, `IsAreaAttack`, and the **element**.
+
+The element is the clearest case. `SpellElement` (`0xAD4E50`) normalises the id,
+fetches the record, answers 0 unless `DamageIsElemental` is set and otherwise
+gives `Element` (`+0xD4`, `+0xD8`). **Twenty-two places ask it and not one looks
+at a number**: the four elemental protections in the damage function each pair a
+flag on the target with this answer, and the three Master perks pick their skill
+from it — air `0x2D`, water `0x2B`, fire `0x2C` — before leaving the burn.
+
+So "does each modifier have to be reversed separately" is answered no. What had
+to be found for the burn was not the burn: it was the gate in front of it, and
+that gate is the fourth switch above, shared by nine readers.
 
 ## What is not done yet
 

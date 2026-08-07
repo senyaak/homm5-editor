@@ -935,3 +935,85 @@ static void install_area_shape(void) {
     log_line("an area spell of ours covers the tiles its row names");
   }
 }
+
+// ---------------------------------------------------------------------------
+// AND THE FOURTH: "DOES THIS SPELL DEAL DAMAGE".
+//
+// The fire Armageddon of ours has ELEMENT_FIRE in its document and the engine's
+// own accessor reads it — the element is DATA, and every elemental rule in the
+// game goes through that one accessor. And a Master of Fire still left no burn
+// on what it hit.
+//
+// The reason is one gate earlier. The block that applies the three Master perks
+// (`0xBD3BD0`) asks `0xBD0E80` before it looks at the element at all, and that
+// is a switch on the number like the rest:
+//
+//   eax = normalise(spellId)
+//   cmp eax,117h / jg <second table> / je <yes>
+//   dec eax / cmp eax,0F7h / ja <no>
+//   jmp [eax*4+0BD0EE0h]                       ; 22 spells say yes
+//   …
+//   0xBD0ED9:  xor al,al ; ret                 ; everything else says no
+//
+// Twenty-seven ids answer yes and they are exactly the damaging ones — the nine
+// destructive spells, Armageddon, both Words, the mines, the wasps, the
+// firewalls, the shields that burn, and five more above the range. Ours is not
+// among them, so the perk block turns away before the element is asked and no
+// burn is left. NINE places ask this question, so it is not the perk's own: it
+// is "is this a spell that hurts", and the perks are one reader.
+//
+// OURS ANSWER YES, and today that is true by construction: the dispatch stub
+// sends every id of ours into one of the engine's three DAMAGE branches, chosen
+// from its own record. The day a spell of ours is a buff instead, that stub will
+// have to tell the shapes apart — and this answer moves with it.
+
+/** `cmp eax,117h` — eax is the normalised spell id, and the switch follows. */
+#define DAMAGING_SPELL_RVA 0x7d0e88u
+#define DAMAGING_SPELL_LEN 5
+static const BYTE DAMAGING_SPELL_HEAD[DAMAGING_SPELL_LEN] = {
+  0x3D, 0x17, 0x01, 0x00, 0x00
+};
+
+/** `mov al,1` / `pop esi` / `ret` — the answer "yes", and its own way out. */
+#define DAMAGING_YES_RVA 0x7d0ebdu
+#define DAMAGING_YES_MARK_LEN 4
+static const BYTE DAMAGING_YES_MARK[DAMAGING_YES_MARK_LEN] = {
+  0xB0, 0x01, 0x5E, 0xC3
+};
+
+// No call and no pushad: eax already holds the id, nothing here needs saying in
+// the log — nine callers ask this question constantly — and the displaced `cmp`
+// sets the flags the switch below reads.
+#define DAMAGING_STUB_LEN 22
+static BYTE DAMAGING_STUB[DAMAGING_STUB_LEN] = {
+  0x3D, 0x61, 0x01, 0x00, 0x00,             // cmp eax,161h    — 353, the first of ours
+  0x72, 0x05,                               // jb +5           — the game's own, carry on
+  0xE9, 0x00, 0x00, 0x00, 0x00,             // jmp <yes>
+  0x3D, 0x17, 0x01, 0x00, 0x00,             // cmp eax,117h    — displaced
+  0xE9, 0x00, 0x00, 0x00, 0x00,             // jmp back
+};
+
+static BYTE DAMAGING_TO_STUB[DAMAGING_SPELL_LEN] = {
+  0xE9, 0x00, 0x00, 0x00, 0x00
+};
+
+static void install_damaging_spell(void) {
+  BYTE *base = (BYTE *)GetModuleHandleW(NULL);
+  BYTE *yes = borrow_branch(DAMAGING_YES_RVA, DAMAGING_YES_MARK, DAMAGING_YES_MARK_LEN,
+                            "a spell that deals damage");
+  if (!yes) return;
+  BYTE *stub = (BYTE *)VirtualAlloc(NULL, DAMAGING_STUB_LEN, MEM_COMMIT | MEM_RESERVE,
+                                    PAGE_EXECUTE_READWRITE);
+  if (!stub) { log_line("damaging spell: no memory for the stub"); return; }
+  for (int i = 0; i < DAMAGING_STUB_LEN; i++) stub[i] = DAMAGING_STUB[i];
+  *(DWORD *)(stub + 8) = (DWORD)yes - (DWORD)(stub + 12);
+  *(DWORD *)(stub + 18) =
+      (DWORD)(base + DAMAGING_SPELL_RVA + DAMAGING_SPELL_LEN) - (DWORD)(stub + DAMAGING_STUB_LEN);
+  FlushInstructionCache(GetCurrentProcess(), stub, DAMAGING_STUB_LEN);
+
+  *(DWORD *)(DAMAGING_TO_STUB + 1) = (DWORD)stub - ((DWORD)(base + DAMAGING_SPELL_RVA) + 5);
+  if (overwrite_code(DAMAGING_SPELL_RVA, DAMAGING_SPELL_HEAD, DAMAGING_TO_STUB,
+                     DAMAGING_SPELL_LEN, "a spell that deals damage")) {
+    log_line("a spell of ours counts as one that hurts");
+  }
+}

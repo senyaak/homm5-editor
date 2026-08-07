@@ -105,6 +105,13 @@ one.
   cross, a line, a ring or whatever else. The battlefield is a square grid and
   the offsets are plain (x, y).
 
+  **And it counts as a real spell to everything else.** A spell of yours with an
+  element is a fire (or ice, or storm) spell to the whole game: the elemental
+  protections answer it, and a hero with the matching Master perk leaves the
+  burn — which the game had been refusing, and not because of the element. It
+  keeps a list of "spells that deal damage", asked in nine places, and a spell
+  of ours was not on it.
+
 - **Dialog scenes — the cutscenes a campaign plays — open and play in the
   editor.** `Scenes…` on the launcher asks for a FILE, the way opening a map
   does, and lists the scenes inside it: point at
