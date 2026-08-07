@@ -361,19 +361,33 @@ behave differently:
   eax,0Ah` — Armageddon and nothing else. So a whole-field spell of ours cannot
   burn whatever its element.
 
-  **And that is left alone, deliberately.** It is the third of the three sites
-  `native/qol/fix-empowered-armageddon.c` already documents — "the tiles around
-  the impact point" — and the branch behind it is Armageddon's local damage, the
-  thing the game's own two descriptions differ by: the plain Armageddon adds «и
-  локальный физический урон в месте применения» and the empowered one does not.
-  Master of Fire names its spells in its own text — «Огненный шар», «Стена огня»
-  и «Армагеддон» — so a whole-field spell of ours going unburnt is the game being
-  consistent, not a hole.
+  **What that branch is, read rather than inferred.** The routine has two
+  appliers, and they are alike at the head — both refuse a count of zero, both
+  allocate the same block, both apply one hit to one unit:
 
-  Wanting it anyway is a small change and a different one: not widening that
-  comparison, which would hand our spell the local damage too, but calling
-  `0xBD1420` from the OTHER branch when the element is fire — which is what the
-  area routine already does, and would make the two shapes agree.
+  | | every unit gets | and, near a point, also |
+  |---|---|---|
+  | Armageddon | `0xBD1420` — the one that carries the Master's mark | `0xBD1980` |
+  | every other whole-field spell | `0xBD1980` | — |
+
+  So Armageddon is **hit twice** where the others are hit once, and the second
+  hit is bounded by `config[0x9B4]` doubled, measured against a position the
+  routine fetches rather than the cast's own (Armageddon is not aimed). That
+  matches the two descriptions the game ships — the plain Armageddon adds «и
+  локальный физический урон в месте применения», the empowered one does not —
+  and Master of Fire names its spells in its own text: «Огненный шар», «Стена
+  огня» и «Армагеддон».
+
+  **Assumed and not yet checked:** that the position the second hit is measured
+  from is where the meteor lands. It is read off an object, not off the cast, and
+  a probe on it would settle it.
+
+  So this is not a hole in our plumbing, it is a ONE-OFF in the engine: a single
+  spell's special case bolted into a shared routine, derivable from no field.
+  Wanting the mark anyway is a different change from widening that comparison —
+  widening it would hand our spell the second hit as well. The narrow version is
+  to call `0xBD1420` from the OTHER branch when the element is fire, which is
+  what the area routine already does and would make the two shapes agree.
 
 Two other functions were read on the way and are worth naming so nobody reads
 them again: `0xBD3A00`-ish builds the spellbook's PREDICTION — the "duration",
