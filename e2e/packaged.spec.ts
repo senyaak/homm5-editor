@@ -35,7 +35,12 @@ async function launchPackaged(env: Record<string, string>): Promise<{ app: Elect
   const app = await electron.launch({
     executablePath: EXE,
     args: [`--user-data-dir=${userData}`],
-    env: { ...process.env, HOMM5_DATA: '', HOMM5_ROOT: '', HOMM5_EDITOR: '', ...env } as Record<string, string>,
+    // HOMM5_NO_FOCUS for the reason launchEditor sets it: the packaged build is
+    // launched twice here, and both windows would otherwise land in front.
+    env: {
+      ...process.env, HOMM5_DATA: '', HOMM5_ROOT: '', HOMM5_EDITOR: '',
+      HOMM5_NO_FOCUS: process.env.HOMM5_NO_FOCUS ?? '1', ...env,
+    } as Record<string, string>,
   });
   return { app, userData };
 }

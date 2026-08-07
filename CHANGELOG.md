@@ -13,6 +13,14 @@ one.
 
 ## Unreleased
 
+### Changed
+
+- **A test run no longer takes the screen.** Every launch used to bring the
+  editor to the front — dozens of times in a full run, over whatever you were
+  doing. The suite now starts it inactive and parked off the desktop, still
+  drawing so the specs that read the canvas still can. `HOMM5_NO_FOCUS=0` puts it
+  back in front, for when watching a spec run is the point.
+
 ### Fixed
 
 - **A mass spell damages in the element its record names.** A spell that hits the

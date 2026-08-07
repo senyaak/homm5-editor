@@ -32,6 +32,7 @@ import type { FirstRunResult, Install, Progress, StepState } from '../src/game/f
 import { looksLikeGameFolder } from '../src/game/unpack.ts';
 import { writeEnvFile } from '../src/game/env-file.ts';
 import { APP_ROOT, defaultDataRoot, envFileHome, gameData, gameRoot, preloadPath, reload, rendererFile } from './paths.ts';
+import { NO_FOCUS, showQuietly } from './no-focus.ts';
 
 /** What the setup window shows when it opens. */
 export interface SetupState {
@@ -101,9 +102,14 @@ export function runSetup(): Promise<boolean> {
     const win = new BrowserWindow({
       width: 660, height: 620, center: true, resizable: false,
       backgroundColor: '#0d1014', title: 'homm5-editor — setup',
+      // Parked and inactive under the suite, like the editor's own window: this
+      // is the first thing a run with no install configured puts on the screen,
+      // so leaving it out would take the foreground before the editor could.
+      ...(NO_FOCUS ? { show: false } : {}),
       webPreferences: { preload: preloadPath('setup-preload.cjs'), contextIsolation: true, nodeIntegration: false },
     });
     win.setMenuBarVisibility(false);
+    if (NO_FOCUS) win.once('ready-to-show', () => showQuietly(win));
     setupWin = win;
 
     let done = false;

@@ -30,6 +30,8 @@ import { registerModArtifacts } from '#electron/channels/mods-artifacts.ts';
 import { registerModBuildings } from '#electron/channels/mods-buildings.ts';
 import { registerModCreatures } from '#electron/channels/mods-creatures.ts';
 import { registerModHeroes } from '#electron/channels/mods-heroes.ts';
+import { registerModSpells } from '#electron/channels/mods-spells.ts';
+import { NO_FOCUS, showQuietly } from '#electron/no-focus.ts';
 import { registerModsList } from '#electron/channels/mods-list.ts';
 import { registerModTextures } from '#electron/channels/mods-textures.ts';
 import { registerObjects } from '#electron/channels/objects.ts';
@@ -72,6 +74,10 @@ function createWindow(): void {
   state.win = new BrowserWindow({
     width: Math.min(1400, area.width), height: Math.min(900, area.height),
     center: true,
+    // Under the suite the window comes up hidden and is shown parked and
+    // inactive once it has something to paint (electron/no-focus.ts). Left out
+    // otherwise, so an ordinary run keeps the behaviour it has always had.
+    ...(NO_FOCUS ? { show: false } : {}),
     backgroundColor: '#0d1014',
     title: 'homm5-editor',
     webPreferences: {
@@ -89,6 +95,7 @@ function createWindow(): void {
   // re-narrowing the mutable shared `state.win` after every call.
   const w = state.win;
   w.setMenuBarVisibility(false);
+  if (NO_FOCUS) w.once('ready-to-show', () => showQuietly(w));
   // Renderer failures, in the terminal that launched the app. Until this was
   // here, a renderer that died on its first line left no trace anywhere the
   // person hitting it would look: DevTools is closed, and start-editor.bat keeps
@@ -153,6 +160,7 @@ registerCampaigns();
 registerModsList();
 registerModCreatures();
 registerModHeroes();
+registerModSpells();
 registerModArtifacts();
 registerModBuildings();
 registerModTextures();

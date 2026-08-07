@@ -86,6 +86,12 @@ export async function launchEditor(env: Record<string, string> = {}, args: strin
       // lands at its in-game path — `<data>/Maps/SingleMissions/<name>` — which
       // is what every spec here computes for itself.
       HOMM5_UNPACK_TO: process.env.HOMM5_UNPACK_TO || process.env.HOMM5_DATA || join(REPO_ROOT, 'data-unpacked'),
+      // Out of the way. A run launches the editor dozens of times and every
+      // launch used to take the foreground off whoever is at the keyboard; with
+      // this the window comes up inactive and parked off the desktop, still
+      // drawing (electron/no-focus.ts). Overridable from the environment, for
+      // the times when watching a spec run IS the point.
+      HOMM5_NO_FOCUS: process.env.HOMM5_NO_FOCUS ?? '1',
       ...env,
     } as Record<string, string>,
   });
