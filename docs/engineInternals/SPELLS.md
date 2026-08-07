@@ -391,12 +391,17 @@ behave differently:
   is how the area routine already chooses, so the two shapes now agree.
 
   The site was shared: it is the third of the three
-  `native/qol/fix-empowered-armageddon.c` documented, and with that flag on the
-  empowered Armageddon (232) must answer yes here too. Two patches over twelve
-  bytes would have been one refusing in silence, so there is one stub and it asks
-  three questions in order — ours by element, the empowered id when the flag is
-  on, and the shipped comparison for everything else. The flag keeps meaning
-  exactly what it meant.
+  `native/qol/fix-empowered-armageddon.c` documented. **Asking the record answers
+  that one too** — the accessor normalises the empowered Armageddon (232) to 10
+  and finds it elemental — so that fix's third site is not a case anybody adds,
+  it falls out of asking properly, and so will any elemental whole-field spell
+  the game is ever given.
+
+  One stub, one question. The flag decides only whether the GAME'S OWN spells are
+  asked it, and that is not fastidiousness: the Rules Test experiment is "every
+  fix off, then every fix on, the same map", and a shipped behaviour that moved
+  without its flag would make one of those runs a lie. Our own ids are not in
+  that experiment, so they are asked always.
 
 Two other functions were read on the way and are worth naming so nobody reads
 them again: `0xBD3A00`-ish builds the spellbook's PREDICTION — the "duration",

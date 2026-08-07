@@ -1047,11 +1047,13 @@ static void install_damaging_spell(void) {
 // up agreeing.
 //
 // AND THE SITE IS SHARED. It is the third of the three
-// `native/qol/fix-empowered-armageddon.c` documents: with that flag on, the
-// empowered Armageddon (232) has to answer yes here too. Both questions live in
-// one place rather than two patches fighting over twelve bytes — ours asks for
-// our ids, the flag's for the empowered id, and the shipped comparison for
-// everything else. The flag keeps meaning exactly what it meant.
+// `native/qol/fix-empowered-armageddon.c` documents, and asking the record
+// answers that one too: the accessor normalises the empowered Armageddon (232)
+// to 10 and finds it elemental, so the fix's third site is not a case to add but
+// a consequence of asking properly. One stub, one question, and the flag decides
+// only whether the GAME'S OWN spells get asked it — because the Rules Test
+// experiment turns fixes on and off and a shipped behaviour that moved without
+// its flag would spoil it.
 
 /** `mov eax,[esi+4] / cmp eax,0Ah / jne` — which element the damage is dealt in. */
 #define WHOLE_FIELD_ELEMENT_RVA 0x9610b7u
@@ -1063,26 +1065,30 @@ static const BYTE WHOLE_FIELD_ELEMENT_HEAD[WHOLE_FIELD_ELEMENT_LEN] = {
 #define WHOLE_FIELD_ELEMENTAL_RVA 0x9610c3u
 #define WHOLE_FIELD_PLAIN_RVA 0x96117fu
 
-/** `SpellOf` — an empowered id in, the spell it is a version of out. */
-#define SPELL_OF_RVA 0x6d44c0u
-typedef int(__fastcall *SpellOfFn)(int spell);
-static SpellOfFn g_spellOf = NULL;
-
 /** Where the stub keeps the answer across its own `popad`. */
 static BYTE g_wholeFieldElemental = 0;
 
+/**
+ * TWO CASES, not three — and the second is the shipped bug kept behind its flag.
+ *
+ * `SpellElement` IS the question `cmp eax,0Ah` was a shortcut for, so asking it
+ * needs no list and no upkeep: a spell of ours qualifies by its document, and so
+ * does the empowered Armageddon (232), which the accessor normalises to 10 and
+ * then finds elemental. That is the whole of what
+ * `fix-empowered-armageddon.c`'s third site was for, arrived at by asking rather
+ * than by naming an id — and anything else the game ever gives an elemental
+ * whole-field spell is covered the same day.
+ *
+ * OURS ALWAYS, the game's own only with the flag on. Not because the shortcut is
+ * right for them, but because the Rules Test experiment is "every fix off, then
+ * every fix on, same map": a shipped behaviour that changed without its flag
+ * would make one of those runs a lie. Our own ids are not in that experiment.
+ */
 static void __cdecl decide_whole_field(int spell) {
-  if (spell >= FIRST_SPELL_OF_OURS) {
-    g_wholeFieldElemental = (BYTE)(g_spellElement && g_spellElement(spell) != 0);
-    return;
-  }
-  // The game's own, and the flag decides which of its two questions is asked —
-  // exactly what it decided before this stub existed.
-  if (g_qol[QOL_EMPOWERED_ARMAGEDDON_FIX] && g_spellOf) {
-    g_wholeFieldElemental = (BYTE)(g_spellOf(spell) == 0x0A);
-    return;
-  }
-  g_wholeFieldElemental = (BYTE)(spell == 0x0A);
+  int askTheRecord = spell >= FIRST_SPELL_OF_OURS || g_qol[QOL_EMPOWERED_ARMAGEDDON_FIX];
+  g_wholeFieldElemental = (BYTE)(askTheRecord
+      ? (g_spellElement && g_spellElement(spell) != 0)
+      : spell == 0x0A);
 }
 
 #define WHOLE_FIELD_STUB_LEN 34
@@ -1106,7 +1112,6 @@ static BYTE WHOLE_FIELD_TO_STUB[WHOLE_FIELD_ELEMENT_LEN] = {
 
 static void install_whole_field_element(void) {
   BYTE *base = (BYTE *)GetModuleHandleW(NULL);
-  g_spellOf = (SpellOfFn)(base + SPELL_OF_RVA);
   BYTE *stub = (BYTE *)VirtualAlloc(NULL, WHOLE_FIELD_STUB_LEN, MEM_COMMIT | MEM_RESERVE,
                                     PAGE_EXECUTE_READWRITE);
   if (!stub) { log_line("whole-field element: no memory for the stub"); return; }

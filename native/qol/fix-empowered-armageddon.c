@@ -117,13 +117,15 @@ static void install_empowered_armageddon_fix(void) {
                            "the war machines an armageddon hits");
   }
 
-  // AND THE THIRD SITE IS NOT OURS ANY MORE. `combat/spell-cast.c` replaces it
-  // to ask a wider question — which ELEMENT the damage is dealt in, since the
-  // four appliers there are one per element and `cmp eax,0Ah` was only ever
-  // "is this spell's damage elemental" written against the one id for which it
-  // is. That stub asks OUR question too, keyed on this very flag, so an
-  // empowered Armageddon still answers yes here exactly when this fix is on.
-  // Two patches over twelve bytes would have been one refusing silently.
+  // AND THE THIRD SITE IS NOT OURS ANY MORE — it is answered by asking rather
+  // than by naming. `combat/spell-cast.c` replaces it with the engine's own
+  // `SpellElement`, which is the question `cmp eax,0Ah` was a shortcut for: the
+  // four appliers behind that comparison are one per element, and Armageddon is
+  // simply the only whole-field spell whose damage is elemental. The accessor
+  // normalises 232 to 10 and finds it elemental, so THIS FIX'S THIRD SITE FALLS
+  // OUT OF IT — with no id named, and with any future elemental whole-field
+  // spell covered the same way. It still reads this flag before it asks about a
+  // spell of the game's, so turning the fix off still turns it off.
 
   log_num("empowered armageddon: sites taught the question, of two (the third is the spell code's): ", done);
 }
