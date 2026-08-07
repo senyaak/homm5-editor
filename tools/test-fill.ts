@@ -17,7 +17,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { planFill, insetOf, rng } from '../src/fill/plan.ts';
 import type { FillCell, FillPlacement } from '../src/fill/plan.ts';
-import { readFillPresets, presetObjects, sharedHref } from '../src/fill/preset.ts';
+import { presetFromDraft, presetObjects, presetRefOf, readFillPresets, sharedHref, writeFillPresets } from '../src/fill/preset.ts';
 import type { FillLayer, FillPreset } from '../src/fill/preset.ts';
 import { findEditorRoot } from '../src/map/objects.ts';
 import { dataDir, gameDirIfAny } from './game-dir.ts';
@@ -81,6 +81,7 @@ function preset(name: string, layers: Array<Partial<FillLayer> & { objects: Fill
 const obj = (id: string, size: number, probability: number, noRandomAngle = false): FillLayer['objects'][number] => ({
   shared: sharedHref('AdvMapStaticShared', id),
   type: 'AdvMapStatic',
+  sharedClass: 'AdvMapStaticShared',
   id, size, probability, noRandomAngle,
 });
 
@@ -317,6 +318,64 @@ console.log('\npresets');
   } else {
     console.log('  skip  the game\'s FillPresets.xml — no Editor folder found');
   }
+}
+
+// --- writing one back out -----------------------------------------------------
+
+console.log('\nwriting a preset file');
+{
+  const file = join(REPO, 'assets', 'fill-presets.xml');
+  const ours = readFillPresets(readFileSync(file, 'utf8'), 'assets/fill-presets.xml');
+  const again = readFillPresets(writeFillPresets(ours), 'assets/fill-presets.xml');
+  const strip = (list: FillPreset[]): string => JSON.stringify(list.map((p) => ({ ...p, source: '' })));
+  check('a file written from what was read reads back the same', strip(ours) === strip(again),
+    `${ours.length} presets, ${again.length} back`);
+
+  // The two fields the writer leaves out when they are false have to come back
+  // as false, not as missing — a preset that grew a facing on every save would
+  // be a change nobody made.
+  const corn = again.find((p) => p.name === 'Corn Field');
+  check('a fixed facing survives the round trip', !!corn && presetObjects(corn).every((o) => o.noRandomAngle));
+  const birch = again.find((p) => p.name === 'Birch Wood');
+  check('and a free one stays free', !!birch && presetObjects(birch).every((o) => !o.noRandomAngle));
+
+  // Text that would break the file if it were written raw.
+  const awkward = presetFromDraft({
+    name: 'Fen & <Bog>',
+    layers: [{ dispersion: 1, width: 0, noRandomAngle: false, objects: [
+      { type: 'AdvMapStaticShared', id: 'Grass\\Bush01\\Bush01', size: 0.2, probability: 0.5, noRandomAngle: true },
+    ] }],
+  }, 'test');
+  const back = readFillPresets(writeFillPresets([awkward]), 'test')[0];
+  check('a name with markup in it survives', back?.name === 'Fen & <Bog>', back?.name);
+  check('and so does its candidate', back?.layers[0]?.objects[0]?.id === 'Grass\\Bush01\\Bush01');
+
+  // The href a catalogue entry carries turns back into the two halves a preset
+  // writes — this is what the "+ object…" picker relies on.
+  const ref = presetRefOf('/MapObjects/Grass/Tree/Birch/Birch01.(AdvMapStaticShared).xdb#xpointer(/AdvMapStaticShared)');
+  check('a shared href splits into Type and ID',
+    ref?.type === 'AdvMapStaticShared' && ref.id === 'Grass\\Tree\\Birch\\Birch01', JSON.stringify(ref));
+  check('and back into the same href',
+    !!ref && sharedHref(ref.type, ref.id) === '/MapObjects/Grass/Tree/Birch/Birch01.(AdvMapStaticShared).xdb#xpointer(/AdvMapStaticShared)');
+  check('something that is not a MapObjects path is refused',
+    presetRefOf('/Text/Whatever.txt') === null);
+}
+
+console.log('\ndrafts');
+{
+  const layer = { dispersion: 1, width: 0, noRandomAngle: false, objects: [
+    { type: 'AdvMapStaticShared', id: 'Grass\\Bush01\\Bush01', size: 0.2, probability: 0.5, noRandomAngle: false },
+  ] };
+  const refused = (d: Parameters<typeof presetFromDraft>[0]): string => {
+    try { presetFromDraft(d, 'test'); return ''; } catch (e) { return e instanceof Error ? e.message : String(e); }
+  };
+  check('a preset with no name is refused', !!refused({ name: '  ', layers: [layer] }));
+  check('a preset with no layers is refused', !!refused({ name: 'x', layers: [] }));
+  check('a layer with nothing to plant is refused',
+    !!refused({ name: 'x', layers: [{ ...layer, objects: [] }] }));
+  check('a layer with no spacing is refused',
+    !!refused({ name: 'x', layers: [{ ...layer, dispersion: 0 }] }));
+  check('a sound one is not', !refused({ name: 'x', layers: [layer] }), refused({ name: 'x', layers: [layer] }));
 }
 
 console.log(`\n${failures ? `\x1b[31m${failures} failed\x1b[0m` : '\x1b[32mall checks passed\x1b[0m'}`);

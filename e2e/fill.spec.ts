@@ -13,7 +13,7 @@
 import { test, expect } from '@playwright/test';
 import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { closeEditor, launchEditor, hudSays, REPO_ROOT } from './launch.ts';
+import { closeEditor, launchEditor, hudSays, E2E_GAME, REPO_ROOT } from './launch.ts';
 import type { Launched } from './launch.ts';
 import { dragTiles, newMap, settle } from './tiles.ts';
 import { loadMap } from '../src/map/map.ts';
@@ -31,6 +31,18 @@ const TILES = (AREA.x1 - AREA.x0 + 1) * (AREA.y1 - AREA.y0 + 1);
 
 const cleanup = (): void => { if (existsSync(MAP_DIR)) rmSync(MAP_DIR, { recursive: true, force: true }); };
 
+/**
+ * Show the Fills panel if it is not already up.
+ *
+ * The bar button TOGGLES, and these tests share one editor: clicking it blind
+ * closes the panel the test before left open, and every locator below then
+ * waits on something hidden.
+ */
+async function openFills(page: Launched['page']): Promise<void> {
+  if (!(await page.locator('#fillpal').isVisible())) await page.locator('#fillbtn').click();
+  await expect(page.locator('#fillpal')).toBeVisible();
+}
+
 test.beforeAll(async () => { cleanup(); ed = await launchEditor(); });
 test.afterAll(async () => { await closeEditor(ed); cleanup(); });
 
@@ -42,8 +54,7 @@ test('an area painted with the fill brush becomes a wood, in one undo step', asy
   await newMap(page, NAME, '96');
 
   // --- the panel finds the presets on this machine ---
-  await page.locator('#fillbtn').click();
-  await expect(page.locator('#fillpal')).toBeVisible();
+  await openFills(page);
   await expect(page.locator('#fill-list option').first()).toBeAttached({ timeout: 30_000 });
   const found = await page.evaluate(() => window.view.fill().presets);
   expect(found, 'presets were read from a file').toBeGreaterThan(0);
@@ -126,6 +137,85 @@ test('an area painted with the fill brush becomes a wood, in one undo step', asy
     'and the whole turn is used').toBeGreaterThan(8);
 });
 
+test('a preset of your own is made in the window, kept in H5E, and plants what it names', async () => {
+  test.skip(!existsSync(join(DATA, 'MapObjects')), 'needs the game data');
+  test.setTimeout(240_000);
+  const { page } = ed;
+
+  // The rock this preset will be made of, chosen here so the check knows what
+  // to look for on the map. Any catalogue entry would do — that is the point.
+  const ROCK = 'Rock1x1_1';
+  const MINE = 'e2e Own Rocks';
+
+  await openFills(page);
+
+  // The shipped presets cannot be edited or deleted — they are files we do not
+  // own — so the buttons that would say otherwise are off.
+  await page.locator('#fill-list').selectOption({ label: 'Birch Wood' });
+  await expect(page.locator('#fill-edit')).toBeDisabled();
+  await expect(page.locator('#fill-del')).toBeDisabled();
+  await expect(page.locator('#fill-copy')).toBeEnabled();
+
+  await page.locator('#fill-new').click();
+  await expect(page.locator('#fillpreset')).toBeVisible();
+  await page.locator('#fp-name').fill(MINE);
+
+  // One layer, one object, chosen from the catalogue the way a person would.
+  const layer = page.locator('.fp-layer[data-layer="0"]');
+  await layer.locator('input[data-field="dispersion"]').fill('1');
+  await layer.locator('input[data-field="dispersion"]').dispatchEvent('change');
+  await layer.locator('.fp-add').click();
+  await expect(page.locator('#presetpick')).toBeVisible();
+  await page.locator('#pp-search').fill(ROCK);
+  await page.locator('#pp-list button').first().click();
+  await expect(page.locator('#presetpick')).toBeHidden();
+  await expect(layer.locator('.obj')).toHaveCount(1);
+
+  await layer.locator('.obj input[data-field="probability"]').fill('1');
+  await layer.locator('.obj input[data-field="probability"]').dispatchEvent('change');
+  await layer.locator('.obj input[data-field="size"]').fill('0');
+  await layer.locator('.obj input[data-field="size"]').dispatchEvent('change');
+  // The footer runs the real planner over a scratch patch, so the numbers are
+  // answerable before anything is saved: certain, one per tile, 8x8 = 64.
+  await expect(page.locator('#fp-preview')).toHaveText('on an 8×8 patch: 64 object(s)');
+
+  await page.locator('#fp-save').click();
+  await expect(page.locator('#fillpreset')).toBeHidden();
+
+  // It is in the list, chosen, and now editable — which the shipped ones are not.
+  await expect.poll(() => page.evaluate(() => window.view.fill().preset), { timeout: 30_000 }).toBe(MINE);
+  await expect(page.locator('#fill-edit')).toBeEnabled();
+  await expect(page.locator('#fill-del')).toBeEnabled();
+
+  // And on disk, in our own mod folder rather than in the game's Editor.
+  const file = join(E2E_GAME, 'H5E', 'FillPresets.xml');
+  expect(existsSync(file), `${file} was written`).toBe(true);
+  expect(readFileSync(file, 'utf8')).toContain(MINE);
+
+  // Now plant it: three by three tiles of certain, one-per-tile rock.
+  const before = await page.evaluate(() => window.view.objects().length);
+  await page.locator('.fill-sizes button[data-size="rect"]').click();
+  await dragTiles(page, [60, 20], [62, 22]);
+  expect(await page.evaluate(() => window.view.fill().cells)).toBe(9);
+  await page.locator('#fill-apply').click();
+  const said = await hudSays(page, /planted \d+ object/, 120_000);
+  expect(Number(/planted (\d+)/.exec(said)?.[1] ?? 0), 'one per tile, as the preset says').toBe(9);
+
+  const fresh = (await page.evaluate(() => window.view.objects())).slice(before);
+  expect(fresh, 'nine new objects').toHaveLength(9);
+  expect(fresh.every((o) => o.shared.includes(ROCK)),
+    `all of them are the ${ROCK} the preset names`).toBe(true);
+
+  // Deleting takes it out of the list and out of the file; what it planted stays.
+  page.once('dialog', () => { /* the app never uses a native dialog — see core/dialog.ts */ });
+  await page.locator('#fill-del').click();
+  await page.locator('#ask-yes').click();
+  await expect.poll(() => page.evaluate(() => window.view.fill().preset), { timeout: 30_000 }).not.toBe(MINE);
+  expect(readFileSync(file, 'utf8')).not.toContain(MINE);
+  expect(await page.evaluate(() => window.view.objects().length),
+    'the rocks it planted are objects now, and stay').toBe(before + 9);
+});
+
 test('the brush adds and Shift takes away, without touching the map', async () => {
   test.skip(!existsSync(join(DATA, 'MapObjects')), 'needs the game data');
   test.setTimeout(180_000);
@@ -135,6 +225,7 @@ test('the brush adds and Shift takes away, without touching the map', async () =
   // it — which is the point: painting an area must not change the map at all.
   const before = await page.evaluate(() => window.view.objects().length);
 
+  await openFills(page);
   await page.locator('.fill-sizes button[data-size="5"]').click();
   await expect(page.locator('#fill-draw')).toHaveText('draw: on');
   await dragTiles(page, [40, 40], [50, 40]);

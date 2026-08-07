@@ -34,6 +34,14 @@ export interface FillObject {
   shared: string;
   /** Object type the href implies, e.g. `AdvMapStatic`. */
   type: string;
+  /**
+   * The class the preset names, e.g. `AdvMapStaticShared`.
+   *
+   * Kept beside the placed type because the file is written back out: the
+   * document's own `<Type>` is what round-trips, and deriving it from the
+   * placed type would be a second opinion about something the file states.
+   */
+  sharedClass: string;
   /** The `ID` as the preset writes it — what a person reads in the panel. */
   id: string;
   /**
@@ -92,6 +100,18 @@ const num = (v: string, d: number): number => {
   const n = Number(v.trim());
   return Number.isFinite(n) ? n : d;
 };
+
+/**
+ * Text as it was before being written into the file.
+ *
+ * Our XML layer keeps character data verbatim — it exists to round-trip the
+ * game's documents byte for byte, not to interpret them — so the entities the
+ * writer puts in are undone here, where the pair belongs together. Nothing in
+ * the shipped files carries one, so this is inert for them.
+ */
+const unesc = (s: string): string =>
+  s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'").replace(/&amp;/g, '&');
 const bool = (v: string): boolean => /^(true|1)$/i.test(v.trim());
 
 /**
@@ -106,6 +126,19 @@ export function sharedHref(type: string, id: string): string {
   return `/MapObjects/${path}.(${type}).xdb#xpointer(/${type})`;
 }
 
+/**
+ * The `Type` and `ID` a shared href is made of — `sharedHref` backwards.
+ *
+ * This is how the object catalogue's entries become preset candidates: the
+ * palette knows an object by its href, and a preset writes the two halves.
+ * Null when the href is not a `MapObjects` path with a class on it, which is
+ * every reference a preset cannot name.
+ */
+export function presetRefOf(href: string): { type: string; id: string } | null {
+  const m = /^\/?MapObjects\/(.+)\.\((\w+)\)\.xdb(?:#.*)?$/i.exec(href.replace(/\\/g, '/').replace(/^\/+/, ''));
+  return m ? { type: m[2]!, id: m[1]!.replace(/\//g, '\\') } : null;
+}
+
 /** Parse one `FillPresets.xml`. Malformed entries are dropped, not thrown over. */
 export function readFillPresets(xml: string, source: string): FillPreset[] {
   const root = parse(xml);
@@ -116,7 +149,7 @@ export function readFillPresets(xml: string, source: string): FillPreset[] {
   if (!presets) return [];
   const out: FillPreset[] = [];
   for (const item of children(presets).filter((c) => c.name === 'Item')) {
-    const name = childText(item, 'Name').trim();
+    const name = unesc(childText(item, 'Name').trim());
     const layersEl = find(item, 'Layers');
     if (!name || !layersEl) continue;
     const layers: FillLayer[] = [];
@@ -125,12 +158,13 @@ export function readFillPresets(xml: string, source: string): FillPreset[] {
       const objects: FillObject[] = [];
       for (const o of objectsEl ? children(objectsEl).filter((c) => c.name === 'Item') : []) {
         const ref = find(o, 'Object');
-        const type = ref ? childText(ref, 'Type').trim() : '';
-        const id = ref ? childText(ref, 'ID').trim() : '';
+        const type = ref ? unesc(childText(ref, 'Type').trim()) : '';
+        const id = ref ? unesc(childText(ref, 'ID').trim()) : '';
         if (!type || !id) continue;
         objects.push({
           shared: sharedHref(type, id),
           type: typeOf(type),
+          sharedClass: type,
           id,
           size: num(childText(o, 'Size'), 0),
           // A candidate with no probability at all would never be placed, which
@@ -156,7 +190,112 @@ export function readFillPresets(xml: string, source: string): FillPreset[] {
   return out;
 }
 
+/**
+ * A preset as something EDITING it holds one: the file's own two-part
+ * reference, and no derived fields.
+ *
+ * The window builds one of these, the channel writes it, and both turn it into
+ * a preset through `presetFromDraft` — so what the editor previews and what the
+ * file ends up saying come from one function rather than two that agree today.
+ */
+export interface FillDraftObject {
+  /** The class the file names, e.g. `AdvMapStaticShared`. */
+  type: string;
+  id: string;
+  size: number;
+  probability: number;
+  noRandomAngle: boolean;
+}
+export interface FillDraftLayer {
+  dispersion: number;
+  width: number;
+  noRandomAngle: boolean;
+  objects: FillDraftObject[];
+}
+export interface FillDraft {
+  name: string;
+  layers: FillDraftLayer[];
+}
+
+/**
+ * Turn a draft into a preset, refusing the ones that would do nothing.
+ *
+ * Both ways a preset can be silently inert — a layer with no candidates, a
+ * spacing of zero — are caught here, where they can still be explained, rather
+ * than at the end of a fill that planted nothing.
+ */
+export function presetFromDraft(d: FillDraft, source: string): FillPreset {
+  const name = d.name.trim();
+  if (!name) throw new Error('a preset needs a name');
+  const layers: FillLayer[] = d.layers.map((l) => ({
+    dispersion: l.dispersion,
+    width: l.width,
+    noRandomAngle: l.noRandomAngle,
+    objects: l.objects.map((o) => ({
+      shared: sharedHref(o.type, o.id),
+      type: o.type.replace(/Shared$/i, ''),
+      sharedClass: o.type,
+      id: o.id,
+      size: o.size,
+      probability: o.probability,
+      noRandomAngle: o.noRandomAngle,
+    })),
+  }));
+  if (!layers.length) throw new Error('a preset needs at least one layer');
+  for (const [i, l] of layers.entries()) {
+    if (!l.objects.length) throw new Error(`layer ${i + 1} has nothing to plant`);
+    if (!(l.dispersion > 0)) throw new Error(`layer ${i + 1} needs a spacing above zero`);
+  }
+  return { name, layers, source };
+}
+
 /** Every object any layer of a preset can place — what needs resolving on disk. */
 export function presetObjects(p: FillPreset): FillObject[] {
   return p.layers.flatMap((l) => l.objects);
+}
+
+/** A number as the file writes it: no trailing zeros, no exponent. */
+const numText = (v: number): string => String(Number.isFinite(v) ? +v.toFixed(4) : 0);
+
+/** Text that has to survive being read back as XML. */
+const esc = (s: string): string =>
+  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+/**
+ * Write presets back out in the same format they are read from.
+ *
+ * Whole file at a time, not an edit in place: a preset file is a list and the
+ * editor owns all of one file (the user's), so re-emitting it keeps the shape
+ * uniform instead of accumulating whatever an in-place insert would leave. The
+ * game's own file and ours are never written — see electron/channels/fill.ts.
+ */
+export function writeFillPresets(presets: readonly FillPreset[]): string {
+  const out: string[] = ['<?xml version="1.0"?>', '<Base>', '\t<Presets>'];
+  for (const p of presets) {
+    out.push('\t\t<Item>', `\t\t\t<Name>${esc(p.name)}</Name>`, '\t\t\t<Layers>');
+    for (const l of p.layers) {
+      out.push('\t\t\t\t<Item>', '\t\t\t\t\t<objects>');
+      for (const o of l.objects) {
+        out.push('\t\t\t\t\t\t<Item>',
+          '\t\t\t\t\t\t\t<Object>',
+          `\t\t\t\t\t\t\t\t<Type>${esc(o.sharedClass)}</Type>`,
+          `\t\t\t\t\t\t\t\t<ID>${esc(o.id)}</ID>`,
+          '\t\t\t\t\t\t\t</Object>',
+          `\t\t\t\t\t\t\t<Size>${numText(o.size)}</Size>`,
+          `\t\t\t\t\t\t\t<Probability>${numText(o.probability)}</Probability>`);
+        // Only when set: the game's own presets leave it out, and a file that
+        // grows a field on every save reads as a change that was not made.
+        if (o.noRandomAngle) out.push('\t\t\t\t\t\t\t<NoRandomAngle>true</NoRandomAngle>');
+        out.push('\t\t\t\t\t\t</Item>');
+      }
+      out.push('\t\t\t\t\t</objects>',
+        `\t\t\t\t\t<Dispersion>${numText(l.dispersion)}</Dispersion>`,
+        `\t\t\t\t\t<Width>${numText(l.width)}</Width>`);
+      if (l.noRandomAngle) out.push('\t\t\t\t\t<NoRandomAngle>true</NoRandomAngle>');
+      out.push('\t\t\t\t</Item>');
+    }
+    out.push('\t\t\t</Layers>', '\t\t</Item>');
+  }
+  out.push('\t</Presets>', '</Base>', '');
+  return out.join('\n');
 }

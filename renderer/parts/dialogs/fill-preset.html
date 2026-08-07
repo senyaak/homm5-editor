@@ -1,0 +1,27 @@
+  <!-- Making a fill preset: layers outward-in, each with what it plants and how
+       thickly. The shipped presets are files we do not own, so editing one
+       saves a copy; presets of your own live in <game>/H5E/FillPresets.xml.
+       See docs/FILL_TOOL.md for what each number does. -->
+  <dialog id="fillpreset">
+    <div class="mp-card um-card" style="max-width:760px">
+      <div class="mp-head">
+        <span class="mp-title" id="fp-title">New fill preset</span>
+        <button id="fp-x" title="close (Esc)">✕</button>
+      </div>
+      <div class="mp-body um-body">
+        <div class="fp-name">
+          <label for="fp-name">Name</label>
+          <input id="fp-name" type="text" autocomplete="off" spellcheck="false" placeholder="Birch Wood">
+          <span id="fp-from"></span>
+        </div>
+        <div id="fp-layers"></div>
+        <button id="fp-addlayer" class="ghost">+ layer</button>
+      </div>
+      <div class="de-foot fp-foot">
+        <span id="fp-preview" title="what this preset would plant on an 8x8 patch, at one seed"></span>
+        <span id="fp-err" class="err"></span>
+        <button id="fp-cancel" class="ghost">Cancel</button>
+        <button id="fp-save">Save</button>
+      </div>
+    </div>
+  </dialog>

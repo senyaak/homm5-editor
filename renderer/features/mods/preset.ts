@@ -15,6 +15,9 @@ import { modDialog } from '#core/dialog.ts';
 /** Where the picker puts its answer, and what it does with it. */
 let ppChoose: ((id: string, label: string) => void) | null = null;
 
+/** How many rows are built at once — see the note in `draw` below. */
+const SHOWN = 250;
+
 /** Open the picker over a list of things to start from. */
 export function pickPreset(
   title: string,
@@ -29,7 +32,12 @@ export function pickPreset(
     const q = search.value.trim().toLowerCase();
     const box = $('pp-list');
     box.innerHTML = '';
-    for (const e of entries.filter((x) => !q || x.label.toLowerCase().includes(q))) {
+    const hits = entries.filter((x) => !q || x.label.toLowerCase().includes(q));
+    // The lists this picker was written for are a hundred long; the object
+    // catalogue is two thousand, and building all of them as buttons is a
+    // visible pause on every keystroke. Showing a page and saying how much is
+    // left keeps the search the way to reach the rest, which it already was.
+    for (const e of hits.slice(0, SHOWN)) {
       const row = document.createElement('button');
       row.className = 'um-mod';
       row.style.cssText = 'display:block;width:100%;text-align:left';
@@ -39,6 +47,18 @@ export function pickPreset(
         ppChoose?.(e.id, e.label);
       };
       box.append(row);
+    }
+    if (hits.length > SHOWN) {
+      const more = document.createElement('div');
+      more.style.cssText = 'color:#6e7681;font-size:11px;padding:6px 2px';
+      more.textContent = `+${hits.length - SHOWN} more — narrow the search`;
+      box.append(more);
+    }
+    if (!hits.length) {
+      const none = document.createElement('div');
+      none.style.cssText = 'color:#6e7681;font-size:11px;padding:6px 2px';
+      none.textContent = 'nothing matches';
+      box.append(none);
     }
   };
   search.oninput = draw;

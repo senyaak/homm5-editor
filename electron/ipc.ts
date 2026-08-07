@@ -15,6 +15,7 @@ export type { ObjectProp } from '../src/map/map.ts';
 export type { CreatureStats } from '../src/mods/creatures.ts';
 export type { PaletteEntry, RecolorOps } from '../src/format/recolor.ts';
 import type { PlaceableObject } from '../src/map/objects.ts';
+import type { FillDraft } from '../src/fill/preset.ts';
 import type { ActorView, ShotView } from '../src/dialog/play.ts';
 import type { SceneSource } from '../src/dialog/scene-source.ts';
 export type { PlaceableObject } from '../src/map/objects.ts';
@@ -758,26 +759,58 @@ export interface AddObjectResult {
  */
 export interface FillPresetInfo {
   name: string;
-  /** Which file it came from — the game's Editor folder or ours. */
+  /** Which file it came from — the game's Editor folder, ours, or the user's. */
   source: string;
+  /**
+   * True for presets in the user's own file, which is the only one the editor
+   * writes. The game's and ours are read-only; a copy of either is not.
+   */
+  editable: boolean;
   layers: Array<{
     dispersion: number;
     width: number;
+    noRandomAngle: boolean;
     objects: Array<{
+      /** The class the file names, e.g. `AdvMapStaticShared`. */
+      type: string;
       id: string;
       size: number;
       probability: number;
+      noRandomAngle: boolean;
       /** False when nothing in the mounted data answers to its href. */
       present: boolean;
     }>;
   }>;
 }
 
-/** Result of `fill:presets`. */
+/**
+ * A preset as the editor hands it back.
+ *
+ * The model's own draft shape rather than a copy of it: the window builds one,
+ * the channel writes it, and both turn it into a preset through the same
+ * `presetFromDraft`.
+ */
+export type FillPresetDraft = FillDraft;
+
+/** Payload of `fill:save-preset`. */
+export interface FillSavePayload {
+  preset: FillPresetDraft;
+  /** The name being replaced, when a preset is renamed rather than added. */
+  original?: string;
+}
+
+/** Payload of `fill:delete-preset`. */
+export interface FillDeletePayload {
+  name: string;
+}
+
+/** Result of `fill:presets`, and of every call that changes them. */
 export interface FillPresetsResult {
   presets: FillPresetInfo[];
   /** Files that were read, in order, so the panel can say where to add more. */
   sources: string[];
+  /** Where a preset of the user's own is written; null when there is nowhere. */
+  writable: string | null;
 }
 
 /** Payload of `fill:apply` — the painted tiles and which preset to run. */
@@ -1781,6 +1814,10 @@ export interface EditorApi {
   addObject(p: AddObjectPayload): Promise<AddObjectResult>;
   /** The fill presets on this machine, and where they were read from. */
   fillPresets(): Promise<FillPresetsResult>;
+  /** Write one into the user's own preset file; returns the list as it now is. */
+  saveFillPreset(p: FillSavePayload): Promise<FillPresetsResult>;
+  /** Take one out of it. Only the user's own can go. */
+  deleteFillPreset(p: FillDeletePayload): Promise<FillPresetsResult>;
   /** Run one over the painted tiles — one undo step, however much it plants. */
   applyFill(p: FillApplyPayload): Promise<FillApplyResult>;
   save(): Promise<MapSaveResult>;

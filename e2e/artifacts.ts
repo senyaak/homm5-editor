@@ -15,9 +15,10 @@
 // fails in whichever spec wanted that name, with "already exists" about a file
 // the person watching never asked for. Clearing on the way in always happens.
 
-import { existsSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { readFillPresets, writeFillPresets } from '../src/fill/preset.ts';
 import { modFile } from '../src/game/mod-paths.ts';
 import { DATA, E2E_GAME, REPO_ROOT } from './launch.ts';
 
@@ -46,6 +47,8 @@ export const MADE = {
   DIALOGS: 'e2e Dialogs',
   DIALOGS_MAP: 'e2e Dialogs Map',
   FILL: 'e2e Fill',
+  /** A fill preset, which lives INSIDE a file rather than as one — see below. */
+  FILL_PRESET: 'e2e Own Rocks',
   LOCALIZE: 'e2e Localize',
   MONSTER_AMOUNT: 'e2e monster amount',
   NEW_MAP: 'e2e New Map',
@@ -138,5 +141,28 @@ export function clearAll(): string[] {
       gone.push(path);
     }
   }
+  gone.push(...clearFillPresets());
   return gone;
+}
+
+/**
+ * Take the suite's fill presets out of the user's preset file.
+ *
+ * The odd one out: a preset is not a file, it is an entry IN one, and that file
+ * belongs to whoever is using this install — so it is edited rather than
+ * deleted, and only emptied of ours. When nothing of anybody's is left, the
+ * file goes, since an empty one is something the suite created.
+ */
+function clearFillPresets(): string[] {
+  const file = join(E2E_GAME, 'H5E', 'FillPresets.xml');
+  if (!existsSync(file)) return [];
+  let all;
+  try { all = readFillPresets(readFileSync(file, 'utf8'), file); }
+  catch { return []; }
+  const ours = new Set<string>(EVERY_NAME);
+  const rest = all.filter((p) => !ours.has(p.name));
+  if (rest.length === all.length) return [];
+  if (rest.length) writeFileSync(file, writeFillPresets(rest), 'utf8');
+  else rmSync(file, { force: true });
+  return [`${file} (${all.length - rest.length} preset(s))`];
 }

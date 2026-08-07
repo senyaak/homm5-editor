@@ -13,11 +13,11 @@
 
 import { ipcMain } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { record } from '#electron/edits.ts';
-import type { FillApplyPayload, FillApplyResult, FillPresetInfo, FillPresetsResult } from '#electron/ipc.ts';
-import { APP_ROOT, editorRoot, gameData, mountedAssets } from '#electron/paths.ts';
+import type { FillApplyPayload, FillApplyResult, FillDeletePayload, FillPresetDraft, FillPresetInfo, FillPresetsResult, FillSavePayload } from '#electron/ipc.ts';
+import { APP_ROOT, editorRoot, gameData, gameRoot, mountedAssets } from '#electron/paths.ts';
 import { need } from '#electron/state.ts';
 
 import { orderFor } from '#electron/spec.ts';
@@ -26,22 +26,42 @@ import { donorFor } from '#src/map/donors.ts';
 import { groupMembers } from '#src/map/objects.ts';
 import { planFill } from '#src/fill/plan.ts';
 import type { FillVariant } from '#src/fill/plan.ts';
-import { readFillPresets } from '#src/fill/preset.ts';
+import { presetFromDraft, readFillPresets, writeFillPresets } from '#src/fill/preset.ts';
 import type { FillObject, FillPreset } from '#src/fill/preset.ts';
+import { ensureModDir, modDir } from '#src/game/mod-paths.ts';
 import type { Assets } from '#src/game/assets.ts';
+
+/** Label the panel shows for presets the person here made. */
+const MINE = 'H5E/FillPresets.xml';
+
+/**
+ * Where a preset of one's own is written: our own mod folder beside the game.
+ *
+ * Not into `assets/` (that ships with the editor and an update would overwrite
+ * it) and not into the game's `Editor/` (that is the game's). `H5E` is ours, it
+ * survives reinstalling the editor, and it is where this install's maps already
+ * live — so a preset travels with the work it was made for.
+ */
+function userFile(): string | null {
+  const root = gameRoot();
+  return root ? join(modDir(root), 'FillPresets.xml') : null;
+}
 
 /**
  * Where presets are read from, in the order they are listed.
  *
  * Ours first because they are the ones a map wants; the game's nine "(test)"
- * presets come after, and both are the same format, so a preset moved between
- * the two files behaves identically. A file that is not there is simply not a
- * source — an install without the editor folder still has presets.
+ * presets after them; the user's own last, since those are the ones being
+ * worked on. All three are the same format, so a preset moved between the files
+ * behaves identically. A file that is not there is simply not a source — an
+ * install without the editor folder still has presets.
  */
 function sources(): Array<{ file: string; label: string }> {
   const out = [{ file: join(APP_ROOT, 'assets', 'fill-presets.xml'), label: 'assets/fill-presets.xml' }];
   const editor = editorRoot();
   if (editor) out.push({ file: join(editor, 'FillPresets.xml'), label: 'Editor/FillPresets.xml' });
+  const mine = userFile();
+  if (mine) out.push({ file: mine, label: MINE });
   return out.filter((s) => existsSync(s.file));
 }
 
@@ -55,6 +75,30 @@ function presets(): FillPreset[] {
     catch (e) { console.warn(`[fill] ${s.label}: ${e instanceof Error ? e.message : String(e)}`); }
   }
   return out;
+}
+
+/** The user's own presets, in file order. Empty when there is no file yet. */
+function mine(): FillPreset[] {
+  const file = userFile();
+  if (!file || !existsSync(file)) return [];
+  try { return readFillPresets(readFileSync(file, 'utf8'), MINE); }
+  catch (e) {
+    // Refuse rather than silently rewrite: the file is hand-editable, and a
+    // save that could not read it would throw the lot away.
+    throw new Error(`${MINE} could not be read, so it will not be written over: `
+      + (e instanceof Error ? e.message : String(e)));
+  }
+}
+
+/** Write the user's presets back out, making the folder if this is the first. */
+function writeMine(list: readonly FillPreset[]): void {
+  const file = userFile();
+  const root = gameRoot();
+  if (!file || !root) {
+    throw new Error('there is nowhere to keep a preset of your own: this run was not told where the game is');
+  }
+  ensureModDir(root);
+  writeFileSync(file, writeFillPresets(list), 'utf8');
 }
 
 /** Does the mounted data hold what this candidate names? */
@@ -96,26 +140,59 @@ function donors(): (type: string) => ReturnType<typeof donorFor> {
   };
 }
 
+/**
+ * The presets as the window needs them, with each candidate marked for whether
+ * the data has it.
+ *
+ * A preset naming a file this installation does not carry places nothing where
+ * that candidate came up, and the panel is the only place that can say so
+ * before the click rather than after.
+ */
+function listing(): FillPresetsResult {
+  const data = mountedAssets(gameData());
+  const list = presets().map((p): FillPresetInfo => ({
+    name: p.name,
+    source: p.source,
+    editable: p.source === MINE,
+    layers: p.layers.map((l) => ({
+      dispersion: l.dispersion,
+      width: l.width,
+      noRandomAngle: l.noRandomAngle,
+      objects: l.objects.map((o) => ({
+        type: o.sharedClass, id: o.id, size: o.size, probability: o.probability,
+        noRandomAngle: o.noRandomAngle, present: present(data, o),
+      })),
+    })),
+  }));
+  return { presets: list, sources: sources().map((s) => s.label), writable: userFile() };
+}
+
 /** Wire this domain onto ipcMain. Called once, from main. */
 export function registerFill(): void {
-  // The presets, with each candidate marked for whether the data has it. A
-  // preset naming a file this installation does not carry places nothing where
-  // that candidate came up, and the panel is the only place that can say so
-  // before the click rather than after.
-  ipcMain.handle('fill:presets', async (): Promise<FillPresetsResult> => {
-    const data = mountedAssets(gameData());
-    const list = presets().map((p): FillPresetInfo => ({
-      name: p.name,
-      source: p.source,
-      layers: p.layers.map((l) => ({
-        dispersion: l.dispersion,
-        width: l.width,
-        objects: l.objects.map((o) => ({
-          id: o.id, size: o.size, probability: o.probability, present: present(data, o),
-        })),
-      })),
-    }));
-    return { presets: list, sources: sources().map((s) => s.label) };
+  ipcMain.handle('fill:presets', async (): Promise<FillPresetsResult> => listing());
+
+  // Add a preset of one's own, or replace one. Only the user's file is touched:
+  // editing a shipped preset means saving a copy, which is what the window does.
+  ipcMain.handle('fill:save-preset', async (_e: IpcMainInvokeEvent, p: FillSavePayload): Promise<FillPresetsResult> => {
+    const list = mine();
+    const preset = presetFromDraft(p.preset, MINE);
+    const taken = presets().find((q) => q.name === preset.name && q.source !== MINE);
+    if (taken) throw new Error(`${taken.source} already has a preset called "${preset.name}"`);
+    const at = list.findIndex((q) => q.name === (p.original ?? preset.name));
+    if (at >= 0) list[at] = preset; else list.push(preset);
+    writeMine(list);
+    return listing();
+  });
+
+  ipcMain.handle('fill:delete-preset', async (_e: IpcMainInvokeEvent, p: FillDeletePayload): Promise<FillPresetsResult> => {
+    const list = mine();
+    const at = list.findIndex((q) => q.name === p.name);
+    // Said out loud: the shipped presets are files we do not own, and a delete
+    // that quietly did nothing would look like one that did not take.
+    if (at < 0) throw new Error(`"${p.name}" is not one of yours — only presets in ${MINE} can be deleted`);
+    list.splice(at, 1);
+    writeMine(list);
+    return listing();
   });
 
   // Run one over the painted tiles.

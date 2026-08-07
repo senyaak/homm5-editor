@@ -15,6 +15,7 @@ import { markDirty } from '#core/dirty.ts';
 import { $, $button, $select } from '#core/dom.ts';
 import { api } from '#core/ipc.ts';
 import { activeFloor, state } from '#core/state.ts';
+import { deleteFillPreset, openFillEditor } from '#features/fill-editor.ts';
 import { addInstanceToScene, armObject, armed, objPalOpen, paletteOpen, setObjPalette, setPalette } from '#features/palettes.ts';
 import { regionsOpen, setRegionsPanel, setRegionDraw } from '#features/regions.ts';
 import { renderExplorer } from '#features/selection.ts';
@@ -138,6 +139,12 @@ function syncFillCount(): void {
   $('fill-count').textContent = n ? `${n} tile(s) painted` : 'nothing painted';
   $button('fill-apply').disabled = !n || !presets.length || filling;
   $button('fill-clear').disabled = !n;
+  // Only a preset of the user's own can be changed or deleted; the game's file
+  // and the editor's own are not ours to write. Copy is how either is edited.
+  const p = presets[chosen()];
+  $button('fill-copy').disabled = !p;
+  $button('fill-edit').disabled = !p?.editable;
+  $button('fill-del').disabled = !p?.editable;
 }
 
 /** The chosen preset's index, or -1 when the list is empty. */
@@ -207,7 +214,17 @@ function renderDetail(): void {
 /** Fetch the presets once and fill the list. */
 async function loadPresets(): Promise<void> {
   if (presets.length) return;
+  await reloadPresets();
+}
+
+/**
+ * Re-read the presets and redraw the list, keeping the chosen one where it
+ * still exists — after a save it is the one just written, and jumping back to
+ * the top of the list is how an edit reads as having gone somewhere else.
+ */
+export async function reloadPresets(keep?: string): Promise<void> {
   try {
+    const want = keep ?? presets[chosen()]?.name;
     const r = await api.fillPresets();
     presets = r.presets;
     const list = $select('fill-list');
@@ -219,9 +236,10 @@ async function loadPresets(): Promise<void> {
       o.title = `${p.name} — ${p.layers.length} layer(s), from ${p.source}`;
       list.appendChild(o);
     });
-    if (presets.length) list.value = '0';
+    const at = presets.findIndex((p) => p.name === want);
+    if (presets.length) list.value = String(at >= 0 ? at : 0);
     $('fill-where').textContent = r.sources.length
-      ? `presets from ${r.sources.join(' and ')}`
+      ? `presets from ${r.sources.join(', ')}`
       : 'no preset file found';
     renderDetail();
     syncFillCount();
@@ -337,7 +355,32 @@ export function initFill(): void {
   $('fill-draw').onclick = () => setFillDraw(!fillTool.on);
   $('fill-clear').onclick = () => clearFill();
   $('fill-apply').onclick = () => { void applyFill(); };
-  $select('fill-list').addEventListener('change', renderDetail);
+  $select('fill-list').addEventListener('change', () => { renderDetail(); syncFillCount(); });
+  // Making one: New from nothing, Copy from whatever is chosen (the only way to
+  // change a shipped preset), Edit for one of the user's own.
+  $('fill-new').onclick = () => openFillEditor(null, 'new', (name) => { void reloadPresets(name); });
+  $('fill-copy').onclick = () => {
+    const p = presets[chosen()];
+    if (p) openFillEditor(p, 'copy', (name) => { void reloadPresets(name); });
+  };
+  $('fill-edit').onclick = () => {
+    const p = presets[chosen()];
+    if (p?.editable) openFillEditor(p, 'edit', (name) => { void reloadPresets(name); });
+  };
+  $('fill-del').onclick = () => {
+    const p = presets[chosen()];
+    if (!p?.editable) return;
+    void (async () => {
+      try {
+        if (await deleteFillPreset(p.name)) {
+          await reloadPresets();
+          $('hud').textContent = `deleted the fill preset ${p.name}`;
+        }
+      } catch (e) {
+        $('hud').textContent = 'could not delete: ' + (e instanceof Error ? e.message : String(e));
+      }
+    })();
+  };
   for (const b of document.querySelectorAll<HTMLButtonElement>('.fill-sizes button')) {
     b.onclick = () => {
       const v = b.dataset.size ?? '1';

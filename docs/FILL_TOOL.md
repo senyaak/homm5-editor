@@ -91,14 +91,39 @@ Everything else — the ordering, the accumulated widths, the uniform draw, the
 0.9 slack on the clearance — is kept, because it is what makes a preset written
 for the original look the way it was meant to.
 
+## Making one
+
+The Fills panel has **New… / Copy… / Edit… / ✕** under its list. The game's
+presets and the editor's own are files we do not own, so they are read-only —
+Copy is how either is changed, and it opens the same window with the numbers
+already in it.
+
+A preset of your own is written to `<game>/H5E/FillPresets.xml`, in exactly the
+format above, so it can be hand-edited, copied to another install, or dropped
+into `Editor/FillPresets.xml` and used by the original editor. That file is the
+only one the editor writes.
+
+Anything the object catalogue lists can go into a layer — including the 559
+shared definitions no object link points at (a particular fence, a particular
+mushroom) and anything a mod added, since the picker works off the same
+catalogue the Objects+ palette does. A candidate naming an `AdvMapSharedGroup`
+is legal too, and the fill scatters across the group's members rather than
+resolving it once.
+
+The window's footer runs the real planner over a scratch 8×8 patch and says how
+many objects the draft would plant, broken down per layer. That is the one
+question the numbers do not answer on their own — `Dispersion 1` with
+`Probability 0.7` is a thicket, and the same spacing at `0.06` is three bushes.
+
 ## Where the code is
 
 | file | what it holds |
 | --- | --- |
-| `src/fill/preset.ts` | the file format, and the href a `Type` + `ID` names |
+| `src/fill/preset.ts` | the file format both ways, and the href a `Type` + `ID` names |
 | `src/fill/plan.ts` | the algorithm: painted cells + preset + seed → placements |
 | `electron/channels/fill.ts` | which presets this machine has, and placing the plan |
 | `renderer/features/fill.ts` | the panel, the brush, the outline on the ground |
+| `renderer/features/fill-editor.ts` | the window that makes one, and its live preview |
 | `tools/test-fill.ts` | the rules, checked against an independent geometry pass |
 | `e2e/fill.spec.ts` | the whole stack, driven through the window |
 

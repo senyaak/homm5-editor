@@ -26,6 +26,16 @@ one.
   through any candidate this installation has no file for, which otherwise reads
   as a preset that just does not fill very much.
 
+  **Presets of your own.** New… builds one from nothing, Copy… starts from any
+  of the shipped ones (they are files we do not own, so that is how they are
+  edited), and a layer takes anything the object catalogue lists — including the
+  559 shared definitions no palette link points at and whatever a mod added. The
+  window says what the draft would plant on an 8×8 patch as the numbers are
+  typed, so "thicket or three bushes" is answered before it is planted. Yours
+  live in `<game>/H5E/FillPresets.xml`, in the game's own format, so a preset
+  can be hand-edited, carried to another install, or handed to the original
+  editor.
+
   The algorithm is the original's, read out of `H5_MapEditor.exe` and written up
   in [docs/FILL_TOOL.md](docs/FILL_TOOL.md), minus three of its slips: facings
   now use all sixteen 22.5° steps rather than fifteen, a random group can pick
