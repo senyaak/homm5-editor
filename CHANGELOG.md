@@ -95,7 +95,9 @@ one.
   point, aimed without an area hits the one stack under the cursor. Those are the
   engine's own three, and the flags separate its own spells the same way —
   Armageddon, Fireball and Magic Arrow, in that order. So a new damage spell of
-  any of the three shapes is now pure data.
+  any of the three shapes is now pure data. An area spell covers what a fireball
+  covers: how big an area is has no field in a spell document — it is the
+  engine's own business per spell — so ours borrows the plainest of its shapes.
 
 - **Dialog scenes — the cutscenes a campaign plays — open and play in the
   editor.** `Scenes…` on the launcher asks for a FILE, the way opening a map

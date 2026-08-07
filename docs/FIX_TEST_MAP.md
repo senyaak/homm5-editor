@@ -369,11 +369,12 @@ open the book, and look before clicking:
    too. If both spare the undead the filter is not what is doing it; if neither
    does, the row did not reach the extension.
 5. **Then the two twins**, also on the wizard. «Армагеддон по области» should ask
-   where to aim and hit a patch there; «Армагеддон по цели» should ask for a
-   stack and hit that one. Hold each against the shipped spell it copies — his
-   own Огненный шар and Магическая стрела are in the same book. If all three
-   cover the whole field, the flags are NOT what chooses the shape and the
-   extension is picking one branch for everything.
+   where to aim and hit **the same patch a fireball hits** — the area's own shape
+   is a third switch on the number and ours borrows Fireball's, so hold the two
+   against each other in the same battle. «Армагеддон по цели» should ask for a
+   stack and hit that one. If all three cover the whole field, the flags are NOT
+   what chooses the shape; if the area one asks where to aim and then hits
+   nothing, it is the tiles that were not borrowed.
 
 **Then send the log.** `bin/homm5-editor.log` has a line per cast and, for ours,
 a line per stack it was asked about:

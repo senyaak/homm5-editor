@@ -238,12 +238,41 @@ more — Curse and Bless read `true`/`false` too, exactly like Magic Arrow, beca
 they aim at one stack as well. The day a spell of ours puts an EFFECT on that
 stack instead of hurting it, the config row will have to say which shape it is.
 
+### And the area's own shape: a third dispatch
+
+`IsAreaAttack` says a spell hits an area. It does not say WHAT area, and the
+document has no field that does — twenty-two of them and not one is a radius.
+The shape is `0xB7BE30`, and it is a switch on the number like the other two:
+
+```
+edi = normalise(spellId)
+if (!IsAreaAttack(edi) && !isMassSpell(edi)) return {}   ; nothing to cover
+cmp edi,11Ah / … / jmp [eax*4+0xB7C67C]                  ; the shape
+0xB7C59A:  if (!isMassSpell(edi)) return {}              ; the default
+```
+
+Every area spell has a case of its own — Fireball, Frost Ring, Stone Spikes,
+Meteor Shower, the Firewall, the death cloud, the scatter shot, gating, the
+battle dive — and the 221 ids that share the default get **nothing**, because
+that default is only for the twelve mass spells (`isMassSpell` = `0xAD40C0`,
+which is ids 210…221 mapped back to the spell they are a mass version of).
+
+So the flag is the DOOR, not the shape: a spell of ours with it set would ask
+where to aim and then cover no tiles at all. Ours borrows **Fireball's** case —
+the plain patch around the point, where Frost Ring's is a ring. A spell that
+wants a different one will want the config row to say so, in the same place the
+kinds it spares are already named.
+
+Only an area spell of ours reaches that switch: the other two shapes have the
+flag false and are not mass spells, so the early exit turns them away first.
+
 ## What a spell of ours is made of
 
 | where | what |
 |---|---|
 | the dispatch stub `0x77eaf8` | for our ids, **jump into the branch the record asks for** instead of returning to the comparison |
 | the worth stub `0x77ce8a` | for our ids, **jump to the branch that reads the record** (`0xB7CED1`) instead of falling to the zero |
+| the shape stub `0x77be7f` | for our ids, **cover the tiles a fireball covers** (`0xB7C186`) instead of covering none |
 | the damage function `0x7861a0` | for our ids, answer **zero** for the kinds the mod says it spares, then let the engine do the rest |
 | `bin/homm5-editor-effects.txt` | `spell 353 spares 10 12 9` — the kinds, by ability NUMBER |
 

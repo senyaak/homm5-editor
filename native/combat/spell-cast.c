@@ -756,3 +756,90 @@ static void install_spell_power(void) {
     log_line("a spell of ours is worth what its document says");
   }
 }
+
+// ---------------------------------------------------------------------------
+// AND THE THIRD DISPATCH: WHICH TILES AN AREA COVERS.
+//
+// Setting `IsAreaAttack` says a spell hits an area. It does not say WHAT area,
+// and the document has no field that does — twenty-two fields and not one is a
+// radius. The shape is decided by `CCombatSpell::TilesCovered` (0xB7BE30), and
+// it is a switch on the number like the other two:
+//
+//   edi = normalise(spellId)
+//   if (!IsAreaAttack(edi) && !isMassSpell(edi)) return {}   ; nothing to cover
+//   cmp edi,11Ah / … / jmp [eax*4+0xB7C67C]                  ; the shape
+//   …
+//   0xB7C59A:  if (!isMassSpell(edi)) return {}              ; the default
+//
+// Every area spell has a case of its own — Fireball, Frost Ring, Stone Spikes,
+// Meteor Shower, the Firewall, the death cloud, the scatter shot — and 221 ids
+// share a default that is only for the MASS spells and answers with NOTHING for
+// anything else. (`isMassSpell` is 0xAD40C0, and it is exactly the twelve ids
+// 210…221 mapped back to the spell they are the mass version of.)
+//
+// So a spell of ours with the flag set gets into this function and out of it
+// with an empty list: it would have asked where to aim and then hit nothing at
+// all. The flag is the door, not the shape.
+//
+// WHAT WE BORROW: Fireball's case. It is the plain "a patch around the point"
+// of the three, where Frost Ring's is a ring and Stone Spikes' is its own thing.
+// A spell of ours that wants one of those will want the config row to say so —
+// the same place the kinds it spares are already named — but that is a spell
+// that does not exist yet, and one shape now beats a field nobody fills.
+//
+// ONLY AN AREA SPELL OF OURS GETS HERE. The whole-field and the one-stack shapes
+// both have `IsAreaAttack` false and neither is a mass spell, so the early exit
+// above turns them away before the switch. That is why this stub asks about the
+// number and nothing else.
+
+/** `cmp edi,11Ah` — edi is the spell id, and the shape switch is about to use it. */
+#define AREA_SHAPE_RVA 0x77be7fu
+#define AREA_SHAPE_LEN 6
+static const BYTE AREA_SHAPE_HEAD[AREA_SHAPE_LEN] = {
+  0x81, 0xFF, 0x1A, 0x01, 0x00, 0x00
+};
+
+/** `lea eax,[ebp+0Ch]` / `mov ecx,ebx` / `push eax` — Fireball's own case. */
+#define FIREBALL_TILES_RVA 0x77c186u
+#define FIREBALL_TILES_MARK_LEN 6
+static const BYTE FIREBALL_TILES_MARK[FIREBALL_TILES_MARK_LEN] = {
+  0x8D, 0x45, 0x0C, 0x8B, 0xCB, 0x50
+};
+
+#define AREA_STUB_LEN 24
+static BYTE AREA_STUB[AREA_STUB_LEN] = {
+  0x81, 0xFF, 0x61, 0x01, 0x00, 0x00,       // cmp edi,161h    — 353, the first of ours
+  0x72, 0x05,                               // jb +5           — the game's own, carry on
+  0xE9, 0x00, 0x00, 0x00, 0x00,             // jmp <Fireball's tiles>
+  0x81, 0xFF, 0x1A, 0x01, 0x00, 0x00,       // cmp edi,11Ah    — displaced
+  0xE9, 0x00, 0x00, 0x00, 0x00,             // jmp back
+};
+
+static BYTE AREA_TO_STUB[AREA_SHAPE_LEN] = {
+  0xE9, 0x00, 0x00, 0x00, 0x00, 0x90
+};
+
+static void install_area_shape(void) {
+  BYTE *base = (BYTE *)GetModuleHandleW(NULL);
+  BYTE *tiles = borrow_branch(FIREBALL_TILES_RVA, FIREBALL_TILES_MARK, FIREBALL_TILES_MARK_LEN,
+                              "the tiles a fireball covers");
+  if (!tiles) return;
+  BYTE *stub = (BYTE *)VirtualAlloc(NULL, AREA_STUB_LEN, MEM_COMMIT | MEM_RESERVE,
+                                    PAGE_EXECUTE_READWRITE);
+  if (!stub) { log_line("area shape: no memory for the stub"); return; }
+  for (int i = 0; i < AREA_STUB_LEN; i++) stub[i] = AREA_STUB[i];
+  // No log call here, and deliberately: the interface asks this routine for every
+  // tile the cursor crosses while an area spell is armed, so a line per question
+  // would bury the cast it belongs to. What the shape turned out to be is said
+  // once, at the cast, by `on_spell_cast`.
+  *(DWORD *)(stub + 9) = (DWORD)tiles - (DWORD)(stub + 13);
+  *(DWORD *)(stub + 20) =
+      (DWORD)(base + AREA_SHAPE_RVA + AREA_SHAPE_LEN) - (DWORD)(stub + AREA_STUB_LEN);
+  FlushInstructionCache(GetCurrentProcess(), stub, AREA_STUB_LEN);
+
+  *(DWORD *)(AREA_TO_STUB + 1) = (DWORD)stub - ((DWORD)(base + AREA_SHAPE_RVA) + 5);
+  if (overwrite_code(AREA_SHAPE_RVA, AREA_SHAPE_HEAD, AREA_TO_STUB, AREA_SHAPE_LEN,
+                     "the tiles an area spell covers")) {
+    log_line("an area spell of ours covers what a fireball covers");
+  }
+}
