@@ -66,6 +66,32 @@ button.he-file { margin-left: 6px; flex: 0 0 auto; }
 .um-recolor { margin-left: 8px; background: #21262d; color: #c9d1d9; border: 1px solid #30363d;
   border-radius: 6px; padding: 2px 8px; font-size: 11px; cursor: pointer; }
 .um-recolor:hover { background: #30363d; }
+/* The spell window borrows the mod card, and its form is the widest of them. */
+#spellsmod, #spelledit, #spellscript { padding: 0; border: 0; background: transparent; max-width: 94vw; overflow: visible; }
+#spellsmod::backdrop, #spelledit::backdrop, #spellscript::backdrop { background: #0d1014cc; }
+/* Four masteries, each a flat part and a per-power one — a row apiece. */
+.sm-amounts { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 6px 14px; }
+.sm-amounts label { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #8b949e; }
+.sm-amounts label > span { flex: 0 0 68px; }
+.sm-amounts input { width: 62px; background: #0d1014; border: 1px solid #30363d; border-radius: 6px;
+  padding: 4px 6px; color: #c9d1d9; font-size: 12px; }
+.sm-amounts input:focus { outline: none; border-color: #1f6feb; }
+/* The tiles an area covers: one checkbox per tile of a grid centred on the aim
+   point. Square, because the combat grid is — the engine's own neighbour table
+   is the eight offsets of a 3x3 block. */
+.sm-area { display: none; }
+.sm-area.on { display: block; }
+.sm-area .on-row input[type="number"] { width: 56px; flex: 0 0 auto; }
+.sm-grid { display: grid; gap: 3px; justify-content: start; margin: 8px 0 4px; }
+.sm-grid label { position: relative; width: 22px; height: 22px; border: 1px solid #30363d;
+  border-radius: 3px; background: #0d1014; cursor: pointer; display: block; }
+.sm-grid label:hover { border-color: #58a6ff; }
+.sm-grid input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.sm-grid label.on { background: #1f6feb; border-color: #58a6ff; }
+/* The tile aimed at, marked whether or not it is covered — a ring is a legal
+   shape, so the middle is a choice like any other and not a fixture. */
+.sm-grid label.aim { outline: 1px dashed #d29922; outline-offset: 1px; }
+
 /* the class form: a weight per skill, and the two sides of perk availability */
 .hc-weights { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 4px 12px; }
 .hc-weights label { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #8b949e; }

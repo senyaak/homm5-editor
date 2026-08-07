@@ -42,6 +42,7 @@ import { initHeroSkills } from '#features/mods/hero-skills.ts';
 import { initUnitsMod } from '#features/mods/units.ts';
 import { initBuildingsMod } from '#features/mods/buildings.ts';
 import { initArtifactsMod } from '#features/mods/artifacts.ts';
+import { initSpellsMod } from '#features/mods/spells.ts';
 import { initArtifactSets } from '#features/mods/artifact-sets.ts';
 import { openCampaignList, initCampaigns } from '#features/campaigns.ts';
 import { initQol } from '#features/qol.ts';
@@ -1020,6 +1021,7 @@ initUnitsMod();
   initBuildingsMod();
   initArtifactsMod();
   initArtifactSets();
+initSpellsMod();
 initQol();
 
 // The finish line. Everything above ran, so the window is wired and the render

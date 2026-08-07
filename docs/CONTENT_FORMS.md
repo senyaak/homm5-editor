@@ -68,8 +68,15 @@ will happily show. Marking those would train people to ignore the star.
 | hero | preset\*, identifier, name |
 | specialization | identifier, name |
 | building | identifier, model, name, + the class's own (a dwelling's `creatures`) |
+| spell | files, id, name, + the tiles an area one covers |
 | campaign | name (and Create in the list, which used to answer an empty box by doing nothing) |
 | new map | name |
+
+The spell's last one is the star with no label to sit on: a spell that hits an
+area and names no tiles builds cleanly and covers NOTHING, because the shape is
+a switch on the spell's number and a number of ours falls to a default that
+covers none. So it is named under the form the way a set's "two members" is —
+and, like that one, the build behind it refuses too.
 
 \* Only for a NEW one. A creature or hero already in the mod keeps the documents
 it was built from, so asking for a preset again would be a refusal invented by
@@ -77,7 +84,8 @@ the form rather than one the build makes.
 
 Each form has a refusal test beside its authoring one — `mod-001`, `mod-003`
 (twice: the artifact and the set), `mod-004` (twice: the hero and his
-specialization), `mod-005`, `campaign.spec.ts`.
+specialization), `mod-005`, `mod-008` (twice: the fields, and the tiles),
+`campaign.spec.ts`.
 
 ## 2. A form must carry back everything it writes
 

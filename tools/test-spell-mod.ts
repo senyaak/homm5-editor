@@ -12,7 +12,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { buildCreatureMod } from '../src/mods/creature-mod.ts';
-import { addSpell, newCreatureMod } from '../src/mods/mod-model.ts';
+import { addSpell, newCreatureMod, removeSpell, updateSpell } from '../src/mods/mod-model.ts';
 import { dataReader } from '../src/mods/mod-files.ts';
 import { readTableLimit, patchTableLimit, SPELL_TABLE } from '../src/exe/table-limit.ts';
 import {
@@ -189,6 +189,53 @@ const both = readSpellRows(bothText);
 check('a spell that says both writes two lines and reads back as one row',
   both.length === 1 && both[0]!.spares.length === 3 && both[0]!.area.length === 5,
   `${(bothText.match(/^spell /gm) ?? []).length} lines, ${both.length} row(s)`);
+
+// --- what the form cannot be allowed to leave out -------------------------------
+//
+// `IsAreaAttack` says a spell hits an AREA and never says which: the shape is a
+// switch on the spell's number with one case per shipped spell, and the default
+// a number of ours lands on covers nothing. So an area spell with no tiles is a
+// cast that plays, spends its mana and touches nobody — which in game is
+// indistinguishable from a spell that does not work at all. The window says so
+// before the press; this is the rule underneath, because the window is not the
+// only door (the e2e fixtures and tools/write-effects.ts come in through here).
+
+const areaSpec = {
+  ...spell, id: 'SPELL_TEST_AREA', file: 'TestArea', aimed: true, areaAttack: true,
+};
+/** Why it was refused, not merely that it was — every id here is a fresh one. */
+const refusal = (work: () => void): string => {
+  try { work(); return ''; } catch (e) { return e instanceof Error ? e.message : String(e); }
+};
+const noTiles = refusal(() => addSpell(newCreatureMod('x'), areaSpec));
+check('an area spell with no tiles is refused', /tiles/.test(noTiles), noTiles || 'accepted');
+const withTiles = newCreatureMod('x');
+addSpell(withTiles, { ...areaSpec, area: [{ x: 0, y: 0 }, { x: 1, y: 0 }] });
+check('and one that names its tiles is not', (withTiles.spells ?? []).length === 1);
+const emptied = refusal(() => updateSpell(withTiles, 'SPELL_TEST_AREA', areaSpec));
+check('changing one to cover nothing is refused too — the same rule, the other door',
+  /tiles/.test(emptied), emptied || 'accepted');
+
+// --- taking one out -------------------------------------------------------------
+//
+// The numbers behind the ones left have to close up, because the value is the
+// position: a mod whose second spell was removed and whose third kept its old
+// number would declare a table with a hole in it.
+
+const shelf = newCreatureMod('x');
+for (const id of ['SPELL_TEST_A', 'SPELL_TEST_B', 'SPELL_TEST_C']) {
+  addSpell(shelf, { ...spell, id, file: id });
+}
+removeSpell(shelf, 'SPELL_TEST_B');
+check('removing one closes the gap behind it',
+  (shelf.spells ?? []).map((s) => `${s.id}=${s.number}`).join(' ')
+    === `SPELL_TEST_A=${SHIPPED_SPELLS} SPELL_TEST_C=${SHIPPED_SPELLS + 1}`,
+  (shelf.spells ?? []).map((s) => `${s.id}=${s.number}`).join(' '));
+shelf.heroes = [{ id: 'H', name: 'H', basedOn: '', town: '', heroClass: '', biography: '',
+  spells: ['SPELL_TEST_C'] }];
+const held = refusal(() => { removeSpell(shelf, 'SPELL_TEST_C'); });
+check('and one a hero of the mod knows is refused rather than orphaned',
+  /is known by H\b/.test(held), held || 'removed');
 
 // --- the executable's two numbers ---------------------------------------------
 

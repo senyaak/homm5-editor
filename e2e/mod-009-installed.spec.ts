@@ -1,6 +1,6 @@
 // What the run left on disk — read off the files, not off the app.
 //
-// The four specs before this one each check their own step through the window:
+// The specs before this one each check their own step through the window:
 // the dialog said "installed", the list showed the name, the manifest held the
 // fields. None of that is the same question as WHAT IS IN THE GAME when the run
 // is over, and that question has been answered by hand every time so far — by
@@ -11,9 +11,9 @@
 // text files, the icons it carries, the file the native extension reads beside
 // the executable, and the two ceilings in it. Nothing here drives the app.
 //
-// It closes the chain in both modes. Isolated it reads mod-007's throwaway
-// install, which by then holds everything the four specs made; live it reads
-// the game, and the report is exactly what a player would get.
+// It closes the chain in both modes. Isolated it reads the throwaway install
+// every mod stage shares, which by then holds everything they made; live it
+// reads the game, and the report is exactly what a player would get.
 
 import { test, expect } from '@playwright/test';
 import { existsSync, readFileSync } from 'node:fs';
@@ -35,8 +35,8 @@ import { HERO_CLASS_TABLE, HERO_SKILL_TABLE, findCountAccessor, readTableLimit }
 import { SHIPPED_CLASSES } from '../src/mods/hero-classes.ts';
 import { SHIPPED_SKILLS } from '../src/mods/hero-skills.ts';
 
-// mod-007's install, because it is the last to write and the only one that ends
-// with all four kinds in it. Live, every spec shares one install anyway.
+// The chain's install: every mod stage writes into the same one, so by the time
+// this runs it holds every kind of thing they made. Live, that is the game.
 const GAME = modGameRoot();
 const ARCHIVE = modFile(GAME, 'mod', MOD);
 
@@ -53,7 +53,7 @@ function members(): Map<string, Buffer> {
 }
 
 test.beforeAll(() => {
-  test.skip(!existsSync(ARCHIVE), `nothing to read — no ${ARCHIVE}; run mod-001…mod-007 first`);
+  test.skip(!existsSync(ARCHIVE), `nothing to read — no ${ARCHIVE}; run mod-001…mod-008 first`);
 });
 
 test('the archive carries what the run authored', () => {

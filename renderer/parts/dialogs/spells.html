@@ -1,0 +1,181 @@
+  <!-- Spells: a window of its own rather than a tab of the Heroes one, because a
+       spell is not a hero's — it goes in a spellbook, a town's guild, a shrine
+       and a scroll, and it is the widest form in the editor besides a building's.
+
+       WHAT IT COSTS: one entry in the table that holds all 353 the game ships,
+       and two ceilings in the executable. What it BUYS is a page in the book, an
+       icon, a mana cost and a cast the engine will start — and no behaviour, ever,
+       because what a spell DOES is chosen by switches on its NUMBER. The two
+       halves of the form travel differently and it says so: the document's fields
+       are read by the engine's own code for any number at all, and the two rows
+       under "Only the extension can" have no field in the document to go in.
+       See docs/engineInternals/SPELLS.md. -->
+  <dialog id="spellsmod">
+    <div class="mp-card um-card">
+      <div class="mp-head">
+        <span class="mp-title">Spells</span>
+        <button id="sm-close" title="close (Esc)">✕</button>
+      </div>
+      <div class="mp-body on-body um-body">
+        <fieldset>
+          <legend>Installed</legend>
+          <div id="sm-about" class="um-note">A spell of ours is a page in the spellbook the engine will let a hero cast. What it DOES comes from the extension: three shapes of damage chosen by what it reaches, the tiles an area covers, and the creature kinds it passes over.</div>
+          <div id="sm-list" class="um-mods"></div>
+          <div class="de-foot" style="padding:8px 0 0;justify-content:flex-start">
+            <button id="sm-new">New spell…</button>
+          </div>
+        </fieldset>
+        <div id="sm-note" class="um-note"></div>
+        <div id="sm-err" class="on-err"></div>
+      </div>
+      <div class="de-foot">
+        <button id="sm-cancel" class="ghost">Close</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- The form, on top of the list — as an artifact's and a skill's are. -->
+  <dialog id="spelledit">
+    <div class="mp-card um-card">
+      <div class="mp-head">
+        <span class="mp-title" id="spelledit-title">New spell</span>
+        <button id="spelledit-x" title="close (Esc)">✕</button>
+      </div>
+      <div class="mp-body on-body um-body">
+        <fieldset>
+          <legend>The spell</legend>
+          <div class="on-body um-form">
+            <label class="on-row"><span>Files<b class="req">*</b></span><input id="sm-file" type="text" spellcheck="false" autocomplete="off" placeholder="file stem, e.g. DeathRipple" title="the stem of its document, its texts and its folder in the mod; the ID fills itself from it"></label>
+            <label class="on-row"><span>ID<b class="req">*</b></span><input id="sm-id" type="text" spellcheck="false" autocomplete="off" placeholder="SPELL_…" title="ours, appended after the game's 353. A spellbook, a map and a save store the NUMBER behind it, so it cannot be renamed afterwards."></label>
+            <label class="on-row"><span>Name<b class="req">*</b></span><input id="sm-name" type="text" autocomplete="off" title="what the spellbook prints"></label>
+            <label class="on-row"><span>School</span><select id="sm-school" title="which school's mastery lets a hero learn it. MAGIC_SCHOOL_SPECIAL is what a spell that comes from a specialization rather than a guild uses."></select></label>
+            <label class="on-row um-span"><span>Description</span><input id="sm-desc" type="text" autocomplete="off" placeholder="what its page in the book says"></label>
+            <label class="on-row"><span>Level</span><input id="sm-level" type="number" value="1" min="0" max="5" title="1…5, the spellbook's own rank — which guild level offers it and which mastery lets a hero learn it. Zero is the rank the hero-ability spells use."></label>
+            <label class="on-row"><span>Mana</span><input id="sm-mana" type="number" value="10" min="0" title="what a cast costs. The document calls the field TrainedCost, which reads like a price at a guild and is not one: Magic Arrow has 4, Fireball 10. Left at zero the book prints a spell that is free."></label>
+            <label class="on-row"><span>Target</span><select id="sm-target" title="who may be picked — hostile, friendly or anybody"></select></label>
+            <label class="on-row"><span>Element</span><select id="sm-element" title="what resistances answer it, which Master perk leaves its mark, and which of the engine's four appliers the damage goes through"></select></label>
+          </div>
+        </fieldset>
+        <fieldset>
+          <legend>What it reaches</legend>
+          <div class="on-body um-form">
+            <!-- ONE CHOICE, TWO FLAGS. The engine has a damage branch per shape,
+                 not per spell, and what chooses between them is the pair of
+                 booleans every spell document already carries — they separate the
+                 shipped spells with nothing left over. So the form asks the
+                 question once and writes both:
+
+                   the whole field   IsAimed false, IsAreaAttack false   Armageddon, Holy Word
+                   an area           true,          true                 Fireball, Frost Ring
+                   one stack         true,          false                Magic Arrow, Implosion -->
+            <label class="on-row um-span"><span>Reach</span>
+              <select id="sm-reach" title="which of the engine's three damage branches the cast goes down — it is the pair of flags in the document, asked once">
+                <option value="field">The whole battlefield — every stack on it</option>
+                <option value="area">An area around a point on the field</option>
+                <option value="stack">One stack, picked by the player</option>
+              </select>
+            </label>
+            <!-- The tiles, which the DOCUMENT cannot hold: IsAreaAttack says a
+                 spell hits an area and never says which, because the shape is a
+                 switch on the spell's number with one case per shipped spell. So
+                 ours is drawn here and goes to the file the extension reads.
+                 The grid is SQUARE — the engine's own "adjacent tiles" table is
+                 the eight offsets of a 3×3 block, which is what makes a fireball
+                 a 3×3. The middle cell is the tile aimed at, and it may be left
+                 out: a ring is a legal shape. -->
+            <div class="um-span sm-area">
+              <div class="on-row">
+                <span>Size</span>
+                <input id="sm-area-w" type="number" value="3" min="1" max="15" step="2" title="how wide the grid is drawn, in tiles — odd, so the tile aimed at is in the middle">
+                <span style="flex:0 0 auto">×</span>
+                <input id="sm-area-h" type="number" value="3" min="1" max="15" step="2" title="and how tall">
+                <button id="sm-area-none" class="um-recolor" type="button" title="clear every tile">None</button>
+                <button id="sm-area-all" class="um-recolor" type="button" title="tick every tile of the grid">All</button>
+              </div>
+              <div id="sm-area-grid" class="sm-grid"></div>
+              <div id="sm-area-note" class="um-note"></div>
+            </div>
+          </div>
+        </fieldset>
+        <fieldset>
+          <legend>What it does</legend>
+          <div class="on-body">
+            <!-- FOUR ENTRIES, one per mastery of the school, and the engine reads
+                 them positionally. Each is a flat part plus a part multiplied by
+                 the hero's spell power — Armageddon is 9/12/15/30 in both. -->
+            <div class="um-note">Per mastery of its school, and both parts count: the flat one plus the hero's spell power times the other. Armageddon is 9, 12, 15 and 30 in each.</div>
+            <div id="sm-damage" class="sm-amounts"></div>
+            <details class="um-span" style="margin-top:8px">
+              <summary>Duration — for a spell that leaves something behind</summary>
+              <div class="um-note">The same four, in turns. A spell that only deals damage leaves these at zero.</div>
+              <div id="sm-duration" class="sm-amounts"></div>
+            </details>
+          </div>
+        </fieldset>
+        <fieldset>
+          <legend>Only the extension can</legend>
+          <div class="on-body um-form">
+            <!-- The kinds the damage passes over. Not in the document and not in
+                 a script either: the engine decides how much a spell does to one
+                 stack in ONE function, and that is where resistance, anti-magic,
+                 protection from a school and the combat log all live — so damage
+                 of ours has to come out of it. That function carries the shipped
+                 filters itself, keyed on the number: Unholy Word answers zero for
+                 the undead and the demons, Holy Word for everything but those. A
+                 number it was never compiled against has no such case, so this
+                 list supplies ours through the extension's config. -->
+            <label class="on-row um-span"><span>Spares</span><select id="sm-spares" multiple size="6" title="creature kinds this spell's damage passes over — the question the engine asks itself for Holy Word and Unholy Word, asked for ours"></select></label>
+            <div class="on-row um-span">
+              <span></span>
+              <button id="sm-spares-notliving" class="um-recolor" type="button" title="the three kinds whose absence the game prints as «Живое существо» — there is no flag for being alive, only these">Not living</button>
+              <button id="sm-spares-none" class="um-recolor" type="button" title="spare nobody">Nobody</button>
+              <span id="sm-spares-note" class="um-note" style="flex:1;min-width:0"></span>
+            </div>
+            <label class="on-row um-span"><span>Script</span><button id="sm-script" class="ghost" type="button" title="Lua called when the cast is caught — for a spell whose content is not damage">Script…</button><span id="sm-script-note" class="um-note"></span></label>
+            <div id="sm-ext" class="um-span um-warn"></div>
+          </div>
+        </fieldset>
+        <fieldset>
+          <legend>What it looks like</legend>
+          <div class="on-body um-form">
+            <label class="on-row um-span"><span>Icon</span><input id="sm-icon" type="text" spellcheck="false" autocomplete="off" placeholder="/Textures/…#xpointer(/Texture)" title="href of an icon that already exists — usually a shipped spell's"></label>
+            <label class="on-row um-span"><span>Picture</span><input id="sm-picture" type="text" autocomplete="off" placeholder="a drawing to build its icon from — assets/spells/death-ripple.png" title="a picture on disk; the mod builds the game's texture from it at 128×128, and it wins over the icon above"><button id="sm-pick-picture" class="ghost" type="button" title="choose a picture">Picture…</button></label>
+            <!-- What the CAST shows. Empty is legal in the data and it is a real
+                 suspect: a cast with nothing to show may be one the engine
+                 declines to start, which is why ours borrow shipped visuals until
+                 there is art of our own. Absolute, because a shipped spell's list
+                 is written relative to its own folder and ours sits elsewhere. -->
+            <label class="on-row um-span"><span>Cast</span><input id="sm-visual-1" type="text" spellcheck="false" autocomplete="off" placeholder="/GameMechanics/Spell/…(SpellVisual).xdb#xpointer(/SpellVisual)" title="the animation the cast plays"></label>
+            <label class="on-row um-span"><span>Hit</span><input id="sm-visual-2" type="text" spellcheck="false" autocomplete="off" placeholder="the second visual, where a spell has one" title="what lands on what it hits"></label>
+          </div>
+        </fieldset>
+        <div id="sm-missing" class="um-missing"></div>
+        <div id="se-err" class="on-err"></div>
+      </div>
+      <div class="de-foot">
+        <button id="spelledit-cancel" class="ghost">Cancel</button>
+        <button id="sm-ok">Build &amp; install</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Its Lua, on top of the form — the same CodeMirror the map's scripts and a
+       skill's are written in. One context only: a spell of ours is caught in a
+       BATTLE, so there is no map-side half to confuse it with. -->
+  <dialog id="spellscript">
+    <div class="mp-card um-card">
+      <div class="mp-head">
+        <span class="mp-title" id="sms-title">Spell script</span>
+        <button id="sms-x" title="close (Esc)">✕</button>
+      </div>
+      <div class="mp-body on-body">
+        <div id="sms-info" class="um-note"></div>
+        <div id="sms-text" class="ss-text"></div>
+        <div id="sms-lint" class="de-lint"></div>
+      </div>
+      <div class="de-foot">
+        <button id="sms-cancel" class="ghost">Cancel</button>
+        <button id="sms-ok">Done</button>
+      </div>
+    </div>
+  </dialog>

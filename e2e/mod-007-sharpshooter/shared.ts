@@ -204,7 +204,7 @@ export function cleanup(): void {
   // Live, nothing is swept: the install is the game, the packed map is the
   // point, and the working tree beside it is what a person would have left.
   if (LIVE) return;
-  // The INSTALL is not swept here even isolated — mod-008 reads it, being the
+  // The INSTALL is not swept here even isolated — mod-009 reads it, being the
   // stage that asks what the run actually put on disk. It takes it away when it
   // is done.
   for (const p of [REF_ROOT, MAP_DIR]) if (existsSync(p)) rmSync(p, { recursive: true, force: true });

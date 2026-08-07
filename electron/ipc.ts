@@ -904,6 +904,12 @@ export interface ModListEntry {
   classes: ModHeroClassDTO[];
   skills: ModHeroSkillDTO[];
   /**
+   * Its spells. Whole, like the skills: the form is filled from this list, and a
+   * spell is four damage entries, a set of tiles and a list of kinds it spares —
+   * none of which anything else in the archive records.
+   */
+  spells: ModSpellDTO[];
+  /**
    * Its buildings — everything a hero walks up to, one of sixteen classes each.
    *
    * The WHOLE building, for the reason a hero is whole here: this list is where
@@ -1095,6 +1101,79 @@ export interface ModsInstallSkillPayload {
 
 /** What installing a skill produced. */
 export interface ModsInstallSkillResult { archive: string; number: number }
+
+/** One `<Item>` of a spell's `<damage>` or `<duration>`: a flat part and a per-power part. */
+export interface SpellAmountDTO { base: number; perPower: number }
+
+/**
+ * A spell the form authors, sent whole in both directions.
+ *
+ * Every field of `SpellSpec` (src/mods/spells.ts) restated here rather than
+ * imported, the way every other payload in this file is: the contract between
+ * the two processes is this file, and a renderer that imported the builder's
+ * types would be able to reach the builder.
+ */
+export interface ModsInstallSpellPayload {
+  /** `SPELL_…`, ours. What a spellbook, a map and a save store — as a NUMBER. */
+  id: string;
+  /** The stem of its document, its texts and its folder in the mod. */
+  file: string;
+  name: string;
+  description: string;
+  /** 1…5, the spellbook's rank; 0 is the one that comes from a specialization. */
+  level: number;
+  school: string;
+  /** What a cast costs in mana — the document calls it `TrainedCost`. */
+  manaCost: number;
+  target: string;
+  /**
+   * The two flags that choose WHAT IT REACHES, and the engine has one damage
+   * branch per pair: neither is the whole field, both is an area, aimed alone is
+   * one stack. The form offers the three as a choice and sets the pair.
+   */
+  aimed?: boolean;
+  areaAttack?: boolean;
+  /** `ELEMENT_FIRE`, … — what resistances answer it and which Master perk marks. */
+  element?: string;
+  /** Its numbers per mastery — none, basic, advanced, expert. */
+  damage?: SpellAmountDTO[];
+  duration?: SpellAmountDTO[];
+  /** `SpellVisual` hrefs: the cast first, the hit second. */
+  visuals?: string[];
+  /** An icon that already exists… */
+  icon?: string;
+  /** …or a drawing of its own, which wins over it. */
+  picture?: string;
+  /** The creature kinds its damage passes over, by ability id. */
+  spares?: string[];
+  /** The tiles it covers, as offsets from the tile aimed at. `areaAttack` only. */
+  area?: Array<{ x: number; y: number }>;
+  /** A Lua function of the mod's own, called when the cast is caught. */
+  script?: string;
+}
+
+/** A spell of the mod, as the list reports it — the payload plus its value. */
+export interface ModSpellDTO extends ModsInstallSpellPayload {
+  /** Assigned on the way in and never changed: the number is what saves store. */
+  number: number;
+}
+
+/** What installing a spell produced. */
+export interface ModsInstallSpellResult { archive: string; number: number }
+
+/** The closed lists the spell form is built from — the game's own, not ours. */
+export interface ModsSpellDataResult {
+  /** `MAGIC_SCHOOL_…`, straight out of the type spec. */
+  schools: string[];
+  /** `TARGET_HOSTILE` / `…_FRIEND` / `…_NEUTRAL`. */
+  targets: string[];
+  /** `ELEMENT_NONE`, `…_AIR`, `…_FIRE`, `…_WATER`, `…_EARTH`. */
+  elements: string[];
+  /** Every creature ability, named the way a player sees it — for `spares`. */
+  abilities: RosterEntryDTO[];
+  /** The three that make a creature NOT living, so the form can offer them as one. */
+  notLiving: string[];
+}
 
 /** Everything the class form is built from — read off the game's own two tables. */
 export interface ModsClassDataResult {
@@ -1719,6 +1798,16 @@ export interface EditorApi {
   updateHeroSkill(p: ModsInstallSkillPayload): Promise<ModsInstallSkillResult>;
   /** Take one out. Refused while a hero, a class or a perk still names it. */
   removeHeroSkill(p: ModsRemovePayload): Promise<ModsRemoveResult>;
+  /** Add a spell: one entry in the table that holds all 353, and the two ceilings. */
+  installSpell(p: ModsInstallSpellPayload): Promise<ModsInstallSpellResult>;
+  /** Change one already in the mod. Its id and its number do not move. */
+  updateSpell(p: ModsInstallSpellPayload): Promise<ModsInstallSpellResult>;
+  /** Take one out. Refused while a hero of the mod knows it or a class prefers it. */
+  removeSpell(p: ModsRemovePayload): Promise<ModsRemoveResult>;
+  /** Which maps name this spell — ask BEFORE removing it. */
+  spellUses(p: ModsRemovePayload): Promise<ModsUsesResult>;
+  /** The schools, targets, elements and creature kinds the spell form offers. */
+  spellData(): Promise<ModsSpellDataResult>;
   /** The skills, the perks and the shipped classes the class form is built from. */
   classData(): Promise<ModsClassDataResult>;
   /** What one shipped hero wears, slot by slot — the preset seeding the form. */

@@ -215,7 +215,7 @@ function newArtifact(): void {
  * its six stats. Saying so here is the difference between "it does not work"
  * and "it is not installed", which look identical in game.
  */
-export async function showExtensionState(where: 'am-ext' | 'as-ext' | 'hs-ext' = 'am-ext'): Promise<void> {
+export async function showExtensionState(where: 'am-ext' | 'as-ext' | 'hs-ext' | 'sm-ext' = 'am-ext'): Promise<void> {
   const box = $(where);
   box.textContent = '';
   const st = await api.extensionStatus();
@@ -239,7 +239,10 @@ export async function showExtensionState(where: 'am-ext' | 'as-ext' | 'hs-ext' =
     void api.installExtension()
       .then(() => showExtensionState(where))
       .catch((e: unknown) => {
-        $(where === 'as-ext' ? 'as-err' : 'am-err').textContent = e instanceof Error ? e.message : String(e);
+        // Each window's own line: a failure reported into the artifact form is
+        // a failure nobody standing in the spell form ever sees.
+        const line = { 'am-ext': 'am-err', 'as-ext': 'as-err', 'hs-ext': 'am-err', 'sm-ext': 'se-err' }[where];
+        $(line).textContent = e instanceof Error ? e.message : String(e);
         button.disabled = false;
       });
   };

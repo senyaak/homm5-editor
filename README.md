@@ -233,6 +233,19 @@ get a live 3D scene you sculpt, paint, populate, script and pack.
   [docs/ENGINE_INTERNALS.md](docs/ENGINE_INTERNALS.md), read out of the binary
   with the tools in `tools/reverse/`. Giving our own artifacts real properties is
   planned in [SLICE_artifact_effects.md](SLICE_artifact_effects.md).
+- **New spells** ([docs/engineInternals/SPELLS.md](docs/engineInternals/SPELLS.md)) —
+  **Spells…** in the toolbar adds a page to the spellbook the game will let a hero
+  cast: school, rank, mana, the four damage entries the four masteries use, and
+  what resistances answer it. What it REACHES is one choice, not two flags — the
+  whole battlefield, an area, or one stack — because the engine has one damage
+  branch per shape and picks by exactly that pair. Two fields have nowhere in the
+  game's data to live and are drawn here instead: the TILES an area covers, as a
+  grid of checkboxes centred on the tile aimed at (the combat grid is square, so
+  a cross or a ring is as legal as a block), and the creature KINDS the damage
+  passes over, which is how Holy Word spares the undead. Both reach the game
+  through the file the native extension reads, because the engine picks a shape
+  and a kind filter by switching on the spell's NUMBER — and ours is a number it
+  was never compiled against.
 - **External-change watcher** (`src/map/watch.ts`): the original Nival editor can be
   open on the same folder. When it saves, a banner offers to take its version.
   Content hashes, not timestamps, so our own saves never self-trigger.

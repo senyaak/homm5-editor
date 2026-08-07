@@ -13,6 +13,27 @@ one.
 
 ## Unreleased
 
+### Added
+
+- **Spells of your own, from a window.** A page in the spellbook the game will
+  let a hero cast: a name, a description, an icon, a school and a rank, the mana
+  it costs, the four damage entries the four masteries use, and what resistances
+  answer it. What it REACHES is one choice rather than two flags — the whole
+  battlefield, an area around a point, or one stack — because the engine has one
+  damage branch per shape and picks between them by exactly that pair.
+
+  Two of the fields have nowhere in the game's data to live, and the window is
+  where they are drawn: the TILES an area covers, as a grid of checkboxes
+  centred on the tile aimed at (the combat grid is square, so any set of tiles is
+  a legal shape — a cross, a ring, a line), and the creature KINDS the damage
+  passes over, which is how Holy Word spares the undead. Both travel to the game
+  through the file the native extension reads.
+
+  A spell that hits an area and names no tiles is refused, in the window and in
+  the build behind it: the shape a number the engine never heard of falls back on
+  covers nothing, so it would be a cast that plays its animation, spends the mana
+  and touches nobody.
+
 ### Changed
 
 - **A test run no longer takes the screen.** Every launch used to bring the

@@ -420,9 +420,45 @@ we care about.
 2. **The gate's answer should become "is there anything to hit"** rather than a
    flat yes, so the book greys our spell by itself the way it greys
    Resurrection.
-3. **A spell that is not a mass one.** Everything above is the word spells'
-   shape. An aimed spell would want a different branch borrowed, and which one
-   is a question for the spell after this.
+3. **Effects, and effects of our own.** A spell whose content is not damage but
+   something it leaves behind — the fourth shape (`0xB7F99A`, the 18 shipped
+   effects). Deliberately not started: the three damage shapes came first
+   because they are one branch each.
+
+(The third damage shape is done; what a spell reaches is the pair of flags in
+its record — see "The three damage shapes" above.)
+
+## Where a person makes one
+
+**Spells…** in the launcher bar, its own window
+(`renderer/features/mods/spells.ts`, `renderer/parts/dialogs/spells.html`,
+`electron/channels/mods-spells.ts`). Its shape follows the split this document
+is about, because the split is what a person filling it in keeps running into:
+
+- everything in **The spell**, **What it does** and **What it looks like** goes
+  into the spell's own document, and works because the engine reads those fields
+  for any number at all;
+- **What it reaches** is ONE question that writes TWO booleans, since the engine
+  picks its damage branch by that pair and nothing else;
+- **Only the extension can** holds the two the document has no field for — the
+  tiles and the spared kinds — and says so in its legend.
+
+The tiles are a grid of checkboxes, one per tile, centred on the tile aimed at.
+That is not a menu of the engine's shapes: the engine builds every list of its
+own by pushing one tile at a time, so any set is legal, and the grid is square
+because the combat grid is. Which way the grid faces on SCREEN has not been
+measured — for a symmetric shape it does not arise, and an asymmetric one would
+settle it in one battle.
+
+An area spell with no tiles is refused by the window AND by `addSpell` behind
+it: the window is not the only door (the e2e fixtures and `tools/write-effects.ts`
+come in through the model), and the failure it prevents is silent — a cast that
+plays, spends the mana and covers nothing.
+
+`e2e/mod-008-spells-create.spec.ts` authors one through the window and follows
+both halves to disk: the manifest for the document's fields, and
+`bin/homm5-editor-effects.txt` for the tiles and the kinds, by number on both
+sides.
 
 ## The stand
 

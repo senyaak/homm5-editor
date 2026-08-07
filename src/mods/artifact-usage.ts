@@ -67,6 +67,15 @@ export function findCreatureUses(mapsRoot: string, ids: readonly string[]): Map<
   return findUses(mapsRoot, ids, ['Creature', 'Item']);
 }
 
+/**
+ * And for spells, which a map names in two places: `<Item>` inside a list — a
+ * hero's spellbook, a town's guild, the spells a map allows — and `<SpellID>`,
+ * which is what a shrine teaches and a scroll carries.
+ */
+export function findSpellUses(mapsRoot: string, ids: readonly string[]): Map<string, ArtifactUse[]> {
+  return findUses(mapsRoot, ids, ['Item', 'SpellID']);
+}
+
 function findUses(mapsRoot: string, ids: readonly string[], elements: readonly string[]): Map<string, ArtifactUse[]> {
   const found = new Map<string, ArtifactUse[]>();
   if (!ids.length) return found;

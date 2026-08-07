@@ -393,11 +393,32 @@ export function addSpell(
   if (!/^SPELL_[A-Z0-9_]+$/.test(spec.id)) throw new Error(`${spec.id} is not a usable spell id`);
   if (taken.has(spec.id)) throw new Error(`${spec.id} is the game's own spell`);
   if (mod.spells.some((s) => s.id === spec.id)) throw new Error(`${spec.id} is already in the mod`);
-  if (!spec.file.trim()) throw new Error(`${spec.id}: a spell needs an identifier for its files`);
-  if (!spec.name.trim()) throw new Error(`${spec.id}: a spell needs a name`);
+  const problems = spellProblems(spec);
+  if (problems.length) throw new Error(`${spec.id}: ${problems.join('; ')}`);
   const s: ModSpell = { ...spec, number: SHIPPED_SPELLS + mod.spells.length };
   mod.spells.push(s);
   return s;
+}
+
+/**
+ * What a spell cannot be built without — asked when one is added AND when one is
+ * changed, because the form is not the only door into either.
+ *
+ * The AREA is the one worth stating. `IsAreaAttack` says a spell hits an area
+ * and never says which: the shape is a switch on the spell's NUMBER, one case
+ * per shipped spell, and a number the executable was never compiled against
+ * lands on a default that covers nothing. So a spell of ours carrying the flag
+ * with no tiles is a cast that plays its animation, spends its mana and touches
+ * nobody — which reads in game exactly like a spell that does not work.
+ */
+function spellProblems(spec: SpellSpec): string[] {
+  const problems: string[] = [];
+  if (!spec.file.trim()) problems.push('a spell needs an identifier for its files');
+  if (!spec.name.trim()) problems.push('a spell needs a name');
+  if (spec.areaAttack && !spec.area?.length) {
+    problems.push('a spell that hits an area needs the tiles it covers — with none it covers nothing');
+  }
+  return problems;
 }
 
 /** Change one already in the mod, keeping its value. */
@@ -405,9 +426,33 @@ export function updateSpell(mod: CreatureMod, id: string, spec: SpellSpec): ModS
   const at = (mod.spells ?? []).findIndex((s) => s.id === id);
   if (at < 0) throw new Error(`${id} is not in the mod`);
   if (spec.id !== id) throw new Error(`a spell cannot be renamed — ${id} is what spellbooks store`);
+  const problems = spellProblems(spec);
+  if (problems.length) throw new Error(`${id}: ${problems.join('; ')}`);
   const updated: ModSpell = { ...spec, number: SHIPPED_SPELLS + at };
   mod.spells![at] = updated;
   return updated;
+}
+
+/**
+ * Take a spell out, and close the gap behind it.
+ *
+ * Two things inside the mod can be left naming a value the enum no longer
+ * declares — a hero who starts knowing it and a class that prefers it — and both
+ * are refused rather than repaired, the way a specialization's removal is. What
+ * is OUTSIDE the mod is a map, and that is not refused but shown: see
+ * findSpellUses, which the window asks before it gets here.
+ */
+export function removeSpell(mod: CreatureMod, id: string): ModSpell {
+  const list = mod.spells ?? [];
+  const at = list.findIndex((s) => s.id === id);
+  if (at < 0) throw new Error(`${id} is not in the mod`);
+  const known = (mod.heroes ?? []).filter((h) => h.spells?.includes(id)).map((h) => h.id);
+  if (known.length) throw new Error(`${id} is known by ${known.join(', ')} — change them first`);
+  const preferred = (mod.classes ?? []).filter((c) => c.preferredSpells?.includes(id)).map((c) => c.id);
+  if (preferred.length) throw new Error(`${id} is preferred by ${preferred.join(', ')} — change them first`);
+  const gone = list.splice(at, 1)[0]!;
+  list.forEach((s, i) => { s.number = SHIPPED_SPELLS + i; });
+  return gone;
 }
 
 /** Change one already in the mod, keeping its value. */

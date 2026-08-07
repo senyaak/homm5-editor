@@ -12,7 +12,7 @@
 // offered, so the count comes from the window rather than from a number here.
 //
 // What comes out is also the CONTENT the map stage places: mod-007 stands all of
-// them on its map, and mod-008 reads back what landed on disk.
+// them on its map, and mod-009 reads back what landed on disk.
 //
 // Its own game install (HOMM5_ROOT, e2e/mods.ts), so the real one is untouched.
 

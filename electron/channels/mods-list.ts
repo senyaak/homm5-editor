@@ -60,6 +60,16 @@ export function registerModsList(): void {
       specializations: (f.mod.specializations ?? []).map((s) => ({ ...s })),
       classes: (f.mod.classes ?? []).map((c) => ({ ...c })),
       skills: (f.mod.skills ?? []).map((s) => ({ ...s })),
+      // Whole, and `?? []` for the reason the sets have it: a mod installed
+      // before spells existed has a manifest without the field, and it stays
+      // listable. The `spares` and the tiles come along because they are what
+      // the form is refilled from — neither is in the spell's document, so the
+      // manifest is the only place they exist.
+      spells: (f.mod.spells ?? []).map(({ spares, area, ...rest }) => ({
+        ...rest,
+        ...(spares ? { spares: [...spares] } : {}),
+        ...(area ? { area: area.map((t) => ({ x: t.x, y: t.y })) } : {}),
+      })),
       artifacts: (f.mod.artifacts ?? []).map((a) => ({
         id: a.id, number: a.number, name: a.name, description: a.description,
         slot: a.slot, rank: a.rank, cost: a.cost, aiValue: a.aiValue,

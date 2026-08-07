@@ -257,6 +257,42 @@ export function spellScriptFile(s: ModSpell): { path: string; text: string } {
   return { path: spellScriptPath(s), text: head + (s.script ?? '').replace(/\r?\n/g, EOL) };
 }
 
+/**
+ * What a spell's script opens on when nothing has been written for it yet.
+ *
+ * Not decoration, for the reason a skill's starter is not (`skillStarter`):
+ * everything above the author's first line is knowledge an empty editor cannot
+ * give them — that the id is declared for them in the generated head, that the
+ * cast arrives through `H5EOnSpellCast` rather than through a hook of the game's,
+ * and that a function nothing registers never runs.
+ *
+ * A BATTLE, always. A spell of ours is caught where the cast happens, which is
+ * the combat context — Lua 4 with the game's own vocabulary and no standard
+ * library. What crosses to the adventure map is a game variable, as everywhere
+ * else (docs/EXE_LUA_REGISTRY.md).
+ *
+ * And it is a starting point rather than a template the build knows about: a
+ * spell whose whole content is damage needs no script at all, because the damage
+ * goes through the engine's own routine where resistance and the combat log are.
+ */
+export function spellStarter(id: string): string {
+  const name = (id || 'SPELL_MINE').replace(/^SPELL_/, '').split('_')
+    .map((w) => w.charAt(0) + w.slice(1).toLowerCase()).join('') || 'Spell';
+  return [
+    `-- \`${id || 'SPELL_MINE'}\` is declared for you in the head above.`,
+    '-- Everything from here down is yours. It runs INSIDE A BATTLE.',
+    `function ${name}Cast(caster)`,
+    '\t-- `caster` is the unit that cast it, by the name the battle knows it by.',
+    '\t-- H5EIsLiving(creature) and H5EIsMagicProof(creature) are generated for',
+    '\t-- you from the game data — see creatureKindLines.',
+    'end;',
+    '',
+    '-- Nothing above runs until the cast is handed to it.',
+    `H5EOnSpellCast(${id || 'SPELL_MINE'}, ${name}Cast);`,
+    '',
+  ].join('\n');
+}
+
 /** Where a spell's own files sit inside the mod. */
 export function spellPaths(s: SpellSpec): {
   document: string; name: string; description: string; icon: string; iconDDS: string;
