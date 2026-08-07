@@ -354,11 +354,26 @@ behave differently:
 - **the area routine** (`0xD608C0`) dispatches on the **element**: air →
   `0xBD1790`, fire → `0xBD1420`, water → `0xBD12C0`. Data, so an area spell of
   ours with `ELEMENT_FIRE` reaches the burn by itself.
+  **Measured: it does.** An area fire spell of ours leaves the mark in game, with
+  nothing said about it anywhere.
+
 - **the whole-field routine** (`0xD60C30`) dispatches on the **number**: `cmp
   eax,0Ah` — Armageddon and nothing else. So a whole-field spell of ours cannot
-  burn whatever its element, and widening that test is not a hole to plug: the
-  branch it guards also carries Armageddon's own business, the distance check and
-  the war machines.
+  burn whatever its element.
+
+  **And that is left alone, deliberately.** It is the third of the three sites
+  `native/qol/fix-empowered-armageddon.c` already documents — "the tiles around
+  the impact point" — and the branch behind it is Armageddon's local damage, the
+  thing the game's own two descriptions differ by: the plain Armageddon adds «и
+  локальный физический урон в месте применения» and the empowered one does not.
+  Master of Fire names its spells in its own text — «Огненный шар», «Стена огня»
+  и «Армагеддон» — so a whole-field spell of ours going unburnt is the game being
+  consistent, not a hole.
+
+  Wanting it anyway is a small change and a different one: not widening that
+  comparison, which would hand our spell the local damage too, but calling
+  `0xBD1420` from the OTHER branch when the element is fire — which is what the
+  area routine already does, and would make the two shapes agree.
 
 Two other functions were read on the way and are worth naming so nobody reads
 them again: `0xBD3A00`-ish builds the spellbook's PREDICTION — the "duration",

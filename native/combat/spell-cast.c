@@ -981,42 +981,15 @@ static const BYTE DAMAGING_YES_MARK[DAMAGING_YES_MARK_LEN] = {
   0xB0, 0x01, 0x5E, 0xC3
 };
 
-/**
- * Says WHO ASKED, for our ids only.
- *
- * Nine places ask this question and the interface asks them constantly, so a
- * line per question would be a log nobody can read. For a number of ours it is
- * asked only when our spell is involved, and then the one thing worth knowing is
- * whether it was asked at all: the Master perks' block asks this BEFORE it looks
- * at the element, so no line here means that block was never reached and the
- * missing burn is somewhere else entirely.
- *
- * The return address is what tells them apart, and finding it is a matter of
- * counting what is on the stack above it. We cut in four instructions into the
- * function, AFTER its own `push esi`, so from our stub the layout is: pushad
- * (32) + pushfd (4) + that saved register (4) — the return address is at
- * `[esp+40]`. Read at `[esp+36]` the log printed the saved register instead,
- * which is a heap pointer and looked like a plausible address.
- */
-static void __cdecl on_damaging_asked(int spell, DWORD from) {
-  log_num("does it hurt? asked about spell id ", spell);
-  log_hex("   asked from ", from - (DWORD)GetModuleHandleW(NULL));
-}
-
-// pushad/pushfd only on the path that is OURS: the game's own ids take the `jb`
-// and never touch any of it, so nine callers keep the speed they had.
-#define DAMAGING_STUB_LEN 39
+// No call and no pushad: eax already holds the id, and the displaced `cmp` sets
+// the flags the switch below reads. It logged for a while — that is how the
+// Master perks' block was found among the nine readers, at 0xBD3BE4 — and the
+// line is gone because nine callers ask this constantly and the answer is now
+// written down rather than watched.
+#define DAMAGING_STUB_LEN 22
 static BYTE DAMAGING_STUB[DAMAGING_STUB_LEN] = {
   0x3D, 0x61, 0x01, 0x00, 0x00,             // cmp eax,161h    — 353, the first of ours
-  0x72, 0x16,                               // jb +22          — the game's own, carry on
-  0x60,                                     // pushad
-  0x9C,                                     // pushfd
-  0xFF, 0x74, 0x24, 0x28,                   // push dword ptr [esp+40]   — who asked
-  0x50,                                     // push eax                  — the spell id
-  0xE8, 0x00, 0x00, 0x00, 0x00,             // call on_damaging_asked
-  0x83, 0xC4, 0x08,                         // add esp,8
-  0x9D,                                     // popfd
-  0x61,                                     // popad
+  0x72, 0x05,                               // jb +5           — the game's own, carry on
   0xE9, 0x00, 0x00, 0x00, 0x00,             // jmp <yes>
   0x3D, 0x17, 0x01, 0x00, 0x00,             // cmp eax,117h    — displaced
   0xE9, 0x00, 0x00, 0x00, 0x00,             // jmp back
@@ -1035,9 +1008,8 @@ static void install_damaging_spell(void) {
                                     PAGE_EXECUTE_READWRITE);
   if (!stub) { log_line("damaging spell: no memory for the stub"); return; }
   for (int i = 0; i < DAMAGING_STUB_LEN; i++) stub[i] = DAMAGING_STUB[i];
-  *(DWORD *)(stub + 15) = (DWORD)(void *)on_damaging_asked - (DWORD)(stub + 19);
-  *(DWORD *)(stub + 25) = (DWORD)yes - (DWORD)(stub + 29);
-  *(DWORD *)(stub + 35) =
+  *(DWORD *)(stub + 8) = (DWORD)yes - (DWORD)(stub + 12);
+  *(DWORD *)(stub + 18) =
       (DWORD)(base + DAMAGING_SPELL_RVA + DAMAGING_SPELL_LEN) - (DWORD)(stub + DAMAGING_STUB_LEN);
   FlushInstructionCache(GetCurrentProcess(), stub, DAMAGING_STUB_LEN);
 
@@ -1046,140 +1018,4 @@ static void install_damaging_spell(void) {
                      DAMAGING_SPELL_LEN, "a spell that deals damage")) {
     log_line("a spell of ours counts as one that hurts");
   }
-}
-
-// ---------------------------------------------------------------------------
-// AND WHERE THE BURN IS ACTUALLY REFUSED — a mark inside the Master block.
-//
-// The log settled the first half: our ids ARE asked "does this spell deal
-// damage", and 163 of those asks come from 0xBD3BE4, which is this block's own
-// call. So it is entered, our answer lets it through, and the element it then
-// reads is 2. The next thing it does is ask the caster:
-//
-//   0xBD3C1E  push <44|43|45>          ; Master of Fire / Ice / Storms, by element
-//             call [caster+0x290]      ; does he have it
-//   0xBD3C2B  test al,al
-//             je 0xBD3CE8              ; no → no burn
-//
-// Forty-four IS `HERO_SKILL_MASTER_OF_FIRE` (43 is Ice), so this is the perk
-// itself. The wizard on the stand has it and his own Armageddon burns, which
-// leaves one thing to measure: what this call answers on OUR path. A zero says
-// the caster the block was handed is not the hero we think; a one says the
-// block goes on and the refusal is further down.
-//
-// The mark rides on the `test`, for our ids only — the game's own casts take the
-// `jb` and touch none of it.
-
-/** `test al,al` / `je 0xBD3CE8` — the perk's own gate, and the eight bytes of it. */
-#define MASTER_GATE_RVA 0x7d3c2bu
-#define MASTER_GATE_LEN 8
-static const BYTE MASTER_GATE_HEAD[MASTER_GATE_LEN] = {
-  0x84, 0xC0, 0x0F, 0x84, 0xB5, 0x00, 0x00, 0x00
-};
-
-static void __cdecl on_master_gate(int spell, int hasPerk) {
-  log_num("master perk: spell id ", spell);
-  log_num("   the caster has it ", hasPerk & 0xFF);
-}
-
-#define MASTER_STUB_LEN 35
-static BYTE MASTER_STUB[MASTER_STUB_LEN] = {
-  0x81, 0xFF, 0x61, 0x01, 0x00, 0x00,       // cmp edi,161h    — 353, the first of ours
-  0x72, 0x0E,                               // jb +14          — the game's own, carry on
-  0x60,                                     // pushad
-  0x9C,                                     // pushfd
-  0x50,                                     // push eax        — al: does he have the perk
-  0x57,                                     // push edi        — the spell id
-  0xE8, 0x00, 0x00, 0x00, 0x00,             // call on_master_gate
-  0x83, 0xC4, 0x08,                         // add esp,8
-  0x9D,                                     // popfd
-  0x61,                                     // popad
-  0x84, 0xC0,                               // test al,al      — displaced
-  0x0F, 0x84, 0x00, 0x00, 0x00, 0x00,       // je <no burn>    — displaced, re-aimed
-  0xE9, 0x00, 0x00, 0x00, 0x00,             // jmp back
-};
-
-static BYTE MASTER_TO_STUB[MASTER_GATE_LEN] = {
-  0xE9, 0x00, 0x00, 0x00, 0x00, 0x90, 0x90, 0x90
-};
-
-static void install_master_gate_log(void) {
-  BYTE *base = (BYTE *)GetModuleHandleW(NULL);
-  BYTE *target = base + MASTER_GATE_RVA;
-  BYTE *stub = (BYTE *)VirtualAlloc(NULL, MASTER_STUB_LEN, MEM_COMMIT | MEM_RESERVE,
-                                    PAGE_EXECUTE_READWRITE);
-  if (!stub) { log_line("master gate: no memory for the stub"); return; }
-  for (int i = 0; i < MASTER_STUB_LEN; i++) stub[i] = MASTER_STUB[i];
-  *(DWORD *)(stub + 13) = (DWORD)(void *)on_master_gate - (DWORD)(stub + 17);
-  // The displaced `je` is relative, so its target is worked out from where it
-  // SAT: `0F 84 <rel32>` at target+2, measured from the end of it.
-  DWORD away = (DWORD)(target + MASTER_GATE_LEN) + *(DWORD *)(target + 4);
-  *(DWORD *)(stub + 26) = away - (DWORD)(stub + 30);
-  *(DWORD *)(stub + 31) = (DWORD)(target + MASTER_GATE_LEN) - (DWORD)(stub + MASTER_STUB_LEN);
-  FlushInstructionCache(GetCurrentProcess(), stub, MASTER_STUB_LEN);
-
-  *(DWORD *)(MASTER_TO_STUB + 1) = (DWORD)stub - ((DWORD)target + 5);
-  if (overwrite_code(MASTER_GATE_RVA, MASTER_GATE_HEAD, MASTER_TO_STUB, MASTER_GATE_LEN,
-                     "the Master perk's gate")) {
-    log_line("a cast of ours will say whether the caster has the Master perk");
-  }
-}
-
-// ---------------------------------------------------------------------------
-// THE BURN ITSELF, AND WHY THE TWO SHAPES DIFFER.
-//
-// Reading the branch through rather than one gate per run settled most of it.
-// `0xBD1420` is the function that leaves a Master's mark — it asks the caster
-// for `HERO_SKILL_MASTER_OF_FIRE` (44) and the target for the two abilities that
-// exempt it, then hands a number to `SPELL_EFFECT_FIRE_DAMAGE` (202). Five
-// places call it, and two of them are the very routines a spell of ours borrows:
-//
-//   THE AREA routine (0xD608C0), per unit, dispatches on the ELEMENT:
-//       eax = SpellElement(spell)        ; read from the record — data
-//       sub eax,1 ; je → 0xBD1790        ; air
-//       sub eax,1 ; je → 0xBD1420        ; FIRE — the burn
-//       sub eax,1 ; jne → …              ; water
-//     So an area spell of ours with ELEMENT_FIRE should reach it by itself.
-//
-//   THE WHOLE-FIELD routine (0xD60C30), per unit, dispatches on the NUMBER:
-//       eax = [ctx+4] ; cmp eax,0Ah ; jne 0xD6117F     ; ARMAGEDDON, and only it
-//       … → 0xBD1420
-//       0xD6117F: → 0xBD1980                           ; everyone else
-//     So a whole-field spell of ours can NEVER burn, whatever its element. That
-//     is a fifth switch on the number, and it is not fixed here: the branch it
-//     guards also carries Armageddon's own business (the distance test and the
-//     war machines), so widening it is a decision about what our spell IS, not a
-//     hole to plug.
-//
-// What is left to measure is the area shape, where everything reads right and
-// the burn still did not appear. One mark at the head of the function answers
-// it: a line means it was reached and the refusal is inside (the caster, or the
-// target's exemptions); silence means the element dispatch did not send us here.
-//
-// `f(ecx, edx, damage, spell, …)` — `ret 10h`, four stack arguments, and the
-// first two are the ones worth printing: the second IS the spell, which is how
-// the routine knows what it is applying.
-
-#define BURN_RVA 0x7d1420u
-#define BURN_HEAD_LEN 8
-static const BYTE BURN_HEAD[BURN_HEAD_LEN] = {
-  0x83, 0xEC, 0x08,                                           // sub esp,8
-  0x83, 0x7C, 0x24, 0x0C, 0x00                                // cmp dword ptr [esp+0Ch],0
-};
-
-typedef int(__fastcall *BurnFn)(void *ecx, void *edx, int damage, int spell, int a3, int a4);
-static BurnFn g_burn = NULL;
-
-static int __fastcall on_burn(void *ecx, void *edx, int damage, int spell, int a3, int a4) {
-  if (spell >= FIRST_SPELL_OF_OURS) {
-    log_num("the master's mark: spell id ", spell);
-    log_num("   damage carried ", damage);
-  }
-  return g_burn(ecx, edx, damage, spell, a3, a4);
-}
-
-static void install_burn_log(void) {
-  g_burn = (BurnFn)detour(BURN_RVA, BURN_HEAD, BURN_HEAD_LEN, (void *)on_burn,
-                          "the mark a Master leaves");
-  if (g_burn) log_line("a cast of ours will say if it reached the Master's mark");
 }
