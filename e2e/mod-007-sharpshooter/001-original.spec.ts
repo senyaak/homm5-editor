@@ -22,10 +22,10 @@ import { armBrush, clickTile, newMap, planView } from '../tiles.ts';
 import { openObjectPalette, pickObject, setObjectProp } from '../objects.ts';
 import { addItem, addValueItem, openTree, setTreeValue } from '../tree.ts';
 import { readEntries } from '../../src/format/pak.ts';
-import { clearMap, LIVE, readInstalledMod } from '../mods.ts';
+import { readInstalledMod } from '../mods.ts';
 import { bar } from '../bar.ts';
 import {
-  ARCHIVE, DATA, GAME, MAP_DIR, NAME, ORIGINAL, PLACES, REF, SHARPSHOOTER,
+  ARCHIVE, GAME, MAP_DIR, NAME, ORIGINAL, PLACES, REF, SHARPSHOOTER,
   decode, gaps, openSharp, placeOne, startSharp, unpackReference,
 } from './shared.ts';
 
@@ -50,12 +50,16 @@ function rootList(xdb: string, name: string): string[] {
 // beforeAll again — so beforeAll only ENSURES the fixtures (idempotent, and it
 // never deletes the map under reconstruction). The clean slate belongs to the
 // build test itself; the sweep to the last file's last test.
+// AND IT USED TO DELETE IT ANYWAY. A `clearMap` stood here for the live case —
+// the copy the last run packed is in the way, since New Map refuses to write
+// over a map that exists — and it takes the working folder with the archive. So
+// the first failed test restarted the worker, this ran again, and the map the
+// remaining tests were about was gone: they all reported "the rebuilt map is on
+// disk — false" and hid the one real difference behind three that were not.
+// The build test below already clears BOTH halves before it starts, which is
+// where the comment above always said the clean slate belongs.
 test.beforeAll(async () => {
   unpackReference();
-  // Live, the map is rebuilt into the game itself, and the copy the last run
-  // packed is in the way — New Map refuses to write over a map that exists. The
-  // reference was read above, out of assets/, so nothing needed is lost.
-  if (LIVE) clearMap(GAME, DATA, NAME);
   ed = await startSharp();
 });
 test.afterAll(async () => { await ed?.app.close(); });
