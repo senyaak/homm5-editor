@@ -84,7 +84,36 @@ if (!/_(NONE|UNKNOWN)$/.test(creatures[0]!.id)) {
 }
 if (labelled) console.log('  ✓ every creature but the engine\'s null has a name, and the list is in label order');
 
+// --- definitions the game stores under a bare name ---------------------------
+//
+// What a definition IS, is its root element. The game does not keep to the
+// `Name.(Class).xdb` convention — the Necropolis tier 3 monsters are `Manes.xdb`
+// and `Ghost.xdb`, and half the dwellings are named like `Fairie_Tree.xdb` — so
+// a roster built on file names alone silently holds a fraction of the game's
+// objects. It read, downstream, as "Heroes V has no Necropolis tier 3".
+console.log('\n=== stored under a bare name ===');
+let bare = true;
+const named = (list: { name?: string; id: string }[], want: string): boolean =>
+  list.some((e) => e.name === want);
+for (const [cls, want] of [
+  ['AdvMapMonsterShared', 'Manes'],
+  ['AdvMapMonsterShared', 'Ghost'],
+  ['AdvMapDwellingShared', 'Fairie_Tree'],
+  ['AdvMapBuildingShared', 'MagiVault'],
+] as const) {
+  const found = named(reg.objectsOfClass(cls), want);
+  console.log(`  ${found ? '✓' : '✗'} ${want} is in the ${cls} roster`);
+  if (!found) bare = false;
+}
+// And the reverse: a file whose name carries SOME OTHER class must not be swept
+// in, or every geometry and material file beside an object joins its roster.
+const monsters = reg.objectsOfClass('AdvMapMonsterShared');
+const strays = monsters.filter((e) => /-(geom|lambert|mirror)|\((Model|Material|Texture)\)/.test(e.id));
+console.log(`  ${strays.length ? '✗' : '✓'} nothing of another class swept in` +
+  (strays.length ? ` — ${strays.slice(0, 3).map((s) => s.id).join(', ')}` : ''));
+if (strays.length) bare = false;
+
 const sane = spells.length > 300 && artifacts.length > 90 && heroes.length > 100 && ambient.length > 100
-  && creatures.length >= 180;
+  && creatures.length >= 180 && bare;
 console.log(`\n${ok && sane && labelled ? 'PASS' : 'FAIL'}`);
 process.exit(ok && sane && labelled ? 0 : 1);

@@ -16,7 +16,7 @@
 // `Creatures.xdb` is not one file, it is whichever copy wins, and the mod's copy
 // is the one with 181 entries in it.
 
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { closeSync, openSync, readFileSync, readSync, readdirSync, statSync } from 'node:fs';
 import { join, basename, relative, sep } from 'node:path';
 import { parse, find, children, childText } from '../format/xml.ts';
 import type { XmlElement } from '../format/xml.ts';
@@ -570,11 +570,42 @@ function toHref(root: string, path: string, xpointer: string): string {
 }
 
 /**
- * Every object of `className`, across both storage styles:
+ * The root element of an `.xdb`, read from the head of the file.
+ *
+ * WHAT A DEFINITION IS, is its root element — the file NAME is a convention, and
+ * the game does not keep to it: `MapObjects/Necropolis/Manes.xdb` and `Ghost.xdb`
+ * are monster definitions, `Fairie_Tree.xdb` and `Ruined_Tower.xdb` are dwellings,
+ * and none of them says so in its name. Around 750 of the 5500 files under the
+ * object folders are stored this way, and a roster built on names alone is simply
+ * missing them — which read, downstream, as "Heroes V has no Necropolis tier 3".
+ *
+ * Only the head is read: the root element is the first tag after the prolog, and
+ * these files run to tens of kilobytes of geometry references after it.
+ */
+function rootElement(path: string): string | null {
+  let fd: number | undefined;
+  try {
+    fd = openSync(path, 'r');
+    const buf = Buffer.alloc(512);
+    const n = readSync(fd, buf, 0, buf.length, 0);
+    const head = buf.toString('utf8', 0, n)
+      .replace(/<\?[\s\S]*?\?>/g, '')
+      .replace(/<!--[\s\S]*?(-->|$)/g, '');
+    return /<([A-Za-z_][\w.-]*)[\s/>]/.exec(head)?.[1] ?? null;
+  } catch {
+    return null;
+  } finally {
+    if (fd !== undefined) closeSync(fd);
+  }
+}
+
+/**
+ * Every object of `className`, across the storage styles the game uses:
  *   • placed objects — `Name.(className).xdb` anywhere under the object dirs;
  *     the label is the base name, grouped by its top folder (a hero's race).
  *   • library entities — plain `Name.xdb` inside a `_(className)/` folder;
  *     labelled by `<InternalName>` when present, else the base name.
+ *   • anything else whose ROOT ELEMENT is the class — see rootElement().
  * A map can also point at a custom entity saved in its own folder; once that
  * folder is layered onto the data root, this picks it up like any other.
  */
@@ -597,13 +628,20 @@ function scanClass(data: Assets, className: string): RosterEntry[] {
         const parts = relative(base, f).split(sep);
         const bySuffix = bn.endsWith(suffix);
         const inLib = parts.includes(libSeg);
-        if (!bySuffix && !inLib) continue;
+        // The name says so, the folder says so, or the file itself does. The
+        // third case costs a 512-byte read of the files the first two miss, and
+        // it is the only one that finds the definitions the game stores under a
+        // bare name.
+        const byRoot = !bySuffix && !inLib
+          && !/\.\([A-Za-z_][\w.-]*\)\.xdb$/.test(bn)
+          && rootElement(f) === className;
+        if (!bySuffix && !inLib && !byRoot) continue;
         seen.add(href);
         let name: string;
         let group: string | undefined;
-        if (bySuffix) {
+        if (bySuffix || byRoot) {
           // A placed-object definition: base name, grouped by its top folder.
-          name = bn.slice(0, -suffix.length);
+          name = bySuffix ? bn.slice(0, -suffix.length) : bn.replace(/\.xdb$/, '');
           group = parts[0] && !parts[0].endsWith('.xdb') ? parts[0] : undefined;
         } else {
           // A library entity: prefer its InternalName label.
