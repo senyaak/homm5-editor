@@ -166,14 +166,30 @@ export const QOL_FLAGS = [
     group: 'mechanics',
     title: 'Empowered Armageddon is an Armageddon',
     detail: 'A Wizard\'s Empowered Spells perk casts a spell with an id of its own, and the code that'
-      + ' resolves the impact asks three questions about the spell by that raw id: whether to do the'
-      + ' local damage at the point of impact, whether to hit war machines, and how to damage the'
-      + ' tiles around it. All three answer no, so the empowered version costs double mana and is the'
-      + ' weaker spell — though its own description promises damage to war machines. The engine'
-      + ' already maps an empowered id to the spell it is a version of; this asks it that question'
-      + ' instead. At the first site the answer was already in a register, unused.',
+      + ' resolves the impact asks about the spell by that raw id: whether to do the local damage at'
+      + ' the point of impact, and whether to hit war machines. Both answer no, so the empowered'
+      + ' version costs double mana and is the weaker spell — though its own description promises'
+      + ' damage to war machines. The engine already maps an empowered id to the spell it is a'
+      + ' version of; this asks it that question instead. At the first site the answer was already'
+      + ' in a register, unused. (A third site used to be here and is now "Elemental spells damage'
+      + ' in their element", which answers it without naming a spell at all.)',
     credit: 'Uses the work of H5_DLL by dredknight, with permission'
       + ' — https://github.com/dredknight/H5_DLL',
+  },
+  {
+    name: 'elemental-damage-fix',
+    tab: 'fixes',
+    group: 'mechanics',
+    title: 'Elemental spells damage in their element',
+    detail: 'The routine behind a spell that hits the whole field has four ways to apply the damage —'
+      + ' one per element, and each is what a Master of Storms, of Fire or of Ice acts on — plus a'
+      + ' fourth belonging to no element. It picks between them by asking whether the spell is'
+      + ' Armageddon, which is a shortcut for "is its damage elemental": of the three spells that'
+      + ' reach it, Armageddon is the only one whose document says so, since both Words name an'
+      + ' element and leave DamageIsElemental false. The shortcut holds until the game has another'
+      + ' such spell — and it already does. The Empowered Armageddon lands with no element at all,'
+      + ' drawing no Master of Fire and meeting no fire resistance. This asks the document instead'
+      + ' of the id.',
   },
   {
     name: 'master-of-fire-fix',

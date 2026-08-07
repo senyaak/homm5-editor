@@ -15,6 +15,16 @@ one.
 
 ### Fixed
 
+- **Elemental spells damage in their element.** A spell that hits the whole
+  field has four ways to land — one per element, and each is what a Master of
+  Storms, of Fire or of Ice acts on — plus a fourth that belongs to no element.
+  The game picks between them by asking whether the spell is Armageddon, which is
+  a shortcut for "is its damage elemental" and was right until the game had a
+  second such spell. It has one: the Empowered Armageddon lands with no element
+  at all, so no Master of Fire follows it and no fire resistance answers it. This
+  asks the spell's own document instead of its number, which fixes the empowered
+  one and everything the question will ever cover.
+
 - **A creature of yours can be raised by necromancy.** Which creature comes back
   from the dead, and as what, is one table in the game's own files — 134
   dead→risen pairs covering every faction creature and no other. A creature

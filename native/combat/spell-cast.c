@@ -1069,15 +1069,15 @@ static const BYTE WHOLE_FIELD_ELEMENT_HEAD[WHOLE_FIELD_ELEMENT_LEN] = {
 static BYTE g_wholeFieldElemental = 0;
 
 /**
- * TWO CASES, not three — and the second is the shipped bug kept behind its flag.
+ * TWO CASES, and the second is the shipped shortcut kept behind its own flag.
  *
  * `SpellElement` IS the question `cmp eax,0Ah` was a shortcut for, so asking it
- * needs no list and no upkeep: a spell of ours qualifies by its document, and so
- * does the empowered Armageddon (232), which the accessor normalises to 10 and
- * then finds elemental. That is the whole of what
- * `fix-empowered-armageddon.c`'s third site was for, arrived at by asking rather
- * than by naming an id — and anything else the game ever gives an elemental
- * whole-field spell is covered the same day.
+ * needs no list and no upkeep: a spell of ours qualifies by its own document,
+ * and so does the empowered Armageddon (232), which the accessor normalises to
+ * 10 and then finds elemental. That is why this is `elemental-damage-fix` and
+ * not part of the Armageddon one — it is not a case to add for one spell, it is
+ * the question, and anything the game is ever given an elemental whole-field
+ * spell for is covered by it the same day.
  *
  * OURS ALWAYS, the game's own only with the flag on. Not because the shortcut is
  * right for them, but because the Rules Test experiment is "every fix off, then
@@ -1085,7 +1085,7 @@ static BYTE g_wholeFieldElemental = 0;
  * would make one of those runs a lie. Our own ids are not in that experiment.
  */
 static void __cdecl decide_whole_field(int spell) {
-  int askTheRecord = spell >= FIRST_SPELL_OF_OURS || g_qol[QOL_EMPOWERED_ARMAGEDDON_FIX];
+  int askTheRecord = spell >= FIRST_SPELL_OF_OURS || g_qol[QOL_ELEMENTAL_DAMAGE_FIX];
   g_wholeFieldElemental = (BYTE)(askTheRecord
       ? (g_spellElement && g_spellElement(spell) != 0)
       : spell == 0x0A);

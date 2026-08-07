@@ -60,7 +60,7 @@ computer's.
 |---|---|---|
 | `wizard` | Academy | Master of Fire |
 | `knight` | Haven | Encourage |
-| `warlock` | Dungeon | Payback, the snare crash, Empowered Armageddon |
+| `warlock` | Dungeon | Payback, the snare crash, Empowered Armageddon, elemental damage |
 | `runemage` | Fortress | Dragon Form |
 | `ranger` | Sylvan | Imbue Ballista — the fix, and the bug it claims |
 | `barbarian` | Stronghold | Barbarian Learning |
@@ -193,6 +193,24 @@ enemy hero if you fight one.
 Cast the plain Armageddon as well (turn Empowered Spells off in the battle if the
 interface lets you, or compare against the enemy hero's): the plain one was
 always right, and it must stay exactly as it was.
+
+### 5a. `elemental-damage-fix` — the same warlock, the same cast
+
+His army holds **twenty Fire Elementals**, which are immune to fire, and an
+Armageddon hits its own side. So both readings come off one cast.
+
+The routine behind a whole-field spell has four ways to apply the damage, one
+per element and a fourth for none, and it picks by asking whether the spell is
+Armageddon — a shortcut for "is its damage elemental" that is right until the
+game has a second such spell. It has one: the empowered version.
+
+- **off** — the **empowered** Armageddon burns his own Fire Elementals. Their
+  immunity has nothing to answer, because the damage carries no element.
+- **on** — they take nothing from it, exactly as they already take nothing from
+  the plain Armageddon he also carries.
+
+The plain one is the control and needs no flag: cast both in the same battle and
+the elementals should end up treated the same way by each.
 
 ### 6. `dragon-form-fix` — the runemage
 

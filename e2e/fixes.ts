@@ -331,7 +331,10 @@ export const HEROES: Kit[] = [
     // Empowered Armageddon is HIS, not the wizard's: Empowered Spells is the
     // Warlock's class perk. Three fixes on one hero, which is fine — they are
     // three different spells.
-    fixes: ['payback-fix', 'snare-crash-fix', 'empowered-armageddon-fix'],
+    // Four now: the elemental one is read off the SAME cast as the empowered
+    // Armageddon, because that spell is the one the game already has whose
+    // damage lands with no element at all.
+    fixes: ['payback-fix', 'snare-crash-fix', 'empowered-armageddon-fix', 'elemental-damage-fix'],
     shared: hero('Dungeon', 'Almegir'),
     at: { x: 24, y: 10 },
     skills: [
@@ -354,7 +357,16 @@ export const HEROES: Kit[] = [
     // A war machine of his own, so an empowered Armageddon has one to prove
     // itself on — that is the half of the fix you can see.
     ballista: true,
-    army: [{ creature: 'CREATURE_MARKSMAN', count: 30 }],
+    army: [
+      { creature: 'CREATURE_MARKSMAN', count: 30 },
+      // AND FIRE ELEMENTALS, which are immune to fire — the instrument for the
+      // elemental fix, and it has to be a stack of HIS: an Armageddon hits its
+      // own side too, so both readings come off one cast. With the fix off the
+      // empowered Armageddon burns them, because its damage carries no element
+      // for the immunity to answer; with it on they take nothing, exactly as
+      // they already do from the plain Armageddon he also carries.
+      { creature: 'CREATURE_FIRE_ELEMENTAL', count: 20 },
+    ],
     // Zombies as well: he casts the empowered Armageddon, and it has to leave
     // something standing to be read. The snare does NOT come from here — see
     // OPPONENT below, and the two things measured in a real battle that between
@@ -528,5 +540,5 @@ export const OPPONENT: Kit = {
 export const FIXES_UNDER_TEST: QolName[] = [
   'combat-ai-fix', 'snare-crash-fix', 'encourage-fix', 'barbarian-learning-fix',
   'payback-fix', 'dragon-form-fix', 'empowered-armageddon-fix', 'book-of-power-fix',
-  'master-of-fire-fix', 'imbue-ballista-fix',
+  'master-of-fire-fix', 'imbue-ballista-fix', 'elemental-damage-fix',
 ];
