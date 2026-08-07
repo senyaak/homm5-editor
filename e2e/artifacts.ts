@@ -46,18 +46,21 @@ export const MADE = {
   DIALOGS: 'e2e Dialogs',
   DIALOGS_MAP: 'e2e Dialogs Map',
   LOCALIZE: 'e2e Localize',
-  MONSTER_AMOUNT: 'e2e monster amount',
   NEW_MAP: 'e2e New Map',
+  // One map for every way an object is edited once it is placed — the panel's
+  // enabling rules, its structured rows, the tree's window, an army built from
+  // the schema, a town's own specialization. It was five (`e2e monster amount`,
+  // `e2e panel structured`, `e2e tree expand`, `e2e Object Tree`,
+  // `e2e town spec`), each a 72×72 built to stand one object on.
+  OBJECT_EDITING: 'e2e Object Editing',
   // One map for both effect questions — what a system is glued to, and how often
   // it starts again. It was two (`e2e Glued Effects`, `e2e Effect Timing`), each
   // a 72×72 built to stand one object on.
   OBJECT_EFFECTS: 'e2e Object Effects',
-  OBJECT_TREE: 'e2e Object Tree',
   PACK: 'e2e Pack',
   PACK_EDITED: 'e2e Pack, edited',
   PAINT_BLEND: 'e2e Paint Blend',
   PAINT_BURST: 'e2e Paint Burst',
-  PANEL_STRUCTURED: 'e2e panel structured',
   PLACE_OBJECTS: 'e2e Place Objects',
   PLACE_PRECISELY: 'e2e Place Precisely',
   RECONSTRUCT_C1M1: 'e2e Reconstruct C1M1',
@@ -67,8 +70,6 @@ export const MADE = {
    *  repo; what stands in the game folder is this run's output. */
   SHARPSHOOTER_MAP: 'Sharpshooter Test',
   TEXT: 'e2e Text',
-  TOWN_SPEC: 'e2e town spec',
-  TREE_EXPAND: 'e2e tree expand',
   UNITS_MAP: 'e2e Units Map',
 } as const;
 
