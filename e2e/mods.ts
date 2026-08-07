@@ -1171,6 +1171,13 @@ export function installMapFixture(gameRoot: string): CreatureMod {
   // a document and a palette entry, not a numbered row.
   if ((mod.buildings ?? []).some((b) => b.file === PALACE.file)) removeBuilding(mod, PALACE.file);
   addBuilding(mod, palaceSpec());
+  // And the campaign's own dwellings, on the same terms: a spec that starts at
+  // the map has them without the window, exactly as `npm run sod-content` leaves
+  // them. ADDED when missing, since a rebuild would repaint the sphinx back to
+  // the riddle sphinx's colours for the reason above.
+  for (const b of SOD_DWELLINGS) {
+    if (!(mod.buildings ?? []).some((x) => x.file === b.file)) addBuilding(mod, b);
+  }
   for (const a of PIECES) {
     const spec = {
       id: a.id, file: a.file, name: a.name, description: a.description,

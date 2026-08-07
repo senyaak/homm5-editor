@@ -66,6 +66,10 @@ export const MADE = {
    *  ORIGINAL it is compared against lives in `assets/maps/` and is in the
    *  repo; what stands in the game folder is this run's output. */
   SHARPSHOOTER_MAP: 'Sharpshooter Test',
+  /** mod-010 stands every building the campaign adds on one map, to be looked at
+   *  in the game. Named for what it holds rather than `e2e …`, because unlike
+   *  the rest it is meant to be opened and played. */
+  SOD_DWELLINGS_MAP: 'SoD Dwellings',
   TEXT: 'e2e Text',
   TOWN_SPEC: 'e2e town spec',
   TREE_EXPAND: 'e2e tree expand',
