@@ -1047,3 +1047,80 @@ static void install_damaging_spell(void) {
     log_line("a spell of ours counts as one that hurts");
   }
 }
+
+// ---------------------------------------------------------------------------
+// AND WHERE THE BURN IS ACTUALLY REFUSED — a mark inside the Master block.
+//
+// The log settled the first half: our ids ARE asked "does this spell deal
+// damage", and 163 of those asks come from 0xBD3BE4, which is this block's own
+// call. So it is entered, our answer lets it through, and the element it then
+// reads is 2. The next thing it does is ask the caster:
+//
+//   0xBD3C1E  push <44|43|45>          ; Master of Fire / Ice / Storms, by element
+//             call [caster+0x290]      ; does he have it
+//   0xBD3C2B  test al,al
+//             je 0xBD3CE8              ; no → no burn
+//
+// Forty-four IS `HERO_SKILL_MASTER_OF_FIRE` (43 is Ice), so this is the perk
+// itself. The wizard on the stand has it and his own Armageddon burns, which
+// leaves one thing to measure: what this call answers on OUR path. A zero says
+// the caster the block was handed is not the hero we think; a one says the
+// block goes on and the refusal is further down.
+//
+// The mark rides on the `test`, for our ids only — the game's own casts take the
+// `jb` and touch none of it.
+
+/** `test al,al` / `je 0xBD3CE8` — the perk's own gate, and the eight bytes of it. */
+#define MASTER_GATE_RVA 0x7d3c2bu
+#define MASTER_GATE_LEN 8
+static const BYTE MASTER_GATE_HEAD[MASTER_GATE_LEN] = {
+  0x84, 0xC0, 0x0F, 0x84, 0xB5, 0x00, 0x00, 0x00
+};
+
+static void __cdecl on_master_gate(int spell, int hasPerk) {
+  log_num("master perk: spell id ", spell);
+  log_num("   the caster has it ", hasPerk & 0xFF);
+}
+
+#define MASTER_STUB_LEN 35
+static BYTE MASTER_STUB[MASTER_STUB_LEN] = {
+  0x81, 0xFF, 0x61, 0x01, 0x00, 0x00,       // cmp edi,161h    — 353, the first of ours
+  0x72, 0x0E,                               // jb +14          — the game's own, carry on
+  0x60,                                     // pushad
+  0x9C,                                     // pushfd
+  0x50,                                     // push eax        — al: does he have the perk
+  0x57,                                     // push edi        — the spell id
+  0xE8, 0x00, 0x00, 0x00, 0x00,             // call on_master_gate
+  0x83, 0xC4, 0x08,                         // add esp,8
+  0x9D,                                     // popfd
+  0x61,                                     // popad
+  0x84, 0xC0,                               // test al,al      — displaced
+  0x0F, 0x84, 0x00, 0x00, 0x00, 0x00,       // je <no burn>    — displaced, re-aimed
+  0xE9, 0x00, 0x00, 0x00, 0x00,             // jmp back
+};
+
+static BYTE MASTER_TO_STUB[MASTER_GATE_LEN] = {
+  0xE9, 0x00, 0x00, 0x00, 0x00, 0x90, 0x90, 0x90
+};
+
+static void install_master_gate_log(void) {
+  BYTE *base = (BYTE *)GetModuleHandleW(NULL);
+  BYTE *target = base + MASTER_GATE_RVA;
+  BYTE *stub = (BYTE *)VirtualAlloc(NULL, MASTER_STUB_LEN, MEM_COMMIT | MEM_RESERVE,
+                                    PAGE_EXECUTE_READWRITE);
+  if (!stub) { log_line("master gate: no memory for the stub"); return; }
+  for (int i = 0; i < MASTER_STUB_LEN; i++) stub[i] = MASTER_STUB[i];
+  *(DWORD *)(stub + 13) = (DWORD)(void *)on_master_gate - (DWORD)(stub + 17);
+  // The displaced `je` is relative, so its target is worked out from where it
+  // SAT: `0F 84 <rel32>` at target+2, measured from the end of it.
+  DWORD away = (DWORD)(target + MASTER_GATE_LEN) + *(DWORD *)(target + 4);
+  *(DWORD *)(stub + 26) = away - (DWORD)(stub + 30);
+  *(DWORD *)(stub + 31) = (DWORD)(target + MASTER_GATE_LEN) - (DWORD)(stub + MASTER_STUB_LEN);
+  FlushInstructionCache(GetCurrentProcess(), stub, MASTER_STUB_LEN);
+
+  *(DWORD *)(MASTER_TO_STUB + 1) = (DWORD)stub - ((DWORD)target + 5);
+  if (overwrite_code(MASTER_GATE_RVA, MASTER_GATE_HEAD, MASTER_TO_STUB, MASTER_GATE_LEN,
+                     "the Master perk's gate")) {
+    log_line("a cast of ours will say whether the caster has the Master perk");
+  }
+}
