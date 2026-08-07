@@ -256,5 +256,43 @@
       </Layers>
     </Item>
 
+    <!--
+      Cave Walls — the one preset here meant to be IMPASSABLE.
+
+      Every other preset dresses ground a hero walks over; this one fills the
+      rock a cave is cut through, and its pieces are the dungeon walls the game
+      builds its own underground with: 3x3 blocks, so a run of them reads as a
+      wall face rather than as boulders in a row. Probability 1 and a spacing
+      just under their own width: gaps in a cave wall are holes in the world,
+      not variety.
+
+      The rubble layer is what keeps a straight edge from looking cut, and it is
+      allowed to thin out.
+    -->
+    <Item>
+      <Name>Cave Walls</Name>
+      <Layers>
+        <Item>
+          <objects>
+            <Item><Object><Type>AdvMapStaticShared</Type><ID>Subterra\Dungeonwalls\Dungeonwall01</ID></Object><Size>1.4</Size><Probability>1</Probability></Item>
+            <Item><Object><Type>AdvMapStaticShared</Type><ID>Subterra\Dungeonwalls\Dungeonwall03</ID></Object><Size>1.4</Size><Probability>1</Probability></Item>
+            <Item><Object><Type>AdvMapStaticShared</Type><ID>Subterra\Dungeonwalls\Dungeonwall05</ID></Object><Size>1.4</Size><Probability>1</Probability></Item>
+            <Item><Object><Type>AdvMapStaticShared</Type><ID>Subterra\Dungeonwalls\Dungeonwall07</ID></Object><Size>1.4</Size><Probability>1</Probability></Item>
+          </objects>
+          <Dispersion>2.6</Dispersion>
+          <Width>0</Width>
+        </Item>
+        <Item>
+          <objects>
+            <Item><Object><Type>AdvMapStaticShared</Type><ID>Subterra\Rocks\Rock2x2_1</ID></Object><Size>1</Size><Probability>0.5</Probability></Item>
+            <Item><Object><Type>AdvMapStaticShared</Type><ID>Subterra\Crystal01</ID></Object><Size>0.5</Size><Probability>0.15</Probability></Item>
+            <Item><Object><Type>AdvMapStaticShared</Type><ID>Subterra\Crystal03</ID></Object><Size>0.5</Size><Probability>0.15</Probability></Item>
+          </objects>
+          <Dispersion>2</Dispersion>
+          <Width>0</Width>
+        </Item>
+      </Layers>
+    </Item>
+
   </Presets>
 </Base>
