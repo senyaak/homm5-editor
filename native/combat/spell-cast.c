@@ -79,6 +79,27 @@ static const BYTE SPELL_DISPATCH_HEAD[SPELL_DISPATCH_LEN] = {
 typedef void *(__fastcall *SpellRecordFn)(int spell);
 static SpellRecordFn g_spellRecord = NULL;
 
+/**
+ * `SpellElement(id)` — the engine's own answer to "what element is this".
+ *
+ * Worth asking rather than reading the record ourselves, because it is the
+ * WHOLE question: it normalises the id, fetches the record, returns 0 unless
+ * `DamageIsElemental` is set, and only then gives `Element`. Twenty-two places
+ * in the executable ask it and none of them looks at a spell's number — the
+ * elemental protections, the three Master perks, the burn a Master of Fire
+ * leaves. So what this answers for a spell of ours is exactly what every one of
+ * them will act on.
+ *
+ * 0 none, 1 air, 2 fire, 3 water, 4 earth.
+ */
+#define SPELL_ELEMENT_RVA 0x6d4e50u
+#define SPELL_ELEMENT_HEAD_LEN 3
+static const BYTE SPELL_ELEMENT_HEAD[SPELL_ELEMENT_HEAD_LEN] = {
+  0x56, 0x8B, 0xF1                                            // push esi / mov esi,ecx
+};
+typedef int(__fastcall *SpellElementFn)(int spell);
+static SpellElementFn g_spellElement = NULL;
+
 /** What the engine thinks our spell IS, printed once per cast. */
 static void log_spell_record(int spell) {
   if (!g_spellRecord) return;
@@ -92,6 +113,12 @@ static void log_spell_record(int spell) {
   log_num("   school ", *(int *)((BYTE *)record + SPELL_RECORD_SCHOOL));
   log_num("   needs a target ", *((BYTE *)record + SPELL_RECORD_AIMED));
   log_num("   hits an area ", *((BYTE *)record + SPELL_RECORD_AREA));
+  // ASKED, not read off the record: this is the one question every elemental
+  // rule in the game goes through — the protections, the three Master perks,
+  // the burn a Master of Fire leaves — so its answer is what all of them act
+  // on. Zero means "not elemental", which is also what a record whose
+  // `DamageIsElemental` is false gives.
+  if (g_spellElement) log_num("   element the engine sees ", g_spellElement(spell));
 }
 
 // ---------------------------------------------------------------------------
@@ -570,6 +597,8 @@ static void install_cast_gate_log(void) {
   // is asked the way the engine asks — and the two bytes at its head are checked
   // first, since an address of ours that has gone stale would be read as a spell
   // the game does not have.
+  g_spellElement = (SpellElementFn)borrow_branch(SPELL_ELEMENT_RVA, SPELL_ELEMENT_HEAD,
+                                                 SPELL_ELEMENT_HEAD_LEN, "the spell's element");
   BYTE *record = (BYTE *)GetModuleHandleW(NULL) + SPELL_RECORD_RVA;
   if (record[0] == 0x56 && record[1] == 0x8B) g_spellRecord = (SpellRecordFn)record;
   else log_line("the spell record accessor is not where we left it");
