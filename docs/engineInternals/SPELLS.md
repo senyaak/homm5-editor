@@ -455,6 +455,13 @@ it: the window is not the only door (the e2e fixtures and `tools/write-effects.t
 come in through the model), and the failure it prevents is silent — a cast that
 plays, spends the mana and covers nothing.
 
+**Removing one is never refused.** The question names what will notice — the maps
+that store its name in a book, a guild or a shrine, and the heroes and classes of
+the mod that name it — and then goes ahead: what the mod owns is edited (the id
+leaves their lists), what it does not own is the map, which is the author's to
+fix. Something you cannot delete because something else names it is a trap, not a
+safeguard; the artifact and hero windows have always worked this way.
+
 `e2e/mod-008-spells-create.spec.ts` authors one through the window and follows
 both halves to disk: the manifest for the document's fields, and
 `bin/homm5-editor-effects.txt` for the tiles and the kinds, by number on both

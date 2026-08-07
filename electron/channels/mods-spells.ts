@@ -116,9 +116,12 @@ export function registerModSpells(): void {
 
   ipcMain.handle('mods:remove-spell', async (_e: IpcMainInvokeEvent, { id }: ModsRemovePayload): Promise<ModsRemoveResult> => {
     const { g, mod } = openMod();
+    // Never refused. Whatever in the mod was naming it stops naming it — the
+    // window has already shown who that is, and the maps outside the mod that
+    // will stop resolving it, in the question it asked first.
     const gone = removeSpell(mod, id);
     const { installed } = buildAndInstall(g, mod);
-    return { archive: installed.archive, removed: gone.id };
+    return { archive: installed.archive, removed: gone.spell.id };
   });
 
   // Which maps name it — asked BEFORE it is removed, and exact: a map stores the

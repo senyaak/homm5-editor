@@ -297,16 +297,41 @@ test('one of the game\'s own spell names is refused', async () => {
   await page.locator('#spelledit-cancel').click();
 });
 
-test('removing asks first, and Cancel means no', async () => {
-  test.setTimeout(2 * 60_000);
+/**
+ * Removing WARNS and then does it — it is never refused.
+ *
+ * A map stores a spell's NAME, in a hero's book, a guild's list, on a shrine, so
+ * the question is asked with those maps in front of it; a hero of the mod who
+ * knows it and a class that prefers it are ours, so they are named too and then
+ * edited. What none of that does is stand in the way: something you cannot
+ * delete because something else names it is a trap, not a safeguard.
+ */
+test('removing asks first — Cancel means no, and Remove means gone', async () => {
+  test.setTimeout(3 * 60_000);
   const { page } = ed;
   if (!(await page.locator('#spellsmod').isVisible())) await page.locator('#spellsbtn').click();
   const row = page.locator('#sm-list .um-item').filter({ hasText: SPELL.name });
   await row.locator('button', { hasText: '×' }).click();
-  // A map stores a spell's NAME — in a hero's book, a guild, a shrine — so the
-  // question is asked with the maps that would stop resolving it in front of it.
-  await expect(page.locator('#ask-text')).toContainText(/Remove .*\?|named by/);
+  await expect(page.locator('#ask-text')).toContainText(/Remove .*\?/);
   await page.locator('#ask-no').click();
   await expect(page.locator('#ask')).toBeHidden();
+  // Cancel means it is still there — the assertion a native `confirm()` could
+  // not make, because nothing could press its buttons.
   expect(readInstalledMod(GAME).spells?.map((x) => x.id)).toContain(SPELL.id);
+
+  const had = readInstalledMod(GAME).spells!.find((x) => x.id === SPELL.id)!.number;
+  await row.locator('button', { hasText: '×' }).click();
+  await page.locator('#ask-yes').click();
+  await expect(page.locator('#sm-note')).toContainText('removed', { timeout: 120_000 });
+  await expect(page.locator('#sm-list')).not.toContainText(SPELL.name);
+  const left = readInstalledMod(GAME).spells ?? [];
+  expect(left.map((x) => x.id)).not.toContain(SPELL.id);
+  // And the numbering closed up behind it: the value IS the position in the
+  // table, so a hole in it would repoint everything after the gap.
+  expect(left.map((x) => x.number)).toEqual(left.map((_, i) => SHIPPED_SPELLS + i));
+  // The extension's file is written from the whole mod every time, so the rows
+  // that named its tiles and its spared kinds go with it rather than being left
+  // behind pointing at a number the table no longer has.
+  expect(readSpellRows(readFileSync(join(GAME, EFFECTS_FILE), 'latin1'))
+    .map((r) => r.spell)).not.toContain(had);
 });

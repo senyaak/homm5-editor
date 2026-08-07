@@ -401,20 +401,33 @@ const report = (e: unknown): void => {
 };
 
 /**
- * Ask what would break, show it, and only then remove.
+ * Ask what would break, show it, and then remove — never refuse.
  *
- * A map stores a spell's NAME — in a hero's book, in a town's guild, in the list
- * of what the map allows, on a shrine — so this is an exact list rather than a
- * warning in general terms, and it is shown BEFORE anything happens.
+ * Two different kinds of casualty, and they are shown together because from the
+ * chair they are one question. OUTSIDE the mod: a map stores a spell's NAME, in
+ * a hero's book, in a town's guild, in the list of what the map allows, on a
+ * shrine — an exact list, not a warning in general terms. INSIDE it: a hero of
+ * ours who starts knowing it and a class that prefers it, which the build simply
+ * edits, since those are ours.
+ *
+ * What it does NOT do is stand in the way. Something you cannot delete because
+ * something else names it is a trap, not a safeguard — the artifact and hero
+ * windows have always warned and gone ahead, and this is the same.
  */
 async function removeSpell(id: string, label: string): Promise<void> {
-  const { uses } = await api.spellUses({ id });
-  const shown = uses.slice(0, 12).join('\n');
-  const more = uses.length > 12 ? `\n… and ${uses.length - 12} more` : '';
-  const question = uses.length
-    ? `${label} is named by ${uses.length} map(s):\n\n${shown}${more}\n\n`
-      + 'They will stop resolving it. Remove anyway?'
-    : `Remove ${label}? No map names it.`;
+  const [{ uses }, { mods }] = await Promise.all([api.spellUses({ id }), api.listMods()]);
+  const heroes = mods.flatMap((m) => m.heroes ?? []).filter((h) => h.spells?.includes(id));
+  const classes = mods.flatMap((m) => m.classes ?? []).filter((c) => c.preferredSpells?.includes(id));
+  const lines: string[] = [];
+  if (uses.length) {
+    lines.push(`${uses.length} map(s) name it and will stop resolving it:`, '',
+      ...uses.slice(0, 12), ...(uses.length > 12 ? [`… and ${uses.length - 12} more`] : []), '');
+  }
+  if (heroes.length) lines.push(`${heroes.map((h) => h.name || h.id).join(', ')} will stop knowing it.`);
+  if (classes.length) lines.push(`${classes.map((c) => c.name || c.id).join(', ')} will stop preferring it.`);
+  const question = lines.length
+    ? `Remove ${label}?\n\n${lines.join('\n')}\n\nRemove anyway?`
+    : `Remove ${label}? Nothing names it.`;
   if (!await ask(question, 'Remove')) return;
   await api.removeSpell({ id });
   $('sm-note').textContent = `${label} removed.`;

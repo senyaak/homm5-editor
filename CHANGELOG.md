@@ -32,7 +32,9 @@ one.
   A spell that hits an area and names no tiles is refused, in the window and in
   the build behind it: the shape a number the engine never heard of falls back on
   covers nothing, so it would be a cast that plays its animation, spends the mana
-  and touches nobody.
+  and touches nobody. Removing one, on the other hand, is never refused — the
+  question names the maps that store it and the heroes and classes of the mod
+  that do, and then it goes.
 
 ### Changed
 

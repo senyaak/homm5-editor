@@ -434,25 +434,40 @@ export function updateSpell(mod: CreatureMod, id: string, spec: SpellSpec): ModS
 }
 
 /**
- * Take a spell out, and close the gap behind it.
+ * Take a spell out, close the gap behind it, and take it out of whatever in the
+ * mod was naming it.
  *
- * Two things inside the mod can be left naming a value the enum no longer
- * declares — a hero who starts knowing it and a class that prefers it — and both
- * are refused rather than repaired, the way a specialization's removal is. What
- * is OUTSIDE the mod is a map, and that is not refused but shown: see
- * findSpellUses, which the window asks before it gets here.
+ * REMOVING IS NEVER REFUSED. A hero of the mod who starts knowing it and a class
+ * that prefers it are ours to edit, so they are edited rather than made into a
+ * reason you cannot delete something: the id simply leaves their lists. What is
+ * outside the mod is a map, and that is not repaired but SHOWN — the window asks
+ * `findSpellUses` and puts the maps in the question before it gets here, exactly
+ * as removing an artifact or a hero does.
+ *
+ * It says what it touched, because "the spell is gone and so is it from two of
+ * your heroes" is not something the caller can work out afterwards.
  */
-export function removeSpell(mod: CreatureMod, id: string): ModSpell {
+export function removeSpell(mod: CreatureMod, id: string): {
+  spell: ModSpell; heroes: string[]; classes: string[];
+} {
   const list = mod.spells ?? [];
   const at = list.findIndex((s) => s.id === id);
   if (at < 0) throw new Error(`${id} is not in the mod`);
-  const known = (mod.heroes ?? []).filter((h) => h.spells?.includes(id)).map((h) => h.id);
-  if (known.length) throw new Error(`${id} is known by ${known.join(', ')} — change them first`);
-  const preferred = (mod.classes ?? []).filter((c) => c.preferredSpells?.includes(id)).map((c) => c.id);
-  if (preferred.length) throw new Error(`${id} is preferred by ${preferred.join(', ')} — change them first`);
-  const gone = list.splice(at, 1)[0]!;
+  const heroes: string[] = [];
+  for (const h of mod.heroes ?? []) {
+    if (!h.spells?.includes(id)) continue;
+    heroes.push(h.id);
+    h.spells = h.spells.filter((s) => s !== id);
+  }
+  const classes: string[] = [];
+  for (const c of mod.classes ?? []) {
+    if (!c.preferredSpells?.includes(id)) continue;
+    classes.push(c.id);
+    c.preferredSpells = c.preferredSpells.filter((s) => s !== id);
+  }
+  const spell = list.splice(at, 1)[0]!;
   list.forEach((s, i) => { s.number = SHIPPED_SPELLS + i; });
-  return gone;
+  return { spell, heroes, classes };
 }
 
 /** Change one already in the mod, keeping its value. */
