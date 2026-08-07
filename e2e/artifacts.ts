@@ -45,11 +45,13 @@ export const MADE = {
   CLOSE_MAP: 'e2e Close Map',
   DIALOGS: 'e2e Dialogs',
   DIALOGS_MAP: 'e2e Dialogs Map',
-  EFFECT_TIMING: 'e2e Effect Timing',
-  GLUED_EFFECTS: 'e2e Glued Effects',
   LOCALIZE: 'e2e Localize',
   MONSTER_AMOUNT: 'e2e monster amount',
   NEW_MAP: 'e2e New Map',
+  // One map for both effect questions — what a system is glued to, and how often
+  // it starts again. It was two (`e2e Glued Effects`, `e2e Effect Timing`), each
+  // a 72×72 built to stand one object on.
+  OBJECT_EFFECTS: 'e2e Object Effects',
   OBJECT_TREE: 'e2e Object Tree',
   PACK: 'e2e Pack',
   PACK_EDITED: 'e2e Pack, edited',

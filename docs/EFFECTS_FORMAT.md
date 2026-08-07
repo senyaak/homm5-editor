@@ -229,7 +229,7 @@ run of the emitter. What keeps a campfire burning is retriggering:
   Speed 0.8, period 3.5) grew a SECOND rainbow arcing over the first while it
   was still at full strength, its spray peaking at 208 alive particles against
   the recording's own 131. In the instance's clock it peaks at 136 — one copy,
-  with the tail of the last one fading under it (`e2e/effect-timing.spec.ts`).
+  with the tail of the last one fading under it (`e2e/object-effects.spec.ts`).
 * `<CycleCount>` — how many triggers fire; 0 = forever. Adventure-reachable
   instances are 389× `0`, 7× `1`.
 * `<Offset>` — delays the train's first trigger (relative timing of the
@@ -264,7 +264,7 @@ Still simplified, in the order they would matter:
   Position/Rotation/Scale (matches how `<Models>` instances behave). **[~]**
 * ~~Bone-glued instances sit at the bone's REST pose~~ — **done** (2026-07-28):
   they follow the playing animation, checked by measurement rather than by eye
-  (`e2e/glued-effects.spec.ts`: over one beat of the shadow dragon's clip the
+  (`e2e/object-effects.spec.ts`: over one beat of the shadow dragon's clip the
   Head-glued glow moves ~0.35 world units while the unglued mist beside it
   moves exactly zero).
 * `bin/Lights` (AnimLight flicker curves) — parked, see §2.

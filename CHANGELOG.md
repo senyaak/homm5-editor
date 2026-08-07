@@ -38,6 +38,21 @@ one.
 
 ### Changed
 
+- **The suite spends less of its time opening the same things twice.** Four
+  specs opened the shipped map A2C1M1 four times — thirteen seconds apiece — to
+  ask four questions about the one scene it produces; a fifth opened it twice
+  more to close it. They are one file now, one load, and the questions are
+  unchanged: 81 seconds became 35. The dragon's bone-glued glow and the
+  fountain's retrigger period likewise shared a 72×72 map of their own each, and
+  now share one. Nothing was dropped to get there — every assertion is where it
+  was, and each reading now names the object it is about instead of taking
+  whatever is on the floor.
+
+- **A test run writes its whole output to a file**, and exits non-zero when
+  something failed. Both were lost by piping the run through `tail` to read it,
+  which throws away the middle — where a diff report says which value differed —
+  and replaces the exit status with the pipe's.
+
 - **A test run no longer takes the screen.** Every launch used to bring the
   editor to the front — dozens of times in a full run, over whatever you were
   doing. The suite now starts it inactive and parked off the desktop, still

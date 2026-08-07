@@ -510,7 +510,7 @@ which receive only. A heightfield casting into a map indexed along the sun
 shadows itself down every slope, and the ground's own `max(N·L, 0)` already
 darkens what faces away.
 
-Verified in `e2e/shadows.spec.ts`, by the only measurement that can fail
+Verified in `e2e/shipped-map-scene.spec.ts`, by the only measurement that can fail
 usefully: the same frame with the pass on and off, differing only where a shadow
 was drawn, and the objects' own screen positions slid over that difference to
 find the offset that overlaps best. That offset is the direction — and reading
@@ -529,7 +529,12 @@ it by eye instead got it backwards twice in one sitting.
 
 ## 5. Verification
 
-* `npx playwright test object-light` — the sum itself, by arithmetic.
+All three live in `e2e/shipped-map-scene.spec.ts` — one file, because they are
+three questions about ONE opened map and opening it is the expensive part:
+`npx playwright test shipped-map-scene` runs the lot in about thirty seconds,
+where the four separate specs spent eighty on four loads of A2C1M1.
+
+* the object-lighting test — the sum itself, by arithmetic.
   `view.shadeProbe(albedo, normal)` draws ONE known albedo under ONE known
   normal into a 1x1 target and reads the pixel back; the test computes what the
   loaded preset says it should be and compares. Every term separates: a normal
@@ -537,14 +542,14 @@ it by eye instead got it backwards twice in one sitting.
   it would not in linear space), and a white albedo proves the clamp. Checked
   by sabotage both ways — dropping `Whitening` moves a channel by 65, decoding
   the texture as sRGB moves it by 74.
-* `npx playwright test shadows` — that shadows are drawn at all, and which way
+* the shadow test — that shadows are drawn at all, and which way
   they fall. On/off frames of the same plan view differ only where the pass
   darkened something; the objects' own screen positions (the plan camera is
   orthographic about a named target, so the mapping is exact) are slid over that
   difference and the best-overlapping offset is the direction. It lands 5° off
   the preset's sun on A2C1M1. Checked by sabotage: flipping the sign of the
   direction in `shadows.ts` takes the agreement from +0.995 to −0.945.
-* `npx playwright test ambient-light` — the handoff: opening A2C1M1 turns the
+* the ambient test — the handoff: opening A2C1M1 turns the
   preset's exact colours up in `view.ambientState()`, raw, with the sun
   unit-length at the pitch/yaw the preset names; before any map, the fallback
   look. Skips itself without the game data. (It named A1C1M1 until 08.2026 — a
