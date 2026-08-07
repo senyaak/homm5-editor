@@ -19,14 +19,17 @@ import { join } from 'node:path';
 import { hudSays } from '../launch.ts';
 import type { Launched } from '../launch.ts';
 import { armBrush, clickTile, newMap, planView } from '../tiles.ts';
-import { openObjectPalette, pickObject, setObjectProp } from '../objects.ts';
+import { openObjectPalette, pickObject, setObjectProp, sharedKey } from '../objects.ts';
 import { addItem, addValueItem, openTree, setTreeValue } from '../tree.ts';
+import { parseTerrain, readGroundFlags, tierOf } from '../../src/terrain/terrain.ts';
 import { readEntries } from '../../src/format/pak.ts';
 import { readInstalledMod } from '../mods.ts';
 import { bar } from '../bar.ts';
 import {
-  ARCHIVE, GAME, MAP_DIR, NAME, ORIGINAL, PLACES, REF, SHARPSHOOTER,
-  decode, gaps, openSharp, placeOne, startSharp, unpackReference,
+  ARCHIVE, BASIN, FOES, GAME, GEM, GEM_ARMY, GEM_AT, MAP_DIR, NAME, NEEDS, ORIGINAL,
+  PLACES, QUEST, REF, SHARPSHOOTER, SHIPYARD_AT, SHIPYARD_CLASS, SHIP_OFFSET, SIGN_TEXT,
+  STONE, STONES, blockOf, cleanup, decode, fillPlacement, gaps, openSharp, placeOne,
+  startSharp, unpackReference,
 } from './shared.ts';
 
 let ed: Launched;
@@ -277,4 +280,263 @@ test('packs to a .h5m holding the same members', async () => {
   const theirs = readEntries(readFileSync(ORIGINAL)).map((e) => e.name.replace(/\\/g, '/'));
   const missing = theirs.filter((n) => !ours.has(n));
   expect(missing, 'members of the original our archive lacks').toEqual([]);
+});
+
+// --- and then what the original never had ------------------------------------
+//
+// Everything above holds the rebuild against the hand-made original. Everything
+// below is ADDED to it on purpose, and it is in this file rather than in two
+// more beside it because it is the same map, in the same sitting, in an order
+// that cannot be shuffled: a hero the game does not ship, the stones and stacks
+// that make the map a proving ground, and one building of every class the mod
+// carries. Three files meant three editors started, three fixtures installed and
+// the same map opened three times to add to it.
+//
+// `openSharp` still guards each of them — it returns at once when the map is
+// already on screen, and picks it out of the picker when it is not, which is
+// what makes any of these runnable on its own.
+
+test('Gem stands on it, in red', async () => {
+  test.setTimeout(2 * 60_000);
+  await openSharp(ed);
+  const { page } = ed;
+
+  await pickObject(page, GEM);
+  const id = await placeOne(page, GEM, GEM_AT.x, GEM_AT.y);
+  await setObjectProp(page, 'PlayerID', 'PLAYER_1');
+  void id;
+
+  // And an army, through the same structured Army row the other three heroes
+  // use. Not decoration: a hero with a first aid tent and nothing to heal
+  // cannot answer any question this map exists to ask, and the stacks the next
+  // test puts along the bottom are there to be fought.
+  const army = page.locator('#p-props .pf', { has: page.locator('label', { hasText: /^Army$/ }) });
+  await army.locator('button.struct-edit').click();
+  await expect(page.locator('#mt-dialog')).toBeVisible();
+  for (let slot = 0; slot < GEM_ARMY.length; slot++) {
+    await addItem(page, ['armySlots']);
+    await setTreeValue(page, ['armySlots', slot, 'Creature'], SHARPSHOOTER);
+    await setTreeValue(page, ['armySlots', slot, 'Count'], String(GEM_ARMY[slot]));
+  }
+  await page.locator('#mt-close').click();
+  await expect(page.locator('#mt-dialog')).toBeHidden();
+
+  await bar(page, '#save');
+  await hudSays(page, /saved/i, 60_000);
+
+  // On disk, in the map the game will read: our hero, owned by red.
+  const xml = readFileSync(join(MAP_DIR, 'map.xdb'), 'latin1');
+  expect(xml, 'the map references the hero the mod installed').toContain(GEM);
+  // Her own <AdvMapHero> block and nobody else's: split on the element, keep
+  // the piece that names her. A regex spanning "…H3Gem…</AdvMapHero>" would
+  // happily start at the hero before her and still match.
+  const gem = xml.split('<AdvMapHero>').find((part) => part.includes('H3Gem')) ?? '';
+  expect(gem, 'the placed hero is red').toContain('<PlayerID>PLAYER_1</PlayerID>');
+  expect((gem.match(new RegExp(`<Creature>${SHARPSHOOTER}</Creature>`, 'g')) ?? []).length,
+    'and she has an army to lose').toBe(GEM_ARMY.length);
+
+  await bar(page, '#pack');
+  await hudSays(page, /^packed → /, 60_000);
+  const packed = readEntries(readFileSync(ARCHIVE))
+    .find((e) => e.name.replace(/\\/g, '/').endsWith('map.xdb'))!;
+  expect(packed.data.toString('latin1'), 'the packed map carries her too').toContain('H3Gem');
+});
+
+test('and a proving ground for her: stones to level on, enemies to fight', async () => {
+  test.setTimeout(10 * 60_000);
+  await openSharp(ed);
+  const { page } = ed;
+  // Plan view for the same reason the passability stroke uses it: at oblique
+  // angles the projection and the picking ray can disagree by a tile, and
+  // clickTile rightly refuses a click that would land on the wrong one.
+  await planView(page);
+
+  for (const [x, y] of STONES) {
+    await pickObject(page, STONE);
+    await placeOne(page, STONE, x, y);
+  }
+
+  for (const f of FOES) {
+    await pickObject(page, f.shared);
+    await placeOne(page, f.shared, f.x, f.y);
+    // The same four the original's own stacks carry: a fixed count that does
+    // not grow week to week, and a stack that never offers to join — a test bed
+    // whose numbers drift is a test bed that answers a different question every
+    // time it is walked into.
+    await setObjectProp(page, 'Custom', 'true');
+    await setObjectProp(page, 'Amount', String(f.amount));
+    await setObjectProp(page, 'DoesNotGrow', 'true');
+    await setObjectProp(page, 'Courage', 'MONSTER_COURAGE_ALWAYS_FIGHT');
+  }
+
+  await bar(page, '#save');
+  await hudSays(page, /saved/i, 60_000);
+
+  // Read back off the file the game reads, not off the panel that wrote it.
+  const xml = readFileSync(join(MAP_DIR, 'map.xdb'), 'latin1');
+  const stones = (xml.match(/Learning_Stone/g) ?? []).length;
+  expect(stones, 'every stone is in the saved map').toBe(STONES.length);
+  // Each stack by its own definition: ten stacks of one creature would place
+  // and save just as happily, and prove nothing about the ladder.
+  const missing = FOES.filter((f) => !xml.includes(f.shared)).map((f) => f.shared);
+  expect(missing, 'stacks the saved map does not name').toEqual([]);
+  // And the amounts really landed — `Custom` false would leave the game to roll
+  // its own number, which is the quiet way a fixed test bed stops being one.
+  //
+  // Asked as "SOME block carries both", not "the block naming this creature":
+  // the map already has two Peasant stacks of the original's, so the first
+  // block naming a Peasant is one of THEIRS, at their count. That read as our
+  // stack having the wrong amount.
+  const blocks = xml.split('<AdvMapMonster>');
+  for (const f of FOES) {
+    const ours = blocks.some((b) => b.includes(f.shared)
+      && b.includes('<Custom>true</Custom>')
+      && b.includes(`<Amount>${f.amount}</Amount>`));
+    expect(ours, `a custom stack of ${f.amount} × ${f.shared}`).toBe(true);
+  }
+
+  await bar(page, '#pack');
+  await hudSays(page, /^packed → /, 60_000);
+  const packedStones = readEntries(readFileSync(ARCHIVE))
+    .find((e) => e.name.replace(/\\/g, '/').endsWith('map.xdb'))!;
+  expect((packedStones.data.toString('latin1').match(/Learning_Stone/g) ?? []).length,
+    'and the packed map carries them too').toBe(STONES.length);
+});
+
+// Placing one building is the other half of MAKING one: the palette has to offer
+// it, its footprint has to be a real size, and a row of them has to lay out
+// without landing on each other. One of every class is the widest sweep of the
+// placement path there is.
+//
+// On THIS map and not one of their own, because a map is only a test if it can
+// be walked into: a blank map with buildings and no player the game will not
+// even load. Here there is a town, three heroes and an opponent, and the
+// bottom-left corner is empty.
+//
+// Standing there is not the same as WORKING, and the difference is the
+// placement: the shrine teaches the spell its placement names, the sign shows
+// the file its placement points at, the seer hut asks the errand its placement
+// carries, and the shipyard launches into the tile its placement offsets to.
+// Walked around in the game, all four were silent — three because those fields
+// were empty and one because the map had no water in it at all. So this fills
+// them in and digs a bay, and then reads the map back to see it.
+test('every building the mod carries stands in its empty corner', async () => {
+  test.setTimeout(10 * 60_000);
+  await openSharp(ed);
+  const { page } = ed;
+
+  // The buildings come from mod-005; the fixture this stage installs on its own
+  // carries only the palace. Run alone, there is nothing here to place — and
+  // saying so is better than failing a map spec over a stage that did not run.
+  const buildings = readInstalledMod(GAME).buildings ?? [];
+  test.skip(buildings.length < 2, 'no buildings installed — run mod-005 first');
+
+  // What the map already has — the palace among it, placed above. Placing a
+  // second one would be a duplicate rather than a check.
+  const already = new Set((await page.evaluate(() => window.view.objects()))
+    .map((o) => (o.shared ? sharedKey(o.shared) : ''))
+    .filter(Boolean));
+  const todo = buildings.filter((b) => !already.has(sharedKey(`/Buildings/${b.file}/${b.file}.(${b.className}).xdb`)));
+  expect(todo.length, 'something left to place').toBeGreaterThan(0);
+
+  // The sea first: the shipyard is placed against it, and digging under a
+  // building that is already there would leave it standing on a cliff.
+  await test.step('a bay for the shipyard', async () => {
+    await planView(page);
+    await armBrush(page, 'lower', '7');
+    for (const [x, y] of BASIN) await clickTile(page, x, y);
+    await page.locator('#brushbtn').click(); // clicks belong to objects again
+    await expect(page.locator('#brushbtn')).toHaveText('off');
+  });
+
+  const STEP = 8, COLUMNS = 5, FIRST = { x: 6, y: 48 };
+  const placed: string[] = [];
+  let slot = 0;
+  for (const b of todo) {
+    const at = b.className === SHIPYARD_CLASS
+      ? SHIPYARD_AT
+      : { x: FIRST.x + (slot % COLUMNS) * STEP, y: FIRST.y + Math.floor(slot++ / COLUMNS) * STEP };
+    await test.step(`${b.file} at ${at.x}:${at.y}`, async () => {
+      const shared = `/Buildings/${b.file}/${b.file}.(${b.className}).xdb`;
+      // A building the palette cannot find is one nobody can place, however well
+      // it was built — so this arms it the way a person would.
+      await pickObject(page, shared);
+      // placeOne fails when nothing went down, and the editor refuses a
+      // placement that would land on something already there — so a refusal
+      // here IS the overlap check.
+      await placeOne(page, shared, at.x, at.y);
+      // What the CLASS needs from its placement. A shrine teaches the spell its
+      // placement names and a sign shows the text its placement points at, so
+      // one left at SPELL_NONE or at no file is a building that stands there and
+      // does nothing — measured in the game, see BUILDINGS.md §3. The map is
+      // meant to be walked around, so they are filled in.
+      for (const [field, value] of Object.entries(NEEDS[b.className] ?? {})) {
+        await setObjectProp(page, field, value);
+      }
+      await fillPlacement(page, b.className);
+      placed.push(b.file);
+    });
+  }
+  expect(placed).toHaveLength(todo.length);
+
+  await bar(page, '#save');
+  await hudSays(page, /saved/i, 60_000);
+  const xml = readFileSync(join(MAP_DIR, 'map.xdb'), 'latin1');
+  expect(placed.filter((file) => !xml.includes(`/Buildings/${file}/`)),
+    'buildings the saved map does not name').toEqual([]);
+
+  // --- and the three whose behaviour lives on the placement --------------
+  //
+  // Checked in the file the game reads, not in the panel that wrote it: all
+  // three came out silent the first time this map was walked around, and each
+  // was silent for its own reason (BUILDINGS.md §3).
+  await test.step('the sign has words', () => {
+    const href = /<MessageFileRef href="([^"]+)"\/>/.exec(blockOf(xml, 'AdvMapSign'))?.[1];
+    expect(href, 'the sign points at a text file').toBeTruthy();
+    // Map-relative, like every message the shipped maps carry.
+    expect(decode(readFileSync(join(MAP_DIR, href!)))).toBe(SIGN_TEXT);
+  });
+
+  await test.step('the seer hut has an errand', () => {
+    const quest = blockOf(xml, 'AdvMapSeerHut');
+    expect(quest).toContain(`<Name>${QUEST.name}</Name>`);
+    expect(quest).toContain(`<Kind>${QUEST.kind}</Kind>`);
+    // A resource index and an amount, in that order — the Kind's own reading.
+    for (const p of QUEST.parameters) expect(quest).toContain(`<Item>${p}</Item>`);
+    expect(quest, 'an award that is not AWARD_NONE').toContain(`<Type>${QUEST.award}</Type>`);
+    expect(quest).toContain(`<Experience>${QUEST.experience}</Experience>`);
+    for (const ref of ['CaptionFileRef', 'DescriptionFileRef']) {
+      const href = new RegExp(`<${ref} href="([^"]*)"`).exec(quest)?.[1];
+      expect(href, `the quest's ${ref}`).toBeTruthy();
+      expect(existsSync(join(MAP_DIR, href!)), `${href} is beside the map`).toBe(true);
+    }
+  });
+
+  await test.step('the shipyard has water to launch into', () => {
+    const yard = blockOf(xml, 'AdvMapShipyard');
+    const ship = /<ShipTile>\s*<x>(-?\d+)<\/x>\s*<y>(-?\d+)<\/y>/.exec(yard);
+    expect(ship, 'the shipyard names a ship tile').toBeTruthy();
+    expect([+ship![1]!, +ship![2]!]).toEqual([SHIP_OFFSET.x, SHIP_OFFSET.y]);
+    // The offset is only half of it: the tile it lands on has to BE water, and
+    // a tile is water when all four of its corners are.
+    const t = parseTerrain(readFileSync(join(MAP_DIR, 'GroundTerrain.bin')));
+    const flags = readGroundFlags(t);
+    expect(flags, 'the map carries a ground-kind plane').toBeTruthy();
+    const at = { x: SHIPYARD_AT.x + SHIP_OFFSET.x, y: SHIPYARD_AT.y + SHIP_OFFSET.y };
+    const dry: string[] = [];
+    for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
+      const i = (at.y + dy!) * t.V + (at.x + dx!);
+      if (tierOf(flags![i]!) !== 0) dry.push(`${at.x + dx!},${at.y + dy!}`);
+    }
+    expect(dry, `corners of ${at.x},${at.y} the Lower brush left dry`).toEqual([]);
+  });
+
+  await bar(page, '#pack');
+  await hudSays(page, /^packed → /, 60_000);
+  const names = readEntries(readFileSync(ARCHIVE)).map((e) => e.name.replace(/\\/g, '/'));
+  // The lobby indexes tags, so a map without one is packed and not on the menu.
+  expect(names.some((n) => n.endsWith(`Maps/SingleMissions/${NAME}/map-tag.xdb`))).toBe(true);
+
+  // The whole stage converged — leave nothing behind.
+  cleanup();
 });

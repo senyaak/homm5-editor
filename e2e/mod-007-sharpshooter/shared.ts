@@ -1,18 +1,19 @@
-// Stage 007 of the mod chain: the Sharpshooter Test map, in three sittings.
+// Stage 007 of the mod chain: the Sharpshooter Test map.
 //
-// One spec grew to six tests and eight hundred lines, so it lives as a folder
-// now, the way the C1M1 reconstruction does — numbered files over one on-disk
-// map, each launching the editor and reopening what the one before left:
+// `sharpshooter-map.spec.ts` beside this file builds it the way a person would,
+// holds it against the hand-made original, packs it, and then adds what the
+// original never had — Gem with her army, the stones and the ladder of foes,
+// and one of every building the mod carries, placed and working.
 //
-//   001-original    build the map the way a person would, hold it against the
-//                   hand-made original, pack it
-//   002-proving-ground   Gem with her army, the stones and the ladder of foes
-//   003-buildings   one of every building the mod carries, placed and working
+// IT WAS THREE FILES (001-original, 002-proving-ground, 003-buildings), and
+// three files meant three editors started, three fixtures installed and the same
+// map opened three times to add to it. One sitting does the lot; the order was
+// never optional anyway, since each part builds on the one above.
 //
-// What is HERE is what all three share: the map's plan (the literal constants
-// that read like the plan of the map), the reference paths, the helpers that
-// drive placement, and the two doors every sitting enters through — launch,
-// and reopen-through-the-picker.
+// What is HERE is what the spec and anything after it share: the map's plan (the
+// literal constants that read like the plan of the map), the reference paths,
+// the helpers that drive placement, and the two doors a sitting enters through —
+// launch, and reopen-through-the-picker.
 //
 // The hand-made original is the REFERENCE: it is unpacked once into _tmp and
 // nothing here ever writes to it. The mod the map is made of — the
@@ -255,7 +256,7 @@ export async function openSharp(ed: Launched): Promise<void> {
   const { page } = ed;
   if (((await page.locator('#title').textContent()) ?? '').includes(NAME)) return;
   expect(existsSync(join(MAP_DIR, 'map.xdb')),
-    `the rebuilt map is on disk — 001-original builds it (app log tail:\n${ed.log.slice(-15).join('\n')})`).toBe(true);
+    `the rebuilt map is on disk — the first test of this file builds it (app log tail:\n${ed.log.slice(-15).join('\n')})`).toBe(true);
   await page.locator('#cats .chip', { hasText: 'All' }).click();
   await page.locator('#search').fill(NAME);
   const row = page.locator('#maplist .m', { hasText: `${NAME}.${MOD_EXT.map}` }).first();
