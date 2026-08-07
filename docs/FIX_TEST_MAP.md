@@ -60,7 +60,7 @@ computer's.
 |---|---|---|
 | `wizard` | Academy | Master of Fire |
 | `knight` | Haven | Encourage |
-| `warlock` | Dungeon | Payback, the snare crash, Empowered Armageddon, elemental damage |
+| `warlock` | Dungeon | Payback, the snare crash, Empowered Armageddon |
 | `runemage` | Fortress | Dragon Form |
 | `ranger` | Sylvan | Imbue Ballista — the fix, and the bug it claims |
 | `barbarian` | Stronghold | Barbarian Learning |
@@ -194,23 +194,21 @@ Cast the plain Armageddon as well (turn Empowered Spells off in the battle if th
 interface lets you, or compare against the enemy hero's): the plain one was
 always right, and it must stay exactly as it was.
 
-### 5a. `elemental-damage-fix` — the same warlock, the same cast
+### 5a. The element, which is not a flag
 
-His army holds **twenty Fire Elementals**, which are immune to fire, and an
-Armageddon hits its own side. So both readings come off one cast.
+His army also holds **twenty Fire Elementals**, immune to fire, and an Armageddon
+hits its own side — so this is read off the same casts, in both runs alike.
 
-The routine behind a whole-field spell has four ways to apply the damage, one
-per element and a fourth for none, and it picks by asking whether the spell is
-Armageddon — a shortcut for "is its damage elemental" that is right until the
-game has a second such spell. It has one: the empowered version.
+The routine behind a whole-field spell has four ways to apply the damage, one per
+element and a fourth for none, and the shipped code picks by asking whether the
+spell is Armageddon — a shortcut for "is its damage elemental". The extension
+asks the spell's own document instead, for every spell and with no switch,
+because it is the same question asked properly rather than a behaviour anybody
+chose. The one shipped spell it moves is the empowered Armageddon.
 
-- **off** — the **empowered** Armageddon burns his own Fire Elementals. Their
-  immunity has nothing to answer, because the damage carries no element.
-- **on** — they take nothing from it, exactly as they already take nothing from
-  the plain Armageddon he also carries.
-
-The plain one is the control and needs no flag: cast both in the same battle and
-the elementals should end up treated the same way by each.
+So in **both** runs: neither Armageddon should touch his Fire Elementals. If one
+of them burns his own, the element is not reaching the applier and everything
+elemental is missing from that spell — no Master of Fire, no resistance.
 
 ### 6. `dragon-form-fix` — the runemage
 

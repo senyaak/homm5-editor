@@ -21,9 +21,10 @@ one.
   The game picks between them by asking whether the spell is Armageddon, which is
   a shortcut for "is its damage elemental" and was right until the game had a
   second such spell. It has one: the Empowered Armageddon lands with no element
-  at all, so no Master of Fire follows it and no fire resistance answers it. This
-  asks the spell's own document instead of its number, which fixes the empowered
-  one and everything the question will ever cover.
+  at all, so no Master of Fire follows it and no fire resistance answers it. The
+  element now comes from the spell's own document, for every spell and with no
+  switch to find — it is the same question the game was already asking, asked
+  properly. The one shipped spell it moves is that empowered Armageddon.
 
 - **A creature of yours can be raised by necromancy.** Which creature comes back
   from the dead, and as what, is one table in the game's own files — 134

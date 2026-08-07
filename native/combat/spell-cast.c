@@ -864,16 +864,18 @@ static const BYTE TILES_DONE_MARK[TILES_DONE_MARK_LEN] = {
  * cast to the tail with an empty list — which is what a spell that says it hits
  * an area and does not say where would do anyway. The mod is expected to say.
  */
-static void __cdecl our_tiles(int spell, void *tiles, int x, int y) {
+/** Set by the C, read by the stub after its `popad` — `al` does not survive that. */
+static BYTE g_tilesWereOurs = 0;
+
+/** Non-zero when the mod said which tiles this spell covers, and they were laid. */
+static char __cdecl our_tiles(int spell, void *tiles, int x, int y) {
   SpellRow *row = spell_row(spell);
-  if (!row || !row->areaCount || !g_addTile) {
-    log_num("area: no tiles said for spell id ", spell);
-    return;
-  }
+  if (!row || !row->areaCount || !g_addTile) return 0;
   for (int i = 0; i < row->areaCount; i++) {
     int point[2] = { x + row->areaX[i], y + row->areaY[i] };
     g_addTile(tiles, point);
   }
+  return 1;
 }
 
 /**
@@ -884,20 +886,21 @@ static void __cdecl our_tiles(int spell, void *tiles, int x, int y) {
  * read straight off the frame. Registers and flags go back untouched, because
  * the tail reads `esi` and `ebx` exactly as the shipped cases leave them.
  */
-#define AREA_STUB_LEN 44
+#define AREA_STUB_LEN 50
 static BYTE AREA_STUB[AREA_STUB_LEN] = {
-  0x81, 0xFF, 0x61, 0x01, 0x00, 0x00,       // cmp edi,161h    — 353, the first of ours
-  0x72, 0x19,                               // jb +25          — the game's own, carry on
   0x60,                                     // pushad
   0x9C,                                     // pushfd
   0xFF, 0x75, 0x10,                         // push dword ptr [ebp+10h]   — y
   0xFF, 0x75, 0x0C,                         // push dword ptr [ebp+0Ch]   — x
   0x53,                                     // push ebx                   — the list
   0x57,                                     // push edi                   — the spell id
-  0xE8, 0x00, 0x00, 0x00, 0x00,             // call our_tiles
+  0xE8, 0x00, 0x00, 0x00, 0x00,             // call our_tiles  — 0 if nothing was said
   0x83, 0xC4, 0x10,                         // add esp,16
+  0xA2, 0x00, 0x00, 0x00, 0x00,             // mov [g_tilesWereOurs],al
   0x9D,                                     // popfd
   0x61,                                     // popad
+  0x80, 0x3D, 0x00, 0x00, 0x00, 0x00, 0x00, // cmp byte ptr [g_tilesWereOurs],0
+  0x74, 0x05,                               // je +5           — the game's own shape
   0xE9, 0x00, 0x00, 0x00, 0x00,             // jmp <the tail>
   0x81, 0xFF, 0x1A, 0x01, 0x00, 0x00,       // cmp edi,11Ah    — displaced
   0xE9, 0x00, 0x00, 0x00, 0x00,             // jmp back
@@ -920,12 +923,14 @@ static void install_area_shape(void) {
                                     PAGE_EXECUTE_READWRITE);
   if (!stub) { log_line("area shape: no memory for the stub"); return; }
   for (int i = 0; i < AREA_STUB_LEN; i++) stub[i] = AREA_STUB[i];
-  // No log per question, deliberately: the interface asks this routine for every
+  // No log anywhere here, deliberately: the interface asks this routine for every
   // tile the cursor crosses while an area spell is armed, so a line each would
-  // bury the cast it belongs to. `our_tiles` speaks only when it has nothing.
-  *(DWORD *)(stub + 19) = (DWORD)(void *)our_tiles - (DWORD)(stub + 23);
-  *(DWORD *)(stub + 29) = (DWORD)tail - (DWORD)(stub + 33);
-  *(DWORD *)(stub + 40) =
+  // bury the cast it belongs to. What shape a cast used is said once, at the cast.
+  *(DWORD *)(stub + 11) = (DWORD)(void *)our_tiles - (DWORD)(stub + 15);
+  *(DWORD *)(stub + 19) = (DWORD)(void *)&g_tilesWereOurs;
+  *(DWORD *)(stub + 27) = (DWORD)(void *)&g_tilesWereOurs;
+  *(DWORD *)(stub + 35) = (DWORD)tail - (DWORD)(stub + 39);
+  *(DWORD *)(stub + 46) =
       (DWORD)(base + AREA_SHAPE_RVA + AREA_SHAPE_LEN) - (DWORD)(stub + AREA_STUB_LEN);
   FlushInstructionCache(GetCurrentProcess(), stub, AREA_STUB_LEN);
 
@@ -1049,11 +1054,9 @@ static void install_damaging_spell(void) {
 // AND THE SITE IS SHARED. It is the third of the three
 // `native/qol/fix-empowered-armageddon.c` documents, and asking the record
 // answers that one too: the accessor normalises the empowered Armageddon (232)
-// to 10 and finds it elemental, so the fix's third site is not a case to add but
-// a consequence of asking properly. One stub, one question, and the flag decides
-// only whether the GAME'S OWN spells get asked it — because the Rules Test
-// experiment turns fixes on and off and a shipped behaviour that moved without
-// its flag would spoil it.
+// to 10 and finds it elemental, so that site is not a case anybody adds — it
+// falls out of asking properly, and so will any elemental whole-field spell the
+// game is ever given.
 
 /** `mov eax,[esi+4] / cmp eax,0Ah / jne` — which element the damage is dealt in. */
 #define WHOLE_FIELD_ELEMENT_RVA 0x9610b7u
@@ -1069,26 +1072,27 @@ static const BYTE WHOLE_FIELD_ELEMENT_HEAD[WHOLE_FIELD_ELEMENT_LEN] = {
 static BYTE g_wholeFieldElemental = 0;
 
 /**
- * TWO CASES, and the second is the shipped shortcut kept behind its own flag.
+ * ONE RULE, FOR EVERY SPELL IN THE GAME: the element comes from the document.
  *
- * `SpellElement` IS the question `cmp eax,0Ah` was a shortcut for, so asking it
- * needs no list and no upkeep: a spell of ours qualifies by its own document,
- * and so does the empowered Armageddon (232), which the accessor normalises to
- * 10 and then finds elemental. That is why this is `elemental-damage-fix` and
- * not part of the Armageddon one — it is not a case to add for one spell, it is
- * the question, and anything the game is ever given an elemental whole-field
- * spell for is covered by it the same day.
+ * No number is asked here, and that is the point. `SpellElement` IS the question
+ * `cmp eax,0Ah` was a shortcut for — it normalises the id, reads the record, and
+ * answers 0 unless `DamageIsElemental` is set — so asking it directly is asking
+ * what the engine already meant, for Armageddon exactly as for a spell of ours.
  *
- * OURS ALWAYS, the game's own only with the flag on. Not because the shortcut is
- * right for them, but because the Rules Test experiment is "every fix off, then
- * every fix on, same map": a shipped behaviour that changed without its flag
- * would make one of those runs a lie. Our own ids are not in that experiment.
+ * WHY NOT BEHIND A FLAG, when a changed shipped behaviour usually is. Because
+ * the change is not a behaviour: it is the same question asked properly, and it
+ * moves exactly ONE shipped spell. Only three reach this routine — Armageddon
+ * (elemental, fire applier, as before), Holy Word and Unholy Word (both name an
+ * element and leave `DamageIsElemental` false, so both answer 0 and take the
+ * plain applier, as before). The fourth is the Empowered Armageddon, which the
+ * accessor normalises to 10 and finds elemental — and that is the shipped BUG
+ * `fix-empowered-armageddon` exists for, not a rule anybody chose.
+ *
+ * And a spell of ours must not need a fix switched on to have the element its
+ * own document gives it. See docs/QOL.md for the line between the two.
  */
 static void __cdecl decide_whole_field(int spell) {
-  int askTheRecord = spell >= FIRST_SPELL_OF_OURS || g_qol[QOL_ELEMENTAL_DAMAGE_FIX];
-  g_wholeFieldElemental = (BYTE)(askTheRecord
-      ? (g_spellElement && g_spellElement(spell) != 0)
-      : spell == 0x0A);
+  g_wholeFieldElemental = (BYTE)(g_spellElement && g_spellElement(spell) != 0);
 }
 
 #define WHOLE_FIELD_STUB_LEN 34
