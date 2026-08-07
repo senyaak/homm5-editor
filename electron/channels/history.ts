@@ -53,11 +53,17 @@ function instancesOf(s: Session): SceneInstance[][] {
     const g = s.resolver.resolve(shared);
     if (g < 0) continue;
     const floor = obj.floor === 1 ? 1 : 0;
+    // Everything buildScene puts on an instance, because the renderer rebuilds
+    // the floor from this list and whatever is missing here is missing on
+    // screen. The designer point lights are the part that has nowhere else to
+    // come from: an undo without them left a lit courtyard dark until reload.
+    const lights = obj.pointLights;
     // z is left to the renderer, which drops an object onto its own terrain --
     // the same thing object:add does.
     floors[floor]!.push({
       id: obj.id, type: obj.type, g, shared: shared.split('#')[0]!,
       x: pos.x, y: pos.y, z: 0, r: obj.rot || 0,
+      ...(lights.length ? { lights } : {}),
     });
   }
   return floors;

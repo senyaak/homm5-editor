@@ -439,6 +439,17 @@ interface ViewApi {
    */
   batched(): { slots: number; misplaced: number };
   /**
+   * How many of the things that DRAW the visible floor's objects are in the
+   * shadow map — the instanced batches and the animated bodies.
+   *
+   * A mesh's shadow role is set once, by the pass that runs when the floor is
+   * built, and a mesh made after that has neither role. Nothing else can see it:
+   * the object is drawn, in the right place, with the right material, and the
+   * only difference is that it stands in flat sun and nothing falls on it. The
+   * frame would say so and no other number would.
+   */
+  shadowCasters(): { drawn: number; casting: number; missing: string[] };
+  /**
    * The frame as it stands, as a PNG data URL.
    *
    * The only way to LOOK at what the app draws. An Electron window screenshot
@@ -734,6 +745,23 @@ const view: ViewApi = {
       }
     }
     return { slots, misplaced };
+  },
+  shadowCasters() {
+    const fl = state.world ? activeFloor() : null;
+    if (!fl) return { drawn: 0, casting: 0, missing: [] };
+    let drawn = 0, casting = 0;
+    const missing: string[] = [];
+    // Named, because "one of them is not casting" is the start of the hunt and
+    // not the end of it: which draw it is says whether it came from the batch
+    // path or the animated one.
+    const count = (m: THREE.Object3D, what: string): void => {
+      drawn++;
+      if (m.castShadow && m.receiveShadow) casting++;
+      else missing.push(`${what} cast=${m.castShadow} receive=${m.receiveShadow}`);
+    };
+    for (const [g, b] of fl.batches) count(b.im, `batch g${g}`);
+    for (const a of fl.idle) count(a.mesh, `idle ${(a.mesh.userData.inst as Instance | undefined)?.shared ?? '?'}`);
+    return { drawn, casting, missing };
   },
   snapshot() {
     renderer.render(scene, cam.active);

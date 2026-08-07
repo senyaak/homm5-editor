@@ -141,6 +141,58 @@ test('a paint stroke comes back', async () => {
   expect(ed.errors, 'the renderer threw nothing').toEqual([]);
 });
 
+// What undo puts back has to be the same PICTURE, not merely the same objects.
+//
+// The step is applied in the main process and the renderer rebuilds the floor
+// from the instance list that comes back — and rebuilding is where a floor loses
+// everything that was done to it AFTER its objects were first made. The shadow
+// roles are handed out once, when the floor is built, so fresh instanced meshes
+// neither cast nor receive: the objects come back drawn, in the right place,
+// with the right material, standing in flat sun. The effects are worse than
+// lost: a system is bound to the instance it was built for, so the ones from
+// before the step keep burning for objects that no longer exist, while the
+// objects that came back stand cold.
+//
+// One object with both — a fountain, whose spray is a particle system and whose
+// body casts — undone and redone.
+test('the picture comes back with the objects: effects and shadows', async () => {
+  test.setTimeout(5 * 60_000);
+  const { page } = ed;
+  await ensureMap();
+
+  const FOUNTAIN = '/MapObjects/Fountain_Of_Fortune.(AdvMapBuildingShared).xdb';
+  /** The fountain's own particle systems, by name, so no other object counts. */
+  const spray = (): Promise<number> => page.evaluate((href) =>
+    window.view.fxSystems().filter((s) => s.shared === href).length, FOUNTAIN);
+
+  await pickObject(page, FOUNTAIN);
+  await placeAtTile(page, 60, 12);
+  // Effects arrive over an IPC of their own, so the object is on the map before
+  // they are.
+  await expect.poll(spray, { timeout: 60_000 }).toBeGreaterThan(0);
+
+  const systems = await spray();
+  const before = await page.evaluate(() => window.view.shadowCasters());
+  expect(before.drawn, 'something is drawing the objects').toBeGreaterThan(0);
+  expect(before.casting, `all of it is in the shadow map: ${before.missing.join('; ')}`).toBe(before.drawn);
+
+  await page.locator('#undobtn').click();
+  await expect(page.locator('#hud')).toContainText('undid', { timeout: 30_000 });
+  // Nothing left spraying over the grass the fountain no longer stands on.
+  await expect.poll(spray, { timeout: 30_000 }).toBe(0);
+  const undone = await page.evaluate(() => window.view.shadowCasters());
+  expect(undone.casting, 'what is still drawn still casts').toBe(undone.drawn);
+
+  await page.locator('#redobtn').click();
+  await expect(page.locator('#hud')).toContainText('redid', { timeout: 30_000 });
+  await expect.poll(spray, { timeout: 60_000 }).toBe(systems);
+
+  const after = await page.evaluate(() => window.view.shadowCasters());
+  expect(after.drawn, 'the objects are drawn again').toBe(before.drawn);
+  expect(after.casting, 'and they are back in the shadow map').toBe(after.drawn);
+  expect(ed.errors, 'the renderer threw nothing').toEqual([]);
+});
+
 // The regression this file was written for.
 //
 // Save used to name the terrain's tiles in the map's own <tiles> list on its way

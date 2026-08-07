@@ -19,9 +19,12 @@ import { heightOn, tileCenter } from '#core/coords.ts';
 import type { Floor3D, GeomBatch } from '#core/state.ts';
 import type { Instance } from '#src/scene/payload.ts';
 import { geomScale, worldGeos, worldMats } from '#viewport/geoms.ts';
+import { reloadFx } from '#viewport/fx.ts';
 import { addIdle, clearIdle } from '#viewport/idle.ts';
 import { syncFootprints } from '#viewport/overlays.ts';
-import { markLightsDirty } from '#viewport/point-lights.ts';
+import { bakeLightMap, markLightsDirty } from '#viewport/point-lights.ts';
+import { markShadowRoles } from '#viewport/shadows.ts';
+import { applyProjectedMaterials } from '#viewport/splat.ts';
 
 /** Spare slots kept so placing a few objects does not reallocate every time. */
 const BATCH_HEADROOM = 8;
@@ -101,6 +104,10 @@ export function addToBatch(fl: Floor3D, inst: Instance, mesh: THREE.Mesh): void 
     const im = new THREE.InstancedMesh(geo, mat, 1 + BATCH_HEADROOM);
     im.count = 0;
     im.frustumCulled = false;
+    // A batch made after the floor was built misses the pass that hands out the
+    // shadow roles, and a mesh that neither casts nor receives is the first
+    // object of its model standing in flat light with no shadow under it.
+    markShadowRoles(im);
     batch = { im, slot: new Map(), at: [] };
     fl.objGroup.add(im);
     fl.batches.set(inst.g, batch);
@@ -111,6 +118,9 @@ export function addToBatch(fl: Floor3D, inst: Instance, mesh: THREE.Mesh): void 
     for (let i = 0; i < batch.im.count; i++) { batch.im.getMatrixAt(i, m); bigger.setMatrixAt(i, m); }
     bigger.count = batch.im.count;
     bigger.frustumCulled = false;
+    // The roles do not come across with the matrices — a batch that outgrew
+    // itself used to take every copy of that model out of the shadow map.
+    markShadowRoles(bigger);
     fl.objGroup.remove(batch.im);
     batch.im.dispose();
     fl.objGroup.add(bigger);
@@ -203,5 +213,27 @@ export function replaceInstances(fl: Floor3D, instances: Instance[]): void {
   });
   const batches = buildBatches(still, fl.meshes, worldGeos, worldMats, fl.objGroup);
   for (const [g, b] of batches) fl.batches.set(g, b);
+  // Everything buildFloor does to a floor's objects AFTER the batches exist has
+  // to happen here too, or an undo quietly returns a poorer picture than the one
+  // it took away — and it stays poorer, because nothing re-runs until the map is
+  // reopened.
+  //
+  // Marked one by one rather than by walking the group: `markShadowRoles` makes
+  // every mesh it finds a caster, and by this point the group also holds the
+  // footprint and passability overlays, which are flat coloured squares that
+  // must not appear in the shadow map. (The animated bodies mark themselves, in
+  // addIdle.)
+  for (const b of fl.batches.values()) markShadowRoles(b.im);
+  // A model that takes the ground it stands on (the abandoned mine's mound) is
+  // drawn with a material built from the floor's splat, and the batch it lived
+  // on has just been thrown away with it.
+  applyProjectedMaterials(fl);
+  // The designer lights the objects carry, re-accumulated the way buildFloor
+  // does it — cheap when nothing on the floor has any.
+  bakeLightMap(fl);
   syncFootprints(fl);
+  // And the effects, which are bound to the instance objects that no longer
+  // exist. Async, like the palette's own placement: the baked keys may need
+  // fetching, and the map is usable while they come.
+  void reloadFx(fl);
 }

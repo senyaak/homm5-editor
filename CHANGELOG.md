@@ -61,6 +61,26 @@ one.
 
 ### Fixed
 
+- **Undo gives the picture back, not just the objects.** Ctrl+Z re-parses the map
+  and the renderer rebuilds the floor from the instance list that comes back —
+  and the rebuild dropped everything that had been done to those objects after
+  they were first made. Shadows went: the roles that put a mesh in the shadow map
+  are handed out once, when the floor is built, so the rebuilt draws neither cast
+  nor received, and every object on the map stood in flat sun with nothing under
+  it. Effects went twice over: a particle system belongs to the instance it was
+  built for, so the ones from before the step kept burning for objects that were
+  gone — a campfire whose placement you undid went on smoking over bare grass, and
+  nothing on the map claimed it, so it could not be moved or deleted — while the
+  objects that came back stood cold. Also restored: the ground-projected
+  materials (the abandoned mine's earth mound), and the designer point lights
+  the objects carry, which the main process was not sending back at all.
+
+  Three of the same miss elsewhere, since it was never really about undo but
+  about anything made after its floor: an animated object placed from the palette
+  never cast a shadow, nor did the first object of a model the map did not
+  already have, and a batch that outgrew itself took every copy of its model out
+  of the shadow map on the way.
+
 - **Saving no longer kills undo.** After a Save, Ctrl+Z could answer `patch does
   not fit: document is 49636 bytes, patch expects 49556` and never work again for
   that map. Save was tidying the map's derived tile list on its way out — naming
