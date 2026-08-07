@@ -100,6 +100,27 @@ export function setColour(desc: XmlElement, slot: number, colour: string): boole
   return true;
 }
 
+/**
+ * Who may take a slot: a person, the computer, or either.
+ *
+ * A different question from `ActivePlayer`, which says whether the slot exists
+ * at all. This one says what the lobby offers for it — a slot the computer alone
+ * may take is an opponent, and one only a person may take is a seat that has to
+ * be filled. Both flags false is a slot nobody can be, which the game will
+ * happily save and then have nothing to do with.
+ *
+ * Returns false only when the map has no such slot or the fields are missing.
+ */
+export function setPlayable(desc: XmlElement, slot: number, human: boolean, computer: boolean): boolean {
+  const el = slotEl(desc, slot);
+  const h = el && find(el, 'CanBeHumanPlayer');
+  const c = el && find(el, 'CanBeComputerPlayer');
+  if (!h || !c) return false;
+  setText(h, human ? 'true' : 'false');
+  setText(c, computer ? 'true' : 'false');
+  return true;
+}
+
 /** A slot's main hero reference, or '' when it has none. */
 export function mainHero(desc: XmlElement, slot: number): string {
   const el = slotEl(desc, slot);
