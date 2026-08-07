@@ -54,22 +54,34 @@ export function record<T>(s: Session, label: string, touches: Touches, fn: () =>
   return out;
 }
 
-/** Put a step's other side into the live documents. Returns what moved. */
+/**
+ * Put a step's other side into the live documents. Returns what moved.
+ *
+ * Worked out in full before anything is written. A patch that does not fit its
+ * document throws, and a step that throws halfway through would leave one
+ * document moved and the other not — a map the user cannot get back by any
+ * sequence of clicks. Computed first, committed second, it either all happens or
+ * none of it does, which is what lets the caller put the cursor back.
+ */
 export function applyStep(s: Session, step: Step, dir: 'undo' | 'redo'): Touches {
   const floors: number[] = [];
   let map = false;
+  const commit: Array<() => void> = [];
   for (const [key, patch] of Object.entries(step.docs)) {
     if (key === MAP_DOC) {
       const now = Buffer.from(s.map.save(), 'latin1');
-      s.map = loadMap(Buffer.from(apply(now, patch, dir)).toString('latin1'));
+      const next = loadMap(Buffer.from(apply(now, patch, dir)).toString('latin1'));
+      commit.push(() => { s.map = next; });
       map = true;
     } else {
       const floor = Number(key);
       const doc = terrainDoc(s, floor);
-      doc.restore(Buffer.from(apply(doc.buffer(), patch, dir)));
+      const next = Buffer.from(apply(doc.buffer(), patch, dir));
+      commit.push(() => doc.restore(next));
       floors.push(floor);
     }
   }
+  for (const write of commit) write();
   return { map, floors };
 }
 

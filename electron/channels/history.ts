@@ -63,15 +63,29 @@ function instancesOf(s: Session): SceneInstance[][] {
   return floors;
 }
 
+/**
+ * Take a step and apply it, putting the cursor back if it cannot be applied.
+ *
+ * The cursor moves when the step is taken, before anything is known about
+ * whether it fits — so a step that throws used to leave the stack pointing one
+ * place and the documents another. The next Ctrl+Z then reached for a patch
+ * belonging to a state the map had never been in: usually another throw, and
+ * where the lengths happened to agree, a silently mangled map.
+ */
+function step(s: Session, dir: 'undo' | 'redo'): UndoResult {
+  const taken = dir === 'undo' ? s.history.takeUndo() : s.history.takeRedo();
+  try {
+    return undoResult(s, taken, dir);
+  } catch (e) {
+    // applyStep is all-or-nothing, so the documents are untouched and putting
+    // the cursor back leaves the stack exactly as it was before the press.
+    if (taken) { if (dir === 'undo') s.history.takeRedo(); else s.history.takeUndo(); }
+    throw e;
+  }
+}
+
 /** Wire this domain onto ipcMain. Called once, from main. */
 export function registerHistory(): void {
-  ipcMain.handle('history:undo', async (): Promise<UndoResult> => {
-    const session = need();
-    return undoResult(session, session.history.takeUndo(), 'undo');
-  });
-
-  ipcMain.handle('history:redo', async (): Promise<UndoResult> => {
-    const session = need();
-    return undoResult(session, session.history.takeRedo(), 'redo');
-  });
+  ipcMain.handle('history:undo', async (): Promise<UndoResult> => step(need(), 'undo'));
+  ipcMain.handle('history:redo', async (): Promise<UndoResult> => step(need(), 'redo'));
 }

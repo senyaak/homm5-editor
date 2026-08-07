@@ -70,6 +70,7 @@ export const MADE = {
    *  repo; what stands in the game folder is this run's output. */
   SHARPSHOOTER_MAP: 'Sharpshooter Test',
   TEXT: 'e2e Text',
+  UNDO: 'e2e Undo',
   UNITS_MAP: 'e2e Units Map',
 } as const;
 

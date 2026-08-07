@@ -61,6 +61,23 @@ one.
 
 ### Fixed
 
+- **Saving no longer kills undo.** After a Save, Ctrl+Z could answer `patch does
+  not fit: document is 49636 bytes, patch expects 49556` and never work again for
+  that map. Save was tidying the map's derived tile list on its way out — naming
+  the ground tiles the terrain paints with — which is an edit, and one the undo
+  stack knew nothing about: every patch on it had been taken from bytes that no
+  longer existed. The tidy-up happens where the tiles actually change, at open and
+  inside the recorded step that adds a layer, so Save now only writes. It was also
+  fighting you, putting back the entry an undo of that very layer had just taken
+  out.
+
+  Two things behind it are fixed as well. A step that cannot be applied now leaves
+  the documents and the stack exactly as they were, instead of moving the cursor
+  and half the documents — the press after the failure used to reach for a patch
+  belonging to a state the map had never been in. And a map is put in step with
+  its tile list BEFORE a history from a previous run is adopted, not after, so a
+  stored history is either usable or dropped rather than adopted and then broken.
+
 - **A mass spell damages in the element its record names.** A spell that hits the
   whole field lands through one of four functions — air, fire and water, which
   are what a Master of Storms, of Fire or of Ice acts on, plus a fourth belonging
