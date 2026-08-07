@@ -981,13 +981,39 @@ static const BYTE DAMAGING_YES_MARK[DAMAGING_YES_MARK_LEN] = {
   0xB0, 0x01, 0x5E, 0xC3
 };
 
-// No call and no pushad: eax already holds the id, nothing here needs saying in
-// the log — nine callers ask this question constantly — and the displaced `cmp`
-// sets the flags the switch below reads.
-#define DAMAGING_STUB_LEN 22
+/**
+ * Says WHO ASKED, for our ids only.
+ *
+ * Nine places ask this question and the interface asks them constantly, so a
+ * line per question would be a log nobody can read. For a number of ours it is
+ * asked only when our spell is involved, and then the one thing worth knowing is
+ * whether it was asked at all: the Master perks' block asks this BEFORE it looks
+ * at the element, so no line here means that block was never reached and the
+ * missing burn is somewhere else entirely.
+ *
+ * The return address is what tells them apart, and it is on the stack when we
+ * arrive — `[esp]` at the head of the function, so `[esp+36]` after pushad and
+ * pushfd, plus the four our own argument takes.
+ */
+static void __cdecl on_damaging_asked(int spell, DWORD from) {
+  log_num("does it hurt? asked about spell id ", spell);
+  log_hex("   asked from ", from - (DWORD)GetModuleHandleW(NULL));
+}
+
+// pushad/pushfd only on the path that is OURS: the game's own ids take the `jb`
+// and never touch any of it, so nine callers keep the speed they had.
+#define DAMAGING_STUB_LEN 39
 static BYTE DAMAGING_STUB[DAMAGING_STUB_LEN] = {
   0x3D, 0x61, 0x01, 0x00, 0x00,             // cmp eax,161h    — 353, the first of ours
-  0x72, 0x05,                               // jb +5           — the game's own, carry on
+  0x72, 0x16,                               // jb +22          — the game's own, carry on
+  0x60,                                     // pushad
+  0x9C,                                     // pushfd
+  0xFF, 0x74, 0x24, 0x24,                   // push dword ptr [esp+36]   — who asked
+  0x50,                                     // push eax                  — the spell id
+  0xE8, 0x00, 0x00, 0x00, 0x00,             // call on_damaging_asked
+  0x83, 0xC4, 0x08,                         // add esp,8
+  0x9D,                                     // popfd
+  0x61,                                     // popad
   0xE9, 0x00, 0x00, 0x00, 0x00,             // jmp <yes>
   0x3D, 0x17, 0x01, 0x00, 0x00,             // cmp eax,117h    — displaced
   0xE9, 0x00, 0x00, 0x00, 0x00,             // jmp back
@@ -1006,8 +1032,9 @@ static void install_damaging_spell(void) {
                                     PAGE_EXECUTE_READWRITE);
   if (!stub) { log_line("damaging spell: no memory for the stub"); return; }
   for (int i = 0; i < DAMAGING_STUB_LEN; i++) stub[i] = DAMAGING_STUB[i];
-  *(DWORD *)(stub + 8) = (DWORD)yes - (DWORD)(stub + 12);
-  *(DWORD *)(stub + 18) =
+  *(DWORD *)(stub + 15) = (DWORD)(void *)on_damaging_asked - (DWORD)(stub + 19);
+  *(DWORD *)(stub + 25) = (DWORD)yes - (DWORD)(stub + 29);
+  *(DWORD *)(stub + 35) =
       (DWORD)(base + DAMAGING_SPELL_RVA + DAMAGING_SPELL_LEN) - (DWORD)(stub + DAMAGING_STUB_LEN);
   FlushInstructionCache(GetCurrentProcess(), stub, DAMAGING_STUB_LEN);
 

@@ -162,6 +162,35 @@ for (const path of sources(join(REPO, 'native'))) {
       check(`  ${m[1]}: the jump at ${j.from} lands on an instruction`, boundaries.has(j.to),
         `it lands at ${j.to}`);
     }
+    // AND WHERE THE INSTALLER POKES. Each `*(DWORD *)(stub + N) = …` fills in a
+    // distance the byte row left at zero, and N is counted by hand off the
+    // comments. Off by one it overwrites the tail of one instruction and the
+    // head of the next — bytes that still decode, jumps that still land, and a
+    // stub that does something else. So N has to be the LAST FOUR BYTES of an
+    // instruction of THIS stub, which is the only place a rel32 or an absolute
+    // can sit. It is the mistake that keeps happening: two of them in one
+    // afternoon, both after an instruction was added above.
+    //
+    // The installer is found by the line that copies the row — every one of them
+    // reads `for (…) stub[i] = <NAME>[i];` — and its writes are the ones from
+    // there to the end of that function. Without that scoping this compares
+    // every stub against every write in the file and can never fail.
+    const copy = source.indexOf(`stub[i] = ${m[1]}[i]`);
+    const installer = copy < 0 ? '' : source.slice(copy, source.indexOf('\n}', copy));
+    // The rule is not "the last four bytes": an instruction can carry a
+    // displacement AND an immediate — `cmp dword ptr [addr],0` is
+    // `83 3D <disp32> <imm8>`, whose dword sits four bytes from the END minus
+    // one. What always holds is that the four bytes must lie inside ONE
+    // instruction and must not start at its opcode.
+    const spans = [...disassemble(Uint8Array.from(bytes), 0)]
+      .filter((ins) => ins.address + ins.length <= bytes.length)
+      .map((ins) => ({ from: ins.address, to: ins.address + ins.length }));
+    for (const w of installer.matchAll(/\*\(DWORD \*\)\(stub \+ (\d+)\)\s*=/g)) {
+      const at = Number(w[1]);
+      const inside = spans.find((s) => at > s.from && at + 4 <= s.to);
+      check(`  ${m[1]}: the installer's byte ${at} is inside one instruction`, !!inside,
+        inside ? '' : `it is not — the instructions are ${spans.map((s) => `${s.from}..${s.to}`).join(', ')}`);
+    }
   }
 }
 check('there are patches to check at all', patches.length > 0, `${patches.length} found`);
