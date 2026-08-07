@@ -16,9 +16,11 @@
 //               impact is zero.
 //   `0xD60EA6`  is this Armageddon? — else a target with no creature on it (a
 //               war machine) is skipped.
-//   `0xD610BA`  is this Armageddon? — else the tiles around the impact point
-//               are damaged through another path, which is where dredknight
-//               puts the perks that key on the spell (Master of Fire, Ignite).
+//   `0xD610BA`  is this Armageddon? — else the damage is applied by the routine's
+//               NO-ELEMENT applier, so nothing elemental happens to the target:
+//               no Master of Fire, and no fire resistance either. This site is
+//               now written by `combat/spell-cast.c`, which asks the wider
+//               question and carries this flag's answer inside it.
 //
 // So the empowered Armageddon costs double mana, hits for 50% more, and is the
 // weaker spell in every way the shipped code decides by id.
@@ -49,14 +51,10 @@
 #define ARMAGEDDON_LOCAL_RVA 0x960e26u
 /** `cmp [esi+4],0Ah / je` — war machines, skipped for everything else. */
 #define ARMAGEDDON_MACHINES_RVA 0x960ea6u
-/** `mov eax,[esi+4] / cmp eax,0Ah / jne` — the tiles around the impact. */
-#define ARMAGEDDON_AROUND_RVA 0x9610b7u
 
-/** Continuations: not-Armageddon, then Armageddon, for each of the two sites. */
+/** Continuations: not-Armageddon, then Armageddon, for the one site that stubs. */
 #define ARMAGEDDON_MACHINES_CHECK_RVA 0x960eacu
 #define ARMAGEDDON_MACHINES_HIT_RVA 0x960ebdu
-#define ARMAGEDDON_AROUND_ELSE_RVA 0x96117fu
-#define ARMAGEDDON_AROUND_THEN_RVA 0x9610c3u
 
 /** `SpellOf`, the engine's own: an empowered id in, the spell it is in eax. */
 #define ARMAGEDDON_SPELL_OF_RVA 0x6d44c0u
@@ -73,12 +71,6 @@ static const BYTE ARMAGEDDON_MACHINES_RAW[6] = { 0x83, 0x7E, 0x04, 0x0A, 0x74, 0
 /** `jmp` to ours; the four zeroes are filled in when the stub is allocated. */
 static BYTE ARMAGEDDON_MACHINES_ASKED[6] = { 0xE9, 0x00, 0x00, 0x00, 0x00, 0x90 };
 
-static const BYTE ARMAGEDDON_AROUND_RAW[12] = {
-  0x8B, 0x46, 0x04, 0x83, 0xF8, 0x0A, 0x0F, 0x85, 0xBC, 0x00, 0x00, 0x00
-};
-static BYTE ARMAGEDDON_AROUND_ASKED[12] = {
-  0xE9, 0x00, 0x00, 0x00, 0x00, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90
-};
 
 /**
  * `mov ecx,[esi+4] / call SpellOf / cmp eax,0Ah / je +5 / jmp else / jmp then`
@@ -96,24 +88,6 @@ static BYTE ARMAGEDDON_ASK[23] = {
   0xE9, 0x00, 0x00, 0x00, 0x00
 };
 
-/**
- * The same, keeping `eax`: the third site's else-branch pushes the raw id it
- * loaded, so the ask is bracketed by `push eax` / `pop eax`. A `pop` leaves the
- * flags alone, which is what lets the `je` below it read the comparison.
- */
-static BYTE ARMAGEDDON_ASK_KEEPING_EAX[27] = {
-  0x8B, 0x46, 0x04,
-  0x50,
-  0x8B, 0xC8,
-  0xE8, 0x00, 0x00, 0x00, 0x00,
-  0x83, 0xF8, 0x0A,
-  0x58,
-  0x74, 0x05,
-  0xE9, 0x00, 0x00, 0x00, 0x00,
-  0xE9, 0x00, 0x00, 0x00, 0x00
-};
-
-/** Copy a stub out, fill its call and its two jumps, and hand back where it is. */
 static BYTE *armageddon_stub(const BYTE *shape, int len, int callAt, int elseAt, int thenAt,
                              DWORD elseRva, DWORD thenRva) {
   BYTE *base = (BYTE *)GetModuleHandleW(NULL);
@@ -143,15 +117,13 @@ static void install_empowered_armageddon_fix(void) {
                            "the war machines an armageddon hits");
   }
 
-  BYTE *around = armageddon_stub(ARMAGEDDON_ASK_KEEPING_EAX, sizeof ARMAGEDDON_ASK_KEEPING_EAX,
-                                 6, 17, 22, ARMAGEDDON_AROUND_ELSE_RVA,
-                                 ARMAGEDDON_AROUND_THEN_RVA);
-  if (around) {
-    *(DWORD *)(ARMAGEDDON_AROUND_ASKED + 1) =
-        (DWORD)around - ((DWORD)(base + ARMAGEDDON_AROUND_RVA) + 5);
-    done += overwrite_code(ARMAGEDDON_AROUND_RVA, ARMAGEDDON_AROUND_RAW, ARMAGEDDON_AROUND_ASKED,
-                           sizeof ARMAGEDDON_AROUND_RAW, "the tiles around the impact");
-  }
+  // AND THE THIRD SITE IS NOT OURS ANY MORE. `combat/spell-cast.c` replaces it
+  // to ask a wider question — which ELEMENT the damage is dealt in, since the
+  // four appliers there are one per element and `cmp eax,0Ah` was only ever
+  // "is this spell's damage elemental" written against the one id for which it
+  // is. That stub asks OUR question too, keyed on this very flag, so an
+  // empowered Armageddon still answers yes here exactly when this fix is on.
+  // Two patches over twelve bytes would have been one refusing silently.
 
-  log_num("empowered armageddon: sites taught the question, of three: ", done);
+  log_num("empowered armageddon: sites taught the question, of two (the third is the spell code's): ", done);
 }

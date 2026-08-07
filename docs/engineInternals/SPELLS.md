@@ -326,7 +326,7 @@ all four are about CHOOSING A BEHAVIOUR:
 | what it is worth | `0xB7CE70` |
 | which tiles an area covers | `0xB7BE30` |
 | whether it deals damage at all | `0xBD0E80` — nine callers |
-| whether a WHOLE-FIELD spell leaves a Master's mark | `0xD610BA` — `cmp eax,0Ah`, Armageddon and only it |
+| which ELEMENT a whole-field spell hits in | `0xD610BA` — one applier per element, and a fourth for none |
 
 **Read from the RECORD** — works for a spell of ours with no code at all, because
 the engine reads the document the same way for every id. Everything about
@@ -387,10 +387,16 @@ behave differently:
   the empowered one's does not. **Assumed and unchecked:** that the position is
   where the meteor lands.)
 
-  The fix is to ask the engine's own question — `SpellElement(id) != 0`, the way
-  the area routine already does — and the complication is that this site is
-  `native/qol/fix-empowered-armageddon.c`'s third one, already replaced when that
-  flag is on. See RULES_FIXES.md.
+  **Fixed by asking the engine's own question** — `SpellElement(id) != 0`, which
+  is how the area routine already chooses, so the two shapes now agree.
+
+  The site was shared: it is the third of the three
+  `native/qol/fix-empowered-armageddon.c` documented, and with that flag on the
+  empowered Armageddon (232) must answer yes here too. Two patches over twelve
+  bytes would have been one refusing in silence, so there is one stub and it asks
+  three questions in order — ours by element, the empowered id when the flag is
+  on, and the shipped comparison for everything else. The flag keeps meaning
+  exactly what it meant.
 
 Two other functions were read on the way and are worth naming so nobody reads
 them again: `0xBD3A00`-ish builds the spellbook's PREDICTION — the "duration",

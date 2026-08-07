@@ -1019,3 +1019,111 @@ static void install_damaging_spell(void) {
     log_line("a spell of ours counts as one that hurts");
   }
 }
+
+// ---------------------------------------------------------------------------
+// AND THE FIFTH SWITCH: WHOSE ELEMENT THE DAMAGE IS DEALT IN.
+//
+// The whole-field routine has FOUR appliers and they are one per element — each
+// asks the caster for that element's Master perk:
+//
+//   0xBD1790  45, Master of Storms — air
+//   0xBD1420  44, Master of Fire
+//   0xBD12C0  43, Master of Ice — water
+//   0xBD1980  nothing at all — the NO-ELEMENT applier
+//
+// and it chooses between them with `cmp eax,0Ah`: Armageddon takes the fire one,
+// everything else the fourth. That reads like a special case for one spell and
+// is not: of the three whole-field spells only Armageddon's damage is elemental
+// — Holy Word and Unholy Word each NAME an element and leave
+// `DamageIsElemental` false, so the engine answers 0 for both. The comparison is
+// "is this spell's damage elemental", written against the one id for which it is.
+//
+// So a whole-field spell of ours was having its damage applied with NO element:
+// not fire, whatever its document said. The missing Master of Fire mark was the
+// part that showed; a fire resistance would have missed it too.
+//
+// WHAT WE ASK INSTEAD is the engine's own question, `SpellElement(id) != 0` —
+// which is exactly how the AREA routine already chooses, so the two shapes end
+// up agreeing.
+//
+// AND THE SITE IS SHARED. It is the third of the three
+// `native/qol/fix-empowered-armageddon.c` documents: with that flag on, the
+// empowered Armageddon (232) has to answer yes here too. Both questions live in
+// one place rather than two patches fighting over twelve bytes — ours asks for
+// our ids, the flag's for the empowered id, and the shipped comparison for
+// everything else. The flag keeps meaning exactly what it meant.
+
+/** `mov eax,[esi+4] / cmp eax,0Ah / jne` — which element the damage is dealt in. */
+#define WHOLE_FIELD_ELEMENT_RVA 0x9610b7u
+#define WHOLE_FIELD_ELEMENT_LEN 12
+static const BYTE WHOLE_FIELD_ELEMENT_HEAD[WHOLE_FIELD_ELEMENT_LEN] = {
+  0x8B, 0x46, 0x04, 0x83, 0xF8, 0x0A, 0x0F, 0x85, 0xBC, 0x00, 0x00, 0x00
+};
+/** Its two continuations: elemental, and not. */
+#define WHOLE_FIELD_ELEMENTAL_RVA 0x9610c3u
+#define WHOLE_FIELD_PLAIN_RVA 0x96117fu
+
+/** `SpellOf` — an empowered id in, the spell it is a version of out. */
+#define SPELL_OF_RVA 0x6d44c0u
+typedef int(__fastcall *SpellOfFn)(int spell);
+static SpellOfFn g_spellOf = NULL;
+
+/** Where the stub keeps the answer across its own `popad`. */
+static BYTE g_wholeFieldElemental = 0;
+
+static void __cdecl decide_whole_field(int spell) {
+  if (spell >= FIRST_SPELL_OF_OURS) {
+    g_wholeFieldElemental = (BYTE)(g_spellElement && g_spellElement(spell) != 0);
+    return;
+  }
+  // The game's own, and the flag decides which of its two questions is asked —
+  // exactly what it decided before this stub existed.
+  if (g_qol[QOL_EMPOWERED_ARMAGEDDON_FIX] && g_spellOf) {
+    g_wholeFieldElemental = (BYTE)(g_spellOf(spell) == 0x0A);
+    return;
+  }
+  g_wholeFieldElemental = (BYTE)(spell == 0x0A);
+}
+
+#define WHOLE_FIELD_STUB_LEN 34
+static BYTE WHOLE_FIELD_STUB[WHOLE_FIELD_STUB_LEN] = {
+  0x60,                                     // pushad
+  0x9C,                                     // pushfd
+  0xFF, 0x76, 0x04,                         // push dword ptr [esi+4]  — the spell id
+  0xE8, 0x00, 0x00, 0x00, 0x00,             // call decide_whole_field
+  0x83, 0xC4, 0x04,                         // add esp,4
+  0x9D,                                     // popfd
+  0x61,                                     // popad
+  0x80, 0x3D, 0x00, 0x00, 0x00, 0x00, 0x00, // cmp byte ptr [g_wholeFieldElemental],0
+  0x74, 0x05,                               // je +5           — not elemental
+  0xE9, 0x00, 0x00, 0x00, 0x00,             // jmp <the element's applier>
+  0xE9, 0x00, 0x00, 0x00, 0x00,             // jmp <the plain applier>
+};
+
+static BYTE WHOLE_FIELD_TO_STUB[WHOLE_FIELD_ELEMENT_LEN] = {
+  0xE9, 0x00, 0x00, 0x00, 0x00, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90
+};
+
+static void install_whole_field_element(void) {
+  BYTE *base = (BYTE *)GetModuleHandleW(NULL);
+  g_spellOf = (SpellOfFn)(base + SPELL_OF_RVA);
+  BYTE *stub = (BYTE *)VirtualAlloc(NULL, WHOLE_FIELD_STUB_LEN, MEM_COMMIT | MEM_RESERVE,
+                                    PAGE_EXECUTE_READWRITE);
+  if (!stub) { log_line("whole-field element: no memory for the stub"); return; }
+  for (int i = 0; i < WHOLE_FIELD_STUB_LEN; i++) stub[i] = WHOLE_FIELD_STUB[i];
+  *(DWORD *)(stub + 6) = (DWORD)(void *)decide_whole_field - (DWORD)(stub + 10);
+  // The answer travels in a byte of ours rather than in a register: `popad`
+  // would put the old eax back, so the C writes `g_wholeFieldElemental` itself
+  // and the stub reads it after the registers are restored.
+  *(DWORD *)(stub + 17) = (DWORD)(void *)&g_wholeFieldElemental;
+  *(DWORD *)(stub + 25) = (DWORD)(base + WHOLE_FIELD_ELEMENTAL_RVA) - (DWORD)(stub + 29);
+  *(DWORD *)(stub + 30) = (DWORD)(base + WHOLE_FIELD_PLAIN_RVA) - (DWORD)(stub + 34);
+  FlushInstructionCache(GetCurrentProcess(), stub, WHOLE_FIELD_STUB_LEN);
+
+  *(DWORD *)(WHOLE_FIELD_TO_STUB + 1) =
+      (DWORD)stub - ((DWORD)(base + WHOLE_FIELD_ELEMENT_RVA) + 5);
+  if (overwrite_code(WHOLE_FIELD_ELEMENT_RVA, WHOLE_FIELD_ELEMENT_HEAD, WHOLE_FIELD_TO_STUB,
+                     WHOLE_FIELD_ELEMENT_LEN, "which element a whole-field spell hits in")) {
+    log_line("a whole-field spell of ours hits in its own element");
+  }
+}
