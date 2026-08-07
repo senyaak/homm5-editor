@@ -43,6 +43,7 @@ mod documents below; they move here as each gets written up.
 - [OBJECT_FIELDS.md](OBJECT_FIELDS.md) — every field of all 21 object types, measured over the corpus.
 - [OBJECT_DEFAULTS.md](OBJECT_DEFAULTS.md) — what a freshly placed object looks like.
 - [NAMES_AND_SCRIPTING.md](NAMES_AND_SCRIPTING.md) — `<Name>` is the script handle; how references work.
+- [FILL_TOOL.md](FILL_TOOL.md) — painting an area into a wood: the preset format, the original's algorithm read out of the map editor, and the three places ours departs from it.
 - [SCRIPT_API.md](SCRIPT_API.md) — the Lua API (generated).
 - [LOCALIZATION.md](LOCALIZATION.md) — the game reads one language, so the editor keeps the rest.
 

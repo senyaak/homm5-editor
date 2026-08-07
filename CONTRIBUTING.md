@@ -38,6 +38,9 @@ src/        the core — format decoders and the game model, by what each file
                         map-source, blank-map, new-map, objects, donors,
                         defaults, watch, project, history
               terrain/  GroundTerrain.bin — its own format, its own six files
+              fill/     the fill tool's recipes and its planner: preset (the
+                        file format the game's own editor uses) + plan (painted
+                        tiles + preset + seed → where each object goes)
               scene/    a map + its assets turned into something drawable:
                         scene (the walk) + payload (what crosses IPC) +
                         tex-table (each texture crossing it once), xdb,
@@ -87,7 +90,8 @@ renderer/   the UI. page.html + parts/ + style/ are assembled into index.html,
               features/  one folder or file per screen — shell (toolbar,
                          panels, picker), map-session, selection, history,
                          inspector/ (panel, controls, tree, map-props, refs),
-                         terrain-brush/, palettes, regions, localization,
+                         terrain-brush/, palettes, regions, fill,
+                         localization,
                          text-editor/, campaigns, mods/ (units, artifacts,
                          artifact-sets, heroes, recolor, preset over shared)
               app.ts     the pointer, the automation hook, the menus, the

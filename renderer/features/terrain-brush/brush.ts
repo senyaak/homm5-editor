@@ -16,6 +16,7 @@
 // process wrote, so the GPU copy drifting would show up immediately rather than
 // corrupting anything.
 
+import { fillTool } from '#features/fill.ts';
 import { region, regionDraw } from '#features/regions.ts';
 import { markDirty } from '#core/dirty.ts';
 import { $ } from '#core/dom.ts';
@@ -212,11 +213,18 @@ export function updateBrushCursor(at: { x: number; y: number } | null): void {
   // the one size you cannot see before committing to it.
   // The region tool drags out a rectangle the same way, and wants the same
   // preview: which tiles the region will cover, before it exists.
-  const anchor = regionDraw ? region.anchor : brush.rect ? stroke.rectAnchor : null;
+  // The fill tool paints tiles with a brush of its own, and drags out a
+  // rectangle the same way — so it wants the same preview, from its own size.
+  const anchor = regionDraw ? region.anchor
+    : fillTool.on ? fillTool.anchor
+      : brush.rect ? stroke.rectAnchor : null;
   const r = anchor
     ? { x0: Math.min(anchor.x, at.x), y0: Math.min(anchor.y, at.y),
         x1: Math.max(anchor.x, at.x), y1: Math.max(anchor.y, at.y) }
-    : squareRect(at.x, at.y, brush.rect || regionDraw ? 1 : brush.size);
+    : squareRect(at.x, at.y,
+      regionDraw ? 1
+        : fillTool.on ? (fillTool.rect ? 1 : fillTool.size)
+          : brush.rect ? 1 : brush.size);
   const LIFT = 0.05; // just clear of the surface, so it reads as lying on it
   const z = (x: number, y: number): number => {
     const cx = Math.min(fl.V - 1, Math.max(0, x)), cy = Math.min(fl.V - 1, Math.max(0, y));

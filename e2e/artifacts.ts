@@ -45,6 +45,7 @@ export const MADE = {
   CLOSE_MAP: 'e2e Close Map',
   DIALOGS: 'e2e Dialogs',
   DIALOGS_MAP: 'e2e Dialogs Map',
+  FILL: 'e2e Fill',
   LOCALIZE: 'e2e Localize',
   MONSTER_AMOUNT: 'e2e monster amount',
   NEW_MAP: 'e2e New Map',

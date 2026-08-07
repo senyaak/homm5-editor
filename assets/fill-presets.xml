@@ -1,0 +1,260 @@
+<?xml version="1.0"?>
+<!--
+  Fill presets of our own, in the original editor's own format.
+
+  The game ships nine presets in <game>/Editor/FillPresets.xml, all of them
+  named "(test)" and most of them one layer deep. These are the woods and
+  meadows a map actually wants, written the same way so either file can be
+  edited by hand and either can be dropped beside the game.
+
+  Read the fields in src/fill/preset.ts; the algorithm they drive is in
+  src/fill/plan.ts and documented in docs/FILL_TOOL.md. The short version:
+
+    Dispersion  grid spacing in tiles — smaller is denser
+    Width       how much further from the painted edge the LATER layers start
+    Probability chance one lattice point of this layer keeps its candidate
+    Size        radius in tiles, kept clear of the edge and of other objects
+
+  So a preset reads outward-in: grass at Width 0 covers the whole patch,
+  undergrowth starts half a tile in, trees a further three quarters.
+-->
+<Base>
+  <Presets>
+
+    <Item>
+      <Name>Birch Wood</Name>
+      <Layers>
+        <Item>
+          <objects>
+            <Item><Object><Type>AdvMapStaticShared</Type><ID>Grass\Bush01\Grass\Grass01</ID></Object><Size>0</Size><Probability>0.35</Probability></Item>
+            <Item><Object><Type>AdvMapStaticShared</Type><ID>Grass\Bush01\Grass\Grass02</ID></Object><Size>0</Size><Probability>0.35</Probability></Item>
+            <Item><Object><Type>AdvMapStaticShared</Type><ID>Grass\Bush01\Grass\Grass03</ID></Object><Size>0</Size><Probability>0.3</Probability></Item>
+          </objects>
+          <Dispersion>0.8</Dispersion>
+          <Width>0</Width>
+        </Item>
+        <Item>
+          <objects>
+            <Item><Object><Type>AdvMapStaticShared</Type><ID>Grass\Bush01\Bush_08</ID></Object><Size>0.25</Size><Probability>0.12</Probability></Item>
+            <Item><Object><Type>AdvMapStaticShared</Type><ID>Grass\Bush01\Fern01</ID></Object><Size>0.25</Size><Probability>0.12</Probability></Item>
+            <Item><Object><Type>AdvMapStaticShared</Type><ID>Grass\Rocks\Rock1x1_3</ID></Object><Size>0.3</Size><Probability>0.05</Probability></Item>
+            <Item><Object><Type>AdvMapStaticShared</Type><ID>Grass\Tree\Log1x1_1</ID></Object><Size>0.35</Size><Probability>0.04</Probability></Item>
+            <Item><Object><Type>AdvMapStaticShared</Type><ID>Grass\Tree\Stump2</ID></Object><Size>0.3</Size><Probability>0.04</Probability></Item>
+          </objects>
+          <Dispersion>1.5</Dispersion>
+          <Width>0.5</Width>
+        </Item>
+        <Item>
+          <objects>
+            <Item><Object><Type>AdvMapStaticShared</Type><ID>Grass\Tree\Birch\Birch04</ID></Object><Size>0.6</Size><Probability>0.35</Probability></Item>
+            <Item><Object><Type>AdvMapStaticShared</Type><ID>Grass\Tree\Birch\Birch01</ID></Object><Size>0.6</Size><Probability>0.3</Probability></Item>
+          </objects>
+          <Dispersion>1</Dispersion>
+          <Width>0.75</Width>
+        </Item>
+        <Item>
+          <objects>
+            <Item><Object><Type>AdvMapStaticShared</Type><ID>Grass\Tree\Birch\Birch01</ID></Object><Size>0.6</Size><Probability>0.7</Probability></Item>
+            <Item><Object><Type>AdvMapStaticShared</Type><ID>Grass\Tree\Birch\Birch02</ID></Object><Size>0.6</Size><Probability>0.7</Probability></Item>
+            <Item><Object><Type>AdvMapStaticShared</Type><ID>Grass\Tree\Birch\Birch03</ID></Object><Size>0.6</Size><Probability>0.7</Probability></Item>
+          </objects>
+          <Dispersion>1</Dispersion>
+          <Width>1.5</Width>
+        </Item>
+      </Layers>
+    </Item>
+
+    <Item>
+      <Name>Birch Wood (autumn)</Name>
+      <Layers>
+        <Item>
+          <objects>
+            <Item><Object><Type>AdvMapStaticShared</Type><ID>Grass\Bush01\Grass\Grass01</ID></Object><Size>0</Size><Probability>0.3</Probability></Item>
+            <Item><Object><Type>AdvMapStaticShared</Type><ID>Grass\Bush01\Grass\Grass03</ID></Object><Size>0</Size><Probability>0.3</Probability></Item>
+          </objects>
+          <Dispersion>0.8</Dispersion>
+          <Width>0</Width>
+        </Item>
+        <Item>
+          <objects>
+            <Item><Object><Type>AdvMapStaticShared</Type><ID>Grass\Tree\Stump1</ID></Object><Size>0.3</Size><Probability>0.06</Probability></Item>
+            <Item><Object><Type>AdvMapStaticShared</Type><ID>Grass\Tree\Log1x1_2</ID></Object><Size>0.35</Size><Probability>0.06</Probability></Item>
+          </objects>
+          <Dispersion>1.5</Dispersion>
+          <Width>0.5</Width>
+        </Item>
+        <Item>
+          <objects>
+            <Item><Object><Type>AdvMapStaticShared</Type><ID>Grass\Tree\Birch\Birch_aut01</ID></Object><Size>0.6</Size><Probability>0.6</Probability></Item>
+            <Item><Object><Type>AdvMapStaticShared</Type><ID>Grass\Tree\Birch\Birch_aut02</ID></Object><Size>0.6</Size><Probability>0.6</Probability></Item>
+            <Item><Object><Type>AdvMapStaticShared</Type><ID>Grass\Tree\Birch\Birch_aut03</ID></Object><Size>0.6</Size><Probability>0.6</Probability></Item>
+            <Item><Object><Type>AdvMapStaticShared</Type><ID>Grass\Tree\Birch\Birch_aut04</ID></Object><Size>0.6</Size><Probability>0.6</Probability></Item>
+          </objects>
+          <Dispersion>1</Dispersion>
+          <Width>1</Width>
+        </Item>
+      </Layers>
+    </Item>
+
+    <Item>
+      <Name>Spruce Wood</Name>
+      <Layers>
+        <Item>
+          <objects>
+            <Item><Object><Type>AdvMapStaticShared</Type><ID>Grass\Bush01\Grass\Grass02</ID></Object><Size>0</Size><Probability>0.3</Probability></Item>
+            <Item><Object><Type>AdvMapStaticShared</Type><ID>Grass\Bush01\Fern01</ID></Object><Size>0.2</Size><Probability>0.15</Probability></Item>
+          </objects>
+          <Dispersion>0.9</Dispersion>
+          <Width>0</Width>
+        </Item>
+        <Item>
+          <objects>
+            <Item><Object><Type>AdvMapStaticShared</Type><ID>Grass\Rocks\Rock1x1_5</ID></Object><Size>0.3</Size><Probability>0.06</Probability></Item>
+            <Item><Object><Type>AdvMapStaticShared</Type><ID>Grass\Tree\Stump3</ID></Object><Size>0.3</Size><Probability>0.05</Probability></Item>
+          </objects>
+          <Dispersion>1.5</Dispersion>
+          <Width>0.5</Width>
+        </Item>
+        <Item>
+          <objects>
+            <Item><Object><Type>AdvMapStaticShared</Type><ID>Grass\Tree\SpurceTrees\Spruce_01</ID></Object><Size>0.65</Size><Probability>0.7</Probability></Item>
+            <Item><Object><Type>AdvMapStaticShared</Type><ID>Grass\Tree\SpurceTrees\Spruce_02</ID></Object><Size>0.65</Size><Probability>0.7</Probability></Item>
+            <Item><Object><Type>AdvMapStaticShared</Type><ID>Grass\Tree\SpurceTrees\Spruce_03</ID></Object><Size>0.65</Size><Probability>0.7</Probability></Item>
+            <Item><Object><Type>AdvMapStaticShared</Type><ID>Grass\Tree\SpurceTrees\Spruce_04</ID></Object><Size>0.65</Size><Probability>0.7</Probability></Item>
+          </objects>
+          <Dispersion>1.1</Dispersion>
+          <Width>1</Width>
+        </Item>
+      </Layers>
+    </Item>
+
+    <Item>
+      <Name>Oak Grove</Name>
+      <Layers>
+        <Item>
+          <objects>
+            <Item><Object><Type>AdvMapStaticShared</Type><ID>Grass\Bush01\Grass\Grass01</ID></Object><Size>0</Size><Probability>0.4</Probability></Item>
+            <Item><Object><Type>AdvMapStaticShared</Type><ID>Grass\Flowers\Flower03</ID></Object><Size>0</Size><Probability>0.1</Probability></Item>
+          </objects>
+          <Dispersion>0.8</Dispersion>
+          <Width>0</Width>
+        </Item>
+        <Item>
+          <objects>
+            <Item><Object><Type>AdvMapStaticShared</Type><ID>Grass\Bush01\Bush03</ID></Object><Size>0.3</Size><Probability>0.12</Probability></Item>
+            <Item><Object><Type>AdvMapStaticShared</Type><ID>Grass\Bush01\Bush05</ID></Object><Size>0.3</Size><Probability>0.12</Probability></Item>
+          </objects>
+          <Dispersion>1.4</Dispersion>
+          <Width>0.5</Width>
+        </Item>
+        <Item>
+          <objects>
+            <Item><Object><Type>AdvMapStaticShared</Type><ID>Grass\Tree\Oak\Oak01</ID></Object><Size>0.8</Size><Probability>0.6</Probability></Item>
+            <Item><Object><Type>AdvMapStaticShared</Type><ID>Grass\Tree\Oak\Oak02</ID></Object><Size>0.8</Size><Probability>0.6</Probability></Item>
+            <Item><Object><Type>AdvMapStaticShared</Type><ID>Grass\Tree\Oak\Oak03</ID></Object><Size>0.8</Size><Probability>0.6</Probability></Item>
+            <Item><Object><Type>AdvMapStaticShared</Type><ID>Grass\Tree\Oak\Oak04</ID></Object><Size>0.8</Size><Probability>0.6</Probability></Item>
+          </objects>
+          <Dispersion>1.4</Dispersion>
+          <Width>1.2</Width>
+        </Item>
+      </Layers>
+    </Item>
+
+    <Item>
+      <Name>Dirt Trees</Name>
+      <Layers>
+        <Item>
+          <objects>
+            <Item><Object><Type>AdvMapStaticShared</Type><ID>Dirt\Grass\Grass01</ID></Object><Size>0</Size><Probability>0.3</Probability></Item>
+          </objects>
+          <Dispersion>0.9</Dispersion>
+          <Width>0</Width>
+        </Item>
+        <Item>
+          <objects>
+            <Item><Object><Type>AdvMapStaticShared</Type><ID>Dirt\Bushs\Dirtbush01</ID></Object><Size>0.3</Size><Probability>0.12</Probability></Item>
+            <Item><Object><Type>AdvMapStaticShared</Type><ID>Dirt\Bushs\Dirtbush03</ID></Object><Size>0.3</Size><Probability>0.12</Probability></Item>
+            <Item><Object><Type>AdvMapStaticShared</Type><ID>Dirt\Rocks\DStone1x1_4</ID></Object><Size>0.3</Size><Probability>0.06</Probability></Item>
+          </objects>
+          <Dispersion>1.4</Dispersion>
+          <Width>0.5</Width>
+        </Item>
+        <Item>
+          <objects>
+            <Item><Object><Type>AdvMapStaticShared</Type><ID>Dirt\Trees\DirtTree1x1_1</ID></Object><Size>0.6</Size><Probability>0.6</Probability></Item>
+            <Item><Object><Type>AdvMapStaticShared</Type><ID>Dirt\Trees\DirtTree1x1_3</ID></Object><Size>0.6</Size><Probability>0.6</Probability></Item>
+            <Item><Object><Type>AdvMapStaticShared</Type><ID>Dirt\Trees\DirtTreeCrooked1x1_2</ID></Object><Size>0.6</Size><Probability>0.6</Probability></Item>
+            <Item><Object><Type>AdvMapStaticShared</Type><ID>Dirt\Trees\DirtTreeCrooked1x1_7</ID></Object><Size>0.6</Size><Probability>0.6</Probability></Item>
+          </objects>
+          <Dispersion>1.2</Dispersion>
+          <Width>1</Width>
+        </Item>
+      </Layers>
+    </Item>
+
+    <Item>
+      <Name>Meadow</Name>
+      <Layers>
+        <Item>
+          <objects>
+            <Item><Object><Type>AdvMapStaticShared</Type><ID>Grass\Bush01\Grass\Grass01</ID></Object><Size>0</Size><Probability>0.35</Probability></Item>
+            <Item><Object><Type>AdvMapStaticShared</Type><ID>Grass\Bush01\Grass\Grass02</ID></Object><Size>0</Size><Probability>0.35</Probability></Item>
+          </objects>
+          <Dispersion>0.7</Dispersion>
+          <Width>0</Width>
+        </Item>
+        <Item>
+          <objects>
+            <Item><Object><Type>AdvMapStaticShared</Type><ID>Grass\Flowers\Flower01</ID></Object><Size>0.15</Size><Probability>0.3</Probability></Item>
+            <Item><Object><Type>AdvMapStaticShared</Type><ID>Grass\Flowers\Flower05</ID></Object><Size>0.15</Size><Probability>0.3</Probability></Item>
+            <Item><Object><Type>AdvMapStaticShared</Type><ID>Grass\Flowers\Flower09</ID></Object><Size>0.15</Size><Probability>0.3</Probability></Item>
+            <Item><Object><Type>AdvMapStaticShared</Type><ID>Grass\Flowers\Flowers_02</ID></Object><Size>0.15</Size><Probability>0.25</Probability></Item>
+          </objects>
+          <Dispersion>1</Dispersion>
+          <Width>0</Width>
+        </Item>
+      </Layers>
+    </Item>
+
+    <Item>
+      <Name>Corn Field</Name>
+      <Layers>
+        <Item>
+          <objects>
+            <Item><Object><Type>AdvMapStaticShared</Type><ID>Grass\Flowers\Wheats\Wheat_01</ID></Object><Size>0</Size><Probability>0.95</Probability><NoRandomAngle>true</NoRandomAngle></Item>
+            <Item><Object><Type>AdvMapStaticShared</Type><ID>Grass\Flowers\Wheats\Wheat_02</ID></Object><Size>0</Size><Probability>0.95</Probability><NoRandomAngle>true</NoRandomAngle></Item>
+            <Item><Object><Type>AdvMapStaticShared</Type><ID>Grass\Flowers\Wheats\Wheat_03</ID></Object><Size>0</Size><Probability>0.95</Probability><NoRandomAngle>true</NoRandomAngle></Item>
+            <Item><Object><Type>AdvMapStaticShared</Type><ID>Grass\Flowers\Wheats\Wheat_04</ID></Object><Size>0</Size><Probability>0.95</Probability><NoRandomAngle>true</NoRandomAngle></Item>
+          </objects>
+          <Dispersion>1</Dispersion>
+          <Width>0</Width>
+        </Item>
+      </Layers>
+    </Item>
+
+    <Item>
+      <Name>Rocky Ground</Name>
+      <Layers>
+        <Item>
+          <objects>
+            <Item><Object><Type>AdvMapStaticShared</Type><ID>Grass\Rocks\Rock1x1_1</ID></Object><Size>0.35</Size><Probability>0.3</Probability></Item>
+            <Item><Object><Type>AdvMapStaticShared</Type><ID>Grass\Rocks\Rock1x1_4</ID></Object><Size>0.35</Size><Probability>0.3</Probability></Item>
+            <Item><Object><Type>AdvMapStaticShared</Type><ID>Grass\Rocks\Rock1x1_7</ID></Object><Size>0.35</Size><Probability>0.3</Probability></Item>
+            <Item><Object><Type>AdvMapStaticShared</Type><ID>Grass\Rocks\Rock1x1_9</ID></Object><Size>0.35</Size><Probability>0.3</Probability></Item>
+          </objects>
+          <Dispersion>1.1</Dispersion>
+          <Width>0</Width>
+        </Item>
+        <Item>
+          <objects>
+            <Item><Object><Type>AdvMapStaticShared</Type><ID>Grass\Rocks\Rock2x1L</ID></Object><Size>0.7</Size><Probability>0.25</Probability></Item>
+            <Item><Object><Type>AdvMapStaticShared</Type><ID>Grass\Rocks\Rock2x1R</ID></Object><Size>0.7</Size><Probability>0.25</Probability></Item>
+          </objects>
+          <Dispersion>2</Dispersion>
+          <Width>0.5</Width>
+        </Item>
+      </Layers>
+    </Item>
+
+  </Presets>
+</Base>

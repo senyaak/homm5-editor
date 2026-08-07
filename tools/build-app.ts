@@ -73,6 +73,12 @@ for (const f of ['index.html', 'setup.html', 'app.js', 'app.js.map', 'style']) {
   cpSync(join(root, 'renderer', f), join(out, 'renderer', f), { recursive: true });
 }
 
+// Content the app reads at runtime rather than code esbuild can bundle: the
+// fill presets (electron/channels/fill.ts reads them from APP_ROOT/assets, the
+// same path in both worlds). The rest of assets/ is test fixtures and stays put.
+mkdirSync(join(out, 'assets'), { recursive: true });
+cpSync(join(root, 'assets', 'fill-presets.xml'), join(out, 'assets', 'fill-presets.xml'));
+
 // The manifest Electron reads on startup. `type: module` because main.js is
 // ESM; the name matches the repo's so the packaged app and a dev run share one
 // settings file, which makes the packaged build testable without re-answering

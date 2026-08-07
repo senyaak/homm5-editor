@@ -25,6 +25,7 @@ import { $, $select } from '#core/dom.ts';
 import { api } from '#core/ipc.ts';
 import { saveUiPrefs, uiPrefs } from '#core/prefs.ts';
 import { activeFloor, state } from '#core/state.ts';
+import { fillOpen, setFillPanel } from '#features/fill.ts';
 import { regionsOpen, setRegionsPanel } from '#features/regions.ts';
 import { renderExplorer } from '#features/selection.ts';
 import { brush, updateBrushCursor } from '#features/terrain-brush/brush.ts';
@@ -204,6 +205,7 @@ export function setObjPalette(open: boolean): void {
   // Only one right-hand panel at a time; they occupy the same strip.
   if (open && paletteOpen) setPalette(false);
   if (open && regionsOpen) setRegionsPanel(false);
+  if (open && fillOpen) setFillPanel(false);
   $('help').style.right = open ? '262px' : '12px';
   $('panel').style.right = open ? '262px' : '12px';
   if (open) void initObjectPalette();
@@ -412,6 +414,7 @@ export function setPalette(open: boolean): void {
   // object panel — which also puts down whatever it had armed.
   if (open && objPalOpen) setObjPalette(false);
   if (open && regionsOpen) setRegionsPanel(false);
+  if (open && fillOpen) setFillPanel(false);
   $('palette').style.display = open ? 'flex' : 'none';
   $('help').style.right = open ? '280px' : '12px';
   $('panel').style.right = open ? '280px' : '12px'; // keep the object panel clear of it

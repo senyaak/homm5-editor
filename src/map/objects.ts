@@ -114,21 +114,33 @@ function readLink(xml: string): { shared: string; type: string; random: boolean;
 }
 
 /**
- * Resolve a random group to a concrete member the editor can place.
+ * Every member of a random group — the shareds it chooses between.
  *
- * A random link points at an `AdvMapSharedGroup` — a list of interchangeable
- * shareds the game chooses from at load (every generic hero is one of these).
- * The group is not itself placeable: it has no type and no model, so placing it
- * failed with "unknown object type". The editor stands in the first member, a
- * real object with a type and a mesh; the game would have picked one anyway.
+ * A random link points at an `AdvMapSharedGroup`: a list of interchangeable
+ * shareds the game picks one of at load (every generic hero is one of these).
+ * The group itself is not placeable — no type, no model — so anything placing
+ * one has to resolve it first. The palette stands in the first member; the fill
+ * tool draws a different one per placement, which is what makes a group of
+ * fences read as a fence line rather than the same fence a hundred times.
  */
-function resolveGroupMember(data: Assets, groupHref: string): { shared: string; type: string } | null {
+export function groupMembers(data: Assets, groupHref: string): Array<{ shared: string; type: string }> {
   const rel = groupHref.split('#')[0]!.replace(/^\//, '');
   const xml = data.text(rel);
-  if (xml === null) return null;
-  const first = xml.match(/<links>[\s\S]*?<Item href="([^"]+)"/)?.[1];
-  const type = first ? typeFromShared(first) : '';
-  return first && type ? { shared: first, type } : null;
+  if (xml === null) return [];
+  const links = /<links>([\s\S]*?)<\/links>/.exec(xml)?.[1];
+  if (!links) return [];
+  const out: Array<{ shared: string; type: string }> = [];
+  for (const m of links.matchAll(/<Item href="([^"]+)"/g)) {
+    const shared = m[1]!;
+    const type = typeFromShared(shared);
+    if (type) out.push({ shared, type });
+  }
+  return out;
+}
+
+/** The member the palette stands in for a group: its first, as the editor does. */
+function resolveGroupMember(data: Assets, groupHref: string): { shared: string; type: string } | null {
+  return groupMembers(data, groupHref)[0] ?? null;
 }
 
 /** Parse `Editor/MapFilters.xml` into the Objects tab's groups. */

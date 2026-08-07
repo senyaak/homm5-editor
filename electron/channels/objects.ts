@@ -89,7 +89,7 @@ function linkTexture(href: string | undefined): IconResult {
  * — a new town's guild-spell filter. Read from the installed data, so a mod's
  * spells are in it and a list frozen into the source would not be.
  */
-function rosterFor(s: Session): (name: RegistryName) => string[] {
+export function rosterFor(s: Session): (name: RegistryName) => string[] {
   return (name) => {
     switch (name) {
       case 'spells': return s.registry.spells().map((e) => e.id);

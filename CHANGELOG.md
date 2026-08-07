@@ -15,6 +15,23 @@ one.
 
 ### Added
 
+- **Fills: paint an area, get a wood.** The original editor's Fills tab, in a
+  panel of its own. Mark tiles with a x1/x3/x5/x7 brush or a dragged rectangle
+  (Shift rubs out), pick a preset, press Fill — and a few hundred trees, bushes,
+  flowers and stumps land in one go, as ONE undo step. The presets are files in
+  the game's own format: the nine the game ships in `Editor/FillPresets.xml`,
+  plus eight of ours (birch, autumn birch, spruce, oak, dirt trees, meadow, corn
+  field, rocky ground). The panel says what a preset will do before it runs it —
+  how dense each layer is, how far in it starts, what it plants — and strikes
+  through any candidate this installation has no file for, which otherwise reads
+  as a preset that just does not fill very much.
+
+  The algorithm is the original's, read out of `H5_MapEditor.exe` and written up
+  in [docs/FILL_TOOL.md](docs/FILL_TOOL.md), minus three of its slips: facings
+  now use all sixteen 22.5° steps rather than fifteen, a random group can pick
+  its last member, and an area with a hole in it — or two blobs painted in one
+  go — fills instead of refusing with "Selection has holes".
+
 - **Spells of your own, from a window.** A page in the spellbook the game will
   let a hero cast: a name, a description, an icon, a school and a rank, the mana
   it costs, the four damage entries the four masteries use, and what resistances

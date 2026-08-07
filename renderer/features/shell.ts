@@ -20,6 +20,7 @@ import { closeMapTree, mapTreeOpen } from '#features/inspector/tree.ts';
 import { loc } from '#features/localization.ts';
 import { loadMapPath, session } from '#features/map-session.ts';
 import { armObject, armed } from '#features/palettes.ts';
+import { fillTool, setFillDraw } from '#features/fill.ts';
 import { regionDraw, setRegionDraw } from '#features/regions.ts';
 import { deselect, renderExList } from '#features/selection.ts';
 import { forgetScriptContext } from '#features/text-editor/context.ts';
@@ -403,6 +404,13 @@ export function initShell(): void {
     if (e.code === 'Escape' && regionDraw && !isTyping(e.target)) {
       setRegionDraw(false);
       $('hud').textContent = 'stopped drawing regions';
+      e.preventDefault();
+    }
+    // Same for the fill brush: Esc puts the tool down. What was painted stays,
+    // because the paint is the work — it is the tool that is in the way.
+    if (e.code === 'Escape' && fillTool.on && !isTyping(e.target)) {
+      setFillDraw(false);
+      $('hud').textContent = 'stopped painting the fill area';
       e.preventDefault();
     }
   });

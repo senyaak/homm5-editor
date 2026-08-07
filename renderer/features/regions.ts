@@ -15,6 +15,7 @@
 // rest (its triggers, its floor) stays in the tree, where it belongs.
 
 import { markDirty } from '#core/dirty.ts';
+import { fillOpen, setFillPanel } from '#features/fill.ts';
 import { $, $button, $input, $select } from '#core/dom.ts';
 import { api } from '#core/ipc.ts';
 import { saveUiPrefs, uiPrefs } from '#core/prefs.ts';
@@ -299,6 +300,7 @@ export function setRegionsPanel(open: boolean): void {
   // One right-hand panel at a time; they share the strip.
   if (open && paletteOpen) setPalette(false);
   if (open && objPalOpen) setObjPalette(false);
+  if (open && fillOpen) setFillPanel(false);
   $('regions').style.display = open ? 'flex' : 'none';
   $('regionbtn').classList.toggle('on', open);
   const clear = open || paletteOpen || objPalOpen ? '280px' : '12px';

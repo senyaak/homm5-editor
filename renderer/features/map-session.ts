@@ -14,6 +14,7 @@ import { unpackTextures } from '#src/scene/tex-table.ts';
 import { updateHistoryUI } from '#features/history.ts';
 import { loadLocState, loc } from '#features/localization.ts';
 import { allTiles, initObjectPalette, renderPalette, setPalette, tiles } from '#features/palettes.ts';
+import { clearFill } from '#features/fill.ts';
 import { loadRegions } from '#features/regions.ts';
 import { setBrush, syncBrushPanel } from '#features/terrain-brush/sculpt.ts';
 import { forgetScriptContext } from '#features/text-editor/context.ts';
@@ -103,6 +104,8 @@ export async function loadMapPath(path: string | null, archive: string | null = 
     // A map just opened has whatever regions it shipped with; the panel may
     // still be open from the last one, and it must not show those.
     void loadRegions();
+    // …and the fill area is about the map it was painted on, so it goes with it.
+    clearFill();
     // Same reason as the ground-scale slider: show the restored force and
     // tension, not the HTML defaults the brush is not using.
     $input('brushforce').value = String(brush.force);

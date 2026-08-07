@@ -1,0 +1,30 @@
+  <!-- fills: the original editor's Fills tab. Paint an area with the brush,
+       pick a preset, and the tool scatters a wood over it — one undo step,
+       however many trees that turns out to be. The presets are files
+       (assets/fill-presets.xml and the game's Editor/FillPresets.xml); see
+       docs/FILL_TOOL.md for what the numbers under each one mean. -->
+  <div id="fillpal" style="display:none">
+    <div class="pal-head">
+      <span class="pal-title">Fills</span>
+      <button id="fill-draw" title="drag on the map to paint the area — hold Shift to rub it out">draw: off</button>
+      <button id="fill-close" title="close">✕</button>
+    </div>
+    <div class="fill-sizes" title="how much one drag covers">
+      <span>Brush</span>
+      <button data-size="1" class="on">x1</button>
+      <button data-size="3">x3</button>
+      <button data-size="5">x5</button>
+      <button data-size="7">x7</button>
+      <button data-size="rect">Rect</button>
+    </div>
+    <select id="fill-list" size="12"></select>
+    <div id="fill-detail"></div>
+    <div class="pal-foot">
+      <div class="fill-actions">
+        <div id="fill-count">nothing painted</div>
+        <button id="fill-clear" title="drop the painted area without planting anything">Clear</button>
+        <button id="fill-apply" class="go" title="plant the chosen preset over the painted area">Fill</button>
+      </div>
+      <div id="fill-where"></div>
+    </div>
+  </div>

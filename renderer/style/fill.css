@@ -1,0 +1,50 @@
+/* fills — the same right-hand shell as the palettes and regions: a tool armed
+   at the top, the presets listed below, what the chosen one does under them. */
+#fillpal { position: fixed; right: 0; top: 40px; bottom: 0; width: 268px; z-index: 12;
+  background: #0f141aee; border-left: 1px solid #21262d; backdrop-filter: blur(6px);
+  display: flex; flex-direction: column; }
+#fillpal .pal-head { padding: 8px; border-bottom: 1px solid #21262d; display: flex;
+  gap: 8px; align-items: center; }
+#fillpal .pal-title { color: #e6edf3; font-weight: 600; flex: 1; }
+#fillpal .pal-head button { background: #21262d; color: #c9d1d9; border: 1px solid #30363d;
+  border-radius: 6px; padding: 4px 10px; cursor: pointer; font-size: 12px; white-space: nowrap; }
+#fillpal .pal-head button:hover { background: #30363d; }
+#fillpal .pal-head button.on { background: #1f6feb33; border-color: #1f6feb; color: #cbe0ff; }
+
+/* Brush sizes, as the original has them: x1 x3 x5 x7 and a dragged rectangle. */
+.fill-sizes { display: flex; gap: 4px; align-items: center; padding: 7px 8px;
+  border-bottom: 1px solid #21262d; }
+.fill-sizes span { color: #6e7681; font-size: 11px; margin-right: 2px; }
+.fill-sizes button { flex: 1; background: #161b22; color: #c9d1d9; border: 1px solid #30363d;
+  border-radius: 5px; padding: 3px 0; cursor: pointer; font-size: 11px; }
+.fill-sizes button:hover { background: #21262d; }
+.fill-sizes button.on { background: #1f6feb33; border-color: #1f6feb; color: #cbe0ff; }
+
+#fill-list { margin: 8px 8px 0; background: #0d1014; color: #c9d1d9; border: 1px solid #30363d;
+  border-radius: 6px; padding: 2px; font-size: 12px; }
+#fill-list:focus { outline: none; border-color: #1f6feb; }
+#fill-list option { padding: 2px 5px; }
+
+/* What the chosen preset actually does: one row per layer, outermost first. */
+#fill-detail { flex: 1; overflow-y: auto; padding: 8px; font-size: 11px; color: #8b949e;
+  display: flex; flex-direction: column; gap: 6px; }
+#fill-detail .layer { background: #161b22; border: 1px solid #21262d; border-radius: 6px;
+  padding: 5px 6px; }
+#fill-detail .layer .head { color: #c9d1d9; display: flex; gap: 6px; align-items: baseline; }
+#fill-detail .layer .head .sp { flex: 1; }
+#fill-detail .layer .head .num { font-variant-numeric: tabular-nums; color: #6e7681; }
+#fill-detail .layer .what { margin-top: 3px; line-height: 1.4; word-break: break-word; }
+/* A candidate the installed data has no file for places nothing where it comes
+   up, which otherwise reads as a preset that just does not fill very much. */
+#fill-detail .layer .what .gone { color: #f85149; text-decoration: line-through; }
+
+#fillpal .pal-foot { padding: 7px 8px; border-top: 1px solid #21262d; font-size: 11px;
+  color: #6e7681; line-height: 1.35; display: flex; flex-direction: column; gap: 6px; }
+.fill-actions { display: flex; gap: 6px; align-items: center; }
+#fill-count { flex: 1; color: #8b949e; font-variant-numeric: tabular-nums; }
+.fill-actions button { background: #21262d; color: #c9d1d9; border: 1px solid #30363d;
+  border-radius: 5px; padding: 3px 10px; cursor: pointer; font-size: 11px; }
+.fill-actions button:hover { background: #30363d; }
+.fill-actions button.go { background: #1f6feb33; border-color: #1f6feb; color: #cbe0ff; }
+.fill-actions button.go:hover { background: #1f6feb55; }
+.fill-actions button:disabled { opacity: .45; cursor: default; }

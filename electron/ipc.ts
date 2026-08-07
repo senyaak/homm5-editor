@@ -748,6 +748,61 @@ export interface AddObjectResult {
   complete: boolean;
 }
 
+/**
+ * One fill preset, as the panel needs to show it.
+ *
+ * The layers come across in full rather than as a count: the panel says what a
+ * preset will actually do — its spacing, its bands, what it plants — because
+ * "Birch Wood" alone gives no way to choose between two presets, and the file
+ * behind them is editable by hand.
+ */
+export interface FillPresetInfo {
+  name: string;
+  /** Which file it came from — the game's Editor folder or ours. */
+  source: string;
+  layers: Array<{
+    dispersion: number;
+    width: number;
+    objects: Array<{
+      id: string;
+      size: number;
+      probability: number;
+      /** False when nothing in the mounted data answers to its href. */
+      present: boolean;
+    }>;
+  }>;
+}
+
+/** Result of `fill:presets`. */
+export interface FillPresetsResult {
+  presets: FillPresetInfo[];
+  /** Files that were read, in order, so the panel can say where to add more. */
+  sources: string[];
+}
+
+/** Payload of `fill:apply` — the painted tiles and which preset to run. */
+export interface FillApplyPayload {
+  /** Index into the list `fill:presets` returned. */
+  preset: number;
+  floor: number;
+  cells: Array<{ x: number; y: number }>;
+  /** Seed, so a fill is reproducible and a test can pin one down. */
+  seed: number;
+}
+
+/** Result of `fill:apply`. */
+export interface FillApplyResult {
+  /** Everything placed, ready for the renderer's instance list. */
+  placed: Array<{ instance: Instance; geom: { index: number; data: GeomData } | null }>;
+  /** Lattice points the plan looked at, across every layer. */
+  considered: number;
+  /**
+   * Planned placements whose model could not be resolved, so they were left
+   * out. Silence here would look like a preset that thins itself out.
+   */
+  unresolved: number;
+}
+
 /** Result of `map:status`: null when no map is loaded. */
 export type MapStatusResult = ProjectStatus | null;
 
@@ -1724,6 +1779,10 @@ export interface EditorApi {
   listObjects(): Promise<ObjectCatalogResult>;
   objectIcon(path: string): Promise<IconResult>;
   addObject(p: AddObjectPayload): Promise<AddObjectResult>;
+  /** The fill presets on this machine, and where they were read from. */
+  fillPresets(): Promise<FillPresetsResult>;
+  /** Run one over the painted tiles — one undo step, however much it plants. */
+  applyFill(p: FillApplyPayload): Promise<FillApplyResult>;
   save(): Promise<MapSaveResult>;
   pack(): Promise<MapPackResult>;
   status(): Promise<MapStatusResult>;

@@ -70,7 +70,8 @@ import { addInstanceToScene, armObject, armed, placeAt, initPalettes, initObject
 import { loadMapPath, session } from '#features/map-session.ts';
 import type { OpenedMap } from '#features/map-session.ts';
 import { addRegion, drawRegionOverlay, region, regionDraw, regionList, regionOverlay, renderRegionList, initRegions } from '#features/regions.ts';
-import { brush, freeTileAtClient, stroke, strokeVerts, tileAtClient, tileUnderCursor, updateBrushCursor, updateHoverCursor, vertexAtClient } from '#features/terrain-brush/brush.ts';
+import { brush, freeTileAtClient, squareRect, stroke, strokeVerts, tileAtClient, tileUnderCursor, updateBrushCursor, updateHoverCursor, vertexAtClient } from '#features/terrain-brush/brush.ts';
+import { fillOutlineSegments, fillState, fillTool, initFill, paintFill } from '#features/fill.ts';
 import { BRUSH_SAYS, RIVER_DEPTH, applyBrush, applyRect, commitBrush, currentRect, paintedVerts, sentVerts, refusedStrokes, pendingCommits, riverCellAtClient, riverHeights, riverSide, setBrush, syncBrushPanel, initBrushPanel } from '#features/terrain-brush/sculpt.ts';
 import { closeMap, initPicker, openViaDialog, renderMapList, CLICK_SLOP, initShell } from '#features/shell.ts';
 import { clearWorld, setActiveFloor } from '#viewport/world.ts';
@@ -125,6 +126,8 @@ const ALL = 'All'; // category chip meaning 'no filter', used as both label and 
 //     drag it to move. Orbiting stays available everywhere else.
 let down: { sx: number; sy: number; hitId: string | null } | null = null; // { sx, sy, hitId }
 let dragging = false, moved = false;
+/** True while a drag is painting the fill tool's area (see features/fill.ts). */
+let fillPainting = false;
 // [perf] The plain hover marker needs a full-terrain raycast, which is the most
 // expensive thing a pointermove can do (≈6ms on a 256² map — brute force, three
 // has no BVH). A high-poll mouse fires many moves per frame, so the raycast is
@@ -152,6 +155,17 @@ renderer.domElement.addEventListener('pointerdown', (ev) => {
     region.anchor = tileUnderCursor(ev);
     controls.enabled = false;
     updateBrushCursor(region.anchor);
+    return;
+  }
+  // The fill tool paints an AREA rather than the map: a drag marks tiles (Shift
+  // rubs them out), and nothing is placed until Fill is pressed. Same deal as
+  // the brush — the left button is the tool's, the other two still orbit.
+  if (fillTool.on) {
+    fillPainting = true;
+    controls.enabled = false;
+    const at = tileUnderCursor(ev);
+    if (fillTool.rect) { fillTool.anchor = at; updateBrushCursor(at); }
+    else if (at) paintFill(squareRect(at.x, at.y, fillTool.size), ev.shiftKey);
     return;
   }
   // With the brush armed, left-drag paints instead of orbiting. Middle and
@@ -187,6 +201,16 @@ renderer.domElement.addEventListener('pointermove', (ev) => {
   // Ahead of the held-button bail below: dragging out a region IS a gesture with
   // the button down, and its whole feedback is the footprint growing under it.
   if (regionDraw) { updateBrushCursor(tileUnderCursor(ev)); return; }
+  // Ahead of the same bail, and for the same reason: painting the fill area IS
+  // a gesture with the button down, and the footprint under the cursor is how
+  // it is aimed. A stroke whose pointerup was lost ends here, like the brush's.
+  if (fillTool.on) {
+    const at = tileUnderCursor(ev);
+    updateBrushCursor(at);
+    if (ev.buttons === 0) { fillPainting = false; return; }
+    if (fillPainting && !fillTool.rect && at) paintFill(squareRect(at.x, at.y, fillTool.size), ev.shiftKey);
+    return;
+  }
   // [perf] While a mouse button is held and we are neither painting nor moving
   // an object, the user is orbiting or panning the camera. That gesture wants no
   // cursor gizmo, and running a terrain raycast on every one of its many moves is
@@ -258,6 +282,22 @@ addEventListener('pointerup', async (ev) => {
       x0: Math.min(a.x, b.x), y0: Math.min(a.y, b.y),
       x1: Math.max(a.x, b.x), y1: Math.max(a.y, b.y),
     });
+    return;
+  }
+  // A fill rectangle lands on release, from the two corners of the drag; a
+  // square brush has already painted everything it passed over.
+  if (fillPainting) {
+    fillPainting = false;
+    controls.enabled = true;
+    const a = fillTool.anchor;
+    if (fillTool.rect && a) {
+      const b = tileUnderCursor(ev) ?? a;
+      paintFill({
+        x0: Math.min(a.x, b.x), y0: Math.min(a.y, b.y),
+        x1: Math.max(a.x, b.x), y1: Math.max(a.y, b.y),
+      }, ev.shiftKey);
+      fillTool.anchor = null;
+    }
     return;
   }
   if (stroke.painting) {
@@ -546,6 +586,17 @@ interface ViewApi {
    * in the file either way.
    */
   regionOutline(): number;
+  /**
+   * What the fill tool is doing: whether it is armed, how many tiles are
+   * painted, and which preset is chosen.
+   *
+   * The painted area is a scratch selection that never reaches the map, so
+   * nothing else can see it — a drag that marked no tiles and a drag that
+   * marked the wrong ones both end with a map that has not changed.
+   */
+  fill(): { open: boolean; drawing: boolean; cells: number; preset: string; size: number; rect: boolean; presets: number };
+  /** Line segments the painted area is outlined with, or 0 when nothing is drawn. */
+  fillOutline(): number;
 }
 
 /** A world point under the plan camera, in CSS pixels. */
@@ -596,6 +647,8 @@ const view: ViewApi = {
     if (!o || !o.visible) return 0;
     return (o.geometry.getAttribute('position')?.count ?? 0) / 2;
   },
+  fill() { return fillState(); },
+  fillOutline() { return fillOutlineSegments(); },
   tileToScreen(x, y) { return worldToScreen((x + 0.5) * U, (y + 0.5) * U); },
   tileAt(clientX, clientY) { return tileAtClient(clientX, clientY); },
   // A vertex sits ON the grid line, at a whole multiple of the tile spacing —
@@ -1004,6 +1057,7 @@ initShadows(); // and before any material compiles: shadow chunks are compiled i
 initPalettes();
 initObjectFilters();
 initRegions();
+initFill();
 initDialogScenes();
 initBrushPanel();
 initPropertyPanel();
