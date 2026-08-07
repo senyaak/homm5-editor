@@ -2,11 +2,13 @@
 //
 //   HOMM5_ROOT=C:\Projects\homm5-game-sod npm run sod-content
 //
-// The port needs eight things the game does not ship, and they depend on each
-// other in one order: the Sharpshooter, the three pieces of the Cloak of the
-// Undead King and the set they make, Gem's class, her racial and its branch, the
-// weights that class gives them once they exist, her specialization, Gem
-// herself, and the dwelling that hires the creature. Every one of them is
+// The port needs a list of things the game does not ship, and they depend on
+// each other in one order: the Sharpshooter, the three pieces of the Cloak of
+// the Undead King and the set they make, Gem's class, her racial and its branch,
+// the weights that class gives them once they exist, her specialization, Gem
+// herself, and then the buildings — the palace that hires the Sharpshooter, the
+// tier 4-to-7 dwellings Heroes V bundles into one Military Post, and the one the
+// mummies are sold from. Every one of them is
 // authored through the editor's own forms, which is what makes the editor the
 // only writer of the archive: one `homm5-editor.h5u`, because creatures,
 // artifacts, classes, skills and specializations extend reference tables
@@ -36,9 +38,11 @@ import { launchEditor } from '../e2e/launch.ts';
 import type { Launched } from '../e2e/launch.ts';
 import { settled } from '../e2e/trace.ts';
 import {
-  AMULET, BOOTS, CLOAK, GEM, GEM_SPEC, PALACE, PIECES, SHARPSHOOTER, TENT_MASTER, TENT_PERKS,
-  UNDEAD_KING, WITCH,
+  AMULET, BOOTS, CLOAK, GEM, GEM_SPEC, PIECES, SHARPSHOOTER, SOD_DWELLINGS, TENT_MASTER,
+  TENT_PERKS, UNDEAD_KING, WITCH, palaceSpec,
 } from '../e2e/mods.ts';
+import { messageSlots } from '../src/mods/buildings.ts';
+import type { BuildingSpec } from '../src/mods/buildings.ts';
 import { modFile } from '../src/game/mod-paths.ts';
 import { MOD_STEM } from '../src/mods/mod-files.ts';
 import { readCreatureMod } from '../src/mods/mod-archive.ts';
@@ -404,47 +408,66 @@ async function hero(page: Page): Promise<void> {
   await page.locator('#hm-close').click();
 }
 
-/** The dwelling that hires the creature — the object a converted map places. */
-async function dwelling(page: Page): Promise<void> {
-  if (report(PALACE.name, holds((m) => m.buildings.map((b) => b.file), PALACE.file))) return;
-
-  if (await page.locator('#heroesmod').isVisible()) await page.locator('#hm-close').click();
-  await page.locator('#bldbtn').click();
+/** One building, through the Dwelling tab — art, its class's fields, its lines. */
+async function building(page: Page, b: BuildingSpec): Promise<void> {
+  if (!(await page.locator('#bldmod').isVisible())) await page.locator('#bldbtn').click();
   await expect(page.locator('#bldmod')).toBeVisible();
   await page.locator('#bld-tabs .mp-tab', { hasText: 'Dwelling' }).first().click();
   await page.locator('#bld-new').click();
   await expect(page.locator('#bldedit')).toBeVisible();
 
-  // No preset: what is wanted is the elves' tier-3 dwelling's LOOK with our own
-  // creature behind it, so the art is named outright.
-  await page.locator('#bld-file').fill(PALACE.file);
-  await page.locator('#bld-type').selectOption(PALACE.type);
-  await page.locator('#bld-model').fill(PALACE.model);
-  await page.locator('#bld-animset').fill(PALACE.animSet);
-  await page.locator('#bld-effect').fill(PALACE.effect);
-  await page.locator('#bld-icon').fill(PALACE.icon);
-  // What it hires — the field only this class has.
-  await page.locator('.bld-field[data-field="creatures"]').fill(PALACE.creatures.join(', '));
+  // No preset anywhere here: every one of these wants a particular model with
+  // our own creature behind it, so the art is named outright rather than
+  // inherited from some shipped object's fields.
+  await page.locator('#bld-file').fill(b.file);
+  if (b.type) await page.locator('#bld-type').selectOption(b.type);
+  await page.locator('#bld-model').fill(b.model);
+  if (b.animSet) await page.locator('#bld-animset').fill(b.animSet);
+  if (b.effect) await page.locator('#bld-effect').fill(b.effect);
+  if (b.icon) await page.locator('#bld-icon').fill(b.icon);
+  // A town-screen model is used through a bake or not at all: it is two to three
+  // times map scale and stands where it sits in the town scene.
+  if (b.bake) await page.locator('#bld-bake').fill(String(b.bake.tiles));
 
-  // Its six lines, in the order the engine reads them.
-  const lines = [
-    PALACE.name, PALACE.description, PALACE.firstVisit,
-    PALACE.secondVisit, PALACE.firstVisitNoHire, PALACE.secondVisitNoHire,
-  ];
-  await expect(page.locator('#bld-texts .bld-text')).toHaveCount(6);
+  // The class's own fields — `creatures` for every dwelling, `guards` for the
+  // ones Heroes III puts an army on. Both are lists, which the form knows from
+  // the spec rather than from the value.
+  for (const [name, value] of Object.entries(b.fields ?? {})) {
+    const field = page.locator(`.bld-field[data-field="${name}"]`);
+    await field.fill(Array.isArray(value) ? value.join(', ') : value);
+  }
+
+  // Its lines, in the order the engine reads them.
+  const lines = messageSlots(b.className).map((slot) => b.messages[slot] ?? '');
+  await expect(page.locator('#bld-texts .bld-text')).toHaveCount(lines.length);
   for (const [i, line] of lines.entries()) await page.locator('#bld-texts .bld-text').nth(i).fill(line);
 
+  // Minutes are possible here: a building copies its whole art tree, and the
+  // elves' cabins carry a big one.
   await page.locator('#bld-ok').click();
   await expect(page.locator('#bldedit')).toBeHidden({ timeout: 240_000 });
+  await expect(page.locator('#bld-list')).toContainText(b.messages.name!);
 
-  // Repainted, or it IS the High Cabins with a different sign on it: same model,
-  // same animation, same colours, standing next to the real one on the same map.
-  await page.locator('#bld-list .um-item', { hasText: PALACE.name }).locator('.um-paint').click();
-  await expect(page.locator('#recolor')).toBeVisible();
-  await page.locator('#rc-hue').fill(String(PALACE.recolor.hue));
-  await page.locator('#rc-ok').click();
-  await expect(page.locator('#rc-note')).toContainText(/repainted \d+ texture/, { timeout: 240_000 });
-  await page.locator('#rc-close').click();
+  if (b.recolor) {
+    // Or it IS the building it was copied from with a different sign on it: same
+    // model, same animation, same colours, standing next to the real one.
+    await page.locator('#bld-list .um-item', { hasText: b.messages.name! }).locator('.um-paint').click();
+    await expect(page.locator('#recolor')).toBeVisible();
+    await page.locator('#rc-hue').fill(String(b.recolor.hue ?? 0));
+    await page.locator('#rc-ok').click();
+    await expect(page.locator('#rc-note')).toContainText(/repainted \d+ texture/, { timeout: 240_000 });
+    await page.locator('#rc-close').click();
+  }
+}
+
+/** The palace, the tier 4-to-7 dwellings, and the one the mummies come from. */
+async function dwellings(page: Page): Promise<void> {
+  if (await page.locator('#heroesmod').isVisible()) await page.locator('#hm-close').click();
+  for (const b of [palaceSpec(), ...SOD_DWELLINGS]) {
+    if (report(b.messages.name!, holds((m) => m.buildings.map((x) => x.file), b.file))) continue;
+    await building(page, b);
+  }
+  if (await page.locator('#bldmod').isVisible()) await page.locator('#bld-close').click();
 }
 
 console.log(`building the campaign's content into ${game}\n`);
@@ -461,7 +484,7 @@ try {
   await reweight(ed.page);
   await specialization(ed.page);
   await hero(ed.page);
-  await dwelling(ed.page);
+  await dwellings(ed.page);
 } finally {
   await ed.app.close();
 }
@@ -500,7 +523,8 @@ const missing = [
     .map((s) => s.id),
   ...((mod.specializations ?? []).some((s) => s.id === GEM_SPEC.id) ? [] : [GEM_SPEC.id]),
   ...(mod.heroes.some((h) => h.id === GEM.id) ? [] : [GEM.id]),
-  ...(mod.buildings.some((b) => b.file === PALACE.file) ? [] : [PALACE.file]),
+  ...[palaceSpec(), ...SOD_DWELLINGS].filter((b) => !mod.buildings.some((x) => x.file === b.file))
+    .map((b) => b.file),
 ];
 console.log(`\n${done.length} authored, ${skipped.length} already there`);
 if (missing.length) {

@@ -278,6 +278,188 @@ export function palaceSpec(): BuildingSpec {
 }
 
 /**
+ * The dwellings the campaign needs and the game does not have: tiers 4 to 7 of
+ * both its factions, and a pyramid for the mummies.
+ *
+ * WHY THEY EXIST. Heroes V gives a faction three dwellings, tiers 1 to 3, and one
+ * Military Post that sells tiers 4, 5, 6 AND 7 from a single building. Heroes III
+ * puts one dwelling per tier in four different places on the map, which is a
+ * different game: one post is the whole top of the roster from one tile. Gem2
+ * alone wants dwellings for tiers 1 to 6 of BOTH lines.
+ *
+ * MODELS ARE THE TOWN'S OWN. Every faction builds all seven dwellings on its town
+ * screen, so the art exists — `Arenas/Town/<town>/<name>_u1r0.xdb`, found through
+ * `GameMechanics/TownBuildingSharedStats/<faction>/Dwelling_N`. The adventure map
+ * has none of them, and a town model cannot simply be pointed at: it is two to
+ * three times map scale and stands where it sits in the town scene, which is what
+ * `bake` is for. Borrowing an adventure object instead was tried first and was
+ * wrong — the ones that look right (the Dragon Utopia, the Treant Thicket) are
+ * TREASURE BANKS, and a dwelling that looks like a bank lies about its tile.
+ *
+ * These numbers were measured rather than chosen, and they are the reason this
+ * table is copied rather than rewritten: the icon is numbered per BUILDING and
+ * not per tier (Sylvan's tier 5 is `d6` and its tier 6 is `d5`), and two models
+ * bake to three tiles rather than four because they are towers — at four the
+ * mausoleum stands twenty units up, half again the tallest thing on any map.
+ *
+ * GUARDS name WHO, never how many: the field is a list of ids, and the engine
+ * sizes each stack. One entry is one stack and a stack is ONE WEEKLY GROWTH
+ * (measured in game), so three entries are Heroes III's three growths. Tier 4 is
+ * unguarded there, and stays unguarded here.
+ *
+ * The names and descriptions are the GAME's own words for these very buildings,
+ * read out of `Text/Game/TownBuildings/…` — but shipped as our own files, because
+ * a building of ours carries its strings (see BuildingSpec). Only the visit lines
+ * are written here, and they are in the accusative, since Russian declines and a
+ * template cannot: `building` answers "захватили ЧТО", `creatures` "нанять КОГО".
+ */
+const FACTION = {
+  sylvan: {
+    icon: '/UI/TownHall/preserve/128', town: '/Arenas/Town/Rampart',
+    type: 'BUILDING_PRESERVE_MILITARY_POST',
+  },
+  necropolis: {
+    icon: '/UI/TownHall/necropolis/128', town: '/Arenas/Town/Necropolis',
+    type: 'BUILDING_NECROPOLIS_MILITARY_POST',
+  },
+} as const;
+
+/** Three stacks of the same creature: three weekly growths. */
+const guardedBy = (creature: string): string[] => [creature, creature, creature];
+
+function visits(building: string, creatures: string): Record<string, string> {
+  return {
+    firstVisit: `Вы захватили ${building}. Вы хотите нанять ${creatures}?`,
+    secondVisit: `Вы хотите нанять ${creatures}?`,
+    firstVisitNoHire: `Вы захватили ${building}, но ${creatures} здесь нет.`,
+    secondVisitNoHire: `Здесь нет ${creatures}.`,
+  };
+}
+
+/** One dwelling split out of a faction's Military Post. */
+function tierDwelling(o: {
+  faction: keyof typeof FACTION;
+  file: string;
+  creature: string;
+  /** The town model's stem, e.g. `UnicornGlade_u1r0`. */
+  model: string;
+  /** The town-hall picture, per building — never derived from the tier. */
+  icon: string;
+  /** How wide the baked model should end up. Four unless the art needs otherwise. */
+  tiles?: number;
+  guards?: readonly string[];
+  /** As the town screen names it, and as it describes itself. */
+  name: string;
+  description: string;
+  /** The building and the creatures, in the accusative — see visits(). */
+  says: [building: string, creatures: string];
+}): BuildingSpec {
+  const f = FACTION[o.faction];
+  return {
+    file: o.file,
+    className: 'AdvMapDwellingShared',
+    type: f.type,
+    model: `${f.town}/${o.model}.xdb`,
+    icon: `${f.icon}/${o.icon}.xdb`,
+    bake: { tiles: o.tiles ?? 4 },
+    fields: { creatures: [o.creature], ...(o.guards ? { guards: [...o.guards] } : {}) },
+    messages: { name: o.name, description: o.description, ...visits(o.says[0], o.says[1]) },
+  };
+}
+
+export const SOD_DWELLINGS: readonly BuildingSpec[] = [
+  tierDwelling({
+    faction: 'sylvan', file: 'SylvanStonehenge', creature: 'CREATURE_DRUID',
+    model: 'RingOfStones_u1r0', icon: 'd4',
+    name: 'Стоунхендж', description: 'Стоунхендж позволяет вам нанимать друидов.',
+    says: ['Стоунхендж', 'друидов'],
+  }),
+  tierDwelling({
+    faction: 'sylvan', file: 'SylvanUnicornGlade', creature: 'CREATURE_UNICORN',
+    model: 'UnicornGlade_u1r0', icon: 'd6', guards: guardedBy('CREATURE_UNICORN'),
+    name: 'Поляна единорогов',
+    description: 'Поляна единорогов позволяет вам нанимать единорогов.',
+    says: ['поляну единорогов', 'единорогов'],
+  }),
+  tierDwelling({
+    faction: 'sylvan', file: 'SylvanTreantArches', creature: 'CREATURE_TREANT',
+    model: 'TreantArches_u1r0', icon: 'd5', guards: guardedBy('CREATURE_TREANT'),
+    name: 'Своды энтов', description: 'Своды энтов позволяют вам нанимать энтов.',
+    says: ['своды энтов', 'энтов'],
+  }),
+  tierDwelling({
+    // The dragon nest is 2.7 times taller than it is wide and the scale is set by
+    // the width: at four tiles it would stand eleven tiles high. At three it is
+    // about as tall as the game's own Dragon Utopia on a ninth of the ground.
+    faction: 'sylvan', file: 'SylvanDragonAltar', creature: 'CREATURE_GREEN_DRAGON',
+    model: 'ForestNest_u1r0', icon: 'd7', tiles: 3, guards: guardedBy('CREATURE_GREEN_DRAGON'),
+    name: 'Алтарь драконов',
+    description: 'Алтарь драконов позволяет вам нанимать зеленых драконов.',
+    says: ['алтарь драконов', 'зелёных драконов'],
+  }),
+  tierDwelling({
+    faction: 'necropolis', file: 'NecropolisEstate', creature: 'CREATURE_VAMPIRE',
+    model: 'Estate_u1r0', icon: 'd4',
+    name: 'Особняк вампиров',
+    description: 'Особняк вампиров позволяет вам нанимать вампиров.',
+    says: ['особняк вампиров', 'вампиров'],
+  }),
+  tierDwelling({
+    // Two thin towers with spires, four times taller than wide.
+    faction: 'necropolis', file: 'NecropolisMausoleum', creature: 'CREATURE_LICH',
+    model: 'mausoleum_u1r0', icon: 'd5', tiles: 3, guards: guardedBy('CREATURE_LICH'),
+    name: 'Усыпальница', description: 'Усыпальница позволяет вам нанимать личей.',
+    says: ['усыпальницу', 'личей'],
+  }),
+  tierDwelling({
+    faction: 'necropolis', file: 'NecropolisHallOfDarkness', creature: 'CREATURE_WIGHT',
+    model: 'Hall_of_Darkness_u1r0', icon: 'd6', guards: guardedBy('CREATURE_WIGHT'),
+    name: 'Покинутый замок',
+    description: 'Покинутый замок позволяет вам нанимать умертвия.',
+    says: ['покинутый замок', 'умертвий'],
+  }),
+  tierDwelling({
+    faction: 'necropolis', file: 'NecropolisDragonGraveyard', creature: 'CREATURE_BONE_DRAGON',
+    model: 'DragonGraveyrd_u1r0', icon: 'd7', guards: guardedBy('CREATURE_BONE_DRAGON'),
+    name: 'Кладбище драконов',
+    description: 'Кладбище драконов позволяет вам нанимать костяных драконов.',
+    says: ['кладбище драконов', 'костяных драконов'],
+  }),
+  {
+    // The mummies, which Heroes III sells from a pyramid.
+    //
+    // THE MODEL IS THE SPHINX (Сеня's call), and it settles a question the
+    // pyramid could not: the game's own pyramid blocks 6x6 and covers 8x8, the
+    // outer ring being sand a hero walks over, and those are numbers no form can
+    // say — measured off its mesh it would block all 64 tiles and wall itself in.
+    // The sphinx is a two-by-two object already at map scale and on its own
+    // origin, so nothing is baked and nothing is overridden: the footprint is
+    // measured, the way every other building's is.
+    //
+    // It is called what stands on the tile rather than what Heroes III called it.
+    // A tile showing a sphinx under the word «Пирамида» lies about itself, and
+    // the description is where the building says what it does.
+    file: 'MummySphinx',
+    className: 'AdvMapDwellingShared',
+    // The Necropolis post's Type, shared the way all seven random dwellings share
+    // BUILDING_ABANDONED_MINE. Not the sphinx's own: a value the engine may act
+    // on is not one to borrow, and this one would ask a riddle.
+    type: FACTION.necropolis.type,
+    model: '/_(Model)/TESTS/Buildings/sphinx.(Model).xdb',
+    // Repainted for the same reason the palace is: the riddle sphinx is a real
+    // object a map may put down, and two buildings that look identical and do
+    // different things is the one mistake art can make on an adventure map.
+    recolor: { hue: 200, saturation: 0, lightness: 0, tint: { r: 0, g: 0, b: 0, strength: 0 } },
+    fields: { creatures: ['CREATURE_MUMMY'] },
+    messages: {
+      name: 'Сфинкс',
+      description: 'Сфинкс позволяет вам нанимать мумий.',
+      ...visits('сфинкса', 'мумий'),
+    },
+  },
+];
+
+/**
  * The three as one list, with the fields a build needs spelled out.
  *
  * The dialog specs fill a FORM from the constants above, so those carry what a
