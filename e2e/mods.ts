@@ -610,6 +610,52 @@ export const TENT_PERKS = [
 }));
 
 /**
+ * Gem herself, as the Heroes form is filled in.
+ *
+ * Here rather than in the spec that authors her because she is authored twice
+ * now: mod-004 fills the form and then proves she can be taken away again, and
+ * `tools/build-sod-content.ts` fills the same form to LEAVE her in the campaign's
+ * install. Two forms filled from one description, or the hero the port places
+ * and the hero the suite checks are two different women.
+ */
+export const GEM = {
+  /** Her unique identifier: InternalName in the document, stem of her files. */
+  id: GEM_FILE,
+  /** As the roster offers her: the href a map would store. */
+  donor: '/MapObjects/Preserve/Ossir.(AdvMapHeroShared).xdb#xpointer(/AdvMapHeroShared)',
+  /** The same, as the manifest records it and the builder reads it. */
+  donorPath: 'MapObjects/Preserve/Ossir.(AdvMapHeroShared).xdb',
+  name: 'Gem',
+  biography: 'A sorceress of Enroth, newly come to AvLee and its druids.',
+  town: 'TOWN_PRESERVE',
+  /** What the DONOR implies — one class per faction, and Ossir is a Ranger. */
+  presetClass: 'HERO_CLASS_RANGER',
+  /** What she is built as: her own class, which mod-004-classes authors. */
+  heroClass: WITCH.id,
+  /** And her own racial, in the slot the Avenger would have had. */
+  racial: TENT_MASTER.id,
+  /** Ours: the tent grows 5% per hero level. */
+  spec: GEM_SPEC.id,
+  specName: 'Field Medic',
+  specText: 'With every level the first aid tent heals 5 more points of damage.',
+  /** Her Heroes III kit, as near as Heroes V has it. */
+  skill: 'HERO_SKILL_WAR_MACHINES',
+  perk: 'HERO_SKILL_FIRST_AID',
+  attributes: { off: 0, def: 1, sp: 2, kn: 2 },
+  /**
+   * Her own face and her own icon, as DRAWINGS — the mod builds the textures.
+   *
+   * This is the difference between a hero who looks like herself and one who
+   * looks like her preset: art is copied from the donor into her folder, so a
+   * portrait painted over that copy comes back as Ossir's the next time the mod
+   * is built. A picture is re-read on every build, and lives in `assets/` where
+   * the checkout carries it.
+   */
+  portrait: join(ASSETS, 'heroes', 'gem.gif'),
+  specPicture: join(ASSETS, 'specializations', 'first_aid.gif'),
+};
+
+/**
  * **Death Ripple**, Heroes III's — the first spell of our own.
  *
  * WHY IT IS THE ONE TO PORT FIRST. It has no target to pick, no animation to

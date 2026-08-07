@@ -108,7 +108,8 @@
     "test-e2e-setup": "node tools/test-e2e-setup.ts",
     "test-players": "node tools/test-players.ts",
     "test-map-tag": "node tools/test-map-tag.ts",
-    "e2e-live": "node tools/e2e-live.ts"
+    "e2e-live": "node tools/e2e-live.ts",
+    "sod-content": "node tools/build-sod-content.ts"
   },
   "dependencies": {
     "@codemirror/legacy-modes": "^6.5.3",

@@ -47,7 +47,7 @@ import { test, expect } from '@playwright/test';
 import { launchEditor, REPO_ROOT } from './launch.ts';
 import { settled } from './trace.ts';
 import type { Launched } from './launch.ts';
-import { GEM_SPEC, TENT_MASTER, WITCH, installWitchFixture, modGameRoot, readInstalledMod } from './mods.ts';
+import { GEM, GEM_SPEC, WITCH, installWitchFixture, modGameRoot, readInstalledMod } from './mods.ts';
 import { EFFECTS_FILE, readSpecializations } from '../src/mods/artifact-effects.ts';
 import { SHIPPED_SPECIALIZATIONS } from '../src/mods/specializations.ts';
 import { modFile } from '../src/game/mod-paths.ts';
@@ -59,40 +59,6 @@ import { PATCHED_EXE, readExe } from '../src/exe/creature-limit.ts';
 
 let ed: Launched;
 const GAME = modGameRoot();
-
-/** Gem, as the form is filled in. */
-const GEM = {
-  /** His unique identifier: InternalName in the document, stem of his files. */
-  id: 'H3Gem',
-  /** As the roster offers him: the href a map would store. */
-  donor: '/MapObjects/Preserve/Ossir.(AdvMapHeroShared).xdb#xpointer(/AdvMapHeroShared)',
-  /** The same, as the manifest records it and the builder reads it. */
-  donorPath: 'MapObjects/Preserve/Ossir.(AdvMapHeroShared).xdb',
-  name: 'Gem',
-  biography: 'A sorceress of Enroth, newly come to AvLee and its druids.',
-  town: 'TOWN_PRESERVE',
-  /** What the DONOR implies — one class per faction, and Ossir is a Ranger. */
-  presetClass: 'HERO_CLASS_RANGER',
-  /** What she is built as: her own class, which mod-004-classes authors. */
-  heroClass: WITCH.id,
-  /** And her own racial, in the slot the Avenger would have had. */
-  racial: TENT_MASTER.id,
-  /** Ours, authored by the test below: the tent grows 5% per hero level. */
-  spec: GEM_SPEC.id,
-  specName: 'Field Medic',
-  specText: 'With every level the first aid tent heals 5 more points of damage.',
-  /**
-   * Her own face and her own icon, as DRAWINGS — the mod builds the textures.
-   *
-   * This is the difference between a hero who looks like himself and one who
-   * looks like his preset: art is copied from the donor into his folder, so a
-   * portrait painted over that copy comes back as Ossir's the next time the mod
-   * is built. A picture is re-read on every build, and lives in `assets/` where
-   * the checkout carries it.
-   */
-  portrait: join(REPO_ROOT, 'assets', 'heroes', 'gem.gif'),
-  specPicture: join(REPO_ROOT, 'assets', 'specializations', 'first_aid.gif'),
-};
 
 /** What the executable's creature ceiling was before this spec ran. */
 let ceilingBefore: number | null = null;
