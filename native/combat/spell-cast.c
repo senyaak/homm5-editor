@@ -1124,3 +1124,62 @@ static void install_master_gate_log(void) {
     log_line("a cast of ours will say whether the caster has the Master perk");
   }
 }
+
+// ---------------------------------------------------------------------------
+// THE BURN ITSELF, AND WHY THE TWO SHAPES DIFFER.
+//
+// Reading the branch through rather than one gate per run settled most of it.
+// `0xBD1420` is the function that leaves a Master's mark — it asks the caster
+// for `HERO_SKILL_MASTER_OF_FIRE` (44) and the target for the two abilities that
+// exempt it, then hands a number to `SPELL_EFFECT_FIRE_DAMAGE` (202). Five
+// places call it, and two of them are the very routines a spell of ours borrows:
+//
+//   THE AREA routine (0xD608C0), per unit, dispatches on the ELEMENT:
+//       eax = SpellElement(spell)        ; read from the record — data
+//       sub eax,1 ; je → 0xBD1790        ; air
+//       sub eax,1 ; je → 0xBD1420        ; FIRE — the burn
+//       sub eax,1 ; jne → …              ; water
+//     So an area spell of ours with ELEMENT_FIRE should reach it by itself.
+//
+//   THE WHOLE-FIELD routine (0xD60C30), per unit, dispatches on the NUMBER:
+//       eax = [ctx+4] ; cmp eax,0Ah ; jne 0xD6117F     ; ARMAGEDDON, and only it
+//       … → 0xBD1420
+//       0xD6117F: → 0xBD1980                           ; everyone else
+//     So a whole-field spell of ours can NEVER burn, whatever its element. That
+//     is a fifth switch on the number, and it is not fixed here: the branch it
+//     guards also carries Armageddon's own business (the distance test and the
+//     war machines), so widening it is a decision about what our spell IS, not a
+//     hole to plug.
+//
+// What is left to measure is the area shape, where everything reads right and
+// the burn still did not appear. One mark at the head of the function answers
+// it: a line means it was reached and the refusal is inside (the caster, or the
+// target's exemptions); silence means the element dispatch did not send us here.
+//
+// `f(ecx, edx, damage, spell, …)` — `ret 10h`, four stack arguments, and the
+// first two are the ones worth printing: the second IS the spell, which is how
+// the routine knows what it is applying.
+
+#define BURN_RVA 0x7d1420u
+#define BURN_HEAD_LEN 8
+static const BYTE BURN_HEAD[BURN_HEAD_LEN] = {
+  0x83, 0xEC, 0x08,                                           // sub esp,8
+  0x83, 0x7C, 0x24, 0x0C, 0x00                                // cmp dword ptr [esp+0Ch],0
+};
+
+typedef int(__fastcall *BurnFn)(void *ecx, void *edx, int damage, int spell, int a3, int a4);
+static BurnFn g_burn = NULL;
+
+static int __fastcall on_burn(void *ecx, void *edx, int damage, int spell, int a3, int a4) {
+  if (spell >= FIRST_SPELL_OF_OURS) {
+    log_num("the master's mark: spell id ", spell);
+    log_num("   damage carried ", damage);
+  }
+  return g_burn(ecx, edx, damage, spell, a3, a4);
+}
+
+static void install_burn_log(void) {
+  g_burn = (BurnFn)detour(BURN_RVA, BURN_HEAD, BURN_HEAD_LEN, (void *)on_burn,
+                          "the mark a Master leaves");
+  if (g_burn) log_line("a cast of ours will say if it reached the Master's mark");
+}

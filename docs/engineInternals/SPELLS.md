@@ -326,6 +326,7 @@ all four are about CHOOSING A BEHAVIOUR:
 | what it is worth | `0xB7CE70` |
 | which tiles an area covers | `0xB7BE30` |
 | whether it deals damage at all | `0xBD0E80` — nine callers |
+| whether a WHOLE-FIELD spell leaves a Master's mark | `0xD610BA` — `cmp eax,0Ah`, Armageddon and only it |
 
 **Read from the RECORD** — works for a spell of ours with no code at all, because
 the engine reads the document the same way for every id. Everything about
@@ -340,8 +341,30 @@ flag on the target with this answer, and the three Master perks pick their skill
 from it — air `0x2D`, water `0x2B`, fire `0x2C` — before leaving the burn.
 
 So "does each modifier have to be reversed separately" is answered no. What had
-to be found for the burn was not the burn: it was the gate in front of it, and
-that gate is the fourth switch above, shared by nine readers.
+to be found for the burn was not the burn: it was the gates in front of it.
+
+### The Master's mark, and why the shapes differ
+
+`0xBD1420` is the function that leaves one — it asks the caster for
+`HERO_SKILL_MASTER_OF_FIRE` (44; Ice is 43) and the target for the two abilities
+that exempt it, then hands a number to `SPELL_EFFECT_FIRE_DAMAGE` (202). Five
+places call it, and two of them are routines a spell of ours borrows — which
+behave differently:
+
+- **the area routine** (`0xD608C0`) dispatches on the **element**: air →
+  `0xBD1790`, fire → `0xBD1420`, water → `0xBD12C0`. Data, so an area spell of
+  ours with `ELEMENT_FIRE` reaches the burn by itself.
+- **the whole-field routine** (`0xD60C30`) dispatches on the **number**: `cmp
+  eax,0Ah` — Armageddon and nothing else. So a whole-field spell of ours cannot
+  burn whatever its element, and widening that test is not a hole to plug: the
+  branch it guards also carries Armageddon's own business, the distance check and
+  the war machines.
+
+Two other functions were read on the way and are worth naming so nobody reads
+them again: `0xBD3A00`-ish builds the spellbook's PREDICTION — the "duration",
+"enchant", "damage_bonus" and "heal" it writes are strings into a bag, not
+effects — and `0xAD4640` is "is this spell of school 6", not a gate on anything
+we care about.
 
 ## What is not done yet
 
