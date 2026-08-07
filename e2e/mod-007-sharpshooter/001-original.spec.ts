@@ -22,7 +22,7 @@ import { armBrush, clickTile, newMap, planView } from '../tiles.ts';
 import { openObjectPalette, pickObject, setObjectProp } from '../objects.ts';
 import { addItem, addValueItem, openTree, setTreeValue } from '../tree.ts';
 import { readEntries } from '../../src/format/pak.ts';
-import { clearMap, LIVE } from '../mods.ts';
+import { clearMap, LIVE, readInstalledMod } from '../mods.ts';
 import { bar } from '../bar.ts';
 import {
   ARCHIVE, DATA, GAME, MAP_DIR, NAME, ORIGINAL, PLACES, REF, SHARPSHOOTER,
@@ -30,6 +30,21 @@ import {
 } from './shared.ts';
 
 let ed: Launched;
+
+/**
+ * The map's OWN checklist — the one AFTER `</objects>`.
+ *
+ * A town carries a `spellIDs` of its own (its guild's list), and it comes first
+ * in the file, so a search from the top reads the wrong list and answers 99
+ * where the map's own says 353.
+ */
+function rootList(xdb: string, name: string): string[] {
+  const text = readFileSync(xdb, 'latin1');
+  const after = text.indexOf('</objects>');
+  const block = new RegExp(`<${name}>([\\s\\S]*?)</${name}>`)
+    .exec(text.slice(after < 0 ? 0 : after));
+  return [...(block?.[1] ?? '').matchAll(/<Item>([^<]*)<\/Item>/g)].map((m) => m[1]!);
+}
 
 // Playwright RESTARTS the worker after any failed test, and the restart runs
 // beforeAll again — so beforeAll only ENSURES the fixtures (idempotent, and it
@@ -195,7 +210,33 @@ test('holds against the original: objects, settings, terrain, texts', async () =
   // main hero is what "start player does not exist" is made of, so the original
   // being empty here is the older, worse map, not the standard to match.
   const MAIN_HERO = /players\[\d+\]\.MainHero: ref "" vs ours "#xpointer\(/;
-  const settings = gaps('diff-map.ts', refXdb, ourXdb);
+  // AND THE TWO ROSTERS, which are the INSTALLATION'S and not the map's idea.
+  // "Check all" ticks every spell and every artifact the install knows, so the
+  // lists grow whenever the mod does — and the hand-made original was made when
+  // the mod had its artifacts and none of its spells. Live, where this stage and
+  // the Rules Test share one install, ours therefore carries four spells the
+  // original could not have: a length difference, which diff-map reports as one.
+  //
+  // Allowed, but not waved through. What ours adds must be exactly what the mod
+  // added, and it must add nothing the original had — checked here by name,
+  // because "the list is longer" is the shape of both a mod and a bug.
+  // No archive at all is a legal state — nothing of ours is installed, so
+  // nothing of ours may be in the lists, which is what an empty set says.
+  const installed = (() => { try { return readInstalledMod(GAME); } catch { return null; } })();
+  const ourIds = new Set([
+    ...(installed?.spells ?? []).map((s) => s.id),
+    ...(installed?.artifacts ?? []).map((a) => a.id),
+  ]);
+  for (const list of ['spellIDs', 'artifactIDs']) {
+    const wanted = rootList(refXdb, list);
+    const got = rootList(ourXdb, list);
+    expect(wanted.filter((x) => !got.includes(x)),
+      `${list}: enabled in the original and not in ours`).toEqual([]);
+    expect(got.filter((x) => !wanted.includes(x) && !ourIds.has(x)),
+      `${list}: enabled in ours, and neither in the original nor in the mod`).toEqual([]);
+  }
+  const ROSTERS = /DIFF\s+(spellIDs|artifactIDs)\b/;
+  const settings = gaps('diff-map.ts', refXdb, ourXdb).filter((l) => !ROSTERS.test(l));
   // The block's own header goes only when EVERY player difference under it is
   // that one — otherwise a real difference would be hidden by the same filter.
   const onlyMainHero = settings.filter((l) => /players\[\d+\]\./.test(l)).every((l) => MAIN_HERO.test(l));
