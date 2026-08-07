@@ -334,7 +334,7 @@ export const HEROES: Kit[] = [
     // Four now: the elemental one is read off the SAME cast as the empowered
     // Armageddon, because that spell is the one the game already has whose
     // damage lands with no element at all.
-    fixes: ['payback-fix', 'snare-crash-fix', 'empowered-armageddon-fix'],
+    fixes: ['payback-fix', 'snare-crash-fix', 'empowered-armageddon-fix', 'mass-spell-element-fix'],
     shared: hero('Dungeon', 'Almegir'),
     at: { x: 24, y: 10 },
     skills: [
@@ -540,5 +540,5 @@ export const OPPONENT: Kit = {
 export const FIXES_UNDER_TEST: QolName[] = [
   'combat-ai-fix', 'snare-crash-fix', 'encourage-fix', 'barbarian-learning-fix',
   'payback-fix', 'dragon-form-fix', 'empowered-armageddon-fix', 'book-of-power-fix',
-  'master-of-fire-fix', 'imbue-ballista-fix',
+  'master-of-fire-fix', 'imbue-ballista-fix', 'mass-spell-element-fix',
 ];

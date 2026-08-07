@@ -1036,20 +1036,36 @@ static void install_damaging_spell(void) {
 //   0xBD12C0  43, Master of Ice — water
 //   0xBD1980  nothing at all — the NO-ELEMENT applier
 //
-// and it chooses between them with `cmp eax,0Ah`: Armageddon takes the fire one,
-// everything else the fourth. That reads like a special case for one spell and
-// is not: of the three whole-field spells only Armageddon's damage is elemental
-// — Holy Word and Unholy Word each NAME an element and leave
-// `DamageIsElemental` false, so the engine answers 0 for both. The comparison is
-// "is this spell's damage elemental", written against the one id for which it is.
+// EXCEPT THAT IT DOES NOT CHOOSE BETWEEN FOUR. Only the AREA routine does that;
+// this one has a single comparison, `cmp eax,0Ah`, and behind it the fire
+// applier and nothing else:
 //
-// So a whole-field spell of ours was having its damage applied with NO element:
-// not fire, whatever its document said. The missing Master of Fire mark was the
-// part that showed; a fire resistance would have missed it too.
+//   cmp eax,0Ah / jne → 0xBD1980 for every unit          ; not Armageddon
+//   …            → 0xBD1980 for units NEAR the point     ; the local hit
+//                → 0xBD1420 for every unit               ; FIRE, unconditionally
 //
-// WHAT WE ASK INSTEAD is the engine's own question, `SpellElement(id) != 0` —
-// which is exactly how the AREA routine already chooses, so the two shapes end
-// up agreeing.
+// So there are two decisions bundled in one comparison — "is the damage
+// elemental" and "which element" — and the second was answered by there being
+// only one spell to answer it for. Reading it as "the elemental branch" and
+// letting anything elemental in sent an ICE spell of ours down the fire path;
+// that was a real hole and this is where it is closed.
+//
+// WHAT WE DO. Two changes, and neither is a case for a spell:
+//
+//   the comparison  becomes `SpellElement(id) != 0` — the question it was a
+//                   shortcut for, asked of the document.
+//   the call        becomes indirect, through a pointer we set from that same
+//                   element: fire 0xBD1420, water 0xBD12C0, air 0xBD1790 — the
+//                   very table the AREA routine already dispatches on, so the
+//                   two shapes end up agreeing. Earth and none never get here:
+//                   the comparison sends them to the plain applier, which is
+//                   what the game does with them today.
+//
+// ARMAGEDDON IS UNTOUCHED by both: its element is fire, so it takes the same
+// branch to the same applier, and its own near-point hit is not in the way. Nor
+// does that hit reach a spell of ours with anything: its amount is decided at
+// `0xD60E29`, where a `cmp ecx,0Ah` gives everything but Armageddon a zero, and
+// `0xBD1980` bails on a zero in its first two instructions.
 //
 // AND THE SITE IS SHARED. It is the third of the three
 // `native/qol/fix-empowered-armageddon.c` documents, and asking the record
@@ -1057,6 +1073,11 @@ static void install_damaging_spell(void) {
 // to 10 and finds it elemental, so that site is not a case anybody adds — it
 // falls out of asking properly, and so will any elemental whole-field spell the
 // game is ever given.
+//
+// BEHIND ITS OWN FLAG, WHOLE. `mass-spell-element-fix` decides whether any of
+// this is written at all — not a branch inside it. With the flag off not a byte
+// moves and the game is the game, ours included; with it on the question is the
+// document's, for every spell alike and with no number compared anywhere.
 
 /** `mov eax,[esi+4] / cmp eax,0Ah / jne` — which element the damage is dealt in. */
 #define WHOLE_FIELD_ELEMENT_RVA 0x9610b7u
@@ -1067,6 +1088,44 @@ static const BYTE WHOLE_FIELD_ELEMENT_HEAD[WHOLE_FIELD_ELEMENT_LEN] = {
 /** Its two continuations: elemental, and not. */
 #define WHOLE_FIELD_ELEMENTAL_RVA 0x9610c3u
 #define WHOLE_FIELD_PLAIN_RVA 0x96117fu
+
+/**
+ * The three appliers, and the call that picks between them.
+ *
+ * `call 0xBD1420` is five bytes and `call dword ptr [ptr]` is six, so the site
+ * keeps its `call` and we change where it goes: to six bytes of ours that jump
+ * through the pointer. The return address the engine's `call` pushed is still
+ * the one the applier's `ret` uses, so nothing about the frame changes.
+ */
+#define FIRE_APPLIER_RVA 0x7d1420u
+#define ICE_APPLIER_RVA 0x7d12c0u
+#define AIR_APPLIER_RVA 0x7d1790u
+#define APPLIER_MARK_LEN 6
+static const BYTE FIRE_APPLIER_MARK[APPLIER_MARK_LEN] = {
+  0x83, 0xEC, 0x08, 0x83, 0x7C, 0x24                          // sub esp,8 / cmp [esp+0Ch],0
+};
+static const BYTE ICE_APPLIER_MARK[APPLIER_MARK_LEN] = {
+  0x51, 0x83, 0x7C, 0x24, 0x08, 0x00                          // push ecx / cmp [esp+8],0
+};
+static const BYTE AIR_APPLIER_MARK[APPLIER_MARK_LEN] = {
+  0x51, 0x83, 0x7C, 0x24, 0x08, 0x00                          // the same head as ice
+};
+
+/** `call 0xBD1420` — every unit's hit, in the branch we let elemental spells into. */
+#define WHOLE_FIELD_CALL_RVA 0x961178u
+#define WHOLE_FIELD_CALL_LEN 5
+static const BYTE WHOLE_FIELD_CALL_HEAD[WHOLE_FIELD_CALL_LEN] = {
+  0xE8, 0xA3, 0x02, 0xE7, 0xFF
+};
+static BYTE WHOLE_FIELD_CALL_OURS[WHOLE_FIELD_CALL_LEN] = {
+  0xE8, 0x00, 0x00, 0x00, 0x00
+};
+
+static void *g_fireApplier = NULL;
+static void *g_iceApplier = NULL;
+static void *g_airApplier = NULL;
+/** Read by six bytes of ours, written per unit from the spell's own element. */
+static void *g_elementApplier = NULL;
 
 /** Where the stub keeps the answer across its own `popad`. */
 static BYTE g_wholeFieldElemental = 0;
@@ -1092,7 +1151,12 @@ static BYTE g_wholeFieldElemental = 0;
  * own document gives it. See docs/QOL.md for the line between the two.
  */
 static void __cdecl decide_whole_field(int spell) {
-  g_wholeFieldElemental = (BYTE)(g_spellElement && g_spellElement(spell) != 0);
+  int element = g_spellElement ? g_spellElement(spell) : 0;
+  // 1 air, 2 fire, 3 water — the three the routine's appliers exist for. Earth
+  // and none answer no here and take the plain applier, exactly as today.
+  g_elementApplier = element == 1 ? g_airApplier
+      : element == 3 ? g_iceApplier : g_fireApplier;
+  g_wholeFieldElemental = (BYTE)(element == 1 || element == 2 || element == 3);
 }
 
 #define WHOLE_FIELD_STUB_LEN 34
@@ -1114,8 +1178,33 @@ static BYTE WHOLE_FIELD_TO_STUB[WHOLE_FIELD_ELEMENT_LEN] = {
   0xE9, 0x00, 0x00, 0x00, 0x00, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90
 };
 
+/** Six bytes that jump wherever the pointer says — what the site now calls. */
+#define APPLIER_JUMP_LEN 6
+static BYTE APPLIER_JUMP[APPLIER_JUMP_LEN] = {
+  0xFF, 0x25, 0x00, 0x00, 0x00, 0x00        // jmp dword ptr [g_elementApplier]
+};
+
 static void install_whole_field_element(void) {
   BYTE *base = (BYTE *)GetModuleHandleW(NULL);
+  g_fireApplier = borrow_branch(FIRE_APPLIER_RVA, FIRE_APPLIER_MARK, APPLIER_MARK_LEN, "fire");
+  g_iceApplier = borrow_branch(ICE_APPLIER_RVA, ICE_APPLIER_MARK, APPLIER_MARK_LEN, "ice");
+  g_airApplier = borrow_branch(AIR_APPLIER_RVA, AIR_APPLIER_MARK, APPLIER_MARK_LEN, "air");
+  if (!g_fireApplier || !g_iceApplier || !g_airApplier) return;
+  g_elementApplier = g_fireApplier;
+
+  BYTE *jump = (BYTE *)VirtualAlloc(NULL, APPLIER_JUMP_LEN, MEM_COMMIT | MEM_RESERVE,
+                                    PAGE_EXECUTE_READWRITE);
+  if (!jump) { log_line("whole-field element: no memory for the jump"); return; }
+  for (int i = 0; i < APPLIER_JUMP_LEN; i++) jump[i] = APPLIER_JUMP[i];
+  *(DWORD *)(jump + 2) = (DWORD)(void *)&g_elementApplier;
+  FlushInstructionCache(GetCurrentProcess(), jump, APPLIER_JUMP_LEN);
+  *(DWORD *)(WHOLE_FIELD_CALL_OURS + 1) =
+      (DWORD)jump - ((DWORD)(base + WHOLE_FIELD_CALL_RVA) + WHOLE_FIELD_CALL_LEN);
+  if (!overwrite_code(WHOLE_FIELD_CALL_RVA, WHOLE_FIELD_CALL_HEAD, WHOLE_FIELD_CALL_OURS,
+                      WHOLE_FIELD_CALL_LEN, "which applier a whole-field spell uses")) {
+    return;
+  }
+
   BYTE *stub = (BYTE *)VirtualAlloc(NULL, WHOLE_FIELD_STUB_LEN, MEM_COMMIT | MEM_RESERVE,
                                     PAGE_EXECUTE_READWRITE);
   if (!stub) { log_line("whole-field element: no memory for the stub"); return; }
@@ -1133,6 +1222,6 @@ static void install_whole_field_element(void) {
       (DWORD)stub - ((DWORD)(base + WHOLE_FIELD_ELEMENT_RVA) + 5);
   if (overwrite_code(WHOLE_FIELD_ELEMENT_RVA, WHOLE_FIELD_ELEMENT_HEAD, WHOLE_FIELD_TO_STUB,
                      WHOLE_FIELD_ELEMENT_LEN, "which element a whole-field spell hits in")) {
-    log_line("a whole-field spell of ours hits in its own element");
+    log_line("a whole-field spell hits in the element its record names");
   }
 }

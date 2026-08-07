@@ -15,16 +15,17 @@ one.
 
 ### Fixed
 
-- **Elemental spells damage in their element.** A spell that hits the whole
-  field has four ways to land — one per element, and each is what a Master of
-  Storms, of Fire or of Ice acts on — plus a fourth that belongs to no element.
-  The game picks between them by asking whether the spell is Armageddon, which is
-  a shortcut for "is its damage elemental" and was right until the game had a
-  second such spell. It has one: the Empowered Armageddon lands with no element
-  at all, so no Master of Fire follows it and no fire resistance answers it. The
-  element now comes from the spell's own document, for every spell and with no
-  switch to find — it is the same question the game was already asking, asked
-  properly. The one shipped spell it moves is that empowered Armageddon.
+- **A mass spell damages in the element its record names.** A spell that hits the
+  whole field lands through one of four functions — air, fire and water, which
+  are what a Master of Storms, of Fire or of Ice acts on, plus a fourth belonging
+  to no element. The game picks by asking whether the spell is Armageddon, which
+  answers "is it elemental" and "which element" at once and gets away with it
+  because Armageddon is the only spell there whose damage is elemental. The game
+  has a second: the Empowered Armageddon, which lands with no element at all, so
+  no Master of Fire follows it and no fire resistance answers it. This asks the
+  spell's own record for both. A mass spell added by the editor needs it on to
+  hit in the element it declares; an area or single-target one does not, since
+  that routine reads the element by itself.
 
 - **A creature of yours can be raised by necromancy.** Which creature comes back
   from the dead, and as what, is one table in the game's own files — 134

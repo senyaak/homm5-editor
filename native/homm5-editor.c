@@ -135,7 +135,6 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   install_spell_power();
   install_area_shape();
   install_damaging_spell();
-  install_whole_field_element();
   if (rows_for(STAT_TENT_HEALTH) && install_machine_health()) {
     log_line("first aid tent health hook installed");
   }
@@ -143,6 +142,8 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   // before the game makes it, and the game makes it from its entry point — which
   // is why this happens here and not on the first frame.
   load_qol();
+  // AFTER the flags are read, and gated whole: with it off not a byte moves.
+  if (g_qol[QOL_MASS_SPELL_ELEMENT_FIX]) install_whole_field_element();
   if (g_qol[QOL_BORDERLESS]) install_borderless();
   // Before the game asks, which it does early: the profile it loads decides
   // what the main menu already shows.

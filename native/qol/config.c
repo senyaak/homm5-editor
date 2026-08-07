@@ -35,14 +35,15 @@ typedef enum {
   QOL_BOOK_OF_POWER_FIX = 12,
   QOL_MASTER_OF_FIRE_FIX = 13,
   QOL_IMBUE_BALLISTA_FIX = 14,
-  QOL_COUNT = 15
+  QOL_MASS_SPELL_ELEMENT_FIX = 15,
+  QOL_COUNT = 16
 } QolFlag;
 
 static const char *const QOL_NAMES[QOL_COUNT] = {
   "borderless", "own-profile", "quick-split", "stack-health-bar", "stack-losses",
   "combat-ai-fix", "encourage-fix", "barbarian-learning-fix", "snare-crash-fix",
   "payback-fix", "dragon-form-fix", "empowered-armageddon-fix", "book-of-power-fix",
-  "master-of-fire-fix", "imbue-ballista-fix"
+  "master-of-fire-fix", "imbue-ballista-fix", "mass-spell-element-fix"
 };
 
 static int g_qol[QOL_COUNT];

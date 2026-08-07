@@ -60,7 +60,7 @@ computer's.
 |---|---|---|
 | `wizard` | Academy | Master of Fire |
 | `knight` | Haven | Encourage |
-| `warlock` | Dungeon | Payback, the snare crash, Empowered Armageddon |
+| `warlock` | Dungeon | Payback, the snare crash, Empowered Armageddon, the element a mass spell hits in |
 | `runemage` | Fortress | Dragon Form |
 | `ranger` | Sylvan | Imbue Ballista — the fix, and the bug it claims |
 | `barbarian` | Stronghold | Barbarian Learning |
@@ -194,21 +194,30 @@ Cast the plain Armageddon as well (turn Empowered Spells off in the battle if th
 interface lets you, or compare against the enemy hero's): the plain one was
 always right, and it must stay exactly as it was.
 
-### 5a. The element, which is not a flag
+### 5a. `mass-spell-element-fix` — the same warlock, the same casts
 
 His army also holds **twenty Fire Elementals**, immune to fire, and an Armageddon
-hits its own side — so this is read off the same casts, in both runs alike.
+hits its own side — so this reads off the casts already being made.
 
-The routine behind a whole-field spell has four ways to apply the damage, one per
-element and a fourth for none, and the shipped code picks by asking whether the
-spell is Armageddon — a shortcut for "is its damage elemental". The extension
-asks the spell's own document instead, for every spell and with no switch,
-because it is the same question asked properly rather than a behaviour anybody
-chose. The one shipped spell it moves is the empowered Armageddon.
+The routine behind a whole-field spell applies the damage through one of four
+functions: air, fire and water, which are what a Master of Storms, of Fire or of
+Ice acts on, and a fourth belonging to no element. It picks by asking whether the
+spell is Armageddon — which answers "is it elemental" and "which element" at
+once, and gets away with it because Armageddon is the only spell there whose
+damage is elemental. The game has a second: the empowered version.
 
-So in **both** runs: neither Armageddon should touch his Fire Elementals. If one
-of them burns his own, the element is not reaching the applier and everything
-elemental is missing from that spell — no Master of Fire, no resistance.
+- **off** — the **empowered** Armageddon burns his own Fire Elementals. Their
+  immunity has nothing to answer, because the damage carries no element.
+- **on** — they take nothing from it, exactly as they already take nothing from
+  the plain Armageddon he also carries.
+
+The plain one is the control and should behave the same in both runs.
+
+**And a spell of the editor's own rides on this flag.** A mass spell a mod adds
+takes its element from its own record only while this is on; with it off it lands
+with no element, the way everything but Armageddon does in the shipped game. An
+area or single-target spell is not affected — that routine reads the element by
+itself.
 
 ### 6. `dragon-form-fix` — the runemage
 

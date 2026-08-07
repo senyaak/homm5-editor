@@ -361,47 +361,47 @@ behave differently:
   eax,0Ah` — Armageddon and nothing else. So a whole-field spell of ours cannot
   burn whatever its element.
 
-  **What that branch really is.** The routine has FOUR appliers, and they are
-  one per element — each asks the caster for that element's Master perk:
+  **What that branch really is.** There are FOUR appliers, and three of them are
+  an element each — each asks the caster for that element's Master perk:
 
   | applier | asks for |
   |---|---|
-  | `0xBD1790` | 45, Master of Storms — air |
+  | `0xBD1790` | 45, Master of Lightnings — air |
   | `0xBD1420` | 44, Master of Fire |
   | `0xBD12C0` | 43, Master of Ice — water |
   | `0xBD1980` | nothing — the NO-ELEMENT applier |
 
-  And of the three whole-field spells only Armageddon's damage is elemental:
-  Holy Word and Unholy Word name an element in their documents but leave
-  `DamageIsElemental` false, so `SpellElement` answers 0 for both.
+  The AREA routine dispatches on the element and reaches all four. **This one
+  does not**: it has a single `cmp eax,0Ah`, and behind it `0xBD1420` and nothing
+  else. Two questions in one comparison — "is it elemental" and "which element" —
+  and the second was answered by there being one spell to answer it for. Of the
+  three whole-field spells only Armageddon's damage is elemental: both Words name
+  an element and leave `DamageIsElemental` false.
 
-  So `cmp eax,0Ah` is not "is this Armageddon". It is **"is this spell's damage
-  elemental"**, written as a comparison against the one id for which it is true.
-  A whole-field spell of ours therefore goes through the no-element applier —
-  **its damage is not fire at all**, which is why no Master of Fire mark appeared
-  and why nothing else elemental would have applied either.
+  So a whole-field spell of ours went through the no-element applier — **its
+  damage was not fire at all**, and the missing Master of Fire mark was only the
+  part that showed. Reading that comparison as "the elemental branch" and letting
+  anything elemental in would have sent an ICE spell of ours down the FIRE path,
+  which is the hole this closes rather than opens.
 
   (Armageddon additionally gets `0xBD1980` for units within `config[0x9B4]`
-  doubled of a position the routine fetches — a second, non-elemental hit, which
-  is the «локальный физический урон в месте применения» its description names and
-  the empowered one's does not. **Assumed and unchecked:** that the position is
-  where the meteor lands.)
+  doubled of a position the routine fetches — the «локальный физический урон в
+  месте применения» of its description. It reaches a spell of ours with nothing:
+  the amount is decided at `0xD60E29`, where `cmp ecx,0Ah` gives everything else
+  a zero, and `0xBD1980` bails on a zero in its first two instructions.
+  **Assumed and unchecked:** that the position is where the meteor lands.)
 
-  **Fixed by asking the engine's own question** — `SpellElement(id) != 0`, which
-  is how the area routine already chooses, so the two shapes now agree.
+  **Fixed in two places, and neither names a spell.** The comparison becomes
+  `SpellElement(id) != 0`; the `call 0xBD1420` becomes an indirect one through a
+  pointer set from that same element — fire, water, air, the very table the area
+  routine dispatches on. Earth and none answer no at the comparison and take the
+  plain applier, as they do today.
 
-  The site was shared: it is the third of the three
-  `native/qol/fix-empowered-armageddon.c` documented. **Asking the record answers
-  that one too** — the accessor normalises the empowered Armageddon (232) to 10
-  and finds it elemental — so that fix's third site is not a case anybody adds,
-  it falls out of asking properly, and so will any elemental whole-field spell
-  the game is ever given.
-
-  One stub, one question. The flag decides only whether the GAME'S OWN spells are
-  asked it, and that is not fastidiousness: the Rules Test experiment is "every
-  fix off, then every fix on, the same map", and a shipped behaviour that moved
-  without its flag would make one of those runs a lie. Our own ids are not in
-  that experiment, so they are asked always.
+  **Behind `mass-spell-element-fix`, whole.** The flag decides whether any of it
+  is written, not a branch inside it: off and not a byte moves, for the game's
+  spells or ours. It is a fix of shipped behaviour — the empowered Armageddon —
+  so it belongs beside the others in the panel rather than happening quietly, and
+  a mass spell of a mod rides on it. See docs/FIX_TEST_MAP.md §5a.
 
 Two other functions were read on the way and are worth naming so nobody reads
 them again: `0xBD3A00`-ish builds the spellbook's PREDICTION — the "duration",

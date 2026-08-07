@@ -177,6 +177,24 @@ export const QOL_FLAGS = [
       + ' — https://github.com/dredknight/H5_DLL',
   },
   {
+    name: 'mass-spell-element-fix',
+    tab: 'fixes',
+    group: 'mechanics',
+    title: 'A mass spell damages in the element its record names',
+    detail: 'The routine behind a spell that hits the whole field applies the damage through one of'
+      + ' four functions — one each for air, fire and water, and those three are what a Master of'
+      + ' Storms, of Fire or of Ice acts on — plus a fourth belonging to no element. It picks by'
+      + ' asking whether the spell is Armageddon, which answers two questions at once and gets away'
+      + ' with it because Armageddon is the only spell there whose damage is elemental: both Words'
+      + ' name an element and leave DamageIsElemental false. The game already has a second, though —'
+      + ' the Empowered Armageddon, which therefore lands with no element, drawing no Master of Fire'
+      + ' and meeting no fire resistance. This asks the spell\'s own record instead, for the element'
+      + ' and for which of the three applies it. Nothing is written to the image while this is off.',
+    credit: 'The site is one of three in H5_DLL by dredknight, used with permission'
+      + ' — https://github.com/dredknight/H5_DLL. What is asked there is our own: his names the'
+      + ' empowered id beside Armageddon\'s, which fixes that spell and leaves the element behind.',
+  },
+  {
     name: 'master-of-fire-fix',
     tab: 'fixes',
     group: 'mechanics',
