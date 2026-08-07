@@ -361,33 +361,36 @@ behave differently:
   eax,0Ah` — Armageddon and nothing else. So a whole-field spell of ours cannot
   burn whatever its element.
 
-  **What that branch is, read rather than inferred.** The routine has two
-  appliers, and they are alike at the head — both refuse a count of zero, both
-  allocate the same block, both apply one hit to one unit:
+  **What that branch really is.** The routine has FOUR appliers, and they are
+  one per element — each asks the caster for that element's Master perk:
 
-  | | every unit gets | and, near a point, also |
-  |---|---|---|
-  | Armageddon | `0xBD1420` — the one that carries the Master's mark | `0xBD1980` |
-  | every other whole-field spell | `0xBD1980` | — |
+  | applier | asks for |
+  |---|---|
+  | `0xBD1790` | 45, Master of Storms — air |
+  | `0xBD1420` | 44, Master of Fire |
+  | `0xBD12C0` | 43, Master of Ice — water |
+  | `0xBD1980` | nothing — the NO-ELEMENT applier |
 
-  So Armageddon is **hit twice** where the others are hit once, and the second
-  hit is bounded by `config[0x9B4]` doubled, measured against a position the
-  routine fetches rather than the cast's own (Armageddon is not aimed). That
-  matches the two descriptions the game ships — the plain Armageddon adds «и
-  локальный физический урон в месте применения», the empowered one does not —
-  and Master of Fire names its spells in its own text: «Огненный шар», «Стена
-  огня» и «Армагеддон».
+  And of the three whole-field spells only Armageddon's damage is elemental:
+  Holy Word and Unholy Word name an element in their documents but leave
+  `DamageIsElemental` false, so `SpellElement` answers 0 for both.
 
-  **Assumed and not yet checked:** that the position the second hit is measured
-  from is where the meteor lands. It is read off an object, not off the cast, and
-  a probe on it would settle it.
+  So `cmp eax,0Ah` is not "is this Armageddon". It is **"is this spell's damage
+  elemental"**, written as a comparison against the one id for which it is true.
+  A whole-field spell of ours therefore goes through the no-element applier —
+  **its damage is not fire at all**, which is why no Master of Fire mark appeared
+  and why nothing else elemental would have applied either.
 
-  So this is not a hole in our plumbing, it is a ONE-OFF in the engine: a single
-  spell's special case bolted into a shared routine, derivable from no field.
-  Wanting the mark anyway is a different change from widening that comparison —
-  widening it would hand our spell the second hit as well. The narrow version is
-  to call `0xBD1420` from the OTHER branch when the element is fire, which is
-  what the area routine already does and would make the two shapes agree.
+  (Armageddon additionally gets `0xBD1980` for units within `config[0x9B4]`
+  doubled of a position the routine fetches — a second, non-elemental hit, which
+  is the «локальный физический урон в месте применения» its description names and
+  the empowered one's does not. **Assumed and unchecked:** that the position is
+  where the meteor lands.)
+
+  The fix is to ask the engine's own question — `SpellElement(id) != 0`, the way
+  the area routine already does — and the complication is that this site is
+  `native/qol/fix-empowered-armageddon.c`'s third one, already replaced when that
+  flag is on. See RULES_FIXES.md.
 
 Two other functions were read on the way and are worth naming so nobody reads
 them again: `0xBD3A00`-ish builds the spellbook's PREDICTION — the "duration",
