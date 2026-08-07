@@ -991,9 +991,12 @@ static const BYTE DAMAGING_YES_MARK[DAMAGING_YES_MARK_LEN] = {
  * at the element, so no line here means that block was never reached and the
  * missing burn is somewhere else entirely.
  *
- * The return address is what tells them apart, and it is on the stack when we
- * arrive — `[esp]` at the head of the function, so `[esp+36]` after pushad and
- * pushfd, plus the four our own argument takes.
+ * The return address is what tells them apart, and finding it is a matter of
+ * counting what is on the stack above it. We cut in four instructions into the
+ * function, AFTER its own `push esi`, so from our stub the layout is: pushad
+ * (32) + pushfd (4) + that saved register (4) — the return address is at
+ * `[esp+40]`. Read at `[esp+36]` the log printed the saved register instead,
+ * which is a heap pointer and looked like a plausible address.
  */
 static void __cdecl on_damaging_asked(int spell, DWORD from) {
   log_num("does it hurt? asked about spell id ", spell);
@@ -1008,7 +1011,7 @@ static BYTE DAMAGING_STUB[DAMAGING_STUB_LEN] = {
   0x72, 0x16,                               // jb +22          — the game's own, carry on
   0x60,                                     // pushad
   0x9C,                                     // pushfd
-  0xFF, 0x74, 0x24, 0x24,                   // push dword ptr [esp+36]   — who asked
+  0xFF, 0x74, 0x24, 0x28,                   // push dword ptr [esp+40]   — who asked
   0x50,                                     // push eax                  — the spell id
   0xE8, 0x00, 0x00, 0x00, 0x00,             // call on_damaging_asked
   0x83, 0xC4, 0x08,                         // add esp,8
