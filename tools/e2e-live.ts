@@ -28,7 +28,7 @@
 // the switch, the same way tools/pack-c1m1.ts owns --noRemoveMap for the C1M1
 // capstone's map.
 
-import { spawnSync } from 'node:child_process';
+import { runPlaywright } from './e2e-log.ts';
 
 // `--all` passes NO filter on, which is not the same as passing `e2e/`. The
 // suite's global setup has only this command line to read, and it puts the mod
@@ -52,9 +52,4 @@ if (all && specs.length) {
 console.log(all
   ? 'live run — the real install, nothing removed: every spec (C1M1 aside)\n'
   : `live run — the real install, nothing removed:\n  ${specs.join('\n  ')}\n`);
-const r = spawnSync('npx', ['playwright', 'test', ...specs], {
-  stdio: 'inherit',
-  env: { ...process.env, HOMM5_NO_REMOVE: '1' },
-  shell: true,
-});
-process.exit(r.status ?? 1);
+process.exit(await runPlaywright(specs, { HOMM5_NO_REMOVE: '1' }, 'live'));

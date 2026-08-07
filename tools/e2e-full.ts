@@ -10,13 +10,10 @@
 // same way tools/e2e-live.ts owns HOMM5_NO_REMOVE. An ordinary run is
 // `npm run test-e2e-fast` (or plain `npx playwright test`), and neither will
 // ever wander into the reconstruction by accident again.
+//
+// The output is teed to a file whole (tools/e2e-log.ts): a fifteen-minute run's
+// answer is not something to read once as it scrolls past.
 
-import { spawnSync } from 'node:child_process';
+import { runPlaywright } from './e2e-log.ts';
 
-const args = process.argv.slice(2);
-const r = spawnSync('npx', ['playwright', 'test', ...args], {
-  stdio: 'inherit',
-  shell: true,
-  env: { ...process.env, PW_C1M1: '1' },
-});
-process.exit(r.status ?? 1);
+process.exit(await runPlaywright(process.argv.slice(2), { PW_C1M1: '1' }, 'full'));
