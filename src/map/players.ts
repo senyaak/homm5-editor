@@ -83,6 +83,23 @@ export function setActive(desc: XmlElement, slot: number, on: boolean): boolean 
   return true;
 }
 
+/**
+ * What colour a slot plays as.
+ *
+ * Presentation rather than existence — a shipped mission has three active slots
+ * all still `PCOLOR_NEUTRAL`, so the game starts perfectly well without this
+ * being set. It is here because anything BUILDING a map rather than editing one
+ * has to say it: two sides both neutral are two sides the player cannot tell
+ * apart on the minimap.
+ */
+export function setColour(desc: XmlElement, slot: number, colour: string): boolean {
+  const el = slotEl(desc, slot);
+  const c = el && find(el, 'Colour');
+  if (!c) return false;
+  setText(c, colour);
+  return true;
+}
+
 /** A slot's main hero reference, or '' when it has none. */
 export function mainHero(desc: XmlElement, slot: number): string {
   const el = slotEl(desc, slot);
