@@ -53,6 +53,15 @@ const SPELL = {
   cross: [{ x: 0, y: 0 }, { x: -1, y: 0 }, { x: 1, y: 0 }, { x: 0, y: -1 }, { x: 0, y: 1 }],
   /** Per mastery, both parts — the shape every shipped damage spell has. */
   damage: [10, 15, 20, 25],
+  /**
+   * BOTH, because this one hurts more than one stack.
+   *
+   * The list is read by index and the two are different jobs: the first plays
+   * once where the cast happens, the second on EVERY stack the spell touches.
+   * Borrowed from shipped spells, which is what a mod does until it has art.
+   */
+  castVisual: '/GameMechanics/Spell/Combat_Spells/DarkMagic/Plague.(SpellVisual).xdb#xpointer(/SpellVisual)',
+  hitVisual: '/GameMechanics/Spell/Combat_Spells/DarkMagic/Unholy_Word_Hit.(SpellVisual).xdb#xpointer(/SpellVisual)',
 };
 
 test.beforeAll(async () => {
@@ -200,6 +209,24 @@ test('builds the spell, and both halves of it land where they belong', async () 
   await page.locator('#sm-spares-notliving').click();
   await expect(page.locator('#sm-spares-note')).toContainText('undead');
 
+  // THE SECOND REFUSAL WITH NO FIELD TO STAR, and it is the one that cost three
+  // launches. `<visuals>` is read by index: the first plays once where the cast
+  // happens — the middle of the field for a spell that aims at nobody — and the
+  // second on EVERY stack it touches. With only the first, a spell of the mod's
+  // killed eight stacks while showing one effect in the middle and nothing on
+  // any of them, which from the player's chair is a spell that does not work.
+  //
+  // Asked only of spells that HURT more than one: an adventure spell aims at
+  // nobody too, and the first version of this rule refused Train Sharpshooters
+  // for having no hit animation for stacks it never touches.
+  await expect(page.locator('#sm-ok'), 'a damaging area spell needs the hit').toBeDisabled();
+  await expect(page.locator('#sm-missing')).toHaveText(/Hit visual/);
+  await page.locator('#sm-visual-1').fill(SPELL.castVisual);
+  await expect(page.locator('#sm-ok'), 'and the cast alone is not enough').toBeDisabled();
+  await page.locator('#sm-visual-2').fill(SPELL.hitVisual);
+  await expect(page.locator('#sm-ok')).toBeEnabled();
+  await expect(page.locator('#sm-missing')).toHaveText('');
+
   await page.locator('#sm-ok').click();
   await expect(page.locator('#sm-note')).toContainText('installed', { timeout: 120_000 });
   await expect(page.locator('#spelledit')).toBeHidden();
@@ -227,6 +254,9 @@ test('builds the spell, and both halves of it land where they belong', async () 
   // parser had.
   expect(s!.damage).toEqual(SPELL.damage.map((n) => ({ base: n, perPower: n })));
   expect(s!.area).toEqual(SPELL.cross);
+  // BOTH visuals, in the order the engine reads them: index 0 is the cast, index
+  // 1 is what lands on every stack. The order is the whole of their meaning.
+  expect(s!.visuals).toEqual([SPELL.castVisual, SPELL.hitVisual]);
   // A SET, not a sequence: the kinds come out of the list in the order the game
   // declares them, and the filter asks "is it one of these" either way.
   expect([...(s!.spares ?? [])].sort()).toEqual([...NOT_LIVING].sort());

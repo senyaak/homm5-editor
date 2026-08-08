@@ -410,6 +410,25 @@ export function addSpell(
  * lands on a default that covers nothing. So a spell of ours carrying the flag
  * with no tiles is a cast that plays its animation, spends its mana and touches
  * nobody — which reads in game exactly like a spell that does not work.
+ *
+ * THE SECOND VISUAL is the other, and it cost three runs in the game to find.
+ * `<visuals>` is read BY INDEX and the two entries are different jobs: the first
+ * plays ONCE where the cast happens — the middle of the field for a spell that
+ * aims at nobody — and the second plays on EVERY stack the spell touches. Every
+ * shipped spell that reaches more than one carries both and names them so:
+ * `Armageddon` + `Armageddon_Hit`, `Unholy_Word` + `Unholy_Word_Hit`.
+ *
+ * With only the first, a spell of the mod's killed eight stacks while showing
+ * one effect in the middle of the screen and nothing on any of them — which is
+ * indistinguishable, from the player's chair, from a spell that does not work.
+ * Measured 08.08.2026. So it is refused here rather than found there.
+ *
+ * AND IT ASKS ABOUT DAMAGE, not only about reach — which the first version did
+ * not, and an e2e run caught within the hour. `IsAimed` false means "aims at
+ * nobody", and an ADVENTURE spell says that too: Train Sharpshooters is a
+ * spell of the mod's that costs gold and trains elves, and it was refused for
+ * having no hit animation for the stacks it never touches. A spell with no
+ * damage cannot have a hit.
  */
 function spellProblems(spec: SpellSpec): string[] {
   const problems: string[] = [];
@@ -418,7 +437,34 @@ function spellProblems(spec: SpellSpec): string[] {
   if (spec.areaAttack && !spec.area?.length) {
     problems.push('a spell that hits an area needs the tiles it covers — with none it covers nothing');
   }
+  if (hurtsSeveral(spec) && (spec.visuals?.length ?? 0) < 2) {
+    problems.push('a spell that touches more than one stack needs BOTH visuals — '
+      + 'the second is what shows on each stack it hits, and without it the cast draws '
+      + 'one effect in the middle of the field and nothing on the creatures it kills');
+  }
   return problems;
+}
+
+/**
+ * Does this spell HURT more than one stack?
+ *
+ * Two questions, and leaving out the first is a rule that fires on spells with
+ * nothing to show a hit for.
+ *
+ * DOES IT HURT ANYBODY. `damage` is four entries by mastery and a spell whose
+ * every entry is zero deals none — an adventure spell, a buff, an ability. The
+ * two flags below say nothing about that: `IsAimed` false means "aims at
+ * nobody", which is as true of Train Sharpshooters as it is of Armageddon.
+ *
+ * AND HOW MANY DOES IT REACH. Here the flags ARE the whole answer, because they
+ * are the pair the engine picks a damage shape by: `IsAimed` false is the whole
+ * field, `IsAreaAttack` true is an area around a point, and aimed-without-area
+ * is the one stack pointed at — the only shape whose FIRST visual is also what
+ * lands on its target.
+ */
+function hurtsSeveral(spec: SpellSpec): boolean {
+  const hurts = (spec.damage ?? []).some((d) => d.base > 0 || d.perPower > 0);
+  return hurts && (!spec.aimed || spec.areaAttack === true);
 }
 
 /** Change one already in the mod, keeping its value. */

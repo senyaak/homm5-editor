@@ -53,7 +53,12 @@ const spell = addSpell(mod, {
     { base: 25, perPower: 25 },
   ],
   picture: join(import.meta.dirname, '..', 'assets', 'spells', 'death-ripple.png'),
-  visuals: ['/GameMechanics/Spell/Combat_Spells/DarkMagic/Plague.(SpellVisual).xdb#xpointer(/SpellVisual)'],
+  // BOTH, because this one reaches the whole field. The first plays where the
+  // cast happens, the second on every stack it touches — see the rule below.
+  visuals: [
+    '/GameMechanics/Spell/Combat_Spells/DarkMagic/Plague.(SpellVisual).xdb#xpointer(/SpellVisual)',
+    '/GameMechanics/Spell/Combat_Spells/DarkMagic/Unholy_Word_Hit.(SpellVisual).xdb#xpointer(/SpellVisual)',
+  ],
 });
 check('it took the first value past the shipped ones', spell.number === SHIPPED_SPELLS,
   `${spell.number}`);
@@ -101,8 +106,16 @@ check('the mana it costs is in TrainedCost', doc.includes('<TrainedCost>6</Train
 // A cast with nothing to show may be a cast the engine will not start, so the
 // list is written when the spec gives one — and written ABSOLUTE, since the
 // shipped lists are relative to each spell's own folder and ours sits elsewhere.
+//
+// EVERY entry, not the list's shape: this spell reaches the whole field and so
+// carries two, and a check written around exactly one `<Item>` said nothing
+// about either once the second arrived.
+const listed = [...doc.matchAll(/<visuals>([\s\S]*?)<\/visuals>/g)]
+  .flatMap((m) => [...m[1]!.matchAll(/href="([^"]+)"/g)].map((h) => h[1]!));
 check('the visuals it borrows are listed absolute',
-  /<visuals>\s*<Item href="\/GameMechanics\/Spell\/[^"]+#xpointer\(\/SpellVisual\)"\/>\s*<\/visuals>/.test(doc));
+  listed.length === 2
+    && listed.every((h) => /^\/GameMechanics\/Spell\/.+#xpointer\(\/SpellVisual\)$/.test(h)),
+  listed.join(' ') || 'none listed');
 check('it names texts the mod carries',
   doc.includes(`href="/${p.name}"`) && files.has(p.name) && files.has(p.description));
 // Art of its own: the document points at a texture the mod carries, and both
@@ -215,6 +228,91 @@ check('and one that names its tiles is not', (withTiles.spells ?? []).length ===
 const emptied = refusal(() => updateSpell(withTiles, 'SPELL_TEST_AREA', areaSpec));
 check('changing one to cover nothing is refused too — the same rule, the other door',
   /tiles/.test(emptied), emptied || 'accepted');
+
+// --- and the second visual, which cost three runs in the game -------------------
+//
+// `<visuals>` is read BY INDEX and the two entries are different jobs: the first
+// plays ONCE where the cast happens — the middle of the field for a spell that
+// aims at nobody — and the second plays on EVERY stack the spell touches. Every
+// shipped spell that reaches more than one carries both: `Armageddon` +
+// `Armageddon_Hit`, `Unholy_Word` + `Unholy_Word_Hit`.
+//
+// With only the first, a spell of the mod's killed eight stacks while showing
+// one effect in the middle of the screen and nothing on any of them. From the
+// player's chair that is a spell that does not work, and it took three launches
+// to tell the two apart. This is the rule that ends that, one layer under the
+// window — which is not the only door.
+
+const CAST_VISUAL = '/GameMechanics/Spell/Combat_Spells/DarkMagic/Plague.(SpellVisual).xdb#xpointer(/SpellVisual)';
+const HIT_VISUAL = '/GameMechanics/Spell/Combat_Spells/DarkMagic/Unholy_Word_Hit.(SpellVisual).xdb#xpointer(/SpellVisual)';
+
+const fieldOneVisual = refusal(() => addSpell(newCreatureMod('x'),
+  { ...spell, id: 'SPELL_TEST_FIELD_1V', file: 'TestField1V', visuals: [CAST_VISUAL] }));
+check('a whole-field spell with only the cast visual is refused',
+  /Hit|BOTH/.test(fieldOneVisual), fieldOneVisual || 'accepted');
+
+const areaOneVisual = refusal(() => addSpell(newCreatureMod('x'), {
+  ...areaSpec, id: 'SPELL_TEST_AREA_1V', file: 'TestArea1V',
+  area: [{ x: 0, y: 0 }], visuals: [CAST_VISUAL],
+}));
+check('  and so is an area one — the rule is "more than one stack", not "the field"',
+  /Hit|BOTH/.test(areaOneVisual), areaOneVisual || 'accepted');
+
+// THE ONE SHAPE THAT NEEDS ONLY ONE, and it is why the rule asks about reach
+// rather than about visuals alone: a spell aimed at a single stack has its first
+// visual land on that stack — the engine's single-target branch asks for index 0.
+const oneStack = newCreatureMod('x');
+addSpell(oneStack, {
+  ...spell, id: 'SPELL_TEST_ONE_STACK', file: 'TestOneStack',
+  aimed: true, areaAttack: false, visuals: [CAST_VISUAL],
+});
+check('  a spell aimed at ONE stack needs only the one — its first visual is the hit',
+  (oneStack.spells ?? []).length === 1);
+
+const withHit = newCreatureMod('x');
+addSpell(withHit, {
+  ...spell, id: 'SPELL_TEST_FIELD_2V', file: 'TestField2V',
+  visuals: [CAST_VISUAL, HIT_VISUAL],
+});
+check('  and a whole-field spell that names both is not refused',
+  (withHit.spells ?? []).length === 1);
+const hitTakenAway = refusal(() => updateSpell(withHit, 'SPELL_TEST_FIELD_2V',
+  { ...spell, id: 'SPELL_TEST_FIELD_2V', file: 'TestField2V', visuals: [CAST_VISUAL] }));
+check('  taking the hit away later is refused too — the other door',
+  /Hit|BOTH/.test(hitTakenAway), hitTakenAway || 'accepted');
+
+// SABOTAGE, because a rule that cannot fail is not a rule: the fixture the whole
+// file is built on reaches the whole field, so if the check above were blind it
+// would have accepted the one-visual version of THAT too.
+const sabotage = refusal(() => addSpell(newCreatureMod('x'),
+  { ...spell, id: 'SPELL_TEST_SABOTAGE', file: 'TestSabotage', visuals: [] }));
+check('  a spell with NO visuals at all is refused by the same rule',
+  /Hit|BOTH/.test(sabotage), sabotage || 'accepted');
+
+// AND THE OTHER HALF OF THE RULE, which the first version left out and a
+// five-minute e2e run found: `IsAimed` false means "aims at NOBODY", and an
+// ADVENTURE spell says that too. Train Sharpshooters costs gold and trains
+// elves, and it was refused for having no hit animation for the stacks it never
+// touches. A spell with no damage cannot have a hit.
+const adventure = newCreatureMod('x');
+addSpell(adventure, {
+  ...spell, id: 'SPELL_TEST_ADVENTURE', file: 'TestAdventure',
+  school: 'MAGIC_SCHOOL_ADVENTURE', aimed: false, areaAttack: false,
+  damage: [
+    { base: 0, perPower: 0 }, { base: 0, perPower: 0 },
+    { base: 0, perPower: 0 }, { base: 0, perPower: 0 },
+  ],
+  visuals: [],
+});
+check('  a spell that DEALS NO DAMAGE needs neither — the rule asks about damage first',
+  (adventure.spells ?? []).length === 1);
+// And the same spell with damage put back is refused again, so the "no damage"
+// door cannot be walked through by a spell that does hurt.
+const damaged = refusal(() => addSpell(adventure, {
+  ...spell, id: 'SPELL_TEST_ADVENTURE_2', file: 'TestAdventure2', visuals: [],
+}));
+check('    but one that does is, with the same fixture one field apart',
+  /Hit|BOTH/.test(damaged), damaged || 'accepted');
 
 // --- taking one out -------------------------------------------------------------
 //

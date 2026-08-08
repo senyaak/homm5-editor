@@ -1116,6 +1116,14 @@ export function installMapFixture(gameRoot: string): CreatureMod {
       // — and leaves the racial one where it belongs.
       skills: [{ skill: 'HERO_SKILL_OFFENCE', mastery: 'MASTERY_BASIC' }],
       perks: ['HERO_SKILL_ARCHERY'],
+      // KNOWLEDGE, and only knowledge — everything else stays the donor's.
+      //
+      // Mana is knowledge times ten, and the donor's leaves him enough for one
+      // cast of a level-2 spell and not two. Testing what a spell of ours does
+      // needs two in the same battle: one to see it, one to see it again with
+      // something changed. Five is the smallest round number that buys that with
+      // room to spare, and it changes nothing else about him.
+      stats: { knowledge: 5 },
       // His own face. Without it he wears the donor's, and every rebuild puts it
       // back — the mistake Gem's portrait is in the fixture to prevent.
       portrait: join(ASSETS, 'heroes', 'gelu.png'),
