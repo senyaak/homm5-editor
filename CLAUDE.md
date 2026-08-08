@@ -72,3 +72,22 @@ does the same for the hand-assembled stubs: whole instructions, jumps landing
 on instruction boundaries, and the installer's patch offsets inside one
 instruction each. Both are seconds, and both catch things that would otherwise
 cost a launch.
+
+## Getting the mod to say something
+
+**A default build is nearly silent, on purpose.** The extension's logging is
+switched on per FILE, at compile time, and everything not asked for is cut out
+by the preprocessor:
+
+```bash
+npm run build-native -- --log combat/spell-resolve,lua/battle
+npm run build-native -- --list-log
+npm run install-native
+```
+
+Each launch then writes `bin/homm5-editor-<date>-<time>.log`.
+
+Read [LOG.md](LOG.md) before deciding a hook "did not install" or a feature
+"says nothing" — most of the reports that used to be in the log, including
+"how many patches went in", now need their own file named. It lists every file,
+what it would tell you, and the two units that speak without being asked.

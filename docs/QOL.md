@@ -284,10 +284,14 @@ out to contradict the ability's own description and was dropped by its author.
 
 The extension only does anything in a running game, so a change here is proved
 by launching one and reading the newest `bin/homm5-editor-*.log` — a hook built
-with `--log` on its own file says whether it
-installed, and the interesting ones say what they saw. Three of the findings
-above (the third window, `CW_USEDEFAULT`, the style being re-applied) came out
-of that log contradicting what seemed obvious.
+with `--log` on its own file says whether it installed, and the interesting ones
+say what they saw. Three of the findings above (the third window,
+`CW_USEDEFAULT`, the style being re-applied) came out of that log contradicting
+what seemed obvious.
+
+**Build it loud first, or the log will be empty.** These files are silent unless
+named — `npm run build-native -- --log qol/borderless` then
+`npm run install-native`. See [LOG.md](../LOG.md).
 
 The panel is covered without a game by `e2e/qol-001-panel.spec.ts`. It sets
 `HOMM5_DOCUMENTS` at a tree of its own — without that, running the suite would
