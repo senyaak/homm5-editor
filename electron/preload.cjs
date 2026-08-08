@@ -23,6 +23,7 @@ const api = {
   moveObject: (id, x, y) => ipcRenderer.invoke('object:move', { id, x, y }),
   rotateObject: (id, r) => ipcRenderer.invoke('object:rotate', { id, r }),
   removeObject: (id) => ipcRenderer.invoke('object:remove', { id }),
+  reach: (p) => ipcRenderer.invoke('map:reach', p ?? {}),
   objectProps: (id) => ipcRenderer.invoke('object:props', { id }),
   specValues: (type) => ipcRenderer.invoke('spec:values', { type }),
   setObjectProp: (p) => ipcRenderer.invoke('object:set-prop', p),

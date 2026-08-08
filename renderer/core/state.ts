@@ -114,6 +114,15 @@ export interface Selection { id: string; mesh: THREE.Mesh; inst: Instance }
 /** Everything rebuilt on each map load, plus the view toggles that outlive one. */
 export const state = {
   world: null as World | null,
+  /**
+   * The last reachability answer, per floor, or null when nobody has asked.
+   *
+   * Kept here rather than in the feature that asks because the VIEWPORT draws
+   * it (viewport/overlays.ts) and the feature (features/reach.ts) sets it, and
+   * a viewport that imported a feature to find out what to draw would have the
+   * layering backwards.
+   */
+  reach: null as { walkable: Uint8Array[]; seen: Uint8Array[] } | null,
   selected: null as Selection | null,
   /** The selection's outline, added to the scene beside the picked mesh. */
   boxHelper: null as THREE.BoxHelper | null,

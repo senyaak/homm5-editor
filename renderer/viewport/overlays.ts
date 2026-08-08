@@ -12,13 +12,14 @@ import { uiPrefs, saveUiPrefs } from '#core/prefs.ts';
 import { state, activeFloor } from '#core/state.ts';
 import type { Floor3D } from '#core/state.ts';
 import type { Footprint } from '#src/scene/payload.ts';
+import { classifyTiles, PASS_BLOCKED, PASS_NAVIGABLE } from '#src/terrain/passability.ts';
+import type { FloorPassability } from '#src/terrain/passability.ts';
 import { geomFootprint } from '#viewport/geoms.ts';
 import { asTileSpace, WATER_ORDER } from '#viewport/terrain-mesh.ts';
 
 //
 // The original editor's Masks tab paints impassable ground and shows it as a
-// red wash. This shows the same thing, and ONLY that: the mask plane is the
-// whole truth about blocking.
+// red wash. This shows the same thing.
 //
 // It is tempting to also paint water red, on the grounds that you cannot walk
 // there. That is backwards. Sea carries ground flag 0, which means NAVIGABLE —
@@ -26,6 +27,11 @@ import { asTileSpace, WATER_ORDER } from '#viewport/terrain-mesh.ts';
 // flag-0 vertices are masked 6.4% of the time against a 9.0% background, i.e.
 // less often than average, precisely because there is nothing to block. A small
 // pond that a designer wants closed off gets masked by hand like anything else.
+//
+// WHAT a tile does to a hero is decided in src/terrain/passability.ts, not
+// here. The reachability check asks the same question of the same map, and a
+// view that answered it differently would be worse than no view: you would look
+// at open ground and be told nobody can walk to it.
 
 /** Whether the wash and the grid are showing. */
 export let showBlocked = uiPrefs.grid;
@@ -33,68 +39,11 @@ export let showBlocked = uiPrefs.grid;
 /** For callers that only need to know, not to set. */
 export const blockedShown = (): boolean => showBlocked;
 
-/**
- * A drop across one tile that a unit cannot climb.
- *
- * Every cell straddling a ground-kind boundary carries a step of 0.8 or more
- * (200 of 200 on map 12, 216 of 216 on A1M5), which is the mesher's own signal
- * for cutting a vertical face — so anything at or above it is a cliff edge.
- * Ordinary slopes inside one kind stay well under.
- */
-const CLIFF_STEP = 0.8;
-
-/**
- * How a tile reads for movement. Three states, because "can I walk here" and
- * "is this blocked" are different questions and the map answers them separately:
- * a lake stops a footman and carries a boat, and the format says so with the
- * ground flag rather than the mask.
- */
-const PASS_WALK = 0, PASS_BLOCKED = 1, PASS_NAVIGABLE = 2;
-
-/**
- * Classify every tile of a floor. Index = y*(V-1) + x.
- *
- * Blocking is a UNION, not just the mask. The mask records what a designer
- * decided by hand, and on a map where nobody opened the Masks tab it is empty —
- * Senya's map 12 has the plane at all ones despite being full of rivers and
- * cliffs. The rest is inherent to the terrain and the engine derives it:
- *
- *   * the river plane — you do not wade a river, which is why bog and lava
- *     flows stop you without anyone marking them,
- *   * a step too tall to climb, i.e. a cut face between plateau and ground.
- *
- * Navigable (sea) is not blocking: a boat crosses it.
- *
- * The passability plane is stored vertex-sized but addressed PER TILE — entry
- * (x, y) is tile (x, y), last row and column filler. Reading it as four corners
- * made a 1x1 mask stroke show up as 3x3.
- */
-function classifyTiles(fl: Floor3D): Uint8Array {
-  const V = fl.V, T = V - 1;
-  const out = new Uint8Array(T * T); // zero-filled, and PASS_WALK is 0
-  const water = (v: number): boolean => fl.flags ? fl.flags[v] === 0 : false;
-  for (let y = 0; y < T; y++) for (let x = 0; x < T; x++) {
-    const a = y * V + x, b = a + 1, c = a + V, d = c + 1;
-    // Sea first: it is crossed by boat, so it is neither walkable nor blocked.
-    if (water(a) && water(b) && water(c) && water(d)) { out[y * T + x] = PASS_NAVIGABLE; continue; }
-
-    if (fl.passable && fl.passable[a] === 0) { out[y * T + x] = PASS_BLOCKED; continue; }
-    if (fl.river.has(a) || fl.river.has(b) || fl.river.has(c) || fl.river.has(d)) {
-      out[y * T + x] = PASS_BLOCKED; continue;
-    }
-    // A ramp is a deliberate walkable incline, and its half-step of 1.0 is taller
-    // than the cliff threshold — so the slope rule would mark the one thing on
-    // the map built to be climbed. The mesher skips ramp cells for the same
-    // reason; this has to agree with it or the view contradicts the geometry.
-    const ramp = fl.flags
-      ? ((fl.flags[a]! | fl.flags[b]! | fl.flags[c]! | fl.flags[d]!) & 8) !== 0
-      : false;
-    if (ramp) continue;
-    const h = [fl.heights[a]!, fl.heights[b]!, fl.heights[c]!, fl.heights[d]!];
-    if (Math.max(...h) - Math.min(...h) > CLIFF_STEP) out[y * T + x] = PASS_BLOCKED;
-  }
-  return out;
-}
+/** The floor's planes in the shape the shared rule wants. */
+const forRule = (fl: Floor3D): FloorPassability => ({
+  V: fl.V, heights: fl.heights, flags: fl.flags, passable: fl.passable,
+  river: (v) => fl.river.has(v),
+});
 
 /**
  * The terrain's own triangles for every tile of one class, lifted a hair.
@@ -188,7 +137,7 @@ export function refreshBlocked(fl: Floor3D): void {
   refreshFootprints(fl);
   if (!showBlocked) return;
 
-  const cls = classifyTiles(fl);
+  const cls = classifyTiles(forRule(fl));
   const add = (g: THREE.BufferGeometry, mat: THREE.Material, lines = false): void => {
     if (!g.getAttribute('position')?.count) { g.dispose(); mat.dispose(); return; }
     const mesh = asTileSpace(lines ? new THREE.LineSegments(g, mat) : new THREE.Mesh(g, mat));
@@ -220,6 +169,20 @@ export function refreshBlocked(fl: Floor3D): void {
     fl.passMeshes.push(m as unknown as THREE.Mesh);
     fl.group.add(m);
   } else navGrid.dispose();
+  // Ground a hero cannot GET to, which is a different failure from ground he
+  // cannot stand on: it is open, it looks fine, and the way in is somewhere
+  // else entirely. Only drawn once somebody has asked (features/reach.ts), and
+  // in its own colour — red is "you may not walk here", orange is "you may, and
+  // you will never arrive".
+  const answer = state.reach;
+  const z = state.world ? state.world.floors.indexOf(fl) : -1;
+  const walkable = answer?.walkable[z], seen = answer?.seen[z];
+  if (walkable && seen) {
+    const T = fl.V - 1;
+    const cut = new Uint8Array(T * T);
+    for (let i = 0; i < cut.length; i++) cut[i] = walkable[i] && !seen[i] ? 1 : 0;
+    add(tileFill(fl, cut, 1), fill(0xff9500, 0.55));
+  }
   add(tileGrid(fl), new THREE.LineBasicMaterial({
     color: 0xffffff, transparent: true, opacity: 0.13, depthWrite: false,
   }), true);

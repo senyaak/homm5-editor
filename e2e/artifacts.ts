@@ -64,6 +64,7 @@ export const MADE = {
   PANEL_STRUCTURED: 'e2e panel structured',
   PLACE_OBJECTS: 'e2e Place Objects',
   PLACE_PRECISELY: 'e2e Place Precisely',
+  REACH: 'e2e Reach',
   RECONSTRUCT_C1M1: 'e2e Reconstruct C1M1',
   SCRIPT_EDITOR: 'e2e Script Editor',
   /** mod-007 rebuilds this one, and it is named after what it rebuilds. The

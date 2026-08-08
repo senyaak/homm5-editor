@@ -74,6 +74,19 @@ export function isActive(desc: XmlElement, slot: number): boolean {
   return !!el && text(find(el, 'ActivePlayer')) === 'true';
 }
 
+/**
+ * May a PERSON take this slot?
+ *
+ * Apart from `isActive` on purpose: active says the side exists, this says the
+ * lobby offers it to somebody rather than to the computer. A mission has one
+ * of these and the walk check starts from its hero — asking what everybody can
+ * reach between them answers a question nobody is playing.
+ */
+export function canBeHuman(desc: XmlElement, slot: number): boolean {
+  const el = slotEl(desc, slot);
+  return !!el && text(find(el, 'CanBeHumanPlayer')) === 'true';
+}
+
 /** Turn a slot on or off. False when the map has no such slot. */
 export function setActive(desc: XmlElement, slot: number, on: boolean): boolean {
   const el = slotEl(desc, slot);

@@ -836,6 +836,35 @@ export interface FillApplyResult {
   unresolved: number;
 }
 
+/** Payload of `map:reach`. */
+export interface ReachPayload {
+  /**
+   * Start from THIS hero rather than the person's own.
+   *
+   * "Can my hero get about" is the question the check exists for, but "can THIS
+   * one" is worth asking directly — of an enemy walled into a corner, or of a
+   * second hero the mission hands over halfway through.
+   */
+  fromId?: string;
+}
+
+/** Result of `map:reach`. */
+export interface ReachResultIpc {
+  /** False when the map cannot be asked at all; `error` says why. */
+  ok: boolean;
+  error?: string;
+  /** The hero (or heroes) the walk started from. */
+  from: Array<{ id: string; label: string; floor: number }>;
+  /** Objects that HAVE a green tile — the only ones there is anything to reach. */
+  objects: number;
+  reached: number;
+  unreached: Array<{ id: string; label: string; x: number; y: number; floor: number }>;
+  /** Per floor, 1 where a hero may stand at all. */
+  walkable: Uint8Array[];
+  /** Per floor, 1 where he can actually get to. The difference is the wash. */
+  seen: Uint8Array[];
+}
+
 /** Result of `map:status`: null when no map is loaded. */
 export type MapStatusResult = ProjectStatus | null;
 
@@ -1777,6 +1806,8 @@ export interface EditorApi {
   objectProps(id: string): Promise<ObjectPropsResult>;
   specValues(type: string): Promise<SpecValuesResult>;
   setObjectProp(p: SetPropPayload): Promise<ObjectEditResult>;
+  /** Walk the open map from one hero and report what he cannot get to. */
+  reach(p?: ReachPayload): Promise<ReachResultIpc>;
   mapProps(): Promise<MapPropsResult>;
   setMapProp(p: SetMapPropPayload): Promise<ObjectEditResult>;
   roster(name: string): Promise<RosterResult>;

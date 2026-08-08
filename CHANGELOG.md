@@ -15,6 +15,22 @@ one.
 
 ### Added
 
+- **Reach: can the player get to everything?** A button in the View menu walks
+  the open map from the hero of the slot a person plays, and says what he can
+  never arrive at. A map can load, look right and be unplayable — a wood closed
+  over the pass, a mine walled in by the town that grew beside it — and nothing
+  complains about it, in the editor or in the game. What the walk knows: an
+  object's red tiles stop you, its green tile is where you stand to use it, and
+  whether you can walk ON and past that tile depends on what it belongs to (a
+  monster, a hero and anything you pick up leave the ground free behind them; a
+  building does not, so a row of mines is a wall with doors in it). The ground's
+  own rule is the one the passability wash already draws with — mask, rivers,
+  cliffs — and the sea is not walked. The two floors are joined by portals and
+  by nothing else. The answer comes back as an orange wash over ground he can
+  stand on and never get to, and each click on the button visits the next
+  unreachable object. Any edit clears it: it is a statement about the map as it
+  was when it ran.
+
 - **Fills: paint an area, get a wood.** The original editor's Fills tab, in a
   panel of its own. Mark tiles with a x1/x3/x5/x7 brush or a dragged rectangle
   (Shift rubs out), pick a preset, press Fill — and a few hundred trees, bushes,

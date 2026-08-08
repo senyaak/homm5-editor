@@ -375,6 +375,14 @@ interface ViewApi {
   focus(x: number, y: number): void;
   /** Plan-view zoom, as the number of tiles spanned from the centre to the top edge. */
   zoom(halfTiles: number): void;
+  /**
+   * The last reachability answer, per floor, or null when nobody has asked.
+   *
+   * Exposed because the HUD line says how many objects are shut out and the
+   * WASH says which ground is — and a test that only read the line would pass
+   * on an answer nobody could see.
+   */
+  reach(): { walkable: Uint8Array[]; seen: Uint8Array[] } | null;
   /** Where to click for the centre of tile (x, y), in CSS pixels. */
   tileToScreen(x: number, y: number): TilePoint;
   /** Which tile a click at these CSS pixels lands on — the app's own picking. */
@@ -630,6 +638,7 @@ const view: ViewApi = {
     cam.half = Math.max(2 * U, Math.min(400 * U, halfTiles * U));
     syncTopCamera();
   },
+  reach() { return state.reach; },
   objects() {
     if (!state.world) return [];
     return [...activeFloor().meshes.values()]

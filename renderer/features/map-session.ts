@@ -21,6 +21,7 @@ import { forgetScriptContext } from '#features/text-editor/context.ts';
 import { refreshScriptContext } from '#features/text-editor/document.ts';
 import { setIdleMode } from '#viewport/idle.ts';
 import { setShowBlocked, showBlocked } from '#viewport/overlays.ts';
+import { clearReach } from '#features/reach.ts';
 import { cliffsOn } from '#viewport/splat.ts';
 import { setTopView } from '#viewport/stage.ts';
 import { sea } from '#viewport/terrain-mesh.ts';
@@ -114,6 +115,8 @@ export async function loadMapPath(path: string | null, archive: string | null = 
     syncBrushPanel();
     setBrush(false); // a fresh map starts in camera mode
     setCliffs(cliffsOn());
+    // A fresh map has not been walked yet; the last map's answer is not about it.
+    clearReach();
     setShowBlocked(showBlocked);
     $('help').style.display = '';
     // A newly loaded map has its own layer set; refresh the "used" markers.

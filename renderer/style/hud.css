@@ -17,6 +17,8 @@
 /* Outlined, matching how it is drawn: the water texture stays visible. */
 #passlegend .navigable { background: transparent; border: 2px solid #6fb2ff; }
 #passlegend .walk { background: transparent; }
+/* Open ground with no way in — shown only after the Reach check has run. */
+#passlegend .unreached { background: #ff9500b0; }
 /* Building-footprint swatches, colours matched to FOOT_ROLES in app.ts. */
 #passlegend .fp-block { background: #ff2020cc; }
 #passlegend .fp-active { background: #2ad04acc; }

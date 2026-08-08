@@ -279,6 +279,8 @@ export class TerrainDoc {
 
   heightsCopy(): Float32Array { return Float32Array.from(this.heights); }
   flagsCopy(): Uint8Array | null { return this.flags ? Uint8Array.from(this.flags) : null; }
+  /** The mask as it stands, or null on a map that has none. See setPassable. */
+  passableCopy(): Uint8Array | null { return this.passable ? Uint8Array.from(this.passable) : null; }
 
   /** Write every plane back to the file this was opened from. */
   save(): void {

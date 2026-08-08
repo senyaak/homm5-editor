@@ -9,7 +9,7 @@ import { ALL } from '#features/selection.ts';
 /** px; movement under this is a click, not a drag. */
 export const CLICK_SLOP = 5;
 import { ask } from '#core/dialog.ts';
-import { isDirty, markDirty } from '#core/dirty.ts';
+import { isDirty, markDirty, whenEdited } from '#core/dirty.ts';
 import { $, $button, $input, setChild } from '#core/dom.ts';
 import { api } from '#core/ipc.ts';
 import { saveUiPrefs, uiPrefs } from '#core/prefs.ts';
@@ -30,6 +30,7 @@ import type { IdleMode } from '#viewport/idle.ts';
 import { replaceInstances } from '#viewport/instancing.ts';
 import { refreshLighting } from '#viewport/lighting.ts';
 import { setShowBlocked, showBlocked } from '#viewport/overlays.ts';
+import { clearReach, runReach } from '#features/reach.ts';
 import { cliffsOn, setCliffAmount, setGroundScale } from '#viewport/splat.ts';
 import { cam, isTyping, renderer, setTopView } from '#viewport/stage.ts';
 import { sea } from '#viewport/terrain-mesh.ts';
@@ -415,6 +416,9 @@ export function initShell(): void {
     }
   });
   $('blockbtn').onclick = () => setShowBlocked(!showBlocked);
+  $('reachbtn').onclick = () => { void runReach(); };
+  // Any edit and the answer is about a map that no longer exists.
+  whenEdited(clearReach);
   $('cliffbtn').onclick = () => setCliffs(!cliffsOn());
   $input('sealevel').addEventListener('input', (e) => {
     const v = +(e.currentTarget as HTMLInputElement).value;
