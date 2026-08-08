@@ -727,10 +727,24 @@ export const DEATH_RIPPLE = {
   // anti-magic and the combat log.
   spares: NOT_LIVING,
   picture: join(ASSETS, 'spells', 'death-ripple.png'),
-  // The Plague's animation, borrowed: same school, and a spell that shows
-  // nothing may be a spell the engine will not start. Its own art can come later
-  // — what matters now is that the cast has something to play.
-  visuals: ['/GameMechanics/Spell/Combat_Spells/DarkMagic/Plague.(SpellVisual).xdb#xpointer(/SpellVisual)'],
+  // BOTH, and the second is not optional for a spell that hits the whole field.
+  //
+  // The list is read BY INDEX and the two entries are different jobs: `0` is the
+  // CAST — played once, where the cast happens, which for a spell that aims at
+  // nobody is the middle of the field — and `1` is the HIT, played on EVERY
+  // stack the spell touches. Every shipped whole-field spell carries both, named
+  // the same way: `Armageddon` + `Armageddon_Hit`, `Unholy_Word` +
+  // `Unholy_Word_Hit`, `Holy_Word` + `Holy_Word_Hit`.
+  //
+  // With only the first, a cast of ours showed one effect in the middle of the
+  // screen and nothing on the stacks it was killing — measured in game
+  // 08.08.2026. The Plague has no hit of its own (it aims at one stack), so the
+  // Unholy Word's is borrowed: same school, same shape, and it is the one the
+  // Death Ripple is a port of.
+  visuals: [
+    '/GameMechanics/Spell/Combat_Spells/DarkMagic/Plague.(SpellVisual).xdb#xpointer(/SpellVisual)',
+    '/GameMechanics/Spell/Combat_Spells/DarkMagic/Unholy_Word_Hit.(SpellVisual).xdb#xpointer(/SpellVisual)',
+  ],
   /**
    * WHAT IT DOES, and it is a script because the engine has no branch for our
    * number: the extension catches the cast and calls this.

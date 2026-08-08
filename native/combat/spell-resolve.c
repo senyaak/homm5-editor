@@ -525,15 +525,26 @@ static char __cdecl our_cast(void *cast, void *chain, void *whatResolveWasGiven)
     // nothing.
     total += dealt + extra;
 
-    // THE VISUAL, PER STACK, and before the entry — the order the mass routine
-    // uses. The document's `visuals` list is authored second-then-first: the
-    // engine asks its mass routine for `1` and its single-target branch for `0`,
-    // and a spell may carry only one, so ask for the second and fall back.
+    // THE HIT, PER STACK, and before the entry — the order the mass routine
+    // uses.
+    //
+    // INDEX 1, and never index 0. The document's `visuals` list is two jobs, not
+    // two takes on one: `0` is the CAST, played once where the cast happens —
+    // the middle of the field for a spell that aims at nobody — and `1` is the
+    // HIT, played on every stack the spell touches. Every shipped whole-field
+    // spell carries both and names them so: `Armageddon` + `Armageddon_Hit`,
+    // `Unholy_Word` + `Unholy_Word_Hit`.
+    //
+    // An earlier version of this fell back to `0` when a document named only
+    // one, which would have put the middle-of-the-field effect on top of every
+    // stack. The engine does not: `0xAD5050` answers NULL past the end of the
+    // list and the mass routine's `test eax,eax / je` skips the visual
+    // altogether. So does ours, and it says so — because a spell of ours with
+    // one visual is a document to finish, not a thing to paper over.
     if (!noVisuals && g_spellVisual) {
       void *visual = g_spellVisual(spell, 1);
-      if (!visual) visual = g_spellVisual(spell, 0);
       UnitPlayFn play = (UnitPlayFn)slot_of(unit, UNIT_PLAY_SLOT);
-      if (!visual) log_line("      the document names no visual for it");
+      if (!visual) log_line("      the document names no HIT visual — nothing to show on it");
       else if (!play) log_line("      the stack cannot be asked to play one");
       else chain = play(unit, chain, visual, 0, 0, 1);
     }

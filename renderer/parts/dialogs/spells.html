@@ -144,14 +144,17 @@
           <div class="on-body um-form">
             <label class="on-row um-span"><span>Icon</span><input id="sm-icon" type="text" spellcheck="false" autocomplete="off" placeholder="/Textures/…#xpointer(/Texture)" title="href of an icon that already exists — usually a shipped spell's"></label>
             <label class="on-row um-span"><span>Picture</span><input id="sm-picture" type="text" autocomplete="off" placeholder="a drawing to build its icon from — assets/spells/death-ripple.png" title="a picture on disk; the mod builds the game's texture from it at 128×128, and it wins over the icon above"><button id="sm-pick-picture" class="ghost" type="button" title="choose a picture">Picture…</button></label>
-            <!-- What the CAST shows. Empty is legal in the data and it is a real
-                 suspect: a cast with nothing to show may be one the engine
-                 declines to start, which is why ours borrow shipped visuals until
-                 there is art of our own. Absolute, because a shipped spell's list
-                 is written relative to its own folder and ours sits elsewhere. -->
-            <label class="on-row um-span"><span>Cast</span><input id="sm-visual-1" type="text" spellcheck="false" autocomplete="off" placeholder="/GameMechanics/Spell/…(SpellVisual).xdb#xpointer(/SpellVisual)" title="the animation the cast plays"></label>
-            <label class="on-row um-span"><span>Hit</span><input id="sm-visual-2" type="text" spellcheck="false" autocomplete="off" placeholder="the second visual, where a spell has one" title="what lands on what it hits"></label>
-            <div class="um-note um-span" style="color:#8b949e">Both are worth filling in. An icon left empty is a hole in the spellbook page; visuals left empty mean the cast draws nothing, which is legal in the data and is a live suspect for a cast the engine declines to start — so ours borrow a shipped spell's until there is art of our own.</div>
+            <!-- TWO JOBS, not two takes on one. The engine reads this list BY
+                 INDEX: the first is played once where the cast happens, the
+                 second on every stack the spell touches. A whole-field spell
+                 with only the first shows one effect in the middle of the field
+                 and nothing on the creatures it is killing — seen in game
+                 08.08.2026, and the reason this note is now specific.
+                 Absolute paths, because a shipped spell's list is written
+                 relative to its own folder and ours sits elsewhere. -->
+            <label class="on-row um-span"><span>Cast</span><input id="sm-visual-1" type="text" spellcheck="false" autocomplete="off" placeholder="/GameMechanics/Spell/…(SpellVisual).xdb#xpointer(/SpellVisual)" title="played ONCE, where the cast happens — the middle of the field for a spell that aims at nobody"></label>
+            <label class="on-row um-span"><span>Hit</span><input id="sm-visual-2" type="text" spellcheck="false" autocomplete="off" placeholder="/GameMechanics/Spell/…_Hit.(SpellVisual).xdb#xpointer(/SpellVisual)" title="played on EVERY stack the spell touches — without it nothing shows on them"></label>
+            <div class="um-note um-span" style="color:#8b949e"><b>Cast</b> plays once, where the cast happens. <b>Hit</b> plays on every stack the spell touches — leave it empty and a spell that hits the whole field shows one effect in the middle and nothing on the creatures it kills. Every shipped spell that hits more than one carries both, named the same way: <code>Armageddon</code> and <code>Armageddon_Hit</code>. Borrow a shipped pair until there is art of your own; an empty cast visual is also a live suspect for a cast the engine declines to start.</div>
           </div>
         </fieldset>
         <div id="sm-missing" class="um-missing"></div>
