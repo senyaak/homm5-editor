@@ -69,9 +69,14 @@
 #include "combat/tent-charges.c"
 #include "combat/tent-health.c"
 #include "combat/tent-mana.c"
+// A spell is four files, in the order each needs the one before it: the document
+// first, because everything else reads it; then the cast being watched, which is
+// where the question about a stack's abilities is written; then the switches the
+// executable was compiled against; and last what a cast of OURS does, which uses
+// all three. See combat/spell-cast.c for what each is for.
+#include "combat/spell-record.c"
 #include "combat/spell-cast.c"
-// AFTER spell-cast.c, and only after: the resolver uses that file's record
-// accessor, its question about a stack's abilities and its byte check.
+#include "combat/spell-switches.c"
 #include "combat/spell-resolve.c"
 #include "qol/borderless.c"
 #include "qol/own-profile.c"
@@ -91,6 +96,7 @@
 #include "qol/fix-payback.c"
 #include "qol/fix-dragon-form.c"
 #include "qol/fix-empowered-armageddon.c"
+#include "qol/fix-mass-spell-element.c"
 #include "qol/fix-book-of-power.c"
 #include "qol/fix-master-of-fire.c"
 #include "qol/fix-imbue-ballista.c"
@@ -149,6 +155,10 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   // What a battle actually casts, by id, and what a cast of ours then DOES.
   // Unconditional, like the battle scripts and for the same reason: a log that
   // has to be switched on says nothing on the run that mattered.
+  // The accessors FIRST: everything under them reads a spell's document through
+  // these two, and the guard below patches the getter's own head — after which
+  // it would no longer recognise it.
+  install_spell_record();
   install_cast_command_log();
   install_cast_gate_log();
   install_gate_refusal_log();

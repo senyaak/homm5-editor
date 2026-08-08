@@ -91,7 +91,7 @@ And the refusal is about the NUMBER, not the document. The control that settled
 it: a copy of Armageddon differing in nothing else — same school, level, mana,
 damage, both of its visuals — is refused exactly the same way.
 
-## What the extension carries (`native/combat/spell-cast.c`, `spell-resolve.c`)
+## What the extension carries (`native/combat/spell-*.c`)
 
 Three marks and one answer, all built up from the runs above:
 
@@ -228,7 +228,7 @@ a call into it. The line that is usable, and the one this file is written to:
 Only when there is no other way in does a mid-function entry get taken, and then
 it is written down with what it costs. There is exactly one left, and it is not a
 spell's: `0xB7CED1`, the worth switch's document-reading case, shared by
-twenty-one ids. What it costs is in `native/combat/spell-cast.c` beside it.
+twenty-one ids. What it costs is in `native/combat/spell-switches.c` beside it.
 
 **`SPELL_ARMAGEDDON` and `SPELL_UNHOLY_WORD` are not touched by us at all** — not
 borrowed, not detoured, not read.
@@ -581,7 +581,8 @@ puts them in the mod before the map is built, because an id types.xml does not
 declare is a map the game refuses to load.
 
 **Nothing in the probe is rationed.** Two runs were lost to log budgets going
-quiet exactly where the answer was; see the note in `spell-cast.c`.
+quiet exactly where the answer was; see the note in `spell-cast.c`, which holds
+for all four of the spell files.
 
 ## The adventure map's gate, and the four-slot ceiling explained
 
@@ -619,6 +620,6 @@ Which is the same finding as the battle gate one branch over: **the engine
 decides what a spell may do from what it was compiled against**, and a document
 cannot answer for a number it has never seen.
 
-`native/combat/spell-cast.c` therefore answers for our own ids and leaves every
+`native/combat/spell-cast.c` (the gate half) therefore answers for our own ids and leaves every
 shipped one alone — a silent refusal is overruled, a reasoned one never is.
 Measured 07.08.2026: with that in place Gelu's page is live and takes a click.

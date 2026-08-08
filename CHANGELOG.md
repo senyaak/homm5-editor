@@ -215,6 +215,19 @@ one.
   Master of Fire (or Ice, or Storms) mark. The four appliers that leave one do
   not agree on how many arguments they take, so each needs its own reading.
 
+- **A spell is four files in the extension, not one.** `spell-cast.c` had grown
+  to 1198 lines and held four subjects — a spell's document, the cast being
+  watched, the switches taught about the mod's ids, and a fix that belonged with
+  the other QoL fixes entirely. It is now `combat/spell-record.c`,
+  `combat/spell-cast.c`, `combat/spell-switches.c`, `combat/spell-resolve.c` and
+  `qol/fix-mass-spell-element.c`, each under 600 lines.
+
+  Nothing moved but text: every extracted block is byte-identical to what it
+  replaced, and the only code change is two accessor lookups moving into an
+  install of their own that runs first. `engine_code` — "this address still holds
+  the bytes we measured, hand it back" — moved to `core/detour.c` beside `detour`
+  and `overwrite_code`, which is the family it belongs to.
+
 - **Two new checks that stand in for a launch of the game.**
   `test-native-anchors` takes every address the extension recognises by its
   bytes — 45 of them — and reads those bytes out of the executable on disk. The

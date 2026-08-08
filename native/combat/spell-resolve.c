@@ -1,8 +1,9 @@
 // What a spell of OURS does, written out here instead of borrowed.
 //
 // A piece of the ONE translation unit — native/homm5-editor.c includes every
-// piece in order. This one comes AFTER combat/spell-cast.c, because it uses the
-// record accessor, the ability question and the config rows that file sets up.
+// piece in order, and this is the LAST of the four a spell is made of: it uses
+// the record accessor (spell-record.c), the question about a stack's abilities
+// (spell-cast.c) and the switches taught about our ids (spell-switches.c).
 //
 // ---------------------------------------------------------------------------
 // WHY THIS FILE EXISTS.
@@ -51,7 +52,7 @@
 //
 // THE AREA SHAPE COSTS NOTHING EXTRA, and that is worth saying out loud: the
 // command has ALREADY turned the covered tiles into a list of stacks and left it
-// at +0x24. Those tiles are ours — `install_area_shape` in spell-cast.c fills
+// at +0x24. Those tiles are ours — `install_area_shape` in spell-switches.c fills
 // them from the spell's own row — so an area spell of ours needs no tile-to-unit
 // lookup here. It walks a list the engine built to our shape.
 
@@ -117,7 +118,7 @@ static MayTouchFn g_mayTouch = NULL;
  *
  * `ret 0Ch`. Nineteen callers. For a spell of ours it goes through the branch
  * that READS THE DOCUMENT — `0xAD4EC0`, base plus per-point by mastery — which
- * is where `install_spell_power` in spell-cast.c points our ids.
+ * is where `install_spell_power` in spell-switches.c points our ids.
  *
  * The third argument is the WEEK, and it is a number rather than an object: the
  * modifier at `0xC76720` compares it against 0x41, 0x44…0x47 and 0x48 and adds
@@ -521,8 +522,9 @@ static BYTE RESOLVE_TO_STUB[SPELL_DISPATCH_LEN] = {
 static void install_our_resolver(void) {
   BYTE *base = (BYTE *)GetModuleHandleW(NULL);
   // Every one of them checked against the bytes we measured before it is ever
-  // called — `engine_code` lives in spell-cast.c, one file up in the same
-  // translation unit.
+  // called. `engine_code` lives in core/detour.c beside `detour` and
+  // `overwrite_code`, because it is the third thing one can do with an
+  // address — call it — and it is refused on a mismatch like the other two.
   g_allUnits = (AllUnitsFn)engine_code(ALL_UNITS_RVA, ALL_UNITS_HEAD, ALL_UNITS_HEAD_LEN,
                                        "every stack on the field");
   g_mayTouch = (MayTouchFn)engine_code(MAY_TOUCH_RVA, MAY_TOUCH_HEAD, MAY_TOUCH_HEAD_LEN,

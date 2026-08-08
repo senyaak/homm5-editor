@@ -169,6 +169,31 @@ static int overwrite_code(DWORD rva, const BYTE *before, const BYTE *after, int 
   return 1;
 }
 
+/**
+ * A piece of the engine's own code, if its bytes are still the ones we mapped —
+ * and nothing written, only the address handed back.
+ *
+ * The third way of using an address, beside `detour` and `overwrite_code`: some
+ * of the engine's code we CALL rather than change. Same discipline, same
+ * refusal — an address of ours that has gone stale would be called with the
+ * wrong signature or jumped into the middle of an instruction, and the crash
+ * would land in a battle instead of here. Something we cannot recognise costs a
+ * feature and costs the game nothing, which is the right way round.
+ *
+ * Used for FUNCTION HEADS almost everywhere, and that is the point: calling an
+ * engine function through its own entry point is allowed, entering the middle of
+ * one is not. See combat/spell-resolve.c for where that line falls.
+ */
+static BYTE *engine_code(DWORD rva, const BYTE *mark, int len, const char *what) {
+  BYTE *at = (BYTE *)GetModuleHandleW(NULL) + rva;
+  for (int i = 0; i < len; i++) {
+    if (at[i] == mark[i]) continue;
+    log_text("not where we left it - what needs it will do nothing: ", what);
+    return NULL;
+  }
+  return at;
+}
+
 typedef int(__thiscall *EnergyGetterFn)(void *player);
 typedef void(__thiscall *RefillFn)(void *player);
 
