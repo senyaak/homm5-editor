@@ -246,6 +246,28 @@ static const BYTE FREE_HEAD[FREE_HEAD_LEN] = { 0x55, 0x8B, 0xEC };  // push ebp 
 typedef void(__cdecl *FreeFn)(void *block);
 static FreeFn g_free = NULL;
 
+/**
+ * HOW MANY CREATURES ARE STILL IN THAT STACK — vtable `+0x1D8`.
+ *
+ * A probe, and it is here because reading the code stopped answering. Six
+ * functions were followed to their `ret` and **not one of them writes**: the
+ * worth is arithmetic, `0xB861A0` ends `mov eax,edi / ret 8`, `0xB7D030` returns
+ * `esi`, `0xB75C10` writes a log line and a floating figure, and the object the
+ * appliers build is — by its own RTTI — `CCombatEventLog`, a LOG entry. So where
+ * a stack actually loses creatures is not yet known, and one more inference
+ * would be the third in a row.
+ *
+ * This asks the stack itself, before the hit and after the entry. Whatever the
+ * next run says, it says it about the thing we care about rather than about a
+ * function we hope is the right one.
+ *
+ * The slot is the engine's own: `0xB57310` — "how many would this much damage
+ * kill" — clamps its answer against `[vt+0x1D8]`, and takes the creature's hit
+ * points from `[vt+0x1A8]` two lines above.
+ */
+#define UNIT_COUNT_SLOT 0x1D8u
+typedef int(__thiscall *UnitCountFn)(void *unit);
+
 /** `CCombatUnit::GetCombat()` — vtable slot 8, the way the engine asks. */
 #define UNIT_COMBAT_SLOT 0x08u
 /** `CCombat::WeekOf()` — slot 0x3C, what the resolver's own prologue asks for. */
@@ -441,6 +463,8 @@ static char __cdecl our_cast(void *cast, void *chain, void *whatResolveWasGiven)
     // spell of ours ever answer differently per target without moving anything.
     // If that turns out to cost measurable time in a big battle, hoisting it is
     // one line.
+    UnitCountFn howMany = (UnitCountFn)slot_of(unit, UNIT_COUNT_SLOT);
+    if (howMany) log_num("      creatures before ", howMany(unit));
     int worth = g_spellWorth(spell, power, mastery, week, NULL);
     int dealt = g_hitOne(worth, cast, caster, unit, 1, chain, scale, 1);
     int extra = g_tellAbout(chain, dealt, caster, unit, spell, 0);
@@ -463,6 +487,13 @@ static char __cdecl our_cast(void *cast, void *chain, void *whatResolveWasGiven)
       chain = g_plainApplier(caster, unit, dealt + extra, chain, spell, whatResolveWasGiven);
       log_hex("      the entry left behind ", (DWORD)(INT_PTR)chain);
     }
+    // THE ONE LINE THAT SETTLES IT. If this differs from "creatures before",
+    // something on this path applies the damage and the cast is nearly done. If
+    // it does not, nothing here applies it and the search moves to what the
+    // shipped branches do AFTER the entry — `unit->vt[0x27C]` in the mass
+    // routine, `unit->vt[0x280]` in the single-target one, both called per stack
+    // and both extending the chain.
+    if (howMany) log_num("      creatures after ", howMany(unit));
   }
   g_castChain = chain;
   log_num("   the whole cast came to ", total);
