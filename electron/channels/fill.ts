@@ -16,7 +16,7 @@ import type { IpcMainInvokeEvent } from 'electron';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { record } from '#electron/edits.ts';
-import type { FillApplyPayload, FillApplyResult, FillDeletePayload, FillPresetDraft, FillPresetInfo, FillPresetsResult, FillSavePayload } from '#electron/ipc.ts';
+import type { FillApplyPayload, FillApplyResult, FillPreviewPayload, FillPreviewResult, FillDeletePayload, FillPresetDraft, FillPresetInfo, FillPresetsResult, FillSavePayload } from '#electron/ipc.ts';
 import { APP_ROOT, editorRoot, gameData, gameRoot, mountedAssets } from '#electron/paths.ts';
 import { need } from '#electron/state.ts';
 
@@ -196,13 +196,23 @@ export function registerFill(): void {
   });
 
   // Run one over the painted tiles.
+  // What a fill WOULD do. No session needed and nothing touched: it is the
+  // planner run over the same numbers, so the panel can put a figure beside the
+  // density slider while it is being dragged.
+  ipcMain.handle('fill:preview', async (_e: IpcMainInvokeEvent, p: FillPreviewPayload): Promise<FillPreviewResult> => {
+    const preset = presets()[p.preset];
+    if (!preset || !p.cells.length) return { pieces: 0, covered: 0, cells: p.cells.length };
+    const plan = planFill(p.cells, preset, p.seed, { density: p.density ?? 1 });
+    return { pieces: plan.placements.length, covered: plan.report.covered, cells: p.cells.length };
+  });
+
   ipcMain.handle('fill:apply', async (_e: IpcMainInvokeEvent, p: FillApplyPayload): Promise<FillApplyResult> => {
     const session = need();
     const preset = presets()[p.preset];
     if (!preset) throw new Error(`no fill preset ${p.preset}`);
     if (!p.cells.length) throw new Error('nothing is painted — drag on the map first');
     const data = mountedAssets(gameData());
-    const plan = planFill(p.cells, preset, p.seed, { expand: expander(data) });
+    const plan = planFill(p.cells, preset, p.seed, { expand: expander(data), density: p.density ?? 1 });
 
     // Resolved BEFORE the edit, because a model that cannot be decoded is not
     // an object to place and finding that out halfway through would leave the

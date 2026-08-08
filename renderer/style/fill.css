@@ -93,3 +93,10 @@
 .fill-actions button.go { background: #1f6feb33; border-color: #1f6feb; color: #cbe0ff; }
 .fill-actions button.go:hover { background: #1f6feb55; }
 .fill-actions button:disabled { opacity: .45; cursor: default; }
+
+/* The density slider, on its own row above the actions. */
+#fill-densitywrap { display: flex; align-items: center; gap: 6px; padding: 4px 8px;
+  font-size: 11px; color: #adb6c0; }
+#fill-densitywrap input { flex: 1; }
+#fill-densityval { min-width: 38px; text-align: right; font-variant-numeric: tabular-nums; }
+#fill-preview { padding: 0 8px 4px; font-size: 11px; color: #8b949e; }

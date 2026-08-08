@@ -43,6 +43,20 @@ async function openFills(page: Launched['page']): Promise<void> {
   await expect(page.locator('#fillpal')).toBeVisible();
 }
 
+/**
+ * Put the density slider where the test means it to be.
+ *
+ * It is a REMEMBERED setting — the panel keeps it between fills and between
+ * runs, which is right for a tool and a trap for a suite: a run that left it at
+ * 3x thickened the first fill of the next one from 33 objects to 222, and
+ * nothing said so.
+ */
+async function setDensity(page: Launched['page'], value: string): Promise<void> {
+  await page.locator('#fill-density').fill(value);
+  await page.locator('#fill-density').dispatchEvent('input');
+  await expect(page.locator('#fill-densityval')).toHaveText(`${Number(value).toFixed(2)}x`);
+}
+
 test.beforeAll(async () => { cleanup(); ed = await launchEditor(); });
 test.afterAll(async () => { await closeEditor(ed); cleanup(); });
 
@@ -58,6 +72,7 @@ test('an area painted with the fill brush becomes a wood, in one undo step', asy
   await expect(page.locator('#fill-list option').first()).toBeAttached({ timeout: 30_000 });
   const found = await page.evaluate(() => window.view.fill().presets);
   expect(found, 'presets were read from a file').toBeGreaterThan(0);
+  await setDensity(page, '1');
   await page.locator('#fill-list').selectOption({ label: 'Birch Wood' });
   await expect(page.locator('#fill-detail .layer')).toHaveCount(4);
   // The panel says what the preset does before it is run — the layers, and any
@@ -137,6 +152,63 @@ test('an area painted with the fill brush becomes a wood, in one undo step', asy
     'and the whole turn is used').toBeGreaterThan(8);
 });
 
+test('the density slider says what it will plant, and then plants it', async () => {
+  test.skip(!existsSync(join(DATA, 'MapObjects')), 'needs the game data');
+  test.setTimeout(300_000);
+  const { page } = ed;
+
+  // The map from the test above, with its wood on it. What matters here is the
+  // DIFFERENCE the slider makes, so the same rectangle is painted twice.
+  await openFills(page);
+  const before = (await page.evaluate(() => window.view.objects())).length;
+
+  /** Paint the rectangle, read the preview, fill, and say how many arrived. */
+  const fillAt = async (density: string): Promise<{ said: string; planted: number }> => {
+    await setDensity(page, density);
+    // Choosing the rectangle brush ARMS the tool, which the last fill put down
+    // when it consumed the paint.
+    await page.locator('.fill-sizes button[data-size="rect"]').click();
+    await expect(page.locator('#fill-draw')).toHaveText('draw: on');
+    await dragTiles(page, [AREA.x0, AREA.y0], [AREA.x1, AREA.y1]);
+    expect((await page.evaluate(() => window.view.fill())).cells,
+      'the drag painted the rectangle').toBe(TILES);
+    await expect(page.locator('#fill-preview')).not.toBeEmpty({ timeout: 30_000 });
+    const said = (await page.locator('#fill-preview').textContent()) ?? '';
+    const was = (await page.evaluate(() => window.view.objects())).length;
+    await page.locator('#fill-apply').click();
+    await expect.poll(() => page.evaluate(() => window.view.objects().length),
+      { message: `the ${density}x fill landed`, timeout: 120_000 }).toBeGreaterThan(was);
+    await settle(page);
+    return { said, planted: (await page.evaluate(() => window.view.objects())).length - was };
+  };
+
+  const thin = await fillAt('0.5');
+  const thick = await fillAt('3');
+
+  // The knob does something, and in the direction it says.
+  expect(thick.planted, 'three times as thick plants more than half as thick')
+    .toBeGreaterThan(thin.planted * 2);
+  // And the panel said so BEFORE the map was touched — a slider you drag and
+  // hope about is not a control.
+  //
+  // Close, not equal: the preview plans with a fixed seed so the figure holds
+  // still while the slider is dragged, and the fill draws a fresh one so two
+  // clicks give two different woods. A scatter of the same density over the
+  // same area lands within a few pieces of itself.
+  const saidPieces = (t: string): number => Number(/([0-9]+) piece/.exec(t)?.[1] ?? -1);
+  const near = (said: number, got: number): boolean => Math.abs(said - got) <= Math.max(3, got * 0.25);
+  expect(near(saidPieces(thin.said), thin.planted),
+    `the preview said ${saidPieces(thin.said)} and ${thin.planted} arrived`).toBe(true);
+  expect(near(saidPieces(thick.said), thick.planted),
+    `the preview said ${saidPieces(thick.said)} and ${thick.planted} arrived`).toBe(true);
+  expect(thick.said, 'the preview says how much ground it covers').toMatch(/[0-9]+% of the ground/);
+
+  // Put it back: the setting is remembered on purpose (it is a tool, not a
+  // gesture), so a test that left it at 3x would silently thicken the next one.
+  await setDensity(page, '1');
+  void before;
+});
+
 test('a preset of your own is made in the window, kept in H5E, and plants what it names', async () => {
   test.skip(!existsSync(join(DATA, 'MapObjects')), 'needs the game data');
   test.setTimeout(240_000);
@@ -197,6 +269,9 @@ test('a preset of your own is made in the window, kept in H5E, and plants what i
   await page.locator('.fill-sizes button[data-size="rect"]').click();
   await dragTiles(page, [60, 20], [62, 22]);
   expect(await page.evaluate(() => window.view.fill().cells)).toBe(9);
+  // At the preset's own density: the slider is a remembered setting, and this
+  // check is about what the PRESET says, one object per tile.
+  await setDensity(page, '1');
   await page.locator('#fill-apply').click();
   const said = await hudSays(page, /planted \d+ object/, 120_000);
   expect(Number(/planted (\d+)/.exec(said)?.[1] ?? 0), 'one per tile, as the preset says').toBe(9);

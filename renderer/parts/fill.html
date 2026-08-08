@@ -25,12 +25,20 @@
       <button id="fill-del" class="danger" title="delete this preset (only your own)">✕</button>
     </div>
     <div id="fill-detail"></div>
+    <!-- How thick to lay the chosen preset on. 1 is the preset exactly as its
+         author wrote it; right of that the lattice closes up and each piece
+         claims less room, which is what closes the gaps. -->
+    <label id="fill-densitywrap" title="how thick to lay it on — 1.0 is the preset as written, right of that fills the gaps">
+      density <input id="fill-density" type="range" min="0.25" max="4" step="0.25" value="1">
+      <span id="fill-densityval">1.00x</span>
+    </label>
     <div class="pal-foot">
       <div class="fill-actions">
         <div id="fill-count">nothing painted</div>
         <button id="fill-clear" title="drop the painted area without planting anything">Clear</button>
         <button id="fill-apply" class="go" title="plant the chosen preset over the painted area">Fill</button>
       </div>
+      <div id="fill-preview"></div>
       <div id="fill-where"></div>
     </div>
   </div>

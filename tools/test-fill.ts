@@ -15,7 +15,7 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { planFill, insetOf, rng } from '../src/fill/plan.ts';
+import { DENSITY_MAX, DENSITY_MIN, planFill, insetOf, rng, thicken } from '../src/fill/plan.ts';
 import type { FillCell, FillPlacement } from '../src/fill/plan.ts';
 import { presetFromDraft, presetObjects, presetRefOf, readFillPresets, sharedHref, writeFillPresets } from '../src/fill/preset.ts';
 import type { FillLayer, FillPreset } from '../src/fill/preset.ts';
@@ -376,6 +376,66 @@ console.log('\ndrafts');
   check('a layer with no spacing is refused',
     !!refused({ name: 'x', layers: [{ ...layer, dispersion: 0 }] }));
   check('a sound one is not', !refused({ name: 'x', layers: [layer] }), refused({ name: 'x', layers: [layer] }));
+}
+
+console.log('\ndensity');
+{
+  // The knob has one hard requirement and one soft one. Hard: at 1 it must
+  // change NOTHING, or every preset in the file quietly means something other
+  // than it did. Soft, but the whole point of a slider: dragging it right must
+  // never give less. Two of the three numbers it could turn fail that on their
+  // own — see thicken.
+  const area = rect(0, 0, 24, 24);
+  const wood = preset('density wood', [
+    { dispersion: 0.8, objects: [obj('grass', 0, 0.35)] },
+    { dispersion: 1.4, width: 0.5, objects: [obj('bush', 0.3, 0.12)] },
+    { dispersion: 1.4, width: 1.2, objects: [obj('oak', 0.8, 0.6)] },
+  ]);
+  const plain = planFill(area, wood, 5);
+  const atOne = planFill(area, wood, 5, { density: 1 });
+  check('density 1 is the preset untouched',
+    JSON.stringify(plain.placements) === JSON.stringify(atOne.placements),
+    `${plain.placements.length} vs ${atOne.placements.length}`);
+  check('and thicken hands the same preset back', thicken(wood, 1) === wood);
+
+  const ladder = [DENSITY_MIN, 0.5, 0.75, 1, 1.5, 2, 3, DENSITY_MAX];
+  const covered = ladder.map((d) => planFill(area, wood, 5, { density: d }).report.covered);
+  check('a step right never covers less', covered.every((v, i) => !i || v >= covered[i - 1]!),
+    covered.join(' '));
+  check('the low end is thinner than the preset', covered[0]! < covered[3]!, covered.join(' '));
+  check('the high end leaves no bare ground', covered[covered.length - 1] === 24 * 24,
+    `${covered[covered.length - 1]} of ${24 * 24}`);
+
+  // Coverage is what the slider is about and it is NOT the piece count: a
+  // preset can plant four things in one tile and nothing in the next.
+  const dense = planFill(area, wood, 5, { density: DENSITY_MAX });
+  check('coverage counts tiles, not pieces', dense.report.covered <= dense.placements.length,
+    `${dense.report.covered} covered by ${dense.placements.length} pieces`);
+
+  // Turning the knob RE-ROLLS the wood rather than adding to or subtracting
+  // from the one before — one generator stream, and a candidate that fails its
+  // roll skips the draws that would have followed it. Asserted rather than
+  // merely noted, because the comment on `thicken` claimed the opposite until
+  // this check said 119 of 198 pieces had moved.
+  const thin = planFill(area, wood, 5, { density: 0.5 });
+  const where = new Set(plain.placements.map((q) => `${q.layer}:${q.x},${q.y}`));
+  const moved = thin.placements.filter((q) => !where.has(`${q.layer}:${q.x},${q.y}`));
+  check('thinning gives fewer pieces', thin.placements.length < plain.placements.length,
+    `${thin.placements.length} vs ${plain.placements.length}`);
+  check('and it is a different wood, not a subset of the old one', moved.length > 0);
+  // Same seed, same density, same wood: the slider must not make a fill
+  // unrepeatable, since one undo step is only fair if it was one decision.
+  const again = planFill(area, wood, 5, { density: 0.5 });
+  check('the same seed and density give the same wood',
+    JSON.stringify(thin.placements) === JSON.stringify(again.placements));
+
+  // Out of range is clamped rather than obeyed: a density of 0 is a fill that
+  // plants nothing and reads as a broken tool.
+  check('the knob is clamped at both ends',
+    planFill(area, wood, 5, { density: 0 }).report.covered
+      === planFill(area, wood, 5, { density: DENSITY_MIN }).report.covered
+    && planFill(area, wood, 5, { density: 99 }).report.covered
+      === planFill(area, wood, 5, { density: DENSITY_MAX }).report.covered);
 }
 
 console.log(`\n${failures ? `\x1b[31m${failures} failed\x1b[0m` : '\x1b[32mall checks passed\x1b[0m'}`);

@@ -66,6 +66,7 @@ const api = {
   addObject: (p) => ipcRenderer.invoke('object:add', p),
   fillPresets: () => ipcRenderer.invoke('fill:presets'),
   applyFill: (p) => ipcRenderer.invoke('fill:apply', p),
+  previewFill: (p) => ipcRenderer.invoke('fill:preview', p),
   saveFillPreset: (p) => ipcRenderer.invoke('fill:save-preset', p),
   deleteFillPreset: (p) => ipcRenderer.invoke('fill:delete-preset', p),
   save: () => ipcRenderer.invoke('map:save'),

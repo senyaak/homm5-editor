@@ -821,6 +821,35 @@ export interface FillApplyPayload {
   cells: Array<{ x: number; y: number }>;
   /** Seed, so a fill is reproducible and a test can pin one down. */
   seed: number;
+  /**
+   * How thick to lay the preset on. 1 is the preset exactly as its author
+   * wrote it; absent means 1, so an old caller gets the old fill.
+   */
+  density?: number;
+}
+
+/** Payload of `fill:preview` — the same question, without planting anything. */
+export interface FillPreviewPayload {
+  preset: number;
+  cells: Array<{ x: number; y: number }>;
+  seed: number;
+  density?: number;
+}
+
+/**
+ * Result of `fill:preview`: what the plan WOULD do.
+ *
+ * So the density slider says something before the map is changed — "324 tiles,
+ * ≈251 pieces, 78% covered" — rather than being a number you drag and hope
+ * about. Cheap enough to run on every move of it: planning a few thousand
+ * lattice points is arithmetic, and nothing is resolved or decoded here.
+ */
+export interface FillPreviewResult {
+  pieces: number;
+  /** Painted tiles with something standing in them. */
+  covered: number;
+  /** Painted tiles in all, so the caller need not count them twice. */
+  cells: number;
 }
 
 /** Result of `fill:apply`. */
@@ -1851,6 +1880,8 @@ export interface EditorApi {
   deleteFillPreset(p: FillDeletePayload): Promise<FillPresetsResult>;
   /** Run one over the painted tiles — one undo step, however much it plants. */
   applyFill(p: FillApplyPayload): Promise<FillApplyResult>;
+  /** What a fill would plant, without planting it — for the density slider. */
+  previewFill(p: FillPreviewPayload): Promise<FillPreviewResult>;
   save(): Promise<MapSaveResult>;
   pack(): Promise<MapPackResult>;
   status(): Promise<MapStatusResult>;

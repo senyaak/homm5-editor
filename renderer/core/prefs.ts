@@ -12,6 +12,8 @@ export interface UiPrefs {
   grid: boolean;
   showHidden: boolean;
   texScale: number;
+  /** How thick the fill tool lays a preset on; 1 is the preset as written. */
+  fillDensity: number;
   /** Plan (top-down orthographic) view instead of the 3D orbit view. */
   topView: boolean;
   /** Height the Bulk/Dig brush moves per stroke, and how far it tapers. */
@@ -28,7 +30,7 @@ export interface UiPrefs {
 const UI_PREFS_DEFAULT: UiPrefs = {
   showObjects: true, explorerOpen: true, cliffs: true, grid: false, showHidden: false, texScale: 0.5,
   topView: false, brushForce: 0.35, brushTension: 1, terrainPanel: true,
-  showFx: true, mapLight: true,
+  showFx: true, mapLight: true, fillDensity: 1,
 };
 const UI_PREFS_KEY = 'homm5-editor.ui';
 

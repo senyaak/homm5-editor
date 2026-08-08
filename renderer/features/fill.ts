@@ -12,9 +12,10 @@
 // click, and taking a wood back tree by tree is not an undo anybody wants.
 
 import { markDirty } from '#core/dirty.ts';
-import { $, $button, $select } from '#core/dom.ts';
+import { $, $button, $input, $select } from '#core/dom.ts';
 import { api } from '#core/ipc.ts';
 import { activeFloor, state } from '#core/state.ts';
+import { saveUiPrefs, uiPrefs } from '#core/prefs.ts';
 import { deleteFillPreset, openFillEditor } from '#features/fill-editor.ts';
 import { addInstanceToScene, armObject, armed, objPalOpen, paletteOpen, setObjPalette, setPalette } from '#features/palettes.ts';
 import { regionsOpen, setRegionsPanel, setRegionDraw } from '#features/regions.ts';
@@ -134,9 +135,40 @@ export function drawFillOverlay(): void {
   o.visible = pts.length > 0;
 }
 
+/**
+ * How thick the chosen preset is laid on, and the seed the PREVIEW is planned
+ * with.
+ *
+ * The seed is fixed for the preview and drawn afresh for the real fill: the
+ * figures beside the slider are about this recipe over this area, and a number
+ * that jittered every time it was recomputed would say nothing about the knob
+ * that was just moved.
+ */
+const density = { at: uiPrefs.fillDensity, seed: 20240807 };
+
+/** Ask the planner what this density would plant, and put it beside the slider. */
+async function previewFill(): Promise<void> {
+  const n = painted.size;
+  const preset = chosen();
+  if (!n || preset < 0) { $('fill-preview').textContent = ''; return; }
+  const want = ++previewing;
+  try {
+    const r = await api.previewFill({ preset, cells: paintedCells(), seed: density.seed, density: density.at });
+    // A slower answer to an older question must not overwrite a newer one: the
+    // slider fires faster than the round trip on a big area.
+    if (want !== previewing) return;
+    $('fill-preview').textContent = `≈ ${r.pieces} piece(s), `
+      + `${Math.round((100 * r.covered) / Math.max(1, r.cells))}% of the ground covered`;
+  } catch {
+    $('fill-preview').textContent = '';
+  }
+}
+let previewing = 0;
+
 function syncFillCount(): void {
   const n = painted.size;
   $('fill-count').textContent = n ? `${n} tile(s) painted` : 'nothing painted';
+  void previewFill();
   $button('fill-apply').disabled = !n || !presets.length || filling;
   $button('fill-clear').disabled = !n;
   // Only a preset of the user's own can be changed or deleted; the game's file
@@ -303,9 +335,10 @@ export async function applyFill(): Promise<void> {
   filling = true;
   syncFillCount();
   const seed = (Math.random() * 0x7fffffff) | 0;
-  $('hud').textContent = `filling ${painted.size} tiles with ${presets[preset]!.name}…`;
+  $('hud').textContent = `filling ${painted.size} tiles with ${presets[preset]!.name}`
+    + `${density.at === 1 ? '' : ` at density ${density.at.toFixed(2)}x`}…`;
   try {
-    const r = await api.applyFill({ preset, floor: state.world.active, cells: paintedCells(), seed });
+    const r = await api.applyFill({ preset, floor: state.world.active, cells: paintedCells(), seed, density: density.at });
     for (const p of r.placed) addInstanceToScene(p.instance, p.geom);
     markDirty(true);
     renderExplorer();
@@ -356,6 +389,15 @@ export function initFill(): void {
   $('fill-clear').onclick = () => clearFill();
   $('fill-apply').onclick = () => { void applyFill(); };
   $select('fill-list').addEventListener('change', () => { renderDetail(); syncFillCount(); });
+  const slider = $input('fill-density');
+  slider.value = String(density.at);
+  $('fill-densityval').textContent = `${density.at.toFixed(2)}x`;
+  slider.addEventListener('input', () => {
+    density.at = Number(slider.value);
+    $('fill-densityval').textContent = `${density.at.toFixed(2)}x`;
+    saveUiPrefs({ fillDensity: density.at });
+    void previewFill();
+  });
   // Making one: New from nothing, Copy from whatever is chosen (the only way to
   // change a shipped preset), Edit for one of the user's own.
   $('fill-new').onclick = () => openFillEditor(null, 'new', (name) => { void reloadPresets(name); });

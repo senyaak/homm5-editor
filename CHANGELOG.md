@@ -15,6 +15,15 @@ one.
 
 ### Added
 
+- **Fills: a density slider.** How thick a preset goes on is now a knob rather
+  than a property of the file — 0.25x to 4x, with 1.0 the preset exactly as its
+  author wrote it. Right of 1 the lattice closes up and each piece claims a
+  little less room, which is what actually closes the gaps: every wood preset
+  reaches ground with nothing showing through by 3x. Left of 1 it thins out.
+  The panel says what it will plant before it plants it — "≈ 251 piece(s), 78%
+  of the ground covered" — so the slider is a control and not a guess. The
+  setting is remembered between fills.
+
 - **Reach: can the player get to everything?** A button in the View menu walks
   the open map from the hero of the slot a person plays, and says what he can
   never arrive at. A map can load, look right and be unplayable — a wood closed

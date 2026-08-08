@@ -66,6 +66,11 @@ export interface FillPlanOptions {
    * Absent — or returning nothing — means the candidate is placed as written.
    */
   expand?: (o: FillObject) => FillVariant[];
+  /**
+   * How thick to lay it on: 1 is the preset exactly as written, and the only
+   * value that leaves an old fill unchanged. See `thicken`.
+   */
+  density?: number;
 }
 
 /** What a planning run did, beyond the placements themselves. */
@@ -78,6 +83,14 @@ export interface FillPlanReport {
   unlucky: number;
   /** Rejected for standing too close to something already placed. */
   crowded: number;
+  /**
+   * Painted tiles with something standing in them.
+   *
+   * The number the density slider is really about: "466 pieces" says nothing
+   * about whether the ground shows through, and a preset with four objects per
+   * tile in one corner can leave half the wood bare.
+   */
+  covered: number;
 }
 
 export interface FillPlan {
@@ -241,6 +254,55 @@ class Placed {
   }
 }
 
+/** The range the density knob runs over. 1 is the preset as its author wrote it. */
+export const DENSITY_MIN = 0.25, DENSITY_MAX = 4;
+
+/**
+ * The preset, laid on thicker or thinner.
+ *
+ * Three numbers could each be turned and only one combination makes a slider:
+ * dragging it right must never give LESS, and two of the three fail that.
+ * Measured over a solid 24x24 square, coverage in tiles:
+ *
+ *   probability alone   Oak Grove 42 → 59 → 63 → 64%   stalls: the lattice and
+ *                       the clearance bound it, and no probability beats them.
+ *   pitch alone         Oak Grove 42 → 70 → 60 → 70%   NOT monotonic — a finer
+ *                       lattice lands its points elsewhere and loses some.
+ *   all three           Oak Grove 42 → 74 → 97 → 100%  monotonic to full cover.
+ *
+ * So above 1 all three move: more of the drawn candidates are kept, the lattice
+ * closes up as the square root (so the count grows with the number, not its
+ * square), and each object claims a little less room, which is what lets the
+ * last gaps close instead of being refused as crowded.
+ *
+ * BELOW 1 only the probability drops, since the lattice and the radii are what
+ * give a wood its spacing and thinning should not change that.
+ *
+ * It does NOT hand back the same wood with fewer trees, and it cannot: the
+ * generator is one stream, so a candidate that fails its roll skips the draws
+ * for its facing and everything after it shifts. Turning the knob re-rolls the
+ * wood — measured, 119 of 198 pieces stood somewhere new at 0.5. Keeping the
+ * survivors in place would mean a stream per lattice point, which would change
+ * what every existing preset plants at 1.
+ */
+export function thicken(preset: FillPreset, density: number): FillPreset {
+  const d = Math.max(DENSITY_MIN, Math.min(DENSITY_MAX, density));
+  if (d === 1) return preset;
+  const closer = d > 1 ? Math.sqrt(d) : 1;
+  return {
+    ...preset,
+    layers: preset.layers.map((l) => ({
+      ...l,
+      dispersion: l.dispersion / closer,
+      objects: l.objects.map((o) => ({
+        ...o,
+        probability: Math.min(1, o.probability * d),
+        size: o.size / closer,
+      })),
+    })),
+  };
+}
+
 /** How far from the painted edge layer `i` starts: every earlier layer's width. */
 export function insetOf(layers: readonly FillLayer[], i: number): number {
   let carry = 0;
@@ -257,12 +319,16 @@ export function insetOf(layers: readonly FillLayer[], i: number): number {
  */
 export function planFill(
   cells: readonly FillCell[],
-  preset: FillPreset,
+  authored: FillPreset,
   seed: number,
   opts: FillPlanOptions = {},
 ): FillPlan {
+  // The knob is applied to a COPY of the preset and nothing downstream knows
+  // about it: density is a way of reading the recipe, not a fourth thing the
+  // planner has to weigh at every point.
+  const preset = thicken(authored, opts.density ?? 1);
   const area = new Area(cells);
-  const report: FillPlanReport = { considered: 0, nearEdge: 0, unlucky: 0, crowded: 0 };
+  const report: FillPlanReport = { considered: 0, nearEdge: 0, unlucky: 0, crowded: 0, covered: 0 };
   const placements: FillPlacement[] = [];
   if (area.empty) return { placements, report };
 
@@ -301,5 +367,8 @@ export function planFill(
       }
     }
   }
+  const tiles = new Set<number>();
+  for (const p of placements) tiles.add(key(Math.floor(p.x), Math.floor(p.y)));
+  report.covered = tiles.size;
   return { placements, report };
 }
