@@ -60,6 +60,19 @@ static char *read_beside_us(const WCHAR *name, DWORD *size) {
 /** Say it in the game's own console too, while a battle can be spoken to. */
 static void console_line(const char *text);
 
+/**
+ * WHO WROTE THE LINE, AND WHEN — on every line, because without it the order of
+ * a log file is not evidence of anything.
+ *
+ * Two readings of the same run disagreed about whether a rule ran inside the
+ * call that asked for it or after it, and both readings were of line order in
+ * this file. Line order is call order only while there is one thread; the
+ * moment there are two, a file says which line was written first and nothing
+ * about which call happened first. The thread id settles that, and the counter
+ * settles a second thing — that no line was lost between two others.
+ */
+static LONG g_logSeq = 0;
+
 static void log_line(const char *text) {
   console_line(text);
   WCHAR path[MAX_PATH];
@@ -68,8 +81,19 @@ static void log_line(const char *text) {
                          FILE_ATTRIBUTE_NORMAL, NULL);
   if (h == INVALID_HANDLE_VALUE) return;
   DWORD written = 0;
+  char stamp[48];
+  int at = 0, n = 0;
+  stamp[at++] = '[';
+  stamp[at++] = 't';
+  num_to_dec((int)GetCurrentThreadId(), stamp + at, &n); at += n;
+  stamp[at++] = ' ';
+  stamp[at++] = '#';
+  num_to_dec((int)InterlockedIncrement(&g_logSeq), stamp + at, &n); at += n;
+  stamp[at++] = ']';
+  stamp[at++] = ' ';
   int len = 0;
   while (text[len]) len++;
+  WriteFile(h, stamp, (DWORD)at, &written, NULL);
   WriteFile(h, text, (DWORD)len, &written, NULL);
   WriteFile(h, "\r\n", 2, &written, NULL);
   CloseHandle(h);

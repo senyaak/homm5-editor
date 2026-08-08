@@ -477,3 +477,43 @@ declare is a map the game refuses to load.
 
 **Nothing in the probe is rationed.** Two runs were lost to log budgets going
 quiet exactly where the answer was; see the note in `spell-cast.c`.
+
+## The adventure map's gate, and the four-slot ceiling explained
+
+Everything above is a battle. The map has its own gate, `CanCastHere`
+(**0xc614c0**, `__fastcall(ecx, edx)` plus two on the stack, `ret 8`), and it is
+asked from two places that look like separate problems and are one:
+
+- `CCastAdvSpellCmd`'s execute — `call 0xc614c0 ; test al,al ; je <end>` and only
+  then `call 0xc619a0`, the cast itself;
+- the interface, which greys a page out with the same answer.
+
+So **a page that cannot be pressed and a click that does nothing are one
+verdict**, not two, and one detour fixes both.
+
+What it answers with is a switch on the number, and the shape is the finding:
+
+```
+mov  eax,[eax+4]     ; the spell
+cmp  eax,0EAh        ; 234 — a case of its own
+jg   <the small table>   ->  sub eax,15Ch ; cmp eax,3 ; ja <no>
+sub  eax,31h         ; 49, the first adventure spell
+cmp  eax,9Fh         ; ...through 208
+ja   <no>
+movzx eax,byte ptr [eax+0C618E4h]
+jmp  dword ptr [eax*4+0C618CCh]
+```
+
+Two ranges: **49…208** for the shipped adventure spells, and **348…351** for
+`SPELL_ABILITY_CUSTOM1…4`. That `cmp eax,3` IS the famous four-custom-abilities
+ceiling — two instructions, and no amount of data moves it. Anything else,
+including every id a mod appends, lands on `xor al,al`: refused, silently, with
+no reason pushed.
+
+Which is the same finding as the battle gate one branch over: **the engine
+decides what a spell may do from what it was compiled against**, and a document
+cannot answer for a number it has never seen.
+
+`native/combat/spell-cast.c` therefore answers for our own ids and leaves every
+shipped one alone — a silent refusal is overruled, a reasoned one never is.
+Measured 07.08.2026: with that in place Gelu's page is live and takes a click.

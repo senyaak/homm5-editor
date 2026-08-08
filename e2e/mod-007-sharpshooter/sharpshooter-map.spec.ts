@@ -26,7 +26,7 @@ import { readEntries } from '../../src/format/pak.ts';
 import { readInstalledMod } from '../mods.ts';
 import { bar } from '../bar.ts';
 import {
-  ARCHIVE, BASIN, FOES, GAME, GEM, GEM_ARMY, GEM_AT, MAP_DIR, NAME, NEEDS, ORIGINAL,
+  ARCHIVE, BASIN, FOES, GAME, GELU, GELU_ARMY, GELU_AT, GEM, GEM_ARMY, GEM_AT, MAP_DIR, NAME, NEEDS, ORIGINAL,
   PLACES, QUEST, REF, SHARPSHOOTER, SHIPYARD_AT, SHIPYARD_CLASS, SHIP_OFFSET, SIGN_TEXT,
   STONE, STONES, blockOf, cleanup, decode, fillPlacement, gaps, openSharp, placeOne,
   startSharp, unpackReference,
@@ -321,12 +321,41 @@ test('Gem stands on it, in red', async () => {
   await page.locator('#mt-close').click();
   await expect(page.locator('#mt-dialog')).toBeHidden();
 
+  // And Gelu beside her, whose specialization is the one that GIVES something.
+  // He is here so the stand can be played and not only built: what his
+  // specialization promises is handed out on the map, at run time, so a hero who
+  // exists in the mod and stands nowhere proves nothing.
+  await pickObject(page, GELU);
+  await placeOne(page, GELU, GELU_AT.x, GELU_AT.y);
+  await setObjectProp(page, 'PlayerID', 'PLAYER_1');
+
+  // And every shooter in the game, two hundred of each, IN THE MAP rather than
+  // handed out by a script at run time: an army is what a hero is placed with,
+  // and a stand assembled by a script is a stand that has to be assembled again
+  // every time somebody wants to look at it. Six stacks, seventh slot left
+  // empty — the training has to have somewhere to put what it makes.
+  const geluArmy = page.locator('#p-props .pf', { has: page.locator('label', { hasText: /^Army$/ }) });
+  await geluArmy.locator('button.struct-edit').click();
+  await expect(page.locator('#mt-dialog')).toBeVisible();
+  for (let slot = 0; slot < GELU_ARMY.length; slot++) {
+    const [creature, count] = GELU_ARMY[slot]!;
+    await addItem(page, ['armySlots']);
+    await setTreeValue(page, ['armySlots', slot, 'Creature'], creature);
+    await setTreeValue(page, ['armySlots', slot, 'Count'], String(count));
+  }
+  await page.locator('#mt-close').click();
+  await expect(page.locator('#mt-dialog')).toBeHidden();
+
   await bar(page, '#save');
   await hudSays(page, /saved/i, 60_000);
 
   // On disk, in the map the game will read: our hero, owned by red.
   const xml = readFileSync(join(MAP_DIR, 'map.xdb'), 'latin1');
   expect(xml, 'the map references the hero the mod installed').toContain(GEM);
+  expect(xml, 'and Gelu beside her').toContain(GELU);
+  const gelu = xml.split('<AdvMapHero>').find((part) => part.includes('H3Gelu')) ?? '';
+  expect(gelu, 'Gelu is red too — a hero nobody owns is never asked about')
+    .toContain('<PlayerID>PLAYER_1</PlayerID>');
   // Her own <AdvMapHero> block and nobody else's: split on the element, keep
   // the piece that names her. A regex spanning "…H3Gem…</AdvMapHero>" would
   // happily start at the hero before her and still match.

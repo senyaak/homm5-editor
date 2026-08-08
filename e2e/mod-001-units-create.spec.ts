@@ -145,6 +145,11 @@ test('edits the difference and installs the creature', async () => {
   }
   // The port's unit is a neutral; the donor's home town is not wanted.
   await page.locator('#um-town').selectOption('TOWN_NO_TYPE');
+  // NOR IS THE DONOR'S ANSWER to necromancy. It arrives with the preset and is
+  // right for HIM — every shooter the game ships raises into skeleton archers —
+  // and ours is a tier above any of them, so it is one of the differences a
+  // person edits rather than one they inherit.
+  await page.locator('#um-raise').selectOption(SHARPSHOOTER.raisedAs);
 
   await page.locator('#um-ok').click();
   await expect(page.locator('#um-note')).toContainText('installed', { timeout: 120_000 });

@@ -129,14 +129,21 @@ export const SHARPSHOOTER = {
   abilitiesLine: 'Усиленная стрела, Стрельба без штрафа',
   donor: 'CREATURE_SHARP_SHOOTER',
   /**
-   * What necromancy raises them as — the donor's own answer.
+   * What necromancy raises them as.
    *
    * Not decoration: a creature outside the game's raise table cannot be raised
    * at all, and every shipped NEUTRAL is outside it. Ours is a neutral, so
    * without this it fell and yielded nothing, which reads in game as necromancy
    * being broken rather than as a creature missing from a table.
+   *
+   * VAMPIRE LORDS rather than the skeleton archers the donor gets, because ours
+   * is a tier above him. Read out of the game's own table rather than reasoned
+   * about: all fifteen shipped shooters raise into skeleton archers — and not
+   * one of them is tier 4. The two tier-4 shooters that do exist are the
+   * succubus and her upgrade, and they raise into vampires and vampire lords.
+   * Ours is the end of a line, so it takes the upgrade.
    */
-  raisedAs: 'CREATURE_SKELETON_ARCHER',
+  raisedAs: 'CREATURE_VAMPIRE_LORD',
   stats: {
     'um-attack': '12', 'um-defence': '10', 'um-mindmg': '8', 'um-maxdmg': '10',
     'um-health': '15', 'um-speed': '9', 'um-init': '12', 'um-shots': '32',
@@ -438,6 +445,63 @@ export const GEM_FILE = 'H3Gem';
  * difference is the whole reason a specialization of our own exists, and the
  * percentage is what the native extension is told through its config file.
  */
+/** The file stem the mod gives Gelu — his InternalName as well as his files'. */
+export const GELU_FILE = 'H3Gelu';
+
+/**
+ * What Gelu's specialization GIVES: a page in the book, on the adventure map.
+ *
+ * Not one of the game's four custom hero abilities (spells 348…351). Those are
+ * exactly this mechanism and there are four of them, twice compiled — one more
+ * entry in an enum the mod already appends to costs nothing and has no ceiling.
+ *
+ * It costs no mana, because what training sharpshooters costs is GOLD.
+ *
+ * Its two hooks — "may it be cast" and what the click does — are not written
+ * here. They ride with the CREATURE the training produces, because that is the
+ * whole of what they need from the mod, and the build writes them into the one
+ * script the game loads on every map. Nothing about them is on the spell, so
+ * this fixture stays a description of a page in a book, which is what it is.
+ */
+export const TRAIN_SHARPSHOOTERS = {
+  id: 'SPELL_H3_TRAIN_SHARPSHOOTERS',
+  file: 'H3TrainSharpshooters',
+  name: 'Обучение снайперов',
+  description: 'Обучить эльфов войска стрелковому делу. Плата — золотом, по числу обученных.',
+  level: 1,
+  school: 'MAGIC_SCHOOL_ADVENTURE',
+  manaCost: 0,
+  target: 'TARGET_FRIEND',
+  // Spelled out rather than left off: the two flags are what the engine picks a
+  // damage branch by, and a spell of ours that does no damage still has to say
+  // so — see the check in fix-001 that reads them back out of the archive.
+  aimed: false,
+  areaAttack: false,
+  /** A shipped adventure spell's icon, until it has a drawing of its own. */
+  icon: '/Textures/SpellBook______2618/Spells/Spell_SummonBoat.xdb#xpointer(/Texture)',
+};
+
+/**
+ * Gelu's specialization, and the first of ours that adds NO NUMBER.
+ *
+ * Heroes III gave him sharpshooters for free: elves in his army simply became
+ * them. There is no seam in this engine for a rule of that shape, and there is
+ * one for a spell, so the port trades the free version for a door the player
+ * opens — see SLICE_gelu_training.md.
+ *
+ * So this is the first specialization of ours whose gift is an ABILITY rather
+ * than a number, and it says so itself: the build puts the spell in the book of
+ * every hero holding it. Nothing about the ability is written on Gelu, which is
+ * the point — giving the specialization to somebody else is the whole of giving
+ * them the ability.
+ */
+export const GELU_SPEC = {
+  id: 'HERO_SPEC_H3_SHARPSHOOTERS',
+  name: 'Снайперы',
+  description: 'Гелу умеет обучать эльфов своего войска стрелковому делу.',
+  ability: TRAIN_SHARPSHOOTERS.id,
+};
+
 export const GEM_SPEC = {
   id: 'HERO_SPEC_H3_FIRST_AID',
   name: 'First Aid',
@@ -996,6 +1060,51 @@ export function installMapFixture(gameRoot: string): CreatureMod {
       // with a Gem wearing Ossir's face: this fixture would not have rebuilt
       // them, and nothing else would have said so.
       portrait: join(ASSETS, 'heroes', 'gem.gif'),
+    });
+  }
+
+  // And Gelu, who is here for his SPECIALIZATION and nothing else — the spell it
+  // gives is written into his book by the build, not by this fixture. The SPELL
+  // first, for the reason the specialization comes before the hero holding it: a
+  // hero's `Editable/spells` names it by id, and an id types.xml does not
+  // declare is a map the game refuses rather than a hero without a spell.
+  if (!(mod.spells ?? []).some((s) => s.id === TRAIN_SHARPSHOOTERS.id)) {
+    addSpell(mod, { ...TRAIN_SHARPSHOOTERS },
+      takenSpells(readFileSync(join(DATA, 'types.xml'), 'latin1')));
+  }
+  if (!(mod.specializations ?? []).some((s) => s.id === GELU_SPEC.id)) {
+    addSpecialization(mod, GELU_SPEC,
+      takenSpecializations(readFileSync(join(DATA, 'types.xml'), 'latin1')));
+  }
+  if (!(mod.heroes ?? []).some((h) => h.id === GELU_FILE)) {
+    addHero(mod, {
+      id: GELU_FILE,
+      name: 'Гелу',
+      biography: 'Полуэльф из АвЛи, командир лесных стрелков.',
+      basedOn: 'MapObjects/Preserve/Gillion.(AdvMapHeroShared).xdb',
+      town: 'TOWN_PRESERVE',
+      // The donor's own — a Ranger, which is what Gelu is in both games. A class
+      // of his own is not part of this: what is being asked here is whether a
+      // spell of ours shows in a book, and every fixture beyond that is a way
+      // for the answer to be about something else.
+      heroClass: 'HERO_CLASS_RANGER',
+      specialization: GELU_SPEC.id,
+      // ATTACK IN PLACE OF DEFENCE, and the perk it carries. Archery's parent
+      // skill is Attack, and a perk whose parent the hero does not have is not
+      // refused — it is silently not given, which reads in game as the perk
+      // doing nothing. So the two go together or neither does; e2e/perk-rules.ts
+      // is what says so.
+      //
+      // NOT `primarySkill`, which is the RACIAL slot: for a Preserve hero that
+      // slot holds Avenger, and writing Attack into it took his racial skill
+      // away and put archery where his revenge used to be. `skills` replaces the
+      // donor's SECONDARY list — his Defence, and the Protection hanging off it
+      // — and leaves the racial one where it belongs.
+      skills: [{ skill: 'HERO_SKILL_OFFENCE', mastery: 'MASTERY_BASIC' }],
+      perks: ['HERO_SKILL_ARCHERY'],
+      // His own face. Without it he wears the donor's, and every rebuild puts it
+      // back — the mistake Gem's portrait is in the fixture to prevent.
+      portrait: join(ASSETS, 'heroes', 'gelu.png'),
     });
   }
 

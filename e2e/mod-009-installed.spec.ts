@@ -28,6 +28,7 @@ import { heroPaths } from '../src/mods/heroes.ts';
 import { BUILDING_CLASSES } from '../src/mods/buildings.ts';
 import { EFFECTS_FILE, readEffects, readSpecializations } from '../src/mods/artifact-effects.ts';
 import { COMMON_SCRIPT, SCRIPT_DIR } from '../src/mods/artifact-scripts.ts';
+import { TRAINABLE, TRAINING_SPELL, questionFor } from '../src/mods/sharpshooter-training.ts';
 import { ORIGINAL_ARTIFACTS, readArtifactLimit, SITES_FILE } from '../src/exe/artifact-limit.ts';
 import type { Site } from '../src/exe/artifact-limit.ts';
 import { ORIGINAL_LIMIT, readExe } from '../src/exe/creature-limit.ts';
@@ -181,6 +182,39 @@ test('the set brought its script, and the global one still loads it', () => {
   // how a mod breaks everything else quietly.
   expect(common).toContain('function SetPlayerStartResource(');
   expect(common).toContain('function IsPlayerHeroesInRegion(');
+});
+
+test('the training spell reaches the game whole, from creature to question', () => {
+  const files = members();
+  const common = files.get(COMMON_SCRIPT)?.toString('latin1') ?? '';
+
+  // THE CHAIN, END TO END, as a person authored it: a creature, a spell with
+  // its own two hooks, a specialization that hands the spell out, and a hero who
+  // holds the specialization. Each of those is checked where it is made; what
+  // this asks is whether they still fit together after being built and packed —
+  // which is the one thing none of them can ask alone.
+  //
+  // It exists because for a long time they did NOT. The script that makes the
+  // spell do anything reached the game through a tool run by hand out of `_tmp`,
+  // so the mod an editor built was a mod with a dead spell page in it, and
+  // nothing said so.
+  expect(common, 'the spell may be cast, or not, by what the map says')
+    .toContain('function checkSpellCastable(spell)');
+  expect(common, 'and the click has somewhere to go')
+    .toContain('function onSpellCast(spell)');
+  // BOTH BRANCH ON THE NUMBER. A mod carries more than one spell; without this a
+  // second would answer the first one's page and run the first one's cast.
+  expect(common).toContain(`if spell == ${TRAINING_SPELL} then`);
+
+  // The questions the player reads, one per creature that can be trained, each
+  // naming its own price — content rather than code, and packed as the game's
+  // own texts are.
+  for (const t of TRAINABLE) {
+    const text = files.get(questionFor(t.id));
+    expect(text, `a question about ${t.name}`).toBeTruthy();
+    expect(text!.subarray(0, 2), 'written as the game writes texts').toEqual(Buffer.from([0xff, 0xfe]));
+    expect(text!.subarray(2).toString('utf16le')).toContain(String(t.gold));
+  }
 });
 
 test('the creature is still wearing the paint mod-002 gave it', () => {

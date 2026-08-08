@@ -6,8 +6,27 @@
  },
  {
   "name": "AddHeroCreatures",
-  "params": "heroname, creatureID, quantity",
-  "group": "ADVMAP"
+  "params": "heroName, creatureID, quantity",
+  "group": "Heroes",
+  "summary": "Put creatures into a hero's army.",
+  "args": [
+   {
+    "name": "heroName",
+    "type": "name",
+    "desc": "The hero's Name handle."
+   },
+   {
+    "name": "creatureID",
+    "type": "CREATURE_*",
+    "desc": "Which creature to add."
+   },
+   {
+    "name": "quantity",
+    "type": "number",
+    "desc": "How many. Must be positive."
+   }
+  ],
+  "example": "AddHeroCreatures(HERO_NAME, CREATURE_ARCHER, 20);"
  },
  {
   "name": "AddObjectCreatures",
@@ -138,13 +157,46 @@
   "name": "EditorHeroWearing",
   "params": "player, members, count",
   "group": "Ours",
-  "summary": "The first hero of a player wearing at least N of these artifacts."
+  "summary": "The first hero of a player wearing at least N of these artifacts.",
+  "args": [
+   {
+    "name": "player",
+    "type": "PLAYER_*",
+    "desc": "Whose heroes to look through."
+   },
+   {
+    "name": "members",
+    "type": "table",
+    "desc": "Artifact ids — a set's `<Set>_MEMBERS` list."
+   },
+   {
+    "name": "count",
+    "type": "number",
+    "desc": "How many have to be worn."
+   }
+  ],
+  "returns": "The hero's name, or nil when none of them qualifies.",
+  "example": "local hero = EditorHeroWearing(player, H3UndeadKing_MEMBERS, 3);"
  },
  {
   "name": "EditorWornCount",
   "params": "hero, members",
   "group": "Ours",
-  "summary": "How many of these artifacts the hero is WEARING."
+  "summary": "How many of these artifacts the hero is WEARING.",
+  "args": [
+   {
+    "name": "hero",
+    "type": "name",
+    "desc": "The hero's script name."
+   },
+   {
+    "name": "members",
+    "type": "table",
+    "desc": "Artifact ids — a set's `<Set>_MEMBERS` list."
+   }
+  ],
+  "returns": "The count worn. A piece in the backpack does not count.",
+  "example": "EditorWornCount(hero, H3UndeadKing_MEMBERS)"
  },
  {
   "name": "EnableAIHeroHiring",
@@ -275,18 +327,56 @@
   "name": "GetGameVar",
   "params": "name, default",
   "group": "Flow",
-  "summary": "Read a persistent script variable, with a default if unset."
+  "summary": "Read a persistent script variable, with a default if unset.",
+  "args": [
+   {
+    "name": "name",
+    "type": "string",
+    "desc": "The variable name."
+   },
+   {
+    "name": "default",
+    "type": "any",
+    "desc": "Returned when the variable is unset."
+   }
+  ],
+  "returns": "The stored value, or the default.",
+  "example": "if GetGameVar( \"temp.C1M1.num_combat\", 0 ) == '0' then … end;"
  },
  {
   "name": "GetHeroCreatures",
   "params": "heroName, creatureID",
   "group": "Heroes",
-  "summary": "Count how many of a creature are in a hero's army."
+  "summary": "Count how many of a creature are in a hero's army.",
+  "args": [
+   {
+    "name": "heroName",
+    "type": "name",
+    "desc": "The hero's Name handle."
+   },
+   {
+    "name": "creatureID",
+    "type": "CREATURE_*",
+    "desc": "Which creature, e.g. CREATURE_FOOTMAN."
+   }
+  ],
+  "returns": "The number of that creature the hero has (0 if none).",
+  "example": "nFootman = GetHeroCreatures(HERO_NAME, CREATURE_FOOTMAN);"
  },
  {
   "name": "GetHeroCreaturesTypes",
   "params": "heroName",
-  "group": "ARMIES"
+  "group": "Heroes",
+  "summary": "Which creatures a hero's army holds, slot by slot.",
+  "args": [
+   {
+    "name": "heroName",
+    "type": "name",
+    "desc": "The hero's Name handle."
+   }
+  ],
+  "returns": "SEVEN separate numbers, not a table: the distinct creature ids in slot order, padded with zeroes. A hero with two stacks of archers and one of marksmen answers CREATURE_ARCHER, CREATURE_MARKSMAN, 0, 0, 0, 0, 0.",
+  "example": "local a, b, c, d, e, f, g = GetHeroCreaturesTypes(HERO_NAME);"
  },
  {
   "name": "GetHeroLevel",
@@ -307,7 +397,21 @@
   "name": "GetHeroStat",
   "params": "heroName, statID",
   "group": "Heroes",
-  "summary": "Read one of a hero's stats."
+  "summary": "Read one of a hero's stats.",
+  "args": [
+   {
+    "name": "heroName",
+    "type": "name",
+    "desc": "The hero's Name handle."
+   },
+   {
+    "name": "statID",
+    "type": "STAT_*",
+    "desc": "Which stat, e.g. STAT_MOVE_POINTS."
+   }
+  ],
+  "returns": "The stat value.",
+  "example": "local ap = GetHeroStat(\"Isabell\", STAT_MOVE_POINTS);"
  },
  {
   "name": "GetObjectCreature",
@@ -328,7 +432,21 @@
   "name": "GetObjectiveState",
   "params": "objectiveName, playerID = PLAYER_1",
   "group": "Objectives",
-  "summary": "Read a quest objective's current state."
+  "summary": "Read a quest objective's current state.",
+  "args": [
+   {
+    "name": "objectiveName",
+    "type": "name",
+    "desc": "The objective's handle."
+   },
+   {
+    "name": "playerID",
+    "type": "PLAYER_*",
+    "desc": "Whose quest log to read."
+   }
+  ],
+  "returns": "The OBJECTIVE_* state, or OBJECTIVE_UNKNOWN if never set.",
+  "example": "if GetObjectiveState(\"prim2\") == OBJECTIVE_UNKNOWN then SetObjectiveState(\"prim2\", OBJECTIVE_ACTIVE); end;"
  },
  {
   "name": "GetObjectOwner",
@@ -339,7 +457,16 @@
   "name": "GetObjectPosition",
   "params": "objectName",
   "group": "Objects",
-  "summary": "Find an object's position on the map."
+  "summary": "Find an object's position on the map.",
+  "args": [
+   {
+    "name": "objectName",
+    "type": "name",
+    "desc": "The object's (or hero's) Name handle."
+   }
+  ],
+  "returns": "Three values: x, y, floor.",
+  "example": "x, y, fl = GetObjectPosition('zastava');"
  },
  {
   "name": "GetObjectsInRegion",
@@ -425,7 +552,20 @@
   "name": "GiveExp",
   "params": "heroName, amount",
   "group": "Heroes",
-  "summary": "Grant experience points to a hero."
+  "summary": "Grant experience points to a hero.",
+  "args": [
+   {
+    "name": "heroName",
+    "type": "name",
+    "desc": "The hero's Name handle."
+   },
+   {
+    "name": "amount",
+    "type": "number",
+    "desc": "Experience to add."
+   }
+  ],
+  "example": "GiveExp('Isabell', 500);"
  },
  {
   "name": "GiveHeroSkill",
@@ -436,6 +576,54 @@
   "name": "GiveHeroWarMachine",
   "params": "heroName, warMachineType",
   "group": "ADVMAP"
+ },
+ {
+  "name": "H5EAskCount",
+  "params": "creature, becomes, most",
+  "group": "Ours",
+  "summary": "Put up the game's own count slider. Answers nothing — see ShowSliderDialog.",
+  "args": [
+   {
+    "name": "creature",
+    "type": "CREATURE_*",
+    "desc": "What the player is counting."
+   },
+   {
+    "name": "becomes",
+    "type": "CREATURE_*",
+    "desc": "What they turn into."
+   },
+   {
+    "name": "most",
+    "type": "number",
+    "desc": "The largest number the slider will reach."
+   }
+  ],
+  "example": "H5EAskCount(CREATURE_GRAND_ELF, CREATURE_SHARP_SHOOTER, 12);"
+ },
+ {
+  "name": "H5EAskedCount",
+  "params": "",
+  "group": "Ours",
+  "summary": "What the count slider was answered with, if it has been.",
+  "args": [],
+  "returns": "Nothing while the window is open; the chosen number once OK is pressed; -1 when it was closed without an answer.",
+  "example": "local n = H5EAskedCount(); if n ~= nil then ... end;"
+ },
+ {
+  "name": "H5EHeroSpecialization",
+  "params": "hero",
+  "group": "Ours",
+  "summary": "Which specialization this hero holds, as its number.",
+  "args": [
+   {
+    "name": "hero",
+    "type": "name",
+    "desc": "The hero's script name."
+   }
+  ],
+  "returns": "The value of his specialization; nothing when there is no such living hero.",
+  "example": "if H5EHeroSpecialization(hero) == 84 then ... end;"
  },
  {
   "name": "HasArtefact",
@@ -496,7 +684,16 @@
   "name": "IsHeroAlive",
   "params": "heroName",
   "group": "Heroes",
-  "summary": "Whether a hero is still alive."
+  "summary": "Whether a hero is still alive.",
+  "args": [
+   {
+    "name": "heroName",
+    "type": "name",
+    "desc": "The hero's Name handle."
+   }
+  ],
+  "returns": "Non-nil if alive, nil otherwise.",
+  "example": "if IsHeroAlive(\"Isabell\") == nil then Loose(); end;"
  },
  {
   "name": "IsHeroInBoat",
@@ -527,7 +724,16 @@
   "name": "IsObjectExists",
   "params": "objectName",
   "group": "Objects",
-  "summary": "Whether a named object is still on the map."
+  "summary": "Whether a named object is still on the map.",
+  "args": [
+   {
+    "name": "objectName",
+    "type": "name",
+    "desc": "The object's Name handle."
+   }
+  ],
+  "returns": "Non-nil if the object exists, nil otherwise.",
+  "example": "if IsObjectExists('swordsman') then Trigger(OBJECT_TOUCH_TRIGGER, \"swordsman\", nil); end;"
  },
  {
   "name": "IsObjectInRegion",
@@ -593,7 +799,9 @@
   "name": "Loose",
   "params": "",
   "group": "Flow",
-  "summary": "End the mission as a defeat for the human player."
+  "summary": "End the mission as a defeat for the human player.",
+  "args": [],
+  "example": "Loose();"
  },
  {
   "name": "MakeHeroInteractWithObject",
@@ -624,7 +832,15 @@
   "name": "MessageBox",
   "params": "textRef",
   "group": "Flow",
-  "summary": "Show a text popup to the player."
+  "summary": "Show a text popup to the player.",
+  "args": [
+   {
+    "name": "textRef",
+    "type": "ref",
+    "desc": "A text file reference, e.g. \"/Maps/…/notready.txt\"."
+   }
+  ],
+  "example": "MessageBox('/Maps/Scenario/C1M1/notready.txt');"
  },
  {
   "name": "mod",
@@ -660,7 +876,35 @@
   "name": "OpenCircleFog",
   "params": "x, y, floorID, range, playerID",
   "group": "Fog of war",
-  "summary": "Reveal the fog of war within a circle for a player."
+  "summary": "Reveal the fog of war within a circle for a player.",
+  "args": [
+   {
+    "name": "x",
+    "type": "number",
+    "desc": "Centre tile x."
+   },
+   {
+    "name": "y",
+    "type": "number",
+    "desc": "Centre tile y."
+   },
+   {
+    "name": "floorID",
+    "type": "number",
+    "desc": "Floor (0 surface, 1 underground)."
+   },
+   {
+    "name": "range",
+    "type": "number",
+    "desc": "Radius in tiles."
+   },
+   {
+    "name": "playerID",
+    "type": "PLAYER_*",
+    "desc": "Whose fog to lift."
+   }
+  ],
+  "example": "OpenCircleFog(x, y, fl, 4, PLAYER_1);"
  },
  {
   "name": "OpenPuzzleMap",
@@ -739,8 +983,27 @@
  },
  {
   "name": "RemoveHeroCreatures",
-  "params": "heroname, creatureID, quantity",
-  "group": "ADVMAP"
+  "params": "heroName, creatureID, quantity",
+  "group": "Heroes",
+  "summary": "Take creatures out of a hero's army.",
+  "args": [
+   {
+    "name": "heroName",
+    "type": "name",
+    "desc": "The hero's Name handle."
+   },
+   {
+    "name": "creatureID",
+    "type": "CREATURE_*",
+    "desc": "Which creature to take."
+   },
+   {
+    "name": "quantity",
+    "type": "number",
+    "desc": "How many. Asking for more than he has takes all he has."
+   }
+  ],
+  "example": "RemoveHeroCreatures(HERO_NAME, CREATURE_ARCHER, 20);"
  },
  {
   "name": "RemoveHeroWarMachine",
@@ -751,7 +1014,15 @@
   "name": "RemoveObject",
   "params": "objectName",
   "group": "Objects",
-  "summary": "Remove a placed object from the map for good."
+  "summary": "Remove a placed object from the map for good.",
+  "args": [
+   {
+    "name": "objectName",
+    "type": "name",
+    "desc": "The object's Name handle."
+   }
+  ],
+  "example": "RemoveObject(\"enemy1\");"
  },
  {
   "name": "RemoveObjectCreatures",
@@ -777,7 +1048,15 @@
   "name": "RestoreDarkEnergy",
   "params": "player",
   "group": "Ours",
-  "summary": "Fill a player's dark energy back up to its ceiling."
+  "summary": "Fill a player's dark energy back up to its ceiling.",
+  "args": [
+   {
+    "name": "player",
+    "type": "PLAYER_*",
+    "desc": "Whose pool to fill — 1 through 8."
+   }
+  ],
+  "example": "RestoreDarkEnergy(PLAYER_1);"
  },
  {
   "name": "Save",
@@ -813,7 +1092,20 @@
   "name": "SetControlMode",
   "params": "side, mode",
   "group": "Combat",
-  "summary": "Set a combat side's control to manual or automatic."
+  "summary": "Set a combat side's control to manual or automatic.",
+  "args": [
+   {
+    "name": "side",
+    "type": "ATTACKER | DEFENDER",
+    "desc": "Which side."
+   },
+   {
+    "name": "mode",
+    "type": "MODE_*",
+    "desc": "MODE_MANUAL or MODE_AUTO."
+   }
+  ],
+  "example": "SetControlMode(ATTACKER, MODE_MANUAL);"
  },
  {
   "name": "SetDisabledObjectMode",
@@ -824,7 +1116,20 @@
   "name": "SetGameVar",
   "params": "name, value",
   "group": "Flow",
-  "summary": "Store a persistent script variable (survives save/load)."
+  "summary": "Store a persistent script variable (survives save/load).",
+  "args": [
+   {
+    "name": "name",
+    "type": "string",
+    "desc": "The variable name, e.g. \"temp.tutorial\"."
+   },
+   {
+    "name": "value",
+    "type": "any",
+    "desc": "The value to store."
+   }
+  ],
+  "example": "SetGameVar(\"temp.tutorial\", 1);"
  },
  {
   "name": "SetHeroBiography",
@@ -835,7 +1140,20 @@
   "name": "SetHeroCombatScript",
   "params": "heroName, scriptName",
   "group": "Heroes",
-  "summary": "Attach a combat script to a hero, run when that hero fights."
+  "summary": "Attach a combat script to a hero, run when that hero fights.",
+  "args": [
+   {
+    "name": "heroName",
+    "type": "name",
+    "desc": "The hero's Name handle."
+   },
+   {
+    "name": "scriptName",
+    "type": "ref",
+    "desc": "The combat script wrapper's xpointer, e.g. \"/Maps/…/IsabellScript.xdb#xpointer(/Script)\"."
+   }
+  ],
+  "example": "SetHeroCombatScript('Isabell', '/Maps/Scenario/C1M1/IsabellScript.xdb#xpointer(/Script)');"
  },
  {
   "name": "SetHeroesExpCoef",
@@ -871,7 +1189,20 @@
   "name": "SetObjectEnabled",
   "params": "objectName, enable",
   "group": "Objects",
-  "summary": "Show or hide a placed object (a disabled object is not on the map for the player)."
+  "summary": "Show or hide a placed object (a disabled object is not on the map for the player).",
+  "args": [
+   {
+    "name": "objectName",
+    "type": "name",
+    "desc": "The object's Name handle."
+   },
+   {
+    "name": "enable",
+    "type": "number | nil",
+    "desc": "1 to show, nil (or 0) to hide."
+   }
+  ],
+  "example": "SetObjectEnabled('zastava', 1);"
  },
  {
   "name": "SetObjectFlashlight",
@@ -887,7 +1218,25 @@
   "name": "SetObjectiveState",
   "params": "objectiveName, state, playerID = PLAYER_1",
   "group": "Objectives",
-  "summary": "Change a quest objective's state (active, completed, failed)."
+  "summary": "Change a quest objective's state (active, completed, failed).",
+  "args": [
+   {
+    "name": "objectiveName",
+    "type": "name",
+    "desc": "The objective's handle, as named in the map tree under Objectives (e.g. \"prim1\")."
+   },
+   {
+    "name": "state",
+    "type": "OBJECTIVE_*",
+    "desc": "OBJECTIVE_ACTIVE, OBJECTIVE_COMPLETED, OBJECTIVE_FAILED, or OBJECTIVE_UNKNOWN (hidden)."
+   },
+   {
+    "name": "playerID",
+    "type": "PLAYER_*",
+    "desc": "Whose quest log to change."
+   }
+  ],
+  "example": "SetObjectiveState(\"prim1\", OBJECTIVE_ACTIVE);"
  },
  {
   "name": "SetObjectiveVisible",
@@ -913,7 +1262,25 @@
   "name": "SetPlayerResource",
   "params": "player, resourceKind, quantity",
   "group": "Players",
-  "summary": "Set the amount of one of a player's resources."
+  "summary": "Set the amount of one of a player's resources.",
+  "args": [
+   {
+    "name": "player",
+    "type": "PLAYER_*",
+    "desc": "Which player."
+   },
+   {
+    "name": "resourceKind",
+    "type": "resource",
+    "desc": "WOOD, ORE, MERCURY, CRYSTAL, SULFUR, GEM, or GOLD."
+   },
+   {
+    "name": "quantity",
+    "type": "number",
+    "desc": "The new amount (absolute, not a delta)."
+   }
+  ],
+  "example": "SetPlayerResource(PLAYER_1, GOLD, 0);"
  },
  {
   "name": "SetPlayerStartResources",
@@ -951,6 +1318,31 @@
   "group": "ADVMAP"
  },
  {
+  "name": "ShowSliderDialog",
+  "params": "creature, becomes, most",
+  "group": "Ours",
+  "summary": "Ask the player how many creatures to turn into another kind, and wait.",
+  "args": [
+   {
+    "name": "creature",
+    "type": "CREATURE_*",
+    "desc": "What the player is counting."
+   },
+   {
+    "name": "becomes",
+    "type": "CREATURE_*",
+    "desc": "What they turn into."
+   },
+   {
+    "name": "most",
+    "type": "number",
+    "desc": "The largest number the slider will reach."
+   }
+  ],
+  "returns": "The number the player chose, from 1 to `most`, or -1 if they closed it.",
+  "example": "local n = ShowSliderDialog(CREATURE_GRAND_ELF, CREATURE_SHARP_SHOOTER, 12);"
+ },
+ {
   "name": "SiegeTown",
   "params": "heroName, townName, arenaName = \"\"",
   "group": "ADVMAP"
@@ -964,7 +1356,15 @@
   "name": "sleep",
   "params": "segments",
   "group": "Flow",
-  "summary": "Pause the current thread for a number of turn segments."
+  "summary": "Pause the current thread for a number of turn segments.",
+  "args": [
+   {
+    "name": "segments",
+    "type": "number",
+    "desc": "How long to wait."
+   }
+  ],
+  "example": "sleep(5);"
  },
  {
   "name": "sqrt",
@@ -985,19 +1385,88 @@
   "name": "StartCombat",
   "params": "heroName, enemyHeroName, creaturesCount, creatureType/Amount…, combatScriptName, combatFinishTrigger, arenaName = \"\", allowQuickCombat",
   "group": "Combat",
-  "summary": "Start a scripted battle against a hero or a stack of creatures."
+  "summary": "Start a scripted battle against a hero or a stack of creatures.",
+  "args": [
+   {
+    "name": "heroName",
+    "type": "name",
+    "desc": "The attacking hero."
+   },
+   {
+    "name": "enemyHeroName",
+    "type": "name | nil",
+    "desc": "The defending hero, or nil to fight creatures only."
+   },
+   {
+    "name": "creaturesCount",
+    "type": "number",
+    "desc": "How many creature stacks follow."
+   },
+   {
+    "name": "creatureType/Amount…",
+    "type": "CREATURE_*, number",
+    "desc": "A creatureType, creatureAmount pair per stack, repeated creaturesCount times."
+   },
+   {
+    "name": "combatScriptName",
+    "type": "ref",
+    "desc": "The combat script's xpointer, or nil."
+   },
+   {
+    "name": "combatFinishTrigger",
+    "type": "string",
+    "desc": "Name of a function to call when the battle ends."
+   },
+   {
+    "name": "arenaName",
+    "type": "ref",
+    "desc": "The arena to fight on (\"\" for the default)."
+   },
+   {
+    "name": "allowQuickCombat",
+    "type": "boolean",
+    "desc": "Whether quick combat is allowed."
+   }
+  ],
+  "example": "StartCombat(\"Isabell\", nil, 1, CREATURE_PEASANT, 13, '/Maps/…/C1M1-CombatScript.xdb#xpointer(/Script)', 'AfterCombat');"
  },
  {
   "name": "StartDialogScene",
   "params": "dialogSceneName, callback = \"\", saveName = \"\"",
   "group": "Dialog",
-  "summary": "Play a dialogue cutscene, optionally calling back when it ends."
+  "summary": "Play a dialogue cutscene, optionally calling back when it ends.",
+  "args": [
+   {
+    "name": "dialogSceneName",
+    "type": "ref",
+    "desc": "The scene's xpointer, \"/DialogScenes/…/DialogScene.xdb#xpointer(/DialogScene)\"."
+   },
+   {
+    "name": "callback",
+    "type": "string",
+    "desc": "Name of a function to call when the scene finishes."
+   },
+   {
+    "name": "saveName",
+    "type": "string",
+    "desc": "Autosave name to make before the scene."
+   }
+  ],
+  "example": "StartDialogScene(\"/DialogScenes/C1/M1/D1/DialogScene.xdb#xpointer(/DialogScene)\");"
  },
  {
   "name": "startThread",
   "params": "func",
   "group": "Flow",
-  "summary": "Run a function concurrently, as its own thread."
+  "summary": "Run a function concurrently, as its own thread.",
+  "args": [
+   {
+    "name": "func",
+    "type": "function",
+    "desc": "The function to run (passed by value, not by name)."
+   }
+  ],
+  "example": "startThread(PObjective1);"
  },
  {
   "name": "StopPlaySound",
@@ -1028,7 +1497,25 @@
   "name": "Trigger",
   "params": "triggerType, target, functionName",
   "group": "Triggers",
-  "summary": "Bind (or clear) a handler for a world event. Pass nil as the function to unbind."
+  "summary": "Bind (or clear) a handler for a world event. Pass nil as the function to unbind.",
+  "args": [
+   {
+    "name": "triggerType",
+    "type": "*_TRIGGER",
+    "desc": "Which event: REGION_ENTER_AND_STOP_TRIGGER, OBJECT_TOUCH_TRIGGER, OBJECT_CAPTURE_TRIGGER, HERO_LEVELUP_TRIGGER, PLAYER_REMOVE_HERO_TRIGGER, …"
+   },
+   {
+    "name": "target",
+    "type": "name | enum",
+    "desc": "What to watch — a region or object name, or a player id, depending on the trigger type."
+   },
+   {
+    "name": "functionName",
+    "type": "string | nil",
+    "desc": "Name of the Lua function to call, as a string; nil removes the handler."
+   }
+  ],
+  "example": "Trigger(REGION_ENTER_AND_STOP_TRIGGER, \"d2\", \"Dialog2\");"
  },
  {
   "name": "TutorialActivateHint",
@@ -1059,6 +1546,8 @@
   "name": "Win",
   "params": "",
   "group": "Flow",
-  "summary": "End the mission as a victory for the human player."
+  "summary": "End the mission as a victory for the human player.",
+  "args": [],
+  "example": "Win();"
  }
 ]

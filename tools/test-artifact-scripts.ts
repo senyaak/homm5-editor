@@ -76,6 +76,54 @@ check('the patched file passes the linter', luaDiagnostics(common).length === 0,
   JSON.stringify(luaDiagnostics(common).slice(0, 1)));
 check('it is named where the game looks for it', COMMON_SCRIPT === 'scripts/advmap-common.lua');
 
+// --- the count window's wrapper ----------------------------------------------
+//
+// The waiting is HERE and cannot be anywhere else: the function that opens the
+// window returns before there is a number, so the loop that collects it is Lua.
+// And the creature has to travel the whole way — it is what the window draws,
+// and dropping it silently is a window with an empty picture.
+check('the count window has a wrapper that waits',
+  common.includes('function ShowSliderDialog(creature, becomes, most)')
+  && common.includes('while chosen == nil do'));
+check('and it hands both creatures on to the window',
+  common.includes('H5EAskCount(creature, becomes, most);'));
+// Without the extension there is no window and no answer coming. A wrapper that
+// looped anyway would put the script to sleep for the rest of the map.
+check('without the extension it answers rather than hangs',
+  common.includes('if H5EAskCount == nil then return -1; end;'));
+
+// EVERY SHAPE THE FILE CAN TAKE, through the linter — not the one shape a test
+// happened to build. The check above lints a file with no abilities in it, so
+// the block that hands them out went to the game unlinted and took `return;`
+// with it: Lua 4 rejects that, and rejects the WHOLE FILE for it, so every
+// script of ours stopped on every map and nothing said a word.
+const ABILITY_PAIR = [{
+  spec: { id: 'HERO_SPEC_H3_SHARPSHOOTERS', number: 85 },
+  spell: { id: 'SPELL_H3_TRAIN_SHARPSHOOTERS', number: 353 },
+}];
+for (const [what, text] of [
+  ['abilities alone', patchCommonScript(SHIPPED, [SET], [], ABILITY_PAIR)],
+  ['abilities and a set script', patchCommonScript(SHIPPED, [withScript], [], ABILITY_PAIR)],
+  ['a map script beside them', patchCommonScript(SHIPPED, [SET], ['scripts/x.lua'], ABILITY_PAIR)],
+  ['the starter', starterScript('H3UndeadKing', 3)],
+] as const) {
+  check(`the file passes the linter with ${what}`, luaDiagnostics(text).length === 0,
+    JSON.stringify(luaDiagnostics(text).slice(0, 2)));
+  // AND IT IS ALL ASCII, which is not a style rule: the file is written latin1,
+  // so a character above 255 goes in as its low byte. An em dash landed in the
+  // installed script as 0x14 and left a hole in the middle of a sentence — Lua
+  // did not care and nobody reading the file could tell what it had said.
+  // Checked over the same shapes as the linter, and for the same reason: the
+  // dash was in the ability block, which the one-shape check never saw.
+  const bad = [...new Set([...text].filter((c) => c.charCodeAt(0) > 126))];
+  check(`and what we generate for ${what} is ASCII`, bad.length === 0, bad.join(' '));
+}
+// And the sabotage, so the three above cannot pass by the linter being blind
+// here: the exact spelling that broke it must still be caught.
+check('...and `return;` is what the linter would have caught',
+  luaDiagnostics('function f()\n\tif x == nil then return; end;\nend;\n')
+    .some((d) => /return/.test(d.message)));
+
 // --- the starter --------------------------------------------------------------
 //
 // The thing an author cannot know from an empty editor: what the members are

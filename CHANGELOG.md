@@ -15,6 +15,159 @@ one.
 
 ### Added
 
+- **A specialization can give an ABILITY, not only a number.** Pick a spell of
+  the mod's in the Ability box, and every hero holding that specialization knows
+  it — beside whatever he already knew, on every map, whoever he is and however
+  he got there.
+
+  It is given ON THE MAP rather than written into the heroes the editor builds,
+  and that is the whole of it: the mod ships a line in the game's global script
+  that asks each hero which specialization he holds and teaches him what it
+  promises. A hero the editor never wrote — one the map placed, one hired from a
+  tavern — is given it just the same. Asking is the extension's half
+  (`H5EHeroSpecialization`), because none of the game's own 306 script functions
+  can say what specialization a hero has.
+
+  It is a spell of the mod's rather than one of the four the engine keeps for
+  this (`SPELL_ABILITY_CUSTOM1…4`) because four is a compiled ceiling in two
+  places, and an entry in an enum the mod already appends to has none.
+
+  Seen in game 07.08.2026: Gelu, whose specialization is his own, opens his book
+  on the adventure map and the page is there.
+
+- **A spell of your own does what your map's script says.** Clicking its page
+  calls `onSpellCast(spell)`, and the gate that decides whether the page is even
+  live asks `checkSpellCastable(spell)` — so the rules of a feature (is there
+  anybody to train, is there gold) are written in Lua, where an author can write
+  them, rather than compiled into the extension.
+
+  Two functions come with it: `H5EAnswer(value)`, which is how a script's
+  verdict gets back to the extension (running a line returns nothing, so the
+  line calls it), and `H5ELog(number)`, which puts a number in the extension's
+  log instead of the game's console — for a script measuring the engine.
+
+  A map that defines neither is left exactly as it was.
+
+- **The linter knows this game has no `type` and no `format`.** Neither is in
+  the Lua the engine registers, alongside `getn`, `tostring` and `tonumber`, and
+  a script that calls one dies where it stands. Both had been allowed because
+  the strings exist in the executable — which proves only that something
+  mentions the name. The allowed list now says, name by name, what backs it:
+  `print`, `abs`, `sqrt`, `random`, `length` and `floor` are called by the
+  game's own scripts or were measured in a run; the rest rest on that same weak
+  reading, and say so.
+
+- **The training spell is part of the mod now, not of a tool run by hand.** Its
+  script and the questions the player reads are written by the build, whenever
+  the mod carries the creature the training produces. Until this they reached
+  the game through `_tmp/probe-train.ts`, which is to say a mod an editor built
+  was a mod with a dead spell page in it and nothing said so. `mod-009` reads
+  the packed archive and checks the whole chain fits together — creature, spell,
+  both hooks, the dispatch by number, and a priced question per trainable kind.
+
+- **A spell of a mod carries its own two hooks, and both branch on its number.**
+  "May it be cast" and "what the click does" are the spell's, and the script that
+  reaches them dispatches by the spell's id — so a mod with two spells does not
+  have the second one answering the first one's page and running the first one's
+  cast. The extension remembers a verdict PER SPELL for the same reason: one
+  remembered answer belonged to whichever question came last.
+
+- **The mod's sharpshooter is raised as a vampire lord**, not the skeleton archer
+  the donor gives. Read out of the game's own raise table rather than reasoned
+  about: all fifteen shipped shooters raise into skeleton archers and not one of
+  them is tier 4; the two tier-4 shooters that exist are the succubus and her
+  upgrade, and they raise into vampires and vampire lords. It is now edited in
+  the creature dialog like every other difference from the donor, instead of
+  being inherited silently.
+
+- **A map's rule can tell whose spell it is.** `H5EIsCastingHero(heroName)`
+  answers whether that name is the hero who cast, and `H5ECasterKnown()` whether
+  anybody is casting at all — so a rule about a hero's army and a hero's gold is
+  about the right hero. The script offers the names it already has out of
+  `GetPlayerHeroes`; nothing is read off the hero, which is what a first attempt
+  spent a run failing to do.
+
+  The second of those matters as much as the first: without it a rule that could
+  not find the caster fell back to any hero who could train, which lit one
+  hero's page for another hero's archers — and then trained them. Knowing that
+  somebody is casting turns that into a refusal.
+
+- **A script can find out how full a hero's army is.** `H5EArmySlots(heroName)`
+  answers how many of his seven slots are taken — the one thing about an army
+  the engine tells nobody: `GetHeroCreatures` sums a kind over the whole army and
+  `GetHeroCreaturesTypes` throws duplicates away, so a hero with two stacks of
+  archers and five other kinds reads as six things in seven slots. His army
+  looked roomy, the creature a script added had nowhere to go, and the game
+  stopped to ask the player what to throw away.
+
+- **A map's rule is now actually listened to.** There is no synchronous way into
+  a map's Lua: `DoString` builds a thread called "Buffer thread" and leaves it
+  for the scheduler, and so do triggers and `startThread`. So a gate that asked
+  the rule and read the answer in the next breath read nothing, every time, and
+  drew every page on the fallback — which is yes, and which is the whole of "the
+  page is live with nothing to train", "live with no gold" and "live with no
+  room".
+
+  The rule keeps itself current instead: a thread of its own recomputes the
+  verdict and hands it over, and the gate answers with the last thing it heard.
+  Everything that runs per tick now keeps quiet unless its answer changes, so
+  the log stays a record of what happened rather than a tally of ticks. And
+  `H5EAnswer` says what it recorded, so a rule that never answered can never
+  again look like a rule that said yes.
+
+  It took a bracket either side of the call, a thread id and a sequence number on
+  every line, and the whole chain logged rather than one link of it — two
+  readings of the same log had contradicted each other twice before that.
+
+- **A map rule that falls over now closes its own page** instead of leaving it
+  open. A script error takes the whole line with it, so a `checkSpellCastable`
+  that asks the engine one wrong question answers nothing — and nothing used to
+  read as the same yes a map without any rule gets. The line the extension runs
+  answers no first and replaces it only on success. A map that defines no rule
+  is still free to cast.
+
+- **A spell of your own can be cast on the adventure map.** The page in the book
+  is live rather than greyed, and it takes a click. The map keeps its own gate
+  (`CanCastHere`), and both the book and the cast command ask it — so a page
+  that could not be pressed and a click that did nothing were one refusal, not
+  two. It is a switch on the spell's NUMBER with two ranges in it, and every id
+  a mod appends falls outside them, silently.
+
+  That same switch is where the four-custom-abilities ceiling lives, for anyone
+  who has run into it: `cmp eax,3`, two instructions, unmovable by data.
+
+  Ours answers for itself; the game's own spells keep whatever the engine said,
+  reasons and all. Seen in game 07.08.2026.
+
+- **A crash inside the game names itself.** The extension now writes the
+  registers, both module bases and the return addresses still on the stack into
+  its log before a fault is handed on. It changes nothing about the crash — what
+  it changes is that "homm5-editor.dll +0x1f9dc" in the Windows event log no
+  longer costs a launch to turn into a place in the code.
+
+- **A script can ask the player how many creatures.**
+  `AskTroopCount(most, from, creature)` puts up the game's own count slider — the
+  one a split uses, frame, slider and buttons alike — and answers with the number
+  the player settled on, or -1 if they closed it. It is the engine's window
+  driven by a controller of ours, so nothing about it is new to look at; what is
+  new is that a map's Lua can raise it, which the shipped script vocabulary has
+  no way to do.
+
+  The window draws the creature the script names, a `CREATURE_…` like any other
+  in a script. That turned out to need no army at all: the engine's own
+  controller makes the picture out of one field of the stack it holds — which
+  creature — so a number is the whole of what it needs.
+
+  Seen in game 07.08.2026: the slider opens on the adventure map with the
+  creature drawn on it, and OK comes back to the script as a number.
+
+  Underneath it are two functions of the extension's, `H5EAskCount` and
+  `H5EAskedCount`, and the reason there are two is worth knowing if you write
+  against them directly: a registered function's results are counted the moment
+  it returns, so the one that opens a window cannot answer with a number that
+  does not exist yet. The waiting is Lua's, one `sleep` at a time, and
+  `AskTroopCount` is that loop written once.
+
 - **Spells of your own, from a window.** A page in the spellbook the game will
   let a hero cast: a name, a description, an icon, a school and a rank, the mana
   it costs, the four damage entries the four masteries use, and what resistances
@@ -38,6 +191,32 @@ one.
 
 ### Changed
 
+- **Two new checks that stand in for a launch of the game.**
+  `test-native-anchors` takes every address the extension recognises by its
+  bytes — 45 of them — and reads those bytes out of the executable on disk. The
+  extension already refuses to touch a place that does not match, but that
+  refusal only happens while the game is running, and by then the feature is
+  quietly missing and somebody has to read a log. And `test-training-plan` puts
+  the training rule through sixteen thousand armies against a model of the
+  engine's own habits — seven slots, the removal that will not empty a hero, and
+  the commands that happen later than they are asked for. It found a hole the
+  rule still had: a training that had to take the whole stack was still offered
+  on a slider that started at one, and taking one would have made the game ask
+  the player which creature to throw away.
+
+- **The script reference now says what the army functions really do**, both
+  learned the expensive way. `GetHeroCreaturesTypes` hands back SEVEN NUMBERS
+  rather than a table — the distinct creature ids of the army in slot order,
+  padded with zeroes — so walking it with `for` dies, and no `type` exists in
+  this game to ask it what it gave. `RemoveHeroCreatures` will not empty a hero:
+  when the creature asked for occupies every slot he has, it silently removes one
+  less. And neither it nor `AddHeroCreatures` edits the army at all — each hands
+  the world a command to run later, while `GetHeroCreatures` reads the army
+  itself. Both facts together are nastier than either: counting after an add
+  counts the army as it was, and the "leave one behind" clamp is decided when the
+  command is MADE, so add-then-remove written back to back still leaves one. Add,
+  `sleep` until the count really changes, then remove.
+
 - **The suite spends less of its time opening the same things twice.** Four
   specs opened the shipped map A2C1M1 four times — thirteen seconds apiece — to
   ask four questions about the one scene it produces; a fifth opened it twice
@@ -60,6 +239,33 @@ one.
   back in front, for when watching a spec run is the point.
 
 ### Fixed
+
+- **A mod's spell page is grey again when there is nothing to do with it.** The
+  training spell stayed pressable over an army with nothing left to train, and
+  pressing it did nothing — the rule inside was refusing correctly the whole
+  time, and its answer never got out.
+
+  The rule's dispatch had been written as `if spell == 353 then return
+  H5ETrainMayCast(); end;`, and **returning the result of a CALL from inside a
+  nested block is a shape this engine's Lua does not carry out**: the call
+  happens and the block does not end. A run measured it exactly — the rule
+  reached its own last line (the kind and the count both written down, the army
+  printed) and then the statement AFTER the `if` ran as well, so what the caller
+  received was never the rule's answer but whatever the second `return` left
+  behind, which read as yes every time. The game's own scripts settle what is
+  safe: across 47 shipped scripts and 1096 functions they return a value from a
+  nested block 65 times and the result of a call exactly never
+  (`tools/nested-returns.ts` counts it). The dispatch has one exit now, and
+  `src/script/lua-lint.ts` refuses the shape — in the editor's script editor
+  too, so a map of your own cannot acquire it.
+
+- **The training rule stops warning the player in red.** Five lines of
+  `Value was NIL when getting global` on screen, one per name the rule keeps its
+  reasons in. Assigning `nil` to a global does not CREATE it, so every one of
+  them was read before it existed; they are born with values now. The verdict is
+  also remembered per spell rather than in one variable for all of them — with
+  two spells the second found the number already equal to its own answer and
+  said nothing, leaving its page whatever the first one had left it.
 
 - **Undo gives the picture back, not just the objects.** Ctrl+Z re-parses the map
   and the renderer rebuilds the floor from the instance list that comes back —

@@ -56,9 +56,10 @@ function renderSpecList(mods: ModListEntry[]): void {
     const row = modRow({
       number: s.number,
       label: s.name || s.id,
-      note: s.effect?.percentPerLevel
-        ? `${s.effect.stat} +${s.effect.percentPerLevel}% per level`
-        : 'words and a picture',
+      note: [
+        s.effect?.percentPerLevel ? `${s.effect.stat} +${s.effect.percentPerLevel}% per level` : '',
+        s.ability ? `grants ${s.ability}` : '',
+      ].filter(Boolean).join(', ') || 'words and a picture',
       onEdit: () => { void editSpec(s.id); },
       onRemove: () => { void removeSpec(s.id, s.name || s.id); },
     });
@@ -67,10 +68,24 @@ function renderSpecList(mods: ModListEntry[]): void {
   }
 }
 
-/** Fill the stat picker. One entry so far; the list grows by reverse engineering. */
+/**
+ * Fill the two pickers: the stat, and the spell it may put in a book.
+ *
+ * The stat list is short and grows by reverse engineering — one entry per place
+ * in the executable we have found and hooked. The ability list is the MOD's own
+ * spells, and only those: a shipped spell already reaches its heroes the way the
+ * game gives it out, and handing one to a specialization would be a second,
+ * quieter door to the same thing.
+ */
 async function fillSpecForm(): Promise<void> {
   const stats = (await api.modFormData()).specializationStats ?? [];
   fillSelect($select('hs-stat'), stats.map((id) => ({ id, label: id })), $select('hs-stat').value);
+  const { mods } = await api.listMods();
+  const spells = mods.flatMap((m) => m.spells ?? []);
+  fillSelect($select('hs-ability'), [
+    { id: '', label: '— none —' },
+    ...spells.map((s) => ({ id: s.id, label: s.name ? `${s.name} (${s.id})` : s.id })),
+  ], $select('hs-ability').value);
 }
 
 /** Load one back into the form — all of it, or saving writes back what the boxes held. */
@@ -92,6 +107,7 @@ async function editSpec(id: string): Promise<void> {
   $input('hs-pic').value = s.picture ?? '';
   if (s.effect?.stat) $select('hs-stat').value = s.effect.stat;
   $input('hs-percent').value = String(s.effect?.percentPerLevel ?? 0);
+  $select('hs-ability').value = s.ability ?? '';
   gateSpec().rewatch();
   void showExtensionState('hs-ext').catch(() => {});
 }
@@ -104,6 +120,7 @@ function newSpec(): void {
   $input('hs-id').disabled = false;
   for (const id of ['hs-id', 'hs-name', 'hs-desc', 'hs-pic']) $input(id).value = '';
   $input('hs-percent').value = '0';
+  $select('hs-ability').value = '';
   gateSpec().rewatch();
   openOnTop('specedit');
   void fillSpecForm().catch(() => {});
@@ -146,6 +163,9 @@ async function submitSpec(): Promise<void> {
       // No percentage is no effect: a row that adds nothing is a row nobody can
       // tell from one that was never written, so it is not sent at all.
       ...(percent ? { effect: { stat: $select('hs-stat').value, percentPerLevel: percent } } : {}),
+      // Same rule as the percentage: "none" is not an ability nobody can see, it
+      // is no ability, so nothing is sent.
+      ...($select('hs-ability').value ? { ability: $select('hs-ability').value } : {}),
     });
     modDialog('specedit').close();
     await refreshSpecList();

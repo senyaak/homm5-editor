@@ -131,7 +131,11 @@
               <button id="sm-spares-none" class="um-recolor" type="button" title="spare nobody">Nobody</button>
               <span id="sm-spares-note" class="um-note" style="flex:1;min-width:0"></span>
             </div>
-            <label class="on-row um-span"><span>Script</span><button id="sm-script" class="ghost" type="button" title="Lua called when the cast is caught — for a spell whose content is not damage">Script…</button><span id="sm-script-note" class="um-note"></span></label>
+            <!-- IN A BATTLE, always, and the box has to say so: the extension
+                 catches a cast where a cast happens, which is the combat
+                 context. A script written here for an ADVENTURE spell is a file
+                 that ships and never runs, and nothing else would tell you. -->
+            <label class="on-row um-span"><span>Script</span><button id="sm-script" class="ghost" type="button" title="Lua called when the cast is caught IN A BATTLE — for a spell whose content is not damage. An adventure-map spell is cast somewhere the extension does not yet catch, so a script here would never run.">Script…</button><span id="sm-script-note" class="um-note"></span></label>
             <div id="sm-ext" class="um-span um-warn"></div>
           </div>
         </fieldset>

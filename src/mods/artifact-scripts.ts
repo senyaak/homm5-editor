@@ -77,7 +77,7 @@ export function starterScript(file: string, members: number): string {
     'end;',
     '',
     '-- Nothing above runs until it is hooked to an event, and WHICH event is',
-    '-- yours to pick. Uncomment one, or write another — the editor completes',
+    '-- yours to pick. Uncomment one, or write another - the editor completes',
     '-- the trigger names:',
     `-- Trigger(NEW_DAY_TRIGGER, "${name}_Worn");`,
     `-- Trigger(COMBAT_RESULTS_TRIGGER, "${name}_Worn");`,
@@ -118,6 +118,115 @@ export function setScriptFiles(sets: readonly ModArtifactSet[]): { path: string;
 }
 
 /**
+ * A specialization handing out its ability, on every map, at run time.
+ *
+ * THE POINT OF DOING IT HERE. The build could write the spell into the document
+ * of every hero holding the specialization, in one line and with no code — and
+ * then the engine would know nothing about the specialization at all. The
+ * connection would exist only in the files this build wrote, so a hero it did
+ * not build would hold the specialization and get nothing. Asked and answered on
+ * the map instead, it is the specialization that gives the ability, to whoever
+ * holds it, however he got there.
+ *
+ * The question itself is the extension's — no registered function of the game's
+ * can say which specialization a hero holds (native/lua/hero-specialization.c).
+ * Without the extension the block does nothing at all rather than erroring: a
+ * mod is installed into games that may not have it.
+ *
+ * NAMES, and the values declared once at the top. `HERO_SPEC_…` and `SPELL_…`
+ * are entries the mod appended to enums, so Lua has never heard of either name
+ * and the engine deals only in values — but a table written in bare numbers is a
+ * table that goes stale the moment the mod's order changes, and unreadable long
+ * before that. Same rule a spell's own script already follows (spellScriptFile).
+ * Declaring them here also puts them in reach of whatever the author writes:
+ * `SPELL_H3_TRAIN_SHARPSHOOTERS` means something on every map.
+ *
+ * Two ways in, because heroes arrive two ways: the sweep catches everyone the
+ * map starts with, and the trigger catches everyone hired or raised afterwards.
+ * Setting a trigger here does not take it from a map that sets its own — they
+ * stack, which is measured (docs/NAMES_AND_SCRIPTING.md).
+ */
+export interface ModAbility {
+  spec: { id: string; number: number };
+  spell: { id: string; number: number };
+}
+
+function abilityLines(abilities: readonly ModAbility[]): string[] {
+  if (!abilities.length) return [];
+  // One declaration per name, however many pairings use it: two specializations
+  // may grant the same spell, and a name assigned twice reads like a mistake.
+  const declared = new Map<string, number>();
+  for (const a of abilities) {
+    declared.set(a.spec.id, a.spec.number);
+    declared.set(a.spell.id, a.spell.number);
+  }
+  return [
+    '-- The values the mod assigned, under the names everything below says them by.',
+    '-- The engine deals in numbers; a script written against a bare one goes stale',
+    '-- the moment the mod\'s order changes.',
+    ...[...declared].map(([id, number]) => `${id} = ${number};`),
+    '',
+    '-- What a specialization of the mod GIVES.',
+    'H5E_SPEC_ABILITY = {};',
+    ...abilities.map((a) => `H5E_SPEC_ABILITY[${a.spec.id}] = ${a.spell.id};`),
+    '',
+    '-- One hero, given whatever his specialization promises.',
+    '--',
+    '-- ASKED PER PAIRING rather than "which one has he": the engine answers "is it',
+    '-- this" through a virtual it already uses for the first aid tent, and that',
+    '-- needs no field offset - where the value LIVES cost three runs to look for',
+    '-- and never had to be found. Without the extension this does nothing at all',
+    '-- rather than failing: a mod is installed into games that may not have it.',
+    // A BARE `return`, three times. Lua 4 rejects `return;` — and rejects the
+    // WHOLE FILE for it, so one stray semicolon here stops every script of ours
+    // on every map, silently. It did exactly that once.
+    'function H5EGrantAbility(hero)',
+    '\tif H5EHeroHasSpecialization == nil then return end;',
+    '\tlocal spec, spell;',
+    '\tfor spec, spell in H5E_SPEC_ABILITY do',
+    '\t\tif H5EHeroHasSpecialization(hero, spec) then',
+    '\t\t\tif KnowHeroSpell(hero, spell) == nil then TeachHeroSpell(hero, spell); end;',
+    '\t\tend;',
+    '\tend;',
+    'end;',
+    '',
+    '-- Everyone the map starts with. It waits one turn first: when this file runs',
+    '-- the map is still being built, and GetPlayerHeroes would answer for a world',
+    '-- that is not finished. Started as a thread for the same reason - nothing may',
+    '-- sleep while the map is loading.',
+    'function H5EGrantAbilities()',
+    '\tsleep(1);',
+    '\tfor player = 1, 8 do',
+    '\t\tlocal heroes = GetPlayerHeroes(player);',
+    '\t\tif heroes ~= nil then',
+    '\t\t\tfor index, hero in heroes do H5EGrantAbility(hero); end;',
+    '\t\tend;',
+    '\tend;',
+    'end;',
+    '',
+    '-- And everyone who arrives later - hired, raised, handed over by a script.',
+    '--',
+    '-- WHICH ARGUMENT IS THE HERO is not settled: no shipped script uses this',
+    '-- trigger, so there is nothing to read it off. Both shapes are served, and',
+    '-- the sweep above covers the map either way - this only decides whether a',
+    '-- hero hired later has to wait for one.',
+    'function H5EHeroArrived(one, two)',
+    '\tif two == nil then H5EGrantAbility(one) else H5EGrantAbility(two) end;',
+    'end;',
+    '',
+    '-- PER PLAYER, and that is the whole of the bug this line had: this trigger',
+    '-- takes whose it is before it takes the function, the way a region trigger',
+    '-- takes the region. Handed the name straight away, the engine reads it as the',
+    '-- player and says so - "player ID must be number", once, in the game.',
+    'for player = 1, 8 do',
+    '\tTrigger(PLAYER_ADD_HERO_TRIGGER, player, "H5EHeroArrived");',
+    'end;',
+    'startThread(H5EGrantAbilities);',
+    '',
+  ];
+}
+
+/**
  * The game's own `advmap-common.lua`, plus our library and one `doFile` per set.
  *
  * Appended rather than replaced: the 73 lines the game ships are what every
@@ -133,9 +242,21 @@ export function patchCommonScript(
   shipped: string,
   sets: readonly ModArtifactSet[],
   extra: readonly string[] = [],
+  abilities: readonly ModAbility[] = [],
+  /**
+   * Lua a spell of the mod carries — its own "may it be cast" and "what the
+   * click does", plus whatever they need, already written out.
+   *
+   * IT GOES IN HERE because there is one file: the game does one `doFile` at
+   * the end of its startup and everything of ours that must run on every map
+   * hangs off it. Until this existed, the training spell's script reached the
+   * game through a hand-run tool in `_tmp` — which is to say it was not part of
+   * the mod at all, and nobody who rebuilt the mod got it.
+   */
+  spellScript = '',
 ): string {
   const files = [...setScriptFiles(sets).map((f) => f.path), ...extra];
-  if (!files.length) return shipped;
+  if (!files.length && !abilities.length && !spellScript) return shipped;
   const block = [
     '',
     '-- --- homm5-editor ----------------------------------------------------------',
@@ -162,7 +283,27 @@ export function patchCommonScript(
     '\treturn nil;',
     'end;',
     '',
+    '-- Ask the player how many of `creature` to turn into `becomes`, and WAIT',
+    '-- for the answer. Both are CREATURE_ numbers; the answer is 1..most, or -1',
+    '-- if the window was closed without one.',
+    '--',
+    '-- The window is the extension\'s (H5EAskCount) and THE WAITING HAS TO BE HERE:',
+    '-- a registered function\'s results are counted the moment it returns, so the',
+    '-- one that opens a window cannot answer with a number that does not exist yet.',
+    'function ShowSliderDialog(creature, becomes, most)',
+    '\tif H5EAskCount == nil then return -1; end;',
+    '\tH5EAskCount(creature, becomes, most);',
+    '\tlocal chosen = H5EAskedCount();',
+    '\twhile chosen == nil do',
+    '\t\tsleep(1);',
+    '\t\tchosen = H5EAskedCount();',
+    '\tend;',
+    '\treturn chosen;',
+    'end;',
+    '',
+    ...abilityLines(abilities),
     ...files.map((f) => `doFile("/${f}");`),
+    ...(spellScript ? spellScript.split(/\r?\n/) : []),
   ].join(EOL);
   return shipped.replace(/\s*$/, EOL) + block + EOL;
 }

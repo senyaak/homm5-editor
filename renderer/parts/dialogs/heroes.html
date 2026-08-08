@@ -192,7 +192,14 @@
             <label class="on-row"><span>Adds to</span><select id="hs-stat" title="which of the engine's own sums our term enters"></select></label>
             <label class="on-row"><span>% per level</span><input id="hs-percent" type="number" value="0" min="-100" max="100" title="percentage points of the engine's own number, for every level the hero has. Five is Heroes III's Gem — and at expert mastery it comes to exactly what the game's own Empiric gives, since five per level is five percent of a hundred."></label>
             <div id="hs-ext" class="um-span um-warn"></div>
-            <div class="um-note um-span">A specialization with no percentage is words and a picture, which is what every value the executable does not know does anyway — and a real thing to want while a port is being written.</div>
+            <!-- The other kind of gift, and the one the executable cannot
+                 refuse: a term added to a sum needs a place in the code that was
+                 found and hooked, while a spell in a book is a hero's own field.
+                 Written onto every hero holding this, by the build — so giving
+                 the specialization to somebody else is the whole of giving them
+                 the ability. -->
+            <label class="on-row um-span"><span>Ability</span><select id="hs-ability" title="a spell of this mod's that every hero holding this specialization knows. The engine has four such 'custom hero abilities' of its own and no more; a spell of ours has no ceiling."></select></label>
+            <div class="um-note um-span">A specialization with no percentage and no ability is words and a picture, which is what every value the executable does not know does anyway — and a real thing to want while a port is being written.</div>
           </div>
         </fieldset>
         <div id="hs-missing" class="um-missing"></div>

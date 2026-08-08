@@ -78,11 +78,22 @@ export function buildExtension(editorRoot: string, log: (s: string) => void = ()
   const source = join(editorRoot, NATIVE_SOURCE);
   const dll = builtDll(editorRoot);
   mkdirSync(dirname(dll), { recursive: true });
-  execFileSync(zig, [
-    'cc', '-target', 'x86-windows-gnu',
-    '-shared', '-Os', '-fno-stack-protector',
-    '-o', dll, source,
-  ], { stdio: 'pipe' });
+  try {
+    execFileSync(zig, [
+      'cc', '-target', 'x86-windows-gnu',
+      '-shared', '-Os', '-fno-stack-protector',
+      '-o', dll, source,
+    ], { stdio: 'pipe' });
+  } catch (e) {
+    // WHAT THE COMPILER SAID, not what Node made of it. `stdio: 'pipe'` keeps
+    // the message out of the terminal, and the error Node throws instead prints
+    // as a page of byte arrays with the file name spelled out one character per
+    // line — which is how a two-line "undeclared identifier" cost a rebuild to
+    // read. The compiler names the file, the line and the identifier; that is
+    // the whole of what anybody wants here.
+    const said = (e as { stderr?: Buffer }).stderr;
+    throw new Error(`the extension did not compile\n\n${said ? said.toString() : String(e)}`);
+  }
   log(`built ${dll} — ${statSync(dll).size} bytes`);
   return dll;
 }

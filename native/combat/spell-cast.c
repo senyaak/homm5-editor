@@ -502,10 +502,14 @@ static int __fastcall on_cast_gate(void *ecx, void *block, void *a1, void *a2, i
   // previous fight's spells. So a spell of ours prints every time and the game's
   // own share a small quota beside it.
   {
-    // WHERE THE QUESTION CAME FROM. The book greys a spell it cannot cast, and
-    // it decides that by asking this same routine before anything is pressed —
-    // so a verdict from the book and a verdict during a cast are different
-    // events and are named apart.
+    // WHERE THE QUESTION CAME FROM. In a battle the book asks this same routine
+    // before anything is pressed, so a verdict from the book and a verdict
+    // during a cast are different events and are named apart.
+    //
+    // THE ADVENTURE MAP'S BOOK DOES NOT COME THROUGH HERE — measured 07.08.2026:
+    // a run in which the book was opened on the map, on a hero holding a spell
+    // of ours, logged not one line of this. Whatever greys a page out there is
+    // another gate, and it is not found yet.
     log_line(g_inCastCommand ? "may it be cast? (during the cast)" : "may it be cast? (from the book)");
     log_num("   spell id ", spell);
     log_num("   the gate says ", answer & 0xFF);

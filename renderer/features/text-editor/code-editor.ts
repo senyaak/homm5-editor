@@ -30,7 +30,16 @@ import type { LuaDiagnostic } from '#src/script/lua-lint.ts';
 
 /** One engine function the editor completes from — merged from our curated
  *  reference (`summary` present) and the PDF extraction (signature only). */
-export interface ApiFn { name: string; params: string; group: string; summary?: string }
+export interface ApiFn {
+  name: string;
+  params: string;
+  group: string;
+  summary?: string;
+  /** What each parameter means — only for the ones we have written up. */
+  args?: { name: string; type: string; desc: string }[];
+  returns?: string;
+  example?: string;
+}
 
 /**
  * Everything the editor completes from, gathered once per map.
@@ -87,6 +96,31 @@ function inString(context: CompletionContext): boolean {
   return /["'][^"']*$/.test(line.text.slice(0, context.pos - line.from));
 }
 
+/**
+ * What a completion shows when it is highlighted.
+ *
+ * Built as elements rather than a string: CodeMirror puts a string in as text,
+ * so a multi-line write-up would arrive as one run-on line, and putting HTML in
+ * by hand would hand the manuals' text to an innerHTML.
+ */
+function apiInfo(f: ApiFn): HTMLElement {
+  const box = document.createElement('div');
+  box.className = 'api-info';
+  const line = (text: string, cls?: string): void => {
+    const el = document.createElement(cls === 'api-info-example' ? 'code' : 'div');
+    if (cls) el.className = cls;
+    el.textContent = text;
+    box.append(el);
+  };
+  line(f.summary ?? f.group);
+  for (const p of f.args ?? []) {
+    line(`${p.name} — ${p.type}${p.desc ? `. ${p.desc}` : ''}`, 'api-info-arg');
+  }
+  if (f.returns) line(`→ ${f.returns}`, 'api-info-returns');
+  if (f.example) line(f.example, 'api-info-example');
+  return box;
+}
+
 /** The engine API, the shipped helpers and the ID constants — plain word completion. */
 function codeCompletions(context: CompletionContext): CompletionResult | null {
   const word = context.matchBefore(/[\w.]*/);
@@ -98,9 +132,10 @@ function codeCompletions(context: CompletionContext): CompletionResult | null {
       label: f.name,
       type: 'function',
       detail: `(${f.params})`,
-      // Our own one-line description when we have written the function up;
-      // otherwise the section it came from — better than nothing beside the name.
-      info: f.summary ?? f.group,
+      // The write-up, as far as it goes: what it does, what each parameter is,
+      // what comes back, one line of it in use. For a function only the manual
+      // knows, the section it came from — better than nothing beside the name.
+      info: () => apiInfo(f),
       // The call is completed with its brackets and the cursor between them —
       // the parameters are in `detail`, right there to be read while typing.
       apply: (view, _c, from, to) => {

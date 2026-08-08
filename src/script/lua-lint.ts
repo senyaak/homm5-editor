@@ -36,6 +36,12 @@ interface Tok { kind: TokKind; text: string; from: number; to: number }
 /** The keywords that open or close a block or a string-free bracket. */
 const OPENERS = new Set(['function', 'if', 'do']);
 
+/** The dialect's own words, so `return nil` is not read as a call to `nil`. */
+const KEYWORDS = new Set([
+  'and', 'do', 'else', 'elseif', 'end', 'for', 'function', 'if', 'in', 'local',
+  'nil', 'not', 'or', 'repeat', 'return', 'then', 'until', 'while',
+]);
+
 /**
  * `return;` — a semicolon straight after `return` — and why it earns a rule.
  *
@@ -53,6 +59,31 @@ const OPENERS = new Set(['function', 'if', 'do']);
  */
 const RETURN_SEMICOLON =
   "';' after 'return' — Lua 4 rejects the whole file; write a bare `return`";
+
+/**
+ * `if c then return f(); end` — returning the RESULT OF A CALL from inside a
+ * nested block, which this engine's Lua does not carry out.
+ *
+ * MEASURED, in the game, and it cost days. The call happens and the block does
+ * not end: a run of the training spell showed its rule reaching its own last
+ * line — the kind and the count both written down, the army printed — and then
+ * the statement AFTER the `if` running as well. So the value the caller received
+ * was never the rule's answer; it was whatever the second `return` left behind,
+ * and it read as yes every time. A spell page stayed live over an army with
+ * nothing to train, and clicking it did nothing, because the rule inside was
+ * refusing honestly all along.
+ *
+ * THE GAME'S OWN SCRIPTS ARE THE SPECIFICATION and they are unambiguous: across
+ * 47 shipped scripts and 1096 functions they return a VALUE from a nested block
+ * 65 times and the result of a CALL exactly never. `tools/nested-returns.ts`
+ * counts it.
+ *
+ * Put the call in the CONDITION (`if f() == nil then return nil; end`) or in a
+ * local, and give the function one exit.
+ */
+const RETURN_CALL_NESTED =
+  'returning a call\'s result from inside a block — this Lua runs the call and then '
+  + 'falls through; assign it to a local and return once, at the end of the function';
 
 
 /**
@@ -186,6 +217,15 @@ export function luaDiagnostics(src: string): LuaDiagnostic[] {
       if (next && next.kind === 'punct' && next.text === ';') {
         out.push({ from: t.from, to: next.to, severity: 'error', message: RETURN_SEMICOLON });
       }
+      // `return f()` is only safe as the function's OWN last statement, so the
+      // innermost open block has to be the function itself.
+      const after = toks[at + 2];
+      const callsSomething = next?.kind === 'word' && !KEYWORDS.has(next.text)
+        && after?.kind === 'punct' && (after.text === '(' || after.text === '{');
+      const inner = blocks[blocks.length - 1];
+      if (callsSomething && inner && inner.word !== 'function') {
+        out.push({ from: t.from, to: after!.to, severity: 'error', message: RETURN_CALL_NESTED });
+      }
     }
     if (OPENERS.has(t.text) || t.text === 'repeat') {
       blocks.push({ word: t.text, from: t.from, to: t.to });
@@ -224,9 +264,14 @@ export function luaDiagnostics(src: string): LuaDiagnostic[] {
  * rather than a maybe.
  */
 const LUA_BUILTINS = new Set([
-  'print', 'type', 'next', 'error', 'format', 'sort',
-  'floor', 'ceil', 'abs', 'mod', 'min', 'max', 'sqrt', 'random',
-  'getglobal', 'setglobal',
+  // Called by the game's own shipped scripts, or measured in a run of ours —
+  // evidence rather than inference.
+  'print', 'abs', 'sqrt', 'random', 'length', 'floor',
+  // Only the executable's strings say these exist, which is exactly what was
+  // said about `type` and `format` before each failed in game. They stay here
+  // because we have no evidence AGAINST them either; if a script dies on one,
+  // move it down and write the date next to it.
+  'next', 'error', 'sort', 'ceil', 'mod', 'min', 'max', 'getglobal', 'setglobal',
 ]);
 
 /**
@@ -238,8 +283,16 @@ const LUA_BUILTINS = new Set([
  *
  * `dofile` earns its place twice over: the engine's own is `doFile`, capital F,
  * and the lowercase spelling every Lua tutorial uses silently does nothing.
+ *
+ * `type` AND `format` ARE HERE BECAUSE THE GAME SAID SO, 07.08.2026: "Value was
+ * NIL when getting global with name 'type'", and an hour later the same about
+ * `format`, from a script building a file path. Both were on the ALLOWED list,
+ * both for the same reason — the string is in the executable — which turns out
+ * to prove only that something MENTIONS the name, not that Lua can call it.
+ * Two measurements against one inference; the inference lost.
  */
 const ABSENT_BUILTINS = new Set([
+  'type', 'format',
   'tinsert', 'tremove', 'getn', 'setn', 'foreach', 'foreachi',
   'tostring', 'tonumber', 'strfind', 'strsub', 'strlen', 'gsub',
   'rawget', 'rawset', 'pairs', 'ipairs', 'pcall', 'assert', 'unpack',

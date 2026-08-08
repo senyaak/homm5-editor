@@ -7,6 +7,14 @@
 // ---------------------------------------------------------------------------
 // The first aid tent: the term a specialization of ours adds.
 
+/** Defined further down the unit, in lua/hero-specialization.c — the decorated
+ *  class name out of RTTI. Declared here because the tent asks it about the
+ *  hero it reaches, and that answer is what the adventure map's side needs. */
+static const char *class_name_of(void *obj);
+static void log_neighbourhood(void *obj, const char *what);
+/** A handful of battles' worth, not every tent action of every fight. */
+static int g_tentClassTraceLeft = 4;
+
 /**
  * The tent's amount, and what we add to it.
  *
@@ -136,6 +144,23 @@ static void __fastcall tent_amount_hook(int *amount, int *second, void *unit, in
   void *skills = hero ? hero_for_skills(hero) : NULL;
   tent_charges_term(unit, skills);
   void *self = hero ? hero_virtual_base(hero) : NULL;
+  // WHAT THESE TWO POINTERS ARE, once. The adventure map's side of the same
+  // question asks a hero found by name and gets nothing back, and the reason
+  // cannot be settled from that side alone: it needs to know whether the hero a
+  // BATTLE reaches is the same class, and whether the virtual base moves at all.
+  // Both are read from RTTI here, in the run that asks, and the whole point is
+  // that it costs one battle instead of one guess per launch.
+  // See native/lua/hero-specialization.c.
+  if (hero && g_tentClassTraceLeft > 0) {
+    g_tentClassTraceLeft--;
+    log_num("tent: the hero it reached (moved by ", (int)((BYTE *)self - (BYTE *)hero));
+    // BOTH SIDES IN ONE RUN. The battle's hero is the one the engine will answer
+    // about, so its dump is the key to the adventure map's: ask here which
+    // specialization it holds, find that number in these words, and the offset
+    // is known without a single guess.
+    log_text("      the battle's hero is ",
+             class_name_of(hero) ? class_name_of(hero) : "(no rtti)");
+  }
   int level = -1, add = 0, matched = -1;
   if (self) {
     void **vt = *(void ***)self;

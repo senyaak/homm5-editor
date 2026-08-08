@@ -74,6 +74,11 @@
 #include "qol/own-profile.c"
 #include "qol/quick-split.c"
 #include "core/call.c"
+#include "core/faults.c"
+#include "lua/values.c"
+#include "lua/hero-specialization.c"
+#include "lua/adv-cast.c"
+#include "ui/count-window.c"
 #include "qol/quick-split-gestures.c"
 #include "qol/stack-plates.c"
 #include "qol/combat-ai.c"
@@ -93,11 +98,27 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   DisableThreadLibraryCalls(self);
   find_our_dir(self);
   log_line("--- homm5-editor extension loaded");
+  // Before anything of ours runs: a fault inside the game is otherwise a module
+  // and an offset in the Windows event log, and working back from that costs a
+  // launch each time. This changes nothing about the crash — it writes down the
+  // registers and the return addresses first.
+  install_fault_report(self);
   load_config();
   if (g_rowCount || g_skillRowCount) install_hooks();
   // Independent of the config: the functions are ours to offer whether or not
   // any artifact asks for a bonus, and a script that calls one is a different
   // user from an artifact that carries one.
+  //
+  // Rows first, then the copy: what a feature further down the file adds to the
+  // table has to be in it before the engine is handed the table.
+  install_count_window();
+  install_hero_specialization();
+  // BEFORE the table is copied, not after: this adds a row of its own
+  // (H5EAnswer, which is how a script's verdict comes back), and a row added
+  // after the copy is a function the game's Lua has never heard of. The map
+  // said so in as many words — "Value was NIL when getting global with name
+  // 'H5EAnswer'".
+  install_adv_cast();
   install_lua_functions();
   // The same argument, one context over — and the one thing here that a battle
   // has to answer for itself, so it says what it saw whether or not anything

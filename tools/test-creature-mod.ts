@@ -24,6 +24,7 @@ import { buildCreatureMod, creaturePaths } from '../src/mods/creature-mod.ts';
 import { addCreature, creatureLimit, newCreatureMod } from '../src/mods/mod-model.ts';
 import { packCreatureMod, readCreatureModBuffer, writeCreatureMod } from '../src/mods/mod-archive.ts';
 import { dataPath } from '../src/mods/mod-art.ts';
+import { SHARPSHOOTER_LUA, TRAINABLE, questionFor } from '../src/mods/sharpshooter-training.ts';
 import { MOD_MANIFEST, dataReader } from '../src/mods/mod-files.ts';
 import { assets } from '../src/game/assets.ts';
 import { Registry, raiseTable } from '../src/schema/registry.ts';
@@ -456,6 +457,28 @@ if (!existsSync(join(dataRoot, 'types.xml'))) {
   const realBuilt = buildCreatureMod(real, read);
   const realFiles = byPath(realBuilt.files);
   check('the ceiling is the shipped count plus one', realBuilt.limit === SHIPPED_CREATURES + 1);
+  // THE SPELL'S SCRIPT RIDES WITH THE CREATURE IT TRAINS INTO — which is the
+  // whole point of the change: until this, it reached the game through a tool
+  // run by hand, so nobody who rebuilt the mod got it.
+  {
+    const trained = newCreatureMod();
+    addCreature(trained, {
+      id: SHARPSHOOTER_LUA,
+      file: 'TrainedSharpshooter',
+      name: 'Снайперы', description: 'test', abilitiesText: 'Shooter',
+      stats: { ...blankStats(), attack: 12, shots: 32, range: -1, tier: 4, gold: 400 },
+      visualSource: 'GameMechanics/CreatureVisual/Creatures/Preserve/3rd/SharpShooter.(CreatureVisual).xdb',
+      monsterSource: 'MapObjects/Preserve/Alt_upgrade/Sharpshooter.(AdvMapMonsterShared).xdb',
+    });
+    const files = byPath(buildCreatureMod(trained, read).files);
+    const lua = files.get('scripts/advmap-common.lua')?.toString('latin1') ?? '';
+    check('a mod with it carries the spell\'s two hooks', lua.includes('function checkSpellCastable(spell)')
+      && lua.includes('function onSpellCast(spell)'));
+    check('and the game\'s own 73 lines are still in front of them',
+      lua.includes('function') && lua.indexOf('homm5-editor') > 200);
+    check('and a question per trainable kind',
+      TRAINABLE.every((t) => files.has(questionFor(t.id))));
+  }
   check('the art came across whole', (realBuilt.art[rc.id] ?? 0) > 20, `${realBuilt.art[rc.id]} files`);
   check('the icon it borrowed is a real texture',
     dataPath(rc.from.icon).endsWith('.xdb') && read(dataPath(rc.from.icon)) !== null, rc.from.icon);
