@@ -1,6 +1,35 @@
 # SLICE — a spell of ours resolves ITSELF
 
-> **Status: two runs, 08.08.2026. The numbers are right; the entry was not.**
+> **Status: THE DAMAGE LANDS, 08.08.2026 (run 3). The visual does not yet.**
+>
+> Calling the applier per stack was the fix. Eight… seven stacks, twenty each,
+> and in game the creatures die.
+>
+> **And the probe answered the question the reading could not.** `creatures
+> before 200` / `creatures after 200` — the count does NOT change while `Resolve`
+> runs, and the damage lands all the same. So nothing inside `Resolve` writes:
+> the cast builds a CHAIN of events and the CALLER plays it, `edi->vt[0x110]
+> (chain, 0)` at `0xB7B3FF`. The `CCombatEventLog` entry an applier builds per
+> stack is how the damage travels, which is why one entry for the whole cast, in
+> the caster's name, did nothing at all.
+>
+> That is measured, not inferred, and it took asking the stack rather than
+> reading one more function.
+>
+> **What is still missing: the visual.** Both shipped branches play it per stack
+> and we did not. Now added, read out of the single-target branch:
+> `SpellVisual(spell, which)` (`0xAD5050`, `ret`, so `ecx`/`edx` are the whole
+> signature — the three pushes at the call site belong to the NEXT call) and
+> `unit->vt[0x280](chain, visual, 0, 0, 1)`, both behind `combat->vt[0x108]()`,
+> which is how a battle nobody watches costs nothing.
+>
+> The document's `visuals` are asked for by index — the mass routine takes `1`,
+> the single-target branch `0` — and an index past the end answers NULL, so ours
+> asks for the second and falls back to the first.
+>
+> ---
+>
+> **Runs 1–2. The numbers were right; the entry was not.**
 >
 > **Run 2 (after the accounting fix).** `the whole cast came to 160` — eight
 > stacks, twenty each, exactly as it should read. And still nothing happened to

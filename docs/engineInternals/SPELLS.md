@@ -206,18 +206,52 @@ Every shipped branch adds it to the damage it already had — `mov [esp+20h],eax
 / `call` / `add ecx,eax` / `sete [esp+13h]` — and so does ours. **A cast's total
 is `damage + extra` per stack**, and that total is the "did nothing" byte.
 
-**And NOTHING above this line changes anything a player can see.** The worth is
-arithmetic, `0xB7D030` returns a number, `0xB75C10` writes a line and a floating
-figure. What the battle plays back is the ENTRY an applier builds, and it is
-built **once per stack**, with that stack and that stack's amount: the mass
-routine's call sits inside its loop (`mov edx,edi` — its loop variable — at
-`0xD61152`), and so does the area routine's. Inside `0xBD1980` the unit and the
-amount go into a payload (`edi->vt[8]()` for the combat, then a virtual that
-builds it) and `0xC4B050` makes the entry out of that.
+## A cast changes nothing. It builds a CHAIN, and the caller plays it
 
-Called once after the loop with a cast's TOTAL and the caster, every number in
-the log is right and not one stack loses anything — measured 08.08.2026, eight
-stacks dealt twenty apiece and a total of 160 that nobody paid.
+This is the piece that cost three runs, and it is measured rather than read.
+
+**Nothing inside `Resolve` writes.** Six functions followed to their `ret`: the
+worth is arithmetic; `0xB861A0` ends `mov eax,edi / ret 8`; `0xB7D030` returns
+`esi`; `0xB75C10` writes a combat log line and a floating figure; and the
+sixty-byte object the appliers build is, by its own RTTI, **`CCombatEventLog`**.
+
+**The probe settled it.** Asking the stack itself — `vt+0x1D8`, the creature
+count the engine's own `0xB57310` clamps against — gives `before 200` and
+`after 200` around our whole cast, **and the creatures still die**. So the cast
+produces EVENTS and the caller applies them: `Resolve` returns the chain in
+`edi`, and its caller hands it straight on —
+
+```
+0xB7B3F3  call 0xB7EA00              ; Resolve → eax, the chain
+0xB7B3FE  push eax
+0xB7B3FF  call dword ptr [edx+110h]  ; and there it is played
+```
+
+`CCombatEventHit`, `CCombatEventDeath`, `CCombatEventFlyingNumber`,
+`CCombatEventSpell` — the battle is a stream of these, and a spell's damage
+rides in the entry an applier builds.
+
+**Which is why the entry is per STACK.** The mass routine's applier call sits
+inside its loop (`mov edx,edi` — its loop variable — at `0xD61152`), and so does
+the area routine's. One entry for the whole cast, in the caster's name, is a
+cast whose every logged number is right and which nobody pays for — measured
+08.08.2026, eight stacks dealt twenty apiece and a total of 160 that changed
+nothing.
+
+**And the visual is per stack too**, played before the entry:
+
+```
+combat->vt[0x108]()           ; a yes means this battle wants no visuals at all
+SpellVisual(spell, which)     ; 0xAD5050, `ret` — ecx and edx are the WHOLE
+                              ; signature; the pushes at the call site belong
+                              ; to the next call. Index into the document's
+                              ; `visuals`; past the end answers NULL.
+unit->vt[0x280](chain, visual, 0, 0, 1)     ; the stack plays it, chain grows
+```
+
+The mass routine asks for visual `1` and the single-target branch for `0`, so a
+document's `visuals` are authored in that order; ours asks for the second and
+falls back to the first.
 
 `0xD60C30`, the mass-damage routine the Armageddon branch calls, is **no longer
 used by us at all**. It is worth keeping the reading of it, because it is what

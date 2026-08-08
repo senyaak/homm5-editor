@@ -247,6 +247,48 @@ typedef void(__cdecl *FreeFn)(void *block);
 static FreeFn g_free = NULL;
 
 /**
+ * `SpellVisual(spell, which)` — one entry of the document's `visuals` list.
+ *
+ * `ret` with nothing to clean, so `ecx` and `edx` are the whole signature: the
+ * spell id and WHICH visual. Inside, the record's `+0xDC`/`+0xE0` are the
+ * vector's begin and end, eight bytes an entry (`sar eax,3`), and an index past
+ * the end answers NULL — which is what makes asking for the second one and
+ * falling back to the first honest rather than hopeful.
+ *
+ * The engine asks for `0` from its single-target branch and `1` from its mass
+ * routine, so the list is authored in that order and a spell may have only one.
+ *
+ * Three pushes sit between this call and the next at the shipped site, and they
+ * belong to the NEXT call, not this one — the `ret` says so. Reading them as
+ * this function's arguments is exactly the mistake that drops battles.
+ */
+#define SPELL_VISUAL_RVA 0x6d5050u
+#define SPELL_VISUAL_HEAD_LEN 4
+static const BYTE SPELL_VISUAL_HEAD[SPELL_VISUAL_HEAD_LEN] = {
+  0x53, 0x57, 0x8B, 0xDA                                      // push ebx / push edi / mov ebx,edx
+};
+typedef void *(__fastcall *SpellVisualFn)(int spell, int which);
+static SpellVisualFn g_spellVisual = NULL;
+
+/**
+ * `CCombatUnit::Play(chain, visual, …)` — vtable `+0x280`.
+ *
+ * The stack plays the spell's visual on itself and hands back a longer chain.
+ * Five stack arguments, counted at the shipped single-target site, which is the
+ * resolver's own frame: `push 1 / push 0 / push 0 / push eax / push edi`, so
+ * `(chain, visual, 0, 0, 1)` lowest first, with the STACK as `this`.
+ *
+ * Both shipped branches ask the combat first — `combat->vt[0x108]()`, and a yes
+ * means skip every visual. That is how a battle the player is not watching (an
+ * autofight, a replay) costs nothing, and ours asks it the same way.
+ */
+#define UNIT_PLAY_SLOT 0x280u
+#define COMBAT_NO_VISUALS_SLOT 0x108u
+typedef void *(__thiscall *UnitPlayFn)(void *unit, void *chain, void *visual, int zeroA,
+                                       int zeroB, int one);
+typedef BYTE(__thiscall *NoVisualsFn)(void *combat);
+
+/**
  * HOW MANY CREATURES ARE STILL IN THAT STACK — vtable `+0x1D8`.
  *
  * A probe, and it is here because reading the code stopped answering. Six
@@ -450,6 +492,12 @@ static char __cdecl our_cast(void *cast, void *chain, void *whatResolveWasGiven)
   SpellRow *row = spell_row(spell);
   if (!row) log_line("   no row of its own — it passes over nobody");
 
+  // Asked once, not per stack: a battle nobody is watching says so about itself,
+  // not about a target. Both shipped branches ask it before every visual.
+  NoVisualsFn quiet = (NoVisualsFn)slot_of(combat, COMBAT_NO_VISUALS_SLOT);
+  int noVisuals = quiet && quiet(combat);
+  if (noVisuals) log_line("   the battle wants no visuals — none will be played");
+
   int total = 0;
   for (int i = 0; i < count; i++) {
     void *unit = targets[i];
@@ -476,6 +524,19 @@ static char __cdecl our_cast(void *cast, void *chain, void *whatResolveWasGiven)
     // dealt twenty apiece, and the cast then called itself a spell that did
     // nothing.
     total += dealt + extra;
+
+    // THE VISUAL, PER STACK, and before the entry — the order the mass routine
+    // uses. The document's `visuals` list is authored second-then-first: the
+    // engine asks its mass routine for `1` and its single-target branch for `0`,
+    // and a spell may carry only one, so ask for the second and fall back.
+    if (!noVisuals && g_spellVisual) {
+      void *visual = g_spellVisual(spell, 1);
+      if (!visual) visual = g_spellVisual(spell, 0);
+      UnitPlayFn play = (UnitPlayFn)slot_of(unit, UNIT_PLAY_SLOT);
+      if (!visual) log_line("      the document names no visual for it");
+      else if (!play) log_line("      the stack cannot be asked to play one");
+      else chain = play(unit, chain, visual, 0, 0, 1);
+    }
 
     // AND THE ENTRY, PER STACK — which is the whole of "the numbers are right
     // and nothing happens". The entry an applier builds is what the battle
@@ -594,6 +655,8 @@ static void install_our_resolver(void) {
                                          TELL_ABOUT_HEAD_LEN, "the line a hit stack gets");
   g_plainApplier = (PlainApplierFn)engine_code(PLAIN_APPLIER_RVA, PLAIN_APPLIER_HEAD,
                                                PLAIN_APPLIER_HEAD_LEN, "the entry a cast leaves");
+  g_spellVisual = (SpellVisualFn)engine_code(SPELL_VISUAL_RVA, SPELL_VISUAL_HEAD,
+                                             SPELL_VISUAL_HEAD_LEN, "a spell's visual");
   g_free = (FreeFn)engine_code(FREE_RVA, FREE_HEAD, FREE_HEAD_LEN, "the allocator's free");
   BYTE *exit = engine_code(SPELL_EXIT_RVA, SPELL_EXIT_MARK, SPELL_EXIT_MARK_LEN,
                            "the way out of the resolver");
