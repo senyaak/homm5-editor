@@ -178,7 +178,7 @@ own entry point** with the arity taken from its `ret`:
 | the loop, and the running total | `0xB7CE70` what the spell is worth (`ret 0Ch`) |
 | the "did nothing" byte, from the total | `0xB7D030` what it does to one stack (`ret 18h`) |
 | | `0xB75C10` the **combat log line**, the floating number, and what a vulnerability ADDS (`ret 10h`) |
-| | `0xBD1980` the entry the battle shows (`ret 10h`) |
+| | `0xBD1980` **one stack's** entry — what the battle plays back (`ret 10h`) |
 
 `0xB7D030` and `0xB75C10` have twenty-one and fourteen callers of the engine's
 own; neither belongs to a spell. Between them sits `0xB861A0`, which is where
@@ -204,8 +204,20 @@ extra = damage * (it - 1)             ; only the SURPLUS
 
 Every shipped branch adds it to the damage it already had — `mov [esp+20h],eax`
 / `call` / `add ecx,eax` / `sete [esp+13h]` — and so does ours. **A cast's total
-is `damage + extra` per stack**, and that total is the "did nothing" byte and the
-gate on the entry.
+is `damage + extra` per stack**, and that total is the "did nothing" byte.
+
+**And NOTHING above this line changes anything a player can see.** The worth is
+arithmetic, `0xB7D030` returns a number, `0xB75C10` writes a line and a floating
+figure. What the battle plays back is the ENTRY an applier builds, and it is
+built **once per stack**, with that stack and that stack's amount: the mass
+routine's call sits inside its loop (`mov edx,edi` — its loop variable — at
+`0xD61152`), and so does the area routine's. Inside `0xBD1980` the unit and the
+amount go into a payload (`edi->vt[8]()` for the combat, then a virtual that
+builds it) and `0xC4B050` makes the entry out of that.
+
+Called once after the loop with a cast's TOTAL and the caster, every number in
+the log is right and not one stack loses anything — measured 08.08.2026, eight
+stacks dealt twenty apiece and a total of 160 that nobody paid.
 
 `0xD60C30`, the mass-damage routine the Armageddon branch calls, is **no longer
 used by us at all**. It is worth keeping the reading of it, because it is what

@@ -1,6 +1,28 @@
 # SLICE — a spell of ours resolves ITSELF
 
-> **Status: run once, 08.08.2026 — the path works, the accounting did not.**
+> **Status: two runs, 08.08.2026. The numbers are right; the entry was not.**
+>
+> **Run 2 (after the accounting fix).** `the whole cast came to 160` — eight
+> stacks, twenty each, exactly as it should read. And still nothing happened to
+> anybody.
+>
+> **Why.** Nothing before the APPLIER changes anything a player can see: the
+> worth is arithmetic, `0xB7D030` returns a number, `0xB75C10` writes a line and
+> a floating figure. What the battle plays back is the entry `0xBD1980` builds —
+> and it is built **once per stack**, with that stack and that stack's amount.
+> The mass routine's call sits inside its loop (`mov edx,edi`, its loop variable,
+> `0xD61152`); so does the area routine's. Ours called it once AFTER the loop
+> with the cast's total and the caster: one entry, wrong amount, wrong unit, and
+> eight stacks that had each been dealt twenty lost nothing.
+>
+> Fixed: the applier is called inside the loop, per stack, threading the chain.
+> **Still an inference until the next run** — what would confirm it is creatures
+> dying; what would refute it is the same "came to 160" with nothing lost again,
+> which would mean the entry is not where the damage rides.
+>
+> ---
+>
+> **Run 1 — the path works, the accounting did not.**
 >
 > **What the run proved.** Casting *Unholy Word* no longer crashes: the resolver
 > logged `[resolver] the game's own, spell id 21`, handed the cast back to the

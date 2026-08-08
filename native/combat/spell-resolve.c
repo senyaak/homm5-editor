@@ -193,12 +193,19 @@ typedef int(__fastcall *TellAboutFn)(void *chain, int damage, void *caster, void
 static TellAboutFn g_tellAbout = NULL;
 
 /**
- * `CCombatEffect::Show(damage, chain, spell, …)` — the cast's own entry.
+ * `CCombatEffect::Show(damage, chain, spell, …)` — ONE STACK'S entry.
  *
- * `ret 10h`. What the damage above does not do: it builds the sixty-byte object
- * the battle shows and links it into the CHAIN — the list of entries the resolver
- * itself returns — so without this a spell of ours hurts and logs and appears not
- * to have happened. Every damage branch of the resolver ends in one of these.
+ * `ret 10h`. This is what the damage above does not do: it builds the sixty-byte
+ * object the battle plays back and links it into the CHAIN, the list the resolver
+ * itself returns. Nothing before it has changed anything a player can see, which
+ * is why a cast that skips it computes every number correctly and does nothing.
+ *
+ * PER STACK, and that was learned the expensive way. It is called once for EACH
+ * unit, with that unit as `edx` and that unit's amount — the mass routine's call
+ * sits INSIDE its loop (`mov edx,edi`, its loop variable, at `0xD61152`), and so
+ * does the area routine's. Ours called it once after the loop, with the cast's
+ * total and the caster, and eight stacks that had each been dealt twenty lost
+ * nothing at all. The numbers in the log were right the whole time.
  *
  * THIS IS THE ELEMENT-LESS ONE, and that is a known gap rather than a choice.
  * There are four appliers, three of them an element each (fire `0xBD1420`, water
@@ -221,7 +228,7 @@ static const BYTE PLAIN_APPLIER_HEAD[PLAIN_APPLIER_HEAD_LEN] = {
   0x8B, 0xFA,                                                 // mov edi,edx
   0x89, 0x4C, 0x24                                            // mov [esp+4],ecx
 };
-typedef void *(__fastcall *PlainApplierFn)(void *caster, void *around, int damage, void *chain,
+typedef void *(__fastcall *PlainApplierFn)(void *caster, void *unit, int damage, void *chain,
                                            int spell, void *whatResolveWasGiven);
 static PlainApplierFn g_plainApplier = NULL;
 
@@ -443,25 +450,22 @@ static char __cdecl our_cast(void *cast, void *chain, void *whatResolveWasGiven)
     // BOTH, the way every shipped branch does it — `add ecx,eax` on the damage
     // it already had. Counting only the second gave eight zeroes on a cast that
     // dealt twenty apiece, and the cast then called itself a spell that did
-    // nothing. That was the whole of "our spell does not work".
+    // nothing.
     total += dealt + extra;
-  }
-  log_num("   the whole cast came to ", total);
 
-  // AND THE ENTRY THE BATTLE SHOWS. Without it a spell of ours hurts and writes
-  // its lines and looks as though nothing happened.
-  //
-  // `around` is what the shipped single-target branch hands it — the stack aimed
-  // at, `+0x18`. A whole-field cast aims at nobody, and there the CASTER is
-  // handed over instead: both answer the vtable slot the applier asks (`+8`, the
-  // combat), so the call is safe either way. ASSUMED, not measured: that the
-  // entry is placed where that object is. What would disprove it is a whole-field
-  // cast of ours whose effect appears on the caster instead of over the field.
-  if (g_plainApplier && total > 0) {
-    void *around = *(void **)((BYTE *)cast + CAST_TARGET);
-    if (!around || !handle_is_live(around)) around = caster;
-    g_castChain = g_plainApplier(caster, around, total, chain, spell, whatResolveWasGiven);
+    // AND THE ENTRY, PER STACK — which is the whole of "the numbers are right
+    // and nothing happens". The entry an applier builds is what the battle
+    // plays back, and it carries ONE stack's damage: the mass routine calls the
+    // applier INSIDE its loop with `mov edx,edi`, its loop variable, and this
+    // stack's amount. Called once afterwards with the cast's total it names the
+    // wrong amount for the wrong unit, and eight stacks lose nothing.
+    if (g_plainApplier) {
+      chain = g_plainApplier(caster, unit, dealt + extra, chain, spell, whatResolveWasGiven);
+      log_hex("      the entry left behind ", (DWORD)(INT_PTR)chain);
+    }
   }
+  g_castChain = chain;
+  log_num("   the whole cast came to ", total);
 
   // The byte the engine calls "this spell did nothing" — and the Payback perk
   // reads it as a resisted spell, so it has to be honest. See qol/fix-payback.c.
