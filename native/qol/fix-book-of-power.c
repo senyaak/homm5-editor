@@ -4,6 +4,10 @@
 // piece in order, so everything included before this file is visible here and
 // nothing after it is. Statics stay statics; nothing here is a module.
 
+/** Which switch turns this file's logging on — see the bottom of core/log.c. */
+#undef LOG_UNIT
+#define LOG_UNIT qol_fix_book_of_power
+
 // ---------------------------------------------------------------------------
 // WHAT IS WRONG. One function applies an artifact to a hero and takes it off
 // again (`0xC2EE80`). Its main path walks the six primary stats in order —

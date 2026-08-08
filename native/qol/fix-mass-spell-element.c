@@ -15,6 +15,10 @@
 // which is not a reason. Nothing of our own spells' rides on it any more: they
 // are resolved in combat/spell-resolve.c, which picks its own applier.
 
+/** Which switch turns this file's logging on — see the bottom of core/log.c. */
+#undef LOG_UNIT
+#define LOG_UNIT qol_fix_mass_spell_element
+
 // ---------------------------------------------------------------------------
 // AND THE FIFTH SWITCH: WHOSE ELEMENT THE DAMAGE IS DEALT IN.
 //

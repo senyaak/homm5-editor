@@ -25,6 +25,10 @@
 // Neither is a fix: both turn a crash into a line in the log, and the line names
 // the caller so the real cause stays findable. See docs/engineInternals/SPELLS.md.
 
+/** Which switch turns this file's logging on — see the bottom of core/log.c. */
+#undef LOG_UNIT
+#define LOG_UNIT combat_spell_record
+
 /**
  * The first id that can only be ours.
  *

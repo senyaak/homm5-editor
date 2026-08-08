@@ -68,6 +68,10 @@
 // verdict, every time — the session's own banner ("--- homm5-editor extension
 // loaded") is where one run ends and the next begins.
 
+/** Which switch turns this file's logging on — see the bottom of core/log.c. */
+#undef LOG_UNIT
+#define LOG_UNIT combat_spell_cast
+
 // ---------------------------------------------------------------------------
 // ONE STEP EARLIER, because the first run came back with nothing.
 //

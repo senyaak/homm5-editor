@@ -4,6 +4,10 @@
 // piece in order, so everything included before this file is visible here and
 // nothing after it is. Statics stay statics; nothing here is a module.
 
+/** Which switch turns this file's logging on — see the bottom of core/log.c. */
+#undef LOG_UNIT
+#define LOG_UNIT core_call
+
 /** An address we mean to CALL rather than hook — checked against the bytes it
  *  was measured by, because calling the wrong function is a crash with no
  *  explanation, and the byte check is the explanation. */

@@ -61,4 +61,4 @@ if (!added) {
   console.log(`patched ${exe}: import added in a new section at 0x${(rva ?? 0).toString(16)}`);
 }
 console.log(`  now imports ${imports(readFileSync(exe)).length} libraries`);
-console.log('\nLaunch H5_Game_H5E.exe. bin/homm5-editor.log says whether it loaded.');
+console.log('\nLaunch H5_Game_H5E.exe. The newest bin/homm5-editor-*.log says whether it loaded.');

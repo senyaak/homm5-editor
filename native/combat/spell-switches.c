@@ -29,6 +29,10 @@
 // mod's row, or a person could never express it in the editor for a spell of
 // their own. That rule is Senya's and it has been applied twice against me.
 
+/** Which switch turns this file's logging on — see the bottom of core/log.c. */
+#undef LOG_UNIT
+#define LOG_UNIT combat_spell_switches
+
 // ---------------------------------------------------------------------------
 // AND THE SECOND DISPATCH, WHICH IS WHERE THE FIRST RUN STOPPED.
 //

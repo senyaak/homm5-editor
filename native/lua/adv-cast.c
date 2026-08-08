@@ -7,6 +7,10 @@
 // It sits after `lua/hero-specialization.c` because it needs the same thing
 // that file already knows how to fetch: the adventure map itself.
 
+/** Which switch turns this file's logging on — see the bottom of core/log.c. */
+#undef LOG_UNIT
+#define LOG_UNIT lua_adv_cast
+
 // ---------------------------------------------------------------------------
 // THE GATE, and the one line of it that greys a page out.
 //

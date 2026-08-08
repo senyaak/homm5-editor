@@ -101,11 +101,28 @@
 #include "qol/fix-master-of-fire.c"
 #include "qol/fix-imbue-ballista.c"
 
+/**
+ * Which switch turns this file's logging on — see the bottom of core/log.c.
+ *
+ * AFTER the includes, not with the others at the top: every file above sets
+ * `LOG_UNIT` to its own name as it is spliced in, so a definition before them
+ * would be overwritten forty-five times and what follows would log under
+ * whichever file happened to be last in the list.
+ *
+ * What logs here is the roll-call below — which hooks went in and which did
+ * not. It is the answer to "did the mod load at all", so a build that says
+ * nothing else should still say this: `--log homm5-editor` is on by default.
+ */
+#undef LOG_UNIT
+#define LOG_UNIT homm5_editor
+
 BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   (void)reserved;
   if (reason != DLL_PROCESS_ATTACH) return TRUE;
   DisableThreadLibraryCalls(self);
   find_our_dir(self);
+  // Before the first line: which file this run writes to, and room for it.
+  start_this_run_log();
   log_line("--- homm5-editor extension loaded");
   // Before anything of ours runs: a fault inside the game is otherwise a module
   // and an offset in the Windows event log, and working back from that costs a

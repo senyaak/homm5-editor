@@ -4,11 +4,20 @@
 // piece in order, so everything included before this file is visible here and
 // nothing after it is. Statics stay statics; nothing here is a module.
 
+/** Which switch turns this file's logging on — see the bottom of core/log.c. */
+#undef LOG_UNIT
+#define LOG_UNIT core_text
+
 // ---------------------------------------------------------------------------
 // Small helpers, since there is no CRT.
 
-/** Append text to the log beside the DLL. Silent if it cannot. */
-static void log_line(const char *text);
+/**
+ * Append text to the log beside the DLL. Silent if it cannot.
+ *
+ * The bare function, not the gated `log_line` macro — that one is only defined
+ * from the bottom of core/log.c down, and this file is spliced in above it.
+ */
+static void log_line_now(const char *text);
 /** Whether `n` bytes at `p` can be read without taking the process down. */
 static int readable(const void *p, SIZE_T n);
 /** Whether an address is inside the executable's code — a wrong slot is not called. */

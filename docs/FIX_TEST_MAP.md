@@ -331,7 +331,7 @@ bug here", and on this fix it very nearly ended in the switch being deleted. The
 off run is the only half that can see the bug at all.
 
 The lines, when they come, are in the battle console and in
-`bin/homm5-editor.log`, in thousandths (`3600` is `3.6`):
+the newest `bin/homm5-editor-*.log`, in thousandths (`3600` is `3.6`):
 
 - `the cast moved the hero's turn to …` / `put back where it was, …` — a shot
   where the fix did something;
@@ -402,7 +402,7 @@ open the book, and look before clicking:
    what chooses the shape; if the area one asks where to aim and then hits
    nothing, the tiles did not reach the extension.
 
-**Then send the log.** `bin/homm5-editor.log` has a line per cast and, for ours,
+**Then send the log.** The newest `bin/homm5-editor-*.log` has a line per cast and, for ours,
 a line per stack it was asked about:
 
 ```

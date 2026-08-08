@@ -4,6 +4,10 @@
 // piece in order, so everything included before this file is visible here and
 // nothing after it is. Statics stay statics; nothing here is a module.
 
+/** Which switch turns this file's logging on — see the bottom of core/log.c. */
+#undef LOG_UNIT
+#define LOG_UNIT qol_fix_barbarian_learning
+
 // ---------------------------------------------------------------------------
 // WHAT IS WRONG. One switch over skill ids undoes what a skill granted, and it
 // has a case for HERO_SKILL_LEARNING (3) — the one case in the whole table used

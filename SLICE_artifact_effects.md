@@ -323,6 +323,6 @@ pieces, because the game shows only the entry for the count worn and nothing
 accumulates across them. The Dragonish set does the same.
 
 6.8. **How to check anything here.** The extension logs beside itself
-(`bin/homm5-editor.log`): what it loaded, what the config said, and for the
+(the newest `bin/homm5-editor-*.log`): what it loaded, what the config said, and for the
 first two dozen calls what it saw and what it added. That log settled every
 question so far faster than reasoning did.

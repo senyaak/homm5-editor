@@ -50,6 +50,7 @@
     "test-qol": "node tools/test-qol.ts",
     "test-controller-slots": "node tools/test-controller-slots.ts",
     "test-native-anchors": "node tools/test-native-anchors.ts",
+    "test-native-log": "node tools/test-native-log.ts",
     "test-training-plan": "node tools/test-training-plan.ts",
     "test-script-api": "node tools/test-script-api.ts",
     "test-fixes": "node tools/test-fixes.ts",

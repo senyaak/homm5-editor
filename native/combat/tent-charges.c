@@ -4,6 +4,10 @@
 // piece in order, so everything included before this file is visible here and
 // nothing after it is. Statics stay statics; nothing here is a module.
 
+/** Which switch turns this file's logging on — see the bottom of core/log.c. */
+#undef LOG_UNIT
+#define LOG_UNIT combat_tent_charges
+
 // ---------------------------------------------------------------------------
 // A PROBE, and nothing else: where the first aid tent's charges come from.
 //

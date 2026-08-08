@@ -56,6 +56,10 @@
 // them from the spell's own row — so an area spell of ours needs no tile-to-unit
 // lookup here. It walks a list the engine built to our shape.
 
+/** Which switch turns this file's logging on — see the bottom of core/log.c. */
+#undef LOG_UNIT
+#define LOG_UNIT combat_spell_resolve
+
 #define CAST_SPELL 0x04u
 #define CAST_CASTER 0x14u
 #define CAST_TARGET 0x18u

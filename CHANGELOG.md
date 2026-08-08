@@ -15,6 +15,33 @@ one.
 
 ### Added
 
+- **The extension logs only the file you asked about, and each launch writes its
+  own file.** Every one of the mod's forty-five sources now carries its own
+  switch, and a build cuts out the rest:
+
+  ```
+  npm run build-native -- --log combat/spell-resolve,lua/battle
+  npm run build-native -- --list-log
+  npm run build-native -- --log none
+  ```
+
+  What was wrong: all 395 places logged, always. A single spell cast wrote some
+  fifteen lines per stack on the field, each one opening and closing the file
+  and — in a battle — also being spoken into the game's own console through its
+  Lua interpreter. The game stuttered, sometimes stopped, and the log itself was
+  unreadable: hundreds of lines about everything at once, appended to the same
+  file every launch since the mod was installed, with nothing marking where one
+  run ended and the next began.
+
+  Now the file is named for the moment the run started
+  (`bin/homm5-editor-20260808-143012.log`, the last ten kept), and a build says
+  only what it was asked to. It is the preprocessor doing the cutting, so a file
+  nobody named leaves nothing behind at all — not the call and not the sentence.
+  `--log none` builds a DLL with no logging in it whatsoever; without it, two
+  things still speak, because they are how anybody learns the mod is there and
+  what it did when it stopped: the roll-call of which hooks installed, and the
+  crash report.
+
 - **A specialization can give an ABILITY, not only a number.** Pick a spell of
   the mod's in the Ability box, and every hero holding that specialization knows
   it — beside whatever he already knew, on every map, whoever he is and however

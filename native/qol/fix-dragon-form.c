@@ -4,6 +4,10 @@
 // piece in order, so everything included before this file is visible here and
 // nothing after it is. Statics stay statics; nothing here is a module.
 
+/** Which switch turns this file's logging on — see the bottom of core/log.c. */
+#undef LOG_UNIT
+#define LOG_UNIT qol_fix_dragon_form
+
 // ---------------------------------------------------------------------------
 // WHAT IS WRONG. `IsDragon` (`0xABC9F0`) is asked one creature id and answers
 // from a table of four: Bone (41), Green (55), Deep (83) and Fire (104) — the

@@ -137,7 +137,8 @@ in game: `battle fires: H5EFire(4,353)` and then the script's own line in the
 log.
 
 **A script can log.** `print` reaches the game's console only; `H5ECombatTest()`
-is ours and lands in `bin/homm5-editor.log`, which is how "the script never
+is ours and lands in the run's log, `bin/homm5-editor-*.log` (`--log lua/battle`),
+which is how "the script never
 loaded" is told from "it ran quietly".
 
 ## Which creatures a spell may touch
