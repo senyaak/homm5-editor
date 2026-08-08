@@ -118,35 +118,39 @@ static int __fastcall on_cast_command(void *self, void *edx) {
       ? *(int *)((BYTE *)self + CAST_COMMAND_SPELL) : -1;
   if (spell >= FIRST_SPELL_OF_OURS) log_num("[cast command] OURS, spell id ", spell);
   else log_num("[cast command] the game's own, spell id ", spell);
-  // WHAT THE COMMAND IS MADE OF — and for the GAME'S OWN spells too, which is
-  // the point. Ours comes in with a caster and no target and returns zero; the
-  // only way to know whether that is the fault is to see what a spell that works
-  // brings with it. A comparison of two blocks says in one run what reading the
-  // function has not.
+  // WHAT THE COMMAND IS MADE OF — COMMENTED OUT rather than deleted, and worth
+  // keeping in the file because of what it bought: ours came in with a caster
+  // and no target and returned zero, and the only way to know whether that was
+  // the fault was to see what a spell that WORKS brings with it. A comparison of
+  // two blocks said in one run what reading the function had not. The fields it
+  // named are now written down in docs/engineInternals/SPELLS.md, so this is the
+  // way back to them rather than the only record of them.
+  //
+  // Uncomment the whole block to watch a command's insides again.
   int dump = readable_bytes(self, 0x3C) >= 0x3C;
-  if (dump) {
-    log_hex("   caster +0x20 ", *(DWORD *)((BYTE *)self + 0x20));
-    log_hex("   target +0x24 ", *(DWORD *)((BYTE *)self + 0x24));
-    log_hex("   +0x0C ", *(DWORD *)((BYTE *)self + 0x0C));
-    log_hex("   +0x14 ", *(DWORD *)((BYTE *)self + 0x14));
-    log_hex("   +0x18 ", *(DWORD *)((BYTE *)self + 0x18));
-    log_hex("   +0x28 ", *(DWORD *)((BYTE *)self + 0x28));
-    log_hex("   +0x30 ", *(DWORD *)((BYTE *)self + 0x30));
-    log_hex("   +0x38 ", *(DWORD *)((BYTE *)self + 0x38));
-    // The engine's own liveness test on the caster, done here rather than
-    // guessed at: Execute reads `[caster+4]`, then `[that+4]` as a displacement,
-    // and refuses when the int at `caster + displacement + 8` is negative. It is
-    // the second of the four early exits and the only one we cannot see from the
-    // block alone.
-    BYTE *caster = (BYTE *)*(DWORD *)((BYTE *)self + 0x20);
-    if (readable_bytes(caster, 8) >= 8) {
-      DWORD *shape = (DWORD *)*(DWORD *)(caster + 4);
-      DWORD at = readable_bytes(shape, 8) >= 8 ? shape[1] : 0xFFFFFFFFu;
-      if (at != 0xFFFFFFFFu && readable_bytes(caster + at, 12) >= 12) {
-        log_num("   the caster's life count ", *(int *)(caster + at + 8));
-      } else log_line("   the caster's life count cannot be read");
-    }
-  }
+  // if (dump) {
+  //   log_hex("   caster +0x20 ", *(DWORD *)((BYTE *)self + 0x20));
+  //   log_hex("   target +0x24 ", *(DWORD *)((BYTE *)self + 0x24));
+  //   log_hex("   +0x0C ", *(DWORD *)((BYTE *)self + 0x0C));
+  //   log_hex("   +0x14 ", *(DWORD *)((BYTE *)self + 0x14));
+  //   log_hex("   +0x18 ", *(DWORD *)((BYTE *)self + 0x18));
+  //   log_hex("   +0x28 ", *(DWORD *)((BYTE *)self + 0x28));
+  //   log_hex("   +0x30 ", *(DWORD *)((BYTE *)self + 0x30));
+  //   log_hex("   +0x38 ", *(DWORD *)((BYTE *)self + 0x38));
+  //   // The engine's own liveness test on the caster, done here rather than
+  //   // guessed at: Execute reads `[caster+4]`, then `[that+4]` as a
+  //   // displacement, and refuses when the int at `caster + displacement + 8` is
+  //   // negative. It is the second of the four early exits and the only one we
+  //   // cannot see from the block alone.
+  //   BYTE *caster = (BYTE *)*(DWORD *)((BYTE *)self + 0x20);
+  //   if (readable_bytes(caster, 8) >= 8) {
+  //     DWORD *shape = (DWORD *)*(DWORD *)(caster + 4);
+  //     DWORD at = readable_bytes(shape, 8) >= 8 ? shape[1] : 0xFFFFFFFFu;
+  //     if (at != 0xFFFFFFFFu && readable_bytes(caster + at, 12) >= 12) {
+  //       log_num("   the caster's life count ", *(int *)(caster + at + 8));
+  //     } else log_line("   the caster's life count cannot be read");
+  //   }
+  // }
   // The gate is asked from two places and only one of them is interesting: the
   // interface asks it for every target the pointer passes over — twelve times in
   // one battle, which is what ate the log budget and made the gate look as
@@ -220,22 +224,23 @@ static int __fastcall on_cast_gate(void *ecx, void *block, void *a1, void *a2, i
     log_line("   ours, and refused without a reason — answering for it: yes");
     answer = 1;
   }
-  // Every verdict, every time, ours and the game's alike — the budget that used
-  // to stand here is gone and the comment that described it went with it.
-  {
-    // WHERE THE QUESTION CAME FROM. In a battle the book asks this same routine
-    // before anything is pressed, so a verdict from the book and a verdict
-    // during a cast are different events and are named apart.
-    //
-    // THE ADVENTURE MAP'S BOOK DOES NOT COME THROUGH HERE — measured 07.08.2026:
-    // a run in which the book was opened on the map, on a hero holding a spell
-    // of ours, logged not one line of this. Whatever greys a page out there is
-    // another gate, and it is not found yet.
-    // "no command" is the honest name for the second one: the book asks it, so
-    // does the AI weighing a move and so does a tooltip, and this hook cannot
-    // tell those apart. It used to say "from the book", which reads like a
-    // person opened one.
-    log_line(g_inCastCommand ? "[gate] inside a cast command" : "[gate] no command — the book, the AI or a tooltip");
+  // EVERY verdict of a real cast, and none of the rest.
+  //
+  // WHERE THE QUESTION CAME FROM. In a battle the book asks this same routine
+  // before anything is pressed — and so does the AI weighing a move, and so does
+  // a tooltip for every target the pointer crosses. Those are QUESTIONS, and
+  // there were 4 465 of them in one battle against 24 casts. A cast is an event
+  // and still prints in full.
+  //
+  // THE ADVENTURE MAP'S BOOK DOES NOT COME THROUGH HERE — measured 07.08.2026:
+  // a run in which the book was opened on the map, on a hero holding a spell of
+  // ours, logged not one line of this. Whatever greys a page out there is another
+  // gate, and it is not found yet.
+  //
+  // To watch the walk again — which is what found that the gate refuses a spell
+  // of ours SILENTLY — drop the `if` and let both cases through.
+  if (g_inCastCommand) {
+    log_line("[gate] inside a cast command");
     log_num("   spell id ", spell);
     log_num("   the gate says ", answer & 0xFF);
     log_spell_record(spell);
@@ -389,23 +394,31 @@ static SpellDamageFn g_spellDamage = NULL;
 static int __fastcall on_spell_damage(int power, void *block, void *caster, void *target) {
   int spell = readable_bytes(block, SPELL_DAMAGE_SPELL + 4) >= SPELL_DAMAGE_SPELL + 4
       ? *(int *)((BYTE *)block + SPELL_DAMAGE_SPELL) : -1;
-  // EVERY call, and the block it read the number out of.
+  // EVERY call and the block it read the number out of — COMMENTED OUT rather
+  // than deleted, because it settled a real question and may have to settle
+  // another. Uncomment the block below to watch every call again.
   //
-  // A run in which the player cast Unholy Word — the game's own, number 21 —
-  // had this hook claim 171 hits for 353, ours, and no `[resolver] OURS` beside
-  // any of them. So either `+4` is not the spell here, or the number is real and
-  // arrives by a road the dispatch never sees. The block's first words and the
-  // caller's address tell those apart, and nothing else will.
-  log_num("[damage] one target, the block says spell id ", spell);
-  log_hex("   asked from ", (DWORD)(INT_PTR)__builtin_return_address(0));
-  log_hex("   the block  ", (DWORD)(INT_PTR)block);
-  if (readable_bytes(block, 16) >= 16) {
-    DWORD *w = (DWORD *)block;
-    log_hex("   block+0x00 ", w[0]);
-    log_hex("   block+0x04 ", w[1]);
-    log_hex("   block+0x08 ", w[2]);
-    log_hex("   block+0x0C ", w[3]);
-  }
+  // WHAT IT SETTLED. A run in which the player cast Unholy Word — the game's
+  // own, number 21 — had this hook claim 171 hits for 353, ours. Either `+4`
+  // was not the spell here, or the number was real and arrived by a road the
+  // dispatch never saw. The block's first words answered it: `block+0x04` IS
+  // the id, measured across 11, 12, 13, 14, 15, 18, 19, 21, 278 and 353 in one
+  // run. The "we misread the id" theory is dead; do not revive it.
+  //
+  // WHY IT IS OFF. This fires once per stack per cast and the game's own spells
+  // come through it too — 827 calls in one battle, seven lines each. What is
+  // left below speaks only for a spell of OURS, which is an event.
+  //
+  // log_num("[damage] one target, the block says spell id ", spell);
+  // log_hex("   asked from ", (DWORD)(INT_PTR)__builtin_return_address(0));
+  // log_hex("   the block  ", (DWORD)(INT_PTR)block);
+  // if (readable_bytes(block, 16) >= 16) {
+  //   DWORD *w = (DWORD *)block;
+  //   log_hex("   block+0x00 ", w[0]);
+  //   log_hex("   block+0x04 ", w[1]);
+  //   log_hex("   block+0x08 ", w[2]);
+  //   log_hex("   block+0x0C ", w[3]);
+  // }
   if (spell >= FIRST_SPELL_OF_OURS) {
     const SpellRow *row = spell_row(spell);
     log_num("[damage] treated as OURS, spell id ", spell);

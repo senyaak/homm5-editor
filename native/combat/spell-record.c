@@ -141,8 +141,12 @@ static SpellTextFn g_spellText = NULL;
 #define A_SPELL_THAT_EXISTS 1
 
 static void *__fastcall on_spell_text(void *out, int spell) {
-  log_num("[text] asked for the text of spell id ", spell);
-  log_hex("   asked from ", (DWORD)(INT_PTR)__builtin_return_address(0));
+  // The per-ask half of this probe, COMMENTED OUT rather than deleted — the
+  // question it answered ("is +0x44 a readable string") is answered, and what
+  // remains below is the SUBSTITUTION, which is a fix and stays. Uncomment these
+  // two and the three field words below to watch every ask again.
+  // log_num("[text] asked for the text of spell id ", spell);
+  // log_hex("   asked from ", (DWORD)(INT_PTR)__builtin_return_address(0));
   void *record = g_spellRecord ? g_spellRecord(spell) : NULL;
   if (!record) {
     // TWO WRONG ANSWERS BEFORE THIS ONE, both measured, both worth keeping:
@@ -164,9 +168,11 @@ static void *__fastcall on_spell_text(void *out, int spell) {
     log_line("   the record does not read that far");
   } else {
     DWORD *field = (DWORD *)((BYTE *)record + SPELL_TEXT_FIELD);
-    log_hex("   +0x44 begin    ", field[0]);
-    log_hex("   +0x44 end      ", field[1]);
-    log_hex("   +0x44 capacity ", field[2]);
+    // The three words on EVERY ask, off with the two lines above. What is left
+    // in this block only speaks when the string is broken, which is an event.
+    // log_hex("   +0x44 begin    ", field[0]);
+    // log_hex("   +0x44 end      ", field[1]);
+    // log_hex("   +0x44 capacity ", field[2]);
     if (!field[0]) log_line("   begin is null");
     else if (readable_bytes((void *)(INT_PTR)field[0], 1) < 1)
       log_line("   BEGIN POINTS AT NOTHING READABLE - the copy after this is the crash");
@@ -248,12 +254,24 @@ static void log_record_stack(const BYTE *from) {
 }
 
 static void *__fastcall on_spell_record(int spell) {
-  // EVERY ask, not only the wrong ones. What the last run could not answer is
-  // what the run-up looks like — who asks about what, in what order, just before
-  // the number stops being a number. One line each, and the file is cheap.
   DWORD from = (DWORD)(INT_PTR)__builtin_return_address(0);
-  log_num("[record] id ", spell);
-  log_hex("      asked from ", from);
+  // EVERY ask, and it is COMMENTED OUT rather than deleted — switch it back on
+  // by uncommenting these two lines.
+  //
+  // What it was for: the run-up to a bad id. Who asks about what, in what order,
+  // just before the number stops being a number. That question is still open.
+  //
+  // WHY IT IS OFF. "A log that has to be switched on says nothing on the run
+  // that mattered" is the rule here and it is right — but it is about EVENTS.
+  // This prints a QUESTION, and the engine asks this one constantly: 125 946 of
+  // one run's 293 547 lines were these, about 86% of the file once each ask's
+  // second line is counted, against 4 465 for the gate and 827 for the damage.
+  // The file reached 147 MB and the game started dying on it, which is a probe
+  // that stops the run it was meant to watch.
+  //
+  // The BAD id below still prints everything, because that is an event.
+  // log_num("[record] id ", spell);
+  // log_hex("      asked from ", from);
 
   int count = g_spellCount ? g_spellCount() : 0;
   if (count > 0 && (spell < 0 || spell >= count)) {
