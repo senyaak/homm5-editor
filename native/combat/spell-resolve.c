@@ -156,23 +156,41 @@ typedef int(__fastcall *HitOneFn)(int worth, void *cast, void *caster, void *uni
 static HitOneFn g_hitOne = NULL;
 
 /**
- * `CCombatUnit::TakeSpellDamage(chain, damage, …)` — the stack loses it, and the
- * combat log says so.
+ * `CCombatUnit::TellAbout(chain, damage, …)` — the combat log line, the number
+ * that floats up over the stack, and whatever a vulnerability ADDS to the hit.
  *
- * `ret 10h`, fourteen callers. This is where the creatures actually die and
- * where the line the player reads is composed — the spell is named by the id we
- * hand it, which is why the line says OUR spell. It returns how much landed, and
- * a cast that lands nothing anywhere is what the engine calls "this spell did
- * nothing".
+ * `ret 10h`, fourteen callers.
+ *
+ * ITS RETURN IS NOT THE DAMAGE, and a whole run was spent on that. The name it
+ * had here first — "the stack loses it" — made its answer look like the amount
+ * that landed, so a cast of ours summed those and got zero eight times out of
+ * eight, called itself a spell that did nothing, and skipped the entry the
+ * battle shows. The stacks took their twenty each; nothing said so.
+ *
+ * What it really does, read after the run said `landed 0`:
+ *
+ *   ecx = 0xAD4E90(spell)                    ; the spell's own text
+ *   call one of 0xC49DB0 / 0xC49F20 /        ; THE COMBAT LOG LINE, four
+ *        0xC49D90 / 0xC49E00                 ; composers by what is known
+ *   st  = a multiplier that comes back       ; 1.0 unless something is
+ *   if (1.0 >= it) return 0                  ; vulnerable to this
+ *   extra = damage * (it - 1)                ; only the SURPLUS
+ *   if (extra <= 0) return                   ;
+ *   "FLYING_SIGN_ELEMENTAL_DAMAGE"           ; the number over the stack
+ *
+ * So it answers the EXTRA, and the engine's own branches add it to the damage:
+ * `mov [esp+20h],eax` (the damage) / `call` / `add ecx,eax` / `sete [esp+13h]`.
+ * Ours does the same. The damage itself is carried by the entry the applier
+ * builds, which is why a cast that reports nothing also does nothing.
  */
-#define TAKE_DAMAGE_RVA 0x775c10u
-#define TAKE_DAMAGE_HEAD_LEN 6
-static const BYTE TAKE_DAMAGE_HEAD[TAKE_DAMAGE_HEAD_LEN] = {
+#define TELL_ABOUT_RVA 0x775c10u
+#define TELL_ABOUT_HEAD_LEN 6
+static const BYTE TELL_ABOUT_HEAD[TELL_ABOUT_HEAD_LEN] = {
   0x83, 0xEC, 0x1C, 0x53, 0x55, 0x56                          // sub esp,1Ch / push ebx/ebp/esi
 };
-typedef int(__fastcall *TakeDamageFn)(void *chain, int damage, void *caster, void *unit,
-                                      int spell, int zero);
-static TakeDamageFn g_takeDamage = NULL;
+typedef int(__fastcall *TellAboutFn)(void *chain, int damage, void *caster, void *unit,
+                                     int spell, int zero);
+static TellAboutFn g_tellAbout = NULL;
 
 /**
  * `CCombatEffect::Show(damage, chain, spell, …)` — the cast's own entry.
@@ -375,7 +393,7 @@ static char __cdecl our_cast(void *cast, void *chain, void *whatResolveWasGiven)
     log_line("   the engine has no readable record for it — it will do nothing");
     return 0;
   }
-  if (!g_spellWorth || !g_hitOne || !g_takeDamage) {
+  if (!g_spellWorth || !g_hitOne || !g_tellAbout) {
     log_line("   one of the engine's own damage functions is not where we left it");
     return 0;
   }
@@ -418,11 +436,15 @@ static char __cdecl our_cast(void *cast, void *chain, void *whatResolveWasGiven)
     // one line.
     int worth = g_spellWorth(spell, power, mastery, week, NULL);
     int dealt = g_hitOne(worth, cast, caster, unit, 1, chain, scale, 1);
-    int landed = g_takeDamage(chain, dealt, caster, unit, spell, 0);
+    int extra = g_tellAbout(chain, dealt, caster, unit, spell, 0);
     log_num("      worth ", worth);
     log_num("      damage ", dealt);
-    log_num("      landed ", landed);
-    total += landed;
+    log_num("      extra a vulnerability adds ", extra);
+    // BOTH, the way every shipped branch does it — `add ecx,eax` on the damage
+    // it already had. Counting only the second gave eight zeroes on a cast that
+    // dealt twenty apiece, and the cast then called itself a spell that did
+    // nothing. That was the whole of "our spell does not work".
+    total += dealt + extra;
   }
   log_num("   the whole cast came to ", total);
 
@@ -533,8 +555,8 @@ static void install_our_resolver(void) {
                                            SPELL_WORTH_HEAD_LEN, "what a spell is worth");
   g_hitOne = (HitOneFn)engine_code(HIT_ONE_RVA, HIT_ONE_HEAD, HIT_ONE_HEAD_LEN,
                                    "what a spell does to one stack");
-  g_takeDamage = (TakeDamageFn)engine_code(TAKE_DAMAGE_RVA, TAKE_DAMAGE_HEAD,
-                                           TAKE_DAMAGE_HEAD_LEN, "a stack losing creatures");
+  g_tellAbout = (TellAboutFn)engine_code(TELL_ABOUT_RVA, TELL_ABOUT_HEAD,
+                                         TELL_ABOUT_HEAD_LEN, "the line a hit stack gets");
   g_plainApplier = (PlainApplierFn)engine_code(PLAIN_APPLIER_RVA, PLAIN_APPLIER_HEAD,
                                                PLAIN_APPLIER_HEAD_LEN, "the entry a cast leaves");
   g_free = (FreeFn)engine_code(FREE_RVA, FREE_HEAD, FREE_HEAD_LEN, "the allocator's free");
@@ -543,7 +565,7 @@ static void install_our_resolver(void) {
   // The three that decide the damage are the ones a cast cannot do without. The
   // rest degrade honestly — a missing field getter costs the whole-field shape
   // its targets and says so, once, per cast.
-  if (!exit || !g_spellWorth || !g_hitOne || !g_takeDamage) {
+  if (!exit || !g_spellWorth || !g_hitOne || !g_tellAbout) {
     log_line("no resolver of our own — spells of ours will do nothing");
     return;
   }

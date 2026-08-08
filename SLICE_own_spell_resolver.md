@@ -1,8 +1,25 @@
 # SLICE — a spell of ours resolves ITSELF
 
-> **Status: built, not yet seen in game.** Everything below is written; the one
-> thing left is the run, and the run is Senya's. What to look for is at the
-> bottom.
+> **Status: run once, 08.08.2026 — the path works, the accounting did not.**
+>
+> **What the run proved.** Casting *Unholy Word* no longer crashes: the resolver
+> logged `[resolver] the game's own, spell id 21`, handed the cast back to the
+> engine, and the battle carried on. That is criterion 1, and it used to be three
+> crashes in a row.
+>
+> And our own cast went the whole way: `[resolver] OURS, spell id 353`, shape the
+> whole field, **8 stacks considered**, each `worth 20 / damage 20`, the spare
+> filter asked about all three abilities per stack and answered honestly.
+>
+> **What was wrong.** Every stack came back `landed 0`, so the cast summed to
+> zero, called itself a spell that did nothing, and skipped the entry the battle
+> shows — nothing appeared to happen. `0xB75C10` does not answer with the damage:
+> it writes the combat log line and the floating number and returns only what a
+> VULNERABILITY adds, which is zero unless something is vulnerable. Every shipped
+> branch adds it to the damage it already had (`add ecx,eax`); ours counted only
+> the second. Fixed: `total += dealt + extra`.
+>
+> Next run: the same three checks at the bottom of this page.
 
 ## The rule, and where its line actually falls
 

@@ -177,12 +177,35 @@ own entry point** with the arity taken from its `ret`:
 | which of them this spell passes over | `0xB57100` may a spell touch this stack (`ret 4`) |
 | the loop, and the running total | `0xB7CE70` what the spell is worth (`ret 0Ch`) |
 | the "did nothing" byte, from the total | `0xB7D030` what it does to one stack (`ret 18h`) |
-| | `0xB75C10` the stack loses it, and the **combat log line** (`ret 10h`) |
+| | `0xB75C10` the **combat log line**, the floating number, and what a vulnerability ADDS (`ret 10h`) |
+| | `0xBD1980` the entry the battle shows (`ret 10h`) |
 
 `0xB7D030` and `0xB75C10` have twenty-one and fourteen callers of the engine's
 own; neither belongs to a spell. Between them sits `0xB861A0`, which is where
 resistance, anti-magic, school protection and our own row's filter all apply — so
 nothing is skipped by resolving the cast ourselves.
+
+**`0xB75C10` does NOT answer with the damage, and a run was spent learning it.**
+Called it "the stack loses it" and summed its answers, and a cast of the mod's
+came back zero eight times out of eight while every stack was taking twenty —
+so the cast called itself a spell that did nothing, skipped the entry the battle
+shows, and nothing happened at all. What the function actually does, read after
+the log said `landed 0`:
+
+```
+ecx = 0xAD4E90(spell)                 ; the spell's own text
+call 0xC49DB0 / 0xC49F20 /            ; THE COMBAT LOG LINE — four composers,
+     0xC49D90 / 0xC49E00              ; by which of caster and spell are known
+st  = a multiplier that comes back    ; 1.0 unless something is vulnerable
+if (1.0 >= it) return 0
+extra = damage * (it - 1)             ; only the SURPLUS
+"FLYING_SIGN_ELEMENTAL_DAMAGE"        ; the number that floats over the stack
+```
+
+Every shipped branch adds it to the damage it already had — `mov [esp+20h],eax`
+/ `call` / `add ecx,eax` / `sete [esp+13h]` — and so does ours. **A cast's total
+is `damage + extra` per stack**, and that total is the "did nothing" byte and the
+gate on the entry.
 
 `0xD60C30`, the mass-damage routine the Armageddon branch calls, is **no longer
 used by us at all**. It is worth keeping the reading of it, because it is what
