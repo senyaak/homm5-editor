@@ -101,6 +101,13 @@ const units = logUnits(here);
 check('the sources are the register', units.length === files.length,
   `${units.length} units for ${files.length} files`);
 
+// `--list-log` prints each file's own first line as what it is about. That is
+// the only summary of these files anybody maintains, so a file that loses its
+// opening comment does not get a blank column — it gets caught here.
+const mute = units.filter((u) => u.about.length < 10);
+check('every file opens with a line saying what it is for', mute.length === 0,
+  mute.map((u) => u.file).join(', '));
+
 // The default list is the one thing here written by hand rather than read out
 // of the sources, so it is the one thing that can name something that is gone.
 let defaultsOk = true;

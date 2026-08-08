@@ -28,7 +28,9 @@
 import { copyFileSync, mkdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
-import { EXTENSION_DLL, buildExtension, logUnits } from '../src/mods/extension.ts';
+import {
+  EXTENSION_DLL, LOG_UNITS_BY_DEFAULT, buildExtension, logUnits,
+} from '../src/mods/extension.ts';
 
 const here = resolve(import.meta.dirname, '..');
 const args = process.argv.slice(2);
@@ -37,10 +39,21 @@ const flag = (name: string): string | undefined => {
   return i >= 0 ? args[i + 1] : undefined;
 };
 
+// What there is to ask for, and what each one is about — both read out of the
+// sources at the moment it is asked. Deliberately printed rather than written
+// into a document: a list in a file is a list somebody has to notice has gone
+// stale, and this one cannot, because it does not exist between runs.
 if (args.includes('--list-log')) {
+  const units = logUnits(here);
+  const width = Math.max(...units.map((u) => u.file.length)) - 1;
   console.log('files of the extension that can be asked to log:\n');
-  for (const { file } of logUnits(here)) console.log(`  ${file.replace(/\.c$/, '')}`);
-  console.log('\nname them with --log, comma separated. --log none silences even the defaults.');
+  for (const { file, about } of units) {
+    console.log(`  ${file.replace(/\.c$/, '').padEnd(width)}  ${about}`);
+  }
+  console.log('\nname them with --log, comma separated:');
+  console.log('  npm run build-native -- --log combat/spell-resolve,lua/battle');
+  console.log('\n--log none silences even the two that speak by default');
+  console.log(`(${LOG_UNITS_BY_DEFAULT.join(', ')} — the load report and the crash report).`);
   process.exit(0);
 }
 

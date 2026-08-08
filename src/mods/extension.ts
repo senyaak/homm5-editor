@@ -73,8 +73,20 @@ const ZIG = join('node_modules', '@zigc', 'win32-x64', 'bin', 'zig.exe');
 /** On unless a build says otherwise: did the mod load, and did it crash. */
 export const LOG_UNITS_BY_DEFAULT = ['homm5_editor', 'core_faults'] as const;
 
-/** A unit as the file spells it, and where it was found. */
-export interface LogUnit { unit: string; file: string }
+/** A unit as the file spells it, where it was found, and what it is about. */
+export interface LogUnit {
+  unit: string;
+  file: string;
+  /**
+   * The file's own first line of comment.
+   *
+   * NOT a description kept here. Every source opens with one sentence saying
+   * what it is for, and that sentence is edited by whoever edits the file — so
+   * it is the only summary that cannot go stale behind the code's back. A list
+   * of forty-five of them written anywhere else would be right for a week.
+   */
+  about: string;
+}
 
 function nativeSources(editorRoot: string, dir = join(editorRoot, NATIVE_DIR)): string[] {
   const out: string[] = [];
@@ -92,8 +104,13 @@ export function logUnits(editorRoot: string): LogUnit[] {
   const found: LogUnit[] = [];
   for (const file of nativeSources(editorRoot)) {
     const rel = relative(join(editorRoot, NATIVE_DIR), file).split(sep).join('/');
-    for (const m of readFileSync(file, 'utf8').matchAll(/^#define LOG_UNIT (\w+)/gm)) {
-      found.push({ unit: m[1]!, file: rel });
+    const text = readFileSync(file, 'utf8');
+    // The first line, and only if it is a comment — a file that opens with code
+    // gets an empty summary rather than a line of C presented as one.
+    const first = text.split('\n', 1)[0]!.trim();
+    const about = first.startsWith('//') ? first.slice(2).trim() : '';
+    for (const m of text.matchAll(/^#define LOG_UNIT (\w+)/gm)) {
+      found.push({ unit: m[1]!, file: rel, about });
     }
   }
   return found;

@@ -96,25 +96,31 @@ report, that is the signal to revisit it — see
 
 ## Which file to ask for
 
-There is no list of them here, on purpose. A table of forty-five files with a
-sentence each would be right the week it was written and quietly wrong after —
-and a stale list is worse than no list, because it gets believed. Ask the build,
-which reads the sources every time it runs:
+Ask the build. It prints every file and what each one is about, read out of the
+sources at the moment you ask:
 
 ```bash
 npm run build-native -- --list-log
 ```
 
-To find which file would tell you the thing you want, go the other way round:
-open the file that owns the behaviour and look at what it already logs.
-
-```bash
-grep -rn 'log_line\|log_num\|log_text\|log_hex\|log_object' native/combat/
+```
+combat/spell-resolve   What a spell of OURS does, written out here instead of borrowed.
+qol/combat-ai          The battle AI's own bugs, taken back out.
+lua/battle             Saying something to a battle's script: vocabulary and triggers.
 ```
 
-The unit IS that file's path — `native/combat/spell-resolve.c` is asked for as
-`--log combat/spell-resolve` — so finding the line and naming the switch are one
-step, not two.
+**There is no such list written down anywhere, on purpose** — not here, not in a
+generated block, not in a table somebody regenerates. A list in a file is a list
+that has to be noticed when it goes stale, and a stale one is worse than none
+because it gets believed. This one cannot go stale: it does not exist between
+runs. The names come from each file's `#define LOG_UNIT` and the sentences from
+each file's own first line of comment, which is edited by whoever edits the
+file.
+
+If the summary is not enough, open the file that owns the behaviour and look at
+what it already logs. The unit IS that file's path —
+`native/combat/spell-resolve.c` is asked for as `--log combat/spell-resolve` —
+so finding the line and naming the switch are one step, not two.
 
 ## Adding a file
 
