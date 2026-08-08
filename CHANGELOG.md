@@ -191,6 +191,30 @@ one.
 
 ### Changed
 
+- **A spell of the mod's now resolves ITSELF.** Until now a cast of one jumped
+  into the middle of a shipped spell's branch — the whole-field shape was Unholy
+  Word's six instructions, the area shape Fireball's, the single target Magic
+  Arrow's. It worked, and it cost what borrowing somebody's stack frame costs:
+  three crashes in a row on casts of *Unholy Word itself*, byte-identical
+  registers each time, and one cast of the mod's running the per-stack filter 178
+  times because it was inside a loop written for another spell.
+
+  The walk is now the extension's own (`native/combat/spell-resolve.c`) and the
+  engine's routines are called through **their own entry points** — every stack
+  on the field, may a spell touch this one, what it is worth, what it does to a
+  stack, the stack losing creatures and the combat log line. So resistance,
+  anti-magic, school protection and the log are all still the game's; only the
+  choice of whom to hurt is ours.
+
+  **`SPELL_ARMAGEDDON` and `SPELL_UNHOLY_WORD` are not touched at all** — not
+  borrowed, not detoured, not read. What this buys beyond the crashes: a spell
+  can now be authored to hurt whom the mod chooses, because choosing is a loop
+  rather than a case compiled into the executable.
+
+  Still missing, and named rather than hidden: a spell of the mod's leaves no
+  Master of Fire (or Ice, or Storms) mark. The four appliers that leave one do
+  not agree on how many arguments they take, so each needs its own reading.
+
 - **Two new checks that stand in for a launch of the game.**
   `test-native-anchors` takes every address the extension recognises by its
   bytes — 45 of them — and reads those bytes out of the executable on disk. The
@@ -239,6 +263,29 @@ one.
   back in front, for when watching a spec run is the point.
 
 ### Fixed
+
+- **`mass-spell-element-fix` could have corrupted the stack.** It made one call
+  site dispatch to whichever of three element appliers a spell's document named —
+  and those three do not take the same number of arguments (`ret 10h`, `14h`,
+  `18h`) while the site pushes four. A water or air mass spell would have
+  returned four or eight bytes short, and the crash would have landed somewhere
+  with nothing to do with spells.
+
+  It never fired: the only elemental spell that reaches that routine is
+  Armageddon, and Armageddon is fire. The fix now asks the document the one
+  question the site can act on — *is this damage fire* — and leaves the `call`
+  the game wrote. Found while giving the mod's spells a resolver of their own.
+
+- **The battle log names the hook, not a deed.** Its lines opened with "cast",
+  and a run in which the only click was opening a spellbook read as eleven
+  spells being cast one after another — what the engine had actually done was
+  walk the hero's whole Dark school, level by level, asking the gate about each.
+
+  Every line now opens with where it came from — `[gate]`, `[cast command]`,
+  `[resolver]`, `[worth]`, `[damage]` — and the two gate cases are named by what
+  is true of them rather than by a guess: "inside a cast command", or "no
+  command", which is the book, the AI weighing a move, or a tooltip, and this
+  hook cannot tell those three apart.
 
 - **A mod's spell page is grey again when there is nothing to do with it.** The
   training spell stayed pressable over an army with nothing left to train, and

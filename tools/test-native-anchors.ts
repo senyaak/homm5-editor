@@ -63,8 +63,12 @@ for (const file of sources(NATIVE)) {
   const text = readFileSync(file, 'utf8');
   const short = file.slice(NATIVE.length + 1).replace(/\\/g, '/');
 
+  // `_HEAD` is the head of a function; `_MARK` is bytes that recognise a place
+  // inside one. The extension checks both before it writes or jumps, so both
+  // belong here — nine of them were going unchecked, including the exit our own
+  // resolver jumps to, purely because of the word chosen for the array.
   const heads = new Map<string, number[]>();
-  const headOf = /static const BYTE ([A-Z0-9_]+)_HEAD\s*\[[^\]]*\]\s*=\s*\{([^}]*)\}/g;
+  const headOf = /static const BYTE ([A-Z0-9_]+)_(?:HEAD|MARK)\s*\[[^\]]*\]\s*=\s*\{([^}]*)\}/g;
   for (const m of text.matchAll(headOf)) {
     // The bytes are written with the instructions they spell out beside them,
     // and a comment saying `sub esp,8` has a comma and an 8 in it — which is a

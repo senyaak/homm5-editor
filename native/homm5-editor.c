@@ -70,6 +70,9 @@
 #include "combat/tent-health.c"
 #include "combat/tent-mana.c"
 #include "combat/spell-cast.c"
+// AFTER spell-cast.c, and only after: the resolver uses that file's record
+// accessor, its question about a stack's abilities and its byte check.
+#include "combat/spell-resolve.c"
 #include "qol/borderless.c"
 #include "qol/own-profile.c"
 #include "qol/quick-split.c"
@@ -143,19 +146,22 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   // registered for costs one comparison in the fired path. Hooked always, and
   // the log says so once.
   if (install_caster_mana()) log_line("combat caster mana hook installed");
-  // What a battle actually casts, by id — the first half of carrying a spell of
-  // our own. It says whether an id the executable never heard of reaches the
-  // engine's resolver at all, which is the question everything above a new spell
-  // rests on. Unconditional, like the battle scripts and for the same reason: a
-  // log that has to be switched on says nothing on the run that mattered.
-  install_spell_log();
+  // What a battle actually casts, by id, and what a cast of ours then DOES.
+  // Unconditional, like the battle scripts and for the same reason: a log that
+  // has to be switched on says nothing on the run that mattered.
   install_cast_command_log();
   install_cast_gate_log();
   install_gate_refusal_log();
+  install_spell_record_guard();
   install_spell_damage_filter();
   install_spell_power();
+  install_spell_text_probe();
   install_area_shape();
   install_damaging_spell();
+  // LAST of the spell hooks, because it is the one that takes the cast: the
+  // tiles an area spell covers and the worth of a damage spell have to be ours
+  // before the resolver walks a field with them.
+  install_our_resolver();
   if (rows_for(STAT_TENT_HEALTH) && install_machine_health()) {
     log_line("first aid tent health hook installed");
   }

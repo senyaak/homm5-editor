@@ -91,17 +91,27 @@ And the refusal is about the NUMBER, not the document. The control that settled
 it: a copy of Armageddon differing in nothing else — same school, level, mana,
 damage, both of its visuals — is refused exactly the same way.
 
-## What the extension carries (`native/combat/spell-cast.c`)
+## What the extension carries (`native/combat/spell-cast.c`, `spell-resolve.c`)
 
 Three marks and one answer, all built up from the runs above:
 
-| where | what it does |
-|---|---|
-| the dispatch head `0x77eaf8` | logs every cast; for OUR ids fires the battle event and jumps into the branch below |
-| the command `0x772790` | logs the command's block and what it returned |
-| the gate `0x77b4c0` | logs the verdict, and ANSWERS YES for ours |
-| the gate's refusal funnel `0x77b51e` | logs the reason the engine names |
-| the damage function `0x7861a0` | for ours, spares the kinds the mod's row names |
+| where | logs as | what it does |
+|---|---|---|
+| the dispatch head `0x77eaf8` | `[resolver]` | for OUR ids fires the battle event and **calls our own resolver** |
+| the command `0x772790` | `[cast command]` | logs the command's block and what it returned |
+| the gate `0x77b4c0` | `[gate]` | logs the verdict, and ANSWERS YES for ours |
+| the gate's refusal funnel `0x77b51e` | `[gate]` | logs the reason the engine names |
+| the damage lookup `0x77ce8a` | `[worth]` | for ours, takes the case that reads the record |
+| the damage function `0x7861a0` | `[damage]` | for ours, spares the kinds the mod's row names |
+| the record getter `0x71eed0` | `[record]` | refuses a number that is not an id instead of reading past the table |
+| a spell's text `0x6d5140` | `[text]` | builds the string off a spell that exists when the record is missing |
+
+**A tag is a place, not a deed.** No line here means a person pressed anything:
+the engine walks a hero's whole school through `[gate]` and `[resolver]` when a
+book opens or the AI weighs a move, and one cast prints `[damage]` once per stack
+on the field. The tags were added after a log of exactly that walk — eleven Dark
+spells, level by level, ending in Unholy Word — was read as eleven casts. Read
+the sequence, and give a new hook a tag of its own.
 
 **Only the silent refusal is overruled.** The funnel raises a flag; a refusal
 that named a reason (`COMBAT_CANT_CAST_SPELL_IMMUNITY`, `COMBAT_NO_ENOUGH_MANA`,
@@ -142,30 +152,53 @@ battle runtime carries them as tables keyed by id: 37 not living, and the black
 dragon alone proof against magic. A script asks `H5EIsLiving(creature)`. A
 creature the mod adds is in them without anybody remembering.
 
-## The effect: the branch we borrow
+## The effect: a resolver of our own
 
 The battle's own vocabulary reads a stack and cannot hurt one, so the damage has
 to come from the engine — and it must, because **resistance, anti-magic, school
-protection and the combat log are all inside the engine's own routine**. Damage
+protection and the combat log are all inside the engine's own routines**. Damage
 applied by hand would bypass every one of them and the result would look exactly
 like our bugs.
 
-`0xD60C30` is that routine — the one every mass spell that hits the whole field
-goes through. Reading it settled what it is and what it is not:
+**But calling those routines and standing inside somebody else's branch are two
+different things**, and for a while this was the second one: a cast of ours
+`jmp`ed into the middle of Unholy Word's six instructions. What that cost is
+measured — three crashes in a row on casts of *Unholy Word itself*, byte-identical
+registers each time, and one cast of ours running the per-stack filter 178 times
+because it was inside a loop written for another spell. See
+[the standing rule](#the-line-borrowed-and-called) below.
+
+So the walk is ours and the leaves are the engine's, each called through **its
+own entry point** with the arity taken from its `ret`:
+
+| ours | the engine's, called properly |
+|---|---|
+| which stacks — the whole field, the tiles of our row, the one aimed at | `0xBAB520` every stack on the field (`ret`) |
+| which of them this spell passes over | `0xB57100` may a spell touch this stack (`ret 4`) |
+| the loop, and the running total | `0xB7CE70` what the spell is worth (`ret 0Ch`) |
+| the "did nothing" byte, from the total | `0xB7D030` what it does to one stack (`ret 18h`) |
+| | `0xB75C10` the stack loses it, and the **combat log line** (`ret 10h`) |
+
+`0xB7D030` and `0xB75C10` have twenty-one and fourteen callers of the engine's
+own; neither belongs to a spell. Between them sits `0xB861A0`, which is where
+resistance, anti-magic, school protection and our own row's filter all apply — so
+nothing is skipped by resolving the cast ourselves.
+
+`0xD60C30`, the mass-damage routine the Armageddon branch calls, is **no longer
+used by us at all**. It is worth keeping the reading of it, because it is what
+the whole-field shape is measured against:
 
 - It **takes the spell from the cast's own block** (`[ctx+4]`), never as an
-  argument. So a call made for our id stays ours all the way down: our damage
-  numbers, our name in the log.
+  argument.
 - It walks **every stack on the field**, alive or not, and asks two questions
   per stack — one shared with Armageddon, one about distance.
 - Its inner `jmp [ecx*4+0xD61290]` is **not** a filter. The index array covers
   ids 10…239 and holds two values, and the four that differ (Armageddon, Unholy
   Word, Holy Word and the boss firewall) only pick a different **propagation
-  speed** out of the config (`cfg+0x9D4`) instead of the constant 10.0. Ours
-  falls outside the range and takes the constant, which is a hair of timing.
+  speed** out of the config (`cfg+0x9D4`) instead of the constant 10.0.
 
-The filter is one function further in. `0xB861A0` — "how much does this spell do
-to that stack" — opens with it:
+The kind filter is in `0xB861A0` — "how much does this spell do to that stack" —
+which opens with it:
 
 ```
 ebx = normalise(block->spellId)              ; 0xAD44C0
@@ -181,10 +214,29 @@ if (target) {
 Two cases, both compiled against a literal, and `HasAbility` is a virtual on the
 stack (vtable `+0x28C`). Everything below the filter is where the rules live.
 
+## The line: borrowed and called
+
+"Do not reuse engine code" cannot mean "do not touch the engine" — every hook is
+a call into it. The line that is usable, and the one this file is written to:
+
+- **Allowed, and correct:** calling an engine function through **its own entry
+  point**, with a signature taken from the code. Arity from its `ret`, never from
+  the shape of one call site.
+- **Not allowed:** entering the **middle of another spell's branch** and
+  inheriting its stack frame.
+
+Only when there is no other way in does a mid-function entry get taken, and then
+it is written down with what it costs. There is exactly one left, and it is not a
+spell's: `0xB7CED1`, the worth switch's document-reading case, shared by
+twenty-one ids. What it costs is in `native/combat/spell-cast.c` beside it.
+
+**`SPELL_ARMAGEDDON` and `SPELL_UNHOLY_WORD` are not touched by us at all** — not
+borrowed, not detoured, not read.
+
 ## And the second dispatch, which the first run found
 
-With the branch borrowed the cast walked every stack on the field and the filter
-spared the undead — and every living stack took **zero**. The reason is one
+Once the field was walked and the filter spared the undead, every living stack
+still took **zero**. The reason is one
 function EARLIER than the damage. `0xB7CE70` is "what is this spell worth at this
 power", asked once before the loop, and it is a switch on the number too:
 
@@ -200,7 +252,7 @@ jmp [eax*4+0xB7CF34]                           ; 21 in, 218 out
 
 Twenty-one spells reach `0xB7CED1` — the nine destructive ones, Armageddon,
 Plague, both Words, the mines, the wasps and a few creature abilities. Everything
-else gets a hard zero. So **a new spell needs the branch AND the number**, and
+else gets a hard zero. So **a new spell needs the effect AND the number**, and
 they are two different switches in two different functions.
 
 `0xAD4EC0` itself is generic: handed the id and the power it reads `<damage>` out
@@ -211,13 +263,20 @@ editor's.
 
 The resolver has ONE branch per shape, not per spell. Following both of its
 switches, the whole table is 17 branches for 353 spells, and for damage there
-are exactly three:
+are exactly three. **We take none of them** — the column is here so a shape of
+ours can be read against the game's own:
 
-| branch | the game's own | what it does |
+| the game's branch | the game's own spells | the shape |
 |---|---|---|
 | `0xB7ED4A` | Armageddon, Holy Word, Unholy Word | every stack on the field |
 | `0xB7ED16` | Fireball, Frost Ring, Stone Spikes | an area around a point |
 | `0xB7F6DC` | Magic Arrow, Lightning Bolt, Ice Bolt, Implosion, Magic Fist | one stack |
+
+**Where ours gets each list.** The whole field is asked of the combat
+(`0xBAB520`, both sides). The area needs no tile-to-unit lookup at all: the
+command has already turned the covered tiles — which are OURS, from the row —
+into a list of stacks and left it in the cast object at `+0x24`/`+0x28`. One
+stack is the cast object's `+0x18`.
 
 **What separates them is already in the document.** `IsAimed` and
 `IsAreaAttack` — the two flags the gate reads and the extension already had to
@@ -229,9 +288,9 @@ hand — split the shipped spells with nothing left over:
 | true | true | an area |
 | true | false | one stack |
 
-So a spell of ours is pointed at the branch its own record implies. Nothing new
-is said anywhere: no field in the document, no row in the config, and in the
-editor it is two checkboxes that already exist.
+So a cast of ours picks the shape its own record implies. Nothing new is said
+anywhere: no field in the document, no row in the config, and in the editor it is
+two checkboxes that already exist.
 
 **The limit, before it bites.** The flags separate the three DAMAGE shapes and no
 more — Curse and Bless read `true`/`false` too, exactly like Magic Arrow, because
@@ -283,17 +342,18 @@ flag false and are not mass spells, so the early exit turns them away first.
 
 | where | what |
 |---|---|
-| the dispatch stub `0x77eaf8` | for our ids, **jump into the branch the record asks for** instead of returning to the comparison |
-| the worth stub `0x77ce8a` | for our ids, **jump to the branch that reads the record** (`0xB7CED1`) instead of falling to the zero |
+| the dispatch stub `0x77eaf8` | for our ids, **call our own resolver** and leave through the function's own exit |
+| the worth stub `0x77ce8a` | for our ids, take the case that **reads the record** (`0xB7CED1`) instead of falling to the zero |
 | the shape stub `0x77be7f` | for our ids, **push the tiles the row names** and join the engine at its tail |
 | the damaging stub `0x7d0e88` | for our ids, answer **yes** to "does this spell deal damage" |
 | the damage function `0x7861a0` | for our ids, answer **zero** for the kinds the mod says it spares, then let the engine do the rest |
 | `bin/homm5-editor-effects.txt` | `spell 353 spares 10 12 9` — the kinds, by ability NUMBER<br>`spell 355 area 0,0 -1,0 …` — the tiles, as offsets |
 
-Both stubs are the same shape, and every branch is safe to jump into: nothing
-between the comparison and the branch pushes, so the frame each reads is the
-frame it expects. The first stub's jump is INDIRECT, through a variable the C
-sets per cast, because which branch a cast wants is a question about its record.
+**The exit is not a borrowed branch.** `0xB7FAF0` is the epilogue every one of
+the 250 cases jumps to — it writes the "did nothing" byte through the caller's
+pointer, frees two things the prologue made and returns `edi`. It belongs to the
+function, not to a spell. Our stub arrives with the frame untouched (a `pushad`,
+a `call`, a `popad`) and `edi` still the chain the caller passed in.
 
 **The stubs are hand-assembled and now checked as such.** `tools/test-fixes.ts`
 decodes every `*_STUB` byte row: it must be whole instructions ending exactly at
@@ -301,11 +361,23 @@ the length it declares, and every branch inside it must land on an instruction
 boundary. Both halves have already caught a real miscount — the offsets in the
 installer are counted by hand, and they move whenever an instruction is added.
 
-Jumping into the branch is safe because the dispatch reaches it by a `jmp`, not
-a `call`, and everything the branch reads (`ebp`, `edi`, `[esp+68h]`,
-`[esp+18h]`) is set by the prologue from the cast's own block — none of it is
-Unholy Word's. The branch also clears `[esp+13h]`, so ours stops paying its
-caster back.
+**The cast object is the source, not the frame.** The prologue copies ten of its
+fields onto the stack before the dispatch, which is how each shipped branch reads
+them; ours reads the object, because a frame offset is only true until somebody
+pushes. Every one was read out of the code that uses it:
+
+| field | what | how it was read |
+|---|---|---|
+| `+0x04` | the spell id | `mov ecx,[eax+4]` before every worth |
+| `+0x14` | the caster | `ebp` for the whole function |
+| `+0x18` | the one stack aimed at | the single-target branch's second argument |
+| `+0x24`/`+0x28` | the affected stacks, begin/end | the area routine's vector |
+| `+0x2C` | the caster's spell power | reaches `0xAD4EC0` as the multiplier |
+| `+0x30` | the mastery | reaches `0xAD4EC0` as the table index |
+| `+0x34` | a scale, float | the last-but-one argument of the hit |
+
+The "did nothing" byte at `[esp+13h]` is written by the stub from whether the
+whole cast landed anything — so a spell of ours stops paying its caster back.
 
 The row is the only part of a spell that does not travel in the archive: the
 game's data has no field for it and the engine has no case for our number.
@@ -347,15 +419,32 @@ to be found for the burn was not the burn: it was the gates in front of it.
 
 `0xBD1420` is the function that leaves one — it asks the caster for
 `HERO_SKILL_MASTER_OF_FIRE` (44; Ice is 43) and the target for the two abilities
-that exempt it, then hands a number to `SPELL_EFFECT_FIRE_DAMAGE` (202). Five
-places call it, and two of them are routines a spell of ours borrows — which
-behave differently:
+that exempt it, then hands a number to `SPELL_EFFECT_FIRE_DAMAGE` (202).
+
+**THE FOUR ARE NOT INTERCHANGEABLE, and this is the thing to know before calling
+any of them.** Their `ret`s are `10h` (fire), `14h` (air), `18h` (water) and
+`10h` (plain) — four, five, six and four stack arguments — and fire even swaps
+the roles of `ecx` and `edx` against the plain one (`ecx->vt[8]` where the plain
+does `edx->vt[8]`). A call written for one and pointed at another returns with
+the stack short, and the crash lands somewhere with nothing to do with spells.
+That is what `mass-spell-element-fix` used to risk; see below.
+
+**Our own resolver calls the PLAIN one**, whose argument list is decoded from the
+resolver's own single-target branch: `ecx` the caster, `edx` the stack aimed at,
+then (damage, chain, spell id, `Resolve`'s own first argument). So a spell of
+ours builds its entry and leaves **no Master's mark** — each of the other three
+needs its own reading first. Named, not hidden.
+
+Five places call the fire one, and two of them are routines a spell of ours used
+to borrow — which behave differently:
 
 - **the area routine** (`0xD608C0`) dispatches on the **element**: air →
-  `0xBD1790`, fire → `0xBD1420`, water → `0xBD12C0`. Data, so an area spell of
-  ours with `ELEMENT_FIRE` reaches the burn by itself.
-  **Measured: it does.** An area fire spell of ours leaves the mark in game, with
-  nothing said about it anywhere.
+  `0xBD1790`, fire → `0xBD1420`, water → `0xBD12C0` — and pushes five, four and
+  six arguments respectively, which is where the arities above were read.
+  **Measured, while the branch was still borrowed:** an area fire spell of ours
+  left the mark in game with nothing said about it anywhere. Our own resolver
+  does not go through this routine, so that mark is gone until the appliers are
+  called properly.
 
 - **the whole-field routine** (`0xD60C30`) dispatches on the **number**: `cmp
   eax,0Ah` — Armageddon and nothing else. So a whole-field spell of ours cannot
@@ -391,17 +480,26 @@ behave differently:
   a zero, and `0xBD1980` bails on a zero in its first two instructions.
   **Assumed and unchecked:** that the position is where the meteor lands.)
 
-  **Fixed in two places, and neither names a spell.** The comparison becomes
-  `SpellElement(id) != 0`; the `call 0xBD1420` becomes an indirect one through a
-  pointer set from that same element — fire, water, air, the very table the area
-  routine dispatches on. Earth and none answer no at the comparison and take the
-  plain applier, as they do today.
+  **Fixed in ONE place, and it does not name a spell.** The comparison becomes
+  `SpellElement(id) == fire` — the question `cmp eax,0Ah` was a shortcut for,
+  asked of the document. The `call 0xBD1420` behind it is left as the game wrote
+  it.
+
+  **It used to be two, and the second was a bug.** The `call` was made indirect
+  through a pointer set from the element — fire, water or air. Those three do not
+  take the same number of arguments and the site pushes four, so water or air
+  would have returned four or eight bytes short. It never fired, because the only
+  elemental spell that reaches this routine is Armageddon and Armageddon is fire;
+  it was found while giving our own spells a resolver. **An applier is not
+  interchangeable with another applier** — that is the lesson, and it is the same
+  one as arity-from-`ret`.
 
   **Behind `mass-spell-element-fix`, whole.** The flag decides whether any of it
-  is written, not a branch inside it: off and not a byte moves, for the game's
-  spells or ours. It is a fix of shipped behaviour — the empowered Armageddon —
-  so it belongs beside the others in the panel rather than happening quietly, and
-  a mass spell of a mod rides on it. See docs/FIX_TEST_MAP.md §5a.
+  is written, not a branch inside it: off and not a byte moves. It is a fix of
+  shipped behaviour — the empowered Armageddon — so it belongs beside the others
+  in the panel rather than happening quietly. A mass spell of a mod no longer
+  rides on it: ours does not come through this routine at all. See
+  docs/FIX_TEST_MAP.md §5a.
 
 Two other functions were read on the way and are worth naming so nobody reads
 them again: `0xBD3A00`-ish builds the spellbook's PREDICTION — the "duration",
@@ -411,22 +509,29 @@ we care about.
 
 ## What is not done yet
 
-1. **`H5EDamage(unit, amount)` for scripts that want to hit by themselves** —
+1. **The three ELEMENT appliers, each with its own reading.** Ours calls the
+   element-less one, so a spell of ours leaves no Master's mark. Each of the
+   other three needs its arity and its `ecx`/`edx` roles read from a site that
+   calls it — they disagree on both. Once they are in, our resolver picks by the
+   document's element for **all three shapes**, which is more than the game does
+   for its own (only the area routine dispatches on element).
+2. **`H5EDamage(unit, amount)` for scripts that want to hit by themselves** —
    our first function WITH arguments, through the engine's parser `0xa454d0`
    (a shipped function builds a format string like `"sn"` and its own name on
-   the heap and hands both over). Worth it only for effects the borrowed branch
-   cannot express, because the parser is the fiddly part and the crash lands in
-   a battle.
-2. **The gate's answer should become "is there anything to hit"** rather than a
+   the heap and hands both over). Now that the walk is ours this is a smaller
+   step than it was: the loop that picks whom to hurt is already C, and a Lua
+   function would only be another way of asking it.
+3. **The gate's answer should become "is there anything to hit"** rather than a
    flat yes, so the book greys our spell by itself the way it greys
-   Resurrection.
-3. **Effects, and effects of our own.** A spell whose content is not damage but
+   Resurrection. Cheap now: our resolver already knows how to build the list.
+4. **Effects, and effects of our own.** A spell whose content is not damage but
    something it leaves behind — the fourth shape (`0xB7F99A`, the 18 shipped
-   effects). Deliberately not started: the three damage shapes came first
-   because they are one branch each.
+   effects). Deliberately not started: the three damage shapes came first.
+   Note the flags stop being enough here — Curse and Bless read `true`/`false`
+   exactly like Magic Arrow — so the row will have to say which shape it is.
 
-(The third damage shape is done; what a spell reaches is the pair of flags in
-its record — see "The three damage shapes" above.)
+(All three damage shapes are done, and are ours; what a spell reaches is the pair
+of flags in its record — see "The three damage shapes" above.)
 
 ## Where a person makes one
 
