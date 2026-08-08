@@ -105,6 +105,17 @@ export async function placeAtTile(page: Page, x: number, y: number): Promise<voi
     }
     const over = await covering();
     expect(over, `(${x},${y}) projects onto #${over}, not the map — the click would go there`).toBe('');
+    // AND THE PIXEL HAS TO PICK THE TILE IT CAME FROM. Projecting a tile and
+    // picking a pixel are two different pieces of arithmetic in the editor, and
+    // when they disagree the click goes somewhere else — or nowhere, if it lands
+    // past the terrain, which places nothing and says nothing. That is how a
+    // green spec started failing with "received []" and no other clue. Asked
+    // here, the answer names the tile the click would really have hit.
+    const picked = await page.evaluate(([px, py]) => {
+      const t = window.view.tileAt(px!, py!);
+      return t ? `${t.x},${t.y}` : 'no tile at all';
+    }, [at.x, at.y]);
+    expect(picked, `(${x},${y}) projects onto a pixel that picks ${picked}`).toBe(`${x},${y}`);
     await page.mouse.move(at.x, at.y);
     await page.mouse.down();
     await page.mouse.up();

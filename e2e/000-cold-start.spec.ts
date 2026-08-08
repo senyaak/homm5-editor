@@ -129,6 +129,16 @@ test('from nothing to an open editor, through the setup window', async () => {
 
   bareWorld();
 
+  // WHAT THE CHECKOUT'S OWN .env SAID BEFORE ANY OF THIS. The setup window must
+  // write its answer where it was told and leave the developer's file alone, and
+  // the way to check that is to compare it with itself afterwards — not to look
+  // for this run's path inside it. Live, the run's path IS the real install and
+  // the checkout's .env names it for an innocent reason: it is the machine's
+  // actual configuration, written long before the test existed. That reading
+  // failed the spec on a truth.
+  const CHECKOUT_ENV = join(REPO_ROOT, '.env');
+  const envWas = existsSync(CHECKOUT_ENV) ? readFileSync(CHECKOUT_ENV, 'utf8') : null;
+
   const ed = await launchEditor({
     HOMM5_ROOT: HOME,
     HOMM5_DATA: DATA_ROOT,
@@ -181,8 +191,8 @@ test('from nothing to an open editor, through the setup window', async () => {
     const said = readFileSync(ENV_AT, 'utf8');
     expect(said, 'and it is the install this run prepared').toContain(`HOMM5_ROOT=${HOME}`);
     expect(said, 'with the data root beside it').toContain(`HOMM5_DATA=${DATA_ROOT}`);
-    expect(existsSync(join(REPO_ROOT, '.env')) && readFileSync(join(REPO_ROOT, '.env'), 'utf8').includes(HOME),
-      'and the checkout\'s own .env was left alone').toBe(false);
+    const envNow = existsSync(CHECKOUT_ENV) ? readFileSync(CHECKOUT_ENV, 'utf8') : null;
+    expect(envNow, 'and the checkout\'s own .env was left exactly as it was').toBe(envWas);
   } finally {
     await ed.app.close();
   }

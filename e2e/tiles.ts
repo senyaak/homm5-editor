@@ -35,9 +35,23 @@ export async function mapSize(page: Page): Promise<number> {
  * Centring on every tile would be simplest but re-renders the whole view per
  * click; the view is only moved when the tile is not already on screen, which is
  * what makes a 2600-object mission take minutes rather than hours.
+ *
+ * THE PLAN VIEW IS SWITCHED ON HERE, not asked for. It is the precondition of
+ * everything above — `tileToScreen` and `view.focus` are both written against
+ * the plan camera and nothing else — and this file said so at the top while
+ * leaving it to the caller, which the reconstruction specs do (`planView`) and
+ * the object specs never did. In the perspective view the two disagree about the
+ * SAME pixel: measured on a fresh 72x72 map, the projection and the picking ray
+ * agreed only at the map's exact centre, where both cameras look — tile 20,20
+ * projected onto a pixel that picked 22,11, and the corners picked nothing at
+ * all. A pixel that picks nothing is a click on empty sky, so the object was
+ * never placed and nothing was reported: `place()` simply saw no new object
+ * three times over. `view.focus` did not save it either, because it re-syncs the
+ * plan camera alone — after focusing on 8,7 the click still landed on 36,36.
  */
 export async function screenOf(page: Page, x: number, y: number): Promise<{ x: number; y: number }> {
   const p = await page.evaluate(([tx, ty, zoom]) => {
+    window.view.plan(true);
     let at = window.view.tileToScreen(tx!, ty!);
     if (!at.onScreen) {
       window.view.zoom(zoom!);
