@@ -131,6 +131,19 @@ payload of ours, not by hand-rolling the 0x60 object and its refcount.
 Deliberately last: it is the only one of the three that needs anything invented,
 and the two above are what make a spell of ours behave like the game's.
 
+## The direction Senya set, above all three — 09.08.2026
+
+**We write our own, and a new thing of ours goes through OUR layer rather than
+through one of the engine's.** Said again while the gate was being fixed, and it
+outranks the ordering below: piece 1 exists because the mod is still borrowing
+four appliers it did not write, and every one of them cost a battle to call
+correctly. The end state is an applier of ours (piece 3) that every spell of
+ours goes through, with the engine's own called only where it still buys
+something — never as the place a new term is added.
+
+Not started, and deliberately: the gate came first. Written down here so the
+next session inherits the aim and not just the steps.
+
 ## What is already true, and must not be re-derived
 
 - **The resolver is ours** and borrows no branch. `SPELL_ARMAGEDDON` and
