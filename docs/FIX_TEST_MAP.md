@@ -414,10 +414,15 @@ open the book, and look before clicking:
 6. **«Волна смерти по цели» at the ZOMBIES** — the one reading on this map for a
    cast that would reach nobody. It is the ripple's rule aimed at a single stack,
    so pointed at the undead there is nothing for it to do: it must **refuse, and
-   the mana must still be there** afterwards. Then point it at one of his own
-   marksmen, which is the control: it must hit. A refusal in both is a gate
-   saying no to everything of ours; a hit in both is the question not being asked
-   at all, and the mana is short either way.
+   the mana must still be there** afterwards.
+
+   **And «Армагеддон по цели» at the SAME zombies is the control** — same shape,
+   same target, and the only difference is that it passes over nobody. It must
+   hit. Not one of his own stacks: the engine refuses damage on your own side
+   itself (`COMBAT_CANT_CAST_ONLY_FOR_HOSTILE`, measured), so that would prove
+   nothing about ours. A refusal in both is a gate saying no to everything of
+   ours; a hit in both is the question not being asked at all, and the mana is
+   short either way.
 
 **Then send the log.** The newest `bin/homm5-editor-*.log` has a line per cast and, for ours,
 a line per stack it was asked about:

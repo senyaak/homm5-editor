@@ -219,10 +219,30 @@ static BYTE g_tilesWereOurs = 0;
 /** Non-zero when the mod said which tiles this spell covers, and they were laid. */
 static char __cdecl our_tiles(int spell, void *tiles, int x, int y) {
   SpellRow *row = spell_row(spell);
+  // ONLY DURING A REAL CAST, and that is the whole reason there is a condition
+  // here rather than a bare log: this runs once per tile the pointer crosses
+  // while an area spell is armed, which is thousands of times in a battle. A
+  // cast is an event — see the note at the head of combat/spell-cast.c.
+  //
+  // WHY IT SAYS ANYTHING AT ALL. A run on 09.08.2026 had an area cast of ours
+  // reach the resolver with `stacks to consider 0` four times, and from the
+  // resolver's side "the row's tiles are wrong", "the tiles were never laid" and
+  // "the tiles were laid where nobody stands" are the same silence. These four
+  // numbers tell the three apart.
+  if (g_inCastCommand) {
+    log_num("[area] tiles for spell id ", spell);
+    log_num("   aimed at x ", x);
+    log_num("   aimed at y ", y);
+    log_num("   offsets its row names ", row ? row->areaCount : -1);
+  }
   if (!row || !row->areaCount || !g_addTile) return 0;
   for (int i = 0; i < row->areaCount; i++) {
     int point[2] = { x + row->areaX[i], y + row->areaY[i] };
     g_addTile(tiles, point);
+    if (g_inCastCommand) {
+      log_num("   tile x ", point[0]);
+      log_num("      and y ", point[1]);
+    }
   }
   return 1;
 }

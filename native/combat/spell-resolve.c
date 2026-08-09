@@ -389,6 +389,12 @@ static int our_targets(void *cast, void *record, void *combat, void **into) {
     void **from = *(void ***)((BYTE *)cast + CAST_AFFECTED);
     void **to = *(void ***)((BYTE *)cast + CAST_AFFECTED_END);
     log_line("   shape: an area — the stacks under the tiles our row names");
+    // BOTH ENDS, PRINTED. An empty list and a list that is not there read the
+    // same from the count alone, and they are opposite faults: a null pair means
+    // these offsets are not where the affected stacks live, while begin == end
+    // means the command looked under our tiles and found nobody standing there.
+    log_hex("      the list begins at ", (DWORD)(INT_PTR)from);
+    log_hex("      and ends at ", (DWORD)(INT_PTR)to);
     if (!from || !to || to < from) return 0;
     for (void **at = from; at < to; at++) {
       if (readable_bytes(at, 4) < 4) break;

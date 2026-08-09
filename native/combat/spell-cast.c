@@ -248,20 +248,42 @@ static int __fastcall on_cast_gate(void *ecx, void *block, void *a1, void *a2, i
   // Resurrection when there is nothing to raise, rather than taking a click that
   // does nothing. That is why this no longer waits for `g_inCastCommand`: a
   // question deserves the same answer as a cast, or the page lies about it.
-  if (spell >= FIRST_SPELL_OF_OURS && !(answer & 0xFF) && !g_gateGaveAReason) {
-    // The block is the command's own only while a command is running — the book,
-    // the AI and a tooltip each ask with a local of theirs, where the same
-    // offsets mean nothing. See the note over the function.
-    int reaches = our_cast_would_reach_anyone(spell, a1, a2, g_inCastCommand ? block : NULL,
-                                              g_inCastCommand);
-    if (!reaches) {
-      if (g_inCastCommand)
-        log_line("   ours, and it would reach nobody — the refusal stands, and the mana with it");
+  // AND IT IS ASKED OF A YES AS WELL, which the first version of this got wrong.
+  //
+  // The silent refusal only ever happens to the shape with NO TARGET: that path
+  // ends in `0xB840B0`, the switch on the number, and there our id falls to
+  // `xor al,al`. A spell of ours that AIMS reaches a different endpoint, and the
+  // engine answers YES for it by itself — measured 09.08.2026, `the gate says 1`
+  // for 356 and 358 with nothing of ours in between. So an overrule that only
+  // catches a no left the aimed shapes exactly as they were: pointed at a stack
+  // the row passes over, the cast went through, dealt nothing, and took the mana.
+  //
+  // Both directions, then, and neither is a rule of the engine's being ignored:
+  // a NO with no reason is the engine not knowing the number, and a YES is the
+  // absence of a refusal rather than a refusal we are overriding. What we never
+  // touch is a no that NAMED a reason.
+  if (spell >= FIRST_SPELL_OF_OURS) {
+    int allowed = answer & 0xFF;
+    if (!allowed && g_gateGaveAReason) {
+      // The engine's own rule — immunity, mana, a blocked spell. Left alone.
     } else {
-      if (g_inCastCommand)
-        log_line(reaches > 0 ? "   ours, and it would reach somebody — answering for it: yes"
-                             : "   ours, and nothing here can say whom it would reach — yes");
-      answer = 1;
+      // The block is the command's own only while a command is running — the
+      // book, the AI and a tooltip each ask with a local of theirs, where the
+      // same offsets mean nothing. See the note over the function.
+      int reaches = our_cast_would_reach_anyone(spell, a1, a2, g_inCastCommand ? block : NULL,
+                                                g_inCastCommand);
+      if (!reaches) {
+        if (g_inCastCommand)
+          log_line(allowed
+              ? "   ours, and it would reach nobody — refused, and the mana stays"
+              : "   ours, and it would reach nobody — the refusal stands, and the mana with it");
+        answer = 0;
+      } else if (!allowed) {
+        if (g_inCastCommand)
+          log_line(reaches > 0 ? "   ours, and it would reach somebody — answering for it: yes"
+                               : "   ours, and nothing here can say whom it would reach — yes");
+        answer = 1;
+      }
     }
   }
   // EVERY verdict of a real cast, and none of the rest.

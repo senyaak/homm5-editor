@@ -911,8 +911,14 @@ export const TEST_ARMAGEDDON_TARGET = {
  *
  * A spell aimed at one stack can be pointed at a stack it passes over, and then
  * there is nothing for the cast to do. So: point this at the undead and it must
- * refuse with the mana intact; point it at the living and it must hit. One
- * battle, both halves, and the second says the refusal is not blanket.
+ * refuse with the mana intact, and point `…_ARMAGEDDON_TARGET` at the SAME stack,
+ * which must hit. Same shape, same target, and the only difference between them
+ * is what they pass over.
+ *
+ * The control is that twin and NOT a stack of the caster's own: the engine
+ * refuses damage on your own side by itself — `COMBAT_CANT_CAST_ONLY_FOR_HOSTILE`,
+ * 4 961 of them in one battle's log — so a refusal there would say nothing about
+ * ours.
  *
  * IT IS A SPELL OF ITS OWN AND NOT A FLAG ON THE ARMAGEDDON TWIN, which is what
  * this was first. An Armageddon that passes over the undead is not an
