@@ -894,26 +894,45 @@ export const TEST_ARMAGEDDON_TARGET = {
   id: 'SPELL_H3_TEST_ARMAGEDDON_TARGET',
   file: 'H3TestArmageddonTarget',
   name: 'Армагеддон по цели',
-  description: 'Тот же армагеддон, но нацеливаемый на один отряд — третья форма урона. Нежить он не трогает, и потому на неё его не навести.',
+  description: 'Тот же армагеддон, но нацеливаемый на один отряд — третья форма урона.',
   aimed: true,
   areaAttack: false,
-  /**
-   * AND IT SPARES WHAT THE RIPPLE SPARES — which on this one is not about the
-   * filter at all. It is the only way the stand can show a cast that would
-   * reach NOBODY.
-   *
-   * The gate now refuses a spell of ours that would touch nothing, so the mana
-   * and the turn stay with the caster and the book greys the page. Everything
-   * else on the map is the wrong experiment for it: the ripple covers the whole
-   * field, and a field always holds somebody the caster does not spare — his own
-   * army, if nothing else. A spell aimed at ONE stack can be pointed at a stack
-   * it passes over, and then there is nothing for the cast to do.
-   *
-   * So: point it at an undead stack and it must refuse, with the mana intact;
-   * point it at a living one and it must hit as before. One battle, both halves,
-   * and the second is the control that says the refusal is not blanket.
-   */
-  spares: NOT_LIVING,
+};
+
+/**
+ * **The ripple's rule, aimed at ONE stack** — and the only reading on the stand
+ * for a cast that would reach NOBODY.
+ *
+ * The gate refuses a spell of ours that would touch nothing, so the mana and the
+ * turn stay with the caster and the book greys the page. Nothing else on the map
+ * can be made to show it: the ripple and the three Armageddons all cover the
+ * whole field or a patch of it, and a field always holds somebody the caster does
+ * not spare — his own army, if nothing else.
+ *
+ * A spell aimed at one stack can be pointed at a stack it passes over, and then
+ * there is nothing for the cast to do. So: point this at the undead and it must
+ * refuse with the mana intact; point it at the living and it must hit. One
+ * battle, both halves, and the second says the refusal is not blanket.
+ *
+ * IT IS A SPELL OF ITS OWN AND NOT A FLAG ON THE ARMAGEDDON TWIN, which is what
+ * this was first. An Armageddon that passes over the undead is not an
+ * Armageddon: that twin is the control for the SHAPE experiment, and a control
+ * that also carries a filter answers neither question cleanly. The ripple
+ * already spares the three kinds and says so in its name, so the aimed version
+ * of the ripple is what this wants to be.
+ */
+export const DEATH_RIPPLE_TARGET = {
+  ...DEATH_RIPPLE,
+  id: 'SPELL_H3_DEATH_RIPPLE_TARGET',
+  file: 'H3DeathRippleTarget',
+  name: 'Волна смерти по цели',
+  description: 'Та же волна смерти, но по одному отряду. Нежить, элементалей и машины она не трогает — и на них её не навести.',
+  aimed: true,
+  areaAttack: false,
+  // No script of its own: the ripple's is written against its own id and this is
+  // a different number. What is being watched here is the gate, and the gate is
+  // asked before any script runs.
+  script: undefined,
 };
 
 /**
@@ -931,6 +950,7 @@ export const TEST_ARMAGEDDON_TARGET = {
  */
 export const OUR_SPELL_FIXTURES = [
   DEATH_RIPPLE, TEST_ARMAGEDDON, TEST_ARMAGEDDON_AREA, TEST_ARMAGEDDON_TARGET,
+  DEATH_RIPPLE_TARGET,
 ] as const;
 
 /**

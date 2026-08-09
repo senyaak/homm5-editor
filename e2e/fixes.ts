@@ -242,6 +242,16 @@ const TEST_ARMAGEDDON = 'SPELL_H3_TEST_ARMAGEDDON';
  */
 const TEST_ARMAGEDDON_AREA = 'SPELL_H3_TEST_ARMAGEDDON_AREA';
 const TEST_ARMAGEDDON_TARGET = 'SPELL_H3_TEST_ARMAGEDDON_TARGET';
+/**
+ * The ripple aimed at one stack — the reading for a cast that would REACH
+ * NOBODY, which nothing else on this map can show.
+ *
+ * The gate now refuses a spell of ours that would touch nothing, and everything
+ * else here covers the field or a patch of it, where somebody unspared is always
+ * standing. Pointed at the wizard's zombies this one has nothing to do and must
+ * be refused with the mana intact; pointed at anything living it must hit.
+ */
+const DEATH_RIPPLE_TARGET = 'SPELL_H3_DEATH_RIPPLE_TARGET';
 
 /** Dark Magic, at the three masteries the four heroes spread across. */
 const DARK = (mastery: string): Skill => ({ id: 'HERO_SKILL_DARK_MAGIC', mastery });
@@ -275,6 +285,10 @@ export const HEROES: Kit[] = [
     spells: [
       'SPELL_ARMAGEDDON', 'SPELL_FIREBALL', 'SPELL_STONESKIN', DEATH_RIPPLE,
       TEST_ARMAGEDDON, TEST_ARMAGEDDON_AREA, TEST_ARMAGEDDON_TARGET,
+      // And the aimed ripple, on the hero whose foe is UNDEAD: the zombies are
+      // what it must refuse to be cast at, and his own marksmen what it must
+      // still hit.
+      DEATH_RIPPLE_TARGET,
     ],
     stats: { offence: 5, defence: 5, spellpower: 20, knowledge: 30 },
     // A tent of his own, so an Armageddon has a war machine to prove itself on.

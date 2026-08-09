@@ -366,6 +366,13 @@ level, mana, damage, element, icon and visuals, and different only in those two.
 If the first covers the field, the second a patch where it is pointed, and the
 third the one stack under it, the flags are the choice.
 
+**And a fifth, «Волна смерти по цели» (357), for the gate.** The ripple's rule —
+the same three kinds passed over — aimed at one stack, so it can be pointed at a
+stack it passes over and asked to do nothing. That is what a cast reaching NOBODY
+looks like, and nothing else here can be made to show it: the other four cover
+the field or a patch of it, where something unspared is always standing. It goes
+to the wizard because his foe is undead.
+
 **Who carries it, and why those four.** One variable, four values:
 
 | hero | Dark Magic | what his reading is for |
@@ -404,13 +411,13 @@ open the book, and look before clicking:
    stack and hit that one. If all three cover the whole field, the flags are NOT
    what chooses the shape; if the area one asks where to aim and then hits
    nothing, the tiles did not reach the extension.
-6. **And point «Армагеддон по цели» at an UNDEAD stack** — the one reading on
-   this map for a cast that would reach nobody. It spares the same three kinds
-   the ripple does, so pointed at the undead there is nothing for it to do: it
-   must **refuse, and the mana must still be there** afterwards. Then point it at
-   a living stack, which is the control: it must hit as it always did. A refusal
-   in both is a gate saying no to everything of ours; a hit in both is the
-   question not being asked at all, and the mana will be short either way.
+6. **«Волна смерти по цели» at the ZOMBIES** — the one reading on this map for a
+   cast that would reach nobody. It is the ripple's rule aimed at a single stack,
+   so pointed at the undead there is nothing for it to do: it must **refuse, and
+   the mana must still be there** afterwards. Then point it at one of his own
+   marksmen, which is the control: it must hit. A refusal in both is a gate
+   saying no to everything of ours; a hit in both is the question not being asked
+   at all, and the mana is short either way.
 
 **Then send the log.** The newest `bin/homm5-editor-*.log` has a line per cast and, for ours,
 a line per stack it was asked about:
@@ -443,7 +450,7 @@ damage of ours, spell id 353
   school the target is protected from. The two are different answers and are
   named apart on purpose.
 - The load banner says `spell filter rows: 3` — the ripple's kinds, the area
-  one's tiles, and the aimed twin's kinds. Fewer means a row never reached the extension, and everything
+  one's tiles, and the aimed ripple's kinds. Fewer means a row never reached the extension, and everything
   below it is meaningless.
 - `area: no tiles said for spell id 355` means the row is missing: the spell will
   ask where to aim and then cover nothing.
