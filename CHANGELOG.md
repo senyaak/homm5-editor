@@ -304,6 +304,27 @@ one.
 
 ### Fixed
 
+- **A spell of the mod's no longer takes the mana for a cast that hits nobody.**
+  Casting one where it would touch nothing spent the mana and the hero's turn
+  and did nothing at all — and the page in the spellbook stayed bright, so
+  nothing warned anybody first.
+
+  The extension had been answering the engine's "may this be cast" with a flat
+  yes, from one fact: that the number is the mod's. The engine refuses a spell
+  of its own for exactly this, and out of exactly this question — for a spell
+  with no target that check ends in a switch on the number whose case for a mass
+  spell builds the list of stacks the cast would reach and answers "that list is
+  not empty". The mod's spells now answer the same way, out of the walk the cast
+  itself is about to make, so the two can never disagree.
+
+  A spell that would reach nobody is refused, the mana stays, and because the
+  same answer is given to a question as to a cast, the book greys the page by
+  itself — the way it greys Resurrection when there is nothing to raise. Where
+  the answer cannot be worked out at all, it is still yes: a wrong no is a spell
+  that can never be cast, a wrong yes costs one cast. One case is still answered
+  that way and named in docs/engineInternals/SPELLS.md — an area spell asked
+  about from the book, whose covered stacks are not the book's to hand over.
+
 - **`mass-spell-element-fix` could have corrupted the stack.** It made one call
   site dispatch to whichever of three element appliers a spell's document named —
   and those three do not take the same number of arguments (`ret 10h`, `14h`,

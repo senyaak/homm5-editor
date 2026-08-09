@@ -435,13 +435,140 @@ static void *g_castChain = NULL;
 #define H5E_SPELL_CAST 4
 
 /** Non-zero when the row says this stack is passed over. */
-static int row_spares(SpellRow *row, void *unit) {
+static int row_spares(SpellRow *row, void *unit, int say) {
   for (int i = 0; row && i < row->spareCount; i++) {
     if (!unit_has_ability(unit, row->spares[i])) continue;
-    log_num("   spared, it has ability ", row->spares[i]);
+    if (say) log_num("   spared, it has ability ", row->spares[i]);
     return 1;
   }
   return 0;
+}
+
+/**
+ * IS THIS STACK ONE THE CAST WOULD LAND ON — the three questions, in one place.
+ *
+ * They are asked twice: once by the cast itself, and once BEFORE it by the gate,
+ * which has to say whether the spell may be cast at all while the mana is still
+ * the caster's. Two copies would drift, and the drift would show as a spell
+ * refused that would have worked, or one allowed that then does nothing — so
+ * both callers come here.
+ *
+ * `say` is off for the gate's question: the interface asks it thousands of times
+ * in a battle and a cast is an event. See combat/spell-cast.c.
+ */
+static int we_would_hit(void *unit, SpellRow *row, int say) {
+  if (!handle_is_live(unit)) { if (say) log_line("      gone"); return 0; }
+  if (g_mayTouch && !g_mayTouch(unit, 0, 0)) {
+    if (say) log_line("      a spell may not touch it");
+    return 0;
+  }
+  if (row_spares(row, unit, say)) return 0;
+  return 1;
+}
+
+// ---------------------------------------------------------------------------
+// AND THE SAME QUESTION, ASKED BEFORE THE CAST.
+//
+// WHY IT IS HERE. The gate refuses a spell of ours silently, and until now we
+// answered it a flat YES — from one fact, that the number is ours. So a cast
+// that would reach nobody was let through, the mana went, the turn went, and
+// nothing happened. The engine does not treat its own that way: for a spell with
+// no target the gate ends in `0xB840B0`, a switch on the NUMBER, and the case a
+// mass spell of the game's lands in BUILDS THE LIST OF STACKS IT WOULD TOUCH
+// (`0xD61830`) and answers `begin != end`. This is that answer, for our numbers,
+// out of our own walk.
+//
+// WHAT THE GATE CAN TELL US, measured out of `CCastCombatSpellCmd::Execute`
+// (0xB72790) at the call site `0xB7287C`:
+//
+//   xor ecx,ecx                 the message sink — absent when nobody is asking
+//   lea edx,[ebx+0Ch]           THE BLOCK: the command's own, twelve bytes in
+//   push dword ptr [ebx+20h]    the first stack argument — the CASTER
+//   push dword ptr [ebx+24h]    the second — the stack aimed at, or nothing
+//
+// so the caster and the target arrive as arguments, and the block is a window
+// onto the command. The command's vector of stacks the cast will touch is at its
+// `+0x14`/`+0x18` — read four instructions AFTER the gate returns, so it is
+// already built when the gate is asked — which is `+0x08`/`+0x0C` of the block.
+//
+// THAT LAST ONE ONLY HOLDS INSIDE A COMMAND. Seven other places ask this gate —
+// the book, the AI, a tooltip — and their block is a local of their own, where
+// `+0x08` is somebody else's business. The caller passes NULL for it there and
+// the area shape answers "cannot tell", which is a yes.
+//
+// -1 rather than 0 when we cannot tell, and the two are not the same: a wrong
+// NO is a spell that cannot be cast at all, a wrong YES costs one cast's mana.
+#define GATE_BLOCK_AFFECTED 0x08u
+#define GATE_BLOCK_AFFECTED_END 0x0Cu
+
+/**
+ * THE TWO READINGS ABOVE, ANCHORED — because an offset taken from a
+ * disassembly is a transcription, and a transcription is worth checking by the
+ * cheap door rather than by a battle.
+ *
+ * Nothing calls either address; they are here so `tools/test-native-anchors.ts`
+ * reads them out of the executable the way it reads every other anchor, and a
+ * digit typed wrong fails in seconds instead of costing a run.
+ *
+ *   0xB72876  lea edx,[ebx+0Ch]         the block the gate is handed
+ *             push dword ptr [ebx+20h]  and the caster, its first argument
+ *   0xB72910  mov eax,[ebx+18h]         the command measuring the very vector
+ *             sub eax,[ebx+14h]         we read — four instructions later
+ */
+#define GATE_BLOCK_READING_RVA 0x772876u
+#define GATE_BLOCK_READING_MARK_LEN 6
+static const BYTE GATE_BLOCK_READING_MARK[GATE_BLOCK_READING_MARK_LEN] = {
+  0x8D, 0x53, 0x0C, 0xFF, 0x73, 0x20
+};
+#define COMMAND_AFFECTED_READING_RVA 0x772910u
+#define COMMAND_AFFECTED_READING_MARK_LEN 6
+static const BYTE COMMAND_AFFECTED_READING_MARK[COMMAND_AFFECTED_READING_MARK_LEN] = {
+  0x8B, 0x43, 0x18, 0x2B, 0x43, 0x14
+};
+
+static int our_cast_would_reach_anyone(int spell, void *caster, void *target, void *block,
+                                       int say) {
+  void *record = g_spellRecord ? g_spellRecord(spell) : NULL;
+  if (!record || readable_bytes(record, SPELL_RECORD_AREA + 1) < SPELL_RECORD_AREA + 1) return -1;
+  int aimed = *((BYTE *)record + SPELL_RECORD_AIMED);
+  int area = *((BYTE *)record + SPELL_RECORD_AREA);
+  SpellRow *row = spell_row(spell);
+
+  // The shape comes from the same two flags the cast reads — see `our_targets`.
+  if (aimed && !area) {
+    if (!target) return -1;
+    if (say) log_line("   would it reach the one stack it is aimed at?");
+    return we_would_hit(target, row, say);
+  }
+
+  if (aimed && area) {
+    if (!block || readable_bytes(block, GATE_BLOCK_AFFECTED_END + 4) < GATE_BLOCK_AFFECTED_END + 4)
+      return -1;
+    void **from = *(void ***)((BYTE *)block + GATE_BLOCK_AFFECTED);
+    void **to = *(void ***)((BYTE *)block + GATE_BLOCK_AFFECTED_END);
+    if (!from || !to || to < from) return -1;
+    if (say) log_line("   would it reach anybody under the tiles its row names?");
+    for (void **at = from; at < to; at++) {
+      if (readable_bytes(at, 4) < 4) return -1;
+      if (*at && we_would_hit(*at, row, say)) return 1;
+    }
+    return 0;
+  }
+
+  GetCombatFn getCombat = (GetCombatFn)slot_of(caster, UNIT_COMBAT_SLOT);
+  void *combat = getCombat ? getCombat(caster) : NULL;
+  if (!combat || !g_allUnits) return -1;
+  if (say) log_line("   would it reach anybody on the field?");
+  UnitList list = { NULL, NULL, NULL };
+  g_allUnits(combat, &list);
+  int answer = -1;
+  if (list.begin && list.end && list.end >= list.begin) {
+    answer = 0;
+    for (void **at = list.begin; at < list.end && !answer; at++)
+      if (*at && we_would_hit(*at, row, say)) answer = 1;
+  }
+  if (list.begin && g_free) g_free(list.begin);
+  return answer;
 }
 
 /**
@@ -506,9 +633,8 @@ static char __cdecl our_cast(void *cast, void *chain, void *whatResolveWasGiven)
   for (int i = 0; i < count; i++) {
     void *unit = targets[i];
     log_hex("   stack ", (DWORD)(INT_PTR)unit);
-    if (!handle_is_live(unit)) { log_line("      gone"); continue; }
-    if (g_mayTouch && !g_mayTouch(unit, 0, 0)) { log_line("      a spell may not touch it"); continue; }
-    if (row_spares(row, unit)) continue;
+    // The same three questions the gate asked before the mana was spent.
+    if (!we_would_hit(unit, row, 1)) continue;
     // ASKED PER STACK, and the engine asks it ONCE — that is a difference, not
     // a copy. Nothing in its arguments is about the stack, so today the two give
     // the same number for every target; asking inside the loop is what lets a

@@ -99,7 +99,7 @@ Three marks and one answer, all built up from the runs above:
 |---|---|---|
 | the dispatch head `0x77eaf8` | `[resolver]` | for OUR ids fires the battle event and **calls our own resolver** |
 | the command `0x772790` | `[cast command]` | logs the command's block and what it returned |
-| the gate `0x77b4c0` | `[gate]` | logs the verdict, and ANSWERS YES for ours |
+| the gate `0x77b4c0` | `[gate]` | logs the verdict, and for ours answers **whether the cast would reach anybody** |
 | the gate's refusal funnel `0x77b51e` | `[gate]` | logs the reason the engine names |
 | the damage lookup `0x77ce8a` | `[worth]` | for ours, takes the case that reads the record |
 | the damage function `0x7861a0` | `[damage]` | for ours, spares the kinds the mod's row names |
@@ -121,6 +121,77 @@ the game that ignores a black dragon — found in a battle, fixed the same day.
 
 With that in, the cast goes through: `cast: OURS, spell id 353` from the
 resolver, and the engine carries the mana, the hero's turn and the animation.
+
+## The gate, mapped — and what "yes" should have been
+
+**The overrule started as a flat yes, and that was a bug of ours**: a spell of
+ours could be cast where it would touch nobody. The mana went, the hero's turn
+went, and nothing happened — while the book kept the page bright, because a page
+greys off this same answer. Read out 09.08.2026, after it was called one.
+
+**The gate branches on the DOCUMENT, not on the number.** Every question it asks
+about the spell itself goes through the record accessor `0xB1EED0`:
+
+| it asks | which is |
+|---|---|
+| `0xAD3E30` | `[rec+0xCC]` — `IsAimed` |
+| `0xAD4800` | `[rec+0xCD]` — `IsAreaAttack` |
+| `0xAD4610` / `0xAD4640` | `[rec+0x88]` — the school, against 5 and 6 |
+| `0xAD4580` / `0xAD4670` / `0xAD4790` | a literal id each: 208, 67, and 348…351 |
+
+So a spell of ours is routed like any other, and it reaches one of four
+endpoints — none of which is reached by being compiled in:
+
+| the spell | ends in |
+|---|---|
+| aimed, with a target, area | `0xB83470` |
+| aimed, with a target, no area | the tail at `0xB7B87C`, which needs one |
+| school 5 / 6 | `0xC63940` / `0xD5B660` |
+| **no target at all** | **`0xB840B0`** |
+
+**And `0xB840B0` is the fifth switch on the number.** `cmp eax,13Ch` and two
+jump tables; everything they do not name falls to `0xB84423`, which is
+`xor al,al / ret 4` — the silent refusal, in two instructions, with the document
+never consulted. That is where a whole-field spell of ours died.
+
+**The engine's own case says what the answer should be.** The one for spell 316,
+four instructions long: build the list of stacks the cast would touch
+(`0xD61830`), then
+
+```
+cmp ecx,[esp+1Ch]     ; begin against end
+setne bl              ; "there is somebody to hit"
+```
+
+So the question the gate is really asking a mass spell is *would this reach
+anyone* — and the answer is a list, not a flag. Ours answers the same, out of
+the walk the cast itself is about to make: `our_cast_would_reach_anyone` in
+`native/combat/spell-resolve.c`, sharing `we_would_hit` with the resolver so the
+two can never drift apart. A spell of ours that would reach nobody is refused,
+the mana stays, and — because the same answer is given to a question as to a
+cast — the book greys the page by itself, the way it greys Resurrection.
+
+**What the gate hands us**, read at the call site `0xB7287C` and both readings
+anchored in the source so a test checks them rather than a battle:
+
+```
+xor ecx,ecx                 ; the message sink — absent when nobody is asking
+lea edx,[ebx+0Ch]           ; THE BLOCK: the command's own, twelve bytes in
+push dword ptr [ebx+24h]    ; the second argument — the stack aimed at, or none
+push dword ptr [ebx+20h]    ; the first — the CASTER
+call 0xB7B4C0
+```
+
+and four instructions later the command measures `[ebx+18h] - [ebx+14h]`, the
+vector of stacks the cast will touch — so it is already built when the gate is
+asked, and it is the block's `+0x08`/`+0x0C`. **Only inside a command**: the
+seven other callers ask with a local of their own, where those offsets are
+somebody else's business, and there the area shape answers "cannot tell".
+
+**Cannot tell is a yes, and it is a third answer on purpose.** A wrong no is a
+spell that can never be cast; a wrong yes costs one cast's mana. So a missing
+record, a caster with no combat, an unreadable list — each answers yes and says
+so.
 
 ## The bridge to Lua
 
@@ -591,9 +662,14 @@ we care about.
    the heap and hands both over). Now that the walk is ours this is a smaller
    step than it was: the loop that picks whom to hurt is already C, and a Lua
    function would only be another way of asking it.
-3. **The gate's answer should become "is there anything to hit"** rather than a
-   flat yes, so the book greys our spell by itself the way it greys
-   Resurrection. Cheap now: our resolver already knows how to build the list.
+3. ~~The gate's answer should become "is there anything to hit".~~ **Done
+   09.08.2026** — see "The gate, mapped" above. One shape is still answered with
+   "cannot tell" and therefore a yes: an AREA spell asked about from outside a
+   cast command, where the list of stacks it would cover is not the block's to
+   read. Its page stays bright until the click; the cast itself answers
+   properly. Closing it means finding what the book has instead of that vector,
+   or asking `0xB7BE30` for the tiles and turning tiles into stacks ourselves —
+   neither measured yet.
 4. **Effects, and effects of our own.** A spell whose content is not damage but
    something it leaves behind — the fourth shape (`0xB7F99A`, the 18 shipped
    effects). Deliberately not started: the three damage shapes came first.

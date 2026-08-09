@@ -203,6 +203,17 @@ typedef int(__fastcall *CastGateFn)(void *ecx, void *block, void *a1, void *a2, 
                                     void *a4, void *a5, int a6, int a7);
 static CastGateFn g_castGate = NULL;
 
+/**
+ * WOULD A CAST OF OURS REACH ANYBODY — 1 yes, 0 nobody, -1 we cannot tell.
+ *
+ * Written in combat/spell-resolve.c, which is included AFTER this file, and
+ * declared here because this is the one place that has to ask before the cast
+ * rather than during it. It belongs there: it is the cast's own walk, asked a
+ * moment earlier, and the two must never be two different answers.
+ */
+static int our_cast_would_reach_anyone(int spell, void *caster, void *target, void *block,
+                                       int say);
+
 static int __fastcall on_cast_gate(void *ecx, void *block, void *a1, void *a2, int a3,
                                    void *a4, void *a5, int a6, int a7) {
   int spell = readable_bytes(block, CAST_GATE_SPELL + 4) >= CAST_GATE_SPELL + 4
@@ -216,17 +227,42 @@ static int __fastcall on_cast_gate(void *ecx, void *block, void *a1, void *a2, i
   // same way. So the engine decides what a spell may touch from what it was
   // built with, and no data can answer for a number it has never seen.
   //
-  // Ours therefore answers for itself: yes. What that buys is everything the
-  // engine does around a cast — the mana, the hero's turn, the animation — and
-  // it costs nothing to the game's own spells, whose answer is left alone.
+  // Ours therefore answers for itself. What that buys is everything the engine
+  // does around a cast — the mana, the hero's turn, the animation — and it costs
+  // nothing to the game's own spells, whose answer is left alone.
   // ONLY THE SILENT REFUSAL IS OURS TO OVERRULE. A named one is the engine
   // applying a rule that has nothing to do with our number — a black dragon is
   // immune to magic whatever the spell is — and answering yes over it would make
   // ours the one spell in the game that ignores immunity.
-  if (spell >= FIRST_SPELL_OF_OURS && g_inCastCommand && !(answer & 0xFF)
-      && !g_gateGaveAReason) {
-    log_line("   ours, and refused without a reason — answering for it: yes");
-    answer = 1;
+  //
+  // AND THE ANSWER IS NOT A FLAT YES. It was one, and that was a bug of ours: a
+  // spell of ours could be cast at a field it would not touch — the mana gone,
+  // the turn gone, nothing hit. The engine refuses its own for exactly that, and
+  // out of exactly this question: for a spell with no target its gate ends in
+  // `0xB840B0`, whose case for a mass spell builds the list of stacks the cast
+  // would reach and answers "that list is not empty". Ours answers the same, out
+  // of the walk the cast is about to make — see `our_cast_would_reach_anyone`.
+  //
+  // A spell that reaches nobody is therefore REFUSED, and refused everywhere the
+  // gate is asked — so the book greys the page by itself, the way it greys
+  // Resurrection when there is nothing to raise, rather than taking a click that
+  // does nothing. That is why this no longer waits for `g_inCastCommand`: a
+  // question deserves the same answer as a cast, or the page lies about it.
+  if (spell >= FIRST_SPELL_OF_OURS && !(answer & 0xFF) && !g_gateGaveAReason) {
+    // The block is the command's own only while a command is running — the book,
+    // the AI and a tooltip each ask with a local of theirs, where the same
+    // offsets mean nothing. See the note over the function.
+    int reaches = our_cast_would_reach_anyone(spell, a1, a2, g_inCastCommand ? block : NULL,
+                                              g_inCastCommand);
+    if (!reaches) {
+      if (g_inCastCommand)
+        log_line("   ours, and it would reach nobody — the refusal stands, and the mana with it");
+    } else {
+      if (g_inCastCommand)
+        log_line(reaches > 0 ? "   ours, and it would reach somebody — answering for it: yes"
+                             : "   ours, and nothing here can say whom it would reach — yes");
+      answer = 1;
+    }
   }
   // EVERY verdict of a real cast, and none of the rest.
   //
