@@ -50,11 +50,26 @@
 //   +0x30  the caster's mastery            reaches 0xAD4EC0 as the table index
 //   +0x34  a scale, float                  the last-but-one argument of the hit
 //
-// THE AREA SHAPE COSTS NOTHING EXTRA, and that is worth saying out loud: the
-// command has ALREADY turned the covered tiles into a list of stacks and left it
-// at +0x24. Those tiles are ours — `install_area_shape` in spell-switches.c fills
-// them from the spell's own row — so an area spell of ours needs no tile-to-unit
-// lookup here. It walks a list the engine built to our shape.
+// THE AREA SHAPE WAS SAID TO COST NOTHING EXTRA, AND THAT WAS WRONG — measured
+// 09.08.2026, and written here rather than quietly deleted because it stood for
+// a day and a half and a fix was built on top of it.
+//
+// The claim was that the command has ALREADY turned the covered tiles into a
+// list of stacks and left it at +0x24, so an area spell of ours needs no
+// tile-to-unit lookup. What the log says instead: an area cast of ours reaches
+// this file with an EMPTY list, every time, and the tiles are never collected
+// for our number at all — `[area] tiles for spell id 5` is printed for the
+// game's own fireball during a cast, and there is no such line for ours.
+//
+// Because a shipped area spell collects them INSIDE ITS OWN BRANCH of the
+// resolver — the branch we do not have and deliberately do not borrow — and not
+// in the command. So the list at +0x24 is filled for some spells and not for
+// ours, and the one measurement that started this was a spell for which it was.
+//
+// What that leaves: an area spell of ours must build the list itself, from the
+// point it was aimed at and the tiles its row names. Not done yet — the shape
+// answers "nobody" honestly today, and the gate treats that as "cannot tell"
+// rather than refusing the cast. See docs/engineInternals/SPELLS.md.
 
 /** Which switch turns this file's logging on — see the bottom of core/log.c. */
 #undef LOG_UNIT
@@ -65,6 +80,17 @@
 #define CAST_TARGET 0x18u
 #define CAST_AFFECTED 0x24u
 #define CAST_AFFECTED_END 0x28u
+/**
+ * THE POINT AN AREA CAST WAS AIMED AT, and the command is where it was read.
+ *
+ * `CCastCombatSpellCmd::Execute` copies its own `+0x28` and `+0x2C` into the
+ * block it hands the constructor, at `+0x1C` and `+0x20` (`0xB72973`), and the
+ * same pair reaches the cast gate as the pointer `lea eax,[ebx+28h]`. Seen from
+ * the GATE's block, which is the command twelve bytes in, they are the same two
+ * offsets — which is why one pair of names serves both callers below.
+ */
+#define CAST_AIM_X 0x1Cu
+#define CAST_AIM_Y 0x20u
 #define CAST_POWER 0x2Cu
 #define CAST_MASTERY 0x30u
 #define CAST_SCALE 0x34u
@@ -99,6 +125,40 @@ typedef struct {
 } UnitList;
 typedef void(__fastcall *AllUnitsFn)(void *combat, UnitList *out);
 static AllUnitsFn g_allUnits = NULL;
+
+typedef void(__fastcall *AreaReachFn)(UnitList *units, UnitList *tiles, void *caster,
+                                      int x, int y, int spell, int flag);
+static AreaReachFn g_areaReach = NULL;
+
+/**
+ * `WhomAnAreaReaches(units, tiles, caster, x, y, spell, flag)` — every stack an
+ * area spell aimed at (x, y) would cover. `0xB7BE30`.
+ *
+ * `ret 14h`, so five stack arguments after `ecx` and `edx`, and fifteen callers
+ * of the engine's own. It collects the covered tiles into `tiles` — **through
+ * the switch our own stub sits in**, so the shape it lays for an id of ours is
+ * the cross the row names — and then asks the combat which stacks stand on them
+ * (`0xB88980`), leaving those in `units`.
+ *
+ * BOTH LISTS ARE OURS TO FREE, and both start as three zero words: the engine's
+ * own caller (`0xD61830`) builds them exactly so, on its frame.
+ *
+ * TWO PUSHES BEFORE `call [eax+8]` AT ITS TAIL BELONG TO `0xB88980`, not to that
+ * virtual call — `vt[8]` is `GetCombat` and takes nothing, which is how the rest
+ * of this file already calls it. Reading them as its arguments is the arity trap
+ * that has dropped four battles here.
+ *
+ * WHY WE CALL IT AT ALL. A shipped area spell collects its tiles inside its own
+ * branch of the resolver; the list on the cast object is not filled for an id of
+ * ours, so an area cast of ours reached every stack it should have and hit none.
+ * This is the engine's own door to that work, and our tiles are already inside
+ * it.
+ */
+#define AREA_REACH_RVA 0x77be30u
+#define AREA_REACH_HEAD_LEN 6
+static const BYTE AREA_REACH_HEAD[AREA_REACH_HEAD_LEN] = {
+  0x55, 0x8B, 0xEC, 0x83, 0xE4, 0xF8                          // push ebp/mov ebp,esp/and esp,-8
+};
 
 /**
  * `CCombatUnit::MaySpellTouch(kind, spell)` — may a spell land on this stack.
@@ -371,6 +431,55 @@ static int handle_is_live(void *obj) {
 
 #define OUR_TARGETS_MAX 64
 
+/**
+ * The stacks an area cast of OURS would cover — asked of the engine, with our
+ * own tiles inside the asking.
+ *
+ * Answers -1 when there is no way to ask, which is not the same as nobody: the
+ * gate reads the two apart. Both lists are freed here; the engine hands their
+ * storage over and keeps nothing, exactly as it does for the field's.
+ */
+/**
+ * Non-zero while we are inside the engine's own collector.
+ *
+ * Insurance, not a fix for anything seen: the gate asks this question and the
+ * collector is a function of the engine's with fifteen callers, so a road from
+ * it back to the gate would be a battle spent in a stack that never unwinds. A
+ * second ask answers "cannot tell", which is a yes, and costs one comparison.
+ */
+static int g_askingWhoIsCovered = 0;
+
+static int our_area_targets(void *caster, int x, int y, int spell, void **into, int say) {
+  if (!g_areaReach || !caster || g_askingWhoIsCovered) return -1;
+  g_askingWhoIsCovered = 1;
+  UnitList units = { NULL, NULL, NULL };
+  UnitList tiles = { NULL, NULL, NULL };
+  // The flag is the 1 the engine's own caller passes; with a zero it stops
+  // handing the caster on to the collector.
+  g_areaReach(&units, &tiles, caster, x, y, spell, 1);
+  int n = 0;
+  if (units.begin && units.end && units.end >= units.begin) {
+    for (void **at = units.begin; at < units.end; at++) {
+      if (n >= OUR_TARGETS_MAX) {
+        if (say) log_num("   MORE than we will hit, dropped ", (int)(units.end - at));
+        break;
+      }
+      if (*at) into[n++] = *at;
+    }
+  }
+  if (say) {
+    log_num("      tiles it laid ", tiles.begin && tiles.end
+        ? (int)(tiles.end - tiles.begin) : -1);
+    log_num("      stacks standing on them ", n);
+  }
+  if (g_free) {
+    if (units.begin) g_free(units.begin);
+    if (tiles.begin) g_free(tiles.begin);
+  }
+  g_askingWhoIsCovered = 0;
+  return n;
+}
+
 /** Fills `into` and answers how many — and says so when the field is bigger. */
 static int our_targets(void *cast, void *record, void *combat, void **into) {
   int aimed = *((BYTE *)record + SPELL_RECORD_AIMED);
@@ -385,14 +494,24 @@ static int our_targets(void *cast, void *record, void *combat, void **into) {
   }
 
   if (aimed && area) {
-    // The list the command built from the tiles our own row named.
+    log_line("   shape: an area — the stacks under the tiles our row names");
+    // ASKED FOR, not read off the cast. The list at +0x24 is the one a COMMAND
+    // fills, and for an id of ours it is never filled — a shipped area spell
+    // collects its tiles inside its own branch of the resolver, which is the
+    // branch we do not have. Measured 09.08.2026: four casts, an empty list each
+    // time, and no tiles laid at all.
+    int caught = our_area_targets(*(void **)((BYTE *)cast + CAST_CASTER),
+                                  *(int *)((BYTE *)cast + CAST_AIM_X),
+                                  *(int *)((BYTE *)cast + CAST_AIM_Y),
+                                  *(int *)((BYTE *)cast + CAST_SPELL), into, 1);
+    log_num("      aimed at x ", *(int *)((BYTE *)cast + CAST_AIM_X));
+    log_num("      and y ", *(int *)((BYTE *)cast + CAST_AIM_Y));
+    if (caught >= 0) return caught;
+    // The old road, kept as a fallback for the day the engine's own door is not
+    // where we left it: whatever the command did leave behind.
     void **from = *(void ***)((BYTE *)cast + CAST_AFFECTED);
     void **to = *(void ***)((BYTE *)cast + CAST_AFFECTED_END);
-    log_line("   shape: an area — the stacks under the tiles our row names");
-    // BOTH ENDS, PRINTED. An empty list and a list that is not there read the
-    // same from the count alone, and they are opposite faults: a null pair means
-    // these offsets are not where the affected stacks live, while begin == end
-    // means the command looked under our tiles and found nobody standing there.
+    log_line("      no way to ask — falling back to whatever the command left");
     log_hex("      the list begins at ", (DWORD)(INT_PTR)from);
     log_hex("      and ends at ", (DWORD)(INT_PTR)to);
     if (!from || !to || to < from) return 0;
@@ -563,7 +682,21 @@ static int our_cast_would_reach_anyone(int spell, void *caster, void *target, vo
     // So only a list that HAS somebody in it can answer no, by everyone in it
     // being spared. Put this back to `0` the day the tiles reach the command —
     // the line to watch for is `[area] tiles for spell id <ours>` inside a cast.
-    if (!from || !to || to <= from) return -1;
+    if (!from || !to || to <= from) {
+      // THE SAME DOOR THE CAST WILL USE. The command's list being empty says
+      // nothing at all — it is never filled for an id of ours — so the question
+      // is put to the engine the way the cast itself will put it, with our own
+      // tiles inside the asking. The aim point is the block's, and the block is
+      // the command twelve bytes in, so these are the cast object's offsets.
+      if (readable_bytes(block, CAST_AIM_Y + 4) < CAST_AIM_Y + 4) return -1;
+      void *covered[OUR_TARGETS_MAX];
+      if (say) log_line("   would it reach anybody under the tiles its row names?");
+      int caught = our_area_targets(caster, *(int *)((BYTE *)block + CAST_AIM_X),
+                                    *(int *)((BYTE *)block + CAST_AIM_Y), spell, covered, say);
+      if (caught < 0) return -1;
+      for (int i = 0; i < caught; i++) if (we_would_hit(covered[i], row, say)) return 1;
+      return 0;
+    }
     if (say) log_line("   would it reach anybody under the tiles its row names?");
     for (void **at = from; at < to; at++) {
       if (readable_bytes(at, 4) < 4) return -1;
@@ -803,6 +936,8 @@ static void install_our_resolver(void) {
   // address — call it — and it is refused on a mismatch like the other two.
   g_allUnits = (AllUnitsFn)engine_code(ALL_UNITS_RVA, ALL_UNITS_HEAD, ALL_UNITS_HEAD_LEN,
                                        "every stack on the field");
+  g_areaReach = (AreaReachFn)engine_code(AREA_REACH_RVA, AREA_REACH_HEAD, AREA_REACH_HEAD_LEN,
+                                         "every stack an area covers");
   g_mayTouch = (MayTouchFn)engine_code(MAY_TOUCH_RVA, MAY_TOUCH_HEAD, MAY_TOUCH_HEAD_LEN,
                                        "may a spell touch this stack");
   g_spellWorth = (SpellWorthFn)engine_code(SPELL_WORTH_RVA, SPELL_WORTH_HEAD,

@@ -512,7 +512,7 @@ pushes. Every one was read out of the code that uses it:
 | `+0x04` | the spell id | `mov ecx,[eax+4]` before every worth |
 | `+0x14` | the caster | `ebp` for the whole function |
 | `+0x18` | the one stack aimed at | the single-target branch's second argument |
-| `+0x24`/`+0x28` | the affected stacks, begin/end | the area routine's vector |
+| `+0x24`/`+0x28` | the affected stacks, begin/end — **empty for ours**, see below | the area routine's vector |
 | `+0x2C` | the caster's spell power | reaches `0xAD4EC0` as the multiplier |
 | `+0x30` | the mastery | reaches `0xAD4EC0` as the table index |
 | `+0x34` | a scale, float | the last-but-one argument of the hit |
@@ -647,6 +647,42 @@ them again: `0xBD3A00`-ish builds the spellbook's PREDICTION — the "duration",
 "enchant", "damage_bonus" and "heal" it writes are strings into a bag, not
 effects — and `0xAD4640` is "is this spell of school 6", not a gate on anything
 we care about.
+
+## The area shape reaches nobody, and the claim it rested on was wrong
+
+Measured 09.08.2026, in the run that was meant to check the gate.
+
+**What was believed:** the command turns the covered tiles into a list of stacks
+and leaves it at the cast's `+0x24`/`+0x28`, so an area spell of ours needs no
+tile-to-unit lookup of its own — it walks a list the engine built to our shape.
+
+**What the log says:** `shape: an area … stacks to consider 0`, four casts in a
+row, and both ends of the list equal. And there is no `[area] tiles for spell id
+355` line anywhere during those casts, while the game's own fireball prints one
+(`[area] tiles for spell id 5`) in the same battle.
+
+**Why.** A shipped area spell collects its tiles INSIDE ITS OWN BRANCH of the
+resolver — the branch a spell of ours does not have and does not borrow — not in
+the command. The command's list is filled for some spells and not for ours, and
+the measurement the claim rested on was taken on one for which it was.
+
+The gate's route is not the reason, though it was the first suspect and is worth
+writing down so nobody re-derives it: `0xAD40C0`, and behind it `0xAD3E50`, is a
+switch on the NUMBER — ids 210…221 get a targeting kind, everything else zero —
+so ours goes to `0xB83470` rather than `0xB83ED0`, which is the one that calls
+the tiles function. **The game's own fireball takes the same road**: its id is 5
+and it gets no kind either, so this is not what separates it from ours.
+
+**What it costs, today:** an area spell of ours casts, covers nobody and takes
+the mana. The gate does NOT refuse it — an empty list there is read as "cannot
+tell", because the list is empty whether or not anybody stands under the cross.
+One build refused every area cast outright before that was understood.
+
+**What has to happen:** the resolver builds the list itself, from the point the
+cast was aimed at and the tiles the row names. `0xD61830` is the candidate — the
+engine's own "which stacks would this spell reach", which is what its gate case
+for a mass spell calls, and it goes through `0xB7BE30`, which is OUR tiles stub.
+Its signature and where it takes the centre from are the next thing to read.
 
 ## What is not done yet
 
