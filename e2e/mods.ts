@@ -894,9 +894,26 @@ export const TEST_ARMAGEDDON_TARGET = {
   id: 'SPELL_H3_TEST_ARMAGEDDON_TARGET',
   file: 'H3TestArmageddonTarget',
   name: 'Армагеддон по цели',
-  description: 'Тот же армагеддон, но нацеливаемый на один отряд — третья форма урона.',
+  description: 'Тот же армагеддон, но нацеливаемый на один отряд — третья форма урона. Нежить он не трогает, и потому на неё его не навести.',
   aimed: true,
   areaAttack: false,
+  /**
+   * AND IT SPARES WHAT THE RIPPLE SPARES — which on this one is not about the
+   * filter at all. It is the only way the stand can show a cast that would
+   * reach NOBODY.
+   *
+   * The gate now refuses a spell of ours that would touch nothing, so the mana
+   * and the turn stay with the caster and the book greys the page. Everything
+   * else on the map is the wrong experiment for it: the ripple covers the whole
+   * field, and a field always holds somebody the caster does not spare — his own
+   * army, if nothing else. A spell aimed at ONE stack can be pointed at a stack
+   * it passes over, and then there is nothing for the cast to do.
+   *
+   * So: point it at an undead stack and it must refuse, with the mana intact;
+   * point it at a living one and it must hit as before. One battle, both halves,
+   * and the second is the control that says the refusal is not blanket.
+   */
+  spares: NOT_LIVING,
 };
 
 /**

@@ -381,10 +381,13 @@ open the book, and look before clicking:
 1. **Is the page there at all**, with the name «Волна смерти» and the plague
    icon it borrows? A missing icon and a missing spell look the same, which is
    why it borrows one.
-2. **Is it greyed out?** Not yet asked of itself — the extension answers "yes,
-   it may be cast" for a spell the engine merely does not recognise, so ours is
-   never grey on that account. It IS still grey for the engine's own reasons
-   (not enough mana, a blocked spell), and those are left alone.
+2. **Is it greyed out?** It should not be, and now for a reason rather than by
+   default: the extension answers the engine's "may this be cast" with whether
+   the cast would reach ANYBODY, so a spell that would touch nothing is refused
+   and its page greys the way Resurrection's does. The ripple covers the whole
+   field, and a field always holds somebody it does not spare, so this one is
+   bright in every battle on this map. It is still grey for the engine's own
+   reasons (not enough mana, a blocked spell), and those are left alone.
 3. **Press it, with something undead on the field.** Expect the living stacks to
    take damage and the undead to take none — and the numbers to grow with the
    caster's Dark Magic across the four heroes. A stack with anti-magic on it, or
@@ -401,6 +404,13 @@ open the book, and look before clicking:
    stack and hit that one. If all three cover the whole field, the flags are NOT
    what chooses the shape; if the area one asks where to aim and then hits
    nothing, the tiles did not reach the extension.
+6. **And point «Армагеддон по цели» at an UNDEAD stack** — the one reading on
+   this map for a cast that would reach nobody. It spares the same three kinds
+   the ripple does, so pointed at the undead there is nothing for it to do: it
+   must **refuse, and the mana must still be there** afterwards. Then point it at
+   a living stack, which is the control: it must hit as it always did. A refusal
+   in both is a gate saying no to everything of ours; a hit in both is the
+   question not being asked at all, and the mana will be short either way.
 
 **Then send the log.** The newest `bin/homm5-editor-*.log` has a line per cast and, for ours,
 a line per stack it was asked about:
@@ -422,12 +432,18 @@ damage of ours, spell id 353
 - `shape: the whole field` / `an area` / `one stack` is what the two flags asked
   for. `shape: NONE` means the record could not be read or that branch was not
   recognised, and the spell will do nothing.
+- `it would reach nobody — the refusal stands, and the mana with it` is the gate
+  answering for us, and it is the line the sixth step is looking for. Its
+  opposites are `would reach somebody` and `nothing here can say whom it would
+  reach` — the third is a yes given because the question could not be answered,
+  and a cast that hits nothing after THAT line is a different bug from a cast
+  that hits nothing after the first.
 - `the target is spared` is our filter, before the engine's arithmetic.
 - `the engine says 0` is the ENGINE sparing it — immunity, resistance, or a
   school the target is protected from. The two are different answers and are
   named apart on purpose.
-- The load banner says `spell filter rows: 2` — the ripple's kinds and the area
-  one's tiles. Fewer means a row never reached the extension, and everything
+- The load banner says `spell filter rows: 3` — the ripple's kinds, the area
+  one's tiles, and the aimed twin's kinds. Fewer means a row never reached the extension, and everything
   below it is meaningless.
 - `area: no tiles said for spell id 355` means the row is missing: the spell will
   ask where to aim and then cover nothing.

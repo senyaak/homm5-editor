@@ -203,6 +203,14 @@ test('the spells of ours carry their row into the install', () => {
   expect(area, `${TEST_ARMAGEDDON_AREA.id} has a row too`).toBeTruthy();
   expect(area!.area, 'and it is the cross the fixture drew')
     .toEqual(TEST_ARMAGEDDON_AREA.area);
+  // And the aimed twin's, which is what makes the stand able to show a cast that
+  // would reach NOBODY: pointed at a stack it passes over, the gate must refuse
+  // it and the mana must stay. Without this row that half of the map cannot be
+  // run at all, and the refusal would look untested rather than untestable.
+  const aimed = rows.find((f) => f.spell === SHIPPED_SPELLS + 3);
+  expect(aimed, `${TEST_ARMAGEDDON_TARGET.id} has a row too`).toBeTruthy();
+  expect(aimed!.spares, 'and it spares the same three kinds the ripple does')
+    .toEqual([10, 12, 9]);
 });
 
 // AND THE SHAPE, WHICH IS THE OTHER THING THE DOCUMENT DECIDES.
