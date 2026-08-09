@@ -552,7 +552,18 @@ static int our_cast_would_reach_anyone(int spell, void *caster, void *target, vo
       return -1;
     void **from = *(void ***)((BYTE *)block + GATE_BLOCK_AFFECTED);
     void **to = *(void ***)((BYTE *)block + GATE_BLOCK_AFFECTED_END);
-    if (!from || !to || to < from) return -1;
+    // AN EMPTY LIST IS "CANNOT TELL" HERE, AND ONLY HERE — measured 09.08.2026,
+    // and it cost the area spell its castability for one build. The command does
+    // not build this list for an id of ours at all: the step that collects the
+    // covered tiles sits behind `0xAD3E50`, a switch on the NUMBER, and ours
+    // falls to its default — so the list is empty whether or not anybody is
+    // standing under the cross. Reading that as "nobody" refused every area cast
+    // of ours outright.
+    //
+    // So only a list that HAS somebody in it can answer no, by everyone in it
+    // being spared. Put this back to `0` the day the tiles reach the command —
+    // the line to watch for is `[area] tiles for spell id <ours>` inside a cast.
+    if (!from || !to || to <= from) return -1;
     if (say) log_line("   would it reach anybody under the tiles its row names?");
     for (void **at = from; at < to; at++) {
       if (readable_bytes(at, 4) < 4) return -1;
