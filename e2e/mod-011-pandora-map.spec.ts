@@ -26,8 +26,8 @@ import { modFile } from '../src/game/mod-paths.ts';
 import { readEntries } from '../src/format/pak.ts';
 import { writeGameplayArchive } from '../src/mods/gameplay.ts';
 import {
-  PANDORA_ARTIFACT_SHARED, PANDORA_CLASS, PANDORA_DIAGS, PANDORA_MILL_SHARED,
-  PANDORA_TIERS, pandoraDiagShared, pandoraShared,
+  PANDORA_ARTIFACT_SHARED, PANDORA_ART_DIAGS, PANDORA_CLASS, PANDORA_FIELD_DIAGS,
+  PANDORA_MILL_SHARED, PANDORA_TIERS, SHIPPED_CHEST, pandoraDiagShared, pandoraShared,
 } from '../src/mods/pandora-files.ts';
 import { withPandoraBlock } from '../src/mods/pandora-scripts.ts';
 import type { PandoraContents } from '../src/mods/pandora-scripts.ts';
@@ -71,12 +71,26 @@ const BOXES: (PandoraContents & { x: number; y: number; shared: string })[] = [
   { name: 'PandoraArtifact', gold: 1000, x: 36, y: 22, shared: `/${PANDORA_ARTIFACT_SHARED}` },
 ];
 
-/** The model bisect, one twin per pipeline stage — placed to be LOOKED at,
- *  never touched, so they carry no contents and no hooks. Left to right:
- *  Vanilla, Copy, Painted, Cubed — the first invisible one names the culprit. */
-const DIAGS = PANDORA_DIAGS.map((key, i) => ({
-  name: `PandoraDiag${key}`, x: 22 + i * 4, y: 40, shared: `/${pandoraDiagShared(key)}`,
-}));
+/**
+ * The bisect row — placed to be LOOKED at, never touched, so they carry no
+ * contents and no hooks. It starts with the game's OWN chest: without that
+ * control "none of them are visible" cannot tell a broken document from a
+ * class that draws nothing on this map at all.
+ *
+ * Then seven twins of the shipped document, each differing in one field, and
+ * three of our art pipeline's stages on a document known good. Left to right,
+ * the first invisible one names the cause.
+ */
+const CONTROL = { name: 'ShippedChest', x: 18, y: 40, shared: `/${SHIPPED_CHEST}` };
+const DIAGS = [
+  CONTROL,
+  ...PANDORA_FIELD_DIAGS.map((key, i) => ({
+    name: `PandoraDiag${key}`, x: 22 + i * 4, y: 40, shared: `/${pandoraDiagShared(key)}`,
+  })),
+  ...PANDORA_ART_DIAGS.map((key, i) => ({
+    name: `PandoraDiag${key}`, x: 22 + i * 4, y: 46, shared: `/${pandoraDiagShared(key)}`,
+  })),
+];
 
 /** What a box says it gave, written beside the map for the behaviour to show. */
 function givenText(b: PandoraContents): string {

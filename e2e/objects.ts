@@ -63,8 +63,16 @@ async function armObject(page: Page, shared: string): Promise<void> {
   if (entry.hidden) await page.locator('#obj-hidden').setChecked(true);
   await page.locator('#obj-cat').selectOption({ value: entry.group });
   await page.locator('#obj-search').fill(entry.name);
-  const swatch = page.locator('#obj-grid .obj')
-    .filter({ has: page.getByText(entry.label, { exact: true }) }).first();
+  // LABELS COLLIDE. Two catalogue entries are called "Chest" — a treasure and
+  // the glow static beside it — so the label alone picked whichever came
+  // first, and the readout then said AdvMapStatic where a treasure was asked
+  // for. The swatch's tooltip carries `<name> · <type> · <group>`, which is
+  // unique, so that is what disambiguates; the label filter stays as the
+  // narrowing step it always was.
+  const byLabel = page.locator('#obj-grid .obj')
+    .filter({ has: page.getByText(entry.label, { exact: true }) });
+  const exact = page.locator(`#obj-grid .obj[title*="${entry.name} · ${entry.type}"]`);
+  const swatch = (await exact.count()) ? exact.first() : byLabel.first();
   await swatch.click();
   // The readout is "placing: <label> · <type>"; anything else means the click
   // landed on a neighbour, which would put the wrong object on the map.
