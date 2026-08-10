@@ -71,8 +71,10 @@ export const EFFECTS_FILE = join('bin', 'homm5-editor-effects.txt');
  *     Lightning Protection, the Dragon Flame Tongue) take half; ours say how
  *     much.
  *   `magic_damage` - PERCENT added to the damage of ANY spell, whatever its
- *     element and none. One row instead of four when a thing is not about an
- *     element at all, and it adds to whichever of the four also applies.
+ *     element and none. NOT a replacement for the four above and not a shorthand
+ *     for them: it is its own thing - "stronger magic" rather than "stronger
+ *     fire" - and it adds ON TOP of whichever element row also matched. An
+ *     artifact may carry both, and then both apply.
  *   `magic_resist` - the same, for a spell of ANY element and none: the
  *     percentage the engine already works out per stack, with ours added to
  *     it.

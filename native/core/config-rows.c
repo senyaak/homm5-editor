@@ -54,9 +54,10 @@ typedef enum {
   // And the other side of the same question: PERCENT taken off a spell of
   // that element, and of any spell at all for the last one. Kept in the same
   // element order, so the arithmetic that finds a row works for both halves.
-  // Any spell at all, whatever its element - added on top of whichever of the
-  // four above also matches, so a thing that is not about an element is one
-  // row rather than four.
+  // Any spell at all, whatever its element - added ON TOP of whichever of the
+  // four above also matched. It does not stand in for them and does not replace
+  // them: "stronger magic" is a different claim from "stronger fire", and an
+  // artifact carrying both means both.
   STAT_MAGIC_DAMAGE = 11,
   STAT_AIR_RESIST = 12,
   STAT_FIRE_RESIST = 13,
