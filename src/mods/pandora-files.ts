@@ -27,6 +27,7 @@ import { copyArt, dataPath, resolve } from './mod-art.ts';
 import type { ArtCopy } from './mod-art.ts';
 import { TYPES, mustRead, utf16 } from './mod-files.ts';
 import type { DataReader, ModFile } from './mod-files.ts';
+import { pandoraBehaviourFiles } from './pandora-scripts.ts';
 
 const EOL = '\r\n';
 
@@ -462,6 +463,9 @@ export function buildPandora(read: DataReader): ModFile[] {
     types, { w: 1, h: 1 }, at,
   );
   files.push({ path: PANDORA_CHEST_SHARED, data: Buffer.from(chestDoc, 'latin1') });
+  // The behaviour the maps' generated blocks doFile, and its texts.
+  files.push(...pandoraBehaviourFiles());
+
   files.push({
     path: PANDORA_CHEST_LINK,
     data: Buffer.from([

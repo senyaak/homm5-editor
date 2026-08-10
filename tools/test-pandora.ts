@@ -23,6 +23,10 @@ import {
   buildPandora, pandoraShared, pandoraTexture, pandoraTier,
 } from '../src/mods/pandora-files.ts';
 import { buildGameplayArchive } from '../src/mods/gameplay.ts';
+import {
+  PANDORA_BLOCK_BEGIN, pandoraBehaviourLua, pandoraMapBlock, withPandoraBlock,
+} from '../src/mods/pandora-scripts.ts';
+import { luaDiagnostics } from '../src/script/lua-lint.ts';
 import { dataReader } from '../src/mods/mod-files.ts';
 import { readEntries } from '../src/format/pak.ts';
 import { extractMeshesStructured } from '../src/scene/geometry.ts';
@@ -158,6 +162,38 @@ const effectMaterials = files.filter((f) => f.path.toLowerCase().includes('(mate
   && !modelMaterials.some((p) => p.toLowerCase() === f.path.toLowerCase()));
 check('the glow materials keep their art', effectMaterials.length > 0
   && effectMaterials.every((f) => !f.data.toString('latin1').includes('PandoraBox.(Texture).xdb')), `${effectMaterials.length} kept`);
+
+// ---- the scripts ------------------------------------------------------------
+
+console.log('the scripts');
+{
+  const lua = pandoraBehaviourLua();
+  check('the behaviour lints clean', luaDiagnostics(lua).length === 0,
+    luaDiagnostics(lua).map((d) => `${d.from}: ${d.message}`).join('; '));
+
+  const boxes = [
+    { name: 'Pandora01', exp: 1000, gold: 2500, wood: 5, artifacts: ['ARTIFACT_ENDLESS_BAG_OF_GOLD'] },
+    { name: 'Pandora02', spells: [5, 17], creatures: [{ creature: 'CREATURE_PEASANT', count: 20 }] },
+    { name: 'Pandora03', gold: 50000, guards: [{ creature: 'CREATURE_ARCHDEVIL', count: 4 }, { creature: 'CREATURE_DEVIL', count: 8 }] },
+  ];
+  const block = pandoraMapBlock(boxes);
+  check('the block lints clean', luaDiagnostics(block).length === 0,
+    luaDiagnostics(block).map((d) => `${d.from}: ${d.message}`).join('; '));
+  check('the block loads the behaviour first', block.indexOf('doFile') < block.indexOf('H5E_PANDORA['));
+  check('a guarded box fights before it opens',
+    block.includes('StartCombat(hero, nil, 2, CREATURE_ARCHDEVIL, 4, CREATURE_DEVIL, 8, nil, "H5E_PandoraWon")'));
+  check('every box is hooked', boxes.every((b) => block.includes(`Trigger(OBJECT_TOUCH_TRIGGER, "${b.name}", "H5E_PandoraTouch")`)));
+
+  const authored = '-- mine\r\nfunction DayOne() end;\r\n';
+  const withBlock = withPandoraBlock(authored, boxes);
+  check('the block goes above the author\'s code', withBlock.startsWith(PANDORA_BLOCK_BEGIN) && withBlock.endsWith(authored));
+  const updated = withPandoraBlock(withBlock, boxes.slice(0, 1));
+  check('a rewrite replaces, not stacks', updated.split(PANDORA_BLOCK_BEGIN).length === 2 && !updated.includes('Pandora03'));
+  check('no boxes takes the block away', withPandoraBlock(withBlock, []) === authored);
+  let refused = false;
+  try { pandoraMapBlock([{ name: 'bad name' }]); } catch { refused = true; }
+  check('a bad placement name is refused', refused);
+}
 
 // ---- the archive ------------------------------------------------------------
 
