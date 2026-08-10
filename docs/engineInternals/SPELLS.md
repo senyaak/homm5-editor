@@ -874,6 +874,23 @@ What is left is the one thing the engine cannot know: an artifact of OURS, with
 a number it was never compiled against. That is a row in the config and a term
 at the door — and it is now the whole of the job, rather than half of it.
 
+## What these bonuses do NOT reach, named before anybody is surprised
+
+The ten an artifact of ours can carry — four elemental damages, four elemental
+resistances, and one of each for magic of any element — all live on the SPELL
+path: the door at `0xB861A0` and the resistance step after it.
+
+**A perk that puts an element on something that is not a spell does not go
+through either of them.** Senya's own examples, 10.08.2026: cold or fire damage
+added to a creature's ATTACK, and a ballista that shoots fire. Those are a
+creature's melee damage and a war machine's shot — different functions, unread,
+and an artifact of ours saying `fire_damage` will not touch them.
+
+Whether it SHOULD is a separate question and probably yes: "+10% fire" reads
+like it ought to cover the fire a hero's ballista throws. Doing it means
+finding those doors the same way these were found, and the inventory above is
+the pattern to repeat — not something to guess at from the name of a function.
+
 ## What is not done yet
 
 1. ~~The three ELEMENT appliers.~~ **Done, and all three measured in game

@@ -54,12 +54,16 @@ typedef enum {
   // And the other side of the same question: PERCENT taken off a spell of
   // that element, and of any spell at all for the last one. Kept in the same
   // element order, so the arithmetic that finds a row works for both halves.
-  STAT_AIR_RESIST = 11,
-  STAT_FIRE_RESIST = 12,
-  STAT_WATER_RESIST = 13,
-  STAT_EARTH_RESIST = 14,
-  STAT_MAGIC_RESIST = 15,
-  STAT_COUNT = 16
+  // Any spell at all, whatever its element - added on top of whichever of the
+  // four above also matches, so a thing that is not about an element is one
+  // row rather than four.
+  STAT_MAGIC_DAMAGE = 11,
+  STAT_AIR_RESIST = 12,
+  STAT_FIRE_RESIST = 13,
+  STAT_WATER_RESIST = 14,
+  STAT_EARTH_RESIST = 15,
+  STAT_MAGIC_RESIST = 16,
+  STAT_COUNT = 17
 } Stat;
 
 static const char *const STAT_NAMES[STAT_COUNT] = {
@@ -69,6 +73,7 @@ static const char *const STAT_NAMES[STAT_COUNT] = {
   // water 3, earth 4 - so `STAT_AIR_DAMAGE + element - 1` is the row to look
   // for, and there is no table to keep in step.
   "air_damage", "fire_damage", "water_damage", "earth_damage",
+  "magic_damage",
   "air_resist", "fire_resist", "water_resist", "earth_resist", "magic_resist",
 };
 

@@ -70,6 +70,9 @@ export const EFFECTS_FILE = join('bin', 'homm5-editor-effects.txt');
  *     hero wearing it. The game's own three (the Iceberg Shield, the Ring of
  *     Lightning Protection, the Dragon Flame Tongue) take half; ours say how
  *     much.
+ *   `magic_damage` - PERCENT added to the damage of ANY spell, whatever its
+ *     element and none. One row instead of four when a thing is not about an
+ *     element at all, and it adds to whichever of the four also applies.
  *   `magic_resist` - the same, for a spell of ANY element and none: the
  *     percentage the engine already works out per stack, with ours added to
  *     it.
@@ -77,6 +80,7 @@ export const EFFECTS_FILE = join('bin', 'homm5-editor-effects.txt');
 export const EFFECT_STATS = [
   'necromancy', 'energy', 'tent_charges', 'tent_healing', 'tent_health', 'tent_cleanse', 'tent_mana',
   'air_damage', 'fire_damage', 'water_damage', 'earth_damage',
+  'magic_damage',
   'air_resist', 'fire_resist', 'water_resist', 'earth_resist', 'magic_resist',
 ] as const;
 export type EffectStat = (typeof EFFECT_STATS)[number];
