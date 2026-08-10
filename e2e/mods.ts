@@ -954,9 +954,33 @@ export const DEATH_RIPPLE_TARGET = {
  * the fixture does not install is a map the game refuses to load, so the two
  * lists drifting apart is not a small failure.
  */
+/**
+ * **The aimed Armageddon with ONE field changed: its element** — the reading for
+ * the ice mark, and the reason it is a spell of its own rather than a flag.
+ *
+ * The entry a cast leaves behind is built by one of four routines, three of them
+ * an element each, and it is inside those that the element's Master perk is asked
+ * for and its mark left. Fire was proved in a battle — the target's defence went
+ * down. Ice takes two arguments fire does not — the caster's spell power and how
+ * many stacks were reached — so it is its own reading, and it needs a spell of
+ * ours that says water in its own record. The wizard carries it, with Master of
+ * Ice beside Master of Fire.
+ *
+ * Everything else is `…_TARGET`'s, so a difference in what happens is a
+ * difference in the element and nothing else.
+ */
+export const TEST_ICE_TARGET = {
+  ...TEST_ARMAGEDDON_TARGET,
+  id: 'SPELL_H3_TEST_ICE_TARGET',
+  file: 'H3TestIceTarget',
+  name: 'Ледяная стрела (наша)',
+  description: 'Тот же нацеливаемый армагеддон, но ледяной — чтобы увидеть метку Мастера льда.',
+  element: 'ELEMENT_WATER',
+};
+
 export const OUR_SPELL_FIXTURES = [
   DEATH_RIPPLE, TEST_ARMAGEDDON, TEST_ARMAGEDDON_AREA, TEST_ARMAGEDDON_TARGET,
-  DEATH_RIPPLE_TARGET,
+  DEATH_RIPPLE_TARGET, TEST_ICE_TARGET,
 ] as const;
 
 /**

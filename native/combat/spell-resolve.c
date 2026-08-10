@@ -362,20 +362,28 @@ typedef void *(__fastcall *AirApplierFn)(void *caster, void *unit, int damage, v
 static AirApplierFn g_airApplier = NULL;
 
 /**
- * AND THE WATER ONE, `0xBD12C0`, WHICH IS NOT CALLED — `ret 18h`, six stack
- * arguments, and its second is a stranger.
+ * AND THE WATER ONE, `0xBD12C0` — `ret 18h`, six stack arguments, and two of
+ * them are its own.
  *
- * Read this far: its early return hands back `arg3`, so the chain has been
- * pushed along by one and `arg2` sits between the damage and the chain with
- * nothing yet saying what it is. The last argument is a DIVISOR — the value is
- * `cvtdq2ps`'d and divided into the mark's magnitude, and the engine's own call
- * site passes the length of the affected vector, so an ice mark is split across
- * the stacks that were hit. The effect it leaves is `0xC9`, 201.
+ * Read from the code: its early return hands back `arg3`, so the chain sits one
+ * place further along than in fire's, and the LAST argument is a divisor — the
+ * mark's magnitude is `cvtdq2ps`'d against it and divided, and the engine's own
+ * area site passes the length of the affected vector, so an ice mark is split
+ * across the stacks it reached. The effect it leaves is `0xC9`, 201.
  *
- * One unknown argument is one too many: a call written around a guess returns
- * with the stack short and the crash lands somewhere with nothing to do with
- * spells. Anchored so the next session starts here, and named in the log when a
- * spell of ours is water.
+ * **The fourth was named by asking, not by reading**, and the reading had gone
+ * wrong twice before that: by the offsets it landed as the `ecx` of a call made
+ * through the target's vtable, which cannot also be the number the arithmetic
+ * wants. A probe printed all six on the game's own ice, and the value went with
+ * the CASTER rather than the spell — one caster's Ice Bolt and Frost Ring both
+ * said 20, another's both said 21 — which is the caster's SPELL POWER, confirmed
+ * by Senya casting with each in turn.
+ *
+ * The false step in between is worth keeping: the first count of those probe
+ * lines was read as "eleven casts and nine", and there had been two. The
+ * resolver runs before any battle starts, three times in the first ten lines of
+ * a log, because the engine weighs moves with it. Nothing here means somebody
+ * pressed anything.
  */
 #define WATER_APPLIER_RVA 0x7d12c0u
 #define WATER_APPLIER_HEAD_LEN 8
@@ -384,7 +392,7 @@ static const BYTE WATER_APPLIER_HEAD[WATER_APPLIER_HEAD_LEN] = {
 };
 
 /**
- * A PROBE ON THE ICE APPLIER, and it exists to name one argument.
+ * THE PROBE THAT NAMED THE FOURTH ARGUMENT — kept, install commented out.
  *
  * Deriving stopped paying: by the offsets, the second argument ends up as the
  * `ecx` of a virtual call made through the TARGET's vtable, which reads as an
@@ -401,8 +409,8 @@ static const BYTE WATER_APPLIER_HEAD[WATER_APPLIER_HEAD_LEN] = {
  * COMMENT THE INSTALL OUT once the argument has a name; leave the reading. This
  * runs for the game's own spells, so it says nothing unless somebody casts ice.
  */
-typedef void *(__fastcall *WaterApplierFn)(void *caster, void *unit, int damage, int second,
-                                           void *chain, int spell, void *given, int count);
+typedef void *(__fastcall *WaterApplierFn)(void *caster, void *unit, int damage, int power,
+                                           void *chain, int spell, void *given, int howMany);
 static WaterApplierFn g_waterApplier = NULL;
 
 static void *__fastcall on_water_applier(void *caster, void *unit, int damage, int second,
@@ -713,12 +721,19 @@ static PlainApplierFn applier_for(int spell) {
     log_line("   its element is fire — the applier that leaves the Master's mark");
     return g_fireApplier;
   }
-  if (element == ELEMENT_WATER) {
-    // Named, not hidden: an ice spell of ours lands its damage and leaves no
-    // mark, because one of that applier's six arguments has not been read.
-    log_line("   its element is water — no mark yet, its applier takes an argument we cannot name");
-  }
   return g_plainApplier;
+}
+
+/**
+ * The ice one, kept apart for the same reason as air: two arguments the others
+ * do not take — the caster's SPELL POWER, which the mark's length is worked out
+ * from, and how many stacks the cast reached, which it is divided by.
+ */
+static WaterApplierFn water_applier_for(int spell) {
+  int element = g_spellElement ? g_spellElement(spell) : 0;
+  if (element != ELEMENT_WATER || !g_waterApplier) return NULL;
+  log_line("   its element is water — the applier that leaves the Master of Ice's mark");
+  return g_waterApplier;
 }
 
 /**
@@ -958,6 +973,7 @@ static char __cdecl our_cast(void *cast, void *chain, void *whatResolveWasGiven)
   // ONCE PER CAST, not per stack: the element is the spell's, not the target's.
   PlainApplierFn applier = applier_for(spell);
   AirApplierFn airApplier = air_applier_for(spell);
+  WaterApplierFn waterApplier = water_applier_for(spell);
 
   int total = 0;
   for (int i = 0; i < count; i++) {
@@ -1015,7 +1031,13 @@ static char __cdecl our_cast(void *cast, void *chain, void *whatResolveWasGiven)
     // applier INSIDE its loop with `mov edx,edi`, its loop variable, and this
     // stack's amount. Called once afterwards with the cast's total it names the
     // wrong amount for the wrong unit, and eight stacks lose nothing.
-    if (airApplier) {
+    if (waterApplier) {
+      // The power the mark's length comes from, and the count it is divided by —
+      // the engine passes the length of the affected vector at its own area site.
+      chain = waterApplier(caster, unit, dealt + extra, power, chain, spell,
+                           whatResolveWasGiven, count);
+      log_hex("      the entry left behind ", (DWORD)(INT_PTR)chain);
+    } else if (airApplier) {
       // The fifth argument is the gate on the mark, and a cast of ours wants it
       // left — see the note over the address.
       chain = airApplier(caster, unit, dealt + extra, chain, spell, whatResolveWasGiven, 1);
@@ -1131,10 +1153,14 @@ static void install_our_resolver(void) {
                                    "what a spell does to one stack");
   g_tellAbout = (TellAboutFn)engine_code(TELL_ABOUT_RVA, TELL_ABOUT_HEAD,
                                          TELL_ABOUT_HEAD_LEN, "the line a hit stack gets");
-  // THE PROBE, and it is meant to be taken out: see the note over the address.
-  g_waterApplier = (WaterApplierFn)detour(WATER_APPLIER_RVA, WATER_APPLIER_HEAD,
-                                         WATER_APPLIER_HEAD_LEN, (void *)on_water_applier,
-                                         "the entry an ice cast leaves");
+  g_waterApplier = (WaterApplierFn)engine_code(WATER_APPLIER_RVA, WATER_APPLIER_HEAD,
+                                              WATER_APPLIER_HEAD_LEN,
+                                              "the entry an ice cast leaves");
+  // AND THE PROBE THAT NAMED ITS FOURTH ARGUMENT, off but not deleted — uncomment
+  // to watch every ice entry the game builds, ours and its own alike.
+  // g_waterApplier = (WaterApplierFn)detour(WATER_APPLIER_RVA, WATER_APPLIER_HEAD,
+  //                                        WATER_APPLIER_HEAD_LEN, (void *)on_water_applier,
+  //                                        "the entry an ice cast leaves");
   g_airApplier = (AirApplierFn)engine_code(AIR_APPLIER_RVA, AIR_APPLIER_HEAD,
                                           AIR_APPLIER_HEAD_LEN,
                                           "the entry an air cast leaves");
