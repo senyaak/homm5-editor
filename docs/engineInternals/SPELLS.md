@@ -698,6 +698,40 @@ sits inside, so the shape it lays for our number is the cross.
 the CASTER's own position, which is right for a mass spell and not for one aimed
 at a point.
 
+## What the four appliers ask — the inventory
+
+*Read out 10.08.2026, each function decoded to the next one's first byte and
+every `push <imm>` kept beside the call it belongs to. This is the list "make
+sure nothing is lost" is checked against when a layer of ours replaces one of
+theirs — `_tmp/applier-inventory.ts` reprints it in a second.*
+
+| | plain `0xBD1980` | fire `0xBD1420` | air `0xBD1790` | water `0xBD12C0` |
+|---|---|---|---|---|
+| builds the entry | `malloc 0x60` → `0xC4B050` | same | same | same |
+| a SECOND entry (`0xC4AD60`) | — | for `SPELL_FIREWALL` (236) and `…LIQUID_FLAME_BREATH` (335) | for `SPELL_ABILITY_CALL_STORM` (334) | — |
+| asks the caster for | — | skill **44**, Master of Fire | skill **45**, Master of Lightnings | skill **43**, Master of Ice |
+| …through | — | `vt+0x290` | `vt+0x290` | `vt+0x290` |
+| lets the target off | — | `HasAbility(85)` — `vt+0x28C`; and `vt+0x28(97)`, `SPELL_SKILL_FIRE_PROTECTION` | — | — |
+| what it leaves | nothing | `SPELL_EFFECT_FIRE_DAMAGE` (202) and `SPELL_EFFECT_SET_AFIRE` (270), built by `0xBD0B70`, applied through `vt+0x260` | **no effect at all** — `vt+0x184` read, `vt+0x18C` written: the initiative | `SPELL_EFFECT_FROZEN` (201), same two calls |
+| also reads | — | `vt+0x28` for 202 and `SPELL_EFFECT_MARK_OF_FIRE` (246), `vt+0x19C`, `vt+0x6C`, ability 163, `0xBABAE0`, `0xB807E0` | `0x50E5E0` / `0x50E5B0` (float) | caster `vt+0x23C`, `0xC469F0`, `0x949FF0` (float) |
+| the config | — | `0xAB8570` | `0xAB8570` | `0xAB8570` |
+| extra arguments | — | — | a byte that gates the mark | the caster's SPELL POWER, and how many stacks to divide by |
+
+**Three things fall out of it, and the third is the one that matters next.**
+
+1. **Air leaves no effect.** Its mark is a number written straight into the
+   target through `vt+0x18C` — which is why it shows as a slide down the
+   initiative bar and not as an icon, and why looking for a debuff found none.
+2. **The exemptions are the target's, and they are asked two different ways**:
+   `vt+0x28C` takes an ABILITY id, `vt+0x28` takes a SPELL one. Reading 97 out
+   of the wrong enum makes it "Agility"; out of the right one it is fire
+   protection, which is the rule anybody would expect.
+3. **Not one of the four asks about an ARTIFACT.** So an artifact that adds to
+   fire damage has nothing to add here — it enters at the damage door,
+   `0xB861A0` and the `0xB7D030` around it, which is where resistance,
+   anti-magic, protection from a school and Empowered already live. That is the
+   next layer, and this table is what says the appliers are not it.
+
 ## What is not done yet
 
 1. ~~The three ELEMENT appliers.~~ **Done, and all three measured in game
