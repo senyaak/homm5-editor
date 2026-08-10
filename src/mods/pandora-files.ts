@@ -65,6 +65,11 @@ export const pandoraShared = (tier: string): string =>
 /** The palette entry — one, pointing at the poorest tier a fresh box is. */
 export const PANDORA_LINK = 'MapObjects/_(AdvMapObjectLink)/Objects-All-Terra/PandoraBox.xdb';
 
+/** The chest-class probe: same box, the class the AI knows to want. */
+export const PANDORA_CHEST_CLASS = 'AdvMapTreasureShared';
+export const PANDORA_CHEST_SHARED = `${PANDORA_DIR}/PandoraBox_Chest.(${PANDORA_CHEST_CLASS}).xdb`;
+export const PANDORA_CHEST_LINK = 'MapObjects/_(AdvMapObjectLink)/Objects-All-Terra/PandoraBoxChest.xdb';
+
 /** The tier a contents value earns. */
 export function pandoraTier(value: number): PandoraTier {
   let tier = PANDORA_TIERS[0]!;
@@ -438,6 +443,36 @@ export function buildPandora(read: DataReader): ModFile[] {
   files.push({
     path: PANDORA_LINK,
     data: Buffer.from(buildingLink(linkSpec, { dir: PANDORA_DIR, shared: pandoraShared(first.key), link: PANDORA_LINK, art: ART_DIR, text: texts }, PANDORA_TEXTURE), 'latin1'),
+  });
+
+  // THE CHEST-CLASS PROBE. A Stand is invisible to the AI — no AI hero ever
+  // walks to an object that does nothing — where a treasure chest is a thing
+  // the AI knows to want. Whether a chest's own pickup can be silenced
+  // (SetObjectEnabled) while the touch trigger still fires is a question only
+  // the game can answer, so the box ships in both classes and the probe map
+  // (e2e stage 009) asks. Hidden in the palette until it earns its place.
+  const chestDoc = buildingDoc(
+    {
+      file: 'PandoraBox_Chest', className: PANDORA_CHEST_CLASS, messages: MESSAGES,
+      model: DONOR_MODEL, animSet: DONOR_ANIMSET, effect: PANDORA_TIERS[2]!.effect,
+      footprint: { w: 1, h: 1 }, ground: null,
+      type: 'TREASURE_CHEST', fields: { MinResource: '1', MaxResource: '1' },
+    },
+    { dir: PANDORA_DIR, shared: PANDORA_CHEST_SHARED, link: PANDORA_CHEST_LINK, art: ART_DIR, text: texts },
+    types, { w: 1, h: 1 }, at,
+  );
+  files.push({ path: PANDORA_CHEST_SHARED, data: Buffer.from(chestDoc, 'latin1') });
+  files.push({
+    path: PANDORA_CHEST_LINK,
+    data: Buffer.from([
+      '<?xml version="1.0" encoding="UTF-8"?>',
+      '<AdvMapObjectLink>',
+      `\t<Link href="/${PANDORA_CHEST_SHARED}#xpointer(/${PANDORA_CHEST_CLASS})"/>`,
+      '\t<RndGroup/>',
+      `\t<IconFile>${PANDORA_TEXTURE}</IconFile>`,
+      '\t<HideInEditor>true</HideInEditor>',
+      '</AdvMapObjectLink>',
+    ].join(EOL) + EOL, 'latin1'),
   });
 
   return files;

@@ -85,6 +85,10 @@ const names = /QOL_NAMES\[QOL_COUNT\]\s*=\s*\{([^}]*)\}/.exec(c);
 const known = names ? [...names[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]) : [];
 check('the extension declares its flag names', known.length > 0);
 for (const f of QOL_FLAGS) {
+  // An archive-only flag (`native: false`) is deliberately not in the C
+  // vocabulary: nothing in the extension acts on it, the archive does. The C
+  // reader skips unknown names, so the line is harmless where it lands.
+  if ('native' in f && f.native === false) continue;
   check(`the extension knows "${f.name}"`, known.includes(f.name));
 }
 for (const name of known) {

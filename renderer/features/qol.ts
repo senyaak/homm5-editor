@@ -114,6 +114,14 @@ function buildRows(): void {
     }
   }
 
+  // Gameplay: additions, each an archive following its flag. No master switch —
+  // like the preferences, each one is its own decision.
+  const gameplay = $('qol-gameplay');
+  gameplay.innerHTML = '';
+  for (const flag of QOL_FLAGS) {
+    if (flag.tab === 'gameplay') buildRow(flag, gameplay);
+  }
+
   // The master switch: every fix at once.
   allFixes = $('qol-all-fixes') as HTMLInputElement;
   allFixes.addEventListener('change', () => {
@@ -208,14 +216,17 @@ export function initQol(): void {
   $button('qol-close').onclick = close;
   $button('qol-x').onclick = close;
 
-  // Two tabs over one config: the lists swap, the warn, file and Apply stay —
-  // they are about the whole file, whichever half is being looked at.
-  const showFixes = (fixes: boolean): void => {
-    $('qol-list').hidden = fixes;
-    $('qol-fixes').hidden = !fixes;
-    $button('qol-tab-qol').classList.toggle('on', !fixes);
-    $button('qol-tab-fixes').classList.toggle('on', fixes);
+  // Three tabs over one config: the lists swap, the warn, file and Apply stay —
+  // they are about the whole file, whichever part is being looked at.
+  const show = (tab: 'qol' | 'fixes' | 'gameplay'): void => {
+    $('qol-list').hidden = tab !== 'qol';
+    $('qol-fixes').hidden = tab !== 'fixes';
+    $('qol-gameplay').hidden = tab !== 'gameplay';
+    $button('qol-tab-qol').classList.toggle('on', tab === 'qol');
+    $button('qol-tab-fixes').classList.toggle('on', tab === 'fixes');
+    $button('qol-tab-gameplay').classList.toggle('on', tab === 'gameplay');
   };
-  $button('qol-tab-qol').onclick = () => { showFixes(false); };
-  $button('qol-tab-fixes').onclick = () => { showFixes(true); };
+  $button('qol-tab-qol').onclick = () => { show('qol'); };
+  $button('qol-tab-fixes').onclick = () => { show('fixes'); };
+  $button('qol-tab-gameplay').onclick = () => { show('gameplay'); };
 }

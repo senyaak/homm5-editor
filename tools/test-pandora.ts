@@ -19,9 +19,12 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import {
-  PANDORA_LINK, PANDORA_TIERS, buildPandora, pandoraShared, pandoraTexture, pandoraTier,
+  PANDORA_CHEST_LINK, PANDORA_CHEST_SHARED, PANDORA_LINK, PANDORA_TIERS,
+  buildPandora, pandoraShared, pandoraTexture, pandoraTier,
 } from '../src/mods/pandora-files.ts';
+import { buildGameplayArchive } from '../src/mods/gameplay.ts';
 import { dataReader } from '../src/mods/mod-files.ts';
+import { readEntries } from '../src/format/pak.ts';
 import { extractMeshesStructured } from '../src/scene/geometry.ts';
 import { dataDir } from './game-dir.ts';
 
@@ -155,6 +158,15 @@ const effectMaterials = files.filter((f) => f.path.toLowerCase().includes('(mate
   && !modelMaterials.some((p) => p.toLowerCase() === f.path.toLowerCase()));
 check('the glow materials keep their art', effectMaterials.length > 0
   && effectMaterials.every((f) => !f.data.toString('latin1').includes('PandoraBox.(Texture).xdb')), `${effectMaterials.length} kept`);
+
+// ---- the archive ------------------------------------------------------------
+
+console.log('the archive');
+const archive = buildGameplayArchive(read);
+const names = new Set(readEntries(archive).map((e) => e.name));
+check('round-trips as a zip', names.size === files.length, `${names.size} of ${files.length}`);
+check('carries the palette link', names.has(PANDORA_LINK));
+check('carries the chest probe, hidden', names.has(PANDORA_CHEST_LINK) && names.has(PANDORA_CHEST_SHARED));
 
 console.log(failures ? `\n${failures} FAILED` : '\nall good');
 process.exit(failures ? 1 : 0);

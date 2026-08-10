@@ -48,6 +48,13 @@ export const QOL_FILE = 'bin/homm5-editor-qol.txt';
  * taken out, which is why that tab has an "all of them" switch and this one
  * does not: turning every fix on is a reasonable default, turning every
  * preference on is not a thing. Fixes carry a `group` (see FIX_GROUPS).
+ * `gameplay` is the third kind: things the game never had — new objects, new
+ * rules — where a fix takes something wrong OUT and these put something new IN.
+ *
+ * `native: false` marks a flag the C extension has no hand in: what it installs
+ * is an ARCHIVE (like the health bar's), and the config line exists so the
+ * panel and the file can say what this install opted into. test-qol skips such
+ * flags when comparing against the C reader's vocabulary.
  */
 
 export const FIX_GROUPS = [
@@ -106,6 +113,18 @@ export const QOL_FLAGS = [
       + ' of the 59 that walked in reads 53/59. Counted per battle and from the moment it began, so'
       + ' a stack raised past what it started with reads above it rather than being trimmed to fit.'
       + ' Costs nothing while the key is up — the number is the game\'s own until it is held.',
+  },
+  {
+    name: 'pandora-box',
+    tab: 'gameplay',
+    native: false,
+    title: "Pandora's Box on the adventure map",
+    detail: "Heroes III's Pandora's Box, brought over: a floating, spinning box the map author fills"
+      + ' with experience, gold, resources, artifacts, spells or creatures — and guards, fought'
+      + ' before it opens. Applying this writes H5E/homm5-editor-gameplay.h5u, the archive the box'
+      + ' lives in, and turning it off deletes that archive again. A map that places boxes needs'
+      + ' this on to play: without the archive the object does not exist for the game, and the'
+      + " editor's palette only offers it while it is installed.",
   },
   {
     name: 'combat-ai-fix',

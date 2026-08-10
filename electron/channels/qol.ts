@@ -16,6 +16,7 @@ import { isQolName } from '#src/mods/qol.ts';
 import type { QolSettings } from '#src/mods/qol.ts';
 import { qolPath, readQol, writeQolFile } from '#src/mods/qol-file.ts';
 import { removeQolArchive, writeQolArchive } from '#src/mods/qol-ui.ts';
+import { removeGameplayArchive, writeGameplayArchive } from '#src/mods/gameplay.ts';
 import { profilesRoot, setResolution, setWindowed } from '#src/game/video-config.ts';
 import { extensionState, installExtension } from '#src/mods/extension.ts';
 import { heldByRunningGame } from '#src/game/running.ts';
@@ -113,6 +114,20 @@ export function registerQol(): void {
       if (held) { /* said above; nothing in the install is touched */ }
       else if (wanted['stack-health-bar']) writeQolArchive(g, gameData());
       else removeQolArchive(g);
+    } catch (e) {
+      notes.push(e instanceof Error ? e.message : String(e));
+    }
+
+    // Pandora's Box is ALL archive: the object, its model and its glows exist
+    // for the game exactly while H5E/homm5-editor-gameplay.h5u does, so the
+    // archive follows the flag the same way the health bar's does. The editor's
+    // palette mounts the same archive, which is why no restart of the game is
+    // enough on its own — the panel says to restart, and the palette follows on
+    // the next map open.
+    try {
+      if (held) { /* said above; nothing in the install is touched */ }
+      else if (wanted['pandora-box']) writeGameplayArchive(g, gameData());
+      else removeGameplayArchive(g);
     } catch (e) {
       notes.push(e instanceof Error ? e.message : String(e));
     }

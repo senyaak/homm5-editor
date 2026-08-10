@@ -266,24 +266,35 @@ export interface MountedMod extends FoundMod {
 export function mountCreatureMods(gameRoot: string, cacheDir: string): MountedMod[] {
   const out: MountedMod[] = [];
   for (const found of findCreatureMods(gameRoot)) {
-    const stem = basename(found.path).replace(/\.[^.]+$/, '');
-    const root = join(cacheDir, stem);
-    const stamp = join(cacheDir, `${stem}.mounted.json`);
-    const now = statSync(found.path);
-    const want = `${now.size}:${Math.round(now.mtimeMs)}`;
-    let have = '';
-    try {
-      have = (JSON.parse(readFileSync(stamp, 'utf8')) as { of: string }).of;
-    } catch { /* never unpacked, or the stamp is unreadable */ }
-    if (have !== want) {
-      rmSync(root, { recursive: true, force: true });
-      mkdirSync(root, { recursive: true });
-      extract(found.path, root);
-      writeFileSync(stamp, `${JSON.stringify({ of: want, from: found.path }, null, 2)}\n`);
-    }
-    out.push({ ...found, root });
+    out.push({ ...found, root: unpackCached(found.path, cacheDir) });
   }
   return out;
+}
+
+/**
+ * An archive unpacked into the cache, re-extracted only when its bytes moved.
+ *
+ * The stamp is size-and-date of the archive: cheap to read, and wrong only if
+ * somebody rewrites an archive to the same size in the same millisecond —
+ * which a rebuild through this editor never does.
+ */
+export function unpackCached(archivePath: string, cacheDir: string): string {
+  const stem = basename(archivePath).replace(/\.[^.]+$/, '');
+  const root = join(cacheDir, stem);
+  const stamp = join(cacheDir, `${stem}.mounted.json`);
+  const now = statSync(archivePath);
+  const want = `${now.size}:${Math.round(now.mtimeMs)}`;
+  let have = '';
+  try {
+    have = (JSON.parse(readFileSync(stamp, 'utf8')) as { of: string }).of;
+  } catch { /* never unpacked, or the stamp is unreadable */ }
+  if (have !== want) {
+    rmSync(root, { recursive: true, force: true });
+    mkdirSync(root, { recursive: true });
+    extract(archivePath, root);
+    writeFileSync(stamp, `${JSON.stringify({ of: want, from: archivePath }, null, 2)}\n`);
+  }
+  return root;
 }
 
 /**

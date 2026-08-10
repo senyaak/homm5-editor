@@ -38,7 +38,8 @@ import { isReady } from '../src/game/first-run.ts';
 import { looksLikeDataRoot } from '../src/game/unpack.ts';
 import { assets } from '../src/game/assets.ts';
 import type { Assets } from '../src/game/assets.ts';
-import { mountCreatureMods } from '../src/mods/mod-archive.ts';
+import { mountCreatureMods, unpackCached } from '../src/mods/mod-archive.ts';
+import { GAMEPLAY_ARCHIVE } from '../src/mods/gameplay.ts';
 
 /**
  * The folder holding `electron/` and `renderer/`.
@@ -263,6 +264,18 @@ export function mountedAssets(base: string): Assets {
     } catch (e) {
       // A mod we cannot read must not stop the editor opening a map.
       console.warn('[mods] not mounted:', e instanceof Error ? e.message : String(e));
+    }
+    // The gameplay archive, when its flag has put one in the install: the
+    // pandora box's palette entry and definitions live there and nowhere else,
+    // so the editor offers the box exactly while the game would load it.
+    try {
+      const gameplay = join(g, GAMEPLAY_ARCHIVE);
+      if (existsSync(gameplay)) {
+        over.push(unpackCached(gameplay, join(tmpRoot(), 'mods')));
+        console.log(`[mods] ${basename(gameplay)} mounted`);
+      }
+    } catch (e) {
+      console.warn('[mods] gameplay archive not mounted:', e instanceof Error ? e.message : String(e));
     }
   }
   return assets([...over, base]);
