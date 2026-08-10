@@ -335,6 +335,24 @@ one.
   in yet and say so in the log: they take arguments the others do not, and a call
   written for the wrong one is a crash somewhere else entirely.
 
+- **An artifact of a mod's can make magic stronger, or take the sting out of
+  it.** Ten bonuses join the ones an artifact could already carry: a percentage
+  added to the damage of each of the four elements, a percentage taken off each
+  of them on the wearer's own stacks, and one of each for magic of any element
+  at all. They are offered in the artifact window beside necromancy and the
+  first aid tent's, and an artifact may carry as many as it likes.
+
+  "Stronger fire" and "stronger magic" are two different claims, so an artifact
+  carrying both means both, and they add up rather than one standing in for the
+  other.
+
+  It applies to the game's own spells as well as a mod's — an artifact that says
+  fire is stronger makes fire stronger whoever threw it. What the game already
+  did on its own, and does for a mod's spells too without being told, is add to
+  the damage of one element from four of its own artifacts and halve it from
+  three others: it asks the spell's own document which element it is, and never
+  its number. That is why a mod's fire spell has always burned like the game's.
+
 - **An area spell of the mod's hits what it lands on.** It asked where to aim,
   covered the tiles it was authored with — and damaged nobody, whoever was
   standing there.
