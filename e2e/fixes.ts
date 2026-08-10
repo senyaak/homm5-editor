@@ -116,6 +116,15 @@ export interface Kit {
   skills?: Skill[];
   perks?: string[];
   spells?: string[];
+  /**
+   * Artifacts he WEARS — `Editable/artifactIDs`, and the mask already covers it.
+   *
+   * Worn rather than left on the ground (`artifact` below), because what is
+   * being read off them happens in a battle and a thing in the backpack is not
+   * worn: the engine counts pieces through `CountEquipped`, which is the worn
+   * collection and nothing else.
+   */
+  artifacts?: string[];
   army: { creature: string; count: number }[];
   /** Primary stats, high enough that a battle lasts long enough to watch. */
   stats?: { offence?: number; defence?: number; spellpower?: number; knowledge?: number };
@@ -312,6 +321,18 @@ export const HEROES: Kit[] = [
       DEATH_RIPPLE_TARGET,
     ],
     stats: { offence: 5, defence: 5, spellpower: 20, knowledge: 30 },
+    // BOTH KINDS, because both halves of the pattern are read on this map and
+    // both heroes cast. The four on the left are the engine's own "add to the
+    // damage of one element", asked for beside `SpellElement`; the three on the
+    // right are the same shape one door along, on the side that is being hit.
+    // They are the CONTROL a term of ours is put beside.
+    artifacts: [
+      // The ids are inconsistently prefixed in the game's own enum and these are
+      // its spellings, checked against types.xml rather than tidied.
+      'PHOENIX_FEATHER_CAPE', 'EVERCOLD_ICICLE', 'TITANS_TRIDENT',
+      'ARTIFACT_EARTHSLIDERS',
+      'ICEBERG_SHIELD', 'RING_OF_LIGHTING_PROTECTION', 'DRAGON_FLAME_TONGUE',
+    ],
     // A tent of his own, so an Armageddon has a war machine to prove itself on.
     ballista: true,
     army: [
@@ -324,7 +345,7 @@ export const HEROES: Kit[] = [
       // can: `CREATURE_DRUID` knows `SPELL_STONESKIN` (with Lightning Bolt),
       // checked in GameMechanics/Creature/Creatures/Preserve/Druid.xdb, and it
       // acts in the same round on its own initiative.
-      { creature: 'CREATURE_DRUID', count: 100 },
+      { creature: 'CREATURE_DRUID', count: 1000 },
     ],
     // Zombies, because peasants do not survive an Armageddon and this test is
     // read off a stack that is still standing.
@@ -544,6 +565,35 @@ export const HEROES: Kit[] = [
  * cast, so there has to be one: a full spell book, a stack worth defending and
  * enough mana to keep casting. Nothing about him is special otherwise.
  */
+/**
+ * **A SECOND hero of the other player's, and he casts back.**
+ *
+ * The artifact half of a spell is two-sided — one hero's cape adds to the fire
+ * he throws, the other hero's shield takes from the fire he is thrown — and a
+ * single caster can only ever show one side of it. So this one carries the same
+ * two sets as the wizard and stands where he can be walked into.
+ *
+ * Spell power 20, the wizard's own, so the two are comparable and neither is
+ * the small number a percentage cannot be read off. Two thousand peasants,
+ * because both of them are casting now and the stack has to outlive the pair.
+ */
+export const ENEMY_CASTER: Kit = {
+  key: 'enemycaster',
+  heroClass: 'HERO_CLASS_WIZARD',
+  fixes: [],
+  shared: hero('Academy', 'Nur'),
+  at: { x: 40, y: 13 },
+  skills: [{ id: 'HERO_SKILL_DESTRUCTIVE_MAGIC', mastery: M.expert }],
+  spells: ['SPELL_FIREBALL', 'SPELL_ICE_BOLT', 'SPELL_LIGHTNING_BOLT'],
+  artifacts: [
+    'PHOENIX_FEATHER_CAPE', 'EVERCOLD_ICICLE', 'TITANS_TRIDENT',
+    'ARTIFACT_EARTHSLIDERS',
+    'ICEBERG_SHIELD', 'RING_OF_LIGHTING_PROTECTION', 'DRAGON_FLAME_TONGUE',
+  ],
+  stats: { offence: 5, defence: 5, spellpower: 20, knowledge: 30 },
+  army: [{ creature: 'CREATURE_PEASANT', count: 2000 }],
+};
+
 export const OPPONENT: Kit = {
   key: 'opponent',
   heroClass: 'HERO_CLASS_RANGER',
