@@ -304,6 +304,24 @@ one.
 
 ### Fixed
 
+- **A fire spell of the mod's burns like the game's own.** A hero with Master of
+  Fire cast one and nothing happened beyond the damage: the perk takes the
+  target's defence down, and the mod's spells were the one kind of fire in the
+  game that left the target untouched.
+
+  The entry a cast leaves behind is built by one of four routines — three of them
+  an element each, and it is inside those that the element's Master perk is asked
+  for and its mark left. The extension called the element-less one for
+  everything, because the three were believed to take different arguments. They
+  do not: read at the place the game calls all four in a row, every one of them
+  is handed the same caster and the same target in the same order.
+
+  Which one runs is now asked of the spell's own record — the same question every
+  elemental rule in the game asks, so a spell that says "fire" is fire to the
+  resistances, to the protections and to the perk alike. Ice and storms are not
+  in yet and say so in the log: they take arguments the others do not, and a call
+  written for the wrong one is a crash somewhere else entirely.
+
 - **An area spell of the mod's hits what it lands on.** It asked where to aim,
   covered the tiles it was authored with — and damaged nobody, whoever was
   standing there.

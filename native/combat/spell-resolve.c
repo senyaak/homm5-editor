@@ -332,8 +332,68 @@ static const BYTE FIRE_APPLIER_HEAD[FIRE_APPLIER_HEAD_LEN] = {
 };
 static PlainApplierFn g_fireApplier = NULL;
 
-/** The element the fire applier answers to — the same 2 `mass-spell-element-fix` acts on. */
+/**
+ * THE AIR ONE, `0xBD1790` — fire's arguments plus one, and the one is a GATE.
+ *
+ * `ret 14h`, five stack arguments. The first four are the four fire takes, read
+ * the same way: `[esp+8]` on arrival is the damage it returns early on, and the
+ * early return hands back `arg2`, the chain. The fifth is a byte, and the whole
+ * of what it does is decide whether the mark is left at all — `cmp byte
+ * ptr [esp+28h],0 / je` sits immediately in front of the Master of Storms
+ * question (`push 2Dh`, 45).
+ *
+ * The engine's own area routine computes it as a `sete` on something of its own
+ * and we have no such thing: a cast of ours wants the mark, so it passes 1. That
+ * is the same answer fire and the element-less one give by having no gate.
+ *
+ * UNMEASURED IN GAME, and it cannot be measured on today's stand: leaving the
+ * mark needs a caster with Master of Storms and a spell of ours whose element is
+ * air, and the map has neither. It is dormant until a mod authors one — the
+ * `applier_for` below reaches it only for an air spell — and the log says which
+ * applier ran.
+ */
+#define AIR_APPLIER_RVA 0x7d1790u
+#define AIR_APPLIER_HEAD_LEN 8
+static const BYTE AIR_APPLIER_HEAD[AIR_APPLIER_HEAD_LEN] = {
+  0x51, 0x83, 0x7C, 0x24, 0x08, 0x00, 0x53, 0x57      // push ecx / cmp [esp+8],0 / push ebx / push edi
+};
+typedef void *(__fastcall *AirApplierFn)(void *caster, void *unit, int damage, void *chain,
+                                         int spell, void *whatResolveWasGiven, int mayMark);
+static AirApplierFn g_airApplier = NULL;
+
+/**
+ * AND THE WATER ONE, `0xBD12C0`, WHICH IS NOT CALLED — `ret 18h`, six stack
+ * arguments, and its second is a stranger.
+ *
+ * Read this far: its early return hands back `arg3`, so the chain has been
+ * pushed along by one and `arg2` sits between the damage and the chain with
+ * nothing yet saying what it is. The last argument is a DIVISOR — the value is
+ * `cvtdq2ps`'d and divided into the mark's magnitude, and the engine's own call
+ * site passes the length of the affected vector, so an ice mark is split across
+ * the stacks that were hit. The effect it leaves is `0xC9`, 201.
+ *
+ * One unknown argument is one too many: a call written around a guess returns
+ * with the stack short and the crash lands somewhere with nothing to do with
+ * spells. Anchored so the next session starts here, and named in the log when a
+ * spell of ours is water.
+ */
+#define WATER_APPLIER_RVA 0x7d12c0u
+#define WATER_APPLIER_HEAD_LEN 8
+static const BYTE WATER_APPLIER_HEAD[WATER_APPLIER_HEAD_LEN] = {
+  0x51, 0x83, 0x7C, 0x24, 0x08, 0x00, 0x55, 0x57      // push ecx / cmp [esp+8],0 / push ebp / push edi
+};
+
+/**
+ * The elements, as the engine's own accessor answers them.
+ *
+ * Read off the area routine's own dispatch (`0xD60AC8`), which is three
+ * `sub eax,1` in a row on what `SpellElement` answered: one is air, two fire,
+ * three water. The 2 agrees with `mass-spell-element-fix`, which is the check
+ * that this is being read the right way round.
+ */
+#define ELEMENT_AIR 1
 #define ELEMENT_FIRE 2
+#define ELEMENT_WATER 3
 
 /**
  * The allocator's own `free`, for the list of stacks we asked it to build.
@@ -614,12 +674,26 @@ static PlainApplierFn applier_for(int spell) {
     log_line("   its element is fire — the applier that leaves the Master's mark");
     return g_fireApplier;
   }
-  if (element) {
-    // Named, not hidden: an elemental spell whose applier we cannot call yet
-    // still lands its damage, and simply leaves no mark.
-    log_num("   its element leaves no mark yet, element ", element);
+  if (element == ELEMENT_WATER) {
+    // Named, not hidden: an ice spell of ours lands its damage and leaves no
+    // mark, because one of that applier's six arguments has not been read.
+    log_line("   its element is water — no mark yet, its applier takes an argument we cannot name");
   }
   return g_plainApplier;
+}
+
+/**
+ * The air one, kept apart because it takes an argument the others do not.
+ *
+ * Answers null unless this spell is air and the applier is where we left it, so
+ * the caller keeps one shape for the three that share a signature and this is
+ * the only place that knows about the fifth argument.
+ */
+static AirApplierFn air_applier_for(int spell) {
+  int element = g_spellElement ? g_spellElement(spell) : 0;
+  if (element != ELEMENT_AIR || !g_airApplier) return NULL;
+  log_line("   its element is air — the applier that leaves the Master of Storms' mark");
+  return g_airApplier;
 }
 
 /** Non-zero when the row says this stack is passed over. */
@@ -844,6 +918,7 @@ static char __cdecl our_cast(void *cast, void *chain, void *whatResolveWasGiven)
 
   // ONCE PER CAST, not per stack: the element is the spell's, not the target's.
   PlainApplierFn applier = applier_for(spell);
+  AirApplierFn airApplier = air_applier_for(spell);
 
   int total = 0;
   for (int i = 0; i < count; i++) {
@@ -901,7 +976,12 @@ static char __cdecl our_cast(void *cast, void *chain, void *whatResolveWasGiven)
     // applier INSIDE its loop with `mov edx,edi`, its loop variable, and this
     // stack's amount. Called once afterwards with the cast's total it names the
     // wrong amount for the wrong unit, and eight stacks lose nothing.
-    if (applier) {
+    if (airApplier) {
+      // The fifth argument is the gate on the mark, and a cast of ours wants it
+      // left — see the note over the address.
+      chain = airApplier(caster, unit, dealt + extra, chain, spell, whatResolveWasGiven, 1);
+      log_hex("      the entry left behind ", (DWORD)(INT_PTR)chain);
+    } else if (applier) {
       chain = applier(caster, unit, dealt + extra, chain, spell, whatResolveWasGiven);
       log_hex("      the entry left behind ", (DWORD)(INT_PTR)chain);
     }
@@ -1012,6 +1092,9 @@ static void install_our_resolver(void) {
                                    "what a spell does to one stack");
   g_tellAbout = (TellAboutFn)engine_code(TELL_ABOUT_RVA, TELL_ABOUT_HEAD,
                                          TELL_ABOUT_HEAD_LEN, "the line a hit stack gets");
+  g_airApplier = (AirApplierFn)engine_code(AIR_APPLIER_RVA, AIR_APPLIER_HEAD,
+                                          AIR_APPLIER_HEAD_LEN,
+                                          "the entry an air cast leaves");
   g_fireApplier = (PlainApplierFn)engine_code(FIRE_APPLIER_RVA, FIRE_APPLIER_HEAD,
                                               FIRE_APPLIER_HEAD_LEN,
                                               "the entry a fire cast leaves, with the Master's mark");
