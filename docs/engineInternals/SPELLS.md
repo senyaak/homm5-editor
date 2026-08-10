@@ -732,6 +732,53 @@ theirs — `_tmp/applier-inventory.ts` reprints it in a second.*
    anti-magic, protection from a school and Empowered already live. That is the
    next layer, and this table is what says the appliers are not it.
 
+## And the damage door — the second inventory, and where a term of ours goes
+
+*Read out 10.08.2026, the same way. Two enums are involved and the ids collide,
+so each is named from the one its vtable slot takes: `vt+0x28C` is an ABILITY,
+`vt+0x290` a HERO SKILL, `vt+0x28` a SPELL. The mapping is checked by two facts
+it must already agree with — Master of Fire is 44, `ABILITY_UNDEAD` is 10.*
+
+**The pipeline, `CCombatSpell::HitOne` (`0xB7D030`), is three steps:**
+
+```
+damage = 0xB861A0(power, block, caster, target)   the door
+if (damage > 0) {
+    pct    = 0xB7D870(…)                          magic resistance, per cent
+    damage = damage * (1 - pct/100)
+    damage = damage * scale                        the cast's own float
+}
+```
+
+**What the door itself asks** (`0xB861A0`, twenty-one callers, and the one we
+already stand in for the kind filter):
+
+| it asks | of whom | what it does with the answer |
+|---|---|---|
+| spell == 21, Unholy Word | — | `ABILITY_UNDEAD` (10) or `ABILITY_DEMONIC` (11) → zero |
+| spell == 35, Holy Word | — | the same three inverted, plus `ABILITY_DEMON_RAGED` (105) |
+| `0xAD4B30(spell)` | the document | true → no damage at all |
+| skill **107**, `HERO_SKILL_DEADLY_COLD` | the CASTER | for spells 4, 6 and 279 only — **adds the target's hit points** (`vt+0x1A8`) |
+| skill **149**, `HERO_SKILL_ELEMENTAL_OVERKILL` | the CASTER | with a flag off the target's record (`vt+0x70` → `+0x58`) — **doubles the damage** |
+
+And the resistance step (`0xB7D870` → `0xB86FD0`) asks the target for the same
+three kinds again — 105, 10, 11 — before it answers a percentage.
+
+**Three things this settles.**
+
+1. **The door already carries terms of exactly the shape we want.** Deadly Cold
+   adds, Elemental Overkill multiplies, and both are the caster's SKILL asked
+   through `vt+0x290`. A term of ours is one more of those, and the extension
+   is already detoured onto this function.
+2. **Nothing in the whole path asks about an ARTIFACT.** An artifact reaches a
+   spell today only through the hero's spell power, which is upstream in the
+   worth. So "an artifact that adds half again to fire damage" is not a rule
+   the engine has and we are restoring — it is new behaviour, and this door is
+   where it belongs.
+3. **Resistance is its own door.** An artifact that adds magic resistance does
+   not belong at `0xB861A0` at all; it belongs at `0xB7D870`, one detour
+   further along, which is a second term and not the same one.
+
 ## What is not done yet
 
 1. ~~The three ELEMENT appliers.~~ **Done, and all three measured in game
