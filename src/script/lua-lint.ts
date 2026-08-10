@@ -54,6 +54,26 @@ const OPENERS = new Set(['function', 'if', 'do']);
 const RETURN_SEMICOLON =
   "';' after 'return' — Lua 4 rejects the whole file; write a bare `return`";
 
+/**
+ * Separators inside a table constructor — the second rule the game taught us.
+ *
+ * Lua 4's constructor grammar allows ONE `;`, separating the list part from
+ * the record part — `{ PATH.."file.txt"; cost=COST }` is a shipped idiom — and
+ * NO trailing separator at all. Lua 5 shrugs at both, every modern reference
+ * shows trailing commas, and the pandora block died on exactly this:
+ *
+ *     (Script) ERROR: invalid constructor syntax;
+ *     last token read: `}' at line 13 in string "DoString script"
+ *
+ * A `;` after the last field asks the parser for a record part, `}` arrives
+ * instead, and the whole DoString fails — with every Trigger in the file
+ * unbound, which plays as objects that silently do nothing.
+ */
+const TABLE_TRAILING =
+  "a separator straight before '}' — Lua 4 takes no trailing `,` or `;` in a constructor";
+const TABLE_SECOND_SEMI =
+  "a second ';' in one constructor — Lua 4 allows exactly one, splitting the list part from the record part; use ','";
+
 
 /**
  * Split Lua into tokens, with strings and comments swallowed whole.
@@ -122,10 +142,10 @@ function tokenize(src: string): Tok[] {
       toks.push({ kind: 'word', text: src.slice(from, i), from, to: i });
       continue;
     }
-    // Brackets, and the statement separator: the one rule below needs to know
-    // whether a `;` follows a `return`, and by here comments and strings are
-    // already swallowed, so no match of it can be a false one.
-    if ('(){}[];'.includes(c)) {
+    // Brackets and the separators: the rules below need to know whether a `;`
+    // follows a `return`, and what separates fields inside a constructor. By
+    // here comments and strings are already swallowed, so no match is false.
+    if ('(){}[];,'.includes(c)) {
       toks.push({ kind: 'punct', text: c, from: i, to: i + 1 });
     }
     i++;
@@ -147,7 +167,7 @@ export function luaDiagnostics(src: string): LuaDiagnostic[] {
   const out: LuaDiagnostic[] = [];
   const toks = tokenize(src);
 
-  const brackets: { char: string; from: number }[] = [];
+  const brackets: { char: string; from: number; blocksAt: number; semis: number }[] = [];
   const blocks: { word: string; from: number; to: number }[] = [];
 
   for (let at = 0; at < toks.length; at++) {
@@ -157,9 +177,24 @@ export function luaDiagnostics(src: string): LuaDiagnostic[] {
       continue;
     }
     if (t.kind === 'punct') {
-      if (t.text === ';') continue;
+      if (t.text === ';' || t.text === ',') {
+        // Inside a constructor — the top bracket is `{` and no function body
+        // has opened since — Lua 4's separator rules apply (see above). A
+        // separator anywhere else is a statement's business and not ours.
+        const top = brackets[brackets.length - 1];
+        if (top && top.char === '{' && blocks.length === top.blocksAt) {
+          const next = toks[at + 1];
+          if (next && next.kind === 'punct' && next.text === '}') {
+            out.push({ from: t.from, to: t.to, severity: 'error', message: TABLE_TRAILING });
+          } else if (t.text === ';') {
+            if (top.semis > 0) out.push({ from: t.from, to: t.to, severity: 'error', message: TABLE_SECOND_SEMI });
+            top.semis++;
+          }
+        }
+        continue;
+      }
       if (t.text === '(' || t.text === '{' || t.text === '[') {
-        brackets.push({ char: t.text, from: t.from });
+        brackets.push({ char: t.text, from: t.from, blocksAt: blocks.length, semis: 0 });
       } else {
         const open = brackets.pop();
         if (!open) {

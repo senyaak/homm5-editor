@@ -94,8 +94,10 @@ export function pandoraBehaviourLua(): string {
     'function H5E_PandoraOpen()',
     '\tlocal box = H5E_PANDORA[H5E_PandoraObj];',
     '\tif box == nil then return end;',
-    '\tif box.fight ~= nil then',
-    '\t\tbox.fight(H5E_PandoraHero);',
+    '\tlocal fight = nil;',
+    '\tif H5E_PandoraFights ~= nil then fight = H5E_PandoraFights[H5E_PandoraObj]; end;',
+    '\tif fight ~= nil then',
+    '\t\tfight(H5E_PandoraHero);',
     '\telse',
     '\t\tH5E_PandoraGrant(H5E_PandoraHero, H5E_PandoraObj);',
     '\tend;',
@@ -154,33 +156,45 @@ const RESOURCES: [keyof PandoraContents, string][] = [
   ['crystal', 'CRYSTAL'], ['sulfur', 'SULFUR'], ['gem', 'GEM'], ['gold', 'GOLD'],
 ];
 
-/** One box's entry in the data table, plus its trigger line. */
+/**
+ * One box's entry in the data table, its trigger line, and its fight.
+ *
+ * WRITTEN IN LUA 4'S OWN GRAMMAR, the hard-won parts of which are: inside a
+ * table constructor the separator is the COMMA — a `;` there is "invalid
+ * constructor syntax", and the whole DoString dies with every hook unbound
+ * (found in the game's own error line, not by any linter). And the fight is a
+ * NAMED function assigned into a dispatch table afterwards, not an anonymous
+ * one inside the constructor — the dullest syntax the campaigns themselves
+ * use, which is the syntax proven to parse.
+ */
 function boxLua(box: PandoraContents): string[] {
   const fields: string[] = [];
-  if (box.exp) fields.push(`\texp = ${luaNumber(box.exp)};`);
+  if (box.exp) fields.push(`\texp = ${luaNumber(box.exp)}`);
   const res = RESOURCES
     .filter(([key]) => box[key])
     .map(([key, constant]) => `{${constant}, ${luaNumber(box[key] as number)}}`);
-  if (res.length) fields.push(`\tres = { ${res.join('; ')} };`);
-  if (box.artifacts?.length) fields.push(`\tartifacts = { ${box.artifacts.join('; ')} };`);
-  if (box.spells?.length) fields.push(`\tspells = { ${box.spells.join('; ')} };`);
+  if (res.length) fields.push(`\tres = { ${res.join(', ')} }`);
+  if (box.artifacts?.length) fields.push(`\tartifacts = { ${box.artifacts.join(', ')} }`);
+  if (box.spells?.length) fields.push(`\tspells = { ${box.spells.join(', ')} }`);
   if (box.creatures?.length) {
-    fields.push(`\tcreatures = { ${box.creatures.map((c) => `{${c.creature}, ${luaNumber(c.count)}}`).join('; ')} };`);
+    fields.push(`\tcreatures = { ${box.creatures.map((c) => `{${c.creature}, ${luaNumber(c.count)}}`).join(', ')} }`);
   }
-  if (box.guards?.length) {
-    const pairs = box.guards.map((g) => `${g.creature}, ${luaNumber(g.count)}`).join(', ');
-    fields.push(
-      '\tfight = function(hero)',
-      `\t\tStartCombat(hero, nil, ${box.guards.length}, ${pairs}, nil, "H5E_PandoraWon");`,
-      '\tend;',
-    );
-  }
-  return [
+  const out = [
     `H5E_PANDORA["${box.name}"] = {`,
-    ...fields,
+    ...fields.map((f, i) => (i < fields.length - 1 ? `${f},` : f)),
     '};',
     `Trigger(OBJECT_TOUCH_TRIGGER, "${box.name}", "H5E_PandoraTouch");`,
   ];
+  if (box.guards?.length) {
+    const pairs = box.guards.map((g) => `${g.creature}, ${luaNumber(g.count)}`).join(', ');
+    out.push(
+      `function H5E_PandoraFight_${box.name}(hero)`,
+      `\tStartCombat(hero, nil, ${box.guards.length}, ${pairs}, nil, "H5E_PandoraWon");`,
+      'end;',
+      `H5E_PandoraFights["${box.name}"] = H5E_PandoraFight_${box.name};`,
+    );
+  }
+  return out;
 }
 
 /**
@@ -199,9 +213,14 @@ export function pandoraMapBlock(boxes: readonly PandoraContents[]): string {
   }
   return [
     PANDORA_BLOCK_BEGIN,
-    `doFile("/${PANDORA_SCRIPT}");`,
     'H5E_PANDORA = {};',
+    'H5E_PandoraFights = {};',
     ...boxes.flatMap(boxLua),
+    // The doFile comes LAST: a Trigger looks its handler up by name when it
+    // fires, not when it binds, so the hooks survive even a doFile that dies —
+    // where a doFile first would take the whole thread down with the hooks
+    // still unbound, and every box would sit silent.
+    `doFile("/${PANDORA_SCRIPT}");`,
     PANDORA_BLOCK_END,
     '',
   ].join(EOL);

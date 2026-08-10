@@ -26,7 +26,8 @@ import { modFile } from '../src/game/mod-paths.ts';
 import { readEntries } from '../src/format/pak.ts';
 import { writeGameplayArchive } from '../src/mods/gameplay.ts';
 import {
-  PANDORA_CHEST_CLASS, PANDORA_CHEST_SHARED, PANDORA_CLASS, PANDORA_TIERS, pandoraShared,
+  PANDORA_CHEST_CLASS, PANDORA_CHEST_SHARED, PANDORA_CLASS, PANDORA_MILL_SHARED,
+  PANDORA_SPIN_SHARED, PANDORA_TIERS, pandoraShared,
 } from '../src/mods/pandora-files.ts';
 import { withPandoraBlock } from '../src/mods/pandora-scripts.ts';
 import type { PandoraContents } from '../src/mods/pandora-scripts.ts';
@@ -61,6 +62,12 @@ const BOXES: (PandoraContents & { x: number; y: number; shared: string })[] = [
   { name: 'PandoraChest', gold: 5000, x: 24, y: 28, shared: CHEST },
   // And one beside the AI: does an AI hero walk to a chest-class box at all?
   { name: 'PandoraChestAI', gold: 5000, x: 62, y: 60, shared: CHEST },
+  // The spin probes: the SKINNED cube with the artifact idle. The shipping box
+  // is static — a skinned mesh drew nothing on Stand and Treasure — and these
+  // two ask whether any class animates it: a Stand, and a Building of the
+  // windmill's type (the one shipped proof a Building plays an AnimSet).
+  { name: 'PandoraSpin', exp: 100, x: 36, y: 16, shared: `/${PANDORA_SPIN_SHARED}` },
+  { name: 'PandoraMill', exp: 100, x: 36, y: 22, shared: `/${PANDORA_MILL_SHARED}` },
 ];
 
 const SIDES = [
@@ -121,10 +128,12 @@ test('every box goes down through the palette, named for what it holds', async (
   }
 
   const placed = await page.evaluate(() => window.view.objects().map((o) => o.type));
-  expect(placed.filter((t) => t === 'AdvMapStand'), 'seven stand-class boxes')
-    .toHaveLength(BOXES.filter((b) => b.shared === BOX).length);
+  expect(placed.filter((t) => t === 'AdvMapStand'), 'the stand-class boxes and the spin probe')
+    .toHaveLength(BOXES.filter((b) => b.shared === BOX).length + 1);
   expect(placed.filter((t) => t === 'AdvMapTreasure'), 'two chest-class boxes')
     .toHaveLength(BOXES.filter((b) => b.shared === CHEST).length);
+  expect(placed.filter((t) => t === 'AdvMapBuilding'), 'the mill probe')
+    .toHaveLength(1);
 });
 
 test('two sides, and the script that answers a touch', async () => {

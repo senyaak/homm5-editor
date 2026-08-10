@@ -71,6 +71,15 @@ export const PANDORA_CHEST_CLASS = 'AdvMapTreasureShared';
 export const PANDORA_CHEST_SHARED = `${PANDORA_DIR}/PandoraBox_Chest.(${PANDORA_CHEST_CLASS}).xdb`;
 export const PANDORA_CHEST_LINK = 'MapObjects/_(AdvMapObjectLink)/Objects-All-Terra/PandoraBoxChest.xdb';
 
+/** The spin probes: the SKINNED cube with the artifact idle, on the classes
+ * that might animate it. Stand showed nothing on the first run; the windmill
+ * proves the Building class plays an AnimSet on the adventure map. */
+export const PANDORA_SPIN_SHARED = `${PANDORA_DIR}/PandoraBox_Spin.(${PANDORA_CLASS}).xdb`;
+export const PANDORA_SPIN_LINK = 'MapObjects/_(AdvMapObjectLink)/Objects-All-Terra/PandoraBoxSpin.xdb';
+export const PANDORA_MILL_CLASS = 'AdvMapBuildingShared';
+export const PANDORA_MILL_SHARED = `${PANDORA_DIR}/PandoraBox_Mill.(${PANDORA_MILL_CLASS}).xdb`;
+export const PANDORA_MILL_LINK = 'MapObjects/_(AdvMapObjectLink)/Objects-All-Terra/PandoraBoxMill.xdb';
+
 /** The tier a contents value earns. */
 export function pandoraTier(value: number): PandoraTier {
   let tier = PANDORA_TIERS[0]!;
@@ -96,6 +105,13 @@ const FACE_AXES: [number[], number[], number[]][] = [
  * animation spins. 4 float weights, 4 quantized weights, 4 bone indices with
  * 12 as the donor's filler. */
 const RIGID_SKIN = Buffer.from('0000803f000000000000000000000000ff000000030c0c0c', 'hex');
+
+/** And the binding a STATIC model carries — read off the shipped treasure
+ * chest, whose every vertex is this exact entry: full weight on bone 0, no
+ * filler. A skinned mesh on a class that raises no skeleton draws NOTHING
+ * (the probe map showed glow and no cube), and this is the other half of
+ * being static; the first is the model document's empty `<Skeleton/>`. */
+const STATIC_SKIN = Buffer.from('0000803f000000000000000000000000ff00000000000000', 'hex');
 
 interface GroupPart { int: number; leaf: BlockRecord }
 
@@ -150,7 +166,8 @@ function meshGroups(tree: RecordTree): MeshGroup[] {
  *
  * Returns the box's bounding box for the geometry document.
  */
-export function cubifyGeometry(bin: Buffer): { cx: number; cy: number; cz: number; sx: number; sy: number; sz: number } {
+export function cubifyGeometry(bin: Buffer, skin: 'static' | 'rigid' = 'static'): { cx: number; cy: number; cz: number; sx: number; sy: number; sz: number } {
+  const SKIN = skin === 'rigid' ? RIGID_SKIN : STATIC_SKIN;
   const groups = meshGroups(parseTree(bin));
   if (!groups.length) throw new Error('pandora: the donor geometry has no mesh groups');
 
@@ -161,7 +178,7 @@ export function cubifyGeometry(bin: Buffer): { cx: number; cy: number; cz: numbe
   ];
 
   const main = groups[0]!;
-  const pos = main.part(2)!, attr = main.part(3)!, skin = main.part(4);
+  const pos = main.part(2)!, attr = main.part(3)!, skinPart = main.part(4);
   const remap = main.part(5), remap2 = main.part(6), idx = main.part(7);
   if (!remap || !idx) throw new Error('pandora: the donor geometry lost its remap or indices');
   if (pos.int < 8 || attr.int < 24 || idx.int < 12) throw new Error('pandora: the donor mesh is too small to hold a cube');
@@ -171,7 +188,7 @@ export function cubifyGeometry(bin: Buffer): { cx: number; cy: number; cz: numbe
     const o = pos.leaf.body + i * 12;
     for (let k = 0; k < 3; k++) bin.writeFloatLE(p[k]!, o + k * 4);
   }
-  if (skin) for (let i = 0; i < pos.int; i++) RIGID_SKIN.copy(bin, skin.leaf.body + i * 24);
+  if (skinPart) for (let i = 0; i < pos.int; i++) SKIN.copy(bin, skinPart.leaf.body + i * 24);
 
   // 6 faces, corners listed in the face's own (u, v) order
   const faces: { axis: number; neg: boolean; corners: number[] }[] = [];
@@ -248,7 +265,7 @@ export function cubifyGeometry(bin: Buffer): { cx: number; cy: number; cz: numbe
       bin.writeFloatLE(BOX_C[0], o); bin.writeFloatLE(BOX_C[1], o + 4); bin.writeFloatLE(BOX_C[2], o + 8);
     }
     const gs = g.part(4);
-    if (gs) for (let i = 0; i < gp.int; i++) RIGID_SKIN.copy(bin, gs.leaf.body + i * 24);
+    if (gs) for (let i = 0; i < gp.int; i++) SKIN.copy(bin, gs.leaf.body + i * 24);
   }
 
   return { cx: BOX_C[0], cy: BOX_C[1], cz: BOX_C[2], sx: HALF * 2, sy: HALF * 2, sz: HALF * 2 };
@@ -403,8 +420,16 @@ export function buildPandora(read: DataReader): ModFile[] {
   const binPath = uid ? `bin/Geometries/${uid.toUpperCase()}` : null;
   const bin = binPath ? copied.files.get(binPath) : null;
   if (!binPath || !bin) throw new Error('pandora: the donor geometry binary did not copy');
-  const box = cubifyGeometry(bin);
+  // STATIC, deliberately. The first probe run showed glow and no cube: a
+  // skinned mesh on a class that raises no skeleton draws nothing, and neither
+  // Stand nor Treasure raises one. So the box that ships is a static model —
+  // every vertex on bone 0 and the model's Skeleton reference cleared, the
+  // exact shape of the shipped treasure chest. The spin lives on in the two
+  // hidden probes below, on the classes that might animate.
+  const box = cubifyGeometry(bin, 'static');
   retuneGeometryDoc(copied, geomAt, box);
+  copied.files.set(modelCopy, Buffer.from(
+    copied.files.get(modelCopy)!.toString('latin1').replace(/<Skeleton href="[^"]*"\s*\/>/, '<Skeleton/>'), 'latin1'));
   const texture = paintModelTextures(copied, modelCopy);
 
   const files: ModFile[] = [...copied.files].map(([path, data]) => ({ path, data }));
@@ -426,7 +451,6 @@ export function buildPandora(read: DataReader): ModFile[] {
       className: PANDORA_CLASS,
       messages: MESSAGES,
       model: DONOR_MODEL,
-      animSet: DONOR_ANIMSET,
       effect: tier.effect,
       footprint: { w: 1, h: 1 },
       ground: null,
@@ -455,7 +479,7 @@ export function buildPandora(read: DataReader): ModFile[] {
   const chestDoc = buildingDoc(
     {
       file: 'PandoraBox_Chest', className: PANDORA_CHEST_CLASS, messages: MESSAGES,
-      model: DONOR_MODEL, animSet: DONOR_ANIMSET, effect: PANDORA_TIERS[2]!.effect,
+      model: DONOR_MODEL, effect: PANDORA_TIERS[2]!.effect,
       footprint: { w: 1, h: 1 }, ground: null,
       type: 'TREASURE_CHEST', fields: { MinResource: '1', MaxResource: '1' },
     },
@@ -466,18 +490,67 @@ export function buildPandora(read: DataReader): ModFile[] {
   // The behaviour the maps' generated blocks doFile, and its texts.
   files.push(...pandoraBehaviourFiles());
 
-  files.push({
-    path: PANDORA_CHEST_LINK,
+  const hiddenLink = (link: string, shared: string, className: string): ModFile => ({
+    path: link,
     data: Buffer.from([
       '<?xml version="1.0" encoding="UTF-8"?>',
       '<AdvMapObjectLink>',
-      `\t<Link href="/${PANDORA_CHEST_SHARED}#xpointer(/${PANDORA_CHEST_CLASS})"/>`,
+      `\t<Link href="/${shared}#xpointer(/${className})"/>`,
       '\t<RndGroup/>',
       `\t<IconFile>${PANDORA_TEXTURE}</IconFile>`,
       '\t<HideInEditor>true</HideInEditor>',
       '</AdvMapObjectLink>',
     ].join(EOL) + EOL, 'latin1'),
   });
+  files.push(hiddenLink(PANDORA_CHEST_LINK, PANDORA_CHEST_SHARED, PANDORA_CHEST_CLASS));
+
+  // THE SPIN PROBES. A second copy of the donor, cube built in with the skin
+  // KEPT — bone 3, the one the artifact idle turns — plus the skeleton and the
+  // AnimSet. On a Stand (does that class animate at all?) and on a Building of
+  // the windmill's type, the one shipped proof that Building plays an AnimSet.
+  // Hidden in the palette; the probe map places them by name.
+  const spin = copyArt([DONOR_MODEL, DONOR_ANIMSET], `${PANDORA_DIR}/spin`, read, 'pandora:spin');
+  const spinModel = spin.at.get(DONOR_MODEL);
+  if (!spinModel) throw new Error('pandora: the spin probe lost its model');
+  const spinModelDoc = spin.files.get(spinModel)!.toString('latin1');
+  const spinGeomAt = resolve(spinModel, hrefOf(spinModelDoc, 'Geometry') ?? '');
+  const spinGeomDoc = spinGeomAt ? spin.files.get(spinGeomAt)?.toString('latin1') : null;
+  const spinUid = spinGeomDoc ? /<uid>([0-9A-Fa-f-]{36})<\/uid>/.exec(spinGeomDoc)?.[1] : null;
+  const spinBin = spinUid ? spin.files.get(`bin/Geometries/${spinUid.toUpperCase()}`) : null;
+  if (!spinGeomAt || !spinBin) throw new Error('pandora: the spin probe lost its geometry');
+  const spinBox = cubifyGeometry(spinBin, 'rigid');
+  retuneGeometryDoc(spin, spinGeomAt, spinBox);
+  paintModelTextures(spin, spinModel); // the texture pair is already in `files`
+  files.push(...[...spin.files].map(([path, data]) => ({ path, data })));
+
+  const spinAt = (path: string | undefined): string | undefined => {
+    const to = path ? spin.at.get(dataPath(path)) : undefined;
+    return to ? `/${to}` : at(path);
+  };
+  const spinDoc = buildingDoc(
+    {
+      file: 'PandoraBox_Spin', className: PANDORA_CLASS, messages: MESSAGES,
+      model: DONOR_MODEL, animSet: DONOR_ANIMSET, effect: PANDORA_TIERS[0]!.effect,
+      footprint: { w: 1, h: 1 }, ground: null,
+    },
+    { dir: PANDORA_DIR, shared: PANDORA_SPIN_SHARED, link: PANDORA_SPIN_LINK, art: `${PANDORA_DIR}/spin`, text: texts },
+    types, { w: 1, h: 1 }, spinAt,
+  );
+  files.push({ path: PANDORA_SPIN_SHARED, data: Buffer.from(spinDoc, 'latin1') });
+  files.push(hiddenLink(PANDORA_SPIN_LINK, PANDORA_SPIN_SHARED, PANDORA_CLASS));
+
+  const millDoc = buildingDoc(
+    {
+      file: 'PandoraBox_Mill', className: PANDORA_MILL_CLASS, messages: MESSAGES,
+      model: DONOR_MODEL, animSet: DONOR_ANIMSET, effect: PANDORA_TIERS[3]!.effect,
+      footprint: { w: 1, h: 1 }, ground: null,
+      type: 'BUILDING_WINDMILL',
+    },
+    { dir: PANDORA_DIR, shared: PANDORA_MILL_SHARED, link: PANDORA_MILL_LINK, art: `${PANDORA_DIR}/spin`, text: texts },
+    types, { w: 1, h: 1 }, spinAt,
+  );
+  files.push({ path: PANDORA_MILL_SHARED, data: Buffer.from(millDoc, 'latin1') });
+  files.push(hiddenLink(PANDORA_MILL_LINK, PANDORA_MILL_SHARED, PANDORA_MILL_CLASS));
 
   return files;
 }

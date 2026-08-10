@@ -19,8 +19,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import {
-  PANDORA_CHEST_LINK, PANDORA_CHEST_SHARED, PANDORA_LINK, PANDORA_TIERS,
-  buildPandora, pandoraShared, pandoraTexture, pandoraTier,
+  PANDORA_CHEST_LINK, PANDORA_CHEST_SHARED, PANDORA_LINK, PANDORA_MILL_SHARED,
+  PANDORA_SPIN_SHARED, PANDORA_TIERS, buildPandora, pandoraShared, pandoraTexture, pandoraTier,
 } from '../src/mods/pandora-files.ts';
 import { buildGameplayArchive } from '../src/mods/gameplay.ts';
 import {
@@ -133,6 +133,41 @@ for (const tier of PANDORA_TIERS) {
 const link = byPath.get(PANDORA_LINK.toLowerCase())?.toString('latin1') ?? '';
 check('the palette link names the poorest tier', link.includes(pandoraShared(PANDORA_TIERS[0]!.key)));
 
+// ---- static and spinning ----------------------------------------------------
+
+console.log('static and spinning');
+// The shipping box is STATIC — a skinned mesh on a class that raises no
+// skeleton draws nothing (measured in the game, first probe run).
+const STATIC_ENTRY = '0000803f000000000000000000000000ff00000000000000';
+const RIGID_ENTRY = '0000803f000000000000000000000000ff000000030c0c0c';
+const countHex = (buf: Buffer, hex: string): number => {
+  const needle = Buffer.from(hex, 'hex');
+  let n = 0;
+  for (let at = buf.indexOf(needle); at >= 0; at = buf.indexOf(needle, at + 1)) n++;
+  return n;
+};
+check('every tier is animation-free', PANDORA_TIERS.every((t) =>
+  /<AnimSet\/>/.test(byPath.get(pandoraShared(t.key).toLowerCase())?.toString('latin1') ?? '')));
+check('the model keeps no skeleton', /<Skeleton\/>/.test(modelDoc));
+if (bin) check('the cube is bound to bone 0, statically', countHex(Buffer.from(bin), STATIC_ENTRY) >= 600
+  && countHex(Buffer.from(bin), RIGID_ENTRY) === 0, `${countHex(Buffer.from(bin), STATIC_ENTRY)} entries`);
+
+// The spin probes keep the donor's rig, on the classes that might play it.
+const spinDoc = byPath.get(PANDORA_SPIN_SHARED.toLowerCase())?.toString('latin1') ?? '';
+check('the spin probe keeps the animation', /<AnimSet href="[^"]+"/.test(spinDoc));
+const spinModelPath = /<Model href="\/([^"#]+)/.exec(spinDoc)?.[1] ?? '';
+const spinModelDoc = byPath.get(spinModelPath.toLowerCase())?.toString('latin1') ?? '';
+check('and its skeleton', /<Skeleton href="[^"]+"/.test(spinModelDoc));
+const spinGeomDoc = byPath.get(
+  spinModelPath.replace(/[^/]+$/, /<Geometry href="([^"#]+)/.exec(spinModelDoc)?.[1] ?? '').toLowerCase(),
+)?.toString('latin1') ?? '';
+const spinUid = /<uid>([0-9A-Fa-f-]{36})<\/uid>/.exec(spinGeomDoc)?.[1] ?? '';
+const spinBin = byPath.get(`bin/geometries/${spinUid.toUpperCase()}`.toLowerCase());
+check('its cube rides the spinning bone', !!spinBin && countHex(Buffer.from(spinBin), RIGID_ENTRY) >= 600);
+const millDoc = byPath.get(PANDORA_MILL_SHARED.toLowerCase())?.toString('latin1') ?? '';
+check('the mill probe is a windmill-type building', millDoc.includes('<Type>BUILDING_WINDMILL</Type>')
+  && /<AnimSet href="[^"]+"/.test(millDoc));
+
 // ---- the tiers --------------------------------------------------------------
 
 console.log('the tiers');
@@ -158,7 +193,10 @@ const modelMaterials = [...modelDoc.matchAll(/<Item href="\/([^"#]+)/g)].map((m)
 check('every model material names our texture', modelMaterials.length > 0
   && modelMaterials.every((p) => byPath.get(p.toLowerCase())?.toString('latin1').includes('PandoraBox.(Texture).xdb')),
   `${modelMaterials.length} materials`);
+// The glow effects' materials keep the game's art; the spin probes' copy of
+// the MODEL is painted like the main one and is not a glow.
 const effectMaterials = files.filter((f) => f.path.toLowerCase().includes('(material)')
+  && !f.path.includes('/spin/')
   && !modelMaterials.some((p) => p.toLowerCase() === f.path.toLowerCase()));
 check('the glow materials keep their art', effectMaterials.length > 0
   && effectMaterials.every((f) => !f.data.toString('latin1').includes('PandoraBox.(Texture).xdb')), `${effectMaterials.length} kept`);
@@ -179,7 +217,9 @@ console.log('the scripts');
   const block = pandoraMapBlock(boxes);
   check('the block lints clean', luaDiagnostics(block).length === 0,
     luaDiagnostics(block).map((d) => `${d.from}: ${d.message}`).join('; '));
-  check('the block loads the behaviour first', block.indexOf('doFile') < block.indexOf('H5E_PANDORA['));
+  // The doFile comes last: a trigger resolves its handler when it FIRES, so
+  // the hooks must already be bound if the behaviour file fails to load.
+  check('the block loads the behaviour last', block.indexOf('doFile') > block.lastIndexOf('Trigger(OBJECT_TOUCH_TRIGGER'));
   check('a guarded box fights before it opens',
     block.includes('StartCombat(hero, nil, 2, CREATURE_ARCHDEVIL, 4, CREATURE_DEVIL, 8, nil, "H5E_PandoraWon")'));
   check('every box is hooked', boxes.every((b) => block.includes(`Trigger(OBJECT_TOUCH_TRIGGER, "${b.name}", "H5E_PandoraTouch")`)));

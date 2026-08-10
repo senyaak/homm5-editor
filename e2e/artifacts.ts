@@ -74,8 +74,10 @@ export const MADE = {
   /** mod-011 stands a row of Pandora's Boxes with known contents, to be opened
    *  in the game. Named for what it holds, like SoD Dwellings: it is meant to
    *  be played, and playing it is the probe — which classes fire the touch
-   *  trigger, and whether the AI walks to the chest-class box. */
-  PANDORA_MAP: 'Pandora Probe',
+   *  trigger, whether anything spins, and whether the AI walks to the
+   *  chest-class box. ONE WORD: a Lua path with a space in it does not
+   *  resolve, and the map's own folder is in every text ref its script uses. */
+  PANDORA_MAP: 'PandoraProbe',
   /** mod-010 stands every building the campaign adds on one map, to be looked at
    *  in the game. Named for what it holds rather than `e2e …`, because unlike
    *  the rest it is meant to be opened and played. */
