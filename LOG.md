@@ -66,6 +66,13 @@ watch is the old build:
 npm run install-native
 ```
 
+**And `npm test` puts a SILENT one there.** `test-native-log` builds the
+extension twice to prove the switches cut what they say they cut, and the last
+build it leaves behind is the ordinary one — which `install-native` then carries
+into the game if you run it after. It cost a play-through on 10.08.2026: a run
+that should have printed a line per spell wrote five lines and stopped. If a run
+is being watched, build with `--log` and install AFTER the suite, not before.
+
 ## What speaks without being asked
 
 Two units, because they are how anybody finds out the mod is there at all and
