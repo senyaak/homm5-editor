@@ -309,7 +309,7 @@ export const HEROES: Kit[] = [
       // through the area one with the number of stacks hit — so one cast of each
       // says what it is. Take them out again when it has a name.
       'SPELL_ICE_BOLT', 'SPELL_FROST_RING', 'SPELL_LIGHTNING_BOLT',
-      'SPELL_CHAIN_LIGHTNING',
+      'SPELL_CHAIN_LIGHTNING', 'SPELL_STONE_SPIKES', 'SPELL_METEOR_SHOWER',
       // And OUR ice, which is what the mark is really being asked about: the
       // aimed Armageddon with one field changed, its element.
       TEST_ICE_TARGET, TEST_AIR_TARGET,
@@ -582,9 +582,15 @@ export const ENEMY_CASTER: Kit = {
   heroClass: 'HERO_CLASS_WIZARD',
   fixes: [],
   shared: hero('Academy', 'Nur'),
-  at: { x: 40, y: 13 },
+  // TWO TILES EAST OF THE WIZARD, not across the map. He was put at the far end
+  // first and playing it meant chasing him: this is a stand, and the battle
+  // being watched should be one step away.
+  at: { x: 12, y: 10 },
   skills: [{ id: 'HERO_SKILL_DESTRUCTIVE_MAGIC', mastery: M.expert }],
-  spells: ['SPELL_FIREBALL', 'SPELL_ICE_BOLT', 'SPELL_LIGHTNING_BOLT'],
+  // One per element, EARTH included — the Earthsliders are worn and had nothing
+  // to be read on.
+  spells: ['SPELL_FIREBALL', 'SPELL_ICE_BOLT', 'SPELL_LIGHTNING_BOLT',
+    'SPELL_STONE_SPIKES', 'SPELL_METEOR_SHOWER'],
   artifacts: [
     'PHOENIX_FEATHER_CAPE', 'EVERCOLD_ICICLE', 'TITANS_TRIDENT',
     'ARTIFACT_EARTHSLIDERS',
