@@ -837,15 +837,19 @@ four elemental artifacts and casting spells of the mod's at his own army.*
 `EVERCOLD_ICICLE` off and cast the same spell again — 945 becomes 630, and not
 one other row moves.
 
-**The ×0.75 row is the one to distrust, and a later reading says so.**
-10.08.2026, same stand, the flat-100 fire ruler: the engine answered **150**,
-which is ×1.50 and nothing else — no halving anywhere. And the reason the
-protection could not have been the wizard's own `DRAGON_FLAME_TONGUE` is that it
-was never worn: it is PRIMARY, so is the Trident beside it, and the game had
-benched one of them from the start. So `1.5 × 0.5` explains the number but the
-0.5 has no owner on that hero, and what produced 472 is not settled. The
-protection now sits on the OTHER caster, where a protection is read anyway — it
-belongs to whoever is being hit — and the question can be asked again properly.
+**RETRACTED, 10.08.2026 — the ×0.75 row was a misreading, and the table above
+keeps it only so nobody re-derives it.** Later the same day, on the same stand
+and with the log printing every term, the flat-100 fire ruler answered **150**:
+×1.50 from the cape and nothing else, over thousands of calls. There was no
+halving to decompose. The `0.5` also had no owner — the fire protection it was
+attributed to (`DRAGON_FLAME_TONGUE`) is PRIMARY, so is the Trident beside it,
+and the game had benched one of them from the start; the hero never wore it.
+
+So: **the caster's elemental artifact multiplies by 1.5, full stop**, and that
+is the whole of what this door does per element. What produced 472 in one
+session's notes is not known and did not reproduce — one reading, no log, and
+a number talked into a shape. The lesson is the one the stand exists for: a
+decomposition that explains a number is not a measurement of it.
 
 *Which side the engine reads its four off was an open question here. It is
 closed — by reading, not by a run: see «the spell book showed nothing» below.
