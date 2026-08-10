@@ -136,8 +136,11 @@ use **Encourage** on them.
 
 Two things in his kit are the instrument, and neither is obvious:
 
-- he fights **100 zombies**, because an Armageddon leaves nothing of a peasant
-  stack and this is read off a stack that is still standing;
+- he fights **a thousand peasants** — living, and enough of them to survive a
+  cast. They were 100 zombies, and the undead answer rules of their own, so a
+  mark that failed to appear on them said nothing; the count is a thousand
+  because 630 damage is two hundred peasants and a mark is read off a stack
+  that is still standing;
 - he has **100 druids**, because the defence has to be raised *while the fire
   effect is still on* — and the effect lasts **one turn**, so the hero who cast
   the Armageddon cannot also cast the buff in time. A creature caster can:
@@ -411,7 +414,7 @@ open the book, and look before clicking:
    stack and hit that one. If all three cover the whole field, the flags are NOT
    what chooses the shape; if the area one asks where to aim and then hits
    nothing, the tiles did not reach the extension.
-6. **«Волна смерти по цели» at the ZOMBIES** — the one reading on this map for a
+6. **«Волна смерти по цели» at the WARLOCK's ZOMBIES** — the one reading on this map for a
    cast that would reach nobody. It is the ripple's rule aimed at a single stack,
    so pointed at the undead there is nothing for it to do: it must **refuse, and
    the mana must still be there** afterwards.

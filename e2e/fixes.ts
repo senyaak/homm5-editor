@@ -300,6 +300,7 @@ export const HEROES: Kit[] = [
       // through the area one with the number of stacks hit — so one cast of each
       // says what it is. Take them out again when it has a name.
       'SPELL_ICE_BOLT', 'SPELL_FROST_RING', 'SPELL_LIGHTNING_BOLT',
+      'SPELL_CHAIN_LIGHTNING',
       // And OUR ice, which is what the mark is really being asked about: the
       // aimed Armageddon with one field changed, its element.
       TEST_ICE_TARGET, TEST_AIR_TARGET,
@@ -327,7 +328,17 @@ export const HEROES: Kit[] = [
     ],
     // Zombies, because peasants do not survive an Armageddon and this test is
     // read off a stack that is still standing.
-    foe: { ...ZOMBIES, at: { x: 8, y: 7 } },
+    // A THOUSAND PEASANTS, and both halves of that are the experiment.
+    //
+    // LIVING, because he is the hero the three Master marks are read on and the
+    // first attempt was made on zombies — a mark that did not appear then says
+    // nothing, since undead answer several rules of their own. And a THOUSAND,
+    // because a mark is read off a stack that is still standing: his casts deal
+    // six hundred and thirty apiece, which is two hundred peasants.
+    //
+    // The undead readings moved to the warlock, whose foe is zombies — see his
+    // spells below.
+    foe: { shared: PEASANTS, at: { x: 8, y: 7 }, count: 1000 },
   },
   {
     key: 'knight',
@@ -386,7 +397,14 @@ export const HEROES: Kit[] = [
     // …and the Death Ripple at the top of the school: his Dark Magic is already
     // Expert, so he is the fourth reading with no kit of his own to change.
     spells: ['SPELL_ARCANE_CRYSTAL', 'SPELL_SUMMON_HIVE', 'SPELL_BLADE_BARRIER',
-      'SPELL_ARMAGEDDON', DEATH_RIPPLE],
+      'SPELL_ARMAGEDDON', DEATH_RIPPLE,
+      // AND THE PAIR THAT READS THE REFUSAL, here because his foe is UNDEAD.
+      // The aimed ripple passes the undead over, so pointed at his zombies it
+      // must be refused with the mana intact; the aimed Armageddon passes over
+      // nobody, so at the same stack it must hit. Same shape, same target, and
+      // the only difference is what each spares. They used to be the wizard's,
+      // whose foe is a thousand peasants now.
+      DEATH_RIPPLE_TARGET, TEST_ARMAGEDDON_TARGET],
     stats: { offence: 5, defence: 5, spellpower: 15, knowledge: 40 },
     // A war machine of his own, so an empowered Armageddon has one to prove
     // itself on — that is the half of the fix you can see.
