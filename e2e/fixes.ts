@@ -269,6 +269,8 @@ const TEST_AIR_TARGET = 'SPELL_H3_TEST_AIR_TARGET';
 const TEST_FLAT_FIRE = 'SPELL_H3_TEST_FLAT_FIRE';
 /** The mod's own artifact: +10% to every element's damage, −10% taken. */
 const PRISM = 'ARTIFACT_H3_ELEMENTAL_PRISM';
+/** And the magic pair on its own, so the ruler can tell the two kinds apart. */
+const FOCUS = 'ARTIFACT_H3_MAGIC_FOCUS';
 
 /** Dark Magic, at the three masteries the four heroes spread across. */
 const DARK = (mastery: string): Skill => ({ id: 'HERO_SKILL_DARK_MAGIC', mastery });
@@ -337,7 +339,7 @@ export const HEROES: Kit[] = [
       'ARTIFACT_EARTHSLIDERS',
       'ICEBERG_SHIELD', 'RING_OF_LIGHTING_PROTECTION', 'DRAGON_FLAME_TONGUE',
       // And the mod's own, which is the one the engine cannot answer for.
-      PRISM,
+      PRISM, FOCUS,
     ],
     // A tent of his own, so an Armageddon has a war machine to prove itself on.
     ballista: true,
@@ -601,7 +603,7 @@ export const ENEMY_CASTER: Kit = {
     'PHOENIX_FEATHER_CAPE', 'EVERCOLD_ICICLE', 'TITANS_TRIDENT',
     'ARTIFACT_EARTHSLIDERS',
     'ICEBERG_SHIELD', 'RING_OF_LIGHTING_PROTECTION', 'DRAGON_FLAME_TONGUE',
-    PRISM,
+    PRISM, FOCUS,
   ],
   stats: { offence: 5, defence: 5, spellpower: 20, knowledge: 30 },
   army: [{ creature: 'CREATURE_PEASANT', count: 2000 }],

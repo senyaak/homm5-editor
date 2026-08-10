@@ -314,12 +314,36 @@ export const PRISM = {
   file: 'H3ElementalPrism',
   id: 'ARTIFACT_H3_ELEMENTAL_PRISM',
   name: 'Призма стихий',
-  description: '+10% к урону каждой стихией, и −10% к урону каждой стихией по его отрядам.',
+  description: '+10% к урону каждой из четырёх стихий, и −10% к урону каждой стихией по его отрядам. Магию вообще не трогает — это соседний предмет.',
   slot: 'NECK' as ArtifactSlot,
   effects: {
     air_damage: 10, fire_damage: 10, water_damage: 10, earth_damage: 10,
     air_resist: 10, fire_resist: 10, water_resist: 10, earth_resist: 10,
   },
+  picture: 'amulet_grob.gif',
+};
+
+/**
+ * **And the other half of the same question: magic of any element at all.**
+ *
+ * `magic_damage` is not a shorthand for the four elemental rows and does not
+ * stand in for them — it is a different claim, and it adds on top of whichever
+ * element row also matched. Which means one artifact carrying both kinds could
+ * not be told apart by the number it produces, and the ruler spell exists
+ * precisely so numbers can be told apart. So the magic pair lives on its own
+ * artifact.
+ *
+ * With the ruler at 100: the prism alone reads 110, this alone reads 110, and
+ * the two together read 120 if the terms add and 121 if they multiply — which is
+ * a question about our own arithmetic that nothing else on the stand would ask.
+ */
+export const FOCUS = {
+  file: 'H3MagicFocus',
+  id: 'ARTIFACT_H3_MAGIC_FOCUS',
+  name: 'Фокус магии',
+  description: '+10% к урону любой магией, какой бы стихии она ни была, и −10% к магическому урону по его отрядам.',
+  slot: 'FINGER' as ArtifactSlot,
+  effects: { magic_damage: 10, magic_resist: 10 },
   picture: 'amulet_grob.gif',
 };
 
@@ -1349,8 +1373,14 @@ export function installSpellFixture(gameRoot: string): CreatureMod {
     ...PRISM, rank: 'ARTF_CLASS_MINOR' as const, cost: 5000,
     picture: join(ART, PRISM.picture), board: { tiles: 1 },
   };
-  if ((mod.artifacts ?? []).some((x) => x.id === PRISM.id)) updateArtifact(mod, PRISM.id, prism);
-  else addArtifact(mod, prism);
+  const focus = {
+    ...FOCUS, rank: 'ARTF_CLASS_MINOR' as const, cost: 5000,
+    picture: join(ART, FOCUS.picture), board: { tiles: 1 },
+  };
+  for (const [spec, id] of [[prism, PRISM.id], [focus, FOCUS.id]] as const) {
+    if ((mod.artifacts ?? []).some((x) => x.id === id)) updateArtifact(mod, id, spec);
+    else addArtifact(mod, spec);
+  }
   const report = buildCreatureMod(mod, dataReader(DATA));
   installCreatureMod(gameRoot, mod, packCreatureMod(report));
   // What a spell of ours passes over lives in this file and nowhere else — the
