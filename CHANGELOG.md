@@ -304,6 +304,19 @@ one.
 
 ### Fixed
 
+- **And an ice or air spell of the mod's leaves its mark too.** All three
+  elements now behave the way the game's own do: fire takes the target's
+  defence down, ice freezes it, and air slides it back down the initiative bar
+  — each watched beside the game's own spell of the same element, cast by the
+  same hero at the same stack.
+
+  The two that were left take arguments fire's does not. Air's is a switch that
+  decides whether the mark is left at all; ice is given the caster's spell power,
+  which is what the freeze's length is worked out from, and the number of stacks
+  the cast reached, which it is divided between. That last one could not be read
+  out of the code with any confidence, so the extension was made to print what
+  the game itself passes there, and the value named itself.
+
 - **A fire spell of the mod's burns like the game's own.** A hero with Master of
   Fire cast one and nothing happened beyond the damage: the perk takes the
   target's defence down, and the mod's spells were the one kind of fire in the

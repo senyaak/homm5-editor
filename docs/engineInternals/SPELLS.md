@@ -700,12 +700,25 @@ at a point.
 
 ## What is not done yet
 
-1. **The three ELEMENT appliers, each with its own reading.** Ours calls the
-   element-less one, so a spell of ours leaves no Master's mark. Each of the
-   other three needs its arity and its `ecx`/`edx` roles read from a site that
-   calls it — they disagree on both. Once they are in, our resolver picks by the
-   document's element for **all three shapes**, which is more than the game does
-   for its own (only the area routine dispatches on element).
+1. ~~The three ELEMENT appliers.~~ **Done, and all three measured in game
+   09.08–10.08.2026.** Our resolver picks the applier from the document's
+   element for **all three shapes**, which is more than the game does for its
+   own — only its area routine dispatches on element. What each leaves, watched
+   on a spell of ours beside the game's own of the same element:
+
+   | element | applier | the mark | seen as |
+   |---|---|---|---|
+   | fire | `0xBD1420` | effect 202, Master of Fire | the target's defence drops |
+   | water | `0xBD12C0` | effect 201, Master of Ice | the freeze |
+   | air | `0xBD1790` | Master of Lightnings | the target slides back down the initiative bar |
+
+   The claim they "swap the roles of `ecx` and `edx`" was WRONG and cost two
+   days of leaving this undone: at the area routine's own dispatch all four are
+   handed `mov edx,ebx` and `mov ecx,[esp+60h]`. What differs is the extra
+   arguments — air takes a byte that gates the mark (we pass 1), water takes the
+   caster's SPELL POWER and the number of stacks reached, which it divides the
+   mark by. The power was named by a probe, not by reading: see "the ice
+   applier" in native/combat/spell-resolve.c.
 2. **`H5EDamage(unit, amount)` for scripts that want to hit by themselves** —
    our first function WITH arguments, through the engine's parser `0xa454d0`
    (a shipped function builds a format string like `"sn"` and its own name on
