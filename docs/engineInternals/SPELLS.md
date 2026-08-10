@@ -648,7 +648,11 @@ them again: `0xBD3A00`-ish builds the spellbook's PREDICTION — the "duration",
 effects — and `0xAD4640` is "is this spell of school 6", not a gate on anything
 we care about.
 
-## The area shape reaches nobody, and the claim it rested on was wrong
+## The area shape reached nobody, and the claim it rested on was wrong
+
+> **Fixed and measured in game 09.08.2026** — the cross covers whom it lands on,
+> and the gate answers for it out of the same door. What follows is why it was
+> broken, kept because the wrong belief lived in this file for two days.
 
 Measured 09.08.2026, in the run that was meant to check the gate.
 
@@ -673,16 +677,26 @@ so ours goes to `0xB83470` rather than `0xB83ED0`, which is the one that calls
 the tiles function. **The game's own fireball takes the same road**: its id is 5
 and it gets no kind either, so this is not what separates it from ours.
 
-**What it costs, today:** an area spell of ours casts, covers nobody and takes
-the mana. The gate does NOT refuse it — an empty list there is read as "cannot
-tell", because the list is empty whether or not anybody stands under the cross.
-One build refused every area cast outright before that was understood.
+**What it cost, before the fix:** an area spell of ours cast, covered nobody and
+took the mana. And a build that read the empty list as "nobody" refused every
+area cast outright, which is how the fault was finally understood.
 
-**What has to happen:** the resolver builds the list itself, from the point the
-cast was aimed at and the tiles the row names. `0xD61830` is the candidate — the
-engine's own "which stacks would this spell reach", which is what its gate case
-for a mass spell calls, and it goes through `0xB7BE30`, which is OUR tiles stub.
-Its signature and where it takes the centre from are the next thing to read.
+**What it asks now.** The resolver builds the list itself, from the point the
+cast was aimed at and the tiles the row names, through **`0xB7BE30`** — the
+engine's own "whom would an area reach", and the function OUR tiles stub already
+sits inside, so the shape it lays for our number is the cross.
+
+| | |
+|---|---|
+| signature | `ret 14h` — `(ecx = stacks out, edx = tiles out, caster, x, y, spell, flag)` |
+| what it does | lays the tiles (our switch), then asks the combat who stands on them — `0xB88980` |
+| both lists | three zero words in, ours to free out, exactly as `0xD61830` builds them |
+| the aim point | `cmd+0x28`/`+0x2C` → `cast+0x1C`/`+0x20` → the gate's `block+0x1C`/`+0x20` |
+| the trap | the two pushes before `call [eax+8]` at its tail are the collector's, not that call's — `vt[8]` is `GetCombat` and takes nothing |
+
+`0xD61830` was the first candidate and is the wrong one: it takes its centre from
+the CASTER's own position, which is right for a mass spell and not for one aimed
+at a point.
 
 ## What is not done yet
 

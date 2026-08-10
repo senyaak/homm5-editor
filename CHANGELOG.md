@@ -304,6 +304,23 @@ one.
 
 ### Fixed
 
+- **An area spell of the mod's hits what it lands on.** It asked where to aim,
+  covered the tiles it was authored with — and damaged nobody, whoever was
+  standing there.
+
+  The extension was reading the list of covered stacks off the cast, where the
+  game had been seen to leave one. It leaves one for its own spells and not for
+  the mod's: a shipped area spell works out what it covers inside its own branch
+  of the resolver, and a spell the executable was never compiled against has no
+  such branch. So the list was empty every time, whether or not anybody stood
+  under it.
+
+  It is now asked for, through the same routine the game uses to answer it —
+  which is the one the mod's own tile shape already lives inside, so what it
+  lays for the mod's spell is the shape the spell was authored with. Cast and
+  refusal go through that one door, so what a spell says it will reach and what
+  it then hits cannot disagree.
+
 - **A spell of the mod's no longer takes the mana for a cast that hits nobody.**
   Casting one where it would touch nothing spent the mana and the hero's turn
   and did nothing at all — and the page in the spellbook stayed bright, so
@@ -316,6 +333,12 @@ one.
   spell builds the list of stacks the cast would reach and answers "that list is
   not empty". The mod's spells now answer the same way, out of the walk the cast
   itself is about to make, so the two can never disagree.
+
+  It is asked of a yes as well, and that half was learned in a battle: the
+  engine only refuses silently when a spell has no target at all, and answers
+  yes by itself for one that aims — so catching the refusal alone left every
+  aimed spell of the mod's able to be cast into nothing, which is the case a
+  person meets first.
 
   A spell that would reach nobody is refused, the mana stays, and because the
   same answer is given to a question as to a cast, the book greys the page by
