@@ -469,6 +469,13 @@ open the book, and look before clicking:
    for what lowered it, and a minus of ours goes in the second. It was in the
    first once, and read on screen as a gift.
 
+   **The last green entry and the first red one share a line, and that is the
+   GAME's**, not ours: its own template (`UI/Tooltips/CommonAdvObjTooltip/
+   spell_affections.txt`) puts the two lists next to each other with no `<br>`
+   between them, and a Phoenix Feather Cape beside an Iceberg Shield does it
+   with no mod installed at all. **Left alone on purpose** — Senya's call,
+   10.08.2026: the game is what it is. Do not go looking for it again.
+
    **And the breakdown beside it should NAME them**, the way it names a Phoenix
    Feather Cape: the bonus is added at the one door both a battle and the book
    come through, and the piece responsible is written into the engine's own list
