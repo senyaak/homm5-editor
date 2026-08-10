@@ -821,6 +821,33 @@ three kinds again — 105, 10, 11 — before it answers a percentage.
    subject and WHAT it changes, and the amount belongs to the artifact.
 
 
+## The elemental artifacts already work on a spell of ours — measured both ways
+
+*10.08.2026, on the Rules Test stand, with the wizard wearing the game's own
+four elemental artifacts and casting spells of the mod's at his own army.*
+
+| the mod's spell | its element | worth → damage | |
+|---|---|---|---|
+| 353, 358 — the ripple | none | 315 → 315 | ×1.00 |
+| 354, 355, 356 — the Armageddons | fire | 630 → 472, and 0 on fire elementals | ×0.75 |
+| 359 — the ice twin | water | 630 → **945** | **×1.50** |
+| 360 — the air twin | air | 630 → 472 | ×0.75 |
+
+**And the control, which is what makes it a measurement:** take the
+`EVERCOLD_ICICLE` off and cast the same spell again — 945 becomes 630, and not
+one other row moves. The half above is `+50% to ice damage`; the ×0.75 is the
+protection side taking a quarter off, and the zero is immunity.
+
+**So the element-keyed half of the artifact layer needs no work from us at all.**
+The engine reads `SpellElement` out of the document and asks `CountEquipped`
+beside it — it never learns our number, and it does not need to. A spell of a
+mod's is already a first-class fire or ice spell to every artifact, every
+protection and every immunity in the game.
+
+What is left is the one thing the engine cannot know: an artifact of OURS, with
+a number it was never compiled against. That is a row in the config and a term
+at the door — and it is now the whole of the job, rather than half of it.
+
 ## What is not done yet
 
 1. ~~The three ELEMENT appliers.~~ **Done, and all three measured in game
