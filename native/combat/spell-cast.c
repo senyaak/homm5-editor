@@ -450,6 +450,82 @@ static int unit_has_ability(void *unit, int ability) {
   return has(unit, ability) ? 1 : 0;
 }
 
+/**
+ * FROM A STACK TO THE HERO WHOSE ARTIFACTS COUNT FOR IT — the engine's own three
+ * hops, copied hop for hop.
+ *
+ * Nothing here is invented. `0xB85FAA`, inside the routine that reads the four
+ * shipped elemental artifacts, does exactly this and nothing else:
+ *
+ *   a = unit->vt[0x0C]()      ; the side the stack belongs to
+ *   b = a->vt[0x0C]()
+ *   h = b->vt[0x00]()         ; the hero, or nothing
+ *   worn = h->vt[0x74]()      ; which is what CountEquipped is asked about
+ *
+ * Every one of the three takes no stack arguments — there is not a `push`
+ * between them — so each is a plain `this` call, and each is refused here unless
+ * the object reads and the slot points at code. The last hop is left to
+ * `hero_term`, which asks `vt+0x74` itself.
+ *
+ * A stack with no hero — a neutral, a summon — answers null at some hop, and the
+ * term is then zero rather than a special case.
+ */
+static void *virtual_of(void *obj, unsigned slot) {
+  if (!readable(obj, 4)) return NULL;
+  void **vtable = *(void ***)obj;
+  if (!readable(vtable, slot + 4)) return NULL;
+  void *fn = vtable[slot / 4];
+  if (!points_at_code(fn)) return NULL;
+  return ((void *(__thiscall *)(void *))fn)(obj);
+}
+
+static void *hero_of(void *unit) {
+  return virtual_of(virtual_of(virtual_of(unit, 0x0Cu), 0x0Cu), 0x00u);
+}
+
+/**
+ * WHAT AN ARTIFACT OF OURS ADDS TO ONE SPELL'S DAMAGE, and takes off it.
+ *
+ * The game has four artifacts that add to the damage of one element and three
+ * that take from it, and they act on a spell of the mod's already, because the
+ * engine asks the spell's DOCUMENT for its element and never its number —
+ * measured 10.08.2026. What it cannot do is answer for an artifact of OURS, and
+ * these two terms are the whole of that difference.
+ *
+ * WHOSE ARTIFACTS. The one that ADDS is the caster's and the one that TAKES is
+ * the target's, which is what the two rows say in the window and what anybody
+ * would expect of a cape and a shield. The engine's own routine reads its four
+ * off ONE side, and which side that is has not been settled — the stand can
+ * answer it by taking the prism off one of the two casters. Ours is written to
+ * the words rather than to a guess, and this note is here so the guess is not
+ * made later by someone reading the code.
+ *
+ * The element row and `magic_damage` ADD UP: "stronger fire" and "stronger
+ * magic" are two claims, not one said twice, so an artifact carrying both means
+ * both.
+ */
+static int our_spell_damage_term(int spell, void *caster, void *target, int dealt) {
+  int element = g_spellElement ? g_spellElement(spell) : 0;
+  int add = hero_term(hero_of(caster), STAT_MAGIC_DAMAGE, 0);
+  int off = hero_term(hero_of(target), STAT_MAGIC_RESIST, 0);
+  // 1 air, 2 fire, 3 water, 4 earth — the engine's own numbering, and the stats
+  // are laid out in it, so the row is found by arithmetic and there is no second
+  // table to keep in step with the first.
+  if (element >= 1 && element <= 4) {
+    add += hero_term(hero_of(caster), STAT_AIR_DAMAGE + element - 1, 0);
+    off += hero_term(hero_of(target), STAT_AIR_RESIST + element - 1, 0);
+  }
+  if (!add && !off) return dealt;
+  int was = dealt;
+  dealt += dealt * add / 100;
+  dealt -= dealt * off / 100;
+  log_num("   an artifact of ours adds, per cent ", add);
+  log_num("   and one of theirs takes off, per cent ", off);
+  log_num("   so ", was);
+  log_num("   becomes ", dealt);
+  return dealt;
+}
+
 typedef int(__fastcall *SpellDamageFn)(int power, void *block, void *caster, void *target);
 static SpellDamageFn g_spellDamage = NULL;
 
@@ -500,9 +576,15 @@ static int __fastcall on_spell_damage(int power, void *block, void *caster, void
     // AFTER the engine, not instead of it: this is the number resistance and
     // anti-magic have already been applied to, and it is the one the stack loses.
     log_num("   the engine says ", dealt);
-    return dealt;
+    return our_spell_damage_term(spell, caster, target, dealt);
   }
-  return g_spellDamage(power, block, caster, target);
+  // AND THE GAME'S OWN SPELLS GET THE SAME TERM, which is half the reason it
+  // lives here: an artifact of ours that says "stronger fire" is stronger fire
+  // whoever threw it and whatever its number, exactly as the engine's own four
+  // are. Nothing is added when nothing is worn, and the row list is empty in a
+  // game with no mod installed.
+  return our_spell_damage_term(spell, caster, target,
+                               g_spellDamage(power, block, caster, target));
 }
 
 static void install_spell_damage_filter(void) {
