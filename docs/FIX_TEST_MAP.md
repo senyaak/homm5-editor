@@ -432,16 +432,22 @@ open the book, and look before clicking:
    mastery and takes nothing from spell power or a specialization, so whatever
    the book prints that is not 100 is somebody's term and reads by eye.
 
-   The wizard wears three of ours: the Призма стихий (+10% to each element),
-   the Фокус магии (+10% to magic of any element) and the Шлем боевого
-   мага (+10% again, and +4 Attack). All three add up on a fire spell, so the
-   page should say **130** — and taking one off should drop it by ten.
+   The wizard wears three of ours, and they do not all pull the same way: the
+   Призма стихий (+10% to each element), the Фокус магии (+10% to magic
+   of any element) and the Шлем боевого мага, which gives +4 Attack and
+   takes **−10%** of the magic back. The terms are added SIGNED, so on a fire
+   spell that is 10 + 10 − 10 and the page should say **110**.
+
+   **Take the helm off and it should go UP, to 120.** That is the reading, and
+   it is the only one on this map that moves the right way by moving a piece the
+   wrong way — a term of ours that cannot go negative would leave 120 there
+   whatever is worn.
 
    **And the helm is read twice, which is why it is there.** Its +4 Attack is a
    field of the artifact's own record — the game has always been able to hold
    it — so the hero screen's attack should be four higher whether the extension
-   is loaded or not, and the ten per cent is ours and shows only on the book.
-   One artifact, two mechanisms, and neither should cost the other anything.
+   is loaded or not, and the minus ten is ours and shows only on the book. One
+   artifact, two mechanisms, and neither should cost the other anything.
 
    **And the breakdown beside it should NAME them**, the way it names a Phoenix
    Feather Cape: the bonus is added at the one door both a battle and the book
@@ -485,9 +491,9 @@ damage of ours, spell id 353
   below it is meaningless.
 - `area: no tiles said for spell id 355` means the row is missing: the spell will
   ask where to aim and then cover nothing.
-- `[bonus] spell 3xx` with `an artifact of ours adds, per cent 30` is the book's
+- `[bonus] spell 3xx` with `an artifact of ours adds, per cent 10` is the book's
   own door, and it fires while the book is OPEN as well as during a cast — which
-  is the whole point of it being there. `so 100 / becomes 130` beside the ruler
+  is the whole point of it being there. `so 100 / becomes 110` beside the ruler
   spell is the reading of step 7 in the log instead of on screen.
 
 ---

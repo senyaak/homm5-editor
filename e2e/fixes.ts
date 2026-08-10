@@ -271,7 +271,7 @@ const TEST_FLAT_FIRE = 'SPELL_H3_TEST_FLAT_FIRE';
 const PRISM = 'ARTIFACT_H3_ELEMENTAL_PRISM';
 /** And the magic pair on its own, so the ruler can tell the two kinds apart. */
 const FOCUS = 'ARTIFACT_H3_MAGIC_FOCUS';
-/** And one carrying both kinds: +4 Attack the game writes, +10% magic we do. */
+/** And one that TRADES: +4 Attack the game writes, −10% magic we do. */
 const HELM = 'ARTIFACT_H3_WAR_MAGE_HELM';
 
 /** Dark Magic, at the three masteries the four heroes spread across. */
@@ -341,10 +341,11 @@ export const HEROES: Kit[] = [
       'ARTIFACT_EARTHSLIDERS',
       'ICEBERG_SHIELD', 'RING_OF_LIGHTING_PROTECTION', 'DRAGON_FLAME_TONGUE',
       // And the mod's own, which is the one the engine cannot answer for.
-      // The helm is there for a different question again: it carries a number
-      // the game's own record holds (+4 Attack) beside one only the extension
+      // The helm is there for two questions again: it carries a number the
+      // game's own record holds (+4 Attack) beside one only the extension
       // knows, so the hero screen and the spell book are read for the same
-      // artifact.
+      // artifact — and the one it knows is NEGATIVE, which is the only place a
+      // term of ours is asked to take something away rather than add it.
       PRISM, FOCUS, HELM,
     ],
     // A tent of his own, so an Armageddon has a war machine to prove itself on.

@@ -506,6 +506,10 @@ static int our_spell_damage_term(int spell, void *target, int dealt) {
   if (!off) return dealt;
   int was = dealt;
   dealt -= dealt * off / 100;
+  // A row may say more than a hundred, and a stack healed by a spell that hit it
+  // is not something anybody asked for. The engine keeps its own numbers off the
+  // wrong side of zero the same way.
+  if (dealt < 0) dealt = 0;
   log_num("   an artifact of theirs takes off, per cent ", off);
   log_num("   so ", was);
   log_num("   becomes ", dealt);
@@ -679,6 +683,11 @@ static int __fastcall on_spell_bonuses(int worth, void *block, void *caster, voi
   if (!add) return worth;
   int was = worth;
   worth += worth * add / 100;
+  // A CURSED piece takes away, and enough of them may take away more than there
+  // is. Floored rather than allowed to go negative: the door's own guard two
+  // lines up refuses to work on a number that is not positive, so this is the
+  // same rule applied to what we hand back.
+  if (worth < 0) worth = 0;
   // AND SAY WHY, in the engine's own report rather than in a place of ours: this
   // is the list the book reads, so the piece that did it is named on screen the
   // way a shipped one is. Null in battle, and the recorder refuses null itself.

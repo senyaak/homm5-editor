@@ -348,18 +348,24 @@ export const FOCUS = {
 };
 
 /**
- * **AND ONE THAT CARRIES BOTH KINDS AT ONCE: a number the game knows and a
- * bonus only we do.**
+ * **A TRADE: a number the game knows given, and one only we know taken away.**
  *
  * +4 Attack is a field of the artifact's own record — one of the six the game
  * has always been able to hold, written into the document by the artifact
- * window like any shipped helm's. +10% to magic damage is a row in the file the
- * extension reads, because the record has nowhere to put it.
+ * window like any shipped helm's. −**10%** to magic damage is a row in the file
+ * the extension reads, because the record has nowhere to put it. A helm for
+ * somebody who swings rather than casts, and Senya's own design.
  *
- * Which makes it the reading nothing else on the stand asks for: whether the two
- * halves of one artifact disturb each other. The attack shows on the hero screen
- * with no mod loaded at all; the ten per cent shows on the ruler spell and only
- * with one. Neither should cost the other anything.
+ * Two readings nothing else on the stand asks for:
+ *
+ * - **the two halves of one artifact do not disturb each other** — the attack
+ *   shows on the hero screen with no mod loaded at all, the ten per cent shows
+ *   on the ruler spell and only with one;
+ * - **a term of ours can be NEGATIVE**, and the whole path carries the sign: the
+ *   window says as much where the amount is typed ("negative is a cursed item"),
+ *   the effects file writes it, the config reader takes a minus, and the terms
+ *   are added signed rather than counted. On the ruler this is the one reading
+ *   that goes UP when a piece comes OFF.
  *
  * HEAD, because every other slot on the wizard is taken and an artifact that
  * lands in the backpack is worn by nobody.
@@ -368,10 +374,10 @@ export const HELM = {
   file: 'H3WarMageHelm',
   id: 'ARTIFACT_H3_WAR_MAGE_HELM',
   name: 'Шлем боевого мага',
-  description: '+4 к атаке и +10% к урону любой магией. Первое знает сама игра, второе — только расширение.',
+  description: '+4 к атаке, но −10% к урону любой магией. Шлем для того, кто бьёт, а не колдует: прибавку знает сама игра, убавку — только расширение.',
   slot: 'HEAD' as ArtifactSlot,
   stats: { Attack: 4 },
-  effects: { magic_damage: 10 },
+  effects: { magic_damage: -10 },
   picture: 'mantia_vamp.gif',
 };
 
