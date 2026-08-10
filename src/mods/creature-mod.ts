@@ -84,6 +84,7 @@ import { buildBuildings } from './building-files.ts';
 import { buildDwellings } from './dwelling-files.ts';
 import { buildHeroes, texturePair } from './hero-files.ts';
 import { patchSpecializationTypes } from './specializations.ts';
+import { mendedTooltip } from './tooltip-mend.ts';
 import {
   CLASS_TABLE, classNameFile, patchClassTable, patchClassTypes, patchSkillPrerequisites,
 } from './hero-classes.ts';
@@ -199,6 +200,11 @@ export function buildCreatureMod(mod: CreatureMod, read: DataReader): BuildRepor
   files.push(...buildDwellings(mod.dwellings, read));
   files.push(...buildBuildings(mod.buildings ?? [], read));
   files.push(...buildArtifacts(mod.artifacts ?? [], read));
+  // And one line of the GAME'S own tooltip, mended — only for a mod that adds
+  // artifacts, because that is the mod whose pieces stand on both sides of a
+  // spell and make the game's missing line break show every time. What is wrong
+  // and why the copy is built from the player's own file: tooltip-mend.ts.
+  if (mod.artifacts?.length) files.push(...mendedTooltip(read));
   files.push(...buildArtifactSets(mod.sets ?? []));
   files.push(...buildHeroes(mod.heroes ?? [], read, mod.specializations ?? []));
 
