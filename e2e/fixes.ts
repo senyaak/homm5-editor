@@ -283,6 +283,14 @@ export const HEROES: Kit[] = [
     // one hero in one battle: his own Armageddon and Fireball are right beside
     // them in the book to hold each against the shipped spell it copies.
     spells: [
+      // AND TWO OF THE GAME'S OWN ICE, which are here to be watched rather than
+      // played: the mod's spells leave the Master's mark through the engine's
+      // own applier, and the ICE one takes an argument nothing in its code
+      // names. These two put a value in it that is right by construction — Ice
+      // Bolt through the single-target site with a divisor of 1, Frost Ring
+      // through the area one with the number of stacks hit — so one cast of each
+      // says what it is. Take them out again when it has a name.
+      'SPELL_ICE_BOLT', 'SPELL_FROST_RING',
       'SPELL_ARMAGEDDON', 'SPELL_FIREBALL', 'SPELL_STONESKIN', DEATH_RIPPLE,
       TEST_ARMAGEDDON, TEST_ARMAGEDDON_AREA, TEST_ARMAGEDDON_TARGET,
       // And the aimed ripple, on the hero whose foe is UNDEAD: the zombies are

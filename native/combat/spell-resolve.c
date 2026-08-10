@@ -384,6 +384,45 @@ static const BYTE WATER_APPLIER_HEAD[WATER_APPLIER_HEAD_LEN] = {
 };
 
 /**
+ * A PROBE ON THE ICE APPLIER, and it exists to name one argument.
+ *
+ * Deriving stopped paying: by the offsets, the second argument ends up as the
+ * `ecx` of a virtual call made through the TARGET's vtable, which reads as an
+ * object rather than a number and cannot be both. Three inferences in a row is
+ * where this file has been wrong before, so the engine is asked instead — every
+ * argument printed on a cast of the game's OWN ice, where all six are known to
+ * be right by construction.
+ *
+ * What names it: whether it equals the caster or the target (printed beside
+ * them), and whether the single-target site and the area site differ in it. Ice
+ * Bolt goes through `0xB7F7AE` with a count of 1, Frost Ring through the area
+ * routine with the number of stacks hit — one battle covers both.
+ *
+ * COMMENT THE INSTALL OUT once the argument has a name; leave the reading. This
+ * runs for the game's own spells, so it says nothing unless somebody casts ice.
+ */
+typedef void *(__fastcall *WaterApplierFn)(void *caster, void *unit, int damage, int second,
+                                           void *chain, int spell, void *given, int count);
+static WaterApplierFn g_waterApplier = NULL;
+
+static void *__fastcall on_water_applier(void *caster, void *unit, int damage, int second,
+                                         void *chain, int spell, void *given, int count) {
+  log_num("[ice] the game's own ice applier, spell id ", spell);
+  log_hex("   the caster ", (DWORD)(INT_PTR)caster);
+  log_hex("   the target ", (DWORD)(INT_PTR)unit);
+  log_num("   damage ", damage);
+  log_hex("   the SECOND argument, as an address ", (DWORD)second);
+  log_num("   and as a number ", second);
+  log_line(second == (int)(INT_PTR)caster ? "      it is the caster"
+      : second == (int)(INT_PTR)unit ? "      it is the target"
+      : second == damage ? "      it is the damage again" : "      it is neither of the two");
+  log_hex("   the chain ", (DWORD)(INT_PTR)chain);
+  log_hex("   what Resolve was given ", (DWORD)(INT_PTR)given);
+  log_num("   the last argument, the divisor ", count);
+  return g_waterApplier(caster, unit, damage, second, chain, spell, given, count);
+}
+
+/**
  * The elements, as the engine's own accessor answers them.
  *
  * Read off the area routine's own dispatch (`0xD60AC8`), which is three
@@ -1092,6 +1131,10 @@ static void install_our_resolver(void) {
                                    "what a spell does to one stack");
   g_tellAbout = (TellAboutFn)engine_code(TELL_ABOUT_RVA, TELL_ABOUT_HEAD,
                                          TELL_ABOUT_HEAD_LEN, "the line a hit stack gets");
+  // THE PROBE, and it is meant to be taken out: see the note over the address.
+  g_waterApplier = (WaterApplierFn)detour(WATER_APPLIER_RVA, WATER_APPLIER_HEAD,
+                                         WATER_APPLIER_HEAD_LEN, (void *)on_water_applier,
+                                         "the entry an ice cast leaves");
   g_airApplier = (AirApplierFn)engine_code(AIR_APPLIER_RVA, AIR_APPLIER_HEAD,
                                           AIR_APPLIER_HEAD_LEN,
                                           "the entry an air cast leaves");
