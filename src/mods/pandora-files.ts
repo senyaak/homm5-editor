@@ -381,26 +381,45 @@ const PANDORA_DDS = 'PandoraBox.dds';
  * the painted face is written as a texture of ours and the materials are
  * rewritten to name it.
  */
-function paintModelTextures(copied: ArtCopy, modelCopyPath: string): ModFile[] {
+/**
+ * Replace the copied model's texture PIXELS, touching nothing else.
+ *
+ * Probe four's clue was the shadows: the boxes cast them and did not draw,
+ * which is a geometry that loads and a texture that does not. The texture
+ * document had been written from scratch with the ICON fields —
+ * CONVERT_TRANSPARENT, CLAMP — where the model textures the game draws say
+ * CONVERT_ORDINARY and WRAP. So this now does exactly what the proven
+ * creature repaint does: keep the donor's own texture document, swap the .dds
+ * bytes, and correct only the fields that describe them (format, size, mips).
+ */
+function paintModelTextures(copied: ArtCopy, modelCopyPath: string): void {
   const doc = copied.files.get(modelCopyPath)?.toString('latin1');
   if (!doc) throw new Error(`pandora: no copied model at ${modelCopyPath}`);
-  const OURS = `<Texture href="/${PANDORA_TEXTURE}#xpointer(/Texture)"/>`;
+  const image = pandoraTexture();
   let painted = 0;
-  // Inline materials sit in the model document itself (the chest donor's do).
-  const inline = doc.replace(/<Texture href="[^"]*"\s*\/>/g, () => { painted++; return OURS; });
-  if (painted) copied.files.set(modelCopyPath, Buffer.from(inline, 'latin1'));
-  // Referenced materials are their own documents beside or below the model.
-  for (const m of [...doc.matchAll(/<Item href="([^"]+)"/g)].map((x) => x[1]!)) {
-    const mAt = resolve(modelCopyPath, m);
-    const mDoc = mAt ? copied.files.get(mAt)?.toString('latin1') : null;
-    if (!mAt || !mDoc || !/<Material[\s>]/.test(mDoc)) continue;
-    copied.files.set(mAt, Buffer.from(mDoc.replace(
-      /<Texture(?: href="[^"]*")?\s*\/?>(?:<\/Texture>)?/,
-      OURS,
-    ), 'latin1'));
+  for (const href of [...doc.matchAll(/<Texture href="([^"]+)"/g)].map((m) => m[1]!)) {
+    const tAt = resolve(modelCopyPath, href);
+    const tDoc = tAt ? copied.files.get(tAt)?.toString('latin1') : null;
+    if (!tAt || !tDoc) continue;
+    const dest = hrefOf(tDoc, 'DestName');
+    const ddsAt = dest ? resolve(tAt, dest) : null;
+    if (!ddsAt || !copied.files.has(ddsAt)) continue;
+    copied.files.set(ddsAt, writeDDS(image));
+    copied.files.set(tAt, Buffer.from(tDoc
+      .replace(/<Format>[^<]*<\/Format>/, '<Format>TF_8888</Format>')
+      .replace(/<IsDXT>[^<]*<\/IsDXT>/, '<IsDXT>false</IsDXT>')
+      .replace(/<NMips>[^<]*<\/NMips>/, '<NMips>1</NMips>')
+      .replace(/<UseS3TC>[^<]*<\/UseS3TC>/, '<UseS3TC>false</UseS3TC>')
+      .replace(/<Width>[^<]*<\/Width>/, `<Width>${image.width}</Width>`)
+      .replace(/<Height>[^<]*<\/Height>/, `<Height>${image.height}</Height>`), 'latin1'));
     painted++;
   }
-  if (!painted) throw new Error('pandora: the donor model names no materials to repaint');
+  if (!painted) throw new Error('pandora: no texture of the donor model was reachable to paint');
+}
+
+/** The palette icon — the painted face as a texture pair of our own. Only the
+ *  icon: the model's textures keep the donor's documents (see above). */
+function iconFiles(): ModFile[] {
   const image = pandoraTexture();
   return [
     { path: PANDORA_TEXTURE, data: Buffer.from(textureDoc({ dds: PANDORA_DDS, width: image.width, height: image.height, addressing: 'CLAMP' }), 'latin1') },
@@ -459,10 +478,10 @@ export function buildPandora(read: DataReader): ModFile[] {
   if (!bin) throw new Error('pandora: the chest donor geometry did not copy');
   const box = cubifyGeometry(bin, 'static');
   retuneGeometryDoc(copied, modelCopy, box);
-  const texture = paintModelTextures(copied, modelCopy);
+  paintModelTextures(copied, modelCopy);
 
   const files: ModFile[] = [...copied.files].map(([path, data]) => ({ path, data }));
-  files.push(...texture);
+  files.push(...iconFiles());
 
   // The four shared documents — same box, four glows.
   const at = (path: string | undefined): string | undefined => {
@@ -534,7 +553,9 @@ export function buildPandora(read: DataReader): ModFile[] {
   if (!spinGeomAt || !spinBin) throw new Error('pandora: the spin probe lost its geometry');
   const spinBox = cubifyGeometry(spinBin, 'rigid');
   retuneGeometryDoc(spin, spinGeomAt, spinBox);
-  paintModelTextures(spin, spinModel); // the texture pair is already in `files`
+  // The Artefakt materials name a texture ToE never shipped, so there is
+  // nothing in this closure to repaint — the spin probes are about motion,
+  // not looks, and they stay donor-textured (that is: blank).
   files.push(...[...spin.files].map(([path, data]) => ({ path, data })));
 
   const spinAt = (path: string | undefined): string | undefined => {
@@ -576,7 +597,7 @@ export function buildPandora(read: DataReader): ModFile[] {
     const diag = copyArt([CHEST_DONOR_MODEL], `${PANDORA_DIR}/diag-${key.toLowerCase()}`, read, `pandora:diag-${key}`);
     const dModel = diag.at.get(CHEST_DONOR_MODEL);
     if (!dModel) throw new Error(`pandora: the ${key} diagnostic lost its model`);
-    if (key === 'Painted') paintModelTextures(diag, dModel); // texture pair already in files
+    if (key === 'Painted') paintModelTextures(diag, dModel);
     if (key === 'Cubed') {
       const dDoc = diag.files.get(dModel)!.toString('latin1');
       const dUid = /<uid>([0-9A-Fa-f-]{36})<\/uid>/.exec(dDoc)?.[1];

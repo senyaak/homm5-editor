@@ -191,17 +191,26 @@ for (let i = 0; i < img.rgba.length; i += 4) seen.add((img.rgba[i]! << 16) | (im
 check('is painted, not flat', seen.size > 100, `${seen.size} colours`);
 const dds = files.find((f) => f.path === 'Buildings/PandoraBox/PandoraBox.dds');
 check('the painted face ships as a dds', !!dds && dds.data.length === 128 + img.width * img.height * 4);
-// the MODEL's materials name our texture — inline in the chest donor's own
-// document — and the glow effects keep their own
-const inlineTextures = [...modelDoc.matchAll(/<Texture href="([^"]*)"/g)].map((m) => m[1]!);
-check('every model material names our texture', inlineTextures.length > 0
-  && inlineTextures.every((t) => t.includes('PandoraBox.(Texture).xdb')), `${inlineTextures.length} materials`);
-// The glow effects' materials keep the game's art; the spin probes' copy of
-// the MODEL is painted like the main one and is not a glow.
-const effectMaterials = files.filter((f) => f.path.toLowerCase().includes('(material)')
-  && !f.path.includes('/spin/'));
-check('the glow materials keep their art', effectMaterials.length > 0
-  && effectMaterials.every((f) => !f.data.toString('latin1').includes('PandoraBox.(Texture).xdb')), `${effectMaterials.length} kept`);
+// The model's textures are repainted IN PLACE — the donor's own documents
+// keep their drawing fields (CONVERT_ORDINARY, WRAP: the icon fields made
+// boxes that cast shadows and did not draw) and only the byte-description
+// changes. So: every texture the model names is now TF_8888 at our size,
+// and its .dds is exactly our uncompressed image.
+const modelTexDocs = [...modelDoc.matchAll(/<Texture href="([^"]+)"/g)]
+  .map((m) => m[1]!.replace(/^\//, '').split('#')[0]!);
+check('the model still names the donor texture documents', modelTexDocs.length > 0
+  && modelTexDocs.every((t) => byPath.has(t.toLowerCase())), `${modelTexDocs.length} textures`);
+check('repainted in place, drawing fields kept', modelTexDocs.every((t) => {
+  const d = byPath.get(t.toLowerCase())?.toString('latin1') ?? '';
+  return d.includes('<Format>TF_8888</Format>') && d.includes(`<Width>${img.width}</Width>`)
+    && d.includes('<ConversionType>CONVERT_ORDINARY</ConversionType>');
+}));
+check('the pixels are ours', modelTexDocs.every((t) => {
+  const d = byPath.get(t.toLowerCase())?.toString('latin1') ?? '';
+  const dest = /<DestName href="([^"]+)"/.exec(d)?.[1] ?? '';
+  const ddsPath = t.replace(/[^/]+$/, dest).toLowerCase();
+  return (byPath.get(ddsPath)?.length ?? 0) === 128 + img.width * img.height * 4;
+}));
 
 // ---- the scripts ------------------------------------------------------------
 
