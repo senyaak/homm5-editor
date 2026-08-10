@@ -71,6 +71,11 @@ export const MADE = {
    *  ORIGINAL it is compared against lives in `assets/maps/` and is in the
    *  repo; what stands in the game folder is this run's output. */
   SHARPSHOOTER_MAP: 'Sharpshooter Test',
+  /** mod-011 stands a row of Pandora's Boxes with known contents, to be opened
+   *  in the game. Named for what it holds, like SoD Dwellings: it is meant to
+   *  be played, and playing it is the probe — which classes fire the touch
+   *  trigger, and whether the AI walks to the chest-class box. */
+  PANDORA_MAP: 'Pandora Probe',
   /** mod-010 stands every building the campaign adds on one map, to be looked at
    *  in the game. Named for what it holds rather than `e2e …`, because unlike
    *  the rest it is meant to be opened and played. */

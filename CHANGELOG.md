@@ -15,6 +15,18 @@ one.
 
 ### Added
 
+- **Pandora's Box, begun.** Heroes III's box brought to the adventure map: a
+  floating, spinning cube — the artifact stone's own idle and glow, with a
+  clean cube built into its geometry and a painted bronze-and-gold face — that
+  a map fills with experience, gold, resources, artifacts, spells, creatures
+  and guards. Behaviour is Lua shipped with the archive; each map carries only
+  a generated data block in its own script. Lives behind the new **Gameplay**
+  tab in Game settings: applying the flag writes `H5E/homm5-editor-gameplay.h5u`
+  and the palette offers the box exactly while it is installed. The `Pandora
+  Probe` map (mod-011) stands one box per kind of content, plus a chest-class
+  twin for the two questions only a game run answers — whether a Stand's touch
+  fires, and whether the AI walks to a chest-class box.
+
 - **Fills: a density slider.** How thick a preset goes on is now a knob rather
   than a property of the file — 0.25x to 4x, with 1.0 the preset exactly as its
   author wrote it. Right of 1 the lattice closes up and each piece claims a
