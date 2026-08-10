@@ -115,6 +115,26 @@ export async function placeAtTile(page: Page, x: number, y: number): Promise<voi
       const t = window.view.tileAt(px!, py!);
       return t ? `${t.x},${t.y}` : 'no tile at all';
     }, [at.x, at.y]);
+    // WHEN THEY DISAGREE, SAY BY HOW MUCH. Projection and picking are both
+    // orthographic and neither looks at a height, so a disagreement is the two
+    // reading different cameras rather than terrain — and the shape of the gap
+    // tells which: the same pixel offset everywhere is a camera that moved
+    // between the two calls, a growing one is a different zoom. Gathered here
+    // because this runs 2645 times in the reconstruction and the failure that
+    // matters is the one that costs twenty minutes to reach again.
+    if (picked !== `${x},${y}`) {
+      const [tx, ty] = picked.split(',').map(Number);
+      const where = await page.evaluate(([px, py, ax, ay]) => ({
+        back: window.view.tileToScreen(ax!, ay!),
+        mid: window.view.tileAt(innerWidth / 2, innerHeight / 2),
+        px, py, w: innerWidth, h: innerHeight,
+      }), [at.x, at.y, tx ?? -1, ty ?? -1]);
+      console.log(`[pick] wanted ${x},${y} at ${Math.round(at.x)},${Math.round(at.y)}`
+        + ` — picked ${picked}, whose own pixel is`
+        + ` ${Math.round(where.back.x)},${Math.round(where.back.y)};`
+        + ` the middle of the screen (${where.w}x${where.h}) picks`
+        + ` ${where.mid ? `${where.mid.x},${where.mid.y}` : 'nothing'}`);
+    }
     expect(picked, `(${x},${y}) projects onto a pixel that picks ${picked}`).toBe(`${x},${y}`);
     await page.mouse.move(at.x, at.y);
     await page.mouse.down();
