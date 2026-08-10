@@ -364,17 +364,6 @@ one.
   three others: it asks the spell's own document which element it is, and never
   its number. That is why a mod's fire spell has always burned like the game's.
 
-- **The line break the spell tooltip was missing.** A spell's tooltip lists what
-  is acting on it in two colours — green for what makes it stronger, red for
-  what takes from it — and the game runs the last green entry and the first red
-  one together on one line. It is the game's own template and it does it with no
-  mod at all (a Phoenix Feather Cape and an Iceberg Shield on one hero will do
-  it); the mod's elemental artifacts just make it happen every time.
-
-  A mod that adds artifacts now carries a mended copy, built from YOUR
-  installation's own file so it keeps your language and changes nothing but the
-  missing break.
-
 - **An area spell of the mod's hits what it lands on.** It asked where to aim,
   covered the tiles it was authored with — and damaged nobody, whoever was
   standing there.

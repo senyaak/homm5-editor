@@ -23,8 +23,6 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { buildCreatureMod } from '../src/mods/creature-mod.ts';
-import { AFFECTIONS_TEMPLATE, mendedTooltip } from '../src/mods/tooltip-mend.ts';
-import type { DataReader } from '../src/mods/mod-files.ts';
 import { addArtifact, newCreatureMod, removeArtifact } from '../src/mods/mod-model.ts';
 import { dataReader } from '../src/mods/mod-files.ts';
 import { findArtifactUses } from '../src/mods/artifact-usage.ts';
@@ -252,31 +250,6 @@ rmSync(scratch, { recursive: true, force: true });
   // `ARTIFACT_RING` is a prefix of `ARTIFACT_RING_OF_DEATH`; a warning naming
   // the wrong artifact is worse than no warning.
   check('a prefix is not a match', !findArtifactUses(join(dataRoot, 'Maps'), ['ARTIFACT_RING']).has('ARTIFACT_RING'));
-}
-
-// The one line of the GAME's tooltip a mod with artifacts mends, and the three
-// cases where it must carry nothing at all rather than a copy.
-{
-  const template = '﻿<tooltip_bright><br>x:<br>'
-    + '<color_positive><value=our_affections><color_negative><value=enemy_affections>';
-  const reader = (text: string | null): DataReader =>
-    (rel) => (rel === AFFECTIONS_TEMPLATE && text !== null ? Buffer.from(text, 'utf16le') : null);
-
-  const [mended] = mendedTooltip(reader(template));
-  check('the missing break goes in front of the red list', !!mended
-    && mended.data.toString('utf16le')
-      === template.replace('<color_negative>', '<br><color_negative>'));
-  // Byte for byte otherwise, BOM included: the file carries TRANSLATED words and
-  // the copy has to be the player's own, not a version of it.
-  check('and nothing else moves, the BOM included',
-    !!mended && mended.data.toString('utf16le').startsWith('﻿')
-    && mended.data.length === Buffer.from(template, 'utf16le').length + '<br>'.length * 2);
-
-  check('a file that already has it is left to the game',
-    mendedTooltip(reader(template.replace('<color_negative>', '<br><color_negative>'))).length === 0);
-  check('so is one that does not look like the template',
-    mendedTooltip(reader('﻿<tooltip_bright>something else entirely')).length === 0);
-  check('and a missing file is not an error', mendedTooltip(reader(null)).length === 0);
 }
 
 console.log(failures ? `\n${failures} failure(s)` : '\nall good');
