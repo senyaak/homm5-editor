@@ -339,7 +339,12 @@ export const HEROES: Kit[] = [
       // its spellings, checked against types.xml rather than tidied.
       'PHOENIX_FEATHER_CAPE', 'EVERCOLD_ICICLE', 'TITANS_TRIDENT',
       'ARTIFACT_EARTHSLIDERS',
-      'ICEBERG_SHIELD', 'RING_OF_LIGHTING_PROTECTION', 'DRAGON_FLAME_TONGUE',
+      'ICEBERG_SHIELD', 'RING_OF_LIGHTING_PROTECTION',
+      // NOT the Dragon Flame Tongue: it is PRIMARY, and so is the Trident. Only
+      // one of them can be worn and the other sits in the backpack doing
+      // nothing — which is what it had been doing. The fire protection is on
+      // the OTHER caster instead, which is where a protection is read anyway:
+      // it belongs to whoever is being hit.
       // And the mod's own, which is the one the engine cannot answer for.
       // The helm is there for two questions again: it carries a number the
       // game's own record holds (+4 Attack) beside one only the extension
@@ -606,10 +611,14 @@ export const ENEMY_CASTER: Kit = {
   // to be read on.
   spells: ['SPELL_FIREBALL', 'SPELL_ICE_BOLT', 'SPELL_LIGHTNING_BOLT',
     'SPELL_STONE_SPIKES', 'SPELL_METEOR_SHOWER', TEST_FLAT_FIRE],
+  // His PRIMARY is the fire protection rather than the Trident, so that a fire
+  // spell thrown at his stacks has something to be halved by. The wizard across
+  // from him keeps the Trident, so the air side is still read on the map — one
+  // hero each, because one hand cannot hold both.
   artifacts: [
-    'PHOENIX_FEATHER_CAPE', 'EVERCOLD_ICICLE', 'TITANS_TRIDENT',
+    'PHOENIX_FEATHER_CAPE', 'EVERCOLD_ICICLE', 'DRAGON_FLAME_TONGUE',
     'ARTIFACT_EARTHSLIDERS',
-    'ICEBERG_SHIELD', 'RING_OF_LIGHTING_PROTECTION', 'DRAGON_FLAME_TONGUE',
+    'ICEBERG_SHIELD', 'RING_OF_LIGHTING_PROTECTION',
     PRISM, FOCUS, HELM,
   ],
   stats: { offence: 5, defence: 5, spellpower: 20, knowledge: 30 },

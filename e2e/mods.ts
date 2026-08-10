@@ -315,7 +315,14 @@ export const PRISM = {
   id: 'ARTIFACT_H3_ELEMENTAL_PRISM',
   name: 'Призма стихий',
   description: '+10% к урону каждой из четырёх стихий, и −10% к урону каждой стихией по его отрядам. Магию вообще не трогает — это соседний предмет.',
-  slot: 'NECK' as ArtifactSlot,
+  // CHEST, and the slot is the whole story of an evening: it was NECK, the
+  // Evercold Icicle on the same hero is NECK, and the game put ours in the
+  // backpack without a word. Everything still worked — the log said "adds 0",
+  // the book said 150, the battle killed exactly what the book promised — and
+  // all of it was the game's own Phoenix Cape, with our four elemental rows
+  // never once asked. Nothing on the stand is worn by accident now; see the slot
+  // check in e2e/map-checks.ts.
+  slot: 'CHEST' as ArtifactSlot,
   effects: {
     air_damage: 10, fire_damage: 10, water_damage: 10, earth_damage: 10,
     air_resist: 10, fire_resist: 10, water_resist: 10, earth_resist: 10,
@@ -384,6 +391,16 @@ export const HELM = {
   // promising it would be a lie told where a player actually looks.
   picture: 'h3_war_mage_helm.png',
 };
+
+/**
+ * The artifacts of OURS the stand wears, in one place.
+ *
+ * The same reason `OUR_SPELL_FIXTURES` exists: something outside the fixture has
+ * to know what these are — the map checks ask each one which slot it wants, and
+ * a list assembled a second time somewhere else goes stale on the first artifact
+ * added.
+ */
+export const OUR_ARTIFACT_FIXTURES = [PRISM, FOCUS, HELM];
 
 export const PIECES = [
   { ...AMULET, slot: 'NECK' as ArtifactSlot, picturePath: join(ART, AMULET.picture) },

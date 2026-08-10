@@ -432,16 +432,25 @@ open the book, and look before clicking:
    mastery and takes nothing from spell power or a specialization, so whatever
    the book prints that is not 100 is somebody's term and reads by eye.
 
-   The wizard wears three of ours, and they do not all pull the same way: the
-   Призма стихий (+10% to each element), the Фокус магии (+10% to magic
-   of any element) and the Шлем боевого мага, which gives +4 Attack and
-   takes **−10%** of the magic back. The terms are added SIGNED, so on a fire
-   spell that is 10 + 10 − 10 and the page should say **110**.
+   **The game's own goes first, and it is most of the number.** The wizard wears
+   the Phoenix Feather Cape, which multiplies fire by 1.5 — so the spell's 100
+   is already 150 before anything of ours is asked. Ours are added to THAT.
 
-   **Take the helm off and it should go UP, to 120.** That is the reading, and
-   it is the only one on this map that moves the right way by moving a piece the
-   wrong way — a term of ours that cannot go negative would leave 120 there
+   He wears three of them, and they do not all pull the same way: the Призма
+   стихий (+10% to each element), the Фокус магии (+10% to magic of any
+   element) and the Шлем боевого мага, which gives +4 Attack and takes
+   **−10%** of the magic back. The terms are added SIGNED: 10 + 10 − 10 = 10, and
+   the page should say **165**.
+
+   **Take the helm off and it should go UP, to 180.** That is the reading, and it
+   is the only one on this map that moves the right way by moving a piece the
+   wrong way — a term of ours that cannot go negative would leave 180 there
    whatever is worn.
+
+   **A page reading exactly 150 means our three are not being asked at all** —
+   that is the cape on its own. It happened, on 10.08.2026: the prism was NECK,
+   the Evercold Icicle on the same hero is NECK, and the game put ours in the
+   backpack without a word. `npm run test-fix-map` refuses that arrangement now.
 
    **And the helm is read twice, which is why it is there.** Its +4 Attack is a
    field of the artifact's own record — the game has always been able to hold
