@@ -271,6 +271,8 @@ const TEST_FLAT_FIRE = 'SPELL_H3_TEST_FLAT_FIRE';
 const PRISM = 'ARTIFACT_H3_ELEMENTAL_PRISM';
 /** And the magic pair on its own, so the ruler can tell the two kinds apart. */
 const FOCUS = 'ARTIFACT_H3_MAGIC_FOCUS';
+/** And one carrying both kinds: +4 Attack the game writes, +10% magic we do. */
+const HELM = 'ARTIFACT_H3_WAR_MAGE_HELM';
 
 /** Dark Magic, at the three masteries the four heroes spread across. */
 const DARK = (mastery: string): Skill => ({ id: 'HERO_SKILL_DARK_MAGIC', mastery });
@@ -339,7 +341,11 @@ export const HEROES: Kit[] = [
       'ARTIFACT_EARTHSLIDERS',
       'ICEBERG_SHIELD', 'RING_OF_LIGHTING_PROTECTION', 'DRAGON_FLAME_TONGUE',
       // And the mod's own, which is the one the engine cannot answer for.
-      PRISM, FOCUS,
+      // The helm is there for a different question again: it carries a number
+      // the game's own record holds (+4 Attack) beside one only the extension
+      // knows, so the hero screen and the spell book are read for the same
+      // artifact.
+      PRISM, FOCUS, HELM,
     ],
     // A tent of his own, so an Armageddon has a war machine to prove itself on.
     ballista: true,
@@ -603,7 +609,7 @@ export const ENEMY_CASTER: Kit = {
     'PHOENIX_FEATHER_CAPE', 'EVERCOLD_ICICLE', 'TITANS_TRIDENT',
     'ARTIFACT_EARTHSLIDERS',
     'ICEBERG_SHIELD', 'RING_OF_LIGHTING_PROTECTION', 'DRAGON_FLAME_TONGUE',
-    PRISM, FOCUS,
+    PRISM, FOCUS, HELM,
   ],
   stats: { offence: 5, defence: 5, spellpower: 20, knowledge: 30 },
   army: [{ creature: 'CREATURE_PEASANT', count: 2000 }],

@@ -432,10 +432,16 @@ open the book, and look before clicking:
    mastery and takes nothing from spell power or a specialization, so whatever
    the book prints that is not 100 is somebody's term and reads by eye.
 
-   The wizard wears both of ours: the Призма стихий (+10% to each element) and
-   the Фокус магии (+10% to magic of any element). So the page should say
-   **120**, and each piece taken off should drop it by ten — the artifacts are
-   in his backpack slots, so this is one drag each and no reload.
+   The wizard wears three of ours: the Призма стихий (+10% to each element),
+   the Фокус магии (+10% to magic of any element) and the Шлем боевого
+   мага (+10% again, and +4 Attack). All three add up on a fire spell, so the
+   page should say **130** — and taking one off should drop it by ten.
+
+   **And the helm is read twice, which is why it is there.** Its +4 Attack is a
+   field of the artifact's own record — the game has always been able to hold
+   it — so the hero screen's attack should be four higher whether the extension
+   is loaded or not, and the ten per cent is ours and shows only on the book.
+   One artifact, two mechanisms, and neither should cost the other anything.
 
    **And the breakdown beside it should NAME them**, the way it names a Phoenix
    Feather Cape: the bonus is added at the one door both a battle and the book
@@ -479,9 +485,9 @@ damage of ours, spell id 353
   below it is meaningless.
 - `area: no tiles said for spell id 355` means the row is missing: the spell will
   ask where to aim and then cover nothing.
-- `[bonus] spell 3xx` with `an artifact of ours adds, per cent 20` is the book's
+- `[bonus] spell 3xx` with `an artifact of ours adds, per cent 30` is the book's
   own door, and it fires while the book is OPEN as well as during a cast — which
-  is the whole point of it being there. `so 100 / becomes 120` beside the ruler
+  is the whole point of it being there. `so 100 / becomes 130` beside the ruler
   spell is the reading of step 7 in the log instead of on screen.
 
 ---

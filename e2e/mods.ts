@@ -347,6 +347,34 @@ export const FOCUS = {
   picture: 'amulet_grob.gif',
 };
 
+/**
+ * **AND ONE THAT CARRIES BOTH KINDS AT ONCE: a number the game knows and a
+ * bonus only we do.**
+ *
+ * +4 Attack is a field of the artifact's own record — one of the six the game
+ * has always been able to hold, written into the document by the artifact
+ * window like any shipped helm's. +10% to magic damage is a row in the file the
+ * extension reads, because the record has nowhere to put it.
+ *
+ * Which makes it the reading nothing else on the stand asks for: whether the two
+ * halves of one artifact disturb each other. The attack shows on the hero screen
+ * with no mod loaded at all; the ten per cent shows on the ruler spell and only
+ * with one. Neither should cost the other anything.
+ *
+ * HEAD, because every other slot on the wizard is taken and an artifact that
+ * lands in the backpack is worn by nobody.
+ */
+export const HELM = {
+  file: 'H3WarMageHelm',
+  id: 'ARTIFACT_H3_WAR_MAGE_HELM',
+  name: 'Шлем боевого мага',
+  description: '+4 к атаке и +10% к урону любой магией. Первое знает сама игра, второе — только расширение.',
+  slot: 'HEAD' as ArtifactSlot,
+  stats: { Attack: 4 },
+  effects: { magic_damage: 10 },
+  picture: 'mantia_vamp.gif',
+};
+
 export const PIECES = [
   { ...AMULET, slot: 'NECK' as ArtifactSlot, picturePath: join(ART, AMULET.picture) },
   { ...CLOAK, slot: CLOAK.slot as ArtifactSlot, picturePath: join(ART, CLOAK.picture) },
@@ -1377,7 +1405,12 @@ export function installSpellFixture(gameRoot: string): CreatureMod {
     ...FOCUS, rank: 'ARTF_CLASS_MINOR' as const, cost: 5000,
     picture: join(ART, FOCUS.picture), board: { tiles: 1 },
   };
-  for (const [spec, id] of [[prism, PRISM.id], [focus, FOCUS.id]] as const) {
+  const helm = {
+    ...HELM, rank: 'ARTF_CLASS_MINOR' as const, cost: 5000,
+    picture: join(ART, HELM.picture), board: { tiles: 1 },
+  };
+  for (const [spec, id] of
+    [[prism, PRISM.id], [focus, FOCUS.id], [helm, HELM.id]] as const) {
     if ((mod.artifacts ?? []).some((x) => x.id === id)) updateArtifact(mod, id, spec);
     else addArtifact(mod, spec);
   }
