@@ -835,8 +835,34 @@ four elemental artifacts and casting spells of the mod's at his own army.*
 
 **And the control, which is what makes it a measurement:** take the
 `EVERCOLD_ICICLE` off and cast the same spell again — 945 becomes 630, and not
-one other row moves. The half above is `+50% to ice damage`; the ×0.75 is the
-protection side taking a quarter off, and the zero is immunity.
+one other row moves.
+
+**×0.75 IS NOT "a quarter off", and reading it as one wasted a message.** It is
+two artifacts multiplying, both of them working:
+
+```
+630 × 1.5   the caster's elemental artifact       = 945
+945 × 0.5   the target's protection artifact      = 472
+```
+
+and `472 = 630 × 0.75` is that product, not a separate rule. The check that says
+so: 945 was seen on its own, in the same run, on a target the protection did not
+reach — and 708, which is what a 25% protection would have left, never appears.
+The zero is immunity.
+
+**The pairs, read rather than assumed** — the first guess had them in the order
+they are written in the code, which is not the order of the elements:
+
+| the comparison | element | artifact |
+|---|---|---|
+| `cmp eax,1` | air | 5 `TITANS_TRIDENT` |
+| `cmp eax,3` | water | 18 `EVERCOLD_ICICLE` |
+| `cmp eax,2` | fire | 32 `PHOENIX_FEATHER_CAPE` |
+| `cmp eax,4` | earth | 61 `ARTIFACT_EARTHSLIDERS` |
+
+So all four add to the damage of their own element, and the three protection
+artifacts take half off it. **Both sides of the artifact layer act on a spell of
+a mod's, in full.**
 
 **So the element-keyed half of the artifact layer needs no work from us at all.**
 The engine reads `SpellElement` out of the document and asks `CountEquipped`
