@@ -484,43 +484,29 @@ static void *hero_of(void *unit) {
 }
 
 /**
- * WHAT AN ARTIFACT OF OURS ADDS TO ONE SPELL'S DAMAGE, and takes off it.
+ * WHAT AN ARTIFACT OF OURS TAKES OFF THE DAMAGE ONE STACK IS ABOUT TO LOSE.
  *
- * The game has four artifacts that add to the damage of one element and three
- * that take from it, and they act on a spell of the mod's already, because the
- * engine asks the spell's DOCUMENT for its element and never its number —
- * measured 10.08.2026. What it cannot do is answer for an artifact of OURS, and
- * these two terms are the whole of that difference.
+ * HALF of a pair, and the other half is not here — see the worth door below.
+ * What the CASTER wears makes a spell stronger one call earlier, where the
+ * engine's own four elemental artifacts do it and where the spell book can see
+ * it; what the TARGET wears is asked here, against the number that stack loses,
+ * beside the engine's own resistance.
  *
- * WHOSE ARTIFACTS. The one that ADDS is the caster's and the one that TAKES is
- * the target's, which is what the two rows say in the window and what anybody
- * would expect of a cape and a shield. The engine's own routine reads its four
- * off ONE side, and which side that is has not been settled — the stand can
- * answer it by taking the prism off one of the two casters. Ours is written to
- * the words rather than to a guess, and this note is here so the guess is not
- * made later by someone reading the code.
- *
- * The element row and `magic_damage` ADD UP: "stronger fire" and "stronger
- * magic" are two claims, not one said twice, so an artifact carrying both means
- * both.
+ * The element row and `magic_resist` ADD UP: "colder-proof" and "magic-proof"
+ * are two claims, not one said twice, so an artifact carrying both means both.
  */
-static int our_spell_damage_term(int spell, void *caster, void *target, int dealt) {
+static int our_spell_damage_term(int spell, void *target, int dealt) {
   int element = g_spellElement ? g_spellElement(spell) : 0;
-  int add = hero_term(hero_of(caster), STAT_MAGIC_DAMAGE, 0);
-  int off = hero_term(hero_of(target), STAT_MAGIC_RESIST, 0);
+  void *hero = hero_of(target);
+  int off = hero_term(hero, STAT_MAGIC_RESIST, 0);
   // 1 air, 2 fire, 3 water, 4 earth — the engine's own numbering, and the stats
   // are laid out in it, so the row is found by arithmetic and there is no second
   // table to keep in step with the first.
-  if (element >= 1 && element <= 4) {
-    add += hero_term(hero_of(caster), STAT_AIR_DAMAGE + element - 1, 0);
-    off += hero_term(hero_of(target), STAT_AIR_RESIST + element - 1, 0);
-  }
-  if (!add && !off) return dealt;
+  if (element >= 1 && element <= 4) off += hero_term(hero, STAT_AIR_RESIST + element - 1, 0);
+  if (!off) return dealt;
   int was = dealt;
-  dealt += dealt * add / 100;
   dealt -= dealt * off / 100;
-  log_num("   an artifact of ours adds, per cent ", add);
-  log_num("   and one of theirs takes off, per cent ", off);
+  log_num("   an artifact of theirs takes off, per cent ", off);
   log_num("   so ", was);
   log_num("   becomes ", dealt);
   return dealt;
@@ -576,15 +562,154 @@ static int __fastcall on_spell_damage(int power, void *block, void *caster, void
     // AFTER the engine, not instead of it: this is the number resistance and
     // anti-magic have already been applied to, and it is the one the stack loses.
     log_num("   the engine says ", dealt);
-    return our_spell_damage_term(spell, caster, target, dealt);
+    return our_spell_damage_term(spell, target, dealt);
   }
   // AND THE GAME'S OWN SPELLS GET THE SAME TERM, which is half the reason it
   // lives here: an artifact of ours that says "stronger fire" is stronger fire
   // whoever threw it and whatever its number, exactly as the engine's own four
   // are. Nothing is added when nothing is worn, and the row list is empty in a
   // game with no mod installed.
-  return our_spell_damage_term(spell, caster, target,
-                               g_spellDamage(power, block, caster, target));
+  return our_spell_damage_term(spell, target, g_spellDamage(power, block, caster, target));
+}
+
+
+// ---------------------------------------------------------------------------
+// WHAT AN ARTIFACT OF OURS MAKES A SPELL WORTH — the door the SPELL BOOK reads.
+//
+// `0xB85E40` is the one place both the number on screen and the number a stack
+// loses come through, and it is why the game's own Phoenix Feather Cape turns
+// the damage in the book green while a term added later cannot:
+//
+//   CCombatSpell::HitOne   0xB7D030  →  0xB85E40(worth, block, caster, 0)
+//                                    →  0xB861A0(that, block, caster, target)
+//   the book's estimate    0xB75B80  →  0xB85E40(worth, block, caster, REPORT)
+//
+// Two callers, and only the first reaches the damage function our filter stands
+// on. So a term added at `0xB861A0` was real in battle and invisible everywhere
+// else — measured by Senya, who saw his own artifact do nothing to the book.
+//
+// WHAT THE DOOR IS. `ecx` the amount, `edx` the cast block (`+4` its spell, the
+// same field the damage function reads), then the CASTER and a REPORT object.
+// Inside, per element, it counts a shipped artifact and multiplies:
+//
+//   air   → Titan's Trident 5      water → Evercold Icicle 18
+//   fire  → Phoenix Cape 32        earth → Earthsliders 61
+//
+// and hands the id to `0xBD3160`, which appends {id, 0, 0} to a list in the
+// report unless it is already there. THAT is the breakdown the tooltip prints,
+// and the report is null in battle — which is how one function serves a number
+// and an explanation without knowing which is wanted.
+//
+// AND IT SETTLES WHOSE ARTIFACTS COUNT, which the note beside the damage term
+// said was a guess: the object the four are counted off is the same one asked
+// for SCHOLAR (26) and ARCANE TRAINING (42), and those are a caster's skills.
+// The adding side is the CASTER's. The taking side is the target's and is a
+// different door.
+
+#define SPELL_BONUSES_RVA 0x785e40u
+#define SPELL_BONUSES_HEAD_LEN 5
+static const BYTE SPELL_BONUSES_HEAD[SPELL_BONUSES_HEAD_LEN] = {
+  0x51, 0x55, 0x56, 0x8B, 0xF2                    // push ecx/ebp/esi / mov esi,edx
+};
+
+/**
+ * "THIS SPELL'S AMOUNT IS NOT DAMAGE" — the question the door asks before any of
+ * its own terms, and returns the amount untouched if the answer is yes.
+ *
+ * Asked here for the same reason: our term belongs where theirs are, which means
+ * it is not added where theirs are skipped. It reads one field of the spell's
+ * document, so nothing is guessed about which spells those are.
+ */
+#define NOT_DAMAGE_RVA 0x6d4b30u
+#define NOT_DAMAGE_HEAD_LEN 5
+static const BYTE NOT_DAMAGE_HEAD[NOT_DAMAGE_HEAD_LEN] = {
+  0x8B, 0x01, 0x85, 0xC0, 0x75                    // mov eax,[ecx] / test eax,eax / jne
+};
+typedef BYTE(__fastcall *NotDamageFn)(void *block);
+static NotDamageFn g_notDamage = NULL;
+
+/**
+ * ONE LINE IN THE REPORT: this artifact is part of the reason for the number.
+ *
+ * `0xBD3160(report, which, id, 0, 0)`. It searches the list before appending, so
+ * an artifact named twice — once for its element and once for `magic_damage` —
+ * appears once, and we need no bookkeeping of our own.
+ *
+ * `which` picks between two lists in the report (+0x0C and +0x60). The engine
+ * passes 1 for every artifact it records here; what the other list is for has
+ * not been read, so it is a number we copy rather than a thing we name.
+ */
+#define RECORD_REASON_RVA 0x7d3160u
+#define RECORD_REASON_HEAD_LEN 5
+static const BYTE RECORD_REASON_HEAD[RECORD_REASON_HEAD_LEN] = {
+  0x51, 0x85, 0xC9, 0x0F, 0x84                    // push ecx / test ecx,ecx / je
+};
+typedef void(__fastcall *RecordReasonFn)(void *report, int which, int artifact, int a, int b);
+static RecordReasonFn g_recordReason = NULL;
+#define REASON_LIST_OF_ARTIFACTS 1
+
+/** How many pieces one spell's bonus may be spelled out by. */
+#define MAX_REASONS 8
+
+typedef int(__fastcall *SpellBonusesFn)(int worth, void *block, void *caster, void *report);
+static SpellBonusesFn g_spellBonuses = NULL;
+
+static int __fastcall on_spell_bonuses(int worth, void *block, void *caster, void *report) {
+  worth = g_spellBonuses(worth, block, caster, report);
+  int spell = readable_bytes(block, SPELL_DAMAGE_SPELL + 4) >= SPELL_DAMAGE_SPELL + 4
+      ? *(int *)((BYTE *)block + SPELL_DAMAGE_SPELL) : -1;
+  if (spell < 0) return worth;
+  // The door's own two guards, asked the door's own way. Nothing is added to
+  // nothing, and nothing is added to a spell whose amount the engine has already
+  // decided is not damage.
+  if (worth <= 0) return worth;
+  if (g_notDamage && g_notDamage(block)) return worth;
+
+  int element = g_spellElement ? g_spellElement(spell) : 0;
+  void *hero = hero_of(caster);
+  int named[MAX_REASONS];
+  int namedCount = 0;
+  int add = hero_term_named(hero, STAT_MAGIC_DAMAGE, 0, named, &namedCount, MAX_REASONS);
+  // 1 air, 2 fire, 3 water, 4 earth — the engine's own numbering, and the stats
+  // are laid out in it, so the row is found by arithmetic.
+  if (element >= 1 && element <= 4) {
+    add += hero_term_named(hero, STAT_AIR_DAMAGE + element - 1, 0,
+                           named, &namedCount, MAX_REASONS);
+  }
+  if (!add) return worth;
+  int was = worth;
+  worth += worth * add / 100;
+  // AND SAY WHY, in the engine's own report rather than in a place of ours: this
+  // is the list the book reads, so the piece that did it is named on screen the
+  // way a shipped one is. Null in battle, and the recorder refuses null itself.
+  if (report && g_recordReason) {
+    for (int i = 0; i < namedCount; i++) {
+      g_recordReason(report, REASON_LIST_OF_ARTIFACTS, named[i], 0, 0);
+    }
+  }
+  log_num("[bonus] spell ", spell);
+  log_num("   an artifact of ours adds, per cent ", add);
+  log_num("   so ", was);
+  log_num("   becomes ", worth);
+  return worth;
+}
+
+static void install_spell_worth_bonus(void) {
+  // Only if something is worn for it: with no such row this is one more detour
+  // on a function the whole battle goes through, for nothing.
+  int wanted = rows_for(STAT_MAGIC_DAMAGE);
+  for (int e = 0; !wanted && e < 4; e++) wanted = rows_for(STAT_AIR_DAMAGE + e);
+  if (!wanted) return;
+  g_notDamage = (NotDamageFn)engine_code(NOT_DAMAGE_RVA, NOT_DAMAGE_HEAD, NOT_DAMAGE_HEAD_LEN,
+                                         "whether a spell's amount is damage at all");
+  g_recordReason = (RecordReasonFn)engine_code(RECORD_REASON_RVA, RECORD_REASON_HEAD,
+                                               RECORD_REASON_HEAD_LEN,
+                                               "one line in the reason the book prints");
+  g_spellBonuses = (SpellBonusesFn)detour(SPELL_BONUSES_RVA, SPELL_BONUSES_HEAD,
+                                          SPELL_BONUSES_HEAD_LEN,
+                                          (void *)on_spell_bonuses,
+                                          "what a spell is worth after skills and artifacts");
+  if (g_spellBonuses) log_line("an artifact of ours will make a spell stronger, book and all");
 }
 
 static void install_spell_damage_filter(void) {

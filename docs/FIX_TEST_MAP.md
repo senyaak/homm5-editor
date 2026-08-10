@@ -427,6 +427,23 @@ open the book, and look before clicking:
    ours; a hit in both is the question not being asked at all, and the mana is
    short either way.
 
+7. **«Линейка (100 огнём)» in the BOOK, before anything is clicked** — the
+   reading that needs no battle math. The spell is exactly 100 damage at every
+   mastery and takes nothing from spell power or a specialization, so whatever
+   the book prints that is not 100 is somebody's term and reads by eye.
+
+   The wizard wears both of ours: the Призма стихий (+10% to each element) and
+   the Фокус магии (+10% to magic of any element). So the page should say
+   **120**, and each piece taken off should drop it by ten — the artifacts are
+   in his backpack slots, so this is one drag each and no reload.
+
+   **And the breakdown beside it should NAME them**, the way it names a Phoenix
+   Feather Cape: the bonus is added at the one door both a battle and the book
+   come through, and the piece responsible is written into the engine's own list
+   of reasons. A number that moves but names nobody means the value went in and
+   the reason did not; a number that does not move at all means the door was not
+   reached — the log's `[bonus]` lines say which.
+
 **Then send the log.** The newest `bin/homm5-editor-*.log` has a line per cast and, for ours,
 a line per stack it was asked about:
 
@@ -462,6 +479,10 @@ damage of ours, spell id 353
   below it is meaningless.
 - `area: no tiles said for spell id 355` means the row is missing: the spell will
   ask where to aim and then cover nothing.
+- `[bonus] spell 3xx` with `an artifact of ours adds, per cent 20` is the book's
+  own door, and it fires while the book is OPEN as well as during a cast — which
+  is the whole point of it being there. `so 100 / becomes 120` beside the ruler
+  spell is the reading of step 7 in the log instead of on screen.
 
 ---
 

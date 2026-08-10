@@ -29,7 +29,8 @@ static int g_traceLeft = 24;
  * so a piece in the backpack does not count, which is the whole meaning of
  * "worn" and costs us no check of our own.
  */
-static int hero_term(void *hero, int stat, int trace) {
+static int hero_term_named(void *hero, int stat, int trace,
+                           int *named, int *namedCount, int namedMax) {
   // Every read guarded, every slot checked. The two older callers hand over a
   // hero the engine just gave them and could do without this; the tent charges
   // reach for one at a moment nothing promises there is one, and an unguarded
@@ -50,7 +51,14 @@ static int hero_term(void *hero, int stat, int trace) {
           log_num("  row of ", g_rows[i].memberCount);
           log_num("    worn ", have);
         }
-        if (have >= g_rows[i].threshold) added += g_rows[i].amount;
+        if (have < g_rows[i].threshold) continue;
+        added += g_rows[i].amount;
+        // AND WHICH PIECE THE NUMBER CAME FROM, for a caller that has to say so.
+        // The engine's own report has one line per artifact, so a row is spoken
+        // for by its FIRST member: a set has several pieces and one reason.
+        if (named && namedCount && *namedCount < namedMax && g_rows[i].memberCount) {
+          named[(*namedCount)++] = g_rows[i].members[0];
+        }
       }
     }
   }
@@ -78,6 +86,16 @@ static int hero_term(void *hero, int stat, int trace) {
     }
   }
   return added;
+}
+
+/**
+ * The same sum for a caller that does not care where it came from.
+ *
+ * Every older caller adds a number to arithmetic of the engine's and has nowhere
+ * to put a reason; only the spell's worth has a report beside it.
+ */
+static int hero_term(void *hero, int stat, int trace) {
+  return hero_term_named(hero, stat, trace, NULL, NULL, 0);
 }
 
 /**

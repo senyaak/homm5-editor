@@ -837,6 +837,10 @@ four elemental artifacts and casting spells of the mod's at his own army.*
 `EVERCOLD_ICICLE` off and cast the same spell again — 945 becomes 630, and not
 one other row moves.
 
+*Which side the engine reads its four off was an open question here. It is
+closed — by reading, not by a run: see «the spell book showed nothing» below.
+The caster's.*
+
 **×0.75 IS NOT "a quarter off", and reading it as one wasted a message.** It is
 two artifacts multiplying, both of them working:
 
@@ -874,11 +878,66 @@ What is left is the one thing the engine cannot know: an artifact of OURS, with
 a number it was never compiled against. That is a row in the config and a term
 at the door — and it is now the whole of the job, rather than half of it.
 
+## The spell book showed nothing — and the door that fixes it
+
+*Read out 10.08.2026, after Senya: «мы добавили артефакт — но он не
+показывается как баф у заклинания; у накидки феникса показывается зелёным».*
+
+The term worked in battle and was invisible in the book, and the reason is one
+address. `0xB861A0`, where it was added, has **exactly one caller**. One call
+earlier there is a function with **two**:
+
+```
+CCombatSpell::HitOne  0xB7D030  →  0xB85E40(worth, block, caster, 0)
+                                →  0xB861A0(that worth, block, caster, target)
+the book's estimate   0xB75B80  →  0xB85E40(worth, block, caster, REPORT)
+```
+
+So `0xB85E40` is where a bonus has to go to be both **felt and seen**, and it is
+exactly where the shipped four already are — which is the whole answer to «why
+is the cape green and ours not».
+
+**What the door takes:** `ecx` the amount, `edx` the cast block (`+4` its spell,
+the same field the damage function reads), then the CASTER and a REPORT. It
+returns the amount, `ret 8`.
+
+**And the REPORT is the green.** Every artifact the engine applies here is handed
+to `0xBD3160(report, 1, id, 0, 0)`, which appends `{id, 0, 0}` to a list inside
+it unless the id is already there — that list is the breakdown the tooltip
+prints. In battle the argument is **0**, and the recorder's first instruction is
+a null check. One function serves a number and an explanation, and the caller
+decides which by passing a place to write the reasons or nothing.
+
+**It also settles whose artifacts count**, which the note below said was a guess
+worth checking on the stand: the object the four are counted off is the same one
+asked for hero skills 26 `SCHOLAR` and 42 `ARCANE_TRAINING` two lines above. Those
+are a caster's. **The adding side is the CASTER's**, and no run is needed to say
+so.
+
+**What we do there**, in `combat/spell-cast.c`:
+
+| | |
+|---|---|
+| after the engine's own | so its terms are untouched and ours follows |
+| only if the amount is positive | its own guard, `test ebp,ebp / jle` |
+| only if `0xAD4B30` says the amount IS damage | its own first question, asked its own way |
+| `magic_damage` + the element's row | added up, then applied as one percentage |
+| every row's first artifact into `0xBD3160` | so the book names the piece, as it names a cape |
+
+The taking side stays at `0xB861A0`, against the number one stack loses, because
+that is where the target is known — and nothing displays it anyway.
+
+**The lesson is the count.** The question «where does this belong» was answered
+with «where the damage is», and the better answer was one line of arithmetic
+away: a door with one caller cannot be where anything is shared. Ask how many
+callers a function has BEFORE deciding it is the layer.
+
 ## What these bonuses do NOT reach, named before anybody is surprised
 
 The ten an artifact of ours can carry — four elemental damages, four elemental
 resistances, and one of each for magic of any element — all live on the SPELL
-path: the door at `0xB861A0` and the resistance step after it.
+path: the door at `0xB85E40` for what the caster adds, and `0xB861A0` with the
+resistance step after it for what the target takes off.
 
 **A perk that puts an element on something that is not a spell does not go
 through either of them.** Senya's own examples, 10.08.2026: cold or fire damage

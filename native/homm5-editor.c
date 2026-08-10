@@ -181,6 +181,7 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   install_gate_refusal_log();
   install_spell_record_guard();
   install_spell_damage_filter();
+  install_spell_worth_bonus();
   install_spell_power();
   install_spell_text_probe();
   install_area_shape();

@@ -346,6 +346,13 @@ one.
   carrying both means both, and they add up rather than one standing in for the
   other.
 
+  **And the spell book says so.** The bonus is added where the game adds its own
+  Phoenix Feather Cape's — one call before the damage, in the only place both a
+  battle and the book go through — so the number in the book already has it in,
+  and the piece that did it is named in the breakdown beside the game's own. Put
+  the artifact on and the damage in the book goes up; take it off and it goes
+  back down.
+
   It applies to the game's own spells as well as a mod's — an artifact that says
   fire is stronger makes fire stronger whoever threw it. What the game already
   did on its own, and does for a mod's spells too without being told, is add to
