@@ -43,12 +43,33 @@ typedef enum {
   STAT_TENT_HEALTH = 4,
   STAT_TENT_CLEANSE = 5,
   STAT_TENT_MANA = 6,
-  STAT_COUNT = 7
+  // PERCENT added to the damage of a spell of that element, wherever the
+  // damage is worked out - so it reaches the game's own spells as well as the
+  // mod's, exactly as the shipped elemental artifacts do. The engine keys its
+  // four on `SpellElement`; ours are the same question asked of our own ids.
+  STAT_AIR_DAMAGE = 7,
+  STAT_FIRE_DAMAGE = 8,
+  STAT_WATER_DAMAGE = 9,
+  STAT_EARTH_DAMAGE = 10,
+  // And the other side of the same question: PERCENT taken off a spell of
+  // that element, and of any spell at all for the last one. Kept in the same
+  // element order, so the arithmetic that finds a row works for both halves.
+  STAT_AIR_RESIST = 11,
+  STAT_FIRE_RESIST = 12,
+  STAT_WATER_RESIST = 13,
+  STAT_EARTH_RESIST = 14,
+  STAT_MAGIC_RESIST = 15,
+  STAT_COUNT = 16
 } Stat;
 
 static const char *const STAT_NAMES[STAT_COUNT] = {
   "necromancy", "energy", "tent_charges", "tent_healing", "tent_health",
   "tent_cleanse", "tent_mana",
+  // In the order of the elements the engine numbers them: air 1, fire 2,
+  // water 3, earth 4 - so `STAT_AIR_DAMAGE + element - 1` is the row to look
+  // for, and there is no table to keep in step.
+  "air_damage", "fire_damage", "water_damage", "earth_damage",
+  "air_resist", "fire_resist", "water_resist", "earth_resist", "magic_resist",
 };
 
 /**

@@ -59,9 +59,25 @@ export const EFFECTS_FILE = join('bin', 'homm5-editor-effects.txt');
  *     reach a level 4 or 5 curse.
  *   `tent_mana` — charges given back per HUNDRED points of mana its owner spends
  *     in the battle. Two is one charge per fifty.
+ *   `air_damage`, `fire_damage`, `water_damage`, `earth_damage` - PERCENT added
+ *     to the damage of a spell of that element. The game has four artifacts of
+ *     its own doing exactly this and they act on a spell of a mod's already,
+ *     because the engine asks the spell's DOCUMENT for its element and never
+ *     its number - measured 10.08.2026. What it cannot do is answer for an
+ *     artifact of ours, and that is what these are.
+ *   `air_resist`, `fire_resist`, `water_resist`, `earth_resist` - PERCENT
+ *     taken OFF the damage of a spell of that element, on the stacks of the
+ *     hero wearing it. The game's own three (the Iceberg Shield, the Ring of
+ *     Lightning Protection, the Dragon Flame Tongue) take half; ours say how
+ *     much.
+ *   `magic_resist` - the same, for a spell of ANY element and none: the
+ *     percentage the engine already works out per stack, with ours added to
+ *     it.
  */
 export const EFFECT_STATS = [
   'necromancy', 'energy', 'tent_charges', 'tent_healing', 'tent_health', 'tent_cleanse', 'tent_mana',
+  'air_damage', 'fire_damage', 'water_damage', 'earth_damage',
+  'air_resist', 'fire_resist', 'water_resist', 'earth_resist', 'magic_resist',
 ] as const;
 export type EffectStat = (typeof EFFECT_STATS)[number];
 
