@@ -713,13 +713,15 @@ at a point.
    step than it was: the loop that picks whom to hurt is already C, and a Lua
    function would only be another way of asking it.
 3. ~~The gate's answer should become "is there anything to hit".~~ **Done
-   09.08.2026** — see "The gate, mapped" above. One shape is still answered with
-   "cannot tell" and therefore a yes: an AREA spell asked about from outside a
-   cast command, where the list of stacks it would cover is not the block's to
-   read. Its page stays bright until the click; the cast itself answers
-   properly. Closing it means finding what the book has instead of that vector,
-   or asking `0xB7BE30` for the tiles and turning tiles into stacks ourselves —
-   neither measured yet.
+   09.08.2026** for a cast — see "The gate, mapped" above. What is left is the
+   BOOK's half for the area shape, and Senya named the right question for it:
+   not "would it reach anybody where it is aimed" — outside a cast nothing has
+   been aimed yet — but **"is there anybody on this field it could touch at
+   all"**. A plague over an area is dead when only the undead are standing, and
+   its page should say so before a click. That is the field walk we already
+   have, with position ignored: nobody on the field passing the filter means no
+   aim point can help. Today an area asked about outside a cast answers "cannot
+   tell", so the page stays bright until the click refuses.
 4. **Effects, and effects of our own.** A spell whose content is not damage but
    something it leaves behind — the fourth shape (`0xB7F99A`, the 18 shipped
    effects). Deliberately not started: the three damage shapes came first.

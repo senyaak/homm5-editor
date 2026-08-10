@@ -66,10 +66,10 @@
 // in the command. So the list at +0x24 is filled for some spells and not for
 // ours, and the one measurement that started this was a spell for which it was.
 //
-// What that leaves: an area spell of ours must build the list itself, from the
-// point it was aimed at and the tiles its row names. Not done yet — the shape
-// answers "nobody" honestly today, and the gate treats that as "cannot tell"
-// rather than refusing the cast. See docs/engineInternals/SPELLS.md.
+// What that left: an area spell of ours builds the list itself, from the point
+// it was aimed at and the tiles its row names — `our_area_targets` below, through
+// `0xB7BE30`. Measured in game 09.08.2026: the cross covers whom it lands on.
+// See docs/engineInternals/SPELLS.md.
 
 /** Which switch turns this file's logging on — see the bottom of core/log.c. */
 #undef LOG_UNIT
@@ -295,6 +295,45 @@ static const BYTE PLAIN_APPLIER_HEAD[PLAIN_APPLIER_HEAD_LEN] = {
 typedef void *(__fastcall *PlainApplierFn)(void *caster, void *unit, int damage, void *chain,
                                            int spell, void *whatResolveWasGiven);
 static PlainApplierFn g_plainApplier = NULL;
+
+/**
+ * THE FIRE ONE, `0xBD1420` — and it takes exactly what the element-less one
+ * takes, which is not what this file said for two days.
+ *
+ * The note here used to be that the four "swap the roles of `ecx` and `edx`" and
+ * so none can be reached by a call written for another. Read properly
+ * 09.08.2026, at the area routine's own dispatch (`0xD60ADC`…`0xD60B4F`), where
+ * all four are called in a row: every one of them gets `mov edx,ebx` and `mov
+ * ecx,[esp+60h]` — **the same pair, in the same order**. What differs is which
+ * of the two each ASKS for the combat (the plain one asks `edx`, this one asks
+ * `ecx`), and that is not a signature.
+ *
+ * Its own body settles who is who past doubt: `ecx` is asked for the hero skill
+ * `0x2C` — 44, Master of Fire — through `vt[0x290]`, and `edx` is asked
+ * `HasAbility` through `vt[0x28C]`. So `ecx` is the CASTER and `edx` the target,
+ * exactly as the element-less one has them, and `ret 10h` gives the same four
+ * stack arguments.
+ *
+ * What it adds, and it is the whole reason to call it: behind those questions it
+ * builds effect `0xCA` — 202, `SPELL_EFFECT_FIRE_DAMAGE` — and leaves it on the
+ * stack. That is the Master's mark a spell of ours has never left.
+ *
+ * AIR (`0xBD1790`, `ret 14h`) AND WATER (`0xBD12C0`, `ret 18h`) TAKE MORE, and
+ * are NOT called yet: air has one argument more than fire and water two, and
+ * what they mean has not been read — at the site above they are a `sete` on
+ * something and the length of the affected vector. Anchored here so the next
+ * session starts from the addresses rather than from the search, and named in
+ * the log when a spell of ours has one of those elements.
+ */
+#define FIRE_APPLIER_RVA 0x7d1420u
+#define FIRE_APPLIER_HEAD_LEN 8
+static const BYTE FIRE_APPLIER_HEAD[FIRE_APPLIER_HEAD_LEN] = {
+  0x83, 0xEC, 0x08, 0x83, 0x7C, 0x24, 0x0C, 0x00      // sub esp,8 / cmp [esp+0Ch],0
+};
+static PlainApplierFn g_fireApplier = NULL;
+
+/** The element the fire applier answers to — the same 2 `mass-spell-element-fix` acts on. */
+#define ELEMENT_FIRE 2
 
 /**
  * The allocator's own `free`, for the list of stacks we asked it to build.
@@ -559,6 +598,30 @@ static void *g_castChain = NULL;
 /** The battle-side event a spell of ours is written against. */
 #define H5E_SPELL_CAST 4
 
+/**
+ * WHICH APPLIER LEAVES THE MARK THIS SPELL'S ELEMENT PROMISES — asked of the
+ * document, never of the number.
+ *
+ * The element comes from `SpellElement`, the one accessor twenty-two places in
+ * the engine ask and not one of them looks at an id through. So a spell of a
+ * mod's says "fire" in its own record and gets the fire applier here, and the
+ * Master of Fire term inside it fires for the caster who has the perk — nothing
+ * about our number anywhere on the road.
+ */
+static PlainApplierFn applier_for(int spell) {
+  int element = g_spellElement ? g_spellElement(spell) : 0;
+  if (element == ELEMENT_FIRE && g_fireApplier) {
+    log_line("   its element is fire — the applier that leaves the Master's mark");
+    return g_fireApplier;
+  }
+  if (element) {
+    // Named, not hidden: an elemental spell whose applier we cannot call yet
+    // still lands its damage, and simply leaves no mark.
+    log_num("   its element leaves no mark yet, element ", element);
+  }
+  return g_plainApplier;
+}
+
 /** Non-zero when the row says this stack is passed over. */
 static int row_spares(SpellRow *row, void *unit, int say) {
   for (int i = 0; row && i < row->spareCount; i++) {
@@ -779,6 +842,9 @@ static char __cdecl our_cast(void *cast, void *chain, void *whatResolveWasGiven)
   int noVisuals = quiet && quiet(combat);
   if (noVisuals) log_line("   the battle wants no visuals — none will be played");
 
+  // ONCE PER CAST, not per stack: the element is the spell's, not the target's.
+  PlainApplierFn applier = applier_for(spell);
+
   int total = 0;
   for (int i = 0; i < count; i++) {
     void *unit = targets[i];
@@ -835,8 +901,8 @@ static char __cdecl our_cast(void *cast, void *chain, void *whatResolveWasGiven)
     // applier INSIDE its loop with `mov edx,edi`, its loop variable, and this
     // stack's amount. Called once afterwards with the cast's total it names the
     // wrong amount for the wrong unit, and eight stacks lose nothing.
-    if (g_plainApplier) {
-      chain = g_plainApplier(caster, unit, dealt + extra, chain, spell, whatResolveWasGiven);
+    if (applier) {
+      chain = applier(caster, unit, dealt + extra, chain, spell, whatResolveWasGiven);
       log_hex("      the entry left behind ", (DWORD)(INT_PTR)chain);
     }
     // THE ONE LINE THAT SETTLES IT. If this differs from "creatures before",
@@ -946,6 +1012,9 @@ static void install_our_resolver(void) {
                                    "what a spell does to one stack");
   g_tellAbout = (TellAboutFn)engine_code(TELL_ABOUT_RVA, TELL_ABOUT_HEAD,
                                          TELL_ABOUT_HEAD_LEN, "the line a hit stack gets");
+  g_fireApplier = (PlainApplierFn)engine_code(FIRE_APPLIER_RVA, FIRE_APPLIER_HEAD,
+                                              FIRE_APPLIER_HEAD_LEN,
+                                              "the entry a fire cast leaves, with the Master's mark");
   g_plainApplier = (PlainApplierFn)engine_code(PLAIN_APPLIER_RVA, PLAIN_APPLIER_HEAD,
                                                PLAIN_APPLIER_HEAD_LEN, "the entry a cast leaves");
   g_spellVisual = (SpellVisualFn)engine_code(SPELL_VISUAL_RVA, SPELL_VISUAL_HEAD,
