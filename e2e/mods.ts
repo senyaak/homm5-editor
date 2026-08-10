@@ -293,6 +293,36 @@ export function palaceSpec(): BuildingSpec {
  * fixture and tools/install-fixture.ts read this, so a game and the suite cannot
  * end up with different artifacts under the same names.
  */
+/**
+ * **The stand's own artifact: ten per cent on both sides of every element.**
+ *
+ * The game has four artifacts that add to the damage of one element and three
+ * that take half off it, and they act on a spell of the mod's already — the
+ * engine asks the spell's DOCUMENT for its element and never its number. What it
+ * cannot do is answer for an artifact of OURS, and this is the artifact that asks
+ * it to.
+ *
+ * Ten on each of the four damages and each of the four resistances, and NOT on
+ * `magic_damage` / `magic_resist`: those add on top of whichever element also
+ * matches, and the point of the ruler spell beside it is that 100 becomes 110
+ * with nobody working out which rows applied.
+ *
+ * It lives here rather than in a session's notes so the reading can be repeated —
+ * every run of the map stage puts it in the install and on both casters.
+ */
+export const PRISM = {
+  file: 'H3ElementalPrism',
+  id: 'ARTIFACT_H3_ELEMENTAL_PRISM',
+  name: 'Призма стихий',
+  description: '+10% к урону каждой стихией, и −10% к урону каждой стихией по его отрядам.',
+  slot: 'NECK' as ArtifactSlot,
+  effects: {
+    air_damage: 10, fire_damage: 10, water_damage: 10, earth_damage: 10,
+    air_resist: 10, fire_resist: 10, water_resist: 10, earth_resist: 10,
+  },
+  picture: 'amulet_grob.gif',
+};
+
 export const PIECES = [
   { ...AMULET, slot: 'NECK' as ArtifactSlot, picturePath: join(ART, AMULET.picture) },
   { ...CLOAK, slot: CLOAK.slot as ArtifactSlot, picturePath: join(ART, CLOAK.picture) },
@@ -997,9 +1027,36 @@ export const TEST_AIR_TARGET = {
   element: 'ELEMENT_AIR',
 };
 
+/**
+ * **A RULER: exactly 100 fire damage, from any hero, at any mastery.**
+ *
+ * `damage` is four entries read positionally, one per mastery, each a base and a
+ * per-power. Base 100 and per-power 0, four times over, and the number stops
+ * depending on the caster entirely — no spell power, no mastery, nothing a
+ * specialization can lean on. So whatever comes out that is NOT 100 is somebody's
+ * term, and it reads without arithmetic: an artifact of ours worth +10% makes it
+ * 110 and nothing else has to be worked out.
+ *
+ * Fire, because that is the element with the most rules hanging off it — so the
+ * ruler is also the thing that shows them.
+ */
+export const TEST_FLAT_FIRE = {
+  ...TEST_ARMAGEDDON_TARGET,
+  id: 'SPELL_H3_TEST_FLAT_FIRE',
+  file: 'H3TestFlatFire',
+  name: 'Линейка (100 огнём)',
+  description: 'Ровно 100 урона огнём, без влияния силы магии и мастерства — чтобы всякая прибавка читалась глазом.',
+  damage: [
+    { base: 100, perPower: 0 },
+    { base: 100, perPower: 0 },
+    { base: 100, perPower: 0 },
+    { base: 100, perPower: 0 },
+  ],
+};
+
 export const OUR_SPELL_FIXTURES = [
   DEATH_RIPPLE, TEST_ARMAGEDDON, TEST_ARMAGEDDON_AREA, TEST_ARMAGEDDON_TARGET,
-  DEATH_RIPPLE_TARGET, TEST_ICE_TARGET, TEST_AIR_TARGET,
+  DEATH_RIPPLE_TARGET, TEST_ICE_TARGET, TEST_AIR_TARGET, TEST_FLAT_FIRE,
 ] as const;
 
 /**
@@ -1284,6 +1341,16 @@ export function installSpellFixture(gameRoot: string): CreatureMod {
     if ((mod.spells ?? []).some((s) => s.id === spec.id)) updateSpell(mod, spec.id, spec);
     else addSpell(mod, spec, taken);
   }
+  // AND THE STAND'S ARTIFACT, in the same mod and the same build: a map hero
+  // wearing an id types.xml does not declare is a map the game refuses, exactly
+  // as it is for a spell — and the whole point of it is to be worn while one of
+  // those spells is thrown.
+  const prism = {
+    ...PRISM, rank: 'ARTF_CLASS_MINOR' as const, cost: 5000,
+    picture: join(ART, PRISM.picture), board: { tiles: 1 },
+  };
+  if ((mod.artifacts ?? []).some((x) => x.id === PRISM.id)) updateArtifact(mod, PRISM.id, prism);
+  else addArtifact(mod, prism);
   const report = buildCreatureMod(mod, dataReader(DATA));
   installCreatureMod(gameRoot, mod, packCreatureMod(report));
   // What a spell of ours passes over lives in this file and nowhere else — the

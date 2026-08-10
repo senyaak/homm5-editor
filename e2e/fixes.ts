@@ -265,6 +265,10 @@ const DEATH_RIPPLE_TARGET = 'SPELL_H3_DEATH_RIPPLE_TARGET';
 const TEST_ICE_TARGET = 'SPELL_H3_TEST_ICE_TARGET';
 /** And with its element AIR — the third Master's mark, and the last unwatched one. */
 const TEST_AIR_TARGET = 'SPELL_H3_TEST_AIR_TARGET';
+/** Exactly 100 fire, whoever throws it — so a term reads without arithmetic. */
+const TEST_FLAT_FIRE = 'SPELL_H3_TEST_FLAT_FIRE';
+/** The mod's own artifact: +10% to every element's damage, −10% taken. */
+const PRISM = 'ARTIFACT_H3_ELEMENTAL_PRISM';
 
 /** Dark Magic, at the three masteries the four heroes spread across. */
 const DARK = (mastery: string): Skill => ({ id: 'HERO_SKILL_DARK_MAGIC', mastery });
@@ -312,7 +316,7 @@ export const HEROES: Kit[] = [
       'SPELL_CHAIN_LIGHTNING', 'SPELL_STONE_SPIKES', 'SPELL_METEOR_SHOWER',
       // And OUR ice, which is what the mark is really being asked about: the
       // aimed Armageddon with one field changed, its element.
-      TEST_ICE_TARGET, TEST_AIR_TARGET,
+      TEST_ICE_TARGET, TEST_AIR_TARGET, TEST_FLAT_FIRE,
       'SPELL_ARMAGEDDON', 'SPELL_FIREBALL', 'SPELL_STONESKIN', DEATH_RIPPLE,
       TEST_ARMAGEDDON, TEST_ARMAGEDDON_AREA, TEST_ARMAGEDDON_TARGET,
       // And the aimed ripple, on the hero whose foe is UNDEAD: the zombies are
@@ -332,6 +336,8 @@ export const HEROES: Kit[] = [
       'PHOENIX_FEATHER_CAPE', 'EVERCOLD_ICICLE', 'TITANS_TRIDENT',
       'ARTIFACT_EARTHSLIDERS',
       'ICEBERG_SHIELD', 'RING_OF_LIGHTING_PROTECTION', 'DRAGON_FLAME_TONGUE',
+      // And the mod's own, which is the one the engine cannot answer for.
+      PRISM,
     ],
     // A tent of his own, so an Armageddon has a war machine to prove itself on.
     ballista: true,
@@ -590,11 +596,12 @@ export const ENEMY_CASTER: Kit = {
   // One per element, EARTH included — the Earthsliders are worn and had nothing
   // to be read on.
   spells: ['SPELL_FIREBALL', 'SPELL_ICE_BOLT', 'SPELL_LIGHTNING_BOLT',
-    'SPELL_STONE_SPIKES', 'SPELL_METEOR_SHOWER'],
+    'SPELL_STONE_SPIKES', 'SPELL_METEOR_SHOWER', TEST_FLAT_FIRE],
   artifacts: [
     'PHOENIX_FEATHER_CAPE', 'EVERCOLD_ICICLE', 'TITANS_TRIDENT',
     'ARTIFACT_EARTHSLIDERS',
     'ICEBERG_SHIELD', 'RING_OF_LIGHTING_PROTECTION', 'DRAGON_FLAME_TONGUE',
+    PRISM,
   ],
   stats: { offence: 5, defence: 5, spellpower: 20, knowledge: 30 },
   army: [{ creature: 'CREATURE_PEASANT', count: 2000 }],
