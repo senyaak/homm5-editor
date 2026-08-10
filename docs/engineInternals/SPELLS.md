@@ -793,9 +793,33 @@ three kinds again — 105, 10, 11 — before it answers a percentage.
    after decoding two functions and skipping a third because its name said
    nothing. An inventory that stops at the door is not an inventory of the
    path.
-3. **Resistance is its own door.** An artifact that adds magic resistance does
-   not belong at `0xB861A0` at all; it belongs at `0xB7D870`, one detour
-   further along, which is a second term and not the same one.
+3. **Resistance is its own door, and it is the other half of the same
+   pattern.** The protection side (`0xB86B00`…`0xB86E00`, reached through
+   `0xB7D870`) asks `SpellElement` and then the same two questions again — what
+   the target wears and what it is:
+
+   | it asks | number | what it is |
+   |---|---|---|
+   | `CountEquipped` | 9 | `ICEBERG_SHIELD` |
+   | `CountEquipped` | 20 | `RING_OF_LIGHTING_PROTECTION` |
+   | `CountEquipped` | 43 | `DRAGON_FLAME_TONGUE` |
+   | `CountEquipped` | 62, 84, 85 | `RIGID_MANTLE`, `BEARHIDE_WRAPS`, `DWARVEN_SMITHY_HUMMER` |
+   | `HasAbility` | 24, 53, 172 | `ABILITY_MAGIC_PROOF_50` / `_75` / `_25` |
+   | `HasAbility` | 173 | `ABILITY_FIRE_PROOF_50` |
+   | `vt+0x28` | 97 | `SPELL_SKILL_FIRE_PROTECTION`, the effect |
+   | `vt+0x174` | 133 | `ABILITY_WEAKENING_AURA` |
+
+   So "a ring that protects from cold" is the SAME shape as "a cape that adds
+   to fire damage", one door further along, and both are `CountEquipped` beside
+   `SpellElement`. A term of ours has two homes, not one, and which one it goes
+   to is decided by what the row says it changes — not by whoever writes it.
+
+4. **The amount is not in the code.** Both sides hand the id to `0xBD3160`,
+   which walks a list of twelve-byte entries looking for it — the modifier's
+   own record. So the engine's own artifacts read their numbers from data, the
+   way the Necromancer's Pendant does, and ours must too: a row says WHICH
+   subject and WHAT it changes, and the amount belongs to the artifact.
+
 
 ## What is not done yet
 
