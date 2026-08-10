@@ -209,7 +209,10 @@ export const MESSAGE_SLOTS: Record<string, readonly string[]> = {
   AdvMapSignShared: ['name', 'description'],
   AdvMapSphinxShared: ['name', 'description', 'unused', 'refuse'],
   AdvMapTentShared: ['name', 'description', 'noPass', 'pass'],
-  AdvMapTreasureShared: ['name', 'description'],
+  // Read off the CHEST, not the campfire: a TREASURE_CHEST asks for its pickup
+  // dialog at index 2 and the artifact-found line at 3, and a document that
+  // stops at two answers "Invalid message index 2" in the game's console.
+  AdvMapTreasureShared: ['name', 'description', 'dialogText', 'artifactFound'],
 };
 
 /** What a class shows when it declares nothing of its own. */

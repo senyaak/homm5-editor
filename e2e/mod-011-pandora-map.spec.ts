@@ -26,8 +26,8 @@ import { modFile } from '../src/game/mod-paths.ts';
 import { readEntries } from '../src/format/pak.ts';
 import { writeGameplayArchive } from '../src/mods/gameplay.ts';
 import {
-  PANDORA_CHEST_CLASS, PANDORA_CHEST_SHARED, PANDORA_CLASS, PANDORA_MILL_SHARED,
-  PANDORA_SPIN_SHARED, PANDORA_TIERS, pandoraShared,
+  PANDORA_ARTIFACT_SHARED, PANDORA_CLASS, PANDORA_MILL_SHARED,
+  PANDORA_TIERS, pandoraShared,
 } from '../src/mods/pandora-files.ts';
 import { withPandoraBlock } from '../src/mods/pandora-scripts.ts';
 import type { PandoraContents } from '../src/mods/pandora-scripts.ts';
@@ -37,10 +37,9 @@ const GAME = modGameRoot();
 const NAME = MADE.PANDORA_MAP;
 const MAP_DIR = join(DATA, 'Maps', 'SingleMissions', NAME);
 
-/** The Stand-class box every placement below uses — the poorest tier, which is
- *  the one the palette offers. */
+/** The box every ordinary placement below uses — the poorest tier, which is
+ *  the one the palette offers. Chest class now: a Stand cannot be touched. */
 const BOX = `/${pandoraShared(PANDORA_TIERS[0]!.key)}`;
-const CHEST = `/${PANDORA_CHEST_SHARED}`;
 
 /**
  * The question sheet. One box per kind of content, named for what it holds —
@@ -57,17 +56,17 @@ const BOXES: (PandoraContents & { x: number; y: number; shared: string })[] = [
     name: 'PandoraGuarded', gold: 20000,
     guards: [{ creature: 'CREATURE_ARCHER', count: 15 }], x: 28, y: 28, shared: BOX,
   },
-  // The chest-class twin, near the human: does its touch reach the script, or
-  // does the engine's own pickup swallow it?
-  { name: 'PandoraChest', gold: 5000, x: 24, y: 28, shared: CHEST },
-  // And one beside the AI: does an AI hero walk to a chest-class box at all?
-  { name: 'PandoraChestAI', gold: 5000, x: 62, y: 60, shared: CHEST },
-  // The spin probes: the SKINNED cube with the artifact idle. The shipping box
-  // is static — a skinned mesh drew nothing on Stand and Treasure — and these
-  // two ask whether any class animates it: a Stand, and a Building of the
-  // windmill's type (the one shipped proof a Building plays an AnimSet).
-  { name: 'PandoraSpin', exp: 100, x: 36, y: 16, shared: `/${PANDORA_SPIN_SHARED}` },
-  { name: 'PandoraMill', exp: 100, x: 36, y: 22, shared: `/${PANDORA_MILL_SHARED}` },
+  // Disabled after hooking: does SetObjectEnabled hide a chest, silence its
+  // pickup, or change nothing? The API doc says "hide" — worth one tile to see.
+  { name: 'PandoraDisabled', gold: 5000, x: 24, y: 28, disable: true, shared: BOX },
+  // Beside the AI: does an AI hero walk to a chest-class box on its own?
+  { name: 'PandoraChestAI', gold: 5000, x: 62, y: 60, shared: BOX },
+  // The animation probes: the SKINNED cube with the artifact idle, on a
+  // windmill-type Building (the shipped proof a Building plays an AnimSet)
+  // and on an artifact — the class the rig was made for, whose pickup also
+  // vanishes the object.
+  { name: 'PandoraMill', exp: 100, x: 36, y: 16, shared: `/${PANDORA_MILL_SHARED}` },
+  { name: 'PandoraArtifact', gold: 1000, x: 36, y: 22, shared: `/${PANDORA_ARTIFACT_SHARED}` },
 ];
 
 const SIDES = [
@@ -128,11 +127,11 @@ test('every box goes down through the palette, named for what it holds', async (
   }
 
   const placed = await page.evaluate(() => window.view.objects().map((o) => o.type));
-  expect(placed.filter((t) => t === 'AdvMapStand'), 'the stand-class boxes and the spin probe')
-    .toHaveLength(BOXES.filter((b) => b.shared === BOX).length + 1);
-  expect(placed.filter((t) => t === 'AdvMapTreasure'), 'two chest-class boxes')
-    .toHaveLength(BOXES.filter((b) => b.shared === CHEST).length);
+  expect(placed.filter((t) => t === 'AdvMapTreasure'), 'the chest-class boxes')
+    .toHaveLength(BOXES.filter((b) => b.shared === BOX).length);
   expect(placed.filter((t) => t === 'AdvMapBuilding'), 'the mill probe')
+    .toHaveLength(1);
+  expect(placed.filter((t) => t === 'AdvMapArtifact'), 'the artifact probe')
     .toHaveLength(1);
 });
 
@@ -170,8 +169,7 @@ test('two sides, and the script that answers a touch', async () => {
   expect(xml, 'the map binds the script').toContain('MapScript.xdb#xpointer(/Script)');
   for (const b of BOXES) expect(xml, `${b.name} is on the map`).toContain(`<Name>${b.name}</Name>`);
   expect((xml.match(new RegExp(`\\(${PANDORA_CLASS}\\)`, 'g')) ?? []).length,
-    'stand-class boxes reference their shared').toBeGreaterThan(0);
-  expect(xml, 'the chest-class box references its shared').toContain(`(${PANDORA_CHEST_CLASS})`);
+    'chest-class boxes reference their shared').toBeGreaterThan(0);
 
   const lua = readFileSync(join(MAP_DIR, 'MapScript.lua'), 'latin1');
   for (const b of BOXES) {

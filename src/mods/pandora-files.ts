@@ -33,7 +33,17 @@ const EOL = '\r\n';
 
 // --- what the box is made of -------------------------------------------------
 
-/** The donor: the floating artifact stone, whose skeleton and idle we keep. */
+/**
+ * The donor for the box that SHIPS: the treasure chest's model — inline
+ * material, inline geometry, no skeleton, no undocumented tail, and the one
+ * container proven to draw on the class the box now is. The artifact stone
+ * below donates only to the animation PROBES: its skinned container drew
+ * nothing on any class the first two runs tried, and whether any class
+ * animates it is still an open question the probe map asks.
+ */
+const CHEST_DONOR_MODEL = '_(Model)/TESTS/dev/chest.(Model).xdb';
+
+/** The animated donor: the floating artifact stone, skeleton and idle. */
 const DONOR_MODEL = '_(Model)/Cutscenes/Artefakt.(Model).xdb';
 const DONOR_ANIMSET = '_(AnimSet)/Cuscenes/Artefakt.(AnimSet).xdb';
 
@@ -57,7 +67,14 @@ export const PANDORA_TIERS: readonly PandoraTier[] = [
 export const PANDORA_DIR = 'Buildings/PandoraBox';
 const ART_DIR = `${PANDORA_DIR}/art`;
 
-export const PANDORA_CLASS = 'AdvMapStandShared';
+/**
+ * The class the box IS: the treasure chest's. Not a Stand — the game refuses a
+ * touch trigger on one out loud ('Object "…" cannot be touched', measured) —
+ * and the chest class is also the one the AI knows to walk to. What is not
+ * settled yet is its own pickup beside our touch, which the probe map's
+ * disabled twin asks about.
+ */
+export const PANDORA_CLASS = 'AdvMapTreasureShared';
 
 /** The shared document of one tier. */
 export const pandoraShared = (tier: string): string =>
@@ -66,19 +83,16 @@ export const pandoraShared = (tier: string): string =>
 /** The palette entry — one, pointing at the poorest tier a fresh box is. */
 export const PANDORA_LINK = 'MapObjects/_(AdvMapObjectLink)/Objects-All-Terra/PandoraBox.xdb';
 
-/** The chest-class probe: same box, the class the AI knows to want. */
-export const PANDORA_CHEST_CLASS = 'AdvMapTreasureShared';
-export const PANDORA_CHEST_SHARED = `${PANDORA_DIR}/PandoraBox_Chest.(${PANDORA_CHEST_CLASS}).xdb`;
-export const PANDORA_CHEST_LINK = 'MapObjects/_(AdvMapObjectLink)/Objects-All-Terra/PandoraBoxChest.xdb';
-
-/** The spin probes: the SKINNED cube with the artifact idle, on the classes
- * that might animate it. Stand showed nothing on the first run; the windmill
- * proves the Building class plays an AnimSet on the adventure map. */
-export const PANDORA_SPIN_SHARED = `${PANDORA_DIR}/PandoraBox_Spin.(${PANDORA_CLASS}).xdb`;
-export const PANDORA_SPIN_LINK = 'MapObjects/_(AdvMapObjectLink)/Objects-All-Terra/PandoraBoxSpin.xdb';
+/** The animation probes: the SKINNED cube with the artifact idle, on classes
+ * that might animate it — a windmill-type Building (the shipped proof that
+ * Building plays an AnimSet) and an artifact (whose donor the rig IS; the
+ * class that would also give pickup-and-vanish and the AI's full appetite). */
 export const PANDORA_MILL_CLASS = 'AdvMapBuildingShared';
 export const PANDORA_MILL_SHARED = `${PANDORA_DIR}/PandoraBox_Mill.(${PANDORA_MILL_CLASS}).xdb`;
 export const PANDORA_MILL_LINK = 'MapObjects/_(AdvMapObjectLink)/Objects-All-Terra/PandoraBoxMill.xdb';
+export const PANDORA_ARTIFACT_CLASS = 'AdvMapArtifactShared';
+export const PANDORA_ARTIFACT_SHARED = `${PANDORA_DIR}/PandoraBox_Artifact.(${PANDORA_ARTIFACT_CLASS}).xdb`;
+export const PANDORA_ARTIFACT_LINK = 'MapObjects/_(AdvMapObjectLink)/Objects-All-Terra/PandoraBoxArtifact.xdb';
 
 /** The tier a contents value earns. */
 export function pandoraTier(value: number): PandoraTier {
@@ -355,15 +369,19 @@ const PANDORA_DDS = 'PandoraBox.dds';
 function paintModelTextures(copied: ArtCopy, modelCopyPath: string): ModFile[] {
   const doc = copied.files.get(modelCopyPath)?.toString('latin1');
   if (!doc) throw new Error(`pandora: no copied model at ${modelCopyPath}`);
-  const materials = [...doc.matchAll(/<Item href="([^"]+)"/g)].map((m) => m[1]!);
+  const OURS = `<Texture href="/${PANDORA_TEXTURE}#xpointer(/Texture)"/>`;
   let painted = 0;
-  for (const m of materials) {
+  // Inline materials sit in the model document itself (the chest donor's do).
+  const inline = doc.replace(/<Texture href="[^"]*"\s*\/>/g, () => { painted++; return OURS; });
+  if (painted) copied.files.set(modelCopyPath, Buffer.from(inline, 'latin1'));
+  // Referenced materials are their own documents beside or below the model.
+  for (const m of [...doc.matchAll(/<Item href="([^"]+)"/g)].map((x) => x[1]!)) {
     const mAt = resolve(modelCopyPath, m);
     const mDoc = mAt ? copied.files.get(mAt)?.toString('latin1') : null;
-    if (!mAt || !mDoc) continue;
+    if (!mAt || !mDoc || !/<Material[\s>]/.test(mDoc)) continue;
     copied.files.set(mAt, Buffer.from(mDoc.replace(
       /<Texture(?: href="[^"]*")?\s*\/?>(?:<\/Texture>)?/,
-      `<Texture href="/${PANDORA_TEXTURE}#xpointer(/Texture)"/>`,
+      OURS,
     ), 'latin1'));
     painted++;
   }
@@ -391,10 +409,14 @@ function retuneGeometryDoc(copied: ArtCopy, geomDocPath: string, box: { cx: numb
   copied.files.set(geomDocPath, Buffer.from(out, 'latin1'));
 }
 
-/** What the box says for itself, one file per message slot. */
+/** What the box says for itself, one file per message slot. The chest class
+ *  reads FOUR — its pickup dialog is index 2 and the artifact-found line 3,
+ *  and a document that stops short answers "Invalid message index" in game. */
 const MESSAGES: Record<string, string> = {
   name: "Pandora's Box",
   description: 'A box that holds whatever its maker sealed inside — riches or ruin. Opening it is the only way to find out which.',
+  dialogText: 'The box is sealed, and something waits inside. Open it?',
+  artifactFound: 'Sealed inside the box:',
 };
 
 /**
@@ -404,32 +426,24 @@ const MESSAGES: Record<string, string> = {
 export function buildPandora(read: DataReader): ModFile[] {
   const types = parseTypeSpec(mustRead(read, TYPES));
 
-  const seeds = [DONOR_MODEL, DONOR_ANIMSET, ...PANDORA_TIERS.map((t) => t.effect)];
+  // The box that ships is the CHEST donor rebuilt into the cube. Not the
+  // artifact stone: its skinned container drew nothing on two probe runs even
+  // de-skinned — whatever else its animated corners carry, the chest's plain
+  // static container is the one proven to draw on this very class.
+  const seeds = [CHEST_DONOR_MODEL, ...PANDORA_TIERS.map((t) => t.effect)];
   const copied = copyArt(seeds, ART_DIR, read, 'pandora:box');
   const absent = seeds.filter((s) => !copied.at.has(s));
   if (absent.length) throw new Error(`pandora: the game's data has no ${absent.join(', ')}`);
 
-  // The cube, in place of the stone.
-  const modelCopy = copied.at.get(DONOR_MODEL)!;
+  // The chest's material and geometry are INLINE: uid, box and textures all
+  // live in the model document itself.
+  const modelCopy = copied.at.get(CHEST_DONOR_MODEL)!;
   const modelDoc = copied.files.get(modelCopy)!.toString('latin1');
-  const geomHref = hrefOf(modelDoc, 'Geometry');
-  const geomAt = geomHref ? resolve(modelCopy, geomHref) : null;
-  const geomDoc = geomAt ? copied.files.get(geomAt)?.toString('latin1') : null;
-  if (!geomAt || !geomDoc) throw new Error('pandora: the donor model names no geometry');
-  const uid = /<uid>([0-9A-Fa-f-]{36})<\/uid>/.exec(geomDoc)?.[1];
-  const binPath = uid ? `bin/Geometries/${uid.toUpperCase()}` : null;
-  const bin = binPath ? copied.files.get(binPath) : null;
-  if (!binPath || !bin) throw new Error('pandora: the donor geometry binary did not copy');
-  // STATIC, deliberately. The first probe run showed glow and no cube: a
-  // skinned mesh on a class that raises no skeleton draws nothing, and neither
-  // Stand nor Treasure raises one. So the box that ships is a static model —
-  // every vertex on bone 0 and the model's Skeleton reference cleared, the
-  // exact shape of the shipped treasure chest. The spin lives on in the two
-  // hidden probes below, on the classes that might animate.
+  const uid = /<uid>([0-9A-Fa-f-]{36})<\/uid>/.exec(modelDoc)?.[1];
+  const bin = uid ? copied.files.get(`bin/Geometries/${uid.toUpperCase()}`) : null;
+  if (!bin) throw new Error('pandora: the chest donor geometry did not copy');
   const box = cubifyGeometry(bin, 'static');
-  retuneGeometryDoc(copied, geomAt, box);
-  copied.files.set(modelCopy, Buffer.from(
-    copied.files.get(modelCopy)!.toString('latin1').replace(/<Skeleton href="[^"]*"\s*\/>/, '<Skeleton/>'), 'latin1'));
+  retuneGeometryDoc(copied, modelCopy, box);
   const texture = paintModelTextures(copied, modelCopy);
 
   const files: ModFile[] = [...copied.files].map(([path, data]) => ({ path, data }));
@@ -450,10 +464,12 @@ export function buildPandora(read: DataReader): ModFile[] {
       file: `PandoraBox_${tier.key}`,
       className: PANDORA_CLASS,
       messages: MESSAGES,
-      model: DONOR_MODEL,
+      model: CHEST_DONOR_MODEL,
       effect: tier.effect,
       footprint: { w: 1, h: 1 },
       ground: null,
+      type: 'TREASURE_CHEST',
+      fields: { MinResource: '1', MaxResource: '1' },
     };
     const doc = buildingDoc(spec, { dir: PANDORA_DIR, shared: pandoraShared(tier.key), link: PANDORA_LINK, art: ART_DIR, text: texts }, types, { w: 1, h: 1 }, at);
     files.push({ path: pandoraShared(tier.key), data: Buffer.from(doc, 'latin1') });
@@ -462,7 +478,7 @@ export function buildPandora(read: DataReader): ModFile[] {
   // One palette entry; a fresh box is empty, and empty is the poorest glow.
   const first = PANDORA_TIERS[0]!;
   const linkSpec: BuildingSpec = {
-    file: 'PandoraBox', className: PANDORA_CLASS, messages: MESSAGES, model: DONOR_MODEL,
+    file: 'PandoraBox', className: PANDORA_CLASS, messages: MESSAGES, model: CHEST_DONOR_MODEL,
   };
   // the painted face doubles as the palette icon
   files.push({
@@ -470,23 +486,6 @@ export function buildPandora(read: DataReader): ModFile[] {
     data: Buffer.from(buildingLink(linkSpec, { dir: PANDORA_DIR, shared: pandoraShared(first.key), link: PANDORA_LINK, art: ART_DIR, text: texts }, PANDORA_TEXTURE), 'latin1'),
   });
 
-  // THE CHEST-CLASS PROBE. A Stand is invisible to the AI — no AI hero ever
-  // walks to an object that does nothing — where a treasure chest is a thing
-  // the AI knows to want. Whether a chest's own pickup can be silenced
-  // (SetObjectEnabled) while the touch trigger still fires is a question only
-  // the game can answer, so the box ships in both classes and the probe map
-  // (e2e stage 009) asks. Hidden in the palette until it earns its place.
-  const chestDoc = buildingDoc(
-    {
-      file: 'PandoraBox_Chest', className: PANDORA_CHEST_CLASS, messages: MESSAGES,
-      model: DONOR_MODEL, effect: PANDORA_TIERS[2]!.effect,
-      footprint: { w: 1, h: 1 }, ground: null,
-      type: 'TREASURE_CHEST', fields: { MinResource: '1', MaxResource: '1' },
-    },
-    { dir: PANDORA_DIR, shared: PANDORA_CHEST_SHARED, link: PANDORA_CHEST_LINK, art: ART_DIR, text: texts },
-    types, { w: 1, h: 1 }, at,
-  );
-  files.push({ path: PANDORA_CHEST_SHARED, data: Buffer.from(chestDoc, 'latin1') });
   // The behaviour the maps' generated blocks doFile, and its texts.
   files.push(...pandoraBehaviourFiles());
 
@@ -502,13 +501,13 @@ export function buildPandora(read: DataReader): ModFile[] {
       '</AdvMapObjectLink>',
     ].join(EOL) + EOL, 'latin1'),
   });
-  files.push(hiddenLink(PANDORA_CHEST_LINK, PANDORA_CHEST_SHARED, PANDORA_CHEST_CLASS));
 
-  // THE SPIN PROBES. A second copy of the donor, cube built in with the skin
-  // KEPT — bone 3, the one the artifact idle turns — plus the skeleton and the
-  // AnimSet. On a Stand (does that class animate at all?) and on a Building of
-  // the windmill's type, the one shipped proof that Building plays an AnimSet.
-  // Hidden in the palette; the probe map places them by name.
+  // THE ANIMATION PROBES. A copy of the artifact donor, cube built in with the
+  // skin KEPT — bone 3, the one the artifact idle turns — plus the skeleton
+  // and the AnimSet. On a Building of the windmill's type (the one shipped
+  // proof that Building plays an AnimSet) and on an ARTIFACT — the class the
+  // rig was made for, whose pickup also vanishes the object and whose pull on
+  // the AI is total. Hidden in the palette; the probe map places them by name.
   const spin = copyArt([DONOR_MODEL, DONOR_ANIMSET], `${PANDORA_DIR}/spin`, read, 'pandora:spin');
   const spinModel = spin.at.get(DONOR_MODEL);
   if (!spinModel) throw new Error('pandora: the spin probe lost its model');
@@ -527,18 +526,6 @@ export function buildPandora(read: DataReader): ModFile[] {
     const to = path ? spin.at.get(dataPath(path)) : undefined;
     return to ? `/${to}` : at(path);
   };
-  const spinDoc = buildingDoc(
-    {
-      file: 'PandoraBox_Spin', className: PANDORA_CLASS, messages: MESSAGES,
-      model: DONOR_MODEL, animSet: DONOR_ANIMSET, effect: PANDORA_TIERS[0]!.effect,
-      footprint: { w: 1, h: 1 }, ground: null,
-    },
-    { dir: PANDORA_DIR, shared: PANDORA_SPIN_SHARED, link: PANDORA_SPIN_LINK, art: `${PANDORA_DIR}/spin`, text: texts },
-    types, { w: 1, h: 1 }, spinAt,
-  );
-  files.push({ path: PANDORA_SPIN_SHARED, data: Buffer.from(spinDoc, 'latin1') });
-  files.push(hiddenLink(PANDORA_SPIN_LINK, PANDORA_SPIN_SHARED, PANDORA_CLASS));
-
   const millDoc = buildingDoc(
     {
       file: 'PandoraBox_Mill', className: PANDORA_MILL_CLASS, messages: MESSAGES,
@@ -551,6 +538,20 @@ export function buildPandora(read: DataReader): ModFile[] {
   );
   files.push({ path: PANDORA_MILL_SHARED, data: Buffer.from(millDoc, 'latin1') });
   files.push(hiddenLink(PANDORA_MILL_LINK, PANDORA_MILL_SHARED, PANDORA_MILL_CLASS));
+
+  const artifactDoc = buildingDoc(
+    {
+      file: 'PandoraBox_Artifact', className: PANDORA_ARTIFACT_CLASS, messages: MESSAGES,
+      model: DONOR_MODEL, animSet: DONOR_ANIMSET, effect: PANDORA_TIERS[1]!.effect,
+      footprint: { w: 1, h: 1 }, ground: null,
+      type: 'ARTF_RANDOM_SPECIFIC',
+      fields: { ArtifactID: 'ARTIFACT_NONE' },
+    },
+    { dir: PANDORA_DIR, shared: PANDORA_ARTIFACT_SHARED, link: PANDORA_ARTIFACT_LINK, art: `${PANDORA_DIR}/spin`, text: texts },
+    types, { w: 1, h: 1 }, spinAt,
+  );
+  files.push({ path: PANDORA_ARTIFACT_SHARED, data: Buffer.from(artifactDoc, 'latin1') });
+  files.push(hiddenLink(PANDORA_ARTIFACT_LINK, PANDORA_ARTIFACT_SHARED, PANDORA_ARTIFACT_CLASS));
 
   return files;
 }

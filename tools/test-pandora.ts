@@ -19,8 +19,9 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import {
-  PANDORA_CHEST_LINK, PANDORA_CHEST_SHARED, PANDORA_LINK, PANDORA_MILL_SHARED,
-  PANDORA_SPIN_SHARED, PANDORA_TIERS, buildPandora, pandoraShared, pandoraTexture, pandoraTier,
+  PANDORA_ARTIFACT_LINK, PANDORA_ARTIFACT_SHARED, PANDORA_CLASS, PANDORA_LINK,
+  PANDORA_MILL_LINK, PANDORA_MILL_SHARED, PANDORA_TIERS,
+  buildPandora, pandoraShared, pandoraTexture, pandoraTier,
 } from '../src/mods/pandora-files.ts';
 import { buildGameplayArchive } from '../src/mods/gameplay.ts';
 import {
@@ -56,10 +57,9 @@ console.log('the cube');
 const shared0 = byPath.get(pandoraShared(PANDORA_TIERS[0]!.key).toLowerCase())?.toString('latin1') ?? '';
 const modelHref = /<Model href="\/([^"#]+)/.exec(shared0)?.[1] ?? '';
 const modelDoc = byPath.get(modelHref.toLowerCase())?.toString('latin1') ?? '';
-const geomHref = /<Geometry href="([^"#]+)/.exec(modelDoc)?.[1] ?? '';
-const geomPath = geomHref.startsWith('/') ? geomHref.slice(1)
-  : join(modelHref, '..', geomHref).replace(/\\/g, '/');
-const geomDoc = byPath.get(geomPath.toLowerCase())?.toString('latin1') ?? '';
+// The chest donor carries its geometry INLINE: the uid and box are in the
+// model document itself.
+const geomDoc = modelDoc;
 const uid = /<uid>([0-9A-Fa-f-]{36})<\/uid>/.exec(geomDoc)?.[1] ?? '';
 const bin = byPath.get(`bin/geometries/${uid.toUpperCase()}`.toLowerCase());
 check('the geometry binary is in the mod', !!bin, uid);
@@ -118,7 +118,9 @@ if (bin) {
 console.log('the documents');
 for (const tier of PANDORA_TIERS) {
   const doc = byPath.get(pandoraShared(tier.key).toLowerCase())?.toString('latin1');
-  check(`${tier.key} parses`, !!doc && doc.includes('<AdvMapStandShared>'));
+  check(`${tier.key} parses`, !!doc && doc.includes(`<${PANDORA_CLASS}>`));
+  check(`${tier.key} is a chest with all four messages`, !!doc && doc.includes('<Type>TREASURE_CHEST</Type>')
+    && (doc.match(/<Item href="\/Buildings\/PandoraBox\/[^"]*\.txt"\/>/g) ?? []).length === 4);
   if (!doc) continue;
   // every absolute href points inside the build
   const outside = [...doc.matchAll(/href="\/([^"#]+)/g)]
@@ -148,14 +150,15 @@ const countHex = (buf: Buffer, hex: string): number => {
 };
 check('every tier is animation-free', PANDORA_TIERS.every((t) =>
   /<AnimSet\/>/.test(byPath.get(pandoraShared(t.key).toLowerCase())?.toString('latin1') ?? '')));
-check('the model keeps no skeleton', /<Skeleton\/>/.test(modelDoc));
-if (bin) check('the cube is bound to bone 0, statically', countHex(Buffer.from(bin), STATIC_ENTRY) >= 600
+if (bin) check('the cube is bound to bone 0, statically', countHex(Buffer.from(bin), STATIC_ENTRY) >= 80
   && countHex(Buffer.from(bin), RIGID_ENTRY) === 0, `${countHex(Buffer.from(bin), STATIC_ENTRY)} entries`);
 
-// The spin probes keep the donor's rig, on the classes that might play it.
-const spinDoc = byPath.get(PANDORA_SPIN_SHARED.toLowerCase())?.toString('latin1') ?? '';
-check('the spin probe keeps the animation', /<AnimSet href="[^"]+"/.test(spinDoc));
-const spinModelPath = /<Model href="\/([^"#]+)/.exec(spinDoc)?.[1] ?? '';
+// The animation probes keep the donor's rig, on the classes that might play it.
+const artDoc = byPath.get(PANDORA_ARTIFACT_SHARED.toLowerCase())?.toString('latin1') ?? '';
+check('the artifact probe keeps the animation', /<AnimSet href="[^"]+"/.test(artDoc));
+check('and picks up as nothing', artDoc.includes('<Type>ARTF_RANDOM_SPECIFIC</Type>')
+  && artDoc.includes('<ArtifactID>ARTIFACT_NONE</ArtifactID>'));
+const spinModelPath = /<Model href="\/([^"#]+)/.exec(artDoc)?.[1] ?? '';
 const spinModelDoc = byPath.get(spinModelPath.toLowerCase())?.toString('latin1') ?? '';
 check('and its skeleton', /<Skeleton href="[^"]+"/.test(spinModelDoc));
 const spinGeomDoc = byPath.get(
@@ -188,16 +191,15 @@ for (let i = 0; i < img.rgba.length; i += 4) seen.add((img.rgba[i]! << 16) | (im
 check('is painted, not flat', seen.size > 100, `${seen.size} colours`);
 const dds = files.find((f) => f.path === 'Buildings/PandoraBox/PandoraBox.dds');
 check('the painted face ships as a dds', !!dds && dds.data.length === 128 + img.width * img.height * 4);
-// the MODEL's materials name our texture; the glow effects keep their own
-const modelMaterials = [...modelDoc.matchAll(/<Item href="\/([^"#]+)/g)].map((m) => m[1]!);
-check('every model material names our texture', modelMaterials.length > 0
-  && modelMaterials.every((p) => byPath.get(p.toLowerCase())?.toString('latin1').includes('PandoraBox.(Texture).xdb')),
-  `${modelMaterials.length} materials`);
+// the MODEL's materials name our texture — inline in the chest donor's own
+// document — and the glow effects keep their own
+const inlineTextures = [...modelDoc.matchAll(/<Texture href="([^"]*)"/g)].map((m) => m[1]!);
+check('every model material names our texture', inlineTextures.length > 0
+  && inlineTextures.every((t) => t.includes('PandoraBox.(Texture).xdb')), `${inlineTextures.length} materials`);
 // The glow effects' materials keep the game's art; the spin probes' copy of
 // the MODEL is painted like the main one and is not a glow.
 const effectMaterials = files.filter((f) => f.path.toLowerCase().includes('(material)')
-  && !f.path.includes('/spin/')
-  && !modelMaterials.some((p) => p.toLowerCase() === f.path.toLowerCase()));
+  && !f.path.includes('/spin/'));
 check('the glow materials keep their art', effectMaterials.length > 0
   && effectMaterials.every((f) => !f.data.toString('latin1').includes('PandoraBox.(Texture).xdb')), `${effectMaterials.length} kept`);
 
@@ -242,7 +244,8 @@ const archive = buildGameplayArchive(read);
 const names = new Set(readEntries(archive).map((e) => e.name));
 check('round-trips as a zip', names.size === files.length, `${names.size} of ${files.length}`);
 check('carries the palette link', names.has(PANDORA_LINK));
-check('carries the chest probe, hidden', names.has(PANDORA_CHEST_LINK) && names.has(PANDORA_CHEST_SHARED));
+check('carries the probes, hidden', names.has(PANDORA_MILL_LINK) && names.has(PANDORA_MILL_SHARED)
+  && names.has(PANDORA_ARTIFACT_LINK) && names.has(PANDORA_ARTIFACT_SHARED));
 
 console.log(failures ? `\n${failures} FAILED` : '\nall good');
 process.exit(failures ? 1 : 0);

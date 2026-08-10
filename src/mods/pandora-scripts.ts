@@ -59,6 +59,13 @@ export interface PandoraContents {
   creatures?: PandoraStack[];
   /** Fought before the box opens. */
   guards?: PandoraStack[];
+  /**
+   * Probe knob: also `SetObjectEnabled(name, 0)` after hooking. What that does
+   * to a treasure-class object — hides it, silences its pickup, or nothing —
+   * is exactly what the probe map asks; the API doc says "hide", and the doc
+   * has been wrong about less.
+   */
+  disable?: boolean;
 }
 
 /**
@@ -185,6 +192,7 @@ function boxLua(box: PandoraContents): string[] {
     '};',
     `Trigger(OBJECT_TOUCH_TRIGGER, "${box.name}", "H5E_PandoraTouch");`,
   ];
+  if (box.disable) out.push(`SetObjectEnabled("${box.name}", 0);`);
   if (box.guards?.length) {
     const pairs = box.guards.map((g) => `${g.creature}, ${luaNumber(g.count)}`).join(', ');
     out.push(
