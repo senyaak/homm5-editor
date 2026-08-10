@@ -770,11 +770,29 @@ three kinds again — 105, 10, 11 — before it answers a percentage.
    adds, Elemental Overkill multiplies, and both are the caster's SKILL asked
    through `vt+0x290`. A term of ours is one more of those, and the extension
    is already detoured onto this function.
-2. **Nothing in the whole path asks about an ARTIFACT.** An artifact reaches a
-   spell today only through the hero's spell power, which is upstream in the
-   worth. So "an artifact that adds half again to fire damage" is not a rule
-   the engine has and we are restoring — it is new behaviour, and this door is
-   where it belongs.
+2. ~~Nothing in the whole path asks about an ARTIFACT.~~ **Wrong, and Senya
+   said so before it was found: "защита от холода или урон от земли — это
+   точно есть, ведь артефакты рабочие".** They enter ONE CALL EARLIER, in
+   `0xB85E40` — the function `HitOne` calls just before the door, which this
+   page had passed over as "something". Four of the seventy-seven
+   `CountEquipped` sites are in it, each paired with `SpellElement`:
+
+   | artifact | number | asked beside |
+   |---|---|---|
+   | `TITANS_TRIDENT` | 5 | the spell's element |
+   | `EVERCOLD_ICICLE` | 18 | the spell's element |
+   | `PHOENIX_FEATHER_CAPE` | 32 | the spell's element |
+   | `ARTIFACT_EARTHSLIDERS` | 61 | the spell's element |
+
+   and three skills in the same shape — 8 `SORCERY`, 26 `SCHOLAR`, 42
+   `ARCANE_TRAINING`. So "an artifact that adds to the damage of one element"
+   is a shape the engine already has, four times over, and a term of ours
+   belongs beside them rather than somewhere new.
+
+   **The lesson is the reading, not the fact.** "Nothing asks" was written
+   after decoding two functions and skipping a third because its name said
+   nothing. An inventory that stops at the door is not an inventory of the
+   path.
 3. **Resistance is its own door.** An artifact that adds magic resistance does
    not belong at `0xB861A0` at all; it belongs at `0xB7D870`, one detour
    further along, which is a second term and not the same one.
