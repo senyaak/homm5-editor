@@ -66,6 +66,12 @@ export interface PandoraContents {
    * has been wrong about less.
    */
   disable?: boolean;
+  /**
+   * A text ref shown AFTER the box opens — "you received: …". The editor
+   * writes the file beside the map and puts its path here; the behaviour shows
+   * whatever the ref holds and stays silent when there is none.
+   */
+  given?: string;
 }
 
 /**
@@ -85,10 +91,13 @@ export function pandoraBehaviourLua(): string {
     'H5E_PandoraHero = nil;',
     'H5E_PandoraObj = nil;',
     '',
+    '-- Every step says its name: print lands in the game console, so a run',
+    '-- that misbehaves reads as a story rather than a shrug.',
     'function H5E_PandoraTouch(heroName, objectName)',
     '\tif H5E_PANDORA == nil then return end;',
     '\tlocal box = H5E_PANDORA[objectName];',
     '\tif box == nil then return end;',
+    '\tprint("H5E pandora: touched " .. objectName .. " by " .. heroName);',
     '\tH5E_PandoraHero = heroName;',
     '\tH5E_PandoraObj = objectName;',
     `\tQuestionBox("/${PANDORA_OPEN_TEXT}", "H5E_PandoraOpen", "H5E_PandoraLeave");`,
@@ -121,23 +130,39 @@ export function pandoraBehaviourLua(): string {
     'function H5E_PandoraGrant(hero, objectName)',
     '\tlocal box = H5E_PANDORA[objectName];',
     '\tif box == nil then return end;',
+    '\tprint("H5E pandora: opening " .. objectName .. " for " .. hero);',
     '\tlocal player = GetObjectOwner(hero);',
-    '\tif box.exp ~= nil then GiveExp(hero, box.exp); end;',
+    '\tif box.exp ~= nil then',
+    '\t\tprint("H5E pandora: exp " .. box.exp);',
+    '\t\tGiveExp(hero, box.exp);',
+    '\tend;',
     '\tif box.res ~= nil then',
     '\t\tfor i, r in box.res do',
+    '\t\t\tprint("H5E pandora: resource " .. r[1] .. " +" .. r[2]);',
     '\t\t\tSetPlayerResource(player, r[1], GetPlayerResource(player, r[1]) + r[2], hero);',
     '\t\tend;',
     '\tend;',
     '\tif box.artifacts ~= nil then',
-    '\t\tfor i, a in box.artifacts do GiveArtefact(hero, a); end;',
+    '\t\tfor i, a in box.artifacts do',
+    '\t\t\tprint("H5E pandora: artifact " .. a);',
+    '\t\t\tGiveArtefact(hero, a);',
+    '\t\tend;',
     '\tend;',
     '\tif box.spells ~= nil then',
-    '\t\tfor i, s in box.spells do TeachHeroSpell(hero, s); end;',
+    '\t\tfor i, s in box.spells do',
+    '\t\t\tprint("H5E pandora: spell " .. s);',
+    '\t\t\tTeachHeroSpell(hero, s);',
+    '\t\tend;',
     '\tend;',
     '\tif box.creatures ~= nil then',
-    '\t\tfor i, c in box.creatures do AddHeroCreatures(hero, c[1], c[2]); end;',
+    '\t\tfor i, c in box.creatures do',
+    '\t\t\tprint("H5E pandora: creatures " .. c[1] .. " x" .. c[2]);',
+    '\t\t\tAddHeroCreatures(hero, c[1], c[2]);',
+    '\t\tend;',
     '\tend;',
+    '\tif box.given ~= nil then MessageBox(box.given); end;',
     '\tH5E_PANDORA[objectName] = nil;',
+    '\tprint("H5E pandora: removing " .. objectName);',
     '\tRemoveObject(objectName);',
     '\tH5E_PandoraObj = nil;',
     'end;',
@@ -186,6 +211,7 @@ function boxLua(box: PandoraContents): string[] {
   if (box.creatures?.length) {
     fields.push(`\tcreatures = { ${box.creatures.map((c) => `{${c.creature}, ${luaNumber(c.count)}}`).join(', ')} }`);
   }
+  if (box.given) fields.push(`\tgiven = "${box.given}"`);
   const out = [
     `H5E_PANDORA["${box.name}"] = {`,
     ...fields.map((f, i) => (i < fields.length - 1 ? `${f},` : f)),

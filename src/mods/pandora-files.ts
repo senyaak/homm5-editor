@@ -94,6 +94,21 @@ export const PANDORA_ARTIFACT_CLASS = 'AdvMapArtifactShared';
 export const PANDORA_ARTIFACT_SHARED = `${PANDORA_DIR}/PandoraBox_Artifact.(${PANDORA_ARTIFACT_CLASS}).xdb`;
 export const PANDORA_ARTIFACT_LINK = 'MapObjects/_(AdvMapObjectLink)/Objects-All-Terra/PandoraBoxArtifact.xdb';
 
+/**
+ * The model bisect: the cube has not drawn in three runs, so four diagnostic
+ * twins split our pipeline apart — the SHIPPED chest model untouched (is the
+ * class + our shared fine at all?), a plain copy (does a fresh-uid copy in the
+ * archive draw?), a painted copy (does our texture kill it?), a cubed copy
+ * (does the geometry rewrite kill it?). Whichever subset draws names the
+ * culprit. All hidden; all deliberately effect-free so nothing glows over the
+ * answer.
+ */
+export const PANDORA_DIAGS = ['Vanilla', 'Copy', 'Painted', 'Cubed'] as const;
+export const pandoraDiagShared = (key: string): string =>
+  `${PANDORA_DIR}/PandoraBox_Diag${key}.(${PANDORA_CLASS}).xdb`;
+export const pandoraDiagLink = (key: string): string =>
+  `MapObjects/_(AdvMapObjectLink)/Objects-All-Terra/PandoraBoxDiag${key}.xdb`;
+
 /** The tier a contents value earns. */
 export function pandoraTier(value: number): PandoraTier {
   let tier = PANDORA_TIERS[0]!;
@@ -538,6 +553,48 @@ export function buildPandora(read: DataReader): ModFile[] {
   );
   files.push({ path: PANDORA_MILL_SHARED, data: Buffer.from(millDoc, 'latin1') });
   files.push(hiddenLink(PANDORA_MILL_LINK, PANDORA_MILL_SHARED, PANDORA_MILL_CLASS));
+
+  // The model bisect (see PANDORA_DIAGS above).
+  const diagSpec = (key: string, model: string): BuildingSpec => ({
+    file: `PandoraBox_Diag${key}`, className: PANDORA_CLASS, messages: MESSAGES,
+    model, footprint: { w: 1, h: 1 }, ground: null,
+    type: 'TREASURE_CHEST', fields: { MinResource: '1', MaxResource: '1' },
+  });
+  const diagPaths = (key: string) => ({
+    dir: PANDORA_DIR, shared: pandoraDiagShared(key), link: pandoraDiagLink(key),
+    art: `${PANDORA_DIR}/diag-${key.toLowerCase()}`, text: texts,
+  });
+  // Vanilla: the game's own chest model, referenced rather than copied — the
+  // one deliberate break of self-containment, and it is diagnostic-only.
+  files.push({
+    path: pandoraDiagShared('Vanilla'),
+    data: Buffer.from(buildingDoc(diagSpec('Vanilla', CHEST_DONOR_MODEL), diagPaths('Vanilla'), types,
+      { w: 1, h: 1 }, () => `/${CHEST_DONOR_MODEL}`), 'latin1'),
+  });
+  files.push(hiddenLink(pandoraDiagLink('Vanilla'), pandoraDiagShared('Vanilla'), PANDORA_CLASS));
+  for (const key of ['Copy', 'Painted', 'Cubed'] as const) {
+    const diag = copyArt([CHEST_DONOR_MODEL], `${PANDORA_DIR}/diag-${key.toLowerCase()}`, read, `pandora:diag-${key}`);
+    const dModel = diag.at.get(CHEST_DONOR_MODEL);
+    if (!dModel) throw new Error(`pandora: the ${key} diagnostic lost its model`);
+    if (key === 'Painted') paintModelTextures(diag, dModel); // texture pair already in files
+    if (key === 'Cubed') {
+      const dDoc = diag.files.get(dModel)!.toString('latin1');
+      const dUid = /<uid>([0-9A-Fa-f-]{36})<\/uid>/.exec(dDoc)?.[1];
+      const dBin = dUid ? diag.files.get(`bin/Geometries/${dUid.toUpperCase()}`) : null;
+      if (!dBin) throw new Error('pandora: the Cubed diagnostic lost its geometry');
+      retuneGeometryDoc(diag, dModel, cubifyGeometry(dBin, 'static'));
+    }
+    files.push(...[...diag.files].map(([path, data]) => ({ path, data })));
+    const dAt = (path: string | undefined): string | undefined => {
+      const to = path ? diag.at.get(dataPath(path)) : undefined;
+      return to ? `/${to}` : undefined;
+    };
+    files.push({
+      path: pandoraDiagShared(key),
+      data: Buffer.from(buildingDoc(diagSpec(key, CHEST_DONOR_MODEL), diagPaths(key), types, { w: 1, h: 1 }, dAt), 'latin1'),
+    });
+    files.push(hiddenLink(pandoraDiagLink(key), pandoraDiagShared(key), PANDORA_CLASS));
+  }
 
   const artifactDoc = buildingDoc(
     {

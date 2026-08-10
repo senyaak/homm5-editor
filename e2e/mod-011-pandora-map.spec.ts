@@ -26,11 +26,13 @@ import { modFile } from '../src/game/mod-paths.ts';
 import { readEntries } from '../src/format/pak.ts';
 import { writeGameplayArchive } from '../src/mods/gameplay.ts';
 import {
-  PANDORA_ARTIFACT_SHARED, PANDORA_CLASS, PANDORA_MILL_SHARED,
-  PANDORA_TIERS, pandoraShared,
+  PANDORA_ARTIFACT_SHARED, PANDORA_CLASS, PANDORA_DIAGS, PANDORA_MILL_SHARED,
+  PANDORA_TIERS, pandoraDiagShared, pandoraShared,
 } from '../src/mods/pandora-files.ts';
 import { withPandoraBlock } from '../src/mods/pandora-scripts.ts';
 import type { PandoraContents } from '../src/mods/pandora-scripts.ts';
+import { utf16 } from '../src/mods/mod-files.ts';
+import { mkdirSync, writeFileSync } from 'node:fs';
 
 let ed: Launched;
 const GAME = modGameRoot();
@@ -68,6 +70,27 @@ const BOXES: (PandoraContents & { x: number; y: number; shared: string })[] = [
   { name: 'PandoraMill', exp: 100, x: 36, y: 16, shared: `/${PANDORA_MILL_SHARED}` },
   { name: 'PandoraArtifact', gold: 1000, x: 36, y: 22, shared: `/${PANDORA_ARTIFACT_SHARED}` },
 ];
+
+/** The model bisect, one twin per pipeline stage — placed to be LOOKED at,
+ *  never touched, so they carry no contents and no hooks. Left to right:
+ *  Vanilla, Copy, Painted, Cubed — the first invisible one names the culprit. */
+const DIAGS = PANDORA_DIAGS.map((key, i) => ({
+  name: `PandoraDiag${key}`, x: 22 + i * 4, y: 40, shared: `/${pandoraDiagShared(key)}`,
+}));
+
+/** What a box says it gave, written beside the map for the behaviour to show. */
+function givenText(b: PandoraContents): string {
+  const said: string[] = [];
+  if (b.exp) said.push(`${b.exp} experience`);
+  if (b.gold) said.push(`${b.gold} gold`);
+  for (const k of ['wood', 'ore', 'mercury', 'crystal', 'sulfur', 'gem'] as const) {
+    if (b[k]) said.push(`${b[k]} ${k}`);
+  }
+  if (b.artifacts?.length) said.push(`${b.artifacts.length} artifact(s)`);
+  if (b.spells?.length) said.push(`${b.spells.length} spell(s)`);
+  for (const c of b.creatures ?? []) said.push(`${c.count} creature(s) join`);
+  return said.length ? `The box yields: ${said.join(', ')}.` : 'The box was empty.';
+}
 
 const SIDES = [
   { slot: 0, colour: 'PCOLOR_RED', player: 'PLAYER_1', at: { x: 28, y: 34 } },
@@ -121,14 +144,14 @@ test('every box goes down through the palette, named for what it holds', async (
   const { page } = ed;
   await newMap(page, NAME, '96');
 
-  for (const b of BOXES) {
+  for (const b of [...BOXES, ...DIAGS]) {
     const id = await place(page, b.shared, b.x, b.y);
     await setPath(page, id, ['Name'], b.name);
   }
 
   const placed = await page.evaluate(() => window.view.objects().map((o) => o.type));
-  expect(placed.filter((t) => t === 'AdvMapTreasure'), 'the chest-class boxes')
-    .toHaveLength(BOXES.filter((b) => b.shared === BOX).length);
+  expect(placed.filter((t) => t === 'AdvMapTreasure'), 'the chest-class boxes and the bisect row')
+    .toHaveLength(BOXES.filter((b) => b.shared === BOX).length + DIAGS.length);
   expect(placed.filter((t) => t === 'AdvMapBuilding'), 'the mill probe')
     .toHaveLength(1);
   expect(placed.filter((t) => t === 'AdvMapArtifact'), 'the artifact probe')
@@ -153,7 +176,12 @@ test('two sides, and the script that answers a touch', async () => {
   }
 
   // The script: the generated pandora block, and nothing of anyone else's.
-  const script = withPandoraBlock('', BOXES);
+  // Each box also names the "you received" text the behaviour shows after it
+  // opens; the files go beside the map after the first save makes its folder.
+  const withGiven = BOXES.map((b) => ({
+    ...b, given: `/Maps/SingleMissions/${NAME}/pandora-${b.name}.txt`,
+  }));
+  const script = withPandoraBlock('', withGiven);
   const bound = await page.evaluate(async (text) => {
     const r = await window.editor.newScript({ base: 'MapScript' });
     await window.editor.writeFile({ href: r.lua, text });
@@ -164,6 +192,13 @@ test('two sides, and the script that answers a touch', async () => {
 
   await bar(page, '#save');
   await hudSays(page, /saved/i, 120_000);
+
+  // The reward texts, in the map's folder the save just made. UTF-16, like
+  // every text the game reads.
+  mkdirSync(MAP_DIR, { recursive: true });
+  for (const b of BOXES) {
+    writeFileSync(join(MAP_DIR, `pandora-${b.name}.txt`), utf16(givenText(b)));
+  }
 
   const xml = readFileSync(join(MAP_DIR, 'map.xdb'), 'latin1');
   expect(xml, 'the map binds the script').toContain('MapScript.xdb#xpointer(/Script)');
@@ -192,4 +227,5 @@ test('and it packs to a map the game can be pointed at', async () => {
   expect(names.some((n) => n.endsWith('map.xdb')), 'the archive holds the map').toBe(true);
   expect(names.some((n) => n.endsWith('MapScript.lua')), 'and the script').toBe(true);
   expect(names.some((n) => n.includes('map-tag')), 'and the tag the lobby lists').toBe(true);
+  expect(names.some((n) => n.endsWith('pandora-PandoraExp.txt')), 'and the reward texts').toBe(true);
 });
