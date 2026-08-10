@@ -978,9 +978,28 @@ export const TEST_ICE_TARGET = {
   element: 'ELEMENT_WATER',
 };
 
+/**
+ * **And the same again with its element AIR** — the third mark, and the one
+ * nothing on this map could ask for until now.
+ *
+ * The air applier takes one argument fire's does not: a byte in front of the
+ * Master of Storms question that decides whether the mark is left at all. Ours
+ * passes 1, which is the answer fire gives by having no such gate — and that is
+ * a reading, not a measurement, until a battle shows the mark. This spell and
+ * the perk beside it are what make the battle possible.
+ */
+export const TEST_AIR_TARGET = {
+  ...TEST_ARMAGEDDON_TARGET,
+  id: 'SPELL_H3_TEST_AIR_TARGET',
+  file: 'H3TestAirTarget',
+  name: 'Молния (наша)',
+  description: 'Тот же нацеливаемый армагеддон, но воздушный — чтобы увидеть метку Мастера бурь.',
+  element: 'ELEMENT_AIR',
+};
+
 export const OUR_SPELL_FIXTURES = [
   DEATH_RIPPLE, TEST_ARMAGEDDON, TEST_ARMAGEDDON_AREA, TEST_ARMAGEDDON_TARGET,
-  DEATH_RIPPLE_TARGET, TEST_ICE_TARGET,
+  DEATH_RIPPLE_TARGET, TEST_ICE_TARGET, TEST_AIR_TARGET,
 ] as const;
 
 /**

@@ -254,6 +254,8 @@ const TEST_ARMAGEDDON_TARGET = 'SPELL_H3_TEST_ARMAGEDDON_TARGET';
 const DEATH_RIPPLE_TARGET = 'SPELL_H3_DEATH_RIPPLE_TARGET';
 /** The same aimed spell with its ELEMENT changed — the reading for the ice mark. */
 const TEST_ICE_TARGET = 'SPELL_H3_TEST_ICE_TARGET';
+/** And with its element AIR — the third Master's mark, and the last unwatched one. */
+const TEST_AIR_TARGET = 'SPELL_H3_TEST_AIR_TARGET';
 
 /** Dark Magic, at the three masteries the four heroes spread across. */
 const DARK = (mastery: string): Skill => ({ id: 'HERO_SKILL_DARK_MAGIC', mastery });
@@ -281,7 +283,8 @@ export const HEROES: Kit[] = [
     // for. The two Master perks are one skill's, so a wizard with Destructive at
     // expert may hold both, and the fire test is unaffected: each mark is left by
     // the applier for that spell's own element.
-    perks: ['HERO_SKILL_MASTER_OF_FIRE', 'HERO_SKILL_MASTER_OF_ICE'],
+    perks: ['HERO_SKILL_MASTER_OF_FIRE', 'HERO_SKILL_MASTER_OF_ICE',
+      'HERO_SKILL_MASTER_OF_LIGHTNINGS'],
     // Armageddon to hit everything including the war machines, Fireball for a
     // single stack. Stone Skin is in the book to read the spell's own numbers
     // from, but it is not what moves the defence in this test — see the druids.
@@ -296,10 +299,10 @@ export const HEROES: Kit[] = [
       // Bolt through the single-target site with a divisor of 1, Frost Ring
       // through the area one with the number of stacks hit — so one cast of each
       // says what it is. Take them out again when it has a name.
-      'SPELL_ICE_BOLT', 'SPELL_FROST_RING',
+      'SPELL_ICE_BOLT', 'SPELL_FROST_RING', 'SPELL_LIGHTNING_BOLT',
       // And OUR ice, which is what the mark is really being asked about: the
       // aimed Armageddon with one field changed, its element.
-      TEST_ICE_TARGET,
+      TEST_ICE_TARGET, TEST_AIR_TARGET,
       'SPELL_ARMAGEDDON', 'SPELL_FIREBALL', 'SPELL_STONESKIN', DEATH_RIPPLE,
       TEST_ARMAGEDDON, TEST_ARMAGEDDON_AREA, TEST_ARMAGEDDON_TARGET,
       // And the aimed ripple, on the hero whose foe is UNDEAD: the zombies are
