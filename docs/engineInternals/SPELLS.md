@@ -939,6 +939,16 @@ so.
 | `magic_damage` + the element's row | added up, then applied as one percentage |
 | every row's first artifact into `0xBD3160` | so the book names the piece, as it names a cape |
 | the half chosen by the ROW's sign | a piece that takes magic away is filed with the shields, not with the capes |
+| every row that fired, even when they cancel | the report lists what ACTED, and a sum of zero is two pieces acting |
+
+**«Two artifacts, and the book says neither is involved»** — found by Senya on
+the Death Ripple, which is the one spell it could be found on. The ripple belongs
+to NO element, so the prism's four rows pass it by and only the magic pair is
+left: `+10` and `−10`, cancelling exactly. The hook left early on a sum of zero
+and filed nothing. The rows now decide whether there is something to say and the
+sum only decides whether the number moves — which is also the difference between
+"nothing applies to this spell" and "these two cancel", and a player is entitled
+to the second.
 
 The taking side stays at `0xB861A0`, against the number one stack loses, because
 that is where the target is known — and nothing displays it anyway.

@@ -449,6 +449,12 @@ open the book, and look before clicking:
    is loaded or not, and the minus ten is ours and shows only on the book. One
    artifact, two mechanisms, and neither should cost the other anything.
 
+   **And «Волна смерти» is the other reading of the same pair.** It belongs to no
+   element, so the prism does not touch it and the magic pair cancels: the
+   number should be **unchanged**, and BOTH pieces should still be listed — the
+   focus among what adds, the helm among what takes. A spell that lists neither
+   is the hook leaving early on a sum of zero, which it used to do.
+
    **The helm should be listed on the side that TAKES, not the side that
    gives** — the game keeps two lists, one for what raised the number and one
    for what lowered it, and a minus of ours goes in the second. It was in the

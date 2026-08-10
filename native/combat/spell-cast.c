@@ -715,14 +715,27 @@ static int __fastcall on_spell_bonuses(int worth, void *block, void *caster, voi
     add += hero_term_named(hero, STAT_AIR_DAMAGE + element - 1, 0,
                            named, &namedCount, MAX_REASONS);
   }
-  if (!add) return worth;
+  if (!namedCount) return worth;
   int was = worth;
-  worth += worth * add / 100;
-  // A CURSED piece takes away, and enough of them may take away more than there
-  // is. Floored rather than allowed to go negative: the door's own guard two
-  // lines up refuses to work on a number that is not positive, so this is the
-  // same rule applied to what we hand back.
-  if (worth < 0) worth = 0;
+  if (add) {
+    worth += worth * add / 100;
+    // A CURSED piece takes away, and enough of them may take away more than
+    // there is. Floored rather than allowed to go negative: the door's own guard
+    // two lines up refuses to work on a number that is not positive, so this is
+    // the same rule applied to what we hand back.
+    if (worth < 0) worth = 0;
+  }
+  // A SUM OF ZERO IS NOT NOTHING HAPPENING, and leaving early on it was a real
+  // bug: a hero wearing a piece that gives ten per cent and one that takes ten
+  // gets his number back unchanged, and used to be told nothing at all was
+  // involved. Both pieces acted; the report is a list of what acted, not of what
+  // moved the total. So the rows decide whether there is anything to say, and
+  // the sum only decides whether the number changes.
+  //
+  // Senya found it on the Death Ripple, which is the spell it had to be found
+  // on: it belongs to no element, so the prism's four rows pass it by and only
+  // the magic pair is left — +10 and −10, cancelling exactly.
+  //
   // AND SAY WHY, in the engine's own report rather than in a place of ours: this
   // is the list the book reads, so the piece that did it is named on screen the
   // way a shipped one is. Null in battle, and the recorder refuses null itself.
