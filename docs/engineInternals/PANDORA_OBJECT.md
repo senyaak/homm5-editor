@@ -65,14 +65,36 @@ The touch TRIGGER is a separate path from the behaviour, so with the
 behaviour gated the touch still fires and the script runs the whole show —
 question, fight, receipt, removal.
 
+## The gate, refined — no Lua read at visit time
+
+Reading a Lua value back from C is the expensive direction (the battle
+scripting page says why), so the gate never does it. Instead the extension
+REGISTERS two adventure-map Lua functions — the cost of adding one is on
+docs/engineInternals/LUA.md — and the map's generated block calls them:
+
+    H5EPandoraReset();          -- top of the block: this map's list starts empty
+    H5EPandoraMark("Pandora01"); -- once per box, beside its Trigger line
+
+The DLL keeps the names in its own set, and the treasure-visit detour checks
+membership natively — a string compare, no script host in sight. The map's own
+block stays the single source of truth; a save rewrites it, and the reset
+keeps a loaded save or a next map from inheriting the previous list.
+
+This also moves `pandora-box` from an archive-only flag to a native one
+(`native: false` comes off, the name joins QOL_NAMES in C), since the hooks
+now exist and must follow it.
+
 ## Still to do
 
-1. Pin the visit slot: which vtable entry the interaction dispatcher calls
-   when a hero steps on the active tile (candidates: `0xfd4f60+0xc/…`,
-   `0xfd4f84+0xc` → `0xd214a0`). `trace.ts calls` on each, looking for the
-   caller that also reaches heroes.
-2. Find the advmap Lua state the way battle scripting found the fight's, and
-   the object's Name string on `CAdvMapTreasure` (the placement name the
-   script keys on).
+1. Pin the visit slot. `0xd214a0` (285 instructions, `CAdvMapTreasure` vtable
+   `0xfd4f84+0xc` and `0xfd4f90+0x0`) is the strongest candidate — the
+   index-3 message push at `0xd21015` sits in the function just before it,
+   and the entries past it (`0xd2189a`…) are adjuster thunks. What is missing
+   is the caller chain from the interaction dispatcher (a virtual call, so
+   `trace.ts calls` stays silent); the next probe is a log-only detour on
+   `0xd214a0` and its `0xfd4f60+0xc`/`0xcb0970` sibling, saying which fires
+   when a hero steps on a chest.
+2. The object's Name string on `CAdvMapTreasure` — the placement name the
+   script keys on — for the detour's membership test.
 3. The detour itself in `native/` behind the `pandora-box` flag, bytes
    verified before writing, refusal logged — the same shape as every fix.

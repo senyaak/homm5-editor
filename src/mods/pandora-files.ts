@@ -590,7 +590,10 @@ export function buildPandora(read: DataReader): ModFile[] {
   files.push({
     path: pandoraDiagShared('Vanilla'),
     data: Buffer.from(buildingDoc(diagSpec('Vanilla', CHEST_DONOR_MODEL), diagPaths('Vanilla'), types,
-      { w: 1, h: 1 }, () => `/${CHEST_DONOR_MODEL}`), 'latin1'),
+      // Only what the spec actually names resolves to the shipped file — an
+      // unconditional answer here once put the MODEL document into every art
+      // slot, AnimSet and Effect included, and sabotaged its own diagnostic.
+      { w: 1, h: 1 }, (path) => (path ? `/${dataPath(path)}` : undefined)), 'latin1'),
   });
   files.push(hiddenLink(pandoraDiagLink('Vanilla'), pandoraDiagShared('Vanilla'), PANDORA_CLASS));
   for (const key of ['Copy', 'Painted', 'Cubed'] as const) {
