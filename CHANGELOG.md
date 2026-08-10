@@ -346,6 +346,10 @@ one.
   carrying both means both, and they add up rather than one standing in for the
   other.
 
+  A bonus that TAKES away is filed with the game's own protection artifacts
+  rather than with its capes, so a cursed piece reads as one on screen instead
+  of being listed as a gift.
+
   **And the spell book says so.** The bonus is added where the game adds its own
   Phoenix Feather Cape's — one call before the damage, in the only place both a
   battle and the book go through — so the number in the book already has it in,

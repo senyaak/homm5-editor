@@ -320,7 +320,9 @@ export const PRISM = {
     air_damage: 10, fire_damage: 10, water_damage: 10, earth_damage: 10,
     air_resist: 10, fire_resist: 10, water_resist: 10, earth_resist: 10,
   },
-  picture: 'amulet_grob.gif',
+  // Its own drawing, not a shipped icon borrowed: two artifacts wearing one
+  // picture is a bug report about the wrong artifact. See tools/draw-artifact-icons.ts.
+  picture: 'h3_elemental_prism.png',
 };
 
 /**
@@ -344,7 +346,7 @@ export const FOCUS = {
   description: '+10% к урону любой магией, какой бы стихии она ни была, и −10% к магическому урону по его отрядам.',
   slot: 'FINGER' as ArtifactSlot,
   effects: { magic_damage: 10, magic_resist: 10 },
-  picture: 'amulet_grob.gif',
+  picture: 'h3_magic_focus.png',
 };
 
 /**
@@ -378,7 +380,9 @@ export const HELM = {
   slot: 'HEAD' as ArtifactSlot,
   stats: { Attack: 4 },
   effects: { magic_damage: -10 },
-  picture: 'mantia_vamp.gif',
+  // Cracked stone on the brow, because the magic on this one is a MINUS: an icon
+  // promising it would be a lie told where a player actually looks.
+  picture: 'h3_war_mage_helm.png',
 };
 
 export const PIECES = [

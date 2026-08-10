@@ -902,11 +902,26 @@ the same field the damage function reads), then the CASTER and a REPORT. It
 returns the amount, `ret 8`.
 
 **And the REPORT is the green.** Every artifact the engine applies here is handed
-to `0xBD3160(report, 1, id, 0, 0)`, which appends `{id, 0, 0}` to a list inside
-it unless the id is already there — that list is the breakdown the tooltip
-prints. In battle the argument is **0**, and the recorder's first instruction is
-a null check. One function serves a number and an explanation, and the caller
-decides which by passing a place to write the reasons or nothing.
+to `0xBD3160(report, which, id, 0, 0)`, which appends `{id, 0, 0}` to a list
+inside it unless the id is already there — that list is the breakdown the
+tooltip prints. In battle the report is **0**, and the recorder's first
+instruction is a null check. One function serves a number and an explanation,
+and the caller decides which by passing a place to write the reasons or nothing.
+
+**And `which` PICKS A HALF — the report is two of the same structure.** Read out
+of the engine's own two groups of calls, which agree without exception:
+
+| `dl` | the list at | who is filed there | what they do |
+|---|---|---|---|
+| 1 | `report+0x0C` | Trident 5, Icicle 18, Cape 32, Earthsliders 61 | multiply the number UP |
+| 0 | `report+0x60` | Iceberg Shield 9, and 0x2B, 0x30–0x33, 0x3E, 0x54, 0x55 | take damage AWAY |
+
+`0x60 = 0x54 + 0x0C`, and the constructor zeroes `0x54` bytes twice into one
+local — so it is not two lists, it is two copies of one report: **what made the
+number bigger, and what made it smaller.** A term of ours goes in by the SIGN OF
+ITS ROW, per row rather than per artifact, since one helm may give an element and
+take magic. Filing everything under 1 shows a cursed piece as a bonus, which is
+exactly what it looked like on screen.
 
 **It also settles whose artifacts count**, which the note below said was a guess
 worth checking on the stand: the object the four are counted off is the same one
@@ -923,6 +938,7 @@ so.
 | only if `0xAD4B30` says the amount IS damage | its own first question, asked its own way |
 | `magic_damage` + the element's row | added up, then applied as one percentage |
 | every row's first artifact into `0xBD3160` | so the book names the piece, as it names a cape |
+| the half chosen by the ROW's sign | a piece that takes magic away is filed with the shields, not with the capes |
 
 The taking side stays at `0xB861A0`, against the number one stack loses, because
 that is where the target is known — and nothing displays it anyway.

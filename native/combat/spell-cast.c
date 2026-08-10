@@ -639,9 +639,18 @@ static NotDamageFn g_notDamage = NULL;
  * an artifact named twice — once for its element and once for `magic_damage` —
  * appears once, and we need no bookkeeping of our own.
  *
- * `which` picks between two lists in the report (+0x0C and +0x60). The engine
- * passes 1 for every artifact it records here; what the other list is for has
- * not been read, so it is a number we copy rather than a thing we name.
+ * `which` PICKS THE HALF, and the halves are what they sound like — read out of
+ * the engine's own two groups of calls rather than guessed:
+ *
+ *   dl = 1   Titan's Trident 5, Evercold Icicle 18, Phoenix Cape 32,
+ *            Earthsliders 61       — every one of them MULTIPLIES THE NUMBER UP
+ *   dl = 0   Iceberg Shield 9, and the protection artifacts at 0x2B, 0x54,
+ *            0x55, 0x3E, 0x30..0x33  — every one of them takes damage AWAY
+ *
+ * So the report is a pair of identical structures (the second starts at +0x54,
+ * which is why the second list is at +0x60), one for what made the number bigger
+ * and one for what made it smaller. A cursed piece of ours filed under 1 is
+ * shown to the player as a bonus, which is what Senya saw.
  */
 #define RECORD_REASON_RVA 0x7d3160u
 #define RECORD_REASON_HEAD_LEN 5
@@ -650,10 +659,36 @@ static const BYTE RECORD_REASON_HEAD[RECORD_REASON_HEAD_LEN] = {
 };
 typedef void(__fastcall *RecordReasonFn)(void *report, int which, int artifact, int a, int b);
 static RecordReasonFn g_recordReason = NULL;
-#define REASON_LIST_OF_ARTIFACTS 1
-
 /** How many pieces one spell's bonus may be spelled out by. */
 #define MAX_REASONS 8
+/** The halves of the report: what made the number bigger, and what made it smaller. */
+#define REASONS_THAT_ADD 1
+#define REASONS_THAT_TAKE 0
+/** Where the second half starts, and the list inside each one. */
+#define REPORT_HALF 0x54u
+#define REPORT_LIST 0x0Cu
+
+/**
+ * WHAT THE REPORT ENDS UP HOLDING, said out loud.
+ *
+ * Not needed to make anything work — it is here because "the number moved but
+ * the tooltip named the wrong thing" is a question about a list nobody can see,
+ * and one line per entry answers it without another launch. Both halves, in the
+ * order the engine will read them.
+ */
+static void log_the_reasons(void *report) {
+  for (int half = 0; half < 2; half++) {
+    BYTE *list = (BYTE *)report + half * REPORT_HALF + REPORT_LIST;
+    if (!readable(list, 12)) continue;
+    int *begin = ((int **)list)[0];
+    int *end = ((int **)list)[1];
+    if (!begin || !end || end < begin) continue;
+    log_num(half ? "   the engine's list of what TAKES away, entries "
+                 : "   the engine's list of what ADDS, entries ",
+            (int)(end - begin) / 3);
+    for (int *e = begin; e + 3 <= end && readable(e, 12); e += 3) log_num("      artifact ", e[0]);
+  }
+}
 
 typedef int(__fastcall *SpellBonusesFn)(int worth, void *block, void *caster, void *report);
 static SpellBonusesFn g_spellBonuses = NULL;
@@ -671,7 +706,7 @@ static int __fastcall on_spell_bonuses(int worth, void *block, void *caster, voi
 
   int element = g_spellElement ? g_spellElement(spell) : 0;
   void *hero = hero_of(caster);
-  int named[MAX_REASONS];
+  TermReason named[MAX_REASONS];
   int namedCount = 0;
   int add = hero_term_named(hero, STAT_MAGIC_DAMAGE, 0, named, &namedCount, MAX_REASONS);
   // 1 air, 2 fire, 3 water, 4 earth — the engine's own numbering, and the stats
@@ -691,12 +726,22 @@ static int __fastcall on_spell_bonuses(int worth, void *block, void *caster, voi
   // AND SAY WHY, in the engine's own report rather than in a place of ours: this
   // is the list the book reads, so the piece that did it is named on screen the
   // way a shipped one is. Null in battle, and the recorder refuses null itself.
+  //
+  // EACH ROW UNDER ITS OWN SIGN. One artifact may hold rows both ways — a helm
+  // that gives an element and takes magic — so the half is chosen per row and
+  // not once for the artifact; it is then named in both lists, which is what it
+  // does.
+  log_num("[bonus] spell ", spell);
   if (report && g_recordReason) {
     for (int i = 0; i < namedCount; i++) {
-      g_recordReason(report, REASON_LIST_OF_ARTIFACTS, named[i], 0, 0);
+      int which = named[i].amount >= 0 ? REASONS_THAT_ADD : REASONS_THAT_TAKE;
+      log_num("   filed: artifact ", named[i].artifact);
+      log_num("      worth, per cent ", named[i].amount);
+      log_num("      in the list of things that ", which);
+      g_recordReason(report, which, named[i].artifact, 0, 0);
     }
+    log_the_reasons(report);
   }
-  log_num("[bonus] spell ", spell);
   log_num("   an artifact of ours adds, per cent ", add);
   log_num("   so ", was);
   log_num("   becomes ", worth);

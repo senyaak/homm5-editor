@@ -449,6 +449,11 @@ open the book, and look before clicking:
    is loaded or not, and the minus ten is ours and shows only on the book. One
    artifact, two mechanisms, and neither should cost the other anything.
 
+   **The helm should be listed on the side that TAKES, not the side that
+   gives** — the game keeps two lists, one for what raised the number and one
+   for what lowered it, and a minus of ours goes in the second. It was in the
+   first once, and read on screen as a gift.
+
    **And the breakdown beside it should NAME them**, the way it names a Phoenix
    Feather Cape: the bonus is added at the one door both a battle and the book
    come through, and the piece responsible is written into the engine's own list

@@ -16,7 +16,8 @@ publish.
 
 ```
 assets/
-  artifacts/         pictures an artifact can be built from — .gif, 58x64
+  artifacts/         pictures an artifact can be built from — .gif, 58x64,
+                     and .png for the ones DRAWN by tools/draw-artifact-icons.ts
   heroes/            portraits — .gif, 58x64, as Heroes III drew them
   specializations/   the icon a specialization shows on the hero screen
   skills/            the icon a skill shows, for skills we have yet to make

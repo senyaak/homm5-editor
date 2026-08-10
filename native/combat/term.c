@@ -29,8 +29,20 @@ static int g_traceLeft = 24;
  * so a piece in the backpack does not count, which is the whole meaning of
  * "worn" and costs us no check of our own.
  */
+/**
+ * One reason a sum came out as it did: which piece, and what it was worth.
+ *
+ * The amount travels with the id because the engine files a reason under its
+ * SIGN — one list for what made the number bigger and one for what made it
+ * smaller — and a caller handed only ids would have to guess.
+ */
+typedef struct {
+  int artifact;
+  int amount;
+} TermReason;
+
 static int hero_term_named(void *hero, int stat, int trace,
-                           int *named, int *namedCount, int namedMax) {
+                           TermReason *named, int *namedCount, int namedMax) {
   // Every read guarded, every slot checked. The two older callers hand over a
   // hero the engine just gave them and could do without this; the tent charges
   // reach for one at a moment nothing promises there is one, and an unguarded
@@ -57,7 +69,9 @@ static int hero_term_named(void *hero, int stat, int trace,
         // The engine's own report has one line per artifact, so a row is spoken
         // for by its FIRST member: a set has several pieces and one reason.
         if (named && namedCount && *namedCount < namedMax && g_rows[i].memberCount) {
-          named[(*namedCount)++] = g_rows[i].members[0];
+          named[*namedCount].artifact = g_rows[i].members[0];
+          named[*namedCount].amount = g_rows[i].amount;
+          (*namedCount)++;
         }
       }
     }
