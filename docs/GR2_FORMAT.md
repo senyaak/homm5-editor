@@ -178,16 +178,45 @@ library. It is transcribed into a table in the source, and
 what makes the table a transcription rather than an invention; it caught four
 real mistakes on its first run.
 
+### The three layout invariants
+
+Sampled across the shipped library these hold **without exception** — 515 of 515
+files, and 256 of 256 with a type section. None of them should matter to a
+little-endian reader, and all three were violated by a writer whose files the
+game silently refused, so they are matched rather than reasoned about:
+
+* relocations come **before** the payload they belong to; a section is laid out
+  `[relocations][payload]`, in section order;
+* `MixedMarshallingFixupArrayOffset` equals the payload offset, even with zero
+  entries;
+* the **type** section declares no 8-bit run — its stops sit at the very end,
+  strings included — while the **object** section puts its strings in that run.
+
 ### What a rig has to be
 
-Turning an object needs three things at once, and any one alone does nothing:
+Turning an object needs four things at once, and any one alone does nothing:
 
 1. a **bone binding** in the mesh (the tag-4 array of GEOMETRY_FORMAT.md);
 2. a **skeleton** the model document names;
-3. an **AnimSet** on the object's shared definition, naming a clip.
+3. an **AnimSet** on the object's shared definition, naming a clip;
+4. a **`Model` inside the Granny files** — and this is the one that cost a game
+   run.
 
 The track is bound to the bone **by name** — so a clip's `TransformTrack.Name`
-must equal the `Bone.Name` it is meant to turn.
+must equal the `Bone.Name` it is meant to turn. The CLIP is bound to the RIG by
+name too, through a `granny_model`: every shipped file carries one, and the
+names are all the same word. The artifact rig is `Model "Artefact"` over
+`Skeleton "Artefact"` with a single bone `Artefact`, and its clip file carries
+its **own copy** of that skeleton and that model beside a track group also
+called `Artefact`.
+
+Written without `Models`, the halves each work and the pair does not — measured
+on the map: an unrigged twin drew, a skeleton-only twin drew, a clip-only twin
+drew, and the object carrying both vanished, shadow and all. A bone at rest
+declares `flags 0` (nothing stored, everything identity), not all three bits.
+
+One more, from the same run and belonging to GEOMETRY_FORMAT.md: a skinned
+model's `<RootMesh>` names the **node**, i.e. the bone — never the mesh.
 
 A quaternion cannot express a whole turn in one segment: slerp takes the short
 way, so 360° in one step reads as standing still and 180° picks a side at

@@ -22,7 +22,10 @@ one.
   type library is transcribed into the source and verified against the game's
   own tree member for member. So an object can be given a skeleton and an idle
   clip that nobody else authored: the Pandora's Box turns on a bone of ours.
-  `docs/GR2_FORMAT.md` §8, `npm run test-gr2-write`.
+  Four things a rig needs, three of which cost a game run each to learn: a bone
+  binding, a skeleton the model names, an AnimSet on the object, and — the one
+  that hides — a `Model` inside the Granny files, which is what binds a clip to
+  a rig by name. `docs/GR2_FORMAT.md` §8, `npm run test-gr2-write`.
 
 - **Models of our own.** The geometry container is decoded well enough to
   WRITE: every one of the game's 3572 meshes now decodes and re-encodes byte for

@@ -7,6 +7,39 @@ on it and the AI walks to it — but for OUR objects the chest's own behaviour
 run. The script is the whole behaviour; the engine's part is to say "touched"
 and otherwise hold still.
 
+## Where the box stands (11.08.2026)
+
+**The look is finished and is entirely ours.** Nothing about the box is
+borrowed except the four glow effects, which are the game's own artifact glows
+by choice.
+
+* the MESH is authored — eight positions, six faces, twenty-four render
+  vertices, both remaps — because the geometry container round-trips byte for
+  byte through our writer on all 3572 shipped files (GEOMETRY_FORMAT.md §6);
+* the TEXTURE is drawn in code and written as DXT1 with mips;
+* the RIG is authored too — a one-bone skeleton and a clip that turns it once
+  about the vertical and bobs, both written as Granny GR2 (GR2_FORMAT.md §8);
+* the DOCUMENTS — model, geometry, material, skeleton, animation, animset —
+  are all ours and reference each other by path. Never inline: an inline href
+  without an `id` takes the game down on map load (GEOMETRY_FORMAT.md §6.7).
+
+Three engine facts were paid for with game runs and are worth not re-learning:
+a skinned model's `<RootMesh>` names the BONE; a clip binds to a rig through a
+`granny_model`, by name, so a Granny file with no `Models` makes the halves
+work and the pair vanish; and the section-layout invariants of GR2_FORMAT.md
+§8 have to be matched exactly.
+
+## What is left, in two tracks
+
+1. **This document's track — the engine.** Stop the chest's own dialog and
+   pickup from running before our question. The plan is below and unchanged.
+2. **The editor's track — the UI.** The box needs a palette entry that is not
+   hidden, a contents dialog driven by the JSON schema (experience, gold, the
+   six resources, artifacts, spells, creatures, guards), the computed value of
+   those contents, and the tier substitution that picks which of the four glow
+   documents a placement points at. `pandoraTier()` and the four shared
+   documents already exist; what is missing is the window and the wiring.
+
 ## Why not a Stand, and why not a new class
 
 The Stand — the class that does nothing on its own — cannot be given a touch
