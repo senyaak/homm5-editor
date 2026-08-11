@@ -31,6 +31,8 @@ import { luaDiagnostics } from '../src/script/lua-lint.ts';
 import { dataReader } from '../src/mods/mod-files.ts';
 import { readEntries } from '../src/format/pak.ts';
 import { extractMeshesStructured } from '../src/scene/geometry.ts';
+import { writeDXT1 } from '../src/format/texture.ts';
+import { decodeDDSBuffer } from '../src/format/dds.ts';
 import { dataDir } from './game-dir.ts';
 
 let failures = 0;
@@ -200,17 +202,35 @@ const modelTexDocs = [...modelDoc.matchAll(/<Texture href="([^"]+)"/g)]
   .map((m) => m[1]!.replace(/^\//, '').split('#')[0]!);
 check('the model still names the donor texture documents', modelTexDocs.length > 0
   && modelTexDocs.every((t) => byPath.has(t.toLowerCase())), `${modelTexDocs.length} textures`);
-check('repainted in place, drawing fields kept', modelTexDocs.every((t) => {
-  const d = byPath.get(t.toLowerCase())?.toString('latin1') ?? '';
-  return d.includes('<Format>TF_8888</Format>') && d.includes(`<Width>${img.width}</Width>`)
-    && d.includes('<ConversionType>CONVERT_ORDINARY</ConversionType>');
+// The document is the GAME'S, unedited — the pixels are DXT1 because that is
+// what it already declares. An uncompressed surface here is what made the box
+// a transparent ghost under its AM_ALPHA_TEST material.
+check('the texture document is the donor\'s, untouched', modelTexDocs.every((t) => {
+  const ours = byPath.get(t.toLowerCase())?.toString('latin1') ?? '';
+  // The copy keeps the shipped tree under the mod's art folder, so the donor
+  // is the same path with that prefix off.
+  const donor = readFileSync(join(dataRoot, t.replace(/^Buildings\/PandoraBox\/art\//, '')), 'latin1');
+  return ours === donor;
 }));
-check('the pixels are ours', modelTexDocs.every((t) => {
+check('the pixels are ours, as DXT1 with mips', modelTexDocs.every((t) => {
   const d = byPath.get(t.toLowerCase())?.toString('latin1') ?? '';
   const dest = /<DestName href="([^"]+)"/.exec(d)?.[1] ?? '';
-  const ddsPath = t.replace(/[^/]+$/, dest).toLowerCase();
-  return (byPath.get(ddsPath)?.length ?? 0) === 128 + img.width * img.height * 4;
+  const dds = byPath.get(t.replace(/[^/]+$/, dest).toLowerCase());
+  return !!dds && dds.toString('latin1', 84, 88) === 'DXT1' && dds.readUInt32LE(28) > 1;
 }));
+// And the encoding is faithful: decoded back, it is the picture that went in.
+{
+  const encoded = writeDXT1(img);
+  const back = decodeDDSBuffer(encoded);
+  let sum = 0, opaque = 0;
+  for (let i = 0; i < img.rgba.length; i += 4) {
+    for (let k = 0; k < 3; k++) sum += Math.abs(img.rgba[i + k]! - back.rgba[i + k]!);
+    if (back.rgba[i + 3] === 255) opaque++;
+  }
+  const mean = sum / (img.rgba.length / 4 * 3);
+  check('DXT1 round-trips within a few levels', mean < 6, `mean channel error ${mean.toFixed(2)}`);
+  check('and every texel is opaque', opaque === img.rgba.length / 4);
+}
 
 // ---- the scripts ------------------------------------------------------------
 

@@ -19,7 +19,7 @@
 import { parseTypeSpec } from '../schema/typespec.ts';
 import { parseTree } from '../scene/geometry.ts';
 import type { BlockRecord, ContainerRecord, RecordTree } from '../scene/geometry.ts';
-import { textureDoc, writeDDS } from '../format/texture.ts';
+import { textureDoc, writeDDS, writeDXT1 } from '../format/texture.ts';
 import type { Image } from '../format/gif.ts';
 import { buildingDoc, buildingLink } from './buildings.ts';
 import type { BuildingSpec } from './buildings.ts';
@@ -395,20 +395,23 @@ const PANDORA_DDS = 'PandoraBox.dds';
  * rewritten to name it.
  */
 /**
- * Replace the copied model's texture PIXELS, touching nothing else.
+ * Replace the copied model's texture PIXELS, and touch NOTHING else.
  *
- * Probe four's clue was the shadows: the boxes cast them and did not draw,
- * which is a geometry that loads and a texture that does not. The texture
- * document had been written from scratch with the ICON fields —
- * CONVERT_TRANSPARENT, CLAMP — where the model textures the game draws say
- * CONVERT_ORDINARY and WRAP. So this now does exactly what the proven
- * creature repaint does: keep the donor's own texture document, swap the .dds
- * bytes, and correct only the fields that describe them (format, size, mips).
+ * Two clues, one conclusion. The shadows: the boxes cast them and did not
+ * draw, so the geometry loads and the texture does not. Then the picture: a
+ * transparent ghost of a cube, volume and shadow present, faces gone — which
+ * is what an `AM_ALPHA_TEST` material does when the texture handed to it is
+ * not the one its document declares. The chest's texture is `TF_DXT1` with a
+ * mip chain, and an uncompressed TF_8888 surface (what every icon of ours is,
+ * and what this used to write) is not that.
+ *
+ * So the pixels are encoded as DXT1 at the document's own size, and the
+ * document is left exactly as the game shipped it. Nothing to keep in step:
+ * the bytes are what it already says they are.
  */
 function paintModelTextures(copied: ArtCopy, modelCopyPath: string): void {
   const doc = copied.files.get(modelCopyPath)?.toString('latin1');
   if (!doc) throw new Error(`pandora: no copied model at ${modelCopyPath}`);
-  const image = pandoraTexture();
   let painted = 0;
   for (const href of [...doc.matchAll(/<Texture href="([^"]+)"/g)].map((m) => m[1]!)) {
     const tAt = resolve(modelCopyPath, href);
@@ -417,14 +420,10 @@ function paintModelTextures(copied: ArtCopy, modelCopyPath: string): void {
     const dest = hrefOf(tDoc, 'DestName');
     const ddsAt = dest ? resolve(tAt, dest) : null;
     if (!ddsAt || !copied.files.has(ddsAt)) continue;
-    copied.files.set(ddsAt, writeDDS(image));
-    copied.files.set(tAt, Buffer.from(tDoc
-      .replace(/<Format>[^<]*<\/Format>/, '<Format>TF_8888</Format>')
-      .replace(/<IsDXT>[^<]*<\/IsDXT>/, '<IsDXT>false</IsDXT>')
-      .replace(/<NMips>[^<]*<\/NMips>/, '<NMips>1</NMips>')
-      .replace(/<UseS3TC>[^<]*<\/UseS3TC>/, '<UseS3TC>false</UseS3TC>')
-      .replace(/<Width>[^<]*<\/Width>/, `<Width>${image.width}</Width>`)
-      .replace(/<Height>[^<]*<\/Height>/, `<Height>${image.height}</Height>`), 'latin1'));
+    // The document's own size, so no field of it has to change. The chest's
+    // is 256; anything else the donor declares is painted at that size too.
+    const width = Number(/<Width>(\d+)<\/Width>/.exec(tDoc)?.[1] ?? 256);
+    copied.files.set(ddsAt, writeDXT1(pandoraTexture(width)));
     painted++;
   }
   if (!painted) throw new Error('pandora: no texture of the donor model was reachable to paint');

@@ -63,6 +63,121 @@ export function writeDDS(image: Image): Buffer {
 }
 
 /**
+ * A `.dds` holding `image` as DXT1 with a full mip chain — the format the
+ * game's own MODEL textures are in.
+ *
+ * Why this exists beside `writeDDS`. An uncompressed TF_8888 surface is what
+ * every icon of ours is, and an icon is drawn by the interface. A MODEL is
+ * not: the pandora box came up as a transparent ghost — its volume and its
+ * shadow there, its faces gone — because the chest's material is
+ * `AM_ALPHA_TEST` and the texture it was handed was not the `TF_DXT1` its own
+ * document declares. Written this way the document needs no edit at all: the
+ * bytes are what it already says they are.
+ *
+ * The encoder is the simple one — per 4x4 block, the two extreme colours as
+ * endpoints and every texel snapped to the four-colour ramp between them. No
+ * alpha: DXT1 without the punch-through bit is opaque, which is what a chest
+ * (and a box) wants under an alpha test.
+ */
+export function writeDXT1(image: Image, mips = true): Buffer {
+  const levels: Image[] = [image];
+  if (mips) {
+    // Halving down to 8x8 and no further, which is the shape the shipped
+    // textures have: the chest's 256 carries six levels, ending at 8. A DXT
+    // block is 4x4, so past that a level is mostly padding.
+    let cur = image;
+    while (cur.width > 8 && cur.height > 8) {
+      cur = resampleTo(cur, Math.max(1, cur.width >> 1), Math.max(1, cur.height >> 1));
+      levels.push(cur);
+    }
+  }
+
+  const header = Buffer.alloc(128);
+  header.write('DDS ', 0, 'latin1');
+  header.writeUInt32LE(124, 4);
+  // caps | height | width | pixelformat | linearsize, plus mipmapcount when there is a chain
+  header.writeUInt32LE(0x1 | 0x2 | 0x4 | 0x1000 | 0x80000 | (levels.length > 1 ? 0x20000 : 0), 8);
+  header.writeUInt32LE(image.height, 12);
+  header.writeUInt32LE(image.width, 16);
+  header.writeUInt32LE(blockBytesOf(image.width, image.height), 20);
+  header.writeUInt32LE(0, 24);
+  header.writeUInt32LE(levels.length, 28);
+  header.writeUInt32LE(32, 76);
+  header.writeUInt32LE(0x4, 80);           // DDPF_FOURCC
+  header.write('DXT1', 84, 'latin1');
+  header.writeUInt32LE(DDSCAPS_TEXTURE | (levels.length > 1 ? 0x400000 | 0x8 : 0), 108);
+
+  return Buffer.concat([header, ...levels.map(encodeDXT1Level)]);
+}
+
+const blockBytesOf = (w: number, h: number): number =>
+  Math.max(1, Math.ceil(w / 4)) * Math.max(1, Math.ceil(h / 4)) * 8;
+
+/** One mip level as DXT1 blocks, row of blocks by row of blocks. */
+function encodeDXT1Level(img: Image): Buffer {
+  const bw = Math.max(1, Math.ceil(img.width / 4));
+  const bh = Math.max(1, Math.ceil(img.height / 4));
+  const out = Buffer.alloc(bw * bh * 8);
+  const rgb565 = (r: number, g: number, b: number): number =>
+    ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3);
+  const from565 = (v: number): [number, number, number] => [
+    ((v >> 11) & 0x1f) * 255 / 31, ((v >> 5) & 0x3f) * 255 / 63, (v & 0x1f) * 255 / 31,
+  ];
+
+  let at = 0;
+  for (let by = 0; by < bh; by++) {
+    for (let bx = 0; bx < bw; bx++) {
+      // The block's texels, clamped at the edges of a non-multiple-of-four image.
+      const texels: [number, number, number][] = [];
+      for (let y = 0; y < 4; y++) {
+        for (let x = 0; x < 4; x++) {
+          const sx = Math.min(img.width - 1, bx * 4 + x);
+          const sy = Math.min(img.height - 1, by * 4 + y);
+          const o = (sy * img.width + sx) * 4;
+          texels.push([img.rgba[o]!, img.rgba[o + 1]!, img.rgba[o + 2]!]);
+        }
+      }
+      // Endpoints: the pair furthest apart along the block's own luminance,
+      // which is what the extremes of a 4x4 patch of texture come down to.
+      let lo = texels[0]!, hi = texels[0]!, loL = Infinity, hiL = -Infinity;
+      for (const t of texels) {
+        const l = t[0] * 0.299 + t[1] * 0.587 + t[2] * 0.114;
+        if (l < loL) { loL = l; lo = t; }
+        if (l > hiL) { hiL = l; hi = t; }
+      }
+      let c0 = rgb565(hi[0], hi[1], hi[2]);
+      let c1 = rgb565(lo[0], lo[1], lo[2]);
+      // c0 > c1 selects the four-colour (opaque) block layout. Equal endpoints
+      // are a flat block and stay opaque as long as c0 is not below c1.
+      if (c0 < c1) { const t = c0; c0 = c1; c1 = t; }
+      const e0 = from565(c0), e1 = from565(c1);
+      const ramp: [number, number, number][] = [
+        [e0[0], e0[1], e0[2]],
+        [e1[0], e1[1], e1[2]],
+        [(2 * e0[0] + e1[0]) / 3, (2 * e0[1] + e1[1]) / 3, (2 * e0[2] + e1[2]) / 3],
+        [(e0[0] + 2 * e1[0]) / 3, (e0[1] + 2 * e1[1]) / 3, (e0[2] + 2 * e1[2]) / 3],
+      ];
+      let bits = 0;
+      for (let i = 15; i >= 0; i--) {
+        const t = texels[i]!;
+        let best = 0, bestD = Infinity;
+        for (let k = 0; k < 4; k++) {
+          const c = ramp[k]!;
+          const d = (t[0] - c[0]) ** 2 + (t[1] - c[1]) ** 2 + (t[2] - c[2]) ** 2;
+          if (d < bestD) { bestD = d; best = k; }
+        }
+        bits = (bits << 2) | best;
+      }
+      out.writeUInt16LE(c0, at);
+      out.writeUInt16LE(c1, at + 2);
+      out.writeUInt32LE(bits >>> 0, at + 4);
+      at += 8;
+    }
+  }
+  return out;
+}
+
+/**
  * The `.xdb` that tells the game how to read the `.dds` beside it.
  *
  * `SrcName` names the authoring original — a `.tga` the game never shipped. It
