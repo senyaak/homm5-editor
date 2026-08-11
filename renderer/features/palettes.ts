@@ -154,6 +154,12 @@ export function renderObjGrid(): void {
     // and it is the only handle when something needs looking up on disk.
     el.title = [o.label, o.description, `${o.name} · ${o.type || 'unknown type'} · ${o.group}`]
       .filter(Boolean).join('\n\n');
+    // The entry's own path, so a swatch can be addressed by the one thing that
+    // is unique about it. Labels collide ("Chest" is a treasure and a static),
+    // and so do NAMES as substrings: `Disease_Zombie` ends in `Zombie`, which
+    // is how a tooltip-matching selector armed the alt-upgrade when the plain
+    // zombie was asked for, and the map then carried the wrong monster.
+    el.dataset.path = o.path;
     const img = document.createElement('img');
     img.className = 'ic';
     el.appendChild(img);

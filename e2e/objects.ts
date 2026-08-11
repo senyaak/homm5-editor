@@ -27,14 +27,14 @@ export async function openObjectPalette(page: Page): Promise<void> {
 
 /** The catalogue entry for a shared definition, as the palette knows it. */
 export async function catalogEntry(page: Page, shared: string): Promise<{
-  name: string; label: string; group: string; type: string; hidden: boolean;
+  name: string; label: string; group: string; type: string; hidden: boolean; path: string;
 } | null> {
   return page.evaluate(async (want) => {
     const { objects } = await window.editor.listObjects();
     const key = (h: string): string => h.toLowerCase().replace(/^\/+/, '').split('#')[0]!;
     const hit = objects.find((o) => key(o.shared) === want);
     return hit
-      ? { name: hit.name, label: hit.label, group: hit.group, type: hit.type, hidden: hit.hidden }
+      ? { name: hit.name, label: hit.label, group: hit.group, type: hit.type, hidden: hit.hidden, path: hit.path }
       : null;
   }, sharedKey(shared));
 }
@@ -63,16 +63,22 @@ async function armObject(page: Page, shared: string): Promise<void> {
   if (entry.hidden) await page.locator('#obj-hidden').setChecked(true);
   await page.locator('#obj-cat').selectOption({ value: entry.group });
   await page.locator('#obj-search').fill(entry.name);
-  // LABELS COLLIDE. Two catalogue entries are called "Chest" — a treasure and
-  // the glow static beside it — so the label alone picked whichever came
-  // first, and the readout then said AdvMapStatic where a treasure was asked
-  // for. The swatch's tooltip carries `<name> · <type> · <group>`, which is
-  // unique, so that is what disambiguates; the label filter stays as the
-  // narrowing step it always was.
+  // ADDRESSED BY ITS PATH, which is the only unique thing about a swatch.
+  //
+  // Labels collide — two entries are called "Chest", a treasure and the glow
+  // static beside it — and matching the tooltip's `<name> · <type>` instead
+  // fixed that while opening a worse hole: the tooltip is matched by SUBSTRING,
+  // and `Disease_Zombie · AdvMapMonster` ends in `Zombie · AdvMapMonster`. So
+  // asking for the plain zombie armed the alt-upgrade standing before it, and
+  // the map came out carrying a monster nobody asked for. The palette now
+  // stamps each swatch with its entry's path; the two older ways stay as the
+  // fallback for a build without it.
+  const byPath = page.locator(`#obj-grid .obj[data-path="${entry.path}"]`);
   const byLabel = page.locator('#obj-grid .obj')
     .filter({ has: page.getByText(entry.label, { exact: true }) });
   const exact = page.locator(`#obj-grid .obj[title*="${entry.name} · ${entry.type}"]`);
-  const swatch = (await exact.count()) ? exact.first() : byLabel.first();
+  const swatch = (await byPath.count()) ? byPath.first()
+    : (await exact.count()) ? exact.first() : byLabel.first();
   await swatch.click();
   // The readout is "placing: <label> · <type>"; anything else means the click
   // landed on a neighbour, which would put the wrong object on the map.
