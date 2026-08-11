@@ -312,13 +312,17 @@ function boxArtFiles(): ModFile[] {
     },
     {
       path: `bin/Skeletons/${PANDORA_SKELETON_UID}`,
-      data: writeSkeletonGR2(`${SPIN_JOINT}Rig`, [{ name: SPIN_JOINT }]),
+      // One name for the model, the skeleton, the track group and the bone —
+      // the way the artifact rig is `Artefact` four times over.
+      data: writeSkeletonGR2(SPIN_JOINT, [{ name: SPIN_JOINT }]),
     },
     {
       path: `bin/animations/${PANDORA_CLIP_UID}`,
       data: (() => {
         const clip = spinClip(SPIN_JOINT, SPIN_SECONDS, SPIN_RISE);
-        return writeAnimationGR2(clip.name, clip.duration, clip.tracks);
+        // The clip carries the rig too — model, skeleton and track group under
+        // one name, the way every shipped animation does.
+        return writeAnimationGR2(clip.name, clip.duration, clip.tracks, [{ name: SPIN_JOINT }]);
       })(),
     },
     {

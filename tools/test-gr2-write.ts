@@ -92,7 +92,7 @@ for (const dir of ['Skeletons', 'animations']) {
 // ---- 2. a file of ours ------------------------------------------------------
 
 const BONE = 'PandoraBox';
-const skeleton = writeSkeletonGR2('PandoraBoxRig', [{ name: BONE }]);
+const skeleton = writeSkeletonGR2(BONE, [{ name: BONE }]);
 check('the skeleton opens as a Granny file', !!GrannyFile.open(skeleton), `${skeleton.length} bytes`);
 {
   const file = GrannyFile.open(skeleton)!;
@@ -129,6 +129,27 @@ check('the skeleton opens as a Granny file', !!GrannyFile.open(skeleton), `${ske
   check('the mixed-marshalling offset is the payload offset',
     all.every((s) => s.mix === s.off));
 
+  // THE MODEL, which is what binds a clip to a rig. Granny matches a track
+  // group to a model BY NAME, so a file with no Models has nothing to bind:
+  // measured the hard way — skeleton alone drew, clip alone drew, an object
+  // carrying both vanished. Every shipped rig has one, named like its skeleton.
+  {
+    const root = file.type(file.rootType), ro = file.rootObject;
+    const mem = file.member(root, 'Models')!;
+    const at = file.field(root, ro, 'Models')!;
+    const count = file.int32(at) ?? 0;
+    const table = file.pointer({ sec: at.sec, off: at.off + 4 });
+    const first = table ? file.pointer({ sec: table.sec, off: table.off }) : null;
+    const modelType = file.type(mem.refType);
+    check('the skeleton file carries a model', count === 1 && !!first, `${count}`);
+    if (first) {
+      check('named like the skeleton and the bone',
+        file.string(file.field(modelType, first, 'Name')) === BONE);
+      check('and pointing at that very skeleton',
+        !!file.pointer(file.field(modelType, first, 'Skeleton')));
+    }
+  }
+
   const bones = readSkeletons(file);
   check('one skeleton, one bone, named', bones.length === 1 && bones[0]!.bones.length === 1
     && bones[0]!.bones[0]!.name === BONE, `${bones[0]?.bones.map((b) => b.name).join(',')}`);
@@ -143,7 +164,7 @@ check('the skeleton opens as a Granny file', !!GrannyFile.open(skeleton), `${ske
 
 const SECONDS = 6;
 const clip = spinClip(BONE, SECONDS, 0.2);
-const animation = writeAnimationGR2('PandoraBoxSpin', clip.duration, clip.tracks);
+const animation = writeAnimationGR2(BONE, clip.duration, clip.tracks, [{ name: BONE }]);
 check('the animation opens as a Granny file', !!GrannyFile.open(animation), `${animation.length} bytes`);
 {
   const file = GrannyFile.open(animation)!;

@@ -701,29 +701,60 @@ export interface BoneSpec {
   inverseWorld?: number[];
 }
 
-/** A skeleton file: a name and its bones. */
+/** The identity, as a bone at rest states it: no component stored at all. */
+const REST: GrannyTransformValue = {
+  flags: 0, position: [0, 0, 0], orientation: [0, 0, 0, 1], scaleShear: IDENTITY3,
+};
+
+/**
+ * A skeleton and the MODEL that names it — and the model is the part that took
+ * a game run to learn.
+ *
+ * Granny ties a clip to a rig through a `Model`: the track group and the model
+ * carry the same name, and that is the binding. Every shipped file has one —
+ * the artifact's rig is `Model "Artefact"` over `Skeleton "Artefact"` with a
+ * single bone `Artefact`, one name for all three. Ours had no `Models` at all,
+ * and the effect was exact: a skeleton alone drew, a clip alone drew, and an
+ * object carrying BOTH vanished, because there was nothing to bind them to.
+ *
+ * The same pair goes in the animation file too, which is why this is shared:
+ * a shipped clip carries its own copy of the skeleton and the model beside it.
+ */
+function rig(name: string, bones: BoneSpec[]): { skeleton: Fields; model: Fields } {
+  const skeleton: Fields = {
+    Name: name,
+    Bones: bones.map((b) => ({
+      struct: 'Bone',
+      fields: {
+        Name: b.name,
+        ParentIndex: b.parentIndex ?? -1,
+        Transform: b.rest ?? REST,
+        InverseWorldTransform: b.inverseWorld ?? IDENTITY4,
+      },
+    })),
+  };
+  return {
+    skeleton,
+    model: {
+      Name: name,
+      // The SAME object, so the writer stores one skeleton and points at it
+      // twice rather than making a second that merely looks alike.
+      Skeleton: { struct: 'Skeleton', fields: skeleton },
+      InitialPlacement: REST,
+      MeshBindings: [],
+    },
+  };
+}
+
+/** A skeleton file: the rig, and the model that names it. */
 export function writeSkeletonGR2(name: string, bones: BoneSpec[]): Buffer {
+  const { skeleton, model } = rig(name, bones);
   return writeGR2({
     ArtToolInfo: OURS.ArtToolInfo as unknown as Value,
     ExporterInfo: OURS.ExporterInfo as unknown as Value,
     FromFileName: `${name}.skeleton`,
-    Skeletons: [{
-      struct: 'Skeleton',
-      fields: {
-        Name: name,
-        Bones: bones.map((b) => ({
-          struct: 'Bone',
-          fields: {
-            Name: b.name,
-            ParentIndex: b.parentIndex ?? -1,
-            // All three channels present, all of them the identity: a bone that
-            // moves nothing until a clip moves it.
-            Transform: b.rest ?? { flags: 7, position: [0, 0, 0], orientation: [0, 0, 0, 1], scaleShear: IDENTITY3 },
-            InverseWorldTransform: b.inverseWorld ?? IDENTITY4,
-          },
-        })),
-      },
-    }],
+    Skeletons: [{ struct: 'Skeleton', fields: skeleton }],
+    Models: [{ struct: 'Model', fields: model }],
   });
 }
 
@@ -751,7 +782,14 @@ const curve = (c: CurveSpec | undefined): Value => ({
 });
 
 /** An animation file: one clip, one track group, the tracks given. */
-export function writeAnimationGR2(name: string, duration: number, tracks: TrackSpec[]): Buffer {
+export function writeAnimationGR2(
+  name: string, duration: number, tracks: TrackSpec[], bones?: BoneSpec[],
+): Buffer {
+  // A clip carries its own copy of the rig: a shipped animation file holds the
+  // skeleton AND the model, all three named alike, because the model's name is
+  // what binds the track group to it. Without bones to state, only the tracks
+  // are written — which is what a clip for a rig somebody else ships looks like.
+  const carried = bones ? rig(name, bones) : null;
   const group: Value = {
     struct: 'TrackGroup',
     fields: {
@@ -768,7 +806,7 @@ export function writeAnimationGR2(name: string, duration: number, tracks: TrackS
       })),
       TransformLODErrors: [],
       TextTracks: [],
-      InitialPlacement: { flags: 7, position: [0, 0, 0], orientation: [0, 0, 0, 1], scaleShear: IDENTITY3 },
+      InitialPlacement: REST,
       AccumulationFlags: 0,
       LoopTranslation: [0, 0, 0],
     },
@@ -778,6 +816,10 @@ export function writeAnimationGR2(name: string, duration: number, tracks: TrackS
     ArtToolInfo: OURS.ArtToolInfo as unknown as Value,
     ExporterInfo: OURS.ExporterInfo as unknown as Value,
     FromFileName: `${name}.animation`,
+    ...(carried ? {
+      Skeletons: [{ struct: 'Skeleton', fields: carried.skeleton }] as Value,
+      Models: [{ struct: 'Model', fields: carried.model }] as Value,
+    } : {}),
     TrackGroups: [group],
     Animations: [{
       struct: 'Animation',
