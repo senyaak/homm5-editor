@@ -31,6 +31,8 @@ import { luaDiagnostics } from '../src/script/lua-lint.ts';
 import { dataReader } from '../src/mods/mod-files.ts';
 import { readEntries } from '../src/format/pak.ts';
 import { extractMeshesStructured } from '../src/scene/geometry.ts';
+import { GrannyFile } from '../src/format/gr2.ts';
+import { readAnimations, readSkeletons, skinMatrices, skinPositions } from '../src/scene/animation.ts';
 import { writeDXT1 } from '../src/format/texture.ts';
 import { decodeDDSBuffer } from '../src/format/dds.ts';
 import { dataDir } from './game-dir.ts';
@@ -125,7 +127,15 @@ if (boxBin) {
         - P[0]![1]! * (P[1]![0]! * P[2]![2]! - P[1]![2]! * P[2]![0]!)
         + P[0]![2]! * (P[1]![0]! * P[2]![1]! - P[1]![1]! * P[2]![0]!)) / 6;
     }
-    check('wound outward', volume > 1.2 && volume < 1.4, `signed volume ${volume.toFixed(3)}`);
+    // A cube's signed volume is its side cubed when it is wound outward, and
+    // NEGATIVE when it is not — which is what a single-sided material culls.
+    // A turned cube fills between 1/3√3 and all of the box it spans, so that is
+    // the honest window; what the check is really for is the SIGN, which is
+    // negative when the winding is inside out and a single-sided material culls
+    // every face.
+    const across = Math.max(...[0, 1, 2].map((k) => hi[k]! - lo[k]!));
+    check('wound outward', volume > 0.19 * across ** 3 && volume < across ** 3,
+      `signed volume ${volume.toFixed(3)} inside a ${across.toFixed(2)} box`);
   }
 }
 check('the material is a solid object’s, not a backdrop’s',
@@ -155,40 +165,81 @@ for (const tier of PANDORA_TIERS) {
 const link = byPath.get(PANDORA_LINK.toLowerCase())?.toString('latin1') ?? '';
 check('the palette link names the poorest tier', link.includes(pandoraShared(PANDORA_TIERS[0]!.key)));
 
-// ---- static and spinning ----------------------------------------------------
+// ---- the spin ---------------------------------------------------------------
 
-console.log('static and spinning');
-// The shipping box is STATIC — a skinned mesh on a class that raises no
-// skeleton draws nothing (measured in the game, first probe run).
-const STATIC_ENTRY = '0000803f000000000000000000000000ff00000000000000';
-const RIGID_ENTRY = '0000803f000000000000000000000000ff000000030c0c0c';
+console.log('the spin');
+// Three things have to line up for the box to turn: a bone binding in the mesh,
+// a skeleton on the model, and an AnimSet on the object. Any one alone does
+// nothing, so all three are checked together — and the rig is a ONE-BONE one,
+// so "bound to bone 0" is the whole binding rather than a static stand-in.
+const BONE0_ENTRY = '0000803f000000000000000000000000ff00000000000000';
 const countHex = (buf: Buffer, hex: string): number => {
   const needle = Buffer.from(hex, 'hex');
   let n = 0;
   for (let at = buf.indexOf(needle); at >= 0; at = buf.indexOf(needle, at + 1)) n++;
   return n;
 };
-check('every tier is animation-free', PANDORA_TIERS.every((t) =>
-  /<AnimSet\/>/.test(byPath.get(pandoraShared(t.key).toLowerCase())?.toString('latin1') ?? '')));
-check('the box is bound to bone 0, statically', !!boxBin && countHex(Buffer.from(boxBin), STATIC_ENTRY) === 8
-  && countHex(Buffer.from(boxBin), RIGID_ENTRY) === 0);
+check('every tier plays the artifact idle', PANDORA_TIERS.every((t) =>
+  /<AnimSet href="[^"]+"/.test(byPath.get(pandoraShared(t.key).toLowerCase())?.toString('latin1') ?? '')));
+check('every one of the box’s eight positions rides the bone',
+  !!boxBin && countHex(Buffer.from(boxBin), BONE0_ENTRY) === 8);
+const skelDoc = follow(modelDoc, 'Skeleton');
+check('the model names a skeleton of ours', !!skelDoc && skelDoc.includes('<RootJoint>Artefact</RootJoint>'));
+const skelUid = /<uid>([0-9A-Fa-f-]{36})<\/uid>/.exec(skelDoc)?.[1] ?? '';
+check('and the bones are in the build', byPath.has(`bin/skeletons/${skelUid.toUpperCase()}`.toLowerCase()), skelUid);
+check('the geometry hangs from the same joint', geomDoc.includes('<RootJoint>Artefact</RootJoint>'));
 
-// The animation probes keep the donor's rig, on the classes that might play it.
+// AND IT ACTUALLY TURNS. Documents lining up is not motion: the rig is loaded
+// the way the editor loads one — skeleton binary, the clip the AnimSet names,
+// the box's own skin binding — and the cube is posed at two times. A quarter of
+// the way through the clip every corner must have swung 90° about the vertical
+// through the box, and the box must not have wandered off it.
+{
+  const setDoc = follow(byPath.get(pandoraShared(PANDORA_TIERS[0]!.key).toLowerCase())?.toString('latin1') ?? '', 'AnimSet');
+  const clipDoc = follow(setDoc, 'Anim');
+  const clipUid = /<uid>([0-9A-Fa-f-]{36})<\/uid>/.exec(clipDoc)?.[1] ?? '';
+  const clipBin = byPath.get(`bin/animations/${clipUid.toUpperCase()}`.toLowerCase());
+  const boneBin = byPath.get(`bin/skeletons/${skelUid.toUpperCase()}`.toLowerCase());
+  check('the clip and the bones are both in the build', !!clipBin && !!boneBin, clipUid);
+  if (clipBin && boneBin && boxBin) {
+    const skeleton = readSkeletons(GrannyFile.open(Buffer.from(boneBin))!)[0]!;
+    const clip = readAnimations(GrannyFile.open(Buffer.from(clipBin))!)[0]!;
+    const mesh = extractMeshesStructured(Buffer.from(boxBin), { skin: true })![0]!;
+    const at = (t: number): Float32Array =>
+      skinPositions(mesh.positions, mesh.skin!, skinMatrices(skeleton, clip, t));
+    const rest = at(0), quarter = at(clip.duration / 4);
+    // Every corner turned a quarter turn about the vertical axis through 0,0.
+    let worst = 0, drift = 0;
+    for (let i = 0; i < rest.length; i += 3) {
+      const want = [-rest[i + 1]!, rest[i]!];
+      worst = Math.max(worst, Math.hypot(quarter[i]! - want[0]!, quarter[i + 1]! - want[1]!));
+      drift = Math.max(drift, Math.abs(Math.hypot(quarter[i]!, quarter[i + 1]!) - Math.hypot(rest[i]!, rest[i + 1]!)));
+    }
+    check('a quarter of the clip is a quarter turn about its own axis', worst < 0.05,
+      `worst corner off by ${worst.toFixed(4)}`);
+    check('and nothing drifts off the axis', drift < 1e-3, `${drift.toFixed(5)}`);
+    check('the clip is the artifact idle: one full turn', Math.abs(clip.duration - 7.5) < 0.01,
+      `${clip.duration}s`);
+    // The same clip lifts and drops by ±0.198, so "floating" has to survive the
+    // bottom of the bob rather than only the pose it was authored in.
+    let low = Infinity;
+    for (let f = 0; f < 1; f += 0.05) {
+      const p = at(clip.duration * f);
+      for (let i = 2; i < p.length; i += 3) low = Math.min(low, p[i]!);
+    }
+    check('and never dips into the ground while it bobs', low > 0.05, `lowest corner at z ${low.toFixed(3)}`);
+  }
+}
+void 0;
+
+// The two controls: the same model on the other classes that might animate it.
 const artDoc = byPath.get(PANDORA_ARTIFACT_SHARED.toLowerCase())?.toString('latin1') ?? '';
-check('the artifact probe keeps the animation', /<AnimSet href="[^"]+"/.test(artDoc));
+check('the artifact control keeps the animation', /<AnimSet href="[^"]+"/.test(artDoc));
 check('and picks up as nothing', artDoc.includes('<Type>ARTF_RANDOM_SPECIFIC</Type>')
   && artDoc.includes('<ArtifactID>ARTIFACT_NONE</ArtifactID>'));
-const spinModelPath = /<Model href="\/([^"#]+)/.exec(artDoc)?.[1] ?? '';
-const spinModelDoc = byPath.get(spinModelPath.toLowerCase())?.toString('latin1') ?? '';
-check('and its skeleton', /<Skeleton href="[^"]+"/.test(spinModelDoc));
-const spinUid = /<uid>([0-9A-Fa-f-]{36})<\/uid>/.exec(follow(spinModelDoc, 'Geometry'))?.[1] ?? '';
-const spinBin = byPath.get(`bin/geometries/${spinUid.toUpperCase()}`.toLowerCase());
-check('its cube rides the spinning bone', !!spinBin && countHex(Buffer.from(spinBin), RIGID_ENTRY) === 8
-  && countHex(Buffer.from(spinBin), STATIC_ENTRY) === 0);
 const millDoc = byPath.get(PANDORA_MILL_SHARED.toLowerCase())?.toString('latin1') ?? '';
-check('the mill probe is a windmill-type building', millDoc.includes('<Type>BUILDING_WINDMILL</Type>')
+check('the mill control is a windmill-type building', millDoc.includes('<Type>BUILDING_WINDMILL</Type>')
   && /<AnimSet href="[^"]+"/.test(millDoc));
-
 // ---- the tiers --------------------------------------------------------------
 
 console.log('the tiers');

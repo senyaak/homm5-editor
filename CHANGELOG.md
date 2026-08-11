@@ -25,8 +25,8 @@ one.
   test-geometry-write`.
 
 - **Pandora's Box, begun.** Heroes III's box brought to the adventure map: a
-  floating, tilted cube — our own model and a painted bronze-and-gold face,
-  wearing the artifact glow — that a map fills with experience, gold,
+  cube of our own, painted bronze and gold, floating and turning on its axis
+  under the artifact glow — that a map fills with experience, gold,
   resources, artifacts, spells, creatures
   and guards. Behaviour is Lua shipped with the archive; each map carries only
   a generated data block in its own script. Lives behind the new **Gameplay**

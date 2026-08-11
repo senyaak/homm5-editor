@@ -17,7 +17,8 @@
 
 import { parseTypeSpec } from '../schema/typespec.ts';
 import {
-  boxGroup, buildGeometry, geometryDocument, groupBBox, materialDocument, modelDocument, rotateGroup,
+  boxGroup, buildGeometry, geometryDocument, groupBBox, materialDocument, modelDocument,
+  rotateGroup, skeletonDocument,
 } from '../scene/geometry-write.ts';
 import { textureDoc, writeDDS, writeDXT1 } from '../format/texture.ts';
 import type { Image } from '../format/gif.ts';
@@ -38,16 +39,32 @@ const EOL = '\r\n';
  * SMALLER than a tile (a tile is two world units), FLOATING a little clear of
  * the ground, and TILTED — square to the world a cube reads as scenery, a few
  * degrees off it reads as something set down. The fourth, turning on its own
- * axis, is not a number at all: it is an animation, and it needs a skeleton
- * (see the spinning twins below).
+ * axis, is the rig below rather than a number.
+ *
+ * The half-extent was 0.55 and is three quarters of that, by eye in the game.
  */
-const BOX_HALF = 0.55;
+const BOX_HALF = 0.4125;
 const BOX_FLOAT = 0.45;
 const BOX_TILT: [number, number, number] = [0.14, 0.10, 0.35];
 
-/** The animated donor: the floating artifact stone, skeleton and idle. */
-const DONOR_MODEL = '_(Model)/Cutscenes/Artefakt.(Model).xdb';
-const DONOR_ANIMSET = '_(AnimSet)/Cuscenes/Artefakt.(AnimSet).xdb';
+/**
+ * THE SPIN, and it is the game's own — measured, not adopted on faith.
+ *
+ * Every artifact lying on the adventure map turns and bobs, and all 103 of them
+ * share one AnimSet. Read (`src/scene/animation.ts` over the Granny files) it is
+ * a 7.5-second clip with a single track: yaw 0° → 360° over the clip, and a
+ * ±0.198 rise and fall. The skeleton under it is **one bone named `Artefact`
+ * whose rest transform is the identity** — which is why this rig can carry a
+ * mesh of ours without moving it: bound to that bone, the box stands exactly
+ * where its own positions put it until the clip turns it.
+ *
+ * The 76-bone cutscene stone that used to donate here is gone with it.
+ */
+const ARTIFACT_ANIMSET = '_(AnimSet)/Artefacts/General.(AnimSet).xdb';
+/** Where the one-bone skeleton binary is read from — its uid, not its meshes. */
+const SKELETON_DONOR = '_(Model)/Artefacts/Angel_wings.(Model).xdb';
+/** The bone, in the skeleton and in the animation's only track. */
+const SPIN_JOINT = 'Artefact';
 
 /** The glow tiers, poorest first — the game's own artifact glows. */
 export interface PandoraTier {
@@ -102,14 +119,16 @@ export function pandoraTier(value: number): PandoraTier {
   return tier;
 }
 
-const RIGID_SKIN = Buffer.from('0000803f000000000000000000000000ff000000030c0c0c', 'hex');
-
-/** And the binding a STATIC model carries — read off the shipped treasure
- * chest, whose every vertex is this exact entry: full weight on bone 0, no
- * filler. A skinned mesh on a class that raises no skeleton draws NOTHING
- * (the probe map showed glow and no cube), and this is the other half of
- * being static; the first is the model document's empty `<Skeleton/>`. */
-const STATIC_SKIN = Buffer.from('0000803f000000000000000000000000ff00000000000000', 'hex');
+/**
+ * The vertex-to-bone binding every vertex of the box carries: full weight on
+ * bone 0 and nothing else.
+ *
+ * Read off the shipped treasure chest, whose every vertex is this exact entry,
+ * and it is also the whole binding an artifact needs — that rig HAS only bone 0.
+ * Four float weights, the same four quantized to bytes, then four bone indices
+ * (docs/ANIMATION_FORMAT.md §4).
+ */
+const BONE0_SKIN = Buffer.from('0000803f000000000000000000000000ff00000000000000', 'hex');
 
 // --- the texture ------------------------------------------------------------
 
@@ -197,27 +216,31 @@ const PANDORA_GEOMETRY = `${PANDORA_DIR}/PandoraBox.(Geometry).xdb`;
 const PANDORA_MATERIAL = `${PANDORA_DIR}/PandoraBox.(Material).xdb`;
 const PANDORA_SKIN_TEXTURE = `${PANDORA_DIR}/PandoraBoxSkin.(Texture).xdb`;
 const PANDORA_SKIN_DDS = 'PandoraBoxSkin.dds';
+const PANDORA_SKELETON = `${PANDORA_DIR}/PandoraBox.(Skeleton).xdb`;
+const PANDORA_SKELETON_UID = 'B0AD0002-1111-4222-8333-C0DE0BADC0DE';
 
 /**
- * Every file the box's LOOK is made of, and not one of them copied.
+ * Every file the box's LOOK is made of, and only one of them copied.
  *
  * This is what reading the container bought. The cube is eight positions, six
  * faces, twenty-four render vertices and the two remaps the format asks for
- * (`src/scene/geometry-write.ts`); the document beside it names our texture and
- * states the box the vertices came out in; the texture is our own drawing, DXT1
- * with mips. Nothing here is sculpted out of somebody else's mesh, so nothing
- * carries a field we did not write on purpose — which is exactly the failure
- * the donors kept producing.
+ * (`src/scene/geometry-write.ts`); the documents beside it name our texture and
+ * state the box the vertices came out in; the texture is our own drawing, DXT1
+ * with mips. Nothing is sculpted out of somebody else's mesh, so nothing carries
+ * a field we did not write on purpose — which is exactly the failure the donors
+ * kept producing.
  *
- * The skin binding is the one thing taken from a shipped mesh rather than
- * reasoned out: the treasure chest gives every vertex full weight on bone 0,
- * and a static model on this class is what the box IS, so it says the same.
+ * The exception is the SKELETON BINARY: bones are Granny and we do not write
+ * those yet, so the one-bone artifact rig is copied under a uid of ours, with a
+ * skeleton document of our own over it. Binding costs the box nothing — that
+ * bone's rest transform is the identity — and it is what lets the artifact idle
+ * turn the box on its axis.
  */
-function boxArtFiles(): ModFile[] {
+function boxArtFiles(skeletonBinary: Buffer): ModFile[] {
   const centre: [number, number, number] = [0, 0, BOX_FLOAT + BOX_HALF];
   const cube = boxGroup(centre, [BOX_HALF, BOX_HALF, BOX_HALF]);
   const group = rotateGroup(cube, BOX_TILT, centre);
-  group.skin = Buffer.concat(Array.from({ length: group.positions.length / 3 }, () => STATIC_SKIN));
+  group.skin = Buffer.concat(Array.from({ length: group.positions.length / 3 }, () => BONE0_SKIN));
   const image = pandoraTexture();
   return [
     { path: `bin/Geometries/${PANDORA_UID}`, data: buildGeometry([[group]]) },
@@ -226,14 +249,21 @@ function boxArtFiles(): ModFile[] {
       data: Buffer.from(modelDocument({
         materials: [`/${PANDORA_MATERIAL}`],
         geometry: `/${PANDORA_GEOMETRY}`,
+        skeleton: `/${PANDORA_SKELETON}`,
       }), 'latin1'),
     },
     {
       path: PANDORA_GEOMETRY,
       data: Buffer.from(geometryDocument({
         uid: PANDORA_UID, bbox: groupBBox([group]), meshNames: ['pandoraBox'],
+        rootJoint: SPIN_JOINT,
       }), 'latin1'),
     },
+    {
+      path: PANDORA_SKELETON,
+      data: Buffer.from(skeletonDocument({ uid: PANDORA_SKELETON_UID, rootJoint: SPIN_JOINT }), 'latin1'),
+    },
+    { path: `bin/Skeletons/${PANDORA_SKELETON_UID}`, data: skeletonBinary },
     {
       path: PANDORA_MATERIAL,
       data: Buffer.from(materialDocument({ texture: `/${PANDORA_SKIN_TEXTURE}` }), 'latin1'),
@@ -246,43 +276,6 @@ function boxArtFiles(): ModFile[] {
       }), 'latin1'),
     },
     { path: `${PANDORA_DIR}/${PANDORA_SKIN_DDS}`, data: writeDXT1(image) },
-  ];
-}
-
-/** The spinning twin: the same cube, bound to a bone instead of standing still. */
-const PANDORA_SPIN_UID = 'B0AD0001-1111-4222-8333-C0DE0BADC0DE';
-export const PANDORA_SPIN_MODEL = `${PANDORA_DIR}/PandoraBoxSpin.(Model).xdb`;
-const PANDORA_SPIN_GEOMETRY = `${PANDORA_DIR}/PandoraBoxSpin.(Geometry).xdb`;
-
-/**
- * The same box, rigged.
- *
- * Everything about the mesh is the shipping one's — the difference is the skin
- * binding, which puts every vertex on the bone the artifact idle turns, and the
- * skeleton the document names. The cube is NOT tilted here: the animation is
- * what should be turning it, and a tilt of ours would only make a wobble hard
- * to read.
- */
-function spinArtFiles(skeleton: string): ModFile[] {
-  const centre: [number, number, number] = [0, 0, BOX_FLOAT + BOX_HALF];
-  const group = boxGroup(centre, [BOX_HALF, BOX_HALF, BOX_HALF]);
-  group.skin = Buffer.concat(Array.from({ length: group.positions.length / 3 }, () => RIGID_SKIN));
-  return [
-    { path: `bin/Geometries/${PANDORA_SPIN_UID}`, data: buildGeometry([[group]]) },
-    {
-      path: PANDORA_SPIN_MODEL,
-      data: Buffer.from(modelDocument({
-        materials: [`/${PANDORA_MATERIAL}`],
-        geometry: `/${PANDORA_SPIN_GEOMETRY}`,
-        skeleton: `/${skeleton}`,
-      }), 'latin1'),
-    },
-    {
-      path: PANDORA_SPIN_GEOMETRY,
-      data: Buffer.from(geometryDocument({
-        uid: PANDORA_SPIN_UID, bbox: groupBBox([group]), meshNames: ['pandoraBoxSpin'],
-      }), 'latin1'),
-    },
   ];
 }
 
@@ -313,17 +306,25 @@ const MESSAGES: Record<string, string> = {
 export function buildPandora(read: DataReader): ModFile[] {
   const types = parseTypeSpec(mustRead(read, TYPES));
 
-  // Only the GLOWS are copied now. The box itself is authored — see
-  // boxArtFiles above and docs/GEOMETRY_FORMAT.md §6: the container round-trips
-  // byte for byte through our own writer on all 3572 shipped geometries, so a
-  // mesh of ours is a mesh, not a donor with its numbers changed.
-  const seeds = PANDORA_TIERS.map((t) => t.effect);
+  // The glows are copied, and so is the ANIMATION: an AnimSet is a document
+  // chain ending in a Granny clip, and Granny is a format we read but do not
+  // write. The box itself is authored — see boxArtFiles above and
+  // docs/GEOMETRY_FORMAT.md §6.
+  const seeds = [ARTIFACT_ANIMSET, ...PANDORA_TIERS.map((t) => t.effect)];
   const copied = copyArt(seeds, ART_DIR, read, 'pandora:box');
   const absent = seeds.filter((s) => !copied.at.has(s));
   if (absent.length) throw new Error(`pandora: the game's data has no ${absent.join(', ')}`);
 
+  // The one-bone rig, taken as bytes: the artifact skeleton the idle turns. Its
+  // document is inline in a model we want nothing else from, so the binary is
+  // read by the uid that model states and re-filed under a uid of ours.
+  const rigDoc = read(SKELETON_DONOR)?.toString('latin1');
+  const rigUid = rigDoc ? /<Skeleton[\s\S]*?<uid>([0-9A-Fa-f-]{36})<\/uid>/.exec(rigDoc)?.[1] : null;
+  const rig = rigUid ? read(`bin/Skeletons/${rigUid.toUpperCase()}`) : null;
+  if (!rig) throw new Error(`pandora: no skeleton binary behind ${SKELETON_DONOR}`);
+
   const files: ModFile[] = [...copied.files].map(([path, data]) => ({ path, data }));
-  files.push(...iconFiles(), ...boxArtFiles());
+  files.push(...iconFiles(), ...boxArtFiles(rig));
 
   // The four shared documents — same box, four glows.
   //
@@ -346,6 +347,8 @@ export function buildPandora(read: DataReader): ModFile[] {
       className: PANDORA_CLASS,
       messages: MESSAGES,
       model: PANDORA_MODEL,
+      // The turn on its own axis, and the bob with it: the artifact idle.
+      animSet: ARTIFACT_ANIMSET,
       effect: tier.effect,
       footprint: { w: 1, h: 1 },
       ground: null,
@@ -382,42 +385,22 @@ export function buildPandora(read: DataReader): ModFile[] {
       '</AdvMapObjectLink>',
     ].join(EOL) + EOL, 'latin1'),
   });
-
-  // THE ANIMATION PROBES, and they are the one question the box has left.
-  //
-  // A turn about its own axis is not a number anywhere in a model — it is an
-  // animation, which needs three things at once: bones in a skeleton, a binding
-  // from vertices to one of them, and an AnimSet on the object telling the
-  // engine to play something. Ours are OUR cube (same eight positions, same
-  // faces) bound rigidly to the bone the artifact idle spins, wearing the
-  // artifact's skeleton and its AnimSet.
-  //
-  // What is not known is whether the classes a treasure can be will play it at
-  // all, so the probes are two: a Building of the windmill's type — the shipped
-  // proof that Building plays an AnimSet — and an ARTIFACT, the class the rig
-  // was made for. Hidden in the palette; the probe map places them by name.
-  const spin = copyArt([DONOR_MODEL, DONOR_ANIMSET], `${PANDORA_DIR}/spin`, read, 'pandora:spin');
-  const spinModel = spin.at.get(DONOR_MODEL);
-  if (!spinModel) throw new Error('pandora: the spin probe lost its model');
-  const spinModelDoc = spin.files.get(spinModel)!.toString('latin1');
-  const spinSkelAt = resolve(spinModel, hrefOf(spinModelDoc, 'Skeleton') ?? '');
-  if (!spinSkelAt || !spin.files.has(spinSkelAt)) throw new Error('pandora: the spin probe lost its skeleton');
-  files.push(...[...spin.files].map(([path, data]) => ({ path, data })));
-  files.push(...spinArtFiles(spinSkelAt));
-
-  const spinAt = (path: string | undefined): string | undefined => {
-    const to = path ? spin.at.get(dataPath(path)) : undefined;
-    return to ? `/${to}` : at(path);
-  };
+  // THE TWO CONTROLS. The box's own class carries an AnimSet — 4 of the 15
+  // shipped treasures do, the Sea Chest among them — so the shipping box is
+  // rigged and should turn on its own. These twins are the same model on the
+  // two other classes that might: a Building of the windmill's type (the shipped
+  // proof that Building plays an AnimSet) and an ARTIFACT, the class the rig
+  // was made for. If the treasure turns out not to animate, they say who does.
+  // Hidden in the palette; the probe map places them by name.
   const millDoc = buildingDoc(
     {
       file: 'PandoraBox_Mill', className: PANDORA_MILL_CLASS, messages: MESSAGES,
-      model: PANDORA_SPIN_MODEL, animSet: DONOR_ANIMSET, effect: PANDORA_TIERS[3]!.effect,
+      model: PANDORA_MODEL, animSet: ARTIFACT_ANIMSET, effect: PANDORA_TIERS[3]!.effect,
       footprint: { w: 1, h: 1 }, ground: null,
       type: 'BUILDING_WINDMILL',
     },
-    { dir: PANDORA_DIR, shared: PANDORA_MILL_SHARED, link: PANDORA_MILL_LINK, art: `${PANDORA_DIR}/spin`, text: texts },
-    types, { w: 1, h: 1 }, spinAt,
+    { dir: PANDORA_DIR, shared: PANDORA_MILL_SHARED, link: PANDORA_MILL_LINK, art: ART_DIR, text: texts },
+    types, { w: 1, h: 1 }, at,
   );
   files.push({ path: PANDORA_MILL_SHARED, data: Buffer.from(millDoc, 'latin1') });
   files.push(hiddenLink(PANDORA_MILL_LINK, PANDORA_MILL_SHARED, PANDORA_MILL_CLASS));
@@ -425,13 +408,13 @@ export function buildPandora(read: DataReader): ModFile[] {
   const artifactDoc = buildingDoc(
     {
       file: 'PandoraBox_Artifact', className: PANDORA_ARTIFACT_CLASS, messages: MESSAGES,
-      model: PANDORA_SPIN_MODEL, animSet: DONOR_ANIMSET, effect: PANDORA_TIERS[1]!.effect,
+      model: PANDORA_MODEL, animSet: ARTIFACT_ANIMSET, effect: PANDORA_TIERS[1]!.effect,
       footprint: { w: 1, h: 1 }, ground: null,
       type: 'ARTF_RANDOM_SPECIFIC',
       fields: { ArtifactID: 'ARTIFACT_NONE' },
     },
-    { dir: PANDORA_DIR, shared: PANDORA_ARTIFACT_SHARED, link: PANDORA_ARTIFACT_LINK, art: `${PANDORA_DIR}/spin`, text: texts },
-    types, { w: 1, h: 1 }, spinAt,
+    { dir: PANDORA_DIR, shared: PANDORA_ARTIFACT_SHARED, link: PANDORA_ARTIFACT_LINK, art: ART_DIR, text: texts },
+    types, { w: 1, h: 1 }, at,
   );
   files.push({ path: PANDORA_ARTIFACT_SHARED, data: Buffer.from(artifactDoc, 'latin1') });
   files.push(hiddenLink(PANDORA_ARTIFACT_LINK, PANDORA_ARTIFACT_SHARED, PANDORA_ARTIFACT_CLASS));

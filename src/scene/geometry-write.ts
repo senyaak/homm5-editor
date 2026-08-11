@@ -463,6 +463,11 @@ export function geometryDocument(o: {
   meshNames?: string[];
   /** Groups per mesh block, defaulting to one group on one mesh. */
   groupsPerMesh?: number[];
+  /**
+   * The bone the mesh hangs from, for an animated model — the shipped ones name
+   * it here as well as in the skeleton, and an artifact's says `Artefact`.
+   */
+  rootJoint?: string;
 }): string {
   const meshNames = o.meshNames ?? ['mesh'];
   const groups = o.groupsPerMesh ?? [1];
@@ -473,7 +478,7 @@ export function geometryDocument(o: {
     '\t<SrcName/>',
     `\t<uid>${o.uid}</uid>`,
     `\t<RootMesh>${meshNames[0]}</RootMesh>`,
-    '\t<RootJoint/>',
+    o.rootJoint ? `\t<RootJoint>${o.rootJoint}</RootJoint>` : '\t<RootJoint/>',
     ...vec('Size', [b.sx, b.sy, b.sz], '\t'),
     ...vec('Center', [b.cx, b.cy, b.cz], '\t'),
     ...vec('BestFitPoint', [b.cx, b.cy, b.cz], '\t'),
@@ -491,6 +496,29 @@ export function geometryDocument(o: {
     '\t<MeshAnimated/>',
     '\t<MeshWindAffected/>',
     '</Geometry>',
+  ].join(XML_EOL) + XML_EOL;
+}
+
+/**
+ * The `(Skeleton).xdb`: a name for a `bin/Skeletons/<uid>` and the joint its
+ * tree hangs from.
+ *
+ * The bones themselves are Granny (docs/GR2_FORMAT.md) and we do not write
+ * those yet, so a rig of ours is a document of ours over a shipped skeleton
+ * binary. That is not a compromise here: the artifact rig the box uses is ONE
+ * bone called `Artefact` whose rest transform is the identity, so binding a
+ * mesh to it moves nothing until the animation does.
+ */
+export function skeletonDocument(o: { uid: string; rootJoint: string }): string {
+  return [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<Skeleton>',
+    '\t<SrcName/>',
+    `\t<RootJoint>${o.rootJoint}</RootJoint>`,
+    '\t<MSRFormat>true</MSRFormat>',
+    '\t<Animations/>',
+    `\t<uid>${o.uid}</uid>`,
+    '</Skeleton>',
   ].join(XML_EOL) + XML_EOL;
 }
 
