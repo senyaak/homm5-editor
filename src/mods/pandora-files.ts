@@ -658,9 +658,16 @@ export function buildPandora(read: DataReader): ModFile[] {
       retuneGeometryDoc(diag, dModel, cubifyGeometry(dBin, 'static', stage === 'KeepAttrs'));
     }
     files.push(...[...diag.files].map(([path, data]) => ({ path, data })));
+    // Each stage gets its OWN glow, so the row can be read across a map
+    // without hovering anything: blue, green, gold, red in stage order. The
+    // glows are already in the archive - the tiers copied them.
+    const glow = at(PANDORA_TIERS[PANDORA_ART_DIAGS.indexOf(key)]?.effect);
     files.push({
       path: pandoraDiagShared(key),
-      data: Buffer.from(shipped.replace(/<Model href="[^"]*"/, `<Model href="/${dModel}#xpointer(/Model)"`), 'latin1'),
+      data: Buffer.from(shipped
+        .replace(/<Model href="[^"]*"/, `<Model href="/${dModel}#xpointer(/Model)"`)
+        .replace(/<Effect href="[^"]*"\s*\/>/, glow ? `<Effect href="${glow}#xpointer(/Effect)"/>` : '<Effect/>'),
+        'latin1'),
     });
     files.push(hiddenLink(pandoraDiagLink(key), pandoraDiagShared(key), PANDORA_CLASS));
   }

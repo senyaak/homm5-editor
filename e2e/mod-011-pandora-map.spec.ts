@@ -26,7 +26,7 @@ import { modFile } from '../src/game/mod-paths.ts';
 import { readEntries } from '../src/format/pak.ts';
 import { writeGameplayArchive } from '../src/mods/gameplay.ts';
 import {
-  PANDORA_ARTIFACT_SHARED, PANDORA_ART_DIAGS, PANDORA_CLASS, PANDORA_FIELD_DIAGS,
+  PANDORA_ARTIFACT_SHARED, PANDORA_ART_DIAGS, PANDORA_CLASS,
   PANDORA_MILL_SHARED, PANDORA_TIERS, SHIPPED_CHEST, pandoraDiagShared, pandoraShared,
 } from '../src/mods/pandora-files.ts';
 import { withPandoraBlock } from '../src/mods/pandora-scripts.ts';
@@ -81,15 +81,17 @@ const BOXES: (PandoraContents & { x: number; y: number; shared: string })[] = [
  * three of our art pipeline's stages on a document known good. Left to right,
  * the first invisible one names the cause.
  */
-const CONTROL = { name: 'ShippedChest', x: 18, y: 40, shared: `/${SHIPPED_CHEST}` };
 const DIAGS = [
-  CONTROL,
-  ...PANDORA_FIELD_DIAGS.map((key, i) => ({
-    name: `PandoraDiag${key}`, x: 22 + i * 4, y: 40, shared: `/${pandoraDiagShared(key)}`,
-  })),
+  // The control first, then the four stages — ON THE BOXES' OWN LINE and to
+  // the left of them, because a diagnostic nobody can find answers nothing.
+  // Each stage carries its own glow (blue, green, gold, red in this order), so
+  // the row reads across the map without hovering a single one.
+  { name: 'ShippedChest', x: 4, y: 16, shared: `/${SHIPPED_CHEST}` },
   ...PANDORA_ART_DIAGS.map((key, i) => ({
-    name: `PandoraDiag${key}`, x: 22 + i * 4, y: 46, shared: `/${pandoraDiagShared(key)}`,
+    name: `PandoraDiag${key}`, x: 8 + i * 4, y: 16, shared: `/${pandoraDiagShared(key)}`,
   })),
+  // The seven field twins have said what they had to say — shipped documents
+  // draw — so they are built but no longer placed: see PANDORA_FIELD_DIAGS.
 ];
 
 /** What a box says it gave, written beside the map for the behaviour to show. */
