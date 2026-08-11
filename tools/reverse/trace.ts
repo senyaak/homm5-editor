@@ -6,6 +6,7 @@
 //   node tools/reverse/trace.ts common 0xb2d030 0xb2a790   what both call
 //   node tools/reverse/trace.ts field 0x44 0x48 0x4c       who reads these offsets
 //   node tools/reverse/trace.ts field 0x638 --all         every instruction, ungrouped
+//   node tools/reverse/trace.ts writes 0xfd4f60            who STORES this constant
 //
 // `common` is how the hook point was found: an artifact can leave a hero from
 // the hero screen, a script, a quest or a death, so whatever they share is
@@ -114,6 +115,26 @@ switch (command) {
     const found = pe.callsTo(addresses[0]!);
     console.log(`${found.length} references to 0x${addresses[0]!.toString(16)}`);
     for (const { from, kind } of found) console.log(`  ${kind} from 0x${from.toString(16)}`);
+    break;
+  }
+
+  // WHO WRITES THIS CONSTANT — how a constructor is found from its vtable.
+  //
+  // `calls` answers for code that is CALLED; a vtable address is never called,
+  // it is STORED, and `mov [ecx], <vtable>` at the top of a constructor is the
+  // one instruction that says which class an object is about to be. The same
+  // question finds who stores a string pointer, an id, a table base.
+  //
+  //   node tools/reverse/trace.ts writes 0xfd4f60
+  case 'writes': {
+    const wanted = addresses[0]!;
+    const text = pe.section('.text');
+    const found: Instruction[] = [];
+    for (const ins of disassemble(pe.bytesOf(text), pe.imageBase + text.va)) {
+      if (ins.immediates.includes(wanted)) found.push(ins);
+    }
+    console.log(`${found.length} instructions carry 0x${wanted.toString(16)}`);
+    for (const ins of found) console.log(`  0x${ins.address.toString(16)}  ${ins.text}`);
     break;
   }
 

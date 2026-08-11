@@ -478,7 +478,24 @@ test('every building the mod carries stands in its empty corner', async () => {
     await expect(page.locator('#brushbtn')).toHaveText('off');
   });
 
-  const STEP = 8, COLUMNS = 5, FIRST = { x: 6, y: 48 };
+  // THE GRID HAS TO FIT THE MAP, and it stopped fitting when the mod grew.
+  //
+  // Five columns held the fifteen buildings this map used to carry; the
+  // sixteenth (SylvanStonehenge) landed on row four — y=72 on a 72-tile map,
+  // which is one past the last tile. What the run then said was "(6,72)
+  // projects onto a pixel that picks no tile at all", a sentence about
+  // arithmetic that was really about a corner off the edge of the world. Seven
+  // columns put the same buildings inside the map, and the check below says so
+  // in as many words the next time the list outgrows it.
+  const STEP = 8, FIRST = { x: 6, y: 48 };
+  const MAP_TILES = 72;
+  // As many columns as the map's width allows, rather than a number that was
+  // right for the list of the day: five held fifteen buildings, and the mod
+  // ships twenty-four.
+  const COLUMNS = Math.floor((MAP_TILES - FIRST.x - 2) / STEP);
+  const lastRow = FIRST.y + Math.floor((todo.length - 1) / COLUMNS) * STEP;
+  expect(lastRow, `${todo.length} buildings do not fit: the last row would sit at y=${lastRow}`
+    + ` on a ${MAP_TILES}-tile map — widen COLUMNS or start the grid higher`).toBeLessThan(MAP_TILES);
   const placed: string[] = [];
   let slot = 0;
   for (const b of todo) {

@@ -116,13 +116,48 @@ and a matching `types.xml` entry, which is the same door the creature abilities
 and the hero classes went through. Worth doing after stage 1 proves the
 behaviour, not before.
 
+## The vtable stores, found (12.08.2026)
+
+`trace.ts writes <value>` — a command added for this: `calls` answers for code
+that is CALLED, and a vtable address is never called, it is STORED.
+
+    node tools/reverse/trace.ts writes 0xfd4f60
+    3 instructions carry 0xfd4f60
+      0xd20a19  mov dword ptr [edi],0FD4F60h
+      0xd20bdf  mov dword ptr [esi],0FD4F60h
+      0xd21d47  mov dword ptr [esi],0FD4F60h
+
+Three, and the second vtable is written six bytes later in each of them
+(`mov [edi+1Ch],0FD4F84h`) — so **the second vtable lives at object +0x1C**,
+which is the offset the visit slot has to be counted from.
+
+The one at `0xd20a19` sets up the whole object:
+
+    0xd20a19  mov [edi],       0FD4F60h
+    0xd20a1f  mov [edi+1Ch],   0FD4F84h
+    0xd20a26  mov [edi+0ACh],  0FD4F90h
+    0xd20a3f  mov [eax+edi+4], 0FD4F9Ch     ; and four more through a table of
+    0xd20a53  mov [eax+edi+4], 0FD4FBCh     ; offsets read off [edi+4] — the
+    0xd20a61  mov [eax+edi+4], 0FD5100h     ; virtual bases
+    0xd20a6f  mov [eax+edi+4], 0FD5108h
+
+**SEVEN vtables, three of them at fixed offsets and four placed through the
+virtual-base table.** That is the shape a subclass has to reproduce, and it is
+also why "copy the vtable" is not one copy: the slots we mean to own are in
+`0xfd4f84` (the visit is `+0xc` there), so that is the one to duplicate, and
+the pointer to patch is the one at object `+0x1C`.
+
+What is still unknown about these three: which is the constructor, which the
+destructor restoring the vtables on the way out, and which the third (a copy,
+or a placement variant). The function starts are not read yet.
+
 ## Stage 1, step by step
 
-1. **Find the constructor**, by the vtable store: something writes `0xfd4f60`
-   into `[this]` (and `0xfd4f84` into the second one at its offset). That
-   function is `CAdvMapTreasure::CAdvMapTreasure`, and it is also the natural
-   hook point — an object is ours or not the moment it is built from its
-   shared definition.
+1. **Find the constructor**, by the vtable store — DONE above, to three
+   candidates. What remains is to tell them apart: disassemble each function
+   from its start (the starts are not found yet) and look at what follows the
+   stores — a constructor goes on to initialise fields, a destructor to free
+   them.
 2. **Measure the vtable**: how many slots before the next descriptor begins.
    Copying a vtable needs its length, and a slot read past the end is the
    mistake docs/… already records ([[vtable-slot-needs-its-vtable-start]] in
