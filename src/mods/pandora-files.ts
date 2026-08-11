@@ -17,9 +17,10 @@
 
 import { parseTypeSpec } from '../schema/typespec.ts';
 import {
-  boxGroup, buildGeometry, geometryDocument, groupBBox, materialDocument, modelDocument,
-  rotateGroup, skeletonDocument,
+  animSetDocument, boxGroup, buildGeometry, geometryDocument, groupBBox, materialDocument,
+  modelDocument, rotateGroup, skelAnimDocument, skeletonDocument,
 } from '../scene/geometry-write.ts';
+import { spinClip, writeAnimationGR2, writeSkeletonGR2 } from '../format/gr2-write.ts';
 import { textureDoc, writeDDS, writeDXT1 } from '../format/texture.ts';
 import type { Image } from '../format/gif.ts';
 import { buildingDoc, buildingLink } from './buildings.ts';
@@ -48,23 +49,22 @@ const BOX_FLOAT = 0.45;
 const BOX_TILT: [number, number, number] = [0.14, 0.10, 0.35];
 
 /**
- * THE SPIN, and it is the game's own — measured, not adopted on faith.
+ * THE SPIN, and it is OURS — skeleton and clip both written by
+ * `src/format/gr2-write.ts`, not borrowed from an artifact.
  *
- * Every artifact lying on the adventure map turns and bobs, and all 103 of them
- * share one AnimSet. Read (`src/scene/animation.ts` over the Granny files) it is
- * a 7.5-second clip with a single track: yaw 0° → 360° over the clip, and a
- * ±0.198 rise and fall. The skeleton under it is **one bone named `Artefact`
- * whose rest transform is the identity** — which is why this rig can carry a
- * mesh of ours without moving it: bound to that bone, the box stands exactly
- * where its own positions put it until the clip turns it.
+ * Reading the game's rigs said what one has to be: a bone the mesh binds to, a
+ * clip whose track is named after that bone, and a document chain naming both.
+ * Ours is the smallest honest version — one bone at the identity, and a clip
+ * that turns it once about the vertical while lifting and dropping it, sampled
+ * into linear steps because a quaternion cannot hold a whole turn in one (slerp
+ * takes the short way, so 360° would read as standing still).
  *
- * The 76-bone cutscene stone that used to donate here is gone with it.
+ * The numbers are ours to choose, and these are chosen to look like an object
+ * hanging in the air rather than a fairground ride.
  */
-const ARTIFACT_ANIMSET = '_(AnimSet)/Artefacts/General.(AnimSet).xdb';
-/** Where the one-bone skeleton binary is read from — its uid, not its meshes. */
-const SKELETON_DONOR = '_(Model)/Artefacts/Angel_wings.(Model).xdb';
-/** The bone, in the skeleton and in the animation's only track. */
-const SPIN_JOINT = 'Artefact';
+const SPIN_JOINT = 'PandoraBox';
+const SPIN_SECONDS = 7.5;
+const SPIN_RISE = 0.2;
 
 /** The glow tiers, poorest first — the game's own artifact glows. */
 export interface PandoraTier {
@@ -218,6 +218,9 @@ const PANDORA_SKIN_TEXTURE = `${PANDORA_DIR}/PandoraBoxSkin.(Texture).xdb`;
 const PANDORA_SKIN_DDS = 'PandoraBoxSkin.dds';
 const PANDORA_SKELETON = `${PANDORA_DIR}/PandoraBox.(Skeleton).xdb`;
 const PANDORA_SKELETON_UID = 'B0AD0002-1111-4222-8333-C0DE0BADC0DE';
+const PANDORA_CLIP = `${PANDORA_DIR}/PandoraBoxIdle.(BasicSkelAnim).xdb`;
+const PANDORA_CLIP_UID = 'B0AD0003-1111-4222-8333-C0DE0BADC0DE';
+const PANDORA_ANIMSET = `${PANDORA_DIR}/PandoraBox.(AnimSet).xdb`;
 
 /**
  * Every file the box's LOOK is made of, and only one of them copied.
@@ -230,13 +233,12 @@ const PANDORA_SKELETON_UID = 'B0AD0002-1111-4222-8333-C0DE0BADC0DE';
  * a field we did not write on purpose — which is exactly the failure the donors
  * kept producing.
  *
- * The exception is the SKELETON BINARY: bones are Granny and we do not write
- * those yet, so the one-bone artifact rig is copied under a uid of ours, with a
- * skeleton document of our own over it. Binding costs the box nothing — that
- * bone's rest transform is the identity — and it is what lets the artifact idle
- * turn the box on its axis.
+ * That now includes the RIG. The skeleton and the clip are Granny files written
+ * by `src/format/gr2-write.ts` — one bone at the identity, and a turn about the
+ * vertical sampled into linear steps — so the box spins on a rig of ours rather
+ * than on an artifact's borrowed bones.
  */
-function boxArtFiles(skeletonBinary: Buffer): ModFile[] {
+function boxArtFiles(): ModFile[] {
   const centre: [number, number, number] = [0, 0, BOX_FLOAT + BOX_HALF];
   const cube = boxGroup(centre, [BOX_HALF, BOX_HALF, BOX_HALF]);
   const group = rotateGroup(cube, BOX_TILT, centre);
@@ -263,7 +265,28 @@ function boxArtFiles(skeletonBinary: Buffer): ModFile[] {
       path: PANDORA_SKELETON,
       data: Buffer.from(skeletonDocument({ uid: PANDORA_SKELETON_UID, rootJoint: SPIN_JOINT }), 'latin1'),
     },
-    { path: `bin/Skeletons/${PANDORA_SKELETON_UID}`, data: skeletonBinary },
+    {
+      path: `bin/Skeletons/${PANDORA_SKELETON_UID}`,
+      data: writeSkeletonGR2(`${SPIN_JOINT}Rig`, [{ name: SPIN_JOINT }]),
+    },
+    {
+      path: `bin/animations/${PANDORA_CLIP_UID}`,
+      data: (() => {
+        const clip = spinClip(SPIN_JOINT, SPIN_SECONDS, SPIN_RISE);
+        return writeAnimationGR2(clip.name, clip.duration, clip.tracks);
+      })(),
+    },
+    {
+      path: PANDORA_CLIP,
+      data: Buffer.from(skelAnimDocument({ uid: PANDORA_CLIP_UID, rootJoint: SPIN_JOINT }), 'latin1'),
+    },
+    {
+      path: PANDORA_ANIMSET,
+      data: Buffer.from(animSetDocument({
+        clips: [{ kind: 'idle00', anim: `/${PANDORA_CLIP}` }],
+        rootJoint: SPIN_JOINT,
+      }), 'latin1'),
+    },
     {
       path: PANDORA_MATERIAL,
       data: Buffer.from(materialDocument({ texture: `/${PANDORA_SKIN_TEXTURE}` }), 'latin1'),
@@ -306,25 +329,16 @@ const MESSAGES: Record<string, string> = {
 export function buildPandora(read: DataReader): ModFile[] {
   const types = parseTypeSpec(mustRead(read, TYPES));
 
-  // The glows are copied, and so is the ANIMATION: an AnimSet is a document
-  // chain ending in a Granny clip, and Granny is a format we read but do not
-  // write. The box itself is authored — see boxArtFiles above and
-  // docs/GEOMETRY_FORMAT.md §6.
-  const seeds = [ARTIFACT_ANIMSET, ...PANDORA_TIERS.map((t) => t.effect)];
+  // ONLY THE GLOWS ARE COPIED. Model, geometry, texture, skeleton and clip are
+  // all written here — see boxArtFiles above, docs/GEOMETRY_FORMAT.md §6 for the
+  // mesh container and src/format/gr2-write.ts for the rig.
+  const seeds = PANDORA_TIERS.map((t) => t.effect);
   const copied = copyArt(seeds, ART_DIR, read, 'pandora:box');
   const absent = seeds.filter((s) => !copied.at.has(s));
   if (absent.length) throw new Error(`pandora: the game's data has no ${absent.join(', ')}`);
 
-  // The one-bone rig, taken as bytes: the artifact skeleton the idle turns. Its
-  // document is inline in a model we want nothing else from, so the binary is
-  // read by the uid that model states and re-filed under a uid of ours.
-  const rigDoc = read(SKELETON_DONOR)?.toString('latin1');
-  const rigUid = rigDoc ? /<Skeleton[\s\S]*?<uid>([0-9A-Fa-f-]{36})<\/uid>/.exec(rigDoc)?.[1] : null;
-  const rig = rigUid ? read(`bin/Skeletons/${rigUid.toUpperCase()}`) : null;
-  if (!rig) throw new Error(`pandora: no skeleton binary behind ${SKELETON_DONOR}`);
-
   const files: ModFile[] = [...copied.files].map(([path, data]) => ({ path, data }));
-  files.push(...iconFiles(), ...boxArtFiles(rig));
+  files.push(...iconFiles(), ...boxArtFiles());
 
   // The four shared documents — same box, four glows.
   //
@@ -348,7 +362,7 @@ export function buildPandora(read: DataReader): ModFile[] {
       messages: MESSAGES,
       model: PANDORA_MODEL,
       // The turn on its own axis, and the bob with it: the artifact idle.
-      animSet: ARTIFACT_ANIMSET,
+      animSet: PANDORA_ANIMSET,
       effect: tier.effect,
       footprint: { w: 1, h: 1 },
       ground: null,
@@ -395,7 +409,7 @@ export function buildPandora(read: DataReader): ModFile[] {
   const millDoc = buildingDoc(
     {
       file: 'PandoraBox_Mill', className: PANDORA_MILL_CLASS, messages: MESSAGES,
-      model: PANDORA_MODEL, animSet: ARTIFACT_ANIMSET, effect: PANDORA_TIERS[3]!.effect,
+      model: PANDORA_MODEL, animSet: PANDORA_ANIMSET, effect: PANDORA_TIERS[3]!.effect,
       footprint: { w: 1, h: 1 }, ground: null,
       type: 'BUILDING_WINDMILL',
     },
@@ -408,7 +422,7 @@ export function buildPandora(read: DataReader): ModFile[] {
   const artifactDoc = buildingDoc(
     {
       file: 'PandoraBox_Artifact', className: PANDORA_ARTIFACT_CLASS, messages: MESSAGES,
-      model: PANDORA_MODEL, animSet: ARTIFACT_ANIMSET, effect: PANDORA_TIERS[1]!.effect,
+      model: PANDORA_MODEL, animSet: PANDORA_ANIMSET, effect: PANDORA_TIERS[1]!.effect,
       footprint: { w: 1, h: 1 }, ground: null,
       type: 'ARTF_RANDOM_SPECIFIC',
       fields: { ArtifactID: 'ARTIFACT_NONE' },

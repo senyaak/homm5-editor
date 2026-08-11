@@ -48,6 +48,7 @@
     "test-fill": "node tools/test-fill.ts",
     "test-buildings": "node tools/test-buildings.ts",
     "test-geometry-write": "node tools/test-geometry-write.ts",
+    "test-gr2-write": "node tools/test-gr2-write.ts",
     "test-pandora": "node tools/test-pandora.ts",
     "test-heroes": "node tools/test-heroes.ts",
     "test-specializations": "node tools/test-specializations.ts",

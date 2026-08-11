@@ -1,6 +1,6 @@
 # Granny GR2 container (`bin/Skeletons`, `bin/animations`) — notes
 
-Status: **decoded** (`src/format/gr2.ts`). Everything else under `bin/` is Nival's own
+Status: **decoded and written** — `src/format/gr2.ts` reads them, `src/format/gr2-write.ts` writes them (§8). Everything else under `bin/` is Nival's own
 record container (see GEOMETRY_FORMAT.md); these two directories are not. They
 are RAD Game Tools' **Granny GR2**, written by "Granny Standard Exporter, SDK
 version 2.5.0.5" out of Maya 6. The game ships `bin/granny2.dll` (32-bit) to
@@ -140,7 +140,61 @@ inverse bind matrices, and every other combination of transpose and order is
 wrong by order 1. Handing those matrices to three.js needs no transpose at all,
 for the reason spelled out in ANIMATION_FORMAT.md §7.
 
-## 8. Verification
+## 8. Writing one **[OK]**
+
+`src/format/gr2-write.ts` writes skeletons and animations. It exists because the
+Pandora's Box first turned on its axis by borrowing an artifact's bones and an
+artifact's clip, and borrowed bytes are bytes nobody has understood.
+
+Three things had to be measured before a file of ours could be written:
+
+**The CRC.** Plain CRC-32 (the zlib polynomial, reflected, `0xFFFFFFFF` in and
+out) over the file **from byte 88** — where the section table starts — to the
+end. Found by brute-forcing start offset against variant, and then checked
+against **all 5656 shipped Granny files: zero mismatches**.
+
+**The section table.** Ours writes the same eight sections the game's files
+carry, but **uncompressed** (`compression = 0`): the flag exists, the reader
+treats stored and Oodle1 sections alike, and it saves writing a compressor.
+Strings go last in each section, so `stop0` and `stop1` both sit where the
+string run begins — the layout the fields are there to describe (§5).
+
+**Which type library.** A file's `typeTag` says which revision its tree is, and
+the shipped ones are not all the same:
+
+| tag | files | library |
+|---|---|---|
+| `0x80000013` | 2836 | `VectorTracks`, `TransformLODErrors`, `Oversampling` |
+| `0x80000011` | 2787 | the same tree, byte for byte |
+| `0x80000010` | 32 | older: `ScalarTracks`, no `Oversampling` |
+| `0x80000015` | 1 | — |
+
+Ours writes `0x80000013`, the commonest, and the **whole** 30-structure
+`FileInfo` library rather than only the parts a skeleton fills — the tree is
+what the reader on the other side marshals by, and a partial one is a different
+library. It is transcribed into a table in the source, and
+`tools/test-gr2-write.ts` walks that table against a shipped file's tree
+**member for member, in order, by kind, name and array width**. That check is
+what makes the table a transcription rather than an invention; it caught four
+real mistakes on its first run.
+
+### What a rig has to be
+
+Turning an object needs three things at once, and any one alone does nothing:
+
+1. a **bone binding** in the mesh (the tag-4 array of GEOMETRY_FORMAT.md);
+2. a **skeleton** the model document names;
+3. an **AnimSet** on the object's shared definition, naming a clip.
+
+The track is bound to the bone **by name** — so a clip's `TransformTrack.Name`
+must equal the `Bone.Name` it is meant to turn.
+
+A quaternion cannot express a whole turn in one segment: slerp takes the short
+way, so 360° in one step reads as standing still and 180° picks a side at
+random. `spinClip` therefore samples the turn into linear segments (16 of them,
+22.5° apiece) and writes each control as the half-angle the quaternion carries.
+
+## 9. Verification
 
 `npm run test-gr2` reads a stride-spread sample of the library and checks only
 redundancies the data itself carries: the header arithmetic above, one bind

@@ -2,10 +2,13 @@
 //
 // What is checked, and why it is enough to trust the box without a game run:
 //
-//   the cube — the rebuilt donor geometry decodes to exactly a cube: the box's
-//     bounding box, twelve real triangles wound OUTWARD (signed volume +1.0³ —
-//     a flipped winding comes out negative, which is the check catching it),
-//     UVs inside [0,1], face normals matching face planes;
+//   the cube — the geometry WE WRITE decodes to exactly a cube: one group,
+//     twenty-four vertices, twelve triangles wound OUTWARD (a flipped winding
+//     comes out as a negative volume, which is the check catching it), one
+//     texture square per face, clear of the ground;
+//   the spin — our own skeleton and our own clip, posed through the same code
+//     the editor animates with: a quarter of the clip must be a quarter turn
+//     about the box's own axis, and nothing may dip into the ground;
 //   the documents — all four tiers parse, their fields resolve inside the mod
 //     (self-containment, same promise as buildings), and the palette link names
 //     the poorest tier;
@@ -179,15 +182,15 @@ const countHex = (buf: Buffer, hex: string): number => {
   for (let at = buf.indexOf(needle); at >= 0; at = buf.indexOf(needle, at + 1)) n++;
   return n;
 };
-check('every tier plays the artifact idle', PANDORA_TIERS.every((t) =>
+check('every tier plays our idle clip', PANDORA_TIERS.every((t) =>
   /<AnimSet href="[^"]+"/.test(byPath.get(pandoraShared(t.key).toLowerCase())?.toString('latin1') ?? '')));
 check('every one of the box’s eight positions rides the bone',
   !!boxBin && countHex(Buffer.from(boxBin), BONE0_ENTRY) === 8);
 const skelDoc = follow(modelDoc, 'Skeleton');
-check('the model names a skeleton of ours', !!skelDoc && skelDoc.includes('<RootJoint>Artefact</RootJoint>'));
+check('the model names a skeleton of ours', !!skelDoc && skelDoc.includes('<RootJoint>PandoraBox</RootJoint>'));
 const skelUid = /<uid>([0-9A-Fa-f-]{36})<\/uid>/.exec(skelDoc)?.[1] ?? '';
 check('and the bones are in the build', byPath.has(`bin/skeletons/${skelUid.toUpperCase()}`.toLowerCase()), skelUid);
-check('the geometry hangs from the same joint', geomDoc.includes('<RootJoint>Artefact</RootJoint>'));
+check('the geometry hangs from the same joint', geomDoc.includes('<RootJoint>PandoraBox</RootJoint>'));
 
 // AND IT ACTUALLY TURNS. Documents lining up is not motion: the rig is loaded
 // the way the editor loads one — skeleton binary, the clip the AnimSet names,
@@ -218,7 +221,7 @@ check('the geometry hangs from the same joint', geomDoc.includes('<RootJoint>Art
     check('a quarter of the clip is a quarter turn about its own axis', worst < 0.05,
       `worst corner off by ${worst.toFixed(4)}`);
     check('and nothing drifts off the axis', drift < 1e-3, `${drift.toFixed(5)}`);
-    check('the clip is the artifact idle: one full turn', Math.abs(clip.duration - 7.5) < 0.01,
+    check('the clip is ours: one full turn', Math.abs(clip.duration - 7.5) < 0.01,
       `${clip.duration}s`);
     // The same clip lifts and drops by ±0.198, so "floating" has to survive the
     // bottom of the bob rather than only the pose it was authored in.

@@ -522,6 +522,53 @@ export function skeletonDocument(o: { uid: string; rootJoint: string }): string 
   ].join(XML_EOL) + XML_EOL;
 }
 
+/** The `(BasicSkelAnim).xdb`: a name for a `bin/animations/<uid>` clip. */
+export function skelAnimDocument(o: { uid: string; rootJoint: string }): string {
+  return [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<BasicSkelAnim>',
+    '\t<SrcName/>',
+    `\t<uid>${o.uid}</uid>`,
+    '\t<ExpSrcClip/>',
+    `\t<ExpRootTransform>${o.rootJoint}</ExpRootTransform>`,
+    '\t<ExpFrameFirst>0</ExpFrameFirst>',
+    '\t<ExpFrameLast>0</ExpFrameLast>',
+    '\t<ExpSettingsFile href=""/>',
+    '\t<MovementSpeed>0</MovementSpeed>',
+    '\t<SpeedFactor>1</SpeedFactor>',
+    '\t<Sound/>',
+    '\t<Effect/>',
+    '\t<SpeedLineFallTime>250</SpeedLineFallTime>',
+    '\t<SpeedLineMaterial/>',
+    '</BasicSkelAnim>',
+  ].join(XML_EOL) + XML_EOL;
+}
+
+/**
+ * The `(AnimSet).xdb`: which clip plays for which kind.
+ *
+ * `idle00` is the kind an object standing on the map plays, which is the only
+ * one anything of ours needs so far.
+ */
+export function animSetDocument(o: { clips: { kind: string; anim: string }[]; rootJoint: string }): string {
+  return [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<AnimSet>',
+    '\t<animations>',
+    ...o.clips.flatMap((c) => [
+      '\t\t<Item>',
+      `\t\t\t<Kind>${c.kind}</Kind>`,
+      `\t\t\t<Anim href="${c.anim}#xpointer(/BasicSkelAnim)"/>`,
+      '\t\t</Item>',
+    ]),
+    '\t</animations>',
+    '\t<ExpSrcScene/>',
+    '\t<ExpSrcClipFolder href=""/>',
+    `\t<ExpRootTransform>${o.rootJoint}</ExpRootTransform>`,
+    '</AnimSet>',
+  ].join(XML_EOL) + XML_EOL;
+}
+
 /** The `(Model).xdb`: what it is made of, all of it by path. */
 export function modelDocument(o: {
   /** Paths to the material documents, in group order. */

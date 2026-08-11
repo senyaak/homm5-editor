@@ -15,6 +15,15 @@ one.
 
 ### Added
 
+- **Rigs of our own.** Granny GR2 — the format the game's skeletons and
+  animations are in — is now written as well as read. The header's CRC turned
+  out to be a plain CRC-32 from byte 88 to the end (checked against all 5656
+  shipped files), sections may be written uncompressed, and the 30-structure
+  type library is transcribed into the source and verified against the game's
+  own tree member for member. So an object can be given a skeleton and an idle
+  clip that nobody else authored: the Pandora's Box turns on a bone of ours.
+  `docs/GR2_FORMAT.md` §8, `npm run test-gr2-write`.
+
 - **Models of our own.** The geometry container is decoded well enough to
   WRITE: every one of the game's 3572 meshes now decodes and re-encodes byte for
   byte through the editor's own writer, which is the proof that nothing in those
