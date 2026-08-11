@@ -464,8 +464,14 @@ export function geometryDocument(o: {
   /** Groups per mesh block, defaulting to one group on one mesh. */
   groupsPerMesh?: number[];
   /**
-   * The bone the mesh hangs from, for an animated model — the shipped ones name
-   * it here as well as in the skeleton, and an artifact's says `Artefact`.
+   * The bone the mesh hangs from, for an animated model.
+   *
+   * It goes in `RootJoint` AND in `RootMesh`, which is not a typo: `RootMesh`
+   * names the NODE, not the mesh. Of the 1090 shipped models that carry a
+   * skeleton, 887 give both fields the same value and 197 leave `RootMesh`
+   * empty — and in **not one** of them does `RootMesh` equal the first entry of
+   * `MeshNames`. Ours did, which is how the box came to draw nothing at all,
+   * shadow included: the root it named was not a bone the skeleton had.
    */
   rootJoint?: string;
 }): string {
@@ -477,7 +483,7 @@ export function geometryDocument(o: {
     '<Geometry>',
     '\t<SrcName/>',
     `\t<uid>${o.uid}</uid>`,
-    `\t<RootMesh>${meshNames[0]}</RootMesh>`,
+    `\t<RootMesh>${o.rootJoint ?? meshNames[0]}</RootMesh>`,
     o.rootJoint ? `\t<RootJoint>${o.rootJoint}</RootJoint>` : '\t<RootJoint/>',
     ...vec('Size', [b.sx, b.sy, b.sz], '\t'),
     ...vec('Center', [b.cx, b.cy, b.cz], '\t'),

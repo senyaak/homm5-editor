@@ -84,6 +84,55 @@ const follow = (doc: string, field: string): string => {
     naked.length === 0, naked.map((f) => f.path).join(', '));
 }
 
+// EVERY HREF OF OURS RESOLVES. Not just the shared documents' — the whole
+// chain, model to geometry to skeleton to clip. A path that leads nowhere is
+// how an object comes to draw nothing at all, and it costs a game run to find
+// that way round; here it costs nothing.
+{
+  const dangling: string[] = [];
+  for (const f of files) {
+    if (!f.path.endsWith('.xdb')) continue;
+    const doc = f.data.toString('latin1');
+    if (!doc.startsWith('<?xml')) continue;
+    // `SrcName` and the `Exp*` fields name the AUTHORING original — a Maya
+    // scene, a .tga nobody ships — and every shipped document carries one that
+    // leads nowhere. They are a record, not a reference.
+    const AUTHORING = /^(SrcName|ExpSrcClip|ExpSrcScene|ExpSrcClipFolder|ExpSettingsFile)$/;
+    for (const [, field, href] of doc.matchAll(/<(\w+) href="([^"]*)"/g)) {
+      if (AUTHORING.test(field!)) continue;
+      const path = href!.split('#')[0]!;
+      if (!path || path.startsWith('#')) continue;      // inline, or an empty slot
+      if (path.startsWith('/Text/')) continue;          // the game's own texts
+      const at = path.startsWith('/') ? path.slice(1) : `${f.path.replace(/[^/]+$/, '')}${path}`;
+      if (!byPath.has(at.toLowerCase())) dangling.push(`${f.path} -> ${href}`);
+    }
+  }
+  check('every href of ours lands on a file we ship', dangling.length === 0,
+    dangling.slice(0, 4).join(' · '));
+}
+
+// AND THE BINARIES BEHIND THE UIDS. A document naming a uid whose file is not
+// in the build is the same failure with one more step in it.
+{
+  const missing: string[] = [];
+  for (const f of files) {
+    if (!f.path.endsWith('.xdb')) continue;
+    const doc = f.data.toString('latin1');
+    const uid = /<uid>([0-9A-Fa-f-]{36})<\/uid>/.exec(doc)?.[1];
+    if (!uid) continue;
+    const dir = doc.includes('<Skeleton>') ? 'bin/Skeletons'
+      : doc.includes('<BasicSkelAnim>') ? 'bin/animations'
+      : doc.includes('<Geometry>') ? 'bin/Geometries' : null;
+    if (dir && !byPath.has(`${dir}/${uid.toUpperCase()}`.toLowerCase())) missing.push(`${f.path} -> ${dir}/${uid}`);
+  }
+  check('every uid of ours has its binary', missing.length === 0, missing.join(' · '));
+}
+
+// THE ROOT OF A SKINNED MODEL IS A BONE, NOT A MESH. `RootMesh` names the NODE:
+// of the 1090 shipped models with a skeleton, 887 give it the same value as
+// `RootJoint` and 197 leave it empty, and in none of them is it the first entry
+// of `MeshNames`. Ours said the mesh name once, and the box vanished entirely —
+// no model, no shadow, only the glow.
 // THE BOX IS OURS, built by src/scene/geometry-write.ts rather than sculpted
 // out of a donor. So what is asked of it is what we asked the writer for: one
 // group, a closed cube of the right size, turned, floating, wound outward, and

@@ -27,7 +27,7 @@ import { readEntries } from '../src/format/pak.ts';
 import { writeGameplayArchive } from '../src/mods/gameplay.ts';
 import {
   PANDORA_ARTIFACT_SHARED, PANDORA_CLASS,
-  PANDORA_MILL_SHARED, PANDORA_TIERS, pandoraShared,
+  PANDORA_MILL_SHARED, PANDORA_STILL_SHARED, PANDORA_TIERS, pandoraShared,
 } from '../src/mods/pandora-files.ts';
 import { withPandoraBlock } from '../src/mods/pandora-scripts.ts';
 import type { PandoraContents } from '../src/mods/pandora-scripts.ts';
@@ -67,6 +67,10 @@ const BOXES: (PandoraContents & { x: number; y: number; shared: string })[] = [
   // windmill-type Building (the shipped proof a Building plays an AnimSet)
   // and on an artifact — the class the rig was made for, whose pickup also
   // vanishes the object.
+  // The still control, FIRST in the row and unmissable: the same cube with no
+  // rig at all. If it draws and the others do not, the rig is what is wrong; if
+  // none of them draw, the model is.
+  { name: 'PandoraStill', gold: 100, x: 20, y: 16, shared: `/${PANDORA_STILL_SHARED}` },
   { name: 'PandoraMill', exp: 100, x: 36, y: 16, shared: `/${PANDORA_MILL_SHARED}` },
   { name: 'PandoraArtifact', gold: 1000, x: 36, y: 22, shared: `/${PANDORA_ARTIFACT_SHARED}` },
 ];
@@ -153,8 +157,9 @@ test('every box goes down through the palette, named for what it holds', async (
   }
 
   const placed = await page.evaluate(() => window.view.objects().map((o) => o.type));
-  expect(placed.filter((t) => t === 'AdvMapTreasure'), 'the chest-class boxes and the bisect row')
-    .toHaveLength(BOXES.filter((b) => b.shared === BOX).length + DIAGS.length);
+  // Every box of the chest class: the nine ordinary ones and the still control.
+  expect(placed.filter((t) => t === 'AdvMapTreasure'), 'the chest-class boxes')
+    .toHaveLength(BOXES.filter((b) => b.shared.includes(PANDORA_CLASS)).length + DIAGS.length);
   expect(placed.filter((t) => t === 'AdvMapBuilding'), 'the mill probe')
     .toHaveLength(1);
   expect(placed.filter((t) => t === 'AdvMapArtifact'), 'the artifact probe')

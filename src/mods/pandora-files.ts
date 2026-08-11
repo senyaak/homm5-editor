@@ -108,6 +108,17 @@ export const PANDORA_LINK = 'MapObjects/_(AdvMapObjectLink)/Objects-All-Terra/Pa
 export const PANDORA_MILL_CLASS = 'AdvMapBuildingShared';
 export const PANDORA_MILL_SHARED = `${PANDORA_DIR}/PandoraBox_Mill.(${PANDORA_MILL_CLASS}).xdb`;
 export const PANDORA_MILL_LINK = 'MapObjects/_(AdvMapObjectLink)/Objects-All-Terra/PandoraBoxMill.xdb';
+/**
+ * THE STILL TWIN: the same cube, the same texture, no rig at all.
+ *
+ * A control, and the cheapest one there is. The box drew when it had no
+ * skeleton and vanished when it got one — model, shadow and all — so the next
+ * look has to separate "the rig is wrong" from "the model is wrong", and one
+ * unrigged twin standing beside the others does it without a second run.
+ */
+export const PANDORA_STILL_CLASS = 'AdvMapTreasureShared';
+export const PANDORA_STILL_SHARED = `${PANDORA_DIR}/PandoraBox_Still.(${PANDORA_STILL_CLASS}).xdb`;
+export const PANDORA_STILL_LINK = 'MapObjects/_(AdvMapObjectLink)/Objects-All-Terra/PandoraBoxStill.xdb';
 export const PANDORA_ARTIFACT_CLASS = 'AdvMapArtifactShared';
 export const PANDORA_ARTIFACT_SHARED = `${PANDORA_DIR}/PandoraBox_Artifact.(${PANDORA_ARTIFACT_CLASS}).xdb`;
 export const PANDORA_ARTIFACT_LINK = 'MapObjects/_(AdvMapObjectLink)/Objects-All-Terra/PandoraBoxArtifact.xdb';
@@ -221,6 +232,9 @@ const PANDORA_SKELETON_UID = 'B0AD0002-1111-4222-8333-C0DE0BADC0DE';
 const PANDORA_CLIP = `${PANDORA_DIR}/PandoraBoxIdle.(BasicSkelAnim).xdb`;
 const PANDORA_CLIP_UID = 'B0AD0003-1111-4222-8333-C0DE0BADC0DE';
 const PANDORA_ANIMSET = `${PANDORA_DIR}/PandoraBox.(AnimSet).xdb`;
+/** The control's documents — same mesh, no rig named anywhere. */
+const PANDORA_STILL_MODEL = `${PANDORA_DIR}/PandoraBoxStill.(Model).xdb`;
+const PANDORA_STILL_GEOMETRY = `${PANDORA_DIR}/PandoraBoxStill.(Geometry).xdb`;
 
 /**
  * Every file the box's LOOK is made of, and only one of them copied.
@@ -257,8 +271,26 @@ function boxArtFiles(): ModFile[] {
     {
       path: PANDORA_GEOMETRY,
       data: Buffer.from(geometryDocument({
-        uid: PANDORA_UID, bbox: groupBBox([group]), meshNames: ['pandoraBox'],
-        rootJoint: SPIN_JOINT,
+        uid: PANDORA_UID, bbox: groupBBox([group]),
+        // The node is the bone; the mesh hanging off it is `<node>Shape`, which
+        // is the Maya naming every shipped model follows.
+        meshNames: [`${SPIN_JOINT}Shape`], rootJoint: SPIN_JOINT,
+      }), 'latin1'),
+    },
+    // The still twin: the SAME mesh binary, named by a second pair of documents
+    // that mention no skeleton. Nothing is duplicated but the two small files —
+    // a geometry document is a name for a uid, and two names may share one.
+    {
+      path: PANDORA_STILL_MODEL,
+      data: Buffer.from(modelDocument({
+        materials: [`/${PANDORA_MATERIAL}`],
+        geometry: `/${PANDORA_STILL_GEOMETRY}`,
+      }), 'latin1'),
+    },
+    {
+      path: PANDORA_STILL_GEOMETRY,
+      data: Buffer.from(geometryDocument({
+        uid: PANDORA_UID, bbox: groupBBox([group]), meshNames: [`${SPIN_JOINT}Shape`],
       }), 'latin1'),
     },
     {
@@ -418,6 +450,21 @@ export function buildPandora(read: DataReader): ModFile[] {
   );
   files.push({ path: PANDORA_MILL_SHARED, data: Buffer.from(millDoc, 'latin1') });
   files.push(hiddenLink(PANDORA_MILL_LINK, PANDORA_MILL_SHARED, PANDORA_MILL_CLASS));
+
+  // The still control: the box's own class and glow, the same cube, no rig.
+  const stillDoc = buildingDoc(
+    {
+      file: 'PandoraBox_Still', className: PANDORA_STILL_CLASS, messages: MESSAGES,
+      model: PANDORA_STILL_MODEL, effect: PANDORA_TIERS[2]!.effect,
+      footprint: { w: 1, h: 1 }, ground: null,
+      type: 'TREASURE_CHEST',
+      fields: { MinResource: '1', MaxResource: '1' },
+    },
+    { dir: PANDORA_DIR, shared: PANDORA_STILL_SHARED, link: PANDORA_STILL_LINK, art: ART_DIR, text: texts },
+    types, { w: 1, h: 1 }, at,
+  );
+  files.push({ path: PANDORA_STILL_SHARED, data: Buffer.from(stillDoc, 'latin1') });
+  files.push(hiddenLink(PANDORA_STILL_LINK, PANDORA_STILL_SHARED, PANDORA_STILL_CLASS));
 
   const artifactDoc = buildingDoc(
     {
