@@ -106,6 +106,29 @@ check('the skeleton opens as a Granny file', !!GrannyFile.open(skeleton), `${ske
   check('and its CRC is the one the header claims', ((c ^ 0xffffffff) >>> 0) === skeleton.readUInt32LE(40));
   check('nothing in it is unreadable', !file.isUnreadable);
 
+  // THE LAYOUT INVARIANTS, and they are the corpus's rather than ours. Sampled
+  // across the shipped library they hold without exception — 515 of 515 files,
+  // and 256 of 256 with a type section — and a file of ours that disagreed
+  // with them drew nothing in the game while its unrigged twin drew fine.
+  const sec = (i: number): { off: number; raw: number; s0: number; s1: number; rel: number; mix: number } => {
+    const at = 88 + i * 44;
+    return {
+      off: skeleton.readUInt32LE(at + 4), raw: skeleton.readUInt32LE(at + 12),
+      s0: skeleton.readUInt32LE(at + 20), s1: skeleton.readUInt32LE(at + 24),
+      rel: skeleton.readUInt32LE(at + 28), mix: skeleton.readUInt32LE(at + 36),
+    };
+  };
+  const all = Array.from({ length: file.sections.length }, (_, i) => sec(i));
+  const filled = all.filter((s) => s.raw > 0);
+  check('the type section declares no 8-bit run', sec(6).s1 === sec(6).raw,
+    `${sec(6).s1} of ${sec(6).raw}`);
+  check('the object section puts its strings in one', sec(0).s1 < sec(0).raw,
+    `${sec(0).s1} of ${sec(0).raw}`);
+  check('relocations come before the payload they belong to',
+    filled.every((s) => s.rel <= s.off), filled.map((s) => `${s.rel}/${s.off}`).join(' '));
+  check('the mixed-marshalling offset is the payload offset',
+    all.every((s) => s.mix === s.off));
+
   const bones = readSkeletons(file);
   check('one skeleton, one bone, named', bones.length === 1 && bones[0]!.bones.length === 1
     && bones[0]!.bones[0]!.name === BONE, `${bones[0]?.bones.map((b) => b.name).join(',')}`);

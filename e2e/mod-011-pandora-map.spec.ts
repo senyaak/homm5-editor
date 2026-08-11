@@ -27,6 +27,7 @@ import { readEntries } from '../src/format/pak.ts';
 import { writeGameplayArchive } from '../src/mods/gameplay.ts';
 import {
   PANDORA_ARTIFACT_SHARED, PANDORA_CLASS,
+  PANDORA_BONED_SHARED, PANDORA_CLIPPED_SHARED,
   PANDORA_MILL_SHARED, PANDORA_STILL_SHARED, PANDORA_TIERS, pandoraShared,
 } from '../src/mods/pandora-files.ts';
 import { withPandoraBlock } from '../src/mods/pandora-scripts.ts';
@@ -68,16 +69,20 @@ const BOXES: (PandoraContents & { x: number; y: number; shared: string })[] = [
   // to be LOOKED at goes here: a row eighteen tiles up the map is a row nobody
   // finds, which is the second time that has cost a run.
   //
-  // Left to right as the hero sees them: the same cube four ways.
-  //   24  Still     — no rig named anywhere. The control.
-  //   20  Look      — the shipping box: our skeleton, our clip, chest class.
-  //   16  Mill      — the same model on a windmill-type Building.
-  //   12  Artifact  — and on an artifact, the class rigs were made for.
-  // Still draws and the rest do not → the rig. None of them draw → the model.
+  // THE RIG, TAKEN APART. Still drew and everything rigged did not, so the row
+  // is now a bisect: each step adds one half of a rig, and the first one that
+  // disappears names the half that is wrong.
+  //   24  Still    — no skeleton, no AnimSet.       (drew last time)
+  //   20  Boned    — skeleton in the model, no clip.
+  //   16  Clipped  — AnimSet on the object, no skeleton.
+  //   12  Look     — both: the shipping box.
   { name: 'PandoraStill', gold: 100, x: 24, y: 34, shared: `/${PANDORA_STILL_SHARED}` },
-  { name: 'PandoraLook', gold: 100, x: 20, y: 34, shared: BOX },
-  { name: 'PandoraMill', exp: 100, x: 16, y: 34, shared: `/${PANDORA_MILL_SHARED}` },
-  { name: 'PandoraArtifact', gold: 1000, x: 12, y: 34, shared: `/${PANDORA_ARTIFACT_SHARED}` },
+  { name: 'PandoraBoned', gold: 100, x: 20, y: 34, shared: `/${PANDORA_BONED_SHARED}` },
+  { name: 'PandoraClipped', gold: 100, x: 16, y: 34, shared: `/${PANDORA_CLIPPED_SHARED}` },
+  { name: 'PandoraLook', gold: 100, x: 12, y: 34, shared: BOX },
+  // The other classes stay as secondary questions, off the looking row.
+  { name: 'PandoraMill', exp: 100, x: 36, y: 16, shared: `/${PANDORA_MILL_SHARED}` },
+  { name: 'PandoraArtifact', gold: 1000, x: 36, y: 22, shared: `/${PANDORA_ARTIFACT_SHARED}` },
 ];
 
 /**

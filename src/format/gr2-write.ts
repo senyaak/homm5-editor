@@ -581,16 +581,23 @@ export function writeGR2(root: Fields): Buffer {
   const headerSize = 88 + SECTION_COUNT * 44;
   const parts: Buffer[] = [];
   let cursor = headerSize;
-  const table: { compression: number; offset: number; size: number; stop: number; reloc: number; relocCount: number }[] = [];
+  const table: {
+    offset: number; size: number; stop: number; reloc: number; relocCount: number; mixed: number;
+  }[] = [];
 
-  // Section payloads first, then each one's relocation table — the shipped
-  // layout, and the reason relocations stay readable when a payload is not.
-  const payloadAt = new Map<number, number>();
-  for (let i = 0; i < SECTION_COUNT; i++) {
-    const b = bySection.get(i);
-    payloadAt.set(i, cursor);
-    if (b) { parts.push(b.data); cursor += b.data.length; }
-  }
+  // SECTION BY SECTION: its relocation table, then its payload. Three things
+  // here are not taste but the corpus, each holding in every shipped file
+  // sampled (515 of 515, and 256 of 256 for the type one):
+  //
+  //   * the relocations come BEFORE the payload they belong to;
+  //   * the mixed-marshalling offset equals the payload offset, even though
+  //     nobody has any entries;
+  //   * the TYPE section declares no 8-bit run at all — its `stop` sits at the
+  //     end, strings and all — while the OBJECT section puts its strings in
+  //     that run, `stop` at the string start.
+  //
+  // Ours disagreed on all three and the game drew nothing rigged, so they are
+  // matched rather than reasoned about.
   for (let i = 0; i < SECTION_COUNT; i++) {
     const b = bySection.get(i);
     const fixups = b ? [...b.writer.fixups].sort((x, y) => x.at - y.at) : [];
@@ -600,16 +607,19 @@ export function writeGR2(root: Fields): Buffer {
       reloc.writeUInt32LE(f.sec, k * 12 + 4);
       reloc.writeUInt32LE(f.off, k * 12 + 8);
     });
-    table.push({
-      compression: 0,
-      offset: payloadAt.get(i)!,
-      size: b ? b.data.length : 0,
-      stop: b ? b.stringStart : 0,
-      reloc: cursor,
-      relocCount: fixups.length,
-    });
+    const relocAt = cursor;
     if (reloc.length) parts.push(reloc);
     cursor += reloc.length;
+    const payloadAt = cursor;
+    if (b) { parts.push(b.data); cursor += b.data.length; }
+    table.push({
+      offset: payloadAt,
+      size: b ? b.data.length : 0,
+      stop: !b ? 0 : i === TYPE_SECTION ? b.data.length : b.stringStart,
+      reloc: relocAt,
+      relocCount: fixups.length,
+      mixed: payloadAt,
+    });
   }
 
   const header = Buffer.alloc(headerSize);
@@ -632,7 +642,7 @@ export function writeGR2(root: Fields): Buffer {
   header.writeUInt32LE(0x80000013, 68);
   for (const [i, s] of table.entries()) {
     const at = 88 + i * 44;
-    header.writeUInt32LE(s.compression, at);
+    header.writeUInt32LE(0, at); // stored, not Oodle
     header.writeUInt32LE(s.offset, at + 4);
     header.writeUInt32LE(s.size, at + 8);
     header.writeUInt32LE(s.size, at + 12); // stored: expanded size is the same
@@ -641,6 +651,8 @@ export function writeGR2(root: Fields): Buffer {
     header.writeUInt32LE(s.stop, at + 24); // …and the (empty) 16-bit one
     header.writeUInt32LE(s.reloc, at + 28);
     header.writeUInt32LE(s.relocCount, at + 32);
+    header.writeUInt32LE(s.mixed, at + 36);
+    header.writeUInt32LE(0, at + 40);
   }
 
   const file = Buffer.concat([header, ...parts]);

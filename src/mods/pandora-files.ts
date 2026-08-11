@@ -119,6 +119,19 @@ export const PANDORA_MILL_LINK = 'MapObjects/_(AdvMapObjectLink)/Objects-All-Ter
 export const PANDORA_STILL_CLASS = 'AdvMapTreasureShared';
 export const PANDORA_STILL_SHARED = `${PANDORA_DIR}/PandoraBox_Still.(${PANDORA_STILL_CLASS}).xdb`;
 export const PANDORA_STILL_LINK = 'MapObjects/_(AdvMapObjectLink)/Objects-All-Terra/PandoraBoxStill.xdb';
+
+/**
+ * And the rig taken apart, because "it does not draw" has two halves.
+ *
+ * A rig is a SKELETON named by the model and an ANIMSET named by the object,
+ * and either can be the one the engine chokes on. These two twins carry one
+ * each — same cube, same texture, no new art at all, just a pair of shared
+ * documents pointing at models that already exist.
+ */
+export const PANDORA_BONED_SHARED = `${PANDORA_DIR}/PandoraBox_Boned.(${PANDORA_STILL_CLASS}).xdb`;
+export const PANDORA_BONED_LINK = 'MapObjects/_(AdvMapObjectLink)/Objects-All-Terra/PandoraBoxBoned.xdb';
+export const PANDORA_CLIPPED_SHARED = `${PANDORA_DIR}/PandoraBox_Clipped.(${PANDORA_STILL_CLASS}).xdb`;
+export const PANDORA_CLIPPED_LINK = 'MapObjects/_(AdvMapObjectLink)/Objects-All-Terra/PandoraBoxClipped.xdb';
 export const PANDORA_ARTIFACT_CLASS = 'AdvMapArtifactShared';
 export const PANDORA_ARTIFACT_SHARED = `${PANDORA_DIR}/PandoraBox_Artifact.(${PANDORA_ARTIFACT_CLASS}).xdb`;
 export const PANDORA_ARTIFACT_LINK = 'MapObjects/_(AdvMapObjectLink)/Objects-All-Terra/PandoraBoxArtifact.xdb';
@@ -465,6 +478,26 @@ export function buildPandora(read: DataReader): ModFile[] {
   );
   files.push({ path: PANDORA_STILL_SHARED, data: Buffer.from(stillDoc, 'latin1') });
   files.push(hiddenLink(PANDORA_STILL_LINK, PANDORA_STILL_SHARED, PANDORA_STILL_CLASS));
+
+  // The rig, one half at a time: bones without a clip, and a clip without bones.
+  for (const half of [
+    { file: 'PandoraBox_Boned', shared: PANDORA_BONED_SHARED, link: PANDORA_BONED_LINK, model: PANDORA_MODEL, animSet: undefined },
+    { file: 'PandoraBox_Clipped', shared: PANDORA_CLIPPED_SHARED, link: PANDORA_CLIPPED_LINK, model: PANDORA_STILL_MODEL, animSet: PANDORA_ANIMSET },
+  ]) {
+    const doc = buildingDoc(
+      {
+        file: half.file, className: PANDORA_STILL_CLASS, messages: MESSAGES,
+        model: half.model, animSet: half.animSet, effect: PANDORA_TIERS[1]!.effect,
+        footprint: { w: 1, h: 1 }, ground: null,
+        type: 'TREASURE_CHEST',
+        fields: { MinResource: '1', MaxResource: '1' },
+      },
+      { dir: PANDORA_DIR, shared: half.shared, link: half.link, art: ART_DIR, text: texts },
+      types, { w: 1, h: 1 }, at,
+    );
+    files.push({ path: half.shared, data: Buffer.from(doc, 'latin1') });
+    files.push(hiddenLink(half.link, half.shared, PANDORA_STILL_CLASS));
+  }
 
   const artifactDoc = buildingDoc(
     {
