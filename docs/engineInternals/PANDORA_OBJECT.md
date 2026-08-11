@@ -1,11 +1,11 @@
 # A native object for the Pandora's Box — reconnaissance
 
-Status: **entry points found, cut not yet made.** The goal, set after probe
-run three: the box keeps the treasure chest's CLASS — the touch trigger fires
-on it and the AI walks to it — but for OUR objects the chest's own behaviour
-(the gold-or-experience dialog, the automatic goods, the vanishing) must not
-run. The script is the whole behaviour; the engine's part is to say "touched"
-and otherwise hold still.
+Status: **entry points found, class not yet built.** The goal, set by decision
+on 11.08.2026: the box is its OWN native class, derived from the lootable one —
+not a chest with its behaviour gated. It inherits everything that makes a
+lootable work (the loader, the AI's appetite, pathing, saving, the touch
+trigger) and overrides the behaviours that are ours, starting with the visit:
+no chest dialog, no automatic goods, no vanishing.
 
 ## Where the box stands (11.08.2026)
 
@@ -31,8 +31,8 @@ work and the pair vanish; and the section-layout invariants of GR2_FORMAT.md
 
 ## What is left, in two tracks
 
-1. **This document's track — the engine.** Stop the chest's own dialog and
-   pickup from running before our question. The plan is below and unchanged.
+1. **This document's track — the engine.** Build the class: a subclass of the
+   lootable whose visit is ours rather than a chest's. The plan is below.
 2. **The editor's track — the UI.** The box needs a palette entry that is not
    hidden, a contents dialog driven by the JSON schema (experience, gold, the
    six resources, artifacts, spells, creatures, guards), the computed value of
@@ -40,15 +40,15 @@ work and the pair vanish; and the section-layout invariants of GR2_FORMAT.md
    documents a placement points at. `pandoraTier()` and the four shared
    documents already exist; what is missing is the window and the wiring.
 
-## Why not a Stand, and why not a new class
+## Why the parent is a lootable, and not a Stand
 
-The Stand — the class that does nothing on its own — cannot be given a touch
-trigger at all. The refusal is explicit and per class: the `Trigger()` Lua
-binder resolves the object and asks it for its touchable interface through a
-virtual; a Stand answers null and the binder prints
-`Object "%s" cannot be touched`. A whole new class would mean a vtable of some
-sixty slots and RTTI the engine's loaders would have to accept — а detour in
-one existing behaviour is the same result for one honest cut.
+The Stand — the class that does nothing on its own — would have been the
+obvious base, and it cannot be given a touch trigger at all. The refusal is
+explicit and per class: the `Trigger()` Lua binder resolves the object and asks
+it for its touchable interface through a virtual; a Stand answers null and the
+binder prints `Object "%s" cannot be touched`. The lootable answers, the AI
+walks to it, and the map's script gets its handler — so that is what the box
+derives from.
 
 ## What is found, and where
 
@@ -83,51 +83,83 @@ shows its dialog. `CAdvMapTreasure`'s RTTI descriptor is `0x10b8654`; the
 first vtable is `0xfd4f60` (own methods `0xcb0970`, `0xcb0dd0`, `0xcb0df0`,
 `0xcb1660`).
 
-## The cut, as planned
+## Why a subclass, and not a detour
 
-At the entry of the treasure's visit behaviour (the exact slot still to be
-pinned — the candidates above), ask whether the object is one of ours and
-RETURN before anything of the chest's runs. "One of ours" should come from
-the same place the script's data lives: the advmap Lua state already holds
-`H5E_PANDORA` with the placement names — the extension can evaluate
-`H5E_PANDORA[name]` the way the battle scripting layer already calls into a
-fight's Lua (docs/engineInternals/BATTLE_SCRIPTING.md). No config file to
-carry, no second source of truth: the map's own block is the registry.
+An earlier plan here was to leave the box a chest and gate the chest's own
+behaviour for our objects. That is rejected by decision: the box gets its **own
+native class, derived from the lootable one**. The reasoning against — a class
+means a vtable of some sixty slots and RTTI the loaders accept — is answered by
+deriving rather than inventing: a subclass IS the parent's vtable with the
+slots we mean to change replaced, and the parent's layout and RTTI underneath.
+Everything the engine already does with a lootable — the loader, the AI's
+appetite, pathing, saving, the touch trigger — keeps working because the object
+still IS one, structurally. What changes is every behaviour we override, and we
+override them properly rather than returning early out of somebody else's.
 
-The touch TRIGGER is a separate path from the behaviour, so with the
-behaviour gated the touch still fires and the script runs the whole show —
-question, fight, receipt, removal.
+Two stages, and the first is the whole point:
 
-## The gate, refined — no Lua read at visit time
+**Stage 1 — the class exists at run time.** The DLL builds a vtable of its own
+by copying `CAdvMapTreasure`'s and patching the slots it means to own, then
+retags our objects to it. Our objects are recognised by their SHARED document:
+the placements point at `PandoraBox_*.(AdvMapTreasureShared).xdb`, which the
+object holds a pointer to, so no name list and no Lua is needed at visit time.
+From that moment the object's behaviour is ours: the visit does not open a
+chest's dialog because the chest's visit is not what runs.
 
-Reading a Lua value back from C is the expensive direction (the battle
-scripting page says why), so the gate never does it. Instead the extension
-REGISTERS two adventure-map Lua functions — the cost of adding one is on
-docs/engineInternals/LUA.md — and the map's generated block calls them:
+**Stage 2 — the class exists in the DATA too**, as `AdvMapPandoraShared`, so a
+map says what it means and the editor stops pretending. That needs the engine's
+class registry (the factory that maps a serialized class name to a constructor)
+and a matching `types.xml` entry, which is the same door the creature abilities
+and the hero classes went through. Worth doing after stage 1 proves the
+behaviour, not before.
 
-    H5EPandoraReset();          -- top of the block: this map's list starts empty
-    H5EPandoraMark("Pandora01"); -- once per box, beside its Trigger line
+## Stage 1, step by step
 
-The DLL keeps the names in its own set, and the treasure-visit detour checks
-membership natively — a string compare, no script host in sight. The map's own
-block stays the single source of truth; a save rewrites it, and the reset
-keeps a loaded save or a next map from inheriting the previous list.
+1. **Find the constructor**, by the vtable store: something writes `0xfd4f60`
+   into `[this]` (and `0xfd4f84` into the second one at its offset). That
+   function is `CAdvMapTreasure::CAdvMapTreasure`, and it is also the natural
+   hook point — an object is ours or not the moment it is built from its
+   shared definition.
+2. **Measure the vtable**: how many slots before the next descriptor begins.
+   Copying a vtable needs its length, and a slot read past the end is the
+   mistake docs/… already records ([[vtable-slot-needs-its-vtable-start]] in
+   memory): a class has SEVERAL vtables and +0x184 from the wrong one lands in
+   the neighbour and lies plausibly.
+3. **Find where the object holds its shared document** — the pointer the
+   loader stores — and how to compare it to ours. The message getter at
+   `0xc7ae50` already takes `shared+0x30`, so the shared pointer is reachable
+   from the object; the offset is what is missing.
+4. **Build the subclass vtable** in the DLL: allocate, copy the parent's slots
+   verbatim, keep the RTTI pointer at -4 pointing at the PARENT's descriptor
+   (so anything the engine does by RTTI still finds a lootable), then replace
+   the slots we own.
+5. **Retag**: at the end of construction, if the shared document is one of
+   ours, store our vtable pointer instead. That is the subclassing, and it is
+   one store.
+6. **Own the visit slot** first — the one that shows the chest's dialog and
+   hands out its goods. Ours asks our question and lets the script do the rest.
+   `0xd214a0` is the standing candidate (vtable `0xfd4f84+0xc`); step 1's hook
+   makes it cheap to confirm with a log.
 
-This also moves `pandora-box` from an archive-only flag to a native one
-(`native: false` comes off, the name joins QOL_NAMES in C), since the hooks
-now exist and must follow it.
+Everything else stays as it is: the touch trigger still fires (a separate
+path), the AI still walks to it, and the map's generated block still carries
+the contents.
 
 ## Still to do
 
-1. Pin the visit slot. `0xd214a0` (285 instructions, `CAdvMapTreasure` vtable
-   `0xfd4f84+0xc` and `0xfd4f90+0x0`) is the strongest candidate — the
-   index-3 message push at `0xd21015` sits in the function just before it,
-   and the entries past it (`0xd2189a`…) are adjuster thunks. What is missing
-   is the caller chain from the interaction dispatcher (a virtual call, so
-   `trace.ts calls` stays silent); the next probe is a log-only detour on
-   `0xd214a0` and its `0xfd4f60+0xc`/`0xcb0970` sibling, saying which fires
-   when a hero steps on a chest.
-2. The object's Name string on `CAdvMapTreasure` — the placement name the
-   script keys on — for the detour's membership test.
-3. The detour itself in `native/` behind the `pandora-box` flag, bytes
-   verified before writing, refusal logged — the same shape as every fix.
+1. **The constructor**, found by the vtable store `mov [ecx], 0xfd4f60` — the
+   hook point, and the place an object learns which shared document it is.
+2. **The vtable's length**, and the slot the visit lives in. `0xd214a0` (285
+   instructions, `CAdvMapTreasure` vtable `0xfd4f84+0xc` and `0xfd4f90+0x0`) is
+   the strongest candidate — the index-3 message push at `0xd21015` sits in the
+   function just before it, and the entries past it (`0xd2189a`…) are adjuster
+   thunks. The caller chain is a virtual call, so `trace.ts calls` stays silent:
+   a log-only detour on `0xd214a0` and its `0xfd4f60+0xc`/`0xcb0970` sibling
+   says which one fires when a hero steps on a chest.
+3. **The shared-document pointer's offset** on the object, for telling ours
+   apart at construction.
+4. **The subclass itself** in `native/` behind the `pandora-box` flag: vtable
+   copied, slots replaced, retag on construction, bytes verified before
+   writing, refusal logged — the same shape as every fix here.
+5. The flag becomes native (`native: false` comes off, the name joins
+   `QOL_NAMES` in C), since the hooks now exist and must follow it.
