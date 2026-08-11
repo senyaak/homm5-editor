@@ -20,6 +20,7 @@ import { parseTypeSpec } from '../schema/typespec.ts';
 import { parseTree } from '../scene/geometry.ts';
 import type { BlockRecord, ContainerRecord, RecordTree } from '../scene/geometry.ts';
 import { textureDoc, writeDDS, writeDXT1 } from '../format/texture.ts';
+import { decodeDDSBuffer } from '../format/dds.ts';
 import type { Image } from '../format/gif.ts';
 import { buildingDoc, buildingLink } from './buildings.ts';
 import type { BuildingSpec } from './buildings.ts';
@@ -64,19 +65,23 @@ export const PANDORA_TIERS: readonly PandoraTier[] = [
 ];
 
 /**
- * PROBE, and it is meant to be flipped back.
+ * THE CUBE IS OFF, AND THIS IS WHY.
  *
- * The box has come up as a transparent ghost through every texture theory
- * tried on it — including a proper DXT1 encode into the game's own unedited
- * document. So this run puts the SHIPPED chest texture on our cube and paints
- * nothing: with the art the game itself draws, whatever is left can only be
- * the geometry we build into the donor's container (its UVs, or the bytes of
- * the vertex attribute stream we do not understand and overwrite).
+ * The bisect row settled it in one look: the game's own chest draws, a plain
+ * copy of it draws, our REPAINTED copy draws (so the DXT1 encode is right) —
+ * and both cubed twins are invisible, with or without the donor's unknown
+ * attribute bytes kept. Whatever the engine needs from a mesh, rebuilding one
+ * inside a container we only mostly understand does not provide it, and six
+ * probe runs is enough to stop paying for that.
  *
- * Draws → the paint is at fault, and the bisect moves inside the encoder.
- * Still a ghost → the paint was never the problem and the cube is.
+ * So the box is the chest's model, unmodified, wearing a repaint of the
+ * chest's own texture. It is a box either way — a chest IS Heroes III's
+ * pandora silhouette more than it is not — and the object can now be
+ * finished: contents, glow tiers, the native gate. The cube keeps its
+ * diagnostics (`PANDORA_ART_DIAGS`) and its notes, for a day when the vertex
+ * format is fully read rather than mostly.
  */
-const PAINT_THE_BOX = false;
+const CUBE_THE_BOX = false;
 
 /** Where everything lives inside the mod. */
 export const PANDORA_DIR = 'Buildings/PandoraBox';
@@ -348,6 +353,51 @@ export function cubifyGeometry(
  * gold border and a wheel medallion in the middle — Heroes III's pandora as a
  * cube face. Drawn rather than borrowed, so it owes nothing to anyone's art.
  */
+/**
+ * The chest's own art, recoloured into a Pandora's Box: its timber to violet,
+ * its metalwork to gold.
+ *
+ * Recolouring rather than repainting is the lesson of the bisect row. The
+ * shading, the plank seams, the rivets and the wear are drawn for THIS mesh's
+ * unwrapping, and they are most of what makes the object read as an object;
+ * a picture of ours in their place is legible only if it happens to line up
+ * with a layout we did not author. Hue is ours, light and dark stay the
+ * artist's.
+ *
+ * The split is by SATURATION, not by position: a chest is brown wood and grey
+ * metal, so anything colourful is timber and anything near-grey is a band.
+ */
+export function pandoraSkin(image: Image): Image {
+  const rgba = new Uint8Array(image.rgba);
+  for (let i = 0; i < rgba.length; i += 4) {
+    const r = rgba[i]! / 255, g = rgba[i + 1]! / 255, b = rgba[i + 2]! / 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    const l = (max + min) / 2;
+    const s = max === min ? 0 : (max - min) / (l > 0.5 ? 2 - max - min : max + min);
+    // ONE hue for the whole thing, and gold only where the art is both
+    // near-grey AND bright — the lock and the lit edges of the bands. Split
+    // on saturation alone and the gold lands as speckle in every shadow
+    // (tried, and it read as a dirty box rather than a bound one).
+    const gold = s < 0.14 && l > 0.55;
+    const [h, sat, lit] = gold
+      ? [45 / 360, 0.66, Math.min(1, l * 1.1)]
+      : [278 / 360, Math.min(0.58, s * 0.85 + 0.18), l * 0.94];
+    const q = lit < 0.5 ? lit * (1 + sat) : lit + sat - lit * sat;
+    const p = 2 * lit - q;
+    const channel = (t: number): number => {
+      let x = t; if (x < 0) x += 1; if (x > 1) x -= 1;
+      if (x < 1 / 6) return p + (q - p) * 6 * x;
+      if (x < 1 / 2) return q;
+      if (x < 2 / 3) return p + (q - p) * (2 / 3 - x) * 6;
+      return p;
+    };
+    rgba[i] = Math.round(channel(h + 1 / 3) * 255);
+    rgba[i + 1] = Math.round(channel(h) * 255);
+    rgba[i + 2] = Math.round(channel(h - 1 / 3) * 255);
+  }
+  return { width: image.width, height: image.height, rgba };
+}
+
 export function pandoraTexture(size = 256): Image {
   const T = size;
   const rgba = new Uint8Array(T * T * 4);
@@ -447,11 +497,13 @@ function paintModelTextures(copied: ArtCopy, modelCopyPath: string): void {
     if (!tAt || !tDoc) continue;
     const dest = hrefOf(tDoc, 'DestName');
     const ddsAt = dest ? resolve(tAt, dest) : null;
-    if (!ddsAt || !copied.files.has(ddsAt)) continue;
-    // The document's own size, so no field of it has to change. The chest's
-    // is 256; anything else the donor declares is painted at that size too.
-    const width = Number(/<Width>(\d+)<\/Width>/.exec(tDoc)?.[1] ?? 256);
-    copied.files.set(ddsAt, writeDXT1(pandoraTexture(width)));
+    const donor = ddsAt ? copied.files.get(ddsAt) : null;
+    if (!ddsAt || !donor) continue;
+    // REPAINTED, not replaced: the drawing that is there is drawn FOR this
+    // model's own unwrapping, and a picture of ours laid over it comes out as
+    // the bisect row's third chest — visible and wrong. So the donor's pixels
+    // are recoloured and its own document is left alone.
+    copied.files.set(ddsAt, writeDXT1(pandoraSkin(decodeDDSBuffer(donor))));
     painted++;
   }
   if (!painted) throw new Error('pandora: no texture of the donor model was reachable to paint');
@@ -516,9 +568,8 @@ export function buildPandora(read: DataReader): ModFile[] {
   const uid = /<uid>([0-9A-Fa-f-]{36})<\/uid>/.exec(modelDoc)?.[1];
   const bin = uid ? copied.files.get(`bin/Geometries/${uid.toUpperCase()}`) : null;
   if (!bin) throw new Error('pandora: the chest donor geometry did not copy');
-  const box = cubifyGeometry(bin, 'static');
-  retuneGeometryDoc(copied, modelCopy, box);
-  if (PAINT_THE_BOX) paintModelTextures(copied, modelCopy);
+  if (CUBE_THE_BOX) retuneGeometryDoc(copied, modelCopy, cubifyGeometry(bin, 'static'));
+  paintModelTextures(copied, modelCopy);
 
   const files: ModFile[] = [...copied.files].map(([path, data]) => ({ path, data }));
   files.push(...iconFiles());
