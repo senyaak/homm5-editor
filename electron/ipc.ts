@@ -15,6 +15,7 @@ export type { ObjectProp } from '../src/map/map.ts';
 export type { CreatureStats } from '../src/mods/creatures.ts';
 export type { PaletteEntry, RecolorOps } from '../src/format/recolor.ts';
 import type { PlaceableObject } from '../src/map/objects.ts';
+import type { PandoraContents } from '../src/mods/pandora-contents.ts';
 import type { FillDraft } from '../src/fill/preset.ts';
 import type { ActorView, ShotView } from '../src/dialog/play.ts';
 import type { SceneSource } from '../src/dialog/scene-source.ts';
@@ -529,6 +530,42 @@ export interface LaunchGameResult {
   ok: true;
   /** Absolute path of the copy that was launched, for the status line. */
   exe: string;
+}
+
+// --- Pandora's Box -----------------------------------------------------------
+
+/** Which object the window is asking about. */
+export interface PandoraGetPayload { id: string }
+/** Contents to store against that placement — its name is the placement's. */
+export interface PandoraSetPayload { id: string; contents: PandoraContents }
+
+/** One line of the value breakdown: which part of the contents, worth what. */
+export interface PandoraValuePart { what: string; gold: number }
+
+/** What `pandora:get` answers — `isBox: false` for everything else on the map. */
+export interface PandoraGetResult {
+  isBox: boolean;
+  /** The placement's name, which is also the trigger's handle. */
+  name?: string;
+  contents?: PandoraContents;
+  /** What the contents are worth, in gold. */
+  value?: number;
+  parts?: PandoraValuePart[];
+  /** The tier those contents earn (or the author's override). */
+  tier?: string;
+  /** The tier the placement is actually wearing — they differ only when
+   *  something edited the map or the sidecar behind the editor's back. */
+  worn?: string;
+  /** The glow ladder, so the window can show what the next colour costs. */
+  tiers?: { key: string; from: number }[];
+}
+
+/** What `pandora:set` answers — the recomputed value and the glow now worn. */
+export interface PandoraSetResult {
+  ok: true;
+  value: number;
+  parts: PandoraValuePart[];
+  tier: string;
 }
 
 /** Result of `qol:get` — what the game is set to do, read from the file itself. */
@@ -2032,6 +2069,19 @@ export interface EditorApi {
    * edited by hand, and a panel showing its own memory instead would disagree
    * with the game the first time somebody did.
    */
+  /**
+   * Is this placement a Pandora's Box, and what is in it?
+   *
+   * Asked of whatever is selected, so it answers `isBox: false` for the rest of
+   * the map rather than throwing — the inspector shows the contents button only
+   * when the answer is yes.
+   */
+  pandoraGet(id: string): Promise<PandoraGetResult>;
+  /**
+   * Store what the window filled in, and dress the box in the glow its value
+   * earns. The name is the placement's; renaming happens in the inspector.
+   */
+  pandoraSet(id: string, contents: PandoraContents): Promise<PandoraSetResult>;
   qolGet(): Promise<QolState>;
   /**
    * Write them, install the extension if it is not in yet, and set windowed

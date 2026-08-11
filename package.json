@@ -50,6 +50,7 @@
     "test-geometry-write": "node tools/test-geometry-write.ts",
     "test-gr2-write": "node tools/test-gr2-write.ts",
     "test-pandora": "node tools/test-pandora.ts",
+    "test-pandora-store": "node tools/test-pandora-store.ts",
     "test-heroes": "node tools/test-heroes.ts",
     "test-specializations": "node tools/test-specializations.ts",
     "test-qol": "node tools/test-qol.ts",

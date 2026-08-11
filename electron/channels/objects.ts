@@ -21,6 +21,8 @@ import { MapObject } from '#src/map/map.ts';
 import type { ObjectProp } from '#src/map/map.ts';
 import { objectRemoved, ownerGiven } from '#src/map/players.ts';
 import { iconPathFor, listPlaceable, readIconFile } from '#src/map/objects.ts';
+import { readPandoraBoxes, renamePandoraBox, writePandoraBoxes } from '#src/map/pandora-store.ts';
+import { isPandoraShared } from '#src/mods/pandora-files.ts';
 import { pngDataUri } from '#src/format/png.ts';
 import { controlOf, deref, objectProps, objectSchema } from '#src/schema/schema.ts';
 import type { FieldSchema, RegistryName } from '#src/schema/schema.ts';
@@ -263,6 +265,11 @@ export function registerObjects(): void {
     // time. Text there would not resolve in the game.
     const raw = objectProps(obj.type)[p.name];
     const isRef = raw ? deref(objectSchema, raw)['x-ref'] === true : false;
+    // A box's contents are kept under its placement NAME — the same handle the
+    // touch trigger uses — so renaming here has to carry them across, or the
+    // box stays on the map, still glowing, and opens with nothing inside.
+    // Read before the write: afterwards there is no old name to look up.
+    const renamedBox = p.name === 'Name' && isPandoraShared(obj.shared) ? obj.name : null;
     const done = record(session, `set ${p.name}`, { map: true }, () => {
       // Filling in a field the object never had: create it where the spec puts
       // it, then set it like any other. Recorded inside the same step, so undo
@@ -283,6 +290,11 @@ export function registerObjects(): void {
       return true;
     });
     if (!done) throw new Error(`${p.name} is not a simple field of this object`);
+    if (renamedBox !== null && renamedBox !== p.value) {
+      writePandoraBoxes(session.mapDir,
+        renamePandoraBox(readPandoraBoxes(session.mapDir), renamedBox, p.value));
+      session.watch.resync();
+    }
     return { ok: true };
   });
 

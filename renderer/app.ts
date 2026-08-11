@@ -45,6 +45,7 @@ import { initArtifactsMod } from '#features/mods/artifacts.ts';
 import { initSpellsMod } from '#features/mods/spells.ts';
 import { initArtifactSets } from '#features/mods/artifact-sets.ts';
 import { openCampaignList, initCampaigns } from '#features/campaigns.ts';
+import { initPandora } from '#features/pandora.ts';
 import { initQol } from '#features/qol.ts';
 import { initPropertyPanel } from '#features/inspector/controls.ts';
 import { initRefs } from '#features/inspector/refs.ts';
@@ -1087,6 +1088,7 @@ initUnitsMod();
   initArtifactsMod();
   initArtifactSets();
 initSpellsMod();
+initPandora();
 initQol();
 
 // The finish line. Everything above ran, so the window is wired and the render

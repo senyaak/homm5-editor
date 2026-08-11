@@ -1,0 +1,61 @@
+  <!-- What is inside a Pandora's Box: the contents of ONE placement, and what
+       they are worth. The glow follows the value unless the author overrides it. -->
+  <dialog id="pandora">
+    <div class="mp-card pb-card">
+      <div class="mp-head">
+        <span class="mp-title">Pandora's Box — <span id="pb-name"></span></span>
+        <button id="pb-close" title="close (Esc)">✕</button>
+      </div>
+      <div class="mp-body">
+        <div class="pb-grid">
+          <label class="pb-wide">Message
+            <textarea id="pb-message" rows="2" placeholder="shown when the box opens — like a signpost"></textarea>
+          </label>
+          <label>Experience <input id="pb-exp" type="number" min="0" step="100" value="0"></label>
+          <label>Gold <input id="pb-gold" type="number" min="0" step="100" value="0"></label>
+          <label>Wood <input id="pb-wood" type="number" min="0" value="0"></label>
+          <label>Ore <input id="pb-ore" type="number" min="0" value="0"></label>
+          <label>Mercury <input id="pb-mercury" type="number" min="0" value="0"></label>
+          <label>Crystal <input id="pb-crystal" type="number" min="0" value="0"></label>
+          <label>Sulfur <input id="pb-sulfur" type="number" min="0" value="0"></label>
+          <label>Gems <input id="pb-gem" type="number" min="0" value="0"></label>
+        </div>
+
+        <div class="pb-lists">
+          <section>
+            <div class="ph">Artifacts</div>
+            <div id="pb-artifacts" class="pb-list"></div>
+            <button id="pb-add-artifact" class="pb-add">＋ artifact</button>
+          </section>
+          <section>
+            <div class="ph">Spells</div>
+            <div id="pb-spells" class="pb-list"></div>
+            <button id="pb-add-spell" class="pb-add">＋ spell</button>
+          </section>
+          <section>
+            <div class="ph">Creatures — join the hero</div>
+            <div id="pb-creatures" class="pb-list"></div>
+            <button id="pb-add-creature" class="pb-add">＋ stack</button>
+          </section>
+          <section>
+            <div class="ph">Guards — fought before it opens</div>
+            <div id="pb-guards" class="pb-list"></div>
+            <button id="pb-add-guard" class="pb-add">＋ stack</button>
+          </section>
+        </div>
+
+        <div class="pb-value">
+          <div id="pb-total"></div>
+          <div id="pb-parts" class="pb-parts"></div>
+          <label>Glow
+            <select id="pb-tier"></select>
+          </label>
+        </div>
+      </div>
+      <div class="de-foot">
+        <span id="pb-note" class="pb-note"></span>
+        <button id="pb-close2" class="ghost">Close</button>
+        <button id="pb-save">Save contents</button>
+      </div>
+    </div>
+  </dialog>

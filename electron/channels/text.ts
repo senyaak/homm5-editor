@@ -9,7 +9,7 @@ import { ipcMain } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
 import type { ApiFn, MapFilesPayload, MapFilesResult, ObjectEditResult, ReadFilePayload, ReadFileResult, ScriptContextResult, ScriptNewPayload, ScriptNewResult, ScriptResolvePayload, ScriptResolveResult, SpecNewPayload, SpecNewResult, WriteFilePayload } from '#electron/ipc.ts';
 import { need, state } from '#electron/state.ts';
-import { readSidecarText, sidecarPath, writeSidecarText } from '#electron/sidecar.ts';
+import { readScriptFileName, readSidecarText, sidecarPath, writeSidecarText } from '#electron/sidecar.ts';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { listDirFiles } from '#src/format/pak.ts';
@@ -17,11 +17,6 @@ import { children, find, text } from '#src/format/xml.ts';
 import { TOWN_BONUS_IDS } from '#src/schema/town-bonuses.ts';
 import type { XmlElement } from '#src/format/xml.ts';
 import scriptApi from '#src/script/script-api.json' with { type: 'json' };
-
-/** The `href` of a Script wrapper's `<FileName>` — the `.lua` it runs. */
-function readScriptFileName(xml: string): string | null {
-  return /<FileName\s+href="([^"]*)"/i.exec(xml)?.[1] ?? null;
-}
 
 /** Wire this domain onto ipcMain. Called once, from main. */
 export function registerText(): void {

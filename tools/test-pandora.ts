@@ -22,10 +22,15 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import {
-  PANDORA_ARTIFACT_LINK, PANDORA_ARTIFACT_SHARED, PANDORA_CLASS, PANDORA_LINK,
-  PANDORA_MILL_LINK, PANDORA_MILL_SHARED, PANDORA_TIERS,
-  buildPandora, pandoraShared, pandoraTexture, pandoraTier,
+  PANDORA_CLASS, PANDORA_LINK,
+  buildPandora, pandoraShared, pandoraTexture,
 } from '../src/mods/pandora-files.ts';
+import {
+  PANDORA_RATES, PANDORA_TIERS, boxTier, isEmptyBox, pandoraTier, pandoraValue,
+} from '../src/mods/pandora-contents.ts';
+import type { PandoraStack } from '../src/mods/pandora-contents.ts';
+import { pandoraPrices } from '../src/mods/pandora-prices.ts';
+import { singleRoot } from '../src/game/assets.ts';
 import { buildGameplayArchive } from '../src/mods/gameplay.ts';
 import {
   PANDORA_BLOCK_BEGIN, pandoraBehaviourLua, pandoraMapBlock, withPandoraBlock,
@@ -38,7 +43,8 @@ import { GrannyFile } from '../src/format/gr2.ts';
 import { readAnimations, readSkeletons, skinMatrices, skinPositions } from '../src/scene/animation.ts';
 import { writeDXT1 } from '../src/format/texture.ts';
 import { decodeDDSBuffer } from '../src/format/dds.ts';
-import { dataDir } from './game-dir.ts';
+import { readObjectGroups } from '../src/map/objects.ts';
+import { dataDir, gameDirIfAny } from './game-dir.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {
@@ -284,14 +290,6 @@ check('the geometry hangs from the same joint', geomDoc.includes('<RootJoint>Pan
 }
 void 0;
 
-// The two controls: the same model on the other classes that might animate it.
-const artDoc = byPath.get(PANDORA_ARTIFACT_SHARED.toLowerCase())?.toString('latin1') ?? '';
-check('the artifact control keeps the animation', /<AnimSet href="[^"]+"/.test(artDoc));
-check('and picks up as nothing', artDoc.includes('<Type>ARTF_RANDOM_SPECIFIC</Type>')
-  && artDoc.includes('<ArtifactID>ARTIFACT_NONE</ArtifactID>'));
-const millDoc = byPath.get(PANDORA_MILL_SHARED.toLowerCase())?.toString('latin1') ?? '';
-check('the mill control is a windmill-type building', millDoc.includes('<Type>BUILDING_WINDMILL</Type>')
-  && /<AnimSet href="[^"]+"/.test(millDoc));
 // ---- the tiers --------------------------------------------------------------
 
 console.log('the tiers');
@@ -302,6 +300,72 @@ check('a fortune is Red', pandoraTier(1e6).key === 'Red');
 let last = -1, monotonic = true;
 for (const t of PANDORA_TIERS) { if (t.from <= last) monotonic = false; last = t.from; }
 check('thresholds ascend', monotonic);
+
+// ---- what the contents are worth --------------------------------------------
+//
+// The rule this section exists for: a creature costs what a creature costs,
+// whichever side of the fight it is on. A box holding ten archangels holds
+// them whether it hands them over or sets them on the hero, so both spellings
+// land on the same glow — anything else would let an author dodge the colour
+// by making the same box a fight.
+
+console.log('what the contents are worth');
+{
+  const prices = {
+    creature: (id: string | number) => (id === 'CREATURE_ARCHANGEL' ? 4000 : 15),
+    artifact: (id: string | number) => (id === 'ARTIFACT_TITANS_THUNDER' ? 25000 : 1000),
+    spellLevel: (id: string | number) => (id === 'SPELL_ARMAGEDDON' ? 5 : 1),
+  };
+  const angels: PandoraStack[] = [{ creature: 'CREATURE_ARCHANGEL', count: 10 }];
+  const given = pandoraValue({ name: 'A', creatures: angels }, prices);
+  const fought = pandoraValue({ name: 'B', guards: angels }, prices);
+  check('ten archangels given are worth ten archangels fought',
+    given.total === fought.total && given.total === 40000, `${given.total} vs ${fought.total}`);
+  check('and both wear the same glow',
+    boxTier({ name: 'A', creatures: angels }, prices).key === boxTier({ name: 'B', guards: angels }, prices).key,
+    boxTier({ name: 'A', creatures: angels }, prices).key);
+
+  const mixed = pandoraValue({
+    name: 'C', gold: 1000, wood: 4, gem: 2, exp: 500,
+    artifacts: ['ARTIFACT_TITANS_THUNDER'], spells: ['SPELL_ARMAGEDDON'],
+  }, prices);
+  const expected = 1000 + 4 * PANDORA_RATES.common + 2 * PANDORA_RATES.rare
+    + 500 * PANDORA_RATES.exp + 25000 + 5 * PANDORA_RATES.spellLevel;
+  check('every kind of content adds up', mixed.total === expected, `${mixed.total} vs ${expected}`);
+  check('and each says where it came from',
+    mixed.parts.map((p) => p.what).join(',') === 'gold,wood,gem,experience,artifacts,spells',
+    mixed.parts.map((p) => p.what).join(','));
+  check('nothing worth nothing is listed', pandoraValue({ name: 'D' }, prices).parts.length === 0);
+
+  // The override is the author's, and it survives the contents changing under
+  // it — a box deliberately made to look poor stays looking poor.
+  check('an override beats the contents',
+    boxTier({ name: 'E', gold: 1e6, tier: 'Blue' }, prices).key === 'Blue');
+  check('an unknown override falls back to what the contents earn',
+    boxTier({ name: 'F', gold: 1e6, tier: 'Puce' }, prices).key === 'Red');
+  check('an empty box is empty, a message alone is not',
+    isEmptyBox({ name: 'G' }) && !isEmptyBox({ name: 'H', message: 'boo' }));
+
+  // And the prices the window will actually use come off the game's tables —
+  // hand-written numbers above prove the arithmetic, these prove the reading.
+  const real = pandoraPrices(singleRoot(dataRoot));
+  const angel = real.creature('CREATURE_ARCHANGEL');
+  const peasant = real.creature('CREATURE_PEASANT');
+  check('a creature costs what the game charges for it',
+    angel === 3500 && peasant === 15, `archangel ${angel}, peasant ${peasant}`);
+  // Both spellings, because the box's contents use the script one and the
+  // reference table keys on the bare name.
+  const bare = real.artifact('TITANS_TRIDENT');
+  check('an artifact costs its CostOfGold', bare > 0, `${bare}`);
+  check('and the script spelling finds the same artifact',
+    real.artifact('ARTIFACT_TITANS_TRIDENT') === bare, `${real.artifact('ARTIFACT_TITANS_TRIDENT')}`);
+  check('a spell knows its level',
+    real.spellLevel('SPELL_ARMAGEDDON') === 5 && real.spellLevel('SPELL_MAGIC_ARROW') === 1,
+    `${real.spellLevel('SPELL_ARMAGEDDON')} / ${real.spellLevel('SPELL_MAGIC_ARROW')}`);
+  check('and an id nobody knows is worth nothing, quietly',
+    real.creature('CREATURE_NOT_A_THING') === 0 && real.artifact('ARTIFACT_NOT_A_THING') === 0
+    && real.spellLevel('SPELL_NOT_A_THING') === 0);
+}
 
 // ---- the texture ------------------------------------------------------------
 
@@ -372,6 +436,20 @@ console.log('the scripts');
   let refused = false;
   try { pandoraMapBlock([{ name: 'bad name' }]); } catch { refused = true; }
   check('a bad placement name is refused', refused);
+
+  // A MESSAGE IS A FILE, not a string: MessageBox takes a text ref. A box that
+  // says something and has nowhere for it to be read from is a box that would
+  // open in silence, so the block refuses to be written rather than dropping
+  // the line the author typed.
+  const talker = [{ name: 'PandoraSays', message: 'Something stirs inside.' }];
+  let silent = false;
+  try { pandoraMapBlock(talker); } catch { silent = true; }
+  check('a message with nowhere to live is refused', silent);
+  const said = pandoraMapBlock(talker, (b) => `/Maps/Probe/${b.name}.txt`);
+  check('and points at the file when there is one',
+    said.includes('given = "/Maps/Probe/PandoraSays.txt"'));
+  check('the talking block lints clean', luaDiagnostics(said).length === 0,
+    luaDiagnostics(said).map((d) => `${d.from}: ${d.message}`).join('; '));
 }
 
 // ---- the archive ------------------------------------------------------------
@@ -381,8 +459,35 @@ const archive = buildGameplayArchive(read);
 const names = new Set(readEntries(archive).map((e) => e.name));
 check('round-trips as a zip', names.size === files.length, `${names.size} of ${files.length}`);
 check('carries the palette link', names.has(PANDORA_LINK));
-check('carries the probes, hidden', names.has(PANDORA_MILL_LINK) && names.has(PANDORA_MILL_SHARED)
-  && names.has(PANDORA_ARTIFACT_LINK) && names.has(PANDORA_ARTIFACT_SHARED));
+// The probe twins are gone: what they asked is answered and written down
+// (docs/engineInternals/PANDORA_OBJECT.md), so the archive carries the box and
+// nothing that only looks like one.
+// Matched on the DOCUMENTS, not on the name: `PandoraBox_ArtifactFound.txt` is
+// the message slot a chest shows when it hands over an artifact, and a wider
+// pattern flagged it as a leftover twin.
+check('carries no probe twins',
+  ![...names].some((n) => /PandoraBox_(Mill|Still|Boned|Clipped|Artifact)\.\(/.test(n)));
+
+// ---- the palette group ------------------------------------------------------
+//
+// Which group the box lists under is decided by WHERE ITS LINK SITS: the
+// Objects tab's filters are folder prefixes read out of the game's own
+// `Editor/MapFilters.xml`, which no mod can add to. So the check is against
+// that file rather than against a name we chose — a link moved back out of
+// Treasures/ would otherwise pass every other test in this suite and quietly
+// list the box among the scenery again.
+
+const gameRoot = gameDirIfAny();
+if (gameRoot && existsSync(join(gameRoot, 'Editor', 'MapFilters.xml'))) {
+  console.log('the palette group');
+  const groups = readObjectGroups(join(gameRoot, 'Editor'));
+  const covering = groups.filter((g) => !g.separator
+    && g.prefixes.some((p) => PANDORA_LINK.toLowerCase().startsWith(p.toLowerCase())));
+  check('the box lists under exactly one group', covering.length === 1,
+    covering.map((g) => g.name).join(', ') || 'none');
+  check('and that group is the treasures', /treasure/i.test(covering[0]?.name ?? ''),
+    covering[0]?.name ?? '');
+}
 
 console.log(failures ? `\n${failures} FAILED` : '\nall good');
 process.exit(failures ? 1 : 0);

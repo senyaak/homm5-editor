@@ -9,6 +9,7 @@
 import { dialog, ipcMain } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
 import { readLoc } from '#electron/localization.ts';
+import { writePandoraForMap } from '#electron/pandora-save.ts';
 import { saveHistory } from '#electron/edits.ts';
 import type { LocExportPayload, MapPackResult, MapSaveResult } from '#electron/ipc.ts';
 import { gameData, gameRoot } from '#electron/paths.ts';
@@ -54,6 +55,19 @@ function writeMapTag(s: Session): void {
 }
 
 /**
+ * Materialise the Pandora's Boxes: the generated block in the map's script and
+ * a text file per talking box.
+ *
+ * Before map.xdb is written, not after — making a script for a map that had
+ * none also points `MapScript` at it, and that is a change to the document
+ * being saved.
+ */
+function writePandora(s: Session): void {
+  const n = writePandoraForMap(s, archivePrefixFor(s.mapDir));
+  if (n) console.log(`[save] pandora: ${n} box(es) written into the map script`);
+}
+
+/**
  * Where the Pack dialog opens: our folder in the install, under this name.
  *
  * The game our build is — the patched executable — reads `H5E/*.h5m` and nothing
@@ -80,6 +94,7 @@ export function registerSave(): void {
     // empty <tiles> forever, and nothing else would ever notice.
     const tilesAdded = syncMapTiles(session, session.layerPaths);
     if (tilesAdded) console.log(`[save] tile set: named ${tilesAdded} tile(s) the terrain paints with`);
+    writePandora(session);
     writeFileSync(session.mapPath, session.map.save(), 'latin1');
     saveTerrain(session);
     // Our own write — fold it into the watcher's baseline so it isn't reported
@@ -131,6 +146,7 @@ export function registerSave(): void {
     const r = await (parent ? dialog.showSaveDialog(parent, opts) : dialog.showSaveDialog(opts));
     if (r.canceled) return { canceled: true };
     // Save pending edits first so the archive reflects them.
+    writePandora(session);
     writeFileSync(session.mapPath, session.map.save(), 'latin1');
     saveTerrain(session);
     writeMapTag(session);
@@ -172,6 +188,7 @@ export function registerSave(): void {
       out = r.filePath;
     }
     // Save pending edits so the export reflects them.
+    writePandora(session);
     writeFileSync(session.mapPath, session.map.save(), 'latin1');
     saveTerrain(session);
     writeMapTag(session);

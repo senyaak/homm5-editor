@@ -23,6 +23,8 @@
 
 import { utf16 } from './mod-files.ts';
 import type { ModFile } from './mod-files.ts';
+import { PANDORA_RESOURCES } from './pandora-contents.ts';
+import type { PandoraContents } from './pandora-contents.ts';
 
 const EOL = '\r\n';
 
@@ -36,43 +38,16 @@ export const PANDORA_OPEN_TEXT = 'scripts/homm5-editor/pandora-open.txt';
 export const PANDORA_BLOCK_BEGIN = '-- H5E pandora (generated) - everything to the end marker is rewritten on save';
 export const PANDORA_BLOCK_END = '-- H5E pandora end';
 
-/** One stack, of creatures or of guards. */
-export interface PandoraStack {
-  /** A `CREATURE_*` name or a raw number. */
-  creature: string | number;
-  count: number;
-}
-
-/** What one placed box holds. Everything optional; an empty box just opens. */
-export interface PandoraContents {
-  /** The placement's Name on the map — what the trigger watches. */
-  name: string;
-  exp?: number;
-  gold?: number;
-  /** The six mine resources, by the constants advmap-startup declares. */
-  wood?: number; ore?: number; mercury?: number; crystal?: number; sulfur?: number; gem?: number;
-  /** `ARTIFACT_*` names or raw ids. */
-  artifacts?: (string | number)[];
-  /** Spell ids, taught to the opening hero. */
-  spells?: (string | number)[];
-  /** Join the opening hero's army. */
-  creatures?: PandoraStack[];
-  /** Fought before the box opens. */
-  guards?: PandoraStack[];
-  /**
-   * Probe knob: also `SetObjectEnabled(name, 0)` after hooking. What that does
-   * to a treasure-class object — hides it, silences its pickup, or nothing —
-   * is exactly what the probe map asks; the API doc says "hide", and the doc
-   * has been wrong about less.
-   */
-  disable?: boolean;
-  /**
-   * A text ref shown AFTER the box opens — "you received: …". The editor
-   * writes the file beside the map and puts its path here; the behaviour shows
-   * whatever the ref holds and stays silent when there is none.
-   */
-  given?: string;
-}
+/**
+ * Where a box's message text was written, so the block can point at it.
+ *
+ * The behaviour shows a text REF, not a string — `MessageBox` takes a file —
+ * so a box whose author typed a message needs that message written somewhere
+ * first. Whoever generates the block (the editor's save, a test) writes the
+ * files and answers this; a box with a message and no answer is refused rather
+ * than quietly silenced.
+ */
+export type MessageRef = (box: PandoraContents) => string | undefined;
 
 /**
  * The behaviour, shipped in the archive.
@@ -197,8 +172,8 @@ const luaNumber = (n: number): string => String(Math.round(n));
 
 /** `gold` rides the same list as the mine resources: one loop grants them all. */
 const RESOURCES: [keyof PandoraContents, string][] = [
-  ['wood', 'WOOD'], ['ore', 'ORE'], ['mercury', 'MERCURY'],
-  ['crystal', 'CRYSTAL'], ['sulfur', 'SULFUR'], ['gem', 'GEM'], ['gold', 'GOLD'],
+  ...PANDORA_RESOURCES.map((r) => [r, r.toUpperCase()] as [keyof PandoraContents, string]),
+  ['gold', 'GOLD'],
 ];
 
 /**
@@ -212,7 +187,7 @@ const RESOURCES: [keyof PandoraContents, string][] = [
  * one inside the constructor — the dullest syntax the campaigns themselves
  * use, which is the syntax proven to parse.
  */
-function boxLua(box: PandoraContents): string[] {
+function boxLua(box: PandoraContents, messageRef: MessageRef | undefined): string[] {
   const fields: string[] = [];
   if (box.exp) fields.push(`\texp = ${luaNumber(box.exp)}`);
   const res = RESOURCES
@@ -224,14 +199,20 @@ function boxLua(box: PandoraContents): string[] {
   if (box.creatures?.length) {
     fields.push(`\tcreatures = { ${box.creatures.map((c) => `{${c.creature}, ${luaNumber(c.count)}}`).join(', ')} }`);
   }
-  if (box.given) fields.push(`\tgiven = "${box.given}"`);
+  if (box.message) {
+    const ref = messageRef?.(box);
+    if (!ref) {
+      throw new Error(`pandora: "${box.name}" has a message and nowhere to read it from —`
+        + ' MessageBox takes a text file, so the message has to be written first');
+    }
+    fields.push(`\tgiven = "${ref}"`);
+  }
   const out = [
     `H5E_PANDORA["${box.name}"] = {`,
     ...fields.map((f, i) => (i < fields.length - 1 ? `${f},` : f)),
     '};',
     `Trigger(OBJECT_TOUCH_TRIGGER, "${box.name}", "H5E_PandoraTouch");`,
   ];
-  if (box.disable) out.push(`SetObjectEnabled("${box.name}", 0);`);
   if (box.guards?.length) {
     const pairs = box.guards.map((g) => `${g.creature}, ${luaNumber(g.count)}`).join(', ');
     out.push(
@@ -250,7 +231,7 @@ function boxLua(box: PandoraContents): string[] {
  * Boxes with no placement name are nobody's to trigger and are refused loudly
  * rather than silently skipped — a box that cannot be opened is a map bug.
  */
-export function pandoraMapBlock(boxes: readonly PandoraContents[]): string {
+export function pandoraMapBlock(boxes: readonly PandoraContents[], messageRef?: MessageRef): string {
   for (const b of boxes) {
     if (!b.name) throw new Error('pandora: a box without a placement name cannot be triggered');
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(b.name)) {
@@ -262,7 +243,7 @@ export function pandoraMapBlock(boxes: readonly PandoraContents[]): string {
     PANDORA_BLOCK_BEGIN,
     'H5E_PANDORA = {};',
     'H5E_PandoraFights = {};',
-    ...boxes.flatMap(boxLua),
+    ...boxes.flatMap((b) => boxLua(b, messageRef)),
     // The doFile comes LAST: a Trigger looks its handler up by name when it
     // fires, not when it binds, so the hooks survive even a doFile that dies —
     // where a doFile first would take the whole thread down with the hooks
@@ -279,12 +260,16 @@ export function pandoraMapBlock(boxes: readonly PandoraContents[]): string {
  * anything of the author's runs, so their day-one code can already ask about
  * the boxes — and a map with no boxes left loses the block entirely.
  */
-export function withPandoraBlock(script: string, boxes: readonly PandoraContents[]): string {
+export function withPandoraBlock(
+  script: string,
+  boxes: readonly PandoraContents[],
+  messageRef?: MessageRef,
+): string {
   const begin = script.indexOf(PANDORA_BLOCK_BEGIN);
   const end = script.indexOf(PANDORA_BLOCK_END);
   const stripped = begin >= 0 && end > begin
     ? script.slice(0, begin) + script.slice(end + PANDORA_BLOCK_END.length).replace(/^\r?\n/, '')
     : script;
   if (!boxes.length) return stripped;
-  return pandoraMapBlock(boxes) + stripped;
+  return pandoraMapBlock(boxes, messageRef) + stripped;
 }

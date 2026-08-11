@@ -38,6 +38,23 @@ import type { ExtractedFile, PackResult, WriteOptions, ZipEntry } from '../forma
 export const MANIFEST_NAME = 'project.json';
 
 /**
+ * The editor's own bookkeeping inside a map folder — never shipped.
+ *
+ * Each of these is something the GAME has no reader for: the project manifest,
+ * the localization sidecar, the Pandora contents. What the game needs out of
+ * them is materialised at pack time (a language's plain `.txt` files, the map
+ * script's generated block), so shipping the sources too would only add files
+ * an author never wrote and a player would find in their map.
+ *
+ * The localization sidecar was already described as "never shipped" and was
+ * being shipped by every ordinary pack — only the single-language export left
+ * it out. One list, filtered in both places, is what makes the sentence true.
+ */
+export const EDITOR_SIDECARS: ReadonlySet<string> = new Set([
+  MANIFEST_NAME, 'localization.json', 'pandora.json',
+]);
+
+/**
  * Which of an archive's files is THE map.
  *
  * An `.h5m` saved by the original editor can carry more than one `map.xdb`: a
@@ -287,7 +304,7 @@ export function packProject(projectDir: string, outPath: string, opt: PackProjec
   // find. `prefix` overrides what the manifest remembers, for a project whose
   // folder has moved since it was opened.
   const prefix = (opt.prefix ?? manifest.archivePrefix ?? '').replace(/^\/+|\/+$/g, '');
-  const rels = listDirFiles(projectDir).filter((r) => r !== MANIFEST_NAME).sort();
+  const rels = listDirFiles(projectDir).filter((r) => !EDITOR_SIDECARS.has(r)).sort();
   // An empty pack is never something anyone meant, and packing over the archive
   // the project came from is normal — so the two together silently destroy the
   // map. It happened: a project dir holding nothing but its manifest wrote a
@@ -357,9 +374,7 @@ export function exportLocalized(
   const manifest = readManifest(projectDir);
   const prefix = (opt.prefix ?? manifest.archivePrefix ?? '').replace(/^\/+|\/+$/g, '');
   const name = (rel: string): string => (prefix ? `${prefix}/${rel}` : rel);
-  const rels = listDirFiles(projectDir)
-    .filter((r) => r !== MANIFEST_NAME && r !== 'localization.json')
-    .sort();
+  const rels = listDirFiles(projectDir).filter((r) => !EDITOR_SIDECARS.has(r)).sort();
 
   const entries: ZipEntry[] = [];
   for (const rel of rels) {

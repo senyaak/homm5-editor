@@ -1,13 +1,25 @@
-// A map of Pandora's Boxes with known contents — the probe the game answers.
+// The question sheet for the Pandora's Box, as a MULTIPLAYER map.
 //
-// The stages before this proved the box BUILDS: the cube decodes, the
-// documents parse, the scripts lint. What no test can prove from here is what
-// the ENGINE does with them, and this map is the question sheet: one box per
-// kind of content, each named for what it holds, plus the two open questions —
-// does a Stand's touch trigger fire at all, and does a treasure-chest-class
-// box keep its engine pickup or hand the touch to the script. A second side
-// with an AI hero beside a chest-class box asks the other half of that
-// question: whether the AI walks to a box of that class on its own.
+// Every earlier version of this file asked whether the box exists. It does: the
+// model is ours, the rig turns, the palette lists it under Treasures. What this
+// map asks is what an AUTHOR can say with one, and whether the answer survives
+// being played by two people:
+//
+//   * eight kinds of content — a message, experience, gold, resources,
+//     artifacts, spells, creatures given, creatures fought — each in FOUR
+//     copies, one per glow, so a run through the map is a run through the whole
+//     ladder and a colour that lies is visible at a glance;
+//   * the same stack given and fought, side by side, because they are worth the
+//     same and must therefore wear the same colour (the rule this whole feature
+//     turns on — src/mods/pandora-contents.ts);
+//   * two SIDES, each with its own hero and its own copy of the row, so a box
+//     opened by red says nothing to blue: the dialog, the fight and the reward
+//     all belong to whoever touched it.
+//
+// Built through the editor the way a person builds one: the boxes come off the
+// palette, and one of them is filled in through the actual window — clicked,
+// typed into, saved. The other sixty-three go through the same channel that
+// window calls, because sixty-four forms is a slower test and not a better one.
 //
 // What comes out is `<game>/H5E/Pandora Probe.h5m` — a playable map. The
 // answers are read by playing it, which is the one step this suite cannot do.
@@ -25,111 +37,163 @@ import { MADE } from './artifacts.ts';
 import { modFile } from '../src/game/mod-paths.ts';
 import { readEntries } from '../src/format/pak.ts';
 import { writeGameplayArchive } from '../src/mods/gameplay.ts';
-import {
-  PANDORA_ARTIFACT_SHARED, PANDORA_CLASS,
-  PANDORA_BONED_SHARED, PANDORA_CLIPPED_SHARED,
-  PANDORA_MILL_SHARED, PANDORA_STILL_SHARED, PANDORA_TIERS, pandoraShared,
-} from '../src/mods/pandora-files.ts';
-import { withPandoraBlock } from '../src/mods/pandora-scripts.ts';
-import type { PandoraContents } from '../src/mods/pandora-scripts.ts';
-import { utf16 } from '../src/mods/mod-files.ts';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { PANDORA_CLASS, pandoraShared } from '../src/mods/pandora-files.ts';
+import { PANDORA_TIERS, pandoraValue } from '../src/mods/pandora-contents.ts';
+import type { PandoraContents } from '../src/mods/pandora-contents.ts';
+import { pandoraPrices } from '../src/mods/pandora-prices.ts';
+import { singleRoot } from '../src/game/assets.ts';
+import { PANDORA_FILE } from '../src/map/pandora-store.ts';
 
 let ed: Launched;
 const GAME = modGameRoot();
 const NAME = MADE.PANDORA_MAP;
 const MAP_DIR = join(DATA, 'Maps', 'SingleMissions', NAME);
 
-/** The box every ordinary placement below uses — the poorest tier, which is
- *  the one the palette offers. Chest class now: a Stand cannot be touched. */
+/** The palette's box — the poorest tier, which is what a fresh one is. */
 const BOX = `/${pandoraShared(PANDORA_TIERS[0]!.key)}`;
 
 /**
- * The question sheet. One box per kind of content, named for what it holds —
- * the name is both the trigger's handle and the legend a player reads.
+ * The eight kinds of content, each said four times over.
+ *
+ * The numbers are chosen to land one copy in each glow, and the test ASSERTS
+ * that they did rather than trusting the arithmetic here: a threshold moved in
+ * pandora-contents.ts should turn this map red, not silently regrade it.
+ *
+ * `message` is the exception and is deliberate — a sentence is worth no gold,
+ * so its four copies carry an explicit override each. That is the other half of
+ * the tier rule, and this is where it is exercised.
  */
-const BOXES: (PandoraContents & { x: number; y: number; shared: string })[] = [
-  { name: 'PandoraExp', exp: 5000, x: 24, y: 16, shared: BOX },
-  { name: 'PandoraGold', gold: 10000, x: 28, y: 16, shared: BOX },
-  { name: 'PandoraRes', wood: 10, ore: 10, x: 32, y: 16, shared: BOX },
-  { name: 'PandoraArts', artifacts: ['ARTIFACT_ENDLESS_BAG_OF_GOLD'], x: 24, y: 22, shared: BOX },
-  { name: 'PandoraSpells', spells: [2, 3], x: 28, y: 22, shared: BOX },
-  { name: 'PandoraArmy', creatures: [{ creature: 'CREATURE_PEASANT', count: 20 }], x: 32, y: 22, shared: BOX },
+const KINDS: { key: string; per: (tier: number) => Partial<PandoraContents> }[] = [
   {
-    name: 'PandoraGuarded', gold: 20000,
-    guards: [{ creature: 'CREATURE_ARCHER', count: 15 }], x: 28, y: 28, shared: BOX,
+    key: 'Says',
+    per: (t) => ({
+      message: `The box was empty, but it spoke: ${PANDORA_TIERS[t]!.key.toLowerCase()}.`,
+      tier: PANDORA_TIERS[t]!.key,
+    }),
   },
-  // Disabled after hooking: does SetObjectEnabled hide a chest, silence its
-  // pickup, or change nothing? The API doc says "hide" — worth one tile to see.
-  { name: 'PandoraDisabled', gold: 5000, x: 24, y: 28, disable: true, shared: BOX },
-  // Beside the AI: does an AI hero walk to a chest-class box on its own?
-  { name: 'PandoraChestAI', gold: 5000, x: 62, y: 60, shared: BOX },
-  // THE LOOKING ROW — ON THE HERO'S OWN LINE, TO HIS LEFT. He starts at 28,34
-  // and these run 24, 20, 16, 12 back from him, nearest first. Anything meant
-  // to be LOOKED at goes here: a row eighteen tiles up the map is a row nobody
-  // finds, which is the second time that has cost a run.
-  //
-  // THE RIG, TAKEN APART. Still drew and everything rigged did not, so the row
-  // is now a bisect: each step adds one half of a rig, and the first one that
-  // disappears names the half that is wrong.
-  //   24  Still    — no skeleton, no AnimSet.       (drew last time)
-  //   20  Boned    — skeleton in the model, no clip.
-  //   16  Clipped  — AnimSet on the object, no skeleton.
-  //   12  Look     — both: the shipping box.
-  { name: 'PandoraStill', gold: 100, x: 24, y: 34, shared: `/${PANDORA_STILL_SHARED}` },
-  { name: 'PandoraBoned', gold: 100, x: 20, y: 34, shared: `/${PANDORA_BONED_SHARED}` },
-  { name: 'PandoraClipped', gold: 100, x: 16, y: 34, shared: `/${PANDORA_CLIPPED_SHARED}` },
-  { name: 'PandoraLook', gold: 100, x: 12, y: 34, shared: BOX },
-  // The other classes stay as secondary questions, off the looking row.
-  { name: 'PandoraMill', exp: 100, x: 36, y: 16, shared: `/${PANDORA_MILL_SHARED}` },
-  { name: 'PandoraArtifact', gold: 1000, x: 36, y: 22, shared: `/${PANDORA_ARTIFACT_SHARED}` },
+  { key: 'Exp', per: (t) => ({ exp: [1000, 7000, 20000, 60000][t]! }) },
+  { key: 'Gold', per: (t) => ({ gold: [1000, 7000, 20000, 60000][t]! }) },
+  {
+    key: 'Res',
+    // 250 gold a common, 500 a rare — so these are 1000 / 7000 / 20000 / 60000.
+    per: (t) => ([
+      { wood: 4 },
+      { wood: 12, ore: 12, gem: 2 },
+      { wood: 40, ore: 40 },
+      { wood: 80, ore: 80, mercury: 20, crystal: 20, sulfur: 20, gem: 20 },
+    ][t]!),
+  },
+  {
+    key: 'Arts',
+    // Priced off the game's table at run time; the ids are picked below so each
+    // copy lands in its tier.
+    per: () => ({}),
+  },
+  {
+    key: 'Spells',
+    // A level is 1000 gold, so a stack of them is how a spell box gets rich.
+    per: () => ({}),
+  },
+  {
+    key: 'Army',
+    // Archangels at 3500 each: 1, 2, 5, 12.
+    per: (t) => ({ creatures: [{ creature: 'CREATURE_ARCHANGEL', count: [1, 2, 5, 12][t]! }] }),
+  },
+  {
+    key: 'Guard',
+    // THE SAME STACKS, on the other side of the fight. Same counts on purpose:
+    // the pair must come out the same colour.
+    per: (t) => ({ guards: [{ creature: 'CREATURE_ARCHANGEL', count: [1, 2, 5, 12][t]! }] }),
+  },
 ];
+
+/** The two sides, and where each one's row of boxes sits. */
+const SIDES = [
+  { slot: 0, colour: 'PCOLOR_RED', player: 'PLAYER_1', tag: 'R', hero: { x: 10, y: 10 }, at: { x: 14, y: 12 } },
+  { slot: 1, colour: 'PCOLOR_BLUE', player: 'PLAYER_2', tag: 'B', hero: { x: 62, y: 62 }, at: { x: 66, y: 64 } },
+];
+
+/** One placement: where it goes, what it is called, what is in it. */
+interface Placement { name: string; x: number; y: number; contents: PandoraContents }
+
+/** Every box the map carries — the same row twice, once per side. */
+function placements(arts: string[][], spells: (string | number)[][]): Placement[] {
+  const out: Placement[] = [];
+  for (const side of SIDES) {
+    KINDS.forEach((kind, row) => {
+      for (let t = 0; t < PANDORA_TIERS.length; t++) {
+        const name = `Pandora${side.tag}${kind.key}${PANDORA_TIERS[t]!.key}`;
+        const extra: Partial<PandoraContents> =
+          kind.key === 'Arts' ? { artifacts: arts[t] ?? [] }
+          : kind.key === 'Spells' ? { spells: spells[t] ?? [] }
+          : kind.per(t);
+        out.push({
+          name,
+          x: side.at.x + t * 3,
+          y: side.at.y + row * 3,
+          contents: { name, ...extra },
+        });
+      }
+    });
+  }
+  return out;
+}
 
 /**
- * The bisect row is gone.
- *
- * It existed to ask why a mesh rebuilt inside a donor container did not draw,
- * and the answer came from reading the container rather than from another run:
- * the box is authored outright now, and what guards it is a byte-exact round
- * trip over every shipped geometry (tools/test-geometry-write.ts).
+ * Artifacts and spells enough to reach each tier, priced off the game's own
+ * tables rather than from memory — an artifact's cost is data, and a list
+ * written here by hand would be a second copy of it to go stale.
  */
-const DIAGS: { name: string; x: number; y: number; shared: string }[] = [];
+function contentsByPrice(): { arts: string[][]; spells: (string | number)[][] } {
+  const prices = pandoraPrices(singleRoot(DATA));
+  const table = readFileSync(join(DATA, 'GameMechanics', 'RefTables', 'Artifacts.xdb'), 'utf8');
+  const ids = [...table.matchAll(/<ID>([A-Z_]+)<\/ID>/g)].map((m) => m[1]!)
+    .filter((id) => id !== 'ARTIFACT_NONE');
+  const priced = ids.map((id) => ({ id, gold: prices.artifact(id) }))
+    .filter((a) => a.gold > 0)
+    .sort((a, b) => a.gold - b.gold);
 
-/** What a box says it gave, written beside the map for the behaviour to show. */
-function givenText(b: PandoraContents): string {
-  const said: string[] = [];
-  if (b.exp) said.push(`${b.exp} experience`);
-  if (b.gold) said.push(`${b.gold} gold`);
-  for (const k of ['wood', 'ore', 'mercury', 'crystal', 'sulfur', 'gem'] as const) {
-    if (b[k]) said.push(`${b[k]} ${k}`);
+  // One artifact per tier where a single one reaches it, and a handful where
+  // the shipped table's dearest still falls short of 40 000.
+  const arts: string[][] = [];
+  for (let t = 0; t < PANDORA_TIERS.length; t++) {
+    const want = PANDORA_TIERS[t]!.from;
+    const ceiling = PANDORA_TIERS[t + 1]?.from ?? Infinity;
+    const one = priced.find((a) => a.gold >= want && a.gold < ceiling);
+    if (one) { arts.push([one.id]); continue; }
+    // Stack the dearest until the tier is reached but not passed.
+    const picked: string[] = [];
+    let sum = 0;
+    for (const a of [...priced].reverse()) {
+      if (sum >= want) break;
+      if (sum + a.gold >= ceiling) continue;
+      picked.push(a.id); sum += a.gold;
+    }
+    arts.push(picked);
   }
-  if (b.artifacts?.length) said.push(`${b.artifacts.length} artifact(s)`);
-  if (b.spells?.length) said.push(`${b.spells.length} spell(s)`);
-  for (const c of b.creatures ?? []) said.push(`${c.count} creature(s) join`);
-  return said.length ? `The box yields: ${said.join(', ')}.` : 'The box was empty.';
+
+  // Spells: a level is worth 1000, and the shipped set has plenty of each — so
+  // a tier is a count of them. Level 5 spells first, for shorter lists.
+  const spellIds = [...readFileSync(join(DATA, 'GameMechanics', 'RefTables', 'UndividedSpells.xdb'), 'utf8')
+    .matchAll(/<ID>(SPELL_\w+)<\/ID>/g)].map((m) => m[1]!)
+    .map((id) => ({ id, level: prices.spellLevel(id) }))
+    .filter((s) => s.level > 0)
+    .sort((a, b) => b.level - a.level);
+  const spells: (string | number)[][] = [];
+  for (let t = 0; t < PANDORA_TIERS.length; t++) {
+    const want = PANDORA_TIERS[t]!.from;
+    const ceiling = PANDORA_TIERS[t + 1]?.from ?? Infinity;
+    const picked: string[] = [];
+    let gold = 0;
+    for (const s of spellIds) {
+      if (gold >= Math.max(want, 1)) break;
+      if (gold + s.level * 1000 >= ceiling) continue;
+      picked.push(s.id); gold += s.level * 1000;
+    }
+    spells.push(picked);
+  }
+  return { arts, spells };
 }
-
-const SIDES = [
-  { slot: 0, colour: 'PCOLOR_RED', player: 'PLAYER_1', at: { x: 28, y: 34 } },
-  { slot: 1, colour: 'PCOLOR_BLUE', player: 'PLAYER_2', at: { x: 58, y: 60 } },
-];
-
-/** Two heroes out of the catalogue — asked for, not named from memory. */
-async function twoHeroes(page: Launched['page']): Promise<string[]> {
-  const found = await page.evaluate(async () => {
-    const { objects } = await window.editor.listObjects();
-    const heroes = objects.filter((o) => o.type === 'AdvMapHero' && !o.hidden && !o.random);
-    const haven = heroes.find((o) => o.shared.includes('/Haven/'))?.shared ?? '';
-    const other = heroes.find((o) => !o.shared.includes('/Haven/'))?.shared ?? '';
-    return [haven, other];
-  });
-  for (const h of found) expect(h, 'the catalogue offers two heroes').not.toBe('');
-  return found;
-}
-
-const setPath = (page: Launched['page'], id: string, path: (string | number)[], value: string) =>
-  page.evaluate((p) => window.editor.setObjectPath({ id: p.id, path: p.path, value: p.value }),
-    { id, path, value });
 
 /** Put one object down and answer with its id — mod-010's bounded retry. */
 async function place(page: Launched['page'], href: string, x: number, y: number): Promise<string> {
@@ -145,6 +209,28 @@ async function place(page: Launched['page'], href: string, x: number, y: number)
   return added[0]!.id;
 }
 
+const setPath = (page: Launched['page'], id: string, path: (string | number)[], value: string) =>
+  page.evaluate((p) => window.editor.setObjectPath({ id: p.id, path: p.path, value: p.value }),
+    { id, path, value });
+
+/** Two heroes out of the catalogue — asked for, not named from memory. */
+async function twoHeroes(page: Launched['page']): Promise<string[]> {
+  const found = await page.evaluate(async () => {
+    const { objects } = await window.editor.listObjects();
+    const heroes = objects.filter((o) => o.type === 'AdvMapHero' && !o.hidden && !o.random);
+    const haven = heroes.find((o) => o.shared.includes('/Haven/'))?.shared ?? '';
+    const other = heroes.find((o) => !o.shared.includes('/Haven/'))?.shared ?? '';
+    return [haven, other];
+  });
+  for (const h of found) expect(h, 'the catalogue offers two heroes').not.toBe('');
+  return found;
+}
+
+/** What the boxes are, worked out once and shared by the tests below. */
+let BOXES: Placement[] = [];
+/** Placement name → the object id it went down as. */
+const ids = new Map<string, string>();
+
 test.beforeAll(async () => {
   test.skip(!existsSync(join(DATA, 'MapObjects')), 'needs the game data');
   test.skip(!existsSync(GAME), 'needs the prepared install');
@@ -152,37 +238,90 @@ test.beforeAll(async () => {
   // written here the same way the Gameplay tab's Apply writes it.
   writeGameplayArchive(GAME, DATA);
   clearMap(GAME, DATA, NAME);
+  const { arts, spells } = contentsByPrice();
+  BOXES = placements(arts, spells);
   ed = await launchEditor({ HOMM5_ROOT: GAME });
 });
 test.afterAll(async () => { await ed?.app.close(); });
 
-test('every box goes down through the palette, named for what it holds', async () => {
-  test.setTimeout(10 * 60_000);
+test('the whole ladder goes down through the palette, four boxes to a kind', async () => {
+  test.setTimeout(20 * 60_000);
   const { page } = ed;
   await newMap(page, NAME, '96');
 
-  for (const b of [...BOXES, ...DIAGS]) {
-    const id = await place(page, b.shared, b.x, b.y);
+  for (const b of BOXES) {
+    const id = await place(page, BOX, b.x, b.y);
     await setPath(page, id, ['Name'], b.name);
+    ids.set(b.name, id);
   }
 
   const placed = await page.evaluate(() => window.view.objects().map((o) => o.type));
-  // Every box of the chest class: the nine ordinary ones and the still control.
-  expect(placed.filter((t) => t === 'AdvMapTreasure'), 'the chest-class boxes')
-    .toHaveLength(BOXES.filter((b) => b.shared.includes(PANDORA_CLASS)).length + DIAGS.length);
-  expect(placed.filter((t) => t === 'AdvMapBuilding'), 'the mill probe')
-    .toHaveLength(1);
-  expect(placed.filter((t) => t === 'AdvMapArtifact'), 'the artifact probe')
-    .toHaveLength(1);
+  expect(placed.filter((t) => t === 'AdvMapTreasure'), 'every box is on the map')
+    .toHaveLength(BOXES.length);
 });
 
-test('two sides, and the script that answers a touch', async () => {
+test('one box is filled in through the window, the way a person would', async () => {
   test.setTimeout(5 * 60_000);
   const { page } = ed;
+  // The first box of the first side: selected on the map, opened from the
+  // inspector's Contents… button, typed into, saved.
+  const first = BOXES[0]!;
+  const id = ids.get(first.name)!;
+  await page.evaluate((oid) => window.view.select(oid), id);
+  await page.locator('.pb-open button').click();
+  await expect(page.locator('#pandora')).toBeVisible();
+  await expect(page.locator('#pb-name')).toHaveText(first.name);
 
+  await page.locator('#pb-gold').fill('12345');
+  await page.locator('#pb-message').fill('Filled in by hand, through the window.');
+  await page.locator('#pb-save').click();
+  await expect(page.locator('#pandora')).toBeHidden();
+
+  // What the window wrote is what the map now holds — asked of the channel the
+  // window itself reads through, so a form that saves into the void is caught.
+  const back = await page.evaluate((oid) => window.editor.pandoraGet(oid), id);
+  expect(back.contents?.gold, 'the gold typed in is stored').toBe(12345);
+  expect(back.contents?.message, 'and so is the message').toContain('through the window');
+  // 12 345 gold is Green, and the placement is wearing it.
+  expect(back.tier, 'the glow follows the value').toBe('Green');
+  expect(back.worn, 'and the placement wears what it earned').toBe('Green');
+});
+
+test('the rest are filled in through the same channel, and every glow is earned', async () => {
+  test.setTimeout(10 * 60_000);
+  const { page } = ed;
+  const prices = pandoraPrices(singleRoot(DATA));
+
+  for (const b of BOXES) {
+    // The hand-filled one keeps what the window put in it.
+    if (b.name === BOXES[0]!.name) continue;
+    const id = ids.get(b.name)!;
+    const res = await page.evaluate((p) => window.editor.pandoraSet(p.id, p.contents),
+      { id, contents: b.contents });
+    const want = b.contents.tier ?? pandoraValue(b.contents, prices);
+    const expected = typeof want === 'string' ? want
+      : PANDORA_TIERS.filter((t) => want.total >= t.from).at(-1)!.key;
+    expect(res.tier, `${b.name} earns ${expected}`).toBe(expected);
+    // The name says which tier it was BUILT for; the value says which it got.
+    expect(b.name.endsWith(res.tier), `${b.name} landed in ${res.tier}`).toBe(true);
+  }
+
+  // The rule the whole feature turns on, asserted on the map rather than in a
+  // unit test: the same stack given and fought wears the same colour.
+  for (const t of PANDORA_TIERS) {
+    const given = await page.evaluate((n) => window.editor.pandoraGet(n), ids.get(`PandoraRArmy${t.key}`)!);
+    const fought = await page.evaluate((n) => window.editor.pandoraGet(n), ids.get(`PandoraRGuard${t.key}`)!);
+    expect(fought.value, `${t.key}: a guard is worth what a gift is worth`).toBe(given.value);
+    expect(fought.worn, `${t.key}: and wears the same glow`).toBe(given.worn);
+  }
+});
+
+test('two sides, each with a hero of their own', async () => {
+  test.setTimeout(5 * 60_000);
+  const { page } = ed;
   const heroes = await twoHeroes(page);
   for (const [i, side] of SIDES.entries()) {
-    const id = await place(page, heroes[i]!, side.at.x, side.at.y);
+    const id = await place(page, heroes[i]!, side.hero.x, side.hero.y);
     await setPath(page, id, ['PlayerID'], side.player);
     await page.evaluate(async (q) => {
       await window.editor.setMapPath({ path: ['players', q.slot, 'ActivePlayer'], value: 'true' });
@@ -191,44 +330,62 @@ test('two sides, and the script that answers a touch', async () => {
         path: ['players', q.slot, 'MainHero'], value: `#xpointer(id(${q.id})/AdvMapHero)`,
       });
     }, { ...side, id });
-  }
 
-  // The script: the generated pandora block, and nothing of anyone else's.
-  // Each box also names the "you received" text the behaviour shows after it
-  // opens; the files go beside the map after the first save makes its folder.
-  const withGiven = BOXES.map((b) => ({
-    ...b, given: `/Maps/SingleMissions/${NAME}/pandora-${b.name}.txt`,
-  }));
-  const script = withPandoraBlock('', withGiven);
-  const bound = await page.evaluate(async (text) => {
-    const r = await window.editor.newScript({ base: 'MapScript' });
-    await window.editor.writeFile({ href: r.lua, text });
-    await window.editor.setMapPath({ path: ['MapScript'], value: r.href });
-    return r.href;
-  }, script);
-  expect(bound).toContain('MapScript.xdb');
+    // A HUNDRED ARCHANGELS for the first hero, so the guarded boxes can be
+    // opened by whoever plays the map without a week of building up to it.
+    if (i === 0) {
+      await page.evaluate((oid) => window.editor.addObjectItem({ id: oid, path: ['armySlots'] }), id);
+      await setPath(page, id, ['armySlots', 0, 'Creature'], 'CREATURE_ARCHANGEL');
+      await setPath(page, id, ['armySlots', 0, 'Count'], '100');
+    }
+  }
 
   await bar(page, '#save');
   await hudSays(page, /saved/i, 120_000);
 
-  // The reward texts, in the map's folder the save just made. UTF-16, like
-  // every text the game reads.
-  mkdirSync(MAP_DIR, { recursive: true });
-  for (const b of BOXES) {
-    writeFileSync(join(MAP_DIR, `pandora-${b.name}.txt`), utf16(givenText(b)));
-  }
-
   const xml = readFileSync(join(MAP_DIR, 'map.xdb'), 'latin1');
-  expect(xml, 'the map binds the script').toContain('MapScript.xdb#xpointer(/Script)');
+  expect(xml, 'the map binds a script for the boxes').toContain('MapScript.xdb#xpointer(/Script)');
+  expect(xml, 'the first hero leads a hundred archangels').toContain('<Count>100</Count>');
   for (const b of BOXES) expect(xml, `${b.name} is on the map`).toContain(`<Name>${b.name}</Name>`);
-  expect((xml.match(new RegExp(`\\(${PANDORA_CLASS}\\)`, 'g')) ?? []).length,
-    'chest-class boxes reference their shared').toBeGreaterThan(0);
 
-  const lua = readFileSync(join(MAP_DIR, 'MapScript.lua'), 'latin1');
+  // THE GLOW, READ OFF THE FILE. Asking the editor what tier a box wears only
+  // proves what the editor is holding: the first run of this map had every box
+  // reporting its colour correctly through the channel and every placement
+  // still pointing at Blue on disk, because an attribute set by hand is not
+  // marked dirty and never gets written. So the map itself is asked.
+  const items = xml.split('<Item ');
+  for (const b of BOXES) {
+    const item = items.find((s) => s.includes(`<Name>${b.name}</Name>`));
+    expect(item, `${b.name} is in the map`).toBeTruthy();
+    // Every box is named for the tier it was built for — except the one filled
+    // in by hand, which was given 12 345 gold through the window and is Green
+    // whatever its name says. That is the point of it: the glow follows the
+    // contents, not the label.
+    const tier = b.name === BOXES[0]!.name ? 'Green'
+      : PANDORA_TIERS.find((t) => b.name.endsWith(t.key))!.key;
+    expect(item, `${b.name} wears ${tier} on disk`).toContain(`PandoraBox_${tier}.(${PANDORA_CLASS}).xdb`);
+  }
+});
+
+test('saving writes the block the game reads, and the texts it shows', async () => {
+  test.setTimeout(5 * 60_000);
+  const lua = readFileSync(join(MAP_DIR, 'MapScript.lua'), 'utf8');
   for (const b of BOXES) {
     expect(lua, `${b.name} is in the data table`).toContain(`H5E_PANDORA["${b.name}"]`);
     expect(lua, `${b.name} is hooked`).toContain(`Trigger(OBJECT_TOUCH_TRIGGER, "${b.name}"`);
   }
+  // A guarded box fights before it opens, and the fight is written out in full
+  // because Lua 4 cannot splice a table into an argument list.
+  expect(lua, 'the guards fight').toContain('StartCombat(');
+  expect(lua, 'and the behaviour is loaded last')
+    .toMatch(/Trigger\(OBJECT_TOUCH_TRIGGER[\s\S]*doFile\("\/scripts\/homm5-editor\/pandora\.lua"\)/);
+
+  // A talking box's message is a FILE — MessageBox takes a ref, so the text is
+  // written beside the map and the block points at it.
+  const talker = BOXES.find((b) => b.contents.message)!;
+  expect(existsSync(join(MAP_DIR, `pandora-${talker.name}.txt`)), 'the message is a file').toBe(true);
+  expect(lua, 'and the block points at it')
+    .toContain(`/Maps/SingleMissions/${NAME}/pandora-${talker.name}.txt`);
 });
 
 test('and it packs to a map the game can be pointed at', async () => {
@@ -245,5 +402,10 @@ test('and it packs to a map the game can be pointed at', async () => {
   expect(names.some((n) => n.endsWith('map.xdb')), 'the archive holds the map').toBe(true);
   expect(names.some((n) => n.endsWith('MapScript.lua')), 'and the script').toBe(true);
   expect(names.some((n) => n.includes('map-tag')), 'and the tag the lobby lists').toBe(true);
-  expect(names.some((n) => n.endsWith('pandora-PandoraExp.txt')), 'and the reward texts').toBe(true);
+  expect(names.some((n) => /pandora-Pandora\w+\.txt$/.test(n)), 'and the message texts').toBe(true);
+  // The contents themselves are the EDITOR's memory and have no reader in the
+  // game — what ships is the block above.
+  expect(names.some((n) => n.endsWith(PANDORA_FILE)), 'the sidecar stays home').toBe(false);
+  expect(names.some((n) => n.endsWith(`(${PANDORA_CLASS}).xdb`)), 'the box definitions live in the mod, not the map')
+    .toBe(false);
 });

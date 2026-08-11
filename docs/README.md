@@ -60,6 +60,7 @@ mod documents below; they move here as each gets written up.
 - [ENGINE_INTERNALS.md](ENGINE_INTERNALS.md) — read out of the binary: how to read it, the rules that hold everywhere, and an index into `engineInternals/` (artifacts and equipment, necromancy, specializations, Lua, mods and maps, our extension).
 - [UI_INTERNALS.md](UI_INTERNALS.md) — how a screen is put together: what a click is, how a screen finds its parts, and what moves creatures between them.
 - [engineInternals/COMBAT.md](engineInternals/COMBAT.md) — a battle and the one command it leaves by: why a quick battle is the same battle, why nothing reaches the world until `CFinishCombat`, and four things that were tried to make a fought battle refusable.
+- [PANDORA_BOX.md](PANDORA_BOX.md) — the box an author fills in: what it can hold, what that is worth (and which of those prices are the game's and which are ours), where the contents live, and what actually ships inside the map.
 - [QOL.md](QOL.md) — settings that change how the game plays, and the import-table hooks behind them.
 - [EXE_LUA_REGISTRY.md](EXE_LUA_REGISTRY.md) — the Lua functions the executable registers.
 - [ARCHIVES.md](ARCHIVES.md) — a map, a campaign and a mod are one thing to the engine.

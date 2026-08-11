@@ -37,6 +37,7 @@ import { NO_FOCUS, showQuietly } from '#electron/no-focus.ts';
 import { registerModsList } from '#electron/channels/mods-list.ts';
 import { registerModTextures } from '#electron/channels/mods-textures.ts';
 import { registerObjects } from '#electron/channels/objects.ts';
+import { registerPandora } from '#electron/channels/pandora.ts';
 import { registerQol } from '#electron/channels/qol.ts';
 import { registerSave } from '#electron/channels/save.ts';
 import { registerScene } from '#electron/channels/scene.ts';
@@ -168,6 +169,7 @@ registerModSpells();
 registerModArtifacts();
 registerModBuildings();
 registerModTextures();
+registerPandora();
 registerQol();
 
 app.whenReady().then(async () => {

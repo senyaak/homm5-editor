@@ -28,6 +28,7 @@ import type { BuildingSpec } from './buildings.ts';
 import { copyArt, dataPath, resolve } from './mod-art.ts';
 import { TYPES, mustRead, utf16 } from './mod-files.ts';
 import type { DataReader, ModFile } from './mod-files.ts';
+import { PANDORA_TIERS } from './pandora-contents.ts';
 import { pandoraBehaviourFiles } from './pandora-scripts.ts';
 
 const EOL = '\r\n';
@@ -66,21 +67,6 @@ const SPIN_JOINT = 'PandoraBox';
 const SPIN_SECONDS = 7.5;
 const SPIN_RISE = 0.2;
 
-/** The glow tiers, poorest first — the game's own artifact glows. */
-export interface PandoraTier {
-  key: string;
-  /** The shipped glow effect this tier copies. */
-  effect: string;
-  /** Contents worth at least this much, in gold, earn the tier. */
-  from: number;
-}
-
-export const PANDORA_TIERS: readonly PandoraTier[] = [
-  { key: 'Blue', effect: 'Effects/_(Effect)/Artefacts/General/Blue.xdb', from: 0 },
-  { key: 'Green', effect: 'Effects/_(Effect)/Artefacts/General/Green.xdb', from: 5000 },
-  { key: 'Gold', effect: 'Effects/_(Effect)/Artefacts/General/Gold.xdb', from: 15000 },
-  { key: 'Red', effect: 'Effects/_(Effect)/Artefacts/General/Red.xdb', from: 40000 },
-];
 /** Where everything lives inside the mod. */
 export const PANDORA_DIR = 'Buildings/PandoraBox';
 const ART_DIR = `${PANDORA_DIR}/art`;
@@ -98,50 +84,58 @@ export const PANDORA_CLASS = 'AdvMapTreasureShared';
 export const pandoraShared = (tier: string): string =>
   `${PANDORA_DIR}/PandoraBox_${tier}.(${PANDORA_CLASS}).xdb`;
 
-/** The palette entry — one, pointing at the poorest tier a fresh box is. */
-export const PANDORA_LINK = 'MapObjects/_(AdvMapObjectLink)/Objects-All-Terra/PandoraBox.xdb';
-
-/** The animation probes: the SKINNED cube with the artifact idle, on classes
- * that might animate it — a windmill-type Building (the shipped proof that
- * Building plays an AnimSet) and an artifact (whose donor the rig IS; the
- * class that would also give pickup-and-vanish and the AI's full appetite). */
-export const PANDORA_MILL_CLASS = 'AdvMapBuildingShared';
-export const PANDORA_MILL_SHARED = `${PANDORA_DIR}/PandoraBox_Mill.(${PANDORA_MILL_CLASS}).xdb`;
-export const PANDORA_MILL_LINK = 'MapObjects/_(AdvMapObjectLink)/Objects-All-Terra/PandoraBoxMill.xdb';
 /**
- * THE STILL TWIN: the same cube, the same texture, no rig at all.
+ * Is this placement one of our boxes?
  *
- * A control, and the cheapest one there is. The box drew when it had no
- * skeleton and vanished when it got one — model, shadow and all — so the next
- * look has to separate "the rig is wrong" from "the model is wrong", and one
- * unrigged twin standing beside the others does it without a second run.
- */
-export const PANDORA_STILL_CLASS = 'AdvMapTreasureShared';
-export const PANDORA_STILL_SHARED = `${PANDORA_DIR}/PandoraBox_Still.(${PANDORA_STILL_CLASS}).xdb`;
-export const PANDORA_STILL_LINK = 'MapObjects/_(AdvMapObjectLink)/Objects-All-Terra/PandoraBoxStill.xdb';
-
-/**
- * And the rig taken apart, because "it does not draw" has two halves.
+ * Asked of the `<Shared>` href, because that is what a placed object HAS: the
+ * class alone would answer yes for every chest on the map, and the name is the
+ * author's to change. The tier is part of the file name, so a box that has
+ * changed colour is still the same question answered the same way.
  *
- * A rig is a SKELETON named by the model and an ANIMSET named by the object,
- * and either can be the one the engine chokes on. These two twins carry one
- * each — same cube, same texture, no new art at all, just a pair of shared
- * documents pointing at models that already exist.
+ * The four tiers are the whole set — the probe twins are not boxes an author
+ * places, and a map holding one is asking about the model, not the contents.
  */
-export const PANDORA_BONED_SHARED = `${PANDORA_DIR}/PandoraBox_Boned.(${PANDORA_STILL_CLASS}).xdb`;
-export const PANDORA_BONED_LINK = 'MapObjects/_(AdvMapObjectLink)/Objects-All-Terra/PandoraBoxBoned.xdb';
-export const PANDORA_CLIPPED_SHARED = `${PANDORA_DIR}/PandoraBox_Clipped.(${PANDORA_STILL_CLASS}).xdb`;
-export const PANDORA_CLIPPED_LINK = 'MapObjects/_(AdvMapObjectLink)/Objects-All-Terra/PandoraBoxClipped.xdb';
-export const PANDORA_ARTIFACT_CLASS = 'AdvMapArtifactShared';
-export const PANDORA_ARTIFACT_SHARED = `${PANDORA_DIR}/PandoraBox_Artifact.(${PANDORA_ARTIFACT_CLASS}).xdb`;
-export const PANDORA_ARTIFACT_LINK = 'MapObjects/_(AdvMapObjectLink)/Objects-All-Terra/PandoraBoxArtifact.xdb';
-
-/** The tier a contents value earns. */
-export function pandoraTier(value: number): PandoraTier {
-  let tier = PANDORA_TIERS[0]!;
-  for (const t of PANDORA_TIERS) if (value >= t.from) tier = t;
-  return tier;
+export function isPandoraShared(href: string | null | undefined): boolean {
+  if (!href) return false;
+  const path = href.split('#')[0]!.replace(/\\/g, '/').replace(/^\/+/, '').toLowerCase();
+  return PANDORA_TIERS.some((t) => path === pandoraShared(t.key).toLowerCase());
 }
+
+/** The tier a placement is wearing, read off its `<Shared>`, or null. */
+export function pandoraTierOfShared(href: string | null | undefined): string | null {
+  if (!href) return null;
+  const path = href.split('#')[0]!.replace(/\\/g, '/').replace(/^\/+/, '').toLowerCase();
+  return PANDORA_TIERS.find((t) => path === pandoraShared(t.key).toLowerCase())?.key ?? null;
+}
+
+/** The `<Shared>` href a placement of this tier points at — document and class,
+ *  because the game resolves neither half without the other. */
+export const pandoraSharedHref = (tier: string): string =>
+  `/${pandoraShared(tier)}#xpointer(/${PANDORA_CLASS})`;
+
+/**
+ * The palette entry — one, pointing at the poorest tier a fresh box is.
+ *
+ * UNDER `Treasures/`, which is not decoration: the Objects tab's groups come
+ * from `Editor/MapFilters.xml`, a loose file no mod can add to, and each group
+ * is a set of FOLDER PREFIXES. So which group an object lands in is decided by
+ * where its link file sits, and the box belongs with the chests and the
+ * resource piles rather than among the all-terrain scenery it started in.
+ */
+export const PANDORA_LINK = 'MapObjects/_(AdvMapObjectLink)/Treasures/PandoraBox.xdb';
+
+// THE PROBE TWINS ARE GONE, and what they answered is written down instead.
+//
+// Five hidden objects used to ship beside the box — the same cube on a
+// windmill-type Building and on an artifact, a twin with no rig, and the rig
+// taken apart into bones-without-a-clip and clip-without-bones. They existed to
+// ask why a rigged box did not draw, and they answered: a skinned model's
+// `<RootMesh>` names the BONE, and a clip binds to a rig through a
+// `granny_model` by name (docs/engineInternals/PANDORA_OBJECT.md). The box has
+// turned on its own axis ever since, so the twins are five documents, five
+// palette entries and five ways for a map to reference something that is not a
+// box. Removed rather than kept "just in case": the questions they asked are
+// answered, and the answers are cheaper to read than to re-run.
 
 /**
  * The vertex-to-bone binding every vertex of the box carries: full weight on
@@ -246,8 +240,6 @@ const PANDORA_CLIP = `${PANDORA_DIR}/PandoraBoxIdle.(BasicSkelAnim).xdb`;
 const PANDORA_CLIP_UID = 'B0AD0003-1111-4222-8333-C0DE0BADC0DE';
 const PANDORA_ANIMSET = `${PANDORA_DIR}/PandoraBox.(AnimSet).xdb`;
 /** The control's documents — same mesh, no rig named anywhere. */
-const PANDORA_STILL_MODEL = `${PANDORA_DIR}/PandoraBoxStill.(Model).xdb`;
-const PANDORA_STILL_GEOMETRY = `${PANDORA_DIR}/PandoraBoxStill.(Geometry).xdb`;
 
 /**
  * Every file the box's LOOK is made of, and only one of them copied.
@@ -288,22 +280,6 @@ function boxArtFiles(): ModFile[] {
         // The node is the bone; the mesh hanging off it is `<node>Shape`, which
         // is the Maya naming every shipped model follows.
         meshNames: [`${SPIN_JOINT}Shape`], rootJoint: SPIN_JOINT,
-      }), 'latin1'),
-    },
-    // The still twin: the SAME mesh binary, named by a second pair of documents
-    // that mention no skeleton. Nothing is duplicated but the two small files —
-    // a geometry document is a name for a uid, and two names may share one.
-    {
-      path: PANDORA_STILL_MODEL,
-      data: Buffer.from(modelDocument({
-        materials: [`/${PANDORA_MATERIAL}`],
-        geometry: `/${PANDORA_STILL_GEOMETRY}`,
-      }), 'latin1'),
-    },
-    {
-      path: PANDORA_STILL_GEOMETRY,
-      data: Buffer.from(geometryDocument({
-        uid: PANDORA_UID, bbox: groupBBox([group]), meshNames: [`${SPIN_JOINT}Shape`],
       }), 'latin1'),
     },
     {
@@ -435,87 +411,6 @@ export function buildPandora(read: DataReader): ModFile[] {
 
   // The behaviour the maps' generated blocks doFile, and its texts.
   files.push(...pandoraBehaviourFiles());
-
-  const hiddenLink = (link: string, shared: string, className: string): ModFile => ({
-    path: link,
-    data: Buffer.from([
-      '<?xml version="1.0" encoding="UTF-8"?>',
-      '<AdvMapObjectLink>',
-      `\t<Link href="/${shared}#xpointer(/${className})"/>`,
-      '\t<RndGroup/>',
-      `\t<IconFile>${PANDORA_TEXTURE}</IconFile>`,
-      '\t<HideInEditor>true</HideInEditor>',
-      '</AdvMapObjectLink>',
-    ].join(EOL) + EOL, 'latin1'),
-  });
-  // THE TWO CONTROLS. The box's own class carries an AnimSet — 4 of the 15
-  // shipped treasures do, the Sea Chest among them — so the shipping box is
-  // rigged and should turn on its own. These twins are the same model on the
-  // two other classes that might: a Building of the windmill's type (the shipped
-  // proof that Building plays an AnimSet) and an ARTIFACT, the class the rig
-  // was made for. If the treasure turns out not to animate, they say who does.
-  // Hidden in the palette; the probe map places them by name.
-  const millDoc = buildingDoc(
-    {
-      file: 'PandoraBox_Mill', className: PANDORA_MILL_CLASS, messages: MESSAGES,
-      model: PANDORA_MODEL, animSet: PANDORA_ANIMSET, effect: PANDORA_TIERS[3]!.effect,
-      footprint: { w: 1, h: 1 }, ground: null,
-      type: 'BUILDING_WINDMILL',
-    },
-    { dir: PANDORA_DIR, shared: PANDORA_MILL_SHARED, link: PANDORA_MILL_LINK, art: ART_DIR, text: texts },
-    types, { w: 1, h: 1 }, at,
-  );
-  files.push({ path: PANDORA_MILL_SHARED, data: Buffer.from(millDoc, 'latin1') });
-  files.push(hiddenLink(PANDORA_MILL_LINK, PANDORA_MILL_SHARED, PANDORA_MILL_CLASS));
-
-  // The still control: the box's own class and glow, the same cube, no rig.
-  const stillDoc = buildingDoc(
-    {
-      file: 'PandoraBox_Still', className: PANDORA_STILL_CLASS, messages: MESSAGES,
-      model: PANDORA_STILL_MODEL, effect: PANDORA_TIERS[2]!.effect,
-      footprint: { w: 1, h: 1 }, ground: null,
-      type: 'TREASURE_CHEST',
-      fields: { MinResource: '1', MaxResource: '1' },
-    },
-    { dir: PANDORA_DIR, shared: PANDORA_STILL_SHARED, link: PANDORA_STILL_LINK, art: ART_DIR, text: texts },
-    types, { w: 1, h: 1 }, at,
-  );
-  files.push({ path: PANDORA_STILL_SHARED, data: Buffer.from(stillDoc, 'latin1') });
-  files.push(hiddenLink(PANDORA_STILL_LINK, PANDORA_STILL_SHARED, PANDORA_STILL_CLASS));
-
-  // The rig, one half at a time: bones without a clip, and a clip without bones.
-  for (const half of [
-    { file: 'PandoraBox_Boned', shared: PANDORA_BONED_SHARED, link: PANDORA_BONED_LINK, model: PANDORA_MODEL, animSet: undefined },
-    { file: 'PandoraBox_Clipped', shared: PANDORA_CLIPPED_SHARED, link: PANDORA_CLIPPED_LINK, model: PANDORA_STILL_MODEL, animSet: PANDORA_ANIMSET },
-  ]) {
-    const doc = buildingDoc(
-      {
-        file: half.file, className: PANDORA_STILL_CLASS, messages: MESSAGES,
-        model: half.model, animSet: half.animSet, effect: PANDORA_TIERS[1]!.effect,
-        footprint: { w: 1, h: 1 }, ground: null,
-        type: 'TREASURE_CHEST',
-        fields: { MinResource: '1', MaxResource: '1' },
-      },
-      { dir: PANDORA_DIR, shared: half.shared, link: half.link, art: ART_DIR, text: texts },
-      types, { w: 1, h: 1 }, at,
-    );
-    files.push({ path: half.shared, data: Buffer.from(doc, 'latin1') });
-    files.push(hiddenLink(half.link, half.shared, PANDORA_STILL_CLASS));
-  }
-
-  const artifactDoc = buildingDoc(
-    {
-      file: 'PandoraBox_Artifact', className: PANDORA_ARTIFACT_CLASS, messages: MESSAGES,
-      model: PANDORA_MODEL, animSet: PANDORA_ANIMSET, effect: PANDORA_TIERS[1]!.effect,
-      footprint: { w: 1, h: 1 }, ground: null,
-      type: 'ARTF_RANDOM_SPECIFIC',
-      fields: { ArtifactID: 'ARTIFACT_NONE' },
-    },
-    { dir: PANDORA_DIR, shared: PANDORA_ARTIFACT_SHARED, link: PANDORA_ARTIFACT_LINK, art: ART_DIR, text: texts },
-    types, { w: 1, h: 1 }, at,
-  );
-  files.push({ path: PANDORA_ARTIFACT_SHARED, data: Buffer.from(artifactDoc, 'latin1') });
-  files.push(hiddenLink(PANDORA_ARTIFACT_LINK, PANDORA_ARTIFACT_SHARED, PANDORA_ARTIFACT_CLASS));
 
   return files;
 }

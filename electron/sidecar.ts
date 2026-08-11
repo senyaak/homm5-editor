@@ -46,6 +46,18 @@ export function readSidecarText(s: Session, href: string): string {
 }
 
 /**
+ * The `href` of a Script wrapper's `<FileName>` — the `.lua` it runs.
+ *
+ * A map script is always two files: the `.lua` the engine runs and the `.xdb`
+ * wrapper that names it, and every reference — `MapScript`, a hero's
+ * `CombatScript` — points at the wrapper. So anything that wants the source
+ * goes through here rather than guessing that the names match.
+ */
+export function readScriptFileName(xml: string): string | null {
+  return /<FileName\s+href="([^"]*)"/i.exec(xml)?.[1] ?? null;
+}
+
+/**
  * Write a text file of the map, keeping the encoding it already has.
  *
  * A NEW file's encoding follows what it is for: the game writes its display

@@ -33,12 +33,15 @@ work and the pair vanish; and the section-layout invariants of GR2_FORMAT.md
 
 1. **This document's track — the engine.** Build the class: a subclass of the
    lootable whose visit is ours rather than a chest's. The plan is below.
-2. **The editor's track — the UI.** The box needs a palette entry that is not
-   hidden, a contents dialog driven by the JSON schema (experience, gold, the
-   six resources, artifacts, spells, creatures, guards), the computed value of
-   those contents, and the tier substitution that picks which of the four glow
-   documents a placement points at. `pandoraTier()` and the four shared
-   documents already exist; what is missing is the window and the wiring.
+2. **The editor's track — DONE** (12.08.2026), and written up in
+   `docs/PANDORA_BOX.md`. The box lists under Treasures, a placed one carries
+   its own contents (message, experience, gold and resources, artifacts,
+   spells, creatures given, creatures fought), the glow follows what those are
+   worth — a guard costing exactly what a gift costs — and saving writes the
+   generated block, the message texts and, where a map had none, a script to
+   hook them into. The five probe twins are gone with it: what they asked is
+   answered above, and they were five more ways for a map to reference
+   something that only looks like a box.
 
 ## Why the parent is a lootable, and not a Stand
 

@@ -1,0 +1,56 @@
+/* Pandora's Box contents. A native <dialog> on the shared .mp-card chrome
+   (map-props.css); everything here is the form inside it.
+
+   The layout follows how a box is filled in: the plain numbers first, in a
+   grid, because most boxes are gold and experience and nothing else; then the
+   four lists, which are the boxes worth opening; then the value, which is the
+   consequence of everything above and sits where the eye lands last. */
+#pandora { padding: 0; border: 0; background: transparent; color: #c9d1d9;
+  max-width: 92vw; max-height: 86vh; overflow: visible; }
+#pandora::backdrop { background: #0d1014cc; }
+.pb-card { width: min(720px, 94vw); }
+
+.pb-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px 10px; }
+.pb-grid label { display: flex; flex-direction: column; gap: 3px; font-size: 11px;
+  color: #8b949e; text-transform: uppercase; letter-spacing: .04em; }
+.pb-grid .pb-wide { grid-column: 1 / -1; text-transform: none; letter-spacing: 0; font-size: 12px; }
+.pb-grid input, .pb-grid textarea { background: #0d1014; border: 1px solid #30363d; border-radius: 5px;
+  color: #e6edf3; padding: 4px 6px; font: inherit; font-size: 12px; }
+.pb-grid textarea { resize: vertical; }
+
+.pb-lists { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; margin-top: 14px; }
+.pb-lists .ph { font-size: 11px; color: #6e7681; text-transform: uppercase; letter-spacing: .04em;
+  margin-bottom: 4px; }
+.pb-list { display: flex; flex-direction: column; gap: 4px; }
+.pb-row { display: flex; gap: 4px; align-items: center; }
+.pb-row select { flex: 1; min-width: 0; background: #0d1014; border: 1px solid #30363d;
+  border-radius: 5px; color: #e6edf3; padding: 3px 4px; font-size: 12px; }
+.pb-row input { width: 68px; background: #0d1014; border: 1px solid #30363d; border-radius: 5px;
+  color: #e6edf3; padding: 3px 5px; font-size: 12px; }
+.pb-row .pb-drop { background: transparent; border: 0; color: #8b949e; cursor: pointer;
+  padding: 2px 5px; border-radius: 5px; line-height: 1; }
+.pb-row .pb-drop:hover { background: #21262d; color: #f85149; }
+.pb-add { align-self: flex-start; margin-top: 5px; background: transparent; border: 1px dashed #30363d;
+  color: #8b949e; border-radius: 5px; padding: 3px 8px; font-size: 12px; cursor: pointer; }
+.pb-add:hover { border-color: #388bfd; color: #c9d1d9; }
+
+/* The value, and the glow it earns. `#pb-total` is the sentence a map author
+   argues with, so the breakdown that produced it is right beside it. */
+.pb-value { display: flex; align-items: center; gap: 14px; margin-top: 16px; padding-top: 12px;
+  border-top: 1px solid #21262d; flex-wrap: wrap; }
+#pb-total { font-size: 14px; color: #e6edf3; font-weight: 600; }
+.pb-parts { flex: 1; min-width: 160px; font-size: 11px; color: #6e7681; }
+.pb-value label { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #8b949e;
+  text-transform: uppercase; letter-spacing: .04em; }
+.pb-value select { background: #0d1014; border: 1px solid #30363d; border-radius: 5px;
+  color: #e6edf3; padding: 3px 6px; font-size: 12px; text-transform: none; }
+.pb-note { flex: 1; font-size: 12px; color: #8b949e; }
+.pb-note.warn { color: #d29922; }
+
+/* The inspector's row for a selected box: the way in, and what the box is worth
+   without opening it — the number is the reason to open it or leave it alone. */
+.pb-open { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
+.pb-open button { background: #21262d; border: 1px solid #30363d; border-radius: 5px;
+  color: #e6edf3; padding: 3px 9px; font-size: 12px; cursor: pointer; }
+.pb-open button:hover { border-color: #388bfd; }
+.pb-worth { font-size: 11px; color: #8b949e; }

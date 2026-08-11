@@ -15,6 +15,25 @@ one.
 
 ### Added
 
+- **The Pandora's Box can be filled in.** The box now lists under **Treasures**
+  in the object palette, and a placed one carries contents of its own: a
+  message, experience, gold and the six resources, artifacts, spells, creatures
+  that join the hero, and guards fought before it opens. Select a box and the
+  inspector offers **Contents…**.
+
+  The glow says what is inside — blue, green, gold, red at 0 / 5 000 / 15 000 /
+  40 000 gold — and a guard costs exactly what a gift costs, so ten archangels
+  handed over and ten archangels fought are the same colour. Creature, artifact
+  and spell prices come off the game's own tables; the resource and experience
+  rates are ours and are written down in `docs/PANDORA_BOX.md`, because the game
+  ships neither. An author who wants a trap dressed as a trinket can override
+  the colour.
+
+  Saving materialises what the game reads: a generated block in the map's Lua —
+  a data table, a touch trigger per box, each fight written out in full — plus a
+  text file per talking box, and a map script if the map had none. The contents
+  themselves stay behind in an editor sidecar that never ships.
+
 - **Rigs of our own.** Granny GR2 — the format the game's skeletons and
   animations are in — is now written as well as read. The header's CRC turned
   out to be a plain CRC-32 from byte 88 to the end (checked against all 5656

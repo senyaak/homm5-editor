@@ -14,6 +14,7 @@ import { api } from '#core/ipc.ts';
 import { state } from '#core/state.ts';
 import { fieldRow, rowShell, selectFrom, setProp } from '#features/inspector/controls.ts';
 import { advancedShown, dataAt, expandTree, objectTree, openMapTree, showAdvanced } from '#features/inspector/tree.ts';
+import { openPandora, pandoraState } from '#features/pandora.ts';
 import type { ObjectProp } from '#src/map/map.ts';
 import { controlOf, deref, objectProps, objectSchema } from '#src/schema/schema.ts';
 import type { FieldSchema } from '#src/schema/schema.ts';
@@ -44,6 +45,25 @@ export async function loadProps(): Promise<void> {
   head.className = 'ph';
   head.textContent = 'properties';
   host.appendChild(head);
+
+  // A Pandora's Box carries something no field of its type describes — what is
+  // inside it — so the panel offers the window that edits it. Asked of the main
+  // process rather than guessed from the type: every box is a treasure, and
+  // most treasures are chests.
+  void pandoraState(id).then((box) => {
+    if (!box.isBox || propsFor !== id) return;
+    const row = document.createElement('div');
+    row.className = 'pf pb-open';
+    const btn = document.createElement('button');
+    btn.textContent = 'Contents…';
+    btn.title = 'what this box holds, and what the glow says it is worth';
+    btn.addEventListener('click', () => void openPandora(id));
+    const worth = document.createElement('span');
+    worth.className = 'pb-worth';
+    worth.textContent = `${(box.value ?? 0).toLocaleString('en-US')} gold · ${box.tier ?? ''}`;
+    row.append(btn, worth);
+    host.insertBefore(row, head.nextSibling);
+  });
 
   // Look up this object type's schema once; each field is typed by it, or falls
   // back to inference when the schema does not describe it.
