@@ -17,7 +17,7 @@
 // earn (pandora.ts).
 
 import { parseTypeSpec } from '../schema/typespec.ts';
-import { parseTree } from '../scene/geometry.ts';
+import { boxifyGeometry, parseTree, positionsBox } from '../scene/geometry.ts';
 import type { BlockRecord, ContainerRecord, RecordTree } from '../scene/geometry.ts';
 import { textureDoc, writeDDS, writeDXT1 } from '../format/texture.ts';
 import { decodeDDSBuffer } from '../format/dds.ts';
@@ -43,6 +43,27 @@ const EOL = '\r\n';
  * animates it is still an open question the probe map asks.
  */
 const CHEST_DONOR_MODEL = '_(Model)/TESTS/dev/chest.(Model).xdb';
+
+/**
+ * And the donor the BOX is sculpted from: the arena's environment box.
+ *
+ * Chosen by looking, after the chest sculpted into a box with its lid still
+ * flapping and the crystal into a lump: this one is already six flat
+ * axis-aligned faces, so pushing its vertices onto a cube gives a CUBE —
+ * sharp edges, one texture square per face (its UVs run 0..1 on each), no
+ * skeleton, no animation.
+ *
+ * Two things about it have to be undone in the DOCUMENTS, and both are the
+ * safe kind of edit. It is a SURROUND: its faces point inward (signed volume
+ * −1.28e6) because the arena camera sits inside it, so from outside it is
+ * invisible — `Is2Sided` turns that into a solid box without touching a single
+ * index. And its materials are `AM_OVERLAY` / `L_SELFILLUM`, which is how a
+ * backdrop is drawn rather than how an object is lit.
+ */
+const BOX_DONOR_MODEL = '_(Model)/Arenas/EnvBoxSmall.(Model).xdb';
+/** Which of its three groups is pressed flat onto the top to close the box —
+ *  the donor is open upward, being a surround. */
+const BOX_DONOR_LID_GROUP = 1;
 
 /** The animated donor: the floating artifact stone, skeleton and idle. */
 const DONOR_MODEL = '_(Model)/Cutscenes/Artefakt.(Model).xdb';
@@ -174,6 +195,47 @@ const RIGID_SKIN = Buffer.from('0000803f000000000000000000000000ff000000030c0c0c
  * (the probe map showed glow and no cube), and this is the other half of
  * being static; the first is the model document's empty `<Skeleton/>`. */
 const STATIC_SKIN = Buffer.from('0000803f000000000000000000000000ff00000000000000', 'hex');
+
+/**
+ * One texture square per FACE — the donor's own unwrapping repeats it four
+ * times over each one, which reads as a lattice rather than a panel.
+ *
+ * The only bytes written are the two int16 of the UV (0..3 of each 20-byte
+ * attribute); normals, tangents, the skin and every index stay the donor's.
+ * That is deliberately the smallest edit that can answer the question, because
+ * whether the engine tolerates ANY attribute rewrite is exactly what the last
+ * cube failed to establish — the probe row carries a twin with the donor's UVs
+ * beside this one.
+ */
+export function planarFaceUVs(bin: Buffer, centre: readonly number[]): void {
+  for (const g of meshGroups(parseTree(bin))) {
+    const pos = g.part(2), attr = g.part(3), remap = g.part(5);
+    if (!pos || !attr || !remap) continue;
+    // The box the vertices actually occupy, so a lid pressed flat still maps.
+    let lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+    for (let i = 0; i < pos.int; i++) {
+      for (let k = 0; k < 3; k++) {
+        const v = bin.readFloatLE(pos.leaf.body + i * 12 + k * 4);
+        if (v < lo[k]!) lo[k] = v;
+        if (v > hi[k]!) hi[k] = v;
+      }
+    }
+    const size = [0, 1, 2].map((k) => Math.max(1e-6, hi[k]! - lo[k]!));
+    for (let rv = 0; rv < attr.int; rv++) {
+      const j = bin.readUInt16LE(remap.leaf.body + rv * 2);
+      if (j >= pos.int) continue;
+      const p = [0, 1, 2].map((k) => bin.readFloatLE(pos.leaf.body + j * 12 + k * 4));
+      // Which face: the axis this vertex is furthest out along.
+      const off = [0, 1, 2].map((k) => (p[k]! - centre[k]!) / size[k]!);
+      const axis = off.map(Math.abs).indexOf(Math.max(...off.map(Math.abs)));
+      const [ua, va] = axis === 0 ? [1, 2] : axis === 1 ? [0, 2] : [0, 1];
+      const u = (p[ua]! - lo[ua]!) / size[ua]!;
+      const v = 1 - (p[va]! - lo[va]!) / size[va]!;
+      bin.writeInt16LE(Math.round(Math.max(0, Math.min(1, u)) * 2047), attr.leaf.body + rv * 20);
+      bin.writeInt16LE(Math.round(Math.max(0, Math.min(1, v)) * 2047), attr.leaf.body + rv * 20 + 2);
+    }
+  }
+}
 
 interface GroupPart { int: number; leaf: BlockRecord }
 
@@ -487,7 +549,7 @@ const PANDORA_DDS = 'PandoraBox.dds';
  * document is left exactly as the game shipped it. Nothing to keep in step:
  * the bytes are what it already says they are.
  */
-function paintModelTextures(copied: ArtCopy, modelCopyPath: string): void {
+function paintModelTextures(copied: ArtCopy, modelCopyPath: string, our = false): void {
   const doc = copied.files.get(modelCopyPath)?.toString('latin1');
   if (!doc) throw new Error(`pandora: no copied model at ${modelCopyPath}`);
   let painted = 0;
@@ -503,10 +565,34 @@ function paintModelTextures(copied: ArtCopy, modelCopyPath: string): void {
     // model's own unwrapping, and a picture of ours laid over it comes out as
     // the bisect row's third chest — visible and wrong. So the donor's pixels
     // are recoloured and its own document is left alone.
-    copied.files.set(ddsAt, writeDXT1(pandoraSkin(decodeDDSBuffer(donor))));
+    // Two ways to paint, and which one is right depends on the UVs. A donor
+    // whose unwrapping we do not own gets RECOLOURED — its drawing is what
+    // makes it read as an object. The sculpted cube's faces each take the
+    // whole square (0..1), so there our own face goes on flat.
+    const was = decodeDDSBuffer(donor);
+    copied.files.set(ddsAt, writeDXT1(our ? pandoraTexture(was.width) : pandoraSkin(was)));
     painted++;
   }
   if (!painted) throw new Error('pandora: no texture of the donor model was reachable to paint');
+}
+
+/**
+ * Turn a backdrop's materials into an object's — the other half of borrowing
+ * the arena's box.
+ *
+ * `Is2Sided` is the one that matters: the donor is a SURROUND, its faces turned
+ * inward for a camera that sits inside it, and a solid built from it is
+ * invisible from every angle a map is ever seen at. Two-sided costs the cull
+ * and gives the faces back. `AM_OVERLAY` and `L_SELFILLUM` are how a backdrop
+ * is drawn and lit; an object wants neither.
+ */
+function solidifyMaterials(copied: ArtCopy, modelCopyPath: string): void {
+  const doc = copied.files.get(modelCopyPath)?.toString('latin1');
+  if (!doc) throw new Error(`pandora: no copied model at ${modelCopyPath}`);
+  copied.files.set(modelCopyPath, Buffer.from(doc
+    .replace(/<Is2Sided>[^<]*<\/Is2Sided>/g, '<Is2Sided>true</Is2Sided>')
+    .replace(/<AlphaMode>[^<]*<\/AlphaMode>/g, '<AlphaMode>AM_OPAQUE</AlphaMode>')
+    .replace(/<LightingMode>[^<]*<\/LightingMode>/g, '<LightingMode>L_NORMAL</LightingMode>'), 'latin1'));
 }
 
 /** The palette icon — the painted face as a texture pair of our own. Only the
@@ -556,20 +642,39 @@ export function buildPandora(read: DataReader): ModFile[] {
   // artifact stone: its skinned container drew nothing on two probe runs even
   // de-skinned — whatever else its animated corners carry, the chest's plain
   // static container is the one proven to draw on this very class.
-  const seeds = [CHEST_DONOR_MODEL, ...PANDORA_TIERS.map((t) => t.effect)];
+  const seeds = [BOX_DONOR_MODEL, ...PANDORA_TIERS.map((t) => t.effect)];
   const copied = copyArt(seeds, ART_DIR, read, 'pandora:box');
   const absent = seeds.filter((s) => !copied.at.has(s));
   if (absent.length) throw new Error(`pandora: the game's data has no ${absent.join(', ')}`);
 
   // The chest's material and geometry are INLINE: uid, box and textures all
   // live in the model document itself.
-  const modelCopy = copied.at.get(CHEST_DONOR_MODEL)!;
+  const modelCopy = copied.at.get(BOX_DONOR_MODEL)!;
   const modelDoc = copied.files.get(modelCopy)!.toString('latin1');
   const uid = /<uid>([0-9A-Fa-f-]{36})<\/uid>/.exec(modelDoc)?.[1];
   const bin = uid ? copied.files.get(`bin/Geometries/${uid.toUpperCase()}`) : null;
   if (!bin) throw new Error('pandora: the chest donor geometry did not copy');
-  if (CUBE_THE_BOX) retuneGeometryDoc(copied, modelCopy, cubifyGeometry(bin, 'static'));
-  paintModelTextures(copied, modelCopy);
+  // A CUBE, SCULPTED FROM THE DONOR rather than built beside it. Positions
+  // are the one part of a mesh proven safe to rewrite (every baked town
+  // building goes through the same door); topology is not, and rebuilding it
+  // is what left six probe runs looking at a shadow. So the chest's own
+  // vertices are pushed out onto a box: its tessellation, its UVs, its
+  // attributes, all of them the donor's, on flat faces.
+  // ONE TILE, FLOATING A LITTLE, like the artifact it stands in for: a tile is
+  // two world units, so a 1.6 cube leaves a margin, and its underside sits a
+  // quarter-unit off the ground.
+  const HALF_SIDE = 0.8;
+  const sculpted = boxifyGeometry(bin, {
+    centre: [0, 0, 0.25 + HALF_SIDE],
+    half: [HALF_SIDE, HALF_SIDE, HALF_SIDE],
+  }, undefined, undefined, true);
+  if (!sculpted) throw new Error('pandora: the donor geometry could not be sculpted into a box');
+  // One square per face, on the sculpted cube (see planarFaceUVs).
+  planarFaceUVs(sculpted.data, [0, 0, 0.25 + HALF_SIDE]);
+  copied.files.set(`bin/Geometries/${uid!.toUpperCase()}`, sculpted.data);
+  retuneGeometryDoc(copied, modelCopy, sculpted.bbox);
+  solidifyMaterials(copied, modelCopy);
+  paintModelTextures(copied, modelCopy, true);
 
   const files: ModFile[] = [...copied.files].map(([path, data]) => ({ path, data }));
   files.push(...iconFiles());
@@ -589,7 +694,7 @@ export function buildPandora(read: DataReader): ModFile[] {
       file: `PandoraBox_${tier.key}`,
       className: PANDORA_CLASS,
       messages: MESSAGES,
-      model: CHEST_DONOR_MODEL,
+      model: BOX_DONOR_MODEL,
       effect: tier.effect,
       footprint: { w: 1, h: 1 },
       ground: null,
@@ -603,7 +708,7 @@ export function buildPandora(read: DataReader): ModFile[] {
   // One palette entry; a fresh box is empty, and empty is the poorest glow.
   const first = PANDORA_TIERS[0]!;
   const linkSpec: BuildingSpec = {
-    file: 'PandoraBox', className: PANDORA_CLASS, messages: MESSAGES, model: CHEST_DONOR_MODEL,
+    file: 'PandoraBox', className: PANDORA_CLASS, messages: MESSAGES, model: BOX_DONOR_MODEL,
   };
   // the painted face doubles as the palette icon
   files.push({

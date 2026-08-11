@@ -780,6 +780,90 @@ export function placeGeometry(b: Buffer, p: Placement): { data: Buffer; bbox: BB
 }
 
 /**
+ * Push every vertex of a mesh onto the surface of a box, and change NOTHING
+ * else — no index, no attribute, no remap, no count.
+ *
+ * This is how the Pandora's Box becomes a cube, and the shape of it is the
+ * lesson of six probe runs: a mesh whose TOPOLOGY we rebuilt inside a
+ * container we only mostly understand does not draw in the game at all (its
+ * shadow does, which is how long it took to believe). Positions, on the other
+ * hand, are the one thing already proven safe to edit — every baked town
+ * building on a map goes through `placeGeometry` above, and those draw.
+ *
+ * So the cube is SCULPTED rather than built: each vertex is normalised into
+ * the model's own extent, projected out along whichever axis it leans on most
+ * (which is what makes a box out of any roughly convex body), and written back
+ * at the requested centre and size. A chest comes out a chest-shaped cube: its
+ * own tessellation, its own UVs, its own everything, on flat faces.
+ */
+export function boxifyGeometry(
+  b: Buffer,
+  box: { centre: [number, number, number]; half: [number, number, number] },
+  /**
+   * Sculpt THIS mesh group and collapse every other one onto the centre.
+   *
+   * A donor can carry several groups over the same space — the arena's
+   * environment box is three — and sculpted they land on the same six faces,
+   * which is a z-fight rather than a cube. Collapsing is a position edit like
+   * the rest: the triangles stay, with no area to draw.
+   */
+  keepGroup?: number,
+  /**
+   * Flatten THIS group onto the top face instead of wrapping it round the box
+   * — a lid, made from a donor that has none.
+   *
+   * The arena's environment box is open upward: it surrounds a camera, and
+   * nothing was ever meant to look down on it. Sculpted, that is a box with no
+   * top, which is a crate rather than a sealed one. Pressing one of its other
+   * groups flat against the top plane closes it, and it is the same position
+   * edit as everything else here — no triangle is added, they are moved.
+   */
+  lidGroup?: number,
+  /**
+   * Mirror the sculpt top to bottom.
+   *
+   * The cheapest lid there is: a donor open UPWARD, turned over, is a box open
+   * downward — and what faces the ground is not seen. Still nothing but
+   * positions.
+   */
+  upsideDown = false,
+): { data: Buffer; bbox: BBox } | null {
+  const from = positionsBox(b);
+  if (!from) return null;
+  const out = Buffer.from(b);
+  const c = [from.cx, from.cy, from.cz];
+  const s = [from.sx / 2, from.sy / 2, from.sz / 2];
+  let lo = [Infinity, Infinity, Infinity];
+  let hi = [-Infinity, -Infinity, -Infinity];
+  const moved = eachPosition(out, (at, group) => {
+    if (keepGroup !== undefined && group !== keepGroup) {
+      for (let k = 0; k < 3; k++) out.writeFloatLE(box.centre[k]!, at + k * 4);
+      return;
+    }
+    const q = [0, 1, 2].map((k) => (s[k]! > 1e-6 ? (out.readFloatLE(at + k * 4) - c[k]!) / s[k]! : 0));
+    // Out to the surface: the axis the vertex leans on most decides which face
+    // it lands on, and a vertex at the very centre (there is one in some
+    // meshes) is left where it is rather than divided by nothing.
+    const m = Math.max(Math.abs(q[0]!), Math.abs(q[1]!), Math.abs(q[2]!));
+    const p = group === lidGroup
+      // The lid: spread across the top plane rather than round the body. The
+      // clamp is what fills the square — a vertex that reached past the box
+      // lands on its edge instead of hanging over it.
+      ? [Math.max(-1, Math.min(1, q[0]!)), Math.max(-1, Math.min(1, q[1]!)), 1]
+      : m > 1e-6 ? q.map((v) => v / m) : q;
+    if (upsideDown) p[2] = -p[2]!;
+    for (let k = 0; k < 3; k++) {
+      const v = box.centre[k]! + p[k]! * box.half[k]!;
+      out.writeFloatLE(v, at + k * 4);
+      if (v < lo[k]!) lo[k] = v;
+      if (v > hi[k]!) hi[k] = v;
+    }
+  });
+  if (!moved) return null;
+  return { data: out, bbox: boxOf(lo, hi) };
+}
+
+/**
  * The extent of the positions, optionally only those at or above a height.
  *
  * `above` is what makes a town building scale correctly. Its art keeps going below
@@ -813,7 +897,7 @@ const boxOf = (lo: number[], hi: number[]): BBox => ({
  * Visit every position in the file, by byte offset. Returns how many there were,
  * or 0 when the container does not match the layout.
  */
-function eachPosition(b: Buffer, fn: (at: number) => void): number {
+function eachPosition(b: Buffer, fn: (at: number, group: number) => void): number {
   const top = recordsIn(b, 0, b.length);
   const root = top.find((r) => r.tag === 1);
   if (!root) return 0;
@@ -821,12 +905,16 @@ function eachPosition(b: Buffer, fn: (at: number) => void): number {
   if (!outer) return 0;
   const blocks = recordsIn(b, outer.at, outer.end).filter((r) => r.tag === 1);
   let seen = 0;
+  let index = 0;
   for (const block of blocks) {
     for (const group of recordsIn(b, block.at, block.end).filter((r) => r.tag === 1)) {
       const rec = recordsIn(b, group.at, group.end).find((x) => x.tag === 2);
       const arr = rec ? countedArray(b, rec.at, rec.end) : null;
       if (!arr || arr.len < arr.count * 12) continue;
-      for (let i = 0; i < arr.count; i++) fn(arr.at + i * 12);
+      // Numbered in the order the decoder reports groups, so a caller can name
+      // one (boxifyGeometry's keepGroup) by what it saw in a preview.
+      const at = index++;
+      for (let i = 0; i < arr.count; i++) fn(arr.at + i * 12, at);
       seen += arr.count;
     }
   }
