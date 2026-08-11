@@ -33,6 +33,7 @@ import { buildScenePlay } from '../src/dialog/play.ts';
 import { listScenesIn, sceneArchives } from '../src/dialog/scene-source.ts';
 import { PLAYER_COLOURS } from '../src/scene/colour-models.ts';
 import { mkdirSync } from 'node:fs';
+import { gameDirIfAny } from './game-dir.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {
@@ -41,7 +42,19 @@ function check(name: string, ok: boolean, detail = ''): void {
 }
 
 const DATA = process.env.HOMM5_DATA ?? join(import.meta.dirname, '..', 'data-unpacked');
-const GAME = process.env.HOMM5_ROOT ?? resolve(DATA, '..', '..');
+/**
+ * The install, SAID rather than guessed — `gameDirIfAny()`, the same answer the
+ * rest of the tools take.
+ *
+ * The old line here was `HOMM5_ROOT ?? <two levels above the data cache>`, on
+ * the theory that the checkout sits inside the install. A WORKTREE breaks that
+ * by definition: two levels above `C:\Projects\homm5-editor-sod\data-unpacked`
+ * is `C:\Projects`, which holds no archives — so the catalogue half of this
+ * suite found nothing and reported "none on this install" three times over. The
+ * scenes were there all along: every campaign ships them
+ * (`All_campaigns.data.h5u` alone holds 185).
+ */
+const GAME = gameDirIfAny();
 
 /** The document kinds a dialog scene is made of. */
 const SCENE_ROOTS = new Set([
@@ -104,9 +117,14 @@ function fromDisk(): Doc[] {
  */
 function fromMods(): Doc[] {
   const docs: Doc[] = [];
+  if (!GAME) {
+    console.log('  (no game said — the campaigns\' scenes are not in this run;'
+      + ' pass --game <dir> or set HOMM5_GAME)');
+    return docs;
+  }
   const mods = join(GAME, 'UserMODs');
   if (!existsSync(mods)) {
-    console.log(`  (no UserMODs at ${mods} — the campaigns' scenes are not in this run; set HOMM5_ROOT)`);
+    console.log(`  (no UserMODs at ${mods} — the campaigns' scenes are not in this run)`);
     return docs;
   }
   for (const file of readdirSync(mods)) {
@@ -554,8 +572,8 @@ if (!byPath.has(showcasePath)) {
   const roots = [DATA];
   if (!existsSync(join(DATA, showcasePath))) {
     mkdirSync(workspace, { recursive: true });
-    const mods = join(GAME, 'UserMODs');
-    const archives = [...gameArchives(GAME), ...(existsSync(mods)
+    const mods = GAME ? join(GAME, 'UserMODs') : '';
+    const archives = [...(GAME ? gameArchives(GAME) : []), ...(mods && existsSync(mods)
       ? readdirSync(mods).filter((f) => /\.h5u$/i.test(f)).sort().map((f) => join(mods, f)) : [])];
     if (!existsSync(join(workspace, showcasePath))) extractMapFolder(archives, SHOWCASE, workspace);
     if (!existsSync(join(DATA, 'Dialogs')) && !existsSync(join(workspace, 'Dialogs'))) {
@@ -758,12 +776,18 @@ if (!byPath.has(showcasePath)) {
 // editor once it is open; this proves the editor can find it without unpacking
 // the install first.
 
-{
+if (!GAME || !existsSync(GAME)) {
+  // SAID, not found: every campaign ships scenes, so "none on this install" is
+  // never the install's answer — it is what a run with no game to look in used
+  // to report, three checks in a row, as though the game had none.
+  console.log('\n  (no game to read archives from — pass --game <dir> or set HOMM5_GAME;'
+    + ' the catalogue half is skipped, not passed)');
+} else {
   // Every archive this install has, asked what scenes are in it. The suite has
   // already read the scene DOCUMENTS out of the same archives above, so the two
   // counts have to agree — a finder that quietly skips a container looks exactly
   // like a working one with a short list.
-  const containers = existsSync(GAME) ? sceneArchives(GAME) : [];
+  const containers = sceneArchives(GAME);
   const started = performance.now();
   const found = new Map<string, string[]>();
   const animOnly: string[] = [];

@@ -19,6 +19,14 @@ each saying some version of "nobody said where the game is". That looks exactly
 like a real failure and costs a bisect to find out it is not. Measured
 08.08.2026.
 
+`test-dialog-scene` was a fifth until 12.08.2026, and it lied differently: it
+guessed the install two levels above the data cache — true for a checkout that
+sits inside the game, false for every worktree — and then reported "none on
+this install" three times, as though the game shipped no dialog scenes. Every
+campaign ships them (`All_campaigns.data.h5u` alone holds 185). It now takes
+the same said answer as the rest and SKIPS its catalogue half, out loud, when
+nobody said.
+
 **2. Then one command.**
 
 ```bash

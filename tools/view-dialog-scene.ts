@@ -23,9 +23,12 @@ import { assets } from '../src/game/assets.ts';
 import { extractMapFolder, gameArchives } from '../src/map/map-source.ts';
 import { dirOf } from '../src/scene/xdb.ts';
 import { buildScenePlay } from '../src/dialog/play.ts';
+import { gameDir } from './game-dir.ts';
 
 const DATA = process.env.HOMM5_DATA ?? join(import.meta.dirname, '..', 'data-unpacked');
-const GAME = process.env.HOMM5_ROOT ?? resolve(DATA, '..', '..');
+// The install, SAID rather than guessed: two levels above the data cache is
+// the checkout's parent, and a worktree's parent holds no game at all.
+const GAME = gameDir();
 const REPO = join(import.meta.dirname, '..');
 
 const inner = (process.argv[2] ?? 'DialogScenes/C1/M1/D1').replace(/\\/g, '/').replace(/\/+$/, '');

@@ -25,9 +25,12 @@ import { parseTerrain, readHeights } from '../src/terrain/terrain.ts';
 import { resolveHref, dirOf } from '../src/scene/xdb.ts';
 import { loadDialogScene } from '../src/dialog/dialog-scene.ts';
 import { readEntries } from '../src/format/pak.ts';
+import { gameDir } from './game-dir.ts';
 
 const DATA = process.env.HOMM5_DATA ?? join(import.meta.dirname, '..', 'data-unpacked');
-const GAME = process.env.HOMM5_ROOT ?? resolve(DATA, '..', '..');
+// The install, SAID rather than guessed: two levels above the data cache is
+// the checkout's parent, and a worktree's parent holds no game at all.
+const GAME = gameDir();
 
 // ---------------------------------------------------------------------------
 // The corpus: scenes, the cameras they point at, and the stages they film on
