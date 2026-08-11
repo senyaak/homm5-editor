@@ -50,16 +50,25 @@ export async function mapSize(page: Page): Promise<number> {
  * plan camera alone — after focusing on 8,7 the click still landed on 36,36.
  */
 export async function screenOf(page: Page, x: number, y: number): Promise<{ x: number; y: number }> {
-  const p = await page.evaluate(([tx, ty, zoom]) => {
+  const p = await page.evaluate(([tx, ty, zoom, margin]) => {
     window.view.plan(true);
     let at = window.view.tileToScreen(tx!, ty!);
-    if (!at.onScreen) {
+    // ON SCREEN IS NOT THE SAME AS CLICKABLE. `onScreen` means the pixel is
+    // inside the window, and a tile near the map's edge projects to a pixel a
+    // few dozen from the top — where the terrain mesh no longer reaches, so the
+    // raycast picks nothing and the click places nothing. (6,72) on the
+    // sharpshooter map came out at y=41 and picked "no tile at all". A tile
+    // within a margin of any edge is therefore focused as though it were off
+    // screen: focusing an already-visible tile is free and centres it.
+    const near = at.x < margin! || at.y < margin!
+      || at.x > innerWidth - margin! || at.y > innerHeight - margin!;
+    if (!at.onScreen || near) {
       window.view.zoom(zoom!);
       window.view.focus(tx!, ty!);
       at = window.view.tileToScreen(tx!, ty!);
     }
     return at;
-  }, [x, y, ZOOM_HALF_TILES]);
+  }, [x, y, ZOOM_HALF_TILES, 96]);
   return { x: p.x, y: p.y };
 }
 
