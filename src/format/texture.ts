@@ -202,6 +202,16 @@ export function textureDoc(o: {
    * wrong number of bytes per block.
    */
   compressed?: boolean;
+  /**
+   * How the exporter says the picture was converted, and it is a description
+   * rather than a request: `CONVERT_ORDINARY` for a surface with no alpha to
+   * speak of, `CONVERT_TRANSPARENT` for one whose alpha decides what shows.
+   *
+   * The corpus is lopsided the way it should be — of the shipped DXT1 textures
+   * 325 say ORDINARY and 12 TRANSPARENT — so an opaque model texture of ours
+   * says ORDINARY and only the interface's cut-out icons keep the default.
+   */
+  conversion?: 'CONVERT_ORDINARY' | 'CONVERT_TRANSPARENT';
 }): string {
   return [
     '<?xml version="1.0" encoding="UTF-8"?>',
@@ -210,7 +220,7 @@ export function textureDoc(o: {
     `\t<DestName href="${o.dds}"/>`,
     '\t<Type>REGULAR</Type>',
     // What the shipped icons use: the picture's own alpha decides what shows.
-    '\t<ConversionType>CONVERT_TRANSPARENT</ConversionType>',
+    `\t<ConversionType>${o.conversion ?? 'CONVERT_TRANSPARENT'}</ConversionType>`,
     `\t<AddrType>${o.addressing ?? 'CLAMP'}</AddrType>`,
     `\t<Format>${o.compressed ? 'TF_DXT1' : 'TF_8888'}</Format>`,
     `\t<Width>${o.width}</Width>`,

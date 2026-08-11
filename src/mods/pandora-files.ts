@@ -16,7 +16,9 @@
 // earn (pandora.ts).
 
 import { parseTypeSpec } from '../schema/typespec.ts';
-import { boxGroup, buildGeometry, groupBBox, modelDocument, rotateGroup } from '../scene/geometry-write.ts';
+import {
+  boxGroup, buildGeometry, geometryDocument, groupBBox, materialDocument, modelDocument, rotateGroup,
+} from '../scene/geometry-write.ts';
 import { textureDoc, writeDDS, writeDXT1 } from '../format/texture.ts';
 import type { Image } from '../format/gif.ts';
 import { buildingDoc, buildingLink } from './buildings.ts';
@@ -191,6 +193,8 @@ const PANDORA_DDS = 'PandoraBox.dds';
  */
 const PANDORA_UID = 'B0AD0000-1111-4222-8333-C0DE0BADC0DE';
 export const PANDORA_MODEL = `${PANDORA_DIR}/PandoraBox.(Model).xdb`;
+const PANDORA_GEOMETRY = `${PANDORA_DIR}/PandoraBox.(Geometry).xdb`;
+const PANDORA_MATERIAL = `${PANDORA_DIR}/PandoraBox.(Material).xdb`;
 const PANDORA_SKIN_TEXTURE = `${PANDORA_DIR}/PandoraBoxSkin.(Texture).xdb`;
 const PANDORA_SKIN_DDS = 'PandoraBoxSkin.dds';
 
@@ -220,17 +224,25 @@ function boxArtFiles(): ModFile[] {
     {
       path: PANDORA_MODEL,
       data: Buffer.from(modelDocument({
-        uid: PANDORA_UID,
-        bbox: groupBBox([group]),
-        meshNames: ['pandoraBox'],
-        materials: [{ texture: `/${PANDORA_SKIN_TEXTURE}` }],
+        materials: [`/${PANDORA_MATERIAL}`],
+        geometry: `/${PANDORA_GEOMETRY}`,
       }), 'latin1'),
+    },
+    {
+      path: PANDORA_GEOMETRY,
+      data: Buffer.from(geometryDocument({
+        uid: PANDORA_UID, bbox: groupBBox([group]), meshNames: ['pandoraBox'],
+      }), 'latin1'),
+    },
+    {
+      path: PANDORA_MATERIAL,
+      data: Buffer.from(materialDocument({ texture: `/${PANDORA_SKIN_TEXTURE}` }), 'latin1'),
     },
     {
       path: PANDORA_SKIN_TEXTURE,
       data: Buffer.from(textureDoc({
         dds: PANDORA_SKIN_DDS, width: image.width, height: image.height,
-        addressing: 'CLAMP', compressed: true,
+        addressing: 'CLAMP', compressed: true, conversion: 'CONVERT_ORDINARY',
       }), 'latin1'),
     },
     { path: `${PANDORA_DIR}/${PANDORA_SKIN_DDS}`, data: writeDXT1(image) },
@@ -240,6 +252,7 @@ function boxArtFiles(): ModFile[] {
 /** The spinning twin: the same cube, bound to a bone instead of standing still. */
 const PANDORA_SPIN_UID = 'B0AD0001-1111-4222-8333-C0DE0BADC0DE';
 export const PANDORA_SPIN_MODEL = `${PANDORA_DIR}/PandoraBoxSpin.(Model).xdb`;
+const PANDORA_SPIN_GEOMETRY = `${PANDORA_DIR}/PandoraBoxSpin.(Geometry).xdb`;
 
 /**
  * The same box, rigged.
@@ -259,11 +272,15 @@ function spinArtFiles(skeleton: string): ModFile[] {
     {
       path: PANDORA_SPIN_MODEL,
       data: Buffer.from(modelDocument({
-        uid: PANDORA_SPIN_UID,
-        bbox: groupBBox([group]),
-        meshNames: ['pandoraBoxSpin'],
-        materials: [{ texture: `/${PANDORA_SKIN_TEXTURE}` }],
+        materials: [`/${PANDORA_MATERIAL}`],
+        geometry: `/${PANDORA_SPIN_GEOMETRY}`,
         skeleton: `/${skeleton}`,
+      }), 'latin1'),
+    },
+    {
+      path: PANDORA_SPIN_GEOMETRY,
+      data: Buffer.from(geometryDocument({
+        uid: PANDORA_SPIN_UID, bbox: groupBBox([group]), meshNames: ['pandoraBoxSpin'],
       }), 'latin1'),
     },
   ];

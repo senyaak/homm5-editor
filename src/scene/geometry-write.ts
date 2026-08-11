@@ -393,20 +393,113 @@ export interface ModelMaterial {
 const XML_EOL = '\r\n';
 
 /**
- * The `(Model).xdb` for a mesh of ours: materials, and the geometry inline.
+ * INLINE REFERENCES ARE NOT AN OPTION, and the game said so by crashing.
+ *
+ * A model can carry its materials and its geometry in its own file, written
+ * `href="#n:inline(Material)"`, and our first documents did. The game died
+ * loading the map: the crash handler put the fault at an access violation on a
+ * null `this`, and the code there compares three bytes — `#`, `n`, `:` — takes
+ * the branch, calls a resolver and dereferences what comes back without ever
+ * testing it. The corpus says what it wanted: **all 4385 inline references in
+ * the shipped models carry an `id="item_<guid>"`, and not one lacks it**. Ours
+ * had none, so the lookup answered nothing and the engine read address 0x60.
+ *
+ * Rather than guess what an id has to be, the model is written the OTHER shipped
+ * way: materials and geometry as documents of their own, referenced by path.
+ * That is how `Artefakt.(Model).xdb` is written and how 1277 shipped models
+ * point at their geometry — an href we already write correctly everywhere else.
  *
  * The materials are listed in the order the mesh's groups are written, because
  * that is the correspondence the engine uses — group i is drawn with material i,
  * and `MaterialQuantities` states how many groups each named mesh owns.
  */
-export function modelDocument(o: {
+export function materialDocument(m: ModelMaterial): string {
+  return [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<Material>',
+    `\t<Texture href="${m.texture}#xpointer(/Texture)"/>`,
+    '\t<Bump/>',
+    '\t<SpecFactor>0</SpecFactor>',
+    ...vec('SpecColor', [0, 0, 0], '\t'),
+    '\t<Gloss/>',
+    '\t<MetalMirror>0</MetalMirror>',
+    '\t<DielMirror>0</DielMirror>',
+    '\t<Mirror/>',
+    '\t<CastShadow>true</CastShadow>',
+    '\t<ReceiveShadow>true</ReceiveShadow>',
+    '\t<Priority>0</Priority>',
+    ...vec('TranslucentColor', [0, 0, 0], '\t'),
+    '\t<FloatParam>0</FloatParam>',
+    '\t<DetailTexture/>',
+    '\t<DetailScale>5</DetailScale>',
+    '\t<ProjectOnTerrain>false</ProjectOnTerrain>',
+    `\t<LightingMode>${m.lighting ?? 'L_NORMAL'}</LightingMode>`,
+    '\t<DynamicMode>DM_DONT_CARE</DynamicMode>',
+    `\t<Is2Sided>${!!m.twoSided}</Is2Sided>`,
+    '\t<Effect>M_GENERIC</Effect>',
+    `\t<AlphaMode>${m.alphaMode ?? 'AM_OPAQUE'}</AlphaMode>`,
+    '\t<AffectedByFog>true</AffectedByFog>',
+    '\t<AddPlaced>false</AddPlaced>',
+    '\t<IgnoreZBuffer>false</IgnoreZBuffer>',
+    '\t<BackFaceCastShadow>false</BackFaceCastShadow>',
+    '</Material>',
+  ].join(XML_EOL) + XML_EOL;
+}
+
+/** Three vector components, indented — every document here is full of them. */
+function vec(tag: string, v: readonly number[], pad: string): string[] {
+  return [
+    `${pad}<${tag}>`,
+    ...['x', 'y', 'z'].map((k, i) => `${pad}\t<${k}>${v[i]!.toFixed(5)}</${k}>`),
+    `${pad}</${tag}>`,
+  ];
+}
+
+/** The `(Geometry).xdb`: which binary, how big it is, and how its groups split. */
+export function geometryDocument(o: {
   uid: string;
   bbox: BBox;
-  materials: ModelMaterial[];
   /** Names the engine and the editor show; one per mesh block. */
   meshNames?: string[];
-  /** Groups per mesh block, defaulting to all materials on one mesh. */
+  /** Groups per mesh block, defaulting to one group on one mesh. */
   groupsPerMesh?: number[];
+}): string {
+  const meshNames = o.meshNames ?? ['mesh'];
+  const groups = o.groupsPerMesh ?? [1];
+  const b = o.bbox;
+  return [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<Geometry>',
+    '\t<SrcName/>',
+    `\t<uid>${o.uid}</uid>`,
+    `\t<RootMesh>${meshNames[0]}</RootMesh>`,
+    '\t<RootJoint/>',
+    ...vec('Size', [b.sx, b.sy, b.sz], '\t'),
+    ...vec('Center', [b.cx, b.cy, b.cz], '\t'),
+    ...vec('BestFitPoint', [b.cx, b.cy, b.cz], '\t'),
+    '\t<Dir>',
+    ...['x', 'y', 'z', 'w'].map((k) => `\t\t<${k}>0</${k}>`),
+    '\t</Dir>',
+    '\t<AIGeometry/>',
+    `\t<NumMeshes>${meshNames.length}</NumMeshes>`,
+    '\t<MaterialQuantities>',
+    ...groups.map((n) => `\t\t<Item>${n}</Item>`),
+    '\t</MaterialQuantities>',
+    '\t<MeshNames>',
+    ...meshNames.map((n) => `\t\t<Item>${n}</Item>`),
+    '\t</MeshNames>',
+    '\t<MeshAnimated/>',
+    '\t<MeshWindAffected/>',
+    '</Geometry>',
+  ].join(XML_EOL) + XML_EOL;
+}
+
+/** The `(Model).xdb`: what it is made of, all of it by path. */
+export function modelDocument(o: {
+  /** Paths to the material documents, in group order. */
+  materials: string[];
+  /** Path to the geometry document. */
+  geometry: string;
   /**
    * The skeleton document, for a mesh whose vertices carry a bone binding.
    *
@@ -417,76 +510,14 @@ export function modelDocument(o: {
    */
   skeleton?: string;
 }): string {
-  const meshNames = o.meshNames ?? ['mesh'];
-  const groups = o.groupsPerMesh ?? [o.materials.length];
-  const vec = (tag: string, v: readonly number[], pad: string): string[] => [
-    `${pad}<${tag}>`,
-    ...['x', 'y', 'z'].map((k, i) => `${pad}\t<${k}>${v[i]!.toFixed(5)}</${k}>`),
-    `${pad}</${tag}>`,
-  ];
-  const material = (m: ModelMaterial): string[] => [
-    '\t\t<Item href="#n:inline(Material)">',
-    '\t\t\t<Material>',
-    `\t\t\t\t<Texture href="${m.texture}#xpointer(/Texture)"/>`,
-    '\t\t\t\t<Bump/>',
-    '\t\t\t\t<SpecFactor>0</SpecFactor>',
-    ...vec('SpecColor', [0, 0, 0], '\t\t\t\t'),
-    '\t\t\t\t<Gloss/>',
-    '\t\t\t\t<MetalMirror>0</MetalMirror>',
-    '\t\t\t\t<DielMirror>0</DielMirror>',
-    '\t\t\t\t<Mirror/>',
-    '\t\t\t\t<CastShadow>true</CastShadow>',
-    '\t\t\t\t<ReceiveShadow>true</ReceiveShadow>',
-    '\t\t\t\t<Priority>0</Priority>',
-    ...vec('TranslucentColor', [0, 0, 0], '\t\t\t\t'),
-    '\t\t\t\t<FloatParam>0</FloatParam>',
-    '\t\t\t\t<DetailTexture/>',
-    '\t\t\t\t<DetailScale>5</DetailScale>',
-    '\t\t\t\t<ProjectOnTerrain>false</ProjectOnTerrain>',
-    `\t\t\t\t<LightingMode>${m.lighting ?? 'L_NORMAL'}</LightingMode>`,
-    '\t\t\t\t<DynamicMode>DM_DONT_CARE</DynamicMode>',
-    `\t\t\t\t<Is2Sided>${!!m.twoSided}</Is2Sided>`,
-    '\t\t\t\t<Effect>M_GENERIC</Effect>',
-    `\t\t\t\t<AlphaMode>${m.alphaMode ?? 'AM_OPAQUE'}</AlphaMode>`,
-    '\t\t\t\t<AffectedByFog>true</AffectedByFog>',
-    '\t\t\t\t<AddPlaced>false</AddPlaced>',
-    '\t\t\t\t<IgnoreZBuffer>false</IgnoreZBuffer>',
-    '\t\t\t\t<BackFaceCastShadow>false</BackFaceCastShadow>',
-    '\t\t\t</Material>',
-    '\t\t</Item>',
-  ];
-  const b = o.bbox;
   return [
     '<?xml version="1.0" encoding="UTF-8"?>',
     '<Model>',
     '\t<Materials>',
-    ...o.materials.flatMap(material),
+    ...o.materials.map((m) => `\t\t<Item href="${m}#xpointer(/Material)"/>`),
     '\t</Materials>',
     o.skeleton ? `\t<Skeleton href="${o.skeleton}#xpointer(/Skeleton)"/>` : '\t<Skeleton/>',
-    '\t<Geometry href="#n:inline(Geometry)">',
-    '\t\t<Geometry>',
-    '\t\t\t<SrcName/>',
-    `\t\t\t<uid>${o.uid}</uid>`,
-    `\t\t\t<RootMesh>${meshNames[0]}</RootMesh>`,
-    '\t\t\t<RootJoint/>',
-    ...vec('Size', [b.sx, b.sy, b.sz], '\t\t\t'),
-    ...vec('Center', [b.cx, b.cy, b.cz], '\t\t\t'),
-    ...vec('BestFitPoint', [b.cx, b.cy, b.cz], '\t\t\t'),
-    '\t\t\t<Dir>',
-    ...['x', 'y', 'z', 'w'].map((k) => `\t\t\t\t<${k}>0</${k}>`),
-    '\t\t\t</Dir>',
-    '\t\t\t<AIGeometry/>',
-    `\t\t\t<NumMeshes>${meshNames.length}</NumMeshes>`,
-    '\t\t\t<MaterialQuantities>',
-    ...groups.map((n) => `\t\t\t\t<Item>${n}</Item>`),
-    '\t\t\t</MaterialQuantities>',
-    '\t\t\t<MeshNames>',
-    ...meshNames.map((n) => `\t\t\t\t<Item>${n}</Item>`),
-    '\t\t\t</MeshNames>',
-    '\t\t\t<MeshAnimated/>',
-    '\t\t\t<MeshWindAffected/>',
-    '\t\t</Geometry>',
-    '\t</Geometry>',
+    `\t<Geometry href="${o.geometry}#xpointer(/Geometry)"/>`,
     '\t<Animations/>',
     '\t<WindPower>1</WindPower>',
     '</Model>',

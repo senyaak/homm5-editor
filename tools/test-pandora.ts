@@ -60,11 +60,33 @@ const shared0 = byPath.get(pandoraShared(PANDORA_TIERS[0]!.key).toLowerCase())?.
 const modelHref = /<Model href="\/([^"#]+)/.exec(shared0)?.[1] ?? '';
 const modelDoc = byPath.get(modelHref.toLowerCase())?.toString('latin1') ?? '';
 
+/** Follow an href the way the engine does, and hand back what is there. */
+const follow = (doc: string, field: string): string => {
+  const href = new RegExp(`<${field} href="\\/([^"#]+)`).exec(doc)?.[1] ?? '';
+  return byPath.get(href.toLowerCase())?.toString('latin1') ?? '';
+};
+
+// AN INLINE REFERENCE WITHOUT AN ID TAKES THE GAME DOWN. `#n:inline(Material)`
+// resolves through the element's `id`, and all 4385 inline references the game
+// ships carry one; ours carried none, the lookup answered null, and the engine
+// dereferenced it on map load. Our own documents avoid the form entirely — the
+// copied glow effects are the game's own and keep their ids — so the rule that
+// covers both is: wherever the form appears, an id follows it.
+{
+  const naked = files.filter((f) => [...f.data.toString('latin1').matchAll(/#n:inline\([^)]*\)"([^>]*)>/g)]
+    .some((m) => !/\bid="/.test(m[1]!)));
+  check('every inline reference carries the id it resolves through',
+    naked.length === 0, naked.map((f) => f.path).join(', '));
+}
+
 // THE BOX IS OURS, built by src/scene/geometry-write.ts rather than sculpted
 // out of a donor. So what is asked of it is what we asked the writer for: one
 // group, a closed cube of the right size, turned, floating, wound outward, and
 // one whole copy of the texture on each face.
-const boxUid = /<uid>([0-9A-Fa-f-]{36})<\/uid>/.exec(modelDoc)?.[1] ?? '';
+const geomDoc = follow(modelDoc, 'Geometry');
+const materialDoc = follow(modelDoc, 'Item');
+check('the model reaches its geometry and its material', !!geomDoc && !!materialDoc);
+const boxUid = /<uid>([0-9A-Fa-f-]{36})<\/uid>/.exec(geomDoc)?.[1] ?? '';
 const boxBin = byPath.get(`bin/geometries/${boxUid.toUpperCase()}`.toLowerCase());
 check('the box has a mesh of its own', !!boxBin, boxUid);
 if (boxBin) {
@@ -107,9 +129,9 @@ if (boxBin) {
   }
 }
 check('the material is a solid object’s, not a backdrop’s',
-  modelDoc.includes('<AlphaMode>AM_OPAQUE</AlphaMode>')
-  && modelDoc.includes('<LightingMode>L_NORMAL</LightingMode>')
-  && !modelDoc.includes('AM_OVERLAY') && !modelDoc.includes('L_SELFILLUM'));
+  materialDoc.includes('<AlphaMode>AM_OPAQUE</AlphaMode>')
+  && materialDoc.includes('<LightingMode>L_NORMAL</LightingMode>')
+  && !materialDoc.includes('AM_OVERLAY') && !materialDoc.includes('L_SELFILLUM'));
 
 // ---- the documents ----------------------------------------------------------
 
@@ -159,8 +181,7 @@ check('and picks up as nothing', artDoc.includes('<Type>ARTF_RANDOM_SPECIFIC</Ty
 const spinModelPath = /<Model href="\/([^"#]+)/.exec(artDoc)?.[1] ?? '';
 const spinModelDoc = byPath.get(spinModelPath.toLowerCase())?.toString('latin1') ?? '';
 check('and its skeleton', /<Skeleton href="[^"]+"/.test(spinModelDoc));
-// Our documents carry the geometry inline, so the uid is in the model itself.
-const spinUid = /<uid>([0-9A-Fa-f-]{36})<\/uid>/.exec(spinModelDoc)?.[1] ?? '';
+const spinUid = /<uid>([0-9A-Fa-f-]{36})<\/uid>/.exec(follow(spinModelDoc, 'Geometry'))?.[1] ?? '';
 const spinBin = byPath.get(`bin/geometries/${spinUid.toUpperCase()}`.toLowerCase());
 check('its cube rides the spinning bone', !!spinBin && countHex(Buffer.from(spinBin), RIGID_ENTRY) === 8
   && countHex(Buffer.from(spinBin), STATIC_ENTRY) === 0);
@@ -191,7 +212,7 @@ check('the painted face ships as a dds', !!dds && dds.data.length === 128 + img.
 // The model wears OUR texture: our document, our pixels, DXT1 with a mip
 // chain. An uncompressed surface under a document that says DXT1 is what made
 // the box a transparent ghost, so the two are checked against each other.
-const modelTexDocs = [...modelDoc.matchAll(/<Texture href="([^"]+)"/g)]
+const modelTexDocs = [...materialDoc.matchAll(/<Texture href="([^"]+)"/g)]
   .map((m) => m[1]!.replace(/^\//, '').split('#')[0]!);
 check('the model names one texture, and it is ours', modelTexDocs.length === 1
   && byPath.has(modelTexDocs[0]!.toLowerCase()), modelTexDocs.join(', '));

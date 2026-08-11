@@ -282,6 +282,39 @@ culls (§5).
 The Pandora's Box is the first object built this way: model, geometry document
 and texture, nothing copied (`src/mods/pandora-files.ts`).
 
+### 6.7 Never write an inline reference
+
+A model may carry its materials and geometry in its own file, as
+`href="#n:inline(Material)"`, and the first documents of ours did. **The game
+crashed loading the map.** Our own crash handler wrote the fault address; the
+code there compares three bytes — `#`, `n`, `:` — takes that branch, calls a
+resolver and dereferences the result **without testing it**:
+
+```
+0x9aa7cb  cmp byte ptr [ecx],23h      ; '#'
+0x9aa7d4  cmp byte ptr [ecx+1],6Eh    ; 'n'
+0x9aa7de  cmp byte ptr [ecx+2],3Ah    ; ':'
+…
+0x9aa80d  call 0094AB92h              ; resolve
+0x9aa812  mov esi,eax                 ; …whatever it answered
+0x9aa817  cmp byte ptr [esi+60h],0    ; ← esi = 0, access violation
+```
+
+What it resolves through is the element's own `id`: **all 4385 inline
+references in the shipped models carry `id="item_<guid>"`, and not one lacks
+it.** Ours had none.
+
+Rather than guess what an id must be, our documents use the other shipped form
+— materials and geometry as **documents of their own, referenced by path**,
+which is how `Artefakt.(Model).xdb` is written and how 1277 shipped models point
+at their geometry. `tools/test-pandora.ts` fails the build if any inline
+reference appears without an id.
+
+Two smaller conventions worth matching while writing documents, both measured:
+an opaque DXT1 texture says `CONVERT_ORDINARY` (325 shipped DXT1 textures do,
+12 say `CONVERT_TRANSPARENT`), and a DXT1 mip chain **stops at 8×8** rather than
+running to 1×1 — every one of the 328 shipped DXT1 surfaces does.
+
 ## 7. Still open
 
 * Exact UV2 / tangent-basis decode (only base UV is needed for texturing).
