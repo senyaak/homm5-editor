@@ -1,13 +1,12 @@
 // Pandora's Box: the object itself — model, texture, glow, definitions.
 //
-// The box is Heroes III's pandora brought over: a floating, spinning cube a
-// hero opens for whatever the map author put inside. The VISUAL rides the
-// game's own artifact machinery — the model is the Artefakt donor's container
-// with a clean cube built into its slots, so the artifact idle animation
-// (the spin and the bob) and the artifact glow effects apply unchanged. The
-// BEHAVIOUR is not here: the object is an AdvMapStandShared — the class that
-// does nothing on its own — and everything it does is the touch trigger the
-// map's script hooks (see pandora-scripts.ts).
+// The box is Heroes III's pandora brought over: a floating, tilted cube a hero
+// opens for whatever the map author put inside. The MODEL is ours from the
+// vertices up — eight positions, six faces, a texture drawn in code — because
+// the container format is decoded well enough to write (geometry-write.ts, and
+// docs/GEOMETRY_FORMAT.md §6). The glow is the game's own artifact effect. The
+// BEHAVIOUR is not here: the object is a treasure the map's script hooks with a
+// touch trigger (see pandora-scripts.ts).
 //
 // FOUR DOCUMENTS, NOT ONE. The glow's colour states what the box holds — the
 // value of the contents, in the artifact glows the game already ships (blue,
@@ -17,15 +16,12 @@
 // earn (pandora.ts).
 
 import { parseTypeSpec } from '../schema/typespec.ts';
-import { boxifyGeometry, parseTree, positionsBox, rotateGeometry } from '../scene/geometry.ts';
-import type { BlockRecord, ContainerRecord, RecordTree } from '../scene/geometry.ts';
+import { boxGroup, buildGeometry, groupBBox, modelDocument, rotateGroup } from '../scene/geometry-write.ts';
 import { textureDoc, writeDDS, writeDXT1 } from '../format/texture.ts';
-import { decodeDDSBuffer } from '../format/dds.ts';
 import type { Image } from '../format/gif.ts';
 import { buildingDoc, buildingLink } from './buildings.ts';
 import type { BuildingSpec } from './buildings.ts';
 import { copyArt, dataPath, resolve } from './mod-art.ts';
-import type { ArtCopy } from './mod-art.ts';
 import { TYPES, mustRead, utf16 } from './mod-files.ts';
 import type { DataReader, ModFile } from './mod-files.ts';
 import { pandoraBehaviourFiles } from './pandora-scripts.ts';
@@ -35,44 +31,13 @@ const EOL = '\r\n';
 // --- what the box is made of -------------------------------------------------
 
 /**
- * The donor for the box that SHIPS: the treasure chest's model — inline
- * material, inline geometry, no skeleton, no undocumented tail, and the one
- * container proven to draw on the class the box now is. The artifact stone
- * below donates only to the animation PROBES: its skinned container drew
- * nothing on any class the first two runs tried, and whether any class
- * animates it is still an open question the probe map asks.
- */
-const CHEST_DONOR_MODEL = '_(Model)/TESTS/dev/chest.(Model).xdb';
-
-/**
- * And the donor the BOX is sculpted from: the arena's environment box.
- *
- * Chosen by looking, after the chest sculpted into a box with its lid still
- * flapping and the crystal into a lump: this one is already six flat
- * axis-aligned faces, so pushing its vertices onto a cube gives a CUBE —
- * sharp edges, one texture square per face (its UVs run 0..1 on each), no
- * skeleton, no animation.
- *
- * Two things about it have to be undone in the DOCUMENTS, and both are the
- * safe kind of edit. It is a SURROUND: its faces point inward (signed volume
- * −1.28e6) because the arena camera sits inside it, so from outside it is
- * invisible — `Is2Sided` turns that into a solid box without touching a single
- * index. And its materials are `AM_OVERLAY` / `L_SELFILLUM`, which is how a
- * backdrop is drawn rather than how an object is lit.
- */
-const BOX_DONOR_MODEL = '_(Model)/Arenas/EnvBoxSmall.(Model).xdb';
-/** Its walls, and the group folded into a lid over them. */
-const BOX_DONOR_GROUP = undefined;
-const BOX_DONOR_LID_GROUP = 1;
-
-/**
  * How the box sits, and it is a list of four things asked for by eye.
  *
  * SMALLER than a tile (a tile is two world units), FLOATING a little clear of
  * the ground, and TILTED — square to the world a cube reads as scenery, a few
  * degrees off it reads as something set down. The fourth, turning on its own
- * axis, is not here: that is an animation, and it comes from the donor's rig
- * (see the spinning twin below) rather than from any number.
+ * axis, is not a number at all: it is an animation, and it needs a skeleton
+ * (see the spinning twins below).
  */
 const BOX_HALF = 0.55;
 const BOX_FLOAT = 0.45;
@@ -97,26 +62,6 @@ export const PANDORA_TIERS: readonly PandoraTier[] = [
   { key: 'Gold', effect: 'Effects/_(Effect)/Artefacts/General/Gold.xdb', from: 15000 },
   { key: 'Red', effect: 'Effects/_(Effect)/Artefacts/General/Red.xdb', from: 40000 },
 ];
-
-/**
- * THE CUBE IS OFF, AND THIS IS WHY.
- *
- * The bisect row settled it in one look: the game's own chest draws, a plain
- * copy of it draws, our REPAINTED copy draws (so the DXT1 encode is right) —
- * and both cubed twins are invisible, with or without the donor's unknown
- * attribute bytes kept. Whatever the engine needs from a mesh, rebuilding one
- * inside a container we only mostly understand does not provide it, and six
- * probe runs is enough to stop paying for that.
- *
- * So the box is the chest's model, unmodified, wearing a repaint of the
- * chest's own texture. It is a box either way — a chest IS Heroes III's
- * pandora silhouette more than it is not — and the object can now be
- * finished: contents, glow tiers, the native gate. The cube keeps its
- * diagnostics (`PANDORA_ART_DIAGS`) and its notes, for a day when the vertex
- * format is fully read rather than mostly.
- */
-const CUBE_THE_BOX = false;
-
 /** Where everything lives inside the mod. */
 export const PANDORA_DIR = 'Buildings/PandoraBox';
 const ART_DIR = `${PANDORA_DIR}/art`;
@@ -148,34 +93,6 @@ export const PANDORA_ARTIFACT_CLASS = 'AdvMapArtifactShared';
 export const PANDORA_ARTIFACT_SHARED = `${PANDORA_DIR}/PandoraBox_Artifact.(${PANDORA_ARTIFACT_CLASS}).xdb`;
 export const PANDORA_ARTIFACT_LINK = 'MapObjects/_(AdvMapObjectLink)/Objects-All-Terra/PandoraBoxArtifact.xdb';
 
-/**
- * The bisect, done properly — five runs of "no box, only its shadow" and the
- * last of them invisible even on the SHIPPED model, which clears the art and
- * accuses the document. So these twins all start from the shipped chest's own
- * document, byte for byte, and each changes exactly ONE thing about it.
- *
- * The fields are the seven a full diff turned up (`ObjectRecordID` among them:
- * every shipped document carries one and nothing of ours ever has). Walked in
- * this order the first invisible twin names the field, and the art row after
- * it names the pipeline stage — with a document known good by then.
- */
-export const PANDORA_FIELD_DIAGS = [
-  'Clone', 'NoRecordID', 'OurTexts', 'NoEffect', 'NoSound', 'BuildingsType', 'NotAligned',
-] as const;
-export const PANDORA_ART_DIAGS = ['ArtCopy', 'ArtPainted', 'ArtCubed', 'ArtKeepAttrs'] as const;
-export const PANDORA_DIAGS = [...PANDORA_FIELD_DIAGS, ...PANDORA_ART_DIAGS] as const;
-export const pandoraDiagShared = (key: string): string =>
-  `${PANDORA_DIR}/PandoraBox_Diag${key}.(${PANDORA_CLASS}).xdb`;
-export const pandoraDiagLink = (key: string): string =>
-  `MapObjects/_(AdvMapObjectLink)/Objects-All-Terra/PandoraBoxDiag${key}.xdb`;
-
-/** Where the shipped chest — the control this whole bisect walks away from. */
-export const SHIPPED_CHEST = 'MapObjects/Chest.(AdvMapTreasureShared).xdb';
-
-/** What our generated documents put in `ObjectTypeFileRef`, whatever the class
- *  — one of the seven differences, and so one of the twins. */
-const VISIBILITY_BUILDINGS = '/Text/Visibility_Types/Buildings.txt';
-
 /** The tier a contents value earns. */
 export function pandoraTier(value: number): PandoraTier {
   let tier = PANDORA_TIERS[0]!;
@@ -183,23 +100,6 @@ export function pandoraTier(value: number): PandoraTier {
   return tier;
 }
 
-// --- the cube ---------------------------------------------------------------
-
-/** The box in world units: a tile is 2, so a 1.0 cube floats over its middle. */
-const HALF = 0.5;
-const BOX_C = [0, 0, 2.0] as const;
-
-/** For face ±x / ±y / ±z: [outward axis, u axis, v axis]. */
-const FACE_AXES: [number[], number[], number[]][] = [
-  [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
-  [[0, 1, 0], [1, 0, 0], [0, 0, 1]],
-  [[0, 0, 1], [1, 0, 0], [0, 1, 0]],
-];
-
-/** One vertex-to-bone binding: full weight on the donor's main bone, bone 3 —
- * the one 434 of the stone's 610 vertices ride rigidly, and the one the idle
- * animation spins. 4 float weights, 4 quantized weights, 4 bone indices with
- * 12 as the donor's filler. */
 const RIGID_SKIN = Buffer.from('0000803f000000000000000000000000ff000000030c0c0c', 'hex');
 
 /** And the binding a STATIC model carries — read off the shipped treasure
@@ -209,222 +109,6 @@ const RIGID_SKIN = Buffer.from('0000803f000000000000000000000000ff000000030c0c0c
  * being static; the first is the model document's empty `<Skeleton/>`. */
 const STATIC_SKIN = Buffer.from('0000803f000000000000000000000000ff00000000000000', 'hex');
 
-/**
- * One texture square per FACE — the donor's own unwrapping repeats it four
- * times over each one, which reads as a lattice rather than a panel.
- *
- * The only bytes written are the two int16 of the UV (0..3 of each 20-byte
- * attribute); normals, tangents, the skin and every index stay the donor's.
- * That is deliberately the smallest edit that can answer the question, because
- * whether the engine tolerates ANY attribute rewrite is exactly what the last
- * cube failed to establish — the probe row carries a twin with the donor's UVs
- * beside this one.
- */
-export function planarFaceUVs(bin: Buffer, centre: readonly number[]): void {
-  for (const g of meshGroups(parseTree(bin))) {
-    const pos = g.part(2), attr = g.part(3), remap = g.part(5);
-    if (!pos || !attr || !remap) continue;
-    // The box the vertices actually occupy, so a lid pressed flat still maps.
-    let lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
-    for (let i = 0; i < pos.int; i++) {
-      for (let k = 0; k < 3; k++) {
-        const v = bin.readFloatLE(pos.leaf.body + i * 12 + k * 4);
-        if (v < lo[k]!) lo[k] = v;
-        if (v > hi[k]!) hi[k] = v;
-      }
-    }
-    const size = [0, 1, 2].map((k) => Math.max(1e-6, hi[k]! - lo[k]!));
-    for (let rv = 0; rv < attr.int; rv++) {
-      const j = bin.readUInt16LE(remap.leaf.body + rv * 2);
-      if (j >= pos.int) continue;
-      const p = [0, 1, 2].map((k) => bin.readFloatLE(pos.leaf.body + j * 12 + k * 4));
-      // Which face this vertex belongs to comes from its NORMAL, not from its
-      // position. On a cube snapped to corners the position says nothing: all
-      // three coordinates are equally extreme, so "the axis it leans on" picks
-      // the same one every time and the art wraps sideways across half the
-      // faces. The normal is the donor's own, one per face of a faceted body.
-      const n = [0, 1, 2].map((k) => (bin[attr.leaf.body + rv * 20 + 8 + k]! - 128) / 127);
-      const axis = n.map(Math.abs).indexOf(Math.max(...n.map(Math.abs)));
-      const [ua, va] = axis === 0 ? [1, 2] : axis === 1 ? [0, 2] : [0, 1];
-      const u = (p[ua]! - lo[ua]!) / size[ua]!;
-      const v = 1 - (p[va]! - lo[va]!) / size[va]!;
-      bin.writeInt16LE(Math.round(Math.max(0, Math.min(1, u)) * 2047), attr.leaf.body + rv * 20);
-      bin.writeInt16LE(Math.round(Math.max(0, Math.min(1, v)) * 2047), attr.leaf.body + rv * 20 + 2);
-    }
-  }
-}
-
-interface GroupPart { int: number; leaf: BlockRecord }
-
-/** A mesh group's parts by tag: 2 positions, 3 attributes, 4 skin, 5/6 remaps, 7 indices. */
-interface MeshGroup { part: (tag: number) => GroupPart | null }
-
-const isBlock = (r: ContainerRecord): r is BlockRecord => !('int' in r);
-
-/**
- * Every mesh group in a parsed geometry container.
- *
- * A group is a node whose children are `{scalar count, leaf}` nodes tagged 2
- * (positions) and 3 (attributes) — tags 5..7 are NOT required, because the
- * parser stops short of them in the donor's second group (an undocumented
- * corner of the container past its skin block), and a group is a group whether
- * or not its tail parses.
- */
-function meshGroups(tree: RecordTree): MeshGroup[] {
-  const out: MeshGroup[] = [];
-  const walk = (t: RecordTree): void => {
-    for (const r of t.records) {
-      if (!isBlock(r) || !r.node) continue;
-      const kids = r.node.records;
-      const part = (tag: number): GroupPart | null => {
-        const n = kids.find((k) => k.tag === tag && isBlock(k) && k.node) as BlockRecord | undefined;
-        if (!n?.node) return null;
-        const scalar = n.node.records.find((k) => 'int' in k);
-        const leaf = n.node.records.find((k) => isBlock(k) && k.leaf) as BlockRecord | undefined;
-        return scalar && 'int' in scalar && leaf ? { int: scalar.int, leaf } : null;
-      };
-      const pos = part(2), attr = part(3);
-      if (pos && attr && pos.leaf.byteLen === pos.int * 12 && attr.leaf.byteLen === attr.int * 20) {
-        out.push({ part });
-        continue;
-      }
-      walk(r.node);
-    }
-  };
-  walk(tree);
-  return out;
-}
-
-/**
- * Build a clean cube into the donor geometry's own slots, in place.
- *
- * Nothing about the container changes shape: 8 corner positions and 24 render
- * vertices take the first slots, 12 triangles take the first index rows, and
- * every remaining slot is parked where it draws nothing — surplus positions on
- * corner 0, surplus triangles degenerate. The undocumented bytes past the
- * second group's skin block are never touched, which is the reason to reuse
- * the donor's container instead of writing one.
- *
- * Returns the box's bounding box for the geometry document.
- */
-export function cubifyGeometry(
-  bin: Buffer,
-  skin: 'static' | 'rigid' = 'static',
-  /**
-   * Leave bytes 4..7 of each attribute as the donor wrote them.
-   *
-   * GEOMETRY_FORMAT.md calls that slot "zero / uv2, unused here" — measured on
-   * a mountain, and "here" is doing a lot of work in that sentence. If the
-   * chest's model puts something in it that the engine reads (a second UV set,
-   * a vertex colour, an alpha), zeroing it is exactly the kind of thing that
-   * produces a transparent object. The probe map carries a twin with this on.
-   */
-  keepExtra = false,
-): { cx: number; cy: number; cz: number; sx: number; sy: number; sz: number } {
-  const SKIN = skin === 'rigid' ? RIGID_SKIN : STATIC_SKIN;
-  const groups = meshGroups(parseTree(bin));
-  if (!groups.length) throw new Error('pandora: the donor geometry has no mesh groups');
-
-  const corner = (i: number): [number, number, number] => [
-    BOX_C[0] + ((i & 1) ? HALF : -HALF),
-    BOX_C[1] + ((i & 2) ? HALF : -HALF),
-    BOX_C[2] + ((i & 4) ? HALF : -HALF),
-  ];
-
-  const main = groups[0]!;
-  const pos = main.part(2)!, attr = main.part(3)!, skinPart = main.part(4);
-  const remap = main.part(5), remap2 = main.part(6), idx = main.part(7);
-  if (!remap || !idx) throw new Error('pandora: the donor geometry lost its remap or indices');
-  if (pos.int < 8 || attr.int < 24 || idx.int < 12) throw new Error('pandora: the donor mesh is too small to hold a cube');
-
-  for (let i = 0; i < pos.int; i++) {
-    const p = corner(i < 8 ? i : 0);
-    const o = pos.leaf.body + i * 12;
-    for (let k = 0; k < 3; k++) bin.writeFloatLE(p[k]!, o + k * 4);
-  }
-  if (skinPart) for (let i = 0; i < pos.int; i++) SKIN.copy(bin, skinPart.leaf.body + i * 24);
-
-  // 6 faces, corners listed in the face's own (u, v) order
-  const faces: { axis: number; neg: boolean; corners: number[] }[] = [];
-  for (let axis = 0; axis < 3; axis++) for (const neg of [false, true]) {
-    const bit = 1 << axis;
-    const others = [0, 1, 2].filter((a) => a !== axis).map((a) => 1 << a);
-    const base = neg ? 0 : bit;
-    faces.push({ axis, neg, corners: [base, base | others[0]!, base | others[1]!, base | others[0]! | others[1]!] });
-  }
-
-  const writeAttr = (rv: number, u: number, v: number, n: number[], ua: number[], va: number[], sign: number): void => {
-    const o = attr.leaf.body + rv * 20;
-    bin.writeInt16LE(Math.round(u * 2047), o);
-    bin.writeInt16LE(Math.round(v * 2047), o + 2);
-    if (!keepExtra) { bin.writeInt16LE(0, o + 4); bin.writeInt16LE(0, o + 6); }
-    const pack = (vec: number[], s: number, at: number): void => {
-      for (let k = 0; k < 3; k++) bin[o + at + k] = Math.round(vec[k]! * s * 127 + 128);
-      bin[o + at + 3] = 0;
-    };
-    pack(n, sign, 8); pack(ua, 1, 12); pack(va, 1, 16);
-  };
-
-  for (let f = 0; f < 6; f++) {
-    const { axis, neg, corners } = faces[f]!;
-    const [n, ua, va] = FACE_AXES[axis]!;
-    for (let v = 0; v < 4; v++) {
-      const rv = f * 4 + v;
-      const ci = corners[v]!;
-      bin.writeUInt16LE(ci, remap.leaf.body + rv * 2);
-      if (remap2) bin.writeUInt16LE(ci, remap2.leaf.body + rv * 2);
-      const p = corner(ci);
-      const local = (a: number[]): number =>
-        (a[0]! * (p[0] - BOX_C[0]) + a[1]! * (p[1] - BOX_C[1]) + a[2]! * (p[2] - BOX_C[2])) / HALF;
-      // Texture V runs down the image; the mirror keeps the pattern reading the
-      // same way round on every face.
-      const u = neg ? (local(ua) + 1) / 2 : 1 - (local(ua) + 1) / 2;
-      writeAttr(rv, u, 1 - (local(va) + 1) / 2, n, ua, va, neg ? -1 : 1);
-    }
-  }
-  for (let rv = 24; rv < attr.int; rv++) {
-    bin.writeUInt16LE(0, remap.leaf.body + rv * 2);
-    if (remap2) bin.writeUInt16LE(0, remap2.leaf.body + rv * 2);
-    writeAttr(rv, 0, 0, FACE_AXES[0]![0], FACE_AXES[0]![1], FACE_AXES[0]![2], 1);
-  }
-
-  // 12 triangles wound outward — checked against the face normal, not assumed
-  const rvPos = (rv: number): [number, number, number] => corner(bin.readUInt16LE(remap.leaf.body + rv * 2));
-  for (let f = 0; f < 6; f++) {
-    const { axis, neg } = faces[f]!;
-    const out = FACE_AXES[axis]![0].map((v) => v * (neg ? -1 : 1));
-    const rv = f * 4;
-    for (let t = 0; t < 2; t++) {
-      let tri = t === 0 ? [rv, rv + 1, rv + 3] : [rv, rv + 3, rv + 2];
-      const [A, B, D] = tri.map(rvPos);
-      const e1 = B.map((v, k) => v - A[k]!), e2 = D.map((v, k) => v - A[k]!);
-      const n = [e1[1]! * e2[2]! - e1[2]! * e2[1]!, e1[2]! * e2[0]! - e1[0]! * e2[2]!, e1[0]! * e2[1]! - e1[1]! * e2[0]!];
-      if (n[0]! * out[0]! + n[1]! * out[1]! + n[2]! * out[2]! < 0) tri = [tri[0]!, tri[2]!, tri[1]!];
-      const o = idx.leaf.body + (f * 2 + t) * 6;
-      for (let k = 0; k < 3; k++) bin.writeUInt16LE(tri[k]!, o + k * 2);
-    }
-  }
-  for (let t = 12; t < idx.int; t++) {
-    const o = idx.leaf.body + t * 6;
-    bin.writeUInt16LE(0, o); bin.writeUInt16LE(0, o + 2); bin.writeUInt16LE(0, o + 4);
-  }
-
-  // Groups past the first are the donor's decoration (the stone's base sits
-  // wholly inside the cube already); park their positions at the centre so
-  // nothing of them can ever poke out.
-  for (const g of groups.slice(1)) {
-    const gp = g.part(2)!;
-    for (let i = 0; i < gp.int; i++) {
-      const o = gp.leaf.body + i * 12;
-      bin.writeFloatLE(BOX_C[0], o); bin.writeFloatLE(BOX_C[1], o + 4); bin.writeFloatLE(BOX_C[2], o + 8);
-    }
-    const gs = g.part(4);
-    if (gs) for (let i = 0; i < gp.int; i++) SKIN.copy(bin, gs.leaf.body + i * 24);
-  }
-
-  return { cx: BOX_C[0], cy: BOX_C[1], cz: BOX_C[2], sx: HALF * 2, sy: HALF * 2, sz: HALF * 2 };
-}
-
 // --- the texture ------------------------------------------------------------
 
 /**
@@ -432,51 +116,6 @@ export function cubifyGeometry(
  * gold border and a wheel medallion in the middle — Heroes III's pandora as a
  * cube face. Drawn rather than borrowed, so it owes nothing to anyone's art.
  */
-/**
- * The chest's own art, recoloured into a Pandora's Box: its timber to violet,
- * its metalwork to gold.
- *
- * Recolouring rather than repainting is the lesson of the bisect row. The
- * shading, the plank seams, the rivets and the wear are drawn for THIS mesh's
- * unwrapping, and they are most of what makes the object read as an object;
- * a picture of ours in their place is legible only if it happens to line up
- * with a layout we did not author. Hue is ours, light and dark stay the
- * artist's.
- *
- * The split is by SATURATION, not by position: a chest is brown wood and grey
- * metal, so anything colourful is timber and anything near-grey is a band.
- */
-export function pandoraSkin(image: Image): Image {
-  const rgba = new Uint8Array(image.rgba);
-  for (let i = 0; i < rgba.length; i += 4) {
-    const r = rgba[i]! / 255, g = rgba[i + 1]! / 255, b = rgba[i + 2]! / 255;
-    const max = Math.max(r, g, b), min = Math.min(r, g, b);
-    const l = (max + min) / 2;
-    const s = max === min ? 0 : (max - min) / (l > 0.5 ? 2 - max - min : max + min);
-    // ONE hue for the whole thing, and gold only where the art is both
-    // near-grey AND bright — the lock and the lit edges of the bands. Split
-    // on saturation alone and the gold lands as speckle in every shadow
-    // (tried, and it read as a dirty box rather than a bound one).
-    const gold = s < 0.14 && l > 0.55;
-    const [h, sat, lit] = gold
-      ? [45 / 360, 0.66, Math.min(1, l * 1.1)]
-      : [278 / 360, Math.min(0.58, s * 0.85 + 0.18), l * 0.94];
-    const q = lit < 0.5 ? lit * (1 + sat) : lit + sat - lit * sat;
-    const p = 2 * lit - q;
-    const channel = (t: number): number => {
-      let x = t; if (x < 0) x += 1; if (x > 1) x -= 1;
-      if (x < 1 / 6) return p + (q - p) * 6 * x;
-      if (x < 1 / 2) return q;
-      if (x < 2 / 3) return p + (q - p) * (2 / 3 - x) * 6;
-      return p;
-    };
-    rgba[i] = Math.round(channel(h + 1 / 3) * 255);
-    rgba[i + 1] = Math.round(channel(h) * 255);
-    rgba[i + 2] = Math.round(channel(h - 1 / 3) * 255);
-  }
-  return { width: image.width, height: image.height, rgba };
-}
-
 export function pandoraTexture(size = 256): Image {
   const T = size;
   const rgba = new Uint8Array(T * T * 4);
@@ -542,100 +181,102 @@ export const PANDORA_TEXTURE = `${PANDORA_DIR}/PandoraBox.(Texture).xdb`;
 const PANDORA_DDS = 'PandoraBox.dds';
 
 /**
- * Point every material of the copied model at OUR texture — and only the
- * model's materials; the glow effects keep the game's rays and sparks.
+ * And the box itself: geometry, model document, and the same picture again as a
+ * compressed surface a material can read.
  *
- * The donor's own texture cannot be repainted because it is not there: the
- * Artefakt materials name a vanilla-campaign scene texture
- * (`/Scenes/C1M5_NikolayDeath/…`) that Tribes of the East never shipped. So
- * the painted face is written as a texture of ours and the materials are
- * rewritten to name it.
+ * The icon pair above is uncompressed because the interface reads it at one
+ * size; a model's texture is DXT1 with a mip chain, and one document cannot be
+ * both. The uid is ours and fixed — the engine keys the binary by that name and
+ * nothing else, so a constant is a name, not an identifier to be generated.
  */
-/**
- * Replace the copied model's texture PIXELS, and touch NOTHING else.
- *
- * Two clues, one conclusion. The shadows: the boxes cast them and did not
- * draw, so the geometry loads and the texture does not. Then the picture: a
- * transparent ghost of a cube, volume and shadow present, faces gone — which
- * is what an `AM_ALPHA_TEST` material does when the texture handed to it is
- * not the one its document declares. The chest's texture is `TF_DXT1` with a
- * mip chain, and an uncompressed TF_8888 surface (what every icon of ours is,
- * and what this used to write) is not that.
- *
- * So the pixels are encoded as DXT1 at the document's own size, and the
- * document is left exactly as the game shipped it. Nothing to keep in step:
- * the bytes are what it already says they are.
- */
-function paintModelTextures(copied: ArtCopy, modelCopyPath: string, our = false): void {
-  const doc = copied.files.get(modelCopyPath)?.toString('latin1');
-  if (!doc) throw new Error(`pandora: no copied model at ${modelCopyPath}`);
-  let painted = 0;
-  for (const href of [...doc.matchAll(/<Texture href="([^"]+)"/g)].map((m) => m[1]!)) {
-    const tAt = resolve(modelCopyPath, href);
-    const tDoc = tAt ? copied.files.get(tAt)?.toString('latin1') : null;
-    if (!tAt || !tDoc) continue;
-    const dest = hrefOf(tDoc, 'DestName');
-    const ddsAt = dest ? resolve(tAt, dest) : null;
-    const donor = ddsAt ? copied.files.get(ddsAt) : null;
-    if (!ddsAt || !donor) continue;
-    // REPAINTED, not replaced: the drawing that is there is drawn FOR this
-    // model's own unwrapping, and a picture of ours laid over it comes out as
-    // the bisect row's third chest — visible and wrong. So the donor's pixels
-    // are recoloured and its own document is left alone.
-    // Two ways to paint, and which one is right depends on the UVs. A donor
-    // whose unwrapping we do not own gets RECOLOURED — its drawing is what
-    // makes it read as an object. The sculpted cube's faces each take the
-    // whole square (0..1), so there our own face goes on flat.
-    const was = decodeDDSBuffer(donor);
-    copied.files.set(ddsAt, writeDXT1(our ? pandoraTexture(was.width) : pandoraSkin(was)));
-    painted++;
-  }
-  if (!painted) throw new Error('pandora: no texture of the donor model was reachable to paint');
-}
+const PANDORA_UID = 'B0AD0000-1111-4222-8333-C0DE0BADC0DE';
+export const PANDORA_MODEL = `${PANDORA_DIR}/PandoraBox.(Model).xdb`;
+const PANDORA_SKIN_TEXTURE = `${PANDORA_DIR}/PandoraBoxSkin.(Texture).xdb`;
+const PANDORA_SKIN_DDS = 'PandoraBoxSkin.dds';
 
 /**
- * Turn a backdrop's materials into an object's — the other half of borrowing
- * the arena's box.
+ * Every file the box's LOOK is made of, and not one of them copied.
  *
- * `Is2Sided` is the one that matters: the donor is a SURROUND, its faces turned
- * inward for a camera that sits inside it, and a solid built from it is
- * invisible from every angle a map is ever seen at. Two-sided costs the cull
- * and gives the faces back. `AM_OVERLAY` and `L_SELFILLUM` are how a backdrop
- * is drawn and lit; an object wants neither.
+ * This is what reading the container bought. The cube is eight positions, six
+ * faces, twenty-four render vertices and the two remaps the format asks for
+ * (`src/scene/geometry-write.ts`); the document beside it names our texture and
+ * states the box the vertices came out in; the texture is our own drawing, DXT1
+ * with mips. Nothing here is sculpted out of somebody else's mesh, so nothing
+ * carries a field we did not write on purpose — which is exactly the failure
+ * the donors kept producing.
+ *
+ * The skin binding is the one thing taken from a shipped mesh rather than
+ * reasoned out: the treasure chest gives every vertex full weight on bone 0,
+ * and a static model on this class is what the box IS, so it says the same.
  */
-function solidifyMaterials(copied: ArtCopy, modelCopyPath: string): void {
-  const doc = copied.files.get(modelCopyPath)?.toString('latin1');
-  if (!doc) throw new Error(`pandora: no copied model at ${modelCopyPath}`);
-  copied.files.set(modelCopyPath, Buffer.from(doc
-    .replace(/<Is2Sided>[^<]*<\/Is2Sided>/g, '<Is2Sided>true</Is2Sided>')
-    .replace(/<AlphaMode>[^<]*<\/AlphaMode>/g, '<AlphaMode>AM_OPAQUE</AlphaMode>')
-    .replace(/<LightingMode>[^<]*<\/LightingMode>/g, '<LightingMode>L_NORMAL</LightingMode>'), 'latin1'));
+function boxArtFiles(): ModFile[] {
+  const centre: [number, number, number] = [0, 0, BOX_FLOAT + BOX_HALF];
+  const cube = boxGroup(centre, [BOX_HALF, BOX_HALF, BOX_HALF]);
+  const group = rotateGroup(cube, BOX_TILT, centre);
+  group.skin = Buffer.concat(Array.from({ length: group.positions.length / 3 }, () => STATIC_SKIN));
+  const image = pandoraTexture();
+  return [
+    { path: `bin/Geometries/${PANDORA_UID}`, data: buildGeometry([[group]]) },
+    {
+      path: PANDORA_MODEL,
+      data: Buffer.from(modelDocument({
+        uid: PANDORA_UID,
+        bbox: groupBBox([group]),
+        meshNames: ['pandoraBox'],
+        materials: [{ texture: `/${PANDORA_SKIN_TEXTURE}` }],
+      }), 'latin1'),
+    },
+    {
+      path: PANDORA_SKIN_TEXTURE,
+      data: Buffer.from(textureDoc({
+        dds: PANDORA_SKIN_DDS, width: image.width, height: image.height,
+        addressing: 'CLAMP', compressed: true,
+      }), 'latin1'),
+    },
+    { path: `${PANDORA_DIR}/${PANDORA_SKIN_DDS}`, data: writeDXT1(image) },
+  ];
 }
 
-/** The palette icon — the painted face as a texture pair of our own. Only the
- *  icon: the model's textures keep the donor's documents (see above). */
+/** The spinning twin: the same cube, bound to a bone instead of standing still. */
+const PANDORA_SPIN_UID = 'B0AD0001-1111-4222-8333-C0DE0BADC0DE';
+export const PANDORA_SPIN_MODEL = `${PANDORA_DIR}/PandoraBoxSpin.(Model).xdb`;
+
+/**
+ * The same box, rigged.
+ *
+ * Everything about the mesh is the shipping one's — the difference is the skin
+ * binding, which puts every vertex on the bone the artifact idle turns, and the
+ * skeleton the document names. The cube is NOT tilted here: the animation is
+ * what should be turning it, and a tilt of ours would only make a wobble hard
+ * to read.
+ */
+function spinArtFiles(skeleton: string): ModFile[] {
+  const centre: [number, number, number] = [0, 0, BOX_FLOAT + BOX_HALF];
+  const group = boxGroup(centre, [BOX_HALF, BOX_HALF, BOX_HALF]);
+  group.skin = Buffer.concat(Array.from({ length: group.positions.length / 3 }, () => RIGID_SKIN));
+  return [
+    { path: `bin/Geometries/${PANDORA_SPIN_UID}`, data: buildGeometry([[group]]) },
+    {
+      path: PANDORA_SPIN_MODEL,
+      data: Buffer.from(modelDocument({
+        uid: PANDORA_SPIN_UID,
+        bbox: groupBBox([group]),
+        meshNames: ['pandoraBoxSpin'],
+        materials: [{ texture: `/${PANDORA_SKIN_TEXTURE}` }],
+        skeleton: `/${skeleton}`,
+      }), 'latin1'),
+    },
+  ];
+}
+
+/** The palette icon — the painted face, uncompressed the way the interface
+ *  reads it. The model wears the same drawing as DXT1; see boxArtFiles. */
 function iconFiles(): ModFile[] {
   const image = pandoraTexture();
   return [
     { path: PANDORA_TEXTURE, data: Buffer.from(textureDoc({ dds: PANDORA_DDS, width: image.width, height: image.height, addressing: 'CLAMP' }), 'latin1') },
     { path: `${PANDORA_DIR}/${PANDORA_DDS}`, data: writeDDS(image) },
   ];
-}
-
-/** Rewrite the copied geometry document's box to the cube the binary now holds. */
-function retuneGeometryDoc(copied: ArtCopy, geomDocPath: string, box: { cx: number; cy: number; cz: number; sx: number; sy: number; sz: number }): void {
-  const doc = copied.files.get(geomDocPath)?.toString('latin1');
-  if (!doc) throw new Error(`pandora: no copied geometry document at ${geomDocPath}`);
-  const vec = (tag: string, x: number, y: number, z: number): [RegExp, string] => [
-    new RegExp(`(<${tag}>\\s*<x>)[^<]*(</x>\\s*<y>)[^<]*(</y>\\s*<z>)[^<]*(</z>)`),
-    `$1${x.toFixed(4)}$2${y.toFixed(4)}$3${z.toFixed(4)}$4`,
-  ];
-  let out = doc;
-  for (const [re, to] of [
-    vec('Size', box.sx, box.sy, box.sz),
-    vec('Center', box.cx, box.cy, box.cz),
-  ]) out = out.replace(re, to);
-  copied.files.set(geomDocPath, Buffer.from(out, 'latin1'));
 }
 
 /** What the box says for itself, one file per message slot. The chest class
@@ -655,49 +296,27 @@ const MESSAGES: Record<string, string> = {
 export function buildPandora(read: DataReader): ModFile[] {
   const types = parseTypeSpec(mustRead(read, TYPES));
 
-  // The box that ships is the CHEST donor rebuilt into the cube. Not the
-  // artifact stone: its skinned container drew nothing on two probe runs even
-  // de-skinned — whatever else its animated corners carry, the chest's plain
-  // static container is the one proven to draw on this very class.
-  const seeds = [BOX_DONOR_MODEL, ...PANDORA_TIERS.map((t) => t.effect)];
+  // Only the GLOWS are copied now. The box itself is authored — see
+  // boxArtFiles above and docs/GEOMETRY_FORMAT.md §6: the container round-trips
+  // byte for byte through our own writer on all 3572 shipped geometries, so a
+  // mesh of ours is a mesh, not a donor with its numbers changed.
+  const seeds = PANDORA_TIERS.map((t) => t.effect);
   const copied = copyArt(seeds, ART_DIR, read, 'pandora:box');
   const absent = seeds.filter((s) => !copied.at.has(s));
   if (absent.length) throw new Error(`pandora: the game's data has no ${absent.join(', ')}`);
 
-  // The chest's material and geometry are INLINE: uid, box and textures all
-  // live in the model document itself.
-  const modelCopy = copied.at.get(BOX_DONOR_MODEL)!;
-  const modelDoc = copied.files.get(modelCopy)!.toString('latin1');
-  const uid = /<uid>([0-9A-Fa-f-]{36})<\/uid>/.exec(modelDoc)?.[1];
-  const bin = uid ? copied.files.get(`bin/Geometries/${uid.toUpperCase()}`) : null;
-  if (!bin) throw new Error('pandora: the chest donor geometry did not copy');
-  // A CUBE, SCULPTED FROM THE DONOR rather than built beside it. Positions
-  // are the one part of a mesh proven safe to rewrite (every baked town
-  // building goes through the same door); topology is not, and rebuilding it
-  // is what left six probe runs looking at a shadow. So the chest's own
-  // vertices are pushed out onto a box: its tessellation, its UVs, its
-  // attributes, all of them the donor's, on flat faces.
-  const sculpted = boxifyGeometry(bin, {
-    centre: [0, 0, BOX_FLOAT + BOX_HALF],
-    half: [BOX_HALF, BOX_HALF, BOX_HALF],
-  }, BOX_DONOR_GROUP, BOX_DONOR_LID_GROUP);
-  if (!sculpted) throw new Error('pandora: the donor geometry could not be sculpted into a box');
-  // One square per face, on the sculpted cube (see planarFaceUVs) — before the
-  // tilt, while the faces still line up with the axes the mapping reads.
-  planarFaceUVs(sculpted.data, [0, 0, BOX_FLOAT + BOX_HALF]);
-  const tilted = rotateGeometry(sculpted.data, BOX_TILT, [0, 0, BOX_FLOAT + BOX_HALF]);
-  copied.files.set(`bin/Geometries/${uid!.toUpperCase()}`, tilted);
-  retuneGeometryDoc(copied, modelCopy, sculpted.bbox);
-  solidifyMaterials(copied, modelCopy);
-  paintModelTextures(copied, modelCopy, true);
-
   const files: ModFile[] = [...copied.files].map(([path, data]) => ({ path, data }));
-  files.push(...iconFiles());
+  files.push(...iconFiles(), ...boxArtFiles());
 
   // The four shared documents — same box, four glows.
+  //
+  // A path resolves to its COPY when the file came out of the game, and to
+  // itself when it is one of ours: the model and its texture live in the mod
+  // already, and asking the copy table for them would answer nothing.
   const at = (path: string | undefined): string | undefined => {
-    const to = path ? copied.at.get(dataPath(path)) : undefined;
-    return to ? `/${to}` : undefined;
+    if (!path) return undefined;
+    const to = copied.at.get(dataPath(path));
+    return to ? `/${to}` : `/${dataPath(path)}`;
   };
   const texts: Record<string, string> = {};
   for (const [slot, message] of Object.entries(MESSAGES)) {
@@ -709,7 +328,7 @@ export function buildPandora(read: DataReader): ModFile[] {
       file: `PandoraBox_${tier.key}`,
       className: PANDORA_CLASS,
       messages: MESSAGES,
-      model: BOX_DONOR_MODEL,
+      model: PANDORA_MODEL,
       effect: tier.effect,
       footprint: { w: 1, h: 1 },
       ground: null,
@@ -723,7 +342,7 @@ export function buildPandora(read: DataReader): ModFile[] {
   // One palette entry; a fresh box is empty, and empty is the poorest glow.
   const first = PANDORA_TIERS[0]!;
   const linkSpec: BuildingSpec = {
-    file: 'PandoraBox', className: PANDORA_CLASS, messages: MESSAGES, model: BOX_DONOR_MODEL,
+    file: 'PandoraBox', className: PANDORA_CLASS, messages: MESSAGES, model: PANDORA_MODEL,
   };
   // the painted face doubles as the palette icon
   files.push({
@@ -747,27 +366,27 @@ export function buildPandora(read: DataReader): ModFile[] {
     ].join(EOL) + EOL, 'latin1'),
   });
 
-  // THE ANIMATION PROBES. A copy of the artifact donor, cube built in with the
-  // skin KEPT — bone 3, the one the artifact idle turns — plus the skeleton
-  // and the AnimSet. On a Building of the windmill's type (the one shipped
-  // proof that Building plays an AnimSet) and on an ARTIFACT — the class the
-  // rig was made for, whose pickup also vanishes the object and whose pull on
-  // the AI is total. Hidden in the palette; the probe map places them by name.
+  // THE ANIMATION PROBES, and they are the one question the box has left.
+  //
+  // A turn about its own axis is not a number anywhere in a model — it is an
+  // animation, which needs three things at once: bones in a skeleton, a binding
+  // from vertices to one of them, and an AnimSet on the object telling the
+  // engine to play something. Ours are OUR cube (same eight positions, same
+  // faces) bound rigidly to the bone the artifact idle spins, wearing the
+  // artifact's skeleton and its AnimSet.
+  //
+  // What is not known is whether the classes a treasure can be will play it at
+  // all, so the probes are two: a Building of the windmill's type — the shipped
+  // proof that Building plays an AnimSet — and an ARTIFACT, the class the rig
+  // was made for. Hidden in the palette; the probe map places them by name.
   const spin = copyArt([DONOR_MODEL, DONOR_ANIMSET], `${PANDORA_DIR}/spin`, read, 'pandora:spin');
   const spinModel = spin.at.get(DONOR_MODEL);
   if (!spinModel) throw new Error('pandora: the spin probe lost its model');
   const spinModelDoc = spin.files.get(spinModel)!.toString('latin1');
-  const spinGeomAt = resolve(spinModel, hrefOf(spinModelDoc, 'Geometry') ?? '');
-  const spinGeomDoc = spinGeomAt ? spin.files.get(spinGeomAt)?.toString('latin1') : null;
-  const spinUid = spinGeomDoc ? /<uid>([0-9A-Fa-f-]{36})<\/uid>/.exec(spinGeomDoc)?.[1] : null;
-  const spinBin = spinUid ? spin.files.get(`bin/Geometries/${spinUid.toUpperCase()}`) : null;
-  if (!spinGeomAt || !spinBin) throw new Error('pandora: the spin probe lost its geometry');
-  const spinBox = cubifyGeometry(spinBin, 'rigid');
-  retuneGeometryDoc(spin, spinGeomAt, spinBox);
-  // The Artefakt materials name a texture ToE never shipped, so there is
-  // nothing in this closure to repaint — the spin probes are about motion,
-  // not looks, and they stay donor-textured (that is: blank).
+  const spinSkelAt = resolve(spinModel, hrefOf(spinModelDoc, 'Skeleton') ?? '');
+  if (!spinSkelAt || !spin.files.has(spinSkelAt)) throw new Error('pandora: the spin probe lost its skeleton');
   files.push(...[...spin.files].map(([path, data]) => ({ path, data })));
+  files.push(...spinArtFiles(spinSkelAt));
 
   const spinAt = (path: string | undefined): string | undefined => {
     const to = path ? spin.at.get(dataPath(path)) : undefined;
@@ -776,7 +395,7 @@ export function buildPandora(read: DataReader): ModFile[] {
   const millDoc = buildingDoc(
     {
       file: 'PandoraBox_Mill', className: PANDORA_MILL_CLASS, messages: MESSAGES,
-      model: DONOR_MODEL, animSet: DONOR_ANIMSET, effect: PANDORA_TIERS[3]!.effect,
+      model: PANDORA_SPIN_MODEL, animSet: DONOR_ANIMSET, effect: PANDORA_TIERS[3]!.effect,
       footprint: { w: 1, h: 1 }, ground: null,
       type: 'BUILDING_WINDMILL',
     },
@@ -786,67 +405,10 @@ export function buildPandora(read: DataReader): ModFile[] {
   files.push({ path: PANDORA_MILL_SHARED, data: Buffer.from(millDoc, 'latin1') });
   files.push(hiddenLink(PANDORA_MILL_LINK, PANDORA_MILL_SHARED, PANDORA_MILL_CLASS));
 
-  // THE BISECT (see PANDORA_FIELD_DIAGS above). Every twin starts from the
-  // shipped chest's own document and changes one thing, so the first invisible
-  // one in the row names what our documents get wrong.
-  const shipped = read(SHIPPED_CHEST)?.toString('latin1');
-  if (!shipped) throw new Error(`pandora: the game's data has no ${SHIPPED_CHEST}`);
-  const ourTexts = ['name', 'description', 'dialogText', 'artifactFound']
-    .map((slot) => `		<Item href="/${texts[slot]!}"/>`).join(EOL);
-
-  const MUTATE: Record<string, (doc: string) => string> = {
-    // The control: the shipped document verbatim, at a path of ours.
-    Clone: (d) => d,
-    // Every shipped object carries one of these and nothing of ours ever has.
-    NoRecordID: (d) => d.replace(/ ObjectRecordID="\d+"/, ''),
-    OurTexts: (d) => d.replace(/<messagesFileRef>[\s\S]*?<\/messagesFileRef>/,
-      `<messagesFileRef>${EOL}${ourTexts}${EOL}	</messagesFileRef>`),
-    NoEffect: (d) => d.replace(/<Effect href="[^"]*"\s*\/>/, '<Effect/>'),
-    NoSound: (d) => d.replace(/<SoundEffect href="[^"]*"\s*\/>/, '<SoundEffect/>'),
-    BuildingsType: (d) => d.replace(/<ObjectTypeFileRef href="[^"]*"\/>/,
-      `<ObjectTypeFileRef href="${VISIBILITY_BUILDINGS}"/>`),
-    NotAligned: (d) => d.replace(/<TerrainAligned>true<\/TerrainAligned>/, '<TerrainAligned>false</TerrainAligned>'),
-  };
-
-  for (const key of PANDORA_FIELD_DIAGS) {
-    files.push({ path: pandoraDiagShared(key), data: Buffer.from(MUTATE[key]!(shipped), 'latin1') });
-    files.push(hiddenLink(pandoraDiagLink(key), pandoraDiagShared(key), PANDORA_CLASS));
-  }
-
-  // And the art row, on a document known good by the time it is read: the
-  // shipped one, pointed at our copy of the model at three stages.
-  for (const key of PANDORA_ART_DIAGS) {
-    const stage = key.replace(/^Art/, '');
-    const diag = copyArt([CHEST_DONOR_MODEL], `${PANDORA_DIR}/diag-${stage.toLowerCase()}`, read, `pandora:diag-${stage}`);
-    const dModel = diag.at.get(CHEST_DONOR_MODEL);
-    if (!dModel) throw new Error(`pandora: the ${key} diagnostic lost its model`);
-    if (stage === 'Painted') paintModelTextures(diag, dModel);
-    if (stage === 'Cubed' || stage === 'KeepAttrs') {
-      const dDoc = diag.files.get(dModel)!.toString('latin1');
-      const dUid = /<uid>([0-9A-Fa-f-]{36})<\/uid>/.exec(dDoc)?.[1];
-      const dBin = dUid ? diag.files.get(`bin/Geometries/${dUid.toUpperCase()}`) : null;
-      if (!dBin) throw new Error('pandora: the Cubed diagnostic lost its geometry');
-      retuneGeometryDoc(diag, dModel, cubifyGeometry(dBin, 'static', stage === 'KeepAttrs'));
-    }
-    files.push(...[...diag.files].map(([path, data]) => ({ path, data })));
-    // Each stage gets its OWN glow, so the row can be read across a map
-    // without hovering anything: blue, green, gold, red in stage order. The
-    // glows are already in the archive - the tiers copied them.
-    const glow = at(PANDORA_TIERS[PANDORA_ART_DIAGS.indexOf(key)]?.effect);
-    files.push({
-      path: pandoraDiagShared(key),
-      data: Buffer.from(shipped
-        .replace(/<Model href="[^"]*"/, `<Model href="/${dModel}#xpointer(/Model)"`)
-        .replace(/<Effect href="[^"]*"\s*\/>/, glow ? `<Effect href="${glow}#xpointer(/Effect)"/>` : '<Effect/>'),
-        'latin1'),
-    });
-    files.push(hiddenLink(pandoraDiagLink(key), pandoraDiagShared(key), PANDORA_CLASS));
-  }
-
   const artifactDoc = buildingDoc(
     {
       file: 'PandoraBox_Artifact', className: PANDORA_ARTIFACT_CLASS, messages: MESSAGES,
-      model: DONOR_MODEL, animSet: DONOR_ANIMSET, effect: PANDORA_TIERS[1]!.effect,
+      model: PANDORA_SPIN_MODEL, animSet: DONOR_ANIMSET, effect: PANDORA_TIERS[1]!.effect,
       footprint: { w: 1, h: 1 }, ground: null,
       type: 'ARTF_RANDOM_SPECIFIC',
       fields: { ArtifactID: 'ARTIFACT_NONE' },

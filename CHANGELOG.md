@@ -15,10 +15,19 @@ one.
 
 ### Added
 
+- **Models of our own.** The geometry container is decoded well enough to
+  WRITE: every one of the game's 3572 meshes now decodes and re-encodes byte for
+  byte through the editor's own writer, which is the proof that nothing in those
+  files is left unread. Meshes can be authored from nothing — positions, faces,
+  texture coordinates, the vertex-split remaps — instead of being sculpted out
+  of a donor model, and the Pandora's Box is the first thing built that way.
+  Written up in `docs/GEOMETRY_FORMAT.md` §6, checked by `npm run
+  test-geometry-write`.
+
 - **Pandora's Box, begun.** Heroes III's box brought to the adventure map: a
-  floating, spinning cube — the artifact stone's own idle and glow, with a
-  clean cube built into its geometry and a painted bronze-and-gold face — that
-  a map fills with experience, gold, resources, artifacts, spells, creatures
+  floating, tilted cube — our own model and a painted bronze-and-gold face,
+  wearing the artifact glow — that a map fills with experience, gold,
+  resources, artifacts, spells, creatures
   and guards. Behaviour is Lua shipped with the archive; each map carries only
   a generated data block in its own script. Lives behind the new **Gameplay**
   tab in Game settings: applying the flag writes `H5E/homm5-editor-gameplay.h5u`

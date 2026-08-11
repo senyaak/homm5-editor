@@ -21,7 +21,7 @@ import { join } from 'node:path';
 import {
   PANDORA_ARTIFACT_LINK, PANDORA_ARTIFACT_SHARED, PANDORA_CLASS, PANDORA_LINK,
   PANDORA_MILL_LINK, PANDORA_MILL_SHARED, PANDORA_TIERS,
-  buildPandora, pandoraDiagShared, pandoraShared, pandoraSkin, pandoraTexture, pandoraTier,
+  buildPandora, pandoraShared, pandoraTexture, pandoraTier,
 } from '../src/mods/pandora-files.ts';
 import { buildGameplayArchive } from '../src/mods/gameplay.ts';
 import {
@@ -53,116 +53,63 @@ const files = buildPandora(read);
 const byPath = new Map(files.map((f) => [f.path.toLowerCase(), f.data]));
 check('produces files', files.length > 10, `${files.length}`);
 
-// ---- the cube ---------------------------------------------------------------
+// ---- the box ----------------------------------------------------------------
 
-console.log('the box, and the cube that is no longer in it');
+console.log('the box');
 const shared0 = byPath.get(pandoraShared(PANDORA_TIERS[0]!.key).toLowerCase())?.toString('latin1') ?? '';
 const modelHref = /<Model href="\/([^"#]+)/.exec(shared0)?.[1] ?? '';
 const modelDoc = byPath.get(modelHref.toLowerCase())?.toString('latin1') ?? '';
 
-// THE BOX IS A CUBE, SCULPTED — the arena box's own vertices pushed onto six
-// flat faces, with nothing else in the mesh touched (positions are the one
-// part proven safe to rewrite; rebuilding topology is what left six probe runs
-// looking at a shadow). So what is asked of it is that it came out a cube of
-// the right size, standing where a one-tile object stands.
+// THE BOX IS OURS, built by src/scene/geometry-write.ts rather than sculpted
+// out of a donor. So what is asked of it is what we asked the writer for: one
+// group, a closed cube of the right size, turned, floating, wound outward, and
+// one whole copy of the texture on each face.
 const boxUid = /<uid>([0-9A-Fa-f-]{36})<\/uid>/.exec(modelDoc)?.[1] ?? '';
 const boxBin = byPath.get(`bin/geometries/${boxUid.toUpperCase()}`.toLowerCase());
-check('the box has its sculpted mesh', !!boxBin, boxUid);
+check('the box has a mesh of its own', !!boxBin, boxUid);
 if (boxBin) {
   const groups = extractMeshesStructured(Buffer.from(boxBin)) ?? [];
-  const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
-  let tris = 0, uvOk = true;
-  for (const g of groups) {
-    for (let i = 0; i < g.vertexCount; i++) {
-      for (let k = 0; k < 3; k++) {
-        const v = g.positions[i * 3 + k]!;
-        if (v < lo[k]!) lo[k] = v;
-        if (v > hi[k]!) hi[k] = v;
-      }
+  check('one group, as the document declares', groups.length === 1, `${groups.length}`);
+  const g = groups[0];
+  if (g) {
+    check('twenty-four vertices, twelve triangles', g.vertexCount === 24 && g.triCount === 12,
+      `${g.vertexCount} / ${g.triCount}`);
+    const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+    for (let i = 0; i < g.vertexCount; i++) for (let k = 0; k < 3; k++) {
+      const v = g.positions[i * 3 + k]!;
+      if (v < lo[k]!) lo[k] = v;
+      if (v > hi[k]!) hi[k] = v;
     }
-    for (let i = 0; i < g.vertexCount * 2; i++) {
-      const t = g.uvs![i]!;
-      if (t < -0.01 || t > 1.01) uvOk = false;
+    const side = [0, 1, 2].map((k) => hi[k]! - lo[k]!);
+    // TILTED, so the extents are the turned cube's: square-ish on every axis,
+    // inside a tile, and off the ground.
+    const span = Math.max(...side), thin = Math.min(...side);
+    check('it is a cube, turned', span - thin < 0.3 && span < 1.9, side.map((s) => s.toFixed(2)).join(' x '));
+    check('smaller than a tile, and clear of the ground', span < 1.8 && lo[2]! > 0.2,
+      `bottom at z ${lo[2]!.toFixed(2)}`);
+    let uvOk = true;
+    for (let i = 0; i < g.vertexCount * 2; i++) { const t = g.uvs![i]!; if (t < -0.01 || t > 1.01) uvOk = false; }
+    check('one texture square per face', uvOk);
+    // Wound outward: a closed body seen from outside has positive signed volume,
+    // and a flipped winding is exactly what a single-sided material would cull.
+    let volume = 0;
+    const c = [(lo[0]! + hi[0]!) / 2, (lo[1]! + hi[1]!) / 2, (lo[2]! + hi[2]!) / 2];
+    for (let t = 0; t < g.indices.length; t += 3) {
+      const P = [0, 1, 2].map((k) => {
+        const o = g.indices[t + k]! * 3;
+        return [g.positions[o]! - c[0]!, g.positions[o + 1]! - c[1]!, g.positions[o + 2]! - c[2]!];
+      });
+      volume += (P[0]![0]! * (P[1]![1]! * P[2]![2]! - P[1]![2]! * P[2]![1]!)
+        - P[0]![1]! * (P[1]![0]! * P[2]![2]! - P[1]![2]! * P[2]![0]!)
+        + P[0]![2]! * (P[1]![0]! * P[2]![1]! - P[1]![1]! * P[2]![0]!)) / 6;
     }
-    tris += g.triCount;
+    check('wound outward', volume > 1.2 && volume < 1.4, `signed volume ${volume.toFixed(3)}`);
   }
-  const side = [0, 1, 2].map((k) => hi[k]! - lo[k]!);
-  // TILTED, so the extents are the turned cube's — what is checked is that it
-  // is still square-ish (a cube at an angle measures the same on every axis to
-  // within the tilt) and that it fits a tile with room to spare.
-  const span = Math.max(...side), thin = Math.min(...side);
-  check('it is a cube, turned', span - thin < 0.3 && span < 1.9, side.map((s) => s.toFixed(2)).join(' x '));
-  check('smaller than a tile, and clear of the ground', span < 1.8 && lo[2]! > 0.2,
-    `bottom at z ${lo[2]!.toFixed(2)}`);
-  check('with triangles to draw', tris > 100, `${tris}`);
-  // One square per face is the whole point of the UV pass: a coordinate past 1
-  // is the donor's four-to-a-face lattice coming back.
-  check('one texture square per face', uvOk);
 }
-// The donor is a SURROUND — its faces look inward, which is invisible from
-// outside — and it is lit as a backdrop. Both are undone in the material.
-check('the materials face outward and light like an object',
-  modelDoc.includes('<Is2Sided>true</Is2Sided>')
+check('the material is a solid object’s, not a backdrop’s',
+  modelDoc.includes('<AlphaMode>AM_OPAQUE</AlphaMode>')
+  && modelDoc.includes('<LightingMode>L_NORMAL</LightingMode>')
   && !modelDoc.includes('AM_OVERLAY') && !modelDoc.includes('L_SELFILLUM'));
-
-// The cube lives on as a DIAGNOSTIC, and the checks that made it a cube still
-// hold there — the day the vertex format is read fully rather than mostly, it
-// comes back to the box itself.
-const cubeShared = byPath.get(pandoraDiagShared('ArtCubed').toLowerCase())?.toString('latin1') ?? '';
-const cubeModelHref = /<Model href="\/([^"#]+)/.exec(cubeShared)?.[1] ?? '';
-const geomDoc = byPath.get(cubeModelHref.toLowerCase())?.toString('latin1') ?? '';
-const uid = /<uid>([0-9A-Fa-f-]{36})<\/uid>/.exec(geomDoc)?.[1] ?? '';
-const bin = byPath.get(`bin/geometries/${uid.toUpperCase()}`.toLowerCase());
-check('the cube diagnostic still has its geometry', !!bin, uid);
-
-if (bin) {
-  const meshes = extractMeshesStructured(Buffer.from(bin)) ?? [];
-  check('decodes', meshes.length > 0, `${meshes.length} meshes`);
-  const m = meshes[0]!;
-
-  const mn = [Infinity, Infinity, Infinity], mx = [-Infinity, -Infinity, -Infinity];
-  for (let i = 0; i < m.vertexCount; i++) for (let k = 0; k < 3; k++) {
-    const v = m.positions[i * 3 + k]!;
-    if (v < mn[k]!) mn[k] = v; if (v > mx[k]!) mx[k] = v;
-  }
-  const near = (a: number, b: number): boolean => Math.abs(a - b) < 1e-4;
-  check('is the box', near(mn[0]!, -0.5) && near(mx[0]!, 0.5) && near(mn[1]!, -0.5) && near(mx[1]!, 0.5) && near(mn[2]!, 1.5) && near(mx[2]!, 2.5),
-    `${mn.map((v) => v.toFixed(2)).join(',')} .. ${mx.map((v) => v.toFixed(2)).join(',')}`);
-
-  // the document's box says the same
-  const size = /<Size>\s*<x>([^<]+)<\/x>\s*<y>([^<]+)<\/y>\s*<z>([^<]+)<\/z>/.exec(geomDoc);
-  check('the document box matches', !!size && near(Number(size[1]), 1) && near(Number(size[2]), 1) && near(Number(size[3]), 1));
-
-  // twelve real triangles, wound outward: signed volume of a 1-cube is +1
-  let live = 0, volume = 0;
-  const I = m.positions;
-  const c = [0, 0, 2.0];
-  for (let t = 0; t < m.indices.length; t += 3) {
-    const [a, b, d] = [m.indices[t]!, m.indices[t + 1]!, m.indices[t + 2]!];
-    if (a === b || b === d || a === d) continue;
-    live++;
-    const A = [I[a * 3]! - c[0]!, I[a * 3 + 1]! - c[1]!, I[a * 3 + 2]! - c[2]!];
-    const B = [I[b * 3]! - c[0]!, I[b * 3 + 1]! - c[1]!, I[b * 3 + 2]! - c[2]!];
-    const D = [I[d * 3]! - c[0]!, I[d * 3 + 1]! - c[1]!, I[d * 3 + 2]! - c[2]!];
-    volume += (A[0]! * (B[1]! * D[2]! - B[2]! * D[1]!)
-      - A[1]! * (B[0]! * D[2]! - B[2]! * D[0]!)
-      + A[2]! * (B[0]! * D[1]! - B[1]! * D[0]!)) / 6;
-  }
-  check('twelve triangles live', live === 12, `${live}`);
-  check('wound outward', near(volume, 1), `signed volume ${volume.toFixed(3)}`);
-
-  // UVs in range, normals axis-aligned on the live vertices
-  let uvOk = true, nOk = true;
-  for (let i = 0; i < 24; i++) {
-    const u = m.uvs![i * 2]!, v = m.uvs![i * 2 + 1]!;
-    if (u < -0.01 || u > 1.01 || v < -0.01 || v > 1.01) uvOk = false;
-    const n = [m.normals![i * 3]!, m.normals![i * 3 + 1]!, m.normals![i * 3 + 2]!];
-    const big = Math.max(...n.map(Math.abs));
-    if (big < 0.95) nOk = false;
-  }
-  check('UVs are planar per face', uvOk);
-  check('normals are the face axes', nOk);
-}
 
 // ---- the documents ----------------------------------------------------------
 
@@ -201,8 +148,8 @@ const countHex = (buf: Buffer, hex: string): number => {
 };
 check('every tier is animation-free', PANDORA_TIERS.every((t) =>
   /<AnimSet\/>/.test(byPath.get(pandoraShared(t.key).toLowerCase())?.toString('latin1') ?? '')));
-if (bin) check('the cube is bound to bone 0, statically', countHex(Buffer.from(bin), STATIC_ENTRY) >= 80
-  && countHex(Buffer.from(bin), RIGID_ENTRY) === 0, `${countHex(Buffer.from(bin), STATIC_ENTRY)} entries`);
+check('the box is bound to bone 0, statically', !!boxBin && countHex(Buffer.from(boxBin), STATIC_ENTRY) === 8
+  && countHex(Buffer.from(boxBin), RIGID_ENTRY) === 0);
 
 // The animation probes keep the donor's rig, on the classes that might play it.
 const artDoc = byPath.get(PANDORA_ARTIFACT_SHARED.toLowerCase())?.toString('latin1') ?? '';
@@ -212,12 +159,11 @@ check('and picks up as nothing', artDoc.includes('<Type>ARTF_RANDOM_SPECIFIC</Ty
 const spinModelPath = /<Model href="\/([^"#]+)/.exec(artDoc)?.[1] ?? '';
 const spinModelDoc = byPath.get(spinModelPath.toLowerCase())?.toString('latin1') ?? '';
 check('and its skeleton', /<Skeleton href="[^"]+"/.test(spinModelDoc));
-const spinGeomDoc = byPath.get(
-  spinModelPath.replace(/[^/]+$/, /<Geometry href="([^"#]+)/.exec(spinModelDoc)?.[1] ?? '').toLowerCase(),
-)?.toString('latin1') ?? '';
-const spinUid = /<uid>([0-9A-Fa-f-]{36})<\/uid>/.exec(spinGeomDoc)?.[1] ?? '';
+// Our documents carry the geometry inline, so the uid is in the model itself.
+const spinUid = /<uid>([0-9A-Fa-f-]{36})<\/uid>/.exec(spinModelDoc)?.[1] ?? '';
 const spinBin = byPath.get(`bin/geometries/${spinUid.toUpperCase()}`.toLowerCase());
-check('its cube rides the spinning bone', !!spinBin && countHex(Buffer.from(spinBin), RIGID_ENTRY) >= 600);
+check('its cube rides the spinning bone', !!spinBin && countHex(Buffer.from(spinBin), RIGID_ENTRY) === 8
+  && countHex(Buffer.from(spinBin), STATIC_ENTRY) === 0);
 const millDoc = byPath.get(PANDORA_MILL_SHARED.toLowerCase())?.toString('latin1') ?? '';
 check('the mill probe is a windmill-type building', millDoc.includes('<Type>BUILDING_WINDMILL</Type>')
   && /<AnimSet href="[^"]+"/.test(millDoc));
@@ -240,49 +186,18 @@ const img = pandoraTexture();
 const seen = new Set<number>();
 for (let i = 0; i < img.rgba.length; i += 4) seen.add((img.rgba[i]! << 16) | (img.rgba[i + 1]! << 8) | img.rgba[i + 2]!);
 check('is painted, not flat', seen.size > 100, `${seen.size} colours`);
-// The SKIN is a recolour: the drawing survives, the hue does not. Checked as
-// "the shape of the picture is still there" — the light and dark of the donor
-// — beside "no pixel kept its colour".
-{
-  const donor = decodeDDSBuffer(readFileSync(
-    join(dataRoot, 'Textures/auto-imported_______320/dev/chest/Chest128x128.tga.dds')));
-  const skin = pandoraSkin(donor);
-  let sameColour = 0, lightKept = 0;
-  for (let i = 0; i < donor.rgba.length; i += 4) {
-    const a = [donor.rgba[i]!, donor.rgba[i + 1]!, donor.rgba[i + 2]!];
-    const b = [skin.rgba[i]!, skin.rgba[i + 1]!, skin.rgba[i + 2]!];
-    if (a[0] === b[0] && a[1] === b[1] && a[2] === b[2]) sameColour++;
-    const la = (Math.max(...a) + Math.min(...a)) / 2, lb = (Math.max(...b) + Math.min(...b)) / 2;
-    if (Math.abs(la - lb) < 40) lightKept++;
-  }
-  const texels = donor.rgba.length / 4;
-  check('the skin recolours rather than replaces', sameColour < texels * 0.02, `${sameColour} texels unchanged`);
-  check('and keeps the donor\'s light and shade', lightKept > texels * 0.9,
-    `${Math.round(lightKept / texels * 100)}% within a shade`);
-}
 const dds = files.find((f) => f.path === 'Buildings/PandoraBox/PandoraBox.dds');
 check('the painted face ships as a dds', !!dds && dds.data.length === 128 + img.width * img.height * 4);
-// The model's textures are repainted IN PLACE — the donor's own documents
-// keep their drawing fields (CONVERT_ORDINARY, WRAP: the icon fields made
-// boxes that cast shadows and did not draw) and only the byte-description
-// changes. So: every texture the model names is now TF_8888 at our size,
-// and its .dds is exactly our uncompressed image.
+// The model wears OUR texture: our document, our pixels, DXT1 with a mip
+// chain. An uncompressed surface under a document that says DXT1 is what made
+// the box a transparent ghost, so the two are checked against each other.
 const modelTexDocs = [...modelDoc.matchAll(/<Texture href="([^"]+)"/g)]
   .map((m) => m[1]!.replace(/^\//, '').split('#')[0]!);
-check('the model still names the donor texture documents', modelTexDocs.length > 0
-  && modelTexDocs.every((t) => byPath.has(t.toLowerCase())), `${modelTexDocs.length} textures`);
-// The document is the GAME'S, unedited — the pixels are DXT1 because that is
-// what it already declares. An uncompressed surface here is what made the box
-// a transparent ghost under its AM_ALPHA_TEST material.
-check('the texture document is the donor\'s, untouched', modelTexDocs.every((t) => {
-  const ours = byPath.get(t.toLowerCase())?.toString('latin1') ?? '';
-  // The copy keeps the shipped tree under the mod's art folder, so the donor
-  // is the same path with that prefix off.
-  const donor = readFileSync(join(dataRoot, t.replace(/^Buildings\/PandoraBox\/art\//, '')), 'latin1');
-  return ours === donor;
-}));
+check('the model names one texture, and it is ours', modelTexDocs.length === 1
+  && byPath.has(modelTexDocs[0]!.toLowerCase()), modelTexDocs.join(', '));
 check('the pixels are ours, as DXT1 with mips', modelTexDocs.every((t) => {
   const d = byPath.get(t.toLowerCase())?.toString('latin1') ?? '';
+  if (!d.includes('<Format>TF_DXT1</Format>') || !d.includes('<IsDXT>true</IsDXT>')) return false;
   const dest = /<DestName href="([^"]+)"/.exec(d)?.[1] ?? '';
   const dds = byPath.get(t.replace(/[^/]+$/, dest).toLowerCase());
   return !!dds && dds.toString('latin1', 84, 88) === 'DXT1' && dds.readUInt32LE(28) > 1;

@@ -11,6 +11,10 @@ group, and each group is emitted as its own mesh, one-to-one with the model's
 material list (see §4). This document records exactly what is known so the work
 is resumable and auditable.
 
+**Writing is decoded too, and proven** (§6): every one of the 3572 shipped
+geometries decodes and re-encodes byte for byte through `geometry-write.ts`, so
+meshes of our own are authored rather than sculpted out of donors.
+
 Confidence: **[OK]** = verified byte-exact on real assets · **[~]** = strong
 heuristic, not yet byte-exact.
 
@@ -31,17 +35,15 @@ key to decoding the binary: decoded vertex positions must fit it. **[OK]**
 
 ## 2. Container grammar **[OK]**
 
-The binary is a tree of records. Every record starts with a 1-byte **tag** in
-`0x01..0x0f`. The byte after the tag selects the payload:
+The binary is a tree of records. Every record is `<tag byte> <size field>
+<payload>`, and the size field is width-flagged: an **even** byte IS twice the
+length, an **odd** one means a u32 sits there and the length is `(v − 1) / 2`.
+The "scalar int32" form written `tag 08 <u32>` is that same rule with the size
+byte 8 — not a form of its own. §6.1 states the rule the writer follows and the
+measurement behind it.
 
-| form | bytes | meaning |
-|---|---|---|
-| scalar int32 | `tag 08 <u32 LE>` | a number (counts, flags, version) |
-| length-prefixed block | `tag <u32 sizeB> <body>` | `byteLen = (sizeB − 1) / 2`; `sizeB` is always odd |
-
-A block body is either a **node** (more records) or a **leaf** (a raw typed
-array). The engine knows which from its compiled schema; we infer it from
-context (a leaf's `byteLen` equals a just-declared count × a known stride).
+A payload is either **more records** or a **leaf** (a raw typed array). The
+engine knows which from its compiled schema; §6.2 lists the paths that matter.
 
 This is the *same* container family as `GroundTerrain.bin`; there the array
 marker byte is fixed `0x03`, here it varies — which is why a terrain-tuned
@@ -52,8 +54,8 @@ scanner misses these arrays.
 ```
 @0   tag4 int=4          format/version
 @6   tag1 block 52832 B  whole payload
-@16  tag2 int=2          (mesh/part count)
-@22  tag1 block 26404 B  first half  ── the payload is stored TWICE [~]
+@16  tag2 int=2          MESH BLOCK COUNT — declared, and always right  [OK]
+@22  tag1 block 26404 B  the first block
 @43  tag1 int=307        VERTEX COUNT of the positions block that follows [OK]
 @49  tag2 block 3684 B   positions = 307 × 12 = 307 × vec3<f32>          [OK]
 @54  … 307 vertices …
@@ -81,7 +83,7 @@ The tree makes the mesh structure explicit. Each mesh node holds a sequence of
 | tag3 | 493 | 493×20 B | interleaved attribute stream (not plain XYZ) |
 | tag4 | 307 | 307×24 B | **skin binding** — 4 float weights, then 4 quantized weights and 4 bone indices as bytes (see ANIMATION_FORMAT.md §4) |
 | tag5 | 493 | 493×u16 (all < 307) | **remap**: render-vertex → position index |
-| tag6 | 493 | 493×u16 | second remap (different attribute set) |
+| tag6 | 493 | 493×u16 | render vertex → the FIRST render vertex at that position (§6.4) |
 | tag7 | 564 | 564×3×u16 (all < 493) | **indices** — triangle list |
 
 The engine performs a **vertex split**: 307 unique positions expand to 493 render
@@ -110,8 +112,11 @@ crystal cavern's crate is one group and its crystals a second on the same mesh,
 so the crystals went missing until the decoder walked all groups
 (`decodeMeshGroup` per group).
 
-The file stores the whole payload **twice** (identical halves — LOD/copy);
-`extractMeshes` returns the de-duplicated set.
+Many files hold the same shape **twice**, and it long read as an LOD copy —
+`extractMeshes` still de-duplicates. It is not a copy: the outer block declares
+how many mesh blocks follow and the count always matches, and two blocks that
+look identical can differ in one byte of the skin array, which binds them to
+different bones (§6.3).
 
 ## 5. Attributes and texture **[OK]**
 
@@ -168,38 +173,116 @@ DXT1/3/5 to RGBA. `tools/render-textured.js` samples the texture per face and
 proves the mesh + UVs + texture all line up (see the rendered previews).
 Reference chain: `Model.xdb` → `Material` → `Texture` → `*.tga.xdb` → `.dds`.
 
-## 5a. What a mesh of OUR OWN still needs — the open question
+## 6. Writing: a mesh of our own **[OK]**
 
-Reading is done well enough to draw anything the game ships. WRITING is not,
-and the Pandora's Box paid for that lesson over six game runs: a mesh whose
-topology was rebuilt inside a donor's container — counts kept, every leaf we
-know rewritten — **does not draw in the game at all**, while casting a shadow.
-So the engine reads something in that file we do not.
+The container is **closed**: `src/scene/geometry-write.ts` decodes a geometry
+file and re-encodes it, and on **all 3572 shipped geometries the result is byte
+for byte the original** (`node tools/test-geometry-write.ts --all`). That is the
+whole proof, and it took no game run at all — the earlier attempt, rebuilding a
+mesh inside a donor's container, cost six of them and drew nothing every time.
 
-What is proven safe, by the buildings that ship and draw: **rewriting POSITIONS
-only** (`placeGeometry`, and now `boxifyGeometry`/`rotateGeometry`). Everything
-those two touch is one float array; nothing else in the container moves.
+### 6.1 The grammar, exactly
 
-The suspects for what a rebuild breaks, in the order worth testing:
+Every record is `<tag byte> <size field> <payload>`, and the size field is
+**width-flagged**:
 
-1. **The doubled payload.** The file stores the whole thing twice (§4). Our
-   writes hit the first copy; if the engine draws from the second — or checks
-   one against the other — a rebuilt mesh is inconsistent by construction.
-2. **The second remap (tag 6).** We know tag 5 maps render vertex → position.
-   Tag 6 has the same shape and no known meaning; it is written blindly.
-3. **The trailing records** past the last group's skin block, which
-   `parseTree` stops short of (a `05 CC 01 08 …` run in every file).
-4. **Per-group scalars** we skip: the ints beside each leaf that are not the
-   counts we recognise.
+| first byte | meaning |
+|---|---|
+| even, `s` | the payload is `s / 2` bytes and starts at the next byte |
+| odd | a u32 sits here; the payload is `(v − 1) / 2` bytes and starts 4 bytes on |
 
-**The experiment that closes it** is a round trip rather than another game run:
-take a shipped mesh, decode it, re-encode it with a writer of ours, and compare
-byte for byte. Everything that differs is something we do not understand yet,
-and the diff names it precisely — no launching, no eyes, no guessing. When the
-round trip is exact, a mesh built from nothing is the same code path with
-different numbers, and the editor can offer "make me a cube" honestly.
+The writer picks the compact form whenever the payload fits in 127 bytes, and
+that rule is **measured**: across every shipped file no record of 127 bytes or
+less uses the long form, and none longer uses the short one. `tag 08 <u32>` — the
+"scalar" of §2 — is just this rule with `s = 8`, not a separate form.
 
-## 6. Still open
+Whether a payload holds more records or raw data is in the engine's compiled
+schema. Ours is one set of paths (`CONTAINERS` in geometry-write.ts); everything
+outside it round-trips as bytes, which is why the writer is exact even on fields
+we have never looked at.
+
+### 6.2 The tree, in full
+
+```
+/4                     u32 version (always 4)
+/1                     root
+  /2                   the mesh list
+    /2                 u32 block count
+    /1  …              one block per named mesh (<MeshNames> order)
+      /2               u32 group count
+      /1  …            one group per material slice:
+        /2  positions  count × float3      the only array with coordinates
+        /3  vertices   count × 20 bytes    uv, uv2, normal, tangent, binormal
+        /4  skin       count × 24 bytes    empty on some static meshes
+        /5  remap      count × u16         render vertex → position
+        /6  first twin count × u16         render vertex → first one at that position
+        /7  triangles  count × 3 u16       into the render vertices
+        /8  { /2: u32 }                    zero in all 14550 shipped groups
+        /9  u32                            triangle count (0xffffffff when none)
+        /10 float                          a small length, see below
+        /11 byte                           0 in a third of groups, junk elsewhere
+        /12 u32                            0xffffffff in most
+  /3                   one byte (1 in 3137 files, 64 in 422)
+/0 /2 /5               three empty records closing every file
+```
+
+An array is framed as `1: u32 count` then `2: data`; an **empty** array keeps
+the count record and drops the data record entirely.
+
+### 6.3 The doubled payload was never a copy
+
+§4 said the file "stores the whole payload twice". It does not: the outer block
+**declares** how many mesh blocks follow, and the count always matches
+(3572 of 3572 files). Two blocks that look identical differ where it matters —
+in 55B3D719 the two are the same shape bound to **different bones**, one byte
+apart in the skin array. De-duplicating by shape drops a real mesh.
+
+### 6.4 Field 6 is not a copy of field 5 either
+
+They are equal in only 754 of 2501 groups. The rule, and it reproduces the
+shipped array **exactly in all 14542 groups checked**:
+
+> `field6[i]` = the index of the FIRST render vertex standing at the same
+> position as `i` — `i` itself when it is that first one.
+
+It is how split vertices find their way back to each other, which is what
+anything working per corner rather than per drawn point (skinning, smoothing)
+needs. The narrower rule — same position *and* same attributes — holds in only
+441 groups, so the position alone decides.
+
+### 6.5 The junk fields
+
+Fields 10..12 are **uninitialised memory** in part of the library: the geometry
+of an empty model (B2448D7C) holds `"icle"`, `"I"` and `"ance"` there — slices
+of the string `"(ParticleInstance)"` left on the exporter's stack. A field the
+exporter is willing to leave as garbage is one the engine does not depend on.
+
+Field 10 is a length all the same, where it is a number at all: over 1690 groups
+measured against their own geometry it correlates **0.95** with the mean edge
+length (at a ratio of about a third) and sits below all but ~4% of the edges. A
+flat 6×6 plane of nine quads stores exactly `2.0` — its quad size and its
+shortest edge. So a mesh of ours declares its shortest edge, which is both the
+clearest sample's value and inside the shipped range.
+
+### 6.6 What authoring looks like
+
+```ts
+const cube = boxGroup([0, 0, 1], [0.55, 0.55, 0.55]);   // 8 positions, 24 render vertices
+const bin  = buildGeometry([[rotateGroup(cube, tilt, [0, 0, 1])]]);
+const xml  = modelDocument({ uid, bbox: groupBBox([cube]), materials: [{ texture }] });
+```
+
+Six faces cannot share vertices — each corner needs three normals and three
+texture coordinates — which is exactly what the remap is for: eight corners
+stored once, referenced four times each. Winding is counter-clockwise seen from
+outside, giving a positive signed volume; that is the convention every closed
+shipped mesh follows and the one that decides which side a single-sided material
+culls (§5).
+
+The Pandora's Box is the first object built this way: model, geometry document
+and texture, nothing copied (`src/mods/pandora-files.ts`).
+
+## 7. Still open
 
 * Exact UV2 / tangent-basis decode (only base UV is needed for texturing).
 * Skeletons (`bin/Skeletons/`) and animations (`bin/animations/`) are a separate
@@ -208,10 +291,11 @@ different numbers, and the editor can offer "make me a cube" honestly.
   **docs/ANIMATION_FORMAT.md**. The vertex-to-bone binding they need, though,
   lives in this container: it is the tag-4 block above.
 
-## 7. Tools
+## 8. Tools
 
 | tool | purpose |
 |---|---|
+| `tools/test-geometry-write.ts` | the round trip (`--all` for every shipped file) and the box's own checks |
 | `tools/tree-geometry.js` | print the container as an indented record tree |
 | `tools/walk-geometry.js` | flat sequential record walk (grammar sanity check) |
 | `tools/inspect-geometry.js` | locate the position buffer by bbox match |
@@ -220,7 +304,7 @@ different numbers, and the editor can offer "make me a cube" honestly.
 | `tools/render-textured.js` | textured per-face SVG preview (uses src/dds.js) |
 | `tools/obj-to-viewer.js` | standalone canvas viewer for an extracted OBJ |
 
-## 8. Reference
+## 9. Reference
 
 WindBell's 2009 terrain analysis (same container family):
 heroescommunity.com thread TID=32009. No public tool decodes the mesh geometry

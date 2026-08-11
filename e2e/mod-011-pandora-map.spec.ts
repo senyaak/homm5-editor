@@ -26,8 +26,8 @@ import { modFile } from '../src/game/mod-paths.ts';
 import { readEntries } from '../src/format/pak.ts';
 import { writeGameplayArchive } from '../src/mods/gameplay.ts';
 import {
-  PANDORA_ARTIFACT_SHARED, PANDORA_ART_DIAGS, PANDORA_CLASS,
-  PANDORA_MILL_SHARED, PANDORA_TIERS, SHIPPED_CHEST, pandoraDiagShared, pandoraShared,
+  PANDORA_ARTIFACT_SHARED, PANDORA_CLASS,
+  PANDORA_MILL_SHARED, PANDORA_TIERS, pandoraShared,
 } from '../src/mods/pandora-files.ts';
 import { withPandoraBlock } from '../src/mods/pandora-scripts.ts';
 import type { PandoraContents } from '../src/mods/pandora-scripts.ts';
@@ -72,31 +72,14 @@ const BOXES: (PandoraContents & { x: number; y: number; shared: string })[] = [
 ];
 
 /**
- * The bisect row — placed to be LOOKED at, never touched, so they carry no
- * contents and no hooks. It starts with the game's OWN chest: without that
- * control "none of them are visible" cannot tell a broken document from a
- * class that draws nothing on this map at all.
+ * The bisect row is gone.
  *
- * Then seven twins of the shipped document, each differing in one field, and
- * three of our art pipeline's stages on a document known good. Left to right,
- * the first invisible one names the cause.
+ * It existed to ask why a mesh rebuilt inside a donor container did not draw,
+ * and the answer came from reading the container rather than from another run:
+ * the box is authored outright now, and what guards it is a byte-exact round
+ * trip over every shipped geometry (tools/test-geometry-write.ts).
  */
-const DIAGS = [
-  // The control first, then the four stages — ON THE BOXES' OWN LINE and to
-  // the left of them, because a diagnostic nobody can find answers nothing.
-  // Each stage carries its own glow (blue, green, gold, red in this order), so
-  // the row reads across the map without hovering a single one.
-  // ON THE HERO'S OWN LINE, immediately to his left — he starts at (28, 34)
-  // and these run 24, 20, 16, 12, 8 back from him. The boxes' line is
-  // eighteen tiles further on, which is why a row put THERE was looked for
-  // beside the hero and honestly reported as missing.
-  { name: 'ShippedChest', x: 8, y: 34, shared: `/${SHIPPED_CHEST}` },
-  ...PANDORA_ART_DIAGS.map((key, i) => ({
-    name: `PandoraDiag${key}`, x: 12 + i * 4, y: 34, shared: `/${pandoraDiagShared(key)}`,
-  })),
-  // The seven field twins have said what they had to say — shipped documents
-  // draw — so they are built but no longer placed: see PANDORA_FIELD_DIAGS.
-];
+const DIAGS: { name: string; x: number; y: number; shared: string }[] = [];
 
 /** What a box says it gave, written beside the map for the behaviour to show. */
 function givenText(b: PandoraContents): string {

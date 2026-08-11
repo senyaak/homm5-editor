@@ -192,6 +192,16 @@ export function textureDoc(o: {
   source?: string;
   /** `CLAMP` for an icon, which must not tile. */
   addressing?: 'CLAMP' | 'WRAP';
+  /**
+   * DXT1 with a mip chain — what a MODEL's texture is.
+   *
+   * Icons are uncompressed and read at one size, and this stayed hardcoded to
+   * that until the Pandora's Box hung an interface texture on a mesh and got a
+   * ghost: the material reads the surface the way this document describes it,
+   * so a compressed picture under `TF_8888` is not a wrong colour, it is the
+   * wrong number of bytes per block.
+   */
+  compressed?: boolean;
 }): string {
   return [
     '<?xml version="1.0" encoding="UTF-8"?>',
@@ -202,15 +212,17 @@ export function textureDoc(o: {
     // What the shipped icons use: the picture's own alpha decides what shows.
     '\t<ConversionType>CONVERT_TRANSPARENT</ConversionType>',
     `\t<AddrType>${o.addressing ?? 'CLAMP'}</AddrType>`,
-    '\t<Format>TF_8888</Format>',
+    `\t<Format>${o.compressed ? 'TF_DXT1' : 'TF_8888'}</Format>`,
     `\t<Width>${o.width}</Width>`,
     `\t<Height>${o.height}</Height>`,
     '\t<MappingSize>0</MappingSize>',
-    '\t<NMips>1</NMips>',
+    // A compressed surface carries its own mip chain and says 0, the way every
+    // shipped model texture does; an icon has one level and says so.
+    `\t<NMips>${o.compressed ? 0 : 1}</NMips>`,
     '\t<Gain>0</Gain>',
     '\t<AverageColor>0</AverageColor>',
-    '\t<InstantLoad>true</InstantLoad>',
-    '\t<IsDXT>false</IsDXT>',
+    `\t<InstantLoad>${!o.compressed}</InstantLoad>`,
+    `\t<IsDXT>${!!o.compressed}</IsDXT>`,
     '\t<FlipY>false</FlipY>',
     '\t<StandardExport>true</StandardExport>',
     '\t<UseS3TC>false</UseS3TC>',
