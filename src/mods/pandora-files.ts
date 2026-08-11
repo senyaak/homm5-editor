@@ -63,6 +63,21 @@ export const PANDORA_TIERS: readonly PandoraTier[] = [
   { key: 'Red', effect: 'Effects/_(Effect)/Artefacts/General/Red.xdb', from: 40000 },
 ];
 
+/**
+ * PROBE, and it is meant to be flipped back.
+ *
+ * The box has come up as a transparent ghost through every texture theory
+ * tried on it — including a proper DXT1 encode into the game's own unedited
+ * document. So this run puts the SHIPPED chest texture on our cube and paints
+ * nothing: with the art the game itself draws, whatever is left can only be
+ * the geometry we build into the donor's container (its UVs, or the bytes of
+ * the vertex attribute stream we do not understand and overwrite).
+ *
+ * Draws → the paint is at fault, and the bisect moves inside the encoder.
+ * Still a ghost → the paint was never the problem and the cube is.
+ */
+const PAINT_THE_BOX = false;
+
 /** Where everything lives inside the mod. */
 export const PANDORA_DIR = 'Buildings/PandoraBox';
 const ART_DIR = `${PANDORA_DIR}/art`;
@@ -108,7 +123,7 @@ export const PANDORA_ARTIFACT_LINK = 'MapObjects/_(AdvMapObjectLink)/Objects-All
 export const PANDORA_FIELD_DIAGS = [
   'Clone', 'NoRecordID', 'OurTexts', 'NoEffect', 'NoSound', 'BuildingsType', 'NotAligned',
 ] as const;
-export const PANDORA_ART_DIAGS = ['ArtCopy', 'ArtPainted', 'ArtCubed'] as const;
+export const PANDORA_ART_DIAGS = ['ArtCopy', 'ArtPainted', 'ArtCubed', 'ArtKeepAttrs'] as const;
 export const PANDORA_DIAGS = [...PANDORA_FIELD_DIAGS, ...PANDORA_ART_DIAGS] as const;
 export const pandoraDiagShared = (key: string): string =>
   `${PANDORA_DIR}/PandoraBox_Diag${key}.(${PANDORA_CLASS}).xdb`;
@@ -208,7 +223,20 @@ function meshGroups(tree: RecordTree): MeshGroup[] {
  *
  * Returns the box's bounding box for the geometry document.
  */
-export function cubifyGeometry(bin: Buffer, skin: 'static' | 'rigid' = 'static'): { cx: number; cy: number; cz: number; sx: number; sy: number; sz: number } {
+export function cubifyGeometry(
+  bin: Buffer,
+  skin: 'static' | 'rigid' = 'static',
+  /**
+   * Leave bytes 4..7 of each attribute as the donor wrote them.
+   *
+   * GEOMETRY_FORMAT.md calls that slot "zero / uv2, unused here" — measured on
+   * a mountain, and "here" is doing a lot of work in that sentence. If the
+   * chest's model puts something in it that the engine reads (a second UV set,
+   * a vertex colour, an alpha), zeroing it is exactly the kind of thing that
+   * produces a transparent object. The probe map carries a twin with this on.
+   */
+  keepExtra = false,
+): { cx: number; cy: number; cz: number; sx: number; sy: number; sz: number } {
   const SKIN = skin === 'rigid' ? RIGID_SKIN : STATIC_SKIN;
   const groups = meshGroups(parseTree(bin));
   if (!groups.length) throw new Error('pandora: the donor geometry has no mesh groups');
@@ -245,7 +273,7 @@ export function cubifyGeometry(bin: Buffer, skin: 'static' | 'rigid' = 'static')
     const o = attr.leaf.body + rv * 20;
     bin.writeInt16LE(Math.round(u * 2047), o);
     bin.writeInt16LE(Math.round(v * 2047), o + 2);
-    bin.writeInt16LE(0, o + 4); bin.writeInt16LE(0, o + 6);
+    if (!keepExtra) { bin.writeInt16LE(0, o + 4); bin.writeInt16LE(0, o + 6); }
     const pack = (vec: number[], s: number, at: number): void => {
       for (let k = 0; k < 3; k++) bin[o + at + k] = Math.round(vec[k]! * s * 127 + 128);
       bin[o + at + 3] = 0;
@@ -490,7 +518,7 @@ export function buildPandora(read: DataReader): ModFile[] {
   if (!bin) throw new Error('pandora: the chest donor geometry did not copy');
   const box = cubifyGeometry(bin, 'static');
   retuneGeometryDoc(copied, modelCopy, box);
-  paintModelTextures(copied, modelCopy);
+  if (PAINT_THE_BOX) paintModelTextures(copied, modelCopy);
 
   const files: ModFile[] = [...copied.files].map(([path, data]) => ({ path, data }));
   files.push(...iconFiles());
@@ -622,12 +650,12 @@ export function buildPandora(read: DataReader): ModFile[] {
     const dModel = diag.at.get(CHEST_DONOR_MODEL);
     if (!dModel) throw new Error(`pandora: the ${key} diagnostic lost its model`);
     if (stage === 'Painted') paintModelTextures(diag, dModel);
-    if (stage === 'Cubed') {
+    if (stage === 'Cubed' || stage === 'KeepAttrs') {
       const dDoc = diag.files.get(dModel)!.toString('latin1');
       const dUid = /<uid>([0-9A-Fa-f-]{36})<\/uid>/.exec(dDoc)?.[1];
       const dBin = dUid ? diag.files.get(`bin/Geometries/${dUid.toUpperCase()}`) : null;
       if (!dBin) throw new Error('pandora: the Cubed diagnostic lost its geometry');
-      retuneGeometryDoc(diag, dModel, cubifyGeometry(dBin, 'static'));
+      retuneGeometryDoc(diag, dModel, cubifyGeometry(dBin, 'static', stage === 'KeepAttrs'));
     }
     files.push(...[...diag.files].map(([path, data]) => ({ path, data })));
     files.push({
