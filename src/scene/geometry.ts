@@ -827,6 +827,17 @@ export function boxifyGeometry(
    * positions.
    */
   upsideDown = false,
+  /**
+   * Snap to the eight CORNERS rather than to the nearest face.
+   *
+   * Projection alone gives a cube only when the donor's own faces are already
+   * flat and axis-aligned; a rounded body (a boulder, 22 vertices) comes out
+   * as a rounded cube, because its vertices land all over each face and the
+   * triangles between them bevel every edge. Snapping leaves no vertex inside
+   * a face at all: what survives is flat quads and degenerate triangles, which
+   * is a sharp cube out of almost any closed donor.
+   */
+  corners = false,
 ): { data: Buffer; bbox: BBox } | null {
   const from = positionsBox(b);
   if (!from) return null;
@@ -849,7 +860,16 @@ export function boxifyGeometry(
       // The lid: spread across the top plane rather than round the body. The
       // clamp is what fills the square — a vertex that reached past the box
       // lands on its edge instead of hanging over it.
-      ? [Math.max(-1, Math.min(1, q[0]!)), Math.max(-1, Math.min(1, q[1]!)), 1]
+      // A LID OUT OF A WALL. Flattening a wall band onto the top plane gives a
+      // frame with the hole still in it — the band has two rings and no middle.
+      // So the two rings are pulled apart instead: the upper one out to the
+      // edge of the square, the lower one into its centre. Every triangle
+      // between them becomes a spoke, and the spokes fill the face.
+      ? (() => {
+        const t = q[2]! > 0 ? 1 : 0;
+        return [Math.max(-1, Math.min(1, q[0]!)) * t, Math.max(-1, Math.min(1, q[1]!)) * t, 1];
+      })()
+      : corners ? q.map((v) => (v >= 0 ? 1 : -1))
       : m > 1e-6 ? q.map((v) => v / m) : q;
     if (upsideDown) p[2] = -p[2]!;
     for (let k = 0; k < 3; k++) {
@@ -861,6 +881,31 @@ export function boxifyGeometry(
   });
   if (!moved) return null;
   return { data: out, bbox: boxOf(lo, hi) };
+}
+
+/**
+ * Turn every vertex about a point — a tilt, and nothing else touched.
+ *
+ * The last of the position-only edits the box is made of: a cube standing
+ * square to the world reads as scenery, and a few degrees off every axis is
+ * what makes it read as an object someone set down. Angles in radians, applied
+ * X then Y then Z.
+ */
+export function rotateGeometry(b: Buffer, angles: readonly [number, number, number], about: readonly number[]): Buffer {
+  const out = Buffer.from(b);
+  const [rx, ry, rz] = angles;
+  eachPosition(out, (at) => {
+    let [x, y, z] = [0, 1, 2].map((k) => out.readFloatLE(at + k * 4) - about[k]!) as [number, number, number];
+    let c = Math.cos(rx), s = Math.sin(rx);
+    [y, z] = [y * c - z * s, y * s + z * c];
+    c = Math.cos(ry); s = Math.sin(ry);
+    [x, z] = [x * c + z * s, -x * s + z * c];
+    c = Math.cos(rz); s = Math.sin(rz);
+    [x, y] = [x * c - y * s, x * s + y * c];
+    const p = [x, y, z];
+    for (let k = 0; k < 3; k++) out.writeFloatLE(p[k]! + about[k]!, at + k * 4);
+  });
+  return out;
 }
 
 /**

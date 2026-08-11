@@ -87,9 +87,12 @@ if (boxBin) {
     tris += g.triCount;
   }
   const side = [0, 1, 2].map((k) => hi[k]! - lo[k]!);
-  const near = (a: number, b: number): boolean => Math.abs(a - b) < 1e-3;
-  check('it is a cube', side.every((s) => near(s, 1.6)), side.map((s) => s.toFixed(2)).join(' x '));
-  check('one tile wide, a little off the ground', near(lo[2]!, 0.25) && near(lo[0]!, -0.8) && near(hi[0]!, 0.8),
+  // TILTED, so the extents are the turned cube's — what is checked is that it
+  // is still square-ish (a cube at an angle measures the same on every axis to
+  // within the tilt) and that it fits a tile with room to spare.
+  const span = Math.max(...side), thin = Math.min(...side);
+  check('it is a cube, turned', span - thin < 0.3 && span < 1.9, side.map((s) => s.toFixed(2)).join(' x '));
+  check('smaller than a tile, and clear of the ground', span < 1.8 && lo[2]! > 0.2,
     `bottom at z ${lo[2]!.toFixed(2)}`);
   check('with triangles to draw', tris > 100, `${tris}`);
   // One square per face is the whole point of the UV pass: a coordinate past 1

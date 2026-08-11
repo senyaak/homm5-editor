@@ -168,6 +168,37 @@ DXT1/3/5 to RGBA. `tools/render-textured.js` samples the texture per face and
 proves the mesh + UVs + texture all line up (see the rendered previews).
 Reference chain: `Model.xdb` → `Material` → `Texture` → `*.tga.xdb` → `.dds`.
 
+## 5a. What a mesh of OUR OWN still needs — the open question
+
+Reading is done well enough to draw anything the game ships. WRITING is not,
+and the Pandora's Box paid for that lesson over six game runs: a mesh whose
+topology was rebuilt inside a donor's container — counts kept, every leaf we
+know rewritten — **does not draw in the game at all**, while casting a shadow.
+So the engine reads something in that file we do not.
+
+What is proven safe, by the buildings that ship and draw: **rewriting POSITIONS
+only** (`placeGeometry`, and now `boxifyGeometry`/`rotateGeometry`). Everything
+those two touch is one float array; nothing else in the container moves.
+
+The suspects for what a rebuild breaks, in the order worth testing:
+
+1. **The doubled payload.** The file stores the whole thing twice (§4). Our
+   writes hit the first copy; if the engine draws from the second — or checks
+   one against the other — a rebuilt mesh is inconsistent by construction.
+2. **The second remap (tag 6).** We know tag 5 maps render vertex → position.
+   Tag 6 has the same shape and no known meaning; it is written blindly.
+3. **The trailing records** past the last group's skin block, which
+   `parseTree` stops short of (a `05 CC 01 08 …` run in every file).
+4. **Per-group scalars** we skip: the ints beside each leaf that are not the
+   counts we recognise.
+
+**The experiment that closes it** is a round trip rather than another game run:
+take a shipped mesh, decode it, re-encode it with a writer of ours, and compare
+byte for byte. Everything that differs is something we do not understand yet,
+and the diff names it precisely — no launching, no eyes, no guessing. When the
+round trip is exact, a mesh built from nothing is the same code path with
+different numbers, and the editor can offer "make me a cube" honestly.
+
 ## 6. Still open
 
 * Exact UV2 / tangent-basis decode (only base UV is needed for texturing).

@@ -17,7 +17,7 @@
 // earn (pandora.ts).
 
 import { parseTypeSpec } from '../schema/typespec.ts';
-import { boxifyGeometry, parseTree, positionsBox } from '../scene/geometry.ts';
+import { boxifyGeometry, parseTree, positionsBox, rotateGeometry } from '../scene/geometry.ts';
 import type { BlockRecord, ContainerRecord, RecordTree } from '../scene/geometry.ts';
 import { textureDoc, writeDDS, writeDXT1 } from '../format/texture.ts';
 import { decodeDDSBuffer } from '../format/dds.ts';
@@ -61,9 +61,22 @@ const CHEST_DONOR_MODEL = '_(Model)/TESTS/dev/chest.(Model).xdb';
  * backdrop is drawn rather than how an object is lit.
  */
 const BOX_DONOR_MODEL = '_(Model)/Arenas/EnvBoxSmall.(Model).xdb';
-/** Which of its three groups is pressed flat onto the top to close the box —
- *  the donor is open upward, being a surround. */
+/** Its walls, and the group folded into a lid over them. */
+const BOX_DONOR_GROUP = undefined;
 const BOX_DONOR_LID_GROUP = 1;
+
+/**
+ * How the box sits, and it is a list of four things asked for by eye.
+ *
+ * SMALLER than a tile (a tile is two world units), FLOATING a little clear of
+ * the ground, and TILTED — square to the world a cube reads as scenery, a few
+ * degrees off it reads as something set down. The fourth, turning on its own
+ * axis, is not here: that is an animation, and it comes from the donor's rig
+ * (see the spinning twin below) rather than from any number.
+ */
+const BOX_HALF = 0.55;
+const BOX_FLOAT = 0.45;
+const BOX_TILT: [number, number, number] = [0.14, 0.10, 0.35];
 
 /** The animated donor: the floating artifact stone, skeleton and idle. */
 const DONOR_MODEL = '_(Model)/Cutscenes/Artefakt.(Model).xdb';
@@ -225,9 +238,13 @@ export function planarFaceUVs(bin: Buffer, centre: readonly number[]): void {
       const j = bin.readUInt16LE(remap.leaf.body + rv * 2);
       if (j >= pos.int) continue;
       const p = [0, 1, 2].map((k) => bin.readFloatLE(pos.leaf.body + j * 12 + k * 4));
-      // Which face: the axis this vertex is furthest out along.
-      const off = [0, 1, 2].map((k) => (p[k]! - centre[k]!) / size[k]!);
-      const axis = off.map(Math.abs).indexOf(Math.max(...off.map(Math.abs)));
+      // Which face this vertex belongs to comes from its NORMAL, not from its
+      // position. On a cube snapped to corners the position says nothing: all
+      // three coordinates are equally extreme, so "the axis it leans on" picks
+      // the same one every time and the art wraps sideways across half the
+      // faces. The normal is the donor's own, one per face of a faceted body.
+      const n = [0, 1, 2].map((k) => (bin[attr.leaf.body + rv * 20 + 8 + k]! - 128) / 127);
+      const axis = n.map(Math.abs).indexOf(Math.max(...n.map(Math.abs)));
       const [ua, va] = axis === 0 ? [1, 2] : axis === 1 ? [0, 2] : [0, 1];
       const u = (p[ua]! - lo[ua]!) / size[ua]!;
       const v = 1 - (p[va]! - lo[va]!) / size[va]!;
@@ -660,18 +677,16 @@ export function buildPandora(read: DataReader): ModFile[] {
   // is what left six probe runs looking at a shadow. So the chest's own
   // vertices are pushed out onto a box: its tessellation, its UVs, its
   // attributes, all of them the donor's, on flat faces.
-  // ONE TILE, FLOATING A LITTLE, like the artifact it stands in for: a tile is
-  // two world units, so a 1.6 cube leaves a margin, and its underside sits a
-  // quarter-unit off the ground.
-  const HALF_SIDE = 0.8;
   const sculpted = boxifyGeometry(bin, {
-    centre: [0, 0, 0.25 + HALF_SIDE],
-    half: [HALF_SIDE, HALF_SIDE, HALF_SIDE],
-  }, undefined, undefined, true);
+    centre: [0, 0, BOX_FLOAT + BOX_HALF],
+    half: [BOX_HALF, BOX_HALF, BOX_HALF],
+  }, BOX_DONOR_GROUP, BOX_DONOR_LID_GROUP);
   if (!sculpted) throw new Error('pandora: the donor geometry could not be sculpted into a box');
-  // One square per face, on the sculpted cube (see planarFaceUVs).
-  planarFaceUVs(sculpted.data, [0, 0, 0.25 + HALF_SIDE]);
-  copied.files.set(`bin/Geometries/${uid!.toUpperCase()}`, sculpted.data);
+  // One square per face, on the sculpted cube (see planarFaceUVs) — before the
+  // tilt, while the faces still line up with the axes the mapping reads.
+  planarFaceUVs(sculpted.data, [0, 0, BOX_FLOAT + BOX_HALF]);
+  const tilted = rotateGeometry(sculpted.data, BOX_TILT, [0, 0, BOX_FLOAT + BOX_HALF]);
+  copied.files.set(`bin/Geometries/${uid!.toUpperCase()}`, tilted);
   retuneGeometryDoc(copied, modelCopy, sculpted.bbox);
   solidifyMaterials(copied, modelCopy);
   paintModelTextures(copied, modelCopy, true);
