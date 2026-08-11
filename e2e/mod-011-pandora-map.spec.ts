@@ -63,16 +63,21 @@ const BOXES: (PandoraContents & { x: number; y: number; shared: string })[] = [
   { name: 'PandoraDisabled', gold: 5000, x: 24, y: 28, disable: true, shared: BOX },
   // Beside the AI: does an AI hero walk to a chest-class box on its own?
   { name: 'PandoraChestAI', gold: 5000, x: 62, y: 60, shared: BOX },
-  // The animation probes: the SKINNED cube with the artifact idle, on a
-  // windmill-type Building (the shipped proof a Building plays an AnimSet)
-  // and on an artifact — the class the rig was made for, whose pickup also
-  // vanishes the object.
-  // The still control, FIRST in the row and unmissable: the same cube with no
-  // rig at all. If it draws and the others do not, the rig is what is wrong; if
-  // none of them draw, the model is.
-  { name: 'PandoraStill', gold: 100, x: 20, y: 16, shared: `/${PANDORA_STILL_SHARED}` },
-  { name: 'PandoraMill', exp: 100, x: 36, y: 16, shared: `/${PANDORA_MILL_SHARED}` },
-  { name: 'PandoraArtifact', gold: 1000, x: 36, y: 22, shared: `/${PANDORA_ARTIFACT_SHARED}` },
+  // THE LOOKING ROW — ON THE HERO'S OWN LINE, TO HIS LEFT. He starts at 28,34
+  // and these run 24, 20, 16, 12 back from him, nearest first. Anything meant
+  // to be LOOKED at goes here: a row eighteen tiles up the map is a row nobody
+  // finds, which is the second time that has cost a run.
+  //
+  // Left to right as the hero sees them: the same cube four ways.
+  //   24  Still     — no rig named anywhere. The control.
+  //   20  Look      — the shipping box: our skeleton, our clip, chest class.
+  //   16  Mill      — the same model on a windmill-type Building.
+  //   12  Artifact  — and on an artifact, the class rigs were made for.
+  // Still draws and the rest do not → the rig. None of them draw → the model.
+  { name: 'PandoraStill', gold: 100, x: 24, y: 34, shared: `/${PANDORA_STILL_SHARED}` },
+  { name: 'PandoraLook', gold: 100, x: 20, y: 34, shared: BOX },
+  { name: 'PandoraMill', exp: 100, x: 16, y: 34, shared: `/${PANDORA_MILL_SHARED}` },
+  { name: 'PandoraArtifact', gold: 1000, x: 12, y: 34, shared: `/${PANDORA_ARTIFACT_SHARED}` },
 ];
 
 /**
