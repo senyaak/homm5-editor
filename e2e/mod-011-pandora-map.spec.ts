@@ -86,9 +86,13 @@ const DIAGS = [
   // the left of them, because a diagnostic nobody can find answers nothing.
   // Each stage carries its own glow (blue, green, gold, red in this order), so
   // the row reads across the map without hovering a single one.
-  { name: 'ShippedChest', x: 4, y: 16, shared: `/${SHIPPED_CHEST}` },
+  // ON THE HERO'S OWN LINE, immediately to his left — he starts at (28, 34)
+  // and these run 24, 20, 16, 12, 8 back from him. The boxes' line is
+  // eighteen tiles further on, which is why a row put THERE was looked for
+  // beside the hero and honestly reported as missing.
+  { name: 'ShippedChest', x: 8, y: 34, shared: `/${SHIPPED_CHEST}` },
   ...PANDORA_ART_DIAGS.map((key, i) => ({
-    name: `PandoraDiag${key}`, x: 8 + i * 4, y: 16, shared: `/${pandoraDiagShared(key)}`,
+    name: `PandoraDiag${key}`, x: 12 + i * 4, y: 34, shared: `/${pandoraDiagShared(key)}`,
   })),
   // The seven field twins have said what they had to say — shipped documents
   // draw — so they are built but no longer placed: see PANDORA_FIELD_DIAGS.
