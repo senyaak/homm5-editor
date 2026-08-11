@@ -4,6 +4,10 @@
 // piece in order, so everything included before this file is visible here and
 // nothing after it is. Statics stay statics; nothing here is a module.
 
+/** Which switch turns this file's logging on — see the bottom of core/log.c. */
+#undef LOG_UNIT
+#define LOG_UNIT core_config_rows
+
 // ---------------------------------------------------------------------------
 // Config: one row per term we add. Written by the editor, read here.
 //
@@ -39,12 +43,39 @@ typedef enum {
   STAT_TENT_HEALTH = 4,
   STAT_TENT_CLEANSE = 5,
   STAT_TENT_MANA = 6,
-  STAT_COUNT = 7
+  // PERCENT added to the damage of a spell of that element, wherever the
+  // damage is worked out - so it reaches the game's own spells as well as the
+  // mod's, exactly as the shipped elemental artifacts do. The engine keys its
+  // four on `SpellElement`; ours are the same question asked of our own ids.
+  STAT_AIR_DAMAGE = 7,
+  STAT_FIRE_DAMAGE = 8,
+  STAT_WATER_DAMAGE = 9,
+  STAT_EARTH_DAMAGE = 10,
+  // And the other side of the same question: PERCENT taken off a spell of
+  // that element, and of any spell at all for the last one. Kept in the same
+  // element order, so the arithmetic that finds a row works for both halves.
+  // Any spell at all, whatever its element - added ON TOP of whichever of the
+  // four above also matched. It does not stand in for them and does not replace
+  // them: "stronger magic" is a different claim from "stronger fire", and an
+  // artifact carrying both means both.
+  STAT_MAGIC_DAMAGE = 11,
+  STAT_AIR_RESIST = 12,
+  STAT_FIRE_RESIST = 13,
+  STAT_WATER_RESIST = 14,
+  STAT_EARTH_RESIST = 15,
+  STAT_MAGIC_RESIST = 16,
+  STAT_COUNT = 17
 } Stat;
 
 static const char *const STAT_NAMES[STAT_COUNT] = {
   "necromancy", "energy", "tent_charges", "tent_healing", "tent_health",
   "tent_cleanse", "tent_mana",
+  // In the order of the elements the engine numbers them: air 1, fire 2,
+  // water 3, earth 4 - so `STAT_AIR_DAMAGE + element - 1` is the row to look
+  // for, and there is no table to keep in step.
+  "air_damage", "fire_damage", "water_damage", "earth_damage",
+  "magic_damage",
+  "air_resist", "fire_resist", "water_resist", "earth_resist", "magic_resist",
 };
 
 /**

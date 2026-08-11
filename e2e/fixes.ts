@@ -116,6 +116,15 @@ export interface Kit {
   skills?: Skill[];
   perks?: string[];
   spells?: string[];
+  /**
+   * Artifacts he WEARS — `Editable/artifactIDs`, and the mask already covers it.
+   *
+   * Worn rather than left on the ground (`artifact` below), because what is
+   * being read off them happens in a battle and a thing in the backpack is not
+   * worn: the engine counts pieces through `CountEquipped`, which is the worn
+   * collection and nothing else.
+   */
+  artifacts?: string[];
   army: { creature: string; count: number }[];
   /** Primary stats, high enough that a battle lasts long enough to watch. */
   stats?: { offence?: number; defence?: number; spellpower?: number; knowledge?: number };
@@ -242,6 +251,28 @@ const TEST_ARMAGEDDON = 'SPELL_H3_TEST_ARMAGEDDON';
  */
 const TEST_ARMAGEDDON_AREA = 'SPELL_H3_TEST_ARMAGEDDON_AREA';
 const TEST_ARMAGEDDON_TARGET = 'SPELL_H3_TEST_ARMAGEDDON_TARGET';
+/**
+ * The ripple aimed at one stack — the reading for a cast that would REACH
+ * NOBODY, which nothing else on this map can show.
+ *
+ * The gate now refuses a spell of ours that would touch nothing, and everything
+ * else here covers the field or a patch of it, where somebody unspared is always
+ * standing. Pointed at the wizard's zombies this one has nothing to do and must
+ * be refused with the mana intact; pointed at anything living it must hit.
+ */
+const DEATH_RIPPLE_TARGET = 'SPELL_H3_DEATH_RIPPLE_TARGET';
+/** The same aimed spell with its ELEMENT changed — the reading for the ice mark. */
+const TEST_ICE_TARGET = 'SPELL_H3_TEST_ICE_TARGET';
+/** And with its element AIR — the third Master's mark, and the last unwatched one. */
+const TEST_AIR_TARGET = 'SPELL_H3_TEST_AIR_TARGET';
+/** Exactly 100 fire, whoever throws it — so a term reads without arithmetic. */
+const TEST_FLAT_FIRE = 'SPELL_H3_TEST_FLAT_FIRE';
+/** The mod's own artifact: +10% to every element's damage, −10% taken. */
+const PRISM = 'ARTIFACT_H3_ELEMENTAL_PRISM';
+/** And the magic pair on its own, so the ruler can tell the two kinds apart. */
+const FOCUS = 'ARTIFACT_H3_MAGIC_FOCUS';
+/** And one that TRADES: +4 Attack the game writes, −10% magic we do. */
+const HELM = 'ARTIFACT_H3_WAR_MAGE_HELM';
 
 /** Dark Magic, at the three masteries the four heroes spread across. */
 const DARK = (mastery: string): Skill => ({ id: 'HERO_SKILL_DARK_MAGIC', mastery });
@@ -265,7 +296,12 @@ export const HEROES: Kit[] = [
     // Master of Fire only. Empowered Spells is the WARLOCK's class perk, not
     // the Academy's — it went to the warlock with the Armageddon test, because
     // a perk whose class does not match is a perk the game does not grant.
-    perks: ['HERO_SKILL_MASTER_OF_FIRE'],
+    // AND MASTER OF ICE, so the mod's ice spell has somebody to leave its mark
+    // for. The two Master perks are one skill's, so a wizard with Destructive at
+    // expert may hold both, and the fire test is unaffected: each mark is left by
+    // the applier for that spell's own element.
+    perks: ['HERO_SKILL_MASTER_OF_FIRE', 'HERO_SKILL_MASTER_OF_ICE',
+      'HERO_SKILL_MASTER_OF_LIGHTNINGS'],
     // Armageddon to hit everything including the war machines, Fireball for a
     // single stack. Stone Skin is in the book to read the spell's own numbers
     // from, but it is not what moves the defence in this test — see the druids.
@@ -273,10 +309,50 @@ export const HEROES: Kit[] = [
     // one hero in one battle: his own Armageddon and Fireball are right beside
     // them in the book to hold each against the shipped spell it copies.
     spells: [
+      // AND TWO OF THE GAME'S OWN ICE, which are here to be watched rather than
+      // played: the mod's spells leave the Master's mark through the engine's
+      // own applier, and the ICE one takes an argument nothing in its code
+      // names. These two put a value in it that is right by construction — Ice
+      // Bolt through the single-target site with a divisor of 1, Frost Ring
+      // through the area one with the number of stacks hit — so one cast of each
+      // says what it is. Take them out again when it has a name.
+      'SPELL_ICE_BOLT', 'SPELL_FROST_RING', 'SPELL_LIGHTNING_BOLT',
+      'SPELL_CHAIN_LIGHTNING', 'SPELL_STONE_SPIKES', 'SPELL_METEOR_SHOWER',
+      // And OUR ice, which is what the mark is really being asked about: the
+      // aimed Armageddon with one field changed, its element.
+      TEST_ICE_TARGET, TEST_AIR_TARGET, TEST_FLAT_FIRE,
       'SPELL_ARMAGEDDON', 'SPELL_FIREBALL', 'SPELL_STONESKIN', DEATH_RIPPLE,
       TEST_ARMAGEDDON, TEST_ARMAGEDDON_AREA, TEST_ARMAGEDDON_TARGET,
+      // And the aimed ripple, on the hero whose foe is UNDEAD: the zombies are
+      // what it must refuse to be cast at, and his own marksmen what it must
+      // still hit.
+      DEATH_RIPPLE_TARGET,
     ],
     stats: { offence: 5, defence: 5, spellpower: 20, knowledge: 30 },
+    // BOTH KINDS, because both halves of the pattern are read on this map and
+    // both heroes cast. The four on the left are the engine's own "add to the
+    // damage of one element", asked for beside `SpellElement`; the three on the
+    // right are the same shape one door along, on the side that is being hit.
+    // They are the CONTROL a term of ours is put beside.
+    artifacts: [
+      // The ids are inconsistently prefixed in the game's own enum and these are
+      // its spellings, checked against types.xml rather than tidied.
+      'PHOENIX_FEATHER_CAPE', 'EVERCOLD_ICICLE', 'TITANS_TRIDENT',
+      'ARTIFACT_EARTHSLIDERS',
+      'ICEBERG_SHIELD', 'RING_OF_LIGHTING_PROTECTION',
+      // NOT the Dragon Flame Tongue: it is PRIMARY, and so is the Trident. Only
+      // one of them can be worn and the other sits in the backpack doing
+      // nothing — which is what it had been doing. The fire protection is on
+      // the OTHER caster instead, which is where a protection is read anyway:
+      // it belongs to whoever is being hit.
+      // And the mod's own, which is the one the engine cannot answer for.
+      // The helm is there for two questions again: it carries a number the
+      // game's own record holds (+4 Attack) beside one only the extension
+      // knows, so the hero screen and the spell book are read for the same
+      // artifact — and the one it knows is NEGATIVE, which is the only place a
+      // term of ours is asked to take something away rather than add it.
+      PRISM, FOCUS, HELM,
+    ],
     // A tent of his own, so an Armageddon has a war machine to prove itself on.
     ballista: true,
     army: [
@@ -289,11 +365,21 @@ export const HEROES: Kit[] = [
       // can: `CREATURE_DRUID` knows `SPELL_STONESKIN` (with Lightning Bolt),
       // checked in GameMechanics/Creature/Creatures/Preserve/Druid.xdb, and it
       // acts in the same round on its own initiative.
-      { creature: 'CREATURE_DRUID', count: 100 },
+      { creature: 'CREATURE_DRUID', count: 1000 },
     ],
     // Zombies, because peasants do not survive an Armageddon and this test is
     // read off a stack that is still standing.
-    foe: { ...ZOMBIES, at: { x: 8, y: 7 } },
+    // A THOUSAND PEASANTS, and both halves of that are the experiment.
+    //
+    // LIVING, because he is the hero the three Master marks are read on and the
+    // first attempt was made on zombies — a mark that did not appear then says
+    // nothing, since undead answer several rules of their own. And a THOUSAND,
+    // because a mark is read off a stack that is still standing: his casts deal
+    // six hundred and thirty apiece, which is two hundred peasants.
+    //
+    // The undead readings moved to the warlock, whose foe is zombies — see his
+    // spells below.
+    foe: { shared: PEASANTS, at: { x: 8, y: 7 }, count: 1000 },
   },
   {
     key: 'knight',
@@ -352,7 +438,14 @@ export const HEROES: Kit[] = [
     // …and the Death Ripple at the top of the school: his Dark Magic is already
     // Expert, so he is the fourth reading with no kit of his own to change.
     spells: ['SPELL_ARCANE_CRYSTAL', 'SPELL_SUMMON_HIVE', 'SPELL_BLADE_BARRIER',
-      'SPELL_ARMAGEDDON', DEATH_RIPPLE],
+      'SPELL_ARMAGEDDON', DEATH_RIPPLE,
+      // AND THE PAIR THAT READS THE REFUSAL, here because his foe is UNDEAD.
+      // The aimed ripple passes the undead over, so pointed at his zombies it
+      // must be refused with the mana intact; the aimed Armageddon passes over
+      // nobody, so at the same stack it must hit. Same shape, same target, and
+      // the only difference is what each spares. They used to be the wizard's,
+      // whose foe is a thousand peasants now.
+      DEATH_RIPPLE_TARGET, TEST_ARMAGEDDON_TARGET],
     stats: { offence: 5, defence: 5, spellpower: 15, knowledge: 40 },
     // A war machine of his own, so an empowered Armageddon has one to prove
     // itself on — that is the half of the fix you can see.
@@ -492,6 +585,46 @@ export const HEROES: Kit[] = [
  * cast, so there has to be one: a full spell book, a stack worth defending and
  * enough mana to keep casting. Nothing about him is special otherwise.
  */
+/**
+ * **A SECOND hero of the other player's, and he casts back.**
+ *
+ * The artifact half of a spell is two-sided — one hero's cape adds to the fire
+ * he throws, the other hero's shield takes from the fire he is thrown — and a
+ * single caster can only ever show one side of it. So this one carries the same
+ * two sets as the wizard and stands where he can be walked into.
+ *
+ * Spell power 20, the wizard's own, so the two are comparable and neither is
+ * the small number a percentage cannot be read off. Two thousand peasants,
+ * because both of them are casting now and the stack has to outlive the pair.
+ */
+export const ENEMY_CASTER: Kit = {
+  key: 'enemycaster',
+  heroClass: 'HERO_CLASS_WIZARD',
+  fixes: [],
+  shared: hero('Academy', 'Nur'),
+  // TWO TILES EAST OF THE WIZARD, not across the map. He was put at the far end
+  // first and playing it meant chasing him: this is a stand, and the battle
+  // being watched should be one step away.
+  at: { x: 12, y: 10 },
+  skills: [{ id: 'HERO_SKILL_DESTRUCTIVE_MAGIC', mastery: M.expert }],
+  // One per element, EARTH included — the Earthsliders are worn and had nothing
+  // to be read on.
+  spells: ['SPELL_FIREBALL', 'SPELL_ICE_BOLT', 'SPELL_LIGHTNING_BOLT',
+    'SPELL_STONE_SPIKES', 'SPELL_METEOR_SHOWER', TEST_FLAT_FIRE],
+  // His PRIMARY is the fire protection rather than the Trident, so that a fire
+  // spell thrown at his stacks has something to be halved by. The wizard across
+  // from him keeps the Trident, so the air side is still read on the map — one
+  // hero each, because one hand cannot hold both.
+  artifacts: [
+    'PHOENIX_FEATHER_CAPE', 'EVERCOLD_ICICLE', 'DRAGON_FLAME_TONGUE',
+    'ARTIFACT_EARTHSLIDERS',
+    'ICEBERG_SHIELD', 'RING_OF_LIGHTING_PROTECTION',
+    PRISM, FOCUS, HELM,
+  ],
+  stats: { offence: 5, defence: 5, spellpower: 20, knowledge: 30 },
+  army: [{ creature: 'CREATURE_PEASANT', count: 2000 }],
+};
+
 export const OPPONENT: Kit = {
   key: 'opponent',
   heroClass: 'HERO_CLASS_RANGER',

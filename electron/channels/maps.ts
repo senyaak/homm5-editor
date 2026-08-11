@@ -361,14 +361,20 @@ export function registerMaps(): void {
       registry: new Registry(data),
     };
     state.session = session;
+    // The map's tile set is derived from the terrain's layers, and a map built
+    // before the editor kept the two in step carries a stale one. Fixed on open,
+    // where it is a change the user can see.
+    //
+    // BEFORE the history is adopted, not after: the stored history is keyed to a
+    // hash of the documents, and a mutation between the hash and the first Ctrl+Z
+    // is a stack whose every patch was taken from bytes that no longer exist.
+    // Done here, a run that has to name tiles simply fails the hash and drops a
+    // history it could not have applied anyway.
+    const tilesNamed = syncMapTiles(session, layerPaths);
+    if (tilesNamed) console.log(`[load] tile set: named ${tilesNamed} tile(s) the terrain paints with`);
     // A history from a previous run is adopted only if the documents still hash
     // to what they hashed when it was written.
     loadHistory(session);
-    // The map's tile set is derived from the terrain's layers, and a map built
-    // before the editor kept the two in step carries a stale one. Fixed on open
-    // rather than quietly at save, so it is a change the user can see and undo.
-    const tilesNamed = syncMapTiles(session, layerPaths);
-    if (tilesNamed) console.log(`[load] tile set: named ${tilesNamed} tile(s) the terrain paints with`);
     const placed = scene.floors.reduce((a, f) => a + f.instances.length, 0);
     console.log(`[perf] map:load buildScene ${(tScene - tStart) | 0}ms · total ${(performance.now() - tStart) | 0}ms · geoms ${scene.geoms.length}, placed ${placed}, skipped ${skipped.length}`);
     // Named, one per line: an object that is on the map and not on the screen

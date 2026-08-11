@@ -13,8 +13,10 @@
 // same function, and first-run.ts calls it when the file is not there yet.
 
 import { execFileSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import {
+  copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync,
+} from 'node:fs';
+import { dirname, join, relative, sep } from 'node:path';
 
 import { addImport, imports } from '../exe/exe-import.ts';
 import { refuseIfRunning } from '../game/running.ts';
@@ -51,7 +53,120 @@ export function builtDll(editorRoot: string): string {
 
 /** The source it is compiled from, and the compiler that comes with the deps. */
 const NATIVE_SOURCE = join('native', 'homm5-editor.c');
+const NATIVE_DIR = 'native';
 const ZIG = join('node_modules', '@zigc', 'win32-x64', 'bin', 'zig.exe');
+
+// ---------------------------------------------------------------------------
+// WHICH FILES OF THE EXTENSION SPEAK.
+//
+// Every native source names its own switch in one line near its top —
+// `#define LOG_UNIT combat_spell_resolve` — and the compiler is handed
+// `-DH5E_LOG_<unit>=1` for the ones asked for and `=0` for all the rest. See
+// the bottom of `native/core/log.c` for what the switch does.
+//
+// THE SOURCES ARE THE REGISTER. This reads the units out of the files rather
+// than holding a list of its own, so renaming a file cannot leave a flag here
+// that quietly turns nothing on. The only list kept here is the DEFAULT, which
+// is a policy — and it is checked against what was found, so it cannot drift
+// either.
+
+/** On unless a build says otherwise: did the mod load, and did it crash. */
+export const LOG_UNITS_BY_DEFAULT = ['homm5_editor', 'core_faults'] as const;
+
+/** A unit as the file spells it, where it was found, and what it is about. */
+export interface LogUnit {
+  unit: string;
+  file: string;
+  /**
+   * The file's own first line of comment.
+   *
+   * NOT a description kept here. Every source opens with one sentence saying
+   * what it is for, and that sentence is edited by whoever edits the file — so
+   * it is the only summary that cannot go stale behind the code's back. A list
+   * of forty-five of them written anywhere else would be right for a week.
+   */
+  about: string;
+}
+
+function nativeSources(editorRoot: string, dir = join(editorRoot, NATIVE_DIR)): string[] {
+  const out: string[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (entry.name === 'build') continue;
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...nativeSources(editorRoot, path));
+    else if (entry.name.endsWith('.c')) out.push(path);
+  }
+  return out.sort();
+}
+
+/** Every `#define LOG_UNIT` in the extension's sources, in path order. */
+export function logUnits(editorRoot: string): LogUnit[] {
+  const found: LogUnit[] = [];
+  for (const file of nativeSources(editorRoot)) {
+    const rel = relative(join(editorRoot, NATIVE_DIR), file).split(sep).join('/');
+    const text = readFileSync(file, 'utf8');
+    // The first line, and only if it is a comment — a file that opens with code
+    // gets an empty summary rather than a line of C presented as one.
+    const first = text.split('\n', 1)[0]!.trim();
+    const about = first.startsWith('//') ? first.slice(2).trim() : '';
+    for (const m of text.matchAll(/^#define LOG_UNIT (\w+)/gm)) {
+      found.push({ unit: m[1]!, file: rel, about });
+    }
+  }
+  return found;
+}
+
+/**
+ * What a person typed, as the name a file uses.
+ *
+ * The unit IS the path, so every way of writing that path is accepted rather
+ * than one blessed spelling: `combat/spell-resolve`, the same with `.c`, the
+ * same with `native/` in front, or the underscored name itself. A person
+ * debugging has the file open and will type what the editor's tab says.
+ */
+export function asLogUnit(typed: string): string {
+  return typed.trim()
+    .replace(/^[./\\]+/, '')
+    .replace(/^native[/\\]/, '')
+    .replace(/\.c$/, '')
+    .replace(/[/\\-]/g, '_');
+}
+
+/**
+ * `-D` for every unit there is: 1 for the ones asked for, 0 for the rest.
+ *
+ * ALL of them, including the zeroes — `LOG_ON` pastes the unit's name onto
+ * `H5E_LOG_`, and a name nothing defined is an undeclared identifier rather
+ * than a quiet no. The compiler refusing is the right answer there, but only a
+ * unit this never saw should ever reach it.
+ */
+export function logDefines(editorRoot: string, asked: readonly string[]): string[] {
+  const units = logUnits(editorRoot);
+  const known = new Set(units.map((u) => u.unit));
+
+  for (const unit of LOG_UNITS_BY_DEFAULT) {
+    if (!known.has(unit)) {
+      throw new Error(`no native file defines LOG_UNIT ${unit}\n  LOG_UNITS_BY_DEFAULT in src/mods/extension.ts names a unit that no longer exists`);
+    }
+  }
+
+  // `none` is the build meant for playing: not the defaults either, not one
+  // string of ours left in the DLL. It is a word rather than a second flag
+  // because it belongs to the same question — who speaks — and the answer here
+  // is nobody.
+  const silent = asked.some((t) => t.trim() === 'none');
+  const on = new Set<string>(silent ? [] : LOG_UNITS_BY_DEFAULT);
+  for (const typed of asked) {
+    if (typed.trim() === 'none') continue;
+    const unit = asLogUnit(typed);
+    if (!known.has(unit)) {
+      const near = units.map((u) => u.file.replace(/\.c$/, '')).join('\n    ');
+      throw new Error(`nothing logs under "${typed}"\n  the extension's files are:\n    ${near}`);
+    }
+    on.add(unit);
+  }
+  return units.map(({ unit }) => `-DH5E_LOG_${unit}=${on.has(unit) ? 1 : 0}`);
+}
 
 /**
  * Compile the extension out of a checkout.
@@ -69,21 +184,44 @@ const ZIG = join('node_modules', '@zigc', 'win32-x64', 'bin', 'zig.exe');
  * The binary is called directly rather than through the package's `zig` shim:
  * the shim concatenates its arguments into a shell command, and this repo lives
  * under a path with spaces in it.
+ *
+ * `logging` names the files that may speak — see `logDefines`. The default is
+ * the two units that answer "did it load" and "did it crash"; anything else has
+ * to be asked for, and `['none']` builds a DLL with no logging in it at all.
  */
-export function buildExtension(editorRoot: string, log: (s: string) => void = () => {}): string {
+export function buildExtension(
+  editorRoot: string,
+  log: (s: string) => void = () => {},
+  logging: readonly string[] = [],
+): string {
   const zig = join(editorRoot, ZIG);
   if (!existsSync(zig)) {
     throw new Error(`no compiler at ${zig}\n  a checkout builds the extension; run "npm install" first`);
   }
   const source = join(editorRoot, NATIVE_SOURCE);
   const dll = builtDll(editorRoot);
+  const defines = logDefines(editorRoot, logging);
   mkdirSync(dirname(dll), { recursive: true });
-  execFileSync(zig, [
-    'cc', '-target', 'x86-windows-gnu',
-    '-shared', '-Os', '-fno-stack-protector',
-    '-o', dll, source,
-  ], { stdio: 'pipe' });
+  try {
+    execFileSync(zig, [
+      'cc', '-target', 'x86-windows-gnu',
+      '-shared', '-Os', '-fno-stack-protector',
+      ...defines,
+      '-o', dll, source,
+    ], { stdio: 'pipe' });
+  } catch (e) {
+    // WHAT THE COMPILER SAID, not what Node made of it. `stdio: 'pipe'` keeps
+    // the message out of the terminal, and the error Node throws instead prints
+    // as a page of byte arrays with the file name spelled out one character per
+    // line — which is how a two-line "undeclared identifier" cost a rebuild to
+    // read. The compiler names the file, the line and the identifier; that is
+    // the whole of what anybody wants here.
+    const said = (e as { stderr?: Buffer }).stderr;
+    throw new Error(`the extension did not compile\n\n${said ? said.toString() : String(e)}`);
+  }
+  const speaking = defines.filter((d) => d.endsWith('=1')).map((d) => d.slice('-DH5E_LOG_'.length, -2));
   log(`built ${dll} — ${statSync(dll).size} bytes`);
+  log(speaking.length ? `logging: ${speaking.join(', ')}` : 'logging: nothing — this DLL says nothing at all');
   return dll;
 }
 

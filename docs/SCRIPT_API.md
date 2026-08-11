@@ -8,7 +8,7 @@ because the shipped manuals are the only published list and they are crooked
 (mangled by `pdftotext`, no clean grouping, and not ours to reproduce). Each
 entry is in our own words, with typed arguments and a real example.
 
-**27** functions written up so far, of **207** the editor knows
+**34** functions written up so far, of **211** the editor knows
 (the rest are signatures from the manual, listed at the end — a to-do list).
 For the task view — which call for which job — see
 [RECIPES.md](RECIPES.md#which-call-for-what).
@@ -19,10 +19,10 @@ For the task view — which call for which job — see
 - [Dialog](#dialog) — 1
 - [Flow](#flow) — 7
 - [Fog of war](#fog-of-war) — 1
-- [Heroes](#heroes) — 5
+- [Heroes](#heroes) — 8
 - [Objectives](#objectives) — 2
 - [Objects](#objects) — 4
-- [Ours](#ours) — 3
+- [Ours](#ours) — 7
 - [Players](#players) — 1
 - [Triggers](#triggers) — 1
 
@@ -186,6 +186,22 @@ OpenCircleFog(x, y, fl, 4, PLAYER_1);
 
 ## Heroes
 
+### `AddHeroCreatures(heroName, creatureID, quantity)`
+
+Put creatures into a hero's army.
+
+| param | type | meaning |
+|---|---|---|
+| `heroName` | name | The hero's Name handle. |
+| `creatureID` | CREATURE_* | Which creature to add. |
+| `quantity` | number | How many. Must be positive. |
+
+```lua
+AddHeroCreatures(HERO_NAME, CREATURE_ARCHER, 20);
+```
+
+> IT DOES NOT HAPPEN YET. Like its Remove twin it builds a command and hands it to the world to run later, while GetHeroCreatures reads the army itself — so counting straight after an add counts the army as it was. `sleep` until the count changes before doing anything that depends on it.
+
 ### `GetHeroCreatures(heroName, creatureID)`
 
 Count how many of a creature are in a hero's army. · first seen in C1M1
@@ -200,6 +216,22 @@ Count how many of a creature are in a hero's army. · first seen in C1M1
 ```lua
 nFootman = GetHeroCreatures(HERO_NAME, CREATURE_FOOTMAN);
 ```
+
+### `GetHeroCreaturesTypes(heroName)`
+
+Which creatures a hero's army holds, slot by slot.
+
+| param | type | meaning |
+|---|---|---|
+| `heroName` | name | The hero's Name handle. |
+
+**Returns:** SEVEN separate numbers, not a table: the distinct creature ids in slot order, padded with zeroes. A hero with two stacks of archers and one of marksmen answers CREATURE_ARCHER, CREATURE_MARKSMAN, 0, 0, 0, 0, 0.
+
+```lua
+local a, b, c, d, e, f, g = GetHeroCreaturesTypes(HERO_NAME);
+```
+
+> The name says "types", and every instinct says table — but `for kind in GetHeroCreaturesTypes(h)` dies with "`for' table must be a table", and this game has no `type` to ask with. Read from the executable instead: it pushes seven numbers and returns 7. Collect them into a table yourself if you want to walk them.
 
 ### `GetHeroStat(heroName, statID)`
 
@@ -244,6 +276,22 @@ Whether a hero is still alive.
 ```lua
 if IsHeroAlive("Isabell") == nil then Loose(); end;
 ```
+
+### `RemoveHeroCreatures(heroName, creatureID, quantity)`
+
+Take creatures out of a hero's army.
+
+| param | type | meaning |
+|---|---|---|
+| `heroName` | name | The hero's Name handle. |
+| `creatureID` | CREATURE_* | Which creature to take. |
+| `quantity` | number | How many. Asking for more than he has takes all he has. |
+
+```lua
+RemoveHeroCreatures(HERO_NAME, CREATURE_ARCHER, 20);
+```
+
+> IT LEAVES ONE BEHIND rather than empty a hero. When the creature asked for occupies every slot he has, the engine quietly removes one less — a hero whose only stack is twenty archers keeps one archer, and says nothing. To replace a whole army: add the new creature, `sleep` until it is really there, and only then remove. Both halves matter — this call decides how many to take WHEN IT IS MADE, not when the world gets round to running it, so an add queued a line earlier has not happened yet and counts for nothing.
 
 ### `SetHeroCombatScript(heroName, scriptName)`
 
@@ -381,6 +429,48 @@ EditorWornCount(hero, H3UndeadKing_MEMBERS)
 
 > Plain Lua, defined in the mod's copy of scripts/advmap-common.lua rather than in the extension. It leans on HasArtefact's third argument, which the manuals omit and which is what makes "worn" mean worn.
 
+### `H5EAskCount(creature, becomes, most)`
+
+Put up the game's own count slider. Answers nothing — see ShowSliderDialog. · **ours** (needs the editor's extension installed)
+
+| param | type | meaning |
+|---|---|---|
+| `creature` | CREATURE_* | What the player is counting. |
+| `becomes` | CREATURE_* | What they turn into. |
+| `most` | number | The largest number the slider will reach. |
+
+```lua
+H5EAskCount(CREATURE_GRAND_ELF, CREATURE_SHARP_SHOOTER, 12);
+```
+
+> The window is the engine's own split slider (CSplitStack) driven by a controller of ours, so it has the game's frame, slider and buttons, and it goes on whichever screen the player is looking at. The picture is made from the creature NUMBER, the way the engine makes it from a stack. A second window while one is open is refused: there is one answer to collect. Prefer ShowSliderDialog, which waits.
+
+### `H5EAskedCount()`
+
+What the count slider was answered with, if it has been. · **ours** (needs the editor's extension installed)
+
+**Returns:** Nothing while the window is open; the chosen number once OK is pressed; -1 when it was closed without an answer.
+
+```lua
+local n = H5EAskedCount(); if n ~= nil then ... end;
+```
+
+### `H5EHeroSpecialization(hero)`
+
+Which specialization this hero holds, as its number. · **ours** (needs the editor's extension installed)
+
+| param | type | meaning |
+|---|---|---|
+| `hero` | name | The hero's script name. |
+
+**Returns:** The value of his specialization; nothing when there is no such living hero.
+
+```lua
+if H5EHeroSpecialization(hero) == 84 then ... end;
+```
+
+> NOTHING, not zero, on every path it cannot serve — zero is HERO_SPEC_NONE, a real answer, and a script that could not tell it from "he was not found" would act on the wrong heroes exactly on the run where the lookup broke. The hero is reached the way GetHeroLevel reaches one, and the value is the hero's own field. This is what lets a specialization of the mod GRANT something on the map rather than have it written into documents at build time.
+
 ### `RestoreDarkEnergy(player)`
 
 Fill a player's dark energy back up to its ceiling. · **ours** (needs the editor's extension installed)
@@ -394,6 +484,24 @@ RestoreDarkEnergy(PLAYER_1);
 ```
 
 > The engine has no setter for the pool: it keeps a CEILING and fills to it weekly, so "restore" is asking the player to do that refill out of turn. Any ceiling our artifacts add is included, because the refill is one of the calculations the extension extends. A player number out of range is refused in the engine's own words.
+
+### `ShowSliderDialog(creature, becomes, most)`
+
+Ask the player how many creatures to turn into another kind, and wait. · **ours** (needs the editor's extension installed)
+
+| param | type | meaning |
+|---|---|---|
+| `creature` | CREATURE_* | What the player is counting. |
+| `becomes` | CREATURE_* | What they turn into. |
+| `most` | number | The largest number the slider will reach. |
+
+**Returns:** The number the player chose, from 1 to `most`, or -1 if they closed it.
+
+```lua
+local n = ShowSliderDialog(CREATURE_GRAND_ELF, CREATURE_SHARP_SHOOTER, 12);
+```
+
+> Plain Lua, defined in the mod's copy of scripts/advmap-common.lua, over the extension's H5EAskCount and H5EAskedCount. THE WAITING IS THE WRAPPER'S: a registered function's results are counted the moment it returns, so the one that opens the window cannot answer with a number that does not exist yet. Without the extension it answers -1 rather than hanging. The slider starts at `most` and never reaches nought — that is what Cancel is for. The window draws the FIRST creature on both sides today: the engine asks its controller once and uses the one answer for both icons, so showing what they become means filling the second icon ourselves.
 
 ## Players
 
@@ -433,13 +541,12 @@ Trigger(REGION_ENTER_AND_STOP_TRIGGER, "d2", "Dialog2");
 
 ## From the manual — signature only, not yet written up
 
-180 functions the extraction found that we have not documented in our
+177 functions the extraction found that we have not documented in our
 own words yet. Signature is the manual's; when one turns up in a mission, move it
 into `src/script-api-curated.ts` with a real description.
 
 ### ADVMAP
 
-- `AddHeroCreatures(heroname, creatureID, quantity)`
 - `AddObjectCreatures(objectName, creatureID, quantity)`
 - `BlockGame()`
 - `CalcHeroMoveCost(heroName, x, y, floorID = -1)`
@@ -498,7 +605,6 @@ into `src/script-api-curated.ts` with a real description.
 - `RazeTown(townName)`
 - `RegionToPoint(regionName)`
 - `RemoveArtefact(heroname, artefactID)`
-- `RemoveHeroCreatures(heroname, creatureID, quantity)`
 - `RemoveHeroWarMachine(heroName, warMachineType)`
 - `RemoveObjectCreatures(objectName, creatureID, quantity)`
 - `ResetHeroCombatScript(heroName)`
@@ -529,7 +635,6 @@ into `src/script-api-curated.ts` with a real description.
 
 ### ARMIES
 
-- `GetHeroCreaturesTypes(heroName)`
 - `GetObjectCreaturesTypes(objectName)`
 
 ### COMBAT

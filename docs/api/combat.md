@@ -44,7 +44,7 @@ end;
 | call | does |
 |---|---|
 | `H5ETentCharge()` | gives the first aid tent one more use |
-| `H5ECombatTest()` | writes one line to `bin/homm5-editor.log` |
+| `H5ECombatTest()` | writes one line to the run's log, `bin/homm5-editor-*.log` (needs `--log lua/battle`) |
 
 Neither takes arguments, and that is a limit as well as a style: with no
 arguments `H5ETentCharge()` cannot be told whose tent, so it charges the last one
@@ -85,7 +85,8 @@ read a name the file defines until a later moment.
 Bind the console (`profiles/autoexec_a2.cfg` already has `dev_console_password`
 and `show_console` on F11). `print("…")` from your script goes there, and the
 extension echoes its own log into it as well, so the script's line and the
-extension's land in one stream. The same lines are in `bin/homm5-editor.log`.
+extension's land in one stream. The same lines are in the run's own log,
+`bin/homm5-editor-*.log`.
 
 ## Not here yet
 

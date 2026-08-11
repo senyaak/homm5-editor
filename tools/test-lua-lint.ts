@@ -44,6 +44,23 @@ ok(msgs('function f() if x then return; end; y = 1 end').length === 1, "`return;
 ok(clean('-- return; in a comment\nx = 1'), 'not in a comment');
 ok(clean('x = "return;"'), 'not in a string');
 
+// And the one that cost this feature days: `if c then return f(); end`. The call
+// runs and the block does NOT end, so the caller gets whatever the next return
+// left behind — measured in game, with the rule reaching its own last line and
+// then the statement after the `if` running too. The game's own 1096 functions
+// return a value from a nested block 65 times and a CALL never.
+console.log('\n=== returning a call from inside a block ===');
+ok(msgs('function f() if c then return g(); end; return nil end').length === 1,
+  'returning a call from inside an if is an error');
+ok(clean('function f() if c then return nil; end; return g() end'),
+  'the same call is fine as the function\'s own last statement');
+ok(clean('function f() if g() == nil then return nil; end; return 1 end'),
+  'and fine in the CONDITION, which is where it belongs');
+ok(clean('function f() if c then return PLAYERFLT_1; end; return nil end'),
+  'returning a VALUE from inside a block is what the game itself does');
+ok(clean('function f() if c then return t[1]; end; return nil end'),
+  'and an index is not a call');
+
 // The engine registers almost no standard library — read out of the executable,
 // where a callable name has to exist as a string and these do not. `dofile` is
 // the sharpest: the engine's own is `doFile`, and the lowercase spelling every
@@ -53,6 +70,11 @@ ok(msgs('tinsert(t, 1)').length === 1, 'tinsert does not exist here');
 ok(msgs('dofile("/scripts/x.lua")').length === 1, 'nor does lowercase dofile');
 ok(clean('doFile("/scripts/x.lua")'), 'but doFile does');
 ok(clean('x = pairs'), 'and a bare name that is never called is left alone');
+// Both of these were ALLOWED until the game said otherwise, an hour apart, and
+// both for the same bad reason: the name is a string in the executable.
+ok(msgs('if type(x) == "table" then y() end').length === 1, 'nor `type`, said the game');
+ok(msgs('QuestionBox(format("/a/%d.txt", n), "f", "")').length === 1, 'nor `format`, said the game');
+ok(clean('local n = floor(gold / 300); print(abs(n))'), 'but the ones scripts really call pass');
 
 console.log('\n=== the errors a parser would reject ===');
 ok(msgs('function f() return 1').includes("'function' without matching 'end'"), 'a function with no end');

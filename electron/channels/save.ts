@@ -13,7 +13,7 @@ import { writePandoraForMap } from '#electron/pandora-save.ts';
 import { saveHistory } from '#electron/edits.ts';
 import type { LocExportPayload, MapPackResult, MapSaveResult } from '#electron/ipc.ts';
 import { gameData, gameRoot } from '#electron/paths.ts';
-import { need, saveTerrain, state, syncMapTiles } from '#electron/state.ts';
+import { need, saveTerrain, state } from '#electron/state.ts';
 import type { Session } from '#electron/state.ts';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -89,11 +89,17 @@ export function registerSave(): void {
     // deleted, or the session outlived a workspace rebuild — then writing and
     // repacking would put a stub where the user's map was.
     if (!existsSync(dirname(session.mapPath))) throw new Error(`${session.mapDir} is gone — reopen the map before saving`);
-    // Last chance to keep the derived tile set honest. add-layer already does it,
-    // but a map whose layers predate that — ours did — would otherwise carry an
-    // empty <tiles> forever, and nothing else would ever notice.
-    const tilesAdded = syncMapTiles(session, session.layerPaths);
-    if (tilesAdded) console.log(`[save] tile set: named ${tilesAdded} tile(s) the terrain paints with`);
+    // The derived tile set is NOT touched here. It is kept honest where it
+    // changes — at load, and inside the recorded step that adds a layer — and
+    // doing it again at save was the one place the map document moved behind the
+    // undo stack's back: every patch on the stack was taken from bytes that no
+    // longer existed, so the next Ctrl+Z answered "patch does not fit" and the
+    // stack never recovered. It also fought the user, putting back the <tiles>
+    // entry an undo of that very layer had just taken away.
+    //
+    // The boxes are written under the same rule: their block and texts are
+    // files of their own, and the ONE thing that touches map.xdb — binding a
+    // script to a map that had none — goes through a recorded step.
     writePandora(session);
     writeFileSync(session.mapPath, session.map.save(), 'latin1');
     saveTerrain(session);

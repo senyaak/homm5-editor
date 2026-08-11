@@ -136,8 +136,11 @@ use **Encourage** on them.
 
 Two things in his kit are the instrument, and neither is obvious:
 
-- he fights **100 zombies**, because an Armageddon leaves nothing of a peasant
-  stack and this is read off a stack that is still standing;
+- he fights **a thousand peasants** — living, and enough of them to survive a
+  cast. They were 100 zombies, and the undead answer rules of their own, so a
+  mark that failed to appear on them said nothing; the count is a thousand
+  because 630 damage is two hundred peasants and a mark is read off a stack
+  that is still standing;
 - he has **100 druids**, because the defence has to be raised *while the fire
   effect is still on* — and the effect lasts **one turn**, so the hero who cast
   the Armageddon cannot also cast the buff in time. A creature caster can:
@@ -331,7 +334,7 @@ bug here", and on this fix it very nearly ended in the switch being deleted. The
 off run is the only half that can see the bug at all.
 
 The lines, when they come, are in the battle console and in
-`bin/homm5-editor.log`, in thousandths (`3600` is `3.6`):
+the newest `bin/homm5-editor-*.log`, in thousandths (`3600` is `3.6`):
 
 - `the cast moved the hero's turn to …` / `put back where it was, …` — a shot
   where the fix did something;
@@ -366,6 +369,13 @@ level, mana, damage, element, icon and visuals, and different only in those two.
 If the first covers the field, the second a patch where it is pointed, and the
 third the one stack under it, the flags are the choice.
 
+**And a fifth, «Волна смерти по цели» (357), for the gate.** The ripple's rule —
+the same three kinds passed over — aimed at one stack, so it can be pointed at a
+stack it passes over and asked to do nothing. That is what a cast reaching NOBODY
+looks like, and nothing else here can be made to show it: the other four cover
+the field or a patch of it, where something unspared is always standing. It goes
+to the wizard because his foe is undead.
+
 **Who carries it, and why those four.** One variable, four values:
 
 | hero | Dark Magic | what his reading is for |
@@ -381,10 +391,13 @@ open the book, and look before clicking:
 1. **Is the page there at all**, with the name «Волна смерти» and the plague
    icon it borrows? A missing icon and a missing spell look the same, which is
    why it borrows one.
-2. **Is it greyed out?** Not yet asked of itself — the extension answers "yes,
-   it may be cast" for a spell the engine merely does not recognise, so ours is
-   never grey on that account. It IS still grey for the engine's own reasons
-   (not enough mana, a blocked spell), and those are left alone.
+2. **Is it greyed out?** It should not be, and now for a reason rather than by
+   default: the extension answers the engine's "may this be cast" with whether
+   the cast would reach ANYBODY, so a spell that would touch nothing is refused
+   and its page greys the way Resurrection's does. The ripple covers the whole
+   field, and a field always holds somebody it does not spare, so this one is
+   bright in every battle on this map. It is still grey for the engine's own
+   reasons (not enough mana, a blocked spell), and those are left alone.
 3. **Press it, with something undead on the field.** Expect the living stacks to
    take damage and the undead to take none — and the numbers to grow with the
    caster's Dark Magic across the four heroes. A stack with anti-magic on it, or
@@ -401,8 +414,76 @@ open the book, and look before clicking:
    stack and hit that one. If all three cover the whole field, the flags are NOT
    what chooses the shape; if the area one asks where to aim and then hits
    nothing, the tiles did not reach the extension.
+6. **«Волна смерти по цели» at the WARLOCK's ZOMBIES** — the one reading on this map for a
+   cast that would reach nobody. It is the ripple's rule aimed at a single stack,
+   so pointed at the undead there is nothing for it to do: it must **refuse, and
+   the mana must still be there** afterwards.
 
-**Then send the log.** `bin/homm5-editor.log` has a line per cast and, for ours,
+   **And «Армагеддон по цели» at the SAME zombies is the control** — same shape,
+   same target, and the only difference is that it passes over nobody. It must
+   hit. Not one of his own stacks: the engine refuses damage on your own side
+   itself (`COMBAT_CANT_CAST_ONLY_FOR_HOSTILE`, measured), so that would prove
+   nothing about ours. A refusal in both is a gate saying no to everything of
+   ours; a hit in both is the question not being asked at all, and the mana is
+   short either way.
+
+7. **«Линейка (100 огнём)» in the BOOK, before anything is clicked** — the
+   reading that needs no battle math. The spell is exactly 100 damage at every
+   mastery and takes nothing from spell power or a specialization, so whatever
+   the book prints that is not 100 is somebody's term and reads by eye.
+
+   **The game's own goes first, and it is most of the number.** The wizard wears
+   the Phoenix Feather Cape, which multiplies fire by 1.5 — so the spell's 100
+   is already 150 before anything of ours is asked. Ours are added to THAT.
+
+   He wears three of them, and they do not all pull the same way: the Призма
+   стихий (+10% to each element), the Фокус магии (+10% to magic of any
+   element) and the Шлем боевого мага, which gives +4 Attack and takes
+   **−10%** of the magic back. The terms are added SIGNED: 10 + 10 − 10 = 10, and
+   the page should say **165**.
+
+   **Take the helm off and it should go UP, to 180.** That is the reading, and it
+   is the only one on this map that moves the right way by moving a piece the
+   wrong way — a term of ours that cannot go negative would leave 180 there
+   whatever is worn.
+
+   **A page reading exactly 150 means our three are not being asked at all** —
+   that is the cape on its own. It happened, on 10.08.2026: the prism was NECK,
+   the Evercold Icicle on the same hero is NECK, and the game put ours in the
+   backpack without a word. `npm run test-fix-map` refuses that arrangement now.
+
+   **And the helm is read twice, which is why it is there.** Its +4 Attack is a
+   field of the artifact's own record — the game has always been able to hold
+   it — so the hero screen's attack should be four higher whether the extension
+   is loaded or not, and the minus ten is ours and shows only on the book. One
+   artifact, two mechanisms, and neither should cost the other anything.
+
+   **And «Волна смерти» is the other reading of the same pair.** It belongs to no
+   element, so the prism does not touch it and the magic pair cancels: the
+   number should be **unchanged**, and BOTH pieces should still be listed — the
+   focus among what adds, the helm among what takes. A spell that lists neither
+   is the hook leaving early on a sum of zero, which it used to do.
+
+   **The helm should be listed on the side that TAKES, not the side that
+   gives** — the game keeps two lists, one for what raised the number and one
+   for what lowered it, and a minus of ours goes in the second. It was in the
+   first once, and read on screen as a gift.
+
+   **The last green entry and the first red one share a line, and that is the
+   GAME's**, not ours: its own template (`UI/Tooltips/CommonAdvObjTooltip/
+   spell_affections.txt`) puts the two lists next to each other with no `<br>`
+   between them, and a Phoenix Feather Cape beside an Iceberg Shield does it
+   with no mod installed at all. **Left alone on purpose** — Senya's call,
+   10.08.2026: the game is what it is. Do not go looking for it again.
+
+   **And the breakdown beside it should NAME them**, the way it names a Phoenix
+   Feather Cape: the bonus is added at the one door both a battle and the book
+   come through, and the piece responsible is written into the engine's own list
+   of reasons. A number that moves but names nobody means the value went in and
+   the reason did not; a number that does not move at all means the door was not
+   reached — the log's `[bonus]` lines say which.
+
+**Then send the log.** The newest `bin/homm5-editor-*.log` has a line per cast and, for ours,
 a line per stack it was asked about:
 
 ```
@@ -422,15 +503,25 @@ damage of ours, spell id 353
 - `shape: the whole field` / `an area` / `one stack` is what the two flags asked
   for. `shape: NONE` means the record could not be read or that branch was not
   recognised, and the spell will do nothing.
+- `it would reach nobody — the refusal stands, and the mana with it` is the gate
+  answering for us, and it is the line the sixth step is looking for. Its
+  opposites are `would reach somebody` and `nothing here can say whom it would
+  reach` — the third is a yes given because the question could not be answered,
+  and a cast that hits nothing after THAT line is a different bug from a cast
+  that hits nothing after the first.
 - `the target is spared` is our filter, before the engine's arithmetic.
 - `the engine says 0` is the ENGINE sparing it — immunity, resistance, or a
   school the target is protected from. The two are different answers and are
   named apart on purpose.
-- The load banner says `spell filter rows: 2` — the ripple's kinds and the area
-  one's tiles. Fewer means a row never reached the extension, and everything
+- The load banner says `spell filter rows: 3` — the ripple's kinds, the area
+  one's tiles, and the aimed ripple's kinds. Fewer means a row never reached the extension, and everything
   below it is meaningless.
 - `area: no tiles said for spell id 355` means the row is missing: the spell will
   ask where to aim and then cover nothing.
+- `[bonus] spell 3xx` with `an artifact of ours adds, per cent 10` is the book's
+  own door, and it fires while the book is OPEN as well as during a cast — which
+  is the whole point of it being there. `so 100 / becomes 110` beside the ruler
+  spell is the reading of step 7 in the log instead of on screen.
 
 ---
 

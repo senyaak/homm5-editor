@@ -89,6 +89,27 @@ switch (command) {
     show(addresses[0]!);
     break;
 
+  // The bytes at an address, written the way the extension writes them.
+  //
+  // Every hook in native/ names a head it refuses to install over unless the
+  // bytes still match, and those heads used to be typed out from the mnemonics
+  // in `show` — which is how `mov esi,edx` got written as 8B D2 (it is 8B F2),
+  // and the refusal only turned up in a game run. This prints the encoding, one
+  // instruction a line, so a head is copied rather than recalled.
+  case 'bytes': {
+    const count = Number(flagValue('bytes') ?? 16);
+    let taken = 0;
+    for (const ins of body(addresses[0]!, count + 16)) {
+      if (taken >= count) break;
+      const at = pe.offsetOf(ins.address)!;
+      const raw = [...pe.buf.subarray(at, at + ins.length)]
+        .map((b) => `0x${b.toString(16).toUpperCase().padStart(2, '0')},`).join(' ');
+      console.log(`  ${raw.padEnd(30)} // ${ins.text}`);
+      taken += ins.length;
+    }
+    break;
+  }
+
   case 'calls': {
     const found = pe.callsTo(addresses[0]!);
     console.log(`${found.length} references to 0x${addresses[0]!.toString(16)}`);

@@ -26,8 +26,23 @@ const EXTRACTED = join(ROOT, 'src', 'script', 'script-api-extracted.json');
 const OUT = join(ROOT, 'src', 'script', 'script-api.json');
 const DOC = join(ROOT, 'docs', 'SCRIPT_API.md');
 
-/** The completion source shape — what script:context serves to the editor. */
-interface ApiFn { name: string; params: string; group: string; summary?: string }
+/**
+ * The completion source shape — what script:context serves to the editor.
+ *
+ * MORE THAN A SIGNATURE for the ones we have written up: what each parameter
+ * means, what comes back and one line of it in use. The write-up already exists
+ * — it is what docs/SCRIPT_API.md is made of — and an author reading it inside
+ * the editor is the whole point of having written it.
+ */
+interface ApiFn {
+  name: string;
+  params: string;
+  group: string;
+  summary?: string;
+  args?: { name: string; type: string; desc: string }[];
+  returns?: string;
+  example?: string;
+}
 
 const extracted: ApiFn[] = existsSync(EXTRACTED)
   ? JSON.parse(readFileSync(EXTRACTED, 'utf8')) as ApiFn[]
@@ -41,7 +56,18 @@ const curatedParams = (fn: ApiDoc): string =>
 const byName = new Map<string, ApiFn>();
 for (const fn of extracted) byName.set(fn.name, fn);
 for (const fn of CURATED) {
-  byName.set(fn.name, { name: fn.name, params: curatedParams(fn), group: fn.category, summary: fn.summary });
+  byName.set(fn.name, {
+    name: fn.name,
+    params: curatedParams(fn),
+    group: fn.category,
+    summary: fn.summary,
+    // The notes stay in the doc: they are paragraphs, and a completion popup is
+    // not where a paragraph is read. What travels is what answers "how do I
+    // call this" without leaving the editor.
+    args: fn.params.map((p) => ({ name: p.name, type: p.type, desc: p.desc })),
+    returns: fn.returns,
+    example: fn.example,
+  });
 }
 const api = [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));
 writeFileSync(OUT, JSON.stringify(api, null, 1) + '\n');

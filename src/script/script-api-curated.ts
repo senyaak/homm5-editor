@@ -71,6 +71,63 @@ export const CURATED: ApiDoc[] = [
       + "in the engine's own words.",
   },
   {
+    name: 'ShowSliderDialog', category: 'Ours', source: 'extension',
+    summary: 'Ask the player how many creatures to turn into another kind, and wait.',
+    params: [
+      { name: 'creature', type: 'CREATURE_*', desc: 'What the player is counting.' },
+      { name: 'becomes', type: 'CREATURE_*', desc: 'What they turn into.' },
+      { name: 'most', type: 'number', desc: 'The largest number the slider will reach.' },
+    ],
+    returns: 'The number the player chose, from 1 to `most`, or -1 if they closed it.',
+    example: 'local n = ShowSliderDialog(CREATURE_GRAND_ELF, CREATURE_SHARP_SHOOTER, 12);',
+    notes: 'Plain Lua, defined in the mod\'s copy of scripts/advmap-common.lua, over the '
+      + 'extension\'s H5EAskCount and H5EAskedCount. THE WAITING IS THE WRAPPER\'S: a '
+      + 'registered function\'s results are counted the moment it returns, so the one '
+      + 'that opens the window cannot answer with a number that does not exist yet. '
+      + 'Without the extension it answers -1 rather than hanging. The slider starts at '
+      + '`most` and never reaches nought — that is what Cancel is for. The window draws '
+      + 'the FIRST creature on both sides today: the engine asks its controller once '
+      + 'and uses the one answer for both icons, so showing what they become means '
+      + 'filling the second icon ourselves.',
+  },
+  {
+    name: 'H5EHeroSpecialization', category: 'Ours', source: 'extension',
+    summary: 'Which specialization this hero holds, as its number.',
+    params: [{ name: 'hero', type: 'name', desc: "The hero's script name." }],
+    returns: 'The value of his specialization; nothing when there is no such living hero.',
+    example: 'if H5EHeroSpecialization(hero) == 84 then ... end;',
+    notes: 'NOTHING, not zero, on every path it cannot serve — zero is HERO_SPEC_NONE, a '
+      + 'real answer, and a script that could not tell it from "he was not found" would '
+      + 'act on the wrong heroes exactly on the run where the lookup broke. The hero is '
+      + "reached the way GetHeroLevel reaches one, and the value is the hero's own field. "
+      + 'This is what lets a specialization of the mod GRANT something on the map rather '
+      + 'than have it written into documents at build time.',
+  },
+  {
+    name: 'H5EAskCount', category: 'Ours', source: 'extension',
+    summary: "Put up the game's own count slider. Answers nothing — see ShowSliderDialog.",
+    params: [
+      { name: 'creature', type: 'CREATURE_*', desc: 'What the player is counting.' },
+      { name: 'becomes', type: 'CREATURE_*', desc: 'What they turn into.' },
+      { name: 'most', type: 'number', desc: 'The largest number the slider will reach.' },
+    ],
+    example: 'H5EAskCount(CREATURE_GRAND_ELF, CREATURE_SHARP_SHOOTER, 12);',
+    notes: 'The window is the engine\'s own split slider (CSplitStack) driven by a '
+      + 'controller of ours, so it has the game\'s frame, slider and buttons, and it '
+      + 'goes on whichever screen the player is looking at. The picture is made from '
+      + 'the creature NUMBER, the way the engine makes it from a stack. A second window '
+      + 'while one is open is refused: there is one answer to collect. Prefer '
+      + 'ShowSliderDialog, which waits.',
+  },
+  {
+    name: 'H5EAskedCount', category: 'Ours', source: 'extension',
+    summary: 'What the count slider was answered with, if it has been.',
+    params: [],
+    returns: 'Nothing while the window is open; the chosen number once OK is pressed; '
+      + '-1 when it was closed without an answer.',
+    example: 'local n = H5EAskedCount(); if n ~= nil then ... end;',
+  },
+  {
     name: 'EditorWornCount', category: 'Ours', source: 'extension',
     summary: 'How many of these artifacts the hero is WEARING.',
     params: [
@@ -177,6 +234,55 @@ export const CURATED: ApiDoc[] = [
     ],
     returns: 'The number of that creature the hero has (0 if none).',
     example: 'nFootman = GetHeroCreatures(HERO_NAME, CREATURE_FOOTMAN);',
+  },
+  {
+    name: 'GetHeroCreaturesTypes', category: 'Heroes', source: 'manual',
+    summary: "Which creatures a hero's army holds, slot by slot.",
+    params: [{ name: 'heroName', type: 'name', desc: "The hero's Name handle." }],
+    returns:
+      'SEVEN separate numbers, not a table: the distinct creature ids in slot order, '
+      + 'padded with zeroes. A hero with two stacks of archers and one of marksmen '
+      + 'answers CREATURE_ARCHER, CREATURE_MARKSMAN, 0, 0, 0, 0, 0.',
+    example: 'local a, b, c, d, e, f, g = GetHeroCreaturesTypes(HERO_NAME);',
+    notes:
+      'The name says "types", and every instinct says table — but `for kind in '
+      + 'GetHeroCreaturesTypes(h)` dies with "`for\' table must be a table", and this '
+      + 'game has no `type` to ask with. Read from the executable instead: it pushes '
+      + 'seven numbers and returns 7. Collect them into a table yourself if you want '
+      + 'to walk them.',
+  },
+  {
+    name: 'AddHeroCreatures', category: 'Heroes', source: 'manual',
+    summary: "Put creatures into a hero's army.",
+    params: [
+      { name: 'heroName', type: 'name', desc: "The hero's Name handle." },
+      { name: 'creatureID', type: 'CREATURE_*', desc: 'Which creature to add.' },
+      { name: 'quantity', type: 'number', desc: 'How many. Must be positive.' },
+    ],
+    example: 'AddHeroCreatures(HERO_NAME, CREATURE_ARCHER, 20);',
+    notes:
+      'IT DOES NOT HAPPEN YET. Like its Remove twin it builds a command and hands '
+      + 'it to the world to run later, while GetHeroCreatures reads the army itself '
+      + '— so counting straight after an add counts the army as it was. `sleep` '
+      + 'until the count changes before doing anything that depends on it.',
+  },
+  {
+    name: 'RemoveHeroCreatures', category: 'Heroes', source: 'manual',
+    summary: "Take creatures out of a hero's army.",
+    params: [
+      { name: 'heroName', type: 'name', desc: "The hero's Name handle." },
+      { name: 'creatureID', type: 'CREATURE_*', desc: 'Which creature to take.' },
+      { name: 'quantity', type: 'number', desc: 'How many. Asking for more than he has takes all he has.' },
+    ],
+    example: 'RemoveHeroCreatures(HERO_NAME, CREATURE_ARCHER, 20);',
+    notes:
+      'IT LEAVES ONE BEHIND rather than empty a hero. When the creature asked for '
+      + 'occupies every slot he has, the engine quietly removes one less — a hero '
+      + 'whose only stack is twenty archers keeps one archer, and says nothing. '
+      + 'To replace a whole army: add the new creature, `sleep` until it is really '
+      + 'there, and only then remove. Both halves matter — this call decides how '
+      + 'many to take WHEN IT IS MADE, not when the world gets round to running it, '
+      + 'so an add queued a line earlier has not happened yet and counts for nothing.',
   },
   {
     name: 'GetHeroStat', category: 'Heroes', source: 'manual', since: 'C1M1',

@@ -4,6 +4,10 @@
 // piece in order, so everything included before this file is visible here and
 // nothing after it is. Statics stay statics; nothing here is a module.
 
+/** Which switch turns this file's logging on — see the bottom of core/log.c. */
+#undef LOG_UNIT
+#define LOG_UNIT qol_fix_snare_crash
+
 // ---------------------------------------------------------------------------
 // WHAT CRASHES. The snare asks whatever stepped on it for the creature standing
 // there — a virtual getter at slot +0x6C, called four times over — and

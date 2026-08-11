@@ -59,6 +59,11 @@ import { NULL_CREATURE, creatureRoot, setCreatureRefs, writeStats } from './crea
 import { serialize, setAttr } from '../format/xml.ts';
 import { parseTypeSpec } from '../schema/typespec.ts';
 import { COMMON_SCRIPT, patchCommonScript, setScriptFiles } from './artifact-scripts.ts';
+import type { ModAbility } from './artifact-scripts.ts';
+import {
+  QUESTION_ALL, QUESTION_ALL_TEXT, SHARPSHOOTER_LUA, TRAINABLE,
+  questionFor, questionText, trainingLua,
+} from './sharpshooter-training.ts';
 import {
   COMBAT_STARTUP, combatRuntimeFile, patchCombatStartup, skillCombatScripts, skillMapScripts,
   skillScriptFiles,
@@ -326,10 +331,34 @@ export function buildCreatureMod(mod: CreatureMod, read: DataReader): BuildRepor
   const scripts = [...setScriptFiles(sets), ...skillScriptFiles(skills)];
   for (const f of scripts) files.push({ path: f.path, data: Buffer.from(f.text, 'latin1') });
   const onTheMap = skillMapScripts(skills);
-  if (setScriptFiles(sets).length || onTheMap.length) {
+  // A specialization that GIVES a spell is the third thing that wants this file:
+  // the giving happens on the map, at run time, because that is the only way the
+  // engine ever learns of the connection — see abilityLines. A pairing whose
+  // spell is not in the mod is DROPPED rather than written: the script would name
+  // something nothing declares, and a broken global script breaks every map.
+  const abilities: ModAbility[] = (mod.specializations ?? []).flatMap((spec) => {
+    const spell = spec.ability ? (mod.spells ?? []).find((x) => x.id === spec.ability) : undefined;
+    return spell ? [{ spec, spell }] : [];
+  });
+  // A SPELL THAT CARRIES ITS OWN TWO HOOKS is the fourth. The training spell is
+  // the one that exists so far, and it is written whenever the mod carries the
+  // creature it trains INTO — because that is the whole of what it needs from
+  // the mod. Its questions go in beside it: the player reads them, so they are
+  // content, not code.
+  const trains = (mod.creatures ?? []).some((c) => c.id === SHARPSHOOTER_LUA);
+  const spellScript = trains ? trainingLua() : '';
+  if (trains) {
+    for (const t of TRAINABLE) {
+      files.push({ path: questionFor(t.id), data: utf16(questionText(t)) });
+    }
+    files.push({ path: QUESTION_ALL, data: utf16(QUESTION_ALL_TEXT) });
+  }
+  if (setScriptFiles(sets).length || onTheMap.length || abilities.length || spellScript) {
     files.push({
       path: COMMON_SCRIPT,
-      data: Buffer.from(patchCommonScript(mustRead(read, COMMON_SCRIPT), sets, onTheMap), 'latin1'),
+      data: Buffer.from(
+        patchCommonScript(mustRead(read, COMMON_SCRIPT), sets, onTheMap, abilities, spellScript),
+        'latin1'),
     });
   }
   // Carried for the trigger runtime as well as for the scripts: a skill may want

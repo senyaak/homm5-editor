@@ -489,7 +489,7 @@ fixed game reporting that nothing was wrong with it. Two things came out of it:
 ## Watching them in a battle
 
 The patches are verified as bytes and the extension logs what it installed
-(`bin/homm5-editor.log`), but "the barbarian loses the stats when he forgets the
+(the newest `bin/homm5-editor-*.log`), but "the barbarian loses the stats when he forgets the
 skill" is a thing to watch in a battle, and nothing automates that.
 
 What there is instead is a map and a list: `e2e/fix-001-rules-map` builds the

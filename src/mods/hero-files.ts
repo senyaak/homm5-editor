@@ -85,6 +85,16 @@ function ownPictures(h: HeroSpec, p: HeroPaths): { files: ModFile[]; hrefs: Part
  * the wrong place for a default: a specialization of OURS knows what it is
  * called, and every hero holding it should say the same thing without anyone
  * retyping it. So this fills the three fields and steps back.
+ *
+ * WHAT IT DOES NOT DO IS HAND OUT THE ABILITY. A specialization whose gift is a
+ * spell could have it written into every holder's `spellIDs` right here, in one
+ * line, with no code anywhere — and that would be the wrong answer twice over.
+ * The engine would know nothing about the specialization at all: the connection
+ * would exist only in files this build happened to write, so a hero it did not
+ * build would hold the specialization and get nothing. The gift is handed out at
+ * RUN TIME instead, by the script the mod generates, over
+ * `H5EHeroSpecialization` — see artifact-scripts.ts and
+ * native/lua/hero-specialization.c.
  */
 function withSpecialization(h: HeroSpec, specs: readonly ModSpecialization[]): HeroSpec {
   const spec = specs.find((s) => s.id === h.specialization);

@@ -69,11 +69,24 @@
 #include "combat/tent-charges.c"
 #include "combat/tent-health.c"
 #include "combat/tent-mana.c"
+// A spell is four files, in the order each needs the one before it: the document
+// first, because everything else reads it; then the cast being watched, which is
+// where the question about a stack's abilities is written; then the switches the
+// executable was compiled against; and last what a cast of OURS does, which uses
+// all three. See combat/spell-cast.c for what each is for.
+#include "combat/spell-record.c"
 #include "combat/spell-cast.c"
+#include "combat/spell-switches.c"
+#include "combat/spell-resolve.c"
 #include "qol/borderless.c"
 #include "qol/own-profile.c"
 #include "qol/quick-split.c"
 #include "core/call.c"
+#include "core/faults.c"
+#include "lua/values.c"
+#include "lua/hero-specialization.c"
+#include "lua/adv-cast.c"
+#include "ui/count-window.c"
 #include "qol/quick-split-gestures.c"
 #include "qol/stack-plates.c"
 #include "qol/combat-ai.c"
@@ -83,21 +96,55 @@
 #include "qol/fix-payback.c"
 #include "qol/fix-dragon-form.c"
 #include "qol/fix-empowered-armageddon.c"
+#include "qol/fix-mass-spell-element.c"
 #include "qol/fix-book-of-power.c"
 #include "qol/fix-master-of-fire.c"
 #include "qol/fix-imbue-ballista.c"
+
+/**
+ * Which switch turns this file's logging on — see the bottom of core/log.c.
+ *
+ * AFTER the includes, not with the others at the top: every file above sets
+ * `LOG_UNIT` to its own name as it is spliced in, so a definition before them
+ * would be overwritten forty-five times and what follows would log under
+ * whichever file happened to be last in the list.
+ *
+ * What logs here is the roll-call below — which hooks went in and which did
+ * not. It is the answer to "did the mod load at all", so a build that says
+ * nothing else should still say this: `--log homm5-editor` is on by default.
+ */
+#undef LOG_UNIT
+#define LOG_UNIT homm5_editor
 
 BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   (void)reserved;
   if (reason != DLL_PROCESS_ATTACH) return TRUE;
   DisableThreadLibraryCalls(self);
   find_our_dir(self);
+  // Before the first line: which file this run writes to, and room for it.
+  start_this_run_log();
   log_line("--- homm5-editor extension loaded");
+  // Before anything of ours runs: a fault inside the game is otherwise a module
+  // and an offset in the Windows event log, and working back from that costs a
+  // launch each time. This changes nothing about the crash — it writes down the
+  // registers and the return addresses first.
+  install_fault_report(self);
   load_config();
   if (g_rowCount || g_skillRowCount) install_hooks();
   // Independent of the config: the functions are ours to offer whether or not
   // any artifact asks for a bonus, and a script that calls one is a different
   // user from an artifact that carries one.
+  //
+  // Rows first, then the copy: what a feature further down the file adds to the
+  // table has to be in it before the engine is handed the table.
+  install_count_window();
+  install_hero_specialization();
+  // BEFORE the table is copied, not after: this adds a row of its own
+  // (H5EAnswer, which is how a script's verdict comes back), and a row added
+  // after the copy is a function the game's Lua has never heard of. The map
+  // said so in as many words — "Value was NIL when getting global with name
+  // 'H5EAnswer'".
+  install_adv_cast();
   install_lua_functions();
   // The same argument, one context over — and the one thing here that a battle
   // has to answer for itself, so it says what it saw whether or not anything
@@ -122,19 +169,27 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   // registered for costs one comparison in the fired path. Hooked always, and
   // the log says so once.
   if (install_caster_mana()) log_line("combat caster mana hook installed");
-  // What a battle actually casts, by id — the first half of carrying a spell of
-  // our own. It says whether an id the executable never heard of reaches the
-  // engine's resolver at all, which is the question everything above a new spell
-  // rests on. Unconditional, like the battle scripts and for the same reason: a
-  // log that has to be switched on says nothing on the run that mattered.
-  install_spell_log();
+  // What a battle actually casts, by id, and what a cast of ours then DOES.
+  // Unconditional, like the battle scripts and for the same reason: a log that
+  // has to be switched on says nothing on the run that mattered.
+  // The accessors FIRST: everything under them reads a spell's document through
+  // these two, and the guard below patches the getter's own head — after which
+  // it would no longer recognise it.
+  install_spell_record();
   install_cast_command_log();
   install_cast_gate_log();
   install_gate_refusal_log();
+  install_spell_record_guard();
   install_spell_damage_filter();
+  install_spell_worth_bonus();
   install_spell_power();
+  install_spell_text_probe();
   install_area_shape();
   install_damaging_spell();
+  // LAST of the spell hooks, because it is the one that takes the cast: the
+  // tiles an area spell covers and the worth of a damage spell have to be ours
+  // before the resolver walks a field with them.
+  install_our_resolver();
   if (rows_for(STAT_TENT_HEALTH) && install_machine_health()) {
     log_line("first aid tent health hook installed");
   }

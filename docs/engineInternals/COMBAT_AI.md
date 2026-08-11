@@ -153,5 +153,6 @@ node tools/test-fixes.ts --game "<install>"
 ## What is not done
 
 Proving the *effect* in a running battle. The patches are verified as bytes and
-the extension logs how many went in (`bin/homm5-editor.log`), but "the enemy hero
+the extension logs how many went in (build with `--log qol/combat-ai`, then read
+the newest `bin/homm5-editor-*.log`), but "the enemy hero
 now casts" is a thing to watch in a game, and nothing here automates that.

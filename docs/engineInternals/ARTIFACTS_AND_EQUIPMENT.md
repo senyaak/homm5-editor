@@ -239,7 +239,7 @@ artifact does not get, spelled out:
 | `0xb6d890` | Staff of Vexings |
 | `0xb6e300` | Unicorn Horn Bow, Shawl of the Great Lich |
 | `0xb76ea2` | Twisting Nether |
-| `0xb85e40` | Titan's Trident, Evercold Icicle, Phoenix Feather Cape, Earthsliders |
+| `0xb85e40` | Titan's Trident, Evercold Icicle, Phoenix Feather Cape, Earthsliders — and the one door BOTH the damage and the spell book come through, see SPELLS.md |
 | `0xb869b0` | Iceberg Shield, Dwarven Smithy Hammer, Ring of Lightning Protection, Dragon Flame Tongue, Bearhide Wraps, Rigid Mantle |
 | `0xb86fd0` | Ring of Death, the four Dwarven Mithral pieces, Staff of the Magi, Plate Mail of Stability, Boots of Interference |
 | `0xc1c940` | Golden Sextant |

@@ -4,6 +4,10 @@
 // piece in order, so everything included before this file is visible here and
 // nothing after it is. Statics stay statics; nothing here is a module.
 
+/** Which switch turns this file's logging on — see the bottom of core/log.c. */
+#undef LOG_UNIT
+#define LOG_UNIT lua_battle
+
 // ---------------------------------------------------------------------------
 // Saying something to a battle's script.
 //
@@ -208,7 +212,12 @@ static void fire_trigger(int kind, int argc, int a, int b, int c) {
   const char *tail = "); end;";
   while (*tail) line[at++] = *tail++;
   line[at] = 0;
-  if (g_firedLogged++ < 16) log_text("battle fires: ", line);
+  // NOT RATIONED, for the reason spell-cast.c gives at length: a session holds
+  // several battles and the allowance was always spent before the cast being
+  // watched. The counter stays only so the line can say which firing this is.
+  g_firedLogged++;
+  log_num("battle fires #", g_firedLogged);
+  log_text("   ", line);
   g_runLine(g_battleHost, NULL, line);
 }
 

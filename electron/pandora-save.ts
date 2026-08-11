@@ -15,6 +15,7 @@
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { record } from '#electron/edits.ts';
 import { readScriptFileName, readSidecarText, sidecarPath, writeSidecarText } from '#electron/sidecar.ts';
 import type { Session } from '#electron/state.ts';
 import { setPath } from '#src/schema/tree.ts';
@@ -54,10 +55,18 @@ function mapScriptFile(s: Session): string {
       '<?xml version="1.0" encoding="UTF-8"?>\n<Script>\n'
       + `\t<FileName href="${lua}"/>\n\t<ScriptText/>\n</Script>\n`);
   }
+  // INSIDE A RECORDED STEP, because this is the one thing here that touches
+  // map.xdb. Saving used to sync the tile set the same way and it was the one
+  // place the document moved behind the undo stack's back — every patch on the
+  // stack had been taken from bytes that no longer existed, and the next Ctrl+Z
+  // answered "patch does not fit" for good. A step costs an entry in the
+  // history and keeps the stack whole.
+  //
   // Through setPath, which knows a `<MapScript/>` is a REFERENCE: an empty one
   // carries no href to copy the shape from, and an attribute assigned by hand
   // is not marked dirty and never reaches the file.
-  setPath(s.map.desc, ['MapScript'], `${wrapper}#xpointer(/Script)`, true);
+  record(s, 'bind a script for the boxes', { map: true }, () =>
+    setPath(s.map.desc, ['MapScript'], `${wrapper}#xpointer(/Script)`, true));
   return lua;
 }
 

@@ -195,7 +195,7 @@ This is the first one that writes **the game's own code**, so:
 - That refusal is **silent from the outside**: the game plays on with the AI it
   always had. So the addresses are checked against the installed executable by
   `tools/test-fixes.ts` rather than left to be noticed in a battle, and
-  `bin/homm5-editor.log` says how many of the three went in.
+  a build made with `--log qol/combat-ai` says how many of the three went in.
 
 ## The rules fixes
 
@@ -283,10 +283,15 @@ out to contradict the ability's own description and was dropped by its author.
 ## What testing this needs
 
 The extension only does anything in a running game, so a change here is proved
-by launching one and reading `bin/homm5-editor.log` — every hook says whether it
-installed, and the interesting ones say what they saw. Three of the findings
-above (the third window, `CW_USEDEFAULT`, the style being re-applied) came out
-of that log contradicting what seemed obvious.
+by launching one and reading the newest `bin/homm5-editor-*.log` — a hook built
+with `--log` on its own file says whether it installed, and the interesting ones
+say what they saw. Three of the findings above (the third window,
+`CW_USEDEFAULT`, the style being re-applied) came out of that log contradicting
+what seemed obvious.
+
+**Build it loud first, or the log will be empty.** These files are silent unless
+named — `npm run build-native -- --log qol/borderless` then
+`npm run install-native`. See [LOG.md](../LOG.md).
 
 The panel is covered without a game by `e2e/qol-001-panel.spec.ts`. It sets
 `HOMM5_DOCUMENTS` at a tree of its own — without that, running the suite would

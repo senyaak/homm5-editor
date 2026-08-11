@@ -82,11 +82,43 @@ const gateSpell = (): { check: () => void; rewatch: () => void } => (gate ??= re
   ok: 'sm-ok',
   missing: 'sm-missing',
   fields: { files: 'sm-file', id: 'sm-id', name: 'sm-name' },
-  // The one the record cannot express and the build refuses: `IsAreaAttack`
-  // says a spell hits an area and never says which, so a spell carrying the flag
-  // with no tiles is a cast that spends its mana and touches nobody.
-  extra: () => ($select('sm-reach').value === 'area' && !tiles.size
-    ? ['the tiles it covers — an area spell with none covers nothing'] : []),
+  // The two the record cannot express and the build refuses.
+  //
+  // TILES: `IsAreaAttack` says a spell hits an area and never says which, so a
+  // spell carrying the flag with no tiles is a cast that spends its mana and
+  // touches nobody.
+  //
+  // THE HIT VISUAL: `<visuals>` is read by index — the first plays once where
+  // the cast happens, the second on every stack the spell touches. A spell that
+  // reaches more than one and names only the first draws one effect in the
+  // middle of the field and nothing on the creatures it kills, which from the
+  // player's chair is a spell that does not work. Found that way, in game.
+  extra: () => {
+    const missing: string[] = [];
+    const reach = $select('sm-reach').value;
+    if (reach === 'area' && !tiles.size) {
+      missing.push('the tiles it covers — an area spell with none covers nothing');
+    }
+    // AND ONLY IF IT HURTS ANYBODY: `IsAimed` false means "aims at nobody",
+    // which an adventure spell says too. Asking about reach alone refused a
+    // spell that costs gold and trains elves for having no hit animation.
+    const hurts = MASTERIES.some((_, i) => Number($input(`sm-dmg-${i}-base`).value) > 0
+      || Number($input(`sm-dmg-${i}-per`).value) > 0);
+    if (hurts && reach !== 'stack' && !$input('sm-visual-2').value.trim()) {
+      missing.push('the Hit visual — without it nothing shows on the stacks it touches');
+    }
+    return missing;
+  },
+  // The controls the rule above READS, so that changing one re-asks it. Only
+  // the three in `fields` are bound by default; the damage boxes are drawn and
+  // redrawn per form, which is what `watch` and `rewatch` exist for.
+  //
+  // Without this the gate held whatever verdict it reached last: a form opened
+  // empty answers "deals no damage, needs no hit", and filling the damage in
+  // never asked again. The e2e caught it — the button stayed live on a spell
+  // with damage and no hit — which is the whole reason the rule is tested
+  // through the window and not only under it.
+  watch: '#sm-damage input, #sm-visual-1, #sm-visual-2',
 }));
 
 // --- the amounts ------------------------------------------------------------

@@ -1,18 +1,19 @@
-// Stage 007 of the mod chain: the Sharpshooter Test map, in three sittings.
+// Stage 007 of the mod chain: the Sharpshooter Test map.
 //
-// One spec grew to six tests and eight hundred lines, so it lives as a folder
-// now, the way the C1M1 reconstruction does — numbered files over one on-disk
-// map, each launching the editor and reopening what the one before left:
+// `sharpshooter-map.spec.ts` beside this file builds it the way a person would,
+// holds it against the hand-made original, packs it, and then adds what the
+// original never had — Gem with her army, the stones and the ladder of foes,
+// and one of every building the mod carries, placed and working.
 //
-//   001-original    build the map the way a person would, hold it against the
-//                   hand-made original, pack it
-//   002-proving-ground   Gem with her army, the stones and the ladder of foes
-//   003-buildings   one of every building the mod carries, placed and working
+// IT WAS THREE FILES (001-original, 002-proving-ground, 003-buildings), and
+// three files meant three editors started, three fixtures installed and the same
+// map opened three times to add to it. One sitting does the lot; the order was
+// never optional anyway, since each part builds on the one above.
 //
-// What is HERE is what all three share: the map's plan (the literal constants
-// that read like the plan of the map), the reference paths, the helpers that
-// drive placement, and the two doors every sitting enters through — launch,
-// and reopen-through-the-picker.
+// What is HERE is what the spec and anything after it share: the map's plan (the
+// literal constants that read like the plan of the map), the reference paths,
+// the helpers that drive placement, and the two doors a sitting enters through —
+// launch, and reopen-through-the-picker.
 //
 // The hand-made original is the REFERENCE: it is unpacked once into _tmp and
 // nothing here ever writes to it. The mod the map is made of — the
@@ -63,6 +64,17 @@ export const SHARPSHOOTER = 'CREATURE_H3_SHARPSHOOTER';
 export const GEM = '/Heroes/H3Gem/H3Gem.(AdvMapHeroShared).xdb';
 /** Clear of the town, the three heroes and the neutral stacks. */
 export const GEM_AT = { x: 44, y: 40 };
+
+/**
+ * And Gelu, beside her — the hero whose SPECIALIZATION gives him a spell.
+ *
+ * He is on this map so the stand can be played rather than only built: the
+ * giving happens on the map, at run time, over `H5EHeroSpecialization`, so a
+ * hero who exists in the mod and stands nowhere proves nothing. Two tiles clear
+ * of Gem, which is a hero's own footprint plus one.
+ */
+export const GELU = '/Heroes/H3Gelu/H3Gelu.(AdvMapHeroShared).xdb';
+export const GELU_AT = { x: 46, y: 40 };
 
 /**
  * What a class needs from its PLACEMENT before it does anything.
@@ -173,6 +185,24 @@ export const PLACES = {
 /** What Gem is placed with — three stacks of the mod's own creature. */
 export const GEM_ARMY = [250, 250, 250];
 
+/**
+ * What GELU is placed with: every shooter in the game, two hundred of each.
+ *
+ * His specialization turns elves into sharpshooters, so the stand has to hold
+ * both the ones it may touch and the ones it may not — and both lines of them,
+ * human and elf, because "which of these counts as an elf" is exactly the rule
+ * the feature has to get right. Six stacks of seven slots, and the seventh is
+ * left empty ON PURPOSE: the training needs somewhere to put what it makes.
+ */
+export const GELU_ARMY: readonly [string, number][] = [
+  ['CREATURE_ARCHER', 200],
+  ['CREATURE_MARKSMAN', 200],
+  ['CREATURE_LONGBOWMAN', 200],
+  ['CREATURE_WOOD_ELF', 200],
+  ['CREATURE_GRAND_ELF', 200],
+  ['CREATURE_SHARP_SHOOTER', 200],
+];
+
 export const STONE = '/MapObjects/Learning_Stone.(AdvMapBuildingShared).xdb';
 export const STONES: readonly [number, number][] = [
   [28, 34], [30, 34], [32, 34], [34, 34], [36, 34], [38, 34],
@@ -255,7 +285,7 @@ export async function openSharp(ed: Launched): Promise<void> {
   const { page } = ed;
   if (((await page.locator('#title').textContent()) ?? '').includes(NAME)) return;
   expect(existsSync(join(MAP_DIR, 'map.xdb')),
-    `the rebuilt map is on disk — 001-original builds it (app log tail:\n${ed.log.slice(-15).join('\n')})`).toBe(true);
+    `the rebuilt map is on disk — the first test of this file builds it (app log tail:\n${ed.log.slice(-15).join('\n')})`).toBe(true);
   await page.locator('#cats .chip', { hasText: 'All' }).click();
   await page.locator('#search').fill(NAME);
   const row = page.locator('#maplist .m', { hasText: `${NAME}.${MOD_EXT.map}` }).first();

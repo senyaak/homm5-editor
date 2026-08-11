@@ -10,6 +10,7 @@ import { api } from '#core/ipc.ts';
 import { state } from '#core/state.ts';
 import type { Floor3D } from '#core/state.ts';
 import type { Instance } from '#src/scene/payload.ts';
+import type { FxTransfer } from '#src/scene/effects.ts';
 import { tileCenter } from '#core/coords.ts';
 import { geomFx } from '#viewport/geoms.ts';
 import { createFxSystem } from '#viewport/particles.ts';
@@ -29,29 +30,57 @@ export async function loadFx(floors: Floor3D[]): Promise<void> {
   if (!geomFx.size) return;
   const uids = [...new Set([...geomFx.values()].flat().map((f) => f.uid))];
   const bank = await api.fx(uids);
-  const m4 = new THREE.Matrix4();
   let built = 0;
-  for (const fl of floors) {
-    let at = 0;
-    for (const inst of fl.instances) {
-      const list = geomFx.get(inst.g);
-      if (!list) continue;
-      at++;
-      for (const f of list) {
-        const baked = bank[f.uid];
-        if (!baked?.particles.length) continue;
-        m4.makeRotationZ(inst.r).setPosition(tileCenter(inst.x), tileCenter(inst.y), inst.z);
-        const { system } = createFxSystem(f, baked, m4, (at * 0.37) % 3, uFxTint);
-        system.mesh.userData.inst = inst;
-        system.mesh.userData.uid = f.uid; // for fxSystems() debugging
-        system.mesh.visible = state.showFx; // effects arrive async; respect the toggle they land under
-        fl.fx.push(system);
-        fl.objGroup.add(system.mesh);
-        built++;
-      }
+  for (const fl of floors) built += buildFx(fl, bank);
+  if (built) console.log(`[perf] effects: ${built} system(s) over ${uids.length} unique effect(s)`);
+}
+
+/** Spawn the systems for the objects standing on one floor, from a fetched bank. */
+function buildFx(fl: Floor3D, bank: Record<string, FxTransfer>): number {
+  const m4 = new THREE.Matrix4();
+  let at = 0, built = 0;
+  for (const inst of fl.instances) {
+    const list = geomFx.get(inst.g);
+    if (!list) continue;
+    at++;
+    for (const f of list) {
+      const baked = bank[f.uid];
+      if (!baked?.particles.length) continue;
+      m4.makeRotationZ(inst.r).setPosition(tileCenter(inst.x), tileCenter(inst.y), inst.z);
+      const { system } = createFxSystem(f, baked, m4, (at * 0.37) % 3, uFxTint);
+      system.mesh.userData.inst = inst;
+      system.mesh.userData.uid = f.uid; // for fxSystems() debugging
+      system.mesh.visible = state.showFx; // effects arrive async; respect the toggle they land under
+      fl.fx.push(system);
+      fl.objGroup.add(system.mesh);
+      built++;
     }
   }
-  if (built) console.log(`[perf] effects: ${built} system(s) over ${uids.length} unique effect(s)`);
+  return built;
+}
+
+/**
+ * Take a floor's effects down and put them back for the objects standing on it
+ * NOW — the undo path, which replaces the whole instance list.
+ *
+ * A system is bound to the instance object it was built for (`userData.inst`),
+ * and undo hands back freshly parsed instances, so every existing system belongs
+ * to an object that no longer exists. Left alone they keep burning where they
+ * were — a campfire whose placement was undone goes on smoking over bare grass,
+ * and it cannot be moved or deleted, because nothing on the map claims it — while
+ * the objects that came back stand cold.
+ *
+ * The old ones go SYNCHRONOUSLY, before the fetch: the caller has just rebuilt
+ * the batches, and a frame drawn between here and the bank arriving must not
+ * show effects for objects that are gone.
+ */
+export async function reloadFx(fl: Floor3D): Promise<void> {
+  for (const s of fl.fx) { fl.objGroup.remove(s.mesh); s.dispose(); }
+  fl.fx.length = 0;
+  if (!geomFx.size) return;
+  const uids = [...new Set(fl.instances.flatMap((i) => geomFx.get(i.g) ?? []).map((f) => f.uid))];
+  if (!uids.length) return;
+  buildFx(fl, await api.fx(uids));
 }
 
 /** The one clock every effect follows (phase offsets are per system). */

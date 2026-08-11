@@ -108,6 +108,10 @@ function specOf(p: ModsInstallSpecPayload): SpecializationSpec {
     ...(p.effect?.stat && percent
       ? { effect: { stat: p.effect.stat as SpecializationStat, percentPerLevel: percent } }
       : {}),
+    // And the other kind of gift: a spell every holder knows. Carried here for
+    // the reason the percentage is dropped here — the field that stops being
+    // passed along is always the one nobody remembers to check.
+    ...(p.ability?.trim() ? { ability: p.ability.trim() } : {}),
   };
 }
 

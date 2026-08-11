@@ -119,6 +119,190 @@ one.
   its last member, and an area with a hole in it — or two blobs painted in one
   go — fills instead of refusing with "Selection has holes".
 
+## 0.9.0 — 2026-08-10
+
+### Added
+
+- **The extension logs only the file you asked about, and each launch writes its
+  own file.** Every one of the mod's forty-five sources now carries its own
+  switch, and a build cuts out the rest:
+
+  ```
+  npm run build-native -- --log combat/spell-resolve,lua/battle
+  npm run build-native -- --list-log
+  npm run build-native -- --log none
+  ```
+
+  What was wrong: all 395 places logged, always. A single spell cast wrote some
+  fifteen lines per stack on the field, each one opening and closing the file
+  and — in a battle — also being spoken into the game's own console through its
+  Lua interpreter. The game stuttered, sometimes stopped, and the log itself was
+  unreadable: hundreds of lines about everything at once, appended to the same
+  file every launch since the mod was installed, with nothing marking where one
+  run ended and the next began.
+
+  Now the file is named for the moment the run started
+  (`bin/homm5-editor-20260808-143012.log`, the last ten kept), and a build says
+  only what it was asked to. It is the preprocessor doing the cutting, so a file
+  nobody named leaves nothing behind at all — not the call and not the sentence.
+  `--log none` builds a DLL with no logging in it whatsoever; without it, two
+  things still speak, because they are how anybody learns the mod is there and
+  what it did when it stopped: the roll-call of which hooks installed, and the
+  crash report.
+
+- **A specialization can give an ABILITY, not only a number.** Pick a spell of
+  the mod's in the Ability box, and every hero holding that specialization knows
+  it — beside whatever he already knew, on every map, whoever he is and however
+  he got there.
+
+  It is given ON THE MAP rather than written into the heroes the editor builds,
+  and that is the whole of it: the mod ships a line in the game's global script
+  that asks each hero which specialization he holds and teaches him what it
+  promises. A hero the editor never wrote — one the map placed, one hired from a
+  tavern — is given it just the same. Asking is the extension's half
+  (`H5EHeroSpecialization`), because none of the game's own 306 script functions
+  can say what specialization a hero has.
+
+  It is a spell of the mod's rather than one of the four the engine keeps for
+  this (`SPELL_ABILITY_CUSTOM1…4`) because four is a compiled ceiling in two
+  places, and an entry in an enum the mod already appends to has none.
+
+  Seen in game 07.08.2026: Gelu, whose specialization is his own, opens his book
+  on the adventure map and the page is there.
+
+- **A spell of your own does what your map's script says.** Clicking its page
+  calls `onSpellCast(spell)`, and the gate that decides whether the page is even
+  live asks `checkSpellCastable(spell)` — so the rules of a feature (is there
+  anybody to train, is there gold) are written in Lua, where an author can write
+  them, rather than compiled into the extension.
+
+  Two functions come with it: `H5EAnswer(value)`, which is how a script's
+  verdict gets back to the extension (running a line returns nothing, so the
+  line calls it), and `H5ELog(number)`, which puts a number in the extension's
+  log instead of the game's console — for a script measuring the engine.
+
+  A map that defines neither is left exactly as it was.
+
+- **The linter knows this game has no `type` and no `format`.** Neither is in
+  the Lua the engine registers, alongside `getn`, `tostring` and `tonumber`, and
+  a script that calls one dies where it stands. Both had been allowed because
+  the strings exist in the executable — which proves only that something
+  mentions the name. The allowed list now says, name by name, what backs it:
+  `print`, `abs`, `sqrt`, `random`, `length` and `floor` are called by the
+  game's own scripts or were measured in a run; the rest rest on that same weak
+  reading, and say so.
+
+- **The training spell is part of the mod now, not of a tool run by hand.** Its
+  script and the questions the player reads are written by the build, whenever
+  the mod carries the creature the training produces. Until this they reached
+  the game through `_tmp/probe-train.ts`, which is to say a mod an editor built
+  was a mod with a dead spell page in it and nothing said so. `mod-009` reads
+  the packed archive and checks the whole chain fits together — creature, spell,
+  both hooks, the dispatch by number, and a priced question per trainable kind.
+
+- **A spell of a mod carries its own two hooks, and both branch on its number.**
+  "May it be cast" and "what the click does" are the spell's, and the script that
+  reaches them dispatches by the spell's id — so a mod with two spells does not
+  have the second one answering the first one's page and running the first one's
+  cast. The extension remembers a verdict PER SPELL for the same reason: one
+  remembered answer belonged to whichever question came last.
+
+- **The mod's sharpshooter is raised as a vampire lord**, not the skeleton archer
+  the donor gives. Read out of the game's own raise table rather than reasoned
+  about: all fifteen shipped shooters raise into skeleton archers and not one of
+  them is tier 4; the two tier-4 shooters that exist are the succubus and her
+  upgrade, and they raise into vampires and vampire lords. It is now edited in
+  the creature dialog like every other difference from the donor, instead of
+  being inherited silently.
+
+- **A map's rule can tell whose spell it is.** `H5EIsCastingHero(heroName)`
+  answers whether that name is the hero who cast, and `H5ECasterKnown()` whether
+  anybody is casting at all — so a rule about a hero's army and a hero's gold is
+  about the right hero. The script offers the names it already has out of
+  `GetPlayerHeroes`; nothing is read off the hero, which is what a first attempt
+  spent a run failing to do.
+
+  The second of those matters as much as the first: without it a rule that could
+  not find the caster fell back to any hero who could train, which lit one
+  hero's page for another hero's archers — and then trained them. Knowing that
+  somebody is casting turns that into a refusal.
+
+- **A script can find out how full a hero's army is.** `H5EArmySlots(heroName)`
+  answers how many of his seven slots are taken — the one thing about an army
+  the engine tells nobody: `GetHeroCreatures` sums a kind over the whole army and
+  `GetHeroCreaturesTypes` throws duplicates away, so a hero with two stacks of
+  archers and five other kinds reads as six things in seven slots. His army
+  looked roomy, the creature a script added had nowhere to go, and the game
+  stopped to ask the player what to throw away.
+
+- **A map's rule is now actually listened to.** There is no synchronous way into
+  a map's Lua: `DoString` builds a thread called "Buffer thread" and leaves it
+  for the scheduler, and so do triggers and `startThread`. So a gate that asked
+  the rule and read the answer in the next breath read nothing, every time, and
+  drew every page on the fallback — which is yes, and which is the whole of "the
+  page is live with nothing to train", "live with no gold" and "live with no
+  room".
+
+  The rule keeps itself current instead: a thread of its own recomputes the
+  verdict and hands it over, and the gate answers with the last thing it heard.
+  Everything that runs per tick now keeps quiet unless its answer changes, so
+  the log stays a record of what happened rather than a tally of ticks. And
+  `H5EAnswer` says what it recorded, so a rule that never answered can never
+  again look like a rule that said yes.
+
+  It took a bracket either side of the call, a thread id and a sequence number on
+  every line, and the whole chain logged rather than one link of it — two
+  readings of the same log had contradicted each other twice before that.
+
+- **A map rule that falls over now closes its own page** instead of leaving it
+  open. A script error takes the whole line with it, so a `checkSpellCastable`
+  that asks the engine one wrong question answers nothing — and nothing used to
+  read as the same yes a map without any rule gets. The line the extension runs
+  answers no first and replaces it only on success. A map that defines no rule
+  is still free to cast.
+
+- **A spell of your own can be cast on the adventure map.** The page in the book
+  is live rather than greyed, and it takes a click. The map keeps its own gate
+  (`CanCastHere`), and both the book and the cast command ask it — so a page
+  that could not be pressed and a click that did nothing were one refusal, not
+  two. It is a switch on the spell's NUMBER with two ranges in it, and every id
+  a mod appends falls outside them, silently.
+
+  That same switch is where the four-custom-abilities ceiling lives, for anyone
+  who has run into it: `cmp eax,3`, two instructions, unmovable by data.
+
+  Ours answers for itself; the game's own spells keep whatever the engine said,
+  reasons and all. Seen in game 07.08.2026.
+
+- **A crash inside the game names itself.** The extension now writes the
+  registers, both module bases and the return addresses still on the stack into
+  its log before a fault is handed on. It changes nothing about the crash — what
+  it changes is that "homm5-editor.dll +0x1f9dc" in the Windows event log no
+  longer costs a launch to turn into a place in the code.
+
+- **A script can ask the player how many creatures.**
+  `AskTroopCount(most, from, creature)` puts up the game's own count slider — the
+  one a split uses, frame, slider and buttons alike — and answers with the number
+  the player settled on, or -1 if they closed it. It is the engine's window
+  driven by a controller of ours, so nothing about it is new to look at; what is
+  new is that a map's Lua can raise it, which the shipped script vocabulary has
+  no way to do.
+
+  The window draws the creature the script names, a `CREATURE_…` like any other
+  in a script. That turned out to need no army at all: the engine's own
+  controller makes the picture out of one field of the stack it holds — which
+  creature — so a number is the whole of what it needs.
+
+  Seen in game 07.08.2026: the slider opens on the adventure map with the
+  creature drawn on it, and OK comes back to the script as a number.
+
+  Underneath it are two functions of the extension's, `H5EAskCount` and
+  `H5EAskedCount`, and the reason there are two is worth knowing if you write
+  against them directly: a registered function's results are counted the moment
+  it returns, so the one that opens a window cannot answer with a number that
+  does not exist yet. The waiting is Lua's, one `sleep` at a time, and
+  `AskTroopCount` is that loop written once.
+
 - **Spells of your own, from a window.** A page in the spellbook the game will
   let a hero cast: a name, a description, an icon, a school and a rank, the mana
   it costs, the four damage entries the four masteries use, and what resistances
@@ -142,6 +326,69 @@ one.
 
 ### Changed
 
+- **A spell of the mod's now resolves ITSELF.** Until now a cast of one jumped
+  into the middle of a shipped spell's branch — the whole-field shape was Unholy
+  Word's six instructions, the area shape Fireball's, the single target Magic
+  Arrow's. It worked, and it cost what borrowing somebody's stack frame costs:
+  three crashes in a row on casts of *Unholy Word itself*, byte-identical
+  registers each time, and one cast of the mod's running the per-stack filter 178
+  times because it was inside a loop written for another spell.
+
+  The walk is now the extension's own (`native/combat/spell-resolve.c`) and the
+  engine's routines are called through **their own entry points** — every stack
+  on the field, may a spell touch this one, what it is worth, what it does to a
+  stack, the stack losing creatures and the combat log line. So resistance,
+  anti-magic, school protection and the log are all still the game's; only the
+  choice of whom to hurt is ours.
+
+  **`SPELL_ARMAGEDDON` and `SPELL_UNHOLY_WORD` are not touched at all** — not
+  borrowed, not detoured, not read. What this buys beyond the crashes: a spell
+  can now be authored to hurt whom the mod chooses, because choosing is a loop
+  rather than a case compiled into the executable.
+
+  Still missing, and named rather than hidden: a spell of the mod's leaves no
+  Master of Fire (or Ice, or Storms) mark. The four appliers that leave one do
+  not agree on how many arguments they take, so each needs its own reading.
+
+- **A spell is four files in the extension, not one.** `spell-cast.c` had grown
+  to 1198 lines and held four subjects — a spell's document, the cast being
+  watched, the switches taught about the mod's ids, and a fix that belonged with
+  the other QoL fixes entirely. It is now `combat/spell-record.c`,
+  `combat/spell-cast.c`, `combat/spell-switches.c`, `combat/spell-resolve.c` and
+  `qol/fix-mass-spell-element.c`, each under 600 lines.
+
+  Nothing moved but text: every extracted block is byte-identical to what it
+  replaced, and the only code change is two accessor lookups moving into an
+  install of their own that runs first. `engine_code` — "this address still holds
+  the bytes we measured, hand it back" — moved to `core/detour.c` beside `detour`
+  and `overwrite_code`, which is the family it belongs to.
+
+- **Two new checks that stand in for a launch of the game.**
+  `test-native-anchors` takes every address the extension recognises by its
+  bytes — 45 of them — and reads those bytes out of the executable on disk. The
+  extension already refuses to touch a place that does not match, but that
+  refusal only happens while the game is running, and by then the feature is
+  quietly missing and somebody has to read a log. And `test-training-plan` puts
+  the training rule through sixteen thousand armies against a model of the
+  engine's own habits — seven slots, the removal that will not empty a hero, and
+  the commands that happen later than they are asked for. It found a hole the
+  rule still had: a training that had to take the whole stack was still offered
+  on a slider that started at one, and taking one would have made the game ask
+  the player which creature to throw away.
+
+- **The script reference now says what the army functions really do**, both
+  learned the expensive way. `GetHeroCreaturesTypes` hands back SEVEN NUMBERS
+  rather than a table — the distinct creature ids of the army in slot order,
+  padded with zeroes — so walking it with `for` dies, and no `type` exists in
+  this game to ask it what it gave. `RemoveHeroCreatures` will not empty a hero:
+  when the creature asked for occupies every slot he has, it silently removes one
+  less. And neither it nor `AddHeroCreatures` edits the army at all — each hands
+  the world a command to run later, while `GetHeroCreatures` reads the army
+  itself. Both facts together are nastier than either: counting after an add
+  counts the army as it was, and the "leave one behind" clamp is decided when the
+  command is MADE, so add-then-remove written back to back still leaves one. Add,
+  `sleep` until the count really changes, then remove.
+
 - **The suite spends less of its time opening the same things twice.** Four
   specs opened the shipped map A2C1M1 four times — thirteen seconds apiece — to
   ask four questions about the one scene it produces; a fifth opened it twice
@@ -164,6 +411,197 @@ one.
   back in front, for when watching a spec run is the point.
 
 ### Fixed
+
+- **And an ice or air spell of the mod's leaves its mark too.** All three
+  elements now behave the way the game's own do: fire takes the target's
+  defence down, ice freezes it, and air slides it back down the initiative bar
+  — each watched beside the game's own spell of the same element, cast by the
+  same hero at the same stack.
+
+  The two that were left take arguments fire's does not. Air's is a switch that
+  decides whether the mark is left at all; ice is given the caster's spell power,
+  which is what the freeze's length is worked out from, and the number of stacks
+  the cast reached, which it is divided between. That last one could not be read
+  out of the code with any confidence, so the extension was made to print what
+  the game itself passes there, and the value named itself.
+
+- **A fire spell of the mod's burns like the game's own.** A hero with Master of
+  Fire cast one and nothing happened beyond the damage: the perk takes the
+  target's defence down, and the mod's spells were the one kind of fire in the
+  game that left the target untouched.
+
+  The entry a cast leaves behind is built by one of four routines — three of them
+  an element each, and it is inside those that the element's Master perk is asked
+  for and its mark left. The extension called the element-less one for
+  everything, because the three were believed to take different arguments. They
+  do not: read at the place the game calls all four in a row, every one of them
+  is handed the same caster and the same target in the same order.
+
+  Which one runs is now asked of the spell's own record — the same question every
+  elemental rule in the game asks, so a spell that says "fire" is fire to the
+  resistances, to the protections and to the perk alike. Ice and storms are not
+  in yet and say so in the log: they take arguments the others do not, and a call
+  written for the wrong one is a crash somewhere else entirely.
+
+- **An artifact of a mod's can make magic stronger, or take the sting out of
+  it.** Ten bonuses join the ones an artifact could already carry: a percentage
+  added to the damage of each of the four elements, a percentage taken off each
+  of them on the wearer's own stacks, and one of each for magic of any element
+  at all. They are offered in the artifact window beside necromancy and the
+  first aid tent's, and an artifact may carry as many as it likes.
+
+  "Stronger fire" and "stronger magic" are two different claims, so an artifact
+  carrying both means both, and they add up rather than one standing in for the
+  other.
+
+  A bonus that TAKES away is filed with the game's own protection artifacts
+  rather than with its capes, so a cursed piece reads as one on screen instead
+  of being listed as a gift.
+
+  **And the spell book says so.** The bonus is added where the game adds its own
+  Phoenix Feather Cape's — one call before the damage, in the only place both a
+  battle and the book go through — so the number in the book already has it in,
+  and the piece that did it is named in the breakdown beside the game's own. Put
+  the artifact on and the damage in the book goes up; take it off and it goes
+  back down.
+
+  It applies to the game's own spells as well as a mod's — an artifact that says
+  fire is stronger makes fire stronger whoever threw it. What the game already
+  did on its own, and does for a mod's spells too without being told, is add to
+  the damage of one element from four of its own artifacts and halve it from
+  three others: it asks the spell's own document which element it is, and never
+  its number. That is why a mod's fire spell has always burned like the game's.
+
+- **An area spell of the mod's hits what it lands on.** It asked where to aim,
+  covered the tiles it was authored with — and damaged nobody, whoever was
+  standing there.
+
+  The extension was reading the list of covered stacks off the cast, where the
+  game had been seen to leave one. It leaves one for its own spells and not for
+  the mod's: a shipped area spell works out what it covers inside its own branch
+  of the resolver, and a spell the executable was never compiled against has no
+  such branch. So the list was empty every time, whether or not anybody stood
+  under it.
+
+  It is now asked for, through the same routine the game uses to answer it —
+  which is the one the mod's own tile shape already lives inside, so what it
+  lays for the mod's spell is the shape the spell was authored with. Cast and
+  refusal go through that one door, so what a spell says it will reach and what
+  it then hits cannot disagree.
+
+- **A spell of the mod's no longer takes the mana for a cast that hits nobody.**
+  Casting one where it would touch nothing spent the mana and the hero's turn
+  and did nothing at all — and the page in the spellbook stayed bright, so
+  nothing warned anybody first.
+
+  The extension had been answering the engine's "may this be cast" with a flat
+  yes, from one fact: that the number is the mod's. The engine refuses a spell
+  of its own for exactly this, and out of exactly this question — for a spell
+  with no target that check ends in a switch on the number whose case for a mass
+  spell builds the list of stacks the cast would reach and answers "that list is
+  not empty". The mod's spells now answer the same way, out of the walk the cast
+  itself is about to make, so the two can never disagree.
+
+  It is asked of a yes as well, and that half was learned in a battle: the
+  engine only refuses silently when a spell has no target at all, and answers
+  yes by itself for one that aims — so catching the refusal alone left every
+  aimed spell of the mod's able to be cast into nothing, which is the case a
+  person meets first.
+
+  A spell that would reach nobody is refused, the mana stays, and because the
+  same answer is given to a question as to a cast, the book greys the page by
+  itself — the way it greys Resurrection when there is nothing to raise. Where
+  the answer cannot be worked out at all, it is still yes: a wrong no is a spell
+  that can never be cast, a wrong yes costs one cast. One case is still answered
+  that way and named in docs/engineInternals/SPELLS.md — an area spell asked
+  about from the book, whose covered stacks are not the book's to hand over.
+
+- **`mass-spell-element-fix` could have corrupted the stack.** It made one call
+  site dispatch to whichever of three element appliers a spell's document named —
+  and those three do not take the same number of arguments (`ret 10h`, `14h`,
+  `18h`) while the site pushes four. A water or air mass spell would have
+  returned four or eight bytes short, and the crash would have landed somewhere
+  with nothing to do with spells.
+
+  It never fired: the only elemental spell that reaches that routine is
+  Armageddon, and Armageddon is fire. The fix now asks the document the one
+  question the site can act on — *is this damage fire* — and leaves the `call`
+  the game wrote. Found while giving the mod's spells a resolver of their own.
+
+- **The battle log names the hook, not a deed.** Its lines opened with "cast",
+  and a run in which the only click was opening a spellbook read as eleven
+  spells being cast one after another — what the engine had actually done was
+  walk the hero's whole Dark school, level by level, asking the gate about each.
+
+  Every line now opens with where it came from — `[gate]`, `[cast command]`,
+  `[resolver]`, `[worth]`, `[damage]` — and the two gate cases are named by what
+  is true of them rather than by a guess: "inside a cast command", or "no
+  command", which is the book, the AI weighing a move, or a tooltip, and this
+  hook cannot tell those three apart.
+
+- **A mod's spell page is grey again when there is nothing to do with it.** The
+  training spell stayed pressable over an army with nothing left to train, and
+  pressing it did nothing — the rule inside was refusing correctly the whole
+  time, and its answer never got out.
+
+  The rule's dispatch had been written as `if spell == 353 then return
+  H5ETrainMayCast(); end;`, and **returning the result of a CALL from inside a
+  nested block is a shape this engine's Lua does not carry out**: the call
+  happens and the block does not end. A run measured it exactly — the rule
+  reached its own last line (the kind and the count both written down, the army
+  printed) and then the statement AFTER the `if` ran as well, so what the caller
+  received was never the rule's answer but whatever the second `return` left
+  behind, which read as yes every time. The game's own scripts settle what is
+  safe: across 47 shipped scripts and 1096 functions they return a value from a
+  nested block 65 times and the result of a call exactly never
+  (`tools/nested-returns.ts` counts it). The dispatch has one exit now, and
+  `src/script/lua-lint.ts` refuses the shape — in the editor's script editor
+  too, so a map of your own cannot acquire it.
+
+- **The training rule stops warning the player in red.** Five lines of
+  `Value was NIL when getting global` on screen, one per name the rule keeps its
+  reasons in. Assigning `nil` to a global does not CREATE it, so every one of
+  them was read before it existed; they are born with values now. The verdict is
+  also remembered per spell rather than in one variable for all of them — with
+  two spells the second found the number already equal to its own answer and
+  said nothing, leaving its page whatever the first one had left it.
+
+- **Undo gives the picture back, not just the objects.** Ctrl+Z re-parses the map
+  and the renderer rebuilds the floor from the instance list that comes back —
+  and the rebuild dropped everything that had been done to those objects after
+  they were first made. Shadows went: the roles that put a mesh in the shadow map
+  are handed out once, when the floor is built, so the rebuilt draws neither cast
+  nor received, and every object on the map stood in flat sun with nothing under
+  it. Effects went twice over: a particle system belongs to the instance it was
+  built for, so the ones from before the step kept burning for objects that were
+  gone — a campfire whose placement you undid went on smoking over bare grass, and
+  nothing on the map claimed it, so it could not be moved or deleted — while the
+  objects that came back stood cold. Also restored: the ground-projected
+  materials (the abandoned mine's earth mound), and the designer point lights
+  the objects carry, which the main process was not sending back at all.
+
+  Three of the same miss elsewhere, since it was never really about undo but
+  about anything made after its floor: an animated object placed from the palette
+  never cast a shadow, nor did the first object of a model the map did not
+  already have, and a batch that outgrew itself took every copy of its model out
+  of the shadow map on the way.
+
+- **Saving no longer kills undo.** After a Save, Ctrl+Z could answer `patch does
+  not fit: document is 49636 bytes, patch expects 49556` and never work again for
+  that map. Save was tidying the map's derived tile list on its way out — naming
+  the ground tiles the terrain paints with — which is an edit, and one the undo
+  stack knew nothing about: every patch on it had been taken from bytes that no
+  longer existed. The tidy-up happens where the tiles actually change, at open and
+  inside the recorded step that adds a layer, so Save now only writes. It was also
+  fighting you, putting back the entry an undo of that very layer had just taken
+  out.
+
+  Two things behind it are fixed as well. A step that cannot be applied now leaves
+  the documents and the stack exactly as they were, instead of moving the cursor
+  and half the documents — the press after the failure used to reach for a patch
+  belonging to a state the map had never been in. And a map is put in step with
+  its tile list BEFORE a history from a previous run is adopted, not after, so a
+  stored history is either usable or dropped rather than adopted and then broken.
 
 - **A mass spell damages in the element its record names.** A spell that hits the
   whole field lands through one of four functions — air, fire and water, which

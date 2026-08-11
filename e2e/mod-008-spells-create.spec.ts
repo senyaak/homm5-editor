@@ -26,6 +26,7 @@ import { test, expect } from '@playwright/test';
 import { DATA, launchEditor } from './launch.ts';
 import type { Launched } from './launch.ts';
 import { modGameRoot, readInstalledMod } from './mods.ts';
+import { settled } from './trace.ts';
 import { EFFECTS_FILE, readSpellRows } from '../src/mods/artifact-effects.ts';
 import { abilityNumbers } from '../src/mods/ability-files.ts';
 import { NOT_LIVING, SHIPPED_SPELLS } from '../src/mods/spells.ts';
@@ -52,6 +53,15 @@ const SPELL = {
   cross: [{ x: 0, y: 0 }, { x: -1, y: 0 }, { x: 1, y: 0 }, { x: 0, y: -1 }, { x: 0, y: 1 }],
   /** Per mastery, both parts — the shape every shipped damage spell has. */
   damage: [10, 15, 20, 25],
+  /**
+   * BOTH, because this one hurts more than one stack.
+   *
+   * The list is read by index and the two are different jobs: the first plays
+   * once where the cast happens, the second on EVERY stack the spell touches.
+   * Borrowed from shipped spells, which is what a mod does until it has art.
+   */
+  castVisual: '/GameMechanics/Spell/Combat_Spells/DarkMagic/Plague.(SpellVisual).xdb#xpointer(/SpellVisual)',
+  hitVisual: '/GameMechanics/Spell/Combat_Spells/DarkMagic/Unholy_Word_Hit.(SpellVisual).xdb#xpointer(/SpellVisual)',
 };
 
 test.beforeAll(async () => {
@@ -199,6 +209,24 @@ test('builds the spell, and both halves of it land where they belong', async () 
   await page.locator('#sm-spares-notliving').click();
   await expect(page.locator('#sm-spares-note')).toContainText('undead');
 
+  // THE SECOND REFUSAL WITH NO FIELD TO STAR, and it is the one that cost three
+  // launches. `<visuals>` is read by index: the first plays once where the cast
+  // happens — the middle of the field for a spell that aims at nobody — and the
+  // second on EVERY stack it touches. With only the first, a spell of the mod's
+  // killed eight stacks while showing one effect in the middle and nothing on
+  // any of them, which from the player's chair is a spell that does not work.
+  //
+  // Asked only of spells that HURT more than one: an adventure spell aims at
+  // nobody too, and the first version of this rule refused Train Sharpshooters
+  // for having no hit animation for stacks it never touches.
+  await expect(page.locator('#sm-ok'), 'a damaging area spell needs the hit').toBeDisabled();
+  await expect(page.locator('#sm-missing')).toHaveText(/Hit visual/);
+  await page.locator('#sm-visual-1').fill(SPELL.castVisual);
+  await expect(page.locator('#sm-ok'), 'and the cast alone is not enough').toBeDisabled();
+  await page.locator('#sm-visual-2').fill(SPELL.hitVisual);
+  await expect(page.locator('#sm-ok')).toBeEnabled();
+  await expect(page.locator('#sm-missing')).toHaveText('');
+
   await page.locator('#sm-ok').click();
   await expect(page.locator('#sm-note')).toContainText('installed', { timeout: 120_000 });
   await expect(page.locator('#spelledit')).toBeHidden();
@@ -226,6 +254,9 @@ test('builds the spell, and both halves of it land where they belong', async () 
   // parser had.
   expect(s!.damage).toEqual(SPELL.damage.map((n) => ({ base: n, perPower: n })));
   expect(s!.area).toEqual(SPELL.cross);
+  // BOTH visuals, in the order the engine reads them: index 0 is the cast, index
+  // 1 is what lands on every stack. The order is the whole of their meaning.
+  expect(s!.visuals).toEqual([SPELL.castVisual, SPELL.hitVisual]);
   // A SET, not a sequence: the kinds come out of the list in the order the game
   // declares them, and the filter asks "is it one of these" either way.
   expect([...(s!.spares ?? [])].sort()).toEqual([...NOT_LIVING].sort());
@@ -295,6 +326,65 @@ test('one of the game\'s own spell names is refused', async () => {
   const ours = readInstalledMod(GAME).spells ?? [];
   expect(ours.filter((x) => x.id === 'SPELL_ARMAGEDDON')).toHaveLength(0);
   await page.locator('#spelledit-cancel').click();
+});
+
+/**
+ * A specialization can GIVE this spell — and the form is the only door to that.
+ *
+ * Here rather than in mod-004, where specializations are authored, for one
+ * reason: the picker lists the MOD's own spells and there are none until this
+ * spec has built one. And before the removal below, which takes that spell away.
+ *
+ * What it proves is the claim the whole mechanism rests on: the ability is
+ * written on the SPECIALIZATION, and the hero holding it gets it from there. A
+ * unit test already builds the documents (tools/test-heroes.ts); what only a run
+ * through the form can say is that the field survives the payload, the archive
+ * and being opened again.
+ */
+test('a specialization can hand this spell to whoever holds it', async () => {
+  test.setTimeout(3 * 60_000);
+  const { page } = ed;
+  const SPEC = { id: 'HERO_SPEC_E2E_ABILITY', name: 'Наставник' };
+
+  // The Spells window has to GO first, not merely be behind: a `<dialog open>`
+  // takes the whole surface, so the button that opens the Heroes window is
+  // visible, enabled and stable — and every click on it lands on the dialog in
+  // front. The spec that follows opens Spells again if it is closed.
+  if (await page.locator('#spellsmod').isVisible()) await page.locator('#sm-cancel').click();
+  await expect(page.locator('#spellsmod')).toBeHidden();
+  await page.locator('#heroesbtn').click();
+  await expect(page.locator('#heroesmod')).toBeVisible();
+  await page.locator('#hm-tabs button', { hasText: 'Specializations' }).click();
+  await page.locator('#hs-new').click();
+  await expect(page.locator('#specedit')).toBeVisible();
+
+  // The spell just built is in the picker BECAUSE it is the mod's. A shipped
+  // spell is not offered: it already reaches its heroes the way the game hands
+  // it out, and a second quieter door to the same thing is not wanted.
+  await expect(page.locator('#hs-ability option')).toContainText([/none/, new RegExp(SPELL.id)]);
+
+  await page.locator('#hs-id').fill(SPEC.id);
+  await page.locator('#hs-name').fill(SPEC.name);
+  await page.locator('#hs-ability').selectOption(SPELL.id);
+  const note = await settled(page, 'installing the specialization', '#hm-note', '#hs-err',
+    () => page.locator('#hs-ok').click());
+  expect(note).toContain('Installed');
+  await expect(page.locator('#hs-list')).toContainText(`grants ${SPELL.id}`);
+
+  // In the manifest, which is what the build reads when it writes the heroes.
+  const ours = (readInstalledMod(GAME).specializations ?? []).find((s) => s.id === SPEC.id);
+  expect(ours, 'the manifest remembers it').toBeTruthy();
+  expect(ours!.ability).toBe(SPELL.id);
+
+  // And back out again: a field that saves and does not reload is a field that
+  // is silently cleared the next time anybody presses OK on this form.
+  await page.locator('#hs-list .um-item', { hasText: SPEC.name }).first()
+    .locator('button', { hasText: '✎' }).click();
+  await expect(page.locator('#specedit')).toBeVisible();
+  await expect(page.locator('#hs-ability')).toHaveValue(SPELL.id);
+  await page.locator('#specedit-cancel').click();
+  await page.locator('#hm-cancel').click();
+  await expect(page.locator('#heroesmod')).toBeHidden();
 });
 
 /**

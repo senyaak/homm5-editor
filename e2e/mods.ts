@@ -129,14 +129,21 @@ export const SHARPSHOOTER = {
   abilitiesLine: 'Усиленная стрела, Стрельба без штрафа',
   donor: 'CREATURE_SHARP_SHOOTER',
   /**
-   * What necromancy raises them as — the donor's own answer.
+   * What necromancy raises them as.
    *
    * Not decoration: a creature outside the game's raise table cannot be raised
    * at all, and every shipped NEUTRAL is outside it. Ours is a neutral, so
    * without this it fell and yielded nothing, which reads in game as necromancy
    * being broken rather than as a creature missing from a table.
+   *
+   * VAMPIRE LORDS rather than the skeleton archers the donor gets, because ours
+   * is a tier above him. Read out of the game's own table rather than reasoned
+   * about: all fifteen shipped shooters raise into skeleton archers — and not
+   * one of them is tier 4. The two tier-4 shooters that do exist are the
+   * succubus and her upgrade, and they raise into vampires and vampire lords.
+   * Ours is the end of a line, so it takes the upgrade.
    */
-  raisedAs: 'CREATURE_SKELETON_ARCHER',
+  raisedAs: 'CREATURE_VAMPIRE_LORD',
   stats: {
     'um-attack': '12', 'um-defence': '10', 'um-mindmg': '8', 'um-maxdmg': '10',
     'um-health': '15', 'um-speed': '9', 'um-init': '12', 'um-shots': '32',
@@ -468,6 +475,115 @@ export const SOD_DWELLINGS: readonly BuildingSpec[] = [
  * fixture and tools/install-fixture.ts read this, so a game and the suite cannot
  * end up with different artifacts under the same names.
  */
+/**
+ * **The stand's own artifact: ten per cent on both sides of every element.**
+ *
+ * The game has four artifacts that add to the damage of one element and three
+ * that take half off it, and they act on a spell of the mod's already — the
+ * engine asks the spell's DOCUMENT for its element and never its number. What it
+ * cannot do is answer for an artifact of OURS, and this is the artifact that asks
+ * it to.
+ *
+ * Ten on each of the four damages and each of the four resistances, and NOT on
+ * `magic_damage` / `magic_resist`: those add on top of whichever element also
+ * matches, and the point of the ruler spell beside it is that 100 becomes 110
+ * with nobody working out which rows applied.
+ *
+ * It lives here rather than in a session's notes so the reading can be repeated —
+ * every run of the map stage puts it in the install and on both casters.
+ */
+export const PRISM = {
+  file: 'H3ElementalPrism',
+  id: 'ARTIFACT_H3_ELEMENTAL_PRISM',
+  name: 'Призма стихий',
+  description: '+10% к урону каждой из четырёх стихий, и −10% к урону каждой стихией по его отрядам. Магию вообще не трогает — это соседний предмет.',
+  // CHEST, and the slot is the whole story of an evening: it was NECK, the
+  // Evercold Icicle on the same hero is NECK, and the game put ours in the
+  // backpack without a word. Everything still worked — the log said "adds 0",
+  // the book said 150, the battle killed exactly what the book promised — and
+  // all of it was the game's own Phoenix Cape, with our four elemental rows
+  // never once asked. Nothing on the stand is worn by accident now; see the slot
+  // check in e2e/map-checks.ts.
+  slot: 'CHEST' as ArtifactSlot,
+  effects: {
+    air_damage: 10, fire_damage: 10, water_damage: 10, earth_damage: 10,
+    air_resist: 10, fire_resist: 10, water_resist: 10, earth_resist: 10,
+  },
+  // Its own drawing, not a shipped icon borrowed: two artifacts wearing one
+  // picture is a bug report about the wrong artifact. See tools/draw-artifact-icons.ts.
+  picture: 'h3_elemental_prism.png',
+};
+
+/**
+ * **And the other half of the same question: magic of any element at all.**
+ *
+ * `magic_damage` is not a shorthand for the four elemental rows and does not
+ * stand in for them — it is a different claim, and it adds on top of whichever
+ * element row also matched. Which means one artifact carrying both kinds could
+ * not be told apart by the number it produces, and the ruler spell exists
+ * precisely so numbers can be told apart. So the magic pair lives on its own
+ * artifact.
+ *
+ * With the ruler at 100: the prism alone reads 110, this alone reads 110, and
+ * the two together read 120 if the terms add and 121 if they multiply — which is
+ * a question about our own arithmetic that nothing else on the stand would ask.
+ */
+export const FOCUS = {
+  file: 'H3MagicFocus',
+  id: 'ARTIFACT_H3_MAGIC_FOCUS',
+  name: 'Фокус магии',
+  description: '+10% к урону любой магией, какой бы стихии она ни была, и −10% к магическому урону по его отрядам.',
+  slot: 'FINGER' as ArtifactSlot,
+  effects: { magic_damage: 10, magic_resist: 10 },
+  picture: 'h3_magic_focus.png',
+};
+
+/**
+ * **A TRADE: a number the game knows given, and one only we know taken away.**
+ *
+ * +4 Attack is a field of the artifact's own record — one of the six the game
+ * has always been able to hold, written into the document by the artifact
+ * window like any shipped helm's. −**10%** to magic damage is a row in the file
+ * the extension reads, because the record has nowhere to put it. A helm for
+ * somebody who swings rather than casts, and Senya's own design.
+ *
+ * Two readings nothing else on the stand asks for:
+ *
+ * - **the two halves of one artifact do not disturb each other** — the attack
+ *   shows on the hero screen with no mod loaded at all, the ten per cent shows
+ *   on the ruler spell and only with one;
+ * - **a term of ours can be NEGATIVE**, and the whole path carries the sign: the
+ *   window says as much where the amount is typed ("negative is a cursed item"),
+ *   the effects file writes it, the config reader takes a minus, and the terms
+ *   are added signed rather than counted. On the ruler this is the one reading
+ *   that goes UP when a piece comes OFF.
+ *
+ * HEAD, because every other slot on the wizard is taken and an artifact that
+ * lands in the backpack is worn by nobody.
+ */
+export const HELM = {
+  file: 'H3WarMageHelm',
+  id: 'ARTIFACT_H3_WAR_MAGE_HELM',
+  name: 'Шлем боевого мага',
+  description: '+4 к атаке, но −10% к урону любой магией. Шлем для того, кто бьёт, а не колдует: прибавку знает сама игра, убавку — только расширение.',
+  slot: 'HEAD' as ArtifactSlot,
+  stats: { Attack: 4 },
+  effects: { magic_damage: -10 },
+  // Cracked stone on the brow, because the magic on this one is a MINUS: an icon
+  // promising it would be a lie told where a player actually looks.
+  picture: 'h3_war_mage_helm.png',
+};
+
+/**
+ * The artifacts of OURS the stand wears, in one place.
+ *
+ * The same reason `OUR_SPELL_FIXTURES` exists: something outside the fixture has
+ * to know what these are — the map checks ask each one which slot it wants, and
+ * a list assembled a second time somewhere else goes stale on the first artifact
+ * added.
+ */
+export const OUR_ARTIFACT_FIXTURES = [PRISM, FOCUS, HELM];
+
 export const PIECES = [
   { ...AMULET, slot: 'NECK' as ArtifactSlot, picturePath: join(ART, AMULET.picture) },
   { ...CLOAK, slot: CLOAK.slot as ArtifactSlot, picturePath: join(ART, CLOAK.picture) },
@@ -620,6 +736,63 @@ export const GEM_FILE = 'H3Gem';
  * difference is the whole reason a specialization of our own exists, and the
  * percentage is what the native extension is told through its config file.
  */
+/** The file stem the mod gives Gelu — his InternalName as well as his files'. */
+export const GELU_FILE = 'H3Gelu';
+
+/**
+ * What Gelu's specialization GIVES: a page in the book, on the adventure map.
+ *
+ * Not one of the game's four custom hero abilities (spells 348…351). Those are
+ * exactly this mechanism and there are four of them, twice compiled — one more
+ * entry in an enum the mod already appends to costs nothing and has no ceiling.
+ *
+ * It costs no mana, because what training sharpshooters costs is GOLD.
+ *
+ * Its two hooks — "may it be cast" and what the click does — are not written
+ * here. They ride with the CREATURE the training produces, because that is the
+ * whole of what they need from the mod, and the build writes them into the one
+ * script the game loads on every map. Nothing about them is on the spell, so
+ * this fixture stays a description of a page in a book, which is what it is.
+ */
+export const TRAIN_SHARPSHOOTERS = {
+  id: 'SPELL_H3_TRAIN_SHARPSHOOTERS',
+  file: 'H3TrainSharpshooters',
+  name: 'Обучение снайперов',
+  description: 'Обучить эльфов войска стрелковому делу. Плата — золотом, по числу обученных.',
+  level: 1,
+  school: 'MAGIC_SCHOOL_ADVENTURE',
+  manaCost: 0,
+  target: 'TARGET_FRIEND',
+  // Spelled out rather than left off: the two flags are what the engine picks a
+  // damage branch by, and a spell of ours that does no damage still has to say
+  // so — see the check in fix-001 that reads them back out of the archive.
+  aimed: false,
+  areaAttack: false,
+  /** A shipped adventure spell's icon, until it has a drawing of its own. */
+  icon: '/Textures/SpellBook______2618/Spells/Spell_SummonBoat.xdb#xpointer(/Texture)',
+};
+
+/**
+ * Gelu's specialization, and the first of ours that adds NO NUMBER.
+ *
+ * Heroes III gave him sharpshooters for free: elves in his army simply became
+ * them. There is no seam in this engine for a rule of that shape, and there is
+ * one for a spell, so the port trades the free version for a door the player
+ * opens — see SLICE_gelu_training.md.
+ *
+ * So this is the first specialization of ours whose gift is an ABILITY rather
+ * than a number, and it says so itself: the build puts the spell in the book of
+ * every hero holding it. Nothing about the ability is written on Gelu, which is
+ * the point — giving the specialization to somebody else is the whole of giving
+ * them the ability.
+ */
+export const GELU_SPEC = {
+  id: 'HERO_SPEC_H3_SHARPSHOOTERS',
+  name: 'Снайперы',
+  description: 'Гелу умеет обучать эльфов своего войска стрелковому делу.',
+  ability: TRAIN_SHARPSHOOTERS.id,
+};
+
 export const GEM_SPEC = {
   id: 'HERO_SPEC_H3_FIRST_AID',
   name: 'First Aid',
@@ -891,10 +1064,24 @@ export const DEATH_RIPPLE = {
   // anti-magic and the combat log.
   spares: NOT_LIVING,
   picture: join(ASSETS, 'spells', 'death-ripple.png'),
-  // The Plague's animation, borrowed: same school, and a spell that shows
-  // nothing may be a spell the engine will not start. Its own art can come later
-  // — what matters now is that the cast has something to play.
-  visuals: ['/GameMechanics/Spell/Combat_Spells/DarkMagic/Plague.(SpellVisual).xdb#xpointer(/SpellVisual)'],
+  // BOTH, and the second is not optional for a spell that hits the whole field.
+  //
+  // The list is read BY INDEX and the two entries are different jobs: `0` is the
+  // CAST — played once, where the cast happens, which for a spell that aims at
+  // nobody is the middle of the field — and `1` is the HIT, played on EVERY
+  // stack the spell touches. Every shipped whole-field spell carries both, named
+  // the same way: `Armageddon` + `Armageddon_Hit`, `Unholy_Word` +
+  // `Unholy_Word_Hit`, `Holy_Word` + `Holy_Word_Hit`.
+  //
+  // With only the first, a cast of ours showed one effect in the middle of the
+  // screen and nothing on the stacks it was killing — measured in game
+  // 08.08.2026. The Plague has no hit of its own (it aims at one stack), so the
+  // Unholy Word's is borrowed: same school, same shape, and it is the one the
+  // Death Ripple is a port of.
+  visuals: [
+    '/GameMechanics/Spell/Combat_Spells/DarkMagic/Plague.(SpellVisual).xdb#xpointer(/SpellVisual)',
+    '/GameMechanics/Spell/Combat_Spells/DarkMagic/Unholy_Word_Hit.(SpellVisual).xdb#xpointer(/SpellVisual)',
+  ],
   /**
    * WHAT IT DOES, and it is a script because the engine has no branch for our
    * number: the extension catches the cast and calls this.
@@ -1050,6 +1237,48 @@ export const TEST_ARMAGEDDON_TARGET = {
 };
 
 /**
+ * **The ripple's rule, aimed at ONE stack** — and the only reading on the stand
+ * for a cast that would reach NOBODY.
+ *
+ * The gate refuses a spell of ours that would touch nothing, so the mana and the
+ * turn stay with the caster and the book greys the page. Nothing else on the map
+ * can be made to show it: the ripple and the three Armageddons all cover the
+ * whole field or a patch of it, and a field always holds somebody the caster does
+ * not spare — his own army, if nothing else.
+ *
+ * A spell aimed at one stack can be pointed at a stack it passes over, and then
+ * there is nothing for the cast to do. So: point this at the undead and it must
+ * refuse with the mana intact, and point `…_ARMAGEDDON_TARGET` at the SAME stack,
+ * which must hit. Same shape, same target, and the only difference between them
+ * is what they pass over.
+ *
+ * The control is that twin and NOT a stack of the caster's own: the engine
+ * refuses damage on your own side by itself — `COMBAT_CANT_CAST_ONLY_FOR_HOSTILE`,
+ * 4 961 of them in one battle's log — so a refusal there would say nothing about
+ * ours.
+ *
+ * IT IS A SPELL OF ITS OWN AND NOT A FLAG ON THE ARMAGEDDON TWIN, which is what
+ * this was first. An Armageddon that passes over the undead is not an
+ * Armageddon: that twin is the control for the SHAPE experiment, and a control
+ * that also carries a filter answers neither question cleanly. The ripple
+ * already spares the three kinds and says so in its name, so the aimed version
+ * of the ripple is what this wants to be.
+ */
+export const DEATH_RIPPLE_TARGET = {
+  ...DEATH_RIPPLE,
+  id: 'SPELL_H3_DEATH_RIPPLE_TARGET',
+  file: 'H3DeathRippleTarget',
+  name: 'Волна смерти по цели',
+  description: 'Та же волна смерти, но по одному отряду. Нежить, элементалей и машины она не трогает — и на них её не навести.',
+  aimed: true,
+  areaAttack: false,
+  // No script of its own: the ripple's is written against its own id and this is
+  // a different number. What is being watched here is the gate, and the gate is
+  // asked before any script runs.
+  script: undefined,
+};
+
+/**
  * Every spell of ours the stand carries, IN THE ORDER THEY TAKE THEIR NUMBERS.
  *
  * APPEND-ONLY and never reordered: the number is what a map, a hero's book and a
@@ -1062,8 +1291,79 @@ export const TEST_ARMAGEDDON_TARGET = {
  * the fixture does not install is a map the game refuses to load, so the two
  * lists drifting apart is not a small failure.
  */
+/**
+ * **The aimed Armageddon with ONE field changed: its element** — the reading for
+ * the ice mark, and the reason it is a spell of its own rather than a flag.
+ *
+ * The entry a cast leaves behind is built by one of four routines, three of them
+ * an element each, and it is inside those that the element's Master perk is asked
+ * for and its mark left. Fire was proved in a battle — the target's defence went
+ * down. Ice takes two arguments fire does not — the caster's spell power and how
+ * many stacks were reached — so it is its own reading, and it needs a spell of
+ * ours that says water in its own record. The wizard carries it, with Master of
+ * Ice beside Master of Fire.
+ *
+ * Everything else is `…_TARGET`'s, so a difference in what happens is a
+ * difference in the element and nothing else.
+ */
+export const TEST_ICE_TARGET = {
+  ...TEST_ARMAGEDDON_TARGET,
+  id: 'SPELL_H3_TEST_ICE_TARGET',
+  file: 'H3TestIceTarget',
+  name: 'Ледяная стрела (наша)',
+  description: 'Тот же нацеливаемый армагеддон, но ледяной — чтобы увидеть метку Мастера льда.',
+  element: 'ELEMENT_WATER',
+};
+
+/**
+ * **And the same again with its element AIR** — the third mark, and the one
+ * nothing on this map could ask for until now.
+ *
+ * The air applier takes one argument fire's does not: a byte in front of the
+ * Master of Storms question that decides whether the mark is left at all. Ours
+ * passes 1, which is the answer fire gives by having no such gate — and that is
+ * a reading, not a measurement, until a battle shows the mark. This spell and
+ * the perk beside it are what make the battle possible.
+ */
+export const TEST_AIR_TARGET = {
+  ...TEST_ARMAGEDDON_TARGET,
+  id: 'SPELL_H3_TEST_AIR_TARGET',
+  file: 'H3TestAirTarget',
+  name: 'Молния (наша)',
+  description: 'Тот же нацеливаемый армагеддон, но воздушный — чтобы увидеть метку Мастера бурь.',
+  element: 'ELEMENT_AIR',
+};
+
+/**
+ * **A RULER: exactly 100 fire damage, from any hero, at any mastery.**
+ *
+ * `damage` is four entries read positionally, one per mastery, each a base and a
+ * per-power. Base 100 and per-power 0, four times over, and the number stops
+ * depending on the caster entirely — no spell power, no mastery, nothing a
+ * specialization can lean on. So whatever comes out that is NOT 100 is somebody's
+ * term, and it reads without arithmetic: an artifact of ours worth +10% makes it
+ * 110 and nothing else has to be worked out.
+ *
+ * Fire, because that is the element with the most rules hanging off it — so the
+ * ruler is also the thing that shows them.
+ */
+export const TEST_FLAT_FIRE = {
+  ...TEST_ARMAGEDDON_TARGET,
+  id: 'SPELL_H3_TEST_FLAT_FIRE',
+  file: 'H3TestFlatFire',
+  name: 'Линейка (100 огнём)',
+  description: 'Ровно 100 урона огнём, без влияния силы магии и мастерства — чтобы всякая прибавка читалась глазом.',
+  damage: [
+    { base: 100, perPower: 0 },
+    { base: 100, perPower: 0 },
+    { base: 100, perPower: 0 },
+    { base: 100, perPower: 0 },
+  ],
+};
+
 export const OUR_SPELL_FIXTURES = [
   DEATH_RIPPLE, TEST_ARMAGEDDON, TEST_ARMAGEDDON_AREA, TEST_ARMAGEDDON_TARGET,
+  DEATH_RIPPLE_TARGET, TEST_ICE_TARGET, TEST_AIR_TARGET, TEST_FLAT_FIRE,
 ] as const;
 
 /**
@@ -1234,6 +1534,59 @@ export function installMapFixture(gameRoot: string): CreatureMod {
     });
   }
 
+  // And Gelu, who is here for his SPECIALIZATION and nothing else — the spell it
+  // gives is written into his book by the build, not by this fixture. The SPELL
+  // first, for the reason the specialization comes before the hero holding it: a
+  // hero's `Editable/spells` names it by id, and an id types.xml does not
+  // declare is a map the game refuses rather than a hero without a spell.
+  if (!(mod.spells ?? []).some((s) => s.id === TRAIN_SHARPSHOOTERS.id)) {
+    addSpell(mod, { ...TRAIN_SHARPSHOOTERS },
+      takenSpells(readFileSync(join(DATA, 'types.xml'), 'latin1')));
+  }
+  if (!(mod.specializations ?? []).some((s) => s.id === GELU_SPEC.id)) {
+    addSpecialization(mod, GELU_SPEC,
+      takenSpecializations(readFileSync(join(DATA, 'types.xml'), 'latin1')));
+  }
+  if (!(mod.heroes ?? []).some((h) => h.id === GELU_FILE)) {
+    addHero(mod, {
+      id: GELU_FILE,
+      name: 'Гелу',
+      biography: 'Полуэльф из АвЛи, командир лесных стрелков.',
+      basedOn: 'MapObjects/Preserve/Gillion.(AdvMapHeroShared).xdb',
+      town: 'TOWN_PRESERVE',
+      // The donor's own — a Ranger, which is what Gelu is in both games. A class
+      // of his own is not part of this: what is being asked here is whether a
+      // spell of ours shows in a book, and every fixture beyond that is a way
+      // for the answer to be about something else.
+      heroClass: 'HERO_CLASS_RANGER',
+      specialization: GELU_SPEC.id,
+      // ATTACK IN PLACE OF DEFENCE, and the perk it carries. Archery's parent
+      // skill is Attack, and a perk whose parent the hero does not have is not
+      // refused — it is silently not given, which reads in game as the perk
+      // doing nothing. So the two go together or neither does; e2e/perk-rules.ts
+      // is what says so.
+      //
+      // NOT `primarySkill`, which is the RACIAL slot: for a Preserve hero that
+      // slot holds Avenger, and writing Attack into it took his racial skill
+      // away and put archery where his revenge used to be. `skills` replaces the
+      // donor's SECONDARY list — his Defence, and the Protection hanging off it
+      // — and leaves the racial one where it belongs.
+      skills: [{ skill: 'HERO_SKILL_OFFENCE', mastery: 'MASTERY_BASIC' }],
+      perks: ['HERO_SKILL_ARCHERY'],
+      // KNOWLEDGE, and only knowledge — everything else stays the donor's.
+      //
+      // Mana is knowledge times ten, and the donor's leaves him enough for one
+      // cast of a level-2 spell and not two. Testing what a spell of ours does
+      // needs two in the same battle: one to see it, one to see it again with
+      // something changed. Five is the smallest round number that buys that with
+      // room to spare, and it changes nothing else about him.
+      stats: { knowledge: 5 },
+      // His own face. Without it he wears the donor's, and every rebuild puts it
+      // back — the mistake Gem's portrait is in the fixture to prevent.
+      portrait: join(ASSETS, 'heroes', 'gelu.png'),
+    });
+  }
+
   const set = {
     effect: UNDEAD_KING.effect, file: UNDEAD_KING.file,
     name: UNDEAD_KING.name, description: UNDEAD_KING.description,
@@ -1301,6 +1654,27 @@ export function installSpellFixture(gameRoot: string): CreatureMod {
   for (const spec of OUR_SPELL_FIXTURES.map((s) => ({ ...s }))) {
     if ((mod.spells ?? []).some((s) => s.id === spec.id)) updateSpell(mod, spec.id, spec);
     else addSpell(mod, spec, taken);
+  }
+  // AND THE STAND'S ARTIFACT, in the same mod and the same build: a map hero
+  // wearing an id types.xml does not declare is a map the game refuses, exactly
+  // as it is for a spell — and the whole point of it is to be worn while one of
+  // those spells is thrown.
+  const prism = {
+    ...PRISM, rank: 'ARTF_CLASS_MINOR' as const, cost: 5000,
+    picture: join(ART, PRISM.picture), board: { tiles: 1 },
+  };
+  const focus = {
+    ...FOCUS, rank: 'ARTF_CLASS_MINOR' as const, cost: 5000,
+    picture: join(ART, FOCUS.picture), board: { tiles: 1 },
+  };
+  const helm = {
+    ...HELM, rank: 'ARTF_CLASS_MINOR' as const, cost: 5000,
+    picture: join(ART, HELM.picture), board: { tiles: 1 },
+  };
+  for (const [spec, id] of
+    [[prism, PRISM.id], [focus, FOCUS.id], [helm, HELM.id]] as const) {
+    if ((mod.artifacts ?? []).some((x) => x.id === id)) updateArtifact(mod, id, spec);
+    else addArtifact(mod, spec);
   }
   const report = buildCreatureMod(mod, dataReader(DATA));
   installCreatureMod(gameRoot, mod, packCreatureMod(report));

@@ -98,6 +98,30 @@ export interface SpecializationSpec {
    * is exactly what every value the executable does not know does anyway.
    */
   effect?: SpecializationEffect;
+  /**
+   * A spell every hero holding this specialization knows — `SPELL_…`, the id.
+   *
+   * THE OTHER KIND OF EFFECT, and the one the executable cannot refuse: a term
+   * added to a sum needs a place in the executable that was found and hooked,
+   * while a spell in a book is a hero's own field. So this is what a
+   * specialization gives when what it gives is an ABILITY rather than a number
+   * — Gelu training sharpshooters is the first (SLICE_gelu_training.md).
+   *
+   * The engine has four "custom hero abilities" for exactly this (spells 348…351,
+   * `ControlHeroCustomAbility`), and they are not used: four is a compiled
+   * ceiling in two places, while a spell of the mod's own is one more entry in an
+   * enum we already append to.
+   *
+   * HANDED OUT ON THE MAP, not written into anybody's document. The build could
+   * put it in the `spellIDs` of every holder in one line and need no code at all
+   * — and then the engine would know nothing of the specialization: the
+   * connection would exist only in files that build happened to write, so a hero
+   * it did not write would hold the specialization and get nothing. Instead the
+   * mod's `advmap-common.lua` asks, on every map, which specialization each hero
+   * holds and teaches him what it promises. See `abilityLines` in
+   * artifact-scripts.ts and `H5EHeroSpecialization` in the extension.
+   */
+  ability?: string;
 }
 
 /** One in a mod: a spec plus the enum value it holds. */

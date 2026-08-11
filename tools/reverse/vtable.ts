@@ -30,9 +30,34 @@ const positional = args.filter((a, i) => !a.startsWith('--') && !args[i - 1]?.st
 // Said, never guessed from the checkout's position (tools/game-dir.ts).
 const pe = PEFile.read(flagValue('exe') ?? resolve(gameDir(), 'bin', 'H5_Game_H5E.exe'));
 
+// THE OTHER DIRECTION, and it is the one code hands you. A constructor writes
+// `mov [esi],0FC7D3Ch` and that number is all you have; the class it names is
+// what makes the next hour cheap or expensive. The locator sits one dword BEFORE
+// the vtable and points at the descriptor, whose name starts two dwords in.
+//
+//   node tools/reverse/vtable.ts --at 0xfc7d3c
+const at = flagValue('at');
+if (at !== undefined) {
+  const vtable = Number.parseInt(at, 16);
+  const locator = pe.dwordAt(vtable - 4);
+  const descriptor = locator === null ? null : pe.dwordAt(locator + 12);
+  const name = descriptor === null ? null : pe.stringAt(descriptor + 8, 160);
+  if (!name) {
+    console.log(`0x${vtable.toString(16)} — no RTTI behind it (not a vtable, or one without)`);
+    process.exit(0);
+  }
+  console.log(`0x${vtable.toString(16)}  ${name}`);
+  for (let slot = 0; slot < 0x40; slot += 4) {
+    const fn = pe.dwordAt(vtable + slot);
+    if (fn === null || !pe.isCode(fn)) continue;
+    console.log(`    +0x${slot.toString(16).padEnd(4)} -> 0x${fn.toString(16)}`);
+  }
+  process.exit(0);
+}
+
 const fragment = flagValue('list') ?? positional[0];
 if (!fragment) {
-  console.error('usage: vtable.ts <class name fragment> [slot ...]');
+  console.error('usage: vtable.ts <class name fragment> [slot ...]   |   --at <vtable address>');
   process.exit(2);
 }
 const slots = positional.slice(1).map((s) => Number.parseInt(s, 16));

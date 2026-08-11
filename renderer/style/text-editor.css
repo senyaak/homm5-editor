@@ -65,3 +65,12 @@
   padding: 6px 16px; cursor: pointer; font-size: 13px; }
 .de-foot button.ghost { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; }
 .de-foot button.ghost:hover { background: #30363d; }
+
+/* the write-up beside a highlighted completion: what it does, what each
+   parameter is, what comes back, and one line of it in use */
+.api-info { display: flex; flex-direction: column; gap: 4px; max-width: 42em; line-height: 1.45; }
+.api-info .api-info-arg { color: #8b949e; font-size: 12px; padding-left: 10px; text-indent: -10px; }
+.api-info .api-info-returns { color: #7ee787; font-size: 12px; }
+.api-info .api-info-example { font: 12px/1.4 ui-monospace, monospace; color: #c9d1d9;
+  background: #0d1014; border: 1px solid #21262d; border-radius: 5px; padding: 4px 6px;
+  white-space: pre-wrap; }

@@ -22,19 +22,29 @@ import { pickObject, placeAtTile } from './objects.ts';
 import { mapComplaints } from './map-checks.ts';
 import { readEntries } from '../src/format/pak.ts';
 import {
-  DEATH_RIPPLE, LIVE, MOD, OUR_SPELL_FIXTURES, TEST_ARMAGEDDON, TEST_ARMAGEDDON_AREA,
+  DEATH_RIPPLE, DEATH_RIPPLE_TARGET, LIVE, MOD, OUR_SPELL_FIXTURES, TEST_ARMAGEDDON,
+  TEST_ARMAGEDDON_AREA,
   TEST_ARMAGEDDON_TARGET, clearMap, installSpellFixture, prepareGameRoot,
 } from './mods.ts';
 import { EFFECTS_FILE, readSpellRows } from '../src/mods/artifact-effects.ts';
-import { SHIPPED_SPELLS, spellPaths } from '../src/mods/spells.ts';
+import { spellPaths } from '../src/mods/spells.ts';
+import type { CreatureMod } from '../src/mods/mod-model.ts';
 import { modFile } from '../src/game/mod-paths.ts';
 import {
-  ARCHIVE, DATA, FIXES_UNDER_TEST, GAME, HEROES, MAP_DIR, NAME, OPPONENT, OVERRIDE_ALL, PLAYERS,
+  ARCHIVE, DATA, FIXES_UNDER_TEST, GAME, HEROES, MAP_DIR, NAME, ENEMY_CASTER, OPPONENT, OVERRIDE_ALL, PLAYERS,
   TILES,
 } from './fixes.ts';
 import type { Kit } from './fixes.ts';
 
 let ed: Launched;
+/**
+ * The installed mod as the fixture left it — kept because it is the only thing
+ * that knows what NUMBER each spell of ours actually got. A fixture takes the
+ * next free one, so the numbers depend on what else has ever been added to this
+ * install, and a test that counts from 353 is a test that passes until somebody
+ * authors a spell through the window.
+ */
+let spellMod: CreatureMod;
 
 test.beforeAll(async () => {
   test.skip(!existsSync(join(DATA, 'MapObjects')), 'needs the game data');
@@ -55,7 +65,7 @@ test.beforeAll(async () => {
   // to load — not a hero missing a spell. So the mod that declares them is
   // installed before anything is built, and it adds to whatever the archive
   // already holds rather than replacing it.
-  installSpellFixture(GAME);
+  spellMod = installSpellFixture(GAME);
   // Both halves: New Map refuses to write over a packed map that is already
   // there, so a second run would stop before it started.
   clearMap(GAME, DATA, NAME);
@@ -127,6 +137,9 @@ async function placeHero(page: Launched['page'], kit: Kit, player: string): Prom
   }
   for (const perk of kit.perks ?? []) await addItem(page, id, ['Editable', 'perkIDs'], perk);
   for (const spell of kit.spells ?? []) await addItem(page, id, ['Editable', 'spellIDs'], spell);
+  // Worn, not carried: `CountEquipped` counts the worn collection, which is what
+  // every artifact rule in a battle is asked about.
+  for (const art of kit.artifacts ?? []) await addItem(page, id, ['artifactIDs'], art);
   for (const [i, stack] of kit.army.entries()) {
     await addItem(page, id, ['armySlots']);
     await setPath(page, id, ['armySlots', i, 'Creature'], stack.creature);
@@ -192,17 +205,36 @@ test('the map spec is one the game can build', () => {
 // engine and the extension go by.
 test('the spells of ours carry their row into the install', () => {
   const rows = readSpellRows(readFileSync(join(GAME, EFFECTS_FILE), 'latin1'));
-  const ripple = rows.find((f) => f.spell === SHIPPED_SPELLS);
+  // BY THE NUMBER THE INSTALL GAVE IT, not by counting from the shipped 353.
+  // The offsets held while the four were the only spells anybody added, and the
+  // fifth landed on 358 because a spec that authors one through the window had
+  // been run against this install first — a fixture takes the next free number,
+  // not the one it had last time. The failure read as "the row was not written".
+  const numberOf = (id: string): number => {
+    const spell = (spellMod.spells ?? []).find((s) => s.id === id);
+    expect(spell, `${id} is in the installed mod`).toBeTruthy();
+    return spell!.number;
+  };
+  const ripple = rows.find((f) => f.spell === numberOf(DEATH_RIPPLE.id));
   expect(ripple, `${DEATH_RIPPLE.id} has a row in ${EFFECTS_FILE}`).toBeTruthy();
   expect(ripple!.spares, 'and it spares the undead, the elemental and the mechanical')
     .toEqual([10, 12, 9]);
   // And the other half of the same row: what the area one covers. Its shape has
   // nowhere else to live — the document says a spell hits an AREA and never
   // which, and the shape a number of ours would fall to covers nothing at all.
-  const area = rows.find((f) => f.spell === SHIPPED_SPELLS + 2);
+  const area = rows.find((f) => f.spell === numberOf(TEST_ARMAGEDDON_AREA.id));
   expect(area, `${TEST_ARMAGEDDON_AREA.id} has a row too`).toBeTruthy();
   expect(area!.area, 'and it is the cross the fixture drew')
     .toEqual(TEST_ARMAGEDDON_AREA.area);
+  // And the aimed ripple's, which is what makes the stand able to show a cast
+  // that would reach NOBODY: pointed at a stack it passes over, the gate must
+  // refuse it and the mana must stay. Without this row that half of the map
+  // cannot be run at all, and the refusal would look untested rather than
+  // untestable.
+  const aimed = rows.find((f) => f.spell === numberOf(DEATH_RIPPLE_TARGET.id));
+  expect(aimed, `${DEATH_RIPPLE_TARGET.id} has a row too`).toBeTruthy();
+  expect(aimed!.spares, 'and it spares the three kinds the ripple it is aimed from does')
+    .toEqual([10, 12, 9]);
 });
 
 // AND THE SHAPE, WHICH IS THE OTHER THING THE DOCUMENT DECIDES.
@@ -270,6 +302,7 @@ test('the Rules Test map is built and packed, with every fix off', async () => {
     console.log(`  ${kit.key} — ${kit.fixes.join(', ')}`);
   }
   const opponentId = await placeHero(page, OPPONENT, 'PLAYER_2');
+  await placeHero(page, ENEMY_CASTER, 'PLAYER_2');
   console.log(`  ${OPPONENT.key} — ${OPPONENT.fixes.join(', ')}`);
 
   // --- where each side starts ---
@@ -310,9 +343,12 @@ test('the Rules Test map is built and packed, with every fix off', async () => {
 
   const blocks = xml.split('<AdvMapHero>').slice(1)
     .map((part) => part.slice(0, part.indexOf('</AdvMapHero>')));
-  expect(blocks, 'every hero of the plan is in the file').toHaveLength(HEROES.length + 1);
+  // The row, the opponent, and the second caster of his — who is not a fix's
+  // hero but a hero all the same, and a count that forgets him is a map missing
+  // one.
+  expect(blocks, 'every hero of the plan is in the file').toHaveLength(HEROES.length + 2);
 
-  for (const kit of [...HEROES, OPPONENT]) {
+  for (const kit of [...HEROES, OPPONENT, ENEMY_CASTER]) {
     const body = blocks.find((b) => b.includes(`<Name>${kit.key}</Name>`));
     expect(body, `${kit.key} is on the map`).toBeTruthy();
     expect(body, `${kit.key} reads his Editable block`)

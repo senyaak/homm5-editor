@@ -20,12 +20,12 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { FIXES_UNDER_TEST, HEROES, OPPONENT } from './fixes.ts';
+import { ENEMY_CASTER, FIXES_UNDER_TEST, HEROES, OPPONENT } from './fixes.ts';
 import type { Kit } from './fixes.ts';
 import { kitComplaints, skillRules } from './perk-rules.ts';
 import { QOL_FLAGS } from '../src/mods/qol.ts';
 import { takenSpells } from '../src/mods/spells.ts';
-import { OUR_SPELL_FIXTURES } from './mods.ts';
+import { OUR_ARTIFACT_FIXTURES, OUR_SPELL_FIXTURES } from './mods.ts';
 
 /**
  * Spells the MOD adds, which the shipped types.xml naturally does not list.
@@ -59,6 +59,32 @@ function creatureIds(dataRoot: string): Set<string> {
   return new Set([...text.matchAll(/CREATURE_[A-Z0-9_]+/g)].map((m) => m[0]));
 }
 
+/**
+ * Which slot every artifact wants — the game's own, and the mod's.
+ *
+ * The game's are read out of its table rather than remembered, and ours come
+ * from the fixture that builds them, so neither list can go stale.
+ */
+function artifactSlots(dataRoot: string): Map<string, string> {
+  const text = readFileSync(join(dataRoot, 'GameMechanics', 'RefTables', 'Artifacts.xdb'), 'latin1');
+  const slots = new Map<string, string>();
+  for (const m of text.matchAll(/<ID>(\w+)<\/ID>([\s\S]{0,1500}?)<Slot>(\w+)<\/Slot>/g)) {
+    slots.set(m[1]!, m[3]!);
+  }
+  for (const ours of OUR_ARTIFACT_FIXTURES) slots.set(ours.id, ours.slot);
+  return slots;
+}
+
+/**
+ * How many artifacts one slot holds at once.
+ *
+ * One, except FINGER — MEASURED 10.08.2026, and only that one: a hero wearing
+ * the Ring of Lightning Protection and the mod's own ring had BOTH counted in
+ * the same battle, in the log. Everything else is one until a reading says
+ * otherwise, and a slot added here without one is a check that stops checking.
+ */
+const SLOTS_THAT_HOLD_MORE: Record<string, number> = { FINGER: 2 };
+
 /** Every shared record a kit points at, with what it was for. */
 function sharedPaths(kit: Kit): Array<{ what: string; path: string }> {
   const out = [{ what: 'his own record', path: kit.shared }];
@@ -77,7 +103,11 @@ function sharedPaths(kit: Kit): Array<{ what: string; path: string }> {
  */
 export function mapComplaints(dataRoot: string): string[] {
   const said: string[] = [];
-  const kits = [...HEROES, OPPONENT];
+  // Every hero the map places, and the second caster was NOT among them until
+  // 10.08.2026 — he was added for the artifact readings and checked by nothing,
+  // which is how he came to wear two artifacts in one slot as well. The list the
+  // spec places from is the list to ask about; they are the same three names.
+  const kits = [...HEROES, OPPONENT, ENEMY_CASTER];
 
   // 1. The game's own skill table: can this hero hold this kit?
   const rules = skillRules(dataRoot);
@@ -130,6 +160,34 @@ export function mapComplaints(dataRoot: string): string[] {
     for (const spell of kit.spells ?? []) {
       if (spells.has(spell) || OUR_SPELLS.has(spell)) continue;
       said.push(`${kit.key}: no such spell as ${spell} — a map naming one is a map that will not load`);
+    }
+  }
+
+  // 3c. NOTHING IS WORN TWICE IN ONE SLOT, and this one was bought.
+  //
+  //     `Editable/artifactIDs` is a list, not a set of slots: the game equips
+  //     what fits and puts the rest in the backpack, silently. The mod's own
+  //     prism spent an evening there behind the Evercold Icicle — the log said
+  //     "adds 0", the book said 150, the battle killed exactly what the book
+  //     promised, and every one of those numbers was the game's own Phoenix
+  //     Cape with our four elemental rows never once asked. A control in a
+  //     backpack is not a control, and nothing on the map says so.
+  const slots = artifactSlots(dataRoot);
+  for (const kit of kits) {
+    const wanted = new Map<string, string[]>();
+    for (const id of kit.artifacts ?? []) {
+      const slot = slots.get(id);
+      if (!slot) {
+        said.push(`${kit.key}: no such artifact as ${id}`);
+        continue;
+      }
+      wanted.set(slot, [...(wanted.get(slot) ?? []), id]);
+    }
+    for (const [slot, ids] of wanted) {
+      const room = SLOTS_THAT_HOLD_MORE[slot] ?? 1;
+      if (ids.length <= room) continue;
+      said.push(`${kit.key}: ${ids.join(' and ')} all want ${slot}, which holds ${room}`
+        + ' — the rest go to the backpack and do nothing');
     }
   }
 

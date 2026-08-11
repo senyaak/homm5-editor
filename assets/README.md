@@ -16,7 +16,8 @@ publish.
 
 ```
 assets/
-  artifacts/         pictures an artifact can be built from — .gif, 58x64
+  artifacts/         pictures an artifact can be built from — .gif, 58x64,
+                     and .png for the ones DRAWN by tools/draw-artifact-icons.ts
   heroes/            portraits — .gif, 58x64, as Heroes III drew them
   specializations/   the icon a specialization shows on the hero screen
   skills/            the icon a skill shows, for skills we have yet to make
@@ -47,6 +48,7 @@ Gem, the pilot of the Heroes III port, and the First Aid she is a specialist in
 | file | what it is |
 | --- | --- |
 | `heroes/gem.gif` | her portrait, 58x64 — the size the game's own 128x128 and 64x64 faces are built from |
+| `heroes/gelu.png` | his portrait, 57x64. THE WHOLE FACE: the first one here was a crop of the top of his head, and nothing in the build says so — `fitSquare` centres whatever it is given and the game shows it. Look at the picture before committing one. `_tmp/see-face.ts` puts a portrait through the same two steps the build does and writes the result out |
 | `specializations/first_aid.gif` | the icon her specialization shows |
 | `skills/first_aid.gif` | the icon for a First Aid SKILL, which does not exist yet |
 

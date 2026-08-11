@@ -4,6 +4,10 @@
 // piece in order, so everything included before this file is visible here and
 // nothing after it is. Statics stay statics; nothing here is a module.
 
+/** Which switch turns this file's logging on — see the bottom of core/log.c. */
+#undef LOG_UNIT
+#define LOG_UNIT lua_registry
+
 // ---------------------------------------------------------------------------
 // Registering our own Lua functions.
 
@@ -66,6 +70,25 @@ static LuaEntry g_ourFunctions[MAX_LUA_FUNCTIONS] = {
   { "RestoreDarkEnergy", &lua_restore_dark_energy },
 };
 static int g_ourFunctionCount = 2;
+
+/**
+ * One more row, from a feature that lives further down the file.
+ *
+ * The table above is written where the shape of a registered function is
+ * explained, but the functions themselves belong with the thing they do — a
+ * window's two doors belong beside the window. So the table takes rows until
+ * `install_lua_functions` copies it, and everything after this file adds its
+ * own from `DllMain`.
+ */
+static void add_map_function(const char *name, void *fn) {
+  if (g_ourFunctionCount >= MAX_LUA_FUNCTIONS) {
+    log_text("no room in our lua table for ", name);
+    return;
+  }
+  g_ourFunctions[g_ourFunctionCount].name = name;
+  g_ourFunctions[g_ourFunctionCount].fn = fn;
+  g_ourFunctionCount++;
+}
 
 /**
  * The same proof, one context over: a battle's script can reach us.

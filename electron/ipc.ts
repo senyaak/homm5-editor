@@ -404,8 +404,23 @@ export interface AddItemPayload { path: TreePath; value?: string; }
 export interface RemoveItemPayload2 { path: TreePath; }
 /** Payload of `map:set-list` — replace a value list's contents (checklists). */
 export interface SetListPayload { path: TreePath; values: string[]; }
-/** One engine function the map script may call (src/script-api.json). */
-export interface ApiFn { name: string; params: string; group: string; summary?: string }
+/**
+ * One engine function the map script may call (src/script-api.json).
+ *
+ * The last three are only on the ones we have written up, and they are what the
+ * completion popup shows: a signature answers "what is it called", and an
+ * author writing a line needs "what does this argument mean" without leaving
+ * the editor for the reference.
+ */
+export interface ApiFn {
+  name: string;
+  params: string;
+  group: string;
+  summary?: string;
+  args?: { name: string; type: string; desc: string }[];
+  returns?: string;
+  example?: string;
+}
 
 /**
  * Result of `script:context` — everything the script editor completes from.
@@ -1178,6 +1193,8 @@ export interface ModSpecializationDTO {
    * want while a port is being written.
    */
   effect?: { stat: string; percentPerLevel: number };
+  /** A spell of the mod's that every hero holding it knows — `SPELL_…`. */
+  ability?: string;
 }
 
 /** Payload of `mods:install-specialization` and of the update beside it. */
@@ -1188,6 +1205,8 @@ export interface ModsInstallSpecPayload {
   picture?: string;
   icon?: string;
   effect?: { stat: string; percentPerLevel: number };
+  /** A spell of the mod's that every hero holding it knows — `SPELL_…`. */
+  ability?: string;
 }
 
 /** What installing one produced. */

@@ -23,7 +23,8 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { assets } from '../src/game/assets.ts';
 import { buildCreatureMod } from '../src/mods/creature-mod.ts';
-import { addHero, newCreatureMod } from '../src/mods/mod-model.ts';
+import { addHero, addSpecialization, addSpell, newCreatureMod } from '../src/mods/mod-model.ts';
+import { COMMON_SCRIPT } from '../src/mods/artifact-scripts.ts';
 import { dataReader } from '../src/mods/mod-files.ts';
 import { artLabels, HERO_CLASS, heroDoc, heroHref, heroInternalName, heroPaths, takenHeroIds } from '../src/mods/heroes.ts';
 import type { HeroSpec } from '../src/mods/heroes.ts';
@@ -338,6 +339,73 @@ check('...and the set it checks against holds both halves of what a hero answers
     // whose document calls him something else, so the set must hold both.
     return taken.has('Ossir') && taken.size > shippedHeroes.length;
   })(), 'file stems and internal names');
+
+// ---- 6. a specialization whose gift is an ABILITY ----------------------------
+//
+// GIVEN ON THE MAP, NOT WRITTEN INTO A HERO. The build could put the spell in
+// the `spellIDs` of every holder in one line — and then the engine would know
+// nothing of the specialization at all, so a hero this build did not write would
+// hold it and get nothing. The document must therefore NOT carry it, and the
+// script the mod ships must: it asks the extension, on the map, and teaches.
+
+console.log('\nwhat a specialization gives');
+
+const ABILITY = 'SPELL_H3_TEST_ABILITY';
+const abilityMod = newCreatureMod('heroes-test-ability');
+const abilitySpell = addSpell(abilityMod, {
+  id: ABILITY, file: 'H3TestAbility', name: 'Test ability', description: 'For the test.',
+  level: 1, school: 'MAGIC_SCHOOL_ADVENTURE', manaCost: 0, target: 'TARGET_FRIEND',
+});
+const abilitySpec = addSpecialization(abilityMod, {
+  id: 'HERO_SPEC_H3_TEST', name: 'Test', description: 'A specialization that grants a spell.',
+  ability: ABILITY,
+});
+addHero(abilityMod, { ...GEM, id: 'H3Holder', specialization: 'HERO_SPEC_H3_TEST' });
+const abilityFiles = buildCreatureMod(abilityMod, dataReader(dataRoot)).files;
+const spellsOf = (id: string): string[] => {
+  const path = heroPaths({ ...GEM, id }).shared;
+  const doc = parse(abilityFiles.find((f) => f.path === path)!.data.toString('latin1'));
+  const hero = doc.name === HERO_CLASS ? doc : find(doc, HERO_CLASS)!;
+  const list = find(find(hero, 'Editable')!, 'spellIDs');
+  return list ? children(list).map((i) => text(i)) : [];
+};
+
+check('the holder\'s DOCUMENT does not carry it — the engine would learn nothing that way',
+  !spellsOf('H3Holder').includes(ABILITY), spellsOf('H3Holder').join(', '));
+check('...and what he did have is untouched',
+  spellsOf('H3Holder').includes('SPELL_LIGHTNING_BOLT'), spellsOf('H3Holder').join(', '));
+
+const common = abilityFiles.find((f) => f.path === COMMON_SCRIPT);
+check('the mod carries the game\'s global script, which is where the giving happens',
+  !!common, COMMON_SCRIPT);
+const lua = common?.data.toString('latin1') ?? '';
+// By VALUE under a NAME: the engine deals in numbers, and a script written
+// against a bare one goes stale the moment the mod's order changes.
+check('it declares both names, since Lua has never heard of either',
+  lua.includes(`${abilitySpec.id} = ${abilitySpec.number};`)
+  && lua.includes(`${ABILITY} = ${abilitySpell.number};`));
+check('and pairs them by NAME, not by number',
+  lua.includes(`H5E_SPEC_ABILITY[${abilitySpec.id}] = ${ABILITY};`));
+// ASKED, not read: the engine answers "is it this one" through the virtual the
+// first aid tent already uses, so no field offset is wanted anywhere.
+check('it ASKS the engine rather than reading a field',
+  lua.includes('H5EHeroHasSpecialization(hero, spec)'));
+check('...and teaches only what that answers', lua.includes('TeachHeroSpell(hero, spell)'));
+check('it catches the heroes a map starts with AND the ones who arrive later',
+  lua.includes('GetPlayerHeroes(player)') && lua.includes('PLAYER_ADD_HERO_TRIGGER'));
+// The trigger takes WHOSE it is before it takes the function. Handed the name
+// straight away it reads as a player id, and the game said so.
+check('the trigger is registered per player, which is what it wants',
+  lua.includes('Trigger(PLAYER_ADD_HERO_TRIGGER, player, "H5EHeroArrived");'));
+
+// The sabotage: a mod whose specialization gives nothing must ship no giving at
+// all. Without it every check above passes on a build that writes the block
+// unconditionally, for every mod.
+const plainMod = newCreatureMod('heroes-test-plain');
+addSpecialization(plainMod, { id: 'HERO_SPEC_H3_PLAIN', name: 'Plain', description: 'Words only.' });
+addHero(plainMod, { ...GEM, id: 'H3Plain', specialization: 'HERO_SPEC_H3_PLAIN' });
+check('a specialization that gives nothing ships no giving',
+  !buildCreatureMod(plainMod, dataReader(dataRoot)).files.some((f) => f.path === COMMON_SCRIPT));
 
 console.log(failures ? `\n${failures} failure(s)` : '\nall good');
 process.exit(failures ? 1 : 0);

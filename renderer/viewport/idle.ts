@@ -16,6 +16,7 @@ import { state } from '#core/state.ts';
 import type { Floor3D } from '#core/state.ts';
 import type { Instance } from '#src/scene/payload.ts';
 import { worldGeos, worldMats, geomSkin } from '#viewport/geoms.ts';
+import { markShadowRoles } from '#viewport/shadows.ts';
 import { makeIdle, poseIdle } from '#viewport/skinning.ts';
 import type { IdleObject } from '#viewport/skinning.ts';
 import { cam } from '#viewport/stage.ts';
@@ -103,6 +104,13 @@ export function addIdle(
   idle.time = phase;
   poseIdle(idle, idle.time);
   idle.mesh.updateMatrixWorld();
+  // An animated body stands on the map like any other object, so it casts and
+  // receives like one — said HERE rather than by the caller, because the pass
+  // that hands the roles out runs once when a floor is built and two of the
+  // three callers come later: the palette placing an object, and undo rebuilding
+  // the floor. A body made by either of those was drawn in flat sun with nothing
+  // falling on it, and stayed that way until the map was reopened.
+  markShadowRoles(idle.mesh);
   objGroup.add(idle.mesh);
   list.push(idle);
   return true;
