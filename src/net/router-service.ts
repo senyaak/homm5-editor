@@ -23,6 +23,7 @@
 //   RouterService     new(waitModule) -> session(); session.receive(buf) -> Buffer[]
 
 import { hostU32String } from './address.ts';
+import { DEFAULT_LOBBIES, LobbyMsg, Lsm, lobbyEntry } from './lobby.ts';
 import { HEADER_SIZE as GS_HEADER_SIZE, MessageType, build, parse, reply, type GSMessage } from './gs-message.ts';
 import { decodeBody, type GSValue } from './gs-data.ts';
 import { Blowfish } from './blowfish.ts';
@@ -82,11 +83,13 @@ export class RouterSession {
   private readonly role: Role;
   private readonly waitModule: Endpoint;
   private readonly proxy: Endpoint;
+  private readonly lobbyServer: Endpoint;
 
-  constructor(role: Role, waitModule: Endpoint, proxy: Endpoint) {
+  constructor(role: Role, waitModule: Endpoint, proxy: Endpoint, lobbyServer: Endpoint) {
     this.role = role;
     this.waitModule = waitModule;
     this.proxy = proxy;
+    this.lobbyServer = lobbyServer;
   }
 
   /** Feed bytes from the socket; get back what to send, and a line for the log. */
@@ -231,6 +234,46 @@ export class RouterSession {
         }
         return { note: `PROXY_HANDLER subtype ${String(subtype)} is not implemented`, replies: [] };
       }
+      // The lobby, as far as the wait module is concerned: log in, hand over the
+      // list of lobbies, and say where the lobby server itself lives.
+      case MessageType.LOBBY_MSG: {
+        const subtype = message.body?.[0];
+        const inner = message.body?.[1];
+        if (subtype === String(LobbyMsg.LOGIN)) {
+          const game = Array.isArray(inner) && typeof inner[0] === 'string' ? inner[0] : '';
+          return {
+            note: `lobby LOGIN for game "${game}" — accepted`,
+            replies: [build(reply(message, [String(MessageType.GSSUCCESS), [subtype]]))],
+          };
+        }
+        if (subtype === String(LobbyMsg.CHANGE_REQUESTED_LOBBIES)) {
+          // GROUP_INFO carries the lobbies as child groups, and the flag says the
+          // client should ask about their children (the rooms) once it is in.
+          const lobbies = DEFAULT_LOBBIES.map(lobbyEntry);
+          return {
+            note: `lobby list — ${DEFAULT_LOBBIES.map((l) => l.name).join(', ')}`,
+            replies: [
+              build(reply(message, [String(LobbyMsg.GROUP_INFO), ['1', String(Lsm.CHILDGROUPINFO), ['0'], lobbies]])),
+            ],
+          };
+        }
+        if (subtype === String(LobbyMsg.JOIN_SERVER)) {
+          const serverId = Array.isArray(inner) && typeof inner[0] === 'string' ? inner[0] : '1';
+          const where = hostU32String(this.lobbyServer.address);
+          return {
+            note: `lobby server ${serverId} — sent to ${this.lobbyServer.address}:${this.lobbyServer.port}`,
+            replies: [
+              build(
+                reply(message, [
+                  String(MessageType.GSSUCCESS),
+                  [subtype, [serverId, where, String(this.lobbyServer.port)]],
+                ]),
+              ),
+            ],
+          };
+        }
+        return { note: `lobby message subtype ${String(subtype)} is not implemented`, replies: [] };
+      }
       case MessageType.STILLALIVE:
         return { note: 'STILLALIVE', replies: [] };
       default:
@@ -277,16 +320,18 @@ export class RouterService {
   private readonly waitModule: Endpoint;
   private readonly proxy: Endpoint;
   private readonly proxyWaitModule: Endpoint;
+  private readonly lobbyServer: Endpoint;
 
-  constructor(waitModule: Endpoint, proxy: Endpoint, proxyWaitModule: Endpoint) {
+  constructor(waitModule: Endpoint, proxy: Endpoint, proxyWaitModule: Endpoint, lobbyServer: Endpoint) {
     this.waitModule = waitModule;
     this.proxy = proxy;
     this.proxyWaitModule = proxyWaitModule;
+    this.lobbyServer = lobbyServer;
   }
 
   /** A connection on one of the four desks. */
   session(role: Role = 'router'): RouterSession {
     const waitModule = role === 'proxy' ? this.proxyWaitModule : this.waitModule;
-    return new RouterSession(role, waitModule, this.proxy);
+    return new RouterSession(role, waitModule, this.proxy, this.lobbyServer);
   }
 }

@@ -17,6 +17,7 @@ import { KEY_BLOB_SIZE, decryptWith, encryptTo, generateKeyPair, parsePublicKey,
 import { RouterService } from '../src/net/router-service.ts';
 import { Blowfish } from '../src/net/blowfish.ts';
 import { CdKeyRequest, CdKeyService } from '../src/net/cdkey-service.ts';
+import { LobbyMsg } from '../src/net/lobby.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {
@@ -199,7 +200,7 @@ console.log('\nRSA key blobs, against the key a real client sent');
 
 console.log('\nRouter, driven by the recorded packet');
 {
-  const session = new RouterService({ address: '127.0.0.1', port: 40001 }, { address: '127.0.0.1', port: 40030 }, { address: '127.0.0.1', port: 40031 }).session();
+  const session = new RouterService({ address: '127.0.0.1', port: 40001 }, { address: '127.0.0.1', port: 40030 }, { address: '127.0.0.1', port: 40031 }, { address: '127.0.0.1', port: 40040 }).session();
   const events = session.receive(ROUTER_KEY_EXCHANGE);
   check('the key exchange gets exactly one answer', events.length === 1 && events[0]!.replies.length === 1, events[0]?.note);
 
@@ -240,7 +241,7 @@ console.log('\nRouter, driven by the recorded packet');
 
 console.log('\nRouter, once the session keys are up');
 {
-  const session = new RouterService({ address: '127.0.0.1', port: 40001 }, { address: '127.0.0.1', port: 40030 }, { address: '127.0.0.1', port: 40031 }).session();
+  const session = new RouterService({ address: '127.0.0.1', port: 40001 }, { address: '127.0.0.1', port: 40030 }, { address: '127.0.0.1', port: 40031 }, { address: '127.0.0.1', port: 40040 }).session();
   // Step one gives us the key the client should seal its session key to.
   const opened = session.receive(ROUTER_KEY_EXCHANGE);
   const ourBlob = (parse(opened[0]!.replies[0]!)!.body![1] as GSValue[])[2] as Uint8Array;
@@ -369,6 +370,7 @@ console.log('\nThe proxy desk answers differently, because the client asked it t
     { address: '127.0.0.1', port: 40001 },
     { address: '127.0.0.1', port: 40030 },
     { address: '127.0.0.1', port: 40031 },
+    { address: '127.0.0.1', port: 40040 },
   ).session('proxy');
 
   const login = build({ property: Property.GS, priority: 0, type: MessageType.LOGIN, sender: 4, receiver: 1, body: ['Senyaak', 'secret'] });
@@ -387,6 +389,38 @@ console.log('\nThe proxy desk answers differently, because the client asked it t
   check('the proxy names the user in its hand-off', onwards?.[0] === 'Senyaak', JSON.stringify(onwards));
   check('the address is still host order', onwards?.[1] === '2130706433');
   check('but the port is spelled out here, not four bytes', onwards?.[2] === '40031');
+}
+
+console.log('\nThe lobby, as far as the wait module goes');
+{
+  const desk = new RouterService(
+    { address: '127.0.0.1', port: 40001 },
+    { address: '127.0.0.1', port: 40030 },
+    { address: '127.0.0.1', port: 40031 },
+    { address: '127.0.0.1', port: 40040 },
+  ).session('router');
+
+  const lobbyMessage = (subtype: number, inner: GSValue[]): Buffer =>
+    build({ property: Property.GS, priority: 0, type: MessageType.LOBBY_MSG, sender: 4, receiver: 1, body: [String(subtype), inner] });
+
+  // Verbatim from the wire: the client logs in to the lobby naming the game.
+  const loggedIn = desk.receive(lobbyMessage(LobbyMsg.LOGIN, ['HEROES_29988429c481f219']));
+  const ok = parse(loggedIn[0]!.replies[0]!);
+  check('the lobby login is answered', loggedIn[0]!.replies.length === 1, loggedIn[0]?.note);
+  check('as a LOBBY_MSG saying success', ok?.type === MessageType.LOBBY_MSG && ok?.body?.[0] === '38');
+
+  const listed = desk.receive(lobbyMessage(LobbyMsg.CHANGE_REQUESTED_LOBBIES, ['HEROES_29988429c481f219']));
+  const info = parse(listed[0]!.replies[0]!);
+  const groups = (info?.body?.[1] as GSValue[])?.[3] as GSValue[];
+  check('the lobby list comes back as GROUP_INFO', info?.body?.[0] === String(LobbyMsg.GROUP_INFO), listed[0]?.note);
+  check('with our three lobbies', Array.isArray(groups) && groups.length === 3, String(groups?.length));
+  const ranked = (groups?.[1] as GSValue[]) ?? [];
+  check('each is fourteen fields', ranked.length === 14, String(ranked.length));
+  check('Ranked is named and rated', ranked[1] === 'Ranked' && ranked[11] === '1', `${String(ranked[1])}, mode ${String(ranked[11])}`);
+
+  const joined = desk.receive(lobbyMessage(LobbyMsg.JOIN_SERVER, ['1']));
+  const where = (parse(joined[0]!.replies[0]!)?.body?.[1] as GSValue[])?.[1] as GSValue[];
+  check('joining a server hands over the lobby address', where?.[1] === '2130706433' && where?.[2] === '40040', JSON.stringify(where));
 }
 
 console.log(failures === 0 ? '\nall good\n' : `\n${failures} failed\n`);

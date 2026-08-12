@@ -61,6 +61,10 @@ const SERVICES: Service[] = [
 // module (PROXY_HANDLER). It is where persistent data and, later, the ladder sit.
 const PROXY: Service = { prefix: 'Proxy', port: 40030, launcher: 40031, kind: 'tcp' };
 
+// Also not in the ini: where the lobby itself lives, handed over when the client
+// asks to join a lobby server.
+const LOBBY: Service = { prefix: 'Lobby', port: 40040, launcher: null, kind: 'tcp' };
+
 function serversIni(): string {
   const lines = ['[Servers]'];
   for (const s of SERVICES) {
@@ -119,13 +123,14 @@ const router = new RouterService(
   { address: host, port: SERVICES[0]!.launcher ?? SERVICES[0]!.port },
   { address: host, port: PROXY.port },
   { address: host, port: PROXY.launcher ?? PROXY.port },
+  { address: host, port: LOBBY.port },
 );
 
 // Every key the player types is accepted; see src/net/cdkey-service.ts for why
 // that is the honest answer rather than a shortcut.
 const cdkey = new CdKeyService();
 
-for (const service of [...SERVICES, PROXY]) {
+for (const service of [...SERVICES, PROXY, LOBBY]) {
   for (const port of [service.port, service.launcher].filter((p): p is number => p !== null)) {
     const label = port === service.port ? service.prefix : `${service.prefix}Launcher`;
 
