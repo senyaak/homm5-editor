@@ -54,10 +54,19 @@ export interface GSMessage {
 }
 
 /**
+ * How an encrypted body is opened. Which key applies is a property of the
+ * connection, not of the message, so the caller supplies this.
+ */
+export type BodyDecryptor = (body: Buffer) => Buffer;
+
+/**
  * One message off the front of `buf`, or null when the buffer holds less than a
  * whole one. `size` says where the next message in a bundle begins.
+ *
+ * A body marked GS_ENCRYPT needs `decryptBody`; without it this throws rather
+ * than hand back a message whose contents were never read.
  */
-export function parse(buf: Buffer): GSMessage | null {
+export function parse(buf: Buffer, decryptBody?: BodyDecryptor): GSMessage | null {
   if (buf.length < HEADER_SIZE) return null;
   const size = (buf[0]! << 16) | (buf[1]! << 8) | buf[2]!;
   if (size < HEADER_SIZE || buf.length < size) return null;
@@ -73,7 +82,10 @@ export function parse(buf: Buffer): GSMessage | null {
   if (size > HEADER_SIZE) {
     const raw = buf.subarray(HEADER_SIZE, size);
     if (message.property === Property.GS) message.body = decodeBody(decrypt(raw));
-    else if (message.property === Property.GS_ENCRYPT) throw new Error('GS_ENCRYPT body: no key exchange yet');
+    else if (message.property === Property.GS_ENCRYPT) {
+      if (!decryptBody) throw new Error('GS_ENCRYPT body with no key to open it');
+      message.body = decodeBody(decryptBody(raw));
+    }
   }
   return message;
 }

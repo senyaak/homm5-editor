@@ -24,6 +24,20 @@ function check(name: string, ok: boolean, detail = ''): void {
   if (!ok) failures++;
 }
 
+/** A GS_ENCRYPT message, built the way the client builds one. */
+function encryptedMessage(type: number, body: GSValue[], key: Buffer): Buffer {
+  const encrypted = new Blowfish(key).encrypt(encodeBody(body));
+  const size = 6 + encrypted.length;
+  const header = Buffer.alloc(6);
+  header[0] = (size >>> 16) & 0xff;
+  header[1] = (size >>> 8) & 0xff;
+  header[2] = size & 0xff;
+  header[3] = Property.GS_ENCRYPT << 6;
+  header[4] = type & 0xff;
+  header[5] = (8 << 4) | 2;
+  return Buffer.concat([header, encrypted]);
+}
+
 /** The client's opening SYN, exactly as it arrived. */
 const CLIENT_SYN = Buffer.from('9388000008004230000000000a000100ff441802', 'hex');
 /** And the FIN+URG it repeats nine times before starting over. */
@@ -212,6 +226,43 @@ console.log('\nRouter, driven by the recorded packet');
   const half = session.receive(login.subarray(0, 4));
   check('half a message waits for its other half', half.length === 0);
   check('and completes when the rest arrives', session.receive(login.subarray(4)).length === 1);
+}
+
+console.log('\nRouter, once the session keys are up');
+{
+  const session = new RouterService({ address: '127.0.0.1', port: 40001 }).session();
+  // Step one gives us the key the client should seal its session key to.
+  const opened = session.receive(ROUTER_KEY_EXCHANGE);
+  const ourBlob = (parse(opened[0]!.replies[0]!)!.body![1] as GSValue[])[2] as Uint8Array;
+  const ourKey = parsePublicKey(ourBlob);
+  const sessionKey = Buffer.from('0123456789abcdef', 'utf8');
+  const sealed = encryptTo(ourKey, sessionKey);
+  const step2 = build({
+    property: Property.GS,
+    priority: 0,
+    type: MessageType.KEY_EXCHANGE,
+    sender: 8,
+    receiver: 2,
+    body: ['2', ['1', String(sealed.length), new Uint8Array(sealed)]],
+  });
+  const keyed = session.receive(step2);
+  check('the session key is taken', keyed[0]!.replies.length === 1, keyed[0]?.note);
+  check('and it is the one the client sealed', session.clientBlowfishKey?.equals(sessionKey) === true);
+
+  // A login the way it really arrived: GS_ENCRYPT, keyed with OUR session key.
+  const encrypted = encryptedMessage(MessageType.LOGIN, ['senyaak', 'secret'], session.serverBlowfishKey!);
+  const loggedIn = session.receive(encrypted);
+  check('an encrypted login is opened and answered', loggedIn[0]!.replies.length === 1, loggedIn[0]?.note);
+  check('the name inside it is read', session.username === 'senyaak');
+  check('and we know which key opened it', session.encryptedWith !== null, String(session.encryptedWith));
+
+  // The bug that stalled the first real login: a body we cannot open must not
+  // stay at the front of the stream.
+  const gibberish = encryptedMessage(MessageType.LOGIN, ['nobody'], Buffer.from('a-key-we-never-agreed', 'utf8'));
+  const alive = build({ property: Property.GS, priority: 0, type: MessageType.STILLALIVE, sender: 8, receiver: 2, body: null });
+  const mixed = session.receive(Buffer.concat([gibberish, alive]));
+  check('an unreadable message is reported, not left in the way', mixed.length === 2, mixed.map((e) => e.note).join(' | '));
+  check('and the stream keeps working after it', session.receive(alive).length === 1);
 }
 
 console.log('\nBlowfish');

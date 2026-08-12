@@ -172,10 +172,34 @@ Yes, in stages, and each stage is testable on one machine.
    the bytes. There is no live Ubi service left to capture, so the protocol has
    to come from the client: every `LobbyRcv_*` parser is in the exe, and the log
    strings name the fields.
-4. **The router** — the TCP entry point: accounts, login, and the wrapper every
-   lobby message travels in. Registration is client-side ready (the `MPRegister`
-   texts and the `GSLGE_ERRORSECURE_USERNAME*` / `*PASSWORD*` errors), so what a
-   name and password mean is our server's decision.
+4. **The router and the CD-key desk** — done far enough to log in.
+   `src/net/router-service.ts` does the key exchange (`src/net/pkc.ts`, RSA-512
+   with exponent 3), then takes a name; `src/net/cdkey-service.ts` answers every
+   key question yes, because the client holds no key list and no arithmetic — it
+   asks and displays. That needed our own Blowfish (`src/net/blowfish.ts`): node
+   exposes no `bf-*` cipher, OpenSSL 3 having moved it to the legacy provider.
+
+   **Measured, and not what you would guess:** once the keys are up the client
+   sends its LOGIN as GS_ENCRYPT, encrypted with **the key WE generated and sent
+   it**, not the one it sent us. The router tries both and reports which opened
+   the body, so this stays a measurement rather than a belief.
+
+   Also measured the hard way: a message we cannot read must be taken off the
+   stream anyway. Leaving it at the front wedged the connection permanently — the
+   first encrypted login was re-parsed and re-failed until the client gave up.
+
+   Registration has no screen in the client: `UI/MPRegister` is the progress
+   window (connecting, validating the key, logging in), and Ubisoft did accounts
+   on a website. The wire does have `NEWUSERREQUEST`, and the client already
+   knows how to show "name taken" and "wrong password"
+   (`GSLGE_ERRORSECURE_*`), so there are three ways to give accounts back:
+   create one on first login (no client change at all), a page of our own beside
+   the server, or a real registration screen added to the client.
+
+   Still to do here: the CD-key prompt itself. The key is stored in the client's
+   `ubi_cdkey` setting (used by the screens at 0x87B790, 0x87C840, 0x87CF50,
+   0x87D2B0), so pre-setting it — or cutting the check — should get rid of the
+   question for good.
 5. **The lobby** — login → lobby → room → start game, then the peers connect to
    each other. Chat can point at a stock ircd.
 6. **Ours to invent** — the ladder and the stats behind it. Nobody has written

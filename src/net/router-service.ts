@@ -22,8 +22,9 @@
 // Exports:
 //   RouterService     new(waitModule) -> session(); session.receive(buf) -> Buffer[]
 
-import { MessageType, build, parse, reply, type GSMessage } from './gs-message.ts';
-import { type GSValue } from './gs-data.ts';
+import { HEADER_SIZE as GS_HEADER_SIZE, MessageType, build, parse, reply, type GSMessage } from './gs-message.ts';
+import { decodeBody, type GSValue } from './gs-data.ts';
+import { Blowfish } from './blowfish.ts';
 import { decryptWith, generateKeyPair, parsePublicKey, publicKeyBlob, encryptTo, type RsaKeyPair, type RsaPublicKey } from './pkc.ts';
 import { randomBytes } from 'node:crypto';
 
@@ -54,10 +55,14 @@ export class RouterSession {
   private buffer = Buffer.alloc(0);
   private keys: RsaKeyPair | null = null;
   private clientKey: RsaPublicKey | null = null;
-  /** The key the client will encrypt bodies with, once it has told us. */
+  /** The session key the client sent us, and its cipher. */
   clientBlowfishKey: Buffer | null = null;
-  /** The key we would encrypt with. Generated, announced, unused so far. */
+  private clientCipher: Blowfish | null = null;
+  /** The one we generated and sent back. */
   serverBlowfishKey: Buffer | null = null;
+  private serverCipher: Blowfish | null = null;
+  /** Which of the two turned out to open the client's bodies. */
+  encryptedWith: string | null = null;
   username = '';
 
   private readonly waitModule: Endpoint;
@@ -71,13 +76,57 @@ export class RouterSession {
     this.buffer = Buffer.concat([this.buffer, chunk]);
     const events: RouterEvent[] = [];
     for (;;) {
-      const message = parse(this.buffer);
-      if (!message) break;
-      this.buffer = this.buffer.subarray(message.size);
-      events.push(this.handle(message));
+      // The size field is read first and the bytes are taken off the buffer
+      // BEFORE anything can go wrong with them. A message we cannot understand
+      // must not be left at the front of the stream: that stalls the connection
+      // for good, which is exactly what happened on 12.08.2026 to the first
+      // encrypted login we saw.
+      if (this.buffer.length < GS_HEADER_SIZE) break;
+      const size = (this.buffer[0]! << 16) | (this.buffer[1]! << 8) | this.buffer[2]!;
+      if (size < GS_HEADER_SIZE) {
+        this.buffer = Buffer.alloc(0);
+        events.push({ note: `a message claiming ${size} bytes cannot be one — stream dropped`, replies: [] });
+        break;
+      }
+      if (this.buffer.length < size) break;
+      const bytes = this.buffer.subarray(0, size);
+      this.buffer = this.buffer.subarray(size);
+      try {
+        const message = parse(bytes, this.decryptBody);
+        events.push(message ? this.handle(message) : { note: `${size} bytes did not parse`, replies: [] });
+      } catch (err) {
+        events.push({ note: `${size} bytes could not be read: ${(err as Error).message}`, replies: [] });
+      }
     }
     return events;
   }
+
+  /**
+   * Open an encrypted body.
+   *
+   * Which of the two session keys the client encrypts with is a thing to be
+   * measured, not assumed, so both are tried and the one that yields a body we
+   * can decode is remembered and reported. A wrong key gives noise, and noise
+   * does not decode as a list — that is what makes the trial safe.
+   */
+  private readonly decryptBody = (body: Buffer): Buffer => {
+    const candidates: Array<[string, Blowfish | null]> = [
+      ['the key we sent', this.serverCipher],
+      ['the key the client sent', this.clientCipher],
+    ];
+    for (const [name, cipher] of candidates) {
+      if (!cipher) continue;
+      try {
+        const plain = cipher.decrypt(body);
+        decodeBody(plain);
+        this.encryptedWith = name;
+        return plain;
+      } catch {
+        // Wrong key, or not this one. Try the other.
+      }
+    }
+    throw new Error('neither session key opens this body');
+  };
 
   private handle(message: GSMessage): RouterEvent {
     switch (message.type) {
@@ -87,7 +136,7 @@ export class RouterSession {
         const name = message.body?.[0];
         this.username = typeof name === 'string' ? name : '';
         return {
-          note: `LOGIN as "${this.username}" — accepted`,
+          note: `LOGIN as "${this.username}" — accepted${this.encryptedWith ? `, body opened with ${this.encryptedWith}` : ''}`,
           replies: [build(reply(message, [messageId(MessageType.LOGIN)], MessageType.GSSUCCESS))],
         };
       }
@@ -132,7 +181,9 @@ export class RouterSession {
         return { note: 'KEY_EXCHANGE 2 out of order — ignored', replies: [] };
       }
       this.clientBlowfishKey = decryptWith(this.keys.privateKey, blob);
+      this.clientCipher = new Blowfish(this.clientBlowfishKey);
       this.serverBlowfishKey = randomBytes(16);
+      this.serverCipher = new Blowfish(this.serverBlowfishKey);
       const encrypted = encryptTo(this.clientKey, this.serverBlowfishKey);
       return {
         note: `KEY_EXCHANGE 2 — client session key ${this.clientBlowfishKey.length} bytes; ours sent`,
