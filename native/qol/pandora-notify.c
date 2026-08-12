@@ -67,6 +67,27 @@ static int g_replayed;
 /** Where the game is loaded — never 0x400000 in this build. */
 static DWORD game_base(void) { return (DWORD)(INT_PTR)GetModuleHandleW(NULL); }
 
+/**
+ * Every word of something, and no opinion about which ones matter.
+ *
+ * Twice now a report has been filtered down to what seemed worth keeping and
+ * twice the answer was in what was thrown away — the crash with no return
+ * address, and before it a whole probe that logged the arguments but not the
+ * objects behind them. The rule, in the author's words: ЛОГИРУЕМ ВСЁ. Whatever
+ * is unreadable stops the dump; nothing else does.
+ */
+static void log_all_words(const char *what, DWORD at, int count) {
+  log_hex(what, at);
+  for (int i = 0; i < count; i++) {
+    const DWORD *word = (const DWORD *)(DWORD_PTR)(at + (DWORD)i * 4);
+    if (!readable(word, 4)) return;
+    char label[24] = { ' ', ' ', ' ', ' ', '+', '0', 'x', '0', '0', ' ', ' ', ' ', ' ', 0 };
+    label[7] = "0123456789abcdef"[(i * 4 >> 4) & 0xf];
+    label[8] = "0123456789abcdef"[(i * 4) & 0xf];
+    log_hex(label, *word);
+  }
+}
+
 /** One line per argument, in the order the engine pushed them. */
 static void log_args(const char *what, DWORD self, DWORD edx, const DWORD *stack, int count,
                      DWORD from) {
@@ -78,12 +99,12 @@ static void log_args(const char *what, DWORD self, DWORD edx, const DWORD *stack
     char label[16] = { ' ', ' ', 'a', 'r', 'g', '0', ' ', ' ', ' ', ' ', ' ', ' ', ' ', 0 };
     label[5] = (char)('0' + i);
     log_hex(label, stack[i]);
-    // A dword that points at readable memory is worth one level deeper: the
-    // announcement's payload is structures, and their first word is what tells
-    // one kind from another. `readable` is core/log.c's — a probe that faults
-    // is a probe that costs a run (docs/engineInternals/PANDORA_OBJECT.md).
-    const DWORD *inner = (const DWORD *)(DWORD_PTR)stack[i];
-    if (readable(inner, 4)) log_hex("    -> [0]   ", *inner);
+    // And everything behind it, not its first word. The announcement's payload
+    // is structures, and for four crashes running the argument LIST looked
+    // identical to the engine's while the structures behind it did not.
+    // `readable` is core/log.c's — a probe that faults is a probe that costs a
+    // run (docs/engineInternals/PANDORA_OBJECT.md).
+    if (readable((const void *)(DWORD_PTR)stack[i], 4)) log_all_words("    behind it ", stack[i], 8);
   }
 }
 
@@ -417,7 +438,14 @@ static char __fastcall add_spell_replay(void *self, void *unused) {
  * did, and nobody has to read registers to know which.
  */
 static DWORD __fastcall announce_hold_probe(DWORD self, DWORD edx, DWORD announcement) {
-  log_hex("pandora: holding the announcement ", announcement);
+  log_line("pandora: holding an announcement");
+  // ALL of it, both times. The engine's own announcements come through here as
+  // well as ours, so one run puts a working object and a fatal one side by side
+  // in the same file — which is the only comparison that has settled anything
+  // so far. 0x78 bytes is what the announcer allocates for one.
+  log_all_words("pandora:   the announcement ", announcement, 0x1e);
+  log_all_words("pandora:   its holder ", self, 0x10);
+  log_all_words("pandora:   its player ", edx, 0x10);
   DWORD kept = ((DWORD(__fastcall *)(DWORD, DWORD, DWORD))g_announce_hold_orig)(
     self, edx, announcement);
   log_line("pandora: held");
