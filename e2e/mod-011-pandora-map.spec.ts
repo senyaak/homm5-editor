@@ -38,7 +38,7 @@ import { modFile } from '../src/game/mod-paths.ts';
 import { readEntries } from '../src/format/pak.ts';
 import { GAMEPLAY_ARCHIVE, writeGameplayArchive } from '../src/mods/gameplay.ts';
 import { PANDORA_CLASS, pandoraShared } from '../src/mods/pandora-files.ts';
-import { PANDORA_RESOURCES, PANDORA_TIERS, pandoraValue } from '../src/mods/pandora-contents.ts';
+import { PANDORA_TIERS, pandoraValue } from '../src/mods/pandora-contents.ts';
 import type { PandoraContents } from '../src/mods/pandora-contents.ts';
 import { pandoraPrices } from '../src/mods/pandora-prices.ts';
 import { singleRoot } from '../src/game/assets.ts';
@@ -65,13 +65,13 @@ const BOX = `/${pandoraShared(PANDORA_TIERS[0]!.key)}`;
  * so its four copies carry an explicit override each. That is the other half of
  * the tier rule, and this is where it is exercised.
  *
- * EVERY BOX ALSO SPEAKS, and that is what makes the map readable. Two of the
- * eight kinds move a number in the HUD and nothing else — experience and gold —
- * and a play-through reported them as doing nothing at all, which a silent
- * reward and a broken one look exactly alike from the outside. Each box now
- * says what it just handed over, so the map reads as a report rather than as a
- * row of vanishing boxes; it also puts two rewards in one box, which is the
- * other thing an author is allowed to do.
+ * EVERY BOX ALSO REPORTS ITSELF, and no kind here has to arrange that: the
+ * editor writes a receipt beside each box naming what it hands over in the
+ * game's own words, and the behaviour flies it over the hero. A play-through
+ * read two of these rows — experience and gold, which move a number in the HUD
+ * and nothing else — as boxes that did nothing at all, because a silent reward
+ * and a broken one look alike from the outside. What this file still writes by
+ * hand is only the AUTHOR's message, on the one kind that is about a message.
  */
 const KINDS: { key: string; per: (tier: number) => Partial<PandoraContents> }[] = [
   {
@@ -115,6 +115,19 @@ const KINDS: { key: string; per: (tier: number) => Partial<PandoraContents> }[] 
     // the pair must come out the same colour.
     per: (t) => ({ guards: [{ creature: 'CREATURE_ARCHANGEL', count: [1, 2, 5, 12][t]! }] }),
   },
+  {
+    key: 'Both',
+    // A BOX THAT IS GUARDED AND PAYS, which is what one is for — and the only
+    // row that walks the whole path: question, taunt, battle, and a reward
+    // handed over to whoever won. The rows above stop halfway each.
+    //
+    // The gold is what keeps each copy in its own glow beside the archangels:
+    // 3500 a head, so 4000 / 8000 / 19500 / 47000.
+    per: (t) => ({
+      guards: [{ creature: 'CREATURE_ARCHANGEL', count: [1, 2, 5, 12][t]! }],
+      gold: [500, 1000, 2000, 5000][t]!,
+    }),
+  },
 ];
 
 /**
@@ -135,22 +148,6 @@ const SIDES = [
 /** One placement: where it goes, what it is called, what is in it. */
 interface Placement { name: string; x: number; y: number; contents: PandoraContents }
 
-/**
- * What a box hands over, in a sentence — written from the CONTENTS rather than
- * from the kind that produced them, so a box can never describe itself wrongly.
- */
-function describe(c: Partial<PandoraContents>): string {
-  const parts: string[] = [];
-  if (c.exp) parts.push(`${c.exp} experience`);
-  if (c.gold) parts.push(`${c.gold} gold`);
-  const res = PANDORA_RESOURCES.filter((r) => c[r]).map((r) => `${c[r]} ${r}`);
-  if (res.length) parts.push(res.join(', '));
-  if (c.artifacts?.length) parts.push(`artifacts: ${c.artifacts.join(', ')}`);
-  if (c.spells?.length) parts.push(`spells: ${c.spells.join(', ')}`);
-  if (c.creatures?.length) parts.push(`army: ${c.creatures.map((s) => `${s.count} ${s.creature}`).join(', ')}`);
-  if (c.guards?.length) parts.push(`fought off ${c.guards.map((s) => `${s.count} ${s.creature}`).join(', ')}`);
-  return parts.length ? `The box held ${parts.join('; ')}.` : 'The box was empty.';
-}
 
 /** Every box the map carries — the same row twice, once per side. */
 function placements(arts: string[][], spells: (string | number)[][]): Placement[] {
@@ -167,9 +164,7 @@ function placements(arts: string[][], spells: (string | number)[][]): Placement[
           name,
           x: side.at.x + t * 3,
           y: side.at.y + row * 3,
-          // The box says what it gave, unless it was written to say something
-          // of its own — that kind is the one testing a message with no reward.
-          contents: { name, message: describe(extra), ...extra },
+          contents: { name, ...extra },
         });
       }
     });
@@ -502,6 +497,26 @@ test('saving writes the block the game reads, and the texts it shows', async () 
   expect(existsSync(join(MAP_DIR, `pandora-${talker.name}.txt`)), 'the message is a file').toBe(true);
   expect(lua, 'and the block points at it')
     .toContain(`/Maps/SingleMissions/${NAME}/pandora-${talker.name}.txt`);
+
+  // AND THE RECEIPT, which nobody typed: written from the contents at save
+  // time, in the game's own words. This is the whole answer to a row of boxes
+  // that "did nothing" — a spell box now says which spell, by the name the
+  // spellbook uses, in the language the install speaks.
+  const spellBox = BOXES.find((b) => b.contents.spells?.length)!;
+  const gift = join(MAP_DIR, `pandora-${spellBox.name}-gift.txt`);
+  expect(existsSync(gift), 'a box that gives something writes a receipt').toBe(true);
+  const said = readFileSync(gift, 'utf16le').replace(/^﻿/, '');
+  expect(said.length, 'and the receipt is not empty').toBeGreaterThan(0);
+  expect(said, 'named, not spelled out as an id').not.toContain('SPELL_');
+  expect(lua, 'and the block points at it')
+    .toContain(`/Maps/SingleMissions/${NAME}/pandora-${spellBox.name}-gift.txt`);
+  // The box that only speaks hands nothing over, so it gets no receipt. Not
+  // the FIRST one, which is the box the window filled with gold by hand — its
+  // contents on the map are not the ones this file wrote.
+  const onlySpeaks = BOXES.filter((b) => b.name !== BOXES[0]!.name)
+    .find((b) => b.contents.message && !b.contents.gold)!;
+  expect(existsSync(join(MAP_DIR, `pandora-${onlySpeaks.name}-gift.txt`)),
+    'a box with nothing to give has nothing to report').toBe(false);
 });
 
 test('and it packs to a map the game can be pointed at', async () => {

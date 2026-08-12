@@ -278,10 +278,17 @@ const HELM = 'ARTIFACT_H3_WAR_MAGE_HELM';
 const DARK = (mastery: string): Skill => ({ id: 'HERO_SKILL_DARK_MAGIC', mastery });
 
 /**
- * The row of heroes, west to east.
+ * The row of heroes, along the bottom of the screen.
  *
- * Each stands two tiles south of the stack he is meant to fight, so a battle is
+ * Each stands three tiles from the stack he is meant to fight, so a battle is
  * one click away and no hero can wander into another's foe by accident.
+ *
+ * WHICH WAY IS UP, since this file's coordinates are read by eye more than by
+ * anything else: on screen the top is NORTH, and north is where the LARGER
+ * coordinates are — bigger `y` is further up, bigger `x` further left. So this
+ * row at `y = 10` is along the bottom, its stacks at `y = 7` are below it, and
+ * a row laid out with a growing `y` reads bottom to top. Measured in play
+ * 12.08.2026; the comment here used to say the opposite and cost a diagnosis.
  */
 export const HEROES: Kit[] = [
   {

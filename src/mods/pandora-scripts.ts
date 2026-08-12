@@ -32,6 +32,8 @@ const EOL = '\r\n';
 export const PANDORA_SCRIPT = 'scripts/homm5-editor/pandora.lua';
 /** The question a box asks, beside the behaviour. */
 export const PANDORA_OPEN_TEXT = 'scripts/homm5-editor/pandora-open.txt';
+/** And what it says when the lid comes off and the guards are awake. */
+export const PANDORA_GUARDS_TEXT = 'scripts/homm5-editor/pandora-guards.txt';
 
 /** The generated block's fences in a map script. Everything between them is
  *  rewritten on save; everything outside is the author's. */
@@ -48,6 +50,20 @@ export const PANDORA_BLOCK_END = '-- H5E pandora end';
  * than quietly silenced.
  */
 export type MessageRef = (box: PandoraContents) => string | undefined;
+
+/**
+ * The two texts a box can point at, as the writer of the map answers for them.
+ *
+ * `said` is the author's own message, shown when the lid comes off; `report` is
+ * the generated receipt of what was handed over, named in the game's words
+ * (pandora-names.ts) and flown over the hero afterwards. Both are FILES because
+ * both calls take a ref, and a caller that writes neither — a unit test, say —
+ * simply gets a block without them.
+ */
+export interface PandoraRefs {
+  said?: MessageRef;
+  report?: MessageRef;
+}
 
 /**
  * The behaviour, shipped in the archive.
@@ -119,7 +135,17 @@ export function pandoraBehaviourLua(): string {
     '\tif box == nil then return end;',
     '\tlocal fight = nil;',
     '\tif H5E_PandoraFights ~= nil then fight = H5E_PandoraFights[H5E_PandoraObj]; end;',
+    '\t-- THE BOX SPEAKS WHEN IT OPENS, not when the dust settles. The author\'s',
+    '\t-- words are what is written on the lid, so they belong between "yes" and',
+    '\t-- whatever comes out - a message that arrives after the battle reads as a',
+    '\t-- reward slip, and for a guarded box it arrives minutes late.',
+    '\tlocal player = GetObjectOwner(H5E_PandoraHero);',
+    '\tlocal speaks = H5E_PandoraIsHuman(player) == true and player == GetCurrentPlayer();',
+    '\tif box.said ~= nil and speaks == true then MessageBox(box.said); end;',
     '\tif fight ~= nil then',
+    '\t\t-- And the box has the last word before the fight, the way Heroes III',
+    '\t\t-- taunted whoever opened one. Ours, not a quotation.',
+    `\t\tif speaks == true then MessageBox("/${PANDORA_GUARDS_TEXT}"); end;`,
     '\t\tfight(H5E_PandoraHero);',
     '\telse',
     '\t\tH5E_PandoraGrant(H5E_PandoraHero, H5E_PandoraObj);',
@@ -167,16 +193,22 @@ export function pandoraBehaviourLua(): string {
     '\t\t\tAddHeroCreatures(hero, c[1], c[2]);',
     '\t\tend;',
     '\tend;',
-    '\t-- The message goes to the player who opened it, and to nobody else -',
-    '\t-- the same test as the question, for the same reason. This is where the',
-    '\t-- computer used to announce its own reward on our screen: the owner check',
-    '\t-- alone passes for an AI, since on its turn it IS the current player.',
+    '\t-- AND THE RECEIPT, in the game\'s own idiom: a flying sign over the hero,',
+    '\t-- naming what he just got. Two of the eight kinds of content move a number',
+    '\t-- in the HUD and nothing else, and a play-through read both as boxes that',
+    '\t-- did nothing - a silent reward and a broken one look alike from outside.',
     '\t--',
-    '\t-- GetObjectOwner is asked again here rather than carried: a fight sits',
-    '\t-- between the two, and the hero can have changed hands or died in it.',
+    '\t-- ShowFlyingSign TAKES A PLAYER, which is the whole reason it is the right',
+    '\t-- call here: the engine shows it to that player and to nobody else, so the',
+    '\t-- computer\'s receipt cannot land on our screen the way its message did.',
+    '\t-- The names in it are the game\'s own, written into the file at save time -',
+    '\t-- Lua has no way to turn SPELL_IMPLOSION into what the spellbook calls it.',
+    '\t--',
+    '\t-- GetObjectOwner is asked again rather than carried: a fight sits between',
+    '\t-- the two, and the hero can have changed hands or died in it.',
     '\tlocal owner = GetObjectOwner(hero);',
-    '\tif box.given ~= nil and H5E_PandoraIsHuman(owner) == true and owner == GetCurrentPlayer() then',
-    '\t\tMessageBox(box.given);',
+    '\tif box.report ~= nil then',
+    '\t\tShowFlyingSign(box.report, hero, owner, 6);',
     '\tend;',
     '\tH5E_PANDORA[objectName] = nil;',
     '\t-- The chest\'s own pickup can have eaten the object already (until the',
@@ -198,6 +230,8 @@ export function pandoraBehaviourFiles(): ModFile[] {
   return [
     { path: PANDORA_SCRIPT, data: Buffer.from(pandoraBehaviourLua(), 'latin1') },
     { path: PANDORA_OPEN_TEXT, data: utf16('The box is sealed, and something waits inside. Open it?') },
+    { path: PANDORA_GUARDS_TEXT, data: utf16('Too late for second thoughts — the lid is off,'
+      + ' and what was locked in is looking at you. Defend yourself!') },
   ];
 }
 
@@ -247,7 +281,7 @@ const luaId = (prefix: string) => (id: string | number): string => {
  * one inside the constructor — the dullest syntax the campaigns themselves
  * use, which is the syntax proven to parse.
  */
-function boxLua(box: PandoraContents, messageRef: MessageRef | undefined): string[] {
+function boxLua(box: PandoraContents, refs: PandoraRefs | undefined): string[] {
   const fields: string[] = [];
   if (box.exp) fields.push(`\texp = ${luaNumber(box.exp)}`);
   const res = RESOURCES
@@ -261,13 +295,17 @@ function boxLua(box: PandoraContents, messageRef: MessageRef | undefined): strin
       .map((c) => `{${luaId('CREATURE_')(c.creature)}, ${luaNumber(c.count)}}`).join(', ')} }`);
   }
   if (box.message) {
-    const ref = messageRef?.(box);
+    const ref = refs?.said?.(box);
     if (!ref) {
       throw new Error(`pandora: "${box.name}" has a message and nowhere to read it from —`
         + ' MessageBox takes a text file, so the message has to be written first');
     }
-    fields.push(`\tgiven = "${ref}"`);
+    fields.push(`\tsaid = "${ref}"`);
   }
+  // The receipt, when there is something to report: a box that only speaks has
+  // nothing to hand over, and a caller that writes no texts answers nothing.
+  const report = refs?.report?.(box);
+  if (report) fields.push(`\treport = "${report}"`);
   const out = [
     `H5E_PANDORA["${box.name}"] = {`,
     ...fields.map((f, i) => (i < fields.length - 1 ? `${f},` : f)),
@@ -293,7 +331,7 @@ function boxLua(box: PandoraContents, messageRef: MessageRef | undefined): strin
  * Boxes with no placement name are nobody's to trigger and are refused loudly
  * rather than silently skipped — a box that cannot be opened is a map bug.
  */
-export function pandoraMapBlock(boxes: readonly PandoraContents[], messageRef?: MessageRef): string {
+export function pandoraMapBlock(boxes: readonly PandoraContents[], refs?: PandoraRefs): string {
   for (const b of boxes) {
     if (!b.name) throw new Error('pandora: a box without a placement name cannot be triggered');
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(b.name)) {
@@ -305,7 +343,7 @@ export function pandoraMapBlock(boxes: readonly PandoraContents[], messageRef?: 
     PANDORA_BLOCK_BEGIN,
     'H5E_PANDORA = {};',
     'H5E_PandoraFights = {};',
-    ...boxes.flatMap((b) => boxLua(b, messageRef)),
+    ...boxes.flatMap((b) => boxLua(b, refs)),
     // The doFile comes LAST: a Trigger looks its handler up by name when it
     // fires, not when it binds, so the hooks survive even a doFile that dies —
     // where a doFile first would take the whole thread down with the hooks
@@ -325,7 +363,7 @@ export function pandoraMapBlock(boxes: readonly PandoraContents[], messageRef?: 
 export function withPandoraBlock(
   script: string,
   boxes: readonly PandoraContents[],
-  messageRef?: MessageRef,
+  refs?: PandoraRefs,
 ): string {
   const begin = script.indexOf(PANDORA_BLOCK_BEGIN);
   const end = script.indexOf(PANDORA_BLOCK_END);
@@ -333,5 +371,5 @@ export function withPandoraBlock(
     ? script.slice(0, begin) + script.slice(end + PANDORA_BLOCK_END.length).replace(/^\r?\n/, '')
     : script;
   if (!boxes.length) return stripped;
-  return pandoraMapBlock(boxes, messageRef) + stripped;
+  return pandoraMapBlock(boxes, refs) + stripped;
 }

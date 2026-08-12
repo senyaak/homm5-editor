@@ -420,6 +420,19 @@ one.
 
 ### Fixed
 
+- **A box now says what it gave you, in the game's own words.** Opening one
+  flies a receipt over the hero — `Шок Земли`, `2 × Архангелы`, `7000 Золото` —
+  read out of the same records the prices come from, so it arrives in whatever
+  language the install speaks. It is what makes a box that hands over
+  experience or gold distinguishable from a broken one: those two move a number
+  in the HUD and nothing else. The sign is addressed to the player who opened
+  the box, so nobody else sees it.
+
+- **And it speaks before the fight, not after it.** The author's message is
+  what is written on the lid, so it is shown the moment the box is opened; a
+  guarded box then taunts whoever opened it and the guards attack. Until now
+  both arrived once the battle was over.
+
 - **A Pandora's Box no longer announces the computer's reward on your screen.**
   A box speaks to the player who opened it, and the check for that was the
   wrong one: `GetCurrentPlayer()` is the player whose TURN it is, not the one

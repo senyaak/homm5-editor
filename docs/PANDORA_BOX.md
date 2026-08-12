@@ -57,6 +57,29 @@ reward that lands nowhere — and **creatures join an existing stack**, so ten
 archangels added to a hundred read as nothing happening at all unless the box
 also says so.
 
+### What the player sees, and when
+
+1. **The question** — "the box is sealed… open it?"
+2. **The author's message**, right after "yes". It is what is written on the
+   lid, so it comes BEFORE anything the box does — not after the battle, which
+   is where it used to arrive and where it read as a reward slip.
+3. **A taunt, for a guarded box** — the lid is off and what was locked in is
+   awake — and then the fight.
+4. **The receipt**, once the box is open: what it handed over, flown over the
+   hero the way the game announces its own gains.
+
+The receipt is written by the editor, not typed by anybody, and it uses the
+GAME's words: `SPELL_IMPLOSION` reaches the player as `Шок Земли` in a Russian
+install, because the name is read out of the same records the prices come from
+(`src/mods/pandora-names.ts`). Even `experience` and `gold` are the game's —
+the resource names live in `ResourcesInfo.xdb`, and the word for experience is
+lifted out of the treasure chest's own line, which is the only place it exists
+as a word.
+
+It exists because two kinds of reward move a number in the HUD and nothing
+else. A play-through reported both rows as boxes that did nothing, and from
+outside there is no way to tell that from a box that is broken.
+
 ### Who sees the message
 
 Only the player who opened the box, and only while it is his turn.
@@ -72,6 +95,9 @@ that was the AI announcing its own reward on the human's screen.
 The test that does work is `IsAIPlayer`, and both popups — the question and the
 message — go through one function that asks it. Whoever is refused still gets
 everything the box holds; the box just opens in silence.
+
+The receipt needs none of that: `ShowFlyingSign` takes the player it is for, so
+the engine shows it to him and to nobody else.
 
 ## What the contents are worth, and the glow
 
@@ -168,12 +194,13 @@ flag does along with the archive. Without it the boxes still work — the touch
 trigger, the question, the contents are all script — but the chest talks over
 them.
 
-## What is not done yet
+## What the data calls it, and why that is the end of it
 
-The DATA still says `AdvMapTreasureShared`. A class of our own,
-`AdvMapPandoraShared`, is the remaining step, and it is cosmetic in the sense
-that nothing a player sees depends on it — it is what makes a map say what it
-means (`docs/engineInternals/PANDORA_OBJECT.md`, stage 2).
+`AdvMapTreasureShared`. A class of our own was the planned next step and is
+**dropped**: it changes nothing a player sees, and being a treasure is what
+makes the engine find the box and walk the computer's heroes to it. The design
+is written down in `docs/engineInternals/PANDORA_OBJECT.md` for the next object
+that really does need a class the engine has never heard of.
 
 ## Where the code is
 
@@ -181,6 +208,7 @@ means (`docs/engineInternals/PANDORA_OBJECT.md`, stage 2).
 |---|---|
 | the contents model, the valuer, the tiers | `src/mods/pandora-contents.ts` |
 | prices off the game's tables | `src/mods/pandora-prices.ts` |
+| names off the game's texts, and the receipt | `src/mods/pandora-names.ts` |
 | the object: model, texture, glows, palette link | `src/mods/pandora-files.ts` |
 | the behaviour and the generated block | `src/mods/pandora-scripts.ts` |
 | the sidecar | `src/map/pandora-store.ts` |
@@ -201,6 +229,12 @@ play-through reported them as doing nothing at all: a silent reward and a
 broken one look identical from the outside. The rows run north to south in the
 order of the table above — message, experience, gold, resources, artifacts,
 spells, army, guards — and the glows run west to east, poorest first.
+
+The last row is the one that walks the whole path: **guarded AND paying**, the
+way a box in Heroes III is. The rows above it each stop halfway — the guards
+row fights and hands nothing over, the army row hands over without a fight — so
+until that row existed nothing had ever proved that winning the battle is what
+opens the box.
 
 The sides are led by **generic heroes** — the palette's `. Heroes (Generic)`
 group, one class each, which is what a map wants and what a person clicks.

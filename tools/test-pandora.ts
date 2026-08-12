@@ -33,7 +33,7 @@ import { pandoraPrices } from '../src/mods/pandora-prices.ts';
 import { singleRoot } from '../src/game/assets.ts';
 import { buildGameplayArchive } from '../src/mods/gameplay.ts';
 import {
-  PANDORA_BLOCK_BEGIN, pandoraBehaviourLua, pandoraMapBlock, withPandoraBlock,
+  PANDORA_BLOCK_BEGIN, PANDORA_GUARDS_TEXT, pandoraBehaviourLua, pandoraMapBlock, withPandoraBlock,
 } from '../src/mods/pandora-scripts.ts';
 import { luaDiagnostics } from '../src/script/lua-lint.ts';
 import { dataReader } from '../src/mods/mod-files.ts';
@@ -417,7 +417,7 @@ console.log('the scripts');
   // is the player whose TURN it is — on the AI's turn it IS the AI, so an owner
   // check alone lets it through. Both popups must ask whether the owner is
   // human, and neither may be reached without that.
-  for (const popup of ['QuestionBox(', 'MessageBox(box.given)']) {
+  for (const popup of ['QuestionBox(', 'MessageBox(box.said)']) {
     const at = lua.indexOf(popup);
     check(`${popup} is reached only past the human check`, at > 0
       && lua.lastIndexOf('H5E_PandoraIsHuman', at) > lua.lastIndexOf('function H5E_Pandora', at));
@@ -481,11 +481,36 @@ console.log('the scripts');
   let silent = false;
   try { pandoraMapBlock(talker); } catch { silent = true; }
   check('a message with nowhere to live is refused', silent);
-  const said = pandoraMapBlock(talker, (b) => `/Maps/Probe/${b.name}.txt`);
+  const said = pandoraMapBlock(talker, { said: (b) => `/Maps/Probe/${b.name}.txt` });
   check('and points at the file when there is one',
-    said.includes('given = "/Maps/Probe/PandoraSays.txt"'));
+    said.includes('said = "/Maps/Probe/PandoraSays.txt"'));
   check('the talking block lints clean', luaDiagnostics(said).length === 0,
     luaDiagnostics(said).map((d) => `${d.from}: ${d.message}`).join('; '));
+
+  // The receipt rides beside it, and only where there is something to report:
+  // a box that just talks hands nothing over, so it gets no flying sign.
+  const paying = [
+    { name: 'PandoraPays', gold: 500 },
+    { name: 'PandoraSays', message: 'Something stirs inside.' },
+  ];
+  const withReport = pandoraMapBlock(paying, {
+    said: (b) => `/Maps/Probe/${b.name}.txt`,
+    report: (b) => (b.gold ? `/Maps/Probe/${b.name}-gift.txt` : undefined),
+  });
+  check('a box that gives something points at its receipt',
+    withReport.includes('report = "/Maps/Probe/PandoraPays-gift.txt"'));
+  check('and a box that only speaks has none',
+    !withReport.includes('report = "/Maps/Probe/PandoraSays-gift.txt"'));
+  check('the receipt is flown over the hero, for its owner only',
+    pandoraBehaviourLua().includes('ShowFlyingSign(box.report, hero, owner, 6)'));
+  // The author's words belong between "yes" and whatever comes out — and for a
+  // guarded box that means BEFORE the fight, not after it.
+  const behaviour = pandoraBehaviourLua();
+  check('the box speaks before the fight starts',
+    behaviour.indexOf('MessageBox(box.said)') < behaviour.indexOf('fight(H5E_PandoraHero)'));
+  check('and taunts whoever opened a guarded one',
+    behaviour.includes(`MessageBox("/${PANDORA_GUARDS_TEXT}")`)
+    && behaviour.indexOf(PANDORA_GUARDS_TEXT) < behaviour.indexOf('fight(H5E_PandoraHero)'));
 }
 
 // ---- the archive ------------------------------------------------------------

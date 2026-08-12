@@ -23,9 +23,12 @@ the plan that turned out to matter are kept below, because the NEXT thing we
 take from the chest will need them.
 
 What is still a chest is the DATA: the class in the map is
-`AdvMapTreasureShared`. Stage 2 — `AdvMapPandoraShared` through the engine's
-class registry — is unchanged and still worth doing, now that the behaviour is
-proven rather than before.
+`AdvMapTreasureShared`, and **it stays that way** — stage 2 below is DROPPED
+(12.08.2026, the author's call after playing it: "сокровище вроде норм"). It
+would buy nothing a player can see, and the class the map names is exactly what
+the engine needs to find the object and walk the AI to it. The design is kept
+below because it is the door a future object of ours would go through, not
+because this one is waiting for it.
 
 Three things this cost, all worth not repeating:
 
@@ -145,8 +148,12 @@ chest's dialog because the chest's visit is not what runs.
 map says what it means and the editor stops pretending. That needs the engine's
 class registry (the factory that maps a serialized class name to a constructor)
 and a matching `types.xml` entry, which is the same door the creature abilities
-and the hero classes went through. Worth doing after stage 1 proves the
-behaviour, not before.
+and the hero classes went through.
+
+**NOT DONE, AND NOT PLANNED.** Stage 1 proved the behaviour and the answer was
+that the box plays right as a treasure, so the cost of a class of our own buys
+a word in a file nobody reads. Written out here because the next object that
+needs a class the engine does not have will start from this paragraph.
 
 ## The vtable stores, found (12.08.2026)
 
@@ -314,9 +321,9 @@ how an object names its shared document. What remains:
    touch trigger already fires and already carries the contents.
 3. **The flag becomes native** (`native: false` comes off, the name joins
    `QOL_NAMES` in C), since the hooks then exist and must follow it.
-4. **Stage 2**, unchanged: the class in the DATA too, as
-   `AdvMapPandoraShared`, through the engine’s class registry and a
-   `types.xml` entry — after stage 1 proves the behaviour, not before.
+4. **Stage 2** — the class in the DATA too, as `AdvMapPandoraShared`, through
+   the engine’s class registry and a `types.xml` entry. Dropped once stage 1
+   was played: it changes nothing a player sees.
 
 Everything else stays as it is: the touch trigger still fires, the AI still
 walks to the box, and the map’s generated block still carries the contents.
