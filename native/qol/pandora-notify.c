@@ -117,6 +117,36 @@ static void *__fastcall lua_map_is_playing(void *ctx) {
   return NULL;
 }
 
+/**
+ * ONLY WHAT ASKED FOR IT — and this is what all the state-hunting was for.
+ *
+ * The engine never announced a taught spell, and the hook that made it do so
+ * sits on the command EVERYBODY teaches through: a map's init script hands its
+ * hero a spell the same way a box does, so the player was told about spells his
+ * hero had had since before the first turn. Three attempts to tell the two
+ * apart by reading the game's state all failed the same way — they refused the
+ * init and real events with it.
+ *
+ * The author's answer, and it is better than any of them: do not change what
+ * the shared path does. A box says out loud that its gain is worth announcing,
+ * one gain at a time, and nothing else in the game is touched. There is no
+ * state to read, nothing to get wrong on a map nobody wrote for this, and a
+ * script that never asks is a script that never notices the extension is here.
+ *
+ * The flag is spent by the grant that follows it, because the command is
+ * DEFERRED: the box's Lua asks, `TeachHeroSpell` queues, and the queue runs the
+ * command a moment later — so the asking cannot be scoped to the call and has
+ * to be scoped to the next gain.
+ */
+static int g_askedFor;
+
+static void *__fastcall lua_announce_next_gain(void *ctx) {
+  (void)ctx;
+  g_askedFor = 1;
+  log_line("pandora: a box has asked for its next gain to be announced");
+  return NULL;
+}
+
 /** Put the watch on the map, once the map is far enough along to take it. */
 static void watch_for_play(void) {
   if (g_watchAsked) return;
@@ -511,6 +541,11 @@ static char __fastcall announce_spell_taught(void *self, void *unused) {
   log_num(taught ? "pandora: a spell was taught, id " : "pandora: a spell was REFUSED, id ",
           spellId);
   if (!taught) return taught;
+  if (!g_askedFor) {
+    log_line("pandora: nobody asked for that one to be announced — leaving it alone");
+    return taught;
+  }
+  g_askedFor = 0;
 
   DWORD base = game_base();
   // The hero the command was made for — its field 0x0c, and then the whole of
@@ -707,6 +742,11 @@ static char __fastcall announce_creatures_given(void *self, void *unused) {
                 : "pandora: creatures were REFUSED, and the command says ", given);
   log_all_words("pandora:   the command ", (DWORD)(DWORD_PTR)self, 0x10);
   if (!given) return given;
+  if (!g_askedFor) {
+    log_line("pandora: nobody asked for that stack to be announced — leaving it alone");
+    return given;
+  }
+  g_askedFor = 0;
 
   // THE COMMAND CARRIES IT ALL, which the spell's does not: field 0x0c is the
   // world (its vtable says so), 0x10 the player, 0x14 and 0x18 two interfaces
@@ -824,6 +864,9 @@ static int install_pandora_notify(void) {
                                  (void *)announce_creatures_given, "creatures given");
   // What the map calls back on when its first thread wakes up.
   add_map_function("H5EMapIsPlaying", (void *)&lua_map_is_playing);
+  // And what a box calls before it hands something over. Without it the two
+  // hooks above only ever read the original's answer and write it down.
+  add_map_function("H5EAnnounceGain", (void *)&lua_announce_next_gain);
   if (!LOG_ON) return g_add_spell_orig != NULL && g_announce_hold_orig != NULL;
   g_announce_one_orig = detour(ANNOUNCE_ONE_RVA, ANNOUNCE_ONE_HEAD, sizeof ANNOUNCE_ONE_HEAD,
                                (void *)announce_one_probe, "announce(one)");

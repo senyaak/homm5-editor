@@ -39,8 +39,14 @@ one.
   read as a box that did nothing at all. The extension now makes the
   announcement the engine keeps for exactly this and never uses:
   `HERO_RECEIVES_SPELL`, with the spell's own name and its own icon, worded in
-  whatever language the game was bought in. It applies to any spell taught by
-  any means, a war cry included — and yes, a barbarian does learn one.
+  whatever language the game was bought in — and a stack that joins the hero
+  now flies off him the way one raised by necromancy does, with its own picture
+  and count.
+
+  Both happen only when a BOX asks for them, one gain at a time. Nothing else in
+  the game changes: a spell taught by a mage guild, a script or a map's own
+  opening still behaves exactly as it shipped. War cries included — and yes, a
+  barbarian does learn one.
 
 - **And it is no longer a chest.** The box is an `AdvMapTreasure` in the data,
   so the engine used to run the CHEST's visit beside ours: its own dialog, its

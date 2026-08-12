@@ -87,14 +87,21 @@ It exists because two kinds of reward move a number in the HUD and nothing
 else. A play-through reported both rows as boxes that did nothing, and from
 outside there is no way to tell that from a box that is broken.
 
-### A spell given at map start is announced too — PLANNED, not done
+### Only what a box asked for is announced
 
-The extension announces every spell a hero is taught, which is what makes a box
-that hands one over stop reading as a box that did nothing. It also catches the
-spells a map's INIT SCRIPT gives out, so a hero who has had a spell since before
-the first turn is announced as having just learned it.
+The engine announces an artifact taken and a stack raised by necromancy, but
+never a spell taught and never a stack handed over — which is why a box that
+gave one read as a box that did nothing. The extension announces those two, and
+**only when the box asks**: the generated Lua calls `H5EAnnounceGain()` before
+each spell and each stack, one gain at a time, and the extension announces the
+next one it sees and then forgets. Everybody else's spells and stacks behave
+exactly as the game shipped them.
 
-Three ways to tell the two apart have been tried and none is in the build:
+That is the second design. The first hooked the command every script teaches
+through, and a map whose INIT SCRIPT hands its hero a spell then told the player
+he had just learned it. Three ways to tell "being set up" from "being played"
+were tried and all three failed the same way — they refused the init they were
+meant to refuse and real events with it:
 
 - the announcement holder's own two questions about the world — they answer the
   same while a map is being set up as they do in play;
@@ -107,11 +114,15 @@ Three ways to tell the two apart have been tried and none is in the build:
   earned any experience, morale or luck, and the first box on the probe map
   comes up before a freshly started thread has answered.
 
-A gate that swallows the real events is worse than no gate, so there is none.
-The next candidate is the week: the game names it the moment a map begins, so an
-announcement by that name arriving is the signal. Every announcement the engine
-makes now has its wording written to the log, which is what will settle it —
-from a log that already exists rather than from another run.
+A fourth was proposed and answered out of a log that already existed: the game
+names the week the moment a map begins, so a banner by that name would be the
+signal. Every announcement now writes its own wording to the log, and it says
+the week banner is the FIRST announcement of all — it arrives BEFORE the init
+script has handed anything over, so it cannot separate them either.
+
+None of that matters now. The question "is this map being set up or played" was
+only ever asked because the extension had taken over a path that belongs to
+everybody; asking the box instead makes the question go away.
 
 ### Who sees the message
 
