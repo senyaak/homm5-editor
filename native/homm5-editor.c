@@ -219,10 +219,11 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   if (g_qol[QOL_BARBARIAN_LEARNING_FIX]) install_barbarian_learning_fix();
   if (g_qol[QOL_SNARE_CRASH_FIX]) install_snare_fix();
   if (g_qol[QOL_PANDORA_BOX] && install_pandora_gate()) log_line("pandora: the chest's visit is ours now");
-  // Listening only, and only in a build asked to log: what the engine passes
-  // its announcers is what the spell and the stack will have to pass them.
-  if (g_qol[QOL_PANDORA_BOX] && install_pandora_notify_probe()) {
-    log_line("pandora: listening to the engine's announcements");
+  // A spell taught by any means announces itself now — the engine announces an
+  // artifact and a raised stack but not this, and a box that gave a spell read
+  // as a box that did nothing.
+  if (g_qol[QOL_PANDORA_BOX] && install_pandora_notify()) {
+    log_line("pandora: a taught spell will announce itself");
   }
   if (g_qol[QOL_PAYBACK_FIX]) install_payback_fix();
   if (g_qol[QOL_DRAGON_FORM_FIX]) install_dragon_form_fix();

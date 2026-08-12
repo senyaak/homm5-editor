@@ -57,12 +57,11 @@ static const BYTE ANNOUNCE_MANY_HEAD[6] = { 0x56, 0x57, 0xFF, 0x74, 0x24, 0x28 }
 static void *g_announce_one_orig;
 static void *g_announce_many_orig;
 
-/** The last announcement the artifact command made, kept to be replayed —
- *  see "the experiment the reading cannot settle" at the bottom. */
+/** The last announcement the artifact command made — kept because it is the one
+ *  worked example of a call that succeeds, and every mistake so far was found
+ *  by holding ours up against it. */
 static DWORD g_seen_this, g_seen_edx, g_seen_args[6];
 static int g_seen;
-/** Said once: a hero learning six spells should not write six blocks. */
-static int g_replayed;
 
 /** Where the game is loaded — never 0x400000 in this build. */
 static DWORD game_base(void) { return (DWORD)(INT_PTR)GetModuleHandleW(NULL); }
@@ -325,20 +324,17 @@ static int wstring_ok(DWORD s) {
   return buf && readable((const void *)(DWORD_PTR)buf, 2);
 }
 
-static char __fastcall add_spell_replay(void *self, void *unused) {
+static char __fastcall announce_spell_taught(void *self, void *unused) {
   char taught = ((char(__fastcall *)(void *, void *))g_add_spell_orig)(self, unused);
   // WHAT THE LINE BELOW IS FOR, and it is not the announcement. A war cry given
-  // to a barbarian may or may not land, and the last two runs could not say
-  // because they ended here. Written before anything else is attempted, this
-  // costs nothing and answers that question even if the rest of the function
-  // goes wrong: the id is the cry, and `taught` is the command's own verdict.
+  // to a barbarian may or may not land, and two runs could not say because they
+  // ended here. Written before anything else is attempted, it costs nothing and
+  // answers that question even if the rest of the function goes wrong: the id is
+  // the cry, and `taught` is the command's own verdict. It said yes.
   int spellId = (int)((DWORD *)self)[4];
   log_num(taught ? "pandora: a spell was taught, id " : "pandora: a spell was REFUSED, id ",
           spellId);
-  // Said once a launch, and the flag is spent where the announcement is MADE —
-  // not here. A run that gave up early used to burn it and go quiet for the
-  // rest of the game, which reads exactly like a hook that stopped working.
-  if (!taught || g_replayed) return taught;
+  if (!taught) return taught;
 
   DWORD base = game_base();
   // The hero the command was made for — its field 0x0c, and then the whole of
@@ -447,7 +443,6 @@ static char __fastcall add_spell_replay(void *self, void *unused) {
     log_line("pandora: no announcement has come past yet, so no world — not announcing");
     return taught;
   }
-  g_replayed = 1;
   ((void(__fastcall *)(DWORD, DWORD, DWORD, DWORD, DWORD, DWORD, DWORD, DWORD))
    (DWORD_PTR)(ANNOUNCE_ONE_RVA + base))(g_world, edx, text, name, icon, 0,
                                          SPELL_ANNOUNCEMENT_KIND, params);
@@ -456,41 +451,53 @@ static char __fastcall add_spell_replay(void *self, void *unused) {
 }
 
 /**
- * Two lines that cost nothing and end an argument.
+ * Where the world is caught, and where a crash used to be located.
  *
- * Four crashes in, the fault report still could not say WHERE: the announcer
+ * This hook earns its place twice. It is the only thing that ever sees the
+ * world — every announcement the engine makes passes it as `this` — and while
+ * the call was still being found it bracketed the last step: the announcer
  * allocates an announcement, constructs it, and hands it on, and a jump into
- * the heap looks the same from all three. The top of the stack held no code
- * address to read backwards from either. So the last step is bracketed — if
- * "held" is missing the constructor died, if only "held" is there the audience
- * did, and nobody has to read registers to know which.
+ * the heap looked the same from all three. A missing "held" meant the
+ * constructor died; a lone "held" meant the audience did.
+ *
+ * Everything it dumps is compiled out of a build that was not asked to log, so
+ * a shipping build pays for one comparison per announcement and nothing else.
  */
 static DWORD __fastcall announce_hold_probe(DWORD self, DWORD edx, DWORD announcement) {
-  log_line("pandora: holding an announcement");
   remember_the_world(self);
-  // ALL of it, both times. The engine's own announcements come through here as
-  // well as ours, so one run puts a working object and a fatal one side by side
-  // in the same file — which is the only comparison that has settled anything
-  // so far. 0x78 bytes is what the announcer allocates for one.
-  log_all_words("pandora:   the announcement ", announcement, 0x1e);
-  log_all_words("pandora:   its holder ", self, 0x10);
-  log_all_words("pandora:   its player ", edx, 0x10);
+  if (LOG_ON) {
+    log_line("pandora: holding an announcement");
+    // ALL of it, both times. The engine's own announcements come through here
+    // as well as ours, so one run puts a working object and a fatal one side by
+    // side in the same file — which is the comparison that settled every
+    // mistake in this file. 0x78 bytes is what the announcer allocates for one.
+    log_all_words("pandora:   the announcement ", announcement, 0x1e);
+    log_all_words("pandora:   its holder ", self, 0x10);
+    log_all_words("pandora:   its player ", edx, 0x10);
+  }
   DWORD kept = ((DWORD(__fastcall *)(DWORD, DWORD, DWORD))g_announce_hold_orig)(
     self, edx, announcement);
   log_line("pandora: held");
   return kept;
 }
 
-/** Listen to both announcers. False when the build was not asked to log. */
-static int install_pandora_notify_probe(void) {
-  if (!LOG_ON) return 0;
+/**
+ * Speak, and — in a build asked to log — listen as well.
+ *
+ * The two announcers are hooked only for the log: they change nothing, and what
+ * they write is what the calling code above was written from. The other two go
+ * in always. The holder is what catches the world; without it nothing can be
+ * announced at all.
+ */
+static int install_pandora_notify(void) {
   g_add_spell_orig = detour(ADD_SPELL_RVA, ADD_SPELL_HEAD, sizeof ADD_SPELL_HEAD,
-                            (void *)add_spell_replay, "spell taught");
+                            (void *)announce_spell_taught, "spell taught");
+  g_announce_hold_orig = detour(ANNOUNCE_HOLD_RVA, ANNOUNCE_HOLD_HEAD, sizeof ANNOUNCE_HOLD_HEAD,
+                                (void *)announce_hold_probe, "announcement holder");
+  if (!LOG_ON) return g_add_spell_orig != NULL && g_announce_hold_orig != NULL;
   g_announce_one_orig = detour(ANNOUNCE_ONE_RVA, ANNOUNCE_ONE_HEAD, sizeof ANNOUNCE_ONE_HEAD,
                                (void *)announce_one_probe, "announce(one)");
   g_announce_many_orig = detour(ANNOUNCE_MANY_RVA, ANNOUNCE_MANY_HEAD, sizeof ANNOUNCE_MANY_HEAD,
                                 (void *)announce_many_probe, "announce(many)");
-  g_announce_hold_orig = detour(ANNOUNCE_HOLD_RVA, ANNOUNCE_HOLD_HEAD, sizeof ANNOUNCE_HOLD_HEAD,
-                                (void *)announce_hold_probe, "announcement holder");
-  return g_announce_one_orig != NULL || g_announce_many_orig != NULL;
+  return g_add_spell_orig != NULL && g_announce_hold_orig != NULL;
 }

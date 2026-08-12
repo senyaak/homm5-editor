@@ -34,6 +34,14 @@ one.
   text file per talking box, and a map script if the map had none. The contents
   themselves stay behind in an editor sidecar that never ships.
 
+- **A spell reaches a hero out loud.** The game announces an artifact taken and
+  a stack raised, but never a spell taught — so a box that handed over Implosion
+  read as a box that did nothing at all. The extension now makes the
+  announcement the engine keeps for exactly this and never uses:
+  `HERO_RECEIVES_SPELL`, with the spell's own name and its own icon, worded in
+  whatever language the game was bought in. It applies to any spell taught by
+  any means, a war cry included — and yes, a barbarian does learn one.
+
 - **And it is no longer a chest.** The box is an `AdvMapTreasure` in the data,
   so the engine used to run the CHEST's visit beside ours: its own dialog, its
   own gold, and the box gone before you answered the question. The extension
