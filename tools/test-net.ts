@@ -159,12 +159,12 @@ console.log('\nNAT service, driven by the recorded packets');
     ),
     from,
   );
-  check('an ask is answered twice — port id and address', asked.replies.length === 2, asked.note);
+  check('an ask is answered three ways, until the client names its favourite', asked.replies.length === 3, asked.note);
   const first = parse(parseSegment(asked.replies[0]!).message!);
   check('the answer is a NAT message', first?.type === MessageType.NAT);
   check(
-    'it tells the client its own address and our port',
-    JSON.stringify(first?.body) === JSON.stringify(['2', ['7', '16777343', '40010']]),
+    'it tells the client its own address and our port, echoing the request id',
+    JSON.stringify(first?.body) === JSON.stringify(['1', ['7', '16777343', '40010']]),
     JSON.stringify(first?.body),
   );
 

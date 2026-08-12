@@ -18,8 +18,22 @@ import { inetU32 } from './address.ts';
 import { MessageType, build, parse, reply } from './gs-message.ts';
 import { Flags, HEADER_SIZE, buildSegment, parseSegment, flagNames, type SrpConnection } from './srp.ts';
 
-/** Sub-types of a NAT message. Both answer with an address; the client asks. */
-const NatMessage = { PORT_ID: 2, ADDRESS: 3 } as const;
+/**
+ * Sub-types of a NAT message.
+ *
+ * The client asks with "1" and its body is [requestId, "", game, game]. Which
+ * subtype the ANSWER must carry is the open question: the reference
+ * implementation sends 2 (port id) and 3 (address), and the client said nothing
+ * at all to either — it sat in `CStateWaitNATReply` and gave up.
+ *
+ * So all three go out, and the game's own log settles it: it either says
+ * "address request succeeded,address=…" or "parasite request finished,
+ * discarding, RequestID=…,expected=…", and either sentence names the winner
+ * (`NUbi::CStateWaitNATReply::ProcessRequestFinished`, 0xE10BC0). The ones it does
+ * not want are discarded by the client, which is why asking three ways at once is
+ * cheap and telling.
+ */
+const NatMessage = { ECHO: 1, PORT_ID: 2, ADDRESS: 3 } as const;
 
 /** Our own window: the client may start its checksums from zero. */
 const OUR_WINDOW = { tail: 10, senderSignature: 2, checksumSeed: 0, bufferSize: 0x218 } as const;
@@ -101,14 +115,15 @@ export class NatService {
       return { replies: [], note: `message type ${request?.type ?? '?'} is not NAT — ignored` };
     }
 
-    // The body is [something, [socketId, …]]; the socket id has to come back
-    // with the answer so the client can match it to the socket that asked.
+    // The body is [subtype, [requestId, …]] and the request id has to come back
+    // with the answer: the client checks it against the one it is waiting for and
+    // calls anything else a "parasite request".
     const inner = request.body?.[1];
-    const socketId = Array.isArray(inner) && typeof inner[0] === 'string' ? inner[0] : '0';
+    const requestId = Array.isArray(inner) && typeof inner[0] === 'string' ? inner[0] : '0';
     const seen = String(inetU32(from.address));
 
-    const replies = [NatMessage.PORT_ID, NatMessage.ADDRESS].map((subtype) => {
-      const message = build(reply(request, [String(subtype), [socketId, seen, String(this.port)]]));
+    const replies = [NatMessage.ECHO, NatMessage.PORT_ID, NatMessage.ADDRESS].map((subtype) => {
+      const message = build(reply(request, [String(subtype), [requestId, seen, String(this.port)]]));
       return buildSegment(
         {
           header: {
@@ -125,6 +140,9 @@ export class NatService {
       );
     });
 
-    return { replies, note: `NAT ask for socket ${socketId} — answered ${from.address}:${from.port} as u32 ${seen}` };
+    return {
+      replies,
+      note: `NAT ask, request ${requestId} — answered ${from.address} as u32 ${seen} in subtypes 1, 2 and 3`,
+    };
   }
 }
