@@ -30,6 +30,7 @@ export const LobbyMsg = {
   JOIN_ROOM: 24,
   SET_PLAYER_INFO: 42,
   GROUP_INFO: 53,
+  NEW_GROUP: 54,
   CHANGE_REQUESTED_LOBBIES: 109,
 } as const;
 
@@ -65,6 +66,75 @@ export const DEFAULT_LOBBIES: Lobby[] = [
   { id: 2, name: 'Ranked', mode: GameMode.RATED, maxMembers: 8, members: 0 },
   { id: 3, name: '1v1', mode: GameMode.DUEL, maxMembers: 8, members: 0 },
 ];
+
+/**
+ * A game somebody is hosting.
+ *
+ * Almost all of it comes straight from the client's CREATE_ROOM: the name it
+ * composed ("Сервер — Senyaak", in the player's own language), the game title,
+ * the room type (7, peer-to-peer), how many may play and watch, and `info` — a
+ * blob of the game's own settings with the map path inside it
+ * (`/Maps/Multiplayer/…/map.xdb`, `autosave_enabled`, the goal). We do not need to
+ * understand that blob to run a lobby: it is the host's description of the game,
+ * and it goes back out to everyone who lists the room.
+ */
+export interface Room {
+  id: number;
+  parentId: number;
+  name: string;
+  gameTitle: string;
+  type: number;
+  maxPlayers: number;
+  maxVisitors: number;
+  password: string;
+  info: Uint8Array;
+  master: string;
+  members: string[];
+}
+
+/** The rooms that exist, per lobby. Ours to keep; nothing else knows them. */
+export class Rooms {
+  private readonly rooms = new Map<number, Room>();
+  private nextId = 100;
+
+  create(room: Omit<Room, 'id'>): Room {
+    const created: Room = { ...room, id: this.nextId++ };
+    this.rooms.set(created.id, created);
+    return created;
+  }
+
+  get(id: number): Room | undefined {
+    return this.rooms.get(id);
+  }
+
+  inLobby(lobbyId: number): Room[] {
+    return [...this.rooms.values()].filter((room) => room.parentId === lobbyId);
+  }
+
+  remove(id: number): void {
+    this.rooms.delete(id);
+  }
+}
+
+/** A room in the same fourteen fields a lobby uses — see `lobbyEntry`. */
+export function roomEntry(room: Room): GSValue[] {
+  return [
+    String(room.type),
+    room.name,
+    String(room.id),
+    '1',
+    String(room.parentId),
+    String(Lsm.OPEN | Lsm.STARTABLE | Lsm.NEEDMASTER),
+    '1',
+    room.master,
+    room.gameTitle,
+    room.gameTitle,
+    room.info,
+    String(room.type),
+    String(room.maxPlayers),
+    String(room.members.length),
+  ];
+}
 
 /**
  * One lobby, in the fourteen fields the client reads by position:

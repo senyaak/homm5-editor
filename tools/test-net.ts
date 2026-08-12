@@ -19,6 +19,9 @@ import { Blowfish } from '../src/net/blowfish.ts';
 import { CdKeyRequest, CdKeyService } from '../src/net/cdkey-service.ts';
 import { LobbyMsg } from '../src/net/lobby.ts';
 import { IrcService, frame, unframe } from '../src/net/irc.ts';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {
@@ -472,7 +475,56 @@ console.log('\nThe lobby server, from the words the client really said');
   const contents = parse(joined[0]!.replies[1]!);
   const inside = contents?.body?.[1] as GSValue[];
   check('the contents name the channel joined', ((inside?.[2] as GSValue[]) ?? [])[1] === 'Ranked', JSON.stringify((inside?.[2] as GSValue[])?.[1]));
-  check('with no rooms and no members yet', Array.isArray(inside?.[3]) && (inside[3] as GSValue[]).length === 0);
+  check('with no games and no members yet', Array.isArray(inside?.[3]) && (inside[3] as GSValue[]).length === 0);
+}
+
+console.log('\nHosting a game, from the CREATE_ROOM the player really sent');
+{
+  const lobby = new RouterService(
+    { address: '127.0.0.1', port: 40001 },
+    { address: '127.0.0.1', port: 40030 },
+    { address: '127.0.0.1', port: 40031 },
+    { address: '127.0.0.1', port: 40040 },
+  ).session('lobby');
+  lobby.username = 'Senyaak';
+
+  const captured = Buffer.from(
+    readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'net', 'create-room.hex'), 'utf8')
+      .split(/\r?\n/)
+      .filter((line) => !line.startsWith('#'))
+      .join('')
+      .replace(/[^0-9a-f]/gi, ''),
+    'hex',
+  );
+  const asked = parse(captured);
+  check('the capture is a CREATE_ROOM', asked?.type === MessageType.LOBBY_MSG && asked?.body?.[0] === String(LobbyMsg.CREATE_ROOM));
+
+  const made = lobby.receive(captured);
+  check('it is answered, and the room announced', made[0]!.replies.length === 2, made[0]?.note);
+  const confirmed = parse(made[0]!.replies[0]!)?.body?.[1] as GSValue[];
+  const room = (confirmed?.[1] as GSValue[]) ?? [];
+  check('the answer carries an id, the name and the server', room.length === 3, JSON.stringify(room));
+  check('the name is the one the player composed', String(room[1]).includes('Senyaak'), String(room[1]));
+
+  const announced = parse(made[0]!.replies[1]!);
+  const entry = (announced?.body?.[1] as GSValue[])?.[0] as GSValue[];
+  check('the announcement is a NEW_GROUP', announced?.body?.[0] === String(LobbyMsg.NEW_GROUP));
+  check('the room is peer-to-peer type 7', entry?.[0] === '7', String(entry?.[0]));
+  check('its master is the host', entry?.[7] === 'Senyaak', String(entry?.[7]));
+  check(
+    'and the settings blob is passed through untouched',
+    entry?.[10] instanceof Uint8Array && (entry[10] as Uint8Array).length === 555,
+    String((entry?.[10] as Uint8Array)?.length),
+  );
+
+  // A second player listing that channel must see the game.
+  const other = new RouterService(
+    { address: '127.0.0.1', port: 40001 },
+    { address: '127.0.0.1', port: 40030 },
+    { address: '127.0.0.1', port: 40031 },
+    { address: '127.0.0.1', port: 40040 },
+  ).session('lobby');
+  check('a fresh session has its own empty world', other.username === '');
 }
 
 console.log('\nChat, unwrapped from what the client actually sent');

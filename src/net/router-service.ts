@@ -23,7 +23,7 @@
 //   RouterService     new(waitModule) -> session(); session.receive(buf) -> Buffer[]
 
 import { hostU32String } from './address.ts';
-import { DEFAULT_LOBBIES, LobbyMsg, Lsm, lobbyEntry } from './lobby.ts';
+import { DEFAULT_LOBBIES, GroupType, LobbyMsg, Lsm, Rooms, lobbyEntry, roomEntry } from './lobby.ts';
 import { HEADER_SIZE as GS_HEADER_SIZE, MessageType, build, parse, reply, type GSMessage } from './gs-message.ts';
 import { decodeBody, type GSValue } from './gs-data.ts';
 import { Blowfish } from './blowfish.ts';
@@ -93,12 +93,15 @@ export class RouterSession {
   private readonly waitModule: Endpoint;
   private readonly proxy: Endpoint;
   private readonly lobbyServer: Endpoint;
+  /** Shared with every other connection: a room one player hosts, others join. */
+  private readonly rooms: Rooms;
 
-  constructor(role: Role, waitModule: Endpoint, proxy: Endpoint, lobbyServer: Endpoint) {
+  constructor(role: Role, waitModule: Endpoint, proxy: Endpoint, lobbyServer: Endpoint, rooms: Rooms) {
     this.role = role;
     this.waitModule = waitModule;
     this.proxy = proxy;
     this.lobbyServer = lobbyServer;
+    this.rooms = rooms;
   }
 
   /** Feed bytes from the socket; get back what to send, and a line for the log. */
@@ -305,14 +308,60 @@ export class RouterSession {
         if (subtype === String(LobbyMsg.JOIN_LOBBY)) {
           const groupId = Array.isArray(inner) && typeof inner[0] === 'string' ? inner[0] : '1';
           const lobby = DEFAULT_LOBBIES.find((l) => String(l.id) === groupId) ?? DEFAULT_LOBBIES[0]!;
+          const rooms = this.rooms.inLobby(lobby.id).map(roomEntry);
           return {
-            note: `JOIN_LOBBY ${groupId} ("${lobby.name}") — in, with no rooms yet`,
+            note: `JOIN_LOBBY ${groupId} ("${lobby.name}") — in, ${rooms.length} game(s) listed`,
             replies: [
               build(reply(message, [String(MessageType.GSSUCCESS), [subtype, [groupId]]])),
               build(
                 reply(message, [
                   String(LobbyMsg.GROUP_INFO),
-                  [groupId, String(Lsm.CHILDGROUPINFO), lobbyEntry(lobby, this.gameId), [], []],
+                  [groupId, String(Lsm.CHILDGROUPINFO), lobbyEntry(lobby, this.gameId), rooms, []],
+                ]),
+              ),
+            ],
+          };
+        }
+        // Hosting a game. Everything about it comes from the client: the name it
+        // composed, the map and rules in one blob, how many may join. We give it
+        // an id and put it in the channel it was created in.
+        if (subtype === String(LobbyMsg.CREATE_ROOM)) {
+          const fields = Array.isArray(inner) ? inner : [];
+          const text = (at: number): string => (typeof fields[at] === 'string' ? (fields[at] as string) : '');
+          const room = this.rooms.create({
+            parentId: Number(text(0)) || 1,
+            name: text(1),
+            gameTitle: text(2),
+            type: Number(text(3)) || GroupType.ROOM_UBI_P2P,
+            maxPlayers: Number(text(4)) || 2,
+            maxVisitors: Number(text(5)) || 0,
+            password: text(7),
+            info: fields[6] instanceof Uint8Array ? fields[6] : new Uint8Array(0),
+            master: this.username,
+            members: [this.username],
+          });
+          return {
+            note: `CREATE_ROOM "${room.name}" in channel ${room.parentId} — id ${room.id}, up to ${room.maxPlayers} players`,
+            replies: [
+              build(reply(message, [String(MessageType.GSSUCCESS), [subtype, [String(room.id), room.name, '1']]])),
+              // And the room itself, so the channel it lives in shows it.
+              build(reply(message, [String(LobbyMsg.NEW_GROUP), [roomEntry(room)]])),
+            ],
+          };
+        }
+        if (subtype === String(LobbyMsg.JOIN_ROOM)) {
+          const roomId = Number(Array.isArray(inner) && typeof inner[0] === 'string' ? inner[0] : '0');
+          const room = this.rooms.get(roomId);
+          if (!room) return { note: `JOIN_ROOM ${roomId} — no such room`, replies: [] };
+          if (!room.members.includes(this.username)) room.members.push(this.username);
+          return {
+            note: `JOIN_ROOM ${roomId} ("${room.name}") — in, ${room.members.length} of ${room.maxPlayers}`,
+            replies: [
+              build(reply(message, [String(MessageType.GSSUCCESS), [subtype, [String(roomId)]]])),
+              build(
+                reply(message, [
+                  String(LobbyMsg.GROUP_INFO),
+                  [String(roomId), String(Lsm.GROUPMEMBERS), roomEntry(room), [], room.members.map((name) => [name])],
                 ]),
               ),
             ],
@@ -389,6 +438,7 @@ export class RouterService {
   private readonly proxy: Endpoint;
   private readonly proxyWaitModule: Endpoint;
   private readonly lobbyServer: Endpoint;
+  private readonly rooms = new Rooms();
 
   constructor(waitModule: Endpoint, proxy: Endpoint, proxyWaitModule: Endpoint, lobbyServer: Endpoint) {
     this.waitModule = waitModule;
@@ -400,6 +450,6 @@ export class RouterService {
   /** A connection on one of the four desks. */
   session(role: Role = 'router'): RouterSession {
     const waitModule = role === 'proxy' ? this.proxyWaitModule : this.waitModule;
-    return new RouterSession(role, waitModule, this.proxy, this.lobbyServer);
+    return new RouterSession(role, waitModule, this.proxy, this.lobbyServer, this.rooms);
   }
 }
