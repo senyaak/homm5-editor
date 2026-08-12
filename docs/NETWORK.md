@@ -116,6 +116,34 @@ Yes, in stages, and each stage is testable on one machine.
    ```bash
    node tools/net-server.ts          # then run run-net.bat in the game copy
    ```
+   Measured: the game fetches the list (`GET /gsinit.php?dp=HEROES_29988429c481f219`,
+   `user-agent: curl/7.14.0`) and then goes straight for the **NAT service over
+   UDP** — not the router. Two packet kinds arrive on the advertised NAT port
+   from the game's port 1024:
+
+   ```
+   +0ms    20 bytes  93 88 00 00  08 00  42 30  00 00 00 00  0a 00 01 00  ff 44 18 02
+   +15.7s  12 bytes  b6 cf 00 00  00 00  49 30  ff ff 00 00        (nine identical copies)
+   ```
+
+   Then it refetches the list and repeats the whole attempt, and after the second
+   one fails the UI shows error `0.7.0`. The first four bytes look like a
+   checksum of the rest — the nine retries are byte-identical, and the two kinds
+   differ — and `42 30`/`49 30` read as tags `B0`/`I0`; both unconfirmed.
+
+   **The NAT step cannot be skipped.** With no `NATServer*` keys the list is
+   empty and `NUbi::CStateUninitialized::NATInit` (0xE087B0) falls straight into
+   `no more NAT Service servers to try, connection failed` and returns false,
+   which fails the whole init. The connect itself is 0x447640 → 0x447910 →
+   0x448220, and from there it is a virtual call into a transport object: the
+   protocol lives behind a vtable, so reading it statically means walking that
+   library.
+
+   `0.7.0` itself says nothing about which step failed: the failure path in
+   `ProcessInit` (0xE075B1) builds the triple {7,0,0} for every one of them, and
+   the formatter (0x7DC5F0) prints its fields in the order f1.f0.f2 — which is
+   how {7,0,0} reaches the screen as `0.7.0`, next to the text
+   `MatchMakerErrors/ErrorTextWithCode`.
 2. **Listen and record** — accept the router/CDKey/NAT/IRC connections and dump
    the bytes. There is no live Ubi service left to capture, so the protocol has
    to come from the client: every `LobbyRcv_*` parser is in the exe, and the log
