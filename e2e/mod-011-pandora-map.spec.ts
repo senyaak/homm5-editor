@@ -292,6 +292,24 @@ const GENERIC_HEROES = 'MapObjects/_(AdvMapObjectLink)/GenericHeroes';
  */
 const LEADS = ['Knight', 'Demonlord'];
 
+/**
+ * And a third hero, whose whole job is one question: what happens when a box
+ * hands a spell to somebody who cannot hold it.
+ *
+ * A BARBARIAN HAS A BOOK OF HIS OWN — cries, not spells — so the two boxes
+ * beside him are the two halves of the question: one holds war cries, which
+ * the game's own campaign teaches a barbarian with the very same call
+ * (`TeachHeroSpell("Kujin", SPELL_WARCRY_RALLING_CRY)` in A2C3M4), and the
+ * other holds Town Portal, which has nowhere to go. He belongs to the first
+ * side, so whoever plays red can walk over and read both answers.
+ */
+const BARBARIAN = { at: { x: 10, y: 16 }, entry: `${GENERIC_HEROES}/Barbarian.xdb` };
+const CRIES = ['SPELL_WARCRY_RALLING_CRY', 'SPELL_WARCRY_CALL_OF_BLOOD'];
+const BARBARIAN_BOXES = [
+  { name: 'PandoraCriesForTheBarbarian', x: 14, y: 16, contents: { name: 'PandoraCriesForTheBarbarian', spells: CRIES } },
+  { name: 'PandoraSpellForTheBarbarian', x: 17, y: 16, contents: { name: 'PandoraSpellForTheBarbarian', spells: ['SPELL_TOWN_PORTAL'] } },
+];
+
 async function twoHeroes(page: Launched['page']): Promise<string[]> {
   const found = await page.evaluate(async (q) => {
     const { objects } = await window.editor.listObjects();
@@ -441,11 +459,27 @@ test('two sides, each with a hero of their own', async () => {
     }
   }
 
+  // THE THIRD HERO, and the two boxes that ask about him. A barbarian keeps
+  // cries where everybody else keeps spells, so one box holds cries and the
+  // other holds a spell that has nowhere to go; both are red's, a few tiles
+  // below his own hero, so the answer is a short walk away.
+  const barb = await place(page, () => pickEntry(page, BARBARIAN.entry), BARBARIAN.entry,
+    BARBARIAN.at.x, BARBARIAN.at.y);
+  await setPath(page, barb, ['PlayerID'], SIDES[0]!.player);
+  for (const b of BARBARIAN_BOXES) {
+    const id = await place(page, () => pickObject(page, BOX), b.name, b.x, b.y);
+    await setPath(page, id, ['Name'], b.name);
+    await page.evaluate((p) => window.editor.pandoraSet(p.id, p.contents), { id, contents: b.contents });
+  }
+
   await bar(page, '#save');
   await hudSays(page, /saved/i, 120_000);
 
   const xml = readFileSync(join(MAP_DIR, 'map.xdb'), 'latin1');
   expect(xml, 'the map binds a script for the boxes').toContain('MapScript.xdb#xpointer(/Script)');
+  for (const b of BARBARIAN_BOXES) {
+    expect(xml, `${b.name} is on the map`).toContain(`<Name>${b.name}</Name>`);
+  }
   // The two sides are OPPONENTS. Left as they come, both slots are team 0 —
   // see SIDES above.
   expect((xml.match(/<Team>1<\/Team>/g) ?? []).length, 'the second side has a team of its own')

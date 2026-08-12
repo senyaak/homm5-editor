@@ -187,8 +187,16 @@ static char __fastcall add_spell_replay(void *self, void *unused) {
   DWORD hero = ((DWORD *)self)[3];
   log_hex("pandora: a spell was taught, announcing for ", hero);
 
-  // Buffers of our own, zeroed the way the skill site zeroes its locals.
-  DWORD key[8] = { 0 }, params[8] = { 0 }, subjectThis[2] = { 0 };
+  // Buffers of our own, zeroed the way the skill site zeroes its locals —
+  // except the subject's, which may NOT be zeroed. The attempt that was is
+  // what the second crash answered: with `this` = {0, 0} the builder took its
+  // "nothing to announce" branch and returned null, and the announcer went
+  // through it. The site it is copied from passes `{ <the thing gained>, flag }`
+  // — a skill entry there, and here the spell the command carries, which is its
+  // field 0x10 (`CAddHeroSpellCmd::execute` hands that to the hero).
+  DWORD key[8] = { 0 }, params[8] = { 0 };
+  DWORD subjectThis[2] = { ((DWORD *)self)[4], 0 };
+  log_hex("pandora:   the spell ", subjectThis[0]);
 
   ((void(__fastcall *)(void *, void *, const char *))(DWORD_PTR)(STRING_FROM_LITERAL_RVA + base))(
     key, 0, NEW_ABILITY_KEY);
@@ -201,6 +209,13 @@ static char __fastcall add_spell_replay(void *self, void *unused) {
   log_hex("pandora:   subject ", subject);
   log_hex("pandora:   text    ", text);
 
+  // A null subject is what killed the last attempt inside the announcer, so it
+  // is refused here instead: the log then says which step gave up, and the game
+  // keeps running.
+  if (!subject) {
+    log_line("pandora: the subject came back null — not announcing");
+    return taught;
+  }
   ((void(__fastcall *)(DWORD, DWORD, DWORD, DWORD, DWORD, DWORD, DWORD, DWORD))
    (DWORD_PTR)(ANNOUNCE_ONE_RVA + base))(
     hero, g_seen_edx, text, (DWORD)(DWORD_PTR)params, subject, 0, 3, paramsArg);

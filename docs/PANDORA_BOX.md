@@ -51,11 +51,18 @@ artifact AND a stack, and be guarded besides.
 | Creatures | Join the opening hero's army. |
 | Guards | Fought BEFORE the box opens. Win and it opens; lose and it stays shut. |
 
-Two of them are worth knowing about before an author blames a box: **spells
-need a spellbook** — a Barbarian has none, and `TeachHeroSpell` on him is a
-reward that lands nowhere — and **creatures join an existing stack**, so ten
-archangels added to a hundred read as nothing happening at all unless the box
-also says so.
+Two of them are worth knowing about before an author blames a box: **a spell
+needs a book that takes it** — a Barbarian keeps CRIES where everybody else
+keeps spells, so `SPELL_TOWN_PORTAL` handed to him lands nowhere while
+`SPELL_WARCRY_*` lands fine (the game's own campaign teaches a barbarian his
+cries with the same call, `TeachHeroSpell("Kujin", SPELL_WARCRY_RALLING_CRY)`
+in A2C3M4) — and **creatures join an existing stack**, so ten archangels added
+to a hundred read as nothing happening at all.
+
+The first of those is a **TO FIX**: a box should not be able to promise a
+hero something his book cannot hold, and today it can. The probe map asks the
+question rather than answering it — a third hero, a barbarian, with a box of
+cries and a box of Town Portal beside him.
 
 ### What the player sees, and when
 
