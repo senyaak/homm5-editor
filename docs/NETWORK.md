@@ -42,14 +42,26 @@ node tools/net-probe.ts <exe> --imports libcurl
    prefixes `Router`, `NATServer`, `CDKeyServer`, `IRC`, and the index counts up
    until a key is missing — i.e. each service is a *list* of servers to try.
 
-So: **one HTTP GET decides every address the game will talk to.** That is the
-hook point, and it needs no code patch at all to redirect — a `hosts` entry for
-`gsconnect.ubisoft.com` plus a local HTTP server is enough. (Patching the URL in
-place is also possible but the literal is length-bound: 43 bytes at 0xFE5FAC,
-immediately followed by `ubi_servers.ini` at 0xFE5FD8, and the copy loop's end
-address 0xFE5FD7 and the `push 2Ch` allocation size would both have to change.
-Rewriting the global string from `homm5-editor.dll` at runtime has no such
-limit.)
+So: **one HTTP GET decides every address the game will talk to.**
+
+The cheapest way to take that request over needs neither a patch nor admin
+rights: `bin/libcurl.dll` is **libcurl 7.14.0**, which reads `http_proxy` /
+`ALL_PROXY` from the environment, and the game never sets `CURLOPT_PROXY`
+(10004) — `net-probe --push 10004` finds no such push anywhere in `.text`, while
+the three options it does set are all there. So a game started with
+`http_proxy=http://127.0.0.1:8080` asks us for its server list, and only that
+process is affected. `tools/net-server.ts` is that server, and
+`run-net.bat` in the game copy sets the variable.
+
+The other two ways to redirect it: a `hosts` entry for
+`gsconnect.ubisoft.com`, or patching the URL literal — possible, but it is
+length-bound at 43 bytes on 0xFE5FAC with `ubi_servers.ini` immediately after it
+at 0xFE5FD8, so the copy loop's end address 0xFE5FD7 and the `push 2Ch`
+allocation size would both have to change too. Rewriting the global string from
+`homm5-editor.dll` at runtime has no such limit.
+
+A second, unrelated place in the exe also uses libcurl (0xEF42A0, same three
+options) — the stats/tracking path, not multiplayer.
 
 ## What the services are
 
@@ -95,8 +107,15 @@ writes it is not traced yet.
 
 Yes, in stages, and each stage is testable on one machine.
 
-1. **Redirect** — `hosts` → `127.0.0.1`, serve an ini from a local HTTP server
-   with every service pointing at localhost. Proves the pipeline; costs nothing.
+1. **Redirect** — done, `tools/net-server.ts`: it answers the gsinit request with
+   an ini pointing every service at this machine. The ini it serves was read back
+   through `GetPrivateProfileStringA`/`IntA` the way the game reads it, so the
+   format is checked and not merely assumed: index 0 comes back, index 1 comes
+   back empty, which is how the client knows the list ended.
+
+   ```bash
+   node tools/net-server.ts          # then run run-net.bat in the game copy
+   ```
 2. **Listen and record** — accept the router/CDKey/NAT/IRC connections and dump
    the bytes. There is no live Ubi service left to capture, so the protocol has
    to come from the client: every `LobbyRcv_*` parser is in the exe, and the log

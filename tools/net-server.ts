@@ -1,0 +1,129 @@
+// Our own online services for the game, at the stage where they only listen.
+//
+// The game decides where to play by fetching one URL (docs/NETWORK.md), and its
+// libcurl 7.14 honours the `http_proxy` environment variable — so a game started
+// with `http_proxy=http://127.0.0.1:8080` asks US for its server list, with no
+// patch to the exe and no hosts file. We answer with an ini that points every
+// service at this machine, then accept those connections and write down every
+// byte the client sends.
+//
+// Nothing is answered on the game ports yet, deliberately: the first question is
+// what the client says first, and there is no live Ubisoft service left to
+// capture it from. Run it, let the game reach the online menu, read the log.
+//
+//   node tools/net-server.ts [--host 127.0.0.1] [--http 8080]
+//
+// The log goes to _tmp/net/ as well as the console, in full — a truncated dump
+// of an unknown protocol is worth nothing.
+
+import { createServer as createHttpServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { createServer as createTcpServer, type Socket } from 'node:net';
+import { createSocket } from 'node:dgram';
+import { mkdirSync, createWriteStream } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const repo = join(dirname(fileURLToPath(import.meta.url)), '..');
+
+function arg(name: string, fallback: string): string {
+  const at = process.argv.indexOf(`--${name}`);
+  return at >= 0 && process.argv[at + 1] ? process.argv[at + 1]! : fallback;
+}
+
+/** The address the game will be told to connect to — itself, by default. */
+const host = arg('host', '127.0.0.1');
+const httpPort = Number(arg('http', '8080'));
+
+/**
+ * What the ini advertises. `launcher` is only read for Router and CDKeyServer
+ * (`%sLauncherPort%i`); what it is for is not known yet.
+ */
+const SERVICES = [
+  { prefix: 'Router', port: 40000, launcher: 40001, kind: 'tcp+udp' },
+  { prefix: 'NATServer', port: 40010, launcher: null, kind: 'tcp+udp' },
+  { prefix: 'CDKeyServer', port: 40020, launcher: 40021, kind: 'tcp+udp' },
+  { prefix: 'IRC', port: 6667, launcher: null, kind: 'tcp' },
+] as const;
+
+function serversIni(): string {
+  const lines = ['[Servers]'];
+  for (const s of SERVICES) {
+    lines.push(`${s.prefix}IP0=${host}`, `${s.prefix}Port0=${s.port}`);
+    if (s.launcher !== null) lines.push(`${s.prefix}LauncherPort0=${s.launcher}`);
+  }
+  // Windows' profile-string reader wants CRLF and a trailing newline.
+  return `${lines.join('\r\n')}\r\n`;
+}
+
+const logDir = join(repo, '_tmp', 'net');
+mkdirSync(logDir, { recursive: true });
+const started = new Date();
+const stamp = started.toISOString().replace(/[:.]/g, '-');
+const logFile = createWriteStream(join(logDir, `session-${stamp}.log`));
+
+function log(line: string): void {
+  const at = new Date().toISOString().slice(11, 23);
+  const text = `${at}  ${line}`;
+  console.log(text);
+  logFile.write(`${text}\n`);
+}
+
+/** Hex and text, 16 bytes to a line, however long the buffer is. */
+function hexDump(buf: Buffer, indent = '    '): string {
+  const out: string[] = [];
+  for (let i = 0; i < buf.length; i += 16) {
+    const slice = buf.subarray(i, i + 16);
+    const hex = [...slice].map((b) => b.toString(16).padStart(2, '0')).join(' ').padEnd(47);
+    const text = [...slice].map((b) => (b >= 0x20 && b <= 0x7e ? String.fromCharCode(b) : '.')).join('');
+    out.push(`${indent}${i.toString(16).padStart(4, '0')}  ${hex}  ${text}`);
+  }
+  return out.join('\n');
+}
+
+function serve(res: ServerResponse, body: string): void {
+  res.writeHead(200, { 'Content-Type': 'text/plain', 'Content-Length': Buffer.byteLength(body) });
+  res.end(body);
+}
+
+createHttpServer((req: IncomingMessage, res: ServerResponse) => {
+  // As a proxy the game's curl sends an absolute URI; asked directly it sends a
+  // path. Either way there is only one answer we have to give.
+  log(`HTTP ${req.method} ${req.url}`);
+  for (const [name, value] of Object.entries(req.headers)) log(`     ${name}: ${value}`);
+  const ini = serversIni();
+  log(`HTTP -> ${ini.length} bytes of servers ini\n${hexDump(Buffer.from(ini))}`);
+  serve(res, ini);
+}).listen(httpPort, () => log(`http on ${httpPort} — start the game with http_proxy=http://127.0.0.1:${httpPort}`));
+
+let connections = 0;
+
+for (const service of SERVICES) {
+  for (const port of [service.port, service.launcher].filter((p): p is number => p !== null)) {
+    const label = port === service.port ? service.prefix : `${service.prefix}Launcher`;
+
+    createTcpServer((socket: Socket) => {
+      const id = ++connections;
+      const peer = `${socket.remoteAddress}:${socket.remotePort}`;
+      log(`TCP  #${id} ${label}:${port} <- ${peer} connected`);
+      socket.on('data', (data: Buffer) => {
+        log(`TCP  #${id} ${label}:${port} <- ${data.length} bytes\n${hexDump(data)}`);
+      });
+      socket.on('close', () => log(`TCP  #${id} ${label}:${port} closed`));
+      socket.on('error', (err: Error) => log(`TCP  #${id} ${label}:${port} error: ${err.message}`));
+    })
+      .on('error', (err: Error) => log(`TCP  ${label}:${port} listen failed: ${err.message}`))
+      .listen(port, () => log(`tcp  ${label} on ${port}`));
+
+    if (service.kind === 'tcp+udp') {
+      const udp = createSocket('udp4');
+      udp.on('message', (data: Buffer, from) => {
+        log(`UDP  ${label}:${port} <- ${from.address}:${from.port}, ${data.length} bytes\n${hexDump(data)}`);
+      });
+      udp.on('error', (err: Error) => log(`UDP  ${label}:${port} bind failed: ${err.message}`));
+      udp.bind(port, () => log(`udp  ${label} on ${port}`));
+    }
+  }
+}
+
+log(`logging to ${join(logDir, `session-${stamp}.log`)}`);
+log(`serving this list:\n${serversIni().replace(/\r\n/g, '\n')}`);

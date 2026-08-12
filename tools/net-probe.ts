@@ -93,6 +93,25 @@ if (wanted[0] === '--imports') {
   process.exit(0);
 }
 
+// `--push <value>`: every `push imm32` of a value, with the function it is in.
+// How a libcurl option number, an error code or a magic constant is located.
+if (wanted[0] === '--push') {
+  for (const arg of wanted.slice(1)) {
+    const value = Number(arg);
+    const bytes = Buffer.alloc(5);
+    bytes[0] = 0x68;
+    bytes.writeUInt32LE(value >>> 0, 1);
+    console.log(`--- push 0x${value.toString(16)} (${value})`);
+    const text = pe.section('.text');
+    for (const off of pe.findBytes(bytes.toString('latin1'))) {
+      if (off < text.raw || off >= text.raw + text.rawSize) continue;
+      const va = pe.addressOf(off)!;
+      console.log(`  ${va.toString(16)} in function ${functionStartOf(pe, va)?.toString(16) ?? '?'}`);
+    }
+  }
+  process.exit(0);
+}
+
 // `--calls <addr>`: every direct call or jump that lands on an address.
 if (wanted[0] === '--calls') {
   for (const arg of wanted.slice(1)) {
