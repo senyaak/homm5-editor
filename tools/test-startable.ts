@@ -1,8 +1,8 @@
-// The three traps that all speak with one voice — checked against maps.
+// The four traps that all speak with one voice — checked against maps.
 //
 // `ERROR: Start player does not exist on map/…` is what the engine says for
-// three different mistakes, and a run is the only way it ever said which. These
-// rules are that sentence taken apart (docs/CAMPAIGNS.md), and this suite gives
+// four different mistakes, and a run is the only way it ever said which. These
+// rules are that sentence taken apart (docs/MAP_PROPERTIES.md), and this suite gives
 // them maps to be right about: hand-built ones for each trap, and — when the
 // game is around — every map in `H5E/`, where a shipped-and-played map that the
 // rules called broken would mean the rules are wrong.
@@ -73,7 +73,7 @@ const BLUE = { active: true, colour: 'PCOLOR_BLUE', team: 1 };
 const ALLY = { active: true, colour: 'PCOLOR_BLUE', team: 0 };
 const OFF = { active: false, colour: 'PCOLOR_NEUTRAL', team: 0 };
 
-console.log('the three traps');
+console.log('the four traps');
 {
   const nobody = startableProblems(mapWith({ players: [OFF, OFF] }));
   check('a map whose slots are all off is refused', nobody.length === 1

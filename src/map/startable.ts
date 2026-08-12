@@ -1,10 +1,10 @@
 // Why the game would refuse to start this map — asked before it is launched.
 //
-// Three sentences cost a game run each, and all three come out of the engine
+// Four mistakes cost a game run each, and all four come out of the engine
 // as the SAME line: `ERROR: Start player does not exist on map/…`. What that
 // line actually means is one of the causes below, and which one it is cannot be
 // read off it — so this says it instead, from the map alone
-// (docs/CAMPAIGNS.md, "The traps").
+// (docs/MAP_PROPERTIES.md, "Why the game refuses to start a map").
 //
 // A CHECKER, NOT A FIXER. Every rule here is one the game enforces and we do
 // not: a map may legitimately want an inactive slot or a neutral colour, and
@@ -93,7 +93,7 @@ function defeatAll(desc: XmlElement): boolean {
 /**
  * Every reason the game would refuse this map, in the order they bite.
  *
- * An empty list is not a promise that the map is good — only that these three
+ * An empty list is not a promise that the map is good — only that these four
  * traps are not set.
  */
 export function startableProblems(node: XmlElement): string[] {

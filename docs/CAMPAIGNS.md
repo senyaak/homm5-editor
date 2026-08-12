@@ -69,61 +69,21 @@ for the shipped one. The dialogs offer our folder by default.
 These are the ones that cost time. Each produced a game that looked fine and
 did the wrong thing.
 
-### A map needs a live, coloured player
+### A mission is a MAP, and a map that cannot start takes the campaign with it
 
-A fresh map's eight player slots are **all** `ActivePlayer=false` and
-`PCOLOR_NEUTRAL`. Heroes owned by `PLAYER_1` do not make slot 0 a player. A map
-whose start player is inactive or neutral fails with:
+Four mistakes make the game refuse a map with one sentence —
+`ERROR: Start player does not exist on map/…` — and they are properties of any
+map, campaign or not: no active slot, an active slot left neutral, a live
+player who owns neither hero nor town (an EntryPoint is not one, and its class
+does not say so), and a victory condition satisfied at load. All four, with the
+`Shared` hrefs that tell an EntryPoint from a hero, are in
+[MAP_PROPERTIES.md](MAP_PROPERTIES.md#why-the-game-refuses-to-start-a-map),
+along with `npm run test-startable`, which asks a map before it is launched.
 
-```
-ERROR: Start player does not exist on map/Maps/…/map.xdb#xpointer(/AdvMapDesc)
-```
-
-Switch on and colour every slot you use — `players[0]` is `PLAYER_1`,
-`players[1]` is `PLAYER_2`, and so on.
-
-### …and a hero (or a town) for that player
-
-The same error appears when the player owns nothing on the map. An **EntryPoint
-does not count**: it is an `AdvMapHero` by shape, but it is not a hero.
-
-**And it is not told apart by its class.** Its `Shared` reads
-
-```xml
-<Shared href="/MapObjects/Utility/EntryPoint.xdb#xpointer(/AdvMapHeroShared)"/>
-```
-
-— the same `AdvMapHeroShared` a real hero carries. What differs is the
-DOCUMENT: a hero's record lives beside his race (`/MapObjects/Haven/Alaric.…`),
-the EntryPoint's under `Utility`. Anything picking "a hero" out of the object
-catalogue by type gets EntryPoints along with them, and the map that results
-looks complete: two coloured players, a figure standing on the ground for each,
-and an error three sentences away from the cause. Filter by RACE, not by type.
-
-That is exactly how the Pandora probe map broke on 12.08.2026 — "the first
-catalogue hero that is not Haven" was the EntryPoint.
-
-### Ask the map instead of launching it
-
-All of the above is `src/map/startable.ts`: hand it a map's `AdvMapDesc` and it
-answers with the reasons the game would refuse, in words. `npm run
-test-startable` checks the rules against hand-built cases and then runs them
-over every map in `H5E/` — a map that PLAYS and the rules call broken is a rule
-that is wrong, and that has already caught one (the objective rule below is
-marked a suspicion in the source for that reason).
-
-### The default victory condition wins instantly with no opponent
-
-A fresh map carries `OBJECTIVE_KIND_DEFEAT_ALL` with `InstantVictory` in
-`Objectives/Primary/Common/Objectives` — the game's own editor writes it, and a
-map without a victory condition cannot be won, so it belongs there.
-
-But on a map with no live opponent it is satisfied **at load**: the game wins the
-mission, drops the winning player, and the mission then fails to start with the
-"Start player does not exist" error above. Either give the mission a live
-opponent, or clear that objective — a campaign mission usually does the latter
-and leaves the ending to its own quests. C1M1's `Primary/Common/Objectives` is
-empty for exactly this reason; its four quests live in `PlayerSpecific[0]`.
+What is campaign-specific is the LAST of them. A mission usually clears the
+default `OBJECTIVE_KIND_DEFEAT_ALL` rather than giving itself an opponent, and
+leaves the ending to its own quests: C1M1’s `Primary/Common/Objectives` is
+empty for exactly that reason, and its four quests live in `PlayerSpecific[0]`.
 
 ### An empty reference is a bare element, never `href=""`
 

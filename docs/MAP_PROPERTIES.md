@@ -102,6 +102,52 @@ Also carried per player (surfaced in the tree, not the dialog):
 `VictoryMessageRef` / `DefeatMessageRef`, `CanBeDisabled`, `Attractors`,
 `AddHeroTrigger` / `RemoveHeroTrigger`, `DenyFogOfWarForAllies`.
 
+## Why the game refuses to start a map
+
+`ERROR: Start player does not exist on map/…/map.xdb#xpointer(/AdvMapDesc)` is
+what the engine says for FOUR different mistakes, and which one it means cannot
+be read off the line. Each of them produced a map that looked finished.
+
+**1. No slot is active.** A fresh map declares eight players and every one is
+`ActivePlayer=false`. A hero owned by `PLAYER_1` does not make slot 0 a player:
+the object says who owns it, the slot says whether that owner exists.
+
+**2. An active slot left `PCOLOR_NEUTRAL`.** Colour is presentation for a slot
+the mission drives, but the player you START as needs one.
+
+**3. A live player who owns nothing** — no hero and no town. And here is the
+trap that cost a session: **an EntryPoint is not a hero, and its class does not
+say so.**
+
+```xml
+<!-- a real hero -->
+<Shared href="/MapObjects/Haven/Alaric.(AdvMapHeroShared).xdb#xpointer(/AdvMapHeroShared)"/>
+<!-- an EntryPoint: same class, different document -->
+<Shared href="/MapObjects/Utility/EntryPoint.xdb#xpointer(/AdvMapHeroShared)"/>
+```
+
+Both are `AdvMapHero` in the object catalogue and both point at
+`AdvMapHeroShared`; a hero’s record lives beside his RACE, an EntryPoint’s under
+`Utility`. Anything that picks "a hero" by type gets EntryPoints among them, and
+the map that results has a coloured player with a figure standing on the ground
+who owns nothing. Filter by race.
+
+**4. A victory condition satisfied at load.** A fresh map carries
+`OBJECTIVE_KIND_DEFEAT_ALL`; with nobody to defeat it is met before the first
+turn, the game wins the mission, drops the winning player, and then has no
+player to start as. *Suspected rather than proven* — `Rules Test.h5m` has two
+live players on team 0 with that objective and starts anyway, so the mechanism
+is written down (docs/CAMPAIGNS.md records it for missions) but the boundary is
+not known.
+
+### Ask the map instead of launching it
+
+`src/map/startable.ts` takes a map’s `<AdvMapDesc>` and answers with the reasons
+the game would refuse, in words. `npm run test-startable` checks the rules
+against hand-built cases and then runs them over every map in `H5E/` — a map
+that PLAYS and the rules call broken is a rule that is wrong, which is how the
+fourth one above got demoted to a suspicion.
+
 ## Tab 3 — Teams
 
 A radio grid: each player → one team (1–8). Stored as `players/Item/Team`

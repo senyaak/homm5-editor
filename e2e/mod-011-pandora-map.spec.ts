@@ -116,7 +116,7 @@ const KINDS: { key: string; per: (tier: number) => Partial<PandoraContents> }[] 
  * players left as they came are ALLIES — and the map's default victory
  * condition is "defeat all", which on a map with no enemy is satisfied at load:
  * the game wins the mission, drops the winning player, and refuses to start
- * with "Start player does not exist on map" (docs/CAMPAIGNS.md, the traps).
+ * with "Start player does not exist on map" (docs/MAP_PROPERTIES.md).
  * Two sides that cannot fight each other are also not what this map is asking.
  */
 const SIDES = [
@@ -233,7 +233,7 @@ const setPath = (page: Launched['page'], id: string, path: (string | number)[], 
  * "the first one that is not Haven" picked exactly that, and the map then had
  * a live, coloured PLAYER_2 who owned nothing — which the game reports as
  * `ERROR: Start player does not exist on map/…`, three sentences away from the
- * cause (docs/CAMPAIGNS.md). A hero's record lives beside his RACE, so that is
+ * cause (docs/MAP_PROPERTIES.md). A hero's record lives beside his RACE, so that is
  * what is asked for here.
  */
 const HERO_RACES = ['Haven', 'Inferno', 'Necropolis', 'Sylvan', 'Academy', 'Dungeon', 'Fortress', 'Stronghold'];
