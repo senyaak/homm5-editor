@@ -102,9 +102,11 @@ static void log_all_words(const char *what, DWORD at, int count) {
   for (int i = 0; i < count; i++) {
     const DWORD *word = (const DWORD *)(DWORD_PTR)(at + (DWORD)i * 4);
     if (!readable(word, 4)) return;
-    char label[24] = { ' ', ' ', ' ', ' ', '+', '0', 'x', '0', '0', ' ', ' ', ' ', ' ', 0 };
-    label[7] = "0123456789abcdef"[(i * 4 >> 4) & 0xf];
-    label[8] = "0123456789abcdef"[(i * 4) & 0xf];
+    // Four digits, because two of them wrapped: a dump longer than 0x100 bytes
+    // printed +0x00 again every sixty-four words, and an offset that repeats is
+    // an offset nobody can quote.
+    char label[24] = { ' ', ' ', ' ', ' ', '+', '0', 'x', '0', '0', '0', '0', ' ', ' ', 0 };
+    for (int d = 0; d < 4; d++) label[10 - d] = "0123456789abcdef"[(i * 4 >> (d * 4)) & 0xf];
     log_hex(label, *word);
   }
 }
@@ -353,6 +355,13 @@ static void remember_the_world(DWORD self) {
   g_signHolder = 0;
   g_signSubject = 0;
   log_hex("pandora: this announcement comes from the world ", whole);
+  // AND THE SAME OBJECT, HERE, WHILE THE MAP IS STILL BEING SET UP. The first
+  // attempt at finding the flag compared the world of one map against the world
+  // of another and drowned in the difference — two maps differ in almost every
+  // word, and none of it is about being set up. A world caught for the first
+  // time has just been loaded; the same world dumped again at a later grant is
+  // being played. Same object, two states, and the diff is the state.
+  log_all_words("pandora:   as it is when it is new ", whole, 0x400);
 }
 
 /**
