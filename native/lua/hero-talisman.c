@@ -240,6 +240,31 @@ static const BYTE CAN_HOLD_HEAD[5] = { 0x56, 0x8B, 0x74, 0x24, 0x08 };
 typedef char(__fastcall *CanHoldFn)(void *hero, void *edx, int spell);
 
 /**
+ * The WHOLE hero, from the subobject the lookup hands out.
+ *
+ * `FindObjectByName` answers with the interface at +0x1c — its own vtable is
+ * the long one, which is why the talisman slots are read off it directly — but
+ * the gate takes the object PROPER and reaches the interface itself with
+ * `[this+0x1c]`. Given the subobject it lands 0x1c further along, reads a
+ * vtable that is not one, and calls address zero: the game died on the first
+ * war cry handed to a knight.
+ *
+ * Not a constant: a dword before every vtable is the complete-object locator,
+ * and its second word is how deep that subobject sits. Subtract and it is the
+ * whole thing, whichever subobject arrived. Same walk as
+ * native/qol/pandora-notify.c, which is one file too late to borrow from.
+ */
+static void *whole_hero(void *sub) {
+  if (!readable(sub, 4)) return sub;
+  DWORD vt = *(const DWORD *)sub;
+  if (!readable((const void *)(DWORD_PTR)(vt - 4), 4)) return sub;
+  DWORD locator = *(const DWORD *)(DWORD_PTR)(vt - 4);
+  if (!readable((const void *)(DWORD_PTR)locator, 8)) return sub;
+  DWORD into = ((const DWORD *)(DWORD_PTR)locator)[1];
+  return into < 0x1000 ? (void *)((BYTE *)sub - into) : sub;
+}
+
+/**
  * `H5ECanHoldSpell(heroName, spellId)` — 1 when he may, nothing when he may not.
  *
  * Nothing is also the answer when the question cannot be asked at all — no such
@@ -279,7 +304,9 @@ static void *__fastcall lua_can_hold_spell(void *ctx) {
     log_num("H5ECanHoldSpell: the game has no spell ", spell);
     return NULL;
   }
-  char may = canHold(hero, NULL, spell);
+  void *self = whole_hero(hero);
+  if (self != hero) log_hex("H5ECanHoldSpell: asking the whole of him at ", (DWORD)(DWORD_PTR)self);
+  char may = canHold(self, NULL, spell);
   log_num(may ? "H5ECanHoldSpell: yes, spell " : "H5ECanHoldSpell: no, spell ", spell);
   return may ? (void *)(INT_PTR)lua_push_int(ctx, 1) : NULL;
 }

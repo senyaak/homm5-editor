@@ -86,12 +86,14 @@ const KINDS: { key: string; says: string; per: (tier: number) => Partial<Pandora
   {
     key: 'Res',
     says: 'Resources, worth the same as the gold row beside it.',
-    // 250 gold a common, 500 a rare — so these are 1000 / 7000 / 20000 / 60000.
+    // 250 gold a common, 500 a rare. The last one is A HUNDRED OF EVERYTHING —
+    // asked for outright, and it prices itself at 50 000 + 12 500 gold, which
+    // is Red either way. The three before it stay where they were.
     per: (t) => ([
       { wood: 4 },
       { wood: 12, ore: 12, gem: 2 },
       { wood: 40, ore: 40 },
-      { wood: 80, ore: 80, mercury: 20, crystal: 20, sulfur: 20, gem: 20 },
+      { wood: 100, ore: 100, mercury: 100, crystal: 100, sulfur: 100, gem: 100 },
     ][t]!),
   },
   {
