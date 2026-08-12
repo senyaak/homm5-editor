@@ -68,6 +68,25 @@ static int g_replayed;
 static DWORD game_base(void) { return (DWORD)(INT_PTR)GetModuleHandleW(NULL); }
 
 /**
+ * WHOSE announcement it is, and it is not the hero's.
+ *
+ * Five crashes were spent on the first argument before a dump of the whole
+ * object said it plainly: the working announcement's `this` is an
+ * `NWorld::CWorld` and mine was an `NWorld::CHero`. The mistake goes back to
+ * the very first reading — `CGiveArtefactCmd` keeps the WORLD at its field
+ * 0x0c and the hero at 0x10, which the same function says out loud two
+ * instructions earlier by asking 0x0c for the artifact factory. Every command
+ * lays its fields out its own way, and `CAddHeroSpellCmd` really does keep the
+ * hero at 0x0c — so the field number was carried across and the class was not.
+ *
+ * There is no world in the spell command to take, so it is REMEMBERED: every
+ * announcement the engine makes passes it, and one game has one. Captured, not
+ * guessed — the vtable is the whole test.
+ */
+#define CWORLD_VTABLE_RVA 0xbaf4bcu
+static DWORD g_world;
+
+/**
  * Every word of something, and no opinion about which ones matter.
  *
  * Twice now a report has been filtered down to what seemed worth keeping and
@@ -289,6 +308,15 @@ static DWORD complete_object(DWORD obj) {
   return into < 0x1000 ? obj - into : obj;
 }
 
+/** Keep it if this is the world — see CWORLD_VTABLE_RVA above. */
+static void remember_the_world(DWORD self) {
+  DWORD whole = complete_object(self);
+  if (g_world || !readable((const void *)(DWORD_PTR)whole, 4)) return;
+  if (*(const DWORD *)(DWORD_PTR)whole != game_base() + CWORLD_VTABLE_RVA) return;
+  g_world = whole;
+  log_hex("pandora: that announcement came from the world ", whole);
+}
+
 /** A string the announcement's constructor may copy — three words, and the
  *  first of them a buffer that exists. The whole of the second crash. */
 static int wstring_ok(DWORD s) {
@@ -307,8 +335,10 @@ static char __fastcall add_spell_replay(void *self, void *unused) {
   int spellId = (int)((DWORD *)self)[4];
   log_num(taught ? "pandora: a spell was taught, id " : "pandora: a spell was REFUSED, id ",
           spellId);
+  // Said once a launch, and the flag is spent where the announcement is MADE —
+  // not here. A run that gave up early used to burn it and go quiet for the
+  // rest of the game, which reads exactly like a hook that stopped working.
   if (!taught || g_replayed) return taught;
-  g_replayed = 1;
 
   DWORD base = game_base();
   // The hero the command was made for — its field 0x0c, and then the whole of
@@ -317,6 +347,11 @@ static char __fastcall add_spell_replay(void *self, void *unused) {
   DWORD hero = complete_object(given);
   log_hex("pandora:   for hero ", given);
   if (hero != given) log_hex("pandora:   the whole of him ", hero);
+  // Everything about both, because the world is still being taken from a
+  // memory of another announcement rather than from something at hand, and one
+  // of these words is very likely it.
+  log_all_words("pandora:   the command ", (DWORD)(DWORD_PTR)self, 0x10);
+  log_all_words("pandora:   the hero ", hero, 0x20);
 
   // The game has to know the spell at all before anything else is worth doing.
   void *record = ((void *(__fastcall *)(int))(DWORD_PTR)(SPELL_RECORD_RVA + base))(spellId);
@@ -402,26 +437,19 @@ static char __fastcall add_spell_replay(void *self, void *unused) {
     log_line("pandora: nobody to announce it to — the holder would drop it");
     return taught;
   }
-  // Twice burned on the same step, so it is asked here first. The holder's very
-  // first move is `hero->vt[0x14]()` and then a byte 0x1c into whatever came
-  // back; null is what the wrong subobject answered. Walking back to the whole
-  // object should have to be idempotent, and the getter should have to answer —
-  // if either is untrue this is not the object the announcer wants, and a line
-  // in the log costs a great deal less than the rest of the run.
-  if (complete_object(hero) != hero) {
-    log_line("pandora: that is still not the whole hero — not announcing");
+  // And WHOSE announcement it is. Not the hero's: five crashes were spent on
+  // that before a dump of the whole object named the class. The world is only
+  // ever the one the engine itself announced through, so if none has yet, this
+  // says so and stops — which is a line in the log instead of the rest of the
+  // run.
+  log_hex("pandora:   the world ", g_world);
+  if (!g_world) {
+    log_line("pandora: no announcement has come past yet, so no world — not announcing");
     return taught;
   }
-  DWORD audience = ((DWORD(__fastcall *)(DWORD, DWORD))
-                    (DWORD_PTR)((const DWORD *)(DWORD_PTR)*(const DWORD *)(DWORD_PTR)hero)[5])(
-                      hero, 0);
-  log_hex("pandora:   his slot 0x14 ", audience);
-  if (!audience || !readable((const void *)(DWORD_PTR)(audience + 0x1c), 1)) {
-    log_line("pandora: the hero answered nobody — not announcing");
-    return taught;
-  }
+  g_replayed = 1;
   ((void(__fastcall *)(DWORD, DWORD, DWORD, DWORD, DWORD, DWORD, DWORD, DWORD))
-   (DWORD_PTR)(ANNOUNCE_ONE_RVA + base))(hero, edx, text, name, icon, 0,
+   (DWORD_PTR)(ANNOUNCE_ONE_RVA + base))(g_world, edx, text, name, icon, 0,
                                          SPELL_ANNOUNCEMENT_KIND, params);
   log_line("pandora: it did not crash");
   return taught;
@@ -439,6 +467,7 @@ static char __fastcall add_spell_replay(void *self, void *unused) {
  */
 static DWORD __fastcall announce_hold_probe(DWORD self, DWORD edx, DWORD announcement) {
   log_line("pandora: holding an announcement");
+  remember_the_world(self);
   // ALL of it, both times. The engine's own announcements come through here as
   // well as ours, so one run puts a working object and a fatal one side by side
   // in the same file — which is the only comparison that has settled anything
