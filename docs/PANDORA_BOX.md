@@ -173,9 +173,16 @@ beside him. It builds `<game>/H5E/PandoraProbe.h5m`, and what it cannot answer
 is what the engine does with any of it. That is read by playing it.
 
 The sides are led by **generic heroes** — the palette's `. Heroes (Generic)`
-group, one class each, which is what a map wants and what a person clicks. A
-named hero is a hero with a story: asking the catalogue for "the first one that
-sits beside a race" answers with Alaric, who is a campaign hero and not in the
-standard pool at all. The generic entries are `RndGroup`s over each class's
-standard heroes, and the editor stands in the group's first member the way the
-original does.
+group, one class each, which is what a map wants and what a person clicks.
+Asking the catalogue for "the first hero that sits beside a race" answered with
+Alaric instead: a campaign hero, not in the standard pool at all.
+
+A generic entry places a REAL hero. It is generic in the palette and nowhere
+else: the swatch is one per class because the model is one per class —
+`Brem`, `Christian` and `Alaric` all wear `/_(Model)/Heroes/Knight_LOD` — and
+the entry is a `RndGroup` over that class's standard pool, of which the editor
+places the first member (`Stronghold/Hero1`, `Inferno/Calid`). What the map
+file records is that hero, by name. Nothing else is possible: no shipped map
+mentions an `AdvMapSharedGroup` at all — 0 of them across `data-unpacked/Maps`
+— so the group is the palette's way of offering a class, not something a map
+can carry.

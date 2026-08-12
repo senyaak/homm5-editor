@@ -238,10 +238,15 @@ const setPath = (page: Launched['page'], id: string, path: (string | number)[], 
  * NOT A NAMED ONE. Asking the catalogue for "a hero whose record sits beside a
  * race" answers with the first file in the folder, and in `MapObjects/Haven`
  * that is Alaric — a campaign hero, who is not in the standard pool at all.
- * The generic entries say what they mean: each is a `RndGroup` over its class's
- * standard heroes (`Heroes/Haven_Standart.xdb` and friends), and the editor
- * stands in the group's first member the way the original does, so what lands
- * on the map is an ordinary hero of that class.
+ *
+ * A GENERIC ENTRY STILL PLACES A REAL HERO, and the map records him by name:
+ * the entry is a `RndGroup` over its class's standard pool
+ * (`Heroes/Haven_Standart.xdb` and friends) and the editor places its first
+ * member, so these two sides are led by `Stronghold/Hero1` and `Inferno/Calid`.
+ * What is generic is the SWATCH — one per class, because the model is one per
+ * class (Brem, Christian and Alaric all wear `Heroes/Knight_LOD`). No shipped
+ * map mentions an `AdvMapSharedGroup` anywhere, so a group is something the
+ * palette offers and never something a map carries.
  *
  * AND AN ENTRYPOINT IS NOT A HERO — it sits in that very folder. It is an
  * `AdvMapHero` whose Shared points at `/MapObjects/Utility/EntryPoint.xdb`
