@@ -425,6 +425,34 @@ const BARBARIAN_BOXES = [
 ];
 
 /**
+ * FOUR SCROLLS, one per adventure spell, a row above the levels.
+ *
+ * A scroll is the other way a spell reaches a hero, and it answers a question
+ * the boxes cannot: whether a barbarian can CARRY adventure magic when it comes
+ * as an artifact rather than as a page in a book. The engine's gate is asked
+ * about a spell being LEARNED; a scroll is worn, and nothing says the two paths
+ * agree.
+ */
+const SCROLLS = LADDER.map((spell, i) => ({
+  spell, x: 8 + i * STEP, y: 36,
+}));
+const SCROLL = '/MapObjects/Artifacts/ScrollOfSpell.(AdvMapArtifactShared).xdb#xpointer(/AdvMapArtifactShared)';
+
+/**
+ * And the three Shrines of Magic, which is a MEASUREMENT rather than a feature.
+ *
+ * Senya's proposal is that a spell a hero cannot hold should pay him in
+ * experience the way a shrine does, and that a shrine pays more for a higher
+ * level. Neither the shrine's own record nor `DefaultStats.xdb` carries such a
+ * number, and reading it out of the executable ran long — so the three shrines
+ * stand here instead: walk a barbarian into each and the number is on screen.
+ */
+const SHRINES = [1, 2, 3].map((level, i) => ({
+  level, x: 8 + i * STEP, y: 38,
+  shared: `/MapObjects/Shrine_Of_Magic_${level}.(AdvMapShrineShared).xdb#xpointer(/AdvMapShrineShared)`,
+}));
+
+/**
  * A town for red, because a box that hands over Town Portal proves nothing
  * without somewhere for the portal to go.
  *
@@ -643,6 +671,26 @@ test('two sides, each with a hero of their own', async () => {
     + ' order and watch the spell book: Summon Creatures should appear at level'
     + ' 10, Dimension Door at 15, Town Portal at 20, with no box handing any of'
     + ' them over. That is the engine reading the talisman again as you grow.');
+
+  // THE SCROLLS — the same four spells as artifacts rather than as pages.
+  for (const s of SCROLLS) {
+    const id = await place(page, () => pickObject(page, SCROLL), s.spell, s.x, s.y);
+    await setPath(page, id, ['spellID'], s.spell);
+  }
+  // AND THE SHRINES, to be walked into rather than read: what a barbarian gets
+  // where a spell cannot be learned is the number this whole idea rests on.
+  for (const s of SHRINES) {
+    await place(page, () => pickObject(page, s.shared), `shrine ${s.level}`, s.x, s.y);
+  }
+  const scrollSign = await place(page, () => pickObject(page, SIGN), 'sign-scrolls',
+    BARBARIAN.at.x + STEP, SCROLLS[0]!.y);
+  await page.evaluate((oid) => window.view.select(oid), scrollSign);
+  await setTextRef(page, 'MessageFileRef', 'sign-scrolls',
+    'SCROLLS above, SHRINES above them. The four scrolls hold the same adventure'
+    + ' spells the boxes do - pick them up and see whether a barbarian may CARRY'
+    + ' what he may not learn. The three shrines are level 1, 2 and 3: walk into'
+    + ' each and note what a barbarian is given for a spell he cannot take,'
+    + ' because that number is what a box would pay him instead.');
 
   // A TOWN FOR RED, so Town Portal has somewhere to go and the shelter that
   // sells talismans can be walked into and compared with.
