@@ -47,11 +47,35 @@ static int g_ubiLineLen = 0;
 static int g_ubiLines = 0;
 #define UBI_LOG_MAX_LINES 200000
 
+/**
+ * The line, with the millisecond it was written at in front of it.
+ *
+ * The time is the point: the online session pauses for seconds at a time between
+ * steps, and whether a pause is a timeout being served out or just the client
+ * being slow is only visible as a gap between two lines. Ours are numbered, not
+ * timed, so the mirror stamps its own.
+ */
 static void ubi_log_flush(void) {
   if (g_ubiLineLen <= 0) return;
   g_ubiLine[g_ubiLineLen] = 0;
   g_ubiLineLen = 0;
-  if (g_ubiLines++ < UBI_LOG_MAX_LINES) log_line_now(g_ubiLine);
+  if (g_ubiLines++ >= UBI_LOG_MAX_LINES) return;
+
+  char stamped[1024 + 16];
+  DWORD ms = GetTickCount();
+  int at = 0;
+  // Milliseconds since the process started would be nicer, but a tick count is
+  // one call and no state, and only the DIFFERENCES matter here.
+  for (int digits = 100000000; digits > 0; digits /= 10) {
+    int digit = (int)((ms / (DWORD)digits) % 10);
+    if (at || digit || digits == 1) stamped[at++] = (char)('0' + digit);
+  }
+  stamped[at++] = 'm';
+  stamped[at++] = 's';
+  stamped[at++] = ' ';
+  for (int i = 0; g_ubiLine[i] && at < (int)sizeof(stamped) - 1; i++) stamped[at++] = g_ubiLine[i];
+  stamped[at] = 0;
+  log_line_now(stamped);
 }
 
 /**

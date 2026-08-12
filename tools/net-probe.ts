@@ -132,6 +132,21 @@ if (wanted[0] === '--icalls') {
   process.exit(0);
 }
 
+// `--dword <addr>`: the value sitting at an address in the image as shipped —
+// what a config variable's default is before anything overrides it.
+if (wanted[0] === '--dword') {
+  for (const arg of wanted.slice(1)) {
+    const va = Number(arg);
+    const value = pe.dwordAt(va);
+    console.log(
+      value === null
+        ? `  ${va.toString(16)} is not in the image`
+        : `  ${va.toString(16)} = ${value} (0x${value.toString(16)}) — as a float ${new DataView(new Uint8Array([value & 0xff, (value >>> 8) & 0xff, (value >>> 16) & 0xff, (value >>> 24) & 0xff]).buffer).getFloat32(0, true)}`,
+    );
+  }
+  process.exit(0);
+}
+
 // `--bytes <pattern>`: find a byte pattern in `.text`, `??` matching anything.
 // How a known constant is located when it is not pushed but stored — an error
 // triple written into three stack slots, say.
