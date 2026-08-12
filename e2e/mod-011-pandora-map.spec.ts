@@ -24,19 +24,19 @@
 // What comes out is `<game>/H5E/Pandora Probe.h5m` — a playable map. The
 // answers are read by playing it, which is the one step this suite cannot do.
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { test, expect } from '@playwright/test';
 import { DATA, hudSays, launchEditor } from './launch.ts';
 import type { Launched } from './launch.ts';
 import { bar } from './bar.ts';
 import { newMap } from './tiles.ts';
-import { pickObject, placeAtTile } from './objects.ts';
+import { pickEntry, pickObject, placeAtTile } from './objects.ts';
 import { clearMap, modGameRoot } from './mods.ts';
 import { MADE } from './artifacts.ts';
 import { modFile } from '../src/game/mod-paths.ts';
 import { readEntries } from '../src/format/pak.ts';
-import { writeGameplayArchive } from '../src/mods/gameplay.ts';
+import { GAMEPLAY_ARCHIVE, writeGameplayArchive } from '../src/mods/gameplay.ts';
 import { PANDORA_CLASS, pandoraShared } from '../src/mods/pandora-files.ts';
 import { PANDORA_TIERS, pandoraValue } from '../src/mods/pandora-contents.ts';
 import type { PandoraContents } from '../src/mods/pandora-contents.ts';
@@ -206,17 +206,24 @@ function contentsByPrice(): { arts: string[][]; spells: (string | number)[][] } 
   return { arts, spells };
 }
 
-/** Put one object down and answer with its id — mod-010's bounded retry. */
-async function place(page: Launched['page'], href: string, x: number, y: number): Promise<string> {
+/**
+ * Put one object down and answer with its id — mod-010's bounded retry.
+ *
+ * `arm` is whatever picks the swatch: a shared definition for the boxes, a
+ * palette path for the heroes, where WHICH swatch is clicked is the point.
+ */
+async function place(
+  page: Launched['page'], arm: () => Promise<void>, what: string, x: number, y: number,
+): Promise<string> {
   let added: { id: string }[] = [];
   for (let attempt = 1; attempt <= 3 && added.length !== 1; attempt++) {
-    await pickObject(page, href);
+    await arm();
     const before = new Set((await page.evaluate(() => window.view.objects())).map((o) => o.id));
     await placeAtTile(page, x, y);
     added = (await page.evaluate(() => window.view.objects())).filter((o) => !before.has(o.id));
     expect(added.length, `one click on ${x},${y} put down ${added.length} objects`).toBeLessThan(2);
   }
-  expect(added, `placing ${href} at ${x},${y} put down one object, in three tries`).toHaveLength(1);
+  expect(added, `placing ${what} at ${x},${y} put down one object, in three tries`).toHaveLength(1);
   return added[0]!.id;
 }
 
@@ -225,29 +232,49 @@ const setPath = (page: Launched['page'], id: string, path: (string | number)[], 
     { id, path, value });
 
 /**
- * Two heroes out of the catalogue — asked for, not named from memory.
+ * Two heroes out of the palette's **GenericHeroes** folder — a Knight, a
+ * Barbarian, one per class, which is what a map wants a side led by.
  *
- * AN ENTRYPOINT IS NOT A HERO, and the catalogue does not say so: it is an
+ * NOT A NAMED ONE. Asking the catalogue for "a hero whose record sits beside a
+ * race" answers with the first file in the folder, and in `MapObjects/Haven`
+ * that is Alaric — a campaign hero, who is not in the standard pool at all.
+ * The generic entries say what they mean: each is a `RndGroup` over its class's
+ * standard heroes (`Heroes/Haven_Standart.xdb` and friends), and the editor
+ * stands in the group's first member the way the original does, so what lands
+ * on the map is an ordinary hero of that class.
+ *
+ * AND AN ENTRYPOINT IS NOT A HERO — it sits in that very folder. It is an
  * `AdvMapHero` whose Shared points at `/MapObjects/Utility/EntryPoint.xdb`
- * with the same `#xpointer(/AdvMapHeroShared)` a real hero carries. Taking
- * "the first one that is not Haven" picked exactly that, and the map then had
- * a live, coloured PLAYER_2 who owned nothing — which the game reports as
- * `ERROR: Start player does not exist on map/…`, three sentences away from the
- * cause (docs/MAP_PROPERTIES.md). A hero's record lives beside his RACE, so that is
- * what is asked for here.
+ * with the same `#xpointer(/AdvMapHeroShared)` a real hero carries, so no check
+ * on the class or the xpointer tells it apart. Taking one gave the map a live,
+ * coloured PLAYER_2 who owned nothing, which the game reports as `ERROR: Start
+ * player does not exist on map/…`, three sentences away from the cause
+ * (docs/MAP_PROPERTIES.md). The DOCUMENT is the difference, and that is what is
+ * asked here.
  */
-const HERO_RACES = ['Haven', 'Inferno', 'Necropolis', 'Sylvan', 'Academy', 'Dungeon', 'Fortress', 'Stronghold'];
+const GENERIC_HEROES = 'MapObjects/_(AdvMapObjectLink)/GenericHeroes';
 
 async function twoHeroes(page: Launched['page']): Promise<string[]> {
-  const found = await page.evaluate(async (races) => {
+  const found = await page.evaluate(async (folder) => {
     const { objects } = await window.editor.listObjects();
-    const heroes = objects.filter((o) => o.type === 'AdvMapHero' && !o.hidden && !o.random
-      && races.some((r) => o.shared.includes(`/${r}/`)));
-    const haven = heroes.find((o) => o.shared.includes('/Haven/'))?.shared ?? '';
-    const other = heroes.find((o) => !o.shared.includes('/Haven/'))?.shared ?? '';
-    return [haven, other];
-  }, HERO_RACES);
-  for (const h of found) expect(h, 'the catalogue offers two heroes of different races').not.toBe('');
+    const generic = objects
+      .filter((o) => o.type === 'AdvMapHero' && !o.hidden
+        && o.path.toLowerCase().startsWith(`${folder.toLowerCase()}/`)
+        && !/EntryPoint/i.test(o.shared.split('#')[0] ?? ''))
+      .sort((a, b) => a.path.localeCompare(b.path));
+    // Two different heroes, not one class twice — the sides are told apart by
+    // who leads them as much as by their colour.
+    const seen = new Set<string>();
+    const picked: string[] = [];
+    for (const o of generic) {
+      if (seen.has(o.shared)) continue;
+      seen.add(o.shared);
+      picked.push(o.path);
+      if (picked.length === 2) break;
+    }
+    return picked;
+  }, GENERIC_HEROES);
+  expect(found, 'the palette offers two generic heroes of different classes').toHaveLength(2);
   return found;
 }
 
@@ -275,7 +302,7 @@ test('the whole ladder goes down through the palette, four boxes to a kind', asy
   await newMap(page, NAME, '96');
 
   for (const b of BOXES) {
-    const id = await place(page, BOX, b.x, b.y);
+    const id = await place(page, () => pickObject(page, BOX), b.name, b.x, b.y);
     await setPath(page, id, ['Name'], b.name);
     ids.set(b.name, id);
   }
@@ -346,7 +373,7 @@ test('two sides, each with a hero of their own', async () => {
   const { page } = ed;
   const heroes = await twoHeroes(page);
   for (const [i, side] of SIDES.entries()) {
-    const id = await place(page, heroes[i]!, side.hero.x, side.hero.y);
+    const id = await place(page, () => pickEntry(page, heroes[i]!), heroes[i]!, side.hero.x, side.hero.y);
     await setPath(page, id, ['PlayerID'], side.player);
     await page.evaluate(async (q) => {
       await window.editor.setMapPath({ path: ['players', q.slot, 'ActivePlayer'], value: 'true' });
@@ -443,4 +470,44 @@ test('and it packs to a map the game can be pointed at', async () => {
   expect(names.some((n) => n.endsWith(PANDORA_FILE)), 'the sidecar stays home').toBe(false);
   expect(names.some((n) => n.endsWith(`(${PANDORA_CLASS}).xdb`)), 'the box definitions live in the mod, not the map')
     .toBe(false);
+});
+
+test('and the whole box is one tick in the Gameplay tab, both ways', async () => {
+  test.setTimeout(5 * 60_000);
+  const { page } = ed;
+  const archive = join(GAME, GAMEPLAY_ARCHIVE);
+  const flags = join(GAME, 'bin', 'homm5-editor-qol.txt');
+
+  // ASKED WITH THE ARCHIVE GONE. Everything above wrote it directly
+  // (writeGameplayArchive in beforeAll), so a test that only looked would find
+  // it there and say the switch worked whatever the switch does — the same
+  // trap as measuring a fix with the fix already on.
+  rmSync(archive, { force: true });
+
+  await page.locator('#qolbtn').click();
+  await expect(page.locator('#qolcfg')).toBeVisible();
+  await page.locator('#qol-tab-gameplay').click();
+  await expect(page.locator('#qol-gameplay'), 'the box lives on its own tab').toBeVisible();
+  await page.locator('#qol-pandora-box').check();
+  await page.locator('#qol-apply').click();
+  await expect(page.locator('#qol-msg')).toContainText(/settings written|installed/i, { timeout: 120_000 });
+
+  expect(existsSync(archive), 'ticking it puts the archive back').toBe(true);
+  expect(readFileSync(flags, 'utf8'), 'and the extension is told to take the chest away')
+    .toMatch(/^pandora-box 1$/m);
+
+  // AND OFF AGAIN, which is the half that matters: the archive IS the object,
+  // so a switch that cannot take it out leaves every install that ever tried
+  // the box carrying it for good.
+  await page.locator('#qol-pandora-box').uncheck();
+  await page.locator('#qol-apply').click();
+  await expect.poll(() => existsSync(archive), { timeout: 120_000 }).toBe(false);
+  expect(readFileSync(flags, 'utf8'), 'and the gate goes with it').toMatch(/^pandora-box 0$/m);
+
+  // Left ON, because what this run produces is a map to play: an install whose
+  // last word was "off" has no box for the sixty-four placements to point at.
+  await page.locator('#qol-pandora-box').check();
+  await page.locator('#qol-apply').click();
+  await expect.poll(() => existsSync(archive), { timeout: 120_000 }).toBe(true);
+  await page.locator('#qol-close').click();
 });

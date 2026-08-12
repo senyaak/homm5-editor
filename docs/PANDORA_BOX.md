@@ -14,9 +14,16 @@ four glow documents, the palette entry and the behaviour script. The editor
 mounts the same archive, so the palette gains the box on the next map opened;
 the game needs a restart.
 
-Turning the flag off deletes the archive. A map that places boxes and is played
+Turning the flag off deletes the archive again, and with it the box: the
+extension's gate is behind the same flag, so an install that turned it off is
+back to the one it was, chest and all. A map that places boxes and is played
 without it has objects pointing at definitions nothing provides — so the flag
 travels with the map, not with the mood.
+
+Both directions are asserted rather than assumed — `mod-011` deletes the archive
+first, ticks the box, and finds it written; then unticks it and finds it gone.
+A switch measured with the thing already installed reports success whatever it
+does.
 
 ## Placing one
 
@@ -164,3 +171,11 @@ twice over — one row per side — with a hundred archangels for the first hero
 the guarded boxes can be opened, and an enemy hero with the same row of boxes
 beside him. It builds `<game>/H5E/PandoraProbe.h5m`, and what it cannot answer
 is what the engine does with any of it. That is read by playing it.
+
+The sides are led by **generic heroes** — the palette's `. Heroes (Generic)`
+group, one class each, which is what a map wants and what a person clicks. A
+named hero is a hero with a story: asking the catalogue for "the first one that
+sits beside a race" answers with Alaric, who is a campaign hero and not in the
+standard pool at all. The generic entries are `RndGroup`s over each class's
+standard heroes, and the editor stands in the group's first member the way the
+original does.

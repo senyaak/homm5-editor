@@ -25,18 +25,43 @@ export async function openObjectPalette(page: Page): Promise<void> {
   await expect(page.locator('#objpal')).toBeVisible();
 }
 
-/** The catalogue entry for a shared definition, as the palette knows it. */
-export async function catalogEntry(page: Page, shared: string): Promise<{
+/** One palette entry, as much of it as placing one needs. */
+export interface CatalogEntry {
   name: string; label: string; group: string; type: string; hidden: boolean; path: string;
-} | null> {
+  shared: string;
+}
+
+/** The catalogue entry for a shared definition, as the palette knows it. */
+export async function catalogEntry(page: Page, shared: string): Promise<CatalogEntry | null> {
   return page.evaluate(async (want) => {
     const { objects } = await window.editor.listObjects();
     const key = (h: string): string => h.toLowerCase().replace(/^\/+/, '').split('#')[0]!;
     const hit = objects.find((o) => key(o.shared) === want);
     return hit
-      ? { name: hit.name, label: hit.label, group: hit.group, type: hit.type, hidden: hit.hidden, path: hit.path }
+      ? { name: hit.name, label: hit.label, group: hit.group, type: hit.type, hidden: hit.hidden,
+        path: hit.path, shared: hit.shared }
       : null;
   }, sharedKey(shared));
+}
+
+/**
+ * The catalogue entry AT a palette path — the swatch itself rather than what it
+ * places.
+ *
+ * Two entries can place the same definition: a generic hero and the named one
+ * it resolves to are the same `AdvMapHeroShared` reached from two folders, and
+ * asking by shared answers with whichever the catalogue lists first. When the
+ * point is which SWATCH is clicked, the path is the only thing that says it.
+ */
+export async function paletteEntry(page: Page, path: string): Promise<CatalogEntry | null> {
+  return page.evaluate(async (want) => {
+    const { objects } = await window.editor.listObjects();
+    const hit = objects.find((o) => o.path.toLowerCase() === want);
+    return hit
+      ? { name: hit.name, label: hit.label, group: hit.group, type: hit.type, hidden: hit.hidden,
+        path: hit.path, shared: hit.shared }
+      : null;
+  }, path.toLowerCase());
 }
 
 /**
@@ -47,12 +72,23 @@ export async function catalogEntry(page: Page, shared: string): Promise<{
  * entries need their checkbox first or the grid will not show them.
  */
 export async function pickObject(page: Page, shared: string): Promise<void> {
-  return step(`arm ${shared.split('/').pop()}`, () => armObject(page, shared));
+  return step(`arm ${shared.split('/').pop()}`, async () => {
+    const entry = await catalogEntry(page, shared);
+    if (!entry) throw new Error(`no catalogue entry places ${shared}`);
+    await armEntry(page, entry);
+  });
 }
 
-async function armObject(page: Page, shared: string): Promise<void> {
-  const entry = await catalogEntry(page, shared);
-  if (!entry) throw new Error(`no catalogue entry places ${shared}`);
+/** Arm the palette with the entry at a palette path. */
+export async function pickEntry(page: Page, path: string): Promise<void> {
+  return step(`arm ${path.split('/').pop()}`, async () => {
+    const entry = await paletteEntry(page, path);
+    if (!entry) throw new Error(`the palette has no entry at ${path}`);
+    await armEntry(page, entry);
+  });
+}
+
+async function armEntry(page: Page, entry: CatalogEntry): Promise<void> {
   const armed = `placing: ${entry.label} · ${entry.type}`;
   // A swatch TOGGLES: the app says so ("click it again to stop"), so arming what
   // is already armed puts it down. Placing two of the same object in a row —
