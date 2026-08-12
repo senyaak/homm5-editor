@@ -406,8 +406,18 @@ console.log('\nThe lobby, as far as the wait module goes');
   // Verbatim from the wire: the client logs in to the lobby naming the game.
   const loggedIn = desk.receive(lobbyMessage(LobbyMsg.LOGIN, ['HEROES_29988429c481f219']));
   const ok = parse(loggedIn[0]!.replies[0]!);
-  check('the lobby login is answered', loggedIn[0]!.replies.length === 1, loggedIn[0]?.note);
+  // Two answers: the success, and the channels behind it — the client asks for
+  // neither, it just waits, which is how the first channel screen came up empty.
+  check('the lobby login is answered and the channels follow', loggedIn[0]!.replies.length === 2, loggedIn[0]?.note);
   check('as a LOBBY_MSG saying success', ok?.type === MessageType.LOBBY_MSG && ok?.body?.[0] === '38');
+  const pushed = parse(loggedIn[0]!.replies[1]!);
+  const channels = (pushed?.body?.[1] as GSValue[])?.[3] as GSValue[];
+  check('the push is a GROUP_INFO with three channels', pushed?.body?.[0] === String(LobbyMsg.GROUP_INFO) && channels?.length === 3);
+  check(
+    'and each channel names the game the client logged in with',
+    (channels?.[0] as GSValue[])?.[8] === 'HEROES_29988429c481f219',
+    String((channels?.[0] as GSValue[])?.[8]),
+  );
 
   const listed = desk.receive(lobbyMessage(LobbyMsg.CHANGE_REQUESTED_LOBBIES, ['HEROES_29988429c481f219']));
   const info = parse(listed[0]!.replies[0]!);

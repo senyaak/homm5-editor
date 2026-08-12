@@ -70,8 +70,15 @@ export const DEFAULT_LOBBIES: Lobby[] = [
  * One lobby, in the fourteen fields the client reads by position:
  * type, name, id, lobby server id, parent, config, level, master, allowed games,
  * games, info blob, event id, max members, members.
+ *
+ * `game` fills the two game fields with the id the client logged in with
+ * (`HEROES_…`). Whether it has to be there is not settled: the reference
+ * implementation leaves both empty, and the first channel screen we reached was
+ * empty too — a client that filters the list by "is this lobby for my game" would
+ * explain that, so this is the cheaper thing to try before reading the filter out
+ * of the exe.
  */
-export function lobbyEntry(lobby: Lobby): GSValue[] {
+export function lobbyEntry(lobby: Lobby, game = ''): GSValue[] {
   return [
     String(GroupType.LOBBY),
     lobby.name,
@@ -81,8 +88,8 @@ export function lobbyEntry(lobby: Lobby): GSValue[] {
     '0',
     '1',
     '',
-    '',
-    '',
+    game,
+    game,
     new Uint8Array(0),
     String(lobby.mode),
     String(lobby.maxMembers),

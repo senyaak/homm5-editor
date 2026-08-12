@@ -79,6 +79,8 @@ export class RouterSession {
   /** Which of the two turned out to open the client's bodies. */
   encryptedWith: string | null = null;
   username = '';
+  /** The game the client logged into the lobby with, e.g. `HEROES_…`. */
+  gameId = '';
 
   private readonly role: Role;
   private readonly waitModule: Endpoint;
@@ -148,6 +150,17 @@ export class RouterSession {
     }
     throw new Error('neither session key opens this body');
   };
+
+  /**
+   * The channels, as child groups of the one group the client is in.
+   *
+   * The flag asks the client to come back for their children — the rooms —
+   * which is how a channel with games in it gets a game list.
+   */
+  private lobbyList(message: GSMessage): Buffer {
+    const lobbies = DEFAULT_LOBBIES.map((lobby) => lobbyEntry(lobby, this.gameId));
+    return build(reply(message, [String(LobbyMsg.GROUP_INFO), ['1', String(Lsm.CHILDGROUPINFO), ['0'], lobbies]]));
+  }
 
   private handle(message: GSMessage): RouterEvent {
     switch (message.type) {
@@ -240,21 +253,21 @@ export class RouterSession {
         const subtype = message.body?.[0];
         const inner = message.body?.[1];
         if (subtype === String(LobbyMsg.LOGIN)) {
-          const game = Array.isArray(inner) && typeof inner[0] === 'string' ? inner[0] : '';
+          this.gameId = Array.isArray(inner) && typeof inner[0] === 'string' ? inner[0] : '';
+          // The channel list is PUSHED, not asked for. Measured: after this login
+          // was answered the client said nothing more and drew an empty channel
+          // screen — and its receive side is full of handlers for arriving groups
+          // (`ProcessNewLobby`, "new lobby \"…\"", `ProcessLobbyInfo`). So the
+          // success goes out with the lobbies right behind it.
           return {
-            note: `lobby LOGIN for game "${game}" — accepted`,
-            replies: [build(reply(message, [String(MessageType.GSSUCCESS), [subtype]]))],
+            note: `lobby LOGIN for game "${this.gameId}" — accepted, ${DEFAULT_LOBBIES.length} channels pushed`,
+            replies: [build(reply(message, [String(MessageType.GSSUCCESS), [subtype]])), this.lobbyList(message)],
           };
         }
         if (subtype === String(LobbyMsg.CHANGE_REQUESTED_LOBBIES)) {
-          // GROUP_INFO carries the lobbies as child groups, and the flag says the
-          // client should ask about their children (the rooms) once it is in.
-          const lobbies = DEFAULT_LOBBIES.map(lobbyEntry);
           return {
             note: `lobby list — ${DEFAULT_LOBBIES.map((l) => l.name).join(', ')}`,
-            replies: [
-              build(reply(message, [String(LobbyMsg.GROUP_INFO), ['1', String(Lsm.CHILDGROUPINFO), ['0'], lobbies]])),
-            ],
+            replies: [this.lobbyList(message)],
           };
         }
         if (subtype === String(LobbyMsg.JOIN_SERVER)) {
