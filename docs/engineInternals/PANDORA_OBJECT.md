@@ -1,11 +1,43 @@
-# A native object for the Pandora's Box — reconnaissance
+# A native object for the Pandora's Box
 
-Status: **entry points found, class not yet built.** The goal, set by decision
-on 11.08.2026: the box is its OWN native class, derived from the lootable one —
-not a chest with its behaviour gated. It inherits everything that makes a
-lootable work (the loader, the AI's appetite, pathing, saving, the touch
-trigger) and overrides the behaviours that are ours, starting with the visit:
-no chest dialog, no automatic goods, no vanishing.
+Status: **DONE, and cheaper than the plan** — 12.08.2026, confirmed in play. A
+box is no longer a chest to the player: no dialog of its own, no goods of its
+own, and no vanishing before the answer. Real chests are untouched.
+
+**And the plan below is not what was built.** It called for a subclass — a copy
+of the treasure's vtable with the slots we own replaced, and our objects
+retagged to it at construction. What the reconnaissance turned up made that
+unnecessary:
+
+* the behaviour to take away is ONE slot — the chest's dialog-and-goods at
+  `0xD20C80`, `0xFD5108 +0x0c`;
+* and a box can be recognised where it matters, because a shared definition
+  carries the path it was loaded from at **+0x20**: ours read
+  `/Buildings/PandoraBox/PandoraBox_Green.(AdvMapTreasureShared).xdb`.
+
+So `native/qol/pandora-box.c` detours that one function, asks the object which
+document it came from, and returns without doing anything when the answer is
+ours — otherwise it calls the original. No vtable copied, no object retagged,
+no `TreasureType` added and no ceiling raised in the executable. The parts of
+the plan that turned out to matter are kept below, because the NEXT thing we
+take from the chest will need them.
+
+What is still a chest is the DATA: the class in the map is
+`AdvMapTreasureShared`. Stage 2 — `AdvMapPandoraShared` through the engine's
+class registry — is unchanged and still worth doing, now that the behaviour is
+proven rather than before.
+
+Three things this cost, all worth not repeating:
+
+* **arity comes from `ret`.** Every exit of `0xD20C80` is `ret 8`, so the hook
+  takes two stack arguments even though it reads one. Declared with one, the
+  refusal left the caller's stack four bytes out and the game died frames later
+  somewhere else entirely — with the log already saying the gate had worked.
+* **`this` is the SUBOBJECT.** The slot is reached through a vtordisp thunk, so
+  what arrives is object+0xF8, not the object.
+* **a probe that reads memory it has not proven is a probe that crashes.** The
+  word-by-word dump of the shared document caught an access violation per box
+  through the fault handler. It answered the question and was then removed.
 
 ## Where the box stands (11.08.2026)
 

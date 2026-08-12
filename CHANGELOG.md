@@ -34,6 +34,14 @@ one.
   text file per talking box, and a map script if the map had none. The contents
   themselves stay behind in an editor sidecar that never ships.
 
+- **And it is no longer a chest.** The box is an `AdvMapTreasure` in the data,
+  so the engine used to run the CHEST's visit beside ours: its own dialog, its
+  own gold, and the box gone before you answered the question. The extension
+  takes that one behaviour away — and only for boxes, which it tells apart by
+  the document they were built from, so every ordinary chest on a map behaves
+  exactly as it always did. Nothing is patched into the executable and no
+  vtable is replaced; a single virtual call is refused for our objects.
+
 - **Rigs of our own.** Granny GR2 — the format the game's skeletons and
   animations are in — is now written as well as read. The header's CRC turned
   out to be a plain CRC-32 from byte 88 to the end (checked against all 5656

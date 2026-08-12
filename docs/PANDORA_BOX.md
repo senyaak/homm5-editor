@@ -124,13 +124,27 @@ there is "invalid constructor syntax" and takes the whole `DoString` down with
 every hook unbound), and `return;` alone kills the file. Both are in the
 linter — `src/script/lua-lint.ts`.
 
+## It is not a chest — and that half needs the extension
+
+The box is an `AdvMapTreasure` in the data, and left alone the engine would run
+the CHEST's visit beside ours: its own dialog, its own goods, and the object
+taken off the map before the player answered anything. Our extension takes that
+one behaviour away — and only for boxes, recognised by the document they were
+built from, so every real chest on the map behaves exactly as it always did
+(`native/qol/pandora-box.c`, and `docs/engineInternals/PANDORA_OBJECT.md` for
+how it is done).
+
+**So a map with boxes wants the extension installed**, which the `pandora-box`
+flag does along with the archive. Without it the boxes still work — the touch
+trigger, the question, the contents are all script — but the chest talks over
+them.
+
 ## What is not done yet
 
-The box is still a **treasure chest** to the engine, which means the chest's own
-pickup happens beside ours: its dialog, its goods, and the object taken off the
-map. That is the visual probe's leftover and it goes when the box gets its own
-native class, derived from the lootable one — see
-`docs/engineInternals/PANDORA_OBJECT.md`.
+The DATA still says `AdvMapTreasureShared`. A class of our own,
+`AdvMapPandoraShared`, is the remaining step, and it is cosmetic in the sense
+that nothing a player sees depends on it — it is what makes a map say what it
+means (`docs/engineInternals/PANDORA_OBJECT.md`, stage 2).
 
 ## Where the code is
 

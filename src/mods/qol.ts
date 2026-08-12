@@ -117,14 +117,15 @@ export const QOL_FLAGS = [
   {
     name: 'pandora-box',
     tab: 'gameplay',
-    native: false,
     title: "Pandora's Box on the adventure map",
     detail: "Heroes III's Pandora's Box, brought over: a floating, spinning box the map author fills"
       + ' with experience, gold, resources, artifacts, spells or creatures — and guards, fought'
       + ' before it opens. Applying this writes H5E/homm5-editor-gameplay.h5u, the archive the box'
       + ' lives in, and turning it off deletes that archive again. A map that places boxes needs'
       + ' this on to play: without the archive the object does not exist for the game, and the'
-      + " editor's palette only offers it while it is installed.",
+      + " editor's palette only offers it while it is installed. The extension has a hand in"
+      + " it too: without it the engine runs the treasure chest's own pickup beside ours —"
+      + ' its dialog, its goods, and the box gone before the question is answered.',
   },
   {
     name: 'combat-ai-fix',
