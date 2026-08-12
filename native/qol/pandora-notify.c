@@ -374,6 +374,13 @@ static int the_game_is_being_played(DWORD world) {
   DWORD busy = ((DWORD(__fastcall *)(DWORD, DWORD))(DWORD_PTR)vt[0x138 / 4])(world, 0) & 0xff;
   log_hex("pandora:   the world answers 0x14 ", who);
   log_hex("pandora:   and 0x138 ", busy);
+  // Neither of them tells the two apart — measured, on the map whose init hands
+  // Gelu a spell: both answered exactly as they do in play. So the engine's own
+  // questions are kept (they are still the holder's, and a busy world is a bad
+  // time whatever else is true) and the whole world is dumped beside them,
+  // because the flag that DOES differ is in there somewhere and one run with
+  // both cases in it will show which word it is.
+  log_all_words("pandora:   the world ", world, 0x40);
   if (busy) {
     log_line("pandora: the world is busy — this is setting up, not playing");
     return 0;
@@ -381,6 +388,16 @@ static int the_game_is_being_played(DWORD world) {
   if (!who || !readable((const void *)(DWORD_PTR)(who + 0x1c), 1)
       || *(const BYTE *)(DWORD_PTR)(who + 0x1c)) {
     log_line("pandora: nobody is watching — this is setting up, not playing");
+    return 0;
+  }
+  // AND THE ONE SIGNAL THAT IS ONLY EVER TRUE IN PLAY. A sign flies off a hero
+  // for morale, for luck, for every experience he earns — and never once while
+  // a map is being set up. It is not the flag the engine uses and it is not
+  // pretending to be: it is the observable that separates the two cases today,
+  // it is thrown away with the world it belongs to, and it says so when it
+  // refuses so that nothing goes quiet without a reason in the file.
+  if (!g_signSubject) {
+    log_line("pandora: nothing has flown off a hero in this game yet — still setting up");
     return 0;
   }
   return 1;
