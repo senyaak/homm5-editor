@@ -85,6 +85,9 @@ static DWORD game_base(void) { return (DWORD)(INT_PTR)GetModuleHandleW(NULL); }
 #define CWORLD_VTABLE_RVA 0xbaf4bcu
 static DWORD g_world;
 
+/** The pair a flying sign is addressed by — caught, for the same reason. */
+static DWORD g_signHolder, g_signSubject;
+
 /**
  * Every word of something, and no opinion about which ones matter.
  *
@@ -170,6 +173,24 @@ static DWORD __fastcall announce_many_probe(DWORD self, DWORD edx,
   DWORD from = (DWORD)(INT_PTR)__builtin_return_address(0);
   DWORD stack[8] = { a0, a1, a2, a3, a4, a5, a6, a7 };
   DWORD rva = from - game_base();
+  // THE TWO THAT CANNOT BE READ OUT OF THE LISTING. A sign that flies over a
+  // hero is addressed by an object in `ecx` and another in `a0`, and both are
+  // subobjects of the world reached by adjustments the compiler inlined — the
+  // experience sign at 0xC25CF9 walks one through `[esi+4]`, `[+0x0c]`, `+4`.
+  // The world itself was caught the same way and it is the method that finally
+  // worked: a real sign passes here on the first experience the player earns,
+  // so take them from that instead of deriving them.
+  if (!g_signHolder && self && a0) {
+    g_signHolder = self;
+    g_signSubject = a0;
+    log_hex("pandora: a flying sign is addressed by ", self);
+    log_hex("pandora:   and speaks over ", a0);
+  }
+  if (!LOG_ON) {
+    return ((DWORD(__fastcall *)(DWORD, DWORD, DWORD, DWORD, DWORD, DWORD, DWORD, DWORD, DWORD,
+                                 DWORD))g_announce_many_orig)(self, edx, a0, a1, a2, a3, a4, a5,
+                                                              a6, a7);
+  }
   log_args(rva == RISE_ANNOUNCE_RVA
            ? "announce(many): the necromancer's raise" : "announce(many)",
            self, edx, stack, 8, rva);
@@ -450,6 +471,43 @@ static char __fastcall announce_spell_taught(void *self, void *unused) {
   return taught;
 }
 
+// ---------------------------------------------------------------------------
+// AND THE OTHER HALF: A STACK THAT JOINS THE HERO.
+//
+// There is no key for it. The executable holds exactly one HERO_RECEIVES_* —
+// the spell's — and TEAM_RECEIVE_CREATURES is the message the rest of the team
+// gets, not the thing the player sees. What the player sees when necromancy
+// raises a stack is a SIGN that flies off the hero, and that is what was asked
+// for, so that is the call: 0xC16750, eight arguments, and the necromancer's
+// own site at 0xC77799 spells out every one of them —
+//
+//   arg0  the object the sign flies from      caught, see g_signSubject
+//   arg1  2
+//   arg2  the text, built from a number       0xC16810(&out, count)
+//   arg3  the picture                         0xABC700(0xABAFB0(stack), 0)
+//   arg4  0    arg5  1    arg6  1    arg7  1  (the experience sign uses 0/0/2/1)
+//
+// Two of those are objects of the world that the compiler inlined the walk to,
+// so they are caught off a real sign rather than derived. What is NOT yet known
+// is this command's own shape — which field holds the creature and which the
+// count — so for now it only writes itself down. Every field, because guessing
+// which ones matter is what cost the evening.
+
+/** `CGiveCreaturesCmd::execute` — 93 instructions that announce nothing. */
+#define GIVE_CREATURES_RVA 0x72eb10u
+static const BYTE GIVE_CREATURES_HEAD[6] = { 0x57, 0x8B, 0xF9, 0x8B, 0x4F, 0x0C };
+static void *g_give_creatures_orig;
+
+static char __fastcall announce_creatures_given(void *self, void *unused) {
+  char given = ((char(__fastcall *)(void *, void *))g_give_creatures_orig)(self, unused);
+  log_num(given ? "pandora: creatures were given, and the command says "
+                : "pandora: creatures were REFUSED, and the command says ", given);
+  log_all_words("pandora:   the command ", (DWORD)(DWORD_PTR)self, 0x10);
+  log_hex("pandora:   the sign's holder so far ", g_signHolder);
+  log_hex("pandora:   the sign's subject so far ", g_signSubject);
+  return given;
+}
+
 /**
  * Where the world is caught, and where a crash used to be located.
  *
@@ -494,10 +552,15 @@ static int install_pandora_notify(void) {
                             (void *)announce_spell_taught, "spell taught");
   g_announce_hold_orig = detour(ANNOUNCE_HOLD_RVA, ANNOUNCE_HOLD_HEAD, sizeof ANNOUNCE_HOLD_HEAD,
                                 (void *)announce_hold_probe, "announcement holder");
-  if (!LOG_ON) return g_add_spell_orig != NULL && g_announce_hold_orig != NULL;
-  g_announce_one_orig = detour(ANNOUNCE_ONE_RVA, ANNOUNCE_ONE_HEAD, sizeof ANNOUNCE_ONE_HEAD,
-                               (void *)announce_one_probe, "announce(one)");
+  // Always as well: the one that catches what a flying sign is addressed by,
+  // which the stack half is going to need.
   g_announce_many_orig = detour(ANNOUNCE_MANY_RVA, ANNOUNCE_MANY_HEAD, sizeof ANNOUNCE_MANY_HEAD,
                                 (void *)announce_many_probe, "announce(many)");
+  if (!LOG_ON) return g_add_spell_orig != NULL && g_announce_hold_orig != NULL;
+  g_give_creatures_orig = detour(GIVE_CREATURES_RVA, GIVE_CREATURES_HEAD,
+                                 sizeof GIVE_CREATURES_HEAD,
+                                 (void *)announce_creatures_given, "creatures given");
+  g_announce_one_orig = detour(ANNOUNCE_ONE_RVA, ANNOUNCE_ONE_HEAD, sizeof ANNOUNCE_ONE_HEAD,
+                               (void *)announce_one_probe, "announce(one)");
   return g_add_spell_orig != NULL && g_announce_hold_orig != NULL;
 }
