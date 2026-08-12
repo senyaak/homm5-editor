@@ -105,8 +105,15 @@ static const char *treasure_document(void *self) {
  * `this` arrives already corrected: the slot's thunk does the vtordisp
  * subtraction before jumping here, so what we get is the subobject the table
  * belongs to — which is object+0xF8, and is what `treasure_document` expects.
+ *
+ * TWO STACK ARGUMENTS, AND THE COUNT IS NOT A GUESS: every exit of 0xD20C80 is
+ * `ret 8`. Written with one — the hero is the only one this code reads — the
+ * refusal returned four bytes short, the caller's stack walked, and the game
+ * died a few frames later at an address in the middle of nowhere. The log said
+ * "this box is ours" first, so the gate itself was working perfectly; what was
+ * wrong was arithmetic that a disassembly answers in one line.
  */
-static void __fastcall treasure_speak_gate(void *self, void *unused, void *hero) {
+static void __fastcall treasure_speak_gate(void *self, void *unused, void *hero, void *second) {
   if (self) {
     const char *doc = treasure_document(self);
     if (text_holds(doc, PANDORA_MARK)) {
@@ -117,7 +124,7 @@ static void __fastcall treasure_speak_gate(void *self, void *unused, void *hero)
       return;   // no dialog, no goods, no vanishing — the script does the rest
     }
   }
-  ((void(__fastcall *)(void *, void *, void *))g_treasure_speak_orig)(self, unused, hero);
+  ((void(__fastcall *)(void *, void *, void *, void *))g_treasure_speak_orig)(self, unused, hero, second);
 }
 
 /** Take the chest's visit away from our boxes. False when the bytes are not
