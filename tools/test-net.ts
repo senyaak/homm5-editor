@@ -159,14 +159,14 @@ console.log('\nNAT service, driven by the recorded packets');
     ),
     from,
   );
-  check('an ask gets the one answer the client accepts', asked.replies.length === 1, asked.note);
+  check('an ask gets the three answers that were accepted together', asked.replies.length === 3, asked.note);
   const first = parse(parseSegment(asked.replies[0]!).message!);
   check('the answer is a NAT message', first?.type === MessageType.NAT);
-  // Measured from the game's own log: it prints what it was told, and both of
-  // these were wrong at first — "address=1.0.0.127:40010".
+  // The one configuration the client has ever accepted — see NAT_ANSWERS for the
+  // four runs that established it, including the two where "fixing" this broke it.
   check(
-    'it tells the client its own address in host order and its own port',
-    JSON.stringify(first?.body) === JSON.stringify(['1', ['7', '2130706433', '1024']]),
+    'it answers in inet_addr order, with the port of the mirror itself',
+    JSON.stringify(first?.body) === JSON.stringify(['1', ['7', '16777343', '40010']]),
     JSON.stringify(first?.body),
   );
 

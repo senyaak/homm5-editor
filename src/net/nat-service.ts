@@ -14,49 +14,51 @@
 // Exports:
 //   NatService     handle(packet, from) -> { replies, note }
 
-import { hostU32String } from './address.ts';
+import { inetU32 } from './address.ts';
 import { MessageType, build, parse, reply } from './gs-message.ts';
 import { Flags, HEADER_SIZE, buildSegment, parseSegment, flagNames, type SrpConnection } from './srp.ts';
 
 /**
- * Sub-type of a NAT answer: the same "1" the client asked with.
+ * The answer to a NAT ask, in the ONE shape that has ever been accepted.
  *
- * Measured, and it took three tries. The reference implementation answers with 2
- * (port id) and 3 (address); the client acknowledged those datagrams at the
- * transport level and then sat in `CStateWaitNATReply` until it gave up, twice.
- * Adding 1 to the same burst got the answer it wanted — its own log said
- * "address request succeeded,address=…" — so 1 is the one, and the other two are
- * dropped. Sending all three also made the step flaky, which is what a stray
- * datagram in a windowed transport does.
+ * Four runs, and only the third was let through — its own log said "address
+ * request succeeded,address=1.0.0.127:40010":
+ *
+ *   subtypes 2 and 3, inet_addr order, our port      -> waited 30s, gave up
+ *   subtypes 1, 2, 3, inet_addr order, our port      -> ACCEPTED
+ *   subtype 1, host order, the client's port         -> waited 30s, gave up
+ *   the same, sent twice 250ms apart                 -> waited 30s, gave up
+ *
+ * The 30 seconds is the `0x1E` handed to the NAT connect, so those are timeouts
+ * being served out, not races. And the accepted answer is the one that looked
+ * WRONG in the client's own log: it prints the octets of a network-order address
+ * the other way round, so "1.0.0.127" is how it renders 127.0.0.1 — reading that
+ * line as an error and "fixing" the byte order broke a working step.
+ *
+ * So: all three subtypes, `inet_addr` order, our own port. One variable at a time
+ * from here, and only from a state that works.
  */
-const NAT_ANSWER = 1;
+const NAT_ANSWERS = [1, 2, 3] as const;
 
 /** Our own window: the client may start its checksums from zero. */
 const OUR_WINDOW = { tail: 10, senderSignature: 2, checksumSeed: 0, bufferSize: 0x218 } as const;
 
-export { inetU32, hostU32 } from './address.ts';
+export { hostU32 } from './address.ts';
+export { inetU32 };
 
 export interface NatResult {
   replies: Buffer[];
   /**
    * The same answer again, this many milliseconds later.
    *
-   * Measured: an answer sent inside the same millisecond as the question is
-   * sometimes not seen at all. The client logs "request NAT address sent, waiting
-   * reply" and only THEN enters the state that waits — so an answer that beats it
-   * there lands nowhere. Three answers in a burst worked once (one of them was
-   * late enough); a single immediate one did not, twice.
-   *
-   * So the answer goes twice: at once, for the case where the client is already
-   * waiting, and again after this long, for the case where it is not.
+   * Kept because the plumbing for it is in the server, but nothing asks for it
+   * now: repeating the answer did NOT get it accepted, which is how the race
+   * theory died and the 30-second timeout was found instead.
    */
   againAfterMs?: number;
   /** One line for the log: what this datagram was. */
   note: string;
 }
-
-/** Long enough for the client to have entered its waiting state, short enough to feel instant. */
-const ANSWER_AGAIN_MS = 250;
 
 export class NatService {
   private readonly connections = new Map<string, SrpConnection>();
@@ -132,31 +134,28 @@ export class NatService {
     // calls anything else a "parasite request".
     const inner = request.body?.[1];
     const requestId = Array.isArray(inner) && typeof inner[0] === 'string' ? inner[0] : '0';
-    // The address as the client will read it: host order, and its OWN port, not
-    // ours. Both were wrong first: the game printed what we sent as
-    // "address=1.0.0.127:40010" — the octets backwards and the mirror's own port
-    // instead of the socket that asked.
-    const seen = hostU32String(from.address);
-    const message = build(reply(request, [String(NAT_ANSWER), [requestId, seen, String(from.port)]]));
-    const answer = buildSegment(
-      {
-        header: {
-          checksum: 0,
-          signature: connection.signature,
-          dataSize: 0,
-          flags: Flags.MARKER | Flags.ACK,
-          seg: connection.nextSeg++,
-          ack: segment.header.seg,
+    const seen = String(inetU32(from.address));
+    const replies = NAT_ANSWERS.map((subtype) => {
+      const message = build(reply(request, [String(subtype), [requestId, seen, String(this.port)]]));
+      return buildSegment(
+        {
+          header: {
+            checksum: 0,
+            signature: connection!.signature,
+            dataSize: 0,
+            flags: Flags.MARKER | Flags.ACK,
+            seg: connection!.nextSeg++,
+            ack: segment.header.seg,
+          },
+          message,
         },
-        message,
-      },
-      connection.checksumSeed,
-    );
+        connection!.checksumSeed,
+      );
+    });
 
     return {
-      replies: [answer],
-      againAfterMs: ANSWER_AGAIN_MS,
-      note: `NAT ask, request ${requestId} — answered ${from.address}:${from.port} (as ${seen}), and again in ${ANSWER_AGAIN_MS}ms`,
+      replies,
+      note: `NAT ask, request ${requestId} — answered ${from.address} as u32 ${seen}, subtypes ${NAT_ANSWERS.join(', ')}`,
     };
   }
 }
