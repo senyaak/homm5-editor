@@ -61,6 +61,18 @@ ok(clean('function f() if c then return PLAYERFLT_1; end; return nil end'),
 ok(clean('function f() if c then return t[1]; end; return nil end'),
   'and an index is not a call');
 
+// Separators inside a constructor, and the line between them is the engine's,
+// not a style: a trailing `;` asks for a record part that never comes and the
+// whole DoString dies (measured — it took the pandora block down with every
+// trigger unbound), while a trailing `,` is something the shipped C1M1 script
+// does and the tutorial mission certainly parses. This rule flagged both for a
+// while, which made the linter refuse working code.
+console.log('\n=== separators in a table constructor ===');
+ok(msgs('x = { 1, 2; };').length === 1, "a trailing `;` is an error");
+ok(clean('x = { 1, 2, };'), 'a trailing `,` is not');
+ok(clean('x = { "f.txt"; cost = 5 };'), 'one `;` splits the list part from the record part');
+ok(msgs('x = { 1; a = 2; b = 3 };').length === 1, 'a second `;` is an error');
+
 // The engine registers almost no standard library — read out of the executable,
 // where a callable name has to exist as a string and these do not. `dofile` is
 // the sharpest: the engine's own is `doFile`, and the lowercase spelling every

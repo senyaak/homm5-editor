@@ -412,6 +412,19 @@ console.log('the scripts');
   check('the behaviour lints clean', luaDiagnostics(lua).length === 0,
     luaDiagnostics(lua).map((d) => `${d.from}: ${d.message}`).join('; '));
 
+  // WHO THE BOX SPEAKS TO, and the rule paid for by a play-through: the
+  // computer announced its own reward on the human's screen. `GetCurrentPlayer`
+  // is the player whose TURN it is — on the AI's turn it IS the AI, so an owner
+  // check alone lets it through. Both popups must ask whether the owner is
+  // human, and neither may be reached without that.
+  for (const popup of ['QuestionBox(', 'MessageBox(box.given)']) {
+    const at = lua.indexOf(popup);
+    check(`${popup} is reached only past the human check`, at > 0
+      && lua.lastIndexOf('H5E_PandoraIsHuman', at) > lua.lastIndexOf('function H5E_Pandora', at));
+  }
+  check('and the check reads every shape IsAIPlayer could answer with',
+    ['ai == nil', 'ai == false', 'ai == 0'].every((s) => lua.includes(s)));
+
   const boxes = [
     { name: 'Pandora01', exp: 1000, gold: 2500, wood: 5, artifacts: ['ARTIFACT_ENDLESS_BAG_OF_GOLD'] },
     { name: 'Pandora02', spells: [5, 17], creatures: [{ creature: 'CREATURE_PEASANT', count: 20 }] },

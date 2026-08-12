@@ -38,7 +38,7 @@ import { modFile } from '../src/game/mod-paths.ts';
 import { readEntries } from '../src/format/pak.ts';
 import { GAMEPLAY_ARCHIVE, writeGameplayArchive } from '../src/mods/gameplay.ts';
 import { PANDORA_CLASS, pandoraShared } from '../src/mods/pandora-files.ts';
-import { PANDORA_TIERS, pandoraValue } from '../src/mods/pandora-contents.ts';
+import { PANDORA_RESOURCES, PANDORA_TIERS, pandoraValue } from '../src/mods/pandora-contents.ts';
 import type { PandoraContents } from '../src/mods/pandora-contents.ts';
 import { pandoraPrices } from '../src/mods/pandora-prices.ts';
 import { singleRoot } from '../src/game/assets.ts';
@@ -64,6 +64,14 @@ const BOX = `/${pandoraShared(PANDORA_TIERS[0]!.key)}`;
  * `message` is the exception and is deliberate — a sentence is worth no gold,
  * so its four copies carry an explicit override each. That is the other half of
  * the tier rule, and this is where it is exercised.
+ *
+ * EVERY BOX ALSO SPEAKS, and that is what makes the map readable. Two of the
+ * eight kinds move a number in the HUD and nothing else — experience and gold —
+ * and a play-through reported them as doing nothing at all, which a silent
+ * reward and a broken one look exactly alike from the outside. Each box now
+ * says what it just handed over, so the map reads as a report rather than as a
+ * row of vanishing boxes; it also puts two rewards in one box, which is the
+ * other thing an author is allowed to do.
  */
 const KINDS: { key: string; per: (tier: number) => Partial<PandoraContents> }[] = [
   {
@@ -127,6 +135,23 @@ const SIDES = [
 /** One placement: where it goes, what it is called, what is in it. */
 interface Placement { name: string; x: number; y: number; contents: PandoraContents }
 
+/**
+ * What a box hands over, in a sentence — written from the CONTENTS rather than
+ * from the kind that produced them, so a box can never describe itself wrongly.
+ */
+function describe(c: Partial<PandoraContents>): string {
+  const parts: string[] = [];
+  if (c.exp) parts.push(`${c.exp} experience`);
+  if (c.gold) parts.push(`${c.gold} gold`);
+  const res = PANDORA_RESOURCES.filter((r) => c[r]).map((r) => `${c[r]} ${r}`);
+  if (res.length) parts.push(res.join(', '));
+  if (c.artifacts?.length) parts.push(`artifacts: ${c.artifacts.join(', ')}`);
+  if (c.spells?.length) parts.push(`spells: ${c.spells.join(', ')}`);
+  if (c.creatures?.length) parts.push(`army: ${c.creatures.map((s) => `${s.count} ${s.creature}`).join(', ')}`);
+  if (c.guards?.length) parts.push(`fought off ${c.guards.map((s) => `${s.count} ${s.creature}`).join(', ')}`);
+  return parts.length ? `The box held ${parts.join('; ')}.` : 'The box was empty.';
+}
+
 /** Every box the map carries — the same row twice, once per side. */
 function placements(arts: string[][], spells: (string | number)[][]): Placement[] {
   const out: Placement[] = [];
@@ -142,7 +167,9 @@ function placements(arts: string[][], spells: (string | number)[][]): Placement[
           name,
           x: side.at.x + t * 3,
           y: side.at.y + row * 3,
-          contents: { name, ...extra },
+          // The box says what it gave, unless it was written to say something
+          // of its own — that kind is the one testing a message with no reward.
+          contents: { name, message: describe(extra), ...extra },
         });
       }
     });
@@ -259,14 +286,32 @@ const setPath = (page: Launched['page'], id: string, path: (string | number)[], 
  */
 const GENERIC_HEROES = 'MapObjects/_(AdvMapObjectLink)/GenericHeroes';
 
+/**
+ * And WHICH generic heroes, which is not a free choice on this map.
+ *
+ * A BARBARIAN HAS NO SPELLBOOK. Taking the folder's first two entries gave the
+ * first side a Barbarian, and a row of boxes that teach spells has nowhere to
+ * put them — `TeachHeroSpell` on a hero with no book is a reward that lands
+ * nowhere and says nothing, which reads from the outside exactly like a broken
+ * box. The two named here can both carry a book; the fallback keeps the spec
+ * working against a palette that does not offer them.
+ */
+const LEADS = ['Knight', 'Demonlord'];
+
 async function twoHeroes(page: Launched['page']): Promise<string[]> {
-  const found = await page.evaluate(async (folder) => {
+  const found = await page.evaluate(async (q) => {
     const { objects } = await window.editor.listObjects();
-    const generic = objects
+    const all = objects
       .filter((o) => o.type === 'AdvMapHero' && !o.hidden
-        && o.path.toLowerCase().startsWith(`${folder.toLowerCase()}/`)
-        && !/EntryPoint/i.test(o.shared.split('#')[0] ?? ''))
-      .sort((a, b) => a.path.localeCompare(b.path));
+        && o.path.toLowerCase().startsWith(`${q.folder.toLowerCase()}/`)
+        && !/EntryPoint/i.test(o.shared.split('#')[0] ?? ''));
+    // The classes this map wants first, in the order it wants them; anything
+    // else after, so a palette without them still answers.
+    const rank = (path: string): number => {
+      const i = q.leads.findIndex((c) => path.toLowerCase().endsWith(`/${c.toLowerCase()}.xdb`));
+      return i < 0 ? q.leads.length : i;
+    };
+    const generic = all.sort((a, b) => rank(a.path) - rank(b.path) || a.path.localeCompare(b.path));
     // Two different heroes, not one class twice — the sides are told apart by
     // who leads them as much as by their colour.
     const seen = new Set<string>();
@@ -278,8 +323,12 @@ async function twoHeroes(page: Launched['page']): Promise<string[]> {
       if (picked.length === 2) break;
     }
     return picked;
-  }, GENERIC_HEROES);
+  }, { folder: GENERIC_HEROES, leads: LEADS });
   expect(found, 'the palette offers two generic heroes of different classes').toHaveLength(2);
+  // Named rather than hoped for: the first side leads the row of spell boxes,
+  // and a class with no spellbook makes that row untestable.
+  expect(found[0]!.toLowerCase(), `the first side is led by a ${LEADS[0]}`)
+    .toContain(`/${LEADS[0]!.toLowerCase()}.xdb`);
   return found;
 }
 

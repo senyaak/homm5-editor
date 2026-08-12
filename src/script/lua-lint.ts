@@ -65,8 +65,7 @@ const RETURN_SEMICOLON =
  *
  * Lua 4's constructor grammar allows ONE `;`, separating the list part from
  * the record part — `{ PATH.."file.txt"; cost=COST }` is a shipped idiom — and
- * NO trailing separator at all. Lua 5 shrugs at both, every modern reference
- * shows trailing commas, and the pandora block died on exactly this:
+ * no trailing `;`. The pandora block died on exactly this:
  *
  *     (Script) ERROR: invalid constructor syntax;
  *     last token read: `}' at line 13 in string "DoString script"
@@ -74,9 +73,21 @@ const RETURN_SEMICOLON =
  * A `;` after the last field asks the parser for a record part, `}` arrives
  * instead, and the whole DoString fails — with every Trigger in the file
  * unbound, which plays as objects that silently do nothing.
+ *
+ * A TRAILING COMMA IS FINE, and this rule used to say otherwise — reading the
+ * game's failure as being about separators in general when it was about the
+ * semicolon alone. C1M1's own script is the counter-example, and it is the
+ * tutorial mission, so it certainly parses:
+ *
+ *     { "c1_m1_t3_2", REGION_ENTER_AND_STOP_TRIGGER, "cam1", ..., 0 },
+ *     --{ "c1_m1_t11_1", COMBAT, 0, 0, 0 },
+ *     }
+ *
+ * Flagging it made the linter refuse a form the engine accepts, and the suite
+ * that lints the shipped scripts said so — which is why it lints them.
  */
 const TABLE_TRAILING =
-  "a separator straight before '}' — Lua 4 takes no trailing `,` or `;` in a constructor";
+  "a ';' straight before '}' — Lua 4 asks for a record part and finds none, and the whole file fails";
 const TABLE_SECOND_SEMI =
   "a second ';' in one constructor — Lua 4 allows exactly one, splitting the list part from the record part; use ','";
 
@@ -215,7 +226,7 @@ export function luaDiagnostics(src: string): LuaDiagnostic[] {
         const top = brackets[brackets.length - 1];
         if (top && top.char === '{' && blocks.length === top.blocksAt) {
           const next = toks[at + 1];
-          if (next && next.kind === 'punct' && next.text === '}') {
+          if (t.text === ';' && next && next.kind === 'punct' && next.text === '}') {
             out.push({ from: t.from, to: t.to, severity: 'error', message: TABLE_TRAILING });
           } else if (t.text === ';') {
             if (top.semis > 0) out.push({ from: t.from, to: t.to, severity: 'error', message: TABLE_SECOND_SEMI });

@@ -43,13 +43,35 @@ artifact AND a stack, and be guarded besides.
 
 | Content | What happens |
 |---|---|
-| Message | Shown when the box opens, the way a signpost speaks. |
+| Message | Shown when the box opens, the way a signpost speaks — to the player who opened it, and to nobody else (below). |
 | Experience | `GiveExp` to the opening hero. |
 | Gold, and the six resources | Added to the opening hero's player. |
 | Artifacts | `GiveArtefact`, one per entry. |
 | Spells | `TeachHeroSpell` — the hero learns them. |
 | Creatures | Join the opening hero's army. |
 | Guards | Fought BEFORE the box opens. Win and it opens; lose and it stays shut. |
+
+Two of them are worth knowing about before an author blames a box: **spells
+need a spellbook** — a Barbarian has none, and `TeachHeroSpell` on him is a
+reward that lands nowhere — and **creatures join an existing stack**, so ten
+archangels added to a hundred read as nothing happening at all unless the box
+also says so.
+
+### Who sees the message
+
+Only the player who opened the box, and only while it is his turn.
+
+That has to be enforced, because a message box is shown to the SCREEN rather
+than to a player: the script runs once and the popup lands on whoever is
+watching. The obvious test is the wrong one — `GetCurrentPlayer()` is the
+player whose TURN it is, not the one at the keyboard (the shipped scripts spin
+`while GetCurrentPlayer() ~= PLAYER_2 do sleep(1); end` on it), so on the
+computer's own turn it equals the computer, and an owner check passes. Played,
+that was the AI announcing its own reward on the human's screen.
+
+The test that does work is `IsAIPlayer`, and both popups — the question and the
+message — go through one function that asks it. Whoever is refused still gets
+everything the box holds; the box just opens in silence.
 
 ## What the contents are worth, and the glow
 
@@ -171,6 +193,14 @@ twice over — one row per side — with a hundred archangels for the first hero
 the guarded boxes can be opened, and an enemy hero with the same row of boxes
 beside him. It builds `<game>/H5E/PandoraProbe.h5m`, and what it cannot answer
 is what the engine does with any of it. That is read by playing it.
+
+Which is why **every box on it also speaks**, saying what it just handed over —
+written from the contents, so it cannot describe itself wrongly. Two of the
+eight kinds move a number in the HUD and nothing else, and the first
+play-through reported them as doing nothing at all: a silent reward and a
+broken one look identical from the outside. The rows run north to south in the
+order of the table above — message, experience, gold, resources, artifacts,
+spells, army, guards — and the glows run west to east, poorest first.
 
 The sides are led by **generic heroes** — the palette's `. Heroes (Generic)`
 group, one class each, which is what a map wants and what a person clicks.

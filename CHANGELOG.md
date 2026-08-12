@@ -420,6 +420,14 @@ one.
 
 ### Fixed
 
+- **A Pandora's Box no longer announces the computer's reward on your screen.**
+  A box speaks to the player who opened it, and the check for that was the
+  wrong one: `GetCurrentPlayer()` is the player whose TURN it is, not the one
+  watching, so on the computer's own turn the owner check passed and its
+  message landed on the human's screen. Both popups — the question and the
+  message — now go through one test of `IsAIPlayer`. Whoever is refused still
+  gets everything the box holds; it just opens in silence.
+
 - **And an ice or air spell of the mod's leaves its mark too.** All three
   elements now behave the way the game's own do: fire takes the target's
   defence down, ice freezes it, and air slides it back down the initiative bar
