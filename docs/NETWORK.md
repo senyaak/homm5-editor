@@ -18,6 +18,14 @@ node tools/net-probe.ts <exe> --func 0xE07A50
 node tools/net-probe.ts <exe> --imports libcurl
 ```
 
+**A string argument matches a whole literal, not a substring.** The engine's log
+names live inside longer literals — the sender is `LobbySend_Login(`, with the
+bracket, and the receiver is `NUbi::CClient2::LadderQueryRcv_RequestReply: ` with
+the colon and space — so asking for `LobbySend_Login` or `LadderQuery` answers
+"(no such string)" about strings that are plainly there. That false negative
+nearly got this document "corrected" into being wrong. When a name is not found,
+dump the neighbourhood instead: `--strings <from> <to>`.
+
 ## The one address the whole online stack hangs from
 
 `NUbi::CStateUninitialized::GetServersConfig` (**0xE07A50**) does this, in order:
