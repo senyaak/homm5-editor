@@ -390,16 +390,15 @@ static int the_game_is_being_played(DWORD world) {
     log_line("pandora: nobody is watching — this is setting up, not playing");
     return 0;
   }
-  // AND THE ONE SIGNAL THAT IS ONLY EVER TRUE IN PLAY. A sign flies off a hero
-  // for morale, for luck, for every experience he earns — and never once while
-  // a map is being set up. It is not the flag the engine uses and it is not
-  // pretending to be: it is the observable that separates the two cases today,
-  // it is thrown away with the world it belongs to, and it says so when it
-  // refuses so that nothing goes quiet without a reason in the file.
-  if (!g_signSubject) {
-    log_line("pandora: nothing has flown off a hero in this game yet — still setting up");
-    return 0;
-  }
+  // AND A SIGNAL THAT WAS TRIED AND TAKEN BACK OUT. A sign flies off a hero for
+  // morale, for luck, for every experience earned, and never while a map is
+  // being set up — so "has one flown yet" looked like the separator. It refused
+  // the map init it was meant to refuse and then refused everything else too:
+  // a barbarian's first box hands him a war cry before he has earned anything,
+  // and the cry went silent. A gate that swallows the real events is worse than
+  // no gate, so what is left is the measurement — the dump above, one run with
+  // both cases in it, and then a word out of the world instead of a guess.
+  log_hex("pandora:   (a sign has flown off ", g_signSubject);
   return 1;
 }
 
