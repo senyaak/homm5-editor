@@ -223,11 +223,21 @@ static void *__fastcall lua_talisman_step(void *ctx) {
 // combat/spell-record.c — one file above this one in the translation unit. A
 // second copy of the same anchor is a second thing to keep true.
 
-/** `CHero::CanHoldSpell` — `__fastcall(hero, record)`, `ret 4`. */
+/**
+ * `CHero::CanHoldSpell` — `__fastcall(hero, spellId)`, `ret 4`.
+ *
+ * THE ID, NOT THE RECORD, and getting that backwards cost a play-through. Its
+ * first question is `0xAD45B0`, which takes what it was given straight to
+ * `SpellRecord` itself — so a record passed in is looked up as though it were a
+ * number, nothing comes back, the school matches neither 5 nor 6, and the gate
+ * answers "allowed" for every hero and every spell. It reads exactly like a
+ * feature that is switched off: a knight learned war cries and a barbarian
+ * learned magic, and the log said `yes` four times out of four.
+ */
 #define CAN_HOLD_RVA 0x8200f0u
 static const BYTE CAN_HOLD_HEAD[5] = { 0x56, 0x8B, 0x74, 0x24, 0x08 };
 
-typedef char(__fastcall *CanHoldFn)(void *hero, void *edx, void *record);
+typedef char(__fastcall *CanHoldFn)(void *hero, void *edx, int spell);
 
 /**
  * `H5ECanHoldSpell(heroName, spellId)` — 1 when he may, nothing when he may not.
@@ -261,12 +271,15 @@ static void *__fastcall lua_can_hold_spell(void *ctx) {
     log_line("H5ECanHoldSpell: the record accessor or the gate is not where it was measured");
     return NULL;
   }
-  void *record = g_spellRecord(spell);
-  if (!record || !readable(record, 0x90)) {
-    log_num("H5ECanHoldSpell: no record for spell ", spell);
+  // The record is fetched only to be SURE THE SPELL EXISTS: a number the game
+  // has no document for would sail through the gate as "allowed" (its school
+  // matches neither of the two it asks about), and the box would teach a spell
+  // that is not there instead of paying for one that is.
+  if (!g_spellRecord(spell)) {
+    log_num("H5ECanHoldSpell: the game has no spell ", spell);
     return NULL;
   }
-  char may = canHold(hero, NULL, record);
+  char may = canHold(hero, NULL, spell);
   log_num(may ? "H5ECanHoldSpell: yes, spell " : "H5ECanHoldSpell: no, spell ", spell);
   return may ? (void *)(INT_PTR)lua_push_int(ctx, 1) : NULL;
 }
