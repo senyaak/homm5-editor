@@ -443,6 +443,22 @@ const SHRINES = [1, 2, 3].map((level, i) => ({
 }));
 
 /**
+ * The Spell Shop — the one thing on the map that SELLS a spell for resources.
+ *
+ * `BUILDING_SPELL_SHOP`, an addon object under `MapObjects/H5A2/`. It is what
+ * the box's refusal is compared against: walk a barbarian in and watch what the
+ * game itself does about a spell he cannot hold, in its own words.
+ *
+ * LEFT OF THE SPELL BOXES, on their own line — the row it belongs beside.
+ */
+const SPELL_SHOP = {
+  // The Spells row is the sixth: y = 12 + 5 × 2 = 22, boxes at x = 14…20 with
+  // their signpost at 12. This stands clear of both.
+  at: { x: 8, y: 22 },
+  shared: '/MapObjects/H5A2/SpellShop.xdb#xpointer(/AdvMapBuildingShared)',
+};
+
+/**
  * A town for red, because a box that hands over Town Portal proves nothing
  * without somewhere for the portal to go.
  *
@@ -668,6 +684,9 @@ test('two sides, each with a hero of their own', async () => {
   for (const s of SHRINES) {
     await place(page, () => pickObject(page, s.shared), `shrine ${s.level}`, s.x, s.y);
   }
+  // The Spell Shop, beside the row of spell boxes it is the comparison for.
+  await place(page, () => pickObject(page, SPELL_SHOP.shared), 'spell shop',
+    SPELL_SHOP.at.x, SPELL_SHOP.at.y);
   const scrollSign = await place(page, () => pickObject(page, SIGN), 'sign-scrolls',
     BARBARIAN.at.x + STEP, SCROLLS[0]!.y);
   await page.evaluate((oid) => window.view.select(oid), scrollSign);
