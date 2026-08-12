@@ -27,16 +27,10 @@
 // is CAnnouncement/CAnnouncementsHolder and the 306 functions the engine
 // exposes to scripts do not include it.
 //
-// WHY THIS FILE ONLY LOGS, FOR NOW. To announce a spell we have to call what
-// the artifact and the necromancer call, with the arguments they pass — and
-// those arguments are six and eight dwords of somebody else's structures.
-// Guessing them is the same mistake as guessing an arity from a call site:
-// it does not fail politely, it takes the game down a few frames later. So
-// this hooks the two announcers, writes down what real gains pass through
-// them, and the reading is what the calling code is written from.
-//
-// Nothing here changes what the game does: every hook calls the original with
-// the arguments it arrived with.
+// SO THIS FILE LISTENS AND THEN SPEAKS. The two announcers are hooked and every
+// real gain that passes through them is written down; the bottom half of the
+// file is the call that reading was written from. Both halves pass the original
+// its own arguments — the listening changes nothing the game does.
 //
 // Build it with logging on, or it does not install at all:
 //
@@ -111,6 +105,21 @@ static DWORD __fastcall announce_one_probe(DWORD self, DWORD edx,
     g_seen_edx = edx;
     for (int i = 0; i < 6; i++) g_seen_args[i] = stack[i];
     g_seen = 1;
+    // THE ONE THING THE LISTING WILL NOT SAY. `edx` reaches the holder as the
+    // object it asks for the announcement's audience (0xBF9B30 alive-checks it
+    // and calls its slot 0x1BC), and each site gets it somewhere else: the
+    // artifact command from `[cmd+0x10]->vt[0]()`, the skill site from a plain
+    // `[edi+0x128]`. A hero taught a spell has no command field to take it from,
+    // so the question is whether the hero himself is what carries it at 0x128 —
+    // and the cheapest answer is this line, printed beside the real one.
+    if (readable((const DWORD *)(DWORD_PTR)edx, 4))
+      log_hex("  edx's class  ", *(const DWORD *)(DWORD_PTR)edx - game_base());
+    static const char *const labels[5] = {
+      "  hero+120   ", "  hero+124   ", "  hero+128   ", "  hero+12c   ", "  hero+130   "
+    };
+    if (readable((const DWORD *)(DWORD_PTR)(self + 0x120), 0x14))
+      for (int i = 0; i < 5; i++)
+        log_hex(labels[i], ((const DWORD *)(DWORD_PTR)(self + 0x120))[i]);
   }
   return ((DWORD(__fastcall *)(DWORD, DWORD, DWORD, DWORD, DWORD, DWORD, DWORD, DWORD))
           g_announce_one_orig)(self, edx, a0, a1, a2, a3, a4, a5);
@@ -130,54 +139,97 @@ static DWORD __fastcall announce_many_probe(DWORD self, DWORD edx,
 }
 
 // ---------------------------------------------------------------------------
-// AND THE EXPERIMENT THE READING CANNOT SETTLE.
+// AND THE CALL, WRITTEN FROM THE SITE THAT ALREADY DOES IT.
 //
-// The announcer takes six arguments and three of them are structures built by
-// the caller out of what it is announcing — an artifact asks the artifact, a
-// skill asks the skill. What none of that says is whether the call can be made
-// from OUTSIDE those paths at all: whether the holder in `ecx` is the hero,
-// whether anything in the payload has to be freshly made, whether it is even
-// legal on the turn a script runs.
+// Two attempts were made before this one and both took the game down; between
+// them they said everything the listing alone could not. The first REPLAYED the
+// artifact's own arguments and died in the engine's string code, because `a0`,
+// `a1` and `a5` are twelve-byte temporaries on the CALLER's stack — by the time
+// a spell is taught that frame belongs to somebody else. The second built them
+// and died in the same place, and the reason is now exact:
 //
-// So the cheapest question first, and it is answered by a launch rather than by
-// a week of reading: REPLAY. The last announcement the artifact command made is
-// kept, exactly as it passed, and when a spell is taught the same call is made
-// again with the same arguments. What comes up on screen says the artifact's
-// name, which is the wrong word and the right answer: it means the call works
-// from our side and only the payload has to be built. Nothing on screen, or a
-// crash, says the opposite just as clearly.
+//   0x4DCA10 is the copy loop of the wide-string copy constructor, and it was
+//   reading from ESI = 0. `a1` was a zeroed buffer. A zeroed buffer is not an
+//   empty string — an empty string is three words the engine allocates for it.
 //
-// The author's permission for this shape, verbatim: "можно. хай падает".
+// So this is written from 0xC26BD0, the site that announces a NEW_SKILL, which
+// does the same job with a quarter of the artifact's ceremony:
+//
+//   string_from_literal(&key, "NEW_ABILITY")   0x4DC940, one argument
+//   params  = params_ctor(&paramsBuf)          0x4F7530, none
+//   subject = ref_resolve(&{record, 0})        0x525B30, none  <- and NOT three
+//   text    = text_from_key(&key)              0xAB8D50, none
+//   announce(hero, edx, text, name, subject, 0, kind, params)
+//
+// `ref_resolve` taking no stack arguments matters twice over: the three that
+// were being pushed at it were never popped, so every later argument in that
+// frame was twelve bytes out of place.
+//
+// The author's permission for the shape of this work, verbatim: "можно. хай
+// падает" — but a crash here costs the whole run, and this run has a second
+// question in it, so every pointer is checked before it is used.
 
 /** `CAddHeroSpellCmd::execute` — 22 instructions that announce nothing. */
 #define ADD_SPELL_RVA 0x72e820u
 static const BYTE ADD_SPELL_HEAD[6] = { 0x56, 0x8B, 0xF1, 0x8B, 0x4E, 0x0C };  // push esi/mov esi,ecx/mov ecx,[esi+0Ch]
 static void *g_add_spell_orig;
 
-// WHAT THE FIRST ATTEMPT ANSWERED, and it was worth the crash. Replaying the
-// artifact's arguments died inside the engine's string code, and the reason is
-// in the numbers the probe wrote down: `a0`, `a1` and `a5` were 0x01effa2c and
-// twice twelve bytes on — the caller's own STACK. They are temporaries the
-// caller builds and the announcer reads, so by the time a spell is taught that
-// frame is somebody else's. They have to be BUILT, and the skill site says with
-// what: a string from a KEY, and two helpers of the same family.
+// Five helpers of somebody else's, each recognised by its first bytes so that
+// `tools/test-native-anchors.ts` fails on disk instead of in the game.
 
 /** The engine's string-from-literal — `__thiscall(dst, const char*)`. */
 #define STRING_FROM_LITERAL_RVA 0x0dc940u
-/** Builds the announcement's last argument out of a zeroed buffer. */
+static const BYTE STRING_FROM_LITERAL_HEAD[6] = { 0x53, 0x55, 0x56, 0x8B, 0x74, 0x24 };
+/** The announcement's last argument, built into a buffer of ours. No arguments. */
 #define ANNOUNCE_PARAMS_RVA 0x0f7530u
-/** And the object it carries: `(this, 0, kind, params)`. */
-#define ANNOUNCE_SUBJECT_RVA 0x125b30u
-/** Turns the key's string into the first argument. */
+static const BYTE ANNOUNCE_PARAMS_HEAD[6] = { 0x51, 0x53, 0x8B, 0xD9, 0x56, 0x57 };
+/** A `{pointer, stale?}` pair resolved to a live object. No arguments either. */
+#define REF_RESOLVE_RVA 0x125b30u
+static const BYTE REF_RESOLVE_HEAD[6] = { 0xA0, 0x0D, 0x8C, 0x0F, 0x01, 0x56 };
+/** The key's string turned into the first argument. */
 #define ANNOUNCE_TEXT_RVA 0x6b8d50u
+static const BYTE ANNOUNCE_TEXT_HEAD[7] = { 0x51, 0x64, 0xA1, 0x2C, 0x00, 0x00, 0x00 };
+/** An EMPTY wide string, allocated the way the engine allocates one. */
+#define WSTRING_EMPTY_RVA 0x2b9a70u
+static const BYTE WSTRING_EMPTY_HEAD[5] = { 0x56, 0x6A, 0x10, 0x8B, 0xF1 };
 
 /** The key the game announces a new ability under. A KEY, not a sentence:
  *  UI/UIGameRoot.xdb resolves it to a text file, which is what makes the
  *  wording follow the language the install was bought in. */
 static const char NEW_ABILITY_KEY[] = "NEW_ABILITY";
 
+/** What the holder demands of the object in `edx`, in its own order (0xBF9B30):
+ *  a vtable, then `[[p+4]+4]` as an offset, then a count at `p+off+8` that has
+ *  not gone negative. Anything unreadable on the way is answered no. */
+static int alive_object(DWORD p) {
+  if (!p || !readable((const void *)(DWORD_PTR)p, 8)) return 0;
+  if (!readable((const void *)(DWORD_PTR)((const DWORD *)(DWORD_PTR)p)[0], 4)) return 0;
+  DWORD holder = ((const DWORD *)(DWORD_PTR)p)[1];
+  if (!readable((const void *)(DWORD_PTR)holder, 8)) return 0;
+  DWORD off = ((const DWORD *)(DWORD_PTR)holder)[1];
+  const DWORD *count = (const DWORD *)(DWORD_PTR)(p + off + 8);
+  if (!readable(count, 4)) return 0;
+  return (LONG)*count >= 0;
+}
+
+/** A string the announcement's constructor may copy — three words, and the
+ *  first of them a buffer that exists. The whole of the second crash. */
+static int wstring_ok(DWORD s) {
+  if (!s || !readable((const void *)(DWORD_PTR)s, 12)) return 0;
+  DWORD buf = ((const DWORD *)(DWORD_PTR)s)[0];
+  return buf && readable((const void *)(DWORD_PTR)buf, 2);
+}
+
 static char __fastcall add_spell_replay(void *self, void *unused) {
   char taught = ((char(__fastcall *)(void *, void *))g_add_spell_orig)(self, unused);
+  // WHAT THE LINE BELOW IS FOR, and it is not the announcement. A war cry given
+  // to a barbarian may or may not land, and the last two runs could not say
+  // because they ended here. Written before anything else is attempted, this
+  // costs nothing and answers that question even if the rest of the function
+  // goes wrong: the id is the cry, and `taught` is the command's own verdict.
+  int spellId = (int)((DWORD *)self)[4];
+  log_num(taught ? "pandora: a spell was taught, id " : "pandora: a spell was REFUSED, id ",
+          spellId);
   if (!taught || g_replayed) return taught;
   g_replayed = 1;
 
@@ -185,48 +237,68 @@ static char __fastcall add_spell_replay(void *self, void *unused) {
   // The hero the command was made for — its field 0x0c, which is what the
   // artifact command hands the announcer as `this`.
   DWORD hero = ((DWORD *)self)[3];
-  log_hex("pandora: a spell was taught, announcing for ", hero);
+  log_hex("pandora:   for hero ", hero);
 
-  // Buffers of our own, zeroed the way the skill site zeroes its locals —
-  // except the subject's, which may NOT be zeroed. Two crashes taught this pair
-  // of lines. With `this` = {0, 0} the builder took its "nothing to announce"
-  // branch and answered null, and the announcer walked through it. With the
-  // command's field 0x10 it answered worse: that field is the spell's ID — 0x122
-  // came through the log — and an id dereferenced as a pointer is an access
-  // violation one call deeper. What the site is passed is a POINTER to the thing
-  // gained, so the id goes through the engine's own registry first.
-  DWORD key[8] = { 0 }, params[8] = { 0 };
-  int spellId = (int)((DWORD *)self)[4];
+  // The subject is a POINTER to the thing gained, never its number: field 0x10
+  // is the spell's id — 0x122 came through the log once, dereferenced, and the
+  // access violation was one call deeper. The engine's own registry turns one
+  // into the other.
   void *record = ((void *(__fastcall *)(int))(DWORD_PTR)(SPELL_RECORD_RVA + base))(spellId);
-  log_num("pandora:   the spell ", spellId);
   log_hex("pandora:   its record ", (DWORD)(DWORD_PTR)record);
   if (!record) {
     log_line("pandora: the game never loaded that spell — not announcing");
     return taught;
   }
-  DWORD subjectThis[2] = { (DWORD)(DWORD_PTR)record, 0 };
+
+  // Ours to lend the engine's constructors. They are never destroyed: a probe
+  // that guesses at a destructor is a probe that corrupts a heap, and a handful
+  // of small allocations per launch is the cheaper mistake.
+  DWORD key[8] = { 0 }, paramsBuf[16] = { 0 }, nameBuf[8] = { 0 };
+  DWORD subjectRef[2] = { (DWORD)(DWORD_PTR)record, 0 };
 
   ((void(__fastcall *)(void *, void *, const char *))(DWORD_PTR)(STRING_FROM_LITERAL_RVA + base))(
     key, 0, NEW_ABILITY_KEY);
-  DWORD paramsArg = ((DWORD(__fastcall *)(void *, void *))(DWORD_PTR)(ANNOUNCE_PARAMS_RVA + base))(
-    params, 0);
-  DWORD subject = ((DWORD(__fastcall *)(void *, void *, DWORD, DWORD, DWORD))
-                   (DWORD_PTR)(ANNOUNCE_SUBJECT_RVA + base))(subjectThis, 0, 0, 3, paramsArg);
+  DWORD params = ((DWORD(__fastcall *)(void *, void *))(DWORD_PTR)(ANNOUNCE_PARAMS_RVA + base))(
+    paramsBuf, 0);
+  DWORD name = ((DWORD(__fastcall *)(void *, void *))(DWORD_PTR)(WSTRING_EMPTY_RVA + base))(
+    nameBuf, 0);
+  DWORD subject = ((DWORD(__fastcall *)(void *, void *))(DWORD_PTR)(REF_RESOLVE_RVA + base))(
+    subjectRef, 0);
   DWORD text = ((DWORD(__fastcall *)(void *, void *))(DWORD_PTR)(ANNOUNCE_TEXT_RVA + base))(key, 0);
-  log_hex("pandora:   params  ", paramsArg);
+
+  // And the audience. The skill site reads it out of a field at 0x128; whether
+  // the hero is what carries it there is the one thing still unmeasured, so it
+  // is TRIED, checked the way the holder checks it, and the artifact's own — if
+  // one has come past already this launch — stands behind it. With neither, the
+  // holder would drop the announcement on the floor anyway (0xBF9C38), so there
+  // is nothing to gain by calling.
+  DWORD edx = 0;
+  const char *where = "nothing";
+  if (readable((const void *)(DWORD_PTR)(hero + 0x128), 4)
+      && alive_object(*(const DWORD *)(DWORD_PTR)(hero + 0x128))) {
+    edx = *(const DWORD *)(DWORD_PTR)(hero + 0x128);
+    where = "the hero's field 0x128";
+  } else if (alive_object(g_seen_edx)) {
+    edx = g_seen_edx;
+    where = "the artifact that came past earlier";
+  }
+  log_hex("pandora:   params  ", params);
+  log_hex("pandora:   name    ", name);
   log_hex("pandora:   subject ", subject);
   log_hex("pandora:   text    ", text);
+  log_hex("pandora:   edx     ", edx);
+  log_line(where);
 
-  // A null subject is what killed the last attempt inside the announcer, so it
-  // is refused here instead: the log then says which step gave up, and the game
-  // keeps running.
-  if (!subject) {
-    log_line("pandora: the subject came back null — not announcing");
+  if (!wstring_ok(text) || !wstring_ok(name)) {
+    log_line("pandora: a string came back empty-handed — not announcing");
+    return taught;
+  }
+  if (!edx) {
+    log_line("pandora: nobody to announce it to — the holder would drop it");
     return taught;
   }
   ((void(__fastcall *)(DWORD, DWORD, DWORD, DWORD, DWORD, DWORD, DWORD, DWORD))
-   (DWORD_PTR)(ANNOUNCE_ONE_RVA + base))(
-    hero, g_seen_edx, text, (DWORD)(DWORD_PTR)params, subject, 0, 3, paramsArg);
+   (DWORD_PTR)(ANNOUNCE_ONE_RVA + base))(hero, edx, text, name, subject, 0, 3, params);
   log_line("pandora: it did not crash");
   return taught;
 }
