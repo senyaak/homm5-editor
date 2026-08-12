@@ -1126,3 +1126,80 @@ cannot answer for a number it has never seen.
 `native/combat/spell-cast.c` (the gate half) therefore answers for our own ids and leaves every
 shipped one alone — a silent refusal is overruled, a reasoned one never is.
 Measured 07.08.2026: with that in place Gelu's page is live and takes a click.
+
+## The barbarian's adventure magic is a TALISMAN, not a book
+
+*Answers: why `TeachHeroSpell` refuses a barbarian, and what the shipped game
+does instead. Read out 12.08.2026, before anything was written.*
+
+The gate that refuses him is `0xc200f0` — "may this hero hold this spell" — and
+it branches on ONE field of the record, `[rec+0x88]`, the school:
+
+| the spell's school | who may hold it |
+|---|---|
+| 5, `RUNIC` | a hero with ability `0x97` |
+| 6, `WARCRIES` | a hero with ability `0xAC` |
+| anything else | a hero WITHOUT `0xAC` |
+
+So `0xAC` reads as *this one shouts rather than casts*, and `SPELL_TOWN_PORTAL`
+— school `ADVENTURE` — is refused to a barbarian **by design**, silently, the
+way a script's `TeachHeroSpell` always fails.
+
+**And the game gives him that magic anyway, through a door of its own.** The
+Stronghold's **Traveller's Shelter** (`TB_SPECIAL_3`, screen `UI/ArtefactMagic`,
+button texture `TownScreen/EnterTalismanMagic`) sells TALISMAN upgrades: *"here
+the heroes of the Great Horde may improve their talismans to gain new spells for
+the adventure map"*. The ladder is data, in `DefaultStats.xdb` →
+`TalismanOfAdventure`:
+
+| level | spell | hero level the shelter asks | gold |
+|---|---|---|---|
+| 1 | `SPELL_SUMMON_BOAT` | 0 | 1000 |
+| 2 | `SPELL_SUMMON_CREATURES` | 10 | 1000 |
+| 3 | `SPELL_DIMENSION_DOOR` | 15 | 1500 |
+| 4 | `SPELL_TOWN_PORTAL` | 20 | 1500 |
+
+Those four ARE `MAGIC_SCHOOL_ADVENTURE` — `GameMechanics/Spell/Adventure_Spells`
+holds exactly them. "Adventure magic" and "the talisman ladder" are the same
+set, said twice.
+
+**Where the level lives.** A hero carries it as `TalismanLevel` — `Editable`
++0x60 in the map document (serialiser `0xae6994`), and the editor has offered
+the field all along. The engine keeps it behind a pair of virtual slots on the
+hero: `vt+0x300` reads it, `vt+0x304` writes it. Three callers, and they say
+what the whole mechanism is:
+
+- `CUpgradeHeroTalismanOfAdventureAtTownCmd` (vtable `0xf79f90`, execute
+  `0xb32ab0`) — the purchase. It reads the current level, checks it against what
+  the town's shelter allows (`town vt+0x11c`), prices the upgrade
+  (`vt+0x118`), takes the resources (`vt+0xe0`) and writes the new level. **It
+  teaches no spell** — no `CAddHeroSpellCmd` anywhere in it, so the spells are
+  DERIVED from the level rather than handed over once.
+- the shelter's own screen, `0xd16cab`, which asks the hero's race (`vt+0x258`
+  against 8) before offering anything;
+- **the hero's constructor from a map object**, `0xa64f60`, which calls
+  `vt+0x304` with the map's value and **tests no `OverrideMask` bit on the way**
+  — so a talisman written into a map should reach the hero as it stands.
+
+**No Lua function of the engine's touches it** — all 306 registered names are in
+docs/EXE_LUA_REGISTRY.md and none is about a talisman. A box that raises one
+needs a function of ours.
+
+### What is measured and what is still assumed
+
+Everything above is read out of the executable and the data. What a run has to
+answer, because reading cannot:
+
+1. is the ladder CUMULATIVE — level 4 as four spells, or only Town Portal;
+2. is the level ALONE enough to cast, or is the table's `HeroLevel` asked again
+   at cast time (the shelter asks it to SELL);
+3. does the map's value really reach the hero — `0xa64f60` says yes, and a hero
+   with the mask all on stands beside one with none so the answer is readable
+   either way;
+4. does a talisman do anything for a hero who is NOT a barbarian — if it does, a
+   box needs no branch at all.
+
+The row that asks all four is on `PandoraProbe`
+(`e2e/mod-011-pandora-map.spec.ts`, `TALISMAN_ROW`): seven heroes on the
+barbarian's own line, each carrying goblins by his place in the row, and a
+Stronghold town with the shelter standing from turn one.
