@@ -102,6 +102,7 @@
 #include "qol/fix-imbue-ballista.c"
 #include "qol/pandora-box.c"
 #include "qol/pandora-notify.c"
+#include "net/ubi-log.c"
 
 /**
  * Which switch turns this file's logging on — see the bottom of core/log.c.
@@ -131,6 +132,10 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   // launch each time. This changes nothing about the crash — it writes down the
   // registers and the return addresses first.
   install_fault_report(self);
+  // Before the config, because what this mirrors starts talking the moment the
+  // game does: the engine's own log, in our file. Only in a build that asked for
+  // it — `--log net/ubi-log` — and it says so when it goes in.
+  if (install_ubi_log()) log_line("the engine's own log is mirrored here");
   load_config();
   if (g_rowCount || g_skillRowCount) install_hooks();
   // Independent of the config: the functions are ours to offer whether or not
