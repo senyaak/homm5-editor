@@ -228,6 +228,15 @@ for (const service of [...SERVICES, PROXY, LOBBY]) {
           udp.send(reply, from.port, from.address);
           log(`UDP  ${label}:${port} -> ${from.address}:${from.port}, ${reply.length} bytes\n${hexDump(reply)}`);
         }
+        // Some answers go out a second time a moment later — see `againAfterMs`
+        // in src/net/nat-service.ts for the race that makes that necessary.
+        const again = (result as { againAfterMs?: number }).againAfterMs;
+        if (again) {
+          setTimeout(() => {
+            for (const reply of result.replies) udp.send(reply, from.port, from.address);
+            log(`UDP  ${label}:${port} -> ${from.address}:${from.port}, the same ${result.replies.length} answer(s) again`);
+          }, again);
+        }
       });
       udp.on('error', (err: Error) => log(`UDP  ${label}:${port} bind failed: ${err.message}`));
       udp.bind(port, () => log(`udp  ${label} on ${port}`));

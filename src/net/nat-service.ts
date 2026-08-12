@@ -38,9 +38,25 @@ export { inetU32, hostU32 } from './address.ts';
 
 export interface NatResult {
   replies: Buffer[];
+  /**
+   * The same answer again, this many milliseconds later.
+   *
+   * Measured: an answer sent inside the same millisecond as the question is
+   * sometimes not seen at all. The client logs "request NAT address sent, waiting
+   * reply" and only THEN enters the state that waits — so an answer that beats it
+   * there lands nowhere. Three answers in a burst worked once (one of them was
+   * late enough); a single immediate one did not, twice.
+   *
+   * So the answer goes twice: at once, for the case where the client is already
+   * waiting, and again after this long, for the case where it is not.
+   */
+  againAfterMs?: number;
   /** One line for the log: what this datagram was. */
   note: string;
 }
+
+/** Long enough for the client to have entered its waiting state, short enough to feel instant. */
+const ANSWER_AGAIN_MS = 250;
 
 export class NatService {
   private readonly connections = new Map<string, SrpConnection>();
@@ -139,7 +155,8 @@ export class NatService {
 
     return {
       replies: [answer],
-      note: `NAT ask, request ${requestId} — answered ${from.address}:${from.port} (as ${seen})`,
+      againAfterMs: ANSWER_AGAIN_MS,
+      note: `NAT ask, request ${requestId} — answered ${from.address}:${from.port} (as ${seen}), and again in ${ANSWER_AGAIN_MS}ms`,
     };
   }
 }
