@@ -100,6 +100,7 @@
 #include "qol/fix-book-of-power.c"
 #include "qol/fix-master-of-fire.c"
 #include "qol/fix-imbue-ballista.c"
+#include "qol/pandora-box.c"
 
 /**
  * Which switch turns this file's logging on — see the bottom of core/log.c.
@@ -216,6 +217,9 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   if (g_qol[QOL_ENCOURAGE_FIX]) install_encourage_fix();
   if (g_qol[QOL_BARBARIAN_LEARNING_FIX]) install_barbarian_learning_fix();
   if (g_qol[QOL_SNARE_CRASH_FIX]) install_snare_fix();
+  // Watching only, for now: the box is a chest until the slot below it is
+  // replaced, and the run that says our reading is right comes first.
+  if (g_qol[QOL_PANDORA_BOX] && install_pandora_watch()) log_line("pandora chest watch installed");
   if (g_qol[QOL_PAYBACK_FIX]) install_payback_fix();
   if (g_qol[QOL_DRAGON_FORM_FIX]) install_dragon_form_fix();
   if (g_qol[QOL_EMPOWERED_ARMAGEDDON_FIX]) install_empowered_armageddon_fix();
