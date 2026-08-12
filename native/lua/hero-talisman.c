@@ -224,97 +224,114 @@ static void *__fastcall lua_talisman_step(void *ctx) {
 // second copy of the same anchor is a second thing to keep true.
 
 /**
- * `CHero::CanHoldSpell` — `__fastcall(hero, spellId)`, `ret 4`.
+ * `CHero::CanLearnSpell` — the WHOLE question, as the game asks it.
  *
- * THE ID, NOT THE RECORD, and getting that backwards cost a play-through. Its
- * first question is `0xAD45B0`, which takes what it was given straight to
- * `SpellRecord` itself — so a record passed in is looked up as though it were a
- * number, nothing comes back, the school matches neither 5 nor 6, and the gate
- * answers "allowed" for every hero and every spell. It reads exactly like a
- * feature that is switched off: a knight learned war cries and a barbarian
- * learned magic, and the log said `yes` four times out of four.
+ * `__fastcall(hero, &needSkill, &needMastery, &needLevel, spellId)`, `ret 0x10`,
+ * answering 0 or 1 and filling the three outs with what is missing (the level
+ * comes off the record's `+0x8C`, which is `RequiredHeroLevel`).
+ *
+ * WHY NOT THE SCHOOL GATE. `0xc200f0` answers "does this hero cast or shout",
+ * and that is one of four things the game checks: it also wants the SKILL of
+ * the spell's school, the hero's LEVEL against the record, and the runic case
+ * of its own. A wizard with no Dark Magic passes the gate and is handed
+ * Curse — which is what a play-through showed, and what the game itself never
+ * does. This is the function the spell shop and the shrine go through, and it
+ * takes the hero as the lookup hands him over: `[hero-0x1c]` for the gate is
+ * something it works out itself.
  */
-#define CAN_HOLD_RVA 0x8200f0u
-static const BYTE CAN_HOLD_HEAD[5] = { 0x56, 0x8B, 0x74, 0x24, 0x08 };
+#define CAN_LEARN_RVA 0x824480u
+static const BYTE CAN_LEARN_HEAD[8] = { 0x8B, 0x44, 0x24, 0x04, 0x53, 0x8B, 0x5C, 0x24 };
 
-typedef char(__fastcall *CanHoldFn)(void *hero, void *edx, int spell);
-
-/**
- * The WHOLE hero, from the subobject the lookup hands out.
- *
- * `FindObjectByName` answers with the interface at +0x1c — its own vtable is
- * the long one, which is why the talisman slots are read off it directly — but
- * the gate takes the object PROPER and reaches the interface itself with
- * `[this+0x1c]`. Given the subobject it lands 0x1c further along, reads a
- * vtable that is not one, and calls address zero: the game died on the first
- * war cry handed to a knight.
- *
- * Not a constant: a dword before every vtable is the complete-object locator,
- * and its second word is how deep that subobject sits. Subtract and it is the
- * whole thing, whichever subobject arrived. Same walk as
- * native/qol/pandora-notify.c, which is one file too late to borrow from.
- */
-static void *whole_hero(void *sub) {
-  if (!readable(sub, 4)) return sub;
-  DWORD vt = *(const DWORD *)sub;
-  if (!readable((const void *)(DWORD_PTR)(vt - 4), 4)) return sub;
-  DWORD locator = *(const DWORD *)(DWORD_PTR)(vt - 4);
-  if (!readable((const void *)(DWORD_PTR)locator, 8)) return sub;
-  DWORD into = ((const DWORD *)(DWORD_PTR)locator)[1];
-  return into < 0x1000 ? (void *)((BYTE *)sub - into) : sub;
-}
+typedef char(__fastcall *CanLearnFn)(void *hero, void *edx, int *needSkill, int *needMastery,
+                                     int *needLevel, int spell);
 
 /**
- * `H5ECanHoldSpell(heroName, spellId)` — 1 when he may, nothing when he may not.
+ * `H5ECanLearnSpell(heroName, spellId)` - 1 when he may, nothing when he may not.
  *
- * Nothing is also the answer when the question cannot be asked at all — no such
- * hero, no such record. A caller that pays experience for "may not" would then
- * pay for a typo as well, which is the right way round: the box hands something
- * over either way, and a silent nothing is the failure worth avoiding.
+ * Nothing is also the answer when the question cannot be asked at all: no such
+ * hero, no such spell. A caller that pays for "may not" would then pay for a
+ * typo too, which is the right way round - the box hands something over either
+ * way, and a silent nothing is the failure worth avoiding.
+ *
+ * The three outs the engine fills (skill, mastery, level) are read only for the
+ * log: what is MISSING is the game's business to say, and a box only needs to
+ * know whether the spell will land.
  */
-static void *__fastcall lua_can_hold_spell(void *ctx) {
+static void *__fastcall lua_can_learn_spell(void *ctx) {
   void *name = lua_arg_string(ctx, 1);
   int spell = 0;
   if (!name || !lua_arg_int(ctx, 2, &spell)) {
-    log_line("H5ECanHoldSpell: takes a hero's script name and a spell id");
+    log_line("H5ECanLearnSpell: takes a hero's script name and a spell id");
     return NULL;
   }
   void *map = adventure_map(ctx);
   void *find = map ? vtable_entry(map, VT_FIND_BY_NAME) : NULL;
   if (!find) {
-    log_line("H5ECanHoldSpell: no adventure map to ask for the hero");
+    log_line("H5ECanLearnSpell: no adventure map to ask for the hero");
     return NULL;
   }
   void *hero = ((FindByNameFn)find)(map, NULL, name);
   if (!hero || !pointer_alive(hero) || !is_a(hero, CHERO_VTABLE_RVA)) {
-    log_line("H5ECanHoldSpell: no living CHero of that name");
+    log_line("H5ECanLearnSpell: no living CHero of that name");
     return NULL;
   }
-  CanHoldFn canHold = (CanHoldFn)code_at(CAN_HOLD_RVA, CAN_HOLD_HEAD,
-                                         sizeof CAN_HOLD_HEAD, "the spell-school gate");
-  if (!g_spellRecord || !canHold) {
-    log_line("H5ECanHoldSpell: the record accessor or the gate is not where it was measured");
+  CanLearnFn canLearn = (CanLearnFn)code_at(CAN_LEARN_RVA, CAN_LEARN_HEAD,
+                                            sizeof CAN_LEARN_HEAD, "the can-learn question");
+  if (!g_spellRecord || !canLearn) {
+    log_line("H5ECanLearnSpell: the record accessor or the question is not where it was measured");
     return NULL;
   }
-  // The record is fetched only to be SURE THE SPELL EXISTS: a number the game
-  // has no document for would sail through the gate as "allowed" (its school
-  // matches neither of the two it asks about), and the box would teach a spell
-  // that is not there instead of paying for one that is.
+  // The record is fetched only to be SURE THE SPELL EXISTS: a number with no
+  // document behind it would make the box teach nothing while reporting that it
+  // had, and paying for it would be just as wrong.
   if (!g_spellRecord(spell)) {
-    log_num("H5ECanHoldSpell: the game has no spell ", spell);
+    log_num("H5ECanLearnSpell: the game has no spell ", spell);
     return NULL;
   }
-  void *self = whole_hero(hero);
-  if (self != hero) log_hex("H5ECanHoldSpell: asking the whole of him at ", (DWORD)(DWORD_PTR)self);
-  char may = canHold(self, NULL, spell);
-  log_num(may ? "H5ECanHoldSpell: yes, spell " : "H5ECanHoldSpell: no, spell ", spell);
+  int needSkill = 0, needMastery = 0, needLevel = 0;
+  char may = canLearn(hero, NULL, &needSkill, &needMastery, &needLevel, spell);
+  if (may) {
+    log_num("H5ECanLearnSpell: yes, spell ", spell);
+  } else {
+    log_num("H5ECanLearnSpell: no, spell ", spell);
+    log_num("                  it wants skill ", needSkill);
+    log_num("                  at mastery ", needMastery);
+    log_num("                  and hero level ", needLevel);
+  }
   return may ? (void *)(INT_PTR)lua_push_int(ctx, 1) : NULL;
+}
+
+/**
+ * `H5EIsBarbarian(heroName)` - 1 for a hero of the Horde, nothing for anybody
+ * else.
+ *
+ * Asked because only he is PAID for a spell he cannot learn (Senya, 12.08.2026,
+ * off the game's own shrines). For everybody else an unlearnable spell is lost,
+ * which is what the game does at a shrine and at the spell shop.
+ *
+ * The race slot is the same one the engine's own talisman recompute asks first.
+ */
+static void *__fastcall lua_is_barbarian(void *ctx) {
+  void *name = lua_arg_string(ctx, 1);
+  void *map = name ? adventure_map(ctx) : NULL;
+  void *find = map ? vtable_entry(map, VT_FIND_BY_NAME) : NULL;
+  if (!find) {
+    log_line("H5EIsBarbarian: takes a hero's script name, and needs the map");
+    return NULL;
+  }
+  void *hero = ((FindByNameFn)find)(map, NULL, name);
+  if (!hero || !pointer_alive(hero) || !is_a(hero, CHERO_VTABLE_RVA)) return NULL;
+  HeroRaceFn race = (HeroRaceFn)vtable_entry(hero, VT_HERO_RACE);
+  if (!race) return NULL;
+  int who = race(hero, NULL);
+  return who == RACE_STRONGHOLD ? (void *)(INT_PTR)lua_push_int(ctx, 1) : NULL;
 }
 
 /** The rows a map may call. Added where the others are — BEFORE the table is
  *  handed to the engine, or the map finds a global that is NIL. */
 static void add_talisman_map_function(void) {
   add_map_function("H5ETalismanStep", (void *)&lua_talisman_step);
-  add_map_function("H5ECanHoldSpell", (void *)&lua_can_hold_spell);
-  log_line("a box may raise a barbarian's talisman: H5ETalismanStep, H5ECanHoldSpell");
+  add_map_function("H5ECanLearnSpell", (void *)&lua_can_learn_spell);
+  add_map_function("H5EIsBarbarian", (void *)&lua_is_barbarian);
+  log_line("a box may ask: H5ETalismanStep, H5ECanLearnSpell, H5EIsBarbarian");
 }

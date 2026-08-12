@@ -501,12 +501,24 @@ console.log('the scripts');
   check('the behaviour takes the talisman step before teaching',
     lua.includes('local step = H5ETalismanStep(hero);')
     && lua.indexOf('H5ETalismanStep(hero)') < lua.indexOf('TeachHeroSpell(hero, s[1]);', lua.indexOf('box.adventure')));
-  // A SPELL A HERO CANNOT HOLD IS PAID FOR — asked of the engine's own gate,
-  // and paid at the shrine's rate. Both halves, because a script that asked and
-  // taught anyway would read as working right up until a barbarian opened one.
-  check('a spell that cannot be held is paid for instead',
-    lua.includes('if H5ECanHoldSpell(hero, s[1]) ~= nil then')
-    && lua.includes('GiveExp(hero, s[2]);'));
+  // THE WHOLE QUESTION, not the school gate: `H5ECanLearnSpell` is what the
+  // spell shop and the shrine go through, so a wizard with no Dark Magic is
+  // refused Curse. The gate alone said yes to him, and a play-through showed it.
+  check('the spell goes through the engine\'s whole can-learn question',
+    lua.includes('if H5ECanLearnSpell(hero, s[1]) ~= nil then')
+    && !lua.includes('H5ECanHoldSpell'));
+  // AND ONLY A BARBARIAN IS PAID. For anybody else a spell he cannot learn is
+  // lost, the way it is at a shrine — so `GiveExp` must sit behind the race
+  // question and nowhere else.
+  {
+    const at = lua.indexOf('box.spells');
+    const branch = lua.slice(at, lua.indexOf('box.adventure', at));
+    const paid = branch.indexOf('GiveExp(hero, s[2]);');
+    check('and only a barbarian is paid for one he cannot',
+      paid > 0 && branch.lastIndexOf('H5EIsBarbarian(hero)', paid) > 0
+      && branch.includes('", lost");'),
+      branch.split('\n').filter((l) => l.includes('H5E') || l.includes('lost')).join(' | '));
+  }
   // THREE ANSWERS, and the middle one is the correction a play-through paid
   // for: a talisman already at the top used to fall through to teaching, so the
   // box announced a Town Portal the engine then refused. Zero must reach

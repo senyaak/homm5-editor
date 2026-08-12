@@ -91,19 +91,27 @@ rest arrive as he levels. And a talisman does nothing whatsoever for a hero who
 is **not of the Horde**, which is why the box asks first and teaches when the
 answer is no.
 
-### A spell a hero cannot hold is paid for
+### A spell a hero cannot learn is lost — unless he is a barbarian
 
-Every other case — a barbarian handed a battle spell, a knight handed a war cry,
-anyone handed a rune — used to land nowhere at all. Now the box pays instead, at
-**the Shrine of Magic's own rate: 1000 experience per level of the spell**
-(measured in the game 12.08.2026, walking a barbarian into shrines of levels 1,
-2 and 3). That is exactly what the valuer prices a spell at, so **a box is worth
-the same whoever opens it** — the glow does not lie either way.
+The box asks the engine the whole question, the one the **spell shop** and the
+**shrine** go through (`H5ECanLearnSpell`), and it is four things at once:
 
-Who may hold what is not decided here. `H5ECanHoldSpell` asks the engine's own
-gate — the one that would refuse the teaching a moment later — so nothing in the
-generated script knows what a school is, and a mod that adds one is covered
-without a line changing.
+- the school against the hero's kind — a barbarian shouts, everybody else casts;
+- the **skill** of that school: a wizard with no Dark Magic cannot take Curse;
+- the hero's **level** against the record's `RequiredHeroLevel`;
+- the runic case, which is the dwarves' own.
+
+Refused, the spell is **lost**, exactly as it is at a shrine — the box hands over
+nothing for it. The one hero paid instead is the **barbarian**, because that is
+what the game does for him everywhere else: **1000 experience per level of the
+spell** (measured 12.08.2026 at shrines of levels 1, 2 and 3). That is also what
+the valuer prices a spell at, so a box is worth what it says when a barbarian
+opens it.
+
+The levels are worth knowing, since they are the reason a war cry can vanish
+into a young barbarian: a war cry of level 1 asks hero level **2**, level 2 asks
+**6**, level 3 asks **11**. Adventure magic asks 1, 10, 15 and 20. Every other
+school asks nothing — only the skill.
 
 A box past the top of the talisman ladder pays the same way. It used to fall
 back to teaching, and the result was the worst of both: the box announced Town
