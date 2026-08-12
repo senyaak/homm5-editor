@@ -107,10 +107,19 @@ const KINDS: { key: string; per: (tier: number) => Partial<PandoraContents> }[] 
   },
 ];
 
-/** The two sides, and where each one's row of boxes sits. */
+/**
+ * The two sides, and where each one's row of boxes sits.
+ *
+ * EACH ON HIS OWN TEAM, which is not decoration. A fresh slot is team 0, so two
+ * players left as they came are ALLIES — and the map's default victory
+ * condition is "defeat all", which on a map with no enemy is satisfied at load:
+ * the game wins the mission, drops the winning player, and refuses to start
+ * with "Start player does not exist on map" (docs/CAMPAIGNS.md, the traps).
+ * Two sides that cannot fight each other are also not what this map is asking.
+ */
 const SIDES = [
-  { slot: 0, colour: 'PCOLOR_RED', player: 'PLAYER_1', tag: 'R', hero: { x: 10, y: 10 }, at: { x: 14, y: 12 } },
-  { slot: 1, colour: 'PCOLOR_BLUE', player: 'PLAYER_2', tag: 'B', hero: { x: 62, y: 62 }, at: { x: 66, y: 64 } },
+  { slot: 0, team: 0, colour: 'PCOLOR_RED', player: 'PLAYER_1', tag: 'R', hero: { x: 10, y: 10 }, at: { x: 14, y: 12 } },
+  { slot: 1, team: 1, colour: 'PCOLOR_BLUE', player: 'PLAYER_2', tag: 'B', hero: { x: 62, y: 62 }, at: { x: 66, y: 64 } },
 ];
 
 /** One placement: where it goes, what it is called, what is in it. */
@@ -326,6 +335,7 @@ test('two sides, each with a hero of their own', async () => {
     await page.evaluate(async (q) => {
       await window.editor.setMapPath({ path: ['players', q.slot, 'ActivePlayer'], value: 'true' });
       await window.editor.setMapPath({ path: ['players', q.slot, 'Colour'], value: q.colour });
+      await window.editor.setMapPath({ path: ['players', q.slot, 'Team'], value: String(q.team) });
       await window.editor.setMapPath({
         path: ['players', q.slot, 'MainHero'], value: `#xpointer(id(${q.id})/AdvMapHero)`,
       });
@@ -345,6 +355,10 @@ test('two sides, each with a hero of their own', async () => {
 
   const xml = readFileSync(join(MAP_DIR, 'map.xdb'), 'latin1');
   expect(xml, 'the map binds a script for the boxes').toContain('MapScript.xdb#xpointer(/Script)');
+  // The two sides are OPPONENTS. Left as they come, both slots are team 0 and
+  // the map refuses to start — see SIDES above.
+  expect((xml.match(/<Team>1<\/Team>/g) ?? []).length, 'the second side has a team of its own')
+    .toBeGreaterThan(0);
   expect(xml, 'the first hero leads a hundred archangels').toContain('<Count>100</Count>');
   for (const b of BOXES) expect(xml, `${b.name} is on the map`).toContain(`<Name>${b.name}</Name>`);
 
