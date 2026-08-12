@@ -14,7 +14,7 @@
 // Exports:
 //   NatService     handle(packet, from) -> { replies, note }
 
-import { addressToU32 } from './address.ts';
+import { inetU32 } from './address.ts';
 import { MessageType, build, parse, reply } from './gs-message.ts';
 import { Flags, HEADER_SIZE, buildSegment, parseSegment, flagNames, type SrpConnection } from './srp.ts';
 
@@ -24,7 +24,7 @@ const NatMessage = { PORT_ID: 2, ADDRESS: 3 } as const;
 /** Our own window: the client may start its checksums from zero. */
 const OUR_WINDOW = { tail: 10, senderSignature: 2, checksumSeed: 0, bufferSize: 0x218 } as const;
 
-export { addressToU32 } from './address.ts';
+export { inetU32, hostU32 } from './address.ts';
 
 export interface NatResult {
   replies: Buffer[];
@@ -105,7 +105,7 @@ export class NatService {
     // with the answer so the client can match it to the socket that asked.
     const inner = request.body?.[1];
     const socketId = Array.isArray(inner) && typeof inner[0] === 'string' ? inner[0] : '0';
-    const seen = String(addressToU32(from.address));
+    const seen = String(inetU32(from.address));
 
     const replies = [NatMessage.PORT_ID, NatMessage.ADDRESS].map((subtype) => {
       const message = build(reply(request, [String(subtype), [socketId, seen, String(this.port)]]));

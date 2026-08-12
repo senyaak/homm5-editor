@@ -22,7 +22,7 @@
 // Exports:
 //   RouterService     new(waitModule) -> session(); session.receive(buf) -> Buffer[]
 
-import { addressString } from './address.ts';
+import { hostU32String } from './address.ts';
 import { HEADER_SIZE as GS_HEADER_SIZE, MessageType, build, parse, reply, type GSMessage } from './gs-message.ts';
 import { decodeBody, type GSValue } from './gs-data.ts';
 import { Blowfish } from './blowfish.ts';
@@ -142,10 +142,10 @@ export class RouterSession {
         };
       }
       case MessageType.JOINWAITMODULE: {
-        // The address goes as a decimal u32, not dotted — see src/net/address.ts
-        // for what the client does with it and how a dotted string sent it to
-        // 0.0.0.127 instead.
-        const where = addressString(this.waitModule.address);
+        // A decimal u32 in HOST order. Both other forms were tried and watched:
+        // dotted sent the client to 0.0.0.127, and inet_addr's number sent it to
+        // 1.0.0.127. See src/net/address.ts.
+        const where = hostU32String(this.waitModule.address);
         return {
           note: `JOINWAITMODULE — sent to ${this.waitModule.address}:${this.waitModule.port} (as ${where})`,
           replies: [

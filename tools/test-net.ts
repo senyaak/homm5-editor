@@ -12,7 +12,7 @@ import { decode, decodeBody, encode, encodeBody, type GSValue } from '../src/net
 import { decrypt, encrypt } from '../src/net/gs-xor.ts';
 import { HEADER_SIZE, Flags, buildSegment, checksum, parseSegment, verify } from '../src/net/srp.ts';
 import { MessageType, Property, build, parse } from '../src/net/gs-message.ts';
-import { NatService, addressToU32 } from '../src/net/nat-service.ts';
+import { NatService, inetU32 } from '../src/net/nat-service.ts';
 import { KEY_BLOB_SIZE, decryptWith, encryptTo, generateKeyPair, parsePublicKey, publicKeyBlob } from '../src/net/pkc.ts';
 import { RouterService } from '../src/net/router-service.ts';
 import { Blowfish } from '../src/net/blowfish.ts';
@@ -135,7 +135,7 @@ console.log('\nNAT service, driven by the recorded packets');
 {
   const service = new NatService(40010);
   const from = { address: '127.0.0.1', port: 1024 };
-  check('an address becomes the u32 GS passes around', addressToU32('127.0.0.1') === 16777343, String(addressToU32('127.0.0.1')));
+  check('the NAT mirror uses the inet_addr form', inetU32('127.0.0.1') === 16777343, String(inetU32('127.0.0.1')));
 
   const opened = service.handle(CLIENT_SYN, from);
   check('the SYN gets exactly one answer', opened.replies.length === 1, opened.note);
@@ -218,7 +218,7 @@ console.log('\nRouter, driven by the recorded packet');
   const answer2 = parse(sent[0]!.replies[0]!);
   const where = answer2?.body?.[1] as GSValue[];
   check('the wait module answer is a success', answer2?.type === MessageType.GSSUCCESS, sent[0]?.note);
-  check('the address is the u32 of 127.0.0.1', where?.[0] === '16777343', String(where?.[0]));
+  check('the address is 127.0.0.1 in host order', where?.[0] === '2130706433', String(where?.[0]));
   check('the port is four raw bytes, little-endian', Buffer.from(where?.[1] as Uint8Array).readUInt32LE(0) === 40001);
 
   // A login is accepted and answered as success, naming the message it answers.
