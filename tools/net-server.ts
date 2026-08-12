@@ -25,6 +25,7 @@ import { mkdirSync, createWriteStream } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { NatService } from '../src/net/nat-service.ts';
+import { RouterService } from '../src/net/router-service.ts';
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -107,6 +108,10 @@ createHttpServer((req: IncomingMessage, res: ServerResponse) => {
 
 let connections = 0;
 
+// After the login the client asks where to go next. The launcher port we already
+// advertise is the obvious place to send it, and it is ours either way.
+const router = new RouterService({ address: host, port: SERVICES[0]!.launcher ?? SERVICES[0]!.port });
+
 for (const service of SERVICES) {
   for (const port of [service.port, service.launcher].filter((p): p is number => p !== null)) {
     const label = port === service.port ? service.prefix : `${service.prefix}Launcher`;
@@ -115,8 +120,25 @@ for (const service of SERVICES) {
       const id = ++connections;
       const peer = `${socket.remoteAddress}:${socket.remotePort}`;
       log(`TCP  #${id} ${label}:${port} <- ${peer} connected`);
+      // The router answers; the other ports still only listen and write down.
+      const session = label === 'Router' ? router.session() : null;
       socket.on('data', (data: Buffer) => {
         log(`TCP  #${id} ${label}:${port} <- ${data.length} bytes\n${hexDump(data)}`);
+        if (!session) return;
+        let events;
+        try {
+          events = session.receive(data);
+        } catch (err) {
+          log(`TCP  #${id} ${label}:${port} !! ${(err as Error).message}`);
+          return;
+        }
+        for (const event of events) {
+          log(`RTR  #${id} ${event.note}`);
+          for (const answer of event.replies) {
+            socket.write(answer);
+            log(`TCP  #${id} ${label}:${port} -> ${answer.length} bytes\n${hexDump(answer)}`);
+          }
+        }
       });
       socket.on('close', () => log(`TCP  #${id} ${label}:${port} closed`));
       socket.on('error', (err: Error) => log(`TCP  #${id} ${label}:${port} error: ${err.message}`));

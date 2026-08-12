@@ -13,6 +13,8 @@ import { decrypt, encrypt } from '../src/net/gs-xor.ts';
 import { HEADER_SIZE, Flags, buildSegment, checksum, parseSegment, verify } from '../src/net/srp.ts';
 import { MessageType, Property, build, parse } from '../src/net/gs-message.ts';
 import { NatService, addressToU32 } from '../src/net/nat-service.ts';
+import { KEY_BLOB_SIZE, decryptWith, encryptTo, generateKeyPair, parsePublicKey, publicKeyBlob } from '../src/net/pkc.ts';
+import { RouterService } from '../src/net/router-service.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {
@@ -24,6 +26,19 @@ function check(name: string, ok: boolean, detail = ''): void {
 const CLIENT_SYN = Buffer.from('9388000008004230000000000a000100ff441802', 'hex');
 /** And the FIN+URG it repeats nine times before starting over. */
 const CLIENT_FIN = Buffer.from('b6cf000000004930ffff0000', 'hex');
+/**
+ * The first thing it says on the router socket once the NAT step succeeds: a
+ * KEY_EXCHANGE carrying its own 512-bit RSA public key.
+ */
+const ROUTER_KEY_EXCHANGE = Buffer.from(
+  '00011c00db82fa8bbfa4979da4acb5bfcad69f44b0b121bbfea3969ca3abb4bec9d5c96be35b2031d7e3f799a2aab3bd' +
+    'c8d4ccddcaef1f30408f949aa1a9b2bcc7d36c70d6d11e2f3f4ea39da0a8b1bbc6d2b50bef751e2e3e4d5b999fa7b0ba' +
+    'c5d105b26801f42d3d4c5a679ea6afb9c4d0ddc1b9e5ba2c3c4b596672a5aeb8c3cfdce561bea02b3b4a5865717cadb7' +
+    'c2cedbbd1bed6a2a3a495764707b85b6c1cdda7ce0be8e29394856636f7a848dc0ccd9a557b5f328384755626e79838c' +
+    '94cbd807935fe527374654616d78828b939ad79fa36b7b26364553606c77818a9299aeeede76253544525f6b76808991' +
+    '98c373382f243443515e6a757f8890979ee9f7233342505d69747e878f969c4e2232414f5c68737d868e959b',
+  'hex',
+);
 
 console.log('\nSRP against recorded client packets');
 {
@@ -142,6 +157,59 @@ console.log('\nNAT service, driven by the recorded packets');
     from,
   );
   check('and the client is forgotten', after.replies.length === 0, after.note);
+}
+
+console.log('\nRSA key blobs, against the key a real client sent');
+{
+  // The KEY_EXCHANGE body the game put on our router port, captured 12.08.2026.
+  const message = parse(ROUTER_KEY_EXCHANGE);
+  const payload = message?.body?.[1];
+  const blob = Array.isArray(payload) ? payload[2] : undefined;
+  check('the captured packet is a KEY_EXCHANGE', message?.type === MessageType.KEY_EXCHANGE);
+  check('its body says step 1', message?.body?.[0] === '1');
+  check('the key blob is 260 bytes', blob instanceof Uint8Array && blob.length === KEY_BLOB_SIZE, String((blob as Uint8Array)?.length));
+
+  const key = parsePublicKey(blob as Uint8Array);
+  check('the client key is 512 bits with exponent 3', key.bits === 512 && key.exponent === 3n, `${key.bits} bits, e=${key.exponent}`);
+  check('its modulus really is 512 bits', key.modulus.toString(2).length === 512);
+  check('re-serializing gives back the same bytes', publicKeyBlob(key).equals(Buffer.from(blob as Uint8Array)));
+
+  // Our own key has to survive the same round trip, and be usable.
+  const pair = generateKeyPair();
+  check('our key round trips through the blob', parsePublicKey(publicKeyBlob(pair.publicKey)).modulus === pair.publicKey.modulus);
+  const secret = Buffer.from('0123456789abcdef', 'utf8');
+  check('a session key encrypted to us comes back', decryptWith(pair.privateKey, encryptTo(pair.publicKey, secret)).equals(secret));
+}
+
+console.log('\nRouter, driven by the recorded packet');
+{
+  const session = new RouterService({ address: '127.0.0.1', port: 40001 }).session();
+  const events = session.receive(ROUTER_KEY_EXCHANGE);
+  check('the key exchange gets exactly one answer', events.length === 1 && events[0]!.replies.length === 1, events[0]?.note);
+
+  const answer = parse(events[0]!.replies[0]!);
+  check('the answer is a KEY_EXCHANGE too', answer?.type === MessageType.KEY_EXCHANGE);
+  check('with the parties turned round', answer?.sender === 2 && answer?.receiver === 8, `${answer?.sender}->${answer?.receiver}`);
+  const ours = Array.isArray(answer?.body?.[1]) ? (answer!.body![1] as GSValue[]) : [];
+  check('it says step 1 and carries a key', answer?.body?.[0] === '1' && ours[0] === '1');
+  check('the length it states matches the blob', ours[1] === String(KEY_BLOB_SIZE) && (ours[2] as Uint8Array)?.length === KEY_BLOB_SIZE);
+  check('and that blob parses as a 512-bit key', parsePublicKey(ours[2] as Uint8Array).bits === 512);
+
+  // A login is accepted and answered as success, naming the message it answers.
+  const login = build({ property: Property.GS, priority: 0, type: MessageType.LOGIN, sender: 8, receiver: 2, body: ['senyaak', 'secret'] });
+  const loggedIn = session.receive(login);
+  const success = parse(loggedIn[0]!.replies[0]!);
+  check('a login is answered with GSSUCCESS', success?.type === MessageType.GSSUCCESS, loggedIn[0]?.note);
+  check('the answer names LOGIN', (success?.body?.[0] as Uint8Array)?.[0] === MessageType.LOGIN);
+  check('the name is remembered', session.username === 'senyaak');
+
+  // Two messages in one read must both be handled, and a split one must wait.
+  const alive = build({ property: Property.GS, priority: 0, type: MessageType.STILLALIVE, sender: 8, receiver: 2, body: null });
+  const bundled = session.receive(Buffer.concat([alive, login]));
+  check('a bundle of two is walked, not truncated', bundled.length === 2, bundled.map((e) => e.note).join(' | '));
+  const half = session.receive(login.subarray(0, 4));
+  check('half a message waits for its other half', half.length === 0);
+  check('and completes when the rest arrives', session.receive(login.subarray(4)).length === 1);
 }
 
 console.log(failures === 0 ? '\nall good\n' : `\n${failures} failed\n`);

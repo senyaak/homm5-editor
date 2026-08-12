@@ -23,10 +23,14 @@ import { decrypt, encrypt } from './gs-xor.ts';
 export const MessageType = {
   GSSUCCESS: 38,
   GSFAIL: 39,
-  KEY_EXCHANGE: 219,
+  STILLALIVE: 58,
+  JOINWAITMODULE: 93,
+  LOGIN: 102,
+  LOGINWAITMODULE: 94,
+  PROXY_HANDLER: 204,
   LOBBY_MSG: 209,
   LOBBYSERVERLOGIN: 210,
-  LOGIN: 102,
+  KEY_EXCHANGE: 219,
   NAT: 221,
 } as const;
 
