@@ -33,7 +33,8 @@ import { pandoraPrices, talismanLadder } from '../src/mods/pandora-prices.ts';
 import { singleRoot } from '../src/game/assets.ts';
 import { buildGameplayArchive } from '../src/mods/gameplay.ts';
 import {
-  PANDORA_BLOCK_BEGIN, PANDORA_GUARDS_TEXT, pandoraBehaviourLua, pandoraMapBlock, withPandoraBlock,
+  CANNOT_LEARN_TEXT, PANDORA_BLOCK_BEGIN, PANDORA_GUARDS_TEXT, pandoraBehaviourLua, pandoraMapBlock,
+  withPandoraBlock,
 } from '../src/mods/pandora-scripts.ts';
 import { luaDiagnostics } from '../src/script/lua-lint.ts';
 import { dataReader } from '../src/mods/mod-files.ts';
@@ -505,8 +506,11 @@ console.log('the scripts');
   // spell shop and the shrine go through, so a wizard with no Dark Magic is
   // refused Curse. The gate alone said yes to him, and a play-through showed it.
   check('the spell goes through the engine\'s whole can-learn question',
-    lua.includes('if H5ECanLearnSpell(hero, s[1]) ~= nil then')
-    && !lua.includes('H5ECanHoldSpell'));
+    lua.includes('if H5ECanLearnSpell(hero, s[1]) ~= nil then'));
+  // AND THE PLAYER IS TOLD when one lands nowhere — the game's own line from
+  // the spell shop, addressed to the hero, so no gate is wanted.
+  check('a spell that lands nowhere says so, in the game\'s words',
+    lua.includes(`ShowFlyingSign("${CANNOT_LEARN_TEXT}", hero, player, 4);`));
   // AND ONLY A BARBARIAN IS PAID. For anybody else a spell he cannot learn is
   // lost, the way it is at a shrine — so `GiveExp` must sit behind the race
   // question and nowhere else.

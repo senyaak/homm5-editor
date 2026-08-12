@@ -101,12 +101,16 @@ The box asks the engine the whole question, the one the **spell shop** and the
 - the hero's **level** against the record's `RequiredHeroLevel`;
 - the runic case, which is the dwarves' own.
 
-Refused, the spell is **lost**, exactly as it is at a shrine — the box hands over
-nothing for it. The one hero paid instead is the **barbarian**, because that is
-what the game does for him everywhere else: **1000 experience per level of the
-spell** (measured 12.08.2026 at shrines of levels 1, 2 and 3). That is also what
-the valuer prices a spell at, so a box is worth what it says when a barbarian
-opens it.
+Refused, the spell is **lost** — exactly as it is at a shrine — and the box says
+so with the game's own line, flown over the hero: *"Герой не может выучить
+выбранное заклинание"*, the one the spell shop puts under its Buy button.
+
+The one hero **paid** instead is the barbarian, and only for what he IS: magic
+is not his to take, so he gets **1000 experience per level of the spell**
+(measured 12.08.2026 at shrines of levels 1, 2 and 3 — also exactly what the
+valuer prices a spell at, so the box is worth what it says). A war cry he has
+not grown into is a different matter: that one he loses, like anybody short of a
+level or a skill.
 
 The levels are worth knowing, since they are the reason a war cry can vanish
 into a young barbarian: a war cry of level 1 asks hero level **2**, level 2 asks

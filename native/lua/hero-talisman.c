@@ -242,8 +242,22 @@ static void *__fastcall lua_talisman_step(void *ctx) {
 #define CAN_LEARN_RVA 0x824480u
 static const BYTE CAN_LEARN_HEAD[8] = { 0x8B, 0x44, 0x24, 0x04, 0x53, 0x8B, 0x5C, 0x24 };
 
-typedef char(__fastcall *CanLearnFn)(void *hero, void *edx, int *needSkill, int *needMastery,
-                                     int *needLevel, int spell);
+/**
+ * The outs, in the order the code fills them: LEVEL first — `mov [eax],esi`
+ * with `esi = [record+0x8C]` and `eax` the first argument — then the skill and
+ * the mastery of it. Read off the run rather than assumed: a war cry refused a
+ * level-1 barbarian came back (2, 0, 0), which is `RequiredHeroLevel` 2 and no
+ * skill named, and a destructive spell came back (0, 9, 2) — no level, skill 9
+ * (`HERO_SKILL_DESTRUCTIVE_MAGIC`), at mastery 2.
+ */
+typedef char(__fastcall *CanLearnFn)(void *hero, void *edx, int *needLevel, int *needSkill,
+                                     int *needMastery, int spell);
+
+/** `CHero::CanHoldSpell` — `__fastcall(wholeHero, spellId)`, the school half. */
+#define CAN_HOLD_RVA 0x8200f0u
+static const BYTE CAN_HOLD_HEAD[5] = { 0x56, 0x8B, 0x74, 0x24, 0x08 };
+
+typedef char(__fastcall *CanHoldFn)(void *hero, void *edx, int spell);
 
 /**
  * `H5ECanLearnSpell(heroName, spellId)` - 1 when he may, nothing when he may not.
@@ -288,16 +302,69 @@ static void *__fastcall lua_can_learn_spell(void *ctx) {
     log_num("H5ECanLearnSpell: the game has no spell ", spell);
     return NULL;
   }
-  int needSkill = 0, needMastery = 0, needLevel = 0;
-  char may = canLearn(hero, NULL, &needSkill, &needMastery, &needLevel, spell);
+  int needLevel = 0, needSkill = 0, needMastery = 0;
+  char may = canLearn(hero, NULL, &needLevel, &needSkill, &needMastery, spell);
   if (may) {
     log_num("H5ECanLearnSpell: yes, spell ", spell);
   } else {
     log_num("H5ECanLearnSpell: no, spell ", spell);
-    log_num("                  it wants skill ", needSkill);
+    log_num("                  it wants hero level ", needLevel);
+    log_num("                  and skill ", needSkill);
     log_num("                  at mastery ", needMastery);
-    log_num("                  and hero level ", needLevel);
   }
+  return may ? (void *)(INT_PTR)lua_push_int(ctx, 1) : NULL;
+}
+
+/**
+ * The WHOLE hero, from the subobject the lookup hands out.
+ *
+ * `FindObjectByName` answers with the interface at +0x1c, and the school gate
+ * takes the object PROPER — it reaches that interface itself with `[this+0x1c]`.
+ * Given the subobject it lands 0x1c further along, reads a vtable that is not
+ * one and calls address zero: the game died on the first war cry handed to a
+ * knight. (`CanLearnSpell` wants the interface, and does the same subtraction
+ * inside — which is how the two came to differ.)
+ *
+ * Not a constant: the dword before every vtable is the complete-object locator,
+ * and its second word is how deep that subobject sits.
+ */
+static void *whole_hero(void *sub) {
+  if (!readable(sub, 4)) return sub;
+  DWORD vt = *(const DWORD *)sub;
+  if (!readable((const void *)(DWORD_PTR)(vt - 4), 4)) return sub;
+  DWORD locator = *(const DWORD *)(DWORD_PTR)(vt - 4);
+  if (!readable((const void *)(DWORD_PTR)locator, 8)) return sub;
+  DWORD into = ((const DWORD *)(DWORD_PTR)locator)[1];
+  return into < 0x1000 ? (void *)((BYTE *)sub - into) : sub;
+}
+
+/**
+ * `H5ECanHoldSpell(heroName, spellId)` — the SCHOOL half on its own.
+ *
+ * Which is a different question from `H5ECanLearnSpell`, and the box needs
+ * both: a spell refused because of what the hero IS (a barbarian handed magic,
+ * a knight handed a war cry) is paid for; one refused because he is too young
+ * or lacks the skill is simply lost, the way it is at a shrine. Told apart
+ * here, decided in the script.
+ */
+static void *__fastcall lua_can_hold_spell(void *ctx) {
+  void *name = lua_arg_string(ctx, 1);
+  int spell = 0;
+  if (!name || !lua_arg_int(ctx, 2, &spell)) {
+    log_line("H5ECanHoldSpell: takes a hero's script name and a spell id");
+    return NULL;
+  }
+  void *map = adventure_map(ctx);
+  void *find = map ? vtable_entry(map, VT_FIND_BY_NAME) : NULL;
+  if (!find) return NULL;
+  void *hero = ((FindByNameFn)find)(map, NULL, name);
+  if (!hero || !pointer_alive(hero) || !is_a(hero, CHERO_VTABLE_RVA)) return NULL;
+  CanHoldFn canHold = (CanHoldFn)code_at(CAN_HOLD_RVA, CAN_HOLD_HEAD,
+                                         sizeof CAN_HOLD_HEAD, "the spell-school gate");
+  if (!canHold || !g_spellRecord || !g_spellRecord(spell)) return NULL;
+  char may = canHold(whole_hero(hero), NULL, spell);
+  log_num(may ? "H5ECanHoldSpell: his kind may, spell " : "H5ECanHoldSpell: not his kind, spell ",
+          spell);
   return may ? (void *)(INT_PTR)lua_push_int(ctx, 1) : NULL;
 }
 
@@ -332,6 +399,7 @@ static void *__fastcall lua_is_barbarian(void *ctx) {
 static void add_talisman_map_function(void) {
   add_map_function("H5ETalismanStep", (void *)&lua_talisman_step);
   add_map_function("H5ECanLearnSpell", (void *)&lua_can_learn_spell);
+  add_map_function("H5ECanHoldSpell", (void *)&lua_can_hold_spell);
   add_map_function("H5EIsBarbarian", (void *)&lua_is_barbarian);
   log_line("a box may ask: H5ETalismanStep, H5ECanLearnSpell, H5EIsBarbarian");
 }

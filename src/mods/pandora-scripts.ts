@@ -35,6 +35,17 @@ export const PANDORA_OPEN_TEXT = 'scripts/homm5-editor/pandora-open.txt';
 /** And what it says when the lid comes off and the guards are awake. */
 export const PANDORA_GUARDS_TEXT = 'scripts/homm5-editor/pandora-guards.txt';
 
+/**
+ * And what it says when a spell lands nowhere — THE GAME'S OWN LINE.
+ *
+ * `Герой не может выучить выбранное заклинание` is what the spell shop puts
+ * under its Buy button when the hero standing there cannot take the spell he
+ * picked, and it says exactly what a box needs to say. Taken as a ref rather
+ * than copied: the file ships with the game in whatever language it was bought
+ * in, and it carries no `<value=…>` to fill in.
+ */
+export const CANNOT_LEARN_TEXT = '/UI/BuySpell/Texts/BuyButton_HeroCantLearnSpell.txt';
+
 /** The generated block's fences in a map script. Everything between them is
  *  rewritten on save; everything outside is the author's. */
 export const PANDORA_BLOCK_BEGIN = '-- H5E pandora (generated) - everything to the end marker is rewritten on save';
@@ -271,11 +282,16 @@ export function pandoraBehaviourLua(): string {
     '\t\t\t\tprint("H5E pandora: spell " .. s[1]);',
     '\t\t\t\tH5EAnnounceGain();',
     '\t\t\t\tTeachHeroSpell(hero, s[1]);',
-    '\t\t\telseif H5EIsBarbarian(hero) ~= nil then',
-    '\t\t\t\tprint("H5E pandora: cannot learn " .. s[1] .. ", paid " .. s[2]);',
+    '\t\t\telseif H5EIsBarbarian(hero) ~= nil and H5ECanHoldSpell(hero, s[1]) == nil then',
+    '\t\t\t\t-- PAID ONLY FOR WHAT HE IS, not for how young he is. A barbarian',
+    '\t\t\t\t-- handed magic is paid the way the shrines pay him; a barbarian',
+    '\t\t\t\t-- handed a war cry he has not grown into yet loses it, like anybody',
+    '\t\t\t\t-- else who is short of a level or a skill.',
+    '\t\t\t\tprint("H5E pandora: not his kind " .. s[1] .. ", paid " .. s[2]);',
     '\t\t\t\tGiveExp(hero, s[2]);',
     '\t\t\telse',
     '\t\t\t\tprint("H5E pandora: cannot learn " .. s[1] .. ", lost");',
+    `\t\t\t\tShowFlyingSign("${CANNOT_LEARN_TEXT}", hero, player, 4);`,
     '\t\t\tend;',
     '\t\tend;',
     '\tend;',
@@ -303,6 +319,7 @@ export function pandoraBehaviourLua(): string {
     '\t\t\t\t\tTeachHeroSpell(hero, s[1]);',
     '\t\t\t\telse',
     '\t\t\t\t\tprint("H5E pandora: cannot learn " .. s[1] .. ", lost");',
+    `\t\t\t\t\tShowFlyingSign("${CANNOT_LEARN_TEXT}", hero, player, 4);`,
     '\t\t\t\tend;',
     '\t\t\telseif step == 0 then',
     '\t\t\t\t-- His talisman is at the top, so there is no rung left to give -',
