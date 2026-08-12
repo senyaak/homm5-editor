@@ -380,7 +380,11 @@ static int the_game_is_being_played(DWORD world) {
   // time whatever else is true) and the whole world is dumped beside them,
   // because the flag that DOES differ is in there somewhere and one run with
   // both cases in it will show which word it is.
-  log_all_words("pandora:   the world ", world, 0x40);
+  // A KILOBYTE OF IT, not a glance. The first attempt at this dumped 0x40 words
+  // — 256 bytes of an object that is nothing like that small — which is the
+  // same mistake as printing one word behind a pointer, made a third time. The
+  // words are free; the run is not.
+  log_all_words("pandora:   the world ", world, 0x400);
   if (busy) {
     log_line("pandora: the world is busy — this is setting up, not playing");
     return 0;
@@ -432,8 +436,9 @@ static char __fastcall announce_spell_taught(void *self, void *unused) {
   // Everything about both, because the world is still being taken from a
   // memory of another announcement rather than from something at hand, and one
   // of these words is very likely it.
-  log_all_words("pandora:   the command ", (DWORD)(DWORD_PTR)self, 0x10);
-  log_all_words("pandora:   the hero ", hero, 0x20);
+  log_all_words("pandora:   the command ", (DWORD)(DWORD_PTR)self, 0x20);
+  log_all_words("pandora:   the hero ", hero, 0x200);
+  log_all_words("pandora:   the interface he was given as ", given, 0x80);
 
   // The game has to know the spell at all before anything else is worth doing.
   void *record = ((void *(__fastcall *)(int))(DWORD_PTR)(SPELL_RECORD_RVA + base))(spellId);
@@ -525,6 +530,7 @@ static char __fastcall announce_spell_taught(void *self, void *unused) {
   // says so and stops — which is a line in the log instead of the rest of the
   // run.
   log_hex("pandora:   the world ", g_world);
+  log_all_words("pandora:   the player ", edx, 0x100);
   if (!is_the_world(g_world)) {
     log_line("pandora: no world of this game yet — not announcing");
     return taught;
