@@ -142,14 +142,54 @@ The one at `0xd20a19` sets up the whole object:
     0xd20a6f  mov [eax+edi+4], 0FD5108h
 
 **SEVEN vtables, three of them at fixed offsets and four placed through the
-virtual-base table.** That is the shape a subclass has to reproduce, and it is
-also why "copy the vtable" is not one copy: the slots we mean to own are in
-`0xfd4f84` (the visit is `+0xc` there), so that is the one to duplicate, and
-the pointer to patch is the one at object `+0x1C`.
+virtual-base table.** That is the shape a subclass has to reproduce.
 
-What is still unknown about these three: which is the constructor, which the
-destructor restoring the vtables on the way out, and which the third (a copy,
-or a placement variant). The function starts are not read yet.
+### How long each table is — measured, and it corrects this document
+
+`trace.ts dump <addr>` prints each word with a verdict beside it (code, data,
+or a string), and a vtable ENDS where a word stops being a function: what
+follows is the RTTI pointer the next table carries in front of it.
+
+    0xfd4f5c  0x01036a10  data    <- RTTI of the first table
+    0xfd4f60 … 0xfd4f7c           <- EIGHT slots
+    0xfd4f80  0x01036a98  data    <- RTTI
+    0xfd4f84 … 0xfd4f88           <- TWO slots (0xacc4f0, 0xacc510)
+    0xfd4f8c  0x01036aac  data    <- RTTI
+    0xfd4f90 … 0xfd4f94           <- TWO slots (0xd214a0, 0x42b6c0)
+    0xfd4f98  0x01036ac0  data    <- RTTI
+    0xfd4f9c …                    <- the long one
+
+So the earlier line here — "the visit is `0xfd4f84+0xc`" — was a slot read
+past the end of a two-slot table, which is exactly the mistake this repo has
+already paid for once: **a slot needs its table's START, and a class has
+several**. `0xd214a0` is not `0xfd4f84+0xc`; it is `0xfd4f90+0x0`, the first
+slot of a different table.
+
+### What is known about the three, and what is not
+
+All three are CONSTRUCTORS, not a constructor and a destructor: each opens with
+the most-derived flag test (`cmp dword ptr [esp+…],0` / `je`) that a compiler
+emits for a class with virtual bases, and each then writes the base classes'
+tables before its own. They differ in how many arguments they take — the one at
+`0xd21b90` reads its flag from `[esp+4]`, so it has none of its own.
+
+**The object is 0x100 bytes.** Its call site allocates before constructing:
+
+    0xb529bd  push 100h
+    0xb529c2  call 004DD2D0h        ; the allocator
+    0xb529d2  push 1                ; most-derived
+    0xb529de  call 00D20940h        ; the constructor
+
+That call sits inside `0xb5256c`, a function with 26 callers — the shape of a
+factory that builds map objects by kind, and the natural place to look for
+where a shared document becomes an object.
+
+Still open: which table each fixed offset carries (the constructor writes
+`[this]`, `[this+0x1C]` and `[this+0xAC]`, while `0xd214a0` corrects `ecx` by
+`-0xA8` on entry, so the two have to be reconciled before any slot is
+replaced), and whether `0xd214a0` is the visit at all — it is 285 instructions
+that call through `[eax+8Ch]` and reach `0xcbb7c0` and `0xa45880`, and the
+cheap way to settle it is a log-only detour that says when it fires.
 
 ## Stage 1, step by step
 

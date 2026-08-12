@@ -7,6 +7,8 @@
 //   node tools/reverse/trace.ts field 0x44 0x48 0x4c       who reads these offsets
 //   node tools/reverse/trace.ts field 0x638 --all         every instruction, ungrouped
 //   node tools/reverse/trace.ts writes 0xfd4f60            who STORES this constant
+//   node tools/reverse/trace.ts start 0xd20a19             where that function begins
+//   node tools/reverse/trace.ts dump 0xfd4f5c --count 24   words, each code or data
 //
 // `common` is how the hook point was found: an artifact can leave a hero from
 // the hero screen, a script, a quest or a death, so whatever they share is
@@ -135,6 +137,60 @@ switch (command) {
     }
     console.log(`${found.length} instructions carry 0x${wanted.toString(16)}`);
     for (const ins of found) console.log(`  0x${ins.address.toString(16)}  ${ins.text}`);
+    break;
+  }
+
+  // WHERE THIS FUNCTION BEGINS — the address `show` should be given.
+  //
+  // `writes` and `field` answer with an address in the MIDDLE of a function,
+  // and disassembling from there reads the tail of one instruction as the head
+  // of another: the listing is plausible and wrong. A start is recognised by
+  // somebody CALLING it, so this walks back and reports every address in reach
+  // that the executable calls, nearest first.
+  //
+  //   node tools/reverse/trace.ts start 0xd20a19 [--back 0x600]
+  case 'start': {
+    const inside = addresses[0]!;
+    const back = Number(flagValue('back') ?? 0x600);
+    const found: Array<{ at: number; callers: number }> = [];
+    for (let at = inside; at >= inside - back; at--) {
+      const callers = pe.callsTo(at).length;
+      if (callers) found.push({ at, callers });
+    }
+    if (!found.length) {
+      console.log(`nothing within 0x${back.toString(16)} bytes before 0x${inside.toString(16)}`
+        + ' is called — it may be reached only through a vtable, or the window is too short');
+      break;
+    }
+    console.log(`0x${inside.toString(16)} sits inside one of these:`);
+    for (const f of found) {
+      console.log(`  0x${f.at.toString(16)}  ${f.callers} caller(s), `
+        + `0x${(inside - f.at).toString(16)} bytes before it`);
+    }
+    break;
+  }
+
+  // THE WORDS AT AN ADDRESS, each said to be code or not.
+  //
+  // A vtable is data, and its LENGTH is the thing that cannot be guessed: the
+  // slot listing of a class with several vtables runs straight past the end of
+  // one into the next, and a slot read from the wrong table answers plausibly
+  // and wrongly. What ends a table is a word that is not a function — the RTTI
+  // pointer the next one carries in front of it — so this prints each word with
+  // that verdict beside it.
+  //
+  //   node tools/reverse/trace.ts dump 0xfd4f5c --count 24
+  case 'dump': {
+    const from = addresses[0]!;
+    const count = Number(flagValue('count') ?? 16);
+    for (let i = 0; i < count; i++) {
+      const at = from + i * 4;
+      const off = pe.offsetOf(at);
+      if (off === null) { console.log(`  0x${at.toString(16)}  (not mapped)`); continue; }
+      const word = pe.buf.readUInt32LE(off);
+      const what = pe.isCode(word) ? 'code' : (pe.stringAt(word, 40) ? `"${pe.stringAt(word, 40)}"` : 'data');
+      console.log(`  0x${at.toString(16)}  0x${word.toString(16).padStart(8, '0')}  ${what}`);
+    }
     break;
   }
 
