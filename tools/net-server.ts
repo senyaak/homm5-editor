@@ -125,8 +125,9 @@ for (const service of SERVICES) {
       const id = ++connections;
       const peer = `${socket.remoteAddress}:${socket.remotePort}`;
       log(`TCP  #${id} ${label}:${port} <- ${peer} connected`);
-      // The router answers; the other ports still only listen and write down.
-      const session = label === 'Router' ? router.session() : null;
+      // The router and the wait module it hands the client on to are the same
+      // desk, and the same code answers both. IRC still only listens.
+      const session = label === 'Router' || label === 'RouterLauncher' ? router.session() : null;
       socket.on('data', (data: Buffer) => {
         log(`TCP  #${id} ${label}:${port} <- ${data.length} bytes\n${hexDump(data)}`);
         if (!session) return;

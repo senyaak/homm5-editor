@@ -132,6 +132,27 @@ if (wanted[0] === '--icalls') {
   process.exit(0);
 }
 
+// `--bytes <pattern>`: find a byte pattern in `.text`, `??` matching anything.
+// How a known constant is located when it is not pushed but stored — an error
+// triple written into three stack slots, say.
+if (wanted[0] === '--bytes') {
+  for (const arg of wanted.slice(1)) {
+    const pattern = arg.replace(/\s+/g, '').match(/../g) ?? [];
+    const bytes = pattern.map((pair) => (pair === '??' ? -1 : parseInt(pair, 16)));
+    console.log(`--- ${arg}`);
+    const text = pe.section('.text');
+    const code = pe.bytesOf(text);
+    for (let at = 0; at <= code.length - bytes.length; at++) {
+      let hit = true;
+      for (let i = 0; i < bytes.length && hit; i++) hit = bytes[i]! < 0 || code[at + i] === bytes[i];
+      if (!hit) continue;
+      const va = pe.imageBase + text.va + at;
+      console.log(`  ${va.toString(16)} in function ${functionStartOf(pe, va)?.toString(16) ?? '?'}`);
+    }
+  }
+  process.exit(0);
+}
+
 // `--calls <addr>`: every direct call or jump that lands on an address.
 if (wanted[0] === '--calls') {
   for (const arg of wanted.slice(1)) {

@@ -21,12 +21,14 @@ import { decrypt, encrypt } from './gs-xor.ts';
 
 /** Message types we name. The protocol has ~150; these are the ones we answer. */
 export const MessageType = {
+  PLAYERINFO: 19,
   GSSUCCESS: 38,
   GSFAIL: 39,
   STILLALIVE: 58,
+  LOGINWAITMODULE: 77,
+  LOGINFRIENDS: 78,
   JOINWAITMODULE: 93,
   LOGIN: 102,
-  LOGINWAITMODULE: 94,
   PROXY_HANDLER: 204,
   LOBBY_MSG: 209,
   LOBBYSERVERLOGIN: 210,

@@ -211,6 +211,16 @@ console.log('\nRouter, driven by the recorded packet');
   check('the length it states matches the blob', ours[1] === String(KEY_BLOB_SIZE) && (ours[2] as Uint8Array)?.length === KEY_BLOB_SIZE);
   check('and that blob parses as a 512-bit key', parsePublicKey(ours[2] as Uint8Array).bits === 512);
 
+  // Where the client is sent next, and in the form it can actually use: a
+  // decimal u32, because a dotted string reaches it as its first octet.
+  const jwm = build({ property: Property.GS, priority: 0, type: MessageType.JOINWAITMODULE, sender: 4, receiver: 1, body: null });
+  const sent = session.receive(jwm);
+  const answer2 = parse(sent[0]!.replies[0]!);
+  const where = answer2?.body?.[1] as GSValue[];
+  check('the wait module answer is a success', answer2?.type === MessageType.GSSUCCESS, sent[0]?.note);
+  check('the address is the u32 of 127.0.0.1', where?.[0] === '16777343', String(where?.[0]));
+  check('the port is four raw bytes, little-endian', Buffer.from(where?.[1] as Uint8Array).readUInt32LE(0) === 40001);
+
   // A login is accepted and answered as success, naming the message it answers.
   const login = build({ property: Property.GS, priority: 0, type: MessageType.LOGIN, sender: 8, receiver: 2, body: ['senyaak', 'secret'] });
   const loggedIn = session.receive(login);

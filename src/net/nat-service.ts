@@ -14,6 +14,7 @@
 // Exports:
 //   NatService     handle(packet, from) -> { replies, note }
 
+import { addressToU32 } from './address.ts';
 import { MessageType, build, parse, reply } from './gs-message.ts';
 import { Flags, HEADER_SIZE, buildSegment, parseSegment, flagNames, type SrpConnection } from './srp.ts';
 
@@ -23,14 +24,7 @@ const NatMessage = { PORT_ID: 2, ADDRESS: 3 } as const;
 /** Our own window: the client may start its checksums from zero. */
 const OUR_WINDOW = { tail: 10, senderSignature: 2, checksumSeed: 0, bufferSize: 0x218 } as const;
 
-/** An IPv4 address the way GS passes one around: a decimal u32, little-endian. */
-export function addressToU32(address: string): number {
-  const octets = address.replace(/^::ffff:/, '').split('.').map(Number);
-  if (octets.length !== 4 || octets.some((o) => !Number.isInteger(o) || o < 0 || o > 255)) {
-    throw new Error(`not an IPv4 address: ${address}`);
-  }
-  return ((octets[3]! << 24) | (octets[2]! << 16) | (octets[1]! << 8) | octets[0]!) >>> 0;
-}
+export { addressToU32 } from './address.ts';
 
 export interface NatResult {
   replies: Buffer[];

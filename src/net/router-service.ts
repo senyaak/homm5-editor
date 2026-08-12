@@ -22,6 +22,7 @@
 // Exports:
 //   RouterService     new(waitModule) -> session(); session.receive(buf) -> Buffer[]
 
+import { addressString } from './address.ts';
 import { HEADER_SIZE as GS_HEADER_SIZE, MessageType, build, parse, reply, type GSMessage } from './gs-message.ts';
 import { decodeBody, type GSValue } from './gs-data.ts';
 import { Blowfish } from './blowfish.ts';
@@ -140,19 +141,49 @@ export class RouterSession {
           replies: [build(reply(message, [messageId(MessageType.LOGIN)], MessageType.GSSUCCESS))],
         };
       }
-      case MessageType.JOINWAITMODULE:
+      case MessageType.JOINWAITMODULE: {
+        // The address goes as a decimal u32, not dotted — see src/net/address.ts
+        // for what the client does with it and how a dotted string sent it to
+        // 0.0.0.127 instead.
+        const where = addressString(this.waitModule.address);
         return {
-          note: `JOINWAITMODULE — sent to ${this.waitModule.address}:${this.waitModule.port}`,
+          note: `JOINWAITMODULE — sent to ${this.waitModule.address}:${this.waitModule.port} (as ${where})`,
           replies: [
             build(
               reply(
                 message,
-                [messageId(MessageType.JOINWAITMODULE), [this.waitModule.address, u32(this.waitModule.port)]],
+                [messageId(MessageType.JOINWAITMODULE), [where, u32(this.waitModule.port)]],
                 MessageType.GSSUCCESS,
               ),
             ),
           ],
         };
+      }
+      // Once the client is told where to go it opens a SECOND connection — the
+      // "wait module" — and speaks the same protocol on it, key exchange and all.
+      // The same desk answers both; only the address it was given differs.
+      case MessageType.LOGINWAITMODULE: {
+        const name = message.body?.[0];
+        if (typeof name === 'string' && name) this.username = name;
+        return {
+          note: `LOGINWAITMODULE as "${this.username}" — accepted`,
+          replies: [build(reply(message, [messageId(MessageType.LOGINWAITMODULE)], MessageType.GSSUCCESS))],
+        };
+      }
+      case MessageType.LOGINFRIENDS:
+        return {
+          note: 'LOGINFRIENDS — accepted',
+          replies: [build(reply(message, [messageId(MessageType.LOGINFRIENDS)], MessageType.GSSUCCESS))],
+        };
+      case MessageType.PLAYERINFO: {
+        // Seven fields; only the first two are known to be the nickname and the
+        // real name, and nothing so far has needed the rest.
+        const player: GSValue[] = [this.username, this.username, '', '', '', '', ''];
+        return {
+          note: `PLAYERINFO for "${this.username}"`,
+          replies: [build(reply(message, [messageId(MessageType.PLAYERINFO), player], MessageType.GSSUCCESS))],
+        };
+      }
       case MessageType.STILLALIVE:
         return { note: 'STILLALIVE', replies: [] };
       default:
