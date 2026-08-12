@@ -98,6 +98,20 @@ his **Runelore** must have come — basic for a rune of level 1 or 2, advanced f
 every `RequiredHeroLevel` in the ten records is 0. So a box of runes tells three
 answers apart at once — learned, lost, paid for.
 
+They are also the reason the block writes some spells as **numbers**. A script
+says `SPELL_FIREBALL` because `scripts/common.lua` declares that global — but it
+declares no rune at all, and 104 of the 353 spells in the `SpellID` enum have no
+global anywhere. Named, such a spell reaches `TeachHeroSpell` as `nil` and the
+box then dies concatenating it:
+
+```
+[Script warning!] Value was NIL when getting global with name 'SPELL_RUNE_OF_CHARGE'
+(Script) ERROR: attempt to concat a nil value
+```
+
+So the name is kept where the engine knows it and the id out of `types.xml` is
+written where it does not (`spellRefs()` in `src/mods/pandora-prices.ts`).
+
 **Adventure magic comes through here too**, and through nothing else. Summon
 Boat, Summon Creatures, Dimension Door and Town Portal are the four spells of
 `MAGIC_SCHOOL_ADVENTURE`, a barbarian is refused all four, and he is paid for

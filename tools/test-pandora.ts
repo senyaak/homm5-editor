@@ -29,7 +29,7 @@ import {
   PANDORA_RATES, PANDORA_TIERS, boxTier, isEmptyBox, pandoraTier, pandoraValue,
 } from '../src/mods/pandora-contents.ts';
 import type { PandoraStack } from '../src/mods/pandora-contents.ts';
-import { pandoraPrices } from '../src/mods/pandora-prices.ts';
+import { pandoraPrices, spellRefs } from '../src/mods/pandora-prices.ts';
 import { singleRoot } from '../src/game/assets.ts';
 import { buildGameplayArchive } from '../src/mods/gameplay.ts';
 import {
@@ -369,6 +369,22 @@ console.log('what the contents are worth');
   check('an adventure spell is priced like any other',
     real.spellLevel('SPELL_TOWN_PORTAL') > 0 && real.spellLevel('SPELL_SUMMON_BOAT') > 0,
     `${real.spellLevel('SPELL_TOWN_PORTAL')} / ${real.spellLevel('SPELL_SUMMON_BOAT')}`);
+  // HOW A SPELL IS WRITTEN INTO THE SCRIPT, which is not one rule for all of
+  // them. The game declares `SPELL_FIREBALL` in `scripts/common.lua`; it
+  // declares no rune anywhere, and a block that said `SPELL_RUNE_OF_CHARGE`
+  // handed nil to TeachHeroSpell and died on the next `..` — seen in the game
+  // 13.08.2026. The numbers below are the engine's own, out of `types.xml`.
+  {
+    const ref = spellRefs(singleRoot(dataRoot));
+    check('a spell the game declares goes down as its name',
+      ref('SPELL_FIREBALL') === 'SPELL_FIREBALL' && ref('FIREBALL') === 'SPELL_FIREBALL',
+      `${ref('SPELL_FIREBALL')} / ${ref('FIREBALL')}`);
+    check('and a rune, which no script of the game declares, goes down as its number',
+      ref('SPELL_RUNE_OF_CHARGE') === '249' && ref('SPELL_RUNE_OF_DRAGONFORM') === '258',
+      `${ref('SPELL_RUNE_OF_CHARGE')} / ${ref('SPELL_RUNE_OF_DRAGONFORM')}`);
+    check('and a number stays a number, and a stranger keeps his name',
+      ref(51) === '51' && ref('SPELL_NOT_A_THING') === 'SPELL_NOT_A_THING');
+  }
   check('and an id nobody knows is worth nothing, quietly',
     real.creature('CREATURE_NOT_A_THING') === 0 && real.artifact('ARTIFACT_NOT_A_THING') === 0
     && real.spellLevel('SPELL_NOT_A_THING') === 0);

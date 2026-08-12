@@ -25,7 +25,7 @@ import {
 import type { PandoraContents } from '#src/mods/pandora-contents.ts';
 import { isPandoraShared } from '#src/mods/pandora-files.ts';
 import { PANDORA_RATES } from '#src/mods/pandora-contents.ts';
-import { pandoraPrices } from '#src/mods/pandora-prices.ts';
+import { pandoraPrices, spellRefs } from '#src/mods/pandora-prices.ts';
 import { withPandoraBlock } from '#src/mods/pandora-scripts.ts';
 
 /** The default script a map gains when its boxes need one. */
@@ -102,6 +102,9 @@ export function writePandoraForMap(s: Session, archivePrefix: string): number {
   const before = existsSync(luaPath) ? readFileSync(luaPath, 'utf8') : '';
   const after = withPandoraBlock(before, boxes, {
     said: (b: PandoraContents) => (b.message ? pandoraMessageRef(archivePrefix, b.name) : undefined),
+    // How each spell has to be spelled for the engine's Lua — a name where the
+    // game declares one, a number where it does not (the runes).
+    spellRef: spellRefs(s.assets),
     // What a spell is worth to a hero who cannot hold it: the valuer's own rate
     // for a spell level, so the box pays exactly what it was priced at.
     spellExp: (id) => pandoraPrices(s.assets).spellLevel(id) * PANDORA_RATES.spellLevel

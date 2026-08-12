@@ -19,6 +19,59 @@ import type { PandoraPrices } from './pandora-contents.ts';
 
 const SPELL_TABLE = 'GameMechanics/RefTables/UndividedSpells.xdb';
 
+/** Where the game declares the ids its own scripts speak in. */
+const SCRIPT_IDS = ['scripts/common.lua', 'scripts/advmap-startup.lua'];
+/** And the enum every spell has a number in, whether a script names it or not. */
+const SPELL_ENUM = 'SpellID';
+
+/**
+ * How a spell must be WRITTEN in a script: the game's own global when there is
+ * one, and the plain number when there is not.
+ *
+ * `SPELL_FIREBALL` is a global the shipped `scripts/common.lua` declares, and a
+ * block that says the word works. `SPELL_RUNE_OF_CHARGE` is NOT — 104 of the
+ * 353 spells in the `SpellID` enum have no global anywhere, the ten runes among
+ * them — and a block that says that word hands `nil` to `TeachHeroSpell` and
+ * dies on the next `..`:
+ *
+ *     [Script warning!] Value was NIL when getting global with name 'SPELL_RUNE_OF_CHARGE'
+ *     (Script) ERROR: attempt to concat a nil value
+ *
+ * which is what a box of runes did in the game (13.08.2026). So the name is
+ * kept where it reads, and the NUMBER is written where the name would be a
+ * hole — read off `types.xml`, which is where the engine's own numbering lives
+ * rather than something to count out here.
+ *
+ * An id nobody knows keeps its name: there is nothing better to say, and a
+ * script that mentions it says so in the log.
+ */
+export function spellRefs(data: Assets): (id: string | number) => string {
+  const declared = new Set<string>();
+  for (const path of SCRIPT_IDS) {
+    const text = data.text(path);
+    for (const m of (text ?? '').matchAll(/\b(SPELL_\w+)\s*=\s*\d+/g)) declared.add(m[1]!);
+  }
+  const numbers = new Map<string, number>();
+  const types = data.text('types.xml') ?? '';
+  const at = types.indexOf(`<TypeName>${SPELL_ENUM}</TypeName>`);
+  const from = at < 0 ? -1 : types.indexOf('<Entries>', at);
+  const to = from < 0 ? -1 : types.indexOf('</Entries>', from);
+  if (from >= 0 && to > from) {
+    for (const m of types.slice(from, to).matchAll(/<Name>(\w+)<\/Name>\s*<Value>(\d+)<\/Value>/g)) {
+      numbers.set(m[1]!, Number(m[2]));
+    }
+  }
+  return (id) => {
+    if (typeof id === 'number') return String(id);
+    const name = id.trim();
+    if (/^\d+$/.test(name)) return name;
+    const full = name.startsWith('SPELL_') ? name : `SPELL_${name}`;
+    if (declared.has(full)) return full;
+    const number = numbers.get(full);
+    return number === undefined ? full : String(number);
+  };
+}
+
 /** `SPELL_*` → the record's href, read once off the spell table. */
 function spellRecords(data: Assets): Map<string, string> {
   const out = new Map<string, string>();

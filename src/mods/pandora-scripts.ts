@@ -87,6 +87,18 @@ export interface PandoraRefs {
    * teaching — which is what it did before any of this existed.
    */
   spellExp?: (id: string | number) => number;
+  /**
+   * How a spell has to be WRITTEN so the engine's Lua knows it — `spellRefs()`
+   * in pandora-prices.ts, which answers with the game's own global where one
+   * exists and with the plain number where it does not.
+   *
+   * The runes are why: no script of the game's declares `SPELL_RUNE_OF_CHARGE`,
+   * so a block that spelled it out handed `nil` to `TeachHeroSpell` and then
+   * died concatenating it. Left out, every spell is written as its name, which
+   * is what a box did before any of this existed — and is right for the ones
+   * the game does declare.
+   */
+  spellRef?: (id: string | number) => string;
 }
 
 /**
@@ -394,7 +406,9 @@ function boxLua(box: PandoraContents, refs: PandoraRefs | undefined): string[] {
   // bring it back.
   const priced = (box.spells ?? []).map((id) => {
     const worth = refs?.spellExp?.(id) ?? 0;
-    return `{${luaId('SPELL_')(id)}, ${luaNumber(worth)}}`;
+    // THE NAME ONLY WHERE THE ENGINE KNOWS IT — see `spellRef` above; a rune
+    // has no global of its own and has to go down as its number.
+    return `{${refs?.spellRef?.(id) ?? luaId('SPELL_')(id)}, ${luaNumber(worth)}}`;
   });
   if (priced.length) fields.push(`\tspells = { ${priced.join(', ')} }`);
   if (box.creatures?.length) {

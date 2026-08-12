@@ -868,9 +868,13 @@ test('saving writes the block the game reads, and the texts it shows', async () 
   // which is also the ladder of Runelore masteries the engine asks for. Nothing
   // in the block knows they are runes: what happens to them is the gate's
   // answer at the moment the box opens.
-  expect(entryOf(RUNE_BOX.name), 'the runes are priced by level, like any spell')
-    .toContain('spells = { {SPELL_RUNE_OF_CHARGE, 1000}, {SPELL_RUNE_OF_ETHEREALNESS, 3000},'
-      + ' {SPELL_RUNE_OF_DRAGONFORM, 5000} }');
+  //
+  // BY NUMBER, and that is the whole point of this line. No script the game
+  // ships declares a rune's name, so the block that spelled one out handed nil
+  // to `TeachHeroSpell` and died concatenating it — seen in the game
+  // 13.08.2026. 249, 256 and 258 are the engine's own ids, out of `types.xml`.
+  expect(entryOf(RUNE_BOX.name), 'the runes go down as numbers, priced by level')
+    .toContain('spells = { {249, 1000}, {256, 3000}, {258, 5000} }');
 });
 
 test('and it packs to a map the game can be pointed at', async () => {

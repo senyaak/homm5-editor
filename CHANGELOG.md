@@ -67,7 +67,14 @@ one.
   anything else. A spell the hero already knows is not paid for.
 
   Nothing here knows what a school is, so a mod that adds one is covered without
-  a line changing.
+  a line changing. Runes work out of the box because of it: only a Runemage may
+  hold one, and how far his Runelore must have come is read off the rune's own
+  level — basic for a rune of level 1 or 2, advanced for 3 and 4, expert for 5.
+
+  A box of runes also used to hand over nothing at all and fill the console with
+  red: the game declares no `SPELL_RUNE_*` global for its scripts to use — 104
+  of its 353 spells have no name in Lua — so the box now writes those by the
+  number the engine itself uses.
 
 - **And it is no longer a chest.** The box is an `AdvMapTreasure` in the data,
   so the engine used to run the CHEST's visit beside ours: its own dialog, its
