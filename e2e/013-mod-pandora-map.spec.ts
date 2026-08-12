@@ -358,7 +358,7 @@ const LEADS = ['Knight', 'Demonlord'];
 // far away at x = 66, are further right still.
 // BELOW THE LADDER, not beside it: with the boxes two apart the rows now reach
 // y = 28, and this line at 32 is clear of them with room for a row of its own.
-const BARBARIAN = { at: { x: 2, y: 32 }, entry: `${GENERIC_HEROES}/Barbarian.xdb` };
+const BARBARIAN = { at: { x: 2, y: 32 }, entry: `${GENERIC_HEROES}/Barbarian.xdb`, experience: 500_000 };
 const CRIES = ['SPELL_WARCRY_RALLING_CRY', 'SPELL_WARCRY_CALL_OF_BLOOD'];
 
 /**
@@ -575,6 +575,13 @@ test('two sides, each with a hero of their own', async () => {
   const barb = await place(page, () => pickEntry(page, BARBARIAN.entry), BARBARIAN.entry,
     BARBARIAN.at.x, BARBARIAN.at.y);
   await setPath(page, barb, ['PlayerID'], SIDES[0]!.player);
+  // AND HE ARRIVES A VETERAN, or the row proves only its first rung. The ladder
+  // asks a HERO LEVEL of its own for each step — 1, 10, 15, 20 — and the
+  // engine's recompute STOPS at the first rung he has not reached, so a level-1
+  // barbarian opening all five boxes ends with a talisman of 4 and one spell:
+  // Summon Boat. Half a million experience is well past the twentieth level, so
+  // every rung he is given is a rung he can use.
+  await setPath(page, barb, ['Experience'], String(BARBARIAN.experience));
   for (const b of BARBARIAN_BOXES) {
     const id = await place(page, () => pickObject(page, BOX), b.name, b.x, b.y);
     await setPath(page, id, ['Name'], b.name);
@@ -589,8 +596,10 @@ test('two sides, each with a hero of their own', async () => {
     'CRIES, then the TALISMAN. The first box holds war cries, which a barbarian'
     + ' can be taught. The five after it hold adventure magic, which he cannot -'
     + ' each one raises his talisman by a single step instead: boat, creatures,'
-    + ' dimension door, town portal. The fifth is one past the top and should'
-    + ' hand over nothing at all.');
+    + ' dimension door, town portal. The fifth is one past the top and hands over'
+    + ' nothing at all, in silence. Each rung also asks a hero level of its own -'
+    + ' 1, 10, 15, 20 - and the spells stop at the first rung he has not reached,'
+    + ' which is why this one starts as a veteran.');
 
   // A TOWN FOR RED, so Town Portal has somewhere to go and the shelter that
   // sells talismans can be walked into and compared with.

@@ -496,6 +496,18 @@ console.log('the scripts');
   check('the behaviour takes the talisman step before teaching',
     lua.includes('local step = H5ETalismanStep(hero);')
     && lua.indexOf('H5ETalismanStep(hero)') < lua.indexOf('TeachHeroSpell(hero, s);', lua.indexOf('box.adventure')));
+  // THREE ANSWERS, and the middle one is the correction a play-through paid
+  // for: a talisman already at the top used to fall through to teaching, so the
+  // box announced a Town Portal the engine then refused. Zero must reach
+  // neither the announcement nor the teaching.
+  {
+    const from = lua.indexOf('box.adventure');
+    const branch = lua.slice(from, lua.indexOf('box.creatures', from));
+    const top = branch.indexOf('elseif step == 0 then');
+    check('a talisman at the top neither announces nor teaches',
+      top > 0 && !/H5EAnnounceGain|TeachHeroSpell/.test(branch.slice(top)),
+      branch.split('\n').filter((l) => l.includes('step') || l.includes('Teach')).join(' | '));
+  }
 
   // A MESSAGE IS A FILE, not a string: MessageBox takes a text ref. A box that
   // says something and has nowhere for it to be read from is a box that would

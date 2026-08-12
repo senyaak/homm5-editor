@@ -83,11 +83,18 @@ and which one depends on who opens it:
   carry a hero from nothing to Town Portal in a single lid.
 
 Three things about the ladder are the engine's and not ours. It is
-**cumulative** — a talisman of 4 is four spells, not one. A rung whose hero
-level is not reached yet **yields nothing until it is**, so the step can be
-taken and the spell still be missing for a while. And a talisman does nothing
-whatsoever for a hero who is **not of the Horde**, which is why the box asks
-first and teaches when the answer is no.
+**cumulative** — a talisman of 4 is four spells, not one. Every rung asks a
+**hero level** of its own — 1, 10, 15, 20 — and the engine's recompute **stops
+at the first rung he has not reached**, so a level-2 barbarian who opens all
+four boxes ends up with a talisman of 4 and exactly one spell, Summon Boat. The
+rest arrive as he levels. And a talisman does nothing whatsoever for a hero who
+is **not of the Horde**, which is why the box asks first and teaches when the
+answer is no.
+
+A box past the top of the ladder hands over **nothing, silently**. It could
+fall back to teaching, and that is what it did once: the box announced Town
+Portal, the engine refused it for being the wrong school, and the player was
+told about a spell he never got.
 
 The window says as much beside the spell list, and the whole reading — what the
 gate branches on, where the level lives, what recomputes the list — is in

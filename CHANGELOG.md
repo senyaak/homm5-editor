@@ -58,9 +58,12 @@ one.
 
   The ladder is the game's own table, read at save time, so the four rungs are
   never written down twice. What the engine decides stays the engine's: the
-  rungs are cumulative, a rung the hero's level has not reached yet waits until
-  it has, and a talisman does nothing at all for a hero who is not of the Horde
-  — in which case the box teaches the spell as usual.
+  rungs are cumulative, every rung asks a hero level of its own (1, 10, 15, 20)
+  and the spells stop at the first one he has not reached, and a talisman does
+  nothing at all for a hero who is not of the Horde — in which case the box
+  teaches the spell as usual. A box past the top of the ladder hands over
+  nothing and says nothing: teaching there would announce a spell the engine
+  goes on to refuse.
 
 - **And it is no longer a chest.** The box is an `AdvMapTreasure` in the data,
   so the engine used to run the CHEST's visit beside ours: its own dialog, its

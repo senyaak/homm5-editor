@@ -118,10 +118,11 @@ static void *spell_bans_for(void *hero) {
 /**
  * `H5ETalismanStep(heroName)` — one level up, and the level he ends on.
  *
- * Nothing (nil) when this hero is not somebody a talisman serves, so the script
- * can tell "he took the step" from "he is not of the Horde" and teach the spell
- * the ordinary way instead. Zero is never an answer: a hero who took a step is
- * on 1 at the very least.
+ * Three answers, because the caller has three things to do:
+ *
+ *   nil  this hero is not somebody a talisman serves — teach him the spell;
+ *   0    he is, and his talisman is already at the top — hand over nothing;
+ *   1…N  he took the step, and this is where he stands now.
  *
  * THE TOP IS NOT WRITTEN DOWN HERE. The setter clamps to the length of the
  * game's own table, so this asks for one more and then READS BACK what it got:
@@ -190,9 +191,14 @@ static void *__fastcall lua_talisman_step(void *ctx) {
   int had = level(hero, NULL);
   setLevel(hero, NULL, had + 1);
   int now = level(hero, NULL);
+  // AT THE TOP, AND THAT IS NOT THE SAME AS "not my case". Nil sends the script
+  // to `TeachHeroSpell`, which for a barbarian is a spell the engine refuses —
+  // so a box past the end of the ladder announced Town Portal and handed over
+  // nothing, which is the worst of both. ZERO says "he is of the Horde and
+  // there is nothing left to give": the box then keeps quiet.
   if (now == had) {
     log_num("H5ETalismanStep: already at the top of the ladder, ", had);
-    return NULL;
+    return (void *)(INT_PTR)lua_push_int(ctx, 0);
   }
   // The step is the number; the SPELLS come from this call, which is the engine's
   // own and is what the shelter's purchase runs the moment it has written a
