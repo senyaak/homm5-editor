@@ -117,6 +117,27 @@ The window says as much beside the spell list, and the whole reading — what th
 gate branches on, where the level lives, what recomputes the list — is in
 [SPELLS.md](engineInternals/SPELLS.md#the-barbarians-adventure-magic-is-a-talisman-not-a-book).
 
+#### How to author one
+
+Put an adventure spell in a box — `Contents…` → **Spells** → Summon Boat, Summon
+Creatures, Dimension Door or Town Portal. That is the whole of it: the split
+happens at save, off the game's own table, and the box carries both paths.
+
+What each hero gets from that one box:
+
+| who opens it | what happens |
+|---|---|
+| anybody with a spellbook | learns the spell the author chose |
+| a barbarian below the top | **one step** up his talisman — whichever rung is next, not the spell named |
+| a barbarian at talisman 4 | 1000 experience per level of the spell |
+
+So a row of four such boxes walks a barbarian up the whole ladder, and the
+spells themselves arrive as he reaches the level each rung asks for. **The probe
+map has no such boxes** — they were there and were taken out (12.08.2026), since
+with the rungs gated on hero level a low-level barbarian sees one spell and
+three numbers. What stands there instead is a row of experience boxes, which is
+what makes the Traveller's Shelter reachable in the first place.
+
 ### What the player sees, and when
 
 1. **The question** — "the box is sealed… open it?"

@@ -362,19 +362,14 @@ const BARBARIAN = { at: { x: 2, y: 32 }, entry: `${GENERIC_HEROES}/Barbarian.xdb
 const CRIES = ['SPELL_WARCRY_RALLING_CRY', 'SPELL_WARCRY_CALL_OF_BLOOD'];
 
 /**
- * The barbarian's own row: what he CAN hold, then the whole ladder and one box
- * past the end of it.
+ * The four spells of the talisman ladder — here as SCROLLS and nothing else.
  *
- * ONE STEP PER BOX is the rule the feature is built on, so a single box could
- * only ever show the first rung. Five show the lot: boat, creatures, dimension
- * door, town portal — and then a fifth holding Town Portal again, which is the
- * question no other box asks. His talisman is at the top by then, so
- * `H5ETalismanStep` must answer "no" and the box must fall back to teaching —
- * where the engine refuses him, and nothing at all should happen.
- *
- * The spell in each box is what an ordinary hero would be taught by it; for the
- * barbarian it is only the label, since which rung he gets depends on where his
- * talisman already stands.
+ * THE BOXES THAT RAISED A TALISMAN ARE GONE from this map (Senya, 12.08.2026:
+ * "not needed for now"). The machinery stays and is documented in
+ * docs/PANDORA_BOX.md — a box holding an adventure spell raises a barbarian's
+ * talisman by one step — but nothing here exercises it: with the rungs gated on
+ * his level, walking a low-level barbarian up the ladder showed one spell and
+ * three numbers, and the row cost more to read than it told.
  */
 const LADDER = [
   'SPELL_SUMMON_BOAT', 'SPELL_SUMMON_CREATURES', 'SPELL_DIMENSION_DOOR', 'SPELL_TOWN_PORTAL',
@@ -400,24 +395,17 @@ const BARBARIAN_BOXES = [
     name: 'PandoraCriesForTheBarbarian', x: 6, y: BARBARIAN.at.y,
     contents: { name: 'PandoraCriesForTheBarbarian', spells: CRIES },
   },
-  ...[...LADDER, 'SPELL_TOWN_PORTAL'].map((spell, i) => ({
-    name: `PandoraTalisman${i + 1}`, x: 8 + i * STEP, y: BARBARIAN.at.y,
-    contents: { name: `PandoraTalisman${i + 1}`, spells: [spell] },
-  })),
   // AND THE ROW ABOVE: the levels, one box at a time.
   //
-  // The rungs past the first are gated on the HERO's level, not on the
-  // talisman's, and the engine's recompute stops at the first rung he has not
-  // reached — so a barbarian who opens the whole ladder at level 1 owns a
-  // talisman of 4 and knows Summon Boat. What nothing has shown yet is the
-  // other half: whether the spells arrive by themselves as he grows, with the
-  // talisman already at the top and no box involved.
-  //
-  // He starts with no experience at all, walks the ladder, and then opens these
-  // four in turn — 5, 10, 15, 20, the thresholds out of
+  // He starts with no experience at all, and these four take him to 5, 10, 15
+  // and 20 — the thresholds out of
   // `Editor Documentation/HOMM5_Hero_Level_and_Experience.pdf`. Each box holds
   // the DIFFERENCE from the level before it, so opening them in order lands him
   // exactly on each threshold: 4600, 14700, 34141, 81977.
+  //
+  // With the talisman boxes gone this is what makes the shelter reachable: a
+  // level-1 barbarian may buy only the first rung, and the ladder's own
+  // requirements (1, 10, 15, 20) are what the row is for.
   ...LEVELS.map((step, i) => ({
     name: `PandoraLevel${step.level}`, x: 8 + i * STEP, y: BARBARIAN.at.y + STEP,
     contents: { name: `PandoraLevel${step.level}`, exp: step.gain },
@@ -647,30 +635,26 @@ test('two sides, each with a hero of their own', async () => {
     await setPath(page, id, ['Name'], b.name);
     await page.evaluate((p) => window.editor.pandoraSet(p.id, p.contents), { id, contents: b.contents });
   }
-  // And his own signpost, between him and the row — the one row on the map
-  // where the boxes hand over two different things depending on who opens them.
+  // And his own signpost, beside the one box on his line.
   const barbSign = await place(page, () => pickObject(page, SIGN), 'sign-barbarian',
     BARBARIAN.at.x + STEP, BARBARIAN.at.y);
   await page.evaluate((oid) => window.view.select(oid), barbSign);
   await setTextRef(page, 'MessageFileRef', 'sign-barbarian',
-    'CRIES, then the TALISMAN. The first box holds war cries, which a barbarian'
-    + ' can be taught. The five after it hold adventure magic, which he cannot -'
-    + ' each one raises his talisman by a single step instead: boat, creatures,'
-    + ' dimension door, town portal. The fifth is one past the top and hands over'
-    + ' nothing at all, in silence. He starts at level 1, so expect only Summon'
-    + ' Boat from the lot: every other rung is gated on HIS level. The row above'
-    + ' is where those levels come from.');
+    'CRIES, which a barbarian CAN be taught - open this one with him and with an'
+    + ' ordinary hero both. He learns them; anybody else is paid 1000 experience'
+    + ' a level instead, because the engine refuses him the school. That is the'
+    + ' rule this row is here for, and it works the same way round: a barbarian'
+    + ' handed a battle spell is paid too.');
   // The row above gets its own post, because the question it asks is the one
   // nothing has answered yet.
   const levelSign = await place(page, () => pickObject(page, SIGN), 'sign-levels',
     BARBARIAN.at.x + STEP, BARBARIAN.at.y + STEP);
   await page.evaluate((oid) => window.view.select(oid), levelSign);
   await setTextRef(page, 'MessageFileRef', 'sign-levels',
-    'LEVELS, one box each: 5, 10, 15, 20. Walk the talisman row below first -'
-    + ' it leaves you with a talisman of 4 and one spell. Then open these in'
-    + ' order and watch the spell book: Summon Creatures should appear at level'
-    + ' 10, Dimension Door at 15, Town Portal at 20, with no box handing any of'
-    + ' them over. That is the engine reading the talisman again as you grow.');
+    'LEVELS, one box each: 5, 10, 15, 20. The talisman sold at the Traveller\'s'
+    + ' Shelter asks a hero level per rung - 1, 10, 15, 20 - so a barbarian who'
+    + ' opens these can then walk into the town and buy the whole ladder, one'
+    + ' rung at a time, and watch each spell arrive.');
 
   // THE SCROLLS — the same four spells as artifacts rather than as pages.
   for (const s of SCROLLS) {
@@ -789,19 +773,21 @@ test('saving writes the block the game reads, and the texts it shows', async () 
     expect(from, `${name} has an entry in the block`).toBeGreaterThan(-1);
     return lua.slice(from, lua.indexOf('};', from));
   };
-  // Town Portal is a level-5 spell, so the price beside it is 5000 — what the
-  // box pays a hero who cannot hold it, at the shrine's own rate.
-  const portalBox = BARBARIAN_BOXES.find((b) => b.name === 'PandoraTalisman4')!;
-  expect(entryOf(portalBox.name), `${portalBox.name} carries Town Portal as adventure magic`)
-    .toContain('adventure = { {SPELL_TOWN_PORTAL, 5000} }');
-  // AND THE LEVELS ARE PLAIN EXPERIENCE — the row above hands over no magic at
-  // all, which is the point of it: whatever appears in his book afterwards
-  // came from the engine reading his talisman again, not from a box.
+  // THE TALISMAN ROW IS GONE. The machinery is still there and documented
+  // (docs/PANDORA_BOX.md); only the boxes that walked it are out, and this says
+  // so rather than leaving their absence to be noticed.
+  //
+  // NOT "no adventure magic anywhere": the Spells row is filled by PRICE out of
+  // the game's whole spell table, and Town Portal is a level-5 spell like any
+  // other — so it turns up there, correctly, carrying both paths.
+  expect(lua, 'no box walks the talisman ladder').not.toContain('PandoraTalisman');
+  // The levels are plain experience and nothing else — what they are for is
+  // making the shelter's own rungs reachable.
   for (const step of LEVELS) {
     const entry = entryOf(`PandoraLevel${step.level}`);
     expect(entry, `PandoraLevel${step.level} hands over ${step.gain} experience`)
       .toContain(`exp = ${step.gain}`);
-    expect(entry, `and nothing else`).not.toContain('adventure =');
+    expect(entry, 'and nothing else').not.toContain('spells =');
   }
   // The cries stay ordinary teaching — they are the half a barbarian CAN hold,
   // and a rule that swept them into the ladder would be the same bug the other
