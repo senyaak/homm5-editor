@@ -20,14 +20,11 @@ import { readScriptFileName, readSidecarText, sidecarPath, writeSidecarText } fr
 import type { Session } from '#electron/state.ts';
 import { setPath } from '#src/schema/tree.ts';
 import {
-  pandoraGiftFile, pandoraGiftRef, pandoraMessageFile, pandoraMessageRef,
-  prunePandoraBoxes, readPandoraBoxes, writePandoraBoxes,
+  pandoraMessageFile, pandoraMessageRef, prunePandoraBoxes, readPandoraBoxes, writePandoraBoxes,
 } from '#src/map/pandora-store.ts';
 import type { PandoraContents } from '#src/mods/pandora-contents.ts';
 import { isPandoraShared } from '#src/mods/pandora-files.ts';
-import { pandoraNames, pandoraReport } from '#src/mods/pandora-names.ts';
 import { withPandoraBlock } from '#src/mods/pandora-scripts.ts';
-import { gameData, mountedAssets } from '#electron/paths.ts';
 
 /** The default script a map gains when its boxes need one. */
 const SCRIPT_STEM = 'MapScript';
@@ -94,26 +91,15 @@ export function writePandoraForMap(s: Session, archivePrefix: string): number {
   const luaPath = sidecarPath(s, luaFile);
   if (!luaPath) return 0;
 
-  // The author's words, and the receipt of what the box gives — one file each,
-  // both written here because the block can only point at files that exist.
-  // The names in the receipt are the game's own and need the data root, which
-  // is why this is the moment for it: the engine's Lua cannot turn
-  // SPELL_IMPLOSION into what the spellbook calls it.
-  const names = pandoraNames(mountedAssets(gameData()));
-  const reports = new Map<string, string>();
+  // The author's words, and only those: the block can point at a file, so the
+  // file has to exist first.
   for (const box of boxes) {
     if (box.message) writeSidecarText(s, pandoraMessageFile(box.name), box.message);
-    const report = pandoraReport(box, names);
-    if (report) {
-      writeSidecarText(s, pandoraGiftFile(box.name), report);
-      reports.set(box.name, report);
-    }
   }
 
   const before = existsSync(luaPath) ? readFileSync(luaPath, 'utf8') : '';
   const after = withPandoraBlock(before, boxes, {
     said: (b: PandoraContents) => (b.message ? pandoraMessageRef(archivePrefix, b.name) : undefined),
-    report: (b: PandoraContents) => (reports.has(b.name) ? pandoraGiftRef(archivePrefix, b.name) : undefined),
   });
   // Only when it changed: an untouched .lua keeps its timestamp, and the
   // watcher keeps quiet.

@@ -24,7 +24,7 @@
 // What comes out is `<game>/H5E/Pandora Probe.h5m` — a playable map. The
 // answers are read by playing it, which is the one step this suite cannot do.
 
-import { existsSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { test, expect } from '@playwright/test';
 import { DATA, hudSays, launchEditor } from './launch.ts';
@@ -65,13 +65,12 @@ const BOX = `/${pandoraShared(PANDORA_TIERS[0]!.key)}`;
  * so its four copies carry an explicit override each. That is the other half of
  * the tier rule, and this is where it is exercised.
  *
- * EVERY BOX ALSO REPORTS ITSELF, and no kind here has to arrange that: the
- * editor writes a receipt beside each box naming what it hands over in the
- * game's own words, and the behaviour flies it over the hero. A play-through
- * read two of these rows — experience and gold, which move a number in the HUD
- * and nothing else — as boxes that did nothing at all, because a silent reward
- * and a broken one look alike from the outside. What this file still writes by
- * hand is only the AUTHOR's message, on the one kind that is about a message.
+ * AND NOTHING HERE ANNOUNCES A REWARD. The game does that itself for six of
+ * the eight kinds; the two it does not — a spell taught and a stack given —
+ * are silent in the ENGINE, and that is where they are being fixed
+ * (native/qol/pandora-notify.c). A caption of ours under every gain was tried
+ * and taken out again: it read as a second, worse copy of what the game had
+ * already said.
  */
 const KINDS: { key: string; per: (tier: number) => Partial<PandoraContents> }[] = [
   {
@@ -498,25 +497,13 @@ test('saving writes the block the game reads, and the texts it shows', async () 
   expect(lua, 'and the block points at it')
     .toContain(`/Maps/SingleMissions/${NAME}/pandora-${talker.name}.txt`);
 
-  // AND THE RECEIPT, which nobody typed: written from the contents at save
-  // time, in the game's own words. This is the whole answer to a row of boxes
-  // that "did nothing" — a spell box now says which spell, by the name the
-  // spellbook uses, in the language the install speaks.
-  const spellBox = BOXES.find((b) => b.contents.spells?.length)!;
-  const gift = join(MAP_DIR, `pandora-${spellBox.name}-gift.txt`);
-  expect(existsSync(gift), 'a box that gives something writes a receipt').toBe(true);
-  const said = readFileSync(gift, 'utf16le').replace(/^﻿/, '');
-  expect(said.length, 'and the receipt is not empty').toBeGreaterThan(0);
-  expect(said, 'named, not spelled out as an id').not.toContain('SPELL_');
-  expect(lua, 'and the block points at it')
-    .toContain(`/Maps/SingleMissions/${NAME}/pandora-${spellBox.name}-gift.txt`);
-  // The box that only speaks hands nothing over, so it gets no receipt. Not
-  // the FIRST one, which is the box the window filled with gold by hand — its
-  // contents on the map are not the ones this file wrote.
-  const onlySpeaks = BOXES.filter((b) => b.name !== BOXES[0]!.name)
-    .find((b) => b.contents.message && !b.contents.gold)!;
-  expect(existsSync(join(MAP_DIR, `pandora-${onlySpeaks.name}-gift.txt`)),
-    'a box with nothing to give has nothing to report').toBe(false);
+  // AND NOTHING SAYS WHAT WAS HANDED OVER. The game announces its own gains,
+  // so a line of ours under each was noise — and the two it stays silent about
+  // are being given the engine's own announcement instead
+  // (native/qol/pandora-notify.c). Nothing but the author's texts ships.
+  const strays = readdirSync(MAP_DIR).filter((f) => /-gift\.txt$/.test(f));
+  expect(strays, 'no receipts are written beside the map').toEqual([]);
+  expect(lua, 'and the block points at none').not.toContain('report =');
 });
 
 test('and it packs to a map the game can be pointed at', async () => {

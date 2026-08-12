@@ -136,18 +136,3 @@ export function pandoraMessageRef(archivePrefix: string, name: string): string {
   return `/${dir ? dir + '/' : ''}${pandoraMessageFile(name)}`;
 }
 
-/**
- * And the receipt beside it — what the box handed over, in the game's own
- * words, flown over the hero when it opens (src/mods/pandora-names.ts).
- *
- * A SECOND FILE rather than a paragraph appended to the message: the two are
- * shown by different calls at different moments, one is the author's and the
- * other is generated, and a box may want either without the other.
- */
-export const pandoraGiftFile = (name: string): string => `pandora-${name}-gift.txt`;
-
-/** The receipt's path as the game addresses it. */
-export function pandoraGiftRef(archivePrefix: string, name: string): string {
-  const dir = archivePrefix.replace(/^\/+|\/+$/g, '');
-  return `/${dir ? dir + '/' : ''}${pandoraGiftFile(name)}`;
-}

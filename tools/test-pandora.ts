@@ -495,22 +495,13 @@ console.log('the scripts');
   check('the talking block lints clean', luaDiagnostics(said).length === 0,
     luaDiagnostics(said).map((d) => `${d.from}: ${d.message}`).join('; '));
 
-  // The receipt rides beside it, and only where there is something to report:
-  // a box that just talks hands nothing over, so it gets no flying sign.
-  const paying = [
-    { name: 'PandoraPays', gold: 500 },
-    { name: 'PandoraSays', message: 'Something stirs inside.' },
-  ];
-  const withReport = pandoraMapBlock(paying, {
-    said: (b) => `/Maps/Probe/${b.name}.txt`,
-    report: (b) => (b.gold ? `/Maps/Probe/${b.name}-gift.txt` : undefined),
-  });
-  check('a box that gives something points at its receipt',
-    withReport.includes('report = "/Maps/Probe/PandoraPays-gift.txt"'));
-  check('and a box that only speaks has none',
-    !withReport.includes('report = "/Maps/Probe/PandoraSays-gift.txt"'));
-  check('the receipt is flown over the hero, for its owner only',
-    pandoraBehaviourLua().includes('ShowFlyingSign(box.report, hero, owner, 6)'));
+  // AND NOTHING ELSE IS SAID. The box used to fly a receipt of what it handed
+  // over; the game announces its own gains, so that was a second line under
+  // every one of them. What the game leaves silent is being given the ENGINE's
+  // announcement (native/qol/pandora-notify.c), not a caption of ours.
+  const paying = pandoraMapBlock([{ name: 'PandoraPays', gold: 500 }]);
+  check('a box that gives something says nothing about it',
+    !paying.includes('report') && !pandoraBehaviourLua().includes('box.report'));
   // The author's words belong between "yes" and whatever comes out — and for a
   // guarded box that means BEFORE the fight, not after it.
   const behaviour = pandoraBehaviourLua();

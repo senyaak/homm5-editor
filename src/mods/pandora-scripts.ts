@@ -52,17 +52,16 @@ export const PANDORA_BLOCK_END = '-- H5E pandora end';
 export type MessageRef = (box: PandoraContents) => string | undefined;
 
 /**
- * The two texts a box can point at, as the writer of the map answers for them.
+ * Where the author's message was written, as the writer of the map answers.
  *
- * `said` is the author's own message, shown when the lid comes off; `report` is
- * the generated receipt of what was handed over, named in the game's words
- * (pandora-names.ts) and flown over the hero afterwards. Both are FILES because
- * both calls take a ref, and a caller that writes neither — a unit test, say —
- * simply gets a block without them.
+ * ONE TEXT, because one is all a box has to say. A receipt of what it handed
+ * over used to ride beside it and is gone: the game announces its own gains —
+ * experience, gold, resources, an artifact — and a line of ours under each is
+ * noise. The two it stays silent about get the ENGINE's announcement instead
+ * (native/qol/pandora-notify.c), not a caption written here.
  */
 export interface PandoraRefs {
   said?: MessageRef;
-  report?: MessageRef;
 }
 
 /**
@@ -203,23 +202,12 @@ export function pandoraBehaviourLua(): string {
     '\t\t\tAddHeroCreatures(hero, c[1], c[2]);',
     '\t\tend;',
     '\tend;',
-    '\t-- AND THE RECEIPT, in the game\'s own idiom: a flying sign over the hero,',
-    '\t-- naming what he just got. Two of the eight kinds of content move a number',
-    '\t-- in the HUD and nothing else, and a play-through read both as boxes that',
-    '\t-- did nothing - a silent reward and a broken one look alike from outside.',
-    '\t--',
-    '\t-- ShowFlyingSign TAKES A PLAYER, which is the whole reason it is the right',
-    '\t-- call here: the engine shows it to that player and to nobody else, so the',
-    '\t-- computer\'s receipt cannot land on our screen the way its message did.',
-    '\t-- The names in it are the game\'s own, written into the file at save time -',
-    '\t-- Lua has no way to turn SPELL_IMPLOSION into what the spellbook calls it.',
-    '\t--',
-    '\t-- GetObjectOwner is asked again rather than carried: a fight sits between',
-    '\t-- the two, and the hero can have changed hands or died in it.',
-    '\tlocal owner = GetObjectOwner(hero);',
-    '\tif box.report ~= nil then',
-    '\t\tShowFlyingSign(box.report, hero, owner, 6);',
-    '\tend;',
+    '\t-- AND NOTHING SAYS WHAT WAS HANDED OVER, on purpose. The game announces',
+    '\t-- its own gains - experience, gold, resources, an artifact - and a second',
+    '\t-- line of ours under each of them is noise. The two it does NOT announce,',
+    '\t-- a spell taught and a stack given, are silent in the engine and not in',
+    '\t-- the script: see native/qol/pandora-notify.c, where they are being given',
+    '\t-- the engine\'s own announcement rather than a caption of ours.',
     '\tH5E_PANDORA[objectName] = nil;',
     '\t-- The chest\'s own pickup can have eaten the object already (until the',
     '\t-- native gate lands); removing what is gone is an error worth avoiding.',
@@ -312,10 +300,6 @@ function boxLua(box: PandoraContents, refs: PandoraRefs | undefined): string[] {
     }
     fields.push(`\tsaid = "${ref}"`);
   }
-  // The receipt, when there is something to report: a box that only speaks has
-  // nothing to hand over, and a caller that writes no texts answers nothing.
-  const report = refs?.report?.(box);
-  if (report) fields.push(`\treport = "${report}"`);
   const out = [
     `H5E_PANDORA["${box.name}"] = {`,
     ...fields.map((f, i) => (i < fields.length - 1 ? `${f},` : f)),
