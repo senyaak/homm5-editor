@@ -144,17 +144,39 @@ Yes, in stages, and each stage is testable on one machine.
    the formatter (0x7DC5F0) prints its fields in the order f1.f0.f2 — which is
    how {7,0,0} reaches the screen as `0.7.0`, next to the text
    `MatchMakerErrors/ErrorTextWithCode`.
-2. **Listen and record** — accept the router/CDKey/NAT/IRC connections and dump
+2. **Speak SRP, answer the NAT service** — done. `src/net/` holds the layers:
+   `srp.ts` (the reliable-UDP transport: SYN/FIN/ACK/URG, window, checksum),
+   `gs-message.ts` (six-byte header, big-endian size), `gs-data.ts` (the nested
+   string lists every body is made of), `gs-xor.ts` (the shuffle a plain body
+   wears) and `nat-service.ts` (the address mirror the game will not start
+   without). `tools/net-server.ts` serves it; `npm run test-net` checks it.
+
+   The checksum is where guessing would have cost days, so it is pinned to
+   recorded bytes: with the field zeroed, the sum over the captured client SYN is
+   `0x8893` — exactly what the client wrote there — and the sum over the packet
+   as sent folds to 0, which is how a receiver checks one. Each direction
+   announces a SEED in its window (the client's was `0x44ff`, ours is 0) and
+   signs its later packets from it. The test also flips a byte and demands the
+   check fail, because a checksum that always passes is not a checksum.
+
+   Prior art, and the reason the layers above went in this fast:
+   [michal-kapala/ubi-gs](https://github.com/michal-kapala/gsconnect) (MIT) is an
+   open re-implementation of Ubisoft's Game Service with a Heroes V directory —
+   router, lobby, CD-key, NAT, IRC. It is where the SRP field names, the GS
+   message header and the body shuffle were first written down; our code is our
+   own, in TypeScript, and cross-checks against their `servers.ini` and our own
+   captures. What it does NOT have is a ladder or persistent stats, which the
+   client does ask for (`LadderQuery_*`, `SubmitMatchResult`, and the stat keys
+   `RATING`, `GAMES_PLAYED`, `W_HEAVEN`…`G_ORCS`) — that part is ours to write.
+3. **Listen and record** — accept the router/CDKey/IRC connections and dump
    the bytes. There is no live Ubi service left to capture, so the protocol has
    to come from the client: every `LobbyRcv_*` parser is in the exe, and the log
    strings name the fields.
-3. **Implement enough lobby** for login → room → start game, answer the CD-key
-   check, and point IRC at a stock ircd.
-4. **Peer addresses** — the lobby hands out ExtIP/LocIP; with port forwarding
-   the NAT service can probably be stubbed out (unverified — the "no more NAT
-   Service servers" path may be fatal).
-
-The cheap alternative, if the GS protocol turns out to be a slog: tunnel the LAN
-matchmaker's broadcasts instead (5 packet types, no auth) — a game-specific
-Hamachi. It does not replace the lobby, but it does put two players in a game
-over the internet.
+4. **The router** — the TCP entry point: accounts, login, and the wrapper every
+   lobby message travels in. Registration is client-side ready (the `MPRegister`
+   texts and the `GSLGE_ERRORSECURE_USERNAME*` / `*PASSWORD*` errors), so what a
+   name and password mean is our server's decision.
+5. **The lobby** — login → lobby → room → start game, then the peers connect to
+   each other. Chat can point at a stock ircd.
+6. **Ours to invent** — the ladder and the stats behind it. Nobody has written
+   this end for Heroes V, and the client names every field it wants.

@@ -7,9 +7,11 @@
 // service at this machine, then accept those connections and write down every
 // byte the client sends.
 //
-// Nothing is answered on the game ports yet, deliberately: the first question is
-// what the client says first, and there is no live Ubisoft service left to
-// capture it from. Run it, let the game reach the online menu, read the log.
+// The NAT service answers for real (src/net/nat-service.ts) — it is the step the
+// game refuses to start without. The router, CD-key and IRC ports still only
+// record: there is no live Ubisoft service left to copy, so what the client says
+// first is how each of them gets written. Run it, let the game reach the online
+// menu, read the log.
 //
 //   node tools/net-server.ts [--host 127.0.0.1] [--http 8080]
 //
@@ -22,6 +24,7 @@ import { createSocket } from 'node:dgram';
 import { mkdirSync, createWriteStream } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { NatService } from '../src/net/nat-service.ts';
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -38,12 +41,19 @@ const httpPort = Number(arg('http', '8080'));
  * What the ini advertises. `launcher` is only read for Router and CDKeyServer
  * (`%sLauncherPort%i`); what it is for is not known yet.
  */
-const SERVICES = [
+interface Service {
+  prefix: string;
+  port: number;
+  launcher: number | null;
+  kind: 'tcp' | 'tcp+udp';
+}
+
+const SERVICES: Service[] = [
   { prefix: 'Router', port: 40000, launcher: 40001, kind: 'tcp+udp' },
   { prefix: 'NATServer', port: 40010, launcher: null, kind: 'tcp+udp' },
   { prefix: 'CDKeyServer', port: 40020, launcher: 40021, kind: 'tcp+udp' },
   { prefix: 'IRC', port: 6667, launcher: null, kind: 'tcp' },
-] as const;
+];
 
 function serversIni(): string {
   const lines = ['[Servers]'];
@@ -115,9 +125,25 @@ for (const service of SERVICES) {
       .listen(port, () => log(`tcp  ${label} on ${port}`));
 
     if (service.kind === 'tcp+udp') {
+      // The NAT port is the one service that answers so far; the rest still only
+      // record, because what the client says first is what we are here to learn.
+      const nat = label === 'NATServer' ? new NatService(port) : null;
       const udp = createSocket('udp4');
       udp.on('message', (data: Buffer, from) => {
         log(`UDP  ${label}:${port} <- ${from.address}:${from.port}, ${data.length} bytes\n${hexDump(data)}`);
+        if (!nat) return;
+        let result;
+        try {
+          result = nat.handle(data, from);
+        } catch (err) {
+          log(`UDP  ${label}:${port} !! ${(err as Error).message}`);
+          return;
+        }
+        log(`NAT  ${result.note}`);
+        for (const reply of result.replies) {
+          udp.send(reply, from.port, from.address);
+          log(`UDP  ${label}:${port} -> ${from.address}:${from.port}, ${reply.length} bytes\n${hexDump(reply)}`);
+        }
       });
       udp.on('error', (err: Error) => log(`UDP  ${label}:${port} bind failed: ${err.message}`));
       udp.bind(port, () => log(`udp  ${label} on ${port}`));

@@ -112,6 +112,26 @@ if (wanted[0] === '--push') {
   process.exit(0);
 }
 
+// `--icalls <slot>`: every `call dword ptr [slot]` — how an imported function's
+// callers are found, since its call is indirect through the import table.
+if (wanted[0] === '--icalls') {
+  for (const arg of wanted.slice(1)) {
+    const slot = Number(arg);
+    const bytes = Buffer.alloc(6);
+    bytes[0] = 0xff;
+    bytes[1] = 0x15;
+    bytes.writeUInt32LE(slot >>> 0, 2);
+    console.log(`--- call [0x${slot.toString(16)}]`);
+    const text = pe.section('.text');
+    for (const off of pe.findBytes(bytes.toString('latin1'))) {
+      if (off < text.raw || off >= text.raw + text.rawSize) continue;
+      const va = pe.addressOf(off)!;
+      console.log(`  ${va.toString(16)} in function ${functionStartOf(pe, va)?.toString(16) ?? '?'}`);
+    }
+  }
+  process.exit(0);
+}
+
 // `--calls <addr>`: every direct call or jump that lands on an address.
 if (wanted[0] === '--calls') {
   for (const arg of wanted.slice(1)) {
