@@ -89,6 +89,49 @@ static DWORD g_world;
 static DWORD g_signHolder, g_signSubject;
 
 /**
+ * IS THE MAP BEING PLAYED, OR IS IT STILL BEING SET UP? — and the answer comes
+ * from the map itself.
+ *
+ * A map's init script hands out spells, and the player was being told about one
+ * his hero had had since before the first turn. Two attempts to read the state
+ * out of the engine failed and cost runs: the announcement holder's own two
+ * questions answer the same either way, and a whole kilobyte of the world diffed
+ * against itself between loading and playing turns up three words, all of which
+ * move on the init map too — they count announcements, they do not describe the
+ * game.
+ *
+ * So the question goes to the one thing that already knows. A THREAD cannot get
+ * past its first `sleep` until the game is running; a line of Lua injected into
+ * every map starts one, and when it wakes it calls back in here. Nothing about
+ * this is a guess and no map has to be re-saved for it — the line is put there
+ * by us, not by the editor.
+ */
+static int g_playing;
+/** Asked once per world; retried until the map has a script system to ask. */
+static int g_watchAsked;
+
+static void *__fastcall lua_map_is_playing(void *ctx) {
+  (void)ctx;
+  g_playing = 1;
+  log_line("pandora: the map has woken up — it is being played, not set up");
+  return NULL;
+}
+
+/** Put the watch on the map, once the map is far enough along to take it. */
+static void watch_for_play(void) {
+  if (g_watchAsked) return;
+  // Lua 4, and the map's own dialect: `false` does not exist here and a global
+  // read before it is written is a red line, so the function is DEFINED and then
+  // started, never tested for.
+  if (!say_to_the_map("H5EWatchPlaying = function() sleep(1); H5EMapIsPlaying(); end; "
+                      "startThread(H5EWatchPlaying);")) {
+    return;
+  }
+  g_watchAsked = 1;
+  log_line("pandora: the map was asked to say when it starts");
+}
+
+/**
  * Every word of something, and no opinion about which ones matter.
  *
  * Twice now a report has been filtered down to what seemed worth keeping and
@@ -351,9 +394,12 @@ static void remember_the_world(DWORD self) {
   DWORD whole = complete_object(self);
   if (!is_the_world(whole) || whole == g_world) return;
   g_world = whole;
-  // A new world means a new game: what was caught for the old one is gone too.
+  // A new world means a new game: what was caught for the old one is gone too,
+  // and the new one has not started yet whatever the old one had said.
   g_signHolder = 0;
   g_signSubject = 0;
+  g_playing = 0;
+  g_watchAsked = 0;
   log_hex("pandora: this announcement comes from the world ", whole);
   // AND THE SAME OBJECT, HERE, WHILE THE MAP IS STILL BEING SET UP. The first
   // attempt at finding the flag compared the world of one map against the world
@@ -403,15 +449,14 @@ static int the_game_is_being_played(DWORD world) {
     log_line("pandora: nobody is watching — this is setting up, not playing");
     return 0;
   }
-  // AND A SIGNAL THAT WAS TRIED AND TAKEN BACK OUT. A sign flies off a hero for
-  // morale, for luck, for every experience earned, and never while a map is
-  // being set up — so "has one flown yet" looked like the separator. It refused
-  // the map init it was meant to refuse and then refused everything else too:
-  // a barbarian's first box hands him a war cry before he has earned anything,
-  // and the cry went silent. A gate that swallows the real events is worse than
-  // no gate, so what is left is the measurement — the dump above, one run with
-  // both cases in it, and then a word out of the world instead of a guess.
-  log_hex("pandora:   (a sign has flown off ", g_signSubject);
+  // AND THE ANSWER FROM THE MAP ITSELF — see g_playing. A sign having flown off
+  // a hero was tried here first and taken back out: it refused the map init it
+  // was meant to refuse and then refused a barbarian's first war cry too, which
+  // he is handed before he has earned any experience, morale or luck.
+  if (!g_playing) {
+    log_line("pandora: the map has not said it is running yet — this is setting up");
+    return 0;
+  }
   return 1;
 }
 
@@ -696,6 +741,10 @@ static char __fastcall announce_creatures_given(void *self, void *unused) {
  */
 static DWORD __fastcall announce_hold_probe(DWORD self, DWORD edx, DWORD announcement) {
   remember_the_world(self);
+  // Every announcement is a chance to get the watch onto the map: the first one
+  // comes while the map is still loading and its script system may not be up
+  // yet, so this asks again until it takes.
+  if (g_world) watch_for_play();
   if (LOG_ON) {
     log_line("pandora: holding an announcement");
     // ALL of it, both times. The engine's own announcements come through here
@@ -732,6 +781,8 @@ static int install_pandora_notify(void) {
   g_give_creatures_orig = detour(GIVE_CREATURES_RVA, GIVE_CREATURES_HEAD,
                                  sizeof GIVE_CREATURES_HEAD,
                                  (void *)announce_creatures_given, "creatures given");
+  // What the map calls back on when its first thread wakes up.
+  add_map_function("H5EMapIsPlaying", (void *)&lua_map_is_playing);
   if (!LOG_ON) return g_add_spell_orig != NULL && g_announce_hold_orig != NULL;
   g_announce_one_orig = detour(ANNOUNCE_ONE_RVA, ANNOUNCE_ONE_HEAD, sizeof ANNOUNCE_ONE_HEAD,
                                (void *)announce_one_probe, "announce(one)");
