@@ -26,6 +26,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { NatService } from '../src/net/nat-service.ts';
 import { RouterService } from '../src/net/router-service.ts';
+import { CdKeyService } from '../src/net/cdkey-service.ts';
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -112,6 +113,10 @@ let connections = 0;
 // advertise is the obvious place to send it, and it is ours either way.
 const router = new RouterService({ address: host, port: SERVICES[0]!.launcher ?? SERVICES[0]!.port });
 
+// Every key the player types is accepted; see src/net/cdkey-service.ts for why
+// that is the honest answer rather than a shortcut.
+const cdkey = new CdKeyService();
+
 for (const service of SERVICES) {
   for (const port of [service.port, service.launcher].filter((p): p is number => p !== null)) {
     const label = port === service.port ? service.prefix : `${service.prefix}Launcher`;
@@ -147,21 +152,27 @@ for (const service of SERVICES) {
       .listen(port, () => log(`tcp  ${label} on ${port}`));
 
     if (service.kind === 'tcp+udp') {
-      // The NAT port is the one service that answers so far; the rest still only
-      // record, because what the client says first is what we are here to learn.
+      // Two of the UDP services answer: the NAT mirror and the CD-key desk. Each
+      // keeps its own state, so the instance is made once per port, not per
+      // datagram.
       const nat = label === 'NATServer' ? new NatService(port) : null;
+      const service = nat
+        ? { tag: 'NAT', handle: (data: Buffer, from: { address: string; port: number }) => nat.handle(data, from) }
+        : label === 'CDKeyServer'
+          ? { tag: 'KEY', handle: (data: Buffer, from: { address: string; port: number }) => cdkey.handle(data, from) }
+          : null;
       const udp = createSocket('udp4');
       udp.on('message', (data: Buffer, from) => {
         log(`UDP  ${label}:${port} <- ${from.address}:${from.port}, ${data.length} bytes\n${hexDump(data)}`);
-        if (!nat) return;
+        if (!service) return;
         let result;
         try {
-          result = nat.handle(data, from);
+          result = service.handle(data, from);
         } catch (err) {
           log(`UDP  ${label}:${port} !! ${(err as Error).message}`);
           return;
         }
-        log(`NAT  ${result.note}`);
+        log(`${service.tag}  ${result.note}`);
         for (const reply of result.replies) {
           udp.send(reply, from.port, from.address);
           log(`UDP  ${label}:${port} -> ${from.address}:${from.port}, ${reply.length} bytes\n${hexDump(reply)}`);

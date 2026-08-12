@@ -15,6 +15,8 @@ import { MessageType, Property, build, parse } from '../src/net/gs-message.ts';
 import { NatService, addressToU32 } from '../src/net/nat-service.ts';
 import { KEY_BLOB_SIZE, decryptWith, encryptTo, generateKeyPair, parsePublicKey, publicKeyBlob } from '../src/net/pkc.ts';
 import { RouterService } from '../src/net/router-service.ts';
+import { Blowfish } from '../src/net/blowfish.ts';
+import { CdKeyRequest, CdKeyService } from '../src/net/cdkey-service.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {
@@ -210,6 +212,67 @@ console.log('\nRouter, driven by the recorded packet');
   const half = session.receive(login.subarray(0, 4));
   check('half a message waits for its other half', half.length === 0);
   check('and completes when the rest arrives', session.receive(login.subarray(4)).length === 1);
+}
+
+console.log('\nBlowfish');
+{
+  // The 1993 test vector: an all-zero key and an all-zero block encrypt to
+  // 4EF997456198DD78. Our blocks are read little-endian, so those two halves come
+  // out byte-reversed — round-tripping alone would not catch a wrong S-box.
+  const zeros = new Blowfish(Buffer.alloc(8));
+  const block = zeros.encrypt(Buffer.alloc(8)).subarray(0, 8);
+  check('the standard test vector comes out right', block.toString('hex') === '4597f94e78dd9861', block.toString('hex'));
+
+  const cipher = new Blowfish(Buffer.from('SKJDHF$0maoijfn4i8$aJdnv1jaldifar93-AS_dfo;hjhC4jhflasnF3fnd', 'utf8'));
+  let ok = 0;
+  for (let size = 1; size <= 64; size++) {
+    const plain = Buffer.alloc(size);
+    for (let i = 0; i < size; i++) plain[i] = (i * 91 + size) & 0xff;
+    if (cipher.decrypt(cipher.encrypt(plain)).equals(plain)) ok++;
+  }
+  check('every length from 1 to 64 survives a round trip', ok === 64, `${ok}/64`);
+  check('the length trailer is where the padding is trimmed', cipher.encrypt(Buffer.alloc(5)).length === 10);
+}
+
+console.log('\nCD-key service');
+{
+  const service = new CdKeyService();
+  const cipher = new Blowfish(Buffer.from('SKJDHF$0maoijfn4i8$aJdnv1jaldifar93-AS_dfo;hjhC4jhflasnF3fnd', 'utf8'));
+  const from = { address: '127.0.0.1', port: 1030 };
+
+  /** A request in the client's framing: type byte, big-endian size, body. */
+  const ask = (request: number, inner: GSValue[] = []): Buffer => {
+    const body = cipher.encrypt(encodeBody(['17', String(request), '0', inner]));
+    const out = Buffer.alloc(5 + body.length);
+    out[0] = 1;
+    out.writeUInt32BE(body.length, 1);
+    body.copy(out, 5);
+    return out;
+  };
+
+  for (const [name, request] of [
+    ['challenge', CdKeyRequest.CHALLENGE],
+    ['activation', CdKeyRequest.ACTIVATION],
+    ['authorisation', CdKeyRequest.AUTH],
+  ] as const) {
+    const result = service.handle(ask(request, ['ABCD-EFGH-IJKL-MNOP']), from);
+    const body = decodeBody(cipher.decrypt(result.replies[0]!.subarray(5)));
+    const inner = body[3] as GSValue[];
+    check(`a ${name} request is answered`, result.replies.length === 1, result.note);
+    check(`the ${name} answer echoes the message id and type`, body[0] === '17' && body[1] === String(request));
+    check(`the ${name} answer says success`, inner?.[0] === String(MessageType.GSSUCCESS), String(inner?.[0]));
+  }
+
+  const validated = service.handle(ask(CdKeyRequest.VALIDATION), from);
+  const inner = (decodeBody(cipher.decrypt(validated.replies[0]!.subarray(5)))[3] as GSValue[])[1] as GSValue[];
+  check('a validation says the player is valid', inner[0] === '2', String(inner[0]));
+
+  check('a keep-alive is not answered', service.handle(ask(CdKeyRequest.STILL_ALIVE), from).replies.length === 0);
+  // The same question twice has to get the same token, or the client sees its
+  // activation change under it.
+  const first = service.handle(ask(CdKeyRequest.ACTIVATION), from).replies[0]!;
+  const again = service.handle(ask(CdKeyRequest.ACTIVATION), from).replies[0]!;
+  check('the same request gets the same answer', first.equals(again));
 }
 
 console.log(failures === 0 ? '\nall good\n' : `\n${failures} failed\n`);
