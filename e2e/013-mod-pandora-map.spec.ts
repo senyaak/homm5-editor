@@ -364,16 +364,17 @@ const BARBARIAN = { at: { x: 2, y: 32 }, entry: `${GENERIC_HEROES}/Barbarian.xdb
 const CRIES = ['SPELL_WARCRY_RALLING_CRY', 'SPELL_WARCRY_CALL_OF_BLOOD'];
 
 /**
- * The four spells of the talisman ladder — here as SCROLLS and nothing else.
+ * The four spells of `MAGIC_SCHOOL_ADVENTURE` — here as SCROLLS and nothing
+ * else.
  *
- * THE BOXES THAT RAISED A TALISMAN ARE GONE from this map (Senya, 12.08.2026:
- * "not needed for now"). The machinery stays and is documented in
- * docs/PANDORA_BOX.md — a box holding an adventure spell raises a barbarian's
- * talisman by one step — but nothing here exercises it: with the rungs gated on
- * his level, walking a low-level barbarian up the ladder showed one spell and
- * three numbers, and the row cost more to read than it told.
+ * A BOX NO LONGER TREATS THEM SPECIALLY. There were boxes here that raised a
+ * barbarian's TALISMAN a step instead of teaching him the spell, and both the
+ * boxes and the machinery are gone (Senya, 12.08.2026): a barbarian handed Town
+ * Portal is paid for it like any other magic that is not his kind. What it took
+ * to raise a talisman is written down in docs/PANDORA_BOX.md for whoever wants
+ * it back.
  */
-const LADDER = [
+const ADVENTURE = [
   'SPELL_SUMMON_BOAT', 'SPELL_SUMMON_CREATURES', 'SPELL_DIMENSION_DOOR', 'SPELL_TOWN_PORTAL',
 ];
 
@@ -405,9 +406,12 @@ const BARBARIAN_BOXES = [
   // the DIFFERENCE from the level before it, so opening them in order lands him
   // exactly on each threshold: 4600, 14700, 34141, 81977.
   //
-  // With the talisman boxes gone this is what makes the shelter reachable: a
-  // level-1 barbarian may buy only the first rung, and the ladder's own
-  // requirements (1, 10, 15, 20) are what the row is for.
+  // WHAT THE ROW IS FOR, now that no box touches a talisman: a spell asks a
+  // HERO LEVEL of its own — a war cry of level 1 wants 2, of level 2 wants 6,
+  // of level 3 wants 11 — and a hero short of it loses the spell. Open the
+  // cries box first and watch one vanish; open these and open it again.
+  // (The Traveller's Shelter is reachable off the same row, for whoever wants
+  // to compare what the game's own talisman does.)
   ...LEVELS.map((step, i) => ({
     name: `PandoraLevel${step.level}`, x: 8 + i * STEP, y: BARBARIAN.at.y + STEP,
     contents: { name: `PandoraLevel${step.level}`, exp: step.gain },
@@ -423,7 +427,7 @@ const BARBARIAN_BOXES = [
  * about a spell being LEARNED; a scroll is worn, and nothing says the two paths
  * agree.
  */
-const SCROLLS = LADDER.map((spell, i) => ({
+const SCROLLS = ADVENTURE.map((spell, i) => ({
   spell, x: 8 + i * STEP, y: 36,
 }));
 const SCROLL = '/MapObjects/Artifacts/ScrollOfSpell.(AdvMapArtifactShared).xdb#xpointer(/AdvMapArtifactShared)';
@@ -464,9 +468,10 @@ const SPELL_SHOP = {
  *
  * It is a Stronghold one and it carries the **Traveller's Shelter** from turn
  * one (`TB_SPECIAL_3`, screen `UI/ArtefactMagic`) — the shipped game's own way
- * of giving a barbarian adventure magic, which is the thing a box of ours has
- * to end up doing. Standing beside the boxes, it is what their answer is
- * compared against. Listing a building is not building it: `BLD_UPG_1` is what
+ * of giving a barbarian adventure magic, and the ONLY one now that a box does
+ * not touch a talisman. Standing beside the boxes, it is what their answer is
+ * compared against: the shelter sells him the spell, a box pays him for it.
+ * Listing a building is not building it: `BLD_UPG_1` is what
  * a shipped map writes for one that stands at the start
  * (see e2e/campaign-three.spec.ts).
  */
@@ -644,10 +649,9 @@ test('two sides, each with a hero of their own', async () => {
     BARBARIAN.at.x, BARBARIAN.at.y);
   await setPath(page, barb, ['PlayerID'], SIDES[0]!.player);
   // AND HE ARRIVES WITH NOTHING — no experience, level one. That is the whole
-  // question of his two rows: walk the ladder first and he holds a talisman of
-  // 4 and one spell, because the rest are gated on HIS level; then open the row
-  // above, one box per threshold, and the spells should arrive as he grows,
-  // with no box handing them over.
+  // question of his two rows: at level 1 a war cry of level 1 is one level out
+  // of his reach, so the box loses it and says so; open the row above, one box
+  // per threshold, and the same box then teaches.
   for (const b of BARBARIAN_BOXES) {
     const id = await place(page, () => pickObject(page, BOX), b.name, b.x, b.y);
     await setPath(page, id, ['Name'], b.name);
@@ -669,10 +673,10 @@ test('two sides, each with a hero of their own', async () => {
     BARBARIAN.at.x + STEP, BARBARIAN.at.y + STEP);
   await page.evaluate((oid) => window.view.select(oid), levelSign);
   await setTextRef(page, 'MessageFileRef', 'sign-levels',
-    'LEVELS, one box each: 5, 10, 15, 20. The talisman sold at the Traveller\'s'
-    + ' Shelter asks a hero level per rung - 1, 10, 15, 20 - so a barbarian who'
-    + ' opens these can then walk into the town and buy the whole ladder, one'
-    + ' rung at a time, and watch each spell arrive.');
+    'LEVELS, one box each: 5, 10, 15, 20. A spell asks a hero level of its own -'
+    + ' a war cry wants 2, 6 or 11 by its own level - and a hero short of it'
+    + ' LOSES the spell the box held. Open the cries box at level 1, then these,'
+    + ' then the cries box again, and the answer changes.');
 
   // THE SCROLLS — the same four spells as artifacts rather than as pages.
   for (const s of SCROLLS) {
@@ -783,10 +787,6 @@ test('saving writes the block the game reads, and the texts it shows', async () 
   expect(strays, 'no receipts are written beside the map').toEqual([]);
   expect(lua, 'and the block points at none').not.toContain('report =');
 
-  // AND THE BARBARIAN'S BOX ASKS FOR A TALISMAN STEP, not for a spell he cannot
-  // hold. The split is made where the ladder is known — at save, off the game's
-  // own table — so this is the one place it can be seen to have happened.
-  //
   // ONE ENTRY AT A TIME, cut at its own closing brace: `H5E_PANDORA["x"] = {…};`
   // and nothing of the next box, so a list found here belongs to the box named.
   const entryOf = (name: string): string => {
@@ -794,14 +794,17 @@ test('saving writes the block the game reads, and the texts it shows', async () 
     expect(from, `${name} has an entry in the block`).toBeGreaterThan(-1);
     return lua.slice(from, lua.indexOf('};', from));
   };
-  // THE TALISMAN ROW IS GONE. The machinery is still there and documented
-  // (docs/PANDORA_BOX.md); only the boxes that walked it are out, and this says
-  // so rather than leaving their absence to be noticed.
+  // NO TALISMAN, ANYWHERE. The row of boxes that walked the ladder is gone and
+  // so is the machinery under it — the `adventure` list the block used to carry
+  // and the `H5ETalismanStep` the extension used to offer. A block that still
+  // named either would be calling a global that is NIL, which hands over
+  // nothing at all and says nothing about it.
   //
   // NOT "no adventure magic anywhere": the Spells row is filled by PRICE out of
   // the game's whole spell table, and Town Portal is a level-5 spell like any
-  // other — so it turns up there, correctly, carrying both paths.
+  // other — so it turns up there, as a spell to be taught or paid for.
   expect(lua, 'no box walks the talisman ladder').not.toContain('PandoraTalisman');
+  expect(lua, 'and the block asks for no talisman step').not.toMatch(/[Tt]alisman|adventure = /);
   // The levels are plain experience and nothing else — what they are for is
   // making the shelter's own rungs reachable.
   for (const step of LEVELS) {

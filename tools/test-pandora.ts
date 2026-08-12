@@ -29,7 +29,7 @@ import {
   PANDORA_RATES, PANDORA_TIERS, boxTier, isEmptyBox, pandoraTier, pandoraValue,
 } from '../src/mods/pandora-contents.ts';
 import type { PandoraStack } from '../src/mods/pandora-contents.ts';
-import { pandoraPrices, talismanLadder } from '../src/mods/pandora-prices.ts';
+import { pandoraPrices } from '../src/mods/pandora-prices.ts';
 import { singleRoot } from '../src/game/assets.ts';
 import { buildGameplayArchive } from '../src/mods/gameplay.ts';
 import {
@@ -363,16 +363,12 @@ console.log('what the contents are worth');
   check('a spell knows its level',
     real.spellLevel('SPELL_ARMAGEDDON') === 5 && real.spellLevel('SPELL_MAGIC_ARROW') === 1,
     `${real.spellLevel('SPELL_ARMAGEDDON')} / ${real.spellLevel('SPELL_MAGIC_ARROW')}`);
-  // THE LADDER, off the game's own table rather than a list written here: it is
-  // what a box splits its spells by, and the shipped one ends on Town Portal.
-  const ladderNow = talismanLadder(singleRoot(dataRoot));
-  check('the talisman ladder is read from the game',
-    ladderNow.length === 4 && ladderNow[0] === 'SPELL_SUMMON_BOAT'
-    && ladderNow[3] === 'SPELL_TOWN_PORTAL', ladderNow.join(' · '));
-  // And each rung is a spell the game actually has — a typo in the table would
-  // otherwise ride into a box's `adventure` list and be handed to nobody.
-  check('and every rung is a spell the game knows',
-    ladderNow.every((id) => real.spellLevel(id) > 0), ladderNow.join(' · '));
+  // And adventure magic is priced like everything else — it used to be split
+  // off by the talisman ladder and is not any more, so the four spells of that
+  // ladder have to answer the valuer the way a fireball does.
+  check('an adventure spell is priced like any other',
+    real.spellLevel('SPELL_TOWN_PORTAL') > 0 && real.spellLevel('SPELL_SUMMON_BOAT') > 0,
+    `${real.spellLevel('SPELL_TOWN_PORTAL')} / ${real.spellLevel('SPELL_SUMMON_BOAT')}`);
   check('and an id nobody knows is worth nothing, quietly',
     real.creature('CREATURE_NOT_A_THING') === 0 && real.artifact('ARTIFACT_NOT_A_THING') === 0
     && real.spellLevel('SPELL_NOT_A_THING') === 0);
@@ -475,33 +471,33 @@ console.log('the scripts');
   try { pandoraMapBlock([{ name: 'bad name' }]); } catch { refused = true; }
   check('a bad placement name is refused', refused);
 
-  // ADVENTURE MAGIC GOES DOWN ITS OWN PATH, and the ladder is what says which
-  // spells those are. A barbarian is refused every school but war cries, so a
-  // box hands him a talisman step instead — and the split has to happen where
-  // the ladder is known, which is here and not in Lua.
-  const ladder = ['SPELL_SUMMON_BOAT', 'SPELL_TOWN_PORTAL'];
+  // EVERY SPELL DOWN ONE PATH, adventure magic included. There used to be a
+  // second list — the four spells of the talisman ladder, handed to a barbarian
+  // as a step up that talisman — and it is gone (Senya, 12.08.2026): a box
+  // touches nobody's talisman, and Town Portal is paid for like any other magic
+  // he cannot hold.
   const mixed = [{ name: 'Pandora04', spells: ['SPELL_FIREBALL', 'SPELL_TOWN_PORTAL'] }];
   // EACH SPELL CARRIES ITS PRICE IN EXPERIENCE, because a hero who cannot hold
   // it is paid instead — the shrine's own rate, 1000 a level, measured in the
   // game 12.08.2026.
-  const split = pandoraMapBlock(mixed,
-    { ladder, spellExp: (id) => (String(id).includes('FIREBALL') ? 3000 : 5000) });
-  check('the block lists a ladder spell apart from a taught one, each with its price',
-    split.includes('spells = { {SPELL_FIREBALL, 3000} }')
-    && split.includes('adventure = { {SPELL_TOWN_PORTAL, 5000} }'),
-    split.split('\n').filter((l) => l.includes('spells') || l.includes('adventure')).join(' | '));
-  check('and the split block lints clean', luaDiagnostics(split).length === 0,
-    luaDiagnostics(split).map((d) => `${d.from}: ${d.message}`).join('; '));
-  // WITHOUT A LADDER NOTHING CHANGES — a test with no data root, or an install
-  // whose table cannot be read, writes what a box has always written.
-  check('no ladder means every spell is taught',
-    pandoraMapBlock(mixed).includes('spells = { {SPELL_FIREBALL, 0}, {SPELL_TOWN_PORTAL, 0} }')
-    && !pandoraMapBlock(mixed).includes('adventure ='));
-  // And the behaviour that reads the list: the step first, teaching only when
-  // the step says the talisman is not this hero's.
-  check('the behaviour takes the talisman step before teaching',
-    lua.includes('local step = H5ETalismanStep(hero);')
-    && lua.indexOf('H5ETalismanStep(hero)') < lua.indexOf('TeachHeroSpell(hero, s[1]);', lua.indexOf('box.adventure')));
+  const priced = pandoraMapBlock(mixed,
+    { spellExp: (id) => (String(id).includes('FIREBALL') ? 3000 : 5000) });
+  check('every spell rides one list, each with its price',
+    priced.includes('spells = { {SPELL_FIREBALL, 3000}, {SPELL_TOWN_PORTAL, 5000} }')
+    && !priced.includes('adventure'),
+    priced.split('\n').filter((l) => l.includes('spells')).join(' | '));
+  check('and the block lints clean', luaDiagnostics(priced).length === 0,
+    luaDiagnostics(priced).map((d) => `${d.from}: ${d.message}`).join('; '));
+  // WITHOUT A PRICE NOTHING BREAKS — a test with no data root writes zeroes,
+  // and a hero who cannot hold the spell is then paid nothing rather than the
+  // block failing to be written at all.
+  check('no prices still writes the list',
+    pandoraMapBlock(mixed).includes('spells = { {SPELL_FIREBALL, 0}, {SPELL_TOWN_PORTAL, 0} }'));
+  // AND NOTHING ANYWHERE ASKS FOR A TALISMAN. The step was a function of the
+  // extension's and is gone from it too, so a box that still called it would
+  // find a global that is NIL and hand over nothing at all.
+  check('no box touches a talisman',
+    !/[Tt]alisman/.test(lua) && !/[Tt]alisman/.test(priced));
   // THE WHOLE QUESTION, not the school gate: `H5ECanLearnSpell` is what the
   // spell shop and the shrine go through, so a wizard with no Dark Magic is
   // refused Curse. The gate alone said yes to him, and a play-through showed it.
@@ -516,25 +512,17 @@ console.log('the scripts');
   // question and nowhere else.
   {
     const at = lua.indexOf('box.spells');
-    const branch = lua.slice(at, lua.indexOf('box.adventure', at));
+    const branch = lua.slice(at, lua.indexOf('box.creatures', at));
     const paid = branch.indexOf('GiveExp(hero, s[2]);');
     check('and only a barbarian is paid for one he cannot',
       paid > 0 && branch.lastIndexOf('H5EIsBarbarian(hero)', paid) > 0
       && branch.includes('", lost");'),
       branch.split('\n').filter((l) => l.includes('H5E') || l.includes('lost')).join(' | '));
-  }
-  // THREE ANSWERS, and the middle one is the correction a play-through paid
-  // for: a talisman already at the top used to fall through to teaching, so the
-  // box announced a Town Portal the engine then refused. Zero must reach
-  // neither the announcement nor the teaching.
-  {
-    const from = lua.indexOf('box.adventure');
-    const branch = lua.slice(from, lua.indexOf('box.creatures', from));
-    const top = branch.indexOf('elseif step == 0 then');
-    check('a talisman at the top is paid for, not taught',
-      top > 0 && !/H5EAnnounceGain|TeachHeroSpell/.test(branch.slice(top))
-      && branch.slice(top).includes('GiveExp(hero, s[2]);'),
-      branch.split('\n').filter((l) => l.includes('step') || l.includes('Teach')).join(' | '));
+    // AND PAID FOR WHAT HE IS, not for how young he is: the school gate is the
+    // second half of that question, and without it a barbarian was paid for a
+    // war cry he had merely not grown into — which a play-through showed.
+    check('and paid only for what is not his kind',
+      branch.lastIndexOf('H5ECanHoldSpell(hero, s[1]) == nil', paid) > 0);
   }
 
   // A MESSAGE IS A FILE, not a string: MessageBox takes a text ref. A box that

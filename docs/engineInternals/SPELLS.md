@@ -1182,24 +1182,40 @@ what the whole mechanism is:
   — so a talisman written into a map should reach the hero as it stands.
 
 **No Lua function of the engine's touches it** — all 306 registered names are in
-docs/EXE_LUA_REGISTRY.md and none is about a talisman. A box that raises one
-needs a function of ours.
+docs/EXE_LUA_REGISTRY.md and none is about a talisman. Anything that raises one
+from a script needs a function of ours.
 
-### What is measured and what is still assumed
+### What the recompute does with the level
 
-Everything above is read out of the executable and the data. What a run has to
-answer, because reading cannot:
+`CHero::vt+0x384` (`0x82a400`) is what the purchase calls the moment it has
+written a new level, and it is where the spells actually come from:
 
-1. is the ladder CUMULATIVE — level 4 as four spells, or only Town Portal;
-2. is the level ALONE enough to cast, or is the table's `HeroLevel` asked again
-   at cast time (the shelter asks it to SELL);
-3. does the map's value really reach the hero — `0xa64f60` says yes, and a hero
-   with the mask all on stands beside one with none so the answer is readable
-   either way;
-4. does a talisman do anything for a hero who is NOT a barbarian — if it does, a
-   box needs no branch at all.
+```
+if (race != 8) return;                          // Stronghold, and nobody else
+if (talisman < 1) return;
+for (i = 1; i <= talisman; i++) {
+  if (heroLevel < row[i].HeroLevel) break;      // BREAK, not skip
+  ... add row[i].Spell to the hero's lists ...
+}
+```
 
-The row that asks all four is on `PandoraProbe`
-(`e2e/mod-011-pandora-map.spec.ts`, `TALISMAN_ROW`): seven heroes on the
-barbarian's own line, each carrying goblins by his place in the row, and a
-Stronghold town with the shelter standing from turn one.
+So the ladder is **cumulative** — a talisman of 4 is four spells — a rung whose
+`HeroLevel` the hero has not reached yields **nothing until he does**, and
+everything after it waits with it; and a talisman does nothing whatsoever for a
+hero who is not of the Horde. It takes one argument, the map's forbidden-spell
+list, reached hero → player → world → `vt+0x34`; a null is legal there and
+means "nothing is forbidden".
+
+### Nothing of ours raises a talisman
+
+Measured, and then **dropped** (Senya, 12.08.2026). A Pandora's Box briefly
+handed a barbarian one step up the ladder in place of an adventure spell, over
+the slots above; the boxes, the probe row and the extension's `H5ETalismanStep`
+are all gone. A barbarian handed adventure magic is now **paid in experience**
+like anybody handed magic that is not his kind — see
+[PANDORA_BOX.md](../PANDORA_BOX.md), which also carries what it took to raise
+one, for whoever wants it back.
+
+What the game itself does is untouched: the Traveller's Shelter still sells the
+ladder, and a `TalismanLevel` written into a map still reaches the hero
+(`0xa64f60`, which tests no `OverrideMask` bit on the way).

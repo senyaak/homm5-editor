@@ -18,27 +18,6 @@ import type { Assets } from '../game/assets.ts';
 import type { PandoraPrices } from './pandora-contents.ts';
 
 const SPELL_TABLE = 'GameMechanics/RefTables/UndividedSpells.xdb';
-const DEFAULT_STATS = 'GameMechanics/RPGStats/DefaultStats.xdb';
-
-/**
- * The talisman ladder, in the game's own order — and it is the whole of what a
- * barbarian's adventure magic can be.
- *
- * A hero of the Horde is refused every adventure spell by the gate on the
- * spell's SCHOOL, and gets them instead by upgrading a talisman at the
- * Traveller's Shelter; `DefaultStats.xdb` is where the ladder lives, one spell
- * per level. So "which spells can a box hand a barbarian" and "what is on this
- * ladder" are the same question, and the answer is read rather than written
- * down here — a mod that lengthens the table lengthens this.
- *
- * Empty when the data root has no such table, which is how every caller finds
- * out that the branch is not available rather than by a list going stale.
- */
-export function talismanLadder(data: Assets): string[] {
-  const text = data.text(DEFAULT_STATS);
-  const table = /<TalismanOfAdventure>([\s\S]*?)<\/TalismanOfAdventure>/.exec(text ?? '')?.[1];
-  return table ? [...table.matchAll(/<Spell>(\w+)<\/Spell>/g)].map((m) => m[1]!) : [];
-}
 
 /** `SPELL_*` → the record's href, read once off the spell table. */
 function spellRecords(data: Assets): Map<string, string> {

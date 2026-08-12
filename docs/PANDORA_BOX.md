@@ -20,7 +20,7 @@ back to the one it was, chest and all. A map that places boxes and is played
 without it has objects pointing at definitions nothing provides — so the flag
 travels with the map, not with the mood.
 
-Both directions are asserted rather than assumed — `mod-011` deletes the archive
+Both directions are asserted rather than assumed — `013-mod-pandora-map` deletes the archive
 first, ticks the box, and finds it written; then unticks it and finds it gone.
 A switch measured with the thing already installed reports success whatever it
 does.
@@ -52,44 +52,13 @@ artifact AND a stack, and be guarded besides.
 | Guards | Fought BEFORE the box opens. Win and it opens; lose and it stays shut. |
 
 Two of them are worth knowing about before an author blames a box: **a spell
-needs a book that takes it** — a Barbarian keeps CRIES where everybody else
-keeps spells, so `SPELL_TOWN_PORTAL` handed to him lands nowhere while
-`SPELL_WARCRY_*` lands fine (the game's own campaign teaches a barbarian his
-cries with the same call, `TeachHeroSpell("Kujin", SPELL_WARCRY_RALLING_CRY)`
-in A2C3M4) — and **creatures join an existing stack**, so ten archangels added
-to a hundred read as nothing happening at all.
-
-### Adventure magic, which is two gifts wearing one name
-
-The engine refuses a barbarian every school but war cries — the gate reads the
-school off the spell's own record — and gives him adventure magic through a
-channel of its own instead: the **talisman**, sold a level at a time in the
-Stronghold's Traveller's Shelter. `DefaultStats.xdb` says what a level is worth,
-one spell per rung, and those four rungs are every adventure spell the game has:
-
-| talisman | spell | the hero must have reached |
-|---|---|---|
-| 1 | Summon Boat | level 1 |
-| 2 | Summon Creatures | level 10 |
-| 3 | Dimension Door | level 15 |
-| 4 | Town Portal | level 20 |
-
-So a box holding an adventure spell hands over **one of two different gifts**,
-and which one depends on who opens it:
-
-- anybody with a spellbook is **taught the spell the author chose**;
-- a barbarian takes **one step up the ladder** — whichever spell that step turns
-  out to be. One adventure spell in a box is one talisman level, so a box cannot
-  carry a hero from nothing to Town Portal in a single lid.
-
-Three things about the ladder are the engine's and not ours. It is
-**cumulative** — a talisman of 4 is four spells, not one. Every rung asks a
-**hero level** of its own — 1, 10, 15, 20 — and the engine's recompute **stops
-at the first rung he has not reached**, so a level-2 barbarian who opens all
-four boxes ends up with a talisman of 4 and exactly one spell, Summon Boat. The
-rest arrive as he levels. And a talisman does nothing whatsoever for a hero who
-is **not of the Horde**, which is why the box asks first and teaches when the
-answer is no.
+needs a hero the game would teach it to** — a Barbarian keeps CRIES where
+everybody else keeps spells, so `SPELL_TOWN_PORTAL` handed to him is paid for
+rather than learned while `SPELL_WARCRY_*` is learned outright (the game's own
+campaign teaches a barbarian his cries with the same call,
+`TeachHeroSpell("Kujin", SPELL_WARCRY_RALLING_CRY)` in A2C3M4) — and
+**creatures join an existing stack**, so ten archangels added to a hundred read
+as nothing happening at all.
 
 ### A spell a hero cannot learn is lost — unless he is a barbarian
 
@@ -117,38 +86,61 @@ into a young barbarian: a war cry of level 1 asks hero level **2**, level 2 asks
 **6**, level 3 asks **11**. Adventure magic asks 1, 10, 15 and 20. Every other
 school asks nothing — only the skill.
 
-A box past the top of the talisman ladder pays the same way. It used to fall
-back to teaching, and the result was the worst of both: the box announced Town
-Portal, the engine refused it for being the wrong school, and the player was
-told about a spell he never got.
+**Adventure magic comes through here too**, and through nothing else. Summon
+Boat, Summon Creatures, Dimension Door and Town Portal are the four spells of
+`MAGIC_SCHOOL_ADVENTURE`, a barbarian is refused all four, and he is paid for
+them exactly as he is paid for a fireball. There is no second path.
 
 A spell the hero **already knows** is not paid for — he learns it again, which
 is what it always did.
 
 The window says as much beside the spell list, and the whole reading — what the
-gate branches on, where the level lives, what recomputes the list — is in
+gate branches on, where the level lives, what a talisman is — is in
 [SPELLS.md](engineInternals/SPELLS.md#the-barbarians-adventure-magic-is-a-talisman-not-a-book).
 
-#### How to author one
+#### The talisman, and how to hand one out if you ever want to
 
-Put an adventure spell in a box — `Contents…` → **Spells** → Summon Boat, Summon
-Creatures, Dimension Door or Town Portal. That is the whole of it: the split
-happens at save, off the game's own table, and the box carries both paths.
+The shipped game gives a barbarian adventure magic through a channel of its
+own — the **talisman**, sold a level at a time in the Stronghold's Traveller's
+Shelter. `DefaultStats.xdb`'s `TalismanOfAdventure` says what a level is worth,
+one spell per rung:
 
-What each hero gets from that one box:
+| talisman | spell | the hero must have reached |
+|---|---|---|
+| 1 | Summon Boat | level 1 |
+| 2 | Summon Creatures | level 10 |
+| 3 | Dimension Door | level 15 |
+| 4 | Town Portal | level 20 |
 
-| who opens it | what happens |
-|---|---|
-| anybody with a spellbook | learns the spell the author chose |
-| a barbarian below the top | **one step** up his talisman — whichever rung is next, not the spell named |
-| a barbarian at talisman 4 | 1000 experience per level of the spell |
+A box used to raise it: an adventure spell in the contents became **one step up
+the ladder** for a barbarian and the named spell for everybody else. It is
+**gone** (Senya, 12.08.2026) — boxes, probe row and the extension's function
+alike. Nothing in the editor offers a talisman and nothing in the DLL raises
+one; a box that asked for it would call a global that is NIL and hand over
+nothing.
 
-So a row of four such boxes walks a barbarian up the whole ladder, and the
-spells themselves arrive as he reaches the level each rung asks for. **The probe
-map has no such boxes** — they were there and were taken out (12.08.2026), since
-with the rungs gated on hero level a low-level barbarian sees one spell and
-three numbers. What stands there instead is a row of experience boxes, which is
-what makes the Traveller's Shelter reachable in the first place.
+What it took, for whoever wants it back — all of it is in the history, at
+`f2d036a` and the commits before it:
+
+* `native/lua/hero-spells.c` held `H5ETalismanStep(heroName)`, over `CHero`'s
+  vtable at `0xfc69fc`: **+0x300** reads the level, **+0x304** writes it (and
+  clamps to the table's own length, so "the top" never has to be written down),
+  **+0x384** recomputes the spells, **+0x258** answers his race. The recompute
+  takes the map's forbidden-spell list, reached hero → player → world → vt+0x34,
+  and a null there is legal and means "nothing is forbidden";
+* it answered three ways — `nil` for a hero no talisman serves, `0` for a
+  talisman already at the top, `1…N` for the rung he ended on;
+* `talismanLadder()` in `src/mods/pandora-prices.ts` read the four spells off
+  `DefaultStats.xdb`, and `boxLua` used it to split a box's spells into
+  `spells` (taught) and `adventure` (walked up the ladder).
+
+Three things about the ladder are the engine's and not ours, and they are why
+the row read badly enough to be taken out. It is **cumulative** — a talisman of
+4 is four spells, not one. Every rung asks a **hero level** of its own, and the
+recompute **stops at the first rung he has not reached**, so a level-2 barbarian
+who opens all four boxes ends up with a talisman of 4 and exactly one spell,
+Summon Boat. And a talisman does nothing whatsoever for a hero who is **not of
+the Horde**.
 
 ### What the player sees, and when
 
@@ -344,7 +336,8 @@ that really does need a class the engine has never heard of.
 | the sidecar | `src/map/pandora-store.ts` |
 | writing the block at save time | `electron/pandora-save.ts` |
 | the window | `renderer/features/pandora.ts` |
-| tests | `tools/test-pandora.ts`, `tools/test-pandora-store.ts`, `e2e/mod-011-pandora-map.spec.ts` |
+| what a hero may be taught, asked of the engine | `native/lua/hero-spells.c` |
+| tests | `tools/test-pandora.ts`, `tools/test-pandora-store.ts`, `e2e/013-mod-pandora-map.spec.ts` |
 
 The e2e is also the **probe map**: eight kinds of content in four glows each,
 twice over — one row per side — with a hundred archangels for the first hero so

@@ -48,32 +48,25 @@ one.
   opening still behaves exactly as it shipped. War cries included — and yes, a
   barbarian does learn one.
 
-- **A box can hand adventure magic to a barbarian.** Town Portal, Dimension
-  Door, Summon Creatures and Summon Boat used to land nowhere when a hero of the
-  Horde opened the box: the engine lets him hold war cries and nothing else. He
-  has never been without adventure magic, though — he buys it as a TALISMAN at
-  the Traveller's Shelter, one spell per level — so a box now gives him one step
-  up that ladder instead of a spell he cannot keep. Everybody else is taught the
-  spell the author chose, exactly as before, and the window says which is which.
+- **A box hands over a spell the way the game would, or not at all.** Whether a
+  hero may learn what the box holds is the ENGINE's answer — the same question
+  the spell shop and the shrine go through — and it is four things at once: the
+  school against the hero's kind, the SKILL of that school, the hero level the
+  spell asks for, and the runic case. So a wizard with no Dark Magic is refused
+  Curse, and a barbarian is refused a war cry he has not grown into (they want
+  hero level 2, 6 and 11). Refused, the spell is **lost**, exactly as it is at a
+  shrine, and the box says so with the game's own line — *"Герой не может
+  выучить выбранное заклинание"* — flown over the hero.
 
-  The ladder is the game's own table, read at save time, so the four rungs are
-  never written down twice. What the engine decides stays the engine's: the
-  rungs are cumulative, every rung asks a hero level of its own (1, 10, 15, 20)
-  and the spells stop at the first one he has not reached, and a talisman does
-  nothing at all for a hero who is not of the Horde — in which case the box
-  teaches the spell as usual. A box past the top of the ladder hands over
-  nothing and says nothing: teaching there would announce a spell the engine
-  goes on to refuse.
+  The one hero **paid** instead is the barbarian, and only for magic that is not
+  his kind: 1000 experience per level of the spell, the Shrine of Magic's own
+  rate, which is exactly what the box was priced at — it is worth the same
+  whoever opens it. Adventure magic goes the same way: Town Portal handed to a
+  hero of the Horde is paid for, not turned into anything else. A spell the hero
+  already knows is not paid for.
 
-- **A spell a hero cannot hold is paid for in experience.** A barbarian handed a
-  battle spell, a knight handed a war cry, anybody handed a rune — the box used
-  to hand such a hero nothing whatsoever. It now pays him at the Shrine of
-  Magic's own rate, 1000 experience per level of the spell, which is exactly
-  what the box was priced at: it is worth the same whoever opens it. Who may
-  hold what is the engine's answer, not ours — the same gate that would refuse
-  the teaching a moment later is asked first, so a mod that adds a school is
-  covered without a line changing. A spell the hero already knows is not paid
-  for.
+  Nothing here knows what a school is, so a mod that adds one is covered without
+  a line changing.
 
 - **And it is no longer a chest.** The box is an `AdvMapTreasure` in the data,
   so the engine used to run the CHEST's visit beside ours: its own dialog, its

@@ -85,7 +85,7 @@
 #include "core/faults.c"
 #include "lua/values.c"
 #include "lua/hero-specialization.c"
-#include "lua/hero-talisman.c"
+#include "lua/hero-spells.c"
 #include "lua/adv-cast.c"
 #include "ui/count-window.c"
 #include "qol/quick-split-gestures.c"
@@ -160,11 +160,11 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   // the feature switched off its hooks are absent and the ask sets a flag that
   // nothing ever reads.
   add_pandora_map_functions();
-  // And the box's other half, for the same reason and in the same place: a
-  // barbarian's adventure magic is a talisman step, and the step is a row the
-  // map calls. Unconditional like the two above — `load_qol` has not run yet,
-  // so a flag read here reads nothing (native/lua/hero-talisman.c).
-  add_talisman_map_function();
+  // And the box's other half, for the same reason and in the same place: what a
+  // hero may and may not be taught is the engine's to answer, and the box asks
+  // it as a row the map calls. Unconditional like the two above — `load_qol` has
+  // not run yet, so a flag read here reads nothing (native/lua/hero-spells.c).
+  add_hero_spell_map_functions();
   install_lua_functions();
   // The same argument, one context over — and the one thing here that a battle
   // has to answer for itself, so it says what it saw whether or not anything

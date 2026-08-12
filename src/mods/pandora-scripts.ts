@@ -74,17 +74,6 @@ export type MessageRef = (box: PandoraContents) => string | undefined;
 export interface PandoraRefs {
   said?: MessageRef;
   /**
-   * The talisman ladder, in the game's own order — `talismanLadder()` in
-   * pandora-prices.ts, which reads it off `DefaultStats.xdb`.
-   *
-   * What it decides is which of a box's spells are ADVENTURE magic, and those
-   * are written into a list of their own: a barbarian cannot be taught one and
-   * takes a step up this ladder instead. Left out (a test with no data root,
-   * an install missing the table) every spell goes down the teaching path,
-   * which is what a box did before any of this existed.
-   */
-  ladder?: readonly string[];
-  /**
    * What a spell is worth in EXPERIENCE to a hero who cannot hold it.
    *
    * A barbarian is refused every school but war cries, a knight is refused the
@@ -276,6 +265,9 @@ export function pandoraBehaviourLua(): string {
     '\t-- Refused, the spell is LOST, exactly as it is at a shrine. The one hero',
     '\t-- paid instead is the barbarian, who is paid everywhere else in the game',
     '\t-- for magic he cannot take: 1000 experience per level of the spell.',
+    '\t-- ADVENTURE MAGIC COMES THROUGH HERE TOO, and through nothing else: a box',
+    '\t-- used to raise a barbarian\'s TALISMAN instead, and that is gone. He is',
+    '\t-- paid for Town Portal the way he is paid for a fireball.',
     '\tif box.spells ~= nil then',
     '\t\tfor i, s in box.spells do',
     '\t\t\tif H5ECanLearnSpell(hero, s[1]) ~= nil then',
@@ -292,43 +284,6 @@ export function pandoraBehaviourLua(): string {
     '\t\t\telse',
     '\t\t\t\tprint("H5E pandora: cannot learn " .. s[1] .. ", lost");',
     `\t\t\t\tShowFlyingSign("${CANNOT_LEARN_TEXT}", hero, player, 4);`,
-    '\t\t\tend;',
-    '\t\tend;',
-    '\tend;',
-    '\t-- ADVENTURE MAGIC IS TWO DIFFERENT GIFTS, and which one this is depends',
-    '\t-- on who opened the box. Anybody with a spellbook is taught the spell the',
-    '\t-- author chose. A barbarian cannot hold it - the engine refuses him every',
-    '\t-- school but war cries - and gets his adventure magic the way the game',
-    '\t-- gives it to him: one step up the TALISMAN, which is what',
-    '\t-- H5ETalismanStep does. It answers nil for anybody a talisman does not',
-    '\t-- serve and for a talisman already at the top, and nil is the signal to',
-    '\t-- teach the spell instead. Called outright, like H5EAnnounceGain above:',
-    '\t-- both are the extension\'s, and a box without the extension has no',
-    '\t-- object to stand on in the first place.',
-    '\tif box.adventure ~= nil then',
-    '\t\tfor i, s in box.adventure do',
-    '\t\t\tlocal step = H5ETalismanStep(hero);',
-    '\t\t\tif step == nil then',
-    '\t\t\t\t-- Not of the Horde: the ordinary path, and the same whole question -',
-    '\t\t\t\t-- adventure magic asks a hero level of its own (1, 10, 15, 20), so a',
-    '\t\t\t\t-- young hero is refused Town Portal like anybody else. Refused, it is',
-    '\t\t\t\t-- lost: only a barbarian is paid.',
-    '\t\t\t\tif H5ECanLearnSpell(hero, s[1]) ~= nil then',
-    '\t\t\t\t\tprint("H5E pandora: adventure spell " .. s[1]);',
-    '\t\t\t\t\tH5EAnnounceGain();',
-    '\t\t\t\t\tTeachHeroSpell(hero, s[1]);',
-    '\t\t\t\telse',
-    '\t\t\t\t\tprint("H5E pandora: cannot learn " .. s[1] .. ", lost");',
-    `\t\t\t\t\tShowFlyingSign("${CANNOT_LEARN_TEXT}", hero, player, 4);`,
-    '\t\t\t\tend;',
-    '\t\t\telseif step == 0 then',
-    '\t\t\t\t-- His talisman is at the top, so there is no rung left to give -',
-    '\t\t\t\t-- and teaching him the spell is what the engine refuses. He is',
-    '\t\t\t\t-- paid for it instead, like any spell he cannot hold.',
-    '\t\t\t\tprint("H5E pandora: talisman at the top, paid " .. s[2]);',
-    '\t\t\t\tGiveExp(hero, s[2]);',
-    '\t\t\telse',
-    '\t\t\t\tprint("H5E pandora: talisman " .. step);',
     '\t\t\tend;',
     '\t\tend;',
     '\tend;',
@@ -424,21 +379,20 @@ function boxLua(box: PandoraContents, refs: PandoraRefs | undefined): string[] {
     .map(([key, constant]) => `{${constant}, ${luaNumber(box[key] as number)}}`);
   if (res.length) fields.push(`\tres = { ${res.join(', ')} }`);
   if (box.artifacts?.length) fields.push(`\tartifacts = { ${box.artifacts.map(luaId('ARTIFACT_')).join(', ')} }`);
-  // TWO LISTS, because they are two different gifts — see the behaviour. What
-  // splits them is the game's own ladder, so a spell is adventure magic here
-  // exactly when the Traveller's Shelter sells it.
-  const onLadder = new Set((refs?.ladder ?? []).map(luaId('SPELL_')));
-  // EACH SPELL WITH ITS PRICE IN EXPERIENCE, because the box has to hand over
-  // one or the other and the script cannot work out a level for itself.
+  // EACH SPELL WITH ITS PRICE IN EXPERIENCE, because the box hands over one or
+  // the other — the spell itself, or what it is worth to a hero who cannot hold
+  // it — and the script cannot work out a spell's level for itself.
+  //
+  // ONE LIST, and adventure magic is on it like everything else. There used to
+  // be a second for the four spells of the talisman ladder, handed to a
+  // barbarian as a step up that talisman instead of as a spell; it is gone
+  // (Senya, 12.08.2026) and docs/PANDORA_BOX.md says what it would take to
+  // bring it back.
   const priced = (box.spells ?? []).map((id) => {
     const worth = refs?.spellExp?.(id) ?? 0;
     return `{${luaId('SPELL_')(id)}, ${luaNumber(worth)}}`;
   });
-  const named = (box.spells ?? []).map(luaId('SPELL_'));
-  const adventure = priced.filter((_, i) => onLadder.has(named[i]!));
-  const taught = priced.filter((_, i) => !onLadder.has(named[i]!));
-  if (taught.length) fields.push(`\tspells = { ${taught.join(', ')} }`);
-  if (adventure.length) fields.push(`\tadventure = { ${adventure.join(', ')} }`);
+  if (priced.length) fields.push(`\tspells = { ${priced.join(', ')} }`);
   if (box.creatures?.length) {
     fields.push(`\tcreatures = { ${box.creatures
       .map((c) => `{${luaId('CREATURE_')(c.creature)}, ${luaNumber(c.count)}}`).join(', ')} }`);
