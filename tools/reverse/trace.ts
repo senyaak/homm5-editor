@@ -162,10 +162,18 @@ switch (command) {
         + ' is called — it may be reached only through a vtable, or the window is too short');
       break;
     }
+    // AND THE CANDIDATE HAS TO REACH THE ADDRESS. `callsTo` scans BYTES, so an
+    // 0xE8 or 0xE9 inside a constant reads as a call — `sub ecx,0B4h` supplied
+    // one, and the false start it produced looked as ordinary as a true one.
+    // Disassembling from a real start lands ON the address; from a false one
+    // the stream runs through it or dies, and that is the difference printed
+    // here. Verified beats plausible: the misread cost an hour once already.
     console.log(`0x${inside.toString(16)} sits inside one of these:`);
     for (const f of found) {
+      const lands = body(f.at, inside - f.at + 0x20).some((ins) => ins.address === inside);
       console.log(`  0x${f.at.toString(16)}  ${f.callers} caller(s), `
-        + `0x${(inside - f.at).toString(16)} bytes before it`);
+        + `0x${(inside - f.at).toString(16)} bytes before it`
+        + `${lands ? '  — reaches it' : '  — does NOT reach it (a byte-scan false start)'}`);
     }
     break;
   }
@@ -191,6 +199,31 @@ switch (command) {
       const what = pe.isCode(word) ? 'code' : (pe.stringAt(word, 40) ? `"${pe.stringAt(word, 40)}"` : 'data');
       console.log(`  0x${at.toString(16)}  0x${word.toString(16).padStart(8, '0')}  ${what}`);
     }
+    break;
+  }
+
+  // WHERE A VALUE SITS IN DATA — which table holds this slot.
+  //
+  // `writes` finds a constant in CODE; a vtable entry is not written by any
+  // instruction, it is assembled into .rdata. Given a function's address this
+  // says which tables list it, and a thunk found by `start` is placed the same
+  // way — that is how a virtual is traced back to the slot it answers.
+  //
+  //   node tools/reverse/trace.ts where 0xd21b0a
+  case 'where': {
+    const wanted = addresses[0]!;
+    let hits = 0;
+    for (const s of ['.rdata', '.data', '.text']) {
+      let section;
+      try { section = pe.section(s); } catch { continue; }
+      const bytes = pe.bytesOf(section);
+      for (let o = 0; o + 4 <= bytes.length; o += 4) {
+        if (bytes.readUInt32LE(o) !== wanted) continue;
+        console.log(`  0x${(pe.imageBase + section.va + o).toString(16)}  in ${s}`);
+        hits++;
+      }
+    }
+    if (!hits) console.log(`0x${wanted.toString(16)} appears in no aligned data word`);
     break;
   }
 

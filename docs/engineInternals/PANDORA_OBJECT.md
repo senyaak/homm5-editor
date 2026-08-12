@@ -184,6 +184,29 @@ That call sits inside `0xb5256c`, a function with 26 callers — the shape of a
 factory that builds map objects by kind, and the natural place to look for
 where a shared document becomes an object.
 
+### The chest's dialog is 0xd20c80, and 0xd214a0 is not it
+
+The message getter's `push 3` (the artifact-found line) sits at `0xd21015`,
+and `start` — now that it verifies its own answer — puts that inside
+**`0xd20c80`**, a function that reaches the message getter four times. That is
+where the chest decides and speaks.
+
+`0xd214a0`, the standing candidate this document carried, calls the getter not
+at all. It is `0xfd4f90+0x0`, it corrects `ecx` by `-0xA8` on entry, and what
+it does is still unread — but it is not the dialog.
+
+`0xd20c80` appears in no vtable directly, so it is reached through an adjustor
+thunk (`sub ecx,[ecx-4] / sub ecx,<N> / jmp <real>`, the shape every slot of
+this class uses). Finding WHICH slot holds that thunk is the next step, and it
+is a mechanical one: walk the class's tables, follow each slot through its
+thunk, and see which lands here.
+
+**A warning about the workbench.** `callsTo` scans BYTES, so an `0xE8`/`0xE9`
+inside a constant reads as a call — `sub ecx,0B4h` supplied one, and the false
+function start it produced looked exactly like a true one. `start` now
+disassembles from each candidate and says whether the stream actually lands on
+the address asked about; two of the three candidates for `0xd21015` were false.
+
 Still open: which table each fixed offset carries (the constructor writes
 `[this]`, `[this+0x1C]` and `[this+0xAC]`, while `0xd214a0` corrects `ecx` by
 `-0xA8` on entry, so the two have to be reconciled before any slot is
