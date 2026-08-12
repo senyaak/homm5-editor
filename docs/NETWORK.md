@@ -1,5 +1,10 @@
 # Online play: how the game finds its servers
 
+> Where the server stands today — what runs, what the client accepted, what it
+> refused and where the next wall is — is in [NETWORK_STATE.md](NETWORK_STATE.md).
+> This file stays about the game side: how it looks for its services and what it
+> does with what it is told.
+
 Everything here is read out of `bin/H5_Game_H5E.exe` (our unwrapped retail exe,
 image base 0x400000 — the Steam-wrapped `H5_Game.exe` has an encrypted `.text`
 and cannot be disassembled). Reproduce any of it with:

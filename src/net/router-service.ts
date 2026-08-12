@@ -343,8 +343,15 @@ export class RouterSession {
         if (subtype === String(LobbyMsg.CREATE_ROOM)) {
           const fields = Array.isArray(inner) ? inner : [];
           const text = (at: number): string => (typeof fields[at] === 'string' ? (fields[at] as string) : '');
+          // The client refuses a game whose name is already in its list — "a game
+          // with this name already exists" — and the name it offers is generated
+          // from the player's own, so pressing create twice collides with itself.
+          // A host recreating his own game replaces it; nothing else is touched.
+          const parentId = Number(text(0)) || 1;
+          const existing = this.rooms.named(parentId, text(1));
+          if (existing && existing.master === this.username) this.rooms.remove(existing.id);
           const room = this.rooms.create({
-            parentId: Number(text(0)) || 1,
+            parentId,
             name: text(1),
             gameTitle: text(2),
             type: Number(text(3)) || GroupType.ROOM_UBI_P2P,
@@ -380,6 +387,26 @@ export class RouterSession {
                 ]),
               ),
             ],
+          };
+        }
+        // Leaving a group. A host who leaves takes his game with him, which is the
+        // other half of why a name could stay taken by nobody.
+        if (subtype === String(LobbyMsg.GROUP_LEAVE)) {
+          const groupId = Number(Array.isArray(inner) && typeof inner[0] === 'string' ? inner[0] : '0');
+          const room = this.rooms.get(groupId);
+          let note = `GROUP_LEAVE ${groupId}`;
+          if (room) {
+            room.members = room.members.filter((name) => name !== this.username);
+            if (room.master === this.username) {
+              this.rooms.remove(room.id);
+              note = `GROUP_LEAVE ${groupId} — the host left, "${room.name}" is gone`;
+            } else {
+              note = `GROUP_LEAVE ${groupId} — ${this.username} left "${room.name}"`;
+            }
+          }
+          return {
+            note,
+            replies: [build(reply(message, [String(MessageType.GSSUCCESS), [subtype, [String(groupId)]]]))],
           };
         }
         if (subtype === String(LobbyMsg.GROUP_INFO_GET)) {

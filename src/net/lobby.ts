@@ -22,6 +22,7 @@ import { type GSValue } from './gs-data.ts';
 /** LOBBY_MSG subtypes. The protocol has ~60; these are the ones we speak. */
 export const LobbyMsg = {
   JOIN_SERVER: 3,
+  GROUP_LEAVE: 8,
   GROUP_INFO_GET: 9,
   CREATE_ROOM: 12,
   START_GAME: 15,
@@ -109,6 +110,10 @@ export class Rooms {
 
   inLobby(lobbyId: number): Room[] {
     return [...this.rooms.values()].filter((room) => room.parentId === lobbyId);
+  }
+
+  named(parentId: number, name: string): Room | undefined {
+    return [...this.rooms.values()].find((room) => room.parentId === parentId && room.name === name);
   }
 
   hostedBy(master: string): Room[] {
