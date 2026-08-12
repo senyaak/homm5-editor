@@ -29,7 +29,7 @@ import {
   PANDORA_RATES, PANDORA_TIERS, boxTier, isEmptyBox, pandoraTier, pandoraValue,
 } from '../src/mods/pandora-contents.ts';
 import type { PandoraStack } from '../src/mods/pandora-contents.ts';
-import { pandoraPrices } from '../src/mods/pandora-prices.ts';
+import { pandoraPrices, talismanLadder } from '../src/mods/pandora-prices.ts';
 import { singleRoot } from '../src/game/assets.ts';
 import { buildGameplayArchive } from '../src/mods/gameplay.ts';
 import {
@@ -362,6 +362,16 @@ console.log('what the contents are worth');
   check('a spell knows its level',
     real.spellLevel('SPELL_ARMAGEDDON') === 5 && real.spellLevel('SPELL_MAGIC_ARROW') === 1,
     `${real.spellLevel('SPELL_ARMAGEDDON')} / ${real.spellLevel('SPELL_MAGIC_ARROW')}`);
+  // THE LADDER, off the game's own table rather than a list written here: it is
+  // what a box splits its spells by, and the shipped one ends on Town Portal.
+  const ladderNow = talismanLadder(singleRoot(dataRoot));
+  check('the talisman ladder is read from the game',
+    ladderNow.length === 4 && ladderNow[0] === 'SPELL_SUMMON_BOAT'
+    && ladderNow[3] === 'SPELL_TOWN_PORTAL', ladderNow.join(' · '));
+  // And each rung is a spell the game actually has — a typo in the table would
+  // otherwise ride into a box's `adventure` list and be handed to nobody.
+  check('and every rung is a spell the game knows',
+    ladderNow.every((id) => real.spellLevel(id) > 0), ladderNow.join(' · '));
   check('and an id nobody knows is worth nothing, quietly',
     real.creature('CREATURE_NOT_A_THING') === 0 && real.artifact('ARTIFACT_NOT_A_THING') === 0
     && real.spellLevel('SPELL_NOT_A_THING') === 0);
@@ -463,6 +473,29 @@ console.log('the scripts');
   let refused = false;
   try { pandoraMapBlock([{ name: 'bad name' }]); } catch { refused = true; }
   check('a bad placement name is refused', refused);
+
+  // ADVENTURE MAGIC GOES DOWN ITS OWN PATH, and the ladder is what says which
+  // spells those are. A barbarian is refused every school but war cries, so a
+  // box hands him a talisman step instead — and the split has to happen where
+  // the ladder is known, which is here and not in Lua.
+  const ladder = ['SPELL_SUMMON_BOAT', 'SPELL_TOWN_PORTAL'];
+  const mixed = [{ name: 'Pandora04', spells: ['SPELL_FIREBALL', 'SPELL_TOWN_PORTAL'] }];
+  const split = pandoraMapBlock(mixed, { ladder });
+  check('the block lists a ladder spell apart from a taught one',
+    split.includes('spells = { SPELL_FIREBALL }') && split.includes('adventure = { SPELL_TOWN_PORTAL }'),
+    split.split('\n').filter((l) => l.includes('spells') || l.includes('adventure')).join(' | '));
+  check('and the split block lints clean', luaDiagnostics(split).length === 0,
+    luaDiagnostics(split).map((d) => `${d.from}: ${d.message}`).join('; '));
+  // WITHOUT A LADDER NOTHING CHANGES — a test with no data root, or an install
+  // whose table cannot be read, writes what a box has always written.
+  check('no ladder means every spell is taught',
+    pandoraMapBlock(mixed).includes('spells = { SPELL_FIREBALL, SPELL_TOWN_PORTAL }')
+    && !pandoraMapBlock(mixed).includes('adventure ='));
+  // And the behaviour that reads the list: the step first, teaching only when
+  // the step says the talisman is not this hero's.
+  check('the behaviour takes the talisman step before teaching',
+    lua.includes('local step = H5ETalismanStep(hero);')
+    && lua.indexOf('H5ETalismanStep(hero)') < lua.indexOf('TeachHeroSpell(hero, s);', lua.indexOf('box.adventure')));
 
   // A MESSAGE IS A FILE, not a string: MessageBox takes a text ref. A box that
   // says something and has nowhere for it to be read from is a box that would

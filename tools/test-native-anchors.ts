@@ -118,6 +118,40 @@ for (const a of anchors.sort((x, y) => x.name.localeCompare(y.name))) {
     : `0x${(a.rva + IMAGE_BASE).toString(16)} reads ${hex(found)}, expected ${hex(a.head)} (${a.file})`);
 }
 
+// A VTABLE HAS NO HEAD — but it has a NAME, and that is a better check than
+// bytes anyway. MSVC puts a complete-object locator one dword in front of every
+// vtable, and the locator reaches the type descriptor whose decorated name
+// starts two dwords in. So an address the extension calls a class's table is
+// asked what class it really is, which catches the one mistake worth catching:
+// a digit wrong, or a table that moved and now belongs to a neighbour.
+//
+// WHAT IS ASSERTED is only that the address IS a vtable — the failure worth
+// catching, since a wrong digit lands on data or on nothing. The name is then
+// PRINTED, and where the constant names its own class (`CWORLD_`, `CHERO_`) the
+// two are compared as a courtesy; a constant named after its role rather than
+// its class (`HERO_UNIT_`, `DND_HELPER_`) is not made to fit, because a rule
+// that forces a name is a rule people rename things to satisfy.
+console.log('\n=== vtables, asked what class they are ===');
+for (const file of sources(NATIVE)) {
+  const text = readFileSync(file, 'utf8');
+  const short = file.slice(NATIVE.length + 1).replace(/\\/g, '/');
+  for (const m of text.matchAll(/#define ([A-Z0-9_]+)_VTABLE_RVA (0x[0-9a-f]+)u/g)) {
+    const [, name, rva] = m;
+    const locator = exe.dwordAt(Number(rva) + IMAGE_BASE - 4);
+    const descriptor = locator === null ? null : exe.dwordAt(locator + 12);
+    const found = descriptor === null ? null : exe.stringAt(descriptor + 8, 200);
+    // `.?AV` is a class and `.?AU` a struct — both are vtables and the engine
+    // has both (`NDb::STexture` is a struct).
+    if (!found || !/^\.\?A[VU]/.test(found)) {
+      check(`${name}_VTABLE`, false, `0x${(Number(rva) + IMAGE_BASE).toString(16)} has no RTTI behind it (${short})`);
+      continue;
+    }
+    const bare = found.replace(/^\.\?A[VU]/, '').split('@')[0]!;
+    const fits = bare.toLowerCase() === name.replace(/_/g, '').toLowerCase();
+    check(`${name}_VTABLE`, true, fits ? found : `${found} — named for its role, not its class`);
+  }
+}
+
 // NAMED, not hidden. An anchor with no bytes beside it is one this test cannot
 // speak for, and a count that quietly shrinks is how a check stops checking.
 console.log(`\n=== ${headless.length} addresses with no bytes to recognise them by ===`);

@@ -48,6 +48,20 @@ one.
   opening still behaves exactly as it shipped. War cries included — and yes, a
   barbarian does learn one.
 
+- **A box can hand adventure magic to a barbarian.** Town Portal, Dimension
+  Door, Summon Creatures and Summon Boat used to land nowhere when a hero of the
+  Horde opened the box: the engine lets him hold war cries and nothing else. He
+  has never been without adventure magic, though — he buys it as a TALISMAN at
+  the Traveller's Shelter, one spell per level — so a box now gives him one step
+  up that ladder instead of a spell he cannot keep. Everybody else is taught the
+  spell the author chose, exactly as before, and the window says which is which.
+
+  The ladder is the game's own table, read at save time, so the four rungs are
+  never written down twice. What the engine decides stays the engine's: the
+  rungs are cumulative, a rung the hero's level has not reached yet waits until
+  it has, and a talisman does nothing at all for a hero who is not of the Horde
+  — in which case the box teaches the spell as usual.
+
 - **And it is no longer a chest.** The box is an `AdvMapTreasure` in the data,
   so the engine used to run the CHEST's visit beside ours: its own dialog, its
   own gold, and the box gone before you answered the question. The extension

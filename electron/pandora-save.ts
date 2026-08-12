@@ -24,6 +24,7 @@ import {
 } from '#src/map/pandora-store.ts';
 import type { PandoraContents } from '#src/mods/pandora-contents.ts';
 import { isPandoraShared } from '#src/mods/pandora-files.ts';
+import { talismanLadder } from '#src/mods/pandora-prices.ts';
 import { withPandoraBlock } from '#src/mods/pandora-scripts.ts';
 
 /** The default script a map gains when its boxes need one. */
@@ -100,6 +101,10 @@ export function writePandoraForMap(s: Session, archivePrefix: string): number {
   const before = existsSync(luaPath) ? readFileSync(luaPath, 'utf8') : '';
   const after = withPandoraBlock(before, boxes, {
     said: (b: PandoraContents) => (b.message ? pandoraMessageRef(archivePrefix, b.name) : undefined),
+    // Read at save time rather than held somewhere: it is four lines of the
+    // game's own table, and a copy kept across sessions is a copy that can be
+    // wrong about the install the map is being written for.
+    ladder: talismanLadder(s.assets),
   });
   // Only when it changed: an untouched .lua keeps its timestamp, and the
   // watcher keeps quiet.

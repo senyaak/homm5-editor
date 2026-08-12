@@ -318,58 +318,16 @@ const BARBARIAN_BOXES = [
 ];
 
 /**
- * AND THE OTHER HALF OF THAT QUESTION — the door the barbarian DOES have.
+ * A town for red, because a box that hands over Town Portal proves nothing
+ * without somewhere for the portal to go.
  *
- * The box beside him promises Town Portal and the engine refuses it: the gate
- * at `0xc200f0` reads the spell's school off its record and lets a hero with
- * ability `0xAC` — "this one shouts rather than casts" — hold war cries and
- * nothing else. But the shipped game gives the barbarian adventure magic all
- * the same, through a channel of its own: the Traveller's Shelter
- * (`TB_SPECIAL_3`, `UI/ArtefactMagic`), where a hero of the Great Horde
- * upgrades his TALISMAN. `DefaultStats.xdb` holds the ladder —
- *
- *   1 Summon Boat · 2 Summon Creatures · 3 Dimension Door · 4 Town Portal
- *
- * — which is exactly the four spells of `MAGIC_SCHOOL_ADVENTURE` the game has.
- * So a box that hands a barbarian adventure magic is a box that raises his
- * talisman, and this row is what has to be watched before anything is written:
- *
- *   * is the ladder CUMULATIVE — does level 4 mean four spells or only Portal;
- *   * is the level ALONE enough — the table's `HeroLevel` is what the shelter
- *     charges for an upgrade, and whether a cast is gated on it too is not
- *     something the purchase path says;
- *   * does the field even REACH the hero — the constructor at `0xa64f60` calls
- *     the talisman setter with no `OverrideMask` test in sight, so one hero
- *     carries the mask ALL ON and his twin carries none: whichever answer comes
- *     back, it is readable rather than ambiguous;
- *   * and does a talisman do anything for somebody who is NOT a barbarian —
- *     because if it does, a box needs no branch at all.
- *
- * Each hero carries goblins by the count of his place in the row, so the answer
- * can be read off a portrait without counting tiles: one goblin is the first.
- */
-const TALISMAN_ROW = [
-  { key: 'TalismanNone', entry: 'Barbarian', level: 0, mask: 0, exp: 0 },
-  { key: 'TalismanOne', entry: 'Barbarian', level: 1, mask: 0, exp: 0 },
-  { key: 'TalismanTwo', entry: 'Barbarian', level: 2, mask: 0, exp: 0 },
-  { key: 'TalismanFour', entry: 'Barbarian', level: 4, mask: 0, exp: 0 },
-  { key: 'TalismanFourMasked', entry: 'Barbarian', level: 4, mask: 255, exp: 0 },
-  // 500 000 is well past the twenty levels the table asks for a Portal upgrade.
-  { key: 'TalismanFourVeteran', entry: 'Barbarian', level: 4, mask: 0, exp: 500_000 },
-  { key: 'TalismanFourKnight', entry: 'Knight', level: 4, mask: 0, exp: 0 },
-] as const;
-
-/** The row stands on the barbarian's own line, starting clear of the ladder. */
-const TALISMAN_AT = { x: 28, y: 20, step: 3 };
-
-/**
- * A town for red, because a Town Portal with nowhere to go proves nothing.
- *
- * It is a Stronghold one and it carries the Traveller's Shelter from turn one:
- * the shelter is the game's own answer to this question, so the map holds both
- * the answer and whatever we build beside it. Listing a building is not
- * building it — `BLD_UPG_1` is what a shipped map writes for one that stands at
- * the start (see e2e/campaign-three.spec.ts).
+ * It is a Stronghold one and it carries the **Traveller's Shelter** from turn
+ * one (`TB_SPECIAL_3`, screen `UI/ArtefactMagic`) — the shipped game's own way
+ * of giving a barbarian adventure magic, which is the thing a box of ours has
+ * to end up doing. Standing beside the boxes, it is what their answer is
+ * compared against. Listing a building is not building it: `BLD_UPG_1` is what
+ * a shipped map writes for one that stands at the start
+ * (see e2e/campaign-three.spec.ts).
  */
 const TOWN = {
   at: { x: 32, y: 26 },
@@ -539,22 +497,6 @@ test('two sides, each with a hero of their own', async () => {
     await page.evaluate((p) => window.editor.pandoraSet(p.id, p.contents), { id, contents: b.contents });
   }
 
-  // AND THE TALISMAN ROW, on the barbarian's own line — see TALISMAN_ROW.
-  for (const [i, h] of TALISMAN_ROW.entries()) {
-    const entry = `${GENERIC_HEROES}/${h.entry}.xdb`;
-    const id = await place(page, () => pickEntry(page, entry), h.key,
-      TALISMAN_AT.x + i * TALISMAN_AT.step, TALISMAN_AT.y);
-    await setPath(page, id, ['PlayerID'], SIDES[0]!.player);
-    await setPath(page, id, ['Name'], h.key);
-    await setPath(page, id, ['Editable', 'TalismanLevel'], String(h.level));
-    if (h.mask) await setPath(page, id, ['OverrideMask'], String(h.mask));
-    if (h.exp) await setPath(page, id, ['Experience'], String(h.exp));
-    // His place in the row, carried where a portrait shows it.
-    await page.evaluate((oid) => window.editor.addObjectItem({ id: oid, path: ['armySlots'] }), id);
-    await setPath(page, id, ['armySlots', 0, 'Creature'], 'CREATURE_GOBLIN');
-    await setPath(page, id, ['armySlots', 0, 'Count'], String(i + 1));
-  }
-
   // A TOWN FOR RED, so Town Portal has somewhere to go and the shelter that
   // sells talismans can be walked into and compared with.
   const townShared = await page.evaluate(async (rx) => {
@@ -580,22 +522,7 @@ test('two sides, each with a hero of their own', async () => {
     expect(xml, `${b.name} is on the map`).toContain(`<Name>${b.name}</Name>`);
   }
 
-  // THE TALISMAN ROW REACHED THE FILE. Read off the map rather than off the
-  // editor, because a level that never got written is indistinguishable in the
-  // game from a level the engine ignored — and the whole row exists to tell
-  // those two apart.
-  const heroBlocks = xml.split('<AdvMapHero>').slice(1)
-    .map((part) => part.slice(0, part.indexOf('</AdvMapHero>')));
-  for (const h of TALISMAN_ROW) {
-    const body = heroBlocks.find((b) => b.includes(`<Name>${h.key}</Name>`));
-    expect(body, `${h.key} is on the map`).toBeTruthy();
-    expect(body, `${h.key} carries talisman ${h.level}`)
-      .toContain(`<TalismanLevel>${h.level}</TalismanLevel>`);
-    if (h.mask) expect(body, `${h.key} reads his whole Editable block`)
-      .toContain(`<OverrideMask>${h.mask}</OverrideMask>`);
-    if (h.exp) expect(body, `${h.key} is a veteran`).toContain(`<Experience>${h.exp}</Experience>`);
-  }
-  // And the shelter that sells them stands from turn one.
+  // And the town the portal boxes need, with the shelter standing from turn one.
   expect(xml, 'red has a town with a Traveller\'s Shelter').toContain('<Type>TB_SPECIAL_3</Type>');
   // The two sides are OPPONENTS. Left as they come, both slots are team 0 —
   // see SIDES above.
@@ -655,6 +582,27 @@ test('saving writes the block the game reads, and the texts it shows', async () 
   const strays = readdirSync(MAP_DIR).filter((f) => /-gift\.txt$/.test(f));
   expect(strays, 'no receipts are written beside the map').toEqual([]);
   expect(lua, 'and the block points at none').not.toContain('report =');
+
+  // AND THE BARBARIAN'S BOX ASKS FOR A TALISMAN STEP, not for a spell he cannot
+  // hold. The split is made where the ladder is known — at save, off the game's
+  // own table — so this is the one place it can be seen to have happened.
+  //
+  // ONE ENTRY AT A TIME, cut at its own closing brace: `H5E_PANDORA["x"] = {…};`
+  // and nothing of the next box, so a list found here belongs to the box named.
+  const entryOf = (name: string): string => {
+    const from = lua.indexOf(`H5E_PANDORA["${name}"]`);
+    expect(from, `${name} has an entry in the block`).toBeGreaterThan(-1);
+    return lua.slice(from, lua.indexOf('};', from));
+  };
+  const portalBox = BARBARIAN_BOXES.find((b) => b.contents.spells?.includes('SPELL_TOWN_PORTAL'))!;
+  expect(entryOf(portalBox.name), `${portalBox.name} carries Town Portal as adventure magic`)
+    .toContain('adventure = { SPELL_TOWN_PORTAL }');
+  // The cries stay ordinary teaching — they are the half a barbarian CAN hold,
+  // and a rule that swept them into the ladder would be the same bug the other
+  // way round.
+  const criesBox = BARBARIAN_BOXES.find((b) => b.name.includes('Cries'))!;
+  expect(entryOf(criesBox.name), 'and the cries are still taught')
+    .toContain('spells = { SPELL_WARCRY_RALLING_CRY, SPELL_WARCRY_CALL_OF_BLOOD }');
 });
 
 test('and it packs to a map the game can be pointed at', async () => {

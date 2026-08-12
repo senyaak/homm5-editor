@@ -62,6 +62,17 @@ export type MessageRef = (box: PandoraContents) => string | undefined;
  */
 export interface PandoraRefs {
   said?: MessageRef;
+  /**
+   * The talisman ladder, in the game's own order — `talismanLadder()` in
+   * pandora-prices.ts, which reads it off `DefaultStats.xdb`.
+   *
+   * What it decides is which of a box's spells are ADVENTURE magic, and those
+   * are written into a list of their own: a barbarian cannot be taught one and
+   * takes a step up this ladder instead. Left out (a test with no data root,
+   * an install missing the table) every spell goes down the teaching path,
+   * which is what a box did before any of this existed.
+   */
+  ladder?: readonly string[];
 }
 
 /**
@@ -235,6 +246,28 @@ export function pandoraBehaviourLua(): string {
     '\t\t\tTeachHeroSpell(hero, s);',
     '\t\tend;',
     '\tend;',
+    '\t-- ADVENTURE MAGIC IS TWO DIFFERENT GIFTS, and which one this is depends',
+    '\t-- on who opened the box. Anybody with a spellbook is taught the spell the',
+    '\t-- author chose. A barbarian cannot hold it - the engine refuses him every',
+    '\t-- school but war cries - and gets his adventure magic the way the game',
+    '\t-- gives it to him: one step up the TALISMAN, which is what',
+    '\t-- H5ETalismanStep does. It answers nil for anybody a talisman does not',
+    '\t-- serve and for a talisman already at the top, and nil is the signal to',
+    '\t-- teach the spell instead. Called outright, like H5EAnnounceGain above:',
+    '\t-- both are the extension\'s, and a box without the extension has no',
+    '\t-- object to stand on in the first place.',
+    '\tif box.adventure ~= nil then',
+    '\t\tfor i, s in box.adventure do',
+    '\t\t\tlocal step = H5ETalismanStep(hero);',
+    '\t\t\tif step ~= nil then',
+    '\t\t\t\tprint("H5E pandora: talisman " .. step);',
+    '\t\t\telse',
+    '\t\t\t\tprint("H5E pandora: adventure spell " .. s);',
+    '\t\t\t\tH5EAnnounceGain();',
+    '\t\t\t\tTeachHeroSpell(hero, s);',
+    '\t\t\tend;',
+    '\t\tend;',
+    '\tend;',
     '\tif box.creatures ~= nil then',
     '\t\tfor i, c in box.creatures do',
     '\t\t\tprint("H5E pandora: creatures " .. c[1] .. " x" .. c[2]);',
@@ -327,7 +360,15 @@ function boxLua(box: PandoraContents, refs: PandoraRefs | undefined): string[] {
     .map(([key, constant]) => `{${constant}, ${luaNumber(box[key] as number)}}`);
   if (res.length) fields.push(`\tres = { ${res.join(', ')} }`);
   if (box.artifacts?.length) fields.push(`\tartifacts = { ${box.artifacts.map(luaId('ARTIFACT_')).join(', ')} }`);
-  if (box.spells?.length) fields.push(`\tspells = { ${box.spells.map(luaId('SPELL_')).join(', ')} }`);
+  // TWO LISTS, because they are two different gifts — see the behaviour. What
+  // splits them is the game's own ladder, so a spell is adventure magic here
+  // exactly when the Traveller's Shelter sells it.
+  const onLadder = new Set((refs?.ladder ?? []).map(luaId('SPELL_')));
+  const spells = (box.spells ?? []).map(luaId('SPELL_'));
+  const adventure = spells.filter((s) => onLadder.has(s));
+  const taught = spells.filter((s) => !onLadder.has(s));
+  if (taught.length) fields.push(`\tspells = { ${taught.join(', ')} }`);
+  if (adventure.length) fields.push(`\tadventure = { ${adventure.join(', ')} }`);
   if (box.creatures?.length) {
     fields.push(`\tcreatures = { ${box.creatures
       .map((c) => `{${luaId('CREATURE_')(c.creature)}, ${luaNumber(c.count)}}`).join(', ')} }`);

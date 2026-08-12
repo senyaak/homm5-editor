@@ -59,10 +59,39 @@ cries with the same call, `TeachHeroSpell("Kujin", SPELL_WARCRY_RALLING_CRY)`
 in A2C3M4) — and **creatures join an existing stack**, so ten archangels added
 to a hundred read as nothing happening at all.
 
-The first of those is a **TO FIX**: a box should not be able to promise a
-hero something his book cannot hold, and today it can. The probe map asks the
-question rather than answering it — a third hero, a barbarian, with a box of
-cries and a box of Town Portal beside him.
+### Adventure magic, which is two gifts wearing one name
+
+The engine refuses a barbarian every school but war cries — the gate reads the
+school off the spell's own record — and gives him adventure magic through a
+channel of its own instead: the **talisman**, sold a level at a time in the
+Stronghold's Traveller's Shelter. `DefaultStats.xdb` says what a level is worth,
+one spell per rung, and those four rungs are every adventure spell the game has:
+
+| talisman | spell | the hero must have reached |
+|---|---|---|
+| 1 | Summon Boat | level 1 |
+| 2 | Summon Creatures | level 10 |
+| 3 | Dimension Door | level 15 |
+| 4 | Town Portal | level 20 |
+
+So a box holding an adventure spell hands over **one of two different gifts**,
+and which one depends on who opens it:
+
+- anybody with a spellbook is **taught the spell the author chose**;
+- a barbarian takes **one step up the ladder** — whichever spell that step turns
+  out to be. One adventure spell in a box is one talisman level, so a box cannot
+  carry a hero from nothing to Town Portal in a single lid.
+
+Three things about the ladder are the engine's and not ours. It is
+**cumulative** — a talisman of 4 is four spells, not one. A rung whose hero
+level is not reached yet **yields nothing until it is**, so the step can be
+taken and the spell still be missing for a while. And a talisman does nothing
+whatsoever for a hero who is **not of the Horde**, which is why the box asks
+first and teaches when the answer is no.
+
+The window says as much beside the spell list, and the whole reading — what the
+gate branches on, where the level lives, what recomputes the list — is in
+[SPELLS.md](engineInternals/SPELLS.md#the-barbarians-adventure-magic-is-a-talisman-not-a-book).
 
 ### What the player sees, and when
 
