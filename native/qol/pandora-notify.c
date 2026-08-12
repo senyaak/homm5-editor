@@ -866,6 +866,10 @@ static void add_pandora_map_functions(void) {
   // And what a box calls before it hands something over. Without it the two
   // hooks below only ever read the original's answer and write it down.
   add_map_function("H5EAnnounceGain", (void *)&lua_announce_next_gain);
+  // Said out loud, because both times this went wrong the only witness was the
+  // map's own red text. A line here is the difference between "the rows went in
+  // before the table was handed over" and finding out from the game.
+  log_line("pandora: the map may call H5EAnnounceGain and H5EMapIsPlaying");
 }
 
 /**

@@ -151,7 +151,14 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   // announced by calling a function of ours, and the ask has to be in the table
   // before the table is handed over. Its hooks go in far below, with the rest
   // of the quality-of-life switches; only the two rows belong up here.
-  if (g_qol[QOL_PANDORA_BOX]) add_pandora_map_functions();
+  //
+  // UNCONDITIONALLY, and that is not laziness. `load_qol` runs fifty lines
+  // BELOW this, so a `g_qol[QOL_PANDORA_BOX]` here reads a flag nobody has
+  // filled in yet — which is how the same "Value was NIL" came back a second
+  // time after the ordering was supposedly fixed. Two rows cost nothing; with
+  // the feature switched off its hooks are absent and the ask sets a flag that
+  // nothing ever reads.
+  add_pandora_map_functions();
   install_lua_functions();
   // The same argument, one context over — and the one thing here that a battle
   // has to answer for itself, so it says what it saw whether or not anything
