@@ -74,17 +74,29 @@ Refused, the spell is **lost** — exactly as it is at a shrine — and the box 
 so with the game's own line, flown over the hero: *"Герой не может выучить
 выбранное заклинание"*, the one the spell shop puts under its Buy button.
 
-The one hero **paid** instead is the barbarian, and only for what he IS: magic
-is not his to take, so he gets **1000 experience per level of the spell**
-(measured 12.08.2026 at shrines of levels 1, 2 and 3 — also exactly what the
-valuer prices a spell at, so the box is worth what it says). A war cry he has
-not grown into is a different matter: that one he loses, like anybody short of a
-level or a skill.
+Refused for **what the hero IS** — the spell is not his kind of magic at all —
+he is **paid** instead: **1000 experience per level of the spell** (measured
+12.08.2026 at shrines of levels 1, 2 and 3 — also exactly what the valuer prices
+a spell at, so the box is worth what it says). A barbarian handed a fireball, a
+knight handed a war cry, anybody but a dwarf handed a rune. Refused for what he
+has not got **yet** — a skill, a mastery, a level — he loses it.
+
+Which of the two it is comes from the school gate alone, so the rule covers
+every kind of magic the game has and any a mod adds. It used to pay the
+barbarian and nobody else, which left a knight handed a war cry with nothing at
+all (fixed 13.08.2026).
 
 The levels are worth knowing, since they are the reason a war cry can vanish
 into a young barbarian: a war cry of level 1 asks hero level **2**, level 2 asks
 **6**, level 3 asks **11**. Adventure magic asks 1, 10, 15 and 20. Every other
-school asks nothing — only the skill.
+school asks nothing of the hero's level — only the skill.
+
+**Runes are the one school gated on MASTERY.** They are `MAGIC_SCHOOL_RUNIC`,
+the gate wants the Runemage's own ability, and the rune's own level says how far
+his **Runelore** must have come — basic for a rune of level 1 or 2, advanced for
+3 and 4, expert for 5 (`0xc63e90`, read 13.08.2026). No rune asks a hero level:
+every `RequiredHeroLevel` in the ten records is 0. So a box of runes tells three
+answers apart at once — learned, lost, paid for.
 
 **Adventure magic comes through here too**, and through nothing else. Summon
 Boat, Summon Creatures, Dimension Door and Town Portal are the four spells of

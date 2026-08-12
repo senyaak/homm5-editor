@@ -507,22 +507,24 @@ console.log('the scripts');
   // the spell shop, addressed to the hero, so no gate is wanted.
   check('a spell that lands nowhere says so, in the game\'s words',
     lua.includes(`ShowFlyingSign("${CANNOT_LEARN_TEXT}", hero, player, 4);`));
-  // AND ONLY A BARBARIAN IS PAID. For anybody else a spell he cannot learn is
-  // lost, the way it is at a shrine — so `GiveExp` must sit behind the race
-  // question and nowhere else.
+  // PAID FOR WHAT HE IS, LOST FOR WHAT HE HAS NOT GOT YET, and the school gate
+  // is what tells the two apart: `H5ECanHoldSpell` asks only whether the spell
+  // is his KIND of magic. Without it a barbarian was paid for a war cry he had
+  // merely not grown into, which a play-through showed.
   {
     const at = lua.indexOf('box.spells');
     const branch = lua.slice(at, lua.indexOf('box.creatures', at));
     const paid = branch.indexOf('GiveExp(hero, s[2]);');
-    check('and only a barbarian is paid for one he cannot',
-      paid > 0 && branch.lastIndexOf('H5EIsBarbarian(hero)', paid) > 0
+    check('a spell of a kind that is not his is paid for',
+      paid > 0 && branch.lastIndexOf('H5ECanHoldSpell(hero, s[1]) == nil', paid) > 0
       && branch.includes('", lost");'),
       branch.split('\n').filter((l) => l.includes('H5E') || l.includes('lost')).join(' | '));
-    // AND PAID FOR WHAT HE IS, not for how young he is: the school gate is the
-    // second half of that question, and without it a barbarian was paid for a
-    // war cry he had merely not grown into — which a play-through showed.
-    check('and paid only for what is not his kind',
-      branch.lastIndexOf('H5ECanHoldSpell(hero, s[1]) == nil', paid) > 0);
+    // AND THE RACE IS NOT ASKED. It was — only a barbarian used to be paid — and
+    // that left a knight handed a war cry, and anybody but a dwarf handed a
+    // RUNE, with nothing at all (Senya, 13.08.2026). The rule is the school's
+    // now, so it covers every kind the game has and any a mod adds.
+    check('and nobody is refused the payment for his race',
+      !branch.includes('H5EIsBarbarian'));
   }
 
   // A MESSAGE IS A FILE, not a string: MessageBox takes a text ref. A box that

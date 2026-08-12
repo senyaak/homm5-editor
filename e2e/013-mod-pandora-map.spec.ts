@@ -419,6 +419,28 @@ const BARBARIAN_BOXES = [
 ];
 
 /**
+ * AND A DWARF, because runes are a kind of magic of their own.
+ *
+ * `MAGIC_SCHOOL_RUNIC` is school 5, and the gate wants ability `0x97` — which is
+ * the Runemage's and nobody else's, so every other hero on this map is refused a
+ * rune for what he IS and paid for it. The dwarf is refused for what he has not
+ * got YET: the can-learn question asks his RUNELORE at a mastery taken from the
+ * rune's own level — basic for a rune of level 1 or 2, advanced for 3 and 4,
+ * expert for 5 (`0xc63e90`, read 13.08.2026) — and no rune asks a hero level at
+ * all, every `RequiredHeroLevel` in the ten records being 0.
+ *
+ * So one box holds one rune of each mastery step, and the answer is three
+ * different things at once: learned, lost, or paid for, depending on who opened
+ * it and how far his Runelore has come.
+ */
+const DWARF = { at: { x: 2, y: 42 }, entry: `${GENERIC_HEROES}/Runemage.xdb` };
+const RUNES = ['SPELL_RUNE_OF_CHARGE', 'SPELL_RUNE_OF_ETHEREALNESS', 'SPELL_RUNE_OF_DRAGONFORM'];
+const RUNE_BOX = {
+  name: 'PandoraRunesForTheDwarf', x: 6, y: DWARF.at.y,
+  contents: { name: 'PandoraRunesForTheDwarf', spells: RUNES },
+};
+
+/**
  * FOUR SCROLLS, one per adventure spell, a row above the levels.
  *
  * A scroll is the other way a spell reaches a hero, and it answers a question
@@ -678,6 +700,29 @@ test('two sides, each with a hero of their own', async () => {
     + ' LOSES the spell the box held. Open the cries box at level 1, then these,'
     + ' then the cries box again, and the answer changes.');
 
+  // THE DWARF AND HIS RUNES, on a line of his own below the barbarian's.
+  //
+  // He is the other half of the same question: a rune is his kind of magic and
+  // nobody else's, so this one box answers three ways at once — he learns what
+  // his Runelore reaches, loses what it does not, and any other hero on the map
+  // is paid for the lot.
+  const dwarf = await place(page, () => pickEntry(page, DWARF.entry), DWARF.entry,
+    DWARF.at.x, DWARF.at.y);
+  await setPath(page, dwarf, ['PlayerID'], SIDES[0]!.player);
+  const runeId = await place(page, () => pickObject(page, BOX), RUNE_BOX.name, RUNE_BOX.x, RUNE_BOX.y);
+  await setPath(page, runeId, ['Name'], RUNE_BOX.name);
+  await page.evaluate((p) => window.editor.pandoraSet(p.id, p.contents),
+    { id: runeId, contents: RUNE_BOX.contents });
+  const runeSign = await place(page, () => pickObject(page, SIGN), 'sign-runes',
+    DWARF.at.x + STEP, DWARF.at.y);
+  await page.evaluate((oid) => window.view.select(oid), runeSign);
+  await setTextRef(page, 'MessageFileRef', 'sign-runes',
+    'RUNES, one of each mastery: Charge (level 1, basic), Etherealness (3,'
+    + ' advanced), Dragon Form (5, expert). The dwarf beside this post learns the'
+    + ' ones his Runelore reaches and LOSES the rest - no rune asks a hero level,'
+    + ' only the skill. Bring anybody else and all three are paid for instead,'
+    + ' 1000 experience a level, because runes are not his kind of magic.');
+
   // THE SCROLLS — the same four spells as artifacts rather than as pages.
   for (const s of SCROLLS) {
     const id = await place(page, () => pickObject(page, SCROLL), s.spell, s.x, s.y);
@@ -819,6 +864,13 @@ test('saving writes the block the game reads, and the texts it shows', async () 
   const criesBox = BARBARIAN_BOXES.find((b) => b.name.includes('Cries'))!;
   expect(entryOf(criesBox.name), 'and the cries are still taught')
     .toContain('spells = { {SPELL_WARCRY_RALLING_CRY, 1000}, {SPELL_WARCRY_CALL_OF_BLOOD, 1000} }');
+  // AND THE RUNES RIDE THE SAME LIST, priced by their own levels — 1, 3 and 5,
+  // which is also the ladder of Runelore masteries the engine asks for. Nothing
+  // in the block knows they are runes: what happens to them is the gate's
+  // answer at the moment the box opens.
+  expect(entryOf(RUNE_BOX.name), 'the runes are priced by level, like any spell')
+    .toContain('spells = { {SPELL_RUNE_OF_CHARGE, 1000}, {SPELL_RUNE_OF_ETHEREALNESS, 3000},'
+      + ' {SPELL_RUNE_OF_DRAGONFORM, 5000} }');
 });
 
 test('and it packs to a map the game can be pointed at', async () => {

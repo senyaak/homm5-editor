@@ -58,12 +58,13 @@ one.
   shrine, and the box says so with the game's own line — *"Герой не может
   выучить выбранное заклинание"* — flown over the hero.
 
-  The one hero **paid** instead is the barbarian, and only for magic that is not
-  his kind: 1000 experience per level of the spell, the Shrine of Magic's own
-  rate, which is exactly what the box was priced at — it is worth the same
-  whoever opens it. Adventure magic goes the same way: Town Portal handed to a
-  hero of the Horde is paid for, not turned into anything else. A spell the hero
-  already knows is not paid for.
+  Refused for **what the hero is** — the spell being no kind of magic he has —
+  he is **paid** instead: 1000 experience per level of the spell, the Shrine of
+  Magic's own rate, which is exactly what the box was priced at, so it is worth
+  the same whoever opens it. A barbarian handed a fireball, a knight handed a
+  war cry, anybody but a dwarf handed a rune. Adventure magic goes the same way:
+  Town Portal handed to a hero of the Horde is paid for, not turned into
+  anything else. A spell the hero already knows is not paid for.
 
   Nothing here knows what a school is, so a mod that adds one is covered without
   a line changing.
