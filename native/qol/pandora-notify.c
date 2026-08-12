@@ -154,6 +154,31 @@ static void log_all_words(const char *what, DWORD at, int count) {
   }
 }
 
+/**
+ * A wide string of the engine's, AS TEXT.
+ *
+ * Pointers said nothing about which announcement was which, and the one that
+ * matters next is known by its wording — the game names the week the moment a
+ * map begins, and a banner by that name is the signal for "the game has
+ * started" the author asked for. Anything outside plain ASCII is written as a
+ * dot: this is for recognising a message, not for reading it.
+ */
+static void log_wide(const char *what, DWORD str) {
+  char line[200];
+  int at = 0;
+  while (what[at] && at < 60) { line[at] = what[at]; at++; }
+  if (readable((const void *)(DWORD_PTR)str, 8)) {
+    const WCHAR *from = (const WCHAR *)(DWORD_PTR)((const DWORD *)(DWORD_PTR)str)[0];
+    const WCHAR *to = (const WCHAR *)(DWORD_PTR)((const DWORD *)(DWORD_PTR)str)[1];
+    while (from && from < to && at < (int)sizeof line - 2 && readable(from, 2)) {
+      WCHAR c = *from++;
+      line[at++] = (c >= 0x20 && c < 0x7f) ? (char)c : '.';
+    }
+  }
+  line[at] = 0;
+  log_line(line);
+}
+
 /** One line per argument, in the order the engine pushed them. */
 static void log_args(const char *what, DWORD self, DWORD edx, const DWORD *stack, int count,
                      DWORD from) {
@@ -449,14 +474,21 @@ static int the_game_is_being_played(DWORD world) {
     log_line("pandora: nobody is watching — this is setting up, not playing");
     return 0;
   }
-  // AND THE ANSWER FROM THE MAP ITSELF — see g_playing. A sign having flown off
-  // a hero was tried here first and taken back out: it refused the map init it
-  // was meant to refuse and then refused a barbarian's first war cry too, which
-  // he is handed before he has earned any experience, morale or luck.
-  if (!g_playing) {
-    log_line("pandora: the map has not said it is running yet — this is setting up");
-    return 0;
-  }
+  // AND NOTHING ELSE, FOR NOW. Two signals were tried here and both were taken
+  // back out for the same reason: each refused the map init it was meant to
+  // refuse and then refused real events as well. "Has a sign flown off a hero"
+  // swallowed a barbarian's first war cry, which he is handed before he has
+  // earned any experience, morale or luck; the map's own thread waking up
+  // swallowed the first box on the probe. A gate that eats the real events is
+  // worse than no gate, and the author's call is to leave the announcement
+  // alone until there is a signal that has been SEEN to separate the two.
+  //
+  // What is still watched, and only written down: whether the map ever says it
+  // has started, and what every announcement the engine makes is called. The
+  // next candidate is the author's — the game shows which week it is the moment
+  // a map begins, so a banner by that name arriving would be the signal — and
+  // it is decidable from the log rather than from another run.
+  log_hex("pandora:   (the map has said it is running: ", (DWORD)g_playing);
   return 1;
 }
 
@@ -745,6 +777,15 @@ static DWORD __fastcall announce_hold_probe(DWORD self, DWORD edx, DWORD announc
   // comes while the map is still loading and its script system may not be up
   // yet, so this asks again until it takes.
   if (g_world) watch_for_play();
+  // Named, always — this is how the next candidate gets decided out of a log
+  // that already exists instead of out of another run.
+  log_wide("pandora: an announcement says: ", announcement + 0x08);
+  log_wide("pandora:   and also: ", announcement + 0x14);
+  log_wide("pandora:   and also: ", announcement + 0x30);
+  log_wide("pandora:   and also: ", announcement + 0x40);
+  log_wide("pandora:   and also: ", announcement + 0x54);
+  if (readable((const void *)(DWORD_PTR)(announcement + 0x2c), 4))
+    log_hex("pandora:   its kind ", *(const DWORD *)(DWORD_PTR)(announcement + 0x2c));
   if (LOG_ON) {
     log_line("pandora: holding an announcement");
     // ALL of it, both times. The engine's own announcements come through here

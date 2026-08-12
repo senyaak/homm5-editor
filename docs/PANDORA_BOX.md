@@ -87,6 +87,32 @@ It exists because two kinds of reward move a number in the HUD and nothing
 else. A play-through reported both rows as boxes that did nothing, and from
 outside there is no way to tell that from a box that is broken.
 
+### A spell given at map start is announced too — PLANNED, not done
+
+The extension announces every spell a hero is taught, which is what makes a box
+that hands one over stop reading as a box that did nothing. It also catches the
+spells a map's INIT SCRIPT gives out, so a hero who has had a spell since before
+the first turn is announced as having just learned it.
+
+Three ways to tell the two apart have been tried and none is in the build:
+
+- the announcement holder's own two questions about the world — they answer the
+  same while a map is being set up as they do in play;
+- a whole kilobyte of the world diffed against ITSELF, loading against playing.
+  Three words move, and all three move on an init-only map as well: they count
+  announcements, they do not describe the game;
+- observables that are only true in play — "a sign has flown off a hero", and
+  the map's own first thread waking up. Both refused the init they were meant to
+  refuse AND real events: a barbarian is handed his first war cry before he has
+  earned any experience, morale or luck, and the first box on the probe map
+  comes up before a freshly started thread has answered.
+
+A gate that swallows the real events is worse than no gate, so there is none.
+The next candidate is the week: the game names it the moment a map begins, so an
+announcement by that name arriving is the signal. Every announcement the engine
+makes now has its wording written to the log, which is what will settle it —
+from a log that already exists rather than from another run.
+
 ### Who sees the message
 
 Only the player who opened the box, and only while it is his turn.
