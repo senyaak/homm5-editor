@@ -31,7 +31,7 @@ import { DATA, hudSays, launchEditor } from './launch.ts';
 import type { Launched } from './launch.ts';
 import { bar } from './bar.ts';
 import { newMap } from './tiles.ts';
-import { pickEntry, pickObject, placeAtTile } from './objects.ts';
+import { pickEntry, pickObject, placeAtTile, setTextRef } from './objects.ts';
 import { clearMap, modGameRoot } from './mods.ts';
 import { MADE } from './artifacts.ts';
 import { modFile } from '../src/game/mod-paths.ts';
@@ -72,18 +72,20 @@ const BOX = `/${pandoraShared(PANDORA_TIERS[0]!.key)}`;
  * and taken out again: it read as a second, worse copy of what the game had
  * already said.
  */
-const KINDS: { key: string; per: (tier: number) => Partial<PandoraContents> }[] = [
+const KINDS: { key: string; says: string; per: (tier: number) => Partial<PandoraContents> }[] = [
   {
     key: 'Says',
+    says: 'A message and nothing else. Four glows, no gift - the colour is the author\'s own.',
     per: (t) => ({
       message: `The box was empty, but it spoke: ${PANDORA_TIERS[t]!.key.toLowerCase()}.`,
       tier: PANDORA_TIERS[t]!.key,
     }),
   },
-  { key: 'Exp', per: (t) => ({ exp: [1000, 7000, 20000, 60000][t]! }) },
-  { key: 'Gold', per: (t) => ({ gold: [1000, 7000, 20000, 60000][t]! }) },
+  { key: 'Exp', says: 'Experience: 1000, 7000, 20000, 60000 - left to right.', per: (t) => ({ exp: [1000, 7000, 20000, 60000][t]! }) },
+  { key: 'Gold', says: 'Gold: 1000, 7000, 20000, 60000 - left to right.', per: (t) => ({ gold: [1000, 7000, 20000, 60000][t]! }) },
   {
     key: 'Res',
+    says: 'Resources, worth the same as the gold row beside it.',
     // 250 gold a common, 500 a rare — so these are 1000 / 7000 / 20000 / 60000.
     per: (t) => ([
       { wood: 4 },
@@ -94,28 +96,33 @@ const KINDS: { key: string; per: (tier: number) => Partial<PandoraContents> }[] 
   },
   {
     key: 'Arts',
+    says: 'Artifacts, priced off the game\'s own table - one glow each.',
     // Priced off the game's table at run time; the ids are picked below so each
     // copy lands in its tier.
     per: () => ({}),
   },
   {
     key: 'Spells',
+    says: 'Spells to be taught. A hero with no book for them gets nothing here.',
     // A level is 1000 gold, so a stack of them is how a spell box gets rich.
     per: () => ({}),
   },
   {
     key: 'Army',
+    says: 'Archangels, handed over: 1, 2, 5, 12 - left to right.',
     // Archangels at 3500 each: 1, 2, 5, 12.
     per: (t) => ({ creatures: [{ creature: 'CREATURE_ARCHANGEL', count: [1, 2, 5, 12][t]! }] }),
   },
   {
     key: 'Guard',
+    says: 'The same archangels, GUARDING instead. Win and the box opens empty.',
     // THE SAME STACKS, on the other side of the fight. Same counts on purpose:
     // the pair must come out the same colour.
     per: (t) => ({ guards: [{ creature: 'CREATURE_ARCHANGEL', count: [1, 2, 5, 12][t]! }] }),
   },
   {
     key: 'Both',
+    says: 'Guarded AND paying: a fight, then gold. The only row that walks the whole path.',
     // A BOX THAT IS GUARDED AND PAYS, which is what one is for — and the only
     // row that walks the whole path: question, taunt, battle, and a reward
     // handed over to whoever won. The rows above stop halfway each.
@@ -147,6 +154,15 @@ const SIDES = [
 /** One placement: where it goes, what it is called, what is in it. */
 interface Placement { name: string; x: number; y: number; contents: PandoraContents }
 
+/**
+ * How far apart the boxes stand — one empty tile between neighbours.
+ *
+ * They were three apart, which spread nine rows of four over most of the map and
+ * made a walk down the ladder a walk. Two is as tight as it goes while a hero
+ * can still reach each one: touching boxes would be a wall, and the ones inside
+ * it could not be opened at all.
+ */
+const STEP = 2;
 
 /** Every box the map carries — the same row twice, once per side. */
 function placements(arts: string[][], spells: (string | number)[][]): Placement[] {
@@ -161,11 +177,41 @@ function placements(arts: string[][], spells: (string | number)[][]): Placement[
           : kind.per(t);
         out.push({
           name,
-          x: side.at.x + t * 3,
-          y: side.at.y + row * 3,
+          x: side.at.x + t * STEP,
+          y: side.at.y + row * STEP,
           contents: { name, ...extra },
         });
       }
+    });
+  }
+  return out;
+}
+
+/**
+ * A signpost at the head of every row, saying what that row holds.
+ *
+ * Nine rows of four identical-looking boxes is a puzzle from the outside: the
+ * glow says what a box is WORTH and nothing says what is in it, so the only way
+ * to read the map was to have written it. The sign stands one tile to the LEFT
+ * of the row's first box — smaller x — where a hero walking in from his own
+ * start reaches it before the boxes.
+ */
+const SIGN = '/MapObjects/Sign.(AdvMapSignShared).xdb#xpointer(/AdvMapSignShared)';
+
+/** One signpost: where it stands, the file its text goes in, and the text. */
+interface Post { file: string; x: number; y: number; text: string }
+
+/** Every signpost the map carries — one per row, both sides, and the barbarian's. */
+function signposts(): Post[] {
+  const out: Post[] = [];
+  for (const side of SIDES) {
+    KINDS.forEach((kind, row) => {
+      out.push({
+        file: `sign-${side.tag}${kind.key}`,
+        x: side.at.x - STEP,
+        y: side.at.y + row * STEP,
+        text: `${kind.key.toUpperCase()} — ${kind.says}`,
+      });
     });
   }
   return out;
@@ -310,11 +356,38 @@ const LEADS = ['Knight', 'Demonlord'];
 // screen north is up and bigger `y` goes up with it, but `x` grows to the
 // RIGHT, so the ladder at x = 14…23 is to the right of this and blue's rows,
 // far away at x = 66, are further right still.
-const BARBARIAN = { at: { x: 4, y: 20 }, entry: `${GENERIC_HEROES}/Barbarian.xdb` };
+// BELOW THE LADDER, not beside it: with the boxes two apart the rows now reach
+// y = 28, and this line at 32 is clear of them with room for a row of its own.
+const BARBARIAN = { at: { x: 2, y: 32 }, entry: `${GENERIC_HEROES}/Barbarian.xdb` };
 const CRIES = ['SPELL_WARCRY_RALLING_CRY', 'SPELL_WARCRY_CALL_OF_BLOOD'];
+
+/**
+ * The barbarian's own row: what he CAN hold, then the whole ladder and one box
+ * past the end of it.
+ *
+ * ONE STEP PER BOX is the rule the feature is built on, so a single box could
+ * only ever show the first rung. Five show the lot: boat, creatures, dimension
+ * door, town portal — and then a fifth holding Town Portal again, which is the
+ * question no other box asks. His talisman is at the top by then, so
+ * `H5ETalismanStep` must answer "no" and the box must fall back to teaching —
+ * where the engine refuses him, and nothing at all should happen.
+ *
+ * The spell in each box is what an ordinary hero would be taught by it; for the
+ * barbarian it is only the label, since which rung he gets depends on where his
+ * talisman already stands.
+ */
+const LADDER = [
+  'SPELL_SUMMON_BOAT', 'SPELL_SUMMON_CREATURES', 'SPELL_DIMENSION_DOOR', 'SPELL_TOWN_PORTAL',
+];
 const BARBARIAN_BOXES = [
-  { name: 'PandoraCriesForTheBarbarian', x: 7, y: 20, contents: { name: 'PandoraCriesForTheBarbarian', spells: CRIES } },
-  { name: 'PandoraSpellForTheBarbarian', x: 10, y: 20, contents: { name: 'PandoraSpellForTheBarbarian', spells: ['SPELL_TOWN_PORTAL'] } },
+  {
+    name: 'PandoraCriesForTheBarbarian', x: 6, y: BARBARIAN.at.y,
+    contents: { name: 'PandoraCriesForTheBarbarian', spells: CRIES },
+  },
+  ...[...LADDER, 'SPELL_TOWN_PORTAL'].map((spell, i) => ({
+    name: `PandoraTalisman${i + 1}`, x: 8 + i * STEP, y: BARBARIAN.at.y,
+    contents: { name: `PandoraTalisman${i + 1}`, spells: [spell] },
+  })),
 ];
 
 /**
@@ -398,9 +471,20 @@ test('the whole ladder goes down through the palette, four boxes to a kind', asy
     ids.set(b.name, id);
   }
 
+  // A SIGN AT THE HEAD OF EVERY ROW. Written through the panel's own New — the
+  // field takes a text REF, so a sign with a message needs the file to exist,
+  // and that button is what makes one where a person would.
+  for (const post of signposts()) {
+    const id = await place(page, () => pickObject(page, SIGN), post.file, post.x, post.y);
+    await page.evaluate((oid) => window.view.select(oid), id);
+    await setTextRef(page, 'MessageFileRef', post.file, post.text);
+  }
+
   const placed = await page.evaluate(() => window.view.objects().map((o) => o.type));
   expect(placed.filter((t) => t === 'AdvMapTreasure'), 'every box is on the map')
     .toHaveLength(BOXES.length);
+  expect(placed.filter((t) => t === 'AdvMapSign'), 'and every row is labelled')
+    .toHaveLength(signposts().length);
 });
 
 test('one box is filled in through the window, the way a person would', async () => {
@@ -496,6 +580,17 @@ test('two sides, each with a hero of their own', async () => {
     await setPath(page, id, ['Name'], b.name);
     await page.evaluate((p) => window.editor.pandoraSet(p.id, p.contents), { id, contents: b.contents });
   }
+  // And his own signpost, between him and the row — the one row on the map
+  // where the boxes hand over two different things depending on who opens them.
+  const barbSign = await place(page, () => pickObject(page, SIGN), 'sign-barbarian',
+    BARBARIAN.at.x + STEP, BARBARIAN.at.y);
+  await page.evaluate((oid) => window.view.select(oid), barbSign);
+  await setTextRef(page, 'MessageFileRef', 'sign-barbarian',
+    'CRIES, then the TALISMAN. The first box holds war cries, which a barbarian'
+    + ' can be taught. The five after it hold adventure magic, which he cannot -'
+    + ' each one raises his talisman by a single step instead: boat, creatures,'
+    + ' dimension door, town portal. The fifth is one past the top and should'
+    + ' hand over nothing at all.');
 
   // A TOWN FOR RED, so Town Portal has somewhere to go and the shelter that
   // sells talismans can be walked into and compared with.
