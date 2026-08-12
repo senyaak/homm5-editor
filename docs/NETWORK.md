@@ -1,9 +1,12 @@
 # Online play: how the game finds its servers
 
-> Where the server stands today — what runs, what the client accepted, what it
-> refused and where the next wall is — is in [NETWORK_STATE.md](NETWORK_STATE.md).
-> This file stays about the game side: how it looks for its services and what it
-> does with what it is told.
+> **The server itself is not in this repo.** It lives in `h5e-lobby`
+> (`C:\Projects\h5e-lobby`), where `docs/STATE.md` says how far the client gets and
+> `docs/PROTOCOL.md` is the wire. This file stays on the game's side of that line:
+> how the exe looks for its services, and what it was observed to do with what it
+> is told. What the editor still owns here is the log-mirror DLL
+> ([native/net/ubi-log.c](../native/net/ubi-log.c)) and the disassembly probe
+> (`tools/net-probe.ts`) — both are things done *to* the game.
 
 Everything here is read out of `bin/H5_Game_H5E.exe` (our unwrapped retail exe,
 image base 0x400000 — the Steam-wrapped `H5_Game.exe` has an encrypted `.text`
@@ -55,8 +58,9 @@ rights: `bin/libcurl.dll` is **libcurl 7.14.0**, which reads `http_proxy` /
 (10004) — `net-probe --push 10004` finds no such push anywhere in `.text`, while
 the three options it does set are all there. So a game started with
 `http_proxy=http://127.0.0.1:8080` asks us for its server list, and only that
-process is affected. `tools/net-server.ts` is that server, and
-`run-net.bat` in the game copy sets the variable.
+process is affected. `h5e-lobby` is what answers, and `run-net.bat` in the game
+copy is the whole client side of it: three lines that set the variable and start
+the exe.
 
 The other two ways to redirect it: a `hosts` entry for
 `gsconnect.ubisoft.com`, or patching the URL literal — possible, but it is
@@ -110,102 +114,69 @@ writes it is not traced yet.
 
 ## Can we run our own?
 
-Yes, in stages, and each stage is testable on one machine.
+Yes — and it does run: a player logs in, enters a channel and hosts a game. The
+server is `h5e-lobby`, and how far the client gets is that repo's `docs/STATE.md`.
+What is written down below is the part that belongs to the game rather than to the
+server: what the exe was observed to do, and the addresses to go back to.
 
-1. **Redirect** — done, `tools/net-server.ts`: it answers the gsinit request with
-   an ini pointing every service at this machine. The ini it serves was read back
-   through `GetPrivateProfileStringA`/`IntA` the way the game reads it, so the
-   format is checked and not merely assumed: index 0 comes back, index 1 comes
-   back empty, which is how the client knows the list ended.
+### The first thing it does with our list
 
-   ```bash
-   node tools/net-server.ts          # then run run-net.bat in the game copy
-   ```
-   Measured: the game fetches the list (`GET /gsinit.php?dp=HEROES_29988429c481f219`,
-   `user-agent: curl/7.14.0`) and then goes straight for the **NAT service over
-   UDP** — not the router. Two packet kinds arrive on the advertised NAT port
-   from the game's port 1024:
+The game fetches the list (`GET /gsinit.php?dp=HEROES_29988429c481f219`,
+`user-agent: curl/7.14.0`) and then goes straight for the **NAT service over
+UDP** — not the router. These were the first two packet kinds it ever sent us, on
+the advertised NAT port from its own port 1024, before we could answer anything:
 
-   ```
-   +0ms    20 bytes  93 88 00 00  08 00  42 30  00 00 00 00  0a 00 01 00  ff 44 18 02
-   +15.7s  12 bytes  b6 cf 00 00  00 00  49 30  ff ff 00 00        (nine identical copies)
-   ```
+```
++0ms    20 bytes  93 88 00 00  08 00  42 30  00 00 00 00  0a 00 01 00  ff 44 18 02
++15.7s  12 bytes  b6 cf 00 00  00 00  49 30  ff ff 00 00        (nine identical copies)
+```
 
-   Then it refetches the list and repeats the whole attempt, and after the second
-   one fails the UI shows error `0.7.0`. The first four bytes look like a
-   checksum of the rest — the nine retries are byte-identical, and the two kinds
-   differ — and `42 30`/`49 30` read as tags `B0`/`I0`; both unconfirmed.
+Unanswered, it refetches the list, repeats the whole attempt, and after the second
+failure shows error `0.7.0`. Those bytes are the ground truth the transport was
+built on, and they are still the fixtures the server's suite runs against.
 
-   **The NAT step cannot be skipped.** With no `NATServer*` keys the list is
-   empty and `NUbi::CStateUninitialized::NATInit` (0xE087B0) falls straight into
-   `no more NAT Service servers to try, connection failed` and returns false,
-   which fails the whole init. The connect itself is 0x447640 → 0x447910 →
-   0x448220, and from there it is a virtual call into a transport object: the
-   protocol lives behind a vtable, so reading it statically means walking that
-   library.
+**The NAT step cannot be skipped.** With no `NATServer*` keys the list is empty and
+`NUbi::CStateUninitialized::NATInit` (0xE087B0) falls straight into `no more NAT
+Service servers to try, connection failed` and returns false, which fails the whole
+init. The connect itself is 0x447640 → 0x447910 → 0x448220, and from there it is a
+virtual call into a transport object: the protocol lives behind a vtable, so
+reading it statically means walking that library — which is why it was learned from
+packets instead.
 
-   `0.7.0` itself says nothing about which step failed: the failure path in
-   `ProcessInit` (0xE075B1) builds the triple {7,0,0} for every one of them, and
-   the formatter (0x7DC5F0) prints its fields in the order f1.f0.f2 — which is
-   how {7,0,0} reaches the screen as `0.7.0`, next to the text
-   `MatchMakerErrors/ErrorTextWithCode`.
-2. **Speak SRP, answer the NAT service** — done. `src/net/` holds the layers:
-   `srp.ts` (the reliable-UDP transport: SYN/FIN/ACK/URG, window, checksum),
-   `gs-message.ts` (six-byte header, big-endian size), `gs-data.ts` (the nested
-   string lists every body is made of), `gs-xor.ts` (the shuffle a plain body
-   wears) and `nat-service.ts` (the address mirror the game will not start
-   without). `tools/net-server.ts` serves it; `npm run test-net` checks it.
+### Error codes name nothing
 
-   The checksum is where guessing would have cost days, so it is pinned to
-   recorded bytes: with the field zeroed, the sum over the captured client SYN is
-   `0x8893` — exactly what the client wrote there — and the sum over the packet
-   as sent folds to 0, which is how a receiver checks one. Each direction
-   announces a SEED in its window (the client's was `0x44ff`, ours is 0) and
-   signs its later packets from it. The test also flips a byte and demands the
-   check fail, because a checksum that always passes is not a checksum.
+`0.7.0` says nothing about which step failed: the failure path in `ProcessInit`
+(0xE075B1) builds the triple {7,0,0} for every one of them, and the formatter
+(0x7DC5F0) prints its fields in the order f1.f0.f2 — which is how {7,0,0} reaches
+the screen as `0.7.0`, next to the text `MatchMakerErrors/ErrorTextWithCode`.
 
-   Prior art, and the reason the layers above went in this fast:
-   [michal-kapala/ubi-gs](https://github.com/michal-kapala/gsconnect) (MIT) is an
-   open re-implementation of Ubisoft's Game Service with a Heroes V directory —
-   router, lobby, CD-key, NAT, IRC. It is where the SRP field names, the GS
-   message header and the body shuffle were first written down; our code is our
-   own, in TypeScript, and cross-checks against their `servers.ini` and our own
-   captures. What it does NOT have is a ladder or persistent stats, which the
-   client does ask for (`LadderQuery_*`, `SubmitMatchResult`, and the stat keys
-   `RATING`, `GAMES_PLAYED`, `W_HEAVEN`…`G_ORCS`) — that part is ours to write.
-3. **Listen and record** — accept the router/CDKey/IRC connections and dump
-   the bytes. There is no live Ubi service left to capture, so the protocol has
-   to come from the client: every `LobbyRcv_*` parser is in the exe, and the log
-   strings name the fields.
-4. **The router and the CD-key desk** — done far enough to log in.
-   `src/net/router-service.ts` does the key exchange (`src/net/pkc.ts`, RSA-512
-   with exponent 3), then takes a name; `src/net/cdkey-service.ts` answers every
-   key question yes, because the client holds no key list and no arithmetic — it
-   asks and displays. That needed our own Blowfish (`src/net/blowfish.ts`): node
-   exposes no `bf-*` cipher, OpenSSL 3 having moved it to the legacy provider.
+So the only way to know where a session died is the client's own log, which is what
+[native/net/ubi-log.c](../native/net/ubi-log.c) is for: one detour on the engine's
+log append (RVA 0x9FB270), every line stamped with a tick count.
 
-   **Measured, and not what you would guess:** once the keys are up the client
-   sends its LOGIN as GS_ENCRYPT, encrypted with **the key WE generated and sent
-   it**, not the one it sent us. The router tries both and reports which opened
-   the body, so this stays a measurement rather than a belief.
+```bash
+node tools/build-native.ts --log net/ubi-log
+node tools/install-native.ts --game C:\Projects\homm5-game-net
+```
 
-   Also measured the hard way: a message we cannot read must be taken off the
-   stream anyway. Leaving it at the front wedged the connection permanently — the
-   first encrypted login was re-parsed and re-failed until the client gave up.
+**Both of the engine's own log thresholds (RVA 0xE1A8F0, 0xE1A908) are already 0,
+and must be left alone.** Lowering them opens branches the engine means to skip,
+and it died in its own string append (0x4E75F9, `mov [esi+2],ax` with esi = 0)
+the one time they were touched. The detour reads them and reports; it does not
+write.
 
-   Registration has no screen in the client: `UI/MPRegister` is the progress
-   window (connecting, validating the key, logging in), and Ubisoft did accounts
-   on a website. The wire does have `NEWUSERREQUEST`, and the client already
-   knows how to show "name taken" and "wrong password"
-   (`GSLGE_ERRORSECURE_*`), so there are three ways to give accounts back:
-   create one on first login (no client change at all), a page of our own beside
-   the server, or a real registration screen added to the client.
+### What is still the game's side to find
 
-   Still to do here: the CD-key prompt itself. The key is stored in the client's
-   `ubi_cdkey` setting (used by the screens at 0x87B790, 0x87C840, 0x87CF50,
-   0x87D2B0), so pre-setting it — or cutting the check — should get rid of the
-   question for good.
-5. **The lobby** — login → lobby → room → start game, then the peers connect to
-   each other. Chat can point at a stock ircd.
-6. **Ours to invent** — the ladder and the stats behind it. Nobody has written
-   this end for Heroes V, and the client names every field it wants.
+- **Registration has no screen.** `UI/MPRegister` is the progress window
+  (connecting, validating the key, logging in) — Ubisoft did accounts on a website.
+  The wire has `NEWUSERREQUEST` and the client already knows how to say "name
+  taken" and "wrong password" (`GSLGE_ERRORSECURE_*`), so accounts can be created
+  on first login with no client change at all. That is the chosen route; a page of
+  our own comes later.
+- **The CD-key prompt.** The key lives in the client's `ubi_cdkey` setting, used by
+  the screens at 0x87B790, 0x87C840, 0x87CF50, 0x87D2B0. Pre-setting it — or
+  cutting the check — is how the question goes away for good.
+- **The ladder** the client asks for by name (`LadderQuery_*`,
+  `SubmitMatchResult`, and the stat keys `RATING`, `GAMES_PLAYED`,
+  `W_HEAVEN`…`G_ORCS`). Nobody has written that end for Heroes V; it belongs to the
+  server, but the field names are read out of here.

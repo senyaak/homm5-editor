@@ -92,8 +92,6 @@
     "test-gif": "node tools/test-gif.ts",
     "test-gr2": "node tools/test-gr2.ts",
     "test-oodle": "node tools/test-oodle.ts",
-    "test-net": "node tools/test-net.ts",
-    "net-server": "node tools/net-server.ts",
     "test-effects": "node tools/test-effects.ts",
     "test-idle": "node tools/test-idle.ts",
     "test-artifact-mod": "node tools/test-artifact-mod.ts",
