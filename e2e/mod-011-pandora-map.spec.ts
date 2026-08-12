@@ -303,11 +303,16 @@ const LEADS = ['Knight', 'Demonlord'];
  * other holds Town Portal, which has nowhere to go. He belongs to the first
  * side, so whoever plays red can walk over and read both answers.
  */
-const BARBARIAN = { at: { x: 10, y: 16 }, entry: `${GENERIC_HEROES}/Barbarian.xdb` };
+// WELL CLEAR OF THE LADDER, which is the point: two boxes wedged between its
+// rows read as part of it, and the question they ask is a different one. They
+// stand off to the side, in the empty middle of the map — bigger x is further
+// LEFT on screen (docs/MAP_PROPERTIES.md), so this is left of red's rows and
+// nowhere near blue's.
+const BARBARIAN = { at: { x: 34, y: 20 }, entry: `${GENERIC_HEROES}/Barbarian.xdb` };
 const CRIES = ['SPELL_WARCRY_RALLING_CRY', 'SPELL_WARCRY_CALL_OF_BLOOD'];
 const BARBARIAN_BOXES = [
-  { name: 'PandoraCriesForTheBarbarian', x: 14, y: 16, contents: { name: 'PandoraCriesForTheBarbarian', spells: CRIES } },
-  { name: 'PandoraSpellForTheBarbarian', x: 17, y: 16, contents: { name: 'PandoraSpellForTheBarbarian', spells: ['SPELL_TOWN_PORTAL'] } },
+  { name: 'PandoraCriesForTheBarbarian', x: 38, y: 20, contents: { name: 'PandoraCriesForTheBarbarian', spells: CRIES } },
+  { name: 'PandoraSpellForTheBarbarian', x: 41, y: 20, contents: { name: 'PandoraSpellForTheBarbarian', spells: ['SPELL_TOWN_PORTAL'] } },
 ];
 
 async function twoHeroes(page: Launched['page']): Promise<string[]> {

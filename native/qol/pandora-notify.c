@@ -188,15 +188,23 @@ static char __fastcall add_spell_replay(void *self, void *unused) {
   log_hex("pandora: a spell was taught, announcing for ", hero);
 
   // Buffers of our own, zeroed the way the skill site zeroes its locals —
-  // except the subject's, which may NOT be zeroed. The attempt that was is
-  // what the second crash answered: with `this` = {0, 0} the builder took its
-  // "nothing to announce" branch and returned null, and the announcer went
-  // through it. The site it is copied from passes `{ <the thing gained>, flag }`
-  // — a skill entry there, and here the spell the command carries, which is its
-  // field 0x10 (`CAddHeroSpellCmd::execute` hands that to the hero).
+  // except the subject's, which may NOT be zeroed. Two crashes taught this pair
+  // of lines. With `this` = {0, 0} the builder took its "nothing to announce"
+  // branch and answered null, and the announcer walked through it. With the
+  // command's field 0x10 it answered worse: that field is the spell's ID — 0x122
+  // came through the log — and an id dereferenced as a pointer is an access
+  // violation one call deeper. What the site is passed is a POINTER to the thing
+  // gained, so the id goes through the engine's own registry first.
   DWORD key[8] = { 0 }, params[8] = { 0 };
-  DWORD subjectThis[2] = { ((DWORD *)self)[4], 0 };
-  log_hex("pandora:   the spell ", subjectThis[0]);
+  int spellId = (int)((DWORD *)self)[4];
+  void *record = ((void *(__fastcall *)(int))(DWORD_PTR)(SPELL_RECORD_RVA + base))(spellId);
+  log_num("pandora:   the spell ", spellId);
+  log_hex("pandora:   its record ", (DWORD)(DWORD_PTR)record);
+  if (!record) {
+    log_line("pandora: the game never loaded that spell — not announcing");
+    return taught;
+  }
+  DWORD subjectThis[2] = { (DWORD)(DWORD_PTR)record, 0 };
 
   ((void(__fastcall *)(void *, void *, const char *))(DWORD_PTR)(STRING_FROM_LITERAL_RVA + base))(
     key, 0, NEW_ABILITY_KEY);
