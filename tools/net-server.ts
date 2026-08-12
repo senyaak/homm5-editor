@@ -145,7 +145,9 @@ for (const service of [...SERVICES, PROXY, LOBBY]) {
           ? router.session('router')
           : label === 'Proxy' || label === 'ProxyLauncher'
             ? router.session('proxy')
-            : null;
+            : label === 'Lobby'
+              ? router.session('lobby')
+              : null;
       socket.on('data', (data: Buffer) => {
         log(`TCP  #${id} ${label}:${port} <- ${data.length} bytes\n${hexDump(data)}`);
         if (!session) return;

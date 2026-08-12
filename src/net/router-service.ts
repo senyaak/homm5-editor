@@ -44,7 +44,7 @@ export interface Endpoint {
  * fresh connection, with a fresh key exchange, for each. Only a few answers
  * differ, and every difference below is one the client insisted on.
  */
-export type Role = 'router' | 'proxy';
+export type Role = 'router' | 'proxy' | 'lobby';
 
 export interface RouterEvent {
   note: string;
@@ -81,6 +81,13 @@ export class RouterSession {
   username = '';
   /** The game the client logged into the lobby with, e.g. `HEROES_…`. */
   gameId = '';
+  /**
+   * The address the client says it has, from its lobby-server login: its own LAN
+   * address and netmask. This is the raw material for introducing two peers —
+   * the lobby is what tells one player where the other is.
+   */
+  localAddress = '';
+  localNetmask = '';
 
   private readonly role: Role;
   private readonly waitModule: Endpoint;
@@ -247,6 +254,28 @@ export class RouterSession {
         }
         return { note: `PROXY_HANDLER subtype ${String(subtype)} is not implemented`, replies: [] };
       }
+      // The lobby server's own hello. The client introduces itself by name and
+      // tells us where it lives on its network — which is the material a lobby
+      // needs later, when it has to point one player at another.
+      case MessageType.LOBBYSERVERLOGIN: {
+        const name = message.body?.[0];
+        const serverId = message.body?.[1];
+        if (typeof name === 'string' && name) this.username = name;
+        if (typeof message.body?.[2] === 'string') this.localAddress = message.body[2];
+        if (typeof message.body?.[3] === 'string') this.localNetmask = message.body[3];
+        return {
+          note: `LOBBYSERVERLOGIN "${this.username}" on server ${String(serverId)}, from ${this.localAddress}/${this.localNetmask}`,
+          replies: [
+            build(
+              reply(
+                message,
+                [String(MessageType.LOBBYSERVERLOGIN), [typeof serverId === 'string' ? serverId : '1']],
+                MessageType.GSSUCCESS,
+              ),
+            ),
+          ],
+        };
+      }
       // The lobby, as far as the wait module is concerned: log in, hand over the
       // list of lobbies, and say where the lobby server itself lives.
       case MessageType.LOBBY_MSG: {
@@ -268,6 +297,32 @@ export class RouterSession {
           return {
             note: `lobby list — ${DEFAULT_LOBBIES.map((l) => l.name).join(', ')}`,
             replies: [this.lobbyList(message)],
+          };
+        }
+        // Entering a channel. The client wants to know it is in, and then what is
+        // inside — the rooms. There are none yet, so what follows is an honest
+        // empty channel rather than nothing at all.
+        if (subtype === String(LobbyMsg.JOIN_LOBBY)) {
+          const groupId = Array.isArray(inner) && typeof inner[0] === 'string' ? inner[0] : '1';
+          const lobby = DEFAULT_LOBBIES.find((l) => String(l.id) === groupId) ?? DEFAULT_LOBBIES[0]!;
+          return {
+            note: `JOIN_LOBBY ${groupId} ("${lobby.name}") — in, with no rooms yet`,
+            replies: [
+              build(reply(message, [String(MessageType.GSSUCCESS), [subtype, [groupId]]])),
+              build(
+                reply(message, [
+                  String(LobbyMsg.GROUP_INFO),
+                  [groupId, String(Lsm.CHILDGROUPINFO), lobbyEntry(lobby, this.gameId), [], []],
+                ]),
+              ),
+            ],
+          };
+        }
+        if (subtype === String(LobbyMsg.GROUP_INFO_GET)) {
+          const groupId = Array.isArray(inner) && typeof inner[0] === 'string' ? inner[0] : '1';
+          return {
+            note: `GROUP_INFO_GET for ${groupId}`,
+            replies: [build(reply(message, [String(MessageType.GSSUCCESS), [subtype, [groupId, '0']]]))],
           };
         }
         if (subtype === String(LobbyMsg.JOIN_SERVER)) {

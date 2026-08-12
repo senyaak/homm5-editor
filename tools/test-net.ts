@@ -433,5 +433,46 @@ console.log('\nThe lobby, as far as the wait module goes');
   check('joining a server hands over the lobby address', where?.[1] === '2130706433' && where?.[2] === '40040', JSON.stringify(where));
 }
 
+console.log('\nThe lobby server, from the words the client really said');
+{
+  const lobby = new RouterService(
+    { address: '127.0.0.1', port: 40001 },
+    { address: '127.0.0.1', port: 40030 },
+    { address: '127.0.0.1', port: 40031 },
+    { address: '127.0.0.1', port: 40040 },
+  ).session('lobby');
+
+  // Verbatim: name, server id, its own address, its netmask, and a zero.
+  const hello = build({
+    property: Property.GS,
+    priority: 0,
+    type: MessageType.LOBBYSERVERLOGIN,
+    sender: 4,
+    receiver: 2,
+    body: ['Senyaak', '1', '192.168.178.27', '255.255.255.0', '0'],
+  });
+  const greeted = lobby.receive(hello);
+  const back = parse(greeted[0]!.replies[0]!);
+  check('the lobby server login is answered', greeted[0]!.replies.length === 1, greeted[0]?.note);
+  check('it echoes the server id', JSON.stringify(back?.body) === JSON.stringify(['210', ['1']]), JSON.stringify(back?.body));
+  check('and we keep the address the client reported', lobby.localAddress === '192.168.178.27' && lobby.localNetmask === '255.255.255.0');
+
+  const joined = lobby.receive(
+    build({
+      property: Property.GS,
+      priority: 0,
+      type: MessageType.LOBBY_MSG,
+      sender: 4,
+      receiver: 2,
+      body: [String(LobbyMsg.JOIN_LOBBY), ['2']],
+    }),
+  );
+  check('joining a channel is answered and its contents follow', joined[0]!.replies.length === 2, joined[0]?.note);
+  const contents = parse(joined[0]!.replies[1]!);
+  const inside = contents?.body?.[1] as GSValue[];
+  check('the contents name the channel joined', ((inside?.[2] as GSValue[]) ?? [])[1] === 'Ranked', JSON.stringify((inside?.[2] as GSValue[])?.[1]));
+  check('with no rooms and no members yet', Array.isArray(inside?.[3]) && (inside[3] as GSValue[]).length === 0);
+}
+
 console.log(failures === 0 ? '\nall good\n' : `\n${failures} failed\n`);
 process.exit(failures === 0 ? 0 : 1);
