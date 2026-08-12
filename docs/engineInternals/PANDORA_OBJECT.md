@@ -77,14 +77,14 @@ Past the end of the list it formats `Invalid message index %d for object %s` —
 the error probe run three produced, which is what led here. Sixty callers,
 one per class-and-occasion.
 
-**The treasure pickup flow — the region around `0xd20f00`–`0xd214a0`.** The
-function bodies of `CAdvMapTreasure`'s second vtable (`0xfd4f84`: `+0xc` →
-`0xd214a0`, 285 instructions) sit in the same few pages as four calls into the
-message getter, among them `push 3` (the artifact-found line) at `0xd21015`
-and the index-2 pickup dialog nearby. This is where the chest decides and
-shows its dialog. `CAdvMapTreasure`'s RTTI descriptor is `0x10b8654`; the
-first vtable is `0xfd4f60` (own methods `0xcb0970`, `0xcb0dd0`, `0xcb0df0`,
-`0xcb1660`).
+**The treasure pickup flow — `0xd20c80`.** Four calls into the message getter,
+among them `push 3` (the artifact-found line) at `0xd21015` and the index-2
+pickup dialog nearby: this is where the chest decides and speaks. Which slot it
+answers, and where that slot's table hangs off the object, is measured below —
+the first reading of this paragraph named `0xd214a0` from a slot counted off
+the wrong table, and that function calls the getter not at all.
+`CAdvMapTreasure`'s RTTI descriptor is `0x10b8654`; its first vtable is
+`0xfd4f60` (own methods `0xcb0970`, `0xcb0dd0`, `0xcb0df0`, `0xcb1660`).
 
 ## Why a subclass, and not a detour
 
@@ -207,60 +207,84 @@ function start it produced looked exactly like a true one. `start` now
 disassembles from each candidate and says whether the stream actually lands on
 the address asked about; two of the three candidates for `0xd21015` were false.
 
-Still open: which table each fixed offset carries (the constructor writes
-`[this]`, `[this+0x1C]` and `[this+0xAC]`, while `0xd214a0` corrects `ecx` by
-`-0xA8` on entry, so the two have to be reconciled before any slot is
-replaced), and whether `0xd214a0` is the visit at all — it is 285 instructions
-that call through `[eax+8Ch]` and reach `0xcbb7c0` and `0xa45880`, and the
-cheap way to settle it is a log-only detour that says when it fires.
+### The slot, found — and it is in the seventh table
 
-## Stage 1, step by step
+`trace.ts slots <vtable>` walks a table to its end and follows every entry
+through its adjustor thunks, which is what makes a slot listing mean anything:
+a slot of this class never holds the code that does the work, it holds
+`sub ecx,[ecx-4] / sub ecx,<N> / jmp <real>`.
 
-1. **Find the constructor**, by the vtable store — DONE above, to three
-   candidates. What remains is to tell them apart: disassemble each function
-   from its start (the starts are not found yet) and look at what follows the
-   stores — a constructor goes on to initialise fields, a destructor to free
-   them.
-2. **Measure the vtable**: how many slots before the next descriptor begins.
-   Copying a vtable needs its length, and a slot read past the end is the
-   mistake docs/… already records ([[vtable-slot-needs-its-vtable-start]] in
-   memory): a class has SEVERAL vtables and +0x184 from the wrong one lands in
-   the neighbour and lies plausibly.
-3. **Find where the object holds its shared document** — the pointer the
-   loader stores — and how to compare it to ours. The message getter at
-   `0xc7ae50` already takes `shared+0x30`, so the shared pointer is reachable
-   from the object; the offset is what is missing.
-4. **Build the subclass vtable** in the DLL: allocate, copy the parent's slots
-   verbatim, keep the RTTI pointer at -4 pointing at the PARENT's descriptor
-   (so anything the engine does by RTTI still finds a lootable), then replace
-   the slots we own.
-5. **Retag**: at the end of construction, if the shared document is one of
-   ours, store our vtable pointer instead. That is the subclassing, and it is
-   one store.
-6. **Own the visit slot** first — the one that shows the chest's dialog and
-   hands out its goods. Ours asks our question and lets the script do the rest.
-   `0xd214a0` is the standing candidate (vtable `0xfd4f84+0xc`); step 1's hook
-   makes it cheap to confirm with a log.
+Walked over all seven tables, `0xd20c80` shows up exactly once:
 
-Everything else stays as it is: the touch trigger still fires (a separate
-path), the AI still walks to it, and the map's generated block still carries
-the contents.
+    0xfd5108  +0x0c  0xd21b07  -> 0xd20c80
 
-## Still to do
+**The chest's dialog is slot `+0x0c` of the table at `0xfd5108`** — seventeen
+slots, one of the four the constructor places through the virtual-base table
+rather than at a fixed offset.
 
-1. **The constructor**, found by the vtable store `mov [ecx], 0xfd4f60` — the
-   hook point, and the place an object learns which shared document it is.
-2. **The vtable's length**, and the slot the visit lives in. `0xd214a0` (285
-   instructions, `CAdvMapTreasure` vtable `0xfd4f84+0xc` and `0xfd4f90+0x0`) is
-   the strongest candidate — the index-3 message push at `0xd21015` sits in the
-   function just before it, and the entries past it (`0xd2189a`…) are adjuster
-   thunks. The caller chain is a virtual call, so `trace.ts calls` stays silent:
-   a log-only detour on `0xd214a0` and its `0xfd4f60+0xc`/`0xcb0970` sibling
-   says which one fires when a hero steps on a chest.
-3. **The shared-document pointer's offset** on the object, for telling ours
-   apart at construction.
-4. **The subclass itself** in `native/` behind the `pandora-box` flag: vtable
-   copied, slots replaced, retag on construction, bytes verified before
-   writing, refusal logged — the same shape as every fix here.
-5. The flag becomes native (`native: false` comes off, the name joins
-   `QOL_NAMES` in C), since the hooks now exist and must follow it.
+### Where that table's pointer lives in the object: +0xF8
+
+The constructor writes it as `mov [eax+edi+4], 0FD5108h`, and `eax` comes from
+the base-offset table the object carries at `+4`, which is `0xfd514c`:
+
+    0xfd514c  -4          the vbptr itself
+    0xfd5150  0xd0   ->  edi+4+0xd0 = +0xD4   gets 0xfd4f9c
+    0xfd5154  0xe0   ->  edi+4+0xe0 = +0xE4   gets 0xfd4fbc
+    0xfd5158  0xec   ->  edi+4+0xec = +0xF0   gets 0xfd5100
+    0xfd515c  0xf4   ->  edi+4+0xf4 = +0xF8   gets 0xfd5108
+
+**The pointer to patch sits at object `+0xF8`.** It checks out against the base
+class's own constructor, which fills `+0xF0` and `+0xF8` with its tables before
+the derived one overwrites them.
+
+The thunk is a VTORDISP one — `sub ecx,[ecx-4]` — so the real `this` is
+`ecx - [ecx-4]`, read at run time rather than a constant. Ours has to do the
+same before it touches the object.
+
+### How the chest finds its own shared document — it asks
+
+    0xd20d30  call dword ptr [eax+8Ch]     ; virtual: give me my shared
+    0xd20d45  call 0094AB92h               ; __RTDynamicCast, descriptors
+                                           ; 0x10a79f8 / 0x10b5e4c
+    0xd20d57  mov eax,[esi+0ECh]           ; the shared's Type, compared to 0xC
+
+So recognising OUR boxes needs no new offset: the same virtual `+0x8C` hands
+over the shared document, and comparing that pointer with the four tier
+documents the archive loads is the whole test. The offset this document was
+looking for does not have to be found.
+
+### What stage 1 is, concretely
+
+1. copy the seventeen slots of `0xfd5108`, with the RTTI word in front of it;
+2. replace `+0x0c` with a thunk of ours that does `sub ecx,[ecx-4]` and jumps
+   into our handler;
+3. detour the constructor at `0xd20940`, and for an object whose shared is one
+   of ours store the copy's address at `[this+0xF8]`.
+
+Still open: whether `0xd214a0` (`0xfd4f90+0x0`) concerns us at all — it is 285
+instructions that never call the message getter — and what the other sixteen
+slots of `0xfd5108` do. The copy carries them unchanged, so they are not in the
+way; the visit may still not be the only behaviour worth owning.
+
+## What is left
+
+Four of the six questions this section used to list are answered above: the
+constructor, the tables and their lengths, the slot the dialog sits in, and
+how an object names its shared document. What remains:
+
+1. **The subclass itself** in `native/`, behind the `pandora-box` flag: the
+   seventeen slots copied, `+0x0c` replaced, the pointer at `[this+0xF8]`
+   retagged at the end of construction, bytes verified before anything is
+   written and every refusal logged — the same shape as every fix here.
+2. **What our visit does.** The chest at `0xd20c80` decides, speaks and hands
+   over; ours asks the map’s script instead and lets the generated block do
+   the rest (docs/PANDORA_BOX.md). Nothing about that needs a new hook — the
+   touch trigger already fires and already carries the contents.
+3. **The flag becomes native** (`native: false` comes off, the name joins
+   `QOL_NAMES` in C), since the hooks then exist and must follow it.
+4. **Stage 2**, unchanged: the class in the DATA too, as
+   `AdvMapPandoraShared`, through the engine’s class registry and a
+   `types.xml` entry — after stage 1 proves the behaviour, not before.
+
+Everything else stays as it is: the touch trigger still fires, the AI still
+walks to the box, and the map’s generated block still carries the contents.

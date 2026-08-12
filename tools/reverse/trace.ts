@@ -227,6 +227,50 @@ switch (command) {
     break;
   }
 
+  // A VTABLE, SLOT BY SLOT, EACH FOLLOWED TO THE FUNCTION IT REALLY REACHES.
+  //
+  // Slots of a class with virtual bases hold ADJUSTOR THUNKS — `sub ecx,[ecx-4]
+  // / sub ecx,<N> / jmp <real>` — so the address in the table is never the code
+  // that does the work, and a listing of raw slots says almost nothing. This
+  // follows each one through its thunks and prints where it lands, with the
+  // `this` correction it applies on the way, which is the offset of the
+  // subobject that slot belongs to.
+  //
+  // The table ENDS where a word stops being a function: the next table's RTTI
+  // pointer sits in front of it (see `dump`).
+  //
+  //   node tools/reverse/trace.ts slots 0xfd4f60
+  case 'slots': {
+    const table = addresses[0]!;
+    for (let i = 0; ; i++) {
+      const off = pe.offsetOf(table + i * 4);
+      if (off === null) break;
+      const entry = pe.buf.readUInt32LE(off);
+      if (!pe.isCode(entry)) break;      // the RTTI word of the next table
+      let at = entry;
+      let adjust = 0;
+      const hops: number[] = [];
+      // Three hops is more than any thunk chain this executable uses; the guard
+      // is against a loop, not a depth.
+      for (let hop = 0; hop < 3; hop++) {
+        const head = body(at, 0x20);
+        const jump = head.find((ins) => ins.mnemonic === 'jmp' && ins.branchTarget !== undefined);
+        for (const ins of head) {
+          if (ins === jump) break;
+          const m = /^sub ecx,([0-9A-Fa-f]+)h$/.exec(ins.text.trim());
+          if (m) adjust += Number.parseInt(m[1]!, 16);
+        }
+        if (!jump || !pe.isCode(jump.branchTarget!) || jump.address > at + 0x10) break;
+        hops.push(jump.branchTarget!);
+        at = jump.branchTarget!;
+      }
+      console.log(`  +0x${(i * 4).toString(16).padStart(2, '0')}  0x${entry.toString(16)}`
+        + (hops.length ? `  -> 0x${at.toString(16)}` : '')
+        + (adjust ? `   ; this -= 0x${adjust.toString(16)}` : ''));
+    }
+    break;
+  }
+
   case 'common': {
     const depth = Number(flagValue('depth') ?? 2);
     for (const root of addresses) {
