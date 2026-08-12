@@ -154,18 +154,57 @@ static DWORD __fastcall announce_many_probe(DWORD self, DWORD edx,
 static const BYTE ADD_SPELL_HEAD[6] = { 0x56, 0x8B, 0xF1, 0x8B, 0x4E, 0x0C };  // push esi/mov esi,ecx/mov ecx,[esi+0Ch]
 static void *g_add_spell_orig;
 
+// WHAT THE FIRST ATTEMPT ANSWERED, and it was worth the crash. Replaying the
+// artifact's arguments died inside the engine's string code, and the reason is
+// in the numbers the probe wrote down: `a0`, `a1` and `a5` were 0x01effa2c and
+// twice twelve bytes on — the caller's own STACK. They are temporaries the
+// caller builds and the announcer reads, so by the time a spell is taught that
+// frame is somebody else's. They have to be BUILT, and the skill site says with
+// what: a string from a KEY, and two helpers of the same family.
+
+/** The engine's string-from-literal — `__thiscall(dst, const char*)`. */
+#define STRING_FROM_LITERAL_RVA 0x0dc940u
+/** Builds the announcement's last argument out of a zeroed buffer. */
+#define ANNOUNCE_PARAMS_RVA 0x0f7530u
+/** And the object it carries: `(this, 0, kind, params)`. */
+#define ANNOUNCE_SUBJECT_RVA 0x125b30u
+/** Turns the key's string into the first argument. */
+#define ANNOUNCE_TEXT_RVA 0x6b8d50u
+
+/** The key the game announces a new ability under. A KEY, not a sentence:
+ *  UI/UIGameRoot.xdb resolves it to a text file, which is what makes the
+ *  wording follow the language the install was bought in. */
+static const char NEW_ABILITY_KEY[] = "NEW_ABILITY";
+
 static char __fastcall add_spell_replay(void *self, void *unused) {
   char taught = ((char(__fastcall *)(void *, void *))g_add_spell_orig)(self, unused);
-  if (taught && g_seen && !g_replayed) {
-    g_replayed = 1;
-    log_line("pandora: a spell was taught — replaying the artifact's announcement");
-    ((void(__fastcall *)(DWORD, DWORD, DWORD, DWORD, DWORD, DWORD, DWORD, DWORD))
-     (DWORD_PTR)(ANNOUNCE_ONE_RVA + (DWORD)(INT_PTR)GetModuleHandleW(NULL)))(
-      g_seen_this, g_seen_edx,
-      g_seen_args[0], g_seen_args[1], g_seen_args[2],
-      g_seen_args[3], g_seen_args[4], g_seen_args[5]);
-    log_line("pandora: it did not crash");
-  }
+  if (!taught || g_replayed) return taught;
+  g_replayed = 1;
+
+  DWORD base = game_base();
+  // The hero the command was made for — its field 0x0c, which is what the
+  // artifact command hands the announcer as `this`.
+  DWORD hero = ((DWORD *)self)[3];
+  log_hex("pandora: a spell was taught, announcing for ", hero);
+
+  // Buffers of our own, zeroed the way the skill site zeroes its locals.
+  DWORD key[8] = { 0 }, params[8] = { 0 }, subjectThis[2] = { 0 };
+
+  ((void(__fastcall *)(void *, void *, const char *))(DWORD_PTR)(STRING_FROM_LITERAL_RVA + base))(
+    key, 0, NEW_ABILITY_KEY);
+  DWORD paramsArg = ((DWORD(__fastcall *)(void *, void *))(DWORD_PTR)(ANNOUNCE_PARAMS_RVA + base))(
+    params, 0);
+  DWORD subject = ((DWORD(__fastcall *)(void *, void *, DWORD, DWORD, DWORD))
+                   (DWORD_PTR)(ANNOUNCE_SUBJECT_RVA + base))(subjectThis, 0, 0, 3, paramsArg);
+  DWORD text = ((DWORD(__fastcall *)(void *, void *))(DWORD_PTR)(ANNOUNCE_TEXT_RVA + base))(key, 0);
+  log_hex("pandora:   params  ", paramsArg);
+  log_hex("pandora:   subject ", subject);
+  log_hex("pandora:   text    ", text);
+
+  ((void(__fastcall *)(DWORD, DWORD, DWORD, DWORD, DWORD, DWORD, DWORD, DWORD))
+   (DWORD_PTR)(ANNOUNCE_ONE_RVA + base))(
+    hero, g_seen_edx, text, (DWORD)(DWORD_PTR)params, subject, 0, 3, paramsArg);
+  log_line("pandora: it did not crash");
   return taught;
 }
 

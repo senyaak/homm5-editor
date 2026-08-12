@@ -146,7 +146,15 @@ export function pandoraBehaviourLua(): string {
     '\t-- window that must be answered has H5E_PandoraOnOpen below.',
     '\tlocal player = GetObjectOwner(H5E_PandoraHero);',
     '\tlocal speaks = H5E_PandoraIsHuman(player) == true and player == GetCurrentPlayer();',
-    '\tif box.said ~= nil then ShowFlyingSign(box.said, H5E_PandoraHero, player, 6); end;',
+    '\t-- AND IT GETS THE SCREEN TO ITSELF FOR A MOMENT. A flying sign does not',
+    '\t-- stop anything, so the game\'s own announcements - the artifact, the gold,',
+    '\t-- the experience - would come up on top of it and the two would be read as',
+    '\t-- one smear. A box that both speaks and gives waits for its own words to',
+    '\t-- be read before it hands anything over.',
+    '\tif box.said ~= nil then',
+    '\t\tShowFlyingSign(box.said, H5E_PandoraHero, player, 6);',
+    '\t\tif box.gives == 1 then sleep(3); end;',
+    '\tend;',
     '\t-- THE MAP\'S OWN CODE, if it wrote any: the box calls it and whatever it',
     '\t-- does is the author\'s business - a MessageBox to be answered, a scene, a',
     '\t-- second question. Nothing here needs to know.',
@@ -292,6 +300,11 @@ function boxLua(box: PandoraContents, refs: PandoraRefs | undefined): string[] {
     fields.push(`\tcreatures = { ${box.creatures
       .map((c) => `{${luaId('CREATURE_')(c.creature)}, ${luaNumber(c.count)}}`).join(', ')} }`);
   }
+  // Whether anything at all is handed over, worked out HERE rather than in the
+  // behaviour: Lua 4 has no way to ask a table whether it holds anything, and a
+  // box that both speaks and gives has to wait between the two so its own words
+  // are not buried under the game's announcements.
+  const gives = fields.length > 0;
   if (box.message) {
     const ref = refs?.said?.(box);
     if (!ref) {
@@ -299,6 +312,7 @@ function boxLua(box: PandoraContents, refs: PandoraRefs | undefined): string[] {
         + ' MessageBox takes a text file, so the message has to be written first');
     }
     fields.push(`\tsaid = "${ref}"`);
+    if (gives) fields.push('\tgives = 1');
   }
   const out = [
     `H5E_PANDORA["${box.name}"] = {`,
