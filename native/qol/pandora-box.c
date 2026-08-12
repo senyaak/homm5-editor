@@ -53,14 +53,26 @@ static void *g_treasure_speak_orig;
 static void __fastcall treasure_speak_watch(void *self, void *unused, void *hero) {
   (void)unused;
   if (self) {
-    DWORD table = *(DWORD *)((BYTE *)self + TREASURE_SPEAK_TABLE_OFFSET);
+    BYTE *at = (BYTE *)self;
     DWORD expect = (DWORD)((BYTE *)GetModuleHandleW(NULL) + TREASURE_SPEAK_TABLE_RVA);
-    // The verdict first, because that is the whole question; the two numbers
-    // after it are what a mismatch needs in order to be chased.
-    log_line(table == expect ? "pandora: chest speaks, and +0xF8 is the table we predicted"
-                             : "pandora: chest speaks, but +0xF8 is NOT the predicted table");
-    log_hex("pandora:   +0xF8 holds ", table);
-    log_hex("pandora:   predicted   ", expect);
+    // WHAT `this` IS HERE, measured rather than assumed.
+    //
+    // The first run answered: `[this+0xF8]` is zero, so `this` is NOT the start
+    // of the object — the thunk's `sub ecx,[ecx-4]` leaves it pointing at the
+    // SUBOBJECT the table belongs to. If that is so, the table is at `[this]`
+    // and the displacement it was moved by is the word in front of it, which is
+    // also the offset to subtract to get the object back. All three are printed
+    // because the one that matters is whichever turns out to be the table.
+    DWORD own = *(DWORD *)at;
+    DWORD before = *(DWORD *)(at - 4);
+    DWORD deep = *(DWORD *)(at + TREASURE_SPEAK_TABLE_OFFSET);
+    log_line(own == expect ? "pandora: chest speaks, and `this` IS the subobject: [this] is our table"
+                           : "pandora: chest speaks — neither [this] nor [this+0xF8] is our table");
+    log_hex("pandora:   this        ", (DWORD)at);
+    log_hex("pandora:   [this]      ", own);
+    log_hex("pandora:   [this-4]    ", before);
+    log_hex("pandora:   [this+0xF8] ", deep);
+    log_hex("pandora:   our table   ", expect);
   }
   ((void(__fastcall *)(void *, void *, void *))g_treasure_speak_orig)(self, unused, hero);
 }
