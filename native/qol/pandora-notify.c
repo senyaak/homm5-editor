@@ -552,6 +552,47 @@ static void *g_give_creatures_orig;
 #define SIGN_NUMBER_RVA 0x816810u
 static const BYTE SIGN_NUMBER_HEAD[6] = { 0x81, 0xEC, 0x80, 0x00, 0x00, 0x00 };
 
+// THE PICTURE, and it did not need a raised stack after all. The necromancer
+// asks the stack for its creature and throws the stack away one instruction
+// later (0xABAFB0: `ecx = [stack+0x1c]`, and 0x1c is the creature's NUMBER) —
+// so a command that raised nothing can start from the number it already has.
+// Three steps and the last one picks which of four pictures by `edx`; the
+// necromancer's sign uses 0, so ours does.
+
+/** A creature's record from its number — `__fastcall(creature)`. */
+#define CREATURE_RECORD_RVA 0x727630u
+static const BYTE CREATURE_RECORD_HEAD[5] = { 0x56, 0x8B, 0xF1, 0x85, 0xF6 };
+/** What holds its pictures, from `record + 0xF4` — `__fastcall(that)`. */
+#define CREATURE_VISUALS_RVA 0x1c8ad0u
+static const BYTE CREATURE_VISUALS_HEAD[5] = { 0xA0, 0x8E, 0xBC, 0x10, 0x01 };
+/** And one of them, chosen by `edx` — `__fastcall(visuals, which)`. */
+#define CREATURE_ICON_RVA 0x6bc700u
+static const BYTE CREATURE_ICON_HEAD[6] = { 0x56, 0x8B, 0xF1, 0x57, 0x85, 0xF6 };
+#define CREATURE_RECORD_PICTURES 0xf4u
+
+/** The picture the necromancer's sign carries, for any creature number. */
+static DWORD creature_picture(int creature) {
+  DWORD base = game_base();
+  DWORD record = ((DWORD(__fastcall *)(int))(DWORD_PTR)(CREATURE_RECORD_RVA + base))(creature);
+  log_hex("pandora:   its record ", record);
+  if (!readable((const void *)(DWORD_PTR)record, CREATURE_RECORD_PICTURES + 4)) return 0;
+  DWORD visuals = ((DWORD(__fastcall *)(DWORD, DWORD))(DWORD_PTR)(CREATURE_VISUALS_RVA + base))(
+    record + CREATURE_RECORD_PICTURES, 0);
+  log_hex("pandora:   its pictures ", visuals);
+  if (!visuals) return 0;
+  DWORD picture = ((DWORD(__fastcall *)(DWORD, DWORD))(DWORD_PTR)(CREATURE_ICON_RVA + base))(
+    visuals, 0);
+  log_hex("pandora:   its picture ", picture);
+  // The same test as the spell's icon: the sign dispatches on this, and
+  // anything that is not an STexture is a jump into data.
+  if (picture && readable((const void *)(DWORD_PTR)picture, 4)
+      && *(const DWORD *)(DWORD_PTR)picture != base + STEXTURE_VTABLE_RVA) {
+    log_hex("pandora:   but its class is ", *(const DWORD *)(DWORD_PTR)picture - base);
+    return 0;
+  }
+  return picture;
+}
+
 static char __fastcall announce_creatures_given(void *self, void *unused) {
   char given = ((char(__fastcall *)(void *, void *))g_give_creatures_orig)(self, unused);
   log_num(given ? "pandora: creatures were given, and the command says "
@@ -598,14 +639,13 @@ static char __fastcall announce_creatures_given(void *self, void *unused) {
   DWORD numberBuf[8] = { 0 };
   DWORD number = ((DWORD(__fastcall *)(void *, int))(DWORD_PTR)(SIGN_NUMBER_RVA + base))(
     numberBuf, count);
+  int creature = (int)((DWORD *)self)[7];
   log_num("pandora:   how many ", count);
   log_hex("pandora:   written as ", number);
-  // The picture is left out for now: the necromancer takes it off the raised
-  // STACK, and a command that has not raised one has no stack to ask. A sign
-  // without a picture is a shape the engine builds itself (the experience one
-  // passes a texture, the constructor checks for null either way).
+  log_num("pandora:   of creature ", creature);
+  DWORD picture = creature_picture(creature);
   ((void(__fastcall *)(DWORD, DWORD, DWORD, DWORD, DWORD, DWORD, DWORD, DWORD, DWORD, DWORD))
-   (DWORD_PTR)(ANNOUNCE_MANY_RVA + base))(world, 0, over, 2, number, 0, 0, 1, 1, 1);
+   (DWORD_PTR)(ANNOUNCE_MANY_RVA + base))(world, 0, over, 2, number, picture, 0, 1, 1, 1);
   log_line("pandora: the stack was announced and it did not crash");
   return given;
 }
