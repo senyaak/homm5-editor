@@ -152,18 +152,19 @@ static DWORD __fastcall announce_many_probe(DWORD self, DWORD edx,
 //   reading from ESI = 0. `a1` was a zeroed buffer. A zeroed buffer is not an
 //   empty string — an empty string is three words the engine allocates for it.
 //
-// So this is written from 0xC26BD0, the site that announces a NEW_SKILL, which
-// does the same job with a quarter of the artifact's ceremony:
+// So it is written from the engine's own sites — first 0xC26BD0, which
+// announces a NEW_SKILL, and then 0xB41500, which announces this very thing:
 //
-//   string_from_literal(&key, "NEW_ABILITY")   0x4DC940, one argument
-//   params  = params_ctor(&paramsBuf)          0x4F7530, none
-//   subject = ref_resolve(&{record, 0})        0x525B30, none  <- and NOT three
-//   text    = text_from_key(&key)              0xAB8D50, none
-//   announce(hero, edx, text, name, subject, 0, kind, params)
+//   string_from_literal(&key, "HERO_RECEIVES_SPELL")  0x4DC940, one argument
+//   params = params_ctor(&paramsBuf)                  0x4F7530, none
+//   name   = spell_name(&nameBuf, spellId)            0xAD5160, none
+//   icon   = spell_icon(spellId)                      0xAD5110, none
+//   text   = text_from_key(&key)                      0xAB8D50, none
+//   announce(hero, edx, text, name, icon, 0, 1, params)
 //
-// `ref_resolve` taking no stack arguments matters twice over: the three that
-// were being pushed at it were never popped, so every later argument in that
-// frame was twelve bytes out of place.
+// Reading those sites also settled an arity: the reference resolver at 0x525B30
+// takes NO stack arguments, and the three that had been pushed at it were never
+// popped, so every later argument in that frame was twelve bytes out of place.
 //
 // The author's permission for the shape of this work, verbatim: "можно. хай
 // падает" — but a crash here costs the whole run, and this run has a second
@@ -183,20 +184,35 @@ static const BYTE STRING_FROM_LITERAL_HEAD[6] = { 0x53, 0x55, 0x56, 0x8B, 0x74, 
 /** The announcement's last argument, built into a buffer of ours. No arguments. */
 #define ANNOUNCE_PARAMS_RVA 0x0f7530u
 static const BYTE ANNOUNCE_PARAMS_HEAD[6] = { 0x51, 0x53, 0x8B, 0xD9, 0x56, 0x57 };
-/** A `{pointer, stale?}` pair resolved to a live object. No arguments either. */
-#define REF_RESOLVE_RVA 0x125b30u
-static const BYTE REF_RESOLVE_HEAD[6] = { 0xA0, 0x0D, 0x8C, 0x0F, 0x01, 0x56 };
 /** The key's string turned into the first argument. */
 #define ANNOUNCE_TEXT_RVA 0x6b8d50u
 static const BYTE ANNOUNCE_TEXT_HEAD[7] = { 0x51, 0x64, 0xA1, 0x2C, 0x00, 0x00, 0x00 };
-/** An EMPTY wide string, allocated the way the engine allocates one. */
-#define WSTRING_EMPTY_RVA 0x2b9a70u
-static const BYTE WSTRING_EMPTY_HEAD[5] = { 0x56, 0x6A, 0x10, 0x8B, 0xF1 };
+/** A spell's NAME, into a buffer of ours — `__fastcall(dst, spellId)`. */
+#define SPELL_NAME_RVA 0x6d5160u
+static const BYTE SPELL_NAME_HEAD[5] = { 0x56, 0x8B, 0xF1, 0x8B, 0xCA };
+/** A spell's ICON — `__fastcall(spellId)`, the record's 0x64 or else its 0x5c. */
+#define SPELL_ICON_RVA 0x6d5110u
+static const BYTE SPELL_ICON_HEAD[3] = { 0x56, 0x57, 0xE8 };
+/** And what that icon has to be, since the announcement dispatches on it. */
+#define STEXTURE_VTABLE_RVA 0xba98b0u
 
-/** The key the game announces a new ability under. A KEY, not a sentence:
- *  UI/UIGameRoot.xdb resolves it to a text file, which is what makes the
- *  wording follow the language the install was bought in. */
-static const char NEW_ABILITY_KEY[] = "NEW_ABILITY";
+/**
+ * The key the game announces a RECEIVED SPELL under — its own, not one of ours.
+ *
+ * The fourth crash is what found it. The announcement's third argument is not
+ * the thing gained at all: RTTI says the artifact passes an `NDb::STexture`,
+ * an ICON, and a spell record handed over in its place had the wrong virtuals
+ * at the slot the engine reached for — so the call went to a heap address and
+ * `eip` came back as data. [[take-the-value-dont-derive-it]]: the engine keeps
+ * a whole site for this at 0xB41500, and it says the wording is
+ * `HERO_RECEIVES_SPELL`, the kind is 1 rather than the skill's 3, the name is
+ * the spell's own, and the icon comes off the record. All four are its answers,
+ * not mine. A KEY, not a sentence: UI/UIGameRoot.xdb resolves it to a text
+ * file, which is what makes the wording follow the language the install was
+ * bought in.
+ */
+static const char SPELL_KEY[] = "HERO_RECEIVES_SPELL";
+#define SPELL_ANNOUNCEMENT_KIND 1u
 
 /** What the holder demands of the object in `edx`, in its own order (0xBF9B30):
  *  a vtable, then `[[p+4]+4]` as an offset, then a count at `p+off+8` that has
@@ -270,10 +286,7 @@ static char __fastcall add_spell_replay(void *self, void *unused) {
   log_hex("pandora:   for hero ", given);
   if (hero != given) log_hex("pandora:   the whole of him ", hero);
 
-  // The subject is a POINTER to the thing gained, never its number: field 0x10
-  // is the spell's id — 0x122 came through the log once, dereferenced, and the
-  // access violation was one call deeper. The engine's own registry turns one
-  // into the other.
+  // The game has to know the spell at all before anything else is worth doing.
   void *record = ((void *(__fastcall *)(int))(DWORD_PTR)(SPELL_RECORD_RVA + base))(spellId);
   log_hex("pandora:   its record ", (DWORD)(DWORD_PTR)record);
   if (!record) {
@@ -285,17 +298,28 @@ static char __fastcall add_spell_replay(void *self, void *unused) {
   // that guesses at a destructor is a probe that corrupts a heap, and a handful
   // of small allocations per launch is the cheaper mistake.
   DWORD key[8] = { 0 }, paramsBuf[16] = { 0 }, nameBuf[8] = { 0 };
-  DWORD subjectRef[2] = { (DWORD)(DWORD_PTR)record, 0 };
 
   ((void(__fastcall *)(void *, void *, const char *))(DWORD_PTR)(STRING_FROM_LITERAL_RVA + base))(
-    key, 0, NEW_ABILITY_KEY);
+    key, 0, SPELL_KEY);
   DWORD params = ((DWORD(__fastcall *)(void *, void *))(DWORD_PTR)(ANNOUNCE_PARAMS_RVA + base))(
     paramsBuf, 0);
-  DWORD name = ((DWORD(__fastcall *)(void *, void *))(DWORD_PTR)(WSTRING_EMPTY_RVA + base))(
-    nameBuf, 0);
-  DWORD subject = ((DWORD(__fastcall *)(void *, void *))(DWORD_PTR)(REF_RESOLVE_RVA + base))(
-    subjectRef, 0);
+  DWORD name = ((DWORD(__fastcall *)(void *, int))(DWORD_PTR)(SPELL_NAME_RVA + base))(
+    nameBuf, spellId);
   DWORD text = ((DWORD(__fastcall *)(void *, void *))(DWORD_PTR)(ANNOUNCE_TEXT_RVA + base))(key, 0);
+
+  // The icon, and only if it is one. The announcement dispatches on this
+  // argument, so anything that is not an `NDb::STexture` is a jump into data —
+  // which is exactly how the last run ended. Its vtable is the whole test, and
+  // an announcement with no icon is a shape the constructor already allows
+  // (0xCA5F1D checks for null before it touches it).
+  DWORD icon = ((DWORD(__fastcall *)(int))(DWORD_PTR)(SPELL_ICON_RVA + base))(spellId);
+  log_hex("pandora:   its icon ", icon);
+  if (icon && readable((const void *)(DWORD_PTR)icon, 4)
+      && *(const DWORD *)(DWORD_PTR)icon != base + STEXTURE_VTABLE_RVA) {
+    log_hex("pandora:   but its class is ", *(const DWORD *)(DWORD_PTR)icon - base);
+    log_line("pandora: that is no texture — announcing without one");
+    icon = 0;
+  }
 
   // And the audience — MEASURED, this time. The skill site reads it out of a
   // field at 0x128, and the field 0x128 of the pointer the command carries came
@@ -320,7 +344,6 @@ static char __fastcall add_spell_replay(void *self, void *unused) {
   }
   log_hex("pandora:   params  ", params);
   log_hex("pandora:   name    ", name);
-  log_hex("pandora:   subject ", subject);
   log_hex("pandora:   text    ", text);
   log_hex("pandora:   edx     ", edx);
   log_line(where);
@@ -352,7 +375,8 @@ static char __fastcall add_spell_replay(void *self, void *unused) {
     return taught;
   }
   ((void(__fastcall *)(DWORD, DWORD, DWORD, DWORD, DWORD, DWORD, DWORD, DWORD))
-   (DWORD_PTR)(ANNOUNCE_ONE_RVA + base))(hero, edx, text, name, subject, 0, 3, params);
+   (DWORD_PTR)(ANNOUNCE_ONE_RVA + base))(hero, edx, text, name, icon, 0,
+                                         SPELL_ANNOUNCEMENT_KIND, params);
   log_line("pandora: it did not crash");
   return taught;
 }
