@@ -358,7 +358,7 @@ const LEADS = ['Knight', 'Demonlord'];
 // far away at x = 66, are further right still.
 // BELOW THE LADDER, not beside it: with the boxes two apart the rows now reach
 // y = 28, and this line at 32 is clear of them with room for a row of its own.
-const BARBARIAN = { at: { x: 2, y: 32 }, entry: `${GENERIC_HEROES}/Barbarian.xdb`, experience: 500_000 };
+const BARBARIAN = { at: { x: 2, y: 32 }, entry: `${GENERIC_HEROES}/Barbarian.xdb` };
 const CRIES = ['SPELL_WARCRY_RALLING_CRY', 'SPELL_WARCRY_CALL_OF_BLOOD'];
 
 /**
@@ -379,6 +379,22 @@ const CRIES = ['SPELL_WARCRY_RALLING_CRY', 'SPELL_WARCRY_CALL_OF_BLOOD'];
 const LADDER = [
   'SPELL_SUMMON_BOAT', 'SPELL_SUMMON_CREATURES', 'SPELL_DIMENSION_DOOR', 'SPELL_TOWN_PORTAL',
 ];
+
+/**
+ * The four hero levels the ladder asks for, and what each box has to hand over
+ * to reach the next — the totals are the game's own, the differences are
+ * arithmetic on them.
+ *
+ * 4600 · 14700 · 34141 · 81977 for levels 5, 10, 15 and 20, out of the shipped
+ * `HOMM5_Hero_Level_and_Experience.pdf`. Level 5 is not a threshold the ladder
+ * cares about; it is there so the row starts with a box that visibly does
+ * something before the ones that matter.
+ */
+const LEVEL_TOTALS = [{ level: 5, at: 4600 }, { level: 10, at: 14700 },
+  { level: 15, at: 34141 }, { level: 20, at: 81977 }];
+const LEVELS = LEVEL_TOTALS.map((l, i) => ({
+  level: l.level, gain: l.at - (LEVEL_TOTALS[i - 1]?.at ?? 0),
+}));
 const BARBARIAN_BOXES = [
   {
     name: 'PandoraCriesForTheBarbarian', x: 6, y: BARBARIAN.at.y,
@@ -387,6 +403,24 @@ const BARBARIAN_BOXES = [
   ...[...LADDER, 'SPELL_TOWN_PORTAL'].map((spell, i) => ({
     name: `PandoraTalisman${i + 1}`, x: 8 + i * STEP, y: BARBARIAN.at.y,
     contents: { name: `PandoraTalisman${i + 1}`, spells: [spell] },
+  })),
+  // AND THE ROW ABOVE: the levels, one box at a time.
+  //
+  // The rungs past the first are gated on the HERO's level, not on the
+  // talisman's, and the engine's recompute stops at the first rung he has not
+  // reached — so a barbarian who opens the whole ladder at level 1 owns a
+  // talisman of 4 and knows Summon Boat. What nothing has shown yet is the
+  // other half: whether the spells arrive by themselves as he grows, with the
+  // talisman already at the top and no box involved.
+  //
+  // He starts with no experience at all, walks the ladder, and then opens these
+  // four in turn — 5, 10, 15, 20, the thresholds out of
+  // `Editor Documentation/HOMM5_Hero_Level_and_Experience.pdf`. Each box holds
+  // the DIFFERENCE from the level before it, so opening them in order lands him
+  // exactly on each threshold: 4600, 14700, 34141, 81977.
+  ...LEVELS.map((step, i) => ({
+    name: `PandoraLevel${step.level}`, x: 8 + i * STEP, y: BARBARIAN.at.y + STEP,
+    contents: { name: `PandoraLevel${step.level}`, exp: step.gain },
   })),
 ];
 
@@ -575,13 +609,11 @@ test('two sides, each with a hero of their own', async () => {
   const barb = await place(page, () => pickEntry(page, BARBARIAN.entry), BARBARIAN.entry,
     BARBARIAN.at.x, BARBARIAN.at.y);
   await setPath(page, barb, ['PlayerID'], SIDES[0]!.player);
-  // AND HE ARRIVES A VETERAN, or the row proves only its first rung. The ladder
-  // asks a HERO LEVEL of its own for each step — 1, 10, 15, 20 — and the
-  // engine's recompute STOPS at the first rung he has not reached, so a level-1
-  // barbarian opening all five boxes ends with a talisman of 4 and one spell:
-  // Summon Boat. Half a million experience is well past the twentieth level, so
-  // every rung he is given is a rung he can use.
-  await setPath(page, barb, ['Experience'], String(BARBARIAN.experience));
+  // AND HE ARRIVES WITH NOTHING — no experience, level one. That is the whole
+  // question of his two rows: walk the ladder first and he holds a talisman of
+  // 4 and one spell, because the rest are gated on HIS level; then open the row
+  // above, one box per threshold, and the spells should arrive as he grows,
+  // with no box handing them over.
   for (const b of BARBARIAN_BOXES) {
     const id = await place(page, () => pickObject(page, BOX), b.name, b.x, b.y);
     await setPath(page, id, ['Name'], b.name);
@@ -597,9 +629,20 @@ test('two sides, each with a hero of their own', async () => {
     + ' can be taught. The five after it hold adventure magic, which he cannot -'
     + ' each one raises his talisman by a single step instead: boat, creatures,'
     + ' dimension door, town portal. The fifth is one past the top and hands over'
-    + ' nothing at all, in silence. Each rung also asks a hero level of its own -'
-    + ' 1, 10, 15, 20 - and the spells stop at the first rung he has not reached,'
-    + ' which is why this one starts as a veteran.');
+    + ' nothing at all, in silence. He starts at level 1, so expect only Summon'
+    + ' Boat from the lot: every other rung is gated on HIS level. The row above'
+    + ' is where those levels come from.');
+  // The row above gets its own post, because the question it asks is the one
+  // nothing has answered yet.
+  const levelSign = await place(page, () => pickObject(page, SIGN), 'sign-levels',
+    BARBARIAN.at.x + STEP, BARBARIAN.at.y + STEP);
+  await page.evaluate((oid) => window.view.select(oid), levelSign);
+  await setTextRef(page, 'MessageFileRef', 'sign-levels',
+    'LEVELS, one box each: 5, 10, 15, 20. Walk the talisman row below first -'
+    + ' it leaves you with a talisman of 4 and one spell. Then open these in'
+    + ' order and watch the spell book: Summon Creatures should appear at level'
+    + ' 10, Dimension Door at 15, Town Portal at 20, with no box handing any of'
+    + ' them over. That is the engine reading the talisman again as you grow.');
 
   // A TOWN FOR RED, so Town Portal has somewhere to go and the shelter that
   // sells talismans can be walked into and compared with.
@@ -698,9 +741,18 @@ test('saving writes the block the game reads, and the texts it shows', async () 
     expect(from, `${name} has an entry in the block`).toBeGreaterThan(-1);
     return lua.slice(from, lua.indexOf('};', from));
   };
-  const portalBox = BARBARIAN_BOXES.find((b) => b.contents.spells?.includes('SPELL_TOWN_PORTAL'))!;
+  const portalBox = BARBARIAN_BOXES.find((b) => b.name === 'PandoraTalisman4')!;
   expect(entryOf(portalBox.name), `${portalBox.name} carries Town Portal as adventure magic`)
     .toContain('adventure = { SPELL_TOWN_PORTAL }');
+  // AND THE LEVELS ARE PLAIN EXPERIENCE — the row above hands over no magic at
+  // all, which is the point of it: whatever appears in his book afterwards
+  // came from the engine reading his talisman again, not from a box.
+  for (const step of LEVELS) {
+    const entry = entryOf(`PandoraLevel${step.level}`);
+    expect(entry, `PandoraLevel${step.level} hands over ${step.gain} experience`)
+      .toContain(`exp = ${step.gain}`);
+    expect(entry, `and nothing else`).not.toContain('adventure =');
+  }
   // The cries stay ordinary teaching — they are the half a barbarian CAN hold,
   // and a rule that swept them into the ladder would be the same bug the other
   // way round.
