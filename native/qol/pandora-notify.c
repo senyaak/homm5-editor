@@ -195,6 +195,17 @@ static const BYTE SPELL_NAME_HEAD[5] = { 0x56, 0x8B, 0xF1, 0x8B, 0xCA };
 static const BYTE SPELL_ICON_HEAD[3] = { 0x56, 0x57, 0xE8 };
 /** And what that icon has to be, since the announcement dispatches on it. */
 #define STEXTURE_VTABLE_RVA 0xba98b0u
+/** One substitution into the announcement's dictionary — `(this, key, value)`. */
+#define PARAMS_SET_RVA 0x895580u
+static const BYTE PARAMS_SET_HEAD[6] = { 0xFF, 0x74, 0x24, 0x08, 0xFF, 0x74 };
+/** The name the engine's own site substitutes a spell under, at 0xB41465. */
+static const char SPELL_PARAM[] = "spell";
+
+/** Where the announcement is handed to its audience — probed only to say which
+ *  half of the work a crash happened in. `ret 4`, and it reads through ESP. */
+#define ANNOUNCE_HOLD_RVA 0x7f9b30u
+static const BYTE ANNOUNCE_HOLD_HEAD[7] = { 0x53, 0x56, 0x57, 0x8B, 0x7C, 0x24, 0x10 };
+static void *g_announce_hold_orig;
 
 /**
  * The key the game announces a RECEIVED SPELL under — its own, not one of ours.
@@ -307,6 +318,20 @@ static char __fastcall add_spell_replay(void *self, void *unused) {
     nameBuf, spellId);
   DWORD text = ((DWORD(__fastcall *)(void *, void *))(DWORD_PTR)(ANNOUNCE_TEXT_RVA + base))(key, 0);
 
+  // AND THE DICTIONARY, which is what the last argument is for. The key names a
+  // TEMPLATE, and the template has holes in it: the engine's own site fills a
+  // `spell` hole before it announces, and a `player` one before the message it
+  // sends the rest of the team. Ours went over empty, which is the difference
+  // between the two calls that a right-looking log would not have shown.
+  DWORD paramKey[8] = { 0 }, paramValue[8] = { 0 };
+  ((void(__fastcall *)(void *, void *, const char *))(DWORD_PTR)(STRING_FROM_LITERAL_RVA + base))(
+    paramKey, 0, SPELL_PARAM);
+  DWORD value = ((DWORD(__fastcall *)(void *, int))(DWORD_PTR)(SPELL_TEXT_RVA + base))(
+    paramValue, spellId);
+  ((void(__fastcall *)(DWORD, DWORD, DWORD, DWORD))(DWORD_PTR)(PARAMS_SET_RVA + base))(
+    params, 0, (DWORD)(DWORD_PTR)paramKey, value);
+  log_hex("pandora:   spell= ", value);
+
   // The icon, and only if it is one. The announcement dispatches on this
   // argument, so anything that is not an `NDb::STexture` is a jump into data —
   // which is exactly how the last run ended. Its vtable is the whole test, and
@@ -381,6 +406,24 @@ static char __fastcall add_spell_replay(void *self, void *unused) {
   return taught;
 }
 
+/**
+ * Two lines that cost nothing and end an argument.
+ *
+ * Four crashes in, the fault report still could not say WHERE: the announcer
+ * allocates an announcement, constructs it, and hands it on, and a jump into
+ * the heap looks the same from all three. The top of the stack held no code
+ * address to read backwards from either. So the last step is bracketed — if
+ * "held" is missing the constructor died, if only "held" is there the audience
+ * did, and nobody has to read registers to know which.
+ */
+static DWORD __fastcall announce_hold_probe(DWORD self, DWORD edx, DWORD announcement) {
+  log_hex("pandora: holding the announcement ", announcement);
+  DWORD kept = ((DWORD(__fastcall *)(DWORD, DWORD, DWORD))g_announce_hold_orig)(
+    self, edx, announcement);
+  log_line("pandora: held");
+  return kept;
+}
+
 /** Listen to both announcers. False when the build was not asked to log. */
 static int install_pandora_notify_probe(void) {
   if (!LOG_ON) return 0;
@@ -390,5 +433,7 @@ static int install_pandora_notify_probe(void) {
                                (void *)announce_one_probe, "announce(one)");
   g_announce_many_orig = detour(ANNOUNCE_MANY_RVA, ANNOUNCE_MANY_HEAD, sizeof ANNOUNCE_MANY_HEAD,
                                 (void *)announce_many_probe, "announce(many)");
+  g_announce_hold_orig = detour(ANNOUNCE_HOLD_RVA, ANNOUNCE_HOLD_HEAD, sizeof ANNOUNCE_HOLD_HEAD,
+                                (void *)announce_hold_probe, "announcement holder");
   return g_announce_one_orig != NULL || g_announce_many_orig != NULL;
 }

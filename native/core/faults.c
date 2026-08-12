@@ -58,6 +58,23 @@ static void log_stack_words(const BYTE *esp) {
   }
 }
 
+/**
+ * And the same words RAW, filtered by nothing.
+ *
+ * The line above answers "who called in" and is silent when the answer is not
+ * there — which is itself a reading, and one that took a crash to notice: a
+ * jump into the heap leaves no return address on the stack at all, so a report
+ * made only of code addresses printed nothing and looked like a report that had
+ * failed. Words are cheap and a launch is not ([[logs-must-not-be-rationed]]).
+ */
+static void log_stack_raw(const BYTE *esp) {
+  for (int i = 0; i < STACK_WORDS_LOGGED; i++) {
+    const DWORD *at = (const DWORD *)(esp + i * 4);
+    if (!readable(at, 4)) return;
+    log_hex("       stack word ", *at);
+  }
+}
+
 static LONG CALLBACK on_fault(EXCEPTION_POINTERS *info) {
   if (!info || !info->ExceptionRecord || !info->ContextRecord) return EXCEPTION_CONTINUE_SEARCH;
   if (info->ExceptionRecord->ExceptionCode != EXCEPTION_ACCESS_VIOLATION) {
@@ -79,6 +96,7 @@ static LONG CALLBACK on_fault(EXCEPTION_POINTERS *info) {
   log_hex("       edi ", c->Edi);
   log_where_modules_are();
   log_stack_words((const BYTE *)(INT_PTR)c->Esp);
+  log_stack_raw((const BYTE *)(INT_PTR)c->Esp);
   return EXCEPTION_CONTINUE_SEARCH;
 }
 
