@@ -133,17 +133,19 @@ static void *__fastcall lua_map_is_playing(void *ctx) {
  * state to read, nothing to get wrong on a map nobody wrote for this, and a
  * script that never asks is a script that never notices the extension is here.
  *
- * The flag is spent by the grant that follows it, because the command is
- * DEFERRED: the box's Lua asks, `TeachHeroSpell` queues, and the queue runs the
- * command a moment later — so the asking cannot be scoped to the call and has
- * to be scoped to the next gain.
+ * A COUNTER, not a flag, and the difference is the whole of the second bug. The
+ * command is DEFERRED: a box with three spells in it asks three times and only
+ * then does the queue run the three commands, so a boolean is set to 1 three
+ * times over and spent by the first grant — the box announced its first gain
+ * and went quiet for the rest, which is exactly what was played. Counting the
+ * asks and spending one per gain keeps them paired however far apart they run.
  */
 static int g_askedFor;
 
 static void *__fastcall lua_announce_next_gain(void *ctx) {
   (void)ctx;
-  g_askedFor = 1;
-  log_line("pandora: a box has asked for its next gain to be announced");
+  g_askedFor++;
+  log_num("pandora: a box has asked for a gain to be announced, now owed ", g_askedFor);
   return NULL;
 }
 
@@ -545,7 +547,7 @@ static char __fastcall announce_spell_taught(void *self, void *unused) {
     log_line("pandora: nobody asked for that one to be announced — leaving it alone");
     return taught;
   }
-  g_askedFor = 0;
+  g_askedFor--;
 
   DWORD base = game_base();
   // The hero the command was made for — its field 0x0c, and then the whole of
@@ -746,7 +748,7 @@ static char __fastcall announce_creatures_given(void *self, void *unused) {
     log_line("pandora: nobody asked for that stack to be announced — leaving it alone");
     return given;
   }
-  g_askedFor = 0;
+  g_askedFor--;
 
   // THE COMMAND CARRIES IT ALL, which the spell's does not: field 0x0c is the
   // world (its vtable says so), 0x10 the player, 0x14 and 0x18 two interfaces
