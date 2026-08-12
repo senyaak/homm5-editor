@@ -104,6 +104,21 @@ export class RouterSession {
     this.rooms = rooms;
   }
 
+  /**
+   * The connection is gone.
+   *
+   * A game whose host has left is not a game, and a lobby that keeps it hands the
+   * next player a name that is already taken — which is exactly what the client
+   * said when it refused to create one: "a game with this name already exists",
+   * about a host who had closed the game minutes before.
+   */
+  close(): string | null {
+    const gone = this.rooms.hostedBy(this.username);
+    if (!gone.length) return null;
+    for (const room of gone) this.rooms.remove(room.id);
+    return `${this.username} left — dropped ${gone.map((room) => `"${room.name}"`).join(', ')}`;
+  }
+
   /** Feed bytes from the socket; get back what to send, and a line for the log. */
   receive(chunk: Buffer): RouterEvent[] {
     this.buffer = Buffer.concat([this.buffer, chunk]);

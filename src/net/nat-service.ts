@@ -14,26 +14,22 @@
 // Exports:
 //   NatService     handle(packet, from) -> { replies, note }
 
-import { inetU32 } from './address.ts';
+import { hostU32String } from './address.ts';
 import { MessageType, build, parse, reply } from './gs-message.ts';
 import { Flags, HEADER_SIZE, buildSegment, parseSegment, flagNames, type SrpConnection } from './srp.ts';
 
 /**
- * Sub-types of a NAT message.
+ * Sub-type of a NAT answer: the same "1" the client asked with.
  *
- * The client asks with "1" and its body is [requestId, "", game, game]. Which
- * subtype the ANSWER must carry is the open question: the reference
- * implementation sends 2 (port id) and 3 (address), and the client said nothing
- * at all to either — it sat in `CStateWaitNATReply` and gave up.
- *
- * So all three go out, and the game's own log settles it: it either says
- * "address request succeeded,address=…" or "parasite request finished,
- * discarding, RequestID=…,expected=…", and either sentence names the winner
- * (`NUbi::CStateWaitNATReply::ProcessRequestFinished`, 0xE10BC0). The ones it does
- * not want are discarded by the client, which is why asking three ways at once is
- * cheap and telling.
+ * Measured, and it took three tries. The reference implementation answers with 2
+ * (port id) and 3 (address); the client acknowledged those datagrams at the
+ * transport level and then sat in `CStateWaitNATReply` until it gave up, twice.
+ * Adding 1 to the same burst got the answer it wanted — its own log said
+ * "address request succeeded,address=…" — so 1 is the one, and the other two are
+ * dropped. Sending all three also made the step flaky, which is what a stray
+ * datagram in a windowed transport does.
  */
-const NatMessage = { ECHO: 1, PORT_ID: 2, ADDRESS: 3 } as const;
+const NAT_ANSWER = 1;
 
 /** Our own window: the client may start its checksums from zero. */
 const OUR_WINDOW = { tail: 10, senderSignature: 2, checksumSeed: 0, bufferSize: 0x218 } as const;
@@ -120,29 +116,30 @@ export class NatService {
     // calls anything else a "parasite request".
     const inner = request.body?.[1];
     const requestId = Array.isArray(inner) && typeof inner[0] === 'string' ? inner[0] : '0';
-    const seen = String(inetU32(from.address));
-
-    const replies = [NatMessage.ECHO, NatMessage.PORT_ID, NatMessage.ADDRESS].map((subtype) => {
-      const message = build(reply(request, [String(subtype), [requestId, seen, String(this.port)]]));
-      return buildSegment(
-        {
-          header: {
-            checksum: 0,
-            signature: connection!.signature,
-            dataSize: 0,
-            flags: Flags.MARKER | Flags.ACK,
-            seg: connection!.nextSeg++,
-            ack: segment.header.seg,
-          },
-          message,
+    // The address as the client will read it: host order, and its OWN port, not
+    // ours. Both were wrong first: the game printed what we sent as
+    // "address=1.0.0.127:40010" — the octets backwards and the mirror's own port
+    // instead of the socket that asked.
+    const seen = hostU32String(from.address);
+    const message = build(reply(request, [String(NAT_ANSWER), [requestId, seen, String(from.port)]]));
+    const answer = buildSegment(
+      {
+        header: {
+          checksum: 0,
+          signature: connection.signature,
+          dataSize: 0,
+          flags: Flags.MARKER | Flags.ACK,
+          seg: connection.nextSeg++,
+          ack: segment.header.seg,
         },
-        connection!.checksumSeed,
-      );
-    });
+        message,
+      },
+      connection.checksumSeed,
+    );
 
     return {
-      replies,
-      note: `NAT ask, request ${requestId} — answered ${from.address} as u32 ${seen} in subtypes 1, 2 and 3`,
+      replies: [answer],
+      note: `NAT ask, request ${requestId} — answered ${from.address}:${from.port} (as ${seen})`,
     };
   }
 }

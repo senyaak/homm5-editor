@@ -111,6 +111,10 @@ export class Rooms {
     return [...this.rooms.values()].filter((room) => room.parentId === lobbyId);
   }
 
+  hostedBy(master: string): Room[] {
+    return master ? [...this.rooms.values()].filter((room) => room.master === master) : [];
+  }
+
   remove(id: number): void {
     this.rooms.delete(id);
   }

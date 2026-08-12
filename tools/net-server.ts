@@ -192,7 +192,11 @@ for (const service of [...SERVICES, PROXY, LOBBY]) {
           }
         }
       });
-      socket.on('close', () => log(`TCP  #${id} ${label}:${port} closed`));
+      socket.on('close', () => {
+        const gone = session?.close();
+        if (gone) log(`RTR  #${id} ${gone}`);
+        log(`TCP  #${id} ${label}:${port} closed`);
+      });
       socket.on('error', (err: Error) => log(`TCP  #${id} ${label}:${port} error: ${err.message}`));
     })
       .on('error', (err: Error) => log(`TCP  ${label}:${port} listen failed: ${err.message}`))

@@ -159,12 +159,14 @@ console.log('\nNAT service, driven by the recorded packets');
     ),
     from,
   );
-  check('an ask is answered three ways, until the client names its favourite', asked.replies.length === 3, asked.note);
+  check('an ask gets the one answer the client accepts', asked.replies.length === 1, asked.note);
   const first = parse(parseSegment(asked.replies[0]!).message!);
   check('the answer is a NAT message', first?.type === MessageType.NAT);
+  // Measured from the game's own log: it prints what it was told, and both of
+  // these were wrong at first — "address=1.0.0.127:40010".
   check(
-    'it tells the client its own address and our port, echoing the request id',
-    JSON.stringify(first?.body) === JSON.stringify(['1', ['7', '16777343', '40010']]),
+    'it tells the client its own address in host order and its own port',
+    JSON.stringify(first?.body) === JSON.stringify(['1', ['7', '2130706433', '1024']]),
     JSON.stringify(first?.body),
   );
 
@@ -517,14 +519,11 @@ console.log('\nHosting a game, from the CREATE_ROOM the player really sent');
     String((entry?.[10] as Uint8Array)?.length),
   );
 
-  // A second player listing that channel must see the game.
-  const other = new RouterService(
-    { address: '127.0.0.1', port: 40001 },
-    { address: '127.0.0.1', port: 40030 },
-    { address: '127.0.0.1', port: 40031 },
-    { address: '127.0.0.1', port: 40040 },
-  ).session('lobby');
-  check('a fresh session has its own empty world', other.username === '');
+  // And when the host goes, the game goes with him — otherwise the next player is
+  // told the name is taken by somebody who left. Which is what happened.
+  const dropped = lobby.close();
+  check('closing the host connection drops his game', dropped?.includes('Senyaak') === true, String(dropped));
+  check('and closing again drops nothing', lobby.close() === null);
 }
 
 console.log('\nChat, unwrapped from what the client actually sent');
