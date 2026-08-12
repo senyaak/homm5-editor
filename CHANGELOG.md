@@ -420,6 +420,14 @@ one.
 
 ### Fixed
 
+- **A Pandora's Box asks before it opens again.** It stopped asking anybody:
+  the test for "is this a human" compared against `false`, and this Lua has no
+  such word — the engine reads it as an undefined global, so `ai == false`
+  quietly means `ai == nil` and every human was answered "not a human". The
+  same trap was under the fight's outcome. The linter now refuses the word
+  outright, with the reason; `true` exists and `false` does not, which is not
+  something anybody guesses.
+
 - **A box now says what it gave you, in the game's own words.** Opening one
   flies a receipt over the hero — `Шок Земли`, `2 × Архангелы`, `7000 Золото` —
   read out of the same records the prices come from, so it arrives in whatever

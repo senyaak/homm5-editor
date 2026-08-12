@@ -61,6 +61,15 @@ ok(clean('function f() if c then return PLAYERFLT_1; end; return nil end'),
 ok(clean('function f() if c then return t[1]; end; return nil end'),
   'and an index is not a call');
 
+// `false` is not a word here and `true` is. Measured in red, in the game:
+// "Value was NIL when getting global with name 'false'" — and the damage is
+// quieter than the warning, since `x == false` then means `x == nil`.
+console.log('\n=== false, which this Lua does not have ===');
+ok(msgs('if x == false then y = 1 end').length === 1, "`false` is an error");
+ok(clean('if x == true then y = 1 end'), 'but `true` is a global the game defines');
+ok(clean('x = "false"'), 'and not inside a string');
+ok(clean('-- false\nx = 1'), 'nor in a comment');
+
 // Separators inside a constructor, and the line between them is the engine's,
 // not a style: a trailing `;` asks for a record part that never comes and the
 // whole DoString dies (measured — it took the pandora block down with every

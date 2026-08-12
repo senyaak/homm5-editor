@@ -248,6 +248,22 @@ export function luaDiagnostics(src: string): LuaDiagnostic[] {
       continue;
     }
     if (t.kind !== 'word') continue;
+    // `false` IS NOT A WORD IN THIS LUA, and `true` is — which is the sort of
+    // asymmetry nobody guesses. The engine said so in red, twice a line:
+    //
+    //     [Script warning!] Value was NIL when getting global with name 'false'
+    //
+    // and what it does is worse than the warning. `x == false` reads a global
+    // that does not exist, so it means `x == nil` — the opposite of what it
+    // says wherever the value being tested is a number. That is what made the
+    // Pandora box open without asking: every human was answered "not a human".
+    // Write nil and 1, the way the shipped scripts do.
+    if (t.text === 'false') {
+      out.push({
+        from: t.from, to: t.to, severity: 'error',
+        message: "'false' does not exist in this Lua — it reads as nil, so `x == false` means `x == nil`; use nil",
+      });
+    }
     // A name this engine does not have, called as a function.
     if (ABSENT_BUILTINS.has(t.text)) {
       const next = toks[at + 1];

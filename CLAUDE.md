@@ -99,3 +99,11 @@ Read [LOG.md](LOG.md) before deciding a hook "did not install" or a feature
 "says nothing" — most of the reports that used to be in the log, including
 "how many patches went in", now need their own file named. It lists every file,
 what it would tell you, and the two units that speak without being asked.
+
+**Install the logging build LAST.** `tools/test-native-log.ts` builds its own
+quiet and loud copies into the same `native/build/`, so running it after
+`install-native` leaves a DLL that is not the one you installed — and a live
+e2e run reinstalls whatever is there. That is how a probe came to write nothing
+at all while its own anchors verified fine: the file in `bin/` was 102912 bytes
+where the logging build had been 104960. Build, install, launch — and if a
+suite ran in between, install again.

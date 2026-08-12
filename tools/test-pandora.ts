@@ -423,15 +423,21 @@ console.log('the scripts');
       && lua.lastIndexOf('H5E_PandoraIsHuman', at) > lua.lastIndexOf('function H5E_Pandora', at));
   }
   check('and the check reads every shape IsAIPlayer could answer with',
-    ['ai == nil', 'ai == false', 'ai == 0'].every((s) => lua.includes(s)));
+    // nil and 0, and NOT `false` — which this Lua does not have at all. The
+    // linter is what refuses the word now (it is an error there, and the
+    // behaviour lints clean above); this only pins the shape of the answer.
+    ['ai == nil', 'ai == 0'].every((s) => lua.includes(s)));
   // The author's own words are NOT a window: a flying sign says them without
   // stopping the map, and it is addressed, so it needs no gate at all.
   check('the box says its message with a flying sign, not a window',
     lua.includes('ShowFlyingSign(box.said, H5E_PandoraHero, player, 6)')
     && !lua.includes('MessageBox(box.said)'));
-  // And a map that wants a window has the door for it.
+  // And a map that wants a window has the door for it — DECLARED at load, so
+  // that asking about it is not the engine's red "Value was NIL when getting
+  // global with name 'H5E_PandoraOnOpen'".
   check('and a map can hang its own code on the opening',
-    lua.includes('if H5E_PandoraOnOpen ~= nil then H5E_PandoraOnOpen(H5E_PandoraHero, H5E_PandoraObj); end'));
+    lua.includes('H5E_PandoraOnOpen = 0;')
+    && lua.includes('if H5E_PandoraOnOpen ~= 0 then H5E_PandoraOnOpen(H5E_PandoraHero, H5E_PandoraObj); end'));
 
   const boxes = [
     { name: 'Pandora01', exp: 1000, gold: 2500, wood: 5, artifacts: ['ARTIFACT_ENDLESS_BAG_OF_GOLD'] },

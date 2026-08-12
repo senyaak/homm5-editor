@@ -304,15 +304,17 @@ const LEADS = ['Knight', 'Demonlord'];
  * side, so whoever plays red can walk over and read both answers.
  */
 // WELL CLEAR OF THE LADDER, which is the point: two boxes wedged between its
-// rows read as part of it, and the question they ask is a different one. They
-// stand off to the side, in the empty middle of the map — bigger x is further
-// LEFT on screen (docs/MAP_PROPERTIES.md), so this is left of red's rows and
-// nowhere near blue's.
-const BARBARIAN = { at: { x: 34, y: 20 }, entry: `${GENERIC_HEROES}/Barbarian.xdb` };
+// rows read as part of it, and the question they ask is a different one.
+//
+// LEFT IS THE SMALLER x — the direction this file had backwards twice. On
+// screen north is up and bigger `y` goes up with it, but `x` grows to the
+// RIGHT, so the ladder at x = 14…23 is to the right of this and blue's rows,
+// far away at x = 66, are further right still.
+const BARBARIAN = { at: { x: 4, y: 20 }, entry: `${GENERIC_HEROES}/Barbarian.xdb` };
 const CRIES = ['SPELL_WARCRY_RALLING_CRY', 'SPELL_WARCRY_CALL_OF_BLOOD'];
 const BARBARIAN_BOXES = [
-  { name: 'PandoraCriesForTheBarbarian', x: 38, y: 20, contents: { name: 'PandoraCriesForTheBarbarian', spells: CRIES } },
-  { name: 'PandoraSpellForTheBarbarian', x: 41, y: 20, contents: { name: 'PandoraSpellForTheBarbarian', spells: ['SPELL_TOWN_PORTAL'] } },
+  { name: 'PandoraCriesForTheBarbarian', x: 7, y: 20, contents: { name: 'PandoraCriesForTheBarbarian', spells: CRIES } },
+  { name: 'PandoraSpellForTheBarbarian', x: 10, y: 20, contents: { name: 'PandoraSpellForTheBarbarian', spells: ['SPELL_TOWN_PORTAL'] } },
 ];
 
 async function twoHeroes(page: Launched['page']): Promise<string[]> {
