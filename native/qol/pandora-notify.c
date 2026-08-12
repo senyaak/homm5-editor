@@ -843,6 +843,32 @@ static DWORD __fastcall announce_hold_probe(DWORD self, DWORD edx, DWORD announc
 }
 
 /**
+ * The two rows this file adds to the map's Lua table — and they go in EARLY.
+ *
+ * They cannot be added from the installer below. The table is handed to the
+ * engine once, by `install_lua_functions`, and everything registered after that
+ * is a function the game's Lua has never heard of. The map said so in as many
+ * words the first time this was got wrong here:
+ *
+ *   [Script warning!] Value was NIL when getting global with name
+ *   'H5EAnnounceGain'
+ *   (Script) ERROR: attempt to call a nil value
+ *
+ * Which is the same sentence, about a different name, that stands in a comment
+ * beside `install_adv_cast` in native/homm5-editor.c. Reading a warning that
+ * has already been written down is cheaper than earning it twice, and this is
+ * the second time — hence a function of its own, called where that comment
+ * says to call it, so the ordering is visible instead of implied.
+ */
+static void add_pandora_map_functions(void) {
+  // What the map calls back on when its first thread wakes up.
+  add_map_function("H5EMapIsPlaying", (void *)&lua_map_is_playing);
+  // And what a box calls before it hands something over. Without it the two
+  // hooks below only ever read the original's answer and write it down.
+  add_map_function("H5EAnnounceGain", (void *)&lua_announce_next_gain);
+}
+
+/**
  * Speak, and — in a build asked to log — listen as well.
  *
  * The two announcers are hooked only for the log: they change nothing, and what
@@ -862,11 +888,6 @@ static int install_pandora_notify(void) {
   g_give_creatures_orig = detour(GIVE_CREATURES_RVA, GIVE_CREATURES_HEAD,
                                  sizeof GIVE_CREATURES_HEAD,
                                  (void *)announce_creatures_given, "creatures given");
-  // What the map calls back on when its first thread wakes up.
-  add_map_function("H5EMapIsPlaying", (void *)&lua_map_is_playing);
-  // And what a box calls before it hands something over. Without it the two
-  // hooks above only ever read the original's answer and write it down.
-  add_map_function("H5EAnnounceGain", (void *)&lua_announce_next_gain);
   if (!LOG_ON) return g_add_spell_orig != NULL && g_announce_hold_orig != NULL;
   g_announce_one_orig = detour(ANNOUNCE_ONE_RVA, ANNOUNCE_ONE_HEAD, sizeof ANNOUNCE_ONE_HEAD,
                                (void *)announce_one_probe, "announce(one)");

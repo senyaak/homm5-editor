@@ -147,6 +147,11 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   // said so in as many words — "Value was NIL when getting global with name
   // 'H5EAnswer'".
   install_adv_cast();
+  // And for the same reason, one feature over: a box asks to have its gain
+  // announced by calling a function of ours, and the ask has to be in the table
+  // before the table is handed over. Its hooks go in far below, with the rest
+  // of the quality-of-life switches; only the two rows belong up here.
+  if (g_qol[QOL_PANDORA_BOX]) add_pandora_map_functions();
   install_lua_functions();
   // The same argument, one context over — and the one thing here that a battle
   // has to answer for itself, so it says what it saw whether or not anything
