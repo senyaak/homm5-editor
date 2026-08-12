@@ -43,6 +43,8 @@ import type { PandoraContents } from '../src/mods/pandora-contents.ts';
 import { pandoraPrices } from '../src/mods/pandora-prices.ts';
 import { singleRoot } from '../src/game/assets.ts';
 import { PANDORA_FILE } from '../src/map/pandora-store.ts';
+import { startableProblems } from '../src/map/startable.ts';
+import { loadMap } from '../src/map/map.ts';
 
 let ed: Launched;
 const GAME = modGameRoot();
@@ -222,16 +224,30 @@ const setPath = (page: Launched['page'], id: string, path: (string | number)[], 
   page.evaluate((p) => window.editor.setObjectPath({ id: p.id, path: p.path, value: p.value }),
     { id, path, value });
 
-/** Two heroes out of the catalogue — asked for, not named from memory. */
+/**
+ * Two heroes out of the catalogue — asked for, not named from memory.
+ *
+ * AN ENTRYPOINT IS NOT A HERO, and the catalogue does not say so: it is an
+ * `AdvMapHero` whose Shared points at `/MapObjects/Utility/EntryPoint.xdb`
+ * with the same `#xpointer(/AdvMapHeroShared)` a real hero carries. Taking
+ * "the first one that is not Haven" picked exactly that, and the map then had
+ * a live, coloured PLAYER_2 who owned nothing — which the game reports as
+ * `ERROR: Start player does not exist on map/…`, three sentences away from the
+ * cause (docs/CAMPAIGNS.md). A hero's record lives beside his RACE, so that is
+ * what is asked for here.
+ */
+const HERO_RACES = ['Haven', 'Inferno', 'Necropolis', 'Sylvan', 'Academy', 'Dungeon', 'Fortress', 'Stronghold'];
+
 async function twoHeroes(page: Launched['page']): Promise<string[]> {
-  const found = await page.evaluate(async () => {
+  const found = await page.evaluate(async (races) => {
     const { objects } = await window.editor.listObjects();
-    const heroes = objects.filter((o) => o.type === 'AdvMapHero' && !o.hidden && !o.random);
+    const heroes = objects.filter((o) => o.type === 'AdvMapHero' && !o.hidden && !o.random
+      && races.some((r) => o.shared.includes(`/${r}/`)));
     const haven = heroes.find((o) => o.shared.includes('/Haven/'))?.shared ?? '';
     const other = heroes.find((o) => !o.shared.includes('/Haven/'))?.shared ?? '';
     return [haven, other];
-  });
-  for (const h of found) expect(h, 'the catalogue offers two heroes').not.toBe('');
+  }, HERO_RACES);
+  for (const h of found) expect(h, 'the catalogue offers two heroes of different races').not.toBe('');
   return found;
 }
 
@@ -355,10 +371,15 @@ test('two sides, each with a hero of their own', async () => {
 
   const xml = readFileSync(join(MAP_DIR, 'map.xdb'), 'latin1');
   expect(xml, 'the map binds a script for the boxes').toContain('MapScript.xdb#xpointer(/Script)');
-  // The two sides are OPPONENTS. Left as they come, both slots are team 0 and
-  // the map refuses to start — see SIDES above.
+  // The two sides are OPPONENTS. Left as they come, both slots are team 0 —
+  // see SIDES above.
   expect((xml.match(/<Team>1<\/Team>/g) ?? []).length, 'the second side has a team of its own')
     .toBeGreaterThan(0);
+  // AND THE MAP CAN BE STARTED AT ALL. The engine says one sentence for four
+  // different mistakes, hours after the map was built; these rules say which,
+  // here (src/map/startable.ts). This map failed on one of them — a player
+  // whose only property was an EntryPoint.
+  expect(startableProblems(loadMap(xml).desc), 'the game would refuse to start this map').toEqual([]);
   expect(xml, 'the first hero leads a hundred archangels').toContain('<Count>100</Count>');
   for (const b of BOXES) expect(xml, `${b.name} is on the map`).toContain(`<Name>${b.name}</Name>`);
 

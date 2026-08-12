@@ -40,10 +40,13 @@ function mapWith(opts: {
 \t\t\t\t<PlayerID>${id}</PlayerID>
 \t\t\t</AdvMapHero>
 \t\t</Item>`).join('\n');
-  // An EntryPoint: a hero by shape, pointing at something that is not a hero.
+  // An EntryPoint: a hero by shape, and — the trap — by CLASS too. Its xpointer
+  // says `AdvMapHeroShared`, exactly like a real hero's; only the DOCUMENT is
+  // different. Written here with the game's own href for that reason: the
+  // version with an invented class name passed a check the game failed.
   const entry = opts.entryPointFor ? `\t\t<Item href="#n:inline(AdvMapHero)">
 \t\t\t<AdvMapHero>
-\t\t\t\t<Shared href="/MapObjects/_(AdvMapEntryPointShared)/EntryPoint.xdb#xpointer(/AdvMapEntryPointShared)"/>
+\t\t\t\t<Shared href="/MapObjects/Utility/EntryPoint.xdb#xpointer(/AdvMapHeroShared)"/>
 \t\t\t\t<PlayerID>${opts.entryPointFor}</PlayerID>
 \t\t\t</AdvMapHero>
 \t\t</Item>` : '';

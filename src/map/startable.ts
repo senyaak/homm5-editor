@@ -63,10 +63,18 @@ function ownersOnMap(desc: XmlElement): Set<string> {
   for (const item of findAll(objects, 'Item')) {
     for (const body of children(item)) {
       if (!OWNS.has(body.name)) continue;
-      // An EntryPoint carries the hero's shape with no shared definition of a
-      // hero: what tells them apart is the type name inside the Shared href.
+      // AN ENTRYPOINT IS NOT A HERO, and it is not told apart by its class.
+      //
+      // It is an `AdvMapHero` whose Shared points at
+      // `/MapObjects/Utility/EntryPoint.xdb#xpointer(/AdvMapHeroShared)` — the
+      // SAME class name a real hero carries, so a check on the xpointer passes
+      // it through. This one first read the class and called a map with an
+      // EntryPoint for its second player perfectly startable; the game
+      // disagreed, which is what this whole file exists to predict. The
+      // DOCUMENT is the difference: a hero's own record lives beside his race,
+      // the EntryPoint's under Utility.
       const shared = find(body, 'Shared')?.attrs.href ?? '';
-      if (body.name === 'AdvMapHero' && !/AdvMapHeroShared/i.test(shared)) continue;
+      if (body.name === 'AdvMapHero' && /EntryPoint/i.test(shared.split('#')[0] ?? '')) continue;
       const player = childText(body, 'PlayerID');
       if (player) owners.add(player);
     }

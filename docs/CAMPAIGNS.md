@@ -87,6 +87,31 @@ Switch on and colour every slot you use — `players[0]` is `PLAYER_1`,
 The same error appears when the player owns nothing on the map. An **EntryPoint
 does not count**: it is an `AdvMapHero` by shape, but it is not a hero.
 
+**And it is not told apart by its class.** Its `Shared` reads
+
+```xml
+<Shared href="/MapObjects/Utility/EntryPoint.xdb#xpointer(/AdvMapHeroShared)"/>
+```
+
+— the same `AdvMapHeroShared` a real hero carries. What differs is the
+DOCUMENT: a hero's record lives beside his race (`/MapObjects/Haven/Alaric.…`),
+the EntryPoint's under `Utility`. Anything picking "a hero" out of the object
+catalogue by type gets EntryPoints along with them, and the map that results
+looks complete: two coloured players, a figure standing on the ground for each,
+and an error three sentences away from the cause. Filter by RACE, not by type.
+
+That is exactly how the Pandora probe map broke on 12.08.2026 — "the first
+catalogue hero that is not Haven" was the EntryPoint.
+
+### Ask the map instead of launching it
+
+All of the above is `src/map/startable.ts`: hand it a map's `AdvMapDesc` and it
+answers with the reasons the game would refuse, in words. `npm run
+test-startable` checks the rules against hand-built cases and then runs them
+over every map in `H5E/` — a map that PLAYS and the rules call broken is a rule
+that is wrong, and that has already caught one (the objective rule below is
+marked a suspicion in the source for that reason).
+
 ### The default victory condition wins instantly with no opponent
 
 A fresh map carries `OBJECTIVE_KIND_DEFEAT_ALL` with `InstantVictory` in
