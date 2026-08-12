@@ -101,6 +101,7 @@
 #include "qol/fix-master-of-fire.c"
 #include "qol/fix-imbue-ballista.c"
 #include "qol/pandora-box.c"
+#include "qol/pandora-notify.c"
 
 /**
  * Which switch turns this file's logging on — see the bottom of core/log.c.
@@ -217,9 +218,12 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   if (g_qol[QOL_ENCOURAGE_FIX]) install_encourage_fix();
   if (g_qol[QOL_BARBARIAN_LEARNING_FIX]) install_barbarian_learning_fix();
   if (g_qol[QOL_SNARE_CRASH_FIX]) install_snare_fix();
-  // Watching only, for now: the box is a chest until the slot below it is
-  // replaced, and the run that says our reading is right comes first.
   if (g_qol[QOL_PANDORA_BOX] && install_pandora_gate()) log_line("pandora: the chest's visit is ours now");
+  // Listening only, and only in a build asked to log: what the engine passes
+  // its announcers is what the spell and the stack will have to pass them.
+  if (g_qol[QOL_PANDORA_BOX] && install_pandora_notify_probe()) {
+    log_line("pandora: listening to the engine's announcements");
+  }
   if (g_qol[QOL_PAYBACK_FIX]) install_payback_fix();
   if (g_qol[QOL_DRAGON_FORM_FIX]) install_dragon_form_fix();
   if (g_qol[QOL_EMPOWERED_ARMAGEDDON_FIX]) install_empowered_armageddon_fix();

@@ -412,18 +412,26 @@ console.log('the scripts');
   check('the behaviour lints clean', luaDiagnostics(lua).length === 0,
     luaDiagnostics(lua).map((d) => `${d.from}: ${d.message}`).join('; '));
 
-  // WHO THE BOX SPEAKS TO, and the rule paid for by a play-through: the
-  // computer announced its own reward on the human's screen. `GetCurrentPlayer`
-  // is the player whose TURN it is — on the AI's turn it IS the AI, so an owner
-  // check alone lets it through. Both popups must ask whether the owner is
-  // human, and neither may be reached without that.
-  for (const popup of ['QuestionBox(', 'MessageBox(box.said)']) {
+  // WHO THE BOX STOPS, and the rule paid for by a play-through: the computer
+  // announced its own reward on the human's screen. `GetCurrentPlayer` is the
+  // player whose TURN it is — on the AI's turn it IS the AI, so an owner check
+  // alone lets it through. Every window that must be ANSWERED asks whether the
+  // owner is human first, and none may be reached without that.
+  for (const popup of ['QuestionBox(', `MessageBox("/${PANDORA_GUARDS_TEXT}")`]) {
     const at = lua.indexOf(popup);
-    check(`${popup} is reached only past the human check`, at > 0
+    check(`${popup.slice(0, 24)} is reached only past the human check`, at > 0
       && lua.lastIndexOf('H5E_PandoraIsHuman', at) > lua.lastIndexOf('function H5E_Pandora', at));
   }
   check('and the check reads every shape IsAIPlayer could answer with',
     ['ai == nil', 'ai == false', 'ai == 0'].every((s) => lua.includes(s)));
+  // The author's own words are NOT a window: a flying sign says them without
+  // stopping the map, and it is addressed, so it needs no gate at all.
+  check('the box says its message with a flying sign, not a window',
+    lua.includes('ShowFlyingSign(box.said, H5E_PandoraHero, player, 6)')
+    && !lua.includes('MessageBox(box.said)'));
+  // And a map that wants a window has the door for it.
+  check('and a map can hang its own code on the opening',
+    lua.includes('if H5E_PandoraOnOpen ~= nil then H5E_PandoraOnOpen(H5E_PandoraHero, H5E_PandoraObj); end'));
 
   const boxes = [
     { name: 'Pandora01', exp: 1000, gold: 2500, wood: 5, artifacts: ['ARTIFACT_ENDLESS_BAG_OF_GOLD'] },
@@ -507,7 +515,7 @@ console.log('the scripts');
   // guarded box that means BEFORE the fight, not after it.
   const behaviour = pandoraBehaviourLua();
   check('the box speaks before the fight starts',
-    behaviour.indexOf('MessageBox(box.said)') < behaviour.indexOf('fight(H5E_PandoraHero)'));
+    behaviour.indexOf('ShowFlyingSign(box.said') < behaviour.indexOf('fight(H5E_PandoraHero)'));
   check('and taunts whoever opened a guarded one',
     behaviour.includes(`MessageBox("/${PANDORA_GUARDS_TEXT}")`)
     && behaviour.indexOf(PANDORA_GUARDS_TEXT) < behaviour.indexOf('fight(H5E_PandoraHero)'));
