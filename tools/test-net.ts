@@ -199,7 +199,7 @@ console.log('\nRSA key blobs, against the key a real client sent');
 
 console.log('\nRouter, driven by the recorded packet');
 {
-  const session = new RouterService({ address: '127.0.0.1', port: 40001 }, { address: '127.0.0.1', port: 40030 }).session();
+  const session = new RouterService({ address: '127.0.0.1', port: 40001 }, { address: '127.0.0.1', port: 40030 }, { address: '127.0.0.1', port: 40031 }).session();
   const events = session.receive(ROUTER_KEY_EXCHANGE);
   check('the key exchange gets exactly one answer', events.length === 1 && events[0]!.replies.length === 1, events[0]?.note);
 
@@ -240,7 +240,7 @@ console.log('\nRouter, driven by the recorded packet');
 
 console.log('\nRouter, once the session keys are up');
 {
-  const session = new RouterService({ address: '127.0.0.1', port: 40001 }, { address: '127.0.0.1', port: 40030 }).session();
+  const session = new RouterService({ address: '127.0.0.1', port: 40001 }, { address: '127.0.0.1', port: 40030 }, { address: '127.0.0.1', port: 40031 }).session();
   // Step one gives us the key the client should seal its session key to.
   const opened = session.receive(ROUTER_KEY_EXCHANGE);
   const ourBlob = (parse(opened[0]!.replies[0]!)!.body![1] as GSValue[])[2] as Uint8Array;
@@ -361,6 +361,32 @@ console.log('\nCD-key service');
   const first = service.handle(ask(CdKeyRequest.ACTIVATION), from).replies[0]!;
   const again = service.handle(ask(CdKeyRequest.ACTIVATION), from).replies[0]!;
   check('the same request gets the same answer', first.equals(again));
+}
+
+console.log('\nThe proxy desk answers differently, because the client asked it to');
+{
+  const proxy = new RouterService(
+    { address: '127.0.0.1', port: 40001 },
+    { address: '127.0.0.1', port: 40030 },
+    { address: '127.0.0.1', port: 40031 },
+  ).session('proxy');
+
+  const login = build({ property: Property.GS, priority: 0, type: MessageType.LOGIN, sender: 4, receiver: 1, body: ['Senyaak', 'secret'] });
+  const loggedIn = proxy.receive(login);
+  const answer = parse(loggedIn[0]!.replies[0]!);
+  check('the proxy login is a success', answer?.type === MessageType.GSSUCCESS, loggedIn[0]?.note);
+  check(
+    'and carries the empty list the proxy expects beside the id',
+    Array.isArray(answer?.body?.[1]) && (answer!.body![1] as GSValue[]).length === 0,
+    JSON.stringify(answer?.body),
+  );
+
+  const jwm = build({ property: Property.GS, priority: 0, type: MessageType.JOINWAITMODULE, sender: 4, receiver: 1, body: null });
+  const handed = proxy.receive(jwm);
+  const onwards = parse(handed[0]!.replies[0]!)?.body?.[1] as GSValue[];
+  check('the proxy names the user in its hand-off', onwards?.[0] === 'Senyaak', JSON.stringify(onwards));
+  check('the address is still host order', onwards?.[1] === '2130706433');
+  check('but the port is spelled out here, not four bytes', onwards?.[2] === '40031');
 }
 
 console.log(failures === 0 ? '\nall good\n' : `\n${failures} failed\n`);

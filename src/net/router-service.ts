@@ -35,6 +35,16 @@ export interface Endpoint {
   port: number;
 }
 
+/**
+ * Which desk this connection is.
+ *
+ * The same protocol serves four of them — the router, its wait module, the proxy
+ * a module lives behind, and the proxy's own wait module — and the client opens a
+ * fresh connection, with a fresh key exchange, for each. Only a few answers
+ * differ, and every difference below is one the client insisted on.
+ */
+export type Role = 'router' | 'proxy';
+
 export interface RouterEvent {
   note: string;
   replies: Buffer[];
@@ -69,10 +79,12 @@ export class RouterSession {
   encryptedWith: string | null = null;
   username = '';
 
+  private readonly role: Role;
   private readonly waitModule: Endpoint;
   private readonly proxy: Endpoint;
 
-  constructor(waitModule: Endpoint, proxy: Endpoint) {
+  constructor(role: Role, waitModule: Endpoint, proxy: Endpoint) {
+    this.role = role;
     this.waitModule = waitModule;
     this.proxy = proxy;
   }
@@ -141,9 +153,10 @@ export class RouterSession {
       case MessageType.LOGIN: {
         const name = message.body?.[0];
         this.username = typeof name === 'string' ? name : '';
+        const body: GSValue[] = this.role === 'proxy' ? [messageId(MessageType.LOGIN), []] : [messageId(MessageType.LOGIN)];
         return {
-          note: `LOGIN as "${this.username}" — accepted${this.encryptedWith ? `, body opened with ${this.encryptedWith}` : ''}`,
-          replies: [build(reply(message, [messageId(MessageType.LOGIN)], MessageType.GSSUCCESS))],
+          note: `LOGIN as "${this.username}" on the ${this.role}${this.encryptedWith ? `, body opened with ${this.encryptedWith}` : ''}`,
+          replies: [build(reply(message, body, MessageType.GSSUCCESS))],
         };
       }
       case MessageType.JOINWAITMODULE: {
@@ -151,17 +164,15 @@ export class RouterSession {
         // dotted sent the client to 0.0.0.127, and inet_addr's number sent it to
         // 1.0.0.127. See src/net/address.ts.
         const where = hostU32String(this.waitModule.address);
+        // The proxy's own hand-off carries the user and spells the port out;
+        // the router's carries four raw bytes. Both come from the client.
+        const inner: GSValue[] =
+          this.role === 'proxy'
+            ? [this.username, where, String(this.waitModule.port)]
+            : [where, u32(this.waitModule.port)];
         return {
-          note: `JOINWAITMODULE — sent to ${this.waitModule.address}:${this.waitModule.port} (as ${where})`,
-          replies: [
-            build(
-              reply(
-                message,
-                [messageId(MessageType.JOINWAITMODULE), [where, u32(this.waitModule.port)]],
-                MessageType.GSSUCCESS,
-              ),
-            ),
-          ],
+          note: `JOINWAITMODULE on the ${this.role} — sent to ${this.waitModule.address}:${this.waitModule.port} (as ${where})`,
+          replies: [build(reply(message, [messageId(MessageType.JOINWAITMODULE), inner], MessageType.GSSUCCESS))],
         };
       }
       // Once the client is told where to go it opens a SECOND connection — the
@@ -170,9 +181,11 @@ export class RouterSession {
       case MessageType.LOGINWAITMODULE: {
         const name = message.body?.[0];
         if (typeof name === 'string' && name) this.username = name;
+        const body: GSValue[] =
+          this.role === 'proxy' ? [messageId(MessageType.LOGINWAITMODULE), []] : [messageId(MessageType.LOGINWAITMODULE)];
         return {
-          note: `LOGINWAITMODULE as "${this.username}" — accepted`,
-          replies: [build(reply(message, [messageId(MessageType.LOGINWAITMODULE)], MessageType.GSSUCCESS))],
+          note: `LOGINWAITMODULE as "${this.username}" on the ${this.role} — accepted`,
+          replies: [build(reply(message, body, MessageType.GSSUCCESS))],
         };
       }
       case MessageType.LOGINFRIENDS:
@@ -263,13 +276,17 @@ export class RouterSession {
 export class RouterService {
   private readonly waitModule: Endpoint;
   private readonly proxy: Endpoint;
+  private readonly proxyWaitModule: Endpoint;
 
-  constructor(waitModule: Endpoint, proxy: Endpoint) {
+  constructor(waitModule: Endpoint, proxy: Endpoint, proxyWaitModule: Endpoint) {
     this.waitModule = waitModule;
     this.proxy = proxy;
+    this.proxyWaitModule = proxyWaitModule;
   }
 
-  session(): RouterSession {
-    return new RouterSession(this.waitModule, this.proxy);
+  /** A connection on one of the four desks. */
+  session(role: Role = 'router'): RouterSession {
+    const waitModule = role === 'proxy' ? this.proxyWaitModule : this.waitModule;
+    return new RouterSession(role, waitModule, this.proxy);
   }
 }
