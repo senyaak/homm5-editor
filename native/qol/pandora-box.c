@@ -98,7 +98,34 @@ static void __fastcall treasure_speak_watch(void *self, void *unused, void *hero
         typedef void *(__fastcall * SharedOf)(void *self, void *unused);
         void *shared = ((SharedOf)vt[TREASURE_SHARED_SLOT / 4])(sub, 0);
         log_hex("pandora:   shared      ", (DWORD)shared);
-        if (shared) log_hex("pandora:   its type    ", *(DWORD *)((BYTE *)shared + TREASURE_SHARED_TYPE));
+        if (shared) {
+          log_hex("pandora:   its type    ", *(DWORD *)((BYTE *)shared + TREASURE_SHARED_TYPE));
+          // ONCE, AND WHOLE. Telling our boxes from real chests needs something
+          // on the shared document that says which document it is, and where
+          // that lives is not read yet. So the first box opened prints the
+          // document's first words with any that point at text spelled out —
+          // the path or the name will be among them. Once, because sixty-four
+          // boxes printing thirty lines each is a log nobody reads.
+          static int dumped = 0;
+          if (!dumped) {
+            dumped = 1;
+            log_line("pandora: the shared document, word by word:");
+            for (int i = 0; i < 30; i++) {
+              DWORD w = *(DWORD *)((BYTE *)shared + i * 4);
+              log_hex("pandora:   word ", w);
+              // A pointer into the image that reads as text is worth seeing.
+              if (w > 0x10000 && !IsBadReadPtr((void *)w, 8)) {
+                const char *s = (const char *)w;
+                int printable = 1;
+                for (int k = 0; k < 8; k++) {
+                  if (s[k] == 0) break;
+                  if (s[k] < 0x20 || (unsigned char)s[k] > 0x7e) { printable = 0; break; }
+                }
+                if (printable && s[0]) log_text("pandora:     -> ", s);
+              }
+            }
+          }
+        }
       }
     }
   }

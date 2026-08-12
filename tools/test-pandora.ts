@@ -441,6 +441,29 @@ console.log('the scripts');
   // says something and has nowhere for it to be read from is a box that would
   // open in silence, so the block refuses to be written rather than dropping
   // the line the author typed.
+  // THE NAMES THE ENGINE KNOWS. Its ids are globals declared in
+  // `scripts/advmap-startup.lua` (`ARTIFACT_BOOTS_OF_SPEED = 24`), while the
+  // reference tables key on the BARE name — so a list built from a table asked
+  // Lua for a global that does not exist. The game answered with six red
+  // warnings and handed over nil, which GiveArtefact takes without complaint:
+  // no artifacts, no error. Measured in a run on 12.08.2026.
+  const bare = pandoraMapBlock([{
+    name: 'PandoraBare',
+    artifacts: ['BOOTS_OF_SPEED', 'ARTIFACT_ANGEL_WINGS', 24],
+    spells: ['FIREBALL', 'SPELL_ARMAGEDDON'],
+    creatures: [{ creature: 'PEASANT', count: 3 }],
+    guards: [{ creature: 'ARCHER', count: 2 }],
+  }]);
+  check('a bare artifact name gets the prefix its global carries',
+    bare.includes('artifacts = { ARTIFACT_BOOTS_OF_SPEED, ARTIFACT_ANGEL_WINGS, 24 }'),
+    /artifacts = \{[^}]*\}/.exec(bare)?.[0]);
+  check('and so do spells, creatures and guards',
+    bare.includes('spells = { SPELL_FIREBALL, SPELL_ARMAGEDDON }')
+    && bare.includes('creatures = { {CREATURE_PEASANT, 3} }')
+    && bare.includes('CREATURE_ARCHER, 2'),
+    /spells = \{[^}]*\}/.exec(bare)?.[0]);
+  check('a number is left alone', bare.includes('24'));
+
   const talker = [{ name: 'PandoraSays', message: 'Something stirs inside.' }];
   let silent = false;
   try { pandoraMapBlock(talker); } catch { silent = true; }

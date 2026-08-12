@@ -192,6 +192,31 @@ const RESOURCES: [keyof PandoraContents, string][] = [
 ];
 
 /**
+ * An id as LUA must see it: a number stays a number, and a name gets the
+ * prefix the engine's own globals carry.
+ *
+ * WHY THIS EXISTS. The game declares its ids as globals in
+ * `scripts/advmap-startup.lua` — `ARTIFACT_BOOTS_OF_SPEED = 24`,
+ * `SPELL_FIREBALL`, `CREATURE_PEASANT`. The REFERENCE TABLES key on the bare
+ * name (`BOOTS_OF_SPEED`), and that is what an author's list is built from —
+ * so a box written straight out of a table asked Lua for a global that does
+ * not exist. What the game says about that is not an error but a warning:
+ *
+ *     [Script warning!] Value was NIL when getting global with name 'BOOTS_OF_SPEED'
+ *
+ * and the box then handed over `nil`, which `GiveArtefact` takes without
+ * complaining. Six red lines and no artifacts. Prefixing here rather than at
+ * the callers is deliberate: every list that reaches this file comes from a
+ * table somewhere, and one place to be right is better than four.
+ */
+const luaId = (prefix: string) => (id: string | number): string => {
+  if (typeof id === 'number') return String(id);
+  const name = id.trim();
+  if (/^\d+$/.test(name)) return name;
+  return name.startsWith(prefix) ? name : prefix + name;
+};
+
+/**
  * One box's entry in the data table, its trigger line, and its fight.
  *
  * WRITTEN IN LUA 4'S OWN GRAMMAR, the hard-won parts of which are: inside a
@@ -209,10 +234,11 @@ function boxLua(box: PandoraContents, messageRef: MessageRef | undefined): strin
     .filter(([key]) => box[key])
     .map(([key, constant]) => `{${constant}, ${luaNumber(box[key] as number)}}`);
   if (res.length) fields.push(`\tres = { ${res.join(', ')} }`);
-  if (box.artifacts?.length) fields.push(`\tartifacts = { ${box.artifacts.join(', ')} }`);
-  if (box.spells?.length) fields.push(`\tspells = { ${box.spells.join(', ')} }`);
+  if (box.artifacts?.length) fields.push(`\tartifacts = { ${box.artifacts.map(luaId('ARTIFACT_')).join(', ')} }`);
+  if (box.spells?.length) fields.push(`\tspells = { ${box.spells.map(luaId('SPELL_')).join(', ')} }`);
   if (box.creatures?.length) {
-    fields.push(`\tcreatures = { ${box.creatures.map((c) => `{${c.creature}, ${luaNumber(c.count)}}`).join(', ')} }`);
+    fields.push(`\tcreatures = { ${box.creatures
+      .map((c) => `{${luaId('CREATURE_')(c.creature)}, ${luaNumber(c.count)}}`).join(', ')} }`);
   }
   if (box.message) {
     const ref = messageRef?.(box);
@@ -229,7 +255,8 @@ function boxLua(box: PandoraContents, messageRef: MessageRef | undefined): strin
     `Trigger(OBJECT_TOUCH_TRIGGER, "${box.name}", "H5E_PandoraTouch");`,
   ];
   if (box.guards?.length) {
-    const pairs = box.guards.map((g) => `${g.creature}, ${luaNumber(g.count)}`).join(', ');
+    const pairs = box.guards
+      .map((g) => `${luaId('CREATURE_')(g.creature)}, ${luaNumber(g.count)}`).join(', ');
     out.push(
       `function H5E_PandoraFight_${box.name}(hero)`,
       `\tStartCombat(hero, nil, ${box.guards.length}, ${pairs}, nil, "H5E_PandoraWon");`,
