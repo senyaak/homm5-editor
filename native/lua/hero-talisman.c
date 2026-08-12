@@ -208,9 +208,73 @@ static void *__fastcall lua_talisman_step(void *ctx) {
   return (void *)(INT_PTR)lua_push_int(ctx, now);
 }
 
-/** The row a map may call. Added where the others are — BEFORE the table is
+// --- may this hero hold this spell at all ------------------------------------
+//
+// THE SAME QUESTION THE ENGINE ASKS ITSELF, and asking it any other way would
+// be a second copy of a rule that already exists. `0xc200f0` reads the school
+// off the spell's own record and answers for every case at once: a barbarian
+// and a battle spell, a knight and a war cry, anybody and a rune. Nothing here
+// knows what a school is.
+//
+// It takes the RECORD, not the number — `SpellRecord(id)` is the same accessor
+// the announcement path uses (docs/engineInternals/PANDORA_OBJECT.md).
+
+// The record accessor is `g_spellRecord`, already recognised and kept by
+// combat/spell-record.c — one file above this one in the translation unit. A
+// second copy of the same anchor is a second thing to keep true.
+
+/** `CHero::CanHoldSpell` — `__fastcall(hero, record)`, `ret 4`. */
+#define CAN_HOLD_RVA 0x8200f0u
+static const BYTE CAN_HOLD_HEAD[5] = { 0x56, 0x8B, 0x74, 0x24, 0x08 };
+
+typedef char(__fastcall *CanHoldFn)(void *hero, void *edx, void *record);
+
+/**
+ * `H5ECanHoldSpell(heroName, spellId)` — 1 when he may, nothing when he may not.
+ *
+ * Nothing is also the answer when the question cannot be asked at all — no such
+ * hero, no such record. A caller that pays experience for "may not" would then
+ * pay for a typo as well, which is the right way round: the box hands something
+ * over either way, and a silent nothing is the failure worth avoiding.
+ */
+static void *__fastcall lua_can_hold_spell(void *ctx) {
+  void *name = lua_arg_string(ctx, 1);
+  int spell = 0;
+  if (!name || !lua_arg_int(ctx, 2, &spell)) {
+    log_line("H5ECanHoldSpell: takes a hero's script name and a spell id");
+    return NULL;
+  }
+  void *map = adventure_map(ctx);
+  void *find = map ? vtable_entry(map, VT_FIND_BY_NAME) : NULL;
+  if (!find) {
+    log_line("H5ECanHoldSpell: no adventure map to ask for the hero");
+    return NULL;
+  }
+  void *hero = ((FindByNameFn)find)(map, NULL, name);
+  if (!hero || !pointer_alive(hero) || !is_a(hero, CHERO_VTABLE_RVA)) {
+    log_line("H5ECanHoldSpell: no living CHero of that name");
+    return NULL;
+  }
+  CanHoldFn canHold = (CanHoldFn)code_at(CAN_HOLD_RVA, CAN_HOLD_HEAD,
+                                         sizeof CAN_HOLD_HEAD, "the spell-school gate");
+  if (!g_spellRecord || !canHold) {
+    log_line("H5ECanHoldSpell: the record accessor or the gate is not where it was measured");
+    return NULL;
+  }
+  void *record = g_spellRecord(spell);
+  if (!record || !readable(record, 0x90)) {
+    log_num("H5ECanHoldSpell: no record for spell ", spell);
+    return NULL;
+  }
+  char may = canHold(hero, NULL, record);
+  log_num(may ? "H5ECanHoldSpell: yes, spell " : "H5ECanHoldSpell: no, spell ", spell);
+  return may ? (void *)(INT_PTR)lua_push_int(ctx, 1) : NULL;
+}
+
+/** The rows a map may call. Added where the others are — BEFORE the table is
  *  handed to the engine, or the map finds a global that is NIL. */
 static void add_talisman_map_function(void) {
   add_map_function("H5ETalismanStep", (void *)&lua_talisman_step);
-  log_line("a box may raise a barbarian's talisman: H5ETalismanStep");
+  add_map_function("H5ECanHoldSpell", (void *)&lua_can_hold_spell);
+  log_line("a box may raise a barbarian's talisman: H5ETalismanStep, H5ECanHoldSpell");
 }

@@ -65,6 +65,16 @@ one.
   nothing and says nothing: teaching there would announce a spell the engine
   goes on to refuse.
 
+- **A spell a hero cannot hold is paid for in experience.** A barbarian handed a
+  battle spell, a knight handed a war cry, anybody handed a rune — the box used
+  to hand such a hero nothing whatsoever. It now pays him at the Shrine of
+  Magic's own rate, 1000 experience per level of the spell, which is exactly
+  what the box was priced at: it is worth the same whoever opens it. Who may
+  hold what is the engine's answer, not ours — the same gate that would refuse
+  the teaching a moment later is asked first, so a mod that adds a school is
+  covered without a line changing. A spell the hero already knows is not paid
+  for.
+
 - **And it is no longer a chest.** The box is an `AdvMapTreasure` in the data,
   so the engine used to run the CHEST's visit beside ours: its own dialog, its
   own gold, and the box gone before you answered the question. The extension

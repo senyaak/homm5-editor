@@ -480,22 +480,33 @@ console.log('the scripts');
   // the ladder is known, which is here and not in Lua.
   const ladder = ['SPELL_SUMMON_BOAT', 'SPELL_TOWN_PORTAL'];
   const mixed = [{ name: 'Pandora04', spells: ['SPELL_FIREBALL', 'SPELL_TOWN_PORTAL'] }];
-  const split = pandoraMapBlock(mixed, { ladder });
-  check('the block lists a ladder spell apart from a taught one',
-    split.includes('spells = { SPELL_FIREBALL }') && split.includes('adventure = { SPELL_TOWN_PORTAL }'),
+  // EACH SPELL CARRIES ITS PRICE IN EXPERIENCE, because a hero who cannot hold
+  // it is paid instead — the shrine's own rate, 1000 a level, measured in the
+  // game 12.08.2026.
+  const split = pandoraMapBlock(mixed,
+    { ladder, spellExp: (id) => (String(id).includes('FIREBALL') ? 3000 : 5000) });
+  check('the block lists a ladder spell apart from a taught one, each with its price',
+    split.includes('spells = { {SPELL_FIREBALL, 3000} }')
+    && split.includes('adventure = { {SPELL_TOWN_PORTAL, 5000} }'),
     split.split('\n').filter((l) => l.includes('spells') || l.includes('adventure')).join(' | '));
   check('and the split block lints clean', luaDiagnostics(split).length === 0,
     luaDiagnostics(split).map((d) => `${d.from}: ${d.message}`).join('; '));
   // WITHOUT A LADDER NOTHING CHANGES — a test with no data root, or an install
   // whose table cannot be read, writes what a box has always written.
   check('no ladder means every spell is taught',
-    pandoraMapBlock(mixed).includes('spells = { SPELL_FIREBALL, SPELL_TOWN_PORTAL }')
+    pandoraMapBlock(mixed).includes('spells = { {SPELL_FIREBALL, 0}, {SPELL_TOWN_PORTAL, 0} }')
     && !pandoraMapBlock(mixed).includes('adventure ='));
   // And the behaviour that reads the list: the step first, teaching only when
   // the step says the talisman is not this hero's.
   check('the behaviour takes the talisman step before teaching',
     lua.includes('local step = H5ETalismanStep(hero);')
-    && lua.indexOf('H5ETalismanStep(hero)') < lua.indexOf('TeachHeroSpell(hero, s);', lua.indexOf('box.adventure')));
+    && lua.indexOf('H5ETalismanStep(hero)') < lua.indexOf('TeachHeroSpell(hero, s[1]);', lua.indexOf('box.adventure')));
+  // A SPELL A HERO CANNOT HOLD IS PAID FOR — asked of the engine's own gate,
+  // and paid at the shrine's rate. Both halves, because a script that asked and
+  // taught anyway would read as working right up until a barbarian opened one.
+  check('a spell that cannot be held is paid for instead',
+    lua.includes('if H5ECanHoldSpell(hero, s[1]) ~= nil then')
+    && lua.includes('GiveExp(hero, s[2]);'));
   // THREE ANSWERS, and the middle one is the correction a play-through paid
   // for: a talisman already at the top used to fall through to teaching, so the
   // box announced a Town Portal the engine then refused. Zero must reach
@@ -504,8 +515,9 @@ console.log('the scripts');
     const from = lua.indexOf('box.adventure');
     const branch = lua.slice(from, lua.indexOf('box.creatures', from));
     const top = branch.indexOf('elseif step == 0 then');
-    check('a talisman at the top neither announces nor teaches',
-      top > 0 && !/H5EAnnounceGain|TeachHeroSpell/.test(branch.slice(top)),
+    check('a talisman at the top is paid for, not taught',
+      top > 0 && !/H5EAnnounceGain|TeachHeroSpell/.test(branch.slice(top))
+      && branch.slice(top).includes('GiveExp(hero, s[2]);'),
       branch.split('\n').filter((l) => l.includes('step') || l.includes('Teach')).join(' | '));
   }
 
@@ -530,7 +542,7 @@ console.log('the scripts');
     bare.includes('artifacts = { ARTIFACT_BOOTS_OF_SPEED, ARTIFACT_ANGEL_WINGS, 24 }'),
     /artifacts = \{[^}]*\}/.exec(bare)?.[0]);
   check('and so do spells, creatures and guards',
-    bare.includes('spells = { SPELL_FIREBALL, SPELL_ARMAGEDDON }')
+    bare.includes('spells = { {SPELL_FIREBALL, 0}, {SPELL_ARMAGEDDON, 0} }')
     && bare.includes('creatures = { {CREATURE_PEASANT, 3} }')
     && bare.includes('CREATURE_ARCHER, 2'),
     /spells = \{[^}]*\}/.exec(bare)?.[0]);

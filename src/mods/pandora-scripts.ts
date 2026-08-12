@@ -73,6 +73,20 @@ export interface PandoraRefs {
    * which is what a box did before any of this existed.
    */
   ladder?: readonly string[];
+  /**
+   * What a spell is worth in EXPERIENCE to a hero who cannot hold it.
+   *
+   * A barbarian is refused every school but war cries, a knight is refused the
+   * cries, and the box would otherwise hand such a hero nothing at all. It pays
+   * him instead — the way a Shrine of Magic does, which is where the rate comes
+   * from: **1000 per spell level**, measured in the game 12.08.2026. That is
+   * also exactly what the valuer prices a spell at (`PANDORA_RATES`), so the
+   * box is worth the same whoever opens it.
+   *
+   * Left out, the block carries no price and the behaviour falls back to
+   * teaching — which is what it did before any of this existed.
+   */
+  spellExp?: (id: string | number) => number;
 }
 
 /**
@@ -239,11 +253,22 @@ export function pandoraBehaviourLua(): string {
     '\t-- script taught, which meant a map that gives its hero a spell at the',
     '\t-- start told the player he had just learned it. Asking per gain leaves',
     '\t-- everybody else\'s exactly as the game shipped it.',
+    '\t-- A SPELL A HERO CANNOT HOLD IS PAID FOR INSTEAD, the way a Shrine of',
+    '\t-- Magic pays a barbarian who walks into one: 1000 experience per level of',
+    '\t-- the spell. H5ECanHoldSpell asks the ENGINE - the same gate that would',
+    '\t-- refuse the teaching a moment later - so a barbarian handed a battle',
+    '\t-- spell, a knight handed a war cry and a hero handed a rune are all one',
+    '\t-- case here, and nothing in this script knows what a school is.',
     '\tif box.spells ~= nil then',
     '\t\tfor i, s in box.spells do',
-    '\t\t\tprint("H5E pandora: spell " .. s);',
-    '\t\t\tH5EAnnounceGain();',
-    '\t\t\tTeachHeroSpell(hero, s);',
+    '\t\t\tif H5ECanHoldSpell(hero, s[1]) ~= nil then',
+    '\t\t\t\tprint("H5E pandora: spell " .. s[1]);',
+    '\t\t\t\tH5EAnnounceGain();',
+    '\t\t\t\tTeachHeroSpell(hero, s[1]);',
+    '\t\t\telse',
+    '\t\t\t\tprint("H5E pandora: cannot hold " .. s[1] .. ", paid " .. s[2]);',
+    '\t\t\t\tGiveExp(hero, s[2]);',
+    '\t\t\tend;',
     '\t\tend;',
     '\tend;',
     '\t-- ADVENTURE MAGIC IS TWO DIFFERENT GIFTS, and which one this is depends',
@@ -260,14 +285,23 @@ export function pandoraBehaviourLua(): string {
     '\t\tfor i, s in box.adventure do',
     '\t\t\tlocal step = H5ETalismanStep(hero);',
     '\t\t\tif step == nil then',
-    '\t\t\t\tprint("H5E pandora: adventure spell " .. s);',
-    '\t\t\t\tH5EAnnounceGain();',
-    '\t\t\t\tTeachHeroSpell(hero, s);',
+    '\t\t\t\t-- Not of the Horde: the ordinary path, and the same question about',
+    '\t\t\t\t-- holding it - a hero can be refused adventure magic for reasons',
+    '\t\t\t\t-- of his own.',
+    '\t\t\t\tif H5ECanHoldSpell(hero, s[1]) ~= nil then',
+    '\t\t\t\t\tprint("H5E pandora: adventure spell " .. s[1]);',
+    '\t\t\t\t\tH5EAnnounceGain();',
+    '\t\t\t\t\tTeachHeroSpell(hero, s[1]);',
+    '\t\t\t\telse',
+    '\t\t\t\t\tprint("H5E pandora: cannot hold " .. s[1] .. ", paid " .. s[2]);',
+    '\t\t\t\t\tGiveExp(hero, s[2]);',
+    '\t\t\t\tend;',
     '\t\t\telseif step == 0 then',
-    '\t\t\t\t-- His talisman is at the top already. Teaching him the spell here',
-    '\t\t\t\t-- is what the engine refuses, so a box that did it announced a',
-    '\t\t\t\t-- Town Portal nobody got. Silence is the honest answer.',
-    '\t\t\t\tprint("H5E pandora: talisman already at the top");',
+    '\t\t\t\t-- His talisman is at the top, so there is no rung left to give -',
+    '\t\t\t\t-- and teaching him the spell is what the engine refuses. He is',
+    '\t\t\t\t-- paid for it instead, like any spell he cannot hold.',
+    '\t\t\t\tprint("H5E pandora: talisman at the top, paid " .. s[2]);',
+    '\t\t\t\tGiveExp(hero, s[2]);',
     '\t\t\telse',
     '\t\t\t\tprint("H5E pandora: talisman " .. step);',
     '\t\t\tend;',
@@ -369,9 +403,15 @@ function boxLua(box: PandoraContents, refs: PandoraRefs | undefined): string[] {
   // splits them is the game's own ladder, so a spell is adventure magic here
   // exactly when the Traveller's Shelter sells it.
   const onLadder = new Set((refs?.ladder ?? []).map(luaId('SPELL_')));
-  const spells = (box.spells ?? []).map(luaId('SPELL_'));
-  const adventure = spells.filter((s) => onLadder.has(s));
-  const taught = spells.filter((s) => !onLadder.has(s));
+  // EACH SPELL WITH ITS PRICE IN EXPERIENCE, because the box has to hand over
+  // one or the other and the script cannot work out a level for itself.
+  const priced = (box.spells ?? []).map((id) => {
+    const worth = refs?.spellExp?.(id) ?? 0;
+    return `{${luaId('SPELL_')(id)}, ${luaNumber(worth)}}`;
+  });
+  const named = (box.spells ?? []).map(luaId('SPELL_'));
+  const adventure = priced.filter((_, i) => onLadder.has(named[i]!));
+  const taught = priced.filter((_, i) => !onLadder.has(named[i]!));
   if (taught.length) fields.push(`\tspells = { ${taught.join(', ')} }`);
   if (adventure.length) fields.push(`\tadventure = { ${adventure.join(', ')} }`);
   if (box.creatures?.length) {

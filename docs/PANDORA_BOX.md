@@ -47,7 +47,7 @@ artifact AND a stack, and be guarded besides.
 | Experience | `GiveExp` to the opening hero. |
 | Gold, and the six resources | Added to the opening hero's player. |
 | Artifacts | `GiveArtefact`, one per entry. |
-| Spells | `TeachHeroSpell` — the hero learns them. |
+| Spells | `TeachHeroSpell` — the hero learns them, or is paid in experience for the ones he cannot hold (below). |
 | Creatures | Join the opening hero's army. |
 | Guards | Fought BEFORE the box opens. Win and it opens; lose and it stays shut. |
 
@@ -91,10 +91,27 @@ rest arrive as he levels. And a talisman does nothing whatsoever for a hero who
 is **not of the Horde**, which is why the box asks first and teaches when the
 answer is no.
 
-A box past the top of the ladder hands over **nothing, silently**. It could
-fall back to teaching, and that is what it did once: the box announced Town
+### A spell a hero cannot hold is paid for
+
+Every other case — a barbarian handed a battle spell, a knight handed a war cry,
+anyone handed a rune — used to land nowhere at all. Now the box pays instead, at
+**the Shrine of Magic's own rate: 1000 experience per level of the spell**
+(measured in the game 12.08.2026, walking a barbarian into shrines of levels 1,
+2 and 3). That is exactly what the valuer prices a spell at, so **a box is worth
+the same whoever opens it** — the glow does not lie either way.
+
+Who may hold what is not decided here. `H5ECanHoldSpell` asks the engine's own
+gate — the one that would refuse the teaching a moment later — so nothing in the
+generated script knows what a school is, and a mod that adds one is covered
+without a line changing.
+
+A box past the top of the talisman ladder pays the same way. It used to fall
+back to teaching, and the result was the worst of both: the box announced Town
 Portal, the engine refused it for being the wrong school, and the player was
 told about a spell he never got.
+
+A spell the hero **already knows** is not paid for — he learns it again, which
+is what it always did.
 
 The window says as much beside the spell list, and the whole reading — what the
 gate branches on, where the level lives, what recomputes the list — is in

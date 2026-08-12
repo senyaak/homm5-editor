@@ -24,7 +24,8 @@ import {
 } from '#src/map/pandora-store.ts';
 import type { PandoraContents } from '#src/mods/pandora-contents.ts';
 import { isPandoraShared } from '#src/mods/pandora-files.ts';
-import { talismanLadder } from '#src/mods/pandora-prices.ts';
+import { PANDORA_RATES } from '#src/mods/pandora-contents.ts';
+import { pandoraPrices, talismanLadder } from '#src/mods/pandora-prices.ts';
 import { withPandoraBlock } from '#src/mods/pandora-scripts.ts';
 
 /** The default script a map gains when its boxes need one. */
@@ -105,6 +106,10 @@ export function writePandoraForMap(s: Session, archivePrefix: string): number {
     // game's own table, and a copy kept across sessions is a copy that can be
     // wrong about the install the map is being written for.
     ladder: talismanLadder(s.assets),
+    // What a spell is worth to a hero who cannot hold it: the valuer's own rate
+    // for a spell level, so the box pays exactly what it was priced at.
+    spellExp: (id) => pandoraPrices(s.assets).spellLevel(id) * PANDORA_RATES.spellLevel
+      * PANDORA_RATES.exp,
   });
   // Only when it changed: an untouched .lua keeps its timestamp, and the
   // watcher keeps quiet.

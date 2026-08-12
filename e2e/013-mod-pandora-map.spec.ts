@@ -789,9 +789,11 @@ test('saving writes the block the game reads, and the texts it shows', async () 
     expect(from, `${name} has an entry in the block`).toBeGreaterThan(-1);
     return lua.slice(from, lua.indexOf('};', from));
   };
+  // Town Portal is a level-5 spell, so the price beside it is 5000 — what the
+  // box pays a hero who cannot hold it, at the shrine's own rate.
   const portalBox = BARBARIAN_BOXES.find((b) => b.name === 'PandoraTalisman4')!;
   expect(entryOf(portalBox.name), `${portalBox.name} carries Town Portal as adventure magic`)
-    .toContain('adventure = { SPELL_TOWN_PORTAL }');
+    .toContain('adventure = { {SPELL_TOWN_PORTAL, 5000} }');
   // AND THE LEVELS ARE PLAIN EXPERIENCE — the row above hands over no magic at
   // all, which is the point of it: whatever appears in his book afterwards
   // came from the engine reading his talisman again, not from a box.
@@ -806,7 +808,7 @@ test('saving writes the block the game reads, and the texts it shows', async () 
   // way round.
   const criesBox = BARBARIAN_BOXES.find((b) => b.name.includes('Cries'))!;
   expect(entryOf(criesBox.name), 'and the cries are still taught')
-    .toContain('spells = { SPELL_WARCRY_RALLING_CRY, SPELL_WARCRY_CALL_OF_BLOOD }');
+    .toContain('spells = { {SPELL_WARCRY_RALLING_CRY, 1000}, {SPELL_WARCRY_CALL_OF_BLOOD, 1000} }');
 });
 
 test('and it packs to a map the game can be pointed at', async () => {
