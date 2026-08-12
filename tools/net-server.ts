@@ -57,6 +57,10 @@ const SERVICES: Service[] = [
   { prefix: 'IRC', port: 6667, launcher: null, kind: 'tcp' },
 ];
 
+// Not in the ini: the client is told where this one lives when it asks for a
+// module (PROXY_HANDLER). It is where persistent data and, later, the ladder sit.
+const PROXY: Service = { prefix: 'Proxy', port: 40030, launcher: null, kind: 'tcp' };
+
 function serversIni(): string {
   const lines = ['[Servers]'];
   for (const s of SERVICES) {
@@ -111,13 +115,16 @@ let connections = 0;
 
 // After the login the client asks where to go next. The launcher port we already
 // advertise is the obvious place to send it, and it is ours either way.
-const router = new RouterService({ address: host, port: SERVICES[0]!.launcher ?? SERVICES[0]!.port });
+const router = new RouterService(
+  { address: host, port: SERVICES[0]!.launcher ?? SERVICES[0]!.port },
+  { address: host, port: PROXY.port },
+);
 
 // Every key the player types is accepted; see src/net/cdkey-service.ts for why
 // that is the honest answer rather than a shortcut.
 const cdkey = new CdKeyService();
 
-for (const service of SERVICES) {
+for (const service of [...SERVICES, PROXY]) {
   for (const port of [service.port, service.launcher].filter((p): p is number => p !== null)) {
     const label = port === service.port ? service.prefix : `${service.prefix}Launcher`;
 
@@ -127,7 +134,7 @@ for (const service of SERVICES) {
       log(`TCP  #${id} ${label}:${port} <- ${peer} connected`);
       // The router and the wait module it hands the client on to are the same
       // desk, and the same code answers both. IRC still only listens.
-      const session = label === 'Router' || label === 'RouterLauncher' ? router.session() : null;
+      const session = label === 'Router' || label === 'RouterLauncher' || label === 'Proxy' ? router.session() : null;
       socket.on('data', (data: Buffer) => {
         log(`TCP  #${id} ${label}:${port} <- ${data.length} bytes\n${hexDump(data)}`);
         if (!session) return;

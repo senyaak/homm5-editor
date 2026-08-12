@@ -199,7 +199,7 @@ console.log('\nRSA key blobs, against the key a real client sent');
 
 console.log('\nRouter, driven by the recorded packet');
 {
-  const session = new RouterService({ address: '127.0.0.1', port: 40001 }).session();
+  const session = new RouterService({ address: '127.0.0.1', port: 40001 }, { address: '127.0.0.1', port: 40030 }).session();
   const events = session.receive(ROUTER_KEY_EXCHANGE);
   check('the key exchange gets exactly one answer', events.length === 1 && events[0]!.replies.length === 1, events[0]?.note);
 
@@ -240,7 +240,7 @@ console.log('\nRouter, driven by the recorded packet');
 
 console.log('\nRouter, once the session keys are up');
 {
-  const session = new RouterService({ address: '127.0.0.1', port: 40001 }).session();
+  const session = new RouterService({ address: '127.0.0.1', port: 40001 }, { address: '127.0.0.1', port: 40030 }).session();
   // Step one gives us the key the client should seal its session key to.
   const opened = session.receive(ROUTER_KEY_EXCHANGE);
   const ourBlob = (parse(opened[0]!.replies[0]!)!.body![1] as GSValue[])[2] as Uint8Array;
@@ -265,6 +265,33 @@ console.log('\nRouter, once the session keys are up');
   check('an encrypted login is opened and answered', loggedIn[0]!.replies.length === 1, loggedIn[0]?.note);
   check('the name inside it is read', session.username === 'senyaak');
   check('and we know which key opened it', session.encryptedWith !== null, String(session.encryptedWith));
+
+  // What the client asked next, verbatim from the wire: where does the module
+  // "persistantdata" live? (Its spelling, not ours.)
+  const asked = session.receive(
+    build({
+      property: Property.GS,
+      priority: 0,
+      type: MessageType.PROXY_HANDLER,
+      sender: 4,
+      receiver: 1,
+      body: ['1', ['persistantdata', '0', '0']],
+    }),
+  );
+  const proxied = parse(asked[0]!.replies[0]!);
+  check('a module request is answered', asked[0]!.replies.length === 1, asked[0]?.note);
+  check('the answer keeps the PROXY_HANDLER type', proxied?.type === MessageType.PROXY_HANDLER);
+  check(
+    'and names the module with our proxy behind it',
+    JSON.stringify(proxied?.body) === JSON.stringify(['38', ['1', ['persistantdata', '0', '0', [['1', '2130706433', '40030']]]]]),
+    JSON.stringify(proxied?.body),
+  );
+  check(
+    'an unknown module is not invented',
+    session.receive(
+      build({ property: Property.GS, priority: 0, type: MessageType.PROXY_HANDLER, sender: 4, receiver: 1, body: ['1', ['clanservice', '0', '0']] }),
+    )[0]!.replies.length === 0,
+  );
 
   // The bug that stalled the first real login: a body we cannot open must not
   // stay at the front of the stream.

@@ -40,6 +40,9 @@ export interface RouterEvent {
   replies: Buffer[];
 }
 
+/** The id we hand out for a proxy module; the client echoes it back to release it. */
+const PROXY_ID = '1';
+
 /** A one-byte body value, which is how GS names the message being answered. */
 function messageId(type: number): GSValue {
   return new Uint8Array([type & 0xff]);
@@ -67,9 +70,11 @@ export class RouterSession {
   username = '';
 
   private readonly waitModule: Endpoint;
+  private readonly proxy: Endpoint;
 
-  constructor(waitModule: Endpoint) {
+  constructor(waitModule: Endpoint, proxy: Endpoint) {
     this.waitModule = waitModule;
+    this.proxy = proxy;
   }
 
   /** Feed bytes from the socket; get back what to send, and a line for the log. */
@@ -184,6 +189,35 @@ export class RouterSession {
           replies: [build(reply(message, [messageId(MessageType.PLAYERINFO), player], MessageType.GSSUCCESS))],
         };
       }
+      // "Where does module X live?" The client asks for `persistantdata` first
+      // (its own spelling) and `ladderquery` when it wants a rating — both are
+      // served by one proxy, which is where our stats and ladder will go.
+      case MessageType.PROXY_HANDLER: {
+        const subtype = message.body?.[0];
+        if (Array.isArray(subtype)) return { note: 'PROXY_HANDLER notification — nothing to answer', replies: [] };
+        const inner = message.body?.[1];
+        const module = Array.isArray(inner) && typeof inner[0] === 'string' ? inner[0] : '';
+        if (subtype === '1') {
+          if (module !== 'persistantdata' && module !== 'ladderquery') {
+            return { note: `PROXY_HANDLER for unknown module "${module}" — nothing sent`, replies: [] };
+          }
+          const where = [[PROXY_ID, hostU32String(this.proxy.address), String(this.proxy.port)]];
+          return {
+            note: `PROXY_HANDLER — "${module}" is at ${this.proxy.address}:${this.proxy.port}`,
+            replies: [
+              build(reply(message, [String(MessageType.GSSUCCESS), [subtype, [module, '0', '0', where]]])),
+            ],
+          };
+        }
+        if (subtype === '2') {
+          const moduleId = Array.isArray(inner) && typeof inner[0] === 'string' ? inner[0] : '0';
+          return {
+            note: `PROXY_HANDLER — module ${moduleId} released`,
+            replies: [build(reply(message, [String(MessageType.GSSUCCESS), [subtype, [moduleId]]]))],
+          };
+        }
+        return { note: `PROXY_HANDLER subtype ${String(subtype)} is not implemented`, replies: [] };
+      }
       case MessageType.STILLALIVE:
         return { note: 'STILLALIVE', replies: [] };
       default:
@@ -228,12 +262,14 @@ export class RouterSession {
 
 export class RouterService {
   private readonly waitModule: Endpoint;
+  private readonly proxy: Endpoint;
 
-  constructor(waitModule: Endpoint) {
+  constructor(waitModule: Endpoint, proxy: Endpoint) {
     this.waitModule = waitModule;
+    this.proxy = proxy;
   }
 
   session(): RouterSession {
-    return new RouterSession(this.waitModule);
+    return new RouterSession(this.waitModule, this.proxy);
   }
 }
