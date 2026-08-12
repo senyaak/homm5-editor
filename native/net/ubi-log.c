@@ -15,13 +15,15 @@
 // converted `const char *` or a number. One detour there catches every fragment;
 // the newline the "endl" manipulator appends is what ends a line.
 //
-// The level gate: two globals hold a threshold that a line's own level is
-// compared against (`cmp [threshold], [level]; jg skip` in 0xDFB650 and
-// 0xDFB770), so a line whose level is below it never reaches the append at all.
-// Their values are written down here on install and then lowered as far as they
-// go, which turns the whole engine talkative. That is deliberate — a log that
-// only shows what somebody already thought interesting is how the wrong thing
-// stays invisible.
+// THE LEVEL GATE, AND WHY IT IS LEFT ALONE. Two globals hold a threshold that a
+// line's own level is compared against (`cmp [threshold], [level]; jg skip` in
+// 0xDFB650 and 0xDFB770). Measured on a real run: both are already **0**, so
+// nothing is being filtered out and the append below sees everything. Lowering
+// them anyway — which this file did for exactly one launch — opens the branches
+// the engine means to skip, and the game died at once inside its own
+// string-append (0x4E7550, `mov [esi+2],ax` with esi = 0: a string object nobody
+// initialised, because that path was never supposed to run). So: read them, write
+// them down, change nothing.
 
 /** Which switch turns this file's logging on — see the bottom of core/log.c. */
 #undef LOG_UNIT
@@ -98,15 +100,10 @@ static int install_ubi_log(void) {
   BYTE *base = (BYTE *)GetModuleHandleW(NULL);
   int *levelA = (int *)(base + UBI_LOG_LEVEL_A_RVA);
   int *levelB = (int *)(base + UBI_LOG_LEVEL_B_RVA);
+  // Reported, not touched — see the note above about what happened when they were.
   if (readable(levelA, 4) && readable(levelB, 4)) {
-    // Written down before being changed: what the game shipped with is a fact
-    // worth having, and "we lowered it from X" is a different sentence from "it
-    // was always open".
-    log_num("engine log threshold A was ", *levelA);
-    log_num("engine log threshold B was ", *levelB);
-    *levelA = (int)0x80000000;
-    *levelB = (int)0x80000000;
-    log_line("engine log thresholds lowered — every line now reaches us");
+    log_num("engine log threshold A is ", *levelA);
+    log_num("engine log threshold B is ", *levelB);
   }
   return 1;
 }
