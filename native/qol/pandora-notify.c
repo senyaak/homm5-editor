@@ -328,13 +328,62 @@ static DWORD complete_object(DWORD obj) {
   return into < 0x1000 ? obj - into : obj;
 }
 
-/** Keep it if this is the world — see CWORLD_VTABLE_RVA above. */
+/** Is this the world? Its vtable is the whole test. */
+static int is_the_world(DWORD p) {
+  return p && readable((const void *)(DWORD_PTR)p, 4)
+         && *(const DWORD *)(DWORD_PTR)p == game_base() + CWORLD_VTABLE_RVA;
+}
+
+/**
+ * Keep it if this is the world — and keep the LATEST one, which is the whole
+ * point.
+ *
+ * A launch is not a game. Load one map, then another, and the first world is
+ * destroyed under a pointer that was captured once and never looked at again;
+ * the next announcement then hands the engine a dead object and the game goes
+ * down. That is exactly what happened on the run with two maps in it, and the
+ * run with one survived — which is what a stale pointer looks like from the
+ * outside: a crash that will not reproduce.
+ */
 static void remember_the_world(DWORD self) {
   DWORD whole = complete_object(self);
-  if (g_world || !readable((const void *)(DWORD_PTR)whole, 4)) return;
-  if (*(const DWORD *)(DWORD_PTR)whole != game_base() + CWORLD_VTABLE_RVA) return;
+  if (!is_the_world(whole) || whole == g_world) return;
   g_world = whole;
-  log_hex("pandora: that announcement came from the world ", whole);
+  // A new world means a new game: what was caught for the old one is gone too.
+  g_signHolder = 0;
+  g_signSubject = 0;
+  log_hex("pandora: this announcement comes from the world ", whole);
+}
+
+/**
+ * IS THIS THE GAME, OR IS IT STILL BEING SET UP?
+ *
+ * A map's init script hands out spells, and on the Sharpshooter test map the
+ * player was told about one he had had since before the first turn. The engine
+ * itself never announces then, and the holder says how it knows: before it
+ * keeps anything it asks the world two questions (0xBF9B9E, 0xBF9BB2), and
+ * either answer can mean "not now". Rather than invent a signal, ours are the
+ * same two, asked of the same object and read the same way round.
+ *
+ * Both are logged whatever they say, because a gate that is never seen to
+ * refuse is a gate nobody can trust ([[metric-must-be-checked-by-sabotage]]).
+ */
+static int the_game_is_being_played(DWORD world) {
+  const DWORD *vt = (const DWORD *)(DWORD_PTR)*(const DWORD *)(DWORD_PTR)world;
+  DWORD who = ((DWORD(__fastcall *)(DWORD, DWORD))(DWORD_PTR)vt[0x14 / 4])(world, 0);
+  DWORD busy = ((DWORD(__fastcall *)(DWORD, DWORD))(DWORD_PTR)vt[0x138 / 4])(world, 0) & 0xff;
+  log_hex("pandora:   the world answers 0x14 ", who);
+  log_hex("pandora:   and 0x138 ", busy);
+  if (busy) {
+    log_line("pandora: the world is busy — this is setting up, not playing");
+    return 0;
+  }
+  if (!who || !readable((const void *)(DWORD_PTR)(who + 0x1c), 1)
+      || *(const BYTE *)(DWORD_PTR)(who + 0x1c)) {
+    log_line("pandora: nobody is watching — this is setting up, not playing");
+    return 0;
+  }
+  return 1;
 }
 
 /** A string the announcement's constructor may copy — three words, and the
@@ -460,10 +509,11 @@ static char __fastcall announce_spell_taught(void *self, void *unused) {
   // says so and stops — which is a line in the log instead of the rest of the
   // run.
   log_hex("pandora:   the world ", g_world);
-  if (!g_world) {
-    log_line("pandora: no announcement has come past yet, so no world — not announcing");
+  if (!is_the_world(g_world)) {
+    log_line("pandora: no world of this game yet — not announcing");
     return taught;
   }
+  if (!the_game_is_being_played(g_world)) return taught;
   ((void(__fastcall *)(DWORD, DWORD, DWORD, DWORD, DWORD, DWORD, DWORD, DWORD))
    (DWORD_PTR)(ANNOUNCE_ONE_RVA + base))(g_world, edx, text, name, icon, 0,
                                          SPELL_ANNOUNCEMENT_KIND, params);
@@ -498,13 +548,65 @@ static char __fastcall announce_spell_taught(void *self, void *unused) {
 static const BYTE GIVE_CREATURES_HEAD[6] = { 0x57, 0x8B, 0xF9, 0x8B, 0x4F, 0x0C };
 static void *g_give_creatures_orig;
 
+/** `+N` as the engine writes it on a sign — `__fastcall(out, number)`. */
+#define SIGN_NUMBER_RVA 0x816810u
+static const BYTE SIGN_NUMBER_HEAD[6] = { 0x81, 0xEC, 0x80, 0x00, 0x00, 0x00 };
+
 static char __fastcall announce_creatures_given(void *self, void *unused) {
   char given = ((char(__fastcall *)(void *, void *))g_give_creatures_orig)(self, unused);
   log_num(given ? "pandora: creatures were given, and the command says "
                 : "pandora: creatures were REFUSED, and the command says ", given);
   log_all_words("pandora:   the command ", (DWORD)(DWORD_PTR)self, 0x10);
-  log_hex("pandora:   the sign's holder so far ", g_signHolder);
-  log_hex("pandora:   the sign's subject so far ", g_signSubject);
+  if (!given) return given;
+
+  // THE COMMAND CARRIES IT ALL, which the spell's does not: field 0x0c is the
+  // world (its vtable says so), 0x10 the player, 0x14 and 0x18 two interfaces
+  // of the hero, and 0x1c a pair — the creature and how many. One reading of
+  // that dump replaced a whole capture.
+  DWORD base = game_base();
+  DWORD world = ((DWORD *)self)[3];
+  DWORD player = ((DWORD *)self)[4];
+  DWORD hero = ((DWORD *)self)[5];
+  int count = (int)((DWORD *)self)[8];
+  if (!is_the_world(world) || !alive_object(player)) {
+    log_line("pandora: that command is not shaped as expected — not announcing");
+    return given;
+  }
+  remember_the_world(world);
+  if (!the_game_is_being_played(world)) return given;
+
+  // Whom the sign flies off. The necromancer's site asks the world for it and
+  // then walks to a subobject through the class descriptor — `X + [[X+4]+0x0c]
+  // + 4` — which is a walk the compiler inlined and no listing spells out, so
+  // it is done here the same way and checked before it is passed on.
+  DWORD over = ((DWORD(__fastcall *)(DWORD, DWORD, DWORD))
+                (DWORD_PTR)((const DWORD *)(DWORD_PTR)*(const DWORD *)(DWORD_PTR)world)[0x100 / 4])(
+                  world, 0, hero);
+  log_hex("pandora:   the sign flies off ", over);
+  if (readable((const void *)(DWORD_PTR)over, 8)) {
+    DWORD descriptor = ((const DWORD *)(DWORD_PTR)over)[1];
+    if (readable((const void *)(DWORD_PTR)(descriptor + 0x0c), 4))
+      over += ((const DWORD *)(DWORD_PTR)descriptor)[3] + 4;
+  }
+  log_hex("pandora:   as its subobject ", over);
+  log_hex("pandora:   a sign was seen over ", g_signSubject);
+  if (!readable((const void *)(DWORD_PTR)over, 4)) {
+    log_line("pandora: no one to fly it off — not announcing");
+    return given;
+  }
+
+  DWORD numberBuf[8] = { 0 };
+  DWORD number = ((DWORD(__fastcall *)(void *, int))(DWORD_PTR)(SIGN_NUMBER_RVA + base))(
+    numberBuf, count);
+  log_num("pandora:   how many ", count);
+  log_hex("pandora:   written as ", number);
+  // The picture is left out for now: the necromancer takes it off the raised
+  // STACK, and a command that has not raised one has no stack to ask. A sign
+  // without a picture is a shape the engine builds itself (the experience one
+  // passes a texture, the constructor checks for null either way).
+  ((void(__fastcall *)(DWORD, DWORD, DWORD, DWORD, DWORD, DWORD, DWORD, DWORD, DWORD, DWORD))
+   (DWORD_PTR)(ANNOUNCE_MANY_RVA + base))(world, 0, over, 2, number, 0, 0, 1, 1, 1);
+  log_line("pandora: the stack was announced and it did not crash");
   return given;
 }
 
@@ -556,10 +658,10 @@ static int install_pandora_notify(void) {
   // which the stack half is going to need.
   g_announce_many_orig = detour(ANNOUNCE_MANY_RVA, ANNOUNCE_MANY_HEAD, sizeof ANNOUNCE_MANY_HEAD,
                                 (void *)announce_many_probe, "announce(many)");
-  if (!LOG_ON) return g_add_spell_orig != NULL && g_announce_hold_orig != NULL;
   g_give_creatures_orig = detour(GIVE_CREATURES_RVA, GIVE_CREATURES_HEAD,
                                  sizeof GIVE_CREATURES_HEAD,
                                  (void *)announce_creatures_given, "creatures given");
+  if (!LOG_ON) return g_add_spell_orig != NULL && g_announce_hold_orig != NULL;
   g_announce_one_orig = detour(ANNOUNCE_ONE_RVA, ANNOUNCE_ONE_HEAD, sizeof ANNOUNCE_ONE_HEAD,
                                (void *)announce_one_probe, "announce(one)");
   return g_add_spell_orig != NULL && g_announce_hold_orig != NULL;
