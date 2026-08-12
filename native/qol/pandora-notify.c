@@ -212,6 +212,35 @@ static int alive_object(DWORD p) {
   return (LONG)*count >= 0;
 }
 
+/**
+ * The WHOLE object an interface pointer points into.
+ *
+ * The third crash, and the one the addresses had been hinting at all along: the
+ * announcer's `this` came through the log ending in 0x400 where ours ended in
+ * 0x41c. `CAdvMapHero` declares four vtables — subobjects at 0, 0x1c, 0x150 and
+ * 0x180 — and the command that teaches a spell keeps its hero as the one at
+ * 0x1c. Slot 0x14 of THAT vtable is not the slot the announcement holder means
+ * by 0x14, so it answered null and the holder read 0x1c bytes past null.
+ *
+ * MSVC leaves the way back in plain sight: one dword before every vtable is its
+ * complete-object locator, and the locator's second word is how far this
+ * subobject sits into the whole. Subtract it and any interface pointer becomes
+ * the object itself — no guessing, and a no-op when there was nothing to fix.
+ * See [[vtable-slot-needs-its-vtable-start]]: a slot number without the vtable
+ * it belongs to is not an address, it is a coincidence waiting to happen.
+ */
+static DWORD complete_object(DWORD obj) {
+  if (!obj || !readable((const void *)(DWORD_PTR)obj, 4)) return obj;
+  DWORD vt = *(const DWORD *)(DWORD_PTR)obj;
+  if (!readable((const void *)(DWORD_PTR)(vt - 4), 4)) return obj;
+  DWORD locator = *(const DWORD *)(DWORD_PTR)(vt - 4);
+  if (!readable((const void *)(DWORD_PTR)locator, 8)) return obj;
+  DWORD into = ((const DWORD *)(DWORD_PTR)locator)[1];
+  // The largest this class declares is 0x180; anything past a page says the
+  // dword before the vtable was not a locator at all.
+  return into < 0x1000 ? obj - into : obj;
+}
+
 /** A string the announcement's constructor may copy — three words, and the
  *  first of them a buffer that exists. The whole of the second crash. */
 static int wstring_ok(DWORD s) {
@@ -234,10 +263,12 @@ static char __fastcall add_spell_replay(void *self, void *unused) {
   g_replayed = 1;
 
   DWORD base = game_base();
-  // The hero the command was made for — its field 0x0c, which is what the
-  // artifact command hands the announcer as `this`.
-  DWORD hero = ((DWORD *)self)[3];
-  log_hex("pandora:   for hero ", hero);
+  // The hero the command was made for — its field 0x0c, and then the whole of
+  // him rather than the interface the command happened to keep.
+  DWORD given = ((DWORD *)self)[3];
+  DWORD hero = complete_object(given);
+  log_hex("pandora:   for hero ", given);
+  if (hero != given) log_hex("pandora:   the whole of him ", hero);
 
   // The subject is a POINTER to the thing gained, never its number: field 0x10
   // is the spell's id — 0x122 came through the log once, dereferenced, and the
@@ -266,19 +297,24 @@ static char __fastcall add_spell_replay(void *self, void *unused) {
     subjectRef, 0);
   DWORD text = ((DWORD(__fastcall *)(void *, void *))(DWORD_PTR)(ANNOUNCE_TEXT_RVA + base))(key, 0);
 
-  // And the audience. The skill site reads it out of a field at 0x128; whether
-  // the hero is what carries it there is the one thing still unmeasured, so it
-  // is TRIED, checked the way the holder checks it, and the artifact's own — if
-  // one has come past already this launch — stands behind it. With neither, the
-  // holder would drop the announcement on the floor anyway (0xBF9C38), so there
-  // is nothing to gain by calling.
+  // And the audience — MEASURED, this time. The skill site reads it out of a
+  // field at 0x128, and the field 0x128 of the pointer the command carries came
+  // back 0x10d3201c, which is to the dword what a real artifact's announcement
+  // passed. Now that the pointer has been walked back to the whole object, the
+  // same field is a different one, so both are read and both are printed: the
+  // one that answers to the holder's own liveness check wins, the interface's
+  // first because that is the one with a reading behind it.
   DWORD edx = 0;
   const char *where = "nothing";
-  if (readable((const void *)(DWORD_PTR)(hero + 0x128), 4)
-      && alive_object(*(const DWORD *)(DWORD_PTR)(hero + 0x128))) {
-    edx = *(const DWORD *)(DWORD_PTR)(hero + 0x128);
-    where = "the hero's field 0x128";
-  } else if (alive_object(g_seen_edx)) {
+  DWORD asGiven = readable((const void *)(DWORD_PTR)(given + 0x128), 4)
+                  ? *(const DWORD *)(DWORD_PTR)(given + 0x128) : 0;
+  DWORD asWhole = readable((const void *)(DWORD_PTR)(hero + 0x128), 4)
+                  ? *(const DWORD *)(DWORD_PTR)(hero + 0x128) : 0;
+  log_hex("pandora:   0x128 of the interface ", asGiven);
+  log_hex("pandora:   0x128 of the whole     ", asWhole);
+  if (alive_object(asGiven)) { edx = asGiven; where = "the interface's field 0x128"; }
+  else if (alive_object(asWhole)) { edx = asWhole; where = "the whole object's field 0x128"; }
+  else if (alive_object(g_seen_edx)) {
     edx = g_seen_edx;
     where = "the artifact that came past earlier";
   }
@@ -295,6 +331,24 @@ static char __fastcall add_spell_replay(void *self, void *unused) {
   }
   if (!edx) {
     log_line("pandora: nobody to announce it to — the holder would drop it");
+    return taught;
+  }
+  // Twice burned on the same step, so it is asked here first. The holder's very
+  // first move is `hero->vt[0x14]()` and then a byte 0x1c into whatever came
+  // back; null is what the wrong subobject answered. Walking back to the whole
+  // object should have to be idempotent, and the getter should have to answer —
+  // if either is untrue this is not the object the announcer wants, and a line
+  // in the log costs a great deal less than the rest of the run.
+  if (complete_object(hero) != hero) {
+    log_line("pandora: that is still not the whole hero — not announcing");
+    return taught;
+  }
+  DWORD audience = ((DWORD(__fastcall *)(DWORD, DWORD))
+                    (DWORD_PTR)((const DWORD *)(DWORD_PTR)*(const DWORD *)(DWORD_PTR)hero)[5])(
+                      hero, 0);
+  log_hex("pandora:   his slot 0x14 ", audience);
+  if (!audience || !readable((const void *)(DWORD_PTR)(audience + 0x1c), 1)) {
+    log_line("pandora: the hero answered nobody — not announcing");
     return taught;
   }
   ((void(__fastcall *)(DWORD, DWORD, DWORD, DWORD, DWORD, DWORD, DWORD, DWORD))
