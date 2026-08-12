@@ -18,6 +18,7 @@ import { RouterService } from '../src/net/router-service.ts';
 import { Blowfish } from '../src/net/blowfish.ts';
 import { CdKeyRequest, CdKeyService } from '../src/net/cdkey-service.ts';
 import { LobbyMsg } from '../src/net/lobby.ts';
+import { IrcService, frame, unframe } from '../src/net/irc.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {
@@ -472,6 +473,46 @@ console.log('\nThe lobby server, from the words the client really said');
   const inside = contents?.body?.[1] as GSValue[];
   check('the contents name the channel joined', ((inside?.[2] as GSValue[]) ?? [])[1] === 'Ranked', JSON.stringify((inside?.[2] as GSValue[])?.[1]));
   check('with no rooms and no members yet', Array.isArray(inside?.[3]) && (inside[3] as GSValue[]).length === 0);
+}
+
+console.log('\nChat, unwrapped from what the client actually sent');
+{
+  // Two captures from the chat port: the login bundle, and the channel join the
+  // client makes as part of entering a lobby.
+  const LOGIN = Buffer.from(
+    '00123a7d650293c86ff451cb9fe744672ac10f0000326bd7589f28ee09fd56b647628aa8cc562d8b02' +
+      '5803433aa70cf60c8b12ca76e1bc005e9c19d06ca1e805fd4e7b1859c82c00',
+    'hex',
+  );
+  const JOIN = Buffer.from('001a2ff2aca5a8accc752738ad4f223435568782b124be468fc11400', 'hex');
+
+  const opened = unframe(LOGIN);
+  check('the login read holds two lines', opened.lines.length === 2, JSON.stringify(opened.lines));
+  check('the first is a NICK', opened.lines[0] === 'NICK :Senyaak', String(opened.lines[0]));
+  check(
+    'the second is a USER naming the game',
+    opened.lines[1] === 'USER HEROES_29988429c481f219 +i 0 :Senyaak',
+    String(opened.lines[1]),
+  );
+  check('nothing is left over', opened.rest.length === 0);
+  check('and the join reads back too', unframe(JOIN).lines[0] === 'JOIN :#LobbyGrp1.1', String(unframe(JOIN).lines[0]));
+
+  // A line we build has to survive the same unwrapping.
+  check('a line we frame comes back as itself', unframe(frame('PING :hello')).lines[0] === 'PING :hello');
+
+  const chat = new IrcService().connection();
+  const welcomed = chat.receive(LOGIN);
+  check('the client is welcomed on NICK', welcomed[0]!.replies.length === 4, welcomed[0]?.note);
+  const numerics = welcomed[0]!.replies.flatMap((reply) => unframe(reply).lines);
+  check('with 001 first, which is what it waits for', numerics[0]?.includes(' 001 Senyaak :') === true, String(numerics[0]));
+  check('and the nick is remembered', chat.nick === 'Senyaak');
+
+  const joined = chat.receive(JOIN);
+  const lines = joined[0]!.replies.flatMap((reply) => unframe(reply).lines);
+  check('a channel join is echoed with a member list', lines.length === 3, JSON.stringify(lines));
+  check('the echo is the join itself', lines[0] === ':Senyaak JOIN :#LobbyGrp1.1', String(lines[0]));
+  check('the names list ends properly', lines[2]?.includes('366') === true, String(lines[2]));
+  check('and the channel is remembered', chat.channels.has(':#LobbyGrp1.1'));
 }
 
 console.log(failures === 0 ? '\nall good\n' : `\n${failures} failed\n`);

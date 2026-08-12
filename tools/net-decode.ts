@@ -18,6 +18,8 @@ import { decodeBody, type GSValue } from '../src/net/gs-data.ts';
 import { decrypt } from '../src/net/gs-xor.ts';
 import { HEADER_SIZE as GS_HEADER, MessageType, Property, parse } from '../src/net/gs-message.ts';
 import { HEADER_SIZE as SRP_HEADER, flagNames, parseSegment, verify } from '../src/net/srp.ts';
+import { IRC_KEY } from '../src/net/irc.ts';
+import { Blowfish } from '../src/net/blowfish.ts';
 
 const args = process.argv.slice(2);
 const srpMode = args.includes('--srp');
@@ -78,6 +80,25 @@ if (!bytes.length) {
   process.exit(1);
 }
 console.log(`${bytes.length} bytes`);
+
+// `--irc`: chat is IRC text, but wrapped — a big-endian u16 length and a
+// Blowfish body on a key that is the same for every client.
+if (args.includes('--irc')) {
+  const bytes = hexOf(source);
+  const cipher = new Blowfish(IRC_KEY);
+  console.log(`${bytes.length} bytes`);
+  for (let at = 0; at + 2 <= bytes.length; ) {
+    const size = bytes.readUInt16BE(at);
+    if (size === 0 || at + 2 + size > bytes.length) {
+      console.log(`  stray ${bytes.length - at} bytes: ${bytes.subarray(at).toString('hex')}`);
+      break;
+    }
+    const text = cipher.decrypt(bytes.subarray(at + 2, at + 2 + size)).toString('latin1');
+    console.log(`  IRC ${JSON.stringify(text)}`);
+    at += 2 + size;
+  }
+  process.exit(0);
+}
 
 if (srpMode) {
   const segment = parseSegment(bytes);

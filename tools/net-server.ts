@@ -27,6 +27,7 @@ import { fileURLToPath } from 'node:url';
 import { NatService } from '../src/net/nat-service.ts';
 import { RouterService } from '../src/net/router-service.ts';
 import { CdKeyService } from '../src/net/cdkey-service.ts';
+import { IrcConnection, IrcService } from '../src/net/irc.ts';
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -130,6 +131,13 @@ const router = new RouterService(
 // that is the honest answer rather than a shortcut.
 const cdkey = new CdKeyService();
 
+// Chat — and the reason a lobby channel can be entered at all: joining a lobby
+// makes the client join an IRC channel. See src/net/irc.ts.
+const irc = new IrcService();
+
+/** Which socket carries which chat connection, so a line can be relayed on. */
+const chatSockets = new Map<IrcConnection, Socket>();
+
 for (const service of [...SERVICES, PROXY, LOBBY]) {
   for (const port of [service.port, service.launcher].filter((p): p is number => p !== null)) {
     const label = port === service.port ? service.prefix : `${service.prefix}Launcher`;
@@ -138,8 +146,7 @@ for (const service of [...SERVICES, PROXY, LOBBY]) {
       const id = ++connections;
       const peer = `${socket.remoteAddress}:${socket.remotePort}`;
       log(`TCP  #${id} ${label}:${port} <- ${peer} connected`);
-      // The router and the wait module it hands the client on to are the same
-      // desk, and the same code answers both. IRC still only listens.
+      // Four desks speak the GS protocol; the chat port speaks IRC in a wrapper.
       const session =
         label === 'Router' || label === 'RouterLauncher'
           ? router.session('router')
@@ -148,8 +155,27 @@ for (const service of [...SERVICES, PROXY, LOBBY]) {
             : label === 'Lobby'
               ? router.session('lobby')
               : null;
+      const chat = label === 'IRC' ? irc.connection() : null;
+      if (chat) {
+        chatSockets.set(chat, socket);
+        socket.on('close', () => {
+          chatSockets.delete(chat);
+          irc.drop(chat);
+        });
+      }
       socket.on('data', (data: Buffer) => {
         log(`TCP  #${id} ${label}:${port} <- ${data.length} bytes\n${hexDump(data)}`);
+        if (chat) {
+          for (const event of chat.receive(data)) {
+            log(`IRC  #${id} ${event.note}`);
+            for (const answer of event.replies) socket.write(answer);
+            // What one player says reaches whoever else is in that channel.
+            for (const out of event.broadcast) {
+              for (const other of irc.others(out.channel, chat)) chatSockets.get(other)?.write(out.line);
+            }
+          }
+          return;
+        }
         if (!session) return;
         let events;
         try {
