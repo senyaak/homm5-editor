@@ -36,17 +36,59 @@ import { LIVE, openModGameRoot, REAL_GAME } from './mods.ts';
  * not put back to its start, and mod-001 failed on finding last week's creature
  * still installed, 93 specs from the end of a 6-minute run.
  */
-function modSpecsUnder(filter: string): boolean {
+function specUnder(filter: string, part: string): boolean {
   const at = join(REPO_ROOT, filter);
   if (!existsSync(at) || !statSync(at).isDirectory()) return false;
   return readdirSync(at, { recursive: true })
-    .some((e) => { const s = String(e); return s.includes('mod-') && s.endsWith('.spec.ts'); });
+    .some((e) => { const s = String(e); return s.includes(part) && s.endsWith('.spec.ts'); });
+}
+
+const modSpecsUnder = (filter: string): boolean => specUnder(filter, 'mod-');
+
+/** What the command line asked for, switches and stray words dropped. */
+function filtersIn(argv: readonly string[]): string[] {
+  return argv.filter((a) => !a.startsWith('-')
+    && (a.includes('spec') || a.includes('e2e') || a.includes('mod-') || a.includes('c1m1')));
 }
 
 export function runHasModStages(argv: readonly string[] = process.argv.slice(2)): boolean {
-  const filters = argv.filter((a) => !a.startsWith('-')
-    && (a.includes('spec') || a.includes('e2e') || a.includes('mod-') || a.includes('c1m1')));
+  const filters = filtersIn(argv);
   return filters.length === 0 || filters.some((f) => f.includes('mod-') || modSpecsUnder(f));
+}
+
+/**
+ * The stage that authors the mod from NOTHING, and the only one a reset is for.
+ *
+ * Named by its file so a rename is caught here rather than by a live run: it is
+ * the first link of the chain, the one whose dialog has to open with no creature
+ * of ours already installed.
+ */
+const CHAIN_START = '001-mod-units-create';
+
+/**
+ * Does this run START the mod chain?
+ *
+ * A different question from "has a mod stage in it", and the difference is what
+ * a live run costs. Every stage after the first BUILDS ON the archive: the map
+ * stages place the creature, the artifacts and the dwellings the stages before
+ * them authored. Taking the archive away in front of one of those does not put
+ * it back to a starting state — it deletes forty megabytes of authored content
+ * that the run will not rebuild, and leaves maps naming things no longer there.
+ *
+ * That is what running one stage live did, over and over: `H5E/homm5-editor.h5u`
+ * gone every time, restored by hand from MOD_BACKUP (Senya, 13.08.2026 —
+ * "стой! это баг!"). It is only right when the chain's own first stage is in the
+ * run, or when nothing was named at all and the run is therefore the whole
+ * suite, chain and all.
+ *
+ * Live only. In the throwaway install a reset costs nothing and the sandbox has
+ * to exist before any stage can work in it, so there `runHasModStages` still
+ * decides.
+ */
+export function runStartsTheModChain(argv: readonly string[] = process.argv.slice(2)): boolean {
+  const filters = filtersIn(argv);
+  return filters.length === 0
+    || filters.some((f) => f.includes(CHAIN_START) || specUnder(f, CHAIN_START));
 }
 
 export default async function build(): Promise<void> {
@@ -84,11 +126,22 @@ export default async function build(): Promise<void> {
   // that price and left the install with maps referring to content that was no
   // longer there: the game loaded them and died. So the runner's own arguments
   // decide. No file named means the whole suite, which has the chain in it.
+  //
+  // AND LIVE, THE ARCHIVE ONLY GOES WHEN THE CHAIN'S FIRST STAGE IS RUNNING.
+  // Every later stage builds ON the archive rather than starting it, so the
+  // reset in front of one of those deleted the installed mod and rebuilt none of
+  // it — see runStartsTheModChain above. The sandbox still gets prepared for any
+  // stage: it has to exist before a stage can work in it, and nothing in it is
+  // anybody's.
+  const startsChain = runStartsTheModChain();
   if (runHasModStages()) {
-    await openModGameRoot();
+    await openModGameRoot(startsChain);
     if (LIVE) {
-      console.warn(`\n[e2e] live run — working in ${REAL_GAME}; the fixtures were cleared`
-        + ' and the specs will rebuild them. Nothing is removed at the end.\n');
+      console.warn(startsChain
+        ? `\n[e2e] live run — working in ${REAL_GAME}; the fixtures were cleared`
+          + ' and the specs will rebuild them. Nothing is removed at the end.\n'
+        : `\n[e2e] live run — working in ${REAL_GAME}. This run does not start the mod`
+          + ' chain, so the installed mod is left exactly as it is.\n');
     }
   } else if (LIVE) {
     console.warn(`\n[e2e] live run — working in ${REAL_GAME}. No mod stage in this run,`

@@ -20,7 +20,7 @@
 //
 //   node tools/test-e2e-setup.ts
 
-import { runHasModStages } from '../e2e/build.ts';
+import { runHasModStages, runStartsTheModChain } from '../e2e/build.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean): void {
@@ -42,13 +42,13 @@ check('...with or without the slash', resets('e2e') === true);
 check('a folder with no stage under it does not', resets('e2e/c1m1/') === false);
 
 // Named files: the rule that was always right.
-check('a stage named by file resets', resets('e2e/mod-001-units-create.spec.ts') === true);
-check('the stage folder resets', resets('e2e/mod-007-sharpshooter/') === true);
-check('one unrelated spec does not', resets('e2e/qol-001-panel.spec.ts') === false);
+check('a stage named by file resets', resets('e2e/001-mod-units-create.spec.ts') === true);
+check('the stage folder resets', resets('e2e/009-mod-sharpshooter/') === true);
+check('one unrelated spec does not', resets('e2e/014-qol-panel.spec.ts') === false);
 check('several unrelated specs do not',
-  resets('e2e/qol-001-panel.spec.ts', 'e2e/play-button.spec.ts') === false);
+  resets('e2e/014-qol-panel.spec.ts', 'e2e/play-button.spec.ts') === false);
 check('and one stage among them is enough',
-  resets('e2e/qol-001-panel.spec.ts', 'e2e/mod-003-artifacts-create.spec.ts') === true);
+  resets('e2e/014-qol-panel.spec.ts', 'e2e/003-mod-artifacts-create.spec.ts') === true);
 
 // Switches are not filters — `--headed`, `--grep @nodata` and friends leave the
 // run as wide as it was.
@@ -59,6 +59,31 @@ check('a switch beside an unrelated spec changes nothing',
 // A folder that does not exist is not a folder: nothing to read, nothing to
 // claim. It cannot report a stage it has no evidence of.
 check('a path that is not there claims no stage', resets('e2e/nosuchfolder/') === false);
+
+// --- and the second question, which only a LIVE run asks -------------------
+//
+// "Has a mod stage in it" prepares the sandbox, and in a throwaway that is free.
+// Live it means DELETING the player's installed archive, and that is only right
+// for the run that authors it again from nothing — the chain's first stage. A
+// run of one later stage builds on the archive: given an empty one it rebuilds
+// none of it and leaves maps naming content that is gone. That happened eight
+// times in one evening (13.08.2026) before it was called what it is.
+const clears = (...argv: string[]): boolean => runStartsTheModChain(argv);
+
+check('nothing named is the whole suite, which starts the chain', clears() === true);
+check('and so is the suite folder', clears('e2e/') === true);
+check('the first stage by name clears', clears('e2e/001-mod-units-create.spec.ts') === true);
+// THE CASE THIS EXISTS FOR. A later stage is a mod stage — `resets` says yes —
+// and it must NOT take the archive away.
+check('a later stage is a mod stage', resets('e2e/013-mod-pandora-map.spec.ts') === true);
+check('...and still leaves the installed mod alone',
+  clears('e2e/013-mod-pandora-map.spec.ts') === false);
+check('the same for the map stage of the chain',
+  clears('e2e/012-mod-sod-map.spec.ts') === false);
+check('a stage folder that is not the first one leaves it alone',
+  clears('e2e/009-mod-sharpshooter/') === false);
+check('and an unrelated spec, as before', clears('e2e/014-qol-panel.spec.ts') === false);
+check('a switch alone is still the whole suite', clears('--headed') === true);
 
 console.log(failures ? `\n${failures} failed` : '\nall good');
 process.exit(failures ? 1 : 0);

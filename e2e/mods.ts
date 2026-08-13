@@ -688,8 +688,12 @@ export async function prepareGameRoot(dir: string): Promise<void> {
  * game with our own things taken back out of it. Doing it per spec would undo
  * the stage before: they share one install and one archive.
  */
-export async function openModGameRoot(): Promise<void> {
-  if (LIVE) { clearInstalledMod(REAL_GAME); return; }
+export async function openModGameRoot(startsChain = true): Promise<void> {
+  // LIVE, ONLY FOR THE RUN THAT STARTS THE CHAIN. `startsChain` is the global
+  // setup's reading of the command line (runStartsTheModChain in build.ts): a
+  // run of one later stage builds on the installed archive and must not be
+  // handed an empty one, because nothing in that run would author it again.
+  if (LIVE) { if (startsChain) clearInstalledMod(REAL_GAME); return; }
   // A machine with no game cannot have one prepared. That is not a failure to
   // report: the data-free half of the suite (`--grep @nodata`, which is what
   // GitHub runs) touches no mod install at all, and the stages that DO need one
