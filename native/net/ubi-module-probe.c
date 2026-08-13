@@ -88,6 +88,17 @@ static const BYTE PROFILE_READ_HEAD[DETOUR_LEN] = { 0x83, 0xEC, 0x38, 0x33, 0xC0
 // logged: these run for every field of every message, and the answer wanted here is
 // one line, not two thousand.
 
+// AND THE PENDING-REQUEST LOOKUP, which is the one thing left after a reply is read.
+// 13.08.2026: every ladder answer after the first comes back to the game as
+// "RequestId=1 — not waiting reply with RequestId=1", whatever number we echo. The
+// number in our reply is looked up here (0x42B810, a `lower_bound`) and the VALUE of
+// whatever it lands on is what the game is told it is waiting for. So the question is
+// exactly three numbers: what we searched with, what key was found, and what value sat
+// under it. Reading the insert side has produced two consistent-looking stories and
+// they cannot both be true.
+#define PENDING_FIND_RVA 0x02b810u
+static const BYTE PENDING_FIND_HEAD[DETOUR_LEN] = { 0x8B, 0x41, 0x04, 0x85, 0xC0 };
+
 /** `read field <index> as a LIST`. */
 #define GET_LIST_RVA 0x042f10u
 static const BYTE GET_LIST_HEAD[DETOUR_LEN] = { 0x8B, 0x44, 0x24, 0x08, 0x50 };
@@ -105,6 +116,7 @@ typedef char(__fastcall *LadderReadFn)(void *client, void *edx, void *a, void *b
 typedef char(__fastcall *ProfileSizeFn)(void *client, void *edx, void *size);
 typedef char(__fastcall *ProfileReadFn)(void *client, void *edx, void *a, void *b, void *c, void *buffer, void *size);
 typedef char(__fastcall *GetFieldFn)(void *list, void *edx, void *into, unsigned int index);
+typedef void *(__fastcall *PendingFindFn)(void *map, void *edx, void **found, unsigned int *key);
 
 static ModuleQueuePushFn g_moduleQueuePush = NULL;
 static ModuleDispatchFn g_moduleDispatch = NULL;
@@ -115,6 +127,7 @@ static ProfileSizeFn g_profileSize = NULL;
 static ProfileReadFn g_profileRead = NULL;
 static GetFieldFn g_getList = NULL;
 static GetFieldFn g_getInt = NULL;
+static PendingFindFn g_pendingFind = NULL;
 
 /**
  * A message's type byte, or -1 when the pointer is not one.
@@ -192,6 +205,21 @@ static char __fastcall get_int_hook(void *list, void *edx, void *into, unsigned 
   return ok;
 }
 
+static void *__fastcall pending_find_hook(void *map, void *edx, void **found, unsigned int *key) {
+  void *result = g_pendingFind(map, edx, found, key);
+  // The three numbers, and nothing else: what was searched for, what the search landed
+  // on, and the value under it — which is the id the game is then told to expect.
+  log_num("module probe: looking up pending request ", readable(key, 4) ? (int)*key : -1);
+  void *node = found && readable(found, 4) ? *found : NULL;
+  if (node && node != map && readable(node, 24)) {
+    log_num("module probe:   landed on key ", *(int *)((BYTE *)node + 16));
+    log_num("module probe:   whose value is ", *(int *)((BYTE *)node + 20));
+  } else {
+    log_num("module probe:   nothing at or above it, map ", (int)(SIZE_T)map);
+  }
+  return result;
+}
+
 /** Watch every point a module reply has to pass. */
 static int install_module_probe(void) {
   g_moduleQueuePush = (ModuleQueuePushFn)detour(MODULE_QUEUE_PUSH_RVA, MODULE_QUEUE_PUSH_HEAD,
@@ -211,6 +239,8 @@ static int install_module_probe(void) {
                                         &profile_read_hook, "profile record read");
   g_getList = (GetFieldFn)detour(GET_LIST_RVA, GET_LIST_HEAD, DETOUR_LEN, &get_list_hook, "get a list field");
   g_getInt = (GetFieldFn)detour(GET_INT_RVA, GET_INT_HEAD, GET_INT_HEAD_LEN, &get_int_hook, "get a number field");
+  g_pendingFind = (PendingFindFn)detour(PENDING_FIND_RVA, PENDING_FIND_HEAD, DETOUR_LEN, &pending_find_hook,
+                                       "pending request lookup");
   return g_moduleQueuePush && g_moduleDispatch && g_moduleScan && g_moduleStatus && g_ladderRead
-         && g_profileSize && g_profileRead && g_getList && g_getInt;
+         && g_profileSize && g_profileRead && g_getList && g_getInt && g_pendingFind;
 }
