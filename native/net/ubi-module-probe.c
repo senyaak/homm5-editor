@@ -99,6 +99,10 @@ static const BYTE PROFILE_READ_HEAD[DETOUR_LEN] = { 0x83, 0xEC, 0x38, 0x33, 0xC0
 #define PENDING_FIND_RVA 0x02b810u
 static const BYTE PENDING_FIND_HEAD[DETOUR_LEN] = { 0x8B, 0x41, 0x04, 0x85, 0xC0 };
 
+/** `insert a pair into one of the ladder's two maps` — its queue, and its sends. */
+#define PENDING_INSERT_RVA 0x02b9e0u
+static const BYTE PENDING_INSERT_HEAD[DETOUR_LEN] = { 0x53, 0x8B, 0x5C, 0x24, 0x0C };
+
 /** `read field <index> as a LIST`. */
 #define GET_LIST_RVA 0x042f10u
 static const BYTE GET_LIST_HEAD[DETOUR_LEN] = { 0x8B, 0x44, 0x24, 0x08, 0x50 };
@@ -117,6 +121,7 @@ typedef char(__fastcall *ProfileSizeFn)(void *client, void *edx, void *size);
 typedef char(__fastcall *ProfileReadFn)(void *client, void *edx, void *a, void *b, void *c, void *buffer, void *size);
 typedef char(__fastcall *GetFieldFn)(void *list, void *edx, void *into, unsigned int index);
 typedef void *(__fastcall *PendingFindFn)(void *map, void *edx, void **found, unsigned int *key);
+typedef void *(__fastcall *PendingInsertFn)(void *map, void *edx, void *result, int *pair);
 
 static ModuleQueuePushFn g_moduleQueuePush = NULL;
 static ModuleDispatchFn g_moduleDispatch = NULL;
@@ -128,6 +133,7 @@ static ProfileReadFn g_profileRead = NULL;
 static GetFieldFn g_getList = NULL;
 static GetFieldFn g_getInt = NULL;
 static PendingFindFn g_pendingFind = NULL;
+static PendingInsertFn g_pendingInsert = NULL;
 
 /**
  * A message's type byte, or -1 when the pointer is not one.
@@ -205,19 +211,70 @@ static char __fastcall get_int_hook(void *list, void *edx, void *into, unsigned 
   return ok;
 }
 
+// A `std::map<int,int>` as this build lays one out, read off the insert (0x42B9E0),
+// the lookup (0x42B810) and the erase (0x426E90) rather than assumed:
+//
+//   map:   +4 root, +8 leftmost, +0xC rightmost, +0x10 size; the map's OWN address is
+//          what an iterator equal to end() holds
+//   node:  +4 parent, +8 left, +0xC right, +0x10 key, +0x14 value
+//
+// Print the WHOLE thing. Reading these two maps by eye has now produced three
+// self-consistent stories that each fail against the log, and one number per launch is
+// not a way to settle anything — a launch costs Сеня a launch, and the tree is twenty
+// bytes a node.
+#define MAP_ROOT(map) (*(void **)((BYTE *)(map) + 4))
+#define NODE_LEFT(n) (*(void **)((BYTE *)(n) + 8))
+#define NODE_RIGHT(n) (*(void **)((BYTE *)(n) + 12))
+#define NODE_KEY(n) (*(int *)((BYTE *)(n) + 16))
+#define NODE_VALUE(n) (*(int *)((BYTE *)(n) + 20))
+
+static void dump_map_nodes(void *node, int depth) {
+  if (!node || depth > 24 || !readable(node, 24)) return;
+  dump_map_nodes(NODE_LEFT(node), depth + 1);
+  log_num("module probe:     key ", NODE_KEY(node));
+  log_num("module probe:       -> value ", NODE_VALUE(node));
+  dump_map_nodes(NODE_RIGHT(node), depth + 1);
+}
+
+static void dump_map(const char *what, void *map) {
+  if (!readable(map, 20)) {
+    log_line("module probe: unreadable map");
+    return;
+  }
+  log_line(what);
+  log_num("module probe:   at ", (int)(SIZE_T)map);
+  log_num("module probe:   holding ", *(int *)((BYTE *)map + 16));
+  dump_map_nodes(MAP_ROOT(map), 0);
+}
+
 static void *__fastcall pending_find_hook(void *map, void *edx, void **found, unsigned int *key) {
   void *result = g_pendingFind(map, edx, found, key);
-  // The three numbers, and nothing else: what was searched for, what the search landed
-  // on, and the value under it — which is the id the game is then told to expect.
-  log_num("module probe: looking up pending request ", readable(key, 4) ? (int)*key : -1);
+  log_num("module probe: LOOKUP for ", readable(key, 4) ? (int)*key : -1);
+  dump_map("module probe:   in this map:", map);
   void *node = found && readable(found, 4) ? *found : NULL;
   if (node && node != map && readable(node, 24)) {
-    log_num("module probe:   landed on key ", *(int *)((BYTE *)node + 16));
-    log_num("module probe:   whose value is ", *(int *)((BYTE *)node + 20));
+    log_num("module probe:   landed on key ", NODE_KEY(node));
+    log_num("module probe:   whose value is ", NODE_VALUE(node));
   } else {
-    log_num("module probe:   nothing at or above it, map ", (int)(SIZE_T)map);
+    log_line("module probe:   nothing at or above it — this is end()");
   }
   return result;
+}
+
+static void *__fastcall pending_insert_hook(void *map, void *edx, void *result, int *pair) {
+  void *out = g_pendingInsert(map, edx, result, pair);
+  // Both maps of the ladder go through this one function, so the map's address is the
+  // thing that tells them apart — and whether the key was ALREADY there matters more
+  // than anything else here: this insert does not overwrite (0x42BA35 compares and
+  // returns {existing, false}), so a repeated key keeps the FIRST value for ever.
+  log_num("module probe: INSERT into map at ", (int)(SIZE_T)map);
+  if (readable(pair, 8)) {
+    log_num("module probe:   key ", pair[0]);
+    log_num("module probe:   value ", pair[1]);
+  }
+  if (readable(result, 8)) log_num("module probe:   newly inserted? ", *((BYTE *)result + 4));
+  dump_map("module probe:   the map is now:", map);
+  return out;
 }
 
 /** Watch every point a module reply has to pass. */
@@ -241,6 +298,8 @@ static int install_module_probe(void) {
   g_getInt = (GetFieldFn)detour(GET_INT_RVA, GET_INT_HEAD, GET_INT_HEAD_LEN, &get_int_hook, "get a number field");
   g_pendingFind = (PendingFindFn)detour(PENDING_FIND_RVA, PENDING_FIND_HEAD, DETOUR_LEN, &pending_find_hook,
                                        "pending request lookup");
+  g_pendingInsert = (PendingInsertFn)detour(PENDING_INSERT_RVA, PENDING_INSERT_HEAD, DETOUR_LEN,
+                                           &pending_insert_hook, "pending request insert");
   return g_moduleQueuePush && g_moduleDispatch && g_moduleScan && g_moduleStatus && g_ladderRead
-         && g_profileSize && g_profileRead && g_getList && g_getInt && g_pendingFind;
+         && g_profileSize && g_profileRead && g_getList && g_getInt && g_pendingFind && g_pendingInsert;
 }
