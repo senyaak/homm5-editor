@@ -223,18 +223,121 @@ if (wanted[0] === '--func' || wanted[0] === '--frame') {
   // entry and rewrites each access as `arg1`, `arg2`, … or `local(-N)`, which is
   // stable. Arithmetic nobody should do by eye three times in a row.
   const asFrame = wanted[0] === '--frame';
-  for (const arg of wanted.slice(1)) {
-    const start = Number(arg);
+  // How far esp has moved since entry: 0 at the first instruction, negative after a
+  // push. `ebp` is followed too, for the frames that set it up. `sure` goes false
+  // where the count stops being arithmetic and starts being a guess.
+  interface Frame {
+    esp: number;
+    ebp: number | null;
+    sure: boolean;
+  }
+  const walk = (start: number) => {
     const section = pe.sections.find((s) => start - pe.imageBase >= s.va && start - pe.imageBase < s.va + s.virtualSize)!;
     const code = pe.bytesOf(section).subarray(start - (pe.imageBase + section.va));
-    console.log(`--- function 0x${start.toString(16)}${asFrame ? ' (stack slots named from the entry esp)' : ''}`);
-    // How far esp has moved since entry: 0 at the first instruction, negative after a
-    // push. `ebp` is followed too, for the frames that set it up.
-    let esp = 0;
-    let ebp: number | null = null;
-    for (const ins of functionBody(code, start, 0x800)) {
+    const body = functionBody(code, start, 0x800);
+    // What an indirect call is assumed to clean up: the run of pushes that leads into
+    // it, four bytes each — unless the caller cleans them itself right afterwards
+    // (`add esp,N`), which is the cdecl case and counting it twice would be worse.
+    const assumed = new Map<number, number>();
+    for (let i = 0; i < body.length; i++) {
+      const ins = body[i]!;
+      if (ins.mnemonic !== 'call' || ins.branchTarget !== undefined) continue;
+      if (/^add esp,/.test(body[i + 1]?.text ?? '')) continue;
+      let pushes = 0;
+      for (let j = i - 1; j >= 0; j--) {
+        const before = body[j]!;
+        if (/^push\b/.test(before.text)) {
+          pushes++;
+          continue;
+        }
+        // Anything that ends the argument block, or that moves esp on its own account.
+        if (/^(call|ret|j|pop|sub esp|add esp|leave)/.test(before.text)) break;
+      }
+      assumed.set(ins.address, pushes * 4);
+    }
+    const after = (ins: Instruction, frame: Frame): Frame => {
+      const text = ins.text;
+      const step = (esp: number, ebp = frame.ebp, sure = frame.sure): Frame => ({ esp, ebp, sure });
+      if (/^push\b/.test(text)) return step(frame.esp - 4);
+      if (/^pop\b/.test(text)) return step(frame.esp + 4);
+      const sub = /^sub esp,([0-9A-Fa-f]+)h?$/.exec(text);
+      if (sub) return step(frame.esp - Number.parseInt(sub[1]!, 16));
+      const add = /^add esp,([0-9A-Fa-f]+)h?$/.exec(text);
+      if (add) return step(frame.esp + Number.parseInt(add[1]!, 16));
+      if (text === 'mov ebp,esp') return step(frame.esp, frame.esp);
+      if (text === 'mov esp,ebp' && frame.ebp !== null) return step(frame.ebp);
+      // A CALLEE that cleans up. Almost everything here is stdcall or thiscall, so the
+      // arguments a caller pushed are gone once the call returns — without this the
+      // count drifts by four bytes per call and every slot after the first call is
+      // named wrong. Which is precisely the mistake this mode exists to prevent, so it
+      // is worth reading the callee's own `ret` to find out.
+      if (ins.mnemonic === 'call') {
+        // Through a vtable or the import table there is no `ret` to read, so the arity
+        // is counted from the pushes that lead into the call and the frame is marked as
+        // a guess from there on. Ignoring it instead would be a guess too — the silent
+        // kind, four bytes per argument, and it is what made this mode necessary.
+        if (ins.branchTarget === undefined) return step(frame.esp + (assumed.get(ins.address) ?? 0), frame.ebp, false);
+        return step(frame.esp + cleanup(pe, ins.branchTarget));
+      }
+      return step(frame.esp);
+    };
+    // The frame at each instruction, carried along the BRANCHES rather than down the
+    // page. A function's epilogue is rarely its last instruction — the early-out
+    // returns in the middle, and the code after it is reached by a jump from before,
+    // still inside the frame. Read linearly, everything past that `ret` was named from
+    // esp 0 and read as arguments when they are locals.
+    const index = new Map(body.map((ins, i) => [ins.address, i]));
+    const frames = new Map<number, Frame>();
+    const disputed = new Set<number>();
+    const work: Array<{ address: number; frame: Frame }> = [{ address: start, frame: { esp: 0, ebp: null, sure: true } }];
+    while (work.length) {
+      const { address, frame } = work.pop()!;
+      const i = index.get(address);
+      if (i === undefined) continue;
+      const seen = frames.get(address);
+      if (seen) {
+        // Two paths disagreeing means one of them was mis-decoded; keep the first and
+        // say which address to distrust, instead of quietly overwriting.
+        if (seen.esp !== frame.esp) disputed.add(address);
+        continue;
+      }
+      frames.set(address, frame);
+      const ins = body[i]!;
+      if (ins.mnemonic === 'ret') continue;
+      const next = after(ins, frame);
+      const jump = ins.mnemonic !== 'call' && ins.branchTarget !== undefined;
+      if (jump) work.push({ address: ins.branchTarget!, frame: next });
+      if (!jump || ins.mnemonic !== 'jmp') {
+        const fallthrough = body[i + 1];
+        if (fallthrough) work.push({ address: fallthrough.address, frame: next });
+      }
+    }
+    return { body, frames, disputed };
+  };
+
+  for (const arg of wanted.slice(1)) {
+    // An address written down in the notes is usually a place INSIDE a function — the
+    // instruction something was noticed at. Decoding from there names every slot from
+    // the wrong esp and hides the prologue, so walk back to the entry first and say so.
+    const asked = Number(arg);
+    const candidate = functionStartOf(pe, asked) ?? asked;
+    let start = candidate;
+    let { body, frames, disputed } = walk(candidate);
+    // Neighbours with no padding between them look like one function to the walk back,
+    // and then the address asked about sits in code the entry never reaches. That is the
+    // tell that it is an entry of its own, so decode it as one.
+    if (start !== asked && !frames.has(asked)) {
+      start = asked;
+      ({ body, frames, disputed } = walk(asked));
+    }
+    const inside = start === asked ? (candidate === asked ? '' : ` (0x${candidate.toString(16)} runs into it, but never reaches it)`) : ` (0x${asked.toString(16)} is inside it)`;
+    console.log(`--- function 0x${start.toString(16)}${inside}${asFrame ? ' (stack slots named from the entry esp)' : ''}`);
+    let reached = true;
+    for (const ins of body) {
+      const frame = frames.get(ins.address);
+      const { esp, ebp } = frame ?? { esp: 0, ebp: null };
       let text = ins.text;
-      if (asFrame) {
+      if (asFrame && frame) {
         // At entry `[esp+0]` is the return address, `[esp+4]` the first argument. So a
         // slot at entry+4k is argument k, and anything at or below entry is a local.
         const name = (at: number): string => (at >= 4 && at % 4 === 0 ? `arg${at / 4}` : `local${at}`);
@@ -244,26 +347,50 @@ if (wanted[0] === '--func' || wanted[0] === '--frame') {
           const value = digits.endsWith('h') ? Number.parseInt(digits.slice(0, -1), 16) : Number(digits);
           return sign === '-' ? -value : value;
         };
+        // A guessed frame is marked on every slot it names, so a reading taken from
+        // this listing carries the doubt with it: `[local-40?]`, not `[local-40]`.
+        const doubt = frame.sure ? '' : '?';
         const slot = (from: number) => (_: string, sign: string, digits: string) =>
-          `[${name(from + displacement(sign, digits))}]`;
+          `[${name(from + displacement(sign, digits))}${doubt}]`;
         text = text.replace(/\[esp(?:([+-])([0-9a-fA-F]+h|\d+))?\]/g, slot(esp));
         if (ebp !== null) text = text.replace(/\[ebp(?:([+-])([0-9a-fA-F]+h|\d+))?\]/g, slot(ebp));
       }
-      console.log(`  ${ins.address.toString(16)}  ${text}${annotate(pe, ins)}`);
-      // AFTER printing: an access is relative to the esp the instruction saw.
-      const body = ins.text;
-      if (/^push\b/.test(body)) esp -= 4;
-      else if (/^pop\b/.test(body)) esp += 4;
-      else if (/^sub esp,([0-9A-Fa-fx]+)h?$/.test(body)) esp -= Number.parseInt(body.replace(/^sub esp,/, '').replace(/h$/, ''), 16);
-      else if (/^add esp,([0-9A-Fa-fx]+)h?$/.test(body)) esp += Number.parseInt(body.replace(/^add esp,/, '').replace(/h$/, ''), 16);
-      else if (body === 'mov ebp,esp') ebp = esp;
-      else if (body === 'mov esp,ebp' && ebp !== null) esp = ebp;
-      // A CALLEE that cleans up. Almost everything here is stdcall or thiscall, so the
-      // arguments a caller pushed are gone once the call returns — without this the
-      // count drifts by four bytes per call and every slot after the first call is
-      // named wrong. Which is precisely the mistake this mode exists to prevent, so it
-      // is worth reading the callee's own `ret` to find out.
-      else if (ins.mnemonic === 'call' && ins.branchTarget !== undefined) esp += cleanup(pe, ins.branchTarget);
+      // Said once per run of unreached code, not once per line: a jump table's cases are
+      // all unreached from here, and a note on each would bury the listing.
+      const doubted = asFrame && !frame && reached ? '   ; nothing reaches this and what follows — slots left as written' : '';
+      reached = frame !== undefined;
+      const contested = asFrame && disputed.has(ins.address) ? '   ; two paths arrive with different esp' : '';
+      console.log(`  ${ins.address.toString(16)}  ${text}${annotate(pe, ins)}${doubted}${contested}`);
+    }
+  }
+  process.exit(0);
+}
+
+// `--grep <text>`: every string CONTAINING the text, with what references it.
+//
+// The plain lookup matches a whole literal, so asking for a name that lives inside a
+// longer one ("FriendsSend_AddFriend" inside "NUbi::CClient2::FriendsSend_AddFriend(")
+// answers "no such string" about a string that is plainly there. That false negative
+// has cost a day once already; this is the way round it.
+if (wanted[0] === '--grep') {
+  for (const needle of wanted.slice(1)) {
+    console.log(`--- strings containing "${needle}"`);
+    for (const section of pe.sections) {
+      if (section.name === '.text') continue;
+      const bytes = pe.bytesOf(section);
+      const base = pe.imageBase + section.va;
+      for (let at = 0; at < bytes.length; at++) {
+        if (bytes[at] === 0 || bytes[at]! < 0x20 || bytes[at]! > 0x7e) continue;
+        let end = at;
+        while (end < bytes.length && bytes[end]! >= 0x20 && bytes[end]! <= 0x7e) end++;
+        const text = Buffer.from(bytes.subarray(at, end)).toString('latin1');
+        if (bytes[end] === 0 && text.includes(needle)) {
+          const va = base + at;
+          const refs = pe.pointersTo(va).map((off) => pe.addressOf(off)?.toString(16) ?? '?');
+          console.log(`  ${va.toString(16)}  ${JSON.stringify(text)}${refs.length ? `   referenced at ${refs.join(' ')}` : ''}`);
+        }
+        at = end;
+      }
     }
   }
   process.exit(0);
