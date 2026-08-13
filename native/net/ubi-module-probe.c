@@ -81,6 +81,22 @@ static const BYTE PROFILE_SIZE_HEAD[DETOUR_LEN] = { 0x83, 0xEC, 0x38, 0x33, 0xC0
 #define PROFILE_READ_RVA 0x02b400u
 static const BYTE PROFILE_READ_HEAD[DETOUR_LEN] = { 0x83, 0xEC, 0x38, 0x33, 0xC0 };
 
+// AND THE GETTERS THEMSELVES, on their FAILURES only. The reader says no; these say
+// which field it was reading when it did. Both take (destination, index) and both
+// refuse a field whose kind is not theirs — a list getter given a number, a number
+// getter given a list — which is the whole class of mistake left. A success is not
+// logged: these run for every field of every message, and the answer wanted here is
+// one line, not two thousand.
+
+/** `read field <index> as a LIST`. */
+#define GET_LIST_RVA 0x042f10u
+static const BYTE GET_LIST_HEAD[DETOUR_LEN] = { 0x8B, 0x44, 0x24, 0x08, 0x50 };
+
+/** `read field <index> as an INT` — a string, through atoi. */
+#define GET_INT_RVA 0x0435c0u
+#define GET_INT_HEAD_LEN 8
+static const BYTE GET_INT_HEAD[GET_INT_HEAD_LEN] = { 0x83, 0xEC, 0x28, 0xA1, 0x08, 0xFD, 0x08, 0x01 };
+
 typedef void(__fastcall *ModuleQueuePushFn)(void *queue, void *edx, void *message);
 typedef char(__fastcall *ModuleDispatchFn)(void *transport, void *edx, unsigned int request);
 typedef void *(__fastcall *ModuleScanFn)(void *client, void *edx, unsigned int request);
@@ -88,6 +104,7 @@ typedef char(__fastcall *ModuleStatusFn)(void *client, void *edx, unsigned int r
 typedef char(__fastcall *LadderReadFn)(void *client, void *edx, void *a, void *b, void *c);
 typedef char(__fastcall *ProfileSizeFn)(void *client, void *edx, void *size);
 typedef char(__fastcall *ProfileReadFn)(void *client, void *edx, void *a, void *b, void *c, void *buffer, void *size);
+typedef char(__fastcall *GetFieldFn)(void *list, void *edx, void *into, unsigned int index);
 
 static ModuleQueuePushFn g_moduleQueuePush = NULL;
 static ModuleDispatchFn g_moduleDispatch = NULL;
@@ -96,6 +113,8 @@ static ModuleStatusFn g_moduleStatus = NULL;
 static LadderReadFn g_ladderRead = NULL;
 static ProfileSizeFn g_profileSize = NULL;
 static ProfileReadFn g_profileRead = NULL;
+static GetFieldFn g_getList = NULL;
+static GetFieldFn g_getInt = NULL;
 
 /**
  * A message's type byte, or -1 when the pointer is not one.
@@ -161,6 +180,18 @@ static char __fastcall profile_read_hook(void *client, void *edx, void *a, void 
   return ok;
 }
 
+static char __fastcall get_list_hook(void *list, void *edx, void *into, unsigned int index) {
+  char ok = g_getList(list, edx, into, index);
+  if (!ok) log_num("module probe: no LIST at index ", (int)index);
+  return ok;
+}
+
+static char __fastcall get_int_hook(void *list, void *edx, void *into, unsigned int index) {
+  char ok = g_getInt(list, edx, into, index);
+  if (!ok) log_num("module probe: no NUMBER at index ", (int)index);
+  return ok;
+}
+
 /** Watch every point a module reply has to pass. */
 static int install_module_probe(void) {
   g_moduleQueuePush = (ModuleQueuePushFn)detour(MODULE_QUEUE_PUSH_RVA, MODULE_QUEUE_PUSH_HEAD,
@@ -178,6 +209,8 @@ static int install_module_probe(void) {
                                         &profile_size_hook, "profile length read");
   g_profileRead = (ProfileReadFn)detour(PROFILE_READ_RVA, PROFILE_READ_HEAD, DETOUR_LEN,
                                         &profile_read_hook, "profile record read");
+  g_getList = (GetFieldFn)detour(GET_LIST_RVA, GET_LIST_HEAD, DETOUR_LEN, &get_list_hook, "get a list field");
+  g_getInt = (GetFieldFn)detour(GET_INT_RVA, GET_INT_HEAD, GET_INT_HEAD_LEN, &get_int_hook, "get a number field");
   return g_moduleQueuePush && g_moduleDispatch && g_moduleScan && g_moduleStatus && g_ladderRead
-         && g_profileSize && g_profileRead;
+         && g_profileSize && g_profileRead && g_getList && g_getInt;
 }
