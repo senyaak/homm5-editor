@@ -107,6 +107,7 @@
 #include "net/ubi-log.c"
 #include "net/ubi-module-probe.c"
 #include "net/ubi-friends-probe.c"
+#include "net/ubi-room-probe.c"
 
 /**
  * Which switch turns this file's logging on — see the bottom of core/log.c.
@@ -147,6 +148,9 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   // And another — `--log net/ubi-friends-probe`. A friend the server says is online
   // is drawn as offline, and the two things that could mean have different fixes.
   if (install_friends_probe()) log_line("the friends list is being watched");
+  // And a third — `--log net/ubi-room-probe`. A game in the list that cannot be
+  // joined is either a flag we sent or a row nobody can select, and reading says both.
+  if (install_room_probe()) log_line("the games list is being watched");
   load_config();
   if (g_rowCount || g_skillRowCount) install_hooks();
   // Independent of the config: the functions are ours to offer whether or not
