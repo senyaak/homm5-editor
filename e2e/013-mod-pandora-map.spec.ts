@@ -439,6 +439,19 @@ const RUNE_BOX = {
   name: 'PandoraRunesForTheDwarf', x: 6, y: DWARF.at.y,
   contents: { name: 'PandoraRunesForTheDwarf', spells: RUNES },
 };
+/**
+ * And 20 000 experience beside it, which is the way to the other two runes.
+ *
+ * NOT because a rune asks a hero level — none of them does. It asks a MASTERY,
+ * and mastery is bought with LEVELS: Bersy starts on basic Runelore, and every
+ * level-up is a chance to take it to advanced and then expert. 20 000 is about
+ * eleven levels from nothing, so the same rune box can be walked into twice and
+ * answer differently the second time.
+ */
+const DWARF_EXP = {
+  name: 'PandoraLevelsForTheDwarf', x: 8, y: DWARF.at.y,
+  contents: { name: 'PandoraLevelsForTheDwarf', exp: 20_000 },
+};
 
 /**
  * FOUR SCROLLS, one per adventure spell, a row above the levels.
@@ -709,10 +722,11 @@ test('two sides, each with a hero of their own', async () => {
   const dwarf = await place(page, () => pickEntry(page, DWARF.entry), DWARF.entry,
     DWARF.at.x, DWARF.at.y);
   await setPath(page, dwarf, ['PlayerID'], SIDES[0]!.player);
-  const runeId = await place(page, () => pickObject(page, BOX), RUNE_BOX.name, RUNE_BOX.x, RUNE_BOX.y);
-  await setPath(page, runeId, ['Name'], RUNE_BOX.name);
-  await page.evaluate((p) => window.editor.pandoraSet(p.id, p.contents),
-    { id: runeId, contents: RUNE_BOX.contents });
+  for (const b of [RUNE_BOX, DWARF_EXP]) {
+    const id = await place(page, () => pickObject(page, BOX), b.name, b.x, b.y);
+    await setPath(page, id, ['Name'], b.name);
+    await page.evaluate((p) => window.editor.pandoraSet(p.id, p.contents), { id, contents: b.contents });
+  }
   const runeSign = await place(page, () => pickObject(page, SIGN), 'sign-runes',
     DWARF.at.x + STEP, DWARF.at.y);
   await page.evaluate((oid) => window.view.select(oid), runeSign);
@@ -721,7 +735,9 @@ test('two sides, each with a hero of their own', async () => {
     + ' advanced), Dragon Form (5, expert). The dwarf beside this post learns the'
     + ' ones his Runelore reaches and LOSES the rest - no rune asks a hero level,'
     + ' only the skill. Bring anybody else and all three are paid for instead,'
-    + ' 1000 experience a level, because runes are not his kind of magic.');
+    + ' 1000 experience a level, because runes are not his kind of magic.'
+    + ' The box behind them holds 20000 experience: take Runelore up a step with'
+    + ' the levels it buys, then walk into the runes again.');
 
   // THE SCROLLS — the same four spells as artifacts rather than as pages.
   for (const s of SCROLLS) {
@@ -875,6 +891,10 @@ test('saving writes the block the game reads, and the texts it shows', async () 
   // 13.08.2026. 249, 256 and 258 are the engine's own ids, out of `types.xml`.
   expect(entryOf(RUNE_BOX.name), 'the runes go down as numbers, priced by level')
     .toContain('spells = { {249, 1000}, {256, 3000}, {258, 5000} }');
+  // And the levels beside them, which is how the other two runes are reached:
+  // the mastery comes from levelling, not from the box.
+  expect(entryOf(DWARF_EXP.name), 'and 20 000 experience stands beside them')
+    .toContain('exp = 20000');
 });
 
 test('and it packs to a map the game can be pointed at', async () => {
