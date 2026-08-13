@@ -103,6 +103,7 @@
 #include "qol/pandora-box.c"
 #include "qol/pandora-notify.c"
 #include "net/ubi-log.c"
+#include "net/ubi-module-probe.c"
 
 /**
  * Which switch turns this file's logging on — see the bottom of core/log.c.
@@ -136,6 +137,10 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   // game does: the engine's own log, in our file. Only in a build that asked for
   // it — `--log net/ubi-log` — and it says so when it goes in.
   if (install_ubi_log()) log_line("the engine's own log is mirrored here");
+  // A probe, and only in a build that asks for it — `--log net/ubi-module-probe`.
+  // It watches the three points a module reply has to pass, because reading them
+  // has been wrong twice and each wrong reading costs a launch.
+  if (install_module_probe()) log_line("the module reply path is being watched");
   load_config();
   if (g_rowCount || g_skillRowCount) install_hooks();
   // Independent of the config: the functions are ours to offer whether or not
