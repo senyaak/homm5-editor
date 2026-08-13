@@ -47,14 +47,28 @@ static const BYTE FRIEND_CHANGED_HEAD[DETOUR_LEN] = { 0x83, 0xEC, 0x0C, 0x53, 0x
 #define MEMBER_ROW_RVA 0x5108f0u
 static const BYTE MEMBER_ROW_HEAD[DETOUR_LEN] = { 0x83, 0xEC, 0x0C, 0x53, 0x56 };
 
+/**
+ * And the row itself, on its way into the view — which is the only thing drawn.
+ *
+ * `SPlayerData`: the name at +0x0C, a rating at +0x18, the online flag at +0x1C and
+ * "this row is a friend" at +0x20. A member's row carries his real rating; a friend's
+ * carries **-1**, written by 0x910A00 with no source and no condition. Both symptoms —
+ * no rating and "offline" — are about this record, so this is where to read it.
+ */
+#define ROW_INSERT_RVA 0x50fc80u
+#define ROW_INSERT_HEAD_LEN 8
+static const BYTE ROW_INSERT_HEAD[ROW_INSERT_HEAD_LEN] = { 0x53, 0x8B, 0xD9, 0x56, 0x8B, 0x74, 0x24, 0x0C };
+
 typedef void(__fastcall *FriendUpdateFn)(void *lib, void *edx, void *message);
 typedef void(__fastcall *FriendRowFn)(void *listener, void *edx, void *friendPair);
 typedef void(__fastcall *MemberRowFn)(void *listener, void *edx, void *member);
+typedef void(__fastcall *RowInsertFn)(void *panel, void *edx, void *row);
 
 static FriendUpdateFn g_friendUpdate = NULL;
 static FriendRowFn g_friendRow = NULL;
 static FriendRowFn g_friendChanged = NULL;
 static MemberRowFn g_memberRow = NULL;
+static RowInsertFn g_rowInsert = NULL;
 
 /**
  * The text of one of this build's strings.
@@ -88,9 +102,16 @@ static void __fastcall friend_row_hook(void *listener, void *edx, void *friendPa
   // controller's +0x28 — the tab. 1 is the friends tab, and on any other value this
   // function does nothing at all, which would be the whole answer by itself.
   if (readable(listener, 0x1c)) log_num("friends probe: a friend row, with the panel's tab at ", *(int *)((BYTE *)listener + 0x18));
-  if (readable(friendPair, 0x10)) {
-    log_text("friends probe:   for ", string_text(friendPair));
-    log_num("friends probe:   and his online flag says ", *(int *)((BYTE *)friendPair + 0x0c));
+  if (readable(friendPair, 0x20)) {
+    // TWO callers, and they may not hand over the same record: a friend arriving is
+    // announced with a {name, flag} pair, while switching to the friends tab walks the
+    // collection itself (0x912440 -> the enumerate at +8 of IFriends). A stored friend
+    // has his name at +0x10 and his flag at +0x1C, so printing both readings says which
+    // record this is — one of them will be a name and the other will be nonsense.
+    log_text("friends probe:   read as a pair, the name is ", string_text(friendPair));
+    log_num("friends probe:   and the flag beside it says ", *(int *)((BYTE *)friendPair + 0x0c));
+    log_text("friends probe:   read as a stored friend, the name is ", string_text((BYTE *)friendPair + 0x10));
+    log_num("friends probe:   and the flag beside THAT says ", *(int *)((BYTE *)friendPair + 0x1c));
   }
   g_friendRow(listener, edx, friendPair);
 }
@@ -114,6 +135,20 @@ static void __fastcall member_row_hook(void *listener, void *edx, void *member) 
   g_memberRow(listener, edx, member);
 }
 
+static void __fastcall row_insert_hook(void *panel, void *edx, void *row) {
+  // The record as the view will have it. Both of the things wrong on the screen — no
+  // rating, and "offline" — are four bytes each, and they are these.
+  if (readable(row, 0x24)) {
+    log_text("friends probe: a row goes into the panel for ", string_text((BYTE *)row + 0x0c));
+    log_num("friends probe:   rated ", *(int *)((BYTE *)row + 0x18));
+    log_num("friends probe:   online ", *(int *)((BYTE *)row + 0x1c));
+    log_num("friends probe:   and a friend? ", *((BYTE *)row + 0x20));
+  } else {
+    log_line("friends probe: a row goes into the panel — and it is null, which clears the list");
+  }
+  g_rowInsert(panel, edx, row);
+}
+
 /** Watch a friend from the wire to the row he becomes. */
 static int install_friends_probe(void) {
   g_friendUpdate = (FriendUpdateFn)detour(FRIEND_UPDATE_RVA, FRIEND_UPDATE_HEAD, DETOUR_LEN,
@@ -124,5 +159,7 @@ static int install_friends_probe(void) {
                                         &friend_changed_hook, "friend row changed");
   g_memberRow = (MemberRowFn)detour(MEMBER_ROW_RVA, MEMBER_ROW_HEAD, DETOUR_LEN, &member_row_hook,
                                     "member row built");
-  return g_friendUpdate && g_friendRow && g_friendChanged && g_memberRow;
+  g_rowInsert = (RowInsertFn)detour(ROW_INSERT_RVA, ROW_INSERT_HEAD, ROW_INSERT_HEAD_LEN,
+                                    &row_insert_hook, "row into the panel");
+  return g_friendUpdate && g_friendRow && g_friendChanged && g_memberRow && g_rowInsert;
 }
