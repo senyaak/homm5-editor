@@ -47,6 +47,39 @@ function functionStartOf(pe: PEFile, va: number, back = 0x2000): number | null {
   return null;
 }
 
+/**
+ * How many bytes of arguments a function pops on its way out — the `N` of `ret N`.
+ *
+ * Every `ret` in a function agrees on it (the compiler has one epilogue's worth of
+ * truth), so the first one found is the answer; 0 for a cdecl callee, and 0 for
+ * anything not decodable, which errs towards leaving the count alone.
+ */
+const cleanups = new Map<number, number>();
+function cleanup(pe: PEFile, target: number): number {
+  const known = cleanups.get(target);
+  if (known !== undefined) return known;
+  cleanups.set(target, 0); // Against recursion, before the walk.
+  let found = 0;
+  if (pe.isCode(target)) {
+    const section = pe.sections.find((s) => target - pe.imageBase >= s.va && target - pe.imageBase < s.va + s.virtualSize);
+    if (section) {
+      const code = pe.bytesOf(section).subarray(target - (pe.imageBase + section.va));
+      for (const ins of functionBody(code, target, 0x400)) {
+        // masm writes `ret 8` and `ret 0Ch` — hex only when it has to say so.
+        const ret = /^ret ([0-9A-Fa-f]+h|\d+)$/.exec(ins.text);
+        if (ret) {
+          const n = ret[1]!;
+          found = n.endsWith('h') ? Number.parseInt(n.slice(0, -1), 16) : Number(n);
+          break;
+        }
+        if (ins.text === 'ret') break;
+      }
+    }
+  }
+  cleanups.set(target, found);
+  return found;
+}
+
 function annotate(pe: PEFile, ins: Instruction): string {
   const notes: string[] = [];
   for (const imm of ins.immediates) {
@@ -182,14 +215,55 @@ if (wanted[0] === '--calls') {
 }
 
 // `--func <addr>`: disassemble one function, annotated.
-if (wanted[0] === '--func') {
+if (wanted[0] === '--func' || wanted[0] === '--frame') {
+  // `--frame` is `--func` with the stack pointer accounted for. In these functions
+  // every argument and every local is `[esp+N]`, and N moves with each push — which
+  // is exactly what a reader gets wrong: the same slot is `[esp+8]` before two pushes
+  // and `[esp+0x10]` after them. So this tracks the offset from the function's own
+  // entry and rewrites each access as `arg1`, `arg2`, … or `local(-N)`, which is
+  // stable. Arithmetic nobody should do by eye three times in a row.
+  const asFrame = wanted[0] === '--frame';
   for (const arg of wanted.slice(1)) {
     const start = Number(arg);
     const section = pe.sections.find((s) => start - pe.imageBase >= s.va && start - pe.imageBase < s.va + s.virtualSize)!;
     const code = pe.bytesOf(section).subarray(start - (pe.imageBase + section.va));
-    console.log(`--- function 0x${start.toString(16)}`);
+    console.log(`--- function 0x${start.toString(16)}${asFrame ? ' (stack slots named from the entry esp)' : ''}`);
+    // How far esp has moved since entry: 0 at the first instruction, negative after a
+    // push. `ebp` is followed too, for the frames that set it up.
+    let esp = 0;
+    let ebp: number | null = null;
     for (const ins of functionBody(code, start, 0x800)) {
-      console.log(`  ${ins.address.toString(16)}  ${ins.text}${annotate(pe, ins)}`);
+      let text = ins.text;
+      if (asFrame) {
+        // At entry `[esp+0]` is the return address, `[esp+4]` the first argument. So a
+        // slot at entry+4k is argument k, and anything at or below entry is a local.
+        const name = (at: number): string => (at >= 4 && at % 4 === 0 ? `arg${at / 4}` : `local${at}`);
+        // The formatter writes masm numbers: `[esp+2Ch]`, `[esp-8]`, `[esp]`.
+        const displacement = (sign: string | undefined, digits: string | undefined): number => {
+          if (!digits) return 0;
+          const value = digits.endsWith('h') ? Number.parseInt(digits.slice(0, -1), 16) : Number(digits);
+          return sign === '-' ? -value : value;
+        };
+        const slot = (from: number) => (_: string, sign: string, digits: string) =>
+          `[${name(from + displacement(sign, digits))}]`;
+        text = text.replace(/\[esp(?:([+-])([0-9a-fA-F]+h|\d+))?\]/g, slot(esp));
+        if (ebp !== null) text = text.replace(/\[ebp(?:([+-])([0-9a-fA-F]+h|\d+))?\]/g, slot(ebp));
+      }
+      console.log(`  ${ins.address.toString(16)}  ${text}${annotate(pe, ins)}`);
+      // AFTER printing: an access is relative to the esp the instruction saw.
+      const body = ins.text;
+      if (/^push\b/.test(body)) esp -= 4;
+      else if (/^pop\b/.test(body)) esp += 4;
+      else if (/^sub esp,([0-9A-Fa-fx]+)h?$/.test(body)) esp -= Number.parseInt(body.replace(/^sub esp,/, '').replace(/h$/, ''), 16);
+      else if (/^add esp,([0-9A-Fa-fx]+)h?$/.test(body)) esp += Number.parseInt(body.replace(/^add esp,/, '').replace(/h$/, ''), 16);
+      else if (body === 'mov ebp,esp') ebp = esp;
+      else if (body === 'mov esp,ebp' && ebp !== null) esp = ebp;
+      // A CALLEE that cleans up. Almost everything here is stdcall or thiscall, so the
+      // arguments a caller pushed are gone once the call returns — without this the
+      // count drifts by four bytes per call and every slot after the first call is
+      // named wrong. Which is precisely the mistake this mode exists to prevent, so it
+      // is worth reading the callee's own `ret` to find out.
+      else if (ins.mnemonic === 'call' && ins.branchTarget !== undefined) esp += cleanup(pe, ins.branchTarget);
     }
   }
   process.exit(0);
