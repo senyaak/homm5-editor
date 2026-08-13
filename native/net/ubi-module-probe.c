@@ -53,13 +53,49 @@ static const BYTE MODULE_DISPATCH_HEAD[DETOUR_LEN] = { 0x53, 0x8B, 0x5C, 0x24, 0
 #define MODULE_SCAN_HEAD_LEN 6
 static const BYTE MODULE_SCAN_HEAD[MODULE_SCAN_HEAD_LEN] = { 0x83, 0xEC, 0x28, 0x56, 0x8B, 0xF1 };
 
+// FOUR MORE, AND WHY. The first three said the reply gets queued, keyed and FOUND —
+// so the envelope and the routing are right and only the body is left. These four are
+// the readers of that body, and each returns false without a word when a field is not
+// the kind it wants:
+//
+//   0x427170  the status and the number, for either request
+//   0x42C7F0  the ladder's own fields, after that
+//   0x42AEC0  the profile's length, and 0x42B400 the rest of its record
+//
+// So a run says which of them says no, and there is nothing else in between.
+
+/** `read the status and the request number out of a matched reply`. */
+#define MODULE_STATUS_RVA 0x027170u
+static const BYTE MODULE_STATUS_HEAD[DETOUR_LEN] = { 0x83, 0xEC, 0x44, 0x33, 0xC0 };
+
+/** `read a ladder reply` — everything after the status. */
+#define LADDER_READ_RVA 0x02c7f0u
+#define LADDER_READ_HEAD_LEN 6
+static const BYTE LADDER_READ_HEAD[LADDER_READ_HEAD_LEN] = { 0x83, 0xEC, 0x4C, 0x53, 0x33, 0xC0 };
+
+/** `read how long the stored profile is` — the first half of a profile read. */
+#define PROFILE_SIZE_RVA 0x02aec0u
+static const BYTE PROFILE_SIZE_HEAD[DETOUR_LEN] = { 0x83, 0xEC, 0x38, 0x33, 0xC0 };
+
+/** `read the profile itself` — the second half, into the buffer just allocated. */
+#define PROFILE_READ_RVA 0x02b400u
+static const BYTE PROFILE_READ_HEAD[DETOUR_LEN] = { 0x83, 0xEC, 0x38, 0x33, 0xC0 };
+
 typedef void(__fastcall *ModuleQueuePushFn)(void *queue, void *edx, void *message);
 typedef char(__fastcall *ModuleDispatchFn)(void *transport, void *edx, unsigned int request);
 typedef void *(__fastcall *ModuleScanFn)(void *client, void *edx, unsigned int request);
+typedef char(__fastcall *ModuleStatusFn)(void *client, void *edx, unsigned int request, void *status, void *out);
+typedef char(__fastcall *LadderReadFn)(void *client, void *edx, void *a, void *b, void *c);
+typedef char(__fastcall *ProfileSizeFn)(void *client, void *edx, void *size);
+typedef char(__fastcall *ProfileReadFn)(void *client, void *edx, void *a, void *b, void *c, void *buffer, void *size);
 
 static ModuleQueuePushFn g_moduleQueuePush = NULL;
 static ModuleDispatchFn g_moduleDispatch = NULL;
 static ModuleScanFn g_moduleScan = NULL;
+static ModuleStatusFn g_moduleStatus = NULL;
+static LadderReadFn g_ladderRead = NULL;
+static ProfileSizeFn g_profileSize = NULL;
+static ProfileReadFn g_profileRead = NULL;
 
 /**
  * A message's type byte, or -1 when the pointer is not one.
@@ -95,7 +131,37 @@ static void *__fastcall module_scan_hook(void *client, void *edx, unsigned int r
   return found;
 }
 
-/** Watch the three points a module reply has to pass. */
+static char __fastcall module_status_hook(void *client, void *edx, unsigned int request, void *status, void *out) {
+  char ok = g_moduleStatus(client, edx, request, status, out);
+  log_num("module probe: reading the status for request ", (int)(request & 0xffff));
+  log_num("module probe:   the status read said ", ok);
+  // The status byte itself, once it is there: 38 is success, 39 a refusal, and which
+  // one we sent is a thing to be sure of rather than to assume.
+  if (ok && readable(status, 1)) log_num("module probe:   and the status is ", *(BYTE *)status);
+  return ok;
+}
+
+static char __fastcall ladder_read_hook(void *client, void *edx, void *a, void *b, void *c) {
+  char ok = g_ladderRead(client, edx, a, b, c);
+  log_num("module probe: the ladder read said ", ok);
+  return ok;
+}
+
+static char __fastcall profile_size_hook(void *client, void *edx, void *size) {
+  char ok = g_profileSize(client, edx, size);
+  log_num("module probe: the profile length read said ", ok);
+  if (ok && readable(size, 4)) log_num("module probe:   and the length is ", *(int *)size);
+  return ok;
+}
+
+static char __fastcall profile_read_hook(void *client, void *edx, void *a, void *b, void *c, void *buffer,
+                                         void *size) {
+  char ok = g_profileRead(client, edx, a, b, c, buffer, size);
+  log_num("module probe: the profile record read said ", ok);
+  return ok;
+}
+
+/** Watch every point a module reply has to pass. */
 static int install_module_probe(void) {
   g_moduleQueuePush = (ModuleQueuePushFn)detour(MODULE_QUEUE_PUSH_RVA, MODULE_QUEUE_PUSH_HEAD,
                                                MODULE_QUEUE_PUSH_HEAD_LEN, &module_queue_push_hook,
@@ -104,5 +170,14 @@ static int install_module_probe(void) {
                                               &module_dispatch_hook, "module reply dispatch");
   g_moduleScan = (ModuleScanFn)detour(MODULE_SCAN_RVA, MODULE_SCAN_HEAD, MODULE_SCAN_HEAD_LEN,
                                       &module_scan_hook, "module reply scan");
-  return g_moduleQueuePush && g_moduleDispatch && g_moduleScan;
+  g_moduleStatus = (ModuleStatusFn)detour(MODULE_STATUS_RVA, MODULE_STATUS_HEAD, DETOUR_LEN,
+                                          &module_status_hook, "module reply status");
+  g_ladderRead = (LadderReadFn)detour(LADDER_READ_RVA, LADDER_READ_HEAD, LADDER_READ_HEAD_LEN,
+                                      &ladder_read_hook, "ladder reply read");
+  g_profileSize = (ProfileSizeFn)detour(PROFILE_SIZE_RVA, PROFILE_SIZE_HEAD, DETOUR_LEN,
+                                        &profile_size_hook, "profile length read");
+  g_profileRead = (ProfileReadFn)detour(PROFILE_READ_RVA, PROFILE_READ_HEAD, DETOUR_LEN,
+                                        &profile_read_hook, "profile record read");
+  return g_moduleQueuePush && g_moduleDispatch && g_moduleScan && g_moduleStatus && g_ladderRead
+         && g_profileSize && g_profileRead;
 }
