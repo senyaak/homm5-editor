@@ -104,6 +104,7 @@
 #include "qol/pandora-notify.c"
 #include "net/ubi-log.c"
 #include "net/ubi-module-probe.c"
+#include "net/ubi-friends-probe.c"
 
 /**
  * Which switch turns this file's logging on — see the bottom of core/log.c.
@@ -141,6 +142,9 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   // It watches the three points a module reply has to pass, because reading them
   // has been wrong twice and each wrong reading costs a launch.
   if (install_module_probe()) log_line("the module reply path is being watched");
+  // And another — `--log net/ubi-friends-probe`. A friend the server says is online
+  // is drawn as offline, and the two things that could mean have different fixes.
+  if (install_friends_probe()) log_line("the friends list is being watched");
   load_config();
   if (g_rowCount || g_skillRowCount) install_hooks();
   // Independent of the config: the functions are ours to offer whether or not
