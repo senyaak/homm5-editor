@@ -21,10 +21,16 @@
 // router dropped or mis-keyed it; at the third, the shape is wrong. Only one of those
 // three is a protocol question, and this says which.
 //
-// HOW. All three are `__thiscall` with one stack argument, and all three are big
-// enough to take a five-byte jump without splitting an instruction (the head bytes
-// below are the check). None of them is on a hot path: the queue sees one push per
-// message received, the other two run once per module reply.
+// HOW. All three are `__thiscall` with one stack argument. The head each one gives
+// up has to end on an INSTRUCTION boundary, because the trampoline is the copied
+// head plus a jump to what follows it — five bytes is what the jump needs, not what
+// the head is, and the first version of this file took five from a function whose
+// fifth byte was the first of a three-byte `mov`. The game died at once, in the
+// trampoline, with an address that belongs to nothing. So the lengths below are the
+// instructions, counted: 7, 5 and 6.
+//
+// None of them is on a hot path: the queue sees one push per message received, the
+// other two run once per module reply.
 //
 // This file is a PROBE. It answers a question and then it goes, like the vertex-light
 // one before it — it is not a feature and nothing should come to depend on it.
@@ -35,7 +41,8 @@
 
 /** `push a received message onto a queue` — the queue is `ecx`. */
 #define MODULE_QUEUE_PUSH_RVA 0x0285e0u
-static const BYTE MODULE_QUEUE_PUSH_HEAD[DETOUR_LEN] = { 0x56, 0x57, 0x8B, 0xF9, 0x8B };
+#define MODULE_QUEUE_PUSH_HEAD_LEN 7
+static const BYTE MODULE_QUEUE_PUSH_HEAD[MODULE_QUEUE_PUSH_HEAD_LEN] = { 0x56, 0x57, 0x8B, 0xF9, 0x8B, 0x47, 0x14 };
 
 /** `dispatch a drained reply by its request number` — 0x400 profile, 0x500 ladder. */
 #define MODULE_DISPATCH_RVA 0x026d50u
@@ -43,7 +50,8 @@ static const BYTE MODULE_DISPATCH_HEAD[DETOUR_LEN] = { 0x53, 0x8B, 0x5C, 0x24, 0
 
 /** `find the queued reply for this request number`, or null. */
 #define MODULE_SCAN_RVA 0x0286f0u
-static const BYTE MODULE_SCAN_HEAD[DETOUR_LEN] = { 0x83, 0xEC, 0x28, 0x56, 0x8B };
+#define MODULE_SCAN_HEAD_LEN 6
+static const BYTE MODULE_SCAN_HEAD[MODULE_SCAN_HEAD_LEN] = { 0x83, 0xEC, 0x28, 0x56, 0x8B, 0xF1 };
 
 typedef void(__fastcall *ModuleQueuePushFn)(void *queue, void *edx, void *message);
 typedef char(__fastcall *ModuleDispatchFn)(void *transport, void *edx, unsigned int request);
@@ -89,11 +97,12 @@ static void *__fastcall module_scan_hook(void *client, void *edx, unsigned int r
 
 /** Watch the three points a module reply has to pass. */
 static int install_module_probe(void) {
-  g_moduleQueuePush = (ModuleQueuePushFn)detour(MODULE_QUEUE_PUSH_RVA, MODULE_QUEUE_PUSH_HEAD, DETOUR_LEN,
-                                               &module_queue_push_hook, "module queue push");
+  g_moduleQueuePush = (ModuleQueuePushFn)detour(MODULE_QUEUE_PUSH_RVA, MODULE_QUEUE_PUSH_HEAD,
+                                               MODULE_QUEUE_PUSH_HEAD_LEN, &module_queue_push_hook,
+                                               "module queue push");
   g_moduleDispatch = (ModuleDispatchFn)detour(MODULE_DISPATCH_RVA, MODULE_DISPATCH_HEAD, DETOUR_LEN,
                                               &module_dispatch_hook, "module reply dispatch");
-  g_moduleScan = (ModuleScanFn)detour(MODULE_SCAN_RVA, MODULE_SCAN_HEAD, DETOUR_LEN,
+  g_moduleScan = (ModuleScanFn)detour(MODULE_SCAN_RVA, MODULE_SCAN_HEAD, MODULE_SCAN_HEAD_LEN,
                                       &module_scan_hook, "module reply scan");
   return g_moduleQueuePush && g_moduleDispatch && g_moduleScan;
 }
