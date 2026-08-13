@@ -34,12 +34,29 @@ static const BYTE GAME_ROW_HEAD[GAME_ROW_HEAD_LEN] = { 0x83, 0xEC, 0x44, 0x53, 0
 #define JOIN_REFRESH_RVA 0x399140u
 static const BYTE JOIN_REFRESH_HEAD[DETOUR_LEN] = { 0x51, 0x53, 0x56, 0x8B, 0xF1 };
 
+/**
+ * `CGamesView2::AddGame` — where a game becomes a row, and the one place that says
+ * which of the two stories is true.
+ *
+ * It shows a game when `desc[+0x18] != 0`, or when the global at 0x108F938 is set —
+ * and that global is read in three places and written in none, so if it is 0 then every
+ * game in the list has the byte SET, and the object dumped at draw time is not the one
+ * the Join button reads. If it is 1, the byte is clear and setting it is the fix.
+ *
+ * The return address answers the other half: whoever built this description is the
+ * function to read next, instead of searching the executable for whoever writes a byte.
+ */
+#define ADD_GAME_RVA 0x4dce50u
+static const BYTE ADD_GAME_HEAD[DETOUR_LEN] = { 0x53, 0x8B, 0x5C, 0x24, 0x08 };
+
 typedef void(__stdcall *GameRowFn)(void *a, void *b, void *room);
+typedef char(__fastcall *AddGameFn)(void *view, void *edx, void *description);
 typedef void(__fastcall *JoinRefreshFn)(void *screen, void *edx);
 /** A widget's "what is selected", vtable slot 0x24 — a pointer, or null for nothing. */
 typedef void *(__fastcall *SelectionFn)(void *list, void *edx);
 
 static GameRowFn g_gameRow = NULL;
+static AddGameFn g_addGame = NULL;
 static JoinRefreshFn g_joinRefresh = NULL;
 
 /** Is this a pointer to text we could print? Short, printable, and it ends. */
@@ -66,14 +83,22 @@ static const char *text_at(void *maybe) {
 static int g_rowsDumped = 0;
 
 static void __stdcall game_row_hook(void *a, void *b, void *room) {
-  if (readable(room, 0xa0)) {
-    // The two flags the row itself reads, every time: cheap, and they are the question.
+  if (readable(room, 0x194)) {
+    // The three the Join button hangs on (0x8768B0 and its predicate 0xDE2660): the
+    // version it recognises, the byte it insists is set, and the one it falls back to.
     log_num("room probe: drawing a row, locked = ", *((BYTE *)room + 0x34));
     log_num("room probe:   started = ", *((BYTE *)room + 0x90));
+    log_num("room probe:   the byte Join wants set, +0x18 = ", *((BYTE *)room + 0x18));
+    log_num("room probe:   the version at +0x8c = ", *(int *)((BYTE *)room + 0x8c));
+    log_num("room probe:   the flag behind it, +0xc0 = ", *((BYTE *)room + 0xc0));
+    log_num("room probe:   and its answer, +0x17c = ", *((BYTE *)room + 0x17c));
     if (g_rowsDumped < 2) {
       g_rowsDumped++;
+      // THE WHOLE payload (0x194 bytes, from 0x8DCE7B), not the head of it: the first
+      // run of this stopped at 0xA0 and every numbered field we were looking for was
+      // past it.
       log_line("room probe:   the whole record, dword by dword:");
-      for (int at = 0; at < 0xa0; at += 4) {
+      for (int at = 0; at < 0x194; at += 4) {
         int value = *(int *)((BYTE *)room + at);
         const char *text = text_at((void *)(SIZE_T)value);
         if (text) {
@@ -106,10 +131,20 @@ static void __fastcall join_refresh_hook(void *screen, void *edx) {
   g_joinRefresh(screen, edx);
 }
 
+static char __fastcall add_game_hook(void *view, void *edx, void *description) {
+  // Everything this question needs, in four lines and one launch.
+  log_num("room probe: a game is offered to the list at ", (int)(SIZE_T)description);
+  if (readable(description, 0x20)) log_num("room probe:   its byte +0x18 says ", *((BYTE *)description + 0x18));
+  log_num("room probe:   the global that shows games anyway is ", *(BYTE *)(SIZE_T)0x108F938u);
+  log_num("room probe:   and it was built by the code at ", (int)(SIZE_T)__builtin_return_address(0));
+  return g_addGame(view, edx, description);
+}
+
 /** Watch a game row being drawn, and the button under the list. */
 static int install_room_probe(void) {
   g_gameRow = (GameRowFn)detour(GAME_ROW_RVA, GAME_ROW_HEAD, GAME_ROW_HEAD_LEN, &game_row_hook, "a games-list row");
   g_joinRefresh = (JoinRefreshFn)detour(JOIN_REFRESH_RVA, JOIN_REFRESH_HEAD, DETOUR_LEN, &join_refresh_hook,
                                         "the Join button's refresh");
-  return g_gameRow && g_joinRefresh;
+  g_addGame = (AddGameFn)detour(ADD_GAME_RVA, ADD_GAME_HEAD, DETOUR_LEN, &add_game_hook, "a game offered to the list");
+  return g_gameRow && g_joinRefresh && g_addGame;
 }
