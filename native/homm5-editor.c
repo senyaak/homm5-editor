@@ -100,6 +100,8 @@
 #include "qol/fix-book-of-power.c"
 #include "qol/fix-master-of-fire.c"
 #include "qol/fix-imbue-ballista.c"
+#include "qol/second-instance.c"
+#include "qol/run-in-background.c"
 #include "qol/pandora-box.c"
 #include "qol/pandora-notify.c"
 #include "net/ubi-log.c"
@@ -216,6 +218,11 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   // AFTER the flags are read, and gated whole: with it off not a byte moves.
   if (g_qol[QOL_MASS_SPELL_ELEMENT_FIX]) install_whole_field_element();
   if (g_qol[QOL_BORDERLESS]) install_borderless();
+  // BEFORE WinMain, which is the whole reason it can be done at all: the guard
+  // it takes off is the first thing WinMain does, and a DllMain of an imported
+  // library runs before the executable's entry point.
+  if (g_qol[QOL_SECOND_INSTANCE]) install_second_instance();
+  if (g_qol[QOL_RUN_IN_BACKGROUND]) install_run_in_background();
   // Before the game asks, which it does early: the profile it loads decides
   // what the main menu already shows.
   if (g_qol[QOL_OWN_PROFILE]) install_own_profile(self);

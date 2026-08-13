@@ -157,6 +157,38 @@ somebody actually plays.
 With this on, the panel writes video settings into our profile rather than the
 shared one, which closes the same hole from the editor's side.
 
+## `second-instance` and `run-in-background`
+
+The two that make a second player possible on one machine, and they are one
+subject read twice: the game refuses to start twice, and it throttles itself
+when it is not the window in front. Both were written for testing our own lobby
+([h5e-lobby](https://github.com/senyaak/homm5-editor)'s `docs/NETWORK_STATE.md`),
+and both are worth having on their own.
+
+`second-instance` — `WinMain` (0x4DB860) opens a mutex named `NIVAL_H5` with no
+`Local\` prefix and puts up *"You can't run game and editor or two instances of
+any of then at the same time"* when it already exists. One byte at 0x4DB8AA
+(`75` → `EB`) walks past it. **This works only because a DllMain runs before the
+executable's entry point** — by the time WinMain reads the branch it is ours.
+The price is the message itself: nothing will tell you that you left an instance
+running.
+
+`run-in-background` — the window procedure (0x4EBE40) writes "am I in front"
+into two bytes through 0x4EC7B0, and everything asks through two accessors,
+0x4EB970 and 0x4EB980. The main loop asks both every frame and, when the answer
+is no, ends the frame with `Sleep(40)`. Both accessors become `mov al,1; ret`.
+Not the loop's call sites, which would have been narrower: the tick reads the
+same accessors itself, and so do the sound and the cursor, so patching the loop
+alone would leave the question with three answers. The bytes still get the truth
+written into them, so minimising and restoring — which read them directly — are
+untouched. The price is sound that keeps playing and a frame that is no longer
+throttled.
+
+The other half of two clients is not here: `net_game_port` (default 8888,
+registered at 0x4CF2B0) cannot be shared, so the second install sets its own in
+`Profiles/global_a2.cfg` — which means it wants `own-profile` on, or both
+installs read the one file in Documents.
+
 ## `stack-losses` and `stack-health-bar`
 
 The battle plates: Shift shows `now / at the start` on every stack's number,

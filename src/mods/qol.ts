@@ -128,6 +128,27 @@ export const QOL_FLAGS = [
       + ' its dialog, its goods, and the box gone before the question is answered.',
   },
   {
+    name: 'second-instance',
+    tab: 'qol',
+    title: 'Let a second copy of the game run',
+    detail: 'The shipped game refuses to start while another instance of it — or the editor — is'
+      + ' already running, and says so in a message box. This takes that guard off, which is what'
+      + ' a multiplayer game needs when both players are at this machine: a second install of the'
+      + ' game, this flag on in it, and its own net_game_port in its profile, since two instances'
+      + ' cannot share port 8888. The price is that the message is gone: with this on nothing will'
+      + ' tell you that you left an instance running.',
+  },
+  {
+    name: 'run-in-background',
+    tab: 'qol',
+    title: 'Keep running when another window is in front',
+    detail: 'Unfocused, the game throttles itself to a frame every 40 ms and tells its own tick it'
+      + ' is in the background. With this on it behaves as though it were always the window in'
+      + ' front, so a second client — or a game on the other monitor — keeps going while you work'
+      + ' elsewhere. Its sound keeps playing too, and an unfocused instance costs what a focused'
+      + ' one costs.',
+  },
+  {
     name: 'combat-ai-fix',
     tab: 'fixes',
     group: 'ai',

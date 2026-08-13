@@ -15,6 +15,20 @@ one.
 
 ### Added
 
+- **Two quality-of-life switches for playing against yourself.** *Let a second
+  copy of the game run* takes off the guard that refuses to start while another
+  instance is open — the shipped game says "You can't run game and editor or two
+  instances of any of then at the same time" and quits — and *Keep running when
+  another window is in front* stops the game throttling itself to a frame every
+  40 ms when you tab away. Together they are a second player at the same
+  machine; separately, the second one is what anybody with two monitors wants.
+
+  The prices are in the panel and worth reading: with the first on, nothing will
+  tell you that you left an instance running; with the second, an unfocused game
+  keeps its sound and costs what a focused one costs. A second install also
+  needs its own `net_game_port` — two of them cannot share 8888 — which lives in
+  its profile, so it wants *Keep settings and saves with the mod* on as well.
+
 - **The Pandora's Box can be filled in.** The box now lists under **Treasures**
   in the object palette, and a placed one carries contents of its own: a
   message, experience, gold and the six resources, artifacts, spells, creatures
