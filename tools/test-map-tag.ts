@@ -108,28 +108,26 @@ if (!existsSync(MAPS)) {
   // root — and one of them was written by the rule this replaces. The game's
   // are what the rule answers to, so a disagreement with one of ours is
   // reported and not counted against it.
-  // AND TWO OF THE GAME'S OWN were written by that same older rule, so no single
-  // rule can reproduce all 68. Straker Atk and Straker Def are the ONLY shipped
-  // maps where CustomTeams is false and the active players sit on different
-  // teams — two players, teams 0 and 1 — and their tags read [1,2], which is the
-  // team numbers plus one, not the sizes of two sides. Sizes would be [1,1], and
-  // [1,2] would mean three players on a map that has two. Checked across the
-  // whole tree: no other map can tell the two readings apart, and 66 of them
-  // agree with sizes only. So these two are named, and named exactly — if one of
-  // them ever starts matching, the survey has changed under us and should say so.
-  const ODD = new Map([
-    ['SingleMissions\\Straker Atk', 'theirs [1,2] ours [1,1]'],
-    ['SingleMissions\\Straker Def', 'theirs [1,2] ours [1,1]'],
-  ]);
-  const shipped = wrong.filter((w) => !/test|e2e/i.test(w))
-    .filter((w) => ODD.get(w.split(':')[0]!) !== w.split(': ')[1]);
-  check(`every shipped tag is reproduced (${compared - wrong.length}/${compared} exactly, `
-    + `two by the older rule)`, shipped.length === 0, shipped.slice(0, 5).join(' | '));
-  for (const [at, how] of ODD) {
-    check(`${at} still disagrees the way it always has`,
-      wrong.some((w) => w === `${at}: ${how}`), 'it now matches, or fails differently');
-  }
-  for (const w of wrong.filter((x) => /test|e2e/i.test(x))) console.log(`        ours, older: ${w}`);
+  // STRAKER ATK AND STRAKER DEF ARE NOT THE GAME'S, whatever their place in this
+  // tree suggests. They were pinned here as two SHIPPED maps that disagree — the
+  // only ones where CustomTeams is false and the two active players sit on
+  // different teams, their tags reading [1,2] where sizes say [1,1] — and the
+  // premise was wrong: neither is in `<game>/Maps`. Both live in `H5E/`, the mod
+  // folder, and one carries a `MapObjects/Necropolis/Straker` of its own. They
+  // are Senya's, written by the older rule, and a disagreement with one says
+  // nothing about what the game does.
+  //
+  // AND THEY ARE ONLY IN THE TREE WHILE SOMEBODY HAS THEM OPEN — a map arrives
+  // here by being unpacked into it. Requiring them to be present made the survey
+  // fail for the tree's weather: they were gone on 13.08.2026 and two checks
+  // failed for it, saying nothing about any rule. Named, not counted, and
+  // reported when they turn up.
+  const OURS = [/test|e2e/i, /Straker (Atk|Def)/];
+  const mine = (w: string): boolean => OURS.some((r) => r.test(w));
+  const shipped = wrong.filter((w) => !mine(w));
+  check(`every shipped tag is reproduced (${compared - wrong.length}/${compared} exactly)`,
+    shipped.length === 0, shipped.slice(0, 5).join(' | '));
+  for (const w of wrong.filter(mine)) console.log(`        ours, older: ${w}`);
   check('and there were tags to compare against at all', compared > 50, String(compared));
 }
 
