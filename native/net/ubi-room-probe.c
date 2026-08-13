@@ -42,17 +42,49 @@ typedef void *(__fastcall *SelectionFn)(void *list, void *edx);
 static GameRowFn g_gameRow = NULL;
 static JoinRefreshFn g_joinRefresh = NULL;
 
+/** Is this a pointer to text we could print? Short, printable, and it ends. */
+static const char *text_at(void *maybe) {
+  const char *text = (const char *)maybe;
+  if (!readable((void *)text, 1)) return NULL;
+  for (int i = 0; i < 64; i++) {
+    unsigned char c = (unsigned char)text[i];
+    if (c == 0) return i ? text : NULL;
+    if (c < 0x20 || c > 0x7e) return NULL;
+    if (!readable((void *)(text + i + 1), 1)) return NULL;
+  }
+  return NULL;
+}
+
+/**
+ * The record, whole, the first couple of times a row is drawn.
+ *
+ * The twenty fields we send land in this struct in an order that has to be READ, and
+ * two readings of it by eye have already disagreed. So: every dword of it, and the text
+ * behind the ones that are pointers to text. Two rows is enough to see it — the list
+ * redraws several times a second and the answer does not change between frames.
+ */
+static int g_rowsDumped = 0;
+
 static void __stdcall game_row_hook(void *a, void *b, void *room) {
-  // The two flags the row reads, and the numbers around them — because if one of them
-  // is set, the next question is immediately which of our fields it came from.
-  if (readable(room, 0x94)) {
+  if (readable(room, 0xa0)) {
+    // The two flags the row itself reads, every time: cheap, and they are the question.
     log_num("room probe: drawing a row, locked = ", *((BYTE *)room + 0x34));
     log_num("room probe:   started = ", *((BYTE *)room + 0x90));
-    log_num("room probe:   the numbers before it: +0x84 = ", *(int *)((BYTE *)room + 0x84));
-    log_num("room probe:     +0x88 = ", *(int *)((BYTE *)room + 0x88));
-    log_num("room probe:     +0x8c = ", *(int *)((BYTE *)room + 0x8c));
-    log_num("room probe:   and the pair at +0x24: ", *(int *)((BYTE *)room + 0x24));
-    log_num("room probe:     +0x28 = ", *(int *)((BYTE *)room + 0x28));
+    if (g_rowsDumped < 2) {
+      g_rowsDumped++;
+      log_line("room probe:   the whole record, dword by dword:");
+      for (int at = 0; at < 0xa0; at += 4) {
+        int value = *(int *)((BYTE *)room + at);
+        const char *text = text_at((void *)(SIZE_T)value);
+        if (text) {
+          log_num("room probe:     +0x", at);
+          log_text("room probe:       is a string: ", text);
+        } else {
+          log_num("room probe:     +0x", at);
+          log_num("room probe:       = ", value);
+        }
+      }
+    }
   }
   g_gameRow(a, b, room);
 }
