@@ -602,6 +602,10 @@ export interface QolState {
   extension: boolean;
   /** Is there a copy of the executable to load it? */
   patchedExe: boolean;
+  /** The multiplayer agent's two answers, from `bin/homm5-editor-net.txt`. */
+  net: { relay: string; secret: string };
+  /** And where that file is, for the panel to name beside the other one. */
+  netFile: string;
 }
 
 /** Result of `qol:apply` — what was written, and where. */
@@ -2106,7 +2110,7 @@ export interface EditorApi {
    * Write them, install the extension if it is not in yet, and set windowed
    * mode when borderless asks for it. Safe to press twice.
    */
-  qolApply(settings: Record<string, boolean>): Promise<QolApplyResult>;
+  qolApply(settings: Record<string, boolean>, net?: { relay: string; secret: string }): Promise<QolApplyResult>;
   /** Is this run rendering through SwiftShader? See Settings.softwareRendering. */
   gpuSoftware(): Promise<boolean>;
   /**

@@ -23,6 +23,7 @@ const DOCS = join(REPO_ROOT, '_tmp', 'e2e-net-docs');
 const DATA = join(REPO_ROOT, '_tmp', 'e2e-net-data');
 
 const QOL_FILE = join(BARE, 'bin', 'homm5-editor-qol.txt');
+const NET_FILE = join(BARE, 'bin', 'homm5-editor-net.txt');
 
 test.beforeAll(() => {
   for (const dir of [BARE, DOCS, DATA]) rmSync(dir, { recursive: true, force: true });
@@ -64,6 +65,43 @@ test('the agent has a tab of its own, and its tick reaches the file @nodata', as
     const written = readFileSync(QOL_FILE, 'utf8');
     expect(written, 'the agent is on in the file the extension reads').toMatch(/^net-agent 1$/m);
     expect(written, 'and what was not ticked is written down as off').toMatch(/^second-instance 0$/m);
+  } finally {
+    await closeEditor(ed);
+  }
+});
+
+test('the relay and the secret reach a file of their own @nodata', async () => {
+  const ed = await launchEditor({ HOMM5_ROOT: BARE, HOMM5_DOCUMENTS: DOCS, HOMM5_DATA: DATA });
+  try {
+    await ed.page.locator('#qolbtn').click();
+    await ed.page.locator('#qol-tab-network').click();
+
+    // A password field, because a secret read over somebody's shoulder is a
+    // secret. It is still editable — this is the machine that holds it.
+    await expect(ed.page.locator('#qol-net-secret')).toHaveAttribute('type', 'password');
+
+    await ed.page.locator('#qol-net-relay').fill('ws://127.0.0.1:40200/agent');
+    await ed.page.locator('#qol-net-secret').fill('a-secret-the-lobby-issued');
+    await ed.page.locator('#qol-apply').click();
+    await expect(ed.page.locator('#qol-msg')).toContainText('settings written', { timeout: 30_000 });
+
+    const written = readFileSync(NET_FILE, 'utf8');
+    expect(written, 'the relay is in the file the extension reads').toMatch(/^relay ws:\/\/127\.0\.0\.1:40200\/agent$/m);
+    expect(written, 'and the secret with it').toMatch(/^secret a-secret-the-lobby-issued$/m);
+    // Two files, not one: the flags' reader in C knows only names and 0/1.
+    expect(readFileSync(QOL_FILE, 'utf8'), 'and not in the flags').not.toContain('a-secret-the-lobby-issued');
+  } finally {
+    await closeEditor(ed);
+  }
+});
+
+test('which the panel reads back from the install @nodata', async () => {
+  const ed = await launchEditor({ HOMM5_ROOT: BARE, HOMM5_DOCUMENTS: DOCS, HOMM5_DATA: DATA });
+  try {
+    await ed.page.locator('#qolbtn').click();
+    await ed.page.locator('#qol-tab-network').click();
+    await expect(ed.page.locator('#qol-net-relay')).toHaveValue('ws://127.0.0.1:40200/agent');
+    await expect(ed.page.locator('#qol-net-secret')).toHaveValue('a-secret-the-lobby-issued');
   } finally {
     await closeEditor(ed);
   }

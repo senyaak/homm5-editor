@@ -123,8 +123,10 @@ function buildRows(): void {
   }
 
   // Network: playing with somebody else, which is the one part of this panel
-  // that needs a server and an account as well as a tick.
-  const network = $('qol-network');
+  // that needs a server and an account as well as a tick. Into its own div and
+  // not the tab itself, because the two fields under it are static markup and
+  // clearing the tab would take them with it.
+  const network = $('qol-net-rows');
   network.innerHTML = '';
   for (const flag of QOL_FLAGS) {
     if (flag.tab === 'network') buildRow(flag, network);
@@ -164,6 +166,13 @@ async function refresh(): Promise<void> {
   warn.textContent = missing;
   warn.hidden = !missing;
 
+  // The agent's two answers, from the install as well — the same rule as the
+  // switches: what is shown is what the game will read, not what was typed here
+  // last time.
+  ($('qol-net-relay') as HTMLInputElement).value = state.net?.relay ?? '';
+  ($('qol-net-secret') as HTMLInputElement).value = state.net?.secret ?? '';
+  $('qol-net-file').textContent = state.netFile ?? '';
+
   $('qol-file').textContent = state.file;
   $('qol-msg').textContent = '';
 }
@@ -172,10 +181,15 @@ async function apply(): Promise<void> {
   const settings: Record<string, boolean> = {};
   for (const [name, box] of boxes) settings[name] = box.checked;
 
+  const net = {
+    relay: ($('qol-net-relay') as HTMLInputElement).value.trim(),
+    secret: ($('qol-net-secret') as HTMLInputElement).value.trim(),
+  };
+
   const msg = $('qol-msg');
   msg.textContent = 'applying…';
   try {
-    const result = await api.qolApply(settings);
+    const result = await api.qolApply(settings, net);
     const said: string[] = ['settings written'];
     // Written but inert: the answers are kept, and the reason they cannot take
     // effect yet is the thing to say rather than a silent success.

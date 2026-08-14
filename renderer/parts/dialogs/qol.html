@@ -31,7 +31,26 @@
         <!-- Gameplay: things the game never had, put IN — where a fix takes
              something wrong OUT. Each is an archive that follows its flag. -->
         <div id="qol-gameplay" class="qol-list" hidden></div>
-        <div id="qol-network" class="qol-list" hidden></div>
+        <!-- The switch is built from QOL_FLAGS like every other; the two fields
+             under it are not flags and are written to a file of their own. -->
+        <div id="qol-network" class="qol-list" hidden>
+          <div id="qol-net-rows"></div>
+          <div class="qol-heading">Where this copy goes out</div>
+          <label class="qol-field">
+            <span>Relay</span>
+            <input id="qol-net-relay" type="text" spellcheck="false" placeholder="ws://127.0.0.1:40200/agent" />
+          </label>
+          <label class="qol-field">
+            <span>Secret</span>
+            <input id="qol-net-secret" type="password" spellcheck="false" placeholder="issued once for this installation" />
+          </label>
+          <div class="qol-detail-open">
+            The secret stands for the player and is issued once for this installation by the
+            lobby — <code>npm run issue-agent</code> in the h5e-lobby repository. It is kept in
+            the install, beside the game, and the game itself never sees it.
+          </div>
+          <div id="qol-net-file" class="qol-file"></div>
+        </div>
         <div id="qol-file" class="qol-file"></div>
       </div>
       <div class="de-foot">
