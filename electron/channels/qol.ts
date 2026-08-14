@@ -61,9 +61,7 @@ export function registerQol(): void {
       // file nothing will ever read.
       extension: ext.installed,
       patchedExe: existsSync(join(g, PATCHED_EXE)),
-      // Read from the install like everything else here. The secret comes back
-      // as it is: this is the machine that holds it, and a panel that showed
-      // asterisks it could not edit would be a panel nobody could correct.
+      // Read from the install like everything else here.
       net: readNet(g),
       netFile: netPath(g),
     };
@@ -81,16 +79,13 @@ export function registerQol(): void {
     const g = install();
     const wanted = clean(settings);
 
-    // The agent's two answers, in their own file beside the flags. Written
+    // The agent's one answer, in its own file beside the flags. Written
     // BEFORE the flags for the same reason the flags come before the install:
     // they are what was asked for, and nothing later in this handler is allowed
     // to lose them. Written every time, even empty — an empty relay is a real
     // state and it is the one that says "set up, and not filled in".
     if (net) {
-      writeNetFile(g, {
-        relay: String(net['relay'] ?? '').trim(),
-        secret: String(net['secret'] ?? '').trim(),
-      });
+      writeNetFile(g, { relay: String(net['relay'] ?? '').trim() });
     }
 
     // THE SETTINGS FIRST, and on their own. They are what the person asked for,

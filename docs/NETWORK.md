@@ -219,13 +219,24 @@ be called under the loader lock; the dial happens on a thread, started at the
 first datagram to a peer — which is also the moment the player is in a room, and
 so the moment the core can say which room to put this agent in.
 
-Its two settings are their own file, `bin/homm5-editor-net.txt`, beside the
+Its one setting is its own file, `bin/homm5-editor-net.txt`, beside the
 quality-of-life one:
 
 ```
 relay ws://127.0.0.1:40200/agent
-secret <what `npm run issue-agent -- <name>` printed in the h5e-lobby repo>
 ```
+
+**And nothing else, because there is no credential.** A `secret` sat under that
+line until 14.08.2026 — issued once per installation by a command line in the
+lobby repository, and cut because nobody outside this desk could ever have been
+given one. What the agent presents instead is where its game plays: seven bytes,
+`[0x02][address][port]`, sent on every relay connection before the first
+datagram. The port comes off the game's own socket with `getsockname`; the
+address cannot, since a socket bound to every interface says so, and instead a
+throwaway UDP socket is routed at the lobby and asked which of our addresses it
+picked — the same choice the game made when it told the lobby where it plays.
+The lobby looks that endpoint up in the room it is holding, and either somebody
+is playing there or nobody is.
 
 **Getting a relayed datagram back INTO the game is the part that being in the
 process pays for.** It never arrives on the game's socket, so it is queued and

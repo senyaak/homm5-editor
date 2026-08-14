@@ -1,5 +1,4 @@
-// The two answers the multiplayer agent needs from this machine: which relay,
-// and who this installation is.
+// The one answer the multiplayer agent needs from this machine: which relay.
 //
 // A file of its own, `bin/homm5-editor-net.txt`, beside the quality-of-life one
 // and read by `native/net/relay.c`. Not lines in `homm5-editor-qol.txt`: that
@@ -7,11 +6,11 @@
 // docs/QOL.md is explicit that a setting which is not a switch gets its own
 // home rather than being squeezed into the flags.
 //
-// THE SECRET IS A CREDENTIAL. It is issued once per installation by the lobby
-// (`npm run issue-agent -- <name>` in the h5e-lobby repo) and it stands for the
-// player, so it belongs in the install and nowhere else: not in the game's own
-// settings, which the game and every mod can read, and not in this repository.
-// Nothing in the editor logs it and the panel shows it as a password field.
+// THERE IS NO CREDENTIAL HERE, and there used to be. A `secret` stood for the
+// player, was issued once per installation by a command line, and was cut on
+// 14.08.2026 because nobody outside this desk could ever have obtained one. The
+// agent now says which address and port its game plays on, and the lobby is what
+// decides whether anybody is playing there (h5e-lobby docs/ARCHITECTURE.md).
 //
 // Exports:
 //   NET_FILE, netPath(gameRoot)
@@ -26,8 +25,6 @@ export const NET_FILE = 'bin/homm5-editor-net.txt';
 export interface NetSettings {
   /** `ws://host:port/agent`, or `wss://…` behind a tunnel. Empty means "not set up". */
   relay: string;
-  /** What `issue-agent` printed for this player. Empty means the agent stays home. */
-  secret: string;
 }
 
 export function netPath(gameRoot: string): string {
@@ -35,14 +32,15 @@ export function netPath(gameRoot: string): string {
 }
 
 /**
- * What the install says, or empty strings.
+ * What the install says, or an empty string.
  *
  * The same shape of reader as the C one next to it: `#` is a comment, a line is
  * a word and the rest of it, and anything unknown is ignored rather than
- * refused — a file somebody added a note to still works.
+ * refused — a file somebody added a note to still works, and so does one still
+ * carrying the `secret` line nothing reads any more.
  */
 export function readNet(gameRoot: string): NetSettings {
-  const out: NetSettings = { relay: '', secret: '' };
+  const out: NetSettings = { relay: '' };
   let text = '';
   try {
     text = readFileSync(netPath(gameRoot), 'utf8');
@@ -57,29 +55,31 @@ export function readNet(gameRoot: string): NetSettings {
     const word = trimmed.slice(0, at);
     const value = trimmed.slice(at + 1).trim();
     if (word === 'relay') out.relay = value;
-    else if (word === 'secret') out.secret = value;
   }
   return out;
 }
 
 /**
- * Write both, whole, with the same explanation the panel gives.
+ * Write it, whole, with the same explanation the panel gives.
  *
- * Written whether or not they are empty: a file with an empty relay says "this
+ * Written whether or not it is empty: a file with an empty relay says "this
  * install was set up and nobody filled it in", which is a different thing from
  * no file at all, and the C side treats them the same way — nothing is dialled.
+ * A `secret` line an older editor left behind is dropped here, since this
+ * rewrites the file rather than editing it.
  */
 export function writeNetFile(gameRoot: string, net: NetSettings): string {
   const lines = [
     '# The multiplayer agent, written by homm5-editor.',
     '# Read by homm5-editor.dll when the game first talks to another player.',
     '#',
-    '# relay  — our lobby relay: ws://host:port/agent, or wss:// behind a tunnel.',
-    '# secret — issued once for this installation by the lobby; it stands for the',
-    '#          player, and the game itself never sees it.',
+    '# relay — our lobby relay: ws://host:port/agent, or wss:// behind a tunnel.',
+    '#',
+    '# Nothing else belongs here. The agent tells the relay which address and port',
+    '# this game plays on, and the lobby decides whether that is anybody — so there',
+    '# is no secret to keep and nothing to issue.',
     '',
     `relay ${net.relay.trim()}`,
-    `secret ${net.secret.trim()}`,
     '',
   ];
   const path = netPath(gameRoot);
@@ -88,8 +88,7 @@ export function writeNetFile(gameRoot: string, net: NetSettings): string {
   return path;
 }
 
-/** Whether this install has both halves — what the panel says out loud. */
+/** Whether this install has been set up — what the panel says out loud. */
 export function netReady(gameRoot: string): boolean {
-  const net = readNet(gameRoot);
-  return !!net.relay && !!net.secret && existsSync(netPath(gameRoot));
+  return !!readNet(gameRoot).relay && existsSync(netPath(gameRoot));
 }

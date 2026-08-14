@@ -154,6 +154,10 @@ static AgentSelectFn g_agentSelect = NULL;
  * leave every other socket in the process alone.
  */
 static SOCKET g_gameSocket = INVALID_SOCKET;
+/** The lobby's own address, off the first datagram that went to one of its desks. */
+static DWORD g_lobbyAddr = 0;
+/** Which relay connection we last said our endpoint on; 0 means never. */
+static LONG g_announcedOn = 0;
 
 typedef struct {
   DWORD addr; /* as it lies in the sockaddr: network order */
@@ -209,6 +213,16 @@ static int g_relayTried = 0;
  * three-player problem — with two, "the other one" was always right.
  */
 #define FRAME_DATAGRAM 0x01
+/**
+ * And the frame that opens a connection: `[0x02][address: 4][port: 2]`, where this
+ * game plays.
+ *
+ * It is not a credential and there is nothing to keep: the relay hands the endpoint to the
+ * lobby, and the lobby either has somebody playing there or does not. A `secret` lived in
+ * the config beside the relay's address until 14.08.2026 and was cut for the reason that
+ * settles it — nobody outside this desk could ever have been given one.
+ */
+#define FRAME_IDENTIFY 0x02
 #define FRAME_HEADER 7
 
 typedef struct {
@@ -327,6 +341,10 @@ static int agent_watch(const struct sockaddr *other, int len, int bytes, int sen
   DWORD addr = *(const DWORD *)&in->sin_addr;
 
   if (agent_is_desk(port)) {
+    // Kept for `agent_announce`: routing a socket at the lobby is how this process finds
+    // out which of its own addresses the lobby sees, and the lobby's is the only address
+    // here that is certain to be the right one to ask about.
+    if (!g_lobbyAddr) g_lobbyAddr = addr;
     g_deskPings++;
     g_reportPending = 1;
     agent_report();
@@ -464,6 +482,81 @@ static int agent_deliver(char *buf, int len, struct sockaddr *from, int *fromlen
   return copy;
 }
 
+#ifndef SOCK_DGRAM
+#define SOCK_DGRAM 2
+#endif
+
+typedef SOCKET(WINAPI *AgentSocketFn)(int af, int type, int protocol);
+typedef int(WINAPI *AgentConnectFn)(SOCKET s, const struct sockaddr *name, int namelen);
+typedef int(WINAPI *AgentGetSockNameFn)(SOCKET s, struct sockaddr *name, int *namelen);
+typedef int(WINAPI *AgentCloseSocketFn)(SOCKET s);
+
+/**
+ * Say where this game plays, which is the whole of how the relay learns who we are.
+ *
+ * Two halves, and neither of them is a secret. THE PORT comes off the game's own socket
+ * with `getsockname` — it is bound by then, or no datagram would have gone out of it. THE
+ * ADDRESS cannot come from there, because a socket bound to every interface reports
+ * exactly that; so a throwaway UDP socket is routed at the lobby and asked which of our
+ * addresses it picked. That is the same choice the game made when it told the lobby where
+ * it plays, and the lobby's copy of that answer is what the endpoint is checked against.
+ *
+ * Nothing is sent by the throwaway socket: `connect` on UDP only fixes a route.
+ */
+static int agent_announce(void) {
+  if (g_gameSocket == INVALID_SOCKET || !g_lobbyAddr || !g_deskPortCount) return 0;
+  HMODULE ws = GetModuleHandleA("wsock32.dll");
+  if (!ws) ws = GetModuleHandleA("ws2_32.dll");
+  if (!ws) return 0;
+  AgentGetSockNameFn ourName = (AgentGetSockNameFn)GetProcAddress(ws, "getsockname");
+  AgentSocketFn makeSocket = (AgentSocketFn)GetProcAddress(ws, "socket");
+  AgentConnectFn route = (AgentConnectFn)GetProcAddress(ws, "connect");
+  AgentCloseSocketFn shut = (AgentCloseSocketFn)GetProcAddress(ws, "closesocket");
+  if (!ourName || !makeSocket || !route || !shut) {
+    log_line("agent: this winsock has no getsockname — cannot say where we play");
+    return 0;
+  }
+
+  struct sockaddr_in bound;
+  int size = (int)sizeof(bound);
+  if (ourName(g_gameSocket, (struct sockaddr *)&bound, &size) != 0) return 0;
+  const BYTE *portBytes = (const BYTE *)&bound.sin_port; /* already big endian */
+  if (!portBytes[0] && !portBytes[1]) return 0;
+
+  DWORD ours = 0;
+  SOCKET probe = makeSocket(AF_INET, SOCK_DGRAM, 0);
+  if (probe != INVALID_SOCKET) {
+    struct sockaddr_in at;
+    for (int i = 0; i < (int)sizeof(at); i++) ((BYTE *)&at)[i] = 0;
+    at.sin_family = AF_INET;
+    *(DWORD *)&at.sin_addr = g_lobbyAddr;
+    BYTE *deskPort = (BYTE *)&at.sin_port;
+    deskPort[0] = (BYTE)(g_deskPorts[0] >> 8);
+    deskPort[1] = (BYTE)(g_deskPorts[0] & 0xff);
+    if (route(probe, (const struct sockaddr *)&at, (int)sizeof(at)) == 0) {
+      struct sockaddr_in local;
+      int localSize = (int)sizeof(local);
+      if (ourName(probe, (struct sockaddr *)&local, &localSize) == 0) ours = *(DWORD *)&local.sin_addr;
+    }
+    shut(probe);
+  }
+  if (!ours) {
+    log_line("agent: could not work out which address the lobby sees us at");
+    return 0;
+  }
+
+  BYTE frame[FRAME_HEADER];
+  frame[0] = FRAME_IDENTIFY;
+  const BYTE *octets = (const BYTE *)&ours;
+  for (int i = 0; i < 4; i++) frame[1 + i] = octets[i];
+  frame[5] = portBytes[0];
+  frame[6] = portBytes[1];
+  if (!relay_send(frame, FRAME_HEADER)) return 0;
+  log_num("agent: we play on port ", (int)((portBytes[0] << 8) | portBytes[1]));
+  log_num("agent: and the lobby knows this address ", (int)octets[3]);
+  return 1;
+}
+
 /** The datagram, with the address the game dialled in front of it, to the relay. */
 static int agent_carry(const struct sockaddr *to, const BYTE *data, int len) {
   if (len <= 0 || len > RELAY_MAX_DATAGRAM - FRAME_HEADER) return 0;
@@ -491,9 +584,15 @@ static int WINAPI agent_sendto_hook(SOCKET s, const char *buf, int len, int flag
     // and what is being established first is that a game can be played through
     // the relay at all. Nothing direct between the clients is the claim, and it
     // is one a packet capture can check.
-    if (relay_connected() && agent_carry(to, (const BYTE *)buf, len)) {
-      g_relayed++;
-      return len; /* the game asked for it to be sent, and it was */
+    if (relay_connected()) {
+      // Who we are goes first, and again on every new connection: a relay that went away
+      // and came back has never heard of this socket.
+      LONG connection = relay_generation();
+      if (g_announcedOn != connection && agent_announce()) g_announcedOn = connection;
+      if (g_announcedOn == connection && agent_carry(to, (const BYTE *)buf, len)) {
+        g_relayed++;
+        return len; /* the game asked for it to be sent, and it was */
+      }
     }
   }
   return g_agentSendTo(s, buf, len, flags, to, tolen);

@@ -40,14 +40,10 @@
             <span>Relay</span>
             <input id="qol-net-relay" type="text" spellcheck="false" placeholder="ws://127.0.0.1:40200/agent" />
           </label>
-          <label class="qol-field">
-            <span>Secret</span>
-            <input id="qol-net-secret" type="password" spellcheck="false" placeholder="issued once for this installation" />
-          </label>
           <div class="qol-detail-open">
-            The secret stands for the player and is issued once for this installation by the
-            lobby — <code>npm run issue-agent</code> in the h5e-lobby repository. It is kept in
-            the install, beside the game, and the game itself never sees it.
+            That is the whole of it. The agent tells the relay which address and port this
+            game plays on, and the lobby answers whether anybody is playing there — so there
+            is no secret to keep here and nothing to be issued one.
           </div>
           <div id="qol-net-file" class="qol-file"></div>
         </div>

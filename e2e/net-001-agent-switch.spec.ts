@@ -70,26 +70,26 @@ test('the agent has a tab of its own, and its tick reaches the file @nodata', as
   }
 });
 
-test('the relay and the secret reach a file of their own @nodata', async () => {
+test('the relay reaches a file of its own @nodata', async () => {
   const ed = await launchEditor({ HOMM5_ROOT: BARE, HOMM5_DOCUMENTS: DOCS, HOMM5_DATA: DATA });
   try {
     await ed.page.locator('#qolbtn').click();
     await ed.page.locator('#qol-tab-network').click();
 
-    // A password field, because a secret read over somebody's shoulder is a
-    // secret. It is still editable — this is the machine that holds it.
-    await expect(ed.page.locator('#qol-net-secret')).toHaveAttribute('type', 'password');
+    // There is no second field here and there must not be one: the secret that
+    // used to sit beside the relay was cut, and an agent presents the endpoint
+    // its game plays on instead.
+    await expect(ed.page.locator('#qol-net-secret')).toHaveCount(0);
 
     await ed.page.locator('#qol-net-relay').fill('ws://127.0.0.1:40200/agent');
-    await ed.page.locator('#qol-net-secret').fill('a-secret-the-lobby-issued');
     await ed.page.locator('#qol-apply').click();
     await expect(ed.page.locator('#qol-msg')).toContainText('settings written', { timeout: 30_000 });
 
     const written = readFileSync(NET_FILE, 'utf8');
     expect(written, 'the relay is in the file the extension reads').toMatch(/^relay ws:\/\/127\.0\.0\.1:40200\/agent$/m);
-    expect(written, 'and the secret with it').toMatch(/^secret a-secret-the-lobby-issued$/m);
+    expect(written, 'and nothing claims to be a credential').not.toMatch(/^secret /m);
     // Two files, not one: the flags' reader in C knows only names and 0/1.
-    expect(readFileSync(QOL_FILE, 'utf8'), 'and not in the flags').not.toContain('a-secret-the-lobby-issued');
+    expect(readFileSync(QOL_FILE, 'utf8'), 'and not in the flags').not.toContain('40200');
   } finally {
     await closeEditor(ed);
   }
@@ -101,7 +101,6 @@ test('which the panel reads back from the install @nodata', async () => {
     await ed.page.locator('#qolbtn').click();
     await ed.page.locator('#qol-tab-network').click();
     await expect(ed.page.locator('#qol-net-relay')).toHaveValue('ws://127.0.0.1:40200/agent');
-    await expect(ed.page.locator('#qol-net-secret')).toHaveValue('a-secret-the-lobby-issued');
   } finally {
     await closeEditor(ed);
   }

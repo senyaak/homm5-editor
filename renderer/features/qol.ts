@@ -170,7 +170,6 @@ async function refresh(): Promise<void> {
   // switches: what is shown is what the game will read, not what was typed here
   // last time.
   ($('qol-net-relay') as HTMLInputElement).value = state.net?.relay ?? '';
-  ($('qol-net-secret') as HTMLInputElement).value = state.net?.secret ?? '';
   $('qol-net-file').textContent = state.netFile ?? '';
 
   $('qol-file').textContent = state.file;
@@ -183,7 +182,6 @@ async function apply(): Promise<void> {
 
   const net = {
     relay: ($('qol-net-relay') as HTMLInputElement).value.trim(),
-    secret: ($('qol-net-secret') as HTMLInputElement).value.trim(),
   };
 
   const msg = $('qol-msg');

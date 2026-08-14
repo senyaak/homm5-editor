@@ -85,6 +85,8 @@ static HINTERNET g_wsSession = NULL;
 static HINTERNET g_wsConnect = NULL;
 static HINTERNET g_wsSocket = NULL;
 static volatile LONG g_wsReady = 0;
+/** Bumped on every successful dial, so the agent can tell a new connection from the old. */
+static volatile LONG g_wsGeneration = 0;
 static volatile LONG g_relayStop = 0;
 static CRITICAL_SECTION g_wsSendLock;
 static int g_wsSendLockMade = 0;
@@ -135,9 +137,10 @@ static int relay_read_config(void) {
     const char *q = line;
     if (take_word(&q, stop, "relay")) {
       relay_read_token(&q, stop, g_relayUrl, sizeof(g_relayUrl));
-    } else if (take_word(&q, stop, "secret")) {
-      relay_read_token(&q, stop, g_relaySecret, sizeof(g_relaySecret));
     }
+    // There was a `secret` here once. It is gone: the relay asks the lobby who is
+    // playing at the endpoint this agent names, and a copy of the game has nothing
+    // to hold. See docs/NETWORK.md and the lobby's docs/ARCHITECTURE.md, Identity.
   }
   VirtualFree(buf, 0, MEM_RELEASE);
 
@@ -145,14 +148,7 @@ static int relay_read_config(void) {
     log_line("relay: the config names no relay");
     return 0;
   }
-  if (!g_relaySecret[0]) {
-    log_line("relay: the config carries no secret — the core would refuse this agent");
-    return 0;
-  }
-  // The URL is said out loud and the secret is NOT, ever. Its length is, which
-  // is what tells a mistyped line from a missing one.
   log_text("relay: ", g_relayUrl);
-  log_num("relay: the secret is this many characters ", (int)lstrlenA(g_relaySecret));
   g_relayConfigured = 1;
   return 1;
 }
@@ -269,14 +265,12 @@ static int relay_dial(void) {
     return 0;
   }
 
-  // `?token=` appended here rather than kept in the configured URL, so the
-  // secret is one thing in one place and the address is another.
+  // The path is dialled as configured. Nothing is appended to it any more — a
+  // `?token=` used to carry the secret here, and the connection now says who it is
+  // by naming the endpoint its game plays on, once it knows it.
   char full[448];
   int at = 0;
   for (const char *p = path; *p && at + 1 < (int)sizeof(full); p++) full[at++] = *p;
-  const char *query = "?token=";
-  for (const char *p = query; *p && at + 1 < (int)sizeof(full); p++) full[at++] = *p;
-  for (const char *p = g_relaySecret; *p && at + 1 < (int)sizeof(full); p++) full[at++] = *p;
   full[at] = 0;
 
   WCHAR hostW[128], pathW[448];
@@ -306,9 +300,21 @@ static int relay_dial(void) {
     relay_drop();
     return 0;
   }
+  InterlockedIncrement(&g_wsGeneration);
   InterlockedExchange(&g_wsReady, 1);
   log_line("relay: connected");
   return 1;
+}
+
+/**
+ * Which connection this is, counting from one.
+ *
+ * The agent has to say where its game plays on every connection, not once ever: a relay
+ * that went away and came back knows nothing about the socket it just accepted. Comparing
+ * this against what it last announced on is how it notices.
+ */
+static LONG relay_generation(void) {
+  return InterlockedCompareExchange(&g_wsGeneration, 0, 0);
 }
 
 /** One datagram out. Called from whichever thread the game is sending on. */

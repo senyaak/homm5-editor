@@ -24,7 +24,10 @@ one.
   peer, the sizes, the first packets of a match, and a count every five seconds.
   Off unless the switch is ticked, and it costs nothing while no multiplayer game
   is running. The tab is its own because this is the one setting here that needs a
-  server, an account and somebody at the other end.
+  server, an account and somebody at the other end. It holds the relay's address
+  and nothing else: an agent tells the relay which address and port the game plays
+  on, the lobby answers whether anybody is playing there, and so there is no
+  secret to keep on this machine and nothing anybody has to be issued.
 
 - **Two quality-of-life switches for playing against yourself.** *Let a second
   copy of the game run* takes off the guard that refuses to start while another
