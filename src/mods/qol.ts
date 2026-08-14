@@ -50,6 +50,9 @@ export const QOL_FILE = 'bin/homm5-editor-qol.txt';
  * preference on is not a thing. Fixes carry a `group` (see FIX_GROUPS).
  * `gameplay` is the third kind: things the game never had — new objects, new
  * rules — where a fix takes something wrong OUT and these put something new IN.
+ * `network` is the fourth, and it is apart from the others because what it
+ * touches is not this machine: playing over the internet is the one thing here
+ * that needs a server, an account and somebody at the other end.
  *
  * `native: false` marks a flag the C extension has no hand in: what it installs
  * is an ARCHIVE (like the health bar's), and the config line exists so the
@@ -307,6 +310,20 @@ export const QOL_FLAGS = [
       + ' three place their last tile; a resisted spell still pays back.',
     credit: 'Uses the work of H5_DLL by dredknight, with permission'
       + ' — https://github.com/dredknight/H5_DLL',
+  },
+  {
+    name: 'net-agent',
+    tab: 'network',
+    title: 'Carry multiplayer traffic through our own lobby',
+    detail: 'Over the internet the address a peer is told is often useless — behind carrier-grade'
+      + ' NAT there is no address to tell — so the game\'s datagrams have to be able to travel'
+      + ' through a relay of ours instead, decided one datagram at a time from inside the game.'
+      + ' IN THIS BUILD IT ONLY WATCHES: every datagram still goes exactly where the game sent it,'
+      + ' and what the extension does is write down what it saw — the peer, the sizes, the first'
+      + ' packets of a match — into bin/homm5-editor-*.log. That is the step that comes first:'
+      + ' nothing here had ever hooked a socket before, and a build that carried traffic before'
+      + ' the hook was proven would have two things to blame at once. It costs nothing while no'
+      + ' multiplayer game is running, and it needs a build whose log includes net/agent.',
   },
 ] as const;
 

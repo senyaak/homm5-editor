@@ -173,6 +173,44 @@ and it died in its own string append (0x4E75F9, `mov [esi+2],ax` with esi = 0)
 the one time they were touched. The detour reads them and reports; it does not
 write.
 
+## The agent: the peer socket, from inside the game
+
+Gameplay is peer to peer, and over the internet the address a peer is told is
+often useless — behind carrier-grade NAT there is none to tell. So the datagrams
+have to be able to travel through a relay of ours instead
+(`h5e-lobby/docs/ARCHITECTURE.md`), and the choice between the peer and the relay
+belongs inside the game: a process beside it would have to be *dialled*, which
+means handing the game a stand-in address for every peer and writing those
+addresses into the room description — a mechanism built to be thrown away.
+
+[native/net/agent.c](../native/net/agent.c) is that piece, and **today it only
+watches**. It is switched on by `net-agent` in `bin/homm5-editor-qol.txt`, which
+is the Network tab of the editor's Game settings panel.
+
+**How it attaches.** The game imports `sendto` and `recvfrom` from `WSOCK32.dll`
+**by ordinal** — 20 and 17, slots `0xf413c8` and `0xf413c4` — not by name, so
+`hook_import` in `qol/borderless.c` cannot take them: it compares names, and an
+ordinal import has none. The agent walks the same import table for the *library*
+and the *number*, and verifies the slot against `GetProcAddress` of that ordinal
+before writing, exactly as `hook_import` does with a name. Nothing of the game's
+code is touched; one pointer in a table changes.
+
+There are three `sendto` call sites and one `recvfrom` in the whole image, all in
+the wrapper region at `0x440e70`, `0x440f10`, `0x441300` — the same socket carries
+the peer traffic and the NAT desk's keep-alives (port 40010), which is how the
+agent tells them apart.
+
+```bash
+npm run build-native            # net_agent is in the default logging set for now
+node tools/install-native.ts --game C:\Projects\homm5-game-net
+```
+
+What lands in the log: one line when the hook goes in, the first three datagrams
+of each peer with their first sixteen bytes, and a count every five seconds. The
+expected shape of a match's opening is in `h5e-lobby/docs/NETWORK_STATE.md` — a
+nine-byte handshake each way carrying a four-byte token, one 273-byte description,
+then 18 to 28 bytes about every 0.9 s.
+
 ### What is still the game's side to find
 
 - **Registration has no screen.** `UI/MPRegister` is the progress window

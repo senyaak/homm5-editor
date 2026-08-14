@@ -15,6 +15,17 @@ one.
 
 ### Added
 
+- **A Network tab in Game settings, with the multiplayer agent's switch on it.**
+  Playing against somebody over the internet needs the game's own peer datagrams
+  to be able to travel through a relay of ours, and deciding that has to happen
+  inside the game — so the extension now hooks the socket the game plays on. In
+  this build it only WATCHES: every datagram still goes where the game sent it,
+  and what is written into `bin/homm5-editor-*.log` is what the hook saw — the
+  peer, the sizes, the first packets of a match, and a count every five seconds.
+  Off unless the switch is ticked, and it costs nothing while no multiplayer game
+  is running. The tab is its own because this is the one setting here that needs a
+  server, an account and somebody at the other end.
+
 - **Two quality-of-life switches for playing against yourself.** *Let a second
   copy of the game run* takes off the guard that refuses to start while another
   instance is open — the shipped game says "You can't run game and editor or two

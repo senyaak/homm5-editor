@@ -70,8 +70,17 @@ const ZIG = join('node_modules', '@zigc', 'win32-x64', 'bin', 'zig.exe');
 // is a policy — and it is checked against what was found, so it cannot drift
 // either.
 
-/** On unless a build says otherwise: did the mod load, and did it crash. */
-export const LOG_UNITS_BY_DEFAULT = ['homm5_editor', 'core_faults'] as const;
+/**
+ * On unless a build says otherwise: did the mod load, did it crash — and, while
+ * the multiplayer agent is still only watching, what it saw.
+ *
+ * `net_agent` is here because at this stage its log IS the feature: the flag is
+ * off in every install that did not ask for it, and in one that did, a build
+ * without these lines would install a hook that says nothing. It comes out of
+ * this list the day the agent starts carrying datagrams instead of counting
+ * them.
+ */
+export const LOG_UNITS_BY_DEFAULT = ['homm5_editor', 'core_faults', 'net_agent'] as const;
 
 /** A unit as the file spells it, where it was found, and what it is about. */
 export interface LogUnit {

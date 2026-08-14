@@ -108,6 +108,7 @@
 #include "net/ubi-module-probe.c"
 #include "net/ubi-friends-probe.c"
 #include "net/ubi-room-probe.c"
+#include "net/agent.c"
 
 /**
  * Which switch turns this file's logging on — see the bottom of core/log.c.
@@ -255,6 +256,11 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   if (g_qol[QOL_BOOK_OF_POWER_FIX]) install_book_of_power_fix();
   if (g_qol[QOL_MASTER_OF_FIRE_FIX]) install_master_of_fire_fix();
   if (g_qol[QOL_IMBUE_BALLISTA_FIX]) install_imbue_ballista_fix();
+  // The multiplayer agent. An import table entry, so it has to be in before the
+  // game makes its socket — which is long after this, WinMain not having run —
+  // and it is gated on the flag like everything else here: with it clear the
+  // game's own `sendto` is the one in the slot.
+  if (g_qol[QOL_NET_AGENT] && install_agent()) log_line("agent: the game's peer socket is watched");
   return TRUE;
 }
 

@@ -122,6 +122,14 @@ function buildRows(): void {
     if (flag.tab === 'gameplay') buildRow(flag, gameplay);
   }
 
+  // Network: playing with somebody else, which is the one part of this panel
+  // that needs a server and an account as well as a tick.
+  const network = $('qol-network');
+  network.innerHTML = '';
+  for (const flag of QOL_FLAGS) {
+    if (flag.tab === 'network') buildRow(flag, network);
+  }
+
   // The master switch: every fix at once.
   allFixes = $('qol-all-fixes') as HTMLInputElement;
   allFixes.addEventListener('change', () => {
@@ -216,17 +224,14 @@ export function initQol(): void {
   $button('qol-close').onclick = close;
   $button('qol-x').onclick = close;
 
-  // Three tabs over one config: the lists swap, the warn, file and Apply stay —
+  // Four tabs over one config: the lists swap, the warn, file and Apply stay —
   // they are about the whole file, whichever part is being looked at.
-  const show = (tab: 'qol' | 'fixes' | 'gameplay'): void => {
-    $('qol-list').hidden = tab !== 'qol';
-    $('qol-fixes').hidden = tab !== 'fixes';
-    $('qol-gameplay').hidden = tab !== 'gameplay';
-    $button('qol-tab-qol').classList.toggle('on', tab === 'qol');
-    $button('qol-tab-fixes').classList.toggle('on', tab === 'fixes');
-    $button('qol-tab-gameplay').classList.toggle('on', tab === 'gameplay');
+  const TABS = ['qol', 'fixes', 'gameplay', 'network'] as const;
+  const show = (tab: (typeof TABS)[number]): void => {
+    for (const one of TABS) {
+      $(one === 'qol' ? 'qol-list' : `qol-${one}`).hidden = one !== tab;
+      $button(`qol-tab-${one}`).classList.toggle('on', one === tab);
+    }
   };
-  $button('qol-tab-qol').onclick = () => { show('qol'); };
-  $button('qol-tab-fixes').onclick = () => { show('fixes'); };
-  $button('qol-tab-gameplay').onclick = () => { show('gameplay'); };
+  for (const tab of TABS) $button(`qol-tab-${tab}`).onclick = () => { show(tab); };
 }
