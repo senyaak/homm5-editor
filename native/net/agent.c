@@ -13,13 +13,22 @@
 // process there is nothing to dial: the calls the game already makes are ours
 // to answer.
 //
-// WHAT IT DOES TODAY: it watches, and nothing else. Every datagram goes exactly
-// where the game sent it, and what this writes down is what the hook SAW — the
-// endpoint, the size, the first bytes of the first few, and a count every five
-// seconds. That is deliberate: nothing in this repository has ever hooked a
-// socket before, the whole of the relay rests on this hook seeing the right
-// traffic at the right time, and a build that carries datagrams before that is
-// established would be a build whose failures have two possible causes.
+// WHAT IT DOES. It watches every datagram on that socket, and — once there is a
+// relay connected — it CARRIES the peer ones: out through the WebSocket instead
+// of the wire, and back in by answering the game's own `recvfrom` with what the
+// relay delivered. Everything else on the socket, the lobby's desks included,
+// goes exactly where the game sent it.
+//
+// The first version of this file only watched, and that step earned its keep:
+// it proved the hook was on the right socket at the right time, and it found a
+// mistake of its own (the CD-key desk counted as a player) before anything
+// depended on the answer.
+//
+// EVERY PEER DATAGRAM GOES THROUGH THE RELAY, not "when the direct path fails".
+// A hole punch is worth having and is not written yet; what is being
+// established first is that a match can be played through the relay at all,
+// which is a claim a packet capture can check — nothing direct between the two
+// clients.
 //
 // HOW IT ATTACHES. The game imports `sendto` and `recvfrom` from WSOCK32.dll BY
 // ORDINAL (20 and 17) rather than by name, which is why `hook_import` in
@@ -47,9 +56,10 @@
 #undef LOG_UNIT
 #define LOG_UNIT net_agent
 
-/** WSOCK32's ordinals for the two calls the game makes with a datagram. */
+/** WSOCK32's ordinals for the calls the game makes with a datagram. */
 #define WSOCK32_SENDTO 20
 #define WSOCK32_RECVFROM 17
+#define WSOCK32_SELECT 18
 
 /**
  * The desks, whose ports are NOT a peer's.
@@ -128,9 +138,22 @@ typedef int(WINAPI *AgentSendToFn)(SOCKET s, const char *buf, int len, int flags
                                    const struct sockaddr *to, int tolen);
 typedef int(WINAPI *AgentRecvFromFn)(SOCKET s, char *buf, int len, int flags,
                                      struct sockaddr *from, int *fromlen);
+typedef int(WINAPI *AgentSelectFn)(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds,
+                                   const struct timeval *timeout);
 
 static AgentSendToFn g_agentSendTo = NULL;
 static AgentRecvFromFn g_agentRecvFrom = NULL;
+static AgentSelectFn g_agentSelect = NULL;
+
+/**
+ * The socket the game plays on, learned rather than looked for.
+ *
+ * The first datagram to something that is not one of the lobby's desks was sent
+ * on it, and there is only one (measured: one socket per client, and it is the
+ * same one that pings the NAT mirror). Knowing it is what lets everything below
+ * leave every other socket in the process alone.
+ */
+static SOCKET g_gameSocket = INVALID_SOCKET;
 
 typedef struct {
   DWORD addr; /* as it lies in the sockaddr: network order */
@@ -142,11 +165,48 @@ typedef struct {
   int gotBytes;
 } AgentPeer;
 
+/** Named before it is written, because the watcher below hands it to the relay. */
+static void agent_inbound(const BYTE *data, int len);
+
 static AgentPeer g_peers[AGENT_PEERS];
 static int g_peerCount = 0;
 static int g_deskPings = 0;
 static DWORD g_lastReport = 0;
 static int g_reportPending = 0;
+static int g_relayed = 0;
+static int g_delivered = 0;
+static int g_relayTried = 0;
+
+// ---------------------------------------------------------------------------
+// What comes back from the relay.
+//
+// The game reads its socket; a datagram that arrived over a WebSocket is not on
+// that socket and never will be. So it is put in a queue here and handed over
+// the next time the game asks — `recvfrom` is ours, and the address it reports
+// is the peer's own, the one the game was told about and already believes in.
+//
+// THAT IS WHAT BEING INSIDE THE PROCESS BUYS. A relay outside would have had to
+// be dialled: a loopback stand-in address per peer, patched into the room
+// description by the server, per recipient because three of them on one machine
+// cannot share one address. None of that exists here. The open question in
+// docs/ARCHITECTURE.md — whether the address must be rewritten per recipient —
+// is answered by not needing an address at all.
+// ---------------------------------------------------------------------------
+
+/** Room for a burst; the game's own rate is about one datagram a second. */
+#define AGENT_QUEUE 64
+
+typedef struct {
+  int len;
+  BYTE data[RELAY_MAX_DATAGRAM];
+} AgentDatagram;
+
+static AgentDatagram *g_queue = NULL;
+static int g_queueHead = 0; /* next to hand over */
+static int g_queueCount = 0;
+static CRITICAL_SECTION g_queueLock;
+static int g_queueLockMade = 0;
+static int g_queueDropped = 0;
 
 /** `1.2.3.4:5678` into `out`, which needs 24 bytes. */
 static void agent_endpoint(DWORD addr, WORD port, char *out) {
@@ -213,6 +273,11 @@ static void agent_report(void) {
     log_num("agent:   received bytes ", peer->gotBytes);
   }
   if (g_deskPings) log_num("agent: datagrams to the lobby's own desks ", g_deskPings);
+  // The two numbers that say whether the relay is doing the work: what went out
+  // through it instead of the wire, and what came back in through `recvfrom`.
+  if (g_relayed) log_num("agent: carried out by the relay ", g_relayed);
+  if (g_delivered) log_num("agent: handed to the game from the relay ", g_delivered);
+  if (g_queueDropped) log_num("agent: relayed datagrams dropped, the game was not reading ", g_queueDropped);
 }
 
 /**
@@ -223,8 +288,8 @@ static void agent_report(void) {
  * game's own transport is UDP over IPv4 and something else here would be a
  * surprise worth not guessing about.
  */
-static void agent_watch(const struct sockaddr *other, int len, int bytes, int sending,
-                        const BYTE *data) {
+static int agent_watch(const struct sockaddr *other, int len, int bytes, int sending,
+                       const BYTE *data) {
   // The desks are read HERE and not at install time, and the difference matters:
   // this DLL's entry point runs before the executable's, and the server list is
   // something the game downloads once it is running. Read too early, the file is
@@ -234,10 +299,10 @@ static void agent_watch(const struct sockaddr *other, int len, int bytes, int se
     g_desksRead = 1;
     agent_read_desks();
   }
-  if (!other || len < (int)sizeof(struct sockaddr_in)) return;
-  if (!readable(other, sizeof(struct sockaddr_in))) return;
+  if (!other || len < (int)sizeof(struct sockaddr_in)) return 0;
+  if (!readable(other, sizeof(struct sockaddr_in))) return 0;
   const struct sockaddr_in *in = (const struct sockaddr_in *)other;
-  if (in->sin_family != AF_INET) return;
+  if (in->sin_family != AF_INET) return 0;
 
   const BYTE *rawPort = (const BYTE *)&in->sin_port;
   WORD port = (WORD)((rawPort[0] << 8) | rawPort[1]); /* the wire is big endian */
@@ -247,11 +312,11 @@ static void agent_watch(const struct sockaddr *other, int len, int bytes, int se
     g_deskPings++;
     g_reportPending = 1;
     agent_report();
-    return;
+    return 0;
   }
 
   AgentPeer *peer = agent_peer(addr, port);
-  if (!peer) return;
+  if (!peer) return 1;
   if (sending) {
     peer->sent++;
     peer->sentBytes += bytes;
@@ -277,24 +342,171 @@ static void agent_watch(const struct sockaddr *other, int len, int bytes, int se
     }
   }
 
+  // A peer, so there is a game on: this is the moment to have a way out. The
+  // relay is dialled here and not at load, because WinHTTP arrives through
+  // LoadLibrary and that must not happen under the loader lock — and because
+  // until two players are talking there is no room for the core to put this
+  // agent in, and it would be refused.
+  if (!g_relayTried) {
+    g_relayTried = 1;
+    g_relayInbound = &agent_inbound;
+    if (relay_start()) log_line("agent: dialling the relay");
+  }
+
   g_reportPending = 1;
   agent_report();
+  return 1;
+}
+
+/** A datagram off the relay, put where the game will find it. Relay thread. */
+static void agent_inbound(const BYTE *data, int len) {
+  if (!g_queue || len <= 0 || len > RELAY_MAX_DATAGRAM) return;
+  EnterCriticalSection(&g_queueLock);
+  if (g_queueCount >= AGENT_QUEUE) {
+    // The game is not reading. Dropping the OLDEST is the right end to drop
+    // from: this is a transport that already expects loss, and the newest
+    // datagram is the one its sequencing can still use.
+    g_queueHead = (g_queueHead + 1) % AGENT_QUEUE;
+    g_queueCount--;
+    g_queueDropped++;
+  }
+  int at = (g_queueHead + g_queueCount) % AGENT_QUEUE;
+  g_queue[at].len = len;
+  for (int i = 0; i < len; i++) g_queue[at].data[i] = data[i];
+  g_queueCount++;
+  LeaveCriticalSection(&g_queueLock);
+}
+
+static int agent_queue_waiting(void) {
+  if (!g_queue) return 0;
+  EnterCriticalSection(&g_queueLock);
+  int waiting = g_queueCount;
+  LeaveCriticalSection(&g_queueLock);
+  return waiting;
+}
+
+/**
+ * Hand the oldest queued datagram to the game, as though it had just arrived.
+ *
+ * `from` is the peer we are relaying with. A relayed datagram carries no
+ * address of its own — the relay is told "to the others in my room", never an
+ * address — so with two players there is exactly one answer and it is right.
+ * With three there is not, and this says so rather than picking: what a
+ * three-player game needs is a peer named in the relay's own framing, which is
+ * a change on both sides and is not this one.
+ */
+static int agent_deliver(char *buf, int len, struct sockaddr *from, int *fromlen) {
+  EnterCriticalSection(&g_queueLock);
+  if (!g_queueCount) {
+    LeaveCriticalSection(&g_queueLock);
+    return 0;
+  }
+  AgentDatagram *one = &g_queue[g_queueHead];
+  int copy = one->len < len ? one->len : len;
+  for (int i = 0; i < copy; i++) buf[i] = (char)one->data[i];
+  int whole = one->len;
+  g_queueHead = (g_queueHead + 1) % AGENT_QUEUE;
+  g_queueCount--;
+  LeaveCriticalSection(&g_queueLock);
+
+  if (from && fromlen && *fromlen >= (int)sizeof(struct sockaddr_in) && g_peerCount) {
+    struct sockaddr_in *in = (struct sockaddr_in *)from;
+    BYTE *port = (BYTE *)&in->sin_port;
+    in->sin_family = AF_INET;
+    port[0] = (BYTE)(g_peers[0].port >> 8);
+    port[1] = (BYTE)(g_peers[0].port & 0xff);
+    *(DWORD *)&in->sin_addr = g_peers[0].addr;
+    *fromlen = (int)sizeof(struct sockaddr_in);
+  }
+  g_delivered++;
+  if (whole > copy) log_num("agent: a relayed datagram did not fit and was cut to ", copy);
+  return copy;
 }
 
 static int WINAPI agent_sendto_hook(SOCKET s, const char *buf, int len, int flags,
                                     const struct sockaddr *to, int tolen) {
-  agent_watch(to, tolen, len, 1, (const BYTE *)buf);
+  int peer = agent_watch(to, tolen, len, 1, (const BYTE *)buf);
+  if (peer) {
+    if (g_gameSocket == INVALID_SOCKET) g_gameSocket = s;
+    // Everything, once there is a relay to take it. Not "when the direct path
+    // fails" — that choice needs a hole punch to have been tried and measured,
+    // and what is being established first is that a game can be played through
+    // the relay at all. Nothing direct between the clients is the claim, and it
+    // is one a packet capture can check.
+    if (relay_connected() && relay_send((const BYTE *)buf, len)) {
+      g_relayed++;
+      return len; /* the game asked for it to be sent, and it was */
+    }
+  }
   return g_agentSendTo(s, buf, len, flags, to, tolen);
 }
 
 static int WINAPI agent_recvfrom_hook(SOCKET s, char *buf, int len, int flags,
                                       struct sockaddr *from, int *fromlen) {
+  // The relay's datagrams first, and only on the socket the game plays on:
+  // whatever else this process reads is none of our business.
+  if (s == g_gameSocket && agent_queue_waiting()) {
+    int gave = agent_deliver(buf, len, from, fromlen);
+    if (gave > 0) return gave;
+  }
   // AFTER the call, because until it returns there is nothing to look at — and
   // only when it brought something: a non-blocking socket with nothing waiting
   // returns -1 all day, and counting those would drown the log in silence.
   int got = g_agentRecvFrom(s, buf, len, flags, from, fromlen);
   if (got > 0) agent_watch(from, fromlen ? *fromlen : 0, got, 0, (const BYTE *)buf);
   return got;
+}
+
+/**
+ * `select` has to know about the queue too.
+ *
+ * A datagram of ours is not on the socket, so a game that asks the OS whether
+ * there is anything to read would be told no and would never call `recvfrom` —
+ * and the queue would fill up behind a game that is waiting for it. Whether
+ * this game asks was never established; hooking it costs nothing if it does
+ * not, and is the difference between working and hanging if it does.
+ *
+ * The wait is dropped to nothing when we have something, because we already
+ * know the answer and blocking for the caller's timeout would delay it.
+ */
+/**
+ * `FD_ISSET` and `FD_SET`, by hand.
+ *
+ * The macro version of the first calls `__WSAFDIsSet`, which is a function in
+ * the socket library — and this DLL links no libraries at all (see the build
+ * line in src/mods/extension.ts). A `fd_set` is a count and an array of
+ * sockets, documented and unchanged since Winsock 1.1, so reading it directly
+ * costs a loop and owes nobody anything.
+ */
+static int agent_fd_has(SOCKET s, const fd_set *set) {
+  if (!set) return 0;
+  for (u_int i = 0; i < set->fd_count; i++) {
+    if (set->fd_array[i] == s) return 1;
+  }
+  return 0;
+}
+
+static void agent_fd_add(SOCKET s, fd_set *set) {
+  if (!set || set->fd_count >= FD_SETSIZE) return;
+  set->fd_array[set->fd_count++] = s;
+}
+
+static int WINAPI agent_select_hook(int nfds, fd_set *readfds, fd_set *writefds,
+                                    fd_set *exceptfds, const struct timeval *timeout) {
+  int wanted = readfds && g_gameSocket != INVALID_SOCKET && agent_fd_has(g_gameSocket, readfds);
+  if (!wanted || !agent_queue_waiting()) {
+    return g_agentSelect(nfds, readfds, writefds, exceptfds, timeout);
+  }
+  struct timeval now;
+  now.tv_sec = 0;
+  now.tv_usec = 0;
+  int ready = g_agentSelect(nfds, readfds, writefds, exceptfds, &now);
+  if (ready < 0) ready = 0;
+  if (readfds && !agent_fd_has(g_gameSocket, readfds)) {
+    agent_fd_add(g_gameSocket, readfds);
+    ready++;
+  }
+  return ready;
 }
 
 /**
@@ -387,6 +599,23 @@ static int install_agent(void) {
                                                         WSOCK32_RECVFROM, &agent_recvfrom_hook,
                                                         "recvfrom");
   if (!g_agentRecvFrom) return 0;
+  // `select` is not fatal to miss: a game that never asks it loses nothing by
+  // this being absent, and one that does would otherwise never be told that a
+  // relayed datagram is waiting. So it is installed if it can be and reported
+  // if it cannot, rather than taking the other two down with it.
+  g_agentSelect = (AgentSelectFn)agent_hook_ordinal("wsock32.dll", L"wsock32.dll", WSOCK32_SELECT,
+                                                    &agent_select_hook, "select");
+
+  if (!g_queueLockMade) {
+    InitializeCriticalSection(&g_queueLock);
+    g_queueLockMade = 1;
+  }
+  g_queue = (AgentDatagram *)VirtualAlloc(NULL, sizeof(AgentDatagram) * AGENT_QUEUE, MEM_COMMIT,
+                                          PAGE_READWRITE);
+  if (!g_queue) {
+    log_line("agent: no room for the queue — nothing can be carried back in");
+    return 0;
+  }
   g_lastReport = GetTickCount();
   return 1;
 }

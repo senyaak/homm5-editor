@@ -108,6 +108,9 @@
 #include "net/ubi-module-probe.c"
 #include "net/ubi-friends-probe.c"
 #include "net/ubi-room-probe.c"
+// The way out before the thing that decides to use it: agent.c calls into the
+// relay, and this is one file compiled top to bottom.
+#include "net/relay.c"
 #include "net/agent.c"
 
 /**

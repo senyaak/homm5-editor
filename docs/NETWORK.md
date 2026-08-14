@@ -208,6 +208,45 @@ node tools/install-native.ts --game C:\Projects\homm5-game-net
 What lands in the log: one line when the hook goes in, the first three datagrams
 of each peer with their first sixteen bytes, and a count every five seconds.
 
+### Carrying, and how the datagram gets back in
+
+[native/net/relay.c](../native/net/relay.c) is the way out: a WebSocket to the
+relay through **WinHTTP**, which is in Windows, speaks WebSocket since 8, and
+terminates TLS itself — so `wss://` costs nothing later and no library of ours
+ships with the mod. Its entry points are taken with `GetProcAddress` because the
+build links nothing (`src/mods/extension.ts`) and because `LoadLibrary` must not
+be called under the loader lock; the dial happens on a thread, started at the
+first datagram to a peer — which is also the moment the player is in a room, and
+so the moment the core can say which room to put this agent in.
+
+Its two settings are their own file, `bin/homm5-editor-net.txt`, beside the
+quality-of-life one:
+
+```
+relay ws://127.0.0.1:40200/agent
+secret <what `npm run issue-agent -- <name>` printed in the h5e-lobby repo>
+```
+
+**Getting a relayed datagram back INTO the game is the part that being in the
+process pays for.** It never arrives on the game's socket, so it is queued and
+handed over the next time the game asks: `recvfrom` is ours, and the address it
+reports is the peer's own — the one the game was told about and already believes
+in. No loopback stand-in per peer, no rewriting the room description per
+recipient, and the open question in `h5e-lobby/docs/ARCHITECTURE.md` about that
+rewriting is answered by not needing an address at all.
+
+`select` is hooked for the same reason: a game that asks the OS whether there is
+anything to read would be told no, and would never call `recvfrom`. Whether this
+game asks was never established — the hook costs nothing if it does not, and is
+the difference between playing and hanging if it does.
+
+Known limit, deliberate: **every peer datagram goes through the relay**, not
+"when the direct path fails" — a hole punch is worth having and is not written.
+And a relayed datagram carries no peer of its own (the relay is told "to the
+others in my room"), so with three players the agent cannot say which peer a
+datagram came from. Two is what this step is for; three needs a peer named in
+the relay's own framing, on both sides.
+
 ### What the first live run said (14.08.2026)
 
 Two copies, a duel played end to end, the log of copy 1:
