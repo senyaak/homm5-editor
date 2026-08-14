@@ -196,8 +196,26 @@ static int g_relayTried = 0;
 /** Room for a burst; the game's own rate is about one datagram a second. */
 #define AGENT_QUEUE 64
 
+/**
+ * The frame the relay and this agent share, seven bytes in both directions:
+ *
+ *   [0x01][address: 4 bytes][port: 2 bytes big-endian][the datagram]
+ *
+ * Going out, the address is the one the game dialled; coming back, it is the
+ * one the datagram is FROM, which is what `recvfrom` is then answered with. The
+ * agent never names a player and never learns who is who: it knows addresses,
+ * the relay knows players, and the relay is the side that has the room's own
+ * description to map between them. Which is also why this is the whole of the
+ * three-player problem — with two, "the other one" was always right.
+ */
+#define FRAME_DATAGRAM 0x01
+#define FRAME_HEADER 7
+
 typedef struct {
   int len;
+  /** Who it came from, as the frame said. Zero when nothing said. */
+  DWORD addr;
+  WORD port;
   BYTE data[RELAY_MAX_DATAGRAM];
 } AgentDatagram;
 
@@ -361,6 +379,20 @@ static int agent_watch(const struct sockaddr *other, int len, int bytes, int sen
 /** A datagram off the relay, put where the game will find it. Relay thread. */
 static void agent_inbound(const BYTE *data, int len) {
   if (!g_queue || len <= 0 || len > RELAY_MAX_DATAGRAM) return;
+
+  // The sender, out of the frame. Anything not framed is taken as the payload
+  // itself and left without one — a relay of an older build, and with two
+  // players the peer we know is the right answer anyway.
+  DWORD from = 0;
+  WORD fromPort = 0;
+  if (data[0] == FRAME_DATAGRAM && len > FRAME_HEADER) {
+    BYTE *octets = (BYTE *)&from;
+    for (int i = 0; i < 4; i++) octets[i] = data[1 + i];
+    fromPort = (WORD)((data[5] << 8) | data[6]);
+    data += FRAME_HEADER;
+    len -= FRAME_HEADER;
+  }
+
   EnterCriticalSection(&g_queueLock);
   if (g_queueCount >= AGENT_QUEUE) {
     // The game is not reading. Dropping the OLDEST is the right end to drop
@@ -372,6 +404,8 @@ static void agent_inbound(const BYTE *data, int len) {
   }
   int at = (g_queueHead + g_queueCount) % AGENT_QUEUE;
   g_queue[at].len = len;
+  g_queue[at].addr = from;
+  g_queue[at].port = fromPort;
   for (int i = 0; i < len; i++) g_queue[at].data[i] = data[i];
   g_queueCount++;
   LeaveCriticalSection(&g_queueLock);
@@ -405,22 +439,46 @@ static int agent_deliver(char *buf, int len, struct sockaddr *from, int *fromlen
   int copy = one->len < len ? one->len : len;
   for (int i = 0; i < copy; i++) buf[i] = (char)one->data[i];
   int whole = one->len;
+  DWORD queuedAddr = one->addr;
+  WORD queuedPort = one->port;
   g_queueHead = (g_queueHead + 1) % AGENT_QUEUE;
   g_queueCount--;
   LeaveCriticalSection(&g_queueLock);
 
-  if (from && fromlen && *fromlen >= (int)sizeof(struct sockaddr_in) && g_peerCount) {
+  // Who it is from: the frame says, and only when it does not — an older relay,
+  // or a datagram that reached us before the room description was read — does
+  // this fall back to the peer we know, which is right whenever there is one.
+  DWORD fromAddr = queuedAddr ? queuedAddr : (g_peerCount ? g_peers[0].addr : 0);
+  WORD fromPort = queuedPort ? queuedPort : (g_peerCount ? g_peers[0].port : 0);
+  if (from && fromlen && *fromlen >= (int)sizeof(struct sockaddr_in) && fromAddr) {
     struct sockaddr_in *in = (struct sockaddr_in *)from;
     BYTE *port = (BYTE *)&in->sin_port;
     in->sin_family = AF_INET;
-    port[0] = (BYTE)(g_peers[0].port >> 8);
-    port[1] = (BYTE)(g_peers[0].port & 0xff);
-    *(DWORD *)&in->sin_addr = g_peers[0].addr;
+    port[0] = (BYTE)(fromPort >> 8);
+    port[1] = (BYTE)(fromPort & 0xff);
+    *(DWORD *)&in->sin_addr = fromAddr;
     *fromlen = (int)sizeof(struct sockaddr_in);
   }
   g_delivered++;
   if (whole > copy) log_num("agent: a relayed datagram did not fit and was cut to ", copy);
   return copy;
+}
+
+/** The datagram, with the address the game dialled in front of it, to the relay. */
+static int agent_carry(const struct sockaddr *to, const BYTE *data, int len) {
+  if (len <= 0 || len > RELAY_MAX_DATAGRAM - FRAME_HEADER) return 0;
+  const struct sockaddr_in *in = (const struct sockaddr_in *)to;
+  BYTE frame[RELAY_MAX_DATAGRAM];
+  frame[0] = FRAME_DATAGRAM;
+  const BYTE *addr = (const BYTE *)&in->sin_addr;
+  for (int i = 0; i < 4; i++) frame[1 + i] = addr[i];
+  // The port is already big-endian in the sockaddr, which is the order the frame
+  // wants — so it is copied rather than swapped twice.
+  const BYTE *port = (const BYTE *)&in->sin_port;
+  frame[5] = port[0];
+  frame[6] = port[1];
+  for (int i = 0; i < len; i++) frame[FRAME_HEADER + i] = data[i];
+  return relay_send(frame, len + FRAME_HEADER);
 }
 
 static int WINAPI agent_sendto_hook(SOCKET s, const char *buf, int len, int flags,
@@ -433,7 +491,7 @@ static int WINAPI agent_sendto_hook(SOCKET s, const char *buf, int len, int flag
     // and what is being established first is that a game can be played through
     // the relay at all. Nothing direct between the clients is the claim, and it
     // is one a packet capture can check.
-    if (relay_connected() && relay_send((const BYTE *)buf, len)) {
+    if (relay_connected() && agent_carry(to, (const BYTE *)buf, len)) {
       g_relayed++;
       return len; /* the game asked for it to be sent, and it was */
     }
