@@ -51,8 +51,69 @@
 #define WSOCK32_SENDTO 20
 #define WSOCK32_RECVFROM 17
 
-/** The NAT desk's port. Traffic to it is the game's own keep-alive, not a peer. */
-#define NAT_DESK_PORT 40010
+/**
+ * The desks, whose ports are NOT a peer's.
+ *
+ * The same socket carries the game's own service traffic — the NAT mirror's
+ * keep-alives, the CD-key desk — and telling that apart from a peer by guessing
+ * at port numbers is guessing at OUR server's configuration. The game does not
+ * guess: it reads `%TEMP%\ubi_servers.ini`, which is what one HTTP request wrote
+ * for it (docs/NETWORK.md), and so does this.
+ *
+ * The first run of this file had only 40010 written in, and the CD-key desk on
+ * 40020 duly appeared in the log as a peer of the player's.
+ */
+#define AGENT_DESKS 8
+static WORD g_deskPorts[AGENT_DESKS];
+static int g_deskPortCount = 0;
+static int g_desksRead = 0;
+
+/** One `[Servers]` entry, if it is there and is a port. */
+static void agent_desk_port(const char *ini, const char *key) {
+  char text[32];
+  DWORD got = GetPrivateProfileStringA("Servers", key, "", text, sizeof(text), ini);
+  if (!got) return;
+  int port = 0;
+  const char *p = text;
+  if (!read_int(&p, text + got, &port)) return;
+  if (port <= 0 || port > 0xffff || g_deskPortCount >= AGENT_DESKS) return;
+  for (int i = 0; i < g_deskPortCount; i++) {
+    if (g_deskPorts[i] == (WORD)port) return;
+  }
+  g_deskPorts[g_deskPortCount++] = (WORD)port;
+  log_num("agent: a desk of the lobby is on port ", port);
+}
+
+/**
+ * Every port the server list names, read once.
+ *
+ * Only the ones a datagram can go to are worth having, but all of them are
+ * cheap: what this list is for is answering "is this endpoint a player", and a
+ * TCP-only desk in it costs nothing and cannot be wrong.
+ */
+static void agent_read_desks(void) {
+  char ini[MAX_PATH];
+  DWORD len = GetTempPathA(MAX_PATH, ini);
+  if (!len || len + 16 >= MAX_PATH) return;
+  const char *name = "ubi_servers.ini";
+  int at = (int)len;
+  for (int i = 0; name[i]; i++) ini[at++] = name[i];
+  ini[at] = 0;
+
+  static const char *const KEYS[] = {
+    "RouterPort0", "RouterLauncherPort0", "NATServerPort0",
+    "CDKeyServerPort0", "CDKeyServerLauncherPort0", "IRCPort0",
+  };
+  for (int i = 0; i < (int)(sizeof(KEYS) / sizeof(KEYS[0])); i++) agent_desk_port(ini, KEYS[i]);
+  if (!g_deskPortCount) log_text("agent: no server list at ", ini);
+}
+
+static int agent_is_desk(WORD port) {
+  for (int i = 0; i < g_deskPortCount; i++) {
+    if (g_deskPorts[i] == port) return 1;
+  }
+  return 0;
+}
 
 /** How many peers one game can have in flight. Eight players, so seven others. */
 #define AGENT_PEERS 8
@@ -151,7 +212,7 @@ static void agent_report(void) {
     log_num("agent:   received packets ", peer->got);
     log_num("agent:   received bytes ", peer->gotBytes);
   }
-  if (g_deskPings) log_num("agent: keep-alives to the NAT desk ", g_deskPings);
+  if (g_deskPings) log_num("agent: datagrams to the lobby's own desks ", g_deskPings);
 }
 
 /**
@@ -164,6 +225,15 @@ static void agent_report(void) {
  */
 static void agent_watch(const struct sockaddr *other, int len, int bytes, int sending,
                         const BYTE *data) {
+  // The desks are read HERE and not at install time, and the difference matters:
+  // this DLL's entry point runs before the executable's, and the server list is
+  // something the game downloads once it is running. Read too early, the file is
+  // last session's or is not there at all. By the time a datagram exists it has
+  // been written — the address the datagram is going to came out of it.
+  if (!g_desksRead) {
+    g_desksRead = 1;
+    agent_read_desks();
+  }
   if (!other || len < (int)sizeof(struct sockaddr_in)) return;
   if (!readable(other, sizeof(struct sockaddr_in))) return;
   const struct sockaddr_in *in = (const struct sockaddr_in *)other;
@@ -173,7 +243,7 @@ static void agent_watch(const struct sockaddr *other, int len, int bytes, int se
   WORD port = (WORD)((rawPort[0] << 8) | rawPort[1]); /* the wire is big endian */
   DWORD addr = *(const DWORD *)&in->sin_addr;
 
-  if (port == NAT_DESK_PORT) {
+  if (agent_is_desk(port)) {
     g_deskPings++;
     g_reportPending = 1;
     agent_report();

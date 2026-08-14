@@ -206,10 +206,36 @@ node tools/install-native.ts --game C:\Projects\homm5-game-net
 ```
 
 What lands in the log: one line when the hook goes in, the first three datagrams
-of each peer with their first sixteen bytes, and a count every five seconds. The
-expected shape of a match's opening is in `h5e-lobby/docs/NETWORK_STATE.md` — a
-nine-byte handshake each way carrying a four-byte token, one 273-byte description,
-then 18 to 28 bytes about every 0.9 s.
+of each peer with their first sixteen bytes, and a count every five seconds.
+
+### What the first live run said (14.08.2026)
+
+Two copies, a duel played end to end, the log of copy 1:
+
+```
+agent: watching sendto
+agent: watching recvfrom
+agent: the game's peer socket is watched
+agent: <- 192.168.178.27:8889   bytes 9   head 07 01 00 00 00 ef e7 2a a5
+agent: -> 192.168.178.27:8889   bytes 9   head 07 00 00 00 00 ef e7 2a a5
+…
+agent: peer 192.168.178.27:8889
+agent:   sent packets 522     sent bytes 17430
+agent:   received packets 512 received bytes 15610
+```
+
+So the hook is on the right socket, at the right time, and the nine-byte
+handshake with its four-byte token is exactly the one the packet captures in
+`h5e-lobby/docs/NETWORK_STATE.md` describe. The peer is at the **LAN** address,
+not loopback, with both clients on one machine — as measured there.
+
+It also found a mistake of its own: the first version knew only the NAT desk's
+port, so the CD-key desk on 40020 was written down as a peer of the player's.
+Harmless while the agent only counts, and exactly the kind of thing that would
+have sent service traffic into the relay later. The ports now come from
+`%TEMP%\ubi_servers.ini` — the same list the game itself read — and they are read
+at the first datagram rather than at load, because this DLL's entry point runs
+before the executable's and the file is downloaded after that.
 
 ### What is still the game's side to find
 
