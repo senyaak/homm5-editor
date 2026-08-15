@@ -75,6 +75,11 @@ test('one switch on its own tab, and its tick reaches BOTH flags @nodata', async
     expect(written, 'the agent half is on in the file the extension reads').toMatch(/^net-agent 1$/m);
     expect(written, 'and so is the lobby half — one tick, both flags').toMatch(/^net-u-lobby 1$/m);
     expect(written, 'and what was not ticked is written down as off').toMatch(/^second-instance 0$/m);
+
+    // The port was left empty, and empty is an answer: no line at all, and the
+    // extension picks a free one at bind — not a default nobody typed.
+    const netWritten = readFileSync(NET_FILE, 'utf8');
+    expect(netWritten, 'no port line when the field is empty').not.toMatch(/^u-lobby-port /m);
   } finally {
     await closeEditor(ed);
   }

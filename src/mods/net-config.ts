@@ -34,18 +34,19 @@ export interface NetSettings {
    */
   uLobby: string;
   /**
-   * Which loopback port the lobby half listens on for the game.
+   * Which loopback port the lobby half listens on for the game — or 0, which
+   * means the system picks a free one at bind and `getsockname` says which
+   * (`native/net/lobby.c`). Zero is the ordinary answer: it is what lets any
+   * number of copies run on one machine without a hand dealing the numbers
+   * out. Naming one is for a capture filter that wants a stable number.
    *
-   * Nothing else has to be told: the extension rewrites the one URL the game
-   * fetches its server list from, using this very number, so the two cannot
-   * disagree and there is no launcher script to keep in step. 8080 unless
-   * something on this machine has already taken it.
+   * Nothing else has to be told either way: the extension rewrites the one URL
+   * the game fetches its server list from AFTER the bind, using the number the
+   * bind settled on, so the two cannot disagree and there is no launcher
+   * script to keep in step.
    */
   uLobbyPort: number;
 }
-
-/** What the u-lobby listens on when nobody says otherwise. */
-export const DEFAULT_U_LOBBY_PORT = 8080;
 
 export function netPath(gameRoot: string): string {
   return join(gameRoot, NET_FILE);
@@ -60,7 +61,7 @@ export function netPath(gameRoot: string): string {
  * carrying the `secret` line nothing reads any more.
  */
 export function readNet(gameRoot: string): NetSettings {
-  const out: NetSettings = { relay: '', uLobby: '', uLobbyPort: DEFAULT_U_LOBBY_PORT };
+  const out: NetSettings = { relay: '', uLobby: '', uLobbyPort: 0 };
   let text = '';
   try {
     text = readFileSync(netPath(gameRoot), 'utf8');
@@ -108,16 +109,19 @@ export function writeNetFile(gameRoot: string, net: NetSettings): string {
     '#              behind a tunnel. Read by native/net/lobby.c, which needs it because a',
     '#              tunnel carries HTTP and WebSocket while the u-lobby\'s own services are',
     '#              raw TCP and UDP.',
-    '# u-lobby-port — the loopback port the lobby half listens on for the game. The',
+    '# u-lobby-port — OPTIONAL: the loopback port the lobby half listens on for the',
+    '#              game. Left out, the system picks a free one at bind — any number',
+    '#              of copies on one machine, no hand dealing the numbers. Name one',
+    '#              only for a stable number to filter a capture by. Either way the',
     '#              extension points the game at it by rewriting the game\'s own',
-    '#              server-list URL, so nothing else has to be told this number.',
+    '#              server-list URL after the bind, so nothing can disagree.',
     '#',
     '# There is no secret here. The agent tells the relay which address and port this',
     '# game plays on, and the lobby decides whether that is anybody.',
     '',
     `relay ${net.relay.trim()}`,
     `u-lobby ${net.uLobby.trim()}`,
-    `u-lobby-port ${String(net.uLobbyPort || DEFAULT_U_LOBBY_PORT)}`,
+    ...(net.uLobbyPort ? [`u-lobby-port ${String(net.uLobbyPort)}`] : []),
     '',
   ];
   const path = netPath(gameRoot);

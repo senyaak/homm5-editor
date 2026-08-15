@@ -15,7 +15,7 @@ import { APP_ROOT, gameData, gameRoot } from '#electron/paths.ts';
 import { isQolName } from '#src/mods/qol.ts';
 import type { QolSettings } from '#src/mods/qol.ts';
 import { qolPath, readQol, writeQolFile } from '#src/mods/qol-file.ts';
-import { DEFAULT_U_LOBBY_PORT, netPath, readNet, writeNetFile } from '#src/mods/net-config.ts';
+import { netPath, readNet, writeNetFile } from '#src/mods/net-config.ts';
 import { removeQolArchive, writeQolArchive } from '#src/mods/qol-ui.ts';
 import { removeGameplayArchive, writeGameplayArchive } from '#src/mods/gameplay.ts';
 import { profilesRoot, setResolution, setWindowed } from '#src/game/video-config.ts';
@@ -89,7 +89,9 @@ export function registerQol(): void {
       writeNetFile(g, {
         relay: String(net['relay'] ?? '').trim(),
         uLobby: String(net['uLobby'] ?? '').trim(),
-        uLobbyPort: Number.isInteger(port) && port > 0 && port <= 0xffff ? port : DEFAULT_U_LOBBY_PORT,
+        // Zero is the ordinary answer — the extension picks a free port at
+        // bind — so an empty field stays empty instead of becoming a number.
+        uLobbyPort: Number.isInteger(port) && port > 0 && port <= 0xffff ? port : 0,
       });
     }
 

@@ -54,10 +54,13 @@
 // THE CONFIG, in `bin/homm5-editor-net.txt` beside the relay's own line:
 //
 //   u-lobby wss://host/u-lobby
-//   u-lobby-port 8080
+//   u-lobby-port 8080        (optional)
 //
 // The port is what the listener binds on the loopback and what the game is then
-// told to ask; its default is the u-lobby's own `8080`.
+// told to ask. Nobody has to name one: left out, the system hands us a free port
+// at bind — which is what lets any number of copies run on one machine without a
+// hand dealing the numbers out. Named, it is used as written; the one reason to
+// name it is a stable number to filter a capture by.
 
 /** Which switch turns this file's logging on — see the bottom of core/log.c. */
 #undef LOG_UNIT
@@ -94,6 +97,7 @@ typedef int(WINAPI *LobbyRecvFromFn)(SOCKET s, char *buf, int len, int flags,
 typedef int(WINAPI *LobbySendToFn)(SOCKET s, const char *buf, int len, int flags,
                                    const struct sockaddr *to, int tolen);
 typedef int(WINAPI *LobbyCloseFn)(SOCKET s);
+typedef int(WINAPI *LobbyGetsocknameFn)(SOCKET s, struct sockaddr *name, int *namelen);
 /** `WSADATA` is 400 bytes at most and nothing here reads it — a buffer will do. */
 typedef int(WINAPI *LobbyStartupFn)(WORD version, void *data);
 
@@ -106,9 +110,16 @@ static LobbySendFn g_lobbySend = NULL;
 static LobbyRecvFromFn g_lobbyRecvFrom = NULL;
 static LobbySendToFn g_lobbySendTo = NULL;
 static LobbyCloseFn g_lobbyCloseSocket = NULL;
+static LobbyGetsocknameFn g_lobbyGetsockname = NULL;
 
 static char g_uLobbyUrl[256];
-static int g_uLobbyPort = 8080;
+/**
+ * Zero means "pick one": the config's `u-lobby-port` sets it, and nothing else
+ * does — the system hands out a free port at bind and `getsockname` says which
+ * (`lobby_open_sockets`). Every reader downstream — the URL rewrite, the ini
+ * answer, the log — runs after the bind, so by then this is always a number.
+ */
+static int g_uLobbyPort = 0;
 
 static SOCKET g_uLobbyListener = INVALID_SOCKET;
 static SOCKET g_uLobbyUdp = INVALID_SOCKET;
@@ -187,7 +198,8 @@ static int lobby_read_config(void) {
     return 0;
   }
   log_text("lobby: ", g_uLobbyUrl);
-  log_num("lobby: listening for the game on 127.0.0.1:", g_uLobbyPort);
+  if (g_uLobbyPort) log_num("lobby: listening for the game on 127.0.0.1:", g_uLobbyPort);
+  else log_line("lobby: no port named — a free one will be picked at bind");
   return 1;
 }
 
@@ -718,10 +730,12 @@ static int lobby_load_winsock(void) {
   g_lobbyRecvFrom = (LobbyRecvFromFn)GetProcAddress(ws, "recvfrom");
   g_lobbySendTo = (LobbySendToFn)GetProcAddress(ws, "sendto");
   g_lobbyCloseSocket = (LobbyCloseFn)GetProcAddress(ws, "closesocket");
+  g_lobbyGetsockname = (LobbyGetsocknameFn)GetProcAddress(ws, "getsockname");
   LobbyStartupFn startup = (LobbyStartupFn)GetProcAddress(ws, "WSAStartup");
 
   if (!g_lobbySocket || !g_lobbyBind || !g_lobbyListen || !g_lobbyAccept || !g_lobbyRecv ||
-      !g_lobbySend || !g_lobbyRecvFrom || !g_lobbySendTo || !g_lobbyCloseSocket || !startup) {
+      !g_lobbySend || !g_lobbyRecvFrom || !g_lobbySendTo || !g_lobbyCloseSocket ||
+      !g_lobbyGetsockname || !startup) {
     log_line("lobby: this winsock is missing something we need");
     return 0;
   }
@@ -747,47 +761,88 @@ static int lobby_load_winsock(void) {
   return 1;
 }
 
-/** Both sockets on the loopback, or neither: half of them is a lobby that half works. */
+/**
+ * Both sockets on the loopback, or neither: half of them is a lobby that half works.
+ *
+ * With no port named in the config the SYSTEM picks one: the TCP side binds
+ * port 0, `getsockname` says what it was given, and the UDP side takes the same
+ * number — the ini names ONE number per address, so the two must agree. UDP is
+ * its own namespace, so that number can already be busy there; when it is, both
+ * sockets are closed and the dice are thrown again. Sixteen tries is not a
+ * tuned number: a machine where sixteen fresh TCP ports in a row are all taken
+ * in UDP has a bigger problem than this lobby.
+ *
+ * One number the picking cannot dodge by itself: a `net_game_port` somebody set
+ * into the ephemeral range by hand — the agent tells a u-lobby service from a
+ * player by port and nothing else. The default 8888 is nowhere near it; whoever
+ * moves the game's port up there pins `u-lobby-port` in the config, which is
+ * what turns this loop off.
+ */
 static int lobby_open_sockets(void) {
-  struct sockaddr_in at;
-  for (int i = 0; i < (int)sizeof(at); i++) ((BYTE *)&at)[i] = 0;
-  at.sin_family = AF_INET;
-  BYTE *port = (BYTE *)&at.sin_port;
-  port[0] = (BYTE)(g_uLobbyPort >> 8);
-  port[1] = (BYTE)(g_uLobbyPort & 0xff);
-  BYTE *octets = (BYTE *)&at.sin_addr;
-  octets[0] = 127;
-  octets[1] = 0;
-  octets[2] = 0;
-  octets[3] = 1;
+  const int picking = g_uLobbyPort == 0;
+  for (int tries = 0; tries < 16; tries++) {
+    struct sockaddr_in at;
+    for (int i = 0; i < (int)sizeof(at); i++) ((BYTE *)&at)[i] = 0;
+    at.sin_family = AF_INET;
+    BYTE *port = (BYTE *)&at.sin_port;
+    port[0] = (BYTE)(g_uLobbyPort >> 8);
+    port[1] = (BYTE)(g_uLobbyPort & 0xff);
+    BYTE *octets = (BYTE *)&at.sin_addr;
+    octets[0] = 127;
+    octets[1] = 0;
+    octets[2] = 0;
+    octets[3] = 1;
 
-  g_uLobbyListener = g_lobbySocket(AF_INET, SOCK_STREAM, 0);
-  if (g_uLobbyListener == INVALID_SOCKET) {
-    // The one path out of here that used to say nothing, and the one a first run
-    // took: WSANOTINITIALISED, because this ran before anybody had started winsock.
-    log_num("lobby: winsock would not give us a socket, error ", (int)GetLastError());
-    return 0;
-  }
-  if (g_lobbyBind(g_uLobbyListener, (const struct sockaddr *)&at, (int)sizeof(at)) != 0 ||
-      g_lobbyListen(g_uLobbyListener, 8) != 0) {
-    // Almost always somebody else on the number — a u-lobby of our own running on
-    // this machine, most likely. Saying which port it was is the whole diagnosis.
-    log_num("lobby: could not listen on 127.0.0.1:", g_uLobbyPort);
-    g_lobbyCloseSocket(g_uLobbyListener);
-    g_uLobbyListener = INVALID_SOCKET;
-    return 0;
-  }
+    g_uLobbyListener = g_lobbySocket(AF_INET, SOCK_STREAM, 0);
+    if (g_uLobbyListener == INVALID_SOCKET) {
+      // The one path out of here that used to say nothing, and the one a first run
+      // took: WSANOTINITIALISED, because this ran before anybody had started winsock.
+      log_num("lobby: winsock would not give us a socket, error ", (int)GetLastError());
+      return 0;
+    }
+    if (g_lobbyBind(g_uLobbyListener, (const struct sockaddr *)&at, (int)sizeof(at)) != 0 ||
+        g_lobbyListen(g_uLobbyListener, 8) != 0) {
+      // Almost always somebody else on the number — a u-lobby of our own running on
+      // this machine, most likely. Saying which port it was is the whole diagnosis.
+      log_num("lobby: could not listen on 127.0.0.1:", g_uLobbyPort);
+      g_lobbyCloseSocket(g_uLobbyListener);
+      g_uLobbyListener = INVALID_SOCKET;
+      return 0;
+    }
+    if (picking) {
+      struct sockaddr_in got;
+      int len = (int)sizeof(got);
+      if (g_lobbyGetsockname(g_uLobbyListener, (struct sockaddr *)&got, &len) != 0) {
+        log_line("lobby: the system would not say which port it picked");
+        g_lobbyCloseSocket(g_uLobbyListener);
+        g_uLobbyListener = INVALID_SOCKET;
+        return 0;
+      }
+      const BYTE *chosen = (const BYTE *)&got.sin_port;
+      g_uLobbyPort = ((int)chosen[0] << 8) | (int)chosen[1];
+      port[0] = chosen[0];
+      port[1] = chosen[1];
+    }
 
-  g_uLobbyUdp = g_lobbySocket(AF_INET, SOCK_DGRAM, 0);
-  if (g_uLobbyUdp == INVALID_SOCKET ||
-      g_lobbyBind(g_uLobbyUdp, (const struct sockaddr *)&at, (int)sizeof(at)) != 0) {
-    log_num("lobby: could not take the datagram side of 127.0.0.1:", g_uLobbyPort);
+    g_uLobbyUdp = g_lobbySocket(AF_INET, SOCK_DGRAM, 0);
+    if (g_uLobbyUdp != INVALID_SOCKET &&
+        g_lobbyBind(g_uLobbyUdp, (const struct sockaddr *)&at, (int)sizeof(at)) == 0) {
+      if (picking) log_num("lobby: picked a free port itself: ", g_uLobbyPort);
+      return 1;
+    }
+
     if (g_uLobbyUdp != INVALID_SOCKET) g_lobbyCloseSocket(g_uLobbyUdp);
     g_lobbyCloseSocket(g_uLobbyListener);
     g_uLobbyUdp = g_uLobbyListener = INVALID_SOCKET;
-    return 0;
+    if (!picking) {
+      log_num("lobby: could not take the datagram side of 127.0.0.1:", g_uLobbyPort);
+      return 0;
+    }
+    // The datagram side of the picked number belongs to somebody — throw again.
+    g_uLobbyPort = 0;
   }
-  return 1;
+  log_line("lobby: sixteen picked ports in a row had their datagram side taken — giving up");
+  return 0;
 }
 
 // ---------------------------------------------------------------------------

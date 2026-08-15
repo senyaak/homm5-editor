@@ -214,7 +214,9 @@ async function refresh(): Promise<void> {
   // what is shown is what the game will read, not what was typed here last time.
   ($('qol-net-relay') as HTMLInputElement).value = state.net?.relay ?? '';
   ($('qol-net-u-lobby-url') as HTMLInputElement).value = state.net?.uLobby ?? '';
-  ($('qol-net-u-lobby-port') as HTMLInputElement).value = String(state.net?.uLobbyPort ?? '');
+  // Zero is "the extension picks a free one at bind" and shows as the empty
+  // field it was left as — not as a number nobody typed.
+  ($('qol-net-u-lobby-port') as HTMLInputElement).value = state.net?.uLobbyPort ? String(state.net.uLobbyPort) : '';
   $('qol-net-file').textContent = state.netFile ?? '';
   syncPreset();
 

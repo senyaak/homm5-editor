@@ -367,11 +367,17 @@ have nothing to say which socket it belonged to.
 
 ```
 u-lobby wss://host/u-lobby
-u-lobby-port 8080
+u-lobby-port 8080        (optional)
 ```
 
 The port is what the listener binds on the loopback and what the rewritten URL
-names, so those two cannot disagree.
+names — the rewrite happens after the bind, so those two cannot disagree. The
+line is optional, and leaving it out is the ordinary answer: the system hands
+the listener a free port, `getsockname` says which, and any number of copies
+run on one machine without a hand dealing the numbers out. Naming one is for a
+capture filter that wants a stable number — and it is the way out if the game's
+own `net_game_port` was moved into the ephemeral range by hand, since the agent
+tells a u-lobby service from a player by port alone.
 
 **The server list is answered here, not carried.** It is a local question — the
 ini says where THIS copy's u-lobby is, and for a copy that carries them through us

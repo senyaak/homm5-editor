@@ -29,12 +29,14 @@ one.
   for its server list at, then answers that question itself, and the game is
   started the way it always was. The tab holds a lobby picked by name — which
   fills the two addresses — or Custom and the addresses by hand, plus the local
-  port this copy listens on (a second copy on one machine needs its own). No
-  secret to keep anywhere: an agent tells the relay which address and port the
-  game plays on, and the lobby answers whether anybody is playing there. In the
-  file the switch is still two flags, `net-agent` and `net-u-lobby`, so a hand
-  can set one without the other — the panel shows such a file as the mixed state
-  it is.
+  port this copy listens on. The port is optional and empty is the ordinary
+  answer: the extension picks a free one when the game starts, so any number of
+  copies on one machine just work — naming one is for a capture filter that
+  wants a stable number. No secret to keep anywhere: an agent tells the relay
+  which address and port the game plays on, and the lobby answers whether
+  anybody is playing there. In the file the switch is still two flags,
+  `net-agent` and `net-u-lobby`, so a hand can set one without the other — the
+  panel shows such a file as the mixed state it is.
 
 - **Two quality-of-life switches for playing against yourself.** *Let a second
   copy of the game run* takes off the guard that refuses to start while another

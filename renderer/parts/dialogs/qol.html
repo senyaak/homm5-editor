@@ -60,16 +60,17 @@
           </label>
           <label class="qol-field">
             <span>Local u-lobby port</span>
-            <input id="qol-net-u-lobby-port" type="number" min="1" max="65535" step="1" placeholder="8080" />
+            <input id="qol-net-u-lobby-port" type="number" min="1" max="65535" step="1" placeholder="auto" />
           </label>
           <div class="qol-detail-open">
             The two addresses are where this copy goes out — the relay carries the other
             PLAYERS' traffic, the u-lobby tunnel carries the LOBBY — and a lobby picked by
             name fills them both. The local port is nothing of the lobby's: it is where this
-            copy's own listener sits on 127.0.0.1 for its own game, so a second copy on this
-            machine needs a different one. 8080 unless something else took it. No secret
-            anywhere: the agent says which address and port this game plays on, and the
-            lobby answers whether anybody is playing there.
+            copy's own listener sits on 127.0.0.1 for its own game. Left empty, the
+            extension picks a free one when the game starts — any number of copies on one
+            machine, nothing to deal out. Name one only if a capture filter wants a stable
+            number. No secret anywhere: the agent says which address and port this game
+            plays on, and the lobby answers whether anybody is playing there.
           </div>
           <div id="qol-net-file" class="qol-file"></div>
         </div>
