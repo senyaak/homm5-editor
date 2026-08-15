@@ -49,6 +49,9 @@ typedef void *HINTERNET;
 #define WS_BINARY_MESSAGE 0
 #define WS_BINARY_FRAGMENT 1
 #define WS_CLOSE 4
+/** Asking the response what its status was — for diagnosis, never for a decision. */
+#define WINHTTP_QUERY_STATUS_CODE 19
+#define WINHTTP_QUERY_FLAG_NUMBER 0x20000000
 
 typedef HINTERNET(WINAPI *WinHttpOpenFn)(LPCWSTR, DWORD, LPCWSTR, LPCWSTR, DWORD);
 typedef HINTERNET(WINAPI *WinHttpConnectFn)(HINTERNET, LPCWSTR, WORD, DWORD);
@@ -73,6 +76,9 @@ static WinHttpWebSocketCompleteUpgradeFn g_httpCompleteUpgrade = NULL;
 static WinHttpWebSocketSendFn g_httpSocketSend = NULL;
 static WinHttpWebSocketReceiveFn g_httpSocketReceive = NULL;
 static WinHttpCloseHandleFn g_httpClose = NULL;
+/** Optional: only a failing upgrade asks it what the far end said. */
+typedef BOOL(WINAPI *WinHttpQueryHeadersFn)(HINTERNET, DWORD, LPCWSTR, LPVOID, LPDWORD, LPDWORD);
+static WinHttpQueryHeadersFn g_httpQueryHeaders = NULL;
 
 /** The biggest datagram this will carry. The game's are under 300 bytes. */
 #define RELAY_MAX_DATAGRAM 2048
@@ -228,6 +234,10 @@ static int relay_load_winhttp(void) {
   g_httpSocketSend = (WinHttpWebSocketSendFn)GetProcAddress(lib, "WinHttpWebSocketSend");
   g_httpSocketReceive = (WinHttpWebSocketReceiveFn)GetProcAddress(lib, "WinHttpWebSocketReceive");
   g_httpClose = (WinHttpCloseHandleFn)GetProcAddress(lib, "WinHttpCloseHandle");
+  // Not in the check below: a build that cannot ask why an upgrade failed still
+  // dials perfectly well, and losing the whole feature over a diagnostic would be
+  // the wrong trade.
+  g_httpQueryHeaders = (WinHttpQueryHeadersFn)GetProcAddress(lib, "WinHttpQueryHeaders");
 
   if (!g_httpOpen || !g_httpConnect || !g_httpOpenRequest || !g_httpSetOption ||
       !g_httpSendRequest || !g_httpReceiveResponse || !g_httpCompleteUpgrade || !g_httpSocketSend ||

@@ -244,13 +244,53 @@ static int lobby_dial(void) {
     lobby_wire_drop();
     return 0;
   }
-  int ok = g_httpSetOption(request, WINHTTP_OPTION_UPGRADE_TO_WEB_SOCKET, NULL, 0) &&
-           g_httpSendRequest(request, NULL, 0, NULL, 0, 0, 0) &&
-           g_httpReceiveResponse(request, NULL);
-  if (ok) g_uLobbySocket = g_httpCompleteUpgrade(request, 0);
+  /**
+   * THE ERROR IS TAKEN WHERE IT HAPPENS, and the step is named.
+   *
+   * Reading `GetLastError` after the handle is closed reports nothing: a call
+   * that SUCCEEDS is free to reset it, and `WinHttpCloseHandle` does — which is
+   * why a refused upgrade logged "last error 0" and a run was spent on it. Four
+   * calls can fail here and they fail for entirely different reasons; which one
+   * it was is most of the answer.
+   */
+  const char *step = NULL;
+  DWORD why = 0;
+  if (!g_httpSetOption(request, WINHTTP_OPTION_UPGRADE_TO_WEB_SOCKET, NULL, 0)) {
+    step = "asking for a WebSocket";
+    why = GetLastError();
+  } else if (!g_httpSendRequest(request, NULL, 0, NULL, 0, 0, 0)) {
+    step = "sending the request";
+    why = GetLastError();
+  } else if (!g_httpReceiveResponse(request, NULL)) {
+    step = "reading the answer";
+    why = GetLastError();
+  } else {
+    g_uLobbySocket = g_httpCompleteUpgrade(request, 0);
+    if (!g_uLobbySocket) {
+      step = "completing the upgrade";
+      why = GetLastError();
+      /**
+       * AND WHAT THE FAR END ACTUALLY SAID.
+       *
+       * This call answers `ERROR_INVALID_OPERATION` for every response that is
+       * not a `101`, so the error number is the same whether the tunnel is down,
+       * the path is wrong or something in front of it is asking a question. The
+       * status code tells those apart at a glance — a run was spent on a `4317`
+       * that turned out to be Cloudflare's `530`, its way of saying the tunnel
+       * on the other side is not connected.
+       */
+      DWORD status = 0, size = (DWORD)sizeof(status);
+      if (g_httpQueryHeaders &&
+          g_httpQueryHeaders(request, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER, NULL,
+                             &status, &size, NULL)) {
+        log_num("lobby: the far end answered with status ", (int)status);
+      }
+    }
+  }
   g_httpClose(request);
   if (!g_uLobbySocket) {
-    log_num("lobby: the upgrade was refused, last error ", (int)GetLastError());
+    log_text("lobby: the upgrade was refused while ", step);
+    log_num("lobby: and the error was ", (int)why);
     lobby_wire_drop();
     return 0;
   }
