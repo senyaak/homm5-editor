@@ -94,6 +94,8 @@ typedef int(WINAPI *LobbyRecvFromFn)(SOCKET s, char *buf, int len, int flags,
 typedef int(WINAPI *LobbySendToFn)(SOCKET s, const char *buf, int len, int flags,
                                    const struct sockaddr *to, int tolen);
 typedef int(WINAPI *LobbyCloseFn)(SOCKET s);
+/** `WSADATA` is 400 bytes at most and nothing here reads it — a buffer will do. */
+typedef int(WINAPI *LobbyStartupFn)(WORD version, void *data);
 
 static LobbySocketFn g_lobbySocket = NULL;
 static LobbyBindFn g_lobbyBind = NULL;
@@ -676,10 +678,28 @@ static int lobby_load_winsock(void) {
   g_lobbyRecvFrom = (LobbyRecvFromFn)GetProcAddress(ws, "recvfrom");
   g_lobbySendTo = (LobbySendToFn)GetProcAddress(ws, "sendto");
   g_lobbyCloseSocket = (LobbyCloseFn)GetProcAddress(ws, "closesocket");
+  LobbyStartupFn startup = (LobbyStartupFn)GetProcAddress(ws, "WSAStartup");
 
   if (!g_lobbySocket || !g_lobbyBind || !g_lobbyListen || !g_lobbyAccept || !g_lobbyRecv ||
-      !g_lobbySend || !g_lobbyRecvFrom || !g_lobbySendTo || !g_lobbyCloseSocket) {
+      !g_lobbySend || !g_lobbyRecvFrom || !g_lobbySendTo || !g_lobbyCloseSocket || !startup) {
     log_line("lobby: this winsock is missing something we need");
+    return 0;
+  }
+
+  /**
+   * OUR OWN `WSAStartup`, and this is not politeness.
+   *
+   * This thread runs from `DllMain`, which is long before the game's own
+   * `SocketsInit` — and until somebody in the process has called this, every
+   * `socket()` fails with WSANOTINITIALISED. That is exactly what a first run
+   * did: winsock was ours, the sockets were not opened, and the whole feature
+   * stopped there. The call is reference-counted per caller, so ours and the
+   * game's do not touch: neither can shut the other's down.
+   */
+  BYTE data[512];
+  int failed = startup(0x0202, data);
+  if (failed) {
+    log_num("lobby: winsock would not start for us, error ", failed);
     return 0;
   }
   // Taken from the library, never from the game's import table — so the peer half's
@@ -702,7 +722,12 @@ static int lobby_open_sockets(void) {
   octets[3] = 1;
 
   g_uLobbyListener = g_lobbySocket(AF_INET, SOCK_STREAM, 0);
-  if (g_uLobbyListener == INVALID_SOCKET) return 0;
+  if (g_uLobbyListener == INVALID_SOCKET) {
+    // The one path out of here that used to say nothing, and the one a first run
+    // took: WSANOTINITIALISED, because this ran before anybody had started winsock.
+    log_num("lobby: winsock would not give us a socket, error ", (int)GetLastError());
+    return 0;
+  }
   if (g_lobbyBind(g_uLobbyListener, (const struct sockaddr *)&at, (int)sizeof(at)) != 0 ||
       g_lobbyListen(g_uLobbyListener, 8) != 0) {
     // Almost always somebody else on the number — a gateway of our own running on
@@ -817,6 +842,13 @@ static int lobby_point_the_game_here(void) {
 
   // Half a minute of looking, in case a machine is slow to get through its
   // initialisers. Nothing is drawn yet while this runs, and it is one thread.
+  // WHAT IT SEES, ON THE FIRST LOOK. Waiting silently for thirty seconds and only
+  // then saying "never built it" costs a launch to learn nothing: the game gives
+  // up in four. This says the pointer it read straight away, so a run answers
+  // whether the address is right, whether the constructor has run yet, or whether
+  // this thread reached here at all — three questions that looked identical.
+  log_hex("lobby: the game's server-list URL object holds ", (DWORD)(ULONG_PTR)*begin);
+
   for (int tries = 0; tries < 600; tries++) {
     char *text = *begin;
     if (text && readable(text, sizeof(URL_EXPECTED))) {
@@ -860,9 +892,16 @@ static int lobby_point_the_game_here(void) {
  */
 static DWORD WINAPI lobby_start_thread(LPVOID unused) {
   (void)unused;
+  // A LINE PER STEP, because two runs were spent asking where this stopped. Each
+  // of these can fail and say so; none of them said anything about SUCCEEDING,
+  // so a thread that died at the first one and a thread that never started read
+  // the same in the log. They are three lines and they end that question.
   if (!relay_load_winhttp()) return 0;
+  log_line("lobby: winhttp is loaded");
   if (!lobby_load_winsock()) return 0;
+  log_line("lobby: winsock is ours");
   if (!lobby_open_sockets()) return 0;
+  log_line("lobby: both sockets are open");
 
   // EVERYTHING THAT CARRIES, BEFORE ANYTHING THAT WAITS. The redirection below
   // waits for the game to build a string, which can be seconds, and a first run
