@@ -503,6 +503,43 @@ typedef int(WINAPI *AgentCloseSocketFn)(SOCKET s);
  *
  * Nothing is sent by the throwaway socket: `connect` on UDP only fixes a route.
  */
+typedef struct hostent *(WINAPI *AgentHostByNameFn)(const char *name);
+
+/**
+ * The relay's own address, and the port it is on.
+ *
+ * WHY THE RELAY AND NOT THE LOBBY. What this is for is working out which of this
+ * machine's addresses the outside sees, by routing a socket at something far away
+ * and asking where it would go out from. That used to be the lobby — and it was
+ * right until the lobby moved into this very process. A game carrying its
+ * u-lobby through a tunnel dials `127.0.0.1`, so a probe routed there answers
+ * `127.0.0.1`, and the relay then looks for a player at a loopback address and
+ * finds nobody: twenty-eight connections and twenty-seven refusals in one run.
+ *
+ * The relay is the right thing to aim at because it is the thing that has to
+ * recognise us: the address we reach IT from is the address it knows us by.
+ */
+static DWORD agent_relay_address(WORD *port) {
+  char host[128], path[192];
+  WORD found = 0;
+  int secure = 0;
+  if (!g_relayUrl[0]) return 0;
+  if (!relay_split_url(g_relayUrl, host, sizeof(host), &found, path, sizeof(path), &secure)) return 0;
+
+  HMODULE ws = GetModuleHandleA("wsock32.dll");
+  if (!ws) ws = GetModuleHandleA("ws2_32.dll");
+  if (!ws) return 0;
+  AgentHostByNameFn resolve = (AgentHostByNameFn)GetProcAddress(ws, "gethostbyname");
+  if (!resolve) return 0;
+  // A dotted address answers itself here, so a relay named by number works too.
+  struct hostent *entry = resolve(host);
+  if (!entry || entry->h_addrtype != AF_INET || !entry->h_addr_list || !entry->h_addr_list[0]) {
+    return 0;
+  }
+  *port = found;
+  return *(DWORD *)entry->h_addr_list[0];
+}
+
 static int agent_announce(void) {
   if (g_gameSocket == INVALID_SOCKET || !g_lobbyAddr || !g_uServicePortCount) return 0;
   HMODULE ws = GetModuleHandleA("wsock32.dll");
@@ -523,16 +560,25 @@ static int agent_announce(void) {
   const BYTE *portBytes = (const BYTE *)&bound.sin_port; /* already big endian */
   if (!portBytes[0] && !portBytes[1]) return 0;
 
+  WORD relayPort = 0;
+  DWORD towards = agent_relay_address(&relayPort);
+  if (!towards) {
+    log_line("agent: cannot find the relay's address — nothing to work ours out against");
+    return 0;
+  }
+
   DWORD ours = 0;
   SOCKET probe = makeSocket(AF_INET, SOCK_DGRAM, 0);
   if (probe != INVALID_SOCKET) {
     struct sockaddr_in at;
     for (int i = 0; i < (int)sizeof(at); i++) ((BYTE *)&at)[i] = 0;
     at.sin_family = AF_INET;
-    *(DWORD *)&at.sin_addr = g_lobbyAddr;
-    BYTE *servicePort = (BYTE *)&at.sin_port;
-    servicePort[0] = (BYTE)(g_uServicePorts[0] >> 8);
-    servicePort[1] = (BYTE)(g_uServicePorts[0] & 0xff);
+    *(DWORD *)&at.sin_addr = towards;
+    BYTE *toPort = (BYTE *)&at.sin_port;
+    toPort[0] = (BYTE)(relayPort >> 8);
+    toPort[1] = (BYTE)(relayPort & 0xff);
+    // Nothing is sent: `connect` on UDP only picks the route, and the route is
+    // the whole question.
     if (route(probe, (const struct sockaddr *)&at, (int)sizeof(at)) == 0) {
       struct sockaddr_in local;
       int localSize = (int)sizeof(local);
@@ -542,6 +588,13 @@ static int agent_announce(void) {
   }
   if (!ours) {
     log_line("agent: could not work out which address the lobby sees us at");
+    return 0;
+  }
+  // AND NEVER ANNOUNCE THE LOOPBACK. Nobody plays at 127.0.0.1 as far as a lobby
+  // is concerned, so this can only ever be refused — and it was, silently, over
+  // and over, because a refusal looks exactly like a connection that dropped.
+  if (((const BYTE *)&ours)[0] == 127) {
+    log_line("agent: our own address came out as the loopback — not announcing that");
     return 0;
   }
 
