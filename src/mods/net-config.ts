@@ -44,7 +44,7 @@ export interface NetSettings {
   uLobbyPort: number;
 }
 
-/** What the gateway listens on when nobody says otherwise. */
+/** What the u-lobby listens on when nobody says otherwise. */
 export const DEFAULT_U_LOBBY_PORT = 8080;
 
 export function netPath(gameRoot: string): string {

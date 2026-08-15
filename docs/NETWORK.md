@@ -347,9 +347,9 @@ string the game carries. The two `.data` addresses cannot be checked on disk —
 nothing has written them yet — and the test lists them as such.
 
 **The shape.** One loopback listener takes the u-lobby connections and the u-lobby service
-datagrams; each becomes a numbered stream or channel inside one WebSocket to
-`services/u-lobby` at the far end, which opens the real connection to the real
-gateway. Three bytes in front of everything:
+datagrams; each becomes a numbered stream or channel inside one WebSocket to the u-lobby
+at the far end — its `/u-lobby` door, on the same port as everything it serves —
+which lands each one on that port as a loopback connection of its own. Three bytes in front of everything:
 
 ```
 0x01 [id:u16] payload   bytes on a stream, either direction
@@ -379,10 +379,10 @@ the answer is always the same: all of them at our own loopback port. The lobby a
 the far end could not answer it if it wanted to, since that number belongs to this
 machine. So a stream whose first message begins `GET ` never becomes a stream at
 all: it is answered and closed, by the same read-the-first-message rule the
-gateway uses to tell one u-lobby service from another.
+u-lobby uses to tell one u-lobby service from another.
 
 The price is stated where it is paid: the u-lobby service prefixes in `lobby_servers_ini` are
-a copy of the gateway's own `SERVICES` table, and a u-lobby service added there has to be
+a copy of the u-lobby's own `SERVICES` table, and a u-lobby service added there has to be
 added here. Since the merge to one number what could go stale is the LIST and not
 the address, and a missing prefix shows up as the game failing to reach a service
 by name.

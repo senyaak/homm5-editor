@@ -28,7 +28,7 @@
 // THE SHAPE. One listener on the loopback takes the game's u-lobby connections and
 // its u-lobby datagrams; each of them becomes a numbered stream or channel inside
 // one WebSocket to `services/u-lobby` at the other end, which opens the real
-// connection to the real gateway. The frames are three bytes and then the rest:
+// connection to the real u-lobby. The frames are three bytes and then the rest:
 //
 //   0x01 [id:u16] payload   bytes on a stream, either direction
 //   0x02 [id:u16]           open a stream                      (we say it)
@@ -57,7 +57,7 @@
 //   u-lobby-port 8080
 //
 // The port is what the listener binds on the loopback and what the game is then
-// told to ask; its default is the gateway's own `8080`.
+// told to ask; its default is the u-lobby's own `8080`.
 
 /** Which switch turns this file's logging on — see the bottom of core/log.c. */
 #undef LOG_UNIT
@@ -420,11 +420,11 @@ static int lobby_channel_address(int id, struct sockaddr_in *out) {
  * copy that carries them through us the answer is always the same: all of them,
  * at our own loopback port. The lobby at the far end has no way to know that
  * number — it is this machine's — and asking it would only get back an address
- * meant for somebody dialling the gateway directly, which is exactly what a
+ * meant for somebody dialling the u-lobby directly, which is exactly what a
  * tunnelled game cannot do.
  *
- * THE PRICE, said out loud: the prefixes below are a copy of the gateway's own
- * table (`SERVICES` in services/gateway/main.ts). A u-lobby service added there has to be
+ * THE PRICE, said out loud: the prefixes below are a copy of the u-lobby's own
+ * table (`SERVICES` in services/u-lobby/main.ts). A u-lobby service added there has to be
  * added here. They have been one number since they were merged, so what
  * would go stale is the LIST, not the address — and a missing prefix is a game
  * that says it cannot reach the service by name, which is legible.
@@ -433,7 +433,7 @@ static int lobby_channel_address(int id, struct sockaddr_in *out) {
  */
 static int lobby_servers_ini(char *out, int room) {
   static const char *const PREFIX[] = { "Router", "NATServer", "CDKeyServer", "IRC" };
-  /** Which of them are handed a `%sLauncherPort%i` as well — the gateway's own answer. */
+  /** Which of them are handed a `%sLauncherPort%i` as well — the u-lobby's own answer. */
   static const int LAUNCHER[] = { 1, 0, 1, 0 };
 
   char port[12];
@@ -501,8 +501,8 @@ static int lobby_answer_the_list(SOCKET s) {
 /**
  * One accepted u-lobby connection, read until it ends.
  *
- * The first message decides what this is, the same way the gateway decides which
- * u-lobby service a connection wants (`services/gateway/u-lobby service.ts`): a `GET ` is the server
+ * The first message decides what this is, the same way the u-lobby decides which
+ * u-lobby service a connection wants (`services/u-lobby/classify.ts`): a `GET ` is the server
  * list and is answered here; anything else is a u-lobby service and is carried. Which is
  * why the stream is not announced on accept — until something has been said
  * there is nothing to announce, and the list must not become a stream at all.
@@ -770,7 +770,7 @@ static int lobby_open_sockets(void) {
   }
   if (g_lobbyBind(g_uLobbyListener, (const struct sockaddr *)&at, (int)sizeof(at)) != 0 ||
       g_lobbyListen(g_uLobbyListener, 8) != 0) {
-    // Almost always somebody else on the number — a gateway of our own running on
+    // Almost always somebody else on the number — a u-lobby of our own running on
     // this machine, most likely. Saying which port it was is the whole diagnosis.
     log_num("lobby: could not listen on 127.0.0.1:", g_uLobbyPort);
     g_lobbyCloseSocket(g_uLobbyListener);
