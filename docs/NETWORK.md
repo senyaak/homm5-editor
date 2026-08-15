@@ -66,9 +66,14 @@ rights: `bin/libcurl.dll` is **libcurl 7.14.0**, which reads `http_proxy` /
 (10004) — `net-probe --push 10004` finds no such push anywhere in `.text`, while
 the three options it does set are all there. So a game started with
 `http_proxy=http://127.0.0.1:8080` asks us for its server list, and only that
-process is affected. `h5e-lobby` is what answers, and `run-net.bat` in the game
-copy is the whole client side of it: three lines that set the variable and start
-the exe.
+process is affected. `h5e-lobby` is what answers.
+
+**That route is no longer the one taken, and the bat files that took it were
+deleted on 15.08.2026.** The extension rewrites the URL in memory instead (below),
+and a leftover `http_proxy` beats that rewrite silently — it decides where the
+request is SENT, whatever the URL says, so off the lobby's own LAN it is
+twenty-one seconds of waiting and then a failure. The variable is still the
+cheapest way in for a copy with no extension, and that is all it is kept here for.
 
 The other two ways to redirect it: a `hosts` entry for
 `gsconnect.ubisoft.com`, or patching the URL literal — possible, but it is
