@@ -274,7 +274,11 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   // the agent is off, or the other way round, and neither has an opinion about
   // the other. Unlike the agent it needs no import slot, so the moment does not
   // matter; what it does need is a config line naming where to carry the u-lobby.
-  if (g_qol[QOL_NET_U_LOBBY] && install_lobby()) log_line("lobby: the u-lobby is carried out");
+  // What this says is only that it STARTED — the sockets, the tunnel and the
+  // redirection all happen on a thread of its own and report themselves. The
+  // line used to be "the u-lobby is carried out", the same sentence the thread
+  // logs when it has actually done it, and one run was read wrong because of it.
+  if (g_qol[QOL_NET_U_LOBBY] && install_lobby()) log_line("lobby: starting");
   return TRUE;
 }
 

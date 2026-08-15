@@ -221,16 +221,24 @@ static int lobby_dial(void) {
   relay_widen(host, hostW, 128);
   relay_widen(path, pathW, 192);
 
+  // EVERY FAILURE SAYS SO. A first run spent fifteen seconds with no tunnel and
+  // an empty log, because these three returned nothing and said nothing — and a
+  // dial that fails in silence is indistinguishable from one that never ran.
   g_uLobbySession = g_httpOpen(L"h5e-u-lobby", WINHTTP_ACCESS_TYPE_NO_PROXY, NULL, NULL, 0);
-  if (!g_uLobbySession) return 0;
+  if (!g_uLobbySession) {
+    log_num("lobby: could not open a WinHTTP session, last error ", (int)GetLastError());
+    return 0;
+  }
   g_uLobbyConnect = g_httpConnect(g_uLobbySession, hostW, port, 0);
   if (!g_uLobbyConnect) {
+    log_num("lobby: could not reach that host, last error ", (int)GetLastError());
     lobby_wire_drop();
     return 0;
   }
   HINTERNET request = g_httpOpenRequest(g_uLobbyConnect, L"GET", pathW, NULL, NULL, NULL,
                                         secure ? WINHTTP_FLAG_SECURE : 0);
   if (!request) {
+    log_num("lobby: could not open the request, last error ", (int)GetLastError());
     lobby_wire_drop();
     return 0;
   }
@@ -250,8 +258,19 @@ static int lobby_dial(void) {
 }
 
 /** One frame out. Called from whichever thread had something to say. */
+/** Said once per outage, not once per message: the game repeats, the log must not. */
+static volatile LONG g_uLobbySaidNotReady = 0;
+
 static int lobby_wire_send(BYTE type, WORD id, const BYTE *payload, int len) {
-  if (!InterlockedCompareExchange(&g_uLobbyReady, 1, 1)) return 0;
+  if (!InterlockedCompareExchange(&g_uLobbyReady, 1, 1)) {
+    // THE SILENT DROP IS WHAT COST A RUN. The game sent its NAT datagrams at a
+    // listener whose tunnel was not up, they went nowhere, and nothing said so —
+    // fifteen seconds of the game's own timeout, and a log with no answer in it.
+    if (!InterlockedExchange(&g_uLobbySaidNotReady, 1))
+      log_line("lobby: the game is talking to us and the tunnel is not up — dropping until it is");
+    return 0;
+  }
+  InterlockedExchange(&g_uLobbySaidNotReady, 0);
   if (len < 0 || len > LOBBY_BUFFER) return 0;
   BYTE frame[LOBBY_HEADER + LOBBY_BUFFER];
   frame[0] = type;
@@ -784,6 +803,18 @@ static int lobby_point_the_game_here(void) {
     return 0;
   }
 
+  // AND SAY IF SOMETHING ELSE IS ALREADY DECIDING. `http_proxy` in the
+  // environment beats everything below it: the game's curl sends its request to
+  // that proxy whatever the URL says, so a copy still started by the old bat file
+  // reaches whatever the bat named and none of this shows up anywhere. One run
+  // went that way and looked, in the log, exactly like a redirection that worked.
+  char proxy[128];
+  DWORD proxyLen = GetEnvironmentVariableA("http_proxy", proxy, sizeof(proxy));
+  if (proxyLen > 0 && proxyLen < sizeof(proxy)) {
+    log_text("lobby: http_proxy is set and OVERRIDES us — the game will ask ", proxy);
+    log_line("lobby: start bin/H5_Game_H5E.exe directly; the bat file is not needed any more");
+  }
+
   // Half a minute of looking, in case a machine is slow to get through its
   // initialisers. Nothing is drawn yet while this runs, and it is one thread.
   for (int tries = 0; tries < 600; tries++) {
@@ -833,27 +864,34 @@ static DWORD WINAPI lobby_start_thread(LPVOID unused) {
   if (!lobby_load_winsock()) return 0;
   if (!lobby_open_sockets()) return 0;
 
-  // The listener FIRST and the redirection second: between the two the game
-  // would be pointed at a port nobody answers on, and a refused connection this
-  // early reads like a lobby that is down.
-  if (!lobby_point_the_game_here()) {
-    // The u-lobby stays the game's own. Carrying nothing is right here — the far end
-    // would only ever see a connection the game never makes.
-    return 0;
-  }
-
+  // EVERYTHING THAT CARRIES, BEFORE ANYTHING THAT WAITS. The redirection below
+  // waits for the game to build a string, which can be seconds, and a first run
+  // showed what putting it first costs: the game reached its NAT step, sent its
+  // datagrams at a listener whose tunnel had not been dialled yet, and sat there
+  // for the fifteen seconds of its own timeout before giving up. The tunnel is
+  // what takes longest to come up, so it starts first and the rest catches up.
   HANDLE listener = CreateThread(NULL, 0, lobby_accept_thread, NULL, 0, NULL);
   HANDLE datagrams = CreateThread(NULL, 0, lobby_datagram_thread, NULL, 0, NULL);
-  if (!listener || !datagrams) {
+  HANDLE wire = CreateThread(NULL, 0, lobby_wire_thread, NULL, 0, NULL);
+  if (!listener || !datagrams || !wire) {
     log_line("lobby: could not start its threads");
     InterlockedExchange(&g_uLobbyStop, 1);
     return 0;
   }
   CloseHandle(listener);
   CloseHandle(datagrams);
+  CloseHandle(wire);
 
+  if (!lobby_point_the_game_here()) {
+    // The u-lobby stays the game's own, and so this carries nothing — but the
+    // sockets and the tunnel stay up, because a game told where to go by some
+    // other means (a proxy in its environment, a `hosts` line) still arrives
+    // here, and refusing to carry what does arrive would be a second failure on
+    // top of the first.
+    log_line("lobby: not redirected — carrying only what reaches us anyway");
+    return 0;
+  }
   log_line("lobby: the u-lobby is carried out");
-  lobby_wire_thread(NULL);
   return 0;
 }
 
