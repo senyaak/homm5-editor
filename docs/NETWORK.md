@@ -302,10 +302,44 @@ out over a WebSocket of our own.
 
 **Why it hooks nothing.** Unlike the agent it needs no import slot and replaces
 no call. The game learns every desk address from the ini we serve, and it asks
-for that ini through `http_proxy` — so pointing both at `127.0.0.1` makes the
-game open ordinary sockets to a listener of ours, in its own process, of its own
-accord. That is a whole class of hook — `connect`, `send`, `recv`, and the
-non-blocking semantics under them — that never has to be written.
+for that ini at one address — so pointing both at `127.0.0.1` makes the game open
+ordinary sockets to a listener of ours, in its own process, of its own accord.
+That is a whole class of hook — `connect`, `send`, `recv`, and the non-blocking
+semantics under them — that never has to be written.
+
+**And there is no bat file.** The `http_proxy` route above still works, but the
+extension does not need it: it rewrites the URL where the game keeps it, so a
+copy with this switched on is started by running the executable and nothing else.
+
+### Rewriting that URL, exactly
+
+The documentation above described `0x121A81C` as the URL. It is not a buffer —
+it is a three-pointer string object, `{begin, end, capacity_end}` at
+`0x121A81C / 0x121A820 / 0x121A824`, whose text lives on the game's own pool
+heap. `GetServersConfig` passes the ADDRESS of that object to the concatenation
+that appends the product id (`0x4DC770`, which allocates exactly what the result
+needs), and curl is handed the fresh buffer — never the global.
+
+So:
+
+- **write to `*(char**)0x121A81C`**, not to `0x121A81C` (12 bytes there are the
+  three fields, and `0x121A828` is the `ubi_servers.ini` object with no gap);
+- **43 characters is the ceiling** — the constructor allocated `0x2C` and the
+  destructor gives that same pointer back to the game's pool allocator on exit,
+  so the pointer has to stay the game's and only the bytes inside it are ours.
+  `http://127.0.0.1:65535/gsinit.php?dp=` is 37;
+- **move `end` too**: the length is `end - begin` and not a `strlen`, so a
+  shorter URL that left `end` alone would carry the tail of the old one;
+- **not from `DllMain`.** The constructor is a `.CRT$XCU` initialiser — it runs
+  inside the executable's entry point, after every imported DLL's `DllMain` and
+  before `WinMain`, and would overwrite anything written earlier. `lobby.c` waits
+  for the string it expects and only then replaces it, which doubles as the check:
+  bytes that are not the ones we know are left alone.
+
+`tools/test-native-anchors.ts` checks the `.rdata` literal the constructor copies
+from (`0xFE5FAC`), which is what says the string being waited for is still the
+string the game carries. The two `.data` addresses cannot be checked on disk —
+nothing has written them yet — and the test lists them as such.
 
 **The shape.** One loopback listener takes the desk connections and the desk
 datagrams; each becomes a numbered stream or channel inside one WebSocket to
@@ -331,8 +365,8 @@ desks wss://host/desks
 desks-port 8080
 ```
 
-The port is what the listener binds on the loopback, and it has to be the number
-that copy's `http_proxy` names.
+The port is what the listener binds on the loopback and what the rewritten URL
+names, so those two cannot disagree.
 
 **What is not settled.** The ini a tunnelled client is served still advertises
 `H5E_HOST`, and for such a client every desk address has to be its own

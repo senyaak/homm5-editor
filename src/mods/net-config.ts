@@ -36,9 +36,10 @@ export interface NetSettings {
   /**
    * Which loopback port the lobby half listens on for the game.
    *
-   * It has to be the number the game is told to use — `http_proxy=http://127.0.0.1:<this>`
-   * in the copy's bat file, and the desk addresses in the ini the lobby serves. The
-   * gateway's own default is 8080, so leaving all three alone keeps them agreeing.
+   * Nothing else has to be told: the extension rewrites the one URL the game
+   * fetches its server list from, using this very number, so the two cannot
+   * disagree and there is no launcher script to keep in step. 8080 unless
+   * something on this machine has already taken it.
    */
   desksPort: number;
 }
@@ -106,8 +107,9 @@ export function writeNetFile(gameRoot: string, net: NetSettings): string {
     '# desks      — where the LOBBY is carried: ws://host:port/desks, likewise. Read by',
     '#              native/net/lobby.c, which needs it because a tunnel carries HTTP and',
     '#              WebSocket and the game\'s desks are raw TCP and UDP.',
-    '# desks-port — the loopback port the lobby half listens on for the game. It has to',
-    '#              match the http_proxy in this copy\'s bat file.',
+    '# desks-port — the loopback port the lobby half listens on for the game. The',
+    '#              extension points the game at it by rewriting the game\'s own',
+    '#              server-list URL, so nothing else has to be told this number.',
     '#',
     '# There is no secret here. The agent tells the relay which address and port this',
     '# game plays on, and the lobby decides whether that is anybody.',

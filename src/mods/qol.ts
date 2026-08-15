@@ -336,8 +336,10 @@ export const QOL_FLAGS = [
       + ' so no setting of a tunnel can put them behind one. This listens on the loopback instead,'
       + ' the game connects to it of its own accord — nothing is hooked and no call of the game\'s'
       + ' is touched — and everything it hears crosses one outgoing WebSocket to our lobby.'
-      + ' It needs the desk tunnel filled in below, and the local port it names has to be the one'
-      + ' in this copy\'s http_proxy. With it off the game dials the desks itself, as it always did.',
+      + ' It needs the desk tunnel filled in below, and it points the game at itself by rewriting'
+      + ' the address the game asks for its server list at — so there is no launcher script to set'
+      + ' up and nothing that can disagree about the port. With it off nothing is rewritten and the'
+      + ' game dials the desks itself, as it always did.',
   },
 ] as const;
 

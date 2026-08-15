@@ -45,15 +45,19 @@
 // desks — and the alternative costs more than it saves here: `FD_ISSET` is a
 // call into winsock's import library, and this DLL links nothing at all.
 //
+// AND THE GAME IS POINTED HERE BY US, not by a bat file. The one URL it fetches
+// its server list from is a string the executable builds at startup, and it is
+// rewritten in place once this listener is up — so there is no `http_proxy` to
+// set, no launcher script to keep in step, and no way for the port in a bat file
+// to disagree with the port we are listening on. See `lobby_point_the_game_here`.
+//
 // THE CONFIG, in `bin/homm5-editor-net.txt` beside the relay's own line:
 //
 //   desks wss://host/desks
 //   desks-port 8080
 //
-// The port is what the listener binds on the loopback, and it has to be the one
-// the game is told to use — `http_proxy=http://127.0.0.1:8080` in the copy's bat
-// file, and the desk addresses in the ini we are served. Its default is the
-// gateway's own `8080`, so all three agree while nobody changes anything.
+// The port is what the listener binds on the loopback and what the game is then
+// told to ask; its default is the gateway's own `8080`.
 
 /** Which switch turns this file's logging on — see the bottom of core/log.c. */
 #undef LOG_UNIT
@@ -594,18 +598,165 @@ static int lobby_open_sockets(void) {
   return 1;
 }
 
+// ---------------------------------------------------------------------------
+// Pointing the game at us.
+// ---------------------------------------------------------------------------
+
+/**
+ * Where the executable keeps the one URL its whole online stack hangs from.
+ *
+ * NOT a character buffer, whatever an earlier note said: it is three pointers —
+ * `begin`, `end`, `capacity_end` — and the text is on the game's own pool heap.
+ * `GetServersConfig` (0xE07A50) hands the ADDRESS of this object to the string
+ * concatenation that appends the product id, and curl is given the fresh buffer
+ * that comes out of it. So the thing to rewrite is what `begin` points AT.
+ */
+#define URL_OBJECT_RVA 0xe1a81cu
+#define URL_END_RVA 0xe1a820u
+
+/**
+ * The literal the constructor copies from, and the only part of this that can be
+ * checked without running the game.
+ *
+ * The two addresses above are `.data` that nothing has written yet on disk — a
+ * pointer to the heap, made at startup — so `tools/test-native-anchors.ts` can
+ * only list them, and it does. This one is `.rdata` and is checked there, which
+ * is what says the string below is still the string the game carries.
+ */
+#define URL_LITERAL_RVA 0xbe5facu
+static const BYTE URL_LITERAL_HEAD[] = {
+  /* the first twelve characters of the address below, spelled out: the anchor
+     collector strips line comments before it reads the bytes, so a comment with
+     a slash pair in it takes the last byte with it. */
+  0x68, 0x74, 0x74, 0x70, 0x3a, 0x2f, 0x2f, 0x67, 0x73, 0x63, 0x6f, 0x6e
+};
+
+/**
+ * What has to be there before we write, and what goes in its place.
+ *
+ * The buffer was allocated with room for 44 (`push 2Ch` in the constructor) and
+ * is freed on exit through the game's own pool allocator — so the pointer must
+ * stay the game's and only the bytes inside it are ours. 43 characters is the
+ * ceiling, and `http://127.0.0.1:65535/gsinit.php?dp=` is 37 of them.
+ */
+static const char URL_EXPECTED[] = "http://gsconnect.ubisoft.com/gsinit.php?dp=";
+#define URL_ROOM 43
+
+/**
+ * Rewrite that URL to name our own listener.
+ *
+ * WHEN. The string is built by a static constructor (0x4D0080, an entry in
+ * `.CRT$XCU`), which runs inside the executable's entry point — after every
+ * imported DLL has had its `DllMain` and before `WinMain`. Writing from
+ * `DllMain` would therefore be undone a moment later, so this waits for the
+ * text it expects to appear and only then replaces it. What it waits for IS the
+ * check: bytes that are not the ones we know are left alone, exactly as
+ * `detour` refuses a function whose head it does not recognise.
+ *
+ * THE LENGTH IS A FIELD, not a `strlen`. The concatenation reads `end - begin`,
+ * so a shorter URL that forgot to move `end` would carry the tail of the old
+ * one into the request.
+ */
+static int lobby_point_the_game_here(void) {
+  BYTE *image = (BYTE *)GetModuleHandleW(NULL);
+  char **begin = (char **)(image + URL_OBJECT_RVA);
+  char **end = (char **)(image + URL_END_RVA);
+
+  // Room for the longest this can be — five digits of port — checked below all
+  // the same, because a buffer that is exactly big enough is one edit from not.
+  char ours[64];
+  int at = 0, digits = 0;
+  for (const char *p = "http://127.0.0.1:"; *p; p++) ours[at++] = *p;
+  num_to_dec(g_desksPort, ours + at, &digits);
+  at += digits;
+  for (const char *p = "/gsinit.php?dp="; *p; p++) ours[at++] = *p;
+  ours[at] = 0;
+  if (at > URL_ROOM) {
+    log_line("lobby: our own address does not fit where the game keeps its URL");
+    return 0;
+  }
+
+  // Half a minute of looking, in case a machine is slow to get through its
+  // initialisers. Nothing is drawn yet while this runs, and it is one thread.
+  for (int tries = 0; tries < 600; tries++) {
+    char *text = *begin;
+    if (text && readable(text, sizeof(URL_EXPECTED))) {
+      int same = 1;
+      for (int i = 0; URL_EXPECTED[i]; i++) {
+        if (text[i] != URL_EXPECTED[i]) {
+          same = 0;
+          break;
+        }
+      }
+      if (same) {
+        for (int i = 0; i <= at; i++) text[i] = ours[i];
+        *end = text + at;
+        log_text("lobby: the game now asks for its server list at ", ours);
+        return 1;
+      }
+      // Something is there and it is not what this was written against. Saying so
+      // and leaving it is the only safe answer — the game keeps its own URL and
+      // the desks are simply not reached, which is visible rather than silent.
+      log_text("lobby: the game's server-list URL is not the one we know: ", text);
+      return 0;
+    }
+    Sleep(50);
+  }
+  log_line("lobby: the game never built its server-list URL — not redirected");
+  return 0;
+}
+
+// ---------------------------------------------------------------------------
+// Starting it.
+// ---------------------------------------------------------------------------
+
+/**
+ * Everything that must not happen under the loader lock, on a thread of its own.
+ *
+ * `DllMain` is where the mod's switches are read, and it is the one place none of
+ * this can be done: WinHTTP is reached with `LoadLibrary`, which under the loader
+ * lock is a way to hang the game before it has drawn anything, and the URL this
+ * rewrites does not exist yet — a static constructor builds it a moment later.
+ * So `install_lobby` starts this and returns, and this thread becomes the wire.
+ */
+static DWORD WINAPI lobby_start_thread(LPVOID unused) {
+  (void)unused;
+  if (!relay_load_winhttp()) return 0;
+  if (!lobby_load_winsock()) return 0;
+  if (!lobby_open_sockets()) return 0;
+
+  // The listener FIRST and the redirection second: between the two the game
+  // would be pointed at a port nobody answers on, and a refused connection this
+  // early reads like a lobby that is down.
+  if (!lobby_point_the_game_here()) {
+    // The desks stay the game's own. Carrying nothing is right here — the far end
+    // would only ever see a connection the game never makes.
+    return 0;
+  }
+
+  HANDLE listener = CreateThread(NULL, 0, lobby_accept_thread, NULL, 0, NULL);
+  HANDLE datagrams = CreateThread(NULL, 0, lobby_datagram_thread, NULL, 0, NULL);
+  if (!listener || !datagrams) {
+    log_line("lobby: could not start its threads");
+    InterlockedExchange(&g_desksStop, 1);
+    return 0;
+  }
+  CloseHandle(listener);
+  CloseHandle(datagrams);
+
+  log_line("lobby: the game's desks are carried out");
+  lobby_wire_thread(NULL);
+  return 0;
+}
+
 /**
  * Stand up the lobby half, if this installation was told where to carry it.
  *
- * From the worker thread and not `DllMain`: WinHTTP is reached with
- * `LoadLibrary`, and calling that under the loader lock hangs the game before it
- * has drawn anything. Winsock is already mapped by then — the executable imports
- * it — so nothing here loads a library of its own.
+ * All this does is read the config and start a thread — see above for why it
+ * cannot do more from where it is called.
  */
 static int install_lobby(void) {
   if (!lobby_read_config()) return 0;
-  if (!relay_load_winhttp()) return 0;
-  if (!lobby_load_winsock()) return 0;
 
   if (!g_desksLocksMade) {
     InitializeCriticalSection(&g_desksSendLock);
@@ -614,18 +765,11 @@ static int install_lobby(void) {
   }
   for (int i = 0; i < LOBBY_STREAMS; i++) g_streams[i].socket = INVALID_SOCKET;
 
-  if (!lobby_open_sockets()) return 0;
-
-  HANDLE wire = CreateThread(NULL, 0, lobby_wire_thread, NULL, 0, NULL);
-  HANDLE listener = CreateThread(NULL, 0, lobby_accept_thread, NULL, 0, NULL);
-  HANDLE datagrams = CreateThread(NULL, 0, lobby_datagram_thread, NULL, 0, NULL);
-  if (!wire || !listener || !datagrams) {
-    log_line("lobby: could not start its threads");
-    InterlockedExchange(&g_desksStop, 1);
+  HANDLE start = CreateThread(NULL, 0, lobby_start_thread, NULL, 0, NULL);
+  if (!start) {
+    log_line("lobby: could not start its thread");
     return 0;
   }
-  CloseHandle(wire);
-  CloseHandle(listener);
-  CloseHandle(datagrams);
+  CloseHandle(start);
   return 1;
 }

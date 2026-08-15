@@ -55,8 +55,9 @@
             Two answers for two things. The relay carries the other PLAYERS' traffic; the desk
             tunnel carries the LOBBY, because a tunnel speaks HTTP and WebSocket and the game's
             desks are raw TCP and UDP. Either can be filled in without the other.
-            The local port is where this copy listens for its own game, so it has to be the one
-            in <code>http_proxy</code> in this copy's bat file — 8080 unless something else took it.
+            The local port is where this copy listens for its own game; the extension points the
+            game at it by rewriting the address the game asks for its server list at, so there is
+            no launcher script to keep in step. 8080 unless something else on this machine took it.
             No secret anywhere: the agent says which address and port this game plays on, and the
             lobby answers whether anybody is playing there.
           </div>

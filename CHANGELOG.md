@@ -23,9 +23,12 @@ one.
   behind one. With the switch on, the extension listens on the loopback and the game
   connects to it of its own accord — nothing is hooked, and no call the game makes is
   touched — while everything it hears crosses one outgoing WebSocket to our lobby.
-  The Network tab gained the address it needs and the local port it listens on, which
-  has to be the one in that copy's `http_proxy`. Off unless ticked, and the two
-  switches are independent: either can be on without the other.
+  The Network tab gained the address it needs and the local port it listens on, and
+  nothing else has to be set up: the extension points the game at that port by
+  rewriting the one address the game asks for its server list at, so there is no
+  launcher script and no `http_proxy` to keep in step — the game is started the way
+  it always was. Off unless ticked, and the two switches are independent: either can
+  be on without the other.
 
 - **A Network tab in Game settings, with the multiplayer agent's switch on it.**
   Playing against somebody over the internet needs the game's own peer datagrams
