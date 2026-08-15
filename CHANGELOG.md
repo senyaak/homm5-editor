@@ -25,9 +25,9 @@ one.
   touched — while everything it hears crosses one outgoing WebSocket to our lobby.
   The Network tab gained the address it needs and the local port it listens on, and
   nothing else has to be set up: the extension points the game at that port by
-  rewriting the one address the game asks for its server list at, so there is no
-  launcher script and no `http_proxy` to keep in step — the game is started the way
-  it always was. Off unless ticked, and the two switches are independent: either can
+  rewriting the one address the game asks for its server list at, and then answers
+  that question itself — so there is no launcher script and no `http_proxy` to keep
+  in step, and the game is started the way it always was. Off unless ticked, and the two switches are independent: either can
   be on without the other.
 
 - **A Network tab in Game settings, with the multiplayer agent's switch on it.**

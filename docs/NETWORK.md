@@ -368,12 +368,27 @@ desks-port 8080
 The port is what the listener binds on the loopback and what the rewritten URL
 names, so those two cannot disagree.
 
-**What is not settled.** The ini a tunnelled client is served still advertises
-`H5E_HOST`, and for such a client every desk address has to be its own
-`127.0.0.1` instead — otherwise the game reads the list and dials straight past
-the tunnel. The same is true of the addresses handed over at runtime
-(`PROXY_HANDLER`, the join hand-off), which come from the same setting. That is a
-question for the lobby's side and it is open.
+**The server list is answered here, not carried.** It is a local question — the
+ini says where THIS copy's desks are, and for a copy that carries them through us
+the answer is always the same: all of them at our own loopback port. The lobby at
+the far end could not answer it if it wanted to, since that number belongs to this
+machine. So a stream whose first message begins `GET ` never becomes a stream at
+all: it is answered and closed, by the same read-the-first-message rule the
+gateway uses to tell one desk from another.
+
+The price is stated where it is paid: the desk prefixes in `lobby_servers_ini` are
+a copy of the gateway's own `SERVICES` table, and a desk added there has to be
+added here. Since the merge to one number what could go stale is the LIST and not
+the address, and a missing prefix shows up as the game failing to reach a service
+by name.
+
+**What is not settled.** Two addresses are still the server's to give and still
+come from `H5E_HOST`: the proxy handed over at `PROXY_HANDLER`, and the lobby
+server handed over when a room is joined. For a tunnelled client both have to be
+its own `127.0.0.1`. The cheapest answer while every client is tunnelled is to set
+`H5E_HOST=127.0.0.1` and be done; the answer for a lobby with both kinds of client
+in it is for those endpoints to come from the door a connection arrived on, which
+is a small change — a session already carries its own copy of them.
 
 ### What is still the game's side to find
 

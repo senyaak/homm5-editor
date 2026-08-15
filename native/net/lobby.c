@@ -352,7 +352,100 @@ static int lobby_channel_address(int id, struct sockaddr_in *out) {
 // The threads.
 // ---------------------------------------------------------------------------
 
-/** One accepted desk connection, read until it ends. */
+/**
+ * The server list, answered here and not carried anywhere.
+ *
+ * IT IS A LOCAL QUESTION. The ini says where this copy's desks are, and for a
+ * copy that carries them through us the answer is always the same: all of them,
+ * at our own loopback port. The lobby at the far end has no way to know that
+ * number — it is this machine's — and asking it would only get back an address
+ * meant for somebody dialling the gateway directly, which is exactly what a
+ * tunnelled game cannot do.
+ *
+ * THE PRICE, said out loud: the prefixes below are a copy of the gateway's own
+ * table (`SERVICES` in services/gateway/main.ts). A desk added there has to be
+ * added here. They have been one number since the desks were merged, so what
+ * would go stale is the LIST, not the address — and a missing prefix is a game
+ * that says it cannot reach the service by name, which is legible.
+ *
+ * Windows' profile-string reader wants CRLF and a trailing newline.
+ */
+static int lobby_servers_ini(char *out, int room) {
+  static const char *const PREFIX[] = { "Router", "NATServer", "CDKeyServer", "IRC" };
+  /** Which of them are handed a `%sLauncherPort%i` as well — the gateway's own answer. */
+  static const int LAUNCHER[] = { 1, 0, 1, 0 };
+
+  char port[12];
+  int portLen = 0;
+  num_to_dec(g_desksPort, port, &portLen);
+
+  int at = 0;
+  const char *head = "[Servers]\r\n";
+  for (const char *p = head; *p; p++) {
+    if (at + 1 >= room) return 0;
+    out[at++] = *p;
+  }
+  for (int i = 0; i < 4; i++) {
+    /** `IP0`, then `Port0`, then the launcher if this desk has one. */
+    for (int field = 0; field < 3; field++) {
+      if (field == 2 && !LAUNCHER[i]) continue;
+      const char *tail = field == 0 ? "IP0=" : field == 1 ? "Port0=" : "LauncherPort0=";
+      const char *value = field == 0 ? "127.0.0.1" : port;
+      int valueLen = field == 0 ? 9 : portLen;
+      int need = 0;
+      for (const char *p = PREFIX[i]; *p; p++) need++;
+      for (const char *p = tail; *p; p++) need++;
+      if (at + need + valueLen + 3 >= room) return 0;
+      for (const char *p = PREFIX[i]; *p; p++) out[at++] = *p;
+      for (const char *p = tail; *p; p++) out[at++] = *p;
+      for (int j = 0; j < valueLen; j++) out[at++] = value[j];
+      out[at++] = '\r';
+      out[at++] = '\n';
+    }
+  }
+  out[at] = 0;
+  return at;
+}
+
+/** The ini, wrapped in the smallest answer curl will read. */
+static int lobby_answer_the_list(SOCKET s) {
+  char ini[512];
+  int iniLen = lobby_servers_ini(ini, (int)sizeof(ini));
+  if (!iniLen) {
+    log_line("lobby: no room to write the server list — the game is left without one");
+    return 0;
+  }
+
+  char reply[768];
+  int at = 0, digits = 0;
+  for (const char *p = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: "; *p; p++)
+    reply[at++] = *p;
+  num_to_dec(iniLen, reply + at, &digits);
+  at += digits;
+  // `close`, because the game asks this once and curl is happier being told than
+  // waiting to find out.
+  for (const char *p = "\r\nConnection: close\r\n\r\n"; *p; p++) reply[at++] = *p;
+  for (int i = 0; i < iniLen; i++) reply[at++] = ini[i];
+
+  int wrote = 0;
+  while (wrote < at) {
+    int n = g_lobbySend(s, reply + wrote, at - wrote, 0);
+    if (n <= 0) return 0;
+    wrote += n;
+  }
+  log_num("lobby: answered the game's server list, every desk at 127.0.0.1:", g_desksPort);
+  return 1;
+}
+
+/**
+ * One accepted desk connection, read until it ends.
+ *
+ * The first message decides what this is, the same way the gateway decides which
+ * desk a connection wants (`services/gateway/desk.ts`): a `GET ` is the server
+ * list and is answered here; anything else is a desk and is carried. Which is
+ * why the stream is not announced on accept — until something has been said
+ * there is nothing to announce, and the list must not become a stream at all.
+ */
 static DWORD WINAPI lobby_stream_thread(LPVOID which) {
   int id = (int)(INT_PTR)which;
   SOCKET s = lobby_stream_socket(id);
@@ -360,12 +453,27 @@ static DWORD WINAPI lobby_stream_thread(LPVOID which) {
 
   BYTE *buf = (BYTE *)VirtualAlloc(NULL, LOBBY_BUFFER, MEM_COMMIT, PAGE_READWRITE);
   if (!buf) return 0;
+  int announced = 0;
   for (;;) {
     int got = g_lobbyRecv(s, (char *)buf, LOBBY_BUFFER, 0);
     if (got <= 0) break;
+    if (!announced) {
+      if (got >= 4 && buf[0] == 'G' && buf[1] == 'E' && buf[2] == 'T' && buf[3] == ' ') {
+        lobby_answer_the_list(s);
+        break;
+      }
+      lobby_wire_send(LOBBY_FRAME_OPEN, (WORD)id, NULL, 0);
+      log_num("lobby: the game opened desk stream ", id);
+      announced = 1;
+    }
     if (!lobby_wire_send(LOBBY_FRAME_DATA, (WORD)id, buf, got)) break;
   }
   VirtualFree(buf, 0, MEM_RELEASE);
+  if (!announced) {
+    SOCKET mine = lobby_free_stream(id);
+    if (mine != INVALID_SOCKET) g_lobbyCloseSocket(mine);
+    return 0;
+  }
 
   SOCKET mine = lobby_free_stream(id);
   if (mine != INVALID_SOCKET) {
@@ -396,13 +504,13 @@ static DWORD WINAPI lobby_accept_thread(LPVOID unused) {
       g_lobbyCloseSocket(s);
       continue;
     }
-    lobby_wire_send(LOBBY_FRAME_OPEN, (WORD)id, NULL, 0);
-    log_num("lobby: the game opened desk stream ", id);
+    // Nothing is said to the far end yet: what this connection turns out to be is
+    // in the first message, and one of the things it can be is a question we
+    // answer ourselves.
     HANDLE thread = CreateThread(NULL, 0, lobby_stream_thread, (LPVOID)(INT_PTR)id, 0, NULL);
     if (!thread) {
       SOCKET mine = lobby_free_stream(id);
       if (mine != INVALID_SOCKET) g_lobbyCloseSocket(mine);
-      lobby_wire_send(LOBBY_FRAME_CLOSE, (WORD)id, NULL, 0);
       continue;
     }
     CloseHandle(thread);
