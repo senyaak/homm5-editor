@@ -314,34 +314,52 @@ export const QOL_FLAGS = [
   {
     name: 'net-agent',
     tab: 'network',
-    title: 'Carry multiplayer traffic through our own lobby',
-    detail: 'Over the internet the address a peer is told is often useless — behind carrier-grade'
-      + ' NAT there is no address to tell — so the game\'s datagrams have to be able to travel'
-      + ' through a relay of ours instead, decided one datagram at a time from inside the game.'
-      + ' IN THIS BUILD IT ONLY WATCHES: every datagram still goes exactly where the game sent it,'
-      + ' and what the extension does is write down what it saw — the peer, the sizes, the first'
-      + ' packets of a match — into bin/homm5-editor-*.log. That is the step that comes first:'
-      + ' nothing here had ever hooked a socket before, and a build that carried traffic before'
-      + ' the hook was proven would have two things to blame at once. It costs nothing while no'
-      + ' multiplayer game is running, and it needs a build whose log includes net/agent.',
+    title: 'Carry the other players\' traffic through the relay',
+    detail: 'Half of one decision — the panel offers this and net-u-lobby as a single switch, and'
+      + ' they stay two flags here so a hand can still set one without the other. Over the'
+      + ' internet the address a peer is told is often useless — behind carrier-grade NAT there'
+      + ' is no address to tell — so every game datagram is carried through the relay instead,'
+      + ' decided one datagram at a time from inside the game. It needs `relay` filled in in'
+      + ' homm5-editor-net.txt, and costs nothing while no multiplayer game is running.',
   },
   {
     name: 'net-u-lobby',
     tab: 'network',
-    title: 'Reach our lobby through a tunnel',
-    detail: 'The other half of multiplayer, and a separate thing from the agent above: that one'
-      + ' carries the other PLAYERS\' datagrams, this one carries the LOBBY — the server list, the'
-      + ' rooms, the chat, the CD-key and NAT services. It is needed because a tunnel of the'
-      + ' cloudflared family speaks HTTP and WebSocket while the u-lobby\'s services are raw TCP and UDP,'
-      + ' so no setting of a tunnel can put them behind one. This listens on the loopback instead,'
-      + ' the game connects to it of its own accord — nothing is hooked and no call of the game\'s'
-      + ' is touched — and everything it hears crosses one outgoing WebSocket to our lobby.'
-      + ' It needs the u-lobby tunnel filled in below, and it points the game at itself by rewriting'
-      + ' the address the game asks for its server list at — so there is no launcher script to set'
-      + ' up and nothing that can disagree about the port. With it off nothing is rewritten and the'
+    title: 'Reach the lobby through a tunnel',
+    detail: 'The other half: the agent above carries the other PLAYERS\' datagrams, this one'
+      + ' carries the LOBBY — the server list, the rooms, the chat, the CD-key and NAT services.'
+      + ' A tunnel of the cloudflared family speaks HTTP and WebSocket while the u-lobby\'s'
+      + ' services are raw TCP and UDP, so no setting of a tunnel can put them behind one. This'
+      + ' listens on the loopback instead, the game connects to it of its own accord — nothing'
+      + ' is hooked and no call of the game\'s is touched — and everything it hears crosses one'
+      + ' outgoing WebSocket to the u-lobby\'s own door. It needs `u-lobby` filled in in'
+      + ' homm5-editor-net.txt, and it points the game at itself by rewriting the address the'
+      + ' game asks for its server list at — so there is no launcher script to set up and'
+      + ' nothing that can disagree about the port. With it off nothing is rewritten and the'
       + ' game dials the u-lobby itself, as it always did.',
   },
 ] as const;
+
+/**
+ * The network tab's one switch, drawn by the panel in place of the two flags'
+ * own rows. To somebody deciding, playing through a lobby is ONE thing — half
+ * of it on is a diagnosis, not a choice: the lobby without the agent joins a
+ * game that then cannot start, and the agent without the lobby was a staging
+ * step. So the panel asks once and writes both flags; they stay two flags in
+ * the file, and a file written by hand to one of them shows on the switch as
+ * the mixed state it is.
+ */
+export const NET_SWITCH = {
+  title: 'Play multiplayer through a lobby',
+  detail: 'Two carriers under one switch. The agent carries the other players\' datagrams'
+    + ' through the relay, because over the internet the address a peer is told is often'
+    + ' useless — behind carrier-grade NAT there is no address to tell. The lobby half holds'
+    + ' the u-lobby sockets on this machine\'s loopback and carries them out over one'
+    + ' WebSocket, because a tunnel of the cloudflared family speaks HTTP and WebSocket while'
+    + ' the u-lobby\'s services are raw TCP and UDP. Nothing is hooked: the game is pointed at'
+    + ' its own loopback by rewriting the address it fetches its server list from, and it'
+    + ' connects of its own accord. Pick a lobby below, or fill the addresses in by hand.',
+} as const;
 
 export type QolName = (typeof QOL_FLAGS)[number]['name'];
 export type QolSettings = Partial<Record<QolName, boolean>>;

@@ -31,34 +31,44 @@
         <!-- Gameplay: things the game never had, put IN — where a fix takes
              something wrong OUT. Each is an archive that follows its flag. -->
         <div id="qol-gameplay" class="qol-list" hidden></div>
-        <!-- The switch is built from QOL_FLAGS like every other; the two fields
+        <!-- ONE switch where every other tab has a row per flag: it is built in
+             code from NET_SWITCH and writes both net flags at once. The fields
              under it are not flags and are written to a file of their own. -->
         <div id="qol-network" class="qol-list" hidden>
           <div id="qol-net-rows"></div>
           <div class="qol-heading">Where this copy goes out</div>
+          <label class="qol-field">
+            <span>Lobby</span>
+            <!-- A name fills the two addresses below; Custom is whatever they say.
+                 The FIELDS are the truth — the select is read back from them, so a
+                 file filled in by hand shows as the name it matches, or as Custom. -->
+            <select id="qol-net-preset">
+              <option value="senyaak.work">senyaak.work</option>
+              <option value="custom">Custom</option>
+            </select>
+          </label>
           <label class="qol-field">
             <span>Relay</span>
             <input id="qol-net-relay" type="text" spellcheck="false" placeholder="ws://127.0.0.1:40200/agent" />
           </label>
           <label class="qol-field">
             <span>U-lobby tunnel</span>
-            <!-- `-url`, because the switch built from the flag `net-u-lobby` is already
-                 `qol-net-u-lobby` — two elements under one id, and every locator that
-                 named it would resolve to both. -->
-            <input id="qol-net-u-lobby-url" type="text" spellcheck="false" placeholder="ws://127.0.0.1:40300/u-lobby" />
+            <!-- `-url`, because the flag `net-u-lobby` already owns the bare name —
+                 an id is one element, and every locator that named it would resolve
+                 to both. -->
+            <input id="qol-net-u-lobby-url" type="text" spellcheck="false" placeholder="ws://127.0.0.1:8080/u-lobby" />
           </label>
           <label class="qol-field">
             <span>Local u-lobby port</span>
             <input id="qol-net-u-lobby-port" type="number" min="1" max="65535" step="1" placeholder="8080" />
           </label>
           <div class="qol-detail-open">
-            Two answers for two things. The relay carries the other PLAYERS' traffic; the u-lobby service
-            tunnel carries the LOBBY, because a tunnel speaks HTTP and WebSocket and the game's
-            u-lobby services are raw TCP and UDP. Either can be filled in without the other.
-            The local port is where this copy listens for its own game; the extension points the
-            game at it by rewriting the address the game asks for its server list at, so there is
-            no launcher script to keep in step. 8080 unless something else on this machine took it.
-            No secret anywhere: the agent says which address and port this game plays on, and the
+            The two addresses are where this copy goes out — the relay carries the other
+            PLAYERS' traffic, the u-lobby tunnel carries the LOBBY — and a lobby picked by
+            name fills them both. The local port is nothing of the lobby's: it is where this
+            copy's own listener sits on 127.0.0.1 for its own game, so a second copy on this
+            machine needs a different one. 8080 unless something else took it. No secret
+            anywhere: the agent says which address and port this game plays on, and the
             lobby answers whether anybody is playing there.
           </div>
           <div id="qol-net-file" class="qol-file"></div>

@@ -15,34 +15,26 @@ one.
 
 ### Added
 
-- **A second multiplayer switch: Ubisoft's lobby can now come through a tunnel.**
-  The agent above carries the other PLAYERS' traffic; this carries the **u-lobby** —
-  the server list, the rooms, the chat, and the two services that answer datagrams. It
-  exists because a tunnel of the cloudflared family speaks HTTP and WebSocket while
-  the u-lobby's services are raw TCP and UDP, so no setting of a tunnel can put them
-  behind one. With the switch on, the extension listens on the loopback and the game
-  connects to it of its own accord — nothing is hooked, and no call the game makes is
-  touched — while everything it hears crosses one outgoing WebSocket to our lobby.
-  The Network tab gained the address it needs and the local port it listens on, and
-  nothing else has to be set up: the extension points the game at that port by
-  rewriting the one address the game asks for its server list at, and then answers
-  that question itself — so there is no launcher script and no `http_proxy` to keep
-  in step, and the game is started the way it always was. Off unless ticked, and the two switches are independent: either can
-  be on without the other.
-
-- **A Network tab in Game settings, with the multiplayer agent's switch on it.**
-  Playing against somebody over the internet needs the game's own peer datagrams
-  to be able to travel through a relay of ours, and deciding that has to happen
-  inside the game — so the extension now hooks the socket the game plays on. In
-  this build it only WATCHES: every datagram still goes where the game sent it,
-  and what is written into `bin/homm5-editor-*.log` is what the hook saw — the
-  peer, the sizes, the first packets of a match, and a count every five seconds.
-  Off unless the switch is ticked, and it costs nothing while no multiplayer game
-  is running. The tab is its own because this is the one setting here that needs a
-  server, an account and somebody at the other end. It holds the relay's address
-  and nothing else: an agent tells the relay which address and port the game plays
-  on, the lobby answers whether anybody is playing there, and so there is no
-  secret to keep on this machine and nothing anybody has to be issued.
+- **A Network tab in Game settings: multiplayer through a lobby, one switch.**
+  Playing over the internet needs two things carried, and the tick asks for both
+  at once. The game's own peer datagrams travel through a relay, decided one
+  datagram at a time from inside the game — because behind carrier-grade NAT the
+  address a peer is told is useless. And Ubisoft's lobby — the server list, the
+  rooms, the chat, and the two services that answer datagrams — comes through a
+  tunnel: those are raw TCP and UDP, a tunnel of the cloudflared family carries
+  HTTP and WebSocket and nothing else, so the extension holds the lobby's sockets
+  on this machine's loopback and carries them out over one WebSocket of its own.
+  Nothing is hooked for that half and no launcher script exists: the extension
+  points the game at its own loopback by rewriting the one address the game asks
+  for its server list at, then answers that question itself, and the game is
+  started the way it always was. The tab holds a lobby picked by name — which
+  fills the two addresses — or Custom and the addresses by hand, plus the local
+  port this copy listens on (a second copy on one machine needs its own). No
+  secret to keep anywhere: an agent tells the relay which address and port the
+  game plays on, and the lobby answers whether anybody is playing there. In the
+  file the switch is still two flags, `net-agent` and `net-u-lobby`, so a hand
+  can set one without the other — the panel shows such a file as the mixed state
+  it is.
 
 - **Two quality-of-life switches for playing against yourself.** *Let a second
   copy of the game run* takes off the guard that refuses to start while another
