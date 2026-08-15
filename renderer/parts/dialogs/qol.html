@@ -41,20 +41,20 @@
             <input id="qol-net-relay" type="text" spellcheck="false" placeholder="ws://127.0.0.1:40200/agent" />
           </label>
           <label class="qol-field">
-            <span>Desk tunnel</span>
-            <!-- `-url`, because the switch built from the flag `net-desks` is already
-                 `qol-net-desks` — two elements under one id, and every locator that
+            <span>U-lobby tunnel</span>
+            <!-- `-url`, because the switch built from the flag `net-u-lobby` is already
+                 `qol-net-u-lobby` — two elements under one id, and every locator that
                  named it would resolve to both. -->
-            <input id="qol-net-desks-url" type="text" spellcheck="false" placeholder="ws://127.0.0.1:40300/desks" />
+            <input id="qol-net-u-lobby-url" type="text" spellcheck="false" placeholder="ws://127.0.0.1:40300/u-lobby" />
           </label>
           <label class="qol-field">
-            <span>Local desk port</span>
-            <input id="qol-net-desks-port" type="number" min="1" max="65535" step="1" placeholder="8080" />
+            <span>Local u-lobby port</span>
+            <input id="qol-net-u-lobby-port" type="number" min="1" max="65535" step="1" placeholder="8080" />
           </label>
           <div class="qol-detail-open">
-            Two answers for two things. The relay carries the other PLAYERS' traffic; the desk
+            Two answers for two things. The relay carries the other PLAYERS' traffic; the u-lobby service
             tunnel carries the LOBBY, because a tunnel speaks HTTP and WebSocket and the game's
-            desks are raw TCP and UDP. Either can be filled in without the other.
+            u-lobby services are raw TCP and UDP. Either can be filled in without the other.
             The local port is where this copy listens for its own game; the extension points the
             game at it by rewriting the address the game asks for its server list at, so there is
             no launcher script to keep in step. 8080 unless something else on this machine took it.

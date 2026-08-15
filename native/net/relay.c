@@ -4,7 +4,7 @@
 //
 // WHY A WEBSOCKET AND NOT A SOCKET. The relay is reached over the internet
 // through a tunnel (cloudflared), and a tunnel carries HTTP and nothing else —
-// the game's own six desks are raw TCP and UDP and cannot be reached through
+// the game's own six u-lobby services are raw TCP and UDP and cannot be reached through
 // one at all. So the datagrams travel inside a WebSocket, which is
 // message-oriented: one message is one datagram and nothing has to be framed
 // again on top.

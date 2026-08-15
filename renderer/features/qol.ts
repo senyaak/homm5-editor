@@ -170,8 +170,8 @@ async function refresh(): Promise<void> {
   // switches: what is shown is what the game will read, not what was typed here
   // last time.
   ($('qol-net-relay') as HTMLInputElement).value = state.net?.relay ?? '';
-  ($('qol-net-desks-url') as HTMLInputElement).value = state.net?.desks ?? '';
-  ($('qol-net-desks-port') as HTMLInputElement).value = String(state.net?.desksPort ?? '');
+  ($('qol-net-u-lobby-url') as HTMLInputElement).value = state.net?.uLobby ?? '';
+  ($('qol-net-u-lobby-port') as HTMLInputElement).value = String(state.net?.uLobbyPort ?? '');
   $('qol-net-file').textContent = state.netFile ?? '';
 
   $('qol-file').textContent = state.file;
@@ -184,8 +184,8 @@ async function apply(): Promise<void> {
 
   const net = {
     relay: ($('qol-net-relay') as HTMLInputElement).value.trim(),
-    desks: ($('qol-net-desks-url') as HTMLInputElement).value.trim(),
-    desksPort: Number(($('qol-net-desks-port') as HTMLInputElement).value.trim()),
+    uLobby: ($('qol-net-u-lobby-url') as HTMLInputElement).value.trim(),
+    uLobbyPort: Number(($('qol-net-u-lobby-port') as HTMLInputElement).value.trim()),
   };
 
   const msg = $('qol-msg');

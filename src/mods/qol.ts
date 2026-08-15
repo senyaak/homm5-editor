@@ -326,20 +326,20 @@ export const QOL_FLAGS = [
       + ' multiplayer game is running, and it needs a build whose log includes net/agent.',
   },
   {
-    name: 'net-desks',
+    name: 'net-u-lobby',
     tab: 'network',
     title: 'Reach our lobby through a tunnel',
     detail: 'The other half of multiplayer, and a separate thing from the agent above: that one'
       + ' carries the other PLAYERS\' datagrams, this one carries the LOBBY — the server list, the'
-      + ' rooms, the chat, the CD-key and NAT desks. It is needed because a tunnel of the'
-      + ' cloudflared family speaks HTTP and WebSocket while the game\'s desks are raw TCP and UDP,'
+      + ' rooms, the chat, the CD-key and NAT services. It is needed because a tunnel of the'
+      + ' cloudflared family speaks HTTP and WebSocket while the u-lobby\'s services are raw TCP and UDP,'
       + ' so no setting of a tunnel can put them behind one. This listens on the loopback instead,'
       + ' the game connects to it of its own accord — nothing is hooked and no call of the game\'s'
       + ' is touched — and everything it hears crosses one outgoing WebSocket to our lobby.'
-      + ' It needs the desk tunnel filled in below, and it points the game at itself by rewriting'
+      + ' It needs the u-lobby tunnel filled in below, and it points the game at itself by rewriting'
       + ' the address the game asks for its server list at — so there is no launcher script to set'
       + ' up and nothing that can disagree about the port. With it off nothing is rewritten and the'
-      + ' game dials the desks itself, as it always did.',
+      + ' game dials the u-lobby itself, as it always did.',
   },
 ] as const;
 

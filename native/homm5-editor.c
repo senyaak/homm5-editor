@@ -113,7 +113,7 @@
 #include "net/relay.c"
 #include "net/agent.c"
 // The other half of multiplayer, and a stranger to the one above it: agent.c
-// carries the peers, lobby.c carries the desks. It is here rather than beside
+// carries the peers, lobby.c carries the u-lobby. It is here rather than beside
 // relay.c because it borrows that file's URL reader and WinHTTP entry points —
 // plumbing that belongs to neither feature — and nothing else.
 #include "net/lobby.c"
@@ -273,8 +273,8 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   // it listens on the loopback and the game comes to it — so it can be on while
   // the agent is off, or the other way round, and neither has an opinion about
   // the other. Unlike the agent it needs no import slot, so the moment does not
-  // matter; what it does need is a config line naming where to carry the desks.
-  if (g_qol[QOL_NET_DESKS] && install_lobby()) log_line("lobby: the game's desks are carried out");
+  // matter; what it does need is a config line naming where to carry the u-lobby.
+  if (g_qol[QOL_NET_U_LOBBY] && install_lobby()) log_line("lobby: the u-lobby is carried out");
   return TRUE;
 }
 

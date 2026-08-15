@@ -197,7 +197,7 @@ code is touched; one pointer in a table changes.
 
 There are three `sendto` call sites and one `recvfrom` in the whole image, all in
 the wrapper region at `0x440e70`, `0x440f10`, `0x441300` — the same socket carries
-the peer traffic and the NAT desk's keep-alives (port 40010), which is how the
+the peer traffic and the NAT service's keep-alives (port 40010), which is how the
 agent tells them apart.
 
 ```bash
@@ -279,29 +279,29 @@ handshake with its four-byte token is exactly the one the packet captures in
 `h5e-lobby/docs/NETWORK_STATE.md` describe. The peer is at the **LAN** address,
 not loopback, with both clients on one machine — as measured there.
 
-It also found a mistake of its own: the first version knew only the NAT desk's
-port, so the CD-key desk on 40020 was written down as a peer of the player's.
+It also found a mistake of its own: the first version knew only the NAT service's
+port, so the CD-key service on 40020 was written down as a peer of the player's.
 Harmless while the agent only counts, and exactly the kind of thing that would
 have sent service traffic into the relay later. The ports now come from
 `%TEMP%\ubi_servers.ini` — the same list the game itself read — and they are read
 at the first datagram rather than at load, because this DLL's entry point runs
 before the executable's and the file is downloaded after that.
 
-## The lobby half: the desks, from inside the game
+## The lobby half: the u-lobby, from inside the game
 
 `native/net/lobby.c`, and a separate feature from the agent above — its own
-switch (`net-desks`), its own config line, its own connection, no shared state.
+switch (`net-u-lobby`), its own config line, its own connection, no shared state.
 The agent carries the PEERS; this carries the LOBBY.
 
 **Why it has to exist.** A tunnel of the cloudflared family carries HTTP and
 WebSocket. The game speaks HTTP to us exactly once, for the list above, and raw
-TCP and UDP for every desk after it — so no configuration of a tunnel can put
-the desks behind one (h5e-lobby, `SLICE_over_the_internet.md` §1). The way out is
+TCP and UDP for every service of it after it — so no configuration of a tunnel can put
+the u-lobby services behind one (h5e-lobby, `SLICE_over_the_internet.md` §1). The way out is
 the one the peer half already took: hold the traffic inside the game and carry it
 out over a WebSocket of our own.
 
 **Why it hooks nothing.** Unlike the agent it needs no import slot and replaces
-no call. The game learns every desk address from the ini we serve, and it asks
+no call. The game learns every u-lobby address from the ini we serve, and it asks
 for that ini at one address — so pointing both at `127.0.0.1` makes the game open
 ordinary sockets to a listener of ours, in its own process, of its own accord.
 That is a whole class of hook — `connect`, `send`, `recv`, and the non-blocking
@@ -341,9 +341,9 @@ from (`0xFE5FAC`), which is what says the string being waited for is still the
 string the game carries. The two `.data` addresses cannot be checked on disk —
 nothing has written them yet — and the test lists them as such.
 
-**The shape.** One loopback listener takes the desk connections and the desk
+**The shape.** One loopback listener takes the u-lobby connections and the u-lobby service
 datagrams; each becomes a numbered stream or channel inside one WebSocket to
-`services/desks` at the far end, which opens the real connection to the real
+`services/u-lobby` at the far end, which opens the real connection to the real
 gateway. Three bytes in front of everything:
 
 ```
@@ -353,7 +353,7 @@ gateway. Three bytes in front of everything:
 0x04 [id:u16] payload   one datagram, on a channel, either direction
 ```
 
-A **channel is one of our source addresses**, because two desks answer datagrams
+A **channel is one of our source addresses**, because two of its services answer datagrams
 — the NAT mirror and the CD-key window — and the game may ask them from two
 sockets of its own. Without a number on the frame an answer coming back would
 have nothing to say which socket it belonged to.
@@ -361,23 +361,23 @@ have nothing to say which socket it belonged to.
 **What it is configured with**, in `bin/homm5-editor-net.txt` beside the relay:
 
 ```
-desks wss://host/desks
-desks-port 8080
+u-lobby wss://host/u-lobby
+u-lobby-port 8080
 ```
 
 The port is what the listener binds on the loopback and what the rewritten URL
 names, so those two cannot disagree.
 
 **The server list is answered here, not carried.** It is a local question — the
-ini says where THIS copy's desks are, and for a copy that carries them through us
+ini says where THIS copy's u-lobby is, and for a copy that carries them through us
 the answer is always the same: all of them at our own loopback port. The lobby at
 the far end could not answer it if it wanted to, since that number belongs to this
 machine. So a stream whose first message begins `GET ` never becomes a stream at
 all: it is answered and closed, by the same read-the-first-message rule the
-gateway uses to tell one desk from another.
+gateway uses to tell one u-lobby service from another.
 
-The price is stated where it is paid: the desk prefixes in `lobby_servers_ini` are
-a copy of the gateway's own `SERVICES` table, and a desk added there has to be
+The price is stated where it is paid: the u-lobby service prefixes in `lobby_servers_ini` are
+a copy of the gateway's own `SERVICES` table, and a u-lobby service added there has to be
 added here. Since the merge to one number what could go stale is the LIST and not
 the address, and a missing prefix shows up as the game failing to reach a service
 by name.

@@ -86,7 +86,7 @@ export const LOG_UNITS_BY_DEFAULT = [
   'net_agent',
   'net_relay',
   // For the same reason as `net_agent`, and for longer: the lobby half has never
-  // carried a byte in a real game, so which desk stream opened and whether
+  // carried a byte in a real game, so which u-lobby stream opened and whether
   // anything came back is the only evidence there is that it worked.
   'net_lobby',
 ] as const;

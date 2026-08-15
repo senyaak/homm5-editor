@@ -26,13 +26,13 @@ export interface NetSettings {
   /** `ws://host:port/agent`, or `wss://…` behind a tunnel. Empty means "not set up". */
   relay: string;
   /**
-   * Where the game's DESKS are carried — `ws://host:port/desks`, or `wss://…`.
+   * Where the game's own services are carried — `ws://host:port/u-lobby`, or `wss://…`.
    *
    * A second answer and not a second use of the first: the relay carries the
    * peers and this carries the lobby, they are two services and two features,
    * and either may be set while the other is not.
    */
-  desks: string;
+  uLobby: string;
   /**
    * Which loopback port the lobby half listens on for the game.
    *
@@ -41,11 +41,11 @@ export interface NetSettings {
    * disagree and there is no launcher script to keep in step. 8080 unless
    * something on this machine has already taken it.
    */
-  desksPort: number;
+  uLobbyPort: number;
 }
 
 /** What the gateway listens on when nobody says otherwise. */
-export const DEFAULT_DESKS_PORT = 8080;
+export const DEFAULT_U_LOBBY_PORT = 8080;
 
 export function netPath(gameRoot: string): string {
   return join(gameRoot, NET_FILE);
@@ -60,7 +60,7 @@ export function netPath(gameRoot: string): string {
  * carrying the `secret` line nothing reads any more.
  */
 export function readNet(gameRoot: string): NetSettings {
-  const out: NetSettings = { relay: '', desks: '', desksPort: DEFAULT_DESKS_PORT };
+  const out: NetSettings = { relay: '', uLobby: '', uLobbyPort: DEFAULT_U_LOBBY_PORT };
   let text = '';
   try {
     text = readFileSync(netPath(gameRoot), 'utf8');
@@ -75,12 +75,12 @@ export function readNet(gameRoot: string): NetSettings {
     const word = trimmed.slice(0, at);
     const value = trimmed.slice(at + 1).trim();
     if (word === 'relay') out.relay = value;
-    if (word === 'desks') out.desks = value;
-    if (word === 'desks-port') {
+    if (word === 'u-lobby') out.uLobby = value;
+    if (word === 'u-lobby-port') {
       const port = Number(value);
       // A port that is not one is left at the default rather than carried: the C side
       // would refuse it too, and a listener on port 0 is a listener nobody can find.
-      if (Number.isInteger(port) && port > 0 && port <= 0xffff) out.desksPort = port;
+      if (Number.isInteger(port) && port > 0 && port <= 0xffff) out.uLobbyPort = port;
     }
   }
   return out;
@@ -104,10 +104,11 @@ export function writeNetFile(gameRoot: string, net: NetSettings): string {
     '#',
     '# relay      — where the PEERS are carried: ws://host:port/agent, or wss:// behind',
     '#              a tunnel. Read by native/net/agent.c.',
-    '# desks      — where the LOBBY is carried: ws://host:port/desks, likewise. Read by',
-    '#              native/net/lobby.c, which needs it because a tunnel carries HTTP and',
-    '#              WebSocket and the game\'s desks are raw TCP and UDP.',
-    '# desks-port — the loopback port the lobby half listens on for the game. The',
+    '# u-lobby      — where UBISOFT\'S LOBBY is carried: ws://host:port/u-lobby, or wss://',
+    '#              behind a tunnel. Read by native/net/lobby.c, which needs it because a',
+    '#              tunnel carries HTTP and WebSocket while the u-lobby\'s own services are',
+    '#              raw TCP and UDP.',
+    '# u-lobby-port — the loopback port the lobby half listens on for the game. The',
     '#              extension points the game at it by rewriting the game\'s own',
     '#              server-list URL, so nothing else has to be told this number.',
     '#',
@@ -115,8 +116,8 @@ export function writeNetFile(gameRoot: string, net: NetSettings): string {
     '# game plays on, and the lobby decides whether that is anybody.',
     '',
     `relay ${net.relay.trim()}`,
-    `desks ${net.desks.trim()}`,
-    `desks-port ${String(net.desksPort || DEFAULT_DESKS_PORT)}`,
+    `u-lobby ${net.uLobby.trim()}`,
+    `u-lobby-port ${String(net.uLobbyPort || DEFAULT_U_LOBBY_PORT)}`,
     '',
   ];
   const path = netPath(gameRoot);
@@ -129,10 +130,10 @@ export function writeNetFile(gameRoot: string, net: NetSettings): string {
  * Whether this install has been set up — what the panel says out loud.
  *
  * EITHER answer counts. The two halves are separate features and a copy that
- * carries only its desks, or only its peers, is set up for what it was asked to
+ * carries only the u-lobby, or only its peers, is set up for what it was asked to
  * do; requiring both would call a working install unfinished.
  */
 export function netReady(gameRoot: string): boolean {
   const net = readNet(gameRoot);
-  return (!!net.relay || !!net.desks) && existsSync(netPath(gameRoot));
+  return (!!net.relay || !!net.uLobby) && existsSync(netPath(gameRoot));
 }

@@ -15,7 +15,7 @@ import { APP_ROOT, gameData, gameRoot } from '#electron/paths.ts';
 import { isQolName } from '#src/mods/qol.ts';
 import type { QolSettings } from '#src/mods/qol.ts';
 import { qolPath, readQol, writeQolFile } from '#src/mods/qol-file.ts';
-import { DEFAULT_DESKS_PORT, netPath, readNet, writeNetFile } from '#src/mods/net-config.ts';
+import { DEFAULT_U_LOBBY_PORT, netPath, readNet, writeNetFile } from '#src/mods/net-config.ts';
 import { removeQolArchive, writeQolArchive } from '#src/mods/qol-ui.ts';
 import { removeGameplayArchive, writeGameplayArchive } from '#src/mods/gameplay.ts';
 import { profilesRoot, setResolution, setWindowed } from '#src/game/video-config.ts';
@@ -85,11 +85,11 @@ export function registerQol(): void {
     // them. Written every time, even empty — an empty answer is a real state and
     // it is the one that says "set up, and not filled in".
     if (net) {
-      const port = Number(net['desksPort']);
+      const port = Number(net['uLobbyPort']);
       writeNetFile(g, {
         relay: String(net['relay'] ?? '').trim(),
-        desks: String(net['desks'] ?? '').trim(),
-        desksPort: Number.isInteger(port) && port > 0 && port <= 0xffff ? port : DEFAULT_DESKS_PORT,
+        uLobby: String(net['uLobby'] ?? '').trim(),
+        uLobbyPort: Number.isInteger(port) && port > 0 && port <= 0xffff ? port : DEFAULT_U_LOBBY_PORT,
       });
     }
 

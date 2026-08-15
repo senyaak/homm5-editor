@@ -16,12 +16,12 @@
 // WHAT IT DOES. It watches every datagram on that socket, and — once there is a
 // relay connected — it CARRIES the peer ones: out through the WebSocket instead
 // of the wire, and back in by answering the game's own `recvfrom` with what the
-// relay delivered. Everything else on the socket, the lobby's desks included,
+// relay delivered. Everything else on the socket, the lobby's own services included,
 // goes exactly where the game sent it.
 //
 // The first version of this file only watched, and that step earned its keep:
 // it proved the hook was on the right socket at the right time, and it found a
-// mistake of its own (the CD-key desk counted as a player) before anything
+// mistake of its own (the CD-key service counted as a player) before anything
 // depended on the answer.
 //
 // EVERY PEER DATAGRAM GOES THROUGH THE RELAY, not "when the direct path fails".
@@ -42,7 +42,7 @@
 // WHAT THE GAME'S PEER SOCKET IS (h5e-lobby/docs/NETWORK_STATE.md, measured):
 // one UDP socket per client, bound to `net_game_port` (8888 by default, 8889
 // and 8890 in the second and third copies), and it is ALSO the socket that
-// pings the NAT desk on port 40010. So this file has to tell the two apart, and
+// pings the NAT service on port 40010. So this file has to tell the two apart, and
 // it does it the only way that needs nothing from the engine: by the port at
 // the other end.
 //
@@ -62,36 +62,36 @@
 #define WSOCK32_SELECT 18
 
 /**
- * The desks, whose ports are NOT a peer's.
+ * The u-lobby's services, whose ports are NOT a peer's.
  *
  * The same socket carries the game's own service traffic — the NAT mirror's
- * keep-alives, the CD-key desk — and telling that apart from a peer by guessing
+ * keep-alives, the CD-key service — and telling that apart from a peer by guessing
  * at port numbers is guessing at OUR server's configuration. The game does not
  * guess: it reads `%TEMP%\ubi_servers.ini`, which is what one HTTP request wrote
  * for it (docs/NETWORK.md), and so does this.
  *
- * The first run of this file had only 40010 written in, and the CD-key desk on
+ * The first run of this file had only 40010 written in, and the CD-key service on
  * 40020 duly appeared in the log as a peer of the player's.
  */
 #define AGENT_DESKS 8
-static WORD g_deskPorts[AGENT_DESKS];
-static int g_deskPortCount = 0;
-static int g_desksRead = 0;
+static WORD g_uServicePorts[AGENT_DESKS];
+static int g_uServicePortCount = 0;
+static int g_uServicePortsRead = 0;
 
 /** One `[Servers]` entry, if it is there and is a port. */
-static void agent_desk_port(const char *ini, const char *key) {
+static void agent_u_service_port(const char *ini, const char *key) {
   char text[32];
   DWORD got = GetPrivateProfileStringA("Servers", key, "", text, sizeof(text), ini);
   if (!got) return;
   int port = 0;
   const char *p = text;
   if (!read_int(&p, text + got, &port)) return;
-  if (port <= 0 || port > 0xffff || g_deskPortCount >= AGENT_DESKS) return;
-  for (int i = 0; i < g_deskPortCount; i++) {
-    if (g_deskPorts[i] == (WORD)port) return;
+  if (port <= 0 || port > 0xffff || g_uServicePortCount >= AGENT_DESKS) return;
+  for (int i = 0; i < g_uServicePortCount; i++) {
+    if (g_uServicePorts[i] == (WORD)port) return;
   }
-  g_deskPorts[g_deskPortCount++] = (WORD)port;
-  log_num("agent: a desk of the lobby is on port ", port);
+  g_uServicePorts[g_uServicePortCount++] = (WORD)port;
+  log_num("agent: a u-lobby service of the lobby is on port ", port);
 }
 
 /**
@@ -99,9 +99,9 @@ static void agent_desk_port(const char *ini, const char *key) {
  *
  * Only the ones a datagram can go to are worth having, but all of them are
  * cheap: what this list is for is answering "is this endpoint a player", and a
- * TCP-only desk in it costs nothing and cannot be wrong.
+ * TCP-only u-lobby service in it costs nothing and cannot be wrong.
  */
-static void agent_read_desks(void) {
+static void agent_read_u_service_ports(void) {
   char ini[MAX_PATH];
   DWORD len = GetTempPathA(MAX_PATH, ini);
   if (!len || len + 16 >= MAX_PATH) return;
@@ -114,13 +114,13 @@ static void agent_read_desks(void) {
     "RouterPort0", "RouterLauncherPort0", "NATServerPort0",
     "CDKeyServerPort0", "CDKeyServerLauncherPort0", "IRCPort0",
   };
-  for (int i = 0; i < (int)(sizeof(KEYS) / sizeof(KEYS[0])); i++) agent_desk_port(ini, KEYS[i]);
-  if (!g_deskPortCount) log_text("agent: no server list at ", ini);
+  for (int i = 0; i < (int)(sizeof(KEYS) / sizeof(KEYS[0])); i++) agent_u_service_port(ini, KEYS[i]);
+  if (!g_uServicePortCount) log_text("agent: no server list at ", ini);
 }
 
-static int agent_is_desk(WORD port) {
-  for (int i = 0; i < g_deskPortCount; i++) {
-    if (g_deskPorts[i] == port) return 1;
+static int agent_is_u_service(WORD port) {
+  for (int i = 0; i < g_uServicePortCount; i++) {
+    if (g_uServicePorts[i] == port) return 1;
   }
   return 0;
 }
@@ -148,13 +148,13 @@ static AgentSelectFn g_agentSelect = NULL;
 /**
  * The socket the game plays on, learned rather than looked for.
  *
- * The first datagram to something that is not one of the lobby's desks was sent
+ * The first datagram to something that is not one of the lobby's services was sent
  * on it, and there is only one (measured: one socket per client, and it is the
  * same one that pings the NAT mirror). Knowing it is what lets everything below
  * leave every other socket in the process alone.
  */
 static SOCKET g_gameSocket = INVALID_SOCKET;
-/** The lobby's own address, off the first datagram that went to one of its desks. */
+/** The lobby's own address, off the first datagram that went to one of its services. */
 static DWORD g_lobbyAddr = 0;
 /** Which relay connection we last said our endpoint on; 0 means never. */
 static LONG g_announcedOn = 0;
@@ -174,7 +174,7 @@ static void agent_inbound(const BYTE *data, int len);
 
 static AgentPeer g_peers[AGENT_PEERS];
 static int g_peerCount = 0;
-static int g_deskPings = 0;
+static int g_uServicePings = 0;
 static DWORD g_lastReport = 0;
 static int g_reportPending = 0;
 static int g_relayed = 0;
@@ -304,7 +304,7 @@ static void agent_report(void) {
     log_num("agent:   received packets ", peer->got);
     log_num("agent:   received bytes ", peer->gotBytes);
   }
-  if (g_deskPings) log_num("agent: datagrams to the lobby's own desks ", g_deskPings);
+  if (g_uServicePings) log_num("agent: datagrams to the lobby's own services ", g_uServicePings);
   // The two numbers that say whether the relay is doing the work: what went out
   // through it instead of the wire, and what came back in through `recvfrom`.
   if (g_relayed) log_num("agent: carried out by the relay ", g_relayed);
@@ -322,14 +322,14 @@ static void agent_report(void) {
  */
 static int agent_watch(const struct sockaddr *other, int len, int bytes, int sending,
                        const BYTE *data) {
-  // The desks are read HERE and not at install time, and the difference matters:
+  // Those ports are read HERE and not at install time, and the difference matters:
   // this DLL's entry point runs before the executable's, and the server list is
   // something the game downloads once it is running. Read too early, the file is
   // last session's or is not there at all. By the time a datagram exists it has
   // been written — the address the datagram is going to came out of it.
-  if (!g_desksRead) {
-    g_desksRead = 1;
-    agent_read_desks();
+  if (!g_uServicePortsRead) {
+    g_uServicePortsRead = 1;
+    agent_read_u_service_ports();
   }
   if (!other || len < (int)sizeof(struct sockaddr_in)) return 0;
   if (!readable(other, sizeof(struct sockaddr_in))) return 0;
@@ -340,12 +340,12 @@ static int agent_watch(const struct sockaddr *other, int len, int bytes, int sen
   WORD port = (WORD)((rawPort[0] << 8) | rawPort[1]); /* the wire is big endian */
   DWORD addr = *(const DWORD *)&in->sin_addr;
 
-  if (agent_is_desk(port)) {
+  if (agent_is_u_service(port)) {
     // Kept for `agent_announce`: routing a socket at the lobby is how this process finds
     // out which of its own addresses the lobby sees, and the lobby's is the only address
     // here that is certain to be the right one to ask about.
     if (!g_lobbyAddr) g_lobbyAddr = addr;
-    g_deskPings++;
+    g_uServicePings++;
     g_reportPending = 1;
     agent_report();
     return 0;
@@ -504,7 +504,7 @@ typedef int(WINAPI *AgentCloseSocketFn)(SOCKET s);
  * Nothing is sent by the throwaway socket: `connect` on UDP only fixes a route.
  */
 static int agent_announce(void) {
-  if (g_gameSocket == INVALID_SOCKET || !g_lobbyAddr || !g_deskPortCount) return 0;
+  if (g_gameSocket == INVALID_SOCKET || !g_lobbyAddr || !g_uServicePortCount) return 0;
   HMODULE ws = GetModuleHandleA("wsock32.dll");
   if (!ws) ws = GetModuleHandleA("ws2_32.dll");
   if (!ws) return 0;
@@ -530,9 +530,9 @@ static int agent_announce(void) {
     for (int i = 0; i < (int)sizeof(at); i++) ((BYTE *)&at)[i] = 0;
     at.sin_family = AF_INET;
     *(DWORD *)&at.sin_addr = g_lobbyAddr;
-    BYTE *deskPort = (BYTE *)&at.sin_port;
-    deskPort[0] = (BYTE)(g_deskPorts[0] >> 8);
-    deskPort[1] = (BYTE)(g_deskPorts[0] & 0xff);
+    BYTE *servicePort = (BYTE *)&at.sin_port;
+    servicePort[0] = (BYTE)(g_uServicePorts[0] >> 8);
+    servicePort[1] = (BYTE)(g_uServicePorts[0] & 0xff);
     if (route(probe, (const struct sockaddr *)&at, (int)sizeof(at)) == 0) {
       struct sockaddr_in local;
       int localSize = (int)sizeof(local);

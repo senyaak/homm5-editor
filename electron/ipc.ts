@@ -603,7 +603,7 @@ export interface QolState {
   /** Is there a copy of the executable to load it? */
   patchedExe: boolean;
   /** What multiplayer was told, from `bin/homm5-editor-net.txt` — the peers, then the lobby. */
-  net: { relay: string; desks: string; desksPort: number };
+  net: { relay: string; uLobby: string; uLobbyPort: number };
   /** And where that file is, for the panel to name beside the other one. */
   netFile: string;
 }

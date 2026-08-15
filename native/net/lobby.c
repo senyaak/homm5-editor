@@ -1,4 +1,4 @@
-// The lobby half: the game's DESK sockets, carried out over one WebSocket.
+// The u-lobby half: Ubisoft's lobby, carried out of the game over one WebSocket.
 //
 // A piece of the ONE translation unit — see the top of core/detour.c.
 //
@@ -11,23 +11,23 @@
 // spliced in after net/relay.c and not before.
 //
 // WHY IT EXISTS. The game speaks HTTP to us exactly once, for its server list,
-// and raw TCP and UDP for every desk after that. A tunnel of the cloudflared
+// and raw TCP and UDP for every service of it after that. A tunnel of the cloudflared
 // family carries HTTP and WebSocket and nothing else, so no configuration of
-// one can put the desks behind it (h5e-lobby, SLICE_over_the_internet.md §1).
+// one can put the u-lobby behind it (h5e-lobby, SLICE_over_the_internet.md §1).
 // The peer half already solved this shape of problem inside the game; this is
 // the same answer for the other half.
 //
-// AND WHY IT HOOKS NOTHING. The desks can be moved without touching a single
+// AND WHY IT HOOKS NOTHING. The u-lobby can be moved without touching a single
 // call of the game's: the game asks for its server list through `http_proxy`,
-// and every desk address it then dials comes out of the answer we give. Point
+// and every u-lobby address it then dials comes out of the answer we give. Point
 // both at `127.0.0.1` and the game opens ordinary sockets to a listener of
 // ours, in its own process, of its own accord. That is a whole class of hook —
 // `connect`, `send`, `recv`, and the non-blocking semantics under them — that
 // this file does not have to get right.
 //
-// THE SHAPE. One listener on the loopback takes the game's desk connections and
-// its desk datagrams; each of them becomes a numbered stream or channel inside
-// one WebSocket to `services/desks` at the other end, which opens the real
+// THE SHAPE. One listener on the loopback takes the game's u-lobby connections and
+// its u-lobby datagrams; each of them becomes a numbered stream or channel inside
+// one WebSocket to `services/u-lobby` at the other end, which opens the real
 // connection to the real gateway. The frames are three bytes and then the rest:
 //
 //   0x01 [id:u16] payload   bytes on a stream, either direction
@@ -35,14 +35,14 @@
 //   0x03 [id:u16]           the stream ended, either direction
 //   0x04 [id:u16] payload   one datagram, on a channel, either direction
 //
-// A CHANNEL IS ONE OF OUR SOURCE ADDRESSES. Two of the desks are UDP — the NAT
+// A CHANNEL IS ONE OF OUR SOURCE ADDRESSES. Two of its services are UDP — the NAT
 // mirror and the CD-key window — and the game may ask them from two sockets of
 // its own. An answer has to go back to the socket that asked, so each source
 // address the listener hears from gets a number, and the far end keeps a socket
 // of its own per number. Without that the answer would be a guess.
 //
 // A THREAD PER CONNECTION, and no `select`. The count is small — a handful of
-// desks — and the alternative costs more than it saves here: `FD_ISSET` is a
+// services — and the alternative costs more than it saves here: `FD_ISSET` is a
 // call into winsock's import library, and this DLL links nothing at all.
 //
 // AND THE GAME IS POINTED HERE BY US, not by a bat file. The one URL it fetches
@@ -53,8 +53,8 @@
 //
 // THE CONFIG, in `bin/homm5-editor-net.txt` beside the relay's own line:
 //
-//   desks wss://host/desks
-//   desks-port 8080
+//   u-lobby wss://host/u-lobby
+//   u-lobby-port 8080
 //
 // The port is what the listener binds on the loopback and what the game is then
 // told to ask; its default is the gateway's own `8080`.
@@ -71,7 +71,7 @@
 #define LOBBY_HEADER 3
 
 /**
- * How many desk connections at once, and how many datagram sources.
+ * How many u-lobby connections at once, and how many datagram sources.
  *
  * The measured lobby session opened eighteen connections over its whole life and
  * never many at a time; sixteen is room to spare, and a table that cannot grow is
@@ -80,7 +80,7 @@
 #define LOBBY_STREAMS 16
 #define LOBBY_CHANNELS 8
 
-/** The biggest thing that crosses. Desk messages are hundreds of bytes, not thousands. */
+/** The biggest thing that crosses. Its messages are hundreds of bytes, not thousands. */
 #define LOBBY_BUFFER 4096
 
 typedef SOCKET(WINAPI *LobbySocketFn)(int af, int type, int protocol);
@@ -105,25 +105,25 @@ static LobbyRecvFromFn g_lobbyRecvFrom = NULL;
 static LobbySendToFn g_lobbySendTo = NULL;
 static LobbyCloseFn g_lobbyCloseSocket = NULL;
 
-static char g_desksUrl[256];
-static int g_desksPort = 8080;
+static char g_uLobbyUrl[256];
+static int g_uLobbyPort = 8080;
 
-static SOCKET g_desksListener = INVALID_SOCKET;
-static SOCKET g_desksUdp = INVALID_SOCKET;
+static SOCKET g_uLobbyListener = INVALID_SOCKET;
+static SOCKET g_uLobbyUdp = INVALID_SOCKET;
 
 /** Its own WebSocket, its own state — nothing here is the relay's. */
-static HINTERNET g_desksSession = NULL;
-static HINTERNET g_desksConnect = NULL;
-static HINTERNET g_desksSocket = NULL;
-static volatile LONG g_desksReady = 0;
-static volatile LONG g_desksStop = 0;
-static CRITICAL_SECTION g_desksSendLock;
-static CRITICAL_SECTION g_desksTableLock;
-static int g_desksLocksMade = 0;
+static HINTERNET g_uLobbySession = NULL;
+static HINTERNET g_uLobbyConnect = NULL;
+static HINTERNET g_uLobbySocket = NULL;
+static volatile LONG g_uLobbyReady = 0;
+static volatile LONG g_uLobbyStop = 0;
+static CRITICAL_SECTION g_uLobbySendLock;
+static CRITICAL_SECTION g_uLobbyTableLock;
+static int g_uLobbyLocksMade = 0;
 
 /** What crossed, for the log line that says whether this did anything at all. */
-static volatile LONG g_desksOut = 0;
-static volatile LONG g_desksBack = 0;
+static volatile LONG g_uLobbyOut = 0;
+static volatile LONG g_uLobbyBack = 0;
 
 typedef struct {
   SOCKET socket;
@@ -143,7 +143,7 @@ static LobbyChannel g_channels[LOBBY_CHANNELS];
 // ---------------------------------------------------------------------------
 
 /**
- * Read `desks` and `desks-port` out of the file the relay line lives in.
+ * Read `u-lobby` and `u-lobby-port` out of the file the relay line lives in.
  *
  * Its own reader rather than a share of the relay's: the two features are meant
  * to be separable, and a reader that knows both keys is a place where turning
@@ -166,26 +166,26 @@ static int lobby_read_config(void) {
     while (line < stop && (*line == ' ' || *line == '\t')) line++;
     if (line >= stop || *line == '#') continue;
     const char *q = line;
-    // The longer key first: `desks-port` also begins with `desks`, and taking the
+    // The longer key first: `u-lobby-port` also begins with `u-lobby`, and taking the
     // short one would leave `-port 8080` as the address to dial.
-    if (take_word(&q, stop, "desks-port")) {
+    if (take_word(&q, stop, "u-lobby-port")) {
       int value = 0;
-      if (read_int(&q, stop, &value) && value > 0 && value <= 0xffff) g_desksPort = value;
+      if (read_int(&q, stop, &value) && value > 0 && value <= 0xffff) g_uLobbyPort = value;
       continue;
     }
     q = line;
-    if (take_word(&q, stop, "desks")) {
-      relay_read_token(&q, stop, g_desksUrl, sizeof(g_desksUrl));
+    if (take_word(&q, stop, "u-lobby")) {
+      relay_read_token(&q, stop, g_uLobbyUrl, sizeof(g_uLobbyUrl));
     }
   }
   VirtualFree(buf, 0, MEM_RELEASE);
 
-  if (!g_desksUrl[0]) {
-    log_line("lobby: the config names no desk tunnel");
+  if (!g_uLobbyUrl[0]) {
+    log_line("lobby: the config names no u-lobby tunnel");
     return 0;
   }
-  log_text("lobby: ", g_desksUrl);
-  log_num("lobby: listening for the game on 127.0.0.1:", g_desksPort);
+  log_text("lobby: ", g_uLobbyUrl);
+  log_num("lobby: listening for the game on 127.0.0.1:", g_uLobbyPort);
   return 1;
 }
 
@@ -194,15 +194,15 @@ static int lobby_read_config(void) {
 // ---------------------------------------------------------------------------
 
 static void lobby_wire_drop(void) {
-  InterlockedExchange(&g_desksReady, 0);
-  if (g_desksSocket) g_httpClose(g_desksSocket);
-  if (g_desksConnect) g_httpClose(g_desksConnect);
-  if (g_desksSession) g_httpClose(g_desksSession);
-  g_desksSocket = g_desksConnect = g_desksSession = NULL;
+  InterlockedExchange(&g_uLobbyReady, 0);
+  if (g_uLobbySocket) g_httpClose(g_uLobbySocket);
+  if (g_uLobbyConnect) g_httpClose(g_uLobbyConnect);
+  if (g_uLobbySession) g_httpClose(g_uLobbySession);
+  g_uLobbySocket = g_uLobbyConnect = g_uLobbySession = NULL;
 }
 
 /**
- * Dial the desk tunnel.
+ * Dial the u-lobby tunnel.
  *
  * `WINHTTP_ACCESS_TYPE_NO_PROXY` for the same reason the relay uses it, and here
  * the reason is sharper: the `http_proxy` that redirects the game points at OUR
@@ -212,8 +212,8 @@ static int lobby_dial(void) {
   char host[128], path[192];
   WORD port = 0;
   int secure = 0;
-  if (!relay_split_url(g_desksUrl, host, sizeof(host), &port, path, sizeof(path), &secure)) {
-    log_text("lobby: this is not an address I can read: ", g_desksUrl);
+  if (!relay_split_url(g_uLobbyUrl, host, sizeof(host), &port, path, sizeof(path), &secure)) {
+    log_text("lobby: this is not an address I can read: ", g_uLobbyUrl);
     return 0;
   }
 
@@ -221,14 +221,14 @@ static int lobby_dial(void) {
   relay_widen(host, hostW, 128);
   relay_widen(path, pathW, 192);
 
-  g_desksSession = g_httpOpen(L"h5e-desks", WINHTTP_ACCESS_TYPE_NO_PROXY, NULL, NULL, 0);
-  if (!g_desksSession) return 0;
-  g_desksConnect = g_httpConnect(g_desksSession, hostW, port, 0);
-  if (!g_desksConnect) {
+  g_uLobbySession = g_httpOpen(L"h5e-u-lobby", WINHTTP_ACCESS_TYPE_NO_PROXY, NULL, NULL, 0);
+  if (!g_uLobbySession) return 0;
+  g_uLobbyConnect = g_httpConnect(g_uLobbySession, hostW, port, 0);
+  if (!g_uLobbyConnect) {
     lobby_wire_drop();
     return 0;
   }
-  HINTERNET request = g_httpOpenRequest(g_desksConnect, L"GET", pathW, NULL, NULL, NULL,
+  HINTERNET request = g_httpOpenRequest(g_uLobbyConnect, L"GET", pathW, NULL, NULL, NULL,
                                         secure ? WINHTTP_FLAG_SECURE : 0);
   if (!request) {
     lobby_wire_drop();
@@ -237,21 +237,21 @@ static int lobby_dial(void) {
   int ok = g_httpSetOption(request, WINHTTP_OPTION_UPGRADE_TO_WEB_SOCKET, NULL, 0) &&
            g_httpSendRequest(request, NULL, 0, NULL, 0, 0, 0) &&
            g_httpReceiveResponse(request, NULL);
-  if (ok) g_desksSocket = g_httpCompleteUpgrade(request, 0);
+  if (ok) g_uLobbySocket = g_httpCompleteUpgrade(request, 0);
   g_httpClose(request);
-  if (!g_desksSocket) {
+  if (!g_uLobbySocket) {
     log_num("lobby: the upgrade was refused, last error ", (int)GetLastError());
     lobby_wire_drop();
     return 0;
   }
-  InterlockedExchange(&g_desksReady, 1);
+  InterlockedExchange(&g_uLobbyReady, 1);
   log_line("lobby: connected");
   return 1;
 }
 
 /** One frame out. Called from whichever thread had something to say. */
 static int lobby_wire_send(BYTE type, WORD id, const BYTE *payload, int len) {
-  if (!InterlockedCompareExchange(&g_desksReady, 1, 1)) return 0;
+  if (!InterlockedCompareExchange(&g_uLobbyReady, 1, 1)) return 0;
   if (len < 0 || len > LOBBY_BUFFER) return 0;
   BYTE frame[LOBBY_HEADER + LOBBY_BUFFER];
   frame[0] = type;
@@ -259,18 +259,18 @@ static int lobby_wire_send(BYTE type, WORD id, const BYTE *payload, int len) {
   frame[2] = (BYTE)(id & 0xff);
   for (int i = 0; i < len; i++) frame[LOBBY_HEADER + i] = payload[i];
 
-  EnterCriticalSection(&g_desksSendLock);
-  DWORD failed = g_desksSocket ? g_httpSocketSend(g_desksSocket, WS_BINARY_MESSAGE, (PVOID)frame,
+  EnterCriticalSection(&g_uLobbySendLock);
+  DWORD failed = g_uLobbySocket ? g_httpSocketSend(g_uLobbySocket, WS_BINARY_MESSAGE, (PVOID)frame,
                                                   (DWORD)(LOBBY_HEADER + len))
                                : 1;
-  LeaveCriticalSection(&g_desksSendLock);
+  LeaveCriticalSection(&g_uLobbySendLock);
   if (failed) {
     // The receive loop finds the same break and dials again; saying it in both
     // places would fill the log with one dead connection.
-    InterlockedExchange(&g_desksReady, 0);
+    InterlockedExchange(&g_uLobbyReady, 0);
     return 0;
   }
-  if (len) InterlockedIncrement(&g_desksOut);
+  if (len) InterlockedIncrement(&g_uLobbyOut);
   return 1;
 }
 
@@ -279,7 +279,7 @@ static int lobby_wire_send(BYTE type, WORD id, const BYTE *payload, int len) {
 // ---------------------------------------------------------------------------
 
 static int lobby_take_stream(SOCKET s) {
-  EnterCriticalSection(&g_desksTableLock);
+  EnterCriticalSection(&g_uLobbyTableLock);
   int id = -1;
   for (int i = 0; i < LOBBY_STREAMS; i++) {
     if (g_streams[i].used) continue;
@@ -288,35 +288,35 @@ static int lobby_take_stream(SOCKET s) {
     id = i;
     break;
   }
-  LeaveCriticalSection(&g_desksTableLock);
+  LeaveCriticalSection(&g_uLobbyTableLock);
   return id;
 }
 
 static SOCKET lobby_stream_socket(int id) {
   if (id < 0 || id >= LOBBY_STREAMS) return INVALID_SOCKET;
-  EnterCriticalSection(&g_desksTableLock);
+  EnterCriticalSection(&g_uLobbyTableLock);
   SOCKET s = g_streams[id].used ? g_streams[id].socket : INVALID_SOCKET;
-  LeaveCriticalSection(&g_desksTableLock);
+  LeaveCriticalSection(&g_uLobbyTableLock);
   return s;
 }
 
 /** Give the slot back, and hand out the socket to close exactly once. */
 static SOCKET lobby_free_stream(int id) {
   if (id < 0 || id >= LOBBY_STREAMS) return INVALID_SOCKET;
-  EnterCriticalSection(&g_desksTableLock);
+  EnterCriticalSection(&g_uLobbyTableLock);
   SOCKET s = INVALID_SOCKET;
   if (g_streams[id].used) {
     s = g_streams[id].socket;
     g_streams[id].used = 0;
     g_streams[id].socket = INVALID_SOCKET;
   }
-  LeaveCriticalSection(&g_desksTableLock);
+  LeaveCriticalSection(&g_uLobbyTableLock);
   return s;
 }
 
 /** Which channel this source address is, making one if it is new. */
 static int lobby_channel_for(const struct sockaddr_in *from) {
-  EnterCriticalSection(&g_desksTableLock);
+  EnterCriticalSection(&g_uLobbyTableLock);
   int id = -1;
   for (int i = 0; i < LOBBY_CHANNELS; i++) {
     if (!g_channels[i].used) continue;
@@ -335,16 +335,16 @@ static int lobby_channel_for(const struct sockaddr_in *from) {
       break;
     }
   }
-  LeaveCriticalSection(&g_desksTableLock);
+  LeaveCriticalSection(&g_uLobbyTableLock);
   return id;
 }
 
 static int lobby_channel_address(int id, struct sockaddr_in *out) {
   if (id < 0 || id >= LOBBY_CHANNELS) return 0;
-  EnterCriticalSection(&g_desksTableLock);
+  EnterCriticalSection(&g_uLobbyTableLock);
   int ok = g_channels[id].used;
   if (ok) *out = g_channels[id].from;
-  LeaveCriticalSection(&g_desksTableLock);
+  LeaveCriticalSection(&g_uLobbyTableLock);
   return ok;
 }
 
@@ -355,7 +355,7 @@ static int lobby_channel_address(int id, struct sockaddr_in *out) {
 /**
  * The server list, answered here and not carried anywhere.
  *
- * IT IS A LOCAL QUESTION. The ini says where this copy's desks are, and for a
+ * IT IS A LOCAL QUESTION. The ini says where this copy's u-lobby is, and for a
  * copy that carries them through us the answer is always the same: all of them,
  * at our own loopback port. The lobby at the far end has no way to know that
  * number — it is this machine's — and asking it would only get back an address
@@ -363,8 +363,8 @@ static int lobby_channel_address(int id, struct sockaddr_in *out) {
  * tunnelled game cannot do.
  *
  * THE PRICE, said out loud: the prefixes below are a copy of the gateway's own
- * table (`SERVICES` in services/gateway/main.ts). A desk added there has to be
- * added here. They have been one number since the desks were merged, so what
+ * table (`SERVICES` in services/gateway/main.ts). A u-lobby service added there has to be
+ * added here. They have been one number since they were merged, so what
  * would go stale is the LIST, not the address — and a missing prefix is a game
  * that says it cannot reach the service by name, which is legible.
  *
@@ -377,7 +377,7 @@ static int lobby_servers_ini(char *out, int room) {
 
   char port[12];
   int portLen = 0;
-  num_to_dec(g_desksPort, port, &portLen);
+  num_to_dec(g_uLobbyPort, port, &portLen);
 
   int at = 0;
   const char *head = "[Servers]\r\n";
@@ -386,7 +386,7 @@ static int lobby_servers_ini(char *out, int room) {
     out[at++] = *p;
   }
   for (int i = 0; i < 4; i++) {
-    /** `IP0`, then `Port0`, then the launcher if this desk has one. */
+    /** `IP0`, then `Port0`, then the launcher if this service has one. */
     for (int field = 0; field < 3; field++) {
       if (field == 2 && !LAUNCHER[i]) continue;
       const char *tail = field == 0 ? "IP0=" : field == 1 ? "Port0=" : "LauncherPort0=";
@@ -433,16 +433,16 @@ static int lobby_answer_the_list(SOCKET s) {
     if (n <= 0) return 0;
     wrote += n;
   }
-  log_num("lobby: answered the game's server list, every desk at 127.0.0.1:", g_desksPort);
+  log_num("lobby: answered the game's server list, every u-lobby service at 127.0.0.1:", g_uLobbyPort);
   return 1;
 }
 
 /**
- * One accepted desk connection, read until it ends.
+ * One accepted u-lobby connection, read until it ends.
  *
  * The first message decides what this is, the same way the gateway decides which
- * desk a connection wants (`services/gateway/desk.ts`): a `GET ` is the server
- * list and is answered here; anything else is a desk and is carried. Which is
+ * u-lobby service a connection wants (`services/gateway/u-lobby service.ts`): a `GET ` is the server
+ * list and is answered here; anything else is a u-lobby service and is carried. Which is
  * why the stream is not announced on accept — until something has been said
  * there is nothing to announce, and the list must not become a stream at all.
  */
@@ -463,7 +463,7 @@ static DWORD WINAPI lobby_stream_thread(LPVOID which) {
         break;
       }
       lobby_wire_send(LOBBY_FRAME_OPEN, (WORD)id, NULL, 0);
-      log_num("lobby: the game opened desk stream ", id);
+      log_num("lobby: the game opened u-lobby stream ", id);
       announced = 1;
     }
     if (!lobby_wire_send(LOBBY_FRAME_DATA, (WORD)id, buf, got)) break;
@@ -479,28 +479,28 @@ static DWORD WINAPI lobby_stream_thread(LPVOID which) {
   if (mine != INVALID_SOCKET) {
     lobby_wire_send(LOBBY_FRAME_CLOSE, (WORD)id, NULL, 0);
     g_lobbyCloseSocket(mine);
-    log_num("lobby: the game closed desk stream ", id);
+    log_num("lobby: the game closed u-lobby stream ", id);
   }
   return 0;
 }
 
-/** The listener: every desk connection the game opens to us. */
+/** The listener: every u-lobby connection the game opens to us. */
 static DWORD WINAPI lobby_accept_thread(LPVOID unused) {
   (void)unused;
   for (;;) {
     struct sockaddr_in from;
     int size = (int)sizeof(from);
-    SOCKET s = g_lobbyAccept(g_desksListener, (struct sockaddr *)&from, &size);
+    SOCKET s = g_lobbyAccept(g_uLobbyListener, (struct sockaddr *)&from, &size);
     if (s == INVALID_SOCKET) {
-      if (InterlockedCompareExchange(&g_desksStop, 0, 0)) break;
+      if (InterlockedCompareExchange(&g_uLobbyStop, 0, 0)) break;
       Sleep(50);
       continue;
     }
     int id = lobby_take_stream(s);
     if (id < 0) {
       // Refusing is the honest answer: carrying it as somebody else's stream would
-      // interleave two desks, and the classifier at the far end would see nonsense.
-      log_line("lobby: more desk connections at once than there is room for — refused");
+      // interleave two services, and the classifier at the far end would see nonsense.
+      log_line("lobby: more u-lobby connections at once than there is room for — refused");
       g_lobbyCloseSocket(s);
       continue;
     }
@@ -518,7 +518,7 @@ static DWORD WINAPI lobby_accept_thread(LPVOID unused) {
   return 0;
 }
 
-/** The desks that answer datagrams: the NAT mirror and the CD-key window. */
+/** The services that answer datagrams: the NAT mirror and the CD-key window. */
 static DWORD WINAPI lobby_datagram_thread(LPVOID unused) {
   (void)unused;
   BYTE *buf = (BYTE *)VirtualAlloc(NULL, LOBBY_BUFFER, MEM_COMMIT, PAGE_READWRITE);
@@ -526,10 +526,10 @@ static DWORD WINAPI lobby_datagram_thread(LPVOID unused) {
   for (;;) {
     struct sockaddr_in from;
     int size = (int)sizeof(from);
-    int got = g_lobbyRecvFrom(g_desksUdp, (char *)buf, LOBBY_BUFFER, 0, (struct sockaddr *)&from,
+    int got = g_lobbyRecvFrom(g_uLobbyUdp, (char *)buf, LOBBY_BUFFER, 0, (struct sockaddr *)&from,
                               &size);
     if (got <= 0) {
-      if (InterlockedCompareExchange(&g_desksStop, 0, 0)) break;
+      if (InterlockedCompareExchange(&g_uLobbyStop, 0, 0)) break;
       Sleep(20);
       continue;
     }
@@ -561,7 +561,7 @@ static void lobby_inbound(const BYTE *bytes, int len) {
       if (wrote <= 0) return;
       at += wrote;
     }
-    InterlockedIncrement(&g_desksBack);
+    InterlockedIncrement(&g_uLobbyBack);
     return;
   }
   if (type == LOBBY_FRAME_CLOSE) {
@@ -574,9 +574,9 @@ static void lobby_inbound(const BYTE *bytes, int len) {
   if (type == LOBBY_FRAME_DATAGRAM) {
     struct sockaddr_in to;
     if (!lobby_channel_address(id, &to)) return;
-    g_lobbySendTo(g_desksUdp, (const char *)payload, size, 0, (const struct sockaddr *)&to,
+    g_lobbySendTo(g_uLobbyUdp, (const char *)payload, size, 0, (const struct sockaddr *)&to,
                   (int)sizeof(to));
-    InterlockedIncrement(&g_desksBack);
+    InterlockedIncrement(&g_uLobbyBack);
     return;
   }
 }
@@ -595,7 +595,7 @@ static DWORD WINAPI lobby_wire_thread(LPVOID unused) {
   if (!buf) return 0;
   DWORD wait = RELAY_RETRY_MIN_MS;
 
-  while (!InterlockedCompareExchange(&g_desksStop, 0, 0)) {
+  while (!InterlockedCompareExchange(&g_uLobbyStop, 0, 0)) {
     if (!lobby_dial()) {
       lobby_wire_drop();
       Sleep(wait);
@@ -607,7 +607,7 @@ static DWORD WINAPI lobby_wire_thread(LPVOID unused) {
     for (;;) {
       DWORD got = 0, type = 0;
       DWORD failed =
-          g_httpSocketReceive(g_desksSocket, buf, LOBBY_HEADER + LOBBY_BUFFER, &got, &type);
+          g_httpSocketReceive(g_uLobbySocket, buf, LOBBY_HEADER + LOBBY_BUFFER, &got, &type);
       if (failed) {
         log_num("lobby: the connection ended, last error ", (int)failed);
         break;
@@ -624,14 +624,14 @@ static DWORD WINAPI lobby_wire_thread(LPVOID unused) {
     }
     lobby_wire_drop();
 
-    // Every desk stream belonged to that connection. Keeping them across a redial
+    // Every u-lobby stream belonged to that connection. Keeping them across a redial
     // would hand the far end stream numbers it has never heard of, and the game a
-    // desk that answers nothing.
+    // u-lobby service that answers nothing.
     for (int i = 0; i < LOBBY_STREAMS; i++) {
       SOCKET s = lobby_free_stream(i);
       if (s != INVALID_SOCKET) g_lobbyCloseSocket(s);
     }
-    if (!InterlockedCompareExchange(&g_desksStop, 0, 0)) Sleep(RELAY_RETRY_MIN_MS);
+    if (!InterlockedCompareExchange(&g_uLobbyStop, 0, 0)) Sleep(RELAY_RETRY_MIN_MS);
   }
   VirtualFree(buf, 0, MEM_RELEASE);
   return 0;
@@ -674,33 +674,33 @@ static int lobby_open_sockets(void) {
   for (int i = 0; i < (int)sizeof(at); i++) ((BYTE *)&at)[i] = 0;
   at.sin_family = AF_INET;
   BYTE *port = (BYTE *)&at.sin_port;
-  port[0] = (BYTE)(g_desksPort >> 8);
-  port[1] = (BYTE)(g_desksPort & 0xff);
+  port[0] = (BYTE)(g_uLobbyPort >> 8);
+  port[1] = (BYTE)(g_uLobbyPort & 0xff);
   BYTE *octets = (BYTE *)&at.sin_addr;
   octets[0] = 127;
   octets[1] = 0;
   octets[2] = 0;
   octets[3] = 1;
 
-  g_desksListener = g_lobbySocket(AF_INET, SOCK_STREAM, 0);
-  if (g_desksListener == INVALID_SOCKET) return 0;
-  if (g_lobbyBind(g_desksListener, (const struct sockaddr *)&at, (int)sizeof(at)) != 0 ||
-      g_lobbyListen(g_desksListener, 8) != 0) {
+  g_uLobbyListener = g_lobbySocket(AF_INET, SOCK_STREAM, 0);
+  if (g_uLobbyListener == INVALID_SOCKET) return 0;
+  if (g_lobbyBind(g_uLobbyListener, (const struct sockaddr *)&at, (int)sizeof(at)) != 0 ||
+      g_lobbyListen(g_uLobbyListener, 8) != 0) {
     // Almost always somebody else on the number — a gateway of our own running on
     // this machine, most likely. Saying which port it was is the whole diagnosis.
-    log_num("lobby: could not listen on 127.0.0.1:", g_desksPort);
-    g_lobbyCloseSocket(g_desksListener);
-    g_desksListener = INVALID_SOCKET;
+    log_num("lobby: could not listen on 127.0.0.1:", g_uLobbyPort);
+    g_lobbyCloseSocket(g_uLobbyListener);
+    g_uLobbyListener = INVALID_SOCKET;
     return 0;
   }
 
-  g_desksUdp = g_lobbySocket(AF_INET, SOCK_DGRAM, 0);
-  if (g_desksUdp == INVALID_SOCKET ||
-      g_lobbyBind(g_desksUdp, (const struct sockaddr *)&at, (int)sizeof(at)) != 0) {
-    log_num("lobby: could not take the datagram side of 127.0.0.1:", g_desksPort);
-    if (g_desksUdp != INVALID_SOCKET) g_lobbyCloseSocket(g_desksUdp);
-    g_lobbyCloseSocket(g_desksListener);
-    g_desksUdp = g_desksListener = INVALID_SOCKET;
+  g_uLobbyUdp = g_lobbySocket(AF_INET, SOCK_DGRAM, 0);
+  if (g_uLobbyUdp == INVALID_SOCKET ||
+      g_lobbyBind(g_uLobbyUdp, (const struct sockaddr *)&at, (int)sizeof(at)) != 0) {
+    log_num("lobby: could not take the datagram side of 127.0.0.1:", g_uLobbyPort);
+    if (g_uLobbyUdp != INVALID_SOCKET) g_lobbyCloseSocket(g_uLobbyUdp);
+    g_lobbyCloseSocket(g_uLobbyListener);
+    g_uLobbyUdp = g_uLobbyListener = INVALID_SOCKET;
     return 0;
   }
   return 1;
@@ -775,7 +775,7 @@ static int lobby_point_the_game_here(void) {
   char ours[64];
   int at = 0, digits = 0;
   for (const char *p = "http://127.0.0.1:"; *p; p++) ours[at++] = *p;
-  num_to_dec(g_desksPort, ours + at, &digits);
+  num_to_dec(g_uLobbyPort, ours + at, &digits);
   at += digits;
   for (const char *p = "/gsinit.php?dp="; *p; p++) ours[at++] = *p;
   ours[at] = 0;
@@ -804,7 +804,7 @@ static int lobby_point_the_game_here(void) {
       }
       // Something is there and it is not what this was written against. Saying so
       // and leaving it is the only safe answer — the game keeps its own URL and
-      // the desks are simply not reached, which is visible rather than silent.
+      // the u-lobby services are simply not reached, which is visible rather than silent.
       log_text("lobby: the game's server-list URL is not the one we know: ", text);
       return 0;
     }
@@ -837,7 +837,7 @@ static DWORD WINAPI lobby_start_thread(LPVOID unused) {
   // would be pointed at a port nobody answers on, and a refused connection this
   // early reads like a lobby that is down.
   if (!lobby_point_the_game_here()) {
-    // The desks stay the game's own. Carrying nothing is right here — the far end
+    // The u-lobby stays the game's own. Carrying nothing is right here — the far end
     // would only ever see a connection the game never makes.
     return 0;
   }
@@ -846,13 +846,13 @@ static DWORD WINAPI lobby_start_thread(LPVOID unused) {
   HANDLE datagrams = CreateThread(NULL, 0, lobby_datagram_thread, NULL, 0, NULL);
   if (!listener || !datagrams) {
     log_line("lobby: could not start its threads");
-    InterlockedExchange(&g_desksStop, 1);
+    InterlockedExchange(&g_uLobbyStop, 1);
     return 0;
   }
   CloseHandle(listener);
   CloseHandle(datagrams);
 
-  log_line("lobby: the game's desks are carried out");
+  log_line("lobby: the u-lobby is carried out");
   lobby_wire_thread(NULL);
   return 0;
 }
@@ -866,10 +866,10 @@ static DWORD WINAPI lobby_start_thread(LPVOID unused) {
 static int install_lobby(void) {
   if (!lobby_read_config()) return 0;
 
-  if (!g_desksLocksMade) {
-    InitializeCriticalSection(&g_desksSendLock);
-    InitializeCriticalSection(&g_desksTableLock);
-    g_desksLocksMade = 1;
+  if (!g_uLobbyLocksMade) {
+    InitializeCriticalSection(&g_uLobbySendLock);
+    InitializeCriticalSection(&g_uLobbyTableLock);
+    g_uLobbyLocksMade = 1;
   }
   for (int i = 0; i < LOBBY_STREAMS; i++) g_streams[i].socket = INVALID_SOCKET;
 
